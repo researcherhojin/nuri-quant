@@ -2,7 +2,7 @@
 import pandas as pd
 import pytest
 
-from iris.db import init_db, upsert_prices, upsert_portfolio
+from nuri.db import init_db, upsert_prices, upsert_portfolio
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ class TestBaseCollector:
              "avg_price": 60000, "currency": "KRW", "sector": "Semi"},
         ], db_path)
 
-        from iris.db import get_tickers
+        from nuri.db import get_tickers
         all_tickers = get_tickers(db_path=db_path)
         us = [t for t in all_tickers if not t.endswith(".KS")]
         kr = [t for t in all_tickers if t.endswith(".KS")]
@@ -33,7 +33,7 @@ class TestBaseCollector:
 class TestStockCollector:
     def test_period_to_start_date(self):
         """기간 문자열 변환 테스트."""
-        from iris.collectors.stock import StockCollector
+        from nuri.collectors.stock import StockCollector
         c = StockCollector()
         # 변환만 확인 (날짜 형식)
         result = c._period_to_start_date("5d")
@@ -54,7 +54,7 @@ class TestTechnicalCollector:
     def test_compute_talib(self):
         """TA-Lib 지표 계산."""
         import numpy as np
-        from iris.collectors.technical import TechnicalCollector
+        from nuri.collectors.technical import TechnicalCollector
         close = np.array([100 + i * 0.5 + np.sin(i) for i in range(50)], dtype=float)
         result = TechnicalCollector._compute_talib(close)
         assert "rsi_14" in result

@@ -5,7 +5,7 @@
 FRED_API_KEY가 .env에 설정되어 있어야 한다.
 
 사용법:
-    python -m iris.collectors.macro
+    python -m nuri.collectors.macro
 """
 import logging
 import os
@@ -13,8 +13,8 @@ from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 
-from iris.collectors.base import BaseCollector
-from iris.db import upsert_macro
+from nuri.collectors.base import BaseCollector
+from nuri.db import upsert_macro
 
 load_dotenv()
 

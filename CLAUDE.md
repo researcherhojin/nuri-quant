@@ -27,12 +27,12 @@ make setup          # runs setup.sh + DB migration + portfolio import
 
 # Data collection
 make collect        # all collectors (stock, macro, technical, fear_greed, ark)
-python -m iris.collectors.stock              # single collector
-python -m iris.collectors.stock --market kr  # Korean market only
+python -m nuri.collectors.stock              # single collector
+python -m nuri.collectors.stock --market kr  # Korean market only
 
 # Analysis
 make analyze        # portfolio + sector + risk analysis
-python -m iris.analysis.portfolio            # single analysis module
+python -m nuri.analysis.portfolio            # single analysis module
 
 # Reporting & alerts
 make report         # daily report generation
@@ -56,14 +56,14 @@ make backup         # DB backup (30-day rolling)
 
 3-layer architecture with data flowing: **Collectors → Analysis → Alerts**
 
-- **Layer 1 — Collectors** (`iris/collectors/`): All inherit `BaseCollector` (in `base.py`). Stock prices via OpenBB Platform (US) + pykrx (Korean), macro via FRED API, technical via TA-Lib, Fear&Greed (CNN), ARK trades (CSV), events (OpenBB calendar), news (OpenBB).
-- **Layer 2 — Analysis** (`iris/analysis/`): Portfolio summary, QuantStats performance (HTML tearsheet), correlation matrix, sector/region exposure, Riskfolio-Lib risk metrics (VaR/CVaR/Sharpe), MVO/Risk Parity rebalancing.
-- **Layer 3 — Alerts** (`iris/alerts/`): Discord webhook for 24/7 notifications — daily reports, price swing alerts (±3%), ARK trade alerts, FOMC/earnings D-1 reminders, monthly rebalance alerts.
-- **Phase 2 — LLM** (`iris/llm/`): Ollama-based local LLM benchmarking and investment analysis pipeline.
-- **Phase 3 — Quant** (`iris/quant/`): Factor models (momentum/value/quality/sentiment), VectorBT backtesting, signal generation, Riskfolio-Lib portfolio optimization.
-- **Scheduler** (`iris/scheduler.py`): APScheduler 3.11 — 11 cron jobs replacing crontab.txt.
+- **Layer 1 — Collectors** (`nuri/collectors/`): All inherit `BaseCollector` (in `base.py`). Stock prices via OpenBB Platform (US) + pykrx (Korean), macro via FRED API, technical via TA-Lib, Fear&Greed (CNN), ARK trades (CSV), events (OpenBB calendar), news (OpenBB).
+- **Layer 2 — Analysis** (`nuri/analysis/`): Portfolio summary, QuantStats performance (HTML tearsheet), correlation matrix, sector/region exposure, Riskfolio-Lib risk metrics (VaR/CVaR/Sharpe), MVO/Risk Parity rebalancing.
+- **Layer 3 — Alerts** (`nuri/alerts/`): Discord webhook for 24/7 notifications — daily reports, price swing alerts (±3%), ARK trade alerts, FOMC/earnings D-1 reminders, monthly rebalance alerts.
+- **Phase 2 — LLM** (`nuri/llm/`): Ollama-based local LLM benchmarking and investment analysis pipeline.
+- **Phase 3 — Quant** (`nuri/quant/`): Factor models (momentum/value/quality/sentiment), VectorBT backtesting, signal generation, Riskfolio-Lib portfolio optimization.
+- **Scheduler** (`nuri/scheduler.py`): APScheduler 3.11 — 11 cron jobs replacing crontab.txt.
 
-All DB access goes through `iris/db.py` only. Database is SQLite at `data/portfolio.db`.
+All DB access goes through `nuri/db.py` only. Database is SQLite at `data/portfolio.db`.
 
 ## MCP Integration
 
@@ -71,7 +71,7 @@ Claude Code accesses the SQLite DB directly via MCP (configured in `.mcp.json`).
 
 ```bash
 # MCP setup (already in .mcp.json)
-claude mcp add iris-db -- npx -y @modelcontextprotocol/server-sqlite ./data/portfolio.db
+claude mcp add nuri-db -- npx -y @modelcontextprotocol/server-sqlite ./data/portfolio.db
 ```
 
 Common query patterns:

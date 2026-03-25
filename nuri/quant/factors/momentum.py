@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-from iris.db import query_df
+from nuri.db import query_df
 
 
 def compute_momentum(tickers: list[str] | None = None) -> pd.DataFrame:

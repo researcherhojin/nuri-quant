@@ -4,7 +4,7 @@
 Discord 전송 또는 stdout 출력.
 
 사용법:
-    python -m iris.alerts.daily_report
+    python -m nuri.alerts.daily_report
 """
 import json
 import logging
@@ -13,10 +13,10 @@ from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 
-from iris.alerts.formatters import format_daily_report
-from iris.analysis.portfolio import analyze_portfolio
-from iris.analysis.risk import analyze_risk
-from iris.db import query
+from nuri.alerts.formatters import format_daily_report
+from nuri.analysis.portfolio import analyze_portfolio
+from nuri.analysis.risk import analyze_risk
+from nuri.db import query
 
 load_dotenv()
 logger = logging.getLogger(__name__)

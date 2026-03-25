@@ -10,22 +10,22 @@ setup:
 
 # ── 데이터 수집 ──
 collect:
-	$(PYTHON) -m iris.collectors.stock
-	$(PYTHON) -m iris.collectors.stock_kr
-	$(PYTHON) -m iris.collectors.macro
-	$(PYTHON) -m iris.collectors.technical
-	$(PYTHON) -m iris.collectors.fear_greed
-	$(PYTHON) -m iris.collectors.ark
+	$(PYTHON) -m nuri.collectors.stock
+	$(PYTHON) -m nuri.collectors.stock_kr
+	$(PYTHON) -m nuri.collectors.macro
+	$(PYTHON) -m nuri.collectors.technical
+	$(PYTHON) -m nuri.collectors.fear_greed
+	$(PYTHON) -m nuri.collectors.ark
 
 # ── 분석 실행 ──
 analyze:
-	$(PYTHON) -m iris.analysis.portfolio
-	$(PYTHON) -m iris.analysis.sector
-	$(PYTHON) -m iris.analysis.risk
+	$(PYTHON) -m nuri.analysis.portfolio
+	$(PYTHON) -m nuri.analysis.sector
+	$(PYTHON) -m nuri.analysis.risk
 
 # ── 일일 리포트 ──
 report:
-	$(PYTHON) -m iris.alerts.daily_report
+	$(PYTHON) -m nuri.alerts.daily_report
 
 # ── 테스트 ──
 test:
@@ -33,11 +33,11 @@ test:
 
 # ── LLM 벤치마크 (Phase 2) ──
 benchmark:
-	$(PYTHON) -m iris.llm.benchmark --models all
+	$(PYTHON) -m nuri.llm.benchmark --models all
 
 # ── 백테스트 (Phase 3) ──
 backtest:
-	$(PYTHON) -m iris.quant.backtest.engine
+	$(PYTHON) -m nuri.quant.backtest.engine
 
 # ── 맥미니 배포 ──
 deploy:
