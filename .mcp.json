@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "iris-db": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sqlite",
+        "./data/portfolio.db"
+      ]
+    }
+  }
+}

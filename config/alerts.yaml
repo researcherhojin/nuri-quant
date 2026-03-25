@@ -1,0 +1,23 @@
+# ═══════════════════════════════════════════════════════
+# IRIS Alert Configuration
+# ═══════════════════════════════════════════════════════
+
+alerts:
+  # 급등락 알림 임계값
+  price_swing_pct: 3.0
+
+  # 일일 리포트 발송 시간 (KST)
+  daily_report_time: "08:00"
+
+  # 리밸런싱 체크 주기
+  rebalance_check: monthly
+
+  # Fear & Greed 임계값
+  fear_greed_low: 20    # 극단적 공포 → 매도 금지
+  fear_greed_high: 80   # 극단적 탐욕 → 주의
+
+  # 이벤트 사전 알림 (일)
+  event_reminder_days: 1  # D-1 알림
+
+  # ARK 매매 알림
+  ark_alert: true
