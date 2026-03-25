@@ -21,3 +21,14 @@ alerts:
 
   # ARK 매매 알림
   ark_alert: true
+
+  # 키워드 알림 (뉴스 제목에 포함 시 Discord 알림)
+  keyword_alerts:
+    - "FOMC"
+    - "Fed"
+    - "rate cut"
+    - "rate hike"
+    - "earnings"
+    - "bankruptcy"
+    - "acquisition"
+    - "buyback"

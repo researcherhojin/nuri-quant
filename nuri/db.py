@@ -138,6 +138,71 @@ CREATE TABLE IF NOT EXISTS news (
     sentiment REAL
 );
 
+-- 기관/외인 수급
+CREATE TABLE IF NOT EXISTS institutional_flows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker TEXT NOT NULL,
+    date TEXT NOT NULL,
+    market TEXT NOT NULL,
+    institution_net REAL,
+    foreign_net REAL,
+    individual_net REAL,
+    source TEXT,
+    UNIQUE(ticker, date, market)
+);
+
+-- 애널리스트 컨센서스 (목표가, 투자의견)
+CREATE TABLE IF NOT EXISTS estimates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker TEXT NOT NULL,
+    date TEXT NOT NULL,
+    recommendation TEXT,
+    target_high REAL,
+    target_low REAL,
+    target_mean REAL,
+    target_median REAL,
+    num_analysts INTEGER,
+    current_price REAL,
+    UNIQUE(ticker, date)
+);
+
+-- 슈퍼투자자 포트폴리오 (SEC 13F)
+CREATE TABLE IF NOT EXISTS superinvestors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    investor TEXT NOT NULL,
+    filing_date TEXT NOT NULL,
+    ticker TEXT NOT NULL,
+    shares REAL,
+    market_value REAL,
+    portfolio_pct REAL,
+    issuer_name TEXT,
+    UNIQUE(investor, filing_date, ticker)
+);
+
+-- 펀더멘탈 지표 (PER, ROE, 마진, 성장률 등)
+CREATE TABLE IF NOT EXISTS fundamentals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker TEXT NOT NULL,
+    date TEXT NOT NULL,
+    market_cap REAL,
+    pe_ratio REAL,
+    forward_pe REAL,
+    price_to_book REAL,
+    peg_ratio REAL,
+    roe REAL,
+    roa REAL,
+    gross_margin REAL,
+    operating_margin REAL,
+    profit_margin REAL,
+    revenue_growth REAL,
+    earnings_growth REAL,
+    debt_to_equity REAL,
+    current_ratio REAL,
+    dividend_yield REAL,
+    beta REAL,
+    UNIQUE(ticker, date)
+);
+
 -- [Phase 2] LLM 벤치마크 결과
 CREATE TABLE IF NOT EXISTS llm_bench (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -50,6 +50,15 @@ def _run_collector(name: str, **kwargs):
         elif name == "news":
             from nuri.collectors.news import NewsCollector
             NewsCollector().run()
+        elif name == "fundamental":
+            from nuri.collectors.fundamental import FundamentalCollector
+            FundamentalCollector().run()
+        elif name == "superinvestors":
+            from nuri.collectors.superinvestors import SuperinvestorCollector
+            SuperinvestorCollector().run()
+        elif name == "estimates":
+            from nuri.collectors.estimates import EstimatesCollector
+            EstimatesCollector().run()
     except Exception as e:
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
 
@@ -107,9 +116,21 @@ SCHEDULES = [
     {"name": "events", "func": _run_collector, "args": ("events",),
      "cron": "0 7 * * *"},
 
-    # 뉴스 (6시간)
+    # 뉴스 (1시간 — SaveTicker 대체)
     {"name": "news", "func": _run_collector, "args": ("news",),
-     "cron": "0 */6 * * *"},
+     "cron": "0 * * * *"},
+
+    # 펀더멘탈 (주 1회 일요일 00:00)
+    {"name": "fundamental", "func": _run_collector, "args": ("fundamental",),
+     "cron": "0 0 * * 0"},
+
+    # 슈퍼투자자 13F (주 1회 일요일 01:00)
+    {"name": "superinvestors", "func": _run_collector, "args": ("superinvestors",),
+     "cron": "0 1 * * 0"},
+
+    # 애널리스트 컨센서스 (주 1회 일요일 02:00)
+    {"name": "estimates", "func": _run_collector, "args": ("estimates",),
+     "cron": "0 2 * * 0"},
 
     # 일일 리포트 (매일 08:00)
     {"name": "daily_report", "func": _run_report, "args": (),
