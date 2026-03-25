@@ -4,7 +4,7 @@
 |상관계수| > 0.80 경고.
 
 사용법:
-    python -m iris.analysis.correlation
+    python -m nuri.analysis.correlation
 """
 import logging
 from pathlib import Path
@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from iris.db import get_tickers, query_df
+from nuri.db import get_tickers, query_df
 
 logger = logging.getLogger(__name__)
 

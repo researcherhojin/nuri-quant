@@ -5,15 +5,15 @@ RSI(14), MACD(12,26,9), Bollinger Bands(20,2), SMA(20/50/200), EMA(12/26)
 TA-Lib 사용 (brew install ta-lib 필요).
 
 사용법:
-    python -m iris.collectors.technical
+    python -m nuri.collectors.technical
 """
 import logging
 
 import numpy as np
 import pandas as pd
 
-from iris.collectors.base import BaseCollector
-from iris.db import get_tickers, query_df, upsert_signals
+from nuri.collectors.base import BaseCollector
+from nuri.db import get_tickers, query_df, upsert_signals
 
 import talib
 

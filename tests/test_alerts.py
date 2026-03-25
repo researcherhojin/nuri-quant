@@ -1,5 +1,5 @@
 """Alerts 모듈 테스트."""
-from iris.alerts.formatters import (
+from nuri.alerts.formatters import (
     format_daily_report,
     format_price_alert,
     format_ark_alert,

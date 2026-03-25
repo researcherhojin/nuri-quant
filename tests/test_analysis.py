@@ -2,7 +2,7 @@
 import pandas as pd
 import pytest
 
-from iris.db import init_db, upsert_prices, upsert_portfolio, upsert_macro
+from nuri.db import init_db, upsert_prices, upsert_portfolio, upsert_macro
 
 
 @pytest.fixture
@@ -41,27 +41,27 @@ def populated_db(db_path, monkeypatch):
         {"indicator": "fed_funds_rate", "date": "2026-03-24", "value": 5.0, "source": "FRED"},
     ], db_path)
 
-    import iris.db
-    monkeypatch.setattr(iris.db, "DB_PATH", db_path)
+    import nuri.db
+    monkeypatch.setattr(nuri.db, "DB_PATH", db_path)
     return db_path
 
 
 class TestPortfolioAnalysis:
     def test_analyze_returns_dataframe(self, populated_db):
-        from iris.analysis.portfolio import analyze_portfolio
+        from nuri.analysis.portfolio import analyze_portfolio
         df = analyze_portfolio()
         assert not df.empty
         assert "weight_pct" in df.columns
 
     def test_total_weight_100(self, populated_db):
-        from iris.analysis.portfolio import analyze_portfolio
+        from nuri.analysis.portfolio import analyze_portfolio
         df = analyze_portfolio()
         assert abs(df["weight_pct"].sum() - 100.0) < 0.1
 
 
 class TestRiskAnalysis:
     def test_risk_metrics_keys(self, populated_db):
-        from iris.analysis.risk import analyze_risk
+        from nuri.analysis.risk import analyze_risk
         metrics = analyze_risk()
         assert "sharpe_ratio" in metrics
         assert "cvar_95_daily_pct" in metrics  # v2에서 CVaR 추가됨
@@ -69,14 +69,14 @@ class TestRiskAnalysis:
 
 class TestPerformance:
     def test_portfolio_returns(self, populated_db):
-        from iris.analysis.performance import get_portfolio_returns
+        from nuri.analysis.performance import get_portfolio_returns
         returns = get_portfolio_returns()
         assert len(returns) > 0
 
 
 class TestSectorAnalysis:
     def test_sector_weights_sum_100(self, populated_db):
-        from iris.analysis.sector import analyze_sector
+        from nuri.analysis.sector import analyze_sector
         sector_df, _, _ = analyze_sector()
         assert not sector_df.empty
         assert abs(sector_df["weight_pct"].sum() - 100.0) < 0.5

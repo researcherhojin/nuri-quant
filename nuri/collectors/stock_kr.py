@@ -5,8 +5,8 @@ pykrx는 KRX/네이버 금융 데이터를 사용하며, EOD(종가) 데이터�
 티커는 DB에 '005930.KS' 형태로 저장되지만, pykrx에는 '005930'으로 전달.
 
 사용법:
-    python -m iris.collectors.stock_kr
-    python -m iris.collectors.stock_kr --days 30
+    python -m nuri.collectors.stock_kr
+    python -m nuri.collectors.stock_kr --days 30
 """
 import argparse
 import logging
@@ -16,8 +16,8 @@ from typing import Optional
 import pandas as pd
 from pykrx import stock as krx
 
-from iris.collectors.base import BaseCollector
-from iris.db import upsert_prices
+from nuri.collectors.base import BaseCollector
+from nuri.db import upsert_prices
 
 
 class StockKRCollector(BaseCollector):

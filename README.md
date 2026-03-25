@@ -111,7 +111,7 @@ Nuri-Quant는 개인 투자자를 위한 **정보 기반 퀀트 투자 플랫폼
 - [x] VectorBT 백테스트 엔진
 - [x] APScheduler 스케줄러
 - [x] Discord 알림
-- [ ] 패키지명 iris → nuri 리네이밍
+- [ ] 패키지명 iris → nuri 리네이밍 ✅
 - [ ] 기관/외국인 수급 수집 (pykrx 확장)
 - [ ] 공매도/풋콜 비율 수집 (OpenBB)
 - [ ] 미국채 수익률 곡선 (FRED 확장)
@@ -164,15 +164,15 @@ cp .env.example .env
 make collect
 
 # 5. 포트폴리오 분석
-python -m iris.analysis.portfolio
-python -m iris.analysis.risk
-python -m iris.analysis.performance --html
+python -m nuri.analysis.portfolio
+python -m nuri.analysis.risk
+python -m nuri.analysis.performance --html
 
 # 6. 백테스트
-python -m iris.quant.backtest.engine
+python -m nuri.quant.backtest.engine
 
 # 7. 24/7 자동화
-python -m iris.scheduler
+python -m nuri.scheduler
 ```
 
 ---
