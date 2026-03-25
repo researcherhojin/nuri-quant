@@ -97,9 +97,9 @@ async def send_bot(embed_dict: dict) -> bool:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    parser = argparse.ArgumentParser(description="IRIS Discord 알림")
+    parser = argparse.ArgumentParser(description="Nuri-Quant Discord 알림")
     parser.add_argument("--webhook", action="store_true", help="Webhook 방식")
-    parser.add_argument("--message", type=str, default="IRIS 테스트 메시지")
+    parser.add_argument("--message", type=str, default="Nuri-Quant 테스트 메시지")
     args = parser.parse_args()
 
     if args.webhook:

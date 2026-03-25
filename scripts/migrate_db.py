@@ -3,7 +3,7 @@ from nuri.db import init_db, get_connection
 
 
 def main():
-    print("=== IRIS DB Migration ===")
+    print("=== Nuri-Quant DB Migration ===")
     init_db()
 
     conn = get_connection()
