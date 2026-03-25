@@ -1,18 +1,16 @@
 """
 이벤트 캘린더 수집기 — 실적발표, FOMC, 배당일 수집.
 
-yfinance의 calendar 데이터 + FOMC 하드코딩.
+OpenBB Platform으로 실적 캘린더 조회 + FOMC 하드코딩.
 
 사용법:
     python -m iris.collectors.events
 """
 import logging
-from datetime import datetime
-
-import yfinance as yf
+from datetime import datetime, timedelta
 
 from iris.collectors.base import BaseCollector
-from iris.db import insert_events, query
+from iris.db import insert_events
 
 # 2026년 FOMC 회의 일정 (예정)
 FOMC_2026 = [
@@ -35,7 +33,7 @@ class EventsCollector(BaseCollector):
         # FOMC 일정
         records.extend(self._collect_fomc())
 
-        # 종목별 실적/배당 일정
+        # 종목별 실적 일정 (OpenBB)
         tickers = self._get_tickers(market="us")
         for ticker in tickers:
             records.extend(self._collect_ticker_events(ticker))
@@ -56,34 +54,48 @@ class EventsCollector(BaseCollector):
         return records
 
     def _collect_ticker_events(self, ticker: str) -> list[dict]:
-        """yfinance에서 종목별 실적/배당 일정 수집."""
+        """OpenBB로 종목별 실적/배당 일정 수집."""
+        from openbb import obb
+
         records = []
         try:
-            t = yf.Ticker(ticker)
-            cal = t.calendar
-            if cal is None or (hasattr(cal, 'empty') and cal.empty):
-                return records
+            # 실적발표일
+            result = obb.equity.calendar.earnings(
+                symbol=ticker, provider="yfinance",
+            )
+            df = result.to_dataframe()
+            if not df.empty:
+                for _, row in df.iterrows():
+                    date_val = row.get("report_date", row.get("date"))
+                    if date_val is None:
+                        # index가 날짜일 수 있음
+                        if hasattr(row.name, "strftime"):
+                            date_val = row.name
+                        else:
+                            continue
 
-            # calendar는 dict 또는 DataFrame
-            if isinstance(cal, dict):
-                # 실적발표일
-                earnings_date = cal.get("Earnings Date")
-                if earnings_date:
-                    dates = earnings_date if isinstance(earnings_date, list) else [earnings_date]
-                    for d in dates:
-                        date_str = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
-                        records.append({
-                            "date": date_str,
-                            "event_type": "earnings",
-                            "ticker": ticker,
-                            "description": f"{ticker} 실적발표",
-                            "importance": 2,
-                        })
+                    date_str = date_val.strftime("%Y-%m-%d") if hasattr(date_val, "strftime") else str(date_val)[:10]
+                    records.append({
+                        "date": date_str,
+                        "event_type": "earnings",
+                        "ticker": ticker,
+                        "description": f"{ticker} 실적발표",
+                        "importance": 2,
+                    })
+        except Exception as e:
+            self.logger.debug(f"{ticker}: 실적 캘린더 조회 실패 — {e}")
 
-                # 배당일
-                ex_div = cal.get("Ex-Dividend Date")
-                if ex_div:
-                    date_str = ex_div.strftime("%Y-%m-%d") if hasattr(ex_div, "strftime") else str(ex_div)
+        try:
+            # 배당 일정
+            result = obb.equity.calendar.dividend(
+                symbol=ticker, provider="yfinance",
+            )
+            df = result.to_dataframe()
+            if not df.empty:
+                row = df.iloc[0]
+                ex_date = row.get("ex_dividend_date", row.get("date"))
+                if ex_date:
+                    date_str = ex_date.strftime("%Y-%m-%d") if hasattr(ex_date, "strftime") else str(ex_date)[:10]
                     records.append({
                         "date": date_str,
                         "event_type": "ex_dividend",
@@ -91,21 +103,18 @@ class EventsCollector(BaseCollector):
                         "description": f"{ticker} 배당락일",
                         "importance": 1,
                     })
-
-        except Exception as e:
-            self.logger.debug(f"{ticker}: 이벤트 수집 실패 — {e}")
+        except Exception:
+            pass  # 배당 미지원 종목 무시
 
         return records
 
     def save(self, data: list[dict]) -> int:
-        """이벤트를 DB에 저장. 기존 데이터 삭제 후 재삽입."""
+        """이벤트를 DB에 저장. 기존 동일 이벤트 삭제 후 재삽입."""
         if not data:
             return 0
 
-        # 기존 이벤트 중복 방지: 날짜+종목+타입 기준 확인
         from iris.db import get_db
         with get_db() as conn:
-            # 이번에 수집한 이벤트와 동일한 기존 이벤트 삭제 후 삽입
             for record in data:
                 conn.execute(
                     """DELETE FROM events

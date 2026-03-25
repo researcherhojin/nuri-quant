@@ -25,12 +25,13 @@ def get_exchange_rate() -> float:
     )
     if rows:
         return rows[0]["value"]
-    # 폴백: yfinance로 실시간 조회
+    # 폴백: OpenBB로 환율 조회
     try:
-        import yfinance as yf
-        data = yf.download("USDKRW=X", period="1d", progress=False)
-        if not data.empty:
-            return float(data["Close"].iloc[-1])
+        from openbb import obb
+        result = obb.currency.price.historical("USDKRW", provider="yfinance", start_date="2026-01-01")
+        df = result.to_dataframe()
+        if not df.empty:
+            return float(df["close"].iloc[-1])
     except Exception:
         pass
     return 1450.0  # 기본값
