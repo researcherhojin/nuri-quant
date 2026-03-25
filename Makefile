@@ -1,4 +1,4 @@
-.PHONY: setup test collect analyze report deploy backup benchmark backtest verify
+.PHONY: setup test collect analyze report deploy backup benchmark backtest verify validate
 
 PYTHON = .venv/bin/python
 
@@ -45,6 +45,13 @@ verify:
 
 verify-fast:
 	$(PYTHON) scripts/verify.py --skip-backtest
+
+# ── Phase C 검증 ──
+validate:
+	$(PYTHON) -m nuri.quant.validation.signal_backtest
+	$(PYTHON) -m nuri.quant.validation.superinvestor_backtest
+	$(PYTHON) -m nuri.quant.validation.analyst_backtest
+	$(PYTHON) -m nuri.quant.validation.scorecard
 
 # ── 맥미니 배포 ──
 deploy:

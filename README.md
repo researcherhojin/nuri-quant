@@ -220,11 +220,15 @@ data/reports/2026-03-26/
 - [x] **B-7.** 뉴스 수집 강화 — 매시 수집 + 키워드 알림
 - [x] 가격 데이터 5년치 확보 (25,000+건)
 
-### Phase C: Validation Engine
-- [ ] 시그널별 백테스트 ("차트의 ▲BUY를 따르면 실제로 수익이 나는가?")
-- [ ] 소스별 스코어카드 (승률, 평균 수익률, 최대 손실)
-- [ ] 가설 검정 ("Does following ARK/Buffett actually work?")
-- [ ] ETF 자금흐름 수집 + 섹터 로테이션
+### Phase C: Validation Engine (세팅 완료, 구현 대기)
+> 상세: [`docs/PLAN_PHASE_C.md`](docs/PLAN_PHASE_C.md) | 스켈레톤: `nuri/quant/validation/` | 테스트: `tests/test_validation.py` (6 skipped)
+
+- [ ] **C-1.** 시그널 백테스트 — 7개 시그널 x 23종목 승률/PF 측정 (`signal_backtest.py`, 즉시 구현 가능)
+- [ ] **C-2.** 슈퍼투자자 추종 — 과거 8분기 13F 수집 확장 후 추종 수익률 측정 (`superinvestor_backtest.py`)
+- [ ] **C-3.** 애널리스트 검증 — 전향적 추적, 90일 후 목표가 적중률 (`analyst_backtest.py`, 데이터 누적 대기)
+- [ ] **C-4.** 통합 스코어카드 — C-1~C-3 결과 HTML 대시보드 (`scorecard.py`)
+- [ ] **C-5.** ETF 자금흐름 — 소스 검증 필요 (`etf_flows.py`)
+- [ ] `make validate` 명령어 등록 완료
 
 ### Phase D: Market Regime
 - [ ] 레짐 분류기 (강세/약세/횡보 x 고변동/저변동)
