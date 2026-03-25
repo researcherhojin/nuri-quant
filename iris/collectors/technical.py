@@ -2,7 +2,7 @@
 기술적 지표 수집기 — prices 테이블 데이터 기반으로 지표 계산.
 
 RSI(14), MACD(12,26,9), Bollinger Bands(20,2), SMA(20/50/200), EMA(12/26)
-TA-Lib 우선, 실패 시 pandas_ta 폴백.
+TA-Lib 사용 (brew install ta-lib 필요).
 
 사용법:
     python -m iris.collectors.technical
@@ -15,13 +15,7 @@ import pandas as pd
 from iris.collectors.base import BaseCollector
 from iris.db import get_tickers, query_df, upsert_signals
 
-# TA-Lib / pandas_ta 폴백
-try:
-    import talib
-    USE_TALIB = True
-except ImportError:
-    import pandas_ta as ta
-    USE_TALIB = False
+import talib
 
 
 class TechnicalCollector(BaseCollector):
@@ -58,10 +52,7 @@ class TechnicalCollector(BaseCollector):
 
         close = prices["close"].values.astype(float)
 
-        if USE_TALIB:
-            result = self._compute_talib(close)
-        else:
-            result = self._compute_pandas_ta(close)
+        result = self._compute_talib(close)
 
         # 최근 데이터만 추출 (마지막 행)
         last_idx = len(close) - 1
@@ -93,30 +84,6 @@ class TechnicalCollector(BaseCollector):
             "sma_200": talib.SMA(close, 200),
             "ema_12": talib.EMA(close, 12),
             "ema_26": talib.EMA(close, 26),
-        }
-
-    @staticmethod
-    def _compute_pandas_ta(close: np.ndarray) -> dict:
-        """pandas_ta로 지표 계산 (TA-Lib 폴백)."""
-        s = pd.Series(close)
-
-        rsi = ta.rsi(s, length=14)
-        macd_df = ta.macd(s, fast=12, slow=26, signal=9)
-        bb_df = ta.bbands(s, length=20, std=2.0)
-
-        return {
-            "rsi_14": rsi.values if rsi is not None else np.full(len(close), np.nan),
-            "macd": macd_df.iloc[:, 0].values if macd_df is not None else np.full(len(close), np.nan),
-            "macd_signal": macd_df.iloc[:, 2].values if macd_df is not None else np.full(len(close), np.nan),
-            "macd_hist": macd_df.iloc[:, 1].values if macd_df is not None else np.full(len(close), np.nan),
-            "bb_upper": bb_df.iloc[:, 2].values if bb_df is not None else np.full(len(close), np.nan),
-            "bb_middle": bb_df.iloc[:, 1].values if bb_df is not None else np.full(len(close), np.nan),
-            "bb_lower": bb_df.iloc[:, 0].values if bb_df is not None else np.full(len(close), np.nan),
-            "sma_20": ta.sma(s, length=20).values if ta.sma(s, length=20) is not None else np.full(len(close), np.nan),
-            "sma_50": ta.sma(s, length=50).values if ta.sma(s, length=50) is not None else np.full(len(close), np.nan),
-            "sma_200": ta.sma(s, length=200).values if ta.sma(s, length=200) is not None else np.full(len(close), np.nan),
-            "ema_12": ta.ema(s, length=12).values if ta.ema(s, length=12) is not None else np.full(len(close), np.nan),
-            "ema_26": ta.ema(s, length=26).values if ta.ema(s, length=26) is not None else np.full(len(close), np.nan),
         }
 
     def save(self, data: pd.DataFrame) -> int:

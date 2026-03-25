@@ -11,6 +11,7 @@ setup:
 # ── 데이터 수집 ──
 collect:
 	$(PYTHON) -m iris.collectors.stock
+	$(PYTHON) -m iris.collectors.stock_kr
 	$(PYTHON) -m iris.collectors.macro
 	$(PYTHON) -m iris.collectors.technical
 	$(PYTHON) -m iris.collectors.fear_greed
