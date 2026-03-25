@@ -2,52 +2,52 @@
 name = "nuri-quant"
 version = "1.0.0"
 description = "Open-source quant investment platform — Collect, Validate, Recommend"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
-    # ── 데이터 수집 ──
-    "openbb>=4.6.0",             # 미국 시장 데이터 (yfinance 대체)
-    "pykrx>=1.2.0",              # 한국 시장 데이터 (KOSPI/KOSDAQ)
-    "fredapi>=0.5.1",            # FRED 매크로 지표
-    "requests>=2.31.0",          # HTTP 요청
-    "beautifulsoup4>=4.12.0",    # Fear&Greed 스크래핑 폴백
+    # Data collection
+    "openbb>=4.6.0",
+    "pykrx>=1.2.0",
+    "fredapi>=0.5.1",
+    "edgartools>=5.0.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
 
-    # ── 분석 + 기술적 지표 ──
+    # Analysis + technical indicators
     "pandas>=2.2.0",
     "numpy>=1.26.0",
     "TA-Lib>=0.4.28",
-    # pandas-ta 제거: pykrx(numpy<2)와 numpy 버전 충돌. TA-Lib이 주 라이브러리.
 
-    # ── 포트폴리오 최적화 + 리스크 ──
-    "riskfolio-lib>=7.0.0",      # MVO, HRP, CVaR, 섹터 제약조건
-    "quantstats>=0.0.60",        # 성과 보고 HTML 티어시트
+    # Portfolio optimization + risk
+    "riskfolio-lib>=7.0.0",
+    "quantstats>=0.0.60",
     "scipy>=1.12.0",
     "scikit-learn>=1.4.0",
     "cvxpy>=1.4.0",
 
-    # ── 백테스트 ──
-    "vectorbt>=0.28.0",          # 벡터화 백테스트 (무료판)
+    # Backtesting
+    "vectorbt>=0.28.0",
 
-    # ── 시각화 ──
+    # Visualization
     "matplotlib>=3.8.0",
     "plotly>=5.18.0",
     "seaborn>=0.13.0",
+    "mplfinance>=0.12.0",
 
-    # ── 알림 + 스케줄링 ──
+    # Alerts + scheduling
     "discord.py>=2.3.0",
     "apscheduler>=3.10.0",
 
-    # ── 설정 ──
+    # Config
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
 
-    # ── 테스트 ──
+    # Testing
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
 ]
 
 [project.optional-dependencies]
 llm = ["httpx>=0.27.0"]
-zipline = ["zipline-reloaded>=3.1.0"]   # 팩터 Pipeline API (선택)
 
 [tool.setuptools.packages.find]
 include = ["nuri*"]
