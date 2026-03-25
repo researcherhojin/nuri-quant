@@ -60,7 +60,7 @@ def get_portfolio_returns(days: int = 90) -> pd.Series:
 
     port_returns = (returns[common] * w).sum(axis=1)
     port_returns.index = pd.to_datetime(port_returns.index)
-    port_returns.name = "IRIS Portfolio"
+    port_returns.name = "Nuri-Quant Portfolio"
 
     return port_returns
 
@@ -89,7 +89,7 @@ def generate_html_report(port_returns: pd.Series, benchmark: pd.Series) -> str:
         port_returns,
         benchmark=benchmark if not benchmark.empty else None,
         output=str(output_path),
-        title="IRIS Portfolio Performance",
+        title="Nuri-Quant Portfolio Performance",
     )
 
     logger.info(f"HTML 티어시트 저장: {output_path}")
@@ -132,7 +132,7 @@ def print_performance(port_returns: pd.Series, benchmark: pd.Series) -> None:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    parser = argparse.ArgumentParser(description="IRIS 성과 분석 (QuantStats)")
+    parser = argparse.ArgumentParser(description="Nuri-Quant 성과 분석 (QuantStats)")
     parser.add_argument("--html", action="store_true", help="HTML 티어시트 생성")
     args = parser.parse_args()
 
