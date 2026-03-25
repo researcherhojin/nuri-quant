@@ -1,0 +1,135 @@
+"""
+기술적 지표 수집기 — prices 테이블 데이터 기반으로 지표 계산.
+
+RSI(14), MACD(12,26,9), Bollinger Bands(20,2), SMA(20/50/200), EMA(12/26)
+TA-Lib 우선, 실패 시 pandas_ta 폴백.
+
+사용법:
+    python -m iris.collectors.technical
+"""
+import logging
+
+import numpy as np
+import pandas as pd
+
+from iris.collectors.base import BaseCollector
+from iris.db import get_tickers, query_df, upsert_signals
+
+# TA-Lib / pandas_ta 폴백
+try:
+    import talib
+    USE_TALIB = True
+except ImportError:
+    import pandas_ta as ta
+    USE_TALIB = False
+
+
+class TechnicalCollector(BaseCollector):
+    """prices 테이블 기반 기술적 지표 계산."""
+
+    def __init__(self):
+        super().__init__("technical")
+
+    def collect(self, **kwargs) -> pd.DataFrame:
+        """전체 보유 종목의 기술적 지표 계산."""
+        tickers = get_tickers()
+        if not tickers:
+            self.logger.warning("보유 종목 없음")
+            return pd.DataFrame()
+
+        frames = []
+        for ticker in tickers:
+            df = self._compute_for_ticker(ticker)
+            if df is not None and not df.empty:
+                frames.append(df)
+
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+    def _compute_for_ticker(self, ticker: str) -> pd.DataFrame | None:
+        """단일 종목의 기술적 지표 계산."""
+        # 최소 200일 데이터 필요 (SMA 200)
+        prices = query_df(
+            "SELECT date, close FROM prices WHERE ticker = ? ORDER BY date",
+            (ticker,),
+        )
+        if len(prices) < 14:  # RSI 최소 요구
+            self.logger.warning(f"{ticker}: 데이터 부족 ({len(prices)}일)")
+            return None
+
+        close = prices["close"].values.astype(float)
+
+        if USE_TALIB:
+            result = self._compute_talib(close)
+        else:
+            result = self._compute_pandas_ta(close)
+
+        # 최근 데이터만 추출 (마지막 행)
+        last_idx = len(close) - 1
+        row = {
+            "ticker": ticker,
+            "date": prices.iloc[last_idx]["date"],
+        }
+        for key, arr in result.items():
+            row[key] = float(arr[last_idx]) if not np.isnan(arr[last_idx]) else None
+
+        return pd.DataFrame([row])
+
+    @staticmethod
+    def _compute_talib(close: np.ndarray) -> dict:
+        """TA-Lib으로 지표 계산."""
+        macd, macd_signal, macd_hist = talib.MACD(close, 12, 26, 9)
+        bb_upper, bb_middle, bb_lower = talib.BBANDS(close, 20, 2.0, 2.0)
+
+        return {
+            "rsi_14": talib.RSI(close, 14),
+            "macd": macd,
+            "macd_signal": macd_signal,
+            "macd_hist": macd_hist,
+            "bb_upper": bb_upper,
+            "bb_middle": bb_middle,
+            "bb_lower": bb_lower,
+            "sma_20": talib.SMA(close, 20),
+            "sma_50": talib.SMA(close, 50),
+            "sma_200": talib.SMA(close, 200),
+            "ema_12": talib.EMA(close, 12),
+            "ema_26": talib.EMA(close, 26),
+        }
+
+    @staticmethod
+    def _compute_pandas_ta(close: np.ndarray) -> dict:
+        """pandas_ta로 지표 계산 (TA-Lib 폴백)."""
+        s = pd.Series(close)
+
+        rsi = ta.rsi(s, length=14)
+        macd_df = ta.macd(s, fast=12, slow=26, signal=9)
+        bb_df = ta.bbands(s, length=20, std=2.0)
+
+        return {
+            "rsi_14": rsi.values if rsi is not None else np.full(len(close), np.nan),
+            "macd": macd_df.iloc[:, 0].values if macd_df is not None else np.full(len(close), np.nan),
+            "macd_signal": macd_df.iloc[:, 2].values if macd_df is not None else np.full(len(close), np.nan),
+            "macd_hist": macd_df.iloc[:, 1].values if macd_df is not None else np.full(len(close), np.nan),
+            "bb_upper": bb_df.iloc[:, 2].values if bb_df is not None else np.full(len(close), np.nan),
+            "bb_middle": bb_df.iloc[:, 1].values if bb_df is not None else np.full(len(close), np.nan),
+            "bb_lower": bb_df.iloc[:, 0].values if bb_df is not None else np.full(len(close), np.nan),
+            "sma_20": ta.sma(s, length=20).values if ta.sma(s, length=20) is not None else np.full(len(close), np.nan),
+            "sma_50": ta.sma(s, length=50).values if ta.sma(s, length=50) is not None else np.full(len(close), np.nan),
+            "sma_200": ta.sma(s, length=200).values if ta.sma(s, length=200) is not None else np.full(len(close), np.nan),
+            "ema_12": ta.ema(s, length=12).values if ta.ema(s, length=12) is not None else np.full(len(close), np.nan),
+            "ema_26": ta.ema(s, length=26).values if ta.ema(s, length=26) is not None else np.full(len(close), np.nan),
+        }
+
+    def save(self, data: pd.DataFrame) -> int:
+        """기술적 지표를 DB에 저장."""
+        if data.empty:
+            return 0
+        return upsert_signals(data)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
+    collector = TechnicalCollector()
+    collector.run()
