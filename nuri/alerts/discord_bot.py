@@ -7,10 +7,10 @@ Discord 알림 봇 — send-only 방식.
 
 사용법:
     # Webhook 방식
-    python -m iris.alerts.discord_bot --webhook --message "테스트"
+    python -m nuri.alerts.discord_bot --webhook --message "테스트"
 
     # Bot 방식
-    python -m iris.alerts.discord_bot --bot
+    python -m nuri.alerts.discord_bot --bot
 """
 import argparse
 import json

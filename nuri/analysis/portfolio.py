@@ -6,14 +6,14 @@
 - 레버리지 ETF(TSLL) 매도 경고
 
 사용법:
-    python -m iris.analysis.portfolio
+    python -m nuri.analysis.portfolio
 """
 import logging
 from typing import Optional
 
 import pandas as pd
 
-from iris.db import query_df, query
+from nuri.db import query_df, query
 
 logger = logging.getLogger(__name__)
 
