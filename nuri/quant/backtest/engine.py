@@ -103,7 +103,7 @@ def run_momentum_backtest(
         qs.reports.html(
             port_returns,
             output=str(EXPORT_DIR / "backtest_tearsheet.html"),
-            title=f"IRIS Momentum Top-{top_n} Backtest",
+            title=f"Nuri-Quant Momentum Top-{top_n} Backtest",
         )
         logger.info(f"백테스트 티어시트: {EXPORT_DIR / 'backtest_tearsheet.html'}")
     except Exception as e:
@@ -144,7 +144,7 @@ def print_backtest(result: dict) -> None:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    parser = argparse.ArgumentParser(description="IRIS 백테스트 (VectorBT)")
+    parser = argparse.ArgumentParser(description="Nuri-Quant 백테스트 (VectorBT)")
     parser.add_argument("--period", default="3mo", help="데이터 기간")
     parser.add_argument("--top-n", type=int, default=5, help="상위 N 종목")
     parser.add_argument("--rebalance", type=int, default=20, help="리밸런싱 주기(일)")

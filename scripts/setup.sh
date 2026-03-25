@@ -1,8 +1,8 @@
 #!/bin/bash
-# IRIS 초기 환경 설정 스크립트
+# Nuri-Quant 초기 환경 설정 스크립트
 set -e
 
-echo "=== IRIS Setup ==="
+echo "=== Nuri-Quant Setup ==="
 
 # TA-Lib C library
 if ! brew list ta-lib &>/dev/null; then
