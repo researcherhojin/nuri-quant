@@ -9,6 +9,7 @@ venv/
 data/portfolio.db
 data/backups/
 data/exports/
+data/reports/
 
 # IDE
 .vscode/

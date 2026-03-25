@@ -14,93 +14,164 @@ Python 3.12, SQLite, 100% free open-source stack.
 ## Commands
 
 ```bash
-# Setup
+# Setup (requires: brew install ta-lib)
 make setup                              # venv + deps + DB init + portfolio import
 
 # Data collection
-make collect                            # all collectors
-python -m nuri.collectors.stock         # US stocks (OpenBB)
-python -m nuri.collectors.stock_kr      # Korean stocks (pykrx)
+make collect                            # Phase A 6 collectors only (stock/stock_kr/macro/technical/fear_greed/ark)
+python -m nuri.collectors.stock --period 5y  # US stocks 5Y (OpenBB)
+python -m nuri.collectors.stock_kr --days 1825  # Korean stocks 5Y (pykrx)
+python -m nuri.collectors.fundamental   # PE/ROE/margins (OpenBB metrics)
+python -m nuri.collectors.superinvestors  # Buffett/Gates/Dalio 13F (edgartools)
+python -m nuri.collectors.estimates     # Analyst consensus (OpenBB)
 
 # Analysis
 make analyze                            # portfolio + sector + risk
 python -m nuri.analysis.portfolio       # single module
 python -m nuri.analysis.performance --html  # QuantStats HTML tearsheet
+python -m nuri.analysis.sentiment       # news sentiment (keyword-based)
+python -m nuri.analysis.charts --all    # interactive HTML charts (Plotly)
+python -m nuri.analysis.charts --ticker TSLA --png  # single ticker + PNG
 
 # Quant
 python -m nuri.quant.factors.composite  # multi-factor scores
 python -m nuri.quant.backtest.engine    # VectorBT backtest
 python -m nuri.analysis.rebalance --method rp  # Risk Parity
 
+# Verification (runs all analyses → data/reports/YYYY-MM-DD/)
+make verify                             # full verification with backtest
+make verify-fast                        # skip backtest
+
 # Alerts & scheduling
 make report                             # daily Discord report
-python -m nuri.scheduler --dry-run      # show registered cron jobs
+python -m nuri.scheduler --dry-run      # show registered cron jobs (14 jobs)
 python -m nuri.scheduler                # start 24/7 scheduler
 
-# Testing & deploy
-make test                               # pytest tests/ -v
+# Testing
+make test                               # pytest tests/ -v --cov=nuri
+.venv/bin/python -m pytest tests/test_db.py -v          # single test file
+.venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices -v  # single class
+.venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v  # single test
+
+# Deploy & backup
 make deploy                             # rsync to Mac Mini
 make backup                             # DB backup (30-day rolling)
 ```
 
+All `make` targets use `.venv/bin/python` — activate the venv or use the full path.
+
 ## Architecture
 
-**Collectors → Analysis → Alerts** with feedback loop.
+**Collectors → DB → Analysis → Alerts** — three-layer pipeline with feedback loop.
 
-- **Collectors** (`nuri/collectors/`): All inherit `BaseCollector` (`base.py`). `collect()` → `save()` → `run()` template pattern. Market filtering via `.KS` suffix.
-- **Analysis** (`nuri/analysis/`): Portfolio diagnostics, Riskfolio-Lib risk/optimization, QuantStats performance, sector/correlation analysis.
-- **Alerts** (`nuri/alerts/`): Discord webhook + bot dual mode. Daily report aggregates all analysis.
-- **Quant** (`nuri/quant/`): Multi-factor scoring (momentum/value/quality/sentiment), VectorBT backtesting.
-- **Scheduler** (`nuri/scheduler.py`): APScheduler 3.11, 11 cron jobs.
+### DB as the sole integration point
 
-All DB access goes through `nuri/db.py` only — no other module imports `sqlite3`.
+`nuri/db.py` is the **only** module that imports `sqlite3`. Every other module reads/writes through its functions (`upsert_prices`, `upsert_portfolio`, `query`, `query_df`, etc.). The DB file lives at `data/portfolio.db` (WAL mode). All upsert functions accept an optional `db_path` parameter — tests use this to inject a `tmp_path` fixture for isolation.
 
-## Open-Source Stack
+### Collector template pattern
 
-| Tool | Role | License |
-|------|------|---------|
-| OpenBB Platform v4 | US market data (multi-provider fallback) | AGPL v3 |
-| pykrx | Korean market data (KOSPI/KOSDAQ EOD) | MIT |
-| Riskfolio-Lib 7.2 | Portfolio optimization (MVO, HRP, CVaR) | BSD 3 |
-| VectorBT 0.28 | Vectorized backtesting (Numba JIT) | MIT |
-| QuantStats | Performance HTML tearsheet (30+ metrics) | MIT |
-| TA-Lib | Technical indicators (RSI, MACD, BB, SMA, EMA) | BSD |
-| APScheduler 3.11 | Python-native cron scheduler | MIT |
-| FRED API | Macro indicators (rates, CPI, oil, FX) | Public |
+All collectors inherit `BaseCollector` (`nuri/collectors/base.py`). The contract:
+1. Implement `collect(**kwargs) -> Any` (fetch data)
+2. Implement `save(data) -> int` (persist to DB)
+3. External code calls `run()` which does `collect()` → `save()` with logging and timing
 
-Requires `brew install ta-lib` before `pip install`.
+`_get_tickers(market=)` filters portfolio tickers: `"us"` excludes `.KS`, `"kr"` includes only `.KS`.
+
+### Analysis module pattern
+
+Each analysis module (`portfolio.py`, `risk.py`, `sector.py`, `rebalance.py`) follows the same shape:
+- A main `analyze_*()` function that reads from DB and returns a DataFrame or dict
+- A `print_*()` function for CLI output
+- A `__main__` block so it can be run as `python -m nuri.analysis.<module>`
+
+`daily_report.py` orchestrates: calls `analyze_portfolio()` + `analyze_risk()` + DB queries, then formats via `formatters.py` and sends to Discord webhook (falls back to stdout if `DISCORD_WEBHOOK_URL` is unset).
+
+### Scheduler ties it all together
+
+`nuri/scheduler.py` defines 14 cron jobs in the `SCHEDULES` list. Each entry maps a name to a collector/report function and a cron expression. All times are KST. The scheduler uses lazy imports inside `_run_collector()` to avoid import-time side effects. Phase B added: `fundamental` (weekly), `superinvestors` (weekly), `estimates` (weekly), news frequency increased to hourly.
+
+### Phase B modules
+
+- **Fundamentals** (`nuri/collectors/fundamental.py`): `obb.equity.fundamental.metrics` (yfinance) → PE, PB, ROE, margins, growth, beta. Works for US and Korean (.KS) stocks.
+- **Superinvestors** (`nuri/collectors/superinvestors.py`): `edgartools` → SEC EDGAR 13F. Tracks Buffett, Gates, Dalio, Ackman, Tepper. No API key needed. Ticker-level aggregation with portfolio weight %.
+- **Estimates** (`nuri/collectors/estimates.py`): `obb.equity.estimates.consensus` (yfinance) → target price, recommendation, analyst count.
+- **Charts** (`nuri/analysis/charts.py`): Plotly interactive HTML. Computes TA-Lib indicators directly from price data (not signals table — signals table only has latest-day snapshots). Includes buy/sell signal detection (RSI bounce, MACD cross, golden/death cross), analyst target overlay, info panel (fundamentals + sentiment + superinvestor holdings), and period selector buttons (1M/3M/6M/1Y/2Y/ALL). Legend items are clickable to toggle layers on/off.
+- **Sentiment** (`nuri/analysis/sentiment.py`): Keyword dictionary-based sentiment scoring on news titles. Updates `news.sentiment` column.
+
+### Multi-factor scoring
+
+`nuri/quant/factors/` has individual factor modules (`momentum.py`, `value.py`, `quality.py`) that each return a scored DataFrame. `composite.py` combines them with configurable weights (30/25/25/20) into a single composite score. Sentiment uses the Fear & Greed index as a market-wide proxy.
+
+## Environment Variables
+
+Configured in `.env` (see `.env.example`):
+- `FRED_API_KEY` — FRED macro data
+- `DISCORD_WEBHOOK_URL` — daily report delivery (optional; falls back to stdout)
+- `DISCORD_BOT_TOKEN` — bot mode alerts (optional)
+- `FINNHUB_API_KEY` — US institutional flows (optional, B-5)
 
 ## DB Schema (SQLite, WAL mode)
 
-| Table | Key columns | Status |
-|-------|-------------|--------|
-| `prices` | ticker, date, OHLCV, adj_close | Active |
-| `portfolio` | account, ticker, quantity, avg_price, currency, sector | Active |
-| `macro` | indicator, date, value, source | Active |
-| `signals` | ticker, date, rsi_14, macd, bb_*, sma_*, ema_* | Active |
-| `ark` | date, ticker, direction, shares, weight, fund | Active |
-| `events` | date, event_type, ticker, description, importance | Active |
-| `news` | ticker, date, title, url, source, sentiment | Active |
-| `factors` | ticker, date, momentum/value/quality/composite_score | Phase 3 |
-| `backtests` | strategy_id, total_return, sharpe, max_drawdown, win_rate | Phase 3 |
+| Table | Purpose | Phase |
+|-------|---------|-------|
+| `prices` | OHLCV 5Y (25K+ rows) | A |
+| `portfolio` | Holdings (account, ticker, qty, avg_price) | A |
+| `macro` | FRED indicators + Fear&Greed | A |
+| `signals` | TA-Lib technical indicators | A |
+| `ark` | ARK Invest daily trades | A |
+| `events` | Earnings, dividends, FOMC | A |
+| `news` | Company news + sentiment score | A+B |
+| `llm_bench` | LLM benchmark results | (Phase 2) |
+| `fundamentals` | PE, ROE, margins, growth, beta | B |
+| `superinvestors` | 13F holdings (Buffett, etc.) | B |
+| `estimates` | Analyst consensus + target prices | B |
+| `institutional_flows` | Institutional/foreign net buys | B |
+| `factors` | Multi-factor composite scores | (Phase 3) |
+| `backtests` | Backtest results | (Phase 3) |
 
 ## Code Conventions
 
 - Python 3.12 with type hints
 - Korean comments (한국어 주석), English variable/function names
-- All collectors inherit `BaseCollector`
 - Configuration in YAML (`config/`), secrets in `.env` (git-ignored)
-- DB never accessed directly — always through `nuri.db` module
 - Korean stock tickers use `.KS` suffix (e.g., `005930.KS` for 삼성전자)
 - `.KS` tickers are always treated as KRW regardless of account currency
 
-## Investment Rules (코드에 강제 적용)
+## Testing patterns
+
+Tests use `tmp_path` pytest fixture to create isolated SQLite databases:
+```python
+@pytest.fixture
+def db_path(tmp_path):
+    path = tmp_path / "test.db"
+    init_db(path)
+    return path
+```
+Pass `db_path` to all DB functions in tests. Tests are grouped by module in `tests/test_*.py` using class-based organization.
+
+## Investment Rules (enforced in code)
 
 ```yaml
 max_single_position: 15%    # portfolio.py, rebalance.py
-max_sector_exposure: 35%    # sector.py
-stop_loss: -20%             # risk.py (per stock)
-portfolio_stop: -10%        # risk.py (total)
-leverage_ban: true          # rebalance.py (TSLL, TQQQ, SQQQ, UPRO, SPXU)
-no_first_30min: true        # (rule exists, automation TBD)
+max_sector_exposure: 35%    # sector.py, rebalance.py (MAX_SECTOR_EXPOSURE)
+stop_loss: -20%             # risk.py (STOCK_STOP_LOSS, per stock)
+portfolio_stop: -10%        # risk.py (PORTFOLIO_STOP, total)
+leverage_ban: true          # rebalance.py (LEVERAGE_ETFS set: TSLL, TQQQ, SQQQ, UPRO, SPXU)
 ```
+
+These are hardcoded constants, not config — changes require code edits.
+
+## OpenBB Provider Limitations
+
+Not all OpenBB endpoints work with the free `yfinance` provider. Verified status:
+
+| Endpoint | yfinance | Notes |
+|----------|----------|-------|
+| `obb.equity.price.historical` | ✅ | Primary price data source |
+| `obb.equity.fundamental.metrics` | ✅ | PE, PB, ROE, margins, growth, beta (30+ fields) |
+| `obb.equity.fundamental.ratios` | ❌ | Requires `fmp` or `intrinio` (paid) |
+| `obb.equity.estimates.consensus` | ✅ | Target price, recommendation, analyst count |
+| `obb.equity.estimates.price_target` | ❌ | Requires `benzinga` or `fmp` (paid) |
+| `obb.equity.ownership.*` | ❌ | Requires `fmp` (paid) |
+
+If `FMP_API_KEY` is set in `.env`, additional endpoints become available.

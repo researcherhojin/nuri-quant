@@ -1,4 +1,4 @@
-.PHONY: setup test collect analyze report deploy backup benchmark backtest
+.PHONY: setup test collect analyze report deploy backup benchmark backtest verify
 
 PYTHON = .venv/bin/python
 
@@ -38,6 +38,13 @@ benchmark:
 # ── 백테스트 (Phase 3) ──
 backtest:
 	$(PYTHON) -m nuri.quant.backtest.engine
+
+# ── 기능 검증 (전체 분석 실행 + 결과 저장) ──
+verify:
+	$(PYTHON) scripts/verify.py
+
+verify-fast:
+	$(PYTHON) scripts/verify.py --skip-backtest
 
 # ── 맥미니 배포 ──
 deploy:
