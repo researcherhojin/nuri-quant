@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════
-# IRIS Production Cron Schedule
+# Nuri-Quant Production Cron Schedule
 # Mac Mini M2 Pro | 24/7 Operation
 # ═══════════════════════════════════════
 

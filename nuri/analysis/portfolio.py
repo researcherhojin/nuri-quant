@@ -139,7 +139,7 @@ def print_summary(df: pd.DataFrame) -> None:
     total_krw = total_usd * usd_krw
 
     print("=" * 70)
-    print(f"  IRIS 포트폴리오 현황  (USD/KRW: {usd_krw:,.0f})")
+    print(f"  Nuri-Quant 포트폴리오 현황  (USD/KRW: {usd_krw:,.0f})")
     print(f"  총 평가액: ${total_usd:,.0f} (₩{total_krw:,.0f})")
     print("=" * 70)
 

@@ -73,7 +73,7 @@ def save_heatmap(corr_matrix: pd.DataFrame) -> None:
             cmap="RdYlGn_r", center=0, vmin=-1, vmax=1,
             ax=ax, square=True,
         )
-        ax.set_title("IRIS Portfolio Correlation Matrix")
+        ax.set_title("Nuri-Quant Portfolio Correlation Matrix")
         fig.tight_layout()
         fig.savefig(EXPORT_DIR / "correlation.png", dpi=150)
         plt.close(fig)
