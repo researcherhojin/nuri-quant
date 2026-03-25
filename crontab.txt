@@ -1,0 +1,35 @@
+# ═══════════════════════════════════════
+# IRIS Production Cron Schedule
+# Mac Mini M2 Pro | 24/7 Operation
+# ═══════════════════════════════════════
+
+# ── 미국장 주가 수집 (KST 23:30~06:00, 5분 간격) ──
+*/5 23 * * 1-5   cd ~/iris && .venv/bin/python -m iris.collectors.stock >> /tmp/iris_stock.log 2>&1
+*/5 0-6 * * 2-6  cd ~/iris && .venv/bin/python -m iris.collectors.stock >> /tmp/iris_stock.log 2>&1
+
+# ── 한국장 주가 수집 (KST 09:00~15:30, 5분 간격) ──
+*/5 9-15 * * 1-5 cd ~/iris && .venv/bin/python -m iris.collectors.stock --market kr >> /tmp/iris_stock_kr.log 2>&1
+
+# ── 매크로 지표 (1시간 간격) ──
+0 * * * *        cd ~/iris && .venv/bin/python -m iris.collectors.macro >> /tmp/iris_macro.log 2>&1
+
+# ── 기술적 지표 계산 (미장 마감 후) ──
+0 7 * * 2-6      cd ~/iris && .venv/bin/python -m iris.collectors.technical >> /tmp/iris_tech.log 2>&1
+
+# ── Fear & Greed Index (매일 08:00) ──
+0 8 * * *        cd ~/iris && .venv/bin/python -m iris.collectors.fear_greed >> /tmp/iris_fg.log 2>&1
+
+# ── ARK 매매 추적 (미장 마감 후) ──
+30 7 * * 2-6     cd ~/iris && .venv/bin/python -m iris.collectors.ark >> /tmp/iris_ark.log 2>&1
+
+# ── 이벤트 캘린더 업데이트 (매일 07:00) ──
+0 7 * * *        cd ~/iris && .venv/bin/python -m iris.collectors.events >> /tmp/iris_events.log 2>&1
+
+# ── Daily Report (매일 아침 08:00) ──
+0 8 * * *        cd ~/iris && .venv/bin/python -m iris.alerts.daily_report >> /tmp/iris_report.log 2>&1
+
+# ── DB 백업 (매일 자정) ──
+0 0 * * *        cd ~/iris && bash scripts/backup.sh >> /tmp/iris_backup.log 2>&1
+
+# ── 뉴스 수집 (6시간 간격) ──
+0 */6 * * *      cd ~/iris && .venv/bin/python -m iris.collectors.news >> /tmp/iris_news.log 2>&1
