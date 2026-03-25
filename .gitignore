@@ -1,0 +1,32 @@
+# Environment
+.env
+*.pyc
+__pycache__/
+.venv/
+venv/
+
+# Data (DB는 로컬에만 보관)
+data/portfolio.db
+data/backups/
+data/exports/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code (로컬 설정)
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/tmp/
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Build artifacts
+*.egg-info/
