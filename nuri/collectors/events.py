@@ -4,13 +4,13 @@
 OpenBB Platform으로 실적 캘린더 조회 + FOMC 하드코딩.
 
 사용법:
-    python -m iris.collectors.events
+    python -m nuri.collectors.events
 """
 import logging
 from datetime import datetime, timedelta
 
-from iris.collectors.base import BaseCollector
-from iris.db import insert_events
+from nuri.collectors.base import BaseCollector
+from nuri.db import insert_events
 
 # 2026년 FOMC 회의 일정 (예정)
 FOMC_2026 = [
@@ -113,7 +113,7 @@ class EventsCollector(BaseCollector):
         if not data:
             return 0
 
-        from iris.db import get_db
+        from nuri.db import get_db
         with get_db() as conn:
             for record in data:
                 conn.execute(

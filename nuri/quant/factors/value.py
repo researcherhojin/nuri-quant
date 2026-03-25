@@ -11,7 +11,7 @@ def compute_value(tickers: list[str] | None = None) -> pd.DataFrame:
     from openbb import obb
 
     if not tickers:
-        from iris.db import get_tickers
+        from nuri.db import get_tickers
         tickers = [t for t in get_tickers() if not t.endswith(".KS")]
 
     scores = {}

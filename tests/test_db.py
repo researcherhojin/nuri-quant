@@ -1,11 +1,11 @@
-"""iris.db 모듈 테스트 — in-memory SQLite로 격리."""
+"""nuri.db 모듈 테스트 — in-memory SQLite로 격리."""
 import tempfile
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from iris.db import (
+from nuri.db import (
     get_connection,
     get_tickers,
     get_latest_price,

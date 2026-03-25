@@ -1,13 +1,13 @@
 """멀티팩터 합성 스코어 — 모멘텀(30%) + 가치(25%) + 퀄리티(25%) + 센티먼트(20%).
 
 사용법:
-    python -m iris.quant.factors.composite
+    python -m nuri.quant.factors.composite
 """
 import logging
 
 import pandas as pd
 
-from iris.db import query, query_df
+from nuri.db import query, query_df
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,9 @@ WEIGHTS = {
 
 def compute_composite() -> pd.DataFrame:
     """멀티팩터 합성 스코어 계산."""
-    from iris.quant.factors.momentum import compute_momentum
-    from iris.quant.factors.value import compute_value
-    from iris.quant.factors.quality import compute_quality
+    from nuri.quant.factors.momentum import compute_momentum
+    from nuri.quant.factors.value import compute_value
+    from nuri.quant.factors.quality import compute_quality
 
     momentum = compute_momentum()
     value = compute_value()
