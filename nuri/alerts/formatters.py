@@ -88,10 +88,10 @@ def format_daily_report(
     color = COLOR_RED if warnings or stop_alerts else COLOR_GREEN
 
     return {
-        "title": f"📋 IRIS Daily Report — {datetime.now().strftime('%Y-%m-%d')}",
+        "title": f"📋 Nuri-Quant Daily Report — {datetime.now().strftime('%Y-%m-%d')}",
         "color": color,
         "fields": fields,
-        "footer": {"text": "IRIS Investment Research & Intelligence System"},
+        "footer": {"text": "Nuri-Quant"},
     }
 
 
@@ -108,7 +108,7 @@ def format_price_alert(ticker: str, change_pct: float, price: float) -> dict:
             {"name": "변동률", "value": f"{change_pct:+.2f}%", "inline": True},
             {"name": "현재가", "value": f"${price:,.2f}", "inline": True},
         ],
-        "footer": {"text": "IRIS 급등락 알림"},
+        "footer": {"text": "Nuri-Quant 급등락 알림"},
     }
 
 
@@ -123,7 +123,7 @@ def format_ark_alert(trades: list[dict]) -> dict:
         "title": "🏛️ ARK Invest 매매 알림",
         "color": COLOR_BLUE,
         "description": "\n".join(lines) if lines else "매매 내역 없음",
-        "footer": {"text": "IRIS ARK 추적"},
+        "footer": {"text": "Nuri-Quant ARK 추적"},
     }
 
 
@@ -137,7 +137,7 @@ def format_event_reminder(event: dict) -> dict:
             {"name": "유형", "value": event.get("event_type", ""), "inline": True},
             {"name": "종목", "value": event.get("ticker", "전체"), "inline": True},
         ],
-        "footer": {"text": "IRIS 이벤트 알림"},
+        "footer": {"text": "Nuri-Quant 이벤트 알림"},
     }
 
 

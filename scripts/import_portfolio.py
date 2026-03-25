@@ -42,7 +42,7 @@ def load_holdings(config_path: Path = CONFIG_PATH) -> list[dict]:
 
 
 def main():
-    print("=== IRIS Portfolio Import ===")
+    print("=== Nuri-Quant Portfolio Import ===")
 
     # DB가 없으면 먼저 생성
     init_db()

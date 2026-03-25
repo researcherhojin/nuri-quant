@@ -1,5 +1,5 @@
 """
-IRIS 스케줄러 — APScheduler 기반 작업 자동화.
+Nuri-Quant 스케줄러 — APScheduler 기반 작업 자동화.
 
 crontab.txt 대체. Python 네이티브로 모든 정기 작업을 스케줄링.
 Mac Mini에서 `python -m nuri.scheduler`로 24/7 운영.
@@ -142,7 +142,7 @@ def create_scheduler() -> BlockingScheduler:
 def print_schedule():
     """등록된 스케줄 출력."""
     print(f"\n{'=' * 60}")
-    print(f"  IRIS Scheduler — {len(SCHEDULES)}개 작업 등록")
+    print(f"  Nuri-Quant Scheduler — {len(SCHEDULES)}개 작업 등록")
     print(f"{'=' * 60}")
     for job in SCHEDULES:
         print(f"  {job['name']:<20} {job['cron']}")
@@ -150,7 +150,7 @@ def print_schedule():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="IRIS 스케줄러")
+    parser = argparse.ArgumentParser(description="Nuri-Quant 스케줄러")
     parser.add_argument("--dry-run", action="store_true", help="작업 목록만 출력")
     args = parser.parse_args()
 
@@ -169,7 +169,7 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
-    logger.info(f"IRIS 스케줄러 시작 ({len(SCHEDULES)}개 작업)")
+    logger.info(f"Nuri-Quant 스케줄러 시작 ({len(SCHEDULES)}개 작업)")
     print_schedule()
     scheduler.start()
 

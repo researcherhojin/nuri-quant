@@ -1,5 +1,5 @@
 #!/bin/bash
-# IRIS: M3 Max → Mac Mini 배포
+# Nuri-Quant: M3 Max → Mac Mini 배포
 set -e
 
 source .env 2>/dev/null || true
@@ -8,7 +8,7 @@ REMOTE_HOST="${MACMINI_HOST:-macmini.local}"
 REMOTE_USER="${MACMINI_USER:-ehbebe}"
 REMOTE_PATH="${MACMINI_PATH:-~/nuri-quant}"
 
-echo "=== Deploying IRIS to Mac Mini ($REMOTE_USER@$REMOTE_HOST) ==="
+echo "=== Deploying Nuri-Quant to Mac Mini ($REMOTE_USER@$REMOTE_HOST) ==="
 
 # rsync 코드 (DB, .env, .venv, 개인 설정 제외)
 rsync -avz --delete \

@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "iris-db": {
+    "nuri-db": {
       "command": "npx",
       "args": [
         "-y",

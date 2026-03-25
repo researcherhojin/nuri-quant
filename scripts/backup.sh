@@ -1,5 +1,5 @@
 #!/bin/bash
-# IRIS DB 백업 — 30일 롤링
+# Nuri-Quant DB 백업 — 30일 롤링
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -29,7 +29,7 @@ report:
 
 # ── 테스트 ──
 test:
-	$(PYTHON) -m pytest tests/ -v --cov=iris
+	$(PYTHON) -m pytest tests/ -v --cov=nuri
 
 # ── LLM 벤치마크 (Phase 2) ──
 benchmark:

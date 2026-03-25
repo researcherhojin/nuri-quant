@@ -59,7 +59,7 @@ class StockKRCollector(BaseCollector):
                 self.logger.warning(f"{ticker_full}: 데이터 없음")
                 return None
 
-            # pykrx 한국어 컬럼 → IRIS 표준 컬럼 매핑
+            # pykrx 한국어 컬럼 → Nuri-Quant 표준 컬럼 매핑
             df = pd.DataFrame({
                 "ticker": ticker_full,
                 "date": raw.index.strftime("%Y-%m-%d"),
@@ -85,7 +85,7 @@ class StockKRCollector(BaseCollector):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="IRIS 한국 주가 수집기 (pykrx)")
+    parser = argparse.ArgumentParser(description="Nuri-Quant 한국 주가 수집기 (pykrx)")
     parser.add_argument("--days", type=int, default=5,
                         help="수집 일수 (기본 5일)")
     args = parser.parse_args()
