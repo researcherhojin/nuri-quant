@@ -47,8 +47,11 @@ make report                             # daily Discord report
 python -m nuri.scheduler --dry-run      # show registered cron jobs (14 jobs)
 python -m nuri.scheduler                # start 24/7 scheduler
 
+# Validation (Phase C — skeleton only, NotImplementedError)
+make validate                           # run all validation modules
+
 # Testing
-make test                               # pytest tests/ -v --cov=nuri
+make test                               # pytest tests/ -v --cov=nuri (26 pass, 6 skip)
 .venv/bin/python -m pytest tests/test_db.py -v          # single test file
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices -v  # single class
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v  # single test
@@ -175,3 +178,14 @@ Not all OpenBB endpoints work with the free `yfinance` provider. Verified status
 | `obb.equity.ownership.*` | ❌ | Requires `fmp` (paid) |
 
 If `FMP_API_KEY` is set in `.env`, additional endpoints become available.
+
+## Phase C: Validation Engine (scaffolding ready)
+
+`nuri/quant/validation/` contains skeleton modules with dataclass definitions, function signatures, and `NotImplementedError` stubs. Plan: [`docs/PLAN_PHASE_C.md`](docs/PLAN_PHASE_C.md).
+
+- `signal_backtest.py` — C-1: 7 technical signals x all tickers, win rate / profit factor. **Ready to implement** (prices 5Y data available).
+- `superinvestor_backtest.py` — C-2: Follow Buffett/Dalio returns. **Blocked**: needs `superinvestors.py` to fetch 8 quarters (currently only latest 1).
+- `analyst_backtest.py` — C-3: Target price hit rate. **Blocked**: needs 90+ days of accumulated `estimates` data (prospective tracking).
+- `scorecard.py` — C-4: Unified HTML dashboard. Depends on C-1~C-3.
+
+Tests: `tests/test_validation.py` has 6 skipped tests — remove `@pytest.mark.skip` as each module is implemented.

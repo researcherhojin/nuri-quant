@@ -2,266 +2,179 @@
 
 <div align="center">
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![OpenBB](https://img.shields.io/badge/OpenBB-v4-5B21B6)](https://openbb.co/)
-[![Riskfolio](https://img.shields.io/badge/Riskfolio--Lib-7.2-FF6F00)](https://riskfolio-lib.readthedocs.io/)
-[![VectorBT](https://img.shields.io/badge/VectorBT-0.28-00BCD4)](https://vectorbt.dev/)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![OpenBB v4](https://img.shields.io/badge/OpenBB-v4-5B21B6)](https://openbb.co/)
+[![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 
-**투자 정보를 수집하고, 검증하고, 실행하는 오픈소스 퀀트 투자 파이프라인**
-
-누리(世) — 세상의 모든 투자 정보를 모아 수익으로 바꾸는 시스템
+**Open-source quant investment pipeline for collecting, validating, and recommending**
 
 </div>
 
-## What is Nuri-Quant?
+---
 
-단순한 주가 수집기가 아닙니다. 다양한 투자 정보를 모으고, 그 정보가 **실제로 수익을 만드는지 검증**하고, 검증된 전략을 **현재 시장 상황에 맞게 추천**하는 전 과정을 자동화합니다.
+## Overview
 
-## Core Pipeline
+Nuri-Quant automates the full investment research workflow: **collect** data from 12 free sources, **diagnose** portfolio health, **visualize** technical analysis with interactive charts, and **recommend** rebalancing actions — all running on a 24/7 scheduler.
 
-```mermaid
-graph LR
-    C[Collect<br/>정보 수집] --> V[Validate<br/>검증]
-    V --> CL[Classify<br/>시장 판독]
-    CL --> D[Diagnose<br/>포폴 진단]
-    D --> R[Recommend<br/>제안]
-    R --> T[Track<br/>성과 추적]
-    T -.->|피드백 루프| C
-
-    style C fill:#E3F2FD,stroke:#1565C0
-    style V fill:#FFF3E0,stroke:#E65100
-    style CL fill:#F3E5F5,stroke:#6A1B9A
-    style D fill:#E8F5E9,stroke:#2E7D32
-    style R fill:#FCE4EC,stroke:#C62828
-    style T fill:#FFFDE7,stroke:#F57F17
-```
-
-| Step | Description | Status |
-|------|-------------|--------|
-| **Collect** | 12개 수집기로 가격/펀더멘탈/슈퍼투자자/애널리스트/매크로/뉴스 수집 | ✅ Phase A+B |
-| **Validate** | 시그널별 백테스트: "이 정보를 따르면 실제로 돈을 버는가?" | 🔨 Phase C |
-| **Classify** | 시장 레짐 감지 (강세/약세/횡보 x 고변동/저변동) | 📋 Phase D |
-| **Diagnose** | 포트폴리오 리스크, 비중, 상관관계, 기술적 차트 분석 | ✅ 8 modules |
-| **Recommend** | MVO/Risk Parity 기반 리밸런싱 제안 | ✅ |
-| **Track** | 제안 vs 실제 성과 비교 → 피드백 루프 | 📋 Phase E |
-
-## Investment Decision Process
-
-"이 종목을 살까?" 판단에 필요한 9단계 중 8단계를 커버합니다:
+### Investment Decision Coverage
 
 ```
-1. 시장 환경은?     ✅ 매크로(금리/CPI/VIX) + Fear&Greed
-2. 싸긴 한 건가?    ✅ PER/PBR/PSR + 역사적 비교     (B-1)
-3. 실적은 괜찮나?   ✅ ROE/매출성장/이익률/부채비율    (B-1)
-4. 차트는?          ✅ 캔들+BB+SMA+RSI+MACD+시그널   (B-3)
-5. 전문가들은?      ✅ 애널리스트 목표가/컨센서스      (B-4)
-6. 큰손들은?        ✅ 버핏/달리오 13F + ARK          (B-2)
-7. 돈이 몰리나?     📋 ETF 자금흐름                   (Phase C)
-8. 분위기는?        ✅ 뉴스 센티먼트                   (B-6)
-9. 리스크는?        ✅ VaR/상관관계/포지션 사이즈
+1. Market environment    ✅  Macro (rates/CPI/VIX) + Fear & Greed
+2. Valuation             ✅  PE/PB/PEG/PS ratios
+3. Fundamentals          ✅  ROE, margins, revenue growth, debt
+4. Technicals            ✅  Candlestick + BB + SMA + RSI + MACD + signals
+5. Analyst consensus     ✅  Target price, recommendation, # of analysts
+6. Smart money           ✅  Buffett/Gates/Dalio 13F + ARK trades
+7. Fund flows            📋  ETF sector rotation (Phase C)
+8. Sentiment             ✅  News keyword sentiment scoring
+9. Risk                  ✅  VaR, CVaR, Sharpe, correlation, drawdown
 ```
 
-> **차트의 매수/매도 시그널(▲/▼)은 "이 시점에서 기술적 조건이 발생했다"는 참고 신호입니다.**
-> 기계적으로 따르는 것이 아니라, 위 9단계를 종합하여 판단하는 의사결정 보조 도구입니다.
-> 시그널의 실제 수익률은 Phase C(Validation Engine)에서 검증 예정입니다.
+> Chart signals (▲ BUY / ▼ SELL) are **reference indicators**, not trading orders.
+> Actual win rates will be validated in Phase C.
+
+## Quick Start
+
+```bash
+# Prerequisites: Python 3.12, uv, brew install ta-lib
+
+git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
+make setup                                    # venv + deps + DB init
+
+# Collect data (first run — 5 years of history)
+python -m nuri.collectors.stock --period 5y   # US stocks
+python -m nuri.collectors.stock_kr --days 1825 # Korean stocks
+python -m nuri.collectors.fundamental         # PE/ROE/margins
+python -m nuri.collectors.superinvestors      # Buffett/Gates 13F
+python -m nuri.collectors.estimates           # analyst consensus
+make collect                                  # macro/technical/fear&greed/ARK/news/events
+
+# Analyze + generate charts
+python -m nuri.analysis.sentiment
+python -m nuri.analysis.charts --all          # → data/reports/YYYY-MM-DD/charts/
+
+# Full verification report
+make verify                                   # → data/reports/YYYY-MM-DD/
+```
 
 ## Architecture
 
-```mermaid
-graph TB
-    subgraph Collectors["Layer 1: Data Collection (12 collectors)"]
-        Stock["OpenBB<br/>US Stocks (5Y)"]
-        StockKR["pykrx<br/>KR Stocks (5Y)"]
-        Macro["FRED API<br/>Macro"]
-        Tech["TA-Lib<br/>Signals"]
-        FG["CNN<br/>Fear&Greed"]
-        ARK["ARK Invest<br/>Trades"]
-        News["OpenBB<br/>News (1h)"]
-        Events["OpenBB<br/>Calendar"]
-        Fund["OpenBB<br/>Fundamentals"]
-        SI["SEC EDGAR<br/>13F Superinvestors"]
-        Est["OpenBB<br/>Analyst Consensus"]
-    end
-
-    subgraph DB["SQLite (WAL mode, 14 tables)"]
-        Tables["prices | portfolio | macro | signals | ark<br/>events | news | fundamentals | superinvestors<br/>estimates | institutional_flows | llm_bench<br/>factors | backtests"]
-    end
-
-    subgraph Analysis["Layer 2: Analysis (8 modules)"]
-        Portfolio["Portfolio<br/>비중/손익"]
-        Risk["Riskfolio-Lib<br/>VaR/CVaR/Sharpe"]
-        Rebalance["MVO / Risk Parity<br/>리밸런싱"]
-        Perf["QuantStats<br/>HTML Tearsheet"]
-        Factor["Multi-Factor<br/>M/V/Q/S Scoring"]
-        BT["VectorBT<br/>Backtest"]
-        Charts["Plotly Charts<br/>기술적 분석 + 시그널"]
-        Sentiment["Sentiment<br/>뉴스 감성 분석"]
-    end
-
-    subgraph Alerts["Layer 3: Alerts & Scheduling"]
-        Discord["Discord<br/>Daily Report"]
-        Sched["APScheduler<br/>14 Cron Jobs"]
-    end
-
-    Collectors --> DB
-    DB --> Analysis
-    Analysis --> Alerts
-
-    style Collectors fill:#E3F2FD,stroke:#1565C0
-    style DB fill:#FFF3E0,stroke:#E65100
-    style Analysis fill:#E8F5E9,stroke:#2E7D32
-    style Alerts fill:#FCE4EC,stroke:#C62828
 ```
+nuri/
+├── collectors/     12 data collectors (BaseCollector pattern)
+│   ├── stock.py          US stocks — OpenBB (yfinance), 5Y
+│   ├── stock_kr.py       Korean stocks — pykrx, 5Y
+│   ├── fundamental.py    PE/ROE/margins — OpenBB fundamental.metrics
+│   ├── superinvestors.py Buffett/Gates/Dalio 13F — edgartools (SEC EDGAR)
+│   ├── estimates.py      Analyst consensus — OpenBB estimates.consensus
+│   ├── macro.py          FRED (rates, CPI, oil, FX, VIX)
+│   ├── technical.py      TA-Lib (RSI, MACD, BB, SMA)
+│   ├── fear_greed.py     CNN Fear & Greed Index
+│   ├── ark.py            ARK Invest daily trades
+│   ├── news.py           Company news (hourly)
+│   ├── events.py         Earnings calendar, FOMC
+│   └── institutional.py  Institutional flows (framework)
+├── analysis/       8 analysis modules
+│   ├── portfolio.py      Holdings, weights, P&L
+│   ├── risk.py           VaR, CVaR, Sharpe, Sortino, MDD
+│   ├── rebalance.py      MVO / Risk Parity (Riskfolio-Lib)
+│   ├── charts.py         Plotly interactive charts + signals
+│   ├── sentiment.py      News keyword sentiment
+│   ├── sector.py         Sector/region exposure
+│   ├── correlation.py    Correlation matrix + heatmap
+│   └── performance.py    QuantStats tearsheet
+├── quant/
+│   ├── factors/          Multi-factor scoring (M/V/Q/S)
+│   ├── backtest/         VectorBT backtesting
+│   └── validation/       Phase C skeleton (signal/superinvestor/analyst)
+├── alerts/               Discord webhook + bot
+├── db.py                 Single DB access point (SQLite WAL)
+└── scheduler.py          14 cron jobs (APScheduler)
+```
+
+### Key Patterns
+
+- **All DB access through `nuri/db.py`** — no other module imports `sqlite3`
+- **Collectors inherit `BaseCollector`** — implement `collect()` + `save()`, call `run()`
+- **Analysis modules** — `analyze_*()` returns data, `print_*()` for CLI, `__main__` for direct execution
+- **Charts compute indicators from prices** — not from `signals` table (which only stores latest-day snapshots)
 
 ## Data Sources
 
-모든 소스 100% 무료. API 키가 필요한 경우 무료 티어.
+All free. No paid API required.
 
-| Category | Source | Data | Frequency |
-|----------|--------|------|-----------|
-| US Stocks | OpenBB (yfinance) | OHLCV 5년 | 미장 중 5분 |
-| KR Stocks | pykrx | OHLCV 5년 (KOSPI/KOSDAQ) | 한국장 중 5분 |
-| Technical | TA-Lib | RSI, MACD, BB, SMA 20/50/200 | 일 1회 |
-| Macro | FRED API | 금리, CPI, 유가, 환율, VIX | 매시 |
-| Fear & Greed | CNN | 시장 심리 지수 (0-100) | 일 1회 |
-| Fundamentals | OpenBB `fundamental.metrics` | PE, PB, ROE, 마진, 성장률, 부채비율 | 주 1회 |
-| Superinvestors | SEC EDGAR 13F (edgartools) | 버핏/게이츠/달리오/애크먼/테퍼 포트폴리오 | 주 1회 |
-| Analyst | OpenBB `estimates.consensus` | 목표가, 투자의견, 애널리스트 수 | 주 1회 |
-| News | OpenBB News | 종목별 뉴스 + 키워드 센티먼트 | 매시 |
-| Events | OpenBB Calendar | 실적발표, 배당, FOMC | 일 1회 |
-| ARK Trades | ARK Invest CSV | 일일 매수/매도 내역 | 일 1회 |
-| Institutional | pykrx + finnhub | 기관/외인 순매수 | 일 1회 (⚠️ API 불안정) |
+| Source | Data | Frequency |
+|--------|------|-----------|
+| OpenBB (yfinance) | US OHLCV, fundamentals, estimates, news | 5min / weekly |
+| pykrx | Korean OHLCV (KOSPI/KOSDAQ) | 5min |
+| SEC EDGAR (edgartools) | 13F superinvestor portfolios | Weekly |
+| FRED API | Rates, CPI, oil, FX, VIX | Hourly |
+| CNN | Fear & Greed Index | Daily |
+| ARK Invest | Daily trades CSV | Daily |
+| TA-Lib | RSI, MACD, BB, SMA 20/50/200 | Daily |
 
-## Getting Started
+## Verification Report
 
-**Prerequisites**: Python 3.12, [uv](https://docs.astral.sh/uv/), `brew install ta-lib`
-
-```bash
-git clone https://github.com/researcherhojin/nuri-quant.git
-cd nuri-quant
-
-# 1. Setup
-make setup
-cp .env.example .env   # FRED_API_KEY 설정
-
-# 2. 데이터 수집 (최초 1회, 5년치)
-python -m nuri.collectors.stock --period 5y
-python -m nuri.collectors.stock_kr --days 1825
-python -m nuri.collectors.fundamental
-python -m nuri.collectors.superinvestors
-python -m nuri.collectors.estimates
-make collect
-
-# 3. 분석 + 차트 생성
-python -m nuri.analysis.sentiment
-python -m nuri.analysis.charts --all
-
-# 4. 전체 검증 (결과 → data/reports/YYYY-MM-DD/)
-make verify
-
-# 5. 24/7 자동화 (Mac Mini)
-python -m nuri.scheduler
-```
-
-### 검증 결과 디렉토리
+`make verify` generates a dated report directory:
 
 ```
 data/reports/2026-03-26/
-├── portfolio.csv           # 종목별 비중, 손익
-├── risk.json               # Sharpe, VaR, MDD, 손절선 경고
-├── sector.csv              # 섹터별 비중
-├── correlation.csv/.png    # 상관행렬 + 히트맵
-├── rebalance_mvo.csv       # MVO 리밸런싱 제안
-├── rebalance_rp.csv        # Risk Parity 리밸런싱 제안
-├── factors.csv             # 멀티팩터 스코어
-├── tearsheet.html          # QuantStats HTML 티어시트
-├── summary.txt             # 전체 요약
+├── portfolio.csv          holdings, weights, P&L
+├── risk.json              Sharpe, VaR, MDD, stop-loss alerts
+├── sector.csv             sector exposure
+├── correlation.csv/.png   correlation matrix + heatmap
+├── rebalance_mvo.csv      MVO rebalancing suggestions
+├── rebalance_rp.csv       Risk Parity rebalancing suggestions
+├── factors.csv            multi-factor scores
+├── tearsheet.html         QuantStats performance report
+├── summary.txt            overall summary
 └── charts/
-    ├── TSLA.html           # 인터랙티브 차트 (캔들+BB+SMA+RSI+MACD+시그널)
+    ├── TSLA.html          interactive chart (candle+BB+SMA+RSI+MACD+signals)
     ├── NVDA.html
-    └── ... (23종목)
+    └── ...
 ```
 
-## Tech Stack
+## Investment Rules
 
-| Tool | Role | License |
-|------|------|---------|
-| [OpenBB Platform v4](https://openbb.co/) | US 시장 데이터 + 펀더멘탈 + 애널리스트 (multi-provider) | AGPL v3 |
-| [pykrx](https://github.com/sharebook-kr/pykrx) | 한국 시장 데이터 (KOSPI/KOSDAQ EOD) | MIT |
-| [edgartools](https://github.com/dgunning/edgartools) | SEC EDGAR 13F 슈퍼투자자 포트폴리오 | MIT |
-| [Riskfolio-Lib 7.2](https://riskfolio-lib.readthedocs.io/) | 포트폴리오 최적화 (MVO, HRP, CVaR) | BSD 3 |
-| [VectorBT 0.28](https://vectorbt.dev/) | 벡터화 백테스트 (Numba JIT) | MIT |
-| [QuantStats](https://github.com/ranaroussi/quantstats) | 성과 HTML 티어시트 (30+ 지표) | MIT |
-| [TA-Lib](https://ta-lib.org/) | 기술적 지표 (RSI, MACD, BB, SMA, EMA) | BSD |
-| [Plotly](https://plotly.com/python/) | 인터랙티브 차트 시각화 | MIT |
-| [APScheduler 3.11](https://apscheduler.readthedocs.io/) | Python-native cron 스케줄러 (14 jobs) | MIT |
-| [FRED API](https://fred.stlouisfed.org/docs/api/) | 매크로 지표 (금리, CPI, 유가, 환율) | Public |
+Enforced as **hard constraints** in code, not guidelines:
+
+| Rule | Limit | Location |
+|------|-------|----------|
+| Single position | ≤ 15% | `rebalance.py`, `portfolio.py` |
+| Sector exposure | ≤ 35% | `sector.py` |
+| Leverage ETF ban | TSLL, TQQQ, SQQQ, UPRO, SPXU | `rebalance.py` |
+| Per-stock stop loss | -20% | `risk.py` |
+| Portfolio stop | -10% drawdown | `risk.py` |
 
 ## Roadmap
 
 ### Phase A: Foundation ✅
-- [x] 8 data collectors (OpenBB + pykrx + FRED + TA-Lib + CNN + ARK)
-- [x] 6 analysis modules (portfolio, risk, performance, sector, correlation, rebalance)
-- [x] Riskfolio-Lib optimization (MVO, Risk Parity, constraints)
-- [x] VectorBT backtest engine + multi-factor scoring
-- [x] QuantStats HTML tearsheets
-- [x] Discord alerts + APScheduler
+Data collection (8 collectors), portfolio analysis (6 modules), Riskfolio-Lib optimization, VectorBT backtesting, QuantStats tearsheets, Discord alerts, APScheduler.
 
 ### Phase B: Information Sources + Visualization ✅
-> 상세: [`docs/PLAN_PHASE_B.md`](docs/PLAN_PHASE_B.md)
+> [docs/PLAN_PHASE_B.md](docs/PLAN_PHASE_B.md)
 
-- [x] **B-1.** 펀더멘탈 수집기 — PE/PB/ROE/마진/성장률 (OpenBB `fundamental.metrics`)
-- [x] **B-2.** 슈퍼투자자 13F — 버핏/게이츠/달리오/애크먼/테퍼 (edgartools, SEC EDGAR)
-- [x] **B-3.** 기술적 분석 차트 — 캔들+BB+SMA+RSI+MACD, 매수/매도 시그널, 정보 패널 (Plotly)
-- [x] **B-4.** 애널리스트 컨센서스 — 목표가/투자의견 (OpenBB `estimates.consensus`)
-- [x] **B-5.** 기관/외인 수급 — 프레임워크 (pykrx + finnhub)
-- [x] **B-6.** 뉴스 센티먼트 — 키워드 사전 기반 감성 분석
-- [x] **B-7.** 뉴스 수집 강화 — 매시 수집 + 키워드 알림
-- [x] 가격 데이터 5년치 확보 (25,000+건)
+Fundamentals, superinvestor 13F, analyst consensus, interactive Plotly charts with buy/sell signals, news sentiment, 5-year price history (25K+ data points).
 
-### Phase C: Validation Engine (세팅 완료, 구현 대기)
-> 상세: [`docs/PLAN_PHASE_C.md`](docs/PLAN_PHASE_C.md) | 스켈레톤: `nuri/quant/validation/` | 테스트: `tests/test_validation.py` (6 skipped)
+### Phase C: Validation Engine (scaffolded)
+> [docs/PLAN_PHASE_C.md](docs/PLAN_PHASE_C.md) | Skeleton: `nuri/quant/validation/`
 
-- [ ] **C-1.** 시그널 백테스트 — 7개 시그널 x 23종목 승률/PF 측정 (`signal_backtest.py`, 즉시 구현 가능)
-- [ ] **C-2.** 슈퍼투자자 추종 — 과거 8분기 13F 수집 확장 후 추종 수익률 측정 (`superinvestor_backtest.py`)
-- [ ] **C-3.** 애널리스트 검증 — 전향적 추적, 90일 후 목표가 적중률 (`analyst_backtest.py`, 데이터 누적 대기)
-- [ ] **C-4.** 통합 스코어카드 — C-1~C-3 결과 HTML 대시보드 (`scorecard.py`)
-- [ ] **C-5.** ETF 자금흐름 — 소스 검증 필요 (`etf_flows.py`)
-- [ ] `make validate` 명령어 등록 완료
+- **C-1** Signal backtesting — win rate / profit factor for 7 technical signals (ready to implement)
+- **C-2** Superinvestor follow — "does copying Buffett actually work?" (needs historical 13F collection)
+- **C-3** Analyst validation — target price hit rate (prospective tracking, 90-day wait)
+- **C-4** Unified scorecard — HTML dashboard combining C-1~C-3
+- **C-5** ETF fund flows — sector rotation tracking
 
 ### Phase D: Market Regime
-- [ ] 레짐 분류기 (강세/약세/횡보 x 고변동/저변동)
-- [ ] 매크로 환경 점수 (시장 온도계)
-- [ ] 레짐별 최적 전략 매핑
+Regime classifier (bull/bear/sideways x high/low volatility), macro scoring, regime-to-strategy mapping.
 
 ### Phase E: Contextual Recommendations
-- [ ] 레짐 인식 리밸런싱 (방어적 ↔ 공격적 자동 전환)
-- [ ] 검증된 시그널 기반 매수/매도 후보
-- [ ] 추천 이력 + 성과 추적
+Regime-aware rebalancing, validated signal-based candidates, recommendation tracking.
 
 ### Phase F: Interface
-- [ ] REST API (FastAPI)
-- [ ] Web dashboard
-- [ ] LLM 기반 자연어 리포트
-
-## Investment Rules
-
-코드에 **강제 적용**되는 규칙. 가이드라인이 아닌 하드 제약조건:
-
-| Rule | Constraint | Enforcement |
-|------|-----------|-------------|
-| 단일 종목 비중 한도 | ≤ 15% | `rebalance.py`, `portfolio.py` |
-| 섹터 노출 한도 | ≤ 35% | `sector.py` |
-| 레버리지 ETF 매수 금지 | TSLL, TQQQ, SQQQ, UPRO, SPXU | `rebalance.py` (weight → 0) |
-| 종목별 손절선 | -20% | `risk.py` |
-| 포트폴리오 스톱 | -10% drawdown | `risk.py` |
-| 모든 시그널 | **의사결정 보조**만 | 최종 판단은 사람 |
+REST API (FastAPI), web dashboard, LLM-powered reports.
 
 ## License
 
 [MIT](LICENSE)
-
----
-
-> *"The goal is not to predict the future, but to be prepared for it."* — Pericles
