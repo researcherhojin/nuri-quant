@@ -4,14 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-IRIS (Investment Research & Intelligence System) — 개인 퀀트 투자 분석 플랫폼.
+IRIS (Investment Research & Intelligence System) — 오픈소스 퀀트 투자 분석 플랫폼.
 총 자산 ~2.27억원, 5개 계좌 (Brokerage Alpha/Brokerage Beta/토스/연금저축/IRP), 27종목.
-Python 3.11+, SQLite, MCP 연동.
+Python 3.12, SQLite, MCP 연동.
 
-3-phase evolution:
-- **Phase 1** (Foundation): Data collection + Claude Code analysis + Discord alerts
-- **Phase 2** (LLM Benchmark): Local LLM model comparison on M3 Max via Ollama
-- **Phase 3** (Quant Pipeline): Multi-factor models, backtesting, risk management
+**오픈소스 퀀트 스택:**
+- **데이터**: OpenBB Platform v4 (미국) + pykrx (한국) + FRED API (매크로)
+- **리스크/최적화**: Riskfolio-Lib 7.2 (MVO, HRP, CVaR, 섹터 제약조건)
+- **백테스트**: VectorBT 0.28 (벡터화, Numba JIT)
+- **성과 보고**: QuantStats (HTML 티어시트)
+- **기술적 지표**: TA-Lib
+- **스케줄링**: APScheduler 3.11
+- **알림**: Discord Webhook
 
 2-machine setup: M3 Max MacBook (dev) ↔ M2 Pro Mac Mini (24/7 production via cron).
 
@@ -52,11 +56,12 @@ make backup         # DB backup (30-day rolling)
 
 3-layer architecture with data flowing: **Collectors → Analysis → Alerts**
 
-- **Layer 1 — Collectors** (`iris/collectors/`): All inherit `BaseCollector` (in `base.py`). Each collector gathers one data type: stock prices (yfinance), macro indicators (FRED API), technical signals (TA-Lib), Fear&Greed (CNN scraping), ARK trades, events calendar, news.
-- **Layer 2 — Analysis** (`iris/analysis/`): Portfolio summary, performance attribution, correlation matrix, sector/geographic exposure, risk metrics (VaR, Sharpe, max drawdown), rebalancing suggestions.
-- **Layer 3 — Alerts** (`iris/alerts/`): Discord bot for 24/7 notifications — daily reports, price swing alerts (±3%), ARK trade alerts, FOMC/earnings D-1 reminders, monthly rebalance alerts.
+- **Layer 1 — Collectors** (`iris/collectors/`): All inherit `BaseCollector` (in `base.py`). Stock prices via OpenBB Platform (US) + pykrx (Korean), macro via FRED API, technical via TA-Lib, Fear&Greed (CNN), ARK trades (CSV), events (OpenBB calendar), news (OpenBB).
+- **Layer 2 — Analysis** (`iris/analysis/`): Portfolio summary, QuantStats performance (HTML tearsheet), correlation matrix, sector/region exposure, Riskfolio-Lib risk metrics (VaR/CVaR/Sharpe), MVO/Risk Parity rebalancing.
+- **Layer 3 — Alerts** (`iris/alerts/`): Discord webhook for 24/7 notifications — daily reports, price swing alerts (±3%), ARK trade alerts, FOMC/earnings D-1 reminders, monthly rebalance alerts.
 - **Phase 2 — LLM** (`iris/llm/`): Ollama-based local LLM benchmarking and investment analysis pipeline.
-- **Phase 3 — Quant** (`iris/quant/`): Factor models (momentum/value/quality/sentiment), Backtrader backtesting, signal generation, risk management (position sizing, stop-loss, portfolio optimization).
+- **Phase 3 — Quant** (`iris/quant/`): Factor models (momentum/value/quality/sentiment), VectorBT backtesting, signal generation, Riskfolio-Lib portfolio optimization.
+- **Scheduler** (`iris/scheduler.py`): APScheduler 3.11 — 11 cron jobs replacing crontab.txt.
 
 All DB access goes through `iris/db.py` only. Database is SQLite at `data/portfolio.db`.
 
@@ -103,14 +108,18 @@ Common query patterns:
 
 | Package | Purpose | Data Source |
 |---------|---------|-------------|
-| yfinance | Stock prices, fundamentals | Yahoo Finance |
+| OpenBB Platform v4 | US stock prices, news, fundamentals | Multi-provider (yfinance, Polygon, Tiingo) |
+| pykrx | Korean stock OHLCV, fundamentals | KRX/Naver Finance |
 | fredapi | Macro indicators (rates, CPI, oil) | FRED API (key required) |
 | TA-Lib | Technical indicators (RSI, MACD, BB, MA) | Computed from prices |
+| Riskfolio-Lib | Portfolio optimization, VaR/CVaR | Computed from returns |
+| VectorBT | Vectorized backtesting | Computed from prices |
+| QuantStats | Performance reporting (HTML tearsheet) | Computed from returns |
 | beautifulsoup4 | Fear & Greed Index | CNN scraping |
-| discord.py | Alert notifications | Discord bot (token required) |
-| backtrader | [Phase 3] Backtesting engine | — |
+| discord.py | Alert notifications | Discord webhook |
+| APScheduler | Python-native cron scheduler | — |
 
-Requires `brew install ta-lib` before `pip install`. Fallback: if yfinance is blocked, Alpha Vantage free tier as backup.
+Requires `brew install ta-lib` before `pip install`. OpenBB supports multi-provider fallback (yfinance → polygon → tiingo).
 
 ## Production Schedule (Mac Mini Cron)
 
