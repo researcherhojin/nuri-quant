@@ -5,7 +5,7 @@ VaR, CVaR, Sharpe, Sortino, Max Drawdown 등을 Riskfolio-Lib으로 계산.
 투자규칙 제약조건 (portfolio_stop -10%, stop_loss -20%) 검증.
 
 사용법:
-    python -m iris.analysis.risk
+    python -m nuri.analysis.risk
 """
 import logging
 
@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import riskfolio as rp
 
-from iris.db import query_df, query
+from nuri.db import query_df, query
 
 logger = logging.getLogger(__name__)
 

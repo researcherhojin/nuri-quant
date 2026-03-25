@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from iris.db import init_db, upsert_portfolio
+from nuri.db import init_db, upsert_portfolio
 
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "portfolio.yaml"
 

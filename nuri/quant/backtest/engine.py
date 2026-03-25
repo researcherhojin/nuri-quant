@@ -5,8 +5,8 @@
 QuantStats 티어시트를 생성한다.
 
 사용법:
-    python -m iris.quant.backtest.engine
-    python -m iris.quant.backtest.engine --period 1y
+    python -m nuri.quant.backtest.engine
+    python -m nuri.quant.backtest.engine --period 1y
 """
 import argparse
 import logging
@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import vectorbt as vbt
 
-from iris.db import query_df, query
+from nuri.db import query_df, query
 
 logger = logging.getLogger(__name__)
 

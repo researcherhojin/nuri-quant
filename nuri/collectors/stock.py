@@ -6,8 +6,8 @@ OpenBB가 다중 프로바이더(yfinance, polygon, tiingo 등)를 지원하며,
 한국 종목은 stock_kr.py에서 pykrx로 별도 처리.
 
 사용법:
-    python -m iris.collectors.stock               # 미국 전체 종목
-    python -m iris.collectors.stock --period 1mo   # 1개월 데이터
+    python -m nuri.collectors.stock               # 미국 전체 종목
+    python -m nuri.collectors.stock --period 1mo   # 1개월 데이터
 """
 import argparse
 import logging
@@ -17,8 +17,8 @@ from typing import Optional
 
 import pandas as pd
 
-from iris.collectors.base import BaseCollector
-from iris.db import upsert_prices
+from nuri.collectors.base import BaseCollector
+from nuri.db import upsert_prices
 
 # OpenBB 프로바이더 우선순위 (무료)
 PROVIDERS = ["yfinance"]

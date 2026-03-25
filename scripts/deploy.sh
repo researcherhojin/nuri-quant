@@ -6,7 +6,7 @@ source .env 2>/dev/null || true
 
 REMOTE_HOST="${MACMINI_HOST:-macmini.local}"
 REMOTE_USER="${MACMINI_USER:-ehbebe}"
-REMOTE_PATH="${MACMINI_PATH:-~/iris}"
+REMOTE_PATH="${MACMINI_PATH:-~/nuri-quant}"
 
 echo "=== Deploying IRIS to Mac Mini ($REMOTE_USER@$REMOTE_HOST) ==="
 

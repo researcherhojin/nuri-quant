@@ -2,13 +2,13 @@
 뉴스 수집기 — OpenBB Platform 기반 종목별 뉴스 수집.
 
 사용법:
-    python -m iris.collectors.news
+    python -m nuri.collectors.news
 """
 import logging
 from datetime import datetime
 
-from iris.collectors.base import BaseCollector
-from iris.db import upsert_news
+from nuri.collectors.base import BaseCollector
+from nuri.db import upsert_news
 
 
 class NewsCollector(BaseCollector):

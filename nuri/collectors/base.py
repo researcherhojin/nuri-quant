@@ -15,7 +15,7 @@ class BaseCollector(ABC):
 
     def __init__(self, name: str):
         self.name = name
-        self.logger = logging.getLogger(f"iris.collectors.{name}")
+        self.logger = logging.getLogger(f"nuri.collectors.{name}")
         self._last_run: Optional[datetime] = None
 
     @abstractmethod
@@ -45,7 +45,7 @@ class BaseCollector(ABC):
 
     def _get_tickers(self, market: Optional[str] = None) -> list[str]:
         """DB에서 보유 종목 티커 목록 조회. market으로 한국/미국 필터링."""
-        from iris.db import get_tickers
+        from nuri.db import get_tickers
 
         tickers = get_tickers()
         if market == "kr":

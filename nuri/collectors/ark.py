@@ -4,7 +4,7 @@ ARK Invest 매매 추적 수집기.
 ARK의 일일 매매 CSV를 다운로드하고, 보유/관심 종목만 필터링하여 저장.
 
 사용법:
-    python -m iris.collectors.ark
+    python -m nuri.collectors.ark
 """
 import csv
 import io
@@ -13,8 +13,8 @@ from datetime import datetime
 
 import requests
 
-from iris.collectors.base import BaseCollector
-from iris.db import get_tickers, upsert_ark
+from nuri.collectors.base import BaseCollector
+from nuri.db import get_tickers, upsert_ark
 
 # ARK 매매 내역 CSV URL (공식)
 ARK_TRADE_URL = "https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_TRADE.csv"

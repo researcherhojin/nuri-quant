@@ -1,7 +1,7 @@
 [project]
-name = "iris"
-version = "0.2.0"
-description = "Investment Research & Intelligence System — Open-Source Quant Stack"
+name = "nuri-quant"
+version = "1.0.0"
+description = "Open-source quant investment platform — Collect, Validate, Recommend"
 requires-python = ">=3.11"
 dependencies = [
     # ── 데이터 수집 ──
@@ -50,7 +50,7 @@ llm = ["httpx>=0.27.0"]
 zipline = ["zipline-reloaded>=3.1.0"]   # 팩터 Pipeline API (선택)
 
 [tool.setuptools.packages.find]
-include = ["iris*"]
+include = ["nuri*"]
 
 [build-system]
 requires = ["setuptools>=69.0"]

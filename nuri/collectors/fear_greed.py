@@ -4,15 +4,15 @@ CNN Fear & Greed Index 수집기.
 JSON API 우선, 실패 시 HTML 스크래핑 폴백.
 
 사용법:
-    python -m iris.collectors.fear_greed
+    python -m nuri.collectors.fear_greed
 """
 import logging
 from datetime import datetime
 
 import requests
 
-from iris.collectors.base import BaseCollector
-from iris.db import upsert_macro
+from nuri.collectors.base import BaseCollector
+from nuri.db import upsert_macro
 
 # CNN Fear & Greed API 엔드포인트
 FG_API_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"

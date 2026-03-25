@@ -5,8 +5,8 @@ QuantStats가 Sharpe, Sortino, Calmar, MaxDD 등 30+ 지표를 자동 계산하�
 HTML 리포트를 생성한다.
 
 사용법:
-    python -m iris.analysis.performance
-    python -m iris.analysis.performance --html   # HTML 티어시트 생성
+    python -m nuri.analysis.performance
+    python -m nuri.analysis.performance --html   # HTML 티어시트 생성
 """
 import argparse
 import logging
@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 import quantstats as qs
 
-from iris.db import query_df, query
+from nuri.db import query_df, query
 
 logger = logging.getLogger(__name__)
 

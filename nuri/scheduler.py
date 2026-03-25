@@ -2,11 +2,11 @@
 IRIS 스케줄러 — APScheduler 기반 작업 자동화.
 
 crontab.txt 대체. Python 네이티브로 모든 정기 작업을 스케줄링.
-Mac Mini에서 `python -m iris.scheduler`로 24/7 운영.
+Mac Mini에서 `python -m nuri.scheduler`로 24/7 운영.
 
 사용법:
-    python -m iris.scheduler              # 실행
-    python -m iris.scheduler --dry-run    # 등록된 작업 확인만
+    python -m nuri.scheduler              # 실행
+    python -m nuri.scheduler --dry-run    # 등록된 작업 확인만
 """
 import argparse
 import logging
@@ -20,35 +20,35 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
 )
-logger = logging.getLogger("iris.scheduler")
+logger = logging.getLogger("nuri.scheduler")
 
 
 def _run_collector(name: str, **kwargs):
     """Collector를 안전하게 실행."""
     try:
         if name == "stock":
-            from iris.collectors.stock import StockCollector
+            from nuri.collectors.stock import StockCollector
             StockCollector().run(**kwargs)
         elif name == "stock_kr":
-            from iris.collectors.stock_kr import StockKRCollector
+            from nuri.collectors.stock_kr import StockKRCollector
             StockKRCollector().run(**kwargs)
         elif name == "macro":
-            from iris.collectors.macro import MacroCollector
+            from nuri.collectors.macro import MacroCollector
             MacroCollector().run()
         elif name == "technical":
-            from iris.collectors.technical import TechnicalCollector
+            from nuri.collectors.technical import TechnicalCollector
             TechnicalCollector().run()
         elif name == "fear_greed":
-            from iris.collectors.fear_greed import FearGreedCollector
+            from nuri.collectors.fear_greed import FearGreedCollector
             FearGreedCollector().run()
         elif name == "ark":
-            from iris.collectors.ark import ARKCollector
+            from nuri.collectors.ark import ARKCollector
             ARKCollector().run()
         elif name == "events":
-            from iris.collectors.events import EventsCollector
+            from nuri.collectors.events import EventsCollector
             EventsCollector().run()
         elif name == "news":
-            from iris.collectors.news import NewsCollector
+            from nuri.collectors.news import NewsCollector
             NewsCollector().run()
     except Exception as e:
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
@@ -57,7 +57,7 @@ def _run_collector(name: str, **kwargs):
 def _run_report():
     """일일 리포트를 안전하게 실행."""
     try:
-        from iris.alerts.daily_report import main as report_main
+        from nuri.alerts.daily_report import main as report_main
         report_main()
     except Exception as e:
         logger.error(f"[daily_report] 실행 실패: {e}", exc_info=True)

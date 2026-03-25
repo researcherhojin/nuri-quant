@@ -4,15 +4,15 @@
 섹터 35% 초과 경고.
 
 사용법:
-    python -m iris.analysis.sector
+    python -m nuri.analysis.sector
 """
 import logging
 from pathlib import Path
 
 import pandas as pd
 
-from iris.db import query_df, query
-from iris.analysis.portfolio import get_exchange_rate
+from nuri.db import query_df, query
+from nuri.analysis.portfolio import get_exchange_rate
 
 logger = logging.getLogger(__name__)
 

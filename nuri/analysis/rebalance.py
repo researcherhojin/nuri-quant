@@ -11,8 +11,8 @@
 - 레버리지 ETF 매수 금지
 
 사용법:
-    python -m iris.analysis.rebalance
-    python -m iris.analysis.rebalance --method rp   # Risk Parity
+    python -m nuri.analysis.rebalance
+    python -m nuri.analysis.rebalance --method rp   # Risk Parity
 """
 import argparse
 import logging
@@ -20,7 +20,7 @@ import logging
 import pandas as pd
 import riskfolio as rp
 
-from iris.db import query_df, query
+from nuri.db import query_df, query
 
 logger = logging.getLogger(__name__)
 
