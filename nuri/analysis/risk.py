@@ -13,13 +13,12 @@ import numpy as np
 import pandas as pd
 import riskfolio as rp
 
-from nuri.db import query_df, query
+from nuri.core.db import query_df, query
 
 logger = logging.getLogger(__name__)
 
 TRADING_DAYS = 252
-PORTFOLIO_STOP = -10.0  # %
-STOCK_STOP_LOSS = -20.0  # %
+from nuri.core.rules import PORTFOLIO_STOP, STOCK_STOP_LOSS
 
 
 def _get_portfolio_returns() -> tuple[pd.DataFrame, dict]:
@@ -38,7 +37,7 @@ def _get_portfolio_returns() -> tuple[pd.DataFrame, dict]:
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
             (row["ticker"],),
         )
-        if latest:
+        if latest and latest[0]["close"]:
             values[row["ticker"]] = latest[0]["close"] * row["total_qty"]
 
     total = sum(values.values())
@@ -115,7 +114,7 @@ def analyze_risk() -> dict:
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
             (ticker,),
         )
-        if latest:
+        if latest and latest[0]["close"] and row["avg_price"]:
             pnl_pct = (latest[0]["close"] - row["avg_price"]) / row["avg_price"] * 100
             if pnl_pct <= STOCK_STOP_LOSS:
                 stop_loss_alerts.append({"ticker": ticker, "pnl_pct": round(pnl_pct, 1)})

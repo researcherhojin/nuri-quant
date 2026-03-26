@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from nuri.db import get_tickers, query, query_df
+from nuri.core.db import get_tickers, query, query_df
 
 logger = logging.getLogger(__name__)
 

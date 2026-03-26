@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nuri.db import (
+from nuri.core.db import (
     get_connection,
     get_tickers,
     get_latest_price,

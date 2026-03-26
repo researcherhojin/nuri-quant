@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 
 from nuri.collectors.base import BaseCollector
-from nuri.db import upsert_news
+from nuri.core.db import upsert_news
 
 
 class NewsCollector(BaseCollector):

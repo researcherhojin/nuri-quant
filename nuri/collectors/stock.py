@@ -18,7 +18,7 @@ from typing import Optional
 import pandas as pd
 
 from nuri.collectors.base import BaseCollector
-from nuri.db import upsert_prices
+from nuri.core.db import upsert_prices
 
 # OpenBB 프로바이더 우선순위 (무료)
 PROVIDERS = ["yfinance"]
