@@ -1,6 +1,6 @@
 [project]
 name = "nuri-quant"
-version = "1.0.0"
+version = "2.0.0"
 description = "Open-source quant investment platform — Collect, Validate, Recommend"
 requires-python = ">=3.12"
 dependencies = [
@@ -37,6 +37,12 @@ dependencies = [
     "discord.py>=2.3.0",
     "apscheduler>=3.10.0",
 
+    # API + LLM
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "httpx>=0.27.0",
+    "llama-cpp-python>=0.3.0",
+
     # Config
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
@@ -45,9 +51,6 @@ dependencies = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
 ]
-
-[project.optional-dependencies]
-llm = ["httpx>=0.27.0"]
 
 [tool.setuptools.packages.find]
 include = ["nuri*"]

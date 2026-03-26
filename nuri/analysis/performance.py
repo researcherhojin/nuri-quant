@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 import quantstats as qs
 
-from nuri.db import query_df, query
+from nuri.core.db import query_df, query
 
 logger = logging.getLogger(__name__)
 

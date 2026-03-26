@@ -12,7 +12,7 @@ from datetime import datetime
 import requests
 
 from nuri.collectors.base import BaseCollector
-from nuri.db import upsert_macro
+from nuri.core.db import upsert_macro
 
 # CNN Fear & Greed API 엔드포인트
 FG_API_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
