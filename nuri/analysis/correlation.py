@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from nuri.db import get_tickers, query_df
+from nuri.core.db import get_tickers, query_df
 
 logger = logging.getLogger(__name__)
 

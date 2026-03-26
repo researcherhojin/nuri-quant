@@ -2,7 +2,7 @@
 import pandas as pd
 import pytest
 
-from nuri.db import init_db, upsert_prices, upsert_portfolio
+from nuri.core.db import init_db, upsert_prices, upsert_portfolio
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ class TestBaseCollector:
              "avg_price": 60000, "currency": "KRW", "sector": "Semi"},
         ], db_path)
 
-        from nuri.db import get_tickers
+        from nuri.core.db import get_tickers
         all_tickers = get_tickers(db_path=db_path)
         us = [t for t in all_tickers if not t.endswith(".KS")]
         kr = [t for t in all_tickers if t.endswith(".KS")]

@@ -1,0 +1,21 @@
+# ═══════════════════════════════════════════════════════
+# Nuri-Quant Investment Rules
+# ═══════════════════════════════════════════════════════
+# 이 파일의 값을 변경하면 코드 수정 없이 투자 규칙이 변경됩니다.
+# 백테스트 시 다른 규칙 세트를 시험하려면 이 파일을 복사 후 수정.
+
+position_limits:
+  max_single_position: 0.15     # 단일 종목 최대 비중 (15%)
+  max_sector_exposure: 0.35     # 섹터 최대 노출 (35%)
+
+stop_loss:
+  per_stock: -20                # 종목별 손절선 (%)
+  portfolio: -10                # 포트폴리오 전체 손절선 (%)
+
+leverage:
+  banned_etfs:
+    - TSLL
+    - TQQQ
+    - SQQQ
+    - UPRO
+    - SPXU
