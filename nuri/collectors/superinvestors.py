@@ -14,7 +14,7 @@ from typing import Any
 import pandas as pd
 
 from nuri.collectors.base import BaseCollector
-from nuri.db import get_db, query
+from nuri.core.db import get_db, query
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +38,20 @@ class SuperinvestorCollector(BaseCollector):
         super().__init__("superinvestors")
 
     def collect(self, **kwargs) -> list[dict]:
-        """전체 슈퍼투자자의 최신 13F 수집."""
+        """전체 슈퍼투자자의 13F 수집.
+
+        Args (via kwargs):
+            quarters: 수집할 분기 수 (기본 8, 최대 20)
+        """
         from edgar import Company, set_identity
         set_identity(EDGAR_IDENTITY)
 
+        num_quarters = kwargs.get("quarters", 8)
         results = []
 
         for investor_name, cik in SUPERINVESTORS.items():
             try:
-                self.logger.info(f"{investor_name} ({cik}) 13F 수집 중...")
+                self.logger.info(f"{investor_name} ({cik}) 13F 수집 중... (최근 {num_quarters}분기)")
                 company = Company(cik)
                 filings = company.get_filings(form="13F-HR")
 
@@ -54,47 +59,55 @@ class SuperinvestorCollector(BaseCollector):
                     self.logger.warning(f"{investor_name}: 13F 공시 없음")
                     continue
 
-                latest = filings[0]
-                filing_date = str(latest.filing_date)
-                filing_obj = latest.obj()
-                infotable = filing_obj.infotable
-
-                if infotable is None or infotable.empty:
-                    self.logger.warning(f"{investor_name}: 보유종목 데이터 없음")
-                    continue
-
-                # 티커별 합산 (같은 종목이 여러 줄로 나옴)
-                grouped = infotable.groupby("Ticker").agg({
-                    "Value": "sum",
-                    "SharesPrnAmount": "sum",
-                    "Issuer": "first",
-                }).reset_index()
-
-                total_value = grouped["Value"].sum()
-                if total_value == 0:
-                    continue
-
-                for _, row in grouped.iterrows():
-                    ticker = row["Ticker"]
-                    if not ticker or pd.isna(ticker):
+                count = 0
+                for filing in filings[:num_quarters]:
+                    filing_date = str(filing.filing_date)
+                    try:
+                        filing_obj = filing.obj()
+                        infotable = filing_obj.infotable
+                    except Exception as e:
+                        self.logger.warning(f"{investor_name} {filing_date}: 파싱 실패 — {e}")
                         continue
 
-                    pct = row["Value"] / total_value * 100
+                    if infotable is None or infotable.empty:
+                        self.logger.warning(f"{investor_name} {filing_date}: 보유종목 데이터 없음")
+                        continue
 
-                    results.append({
-                        "investor": investor_name,
-                        "filing_date": filing_date,
-                        "ticker": ticker,
-                        "shares": float(row["SharesPrnAmount"]),
-                        "market_value": float(row["Value"]),
-                        "portfolio_pct": round(pct, 4),
-                        "issuer_name": row["Issuer"],
-                    })
+                    # 티커별 합산 (같은 종목이 여러 줄로 나옴)
+                    grouped = infotable.groupby("Ticker").agg({
+                        "Value": "sum",
+                        "SharesPrnAmount": "sum",
+                        "Issuer": "first",
+                    }).reset_index()
 
-                self.logger.info(
-                    f"{investor_name}: {len(grouped)}종목, "
-                    f"공시일 {filing_date}, 총 ${total_value:,.0f}"
-                )
+                    total_value = grouped["Value"].sum()
+                    if total_value == 0:
+                        continue
+
+                    for _, row in grouped.iterrows():
+                        ticker = row["Ticker"]
+                        if not ticker or pd.isna(ticker):
+                            continue
+
+                        pct = row["Value"] / total_value * 100
+
+                        results.append({
+                            "investor": investor_name,
+                            "filing_date": filing_date,
+                            "ticker": ticker,
+                            "shares": float(row["SharesPrnAmount"]),
+                            "market_value": float(row["Value"]),
+                            "portfolio_pct": round(pct, 4),
+                            "issuer_name": row["Issuer"],
+                        })
+
+                    count += 1
+                    self.logger.info(
+                        f"  {investor_name} {filing_date}: {len(grouped)}종목, "
+                        f"총 ${total_value:,.0f}"
+                    )
+
+                self.logger.info(f"{investor_name}: {count}분기 수집 완료")
 
             except Exception as e:
                 self.logger.error(f"{investor_name}: 수집 실패 — {e}")
@@ -123,6 +136,82 @@ def _upsert_superinvestors(records: list[dict]) -> int:
             records,
         )
         return len(records)
+
+
+def detect_changes(investor: str, db_path=None) -> pd.DataFrame:
+    """분기 간 포지션 변화 감지 (NEW/INCREASED/DECREASED/CLOSED/UNCHANGED).
+
+    Returns:
+        DataFrame with columns: investor, filing_date, prev_filing_date, ticker,
+                                 change_type, shares, prev_shares, issuer_name
+    """
+    quarters = query(
+        "SELECT DISTINCT filing_date FROM superinvestors WHERE investor = ? ORDER BY filing_date",
+        (investor,), db_path=db_path,
+    )
+    if len(quarters) < 2:
+        return pd.DataFrame()
+
+    all_changes = []
+
+    for i in range(1, len(quarters)):
+        prev_date = quarters[i - 1]["filing_date"]
+        curr_date = quarters[i]["filing_date"]
+
+        prev_rows = query(
+            "SELECT ticker, shares, issuer_name FROM superinvestors WHERE investor = ? AND filing_date = ?",
+            (investor, prev_date), db_path=db_path,
+        )
+        curr_rows = query(
+            "SELECT ticker, shares, issuer_name FROM superinvestors WHERE investor = ? AND filing_date = ?",
+            (investor, curr_date), db_path=db_path,
+        )
+
+        prev_map = {r["ticker"]: r for r in prev_rows}
+        curr_map = {r["ticker"]: r for r in curr_rows}
+
+        prev_tickers = set(prev_map.keys())
+        curr_tickers = set(curr_map.keys())
+
+        # NEW: 이번 분기 신규
+        for t in curr_tickers - prev_tickers:
+            all_changes.append({
+                "investor": investor, "filing_date": curr_date,
+                "prev_filing_date": prev_date, "ticker": t,
+                "change_type": "NEW", "shares": curr_map[t]["shares"],
+                "prev_shares": 0, "issuer_name": curr_map[t]["issuer_name"],
+            })
+
+        # CLOSED: 이번 분기 청산
+        for t in prev_tickers - curr_tickers:
+            all_changes.append({
+                "investor": investor, "filing_date": curr_date,
+                "prev_filing_date": prev_date, "ticker": t,
+                "change_type": "CLOSED", "shares": 0,
+                "prev_shares": prev_map[t]["shares"], "issuer_name": prev_map[t]["issuer_name"],
+            })
+
+        # 기존 보유 비교
+        for t in curr_tickers & prev_tickers:
+            curr_shares = curr_map[t]["shares"]
+            prev_shares = prev_map[t]["shares"]
+            if prev_shares == 0:
+                change = "INCREASED"
+            elif curr_shares > prev_shares * 1.05:
+                change = "INCREASED"
+            elif curr_shares < prev_shares * 0.95:
+                change = "DECREASED"
+            else:
+                change = "UNCHANGED"
+
+            all_changes.append({
+                "investor": investor, "filing_date": curr_date,
+                "prev_filing_date": prev_date, "ticker": t,
+                "change_type": change, "shares": curr_shares,
+                "prev_shares": prev_shares, "issuer_name": curr_map[t]["issuer_name"],
+            })
+
+    return pd.DataFrame(all_changes) if all_changes else pd.DataFrame()
 
 
 def print_summary():

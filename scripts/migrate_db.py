@@ -1,5 +1,5 @@
 """DB 스키마 생성/마이그레이션 스크립트."""
-from nuri.db import init_db, get_connection
+from nuri.core.db import init_db, get_connection
 
 
 def main():

@@ -20,13 +20,11 @@ import logging
 import pandas as pd
 import riskfolio as rp
 
-from nuri.db import query_df, query
+from nuri.core.db import query_df, query
 
 logger = logging.getLogger(__name__)
 
-MAX_SINGLE_POSITION = 0.15  # 15%
-MAX_SECTOR_EXPOSURE = 0.35  # 35%
-LEVERAGE_ETFS = {"TSLL", "TQQQ", "SQQQ", "UPRO", "SPXU"}
+from nuri.core.rules import MAX_SINGLE_POSITION, MAX_SECTOR_EXPOSURE, LEVERAGE_ETFS
 
 
 def analyze_rebalance(method: str = "mvo") -> pd.DataFrame:
@@ -55,7 +53,7 @@ def analyze_rebalance(method: str = "mvo") -> pd.DataFrame:
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
             (row["ticker"],),
         )
-        if latest:
+        if latest and latest[0]["close"]:
             current_values[row["ticker"]] = latest[0]["close"] * row["total_qty"]
             sectors[row["ticker"]] = row["sector"] or "Unknown"
 

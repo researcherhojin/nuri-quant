@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Optional
 
-from nuri.db import get_db, query
+from nuri.core.db import get_db, query
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta
 
 from nuri.collectors.base import BaseCollector
-from nuri.db import insert_events
+from nuri.core.db import insert_events
 
 # 2026년 FOMC 회의 일정 (예정)
 FOMC_2026 = [
@@ -113,7 +113,7 @@ class EventsCollector(BaseCollector):
         if not data:
             return 0
 
-        from nuri.db import get_db
+        from nuri.core.db import get_db
         with get_db() as conn:
             for record in data:
                 conn.execute(

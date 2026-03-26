@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from nuri.collectors.base import BaseCollector
-from nuri.db import get_tickers, query_df, upsert_signals
+from nuri.core.db import get_tickers, query_df, upsert_signals
 
 import talib
 

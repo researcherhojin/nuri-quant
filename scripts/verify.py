@@ -2,18 +2,18 @@
 Nuri-Quant 기능 검증 스크립트 — 모든 분석을 실행하고 결과를 파일로 저장.
 
 결과 디렉토리: data/reports/YYYY-MM-DD/
-  ├── portfolio.csv          # 종목별 현황 (비중, 손익)
-  ├── risk.json              # 리스크 지표 (Sharpe, VaR, MDD)
-  ├── sector.csv             # 섹터 노출도
-  ├── region.csv             # 지역 노출도 (US/KR)
-  ├── correlation.csv        # 상관행렬
-  ├── correlation.png        # 상관관계 히트맵
-  ├── rebalance_mvo.csv      # MVO 리밸런싱 제안
-  ├── rebalance_rp.csv       # Risk Parity 리밸런싱 제안
-  ├── factors.csv            # 멀티팩터 스코어
-  ├── backtest.json          # 백테스트 결과
-  ├── tearsheet.html         # QuantStats HTML 티어시트
-  └── summary.txt            # 전체 요약
+  ├── portfolio.csv                # 종목별 현황 (비중, 손익)
+  ├── risk.json                    # 리스크 지표 (Sharpe, VaR, MDD)
+  ├── sector.csv / region.csv      # 섹터/지역 노출도
+  ├── correlation.csv / .png       # 상관행렬 + 히트맵
+  ├── rebalance_mvo.csv / _rp.csv  # MVO / Risk Parity 리밸런싱
+  ├── factors.csv                  # 멀티팩터 스코어
+  ├── signal_results.csv           # C-1: 시그널 개별 거래
+  ├── signal_scorecard.csv         # C-1: 시그널별 승률/PF
+  ├── superinvestor_*.csv          # C-2: 슈퍼투자자 추종 결과
+  ├── validation_report.html       # C-4: 통합 대시보드
+  ├── tearsheet.html               # QuantStats 성과 리포트
+  └── summary.txt                  # 전체 요약
 
 사용법:
     python scripts/verify.py
@@ -181,7 +181,7 @@ def verify_rebalance(report_dir: Path, summary: list[str]) -> None:
 def verify_factors(report_dir: Path, summary: list[str]) -> None:
     """멀티팩터 스코어 검증."""
     logger.info("─── 멀티팩터 스코어 ───")
-    from nuri.quant.factors.composite import compute_composite, print_composite
+    from nuri.analysis.factors.composite import compute_composite, print_composite
 
     df = compute_composite()
     if df.empty:
@@ -199,7 +199,7 @@ def verify_factors(report_dir: Path, summary: list[str]) -> None:
 def verify_backtest(report_dir: Path, summary: list[str]) -> None:
     """백테스트 검증."""
     logger.info("─── 백테스트 (VectorBT) ───")
-    from nuri.quant.backtest.engine import run_momentum_backtest, print_backtest
+    from nuri.trading.backtest.engine import run_momentum_backtest, print_backtest
 
     result = run_momentum_backtest(top_n=5, rebalance_days=20)
     if not result:
@@ -255,6 +255,132 @@ def verify_performance(report_dir: Path, summary: list[str]) -> None:
     summary.append("[OK] 성과분석: 티어시트 생성 완료")
 
 
+def verify_signal_backtest(report_dir: Path, summary: list[str]) -> None:
+    """Phase C-1: 시그널 백테스트 검증."""
+    logger.info("─── 시그널 백테스트 (C-1) ───")
+    from nuri.analysis.validation.signal_backtest import backtest_signals, generate_scorecard, print_scorecard
+    from dataclasses import asdict
+    import pandas as pd
+
+    results = backtest_signals()
+    if not results:
+        summary.append("[SKIP] 시그널 백테스트: 시그널 없음")
+        return
+
+    scorecards = generate_scorecard(results)
+    print_scorecard(scorecards)
+
+    pd.DataFrame([asdict(r) for r in results]).to_csv(report_dir / "signal_results.csv", index=False)
+    pd.DataFrame([asdict(s) for s in scorecards]).to_csv(report_dir / "signal_scorecard.csv", index=False)
+
+    total_cards = [s for s in scorecards if s.ticker is None]
+    best = max(total_cards, key=lambda s: s.profit_factor) if total_cards else None
+    summary.append(f"[OK] 시그널 백테스트: {len(results)}건 거래, {len(total_cards)}개 시그널")
+    if best:
+        summary.append(f"     최고 PF: {best.signal_id} ({best.profit_factor:.1f})")
+
+
+def verify_superinvestor_backtest(report_dir: Path, summary: list[str]) -> None:
+    """Phase C-2: 슈퍼투자자 추종 검증."""
+    logger.info("─── 슈퍼투자자 추종 (C-2) ───")
+    from nuri.analysis.validation.superinvestor_backtest import (
+        backtest_superinvestor, generate_scorecard, print_scorecard,
+    )
+    from dataclasses import asdict
+    import pandas as pd
+
+    results = backtest_superinvestor()
+    scorecards = generate_scorecard(results, hold_days=120)
+    print_scorecard(scorecards)
+
+    if results:
+        pd.DataFrame([asdict(r) for r in results]).to_csv(report_dir / "superinvestor_results.csv", index=False)
+    if scorecards:
+        pd.DataFrame([asdict(s) for s in scorecards]).to_csv(report_dir / "superinvestor_scorecard.csv", index=False)
+
+    summary.append(f"[OK] 슈퍼투자자: {len(results)}건 추종, {len(scorecards)}명")
+
+
+def verify_validation_scorecard(report_dir: Path, summary: list[str]) -> None:
+    """Phase C-4: 통합 스코어카드 검증."""
+    logger.info("─── 통합 스코어카드 (C-4) ───")
+    from nuri.analysis.validation.scorecard import generate_validation_report
+
+    path = generate_validation_report(output_dir=report_dir)
+    if path:
+        summary.append(f"[OK] 스코어카드: {path.name}")
+    else:
+        summary.append("[SKIP] 스코어카드: C-1 CSV 필요")
+
+
+def verify_regime(report_dir: Path, summary: list[str]) -> None:
+    """Phase D: 레짐 분류 + 매크로 스코어 + 전략."""
+    logger.info("─── 시장 레짐 (D-1~D-3) ───")
+    from nuri.analysis.regime.classifier import classify_regime, print_regime
+    from nuri.analysis.regime.macro_score import compute_macro_score, print_macro_score
+    from nuri.analysis.regime.strategy_map import map_regime_to_strategy, print_strategy
+
+    regime = classify_regime()
+    print_regime(regime)
+
+    macro = compute_macro_score()
+    print_macro_score(macro)
+
+    strategy = map_regime_to_strategy(regime, macro)
+    print_strategy(strategy)
+
+    if regime:
+        summary.append(f"[OK] 레짐: {regime.regime} (신뢰도 {regime.confidence:.0%})")
+    else:
+        summary.append("[SKIP] 레짐: SPY 데이터 부족")
+    summary.append(f"[OK] 매크로: {macro.total_score:.0f}/100 ({macro.interpretation})")
+
+
+def verify_gate(report_dir: Path, summary: list[str]) -> None:
+    """SIEGE Gate: 파이프라인 준비 상태 검증."""
+    logger.info("─── Pipeline Gate ───")
+    from nuri.engine.gate import check_all_gates, print_gate
+
+    gates = check_all_gates()
+    for phase, result in gates.items():
+        print_gate(result)
+        status = "READY" if result.ready else "BLOCKED"
+        summary.append(f"[GATE] {phase}: {status} ({result.passed}/{result.total})")
+
+
+def verify_candidates(report_dir: Path, summary: list[str]) -> None:
+    """Phase E: 매매 후보 + 충돌 감지 + 성과 메모리."""
+    logger.info("─── 매매 후보 (E-1 + Conflicts + Memory) ───")
+    from nuri.trading.recommend.candidates import screen_candidates, print_candidates
+    from nuri.engine.conflicts import detect_conflicts, print_conflicts
+    from nuri.engine.memory import save_snapshot, detect_drift, print_memory_status
+
+    # E-1 후보 (drift + conflict 자동 반영됨)
+    candidates = screen_candidates(lookback_days=5)
+    print_candidates(candidates)
+
+    buys = [c for c in candidates if c.direction == "BUY" and c.regime_fit]
+    sells = [c for c in candidates if c.direction == "SELL" and c.regime_fit]
+    conflicted = set(c.ticker for c in candidates if c.conflict)
+    summary.append(f"[OK] 매매 후보: BUY {len(buys)}건, SELL {len(sells)}건, 충돌 {len(conflicted)}종목")
+
+    # Conflict 상세
+    conflicts = detect_conflicts(candidates)
+    if conflicts:
+        print_conflicts(conflicts)
+        summary.append(f"[WARN] 시그널 충돌: {len(conflicts)}건 ({', '.join(c.ticker for c in conflicts[:5])})")
+
+    # Learning Memory 스냅샷 + drift
+    n = save_snapshot()
+    if n:
+        logger.info(f"Learning Memory 스냅샷 {n}건 저장")
+    drifts = detect_drift()
+    print_memory_status(drifts)
+    critical = [d for d in drifts if d.status in ("critical", "degrading")]
+    if critical:
+        summary.append(f"[WARN] 성과 하락 시그널: {', '.join(d.signal_id for d in critical)}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Nuri-Quant 기능 검증")
     parser.add_argument("--skip-backtest", action="store_true", help="백테스트 건너뛰기")
@@ -269,6 +395,9 @@ def main():
     print(f"{'═' * 60}\n")
 
     steps = [
+        # SIEGE Gate: 데이터 준비 상태 확인
+        ("파이프라인 게이트", verify_gate),
+        # Phase A/B: 기본 분석
         ("포트폴리오", verify_portfolio),
         ("리스크", verify_risk),
         ("섹터", verify_sector),
@@ -276,6 +405,14 @@ def main():
         ("리밸런싱", verify_rebalance),
         ("멀티팩터", verify_factors),
         ("성과분석", verify_performance),
+        # Phase C: 검증
+        ("시그널 백테스트", verify_signal_backtest),
+        ("슈퍼투자자 추종", verify_superinvestor_backtest),
+        ("통합 스코어카드", verify_validation_scorecard),
+        # Phase D: 레짐
+        ("시장 레짐", verify_regime),
+        # Phase E: 추천
+        ("매매 후보", verify_candidates),
     ]
 
     if not args.skip_backtest:

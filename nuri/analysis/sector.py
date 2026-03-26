@@ -11,13 +11,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from nuri.db import query_df, query
+from nuri.core.db import query_df, query
 from nuri.analysis.portfolio import get_exchange_rate
 
 logger = logging.getLogger(__name__)
 
 EXPORT_DIR = Path(__file__).parent.parent.parent / "data" / "exports"
-MAX_SECTOR_EXPOSURE = 35.0  # %
+from nuri.core.rules import MAX_SECTOR_EXPOSURE as _MAX_SECTOR
+MAX_SECTOR_EXPOSURE = _MAX_SECTOR * 100  # 0.35 → 35%
 
 
 def analyze_sector() -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:

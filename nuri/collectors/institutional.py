@@ -15,7 +15,7 @@ from typing import Any
 import pandas as pd
 
 from nuri.collectors.base import BaseCollector
-from nuri.db import get_db, query
+from nuri.core.db import get_db, query
 
 logger = logging.getLogger(__name__)
 

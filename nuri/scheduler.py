@@ -59,6 +59,16 @@ def _run_collector(name: str, **kwargs):
         elif name == "estimates":
             from nuri.collectors.estimates import EstimatesCollector
             EstimatesCollector().run()
+        elif name == "etf_flows":
+            from nuri.collectors.etf_flows import EtfFlowsCollector
+            EtfFlowsCollector().run()
+        elif name == "wallstreet":
+            from nuri.collectors.wallstreet import WallStreetCollector
+            WallStreetCollector().run()
+        elif name == "memory_snapshot":
+            from nuri.engine.memory import save_snapshot
+            n = save_snapshot()
+            logger.info(f"[memory_snapshot] {n}건 저장")
     except Exception as e:
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
 
@@ -131,6 +141,18 @@ SCHEDULES = [
     # 애널리스트 컨센서스 (주 1회 일요일 02:00)
     {"name": "estimates", "func": _run_collector, "args": ("estimates",),
      "cron": "0 2 * * 0"},
+
+    # ETF 자금흐름 (주 1회 일요일 03:00)
+    {"name": "etf_flows", "func": _run_collector, "args": ("etf_flows",),
+     "cron": "0 3 * * 0"},
+
+    # Wall Street 데이터 (주 1회 일요일 03:30)
+    {"name": "wallstreet", "func": _run_collector, "args": ("wallstreet",),
+     "cron": "30 3 * * 0"},
+
+    # Learning Memory 스냅샷 (주 1회 일요일 04:00)
+    {"name": "memory_snapshot", "func": _run_collector, "args": ("memory_snapshot",),
+     "cron": "0 4 * * 0"},
 
     # 일일 리포트 (매일 08:00)
     {"name": "daily_report", "func": _run_report, "args": (),
