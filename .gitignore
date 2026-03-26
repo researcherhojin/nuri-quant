@@ -15,10 +15,21 @@ data/reports/
 dist/
 build/
 
+# Testing / Linting
+.coverage
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+
 # IDE
 .vscode/
 .idea/
 .claude/
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
 
 # OS
 .DS_Store

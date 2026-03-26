@@ -14,7 +14,7 @@ from datetime import datetime
 import requests
 
 from nuri.collectors.base import BaseCollector
-from nuri.db import get_tickers, upsert_ark
+from nuri.core.db import get_tickers, upsert_ark
 
 # ARK 매매 내역 CSV URL (공식)
 ARK_TRADE_URL = "https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_TRADE.csv"

@@ -2,7 +2,7 @@
 import pandas as pd
 import pytest
 
-from nuri.db import init_db, upsert_prices, upsert_portfolio, upsert_macro
+from nuri.core.db import init_db, upsert_prices, upsert_portfolio, upsert_macro
 
 
 @pytest.fixture
@@ -41,8 +41,8 @@ def populated_db(db_path, monkeypatch):
         {"indicator": "fed_funds_rate", "date": "2026-03-24", "value": 5.0, "source": "FRED"},
     ], db_path)
 
-    import nuri.db
-    monkeypatch.setattr(nuri.db, "DB_PATH", db_path)
+    import nuri.core.db
+    monkeypatch.setattr(nuri.core.db, "DB_PATH", db_path)
     return db_path
 
 

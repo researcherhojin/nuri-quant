@@ -17,7 +17,7 @@ import pandas as pd
 from pykrx import stock as krx
 
 from nuri.collectors.base import BaseCollector
-from nuri.db import upsert_prices
+from nuri.core.db import upsert_prices
 
 
 class StockKRCollector(BaseCollector):
