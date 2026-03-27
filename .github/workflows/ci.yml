@@ -29,8 +29,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
-          enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
+          enable-cache: false
 
       - name: Cache TA-Lib
         id: cache-talib
