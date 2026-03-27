@@ -276,6 +276,44 @@ confidence = regime_win_rate x 60% + regime_pf x 40%
 
 동적 임계값: 252일 히스토리 기반 VIX/Sideways 밴드 자동 조정.
 
+### Long/Short Regime Strategy
+
+레짐에 따라 롱/숏/현금 비중 자동 조절:
+
+| Regime | Long | Short | Cash | 전략 |
+|--------|------|-------|------|------|
+| bull_low_vol | 80% | 0% | 20% | 풀 롱, 성장주 집중 |
+| bull_high_vol | 60% | 0% | 40% | 선택적 롱, 상위 시그널만 |
+| sideways_low_vol | 40% | 0% | 60% | 평균회귀, 스윙 |
+| **sideways_high_vol** | **20%** | **0%** | **80%** | **방어적, 최소 포지션** |
+| bear_low_vol | 10% | 30% | 60% | 숏 편향 (SH/SDS) |
+| bear_high_vol | 0% | 50% | 50% | 풀 숏 + 현금 |
+
+레짐 전환 시 행동:
+- `bull → sideways`: 롱 50% 축소, 숏 없음
+- `sideways → bear`: 롱 30%로 축소, 숏 20% 진입 (SH)
+- `bear → sideways`: 숏 전량 청산, 롱 40% 복귀
+- `sideways → bull`: 롱 80%로 확대
+
+### Current Strategy Snapshot (auto-updated by `make strategy`)
+
+> **Last updated: 2026-03-28**
+>
+> | Indicator | Value |
+> |-----------|-------|
+> | Regime | SIDEWAYS + HIGH VOL |
+> | VIX | 30.4 |
+> | Fear & Greed | 10.5 (Extreme Fear) |
+> | Macro Score | 48/100 (Cautious) |
+> | Position | DEFENSIVE |
+> | Long Target | 20% |
+> | Short Target | 0% |
+> | Cash Target | 80% |
+> | Signals USE | sma_golden, rsi_oversold |
+> | Sectors | XLV, XLP, XLRE, XLU (방어 섹터) |
+>
+> **Actions**: 신규 매수 금지 (VIX > 30). 손절선 초과 종목 우선 정리. 현금 비중 극대화.
+
 ## External Data Sources
 
 투자 결정 전 확인하는 외부 사이트:
