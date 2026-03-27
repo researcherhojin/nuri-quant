@@ -4,9 +4,9 @@ C-2: 슈퍼투자자 추종 백테스트.
 선행 작업: superinvestors.py에서 과거 8분기 13F 수집 (현재 최신 1분기만 있음).
 
 사용법:
-    python -m nuri.validation.superinvestor_backtest
-    python -m nuri.validation.superinvestor_backtest --investor "Warren Buffett"
-    python -m nuri.validation.superinvestor_backtest --hold-days 252
+    python -m nuri.quant.validation.superinvestor_backtest
+    python -m nuri.quant.validation.superinvestor_backtest --investor "Warren Buffett"
+    python -m nuri.quant.validation.superinvestor_backtest --hold-days 252
 """
 import argparse
 import logging

@@ -5,9 +5,9 @@ prices 5년 데이터 + TA-Lib으로 시그널을 감지하고,
 각 시그널의 진입→청산 수익률을 계산하여 스코어카드 생성.
 
 사용법:
-    python -m nuri.validation.signal_backtest
-    python -m nuri.validation.signal_backtest --ticker TSLA
-    python -m nuri.validation.signal_backtest --signal rsi_oversold
+    python -m nuri.quant.validation.signal_backtest
+    python -m nuri.quant.validation.signal_backtest --ticker TSLA
+    python -m nuri.quant.validation.signal_backtest --signal rsi_oversold
 """
 import argparse
 import logging
@@ -95,7 +95,7 @@ SIGNAL_DEFINITIONS = {
 
 
 # ═══════════════════════════════════════════════════════
-# TODO: 핵심 구현
+# 지표 계산 + 시그널 감지
 # ═══════════════════════════════════════════════════════
 
 
