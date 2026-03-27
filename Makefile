@@ -1,7 +1,7 @@
 .PHONY: setup test collect analyze report deploy backup backtest verify verify-fast validate regime recommend \
        gate consensus scan swing swing-check strategy strategy-execute positions wallstreet filings \
        backtest-ls backtest-stress optimize mean-reversion pairs api dashboard start lint lint-fix \
-       verify-quick verify-all demo
+       verify-quick verify-all demo pre-deploy ports ports-kill update-counts
 
 PYTHON = .venv/bin/python
 
@@ -147,9 +147,23 @@ verify-all:
 demo:
 	bash scripts/demo.sh
 
-# ── 맥미니 배포 ──
+# ── 배포 ──
+pre-deploy:
+	bash scripts/pre-deploy-check.sh
+
 deploy:
+	bash scripts/pre-deploy-check.sh
 	bash scripts/deploy.sh
+
+# ── 유틸리티 ──
+ports:
+	bash scripts/ports.sh
+
+ports-kill:
+	bash scripts/ports.sh kill
+
+update-counts:
+	bash scripts/update-test-counts.sh
 
 # ── DB 백업 ──
 backup:

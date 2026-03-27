@@ -31,6 +31,12 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 
+# Temp / Backup
+*.backup
+*.bak
+*.tmp
+ta-lib/
+
 # OS
 .DS_Store
 *.log
