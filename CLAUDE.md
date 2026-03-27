@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Nuri-Quant (누리퀀트) — Open-source quant investment platform.
 Python 3.12, `uv` package manager, SQLite, 100% free open-source stack.
-Linter: `ruff` (E/F/W/I rules). CI: GitHub Actions (lint + test + frontend type-check).
+Linter: `ruff` (E/F/W/I rules, line-length 120). CI: GitHub Actions (lint + test + frontend type-check).
+Ruff ignores: E402 (lazy imports in scheduler), E501 (existing long lines), E712 (pandas `== True` idiom).
 
 6-step pipeline: **Collect → Validate → Classify → Diagnose → Recommend → Track**
 
@@ -211,7 +212,14 @@ Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_trans
 
 - `portfolio.yaml` — 5 accounts (kakaopay/mirae/toss/pension/irp), 30+ holdings
 - `alerts.yaml` — Thresholds (price swing 3%, Fear&Greed bounds 20/80), report timing
-- `rules.yaml` — Investment rules (position limits, stop-loss, banned ETFs). Loaded via `nuri/core/rules.py`
+- `rules.yaml` — Investment rules. Loaded via `nuri/core/rules.py`. Contains:
+  - Position limits (15% single, 35% sector, 20% min cash)
+  - Stop-loss (growth -7%, value -10%, portfolio -10%)
+  - Take-profit (growth +20%/+40%, value +15%/+30%, swing +5%/+10%)
+  - Trailing stops (growth/value -15%, volatile -20%)
+  - Entry rules (VIX gate, F&G-based cash ratio, 3-tranche scaling)
+  - Buy checklist (TipRanks consensus, superinvestor count, PE cap, revenue > $0, factor rank)
+  - Sell priority order (leverage → stop-loss → no superinvestors → position limit → sector limit)
 
 ### Scripts (`scripts/`)
 
@@ -234,21 +242,53 @@ def db_path(tmp_path):
     return path
 ```
 
-Pass `db_path` to all DB functions in tests. `conftest.py` mocks yfinance globally to eliminate network calls.
+Pass `db_path` to all DB functions in tests. `conftest.py` (autouse) mocks `yfinance.download` → empty DataFrame and `yfinance.Ticker` → stub with None attributes. All tests run network-free.
+
+### DB Migrations
+
+Add incremental schema changes to `_MIGRATIONS` in `nuri/core/db.py`:
+```python
+_MIGRATIONS: list[tuple[int, str, str]] = [
+    (1, "add column foo to prices", "ALTER TABLE prices ADD COLUMN foo TEXT;"),
+]
+```
+`init_db()` auto-applies unapplied migrations and tracks them in `schema_version` table.
 
 ## Investment Rules
 
-Defined in `config/rules.yaml`, loaded via `nuri/core/rules.py`:
-```yaml
-position_limits:
-  max_single_position: 0.15   # 15%
-  max_sector_exposure: 0.35   # 35%
-stop_loss:
-  per_stock: -20              # %
-  portfolio: -10              # %
-leverage:
-  banned_etfs: [TSLL, TQQQ, SQQQ, UPRO, SPXU]
-```
+Defined in `config/rules.yaml`, loaded via `nuri/core/rules.py`. Rules based on O'Neil (CAN SLIM), Minervini (SEPA), academic research (disposition effect), and 6 external site analysis.
+
+Core principle: **3:1 profit-to-loss ratio** (loss at -7%, profit at +20%).
+
+| Category | Rule | Value |
+|----------|------|-------|
+| Position | Max single | 15% |
+| Position | Max sector | 35% |
+| Position | Min cash reserve | 20% |
+| Stop-loss | Growth stocks | -7% |
+| Stop-loss | Value stocks | -10% |
+| Stop-loss | Portfolio MDD | -10% |
+| Take-profit | Growth 1st/2nd | +20% (50% sell) / +40% (25% sell) |
+| Take-profit | Value 1st/2nd | +15% (50% sell) / +30% (25% sell) |
+| Take-profit | Swing | +5% (50%) / +10% (rest) |
+| Trailing stop | Growth/Value | -15% from high |
+| Trailing stop | Volatile | -20% from high |
+| Entry | VIX > 30 | Block new buys |
+| Entry | VIX 25-30 | Half position only |
+| Entry | Scaling | Max 3 tranches, 5-day interval |
+| Leverage | Banned ETFs | TSLL, TQQQ, SQQQ, UPRO, SPXU |
+
+Buy checklist (all must pass): TipRanks >= Moderate Buy, superinvestors >= 3, PE < 100, revenue > $0, factor score top 50%.
+
+### External data sources for investment decisions
+
+Before any buy/sell recommendation, verify against 6 external sites:
+1. **dataroma.com** — Superinvestor 13F holdings, buy/sell trends
+2. **tradingeconomics.com** — GDP, CPI, Fed rate, employment, recession signals
+3. **macrotrends.net** — PE ratios, revenue, historical valuations
+4. **tipranks.com** — Analyst consensus, price targets, upside %
+5. **etf.com** — Fund flows, sector rotation, risk-on/risk-off
+6. **ark-funds.com** — Cathie Wood buy/sell activity
 
 ## OpenBB Provider Limitations
 
@@ -270,6 +310,32 @@ Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `mac
 - **FastAPI** (`nuri/api/`) — REST API on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval).
 - **Next.js 16** (`frontend/`) — shadcn/ui + Tailwind 4. Dark theme. See `frontend/CLAUDE.md` for frontend-specific guidance.
 - **Ollama** (`nuri/llm/report.py`) — LLM report with SIEGE certification.
+
+## Portfolio Action Plan Format
+
+When generating portfolio recommendations, save to `data/reports/YYYY-MM-DD/portfolio_action_plan.md`. Must include:
+- Market environment table (regime, VIX, F&G, macro score, S&P 500 status)
+- Per-stock verdict with all 6 external data sources cross-referenced
+- Execution timeline (day-by-day sell/buy plan)
+- Re-entry conditions (VIX/F&G thresholds)
+- Buy priority ranked by multi-factor score + external data
+
+### Price targets format
+
+Every buy/sell recommendation **must** include explicit price levels:
+
+```
+종목: NVDA
+현재가: $168.00
+├── 매수가 (진입): $165.00 (지지선 근처 지정가)
+├── 손절가: $153.45 (-7%)
+├── 1차 익절: $198.00 (+20%) → 보유량 50% 매도
+├── 2차 익절: $231.00 (+40%) → 보유량 25% 매도
+├── 트레일링 스톱: 고점 대비 -15% 추적 (나머지 25%)
+└── TipRanks 목표가: $273.61 (+63%)
+```
+
+Growth stocks use -7% stop / +20%/+40% targets. Value stocks use -10% stop / +15%/+30% targets. Always show the TipRanks consensus target for reference.
 
 ## MCP Integration
 
