@@ -32,7 +32,7 @@ def analyze_rebalance(method: str = "mvo") -> pd.DataFrame:
     # 수익률 데이터
     prices = query_df("SELECT ticker, date, close FROM prices ORDER BY date")
     pivot = prices.pivot_table(index="date", columns="ticker", values="close")
-    returns = pivot.pct_change(fill_method=None).dropna()
+    returns = pivot.pct_change().dropna()
 
     if returns.empty or len(returns) < 10:
         logger.warning("수익률 데이터 부족")

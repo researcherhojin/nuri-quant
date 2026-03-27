@@ -12,8 +12,8 @@
 - 반대 시그널: agent consensus SELL → 조기 청산
 
 사용법:
-    python -m nuri.swing.rules
-    python -m nuri.swing.rules --check   # 보유 포지션 청산 체크
+    python -m nuri.trading.swing.rules
+    python -m nuri.trading.swing.rules --check   # 보유 포지션 청산 체크
 """
 import argparse
 import logging
