@@ -32,15 +32,17 @@ jobs:
         id: cache-talib
         uses: actions/cache@v4
         with:
-          path: /usr/lib/libta_lib*
-          key: talib-0.4.0-ubuntu
+          path: |
+            /usr/lib/libta_lib*
+            /usr/include/ta-lib
+          key: talib-0.4.0-ubuntu-v2
 
       - name: Build TA-Lib from source
         if: steps.cache-talib.outputs.cache-hit != 'true'
         run: |
           wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
           tar -xzf ta-lib-0.4.0-src.tar.gz
-          cd ta-lib && ./configure --prefix=/usr && make -j$(nproc) && sudo make install
+          cd ta-lib && ./configure --prefix=/usr && make && sudo make install
 
       - name: Configure TA-Lib
         run: sudo ldconfig
