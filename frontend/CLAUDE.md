@@ -20,9 +20,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 
 ### Data flow
 
-All pages are **Server Components** with `force-dynamic`. Data is fetched server-side via `fetchAPI()` (`src/lib/api.ts`) which calls the FastAPI backend at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). The only Client Component is `/report` (user-triggered LLM generation).
-
-**Important**: The default API URL in `lib/api.ts` is `http://localhost:8000` but the backend now runs on port **8001**. Set `NEXT_PUBLIC_API_URL=http://localhost:8001` in the environment or update the default.
+All pages are **Server Components** with `force-dynamic`. Data is fetched server-side via `fetchAPI()` (`src/lib/api.ts`) which calls the FastAPI backend at `NEXT_PUBLIC_API_URL` (default `http://localhost:8001`). The only Client Component is `/report` (user-triggered LLM generation, imports `API_BASE` from `lib/api.ts`).
 
 ### Pages (9 routes)
 
@@ -30,7 +28,7 @@ All pages are **Server Components** with `force-dynamic`. Data is fetched server
 |-------|------------|---------|
 | `/` | `/api/dashboard` | Action-oriented overview: verdict, allocation bar, BUY/SELL/WATCH actions |
 | `/signals` | `/api/scorecard`, `/api/cross-analysis` | Signal scorecard + regime cross-analysis |
-| `/consensus` | `/api/consensus` | 6-agent verdicts table + dissent |
+| `/consensus` | `/api/consensus` | 7-agent verdicts table + dissent |
 | `/scan` | `/api/scan`, `/api/swing/entries` | Market scanner + swing trade entries |
 | `/strategy` | `/api/strategy/status`, `/api/backtest` | L/S strategy + backtest + stress test |
 | `/rebalance` | `/api/rebalance?method=rp` | Regime-aware Risk Parity rebalancing |
@@ -43,7 +41,7 @@ All pages are **Server Components** with `force-dynamic`. Data is fetched server
 Three shared components enforce visual consistency across all pages:
 
 - **`DataTable`** (`src/components/ui/data-table.tsx`) — Universal table with column config, alignment, custom renderers, compact mode, optional row click. **Client Component** (`"use client"`) because of `onRowClick`.
-- **`StatusBadge`** (`src/components/ui/status-badge.tsx`) — Colored badge for BUY/SELL/HOLD/WATCH/LONG/SHORT/READY/BLOCKED/REDUCE and signal types (breakout, momentum, bounce, volume_spike).
+- **`StatusBadge`** (`src/components/ui/status-badge.tsx`) — Colored badge for BUY/SELL/HOLD/WATCH/LONG/SHORT/READY/BLOCKED/REDUCE/AGGRESSIVE/NEUTRAL/CAUTIOUS/DEFENSIVE and signal types (breakout, momentum, bounce, volume_spike).
 - **`Metric`** (`src/components/ui/metric.tsx`) — Label + value + optional sub-text with color (green/red/default) and size (sm/lg).
 
 Use these instead of raw `<table>` or shadcn `Badge`. The shadcn `Badge`, `Card`, `Button`, `Separator`, `Tabs`, `Table` are available but prefer the design system components for data display.

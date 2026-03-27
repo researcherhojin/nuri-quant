@@ -9,7 +9,6 @@ sentiment 컬럼을 업데이트한다. (-1.0 ~ +1.0)
 """
 import logging
 import re
-from typing import Optional
 
 from nuri.core.db import get_db, query
 
@@ -123,7 +122,7 @@ def print_sentiment(stats: dict) -> None:
     label = "긍정" if avg > 0.05 else ("부정" if avg < -0.05 else "중립")
 
     print(f"\n{'=' * 50}")
-    print(f"  뉴스 센티먼트 분석 (키워드 기반)")
+    print("  뉴스 센티먼트 분석 (키워드 기반)")
     print(f"{'=' * 50}")
     print(f"  전체 뉴스:  {total}건")
     print(f"  평균 점수:  {avg:+.3f} ({label})")

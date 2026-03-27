@@ -376,10 +376,51 @@ CREATE TABLE IF NOT EXISTS backtests (
 """
 
 
+_SCHEMA_VERSION_TABLE = """
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER PRIMARY KEY,
+    description TEXT NOT NULL,
+    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
+# 증분 마이그레이션 목록: (version, description, sql)
+# 새 마이그레이션 추가 시 여기에 튜플을 append한다.
+_MIGRATIONS: list[tuple[int, str, str]] = [
+    # (1, "example: add column foo to prices", "ALTER TABLE prices ADD COLUMN foo TEXT;"),
+]
+
+
 def init_db(db_path: Optional[Path] = None) -> None:
-    """전체 테이블 스키마 생성."""
+    """전체 테이블 스키마 생성 + 증분 마이그레이션 적용."""
     with get_db(db_path) as conn:
         conn.executescript(_SCHEMA)
+        conn.executescript(_SCHEMA_VERSION_TABLE)
+        _apply_migrations(conn)
+
+
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    """미적용 마이그레이션을 순서대로 실행."""
+    applied = {
+        row[0]
+        for row in conn.execute("SELECT version FROM schema_version").fetchall()
+    }
+    for version, desc, sql in _MIGRATIONS:
+        if version not in applied:
+            conn.executescript(sql)
+            conn.execute(
+                "INSERT INTO schema_version (version, description) VALUES (?, ?)",
+                (version, desc),
+            )
+            conn.commit()
+
+
+def get_schema_version(db_path: Optional[Path] = None) -> int:
+    """현재 적용된 최신 스키마 버전 반환. 마이그레이션 없으면 0."""
+    rows = query(
+        "SELECT MAX(version) as v FROM schema_version", db_path=db_path,
+    )
+    return rows[0]["v"] or 0 if rows and rows[0]["v"] is not None else 0
 
 
 # ═══════════════════════════════════════════════════════

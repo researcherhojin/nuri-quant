@@ -8,11 +8,9 @@ FRED 매크로 지표 6개를 개별 점수화 후 가중 합산.
 """
 import argparse
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-
-import pandas as pd
 
 from nuri.core.db import query
 

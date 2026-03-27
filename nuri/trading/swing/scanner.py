@@ -11,9 +11,7 @@ yfinance batch download로 수백 종목을 빠르게 스캔.
 import argparse
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)

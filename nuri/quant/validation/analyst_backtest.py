@@ -10,13 +10,13 @@ C-3: 애널리스트 목표가 검증 (전향적).
 """
 import argparse
 import logging
-from dataclasses import dataclass, asdict  # noqa: F401 (asdict used in __main__)
+from dataclasses import asdict, dataclass  # noqa: F401 (asdict used in __main__)
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
 
-from nuri.core.db import query, query_df
+from nuri.core.db import query
 
 logger = logging.getLogger(__name__)
 

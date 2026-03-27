@@ -5,13 +5,13 @@ Gated Execution — SIEGE 패턴 적용.
 조건 미충족 시 실행을 차단하고, 무엇이 부족한지 명시적으로 보여준다.
 
 사용법:
-    python -m nuri.engine.gate
-    python -m nuri.engine.gate --phase regime
+    python -m nuri.trading.engine.gate
+    python -m nuri.trading.engine.gate --phase regime
 """
 import argparse
 import logging
-from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime
 
 from nuri.core.db import query
 
@@ -105,7 +105,7 @@ def _check_portfolio(db_path=None) -> GateCondition:
 
 def _check_signal_scorecard(db_path=None) -> GateCondition:
     from pathlib import Path
-    report_dir = Path(__file__).parent.parent.parent / "data" / "reports"
+    report_dir = Path(__file__).parent.parent.parent.parent / "data" / "reports"
     found = False
     if report_dir.exists():
         for d in sorted(report_dir.iterdir(), reverse=True):

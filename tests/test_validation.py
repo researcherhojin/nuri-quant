@@ -1,6 +1,6 @@
 """Phase C 검증 모듈 테스트 — in-memory SQLite로 격리."""
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
 from nuri.core.db import init_db, upsert_prices
@@ -68,21 +68,21 @@ class TestSignalBacktest:
 
     def test_rsi_oversold_detection(self, sample_prices):
         """V자 가격에서 RSI 과매도 반등이 감지되는지 확인."""
-        from nuri.analysis.validation.signal_backtest import backtest_signals
+        from nuri.quant.validation.signal_backtest import backtest_signals
         results = backtest_signals(ticker="TEST", signals=["rsi_oversold"], db_path=sample_prices)
         assert len(results) >= 1
         assert results[0].won is True
 
     def test_holding_period_exit(self, sample_prices):
         """20일 보유 후 정확한 날짜에 청산되는지 확인."""
-        from nuri.analysis.validation.signal_backtest import backtest_signals
+        from nuri.quant.validation.signal_backtest import backtest_signals
         results = backtest_signals(ticker="TEST", signals=["rsi_oversold"], db_path=sample_prices)
         assert len(results) >= 1, "RSI oversold 시그널이 감지되어야 함"
         assert results[0].holding_days == 20
 
     def test_macd_signal_detection(self, sample_prices):
         """V자 패턴에서 MACD 크로스가 감지되는지 확인."""
-        from nuri.analysis.validation.signal_backtest import backtest_signals
+        from nuri.quant.validation.signal_backtest import backtest_signals
         results = backtest_signals(ticker="TEST", signals=["macd_golden", "macd_dead"], db_path=sample_prices)
         # V자 패턴이면 하락→상승 전환 시 MACD golden이 발생할 수 있음
         # 감지 여부만 확인 (빈 리스트도 OK — 60일은 MACD에 짧을 수 있음)
@@ -92,7 +92,7 @@ class TestSignalBacktest:
 
     def test_bb_bounce_detection(self, sample_prices):
         """BB 하단 반등 감지."""
-        from nuri.analysis.validation.signal_backtest import backtest_signals
+        from nuri.quant.validation.signal_backtest import backtest_signals
         results = backtest_signals(ticker="TEST", signals=["bb_bounce"], db_path=sample_prices)
         assert isinstance(results, list)
         for r in results:
@@ -101,14 +101,14 @@ class TestSignalBacktest:
 
     def test_sma_cross_with_long_data(self, long_prices):
         """300일 데이터에서 SMA 골든/데드 크로스 감지."""
-        from nuri.analysis.validation.signal_backtest import backtest_signals
+        from nuri.quant.validation.signal_backtest import backtest_signals
         results = backtest_signals(ticker="LONG", signals=["sma_golden", "sma_dead"], db_path=long_prices)
         # 300일이면 SMA200이 계산 가능, 상승→하락→상승이면 크로스 발생
         assert isinstance(results, list)
 
     def test_scorecard_calculation(self):
         """승률, Profit Factor 계산 정확도."""
-        from nuri.analysis.validation.signal_backtest import SignalResult, generate_scorecard
+        from nuri.quant.validation.signal_backtest import SignalResult, generate_scorecard
 
         results = [
             SignalResult("rsi_oversold", "TEST", "2025-01-01", 100, "2025-01-21", 110, 10.0, 20, True),
@@ -126,7 +126,7 @@ class TestSignalBacktest:
 
     def test_scorecard_all_wins(self):
         """전부 이익이면 profit_factor = inf."""
-        from nuri.analysis.validation.signal_backtest import SignalResult, generate_scorecard
+        from nuri.quant.validation.signal_backtest import SignalResult, generate_scorecard
 
         results = [
             SignalResult("bb_bounce", "A", "2025-01-01", 100, "2025-01-21", 110, 10.0, 20, True),
@@ -139,7 +139,7 @@ class TestSignalBacktest:
 
     def test_empty_signals(self, db_path):
         """시그널이 없는 종목은 빈 리스트 반환."""
-        from nuri.analysis.validation.signal_backtest import backtest_signals
+        from nuri.quant.validation.signal_backtest import backtest_signals
         results = backtest_signals(ticker="NONEXIST", signals=["rsi_oversold"], db_path=db_path)
         assert results == []
 
@@ -153,12 +153,12 @@ class TestSuperinvestorBacktest:
 
     def test_data_readiness_check(self, db_path):
         """다분기 데이터 없으면 False 반환."""
-        from nuri.analysis.validation.superinvestor_backtest import _check_data_readiness
+        from nuri.quant.validation.superinvestor_backtest import _check_data_readiness
         assert _check_data_readiness(db_path=db_path) is False
 
     def test_empty_backtest(self, db_path):
         """데이터 부족 시 빈 리스트."""
-        from nuri.analysis.validation.superinvestor_backtest import backtest_superinvestor
+        from nuri.quant.validation.superinvestor_backtest import backtest_superinvestor
         results = backtest_superinvestor(db_path=db_path)
         assert results == []
 
@@ -172,6 +172,6 @@ class TestAnalystBacktest:
 
     def test_insufficient_data_message(self, db_path):
         """데이터 부족 시 빈 리스트 + 경고 메시지."""
-        from nuri.analysis.validation.analyst_backtest import validate_estimates
+        from nuri.quant.validation.analyst_backtest import validate_estimates
         results = validate_estimates(min_elapsed_days=90, db_path=db_path)
         assert results == []

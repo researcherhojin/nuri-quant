@@ -10,13 +10,13 @@ C-2: 슈퍼투자자 추종 백테스트.
 """
 import argparse
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
-from nuri.core.db import query, query_df, get_tickers
+from nuri.core.db import query
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ def backtest_superinvestor(
     if not _check_data_readiness(db_path):
         return []
 
-    from nuri.collectors.superinvestors import detect_changes, SUPERINVESTORS
+    from nuri.collectors.superinvestors import SUPERINVESTORS, detect_changes
 
     investors = [investor] if investor else list(SUPERINVESTORS.keys())
     results = []
@@ -218,7 +218,7 @@ def print_scorecard(scorecards: list[InvestorScorecard]) -> None:
         return
 
     print(f"\n{'=' * 70}")
-    print(f"  슈퍼투자자 추종 스코어카드")
+    print("  슈퍼투자자 추종 스코어카드")
     print(f"{'=' * 70}")
     for s in scorecards:
         print(f"\n  {s.investor} ({s.hold_days}일 보유)")

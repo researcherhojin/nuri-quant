@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nuri.core.db import init_db, upsert_prices, upsert_macro
+from nuri.core.db import init_db, upsert_macro, upsert_prices
 
 
 @pytest.fixture
@@ -94,7 +94,7 @@ class TestRegimeClassifier:
 
     def test_bull_regime_detection(self, bull_market):
         """상승 추세 + 낮은 VIX → bull_low_vol."""
-        from nuri.analysis.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import classify_regime
         state = classify_regime(db_path=bull_market)
         assert state is not None
         assert state.trend == "bull"
@@ -103,7 +103,7 @@ class TestRegimeClassifier:
 
     def test_bear_regime_detection(self, bear_market):
         """하락 추세 + 높은 VIX → bear_high_vol."""
-        from nuri.analysis.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import classify_regime
         state = classify_regime(db_path=bear_market)
         assert state is not None
         assert state.trend == "bear"
@@ -112,13 +112,13 @@ class TestRegimeClassifier:
 
     def test_confidence_range(self, bull_market):
         """신뢰도는 0~1 사이."""
-        from nuri.analysis.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import classify_regime
         state = classify_regime(db_path=bull_market)
         assert 0.0 <= state.confidence <= 1.0
 
     def test_insufficient_data(self, db_path):
         """데이터 부족 시 None 반환."""
-        from nuri.analysis.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import classify_regime
         state = classify_regime(db_path=db_path)
         assert state is None
 
@@ -133,13 +133,13 @@ class TestMacroScore:
 
     def test_score_range(self, db_path):
         """스코어는 0~100 사이."""
-        from nuri.analysis.regime.macro_score import compute_macro_score
+        from nuri.quant.regime.macro_score import compute_macro_score
         score = compute_macro_score(db_path=db_path)
         assert 0 <= score.total_score <= 100
 
     def test_favorable_conditions(self, db_path):
         """양호한 매크로 조건 → 높은 점수."""
-        from nuri.analysis.regime.macro_score import compute_macro_score
+        from nuri.quant.regime.macro_score import compute_macro_score
         date = "2025-01-15"
         # 양호한 매크로 환경 주입
         upsert_macro([
@@ -157,7 +157,7 @@ class TestMacroScore:
 
     def test_adverse_conditions(self, db_path):
         """악화된 매크로 조건 → 낮은 점수."""
-        from nuri.analysis.regime.macro_score import compute_macro_score
+        from nuri.quant.regime.macro_score import compute_macro_score
         date = "2025-06-15"
         upsert_macro([
             {"indicator": "us_10y_yield", "date": date, "value": 3.0, "source": "test"},
@@ -183,7 +183,7 @@ class TestStrategyMap:
 
     def test_bull_strategy(self, bull_market):
         """상승장 → aggressive, 매수 시그널 추천."""
-        from nuri.analysis.regime.strategy_map import map_regime_to_strategy
+        from nuri.quant.regime.strategy_map import map_regime_to_strategy
         rec = map_regime_to_strategy(db_path=bull_market)
         assert rec is not None
         assert rec.position_sizing == "aggressive"
@@ -191,20 +191,20 @@ class TestStrategyMap:
 
     def test_bear_strategy(self, bear_market):
         """하락장 → minimal/defensive."""
-        from nuri.analysis.regime.strategy_map import map_regime_to_strategy
+        from nuri.quant.regime.strategy_map import map_regime_to_strategy
         rec = map_regime_to_strategy(db_path=bear_market)
         assert rec is not None
         assert rec.position_sizing in ("defensive", "minimal")
 
     def test_no_data(self, db_path):
         """데이터 없으면 None."""
-        from nuri.analysis.regime.strategy_map import map_regime_to_strategy
+        from nuri.quant.regime.strategy_map import map_regime_to_strategy
         rec = map_regime_to_strategy(db_path=db_path)
         assert rec is None
 
     def test_strategy_has_sector_preference(self, bull_market):
         """전략에 섹터 선호 목록이 있어야 함."""
-        from nuri.analysis.regime.strategy_map import map_regime_to_strategy
+        from nuri.quant.regime.strategy_map import map_regime_to_strategy
         rec = map_regime_to_strategy(db_path=bull_market)
         assert rec is not None
         assert len(rec.sector_preference) > 0
@@ -219,7 +219,7 @@ class TestDynamicThresholds:
 
     def test_thresholds_with_vix_data(self, bull_market):
         """VIX 데이터가 있으면 중앙값 기반 임계값."""
-        from nuri.analysis.regime.classifier import compute_dynamic_thresholds
+        from nuri.quant.regime.classifier import compute_dynamic_thresholds
         th = compute_dynamic_thresholds(db_path=bull_market)
         assert "vix_threshold" in th
         assert "sideways_pct" in th
@@ -227,7 +227,7 @@ class TestDynamicThresholds:
 
     def test_thresholds_without_data(self, db_path):
         """데이터 없으면 기본값 폴백."""
-        from nuri.analysis.regime.classifier import compute_dynamic_thresholds
+        from nuri.quant.regime.classifier import compute_dynamic_thresholds
         th = compute_dynamic_thresholds(db_path=db_path)
         assert th["vix_threshold"] == 18.0  # 기본값
         assert th["sideways_pct"] == 2.0

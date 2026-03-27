@@ -87,8 +87,9 @@ class MacroCollector(BaseCollector):
 
     def _collect_yfinance(self, days: int) -> list[dict]:
         """yfinance에서 직접 매크로 지표 수집 (API 키 불필요)."""
-        from openbb import obb
         import warnings
+
+        from openbb import obb
         warnings.filterwarnings("ignore")
 
         start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")

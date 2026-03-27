@@ -8,7 +8,6 @@ API 키 불필요. 분기별 갱신.
     python -m nuri.collectors.superinvestors
 """
 import logging
-from datetime import datetime
 from typing import Any
 
 import pandas as pd
@@ -227,7 +226,7 @@ def print_summary():
     my_tickers = set(r["ticker"] for r in query("SELECT DISTINCT ticker FROM portfolio"))
 
     print(f"\n{'=' * 70}")
-    print(f"  슈퍼투자자 포트폴리오 (SEC 13F)")
+    print("  슈퍼투자자 포트폴리오 (SEC 13F)")
     print(f"{'=' * 70}")
 
     for inv in investors:
@@ -266,7 +265,7 @@ def print_summary():
     )
     if overlap:
         print(f"\n  {'=' * 50}")
-        print(f"  내 보유종목 중 슈퍼투자자도 보유:")
+        print("  내 보유종목 중 슈퍼투자자도 보유:")
         for r in overlap:
             print(f"    {r['ticker']}: {r['investors']}")
 

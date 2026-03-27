@@ -2,7 +2,7 @@
 import pandas as pd
 import pytest
 
-from nuri.core.db import init_db, upsert_prices, upsert_portfolio, upsert_macro
+from nuri.core.db import init_db, upsert_macro, upsert_portfolio, upsert_prices
 
 
 @pytest.fixture

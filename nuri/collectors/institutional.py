@@ -15,7 +15,7 @@ from typing import Any
 import pandas as pd
 
 from nuri.collectors.base import BaseCollector
-from nuri.core.db import get_db, query
+from nuri.core.db import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,6 @@ class InstitutionalCollector(BaseCollector):
                 try:
                     data = client.ownership(ticker, limit=1)
                     if data and "ownership" in data and data["ownership"]:
-                        latest = data["ownership"][0]
                         record = {
                             "ticker": ticker,
                             "date": today,

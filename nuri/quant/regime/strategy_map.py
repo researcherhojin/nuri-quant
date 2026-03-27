@@ -12,16 +12,19 @@ C-1 시그널 백테스트 결과에 레짐 라벨을 붙여서
 import argparse
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
-from nuri.analysis.regime.classifier import classify_regime, RegimeState, _load_spy_series, \
-    compute_dynamic_thresholds, _classify_single, _get_vix, MARKET_TICKER
-from nuri.analysis.regime.macro_score import compute_macro_score, MacroScore
-from nuri.core.db import query_df
+from nuri.quant.regime.classifier import (
+    RegimeState,
+    _classify_single,
+    _get_vix,
+    _load_spy_series,
+    classify_regime,
+    compute_dynamic_thresholds,
+)
+from nuri.quant.regime.macro_score import MacroScore, compute_macro_score
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +295,7 @@ def print_strategy(rec: StrategyRecommendation | None) -> None:
     }
 
     print(f"\n{'=' * 65}")
-    print(f"  Strategy Recommendation")
+    print("  Strategy Recommendation")
     print(f"{'=' * 65}")
     print(f"  Regime:       {rec.regime}")
     print(f"  Macro:        {rec.macro_interpretation}")
@@ -320,7 +323,7 @@ def print_cross_analysis(df: pd.DataFrame) -> None:
         return
 
     print(f"\n{'=' * 75}")
-    print(f"  Signal × Regime Cross-Analysis")
+    print("  Signal × Regime Cross-Analysis")
     print(f"{'=' * 75}")
 
     for regime in sorted(df["regime"].unique()):
@@ -346,8 +349,8 @@ if __name__ == "__main__":
         cross = analyze_signal_by_regime()
         print_cross_analysis(cross)
     else:
-        from nuri.analysis.regime.classifier import print_regime
-        from nuri.analysis.regime.macro_score import print_macro_score
+        from nuri.quant.regime.classifier import print_regime
+        from nuri.quant.regime.macro_score import print_macro_score
 
         regime = classify_regime()
         print_regime(regime)

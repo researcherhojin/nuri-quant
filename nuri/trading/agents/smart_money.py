@@ -1,5 +1,5 @@
 """스마트머니 에이전트 — 슈퍼투자자 + ARK + 애널리스트 컨센서스 기반 판정."""
-from nuri.trading.agents.base import BaseAgent, AgentVerdict
+from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 
 class SmartMoneyAgent(BaseAgent):

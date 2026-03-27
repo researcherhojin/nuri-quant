@@ -1,6 +1,6 @@
 """매크로 분석 에이전트 — 시장 레짐 + 매크로 스코어 + 개별 종목 모멘텀 기반 판정."""
-from nuri.trading.agents.base import BaseAgent, AgentVerdict
 from nuri.core.db import query_df
+from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 
 class MacroAgent(BaseAgent):
@@ -13,8 +13,8 @@ class MacroAgent(BaseAgent):
         sideways 레짐에서도 강한 모멘텀 종목은 BUY, 약한 종목은 SELL 가능.
         """
         try:
-            from nuri.analysis.regime.classifier import classify_regime
-            from nuri.analysis.regime.macro_score import compute_macro_score
+            from nuri.quant.regime.classifier import classify_regime
+            from nuri.quant.regime.macro_score import compute_macro_score
 
             regime = classify_regime(db_path=db_path)
             macro = compute_macro_score(db_path=db_path)
@@ -49,8 +49,8 @@ class MacroAgent(BaseAgent):
         # prices에 없으면 yfinance에서 직접 가져오기 (스캐너 종목 대응)
         if df.empty or len(df) < 5:
             try:
-                import yfinance as yf
                 import pandas as pd
+                import yfinance as yf
                 _df = yf.download(ticker, period="30d", progress=False)
                 if not _df.empty:
                     close_col = _df["Close"].squeeze() if hasattr(_df["Close"], "squeeze") else _df["Close"]

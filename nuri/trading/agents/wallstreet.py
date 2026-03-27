@@ -12,9 +12,7 @@ yfinance에서 직접 데이터를 가져오며 별도 API 키 불필요.
 import logging
 from datetime import datetime, timedelta
 
-import pandas as pd
-
-from nuri.trading.agents.base import BaseAgent, AgentVerdict
+from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 logger = logging.getLogger(__name__)
 

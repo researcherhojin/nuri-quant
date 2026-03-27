@@ -121,7 +121,7 @@ def verify_sector(report_dir: Path, summary: list[str]) -> None:
 def verify_correlation(report_dir: Path, summary: list[str]) -> None:
     """상관관계 분석 검증."""
     logger.info("─── 상관관계 분석 ───")
-    from nuri.analysis.correlation import analyze_correlation, print_correlation, save_heatmap
+    from nuri.analysis.correlation import analyze_correlation, print_correlation
 
     corr, warnings = analyze_correlation(min_days=20)
     if corr.empty:
@@ -181,7 +181,7 @@ def verify_rebalance(report_dir: Path, summary: list[str]) -> None:
 def verify_factors(report_dir: Path, summary: list[str]) -> None:
     """멀티팩터 스코어 검증."""
     logger.info("─── 멀티팩터 스코어 ───")
-    from nuri.analysis.factors.composite import compute_composite, print_composite
+    from nuri.quant.factors.composite import compute_composite, print_composite
 
     df = compute_composite()
     if df.empty:
@@ -199,7 +199,7 @@ def verify_factors(report_dir: Path, summary: list[str]) -> None:
 def verify_backtest(report_dir: Path, summary: list[str]) -> None:
     """백테스트 검증."""
     logger.info("─── 백테스트 (VectorBT) ───")
-    from nuri.trading.backtest.engine import run_momentum_backtest, print_backtest
+    from nuri.quant.backtest.engine import print_backtest, run_momentum_backtest
 
     result = run_momentum_backtest(top_n=5, rebalance_days=20)
     if not result:
@@ -225,10 +225,9 @@ def verify_performance(report_dir: Path, summary: list[str]) -> None:
     """QuantStats 성과 분석 검증."""
     logger.info("─── 성과 분석 (QuantStats) ───")
     from nuri.analysis.performance import (
-        get_portfolio_returns,
         get_benchmark_returns,
+        get_portfolio_returns,
         print_performance,
-        generate_html_report,
     )
 
     port = get_portfolio_returns()
@@ -258,9 +257,11 @@ def verify_performance(report_dir: Path, summary: list[str]) -> None:
 def verify_signal_backtest(report_dir: Path, summary: list[str]) -> None:
     """Phase C-1: 시그널 백테스트 검증."""
     logger.info("─── 시그널 백테스트 (C-1) ───")
-    from nuri.analysis.validation.signal_backtest import backtest_signals, generate_scorecard, print_scorecard
     from dataclasses import asdict
+
     import pandas as pd
+
+    from nuri.quant.validation.signal_backtest import backtest_signals, generate_scorecard, print_scorecard
 
     results = backtest_signals()
     if not results:
@@ -283,11 +284,15 @@ def verify_signal_backtest(report_dir: Path, summary: list[str]) -> None:
 def verify_superinvestor_backtest(report_dir: Path, summary: list[str]) -> None:
     """Phase C-2: 슈퍼투자자 추종 검증."""
     logger.info("─── 슈퍼투자자 추종 (C-2) ───")
-    from nuri.analysis.validation.superinvestor_backtest import (
-        backtest_superinvestor, generate_scorecard, print_scorecard,
-    )
     from dataclasses import asdict
+
     import pandas as pd
+
+    from nuri.quant.validation.superinvestor_backtest import (
+        backtest_superinvestor,
+        generate_scorecard,
+        print_scorecard,
+    )
 
     results = backtest_superinvestor()
     scorecards = generate_scorecard(results, hold_days=120)
@@ -304,7 +309,7 @@ def verify_superinvestor_backtest(report_dir: Path, summary: list[str]) -> None:
 def verify_validation_scorecard(report_dir: Path, summary: list[str]) -> None:
     """Phase C-4: 통합 스코어카드 검증."""
     logger.info("─── 통합 스코어카드 (C-4) ───")
-    from nuri.analysis.validation.scorecard import generate_validation_report
+    from nuri.quant.validation.scorecard import generate_validation_report
 
     path = generate_validation_report(output_dir=report_dir)
     if path:
@@ -316,9 +321,9 @@ def verify_validation_scorecard(report_dir: Path, summary: list[str]) -> None:
 def verify_regime(report_dir: Path, summary: list[str]) -> None:
     """Phase D: 레짐 분류 + 매크로 스코어 + 전략."""
     logger.info("─── 시장 레짐 (D-1~D-3) ───")
-    from nuri.analysis.regime.classifier import classify_regime, print_regime
-    from nuri.analysis.regime.macro_score import compute_macro_score, print_macro_score
-    from nuri.analysis.regime.strategy_map import map_regime_to_strategy, print_strategy
+    from nuri.quant.regime.classifier import classify_regime, print_regime
+    from nuri.quant.regime.macro_score import compute_macro_score, print_macro_score
+    from nuri.quant.regime.strategy_map import map_regime_to_strategy, print_strategy
 
     regime = classify_regime()
     print_regime(regime)
@@ -339,7 +344,7 @@ def verify_regime(report_dir: Path, summary: list[str]) -> None:
 def verify_gate(report_dir: Path, summary: list[str]) -> None:
     """SIEGE Gate: 파이프라인 준비 상태 검증."""
     logger.info("─── Pipeline Gate ───")
-    from nuri.engine.gate import check_all_gates, print_gate
+    from nuri.trading.engine.gate import check_all_gates, print_gate
 
     gates = check_all_gates()
     for phase, result in gates.items():
@@ -351,9 +356,9 @@ def verify_gate(report_dir: Path, summary: list[str]) -> None:
 def verify_candidates(report_dir: Path, summary: list[str]) -> None:
     """Phase E: 매매 후보 + 충돌 감지 + 성과 메모리."""
     logger.info("─── 매매 후보 (E-1 + Conflicts + Memory) ───")
-    from nuri.trading.recommend.candidates import screen_candidates, print_candidates
-    from nuri.engine.conflicts import detect_conflicts, print_conflicts
-    from nuri.engine.memory import save_snapshot, detect_drift, print_memory_status
+    from nuri.trading.engine.conflicts import detect_conflicts, print_conflicts
+    from nuri.trading.engine.memory import detect_drift, print_memory_status, save_snapshot
+    from nuri.trading.recommend.candidates import print_candidates, screen_candidates
 
     # E-1 후보 (drift + conflict 자동 반영됨)
     candidates = screen_candidates(lookback_days=5)
@@ -390,7 +395,7 @@ def main():
     summary: list[str] = []
 
     print(f"\n{'═' * 60}")
-    print(f"  Nuri-Quant 기능 검증")
+    print("  Nuri-Quant 기능 검증")
     print(f"  결과 저장: {report_dir}")
     print(f"{'═' * 60}\n")
 
@@ -436,7 +441,7 @@ def main():
 
     # 최종 출력
     print(f"{'═' * 60}")
-    print(f"  검증 완료 — 요약")
+    print("  검증 완료 — 요약")
     print(f"{'═' * 60}")
     for line in summary:
         print(f"  {line}")

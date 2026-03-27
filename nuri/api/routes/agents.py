@@ -1,6 +1,7 @@
 """멀티 에이전트 합의 API — 캐시 적용."""
 import time
 from dataclasses import asdict
+
 from fastapi import APIRouter
 
 router = APIRouter(tags=["agents"])

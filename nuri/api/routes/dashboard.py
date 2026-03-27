@@ -1,6 +1,7 @@
 """Dashboard API — 한 번의 호출로 "오늘 뭐하라고?"에 답하는 액션 중심 요약."""
-import time
 import logging
+import time
+
 from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,8 @@ def _build_dashboard() -> dict:
     allocation = {"long": 0, "short": 0, "cash": 100}
 
     try:
-        from nuri.analysis.regime.classifier import classify_regime
-        from nuri.analysis.regime.macro_score import compute_macro_score
+        from nuri.quant.regime.classifier import classify_regime
+        from nuri.quant.regime.macro_score import compute_macro_score
         r = classify_regime()
         if r:
             regime_data = {"regime": r.regime, "trend": r.trend, "volatility": r.volatility,
@@ -105,7 +106,7 @@ def _build_dashboard() -> dict:
 
     # drift 경고
     try:
-        from nuri.engine.memory import detect_drift
+        from nuri.trading.engine.memory import detect_drift
         drifts = detect_drift()
         critical = [d for d in drifts if d.status == "critical"]
         if critical:
@@ -116,7 +117,7 @@ def _build_dashboard() -> dict:
 
     # 충돌
     try:
-        from nuri.engine.conflicts import detect_conflicts
+        from nuri.trading.engine.conflicts import detect_conflicts
         conflicts = detect_conflicts()
         if conflicts:
             tickers = ", ".join(set(c.ticker for c in conflicts[:5]))
@@ -140,7 +141,7 @@ def _build_dashboard() -> dict:
         verdict = f"매도 우위. 에이전트 {n_sells}종목 매도, {n_buys}종목 매수 판정."
         verdict_level = "cautious"
     else:
-        verdict = f"관망. 횡보 + 고변동 구간. 대기하며 레짐 전환을 주시하세요."
+        verdict = "관망. 횡보 + 고변동 구간. 대기하며 레짐 전환을 주시하세요."
         verdict_level = "neutral"
 
     # drift 경고가 있으면 verdict에 추가
@@ -155,7 +156,7 @@ def _build_dashboard() -> dict:
     # ── 5. Gate 상태 ──
     gate_score = 0
     try:
-        from nuri.engine.gate import check_gate
+        from nuri.trading.engine.gate import check_gate
         g = check_gate()
         gate_score = round(g.score * 100)
     except Exception:

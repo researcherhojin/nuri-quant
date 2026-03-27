@@ -10,11 +10,10 @@ Conflict Detection — SIEGE 패턴 적용.
 - regime_contradiction: 시그널 방향이 현재 레짐과 모순
 
 사용법:
-    python -m nuri.engine.conflicts
+    python -m nuri.trading.engine.conflicts
 """
 import logging
-from dataclasses import dataclass, asdict
-from datetime import datetime
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +121,7 @@ def detect_conflicts(candidates=None, db_path=None) -> list[SignalConflict]:
     # ── 3. Regime Contradiction: 레짐과 모순되는 시그널 ──
     regime_ctx = None
     try:
-        from nuri.analysis.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import classify_regime
         regime = classify_regime(db_path=db_path)
         if regime:
             regime_ctx = regime.trend

@@ -11,7 +11,6 @@ OpenBB가 다중 프로바이더(yfinance, polygon, tiingo 등)를 지원하며,
 """
 import argparse
 import logging
-import time
 from datetime import datetime, timedelta
 from typing import Optional
 

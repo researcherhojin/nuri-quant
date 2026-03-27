@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nuri.core.db import init_db, upsert_prices, get_db
+from nuri.core.db import init_db
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def db_path(tmp_path):
 class TestScanResult:
     def test_analyze_ticker(self):
         """단일 종목 분석 결과 구조."""
-        from nuri.trading.swing.scanner import _analyze_ticker, ScanResult
+        from nuri.trading.swing.scanner import ScanResult, _analyze_ticker
 
         dates = pd.bdate_range("2025-01-01", periods=30)
         close = np.linspace(100, 120, 30)

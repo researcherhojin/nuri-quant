@@ -11,14 +11,14 @@ prices 5년 데이터 + TA-Lib으로 시그널을 감지하고,
 """
 import argparse
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from nuri.core.db import get_tickers, query_df, query
+from nuri.core.db import get_tickers, query_df
 
 logger = logging.getLogger(__name__)
 
@@ -389,7 +389,7 @@ def print_scorecard(scorecards: list[SignalScorecard]) -> None:
     total.sort(key=lambda s: s.profit_factor, reverse=True)
 
     print(f"\n{'=' * 75}")
-    print(f"  시그널 스코어카드")
+    print("  시그널 스코어카드")
     print(f"{'=' * 75}")
     print(f"  {'시그널':<20} {'횟수':>5} {'승률':>7} {'평균수익':>8} {'PF':>6} {'최대익':>8} {'최대손':>8}")
     print(f"  {'-' * 65}")

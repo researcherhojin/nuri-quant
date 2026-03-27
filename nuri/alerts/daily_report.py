@@ -6,7 +6,6 @@ Discord 전송 또는 stdout 출력.
 사용법:
     python -m nuri.alerts.daily_report
 """
-import json
 import logging
 import os
 from datetime import datetime, timedelta

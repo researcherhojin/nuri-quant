@@ -66,7 +66,7 @@ def _run_collector(name: str, **kwargs):
             from nuri.collectors.wallstreet import WallStreetCollector
             WallStreetCollector().run()
         elif name == "memory_snapshot":
-            from nuri.engine.memory import save_snapshot
+            from nuri.trading.engine.memory import save_snapshot
             n = save_snapshot()
             logger.info(f"[memory_snapshot] {n}건 저장")
     except Exception as e:

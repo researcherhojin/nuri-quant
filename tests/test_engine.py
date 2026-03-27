@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nuri.core.db import init_db, upsert_prices, upsert_macro, get_db
+from nuri.core.db import get_db, init_db, upsert_macro, upsert_prices
 
 
 @pytest.fixture
@@ -58,13 +58,13 @@ def populated_db(db_path):
 class TestGate:
 
     def test_empty_db_all_fail(self, db_path):
-        from nuri.engine.gate import check_gate
+        from nuri.trading.engine.gate import check_gate
         result = check_gate(db_path=db_path)
         assert result.passed < result.total
         assert result.ready is False
 
     def test_populated_db_passes_basics(self, populated_db):
-        from nuri.engine.gate import check_gate
+        from nuri.trading.engine.gate import check_gate
         result = check_gate(phase="collect", db_path=populated_db)
         # portfolio_exists should pass
         portfolio_cond = [c for c in result.conditions if c.id == "portfolio_exists"]
@@ -72,18 +72,18 @@ class TestGate:
         assert portfolio_cond[0].passed is True
 
     def test_regime_gate_with_spy(self, populated_db):
-        from nuri.engine.gate import check_gate
+        from nuri.trading.engine.gate import check_gate
         result = check_gate(phase="regime", db_path=populated_db)
         spy_cond = [c for c in result.conditions if c.id == "spy_data"]
         assert spy_cond[0].passed is True  # 300일 > 200일
 
     def test_gate_score_range(self, populated_db):
-        from nuri.engine.gate import check_gate
+        from nuri.trading.engine.gate import check_gate
         result = check_gate(db_path=populated_db)
         assert 0.0 <= result.score <= 1.0
 
     def test_all_gates(self, populated_db):
-        from nuri.engine.gate import check_all_gates
+        from nuri.trading.engine.gate import check_all_gates
         gates = check_all_gates(db_path=populated_db)
         assert "collect" in gates
         assert "regime" in gates
@@ -99,8 +99,8 @@ class TestConflicts:
 
     def test_direction_conflict_detected(self):
         """같은 종목에 BUY + SELL → direction_conflict."""
+        from nuri.trading.engine.conflicts import detect_conflicts
         from nuri.trading.recommend.candidates import Candidate
-        from nuri.engine.conflicts import detect_conflicts
 
         candidates = [
             Candidate("TSLA", "bb_bounce", "2025-03-25", "BUY", 65, 0.59, 2.0, True, 380.0, ""),
@@ -114,8 +114,8 @@ class TestConflicts:
 
     def test_no_conflict_single_direction(self):
         """같은 방향만이면 충돌 없음."""
+        from nuri.trading.engine.conflicts import detect_conflicts
         from nuri.trading.recommend.candidates import Candidate
-        from nuri.engine.conflicts import detect_conflicts
 
         candidates = [
             Candidate("NVDA", "bb_bounce", "2025-03-25", "BUY", 65, 0.59, 2.0, True, 100.0, ""),
@@ -126,7 +126,7 @@ class TestConflicts:
         assert len(direction) == 0
 
     def test_empty_candidates(self):
-        from nuri.engine.conflicts import detect_conflicts
+        from nuri.trading.engine.conflicts import detect_conflicts
         assert detect_conflicts([]) == []
 
 
@@ -138,15 +138,16 @@ class TestConflicts:
 class TestMemory:
 
     def test_detect_drift_empty(self, db_path):
-        from nuri.engine.memory import detect_drift
+        from nuri.trading.engine.memory import detect_drift
         drifts = detect_drift(db_path=db_path)
         assert drifts == []
 
     def test_snapshot_and_drift(self, db_path):
         """수동으로 strategy_memory 데이터 삽입 후 drift 감지."""
-        from nuri.engine.memory import detect_drift
-        from nuri.core.db import get_db
         from datetime import datetime
+
+        from nuri.core.db import get_db
+        from nuri.trading.engine.memory import detect_drift
 
         today = datetime.now().strftime("%Y-%m-%d")
         with get_db(db_path) as conn:

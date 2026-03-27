@@ -47,9 +47,10 @@ dependencies = [
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
 
-    # Testing
+    # Testing + Linting
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
+    "ruff>=0.8.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -62,3 +63,18 @@ build-backend = "setuptools.build_meta"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E402",   # module-import-not-at-top (lazy imports in scheduler etc.)
+    "E501",   # line-too-long (기존 코드 스타일 허용)
+    "E712",   # true-false-comparison (pandas idiom: df[col] == True)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nuri"]

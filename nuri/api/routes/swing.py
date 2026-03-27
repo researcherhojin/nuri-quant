@@ -1,5 +1,6 @@
 """스윙 트레이드 API."""
 from dataclasses import asdict
+
 from fastapi import APIRouter, Query
 
 router = APIRouter(tags=["swing"])
@@ -17,6 +18,7 @@ def get_scan(market: str = Query("us", pattern="^(us|kr)$"), top: int = Query(20
 def get_swing_entries(market: str = Query("us", pattern="^(us|kr)$")):
     """스윙 진입 후보 (스캔 + 에이전트 합의)."""
     import json
+
     from nuri.trading.swing.rules import evaluate_entries
     entries = evaluate_entries(market=market)
     # numpy 타입 → Python 네이티브 변환
@@ -40,7 +42,13 @@ def get_swing_positions():
 @router.get("/backtest")
 def get_backtest():
     """L/S strategy backtest results."""
-    from nuri.trading.strategy.backtest import classify_historical_regimes, run_backtest, analyze_per_regime, analyze_entry_timing, stress_test, monte_carlo_test
+    from nuri.trading.strategy.ls_backtest import (
+        analyze_entry_timing,
+        analyze_per_regime,
+        classify_historical_regimes,
+        run_backtest,
+        stress_test,
+    )
     regimes = classify_historical_regimes()
     if regimes.empty:
         return {"error": "SPY data insufficient"}
@@ -64,11 +72,12 @@ def get_backtest():
 @router.get("/strategy/status")
 def get_strategy_status():
     """Current strategy + positions."""
-    from nuri.trading.strategy.longshort import generate_strategy, REGIME_ALLOCATION
-    from nuri.trading.strategy.position import get_positions_summary
-    from nuri.trading.strategy.monitor import daily_pnl_summary, detect_regime_transition
-    from nuri.analysis.regime.classifier import classify_regime
     from dataclasses import asdict
+
+    from nuri.quant.regime.classifier import classify_regime
+    from nuri.trading.strategy.longshort import REGIME_ALLOCATION, generate_strategy
+    from nuri.trading.strategy.monitor import daily_pnl_summary
+    from nuri.trading.strategy.position import get_positions_summary
 
     regime = classify_regime()
     actions = generate_strategy()

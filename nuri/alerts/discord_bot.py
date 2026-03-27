@@ -13,7 +13,6 @@ Discord 알림 봇 — send-only 방식.
     python -m nuri.alerts.discord_bot --bot
 """
 import argparse
-import json
 import logging
 import os
 

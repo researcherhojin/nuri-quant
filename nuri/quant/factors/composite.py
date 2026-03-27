@@ -7,7 +7,7 @@ import logging
 
 import pandas as pd
 
-from nuri.core.db import query, query_df
+from nuri.core.db import query
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,9 @@ WEIGHTS = {
 
 def compute_composite() -> pd.DataFrame:
     """멀티팩터 합성 스코어 계산."""
-    from nuri.analysis.factors.momentum import compute_momentum
-    from nuri.analysis.factors.value import compute_value
-    from nuri.analysis.factors.quality import compute_quality
+    from nuri.quant.factors.momentum import compute_momentum
+    from nuri.quant.factors.quality import compute_quality
+    from nuri.quant.factors.value import compute_value
 
     momentum = compute_momentum()
     value = compute_value()

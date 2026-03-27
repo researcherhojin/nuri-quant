@@ -6,7 +6,6 @@ import pytest
 def mock_yfinance(monkeypatch):
     """모든 테스트에서 yfinance.download와 Ticker를 mock."""
     import pandas as pd
-    import numpy as np
 
     class MockTicker:
         def __init__(self, ticker):

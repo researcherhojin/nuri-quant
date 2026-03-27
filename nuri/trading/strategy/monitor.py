@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def detect_regime_transition(db_path=None) -> dict | None:
     """레짐 전환 감지. 이전 기록과 비교."""
     try:
-        from nuri.analysis.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import classify_regime
         current = classify_regime(db_path=db_path)
     except Exception:
         return None
@@ -115,7 +115,7 @@ def daily_pnl_summary(db_path=None) -> dict:
 
 def print_monitor(db_path=None) -> None:
     """전체 모니터 출력: 레짐 + 전환 + 전략 + 포지션."""
-    from nuri.analysis.regime.classifier import classify_regime, print_regime
+    from nuri.quant.regime.classifier import classify_regime, print_regime
     from nuri.trading.strategy.longshort import generate_strategy, print_strategy
     from nuri.trading.strategy.position import print_positions
 
@@ -130,7 +130,7 @@ def print_monitor(db_path=None) -> None:
         print(f"     Urgency: {transition['urgency'].upper()}")
         print(f"     {transition['from_regime']} → {transition['to_regime']}")
     else:
-        print(f"\n  레짐 전환 없음 (유지 중)")
+        print("\n  레짐 전환 없음 (유지 중)")
 
     # 3. 전략 액션
     actions = generate_strategy(db_path)
@@ -142,7 +142,7 @@ def print_monitor(db_path=None) -> None:
     # 5. P&L 요약
     pnl = daily_pnl_summary(db_path)
     if pnl["total_positions"] > 0:
-        print(f"  P&L Summary:")
+        print("  P&L Summary:")
         print(f"    Total: {pnl['total_pnl']:+.1f}% ({pnl['winners']}W / {pnl['losers']}L)")
         print(f"    Long: {pnl['long_pnl']:+.1f}% | Short: {pnl['short_pnl']:+.1f}%")
         print(f"    Core: {pnl['core_pnl']:+.1f}% | Tactical: {pnl['tactical_pnl']:+.1f}%")

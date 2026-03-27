@@ -5,8 +5,8 @@ Append-Only Learning Memory — SIEGE 패턴 적용.
 과거 대비 최근 성과 변화를 감지하고, 성과 하락한 시그널을 경고.
 
 사용법:
-    python -m nuri.engine.memory              # 현재 상태 조회
-    python -m nuri.engine.memory --snapshot   # 오늘 스냅샷 저장
+    python -m nuri.trading.engine.memory              # 현재 상태 조회
+    python -m nuri.trading.engine.memory --snapshot   # 오늘 스냅샷 저장
 """
 import argparse
 import logging
@@ -20,7 +20,7 @@ from nuri.core.db import get_db, query
 
 logger = logging.getLogger(__name__)
 
-REPORT_DIR = Path(__file__).parent.parent.parent / "data" / "reports"
+REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 
 
 @dataclass
@@ -51,7 +51,7 @@ def save_snapshot(db_path=None) -> int:
 
     # 레짐 라벨 (있으면)
     try:
-        from nuri.analysis.regime.strategy_map import analyze_signal_by_regime
+        from nuri.quant.regime.strategy_map import analyze_signal_by_regime
         cross_df = analyze_signal_by_regime(db_path=db_path)
     except Exception:
         cross_df = pd.DataFrame()
@@ -214,7 +214,7 @@ def print_memory_status(drifts: list[PerformanceDrift]) -> None:
         return
 
     print(f"\n{'=' * 60}")
-    print(f"  Strategy Learning Memory — Performance Drift")
+    print("  Strategy Learning Memory — Performance Drift")
     print(f"{'=' * 60}")
     print(f"  {'Signal':<18} {'Status':<12} {'AllTime':>8} {'Recent':>8} {'Drift':>8}")
     print(f"  {'-' * 56}")

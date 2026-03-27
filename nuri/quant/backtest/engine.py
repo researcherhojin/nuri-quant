@@ -10,14 +10,12 @@ QuantStats 티어시트를 생성한다.
 """
 import argparse
 import logging
-from datetime import datetime
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import vectorbt as vbt
 
-from nuri.core.db import query_df, query
+from nuri.core.db import query_df
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +128,7 @@ def print_backtest(result: dict) -> None:
         return
 
     print(f"\n{'=' * 50}")
-    print(f"  백테스트 결과 (VectorBT)")
+    print("  백테스트 결과 (VectorBT)")
     print(f"  전략: {result['strategy']}")
     print(f"{'=' * 50}")
     print(f"  총 수익률:       {result['total_return_pct']:>+8.2f}%")

@@ -10,7 +10,6 @@ import logging
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
 
 from nuri.core.db import get_tickers, query_df
 
@@ -93,7 +92,7 @@ def print_correlation(corr_matrix: pd.DataFrame, warnings: list[dict]) -> None:
     print(f"{'=' * 60}")
 
     if warnings:
-        print(f"\n  ⚠️ 고상관 쌍 (|r| > 0.80):")
+        print("\n  ⚠️ 고상관 쌍 (|r| > 0.80):")
         for w in warnings:
             print(f"    {w['ticker_a']} ↔ {w['ticker_b']}: {w['correlation']:.3f}")
     else:

@@ -1,7 +1,7 @@
 """투자 규칙 로더 — config/rules.yaml에서 규칙을 로드.
 
 사용법:
-    from nuri.rules import RULES
+    from nuri.core.rules import RULES
     max_pos = RULES["position_limits"]["max_single_position"]
 """
 from pathlib import Path

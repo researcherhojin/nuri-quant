@@ -32,7 +32,7 @@ def generate_validation_report(output_dir: Path | None = None) -> Path | None:
 
     # C-1은 필수
     if not signal_csv.exists():
-        logger.warning(f"통합 스코어카드 생성 불가: signal_scorecard.csv 없음 (C-1 먼저 실행)")
+        logger.warning("통합 스코어카드 생성 불가: signal_scorecard.csv 없음 (C-1 먼저 실행)")
         return None
 
     # 섹션 수 결정
@@ -126,7 +126,6 @@ def generate_validation_report(output_dir: Path | None = None) -> Path | None:
     # ── 섹션 4: 애널리스트 (선택) ──
     if has_analyst:
         an_df = pd.read_csv(analyst_csv)
-        hit_rate = an_df["target_hit"].mean() * 100
         by_rec = an_df.groupby("recommendation").agg(
             hit_rate=("target_hit", "mean"),
             count=("target_hit", "count"),

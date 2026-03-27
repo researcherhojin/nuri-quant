@@ -17,12 +17,10 @@
 """
 import argparse
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime
 
-import pandas as pd
-
-from nuri.core.db import get_db, query, init_db
+from nuri.core.db import get_db, init_db, query
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +243,7 @@ def print_entries(entries: list[SwingEntry]) -> None:
     print(f"{'=' * 85}")
 
     if approved:
-        print(f"\n  APPROVED:")
+        print("\n  APPROVED:")
         print(f"  {'Ticker':<8} {'Price':>10} {'Signal':<14} {'Score':>6} {'Agent':>6} {'Conf':>5} {'Agree':>6}")
         print(f"  {'-' * 58}")
         for e in approved:

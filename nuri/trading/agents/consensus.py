@@ -6,33 +6,34 @@
 의견 불일치는 명시적으로 기록하여 감사 가능.
 
 사용법:
-    python -m nuri.agents.consensus
-    python -m nuri.agents.consensus --ticker TSLA
+    python -m nuri.trading.agents.consensus
+    python -m nuri.trading.agents.consensus --ticker TSLA
 """
 import argparse
 import logging
-from dataclasses import dataclass, asdict, field
-from datetime import datetime
+from dataclasses import dataclass
 
+from nuri.core.db import get_tickers
 from nuri.trading.agents.base import AgentVerdict
-from nuri.trading.agents.technical import TechnicalAgent
 from nuri.trading.agents.fundamental import FundamentalAgent
+from nuri.trading.agents.korean_market import KoreanMarketAgent
 from nuri.trading.agents.macro_agent import MacroAgent
 from nuri.trading.agents.risk_agent import RiskAgent
 from nuri.trading.agents.smart_money import SmartMoneyAgent
+from nuri.trading.agents.technical import TechnicalAgent
 from nuri.trading.agents.wallstreet import WallStreetAgent
-from nuri.core.db import get_tickers
 
 logger = logging.getLogger(__name__)
 
 # 기본 가중치 (과거 데이터 없을 때)
 DEFAULT_WEIGHTS = {
-    "technical": 0.20,
-    "fundamental": 0.15,
-    "macro": 0.15,
-    "risk": 0.25,      # 리스크는 거부권 수준으로 높음
-    "smart_money": 0.10,
-    "wallstreet": 0.15, # 애널리스트 등급 + 실적 서프라이즈 + 내부자
+    "technical": 0.18,
+    "fundamental": 0.14,
+    "macro": 0.14,
+    "risk": 0.22,       # 리스크는 거부권 수준으로 높음
+    "smart_money": 0.09,
+    "wallstreet": 0.13,
+    "korean_market": 0.10,  # .KS 종목에서만 실질 영향
 }
 
 ALL_AGENTS = [
@@ -42,6 +43,7 @@ ALL_AGENTS = [
     RiskAgent(),
     SmartMoneyAgent(),
     WallStreetAgent(),
+    KoreanMarketAgent(),
 ]
 
 

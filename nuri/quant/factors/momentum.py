@@ -1,5 +1,4 @@
 """모멘텀 팩터 — 12개월 수익률, RSI, 52주 고점 근접도."""
-import numpy as np
 import pandas as pd
 
 from nuri.core.db import query_df

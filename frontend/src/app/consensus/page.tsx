@@ -26,7 +26,7 @@ async function ConsensusSection() {
     { key: "final_confidence", label: "Conf", align: "right" as const, render: (v: number) => <span className="font-semibold">{v.toFixed(0)}</span> },
     { key: "agreement_rate", label: "Agree", align: "right" as const, render: (v: number) => `${(v * 100).toFixed(0)}%` },
     ...agentKeys.map(name => ({
-      key: name, label: agentLabels[name], align: "center" as const,
+      key: name, label: agentLabels[name], align: "center" as const, hideOnMobile: true,
       render: (_: any, row: any) => agentCell(row.verdicts, name),
     })),
   ];

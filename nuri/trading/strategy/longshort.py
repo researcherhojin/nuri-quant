@@ -12,9 +12,8 @@ Sideways → 축소 + 현금
 import argparse
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 
-from nuri.core.db import query, init_db
+from nuri.core.db import init_db, query
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,7 @@ class StrategyAction:
 def generate_strategy(db_path=None) -> list[StrategyAction]:
     """현재 레짐 기반 전략 액션 생성."""
     try:
-        from nuri.analysis.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import classify_regime
         regime_state = classify_regime(db_path=db_path)
     except Exception:
         return []
@@ -164,7 +163,7 @@ def generate_strategy(db_path=None) -> list[StrategyAction]:
 
 def execute_strategy(actions: list[StrategyAction], db_path=None) -> int:
     """전략 액션 실행 (SIEGE Certification 적용)."""
-    from nuri.trading.strategy.position import open_position, close_position, update_prices
+    from nuri.trading.strategy.position import close_position, open_position, update_prices
 
     update_prices(db_path)
     executed = 0
