@@ -162,12 +162,52 @@ Defined in `config/rules.yaml`, enforced across all modules:
 | Portfolio stop | -10% drawdown |
 | Leverage ETF ban | TSLL, TQQQ, SQQQ, UPRO, SPXU |
 
-## Roadmap
+## Completed (2026-03-27)
 
-- [ ] **차트 고도화** — Recharts에 기술적 지표 오버레이 (RSI, MACD, BB) + 시그널 마커
-- [ ] **한국 시장 수집기 확장** — pykrx 기반 외국인/기관 수급, 공매도 잔고
-- [ ] **실거래 연동 완성** — Alpaca live trading + 한투 OpenAPI
-- [ ] **알림 고도화** — Telegram 봇, 레짐 전환 push 알림
+<details>
+<summary>이번 스프린트에서 완료한 작업 (클릭하여 펼치기)</summary>
+
+**버그 수정**: API URL 8000→8001, Badge→StatusBadge 통일, 13개 모듈 stale docstring 경로, deprecated pandas `fill_method`
+
+**신규 기능**: 7-agent 체계 (Korean Market Agent), Mean-Reversion + Pairs Trading 전략, 파라미터 Grid Search 옵티마이저, Alpaca 페이퍼 트레이딩 스켈레톤, SSE 실시간 스트림 + LiveIndicator, Recharts 가격 차트, 포트폴리오 관리 UI, 대시보드 로그인 인증, 에러 바운더리, 모바일 반응형, 동적 에이전트 가중치 (recommendations 기반)
+
+**인프라**: ruff 린터, GitHub Actions CI (lint + test + tsc + PR checks + Trivy 보안 스캔), DB 마이그레이션 버전 관리, API 통합 테스트 25건, pre-deploy 검증 스크립트, port 관리, 테스트 수 자동 업데이트
+
+**리팩토링**: 모듈 구조 재설계 (`quant/`, `trading/engine/`), 레거시 shim 삭제, MIT→Apache 2.0, CLAUDE.md + README 전면 재작성
+
+**테스트**: 105 → 161 tests (56 추가)
+</details>
+
+## Roadmap — Security & Production Readiness
+
+보안 감사 (OWASP + STRIDE) 및 아키텍처 리뷰 결과 기반.
+
+### CRITICAL (Week 1)
+
+- [ ] **API 인증 미들웨어** — FastAPI 전 엔드포인트에 JWT/API key 인증. 현재 POST/DELETE 포함 모든 라우트가 무인증
+- [ ] **비밀번호 해싱** — 평문 비교 → bcrypt + constant-time compare. 쿠키에 해시 토큰 사용
+- [ ] **Rate Limiting** — `slowapi` 도입. `/api/auth` 5회/15분, DELETE 10회/시간, GET 1000회/분
+- [ ] **CORS 강화** — `allow_headers=["*"]` 제거, 프로덕션 도메인만 허용
+- [ ] **브로커 입력 검증** — ticker whitelist, quantity 범위, side/type Enum 제한
+
+### HIGH (Week 2)
+
+- [ ] **감사 로깅** — 모든 쓰기 작업에 타임스탬프 + 사용자 ID 기록 (append-only audit 테이블)
+- [ ] **Monte Carlo 수정** — 현재 regime 순서 랜덤화 → block bootstrap (20일 블록)로 변경
+- [ ] **Partial fill 처리** — Alpaca 응답에서 filled_qty/unfilled_qty 분리 추적
+- [ ] **DB 마이그레이션 원자성** — `BEGIN IMMEDIATE` 트랜잭션으로 DDL + version insert 묶기
+- [ ] **수집 실패 처리** — >10% ticker 실패 시 partial save 거부 (asymmetric data age 방지)
+- [ ] **보안 헤더** — Next.js에 CSP, X-Frame-Options, HSTS 추가. 쿠키에 SameSite=Strict
+
+### MEDIUM (Week 3-4)
+
+- [ ] **데이터 신선도 검증** — 레짐 분류 전 SPY 데이터 age 체크 (max 24h)
+- [ ] **적응형 히스테리시스** — VIX 25+ 시 5일→2일로 레짐 전환 속도 증가
+- [ ] **한국 에이전트 검증** — FX 임계값(1400/1250) 회귀분석 기반 캘리브레이션
+- [ ] **SSE 캐시** — DB 직접 조회 → 메모리 캐시 (60초 갱신)로 변경
+- [ ] **에러 응답 정리** — 내부 에러 메시지 클라이언트 노출 차단 (generic HTTP 500 반환)
+- [ ] **차트 고도화** — Recharts에 RSI/MACD/BB 오버레이 + 시그널 마커
+- [ ] **알림 확장** — Telegram 봇, 레짐 전환 push 알림
 
 ## License
 
