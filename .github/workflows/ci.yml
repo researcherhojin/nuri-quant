@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -25,12 +28,22 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Install TA-Lib C library
+      - name: Cache TA-Lib
+        id: cache-talib
+        uses: actions/cache@v4
+        with:
+          path: /usr/lib/libta_lib*
+          key: talib-0.4.0-ubuntu
+
+      - name: Build TA-Lib from source
+        if: steps.cache-talib.outputs.cache-hit != 'true'
         run: |
           wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
           tar -xzf ta-lib-0.4.0-src.tar.gz
           cd ta-lib && ./configure --prefix=/usr && make -j$(nproc) && sudo make install
-          sudo ldconfig
+
+      - name: Configure TA-Lib
+        run: sudo ldconfig
 
       - name: Install dependencies
         run: |
