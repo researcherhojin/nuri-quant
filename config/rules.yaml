@@ -3,15 +3,82 @@
 # ═══════════════════════════════════════════════════════
 # 이 파일의 값을 변경하면 코드 수정 없이 투자 규칙이 변경됩니다.
 # 백테스트 시 다른 규칙 세트를 시험하려면 이 파일을 복사 후 수정.
+#
+# 근거: O'Neil(CAN SLIM), Minervini(SEPA), 학술 연구(처분효과),
+#       11년 백테스트(트레일링 스톱 15-20% 최적), 6개 외부 사이트 종합분석
+#       (dataroma, tradingeconomics, macrotrends, tipranks, etf.com, ark-funds)
 
+# ─── 포지션 한도 ────────────────────────────────────────
 position_limits:
   max_single_position: 0.15     # 단일 종목 최대 비중 (15%)
   max_sector_exposure: 0.35     # 섹터 최대 노출 (35%)
+  min_cash_reserve: 0.20        # 최소 현금 비중 (20%) — 긴급 기회 대비
 
+# ─── 손절 규칙 ──────────────────────────────────────────
+# 원칙: 손실은 짧게 자르기. 감정 배제, 기계적 실행.
 stop_loss:
-  per_stock: -20                # 종목별 손절선 (%)
+  per_stock: -7                 # 종목별 손절선 (%) — O'Neil: -7~8%
+  per_stock_value: -10          # 가치주 손절선 (%) — 변동성 감안 완화
   portfolio: -10                # 포트폴리오 전체 손절선 (%)
 
+# ─── 익절 규칙 ──────────────────────────────────────────
+# 원칙: 수익은 길게 가져가되 체계적으로 확보.
+# 손익비 최소 3:1 유지 (손절 -7% 대비 익절 +20% = 약 3:1)
+take_profit:
+  # 성장주 (TSLA, NVDA, PLTR, RKLB, IONQ, TEM 등)
+  growth:
+    target_1: 20                # 1차 익절: +20%에서 보유량 50% 매도
+    target_2: 40                # 2차 익절: +40%에서 추가 25% 매도
+    remainder: trailing_stop    # 나머지 25%는 트레일링 스톱 추적
+  # 가치주 (GOOGL, LLY, ORCL, MSFT, AMZN 등)
+  value:
+    target_1: 15                # 1차 익절: +15%에서 보유량 50% 매도
+    target_2: 30                # 2차 익절: +30%에서 추가 25% 매도
+    remainder: trailing_stop    # 나머지 25%는 트레일링 스톱 추적
+  # 스윙 트레이드 (단기 5~20일)
+  swing:
+    target_1: 5                 # 1차 익절: +5%에서 보유량 50% 매도
+    target_2: 10                # 2차 익절: +10%에서 나머지 전량 매도
+  # O'Neil 8주 규칙: 매수 후 3주 이내에 +20% 돌파 시 최소 8주 보유
+  eight_week_hold: true
+
+# ─── 트레일링 스톱 ──────────────────────────────────────
+# 근거: 11년 백테스트에서 15-20% 트레일링 스톱이 최적 수익 (73.9% 누적)
+trailing_stop:
+  growth: -15                   # 성장주: 고점 대비 -15%
+  value: -15                    # 가치주: 고점 대비 -15%
+  volatile: -20                 # 고변동 종목: 고점 대비 -20%
+
+# ─── 매수 진입 조건 ─────────────────────────────────────
+# 레짐 기반 포지션 사이징
+entry_rules:
+  # VIX + Fear&Greed 기반 현금 비중
+  regime_cash:
+    extreme_fear: 0.60          # F&G < 20: 현금 60% (방어적)
+    fear: 0.40                  # F&G 20-40: 현금 40%
+    neutral: 0.25               # F&G 40-60: 현금 25%
+    greed: 0.20                 # F&G 60-80: 현금 20% (최소 유지)
+    extreme_greed: 0.40         # F&G > 80: 현금 40% (과열 주의)
+  # VIX 기반 진입 게이트
+  vix_gate:
+    block_above: 30             # VIX > 30: 신규 매수 금지
+    caution_above: 25           # VIX 25-30: 절반 포지션만
+    normal_below: 20            # VIX < 20: 정상 포지션
+  # 분할 매수 규칙
+  scaling_in:
+    max_tranches: 3             # 최대 3회 분할 매수
+    tranche_interval_days: 5    # 분할 간격 최소 5일
+
+# ─── 매도 우선순위 ──────────────────────────────────────
+# 포트폴리오 정리 시 매도 순서
+sell_priority:
+  - leverage_etf                # 1순위: 레버리지/인버스 ETF
+  - stop_loss_exceeded          # 2순위: 손절선 초과 종목
+  - no_superinvestor            # 3순위: 슈퍼투자자 0명 + 적자 기업
+  - position_limit_exceeded     # 4순위: 비중 한도 초과 종목
+  - sector_limit_exceeded       # 5순위: 섹터 한도 초과
+
+# ─── 레버리지 제한 ──────────────────────────────────────
 leverage:
   banned_etfs:
     - TSLL
@@ -19,3 +86,13 @@ leverage:
     - SQQQ
     - UPRO
     - SPXU
+  max_holding_days: 5           # 레버리지 ETF 최대 보유일 (스윙만 허용)
+
+# ─── 매수 체크리스트 ────────────────────────────────────
+# 매수 전 최소 확인 항목 (자동화 대상)
+buy_checklist:
+  min_tipranks_consensus: "moderate_buy"   # TipRanks 최소 Moderate Buy
+  min_superinvestors: 3                     # 슈퍼투자자 최소 3명 보유
+  max_pe_ratio: 100                         # PE 100 이상 = 투기 경고
+  min_revenue_growth: 0                     # 매출 > $0 (프리레비뉴 기업 금지)
+  require_factor_top50pct: true             # 멀티팩터 상위 50% 이내
