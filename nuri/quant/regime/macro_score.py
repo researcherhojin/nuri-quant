@@ -4,7 +4,7 @@ D-2: 매크로 스코어 — 거시경제 건강도 0~100 점수.
 FRED 매크로 지표 6개를 개별 점수화 후 가중 합산.
 
 사용법:
-    python -m nuri.regime.macro_score
+    python -m nuri.quant.regime.macro_score
 """
 import argparse
 import logging

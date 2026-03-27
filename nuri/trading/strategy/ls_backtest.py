@@ -5,8 +5,8 @@ Long/Short Strategy Backtest — 과거 5년 검증.
 실제 수익률이 얼마였는지 측정.
 
 사용법:
-    python -m nuri.strategy.backtest
-    python -m nuri.strategy.backtest --stress    # 위기 구간 분석
+    python -m nuri.trading.strategy.ls_backtest
+    python -m nuri.trading.strategy.ls_backtest --stress    # 위기 구간 분석
 """
 import argparse
 import logging

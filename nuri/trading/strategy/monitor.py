@@ -4,7 +4,7 @@ Strategy Monitor — 레짐 전환 감지 + 포지션 전환 알림 + 일일 P&L
 이전 레짐과 현재 레짐을 비교하여 전환 시 포지션 스위치 신호 발생.
 
 사용법:
-    python -m nuri.strategy.monitor
+    python -m nuri.trading.strategy.monitor
 """
 import json
 import logging

@@ -5,8 +5,8 @@ C-3: 애널리스트 목표가 검증 (전향적).
 매주 누적되는 estimates 데이터가 90일+ 경과하면 자동으로 검증 시작.
 
 사용법:
-    python -m nuri.validation.analyst_backtest
-    python -m nuri.validation.analyst_backtest --min-days 60
+    python -m nuri.quant.validation.analyst_backtest
+    python -m nuri.quant.validation.analyst_backtest --min-days 60
 """
 import argparse
 import logging
