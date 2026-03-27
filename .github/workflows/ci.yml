@@ -35,11 +35,12 @@ jobs:
       - name: Cache TA-Lib
         id: cache-talib
         uses: actions/cache@v4
+        continue-on-error: true
         with:
           path: |
             /usr/lib/libta_lib*
             /usr/include/ta-lib
-          key: talib-0.4.0-ubuntu-v2
+          key: talib-0.4.0-ubuntu-v3
 
       - name: Build TA-Lib from source
         if: steps.cache-talib.outputs.cache-hit != 'true'
@@ -54,15 +55,17 @@ jobs:
       - name: Cache venv
         id: cache-venv
         uses: actions/cache@v4
+        continue-on-error: true
         with:
           path: .venv
           key: venv-${{ runner.os }}-py3.12-${{ hashFiles('pyproject.toml') }}
 
       - name: Install dependencies
-        if: steps.cache-venv.outputs.cache-hit != 'true'
         run: |
-          uv venv
-          uv pip install -e ".[dev]" 2>/dev/null || uv pip install -e .
+          if [ ! -f .venv/bin/python ]; then
+            uv venv
+            uv pip install -e ".[dev]" 2>/dev/null || uv pip install -e .
+          fi
 
       - name: Run tests
         run: .venv/bin/python -m pytest tests/ -q --tb=short -x
