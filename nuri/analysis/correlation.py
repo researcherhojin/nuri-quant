@@ -37,7 +37,7 @@ def analyze_correlation(min_days: int = 60) -> tuple[pd.DataFrame, list[dict]]:
     pivot = pivot[valid_tickers]
 
     # 일간 수익률 → 상관행렬
-    returns = pivot.pct_change().dropna()
+    returns = pivot.ffill().pct_change().dropna()
     corr_matrix = returns.corr()
 
     # 고상관 경고 (|r| > 0.80)

@@ -60,14 +60,83 @@ class ConsensusResult:
 
 
 def _compute_weights(db_path=None) -> dict[str, float]:
-    """Learning Memory에서 에이전트별 가중치 동적 계산.
+    """Learning Memory + recommendations 기반 동적 가중치 계산.
 
-    아직 에이전트별 적중률 데이터가 없으면 DEFAULT_WEIGHTS 반환.
-    향후: recommendations 테이블에서 에이전트별 hit rate를 추적하여 가중치 보정.
+    recommendations 테이블에서 에이전트별 적중률을 추적하여 가중치를 보정한다.
+    30일 이상 경과한 추천 중 outcome_30d가 있는 건으로 계산.
+    데이터 부족 시(< 10건) DEFAULT_WEIGHTS 반환.
     """
-    # TODO: 추적 데이터 축적 후 동적 가중치 구현
-    # 현재는 기본 가중치 사용
-    return dict(DEFAULT_WEIGHTS)
+    from nuri.core.db import query
+
+    # 최근 180일 내 outcome_30d가 기록된 추천 조회
+    rows = query(
+        """
+        SELECT signals FROM recommendations
+        WHERE outcome_30d IS NOT NULL
+          AND date >= date('now', '-180 days')
+        """,
+        db_path=db_path,
+    )
+
+    if len(rows) < 10:
+        return dict(DEFAULT_WEIGHTS)
+
+    # 에이전트별 적중률 계산
+    # signals 필드에 에이전트 verdict가 JSON으로 저장되어 있으면 파싱
+    import json
+    agent_hits: dict[str, list[bool]] = {name: [] for name in DEFAULT_WEIGHTS}
+
+    for row in rows:
+        try:
+            signals_str = row["signals"]
+            if not signals_str:
+                continue
+            # signals 필드가 에이전트 verdict JSON이 아닌 경우 스킵
+            data = json.loads(signals_str) if isinstance(signals_str, str) else None
+            if not isinstance(data, dict) or "verdicts" not in data:
+                continue
+
+            outcome = row.get("outcome_30d", 0) if hasattr(row, "get") else 0
+            is_positive = outcome > 0
+
+            for v in data["verdicts"]:
+                agent_name = v.get("agent_name", "")
+                action = v.get("action", "HOLD")
+                if agent_name in agent_hits:
+                    # BUY가 양수 수익이면 적중, SELL이 음수 수익이면 적중
+                    if action == "BUY":
+                        agent_hits[agent_name].append(is_positive)
+                    elif action == "SELL":
+                        agent_hits[agent_name].append(not is_positive)
+                    # HOLD는 적중 판정 제외
+        except (json.JSONDecodeError, TypeError, KeyError):
+            continue
+
+    # 적중률 기반 가중치 계산 (최소 5건 이상인 에이전트만)
+    hit_rates = {}
+    for name, hits in agent_hits.items():
+        if len(hits) >= 5:
+            hit_rates[name] = sum(hits) / len(hits)
+
+    if not hit_rates:
+        return dict(DEFAULT_WEIGHTS)
+
+    # 적중률을 가중치로 변환 (정규화)
+    # 기본 가중치의 ±30% 범위 내에서 조정
+    weights = dict(DEFAULT_WEIGHTS)
+    for name, rate in hit_rates.items():
+        base = DEFAULT_WEIGHTS.get(name, 0.1)
+        # 50% 적중률 = 기본값, 70% = +30%, 30% = -30%
+        adjustment = (rate - 0.5) * 1.5  # -0.75 ~ +0.75 범위
+        adjusted = base * (1 + max(-0.3, min(0.3, adjustment)))
+        weights[name] = max(0.03, adjusted)  # 최소 3%
+
+    # 총합 1.0으로 정규화
+    total = sum(weights.values())
+    if total > 0:
+        weights = {k: v / total for k, v in weights.items()}
+
+    return weights
 
 
 def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
