@@ -18,7 +18,7 @@ Open-source quant investment platform. Collects data from 13 free sources, valid
 **Data**: OpenBB, yfinance, pykrx, edgartools, TA-Lib
 **Quant**: pandas, Riskfolio-Lib, VectorBT, QuantStats, Plotly
 **Interface**: FastAPI, Next.js 16, shadcn/ui, Tailwind 4, Ollama
-**Infra**: SQLite (WAL), APScheduler, Discord, GitHub Actions CI
+**Infra**: SQLite (WAL), APScheduler, Discord, GitHub Actions CI (lint + test + tsc + PR checks + Trivy security scan)
 
 ## Getting Started
 
@@ -61,6 +61,9 @@ make lint           # ruff check
 make test           # 142 unit tests
 make gate           # pipeline readiness check
 make start          # API(:8001) + Dashboard(:3000)
+make pre-deploy     # config/DB/gate/frontend/port 검증
+make ports          # port status (8001/3000/11434)
+make update-counts  # README 테스트 수 자동 업데이트
 ```
 
 ## Architecture
