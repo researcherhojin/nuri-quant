@@ -4,7 +4,7 @@ C-4: 통합 스코어카드 — C-1/C-2/C-3 결과를 단일 HTML로 통합.
 C-1 (시그널 백테스트) 완료 후 실행 가능. C-2/C-3은 있으면 포함.
 
 사용법:
-    python -m nuri.validation.scorecard
+    python -m nuri.quant.validation.scorecard
 """
 import logging
 from datetime import datetime
