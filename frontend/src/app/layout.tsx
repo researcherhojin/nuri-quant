@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
+import { LiveIndicator } from "@/components/ui/live-indicator";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -13,6 +14,7 @@ export const metadata: Metadata = {
 
 const NAV_ITEMS = [
   { href: "/", label: "Overview" },
+  { href: "/portfolio", label: "Portfolio" },
   { href: "/signals", label: "Signals" },
   { href: "/consensus", label: "Agents" },
   { href: "/scan", label: "Scan" },
@@ -37,8 +39,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {item.label}
             </Link>
           ))}
+          <LiveIndicator />
         </nav>
-        <main className="max-w-7xl mx-auto px-6 py-6 flex-1 w-full">{children}</main>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex-1 w-full">{children}</main>
       </body>
     </html>
   );

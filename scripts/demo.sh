@@ -52,7 +52,7 @@ ok "Database ready"
 # STEP 1: Pipeline Gate — 데이터 준비 상태 확인
 # ═══════════════════════════════════════════════════════
 header "Pipeline Gate Check"
-$PYTHON -m nuri.engine.gate 2>&1 | head -30
+$PYTHON -m nuri.trading.engine.gate 2>&1 | head -30
 ok "Gate status displayed"
 
 # ═══════════════════════════════════════════════════════
@@ -70,28 +70,28 @@ ok "Macro data collected"
 # STEP 3: Signal Backtest (Phase C-1)
 # ═══════════════════════════════════════════════════════
 header "Signal Backtest — 7 signals × all tickers"
-$PYTHON -m nuri.analysis.validation.signal_backtest 2>&1 | tail -12
+$PYTHON -m nuri.quant.validation.signal_backtest 2>&1 | tail -12
 ok "Signal scorecard generated"
 
 # ═══════════════════════════════════════════════════════
 # STEP 4: Learning Memory Snapshot
 # ═══════════════════════════════════════════════════════
 header "Learning Memory — Performance Drift Detection"
-$PYTHON -m nuri.engine.memory --snapshot 2>&1
+$PYTHON -m nuri.trading.engine.memory --snapshot 2>&1
 ok "Memory snapshot saved + drift analyzed"
 
 # ═══════════════════════════════════════════════════════
 # STEP 5: Market Regime (Phase D)
 # ═══════════════════════════════════════════════════════
 header "Market Regime Classification"
-$PYTHON -m nuri.analysis.regime.strategy_map 2>&1
+$PYTHON -m nuri.quant.regime.strategy_map 2>&1
 ok "Regime + macro + strategy computed"
 
 # ═══════════════════════════════════════════════════════
 # STEP 6: Conflict Detection
 # ═══════════════════════════════════════════════════════
 header "Signal Conflict Detection"
-$PYTHON -m nuri.engine.conflicts 2>&1
+$PYTHON -m nuri.trading.engine.conflicts 2>&1
 ok "Conflicts analyzed"
 
 # ═══════════════════════════════════════════════════════
@@ -134,7 +134,7 @@ ok "Strategy generated"
 # ═══════════════════════════════════════════════════════
 header "Strategy Backtest (summary)"
 $PYTHON -c "
-from nuri.trading.strategy.backtest import classify_historical_regimes, run_backtest
+from nuri.trading.strategy.ls_backtest import classify_historical_regimes, run_backtest
 regimes = classify_historical_regimes()
 r = run_backtest(regimes)
 print(f'  Return: {r.total_return:+.1f}% vs SPY {r.spy_total_return:+.1f}% (excess {r.excess_return:+.1f}%)')

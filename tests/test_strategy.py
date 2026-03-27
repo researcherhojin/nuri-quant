@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nuri.core.db import init_db, upsert_prices, upsert_macro, get_db
+from nuri.core.db import get_db, init_db, upsert_macro, upsert_prices
 
 
 @pytest.fixture
@@ -66,18 +66,18 @@ class TestCertification:
 class TestPositionManager:
 
     def test_open_and_query(self, bull_data):
-        from nuri.trading.strategy.position import open_position, get_positions_summary
+        from nuri.trading.strategy.position import get_positions_summary, open_position
         # bull 레짐에서 long은 인증 통과 가능
-        success = open_position("QQQ", "long", 400.0, portfolio_type="tactical",
-                                regime="bull_low_vol", db_path=bull_data)
+        open_position("QQQ", "long", 400.0, portfolio_type="tactical",
+                     regime="bull_low_vol", db_path=bull_data)
         # 에이전트 합의 실패할 수 있지만 open 시도는 됨
         summary = get_positions_summary(db_path=bull_data)
         assert summary["open_total"] >= 0  # 인증 결과에 따라
 
     def test_duplicate_blocked(self, bull_data):
-        from nuri.trading.strategy.position import certify_position
         # 이미 오픈된 포지션이 있으면 concentration_ok = False
         from nuri.core.db import get_db
+        from nuri.trading.strategy.position import certify_position
         with get_db(bull_data) as conn:
             conn.execute(
                 "INSERT INTO positions (portfolio_type, ticker, direction, entry_date, entry_price, status) "

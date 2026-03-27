@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from nuri.engine.gate import check_gate, print_gate
+from nuri.trading.engine.gate import check_gate, print_gate
 
 
 def main():

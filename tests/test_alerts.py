@@ -1,9 +1,9 @@
 """Alerts 모듈 테스트."""
 from nuri.alerts.formatters import (
+    _fear_greed_label,
+    format_ark_alert,
     format_daily_report,
     format_price_alert,
-    format_ark_alert,
-    _fear_greed_label,
 )
 
 

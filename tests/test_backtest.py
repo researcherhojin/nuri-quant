@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nuri.core.db import init_db, upsert_prices, upsert_macro
+from nuri.core.db import init_db, upsert_macro, upsert_prices
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ def backtest_data(db_path):
 class TestRegimeClassification:
 
     def test_classifies_multiple_regimes(self, backtest_data):
-        from nuri.trading.strategy.backtest import classify_historical_regimes
+        from nuri.trading.strategy.ls_backtest import classify_historical_regimes
         df = classify_historical_regimes(db_path=backtest_data)
         regimes = df["regime"].unique()
         # 상승+하락+횡보 → 최소 2개 레짐
@@ -62,7 +62,7 @@ class TestRegimeClassification:
         assert len(non_unknown) >= 2
 
     def test_bear_detected_in_decline(self, backtest_data):
-        from nuri.trading.strategy.backtest import classify_historical_regimes
+        from nuri.trading.strategy.ls_backtest import classify_historical_regimes
         df = classify_historical_regimes(db_path=backtest_data)
         bear_days = df[df["regime"].str.contains("bear", na=False)]
         assert len(bear_days) > 50  # 200일 하락 중 최소 50일은 bear
@@ -71,7 +71,7 @@ class TestRegimeClassification:
 class TestBacktest:
 
     def test_returns_result(self, backtest_data):
-        from nuri.trading.strategy.backtest import classify_historical_regimes, run_backtest
+        from nuri.trading.strategy.ls_backtest import classify_historical_regimes, run_backtest
         regimes = classify_historical_regimes(db_path=backtest_data)
         result = run_backtest(regimes, db_path=backtest_data)
         assert result.total_days > 500
@@ -80,7 +80,7 @@ class TestBacktest:
 
     def test_mdd_better_than_spy(self, backtest_data):
         """전략 MDD가 SPY보다 나아야 함 (방어 효과)."""
-        from nuri.trading.strategy.backtest import classify_historical_regimes, run_backtest
+        from nuri.trading.strategy.ls_backtest import classify_historical_regimes, run_backtest
         regimes = classify_historical_regimes(db_path=backtest_data)
         result = run_backtest(regimes, db_path=backtest_data)
         assert result.max_drawdown > result.spy_max_drawdown  # 덜 빠짐 (음수이므로 >)
@@ -89,7 +89,7 @@ class TestBacktest:
 class TestMonteCarlo:
 
     def test_runs_without_error(self, backtest_data):
-        from nuri.trading.strategy.backtest import classify_historical_regimes, monte_carlo_test
+        from nuri.trading.strategy.ls_backtest import classify_historical_regimes, monte_carlo_test
         regimes = classify_historical_regimes(db_path=backtest_data)
         mc = monte_carlo_test(regimes, n_simulations=50, db_path=backtest_data)
         assert "actual_return" in mc
@@ -100,7 +100,7 @@ class TestMonteCarlo:
 class TestAllocation:
 
     def test_allocations_sum_to_100(self):
-        from nuri.trading.strategy.backtest import REGIME_ALLOCATION
+        from nuri.trading.strategy.ls_backtest import REGIME_ALLOCATION
         for regime, alloc in REGIME_ALLOCATION.items():
             total = alloc["long"] + alloc["short"] + alloc["cash"]
             assert abs(total - 1.0) < 0.01, f"{regime}: {total}"

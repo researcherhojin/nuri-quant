@@ -1,8 +1,9 @@
 """종목 상세 API — 모든 데이터를 한 번에."""
 from dataclasses import asdict
-from fastapi import APIRouter
 
-from nuri.core.db import query, query_df
+from fastapi import APIRouter, Query
+
+from nuri.core.db import query
 
 router = APIRouter(tags=["ticker"])
 
@@ -87,3 +88,17 @@ def get_ticker_detail(symbol: str):
         result["signals"] = []
 
     return result
+
+
+@router.get("/ticker/{symbol}/prices")
+def get_ticker_prices(symbol: str, days: int = Query(180, ge=30, le=1825)):
+    """종목 가격 히스토리 (차트용)."""
+    ticker = symbol.upper()
+    rows = query(
+        "SELECT date, open, high, low, close, volume FROM prices "
+        "WHERE ticker=? ORDER BY date DESC LIMIT ?",
+        (ticker, days),
+    )
+    # 오래된 순으로 정렬
+    prices = [dict(r) for r in reversed(rows)]
+    return {"ticker": ticker, "prices": prices, "count": len(prices)}

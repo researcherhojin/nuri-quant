@@ -10,11 +10,10 @@ D-1: 시장 레짐 분류기 — Bull/Bear/Sideways x High/Low Volatility.
 """
 import argparse
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from nuri.core.db import query, query_df

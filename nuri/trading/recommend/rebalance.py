@@ -5,18 +5,13 @@ E-2: 레짐 적응 리밸런싱.
 최종 리밸런싱 액션을 생성한다.
 
 사용법:
-    python -m nuri.recommend.rebalance
-    python -m nuri.recommend.rebalance --method rp
+    python -m nuri.trading.recommend.rebalance
+    python -m nuri.trading.recommend.rebalance --method rp
 """
 import argparse
 import logging
-from dataclasses import dataclass, asdict
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
-
-import pandas as pd
-
-from nuri.core.db import query
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +70,7 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
     """레짐 맥락을 반영한 리밸런싱 액션 생성. Gate 검증 후 실행."""
     # Gate 검증
     try:
-        from nuri.engine.gate import check_gate
+        from nuri.trading.engine.gate import check_gate
         gate = check_gate("recommend", db_path)
         if not gate.ready:
             failed = [c for c in gate.conditions if not c.passed]
@@ -88,8 +83,8 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
         pass
 
     from nuri.analysis.rebalance import analyze_rebalance
-    from nuri.analysis.regime.classifier import classify_regime
-    from nuri.analysis.regime.strategy_map import map_regime_to_strategy
+    from nuri.quant.regime.classifier import classify_regime
+    from nuri.quant.regime.strategy_map import map_regime_to_strategy
 
     # 1. 기존 MVO/RP 결과
     base_df = analyze_rebalance(method=method)
@@ -103,7 +98,6 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
 
     position = strategy.position_sizing if strategy else "normal"
     cash_target = CASH_TARGETS.get(position, 0.05)
-    preferred_sectors = strategy.sector_preference if strategy else []
     regime_name = regime.regime if regime else "unknown"
 
     # 3. E-1 후보 시그널 매핑 + Conflict 감지
@@ -116,7 +110,7 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
             if c.regime_fit:
                 signal_map.setdefault(c.ticker, []).append(f"{c.signal_id}({c.direction})")
 
-        from nuri.engine.conflicts import detect_conflicts
+        from nuri.trading.engine.conflicts import detect_conflicts
         conflicts = detect_conflicts(candidates)
         conflict_tickers = {
             cf.ticker for cf in conflicts

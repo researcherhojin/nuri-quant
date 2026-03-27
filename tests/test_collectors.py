@@ -1,8 +1,7 @@
 """Collector 모듈 테스트 — v2 오픈소스 스택."""
-import pandas as pd
 import pytest
 
-from nuri.core.db import init_db, upsert_prices, upsert_portfolio
+from nuri.core.db import init_db, upsert_portfolio
 
 
 @pytest.fixture
@@ -54,6 +53,7 @@ class TestTechnicalCollector:
     def test_compute_talib(self):
         """TA-Lib 지표 계산."""
         import numpy as np
+
         from nuri.collectors.technical import TechnicalCollector
         close = np.array([100 + i * 0.5 + np.sin(i) for i in range(50)], dtype=float)
         result = TechnicalCollector._compute_talib(close)

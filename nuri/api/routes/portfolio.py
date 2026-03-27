@@ -1,9 +1,19 @@
 """포트폴리오 + 리스크 API."""
 from fastapi import APIRouter
+from pydantic import BaseModel
 
-from nuri.core.db import query, query_df
+from nuri.core.db import query, upsert_portfolio
 
 router = APIRouter(tags=["portfolio"])
+
+
+class HoldingInput(BaseModel):
+    account: str
+    ticker: str
+    quantity: float
+    avg_price: float
+    currency: str = "USD"
+    sector: str = ""
 
 
 @router.get("/portfolio")
@@ -20,6 +30,30 @@ def get_portfolio():
         ORDER BY p.ticker
     """)
     return {"holdings": rows, "count": len(rows)}
+
+
+@router.post("/portfolio")
+def add_holding(holding: HoldingInput):
+    """보유 종목 추가/수정."""
+    record = holding.model_dump()
+    record["ticker"] = record["ticker"].upper()
+    upsert_portfolio([record])
+    return {"ok": True, "ticker": record["ticker"]}
+
+
+@router.delete("/portfolio/{account}/{ticker}")
+def delete_holding(account: str, ticker: str):
+    """보유 종목 삭제."""
+    from nuri.core.db import get_db
+    ticker = ticker.upper()
+    with get_db() as conn:
+        cur = conn.execute(
+            "DELETE FROM portfolio WHERE account=? AND ticker=?",
+            (account, ticker),
+        )
+    if cur.rowcount == 0:
+        return {"ok": False, "error": "Not found"}
+    return {"ok": True, "deleted": ticker}
 
 
 @router.get("/risk")

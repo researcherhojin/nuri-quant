@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nuri.core.db import init_db, upsert_prices, get_db
+from nuri.core.db import get_db, init_db, upsert_prices
 
 
 @pytest.fixture
@@ -93,7 +93,7 @@ class TestConsensus:
         assert r.final_action in ("BUY", "SELL", "HOLD")
         assert 0 <= r.final_confidence <= 100
         assert 0 <= r.agreement_rate <= 1
-        assert len(r.verdicts) == 6  # 6 agents including WallStreet
+        assert len(r.verdicts) == 7  # 7 agents including WallStreet + KoreanMarket
 
     def test_risk_veto(self, db_path):
         """리스크 에이전트 거부권: 손절 돌파 → 전체 SELL."""

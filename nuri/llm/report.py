@@ -85,7 +85,7 @@ def gather_context(db_path=None) -> ReportContext:
     gate_summary = "Gate 정보 없음"
     gate_score = 0.0
     try:
-        from nuri.engine.gate import check_all_gates
+        from nuri.trading.engine.gate import check_all_gates
         gates = check_all_gates(db_path)
         lines = []
         total_pass = total_all = 0
@@ -105,7 +105,7 @@ def gather_context(db_path=None) -> ReportContext:
     # ── 2. Regime ──
     regime_section = "레짐 데이터 없음"
     try:
-        from nuri.analysis.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import classify_regime
         regime = classify_regime(db_path=db_path)
         if regime:
             d = regime.details
@@ -124,7 +124,7 @@ def gather_context(db_path=None) -> ReportContext:
     # ── 3. Macro ──
     macro_section = "매크로 데이터 없음"
     try:
-        from nuri.analysis.regime.macro_score import compute_macro_score
+        from nuri.quant.regime.macro_score import compute_macro_score
         macro = compute_macro_score(db_path=db_path)
         det = macro.details
         macro_section = _track(
@@ -188,7 +188,7 @@ def gather_context(db_path=None) -> ReportContext:
     # ── 6. Conflicts ──
     conflicts_section = "충돌 없음"
     try:
-        from nuri.engine.conflicts import detect_conflicts
+        from nuri.trading.engine.conflicts import detect_conflicts
         conflicts = detect_conflicts(db_path=db_path)
         if conflicts:
             lines = [f"시그널 충돌 {len(conflicts)}건:"]
@@ -206,7 +206,7 @@ def gather_context(db_path=None) -> ReportContext:
     # ── 7. Learning Memory Drift ──
     drift_section = "성과 변화 데이터 없음"
     try:
-        from nuri.engine.memory import detect_drift
+        from nuri.trading.engine.memory import detect_drift
         drifts = detect_drift(db_path=db_path)
         if drifts:
             lines = ["시그널 성과 변화 (전체 기간 vs 최근 90일):"]
@@ -248,7 +248,7 @@ def gather_context(db_path=None) -> ReportContext:
     # ── 9. Strategy ──
     strategy_section = "전략 데이터 없음"
     try:
-        from nuri.analysis.regime.strategy_map import map_regime_to_strategy
+        from nuri.quant.regime.strategy_map import map_regime_to_strategy
         rec = map_regime_to_strategy(db_path=db_path)
         if rec:
             strategy_section = _track(
@@ -447,7 +447,6 @@ async def generate_llm_report(db_path=None) -> dict:
     Returns:
         dict with keys: report, context, validation, disclaimer, gate_blocked
     """
-    import httpx
 
     ctx = gather_context(db_path)
 

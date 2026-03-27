@@ -1,21 +1,19 @@
-"""nuri.db 모듈 테스트 — in-memory SQLite로 격리."""
-import tempfile
-from pathlib import Path
+"""nuri.core.db 모듈 테스트 — in-memory SQLite로 격리."""
 
 import pandas as pd
 import pytest
 
 from nuri.core.db import (
     get_connection,
-    get_tickers,
     get_latest_price,
+    get_schema_version,
+    get_tickers,
     init_db,
     query,
     query_df,
     upsert_macro,
     upsert_portfolio,
     upsert_prices,
-    upsert_signals,
 )
 
 
@@ -166,3 +164,25 @@ class TestGetLatestPrice:
     def test_returns_none_for_unknown(self, db_path):
         """없는 종목은 None 반환."""
         assert get_latest_price("XXXXX", db_path) is None
+
+
+class TestSchemaMigration:
+    def test_schema_version_table_exists(self, db_path):
+        """init_db() 후 schema_version 테이블 존재."""
+        conn = get_connection(db_path)
+        tables = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+        ).fetchall()
+        conn.close()
+        assert len(tables) == 1
+
+    def test_get_schema_version_initial(self, db_path):
+        """마이그레이션 없으면 버전 0."""
+        assert get_schema_version(db_path) == 0
+
+    def test_idempotent_with_migrations(self, db_path):
+        """init_db() 여러 번 호출해도 schema_version 중복 없음."""
+        init_db(db_path)
+        init_db(db_path)
+        rows = query("SELECT COUNT(*) as c FROM schema_version", db_path=db_path)
+        assert rows[0]["c"] == 0  # 아직 마이그레이션이 없으므로 0건
