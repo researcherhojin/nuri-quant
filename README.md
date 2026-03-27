@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-142_passed-26a69a?logo=pytest&logoColor=white)]()
+[![Tests](https://img.shields.io/badge/Tests-161_passed-26a69a?logo=pytest&logoColor=white)]()
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 
@@ -58,7 +58,7 @@ make filings        # SEC 10-K key metrics
 
 # Infrastructure
 make lint           # ruff check
-make test           # 142 unit tests
+make test           # 161 unit tests
 make gate           # pipeline readiness check
 make start          # API(:8001) + Dashboard(:3000)
 make pre-deploy     # config/DB/gate/frontend/port 검증
