@@ -8,6 +8,7 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  UV_CACHE_DIR: /tmp/.uv-cache
 
 jobs:
   lint:
@@ -27,6 +28,9 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
 
       - name: Cache TA-Lib
         id: cache-talib
@@ -53,7 +57,7 @@ jobs:
           uv pip install -e ".[dev]" 2>/dev/null || uv pip install -e .
 
       - name: Run tests
-        run: .venv/bin/python -m pytest tests/ -q --tb=short
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -x
 
   frontend:
     runs-on: ubuntu-latest
