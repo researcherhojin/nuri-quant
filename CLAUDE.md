@@ -62,7 +62,7 @@ make swing            # 스캔 + 에이전트 합의 → 진입 저장
 # Lint + Test
 make lint             # ruff check
 make lint-fix         # ruff check --fix
-make test             # pytest tests/ -v --cov=nuri (142 tests)
+make test             # pytest tests/ -v --cov=nuri (161 tests)
 .venv/bin/python -m pytest tests/test_db.py -v                                    # single file
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices -v                  # single class
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v  # single test
@@ -225,7 +225,7 @@ Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_trans
 
 ## Testing
 
-142 tests across 15 files. Tests use `tmp_path` fixture for isolated SQLite databases:
+161 tests across 16 files. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
