@@ -1,6 +1,6 @@
 """리스크 관리 에이전트 — VaR, 손절선, 포지션 집중도 기반 판정."""
-from nuri.trading.agents.base import BaseAgent, AgentVerdict
-from nuri.core.rules import STOCK_STOP_LOSS, MAX_SINGLE_POSITION
+from nuri.core.rules import MAX_SINGLE_POSITION, STOCK_STOP_LOSS
+from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 
 class RiskAgent(BaseAgent):

@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 import quantstats as qs
 
-from nuri.core.db import query_df, query
+from nuri.core.db import query, query_df
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ def print_performance(port_returns: pd.Series, benchmark: pd.Series) -> None:
     bench_return = qs.stats.comp(benchmark) * 100 if not benchmark.empty else 0
 
     print(f"\n{'=' * 55}")
-    print(f"  성과 분석 (QuantStats)")
+    print("  성과 분석 (QuantStats)")
     print(f"{'=' * 55}")
     print(f"  누적 수익률:     {total_return:>+8.2f}%")
     print(f"  연환산 변동성:   {volatility:>8.2f}%")

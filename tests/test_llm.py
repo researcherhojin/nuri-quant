@@ -33,7 +33,7 @@ class TestReportContext:
 
     def test_prompt_contains_data_tags(self, db_path):
         """프롬프트에 [DATA]...[/DATA] 구조가 있어야 함."""
-        from nuri.llm.report import gather_context, format_prompt
+        from nuri.llm.report import format_prompt, gather_context
         ctx = gather_context(db_path=db_path)
         prompt = format_prompt(ctx)
         assert "[DATA]" in prompt
@@ -44,7 +44,7 @@ class TestOutputValidation:
 
     def test_clean_output_passes(self, db_path):
         """입력 데이터와 일치하는 출력은 통과."""
-        from nuri.llm.report import validate_output, ReportContext
+        from nuri.llm.report import ReportContext, validate_output
         ctx = ReportContext(
             gate_summary="", gate_score=0.7,
             regime_section="", macro_section="", risk_section="",
@@ -59,7 +59,7 @@ class TestOutputValidation:
 
     def test_hallucinated_ticker_detected(self, db_path):
         """입력에 없는 티커를 LLM이 언급하면 감지."""
-        from nuri.llm.report import validate_output, ReportContext
+        from nuri.llm.report import ReportContext, validate_output
         ctx = ReportContext(
             gate_summary="", gate_score=0.7,
             regime_section="", macro_section="", risk_section="",
@@ -74,7 +74,7 @@ class TestOutputValidation:
 
     def test_low_gate_score_warning(self):
         """게이트 점수 낮으면 경고."""
-        from nuri.llm.report import validate_output, ReportContext
+        from nuri.llm.report import ReportContext, validate_output
         ctx = ReportContext(
             gate_summary="", gate_score=0.3,
             regime_section="", macro_section="", risk_section="",

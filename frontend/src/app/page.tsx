@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 
@@ -26,12 +26,6 @@ const levelStyles: Record<string, { bg: string; border: string; text: string; la
   defensive:  { bg: "bg-red-950/50",     border: "border-red-700",     text: "text-red-400",     label: "DEFENSIVE" },
 };
 
-const actionStyles: Record<string, string> = {
-  BUY:   "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  SELL:  "bg-red-500/20 text-red-400 border-red-500/30",
-  WATCH: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-};
-
 async function Dashboard() {
   const d = await fetchAPI<DashboardData>("/api/dashboard");
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
@@ -42,14 +36,12 @@ async function Dashboard() {
       <Card className={`${style.bg} ${style.border} border-2`}>
         <CardContent className="pt-6 pb-5">
           <div className="flex items-center gap-3 mb-3">
-            <Badge className={`${style.text} bg-transparent border ${style.border} text-xs px-2 py-0.5`}>
-              {style.label}
-            </Badge>
+            <StatusBadge status={style.label} size="md" />
             <span className="text-xs text-zinc-500">
               {d.regime.regime} | Macro {d.macro.score}/100 | Gate {d.gate_score}%
             </span>
           </div>
-          <p className={`text-lg font-medium ${style.text}`}>{d.verdict}</p>
+          <p className={`text-base sm:text-lg font-medium ${style.text}`}>{d.verdict}</p>
 
           {/* Allocation Bar — 라벨이 바 안에 표시 */}
           <div className="flex h-6 rounded-lg overflow-hidden mt-4 text-[10px] font-medium">
@@ -86,9 +78,7 @@ async function Dashboard() {
                   <Link key={`${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
                     className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 transition-colors group">
                     <div className="flex items-center gap-2.5">
-                      <Badge className={`${actionStyles[a.action]} border text-[11px] px-1.5 py-0`}>
-                        {a.action}
-                      </Badge>
+                      <StatusBadge status={a.action} />
                       <div>
                         <span className="font-medium text-sm group-hover:text-white transition-colors">{a.ticker}</span>
                         <p className="text-[11px] text-zinc-500 mt-0.5 line-clamp-1">{a.reason}</p>

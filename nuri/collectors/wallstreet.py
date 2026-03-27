@@ -7,7 +7,6 @@ yfinance에서 직접 수집. API 키 불필요.
     python -m nuri.collectors.wallstreet
 """
 import logging
-from datetime import datetime
 from typing import Any
 
 import pandas as pd

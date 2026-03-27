@@ -39,12 +39,12 @@ print(f'  DB: {tables[0][\"c\"]} tables, {prices[0][\"c\"]:,} prices')
 # Imports (24 modules)
 modules = [
     'nuri.core.db', 'nuri.core.rules',
-    'nuri.analysis.regime.classifier', 'nuri.analysis.regime.macro_score',
-    'nuri.analysis.validation.signal_backtest',
+    'nuri.quant.regime.classifier', 'nuri.quant.regime.macro_score',
+    'nuri.quant.validation.signal_backtest',
     'nuri.trading.agents.consensus', 'nuri.trading.agents.wallstreet',
-    'nuri.trading.strategy.longshort', 'nuri.trading.strategy.backtest',
+    'nuri.trading.strategy.longshort', 'nuri.trading.strategy.ls_backtest',
     'nuri.trading.recommend.candidates', 'nuri.trading.swing.scanner',
-    'nuri.engine.gate', 'nuri.engine.conflicts', 'nuri.engine.memory',
+    'nuri.trading.engine.gate', 'nuri.trading.engine.conflicts', 'nuri.trading.engine.memory',
     'nuri.llm.report', 'nuri.api.main',
 ]
 for m in modules:
@@ -62,14 +62,14 @@ ok = sum(1 for ep in fast_eps if c.get(ep).status_code == 200)
 print(f'  API: {ok}/{len(fast_eps)} fast endpoints OK')
 
 # Business Logic
-from nuri.analysis.regime.classifier import classify_regime
-from nuri.engine.gate import check_gate
+from nuri.quant.regime.classifier import classify_regime
+from nuri.trading.engine.gate import check_gate
 r = classify_regime()
 g = check_gate()
 print(f'  Regime: {r.regime if r else \"FAIL\"}, Gate: {g.passed}/{g.total}')
 
 # Backtest
-from nuri.trading.strategy.backtest import classify_historical_regimes, run_backtest
+from nuri.trading.strategy.ls_backtest import classify_historical_regimes, run_backtest
 regimes = classify_historical_regimes()
 bt = run_backtest(regimes)
 print(f'  Backtest: {bt.total_return:+.1f}%, Sharpe: {bt.sharpe}, MDD: {bt.max_drawdown:.1f}%')
@@ -104,7 +104,7 @@ check "Heavy Endpoints"
 
 # 5. Integrity
 echo ""; echo "━━━ 5/5. File Integrity ━━━"
-old=$(grep -rn "from nuri\.regime\.\|from nuri\.agents\.\|from nuri\.strategy\.\|from nuri\.recommend\.\|from nuri\.swing\.\|from nuri\.quant\." nuri/ tests/ scripts/ --include="*.py" 2>/dev/null | grep -v __pycache__ | grep -v "nuri.analysis.regime" | grep -v "nuri.analysis.validation" | grep -v "nuri.analysis.factors" | grep -v "nuri.trading" | wc -l | tr -d ' ')
+old=$(grep -rn "from nuri\.regime\.\|from nuri\.agents\.\|from nuri\.strategy\.\|from nuri\.recommend\.\|from nuri\.swing\.\|from nuri\.quant\." nuri/ tests/ scripts/ --include="*.py" 2>/dev/null | grep -v __pycache__ | grep -v "nuri.quant.regime" | grep -v "nuri.quant.validation" | grep -v "nuri.analysis.factors" | grep -v "nuri.trading" | wc -l | tr -d ' ')
 echo "  Orphan imports: $old"
 test "$old" -eq "0"
 check "File Integrity"

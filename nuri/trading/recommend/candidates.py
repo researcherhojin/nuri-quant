@@ -5,21 +5,21 @@ E-1: 시그널 기반 후보 스크리너.
 레짐 맥락과 함께 ranked 후보 리스트를 생성한다.
 
 사용법:
-    python -m nuri.recommend.candidates
-    python -m nuri.recommend.candidates --days 3
+    python -m nuri.trading.recommend.candidates
+    python -m nuri.trading.recommend.candidates --days 3
 """
 import argparse
-import json
 import logging
-from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
+from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
 
 from nuri.core.db import get_tickers, query_df
-from nuri.analysis.validation.signal_backtest import (
-    SIGNAL_DEFINITIONS, _compute_indicators, _detect_signal_entries,
+from nuri.quant.validation.signal_backtest import (
+    SIGNAL_DEFINITIONS,
+    _compute_indicators,
+    _detect_signal_entries,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ def _load_scorecard() -> dict[str, dict]:
 def _get_drift_map(db_path=None) -> dict[str, dict]:
     """Learning Memory에서 시그널별 성과 변화(drift) 로드."""
     try:
-        from nuri.engine.memory import detect_drift
+        from nuri.trading.engine.memory import detect_drift
         drifts = detect_drift(db_path=db_path)
         return {d.signal_id: {"status": d.status, "drift_pct": d.drift_pct} for d in drifts}
     except Exception:
@@ -90,8 +90,8 @@ DRIFT_MULTIPLIERS = {
 def _get_regime_context(db_path=None) -> dict | None:
     """현재 레짐 + 전략 추천 + 교차분석 데이터."""
     try:
-        from nuri.analysis.regime.classifier import classify_regime
-        from nuri.analysis.regime.strategy_map import map_regime_to_strategy, analyze_signal_by_regime
+        from nuri.quant.regime.classifier import classify_regime
+        from nuri.quant.regime.strategy_map import map_regime_to_strategy
         regime = classify_regime(db_path=db_path)
         if regime is None:
             return None
@@ -226,7 +226,7 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
 
     # ── Conflict Detection: 방향 충돌 감지 + annotate ──
     try:
-        from nuri.engine.conflicts import detect_conflicts
+        from nuri.trading.engine.conflicts import detect_conflicts
         conflicts = detect_conflicts(candidates)
         # 충돌 종목 세트
         conflict_tickers = {}

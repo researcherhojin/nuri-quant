@@ -6,7 +6,6 @@ Consensus engine이 가중 투표로 최종 결론을 도출한다.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
 
 
 @dataclass

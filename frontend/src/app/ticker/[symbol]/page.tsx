@@ -6,9 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
+import { PriceChart } from "@/components/ui/price-chart";
 
 async function TickerDetail({ symbol }: { symbol: string }) {
-  const data = await fetchAPI<any>(`/api/ticker/${symbol}`);
+  const [data, priceData] = await Promise.all([
+    fetchAPI<any>(`/api/ticker/${symbol}`),
+    fetchAPI<any>(`/api/ticker/${symbol}/prices?days=365`),
+  ]);
 
   const consensus = data.consensus || {};
   const verdicts = consensus.verdicts || [];
@@ -50,6 +54,16 @@ async function TickerDetail({ symbol }: { symbol: string }) {
           <span className="text-xs text-zinc-600">{(consensus.agreement_rate * 100).toFixed(0)}% agree</span>
         )}
       </div>
+
+      {/* Price Chart */}
+      {priceData.prices?.length > 0 && (
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="pt-5">
+            <p className="text-xs text-zinc-500 mb-3">Price History</p>
+            <PriceChart data={priceData.prices} ticker={data.ticker} />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Agent Verdicts */}
