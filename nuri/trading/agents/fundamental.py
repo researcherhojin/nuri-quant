@@ -1,5 +1,5 @@
 """펀더멘탈 분석 에이전트 — PE, ROE, 성장률, 부채 기반 판정."""
-from nuri.trading.agents.base import BaseAgent, AgentVerdict
+from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 
 class FundamentalAgent(BaseAgent):

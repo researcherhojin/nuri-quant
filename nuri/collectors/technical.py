@@ -11,11 +11,10 @@ import logging
 
 import numpy as np
 import pandas as pd
+import talib
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import get_tickers, query_df, upsert_signals
-
-import talib
 
 
 class TechnicalCollector(BaseCollector):

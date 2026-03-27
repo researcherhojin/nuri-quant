@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 async function StrategyDashboard() {
   const [status, bt] = await Promise.all([
@@ -31,7 +31,7 @@ async function StrategyDashboard() {
       <Card className="bg-zinc-900 border-zinc-800">
         <CardContent className="pt-5">
           <div className="flex items-center gap-3 mb-3">
-            <Badge className="bg-zinc-700 text-zinc-300">{regime?.regime || "unknown"}</Badge>
+            <StatusBadge status={(regime?.regime || "unknown").toUpperCase()} size="md" />
             <span className="text-xs text-zinc-500">{regime ? `${(regime.confidence * 100).toFixed(0)}% confidence` : ""}</span>
             <span className="text-xs text-zinc-600">|</span>
             <span className="text-xs text-zinc-500">{positions.length} positions open</span>
@@ -61,11 +61,7 @@ async function StrategyDashboard() {
             <div className="flex flex-wrap gap-2 mt-3">
               {actions.map((a: any, i: number) => (
                 <div key={i} className="flex items-center gap-1.5 text-xs bg-zinc-800 rounded px-2 py-1">
-                  <Badge className={a.action.includes("long") || a.action.includes("open_long")
-                    ? "bg-emerald-500/20 text-emerald-400 text-[10px] px-1"
-                    : "bg-red-500/20 text-red-400 text-[10px] px-1"}>
-                    {a.action.replace("open_", "").toUpperCase()}
-                  </Badge>
+                  <StatusBadge status={a.action.replace("open_", "").toUpperCase()} />
                   <span className="font-medium">{a.ticker}</span>
                   <span className="text-zinc-500 hidden sm:inline">{a.reason?.slice(0, 30)}</span>
                 </div>
@@ -82,7 +78,7 @@ async function StrategyDashboard() {
           <CardContent className="pt-5">
             <p className="text-xs text-zinc-500 mb-3">Backtest — {r.total_days || 0} days, {r.regime_changes || 0} regime switches</p>
 
-            <div className="grid grid-cols-4 gap-3 text-center mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center mb-4">
               <div>
                 <p className={`text-lg font-bold ${(r.total_return || 0) > 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {(r.total_return || 0) > 0 ? "+" : ""}{(r.total_return || 0).toFixed(1)}%

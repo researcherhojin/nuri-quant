@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import riskfolio as rp
 
-from nuri.core.db import query_df, query
+from nuri.core.db import query, query_df
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ def print_risk(metrics: dict) -> None:
 
     alerts = metrics.get("stop_loss_alerts", [])
     if alerts:
-        print(f"\n  🚨 손절선 도달 종목:")
+        print("\n  🚨 손절선 도달 종목:")
         for a in alerts:
             print(f"    {a['ticker']}: {a['pnl_pct']:+.1f}% (한도: {STOCK_STOP_LOSS}%)")
     print()

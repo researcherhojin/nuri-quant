@@ -11,6 +11,8 @@ interface Column {
   label: string;
   align?: "left" | "center" | "right";
   width?: string;
+  /** 모바일에서 숨김 (sm 미만에서 display:none) */
+  hideOnMobile?: boolean;
   render?: (value: any, row: any) => ReactNode;
 }
 
@@ -36,7 +38,7 @@ export function DataTable({ columns, data, compact = false, onRowClick }: DataTa
                 className={`${py} px-3 font-medium text-zinc-500 ${
                   col.align === "right" ? "text-right" :
                   col.align === "center" ? "text-center" : "text-left"
-                }`}
+                }${col.hideOnMobile ? " hidden sm:table-cell" : ""}`}
                 style={col.width ? { width: col.width } : undefined}
               >
                 {col.label}
@@ -59,7 +61,7 @@ export function DataTable({ columns, data, compact = false, onRowClick }: DataTa
                   className={`${py} px-3 ${
                     col.align === "right" ? "text-right" :
                     col.align === "center" ? "text-center" : "text-left"
-                  }`}
+                  }${col.hideOnMobile ? " hidden sm:table-cell" : ""}`}
                 >
                   {col.render ? col.render(row[col.key], row) : row[col.key]}
                 </td>

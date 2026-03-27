@@ -9,7 +9,7 @@ router = APIRouter(tags=["regime"])
 @router.get("/regime")
 def get_regime():
     """현재 시장 레짐."""
-    from nuri.analysis.regime.classifier import classify_regime
+    from nuri.quant.regime.classifier import classify_regime
     state = classify_regime()
     if state is None:
         return {"error": "SPY 데이터 부족"}
@@ -19,7 +19,7 @@ def get_regime():
 @router.get("/macro")
 def get_macro():
     """매크로 스코어."""
-    from nuri.analysis.regime.macro_score import compute_macro_score
+    from nuri.quant.regime.macro_score import compute_macro_score
     score = compute_macro_score()
     return asdict(score)
 
@@ -34,7 +34,7 @@ async def get_report():
 @router.get("/report/context")
 def get_report_context():
     """LLM 리포트 컨텍스트 (프롬프트 입력 데이터)."""
-    from nuri.llm.report import gather_context, format_prompt
+    from nuri.llm.report import format_prompt, gather_context
     ctx = gather_context()
     return {
         "prompt": format_prompt(ctx),
@@ -46,7 +46,7 @@ def get_report_context():
 @router.get("/strategy")
 def get_strategy():
     """레짐별 전략 추천."""
-    from nuri.analysis.regime.strategy_map import map_regime_to_strategy
+    from nuri.quant.regime.strategy_map import map_regime_to_strategy
     rec = map_regime_to_strategy()
     if rec is None:
         return {"error": "데이터 부족"}

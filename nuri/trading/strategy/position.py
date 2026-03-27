@@ -9,7 +9,7 @@ Position Manager — SIEGE Certification Gate 적용.
 """
 import json
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 
 from nuri.core.db import get_db, query
@@ -94,7 +94,7 @@ def certify_position(
     # 5. Learning Memory drift
     drift_safe = True
     try:
-        from nuri.engine.memory import detect_drift
+        from nuri.trading.engine.memory import detect_drift
         drifts = detect_drift(db_path=db_path)
         critical = [d for d in drifts if d.status == "critical"]
         if critical and direction == "long":
@@ -130,7 +130,7 @@ def open_position(
     # 레짐 자동 감지
     if not regime:
         try:
-            from nuri.analysis.regime.classifier import classify_regime
+            from nuri.quant.regime.classifier import classify_regime
             r = classify_regime(db_path=db_path)
             regime = r.regime if r else "unknown"
         except Exception:
@@ -150,7 +150,7 @@ def open_position(
         if not cert.daily_limit_ok:
             failed.append(f"일일 한도 초과({cert.details.get('today_opens', '?')}/5)")
         if not cert.drift_safe:
-            failed.append(f"시그널 drift 위험")
+            failed.append("시그널 drift 위험")
         logger.warning(f"[CERT BLOCKED] {ticker} {direction}: {', '.join(failed)}")
         return False
 

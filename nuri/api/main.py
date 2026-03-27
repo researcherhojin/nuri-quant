@@ -10,7 +10,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from nuri.api.routes import portfolio, regime, signals, rebalance, engine, agents, swing, ticker, dashboard
+from nuri.api.routes import agents, dashboard, engine, portfolio, rebalance, regime, signals, stream, swing, ticker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 # yfinance 404/401 에러 로그 억제 (ETF/KS 종목에서 대량 발생)
@@ -26,7 +26,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -39,6 +39,7 @@ app.include_router(agents.router, prefix="/api")
 app.include_router(swing.router, prefix="/api")
 app.include_router(ticker.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(stream.router, prefix="/api")
 
 
 @app.get("/")
@@ -54,7 +55,8 @@ def health():
 
 
 if __name__ == "__main__":
-    import uvicorn
     import os
+
+    import uvicorn
     port = int(os.getenv("API_PORT", "8001"))
     uvicorn.run("nuri.api.main:app", host="0.0.0.0", port=port, reload=True)

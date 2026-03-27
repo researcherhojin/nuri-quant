@@ -11,13 +11,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from nuri.core.db import query_df, query
 from nuri.analysis.portfolio import get_exchange_rate
+from nuri.core.db import query, query_df
 
 logger = logging.getLogger(__name__)
 
 EXPORT_DIR = Path(__file__).parent.parent.parent / "data" / "exports"
 from nuri.core.rules import MAX_SECTOR_EXPOSURE as _MAX_SECTOR
+
 MAX_SECTOR_EXPOSURE = _MAX_SECTOR * 100  # 0.35 → 35%
 
 
@@ -92,7 +93,7 @@ def print_sector(sector_df: pd.DataFrame, region_df: pd.DataFrame, warnings: lis
         bar = "█" * int(row["weight_pct"] / 2)
         print(f"  {row['sector']:<20} {row['weight_pct']:>6.1f}% {bar}")
 
-    print(f"\n  지역 노출도")
+    print("\n  지역 노출도")
     print(f"  {'-' * 30}")
     for _, row in region_df.iterrows():
         print(f"  {row['region']:<10} {row['weight_pct']:>6.1f}%")

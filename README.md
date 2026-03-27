@@ -3,43 +3,22 @@
 <div align="center">
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-105_passed-26a69a?logo=pytest&logoColor=white)]()
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-142_passed-26a69a?logo=pytest&logoColor=white)]()
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 
 **[Docs](CLAUDE.md)** | **[API Swagger](http://localhost:8001/docs)** | **[Dashboard](http://localhost:3000)** | **[Issues](https://github.com/researcherhojin/nuri-quant/issues)**
 
 </div>
 
-Open-source quant investment platform. Collects data from 13 free sources, validates signals with backtesting, classifies market regimes, and recommends trades via 6-agent consensus — with a Next.js dashboard and LLM-powered reports.
+Open-source quant investment platform. Collects data from 13 free sources, validates signals with backtesting, classifies market regimes, and recommends trades via 7-agent consensus — with a Next.js dashboard and LLM-powered reports.
 
 ## Tech Stack
 
-**Data Collection**<br/>
-[![OpenBB](https://img.shields.io/badge/OpenBB-v4-5B21B6?logo=data:image/svg+xml;base64,&logoColor=white)]()
-[![yfinance](https://img.shields.io/badge/yfinance-0.2-purple)]()
-[![pykrx](https://img.shields.io/badge/pykrx-1.2-blue)]()
-[![edgartools](https://img.shields.io/badge/edgartools-5.0-orange)]()
-[![TA--Lib](https://img.shields.io/badge/TA--Lib-0.4-red)]()
-
-**Analysis + Quant**<br/>
-[![pandas](https://img.shields.io/badge/pandas-2.2-150458?logo=pandas&logoColor=white)]()
-[![Riskfolio](https://img.shields.io/badge/Riskfolio--Lib-7.0-blue)]()
-[![VectorBT](https://img.shields.io/badge/VectorBT-0.28-green)]()
-[![QuantStats](https://img.shields.io/badge/QuantStats-0.0.60-orange)]()
-[![Plotly](https://img.shields.io/badge/Plotly-5.18-3F4F75?logo=plotly&logoColor=white)]()
-
-**Interface**<br/>
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)]()
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)]()
-[![shadcn/ui](https://img.shields.io/badge/shadcn/ui-v4-000000)]()
-[![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)]()
-[![llama.cpp](https://img.shields.io/badge/llama.cpp-LLM-black)]()
-
-**Infra**<br/>
-[![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)]()
-[![APScheduler](https://img.shields.io/badge/APScheduler-3.10-blue)]()
-[![Discord](https://img.shields.io/badge/Discord-Alerts-5865F2?logo=discord&logoColor=white)]()
+**Data**: OpenBB, yfinance, pykrx, edgartools, TA-Lib
+**Quant**: pandas, Riskfolio-Lib, VectorBT, QuantStats, Plotly
+**Interface**: FastAPI, Next.js 16, shadcn/ui, Tailwind 4, Ollama
+**Infra**: SQLite (WAL), APScheduler, Discord, GitHub Actions CI
 
 ## Getting Started
 
@@ -54,36 +33,59 @@ python -m nuri.collectors.stock_kr --days 1825 # Korean stocks (pykrx)
 make collect                                  # macro/technical/fear&greed/ARK
 
 # Validate + analyze + recommend
-make validate                                 # C-1~C-4 signal backtest + scorecard
-make regime                                   # D-1~D-3 market regime + strategy
-make recommend                                # E-1~E-3 candidates + tracking
+make validate                                 # signal backtest + scorecard
+make regime                                   # market regime + strategy map
+make recommend                                # candidates + tracking
 make verify                                   # full report → data/reports/YYYY-MM-DD/
 ```
 
-### Useful Commands
+### Commands
 
 ```bash
-# Verification (run before commit)
-make verify-all     # 6-check system verification (tests + API + build + DB + logic + backtest)
-make demo           # full 14-step pipeline demo
-make test           # 105 unit tests
-
 # Trading
-make scan           # market-wide scanner (88 US tickers)
-make swing          # scan + 6-agent consensus → entry
-make strategy       # L/S strategy + regime transition monitor
-make backtest-ls    # 5.4yr backtest + Monte Carlo (p<0.01)
-make consensus      # 6-agent analysis on portfolio
+make consensus      # 7-agent analysis on portfolio
+make scan           # market-wide scanner (89 US tickers)
+make swing          # scan + agent consensus → entry
+make strategy       # L/S strategy + regime monitor
+make backtest-ls    # 5.4yr backtest + Monte Carlo
+make optimize       # grid search parameter tuning
+make mean-reversion # mean-reversion scan + backtest
+make pairs          # pairs trading scan + backtest
+
+# Data
 make wallstreet     # analyst ratings + earnings + insider
-make filings        # SEC 10-K key metrics (edgartools)
+make filings        # SEC 10-K key metrics
 
 # Infrastructure
-make gate           # pipeline readiness check (10 conditions)
-make start          # API(:8001) + Dashboard(:3000) simultaneous
-make positions      # position P&L monitor
+make lint           # ruff check
+make test           # 142 unit tests
+make gate           # pipeline readiness check
+make start          # API(:8001) + Dashboard(:3000)
 ```
 
 ## Architecture
+
+```
+nuri/
+├── core/              # DB (sole sqlite3 entry), rules
+├── collectors/        # 16 data collectors (BaseCollector pattern)
+├── analysis/          # Pure analysis: portfolio, risk, sector, charts, sentiment
+├── quant/             # Quantitative pipeline
+│   ├── regime/        # 6-regime classifier, macro score, strategy map
+│   ├── validation/    # Signal/superinvestor/analyst backtest, scorecard
+│   ├── backtest/      # VectorBT engine, grid search optimizer
+│   └── factors/       # Multi-factor scoring (momentum, value, quality)
+├── trading/           # Trading execution
+│   ├── agents/        # 7 agents + weighted consensus
+│   ├── engine/        # SIEGE: gate, conflicts, learning memory
+│   ├── strategy/      # L/S, mean-reversion, pairs trading
+│   ├── recommend/     # Candidates, rebalance, tracker
+│   ├── swing/         # Market-wide scanner
+│   └── execution/     # Broker interface (Alpaca paper + DryRun)
+├── api/               # FastAPI REST + SSE stream
+├── alerts/            # Discord daily report
+└── llm/               # Ollama LLM report
+```
 
 ```mermaid
 graph LR
@@ -101,7 +103,7 @@ graph LR
         BT --> XA[Cross-Analysis<br/>signal × regime]
     end
 
-    subgraph Agents["6-Agent Consensus"]
+    subgraph Agents["7-Agent Consensus"]
         style Agents fill:#fff3e0
         XA --> TA[Technical]
         XA --> FA[Fundamental]
@@ -109,7 +111,8 @@ graph LR
         XA --> RA[Risk]
         XA --> SM[Smart Money]
         XA --> WS[Wall Street]
-        TA & FA & MA & RA & SM & WS --> CS[Consensus<br/>weighted vote]
+        XA --> KR[Korean Mkt]
+        TA & FA & MA & RA & SM & WS & KR --> CS[Consensus<br/>weighted vote]
     end
 
     subgraph Engine["SIEGE Engine"]
@@ -137,15 +140,12 @@ graph LR
 
 ## Key Features
 
-- **6-Agent Consensus** — Technical, Fundamental, Macro, Risk, Smart Money, Wall Street agents independently analyze each ticker. Weighted voting with risk veto power on stop-loss breaches
-- **Wall Street Agent** — Analyst upgrade/downgrade tracking (560+ ratings), earnings surprise history, insider transactions. Data-driven, not opinion-based
-- **Long/Short Strategy** — Regime-based direction switching: bull→long ETF, bear→inverse ETF(SH), sideways→cash. SIEGE Certification Gate validates every position entry
-- **Strategy Backtest** — 5.4-year simulation with real SH prices, 10-day min hold, slippage. +62% return, Sharpe 0.92, MDD -10% (SPY: -24%). Monte Carlo p<0.01
-- **Gated Execution** — 10 data-readiness conditions block pipeline phases. Position Certification requires regime alignment + agent consensus + concentration limits
-- **Conflict Detection** — BUY+SELL on same ticker → HOLD forced. High-severity conflicts halve confidence and block rebalancing
-- **Learning Memory** — Append-only drift detection. bb_bounce -57%, macd_golden -72% auto-penalized in confidence scoring
-- **Ticker Deep Dive** — `/ticker/[symbol]` page: 6-agent verdicts, analyst ratings timeline, earnings surprise, insider activity, fundamentals, smart money
-- **LLM Report Validation** — Ollama reports fact-checked against input data. Ticker hallucination detection, numeric claim verification, mandatory disclaimers
+- **7-Agent Consensus** — Technical, Fundamental, Macro, Risk, Smart Money, Wall Street, Korean Market agents. Weighted voting with risk agent veto power
+- **Long/Short Strategy** — Regime-based direction switching with SIEGE Certification Gate. Backtest: +62% return, Sharpe 0.92, MDD -10%
+- **SIEGE Engine** — Gated Execution (10 conditions), Conflict Detection (BUY+SELL → HOLD), Learning Memory (drift auto-penalty)
+- **Parameter Optimization** — Grid search for RSI/MACD/BB thresholds and holding periods
+- **Multi-Strategy** — L/S regime switching, Mean-Reversion (BB+RSI), Pairs Trading (correlation Z-score)
+- **Dashboard** — Next.js 16 with SSE real-time updates, Recharts price charts, portfolio management, mobile responsive
 
 ## Investment Rules
 
@@ -161,35 +161,11 @@ Defined in `config/rules.yaml`, enforced across all modules:
 
 ## Roadmap
 
-### Bugs / Immediate Fixes
-
-- [ ] **API URL 불일치** — `frontend/src/lib/api.ts`와 `report/page.tsx`의 기본 URL이 `:8000`. 백엔드는 `:8001`. `NEXT_PUBLIC_API_URL` 환경변수 설정 또는 기본값 수정 필요
-- [ ] **frontend Git 분리** — `frontend/.git` 존재. monorepo 통합 시 삭제 필요 (또는 git submodule 설정)
-- [ ] **Overview/Strategy 페이지 Badge** — `/`, `/strategy` 페이지가 아직 raw `Badge` 사용. `StatusBadge` 디자인 시스템으로 통일 필요
-
-### Frontend (Phase G)
-
-- [ ] **에러 바운더리** — API 실패 시 빈 화면 대신 사용자 친화적 에러 표시 (Error Boundary + fallback UI)
-- [ ] **차트 통합** — Python Plotly 차트를 Recharts/Lightweight-charts로 교체하여 Next.js 내 인터랙티브 차트 구현 (가격 + 기술적 지표 + 시그널 오버레이)
-- [ ] **인증** — `DASHBOARD_PASSWORD` 환경변수 기반 로그인 (Next.js middleware)
-- [ ] **실시간 데이터** — SSE 또는 WebSocket으로 자동 새로고침 (현재는 60초 캐시 + 수동 새로고침)
-- [ ] **포트폴리오 관리 UI** — 보유 종목 추가/삭제/수정 (현재 `config/portfolio.yaml` 수동 편집)
-- [ ] **모바일 반응형** — 테이블 가로 스크롤 + 카드 레이아웃 최적화
-
-### Backend
-
-- [ ] **Linter/Formatter** — `ruff` 도입 (현재 미설정)
-- [ ] **CI/CD** — GitHub Actions: test → lint → build → deploy (현재 수동 `make deploy`)
-- [ ] **DB 마이그레이션** — Alembic 또는 버전 관리 마이그레이션 (현재 `scripts/migrate_db.py` 단일 파일)
-- [ ] **API 테스트** — FastAPI 엔드포인트 통합 테스트 (현재 단위 테스트만 존재)
-
-### Quant / Strategy
-
-- [ ] **백테스트 파라미터 최적화** — Grid search / Bayesian optimization으로 시그널 임계값 자동 튜닝
-- [ ] **한국 시장 에이전트** — `.KS` 종목 전용 로직 (환율, 공매도 제한, KOSPI/KOSDAQ 구분)
-- [ ] **다중 전략** — L/S 외 mean-reversion, pairs trading 등 전략 모듈 추가
-- [ ] **실거래 연동** — 증권사 API 연동 (한투 OpenAPI, Alpaca 등)으로 주문 자동 실행
+- [ ] **차트 고도화** — Recharts에 기술적 지표 오버레이 (RSI, MACD, BB) + 시그널 마커
+- [ ] **한국 시장 수집기 확장** — pykrx 기반 외국인/기관 수급, 공매도 잔고
+- [ ] **실거래 연동 완성** — Alpaca live trading + 한투 OpenAPI
+- [ ] **알림 고도화** — Telegram 봇, 레짐 전환 push 알림
 
 ## License
 
-[MIT](LICENSE)
+[Apache License 2.0](LICENSE)

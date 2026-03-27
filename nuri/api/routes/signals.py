@@ -23,6 +23,7 @@ def get_candidates(days: int = Query(5, ge=1, le=30)):
 def get_scorecard():
     """시그널 스코어카드 (최신 CSV)."""
     from pathlib import Path
+
     import pandas as pd
 
     report_dir = Path(__file__).parent.parent.parent.parent / "data" / "reports"
@@ -45,7 +46,7 @@ def get_scorecard():
 @router.get("/cross-analysis")
 def get_cross_analysis():
     """시그널 × 레짐 교차분석."""
-    from nuri.analysis.regime.strategy_map import analyze_signal_by_regime
+    from nuri.quant.regime.strategy_map import analyze_signal_by_regime
     df = analyze_signal_by_regime()
     if df.empty:
         return {"error": "교차분석 데이터 없음"}
