@@ -124,3 +124,15 @@ class TestConsensus:
         from nuri.trading.agents.consensus import analyze_ticker
         r = analyze_ticker("NODATA", db_path=db_path)
         assert r.final_action == "HOLD"
+
+    def test_dynamic_weights_fallback(self, db_path):
+        """데이터 부족 시 DEFAULT_WEIGHTS 반환."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+        weights = _compute_weights(db_path=db_path)
+        assert weights == DEFAULT_WEIGHTS
+
+    def test_dynamic_weights_sum_to_one(self, db_path):
+        """가중치 합은 항상 1.0."""
+        from nuri.trading.agents.consensus import _compute_weights
+        weights = _compute_weights(db_path=db_path)
+        assert abs(sum(weights.values()) - 1.0) < 0.01
