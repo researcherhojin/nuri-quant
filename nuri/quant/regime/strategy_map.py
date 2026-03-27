@@ -170,6 +170,9 @@ def _find_latest_csv(filename: str) -> Path | None:
 
 def _build_data_driven_strategy(regime: str, cross_df: pd.DataFrame) -> dict:
     """교차분석 데이터에서 특정 레짐의 추천/비추천 시그널 도출."""
+    if cross_df.empty or "regime" not in cross_df.columns:
+        return {"recommended": [], "avoid": [], "stats": {}}
+
     regime_data = cross_df[cross_df["regime"] == regime]
 
     if regime_data.empty:
