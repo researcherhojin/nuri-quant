@@ -6,8 +6,8 @@ C-1 시그널 백테스트 결과에 레짐 라벨을 붙여서
 데이터가 없으면 보수적 규칙 기반 폴백 사용.
 
 사용법:
-    python -m nuri.regime.strategy_map
-    python -m nuri.regime.strategy_map --analyze   # 시그널×레짐 교차분석
+    python -m nuri.quant.regime.strategy_map
+    python -m nuri.quant.regime.strategy_map --analyze   # 시그널×레짐 교차분석
 """
 import argparse
 import logging

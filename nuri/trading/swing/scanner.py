@@ -5,8 +5,8 @@ yfinance batch download로 수백 종목을 빠르게 스캔.
 거래량 급증, 모멘텀, 기술적 브레이크아웃 3중 필터.
 
 사용법:
-    python -m nuri.swing.scanner
-    python -m nuri.swing.scanner --market kr
+    python -m nuri.trading.swing.scanner
+    python -m nuri.trading.swing.scanner --market kr
 """
 import argparse
 import logging

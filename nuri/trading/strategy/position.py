@@ -5,7 +5,7 @@ Position Manager — SIEGE Certification Gate 적용.
 포지션 추적, P&L 계산, 청산 조건 체크.
 
 사용법:
-    python -m nuri.strategy.position
+    python -m nuri.trading.strategy.position
 """
 import json
 import logging

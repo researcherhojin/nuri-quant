@@ -50,7 +50,7 @@ def get_portfolio_returns(days: int = 90) -> pd.Series:
     # 일간 수익률
     prices = query_df("SELECT ticker, date, close FROM prices ORDER BY date")
     pivot = prices.pivot_table(index="date", columns="ticker", values="close")
-    returns = pivot.pct_change(fill_method=None).dropna()
+    returns = pivot.pct_change().dropna()
 
     # 포트폴리오 수익률
     w = pd.Series(weights)

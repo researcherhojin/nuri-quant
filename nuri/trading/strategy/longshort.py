@@ -6,8 +6,8 @@ Bear → 인버스 ETF (SH, SQQQ)
 Sideways → 축소 + 현금
 
 사용법:
-    python -m nuri.strategy.longshort
-    python -m nuri.strategy.longshort --execute
+    python -m nuri.trading.strategy.longshort
+    python -m nuri.trading.strategy.longshort --execute
 """
 import argparse
 import logging

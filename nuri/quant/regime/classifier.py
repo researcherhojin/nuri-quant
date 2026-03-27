@@ -5,8 +5,8 @@ D-1: 시장 레짐 분류기 — Bull/Bear/Sideways x High/Low Volatility.
 히스테리시스로 잦은 레짐 전환 방지.
 
 사용법:
-    python -m nuri.regime.classifier
-    python -m nuri.regime.classifier --history
+    python -m nuri.quant.regime.classifier
+    python -m nuri.quant.regime.classifier --history
 """
 import argparse
 import logging
