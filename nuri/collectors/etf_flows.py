@@ -52,8 +52,9 @@ class EtfFlowsCollector(BaseCollector):
 
     def collect(self, **kwargs) -> list[dict]:
         """OpenBB etf.info로 ETF 정보 수집."""
-        from openbb import obb
         import warnings
+
+        from openbb import obb
         warnings.filterwarnings("ignore")
 
         today = datetime.now().strftime("%Y-%m-%d")
@@ -172,7 +173,7 @@ def print_sector_rotation(df: pd.DataFrame | None) -> None:
         return
 
     print(f"\n{'=' * 65}")
-    print(f"  섹터 ETF 자금흐름 (AUM 변화)")
+    print("  섹터 ETF 자금흐름 (AUM 변화)")
     print(f"{'=' * 65}")
     print(f"  {'ETF':<6} {'섹터':<25} {'AUM($B)':>10} {'AUM변화':>10} {'거래량추세':>10}")
     print(f"  {'-' * 60}")

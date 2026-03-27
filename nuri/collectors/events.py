@@ -7,7 +7,6 @@ OpenBB Platform으로 실적 캘린더 조회 + FOMC 하드코딩.
     python -m nuri.collectors.events
 """
 import logging
-from datetime import datetime, timedelta
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import insert_events

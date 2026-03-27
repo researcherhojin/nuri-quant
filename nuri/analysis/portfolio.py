@@ -9,11 +9,10 @@
     python -m nuri.analysis.portfolio
 """
 import logging
-from typing import Optional
 
 import pandas as pd
 
-from nuri.core.db import query_df, query
+from nuri.core.db import query, query_df
 
 logger = logging.getLogger(__name__)
 

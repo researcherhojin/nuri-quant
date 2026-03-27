@@ -11,7 +11,6 @@ Long/Short Strategy Backtest — 과거 5년 검증.
 import argparse
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -381,7 +380,7 @@ def analyze_entry_timing(regimes_df: pd.DataFrame, current_regime: str = None) -
     """현재 레짐에서 향후 수익률 분석."""
     if current_regime is None:
         try:
-            from nuri.analysis.regime.classifier import classify_regime
+            from nuri.quant.regime.classifier import classify_regime
             r = classify_regime()
             current_regime = r.regime if r else None
         except Exception:
@@ -607,7 +606,7 @@ def print_backtest(result: BacktestResult) -> None:
 
 def print_regime_performance(perfs: list[RegimePerformance]) -> None:
     print(f"\n{'=' * 75}")
-    print(f"  Per-Regime Performance")
+    print("  Per-Regime Performance")
     print(f"{'=' * 75}")
     print(f"  {'Regime':<22} {'Days':>6} {'%Time':>6} {'Return':>8} {'Daily':>8} {'WR':>6} {'AvgDur':>6}")
     print(f"  {'-' * 66}")
@@ -634,7 +633,7 @@ def print_timing(timing: TimingAnalysis | None) -> None:
 
 def print_stress(results: list[dict]) -> None:
     print(f"\n{'=' * 75}")
-    print(f"  Stress Test — Crisis Periods")
+    print("  Stress Test — Crisis Periods")
     print(f"{'=' * 75}")
     print(f"  {'Crisis':<25} {'Days':>5} {'SPY':>8} {'Strategy':>8} {'Excess':>8} {'Protected':>9}")
     print(f"  {'-' * 66}")

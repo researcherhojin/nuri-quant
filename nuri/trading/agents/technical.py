@@ -1,7 +1,8 @@
 """기술적 분석 에이전트 — RSI, MACD, SMA, BB 기반 판정."""
 import pandas as pd
-from nuri.trading.agents.base import BaseAgent, AgentVerdict
+
 from nuri.core.db import query_df
+from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 
 class TechnicalAgent(BaseAgent):

@@ -26,8 +26,8 @@ const scorecardCols = [
   { key: "win_rate", label: "Win Rate", align: "right" as const, render: (v: number) => <span className={v > 0.5 ? "text-emerald-400" : "text-red-400"}>{(v * 100).toFixed(0)}%</span> },
   { key: "avg_return", label: "Avg Ret", align: "right" as const, render: (v: number) => <span className={v > 0 ? "text-emerald-400" : "text-red-400"}>{v > 0 ? "+" : ""}{v.toFixed(1)}%</span> },
   { key: "profit_factor", label: "PF", align: "right" as const, render: (v: number) => <span className={`font-semibold ${pfColor(v)}`}>{pf(v)}</span> },
-  { key: "max_return", label: "Best", align: "right" as const, render: (v: number) => <span className="text-emerald-400">+{v.toFixed(1)}%</span> },
-  { key: "max_loss", label: "Worst", align: "right" as const, render: (v: number) => <span className="text-red-400">{v.toFixed(1)}%</span> },
+  { key: "max_return", label: "Best", align: "right" as const, hideOnMobile: true, render: (v: number) => <span className="text-emerald-400">+{v.toFixed(1)}%</span> },
+  { key: "max_loss", label: "Worst", align: "right" as const, hideOnMobile: true, render: (v: number) => <span className="text-red-400">{v.toFixed(1)}%</span> },
 ];
 
 async function ScorecardSection() {

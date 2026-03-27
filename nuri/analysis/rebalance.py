@@ -20,11 +20,11 @@ import logging
 import pandas as pd
 import riskfolio as rp
 
-from nuri.core.db import query_df, query
+from nuri.core.db import query, query_df
 
 logger = logging.getLogger(__name__)
 
-from nuri.core.rules import MAX_SINGLE_POSITION, MAX_SECTOR_EXPOSURE, LEVERAGE_ETFS
+from nuri.core.rules import LEVERAGE_ETFS, MAX_SECTOR_EXPOSURE, MAX_SINGLE_POSITION
 
 
 def analyze_rebalance(method: str = "mvo") -> pd.DataFrame:

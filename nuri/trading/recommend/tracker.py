@@ -5,18 +5,15 @@ E-1 후보 + E-2 리밸런싱 결과를 DB에 저장하고,
 30/60/90일 후 실제 수익률과 비교하여 시스템 적중률을 측정한다.
 
 사용법:
-    python -m nuri.recommend.tracker --save      # 오늘 추천 저장 + 과거 추적
-    python -m nuri.recommend.tracker              # 추적 리포트만
+    python -m nuri.trading.recommend.tracker --save      # 오늘 추천 저장 + 과거 추적
+    python -m nuri.trading.recommend.tracker              # 추적 리포트만
 """
 import argparse
 import json
 import logging
 from datetime import datetime, timedelta
-from pathlib import Path
 
-import pandas as pd
-
-from nuri.core.db import get_db, query, query_df
+from nuri.core.db import get_db, query
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +195,7 @@ def print_tracking_report(db_path=None) -> None:
     report = get_tracking_report(db_path)
 
     print(f"\n{'=' * 55}")
-    print(f"  Recommendation Tracking Report")
+    print("  Recommendation Tracking Report")
     print(f"{'=' * 55}")
     print(f"  Total recommendations: {report['total_recommendations']}")
     print(f"  Tracked (30d+):        {report['tracked']}")
@@ -224,7 +221,7 @@ def print_tracking_report(db_path=None) -> None:
         db_path=db_path,
     )
     if recent:
-        print(f"\n  Recent:")
+        print("\n  Recent:")
         for r in recent:
             outcome = f"{r['outcome_30d']:+.1f}%" if r["outcome_30d"] is not None else "pending"
             hit_mark = "O" if r.get("hit") else ("X" if r.get("hit") is not None else "—")

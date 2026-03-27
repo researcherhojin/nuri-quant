@@ -1,4 +1,7 @@
-.PHONY: setup test collect analyze report deploy backup benchmark backtest verify validate regime recommend api dashboard
+.PHONY: setup test collect analyze report deploy backup backtest verify verify-fast validate regime recommend \
+       gate consensus scan swing swing-check strategy strategy-execute positions wallstreet filings \
+       backtest-ls backtest-stress optimize mean-reversion pairs api dashboard start lint lint-fix \
+       verify-quick verify-all demo
 
 PYTHON = .venv/bin/python
 
@@ -27,17 +30,20 @@ analyze:
 report:
 	$(PYTHON) -m nuri.alerts.daily_report
 
+# ── Lint ──
+lint:
+	$(PYTHON) -m ruff check nuri/ tests/
+
+lint-fix:
+	$(PYTHON) -m ruff check nuri/ tests/ --fix
+
 # ── 테스트 ──
 test:
 	$(PYTHON) -m pytest tests/ -v --cov=nuri
 
-# ── LLM 벤치마크 (Phase 2) ──
-benchmark:
-	$(PYTHON) -m nuri.llm.benchmark --models all
-
-# ── 백테스트 (Phase 3) ──
+# ── 백테스트 ──
 backtest:
-	$(PYTHON) -m nuri.trading.backtest.engine
+	$(PYTHON) -m nuri.quant.backtest.engine
 
 # ── 기능 검증 (전체 Phase A~E + 결과 저장) ──
 verify:
@@ -49,16 +55,16 @@ verify-fast:
 # ── Phase C: 시그널/슈퍼투자자/애널리스트 검증 (Gate 검증 후 실행) ──
 validate:
 	$(PYTHON) scripts/gate_check.py validate
-	$(PYTHON) -m nuri.analysis.validation.signal_backtest
-	$(PYTHON) -m nuri.analysis.validation.superinvestor_backtest
-	$(PYTHON) -m nuri.analysis.validation.analyst_backtest
-	$(PYTHON) -m nuri.analysis.validation.scorecard
-	$(PYTHON) -m nuri.engine.memory --snapshot
+	$(PYTHON) -m nuri.quant.validation.signal_backtest
+	$(PYTHON) -m nuri.quant.validation.superinvestor_backtest
+	$(PYTHON) -m nuri.quant.validation.analyst_backtest
+	$(PYTHON) -m nuri.quant.validation.scorecard
+	$(PYTHON) -m nuri.trading.engine.memory --snapshot
 
 # ── Phase D: 시장 레짐 분류 (Gate 검증 후 실행) ──
 regime:
 	$(PYTHON) scripts/gate_check.py regime
-	$(PYTHON) -m nuri.analysis.regime.strategy_map
+	$(PYTHON) -m nuri.quant.regime.strategy_map
 
 # ── Phase E: 매매 추천 + 추적 (Gate 검증 후 실행) ──
 recommend:
@@ -68,7 +74,7 @@ recommend:
 
 # ── Gate 상태 확인 ──
 gate:
-	$(PYTHON) -m nuri.engine.gate
+	$(PYTHON) -m nuri.trading.engine.gate
 
 # ── Multi-Agent Consensus ──
 consensus:
@@ -103,10 +109,20 @@ filings:
 
 # ── Strategy Backtest ──
 backtest-ls:
-	$(PYTHON) -m nuri.trading.strategy.backtest
+	$(PYTHON) -m nuri.trading.strategy.ls_backtest
 
 backtest-stress:
-	$(PYTHON) -m nuri.trading.strategy.backtest --stress
+	$(PYTHON) -m nuri.trading.strategy.ls_backtest --stress
+
+# ── 파라미터 최적화 + 다중 전략 ──
+optimize:
+	$(PYTHON) -m nuri.quant.backtest.optimizer
+
+mean-reversion:
+	$(PYTHON) -m nuri.trading.strategy.mean_reversion
+
+pairs:
+	$(PYTHON) -m nuri.trading.strategy.pairs
 
 # ── Phase F: API + Dashboard ──
 api:
@@ -121,7 +137,7 @@ start:
 # ── 빠른 검증 (~10초, 네트워크 호출 없음) ──
 verify-quick:
 	$(PYTHON) -m pytest tests/ -q --tb=line
-	$(PYTHON) -c "from nuri.core.db import query; from nuri.analysis.regime.classifier import classify_regime; r=classify_regime(); print(f'Quick: 105 tests + Regime {r.regime if r else \"N/A\"}')"
+	$(PYTHON) -c "from nuri.core.db import query; from nuri.quant.regime.classifier import classify_regime; r=classify_regime(); print(f'Quick: tests + Regime {r.regime if r else \"N/A\"}')"
 
 # ── 전체 검증 (커밋 전 필수) ──
 verify-all:

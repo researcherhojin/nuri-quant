@@ -1,10 +1,9 @@
 """Phase E 추천 모듈 테스트."""
-import json
 import numpy as np
 import pandas as pd
 import pytest
 
-from nuri.core.db import init_db, upsert_prices, get_db, query
+from nuri.core.db import get_db, init_db, query, upsert_prices
 
 
 @pytest.fixture
@@ -117,7 +116,7 @@ class TestTracker:
 
     def test_save_and_query(self, market_data):
         from nuri.trading.recommend.candidates import Candidate
-        from nuri.trading.recommend.tracker import save_recommendations, get_tracking_report
+        from nuri.trading.recommend.tracker import get_tracking_report, save_recommendations
 
         candidates = [
             Candidate("TEST1", "rsi_oversold", "2025-03-01", "BUY",
@@ -153,6 +152,6 @@ class TestTracker:
             Candidate("TEST1", "macd_golden", "2025-03-01", "BUY",
                        30.0, 0.4, 0.8, False, 100.0, "레짐 비적합"),
         ]
-        n = save_recommendations(candidates, db_path=market_data)
+        save_recommendations(candidates, db_path=market_data)
         rows = query("SELECT COUNT(*) as c FROM recommendations", db_path=market_data)
         assert rows[0]["c"] == 0
