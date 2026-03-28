@@ -507,30 +507,35 @@ def generate_sell_evidence_chart(violations: list[dict], output_dir: Path) -> Pa
     df = pd.DataFrame(violations)
 
     # 심각도별 색상
-    colors = []
-    for sev in df["severity"]:
-        if sev >= 20:
-            colors.append("#ef5350")    # critical: 빨강
-        elif sev >= 10:
-            colors.append("#ff9800")    # high: 주황
-        else:
-            colors.append("#ffd54f")    # medium: 노랑
+    severity_color = {"critical": "#ef5350", "high": "#ff9800", "medium": "#ffd54f"}
+    colors = [severity_color.get(str(sev), "#ffd54f") for sev in df["severity"]]
 
-    # 라벨
+    # 라벨 — violation_type 또는 type 컬럼 사용
+    type_col = "violation_type" if "violation_type" in df.columns else "type"
     labels = [
-        f"{row['ticker']} ({row['type']})"
+        f"{row['ticker']} ({row.get(type_col, '')})"
         for _, row in df.iterrows()
     ]
 
     fig = go.Figure()
 
+    # severity가 숫자면 그대로, 문자열이면 current_value 사용
+    x_values = []
+    for _, row in df.iterrows():
+        if isinstance(row["severity"], (int, float)):
+            x_values.append(abs(float(row["severity"])))
+        elif "current_value" in df.columns:
+            x_values.append(abs(float(row["current_value"])))
+        else:
+            x_values.append(1.0)
+
     fig.add_trace(go.Bar(
         y=labels,
-        x=df["severity"],
+        x=x_values,
         orientation="h",
         marker_color=colors,
         text=[
-            f"{row['action']} | 심각도: {row['severity']:.1f}%"
+            f"{row['action']} | {row['severity']}"
             for _, row in df.iterrows()
         ],
         textposition="auto",
