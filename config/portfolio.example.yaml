@@ -1,0 +1,23 @@
+# ═══════════════════════════════════════════════════════
+# Nuri-Quant Portfolio Configuration (Example)
+# 이 파일을 portfolio.yaml로 복사 후 본인 포트폴리오를 입력하세요:
+#   cp config/portfolio.example.yaml config/portfolio.yaml
+# ═══════════════════════════════════════════════════════
+
+accounts:
+
+  my_account:
+    name: "내 증권 계좌"
+    broker: "증권사명"
+    currency: USD
+    holdings:
+      - { ticker: AAPL,     qty: 10,   avg: 180.00, sector: BigTech }
+      - { ticker: NVDA,     qty: 5,    avg: 130.00, sector: Semiconductor }
+      - { ticker: VOO,      qty: 2,    avg: 500.00, sector: ETF }
+
+  kr_account:
+    name: "한국 증권 계좌"
+    broker: "증권사명"
+    currency: KRW
+    holdings:
+      - { ticker: "005930.KS", qty: 10, avg: 70000, sector: Semiconductor }
