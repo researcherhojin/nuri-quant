@@ -22,7 +22,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5")
 # llama.cpp GGUF 모델 경로 (설정 시 Ollama 대신 직접 실행)
 LLAMA_MODEL_PATH = os.getenv("LLAMA_MODEL_PATH", "")
 
@@ -65,8 +65,16 @@ class ReportContext:
     drift_section: str
     consensus_section: str
     strategy_section: str
-    known_tickers: set[str]     # 입력에 언급된 티커 (검증용)
-    known_numbers: set[str]     # 입력에 포함된 숫자 문자열 (검증용)
+    external_section: str = ""  # 외부 데이터 요약
+    rebalance_section: str = "" # 리밸런스 어드바이저 요약
+    known_tickers: set[str] = None
+    known_numbers: set[str] = None
+
+    def __post_init__(self):
+        if self.known_tickers is None:
+            self.known_tickers = set()
+        if self.known_numbers is None:
+            self.known_numbers = set()
 
 
 def gather_context(db_path=None) -> ReportContext:
@@ -261,6 +269,33 @@ def gather_context(db_path=None) -> ReportContext:
     except Exception:
         pass
 
+    # ── 10. 외부 데이터 요약 ──
+    external_section = "외부 데이터 없음"
+    try:
+        from nuri.collectors.external import get_external_summary
+        ext_summary = get_external_summary(db_path)
+        if ext_summary["total_records"] > 0:
+            lines = [f"총 {ext_summary['total_records']}건 ({len(ext_summary['sources'])}개 소스)"]
+            for s in ext_summary["sources"]:
+                lines.append(f"  {s['source']}: {s['tickers']}종목 {s['records']}건 ({s['latest_date']})")
+            external_section = _track("\n".join(lines))
+    except Exception:
+        pass
+
+    # ── 11. 리밸런스 어드바이저 ──
+    rebalance_section = "리밸런스 데이터 없음"
+    try:
+        from nuri.analysis.rebalance_advisor import generate_advisor_report
+        report = generate_advisor_report(db_path)
+        if report["total_violations"] > 0:
+            lines = [f"위반 {report['total_violations']}건 (critical {report['violations_by_severity'].get('critical', 0)}건)"]
+            lines.append(f"총 회수 가능: ${report['total_recovery_usd']:,.0f}")
+            for a in report["actions"][:5]:
+                lines.append(f"  {a['ticker']}: {a['reason']} (${a['sell_value_usd']:,.0f})")
+            rebalance_section = _track("\n".join(lines))
+    except Exception:
+        pass
+
     return ReportContext(
         gate_summary=gate_summary,
         gate_score=gate_score,
@@ -272,6 +307,8 @@ def gather_context(db_path=None) -> ReportContext:
         drift_section=drift_section,
         consensus_section=consensus_section,
         strategy_section=strategy_section,
+        external_section=external_section,
+        rebalance_section=rebalance_section,
         known_tickers=known_tickers,
         known_numbers=known_numbers,
     )
@@ -290,9 +327,12 @@ def format_prompt(ctx: ReportContext) -> str:
         f"## 6. 매매 후보\n{ctx.candidates_section}\n\n"
         f"## 7. 시그널 충돌\n{ctx.conflicts_section}\n\n"
         f"## 8. 멀티 에이전트 합의\n{ctx.consensus_section}\n\n"
-        f"## 9. 전략\n{ctx.strategy_section}\n"
+        f"## 9. 전략\n{ctx.strategy_section}\n\n"
+        f"## 10. 외부 데이터 (TipRanks, Dataroma, ARK 등)\n{ctx.external_section}\n\n"
+        f"## 11. 리밸런스 어드바이저\n{ctx.rebalance_section}\n"
         f"[/DATA]\n\n"
-        f"위 [DATA]만을 근거로 오늘의 투자 리포트를 작성하세요."
+        f"위 [DATA]만을 근거로 오늘의 투자 리포트를 작성하세요. "
+        f"외부 데이터(섹션 10)와 리밸런스(섹션 11)도 반드시 반영하세요."
     )
 
 
@@ -420,18 +460,28 @@ def _generate_llamacpp(prompt: str) -> str:
         return ""
 
 
-async def _generate_ollama(prompt: str) -> str:
-    """Ollama HTTP API로 생성 (폴백)."""
-    import httpx
+def _generate_ollama(prompt: str) -> str:
+    """Ollama HTTP API로 생성. Qwen3.5 thinking 모델 호환."""
+    import requests as _requests
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{OLLAMA_HOST}/api/generate",
-                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            )
-            resp.raise_for_status()
-            return resp.json().get("response", "")
-    except httpx.ConnectError:
+        resp = _requests.post(
+            f"{OLLAMA_HOST}/api/generate",
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.3, "num_predict": 2000},
+            },
+            timeout=300,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        # Qwen3.5 등 thinking 모델: response가 비어있으면 thinking 필드 사용
+        response = data.get("response", "")
+        if not response.strip() and data.get("thinking"):
+            response = data["thinking"]
+        return response
+    except _requests.ConnectionError:
         return (
             f"[LLM 연결 실패]\n"
             f"방법 1: LLAMA_MODEL_PATH=모델.gguf 설정 (llama.cpp 직접)\n"
@@ -441,7 +491,7 @@ async def _generate_ollama(prompt: str) -> str:
         return f"[LLM 오류] {e}"
 
 
-async def generate_llm_report(db_path=None) -> dict:
+def generate_llm_report(db_path=None) -> dict:
     """LLM 리포트 생성 (Gate → Context → Generate → Validate).
 
     Returns:
@@ -468,7 +518,7 @@ async def generate_llm_report(db_path=None) -> dict:
         raw_report = _generate_llamacpp(prompt)
 
     if not raw_report:
-        raw_report = await _generate_ollama(prompt)
+        raw_report = _generate_ollama(prompt)
 
     # Output Validation
     validation = validate_output(raw_report, ctx)
@@ -509,9 +559,8 @@ async def generate_llm_report(db_path=None) -> dict:
 
 
 def generate_llm_report_sync(db_path=None) -> dict:
-    """동기 버전 (CLI용)."""
-    import asyncio
-    return asyncio.run(generate_llm_report(db_path))
+    """동기 버전 (CLI용). generate_llm_report가 이미 동기이므로 직접 호출."""
+    return generate_llm_report(db_path)
 
 
 if __name__ == "__main__":
