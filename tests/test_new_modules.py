@@ -304,13 +304,28 @@ class TestDetectViolations:
     """규칙 위반 감지 테스트."""
 
     def test_leverage_etf_detected(self, db_path):
-        """레버리지 ETF 보유 감지."""
-        _seed_portfolio(db_path)
-        _seed_prices(db_path)
+        """레버리지 ETF 보유 감지 (mock analyze_portfolio)."""
+        from unittest.mock import patch
+
+        import pandas as pd
+
+        mock_df = pd.DataFrame([
+            {"account": "kakaopay", "ticker": "TSLL", "sector": "Leveraged_ETF", "quantity": 96,
+             "avg_price": 16.93, "current_price": 11.44, "currency": "USD",
+             "current_value_usd": 1098.24, "cost_basis_usd": 1625.28,
+             "pnl_usd": -527.04, "pnl_pct": -32.4, "weight_pct": 5.0, "price_date": "2026-03-27"},
+            {"account": "kakaopay", "ticker": "NVDA", "sector": "Semiconductor", "quantity": 20,
+             "avg_price": 132.14, "current_price": 167.99, "currency": "USD",
+             "current_value_usd": 3359.8, "cost_basis_usd": 2642.8,
+             "pnl_usd": 717.0, "pnl_pct": 27.1, "weight_pct": 10.0, "price_date": "2026-03-27"},
+        ])
+        mock_df.attrs["total_value_usd"] = 4458.04
 
         from nuri.analysis.rebalance_advisor import detect_violations
 
-        violations = detect_violations(db_path=db_path)
+        with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=mock_df):
+            violations = detect_violations(db_path=db_path)
+
         leverage_violations = [v for v in violations if v["violation_type"] == "leverage_etf"]
 
         assert len(leverage_violations) >= 1
@@ -320,8 +335,9 @@ class TestDetectViolations:
 
     def test_stop_loss_exceeded(self, db_path):
         """손절선 초과 감지 (mock analyze_portfolio)."""
-        import pandas as pd
         from unittest.mock import patch
+
+        import pandas as pd
 
         mock_df = pd.DataFrame([
             {"account": "test", "ticker": "BADSTOCK", "sector": "Test", "quantity": 10,
@@ -343,8 +359,9 @@ class TestDetectViolations:
 
     def test_position_limit_exceeded(self, db_path):
         """비중 한도 초과 감지 (mock analyze_portfolio)."""
-        import pandas as pd
         from unittest.mock import patch
+
+        import pandas as pd
 
         mock_df = pd.DataFrame([
             {"account": "test", "ticker": "TSLA", "sector": "EV/AI", "quantity": 100,
@@ -371,8 +388,9 @@ class TestDetectViolations:
 
     def test_no_violations(self, db_path):
         """규칙 준수 포트폴리오면 빈 리스트 (비중 15% 미만, 섹터 35% 미만)."""
-        import pandas as pd
         from unittest.mock import patch
+
+        import pandas as pd
 
         # 10종목 각 10% → 단일종목 15% 미만, 같은 섹터 없음
         mock_df = pd.DataFrame([
@@ -400,12 +418,26 @@ class TestCalculateRebalanceActions:
 
     def test_sorted_by_priority(self, db_path):
         """위반이 우선순위 순으로 정렬."""
-        _seed_portfolio(db_path)
-        _seed_prices(db_path)
+        from unittest.mock import patch
+
+        import pandas as pd
+
+        mock_df = pd.DataFrame([
+            {"account": "test", "ticker": "TSLL", "sector": "Leveraged_ETF", "quantity": 96,
+             "avg_price": 16.93, "current_price": 11.44, "currency": "USD",
+             "current_value_usd": 1098.24, "cost_basis_usd": 1625.28,
+             "pnl_usd": -527.04, "pnl_pct": -32.4, "weight_pct": 5.0, "price_date": "2026-03-27"},
+            {"account": "test", "ticker": "BADSTOCK", "sector": "Test", "quantity": 10,
+             "avg_price": 100.0, "current_price": 80.0, "currency": "USD",
+             "current_value_usd": 800.0, "cost_basis_usd": 1000.0,
+             "pnl_usd": -200.0, "pnl_pct": -20.0, "weight_pct": 5.0, "price_date": "2026-03-27"},
+        ])
+        mock_df.attrs["total_value_usd"] = 1898.24
 
         from nuri.analysis.rebalance_advisor import calculate_rebalance_actions
 
-        actions = calculate_rebalance_actions(db_path=db_path)
+        with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=mock_df):
+            actions = calculate_rebalance_actions(db_path=db_path)
 
         if len(actions) >= 2:
             priorities = [a["priority"] for a in actions]
@@ -413,16 +445,22 @@ class TestCalculateRebalanceActions:
 
     def test_total_recovery_calculated(self, db_path):
         """총 회수 금액 합산."""
-        _seed_portfolio(db_path, [
-            ("test", "TSLL", 96, 16.93, "USD", "Leveraged_ETF"),
+        from unittest.mock import patch
+
+        import pandas as pd
+
+        mock_df = pd.DataFrame([
+            {"account": "test", "ticker": "TSLL", "sector": "Leveraged_ETF", "quantity": 96,
+             "avg_price": 16.93, "current_price": 11.44, "currency": "USD",
+             "current_value_usd": 1098.24, "cost_basis_usd": 1625.28,
+             "pnl_usd": -527.04, "pnl_pct": -32.4, "weight_pct": 100.0, "price_date": "2026-03-27"},
         ])
-        _seed_prices(db_path, [
-            ("2026-03-27", "TSLL", 11.0, 12.0, 10.5, 11.44, 300000),
-        ])
+        mock_df.attrs["total_value_usd"] = 1098.24
 
         from nuri.analysis.rebalance_advisor import calculate_rebalance_actions
 
-        actions = calculate_rebalance_actions(db_path=db_path)
+        with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=mock_df):
+            actions = calculate_rebalance_actions(db_path=db_path)
 
         assert len(actions) > 0
         total = sum(a["sell_value_usd"] for a in actions)
@@ -434,12 +472,22 @@ class TestGenerateAdvisorReport:
 
     def test_report_structure(self, db_path):
         """리포트에 필수 필드 존재."""
-        _seed_portfolio(db_path)
-        _seed_prices(db_path)
+        from unittest.mock import patch
+
+        import pandas as pd
+
+        mock_df = pd.DataFrame([
+            {"account": "test", "ticker": "TSLL", "sector": "Leveraged_ETF", "quantity": 96,
+             "avg_price": 16.93, "current_price": 11.44, "currency": "USD",
+             "current_value_usd": 1098.24, "cost_basis_usd": 1625.28,
+             "pnl_usd": -527.04, "pnl_pct": -32.4, "weight_pct": 5.0, "price_date": "2026-03-27"},
+        ])
+        mock_df.attrs["total_value_usd"] = 1098.24
 
         from nuri.analysis.rebalance_advisor import generate_advisor_report
 
-        report = generate_advisor_report(db_path=db_path)
+        with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=mock_df):
+            report = generate_advisor_report(db_path=db_path)
 
         assert "actions" in report
         assert "total_violations" in report
@@ -450,8 +498,9 @@ class TestGenerateAdvisorReport:
 
     def test_empty_portfolio_report(self, db_path):
         """빈 포트폴리오 리포트."""
-        import pandas as pd
         from unittest.mock import patch
+
+        import pandas as pd
 
         mock_df = pd.DataFrame()
 
