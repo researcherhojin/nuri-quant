@@ -35,31 +35,69 @@ graph LR
 
 ## Tech Stack
 
-<div align="center">
+**Data** (15 collectors)<br/>
+[![OpenBB](https://img.shields.io/badge/OpenBB-4.6-6366F1)](https://openbb.co/)
+[![yfinance](https://img.shields.io/badge/yfinance-0.2-800080)](https://pypi.org/project/yfinance/)
+[![pykrx](https://img.shields.io/badge/pykrx-1.2-FF4081)](https://github.com/sharebook-kr/pykrx)
+[![edgartools](https://img.shields.io/badge/edgartools-5.0-4CAF50)](https://github.com/dgunning/edgartools)
+[![FRED](https://img.shields.io/badge/FRED-API-1565C0)](https://fred.stlouisfed.org/)
+[![TA--Lib](https://img.shields.io/badge/TA--Lib-0.4-FF9800)](https://ta-lib.org/)
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
-[![Ollama](https://img.shields.io/badge/Ollama-Qwen3.5-FF6600)](https://ollama.com/)
-[![Plotly](https://img.shields.io/badge/Plotly-5.18-3F4F75?logo=plotly&logoColor=white)](https://plotly.com/)
+**External** (6 sites)<br/>
+[![TipRanks](https://img.shields.io/badge/TipRanks-analyst-1E88E5)](https://www.tipranks.com/)
+[![Dataroma](https://img.shields.io/badge/Dataroma-13F-43A047)](https://www.dataroma.com/)
+[![Macrotrends](https://img.shields.io/badge/Macrotrends-PE/Rev-7B1FA2)](https://www.macrotrends.net/)
+[![ARK](https://img.shields.io/badge/ARK-Cathie_Wood-FF6D00)](https://ark-funds.com/)
+[![ETF.com](https://img.shields.io/badge/ETF.com-flows-00897B)](https://www.etf.com/)
+[![TradingEconomics](https://img.shields.io/badge/TradingEcon-macro-D32F2F)](https://tradingeconomics.com/)
+
+**Quant**<br/>
 [![pandas](https://img.shields.io/badge/pandas-2.2-150458?logo=pandas&logoColor=white)](https://pandas.pydata.org/)
+[![numpy](https://img.shields.io/badge/numpy-1.26-013243?logo=numpy&logoColor=white)](https://numpy.org/)
+[![Riskfolio](https://img.shields.io/badge/Riskfolio--Lib-7.0-E91E63)](https://riskfolio-lib.readthedocs.io/)
+[![VectorBT](https://img.shields.io/badge/VectorBT-0.28-FF5722)](https://vectorbt.dev/)
+[![scikit--learn](https://img.shields.io/badge/scikit--learn-1.4-F7931E?logo=scikit-learn&logoColor=white)](https://scikit-learn.org/)
+
+**Backend** (14 API routes)<br/>
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![uvicorn](https://img.shields.io/badge/uvicorn-0.32-2196F3)](https://www.uvicorn.org/)
+[![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)](https://docs.pydantic.dev/)
+[![SSE](https://img.shields.io/badge/SSE-stream-607D8B)](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
+
+**Frontend** (12 pages)<br/>
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![JWT](https://img.shields.io/badge/JWT-Auth-000000?logo=jsonwebtokens&logoColor=white)](https://jwt.io/)
+[![shadcn/ui](https://img.shields.io/badge/shadcn/ui-latest-000000)](https://ui.shadcn.com/)
+[![Recharts](https://img.shields.io/badge/Recharts-2.0-8884D8)](https://recharts.org/)
+
+**LLM**<br/>
+[![Ollama](https://img.shields.io/badge/Ollama-Qwen3.5-FF6600)](https://ollama.com/)
+[![Qwen](https://img.shields.io/badge/Qwen3.5-35B_A3B_MoE-7C4DFF)](https://qwenlm.github.io/)
+
+**Viz** (5 evidence charts)<br/>
+[![Plotly](https://img.shields.io/badge/Plotly-5.18-3F4F75?logo=plotly&logoColor=white)](https://plotly.com/)
+[![Matplotlib](https://img.shields.io/badge/Matplotlib-3.8-11557C)](https://matplotlib.org/)
+[![mplfinance](https://img.shields.io/badge/mplfinance-0.12-2E7D32)](https://github.com/matplotlib/mplfinance)
+
+**DB & Infra**<br/>
+[![SQLite](https://img.shields.io/badge/SQLite-WAL_27_tables-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![APScheduler](https://img.shields.io/badge/APScheduler-17_cron-795548)](https://apscheduler.readthedocs.io/)
 [![Discord](https://img.shields.io/badge/Discord-Bot-5865F2?logo=discord&logoColor=white)](https://discord.com/)
 [![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?logo=telegram&logoColor=white)](https://telegram.org/)
 
-</div>
+**Security** (5 layers)<br/>
+[![JWT](https://img.shields.io/badge/JWT-Auth-000000?logo=jsonwebtokens&logoColor=white)](https://jwt.io/)
+[![bcrypt](https://img.shields.io/badge/bcrypt-hash-424242)](https://pypi.org/project/bcrypt/)
+[![slowapi](https://img.shields.io/badge/slowapi-rate_limit-FF7043)](https://github.com/laurentS/slowapi)
+[![CSP](https://img.shields.io/badge/CSP-HSTS-1B5E20)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP)
+[![audit](https://img.shields.io/badge/audit-log-37474F)](https://en.wikipedia.org/wiki/Audit_trail)
 
-| Layer | Tools | Count |
-|-------|-------|-------|
-| **Data** | OpenBB · yfinance · pykrx · edgartools · FRED · TA-Lib | 15 collectors |
-| **External** | TipRanks · Dataroma · Macrotrends · ARK · ETF.com · TradingEconomics | 6 sites |
-| **Quant** | pandas · Riskfolio-Lib · VectorBT · QuantStats · scikit-learn · cvxpy | — |
-| **Backend** | FastAPI · uvicorn · SSE stream · Pydantic | 14 API routes |
-| **Frontend** | Next.js 16 · React 19 · shadcn/ui · Tailwind 4 · Recharts | 12 pages |
-| **LLM** | Ollama · Qwen3.5 (35B-A3B MoE) · thinking model · auto-save | — |
-| **DB** | SQLite WAL · 27 tables · audit_log · external_analysis | 4.1 MB |
-| **Security** | JWT · bcrypt · slowapi · CSP/HSTS · audit log · Pydantic | 5 layers |
-| **CI/CD** | GitHub Actions · ruff + pytest + tsc · uv cache · Trivy scan | 3 jobs |
+**CI/CD** (3 jobs)<br/>
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+[![ruff](https://img.shields.io/badge/ruff-lint-D7FF64)](https://docs.astral.sh/ruff/)
+[![pytest](https://img.shields.io/badge/pytest-188_tests-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)](https://trivy.dev/)
 
 ## Getting Started
 
