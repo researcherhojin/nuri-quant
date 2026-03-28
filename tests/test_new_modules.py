@@ -520,16 +520,30 @@ class TestEvidenceCharts:
     """증거 차트 생성 테스트."""
 
     def test_portfolio_heatmap(self, db_path, tmp_path):
-        """포트폴리오 히트맵 생성."""
-        _seed_portfolio(db_path)
-        _seed_prices(db_path)
+        """포트폴리오 히트맵 생성 (mock analyze_portfolio)."""
+        from unittest.mock import patch
+
+        import pandas as pd
+
+        mock_df = pd.DataFrame([
+            {"account": "test", "ticker": "NVDA", "sector": "Semiconductor", "quantity": 20,
+             "avg_price": 132.14, "current_price": 167.99, "currency": "USD",
+             "current_value_usd": 3359.8, "cost_basis_usd": 2642.8,
+             "pnl_usd": 717.0, "pnl_pct": 27.1, "weight_pct": 60.0, "price_date": "2026-03-27"},
+            {"account": "test", "ticker": "TSLL", "sector": "Leveraged_ETF", "quantity": 96,
+             "avg_price": 16.93, "current_price": 11.44, "currency": "USD",
+             "current_value_usd": 1098.24, "cost_basis_usd": 1625.28,
+             "pnl_usd": -527.04, "pnl_pct": -32.4, "weight_pct": 40.0, "price_date": "2026-03-27"},
+        ])
+        mock_df.attrs["total_value_usd"] = 4458.04
 
         from nuri.analysis.evidence_charts import generate_portfolio_heatmap
 
         output_dir = tmp_path / "evidence"
         output_dir.mkdir()
 
-        result = generate_portfolio_heatmap(output_dir, db_path=db_path)
+        with patch("nuri.analysis.portfolio.analyze_portfolio", return_value=mock_df):
+            result = generate_portfolio_heatmap(output_dir, db_path=db_path)
         assert result.exists()
         assert result.suffix == ".html"
 
