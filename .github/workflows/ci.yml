@@ -7,7 +7,6 @@ on:
     branches: [main]
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   PYTHON_VERSION: "3.12"
   UV_CACHE_DIR: /tmp/.uv-cache
 
@@ -47,10 +46,8 @@ jobs:
         uses: actions/cache@v4
         continue-on-error: true
         with:
-          path: |
-            /usr/lib/libta_lib*
-            /usr/include/ta-lib
-          key: talib-0.4.0-ubuntu-v3
+          path: /tmp/talib-installed
+          key: talib-0.4.0-${{ runner.os }}-v5
 
       - name: Build TA-Lib from source
         if: steps.cache-talib.outputs.cache-hit != 'true'
@@ -58,6 +55,16 @@ jobs:
           wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
           tar -xzf ta-lib-0.4.0-src.tar.gz
           cd ta-lib && ./configure --prefix=/usr && make && sudo make install
+          mkdir -p /tmp/talib-installed
+          sudo cp /usr/lib/libta_lib* /tmp/talib-installed/
+          sudo cp -r /usr/include/ta-lib /tmp/talib-installed/
+
+      - name: Restore TA-Lib from cache
+        if: steps.cache-talib.outputs.cache-hit == 'true'
+        run: |
+          sudo cp /tmp/talib-installed/libta_lib* /usr/lib/
+          sudo mkdir -p /usr/include/ta-lib
+          sudo cp /tmp/talib-installed/ta-lib/* /usr/include/ta-lib/ 2>/dev/null || true
 
       - name: Configure TA-Lib
         run: sudo ldconfig
