@@ -29,16 +29,22 @@ const levelStyles: Record<string, { bg: string; border: string; text: string; la
 async function Dashboard() {
   const d = await fetchAPI<DashboardData>("/api/dashboard");
 
-  // 포트폴리오 + SIEGE 인증 병렬 fetch
+  // 포트폴리오만 서버사이드 fetch (빠름). SIEGE/advisor는 사이드바에서 별도 fetch.
   let portfolio: any = null;
   let siege: any = null;
   let advisor: any = null;
   try {
+    // portfolio는 빠름 (DB 직접). certify/advisor는 느릴 수 있으므로 3초 타임아웃.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
     [portfolio, siege, advisor] = await Promise.all([
       fetchAPI<any>("/api/portfolio").catch(() => null),
-      fetchAPI<any>("/api/certify").catch(() => null),
-      fetchAPI<any>("/api/rebalance-advisor").catch(() => null),
+      fetch("http://localhost:8001/api/certify", { signal: controller.signal })
+        .then(r => r.json()).catch(() => null),
+      fetch("http://localhost:8001/api/rebalance-advisor", { signal: controller.signal })
+        .then(r => r.json()).catch(() => null),
     ]);
+    clearTimeout(timeout);
   } catch {}
 
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
