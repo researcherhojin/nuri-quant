@@ -62,7 +62,15 @@ jobs:
       - name: Configure TA-Lib
         run: sudo ldconfig
 
+      - name: Cache venv
+        id: cache-venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
+
       - name: Create venv + install deps
+        if: steps.cache-venv.outputs.cache-hit != 'true'
         run: |
           uv venv
           uv pip install -e .
