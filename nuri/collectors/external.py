@@ -26,7 +26,7 @@ from nuri.core.db import get_db, query
 
 logger = logging.getLogger(__name__)
 
-# 외부 소스 정의 (6개 기존 + 4개 신규)
+# 외부 소스 정의 (6개 기존 + 5개 신규)
 SOURCES = {
     # 기존 6개
     "tipranks": "TipRanks 애널리스트 컨센서스",
@@ -35,11 +35,12 @@ SOURCES = {
     "ark": "ARK Invest 매수/매도",
     "etf_flows": "ETF.com 펀드 플로우",
     "tradingeconomics": "TradingEconomics 매크로",
-    # 신규 4개 (리서치 기반)
+    # 신규 5개 (Phase 2)
     "short_interest": "Short Interest (공매도 비율)",
     "cboe": "CBOE Put/Call Ratio",
     "coingecko": "CoinGecko BTC/Crypto 리스크",
     "finviz": "FINVIZ 기술적 스크리너",
+    "reddit": "Reddit/WSB 센티먼트 분석",
 }
 
 # 데이터 유형

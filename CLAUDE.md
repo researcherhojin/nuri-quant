@@ -20,7 +20,7 @@ Ruff ignores: E402 (lazy imports in scheduler), E501 (existing long lines), E712
 make setup                              # venv + deps + DB init + portfolio import
 
 # Data collection
-make collect                            # Phase A 6 collectors (stock/stock_kr/macro/technical/fear_greed/ark)
+make collect                            # Phase A 11 collectors (stock/stock_kr/macro/technical/fear_greed/ark/cboe/coingecko/finviz/reddit/fred_calendar)
 python -m nuri.collectors.stock --period 5y  # US stocks 5Y (OpenBB)
 python -m nuri.collectors.stock_kr --days 1825  # Korean stocks 5Y (pykrx)
 python -m nuri.collectors.fundamental   # PE/ROE/margins (OpenBB metrics)
@@ -77,7 +77,7 @@ make report-llm       # Qwen3.5 LLM 리포트 생성 + 자동 저장
 # Lint + Test
 make lint             # ruff check
 make lint-fix         # ruff check --fix
-make test             # pytest tests/ -v --cov=nuri (188 tests)
+make test             # pytest tests/ -v --cov=nuri
 .venv/bin/python -m pytest tests/test_db.py -v                                    # single file
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices -v                  # single class
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v  # single test
@@ -99,7 +99,7 @@ All `make` targets use `.venv/bin/python` — activate the venv or use the full 
 ```
 nuri/
 ├── core/              # DB (sole sqlite3 importer), rules (config/rules.yaml loader)
-├── collectors/        # 16 data collectors inheriting BaseCollector
+├── collectors/        # 21 data collectors inheriting BaseCollector
 ├── analysis/          # portfolio, risk, sector, charts, rebalance_advisor, evidence_charts
 ├── quant/             # Quantitative pipeline
 │   ├── regime/        # 6-regime classifier, macro score, strategy map
@@ -247,7 +247,7 @@ Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_trans
 
 ## Testing
 
-161 tests across 16 files. Tests use `tmp_path` fixture for isolated SQLite databases:
+503 tests across 34 files. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -296,13 +296,17 @@ Buy checklist (all must pass): TipRanks >= Moderate Buy, superinvestors >= 3, PE
 
 ### External data sources for investment decisions
 
-Before any buy/sell recommendation, verify against 6 external sites:
+Before any buy/sell recommendation, verify against 10 external sites:
 1. **dataroma.com** — Superinvestor 13F holdings, buy/sell trends
 2. **tradingeconomics.com** — GDP, CPI, Fed rate, employment, recession signals
 3. **macrotrends.net** — PE ratios, revenue, historical valuations
 4. **tipranks.com** — Analyst consensus, price targets, upside %
 5. **etf.com** — Fund flows, sector rotation, risk-on/risk-off
 6. **ark-funds.com** — Cathie Wood buy/sell activity
+7. **shortinterest.com** — Short interest data, short squeeze signals
+8. **cboe.com** — VIX term structure, put/call ratios
+9. **coingecko.com** — BTC/crypto sentiment as risk appetite proxy
+10. **finviz.com** — Screener, sector heatmaps, insider trading
 
 ## OpenBB Provider Limitations
 
