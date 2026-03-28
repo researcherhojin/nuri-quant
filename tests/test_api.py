@@ -191,3 +191,84 @@ class TestSwing:
         assert r.status_code == 200
         data = r.json()
         assert "positions" in data
+
+    def test_swing_entries(self, client):
+        r = client.get("/api/swing/entries")
+        assert r.status_code == 200
+
+    def test_scan(self, client):
+        r = client.get("/api/scan")
+        assert r.status_code == 200
+
+
+class TestDashboard:
+    def test_dashboard(self, client):
+        r = client.get("/api/dashboard")
+        assert r.status_code == 200
+        data = r.json()
+        assert "verdict" in data
+        assert "regime" in data
+        assert "actions" in data
+
+    def test_dashboard_cached(self, client):
+        """두 번 호출 — 캐시 사용."""
+        r1 = client.get("/api/dashboard")
+        r2 = client.get("/api/dashboard")
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+
+
+class TestConsensusAPI:
+    def test_consensus(self, client):
+        r = client.get("/api/consensus")
+        assert r.status_code == 200
+
+    def test_consensus_ticker(self, client):
+        r = client.get("/api/consensus/AAPL")
+        assert r.status_code == 200
+
+
+class TestTargetsAPI:
+    def test_targets(self, client):
+        r = client.get("/api/targets")
+        assert r.status_code == 200
+
+    def test_targets_ticker(self, client):
+        r = client.get("/api/targets/AAPL")
+        assert r.status_code == 200
+
+
+class TestEvidenceAPI:
+    def test_evidence(self, client):
+        r = client.get("/api/evidence")
+        assert r.status_code == 200
+
+    def test_evidence_list(self, client):
+        r = client.get("/api/evidence")
+        assert r.status_code == 200
+
+
+class TestExternalAPI:
+    def test_external(self, client):
+        r = client.get("/api/external")
+        assert r.status_code == 200
+
+    def test_external_ticker(self, client):
+        r = client.get("/api/external/AAPL")
+        assert r.status_code == 200
+
+
+class TestRebalanceAdvisor:
+    def test_rebalance_advisor(self, client):
+        r = client.get("/api/rebalance-advisor")
+        assert r.status_code == 200
+
+
+class TestStrategyAPI:
+    def test_strategy_status(self, client):
+        r = client.get("/api/strategy/status")
+        assert r.status_code == 200
+
+    def test_backtest(self, client):
+        r = client.get("/api/backtest")
+        assert r.status_code == 200

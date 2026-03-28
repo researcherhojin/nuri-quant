@@ -23,17 +23,17 @@ interface Props {
 // 공통 렌더러
 const ticker = (v: string) => <span className="font-medium">{v}</span>;
 const pct = (v: number) => (
-  <span className={v > 0 ? "text-emerald-400" : v < 0 ? "text-red-400" : "text-zinc-400"}>
+  <span className={v > 0 ? "text-emerald-400" : v < 0 ? "text-red-400" : "text-muted-foreground"}>
     {v > 0 ? "+" : ""}{typeof v === "number" ? v.toFixed(1) : v}%
   </span>
 );
 const num = (v: number) => typeof v === "number" ? v.toFixed(1) : String(v);
 const badge = (v: string) => <StatusBadge status={v} size="sm" />;
 const badgeMd = (v: string) => <StatusBadge status={v} size="md" />;
-const dim = (v: any) => <span className="text-zinc-500 text-xs">{String(v ?? "—")}</span>;
+const dim = (v: any) => <span className="text-muted-foreground text-xs">{String(v ?? "—")}</span>;
 const money = (v: number) => <span className="text-emerald-400">${v?.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>;
 const price = (v: number) => {
-  if (!v) return <span className="text-zinc-600">—</span>;
+  if (!v) return <span className="text-muted-foreground/70">—</span>;
   const isKr = v > 10000;
   return <span>{isKr ? `₩${v.toLocaleString()}` : `$${v.toFixed(2)}`}</span>;
 };
@@ -123,7 +123,7 @@ export function ClientTable({ variant, data, compact, title }: Props) {
   if (!columns) return <p className="text-red-400 text-sm">Unknown variant: {variant}</p>;
   return (
     <>
-      {title && <p className="text-xs text-zinc-500 mb-3">{title}</p>}
+      {title && <p className="text-xs text-muted-foreground mb-3">{title}</p>}
       <DataTable columns={columns} data={data} compact={compact} />
     </>
   );

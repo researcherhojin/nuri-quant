@@ -11,9 +11,9 @@ async function ConsensusSection() {
   const sorted = [...data.results].sort((a, b) => b.final_confidence - a.final_confidence);
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardContent className="pt-5">
-        <p className="text-xs text-zinc-500 mb-3">
+        <p className="text-xs text-muted-foreground mb-3">
           6-Agent Consensus — {data.count} tickers × 6 agents = {data.count * 6} verdicts
         </p>
         <ClientTable variant="consensus" data={sorted} compact />
@@ -28,19 +28,19 @@ async function DissentSection() {
   if (!withDissent.length) return null;
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardContent className="pt-5">
-        <p className="text-xs text-zinc-500 mb-3">Dissent — Agent Disagreements</p>
+        <p className="text-xs text-muted-foreground mb-3">Dissent — Agent Disagreements</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {withDissent.map((r) => (
-            <div key={r.ticker} className="bg-zinc-800/40 rounded-lg p-2.5">
+            <div key={r.ticker} className="bg-muted/50 rounded-lg p-2.5">
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-medium text-sm">{r.ticker}</span>
                 <StatusBadge status={r.final_action} />
-                <span className="text-[10px] text-zinc-600">{(r.agreement_rate * 100).toFixed(0)}% agree</span>
+                <span className="text-[10px] text-muted-foreground/70">{(r.agreement_rate * 100).toFixed(0)}% agree</span>
               </div>
               {r.dissent.slice(0, 2).map((d: string, i: number) => (
-                <p key={i} className="text-[10px] text-zinc-500 leading-tight">{d.slice(0, 80)}</p>
+                <p key={i} className="text-[10px] text-muted-foreground leading-tight">{d.slice(0, 80)}</p>
               ))}
             </div>
           ))}
@@ -50,7 +50,7 @@ async function DissentSection() {
   );
 }
 
-function Loading() { return <div className="h-48 bg-zinc-900 rounded-xl border border-zinc-800 animate-pulse" />; }
+function Loading() { return <div className="h-48 bg-card rounded-xl border border-border animate-pulse" />; }
 
 export default function ConsensusPage() {
   return (

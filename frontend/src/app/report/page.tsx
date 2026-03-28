@@ -40,23 +40,23 @@ export default function ReportPage() {
       </div>
 
       {context && (
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-sm text-zinc-400">Data Context (LLM Input)</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Data Context (LLM Input)</CardTitle>
           </CardHeader>
           <CardContent>
-            <pre className="text-xs text-zinc-500 whitespace-pre-wrap font-mono">{context}</pre>
+            <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">{context}</pre>
           </CardContent>
         </Card>
       )}
 
       {report && (
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-sm text-zinc-400">AI Generated Report (Ollama)</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">AI Generated Report (Ollama)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap">
+            <div className="prose dark:prose-invert prose-sm max-w-none whitespace-pre-wrap">
               {report}
             </div>
           </CardContent>
@@ -64,8 +64,8 @@ export default function ReportPage() {
       )}
 
       {!report && !loading && (
-        <Card className="bg-zinc-900 border-zinc-800">
-          <CardContent className="py-12 text-center text-zinc-500">
+        <Card className="bg-card border-border">
+          <CardContent className="py-12 text-center text-muted-foreground">
             <p>Generate Report 버튼을 눌러 AI 투자 리포트를 생성하세요.</p>
             <p className="text-xs mt-2">Ollama가 실행 중이어야 합니다 (ollama serve)</p>
           </CardContent>
