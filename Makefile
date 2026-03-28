@@ -2,7 +2,7 @@
        gate consensus scan swing swing-check strategy strategy-execute positions wallstreet filings \
        backtest-ls backtest-stress optimize mean-reversion pairs api dashboard start lint lint-fix \
        verify-quick verify-all demo pre-deploy ports ports-kill update-counts \
-       full-scan quick-scan targets rebalance evidence external
+       full-scan quick-scan targets rebalance evidence external report-llm
 
 PYTHON = .venv/bin/python
 
