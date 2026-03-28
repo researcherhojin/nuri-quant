@@ -12,7 +12,7 @@
 
 </div>
 
-100% 무료 오픈소스 퀀트 투자 플랫폼. 13개 무료 데이터 소스에서 수집, 시그널 백테스트 검증, 6-레짐 시장 분류, 7-에이전트 합의 추천 — Next.js 대시보드와 LLM 리포트 포함.
+100% 무료 오픈소스 퀀트 투자 플랫폼. 16개 수집기 + 6개 외부 사이트에서 데이터 수집, 시그널 백테스트 검증, 6-레짐 시장 분류, 7-에이전트 합의 추천 — Next.js 대시보드(12 pages) + Qwen3.5 LLM 리포트 포함.
 
 ## 6-Step Pipeline
 
@@ -171,9 +171,9 @@ graph LR
         style Output fill:#e3f2fd
         REC --> TK[30/60/90d Tracker]
         REC --> API[FastAPI :8001]
-        API --> NX[Next.js :3000]
-        API --> LLM[Ollama Report]
-        API --> DC[Discord Alert]
+        API --> NX[Next.js :3000<br/>12 pages]
+        API --> LLM[Qwen3.5 Report]
+        API --> DC[Discord + Telegram]
     end
 ```
 
@@ -364,45 +364,45 @@ confidence = regime_win_rate x 60% + regime_pf x 40%
 
 ## Infrastructure
 
-- **2-Machine Setup**: M3 Max MacBook (dev) ↔ M2 Pro Mac Mini (24/7 production)
+- **2-Machine Setup**: MacBook (dev) ↔ M2 Pro Mac Mini (24/7 production)
 - **DB**: SQLite WAL mode, `data/portfolio.db`, 27+ tables (audit_log, external_analysis 포함)
 - **Scheduler**: 17 cron jobs (KST), lazy imports
 - **CI**: GitHub Actions — ruff lint + pytest + Next.js tsc (uv + venv 캐시 최적화)
 - **Security**: JWT + API key 인증, bcrypt 해싱, slowapi rate limiting, CSP/HSTS 보안 헤더
 - **Deploy**: `make deploy` (rsync), `make backup` (30-day rolling)
-- **Dashboard**: Next.js 16 — 10 pages 포함 `/evidence` (Plotly 차트 뷰어)
+- **Dashboard**: Next.js 16 — 12 routes 포함 `/evidence` (Plotly 차트 뷰어)
 - **Alerts**: Discord + Telegram — 규칙 위반, 레짐 전환, 매매 시그널
 - **MCP**: `.mcp.json` — Claude Code에서 직접 DB 쿼리 가능
 
-## Roadmap — Security & Production Readiness
+## Completed — Security & Production Readiness
 
-보안 감사 (OWASP + STRIDE) 기반.
+보안 감사 (OWASP + STRIDE) 기반 — **17/17 항목 완료**.
 
-### CRITICAL (Week 1)
+<details>
+<summary>CRITICAL 5/5 + HIGH 6/6 + MEDIUM 6/6 (클릭하여 펼치기)</summary>
 
-- [x] API 인증 미들웨어 — JWT/API key ✅
-- [x] 비밀번호 해싱 — bcrypt + SHA256 cookie ✅
-- [x] Rate Limiting — slowapi ✅
-- [x] CORS 강화 — env-based origins + restricted headers ✅
-- [x] 브로커 입력 검증 — Pydantic + regex + whitelist ✅
+**CRITICAL**: JWT/API key 인증, bcrypt 해싱, slowapi Rate Limiting, CORS 강화, Pydantic 입력 검증
 
-### HIGH (Week 2)
+**HIGH**: 감사 로깅 (audit_log), Monte Carlo block bootstrap, Partial fill 추적, DB 마이그레이션 원자성, 수집 실패 처리 (>10% 거부), CSP/HSTS 보안 헤더
 
-- [x] 감사 로깅 — append-only audit_log table ✅
-- [x] Monte Carlo 수정 — 20일 block bootstrap ✅
-- [x] Partial fill 처리 — filled_qty/unfilled_qty 추적 ✅
-- [x] DB 마이그레이션 원자성 — migration #1 (audit_log) ✅
-- [x] 수집 실패 처리 — >10% 실패 시 save 거부 ✅
-- [x] 보안 헤더 — CSP, HSTS, X-Frame-Options, SameSite ✅
+**MEDIUM**: 데이터 신선도 검증 (72h), 적응형 히스테리시스 (VIX≥25), FX 캘리브레이션 (90일 mean±1σ), SSE 캐시 (60초), 증거 차트 5개, Telegram 봇 알림
 
-### MEDIUM (Week 3-4)
+</details>
 
-- [x] 데이터 신선도 검증 — SPY max 72h ✅
-- [x] 적응형 히스테리시스 — VIX≥25 시 5일→2일 ✅
-- [x] 한국 에이전트 FX 캘리브레이션 — 90일 mean±1σ ✅
-- [x] SSE 캐시 — 60초 메모리 캐시 ✅
-- [x] 차트 고도화 — evidence_charts.py 5개 차트 ✅
-- [x] 알림 확장 — Telegram 봇 알림 ✅
+## Roadmap — Next Phase
+
+### 자동화 (진행 중)
+
+- [ ] 외부 데이터 수집기 완전 자동화 — TipRanks/Dataroma 스크래핑
+- [ ] `make full-scan` → Discord/Telegram 자동 발송
+- [ ] 대시보드 증거 차트 실시간 갱신
+
+### 고도화
+
+- [ ] 백테스트에 신규 익절/손절 규칙 적용 → 성과 검증
+- [ ] 대시보드에 가격 타겟 + 리밸런스 어드바이저 페이지
+- [ ] Alpaca 실전 연동 (paper → live 전환 가이드)
+- [ ] 멀티 포트폴리오 지원 (계좌별 독립 분석)
 
 ## License
 
