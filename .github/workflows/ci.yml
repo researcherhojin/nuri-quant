@@ -70,19 +70,9 @@ jobs:
       - name: Configure TA-Lib
         run: sudo ldconfig
 
-      - name: Cache venv
-        id: cache-venv
-        uses: actions/cache@v4
-        continue-on-error: true
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
-
       - name: Create venv + install deps
         run: |
-          if [ ! -f .venv/bin/python ]; then
-            uv venv
-          fi
+          uv venv
           uv pip install -e .
 
       - name: Run tests with coverage
