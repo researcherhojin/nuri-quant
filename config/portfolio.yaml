@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════
 # Nuri-Quant Portfolio Configuration
-# 마지막 업데이트: 2026-03-25
+# 마지막 업데이트: 2026-03-28
 # ═══════════════════════════════════════════════════════
 
 accounts:
@@ -78,14 +78,5 @@ accounts:
     status: "원리금보장형 → 한화투자증권 이전 후 ETF 전환 예정"
 
 # ═══ 비투자 자산 ═══
-bank:
-  kbank_life: 14707844
-  kbank_biz: 10000000
-  kbank_plus: 10000000
-  others: 24552885
-  total: 59260729
-
-real_estate:
-  home: 100000000
-
-total_assets: 226907436
+# 개인 금융 정보는 .env 또는 별도 private 파일에서 관리
+# bank/real_estate/total_assets는 git에 포함하지 않음
