@@ -93,6 +93,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
           flags: backend
+          disable_search: true
           fail_ci_if_error: false
 
   frontend:
@@ -120,4 +121,6 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/lcov.info
           flags: frontend
+          disable_search: true
+          fail_ci_if_error: false
           fail_ci_if_error: false
