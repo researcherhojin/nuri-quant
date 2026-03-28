@@ -12,27 +12,48 @@
 
 </div>
 
-100% 무료 오픈소스 퀀트 투자 플랫폼. 16개 수집기 + 6개 외부 사이트에서 데이터 수집, 시그널 백테스트 검증, 6-레짐 시장 분류, 7-에이전트 합의 추천 — Next.js 대시보드(12 pages) + Qwen3.5 LLM 리포트 포함.
+100% 무료 오픈소스 퀀트 투자 플랫폼. 15개 수집기 + 6개 외부 사이트에서 데이터 수집, 3,400+ 트레이드 시그널 백테스트 검증, 6-레짐 시장 분류, 7-에이전트 합의 추천 — Next.js 대시보드(12 pages) + Qwen3.5 LLM 리포트 포함.
 
 ## 6-Step Pipeline
 
-```
-Collect → Validate → Classify → Diagnose → Recommend → Track
-  13개      3,400+     6-레짐     매크로      7-에이전트    30/60/90일
-  소스      트레이드    분류기     스코어      합의 투표     성과 추적
+```mermaid
+graph LR
+    A["A. Collect<br/>15 수집기<br/>+ 6 외부 사이트"] --> B["B. Validate<br/>3,400+ 트레이드<br/>시그널 백테스트"]
+    B --> C["C. Classify<br/>6-레짐 분류기<br/>동적 임계값"]
+    C --> D["D. Diagnose<br/>매크로 48/100<br/>시그널 drift"]
+    D --> E["E. Recommend<br/>7-에이전트<br/>합의 투표"]
+    E --> F["F. Track<br/>30/60/90일<br/>성과 추적"]
+
+    style A fill:#e8eaf6,stroke:#5c6bc0
+    style B fill:#e8f5e9,stroke:#66bb6a
+    style C fill:#fff3e0,stroke:#ffa726
+    style D fill:#fce4ec,stroke:#ef5350
+    style E fill:#e3f2fd,stroke:#42a5f5
+    style F fill:#f3e5f5,stroke:#ab47bc
 ```
 
 ## Tech Stack
 
+[![OpenBB](https://img.shields.io/badge/OpenBB-4.6-6366F1?logo=data:image/svg+xml;base64,&logoColor=white)](https://openbb.co/)
+[![yfinance](https://img.shields.io/badge/yfinance-0.2-800080)](https://pypi.org/project/yfinance/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Ollama](https://img.shields.io/badge/Ollama-Qwen3.5-FF6600)](https://ollama.com/)
+[![Plotly](https://img.shields.io/badge/Plotly-5.18-3F4F75?logo=plotly&logoColor=white)](https://plotly.com/)
+[![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![JWT](https://img.shields.io/badge/JWT-Auth-000000?logo=jsonwebtokens&logoColor=white)](https://jwt.io/)
+
 | Layer | Tools |
 |-------|-------|
-| **Data** | OpenBB, yfinance, pykrx, edgartools, FRED, TA-Lib |
-| **Quant** | pandas, Riskfolio-Lib, VectorBT, QuantStats, scikit-learn |
-| **Viz** | Plotly, Matplotlib, Recharts (dashboard) |
-| **Interface** | FastAPI (:8001), Next.js 16 (:3000), shadcn/ui, Tailwind 4 |
-| **LLM** | Ollama (Qwen3.5) — SIEGE 인증 리포트, thinking model |
-| **Infra** | SQLite (WAL), APScheduler (17 cron), Discord, Telegram, GitHub Actions CI |
-| **Security** | JWT + bcrypt, slowapi rate limiting, CSP/HSTS, audit logging |
+| **Data (15 collectors)** | OpenBB, yfinance, pykrx, edgartools, FRED, TA-Lib, BeautifulSoup |
+| **External (6 sites)** | TipRanks, Dataroma, Macrotrends, ARK, ETF.com, TradingEconomics |
+| **Quant** | pandas, Riskfolio-Lib, VectorBT, QuantStats, scikit-learn, cvxpy |
+| **Viz** | Plotly (증거 차트), Matplotlib, mplfinance, Recharts (dashboard) |
+| **Interface** | FastAPI (:8001, 12 endpoints), Next.js 16 (:3000, 12 pages), shadcn/ui |
+| **LLM** | Ollama (Qwen3.5) — SIEGE 인증 리포트, thinking model, auto-save |
+| **Infra** | SQLite WAL (27 tables), APScheduler (17 cron), Discord, Telegram |
+| **Security** | JWT + bcrypt, slowapi rate limit, CSP/HSTS, audit log, Pydantic 검증 |
+| **CI/CD** | GitHub Actions (ruff + pytest + tsc), uv + venv 캐시, Trivy 보안 스캔 |
 
 ## Quick Start
 
