@@ -62,22 +62,57 @@ class FINVIZCollector(BaseCollector):
         return records
 
     def _fetch_signal_tickers(self, signal: str) -> set[str]:
-        """finvizfinance Ticker 스크리너로 시그널 종목 목록 조회."""
+        """시그널 종목 목록 조회. finvizfinance 우선, 실패 시 직접 스크래핑."""
+        # 1차: finvizfinance 라이브러리
         try:
             from finvizfinance.screener.ticker import Ticker
-        except ImportError:
-            self.logger.error("finvizfinance 라이브러리 미설치: pip install finvizfinance")
-            return set()
+            screener = Ticker()
+            screener.set_filter(signal=signal)
+            result = screener.screener_view(limit=500, verbose=0, sleep_sec=0.5)
+            if isinstance(result, list) and result:
+                return set(result)
+        except Exception as e:
+            self.logger.debug("finvizfinance 실패 (%s), 직접 스크래핑 시도: %s", signal, e)
 
-        screener = Ticker()
-        screener.set_filter(signal=signal)
-        result = screener.screener_view(limit=500, verbose=0, sleep_sec=0.5)
+        # 2차: 직접 HTML 스크래핑 폴백
+        return self._scrape_signal_fallback(signal)
 
-        if result is None:
-            return set()
-        if isinstance(result, list):
-            return set(result)
-        return set()
+    def _scrape_signal_fallback(self, signal: str) -> set[str]:
+        """FINVIZ 스크리너 HTML에서 직접 종목 추출."""
+        import requests
+        from bs4 import BeautifulSoup
+
+        # finvizfinance signal name → FINVIZ URL signal param
+        signal_map = {
+            "Oversold": "ta_oversold",
+            "Overbought": "ta_overbought",
+            "New High": "ta_newhigh",
+            "New Low": "ta_newlow",
+            "Most Volatile": "ta_mostvolatile",
+            "Unusual Volume": "ta_unusualvolume",
+        }
+        url_signal = signal_map.get(signal, signal)
+
+        resp = requests.get(
+            "https://finviz.com/screener.ashx",
+            params={"v": "111", "s": url_signal},
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        tickers = set()
+        # FINVIZ 스크리너 테이블에서 quote.ashx 링크의 티커 추출
+        for link in soup.find_all("a", href=True):
+            href = link.get("href", "")
+            if "quote.ashx?t=" in href:
+                ticker = link.text.strip()
+                if ticker and ticker.isalpha() and 1 <= len(ticker) <= 5:
+                    tickers.add(ticker)
+        return tickers
 
     def save(self, data: list[dict], db_path=None) -> int:
         """외부 분석 테이블에 FINVIZ 시그널 저장."""
