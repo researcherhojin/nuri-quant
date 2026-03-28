@@ -3,8 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { ClientTable } from "@/components/ui/client-table";
 
 interface Scorecard {
   signal_id: string; total_trades: number; win_rate: number; avg_return: number;
@@ -20,16 +19,6 @@ function pfColor(v: number) {
   return v >= 1.5 ? "text-emerald-400" : v >= 1.0 ? "text-amber-400" : "text-red-400";
 }
 
-const scorecardCols = [
-  { key: "signal_id", label: "Signal", render: (v: string) => <span className="font-medium">{v}</span> },
-  { key: "total_trades", label: "Trades", align: "right" as const },
-  { key: "win_rate", label: "Win Rate", align: "right" as const, render: (v: number) => <span className={v > 0.5 ? "text-emerald-400" : "text-red-400"}>{(v * 100).toFixed(0)}%</span> },
-  { key: "avg_return", label: "Avg Ret", align: "right" as const, render: (v: number) => <span className={v > 0 ? "text-emerald-400" : "text-red-400"}>{v > 0 ? "+" : ""}{v.toFixed(1)}%</span> },
-  { key: "profit_factor", label: "PF", align: "right" as const, render: (v: number) => <span className={`font-semibold ${pfColor(v)}`}>{pf(v)}</span> },
-  { key: "max_return", label: "Best", align: "right" as const, hideOnMobile: true, render: (v: number) => <span className="text-emerald-400">+{v.toFixed(1)}%</span> },
-  { key: "max_loss", label: "Worst", align: "right" as const, hideOnMobile: true, render: (v: number) => <span className="text-red-400">{v.toFixed(1)}%</span> },
-];
-
 async function ScorecardSection() {
   const data = await fetchAPI<{ scorecard: Scorecard[]; date: string }>("/api/scorecard");
   if ("error" in data) return <p className="text-red-400 text-sm">{String((data as any).error)}</p>;
@@ -39,7 +28,7 @@ async function ScorecardSection() {
     <Card className="bg-zinc-900 border-zinc-800">
       <CardContent className="pt-5">
         <p className="text-xs text-zinc-500 mb-3">Signal Scorecard — {data.date}</p>
-        <DataTable columns={scorecardCols} data={sorted} />
+        <ClientTable variant="scorecard" data={sorted} />
       </CardContent>
     </Card>
   );

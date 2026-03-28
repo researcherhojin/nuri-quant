@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
+import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
 
@@ -134,27 +134,6 @@ async function ConflictsSection() {
 async function MemorySection() {
   const data = await fetchAPI<{ drifts: Drift[]; critical: number; degrading: number }>("/api/memory");
 
-  const statusMap: Record<string, string> = {
-    critical: "SELL",
-    degrading: "WATCH",
-    improving: "BUY",
-    stable: "HOLD",
-  };
-
-  const driftCols = [
-    { key: "signal_id", label: "Signal", render: (v: string) => <span className="font-medium">{v}</span> },
-    { key: "status", label: "Status", align: "center" as const, render: (v: string) => <StatusBadge status={statusMap[v] || "HOLD"} size="sm" /> },
-    { key: "all_time_wr", label: "All-Time WR", align: "right" as const, render: (v: number) => `${(v * 100).toFixed(0)}%` },
-    { key: "recent_wr", label: "Recent WR", align: "right" as const, render: (v: number) => `${(v * 100).toFixed(0)}%` },
-    {
-      key: "drift_pct", label: "Drift", align: "right" as const,
-      render: (v: number) => (
-        <span className={`font-medium ${v < -15 ? "text-red-400" : v > 15 ? "text-emerald-400" : "text-zinc-400"}`}>
-          {v > 0 ? "+" : ""}{v.toFixed(1)}%
-        </span>
-      ),
-    },
-  ];
 
   return (
     <Card className="bg-zinc-900 border-zinc-800">
@@ -169,7 +148,7 @@ async function MemorySection() {
         {data.drifts.length === 0 ? (
           <p className="text-xs text-zinc-600 py-3 text-center">No drift data (run: make validate first)</p>
         ) : (
-          <DataTable columns={driftCols} data={data.drifts} compact />
+          <ClientTable variant="drift" data={data.drifts} compact />
         )}
       </CardContent>
     </Card>
