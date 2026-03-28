@@ -20,7 +20,19 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from nuri.api.routes import agents, dashboard, engine, portfolio, rebalance, regime, signals, stream, swing, ticker
+from nuri.api.routes import (
+    agents,
+    dashboard,
+    engine,
+    evidence,
+    portfolio,
+    rebalance,
+    regime,
+    signals,
+    stream,
+    swing,
+    ticker,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 # yfinance 404/401 에러 로그 억제 (ETF/KS 종목에서 대량 발생)
@@ -74,6 +86,7 @@ app.include_router(swing.router, prefix="/api")
 app.include_router(ticker.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(stream.router, prefix="/api")
+app.include_router(evidence.router, prefix="/api")
 
 
 # ─── 인증 엔드포인트 ───
