@@ -122,8 +122,8 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 <details>
 <summary><b>전체 기술 스택</b></summary>
 
-**Data** (15 collectors) — OpenBB · yfinance · pykrx · edgartools · FRED · TA-Lib<br/>
-**External** (6 sites) — TipRanks · Dataroma · Macrotrends · ARK · ETF.com · TradingEconomics<br/>
+**Data** (15 collectors) — OpenBB · yfinance · pykrx · edgartools · FRED · TA-Lib · BTC/Gold<br/>
+**External** (10 sites) — TipRanks · Dataroma · Macrotrends · ARK · ETF.com · TradingEcon · Short Interest · CBOE · CoinGecko · FINVIZ<br/>
 **Quant** — pandas · Riskfolio-Lib · VectorBT · QuantStats · scikit-learn · cvxpy<br/>
 **Backend** (51 endpoints) — FastAPI · uvicorn · Pydantic · SSE stream<br/>
 **Frontend** (15 pages) — Next.js 16 · React 19 · Tailwind 4 · shadcn/ui · Recharts · React Flow<br/>
