@@ -77,7 +77,7 @@ class CoinGeckoCollector(BaseCollector):
                 "value": float(btc["usd"]),
                 "source": "CoinGecko",
             })
-            self.logger.info("BTC 가격: $%,.0f", btc["usd"])
+            self.logger.info("BTC 가격: $%d", int(btc["usd"]))
 
         if "usd_market_cap" in btc:
             # 조 단위로 변환 (1T = 1e12)
