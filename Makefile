@@ -194,6 +194,8 @@ full-scan:
 	$(PYTHON) -m nuri.analysis.rebalance_advisor
 	@echo "\n=== Phase G: 증거 시각화 ==="
 	$(PYTHON) -m nuri.analysis.evidence_charts
+	@echo "\n=== Phase H: 알림 발송 ==="
+	$(PYTHON) scripts/notify_scan_result.py
 	@echo "\n=== 전체 스캔 완료 ==="
 
 # ── 빠른 스캔 (수집→분석→합의만, ~2분) ──

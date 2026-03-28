@@ -34,26 +34,34 @@ graph LR
 
 ## Tech Stack
 
-[![OpenBB](https://img.shields.io/badge/OpenBB-4.6-6366F1?logo=data:image/svg+xml;base64,&logoColor=white)](https://openbb.co/)
-[![yfinance](https://img.shields.io/badge/yfinance-0.2-800080)](https://pypi.org/project/yfinance/)
+<div align="center">
+
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-Qwen3.5-FF6600)](https://ollama.com/)
 [![Plotly](https://img.shields.io/badge/Plotly-5.18-3F4F75?logo=plotly&logoColor=white)](https://plotly.com/)
 [![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![pandas](https://img.shields.io/badge/pandas-2.2-150458?logo=pandas&logoColor=white)](https://pandas.pydata.org/)
 [![JWT](https://img.shields.io/badge/JWT-Auth-000000?logo=jsonwebtokens&logoColor=white)](https://jwt.io/)
+[![Discord](https://img.shields.io/badge/Discord-Bot-5865F2?logo=discord&logoColor=white)](https://discord.com/)
+[![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?logo=telegram&logoColor=white)](https://telegram.org/)
 
-| Layer | Tools |
-|-------|-------|
-| **Data (15 collectors)** | OpenBB, yfinance, pykrx, edgartools, FRED, TA-Lib, BeautifulSoup |
-| **External (6 sites)** | TipRanks, Dataroma, Macrotrends, ARK, ETF.com, TradingEconomics |
-| **Quant** | pandas, Riskfolio-Lib, VectorBT, QuantStats, scikit-learn, cvxpy |
-| **Viz** | Plotly (증거 차트), Matplotlib, mplfinance, Recharts (dashboard) |
-| **Interface** | FastAPI (:8001, 12 endpoints), Next.js 16 (:3000, 12 pages), shadcn/ui |
-| **LLM** | Ollama (Qwen3.5) — SIEGE 인증 리포트, thinking model, auto-save |
-| **Infra** | SQLite WAL (27 tables), APScheduler (17 cron), Discord, Telegram |
-| **Security** | JWT + bcrypt, slowapi rate limit, CSP/HSTS, audit log, Pydantic 검증 |
-| **CI/CD** | GitHub Actions (ruff + pytest + tsc), uv + venv 캐시, Trivy 보안 스캔 |
+</div>
+
+| Layer | Tools | Count |
+|-------|-------|-------|
+| **Data** | OpenBB, yfinance, pykrx, edgartools, FRED, TA-Lib, BeautifulSoup | 15 collectors |
+| **External** | TipRanks, Dataroma, Macrotrends, ARK, ETF.com, TradingEconomics | 6 sites |
+| **Quant** | pandas, numpy, Riskfolio-Lib, VectorBT, QuantStats, scikit-learn, cvxpy | — |
+| **Viz** | Plotly (5 evidence charts), Matplotlib, mplfinance, Recharts | — |
+| **Backend** | FastAPI + uvicorn, SSE stream, Pydantic validation | 14 API routes |
+| **Frontend** | Next.js 16, React 19, shadcn/ui, Tailwind 4, Recharts | 12 pages |
+| **LLM** | Ollama (Qwen3.5, 35B-A3B MoE), thinking model, auto-save | — |
+| **DB** | SQLite WAL mode, 27 tables, audit_log, external_analysis | 4.1 MB |
+| **Alerts** | Discord webhook + bot, Telegram bot, daily report | 2 channels |
+| **Scheduler** | APScheduler, 17 cron jobs (KST), lazy imports | — |
+| **Security** | JWT + bcrypt, slowapi rate limit, CSP/HSTS, audit log | 5 layers |
+| **CI/CD** | GitHub Actions (ruff + pytest + tsc), uv cache, Trivy scan | 3 jobs |
 
 ## Quick Start
 
@@ -61,74 +69,53 @@ graph LR
 # Prerequisites: Python 3.12, uv, brew install ta-lib
 git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
 make setup              # venv + deps + DB init + portfolio import
-cp .env.example .env    # API keys 설정 (대부분 optional)
+cp .env.example .env    # API keys (대부분 optional, fallback 존재)
 ```
 
-### 데이터 수집
+## Commands
 
-```bash
-# 최초 5년치 수집
-python -m nuri.collectors.stock --period 5y      # US 주가 (OpenBB)
-python -m nuri.collectors.stock_kr --days 1825   # KR 주가 (pykrx)
+> **한 줄 요약**: `make full-scan` — 수집부터 증거 시각화 + 알림까지 한번에.
 
-# 일일 수집 (이후 매일)
-make collect            # 6개 수집기: stock, stock_kr, macro, technical, fear_greed, ark
-make wallstreet         # 애널리스트 등급, 실적 서프라이즈, 내부자 거래
-make filings            # SEC 10-K 핵심 지표
+<details>
+<summary><b>전체 명령어 목록</b> (클릭하여 펼치기)</summary>
+
+| 카테고리 | 명령어 | 설명 |
+|---------|--------|------|
+| **종합** | `make full-scan` | 8-phase 전체 파이프라인 (수집→증거→알림) |
+| | `make quick-scan` | 빠른 4-step (~2분) |
+| **수집** | `make collect` | 6개 일일 수집기 |
+| | `make wallstreet` | 애널리스트 등급, 실적, 내부자 |
+| **분석** | `make analyze` | 포트폴리오 + 섹터 + 리스크 |
+| | `make validate` | 시그널 백테스트 + 스코어카드 |
+| | `make consensus` | 7-에이전트 합의 + 가격 타겟 |
+| **투자 도구** | `make targets` | 전 종목 매수가/손절가/익절가 |
+| | `make rebalance` | 규칙 위반 감지 + 매도 수량 |
+| | `make evidence` | 5개 Plotly 증거 차트 |
+| | `make external` | 외부 데이터 요약 (6개 사이트) |
+| | `make report-llm` | Qwen3.5 LLM 리포트 |
+| **전략** | `make strategy` | L/S 레짐 전략 |
+| | `make backtest-ls` | L/S 백테스트 + Monte Carlo |
+| | `make scan` | 89종목 시그널 스캔 |
+| **인프라** | `make lint` | ruff check |
+| | `make test` | pytest 188 tests |
+| | `make start` | API(:8001) + Dashboard(:3000) |
+| | `make deploy` | rsync to Mac Mini |
+
+</details>
+
+### Output
+
+`data/reports/{date}/` 에 자동 생성:
+
 ```
-
-### 분석 파이프라인
-
-```bash
-make analyze            # 포트폴리오 + 섹터 + 리스크 분석
-make validate           # 시그널 백테스트 + 슈퍼투자자/애널리스트 검증 + 스코어카드
-make consensus          # 7-에이전트 합의 (보유 전 종목)
-make strategy           # L/S 레짐 전략 + 전환 + 행동 지침
-```
-
-### 트레이딩
-
-```bash
-# 에이전트 합의
-make consensus                                          # 보유 종목 전체
-python -m nuri.trading.agents.consensus --ticker TSLA   # 단일 종목
-
-# 시장 스캔
-make scan               # 89종목 시그널 스캔
-make swing              # 스캔 + 에이전트 합의 → 진입 저장
-
-# 전략
-make backtest-ls        # L/S 5.4년 백테스트 + Monte Carlo
-make optimize           # 파라미터 그리드 서치
-make mean-reversion     # 평균회귀 스캔 + 백테스트
-make pairs              # 페어 트레이딩 스캔 + 백테스트
-```
-
-### 종합 스캔 + 증거 시각화
-
-```bash
-make full-scan          # 7-phase 전체 파이프라인 (수집→분석→검증→레짐→추천→타겟→증거)
-make quick-scan         # 빠른 4-step (수집→분석→합의→타겟, ~2분)
-make targets            # 전 종목 매수가/손절가/익절가 계산
-make rebalance          # 규칙 위반 감지 + 매도 수량 제시
-make evidence           # 5개 Plotly 증거 차트 생성
-make external           # 외부 데이터 요약 (TipRanks, Dataroma, ARK 등 6개 사이트)
-make report-llm         # Qwen3.5 LLM 리포트 생성 + 자동 저장
-```
-
-Output: `data/reports/{date}/` 에:
-- `evidence/` — 5개 Plotly HTML 차트 (레짐, 히트맵, 시그널, F&G, 매도 근거)
-- `portfolio_action_plan.md` — 종합 실행 플랜
-- `llm_report.md` — Qwen3.5 LLM 증거 기반 리포트
-
-### 인프라
-
-```bash
-make lint               # ruff check (E/F/W/I, line-length 120)
-make test               # pytest 188 tests
-make start              # API(:8001) + Dashboard(:3000) 동시 실행
-make deploy             # rsync to Mac Mini (production)
-make backup             # DB 30일 롤링 백업
+evidence/
+├── regime_evidence.html        # SPY + SMA + VIX 레짐 근거
+├── portfolio_heatmap.html      # 종목별 비중/손익 트리맵
+├── signal_performance.html     # 시그널 승률 + drift 상태
+├── fear_greed.html             # 90일 공포·탐욕 추이
+└── sell_evidence.html          # 매도 근거 심각도
+portfolio_action_plan.md        # 종합 실행 플랜
+llm_report.md                   # Qwen3.5 증거 기반 리포트
 ```
 
 ## Architecture
