@@ -267,6 +267,35 @@ def print_consensus(results: list[ConsensusResult]) -> None:
                     print(f"  {'─' * 50}")
     except Exception as e:
         logger.debug("가격 타겟 출력 실패: %s", e)
+
+    # 외부 데이터 요약 출력
+    try:
+        from nuri.collectors.external import get_external
+        tickers_with_data = set()
+        for r in results:
+            ext = get_external(r.ticker)
+            if ext:
+                tickers_with_data.add(r.ticker)
+        if tickers_with_data:
+            print(f"\n{'=' * 85}")
+            print(f"  External Data ({len(tickers_with_data)} tickers)")
+            print(f"{'=' * 85}")
+            for r in results:
+                if r.ticker not in tickers_with_data:
+                    continue
+                ext = get_external(r.ticker)
+                parts = []
+                for d in ext:
+                    if d["data_type"] == "consensus":
+                        parts.append(f"TipRanks:{d['value']}")
+                    elif d["data_type"] == "superinvestor_count":
+                        parts.append(f"슈퍼투자자:{d['value']}명")
+                    elif d["data_type"] == "target_price" and d["source"] == "tipranks":
+                        parts.append(f"목표가:${d['numeric_value']:,.0f}")
+                if parts:
+                    print(f"  {r.ticker:<10} {' | '.join(parts)}")
+    except Exception as e:
+        logger.debug("외부 데이터 출력 실패: %s", e)
     print()
 
 

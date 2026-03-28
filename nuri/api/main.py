@@ -25,6 +25,7 @@ from nuri.api.routes import (
     dashboard,
     engine,
     evidence,
+    external,
     portfolio,
     rebalance,
     regime,
@@ -87,6 +88,7 @@ app.include_router(ticker.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(stream.router, prefix="/api")
 app.include_router(evidence.router, prefix="/api")
+app.include_router(external.router, prefix="/api")
 
 
 # ─── 인증 엔드포인트 ───
