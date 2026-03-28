@@ -177,12 +177,15 @@ class TestSchemaMigration:
         assert len(tables) == 1
 
     def test_get_schema_version_initial(self, db_path):
-        """마이그레이션 없으면 버전 0."""
-        assert get_schema_version(db_path) == 0
+        """마이그레이션 적용 후 최신 버전."""
+        from nuri.core.db import _MIGRATIONS
+        expected = len(_MIGRATIONS)
+        assert get_schema_version(db_path) == expected
 
     def test_idempotent_with_migrations(self, db_path):
         """init_db() 여러 번 호출해도 schema_version 중복 없음."""
+        from nuri.core.db import _MIGRATIONS
         init_db(db_path)
         init_db(db_path)
         rows = query("SELECT COUNT(*) as c FROM schema_version", db_path=db_path)
-        assert rows[0]["c"] == 0  # 아직 마이그레이션이 없으므로 0건
+        assert rows[0]["c"] == len(_MIGRATIONS)
