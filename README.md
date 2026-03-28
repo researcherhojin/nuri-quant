@@ -125,8 +125,8 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 **Data** (15 collectors) — OpenBB · yfinance · pykrx · edgartools · FRED · TA-Lib<br/>
 **External** (6 sites) — TipRanks · Dataroma · Macrotrends · ARK · ETF.com · TradingEconomics<br/>
 **Quant** — pandas · Riskfolio-Lib · VectorBT · QuantStats · scikit-learn · cvxpy<br/>
-**Backend** (50 endpoints) — FastAPI · uvicorn · Pydantic · SSE stream<br/>
-**Frontend** (14 pages) — Next.js 16 · React 19 · Tailwind 4 · shadcn/ui · Recharts<br/>
+**Backend** (51 endpoints) — FastAPI · uvicorn · Pydantic · SSE stream<br/>
+**Frontend** (15 pages) — Next.js 16 · React 19 · Tailwind 4 · shadcn/ui · Recharts · React Flow<br/>
 **LLM** — Ollama · Qwen3.5 (35B-A3B MoE, thinking model)<br/>
 **DB** — SQLite WAL · 27 tables · audit log<br/>
 **Security** — JWT · bcrypt · slowapi · CSP/HSTS · audit log<br/>
@@ -147,7 +147,9 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 | [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | MVO/Risk Parity 최적화 | `nuri/analysis/rebalance.py` |
 | [VectorBT](https://vectorbt.dev/) | 벡터 기반 백테스트 | `nuri/quant/backtest/` |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 패턴 참고 | `nuri/trading/agents/` |
+| [OpenAlice](https://github.com/TraderAlice/OpenAlice) | Trading-as-Git (SHA256 해시 매매 추적) | `nuri/core/db.py` trade_hash() |
 | [Ghostfolio](https://github.com/ghostfolio/ghostfolio) | 대시보드 UX 참고 | `frontend/` |
+| [React Flow](https://reactflow.dev/) | 파이프라인 DAG 시각화 | `frontend/src/app/pipeline/` |
 
 ## License
 
