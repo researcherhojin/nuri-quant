@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
+import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
 
@@ -57,48 +57,6 @@ async function AdvisorSection() {
     );
   }
 
-  const cols = [
-    {
-      key: "priority", label: "#", align: "center" as const,
-      render: (v: number) => <span className="text-zinc-500">{v}</span>,
-    },
-    {
-      key: "ticker", label: "Ticker",
-      render: (v: string) => <span className="font-medium">{v}</span>,
-    },
-    {
-      key: "severity", label: "심각도", align: "center" as const,
-      render: (v: string) => (
-        <StatusBadge
-          status={v === "critical" ? "SELL" : v === "high" ? "REDUCE" : "WATCH"}
-          size="sm"
-        />
-      ),
-    },
-    {
-      key: "action", label: "조치", align: "center" as const,
-      render: (v: string) => (
-        <span className={v === "SELL_ALL" ? "text-red-400 font-medium" : "text-amber-400"}>
-          {v === "SELL_ALL" ? "전량 매도" : "일부 매도"}
-        </span>
-      ),
-    },
-    {
-      key: "sell_shares", label: "매도 수량", align: "right" as const,
-      render: (v: number) => `${v}주`,
-    },
-    {
-      key: "sell_value_usd", label: "회수 예상", align: "right" as const,
-      render: (v: number) => (
-        <span className="text-emerald-400">${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-      ),
-    },
-    {
-      key: "reason", label: "사유",
-      render: (v: string) => <span className="text-xs text-zinc-400">{v}</span>,
-    },
-  ];
-
   const critical = data.violations_by_severity.critical || 0;
   const high = data.violations_by_severity.high || 0;
 
@@ -130,7 +88,7 @@ async function AdvisorSection() {
           <p className="text-xs text-zinc-500 mb-3">
             Rebalance Advisor — 매도 우선순위 순 (rules.yaml 기반)
           </p>
-          <DataTable columns={cols} data={data.actions} compact />
+          <ClientTable variant="advisor" data={data.actions} compact />
         </CardContent>
       </Card>
 
