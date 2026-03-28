@@ -386,11 +386,11 @@ confidence = regime_win_rate x 60% + regime_pf x 40%
 ### MEDIUM (Week 3-4)
 
 - [x] 데이터 신선도 검증 — SPY max 72h ✅
-- [ ] 적응형 히스테리시스
-- [ ] 한국 에이전트 FX 캘리브레이션
+- [x] 적응형 히스테리시스 — VIX≥25 시 5일→2일 ✅
+- [x] 한국 에이전트 FX 캘리브레이션 — 90일 mean±1σ ✅
 - [x] SSE 캐시 — 60초 메모리 캐시 ✅
-- [ ] 차트 고도화 — RSI/MACD/BB 오버레이
-- [ ] 알림 확장 — Telegram
+- [x] 차트 고도화 — evidence_charts.py 5개 차트 ✅
+- [x] 알림 확장 — Telegram 봇 알림 ✅
 
 ## License
 
