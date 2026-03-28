@@ -67,8 +67,11 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [siegeStatus, setSiegeStatus] = useState<{ certified: boolean; score: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark";
+
+  useEffect(() => { setMounted(true); }, []);
 
   // SIEGE 인증 상태 조회
   useEffect(() => {
@@ -165,15 +168,17 @@ export function Sidebar() {
             </div>
           )}
 
-          {/* Theme Toggle */}
-          <button
-            onClick={() => setTheme(isDark ? "light" : "dark")}
-            className={`flex items-center gap-2 text-muted-foreground hover:text-foreground/80 transition-colors ${collapsed ? "justify-center" : ""}`}
-            title={isDark ? "Light mode" : "Dark mode"}
-          >
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-            {!collapsed && <span className="text-xs">{isDark ? "Light Mode" : "Dark Mode"}</span>}
-          </button>
+          {/* Theme Toggle (mounted 후 렌더링 — SSR hydration 불일치 방지) */}
+          {mounted && (
+            <button
+              onClick={() => setTheme(isDark ? "light" : "dark")}
+              className={`flex items-center gap-2 text-muted-foreground hover:text-foreground/80 transition-colors ${collapsed ? "justify-center" : ""}`}
+              title={isDark ? "Light mode" : "Dark mode"}
+            >
+              {isDark ? <Sun size={16} /> : <Moon size={16} />}
+              {!collapsed && <span className="text-xs">{isDark ? "Light Mode" : "Dark Mode"}</span>}
+            </button>
+          )}
 
           {/* Online 상태 */}
           <div className={`flex items-center gap-2 ${collapsed ? "justify-center" : ""}`}>
