@@ -8,10 +8,8 @@ FINVIZ에서 시장 전반 기술적 지표를 수집하여 market-wide 스캔�
     python -m nuri.collectors.finviz
 """
 import logging
-from datetime import datetime
-from typing import Optional
 
-from nuri.collectors.base import BaseCollector
+from nuri.collectors.base import BaseCollector, today_str
 from nuri.core.db import get_db
 
 # finvizfinance 시그널 이름 → 내부 시그널 ID 매핑
@@ -39,7 +37,7 @@ class FINVIZCollector(BaseCollector):
             return []
 
         records = []
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_str()
 
         for signal_name, finviz_signal in FINVIZ_SIGNALS.items():
             try:
@@ -128,16 +126,6 @@ class FINVIZCollector(BaseCollector):
             return len(data)
 
 
-def get_finviz_signals(ticker: str, db_path: Optional[str] = None) -> list[dict]:
-    """특정 종목의 최근 FINVIZ 시그널 조회."""
-    from nuri.core.db import query
-    rows = query(
-        """SELECT date, value as signal FROM external_analysis
-           WHERE source = 'FINVIZ' AND ticker = ?
-           ORDER BY date DESC LIMIT 10""",
-        (ticker,), db_path=db_path,
-    )
-    return [dict(r) for r in rows]
 
 
 if __name__ == "__main__":

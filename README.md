@@ -148,7 +148,7 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 | [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | MVO/Risk Parity 최적화 | `nuri/analysis/rebalance.py` |
 | [VectorBT](https://vectorbt.dev/) | 벡터 기반 백테스트 | `nuri/quant/backtest/` |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 패턴 참고 | `nuri/trading/agents/` |
-| [OpenAlice](https://github.com/TraderAlice/OpenAlice) | Trading-as-Git (SHA256 해시 매매 추적) | `nuri/core/db.py` trade_hash() |
+| [OpenAlice](https://github.com/TraderAlice/OpenAlice) | Trading-as-Git 패턴 참고 | `nuri/core/db.py` |
 | [Ghostfolio](https://github.com/ghostfolio/ghostfolio) | 대시보드 UX 참고 | `frontend/` |
 | [React Flow](https://reactflow.dev/) | 파이프라인 DAG 시각화 | `frontend/src/app/pipeline/` |
 

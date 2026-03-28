@@ -12,13 +12,10 @@ import argparse
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from nuri.core.db import query
 
 logger = logging.getLogger(__name__)
-
-REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 
 # 가중치 (총합 1.0)
 # 기존 6개 비중 축소 + 신규 2개 (yield_spread_3m10y, put_call_ratio) 추가

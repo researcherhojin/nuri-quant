@@ -11,12 +11,11 @@ PCR > 1.0: 약세 심리 (풋 매수 과다), PCR < 0.7: 강세 심리 (콜 매�
 """
 import logging
 import os
-from datetime import datetime
 
 import requests
 from dotenv import load_dotenv
 
-from nuri.collectors.base import BaseCollector
+from nuri.collectors.base import DEFAULT_HEADERS, BaseCollector, parse_date, today_str
 from nuri.core.db import upsert_macro
 
 load_dotenv()
@@ -26,22 +25,6 @@ CBOE_OPTIONS_URL = "https://cdn.cboe.com/api/global/us_options/market_statistics
 CBOE_TOTPC_URL = "https://cdn.cboe.com/api/global/us_options/market_statistics/totalpc.json"
 # FRED 폴백: CBOE Equity Put/Call Ratio
 FRED_PCR_URL = "https://api.stlouisfed.org/fred/series/observations"
-
-_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
-
-
-def _parse_date(raw: str) -> str | None:
-    """날짜 문자열을 YYYY-MM-DD로 변환. 실패 시 None."""
-    s = str(raw).strip()
-    if not s:
-        return None
-    try:
-        if "/" in s:
-            return datetime.strptime(s, "%m/%d/%Y").strftime("%Y-%m-%d")
-        datetime.strptime(s[:10], "%Y-%m-%d")
-        return s[:10]
-    except ValueError:
-        return None
 
 
 class CBOECollector(BaseCollector):
@@ -83,12 +66,12 @@ class CBOECollector(BaseCollector):
 
     def _collect_daily(self) -> list[dict]:
         """CBOE daily market statistics JSON에서 PCR 추출."""
-        resp = requests.get(CBOE_OPTIONS_URL, headers=_HEADERS, timeout=20)
+        resp = requests.get(CBOE_OPTIONS_URL, headers=DEFAULT_HEADERS, timeout=20)
         resp.raise_for_status()
         data = resp.json()
 
         records = []
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_str()
 
         items = data.get("data", data) if isinstance(data, dict) else data
         if isinstance(items, list) and items:
@@ -96,7 +79,7 @@ class CBOECollector(BaseCollector):
             pcr = self._extract_pcr(latest)
             if pcr is not None:
                 raw_date = latest.get("TRADE_DATE", latest.get("date", today))
-                date_str = _parse_date(raw_date) or today
+                date_str = parse_date(raw_date) or today
                 records.append({
                     "indicator": "put_call_ratio",
                     "date": date_str,
@@ -118,7 +101,7 @@ class CBOECollector(BaseCollector):
 
     def _collect_totalpc(self) -> list[dict]:
         """CBOE Total Put/Call 폴백."""
-        resp = requests.get(CBOE_TOTPC_URL, headers=_HEADERS, timeout=20)
+        resp = requests.get(CBOE_TOTPC_URL, headers=DEFAULT_HEADERS, timeout=20)
         resp.raise_for_status()
         data = resp.json()
 
@@ -128,7 +111,7 @@ class CBOECollector(BaseCollector):
             for item in items[-30:]:
                 pcr = self._extract_pcr(item)
                 raw_date = item.get("TRADE_DATE", item.get("date", ""))
-                date_str = _parse_date(raw_date)
+                date_str = parse_date(raw_date)
                 if pcr is not None and date_str:
                     records.append({
                         "indicator": "put_call_ratio",
