@@ -25,7 +25,10 @@ REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 MARKET_TICKER = "SPY"
 
 # 히스테리시스: 레짐 전환에 필요한 최소 연속 확인 일수
+# VIX 25+ 고변동 시 적응적으로 2일로 단축 (빠른 전환)
 HYSTERESIS_DAYS = 5
+HYSTERESIS_DAYS_HIGH_VOL = 2
+VIX_HIGH_VOL_THRESHOLD = 25
 
 # 동적 임계값 계산에 사용할 롤링 윈도우 (거래일)
 LOOKBACK_WINDOW = 252
@@ -236,11 +239,12 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
     bb_width = float(latest["bb_width"]) if pd.notna(latest["bb_width"]) else 0
     sma50_slope = float(latest["sma50_slope"]) if pd.notna(latest["sma50_slope"]) else 0
 
-    # ── 히스테리시스: 최근 N일 레짐 다수결 ──
-    if len(spy_df) >= HYSTERESIS_DAYS + 200:
+    # ── 적응형 히스테리시스: VIX 25+ 시 2일, 그 외 5일 ──
+    hyst_days = HYSTERESIS_DAYS_HIGH_VOL if (vix and vix >= VIX_HIGH_VOL_THRESHOLD) else HYSTERESIS_DAYS
+    if len(spy_df) >= hyst_days + 200:
         recent_trends = []
         recent_vols = []
-        for i in range(-HYSTERESIS_DAYS, 0):
+        for i in range(-hyst_days, 0):
             row = spy_df.iloc[i]
             if pd.isna(row["sma50"]) or pd.isna(row["sma200"]):
                 continue
