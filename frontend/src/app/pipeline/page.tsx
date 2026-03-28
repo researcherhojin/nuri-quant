@@ -58,7 +58,7 @@ const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
   return (
     <div
       className={`
-        relative bg-zinc-900 border rounded-xl px-5 py-4 min-w-[200px]
+        relative bg-zinc-900 border rounded-xl px-6 py-5 min-w-[220px]
         cursor-pointer transition-all duration-200
         hover:bg-zinc-800/80 hover:scale-[1.02]
         shadow-lg ${STATUS_GLOW[status]}
@@ -89,12 +89,12 @@ const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
       </div>
 
       {/* 제목 */}
-      <p className="text-sm font-bold text-zinc-100 mb-0.5">
+      <p className="text-base font-bold text-zinc-100 mb-0.5">
         {data.label.split(" ").slice(1).join(" ")}
       </p>
 
       {/* 부제 */}
-      <p className="text-[10px] text-zinc-500">{data.sub}</p>
+      <p className="text-xs text-zinc-500">{data.sub}</p>
 
       {/* 출력 핸들 */}
       <Handle
@@ -167,31 +167,31 @@ export default function PipelinePage() {
     {
       id: "collect",
       type: "pipeline",
-      position: { x: 0, y: 100 },
+      position: { x: 0, y: 80 },
       data: { label: "🔍 Collect", sub: "15 collectors + 6 sites", status: gateStatus(), href: "/engine" },
     },
     {
       id: "validate",
       type: "pipeline",
-      position: { x: 280, y: 100 },
+      position: { x: 320, y: 80 },
       data: { label: "✅ Validate", sub: "3,400+ trades backtested", status: "ok", href: "/signals" },
     },
     {
       id: "classify",
       type: "pipeline",
-      position: { x: 560, y: 100 },
+      position: { x: 640, y: 80 },
       data: { label: "📊 Classify", sub: `6 regimes — ${regime}`, status: regimeStatus(), href: "/strategy" },
     },
     {
       id: "diagnose",
       type: "pipeline",
-      position: { x: 840, y: 100 },
+      position: { x: 960, y: 80 },
       data: { label: "🤖 Diagnose", sub: "7 agents consensus", status: "ok", href: "/consensus" },
     },
     {
       id: "certify",
       type: "pipeline",
-      position: { x: 1120, y: 100 },
+      position: { x: 1280, y: 80 },
       data: {
         label: "🔒 Certify",
         sub: `SIEGE 10-cond${siegeScore !== null ? ` — ${siegeScore}%` : ""}`,
@@ -202,7 +202,7 @@ export default function PipelinePage() {
     {
       id: "recommend",
       type: "pipeline",
-      position: { x: 1400, y: 100 },
+      position: { x: 1600, y: 80 },
       data: { label: "📋 Recommend", sub: "price targets + actions", status: "ok", href: "/targets" },
     },
   ];
@@ -246,7 +246,7 @@ export default function PipelinePage() {
       </div>
 
       {/* React Flow 캔버스 */}
-      <div className="h-[400px] rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+      <div className="h-[500px] rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
         <ReactFlow
           nodes={nodes}
           edges={EDGES}
