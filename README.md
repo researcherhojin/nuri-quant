@@ -7,6 +7,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-3.0.0-orange)]()
 [![CI](https://img.shields.io/badge/CI-passing-4CAF50?logo=githubactions&logoColor=white)]()
+[![codecov](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 
 **[API Swagger](http://localhost:8001/docs)** · **[Dashboard](http://localhost:3000)** · **[Docs](CLAUDE.md)** · **[Issues](https://github.com/researcherhojin/nuri-quant/issues)**
 
