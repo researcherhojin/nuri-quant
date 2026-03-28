@@ -400,6 +400,22 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
         CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
     """),
+    (2, "create external_analysis table", """
+        CREATE TABLE IF NOT EXISTS external_analysis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            source TEXT NOT NULL,
+            ticker TEXT,
+            data_type TEXT NOT NULL,
+            value TEXT,
+            numeric_value REAL,
+            details TEXT,
+            collected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(date, source, ticker, data_type)
+        );
+        CREATE INDEX IF NOT EXISTS idx_external_source ON external_analysis(source, ticker);
+        CREATE INDEX IF NOT EXISTS idx_external_date ON external_analysis(date);
+    """),
 ]
 
 

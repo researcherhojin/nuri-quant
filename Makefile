@@ -2,7 +2,7 @@
        gate consensus scan swing swing-check strategy strategy-execute positions wallstreet filings \
        backtest-ls backtest-stress optimize mean-reversion pairs api dashboard start lint lint-fix \
        verify-quick verify-all demo pre-deploy ports ports-kill update-counts \
-       full-scan quick-scan targets rebalance evidence
+       full-scan quick-scan targets rebalance evidence external
 
 PYTHON = .venv/bin/python
 
@@ -214,6 +214,10 @@ targets:
 # ── 리밸런스 어드바이저 (규칙 위반 감지 + 매도 수량 제시) ──
 rebalance:
 	$(PYTHON) -m nuri.analysis.rebalance_advisor
+
+# ── 외부 데이터 요약 ──
+external:
+	$(PYTHON) -m nuri.collectors.external --summary
 
 # ── 증거 시각화 (Plotly 차트 생성) ──
 evidence:
