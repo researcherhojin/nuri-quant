@@ -251,6 +251,22 @@ def print_consensus(results: list[ConsensusResult]) -> None:
         for ticker, ds in dissents[:5]:
             for d in ds:
                 print(f"    {ticker}: {d}")
+
+    # 가격 타겟 출력
+    try:
+        from nuri.trading.recommend.price_targets import calculate_targets, format_target_tree
+        buy_hold = [r for r in results if r.final_action in ("BUY", "HOLD")]
+        if buy_hold:
+            print(f"\n{'=' * 85}")
+            print("  Price Targets (BUY/HOLD 종목)")
+            print(f"{'=' * 85}")
+            for r in sorted(buy_hold, key=lambda x: x.final_confidence, reverse=True)[:10]:
+                target = calculate_targets(r.ticker)
+                if "error" not in target:
+                    print(format_target_tree(target))
+                    print(f"  {'─' * 50}")
+    except Exception as e:
+        logger.debug("가격 타겟 출력 실패: %s", e)
     print()
 
 
