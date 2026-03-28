@@ -1,6 +1,6 @@
 [project]
 name = "nuri-quant"
-version = "3.0.0"
+version = "0.1.0"
 description = "Open-source quant investment platform — Collect, Validate, Classify, Recommend, Track"
 requires-python = ">=3.12"
 dependencies = [
