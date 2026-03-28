@@ -11,8 +11,39 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Optional
 
+import requests
+
 # 실패율 임계값 (10%)
 MAX_FAILURE_RATE = 0.10
+
+# 공통 HTTP 헤더 (모든 collector에서 사용)
+DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+
+
+def parse_date(raw: str) -> str | None:
+    """날짜 문자열을 YYYY-MM-DD로 변환. MM/DD/YYYY, YYYY-MM-DD 지원. 실패 시 None."""
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        if "/" in s:
+            return datetime.strptime(s, "%m/%d/%Y").strftime("%Y-%m-%d")
+        datetime.strptime(s[:10], "%Y-%m-%d")
+        return s[:10]
+    except ValueError:
+        return None
+
+
+def today_str() -> str:
+    """오늘 날짜 YYYY-MM-DD 문자열."""
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def fetch_json(url: str, params: dict | None = None, headers: dict | None = None, timeout: int = 20) -> dict:
+    """JSON API 호출 헬퍼. raise_for_status() 포함."""
+    resp = requests.get(url, params=params, headers=headers or DEFAULT_HEADERS, timeout=timeout)
+    resp.raise_for_status()
+    return resp.json()
 
 
 class CollectionFailureError(Exception):

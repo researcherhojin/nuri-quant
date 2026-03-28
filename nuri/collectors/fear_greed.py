@@ -7,11 +7,10 @@ JSON API 우선, 실패 시 HTML 스크래핑 폴백.
     python -m nuri.collectors.fear_greed
 """
 import logging
-from datetime import datetime
 
 import requests
 
-from nuri.collectors.base import BaseCollector
+from nuri.collectors.base import DEFAULT_HEADERS, BaseCollector, today_str
 from nuri.core.db import upsert_macro
 
 # CNN Fear & Greed API 엔드포인트
@@ -41,15 +40,12 @@ class FearGreedCollector(BaseCollector):
 
     def _collect_api(self) -> list[dict]:
         """CNN JSON API에서 Fear & Greed 데이터 수집."""
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-        }
-        resp = requests.get(FG_API_URL, headers=headers, timeout=15)
+        resp = requests.get(FG_API_URL, headers=DEFAULT_HEADERS, timeout=15)
         resp.raise_for_status()
         data = resp.json()
 
         records = []
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_str()
 
         # 현재 지수
         if "fear_and_greed" in data:
@@ -72,20 +68,16 @@ class FearGreedCollector(BaseCollector):
         from bs4 import BeautifulSoup
 
         url = "https://edition.cnn.com/markets/fear-and-greed"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-        }
-        resp = requests.get(url, headers=headers, timeout=15)
+        resp = requests.get(url, headers=DEFAULT_HEADERS, timeout=15)
         resp.raise_for_status()
 
         soup = BeautifulSoup(resp.text, "html.parser")
-        # CNN 페이지 구조에 따라 파싱 (변경 가능성 있음)
         score_elem = soup.find("text", class_="market-fng-gauge__dial-number-value")
         if score_elem:
             score = float(score_elem.text.strip())
             return [{
                 "indicator": "fear_greed",
-                "date": datetime.now().strftime("%Y-%m-%d"),
+                "date": today_str(),
                 "value": score,
                 "source": "CNN_scrape",
             }]
