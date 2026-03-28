@@ -56,6 +56,7 @@ graph LR
 git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
 make setup         # venv + deps + DB init + portfolio import
 cp .env.example .env
+cp config/portfolio.example.yaml config/portfolio.yaml  # 본인 포트폴리오 편집
 make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→판단→인증→추천→시각화→알림)
 ```
 
