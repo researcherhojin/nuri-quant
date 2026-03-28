@@ -61,8 +61,11 @@ make scan             # 89종목 스캔 → 시그널 필터
 make swing            # 스캔 + 에이전트 합의 → 진입 저장
 
 # Full Pipeline
-make full-scan        # 7-phase: collect→analyze→validate→regime→recommend→targets→evidence
+make full-scan        # 8-phase: collect→analyze→validate→regime→recommend→certify→evidence→notify
 make quick-scan       # 빠른 4-step: collect→analyze→consensus→targets (~2분)
+
+# SIEGE Certification
+make certify          # 10-condition 규칙 검증 → CERTIFIED / REJECTED
 
 # Price Targets & Rebalance & Evidence
 make targets          # 전 종목 매수가/손절가/익절가 계산
