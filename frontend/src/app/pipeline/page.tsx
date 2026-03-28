@@ -131,8 +131,8 @@ export default function PipelinePage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data: DashboardData | null) => {
         if (data) {
-          setRegime(data.regime?.label || "unknown");
-          setGateReady(data.gate?.ready ?? null);
+          setRegime(data.regime?.regime || data.regime?.label || "unknown");
+          setGateReady(data.gate_score ? data.gate_score >= 50 : null);
         }
       })
       .catch(() => setRegime("error"));
