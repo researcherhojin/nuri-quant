@@ -30,8 +30,9 @@ Collect → Validate → Classify → Diagnose → Recommend → Track
 | **Quant** | pandas, Riskfolio-Lib, VectorBT, QuantStats, scikit-learn |
 | **Viz** | Plotly, Matplotlib, Recharts (dashboard) |
 | **Interface** | FastAPI (:8001), Next.js 16 (:3000), shadcn/ui, Tailwind 4 |
-| **LLM** | Ollama (llama3.1) — SIEGE 인증 리포트 |
-| **Infra** | SQLite (WAL), APScheduler (17 cron), Discord, GitHub Actions CI |
+| **LLM** | Ollama (Qwen3.5) — SIEGE 인증 리포트, thinking model |
+| **Infra** | SQLite (WAL), APScheduler (17 cron), Discord, Telegram, GitHub Actions CI |
+| **Security** | JWT + bcrypt, slowapi rate limiting, CSP/HSTS, audit logging |
 
 ## Quick Start
 
@@ -90,15 +91,20 @@ make quick-scan         # 빠른 4-step (수집→분석→합의→타겟, ~2�
 make targets            # 전 종목 매수가/손절가/익절가 계산
 make rebalance          # 규칙 위반 감지 + 매도 수량 제시
 make evidence           # 5개 Plotly 증거 차트 생성
+make external           # 외부 데이터 요약 (TipRanks, Dataroma, ARK 등 6개 사이트)
+make report-llm         # Qwen3.5 LLM 리포트 생성 + 자동 저장
 ```
 
-Output: `data/reports/{date}/evidence/` 에 5개 HTML 차트 + `portfolio_action_plan.md` + `llm_evidence_report.md`
+Output: `data/reports/{date}/` 에:
+- `evidence/` — 5개 Plotly HTML 차트 (레짐, 히트맵, 시그널, F&G, 매도 근거)
+- `portfolio_action_plan.md` — 종합 실행 플랜
+- `llm_report.md` — Qwen3.5 LLM 증거 기반 리포트
 
 ### 인프라
 
 ```bash
 make lint               # ruff check (E/F/W/I, line-length 120)
-make test               # pytest 161 tests
+make test               # pytest 188 tests
 make start              # API(:8001) + Dashboard(:3000) 동시 실행
 make deploy             # rsync to Mac Mini (production)
 make backup             # DB 30일 롤링 백업
@@ -124,8 +130,8 @@ nuri/
 │   ├── swing/         # 시장 전체 스캐너
 │   └── execution/     # 브로커 인터페이스 (Alpaca paper + DryRun)
 ├── api/               # FastAPI REST + SSE 스트림
-├── alerts/            # Discord 일일 리포트 + 봇
-└── llm/               # Ollama LLM 리포트 (SIEGE 인증)
+├── alerts/            # Discord + Telegram 알림, daily_report
+└── llm/               # Ollama Qwen3.5 LLM 리포트 (SIEGE 인증, auto-save)
 ```
 
 ### Data Flow
@@ -349,17 +355,23 @@ confidence = regime_win_rate x 60% + regime_pf x 40%
 | `DISCORD_WEBHOOK_URL` | 일일 리포트 발송 | No (stdout fallback) |
 | `DISCORD_BOT_TOKEN` | 봇 모드 알림 | No |
 | `FINNHUB_API_KEY` | US 기관 자금 흐름 | No |
-| `OLLAMA_HOST` / `OLLAMA_MODEL` | LLM 리포트 | No (localhost:11434, llama3.1) |
+| `OLLAMA_HOST` / `OLLAMA_MODEL` | LLM 리포트 | No (localhost:11434, qwen3.5) |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram 알림 | No |
+| `API_AUTH_ENABLED` / `API_KEY` | API 인증 | No (false = 개발 모드) |
+| `CORS_ORIGINS` | CORS 허용 도메인 | No (localhost:3000) |
 | `DASHBOARD_PASSWORD` | 대시보드 인증 | No (미설정 시 public) |
 | `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | 페이퍼 트레이딩 | No (DryRun fallback) |
 
 ## Infrastructure
 
 - **2-Machine Setup**: M3 Max MacBook (dev) ↔ M2 Pro Mac Mini (24/7 production)
-- **DB**: SQLite WAL mode, `data/portfolio.db`, 25+ tables
+- **DB**: SQLite WAL mode, `data/portfolio.db`, 27+ tables (audit_log, external_analysis 포함)
 - **Scheduler**: 17 cron jobs (KST), lazy imports
-- **CI**: GitHub Actions — ruff lint + pytest + Next.js tsc + Trivy security scan
+- **CI**: GitHub Actions — ruff lint + pytest + Next.js tsc (uv + venv 캐시 최적화)
+- **Security**: JWT + API key 인증, bcrypt 해싱, slowapi rate limiting, CSP/HSTS 보안 헤더
 - **Deploy**: `make deploy` (rsync), `make backup` (30-day rolling)
+- **Dashboard**: Next.js 16 — 10 pages 포함 `/evidence` (Plotly 차트 뷰어)
+- **Alerts**: Discord + Telegram — 규칙 위반, 레짐 전환, 매매 시그널
 - **MCP**: `.mcp.json` — Claude Code에서 직접 DB 쿼리 가능
 
 ## Roadmap — Security & Production Readiness
