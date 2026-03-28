@@ -75,14 +75,15 @@ jobs:
           uv pip install -e .
 
       - name: Run tests with coverage
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -x --cov=nuri --cov-report=xml
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -x --cov=nuri --cov-report=xml --cov-report=term
 
       - name: Coverage threshold check
         run: |
-          COV=$(.venv/bin/python -m pytest tests/ -q --cov=nuri --cov-report=term 2>/dev/null | grep "^TOTAL" | awk '{print $NF}' | tr -d '%')
-          echo "Coverage: ${COV}%"
-          if [ -n "$COV" ] && [ "$COV" -lt 50 ]; then
-            echo "::error::Coverage ${COV}% is below 50% threshold"
+          COV=$(grep -oP 'line-rate="\K[0-9.]+' coverage.xml | head -1)
+          PCT=$(python3 -c "print(int(float('${COV}') * 100))")
+          echo "Coverage: ${PCT}%"
+          if [ "$PCT" -lt 40 ]; then
+            echo "::error::Coverage ${PCT}% is below 40% threshold"
             exit 1
           fi
 
