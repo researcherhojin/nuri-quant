@@ -110,7 +110,7 @@ async function AdvisorSection() {
 
 export default function AdvisorPage() {
   return (
-    <main className="container mx-auto px-4 py-6 max-w-7xl">
+    <div>
       <div className="mb-6">
         <h1 className="text-lg font-semibold">Rebalance Advisor</h1>
         <p className="text-xs text-zinc-500 mt-1">
@@ -120,6 +120,6 @@ export default function AdvisorPage() {
       <Suspense fallback={<Loading />}>
         <AdvisorSection />
       </Suspense>
-    </main>
+    </div>
   );
 }
