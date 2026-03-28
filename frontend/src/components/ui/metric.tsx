@@ -18,9 +18,9 @@ export function Metric({ label, value, sub, color = "default", size = "sm" }: Me
 
   return (
     <div>
-      <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{label}</p>
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</p>
       <p className={`${sizeClass} font-semibold ${colorClass}`}>{value}</p>
-      {sub && <p className="text-[10px] text-zinc-600">{sub}</p>}
+      {sub && <p className="text-[10px] text-muted-foreground/70">{sub}</p>}
     </div>
   );
 }

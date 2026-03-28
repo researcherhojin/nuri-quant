@@ -28,7 +28,7 @@ interface PriceTarget {
 
 // === Loading ===
 function Loading() {
-  return <div className="animate-pulse bg-zinc-900 rounded-xl border border-zinc-800 h-96" />;
+  return <div className="animate-pulse bg-card rounded-xl border border-border h-96" />;
 }
 
 // === Main ===
@@ -52,9 +52,9 @@ async function TargetsSection() {
         <Metric label="가치주" value={`${value.length}개`} sub="SL -10% / TP +15%/+30%" />
       </div>
 
-      <Card className="bg-zinc-900 border-zinc-800">
+      <Card className="bg-card border-border">
         <CardContent className="pt-5">
-          <p className="text-xs text-zinc-500 mb-3">
+          <p className="text-xs text-muted-foreground mb-3">
             가격 타겟 — rules.yaml 기반 (O'Neil + Minervini)
           </p>
           <ClientTable variant="targets" data={valid} compact />
@@ -69,7 +69,7 @@ export default function TargetsPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-lg font-semibold">Price Targets</h1>
-        <p className="text-xs text-zinc-500 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           전 종목 매수가 · 손절가 · 익절가 · 트레일링 스톱 · 애널리스트 목표가
         </p>
       </div>

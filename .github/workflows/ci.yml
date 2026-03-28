@@ -93,6 +93,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
+          flags: backend
           fail_ci_if_error: false
 
   frontend:
@@ -111,3 +112,13 @@ jobs:
 
       - run: npm ci
       - run: npx tsc --noEmit
+      - name: Run frontend tests with coverage
+        run: npx vitest run --coverage
+      - name: Upload frontend coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/lcov.info
+          flags: frontend
+          fail_ci_if_error: false

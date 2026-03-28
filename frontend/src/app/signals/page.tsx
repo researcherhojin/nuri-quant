@@ -25,9 +25,9 @@ async function ScorecardSection() {
   const sorted = [...data.scorecard].sort((a, b) => b.profit_factor - a.profit_factor);
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardContent className="pt-5">
-        <p className="text-xs text-zinc-500 mb-3">Signal Scorecard — {data.date}</p>
+        <p className="text-xs text-muted-foreground mb-3">Signal Scorecard — {data.date}</p>
         <ClientTable variant="scorecard" data={sorted} />
       </CardContent>
     </Card>
@@ -40,19 +40,19 @@ async function CrossSection() {
   const regimes = [...new Set(data.data.map((d) => d.regime))].sort();
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardContent className="pt-5">
-        <p className="text-xs text-zinc-500 mb-3">Signal × Regime</p>
+        <p className="text-xs text-muted-foreground mb-3">Signal × Regime</p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {regimes.map((regime) => {
             const rows = data.data!.filter((d) => d.regime === regime).sort((a, b) => b.profit_factor - a.profit_factor);
             return (
               <div key={regime}>
-                <p className="text-[10px] text-zinc-500 mb-1.5 font-medium uppercase tracking-wider">{regime}</p>
+                <p className="text-[10px] text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">{regime}</p>
                 <div className="space-y-1">
                   {rows.slice(0, 5).map((r) => (
-                    <div key={r.signal_id} className="flex justify-between text-xs bg-zinc-800/40 rounded px-2.5 py-1.5">
-                      <span className="text-zinc-300">{r.signal_id}</span>
+                    <div key={r.signal_id} className="flex justify-between text-xs bg-muted/50 rounded px-2.5 py-1.5">
+                      <span className="text-foreground/80">{r.signal_id}</span>
                       <span className={pfColor(r.profit_factor)}>PF {pf(r.profit_factor)}</span>
                     </div>
                   ))}
@@ -66,7 +66,7 @@ async function CrossSection() {
   );
 }
 
-function Loading() { return <div className="h-48 bg-zinc-900 rounded-xl border border-zinc-800 animate-pulse" />; }
+function Loading() { return <div className="h-48 bg-card rounded-xl border border-border animate-pulse" />; }
 
 export default function SignalsPage() {
   return (
