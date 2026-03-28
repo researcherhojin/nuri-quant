@@ -31,11 +31,11 @@ export function DataTable({ columns, data, compact = false, onRowClick }: DataTa
     <div className="overflow-x-auto">
       <table className={`w-full ${text}`}>
         <thead>
-          <tr className="border-b border-zinc-800">
+          <tr className="border-b border-border">
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`${py} px-3 font-medium text-zinc-500 ${
+                className={`${py} px-3 font-medium text-muted-foreground ${
                   col.align === "right" ? "text-right" :
                   col.align === "center" ? "text-center" : "text-left"
                 }${col.hideOnMobile ? " hidden sm:table-cell" : ""}`}
@@ -50,7 +50,7 @@ export function DataTable({ columns, data, compact = false, onRowClick }: DataTa
           {data.map((row, i) => (
             <tr
               key={i}
-              className={`border-b border-zinc-800/40 hover:bg-zinc-800/30 transition-colors ${
+              className={`border-b border-border/40 hover:bg-muted/30 transition-colors ${
                 onRowClick ? "cursor-pointer" : ""
               }`}
               onClick={() => onRowClick?.(row)}

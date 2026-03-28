@@ -28,13 +28,13 @@ async function StrategyDashboard() {
       <h1 className="text-2xl font-bold">Strategy</h1>
 
       {/* ── Row 1: Regime + Allocation + Actions ── */}
-      <Card className="bg-zinc-900 border-zinc-800">
+      <Card className="bg-card border-border">
         <CardContent className="pt-5">
           <div className="flex items-center gap-3 mb-3">
             <StatusBadge status={(regime?.regime || "unknown").toUpperCase()} size="md" />
-            <span className="text-xs text-zinc-500">{regime ? `${(regime.confidence * 100).toFixed(0)}% confidence` : ""}</span>
-            <span className="text-xs text-zinc-600">|</span>
-            <span className="text-xs text-zinc-500">{positions.length} positions open</span>
+            <span className="text-xs text-muted-foreground">{regime ? `${(regime.confidence * 100).toFixed(0)}% confidence` : ""}</span>
+            <span className="text-xs text-muted-foreground/70">|</span>
+            <span className="text-xs text-muted-foreground">{positions.length} positions open</span>
           </div>
 
           {/* Allocation Bar */}
@@ -50,7 +50,7 @@ async function StrategyDashboard() {
               </div>
             )}
             {cash_pct > 0 && (
-              <div className="bg-zinc-700 flex items-center justify-center text-zinc-400" style={{width:`${cash_pct}%`}}>
+              <div className="bg-muted flex items-center justify-center text-muted-foreground" style={{width:`${cash_pct}%`}}>
                 Cash {cash_pct}%
               </div>
             )}
@@ -60,10 +60,10 @@ async function StrategyDashboard() {
           {actions.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">
               {actions.map((a: any, i: number) => (
-                <div key={i} className="flex items-center gap-1.5 text-xs bg-zinc-800 rounded px-2 py-1">
+                <div key={i} className="flex items-center gap-1.5 text-xs bg-muted rounded px-2 py-1">
                   <StatusBadge status={a.action.replace("open_", "").toUpperCase()} />
                   <span className="font-medium">{a.ticker}</span>
-                  <span className="text-zinc-500 hidden sm:inline">{a.reason?.slice(0, 30)}</span>
+                  <span className="text-muted-foreground hidden sm:inline">{a.reason?.slice(0, 30)}</span>
                 </div>
               ))}
             </div>
@@ -74,60 +74,60 @@ async function StrategyDashboard() {
       {/* ── Row 2: Backtest + Stress in one row ── */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Backtest — 3/5 width */}
-        <Card className="bg-zinc-900 border-zinc-800 lg:col-span-3">
+        <Card className="bg-card border-border lg:col-span-3">
           <CardContent className="pt-5">
-            <p className="text-xs text-zinc-500 mb-3">Backtest — {r.total_days || 0} days, {r.regime_changes || 0} regime switches</p>
+            <p className="text-xs text-muted-foreground mb-3">Backtest — {r.total_days || 0} days, {r.regime_changes || 0} regime switches</p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center mb-4">
               <div>
                 <p className={`text-lg font-bold ${(r.total_return || 0) > 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {(r.total_return || 0) > 0 ? "+" : ""}{(r.total_return || 0).toFixed(1)}%
                 </p>
-                <p className="text-[10px] text-zinc-600">Return</p>
-                <p className="text-[10px] text-zinc-700">SPY +{(r.spy_total_return || 0).toFixed(1)}%</p>
+                <p className="text-[10px] text-muted-foreground/70">Return</p>
+                <p className="text-[10px] text-muted-foreground/50">SPY +{(r.spy_total_return || 0).toFixed(1)}%</p>
               </div>
               <div>
-                <p className={`text-lg font-bold ${(r.sharpe || 0) > (r.spy_sharpe || 0) ? "text-emerald-400" : "text-zinc-300"}`}>
+                <p className={`text-lg font-bold ${(r.sharpe || 0) > (r.spy_sharpe || 0) ? "text-emerald-400" : "text-foreground/80"}`}>
                   {(r.sharpe || 0).toFixed(2)}
                 </p>
-                <p className="text-[10px] text-zinc-600">Sharpe</p>
-                <p className="text-[10px] text-zinc-700">SPY {(r.spy_sharpe || 0).toFixed(2)}</p>
+                <p className="text-[10px] text-muted-foreground/70">Sharpe</p>
+                <p className="text-[10px] text-muted-foreground/50">SPY {(r.spy_sharpe || 0).toFixed(2)}</p>
               </div>
               <div>
                 <p className="text-lg font-bold text-emerald-400">{(r.max_drawdown || 0).toFixed(1)}%</p>
-                <p className="text-[10px] text-zinc-600">Max DD</p>
-                <p className="text-[10px] text-zinc-700">SPY {(r.spy_max_drawdown || 0).toFixed(1)}%</p>
+                <p className="text-[10px] text-muted-foreground/70">Max DD</p>
+                <p className="text-[10px] text-muted-foreground/50">SPY {(r.spy_max_drawdown || 0).toFixed(1)}%</p>
               </div>
               <div>
-                <p className="text-lg font-bold text-zinc-300">{(r.transaction_costs || 0).toFixed(1)}%</p>
-                <p className="text-[10px] text-zinc-600">Costs</p>
+                <p className="text-lg font-bold text-foreground/80">{(r.transaction_costs || 0).toFixed(1)}%</p>
+                <p className="text-[10px] text-muted-foreground/70">Costs</p>
               </div>
             </div>
 
             {/* Entry Timing */}
             {t && (
-              <div className="border-t border-zinc-800 pt-3">
-                <p className="text-[10px] text-zinc-500 mb-2">If entered now ({t.current_regime}):</p>
+              <div className="border-t border-border pt-3">
+                <p className="text-[10px] text-muted-foreground mb-2">If entered now ({t.current_regime}):</p>
                 <div className="flex items-center gap-4 text-sm">
                   <div className="text-center">
                     <span className={`font-medium ${t.avg_forward_30d > 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {t.avg_forward_30d > 0 ? "+" : ""}{t.avg_forward_30d}%
                     </span>
-                    <p className="text-[10px] text-zinc-600">30d</p>
+                    <p className="text-[10px] text-muted-foreground/70">30d</p>
                   </div>
                   <div className="text-center">
                     <span className={`font-medium ${t.avg_forward_60d > 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {t.avg_forward_60d > 0 ? "+" : ""}{t.avg_forward_60d}%
                     </span>
-                    <p className="text-[10px] text-zinc-600">60d</p>
+                    <p className="text-[10px] text-muted-foreground/70">60d</p>
                   </div>
                   <div className="text-center">
                     <span className={`font-medium ${t.avg_forward_90d > 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {t.avg_forward_90d > 0 ? "+" : ""}{t.avg_forward_90d}%
                     </span>
-                    <p className="text-[10px] text-zinc-600">90d</p>
+                    <p className="text-[10px] text-muted-foreground/70">90d</p>
                   </div>
-                  <div className="text-[10px] text-zinc-600 ml-auto">
+                  <div className="text-[10px] text-muted-foreground/70 ml-auto">
                     → bull {(t.pct_to_bull * 100).toFixed(0)}% / bear {(t.pct_to_bear * 100).toFixed(0)}%
                   </div>
                 </div>
@@ -137,13 +137,13 @@ async function StrategyDashboard() {
         </Card>
 
         {/* Stress Test — 2/5 width */}
-        <Card className="bg-zinc-900 border-zinc-800 lg:col-span-2">
+        <Card className="bg-card border-border lg:col-span-2">
           <CardContent className="pt-5">
-            <p className="text-xs text-zinc-500 mb-3">Crisis Protection</p>
+            <p className="text-xs text-muted-foreground mb-3">Crisis Protection</p>
             <div className="space-y-2">
               {stress.map((s: any) => (
                 <div key={s.name} className="flex items-center justify-between text-xs">
-                  <span className="text-zinc-400 w-28 truncate">{s.name}</span>
+                  <span className="text-muted-foreground w-28 truncate">{s.name}</span>
                   <span className="text-red-400 w-14 text-right">{s.spy_return}%</span>
                   <span className={`w-14 text-right font-medium ${s.strategy_return > s.spy_return ? "text-emerald-400" : "text-red-400"}`}>
                     {s.strategy_return > 0 ? "+" : ""}{s.strategy_return}%
@@ -152,19 +152,19 @@ async function StrategyDashboard() {
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-zinc-700 mt-2">Monte Carlo p&lt;0.01 (99.6th percentile)</p>
+            <p className="text-[10px] text-muted-foreground/50 mt-2">Monte Carlo p&lt;0.01 (99.6th percentile)</p>
           </CardContent>
         </Card>
       </div>
 
       {/* ── Row 3: Positions (compact, only if exists) ── */}
       {positions.length > 0 && (
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <p className="text-xs text-zinc-500 mb-2">Open Positions</p>
+            <p className="text-xs text-muted-foreground mb-2">Open Positions</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {positions.map((p: any, i: number) => (
-                <div key={i} className="flex items-center justify-between bg-zinc-800 rounded px-2.5 py-1.5 text-xs">
+                <div key={i} className="flex items-center justify-between bg-muted rounded px-2.5 py-1.5 text-xs">
                   <div className="flex items-center gap-1.5">
                     <span className={`w-1.5 h-1.5 rounded-full ${p.direction === "long" ? "bg-emerald-500" : "bg-red-500"}`} />
                     <span className="font-medium">{p.ticker}</span>
@@ -185,11 +185,11 @@ async function StrategyDashboard() {
 function Loading() {
   return (
     <div className="space-y-5">
-      <div className="h-8 w-32 bg-zinc-800 rounded animate-pulse" />
-      <div className="h-32 bg-zinc-900 rounded-xl border border-zinc-800 animate-pulse" />
+      <div className="h-8 w-32 bg-muted rounded animate-pulse" />
+      <div className="h-32 bg-card rounded-xl border border-border animate-pulse" />
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        <div className="h-48 bg-zinc-900 rounded-xl border border-zinc-800 animate-pulse lg:col-span-3" />
-        <div className="h-48 bg-zinc-900 rounded-xl border border-zinc-800 animate-pulse lg:col-span-2" />
+        <div className="h-48 bg-card rounded-xl border border-border animate-pulse lg:col-span-3" />
+        <div className="h-48 bg-card rounded-xl border border-border animate-pulse lg:col-span-2" />
       </div>
     </div>
   );
