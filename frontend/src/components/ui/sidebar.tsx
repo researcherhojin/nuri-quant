@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Scale,
   Cog,
+  Workflow,
   FileBarChart,
   Bot,
   ChevronLeft,
@@ -30,6 +31,7 @@ const NAV_GROUPS = [
     label: "OVERVIEW",
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/pipeline", label: "Pipeline", icon: Workflow },
     ],
   },
   {
@@ -81,7 +83,7 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className={`fixed left-0 top-0 h-screen ${w} bg-zinc-900 border-r border-zinc-800 flex flex-col z-50 transition-all duration-200`}>
+      <aside className={`fixed left-0 top-0 h-screen ${w} bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-all duration-200`}>
         {/* Logo + Collapse */}
         <div className="h-12 flex items-center justify-between px-4 border-b border-zinc-800">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -164,8 +166,13 @@ export function Sidebar() {
           {/* Theme Toggle */}
           <button
             onClick={() => {
-              setIsDark(!isDark);
-              document.documentElement.classList.toggle("dark");
+              const next = !isDark;
+              setIsDark(next);
+              if (next) {
+                document.documentElement.classList.add("dark");
+              } else {
+                document.documentElement.classList.remove("dark");
+              }
             }}
             className={`flex items-center gap-2 text-zinc-500 hover:text-zinc-300 transition-colors ${collapsed ? "justify-center" : ""}`}
             title={isDark ? "Light mode" : "Dark mode"}
