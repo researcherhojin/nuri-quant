@@ -103,13 +103,13 @@ class TestCBOECollector:
 
 
     def test_parse_date_formats(self):
-        """_parse_date 다양한 형식 처리."""
-        from nuri.collectors.cboe import _parse_date
-        assert _parse_date("2026-03-28") == "2026-03-28"
-        assert _parse_date("03/28/2026") == "2026-03-28"
-        assert _parse_date("") is None
-        assert _parse_date("invalid") is None
-        assert _parse_date("2026-03-28T12:00:00") == "2026-03-28"
+        """parse_date 다양한 형식 처리."""
+        from nuri.collectors.base import parse_date
+        assert parse_date("2026-03-28") == "2026-03-28"
+        assert parse_date("03/28/2026") == "2026-03-28"
+        assert parse_date("") is None
+        assert parse_date("invalid") is None
+        assert parse_date("2026-03-28T12:00:00") == "2026-03-28"
 
 
 # ═══════════════════════════════════════════════════════

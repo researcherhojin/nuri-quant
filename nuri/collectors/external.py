@@ -43,18 +43,6 @@ SOURCES = {
     "reddit": "Reddit/WSB 센티먼트 분석",
 }
 
-# 데이터 유형
-DATA_TYPES = {
-    "consensus": "애널리스트 컨센서스 (Buy/Hold/Sell)",
-    "target_price": "목표가",
-    "superinvestor_count": "슈퍼투자자 보유자 수",
-    "superinvestor_trend": "슈퍼투자자 매수/매도 트렌드",
-    "pe_ratio": "PE 비율",
-    "revenue": "매출",
-    "ark_action": "ARK 매수/매도",
-    "fund_flow": "펀드 플로우",
-    "macro_indicator": "매크로 지표",
-}
 
 
 def save_external(
