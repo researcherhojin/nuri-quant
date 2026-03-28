@@ -10,6 +10,9 @@ data/backups/
 data/exports/
 data/reports/
 
+# Portfolio (개인 보유 종목 정보)
+config/portfolio.yaml
+
 # Build
 *.egg-info/
 dist/
