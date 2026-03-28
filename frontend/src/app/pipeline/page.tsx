@@ -14,9 +14,10 @@ import "@xyflow/react/dist/style.css";
 
 // === Types ===
 interface DashboardData {
-  regime?: { label?: string };
+  regime?: { regime?: string; label?: string };
   macro?: { score?: number };
   gate?: { ready?: boolean };
+  gate_score?: number;
 }
 
 interface CertifyData {
