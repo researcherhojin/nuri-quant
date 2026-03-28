@@ -16,10 +16,13 @@ import requests
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import get_tickers, upsert_ark
 
-# ARK 매매 내역 CSV URL (공식)
-ARK_TRADE_URL = "https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_TRADE.csv"
-# 대체 URL
-ARK_TRADE_ALT_URL = "https://arkfunds.io/api/v2/etf/holdings?symbol=ARKK"
+# ARK 매매 내역 URL (우선순위 순)
+ARK_TRADE_URLS = [
+    "https://cathiesark.com/ark-combined-holdings-of-etf.csv",
+    "https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_TRADE.csv",
+]
+
+_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
 
 
 class ARKCollector(BaseCollector):
@@ -29,21 +32,21 @@ class ARKCollector(BaseCollector):
         super().__init__("ark")
 
     def collect(self, **kwargs) -> list[dict]:
-        """ARK 매매 CSV 다운로드 및 파싱."""
+        """ARK 매매 CSV 다운로드 및 파싱. 여러 URL 시도."""
         held_tickers = set(get_tickers())
 
-        try:
-            return self._collect_csv(held_tickers)
-        except Exception as e:
-            self.logger.warning(f"ARK CSV 다운로드 실패: {e}")
-            return []
+        for url in ARK_TRADE_URLS:
+            try:
+                return self._collect_csv(url, held_tickers)
+            except Exception as e:
+                self.logger.warning("ARK CSV 다운로드 실패 (%s): %s", url.split("/")[2], e)
 
-    def _collect_csv(self, held_tickers: set) -> list[dict]:
-        """ARK 공식 CSV에서 매매 내역 파싱."""
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-        }
-        resp = requests.get(ARK_TRADE_URL, headers=headers, timeout=30)
+        self.logger.warning("모든 ARK 소스 실패")
+        return []
+
+    def _collect_csv(self, url: str, held_tickers: set) -> list[dict]:
+        """ARK CSV에서 매매/보유 내역 파싱."""
+        resp = requests.get(url, headers=_HEADERS, timeout=30)
         resp.raise_for_status()
 
         reader = csv.DictReader(io.StringIO(resp.text))

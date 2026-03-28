@@ -46,8 +46,38 @@ def generate_report() -> dict:
         (tomorrow,),
     )
 
+    # 리밸런스 어드바이저 — 규칙 위반 + 매도 수량
+    rebalance_info = None
+    try:
+        from nuri.analysis.rebalance_advisor import generate_advisor_report
+        rebalance_info = generate_advisor_report()
+    except Exception as e:
+        logger.debug("리밸런스 어드바이저 실패: %s", e)
+
     # Embed 생성
     embed = format_daily_report(portfolio_summary, risk_metrics, fear_greed, events)
+
+    # 리밸런스 결과 필드 추가
+    if rebalance_info and rebalance_info.get("has_critical"):
+        actions = rebalance_info["actions"]
+        critical = [a for a in actions if a["severity"] == "critical"][:5]
+        if critical:
+            lines = [
+                f"{'🔴' if a['action'] == 'SELL_ALL' else '🟡'} {a['ticker']} {a['sell_shares']}주 "
+                f"→ {a['reason']} (회수 ~${a['sell_value_usd']:,.0f})"
+                for a in critical
+            ]
+            embed["fields"].append({
+                "name": f"🚨 규칙 위반 {rebalance_info['total_violations']}건 (즉시 조치)",
+                "value": "\n".join(lines),
+                "inline": False,
+            })
+            embed["fields"].append({
+                "name": "💵 총 회수 가능",
+                "value": f"~${rebalance_info['total_recovery_usd']:,.0f}",
+                "inline": True,
+            })
+            embed["color"] = 0xE74C3C  # 빨강
 
     return embed
 
