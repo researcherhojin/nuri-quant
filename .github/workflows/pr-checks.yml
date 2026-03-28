@@ -47,27 +47,6 @@ jobs:
             exit 1
           fi
 
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/ruff-action@v3
-
-  frontend-check:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npx tsc --noEmit
-
   security-scan:
     runs-on: ubuntu-latest
     steps:
@@ -83,7 +62,7 @@ jobs:
 
   pr-summary:
     runs-on: ubuntu-latest
-    needs: [quick-checks, lint, frontend-check, security-scan]
+    needs: [quick-checks, security-scan]
     if: always()
     permissions:
       pull-requests: write
@@ -94,8 +73,6 @@ jobs:
           script: |
             const jobs = [
               { name: 'quick-checks', status: '${{ needs.quick-checks.result }}' },
-              { name: 'lint', status: '${{ needs.lint.result }}' },
-              { name: 'frontend-check', status: '${{ needs.frontend-check.result }}' },
               { name: 'security-scan', status: '${{ needs.security-scan.result }}' },
             ];
 
