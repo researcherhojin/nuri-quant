@@ -32,24 +32,40 @@ DISCLAIMER = (
     "과거 성과는 미래 수익을 보장하지 않습니다."
 )
 
-SYSTEM_PROMPT = """당신은 Nuri-Quant 투자 분석 어시스턴트입니다.
+SYSTEM_PROMPT = """당신은 Nuri-Quant 투자 분석 리포트 작성 전문가입니다.
+한국어로 작성하세요. /no_think
 
-절대 규칙:
-1. 아래 [DATA] 섹션에 있는 수치만 사용하세요. 데이터에 없는 숫자를 만들지 마세요.
-2. 티커, 승률, PF, 수익률 등 수치를 인용할 때는 반드시 [DATA]에 있는 값 그대로 사용하세요.
-3. [DATA]에 "N/A"로 표시된 항목은 "데이터 미수집"으로 명시하세요.
-4. 성과 하락(drift: critical/degrading) 시그널은 반드시 경고하세요.
-5. 방향 충돌(conflict) 종목은 "관망 권장"으로 명시하세요.
-6. "~할 것으로 보입니다", "~예상됩니다" 같은 예측 표현을 사용하지 마세요.
+규칙:
+1. [DATA]에 있는 수치만 사용. 없는 숫자 생성 금지.
+2. "~할 것으로 보입니다" 같은 예측 표현 금지. 사실 기반만.
+3. drift: critical/degrading 시그널은 ⚠️ 경고.
+4. 충돌(conflict) 종목은 "관망 권장".
 
-구조:
-1. 데이터 완성도 (Gate 상태 요약, 1~2문장)
-2. 시장 환경 (레짐 + 매크로, 2~3문장)
-3. 리스크 현황 (Sharpe, VaR, MDD, 2~3문장)
-4. 시그널 신뢰도 (drift 상태, 어떤 시그널이 최근 부진한지)
-5. 매매 후보 (충돌 종목 경고 포함, 상위 3~5건)
-6. 전략 요약 (포지션 사이징, 섹터)
-7. 주의사항 (충돌, drift, 데이터 부족)"""
+리포트 구조 (이 구조를 정확히 따르세요):
+
+## 1. 데이터 완성도
+Gate 상태 1~2문장.
+
+## 2. 시장 환경
+레짐 + VIX + Fear&Greed + 매크로 스코어. 2~3문장.
+
+## 3. 리스크 현황
+Sharpe, VaR, MDD, 손절 경고. 2~3문장.
+
+## 4. 시그널 신뢰도
+drift 상태별 시그널 정리. 최근 부진한 시그널 경고.
+
+## 5. 매매 후보
+상위 3~5건. 충돌 종목 표시. 외부 데이터(TipRanks/Dataroma) 반영.
+
+## 6. 리밸런스 필요 사항
+규칙 위반 종목 + 매도 수량 + 회수 금액.
+
+## 7. 전략 요약
+포지션 사이징, 추천/회피 시그널, 방어 섹터.
+
+## 8. 주의사항
+충돌, drift, 데이터 부족 경고."""
 
 
 @dataclass
@@ -476,10 +492,32 @@ def _generate_ollama(prompt: str) -> str:
         )
         resp.raise_for_status()
         data = resp.json()
-        # Qwen3.5 등 thinking 모델: response가 비어있으면 thinking 필드 사용
         response = data.get("response", "")
-        if not response.strip() and data.get("thinking"):
-            response = data["thinking"]
+
+        # Qwen3.5 thinking 모델 처리:
+        # 1. response가 있으면 그대로 사용 (thinking 제외)
+        # 2. response가 비어있으면 thinking에서 실제 리포트 부분만 추출
+        if response.strip():
+            # thinking 잔여물 제거: "## 1." 이전 내용 필터링
+            for marker in ["## 1.", "# 1. "]:
+                idx = response.find(marker)
+                if idx > 0:
+                    response = response[idx:]
+                    break
+            # "*   **## " 형식의 thinking indent 제거
+            import re
+            response = re.sub(r"\s*\*\s*\*\*", "\n", response)
+            response = re.sub(r"\*\*\s*$", "", response, flags=re.MULTILINE)
+        elif data.get("thinking"):
+            thinking = data["thinking"]
+            for marker in ["## 1.", "# 1."]:
+                idx = thinking.find(marker)
+                if idx >= 0:
+                    response = thinking[idx:]
+                    break
+            if not response:
+                response = thinking
+
         return response
     except _requests.ConnectionError:
         return (
@@ -574,6 +612,15 @@ if __name__ == "__main__":
     else:
         print("=== LLM 리포트 ===")
         print(result["report"])
+
+        # 자동 저장
+        from datetime import date
+        from pathlib import Path
+        report_dir = Path("data/reports") / str(date.today())
+        report_dir.mkdir(parents=True, exist_ok=True)
+        out_path = report_dir / "llm_report.md"
+        out_path.write_text(result["report"], encoding="utf-8")
+        print(f"\n📄 리포트 저장: {out_path}")
 
     if result["validation"]["warnings"]:
         print("\n=== 검증 결과 ===")
