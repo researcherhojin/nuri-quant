@@ -368,20 +368,20 @@ confidence = regime_win_rate x 60% + regime_pf x 40%
 
 ### CRITICAL (Week 1)
 
-- [ ] API 인증 미들웨어 — JWT/API key
-- [ ] 비밀번호 해싱 — bcrypt + constant-time compare
-- [ ] Rate Limiting — slowapi
-- [ ] CORS 강화 — 프로덕션 도메인만
-- [ ] 브로커 입력 검증 — ticker whitelist, quantity 범위
+- [x] API 인증 미들웨어 — JWT/API key ✅
+- [x] 비밀번호 해싱 — bcrypt + SHA256 cookie ✅
+- [x] Rate Limiting — slowapi ✅
+- [x] CORS 강화 — env-based origins + restricted headers ✅
+- [x] 브로커 입력 검증 — Pydantic + regex + whitelist ✅
 
 ### HIGH (Week 2)
 
-- [ ] 감사 로깅 — append-only audit table
-- [ ] Monte Carlo 수정 — block bootstrap (20일 블록)
+- [x] 감사 로깅 — append-only audit_log table ✅
+- [x] Monte Carlo 수정 — 20일 block bootstrap ✅
 - [ ] Partial fill 처리
-- [ ] DB 마이그레이션 원자성
+- [x] DB 마이그레이션 원자성 — migration #1 (audit_log) ✅
 - [ ] 수집 실패 처리 — >10% 실패 시 거부
-- [ ] 보안 헤더 — CSP, HSTS, SameSite
+- [x] 보안 헤더 — CSP, HSTS, X-Frame-Options, SameSite ✅
 
 ### MEDIUM (Week 3-4)
 
