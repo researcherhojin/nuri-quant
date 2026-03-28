@@ -27,14 +27,30 @@ class Order:
     side: str           # "buy" / "sell"
     quantity: float
     order_type: str     # "market" / "limit"
-    status: str         # "submitted" / "filled" / "rejected" / "dry_run"
+    status: str         # "submitted" / "filled" / "partially_filled" / "rejected" / "dry_run"
     filled_price: Optional[float] = None
+    filled_qty: Optional[float] = None      # 체결된 수량
+    unfilled_qty: Optional[float] = None    # 미체결 수량
     order_id: Optional[str] = None
     timestamp: str = ""
 
     def __post_init__(self):
         if not self.timestamp:
             self.timestamp = datetime.now().isoformat()
+        # filled/unfilled 자동 계산
+        if self.filled_qty is None and self.status == "filled":
+            self.filled_qty = self.quantity
+            self.unfilled_qty = 0.0
+        elif self.filled_qty is None:
+            self.filled_qty = 0.0
+            self.unfilled_qty = self.quantity
+
+    @property
+    def is_partial(self) -> bool:
+        """부분 체결 여부."""
+        return self.status == "partially_filled" or (
+            self.filled_qty is not None and 0 < self.filled_qty < self.quantity
+        )
 
 
 @dataclass
@@ -135,15 +151,31 @@ class AlpacaBroker(BaseBroker):
         }
         try:
             result = self._request("POST", "/orders", json=data)
-            return Order(
+            filled_qty_raw = result.get("filled_qty")
+            filled_qty = float(filled_qty_raw) if filled_qty_raw else 0.0
+            unfilled_qty = quantity - filled_qty
+
+            status = result.get("status", "submitted")
+            if status == "filled" and filled_qty < quantity:
+                status = "partially_filled"
+
+            order = Order(
                 broker="alpaca", ticker=ticker, side=side,
                 quantity=quantity, order_type=order_type,
-                status=result.get("status", "submitted"),
+                status=status,
                 filled_price=float(result["filled_avg_price"]) if result.get("filled_avg_price") else None,
+                filled_qty=filled_qty,
+                unfilled_qty=unfilled_qty,
                 order_id=result.get("id"),
             )
+            if order.is_partial:
+                logger.warning(
+                    "Partial fill: %s %s %.0f/%.0f filled @ %s",
+                    side, ticker, filled_qty, quantity, order.filled_price,
+                )
+            return order
         except Exception as e:
-            logger.error(f"Alpaca order failed: {e}")
+            logger.error("Alpaca order failed: %s", e)
             return Order(
                 broker="alpaca", ticker=ticker, side=side,
                 quantity=quantity, order_type=order_type,
