@@ -138,8 +138,8 @@ export function Sidebar() {
           ))}
         </nav>
 
-        {/* SIEGE Status + System */}
-        <div className="border-t border-zinc-800 px-4 py-3 space-y-2">
+        {/* SIEGE Status + System — pb-16 to avoid Next.js dev indicator */}
+        <div className="border-t border-zinc-800 px-4 py-3 pb-16 space-y-2">
           {/* SIEGE 인증 배지 */}
           {siegeStatus && !collapsed && (
             <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${
@@ -177,8 +177,8 @@ export function Sidebar() {
             className={`flex items-center gap-2 text-zinc-500 hover:text-zinc-300 transition-colors ${collapsed ? "justify-center" : ""}`}
             title={isDark ? "Light mode" : "Dark mode"}
           >
-            {isDark ? <Sun size={14} /> : <Moon size={14} />}
-            {!collapsed && <span className="text-[10px]">{isDark ? "Light Mode" : "Dark Mode"}</span>}
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            {!collapsed && <span className="text-xs">{isDark ? "Light Mode" : "Dark Mode"}</span>}
           </button>
 
           {/* Online 상태 */}
