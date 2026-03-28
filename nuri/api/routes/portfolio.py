@@ -1,7 +1,8 @@
 """포트폴리오 + 리스크 API."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from nuri.api.auth import require_write_auth
 from nuri.core.db import query, upsert_portfolio
 
 router = APIRouter(tags=["portfolio"])
@@ -33,8 +34,8 @@ def get_portfolio():
 
 
 @router.post("/portfolio")
-def add_holding(holding: HoldingInput):
-    """보유 종목 추가/수정."""
+def add_holding(holding: HoldingInput, user=Depends(require_write_auth)):
+    """보유 종목 추가/수정 (인증 필요)."""
     record = holding.model_dump()
     record["ticker"] = record["ticker"].upper()
     upsert_portfolio([record])
@@ -42,8 +43,8 @@ def add_holding(holding: HoldingInput):
 
 
 @router.delete("/portfolio/{account}/{ticker}")
-def delete_holding(account: str, ticker: str):
-    """보유 종목 삭제."""
+def delete_holding(account: str, ticker: str, user=Depends(require_write_auth)):
+    """보유 종목 삭제 (인증 필요)."""
     from nuri.core.db import get_db
     ticker = ticker.upper()
     with get_db() as conn:

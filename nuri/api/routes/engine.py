@@ -1,7 +1,9 @@
 """SIEGE-inspired engine API: gate, conflicts, memory."""
 from dataclasses import asdict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from nuri.api.auth import require_write_auth
 
 router = APIRouter(tags=["engine"])
 
@@ -49,8 +51,8 @@ def get_memory():
 
 
 @router.post("/memory/snapshot")
-def post_memory_snapshot():
-    """전략 성과 스냅샷 저장."""
+def post_memory_snapshot(user=Depends(require_write_auth)):
+    """전략 성과 스냅샷 저장 (인증 필요)."""
     from nuri.trading.engine.memory import save_snapshot
     n = save_snapshot()
     return {"saved": n}
