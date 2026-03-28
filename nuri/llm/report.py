@@ -153,8 +153,10 @@ def gather_context(db_path=None) -> ReportContext:
         det = macro.details
         macro_section = _track(
             f"매크로 스코어: {macro.total_score:.0f}/100 ({macro.interpretation})\n"
-            f"  수익률곡선: {macro.yield_curve_score:.0f} (spread: {det.get('spread', 'N/A')})\n"
+            f"  수익률곡선: {macro.yield_curve_score:.0f} (2Y-10Y: {det.get('spread', 'N/A')})\n"
+            f"  3M-10Y: {macro.yield_spread_3m10y_score:.0f} (spread: {det.get('spread_3m10y', 'N/A')})\n"
             f"  VIX: {macro.vix_score:.0f} ({det.get('vix', 'N/A')})\n"
+            f"  Put/Call: {macro.put_call_ratio_score:.0f} (PCR: {det.get('put_call_ratio', 'N/A')})\n"
             f"  심리: {macro.sentiment_score:.0f} (F&G: {det.get('fear_greed', 'N/A')})\n"
             f"  고용: {macro.employment_score:.0f} (실업률: {det.get('unemployment', 'N/A')})\n"
             f"  물가: {macro.inflation_score:.0f} (CPI: {det.get('cpi_yoy', 'N/A')})\n"
