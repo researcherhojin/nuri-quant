@@ -6,6 +6,8 @@ __pycache__/
 
 # Data
 data/portfolio.db
+data/portfolio.db-wal
+data/portfolio.db-shm
 data/backups/
 data/exports/
 data/reports/
