@@ -1,7 +1,8 @@
 .PHONY: setup test collect analyze report deploy backup backtest verify verify-fast validate regime recommend \
        gate consensus scan swing swing-check strategy strategy-execute positions wallstreet filings \
        backtest-ls backtest-stress optimize mean-reversion pairs api dashboard start lint lint-fix \
-       verify-quick verify-all demo pre-deploy ports ports-kill update-counts
+       verify-quick verify-all demo pre-deploy ports ports-kill update-counts \
+       full-scan quick-scan targets rebalance evidence
 
 PYTHON = .venv/bin/python
 
@@ -164,6 +165,59 @@ ports-kill:
 
 update-counts:
 	bash scripts/update-test-counts.sh
+
+# ── 종합 스캔 (전체 파이프라인: 수집→분석→검증→레짐→추천→합의→증거) ──
+full-scan:
+	@echo "=== Phase A: 데이터 수집 ==="
+	$(PYTHON) -m nuri.collectors.stock
+	$(PYTHON) -m nuri.collectors.stock_kr
+	$(PYTHON) -m nuri.collectors.macro
+	$(PYTHON) -m nuri.collectors.technical
+	$(PYTHON) -m nuri.collectors.fear_greed
+	@echo "\n=== Phase B: 포트폴리오 분석 ==="
+	$(PYTHON) -m nuri.analysis.portfolio
+	$(PYTHON) -m nuri.analysis.sector
+	$(PYTHON) -m nuri.analysis.risk
+	@echo "\n=== Phase C: 시그널 검증 ==="
+	$(PYTHON) -m nuri.quant.validation.signal_backtest
+	$(PYTHON) -m nuri.quant.validation.scorecard
+	$(PYTHON) -m nuri.trading.engine.memory --snapshot
+	@echo "\n=== Phase D: 레짐 분류 + 전략 ==="
+	$(PYTHON) -m nuri.quant.regime.strategy_map
+	$(PYTHON) -m nuri.quant.factors.composite
+	@echo "\n=== Phase E: 추천 + 합의 ==="
+	$(PYTHON) -m nuri.trading.recommend.candidates
+	$(PYTHON) -m nuri.trading.agents.consensus
+	$(PYTHON) -m nuri.trading.swing.scanner
+	@echo "\n=== Phase F: 가격 타겟 + 리밸런스 ==="
+	$(PYTHON) -m nuri.trading.recommend.price_targets
+	$(PYTHON) -m nuri.analysis.rebalance_advisor
+	@echo "\n=== Phase G: 증거 시각화 ==="
+	$(PYTHON) -m nuri.analysis.evidence_charts
+	@echo "\n=== 전체 스캔 완료 ==="
+
+# ── 빠른 스캔 (수집→분석→합의만, ~2분) ──
+quick-scan:
+	$(PYTHON) -m nuri.collectors.stock
+	$(PYTHON) -m nuri.collectors.stock_kr
+	$(PYTHON) -m nuri.collectors.macro
+	$(PYTHON) -m nuri.collectors.fear_greed
+	$(PYTHON) -m nuri.analysis.portfolio
+	$(PYTHON) -m nuri.analysis.risk
+	$(PYTHON) -m nuri.trading.agents.consensus
+	$(PYTHON) -m nuri.trading.recommend.price_targets
+
+# ── 가격 타겟 (전 종목 매수가/손절가/익절가) ──
+targets:
+	$(PYTHON) -m nuri.trading.recommend.price_targets
+
+# ── 리밸런스 어드바이저 (규칙 위반 감지 + 매도 수량 제시) ──
+rebalance:
+	$(PYTHON) -m nuri.analysis.rebalance_advisor
+
+# ── 증거 시각화 (Plotly 차트 생성) ──
+evidence:
+	$(PYTHON) -m nuri.analysis.evidence_charts
 
 # ── DB 백업 ──
 backup:

@@ -17,14 +17,30 @@ from nuri.core.db import init_db, query
 
 logger = logging.getLogger(__name__)
 
-# 레짐 → 전략 매핑
+# 레짐 → 전략 매핑 (롱/숏/현금 비중)
+# 근거: O'Neil/Minervini 방법론 + 6-사이트 외부 데이터 분석 (2026-03-28)
 REGIME_ALLOCATION = {
-    "bull_low_vol":     {"direction": "long",  "long_pct": 90, "short_pct": 0,  "cash_pct": 10},
-    "bull_high_vol":    {"direction": "long",  "long_pct": 70, "short_pct": 0,  "cash_pct": 30},
-    "sideways_low_vol": {"direction": "neutral", "long_pct": 50, "short_pct": 0,  "cash_pct": 50},
-    "sideways_high_vol":{"direction": "neutral", "long_pct": 25, "short_pct": 15, "cash_pct": 60},
-    "bear_low_vol":     {"direction": "short", "long_pct": 10, "short_pct": 40, "cash_pct": 50},
-    "bear_high_vol":    {"direction": "short", "long_pct": 0,  "short_pct": 50, "cash_pct": 50},
+    "bull_low_vol":     {"direction": "long",    "long_pct": 80, "short_pct": 0,  "cash_pct": 20, "note": "공격적 — 풀 포지션, 성장주 집중"},
+    "bull_high_vol":    {"direction": "long",    "long_pct": 60, "short_pct": 0,  "cash_pct": 40, "note": "선택적 — 상위 시그널만, 팩터 상위 50%"},
+    "sideways_low_vol": {"direction": "neutral", "long_pct": 40, "short_pct": 0,  "cash_pct": 60, "note": "중립 — 평균회귀, 스윙 위주"},
+    "sideways_high_vol":{"direction": "neutral", "long_pct": 20, "short_pct": 0,  "cash_pct": 80, "note": "방어적 — 최소 포지션, 현금 극대화"},
+    "bear_low_vol":     {"direction": "short",   "long_pct": 10, "short_pct": 30, "cash_pct": 60, "note": "숏 편향 — SH 헤지, 방어 섹터만 롱"},
+    "bear_high_vol":    {"direction": "short",   "long_pct": 0,  "short_pct": 50, "cash_pct": 50, "note": "풀 숏 + 현금 — 관망, SH/SDS 보유"},
+}
+
+# 레짐 전환 시 행동 규칙
+REGIME_TRANSITION_RULES = {
+    ("bull_low_vol", "bull_high_vol"):       "롱 80%→60% 축소, VIX 모니터링",
+    ("bull_high_vol", "sideways_low_vol"):   "롱 60%→40% 축소, 성장주 → 가치주 로테이션",
+    ("bull_high_vol", "sideways_high_vol"):  "롱 60%→20% 축소, 현금 80%로 방어 전환",
+    ("sideways_low_vol", "sideways_high_vol"): "롱 40%→20% 축소, 스윙 포지션 정리",
+    ("sideways_high_vol", "bear_low_vol"):   "롱 20%→10%, 숏 30% 진입 (SH)",
+    ("sideways_high_vol", "bear_high_vol"):  "롱 전량 청산, 숏 50% 진입 (SH/SDS)",
+    ("bear_low_vol", "bear_high_vol"):       "롱 잔여분 청산, 숏 50%로 확대",
+    ("bear_high_vol", "sideways_high_vol"):  "숏 전량 청산, 롱 20% 재진입",
+    ("bear_low_vol", "sideways_low_vol"):    "숏 전량 청산, 롱 40%로 복귀",
+    ("sideways_low_vol", "bull_low_vol"):    "롱 40%→80% 확대, 성장주 재진입",
+    ("sideways_high_vol", "bull_low_vol"):   "롱 20%→80% 확대, 분할 매수",
 }
 
 # 롱/숏 ETF 유니버스
