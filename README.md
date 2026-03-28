@@ -378,17 +378,17 @@ confidence = regime_win_rate x 60% + regime_pf x 40%
 
 - [x] 감사 로깅 — append-only audit_log table ✅
 - [x] Monte Carlo 수정 — 20일 block bootstrap ✅
-- [ ] Partial fill 처리
+- [x] Partial fill 처리 — filled_qty/unfilled_qty 추적 ✅
 - [x] DB 마이그레이션 원자성 — migration #1 (audit_log) ✅
-- [ ] 수집 실패 처리 — >10% 실패 시 거부
+- [x] 수집 실패 처리 — >10% 실패 시 save 거부 ✅
 - [x] 보안 헤더 — CSP, HSTS, X-Frame-Options, SameSite ✅
 
 ### MEDIUM (Week 3-4)
 
-- [ ] 데이터 신선도 검증 (max 24h)
+- [x] 데이터 신선도 검증 — SPY max 72h ✅
 - [ ] 적응형 히스테리시스
 - [ ] 한국 에이전트 FX 캘리브레이션
-- [ ] SSE 캐시 (60초)
+- [x] SSE 캐시 — 60초 메모리 캐시 ✅
 - [ ] 차트 고도화 — RSI/MACD/BB 오버레이
 - [ ] 알림 확장 — Telegram
 
