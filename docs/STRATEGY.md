@@ -69,14 +69,42 @@
 
 ## 오픈소스 레퍼런스
 
-| 프로젝트 | 적용 부분 | 참고 |
-|----------|----------|------|
-| **O'Neil CAN SLIM** | 손절 -7%, 익절 +20%/+40% | 투자 규칙 |
-| **Minervini SEPA** | 트레일링 -15%, 8주 규칙 | 투자 규칙 |
-| **SIEGE** (nutshells3) | 10-condition gate, certification | 아키텍처 |
-| **Riskfolio-Lib** | MVO/Risk Parity 최적화 | 리밸런싱 |
-| **VectorBT** | 벡터 기반 백테스트 | 성과 검증 |
-| **처분효과 연구** (Shefrin & Statman 1985) | 수익 종목 너무 일찍 파는 편향 경고 | 투자 행동 |
+### 투자 이론/규칙 출처
+
+| 출처 | 적용 부분 | 우리 코드 |
+|------|----------|----------|
+| **O'Neil CAN SLIM** | 손절 -7%, 익절 +20%/+40% | `config/rules.yaml` stop_loss/take_profit |
+| **Minervini SEPA** | 트레일링 -15%, 8주 규칙 | `config/rules.yaml` trailing_stop, eight_week_hold |
+| **처분효과** (Shefrin 1985) | 수익 종목 너무 일찍 파는 편향 경고 | 익절 규칙의 근거 |
+| **트레일링 스톱 백테스트** (11년) | 15-20%가 최적 수익 (73.9% 누적) | trailing_stop: -15% 설정 근거 |
+
+### 아키텍처/엔진 출처
+
+| 출처 | 적용 부분 | 우리 코드 |
+|------|----------|----------|
+| **SIEGE** (nutshells3) | 10-condition gate, certification | `nuri/trading/engine/gate.py`, `certification.py` |
+| **Riskfolio-Lib** | MVO/Risk Parity 최적화 | `nuri/analysis/rebalance.py` |
+| **VectorBT** | 벡터 기반 백테스트 | `nuri/quant/backtest/engine.py` |
+
+### UX/시각화 참고 프로젝트
+
+| 프로젝트 | 배울 점 | 적용 계획 |
+|----------|--------|----------|
+| [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 에이전트별 판단 과정 스트리밍 | Issue #10: consensus 페이지 에이전트 추론 시각화 |
+| [Aragora](https://github.com/synaptent/aragora) | 에이전트 합의/반대 의견 시각화, ELO 신뢰도 | Issue #10: dissent trail, 에이전트 신뢰도 추적 |
+| [OpenAlgo Flow](https://github.com/marketcalls/openalgo-flow) | React Flow 노드 기반 파이프라인 시각화 | Issue #10: 6-step pipeline 인터랙티브 그래프 |
+| [OpenAlice](https://github.com/TraderAlice/OpenAlice) | Git-like guard gate + SSE 스트리밍 | Issue #10: SIEGE gate 시각화 (이미 SSE 있음) |
+| [Ghostfolio](https://github.com/ghostfolio/ghostfolio) | 미니멀 대시보드 + progressive disclosure | Issue #9: 메인 대시보드 UX |
+| [FreqUI](https://www.freqtrade.io/en/stable/freq-ui/) | 백테스트 시그널 마커 + 비교 | Issue #10: 백테스트 시각화 |
+| [TradeMaster PRUDEX-Compass](https://github.com/TradeMaster-NTU/TradeMaster) | 레이더 차트 다차원 평가 | Issue #10: 시그널 품질 레이더 차트 |
+
+### 적용 우선 기술
+
+| 기술 | 용도 | 라이센스 |
+|------|------|---------|
+| **React Flow** (xyflow) | 파이프라인 DAG 시각화 | MIT |
+| **Recharts** (이미 사용 중) | 차트 | MIT |
+| **SSE** (이미 구현) | 실시간 파이프라인 진행 표시 | — |
 
 ## 작업 순서
 
