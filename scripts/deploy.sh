@@ -32,7 +32,7 @@ echo "파일 전송 완료. 리모트 설정 시작..."
 # 리모트에서 setup 실행
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "cd ${REMOTE_PATH} && bash scripts/setup.sh"
 
-# cron 등록
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "cd ${REMOTE_PATH} && crontab crontab.txt"
+# cron 등록 (crontab.txt 있을 때만)
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "cd ${REMOTE_PATH} && [ -f crontab.txt ] && crontab crontab.txt || echo 'crontab.txt 없음 — 스킵'"
 
 echo "=== Deploy complete ==="
