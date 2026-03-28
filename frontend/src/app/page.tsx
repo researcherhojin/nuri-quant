@@ -28,23 +28,85 @@ const levelStyles: Record<string, { bg: string; border: string; text: string; la
 
 async function Dashboard() {
   const d = await fetchAPI<DashboardData>("/api/dashboard");
+
+  // 포트폴리오 + SIEGE 인증 병렬 fetch
+  let portfolio: any = null;
+  let siege: any = null;
+  let advisor: any = null;
+  try {
+    [portfolio, siege, advisor] = await Promise.all([
+      fetchAPI<any>("/api/portfolio").catch(() => null),
+      fetchAPI<any>("/api/certify").catch(() => null),
+      fetchAPI<any>("/api/rebalance-advisor").catch(() => null),
+    ]);
+  } catch {}
+
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
 
+  // 포트폴리오 평가액 계산
+  const totalValue = portfolio?.holdings?.reduce(
+    (sum: number, h: any) => sum + (h.latest_price || 0) * (h.quantity || 0), 0
+  ) || 0;
+
   return (
-    <div className="space-y-5">
-      {/* ── Hero: 오늘의 판단 ── */}
-      <Card className={`${style.bg} ${style.border} border-2`}>
-        <CardContent className="pt-6 pb-5">
-          <div className="flex items-center gap-3 mb-3">
+    <div className="space-y-4">
+      {/* ── Top Metrics Row ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="pt-4 pb-3">
+            <p className="text-[10px] text-zinc-500 mb-1">Portfolio</p>
+            <p className="text-lg font-bold">${totalValue.toLocaleString(undefined, {maximumFractionDigits: 0})}</p>
+            <p className="text-[10px] text-zinc-600">{portfolio?.count || 0} holdings</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="pt-4 pb-3">
+            <p className="text-[10px] text-zinc-500 mb-1">SIEGE</p>
+            <div className="flex items-center gap-2">
+              <p className={`text-lg font-bold ${siege?.certified ? "text-emerald-400" : "text-red-400"}`}>
+                {siege?.certified ? "CERTIFIED" : "REJECTED"}
+              </p>
+            </div>
+            <p className="text-[10px] text-zinc-600">{siege?.score || 0}% ({siege?.passed || 0}/{siege?.total || 0})</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="pt-4 pb-3">
+            <p className="text-[10px] text-zinc-500 mb-1">Violations</p>
+            <p className={`text-lg font-bold ${(advisor?.has_critical) ? "text-red-400" : "text-emerald-400"}`}>
+              {advisor?.total_violations || 0}건
+            </p>
+            <p className="text-[10px] text-zinc-600">
+              {advisor?.total_recovery_usd ? `$${advisor.total_recovery_usd.toLocaleString(undefined, {maximumFractionDigits: 0})} 회수 가능` : "위반 없음"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="pt-4 pb-3">
+            <p className="text-[10px] text-zinc-500 mb-1">Market</p>
+            <p className="text-lg font-bold">{d.regime.trend?.toUpperCase()}</p>
+            <p className="text-[10px] text-zinc-600">
+              VIX {d.regime.vix ?? "—"} · F&G {d.regime.fear_greed ?? "—"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Verdict + Allocation ── */}
+      <Card className={`${style.bg} ${style.border} border`}>
+        <CardContent className="pt-5 pb-4">
+          <div className="flex items-center gap-3 mb-2">
             <StatusBadge status={style.label} size="md" />
             <span className="text-xs text-zinc-500">
-              {d.regime.regime} | Macro {d.macro.score}/100 | Gate {d.gate_score}%
+              {d.regime.regime} · Macro {d.macro.score}/100 · Gate {d.gate_score}%
             </span>
           </div>
-          <p className={`text-base sm:text-lg font-medium ${style.text}`}>{d.verdict}</p>
+          <p className={`text-sm font-medium ${style.text}`}>{d.verdict}</p>
 
-          {/* Allocation Bar — 라벨이 바 안에 표시 */}
-          <div className="flex h-6 rounded-lg overflow-hidden mt-4 text-[10px] font-medium">
+          <div className="flex h-5 rounded overflow-hidden mt-3 text-[10px] font-medium">
             {d.allocation.long > 0 && (
               <div className="bg-emerald-600 flex items-center justify-center"
                 style={{ width: `${d.allocation.long}%` }}>
@@ -155,20 +217,21 @@ async function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Navigation */}
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { href: "/strategy", label: "Strategy", sub: "L/S + Backtest" },
-              { href: "/consensus", label: "Agents", sub: "6-agent detail" },
-              { href: "/scan", label: "Scan", sub: "Market scanner" },
-            ].map((item) => (
-              <Link key={item.href} href={item.href}
-                className="block p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors text-center">
-                <p className="text-xs font-medium">{item.label}</p>
-                <p className="text-[10px] text-zinc-600">{item.sub}</p>
-              </Link>
-            ))}
-          </div>
+          {/* SIEGE Conditions (if rejected) */}
+          {siege && !siege.certified && (
+            <Card className="bg-red-950/20 border-red-900/50">
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs text-red-400 font-medium mb-2">SIEGE 미충족 조건</p>
+                <div className="space-y-1">
+                  {siege.conditions?.filter((c: any) => !c.passed).slice(0, 4).map((c: any, i: number) => (
+                    <p key={i} className="text-[11px] text-zinc-400">
+                      {c.severity === "error" ? "❌" : "⚠️"} {c.description} — {c.detail}
+                    </p>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
