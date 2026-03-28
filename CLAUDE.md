@@ -60,6 +60,15 @@ make pairs            # pairs trading scan + backtest
 make scan             # 89종목 스캔 → 시그널 필터
 make swing            # 스캔 + 에이전트 합의 → 진입 저장
 
+# Full Pipeline
+make full-scan        # 7-phase: collect→analyze→validate→regime→recommend→targets→evidence
+make quick-scan       # 빠른 4-step: collect→analyze→consensus→targets (~2분)
+
+# Price Targets & Rebalance
+make targets          # 전 종목 매수가/손절가/익절가 계산
+make rebalance        # 규칙 위반 감지 + 매도 수량 제시
+make evidence         # 5개 Plotly 증거 차트 생성 (data/reports/{date}/evidence/)
+
 # Lint + Test
 make lint             # ruff check
 make lint-fix         # ruff check --fix
@@ -86,7 +95,7 @@ All `make` targets use `.venv/bin/python` — activate the venv or use the full 
 nuri/
 ├── core/              # DB (sole sqlite3 importer), rules (config/rules.yaml loader)
 ├── collectors/        # 16 data collectors inheriting BaseCollector
-├── analysis/          # Pure analysis: portfolio, risk, sector, charts, sentiment, rebalance
+├── analysis/          # portfolio, risk, sector, charts, rebalance_advisor, evidence_charts
 ├── quant/             # Quantitative pipeline
 │   ├── regime/        # 6-regime classifier, macro score, strategy map
 │   ├── validation/    # Signal backtest, superinvestor/analyst backtest, scorecard
@@ -96,7 +105,7 @@ nuri/
 │   ├── agents/        # 7 agents + consensus engine
 │   ├── engine/        # SIEGE: gate, conflicts, learning memory
 │   ├── strategy/      # L/S, mean-reversion, pairs trading
-│   ├── recommend/     # Candidates, rebalance, tracker
+│   ├── recommend/     # Candidates, rebalance, tracker, price_targets
 │   ├── swing/         # Market-wide scanner + rules
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
 ├── api/               # FastAPI REST API (routes/)
