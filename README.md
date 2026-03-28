@@ -15,13 +15,13 @@
 
 주식을 사거나 팔 때, 근거 없이 감으로 하고 있지 않나요?
 
-Nuri-Quant은 **"왜 이 종목을 사야/팔아야 하는지"를 데이터로 증명**하는 오픈소스 퀀트 투자 플랫폼입니다. 15개 수집기로 데이터를 모으고, 3,400건 이상의 과거 트레이드로 시그널을 검증하고, 7개 전문 에이전트가 독립적으로 분석한 뒤 투표하고, 10개 규칙을 기계적으로 검증해서 — 최종 추천이 나옵니다.
+Nuri-Quant은 **"왜 이 종목을 사야/팔아야 하는지"를 데이터로 증명**하는 오픈소스 퀀트 투자 플랫폼입니다. 21개 수집기로 데이터를 모으고, 3,400건 이상의 과거 트레이드로 시그널을 검증하고, 7개 전문 에이전트가 독립적으로 분석한 뒤 투표하고, 10개 규칙을 기계적으로 검증해서 — 최종 추천이 나옵니다.
 
 ## 어떻게 작동하나요?
 
 ```mermaid
 graph LR
-    A["🔍 수집<br/>15 collectors<br/>+ 10 외부 사이트"] --> B["✅ 검증<br/>3,400+ 트레이드<br/>시그널 백테스트"]
+    A["🔍 수집<br/>21 collectors<br/>+ 11 외부 사이트"] --> B["✅ 검증<br/>3,400+ 트레이드<br/>시그널 백테스트"]
     B --> C["📊 분류<br/>6-레짐 분류<br/>bull/bear/sideways"]
     C --> D["🤖 판단<br/>7 에이전트<br/>가중 투표"]
     D --> E["🔒 인증<br/>SIEGE 10-조건<br/>pass / reject"]
@@ -37,7 +37,7 @@ graph LR
 
 **각 단계를 풀어 설명하면:**
 
-1. **수집** — 미국/한국 주가, 매크로 지표, Fear&Greed, 13F 보유현황, 애널리스트 목표가를 매일 자동 수집. 추가로 TipRanks, Dataroma, CBOE, CoinGecko 등 10개 외부 사이트 데이터도 DB에 저장.
+1. **수집** — 미국/한국 주가, 매크로 지표, Fear&Greed, 13F 보유현황, 애널리스트 목표가를 매일 자동 수집. 추가로 TipRanks, Dataroma, CBOE, CoinGecko, Reddit/WSB 등 11개 외부 사이트 데이터도 DB에 저장.
 
 2. **검증** — "이 시그널이 과거에 돈을 벌어줬는가?" 3,400건 이상의 과거 트레이드로 백테스트. 승률, Profit Factor, 레짐별 성과를 측정. **성과가 최근 급락한 시그널은 자동으로 신뢰도 하향** (Learning Memory).
 
@@ -122,8 +122,8 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 <details>
 <summary><b>전체 기술 스택</b></summary>
 
-**Data** (15 collectors) — OpenBB · yfinance · pykrx · edgartools · FRED · TA-Lib · BTC/Gold<br/>
-**External** (10 sites) — TipRanks · Dataroma · Macrotrends · ARK · ETF.com · TradingEcon · Short Interest · CBOE · CoinGecko · FINVIZ<br/>
+**Data** (21 collectors) — OpenBB · yfinance · pykrx · edgartools · FRED · TA-Lib · BTC/Gold<br/>
+**External** (11 sites) — TipRanks · Dataroma · Macrotrends · ARK · ETF.com · TradingEcon · Short Interest · CBOE · CoinGecko · FINVIZ · Reddit/WSB<br/>
 **Quant** — pandas · Riskfolio-Lib · VectorBT · QuantStats · scikit-learn · cvxpy<br/>
 **Backend** (51 endpoints) — FastAPI · uvicorn · Pydantic · SSE stream<br/>
 **Frontend** (15 pages) — Next.js 16 · React 19 · Tailwind 4 · shadcn/ui · Recharts · React Flow<br/>

@@ -9,7 +9,6 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   PYTHON_VERSION: "3.12"
-  UV_CACHE_DIR: /tmp/.uv-cache
 
 jobs:
   lint:
@@ -32,15 +31,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
-          enable-cache: false
-
-      - name: Cache uv packages
-        uses: actions/cache@v4
-        continue-on-error: true
-        with:
-          path: /tmp/.uv-cache
-          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
-          restore-keys: uv-${{ runner.os }}-
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
 
       - name: Cache TA-Lib
         id: cache-talib
@@ -70,19 +62,9 @@ jobs:
       - name: Configure TA-Lib
         run: sudo ldconfig
 
-      - name: Cache venv
-        id: cache-venv
-        uses: actions/cache@v4
-        continue-on-error: true
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
-
       - name: Create venv + install deps
         run: |
-          if [ ! -f .venv/bin/python ]; then
-            uv venv
-          fi
+          uv venv
           uv pip install -e .
 
       - name: Run tests with coverage

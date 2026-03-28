@@ -85,6 +85,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [quick-checks, lint, frontend-check, security-scan]
     if: always()
+    permissions:
+      pull-requests: write
     steps:
       - name: PR Check Summary
         uses: actions/github-script@v7
