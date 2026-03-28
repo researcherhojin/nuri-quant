@@ -657,11 +657,198 @@ def print_stress(results: list[dict]) -> None:
     print()
 
 
+# ═══════════════════════════════════════════════════════
+# BT6: 규칙 적용 백테스트 — rules.yaml 손절/익절/트레일링
+# ═══════════════════════════════════════════════════════
+
+
+def run_backtest_with_rules(regimes_df: pd.DataFrame, db_path=None) -> dict:
+    """rules.yaml의 손절/익절/트레일링 규칙을 적용한 백테스트.
+
+    기본 L/S 전략 위에 종목 수준 규칙을 시뮬레이션:
+    - 손절 -7% 도달 시 즉시 청산
+    - 1차 익절 +20% 시 50% 매도
+    - 2차 익절 +40% 시 25% 매도
+    - 트레일링 스톱 -15% (고점 대비)
+
+    기존 run_backtest와 동일 데이터로 A/B 비교.
+    """
+    from nuri.core.rules import (
+        STOCK_STOP_LOSS,
+        TAKE_PROFIT_GROWTH,
+        TRAILING_STOP_GROWTH,
+    )
+
+    stop_pct = STOCK_STOP_LOSS / 100          # -0.07
+    tp1_pct = TAKE_PROFIT_GROWTH["target_1"] / 100  # 0.20
+    tp2_pct = TAKE_PROFIT_GROWTH["target_2"] / 100  # 0.40
+    trailing_pct = TRAILING_STOP_GROWTH / 100  # -0.15
+
+    df = regimes_df.copy()
+    df = df[df["regime"] != "unknown"].dropna(subset=["return"])
+    df = df.reset_index(drop=True)
+
+    if df.empty:
+        return {"error": "데이터 부족"}
+
+    # --- 기본 전략 (규칙 없음) ---
+    base_result = run_backtest(regimes_df, db_path)
+
+    # --- 규칙 적용 전략 ---
+    # 시뮬레이션: 롱 포지션에 손절/익절/트레일링 적용
+    cum_return = 0.0
+    high_water = 0.0
+    position_size = 1.0      # 1.0 = 100%
+    tp1_triggered = False
+    tp2_triggered = False
+    ruled_returns = []
+    stops_hit = 0
+    tp1_count = 0
+    tp2_count = 0
+    trailing_count = 0
+
+    for i in range(len(df)):
+        row = df.iloc[i]
+        regime = row["regime"]
+        daily_ret = row["return"]
+
+        alloc = REGIME_ALLOCATION.get(regime, REGIME_ALLOCATION["sideways_high_vol"])
+        long_pct = alloc["long"]
+
+        # 포지션이 있을 때만 규칙 적용
+        if position_size > 0 and long_pct > 0:
+            cum_return += daily_ret
+            high_water = max(high_water, cum_return)
+
+            # 손절 체크
+            if cum_return <= stop_pct:
+                ruled_returns.append(stop_pct * long_pct * position_size)
+                cum_return = 0
+                high_water = 0
+                position_size = 1.0
+                tp1_triggered = False
+                tp2_triggered = False
+                stops_hit += 1
+                continue
+
+            # 1차 익절 체크
+            if not tp1_triggered and cum_return >= tp1_pct:
+                # 50% 매도 → position_size 50%로
+                position_size *= 0.5
+                tp1_triggered = True
+                tp1_count += 1
+
+            # 2차 익절 체크
+            if tp1_triggered and not tp2_triggered and cum_return >= tp2_pct:
+                # 추가 25% 매도 → position_size 25%로
+                position_size *= 0.5
+                tp2_triggered = True
+                tp2_count += 1
+
+            # 트레일링 스톱 체크
+            drawdown = cum_return - high_water
+            if high_water > 0.05 and drawdown <= trailing_pct:
+                ruled_returns.append(cum_return * long_pct * position_size)
+                cum_return = 0
+                high_water = 0
+                position_size = 1.0
+                tp1_triggered = False
+                tp2_triggered = False
+                trailing_count += 1
+                continue
+
+            # 일반 수익률
+            ruled_returns.append(daily_ret * long_pct * position_size
+                                + alloc["short"] * (-daily_ret)
+                                + alloc["cash"] * 0)
+        else:
+            # 포지션 없거나 long=0
+            ruled_returns.append(alloc["short"] * (-daily_ret) if alloc["short"] > 0 else 0)
+            cum_return = 0
+            high_water = 0
+            position_size = 1.0
+            tp1_triggered = False
+            tp2_triggered = False
+
+    ruled = pd.Series(ruled_returns)
+    if ruled.empty:
+        return {"error": "시뮬레이션 데이터 부족"}
+
+    ruled_cum = (1 + ruled).cumprod()
+    ruled_total = (ruled_cum.iloc[-1] - 1) * 100
+    years = len(ruled) / 252
+    ruled_annual = ((1 + ruled_total / 100) ** (1 / max(years, 0.1)) - 1) * 100
+    ruled_sharpe = ruled.mean() / ruled.std() * np.sqrt(252) if ruled.std() > 0 else 0
+    ruled_mdd = (ruled_cum / ruled_cum.cummax() - 1).min() * 100
+
+    return {
+        "base": {
+            "total_return": base_result.total_return,
+            "annual_return": base_result.annual_return,
+            "sharpe": base_result.sharpe,
+            "max_drawdown": base_result.max_drawdown,
+        },
+        "with_rules": {
+            "total_return": round(ruled_total, 2),
+            "annual_return": round(ruled_annual, 2),
+            "sharpe": round(ruled_sharpe, 2),
+            "max_drawdown": round(ruled_mdd, 2),
+        },
+        "rules_impact": {
+            "return_diff": round(ruled_total - base_result.total_return, 2),
+            "sharpe_diff": round(ruled_sharpe - base_result.sharpe, 2),
+            "mdd_diff": round(ruled_mdd - base_result.max_drawdown, 2),
+            "stops_hit": stops_hit,
+            "tp1_count": tp1_count,
+            "tp2_count": tp2_count,
+            "trailing_count": trailing_count,
+        },
+        "rules_config": {
+            "stop_loss": f"{STOCK_STOP_LOSS}%",
+            "target_1": f"+{TAKE_PROFIT_GROWTH['target_1']}% (50% sell)",
+            "target_2": f"+{TAKE_PROFIT_GROWTH['target_2']}% (25% sell)",
+            "trailing_stop": f"{TRAILING_STOP_GROWTH}% from high",
+        },
+    }
+
+
+def print_rules_comparison(result: dict) -> None:
+    """규칙 적용 전후 비교 출력."""
+    if "error" in result:
+        print(f"  규칙 백테스트 실패: {result['error']}")
+        return
+
+    base = result["base"]
+    ruled = result["with_rules"]
+    impact = result["rules_impact"]
+    config = result["rules_config"]
+
+    print(f"\n{'═' * 70}")
+    print("  Rules-Applied Backtest Comparison")
+    print(f"{'═' * 70}")
+    print(f"  Rules: SL {config['stop_loss']} | TP1 {config['target_1']} | "
+          f"TP2 {config['target_2']} | Trail {config['trailing_stop']}")
+    print(f"{'─' * 70}")
+    print(f"  {'Metric':<20} {'Base':>12} {'With Rules':>12} {'Diff':>10}")
+    print(f"  {'─' * 54}")
+    print(f"  {'Total Return':<20} {base['total_return']:>+11.1f}% {ruled['total_return']:>+11.1f}% {impact['return_diff']:>+9.1f}%")
+    print(f"  {'Annual Return':<20} {base['annual_return']:>+11.1f}% {ruled['annual_return']:>+11.1f}%")
+    print(f"  {'Sharpe Ratio':<20} {base['sharpe']:>12.2f} {ruled['sharpe']:>12.2f} {impact['sharpe_diff']:>+9.2f}")
+    print(f"  {'Max Drawdown':<20} {base['max_drawdown']:>+11.1f}% {ruled['max_drawdown']:>+11.1f}% {impact['mdd_diff']:>+9.1f}%")
+    print(f"{'─' * 70}")
+    print(f"  Stop losses hit:     {impact['stops_hit']}")
+    print(f"  Take profit 1 (+20%): {impact['tp1_count']}")
+    print(f"  Take profit 2 (+40%): {impact['tp2_count']}")
+    print(f"  Trailing stops:      {impact['trailing_count']}")
+    print(f"{'═' * 70}\n")
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant L/S Strategy Backtest")
     parser.add_argument("--stress", action="store_true", help="스트레스 테스트만")
+    parser.add_argument("--rules", action="store_true", help="규칙 적용 비교 백테스트")
     args = parser.parse_args()
 
     logger.info("과거 레짐 분류 중...")
@@ -674,6 +861,10 @@ if __name__ == "__main__":
     if args.stress:
         results = stress_test(regimes)
         print_stress(results)
+    elif args.rules:
+        # BT6: 규칙 적용 비교
+        result = run_backtest_with_rules(regimes)
+        print_rules_comparison(result)
     else:
         # BT2: 전체 백테스트
         result = run_backtest(regimes)
@@ -686,6 +877,11 @@ if __name__ == "__main__":
         # BT4: 투입 적기
         timing = analyze_entry_timing(regimes)
         print_timing(timing)
+
+        # BT6: 규칙 적용 비교
+        logger.info("규칙 적용 백테스트...")
+        rules_result = run_backtest_with_rules(regimes)
+        print_rules_comparison(rules_result)
 
         # BT5: 스트레스 테스트
         stress = stress_test(regimes)

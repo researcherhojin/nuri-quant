@@ -2,7 +2,7 @@
        gate consensus scan swing swing-check strategy strategy-execute positions wallstreet filings \
        backtest-ls backtest-stress optimize mean-reversion pairs api dashboard start lint lint-fix \
        verify-quick verify-all demo pre-deploy ports ports-kill update-counts \
-       full-scan quick-scan targets rebalance evidence external report-llm certify
+       full-scan quick-scan targets rebalance evidence external report-llm certify backtest-rules
 
 PYTHON = .venv/bin/python
 
@@ -114,6 +114,9 @@ backtest-ls:
 
 backtest-stress:
 	$(PYTHON) -m nuri.trading.strategy.ls_backtest --stress
+
+backtest-rules:
+	$(PYTHON) -m nuri.trading.strategy.ls_backtest --rules
 
 # ── 파라미터 최적화 + 다중 전략 ──
 optimize:
