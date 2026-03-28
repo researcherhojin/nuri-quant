@@ -27,13 +27,21 @@ def get_rebalance_advisor():
     return generate_advisor_report()
 
 
+_certify_cache: dict = {"data": None, "ts": 0}
+
 @router.get("/certify")
 def get_certification():
-    """SIEGE 10-condition 인증 상태."""
+    """SIEGE 10-condition 인증 상태 (5분 캐시)."""
+    import time
     from dataclasses import asdict
+
+    now = time.time()
+    if _certify_cache["data"] and now - _certify_cache["ts"] < 300:
+        return _certify_cache["data"]
+
     from nuri.trading.engine.certification import certify
     cert = certify()
-    return {
+    result = {
         "certified": cert.certified,
         "score": cert.score,
         "passed": cert.passed,
@@ -43,3 +51,6 @@ def get_certification():
         "conditions": [asdict(c) for c in cert.conditions],
         "timestamp": cert.timestamp,
     }
+    _certify_cache["data"] = result
+    _certify_cache["ts"] = now
+    return result
