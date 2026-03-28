@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useTheme } from "next-themes";
 import {
   LayoutDashboard,
   Briefcase,
@@ -66,7 +67,8 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [siegeStatus, setSiegeStatus] = useState<{ certified: boolean; score: number } | null>(null);
-  const [isDark, setIsDark] = useState(true);
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
 
   // SIEGE 인증 상태 조회
   useEffect(() => {
@@ -85,19 +87,19 @@ export function Sidebar() {
     <>
       <aside className={`fixed left-0 top-0 h-screen ${w} bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-all duration-200`}>
         {/* Logo + Collapse */}
-        <div className="h-12 flex items-center justify-between px-4 border-b border-zinc-800">
+        <div className="h-12 flex items-center justify-between px-4 border-b border-border">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             {!collapsed && (
               <>
                 <span className="text-lg font-bold text-emerald-400 tracking-tight">Nuri-Quant</span>
-                <span className="text-[9px] text-zinc-600 font-mono">v0.1</span>
+                <span className="text-[9px] text-muted-foreground/70 font-mono">v0.1</span>
               </>
             )}
             {collapsed && <span className="text-lg font-bold text-emerald-400">N</span>}
           </Link>
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="text-muted-foreground hover:text-foreground/80 transition-colors"
           >
             {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
@@ -108,7 +110,7 @@ export function Sidebar() {
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="mb-3">
               {!collapsed && (
-                <p className="px-4 text-[10px] font-semibold text-zinc-600 tracking-widest mb-1">
+                <p className="px-4 text-[10px] font-semibold text-muted-foreground/70 tracking-widest mb-1">
                   {group.label}
                 </p>
               )}
@@ -125,11 +127,11 @@ export function Sidebar() {
                       ${collapsed ? "justify-center px-3" : "px-4"}
                       ${active
                         ? "text-emerald-400 bg-emerald-400/10 border-r-2 border-emerald-400"
-                        : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                       }
                     `}
                   >
-                    <Icon size={20} className={active ? "text-emerald-400" : "text-zinc-500"} />
+                    <Icon size={20} className={active ? "text-emerald-400" : "text-muted-foreground"} />
                     {!collapsed && <span>{item.label}</span>}
                   </Link>
                 );
@@ -139,7 +141,7 @@ export function Sidebar() {
         </nav>
 
         {/* SIEGE Status + System — pb-16 to avoid Next.js dev indicator */}
-        <div className="border-t border-zinc-800 px-4 py-3 pb-16 space-y-2">
+        <div className="border-t border-border px-4 py-3 pb-16 space-y-2">
           {/* SIEGE 인증 배지 */}
           {siegeStatus && !collapsed && (
             <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${
@@ -165,16 +167,8 @@ export function Sidebar() {
 
           {/* Theme Toggle */}
           <button
-            onClick={() => {
-              const next = !isDark;
-              setIsDark(next);
-              if (next) {
-                document.documentElement.classList.add("dark");
-              } else {
-                document.documentElement.classList.remove("dark");
-              }
-            }}
-            className={`flex items-center gap-2 text-zinc-500 hover:text-zinc-300 transition-colors ${collapsed ? "justify-center" : ""}`}
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+            className={`flex items-center gap-2 text-muted-foreground hover:text-foreground/80 transition-colors ${collapsed ? "justify-center" : ""}`}
             title={isDark ? "Light mode" : "Dark mode"}
           >
             {isDark ? <Sun size={16} /> : <Moon size={16} />}
@@ -187,7 +181,7 @@ export function Sidebar() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
             </span>
-            {!collapsed && <span className="text-[10px] text-zinc-500">System Online</span>}
+            {!collapsed && <span className="text-[10px] text-muted-foreground">System Online</span>}
           </div>
         </div>
       </aside>

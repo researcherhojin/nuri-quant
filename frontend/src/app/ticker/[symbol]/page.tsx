@@ -27,7 +27,7 @@ async function TickerDetail({ symbol }: { symbol: string }) {
   const earningsCols = [
     { key: "quarter", label: "Quarter", render: (v: string) => v?.slice(0, 7) },
     { key: "eps_actual", label: "Actual", align: "right" as const, render: (v: number) => v?.toFixed(2) },
-    { key: "eps_estimate", label: "Est", align: "right" as const, render: (v: number) => <span className="text-zinc-500">{v?.toFixed(2)}</span> },
+    { key: "eps_estimate", label: "Est", align: "right" as const, render: (v: number) => <span className="text-muted-foreground">{v?.toFixed(2)}</span> },
     {
       key: "surprise_pct", label: "Surprise", align: "right" as const,
       render: (v: number) => (
@@ -44,24 +44,24 @@ async function TickerDetail({ symbol }: { symbol: string }) {
       <div className="flex items-center gap-4 flex-wrap">
         <h1 className="text-3xl font-bold">{data.ticker}</h1>
         {data.price?.close && (
-          <span className="text-2xl text-zinc-300">${Number(data.price.close).toLocaleString()}</span>
+          <span className="text-2xl text-foreground/80">${Number(data.price.close).toLocaleString()}</span>
         )}
         {consensus.final_action && (
           <StatusBadge status={consensus.final_action} size="md" />
         )}
         {consensus.final_confidence != null && (
-          <span className="text-sm text-zinc-400 font-semibold">{consensus.final_confidence.toFixed(0)}</span>
+          <span className="text-sm text-muted-foreground font-semibold">{consensus.final_confidence.toFixed(0)}</span>
         )}
         {consensus.agreement_rate != null && (
-          <span className="text-xs text-zinc-600">{(consensus.agreement_rate * 100).toFixed(0)}% agree</span>
+          <span className="text-xs text-muted-foreground/70">{(consensus.agreement_rate * 100).toFixed(0)}% agree</span>
         )}
       </div>
 
       {/* Price Chart */}
       {priceData.prices?.length > 0 && (
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <p className="text-xs text-zinc-500 mb-3">Price History</p>
+            <p className="text-xs text-muted-foreground mb-3">Price History</p>
             <PriceChart data={priceData.prices} ticker={data.ticker} />
           </CardContent>
         </Card>
@@ -69,25 +69,25 @@ async function TickerDetail({ symbol }: { symbol: string }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Agent Verdicts */}
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <p className="text-xs text-zinc-500 mb-3">6-Agent Analysis</p>
+            <p className="text-xs text-muted-foreground mb-3">6-Agent Analysis</p>
             <div className="space-y-2">
               {verdicts.map((v: any) => (
                 <div key={v.agent_name} className="flex items-center justify-between">
                   <span className="text-sm capitalize">{v.agent_name}</span>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={v.action} size="sm" />
-                    <span className="text-xs text-zinc-500">{v.confidence.toFixed(0)}</span>
+                    <span className="text-xs text-muted-foreground">{v.confidence.toFixed(0)}</span>
                   </div>
                 </div>
               ))}
             </div>
             {consensus.dissent?.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-zinc-800">
-                <p className="text-[10px] text-zinc-600 mb-1">Dissent:</p>
+              <div className="mt-3 pt-3 border-t border-border">
+                <p className="text-[10px] text-muted-foreground/70 mb-1">Dissent:</p>
                 {consensus.dissent.slice(0, 3).map((d: string, i: number) => (
-                  <p key={i} className="text-[10px] text-zinc-600 leading-tight">{d}</p>
+                  <p key={i} className="text-[10px] text-muted-foreground/70 leading-tight">{d}</p>
                 ))}
               </div>
             )}
@@ -95,16 +95,16 @@ async function TickerDetail({ symbol }: { symbol: string }) {
         </Card>
 
         {/* Analyst Ratings */}
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <p className="text-xs text-zinc-500 mb-3">Analyst Ratings ({ratings.length})</p>
+            <p className="text-xs text-muted-foreground mb-3">Analyst Ratings ({ratings.length})</p>
             {ratings.length > 0 ? (
               <div className="space-y-1.5 max-h-64 overflow-y-auto">
                 {ratings.map((r: any, i: number) => (
                   <div key={i} className="flex items-center justify-between text-xs">
                     <div>
-                      <span className="text-zinc-300">{r.firm}</span>
-                      <span className="text-zinc-600 ml-1">{r.date?.slice(5)}</span>
+                      <span className="text-foreground/80">{r.firm}</span>
+                      <span className="text-muted-foreground/70 ml-1">{r.date?.slice(5)}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <StatusBadge
@@ -114,52 +114,52 @@ async function TickerDetail({ symbol }: { symbol: string }) {
                         }
                         size="sm"
                       />
-                      {r.target_price && <span className="text-zinc-500">${r.target_price}</span>}
+                      {r.target_price && <span className="text-muted-foreground">${r.target_price}</span>}
                     </div>
                   </div>
                 ))}
               </div>
-            ) : <p className="text-xs text-zinc-600 text-center py-3">No rating data</p>}
+            ) : <p className="text-xs text-muted-foreground/70 text-center py-3">No rating data</p>}
           </CardContent>
         </Card>
 
         {/* Earnings Surprise */}
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <p className="text-xs text-zinc-500 mb-3">Earnings ({earnings.length}Q)</p>
+            <p className="text-xs text-muted-foreground mb-3">Earnings ({earnings.length}Q)</p>
             {earnings.length > 0 ? (
               <DataTable columns={earningsCols} data={earnings} compact />
-            ) : <p className="text-xs text-zinc-600 text-center py-3">No earnings data</p>}
+            ) : <p className="text-xs text-muted-foreground/70 text-center py-3">No earnings data</p>}
           </CardContent>
         </Card>
 
         {/* Insider Trades */}
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <p className="text-xs text-zinc-500 mb-3">Insider Activity ({insiders.length})</p>
+            <p className="text-xs text-muted-foreground mb-3">Insider Activity ({insiders.length})</p>
             {insiders.length > 0 ? (
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {insiders.map((ins: any, i: number) => (
                   <div key={i} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5">
                       <StatusBadge status={ins.transaction_type === "sale" ? "SELL" : "BUY"} size="sm" />
-                      <span className="text-zinc-400">{ins.insider_name?.split(" ").slice(0, 2).join(" ")}</span>
+                      <span className="text-muted-foreground">{ins.insider_name?.split(" ").slice(0, 2).join(" ")}</span>
                     </div>
-                    <span className="text-zinc-500">
+                    <span className="text-muted-foreground">
                       {ins.value ? `$${(ins.value / 1000000).toFixed(1)}M` : `${ins.shares?.toLocaleString()} sh`}
                     </span>
                   </div>
                 ))}
               </div>
-            ) : <p className="text-xs text-zinc-600 text-center py-3">No insider data</p>}
+            ) : <p className="text-xs text-muted-foreground/70 text-center py-3">No insider data</p>}
           </CardContent>
         </Card>
 
         {/* Fundamentals */}
         {fund && (
-          <Card className="bg-zinc-900 border-zinc-800">
+          <Card className="bg-card border-border">
             <CardContent className="pt-5">
-              <p className="text-xs text-zinc-500 mb-3">Fundamentals</p>
+              <p className="text-xs text-muted-foreground mb-3">Fundamentals</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                 {fund.pe_ratio && <Metric label="PE" value={fund.pe_ratio.toFixed(1)} />}
                 {fund.roe && <Metric label="ROE" value={`${(fund.roe * 100).toFixed(1)}%`} color={fund.roe > 0.15 ? "green" : "default"} />}
@@ -178,14 +178,14 @@ async function TickerDetail({ symbol }: { symbol: string }) {
 
         {/* Smart Money */}
         {supers.length > 0 && (
-          <Card className="bg-zinc-900 border-zinc-800">
+          <Card className="bg-card border-border">
             <CardContent className="pt-5">
-              <p className="text-xs text-zinc-500 mb-3">Smart Money ({supers.length})</p>
+              <p className="text-xs text-muted-foreground mb-3">Smart Money ({supers.length})</p>
               <div className="space-y-1.5">
                 {supers.map((s: any, i: number) => (
-                  <div key={i} className="flex justify-between text-xs bg-zinc-800/40 rounded px-2.5 py-1.5">
-                    <span className="text-zinc-300">{s.investor}</span>
-                    <span className="text-zinc-500 font-medium">{s.portfolio_pct?.toFixed(1)}%</span>
+                  <div key={i} className="flex justify-between text-xs bg-muted/50 rounded px-2.5 py-1.5">
+                    <span className="text-foreground/80">{s.investor}</span>
+                    <span className="text-muted-foreground font-medium">{s.portfolio_pct?.toFixed(1)}%</span>
                   </div>
                 ))}
               </div>
@@ -194,16 +194,16 @@ async function TickerDetail({ symbol }: { symbol: string }) {
         )}
         {/* 가격 타겟 */}
         {targets && !targets.error && (
-          <Card className="bg-zinc-900 border-zinc-800">
+          <Card className="bg-card border-border">
             <CardContent className="pt-5">
-              <p className="text-xs text-zinc-500 mb-3">Price Targets ({targets.stock_type})</p>
+              <p className="text-xs text-muted-foreground mb-3">Price Targets ({targets.stock_type})</p>
               <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between"><span className="text-zinc-500">손절가</span><span className="text-red-400">${targets.stop_loss?.toFixed(2)} ({targets.stop_loss_pct}%)</span></div>
-                <div className="flex justify-between"><span className="text-zinc-500">1차 익절</span><span className="text-emerald-400">${targets.target_1?.toFixed(2)} (+{targets.target_1_pct}%)</span></div>
-                <div className="flex justify-between"><span className="text-zinc-500">2차 익절</span><span className="text-emerald-400">${targets.target_2?.toFixed(2)} (+{targets.target_2_pct}%)</span></div>
-                <div className="flex justify-between"><span className="text-zinc-500">트레일링</span><span className="text-zinc-400">{targets.trailing_stop_pct}% from high</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">손절가</span><span className="text-red-400">${targets.stop_loss?.toFixed(2)} ({targets.stop_loss_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">1차 익절</span><span className="text-emerald-400">${targets.target_1?.toFixed(2)} (+{targets.target_1_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">2차 익절</span><span className="text-emerald-400">${targets.target_2?.toFixed(2)} (+{targets.target_2_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">트레일링</span><span className="text-muted-foreground">{targets.trailing_stop_pct}% from high</span></div>
                 {targets.analyst_target && (
-                  <div className="flex justify-between"><span className="text-zinc-500">애널리스트</span><span className="text-blue-400">${targets.analyst_target?.toFixed(2)} ({targets.analyst_upside_pct > 0 ? "+" : ""}{targets.analyst_upside_pct}%)</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">애널리스트</span><span className="text-blue-400">${targets.analyst_target?.toFixed(2)} ({targets.analyst_upside_pct > 0 ? "+" : ""}{targets.analyst_upside_pct}%)</span></div>
                 )}
               </div>
             </CardContent>
@@ -212,14 +212,14 @@ async function TickerDetail({ symbol }: { symbol: string }) {
 
         {/* 외부 데이터 */}
         {external && external.count > 0 && (
-          <Card className="bg-zinc-900 border-zinc-800">
+          <Card className="bg-card border-border">
             <CardContent className="pt-5">
-              <p className="text-xs text-zinc-500 mb-3">External Data ({external.count})</p>
+              <p className="text-xs text-muted-foreground mb-3">External Data ({external.count})</p>
               <div className="space-y-1.5 text-xs">
                 {external.data?.slice(0, 8).map((d: any, i: number) => (
-                  <div key={i} className="flex justify-between bg-zinc-800/40 rounded px-2.5 py-1">
-                    <span className="text-zinc-500">{d.source}/{d.data_type}</span>
-                    <span className="text-zinc-300">{d.value}</span>
+                  <div key={i} className="flex justify-between bg-muted/50 rounded px-2.5 py-1">
+                    <span className="text-muted-foreground">{d.source}/{d.data_type}</span>
+                    <span className="text-foreground/80">{d.value}</span>
                   </div>
                 ))}
               </div>
@@ -234,10 +234,10 @@ async function TickerDetail({ symbol }: { symbol: string }) {
 function Loading() {
   return (
     <div className="space-y-5">
-      <div className="h-10 bg-zinc-900 rounded w-48 animate-pulse" />
+      <div className="h-10 bg-card rounded w-48 animate-pulse" />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[1, 2, 3, 4, 5, 6].map((i) => (
-          <div key={i} className="h-48 bg-zinc-900 rounded-xl border border-zinc-800 animate-pulse" />
+          <div key={i} className="h-48 bg-card rounded-xl border border-border animate-pulse" />
         ))}
       </div>
     </div>

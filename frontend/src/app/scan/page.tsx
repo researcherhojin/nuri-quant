@@ -19,9 +19,9 @@ interface SwingEntry {
 async function ScanSection() {
   const data = await fetchAPI<{ results: ScanResult[]; count: number }>("/api/scan?market=us&top=15");
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardContent className="pt-5">
-        <p className="text-xs text-zinc-500 mb-3">Market Scanner — {data.count} signals</p>
+        <p className="text-xs text-muted-foreground mb-3">Market Scanner — {data.count} signals</p>
         <ClientTable variant="scan" data={data.results} />
       </CardContent>
     </Card>
@@ -34,22 +34,22 @@ async function SwingSection() {
   const rejected = data.entries.filter((e) => !e.approved);
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardContent className="pt-5">
-        <p className="text-xs text-zinc-500 mb-3">
+        <p className="text-xs text-muted-foreground mb-3">
           Swing Entries — <span className="text-emerald-400">{data.approved} approved</span>, {data.rejected} rejected
         </p>
         {approved.length > 0 ? (
           <ClientTable variant="swing" data={approved} />
         ) : (
-          <p className="text-xs text-zinc-600 py-3 text-center">No entries passed agent consensus (BUY + conf ≥ 50)</p>
+          <p className="text-xs text-muted-foreground/70 py-3 text-center">No entries passed agent consensus (BUY + conf ≥ 50)</p>
         )}
         {rejected.length > 0 && (
           <details className="mt-3">
-            <summary className="text-[10px] text-zinc-600 cursor-pointer hover:text-zinc-400">
+            <summary className="text-[10px] text-muted-foreground/70 cursor-pointer hover:text-muted-foreground">
               Rejected ({rejected.length})
             </summary>
-            <div className="mt-1.5 space-y-0.5 text-[10px] text-zinc-600 pl-2">
+            <div className="mt-1.5 space-y-0.5 text-[10px] text-muted-foreground/70 pl-2">
               {rejected.map((e, i) => (
                 <p key={i}>{e.ticker}: {e.reason}</p>
               ))}
@@ -62,7 +62,7 @@ async function SwingSection() {
 }
 
 function Loading() {
-  return <div className="h-64 bg-zinc-900 rounded-xl border border-zinc-800 animate-pulse" />;
+  return <div className="h-64 bg-card rounded-xl border border-border animate-pulse" />;
 }
 
 export default function ScanPage() {
