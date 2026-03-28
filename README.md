@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-188_passed-26a69a?logo=pytest&logoColor=white)]()
+[![Tests](https://img.shields.io/badge/Tests-503_passed-26a69a?logo=pytest&logoColor=white)]()
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-0.1.0-orange)]()
 [![CI](https://img.shields.io/badge/CI-passing-4CAF50?logo=githubactions&logoColor=white)]()
@@ -74,7 +74,7 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 | `make report-llm` | **리포트 생성.** Qwen3.5 LLM 증거 기반 리포트 |
 | `make backtest-rules` | **규칙 검증.** 기존 vs 규칙 적용 성과 A/B 비교 |
 | `make start` | **개발.** API(:8001) + Dashboard(:3000) 동시 실행 |
-| `make test` | **커밋 전.** pytest 188 tests |
+| `make test` | **커밋 전.** pytest 503 tests (58% coverage) |
 
 </details>
 
