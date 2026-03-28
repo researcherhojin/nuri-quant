@@ -564,28 +564,6 @@ def upsert_news(records: list[dict], db_path: Optional[Path] = None) -> int:
 # ═══════════════════════════════════════════════════════
 
 
-def trade_hash(action: str, ticker: str, quantity: float, price: float, reason: str = "") -> str:
-    """매매 추천에 SHA256 해시 부여 (Trading-as-Git 패턴).
-
-    OpenAlice의 "stage → commit → push" 패턴을 적용.
-    모든 매매 추천이 고유 해시를 가지며, 나중에 추적/검증 가능.
-
-    Returns:
-        SHA256 hex digest (첫 12자)
-    """
-    import hashlib
-    import json
-    from datetime import datetime
-
-    payload = json.dumps({
-        "action": action,
-        "ticker": ticker,
-        "quantity": quantity,
-        "price": price,
-        "reason": reason,
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
-    }, sort_keys=True)
-    return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
 
 # ═══════════════════════════════════════════════════════

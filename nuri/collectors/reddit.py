@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 import requests
 
-from nuri.collectors.base import BaseCollector
+from nuri.collectors.base import BaseCollector, today_str
 from nuri.core.db import upsert_macro
 
 # Arctic Shift API (Reddit 아카이브)
@@ -65,7 +65,7 @@ class RedditCollector(BaseCollector):
         # 종목 언급 카운트
         mention_counts = self._count_mentions(posts, held_tickers)
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_str()
         records = []
 
         # 전체 WSB 포스트 수 (시장 활동 지표)
