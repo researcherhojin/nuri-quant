@@ -22,7 +22,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 
 All pages are **Server Components** with `force-dynamic`. Data is fetched server-side via `fetchAPI()` (`src/lib/api.ts`) which calls the FastAPI backend at `NEXT_PUBLIC_API_URL` (default `http://localhost:8001`). The only Client Component is `/report` (user-triggered LLM generation, imports `API_BASE` from `lib/api.ts`).
 
-### Pages (12 routes)
+### Pages (14 routes)
 
 | Route | Data source | Purpose |
 |-------|------------|---------|
@@ -36,6 +36,8 @@ All pages are **Server Components** with `force-dynamic`. Data is fetched server
 | `/report` | `/api/report`, `/api/report/context` | Client-side LLM report generation |
 | `/evidence` | `/api/evidence` | Plotly 증거 차트 뷰어 (iframe embeds) |
 | `/portfolio` | `/api/portfolio`, `/api/risk` | 포트폴리오 보유 현황 + 리스크 지표 |
+| `/targets` | `/api/targets` | 전 종목 가격 타겟 (매수가/손절가/익절가/목표가) |
+| `/advisor` | `/api/rebalance-advisor` | 리밸런스 어드바이저 (규칙 위반 + 매도 수량) |
 | `/login` | `/api/auth` | 대시보드 로그인 (DASHBOARD_PASSWORD 설정 시) |
 | `/ticker/[symbol]` | `/api/ticker/{symbol}` | Single ticker deep-dive (agents, ratings, earnings, insiders, fundamentals) |
 
