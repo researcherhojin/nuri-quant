@@ -1,4 +1,4 @@
-"""SSE 스트림 — 대시보드 실시간 업데이트."""
+"""SSE 스트림 — 대시보드 실시간 업데이트. 60초 메모리 캐시."""
 import asyncio
 import json
 import logging
@@ -13,10 +13,20 @@ router = APIRouter(tags=["stream"])
 # 업데이트 간격 (초)
 INTERVAL = 30
 
+# 메모리 캐시 (DB 직접 조회 대신 60초 갱신)
+_CACHE_TTL = 60
+_cache: dict = {}
+_cache_time: float = 0
+
 
 def _get_snapshot() -> dict:
-    """현재 상태 스냅샷 (경량)."""
-    result = {"timestamp": time.time()}
+    """현재 상태 스냅샷 (60초 캐시)."""
+    global _cache, _cache_time
+    now = time.time()
+    if now - _cache_time < _CACHE_TTL and _cache:
+        return {**_cache, "timestamp": now, "cached": True}
+
+    result = {"timestamp": now}
 
     try:
         from nuri.quant.regime.classifier import classify_regime
@@ -43,6 +53,8 @@ def _get_snapshot() -> dict:
     except Exception:
         pass
 
+    _cache = result
+    _cache_time = now
     return result
 
 
