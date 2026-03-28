@@ -94,7 +94,7 @@ export default function PortfolioPage() {
       render: (_: unknown, row: Holding) => (
         <button
           onClick={(e) => { e.stopPropagation(); handleDelete(row.account, row.ticker); }}
-          className="text-zinc-600 hover:text-red-400 text-xs transition-colors"
+          className="text-muted-foreground/70 hover:text-red-400 text-xs transition-colors"
         >
           Delete
         </button>
@@ -102,7 +102,7 @@ export default function PortfolioPage() {
     },
   ];
 
-  const inputClass = "w-full px-2.5 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm text-zinc-100 focus:outline-none focus:border-zinc-500";
+  const inputClass = "w-full px-2.5 py-1.5 bg-muted border border-input rounded text-sm text-foreground focus:outline-none focus:border-zinc-500";
 
   return (
     <div className="space-y-5">
@@ -117,7 +117,7 @@ export default function PortfolioPage() {
       </div>
 
       {showForm && (
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-card border-border">
           <CardContent className="pt-5">
             <form onSubmit={handleAdd} className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <select
@@ -152,11 +152,11 @@ export default function PortfolioPage() {
         </Card>
       )}
 
-      <Card className="bg-zinc-900 border-zinc-800">
+      <Card className="bg-card border-border">
         <CardContent className="pt-5">
-          <p className="text-xs text-zinc-500 mb-3">Holdings ({holdings.length})</p>
+          <p className="text-xs text-muted-foreground mb-3">Holdings ({holdings.length})</p>
           {loading ? (
-            <div className="h-32 bg-zinc-800 rounded animate-pulse" />
+            <div className="h-32 bg-muted rounded animate-pulse" />
           ) : (
             <DataTable columns={columns} data={holdings} compact />
           )}
