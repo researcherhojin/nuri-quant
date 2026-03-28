@@ -59,9 +59,9 @@ const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
   return (
     <div
       className={`
-        relative bg-zinc-900 border rounded-xl px-6 py-5 min-w-[220px]
+        relative bg-card border rounded-xl px-6 py-5 min-w-[220px]
         cursor-pointer transition-all duration-200
-        hover:bg-zinc-800/80 hover:scale-[1.02]
+        hover:bg-muted/80 hover:scale-[1.02]
         shadow-lg ${STATUS_GLOW[status]}
         ${STATUS_BORDER[status]}
       `}
@@ -73,7 +73,7 @@ const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
       <Handle
         type="target"
         position={Position.Left}
-        className="!bg-zinc-600 !border-zinc-500 !w-2 !h-2"
+        className="!bg-muted !border-border !w-2 !h-2"
       />
 
       {/* 상태 표시 */}
@@ -90,18 +90,18 @@ const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
       </div>
 
       {/* 제목 */}
-      <p className="text-base font-bold text-zinc-100 mb-0.5">
+      <p className="text-base font-bold text-foreground mb-0.5">
         {data.label.split(" ").slice(1).join(" ")}
       </p>
 
       {/* 부제 */}
-      <p className="text-xs text-zinc-500">{data.sub}</p>
+      <p className="text-xs text-muted-foreground">{data.sub}</p>
 
       {/* 출력 핸들 */}
       <Handle
         type="source"
         position={Position.Right}
-        className="!bg-zinc-600 !border-zinc-500 !w-2 !h-2"
+        className="!bg-muted !border-border !w-2 !h-2"
       />
     </div>
   );
@@ -221,7 +221,7 @@ export default function PipelinePage() {
         <div className="flex items-center gap-4">
           {/* 레짐 배지 */}
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-zinc-500">Regime</span>
+            <span className="text-muted-foreground">Regime</span>
             <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
               regimeStatus() === "ok"
                 ? "bg-emerald-400/10 text-emerald-400"
@@ -247,7 +247,7 @@ export default function PipelinePage() {
       </div>
 
       {/* React Flow 캔버스 */}
-      <div className="h-[500px] rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+      <div className="h-[500px] rounded-xl border border-border bg-background overflow-hidden">
         <ReactFlow
           nodes={nodes}
           edges={EDGES}
@@ -265,13 +265,13 @@ export default function PipelinePage() {
           <Background color="#27272a" gap={20} size={1} />
           <Controls
             showInteractive={false}
-            className="!bg-zinc-900 !border-zinc-700 !shadow-lg [&>button]:!bg-zinc-800 [&>button]:!border-zinc-700 [&>button]:!text-zinc-400 [&>button:hover]:!bg-zinc-700"
+            className="!bg-card !border-input !shadow-lg [&>button]:!bg-muted [&>button]:!border-input [&>button]:!text-muted-foreground [&>button:hover]:!bg-muted"
           />
         </ReactFlow>
       </div>
 
       {/* 하단 범례 */}
-      <div className="flex items-center gap-6 text-[10px] text-zinc-500">
+      <div className="flex items-center gap-6 text-[10px] text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
           <span>Healthy</span>
@@ -284,7 +284,7 @@ export default function PipelinePage() {
           <span className="inline-flex h-2 w-2 rounded-full bg-red-500" />
           <span>Error / Failed</span>
         </div>
-        <span className="text-zinc-700">|</span>
+        <span className="text-muted-foreground/50">|</span>
         <span>Click a node to navigate to its detail page</span>
       </div>
     </div>

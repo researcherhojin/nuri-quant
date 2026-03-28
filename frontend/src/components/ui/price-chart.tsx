@@ -79,15 +79,15 @@ export function PriceChart({ data, ticker }: PriceChartProps) {
     <div>
       {/* Period selector */}
       <div className="flex items-center gap-1 mb-3">
-        <span className="text-xs text-zinc-500 mr-2">{ticker}</span>
+        <span className="text-xs text-muted-foreground mr-2">{ticker}</span>
         {PERIODS.map((p) => (
           <button
             key={p.label}
             onClick={() => setPeriod(p.days)}
             className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
               period === p.days
-                ? "bg-zinc-700 text-zinc-200"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "bg-muted text-zinc-200"
+                : "text-muted-foreground hover:text-foreground/80"
             }`}
           >
             {p.label}
@@ -168,7 +168,7 @@ export function PriceChart({ data, ticker }: PriceChartProps) {
       </ResponsiveContainer>
 
       {/* Legend */}
-      <div className="flex gap-4 mt-1 text-[10px] text-zinc-500 justify-center">
+      <div className="flex gap-4 mt-1 text-[10px] text-muted-foreground justify-center">
         <span><span className="inline-block w-3 h-0.5 bg-emerald-500 mr-1 align-middle" />Close</span>
         <span><span className="inline-block w-3 h-0.5 bg-amber-500 mr-1 align-middle" style={{ borderBottom: "1px dashed" }} />SMA20</span>
         <span><span className="inline-block w-3 h-0.5 bg-indigo-500 mr-1 align-middle" style={{ borderBottom: "1px dashed" }} />SMA50</span>
