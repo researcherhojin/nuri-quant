@@ -114,23 +114,31 @@ class RedditCollector(BaseCollector):
         return records
 
     def _fetch_posts(self, days: int = 1) -> list[dict]:
-        """Arctic Shift API에서 WSB 포스트 가져오기."""
+        """Arctic Shift API에서 WSB 포스트 가져오기 (페이징, 최대 500건)."""
         after = datetime.now() - timedelta(days=days)
         after_epoch = int(after.timestamp())
 
-        params = {
-            "subreddit": "wallstreetbets",
-            "after": after_epoch,
-            "limit": 500,
-            "sort": "desc",
-            "sort_type": "created_utc",
-        }
+        all_posts = []
+        for _ in range(5):  # 최대 5페이지 (100건 × 5 = 500건)
+            params = {
+                "subreddit": "wallstreetbets",
+                "after": after_epoch,
+                "limit": 100,
+            }
+            resp = requests.get(ARCTIC_SHIFT_URL, params=params, headers=_HEADERS, timeout=30)
+            resp.raise_for_status()
+            posts = resp.json().get("data", [])
+            if not posts:
+                break
+            all_posts.extend(posts)
+            # 다음 페이지: 마지막 포스트의 created_utc 이후
+            last_utc = posts[-1].get("created_utc")
+            if last_utc:
+                after_epoch = int(last_utc) + 1
+            else:
+                break
 
-        resp = requests.get(ARCTIC_SHIFT_URL, params=params, headers=_HEADERS, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-
-        return data.get("data", [])
+        return all_posts
 
     def _count_mentions(self, posts: list[dict], held_tickers: set[str]) -> Counter:
         """포스트에서 종목 언급 횟수 카운트."""
