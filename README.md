@@ -82,6 +82,18 @@ make mean-reversion     # 평균회귀 스캔 + 백테스트
 make pairs              # 페어 트레이딩 스캔 + 백테스트
 ```
 
+### 종합 스캔 + 증거 시각화
+
+```bash
+make full-scan          # 7-phase 전체 파이프라인 (수집→분석→검증→레짐→추천→타겟→증거)
+make quick-scan         # 빠른 4-step (수집→분석→합의→타겟, ~2분)
+make targets            # 전 종목 매수가/손절가/익절가 계산
+make rebalance          # 규칙 위반 감지 + 매도 수량 제시
+make evidence           # 5개 Plotly 증거 차트 생성
+```
+
+Output: `data/reports/{date}/evidence/` 에 5개 HTML 차트 + `portfolio_action_plan.md` + `llm_evidence_report.md`
+
 ### 인프라
 
 ```bash
@@ -98,7 +110,7 @@ make backup             # DB 30일 롤링 백업
 nuri/
 ├── core/              # DB (유일한 sqlite3 진입점), rules (config/rules.yaml 로더)
 ├── collectors/        # 16개 데이터 수집기 (BaseCollector 상속)
-├── analysis/          # 순수 분석: portfolio, risk, sector, charts, sentiment, rebalance
+├── analysis/          # portfolio, risk, sector, charts, rebalance_advisor, evidence_charts
 ├── quant/
 │   ├── regime/        # 6-레짐 분류기, 매크로 스코어, 전략 맵
 │   ├── validation/    # 시그널/슈퍼투자자/애널리스트 백테스트, 스코어카드
@@ -108,7 +120,7 @@ nuri/
 │   ├── agents/        # 7개 에이전트 + 가중 합의 엔진
 │   ├── engine/        # SIEGE: 게이트, 충돌 감지, 학습 메모리
 │   ├── strategy/      # L/S, 평균회귀, 페어 트레이딩
-│   ├── recommend/     # 후보 추천, 리밸런싱, 성과 추적
+│   ├── recommend/     # 후보 추천, 리밸런싱, 가격 타겟, 성과 추적
 │   ├── swing/         # 시장 전체 스캐너
 │   └── execution/     # 브로커 인터페이스 (Alpaca paper + DryRun)
 ├── api/               # FastAPI REST + SSE 스트림
