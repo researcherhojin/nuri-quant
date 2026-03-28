@@ -12,9 +12,32 @@ from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 logger = logging.getLogger(__name__)
 
-# 환율 임계값 (KRW/USD)
-FX_WEAK_KRW = 1400  # 원화 약세 → 수출주 유리
-FX_STRONG_KRW = 1250  # 원화 강세 → 내수주 유리
+# 환율 임계값 (KRW/USD) — 90일 이동평균 기반 동적 캘리브레이션
+# 기본값은 2024~2026 평균 기반. _calibrate_fx_thresholds()로 DB 데이터 반영.
+FX_WEAK_KRW = 1400  # 원화 약세 → 수출주 유리 (기본값, 동적 갱신)
+FX_STRONG_KRW = 1250  # 원화 강세 → 내수주 유리 (기본값, 동적 갱신)
+
+
+def _calibrate_fx_thresholds(db_path=None) -> tuple[float, float]:
+    """90일 환율 데이터로 동적 FX 임계값 계산.
+
+    약세: 90일 평균 + 1 표준편차
+    강세: 90일 평균 - 1 표준편차
+    데이터 부족 시 기본값 반환.
+    """
+    from nuri.core.db import query_df
+    df = query_df(
+        "SELECT value FROM macro WHERE indicator='usd_krw' ORDER BY date DESC LIMIT 90",
+        db_path=db_path,
+    )
+    if df.empty or len(df) < 30:
+        return FX_WEAK_KRW, FX_STRONG_KRW
+
+    mean = df["value"].mean()
+    std = df["value"].std()
+    weak = round(mean + std, 0)
+    strong = round(mean - std, 0)
+    return max(weak, 1300), min(strong, 1350)  # 최소/최대 안전장치
 
 # KOSPI/KOSDAQ 구분
 KOSDAQ_TICKERS = {
@@ -47,20 +70,23 @@ class KoreanMarketAgent(BaseAgent):
         reasons = []
         data = {"is_korean": True, "market": "KOSDAQ" if ticker in KOSDAQ_TICKERS else "KOSPI"}
 
-        # 1. 환율 영향
+        # 1. 환율 영향 (동적 캘리브레이션)
         fx_rate = self._get_fx_rate(db_path)
         data["fx_rate"] = fx_rate
         sector = self._get_sector(ticker, db_path)
         data["sector"] = sector
+        fx_weak, fx_strong = _calibrate_fx_thresholds(db_path)
+        data["fx_weak_threshold"] = fx_weak
+        data["fx_strong_threshold"] = fx_strong
 
         if fx_rate:
-            if fx_rate >= FX_WEAK_KRW and sector in EXPORT_SECTORS:
+            if fx_rate >= fx_weak and sector in EXPORT_SECTORS:
                 score += 10
                 reasons.append(f"원화약세({fx_rate:.0f}) 수출주 유리")
-            elif fx_rate >= FX_WEAK_KRW and sector not in EXPORT_SECTORS:
+            elif fx_rate >= fx_weak and sector not in EXPORT_SECTORS:
                 score -= 5
                 reasons.append(f"원화약세({fx_rate:.0f}) 내수주 부담")
-            elif fx_rate <= FX_STRONG_KRW and sector not in EXPORT_SECTORS:
+            elif fx_rate <= fx_strong and sector not in EXPORT_SECTORS:
                 score += 5
                 reasons.append(f"원화강세({fx_rate:.0f}) 내수주 유리")
 
