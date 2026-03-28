@@ -43,10 +43,14 @@ async function Dashboard() {
 
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
 
-  // 포트폴리오 평가액 계산
-  const totalValue = portfolio?.holdings?.reduce(
-    (sum: number, h: any) => sum + (h.latest_price || 0) * (h.quantity || 0), 0
-  ) || 0;
+  // 포트폴리오 평가액 계산 (KRW 종목은 환율 적용)
+  const KRW_RATE = 1514;
+  const totalValue = portfolio?.holdings?.reduce((sum: number, h: any) => {
+    const price = h.latest_price || 0;
+    const qty = h.quantity || 0;
+    const isKr = h.ticker?.endsWith(".KS");
+    return sum + (isKr ? price * qty / KRW_RATE : price * qty);
+  }, 0) || 0;
 
   return (
     <div className="space-y-4">
