@@ -66,7 +66,7 @@ async function TargetsSection() {
 
 export default function TargetsPage() {
   return (
-    <main className="container mx-auto px-4 py-6 max-w-7xl">
+    <div>
       <div className="mb-6">
         <h1 className="text-lg font-semibold">Price Targets</h1>
         <p className="text-xs text-zinc-500 mt-1">
@@ -76,6 +76,6 @@ export default function TargetsPage() {
       <Suspense fallback={<Loading />}>
         <TargetsSection />
       </Suspense>
-    </main>
+    </div>
   );
 }
