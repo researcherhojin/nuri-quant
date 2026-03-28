@@ -25,15 +25,38 @@ from nuri.core.rules import (
 
 logger = logging.getLogger(__name__)
 
-# ─── 성장주 판별 섹터 ────────────────────────────────────────
+# ─── 성장주 판별 섹터 (자동 분류 폴백용) ──────────────────────
 GROWTH_SECTORS = {
     "EV", "AI", "Semiconductor", "Quantum", "SectorC", "Fintech",
-    # 한국어 섹터명도 포함
     "전기차", "반도체", "양자컴퓨터", "원자력", "핀테크", "인공지능",
 }
 
-# 성장주 판별 PE 임계값
+# 성장주 판별 PE 임계값 (자동 분류 폴백용)
 GROWTH_PE_THRESHOLD = 30
+
+# ─── stock_types.yaml 캐시 ─────────────────────────────────
+_STOCK_TYPES_PATH = Path(__file__).parent.parent.parent.parent / "config" / "stock_types.yaml"
+_stock_types_cache: dict[str, str] | None = None
+
+
+def _load_stock_types() -> dict[str, str]:
+    """config/stock_types.yaml에서 종목별 유형 로드. 결과 캐시."""
+    global _stock_types_cache
+    if _stock_types_cache is not None:
+        return _stock_types_cache
+
+    import yaml
+
+    mapping: dict[str, str] = {}
+    if _STOCK_TYPES_PATH.exists():
+        with open(_STOCK_TYPES_PATH, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        for stock_type in ("growth", "value", "swing"):
+            for ticker in data.get(stock_type, []):
+                mapping[str(ticker)] = stock_type
+        logger.debug("stock_types.yaml 로드: %d종목", len(mapping))
+    _stock_types_cache = mapping
+    return mapping
 
 
 def classify_stock_type(
@@ -42,12 +65,18 @@ def classify_stock_type(
 ) -> str:
     """종목 유형 분류 — 'growth', 'value', 'swing' 중 하나 반환.
 
-    분류 기준:
-    - PE > 30 또는 섹터가 성장 섹터에 해당하면 'growth'
-    - 나머지는 'value'
-    - 'swing'은 명시적으로 전달할 때만 사용
+    분류 우선순위:
+    1. config/stock_types.yaml에 명시된 종목 → 해당 유형
+    2. PE > 30 → 'growth'
+    3. 섹터가 성장 섹터 → 'growth'
+    4. 나머지 → 'value'
     """
-    # PE ratio 조회
+    # 1순위: stock_types.yaml 수동 오버라이드
+    manual = _load_stock_types()
+    if ticker in manual:
+        return manual[ticker]
+
+    # 2순위: PE ratio 기반
     pe_rows = query(
         "SELECT pe_ratio FROM fundamentals WHERE ticker = ? ORDER BY date DESC LIMIT 1",
         (ticker,),
@@ -55,7 +84,10 @@ def classify_stock_type(
     )
     pe_ratio = pe_rows[0]["pe_ratio"] if pe_rows and pe_rows[0]["pe_ratio"] else None
 
-    # 섹터 조회 (portfolio 테이블)
+    if pe_ratio is not None and pe_ratio > GROWTH_PE_THRESHOLD:
+        return "growth"
+
+    # 3순위: 섹터 기반
     sector_rows = query(
         "SELECT sector FROM portfolio WHERE ticker = ? LIMIT 1",
         (ticker,),
@@ -63,11 +95,6 @@ def classify_stock_type(
     )
     sector = sector_rows[0]["sector"] if sector_rows and sector_rows[0]["sector"] else ""
 
-    # PE > 30이면 성장주
-    if pe_ratio is not None and pe_ratio > GROWTH_PE_THRESHOLD:
-        return "growth"
-
-    # 섹터가 성장 섹터에 해당하면 성장주
     if sector and any(gs.lower() in sector.lower() for gs in GROWTH_SECTORS):
         return "growth"
 
