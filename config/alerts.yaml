@@ -10,3 +10,15 @@ alerts:
   fear_greed_high: 80           # 극단적 탐욕 → 주의
   event_reminder_days: 1        # D-1 알림
   ark_alert: true
+
+# 알림 채널 (환경변수로 토큰 설정)
+channels:
+  discord: true                 # DISCORD_WEBHOOK_URL 필요
+  telegram: true                # TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID 필요
+
+# 알림 유형별 활성화
+notifications:
+  regime_transition: true       # 레짐 전환 시 알림
+  rule_violation: true          # 투자 규칙 위반 시 알림
+  signal_drift: true            # 시그널 성과 급락 시 알림
+  stop_loss_alert: true         # 손절선 도달 시 알림
