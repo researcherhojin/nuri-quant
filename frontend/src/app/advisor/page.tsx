@@ -32,7 +32,7 @@ interface AdvisorReport {
 
 // === Loading ===
 function Loading() {
-  return <div className="animate-pulse bg-zinc-900 rounded-xl border border-zinc-800 h-96" />;
+  return <div className="animate-pulse bg-card rounded-xl border border-border h-96" />;
 }
 
 // === Main ===
@@ -46,7 +46,7 @@ async function AdvisorSection() {
 
   if (data.total_violations === 0) {
     return (
-      <Card className="bg-zinc-900 border-zinc-800">
+      <Card className="bg-card border-border">
         <CardContent className="pt-5">
           <div className="flex items-center gap-2">
             <StatusBadge status="READY" size="md" />
@@ -83,21 +83,21 @@ async function AdvisorSection() {
         </Card>
       )}
 
-      <Card className="bg-zinc-900 border-zinc-800">
+      <Card className="bg-card border-border">
         <CardContent className="pt-5">
-          <p className="text-xs text-zinc-500 mb-3">
+          <p className="text-xs text-muted-foreground mb-3">
             Rebalance Advisor — 매도 우선순위 순 (rules.yaml 기반)
           </p>
           <ClientTable variant="advisor" data={data.actions} compact />
         </CardContent>
       </Card>
 
-      <Card className="bg-zinc-900 border-zinc-800">
+      <Card className="bg-card border-border">
         <CardContent className="pt-5">
-          <p className="text-xs text-zinc-500 mb-3">위반 유형별 분포</p>
+          <p className="text-xs text-muted-foreground mb-3">위반 유형별 분포</p>
           <div className="flex flex-wrap gap-2">
             {Object.entries(data.violations_by_type).map(([type, count]) => (
-              <span key={type} className="text-xs bg-zinc-800 px-2 py-1 rounded">
+              <span key={type} className="text-xs bg-muted px-2 py-1 rounded">
                 {type}: {count}건
               </span>
             ))}
@@ -113,7 +113,7 @@ export default function AdvisorPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-lg font-semibold">Rebalance Advisor</h1>
-        <p className="text-xs text-zinc-500 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           투자 규칙 위반 감지 · 매도 수량 계산 · 회수 금액 · 우선순위 정렬
         </p>
       </div>

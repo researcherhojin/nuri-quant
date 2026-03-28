@@ -12,14 +12,14 @@ export default function GlobalError({
 }) {
   return (
     <html lang="ko" className="dark h-full antialiased">
-      <body className="min-h-full flex items-center justify-center bg-zinc-950 text-zinc-100">
+      <body className="min-h-full flex items-center justify-center bg-background text-foreground">
         <div className="text-center space-y-4 p-8">
           <div className="text-4xl">!</div>
           <h1 className="text-xl font-bold">Something went wrong</h1>
-          <p className="text-sm text-zinc-400 max-w-md">{error.message}</p>
+          <p className="text-sm text-muted-foreground max-w-md">{error.message}</p>
           <button
             onClick={reset}
-            className="px-4 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm bg-muted hover:bg-accent rounded-lg transition-colors"
           >
             Try again
           </button>

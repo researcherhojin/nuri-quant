@@ -14,14 +14,14 @@ async function RebalanceSection() {
   const holds = data.actions.filter((a) => a.action === "HOLD");
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardContent className="pt-5">
-        <p className="text-xs text-zinc-500 mb-3">
+        <p className="text-xs text-muted-foreground mb-3">
           Regime-Aware Rebalancing — Risk Parity ({data.actionable} actions)
         </p>
         <ClientTable variant="rebalance" data={actionable} />
         {holds.length > 0 && (
-          <p className="text-xs text-zinc-600 mt-3">
+          <p className="text-xs text-muted-foreground/70 mt-3">
             HOLD: {holds.map((h) => h.ticker).join(", ")}
           </p>
         )}
@@ -31,7 +31,7 @@ async function RebalanceSection() {
 }
 
 function Loading() {
-  return <div className="h-64 bg-zinc-900 rounded-xl border border-zinc-800 animate-pulse" />;
+  return <div className="h-64 bg-card rounded-xl border border-border animate-pulse" />;
 }
 
 export default function RebalancePage() {
