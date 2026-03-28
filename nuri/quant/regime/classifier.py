@@ -194,8 +194,31 @@ def _classify_single(close, sma50, sma200, vix, bb_width, thresholds) -> tuple[s
     return trend, volatility
 
 
+def _check_data_freshness(db_path=None) -> bool:
+    """SPY 데이터 신선도 체크 (최대 24시간). 주말/공휴일 감안 72시간 허용."""
+    from nuri.core.db import query as _query
+    rows = _query(
+        "SELECT MAX(date) as latest FROM prices WHERE ticker = 'SPY'",
+        db_path=db_path,
+    )
+    if not rows or not rows[0]["latest"]:
+        return False
+    from datetime import datetime
+    latest = datetime.strptime(rows[0]["latest"], "%Y-%m-%d")
+    age_hours = (datetime.now() - latest).total_seconds() / 3600
+    # 주말 감안: 금요일 데이터 → 월요일 체크 = 72시간
+    if age_hours > 72:
+        logger.warning("SPY 데이터 %d시간 경과 (max 72h). 수집 필요: make collect", int(age_hours))
+        return False
+    return True
+
+
 def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None:
     """시장 레짐 분류 (동적 임계값 + 히스테리시스)."""
+    # 데이터 신선도 경고 (차단하지는 않음)
+    if date is None:
+        _check_data_freshness(db_path)
+
     spy_df = _load_spy_series(date, db_path)
     if spy_df is None:
         logger.warning("SPY 기술적 데이터 부족 (최소 200일 필요)")
