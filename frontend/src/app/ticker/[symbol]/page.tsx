@@ -9,9 +9,11 @@ import { Metric } from "@/components/ui/metric";
 import { PriceChart } from "@/components/ui/price-chart";
 
 async function TickerDetail({ symbol }: { symbol: string }) {
-  const [data, priceData] = await Promise.all([
+  const [data, priceData, targets, external] = await Promise.all([
     fetchAPI<any>(`/api/ticker/${symbol}`),
     fetchAPI<any>(`/api/ticker/${symbol}/prices?days=365`),
+    fetchAPI<any>(`/api/targets/${symbol}`).catch(() => null),
+    fetchAPI<any>(`/api/external/${symbol}`).catch(() => null),
   ]);
 
   const consensus = data.consensus || {};
@@ -184,6 +186,40 @@ async function TickerDetail({ symbol }: { symbol: string }) {
                   <div key={i} className="flex justify-between text-xs bg-zinc-800/40 rounded px-2.5 py-1.5">
                     <span className="text-zinc-300">{s.investor}</span>
                     <span className="text-zinc-500 font-medium">{s.portfolio_pct?.toFixed(1)}%</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        {/* 가격 타겟 */}
+        {targets && !targets.error && (
+          <Card className="bg-zinc-900 border-zinc-800">
+            <CardContent className="pt-5">
+              <p className="text-xs text-zinc-500 mb-3">Price Targets ({targets.stock_type})</p>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between"><span className="text-zinc-500">손절가</span><span className="text-red-400">${targets.stop_loss?.toFixed(2)} ({targets.stop_loss_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">1차 익절</span><span className="text-emerald-400">${targets.target_1?.toFixed(2)} (+{targets.target_1_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">2차 익절</span><span className="text-emerald-400">${targets.target_2?.toFixed(2)} (+{targets.target_2_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-zinc-500">트레일링</span><span className="text-zinc-400">{targets.trailing_stop_pct}% from high</span></div>
+                {targets.analyst_target && (
+                  <div className="flex justify-between"><span className="text-zinc-500">애널리스트</span><span className="text-blue-400">${targets.analyst_target?.toFixed(2)} ({targets.analyst_upside_pct > 0 ? "+" : ""}{targets.analyst_upside_pct}%)</span></div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 외부 데이터 */}
+        {external && external.count > 0 && (
+          <Card className="bg-zinc-900 border-zinc-800">
+            <CardContent className="pt-5">
+              <p className="text-xs text-zinc-500 mb-3">External Data ({external.count})</p>
+              <div className="space-y-1.5 text-xs">
+                {external.data?.slice(0, 8).map((d: any, i: number) => (
+                  <div key={i} className="flex justify-between bg-zinc-800/40 rounded px-2.5 py-1">
+                    <span className="text-zinc-500">{d.source}/{d.data_type}</span>
+                    <span className="text-zinc-300">{d.value}</span>
                   </div>
                 ))}
               </div>
