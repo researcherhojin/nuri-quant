@@ -2,7 +2,7 @@
        gate consensus scan swing swing-check strategy strategy-execute positions wallstreet filings \
        backtest-ls backtest-stress optimize mean-reversion pairs api dashboard start lint lint-fix \
        verify-quick verify-all demo pre-deploy ports ports-kill update-counts \
-       full-scan quick-scan targets rebalance evidence external report-llm
+       full-scan quick-scan targets rebalance evidence external report-llm certify
 
 PYTHON = .venv/bin/python
 
@@ -192,6 +192,8 @@ full-scan:
 	@echo "\n=== Phase F: 가격 타겟 + 리밸런스 ==="
 	$(PYTHON) -m nuri.trading.recommend.price_targets
 	$(PYTHON) -m nuri.analysis.rebalance_advisor
+	@echo "\n=== Phase F-2: SIEGE Certification ==="
+	$(PYTHON) -m nuri.trading.engine.certification
 	@echo "\n=== Phase G: 증거 시각화 ==="
 	$(PYTHON) -m nuri.analysis.evidence_charts
 	@echo "\n=== Phase H: 알림 발송 ==="
@@ -220,6 +222,10 @@ rebalance:
 # ── LLM 리포트 (Ollama) ──
 report-llm:
 	$(PYTHON) -m nuri.llm.report
+
+# ── SIEGE 인증 (10-condition certification) ──
+certify:
+	$(PYTHON) -m nuri.trading.engine.certification
 
 # ── 외부 데이터 요약 ──
 external:
