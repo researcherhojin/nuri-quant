@@ -11,9 +11,9 @@ NC='\033[0m'
 cd "$(dirname "$0")/.."
 
 echo -e "${CYAN}"
-echo "  ╔══════════════════════════════════════════╗"
-echo "  ║     Nuri-Quant Service Starting           ║"
-echo "  ╚══════════════════════════════════════════╝"
+echo "  ╔════════════════════════════════════════╗"
+echo "  ║    Nuri-Quant Service Starting         ║"
+echo "  ╚════════════════════════════════════════╝"
 echo -e "${NC}"
 
 # Backend (FastAPI)

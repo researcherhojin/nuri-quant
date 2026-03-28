@@ -1,5 +1,5 @@
 #!/bin/bash
-# Nuri-Quant: M3 Max → Mac Mini 배포
+# Nuri-Quant: Dev Machine → Mac Mini (Production) 배포
 set -e
 
 source .env 2>/dev/null || true
@@ -21,6 +21,8 @@ rsync -avz --delete \
     --exclude '.git' \
     --exclude '.claude' \
     --exclude 'notebooks' \
+    --exclude 'data/reports' \
+    --exclude 'ta-lib' \
     --exclude '*.egg-info' \
     --exclude '.pytest_cache' \
     . "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/"
