@@ -50,9 +50,9 @@ async function GateSection() {
   const gates = await fetchAPI<Record<string, GateResult>>("/api/gate");
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardContent className="pt-5 space-y-4">
-        <p className="text-xs text-zinc-500 mb-1">Pipeline Gate — Data Readiness</p>
+        <p className="text-xs text-muted-foreground mb-1">Pipeline Gate — Data Readiness</p>
         {Object.entries(gates).map(([phase, result]) => (
           <div key={phase}>
             <div className="flex items-center justify-between mb-2">
@@ -62,7 +62,7 @@ async function GateSection() {
                 size="md"
               />
             </div>
-            <div className="w-full bg-zinc-800 rounded-full h-1.5 mb-2">
+            <div className="w-full bg-muted rounded-full h-1.5 mb-2">
               <div
                 className={`h-1.5 rounded-full transition-all ${
                   result.score >= 0.7 ? "bg-emerald-500" :
@@ -78,14 +78,14 @@ async function GateSection() {
                     {c.passed ? "✓" : "✗"}
                   </span>
                   <div>
-                    <span className="text-zinc-300">{c.description}</span>
-                    {!c.passed && <p className="text-zinc-600 mt-0.5">{c.detail}</p>}
+                    <span className="text-foreground/80">{c.description}</span>
+                    {!c.passed && <p className="text-muted-foreground/70 mt-0.5">{c.detail}</p>}
                   </div>
                 </div>
               ))}
             </div>
             {phase !== Object.keys(gates).at(-1) && (
-              <div className="border-b border-zinc-800/60 mt-3" />
+              <div className="border-b border-border/60 mt-3" />
             )}
           </div>
         ))}
@@ -99,27 +99,27 @@ async function ConflictsSection() {
   const data = await fetchAPI<{ conflicts: Conflict[]; count: number; high: number }>("/api/conflicts");
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardContent className="pt-5">
         <div className="flex items-center gap-3 mb-3">
-          <p className="text-xs text-zinc-500">Signal Conflicts</p>
+          <p className="text-xs text-muted-foreground">Signal Conflicts</p>
           <div className="flex gap-2">
             <Metric label="Total" value={data.count} size="sm" />
             <Metric label="High" value={data.high} size="sm" color={data.high > 0 ? "red" : "default"} />
           </div>
         </div>
         {data.conflicts.length === 0 ? (
-          <p className="text-xs text-zinc-600 py-3 text-center">No signal conflicts detected</p>
+          <p className="text-xs text-muted-foreground/70 py-3 text-center">No signal conflicts detected</p>
         ) : (
           <div className="space-y-2">
             {data.conflicts.map((c, i) => (
-              <div key={`${c.ticker}-${i}`} className="bg-zinc-800/40 rounded-lg p-2.5">
+              <div key={`${c.ticker}-${i}`} className="bg-muted/50 rounded-lg p-2.5">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-sm font-medium">{c.ticker}</span>
                   <StatusBadge status={c.severity === "high" ? "SELL" : c.severity === "medium" ? "WATCH" : "HOLD"} size="sm" />
-                  <span className="text-[10px] text-zinc-600">{c.conflict_type}</span>
+                  <span className="text-[10px] text-muted-foreground/70">{c.conflict_type}</span>
                 </div>
-                <p className="text-xs text-zinc-500">{c.detail}</p>
+                <p className="text-xs text-muted-foreground">{c.detail}</p>
                 <p className="text-[10px] text-emerald-400/80 mt-1">→ {c.recommendation}</p>
               </div>
             ))}
@@ -136,17 +136,17 @@ async function MemorySection() {
 
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardContent className="pt-5">
         <div className="flex items-center gap-3 mb-3">
-          <p className="text-xs text-zinc-500">Learning Memory — Drift</p>
+          <p className="text-xs text-muted-foreground">Learning Memory — Drift</p>
           <div className="flex gap-2">
             <Metric label="Critical" value={data.critical} size="sm" color={data.critical > 0 ? "red" : "default"} />
             <Metric label="Degrading" value={data.degrading} size="sm" color={data.degrading > 0 ? "red" : "default"} />
           </div>
         </div>
         {data.drifts.length === 0 ? (
-          <p className="text-xs text-zinc-600 py-3 text-center">No drift data (run: make validate first)</p>
+          <p className="text-xs text-muted-foreground/70 py-3 text-center">No drift data (run: make validate first)</p>
         ) : (
           <ClientTable variant="drift" data={data.drifts} compact />
         )}
@@ -156,7 +156,7 @@ async function MemorySection() {
 }
 
 function Loading() {
-  return <div className="h-48 bg-zinc-900 rounded-xl border border-zinc-800 animate-pulse" />;
+  return <div className="h-48 bg-card rounded-xl border border-border animate-pulse" />;
 }
 
 export default function EnginePage() {

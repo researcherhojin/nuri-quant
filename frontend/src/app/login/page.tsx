@@ -29,12 +29,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950">
-      <Card className="bg-zinc-900 border-zinc-800 w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Card className="bg-card border-border w-full max-w-sm">
         <CardContent className="pt-8 pb-6">
           <div className="text-center mb-6">
             <h1 className="text-xl font-bold text-emerald-400">Nuri-Quant</h1>
-            <p className="text-xs text-zinc-500 mt-1">Dashboard Login</p>
+            <p className="text-xs text-muted-foreground mt-1">Dashboard Login</p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <input
@@ -43,8 +43,8 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
               autoFocus
-              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm
-                         text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+              className="w-full px-3 py-2 bg-muted border border-input rounded-lg text-sm
+                         text-foreground placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
             />
             {error && <p className="text-xs text-red-400">{error}</p>}
             <Button
