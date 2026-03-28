@@ -64,15 +64,17 @@ make swing            # 스캔 + 에이전트 합의 → 진입 저장
 make full-scan        # 7-phase: collect→analyze→validate→regime→recommend→targets→evidence
 make quick-scan       # 빠른 4-step: collect→analyze→consensus→targets (~2분)
 
-# Price Targets & Rebalance
+# Price Targets & Rebalance & Evidence
 make targets          # 전 종목 매수가/손절가/익절가 계산
 make rebalance        # 규칙 위반 감지 + 매도 수량 제시
 make evidence         # 5개 Plotly 증거 차트 생성 (data/reports/{date}/evidence/)
+make external         # 외부 데이터 요약 (TipRanks, Dataroma, ARK 등)
+make report-llm       # Qwen3.5 LLM 리포트 생성 + 자동 저장
 
 # Lint + Test
 make lint             # ruff check
 make lint-fix         # ruff check --fix
-make test             # pytest tests/ -v --cov=nuri (161 tests)
+make test             # pytest tests/ -v --cov=nuri (188 tests)
 .venv/bin/python -m pytest tests/test_db.py -v                                    # single file
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices -v                  # single class
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v  # single test
