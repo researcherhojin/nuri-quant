@@ -85,8 +85,16 @@ jobs:
           fi
           uv pip install -e .
 
-      - name: Run tests
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -x
+      - name: Run tests with coverage
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -x --cov=nuri --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: coverage.xml
+          fail_ci_if_error: false
 
   frontend:
     runs-on: ubuntu-latest
