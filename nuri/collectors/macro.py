@@ -18,25 +18,38 @@ from nuri.core.db import upsert_macro
 
 load_dotenv()
 
-# FRED 시리즈 ID 매핑
+# FRED 시리즈 ID 매핑 (확장: 풀 수익률 곡선 + 경제 지표)
 FRED_SERIES = {
+    # 기존
     "fed_funds_rate": "FEDFUNDS",
-    "us_10y_yield": "DGS10",
-    "us_2y_yield": "DGS2",
     "cpi_yoy": "CPIAUCSL",
     "wti_oil": "DCOILWTICO",
     "usd_krw": "DEXKOUS",
     "unemployment": "UNRATE",
     "vix": "VIXCLS",
+    # 풀 수익률 곡선 (리서치: 3M-10Y 스프레드가 2Y-10Y보다 경기침체 예측력 높음)
+    "us_3m_yield": "DGS3MO",     # 3-Month Treasury
+    "us_1y_yield": "DGS1",       # 1-Year
+    "us_2y_yield": "DGS2",       # 2-Year
+    "us_5y_yield": "DGS5",       # 5-Year
+    "us_10y_yield": "DGS10",     # 10-Year
+    "us_30y_yield": "DGS30",     # 30-Year
+    # 추가 경제 지표
+    "consumer_sentiment": "UMCSENT",  # 미시건대 소비자 심리
+    "ism_manufacturing": "MANEMP",    # ISM 제조업 고용
 }
 
 # yfinance fallback 심볼 매핑 (FRED 없을 때 사용)
 YFINANCE_SYMBOLS = {
     "us_10y_yield": "^TNX",      # 10Y Treasury Yield
     "us_2y_yield": "^IRX",       # 13-week T-Bill (2Y proxy)
+    "us_5y_yield": "^FVX",       # 5Y Treasury Yield
+    "us_30y_yield": "^TYX",      # 30Y Treasury Yield
     "vix": "^VIX",               # CBOE VIX
     "wti_oil": "CL=F",           # WTI Crude Oil Futures
     "usd_krw": "KRW=X",          # USD/KRW
+    "btc_usd": "BTC-USD",        # Bitcoin (리스크 지표)
+    "gold": "GC=F",              # Gold Futures (안전자산)
 }
 
 
