@@ -1,0 +1,49 @@
+# ═══════════════════════════════════════════════════════
+# 종목 유형 분류 (수동 오버라이드)
+# ═══════════════════════════════════════════════════════
+# 여기에 명시된 종목은 PE/섹터 기반 자동 분류를 무시하고
+# 이 파일의 분류를 우선 적용합니다.
+#
+# 유형별 적용 규칙:
+#   growth: 손절 -7%, 익절 +20%/+40%, 트레일링 -15%
+#   value:  손절 -10%, 익절 +15%/+30%, 트레일링 -15%
+#   swing:  손절 -5%, 익절 +5%/+10%, 트레일링 -20%
+
+growth:
+  # EV / AI
+  - TSLA
+  - PLTR
+  - TEM
+  - NBIS
+  # Semiconductor
+  - NVDA
+  - AMD
+  - 000660.KS     # SK하이닉스
+  # Quantum / Nuclear / Space
+  - IONQ
+  - OKLO
+  - RKLB
+  - PL
+  # Fintech
+  - HOOD
+  - BULL
+
+value:
+  # BigTech (안정적 수익 기업)
+  - GOOGL
+  - MSFT
+  - AMZN
+  - ORCL
+  # Pharma
+  - LLY
+  # Finance
+  - 138930.KS     # BNK금융
+  # Index ETF
+  - VOO
+  # Semiconductor (한국 대형주)
+  - 005930.KS     # 삼성전자
+  # SaaS
+  - FIG
+
+# swing: 스캐너가 자동 태깅하므로 여기에 수동 등록 불필요
+# 스윙 트레이드 대상은 make scan 결과에서 자동 분류됨
