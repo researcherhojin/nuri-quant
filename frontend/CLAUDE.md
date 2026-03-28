@@ -22,18 +22,21 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 
 All pages are **Server Components** with `force-dynamic`. Data is fetched server-side via `fetchAPI()` (`src/lib/api.ts`) which calls the FastAPI backend at `NEXT_PUBLIC_API_URL` (default `http://localhost:8001`). The only Client Component is `/report` (user-triggered LLM generation, imports `API_BASE` from `lib/api.ts`).
 
-### Pages (9 routes)
+### Pages (12 routes)
 
 | Route | Data source | Purpose |
 |-------|------------|---------|
 | `/` | `/api/dashboard` | Action-oriented overview: verdict, allocation bar, BUY/SELL/WATCH actions |
 | `/signals` | `/api/scorecard`, `/api/cross-analysis` | Signal scorecard + regime cross-analysis |
-| `/consensus` | `/api/consensus` | 7-agent verdicts table + dissent |
+| `/consensus` | `/api/consensus` | 7-agent verdicts table + dissent + price targets |
 | `/scan` | `/api/scan`, `/api/swing/entries` | Market scanner + swing trade entries |
 | `/strategy` | `/api/strategy/status`, `/api/backtest` | L/S strategy + backtest + stress test |
 | `/rebalance` | `/api/rebalance?method=rp` | Regime-aware Risk Parity rebalancing |
 | `/engine` | `/api/gate`, `/api/conflicts`, `/api/memory` | SIEGE engine status (gate, conflicts, drift) |
 | `/report` | `/api/report`, `/api/report/context` | Client-side LLM report generation |
+| `/evidence` | `/api/evidence` | Plotly 증거 차트 뷰어 (iframe embeds) |
+| `/portfolio` | `/api/portfolio`, `/api/risk` | 포트폴리오 보유 현황 + 리스크 지표 |
+| `/login` | `/api/auth` | 대시보드 로그인 (DASHBOARD_PASSWORD 설정 시) |
 | `/ticker/[symbol]` | `/api/ticker/{symbol}` | Single ticker deep-dive (agents, ratings, earnings, insiders, fundamentals) |
 
 ### Design system (custom components)
