@@ -75,7 +75,17 @@ jobs:
           uv pip install -e .
 
       - name: Run tests with coverage
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -x --cov=nuri --cov-report=xml
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -x --cov=nuri --cov-report=xml --cov-report=term
+
+      - name: Coverage threshold check
+        run: |
+          COV=$(grep -oP 'line-rate="\K[0-9.]+' coverage.xml | head -1)
+          PCT=$(python3 -c "print(int(float('${COV}') * 100))")
+          echo "Coverage: ${PCT}%"
+          if [ "$PCT" -lt 40 ]; then
+            echo "::error::Coverage ${PCT}% is below 40% threshold"
+            exit 1
+          fi
 
       - name: Upload coverage to Codecov
         if: always()
