@@ -36,10 +36,25 @@ class WallStreetCollector(BaseCollector):
         ratings = []
         earnings = []
         insiders = []
+        short_data = []
 
         for ticker in all_tickers:
             try:
                 t = yf.Ticker(ticker)
+
+                # 0. Short Interest (공매도 비율)
+                try:
+                    info = t.info or {}
+                    short_pct = info.get("shortPercentOfFloat")
+                    short_ratio = info.get("shortRatio")  # days to cover
+                    if short_pct is not None:
+                        short_data.append({
+                            "ticker": ticker,
+                            "short_pct_float": round(float(short_pct) * 100, 2),
+                            "days_to_cover": float(short_ratio) if short_ratio else None,
+                        })
+                except Exception:
+                    pass
 
                 # 1. Analyst Ratings (최근 20건)
                 ud = t.upgrades_downgrades
@@ -94,7 +109,10 @@ class WallStreetCollector(BaseCollector):
                 self.logger.debug(f"{ticker}: {e}")
                 continue
 
-        return {"ratings": ratings, "earnings": earnings, "insiders": insiders}
+        if short_data:
+            self.logger.info(f"  Short interest: {len(short_data)}종목 수집")
+
+        return {"ratings": ratings, "earnings": earnings, "insiders": insiders, "short_interest": short_data}
 
     def save(self, data: Any) -> int:
         count = 0
@@ -104,6 +122,8 @@ class WallStreetCollector(BaseCollector):
             count += _upsert_earnings(data["earnings"])
         if data.get("insiders"):
             count += _upsert_insiders(data["insiders"])
+        if data.get("short_interest"):
+            count += _save_short_interest(data["short_interest"])
         return count
 
 
@@ -141,6 +161,26 @@ def _upsert_insiders(records, db_path=None):
             records,
         )
         return len(records)
+
+
+def _save_short_interest(records, db_path=None):
+    """Short interest → external_analysis 테이블 저장."""
+    if not records:
+        return 0
+    from datetime import date
+
+    from nuri.collectors.external import save_external
+    today = str(date.today())
+    count = 0
+    for r in records:
+        save_external(
+            "short_interest", r["ticker"], "short_pct_float",
+            str(r["short_pct_float"]), r["short_pct_float"],
+            details=f"days_to_cover={r.get('days_to_cover', 'N/A')}",
+            target_date=today, db_path=db_path,
+        )
+        count += 1
+    return count
 
 
 if __name__ == "__main__":
