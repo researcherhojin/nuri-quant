@@ -387,7 +387,19 @@ CREATE TABLE IF NOT EXISTS schema_version (
 # 증분 마이그레이션 목록: (version, description, sql)
 # 새 마이그레이션 추가 시 여기에 튜플을 append한다.
 _MIGRATIONS: list[tuple[int, str, str]] = [
-    # (1, "example: add column foo to prices", "ALTER TABLE prices ADD COLUMN foo TEXT;"),
+    (1, "create audit_log table", """
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            user_id TEXT NOT NULL DEFAULT 'system',
+            action TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            ticker TEXT,
+            details TEXT,
+            ip_address TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
+    """),
 ]
 
 
@@ -529,6 +541,32 @@ def upsert_news(records: list[dict], db_path: Optional[Path] = None) -> int:
             records,
         )
         return len(records)
+
+
+# ═══════════════════════════════════════════════════════
+# 감사 로깅
+# ═══════════════════════════════════════════════════════
+
+
+def audit_log(
+    action: str,
+    table_name: str,
+    ticker: str = "",
+    details: str = "",
+    user_id: str = "system",
+    ip_address: str = "",
+    db_path: Optional[Path] = None,
+) -> None:
+    """감사 로그 기록 (append-only)."""
+    try:
+        with get_db(db_path) as conn:
+            conn.execute(
+                """INSERT INTO audit_log (user_id, action, table_name, ticker, details, ip_address)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (user_id, action, table_name, ticker, details, ip_address),
+            )
+    except Exception:
+        pass  # 감사 로깅 실패가 메인 로직을 방해하면 안 됨
 
 
 # ═══════════════════════════════════════════════════════

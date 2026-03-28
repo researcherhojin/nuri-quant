@@ -503,10 +503,17 @@ def stress_test(regimes_df: pd.DataFrame) -> list[dict]:
 # ═══════════════════════════════════════════════════════
 
 
-def monte_carlo_test(regimes_df: pd.DataFrame, n_simulations: int = 1000, db_path=None) -> dict:
-    """랜덤 롱/숏 전환 대비 전략이 유의미한지 검증.
+def monte_carlo_test(regimes_df: pd.DataFrame, n_simulations: int = 1000, block_size: int = 20, db_path=None) -> dict:
+    """Block Bootstrap Monte Carlo — 전략의 통계적 유의미성 검증.
 
-    1000번 랜덤 레짐 배정 → 수익률 분포 생성 → 전략 수익률의 백분위 계산.
+    기존 완전 랜덤 레짐 배정 대신 20일 블록 단위로 셔플하여
+    시계열 자기상관을 보존한 채 통계 검증.
+
+    Args:
+        regimes_df: 레짐 + 수익률 DataFrame
+        n_simulations: 시뮬레이션 횟수 (기본 1000)
+        block_size: 블록 크기 (기본 20일 — 평균 레짐 지속 기간)
+        db_path: DB 경로 (테스트용)
     """
     # 실제 전략 수익률
     actual = run_backtest(regimes_df, db_path)
@@ -515,7 +522,15 @@ def monte_carlo_test(regimes_df: pd.DataFrame, n_simulations: int = 1000, db_pat
 
     df = regimes_df[regimes_df["regime"] != "unknown"].dropna(subset=["return"]).copy()
     returns = df["return"].values
-    regimes_list = list(REGIME_ALLOCATION.keys())
+    regimes_arr = df["regime"].values
+    n = len(returns)
+
+    if n < block_size:
+        return {"error": "데이터 부족", "n_data": n, "block_size": block_size}
+
+    # 블록 인덱스 생성
+    n_blocks = (n + block_size - 1) // block_size
+    block_starts = list(range(0, n, block_size))
 
     random_returns = []
     random_sharpes = []
@@ -523,26 +538,24 @@ def monte_carlo_test(regimes_df: pd.DataFrame, n_simulations: int = 1000, db_pat
     rng = np.random.default_rng(42)
 
     for _ in range(n_simulations):
-        # 랜덤 레짐 배정 (실제와 같은 전환 빈도로)
+        # Block Bootstrap: 블록 단위로 셔플 (시계열 자기상관 보존)
+        shuffled_blocks = rng.choice(block_starts, size=n_blocks, replace=True)
+
         sim_returns = []
-        current = rng.choice(regimes_list)
-        hold = 0
+        for start in shuffled_blocks:
+            end = min(start + block_size, n)
+            for i in range(start, end):
+                regime = regimes_arr[i]
+                ret = returns[i]
+                alloc = REGIME_ALLOCATION.get(regime, REGIME_ALLOCATION["sideways_low_vol"])
+                sim_ret = alloc["long"] * ret + alloc["short"] * (-ret)
+                sim_returns.append(sim_ret)
+                if len(sim_returns) >= n:
+                    break
+            if len(sim_returns) >= n:
+                break
 
-        for ret in returns:
-            # 랜덤 전환 (평균 20일마다)
-            hold += 1
-            if hold > MIN_HOLD_DAYS and rng.random() < 0.05:
-                current = rng.choice(regimes_list)
-                hold = 0
-                cost = TRANSACTION_COST * 2 + SLIPPAGE * 2
-            else:
-                cost = 0
-
-            alloc = REGIME_ALLOCATION[current]
-            sim_ret = alloc["long"] * ret + alloc["short"] * (-ret) - cost
-            sim_returns.append(sim_ret)
-
-        sim = np.array(sim_returns)
+        sim = np.array(sim_returns[:n])
         cum = np.cumprod(1 + sim)
         total = (cum[-1] - 1) * 100
         sharpe = sim.mean() / sim.std() * np.sqrt(252) if sim.std() > 0 else 0

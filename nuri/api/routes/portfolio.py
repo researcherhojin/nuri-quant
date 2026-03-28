@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
 from nuri.api.auth import require_write_auth
-from nuri.core.db import query, upsert_portfolio
+from nuri.core.db import audit_log, query, upsert_portfolio
 
 router = APIRouter(tags=["portfolio"])
 
@@ -94,6 +94,9 @@ def add_holding(holding: HoldingInput, user=Depends(require_write_auth)):
     record = holding.model_dump()
     record["ticker"] = record["ticker"].upper()
     upsert_portfolio([record])
+    audit_log("INSERT", "portfolio", record["ticker"],
+              f"account={record['account']} qty={record['quantity']} avg={record['avg_price']}",
+              user_id=user.get("sub", "unknown"))
     return {"ok": True, "ticker": record["ticker"]}
 
 
@@ -117,6 +120,8 @@ def delete_holding(account: str, ticker: str, user=Depends(require_write_auth)):
         )
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail="종목 미발견")
+    audit_log("DELETE", "portfolio", ticker,
+              f"account={account}", user_id=user.get("sub", "unknown"))
     return {"ok": True, "deleted": ticker}
 
 
