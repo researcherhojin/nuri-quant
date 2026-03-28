@@ -114,6 +114,23 @@ def _get_regime_context(db_path=None) -> dict | None:
         return None
 
 
+def _check_vix_gate(db_path=None) -> dict:
+    """VIX 기반 매수 게이트 체크. rules.yaml의 vix_gate 규칙 적용."""
+    from nuri.core.rules import VIX_BLOCK_ABOVE, VIX_CAUTION_ABOVE
+
+    vix_rows = query_df(
+        "SELECT value FROM macro WHERE indicator = 'vix' ORDER BY date DESC LIMIT 1",
+        db_path=db_path,
+    )
+    vix = float(vix_rows.iloc[0]["value"]) if not vix_rows.empty else 0.0
+
+    if vix >= VIX_BLOCK_ABOVE:
+        return {"vix": vix, "gate": "blocked", "msg": f"VIX {vix:.1f} > {VIX_BLOCK_ABOVE} → 신규 매수 금지"}
+    elif vix >= VIX_CAUTION_ABOVE:
+        return {"vix": vix, "gate": "caution", "msg": f"VIX {vix:.1f} > {VIX_CAUTION_ABOVE} → 절반 포지션만"}
+    return {"vix": vix, "gate": "normal", "msg": ""}
+
+
 def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
     """최근 N일 내 발생한 시그널 기반 매매 후보 스크리닝.
 
@@ -128,6 +145,11 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
     regime_ctx = _get_regime_context(db_path)
     drift_map = _get_drift_map(db_path)
     tickers = get_tickers(db_path=db_path)
+
+    # VIX 게이트 체크
+    vix_gate = _check_vix_gate(db_path)
+    if vix_gate["gate"] == "blocked":
+        logger.warning("⚠ %s", vix_gate["msg"])
 
     if not tickers:
         return []
@@ -246,6 +268,18 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
     except Exception as e:
         logger.debug(f"Conflict detection 실패: {e}")
 
+    # ── VIX Gate: 매수 후보 confidence 조정 ──
+    if vix_gate["gate"] == "blocked":
+        for c in candidates:
+            if c.direction == "BUY":
+                c.confidence = 0  # VIX > 30: BUY 후보 전부 차단
+                c.notes = (c.notes + "; " if c.notes else "") + vix_gate["msg"]
+    elif vix_gate["gate"] == "caution":
+        for c in candidates:
+            if c.direction == "BUY":
+                c.confidence *= 0.5  # VIX 25~30: 절반 포지션
+                c.notes = (c.notes + "; " if c.notes else "") + vix_gate["msg"]
+
     # confidence 내림차순
     candidates.sort(key=lambda c: c.confidence, reverse=True)
     return candidates
@@ -262,7 +296,13 @@ def print_candidates(candidates: list[Candidate]) -> None:
     conflicted = [c for c in candidates if c.conflict]
     avoided = [c for c in candidates if not c.regime_fit]
 
+    # VIX gate 상태 표시
+    vix_gate = _check_vix_gate()
     print(f"\n{'=' * 85}")
+    if vix_gate["gate"] == "blocked":
+        print(f"  ⚠ {vix_gate['msg']}")
+    elif vix_gate["gate"] == "caution":
+        print(f"  ⚠ {vix_gate['msg']}")
     print(f"  Signal-Based Candidates ({len(candidates)}건, 레짐 적합 {len(buys)+len(sells)}건, 충돌 {len(set(c.ticker for c in conflicted))}종목)")
     print(f"{'=' * 85}")
 
