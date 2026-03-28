@@ -20,6 +20,11 @@ collect:
 	$(PYTHON) -m nuri.collectors.technical
 	$(PYTHON) -m nuri.collectors.fear_greed
 	$(PYTHON) -m nuri.collectors.ark
+	$(PYTHON) -m nuri.collectors.cboe
+	$(PYTHON) -m nuri.collectors.coingecko
+	$(PYTHON) -m nuri.collectors.finviz
+	$(PYTHON) -m nuri.collectors.reddit
+	$(PYTHON) -m nuri.collectors.fred_calendar
 
 # ── 분석 실행 ──
 analyze:
