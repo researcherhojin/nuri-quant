@@ -197,8 +197,12 @@ def _classify_single(close, sma50, sma200, vix, bb_width, thresholds) -> tuple[s
     return trend, volatility
 
 
+_freshness_warned = False
+
+
 def _check_data_freshness(db_path=None) -> bool:
     """SPY 데이터 신선도 체크 (최대 24시간). 주말/공휴일 감안 72시간 허용."""
+    global _freshness_warned
     from nuri.core.db import query as _query
     rows = _query(
         "SELECT MAX(date) as latest FROM prices WHERE ticker = 'SPY'",
@@ -211,7 +215,9 @@ def _check_data_freshness(db_path=None) -> bool:
     age_hours = (datetime.now() - latest).total_seconds() / 3600
     # 주말 감안: 금요일 데이터 → 월요일 체크 = 72시간
     if age_hours > 72:
-        logger.warning("SPY 데이터 %d시간 경과 (max 72h). 수집 필요: make collect", int(age_hours))
+        if not _freshness_warned:
+            logger.warning("SPY 데이터 %d시간 경과 (max 72h). 수집 필요: make collect", int(age_hours))
+            _freshness_warned = True
         return False
     return True
 
