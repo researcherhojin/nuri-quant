@@ -35,6 +35,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' data: blob:",
               "font-src 'self' data:",
               "connect-src 'self' http://localhost:8001 ws://localhost:3000",
+              "frame-src 'self' http://localhost:8001",
               "frame-ancestors 'none'",
             ].join("; "),
           },
