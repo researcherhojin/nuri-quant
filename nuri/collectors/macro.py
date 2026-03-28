@@ -48,7 +48,7 @@ YFINANCE_SYMBOLS = {
     "vix": "^VIX",               # CBOE VIX
     "wti_oil": "CL=F",           # WTI Crude Oil Futures
     "usd_krw": "KRW=X",          # USD/KRW
-    "btc_usd": "BTC-USD",        # Bitcoin (리스크 지표)
+    # btc_usd는 CoinGecko collector에서 전담 (btc_usd_cg)
     "gold": "GC=F",              # Gold Futures (안전자산)
 }
 

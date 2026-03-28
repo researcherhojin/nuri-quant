@@ -1,7 +1,9 @@
 """
 D-2: 매크로 스코어 — 거시경제 건강도 0~100 점수.
 
-FRED 매크로 지표 6개를 개별 점수화 후 가중 합산.
+매크로 지표 8개를 개별 점수화 후 가중 합산.
+- 기존 6개: yield_curve(2Y-10Y), VIX, sentiment, employment, inflation, monetary
+- 추가 2개: yield_spread_3m10y(3M-10Y, 경기침체 예측), put_call_ratio(옵션 심리)
 
 사용법:
     python -m nuri.quant.regime.macro_score
@@ -19,13 +21,16 @@ logger = logging.getLogger(__name__)
 REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 
 # 가중치 (총합 1.0)
+# 기존 6개 비중 축소 + 신규 2개 (yield_spread_3m10y, put_call_ratio) 추가
 WEIGHTS = {
-    "yield_curve": 0.20,
-    "vix": 0.20,
-    "sentiment": 0.15,
-    "employment": 0.15,
-    "inflation": 0.15,
-    "monetary": 0.15,
+    "yield_curve": 0.15,          # 10Y-2Y (기존, 0.20→0.15)
+    "yield_spread_3m10y": 0.10,   # 3M-10Y (신규, 경기침체 예측력 ↑)
+    "vix": 0.17,                  # VIX (기존, 0.20→0.17)
+    "put_call_ratio": 0.08,       # CBOE PCR (신규, 옵션 심리)
+    "sentiment": 0.12,            # F&G (기존, 0.15→0.12)
+    "employment": 0.13,           # 실업률 (기존, 0.15→0.13)
+    "inflation": 0.13,            # CPI (기존, 0.15→0.13)
+    "monetary": 0.12,             # FFR (기존, 0.15→0.12)
 }
 
 
@@ -35,7 +40,9 @@ class MacroScore:
     date: str
     total_score: float          # 0~100
     yield_curve_score: float
+    yield_spread_3m10y_score: float
     vix_score: float
+    put_call_ratio_score: float
     sentiment_score: float
     employment_score: float
     inflation_score: float
@@ -221,15 +228,85 @@ def _score_monetary(db_path=None, date: str | None = None) -> tuple[float, dict]
     return min(100, max(0, score)), {"fed_funds": fed, "trend_6m": round(trend, 2) if trend else None}
 
 
+def _score_yield_spread_3m10y(db_path=None, date: str | None = None) -> tuple[float, dict]:
+    """3M-10Y 수익률 스프레드 점수 (경기침체 예측 지표).
+
+    연구: 3M-10Y 스프레드가 2Y-10Y보다 경기침체 예측력이 높음 (NY Fed 모델).
+    역전(< 0) 시 6-18개월 내 경기침체 확률 상승.
+    """
+    y10 = _get_latest_macro("us_10y_yield", date, db_path)
+    y3m = _get_latest_macro("us_3m_yield", date, db_path)
+
+    if y10 is None or y3m is None:
+        return 50.0, {"3m": y3m, "spread_3m10y": None}
+
+    spread = y10 - y3m
+
+    # 정상(>1.0) = 100, 평탄(0~1.0) = 50~100, 역전(<0) = 0~50
+    if spread > 1.5:
+        score = 100.0
+    elif spread > 1.0:
+        score = 85 + (spread - 1.0) / 0.5 * 15
+    elif spread > 0.5:
+        score = 65 + (spread - 0.5) / 0.5 * 20
+    elif spread > 0:
+        score = 50 + spread / 0.5 * 15
+    elif spread > -0.5:
+        # 역전 초기: 강한 경고
+        score = 20 + (spread + 0.5) / 0.5 * 30
+    else:
+        # 깊은 역전: 경기침체 임박
+        score = max(0, 20 + spread * 20)
+
+    return min(100, max(0, score)), {"3m": y3m, "spread_3m10y": round(spread, 2)}
+
+
+def _score_put_call_ratio(db_path=None, date: str | None = None) -> tuple[float, dict]:
+    """CBOE Put/Call Ratio 점수 (옵션 시장 심리 지표).
+
+    PCR은 역발상 지표로 해석:
+    - PCR > 1.0: 풋 과매수 → 공포 극단 → 반등 가능 (역발상 강세)
+    - PCR 0.7~1.0: 정상 범위
+    - PCR < 0.7: 콜 과매수 → 탐욕 극단 → 조정 가능 (역발상 약세)
+
+    중립 구간(0.8~0.95)에서 최고점, 극단값에서 감점.
+    """
+    pcr = _get_latest_macro("put_call_ratio", date, db_path)
+
+    if pcr is None:
+        return 50.0, {"put_call_ratio": None}
+
+    # 중립 구간 (0.80~0.95) = 최적 (85~100)
+    if 0.80 <= pcr <= 0.95:
+        score = 85 + (1 - abs(pcr - 0.875) / 0.075) * 15
+    elif 0.70 <= pcr < 0.80:
+        # 콜 매수 증가 → 약한 탐욕
+        score = 65 + (pcr - 0.70) / 0.10 * 20
+    elif 0.95 < pcr <= 1.10:
+        # 풋 매수 증가 → 약한 공포
+        score = 65 + (1.10 - pcr) / 0.15 * 20
+    elif pcr < 0.70:
+        # 과도한 탐욕 → 조정 경고
+        score = max(20, 65 - (0.70 - pcr) * 150)
+    else:
+        # PCR > 1.10: 과도한 공포 → 항복 매도 → 역발상 반등 가능
+        # 패닉 자체는 위험하므로 점수 낮게, 하지만 극단 공포는 바닥 신호일 수 있음
+        score = max(15, 65 - (pcr - 1.10) * 100)
+
+    return min(100, max(0, score)), {"put_call_ratio": round(pcr, 3)}
+
+
 # ═══════════════════════════════════════════════════════
 # 종합 스코어
 # ═══════════════════════════════════════════════════════
 
 
 def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
-    """거시경제 종합 점수 계산."""
+    """거시경제 종합 점수 계산 (8개 지표)."""
     yc_score, yc_detail = _score_yield_curve(db_path, date)
+    ys3m10y_score, ys3m10y_detail = _score_yield_spread_3m10y(db_path, date)
     vix_score, vix_detail = _score_vix(db_path, date)
+    pcr_score, pcr_detail = _score_put_call_ratio(db_path, date)
     sent_score, sent_detail = _score_sentiment(db_path, date)
     emp_score, emp_detail = _score_employment(db_path, date)
     inf_score, inf_detail = _score_inflation(db_path, date)
@@ -237,7 +314,9 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
 
     total = (
         yc_score * WEIGHTS["yield_curve"]
+        + ys3m10y_score * WEIGHTS["yield_spread_3m10y"]
         + vix_score * WEIGHTS["vix"]
+        + pcr_score * WEIGHTS["put_call_ratio"]
         + sent_score * WEIGHTS["sentiment"]
         + emp_score * WEIGHTS["employment"]
         + inf_score * WEIGHTS["inflation"]
@@ -257,28 +336,33 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
         date=date or datetime.now().strftime("%Y-%m-%d"),
         total_score=round(total, 1),
         yield_curve_score=round(yc_score, 1),
+        yield_spread_3m10y_score=round(ys3m10y_score, 1),
         vix_score=round(vix_score, 1),
+        put_call_ratio_score=round(pcr_score, 1),
         sentiment_score=round(sent_score, 1),
         employment_score=round(emp_score, 1),
         inflation_score=round(inf_score, 1),
         monetary_score=round(mon_score, 1),
         interpretation=interpretation,
-        details={**yc_detail, **vix_detail, **sent_detail, **emp_detail, **inf_detail, **mon_detail},
+        details={**yc_detail, **ys3m10y_detail, **vix_detail, **pcr_detail,
+                 **sent_detail, **emp_detail, **inf_detail, **mon_detail},
     )
 
 
 def print_macro_score(score: MacroScore) -> None:
     """매크로 스코어 CLI 출력."""
-    print(f"\n{'=' * 50}")
+    print(f"\n{'=' * 55}")
     print(f"  Macro Score: {score.total_score:.0f}/100 — {score.interpretation}")
-    print(f"{'=' * 50}")
-    print(f"  Date:           {score.date}")
-    print(f"  Yield Curve:    {score.yield_curve_score:5.1f}  (spread: {score.details.get('spread', '—')})")
-    print(f"  VIX:            {score.vix_score:5.1f}  ({score.details.get('vix', '—')})")
-    print(f"  Sentiment:      {score.sentiment_score:5.1f}  (F&G: {score.details.get('fear_greed', '—')})")
-    print(f"  Employment:     {score.employment_score:5.1f}  (unemp: {score.details.get('unemployment', '—')}%)")
-    print(f"  Inflation:      {score.inflation_score:5.1f}  (CPI: {score.details.get('cpi_yoy', '—')}%)")
-    print(f"  Monetary:       {score.monetary_score:5.1f}  (FFR: {score.details.get('fed_funds', '—')}%)")
+    print(f"{'=' * 55}")
+    print(f"  Date:             {score.date}")
+    print(f"  Yield Curve:      {score.yield_curve_score:5.1f}  (2Y-10Y: {score.details.get('spread', '—')})")
+    print(f"  Yield 3M-10Y:     {score.yield_spread_3m10y_score:5.1f}  (3M-10Y: {score.details.get('spread_3m10y', '—')})")
+    print(f"  VIX:              {score.vix_score:5.1f}  ({score.details.get('vix', '—')})")
+    print(f"  Put/Call Ratio:   {score.put_call_ratio_score:5.1f}  (PCR: {score.details.get('put_call_ratio', '—')})")
+    print(f"  Sentiment:        {score.sentiment_score:5.1f}  (F&G: {score.details.get('fear_greed', '—')})")
+    print(f"  Employment:       {score.employment_score:5.1f}  (unemp: {score.details.get('unemployment', '—')}%)")
+    print(f"  Inflation:        {score.inflation_score:5.1f}  (CPI: {score.details.get('cpi_yoy', '—')}%)")
+    print(f"  Monetary:         {score.monetary_score:5.1f}  (FFR: {score.details.get('fed_funds', '—')}%)")
     print()
 
 
