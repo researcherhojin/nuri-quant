@@ -138,7 +138,7 @@ class TestCandidatesDeep:
         for c in candidates:
             assert 0 <= c.confidence <= 100
 
-    def test_print_candidates(self, capsys):
+    def test_print_candidates(self, full_db, capsys):
         from nuri.trading.recommend.candidates import Candidate, print_candidates
         candidates = [
             Candidate("AAPL", "rsi_oversold", "2026-03-28", "BUY", 75.0, 0.65, 2.1, True, 155.0, "test"),
