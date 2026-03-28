@@ -10,21 +10,17 @@ BTC는 리스크 자산 프록시로 활용 — 급락 시 전반적 위험선�
     python -m nuri.collectors.coingecko
 """
 import logging
-from datetime import datetime
 
 import requests
 
-from nuri.collectors.base import BaseCollector
+from nuri.collectors.base import DEFAULT_HEADERS, BaseCollector, today_str
 from nuri.core.db import upsert_macro
 
 # CoinGecko 무료 API
 COINGECKO_PRICE_URL = "https://api.coingecko.com/api/v3/simple/price"
 COINGECKO_GLOBAL_URL = "https://api.coingecko.com/api/v3/global"
 
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-    "Accept": "application/json",
-}
+_CG_HEADERS = {**DEFAULT_HEADERS, "Accept": "application/json"}
 
 
 class CoinGeckoCollector(BaseCollector):
@@ -36,7 +32,7 @@ class CoinGeckoCollector(BaseCollector):
     def collect(self, **kwargs) -> list[dict]:
         """BTC 가격 + 글로벌 암호화폐 지표 수집."""
         records = []
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_str()
 
         # 1. BTC 현재가 + 시가총액 + 24h 거래량
         try:
@@ -63,7 +59,7 @@ class CoinGeckoCollector(BaseCollector):
             "include_24hr_vol": "true",
             "include_24hr_change": "true",
         }
-        resp = requests.get(COINGECKO_PRICE_URL, params=params, headers=_HEADERS, timeout=15)
+        resp = requests.get(COINGECKO_PRICE_URL, params=params, headers=_CG_HEADERS, timeout=15)
         resp.raise_for_status()
         data = resp.json()
 
@@ -111,7 +107,7 @@ class CoinGeckoCollector(BaseCollector):
 
     def _collect_global(self, today: str) -> list[dict]:
         """글로벌 암호화폐 시장 지표."""
-        resp = requests.get(COINGECKO_GLOBAL_URL, headers=_HEADERS, timeout=15)
+        resp = requests.get(COINGECKO_GLOBAL_URL, headers=_CG_HEADERS, timeout=15)
         resp.raise_for_status()
         data = resp.json().get("data", {})
 
