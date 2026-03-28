@@ -77,6 +77,15 @@ jobs:
       - name: Run tests with coverage
         run: .venv/bin/python -m pytest tests/ -q --tb=short -x --cov=nuri --cov-report=xml
 
+      - name: Coverage threshold check
+        run: |
+          COV=$(.venv/bin/python -m pytest tests/ -q --cov=nuri --cov-report=term 2>/dev/null | grep "^TOTAL" | awk '{print $NF}' | tr -d '%')
+          echo "Coverage: ${COV}%"
+          if [ -n "$COV" ] && [ "$COV" -lt 50 ]; then
+            echo "::error::Coverage ${COV}% is below 50% threshold"
+            exit 1
+          fi
+
       - name: Upload coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v5
