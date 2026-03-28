@@ -20,6 +20,8 @@ import {
   ChevronRight,
   ShieldCheck,
   ShieldX,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 // 팔란티어 스타일 그룹 네비게이션
@@ -62,6 +64,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [siegeStatus, setSiegeStatus] = useState<{ certified: boolean; score: number } | null>(null);
+  const [isDark, setIsDark] = useState(true);
 
   // SIEGE 인증 상태 조회
   useEffect(() => {
@@ -116,15 +119,15 @@ export function Sidebar() {
                     href={item.href}
                     title={collapsed ? item.label : undefined}
                     className={`
-                      flex items-center gap-2.5 py-1.5 text-sm transition-colors
-                      ${collapsed ? "justify-center px-2" : "px-4"}
+                      flex items-center gap-3 py-2 text-sm transition-colors
+                      ${collapsed ? "justify-center px-3" : "px-4"}
                       ${active
                         ? "text-emerald-400 bg-emerald-400/10 border-r-2 border-emerald-400"
                         : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50"
                       }
                     `}
                   >
-                    <Icon size={16} className={active ? "text-emerald-400" : "text-zinc-500"} />
+                    <Icon size={20} className={active ? "text-emerald-400" : "text-zinc-500"} />
                     {!collapsed && <span>{item.label}</span>}
                   </Link>
                 );
@@ -142,7 +145,7 @@ export function Sidebar() {
                 ? "bg-emerald-400/10 text-emerald-400"
                 : "bg-red-400/10 text-red-400"
             }`}>
-              {siegeStatus.certified ? <ShieldCheck size={14} /> : <ShieldX size={14} />}
+              {siegeStatus.certified ? <ShieldCheck size={20} /> : <ShieldX size={20} />}
               <span className="font-medium">
                 {siegeStatus.certified ? "CERTIFIED" : "REJECTED"}
               </span>
@@ -157,6 +160,19 @@ export function Sidebar() {
               }
             </div>
           )}
+
+          {/* Theme Toggle */}
+          <button
+            onClick={() => {
+              setIsDark(!isDark);
+              document.documentElement.classList.toggle("dark");
+            }}
+            className={`flex items-center gap-2 text-zinc-500 hover:text-zinc-300 transition-colors ${collapsed ? "justify-center" : ""}`}
+            title={isDark ? "Light mode" : "Dark mode"}
+          >
+            {isDark ? <Sun size={14} /> : <Moon size={14} />}
+            {!collapsed && <span className="text-[10px]">{isDark ? "Light Mode" : "Dark Mode"}</span>}
+          </button>
 
           {/* Online 상태 */}
           <div className={`flex items-center gap-2 ${collapsed ? "justify-center" : ""}`}>
