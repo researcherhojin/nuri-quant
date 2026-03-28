@@ -3,33 +3,12 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
+import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
-
-const agentKeys = ["technical", "fundamental", "macro", "risk", "smart_money", "wallstreet"];
-const agentLabels: Record<string,string> = { technical:"Tech", fundamental:"Fund", macro:"Macro", risk:"Risk", smart_money:"Smart", wallstreet:"WallSt" };
-
-function agentCell(verdicts: any[], name: string) {
-  const v = verdicts.find((x: any) => x.agent_name === name);
-  if (!v) return <span className="text-zinc-700">—</span>;
-  const color = v.action === "BUY" ? "text-emerald-400" : v.action === "SELL" ? "text-red-400" : "text-zinc-500";
-  return <span className={color} title={v.reasoning}>{v.action[0]}{v.confidence.toFixed(0)}</span>;
-}
 
 async function ConsensusSection() {
   const data = await fetchAPI<{ results: any[]; count: number }>("/api/consensus");
   const sorted = [...data.results].sort((a, b) => b.final_confidence - a.final_confidence);
-
-  const cols = [
-    { key: "ticker", label: "Ticker", render: (_: any, r: any) => <span className="font-medium">{r.ticker}</span> },
-    { key: "final_action", label: "Action", align: "center" as const, render: (v: string) => <StatusBadge status={v} size="md" /> },
-    { key: "final_confidence", label: "Conf", align: "right" as const, render: (v: number) => <span className="font-semibold">{v.toFixed(0)}</span> },
-    { key: "agreement_rate", label: "Agree", align: "right" as const, render: (v: number) => `${(v * 100).toFixed(0)}%` },
-    ...agentKeys.map(name => ({
-      key: name, label: agentLabels[name], align: "center" as const, hideOnMobile: true,
-      render: (_: any, row: any) => agentCell(row.verdicts, name),
-    })),
-  ];
 
   return (
     <Card className="bg-zinc-900 border-zinc-800">
@@ -37,7 +16,7 @@ async function ConsensusSection() {
         <p className="text-xs text-zinc-500 mb-3">
           6-Agent Consensus — {data.count} tickers × 6 agents = {data.count * 6} verdicts
         </p>
-        <DataTable columns={cols} data={sorted} compact />
+        <ClientTable variant="consensus" data={sorted} compact />
       </CardContent>
     </Card>
   );
