@@ -68,9 +68,14 @@ class TestPortfolio:
         assert r2.json()["count"] == 0
 
     def test_delete_nonexistent(self, client):
+        """존재하지 않는 종목 삭제 → 404."""
+        r = client.delete("/api/portfolio/test/XXXX")
+        assert r.status_code == 404
+
+    def test_delete_invalid_account(self, client):
+        """유효하지 않은 계좌명 → 400."""
         r = client.delete("/api/portfolio/fake/XXXX")
-        assert r.status_code == 200
-        assert r.json()["ok"] is False
+        assert r.status_code == 400
 
     def test_risk_graceful(self, client):
         """빈 DB에서도 에러 대신 에러 dict 반환."""
