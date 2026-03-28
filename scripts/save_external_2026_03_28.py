@@ -121,4 +121,5 @@ print("✅ 외부 데이터 저장 완료 (6개 사이트)")
 
 # 요약 출력
 from nuri.collectors.external import print_summary
+
 print_summary()

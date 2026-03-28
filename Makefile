@@ -215,6 +215,10 @@ targets:
 rebalance:
 	$(PYTHON) -m nuri.analysis.rebalance_advisor
 
+# ── LLM 리포트 (Ollama) ──
+report-llm:
+	$(PYTHON) -m nuri.llm.report
+
 # ── 외부 데이터 요약 ──
 external:
 	$(PYTHON) -m nuri.collectors.external --summary
