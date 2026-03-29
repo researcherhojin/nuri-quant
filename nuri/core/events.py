@@ -61,8 +61,10 @@ def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
             (step,),
             db_path,
         )
-    except Exception:
-        # pipeline_events 테이블이 아직 없는 경우 (마이그레이션 미적용)
+    except Exception as e:  # noqa: BLE001
+        # pipeline_events 테이블 미존재(마이그레이션 미적용) 또는 DB 접근 실패
+        import logging
+        logging.getLogger(__name__).debug("pipeline_events 조회 실패: %s", e)
         return {"step": step, "status": "unknown", "timestamp": None, "payload": None}
     if not rows:
         return {"step": step, "status": "unknown", "timestamp": None, "payload": None}

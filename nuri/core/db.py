@@ -442,15 +442,6 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
     (6, "add scoring_detail to recommendations", """
         ALTER TABLE recommendations ADD COLUMN scoring_detail TEXT;
     """),
-    (8, "add target prices to positions", """
-        ALTER TABLE positions ADD COLUMN target_1_price REAL;
-    """),
-    (9, "add target_2_price to positions", """
-        ALTER TABLE positions ADD COLUMN target_2_price REAL;
-    """),
-    (10, "add high_water_mark to positions", """
-        ALTER TABLE positions ADD COLUMN high_water_mark REAL;
-    """),
     (7, "create pipeline_events table", """
         CREATE TABLE IF NOT EXISTS pipeline_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -464,6 +455,15 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
         CREATE INDEX IF NOT EXISTS idx_pipeline_events_step ON pipeline_events(step, timestamp);
         CREATE INDEX IF NOT EXISTS idx_pipeline_events_type ON pipeline_events(event_type, timestamp);
+    """),
+    (8, "add target prices to positions", """
+        ALTER TABLE positions ADD COLUMN target_1_price REAL;
+    """),
+    (9, "add target_2_price to positions", """
+        ALTER TABLE positions ADD COLUMN target_2_price REAL;
+    """),
+    (10, "add high_water_mark to positions", """
+        ALTER TABLE positions ADD COLUMN high_water_mark REAL;
     """),
 ]
 

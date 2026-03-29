@@ -219,9 +219,9 @@ class TestCheckFreshness:
 
     def test_warn_status(self, db_path):
         """warn_hours 초과 → WARN."""
-        # 20시간 전 데이터 (prices warn_hours=18)
+        # 72시간 전 데이터 (prices warn_hours=48, fail_hours=120)
         now = kst_now()
-        old_date = (now - timedelta(hours=20)).strftime("%Y-%m-%d %H:%M:%S")
+        old_date = (now - timedelta(hours=72)).strftime("%Y-%m-%d %H:%M:%S")
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
@@ -232,9 +232,9 @@ class TestCheckFreshness:
 
     def test_fail_status(self, db_path):
         """fail_hours 초과 → FAIL."""
-        # 48시간 전 데이터 (prices fail_hours=30)
+        # 130시간 전 데이터 (prices fail_hours=120)
         now = kst_now()
-        old_date = (now - timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
+        old_date = (now - timedelta(hours=130)).strftime("%Y-%m-%d %H:%M:%S")
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
