@@ -8,7 +8,7 @@ Discord 전송 또는 stdout 출력.
 """
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from dotenv import load_dotenv
 
@@ -16,6 +16,7 @@ from nuri.alerts.formatters import format_daily_report
 from nuri.analysis.portfolio import analyze_portfolio
 from nuri.analysis.risk import analyze_risk
 from nuri.core.db import query
+from nuri.core.timezone import kst_now
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ def generate_report() -> dict:
     fear_greed = fg_rows[0]["value"] if fg_rows else None
 
     # 내일 이벤트
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow = (kst_now().replace(tzinfo=None) + timedelta(days=1)).strftime("%Y-%m-%d")
     events = query(
         "SELECT * FROM events WHERE date = ? ORDER BY importance DESC",
         (tomorrow,),
