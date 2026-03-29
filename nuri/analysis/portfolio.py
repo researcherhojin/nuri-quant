@@ -17,23 +17,49 @@ from nuri.core.db import query, query_df
 logger = logging.getLogger(__name__)
 
 
+class StaleExchangeRateError(Exception):
+    """환율 데이터가 DB에 없을 때 발생하는 에러."""
+
+
 def get_exchange_rate() -> float:
-    """USD/KRW 환율 조회. DB에 없으면 기본값 사용."""
+    """USD/KRW 환율 조회. 7일 이상 오래되면 WARNING, DB에 없으면 에러."""
     rows = query(
-        "SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1"
+        "SELECT value, date FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1"
     )
     if rows:
-        return rows[0]["value"]
-    # 폴백: OpenBB로 환율 조회
+        rate = rows[0]["value"]
+        rate_date = rows[0]["date"]
+
+        # 신선도 체크: 7일 초과 시 경고
+        from datetime import datetime
+
+        from nuri.core.timezone import kst_now
+
+        latest = datetime.strptime(rate_date, "%Y-%m-%d")
+        age_days = (kst_now().replace(tzinfo=None) - latest).days
+        if age_days > 7:
+            logger.warning(
+                "USD/KRW 환율 %d일 경과 (날짜: %s, 값: %.1f). "
+                "'make collect'으로 갱신 권장",
+                age_days, rate_date, rate,
+            )
+        return rate
+
+    # DB에 환율 없음 -> OpenBB 시도
     try:
         from openbb import obb
+
         result = obb.currency.price.historical("USDKRW", provider="yfinance", start_date="2026-01-01")
         df = result.to_dataframe()
         if not df.empty:
             return float(df["close"].iloc[-1])
     except Exception:
         pass
-    return 1450.0  # 기본값
+
+    raise StaleExchangeRateError(
+        "USD/KRW 환율을 찾을 수 없습니다. "
+        "'python -m nuri.collectors.macro'로 환율 데이터를 수집하세요."
+    )
 
 
 def analyze_portfolio() -> pd.DataFrame:

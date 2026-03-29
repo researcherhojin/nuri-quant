@@ -11,7 +11,7 @@ OpenBB가 다중 프로바이더(yfinance, polygon, tiingo 등)를 지원하며,
 """
 import argparse
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 import pandas as pd
@@ -44,8 +44,10 @@ class StockCollector(BaseCollector):
 
         self.logger.info(f"수집 대상: {len(tickers)} 미국 종목 ({period})")
 
-        # 기간 계산
-        end_date = datetime.now().strftime("%Y-%m-%d")
+        # 기간 계산 (KST 기준 — 수집은 한국 시간대에서 실행)
+        from nuri.core.timezone import kst_now
+
+        end_date = kst_now().strftime("%Y-%m-%d")
         start_date = self._period_to_start_date(period)
 
         frames = []
@@ -97,8 +99,10 @@ class StockCollector(BaseCollector):
 
     @staticmethod
     def _period_to_start_date(period: str) -> str:
-        """기간 문자열 → 시작 날짜."""
-        now = datetime.now()
+        """기간 문자열 -> 시작 날짜 (KST 기준)."""
+        from nuri.core.timezone import kst_now
+
+        now = kst_now()
         mapping = {
             "1d": 1, "5d": 5, "1mo": 30, "3mo": 90,
             "6mo": 180, "1y": 365, "2y": 730, "3y": 1095,
