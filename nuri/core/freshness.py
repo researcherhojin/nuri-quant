@@ -9,8 +9,8 @@ from nuri.core.timezone import KST, kst_now
 FRESHNESS_POLICIES = {
     "prices": {
         "query": "SELECT MAX(date) FROM prices WHERE ticker = 'SPY'",
-        "warn_hours": 18,
-        "fail_hours": 30,
+        "warn_hours": 48,
+        "fail_hours": 120,  # 주말/공휴일 감안 (금→화 = 96h, classifier.py와 동일)
         "label": "주가 데이터",
     },
     "macro_vix": {

@@ -165,19 +165,19 @@ def calculate_targets(
     # 유형별 규칙 적용
     if stock_type == "growth":
         stop_loss_pct = STOCK_STOP_LOSS          # -7%
-        target_1_pct = TAKE_PROFIT_GROWTH["target_1"]  # +20%
-        target_2_pct = TAKE_PROFIT_GROWTH["target_2"]  # +40%
+        tp_config = TAKE_PROFIT_GROWTH
         trailing_stop_pct = TRAILING_STOP_GROWTH  # -15%
     elif stock_type == "swing":
         stop_loss_pct = STOCK_STOP_LOSS          # -7%
-        target_1_pct = TAKE_PROFIT_SWING["target_1"]   # +5%
-        target_2_pct = TAKE_PROFIT_SWING["target_2"]   # +10%
+        tp_config = TAKE_PROFIT_SWING
         trailing_stop_pct = TRAILING_STOP_VOLATILE      # -20% (스윙은 변동성 높음)
     else:  # value
         stop_loss_pct = STOCK_STOP_LOSS_VALUE    # -10%
-        target_1_pct = TAKE_PROFIT_VALUE["target_1"]   # +15%
-        target_2_pct = TAKE_PROFIT_VALUE["target_2"]   # +30%
+        tp_config = TAKE_PROFIT_VALUE
         trailing_stop_pct = TRAILING_STOP_VALUE   # -15%
+
+    target_1_pct = tp_config["target_1"]
+    target_2_pct = tp_config["target_2"]
 
     # 가격 계산
     stop_loss = round(entry_price * (1 + stop_loss_pct / 100), 2)
@@ -199,10 +199,10 @@ def calculate_targets(
         "stop_loss_pct": stop_loss_pct,
         "target_1": target_1,
         "target_1_pct": target_1_pct,
-        "target_1_sell_pct": 50,           # 1차 익절 시 50% 매도
+        "target_1_sell_pct": tp_config.get("target_1_sell_pct", 50),
         "target_2": target_2,
         "target_2_pct": target_2_pct,
-        "target_2_sell_pct": 25,           # 2차 익절 시 25% 매도
+        "target_2_sell_pct": tp_config.get("target_2_sell_pct", 25),
         "trailing_stop_pct": trailing_stop_pct,
         "analyst_target": analyst_target,
         "analyst_upside_pct": analyst_upside_pct,
@@ -293,7 +293,7 @@ def format_target_tree(target: dict) -> str:
         f"├── 손절가: {fp(target['stop_loss'])} ({target['stop_loss_pct']:+.1f}%)",
         f"├── 1차 익절: {fp(target['target_1'])} (+{target['target_1_pct']:.1f}%) → {target['target_1_sell_pct']}% 매도",
         f"├── 2차 익절: {fp(target['target_2'])} (+{target['target_2_pct']:.1f}%) → {target['target_2_sell_pct']}% 매도",
-        f"├── 트레일링 스톱: 고점 대비 {target['trailing_stop_pct']:+.1f}% (나머지 25%)",
+        f"├── 트레일링 스톱: 고점 대비 {target['trailing_stop_pct']:+.1f}% (나머지 {100 - target['target_1_sell_pct'] - target['target_2_sell_pct']}%)",
     ]
 
     # 애널리스트 목표가 (있을 때만)
