@@ -137,7 +137,8 @@ def _check_estimates_accumulation(db_path=None) -> GateCondition:
     oldest = rows[0]["oldest"]
     days = rows[0]["days"]
     if oldest:
-        elapsed = (datetime.now() - datetime.strptime(oldest, "%Y-%m-%d")).days
+        from nuri.core.timezone import kst_now
+        elapsed = (kst_now().replace(tzinfo=None) - datetime.strptime(oldest, "%Y-%m-%d")).days
         ok = elapsed >= 90
         detail = f"{days}일 누적, {elapsed}일 경과" if ok else f"{days}일 누적, {elapsed}일 경과 (90일 필요, {90-elapsed}일 남음)"
     else:

@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from nuri.core.db import query
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,7 @@ def backtest_superinvestor(
             entry_price = entry["close"]
 
             # hold_days 후 가격 (거래일 기준)
-            from datetime import datetime, timedelta
+            from datetime import timedelta
             target_exit = (datetime.strptime(entry_date, "%Y-%m-%d") + timedelta(days=hold_days)).strftime("%Y-%m-%d")
             exit_data = _get_price_on_or_before(ticker, target_exit, db_path)
             if not exit_data:
@@ -242,7 +243,7 @@ if __name__ == "__main__":
     print_scorecard(scorecards)
 
     # CSV 저장
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_kst()
     output_dir = REPORT_DIR / today
     output_dir.mkdir(parents=True, exist_ok=True)
 
