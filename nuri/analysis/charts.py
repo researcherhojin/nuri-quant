@@ -9,12 +9,12 @@
 """
 import argparse
 import logging
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 from nuri.core.db import get_tickers, query, query_df
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -74,44 +74,38 @@ def _load_chart_data(ticker: str) -> pd.DataFrame | None:
 
 
 def _detect_signals(df: pd.DataFrame) -> pd.DataFrame:
-    """매수/매도 시그널 감지."""
+    """매수/매도 시그널 감지 — signal_backtest의 detector registry 재사용."""
+    from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS, detect_signal_entries
+    from nuri.trading.recommend.candidates import BUY_SIGNALS
+
+    # charts.py는 date index 사용, signal_backtest는 positional index 사용
+    # volume_sma_20 계산 (signal_backtest의 compute_indicators와 동일 패턴)
+    if "volume" in df.columns and "volume_sma_20" not in df.columns:
+        df["volume_sma_20"] = df["volume"].rolling(20).mean()
+
+    # 차트에 표시할 시그널 (매크로/데이터 의존 시그널 제외 — 가격 기반만)
+    chart_signals = [
+        "rsi_oversold", "rsi_overbought",
+        "macd_golden", "macd_dead",
+        "sma_golden", "sma_dead",
+        "volume_spike", "gap_up", "gap_down",
+    ]
+
     signals = []
+    for sig_id in chart_signals:
+        defn = SIGNAL_DEFINITIONS.get(sig_id)
+        if defn is None:
+            continue
 
-    for i in range(1, len(df)):
-        date = df.index[i]
-        price = df["close"].iloc[i]
-        rsi = df["rsi_14"].iloc[i] if pd.notna(df["rsi_14"].iloc[i]) else None
-        rsi_prev = df["rsi_14"].iloc[i - 1] if pd.notna(df["rsi_14"].iloc[i - 1]) else None
-        macd = df["macd"].iloc[i] if pd.notna(df["macd"].iloc[i]) else None
-        macd_sig = df["macd_signal"].iloc[i] if pd.notna(df["macd_signal"].iloc[i]) else None
-        macd_prev = df["macd"].iloc[i - 1] if pd.notna(df["macd"].iloc[i - 1]) else None
-        macd_sig_prev = df["macd_signal"].iloc[i - 1] if pd.notna(df["macd_signal"].iloc[i - 1]) else None
-        sma50 = df["sma_50"].iloc[i] if pd.notna(df["sma_50"].iloc[i]) else None
-        sma200 = df["sma_200"].iloc[i] if pd.notna(df["sma_200"].iloc[i]) else None
-        sma50_prev = df["sma_50"].iloc[i - 1] if pd.notna(df["sma_50"].iloc[i - 1]) else None
-        sma200_prev = df["sma_200"].iloc[i - 1] if pd.notna(df["sma_200"].iloc[i - 1]) else None
-
-        # RSI 과매도 → 반등 (30 아래에서 위로)
-        if rsi and rsi_prev and rsi_prev < 30 and rsi >= 30:
-            signals.append({"date": date, "price": price, "type": "buy", "reason": f"RSI 과매도 반등 ({rsi:.0f})"})
-
-        # RSI 과매수 → 하락 (70 위에서 아래로)
-        if rsi and rsi_prev and rsi_prev > 70 and rsi <= 70:
-            signals.append({"date": date, "price": price, "type": "sell", "reason": f"RSI 과매수 이탈 ({rsi:.0f})"})
-
-        # MACD 골든크로스
-        if macd and macd_sig and macd_prev and macd_sig_prev:
-            if macd_prev < macd_sig_prev and macd >= macd_sig:
-                signals.append({"date": date, "price": price, "type": "buy", "reason": "MACD 골든크로스"})
-            if macd_prev > macd_sig_prev and macd <= macd_sig:
-                signals.append({"date": date, "price": price, "type": "sell", "reason": "MACD 데드크로스"})
-
-        # 골든/데드 크로스 (SMA 50 vs 200)
-        if sma50 and sma200 and sma50_prev and sma200_prev:
-            if sma50_prev < sma200_prev and sma50 >= sma200:
-                signals.append({"date": date, "price": price, "type": "buy", "reason": "골든크로스 (SMA50>200)"})
-            if sma50_prev > sma200_prev and sma50 <= sma200:
-                signals.append({"date": date, "price": price, "type": "sell", "reason": "데드크로스 (SMA50<200)"})
+        direction = "buy" if sig_id in BUY_SIGNALS else "sell"
+        entries = detect_signal_entries(df, sig_id)
+        for idx in entries:
+            signals.append({
+                "date": df.index[idx],
+                "price": df["close"].iloc[idx],
+                "type": direction,
+                "reason": defn["description"],
+            })
 
     return pd.DataFrame(signals) if signals else pd.DataFrame(columns=["date", "price", "type", "reason"])
 
@@ -469,7 +463,7 @@ def generate_charts(
     if tickers is None:
         tickers = get_tickers()
     if output_dir is None:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_kst()
         output_dir = REPORT_DIR / today / "charts"
 
     generated = []

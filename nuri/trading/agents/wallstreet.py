@@ -10,8 +10,9 @@ yfinance에서 직접 데이터를 가져오며 별도 API 키 불필요.
 4. 애널리스트 컨센서스 분포 (strongBuy~strongSell)
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 
+from nuri.core.timezone import kst_now
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ class WallStreetAgent(BaseAgent):
         try:
             ud = t.upgrades_downgrades
             if ud is not None and not ud.empty:
-                cutoff = datetime.now() - timedelta(days=90)
+                cutoff = kst_now().replace(tzinfo=None) - timedelta(days=90)
                 recent = ud[ud.index >= cutoff] if hasattr(ud.index[0], 'year') else ud.tail(10)
 
                 upgrades = 0
