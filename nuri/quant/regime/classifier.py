@@ -196,6 +196,115 @@ def _classify_single(close, sma50, sma200, vix, bb_width, thresholds) -> tuple[s
     return trend, volatility
 
 
+# ═══════════════════════════════════════════════════════
+# 특수 레짐 감지 (우선순위: euphoria > stagflation > recovery > sector_rotation)
+# ═══════════════════════════════════════════════════════
+
+# 특수 레짐 → 포지션 사이징 매핑 (strategy_map 호환)
+SPECIAL_REGIME_SIZING = {
+    "euphoria": "defensive",       # 과열 → 방어적 (과매수 경고)
+    "stagflation": "minimal",      # 침체+인플레 → 최소
+    "recovery": "aggressive",      # 회복 초기 → 공격적
+    "sector_rotation": "normal",   # 섹터 순환 → 중립
+}
+
+
+def _detect_euphoria(vix: float | None, fear_greed: float | None) -> bool:
+    """VIX < 12 AND Fear&Greed > 80 → 시장 과열."""
+    if vix is None or fear_greed is None:
+        return False
+    return bool(vix < 12 and fear_greed > 80)
+
+
+def _detect_stagflation(db_path=None, date: str | None = None) -> bool:
+    """CPI > 4% AND GDP < 1% → 스태그플레이션. GDP 없으면 graceful skip."""
+    date_filter = f"AND date <= '{date}'" if date else ""
+    # CPI (연간 변화율)
+    cpi_rows = query(
+        f"SELECT value FROM macro WHERE indicator = 'cpi_yoy' {date_filter} ORDER BY date DESC LIMIT 1",
+        db_path=db_path,
+    )
+    if not cpi_rows:
+        return False
+    cpi = cpi_rows[0]["value"]
+
+    # GDP (실질 성장률) — 수집 안 되어 있을 수 있음
+    gdp_rows = query(
+        f"SELECT value FROM macro WHERE indicator = 'gdp_growth' {date_filter} ORDER BY date DESC LIMIT 1",
+        db_path=db_path,
+    )
+    if not gdp_rows:
+        logger.debug("GDP 데이터 미수집 → stagflation 감지 건너뜀")
+        return False
+    gdp = gdp_rows[0]["value"]
+
+    return bool(cpi > 4 and gdp < 1)
+
+
+def _detect_recovery(spy_df: pd.DataFrame) -> bool:
+    """SMA200 장기 하락 후 SMA50 상향돌파 (200일 lookback).
+
+    조건: 200일 전 SMA50 < SMA200 (장기 하락 상태) AND 현재 SMA50 >= SMA200 (돌파).
+    """
+    if spy_df is None or len(spy_df) < 250:
+        return False
+
+    latest = spy_df.iloc[-1]
+    sma50_now = latest.get("sma50")
+    sma200_now = latest.get("sma200")
+
+    if pd.isna(sma50_now) or pd.isna(sma200_now):
+        return False
+
+    # 200일 전 시점 확인
+    past_idx = len(spy_df) - 200
+    if past_idx < 0:
+        return False
+    past = spy_df.iloc[past_idx]
+    sma50_past = past.get("sma50")
+    sma200_past = past.get("sma200")
+
+    if pd.isna(sma50_past) or pd.isna(sma200_past):
+        return False
+
+    # 200일 전 SMA50 < SMA200 (하락장이었음) AND 현재 SMA50 >= SMA200 (돌파)
+    return bool(sma50_past < sma200_past and sma50_now >= sma200_now)
+
+
+def _detect_sector_rotation(db_path=None, date: str | None = None) -> bool:
+    """SPY 횡보(±2%) + 섹터 ETF 중 하나라도 3%+ 수익 → 섹터 순환.
+
+    20일 수익률 기준. 섹터 ETF 가격이 없으면 graceful skip.
+    """
+    date_filter = f"AND date <= '{date}'" if date else ""
+
+    # SPY 20일 수익률
+    spy_prices = query(
+        f"SELECT close FROM prices WHERE ticker = 'SPY' {date_filter} ORDER BY date DESC LIMIT 21",
+        db_path=db_path,
+    )
+    if len(spy_prices) < 21:
+        return False
+    spy_ret = (spy_prices[0]["close"] - spy_prices[-1]["close"]) / spy_prices[-1]["close"] * 100
+    if abs(spy_ret) > 2:
+        return False  # SPY가 횡보가 아님
+
+    # 섹터 ETF 중 하나라도 3%+ 수익
+    sector_etfs = ["XLK", "XLF", "XLE", "XLV", "XLI", "XLP", "XLU", "XLY", "XLC", "XLRE"]
+    for etf in sector_etfs:
+        etf_prices = query(
+            f"SELECT close FROM prices WHERE ticker = ? {date_filter} ORDER BY date DESC LIMIT 21",
+            (etf,), db_path=db_path,
+        )
+        if len(etf_prices) < 21:
+            continue
+        etf_ret = (etf_prices[0]["close"] - etf_prices[-1]["close"]) / etf_prices[-1]["close"] * 100
+        if etf_ret > 3:
+            return True
+
+    return False
+
+
 _freshness_warned = False
 
 
@@ -290,8 +399,21 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
     else:
         trend, volatility = _classify_single(close, sma50, sma200, vix, bb_width, thresholds)
 
-    regime = f"{trend}_{volatility}_vol"
+    base_regime = f"{trend}_{volatility}_vol"
     sma_diff_pct = (sma50 - sma200) / sma200 * 100 if sma200 > 0 else 0
+
+    # ── 특수 레짐 감지 (우선순위: euphoria > stagflation > recovery > sector_rotation) ──
+    special_regime = None
+    if _detect_euphoria(vix, fear_greed):
+        special_regime = "euphoria"
+    elif _detect_stagflation(db_path, date):
+        special_regime = "stagflation"
+    elif _detect_recovery(spy_df):
+        special_regime = "recovery"
+    elif _detect_sector_rotation(db_path, date):
+        special_regime = "sector_rotation"
+
+    regime = special_regime if special_regime else base_regime
 
     # ── 신뢰도: 보조 지표 일치도 ──
     checks = []
@@ -347,6 +469,8 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
             "rsi": round(rsi, 1) if rsi else None,
             "bb_width": round(bb_width, 2),
             "thresholds": thresholds,
+            "base_regime": base_regime,
+            "special_regime": special_regime,
         },
     )
 
@@ -403,11 +527,18 @@ def print_regime(state: RegimeState | None) -> None:
 
     trend_label = {"bull": "BULL", "bear": "BEAR", "sideways": "SIDEWAYS"}
     vol_label = {"high": "HIGH VOL", "low": "LOW VOL"}
+    special_label = {"euphoria": "EUPHORIA", "stagflation": "STAGFLATION",
+                     "recovery": "RECOVERY", "sector_rotation": "SECTOR ROTATION"}
     d = state.details
     th = d.get("thresholds", {})
+    special = d.get("special_regime")
 
     print(f"\n{'=' * 60}")
-    print(f"  Market Regime: {trend_label[state.trend]} + {vol_label[state.volatility]}")
+    if special:
+        print(f"  Market Regime: {special_label.get(special, special.upper())} "
+              f"(base: {trend_label[state.trend]} + {vol_label[state.volatility]})")
+    else:
+        print(f"  Market Regime: {trend_label[state.trend]} + {vol_label[state.volatility]}")
     print(f"  ({state.regime})  Confidence: {state.confidence:.0%}")
     print(f"{'=' * 60}")
     print(f"  Date:       {state.date}")

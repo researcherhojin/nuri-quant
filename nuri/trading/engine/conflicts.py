@@ -30,11 +30,6 @@ class SignalConflict:
     recommendation: str     # 사용자에게 권장 행동
 
 
-# 매수/매도 분류
-BUY_SIGNALS = {"rsi_oversold", "macd_golden", "sma_golden", "bb_bounce"}
-SELL_SIGNALS = {"rsi_overbought", "macd_dead", "sma_dead"}
-
-
 def detect_conflicts(candidates=None, db_path=None) -> list[SignalConflict]:
     """매매 후보에서 시그널 충돌을 감지.
 

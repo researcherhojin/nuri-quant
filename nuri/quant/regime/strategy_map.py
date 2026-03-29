@@ -218,8 +218,13 @@ def map_regime_to_strategy(
     trend = regime_state.trend
     vol = regime_state.volatility
 
-    # 기본 포지션 사이징 (규칙 기반)
-    position = POSITION_RULES.get((trend, vol), "defensive")
+    # 기본 포지션 사이징 (규칙 기반, 특수 레짐 우선)
+    from nuri.quant.regime.classifier import SPECIAL_REGIME_SIZING
+    special = regime_state.details.get("special_regime")
+    if special and special in SPECIAL_REGIME_SIZING:
+        position = SPECIAL_REGIME_SIZING[special]
+    else:
+        position = POSITION_RULES.get((trend, vol), "defensive")
 
     # 교차분석 데이터 시도
     cross_df = analyze_signal_by_regime(db_path)

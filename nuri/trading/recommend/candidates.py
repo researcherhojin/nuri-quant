@@ -19,8 +19,10 @@ import pandas as pd
 from nuri.core.db import get_tickers, query_df
 from nuri.quant.validation.signal_backtest import (
     SIGNAL_DEFINITIONS,
-    _compute_indicators,
-    _detect_signal_entries,
+    compute_indicators,
+    detect_signal_entries,
+    merge_data_signals,
+    merge_macro_data,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,8 +30,13 @@ logger = logging.getLogger(__name__)
 REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 
 # 매수/매도 분류
-BUY_SIGNALS = {"rsi_oversold", "macd_golden", "sma_golden", "bb_bounce"}
-SELL_SIGNALS = {"rsi_overbought", "macd_dead", "sma_dead"}
+BUY_SIGNALS = {
+    "rsi_oversold", "macd_golden", "sma_golden", "bb_bounce",
+    "volume_spike", "gap_up",
+    "vix_reversal", "pcr_reversal", "yield_curve_recovery",
+    "insider_cluster", "short_squeeze",
+}
+SELL_SIGNALS = {"rsi_overbought", "macd_dead", "sma_dead", "gap_down"}
 
 
 @dataclass
@@ -63,8 +70,9 @@ def _load_scorecard() -> tuple[dict[str, dict], int | None]:
                 # 디렉토리명에서 날짜 추출 (YYYY-MM-DD 형식)
                 age_days = None
                 try:
+                    from nuri.core.timezone import kst_now
                     dir_date = datetime.strptime(d.name, "%Y-%m-%d")
-                    age_days = (datetime.now() - dir_date).days
+                    age_days = (kst_now().replace(tzinfo=None) - dir_date).days
                 except ValueError:
                     pass
 
@@ -185,13 +193,17 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
 
         df["date"] = pd.to_datetime(df["date"])
         df = df.reset_index(drop=True)
-        df = _compute_indicators(df)
+        df = compute_indicators(df)
+
+        # 매크로/데이터 시그널용 데이터 병합
+        df = merge_macro_data(df, db_path=db_path)
+        df = merge_data_signals(df, ticker, db_path=db_path)
 
         # 최근 lookback_days 거래일 범위
         cutoff_idx = max(0, len(df) - lookback_days)
 
         for signal_id in SIGNAL_DEFINITIONS:
-            entries = _detect_signal_entries(df, signal_id)
+            entries = detect_signal_entries(df, signal_id)
             # cutoff 이후 발생한 시그널만
             recent = [idx for idx in entries if idx >= cutoff_idx]
 
