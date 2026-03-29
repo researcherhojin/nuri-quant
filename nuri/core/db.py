@@ -416,6 +416,32 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_external_source ON external_analysis(source, ticker);
         CREATE INDEX IF NOT EXISTS idx_external_date ON external_analysis(date);
     """),
+    (3, "add hit_quality to recommendations", """
+        ALTER TABLE recommendations ADD COLUMN hit_quality REAL;
+    """),
+    (4, "create trades table for execution tracking", """
+        CREATE TABLE IF NOT EXISTS trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recommendation_id INTEGER REFERENCES recommendations(id),
+            ticker TEXT NOT NULL,
+            action TEXT NOT NULL,
+            executed_at TEXT NOT NULL,
+            entry_price REAL,
+            exit_price REAL,
+            exit_date TEXT,
+            exit_reason TEXT,
+            shares REAL,
+            notes TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
+        CREATE INDEX IF NOT EXISTS idx_trades_rec ON trades(recommendation_id);
+    """),
+    (5, "add agent_verdicts to recommendations", """
+        ALTER TABLE recommendations ADD COLUMN agent_verdicts TEXT;
+    """),
+    (6, "add scoring_detail to recommendations", """
+        ALTER TABLE recommendations ADD COLUMN scoring_detail TEXT;
+    """),
 ]
 
 
@@ -635,3 +661,46 @@ def get_latest_price(ticker: str, db_path: Optional[Path] = None) -> Optional[di
         db_path,
     )
     return rows[0] if rows else None
+
+
+# ═══════════════════════════════════════════════════════
+# 매매 실행 추적 (trades)
+# ═══════════════════════════════════════════════════════
+
+
+def upsert_trade(data: dict, db_path: Optional[Path] = None) -> int:
+    """매매 실행 기록 삽입 또는 업데이트.
+
+    data 필수 키: ticker, action, executed_at
+    선택 키: recommendation_id, entry_price, exit_price, exit_date, exit_reason, shares, notes
+    기존 id가 있으면 업데이트, 없으면 삽입.
+    """
+    with get_db(db_path) as conn:
+        if "id" in data and data["id"] is not None:
+            # 기존 레코드 업데이트
+            trade_id = data.pop("id")
+            if not data:
+                return 0
+            set_clause = ", ".join(f"{k} = :{k}" for k in data)
+            data["_id"] = trade_id
+            conn.execute(f"UPDATE trades SET {set_clause} WHERE id = :_id", data)
+            return trade_id
+        else:
+            # 신규 삽입
+            data.pop("id", None)
+            cols = ", ".join(data.keys())
+            placeholders = ", ".join(f":{k}" for k in data.keys())
+            cursor = conn.execute(
+                f"INSERT INTO trades ({cols}) VALUES ({placeholders})", data
+            )
+            return cursor.lastrowid
+
+
+def get_trades(ticker: Optional[str] = None, db_path: Optional[Path] = None) -> list[dict]:
+    """매매 실행 기록 조회. ticker 필터 선택적."""
+    if ticker:
+        return query(
+            "SELECT * FROM trades WHERE ticker = ? ORDER BY executed_at DESC",
+            (ticker,), db_path,
+        )
+    return query("SELECT * FROM trades ORDER BY executed_at DESC", db_path=db_path)
