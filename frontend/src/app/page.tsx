@@ -61,7 +61,11 @@ async function Dashboard() {
     fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], details: [], overall: "FAIL", pass: 0, warn: 0, fail: 0 })),
     fetchAPI<PipelineStatusData>("/api/pipeline/status").catch((): PipelineStatusData => ({ steps: [] })),
     fetchAPI<any>("/api/portfolio").catch(() => null),
-    fetchAPI<any>("/api/certify").catch(() => null),
+    // certify는 느릴 수 있으므로 3초 타임아웃 (캐시 miss 시 최대 77초 걸림)
+    Promise.race([
+      fetchAPI<any>("/api/certify"),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]).catch(() => null),
     fetchAPI<any>("/api/rebalance-advisor").catch(() => null),
   ]);
 
