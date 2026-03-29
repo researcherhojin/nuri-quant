@@ -442,6 +442,20 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
     (6, "add scoring_detail to recommendations", """
         ALTER TABLE recommendations ADD COLUMN scoring_detail TEXT;
     """),
+    (7, "create pipeline_events table", """
+        CREATE TABLE IF NOT EXISTS pipeline_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            event_type TEXT NOT NULL,
+            step TEXT,
+            payload TEXT,
+            duration_ms INTEGER,
+            record_count INTEGER,
+            causation_id INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_pipeline_events_step ON pipeline_events(step, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_pipeline_events_type ON pipeline_events(event_type, timestamp);
+    """),
 ]
 
 
