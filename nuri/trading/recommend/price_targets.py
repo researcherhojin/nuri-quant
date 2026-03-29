@@ -483,29 +483,42 @@ def check_portfolio_mdd(db_path: Optional[Path] = None) -> dict | None:
     """
     from nuri.core.rules import PORTFOLIO_STOP
 
+    # 환율 조회 (KRW → USD 변환용)
+    from nuri.core.db import query as _q
+    usd_krw = 1400.0  # 폴백
     try:
-        from nuri.analysis.portfolio import analyze_portfolio as _analyze
-        df = _analyze(db_path=db_path)
-        if df is None or df.empty:
-            return None
-        total_cost = df.attrs.get("total_cost_usd", 0)
-        total_value = df.attrs.get("total_value_usd", 0)
+        fx_rows = _q("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1", db_path=db_path)
+        if fx_rows and fx_rows[0]["value"]:
+            usd_krw = float(fx_rows[0]["value"])
     except Exception:
-        # analyze_portfolio 실패 시 원시 계산 폴백
-        holdings = query_df(
-            "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
-            db_path=db_path,
-        )
-        if holdings.empty:
-            return None
-        total_cost = 0.0
-        total_value = 0.0
-        for _, row in holdings.iterrows():
-            avg_price = row["avg_price"] or 0
-            qty = row["quantity"] or 0
-            total_cost += avg_price * qty
-            current = _get_current_price(row["ticker"], db_path=db_path)
-            total_value += (current or avg_price) * qty
+        pass
+
+    holdings = query_df(
+        "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
+        db_path=db_path,
+    )
+    if holdings.empty:
+        return None
+
+    total_cost = 0.0
+    total_value = 0.0
+    for _, row in holdings.iterrows():
+        ticker = row["ticker"]
+        avg_price = row["avg_price"] or 0
+        qty = row["quantity"] or 0
+        is_krw = ticker.endswith(".KS")
+
+        cost = avg_price * qty
+        current = _get_current_price(ticker, db_path=db_path)
+        value = (current or avg_price) * qty
+
+        # KRW 종목은 USD로 변환
+        if is_krw and usd_krw > 0:
+            cost /= usd_krw
+            value /= usd_krw
+
+        total_cost += cost
+        total_value += value
 
     if total_cost <= 0:
         return None
