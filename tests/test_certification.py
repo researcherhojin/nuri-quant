@@ -40,8 +40,11 @@ def populated_db(db_path):
     ])
     upsert_prices(prices, db_path)
 
-    # VIX 정상 범위
-    upsert_macro([{"indicator": "vix", "date": today, "value": 18.0, "source": "test"}], db_path)
+    # VIX 정상 범위 + 환율
+    upsert_macro([
+        {"indicator": "vix", "date": today, "value": 18.0, "source": "test"},
+        {"indicator": "usd_krw", "date": today, "value": 1380.0, "source": "test"},
+    ], db_path)
 
     return db_path
 

@@ -73,6 +73,7 @@ def full_db(db_path):
         {"indicator": "vix", "date": today, "value": 18.0, "source": "test"},
         {"indicator": "fear_greed", "date": today, "value": 55.0, "source": "test"},
         {"indicator": "sp500_yoy", "date": today, "value": 15.0, "source": "test"},
+        {"indicator": "usd_krw", "date": today, "value": 1380.0, "source": "test"},
     ], db_path)
 
     return db_path

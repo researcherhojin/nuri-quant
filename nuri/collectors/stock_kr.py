@@ -10,7 +10,7 @@ pykrx는 KRX/네이버 금융 데이터를 사용하며, EOD(종가) 데이터�
 """
 import argparse
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 import pandas as pd
@@ -35,8 +35,12 @@ class StockKRCollector(BaseCollector):
 
         self.logger.info(f"수집 대상: {len(tickers)} 한국 종목 ({days}일)")
 
-        end_date = datetime.now().strftime("%Y%m%d")
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+        # KST 기준 날짜 (KRX는 한국 영업일 기준)
+        from nuri.core.timezone import kst_now
+
+        now_kst = kst_now()
+        end_date = now_kst.strftime("%Y%m%d")
+        start_date = (now_kst - timedelta(days=days)).strftime("%Y%m%d")
 
         frames = []
         for ticker_with_suffix in tickers:

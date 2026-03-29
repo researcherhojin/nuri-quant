@@ -11,7 +11,6 @@ D-1: 시장 레짐 분류기 — Bull/Bear/Sideways x High/Low Volatility.
 import argparse
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -211,8 +210,12 @@ def _check_data_freshness(db_path=None) -> bool:
     if not rows or not rows[0]["latest"]:
         return False
     from datetime import datetime
+
+    from nuri.core.timezone import kst_now
+
     latest = datetime.strptime(rows[0]["latest"], "%Y-%m-%d")
-    age_hours = (datetime.now() - latest).total_seconds() / 3600
+    # KST 기준으로 신선도 비교 (naive datetime 통일)
+    age_hours = (kst_now().replace(tzinfo=None) - latest).total_seconds() / 3600
     # 주말 감안: 금요일 데이터 → 월요일 체크 = 72시간
     if age_hours > 72:
         if not _freshness_warned:
@@ -449,7 +452,9 @@ if __name__ == "__main__":
         print_history(history)
 
         if history:
-            today = datetime.now().strftime("%Y-%m-%d")
+            from nuri.core.timezone import today_kst
+
+            today = today_kst()
             output_dir = REPORT_DIR / today
             output_dir.mkdir(parents=True, exist_ok=True)
             pd.DataFrame([asdict(s) for s in history]).to_csv(

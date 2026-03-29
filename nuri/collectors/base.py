@@ -35,8 +35,10 @@ def parse_date(raw: str) -> str | None:
 
 
 def today_str() -> str:
-    """오늘 날짜 YYYY-MM-DD 문자열."""
-    return datetime.now().strftime("%Y-%m-%d")
+    """오늘 날짜 YYYY-MM-DD 문자열 (KST 기준 — Mac Mini가 한국 시간대)."""
+    from nuri.core.timezone import today_kst
+
+    return today_kst()
 
 
 def fetch_json(url: str, params: dict | None = None, headers: dict | None = None, timeout: int = 20) -> dict:

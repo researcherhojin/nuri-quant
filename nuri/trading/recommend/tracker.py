@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 def save_recommendations(candidates=None, actions=None, db_path=None) -> int:
     """E-1 후보 + E-2 액션을 recommendations 테이블에 저장."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    from nuri.core.timezone import today_kst
+
+    today = today_kst()
     records = []
 
     # E-1 후보에서 regime_fit인 것만
@@ -84,7 +86,10 @@ def save_recommendations(candidates=None, actions=None, db_path=None) -> int:
 
 def track_outcomes(db_path=None) -> int:
     """과거 추천의 30/60/90일 수익률을 업데이트."""
-    now = datetime.now()
+    from nuri.core.timezone import kst_now
+
+    # naive datetime으로 통일 (DB 날짜는 naive)
+    now = kst_now().replace(tzinfo=None)
     updated = 0
 
     # 아직 추적 안 된 추천 조회
