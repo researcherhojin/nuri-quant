@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-628_passed-26a69a?logo=pytest&logoColor=white)]()
+[![Tests](https://img.shields.io/badge/Tests-684_passed-26a69a?logo=pytest&logoColor=white)]()
 [![Coverage](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/CI-passing-4CAF50?logo=githubactions&logoColor=white)]()
@@ -68,7 +68,7 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 | `make evidence` | 5개 Plotly 증거 차트 |
 | `make report-llm` | Qwen3.5 LLM 증거 기반 리포트 |
 | `make start` | API(:8001) + Dashboard(:3000) 동시 실행 |
-| `make test` | pytest 628 tests (39 files) |
+| `make test` | pytest 684 tests (42 files) |
 
 </details>
 
