@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from nuri.core.db import get_db, init_db, query
-from nuri.core.timezone import today_kst
+from nuri.core.timezone import kst_now, today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ def check_exits(db_path=None) -> list[SwingExit]:
         return []
 
     from nuri.trading.agents.consensus import analyze_ticker
-    today = datetime.now()
+    today = kst_now().replace(tzinfo=None)
     exits = []
 
     for trade in open_trades:
