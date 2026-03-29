@@ -47,6 +47,7 @@ class Candidate:
     notes: str
     drift_status: str = ""          # "stable", "degrading", "critical" (from Learning Memory)
     conflict: str = ""              # "" or "direction_conflict" (from Conflict Detection)
+    scoring_detail: dict | None = None  # confidence 계산 요인 기록
 
 
 def _load_scorecard() -> tuple[dict[str, dict], int | None]:
@@ -215,6 +216,14 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                 regime_stats = regime_ctx.get("regime_stats", {}) if regime_ctx else {}
                 sig_in_regime = regime_stats.get(signal_id)
 
+                # scoring_detail 기록용
+                scoring = {
+                    "win_rate": round(win_rate, 4),
+                    "profit_factor": round(pf, 2),
+                    "regime": regime_ctx.get("regime", "") if regime_ctx else "",
+                    "regime_fit": regime_fit,
+                }
+
                 if sig_in_regime and sig_in_regime.get("trades", 0) >= 5:
                     # 데이터 기반: 현재 레짐에서의 실제 승률 × 100
                     regime_wr = sig_in_regime["win_rate"]
@@ -222,25 +231,39 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     pf_cap = min(regime_pf / 5.0, 1.0)
                     # 60% 레짐 내 승률 + 40% 레짐 내 PF (둘 다 실측)
                     confidence = regime_wr * 60 + pf_cap * 40
+                    scoring["base_confidence"] = round(confidence, 2)
+                    scoring["regime_win_rate"] = round(regime_wr, 4)
+                    scoring["regime_pf"] = round(regime_pf, 2)
                 else:
                     # 폴백: 전체 승률 기반 (레짐 무관)
                     pf_normalized = min(pf / 5.0, 1.0)
                     regime_bonus = 1.0 if regime_fit else 0.3
                     confidence = (win_rate * 40 + pf_normalized * 30 + regime_bonus * 30)
+                    scoring["base_confidence"] = round(confidence, 2)
 
                 # 레짐 비적합 시 할인
+                regime_fit_penalty = 1.0
                 if not regime_fit:
-                    confidence *= 0.4
+                    regime_fit_penalty = 0.4
+                    confidence *= regime_fit_penalty
+                scoring["regime_fit_penalty"] = regime_fit_penalty
 
                 # minimal 포지션이면 BUY 신뢰도 대폭 할인
+                position_penalty = 1.0
                 if regime_ctx and regime_ctx.get("position") == "minimal" and direction == "BUY":
-                    confidence *= 0.3
+                    position_penalty = 0.3
+                    confidence *= position_penalty
+                scoring["position_penalty"] = position_penalty
 
                 # Learning Memory drift 페널티
                 drift_info = drift_map.get(signal_id, {})
                 drift_status = drift_info.get("status", "")
+                drift_multiplier = 1.0
                 if drift_status in DRIFT_MULTIPLIERS:
-                    confidence *= DRIFT_MULTIPLIERS[drift_status]
+                    drift_multiplier = DRIFT_MULTIPLIERS[drift_status]
+                    confidence *= drift_multiplier
+                scoring["drift_multiplier"] = drift_multiplier
+                scoring["drift_status"] = drift_status
 
                 notes_parts = []
                 if scorecard_stale:
@@ -251,6 +274,9 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     notes_parts.append(regime_note)
                 if drift_status in ("critical", "degrading"):
                     notes_parts.append(f"성과{drift_status}({drift_info.get('drift_pct', 0):+.0f}%)")
+
+                # 최종 confidence 기록
+                scoring["final_confidence"] = round(confidence, 2)
 
                 candidates.append(Candidate(
                     ticker=ticker,
@@ -264,6 +290,7 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     price=round(float(df["close"].iloc[entry_idx]), 2),
                     notes="; ".join(notes_parts),
                     drift_status=drift_status,
+                    scoring_detail=scoring,
                 ))
 
     # ── Conflict Detection: 방향 충돌 감지 + annotate ──
@@ -281,10 +308,16 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
             if c.ticker in conflict_tickers:
                 c.conflict = "direction_conflict"
                 sev = conflict_tickers[c.ticker]
+                conflict_penalty = 1.0
                 if sev == "high":
-                    c.confidence *= 0.5
+                    conflict_penalty = 0.5
+                    c.confidence *= conflict_penalty
                     if "충돌" not in c.notes:
                         c.notes += "; BUY/SELL 충돌(관망 권장)" if c.notes else "BUY/SELL 충돌(관망 권장)"
+                # scoring_detail에 충돌 페널티 기록
+                if c.scoring_detail is not None:
+                    c.scoring_detail["conflict_penalty"] = conflict_penalty
+                    c.scoring_detail["final_confidence"] = round(c.confidence, 2)
     except Exception as e:
         logger.debug(f"Conflict detection 실패: {e}")
 
