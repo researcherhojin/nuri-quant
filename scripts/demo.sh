@@ -69,7 +69,7 @@ ok "Macro data collected"
 # ═══════════════════════════════════════════════════════
 # STEP 3: Signal Backtest (Phase C-1)
 # ═══════════════════════════════════════════════════════
-header "Signal Backtest — 7 signals × all tickers"
+header "Signal Backtest — 15 signals × all tickers"
 $PYTHON -m nuri.quant.validation.signal_backtest 2>&1 | tail -12
 ok "Signal scorecard generated"
 
@@ -97,7 +97,7 @@ ok "Conflicts analyzed"
 # ═══════════════════════════════════════════════════════
 # STEP 7: Multi-Agent Consensus (Portfolio)
 # ═══════════════════════════════════════════════════════
-header "Multi-Agent Consensus — 5 agents × portfolio"
+header "Multi-Agent Consensus — 7 agents × portfolio"
 $PYTHON -m nuri.trading.agents.consensus 2>&1 | tail -30
 ok "Agent consensus complete"
 

@@ -29,7 +29,11 @@ htmlcov/
 # IDE
 .vscode/
 .idea/
-.claude/
+
+# Claude Code (개인 설정은 무시, 프로젝트 commands는 추적)
+.claude/settings.json
+.claude/projects/
+.claude/plans/
 
 # Frontend
 frontend/node_modules/
