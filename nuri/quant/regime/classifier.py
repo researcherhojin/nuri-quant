@@ -238,12 +238,12 @@ def _get_macro_value(indicator: str, date: str | None = None, db_path=None) -> f
 
 
 def _detect_recovery(spy_df: pd.DataFrame, vix: float | None, thresholds: dict) -> bool:
-    """회복 레짐: 200일 하락 후 SMA50이 SMA200 상향 돌파 + VIX 하락 추세.
+    """회복 레짐: 장기 하락 후 SMA50이 SMA200 상향 돌파 + VIX 하락 추세.
 
     조건:
-    1. 최근 200일 중 SMA200이 하락 추세 (SMA200 20일 전 > 현재)
-    2. SMA50이 SMA200 근처에서 상향 돌파 중 (sma50 < sma200이었다가 근접)
-    3. VIX가 하락 추세 (최근 VIX < 20일 전 VIX 근사)
+    1. SMA200이 장기 하락 추세 (200일 전 또는 가용 최초 시점 대비 현재가 하락)
+    2. SMA50이 SMA200 근처에서 상향 돌파 중 (직전에 아래였다가 위로)
+    3. VIX가 적정 수준 (25 미만)
     """
     if len(spy_df) < 220:
         return False
@@ -257,15 +257,22 @@ def _detect_recovery(spy_df: pd.DataFrame, vix: float | None, thresholds: dict) 
     if pd.isna(sma50) or pd.isna(sma200):
         return False
 
-    # SMA200이 최근 하락 추세였는지 (20일 전보다 현재가 낮거나 비슷)
-    sma200_prev = prev_20["sma200"]
-    if pd.isna(sma200_prev):
-        return False
-    sma200_declining = sma200 <= sma200_prev
+    # SMA200이 장기 하락 추세였는지 (200일 전 또는 가용 최초 시점 대비)
+    # 20일이 아닌 200일 이전과 비교하여 진정한 장기 하락 확인
+    lookback_idx = max(0, len(spy_df) - 200)
+    sma200_long_ago = spy_df.iloc[lookback_idx]["sma200"]
+    if pd.isna(sma200_long_ago):
+        # 200일 전 SMA200이 없으면 유효한 첫 번째 SMA200 사용
+        valid_sma200 = spy_df["sma200"].dropna()
+        if valid_sma200.empty:
+            return False
+        sma200_long_ago = valid_sma200.iloc[0]
+    sma200_declining = sma200 <= sma200_long_ago
 
-    # SMA50이 SMA200 위로 돌파 (직전에 아래였다가 위로)
+    # SMA50이 SMA200 위로 돌파 (직전 20일에 아래였다가 현재 위로)
     sma50_prev = prev_20["sma50"]
-    if pd.isna(sma50_prev):
+    sma200_prev = prev_20["sma200"]
+    if pd.isna(sma50_prev) or pd.isna(sma200_prev):
         return False
     sma50_crossing_up = sma50_prev < sma200_prev and sma50 >= sma200
 
@@ -288,7 +295,7 @@ def _detect_euphoria(vix: float | None, fear_greed: float | None) -> bool:
 def _detect_sector_rotation(spy_df: pd.DataFrame, db_path=None, date: str | None = None) -> bool:
     """섹터 로테이션: SPY 횡보 + 특정 섹터 ETF 3%+ 상승.
 
-    SPY의 5일 수익률이 -1% ~ +1% 범위(횡보)인데,
+    SPY의 5일 수익률이 -2% ~ +2% 범위(횡보)인데,
     섹터 ETF 중 하나라도 5일 수익률 3% 이상이면 로테이션.
     """
     if len(spy_df) < 10:
@@ -300,8 +307,8 @@ def _detect_sector_rotation(spy_df: pd.DataFrame, db_path=None, date: str | None
         return False
     spy_ret_5d = (spy_close / spy_close_5d - 1) * 100
 
-    # SPY가 횡보 (-1% ~ +1%)
-    if abs(spy_ret_5d) > 1.0:
+    # SPY가 횡보 (-2% ~ +2%) — 기존 ±1%는 너무 엄격하여 실제 로테이션 포착 어려움
+    if abs(spy_ret_5d) > 2.0:
         return False
 
     # 섹터 ETF 확인
@@ -326,12 +333,22 @@ def _detect_sector_rotation(spy_df: pd.DataFrame, db_path=None, date: str | None
 def _detect_stagflation(db_path=None, date: str | None = None) -> bool:
     """스태그플레이션: CPI > 4% AND GDP < 1%.
 
-    데이터 없으면 False (보수적).
+    gdp_growth는 현재 수집기가 없으므로 데이터 부재 시 False 반환.
+    향후 FRED GDP 수집기 추가 시 자동으로 작동.
+    NOTE: gdp_growth 수집을 위해서는 FRED 시리즈 'A191RL1Q225SBEA'
+    (Real GDP growth rate, quarterly) 추가가 필요함.
     """
     cpi = _get_macro_value("cpi_yoy", date, db_path)
     gdp = _get_macro_value("gdp_growth", date, db_path)
 
-    if cpi is None or gdp is None:
+    if cpi is None:
+        return False
+
+    if gdp is None:
+        logger.warning(
+            "gdp_growth 데이터 없음 — stagflation 감지 불가. "
+            "수동 입력 또는 FRED 수집기 확장 필요 (시리즈: A191RL1Q225SBEA)"
+        )
         return False
 
     return cpi > 4.0 and gdp < 1.0

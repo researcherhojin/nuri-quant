@@ -124,7 +124,7 @@ SIGNAL_DEFINITIONS = {
         "hold_days": 20,
         "requires_macro": True,
     },
-    "yield_inversion": {
+    "yield_curve_recovery": {
         "description": "수익률곡선 정상화 (3M-10Y 역전 → 정상 전환)",
         "hold_days": 30,
         "requires_macro": True,
@@ -195,6 +195,22 @@ def _load_macro_series(indicator: str, db_path=None) -> pd.DataFrame:
     return df
 
 
+def _load_short_interest(ticker: str, db_path=None) -> pd.DataFrame:
+    """external_analysis 테이블에서 short_interest 시계열 로드.
+
+    wallstreet collector가 short_interest를 external_analysis에 저장하므로
+    macro 테이블이 아닌 external_analysis에서 조회해야 함.
+    """
+    df = query_df(
+        "SELECT date, numeric_value AS value FROM external_analysis "
+        "WHERE source = 'short_interest' AND ticker = ? ORDER BY date",
+        (ticker,), db_path=db_path,
+    )
+    if not df.empty:
+        df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
 def _load_insider_trades(ticker: str, db_path=None) -> pd.DataFrame:
     """insider_trades 테이블에서 매수 거래 로드."""
     df = query_df(
@@ -258,9 +274,12 @@ def _detect_pcr_reversal_entries(dates: pd.Series, pcr_df: pd.DataFrame) -> list
         ]
         if len(pcr_window) >= 2:
             # 윈도우 내 최고점 1.2 이상이었다가 현재 0.8 이하로 하락
+            # 반드시 최고점이 현재(마지막)보다 앞에 위치해야 함 (high→low 순서)
             max_pcr = pcr_window.max()
+            max_pcr_idx = pcr_window.values.argmax()
             current_pcr = pcr_window.iloc[-1] if not pcr_window.empty else None
-            if current_pcr is not None and max_pcr >= 1.2 and current_pcr <= 0.8:
+            if (current_pcr is not None and max_pcr >= 1.2 and current_pcr <= 0.8
+                    and max_pcr_idx < len(pcr_window) - 1):
                 entries.append(i)
 
     return entries
@@ -297,7 +316,10 @@ def _detect_short_squeeze_entries(
 def _detect_insider_cluster_entries(
     dates: pd.Series, insider_df: pd.DataFrame,
 ) -> list[int]:
-    """내부자 집중 매수: 10일 내 3건 이상 매수."""
+    """내부자 집중 매수: 10일 내 3건 이상 매수.
+
+    슬라이딩 윈도우로 O(n+m) 최적화 (n=거래일수, m=매수건수).
+    """
     if insider_df.empty:
         return []
 
@@ -308,27 +330,46 @@ def _detect_insider_cluster_entries(
     if buy_df.empty:
         return []
 
+    # 정렬된 매수 날짜 배열 (슬라이딩 윈도우용)
+    buy_dates_sorted = buy_df["date"].sort_values().values
+
     entries = []
+    left = 0  # 윈도우 좌측 포인터
+
     for i in range(10, len(dates)):
         date = dates.iloc[i]
         window_start = dates.iloc[i - 10]
-        # 10일 윈도우 내 매수 건수
-        count = buy_df[
-            (buy_df["date"] >= window_start) & (buy_df["date"] <= date)
-        ].shape[0]
-        if count >= 3:
+
+        # 좌측 포인터를 윈도우 시작 이상으로 전진
+        while left < len(buy_dates_sorted) and buy_dates_sorted[left] < window_start:
+            left += 1
+
+        # 우측 경계: date 이하인 매수 건수 = right - left
+        right = left
+        while right < len(buy_dates_sorted) and buy_dates_sorted[right] <= date:
+            right += 1
+
+        if right - left >= 3:
             entries.append(i)
 
     return entries
 
 
 def _detect_vix_reversal_entries(dates: pd.Series, vix_df: pd.DataFrame) -> list[int]:
-    """VIX 반전: VIX 30+ → 25 이하 하락."""
+    """VIX 반전: VIX가 3일 연속 30+ 이후 25 이하로 하락.
+
+    단일 일 급락 노이즈를 방지하기 위해, VIX >= 30이 최소 3일 연속
+    유지된 후 25 미만으로 떨어져야 시그널 발동.
+    """
     if vix_df.empty:
         return []
 
     entries = []
     vix_df = vix_df.set_index("date").sort_index()
+
+    # VIX 30+ 연속 일수 카운터
+    consecutive_high = 0
+    MIN_HIGH_DAYS = 3
 
     for i in range(1, len(dates)):
         date = dates.iloc[i]
@@ -343,14 +384,21 @@ def _detect_vix_reversal_entries(dates: pd.Series, vix_df: pd.DataFrame) -> list
         current_vix = vix_rows.iloc[-1]
         prev_vix = vix_prev_rows.iloc[-1]
 
-        # 전일 30 이상이었다가 당일 25 이하로 하락
-        if prev_vix >= 30 and current_vix < 25:
+        # 전일 VIX 30+ 연속 카운트 갱신
+        if prev_vix >= 30:
+            consecutive_high += 1
+        else:
+            consecutive_high = 0
+
+        # 3일 이상 30+ 유지 후 25 미만으로 하락해야 시그널
+        if consecutive_high >= MIN_HIGH_DAYS and current_vix < 25:
             entries.append(i)
+            consecutive_high = 0  # 발동 후 리셋
 
     return entries
 
 
-def _detect_yield_inversion_entries(
+def _detect_yield_curve_recovery_entries(
     dates: pd.Series, y3m_df: pd.DataFrame, y10_df: pd.DataFrame,
 ) -> list[int]:
     """수익률곡선 정상화: 3M-10Y 스프레드가 음수 → 양수 전환."""
@@ -530,8 +578,8 @@ def backtest_signals(
     # 매크로 데이터 사전 로드 (필요한 경우만)
     pcr_df = _load_macro_series("put_call_ratio", db_path) if "pcr_reversal" in macro_signals else pd.DataFrame()
     vix_df = _load_macro_series("vix", db_path) if "vix_reversal" in macro_signals else pd.DataFrame()
-    y3m_df = _load_macro_series("us_3m_yield", db_path) if "yield_inversion" in macro_signals else pd.DataFrame()
-    y10_df = _load_macro_series("us_10y_yield", db_path) if "yield_inversion" in macro_signals else pd.DataFrame()
+    y3m_df = _load_macro_series("us_3m_yield", db_path) if "yield_curve_recovery" in macro_signals else pd.DataFrame()
+    y10_df = _load_macro_series("us_10y_yield", db_path) if "yield_curve_recovery" in macro_signals else pd.DataFrame()
     short_df_cache: dict[str, pd.DataFrame] = {}  # ticker → short_interest DF
 
     # 종목 목록 결정
@@ -597,15 +645,15 @@ def backtest_signals(
                 entries = _detect_pcr_reversal_entries(df["date"], pcr_df)
             elif sig_id == "short_squeeze":
                 if tkr not in short_df_cache:
-                    short_df_cache[tkr] = _load_macro_series("short_interest", db_path)
+                    short_df_cache[tkr] = _load_short_interest(tkr, db_path)
                 entries = _detect_short_squeeze_entries(df, df["date"], short_df_cache[tkr])
             elif sig_id == "insider_cluster":
                 insider_df = _load_insider_trades(tkr, db_path)
                 entries = _detect_insider_cluster_entries(df["date"], insider_df)
             elif sig_id == "vix_reversal":
                 entries = _detect_vix_reversal_entries(df["date"], vix_df)
-            elif sig_id == "yield_inversion":
-                entries = _detect_yield_inversion_entries(df["date"], y3m_df, y10_df)
+            elif sig_id == "yield_curve_recovery":
+                entries = _detect_yield_curve_recovery_entries(df["date"], y3m_df, y10_df)
             else:
                 entries = []
 

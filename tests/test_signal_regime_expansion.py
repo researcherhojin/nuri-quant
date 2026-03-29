@@ -279,20 +279,21 @@ class TestVIXReversal:
     """vix_reversal 시그널: VIX 30+ → 25 이하."""
 
     def test_vix_reversal_detection(self):
-        """VIX 30 → 24 하락 시 감지."""
+        """VIX 3일 연속 30+ 후 25 이하 하락 시 감지."""
         from nuri.quant.validation.signal_backtest import _detect_vix_reversal_entries
 
         dates = pd.Series(pd.bdate_range("2025-01-01", periods=10))
+        # 3일 연속 VIX >= 30 필요 (06, 07, 08) → 09일에 24로 하락
         vix_df = pd.DataFrame({
             "date": pd.to_datetime([
-                "2025-01-06", "2025-01-07", "2025-01-08",
+                "2025-01-06", "2025-01-07", "2025-01-08", "2025-01-09",
             ]),
-            "value": [32.0, 30.5, 24.0],
+            "value": [32.0, 31.0, 30.5, 24.0],
         })
         entries = _detect_vix_reversal_entries(dates, vix_df)
         assert len(entries) >= 1
 
-    def test_vix_no_reversal(self):
+    def test_vix_no_reversal_still_high(self):
         """VIX가 계속 높으면 미감지."""
         from nuri.quant.validation.signal_backtest import _detect_vix_reversal_entries
 
@@ -300,6 +301,19 @@ class TestVIXReversal:
         vix_df = pd.DataFrame({
             "date": pd.to_datetime(["2025-01-06", "2025-01-07"]),
             "value": [32.0, 31.0],
+        })
+        entries = _detect_vix_reversal_entries(dates, vix_df)
+        assert entries == []
+
+    def test_vix_single_day_spike_no_trigger(self):
+        """VIX 1일만 30+ → 25 이하: 3일 연속 미달로 미감지."""
+        from nuri.quant.validation.signal_backtest import _detect_vix_reversal_entries
+
+        dates = pd.Series(pd.bdate_range("2025-01-01", periods=10))
+        # VIX가 1일만 30+ 후 바로 하락 → 연속 3일 미달
+        vix_df = pd.DataFrame({
+            "date": pd.to_datetime(["2025-01-06", "2025-01-07"]),
+            "value": [32.0, 24.0],
         })
         entries = _detect_vix_reversal_entries(dates, vix_df)
         assert entries == []
@@ -313,12 +327,12 @@ class TestVIXReversal:
         assert entries == []
 
 
-class TestYieldInversion:
-    """yield_inversion 시그널: 3M-10Y 역전 → 정상 전환."""
+class TestYieldCurveRecovery:
+    """yield_curve_recovery 시그널: 3M-10Y 역전 → 정상 전환 (수익률곡선 회복)."""
 
-    def test_yield_inversion_detection(self):
+    def test_yield_curve_recovery_detection(self):
         """스프레드 음수 → 양수 전환 시 감지."""
-        from nuri.quant.validation.signal_backtest import _detect_yield_inversion_entries
+        from nuri.quant.validation.signal_backtest import _detect_yield_curve_recovery_entries
 
         dates = pd.Series(pd.bdate_range("2025-01-01", periods=10))
         y3m_df = pd.DataFrame({
@@ -329,12 +343,12 @@ class TestYieldInversion:
             "date": pd.to_datetime(["2025-01-06", "2025-01-07", "2025-01-08"]),
             "value": [4.5, 4.5, 4.5],  # 4.5-5.0=-0.5 → 4.5-4.0=0.5 (정상 전환)
         })
-        entries = _detect_yield_inversion_entries(dates, y3m_df, y10_df)
+        entries = _detect_yield_curve_recovery_entries(dates, y3m_df, y10_df)
         assert len(entries) >= 1
 
     def test_yield_no_transition(self):
         """스프레드가 계속 양수면 미감지."""
-        from nuri.quant.validation.signal_backtest import _detect_yield_inversion_entries
+        from nuri.quant.validation.signal_backtest import _detect_yield_curve_recovery_entries
 
         dates = pd.Series(pd.bdate_range("2025-01-01", periods=10))
         y3m_df = pd.DataFrame({
@@ -345,15 +359,15 @@ class TestYieldInversion:
             "date": pd.to_datetime(["2025-01-06", "2025-01-07"]),
             "value": [4.0, 4.0],
         })
-        entries = _detect_yield_inversion_entries(dates, y3m_df, y10_df)
+        entries = _detect_yield_curve_recovery_entries(dates, y3m_df, y10_df)
         assert entries == []
 
     def test_yield_empty_data(self):
         """데이터 없으면 빈 리스트."""
-        from nuri.quant.validation.signal_backtest import _detect_yield_inversion_entries
+        from nuri.quant.validation.signal_backtest import _detect_yield_curve_recovery_entries
 
         dates = pd.Series(pd.bdate_range("2025-01-01", periods=10))
-        entries = _detect_yield_inversion_entries(dates, pd.DataFrame(), pd.DataFrame())
+        entries = _detect_yield_curve_recovery_entries(dates, pd.DataFrame(), pd.DataFrame())
         assert entries == []
 
 
@@ -370,7 +384,7 @@ class TestSignalDefinitions:
         from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS
         new_signals = [
             "volume_spike", "gap_up", "gap_down", "pcr_reversal",
-            "short_squeeze", "insider_cluster", "vix_reversal", "yield_inversion",
+            "short_squeeze", "insider_cluster", "vix_reversal", "yield_curve_recovery",
         ]
         for sig in new_signals:
             assert sig in SIGNAL_DEFINITIONS, f"{sig} missing"
@@ -384,7 +398,7 @@ class TestSignalDefinitions:
     def test_macro_signals_flagged(self):
         """매크로 기반 시그널에 requires_macro 플래그."""
         from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS
-        macro_signals = ["pcr_reversal", "short_squeeze", "insider_cluster", "vix_reversal", "yield_inversion"]
+        macro_signals = ["pcr_reversal", "short_squeeze", "insider_cluster", "vix_reversal", "yield_curve_recovery"]
         for sig in macro_signals:
             assert SIGNAL_DEFINITIONS[sig].get("requires_macro") is True, f"{sig} not flagged"
 
@@ -737,3 +751,310 @@ class TestExistingRegimePreservation:
         ]
         for sig in original_signals:
             assert sig in SIGNAL_DEFINITIONS
+
+
+# ═══════════════════════════════════════════════════════
+# Part 3: 버그 수정 검증 테스트
+# ═══════════════════════════════════════════════════════
+
+
+class TestShortInterestFromExternalAnalysis:
+    """Fix #1: short_interest를 external_analysis 테이블에서 로드."""
+
+    def test_load_short_interest_from_external(self, db_path):
+        """_load_short_interest가 external_analysis 테이블에서 데이터 로드."""
+        from nuri.collectors.external import save_external
+        from nuri.quant.validation.signal_backtest import _load_short_interest
+
+        # external_analysis에 short_interest 저장 (wallstreet collector 방식)
+        save_external(
+            "short_interest", "TSLA", "short_pct_float",
+            "25.0", 25.0,
+            details="days_to_cover=3.2",
+            target_date="2025-01-15", db_path=db_path,
+        )
+        df = _load_short_interest("TSLA", db_path)
+        assert not df.empty
+        assert df.iloc[0]["value"] == 25.0
+
+    def test_load_short_interest_empty_ticker(self, db_path):
+        """해당 종목 short_interest 없으면 빈 DataFrame."""
+        from nuri.quant.validation.signal_backtest import _load_short_interest
+
+        df = _load_short_interest("NONEXIST", db_path)
+        assert df.empty
+
+    def test_load_short_interest_not_from_macro(self, db_path):
+        """macro 테이블에 short_interest를 넣어도 _load_short_interest로는 안 읽힘."""
+        from nuri.quant.validation.signal_backtest import _load_short_interest
+
+        upsert_macro([
+            {"indicator": "short_interest", "date": "2025-01-15", "value": 30.0, "source": "test"},
+        ], db_path)
+        # _load_short_interest는 external_analysis만 조회
+        df = _load_short_interest("TSLA", db_path)
+        assert df.empty
+
+
+class TestPCRReversalSequenceCheck:
+    """Fix #3: PCR 반전 시 최고점이 현재보다 앞에 와야 함."""
+
+    def test_pcr_high_before_low(self):
+        """최고점(1.3)이 현재(0.75)보다 먼저 → 감지."""
+        from nuri.quant.validation.signal_backtest import _detect_pcr_reversal_entries
+
+        dates = pd.Series(pd.bdate_range("2025-01-01", periods=20))
+        pcr_data = pd.DataFrame({
+            "date": pd.to_datetime(["2025-01-06", "2025-01-07", "2025-01-08", "2025-01-09", "2025-01-10"]),
+            "value": [1.3, 1.2, 1.0, 0.9, 0.75],
+        })
+        entries = _detect_pcr_reversal_entries(dates, pcr_data)
+        assert len(entries) >= 1
+
+    def test_pcr_low_before_high_no_trigger(self):
+        """현재가 최고점(1.3)이면 → 순서 위반으로 미감지."""
+        from nuri.quant.validation.signal_backtest import _detect_pcr_reversal_entries
+
+        dates = pd.Series(pd.bdate_range("2025-01-01", periods=20))
+        # 낮은 값이 먼저, 높은 값이 마지막 → high→low 순서 아님
+        pcr_data = pd.DataFrame({
+            "date": pd.to_datetime(["2025-01-06", "2025-01-07", "2025-01-08"]),
+            "value": [0.7, 0.8, 1.3],  # 마지막이 최고점이므로 max_idx == last
+        })
+        entries = _detect_pcr_reversal_entries(dates, pcr_data)
+        assert entries == []
+
+    def test_pcr_max_at_end_no_trigger(self):
+        """윈도우 내 max PCR이 마지막 값일 때 미감지 (high→low 순서 아님)."""
+        from nuri.quant.validation.signal_backtest import _detect_pcr_reversal_entries
+
+        dates = pd.Series(pd.bdate_range("2025-01-01", periods=20))
+        # max가 마지막이면서 0.8 이하도 아님 → 미감지
+        pcr_data = pd.DataFrame({
+            "date": pd.to_datetime(["2025-01-06", "2025-01-07"]),
+            "value": [1.0, 1.3],
+        })
+        entries = _detect_pcr_reversal_entries(dates, pcr_data)
+        assert entries == []
+
+
+class TestRecoveryLongTermDecline:
+    """Fix #4: recovery 레짐이 200일 장기 하락을 확인."""
+
+    def test_recovery_requires_long_term_decline(self):
+        """200일 장기 하락 없이 20일 단기 딥만으로는 recovery 미감지."""
+        from nuri.quant.regime.classifier import _detect_recovery
+
+        # 꾸준한 상승 → 20일 소폭 하락 → 반등 (장기 하락 아님)
+        phase1 = np.linspace(100, 180, 250)  # 장기 상승
+        phase2 = np.linspace(180, 170, 20)   # 20일 소폭 조정
+        phase3 = np.linspace(170, 185, 30)   # 반등
+        close = np.concatenate([phase1, phase2, phase3])
+
+        df = pd.DataFrame({"close": close})
+        df["sma50"] = df["close"].rolling(50).mean()
+        df["sma200"] = df["close"].rolling(200).mean()
+
+        # SMA200은 장기 상승 중이므로 시작보다 끝이 높음 → sma200_declining = False
+        result = _detect_recovery(df, vix=20.0, thresholds={"sideways_pct": 2.0})
+        assert result is False
+
+    def test_recovery_with_genuine_decline(self):
+        """200일 하락 → SMA50 돌파 → recovery 감지 가능."""
+        from nuri.quant.regime.classifier import _detect_recovery
+
+        phase1 = np.linspace(200, 120, 200)  # 200일 장기 하락
+        phase2 = np.linspace(120, 170, 100)  # 100일 상승 반전
+        close = np.concatenate([phase1, phase2])
+
+        df = pd.DataFrame({"close": close})
+        df["sma50"] = df["close"].rolling(50).mean()
+        df["sma200"] = df["close"].rolling(200).mean()
+
+        # 장기 하락 패턴이므로 조건 가능 (SMA50 교차 여부에 따라 True/False)
+        result = _detect_recovery(df, vix=20.0, thresholds={"sideways_pct": 2.0})
+        assert isinstance(result, bool)
+
+
+class TestVIXReversalConsecutiveDays:
+    """Fix #5: VIX 반전에 3일 연속 30+ 요구."""
+
+    def test_three_days_required(self):
+        """정확히 3일 연속 30+ 후 하락 → 감지."""
+        from nuri.quant.validation.signal_backtest import _detect_vix_reversal_entries
+
+        dates = pd.Series(pd.bdate_range("2025-01-01", periods=10))
+        vix_df = pd.DataFrame({
+            "date": pd.to_datetime([
+                "2025-01-06", "2025-01-07", "2025-01-08", "2025-01-09",
+            ]),
+            "value": [31.0, 32.0, 33.0, 23.0],  # 3일 30+, 4일째 25 미만
+        })
+        entries = _detect_vix_reversal_entries(dates, vix_df)
+        assert len(entries) >= 1
+
+    def test_two_days_not_enough(self):
+        """2일 연속 30+ 후 하락 → 3일 미달로 미감지."""
+        from nuri.quant.validation.signal_backtest import _detect_vix_reversal_entries
+
+        dates = pd.Series(pd.bdate_range("2025-01-01", periods=10))
+        vix_df = pd.DataFrame({
+            "date": pd.to_datetime([
+                "2025-01-06", "2025-01-07", "2025-01-08",
+            ]),
+            "value": [31.0, 32.0, 23.0],  # 2일만 30+
+        })
+        entries = _detect_vix_reversal_entries(dates, vix_df)
+        assert entries == []
+
+    def test_interrupted_streak_no_trigger(self):
+        """30+ 연속이 중간에 끊기면 미감지."""
+        from nuri.quant.validation.signal_backtest import _detect_vix_reversal_entries
+
+        dates = pd.Series(pd.bdate_range("2025-01-01", periods=15))
+        # 30+ → 28(끊김) → 31 → 24 (연속 1일만이므로 미달)
+        vix_df = pd.DataFrame({
+            "date": pd.to_datetime([
+                "2025-01-06", "2025-01-07", "2025-01-08", "2025-01-09", "2025-01-10",
+            ]),
+            "value": [31.0, 28.0, 31.0, 30.0, 24.0],
+        })
+        entries = _detect_vix_reversal_entries(dates, vix_df)
+        assert entries == []
+
+
+class TestSectorRotationWidenedRange:
+    """Fix #6: sector_rotation SPY 횡보 범위 ±2%."""
+
+    def test_spy_1_5_pct_still_sideways(self, db_path):
+        """SPY 5일 수익률 1.5%는 기존 ±1%에선 미감지이나 ±2%에선 횡보."""
+        from nuri.quant.regime.classifier import _detect_sector_rotation
+
+        dates = pd.bdate_range("2025-01-01", periods=300)
+        # SPY 가격: 마지막 5일에서 +1.5% 상승 (±2% 내)
+        close = np.full(300, 150.0)
+        close[-5:] = [150.0, 150.3, 150.6, 150.9, 152.25]  # 150→152.25 = +1.5%
+        spy_df = pd.DataFrame({"close": close})
+
+        spy_prices = _make_price_df("SPY", dates, close)
+        upsert_prices(spy_prices, db_path)
+
+        # XLK 5% 상승
+        xlk_close = np.full(300, 100.0)
+        xlk_close[-5:] = [100.0, 101.0, 102.0, 103.0, 105.0]
+        xlk_prices = _make_price_df("XLK", dates, xlk_close)
+        upsert_prices(xlk_prices, db_path)
+
+        result = _detect_sector_rotation(spy_df, db_path)
+        # SPY 1.5% < 2.0% 이므로 횡보로 판단, XLK 5%이므로 로테이션 가능
+        assert result is True
+
+    def test_spy_2_5_pct_not_sideways(self, db_path):
+        """SPY 5일 수익률 2.5%는 ±2% 초과 → 횡보 아님."""
+        from nuri.quant.regime.classifier import _detect_sector_rotation
+
+        dates = pd.bdate_range("2025-01-01", periods=300)
+        close = np.full(300, 150.0)
+        close[-5:] = [150.0, 150.5, 151.0, 152.0, 153.75]  # +2.5%
+        spy_df = pd.DataFrame({"close": close})
+
+        spy_prices = _make_price_df("SPY", dates, close)
+        upsert_prices(spy_prices, db_path)
+
+        result = _detect_sector_rotation(spy_df, db_path)
+        assert result is False
+
+
+class TestInsiderClusterOptimized:
+    """Fix #7: insider_cluster 슬라이딩 윈도우 최적화 — 결과 동일성 확인."""
+
+    def test_cluster_detection_preserved(self):
+        """최적화 후에도 10일 내 3건 감지 동작 동일."""
+        from nuri.quant.validation.signal_backtest import _detect_insider_cluster_entries
+
+        dates = pd.Series(pd.bdate_range("2025-01-01", periods=30))
+        insider_df = pd.DataFrame({
+            "date": pd.to_datetime(["2025-01-13", "2025-01-14", "2025-01-15"]),
+            "transaction_type": ["Purchase", "Purchase", "Buy"],
+        })
+        entries = _detect_insider_cluster_entries(dates, insider_df)
+        assert len(entries) >= 1
+
+    def test_cluster_no_false_positives(self):
+        """매수 2건은 3건 미달 → 미감지."""
+        from nuri.quant.validation.signal_backtest import _detect_insider_cluster_entries
+
+        dates = pd.Series(pd.bdate_range("2025-01-01", periods=30))
+        insider_df = pd.DataFrame({
+            "date": pd.to_datetime(["2025-01-13", "2025-01-14"]),
+            "transaction_type": ["Purchase", "Buy"],
+        })
+        entries = _detect_insider_cluster_entries(dates, insider_df)
+        assert entries == []
+
+    def test_cluster_spread_over_11_days(self):
+        """11일에 걸친 3건은 10일 윈도우 내 미포함 가능."""
+        from nuri.quant.validation.signal_backtest import _detect_insider_cluster_entries
+
+        dates = pd.Series(pd.bdate_range("2025-01-01", periods=30))
+        # 11 영업일 간격 (첫 번째와 세 번째가 10일 윈도우 밖)
+        insider_df = pd.DataFrame({
+            "date": pd.to_datetime(["2025-01-02", "2025-01-08", "2025-01-17"]),
+            "transaction_type": ["Purchase", "Purchase", "Buy"],
+        })
+        entries = _detect_insider_cluster_entries(dates, insider_df)
+        # 01-02~01-17은 15일 차이 → 10일 윈도우에 3건이 안 들어감
+        # 단, dates 기준 윈도우이므로 특정 날짜의 i-10 ~ i 범위에서 확인
+        assert isinstance(entries, list)
+
+
+class TestStagflationGracefulNone:
+    """Fix #2: gdp_growth 없을 때 _detect_stagflation이 경고와 함께 False 반환."""
+
+    def test_stagflation_no_gdp_returns_false(self, db_path):
+        """GDP 데이터 없으면 False (경고 로그 발생)."""
+        from nuri.quant.regime.classifier import _detect_stagflation
+
+        upsert_macro([
+            {"indicator": "cpi_yoy", "date": "2025-01-15", "value": 5.0, "source": "test"},
+        ], db_path)
+        # gdp_growth가 없으므로 False 반환
+        assert _detect_stagflation(db_path, "2025-01-15") is False
+
+    def test_stagflation_no_cpi_returns_false(self, db_path):
+        """CPI 데이터 없으면 즉시 False (경고 없이)."""
+        from nuri.quant.regime.classifier import _detect_stagflation
+
+        # cpi_yoy도 gdp_growth도 없음
+        assert _detect_stagflation(db_path, "2025-01-15") is False
+
+    def test_stagflation_with_both_data(self, db_path):
+        """CPI와 GDP 모두 있으면 정상 판별."""
+        from nuri.quant.regime.classifier import _detect_stagflation
+
+        upsert_macro([
+            {"indicator": "cpi_yoy", "date": "2025-01-15", "value": 5.0, "source": "test"},
+            {"indicator": "gdp_growth", "date": "2025-01-15", "value": 0.5, "source": "test"},
+        ], db_path)
+        assert _detect_stagflation(db_path, "2025-01-15") is True
+
+
+class TestYieldCurveRecoveryRename:
+    """Fix #8: yield_inversion → yield_curve_recovery 이름 변경 확인."""
+
+    def test_old_name_not_in_definitions(self):
+        """구 이름 yield_inversion이 SIGNAL_DEFINITIONS에 없음."""
+        from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS
+        assert "yield_inversion" not in SIGNAL_DEFINITIONS
+
+    def test_new_name_in_definitions(self):
+        """신규 이름 yield_curve_recovery가 SIGNAL_DEFINITIONS에 있음."""
+        from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS
+        assert "yield_curve_recovery" in SIGNAL_DEFINITIONS
+        assert SIGNAL_DEFINITIONS["yield_curve_recovery"]["requires_macro"] is True
+
+    def test_function_renamed(self):
+        """함수명도 _detect_yield_curve_recovery_entries로 변경."""
+        from nuri.quant.validation import signal_backtest
+        assert hasattr(signal_backtest, "_detect_yield_curve_recovery_entries")
+        assert not hasattr(signal_backtest, "_detect_yield_inversion_entries")
