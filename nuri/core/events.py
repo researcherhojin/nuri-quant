@@ -51,15 +51,19 @@ def emit_event(
 
 def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
     """특정 스텝의 최신 이벤트 조회 → {status, timestamp, payload}."""
-    rows = query(
-        """SELECT event_type, timestamp, payload
-           FROM pipeline_events
-           WHERE step = ?
-           ORDER BY timestamp DESC, id DESC
-           LIMIT 1""",
-        (step,),
-        db_path,
-    )
+    try:
+        rows = query(
+            """SELECT event_type, timestamp, payload
+               FROM pipeline_events
+               WHERE step = ?
+               ORDER BY timestamp DESC, id DESC
+               LIMIT 1""",
+            (step,),
+            db_path,
+        )
+    except Exception:
+        # pipeline_events 테이블이 아직 없는 경우 (마이그레이션 미적용)
+        return {"step": step, "status": "unknown", "timestamp": None, "payload": None}
     if not rows:
         return {"step": step, "status": "unknown", "timestamp": None, "payload": None}
 
