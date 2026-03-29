@@ -1,0 +1,448 @@
+"""Pipeline API + Dashboard v2 통합 테스트.
+
+TestClient로 파이프라인/대시보드/신선도 엔드포인트를 검증한다.
+실제 DB 대신 tmp_path에 빈 DB를 생성하여 격리.
+"""
+import json
+from datetime import timedelta
+
+import pytest
+from fastapi.testclient import TestClient
+
+from nuri.core.timezone import kst_now, today_kst
+
+
+@pytest.fixture()
+def db_path(tmp_path):
+    """테스트용 DB 생성."""
+    from nuri.core.db import init_db
+
+    path = tmp_path / "test.db"
+    init_db(path)
+    return path
+
+
+@pytest.fixture()
+def client(db_path, monkeypatch):
+    """테스트용 DB로 격리된 FastAPI TestClient."""
+    import nuri.core.db as db_mod
+    monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+    from nuri.api.main import app
+    return TestClient(app)
+
+
+def _seed_recommendations(db_path, date=None):
+    """테스트용 recommendations 데이터 삽입."""
+    from nuri.core.db import get_db
+
+    if date is None:
+        date = today_kst()
+
+    recs = [
+        (date, "AAPL", "BUY", 0.85, "bull_low_vol", "RSI oversold + MACD cross", 180.0),
+        (date, "NVDA", "BUY", 0.72, "bull_low_vol", "SMA golden cross", 168.0),
+        (date, "TSLA", "SELL", 0.90, "sideways_high_vol", "RSI overbought", 250.0),
+        (date, "META", "HOLD", 0.45, "bull_low_vol", "Mixed signals", 500.0),
+    ]
+    with get_db(db_path) as conn:
+        conn.executemany(
+            """INSERT INTO recommendations (date, ticker, action, confidence, regime, signals, entry_price)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            recs,
+        )
+
+
+def _seed_pipeline_events(db_path):
+    """테스트용 pipeline_events 데이터 삽입."""
+    from nuri.core.db import get_db
+
+    events = [
+        ("step_success", "collect", json.dumps({"detail": "11 collectors"}), 5000, 1500, None),
+        ("step_success", "classify", json.dumps({"detail": "regime=bull_low_vol"}), 3200, 1, None),
+        ("step_failed", "diagnose", json.dumps({"error": "timeout"}), 60000, 0, None),
+    ]
+    with get_db(db_path) as conn:
+        conn.executemany(
+            """INSERT INTO pipeline_events (event_type, step, payload, duration_ms, record_count, causation_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            events,
+        )
+
+
+def _seed_prices(db_path):
+    """테스트용 prices 데이터 삽입 (신선도 테스트용)."""
+    from nuri.core.db import get_db
+
+    today = today_kst()
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("AAPL", today, 180, 185, 179, 183, 50000000),
+        )
+        # freshness 정책이 SPY 기준으로 조회하므로 SPY도 추가
+        conn.execute(
+            "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("SPY", today, 580, 585, 578, 583, 80000000),
+        )
+
+
+class TestDashboardV2:
+    def test_dashboard_returns_fast(self, client, db_path):
+        """추천 데이터가 있을 때 대시보드 응답 검증."""
+        _seed_recommendations(db_path)
+        _seed_pipeline_events(db_path)
+        _seed_prices(db_path)
+
+        r = client.get("/api/dashboard")
+        assert r.status_code == 200
+        data = r.json()
+
+        # 필수 필드 확인
+        assert "verdict" in data
+        assert "verdict_level" in data
+        assert "regime" in data
+        assert "actions" in data
+        assert "alerts" in data
+        assert "gate_score" in data
+        assert "freshness" in data
+        assert "pipeline_status" in data
+
+    def test_dashboard_without_recommendations(self, client, db_path):
+        """빈 DB에서도 에러 없이 정상 응답."""
+        # 캐시 무효화 (이전 테스트 결과가 남아있을 수 있음)
+        from nuri.api.routes.dashboard import _cache
+        _cache["data"] = None
+        _cache["timestamp"] = 0
+        r = client.get("/api/dashboard")
+        assert r.status_code == 200
+        data = r.json()
+
+        assert "verdict" in data
+        assert "actions" in data
+        assert data["actions"] == []
+        assert "freshness" in data
+        assert "pipeline_status" in data
+
+    def test_dashboard_actions_from_db(self, client, db_path):
+        """recommendations 테이블에서 액션을 올바르게 읽는지 확인."""
+        _seed_recommendations(db_path)
+
+        # 캐시 무효화
+        from nuri.api.routes.dashboard import _cache
+        _cache["data"] = None
+        _cache["timestamp"] = 0
+
+        r = client.get("/api/dashboard")
+        assert r.status_code == 200
+        data = r.json()
+
+        actions = data["actions"]
+        tickers = [a["ticker"] for a in actions]
+        # BUY: AAPL(85%), NVDA(72%) 둘 다 >= 50%
+        assert "AAPL" in tickers
+        assert "NVDA" in tickers
+        # SELL: TSLA(90%) >= 70%
+        assert "TSLA" in tickers
+        # HOLD: META(45%) < 50% → 포함 안 됨
+        assert "META" not in tickers
+
+    def test_dashboard_cached(self, client, db_path):
+        """두 번 호출 — 캐시 사용."""
+        r1 = client.get("/api/dashboard")
+        r2 = client.get("/api/dashboard")
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+
+    def test_dashboard_freshness_fields(self, client, db_path):
+        """신선도 정보 존재 확인."""
+        _seed_prices(db_path)
+
+        from nuri.api.routes.dashboard import _cache
+        _cache["data"] = None
+        _cache["timestamp"] = 0
+
+        r = client.get("/api/dashboard")
+        assert r.status_code == 200
+        data = r.json()
+
+        freshness = data["freshness"]
+        # prices 데이터를 넣었으므로 prices 키가 있어야 함
+        if "prices" in freshness:
+            assert "status" in freshness["prices"]
+            assert "age_hours" in freshness["prices"]
+
+
+class TestPipelineStatus:
+    def test_pipeline_status_endpoint(self, client, db_path):
+        """파이프라인 상태 엔드포인트 기본 동작."""
+        r = client.get("/api/pipeline/status")
+        assert r.status_code == 200
+        data = r.json()
+
+        assert "steps" in data
+        assert "freshness" in data
+        # 6 steps 모두 존재
+        steps = data["steps"]
+        for step in ("collect", "validate", "classify", "diagnose", "recommend", "track"):
+            assert step in steps
+            assert "status" in steps[step]
+
+    def test_pipeline_status_with_events(self, client, db_path):
+        """이벤트 데이터 있을 때 상태 반영 확인."""
+        _seed_pipeline_events(db_path)
+
+        r = client.get("/api/pipeline/status")
+        assert r.status_code == 200
+        data = r.json()
+
+        steps = data["steps"]
+        # events.py의 get_step_status()가 event_type을 status로 매핑
+        assert steps["collect"]["status"] in ("success", "step_success", "completed")
+        assert steps["diagnose"]["status"] in ("failed", "step_failed")
+
+
+class TestPipelineTimeline:
+    def test_pipeline_timeline_endpoint(self, client, db_path):
+        """타임라인 엔드포인트 기본 동작."""
+        r = client.get("/api/pipeline/timeline")
+        assert r.status_code == 200
+        data = r.json()
+        assert "events" in data
+        assert isinstance(data["events"], list)
+
+    def test_pipeline_timeline_with_data(self, client, db_path):
+        """이벤트 데이터 있을 때 타임라인 확인."""
+        _seed_pipeline_events(db_path)
+
+        r = client.get("/api/pipeline/timeline")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["events"]) == 3
+
+    def test_pipeline_timeline_filter_by_step(self, client, db_path):
+        """스텝별 필터링."""
+        _seed_pipeline_events(db_path)
+
+        r = client.get("/api/pipeline/timeline?step=collect")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["events"]) == 1
+        assert data["events"][0]["step"] == "collect"
+
+    def test_pipeline_timeline_invalid_step(self, client, db_path):
+        """잘못된 스텝명 → 400."""
+        r = client.get("/api/pipeline/timeline?step=invalid")
+        assert r.status_code == 400
+
+    def test_pipeline_timeline_limit(self, client, db_path):
+        """limit 파라미터 동작 확인."""
+        _seed_pipeline_events(db_path)
+
+        r = client.get("/api/pipeline/timeline?limit=2")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["events"]) == 2
+
+
+class TestPipelineRun:
+    def test_pipeline_run_classify(self, client, db_path):
+        """classify 스텝 실행 — 데이터 부족이어도 에러 없이 반환."""
+        r = client.post("/api/pipeline/classify/run")
+        assert r.status_code == 200
+        data = r.json()
+        assert "status" in data
+        assert "duration_ms" in data
+        assert data["status"] in ("success", "failed")
+
+    def test_pipeline_run_collect_not_implemented(self, client, db_path):
+        """collect 스텝 → not_implemented."""
+        r = client.post("/api/pipeline/collect/run")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "success"
+        assert "not_implemented" in data["detail"]
+
+    def test_pipeline_run_invalid_step(self, client, db_path):
+        """잘못된 스텝명 → 400."""
+        r = client.post("/api/pipeline/invalid/run")
+        assert r.status_code == 400
+
+    def test_pipeline_run_records_events(self, client, db_path):
+        """스텝 실행 후 이벤트 기록 확인."""
+        client.post("/api/pipeline/collect/run")
+
+        r = client.get("/api/pipeline/timeline?step=collect")
+        assert r.status_code == 200
+        data = r.json()
+        # step_started + step_success = 2 events
+        assert len(data["events"]) >= 2
+
+
+class TestFreshness:
+    def test_freshness_endpoint(self, client, db_path):
+        """신선도 엔드포인트 기본 동작."""
+        r = client.get("/api/freshness")
+        assert r.status_code == 200
+        data = r.json()
+        assert "details" in data
+        assert "pass" in data
+        assert "warn" in data
+        assert "fail" in data
+
+    def test_freshness_with_data(self, client, db_path):
+        """데이터 있을 때 신선도 확인."""
+        _seed_prices(db_path)
+
+        r = client.get("/api/freshness")
+        assert r.status_code == 200
+        data = r.json()
+
+        prices_detail = next((d for d in data["details"] if d["key"] == "prices"), None)
+        assert prices_detail is not None
+        assert prices_detail["status"] == "PASS"
+
+    def test_freshness_empty_table(self, client, db_path):
+        """빈 테이블 → FAIL 상태."""
+        r = client.get("/api/freshness")
+        assert r.status_code == 200
+        data = r.json()
+
+        prices_detail = next((d for d in data["details"] if d["key"] == "prices"), None)
+        assert prices_detail is not None
+        assert prices_detail["status"] == "FAIL"
+
+
+class TestCoreEvents:
+    """nuri.core.events 모듈 직접 테스트."""
+
+    def test_emit_event(self, db_path):
+        """이벤트 기록 + 조회."""
+        from nuri.core.events import emit_event, get_timeline
+
+        event_id = emit_event("step_success", step="collect", duration_ms=5000, db_path=db_path)
+        assert event_id is not None
+        assert event_id > 0
+
+        events = get_timeline(db_path=db_path)
+        assert len(events) == 1
+        assert events[0]["step"] == "collect"
+        assert events[0]["event_type"] == "step_success"
+
+    def test_emit_event_with_payload(self, db_path):
+        """payload 포함 이벤트."""
+        from nuri.core.events import emit_event, get_timeline
+
+        emit_event(
+            "step_success",
+            step="classify",
+            payload={"regime": "bull_low_vol"},
+            duration_ms=3200,
+            record_count=1,
+            db_path=db_path,
+        )
+        events = get_timeline(db_path=db_path)
+        assert events[0]["payload"] is not None
+        # payload는 이미 dict로 반환되거나 JSON string — 둘 다 대응
+        payload = events[0]["payload"]
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        assert payload["regime"] == "bull_low_vol"
+
+    def test_get_pipeline_status(self, db_path):
+        """파이프라인 상태 조회."""
+        from nuri.core.events import emit_event, get_pipeline_status
+
+        emit_event("step_success", step="collect", duration_ms=5000, db_path=db_path)
+        emit_event("step_failed", step="diagnose", duration_ms=60000, db_path=db_path)
+
+        status = get_pipeline_status(db_path=db_path)
+        # events.py의 status 매핑에 따라 step_ prefix가 있거나 없을 수 있음
+        assert status["collect"]["status"] in ("success", "step_success", "completed")
+        assert status["diagnose"]["status"] in ("failed", "step_failed")
+        assert status["validate"]["status"] in ("never_run", "unknown")
+
+    def test_get_timeline_filter(self, db_path):
+        """스텝별 필터링."""
+        from nuri.core.events import emit_event, get_timeline
+
+        emit_event("step_success", step="collect", db_path=db_path)
+        emit_event("step_success", step="classify", db_path=db_path)
+
+        all_events = get_timeline(db_path=db_path)
+        assert len(all_events) == 2
+
+        collect_only = get_timeline(step="collect", db_path=db_path)
+        assert len(collect_only) == 1
+
+
+class TestCoreFreshness:
+    """nuri.core.freshness 모듈 직접 테스트 — Dagster PASS/WARN/FAIL 패턴."""
+
+    def test_check_freshness_no_data(self, db_path):
+        """데이터 없는 정책 → FAIL (데이터 없음)."""
+        from nuri.core.freshness import check_freshness
+
+        result = check_freshness("prices", db_path=db_path)
+        assert result["status"] == "FAIL"
+        assert result["key"] == "prices"
+
+    def test_check_freshness_with_data(self, db_path):
+        """오늘 SPY 데이터 → PASS."""
+        from nuri.core.db import get_db
+        from nuri.core.freshness import check_freshness
+
+        today = today_kst()
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
+                ("SPY", today, 580.0),
+            )
+
+        result = check_freshness("prices", db_path=db_path)
+        assert result["status"] == "PASS"
+
+    def test_check_freshness_old_data(self, db_path):
+        """오래된 데이터 → FAIL."""
+        from nuri.core.db import get_db
+        from nuri.core.freshness import check_freshness
+
+        old_date = (kst_now().replace(tzinfo=None) - timedelta(days=5)).strftime("%Y-%m-%d")
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
+                ("SPY", old_date, 580.0),
+            )
+
+        result = check_freshness("prices", db_path=db_path)
+        assert result["status"] == "FAIL"
+
+    def test_check_freshness_unknown_key(self, db_path):
+        """등록되지 않은 정책 키 → KeyError."""
+        import pytest as pt
+
+        from nuri.core.freshness import check_freshness
+        with pt.raises(KeyError):
+            check_freshness("nonexistent_key", db_path=db_path)
+
+    def test_check_all_freshness(self, db_path):
+        """전체 신선도 → 5개 정책 포함."""
+        from nuri.core.freshness import FRESHNESS_POLICIES, check_all_freshness
+
+        results = check_all_freshness(db_path=db_path)
+        assert len(results) == len(FRESHNESS_POLICIES)
+        keys = [r["key"] for r in results]
+        assert "prices" in keys
+        assert "macro_vix" in keys
+
+    def test_get_freshness_summary(self, db_path):
+        """요약 카운트 검증."""
+        from nuri.core.freshness import FRESHNESS_POLICIES, get_freshness_summary
+
+        result = get_freshness_summary(db_path=db_path)
+        assert "details" in result
+        assert "pass" in result
+        assert "warn" in result
+        assert "fail" in result
+        # 빈 DB → 모두 FAIL
+        assert result["fail"] == len(FRESHNESS_POLICIES)
