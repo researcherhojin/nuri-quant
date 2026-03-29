@@ -1,5 +1,7 @@
 """Layer 0 데이터 무결성 테스트 — VIX 히스테리시스 + 데이터 신선도."""
 from datetime import datetime, timedelta
+
+from nuri.core.timezone import kst_now, today_kst
 from unittest.mock import patch
 
 import numpy as np
@@ -22,7 +24,9 @@ def _insert_spy_data(db_path, n_days=300, trend="bull", last_date=None):
     if last_date is None:
         from nuri.core.timezone import today_kst
         last_date = today_kst()
-    dates = pd.bdate_range(end=last_date, periods=n_days)
+    # bdate_range는 주말을 건너뛰어 마지막 날짜가 last_date와 다를 수 있음
+    # freshness 테스트에서 정확한 날짜가 필요하므로 date_range 사용
+    dates = pd.date_range(end=last_date, periods=n_days, freq="D")
 
     if trend == "bull":
         close = np.linspace(100, 200, n_days) + np.random.default_rng(42).normal(0, 0.5, n_days)
@@ -171,7 +175,7 @@ class TestDataFreshnessEnforcement:
     def test_stale_data_blocks_regime(self, db_path):
         """72시간 초과 데이터 → classify_regime이 None 반환."""
         # 10일 전 날짜로 데이터 삽입
-        stale_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        stale_date = (kst_now().replace(tzinfo=None) - timedelta(days=10)).strftime("%Y-%m-%d")
         _insert_spy_data(db_path, n_days=300, trend="bull", last_date=stale_date)
 
         upsert_macro([{
@@ -188,7 +192,7 @@ class TestDataFreshnessEnforcement:
 
     def test_fresh_data_allows_regime(self, db_path):
         """신선한 데이터 → classify_regime이 정상 동작."""
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_kst()
         dates = _insert_spy_data(db_path, n_days=300, trend="bull", last_date=today)
 
         upsert_macro([{
@@ -210,7 +214,7 @@ class TestDataFreshnessEnforcement:
 
     def test_dated_query_bypasses_freshness(self, db_path):
         """date 파라미터 지정 시 freshness 체크를 건너뜀."""
-        stale_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        stale_date = (kst_now().replace(tzinfo=None) - timedelta(days=10)).strftime("%Y-%m-%d")
         _insert_spy_data(db_path, n_days=300, trend="bull", last_date=stale_date)
 
         upsert_macro([{
@@ -239,7 +243,7 @@ class TestDataFreshnessEnforcement:
 
     def test_freshness_check_returns_true_for_fresh(self, db_path):
         """오늘 데이터가 있으면 _check_data_freshness가 True 반환."""
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_kst()
         _insert_spy_data(db_path, n_days=300, trend="bull", last_date=today)
 
         from nuri.quant.regime.classifier import _check_data_freshness
@@ -318,7 +322,7 @@ class TestScorecardStaleness:
     def test_stale_scorecard_adds_note(self, tmp_path, db_path):
         """7일 초과 스코어카드 → 후보 노트에 경고 문구."""
         # 10일 전 디렉토리에 스코어카드 생성
-        stale_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        stale_date = (kst_now().replace(tzinfo=None) - timedelta(days=10)).strftime("%Y-%m-%d")
         report_dir = tmp_path / "reports" / stale_date
         report_dir.mkdir(parents=True)
 
@@ -346,7 +350,7 @@ class TestScorecardStaleness:
 
     def test_fresh_scorecard_no_warning(self, tmp_path):
         """7일 이내 스코어카드 → 경고 없음."""
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_kst()
         report_dir = tmp_path / "reports" / today
         report_dir.mkdir(parents=True)
 
