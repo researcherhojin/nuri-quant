@@ -20,8 +20,12 @@ interface DashboardData {
 }
 
 interface FreshnessData {
-  items: FreshnessItem[];
-  overall: "PASS" | "WARN" | "FAIL";
+  items?: FreshnessItem[];
+  details?: FreshnessItem[];
+  overall?: "PASS" | "WARN" | "FAIL";
+  pass?: number;
+  warn?: number;
+  fail?: number;
 }
 
 interface PipelineStep {
@@ -75,10 +79,10 @@ async function Dashboard() {
   return (
     <div className="space-y-4">
       {/* ── Freshness Bar ── */}
-      {(freshness?.items?.length > 0 || freshness?.details?.length > 0) && (
+      {((freshness?.items?.length ?? 0) > 0 || (freshness?.details?.length ?? 0) > 0) && (
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider shrink-0">Freshness</span>
-          <FreshnessBar items={freshness.items || freshness.details || []} />
+          <FreshnessBar items={freshness?.items ?? freshness?.details ?? []} />
         </div>
       )}
 
