@@ -8,6 +8,7 @@ Nuri-Quant (누리퀀트) — Open-source quant investment platform.
 Python 3.12, `uv` package manager, SQLite, 100% free open-source stack.
 Linter: `ruff` (E/F/W/I rules, line-length 120). CI: GitHub Actions (lint + test + frontend type-check).
 Ruff ignores: E402 (lazy imports in scheduler), E501 (existing long lines), E712 (pandas `== True` idiom).
+Conventional commits required in PRs: `(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(scope)?: message`.
 
 6-step pipeline: **Collect → Validate → Classify → Diagnose → Recommend → Track**
 
@@ -41,7 +42,11 @@ python -m nuri.quant.regime.strategy_map     # regime + macro + strategy
 # Validation (Phase C)
 make validate                           # signal + superinvestor + analyst + scorecard
 
+# Regime classification (Phase D)
+make regime                             # 6-regime classifier + strategy map
+
 # Recommendations (Phase E)
+make recommend                          # candidates + tracker (signal-based buy/sell)
 python -m nuri.trading.recommend.candidates  # signal-based buy/sell candidates
 python -m nuri.trading.recommend.tracker --save  # save + track outcomes
 
@@ -59,6 +64,7 @@ make pairs            # pairs trading scan + backtest
 # Swing Trade
 make scan             # 89종목 스캔 → 시그널 필터
 make swing            # 스캔 + 에이전트 합의 → 진입 저장
+make swing-check      # 진행중 스윙 트레이드 상태 확인
 
 # Full Pipeline
 make full-scan        # 8-phase: collect→analyze→validate→regime→recommend→certify→evidence→notify
@@ -66,6 +72,7 @@ make quick-scan       # 빠른 4-step: collect→analyze→consensus→targets (
 
 # SIEGE Certification
 make certify          # 10-condition 규칙 검증 → CERTIFIED / REJECTED
+make gate             # Pipeline gate verifier (exits 1 if BLOCKED)
 
 # Price Targets & Rebalance & Evidence
 make targets          # 전 종목 매수가/손절가/익절가 계산
@@ -87,7 +94,11 @@ make start            # API(:8001) + Dashboard(:3000) simultaneous
 make api              # FastAPI only (:8001)
 make dashboard        # Next.js only (:3000)
 
+# Verification
+make verify           # Master verification orchestrator → data/reports/YYYY-MM-DD/
+
 # Deploy & backup
+make pre-deploy       # Safety checks before deploy
 make deploy           # rsync to Mac Mini
 make backup           # DB backup (30-day rolling)
 ```
@@ -177,6 +188,31 @@ confidence = regime_win_rate × 60% + regime_pf × 40%
            × position_penalty (0.3x if minimal)    ← Regime position sizing
 ```
 
+### Pipeline Observability (SIEGE Event Journal + Dagster Freshness)
+
+`nuri/core/events.py` — Append-only event journal. `emit_event()` records all state transitions (step_started/completed/failed/blocked). `get_pipeline_status()` returns 6-step status. `get_timeline()` returns event history with causation_id for chain tracing.
+
+`nuri/core/freshness.py` — Data freshness SLA monitoring. `FRESHNESS_POLICIES` defines warn/fail thresholds per data source. `check_freshness(key)` returns PASS/WARN/FAIL status with age. Sources: prices (18h/30h), VIX (24h/72h), F&G (24h/48h), consensus (24h/48h), certification (24h/48h).
+
+`nuri/core/pipeline.py` — Pipeline orchestration. `STEP_DEPENDENCIES` defines the 6-step DAG. `run_step()` wrapper enforces dependency completion + records events.
+
+`nuri/core/timezone.py` — All internal time is KST. `kst_now()`, `today_kst()`, `to_kst()`. DB stores dates as YYYY-MM-DD strings. **Never use `datetime.now()` directly** — always `kst_now()` or `today_kst()`.
+
+`nuri/api/routes/pipeline.py` — Pipeline control API:
+- `GET /api/pipeline/status` — 6-step status + record counts
+- `POST /api/pipeline/{step}/run` — Execute step (background)
+- `GET /api/pipeline/timeline` — Event log
+- `GET /api/freshness` — Data freshness report (PASS/WARN/FAIL per source)
+
+`nuri/api/routes/trades.py` — Trade execution tracking:
+- `POST /api/trades` — Record trade execution
+- `GET /api/trades` — List trades (optional ticker filter)
+- `PUT /api/trades/{id}` — Update exit info
+
+### Dashboard API (Projection-based, <5s)
+
+`/api/dashboard` reads pre-computed results from DB instead of running analysis inline. Consensus results come from `recommendations` table (populated by `make consensus`). Response includes `freshness` and `pipeline_status` fields so the UI shows data age.
+
 ### Scheduler
 
 `nuri/scheduler.py` defines 17 cron jobs in the `SCHEDULES` list. All times are KST. Lazy imports inside `_run_collector()` to avoid import-time side effects.
@@ -212,7 +248,7 @@ Configured in `.env` (see `.env.example`):
 | `insider_trades` | Insider buy/sell transactions |
 | `schema_version` | Migration version tracking |
 
-Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `llm_bench`.
+Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `llm_bench`, `pipeline_events`, `trades`.
 
 ## Code Conventions
 
@@ -221,19 +257,14 @@ Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_trans
 - Git commit messages in English
 - Configuration in YAML (`config/`), secrets in `.env` (git-ignored)
 - Korean stock tickers use `.KS` suffix (e.g., `005930.KS` for 삼성전자)
+- **Timezone: always use `kst_now()` or `today_kst()` from `nuri.core.timezone`** — never `datetime.now()`
+- Conventional commits required in PRs: `(feat|fix|docs|style|refactor|test|chore)(scope)?: message`
 
 ### Config files (`config/`)
 
 - `portfolio.yaml` — 5 accounts (kakaopay/mirae/toss/pension/irp), 30+ holdings
 - `alerts.yaml` — Thresholds (price swing 3%, Fear&Greed bounds 20/80), report timing
-- `rules.yaml` — Investment rules. Loaded via `nuri/core/rules.py`. Contains:
-  - Position limits (15% single, 35% sector, 20% min cash)
-  - Stop-loss (growth -7%, value -10%, portfolio -10%)
-  - Take-profit (growth +20%/+40%, value +15%/+30%, swing +5%/+10%)
-  - Trailing stops (growth/value -15%, volatile -20%)
-  - Entry rules (VIX gate, F&G-based cash ratio, 3-tranche scaling)
-  - Buy checklist (TipRanks consensus, superinvestor count, PE cap, revenue > $0, factor rank)
-  - Sell priority order (leverage → stop-loss → no superinvestors → position limit → sector limit)
+- `rules.yaml` — Investment rules loaded via `nuri/core/rules.py`. See [Investment Rules](#investment-rules) for full details.
 
 ### Scripts (`scripts/`)
 
@@ -247,7 +278,7 @@ Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_trans
 
 ## Testing
 
-503 tests across 34 files. Tests use `tmp_path` fixture for isolated SQLite databases:
+628 tests across 39 files. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -267,6 +298,20 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
 ]
 ```
 `init_db()` auto-applies unapplied migrations and tracks them in `schema_version` table.
+
+### CI (GitHub Actions)
+
+On push/PR to `main`:
+1. **Lint** — `ruff check nuri/ tests/ scripts/`
+2. **Test** — pytest with coverage, **40% minimum** enforced (currently 58%). TA-Lib compiled from source (cached).
+3. **Frontend** — `tsc --noEmit` + vitest with coverage
+
+PR-specific checks (`pr-checks.yml`):
+- Merge conflict detection
+- Conventional commit validation (warning, not blocking)
+- File size limit: 5MB max
+- Trivy security scan (CRITICAL severity only)
+- Auto-posted PR summary comment
 
 ## Investment Rules
 

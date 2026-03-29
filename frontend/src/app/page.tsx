@@ -54,7 +54,7 @@ async function Dashboard() {
   // 모든 데이터를 병렬로 fetch
   const [d, freshness, pipelineStatus, portfolio, siege, advisor] = await Promise.all([
     fetchAPI<DashboardData>("/api/dashboard"),
-    fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], overall: "FAIL" })),
+    fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], details: [], overall: "FAIL", pass: 0, warn: 0, fail: 0 })),
     fetchAPI<PipelineStatusData>("/api/pipeline/status").catch((): PipelineStatusData => ({ steps: [] })),
     fetchAPI<any>("/api/portfolio").catch(() => null),
     fetchAPI<any>("/api/certify").catch(() => null),
@@ -75,10 +75,10 @@ async function Dashboard() {
   return (
     <div className="space-y-4">
       {/* ── Freshness Bar ── */}
-      {freshness.items.length > 0 && (
+      {(freshness?.items?.length > 0 || freshness?.details?.length > 0) && (
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider shrink-0">Freshness</span>
-          <FreshnessBar items={freshness.items} />
+          <FreshnessBar items={freshness.items || freshness.details || []} />
         </div>
       )}
 
