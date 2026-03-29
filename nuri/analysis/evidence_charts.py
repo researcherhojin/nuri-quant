@@ -7,7 +7,6 @@
     python -m nuri.analysis.evidence_charts
 """
 import logging
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -15,6 +14,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from nuri.core.db import query_df
+from nuri.core.timezone import today_kst
 from nuri.quant.regime.classifier import classify_regime
 
 logger = logging.getLogger(__name__)
@@ -584,7 +584,7 @@ def generate_sell_evidence_chart(violations: list[dict], output_dir: Path) -> Pa
 
 def generate_all_evidence(db_path=None) -> list[Path]:
     """모든 증거 차트 생성 → 파일 경로 리스트 반환."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_kst()
     output_dir = REPORT_DIR / today / "evidence"
     output_dir.mkdir(parents=True, exist_ok=True)
 

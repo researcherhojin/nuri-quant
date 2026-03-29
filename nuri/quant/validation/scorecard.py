@@ -7,10 +7,11 @@ C-1 (시그널 백테스트) 완료 후 실행 가능. C-2/C-3은 있으면 포�
     python -m nuri.quant.validation.scorecard
 """
 import logging
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ def generate_validation_report(output_dir: Path | None = None) -> Path | None:
     from plotly.subplots import make_subplots
 
     if output_dir is None:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_kst()
         output_dir = REPORT_DIR / today
 
     signal_csv = output_dir / "signal_scorecard.csv"

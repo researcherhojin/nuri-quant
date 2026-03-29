@@ -8,9 +8,9 @@ Strategy Monitor — 레짐 전환 감지 + 포지션 전환 알림 + 일일 P&L
 """
 import json
 import logging
-from datetime import datetime
 
 from nuri.core.db import get_db, query
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ def detect_regime_transition(db_path=None) -> dict | None:
 
     # 전환 감지!
     transition = {
-        "date": datetime.now().strftime("%Y-%m-%d"),
+        "date": today_kst(),
         "from_regime": prev_regime or "unknown",
         "to_regime": current.regime,
         "confidence": current.confidence,

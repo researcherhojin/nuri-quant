@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from nuri.core.db import query
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ if __name__ == "__main__":
 
     # CSV 저장
     if results:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = today_kst()
         output_dir = REPORT_DIR / today
         output_dir.mkdir(parents=True, exist_ok=True)
         pd.DataFrame([asdict(r) for r in results]).to_csv(

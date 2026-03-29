@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from nuri.core.db import get_db, init_db, query
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,7 @@ def save_entries(entries: list[SwingEntry], db_path=None) -> int:
     if not approved:
         return 0
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_kst()
     records = [{
         "ticker": e.ticker,
         "entry_date": today,

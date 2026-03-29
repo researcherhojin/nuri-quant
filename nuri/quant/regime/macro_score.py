@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from nuri.core.db import query
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ def _get_latest_macro(indicator: str, date: str | None = None, db_path=None) -> 
 
 def _get_macro_trend(indicator: str, months: int = 3, date: str | None = None, db_path=None) -> float | None:
     """지표의 N개월 변화량."""
-    ref_date = date or datetime.now().strftime("%Y-%m-%d")
+    ref_date = date or today_kst()
     start = (datetime.strptime(ref_date, "%Y-%m-%d") - timedelta(days=months * 30)).strftime("%Y-%m-%d")
 
     current = _get_latest_macro(indicator, date=ref_date, db_path=db_path)
@@ -350,7 +351,7 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
         interpretation = "Adverse"
 
     return MacroScore(
-        date=date or datetime.now().strftime("%Y-%m-%d"),
+        date=date or today_kst(),
         total_score=round(total, 1),
         yield_curve_score=round(yc_score, 1),
         yield_spread_3m10y_score=round(ys3m10y_score, 1),
