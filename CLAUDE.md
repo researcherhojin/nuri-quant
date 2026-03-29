@@ -366,7 +366,7 @@ Before any buy/sell recommendation, verify against 10 external sites:
 
 ## Currency handling
 
-Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `macro` table → OpenBB API → hardcoded default `1450.0` KRW/USD. `.KS` tickers are always treated as KRW.
+Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `macro` table → OpenBB API → `StaleExchangeRateError` (no hardcoded fallback). Warns if rate > 7 days old. `.KS` tickers are always treated as KRW.
 
 ## Interface
 
