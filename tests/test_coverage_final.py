@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from nuri.core.db import get_db, init_db, upsert_macro, upsert_prices
+from nuri.core.timezone import today_kst
 
 
 @pytest.fixture
@@ -19,8 +20,7 @@ def db_path(tmp_path, monkeypatch):
 @pytest.fixture
 def rich_db(db_path):
     """풍부한 테스트 데이터."""
-    from datetime import datetime
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_kst()
 
     with get_db(db_path) as conn:
         for t, q, p, s in [("AAPL", 10, 150, "Technology"), ("MSFT", 5, 300, "Software"),
@@ -29,7 +29,7 @@ def rich_db(db_path):
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
                 "VALUES (?, ?, ?, ?, ?, ?)", ("test", t, q, p, "USD", s))
 
-    dates = pd.bdate_range(end=today, periods=300)
+    dates = pd.date_range(end=today, periods=300)
     for ticker, base in [("SPY", 400), ("AAPL", 140), ("MSFT", 280), ("TSLA", 300)]:
         close = np.linspace(base, base * 1.2, 300) + np.random.normal(0, 1, 300)
         df = pd.DataFrame({

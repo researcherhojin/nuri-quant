@@ -1,11 +1,11 @@
 """Long/Short Strategy + Position Manager 테스트."""
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from nuri.core.db import get_db, init_db, upsert_macro, upsert_prices
+from nuri.core.timezone import today_kst
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def db_path(tmp_path):
 @pytest.fixture
 def bull_data(db_path):
     """상승장 데이터: SPY 상승 + VIX 낮음."""
-    dates = pd.bdate_range(end=datetime.now().strftime("%Y-%m-%d"), periods=300)
+    dates = pd.date_range(end=today_kst(), periods=300)
     close = np.linspace(100, 200, 300) + np.random.normal(0, 1, 300)
 
     for ticker in ["SPY", "QQQ", "TEST"]:
