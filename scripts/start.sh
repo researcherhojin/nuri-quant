@@ -16,6 +16,15 @@ echo "  ║    Nuri-Quant Service Starting         ║"
 echo "  ╚════════════════════════════════════════╝"
 echo -e "${NC}"
 
+# 포트 충돌 확인
+for PORT in 8001 3000; do
+    if lsof -i ":$PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
+        PID=$(lsof -i ":$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1)
+        echo -e "  ⚠ Port $PORT already in use (PID: $PID). Kill with: make ports-kill"
+        exit 1
+    fi
+done
+
 # Backend (FastAPI)
 echo -e "${GREEN}Starting FastAPI backend on :8001...${NC}"
 .venv/bin/python -m uvicorn nuri.api.main:app --host 0.0.0.0 --port 8001 &

@@ -25,7 +25,7 @@ echo "📋 Config files..."
 [ -f config/portfolio.yaml ] && pass "portfolio.yaml" || fail "portfolio.yaml missing"
 [ -f config/alerts.yaml ]    && pass "alerts.yaml"    || fail "alerts.yaml missing"
 [ -f config/rules.yaml ]     && pass "rules.yaml"     || fail "rules.yaml missing"
-[ -f .env ] || [ -f .env.local ] && pass ".env exists" || warn ".env not found (using defaults)"
+if [ -f .env ] || [ -f .env.local ]; then pass ".env exists"; else warn ".env not found (using defaults)"; fi
 
 # ── 2. Python 환경 ──
 echo ""

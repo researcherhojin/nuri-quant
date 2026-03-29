@@ -11,10 +11,10 @@ alerts:
   event_reminder_days: 1        # D-1 알림
   ark_alert: true
 
-# 알림 채널 (환경변수로 토큰 설정)
+# 알림 채널 (환경변수로 토큰 설정, 미설정 시 자동 비활성)
 channels:
-  discord: true                 # DISCORD_WEBHOOK_URL 필요
-  telegram: true                # TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID 필요
+  discord: true                 # DISCORD_WEBHOOK_URL 필요 (미설정 → stdout fallback)
+  telegram: false               # TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID 필요 (기본 비활성)
 
 # 알림 유형별 활성화
 notifications:
