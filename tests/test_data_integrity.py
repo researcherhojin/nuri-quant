@@ -161,7 +161,7 @@ class TestVixHysteresis:
 
 
 class TestDataFreshnessEnforcement:
-    """SPY 데이터가 72시간 초과 시 classify_regime이 None을 반환하는지 검증."""
+    """SPY 데이터가 120시간 초과 시 classify_regime이 None을 반환하는지 검증."""
 
     @pytest.fixture(autouse=True)
     def reset_freshness_warned(self):
@@ -172,7 +172,7 @@ class TestDataFreshnessEnforcement:
         classifier._freshness_warned = False
 
     def test_stale_data_blocks_regime(self, db_path):
-        """72시간 초과 데이터 → classify_regime이 None 반환."""
+        """120시간 초과 데이터 → classify_regime이 None 반환."""
         # 10일 전 날짜로 데이터 삽입
         stale_date = (kst_now().replace(tzinfo=None) - timedelta(days=10)).strftime("%Y-%m-%d")
         _insert_spy_data(db_path, n_days=300, trend="bull", last_date=stale_date)
@@ -187,7 +187,7 @@ class TestDataFreshnessEnforcement:
         from nuri.quant.regime.classifier import classify_regime
         # date=None이므로 freshness 체크 실행됨
         state = classify_regime(db_path=db_path)
-        assert state is None, "72시간 초과 데이터로 레짐 분류가 차단되어야 함"
+        assert state is None, "120시간 초과 데이터로 레짐 분류가 차단되어야 함"
 
     def test_fresh_data_allows_regime(self, db_path):
         """신선한 데이터 → classify_regime이 정상 동작."""

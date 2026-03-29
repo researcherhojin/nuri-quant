@@ -200,10 +200,13 @@ _freshness_warned = False
 
 
 def _check_data_freshness(db_path=None) -> bool:
-    """SPY 데이터 신선도 체크 (최대 24시간). 주말/공휴일 감안 72시간 허용.
+    """SPY 데이터 신선도 체크. 주말/공휴일 감안 120시간(5일) 허용.
+
+    금요일 마감 → 월요일 아침 = 63시간, 월요일 오후 = 78시간.
+    3연휴(금→화) = 96시간. 120시간이면 대부분의 주말+공휴일 커버.
 
     Returns:
-        True: 데이터 신선. False: 데이터 부재 또는 72시간 초과 (분석 차단).
+        True: 데이터 신선. False: 데이터 부재 또는 120시간 초과 (분석 차단).
     """
     global _freshness_warned
     from nuri.core.db import query as _query
@@ -220,10 +223,10 @@ def _check_data_freshness(db_path=None) -> bool:
     latest = datetime.strptime(rows[0]["latest"], "%Y-%m-%d")
     # KST 기준으로 신선도 비교 (naive datetime 통일)
     age_hours = (kst_now().replace(tzinfo=None) - latest).total_seconds() / 3600
-    # 주말 감안: 금요일 데이터 → 월요일 체크 = 72시간
-    if age_hours > 72:
+    # 주말+공휴일 감안: 금요일 데이터 → 화요일 체크 = 96시간, 120시간이면 충분
+    if age_hours > 120:
         if not _freshness_warned:
-            logger.warning("SPY 데이터 %d시간 경과 (max 72h). 수집 필요: make collect", int(age_hours))
+            logger.warning("SPY 데이터 %d시간 경과 (max 120h). 수집 필요: make collect", int(age_hours))
             _freshness_warned = True
         return False
     return True
