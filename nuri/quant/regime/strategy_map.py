@@ -59,6 +59,38 @@ POSITION_RULES = {
     ("bear", "high"): "minimal",
 }
 
+# Phase 3: 특수 레짐별 포지션 사이징
+SPECIAL_REGIME_RULES = {
+    "recovery": {
+        "position_sizing": "defensive",        # 소규모 진입 (아직 확인 안 됨)
+        "recommended_signals": ["rsi_oversold", "bb_bounce", "macd_golden", "volume_spike"],
+        "avoid_signals": ["macd_dead", "sma_dead", "gap_down"],
+        "sector_preference": list(GROWTH_SECTORS),
+        "notes": "회복기: SMA 골든크로스 확인 후 소규모 진입, 트레일링 스톱 필수",
+    },
+    "euphoria": {
+        "position_sizing": "defensive",        # 신규 매수 중단, 익절 강화
+        "recommended_signals": ["rsi_overbought"],  # 매도 시그널만
+        "avoid_signals": ["rsi_oversold", "bb_bounce", "macd_golden", "gap_up", "volume_spike"],
+        "sector_preference": list(DEFENSIVE_SECTORS),
+        "notes": "과열: 신규 매수 중단, 기존 보유 익절 강화, 현금 비중 확대",
+    },
+    "sector_rotation": {
+        "position_sizing": "normal",           # 섹터별 선별 매수
+        "recommended_signals": ["volume_spike", "macd_golden", "gap_up"],
+        "avoid_signals": ["sma_dead", "gap_down"],
+        "sector_preference": [],               # 동적으로 결정 (상승 섹터 기반)
+        "notes": "섹터 로테이션: 상승 섹터 ETF 중심 편입, SPY 횡보 구간 활용",
+    },
+    "stagflation": {
+        "position_sizing": "minimal",          # 현금 비중 극대화
+        "recommended_signals": [],             # 매매 자제
+        "avoid_signals": ["macd_golden", "sma_golden", "gap_up", "volume_spike"],
+        "sector_preference": ["XLP", "XLU", "XLV"],  # 필수소비재, 유틸리티, 헬스케어
+        "notes": "스태그플레이션: 현금 비중 극대화, 방어주만 보유, 신규 매수 자제",
+    },
+}
+
 # 섹터 선호 규칙
 SECTOR_RULES = {
     "aggressive": list(GROWTH_SECTORS),
@@ -218,6 +250,37 @@ def map_regime_to_strategy(
     trend = regime_state.trend
     vol = regime_state.volatility
 
+    # ── Phase 3 특수 레짐 처리 ──
+    if regime in SPECIAL_REGIME_RULES:
+        special = SPECIAL_REGIME_RULES[regime]
+        cross_df = analyze_signal_by_regime(db_path)
+        data_strategy = _build_data_driven_strategy(regime, cross_df)
+        stats = data_strategy["stats"]
+
+        # 데이터 기반 추천이 있으면 사용, 없으면 규칙 기반 폴백
+        recommended = data_strategy["recommended"] if data_strategy["recommended"] else special["recommended_signals"]
+        avoid = data_strategy["avoid"] if data_strategy["avoid"] else special["avoid_signals"]
+        position = special["position_sizing"]
+        sectors = special["sector_preference"]
+        notes_parts = [special["notes"]]
+
+        # 매크로 스코어 보정
+        if macro_score.total_score < 30 and position not in ("minimal",):
+            position = "minimal"
+            notes_parts.append("매크로 악화로 최소 포지션 전환")
+
+        return StrategyRecommendation(
+            regime=regime,
+            macro_interpretation=macro_score.interpretation,
+            position_sizing=position,
+            recommended_signals=recommended,
+            avoid_signals=avoid,
+            sector_preference=sectors,
+            signal_regime_stats=stats,
+            notes="; ".join(notes_parts),
+        )
+
+    # ── 기본 6 레짐 전략 매핑 ──
     # 기본 포지션 사이징 (규칙 기반)
     position = POSITION_RULES.get((trend, vol), "defensive")
 

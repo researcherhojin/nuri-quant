@@ -91,6 +91,44 @@ SIGNAL_DEFINITIONS = {
         "description": "BB 하단 반등 (종가가 BB Lower 위로)",
         "hold_days": 20,
     },
+    # ── Phase 3 신규 시그널 (8개) ──
+    "volume_spike": {
+        "description": "거래량 급증 (20일 평균 대비 3배 이상)",
+        "hold_days": 10,
+    },
+    "gap_up": {
+        "description": "갭 상승 (시가 > 전일 종가 × 1.02)",
+        "hold_days": 10,
+    },
+    "gap_down": {
+        "description": "갭 하락 (시가 < 전일 종가 × 0.98)",
+        "hold_days": 10,
+    },
+    "pcr_reversal": {
+        "description": "Put/Call Ratio 반전 (1.2 → 0.8, 5일 이내)",
+        "hold_days": 20,
+        "requires_macro": True,
+    },
+    "short_squeeze": {
+        "description": "숏 스퀴즈 (공매도 비율 20%+ AND RSI 브레이크아웃)",
+        "hold_days": 15,
+        "requires_macro": True,
+    },
+    "insider_cluster": {
+        "description": "내부자 집중 매수 (10일 내 3건 이상 매수)",
+        "hold_days": 30,
+        "requires_macro": True,
+    },
+    "vix_reversal": {
+        "description": "VIX 반전 (30+ → 25 이하)",
+        "hold_days": 20,
+        "requires_macro": True,
+    },
+    "yield_inversion": {
+        "description": "수익률곡선 정상화 (3M-10Y 역전 → 정상 전환)",
+        "hold_days": 30,
+        "requires_macro": True,
+    },
 }
 
 
@@ -134,7 +172,215 @@ def _compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df["macd_signal"] = df["macd"].ewm(span=9).mean()
         df["macd_hist"] = df["macd"] - df["macd_signal"]
 
+    # 거래량 20일 이동평균 (volume_spike 시그널용)
+    if "volume" in df.columns:
+        df["volume_avg_20"] = df["volume"].rolling(20).mean()
+
     return df
+
+
+# ═══════════════════════════════════════════════════════
+# 매크로 데이터 로딩 (신규 시그널용)
+# ═══════════════════════════════════════════════════════
+
+
+def _load_macro_series(indicator: str, db_path=None) -> pd.DataFrame:
+    """macro 테이블에서 특정 지표 시계열 로드."""
+    df = query_df(
+        "SELECT date, value FROM macro WHERE indicator = ? ORDER BY date",
+        (indicator,), db_path=db_path,
+    )
+    if not df.empty:
+        df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+def _load_insider_trades(ticker: str, db_path=None) -> pd.DataFrame:
+    """insider_trades 테이블에서 매수 거래 로드."""
+    df = query_df(
+        "SELECT date, transaction_type FROM insider_trades WHERE ticker = ? ORDER BY date",
+        (ticker,), db_path=db_path,
+    )
+    if not df.empty:
+        df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+# ═══════════════════════════════════════════════════════
+# 개별 시그널 감지 함수 (Phase 3 신규)
+# ═══════════════════════════════════════════════════════
+
+
+def _detect_volume_spike(df: pd.DataFrame, i: int) -> bool:
+    """거래량 급증: Volume > 3x 20일 평균."""
+    if "volume_avg_20" not in df.columns:
+        return False
+    vol = df["volume"].iloc[i]
+    avg = df["volume_avg_20"].iloc[i]
+    return bool(pd.notna(avg) and avg > 0 and vol > avg * 3)
+
+
+def _detect_gap_up(df: pd.DataFrame, i: int) -> bool:
+    """갭 상승: 시가 > 전일 종가 × 1.02."""
+    if i < 1 or "open" not in df.columns:
+        return False
+    open_price = df["open"].iloc[i]
+    prev_close = df["close"].iloc[i - 1]
+    return bool(pd.notna(open_price) and pd.notna(prev_close) and open_price > prev_close * 1.02)
+
+
+def _detect_gap_down(df: pd.DataFrame, i: int) -> bool:
+    """갭 하락: 시가 < 전일 종가 × 0.98."""
+    if i < 1 or "open" not in df.columns:
+        return False
+    open_price = df["open"].iloc[i]
+    prev_close = df["close"].iloc[i - 1]
+    return bool(pd.notna(open_price) and pd.notna(prev_close) and open_price < prev_close * 0.98)
+
+
+def _detect_pcr_reversal_entries(dates: pd.Series, pcr_df: pd.DataFrame) -> list[int]:
+    """Put/Call Ratio 반전: 5일 이내 1.2 → 0.8 하락.
+
+    매크로 지표 기반 시그널이므로 날짜 매칭으로 감지.
+    """
+    if pcr_df.empty:
+        return []
+
+    entries = []
+    pcr_df = pcr_df.set_index("date").sort_index()
+
+    for i in range(5, len(dates)):
+        date = dates.iloc[i]
+        # 과거 5일 내 PCR 데이터 검색
+        window_start = dates.iloc[i - 5]
+        pcr_window = pcr_df.loc[
+            (pcr_df.index >= window_start) & (pcr_df.index <= date), "value"
+        ]
+        if len(pcr_window) >= 2:
+            # 윈도우 내 최고점 1.2 이상이었다가 현재 0.8 이하로 하락
+            max_pcr = pcr_window.max()
+            current_pcr = pcr_window.iloc[-1] if not pcr_window.empty else None
+            if current_pcr is not None and max_pcr >= 1.2 and current_pcr <= 0.8:
+                entries.append(i)
+
+    return entries
+
+
+def _detect_short_squeeze_entries(
+    df: pd.DataFrame, dates: pd.Series, short_df: pd.DataFrame,
+) -> list[int]:
+    """숏 스퀴즈: 공매도 비율 20%+ AND RSI가 50 상향 돌파."""
+    if short_df.empty or "rsi_14" not in df.columns:
+        return []
+
+    entries = []
+    short_df = short_df.set_index("date").sort_index()
+
+    for i in range(1, len(df)):
+        date = dates.iloc[i]
+        rsi = df["rsi_14"].iloc[i]
+        rsi_prev = df["rsi_14"].iloc[i - 1]
+
+        if not (pd.notna(rsi) and pd.notna(rsi_prev)):
+            continue
+
+        # RSI 50 상향 돌파
+        if rsi_prev < 50 and rsi >= 50:
+            # 해당 날짜에 공매도 비율 20% 이상 확인
+            si_rows = short_df.loc[short_df.index <= date, "value"]
+            if not si_rows.empty and si_rows.iloc[-1] >= 20:
+                entries.append(i)
+
+    return entries
+
+
+def _detect_insider_cluster_entries(
+    dates: pd.Series, insider_df: pd.DataFrame,
+) -> list[int]:
+    """내부자 집중 매수: 10일 내 3건 이상 매수."""
+    if insider_df.empty:
+        return []
+
+    # 매수(Purchase/Buy) 거래만 필터
+    buy_df = insider_df[
+        insider_df["transaction_type"].str.lower().str.contains("purchase|buy", na=False)
+    ]
+    if buy_df.empty:
+        return []
+
+    entries = []
+    for i in range(10, len(dates)):
+        date = dates.iloc[i]
+        window_start = dates.iloc[i - 10]
+        # 10일 윈도우 내 매수 건수
+        count = buy_df[
+            (buy_df["date"] >= window_start) & (buy_df["date"] <= date)
+        ].shape[0]
+        if count >= 3:
+            entries.append(i)
+
+    return entries
+
+
+def _detect_vix_reversal_entries(dates: pd.Series, vix_df: pd.DataFrame) -> list[int]:
+    """VIX 반전: VIX 30+ → 25 이하 하락."""
+    if vix_df.empty:
+        return []
+
+    entries = []
+    vix_df = vix_df.set_index("date").sort_index()
+
+    for i in range(1, len(dates)):
+        date = dates.iloc[i]
+        prev_date = dates.iloc[i - 1]
+
+        vix_rows = vix_df.loc[vix_df.index <= date, "value"]
+        vix_prev_rows = vix_df.loc[vix_df.index <= prev_date, "value"]
+
+        if vix_rows.empty or vix_prev_rows.empty:
+            continue
+
+        current_vix = vix_rows.iloc[-1]
+        prev_vix = vix_prev_rows.iloc[-1]
+
+        # 전일 30 이상이었다가 당일 25 이하로 하락
+        if prev_vix >= 30 and current_vix < 25:
+            entries.append(i)
+
+    return entries
+
+
+def _detect_yield_inversion_entries(
+    dates: pd.Series, y3m_df: pd.DataFrame, y10_df: pd.DataFrame,
+) -> list[int]:
+    """수익률곡선 정상화: 3M-10Y 스프레드가 음수 → 양수 전환."""
+    if y3m_df.empty or y10_df.empty:
+        return []
+
+    entries = []
+    y3m_df = y3m_df.set_index("date").sort_index()
+    y10_df = y10_df.set_index("date").sort_index()
+
+    for i in range(1, len(dates)):
+        date = dates.iloc[i]
+        prev_date = dates.iloc[i - 1]
+
+        y3m_rows = y3m_df.loc[y3m_df.index <= date, "value"]
+        y10_rows = y10_df.loc[y10_df.index <= date, "value"]
+        y3m_prev = y3m_df.loc[y3m_df.index <= prev_date, "value"]
+        y10_prev = y10_df.loc[y10_df.index <= prev_date, "value"]
+
+        if y3m_rows.empty or y10_rows.empty or y3m_prev.empty or y10_prev.empty:
+            continue
+
+        spread_now = y10_rows.iloc[-1] - y3m_rows.iloc[-1]
+        spread_prev = y10_prev.iloc[-1] - y3m_prev.iloc[-1]
+
+        # 역전(음수) → 정상(양수) 전환
+        if spread_prev < 0 and spread_now >= 0:
+            entries.append(i)
+
+    return entries
 
 
 def _detect_signal_entries(df: pd.DataFrame, signal_id: str) -> list[int]:
@@ -194,6 +440,16 @@ def _detect_signal_entries(df: pd.DataFrame, signal_id: str) -> list[int]:
         elif signal_id == "bb_bounce":
             if (pd.notna(bb_lower) and pd.notna(bb_lower_prev) and
                     close_prev < bb_lower_prev and close >= bb_lower):
+                entries.append(i)
+        # ── Phase 3 가격 기반 시그널 ──
+        elif signal_id == "volume_spike":
+            if _detect_volume_spike(df, i):
+                entries.append(i)
+        elif signal_id == "gap_up":
+            if _detect_gap_up(df, i):
+                entries.append(i)
+        elif signal_id == "gap_down":
+            if _detect_gap_down(df, i):
                 entries.append(i)
 
     return entries
@@ -267,6 +523,17 @@ def backtest_signals(
     """
     signal_ids = signals or list(SIGNAL_DEFINITIONS.keys())
 
+    # 매크로 기반 시그널과 가격 기반 시그널 분리
+    macro_signals = {s for s in signal_ids if SIGNAL_DEFINITIONS.get(s, {}).get("requires_macro")}
+    price_signals = [s for s in signal_ids if s not in macro_signals]
+
+    # 매크로 데이터 사전 로드 (필요한 경우만)
+    pcr_df = _load_macro_series("put_call_ratio", db_path) if "pcr_reversal" in macro_signals else pd.DataFrame()
+    vix_df = _load_macro_series("vix", db_path) if "vix_reversal" in macro_signals else pd.DataFrame()
+    y3m_df = _load_macro_series("us_3m_yield", db_path) if "yield_inversion" in macro_signals else pd.DataFrame()
+    y10_df = _load_macro_series("us_10y_yield", db_path) if "yield_inversion" in macro_signals else pd.DataFrame()
+    short_df_cache: dict[str, pd.DataFrame] = {}  # ticker → short_interest DF
+
     # 종목 목록 결정
     if ticker:
         tickers = [ticker]
@@ -298,14 +565,54 @@ def backtest_signals(
         # 지표 계산
         df = _compute_indicators(df)
 
-        # 각 시그널 백테스트
-        for sig_id in signal_ids:
+        # 가격 기반 시그널 백테스트
+        for sig_id in price_signals:
             entries = _detect_signal_entries(df, sig_id)
 
             for entry_idx in entries:
                 exit_idx = _compute_exit(df, entry_idx, sig_id)
                 if exit_idx is None:
-                    continue  # 청산 불가 → 건너뜀
+                    continue
+
+                entry_price = df["close"].iloc[entry_idx]
+                exit_price = df["close"].iloc[exit_idx]
+                return_pct = (exit_price - entry_price) / entry_price * 100
+                holding_days = exit_idx - entry_idx
+
+                results.append(SignalResult(
+                    signal_id=sig_id,
+                    ticker=tkr,
+                    entry_date=df["date"].iloc[entry_idx].strftime("%Y-%m-%d"),
+                    entry_price=round(float(entry_price), 2),
+                    exit_date=df["date"].iloc[exit_idx].strftime("%Y-%m-%d"),
+                    exit_price=round(float(exit_price), 2),
+                    return_pct=round(float(return_pct), 2),
+                    holding_days=int(holding_days),
+                    won=bool(return_pct > 0),
+                ))
+
+        # ── 매크로 기반 시그널 백테스트 ──
+        for sig_id in macro_signals:
+            if sig_id == "pcr_reversal":
+                entries = _detect_pcr_reversal_entries(df["date"], pcr_df)
+            elif sig_id == "short_squeeze":
+                if tkr not in short_df_cache:
+                    short_df_cache[tkr] = _load_macro_series("short_interest", db_path)
+                entries = _detect_short_squeeze_entries(df, df["date"], short_df_cache[tkr])
+            elif sig_id == "insider_cluster":
+                insider_df = _load_insider_trades(tkr, db_path)
+                entries = _detect_insider_cluster_entries(df["date"], insider_df)
+            elif sig_id == "vix_reversal":
+                entries = _detect_vix_reversal_entries(df["date"], vix_df)
+            elif sig_id == "yield_inversion":
+                entries = _detect_yield_inversion_entries(df["date"], y3m_df, y10_df)
+            else:
+                entries = []
+
+            for entry_idx in entries:
+                exit_idx = _compute_exit(df, entry_idx, sig_id)
+                if exit_idx is None:
+                    continue
 
                 entry_price = df["close"].iloc[entry_idx]
                 exit_price = df["close"].iloc[exit_idx]

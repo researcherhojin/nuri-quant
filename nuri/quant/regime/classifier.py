@@ -222,8 +222,123 @@ def _check_data_freshness(db_path=None) -> bool:
     return True
 
 
+# ═══════════════════════════════════════════════════════
+# 특수 레짐 감지 (Phase 3: 4개 신규 레짐)
+# ═══════════════════════════════════════════════════════
+
+
+def _get_macro_value(indicator: str, date: str | None = None, db_path=None) -> float | None:
+    """macro 테이블에서 지표 최신값 로드 (범용)."""
+    date_filter = f"AND date <= '{date}'" if date else ""
+    rows = query(
+        f"SELECT value FROM macro WHERE indicator = ? {date_filter} ORDER BY date DESC LIMIT 1",
+        (indicator,), db_path=db_path,
+    )
+    return rows[0]["value"] if rows else None
+
+
+def _detect_recovery(spy_df: pd.DataFrame, vix: float | None, thresholds: dict) -> bool:
+    """회복 레짐: 200일 하락 후 SMA50이 SMA200 상향 돌파 + VIX 하락 추세.
+
+    조건:
+    1. 최근 200일 중 SMA200이 하락 추세 (SMA200 20일 전 > 현재)
+    2. SMA50이 SMA200 근처에서 상향 돌파 중 (sma50 < sma200이었다가 근접)
+    3. VIX가 하락 추세 (최근 VIX < 20일 전 VIX 근사)
+    """
+    if len(spy_df) < 220:
+        return False
+
+    latest = spy_df.iloc[-1]
+    prev_20 = spy_df.iloc[-20]
+
+    sma50 = latest["sma50"]
+    sma200 = latest["sma200"]
+
+    if pd.isna(sma50) or pd.isna(sma200):
+        return False
+
+    # SMA200이 최근 하락 추세였는지 (20일 전보다 현재가 낮거나 비슷)
+    sma200_prev = prev_20["sma200"]
+    if pd.isna(sma200_prev):
+        return False
+    sma200_declining = sma200 <= sma200_prev
+
+    # SMA50이 SMA200 위로 돌파 (직전에 아래였다가 위로)
+    sma50_prev = prev_20["sma50"]
+    if pd.isna(sma50_prev):
+        return False
+    sma50_crossing_up = sma50_prev < sma200_prev and sma50 >= sma200
+
+    # VIX 하락 추세 (현재 VIX가 적당히 높지 않음)
+    vix_declining = vix is not None and vix < 25
+
+    return bool(sma200_declining and sma50_crossing_up and vix_declining)
+
+
+def _detect_euphoria(vix: float | None, fear_greed: float | None) -> bool:
+    """유포리아 레짐: VIX < 12 AND Fear&Greed > 80.
+
+    극단적 탐욕 상태 — 신규 매수 중단, 익절 강화 필요.
+    """
+    if vix is None or fear_greed is None:
+        return False
+    return bool(vix < 12 and fear_greed > 80)
+
+
+def _detect_sector_rotation(spy_df: pd.DataFrame, db_path=None, date: str | None = None) -> bool:
+    """섹터 로테이션: SPY 횡보 + 특정 섹터 ETF 3%+ 상승.
+
+    SPY의 5일 수익률이 -1% ~ +1% 범위(횡보)인데,
+    섹터 ETF 중 하나라도 5일 수익률 3% 이상이면 로테이션.
+    """
+    if len(spy_df) < 10:
+        return False
+
+    spy_close = spy_df["close"].iloc[-1]
+    spy_close_5d = spy_df["close"].iloc[-5] if len(spy_df) >= 5 else spy_close
+    if spy_close_5d <= 0:
+        return False
+    spy_ret_5d = (spy_close / spy_close_5d - 1) * 100
+
+    # SPY가 횡보 (-1% ~ +1%)
+    if abs(spy_ret_5d) > 1.0:
+        return False
+
+    # 섹터 ETF 확인
+    sector_etfs = ["XLK", "XLF", "XLE", "XLV", "XLI", "XLP", "XLU", "XLY", "XLC", "XLB", "XLRE"]
+    date_filter = f"AND date <= '{date}'" if date else ""
+    for etf in sector_etfs:
+        rows = query(
+            f"SELECT close FROM prices WHERE ticker = ? {date_filter} ORDER BY date DESC LIMIT 6",
+            (etf,), db_path=db_path,
+        )
+        if len(rows) >= 6:
+            current = rows[0]["close"]
+            past = rows[5]["close"]
+            if past > 0:
+                ret = (current / past - 1) * 100
+                if ret >= 3.0:
+                    return True
+
+    return False
+
+
+def _detect_stagflation(db_path=None, date: str | None = None) -> bool:
+    """스태그플레이션: CPI > 4% AND GDP < 1%.
+
+    데이터 없으면 False (보수적).
+    """
+    cpi = _get_macro_value("cpi_yoy", date, db_path)
+    gdp = _get_macro_value("gdp_growth", date, db_path)
+
+    if cpi is None or gdp is None:
+        return False
+
+    return cpi > 4.0 and gdp < 1.0
+
+
 def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None:
-    """시장 레짐 분류 (동적 임계값 + 히스테리시스)."""
+    """시장 레짐 분류 (동적 임계값 + 히스테리시스 + 특수 레짐)."""
     # 데이터 신선도 경고 (차단하지는 않음)
     if date is None:
         _check_data_freshness(db_path)
@@ -245,7 +360,54 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
     bb_width = float(latest["bb_width"]) if pd.notna(latest["bb_width"]) else 0
     sma50_slope = float(latest["sma50_slope"]) if pd.notna(latest["sma50_slope"]) else 0
 
-    # ── 적응형 히스테리시스: VIX 25+ 시 2일, 그 외 5일 ──
+    # ── Phase 3 특수 레짐 우선 체크 (기본 6 레짐보다 먼저) ──
+    special_regime = None
+
+    # 1. 유포리아 (극단 탐욕) — 가장 위험하므로 최우선
+    if _detect_euphoria(vix, fear_greed):
+        special_regime = "euphoria"
+    # 2. 스태그플레이션 — 매크로 악화 감지
+    elif _detect_stagflation(db_path, date):
+        special_regime = "stagflation"
+    # 3. 회복 — 하락장 이후 반등 초기
+    elif _detect_recovery(spy_df, vix, thresholds):
+        special_regime = "recovery"
+    # 4. 섹터 로테이션 — SPY 횡보 + 섹터 이동
+    elif _detect_sector_rotation(spy_df, db_path, date):
+        special_regime = "sector_rotation"
+
+    if special_regime:
+        sma_diff_pct = (sma50 - sma200) / sma200 * 100 if sma200 > 0 else 0
+        # 특수 레짐의 trend/volatility 매핑
+        special_trend_map = {
+            "recovery": ("bull", "high"),
+            "euphoria": ("bull", "low"),
+            "sector_rotation": ("sideways", "low"),
+            "stagflation": ("bear", "high"),
+        }
+        trend, volatility = special_trend_map[special_regime]
+
+        return RegimeState(
+            date=spy_df["date"].iloc[-1],
+            trend=trend,
+            volatility=volatility,
+            regime=special_regime,
+            confidence=0.75,  # 특수 레짐은 조건 충족 시 0.75 고정
+            details={
+                "spy_close": round(float(close), 2),
+                "sma50": round(float(sma50), 2),
+                "sma200": round(float(sma200), 2),
+                "sma_diff_pct": round(sma_diff_pct, 2),
+                "vix": round(vix, 2) if vix else None,
+                "fear_greed": round(fear_greed, 1) if fear_greed else None,
+                "rsi": round(rsi, 1) if rsi else None,
+                "bb_width": round(bb_width, 2),
+                "thresholds": thresholds,
+                "special_regime": special_regime,
+            },
+        )
+
+    # ── 기본 6 레짐: 적응형 히스테리시스 ──
     hyst_days = HYSTERESIS_DAYS_HIGH_VOL if (vix and vix >= VIX_HIGH_VOL_THRESHOLD) else HYSTERESIS_DAYS
     if len(spy_df) >= hyst_days + 200:
         recent_trends = []
@@ -385,6 +547,28 @@ def classify_regime_history(
 def print_regime(state: RegimeState | None) -> None:
     if state is None:
         print("레짐 분류 불가 (데이터 부족)")
+        return
+
+    # 특수 레짐 라벨
+    special_labels = {
+        "recovery": "RECOVERY (회복기)",
+        "euphoria": "EUPHORIA (과열)",
+        "sector_rotation": "SECTOR ROTATION (섹터 로테이션)",
+        "stagflation": "STAGFLATION (스태그플레이션)",
+    }
+    if state.regime in special_labels:
+        print(f"\n{'=' * 60}")
+        print(f"  Market Regime: {special_labels[state.regime]}")
+        print(f"  ({state.regime})  Confidence: {state.confidence:.0%}")
+        print(f"{'=' * 60}")
+        d = state.details
+        print(f"  Date:       {state.date}")
+        print(f"  SPY:        ${d['spy_close']:,.2f}")
+        if d.get("vix") is not None:
+            print(f"  VIX:        {d['vix']:.1f}")
+        if d.get("fear_greed") is not None:
+            print(f"  Fear&Greed: {d['fear_greed']:.0f}")
+        print()
         return
 
     trend_label = {"bull": "BULL", "bear": "BEAR", "sideways": "SIDEWAYS"}
