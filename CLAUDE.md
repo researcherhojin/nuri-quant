@@ -17,8 +17,9 @@ Conventional commits required in PRs: `(feat|fix|docs|style|refactor|test|chore|
 ## Commands
 
 ```bash
-# Setup (requires: brew install ta-lib)
+# Setup (requires: Python 3.12, uv, brew install ta-lib, Node 22 for frontend)
 make setup                              # venv + deps + DB init + portfolio import
+cd frontend && npm ci                   # frontend deps (separate from make setup)
 
 # Data collection
 make collect                            # Phase A 11 collectors (stock/stock_kr/macro/technical/fear_greed/ark/cboe/coingecko/finviz/reddit/fred_calendar)
@@ -27,6 +28,8 @@ python -m nuri.collectors.stock_kr --days 1825  # Korean stocks 5Y (pykrx)
 python -m nuri.collectors.fundamental   # PE/ROE/margins (OpenBB metrics)
 python -m nuri.collectors.superinvestors  # Buffett/Gates/Dalio 13F (edgartools)
 python -m nuri.collectors.estimates     # Analyst consensus (OpenBB)
+make wallstreet                         # analyst ratings, earnings, insider trades
+make filings                            # SEC filings
 
 # Analysis
 make analyze                            # portfolio + sector + risk
@@ -57,6 +60,8 @@ python -m nuri.trading.agents.consensus --ticker TSLA  # 단일 종목
 # Strategies
 make strategy         # L/S regime + transition + actions
 make backtest-ls      # full backtest + Monte Carlo
+make backtest-stress  # stress test scenarios
+make backtest-rules   # rules-based backtest
 make optimize         # grid search parameter tuning
 make mean-reversion   # mean-reversion scan + backtest
 make pairs            # pairs trading scan + backtest
@@ -85,6 +90,8 @@ make report-llm       # Qwen3.5 LLM 리포트 생성 + 자동 저장
 make lint             # ruff check
 make lint-fix         # ruff check --fix
 make test             # pytest tests/ -v --cov=nuri
+make verify-quick     # fast: tests + regime check (~10s, no network)
+make verify-all       # full verification (커밋 전 필수)
 .venv/bin/python -m pytest tests/test_db.py -v                                    # single file
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices -v                  # single class
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v  # single test
@@ -101,6 +108,10 @@ make verify           # Master verification orchestrator → data/reports/YYYY-M
 make pre-deploy       # Safety checks before deploy
 make deploy           # rsync to Mac Mini
 make backup           # DB backup (30-day rolling)
+
+# Utilities
+make ports            # show port usage
+make ports-kill       # kill conflicting port processes
 ```
 
 All `make` targets use `.venv/bin/python` — activate the venv or use the full path.
@@ -258,7 +269,6 @@ Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_trans
 - Configuration in YAML (`config/`), secrets in `.env` (git-ignored)
 - Korean stock tickers use `.KS` suffix (e.g., `005930.KS` for 삼성전자)
 - **Timezone: always use `kst_now()` or `today_kst()` from `nuri.core.timezone`** — never `datetime.now()`
-- Conventional commits required in PRs: `(feat|fix|docs|style|refactor|test|chore)(scope)?: message`
 
 ### Config files (`config/`)
 
@@ -276,9 +286,20 @@ Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_trans
 - `deploy.sh` — rsync to Mac Mini
 - `backup.sh` — 30-day rolling DB backup
 
+## Data Directory
+
+```
+data/
+├── portfolio.db      # Main SQLite DB (WAL mode)
+├── reports/          # Pipeline outputs: data/reports/YYYY-MM-DD/
+│   └── YYYY-MM-DD/   # signal_results.csv, signal_scorecard.csv, portfolio_action_plan.md, evidence/
+├── backups/          # 30-day rolling DB backups
+└── exports/          # Ad-hoc exports
+```
+
 ## Testing
 
-628 tests across 39 files. Tests use `tmp_path` fixture for isolated SQLite databases:
+684 tests across 42 files. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
