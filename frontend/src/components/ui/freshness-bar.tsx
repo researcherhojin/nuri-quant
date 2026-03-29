@@ -1,0 +1,53 @@
+/**
+ * FreshnessBar -- 데이터 소스별 freshness 상태 표시.
+ *
+ * PASS=emerald, WARN=amber, FAIL=red
+ * 각 뱃지: label + age (예: "VIX 2h" or "합의 12h")
+ */
+
+interface FreshnessItem {
+  key: string;
+  label: string;
+  status: "PASS" | "WARN" | "FAIL";
+  age_hours: number;
+  message: string;
+}
+
+const statusStyles: Record<string, { bg: string; text: string; icon: string }> = {
+  PASS: { bg: "bg-emerald-500/15 border-emerald-500/20", text: "text-emerald-400", icon: "\u2705" },
+  WARN: { bg: "bg-amber-500/15 border-amber-500/20", text: "text-amber-400", icon: "\u26A0\uFE0F" },
+  FAIL: { bg: "bg-red-500/15 border-red-500/20", text: "text-red-400", icon: "\u274C" },
+};
+
+function formatAge(hours: number): string {
+  if (hours >= 9000) return "N/A";
+  if (hours < 1) return "<1h";
+  if (hours < 24) return `${Math.round(hours)}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
+export function FreshnessBar({ items }: { items: FreshnessItem[] }) {
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => {
+        const style = statusStyles[item.status] || statusStyles.FAIL;
+        return (
+          <div
+            key={item.key}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium ${style.bg}`}
+            title={item.message}
+          >
+            <span>{style.icon}</span>
+            <span className={style.text}>{item.label}</span>
+            <span className="text-muted-foreground/70">{formatAge(item.age_hours)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export type { FreshnessItem };

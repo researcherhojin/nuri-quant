@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { Separator } from "@/components/ui/separator";
+import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
 import Link from "next/link";
 
 interface DashboardData {
@@ -19,6 +19,23 @@ interface DashboardData {
   n_positions: number;
 }
 
+interface FreshnessData {
+  items: FreshnessItem[];
+  overall: "PASS" | "WARN" | "FAIL";
+}
+
+interface PipelineStep {
+  step: string;
+  label: string;
+  status: string;
+  record_count: number;
+  last_updated: string | null;
+}
+
+interface PipelineStatusData {
+  steps: PipelineStep[];
+}
+
 const levelStyles: Record<string, { bg: string; border: string; text: string; label: string }> = {
   aggressive: { bg: "bg-emerald-950/50", border: "border-emerald-700", text: "text-emerald-400", label: "AGGRESSIVE" },
   neutral:    { bg: "bg-card",       border: "border-input",    text: "text-muted-foreground",    label: "NEUTRAL" },
@@ -26,26 +43,23 @@ const levelStyles: Record<string, { bg: string; border: string; text: string; la
   defensive:  { bg: "bg-red-950/50",     border: "border-red-700",     text: "text-red-400",     label: "DEFENSIVE" },
 };
 
-async function Dashboard() {
-  const d = await fetchAPI<DashboardData>("/api/dashboard");
+const pipelineStatusColors: Record<string, string> = {
+  idle: "bg-zinc-500",
+  running: "bg-blue-500 animate-pulse",
+  done: "bg-emerald-500",
+  error: "bg-red-500",
+};
 
-  // 포트폴리오만 서버사이드 fetch (빠름). SIEGE/advisor는 사이드바에서 별도 fetch.
-  let portfolio: any = null;
-  let siege: any = null;
-  let advisor: any = null;
-  try {
-    // portfolio는 빠름 (DB 직접). certify/advisor는 느릴 수 있으므로 3초 타임아웃.
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    [portfolio, siege, advisor] = await Promise.all([
-      fetchAPI<any>("/api/portfolio").catch(() => null),
-      fetch("http://localhost:8001/api/certify", { signal: controller.signal })
-        .then(r => r.json()).catch(() => null),
-      fetch("http://localhost:8001/api/rebalance-advisor", { signal: controller.signal })
-        .then(r => r.json()).catch(() => null),
-    ]);
-    clearTimeout(timeout);
-  } catch {}
+async function Dashboard() {
+  // 모든 데이터를 병렬로 fetch
+  const [d, freshness, pipelineStatus, portfolio, siege, advisor] = await Promise.all([
+    fetchAPI<DashboardData>("/api/dashboard"),
+    fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], overall: "FAIL" })),
+    fetchAPI<PipelineStatusData>("/api/pipeline/status").catch((): PipelineStatusData => ({ steps: [] })),
+    fetchAPI<any>("/api/portfolio").catch(() => null),
+    fetchAPI<any>("/api/certify").catch(() => null),
+    fetchAPI<any>("/api/rebalance-advisor").catch(() => null),
+  ]);
 
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
 
@@ -60,6 +74,37 @@ async function Dashboard() {
 
   return (
     <div className="space-y-4">
+      {/* ── Freshness Bar ── */}
+      {freshness.items.length > 0 && (
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider shrink-0">Freshness</span>
+          <FreshnessBar items={freshness.items} />
+        </div>
+      )}
+
+      {/* ── Pipeline Status (compact row) ── */}
+      {pipelineStatus.steps.length > 0 && (
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider shrink-0">Pipeline</span>
+          <div className="flex items-center gap-1">
+            {pipelineStatus.steps.map((s, i) => (
+              <div key={s.step} className="flex items-center gap-1">
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/30" title={`${s.label}: ${s.record_count.toLocaleString()} records`}>
+                  <span className={`inline-flex h-1.5 w-1.5 rounded-full ${pipelineStatusColors[s.status] || "bg-zinc-500"}`} />
+                  <span className="text-[10px] text-muted-foreground">{s.label}</span>
+                </div>
+                {i < pipelineStatus.steps.length - 1 && (
+                  <span className="text-muted-foreground/30 text-[10px]">&rarr;</span>
+                )}
+              </div>
+            ))}
+          </div>
+          <Link href="/pipeline" className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground ml-auto">
+            상세 &rarr;
+          </Link>
+        </div>
+      )}
+
       {/* ── Top Metrics Row ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="bg-card border-border">
@@ -99,7 +144,7 @@ async function Dashboard() {
             <p className="text-[10px] text-muted-foreground mb-1">Market</p>
             <p className="text-lg font-bold">{d.regime.trend?.toUpperCase()}</p>
             <p className="text-[10px] text-muted-foreground/70">
-              VIX {d.regime.vix ?? "—"} · F&G {d.regime.fear_greed ?? "—"}
+              VIX {d.regime.vix ?? "\u2014"} · F&G {d.regime.fear_greed ?? "\u2014"}
             </p>
           </CardContent>
         </Card>
@@ -164,7 +209,7 @@ async function Dashboard() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground/70 py-4 text-center">No actions — hold current positions</p>
+              <p className="text-sm text-muted-foreground/70 py-4 text-center">No actions \u2014 hold current positions</p>
             )}
           </CardContent>
         </Card>
@@ -206,14 +251,14 @@ async function Dashboard() {
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground/70">VIX</p>
-                  <p className="text-sm font-medium">{d.regime.vix ?? "—"}</p>
+                  <p className="text-sm font-medium">{d.regime.vix ?? "\u2014"}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground/70">Fear & Greed</p>
                   <p className={`text-sm font-medium ${
                     (d.regime.fear_greed ?? 50) < 25 ? "text-red-400" :
                     (d.regime.fear_greed ?? 50) > 75 ? "text-emerald-400" : ""
-                  }`}>{d.regime.fear_greed ?? "—"}</p>
+                  }`}>{d.regime.fear_greed ?? "\u2014"}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground/70">Macro Score</p>
@@ -235,7 +280,7 @@ async function Dashboard() {
                 <div className="space-y-1">
                   {siege.conditions?.filter((c: any) => !c.passed).slice(0, 4).map((c: any, i: number) => (
                     <p key={i} className="text-[11px] text-muted-foreground">
-                      {c.severity === "error" ? "❌" : "⚠️"} {c.description} — {c.detail}
+                      {c.severity === "error" ? "\u274C" : "\u26A0\uFE0F"} {c.description} \u2014 {c.detail}
                     </p>
                   ))}
                 </div>
@@ -251,6 +296,7 @@ async function Dashboard() {
 function LoadingSkeleton() {
   return (
     <div className="space-y-5">
+      <div className="h-8 bg-card rounded-lg border border-border animate-pulse" />
       <div className="h-36 bg-card rounded-xl border border-border animate-pulse" />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="h-64 bg-card rounded-xl border border-border animate-pulse" />
