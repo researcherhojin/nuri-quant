@@ -177,9 +177,9 @@ class TestSchemaMigration:
         assert len(tables) == 1
 
     def test_get_schema_version_initial(self, db_path):
-        """마이그레이션 적용 후 최신 버전."""
+        """마이그레이션 적용 후 최신 버전 — MAX(version) 기준."""
         from nuri.core.db import _MIGRATIONS
-        expected = len(_MIGRATIONS)
+        expected = max(v for v, _, _ in _MIGRATIONS)
         assert get_schema_version(db_path) == expected
 
     def test_idempotent_with_migrations(self, db_path):
