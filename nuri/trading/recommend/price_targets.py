@@ -481,10 +481,9 @@ def check_portfolio_mdd(db_path: Optional[Path] = None) -> dict | None:
     Returns:
         dict: MDD 위반 정보. 위반 없으면 None.
     """
-    from nuri.core.rules import PORTFOLIO_STOP
-
     # 환율 조회 (KRW → USD 변환용)
     from nuri.core.db import query as _q
+    from nuri.core.rules import PORTFOLIO_STOP
     usd_krw = 1400.0  # 폴백
     try:
         fx_rows = _q("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1", db_path=db_path)
