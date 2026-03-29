@@ -1,4 +1,6 @@
 """Phase D 레짐 분류기 테스트 — in-memory SQLite로 격리."""
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -17,8 +19,8 @@ def db_path(tmp_path):
 @pytest.fixture
 def bull_market(db_path):
     """상승장 시뮬레이션: SPY가 SMA200 위, VIX 낮음."""
-    # 300일 상승 추세 (100 → 200)
-    dates = pd.bdate_range("2024-01-01", periods=300)
+    # 300일 상승 추세 (100 → 200), 오늘 날짜 기준
+    dates = pd.bdate_range(end=datetime.now().strftime("%Y-%m-%d"), periods=300)
     close = np.linspace(100, 200, 300) + np.random.normal(0, 1, 300)
 
     df = pd.DataFrame({
@@ -51,8 +53,8 @@ def bull_market(db_path):
 @pytest.fixture
 def bear_market(db_path):
     """하락장 시뮬레이션: SPY가 SMA200 아래, VIX 높음."""
-    # 300일: 200일 상승 후 100일 급락
-    dates = pd.bdate_range("2024-01-01", periods=300)
+    # 300일: 200일 상승 후 100일 급락, 오늘 날짜 기준
+    dates = pd.bdate_range(end=datetime.now().strftime("%Y-%m-%d"), periods=300)
     up = np.linspace(150, 200, 200)
     down = np.linspace(200, 130, 100)
     close = np.concatenate([up, down]) + np.random.normal(0, 0.5, 300)

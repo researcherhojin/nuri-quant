@@ -29,7 +29,7 @@ def full_db(db_path):
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
                 "VALUES (?, ?, ?, ?, ?, ?)", ("test", t, q, p, "USD", s))
 
-    dates = pd.bdate_range("2023-01-01", periods=400)
+    dates = pd.bdate_range(end=today, periods=400)
     for ticker, base in [("SPY", 400), ("AAPL", 140), ("MSFT", 280), ("TSLA", 300)]:
         np.random.seed(42)
         close = np.linspace(base, base * 1.2, 400)

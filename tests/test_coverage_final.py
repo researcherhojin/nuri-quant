@@ -29,7 +29,7 @@ def rich_db(db_path):
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
                 "VALUES (?, ?, ?, ?, ?, ?)", ("test", t, q, p, "USD", s))
 
-    dates = pd.bdate_range("2023-01-01", periods=300)
+    dates = pd.bdate_range(end=today, periods=300)
     for ticker, base in [("SPY", 400), ("AAPL", 140), ("MSFT", 280), ("TSLA", 300)]:
         close = np.linspace(base, base * 1.2, 300) + np.random.normal(0, 1, 300)
         df = pd.DataFrame({

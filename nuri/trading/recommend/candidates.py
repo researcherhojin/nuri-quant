@@ -11,6 +11,7 @@ E-1: 시그널 기반 후보 스크리너.
 import argparse
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -48,15 +49,30 @@ class Candidate:
     conflict: str = ""              # "" or "direction_conflict" (from Conflict Detection)
 
 
-def _load_scorecard() -> dict[str, dict]:
-    """최신 signal_scorecard.csv에서 시그널별 통계 로드."""
+def _load_scorecard() -> tuple[dict[str, dict], int | None]:
+    """최신 signal_scorecard.csv에서 시그널별 통계 로드.
+
+    Returns:
+        (scorecard_dict, age_days): 스코어카드 데이터와 파일 나이(일). 파일 없으면 ({}, None).
+    """
     if REPORT_DIR.exists():
         for d in sorted(REPORT_DIR.iterdir(), reverse=True):
             csv = d / "signal_scorecard.csv"
             if csv.exists():
+                # 디렉토리명에서 날짜 추출 (YYYY-MM-DD 형식)
+                age_days = None
+                try:
+                    dir_date = datetime.strptime(d.name, "%Y-%m-%d")
+                    age_days = (datetime.now() - dir_date).days
+                except ValueError:
+                    pass
+
+                if age_days is not None and age_days > 7:
+                    logger.warning("스코어카드 %d일 경과 (디렉토리: %s). 재검증 필요: make validate", age_days, d.name)
+
                 df = pd.read_csv(csv)
                 total = df[df["ticker"].isna()]
-                return {
+                data = {
                     row["signal_id"]: {
                         "win_rate": row["win_rate"],
                         "profit_factor": row["profit_factor"],
@@ -65,7 +81,8 @@ def _load_scorecard() -> dict[str, dict]:
                     }
                     for _, row in total.iterrows()
                 }
-    return {}
+                return data, age_days
+    return {}, None
 
 
 def _get_drift_map(db_path=None) -> dict[str, dict]:
@@ -141,7 +158,8 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
     Returns:
         confidence 내림차순 정렬된 후보 리스트
     """
-    scorecard = _load_scorecard()
+    scorecard, scorecard_age_days = _load_scorecard()
+    scorecard_stale = scorecard_age_days is not None and scorecard_age_days > 7
     regime_ctx = _get_regime_context(db_path)
     drift_map = _get_drift_map(db_path)
     tickers = get_tickers(db_path=db_path)
@@ -225,6 +243,8 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     confidence *= DRIFT_MULTIPLIERS[drift_status]
 
                 notes_parts = []
+                if scorecard_stale:
+                    notes_parts.append(f"⚠️ 스코어카드 {scorecard_age_days}일 전")
                 if stats.get("total_trades"):
                     notes_parts.append(f"과거 {stats['total_trades']}건")
                 if regime_note:
