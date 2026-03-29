@@ -261,7 +261,7 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
             if pd.isna(row["sma50"]) or pd.isna(row["sma200"]):
                 continue
             # 각 날짜의 실제 VIX 조회 (히스테리시스 윈도우 2~5일이므로 비용 무시 가능)
-            row_date = spy_df["date"].iloc[len(spy_df) + i]
+            row_date = spy_df["date"].iloc[i]
             day_vix = _get_vix(date=row_date, db_path=db_path) if row_date else vix
             t, v = _classify_single(
                 row["close"], row["sma50"], row["sma200"],
