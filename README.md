@@ -12,15 +12,15 @@
 
 </div>
 
-Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 21 data collectors ingest market data, 3,400+ historical trades validate signals, 7 specialist AI agents vote independently, and a 10-condition gate mechanically certifies every recommendation before it reaches you.
+Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 21 data collectors ingest market data, 8,000+ historical trades validate 15 signals across 10 market regimes, 7 specialist agents vote independently, and a 10-condition gate mechanically certifies every recommendation before it reaches you.
 
 ## Pipeline
 
 ```mermaid
 graph LR
-    A["Collect<br/>21 collectors<br/>+ 11 external sources"] --> B["Validate<br/>3,400+ trades<br/>signal backtest"]
-    B --> C["Classify<br/>6-regime model<br/>bull/bear/sideways"]
-    C --> D["Diagnose<br/>7 AI agents<br/>weighted consensus"]
+    A["Collect<br/>21 collectors<br/>+ 11 external sources"] --> B["Validate<br/>8,000+ trades<br/>15 signals backtest"]
+    B --> C["Classify<br/>10-regime model<br/>bull/bear/sideways<br/>+ special regimes"]
+    C --> D["Diagnose<br/>7 agents<br/>weighted consensus"]
     D --> E["Certify<br/>SIEGE 10-gate<br/>pass / reject"]
     E --> F["Recommend<br/>entry / stop-loss<br/>take-profit targets"]
 
@@ -35,8 +35,8 @@ graph LR
 | Stage | Description |
 |-------|-------------|
 | **Collect** | US/KR equities, macro indicators (FRED), Fear & Greed, 13F filings, analyst estimates + 11 external sites (TipRanks, Dataroma, CBOE, CoinGecko, Reddit/WSB, ARK, etc.) |
-| **Validate** | Backtest 3,400+ historical trades. Learning Memory auto-downgrades signals with degrading win rates |
-| **Classify** | 6-regime classification via SPY price, SMA50/200, VIX. Adaptive hysteresis with per-day historical VIX lookup |
+| **Validate** | Backtest 8,000+ historical trades across 15 signals (price, macro, data-driven). Learning Memory auto-downgrades signals with degrading win rates |
+| **Classify** | 10-regime classification: 6 base (bull/bear/sideways × high/low vol) + 4 special (recovery, euphoria, stagflation, sector rotation). Adaptive hysteresis with per-day historical VIX lookup |
 | **Diagnose** | 7 specialist agents with weighted voting. Risk agent holds veto power: forces SELL override when confidence ≥ 80 |
 | **Certify** | [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) — 10-condition mechanical gate. Single error → REJECTED |
 | **Recommend** | Entry price, stop-loss (-7%), take-profit 1 (+20%, sell 50%), take-profit 2 (+40%, sell 25%), trailing stop (-15%) |
@@ -66,7 +66,7 @@ make full-scan     # run full pipeline: collect → validate → classify → di
 | `make evidence` | 5 Plotly evidence charts |
 | `make report-llm` | Qwen3.5 LLM evidence-based report |
 | `make start` | API (:8001) + Dashboard (:3000) |
-| `make test` | pytest 684 tests (42 files) |
+| `make test` | pytest 684 tests (42 files, 18s) |
 
 </details>
 
@@ -106,6 +106,7 @@ Architecture inspired by [Palantir Foundry](https://www.palantir.com/docs/foundr
 | **VIX Hysteresis** | Historical VIX lookup per-day for regime classification (removed current-VIX approximation) |
 | **Exchange Rate** | Hardcoded 1450 KRW/USD removed → staleness warning at 7d, error if unavailable |
 | **Freshness Enforcement** | SPY > 120h stale → `classify_regime()` blocked (weekend/holiday aware) |
+| **Automated Rules** | Take-profit signals, trailing stop (HWM-based), portfolio MDD -10% gate — `price_targets.py` |
 
 ### Feedback Loop
 
@@ -144,7 +145,7 @@ Architecture inspired by [Palantir Foundry](https://www.palantir.com/docs/foundr
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)]()
 [![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)]()
 
-> 48 endpoints · 29 tables · SSE streaming · JWT + bcrypt + slowapi rate limiting · Pipeline Event Journal · Data Freshness SLA
+> 48 endpoints · 29 tables (v10 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting · Pipeline Event Journal · Data Freshness SLA
 
 ### 4. Frontend
 
