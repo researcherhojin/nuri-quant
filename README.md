@@ -88,6 +88,36 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 - 매수 체크리스트: TipRanks ≥ Moderate Buy, 슈퍼투자자 3명+, PE < 100, 매출 > $0, 멀티팩터 상위 50%
 - 매도 우선순위: 레버리지 ETF → 손절선 초과 → 슈퍼투자자 0명 → 비중 초과 → 섹터 초과
 
+## 파이프라인 관측성
+
+[Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) + [Dagster Freshness Policy](https://docs.dagster.io/guides/observe/asset-freshness-policies) + [SIEGE Event Journal](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) 패턴 적용.
+
+| 기능 | 설명 |
+|------|------|
+| **Event Journal** | 모든 파이프라인 상태 전환을 `pipeline_events` 테이블에 append-only 기록. causation_id로 인과 추적 |
+| **Data Freshness** | 데이터 소스별 PASS/WARN/FAIL 상태. 주가 18h/30h, VIX 24h/72h, 합의 24h/48h SLA |
+| **Pipeline Control** | 6-step DAG 의존성 검증 + `run_step()` wrapper. `/api/pipeline/{step}/run`으로 개별 스텝 실행 |
+| **Operator Cockpit** | 대시보드 상단 FreshnessBar + Pipeline 페이지에 [실행] 버튼 + 이벤트 타임라인 |
+| **Projection 기반 대시보드** | `analyze_portfolio()` 인라인 호출 제거 (93초 → <1초). recommendations 테이블에서 조회 |
+
+### 데이터 정합성
+
+| 항목 | 내용 |
+|------|------|
+| **타임존** | `nuri.core.timezone` — 내부 KST 통일, `datetime.now()` 사용 금지 |
+| **VIX 히스테리시스** | 과거 레짐 분류 시 해당 날짜의 실제 VIX 조회 (현재 VIX 근사 제거) |
+| **환율** | 하드코딩 1450원 제거 → 7일 초과 경고, 미수집 시 에러 |
+| **데이터 신선도 강제** | SPY 120시간 초과 → `classify_regime()` 차단 (주말/공휴일 감안) |
+
+### 피드백 루프
+
+| 항목 | 내용 |
+|------|------|
+| **hit 판정** | BUY: ret30 >= 5% (기존 > 0%), SELL: ret30 < -2%. `hit_quality` = 달성률 |
+| **실행 추적** | `trades` 테이블 + API (`POST/GET/PUT /api/trades`) — 추천 vs 실제 실행 비교 |
+| **에이전트 감사** | `agent_verdicts` JSON — 7개 에이전트 개별 판단 기록 |
+| **Confidence 감사** | `scoring_detail` JSON — drift/conflict/regime_fit 계수 역추적 |
+
 ## Tech Stack
 
 ### 1. 수집 (Collect)
@@ -153,7 +183,9 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 
 | 출처 | 적용 |
 |------|------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 10-condition gate, certification |
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 10-condition gate, certification, event journal |
+| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, Data Expectations, pipeline monitoring |
+| [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Asset freshness PASS/WARN/FAIL, observability |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 패턴 |
 | [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | MVO/Risk Parity 최적화 |
 | [VectorBT](https://vectorbt.dev/) | 벡터 기반 백테스트 |
