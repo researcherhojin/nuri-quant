@@ -1,7 +1,5 @@
 """Layer 0 데이터 무결성 테스트 — VIX 히스테리시스 + 데이터 신선도."""
-from datetime import datetime, timedelta
-
-from nuri.core.timezone import kst_now, today_kst
+from datetime import timedelta
 from unittest.mock import patch
 
 import numpy as np
@@ -9,6 +7,7 @@ import pandas as pd
 import pytest
 
 from nuri.core.db import init_db, upsert_macro, upsert_prices
+from nuri.core.timezone import kst_now, today_kst
 
 
 @pytest.fixture
