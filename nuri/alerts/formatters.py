@@ -3,8 +3,10 @@ Discord 메시지 포맷터 — 분석 결과를 Discord Embed 형식으로 변�
 
 색상: 초록(양수), 빨강(음수), 노랑(경고)
 """
-from datetime import datetime
+
 from typing import Optional
+
+from nuri.core.timezone import today_kst
 
 # Discord Embed 색상
 COLOR_GREEN = 0x2ECC71
@@ -88,7 +90,7 @@ def format_daily_report(
     color = COLOR_RED if warnings or stop_alerts else COLOR_GREEN
 
     return {
-        "title": f"📋 Nuri-Quant Daily Report — {datetime.now().strftime('%Y-%m-%d')}",
+        "title": f"📋 Nuri-Quant Daily Report — {today_kst()}",
         "color": color,
         "fields": fields,
         "footer": {"text": "Nuri-Quant"},

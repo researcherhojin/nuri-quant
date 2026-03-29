@@ -10,9 +10,9 @@ Position Manager — SIEGE Certification Gate 적용.
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime
 
 from nuri.core.db import get_db, query
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ def certify_position(
     details["duplicate_check"] = "ok" if concentration_ok else "duplicate exists"
 
     # 4. 일일 최대 거래
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_kst()
     today_opens = query(
         "SELECT COUNT(*) as c FROM positions WHERE entry_date=? AND portfolio_type=?",
         (today, portfolio_type), db_path=db_path,
@@ -154,7 +154,7 @@ def open_position(
         logger.warning(f"[CERT BLOCKED] {ticker} {direction}: {', '.join(failed)}")
         return False
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_kst()
     with get_db(db_path) as conn:
         conn.execute(
             """INSERT OR IGNORE INTO positions
@@ -171,7 +171,7 @@ def open_position(
 
 def close_position(position_id: int, exit_price: float, reason: str, db_path=None) -> None:
     """포지션 청산."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_kst()
     pos = query("SELECT * FROM positions WHERE id=?", (position_id,), db_path=db_path)
     if not pos:
         return

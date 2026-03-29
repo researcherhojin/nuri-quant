@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from nuri.core.db import get_db, query
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class PerformanceDrift:
 
 def save_snapshot(db_path=None) -> int:
     """현재 시그널 성과를 strategy_memory에 스냅샷 저장 (append-only)."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_kst()
 
     # signal_results.csv에서 거래 데이터 로드
     results_csv = _find_latest_csv("signal_results.csv")
