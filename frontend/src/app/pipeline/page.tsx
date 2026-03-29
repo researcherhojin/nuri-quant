@@ -11,26 +11,59 @@ import {
   Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { API_BASE } from "@/lib/api";
 
 // === Types ===
-interface DashboardData {
-  regime?: { regime?: string; label?: string };
-  macro?: { score?: number };
-  gate?: { ready?: boolean };
-  gate_score?: number;
+interface PipelineStep {
+  step: string;
+  label: string;
+  description: string;
+  record_count: number;
+  last_updated: string | null;
+  status: "idle" | "running" | "done" | "error";
+  started_at: string | null;
+  error: string | null;
 }
 
-interface CertifyData {
-  certified?: boolean;
-  score?: number;
+interface PipelineStatusData {
+  steps: PipelineStep[];
+}
+
+interface TimelineEvent {
+  timestamp: string;
+  event_type: "start" | "success" | "error";
+  step: string;
+  payload: Record<string, unknown>;
+}
+
+interface GateCondition {
+  id: string;
+  phase: string;
+  description: string;
+  passed: boolean;
+  detail: string;
+}
+
+interface GateResult {
+  phase: string;
+  total: number;
+  passed: number;
+  score: number;
+  ready: boolean;
+  conditions: GateCondition[];
 }
 
 interface PipelineNodeData {
   label: string;
   sub: string;
-  status: "ok" | "warning" | "error";
+  status: "ok" | "warning" | "error" | "running";
+  recordCount: number;
+  lastUpdated: string | null;
+  stepId: string;
+  onRun: (stepId: string) => void;
+  isRunning: boolean;
   href?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // === 상태 색상 매핑 ===
@@ -38,19 +71,71 @@ const STATUS_COLORS: Record<string, string> = {
   ok: "bg-emerald-500",
   warning: "bg-amber-500",
   error: "bg-red-500",
+  running: "bg-blue-500",
 };
 
 const STATUS_BORDER: Record<string, string> = {
   ok: "border-emerald-500/30",
   warning: "border-amber-500/30",
   error: "border-red-500/30",
+  running: "border-blue-500/30",
 };
 
 const STATUS_GLOW: Record<string, string> = {
   ok: "shadow-emerald-500/10",
   warning: "shadow-amber-500/10",
   error: "shadow-red-500/10",
+  running: "shadow-blue-500/10",
 };
+
+const STEP_ICONS: Record<string, string> = {
+  collect: "\uD83D\uDD0D",
+  validate: "\u2705",
+  classify: "\uD83D\uDCCA",
+  diagnose: "\uD83E\uDD16",
+  recommend: "\uD83D\uDCCB",
+  track: "\uD83D\uDCCD",
+};
+
+const STEP_HREFS: Record<string, string> = {
+  collect: "/engine",
+  validate: "/signals",
+  classify: "/strategy",
+  diagnose: "/consensus",
+  recommend: "/targets",
+  track: "/targets",
+};
+
+// 타임라인 이벤트 아이콘
+const EVENT_ICONS: Record<string, string> = {
+  start: "\u25B6\uFE0F",
+  success: "\u2705",
+  error: "\u274C",
+};
+
+function formatAge(dateStr: string | null): string {
+  if (!dateStr) return "N/A";
+  try {
+    const dt = new Date(dateStr);
+    const now = new Date();
+    const hours = (now.getTime() - dt.getTime()) / (1000 * 60 * 60);
+    if (hours < 1) return "<1h ago";
+    if (hours < 24) return `${Math.round(hours)}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  } catch {
+    return dateStr;
+  }
+}
+
+function formatTimestamp(iso: string): string {
+  try {
+    const dt = new Date(iso);
+    return dt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  } catch {
+    return iso;
+  }
+}
 
 // === Custom Node Component ===
 const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
@@ -59,15 +144,12 @@ const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
   return (
     <div
       className={`
-        relative bg-card border rounded-xl px-6 py-5 min-w-[220px]
-        cursor-pointer transition-all duration-200
+        relative bg-card border rounded-xl px-5 py-4 min-w-[220px]
+        transition-all duration-200
         hover:bg-muted/80 hover:scale-[1.02]
         shadow-lg ${STATUS_GLOW[status]}
         ${STATUS_BORDER[status]}
       `}
-      onClick={() => {
-        if (data.href) window.location.href = data.href;
-      }}
     >
       {/* 입력 핸들 */}
       <Handle
@@ -76,26 +158,55 @@ const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
         className="!bg-muted !border-border !w-2 !h-2"
       />
 
-      {/* 상태 표시 */}
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-lg">{data.label.split(" ")[0]}</span>
-        <span className="relative flex h-2.5 w-2.5">
-          <span
-            className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${STATUS_COLORS[status]}`}
-          />
-          <span
-            className={`relative inline-flex rounded-full h-2.5 w-2.5 ${STATUS_COLORS[status]}`}
-          />
-        </span>
+      {/* 상태 표시 + 라벨 */}
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-base">{data.label.split(" ")[0]}</span>
+        <div className="flex items-center gap-2">
+          {/* 레코드 수 */}
+          <span className="text-[10px] text-muted-foreground/70">{data.recordCount.toLocaleString()}</span>
+          {/* 상태 점 */}
+          <span className="relative flex h-2.5 w-2.5">
+            {status === "running" ? (
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${STATUS_COLORS[status]}`} />
+            ) : null}
+            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${STATUS_COLORS[status]}`} />
+          </span>
+        </div>
       </div>
 
       {/* 제목 */}
-      <p className="text-base font-bold text-foreground mb-0.5">
+      <p className="text-sm font-bold text-foreground mb-0.5">
         {data.label.split(" ").slice(1).join(" ")}
       </p>
 
-      {/* 부제 */}
-      <p className="text-xs text-muted-foreground">{data.sub}</p>
+      {/* 부제 + last updated */}
+      <p className="text-[10px] text-muted-foreground">{data.sub}</p>
+      <p className="text-[10px] text-muted-foreground/50 mt-0.5">{formatAge(data.lastUpdated)}</p>
+
+      {/* 실행 버튼 */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!data.isRunning) data.onRun(data.stepId);
+        }}
+        disabled={data.isRunning}
+        className={`
+          mt-2 w-full text-[10px] font-medium py-1 rounded-md border transition-all
+          ${data.isRunning
+            ? "bg-blue-500/10 border-blue-500/20 text-blue-400 cursor-wait"
+            : "bg-muted/50 border-border hover:bg-muted hover:text-foreground text-muted-foreground cursor-pointer"
+          }
+        `}
+      >
+        {data.isRunning ? "\uC2E4\uD589 \uC911..." : "\uC2E4\uD589"}
+      </button>
+
+      {/* 에러 표시 */}
+      {data.status === "error" && (
+        <p className="text-[9px] text-red-400/80 mt-1 line-clamp-2" title={String(data.error || "")}>
+          {String(data.error || "unknown error").slice(0, 60)}
+        </p>
+      )}
 
       {/* 출력 핸들 */}
       <Handle
@@ -114,140 +225,160 @@ const EDGES: Edge[] = [
   { id: "e-collect-validate", source: "collect", target: "validate", animated: true, style: { stroke: "#3f3f46" } },
   { id: "e-validate-classify", source: "validate", target: "classify", animated: true, style: { stroke: "#3f3f46" } },
   { id: "e-classify-diagnose", source: "classify", target: "diagnose", animated: true, style: { stroke: "#3f3f46" } },
-  { id: "e-diagnose-certify", source: "diagnose", target: "certify", animated: true, style: { stroke: "#3f3f46" } },
-  { id: "e-certify-recommend", source: "certify", target: "recommend", animated: true, style: { stroke: "#3f3f46" } },
+  { id: "e-diagnose-recommend", source: "diagnose", target: "recommend", animated: true, style: { stroke: "#3f3f46" } },
+  { id: "e-recommend-track", source: "recommend", target: "track", animated: true, style: { stroke: "#3f3f46" } },
 ];
 
 // === Page Component ===
 export default function PipelinePage() {
-  const [regime, setRegime] = useState<string>("loading");
-  const [certified, setCertified] = useState<boolean | null>(null);
-  const [siegeScore, setSiegeScore] = useState<number | null>(null);
-  const [gateReady, setGateReady] = useState<boolean | null>(null);
+  const [steps, setSteps] = useState<PipelineStep[]>([]);
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [gates, setGates] = useState<Record<string, GateResult>>({});
+  const [runningSteps, setRunningSteps] = useState<Set<string>>(new Set());
 
-  // API에서 실시간 상태 조회
-  useEffect(() => {
-    // 대시보드 데이터 (regime, macro, gate)
-    fetch("http://localhost:8001/api/dashboard")
+  // 파이프라인 상태 fetch
+  const fetchStatus = useCallback(() => {
+    fetch(`${API_BASE}/api/pipeline/status`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: DashboardData | null) => {
-        if (data) {
-          setRegime(data.regime?.regime || data.regime?.label || "unknown");
-          setGateReady(data.gate_score ? data.gate_score >= 50 : null);
+      .then((data: PipelineStatusData | null) => {
+        if (data?.steps) {
+          setSteps(data.steps);
+          // 실행 중인 스텝 업데이트
+          const running = new Set<string>();
+          for (const s of data.steps) {
+            if (s.status === "running") running.add(s.step);
+          }
+          setRunningSteps(running);
         }
       })
-      .catch(() => setRegime("error"));
-
-    // SIEGE 인증 상태
-    fetch("http://localhost:8001/api/certify")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: CertifyData | null) => {
-        if (data) {
-          setCertified(data.certified ?? false);
-          setSiegeScore(data.score ?? null);
-        }
-      })
-      .catch(() => setCertified(false));
+      .catch(() => {});
   }, []);
 
-  // 레짐 상태 → 노드 status 변환
-  const regimeStatus = (): "ok" | "warning" | "error" => {
-    if (regime === "loading" || regime === "error") return "warning";
-    if (regime === "crisis" || regime === "volatile_bear") return "error";
-    return "ok";
-  };
+  // 타임라인 fetch
+  const fetchTimeline = useCallback(() => {
+    fetch(`${API_BASE}/api/pipeline/timeline?limit=30`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { events: TimelineEvent[] } | null) => {
+        if (data?.events) setTimeline(data.events);
+      })
+      .catch(() => {});
+  }, []);
 
-  // 게이트 상태 → 노드 status 변환
-  const gateStatus = (): "ok" | "warning" | "error" => {
-    if (gateReady === null) return "warning";
-    return gateReady ? "ok" : "error";
+  // 게이트 fetch
+  const fetchGates = useCallback(() => {
+    fetch(`${API_BASE}/api/gate`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: Record<string, GateResult> | null) => {
+        if (data) setGates(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  // 초기 로드 + 10초 자동 새로고침
+  useEffect(() => {
+    fetchStatus();
+    fetchTimeline();
+    fetchGates();
+
+    const interval = setInterval(() => {
+      fetchStatus();
+      fetchTimeline();
+    }, 10_000);
+
+    return () => clearInterval(interval);
+  }, [fetchStatus, fetchTimeline, fetchGates]);
+
+  // 스텝 실행
+  const handleRunStep = useCallback((stepId: string) => {
+    setRunningSteps((prev) => new Set([...prev, stepId]));
+
+    fetch(`${API_BASE}/api/pipeline/${stepId}/run`, { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) {
+          alert(data.error);
+          setRunningSteps((prev) => {
+            const next = new Set(prev);
+            next.delete(stepId);
+            return next;
+          });
+        }
+        // 실행 시작 후 상태 새로고침
+        setTimeout(fetchStatus, 1000);
+        setTimeout(fetchTimeline, 1000);
+      })
+      .catch(() => {
+        setRunningSteps((prev) => {
+          const next = new Set(prev);
+          next.delete(stepId);
+          return next;
+        });
+      });
+  }, [fetchStatus, fetchTimeline]);
+
+  // 스텝 상태 → 노드 status 변환
+  const getNodeStatus = (step: PipelineStep): "ok" | "warning" | "error" | "running" => {
+    if (step.status === "running" || runningSteps.has(step.step)) return "running";
+    if (step.status === "error") return "error";
+    if (step.status === "done") return "ok";
+    // idle 상태에서 레코드가 있으면 ok, 없으면 warning
+    return step.record_count > 0 ? "ok" : "warning";
   };
 
   // 파이프라인 노드 정의
-  const nodes: Node[] = [
-    {
-      id: "collect",
-      type: "pipeline",
-      position: { x: 0, y: 80 },
-      data: { label: "🔍 Collect", sub: "15 collectors + 6 sites", status: gateStatus(), href: "/engine" },
-    },
-    {
-      id: "validate",
-      type: "pipeline",
-      position: { x: 320, y: 80 },
-      data: { label: "✅ Validate", sub: "3,400+ trades backtested", status: "ok", href: "/signals" },
-    },
-    {
-      id: "classify",
-      type: "pipeline",
-      position: { x: 640, y: 80 },
-      data: { label: "📊 Classify", sub: `6 regimes — ${regime}`, status: regimeStatus(), href: "/strategy" },
-    },
-    {
-      id: "diagnose",
-      type: "pipeline",
-      position: { x: 960, y: 80 },
-      data: { label: "🤖 Diagnose", sub: "7 agents consensus", status: "ok", href: "/consensus" },
-    },
-    {
-      id: "certify",
-      type: "pipeline",
-      position: { x: 1280, y: 80 },
-      data: {
-        label: "🔒 Certify",
-        sub: `SIEGE 10-cond${siegeScore !== null ? ` — ${siegeScore}%` : ""}`,
-        status: certified === null ? "warning" : certified ? "ok" : "error",
-        href: "/engine",
-      },
-    },
-    {
-      id: "recommend",
-      type: "pipeline",
-      position: { x: 1600, y: 80 },
-      data: { label: "📋 Recommend", sub: "price targets + actions", status: "ok", href: "/targets" },
-    },
-  ];
+  const nodes: Node[] = steps.length > 0
+    ? steps.map((s, i) => ({
+        id: s.step,
+        type: "pipeline",
+        position: { x: i * 300, y: 80 },
+        data: {
+          label: `${STEP_ICONS[s.step] || ""} ${s.label}`,
+          sub: s.description,
+          status: getNodeStatus(s),
+          recordCount: s.record_count,
+          lastUpdated: s.last_updated,
+          stepId: s.step,
+          onRun: handleRunStep,
+          isRunning: runningSteps.has(s.step),
+          href: STEP_HREFS[s.step],
+        } satisfies PipelineNodeData,
+      }))
+    : DEFAULT_NODES.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          onRun: handleRunStep,
+          isRunning: false,
+        },
+      }));
 
-  // nodeTypes를 useCallback으로 메모이제이션 (리렌더 방지)
   const nodeTypes = useCallback(
     () => ({ pipeline: PipelineNode }),
     [],
   );
 
+  // 게이트 조건 (collect + validate + regime + recommend)
+  const allConditions = Object.entries(gates).flatMap(([, result]) => result.conditions);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Pipeline</h1>
-        <div className="flex items-center gap-4">
-          {/* 레짐 배지 */}
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground">Regime</span>
-            <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-              regimeStatus() === "ok"
-                ? "bg-emerald-400/10 text-emerald-400"
-                : regimeStatus() === "error"
-                ? "bg-red-400/10 text-red-400"
-                : "bg-amber-400/10 text-amber-400"
-            }`}>
-              {regime.toUpperCase()}
-            </span>
-          </div>
-          {/* SIEGE 배지 */}
-          {certified !== null && (
-            <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium ${
-              certified ? "bg-emerald-400/10 text-emerald-400" : "bg-red-400/10 text-red-400"
-            }`}>
-              <span>{certified ? "🛡 CERTIFIED" : "⚠ REJECTED"}</span>
-              {siegeScore !== null && (
-                <span className="opacity-60">{siegeScore}%</span>
-              )}
+        <div className="flex items-center gap-3">
+          {/* 실행 중 카운터 */}
+          {runningSteps.size > 0 && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-400/10 text-blue-400 text-[10px] font-medium">
+              <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+              <span>{runningSteps.size}개 실행 중</span>
             </div>
           )}
+          {/* 자동 새로고침 표시 */}
+          <span className="text-[10px] text-muted-foreground/50">10초 자동 갱신</span>
         </div>
       </div>
 
       {/* React Flow 캔버스 */}
-      <div className="h-[500px] rounded-xl border border-border bg-background overflow-hidden">
+      <div className="h-[320px] rounded-xl border border-border bg-background overflow-hidden">
         <ReactFlow
           nodes={nodes}
           edges={EDGES}
@@ -255,7 +386,7 @@ export default function PipelinePage() {
           fitView
           fitViewOptions={{ padding: 0.3 }}
           proOptions={{ hideAttribution: true }}
-          minZoom={0.5}
+          minZoom={0.4}
           maxZoom={1.5}
           defaultEdgeOptions={{
             type: "smoothstep",
@@ -274,19 +405,139 @@ export default function PipelinePage() {
       <div className="flex items-center gap-6 text-[10px] text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-          <span>Healthy</span>
+          <span>정상</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
-          <span>Warning / Loading</span>
+          <span>경고 / 대기</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-flex h-2 w-2 rounded-full bg-red-500" />
-          <span>Error / Failed</span>
+          <span>에러</span>
         </div>
-        <span className="text-muted-foreground/50">|</span>
-        <span>Click a node to navigate to its detail page</span>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+          <span>실행 중</span>
+        </div>
+      </div>
+
+      {/* ── Event Timeline + Gate Conditions ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 이벤트 타임라인 */}
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground mb-3">이벤트 타임라인</p>
+          {timeline.length === 0 ? (
+            <p className="text-xs text-muted-foreground/50 py-6 text-center">
+              아직 이벤트 없음 &mdash; 파이프라인 스텝을 실행하세요
+            </p>
+          ) : (
+            <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+              {timeline.map((ev, i) => (
+                <div key={`${ev.timestamp}-${i}`} className="flex items-start gap-2 text-xs py-1.5 border-b border-border/30 last:border-0">
+                  <span className="shrink-0 text-sm">{EVENT_ICONS[ev.event_type] || "\u2022"}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground/80 capitalize">{ev.step}</span>
+                      <span className={`text-[10px] px-1 py-0.5 rounded ${
+                        ev.event_type === "success" ? "bg-emerald-500/10 text-emerald-400" :
+                        ev.event_type === "error" ? "bg-red-500/10 text-red-400" :
+                        "bg-blue-500/10 text-blue-400"
+                      }`}>
+                        {ev.event_type}
+                      </span>
+                    </div>
+                    {ev.payload && (
+                      <p className="text-muted-foreground/70 text-[10px] mt-0.5 line-clamp-1">
+                        {ev.payload.stderr
+                          ? String(ev.payload.stderr).slice(0, 80)
+                          : ev.payload.command
+                          ? String(ev.payload.command)
+                          : ev.payload.error
+                          ? String(ev.payload.error)
+                          : JSON.stringify(ev.payload)}
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground/40 shrink-0">
+                    {formatTimestamp(ev.timestamp)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Gate Conditions */}
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground mb-3">Gate Conditions</p>
+          {allConditions.length === 0 ? (
+            <p className="text-xs text-muted-foreground/50 py-6 text-center">
+              게이트 조건 로딩 중...
+            </p>
+          ) : (
+            <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+              {allConditions.map((c) => (
+                <div key={c.id} className="flex items-start gap-2 text-xs py-1.5 border-b border-border/30 last:border-0">
+                  <span className={`shrink-0 text-sm ${c.passed ? "text-emerald-400" : "text-red-400"}`}>
+                    {c.passed ? "\u2713" : "\u2717"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-foreground/80">{c.description}</p>
+                    <p className={`text-[10px] mt-0.5 ${c.passed ? "text-muted-foreground/50" : "text-muted-foreground/70"}`}>
+                      {c.detail}
+                    </p>
+                  </div>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
+                    c.passed ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+                  }`}>
+                    {c.phase}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
+// === 기본 노드 (API 응답 전) ===
+const DEFAULT_NODES: Node[] = [
+  {
+    id: "collect",
+    type: "pipeline",
+    position: { x: 0, y: 80 },
+    data: { label: "\uD83D\uDD0D Collect", sub: "15 collectors + 6 sites", status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } as PipelineNodeData,
+  },
+  {
+    id: "validate",
+    type: "pipeline",
+    position: { x: 300, y: 80 },
+    data: { label: "\u2705 Validate", sub: "Signal backtest + scorecard", status: "warning", recordCount: 0, lastUpdated: null, stepId: "validate", href: "/signals" } as PipelineNodeData,
+  },
+  {
+    id: "classify",
+    type: "pipeline",
+    position: { x: 600, y: 80 },
+    data: { label: "\uD83D\uDCCA Classify", sub: "6-regime classifier", status: "warning", recordCount: 0, lastUpdated: null, stepId: "classify", href: "/strategy" } as PipelineNodeData,
+  },
+  {
+    id: "diagnose",
+    type: "pipeline",
+    position: { x: 900, y: 80 },
+    data: { label: "\uD83E\uDD16 Diagnose", sub: "7 agents consensus", status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } as PipelineNodeData,
+  },
+  {
+    id: "recommend",
+    type: "pipeline",
+    position: { x: 1200, y: 80 },
+    data: { label: "\uD83D\uDCCB Recommend", sub: "Buy/sell + price targets", status: "warning", recordCount: 0, lastUpdated: null, stepId: "recommend", href: "/targets" } as PipelineNodeData,
+  },
+  {
+    id: "track",
+    type: "pipeline",
+    position: { x: 1500, y: 80 },
+    data: { label: "\uD83D\uDCCD Track", sub: "30/60/90d outcomes", status: "warning", recordCount: 0, lastUpdated: null, stepId: "track", href: "/targets" } as PipelineNodeData,
+  },
+];
