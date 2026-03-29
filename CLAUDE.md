@@ -124,7 +124,7 @@ nuri/
 ├── collectors/        # 21 data collectors inheriting BaseCollector
 ├── analysis/          # portfolio, risk, sector, charts, rebalance_advisor, evidence_charts
 ├── quant/             # Quantitative pipeline
-│   ├── regime/        # 6-regime classifier, macro score, strategy map
+│   ├── regime/        # 10-regime classifier (6 base + 4 special), macro score, strategy map
 │   ├── validation/    # Signal backtest, superinvestor/analyst backtest, scorecard
 │   ├── backtest/      # VectorBT engine, grid search optimizer
 │   └── factors/       # Multi-factor scoring (momentum, value, quality, composite)
@@ -159,6 +159,18 @@ All collectors inherit `BaseCollector` (`nuri/collectors/base.py`). The contract
 
 `_get_tickers(market=)` filters portfolio tickers: `"us"` excludes `.KS`, `"kr"` includes only `.KS`.
 
+### Signal system (15 signals, detector registry pattern)
+
+`signal_backtest.py` uses a **detector registry** — each signal registers `entry` and optional `exit` functions in `SIGNAL_DEFINITIONS`. Three categories:
+
+- **Price-based** (7): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
+- **Macro-based** (3): vix_reversal, pcr_reversal, yield_curve_recovery — require `merge_macro_data()` (DB macro table)
+- **Data-dependent** (2): insider_cluster, short_squeeze — require `merge_data_signals()` (insider_trades, external_analysis tables)
+
+Public API: `compute_indicators()`, `detect_signal_entries()`, `compute_exit()`, `merge_macro_data()`, `merge_data_signals()`. Backward-compatible `_` aliases exist.
+
+**Macro data quirk**: `us_3m_yield` (FRED) is absent in yfinance fallback — `^IRX` (13-week T-Bill) is stored as `us_2y_yield`. `merge_macro_data()` has a fallback: queries `us_2y_yield` when `us_3m_yield` is empty.
+
 ### C→D→E data flow
 
 The validation/regime/recommendation pipeline is connected by data, not imports:
@@ -185,6 +197,22 @@ Re-running C-1 (`python -m nuri.quant.validation.signal_backtest`) updates the d
 | `korean_market.py` | 10% | KRW/USD FX, foreign flows, KOSPI/KOSDAQ |
 
 Risk agent has veto power: SELL + confidence >= 80 overrides all others. Korean market agent returns neutral HOLD for US tickers.
+
+**Known limitation**: All 7 agents use hardcoded thresholds (RSI 30/70, PE 15/40, etc.) and inconsistent confidence scales (Technical 0-90, Fundamental 0-80, Risk 0-90). These are rule-based checklist algorithms, not ML models. Thresholds are not yet externalized to config or calibrated against historical outcomes.
+
+### Regime classifier (6 base + 4 special)
+
+Base regimes: `{bull,bear,sideways}_{low,high}_vol` — determined by SPY SMA50/200 position + VIX with adaptive hysteresis (5 days normal, 2 days if VIX≥25).
+
+Special regimes (checked in priority order, override base `regime` field):
+- **euphoria**: VIX < 12 AND F&G > 80 → position sizing `defensive`
+- **stagflation**: CPI > 4% AND GDP < 1% → `minimal` (GDP data rarely available)
+- **recovery**: SMA50 < SMA200 200 days ago AND SMA50 >= SMA200 now → `aggressive`
+- **sector_rotation**: SPY ±2% (20d) AND any sector ETF > 3% → `normal`
+
+`RegimeState.trend`/`.volatility` always reflect the base classification. `details["special_regime"]` is `None` or the special name. `details["base_regime"]` always has the 6-regime name.
+
+**Known limitation**: `longshort.py` `REGIME_ALLOCATION` and `position.py` `"bull" in regime` pattern matching don't handle special regime names — they fall back to defaults via `.get()`.
 
 ### SIEGE Engine
 
@@ -299,7 +327,7 @@ data/
 
 ## Testing
 
-684 tests across 42 files. Tests use `tmp_path` fixture for isolated SQLite databases:
+684 tests across 42 files (v10 migrations). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -359,6 +387,13 @@ Core principle: **3:1 profit-to-loss ratio** (loss at -7%, profit at +20%).
 | Leverage | Banned ETFs | TSLL, TQQQ, SQQQ, UPRO, SPXU |
 
 Buy checklist (all must pass): TipRanks >= Moderate Buy, superinvestors >= 3, PE < 100, revenue > $0, factor score top 50%.
+
+### Automated rule enforcement (`price_targets.py`)
+
+- `check_take_profit_signals()` — detects holdings reaching target_1/target_2 with correct sell percentages
+- `check_trailing_stop_signals()` — calculates High Water Mark from prices table, triggers at -15% (growth/value) or -20% (swing)
+- `check_portfolio_mdd()` — checks portfolio-wide PnL against -10% limit with KRW/USD conversion
+- DB migrations v8-v10 added `target_1_price`, `target_2_price`, `high_water_mark` to `positions` table
 
 ### External data sources for investment decisions
 
