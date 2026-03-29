@@ -17,7 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from nuri.core.db import query
-from nuri.core.timezone import today_kst
+from nuri.core.timezone import kst_now, today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def validate_estimates(min_elapsed_days: int = 90, db_path=None) -> list[Estimat
 
     데이터가 부족하면 빈 리스트 반환 + 안내 메시지.
     """
-    cutoff = (datetime.now() - timedelta(days=min_elapsed_days)).strftime("%Y-%m-%d")
+    cutoff = (kst_now().replace(tzinfo=None) - timedelta(days=min_elapsed_days)).strftime("%Y-%m-%d")
 
     # 검증 가능한 estimates 조회
     estimates = query(
@@ -60,7 +60,7 @@ def validate_estimates(min_elapsed_days: int = 90, db_path=None) -> list[Estimat
         oldest = query("SELECT MIN(date) as d, COUNT(DISTINCT date) as dates FROM estimates",
                        db_path=db_path)
         if oldest and oldest[0]["d"]:
-            days_elapsed = (datetime.now() - datetime.strptime(oldest[0]["d"], "%Y-%m-%d")).days
+            days_elapsed = (kst_now().replace(tzinfo=None) - datetime.strptime(oldest[0]["d"], "%Y-%m-%d")).days
             available_date = (datetime.strptime(oldest[0]["d"], "%Y-%m-%d")
                              + timedelta(days=min_elapsed_days)).strftime("%Y-%m-%d")
             logger.warning(
