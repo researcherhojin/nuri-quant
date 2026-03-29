@@ -46,6 +46,7 @@ class MacroScore:
     monetary_score: float
     interpretation: str         # "Favorable", "Neutral", "Cautious", "Adverse"
     details: dict               # 원본 지표 값
+    warnings: list[str] | None = None  # 누락된 지표 경고 목록
 
 
 def _get_latest_macro(indicator: str, date: str | None = None, db_path=None) -> float | None:
@@ -309,6 +310,25 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
     inf_score, inf_detail = _score_inflation(db_path, date)
     mon_score, mon_detail = _score_monetary(db_path, date)
 
+    # 누락 지표 감지: 50점(중립) 폴백 시 원본 데이터가 None이면 경고
+    warnings: list[str] = []
+    _MISSING_CHECKS: list[tuple[str, float, dict, list[str]]] = [
+        ("yield_curve", yc_score, yc_detail, ["10y", "2y"]),
+        ("yield_spread_3m10y", ys3m10y_score, ys3m10y_detail, ["3m", "spread_3m10y"]),
+        ("vix", vix_score, vix_detail, ["vix"]),
+        ("put_call_ratio", pcr_score, pcr_detail, ["put_call_ratio"]),
+        ("sentiment", sent_score, sent_detail, ["fear_greed"]),
+        ("employment", emp_score, emp_detail, ["unemployment"]),
+        ("inflation", inf_score, inf_detail, ["cpi_yoy"]),
+        ("monetary", mon_score, mon_detail, ["fed_funds"]),
+    ]
+    for name, score, detail, keys in _MISSING_CHECKS:
+        if score == 50.0 and any(detail.get(k) is None for k in keys):
+            missing_keys = [k for k in keys if detail.get(k) is None]
+            msg = f"{name}: 데이터 누락 ({', '.join(missing_keys)}) → 중립 50점 사용"
+            warnings.append(msg)
+            logger.warning("매크로 지표 누락 — %s", msg)
+
     total = (
         yc_score * WEIGHTS["yield_curve"]
         + ys3m10y_score * WEIGHTS["yield_spread_3m10y"]
@@ -343,6 +363,7 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
         interpretation=interpretation,
         details={**yc_detail, **ys3m10y_detail, **vix_detail, **pcr_detail,
                  **sent_detail, **emp_detail, **inf_detail, **mon_detail},
+        warnings=warnings if warnings else None,
     )
 
 
