@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
-import { fetchAPI } from "@/lib/api";
+import { fetchAPI, API_BASE } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Separator } from "@/components/ui/separator";
@@ -39,9 +39,9 @@ async function Dashboard() {
     const timeout = setTimeout(() => controller.abort(), 3000);
     [portfolio, siege, advisor] = await Promise.all([
       fetchAPI<any>("/api/portfolio").catch(() => null),
-      fetch("http://localhost:8001/api/certify", { signal: controller.signal })
+      fetch(`${API_BASE}/api/certify`, { signal: controller.signal })
         .then(r => r.json()).catch(() => null),
-      fetch("http://localhost:8001/api/rebalance-advisor", { signal: controller.signal })
+      fetch(`${API_BASE}/api/rebalance-advisor`, { signal: controller.signal })
         .then(r => r.json()).catch(() => null),
     ]);
     clearTimeout(timeout);

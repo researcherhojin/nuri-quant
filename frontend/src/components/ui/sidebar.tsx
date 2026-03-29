@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
+import { API_BASE } from "@/lib/api";
 import {
   LayoutDashboard,
   Briefcase,
@@ -80,7 +81,7 @@ export function Sidebar() {
 
   // SIEGE 인증 상태 조회
   useEffect(() => {
-    fetch("http://localhost:8001/api/certify")
+    fetch(`${API_BASE}/api/certify`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data) setSiegeStatus({ certified: data.certified, score: data.score });

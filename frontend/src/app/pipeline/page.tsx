@@ -12,6 +12,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Card, CardContent } from "@/components/ui/card";
+import { API_BASE } from "@/lib/api";
 
 // === Types ===
 interface DashboardData {
@@ -178,11 +179,24 @@ export default function PipelinePage() {
 
   // API에서 실시간 상태 조회
   useEffect(() => {
-    const entries: TimelineEntry[] = [];
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    // 6-step 파이프라인 순서 정의
+    const STEP_ORDER = ["Collect", "Validate", "Classify", "Diagnose", "Recommend", "Track"];
+    const entryMap: Record<string, TimelineEntry> = {};
     const now = new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 
+    // 정렬된 타임라인 업데이트 함수
+    const updateTimeline = () => {
+      const sorted = STEP_ORDER
+        .filter((step) => entryMap[step])
+        .map((step) => entryMap[step]);
+      setTimeline(sorted);
+    };
+
     // 대시보드 데이터 (regime, macro, gate)
-    fetch("http://localhost:8001/api/dashboard")
+    fetch(`${API_BASE}/api/dashboard`, { signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: DashboardData | null) => {
         if (data) {
@@ -192,24 +206,25 @@ export default function PipelinePage() {
           setMacroScore(data.macro?.score ?? null);
           setNPositions(data.n_positions ?? null);
 
-          entries.push({
+          entryMap["Collect"] = {
             step: "Collect",
             status: data.gate_score && data.gate_score >= 50 ? "ok" : "warning",
             detail: `게이트 스코어 ${data.gate_score ?? "N/A"}%`,
             time: now,
-          });
-          entries.push({
+          };
+          entryMap["Classify"] = {
             step: "Classify",
             status: data.regime?.regime ? "ok" : "warning",
             detail: `레짐: ${data.regime?.regime || "unknown"}`,
             time: now,
-          });
+          };
+          updateTimeline();
         }
       })
-      .catch(() => setRegime("error"));
+      .catch(() => { if (!signal.aborted) setRegime("error"); });
 
     // SIEGE 인증 상태
-    fetch("http://localhost:8001/api/certify")
+    fetch(`${API_BASE}/api/certify`, { signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: CertifyData | null) => {
         if (data) {
@@ -218,52 +233,61 @@ export default function PipelinePage() {
 
           const passed = data.conditions?.filter(c => c.passed).length ?? 0;
           const total = data.conditions?.length ?? 0;
-          entries.push({
+          entryMap["Diagnose"] = {
             step: "Diagnose",
             status: data.certified ? "ok" : "error",
             detail: `SIEGE ${passed}/${total} 조건 통과`,
             time: now,
-          });
+          };
+          updateTimeline();
         }
       })
-      .catch(() => setCertified(false));
+      .catch(() => { if (!signal.aborted) setCertified(false); });
 
     // Scorecard 데이터
-    fetch("http://localhost:8001/api/scorecard")
+    fetch(`${API_BASE}/api/scorecard`, { signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: Array<{ signal_id: string; total_trades: number; win_rate: number }> | null) => {
         if (data && Array.isArray(data)) {
           const totalTrades = data.reduce((sum, s) => sum + (s.total_trades || 0), 0);
-          entries.push({
+          entryMap["Validate"] = {
             step: "Validate",
             status: "ok",
             detail: `${data.length}개 시그널, ${totalTrades.toLocaleString()} trades 검증`,
             time: now,
-          });
+          };
+          updateTimeline();
         }
       })
       .catch(() => {});
 
     // Consensus 데이터
-    fetch("http://localhost:8001/api/consensus")
+    fetch(`${API_BASE}/api/consensus`, { signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { results?: Array<{ final_action: string }> } | null) => {
         if (data?.results) {
           const buys = data.results.filter((r: { final_action: string }) => r.final_action === "BUY").length;
           const sells = data.results.filter((r: { final_action: string }) => r.final_action === "SELL").length;
-          entries.push({
+          entryMap["Recommend"] = {
             step: "Recommend",
             status: "ok",
             detail: `BUY ${buys}건, SELL ${sells}건 추천`,
             time: now,
-          });
+          };
+
+          // Track 엔트리: 추천 데이터 기반 추적 상태
+          entryMap["Track"] = {
+            step: "Track",
+            status: "ok",
+            detail: `${buys + sells}건 추천 → 30/60/90일 성과 추적 중`,
+            time: now,
+          };
+          updateTimeline();
         }
       })
       .catch(() => {});
 
-    // 타임라인 업데이트 (지연)
-    const timer = setTimeout(() => setTimeline([...entries]), 2000);
-    return () => clearTimeout(timer);
+    return () => controller.abort();
   }, []);
 
   // 레짐 상태 → 노드 status 변환

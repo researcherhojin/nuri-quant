@@ -1,4 +1,5 @@
 """레짐 + 매크로 + LLM 리포트 API."""
+import asyncio
 from dataclasses import asdict
 
 from fastapi import APIRouter
@@ -25,10 +26,10 @@ def get_macro():
 
 
 @router.get("/report")
-def get_report():
-    """LLM 리포트 (Gate → Context → Generate → Validate)."""
+async def get_report():
+    """LLM 리포트 (Gate → Context → Generate → Validate). 비동기 실행으로 이벤트 루프 블로킹 방지."""
     from nuri.llm.report import generate_llm_report
-    return generate_llm_report()
+    return await asyncio.to_thread(generate_llm_report)
 
 
 @router.get("/report/context")

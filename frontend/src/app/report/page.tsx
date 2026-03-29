@@ -1,14 +1,25 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
-// === Ollama 오류 감지 ===
+// === Ollama 오류 감지 (HTTP 상태 코드 우선, 문자열 매칭 폴백) ===
 function isOllamaError(report: string): boolean {
-  return report.includes("LLM 연결 실패") || report.includes("LLM 오류");
+  const patterns = [
+    "LLM 연결 실패",
+    "LLM 오류",
+    "connection refused",
+    "ECONNREFUSED",
+    "timeout",
+    "connect ETIMEDOUT",
+    "ollama",
+  ];
+  const lower = report.toLowerCase();
+  return patterns.some((p) => lower.includes(p.toLowerCase()));
 }
 
 // === 경과 시간 표시 훅 ===
@@ -36,15 +47,29 @@ export default function ReportPage() {
   const [context, setContext] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const elapsed = useElapsedTime(loading);
 
-  async function generateReport() {
+  // 컴포넌트 언마운트 시 진행 중인 fetch 취소
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const generateReport = useCallback(async () => {
+    // 이전 요청 취소
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
+
     setLoading(true);
     setReport(null);
     setError(null);
     try {
       // 컨텍스트 먼저 표시
-      const ctxRes = await fetch(`${API_BASE}/api/report/context`);
+      const ctxRes = await fetch(`${API_BASE}/api/report/context`, { signal });
       if (!ctxRes.ok) {
         throw new Error(`컨텍스트 조회 실패 (${ctxRes.status})`);
       }
@@ -52,13 +77,18 @@ export default function ReportPage() {
       setContext(ctxData.prompt || ctxData.context);
 
       // LLM 리포트 생성
-      const res = await fetch(`${API_BASE}/api/report`);
+      const res = await fetch(`${API_BASE}/api/report`, { signal });
       if (!res.ok) {
+        // HTTP 에러 상태 코드로 Ollama 오류 판별
+        if (res.status === 502 || res.status === 503) {
+          setError("ollama_not_running");
+          return;
+        }
         throw new Error(`리포트 생성 실패 (${res.status})`);
       }
       const data = await res.json();
 
-      // Ollama 연결 실패 감지
+      // Ollama 연결 실패 감지 (응답 본문 문자열 매칭 폴백)
       if (data.report && isOllamaError(data.report)) {
         setError("ollama_not_running");
         setReport(null);
@@ -69,6 +99,9 @@ export default function ReportPage() {
         setReport(data.report);
       }
     } catch (e) {
+      // 취소된 요청은 무시
+      if (signal.aborted) return;
+
       const msg = e instanceof Error ? e.message : "Unknown error";
       // fetch 실패 시 (백엔드 다운 등)
       if (msg.includes("fetch") || msg.includes("Failed") || msg.includes("NetworkError")) {
@@ -77,9 +110,11 @@ export default function ReportPage() {
         setError(msg);
       }
     } finally {
-      setLoading(false);
+      if (!signal.aborted) {
+        setLoading(false);
+      }
     }
-  }
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -226,7 +261,7 @@ export default function ReportPage() {
           </CardHeader>
           <CardContent>
             <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-strong:text-foreground prose-li:text-muted-foreground prose-hr:border-border">
-              <ReactMarkdown>{report}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{report}</ReactMarkdown>
             </div>
           </CardContent>
         </Card>
