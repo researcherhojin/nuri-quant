@@ -342,7 +342,7 @@ class TestScorecardStaleness:
             cand_module.REPORT_DIR = tmp_path / "reports"
             data, age_days = cand_module._load_scorecard()
             assert age_days is not None
-            assert age_days >= 10
+            assert age_days >= 9  # KST/UTC 시차로 9일이 될 수 있음
             assert len(data) > 0
         finally:
             cand_module.REPORT_DIR = original_report_dir
