@@ -20,7 +20,8 @@ def db_path(tmp_path):
 def _insert_spy_data(db_path, n_days=300, trend="bull", last_date=None):
     """SPY 가격 데이터 삽입 헬퍼."""
     if last_date is None:
-        last_date = datetime.now().strftime("%Y-%m-%d")
+        from nuri.core.timezone import today_kst
+        last_date = today_kst()
     dates = pd.bdate_range(end=last_date, periods=n_days)
 
     if trend == "bull":
