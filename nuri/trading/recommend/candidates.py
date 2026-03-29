@@ -168,7 +168,7 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
     # VIX 게이트 체크
     vix_gate = _check_vix_gate(db_path)
     if vix_gate["gate"] == "blocked":
-        logger.warning("⚠ %s", vix_gate["msg"])
+        logger.debug("⚠ %s", vix_gate["msg"])  # debug로 변경 (매 호출마다 반복 방지)
 
     if not tickers:
         return []

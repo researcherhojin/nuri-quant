@@ -38,7 +38,7 @@ graph LR
 |------|------|
 | **수집** | 미국/한국 주가, 매크로 지표, Fear&Greed, 13F, 애널리스트 목표가 + 11개 외부 사이트 (TipRanks, Dataroma, CBOE, CoinGecko, Reddit/WSB 등) |
 | **검증** | 3,400건+ 과거 트레이드로 시그널 백테스트. 최근 성과 급락 시그널은 Learning Memory가 자동 신뢰도 하향 |
-| **분류** | SPY 가격, SMA50/200, VIX 기반 6개 레짐 분류. VIX 25+ 시 적응형 히스테리시스로 빠른 전환 |
+| **분류** | SPY 가격, SMA50/200, VIX 기반 6개 레짐 분류. 날짜별 VIX 히스테리시스 + KST 타임존 통일 |
 | **판단** | 7개 에이전트 독립 분석 + 가중 투표. Risk 에이전트 거부권: confidence 80 이상 시 전원 BUY여도 SELL 강제 |
 | **인증** | [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) — 10개 규칙 기계적 검증. 하나라도 error면 REJECTED |
 | **추천** | 매수가, 손절가(-7%), 1차 익절(+20%, 50% 매도), 2차 익절(+40%, 25% 매도), 트레일링 스톱(-15%) |
@@ -116,7 +116,7 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)]()
 [![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)]()
 
-> 41 endpoints · 27 tables · SSE stream · JWT + bcrypt + slowapi
+> 45+ endpoints · 29 tables · SSE stream · JWT + bcrypt + slowapi · Pipeline Event Journal · Data Freshness SLA
 
 ### 4. 프론트엔드 (Dashboard)
 
@@ -125,7 +125,7 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 [![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)]()
 [![shadcn/ui](https://img.shields.io/badge/shadcn/ui-latest-000000)]()
 
-> 13 pages · Dark/Light mode · React Flow 파이프라인 시각화
+> 14 pages · Dark mode · Palantir-style Operator Cockpit · FreshnessBar (PASS/WARN/FAIL) · Pipeline Control
 
 ### 5. LLM
 
