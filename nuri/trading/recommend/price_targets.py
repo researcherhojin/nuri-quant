@@ -327,6 +327,204 @@ def print_portfolio_targets(targets: list[dict]) -> None:
     print(f"총 {len(targets)}개 종목")
 
 
+# ═══════════════════════════════════════════════════════
+# 익절 시그널 감지
+# ═══════════════════════════════════════════════════════
+
+
+def check_take_profit_signals(db_path: Optional[Path] = None) -> list[dict]:
+    """포트폴리오 전체에서 익절 도달 종목 감지.
+
+    각 보유 종목의 현재가를 진입가 대비 비교하여,
+    1차/2차 익절 목표에 도달한 종목을 반환.
+
+    Returns:
+        list[dict]: 익절 시그널 리스트
+            - ticker, stock_type, entry_price, current_price, return_pct
+            - level ("target_1" or "target_2")
+            - sell_pct (매도 비율: 50% or 25%)
+    """
+    df = query_df(
+        "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
+        db_path=db_path,
+    )
+    if df.empty:
+        return []
+
+    signals = []
+    for _, row in df.iterrows():
+        ticker = row["ticker"]
+        entry_price = row["avg_price"]
+        if not entry_price or entry_price <= 0:
+            continue
+
+        current_price = _get_current_price(ticker, db_path=db_path)
+        if current_price is None:
+            logger.debug("No price data for %s, skipping take-profit check", ticker)
+            continue
+
+        stock_type = classify_stock_type(ticker, db_path=db_path)
+        targets = calculate_targets(ticker, entry_price, stock_type, db_path=db_path)
+        if "error" in targets:
+            continue
+
+        return_pct = (current_price / entry_price - 1) * 100
+
+        # 2차 익절 도달 (우선)
+        if current_price >= targets["target_2"]:
+            sell_pct = TAKE_PROFIT_GROWTH.get("target_2_sell_pct", 25) if stock_type == "growth" else \
+                       TAKE_PROFIT_SWING.get("target_2_sell_pct", 100) if stock_type == "swing" else \
+                       TAKE_PROFIT_VALUE.get("target_2_sell_pct", 25)
+            signals.append({
+                "ticker": ticker, "stock_type": stock_type,
+                "entry_price": entry_price, "current_price": current_price,
+                "return_pct": round(return_pct, 1),
+                "level": "target_2", "target_price": targets["target_2"],
+                "sell_pct": sell_pct, "quantity": row["quantity"],
+            })
+        # 1차 익절 도달
+        elif current_price >= targets["target_1"]:
+            sell_pct = TAKE_PROFIT_GROWTH.get("target_1_sell_pct", 50) if stock_type == "growth" else \
+                       TAKE_PROFIT_SWING.get("target_1_sell_pct", 50) if stock_type == "swing" else \
+                       TAKE_PROFIT_VALUE.get("target_1_sell_pct", 50)
+            signals.append({
+                "ticker": ticker, "stock_type": stock_type,
+                "entry_price": entry_price, "current_price": current_price,
+                "return_pct": round(return_pct, 1),
+                "level": "target_1", "target_price": targets["target_1"],
+                "sell_pct": sell_pct, "quantity": row["quantity"],
+            })
+
+    return sorted(signals, key=lambda s: s["return_pct"], reverse=True)
+
+
+# ═══════════════════════════════════════════════════════
+# 트레일링 스톱 감지
+# ═══════════════════════════════════════════════════════
+
+
+def check_trailing_stop_signals(db_path: Optional[Path] = None) -> list[dict]:
+    """포트폴리오 전체에서 트레일링 스톱 도달 종목 감지.
+
+    각 보유 종목의 최고가(high water mark) 대비 현재가 하락률을 계산하여,
+    임계값(-15% growth/value, -20% volatile/swing)을 초과하면 시그널 생성.
+
+    Returns:
+        list[dict]: 트레일링 스톱 시그널 리스트
+    """
+    df = query_df(
+        "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
+        db_path=db_path,
+    )
+    if df.empty:
+        return []
+
+    signals = []
+    for _, row in df.iterrows():
+        ticker = row["ticker"]
+        entry_price = row["avg_price"]
+        if not entry_price or entry_price <= 0:
+            continue
+
+        current_price = _get_current_price(ticker, db_path=db_path)
+        if current_price is None:
+            logger.debug("No price data for %s, skipping trailing stop check", ticker)
+            continue
+
+        # 고점(HWM) 계산: prices 테이블에서 진입 이후 최고가
+        hwm_rows = query(
+            "SELECT MAX(high) as max_high FROM prices WHERE ticker = ?",
+            (ticker,), db_path=db_path,
+        )
+        hwm = hwm_rows[0]["max_high"] if hwm_rows and hwm_rows[0]["max_high"] else None
+        if hwm is None or hwm <= 0:
+            continue
+
+        # 진입가보다 낮으면 HWM = max(entry_price, hwm)
+        hwm = max(hwm, entry_price)
+
+        # 유형별 임계값
+        stock_type = classify_stock_type(ticker, db_path=db_path)
+        if stock_type == "swing":
+            threshold = TRAILING_STOP_VOLATILE  # -20%
+        elif stock_type == "growth":
+            threshold = TRAILING_STOP_GROWTH    # -15%
+        else:
+            threshold = TRAILING_STOP_VALUE     # -15%
+
+        # 하락률 계산
+        drop_pct = (current_price / hwm - 1) * 100
+        stop_price = round(hwm * (1 + threshold / 100), 2)
+
+        if drop_pct <= threshold:
+            signals.append({
+                "ticker": ticker, "stock_type": stock_type,
+                "entry_price": entry_price, "current_price": current_price,
+                "high_water_mark": hwm, "stop_price": stop_price,
+                "drop_pct": round(drop_pct, 1), "threshold": threshold,
+                "status": "TRIGGERED", "quantity": row["quantity"],
+            })
+
+    return sorted(signals, key=lambda s: s["drop_pct"])
+
+
+# ═══════════════════════════════════════════════════════
+# 포트폴리오 MDD 손절
+# ═══════════════════════════════════════════════════════
+
+
+def check_portfolio_mdd(db_path: Optional[Path] = None) -> dict | None:
+    """포트폴리오 전체 MDD가 -10% 한도를 초과하는지 확인.
+
+    analyze_portfolio()의 환율 변환 로직을 활용하여 USD 기준 PnL 계산.
+
+    Returns:
+        dict: MDD 위반 정보. 위반 없으면 None.
+    """
+    from nuri.core.rules import PORTFOLIO_STOP
+
+    try:
+        from nuri.analysis.portfolio import analyze_portfolio as _analyze
+        df = _analyze(db_path=db_path)
+        if df is None or df.empty:
+            return None
+        total_cost = df.attrs.get("total_cost_usd", 0)
+        total_value = df.attrs.get("total_value_usd", 0)
+    except Exception:
+        # analyze_portfolio 실패 시 원시 계산 폴백
+        holdings = query_df(
+            "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
+            db_path=db_path,
+        )
+        if holdings.empty:
+            return None
+        total_cost = 0.0
+        total_value = 0.0
+        for _, row in holdings.iterrows():
+            avg_price = row["avg_price"] or 0
+            qty = row["quantity"] or 0
+            total_cost += avg_price * qty
+            current = _get_current_price(row["ticker"], db_path=db_path)
+            total_value += (current or avg_price) * qty
+
+    if total_cost <= 0:
+        return None
+
+    pnl_pct = (total_value / total_cost - 1) * 100
+
+    if pnl_pct <= PORTFOLIO_STOP:
+        return {
+            "total_cost": round(total_cost, 2),
+            "total_value": round(total_value, 2),
+            "pnl_pct": round(pnl_pct, 1),
+            "limit": PORTFOLIO_STOP,
+            "severity": "critical",
+            "message": f"포트폴리오 MDD {pnl_pct:.1f}% (한도 {PORTFOLIO_STOP}%)",
+        }
+
+    return None
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
