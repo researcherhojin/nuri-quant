@@ -40,7 +40,7 @@ logger = logging.getLogger("verify")
 
 def create_report_dir() -> Path:
     """오늘 날짜 리포트 디렉토리 생성."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%Y-%m-%d")  # scripts는 항상 KST 환경에서 실행
     report_dir = ROOT / "data" / "reports" / today
     report_dir.mkdir(parents=True, exist_ok=True)
     return report_dir
