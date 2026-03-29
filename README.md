@@ -145,7 +145,7 @@ Architecture inspired by [Palantir Foundry](https://www.palantir.com/docs/foundr
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)]()
 [![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)]()
 
-> 48 endpoints · 29 tables (v10 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting · Pipeline Event Journal · Data Freshness SLA
+> 49 endpoints · 28 tables (v10 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting · Pipeline Event Journal · Data Freshness SLA
 
 ### 4. Frontend
 
