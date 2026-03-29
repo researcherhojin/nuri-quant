@@ -1,4 +1,4 @@
-# Nuri-Quant (누리퀀트)
+# Nuri-Quant
 
 <div align="center">
 
@@ -12,19 +12,17 @@
 
 </div>
 
-주식을 사거나 팔 때, 근거 없이 감으로 하고 있지 않나요?
+Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 21 data collectors ingest market data, 3,400+ historical trades validate signals, 7 specialist AI agents vote independently, and a 10-condition gate mechanically certifies every recommendation before it reaches you.
 
-Nuri-Quant은 **"왜 이 종목을 사야/팔아야 하는지"를 데이터로 증명**하는 오픈소스 퀀트 투자 플랫폼입니다. 21개 수집기로 데이터를 모으고, 3,400건 이상의 과거 트레이드로 시그널을 검증하고, 7개 전문 에이전트가 독립적으로 분석한 뒤 투표하고, 10개 규칙을 기계적으로 검증해서 — 최종 추천이 나옵니다.
-
-## 파이프라인
+## Pipeline
 
 ```mermaid
 graph LR
-    A["🔍 수집<br/>21 collectors<br/>+ 11 외부 사이트"] --> B["✅ 검증<br/>3,400+ 트레이드<br/>시그널 백테스트"]
-    B --> C["📊 분류<br/>6-레짐 분류<br/>bull/bear/sideways"]
-    C --> D["🤖 판단<br/>7 에이전트<br/>가중 투표"]
-    D --> E["🔒 인증<br/>SIEGE 10-조건<br/>pass / reject"]
-    E --> F["📋 추천<br/>매수가/손절가<br/>익절가 제시"]
+    A["Collect<br/>21 collectors<br/>+ 11 external sources"] --> B["Validate<br/>3,400+ trades<br/>signal backtest"]
+    B --> C["Classify<br/>6-regime model<br/>bull/bear/sideways"]
+    C --> D["Diagnose<br/>7 AI agents<br/>weighted consensus"]
+    D --> E["Certify<br/>SIEGE 10-gate<br/>pass / reject"]
+    E --> F["Recommend<br/>entry / stop-loss<br/>take-profit targets"]
 
     style A fill:#e8eaf6,stroke:#5c6bc0
     style B fill:#e8f5e9,stroke:#66bb6a
@@ -34,14 +32,14 @@ graph LR
     style F fill:#f3e5f5,stroke:#ab47bc
 ```
 
-| 단계 | 설명 |
-|------|------|
-| **수집** | 미국/한국 주가, 매크로 지표, Fear&Greed, 13F, 애널리스트 목표가 + 11개 외부 사이트 (TipRanks, Dataroma, CBOE, CoinGecko, Reddit/WSB 등) |
-| **검증** | 3,400건+ 과거 트레이드로 시그널 백테스트. 최근 성과 급락 시그널은 Learning Memory가 자동 신뢰도 하향 |
-| **분류** | SPY 가격, SMA50/200, VIX 기반 6개 레짐 분류. 날짜별 VIX 히스테리시스 + KST 타임존 통일 |
-| **판단** | 7개 에이전트 독립 분석 + 가중 투표. Risk 에이전트 거부권: confidence 80 이상 시 전원 BUY여도 SELL 강제 |
-| **인증** | [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) — 10개 규칙 기계적 검증. 하나라도 error면 REJECTED |
-| **추천** | 매수가, 손절가(-7%), 1차 익절(+20%, 50% 매도), 2차 익절(+40%, 25% 매도), 트레일링 스톱(-15%) |
+| Stage | Description |
+|-------|-------------|
+| **Collect** | US/KR equities, macro indicators (FRED), Fear & Greed, 13F filings, analyst estimates + 11 external sites (TipRanks, Dataroma, CBOE, CoinGecko, Reddit/WSB, ARK, etc.) |
+| **Validate** | Backtest 3,400+ historical trades. Learning Memory auto-downgrades signals with degrading win rates |
+| **Classify** | 6-regime classification via SPY price, SMA50/200, VIX. Adaptive hysteresis with per-day historical VIX lookup |
+| **Diagnose** | 7 specialist agents with weighted voting. Risk agent holds veto power: forces SELL override when confidence ≥ 80 |
+| **Certify** | [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) — 10-condition mechanical gate. Single error → REJECTED |
+| **Recommend** | Entry price, stop-loss (-7%), take-profit 1 (+20%, sell 50%), take-profit 2 (+40%, sell 25%), trailing stop (-15%) |
 
 ## Quick Start
 
@@ -50,77 +48,77 @@ graph LR
 git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
 make setup         # venv + deps + DB init + portfolio import
 cp .env.example .env
-cp config/portfolio.example.yaml config/portfolio.yaml  # 본인 포트폴리오 편집
-make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→판단→인증→추천→시각화→알림)
+cp config/portfolio.example.yaml config/portfolio.yaml  # edit your holdings
+make full-scan     # run full pipeline: collect → validate → classify → diagnose → certify → recommend → visualize → notify
 ```
 
 <details>
-<summary><b>전체 명령어</b></summary>
+<summary><b>All Commands</b></summary>
 
-| Command | 설명 |
-|---------|------|
-| `make full-scan` | 전체 파이프라인 8단계 실행 |
-| `make quick-scan` | 수집→분석→합의→타겟 (~2분) |
-| `make consensus` | 7에이전트 합의 + 가격 타겟 |
-| `make certify` | SIEGE 10-condition 인증 |
-| `make targets` | 전 종목 매수가/손절가/익절가 |
-| `make rebalance` | 규칙 위반 감지 + 매도 수량 |
-| `make evidence` | 5개 Plotly 증거 차트 |
-| `make report-llm` | Qwen3.5 LLM 증거 기반 리포트 |
-| `make start` | API(:8001) + Dashboard(:3000) 동시 실행 |
+| Command | Description |
+|---------|-------------|
+| `make full-scan` | Full 8-stage pipeline execution |
+| `make quick-scan` | Collect → analyze → consensus → targets (~2 min) |
+| `make consensus` | 7-agent consensus + price targets |
+| `make certify` | SIEGE 10-condition certification |
+| `make targets` | Entry / stop-loss / take-profit for all holdings |
+| `make rebalance` | Rule violation detection + sell quantities |
+| `make evidence` | 5 Plotly evidence charts |
+| `make report-llm` | Qwen3.5 LLM evidence-based report |
+| `make start` | API (:8001) + Dashboard (:3000) |
 | `make test` | pytest 684 tests (42 files) |
 
 </details>
 
-## 투자 규칙
+## Investment Rules
 
-`config/rules.yaml`에 정의. [O'Neil (CAN SLIM)](https://www.investors.com/) + [Minervini (SEPA)](https://www.minervini.com/) + [처분효과 연구](https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1985.tb05002.x) 기반.
+Defined in `config/rules.yaml`. Based on [O'Neil (CAN SLIM)](https://www.investors.com/) + [Minervini (SEPA)](https://www.minervini.com/) + [Disposition Effect research (Shefrin 1985)](https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1985.tb05002.x).
 
-| | 성장주 | 가치주 | 스윙 |
-|---|--------|-------|------|
-| **손절** | -7% | -10% | -5% |
-| **1차 익절** | +20% → 50% 매도 | +15% → 50% 매도 | +5% → 50% 매도 |
-| **2차 익절** | +40% → 25% 매도 | +30% → 25% 매도 | +10% → 전량 |
-| **나머지** | 트레일링 -15% | 트레일링 -15% | — |
+| | Growth | Value | Swing |
+|---|--------|-------|-------|
+| **Stop-Loss** | -7% | -10% | -5% |
+| **Take-Profit 1** | +20% → sell 50% | +15% → sell 50% | +5% → sell 50% |
+| **Take-Profit 2** | +40% → sell 25% | +30% → sell 25% | +10% → sell all |
+| **Remainder** | Trailing -15% | Trailing -15% | — |
 
-**핵심 규칙:**
-- VIX > 30 → 신규 매수 금지 (승률 급락 구간)
-- 매수 체크리스트: TipRanks ≥ Moderate Buy, 슈퍼투자자 3명+, PE < 100, 매출 > $0, 멀티팩터 상위 50%
-- 매도 우선순위: 레버리지 ETF → 손절선 초과 → 슈퍼투자자 0명 → 비중 초과 → 섹터 초과
+**Core Rules:**
+- VIX > 30 → block all new buys (win rate collapses)
+- Buy checklist: TipRanks ≥ Moderate Buy, superinvestors ≥ 3, PE < 100, revenue > $0, multi-factor top 50%
+- Sell priority: Leveraged ETF → stop-loss breach → no superinvestors → position limit → sector limit
 
-## 파이프라인 관측성
+## Pipeline Observability
 
-[Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) + [Dagster Freshness Policy](https://docs.dagster.io/guides/observe/asset-freshness-policies) + [SIEGE Event Journal](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) 패턴 적용.
+Architecture inspired by [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) Data Health + [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) Freshness Policy + [SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) Event Journal.
 
-| 기능 | 설명 |
-|------|------|
-| **Event Journal** | 모든 파이프라인 상태 전환을 `pipeline_events` 테이블에 append-only 기록. causation_id로 인과 추적 |
-| **Data Freshness** | 데이터 소스별 PASS/WARN/FAIL 상태. 주가 18h/30h, VIX 24h/72h, 합의 24h/48h SLA |
-| **Pipeline Control** | 6-step DAG 의존성 검증 + `run_step()` wrapper. `/api/pipeline/{step}/run`으로 개별 스텝 실행 |
-| **Operator Cockpit** | 대시보드 상단 FreshnessBar + Pipeline 페이지에 [실행] 버튼 + 이벤트 타임라인 |
-| **Projection 기반 대시보드** | `analyze_portfolio()` 인라인 호출 제거 (93초 → <1초). recommendations 테이블에서 조회 |
+| Feature | Description |
+|---------|-------------|
+| **Event Journal** | Append-only `pipeline_events` table. All state transitions recorded with `causation_id` for causal tracing |
+| **Data Freshness SLA** | Per-source PASS/WARN/FAIL. Prices 48h/120h, VIX 24h/72h, Consensus 24h/48h thresholds |
+| **Pipeline Control** | 6-step DAG with dependency validation. `run_step()` wrapper + `/api/pipeline/{step}/run` endpoint |
+| **Operator Cockpit** | Palantir-style dashboard: FreshnessBar badges + Pipeline page with run buttons + event timeline |
+| **Projection-based Dashboard** | Removed inline `analyze_portfolio()` (93s → <1s). Reads pre-computed results from `recommendations` table |
 
-### 데이터 정합성
+### Data Integrity
 
-| 항목 | 내용 |
-|------|------|
-| **타임존** | `nuri.core.timezone` — 내부 KST 통일, `datetime.now()` 사용 금지 |
-| **VIX 히스테리시스** | 과거 레짐 분류 시 해당 날짜의 실제 VIX 조회 (현재 VIX 근사 제거) |
-| **환율** | 하드코딩 1450원 제거 → 7일 초과 경고, 미수집 시 에러 |
-| **데이터 신선도 강제** | SPY 120시간 초과 → `classify_regime()` 차단 (주말/공휴일 감안) |
+| Item | Detail |
+|------|--------|
+| **Timezone** | `nuri.core.timezone` — KST internally, `datetime.now()` prohibited |
+| **VIX Hysteresis** | Historical VIX lookup per-day for regime classification (removed current-VIX approximation) |
+| **Exchange Rate** | Hardcoded 1450 KRW/USD removed → staleness warning at 7d, error if unavailable |
+| **Freshness Enforcement** | SPY > 120h stale → `classify_regime()` blocked (weekend/holiday aware) |
 
-### 피드백 루프
+### Feedback Loop
 
-| 항목 | 내용 |
-|------|------|
-| **hit 판정** | BUY: ret30 >= 5% (기존 > 0%), SELL: ret30 < -2%. `hit_quality` = 달성률 |
-| **실행 추적** | `trades` 테이블 + API (`POST/GET/PUT /api/trades`) — 추천 vs 실제 실행 비교 |
-| **에이전트 감사** | `agent_verdicts` JSON — 7개 에이전트 개별 판단 기록 |
-| **Confidence 감사** | `scoring_detail` JSON — drift/conflict/regime_fit 계수 역추적 |
+| Item | Detail |
+|------|--------|
+| **Hit Calculation** | BUY: ret30 ≥ 5% (was > 0%), SELL: ret30 < -2%. `hit_quality` = achievement ratio |
+| **Execution Tracking** | `trades` table + API (`POST/GET/PUT /api/trades`) — recommendation vs actual execution |
+| **Agent Audit** | `agent_verdicts` JSON — 7 individual agent judgments recorded per recommendation |
+| **Confidence Audit** | `scoring_detail` JSON — drift/conflict/regime_fit coefficients for full audit trail |
 
 ## Tech Stack
 
-### 1. 수집 (Collect)
+### 1. Data Collection
 
 [![OpenBB](https://img.shields.io/badge/OpenBB-4.6-00C853?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTEyIDJMMiAyMmgyMEwxMiAyeiIgZmlsbD0id2hpdGUiLz48L3N2Zz4=&logoColor=white)]()
 [![yfinance](https://img.shields.io/badge/yfinance-0.2-7B1FA2)]()
@@ -130,9 +128,9 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 [![finvizfinance](https://img.shields.io/badge/finvizfinance-1.3-607D8B)]()
 [![edgartools](https://img.shields.io/badge/edgartools-13F-795548)]()
 
-> 21 collectors + 11 외부 사이트 (TipRanks · Dataroma · CBOE · CoinGecko · Reddit/WSB · ARK · ETF.com · Macrotrends · TradingEcon · Short Interest · FINVIZ)
+> 21 collectors + 11 external sources (TipRanks · Dataroma · CBOE · CoinGecko · Reddit/WSB · ARK · ETF.com · Macrotrends · TradingEconomics · ShortInterest · FINVIZ)
 
-### 2. 분석 (Quant)
+### 2. Quantitative Analysis
 
 [![pandas](https://img.shields.io/badge/pandas-2.2-150458?logo=pandas&logoColor=white)]()
 [![scikit--learn](https://img.shields.io/badge/scikit--learn-1.4-F7931E?logo=scikit-learn&logoColor=white)]()
@@ -140,15 +138,15 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 [![VectorBT](https://img.shields.io/badge/VectorBT-0.28-9C27B0)]()
 [![cvxpy](https://img.shields.io/badge/cvxpy-1.4-00897B)]()
 
-### 3. 백엔드 (API)
+### 3. Backend
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)]()
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)]()
 [![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)]()
 
-> 45+ endpoints · 29 tables · SSE stream · JWT + bcrypt + slowapi · Pipeline Event Journal · Data Freshness SLA
+> 48 endpoints · 29 tables · SSE streaming · JWT + bcrypt + slowapi rate limiting · Pipeline Event Journal · Data Freshness SLA
 
-### 4. 프론트엔드 (Dashboard)
+### 4. Frontend
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)]()
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)]()
@@ -169,28 +167,28 @@ make full-scan     # 전체 파이프라인 실행 (수집→검증→분류→�
 [![Codecov](https://img.shields.io/badge/Codecov-coverage-F01F7A?logo=codecov&logoColor=white)]()
 [![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)]()
 
-## 레퍼런스
+## References
 
-### 투자 이론
+### Investment Theory
 
-| 출처 | 적용 |
-|------|------|
-| [O'Neil — CAN SLIM](https://www.investors.com/) | 손절 -7%, 익절 +20%/+40% |
-| [Minervini — SEPA](https://www.minervini.com/) | 트레일링 스톱, 3:1 손익비 |
-| [Shefrin 1985 — 처분효과](https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1985.tb05002.x) | 수익 종목 조기 매도 편향 경고 |
+| Source | Application |
+|--------|-------------|
+| [O'Neil — CAN SLIM](https://www.investors.com/) | Stop-loss -7%, take-profit +20%/+40% |
+| [Minervini — SEPA](https://www.minervini.com/) | Trailing stop, 3:1 reward-to-risk ratio |
+| [Shefrin 1985 — Disposition Effect](https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1985.tb05002.x) | Premature profit-taking bias alert |
 
-### 아키텍처 & 오픈소스
+### Architecture & Open Source
 
-| 출처 | 적용 |
-|------|------|
+| Source | Application |
+|--------|-------------|
 | [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 10-condition gate, certification, event journal |
 | [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, Data Expectations, pipeline monitoring |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Asset freshness PASS/WARN/FAIL, observability |
-| [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 패턴 |
-| [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | MVO/Risk Parity 최적화 |
-| [VectorBT](https://vectorbt.dev/) | 벡터 기반 백테스트 |
-| [Ghostfolio](https://github.com/ghostfolio/ghostfolio) | 대시보드 UX |
-| [React Flow](https://reactflow.dev/) | 파이프라인 DAG 시각화 |
+| [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Multi-agent consensus pattern |
+| [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | MVO / Risk Parity optimization |
+| [VectorBT](https://vectorbt.dev/) | Vectorized backtesting engine |
+| [Ghostfolio](https://github.com/ghostfolio/ghostfolio) | Dashboard UX inspiration |
+| [React Flow](https://reactflow.dev/) | Pipeline DAG visualization |
 
 ## License
 
