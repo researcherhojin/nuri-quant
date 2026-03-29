@@ -34,6 +34,7 @@ from nuri.api.routes import (
     swing,
     targets,
     ticker,
+    trades,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -91,6 +92,7 @@ app.include_router(stream.router, prefix="/api")
 app.include_router(evidence.router, prefix="/api")
 app.include_router(external.router, prefix="/api")
 app.include_router(targets.router, prefix="/api")
+app.include_router(trades.router, prefix="/api")
 
 
 # ─── 인증 엔드포인트 ───

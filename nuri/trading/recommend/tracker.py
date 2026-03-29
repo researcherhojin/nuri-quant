@@ -18,8 +18,34 @@ from nuri.core.db import get_db, query
 logger = logging.getLogger(__name__)
 
 
-def save_recommendations(candidates=None, actions=None, db_path=None) -> int:
-    """E-1 후보 + E-2 액션을 recommendations 테이블에 저장."""
+def _serialize_verdicts(consensus_results) -> dict[str, list[dict]]:
+    """ConsensusResult 리스트 → {ticker: [verdict_dict, ...]} 변환.
+
+    각 verdict에서 agent_name, action, confidence, reasoning (100자 제한)을 추출.
+    """
+    verdicts_map: dict[str, list[dict]] = {}
+    for result in consensus_results:
+        ticker_verdicts = []
+        for v in result.verdicts:
+            ticker_verdicts.append({
+                "agent_name": v.agent_name,
+                "action": v.action,
+                "confidence": round(v.confidence, 1),
+                "reasoning": v.reasoning[:100] if v.reasoning else "",
+            })
+        verdicts_map[result.ticker] = ticker_verdicts
+    return verdicts_map
+
+
+def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=None) -> int:
+    """E-1 후보 + E-2 액션을 recommendations 테이블에 저장.
+
+    Args:
+        candidates: E-1 후보 리스트
+        actions: E-2 리밸런싱 액션 리스트
+        verdicts: 에이전트 verdict 딕셔너리 {ticker: [verdict_dict, ...]}
+        db_path: DB 경로 (테스트용)
+    """
     from nuri.core.timezone import today_kst
 
     today = today_kst()
@@ -30,7 +56,7 @@ def save_recommendations(candidates=None, actions=None, db_path=None) -> int:
         for c in candidates:
             if not c.regime_fit:
                 continue
-            records.append({
+            rec = {
                 "date": today,
                 "ticker": c.ticker,
                 "action": c.direction,
@@ -38,7 +64,14 @@ def save_recommendations(candidates=None, actions=None, db_path=None) -> int:
                 "regime": "",
                 "signals": json.dumps([c.signal_id]),
                 "entry_price": c.price,
-            })
+            }
+            # 에이전트 verdict 첨부
+            if verdicts and c.ticker in verdicts:
+                rec["agent_verdicts"] = json.dumps(verdicts[c.ticker], ensure_ascii=False)
+            # scoring_detail 첨부
+            if hasattr(c, "scoring_detail") and c.scoring_detail:
+                rec["scoring_detail"] = json.dumps(c.scoring_detail, ensure_ascii=False)
+            records.append(rec)
 
     # E-2 액션에서 BUY/SELL만
     if actions:
@@ -61,7 +94,7 @@ def save_recommendations(candidates=None, actions=None, db_path=None) -> int:
             )
             price = price_row[0]["close"] if price_row else 0
 
-            records.append({
+            rec = {
                 "date": today,
                 "ticker": a.ticker,
                 "action": a.action,
@@ -69,7 +102,11 @@ def save_recommendations(candidates=None, actions=None, db_path=None) -> int:
                 "regime": a.regime_note,
                 "signals": json.dumps(a.signals),
                 "entry_price": price,
-            })
+            }
+            # 에이전트 verdict 첨부 (E-2 액션에도)
+            if verdicts and a.ticker in verdicts:
+                rec["agent_verdicts"] = json.dumps(verdicts[a.ticker], ensure_ascii=False)
+            records.append(rec)
 
     if not records:
         return 0
@@ -77,9 +114,12 @@ def save_recommendations(candidates=None, actions=None, db_path=None) -> int:
     with get_db(db_path) as conn:
         conn.executemany(
             """INSERT OR IGNORE INTO recommendations
-               (date, ticker, action, confidence, regime, signals, entry_price)
-               VALUES (:date, :ticker, :action, :confidence, :regime, :signals, :entry_price)""",
-            records,
+               (date, ticker, action, confidence, regime, signals, entry_price,
+                agent_verdicts, scoring_detail)
+               VALUES (:date, :ticker, :action, :confidence, :regime, :signals, :entry_price,
+                       :agent_verdicts, :scoring_detail)""",
+            # 누락된 키에 대해 기본값 None 보장
+            [{**{"agent_verdicts": None, "scoring_detail": None}, **r} for r in records],
         )
         return len(records)
 
@@ -140,11 +180,19 @@ def track_outcomes(db_path=None) -> int:
                 ret = (price[0]["close"] - entry) / entry * 100
                 updates["outcome_90d"] = round(ret, 2)
 
-        # hit 판정 (30일 기준)
+        # hit 판정 (30일 기준): 의미 있는 수익만 적중으로 인정
+        # BUY: +5% 이상 (성장 +20% 목표의 25%), SELL: -2% 이하 (의미 있는 하락 회피)
         if "outcome_30d" in updates:
             action = rec["action"]
             ret30 = updates["outcome_30d"]
-            updates["hit"] = (action == "BUY" and ret30 > 0) or (action == "SELL" and ret30 < 0)
+            if action == "BUY":
+                updates["hit"] = ret30 >= 5.0
+                # hit_quality: 목표 수익률(+20%) 대비 달성 비율 (0.0~1.0+)
+                updates["hit_quality"] = round(ret30 / 20.0, 3) if ret30 > 0 else 0.0
+            else:
+                updates["hit"] = ret30 < -2.0
+                # SELL hit_quality: 하락폭 대비 회피 효과 (기대 손실 -10% 기준)
+                updates["hit_quality"] = round(abs(ret30) / 10.0, 3) if ret30 < 0 else 0.0
 
         if updates:
             updates["tracked_at"] = now.strftime("%Y-%m-%d %H:%M")

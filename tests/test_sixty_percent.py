@@ -1,11 +1,11 @@
 """60% 달성을 위한 최종 테스트 — signal_backtest, candidates, consensus, optimizer."""
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from nuri.core.db import get_db, init_db, upsert_macro, upsert_prices
+from nuri.core.timezone import today_kst
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def db_path(tmp_path, monkeypatch):
 @pytest.fixture
 def full_db(db_path):
     """풍부한 가격 + 시그널 + 매크로 데이터."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_kst()
 
     with get_db(db_path) as conn:
         for t, q, p, s in [("AAPL", 10, 150, "Technology"), ("MSFT", 5, 300, "Software"),
@@ -29,7 +29,7 @@ def full_db(db_path):
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
                 "VALUES (?, ?, ?, ?, ?, ?)", ("test", t, q, p, "USD", s))
 
-    dates = pd.bdate_range(end=today, periods=400)
+    dates = pd.date_range(end=today, periods=400)
     for ticker, base in [("SPY", 400), ("AAPL", 140), ("MSFT", 280), ("TSLA", 300)]:
         np.random.seed(42)
         close = np.linspace(base, base * 1.2, 400)
