@@ -12,13 +12,14 @@ prices 5년 데이터 + TA-Lib으로 시그널을 감지하고,
 import argparse
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import pandas as pd
 
 from nuri.core.db import get_tickers, query_df
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -62,45 +63,266 @@ class SignalScorecard:
 # 시그널 정의
 # ═══════════════════════════════════════════════════════
 
-SIGNAL_DEFINITIONS = {
+# 진입 감지 함수 시그니처: (df: DataFrame, i: int) -> bool
+EntryDetector = Callable[[pd.DataFrame, int], bool]
+# 청산 감지 함수 시그니처: (df: DataFrame, i: int) -> bool
+ExitDetector = Callable[[pd.DataFrame, int], bool]
+
+
+# ── 진입 감지 함수 ──
+
+def _entry_rsi_oversold(df: pd.DataFrame, i: int) -> bool:
+    rsi, rsi_prev = df["rsi_14"].iloc[i], df["rsi_14"].iloc[i - 1]
+    return bool(pd.notna(rsi) and pd.notna(rsi_prev) and rsi_prev < 30 and rsi >= 30)
+
+
+def _entry_rsi_overbought(df: pd.DataFrame, i: int) -> bool:
+    rsi, rsi_prev = df["rsi_14"].iloc[i], df["rsi_14"].iloc[i - 1]
+    return bool(pd.notna(rsi) and pd.notna(rsi_prev) and rsi_prev > 70 and rsi <= 70)
+
+
+def _entry_macd_golden(df: pd.DataFrame, i: int) -> bool:
+    m, ms = df["macd"].iloc[i], df["macd_signal"].iloc[i]
+    mp, msp = df["macd"].iloc[i - 1], df["macd_signal"].iloc[i - 1]
+    return bool(pd.notna(m) and pd.notna(ms) and pd.notna(mp) and pd.notna(msp)
+                and mp < msp and m >= ms)
+
+
+def _entry_macd_dead(df: pd.DataFrame, i: int) -> bool:
+    m, ms = df["macd"].iloc[i], df["macd_signal"].iloc[i]
+    mp, msp = df["macd"].iloc[i - 1], df["macd_signal"].iloc[i - 1]
+    return bool(pd.notna(m) and pd.notna(ms) and pd.notna(mp) and pd.notna(msp)
+                and mp > msp and m <= ms)
+
+
+def _entry_sma_golden(df: pd.DataFrame, i: int) -> bool:
+    if "sma_50" not in df.columns or "sma_200" not in df.columns:
+        return False
+    s50, s200 = df["sma_50"].iloc[i], df["sma_200"].iloc[i]
+    s50p, s200p = df["sma_50"].iloc[i - 1], df["sma_200"].iloc[i - 1]
+    return bool(pd.notna(s50) and pd.notna(s200) and pd.notna(s50p) and pd.notna(s200p)
+                and s50p < s200p and s50 >= s200)
+
+
+def _entry_sma_dead(df: pd.DataFrame, i: int) -> bool:
+    if "sma_50" not in df.columns or "sma_200" not in df.columns:
+        return False
+    s50, s200 = df["sma_50"].iloc[i], df["sma_200"].iloc[i]
+    s50p, s200p = df["sma_50"].iloc[i - 1], df["sma_200"].iloc[i - 1]
+    return bool(pd.notna(s50) and pd.notna(s200) and pd.notna(s50p) and pd.notna(s200p)
+                and s50p > s200p and s50 <= s200)
+
+
+def _entry_bb_bounce(df: pd.DataFrame, i: int) -> bool:
+    if "bb_lower" not in df.columns:
+        return False
+    bl, blp = df["bb_lower"].iloc[i], df["bb_lower"].iloc[i - 1]
+    c, cp = df["close"].iloc[i], df["close"].iloc[i - 1]
+    return bool(pd.notna(bl) and pd.notna(blp) and cp < blp and c >= bl)
+
+
+def _entry_volume_spike(df: pd.DataFrame, i: int) -> bool:
+    if "volume" not in df.columns or "volume_sma_20" not in df.columns:
+        return False
+    vol, vol_avg = df["volume"].iloc[i], df["volume_sma_20"].iloc[i]
+    return bool(pd.notna(vol) and pd.notna(vol_avg) and vol_avg > 0 and vol > vol_avg * 3)
+
+
+def _entry_gap_up(df: pd.DataFrame, i: int) -> bool:
+    if "open" not in df.columns:
+        return False
+    op, cp = df["open"].iloc[i], df["close"].iloc[i - 1]
+    return bool(pd.notna(op) and pd.notna(cp) and op > cp * 1.02)
+
+
+def _entry_gap_down(df: pd.DataFrame, i: int) -> bool:
+    if "open" not in df.columns:
+        return False
+    op, cp = df["open"].iloc[i], df["close"].iloc[i - 1]
+    return bool(pd.notna(op) and pd.notna(cp) and op < cp * 0.98)
+
+
+def _entry_vix_reversal(df: pd.DataFrame, i: int) -> bool:
+    if "macro_vix" not in df.columns or i < 3:
+        return False
+    vix_now = df["macro_vix"].iloc[i]
+    if not (pd.notna(vix_now) and bool(vix_now <= 25)):
+        return False
+    prev_3 = [df["macro_vix"].iloc[i - k] for k in range(1, 4)]
+    return all(pd.notna(v) and bool(v >= 30) for v in prev_3)
+
+
+def _entry_pcr_reversal(df: pd.DataFrame, i: int) -> bool:
+    if "macro_pcr" not in df.columns or i < 20:
+        return False
+    pcr_now = df["macro_pcr"].iloc[i]
+    if not (pd.notna(pcr_now) and bool(pcr_now <= 0.8)):
+        return False
+    window = df["macro_pcr"].iloc[max(0, i - 20):i].dropna()
+    if len(window) == 0:
+        return False
+    peak_val = window.max()
+    if not bool(peak_val >= 1.2):
+        return False
+    return bool(window.idxmax() < i)  # 고점이 먼저
+
+
+def _entry_yield_curve_recovery(df: pd.DataFrame, i: int) -> bool:
+    if "macro_yield_spread" not in df.columns:
+        return False
+    spread = df["macro_yield_spread"].iloc[i]
+    spread_prev = df["macro_yield_spread"].iloc[i - 1]
+    return bool(pd.notna(spread) and pd.notna(spread_prev) and spread_prev < 0 and spread >= 0)
+
+
+def _entry_insider_cluster(df: pd.DataFrame, i: int) -> bool:
+    if "insider_buy_count_10d" not in df.columns:
+        return False
+    count = int(df["insider_buy_count_10d"].iloc[i])
+    count_prev = int(df["insider_buy_count_10d"].iloc[i - 1])
+    return count >= 3 and count_prev < 3
+
+
+def _entry_short_squeeze(df: pd.DataFrame, i: int) -> bool:
+    if "short_interest" not in df.columns or i < 3:
+        return False
+    si = df["short_interest"].iloc[i]
+    if not (pd.notna(si) and bool(si >= 10)):
+        return False
+    return all(df["close"].iloc[i - k] > df["close"].iloc[i - k - 1] for k in range(3))
+
+
+# ── 청산 감지 함수 (hold_days=None 시그널용) ──
+
+def _exit_macd_golden(df: pd.DataFrame, i: int) -> bool:
+    m, ms = df["macd"].iloc[i], df["macd_signal"].iloc[i]
+    return bool(pd.notna(m) and pd.notna(ms) and m < ms)
+
+
+def _exit_macd_dead(df: pd.DataFrame, i: int) -> bool:
+    m, ms = df["macd"].iloc[i], df["macd_signal"].iloc[i]
+    return bool(pd.notna(m) and pd.notna(ms) and m > ms)
+
+
+def _exit_sma_golden(df: pd.DataFrame, i: int) -> bool:
+    s50, s200 = df["sma_50"].iloc[i], df["sma_200"].iloc[i]
+    return bool(pd.notna(s50) and pd.notna(s200) and s50 < s200)
+
+
+def _exit_sma_dead(df: pd.DataFrame, i: int) -> bool:
+    s50, s200 = df["sma_50"].iloc[i], df["sma_200"].iloc[i]
+    return bool(pd.notna(s50) and pd.notna(s200) and s50 > s200)
+
+
+def _exit_yield_curve_recovery(df: pd.DataFrame, i: int) -> bool:
+    if "macro_yield_spread" not in df.columns:
+        return False
+    spread = df["macro_yield_spread"].iloc[i]
+    return bool(pd.notna(spread) and spread < 0)
+
+
+# ── 시그널 레지스트리 ──
+
+SIGNAL_DEFINITIONS: dict[str, dict] = {
     "rsi_oversold": {
         "description": "RSI 과매도 반등 (30 아래에서 위로)",
         "hold_days": 20,
+        "entry": _entry_rsi_oversold,
     },
     "rsi_overbought": {
         "description": "RSI 과매수 이탈 (70 위에서 아래로)",
         "hold_days": 20,
+        "entry": _entry_rsi_overbought,
     },
     "macd_golden": {
         "description": "MACD 골든크로스 (MACD > Signal)",
-        "hold_days": None,  # MACD < Signal까지
+        "hold_days": None,
+        "entry": _entry_macd_golden,
+        "exit": _exit_macd_golden,
     },
     "macd_dead": {
         "description": "MACD 데드크로스 (MACD < Signal)",
-        "hold_days": None,  # MACD > Signal까지
+        "hold_days": None,
+        "entry": _entry_macd_dead,
+        "exit": _exit_macd_dead,
     },
     "sma_golden": {
         "description": "SMA 골든크로스 (SMA50 > SMA200)",
-        "hold_days": None,  # SMA50 < SMA200까지
+        "hold_days": None,
+        "entry": _entry_sma_golden,
+        "exit": _exit_sma_golden,
     },
     "sma_dead": {
         "description": "SMA 데드크로스 (SMA50 < SMA200)",
-        "hold_days": None,  # SMA50 > SMA200까지
+        "hold_days": None,
+        "entry": _entry_sma_dead,
+        "exit": _exit_sma_dead,
     },
     "bb_bounce": {
         "description": "BB 하단 반등 (종가가 BB Lower 위로)",
         "hold_days": 20,
+        "entry": _entry_bb_bounce,
+    },
+    # ── 가격 기반 시그널 ──
+    "volume_spike": {
+        "description": "거래량 급증 (20일 평균 대비 3배 초과)",
+        "hold_days": 10,
+        "entry": _entry_volume_spike,
+    },
+    "gap_up": {
+        "description": "갭 상승 (시가 > 전일 종가 × 1.02)",
+        "hold_days": 10,
+        "entry": _entry_gap_up,
+    },
+    "gap_down": {
+        "description": "갭 하락 (시가 < 전일 종가 × 0.98)",
+        "hold_days": 10,
+        "entry": _entry_gap_down,
+    },
+    # ── 매크로 기반 시그널 ──
+    "vix_reversal": {
+        "description": "VIX 공포 반전 (30+ 3일 연속 → 25 이하)",
+        "hold_days": 20,
+        "entry": _entry_vix_reversal,
+    },
+    "pcr_reversal": {
+        "description": "PCR 반전 (1.2+ → 0.8 이하, 고점→저점 순서)",
+        "hold_days": 15,
+        "entry": _entry_pcr_reversal,
+    },
+    "yield_curve_recovery": {
+        "description": "수익률곡선 정상화 (3M-10Y 음수→양수)",
+        "hold_days": None,
+        "entry": _entry_yield_curve_recovery,
+        "exit": _exit_yield_curve_recovery,
+    },
+    # ── 데이터 의존 시그널 ──
+    "insider_cluster": {
+        "description": "내부자 집중 매수 (10일 내 3건+ 매수)",
+        "hold_days": 20,
+        "entry": _entry_insider_cluster,
+    },
+    "short_squeeze": {
+        "description": "숏 스퀴즈 가능성 (short_interest 높음 + 가격 반등)",
+        "hold_days": 15,
+        "entry": _entry_short_squeeze,
     },
 }
 
+# 매크로 시그널 ID 목록 (DB macro 테이블 데이터 필요)
+MACRO_SIGNAL_IDS = {"vix_reversal", "pcr_reversal", "yield_curve_recovery"}
+
+# 데이터 의존 시그널 ID 목록 (DB 별도 테이블 데이터 필요)
+DATA_SIGNAL_IDS = {"insider_cluster", "short_squeeze"}
+
 
 # ═══════════════════════════════════════════════════════
-# 지표 계산 + 시그널 감지
+# 지표 계산 + 데이터 병합
 # ═══════════════════════════════════════════════════════
 
 
-def _compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """가격 DataFrame에 TA-Lib 지표 추가. charts.py의 _load_chart_data와 동일 로직."""
+def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """가격 DataFrame에 TA-Lib 지표 추가."""
     close = df["close"].values
 
     try:
@@ -134,116 +356,168 @@ def _compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df["macd_signal"] = df["macd"].ewm(span=9).mean()
         df["macd_hist"] = df["macd"] - df["macd_signal"]
 
+    # 거래량 이동평균 (volume_spike 시그널용)
+    if "volume" in df.columns:
+        df["volume_sma_20"] = df["volume"].rolling(20).mean()
+
     return df
 
 
-def _detect_signal_entries(df: pd.DataFrame, signal_id: str) -> list[int]:
-    """시그널 진입 시점의 positional 인덱스 리스트 반환.
+def _merge_asof_from_db(
+    df: pd.DataFrame,
+    sql: str,
+    params: tuple,
+    value_col: str,
+    target_col: str,
+    db_path=None,
+) -> pd.DataFrame:
+    """DB 쿼리 결과를 merge_asof로 가격 DataFrame에 병합하는 공통 헬퍼.
 
     Args:
-        df: 지표가 계산된 가격 DataFrame (positional index 사용)
-        signal_id: SIGNAL_DEFINITIONS의 키
-
-    Returns:
-        진입 시점 positional 인덱스 리스트
+        df: date 컬럼이 있는 가격 DataFrame
+        sql: SELECT date, {value_col} ... 형태의 SQL
+        params: SQL 파라미터
+        value_col: DB 결과에서 가져올 값 컬럼명
+        target_col: df에 추가할 컬럼명
+        db_path: DB 경로
     """
-    entries = []
-
-    for i in range(1, len(df)):
-        rsi = df["rsi_14"].iloc[i]
-        rsi_prev = df["rsi_14"].iloc[i - 1]
-        macd = df["macd"].iloc[i]
-        macd_sig = df["macd_signal"].iloc[i]
-        macd_prev = df["macd"].iloc[i - 1]
-        macd_sig_prev = df["macd_signal"].iloc[i - 1]
-        sma50 = df["sma_50"].iloc[i] if "sma_50" in df.columns else np.nan
-        sma200 = df["sma_200"].iloc[i] if "sma_200" in df.columns else np.nan
-        sma50_prev = df["sma_50"].iloc[i - 1] if "sma_50" in df.columns else np.nan
-        sma200_prev = df["sma_200"].iloc[i - 1] if "sma_200" in df.columns else np.nan
-        close = df["close"].iloc[i]
-        close_prev = df["close"].iloc[i - 1]
-        bb_lower = df["bb_lower"].iloc[i] if "bb_lower" in df.columns else np.nan
-        bb_lower_prev = df["bb_lower"].iloc[i - 1] if "bb_lower" in df.columns else np.nan
-
-        if signal_id == "rsi_oversold":
-            if pd.notna(rsi) and pd.notna(rsi_prev) and rsi_prev < 30 and rsi >= 30:
-                entries.append(i)
-        elif signal_id == "rsi_overbought":
-            if pd.notna(rsi) and pd.notna(rsi_prev) and rsi_prev > 70 and rsi <= 70:
-                entries.append(i)
-        elif signal_id == "macd_golden":
-            if (pd.notna(macd) and pd.notna(macd_sig) and
-                    pd.notna(macd_prev) and pd.notna(macd_sig_prev) and
-                    macd_prev < macd_sig_prev and macd >= macd_sig):
-                entries.append(i)
-        elif signal_id == "macd_dead":
-            if (pd.notna(macd) and pd.notna(macd_sig) and
-                    pd.notna(macd_prev) and pd.notna(macd_sig_prev) and
-                    macd_prev > macd_sig_prev and macd <= macd_sig):
-                entries.append(i)
-        elif signal_id == "sma_golden":
-            if (pd.notna(sma50) and pd.notna(sma200) and
-                    pd.notna(sma50_prev) and pd.notna(sma200_prev) and
-                    sma50_prev < sma200_prev and sma50 >= sma200):
-                entries.append(i)
-        elif signal_id == "sma_dead":
-            if (pd.notna(sma50) and pd.notna(sma200) and
-                    pd.notna(sma50_prev) and pd.notna(sma200_prev) and
-                    sma50_prev > sma200_prev and sma50 <= sma200):
-                entries.append(i)
-        elif signal_id == "bb_bounce":
-            if (pd.notna(bb_lower) and pd.notna(bb_lower_prev) and
-                    close_prev < bb_lower_prev and close >= bb_lower):
-                entries.append(i)
-
-    return entries
+    try:
+        ext_df = query_df(sql, params, db_path=db_path)
+        if ext_df.empty:
+            df[target_col] = np.nan
+            return df
+        ext_df["date"] = pd.to_datetime(ext_df["date"])
+        ext_df = ext_df.rename(columns={value_col: target_col})
+        ext_df = ext_df.sort_values("date").drop_duplicates("date")
+        df = pd.merge_asof(
+            df.sort_values("date"), ext_df[["date", target_col]], on="date", direction="backward"
+        )
+    except Exception:
+        df[target_col] = np.nan
+    return df
 
 
-def _compute_exit(df: pd.DataFrame, entry_idx: int, signal_id: str) -> int | None:
-    """진입 positional 인덱스 → 청산 positional 인덱스.
+def merge_macro_data(df: pd.DataFrame, db_path=None) -> pd.DataFrame:
+    """가격 DataFrame에 매크로 지표 (VIX, PCR, 수익률) 병합."""
+    if "date" not in df.columns:
+        return df
 
-    hold_days가 있는 시그널: entry_idx + hold_days (데이터 범위 내)
-    hold_days가 None인 시그널: 반대 크로스 발생 시점
+    for indicator, col_name, fallback in [
+        ("vix", "macro_vix", None),
+        ("put_call_ratio", "macro_pcr", None),
+        ("us_3m_yield", "macro_3m_yield", "us_2y_yield"),  # ^IRX(13주 T-Bill)가 us_2y_yield로 저장됨
+        ("us_10y_yield", "macro_10y_yield", None),
+    ]:
+        df = _merge_asof_from_db(
+            df,
+            "SELECT date, value FROM macro WHERE indicator = ? ORDER BY date",
+            (indicator,),
+            "value", col_name, db_path=db_path,
+        )
+        # fallback: 주 indicator 데이터 없으면 대체 indicator 시도
+        if fallback and col_name in df.columns and df[col_name].isna().all():
+            df = df.drop(columns=[col_name])
+            df = _merge_asof_from_db(
+                df,
+                "SELECT date, value FROM macro WHERE indicator = ? ORDER BY date",
+                (fallback,),
+                "value", col_name, db_path=db_path,
+            )
 
-    Returns:
-        청산 인덱스, 또는 청산 불가 시 None
-    """
+    # 수익률곡선 스프레드 (10Y - 3M)
+    if "macro_10y_yield" in df.columns and "macro_3m_yield" in df.columns:
+        df["macro_yield_spread"] = df["macro_10y_yield"] - df["macro_3m_yield"]
+    else:
+        df["macro_yield_spread"] = np.nan
+
+    return df
+
+
+def merge_data_signals(df: pd.DataFrame, ticker: str, db_path=None) -> pd.DataFrame:
+    """insider_cluster / short_squeeze용 데이터 병합."""
+    if "date" not in df.columns:
+        return df
+
+    # ── insider_cluster: 10일 윈도우 내 매수 건수 ──
+    try:
+        insider_df = query_df(
+            "SELECT date, transaction_type FROM insider_trades WHERE ticker = ? ORDER BY date",
+            (ticker,), db_path=db_path,
+        )
+        if not insider_df.empty:
+            insider_df["date"] = pd.to_datetime(insider_df["date"])
+            buys = insider_df[insider_df["transaction_type"].str.contains("Purchase|Buy|P-Purchase", case=False, na=False)]
+            buy_dates = buys["date"].tolist()
+            df["insider_buy_count_10d"] = [
+                sum(1 for bd in buy_dates if pd.Timedelta(days=0) <= (d - bd) <= pd.Timedelta(days=10))
+                for d in df["date"]
+            ]
+        else:
+            df["insider_buy_count_10d"] = 0
+    except Exception:
+        df["insider_buy_count_10d"] = 0
+
+    # ── short_squeeze: external_analysis에서 short_interest ──
+    df = _merge_asof_from_db(
+        df,
+        "SELECT date, numeric_value FROM external_analysis "
+        "WHERE ticker = ? AND data_type = 'short_interest' ORDER BY date",
+        (ticker,),
+        "numeric_value", "short_interest", db_path=db_path,
+    )
+
+    return df
+
+
+# ═══════════════════════════════════════════════════════
+# 시그널 감지 + 청산 (레지스트리 기반)
+# ═══════════════════════════════════════════════════════
+
+
+def detect_signal_entries(df: pd.DataFrame, signal_id: str) -> list[int]:
+    """시그널 진입 시점의 positional 인덱스 리스트 반환."""
+    defn = SIGNAL_DEFINITIONS.get(signal_id)
+    if defn is None or "entry" not in defn:
+        return []
+
+    detector = defn["entry"]
+    return [i for i in range(1, len(df)) if detector(df, i)]
+
+
+def compute_exit(df: pd.DataFrame, entry_idx: int, signal_id: str) -> int | None:
+    """진입 positional 인덱스 → 청산 positional 인덱스."""
     hold_days = SIGNAL_DEFINITIONS[signal_id]["hold_days"]
 
     if hold_days is not None:
         exit_idx = entry_idx + hold_days
-        if exit_idx >= len(df):
-            return None  # 데이터 부족으로 청산 불가
-        return exit_idx
+        return exit_idx if exit_idx < len(df) else None
 
-    # 반대 크로스까지 보유
+    # 반대 크로스까지 보유 (exit 함수가 등록된 시그널만)
+    exit_fn = SIGNAL_DEFINITIONS[signal_id].get("exit")
+    if exit_fn is None:
+        return None
+
     for i in range(entry_idx + 1, len(df)):
-        if signal_id == "macd_golden":
-            # MACD < Signal이면 청산
-            macd = df["macd"].iloc[i]
-            sig = df["macd_signal"].iloc[i]
-            if pd.notna(macd) and pd.notna(sig) and macd < sig:
-                return i
-        elif signal_id == "macd_dead":
-            # MACD > Signal이면 청산
-            macd = df["macd"].iloc[i]
-            sig = df["macd_signal"].iloc[i]
-            if pd.notna(macd) and pd.notna(sig) and macd > sig:
-                return i
-        elif signal_id == "sma_golden":
-            # SMA50 < SMA200이면 청산
-            sma50 = df["sma_50"].iloc[i]
-            sma200 = df["sma_200"].iloc[i]
-            if pd.notna(sma50) and pd.notna(sma200) and sma50 < sma200:
-                return i
-        elif signal_id == "sma_dead":
-            # SMA50 > SMA200이면 청산
-            sma50 = df["sma_50"].iloc[i]
-            sma200 = df["sma_200"].iloc[i]
-            if pd.notna(sma50) and pd.notna(sma200) and sma50 > sma200:
-                return i
+        if exit_fn(df, i):
+            return i
 
-    return None  # 데이터 끝까지 반대 크로스 없음
+    return None
+
+
+# ═══════════════════════════════════════════════════════
+# 하위호환 alias (기존 private import 지원)
+# ═══════════════════════════════════════════════════════
+
+_compute_indicators = compute_indicators
+_detect_signal_entries = detect_signal_entries
+_compute_exit = compute_exit
+_merge_macro_data = merge_macro_data
+_merge_data_signals = merge_data_signals
+
+
+# ═══════════════════════════════════════════════════════
+# 백테스트 실행
+# ═══════════════════════════════════════════════════════
 
 
 def backtest_signals(
@@ -253,21 +527,9 @@ def backtest_signals(
     end_date: str | None = None,
     db_path=None,
 ) -> list[SignalResult]:
-    """시그널 백테스트 실행.
-
-    Args:
-        ticker: 특정 종목만 (None=전체)
-        signals: 특정 시그널만 (None=전체)
-        start_date: 시작일 (None=전체)
-        end_date: 종료일 (None=전체)
-        db_path: DB 경로 (테스트용)
-
-    Returns:
-        개별 거래 결과 리스트
-    """
+    """시그널 백테스트 실행."""
     signal_ids = signals or list(SIGNAL_DEFINITIONS.keys())
 
-    # 종목 목록 결정
     if ticker:
         tickers = [ticker]
     else:
@@ -276,7 +538,6 @@ def backtest_signals(
     results = []
 
     for tkr in tickers:
-        # prices에서 OHLCV 로드
         sql = "SELECT date, open, high, low, close, volume FROM prices WHERE ticker = ?"
         params = [tkr]
         if start_date:
@@ -294,18 +555,23 @@ def backtest_signals(
 
         df["date"] = pd.to_datetime(df["date"])
         df = df.reset_index(drop=True)
+        df = compute_indicators(df)
 
-        # 지표 계산
-        df = _compute_indicators(df)
+        # 매크로 시그널 요청 시 매크로 데이터 병합
+        if MACRO_SIGNAL_IDS & set(signal_ids):
+            df = merge_macro_data(df, db_path=db_path)
 
-        # 각 시그널 백테스트
+        # 데이터 의존 시그널 요청 시 insider/short 데이터 병합
+        if DATA_SIGNAL_IDS & set(signal_ids):
+            df = merge_data_signals(df, tkr, db_path=db_path)
+
         for sig_id in signal_ids:
-            entries = _detect_signal_entries(df, sig_id)
+            entries = detect_signal_entries(df, sig_id)
 
             for entry_idx in entries:
-                exit_idx = _compute_exit(df, entry_idx, sig_id)
+                exit_idx = compute_exit(df, entry_idx, sig_id)
                 if exit_idx is None:
-                    continue  # 청산 불가 → 건너뜀
+                    continue
 
                 entry_price = df["close"].iloc[entry_idx]
                 exit_price = df["close"].iloc[exit_idx]
@@ -330,10 +596,7 @@ def backtest_signals(
 
 
 def generate_scorecard(results: list[SignalResult]) -> list[SignalScorecard]:
-    """SignalResult → 시그널별 집계 스코어카드.
-
-    집계 기준: (signal_id, ticker) + (signal_id, None) 전체합산
-    """
+    """SignalResult → 시그널별 집계 스코어카드."""
     if not results:
         return []
 
@@ -359,19 +622,15 @@ def generate_scorecard(results: list[SignalResult]) -> list[SignalScorecard]:
 
     scorecards = []
 
-    # (signal_id, ticker) 별 집계
     grouped: dict[tuple[str, str], list[SignalResult]] = {}
     for r in results:
         grouped.setdefault((r.signal_id, r.ticker), []).append(r)
-
     for (sig_id, tkr), group in grouped.items():
         scorecards.append(_aggregate(group, sig_id, tkr))
 
-    # (signal_id, None) 전체합산
     by_signal: dict[str, list[SignalResult]] = {}
     for r in results:
         by_signal.setdefault(r.signal_id, []).append(r)
-
     for sig_id, group in by_signal.items():
         scorecards.append(_aggregate(group, sig_id, None))
 
@@ -384,7 +643,6 @@ def print_scorecard(scorecards: list[SignalScorecard]) -> None:
         print("스코어카드 데이터가 없습니다.")
         return
 
-    # 전체 합산 (ticker=None)만 출력
     total = [s for s in scorecards if s.ticker is None]
     total.sort(key=lambda s: s.profit_factor, reverse=True)
 
@@ -418,7 +676,7 @@ if __name__ == "__main__":
     print_scorecard(scorecards)
 
     # CSV 저장
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_kst()
     output_dir = REPORT_DIR / today
     output_dir.mkdir(parents=True, exist_ok=True)
 
