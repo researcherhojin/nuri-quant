@@ -11,13 +11,13 @@ Append-Only Learning Memory — SIEGE 패턴 적용.
 import argparse
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
 
 from nuri.core.db import get_db, query
-from nuri.core.timezone import today_kst
+from nuri.core.timezone import kst_now, today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def save_snapshot(db_path=None) -> int:
         })
 
     # 2. 최근 90일
-    cutoff_90 = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    cutoff_90 = (kst_now().replace(tzinfo=None) - timedelta(days=90)).strftime("%Y-%m-%d")
     recent_90 = trades[trades["entry_date"] >= cutoff_90]
     for sig_id, group in recent_90.groupby("signal_id"):
         stats = _compute_stats(group)
@@ -84,7 +84,7 @@ def save_snapshot(db_path=None) -> int:
         })
 
     # 3. 최근 30일
-    cutoff_30 = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    cutoff_30 = (kst_now().replace(tzinfo=None) - timedelta(days=30)).strftime("%Y-%m-%d")
     recent_30 = trades[trades["entry_date"] >= cutoff_30]
     for sig_id, group in recent_30.groupby("signal_id"):
         stats = _compute_stats(group)
