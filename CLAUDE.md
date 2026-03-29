@@ -10,7 +10,8 @@ Linter: `ruff` (E/F/W/I rules, line-length 120). CI: GitHub Actions (lint + test
 Ruff ignores: E402 (lazy imports in scheduler), E501 (existing long lines), E712 (pandas `== True` idiom).
 Conventional commits required in PRs: `(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(scope)?: message`.
 
-6-step pipeline: **Collect → Validate → Classify → Diagnose → Recommend → Track**
+6-step conceptual pipeline: **Collect → Validate → Classify → Diagnose → Recommend → Track**
+Operational execution (`make full-scan`) runs 8 phases: collect → analyze → validate → regime+factors → recommend+consensus+scan → targets+rebalance+certify → evidence → notify.
 
 2-machine setup: M3 Max MacBook (dev) ↔ M2 Pro Mac Mini (24/7 production).
 
@@ -59,6 +60,8 @@ python -m nuri.trading.agents.consensus --ticker TSLA  # 단일 종목
 
 # Strategies
 make strategy         # L/S regime + transition + actions
+make strategy-execute # Execute L/S strategy positions
+make positions        # Position status
 make backtest-ls      # full backtest + Monte Carlo
 make backtest-stress  # stress test scenarios
 make backtest-rules   # rules-based backtest
@@ -90,8 +93,8 @@ make report-llm       # Qwen3.5 LLM 리포트 생성 + 자동 저장
 make lint             # ruff check
 make lint-fix         # ruff check --fix
 make test             # pytest tests/ -v --cov=nuri
-make verify-quick     # fast: tests + regime check (~10s, no network)
-make verify-all       # full verification (커밋 전 필수)
+make verify-quick     # fast pre-commit check: tests + regime (~10s, no network)
+make verify-all       # full verification with network (커밋 전 필수)
 .venv/bin/python -m pytest tests/test_db.py -v                                    # single file
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices -v                  # single class
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v  # single test
@@ -427,7 +430,7 @@ Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `mac
 ## Interface
 
 - **FastAPI** (`nuri/api/`) — REST API on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval).
-- **Next.js 16** (`frontend/`) — shadcn/ui + Tailwind 4. Dark theme. See `frontend/CLAUDE.md` for frontend-specific guidance.
+- **Next.js 16** (`frontend/`) — shadcn/ui + Tailwind 4. Dark theme. See `frontend/CLAUDE.md` for frontend-specific guidance. **Warning**: Next.js 16 has breaking API changes vs training data — read `node_modules/next/dist/docs/` before writing frontend code.
 - **Ollama** (`nuri/llm/report.py`) — LLM report with SIEGE certification.
 
 ## Portfolio Action Plan Format
