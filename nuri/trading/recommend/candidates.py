@@ -46,6 +46,7 @@ class Candidate:
     notes: str
     drift_status: str = ""          # "stable", "degrading", "critical" (from Learning Memory)
     conflict: str = ""              # "" or "direction_conflict" (from Conflict Detection)
+    half_position: bool = False     # VIX 25-30 반포지션 플래그
 
 
 def _load_scorecard() -> dict[str, dict]:
@@ -278,7 +279,9 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
         for c in candidates:
             if c.direction == "BUY":
                 c.confidence *= 0.5  # VIX 25~30: 절반 포지션
-                c.notes = (c.notes + "; " if c.notes else "") + vix_gate["msg"]
+                c.half_position = True
+                half_note = f"⚠️ 반포지션 (VIX {vix_gate['vix']:.0f}, 25-30)"
+                c.notes = (c.notes + "; " if c.notes else "") + half_note
 
     # confidence 내림차순
     candidates.sort(key=lambda c: c.confidence, reverse=True)
@@ -310,17 +313,19 @@ def print_candidates(candidates: list[Candidate]) -> None:
         if not items:
             return
         print(f"\n  {title} ({len(items)}건)")
-        print(f"  {'Ticker':<8} {'Signal':<18} {'Date':<12} {'Conf':>5} {'WR':>6} {'PF':>6} {'Price':>10} {'Flags':<12}")
-        print(f"  {'-' * 80}")
+        print(f"  {'Ticker':<8} {'Signal':<18} {'Date':<12} {'Conf':>5} {'WR':>6} {'PF':>6} {'Price':>10} {'Flags':<16}")
+        print(f"  {'-' * 84}")
         for c in items[:limit]:
             flags = []
+            if c.half_position:
+                flags.append("HALF")
             if c.drift_status in ("critical", "degrading"):
                 flags.append(f"D:{c.drift_status[:4]}")
             if c.conflict:
                 flags.append("CONF")
             flag_str = " ".join(flags)
             print(f"  {c.ticker:<8} {c.signal_id:<18} {c.signal_date:<12} "
-                  f"{c.confidence:>4.0f} {c.win_rate:>5.0%} {c.profit_factor:>5.1f} ${c.price:>9,.2f} {flag_str:<12}")
+                  f"{c.confidence:>4.0f} {c.win_rate:>5.0%} {c.profit_factor:>5.1f} ${c.price:>9,.2f} {flag_str:<16}")
 
     _print_table("BUY Candidates", buys)
     _print_table("SELL Candidates", sells)

@@ -416,6 +416,15 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_external_source ON external_analysis(source, ticker);
         CREATE INDEX IF NOT EXISTS idx_external_date ON external_analysis(date);
     """),
+    (3, "add target_1_price column to positions", """
+        ALTER TABLE positions ADD COLUMN target_1_price REAL;
+    """),
+    (4, "add target_2_price column to positions", """
+        ALTER TABLE positions ADD COLUMN target_2_price REAL;
+    """),
+    (5, "add high_water_mark column to positions", """
+        ALTER TABLE positions ADD COLUMN high_water_mark REAL;
+    """),
 ]
 
 

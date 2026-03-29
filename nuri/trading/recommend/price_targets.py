@@ -1,17 +1,19 @@
 """
-가격 목표 계산기 — 진입가/손절가/익절가 산출.
+가격 목표 계산기 — 진입가/손절가/익절가 산출 + 익절 도달 시 SELL 시그널 생성.
 
 포트폴리오 보유 종목 및 개별 종목에 대해
 rules.yaml 기반 손절/익절/트레일링 스톱 가격을 계산한다.
+현재가가 1차/2차 익절 수준에 도달하면 자동으로 SELL 시그널을 생성한다.
 
 사용법:
     python -m nuri.trading.recommend.price_targets
 """
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from nuri.core.db import query, query_df
+from nuri.core.db import get_db, query, query_df
 from nuri.core.rules import (
     STOCK_STOP_LOSS,
     STOCK_STOP_LOSS_VALUE,
@@ -327,6 +329,175 @@ def print_portfolio_targets(targets: list[dict]) -> None:
     print(f"총 {len(targets)}개 종목")
 
 
+@dataclass
+class TakeProfitSignal:
+    """익절 도달 시 생성되는 SELL 시그널."""
+    ticker: str
+    position_id: int
+    stock_type: str
+    direction: str          # "SELL"
+    level: str              # "target_1" or "target_2"
+    entry_price: float
+    target_price: float
+    current_price: float
+    sell_pct: int           # 매도 비율 (50 또는 25)
+    return_pct: float       # 현재 수익률
+    note: str
+
+
+def check_take_profit_signals(db_path: Optional[Path] = None) -> list[TakeProfitSignal]:
+    """오픈 포지션 중 익절 도달 종목에 대해 SELL 시그널 생성.
+
+    positions 테이블의 target_1_price, target_2_price와 현재가를 비교하여
+    익절 가격에 도달한 종목에 대해 매도 시그널을 반환한다.
+
+    Args:
+        db_path: DB 경로 (테스트용)
+
+    Returns:
+        TakeProfitSignal 리스트
+    """
+    # 오픈 포지션 중 long 방향만 (short 익절은 별도 로직)
+    open_positions = query(
+        "SELECT id, ticker, entry_price, direction, target_1_price, target_2_price "
+        "FROM positions WHERE status = 'open' AND direction = 'long'",
+        db_path=db_path,
+    )
+
+    signals: list[TakeProfitSignal] = []
+
+    for pos in open_positions:
+        ticker = pos["ticker"]
+        entry_price = pos["entry_price"]
+        target_1 = pos["target_1_price"]
+        target_2 = pos["target_2_price"]
+
+        # 익절가가 설정되지 않은 포지션은 건너뜀
+        if target_1 is None and target_2 is None:
+            continue
+
+        current_price = _get_current_price(ticker, db_path=db_path)
+        if current_price is None:
+            continue
+
+        stock_type = classify_stock_type(ticker, db_path=db_path)
+        return_pct = (current_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
+
+        # 2차 익절 도달 체크 (우선)
+        if target_2 is not None and current_price >= target_2:
+            signals.append(TakeProfitSignal(
+                ticker=ticker,
+                position_id=pos["id"],
+                stock_type=stock_type,
+                direction="SELL",
+                level="target_2",
+                entry_price=entry_price,
+                target_price=target_2,
+                current_price=current_price,
+                sell_pct=25,  # 2차 익절: 25% 매도
+                return_pct=round(return_pct, 1),
+                note=f"2차 익절 도달 ({_type_label(stock_type)}): {return_pct:+.1f}% → 25% 매도",
+            ))
+        # 1차 익절 도달 체크
+        elif target_1 is not None and current_price >= target_1:
+            signals.append(TakeProfitSignal(
+                ticker=ticker,
+                position_id=pos["id"],
+                stock_type=stock_type,
+                direction="SELL",
+                level="target_1",
+                entry_price=entry_price,
+                target_price=target_1,
+                current_price=current_price,
+                sell_pct=50,  # 1차 익절: 50% 매도
+                return_pct=round(return_pct, 1),
+                note=f"1차 익절 도달 ({_type_label(stock_type)}): {return_pct:+.1f}% → 50% 매도",
+            ))
+
+    return signals
+
+
+def set_position_targets(
+    position_id: int,
+    entry_price: float,
+    stock_type: Optional[str] = None,
+    ticker: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> dict:
+    """포지션에 익절가 설정 (positions 테이블 업데이트).
+
+    Args:
+        position_id: 포지션 ID
+        entry_price: 진입가
+        stock_type: 종목 유형. None이면 ticker 기반 자동 분류
+        ticker: 종목 티커 (stock_type 자동 분류용)
+        db_path: DB 경로 (테스트용)
+
+    Returns:
+        dict: 설정된 익절가 정보
+    """
+    if stock_type is None and ticker:
+        stock_type = classify_stock_type(ticker, db_path=db_path)
+    elif stock_type is None:
+        stock_type = "growth"  # 기본값
+
+    # 유형별 익절 비율 적용
+    if stock_type == "growth":
+        target_1_pct = TAKE_PROFIT_GROWTH["target_1"]  # +20%
+        target_2_pct = TAKE_PROFIT_GROWTH["target_2"]  # +40%
+    elif stock_type == "swing":
+        target_1_pct = TAKE_PROFIT_SWING["target_1"]   # +5%
+        target_2_pct = TAKE_PROFIT_SWING["target_2"]   # +10%
+    else:  # value
+        target_1_pct = TAKE_PROFIT_VALUE["target_1"]   # +15%
+        target_2_pct = TAKE_PROFIT_VALUE["target_2"]   # +30%
+
+    target_1_price = round(entry_price * (1 + target_1_pct / 100), 2)
+    target_2_price = round(entry_price * (1 + target_2_pct / 100), 2)
+
+    with get_db(db_path) as conn:
+        conn.execute(
+            "UPDATE positions SET target_1_price = ?, target_2_price = ? WHERE id = ?",
+            (target_1_price, target_2_price, position_id),
+        )
+
+    logger.info(
+        "[TARGET SET] position #%d: 1차 익절 $%.2f (+%d%%), 2차 익절 $%.2f (+%d%%)",
+        position_id, target_1_price, target_1_pct, target_2_price, target_2_pct,
+    )
+
+    return {
+        "position_id": position_id,
+        "stock_type": stock_type,
+        "entry_price": entry_price,
+        "target_1_price": target_1_price,
+        "target_1_pct": target_1_pct,
+        "target_2_price": target_2_price,
+        "target_2_pct": target_2_pct,
+    }
+
+
+def print_take_profit_signals(signals: list[TakeProfitSignal]) -> None:
+    """익절 시그널 CLI 출력."""
+    if not signals:
+        print("\n익절 도달 종목 없음")
+        return
+
+    print(f"\n{'=' * 60}")
+    print("  Take-Profit Signals — 익절 도달 종목")
+    print(f"{'=' * 60}")
+
+    for sig in signals:
+        fp = lambda p: _format_price(p, sig.ticker)  # noqa: E731
+        print(f"  [{sig.level.upper()}] SELL {sig.ticker} ({_type_label(sig.stock_type)})")
+        print(f"    진입가: {fp(sig.entry_price)} → 현재가: {fp(sig.current_price)} ({sig.return_pct:+.1f}%)")
+        print(f"    목표가: {fp(sig.target_price)} → {sig.sell_pct}% 매도")
+        print()
+
+    print(f"{'=' * 60}")
+    print(f"총 {len(signals)}건 익절 시그널")
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
@@ -335,3 +506,7 @@ if __name__ == "__main__":
 
     targets = calculate_portfolio_targets()
     print_portfolio_targets(targets)
+
+    # 익절 도달 체크
+    tp_signals = check_take_profit_signals()
+    print_take_profit_signals(tp_signals)

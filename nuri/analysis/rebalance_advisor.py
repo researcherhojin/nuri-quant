@@ -284,11 +284,23 @@ def print_rebalance_advisor(actions: list[dict]) -> None:
     print("  Rebalance Advisor — 투자 규칙 위반 정리")
     print(f"{'=' * 60}")
 
+    # 매도 우선순위 라벨
+    priority_labels = {
+        "leverage_etf": "레버리지 ETF",
+        "stop_loss_exceeded": "손절선 초과",
+        "no_superinvestor": "슈퍼투자자 미보유",
+        "position_limit_exceeded": "비중 한도 초과",
+        "sector_limit_exceeded": "섹터 한도 초과",
+    }
+
     for idx, action in enumerate(actions, 1):
         ticker = action["ticker"]
         shares = action["sell_shares"]
         sell_value = action["sell_value_usd"]
         reason = action["reason"]
+        priority = action["priority"]
+        vtype = action["violation_type"]
+        priority_label = priority_labels.get(vtype, vtype)
 
         if action["action"] == "SELL_ALL":
             qty_text = f"{shares}주 전량"
@@ -302,8 +314,8 @@ def print_rebalance_advisor(actions: list[dict]) -> None:
             severity_marker = "[!] "
 
         print(
-            f"  {severity_marker}[{idx}] SELL {ticker} {qty_text} "
-            f"→ {reason} (회수 ~${sell_value:,.0f})"
+            f"  {severity_marker}[P{priority}] SELL {ticker} {qty_text} "
+            f"→ {priority_label}: {reason} (회수 ~${sell_value:,.0f})"
         )
 
     total_recovery = actions[-1].get("cumulative_recovery_usd", 0)
