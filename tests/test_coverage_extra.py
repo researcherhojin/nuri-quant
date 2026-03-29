@@ -27,7 +27,7 @@ def market_db(db_path):
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
                 "VALUES (?, ?, ?, ?, ?, ?)", ("test", t, q, p, "USD", s))
 
-    dates = pd.bdate_range("2023-06-01", periods=300)
+    dates = pd.bdate_range(end=today, periods=300)
     for ticker, base in [("SPY", 430), ("AAPL", 140), ("MSFT", 280)]:
         close = np.linspace(base, base * 1.15, 300) + np.random.normal(0, 0.5, 300)
         df = pd.DataFrame({

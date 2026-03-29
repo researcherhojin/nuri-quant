@@ -201,7 +201,11 @@ _freshness_warned = False
 
 
 def _check_data_freshness(db_path=None) -> bool:
-    """SPY 데이터 신선도 체크 (최대 24시간). 주말/공휴일 감안 72시간 허용."""
+    """SPY 데이터 신선도 체크 (최대 24시간). 주말/공휴일 감안 72시간 허용.
+
+    Returns:
+        True: 데이터 신선. False: 데이터 부재 또는 72시간 초과 (분석 차단).
+    """
     global _freshness_warned
     from nuri.core.db import query as _query
     rows = _query(
@@ -224,9 +228,11 @@ def _check_data_freshness(db_path=None) -> bool:
 
 def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None:
     """시장 레짐 분류 (동적 임계값 + 히스테리시스)."""
-    # 데이터 신선도 경고 (차단하지는 않음)
+    # 데이터 신선도 체크: 72시간 초과 시 분석 차단
     if date is None:
-        _check_data_freshness(db_path)
+        if not _check_data_freshness(db_path):
+            logger.warning("SPY 데이터 신선도 미충족. 레짐 분류 차단.")
+            return None
 
     spy_df = _load_spy_series(date, db_path)
     if spy_df is None:
@@ -254,10 +260,12 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
             row = spy_df.iloc[i]
             if pd.isna(row["sma50"]) or pd.isna(row["sma200"]):
                 continue
-            # 각 날짜의 VIX는 최신값으로 근사 (일별 VIX 조회는 비용 큼)
+            # 각 날짜의 실제 VIX 조회 (히스테리시스 윈도우 2~5일이므로 비용 무시 가능)
+            row_date = spy_df["date"].iloc[len(spy_df) + i]
+            day_vix = _get_vix(date=row_date, db_path=db_path) if row_date else vix
             t, v = _classify_single(
                 row["close"], row["sma50"], row["sma200"],
-                vix,
+                day_vix,
                 float(row["bb_width"]) if pd.notna(row["bb_width"]) else 0,
                 thresholds,
             )
