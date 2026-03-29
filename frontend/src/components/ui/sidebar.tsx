@@ -26,7 +26,7 @@ import {
   Moon,
 } from "lucide-react";
 
-// 팔란티어 스타일 그룹 네비게이션
+// 팔란티어 스타일 그룹 네비게이션 (파이프라인 흐름 순서)
 const NAV_GROUPS = [
   {
     label: "OVERVIEW",
@@ -36,20 +36,25 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: "ANALYSIS",
+    label: "DATA",
     items: [
       { href: "/portfolio", label: "Portfolio", icon: Briefcase },
       { href: "/signals", label: "Signals", icon: BarChart3 },
-      { href: "/consensus", label: "Agents", icon: Users },
-      { href: "/scan", label: "Scanner", icon: Search },
     ],
   },
   {
-    label: "TRADING",
+    label: "ANALYSIS",
+    items: [
+      { href: "/consensus", label: "Agents", icon: Users },
+      { href: "/scan", label: "Scanner", icon: Search },
+      { href: "/strategy", label: "Strategy", icon: TrendingUp },
+    ],
+  },
+  {
+    label: "EXECUTION",
     items: [
       { href: "/targets", label: "Price Targets", icon: Target },
       { href: "/advisor", label: "Advisor", icon: ShieldAlert },
-      { href: "/strategy", label: "Strategy", icon: TrendingUp },
       { href: "/rebalance", label: "Rebalance", icon: Scale },
     ],
   },
