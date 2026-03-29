@@ -25,10 +25,10 @@ def get_macro():
 
 
 @router.get("/report")
-async def get_report():
+def get_report():
     """LLM 리포트 (Gate → Context → Generate → Validate)."""
     from nuri.llm.report import generate_llm_report
-    return await generate_llm_report()
+    return generate_llm_report()
 
 
 @router.get("/report/context")

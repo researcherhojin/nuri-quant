@@ -327,7 +327,7 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
             missing_keys = [k for k in keys if detail.get(k) is None]
             msg = f"{name}: 데이터 누락 ({', '.join(missing_keys)}) → 중립 50점 사용"
             warnings.append(msg)
-            logger.warning("매크로 지표 누락 — %s", msg)
+            logger.debug("매크로 지표 누락 — %s", msg)  # debug로 변경 (매 호출마다 반복 방지)
 
     total = (
         yc_score * WEIGHTS["yield_curve"]
