@@ -1,0 +1,144 @@
+"""파이프라인 이벤트 저널 — SIEGE Event Journal 패턴.
+
+모든 파이프라인 상태 전환을 append-only 기록.
+대시보드와 Pipeline UI는 이 이벤트의 projection으로 동작.
+"""
+import json
+from pathlib import Path
+from typing import Optional
+
+from nuri.core.db import get_db, query
+
+# 허용 이벤트 타입
+EVENT_TYPES = {
+    "step_started",
+    "step_completed",
+    "step_failed",
+    "step_blocked",
+    "gate_evaluated",
+    "regime_changed",
+    "certification_result",
+    "conflict_detected",
+    "drift_detected",
+}
+
+# 6-step 파이프라인
+PIPELINE_STEPS = {"collect", "validate", "classify", "diagnose", "recommend", "track"}
+
+
+def emit_event(
+    event_type: str,
+    step: str | None = None,
+    payload: dict | str | None = None,
+    duration_ms: int | None = None,
+    record_count: int | None = None,
+    causation_id: int | None = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """이벤트를 pipeline_events 테이블에 기록하고 event ID 반환."""
+    payload_str = None
+    if payload is not None:
+        payload_str = json.dumps(payload, ensure_ascii=False) if isinstance(payload, dict) else str(payload)
+
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO pipeline_events (event_type, step, payload, duration_ms, record_count, causation_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (event_type, step, payload_str, duration_ms, record_count, causation_id),
+        )
+        return cursor.lastrowid
+
+
+def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
+    """특정 스텝의 최신 이벤트 조회 → {status, timestamp, payload}."""
+    rows = query(
+        """SELECT event_type, timestamp, payload
+           FROM pipeline_events
+           WHERE step = ?
+           ORDER BY timestamp DESC, id DESC
+           LIMIT 1""",
+        (step,),
+        db_path,
+    )
+    if not rows:
+        return {"step": step, "status": "unknown", "timestamp": None, "payload": None}
+
+    row = rows[0]
+    # event_type → status 매핑
+    status_map = {
+        "step_started": "running",
+        "step_completed": "completed",
+        "step_failed": "failed",
+        "step_blocked": "blocked",
+    }
+    status = status_map.get(row["event_type"], row["event_type"])
+    payload = json.loads(row["payload"]) if row["payload"] else None
+    return {"step": step, "status": status, "timestamp": row["timestamp"], "payload": payload}
+
+
+def get_pipeline_status(db_path: Optional[Path] = None) -> dict:
+    """전체 6-step 파이프라인 상태 조회."""
+    result = {}
+    for step in PIPELINE_STEPS:
+        result[step] = get_step_status(step, db_path)
+    return result
+
+
+def get_timeline(
+    limit: int = 50,
+    step: str | None = None,
+    db_path: Optional[Path] = None,
+) -> list[dict]:
+    """최근 이벤트 타임라인 (timestamp desc)."""
+    if step:
+        rows = query(
+            """SELECT id, timestamp, event_type, step, payload, duration_ms, record_count, causation_id
+               FROM pipeline_events
+               WHERE step = ?
+               ORDER BY timestamp DESC, id DESC
+               LIMIT ?""",
+            (step, limit),
+            db_path,
+        )
+    else:
+        rows = query(
+            """SELECT id, timestamp, event_type, step, payload, duration_ms, record_count, causation_id
+               FROM pipeline_events
+               ORDER BY timestamp DESC, id DESC
+               LIMIT ?""",
+            (limit,),
+            db_path,
+        )
+    result = []
+    for row in rows:
+        entry = dict(row)
+        if entry["payload"]:
+            try:
+                entry["payload"] = json.loads(entry["payload"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        result.append(entry)
+    return result
+
+
+def get_step_history(step: str, limit: int = 10, db_path: Optional[Path] = None) -> list[dict]:
+    """특정 스텝의 실행 이력 (완료/실패 이벤트만)."""
+    rows = query(
+        """SELECT id, timestamp, event_type, payload, duration_ms, record_count, causation_id
+           FROM pipeline_events
+           WHERE step = ? AND event_type IN ('step_completed', 'step_failed')
+           ORDER BY timestamp DESC, id DESC
+           LIMIT ?""",
+        (step, limit),
+        db_path,
+    )
+    result = []
+    for row in rows:
+        entry = dict(row)
+        if entry["payload"]:
+            try:
+                entry["payload"] = json.loads(entry["payload"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        result.append(entry)
+    return result
