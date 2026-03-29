@@ -47,6 +47,7 @@ class Candidate:
     drift_status: str = ""          # "stable", "degrading", "critical" (from Learning Memory)
     conflict: str = ""              # "" or "direction_conflict" (from Conflict Detection)
     half_position: bool = False     # VIX 25-30 반포지션 플래그
+    position_size_pct: float = 100.0  # 추천 포지션 크기 (100=정상, 50=반포지션)
 
 
 def _load_scorecard() -> dict[str, dict]:
@@ -278,8 +279,9 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
     elif vix_gate["gate"] == "caution":
         for c in candidates:
             if c.direction == "BUY":
-                c.confidence *= 0.5  # VIX 25~30: 절반 포지션
+                c.confidence *= 0.5  # VIX 25~30: 신뢰도 절반
                 c.half_position = True
+                c.position_size_pct = 50.0  # VIX 25~30: 실제 포지션 크기도 절반
                 half_note = f"⚠️ 반포지션 (VIX {vix_gate['vix']:.0f}, 25-30)"
                 c.notes = (c.notes + "; " if c.notes else "") + half_note
 

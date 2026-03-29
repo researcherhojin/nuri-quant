@@ -19,6 +19,7 @@ from nuri.core.rules import (
     MAX_SECTOR_EXPOSURE,
     MAX_SINGLE_POSITION,
     MIN_CASH_RESERVE,  # noqa: F401 — 외부 모듈에서 참조용
+    PORTFOLIO_STOP,
     SELL_PRIORITY,
     STOCK_STOP_LOSS,
 )
@@ -67,6 +68,53 @@ def _severity(violation_type: str, current_value: float, limit_value: float) -> 
     return "medium"
 
 
+def check_portfolio_stop_loss(db_path: Optional[Path] = None, df=None) -> Optional[dict]:
+    """포트폴리오 전체 MDD 손절 체크 (-10%).
+
+    전체 포트폴리오의 손익률이 PORTFOLIO_STOP 이하이면
+    CRITICAL 위반(priority 0)을 반환한다.
+
+    Args:
+        db_path: DB 경로 (테스트용)
+        df: 이미 계산된 analyze_portfolio() 결과. None이면 새로 호출.
+
+    Returns:
+        위반 dict 또는 None (위반 없음)
+    """
+    if df is None:
+        df = analyze_portfolio()
+    if df.empty:
+        return None
+
+    total_cost = df["total_cost_usd"].sum() if "total_cost_usd" in df.columns else 0
+    total_value = df.attrs.get("total_value_usd", df["current_value_usd"].sum())
+
+    if total_cost <= 0:
+        # total_cost 컬럼이 없으면 개별 종목의 avg_price × quantity로 추정
+        total_cost = (df["avg_price"] * df["quantity"]).sum() if "avg_price" in df.columns else 0
+
+    if total_cost <= 0:
+        return None
+
+    portfolio_pnl_pct = (total_value - total_cost) / total_cost * 100
+
+    if portfolio_pnl_pct <= PORTFOLIO_STOP:
+        return {
+            "ticker": "PORTFOLIO",
+            "violation_type": "portfolio_stop_loss",
+            "priority": 0,  # 최우선 — 모든 개별 위반보다 높은 우선순위
+            "current_value": round(portfolio_pnl_pct, 1),
+            "limit_value": PORTFOLIO_STOP,
+            "severity": "critical",
+            "action": "LIQUIDATE",
+            "sell_shares": 0,
+            "sell_value_usd": round(total_value, 2),
+            "reason": f"포트폴리오 전체 손실 {portfolio_pnl_pct:+.1f}% (한도 {PORTFOLIO_STOP}%) → 전량 청산 검토",
+        }
+
+    return None
+
+
 def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
     """포트폴리오 투자 규칙 위반 사항 탐지.
 
@@ -80,6 +128,11 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
 
     total_value = df.attrs.get("total_value_usd", df["current_value_usd"].sum())
     violations: list[dict] = []
+
+    # ─── 0. 포트폴리오 전체 MDD 손절 체크 (priority 0, 최우선) ───
+    portfolio_stop = check_portfolio_stop_loss(db_path, df=df)
+    if portfolio_stop is not None:
+        violations.append(portfolio_stop)
 
     # 종목별 합산 (다계좌 동일 종목)
     ticker_agg = df.groupby("ticker").agg(
@@ -255,8 +308,9 @@ def calculate_rebalance_actions(db_path: Optional[Path] = None) -> list[dict]:
         logger.info("위반 사항 없음 — 리밸런싱 불필요")
         return []
 
-    # SELL_PRIORITY 순서대로 정렬
-    priority_order = {cat: idx for idx, cat in enumerate(SELL_PRIORITY)}
+    # SELL_PRIORITY 순서대로 정렬 (portfolio_stop_loss는 priority 0으로 최우선)
+    priority_order = {cat: idx + 1 for idx, cat in enumerate(SELL_PRIORITY)}
+    priority_order["portfolio_stop_loss"] = 0  # MDD 손절은 항상 최우선
     violations.sort(key=lambda v: (
         priority_order.get(v["violation_type"], 99),
         -abs(v.get("current_value", 0)),
@@ -286,6 +340,7 @@ def print_rebalance_advisor(actions: list[dict]) -> None:
 
     # 매도 우선순위 라벨
     priority_labels = {
+        "portfolio_stop_loss": "포트폴리오 MDD 손절",
         "leverage_etf": "레버리지 ETF",
         "stop_loss_exceeded": "손절선 초과",
         "no_superinvestor": "슈퍼투자자 미보유",
@@ -302,7 +357,9 @@ def print_rebalance_advisor(actions: list[dict]) -> None:
         vtype = action["violation_type"]
         priority_label = priority_labels.get(vtype, vtype)
 
-        if action["action"] == "SELL_ALL":
+        if action["action"] == "LIQUIDATE":
+            qty_text = "전체 포트폴리오"
+        elif action["action"] == "SELL_ALL":
             qty_text = f"{shares}주 전량"
         else:
             qty_text = f"{shares}주 일부"

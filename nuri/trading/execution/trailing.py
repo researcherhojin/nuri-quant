@@ -86,6 +86,7 @@ def update_high_water_marks(db_path: Optional[Path] = None) -> int:
         ticker = pos["ticker"]
         current_price = _get_current_price(ticker, db_path=db_path)
         if current_price is None:
+            logger.warning("No price data for %s, skipping", ticker)
             continue
 
         old_hwm = pos["high_water_mark"]
@@ -145,6 +146,7 @@ def check_trailing_stop_signals(db_path: Optional[Path] = None) -> list[Trailing
 
         current_price = _get_current_price(ticker, db_path=db_path)
         if current_price is None:
+            logger.warning("No price data for %s, skipping", ticker)
             continue
 
         stock_type = classify_stock_type(ticker, db_path=db_path)

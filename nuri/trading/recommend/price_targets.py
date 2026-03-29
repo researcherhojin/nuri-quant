@@ -69,16 +69,26 @@ def classify_stock_type(
 
     분류 우선순위:
     1. config/stock_types.yaml에 명시된 종목 → 해당 유형
-    2. PE > 30 → 'growth'
-    3. 섹터가 성장 섹터 → 'growth'
-    4. 나머지 → 'value'
+    2. swing_trades 테이블에 오픈 포지션 존재 → 'swing'
+    3. PE > 30 → 'growth'
+    4. 섹터가 성장 섹터 → 'growth'
+    5. 나머지 → 'value'
     """
     # 1순위: stock_types.yaml 수동 오버라이드
     manual = _load_stock_types()
     if ticker in manual:
         return manual[ticker]
 
-    # 2순위: PE ratio 기반
+    # 2순위: swing_trades 테이블에 오픈 포지션이 있으면 스윙
+    swing_rows = query(
+        "SELECT COUNT(*) as c FROM swing_trades WHERE ticker = ? AND status = 'open'",
+        (ticker,),
+        db_path=db_path,
+    )
+    if swing_rows and swing_rows[0]["c"] > 0:
+        return "swing"
+
+    # 3순위: PE ratio 기반
     pe_rows = query(
         "SELECT pe_ratio FROM fundamentals WHERE ticker = ? ORDER BY date DESC LIMIT 1",
         (ticker,),
@@ -89,7 +99,7 @@ def classify_stock_type(
     if pe_ratio is not None and pe_ratio > GROWTH_PE_THRESHOLD:
         return "growth"
 
-    # 3순위: 섹터 기반
+    # 4순위: 섹터 기반
     sector_rows = query(
         "SELECT sector FROM portfolio WHERE ticker = ? LIMIT 1",
         (ticker,),
@@ -164,22 +174,25 @@ def calculate_targets(
     if stock_type is None:
         stock_type = classify_stock_type(ticker, db_path=db_path)
 
-    # 유형별 규칙 적용
+    # 유형별 규칙 적용 (rules.yaml에서 로드)
     if stock_type == "growth":
         stop_loss_pct = STOCK_STOP_LOSS          # -7%
-        target_1_pct = TAKE_PROFIT_GROWTH["target_1"]  # +20%
-        target_2_pct = TAKE_PROFIT_GROWTH["target_2"]  # +40%
+        tp_config = TAKE_PROFIT_GROWTH
         trailing_stop_pct = TRAILING_STOP_GROWTH  # -15%
     elif stock_type == "swing":
         stop_loss_pct = STOCK_STOP_LOSS          # -7%
-        target_1_pct = TAKE_PROFIT_SWING["target_1"]   # +5%
-        target_2_pct = TAKE_PROFIT_SWING["target_2"]   # +10%
+        tp_config = TAKE_PROFIT_SWING
         trailing_stop_pct = TRAILING_STOP_VOLATILE      # -20% (스윙은 변동성 높음)
     else:  # value
         stop_loss_pct = STOCK_STOP_LOSS_VALUE    # -10%
-        target_1_pct = TAKE_PROFIT_VALUE["target_1"]   # +15%
-        target_2_pct = TAKE_PROFIT_VALUE["target_2"]   # +30%
+        tp_config = TAKE_PROFIT_VALUE
         trailing_stop_pct = TRAILING_STOP_VALUE   # -15%
+
+    target_1_pct = tp_config["target_1"]
+    target_2_pct = tp_config["target_2"]
+    # 매도 비율은 rules.yaml에서 로드 (폴백: 1차 50%, 2차 25%)
+    target_1_sell_pct = tp_config.get("target_1_sell_pct", 50)
+    target_2_sell_pct = tp_config.get("target_2_sell_pct", 25)
 
     # 가격 계산
     stop_loss = round(entry_price * (1 + stop_loss_pct / 100), 2)
@@ -201,10 +214,10 @@ def calculate_targets(
         "stop_loss_pct": stop_loss_pct,
         "target_1": target_1,
         "target_1_pct": target_1_pct,
-        "target_1_sell_pct": 50,           # 1차 익절 시 50% 매도
+        "target_1_sell_pct": target_1_sell_pct,
         "target_2": target_2,
         "target_2_pct": target_2_pct,
-        "target_2_sell_pct": 25,           # 2차 익절 시 25% 매도
+        "target_2_sell_pct": target_2_sell_pct,
         "trailing_stop_pct": trailing_stop_pct,
         "analyst_target": analyst_target,
         "analyst_upside_pct": analyst_upside_pct,
@@ -378,10 +391,21 @@ def check_take_profit_signals(db_path: Optional[Path] = None) -> list[TakeProfit
 
         current_price = _get_current_price(ticker, db_path=db_path)
         if current_price is None:
+            logger.warning("No price data for %s, skipping", ticker)
             continue
 
         stock_type = classify_stock_type(ticker, db_path=db_path)
         return_pct = (current_price - entry_price) / entry_price * 100 if entry_price > 0 else 0
+
+        # 유형별 매도 비율을 rules.yaml에서 로드
+        if stock_type == "growth":
+            tp_config = TAKE_PROFIT_GROWTH
+        elif stock_type == "swing":
+            tp_config = TAKE_PROFIT_SWING
+        else:
+            tp_config = TAKE_PROFIT_VALUE
+        sell_pct_1 = tp_config.get("target_1_sell_pct", 50)
+        sell_pct_2 = tp_config.get("target_2_sell_pct", 25)
 
         # 2차 익절 도달 체크 (우선)
         if target_2 is not None and current_price >= target_2:
@@ -394,9 +418,9 @@ def check_take_profit_signals(db_path: Optional[Path] = None) -> list[TakeProfit
                 entry_price=entry_price,
                 target_price=target_2,
                 current_price=current_price,
-                sell_pct=25,  # 2차 익절: 25% 매도
+                sell_pct=sell_pct_2,
                 return_pct=round(return_pct, 1),
-                note=f"2차 익절 도달 ({_type_label(stock_type)}): {return_pct:+.1f}% → 25% 매도",
+                note=f"2차 익절 도달 ({_type_label(stock_type)}): {return_pct:+.1f}% → {sell_pct_2}% 매도",
             ))
         # 1차 익절 도달 체크
         elif target_1 is not None and current_price >= target_1:
@@ -409,9 +433,9 @@ def check_take_profit_signals(db_path: Optional[Path] = None) -> list[TakeProfit
                 entry_price=entry_price,
                 target_price=target_1,
                 current_price=current_price,
-                sell_pct=50,  # 1차 익절: 50% 매도
+                sell_pct=sell_pct_1,
                 return_pct=round(return_pct, 1),
-                note=f"1차 익절 도달 ({_type_label(stock_type)}): {return_pct:+.1f}% → 50% 매도",
+                note=f"1차 익절 도달 ({_type_label(stock_type)}): {return_pct:+.1f}% → {sell_pct_1}% 매도",
             ))
 
     return signals

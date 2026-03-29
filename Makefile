@@ -197,8 +197,9 @@ full-scan:
 	$(PYTHON) -m nuri.trading.recommend.candidates
 	$(PYTHON) -m nuri.trading.agents.consensus
 	$(PYTHON) -m nuri.trading.swing.scanner
-	@echo "\n=== Phase F: 가격 타겟 + 리밸런스 ==="
+	@echo "\n=== Phase F: 가격 타겟 + 트레일링 스톱 + 리밸런스 ==="
 	$(PYTHON) -m nuri.trading.recommend.price_targets
+	$(PYTHON) -m nuri.trading.execution.trailing
 	$(PYTHON) -m nuri.analysis.rebalance_advisor
 	@echo "\n=== Phase F-2: SIEGE Certification ==="
 	$(PYTHON) -m nuri.trading.engine.certification

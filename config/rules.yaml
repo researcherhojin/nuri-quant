@@ -28,17 +28,23 @@ take_profit:
   # 성장주 (TSLA, NVDA, PLTR, RKLB, IONQ, TEM 등)
   growth:
     target_1: 20                # 1차 익절: +20%에서 보유량 50% 매도
+    target_1_sell_pct: 50       # 1차 익절 시 매도 비율 (%)
     target_2: 40                # 2차 익절: +40%에서 추가 25% 매도
+    target_2_sell_pct: 25       # 2차 익절 시 매도 비율 (%)
     remainder: trailing_stop    # 나머지 25%는 트레일링 스톱 추적
   # 가치주 (GOOGL, LLY, ORCL, MSFT, AMZN 등)
   value:
     target_1: 15                # 1차 익절: +15%에서 보유량 50% 매도
+    target_1_sell_pct: 50       # 1차 익절 시 매도 비율 (%)
     target_2: 30                # 2차 익절: +30%에서 추가 25% 매도
+    target_2_sell_pct: 25       # 2차 익절 시 매도 비율 (%)
     remainder: trailing_stop    # 나머지 25%는 트레일링 스톱 추적
   # 스윙 트레이드 (단기 5~20일)
   swing:
     target_1: 5                 # 1차 익절: +5%에서 보유량 50% 매도
+    target_1_sell_pct: 50       # 1차 익절 시 매도 비율 (%)
     target_2: 10                # 2차 익절: +10%에서 나머지 전량 매도
+    target_2_sell_pct: 100      # 2차 익절 시 매도 비율 (%) — 스윙은 전량
   # O'Neil 8주 규칙: 매수 후 3주 이내에 +20% 돌파 시 최소 8주 보유
   eight_week_hold: true
 

@@ -780,3 +780,445 @@ class TestSellPrioritySort:
         assert "[P2]" in output
         assert "레버리지 ETF" in output
         assert "손절선 초과" in output
+
+
+# ═══════════════════════════════════════════════════════
+# Fix 1: half_position → 실제 포지션 크기 절반
+# ═══════════════════════════════════════════════════════
+
+class TestHalfPositionQuantity:
+    """half_position=True일 때 position_size_pct가 50으로 설정되는지 검증."""
+
+    def test_candidate_default_position_size(self):
+        """기본 position_size_pct는 100."""
+        from nuri.trading.recommend.candidates import Candidate
+        c = Candidate(
+            ticker="TEST", signal_id="rsi_oversold", signal_date="2025-01-01",
+            direction="BUY", confidence=50, win_rate=0.5, profit_factor=1.5,
+            regime_fit=True, price=100.0, notes="test",
+        )
+        assert c.position_size_pct == 100.0
+
+    def test_position_size_halved_on_caution(self, db_path):
+        """VIX 25-30이면 position_size_pct가 50."""
+        from nuri.core.db import upsert_macro
+        with get_db(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [("test", "TEST1", 100, 50.0, "USD", "Technology")],
+            )
+
+        dates = pd.bdate_range("2025-01-01", periods=60)
+        close = np.linspace(100, 70, 30).tolist() + np.linspace(70, 110, 30).tolist()
+        df = pd.DataFrame({
+            "ticker": "TEST1",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": [c * 0.99 for c in close],
+            "high": [c * 1.02 for c in close],
+            "low": [c * 0.98 for c in close],
+            "close": close,
+            "volume": [1000000] * 60,
+            "adj_close": close,
+        })
+        upsert_prices(df, db_path)
+
+        # VIX를 27로 설정 (caution 구간)
+        upsert_macro([{"indicator": "vix", "date": "2025-03-20", "value": 27.0, "source": "test"}],
+                     db_path=db_path)
+
+        from nuri.trading.recommend.candidates import screen_candidates
+        candidates = screen_candidates(lookback_days=30, db_path=db_path)
+        buy_candidates = [c for c in candidates if c.direction == "BUY"]
+        for c in buy_candidates:
+            assert c.half_position is True
+            assert c.position_size_pct == 50.0
+
+    def test_position_size_full_on_normal(self, db_path):
+        """VIX < 25이면 position_size_pct는 100."""
+        from nuri.core.db import upsert_macro
+        with get_db(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [("test", "TEST1", 100, 50.0, "USD", "Technology")],
+            )
+
+        dates = pd.bdate_range("2025-01-01", periods=60)
+        close = np.linspace(100, 70, 30).tolist() + np.linspace(70, 110, 30).tolist()
+        df = pd.DataFrame({
+            "ticker": "TEST1",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": [c * 0.99 for c in close],
+            "high": [c * 1.02 for c in close],
+            "low": [c * 0.98 for c in close],
+            "close": close,
+            "volume": [1000000] * 60,
+            "adj_close": close,
+        })
+        upsert_prices(df, db_path)
+
+        upsert_macro([{"indicator": "vix", "date": "2025-03-20", "value": 18.0, "source": "test"}],
+                     db_path=db_path)
+
+        from nuri.trading.recommend.candidates import screen_candidates
+        candidates = screen_candidates(lookback_days=30, db_path=db_path)
+        buy_candidates = [c for c in candidates if c.direction == "BUY"]
+        for c in buy_candidates:
+            assert c.position_size_pct == 100.0
+
+
+# ═══════════════════════════════════════════════════════
+# Fix 3: swing_trades 테이블 기반 스윙 종목 분류
+# ═══════════════════════════════════════════════════════
+
+class TestSwingStockClassification:
+    """swing_trades 테이블의 오픈 포지션 → stock_type='swing' 자동 분류."""
+
+    def test_swing_trade_classified_as_swing(self, db_path):
+        """swing_trades에 오픈 포지션이 있으면 'swing' 반환."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO swing_trades (ticker, entry_date, entry_price, status) "
+                "VALUES ('SWNG', '2025-03-01', 50.0, 'open')",
+            )
+
+        # _stock_types_cache 초기화 (테스트 격리)
+        import nuri.trading.recommend.price_targets as pt
+        from nuri.trading.recommend.price_targets import classify_stock_type
+        pt._stock_types_cache = None
+
+        result = classify_stock_type("SWNG", db_path=db_path)
+        assert result == "swing"
+
+    def test_closed_swing_trade_not_swing(self, db_path):
+        """swing_trades에 종료된 포지션만 있으면 스윙이 아님."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO swing_trades (ticker, entry_date, entry_price, status) "
+                "VALUES ('SWNG', '2025-03-01', 50.0, 'closed')",
+            )
+
+        import nuri.trading.recommend.price_targets as pt
+        from nuri.trading.recommend.price_targets import classify_stock_type
+        pt._stock_types_cache = None
+
+        result = classify_stock_type("SWNG", db_path=db_path)
+        # 스윙이 아니면 PE/섹터 기반 → value (기본)
+        assert result in ("growth", "value")
+
+    def test_swing_target_values(self, db_path):
+        """스윙 종목의 익절가가 +5%/+10%로 설정."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO swing_trades (ticker, entry_date, entry_price, status) "
+                "VALUES ('SWNG', '2025-03-01', 50.0, 'open')",
+            )
+        _insert_price(db_path, ticker="SWNG", close=52.0)
+
+        import nuri.trading.recommend.price_targets as pt
+        from nuri.trading.recommend.price_targets import calculate_targets
+        pt._stock_types_cache = None
+
+        result = calculate_targets("SWNG", entry_price=50.0, db_path=db_path)
+        assert result["stock_type"] == "swing"
+        assert result["target_1"] == 52.5   # 50 * 1.05
+        assert result["target_2"] == 55.0   # 50 * 1.10
+
+    def test_swing_take_profit_sell_pct(self, db_path):
+        """스윙 종목의 익절 시그널 매도 비율이 rules.yaml 기준."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO swing_trades (ticker, entry_date, entry_price, status) "
+                "VALUES ('SWNG', '2025-03-01', 50.0, 'open')",
+            )
+        _insert_position(db_path, ticker="SWNG", entry_price=50.0,
+                         target_1_price=52.5, target_2_price=55.0)
+        _insert_price(db_path, ticker="SWNG", close=53.0)  # 1차 익절 도달
+
+        import nuri.trading.recommend.price_targets as pt
+        from nuri.trading.recommend.price_targets import check_take_profit_signals
+        pt._stock_types_cache = None
+
+        signals = check_take_profit_signals(db_path=db_path)
+        assert len(signals) == 1
+        sig = signals[0]
+        assert sig.stock_type == "swing"
+        assert sig.sell_pct == 50  # rules.yaml: swing target_1_sell_pct = 50
+
+    def test_swing_target_2_sell_pct_100(self, db_path):
+        """스윙 종목 2차 익절은 전량 매도 (100%)."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO swing_trades (ticker, entry_date, entry_price, status) "
+                "VALUES ('SWNG', '2025-03-01', 50.0, 'open')",
+            )
+        _insert_position(db_path, ticker="SWNG", entry_price=50.0,
+                         target_1_price=52.5, target_2_price=55.0)
+        _insert_price(db_path, ticker="SWNG", close=56.0)  # 2차 익절 도달
+
+        import nuri.trading.recommend.price_targets as pt
+        from nuri.trading.recommend.price_targets import check_take_profit_signals
+        pt._stock_types_cache = None
+
+        signals = check_take_profit_signals(db_path=db_path)
+        assert len(signals) == 1
+        sig = signals[0]
+        assert sig.stock_type == "swing"
+        assert sig.level == "target_2"
+        assert sig.sell_pct == 100  # rules.yaml: swing target_2_sell_pct = 100
+
+
+class TestSetPositionTargetsSwing:
+    """set_position_targets가 스윙 유형을 올바르게 처리하는지 검증."""
+
+    def test_swing_type_explicit(self, db_path):
+        """stock_type='swing' 명시 시 +5%/+10% 설정."""
+        _insert_position(db_path, ticker="SWNG", entry_price=100.0)
+
+        from nuri.trading.recommend.price_targets import set_position_targets
+        result = set_position_targets(
+            position_id=1, entry_price=100.0,
+            stock_type="swing", db_path=db_path,
+        )
+        assert result["target_1_price"] == 105.0
+        assert result["target_2_price"] == 110.0
+
+    def test_swing_type_auto_from_db(self, db_path):
+        """swing_trades 테이블 기반 자동 분류로 스윙 익절가 설정."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO swing_trades (ticker, entry_date, entry_price, status) "
+                "VALUES ('SWNG', '2025-03-01', 100.0, 'open')",
+            )
+        _insert_position(db_path, ticker="SWNG", entry_price=100.0)
+
+        import nuri.trading.recommend.price_targets as pt
+        from nuri.trading.recommend.price_targets import set_position_targets
+        pt._stock_types_cache = None
+
+        result = set_position_targets(
+            position_id=1, entry_price=100.0,
+            ticker="SWNG", db_path=db_path,
+        )
+        assert result["stock_type"] == "swing"
+        assert result["target_1_price"] == 105.0
+        assert result["target_2_price"] == 110.0
+
+
+# ═══════════════════════════════════════════════════════
+# Fix 4: 포트폴리오 전체 손절 (-10% MDD)
+# ═══════════════════════════════════════════════════════
+
+class TestPortfolioStopLoss:
+    """포트폴리오 전체 MDD -10% 초과 시 CRITICAL 위반 생성."""
+
+    def test_no_violation_when_profitable(self, db_path, monkeypatch):
+        """포트폴리오 수익 중이면 위반 없음."""
+        import nuri.analysis.rebalance_advisor as ra
+
+        mock_df = pd.DataFrame([{
+            "ticker": "AAPL", "account": "test", "quantity": 100,
+            "current_price": 110.0, "pnl_pct": 10.0,
+            "current_value_usd": 11000.0, "sector": "Technology",
+            "currency": "USD", "weight_pct": 100.0,
+            "avg_price": 100.0,
+        }])
+        mock_df.attrs["total_value_usd"] = 11000.0
+        monkeypatch.setattr(ra, "analyze_portfolio", lambda: mock_df)
+
+        result = ra.check_portfolio_stop_loss(db_path)
+        assert result is None
+
+    def test_violation_at_minus_10(self, db_path, monkeypatch):
+        """포트폴리오 -10% 이하면 CRITICAL 위반."""
+        import nuri.analysis.rebalance_advisor as ra
+
+        mock_df = pd.DataFrame([{
+            "ticker": "BAD1", "account": "test", "quantity": 100,
+            "current_price": 85.0, "pnl_pct": -15.0,
+            "current_value_usd": 8500.0, "sector": "Technology",
+            "currency": "USD", "weight_pct": 100.0,
+            "avg_price": 100.0,
+        }])
+        mock_df.attrs["total_value_usd"] = 8500.0
+        monkeypatch.setattr(ra, "analyze_portfolio", lambda: mock_df)
+
+        result = ra.check_portfolio_stop_loss(db_path)
+        assert result is not None
+        assert result["violation_type"] == "portfolio_stop_loss"
+        assert result["priority"] == 0
+        assert result["severity"] == "critical"
+        assert result["action"] == "LIQUIDATE"
+
+    def test_violation_at_exact_threshold(self, db_path, monkeypatch):
+        """정확히 -10%일 때 위반 발생."""
+        import nuri.analysis.rebalance_advisor as ra
+
+        mock_df = pd.DataFrame([{
+            "ticker": "EDGE", "account": "test", "quantity": 100,
+            "current_price": 90.0, "pnl_pct": -10.0,
+            "current_value_usd": 9000.0, "sector": "Technology",
+            "currency": "USD", "weight_pct": 100.0,
+            "avg_price": 100.0,
+        }])
+        mock_df.attrs["total_value_usd"] = 9000.0
+        monkeypatch.setattr(ra, "analyze_portfolio", lambda: mock_df)
+
+        result = ra.check_portfolio_stop_loss(db_path)
+        assert result is not None
+
+    def test_no_violation_at_minus_9(self, db_path, monkeypatch):
+        """-9%이면 아직 위반 아님."""
+        import nuri.analysis.rebalance_advisor as ra
+
+        mock_df = pd.DataFrame([{
+            "ticker": "OK", "account": "test", "quantity": 100,
+            "current_price": 91.0, "pnl_pct": -9.0,
+            "current_value_usd": 9100.0, "sector": "Technology",
+            "currency": "USD", "weight_pct": 100.0,
+            "avg_price": 100.0,
+        }])
+        mock_df.attrs["total_value_usd"] = 9100.0
+        monkeypatch.setattr(ra, "analyze_portfolio", lambda: mock_df)
+
+        result = ra.check_portfolio_stop_loss(db_path)
+        assert result is None
+
+    def test_portfolio_stop_integrated_in_detect_violations(self, db_path, monkeypatch):
+        """detect_violations에서 포트폴리오 MDD 위반이 priority 0으로 포함."""
+        import nuri.analysis.rebalance_advisor as ra
+
+        mock_df = pd.DataFrame([{
+            "ticker": "BAD1", "account": "test", "quantity": 100,
+            "current_price": 85.0, "pnl_pct": -15.0,
+            "current_value_usd": 8500.0, "sector": "Technology",
+            "currency": "USD", "weight_pct": 100.0,
+            "avg_price": 100.0,
+        }])
+        mock_df.attrs["total_value_usd"] = 8500.0
+        monkeypatch.setattr(ra, "analyze_portfolio", lambda: mock_df)
+
+        violations = ra.detect_violations(db_path)
+        # 포트폴리오 전체 손절 위반이 포함되어야 함
+        portfolio_v = [v for v in violations if v["violation_type"] == "portfolio_stop_loss"]
+        assert len(portfolio_v) == 1
+        assert portfolio_v[0]["priority"] == 0
+
+        # 개별 종목 손절 위반도 있어야 함
+        stock_v = [v for v in violations if v["violation_type"] == "stop_loss_exceeded"]
+        assert len(stock_v) >= 1
+
+        # 포트폴리오 위반이 가장 먼저 정렬
+        assert violations[0]["violation_type"] == "portfolio_stop_loss"
+
+    def test_empty_portfolio(self, db_path, monkeypatch):
+        """빈 포트폴리오는 위반 없음."""
+        import nuri.analysis.rebalance_advisor as ra
+        monkeypatch.setattr(ra, "analyze_portfolio", lambda: pd.DataFrame())
+
+        result = ra.check_portfolio_stop_loss(db_path)
+        assert result is None
+
+
+# ═══════════════════════════════════════════════════════
+# Fix 5: 매도 비율이 rules.yaml에서 로드되는지 검증
+# ═══════════════════════════════════════════════════════
+
+class TestSellPctFromRules:
+    """매도 비율이 rules.yaml 기반인지 검증."""
+
+    def test_rules_have_sell_pct(self):
+        """rules.yaml에 sell_pct 필드가 존재."""
+        from nuri.core.rules import TAKE_PROFIT_GROWTH, TAKE_PROFIT_SWING, TAKE_PROFIT_VALUE
+        assert "target_1_sell_pct" in TAKE_PROFIT_GROWTH
+        assert "target_2_sell_pct" in TAKE_PROFIT_GROWTH
+        assert "target_1_sell_pct" in TAKE_PROFIT_VALUE
+        assert "target_2_sell_pct" in TAKE_PROFIT_VALUE
+        assert "target_1_sell_pct" in TAKE_PROFIT_SWING
+        assert "target_2_sell_pct" in TAKE_PROFIT_SWING
+
+    def test_growth_sell_pct_values(self):
+        """성장주 매도 비율: 1차 50%, 2차 25%."""
+        from nuri.core.rules import TAKE_PROFIT_GROWTH
+        assert TAKE_PROFIT_GROWTH["target_1_sell_pct"] == 50
+        assert TAKE_PROFIT_GROWTH["target_2_sell_pct"] == 25
+
+    def test_value_sell_pct_values(self):
+        """가치주 매도 비율: 1차 50%, 2차 25%."""
+        from nuri.core.rules import TAKE_PROFIT_VALUE
+        assert TAKE_PROFIT_VALUE["target_1_sell_pct"] == 50
+        assert TAKE_PROFIT_VALUE["target_2_sell_pct"] == 25
+
+    def test_swing_sell_pct_values(self):
+        """스윙 매도 비율: 1차 50%, 2차 100% (전량)."""
+        from nuri.core.rules import TAKE_PROFIT_SWING
+        assert TAKE_PROFIT_SWING["target_1_sell_pct"] == 50
+        assert TAKE_PROFIT_SWING["target_2_sell_pct"] == 100
+
+    def test_calculate_targets_uses_rules_sell_pct(self, db_path):
+        """calculate_targets 결과가 rules.yaml의 sell_pct를 사용."""
+        _insert_price(db_path, ticker="AAPL", close=100.0)
+
+        import nuri.trading.recommend.price_targets as pt
+        from nuri.trading.recommend.price_targets import calculate_targets
+        pt._stock_types_cache = None
+
+        # 성장주
+        result = calculate_targets("AAPL", entry_price=100.0, stock_type="growth", db_path=db_path)
+        assert result["target_1_sell_pct"] == 50
+        assert result["target_2_sell_pct"] == 25
+
+        # 스윙
+        result_swing = calculate_targets("AAPL", entry_price=100.0, stock_type="swing", db_path=db_path)
+        assert result_swing["target_1_sell_pct"] == 50
+        assert result_swing["target_2_sell_pct"] == 100
+
+
+# ═══════════════════════════════════════════════════════
+# Fix 6: 가격 데이터 없을 때 경고 로그
+# ═══════════════════════════════════════════════════════
+
+class TestMissingPriceWarning:
+    """가격 데이터 없을 때 logger.warning 호출 확인."""
+
+    def test_take_profit_warns_on_missing_price(self, db_path, caplog):
+        """check_take_profit_signals에서 가격 없는 종목 경고."""
+        import logging
+        _insert_position(db_path, ticker="NOPRICE", entry_price=100.0,
+                         target_1_price=120.0, target_2_price=140.0)
+        # NOPRICE 티커에 대한 가격 데이터를 넣지 않음
+
+        from nuri.trading.recommend.price_targets import check_take_profit_signals
+        with caplog.at_level(logging.WARNING):
+            signals = check_take_profit_signals(db_path=db_path)
+
+        assert signals == []
+        assert any("No price data for NOPRICE" in r.message for r in caplog.records)
+
+    def test_trailing_stop_warns_on_missing_price_hwm(self, db_path, caplog):
+        """update_high_water_marks에서 가격 없는 종목 경고."""
+        import logging
+        _insert_position(db_path, ticker="NOPRICE", entry_price=100.0)
+
+        from nuri.trading.execution.trailing import update_high_water_marks
+        with caplog.at_level(logging.WARNING):
+            update_high_water_marks(db_path=db_path)
+
+        assert any("No price data for NOPRICE" in r.message for r in caplog.records)
+
+    def test_trailing_stop_warns_on_missing_price_check(self, db_path, caplog):
+        """check_trailing_stop_signals에서 가격 없는 종목 경고."""
+        import logging
+        _insert_position(db_path, ticker="NOPRICE", entry_price=100.0,
+                         high_water_mark=120.0)
+        # 가격 데이터 없음
+
+        from nuri.trading.execution.trailing import check_trailing_stop_signals
+        with caplog.at_level(logging.WARNING):
+            signals = check_trailing_stop_signals(db_path=db_path)
+
+        assert signals == []
+        # HWM 갱신 시도 + 시그널 체크 시도에서 둘 다 경고
+        warning_msgs = [r.message for r in caplog.records if "No price data" in r.message]
+        assert len(warning_msgs) >= 1

@@ -35,9 +35,9 @@ PORTFOLIO_STOP = RULES["stop_loss"]["portfolio"]
 
 # ─── 익절 ───
 _tp = RULES.get("take_profit", {})
-TAKE_PROFIT_GROWTH = _tp.get("growth", {"target_1": 20, "target_2": 40})
-TAKE_PROFIT_VALUE = _tp.get("value", {"target_1": 15, "target_2": 30})
-TAKE_PROFIT_SWING = _tp.get("swing", {"target_1": 5, "target_2": 10})
+TAKE_PROFIT_GROWTH = _tp.get("growth", {"target_1": 20, "target_1_sell_pct": 50, "target_2": 40, "target_2_sell_pct": 25})
+TAKE_PROFIT_VALUE = _tp.get("value", {"target_1": 15, "target_1_sell_pct": 50, "target_2": 30, "target_2_sell_pct": 25})
+TAKE_PROFIT_SWING = _tp.get("swing", {"target_1": 5, "target_1_sell_pct": 50, "target_2": 10, "target_2_sell_pct": 100})
 
 # ─── 트레일링 스톱 ───
 _ts = RULES.get("trailing_stop", {})
