@@ -60,7 +60,9 @@ class Certificate:
 
     def __post_init__(self):
         if not self.timestamp:
-            self.timestamp = datetime.now().isoformat()
+            from nuri.core.timezone import kst_now
+
+            self.timestamp = kst_now().isoformat()
 
 
 def _check_position_limits(db_path=None) -> CertCondition:
@@ -204,8 +206,11 @@ def _check_data_freshness(db_path=None) -> CertCondition:
     rows = query("SELECT MAX(date) as latest FROM prices WHERE ticker='SPY'", db_path=db_path)
     if not rows or not rows[0]["latest"]:
         return CertCondition("data_fresh", "데이터 신선도 (72h)", False, "SPY 데이터 없음")
+    from nuri.core.timezone import kst_now
+
     latest = datetime.strptime(rows[0]["latest"], "%Y-%m-%d")
-    age_hours = (datetime.now() - latest).total_seconds() / 3600
+    # KST 기준으로 신선도 비교 (naive datetime 통일)
+    age_hours = (kst_now().replace(tzinfo=None) - latest).total_seconds() / 3600
     if age_hours <= 72:
         return CertCondition("data_fresh", "데이터 신선도 (72h)", True,
                             f"SPY {age_hours:.0f}시간 전")
@@ -250,8 +255,10 @@ def certify(db_path=None) -> Certificate:
     certified = failed == 0
     score = round(passed / total * 100, 1) if total > 0 else 0
 
+    from nuri.core.timezone import kst_now
+
     return Certificate(
-        timestamp=datetime.now().isoformat(),
+        timestamp=kst_now().isoformat(),
         total_conditions=total,
         passed=passed,
         failed=failed,

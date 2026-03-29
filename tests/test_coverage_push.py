@@ -37,9 +37,11 @@ def price_db(db_path):
         upsert_prices(df, db_path)
 
     from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d")
     upsert_macro([
-        {"indicator": "vix", "date": datetime.now().strftime("%Y-%m-%d"), "value": 16.0, "source": "test"},
-        {"indicator": "fear_greed", "date": datetime.now().strftime("%Y-%m-%d"), "value": 55.0, "source": "test"},
+        {"indicator": "vix", "date": today, "value": 16.0, "source": "test"},
+        {"indicator": "fear_greed", "date": today, "value": 55.0, "source": "test"},
+        {"indicator": "usd_krw", "date": today, "value": 1380.0, "source": "test"},
     ], db_path)
     return db_path
 
