@@ -38,10 +38,10 @@ report:
 
 # ── Lint ──
 lint:
-	$(PYTHON) -m ruff check nuri/ tests/
+	$(PYTHON) -m ruff check nuri/ tests/ scripts/
 
 lint-fix:
-	$(PYTHON) -m ruff check nuri/ tests/ --fix
+	$(PYTHON) -m ruff check nuri/ tests/ scripts/ --fix
 
 # ── 테스트 ──
 test:
