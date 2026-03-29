@@ -1,4 +1,11 @@
-"""Dashboard API — 한 번의 호출로 "오늘 뭐하라고?"에 답하는 액션 중심 요약."""
+"""Dashboard API — 한 번의 호출로 "오늘 뭐하라고?"에 답하는 액션 중심 요약.
+
+v2: DB 조회 전용 (<500ms). analyze_portfolio() 인라인 호출 제거.
+    - 레짐/매크로: 빠른 조회 유지 (3-5s)
+    - 액션: recommendations 테이블에서 읽기
+    - Gate: 기존 유지 (query-only)
+    - 신선도/파이프라인: 새 모듈에서 조회
+"""
 import logging
 import time
 
@@ -8,13 +15,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dashboard"])
 
 # 캐시 (5분 TTL)
-_cache = {"data": None, "timestamp": 0}
+_cache: dict = {"data": None, "timestamp": 0}
 CACHE_TTL = 300  # 5분
 
 
 @router.get("/dashboard")
 def get_dashboard():
-    """오늘의 투자 판단 요약 — 액션 중심."""
+    """오늘의 투자 판단 요약 — DB 조회 전용 (projection 기반)."""
     now = time.time()
     if _cache["data"] and (now - _cache["timestamp"]) < CACHE_TTL:
         return _cache["data"]
@@ -26,79 +33,169 @@ def get_dashboard():
 
 
 def _build_dashboard() -> dict:
-    """모든 분석을 종합하여 액션 중심 요약 생성."""
+    """모든 분석을 종합하여 액션 중심 요약 생성 — DB 조회 전용."""
     from nuri.core.db import query
 
-    # ── 1. 레짐 + 매크로 ──
-    regime_data = {"regime": "unknown", "trend": "unknown", "confidence": 0}
-    macro_data = {"score": 50, "interpretation": "Neutral"}
-    allocation = {"long": 0, "short": 0, "cash": 100}
+    # ── 1. 레짐 + 매크로 (빠름: 3-5s) ──
+    regime_data = _get_cached_regime()
+    macro_data = _get_macro()
+    allocation = _get_allocation(regime_data.get("regime", "sideways_high_vol"))
 
-    try:
-        from nuri.quant.regime.classifier import classify_regime
-        from nuri.quant.regime.macro_score import compute_macro_score
-        r = classify_regime()
-        if r:
-            regime_data = {"regime": r.regime, "trend": r.trend, "volatility": r.volatility,
-                          "confidence": round(r.confidence * 100),
-                          "vix": r.details.get("vix"), "fear_greed": r.details.get("fear_greed")}
-        m = compute_macro_score()
-        macro_data = {"score": round(m.total_score), "interpretation": m.interpretation}
-
-        from nuri.trading.strategy.longshort import REGIME_ALLOCATION
-        alloc = REGIME_ALLOCATION.get(r.regime if r else "sideways_high_vol", {})
-        allocation = {"long": alloc.get("long_pct", 0), "short": alloc.get("short_pct", 0),
-                     "cash": alloc.get("cash_pct", 100)}
-    except Exception as e:
-        logger.debug(f"Regime/macro: {e}")
-
-    # ── 2. 핵심 액션 (BUY / SELL / WATCH) ──
-    actions = []
-    try:
-        from nuri.trading.agents.consensus import analyze_portfolio
-        results = analyze_portfolio()
-        for cr in sorted(results, key=lambda x: x.final_confidence, reverse=True):
-            if cr.final_action == "BUY" and cr.final_confidence >= 50:
-                # 에이전트 근거 1줄
-                supporters = [v for v in cr.verdicts if v.action == "BUY"]
-                why = supporters[0].reasoning[:50] if supporters else ""
-                actions.append({"action": "BUY", "ticker": cr.ticker,
-                              "confidence": round(cr.final_confidence),
-                              "agreement": round(cr.agreement_rate * 100),
-                              "reason": why})
-            elif cr.final_action == "SELL" and cr.final_confidence >= 70:
-                sellers = [v for v in cr.verdicts if v.action == "SELL"]
-                why = sellers[0].reasoning[:50] if sellers else ""
-                actions.append({"action": "SELL", "ticker": cr.ticker,
-                              "confidence": round(cr.final_confidence),
-                              "agreement": round(cr.agreement_rate * 100),
-                              "reason": why})
-
-        # HOLD 중 주목할 종목 (smart money/wallstreet BUY인데 전체 HOLD)
-        for cr in results:
-            if cr.final_action == "HOLD" and cr.agreement_rate < 0.8:
-                dissenters = [v for v in cr.verdicts if v.action == "BUY" and v.confidence >= 70]
-                if dissenters:
-                    actions.append({"action": "WATCH", "ticker": cr.ticker,
-                                  "confidence": round(cr.final_confidence),
-                                  "agreement": round(cr.agreement_rate * 100),
-                                  "reason": f"{dissenters[0].agent_name}: {dissenters[0].reasoning[:40]}"})
-    except Exception as e:
-        logger.debug(f"Actions: {e}")
-
-    # 상위 5개만
-    buys = [a for a in actions if a["action"] == "BUY"][:3]
-    sells = [a for a in actions if a["action"] == "SELL"][:3]
-    watches = [a for a in actions if a["action"] == "WATCH"][:2]
-    top_actions = buys + sells + watches
+    # ── 2. 핵심 액션 — recommendations 테이블에서 조회 (빠름) ──
+    actions = _get_latest_actions()
 
     # ── 3. 리스크 알림 ──
+    alerts = _get_active_alerts()
+
+    # ── 4. 한 줄 판단 (verdict) ──
+    trend = regime_data.get("trend", "unknown")
+    macro_score = macro_data["score"]
+    n_buys = len([a for a in actions if a["action"] == "BUY"])
+    n_sells = len([a for a in actions if a["action"] == "SELL"])
+
+    if trend == "bear" or macro_score < 35:
+        verdict = "방어 모드. 현금 비중 유지하고 숏 헤지를 검토하세요."
+        verdict_level = "defensive"
+    elif trend == "bull" and macro_score >= 60:
+        verdict = f"공격 가능. {n_buys}개 매수 후보가 에이전트 합의를 통과했습니다."
+        verdict_level = "aggressive"
+    elif n_sells > n_buys:
+        verdict = f"매도 우위. 에이전트 {n_sells}종목 매도, {n_buys}종목 매수 판정."
+        verdict_level = "cautious"
+    else:
+        verdict = "관망. 횡보 + 고변동 구간. 대기하며 레짐 전환을 주시하세요."
+        verdict_level = "neutral"
+
+    # ── 5. Gate 상태 ──
+    gate_score = _get_gate_score()
+
+    # ── 6. 신선도 + 파이프라인 ──
+    freshness = _get_freshness()
+    pipeline_status = _get_pipeline_status()
+
+    return {
+        "verdict": verdict,
+        "verdict_level": verdict_level,
+        "regime": regime_data,
+        "macro": macro_data,
+        "allocation": allocation,
+        "actions": actions,
+        "alerts": alerts,
+        "gate_score": gate_score,
+        "n_positions": len(query("SELECT 1 FROM positions WHERE status='open'")),
+        "freshness": freshness,
+        "pipeline_status": pipeline_status,
+    }
+
+
+def _get_cached_regime() -> dict:
+    """레짐 분류 — classify_regime()은 빠름 (3-5s)."""
+    try:
+        from nuri.quant.regime.classifier import classify_regime
+        r = classify_regime()
+        if r:
+            return {
+                "regime": r.regime,
+                "trend": r.trend,
+                "volatility": r.volatility,
+                "confidence": round(r.confidence * 100),
+                "vix": r.details.get("vix"),
+                "fear_greed": r.details.get("fear_greed"),
+            }
+    except Exception as e:
+        logger.debug(f"Regime: {e}")
+    return {"regime": "unknown", "trend": "unknown", "confidence": 0}
+
+
+def _get_macro() -> dict:
+    """매크로 스코어 — compute_macro_score()은 빠름 (1-2s)."""
+    try:
+        from nuri.quant.regime.macro_score import compute_macro_score
+        m = compute_macro_score()
+        return {"score": round(m.total_score), "interpretation": m.interpretation}
+    except Exception as e:
+        logger.debug(f"Macro: {e}")
+    return {"score": 50, "interpretation": "Neutral"}
+
+
+def _get_allocation(regime: str) -> dict:
+    """레짐별 자산 배분 비율."""
+    try:
+        from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+        alloc = REGIME_ALLOCATION.get(regime, {})
+        return {
+            "long": alloc.get("long_pct", 0),
+            "short": alloc.get("short_pct", 0),
+            "cash": alloc.get("cash_pct", 100),
+        }
+    except Exception:
+        return {"long": 0, "short": 0, "cash": 100}
+
+
+def _get_latest_actions() -> list[dict]:
+    """recommendations 테이블에서 최신 추천 조회 — analyze_portfolio() 대체."""
+    from nuri.core.db import query
+    try:
+        rows = query("""
+            SELECT ticker, action, confidence, regime, signals, date
+            FROM recommendations
+            WHERE date = (SELECT MAX(date) FROM recommendations)
+            ORDER BY confidence DESC
+        """)
+        if not rows:
+            return []
+
+        actions = []
+        for row in rows:
+            action = row["action"]
+            confidence = round(row["confidence"] * 100) if row["confidence"] and row["confidence"] <= 1 else round(row["confidence"] or 0)
+            if action == "BUY" and confidence >= 50:
+                actions.append({
+                    "action": "BUY",
+                    "ticker": row["ticker"],
+                    "confidence": confidence,
+                    "reason": row.get("signals", "")[:60] if row.get("signals") else "",
+                })
+            elif action == "SELL" and confidence >= 70:
+                actions.append({
+                    "action": "SELL",
+                    "ticker": row["ticker"],
+                    "confidence": confidence,
+                    "reason": row.get("signals", "")[:60] if row.get("signals") else "",
+                })
+
+        # 상위 5개만
+        buys = [a for a in actions if a["action"] == "BUY"][:3]
+        sells = [a for a in actions if a["action"] == "SELL"][:3]
+        return buys + sells
+    except Exception as e:
+        logger.debug(f"Actions from DB: {e}")
+        return []
+
+
+def _get_gate_score() -> int:
+    """Gate 상태 — check_gate()은 빠름 (query-only)."""
+    try:
+        from nuri.trading.engine.gate import check_gate
+        g = check_gate()
+        return round(g.score * 100)
+    except Exception:
+        return 0
+
+
+def _get_active_alerts() -> list[dict]:
+    """리스크 알림 (violations + drift + conflicts)."""
     alerts = []
+
+    # 리스크 분석
     try:
         from nuri.analysis.risk import analyze_risk
         risk = analyze_risk()
         if risk.get("portfolio_stop_triggered"):
-            alerts.append({"level": "critical", "message": f"포트폴리오 손절선 돌파 (MDD {risk['max_drawdown_pct']:.1f}%)"})
+            alerts.append({
+                "level": "critical",
+                "message": f"포트폴리오 손절선 돌파 (MDD {risk['max_drawdown_pct']:.1f}%)",
+            })
         for a in risk.get("stop_loss_alerts", [])[:3]:
             alerts.append({"level": "warning", "message": f"{a['ticker']} 손절선 ({a['pnl_pct']:+.1f}%)"})
     except Exception:
@@ -125,51 +222,25 @@ def _build_dashboard() -> dict:
     except Exception:
         pass
 
-    # ── 4. 한 줄 판단 (verdict) ──
-    trend = regime_data.get("trend", "unknown")
-    macro_score = macro_data["score"]
-    n_buys = len(buys)
-    n_sells = len(sells)
+    return alerts
 
-    if trend == "bear" or macro_score < 35:
-        verdict = "방어 모드. 현금 비중 유지하고 숏 헤지를 검토하세요."
-        verdict_level = "defensive"
-    elif trend == "bull" and macro_score >= 60:
-        verdict = f"공격 가능. {n_buys}개 매수 후보가 에이전트 합의를 통과했습니다."
-        verdict_level = "aggressive"
-    elif n_sells > n_buys:
-        verdict = f"매도 우위. 에이전트 {n_sells}종목 매도, {n_buys}종목 매수 판정."
-        verdict_level = "cautious"
-    else:
-        verdict = "관망. 횡보 + 고변동 구간. 대기하며 레짐 전환을 주시하세요."
-        verdict_level = "neutral"
 
-    # drift 경고가 있으면 verdict에 추가
+def _get_freshness() -> dict:
+    """데이터 신선도 요약."""
     try:
-        drifts = detect_drift()
-        critical_count = sum(1 for d in drifts if d.status == "critical")
-        if critical_count >= 2:
-            verdict += f" (매수 시그널 {critical_count}개 성과 급락 중 — 신뢰도 하향)"
-    except Exception:
-        pass
+        from nuri.core.freshness import check_all_freshness
+        details = check_all_freshness()
+        return {d["table"]: {"age_hours": d["age_hours"], "status": d["status"]} for d in details}
+    except Exception as e:
+        logger.debug(f"Freshness: {e}")
+        return {}
 
-    # ── 5. Gate 상태 ──
-    gate_score = 0
+
+def _get_pipeline_status() -> dict:
+    """파이프라인 6단계 최신 실행 상태."""
     try:
-        from nuri.trading.engine.gate import check_gate
-        g = check_gate()
-        gate_score = round(g.score * 100)
-    except Exception:
-        pass
-
-    return {
-        "verdict": verdict,
-        "verdict_level": verdict_level,  # aggressive/neutral/cautious/defensive
-        "regime": regime_data,
-        "macro": macro_data,
-        "allocation": allocation,
-        "actions": top_actions,
-        "alerts": alerts,
-        "gate_score": gate_score,
-        "n_positions": len(query("SELECT 1 FROM positions WHERE status='open'")),
-    }
+        from nuri.core.events import get_pipeline_status
+        return get_pipeline_status()
+    except Exception as e:
+        logger.debug(f"Pipeline status: {e}")
+        return {}
