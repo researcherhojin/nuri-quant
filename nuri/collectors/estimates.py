@@ -7,7 +7,6 @@
     python -m nuri.collectors.estimates
 """
 import logging
-from datetime import datetime
 from typing import Any
 
 import pandas as pd
@@ -34,7 +33,8 @@ class EstimatesCollector(BaseCollector):
             return []
 
         self.logger.info(f"애널리스트 컨센서스 수집: {len(tickers)}종목")
-        today = datetime.now().strftime("%Y-%m-%d")
+        from nuri.core.timezone import today_kst
+        today = today_kst()
         results = []
 
         for ticker in tickers:

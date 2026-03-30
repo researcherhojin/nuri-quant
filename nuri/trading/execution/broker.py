@@ -13,7 +13,6 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,8 @@ class Order:
 
     def __post_init__(self):
         if not self.timestamp:
-            self.timestamp = datetime.now().isoformat()
+            from nuri.core.timezone import kst_now
+            self.timestamp = kst_now().isoformat()
         # filled/unfilled 자동 계산
         if self.filled_qty is None and self.status == "filled":
             self.filled_qty = self.quantity
