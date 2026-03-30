@@ -10,6 +10,29 @@ router = APIRouter(tags=["pipeline"])
 VALID_STEPS = ("collect", "validate", "classify", "diagnose", "recommend", "track")
 
 
+@router.get("/scheduler/health")
+def get_scheduler_health():
+    """스케줄러 heartbeat 상태. 마지막 heartbeat 시각 + 경과 시간."""
+    from pathlib import Path
+
+    heartbeat_path = Path(__file__).parent.parent.parent.parent / "data" / ".scheduler_heartbeat"
+    if not heartbeat_path.exists():
+        return {"status": "unknown", "detail": "heartbeat 파일 없음 (스케줄러 미실행?)"}
+
+    from datetime import datetime
+    try:
+        last = datetime.fromisoformat(heartbeat_path.read_text().strip())
+        age_seconds = (datetime.now() - last).total_seconds()
+        status = "ok" if age_seconds < 600 else "stale"  # 10분 기준
+        return {
+            "status": status,
+            "last_heartbeat": last.isoformat(),
+            "age_seconds": round(age_seconds),
+        }
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+
 @router.get("/pipeline/status")
 def get_pipeline_status():
     """6단계 파이프라인 최신 상태 + 신선도."""
