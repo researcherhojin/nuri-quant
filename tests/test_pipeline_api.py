@@ -5,6 +5,7 @@ TestClient로 파이프라인/대시보드/신선도 엔드포인트를 검증�
 """
 import json
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -449,25 +450,48 @@ class TestCoreFreshness:
 
 
 class TestSchedulerHealth:
-    def test_no_heartbeat_file(self, client):
+    def test_no_heartbeat_file(self, client, monkeypatch):
         """heartbeat 파일 없으면 unknown."""
+        import nuri.api.routes.pipeline as pipe_mod
+        monkeypatch.setattr(pipe_mod, "_HEARTBEAT_PATH", Path("/nonexistent/.hb"))
+        resp = client.get("/api/scheduler/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "unknown"
+
+    def test_heartbeat_fresh(self, client, tmp_path, monkeypatch):
+        """최근 heartbeat → ok."""
+        from datetime import datetime
+
+        import nuri.api.routes.pipeline as pipe_mod
+        hb = tmp_path / ".hb"
+        hb.write_text(datetime.now().isoformat())
+        monkeypatch.setattr(pipe_mod, "_HEARTBEAT_PATH", hb)
         resp = client.get("/api/scheduler/health")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] in ("unknown", "ok", "stale", "error")
+        assert data["status"] == "ok"
+        assert data["age_seconds"] < 10
 
-    def test_heartbeat_parsing(self, tmp_path):
-        """heartbeat 파일 파싱 로직 검증."""
+    def test_heartbeat_stale(self, client, tmp_path, monkeypatch):
+        """오래된 heartbeat → stale."""
         from datetime import datetime
 
-        hb_path = tmp_path / ".hb"
-        hb_path.write_text(datetime.now().isoformat())
+        import nuri.api.routes.pipeline as pipe_mod
+        hb = tmp_path / ".hb"
+        old = (datetime.now() - timedelta(minutes=15)).isoformat()
+        hb.write_text(old)
+        monkeypatch.setattr(pipe_mod, "_HEARTBEAT_PATH", hb)
+        resp = client.get("/api/scheduler/health")
+        assert resp.json()["status"] == "stale"
 
-        last = datetime.fromisoformat(hb_path.read_text().strip())
-        age = (datetime.now() - last).total_seconds()
-        assert age < 5
-        status = "ok" if age < 600 else "stale"
-        assert status == "ok"
+    def test_heartbeat_corrupt(self, client, tmp_path, monkeypatch):
+        """손상된 heartbeat → error."""
+        import nuri.api.routes.pipeline as pipe_mod
+        hb = tmp_path / ".hb"
+        hb.write_text("not-a-date")
+        monkeypatch.setattr(pipe_mod, "_HEARTBEAT_PATH", hb)
+        resp = client.get("/api/scheduler/health")
+        assert resp.json()["status"] == "error"
 
 
 class TestWriteHeartbeat:

@@ -9,13 +9,20 @@ router = APIRouter(tags=["pipeline"])
 
 VALID_STEPS = ("collect", "validate", "classify", "diagnose", "recommend", "track")
 
+_HEARTBEAT_PATH = None  # 테스트에서 monkeypatch 가능
+
+
+def _get_heartbeat_path():
+    if _HEARTBEAT_PATH:
+        return _HEARTBEAT_PATH
+    from pathlib import Path
+    return Path(__file__).parent.parent.parent.parent / "data" / ".scheduler_heartbeat"
+
 
 @router.get("/scheduler/health")
 def get_scheduler_health():
     """스케줄러 heartbeat 상태. 마지막 heartbeat 시각 + 경과 시간."""
-    from pathlib import Path
-
-    heartbeat_path = Path(__file__).parent.parent.parent.parent / "data" / ".scheduler_heartbeat"
+    heartbeat_path = _get_heartbeat_path()
     if not heartbeat_path.exists():
         return {"status": "unknown", "detail": "heartbeat 파일 없음 (스케줄러 미실행?)"}
 
