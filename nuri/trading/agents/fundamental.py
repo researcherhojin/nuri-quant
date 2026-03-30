@@ -80,13 +80,15 @@ class FundamentalAgent(BaseAgent):
         conf_cap = _CONF.get("cap", 80)
         buy_base = _CONF.get("buy_base", 50)
         buy_mult = _CONF.get("buy_multiplier", 10)
+        sell_base = _CONF.get("sell_base", 50)
+        sell_mult = _CONF.get("sell_multiplier", 10)
         hold_base = _CONF.get("hold_base", 40)
         hold_mult = _CONF.get("hold_multiplier", 5)
 
         if score >= score_buy:
             action, confidence = "BUY", min(conf_cap, buy_base + score * buy_mult)
         elif score <= score_sell:
-            action, confidence = "SELL", min(conf_cap, buy_base + abs(score) * buy_mult)
+            action, confidence = "SELL", min(conf_cap, sell_base + abs(score) * sell_mult)
         else:
             action, confidence = "HOLD", hold_base + abs(score) * hold_mult
 
