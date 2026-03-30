@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Nuri-Quant 스케줄러 launchd 설정.
+
+  설치:
+    cp scripts/com.nuri-quant.scheduler.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.nuri-quant.scheduler.plist
+
+  제거:
+    launchctl unload ~/Library/LaunchAgents/com.nuri-quant.scheduler.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nuri-quant.scheduler</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/ehbebe/workspace/nuri-quant/.venv/bin/python</string>
+        <string>-m</string>
+        <string>nuri.scheduler</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/ehbebe/workspace/nuri-quant</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/ehbebe/workspace/nuri-quant/data/logs/scheduler.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/ehbebe/workspace/nuri-quant/data/logs/scheduler.err</string>
+</dict>
+</plist>
