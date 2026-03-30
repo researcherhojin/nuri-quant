@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { EquityCurveChart } from "@/components/ui/equity-curve-chart";
 
 async function StrategyDashboard() {
   const [status, bt] = await Promise.all([
@@ -156,6 +157,15 @@ async function StrategyDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Row 2.5: Equity Curve ── */}
+      {bt.result?.equity_curve && bt.result.equity_curve.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardContent className="pt-5">
+            <EquityCurveChart data={bt.result.equity_curve} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Row 3: Positions (compact, only if exists) ── */}
       {positions.length > 0 && (
