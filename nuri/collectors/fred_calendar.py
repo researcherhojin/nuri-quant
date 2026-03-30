@@ -11,13 +11,14 @@ FRED_API_KEY 필요 (없으면 하드코딩 캘린더 폴백).
 """
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import requests
 from dotenv import load_dotenv
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import get_db, insert_events
+from nuri.core.timezone import kst_now
 
 load_dotenv()
 
@@ -87,7 +88,7 @@ class FREDCalendarCollector(BaseCollector):
 
     def _collect_fred_api(self, days_ahead: int) -> list[dict]:
         """FRED Release Dates API에서 예정 이벤트 조회."""
-        today = datetime.now()
+        today = kst_now().replace(tzinfo=None)
         end_date = today + timedelta(days=days_ahead)
 
         params = {
@@ -126,7 +127,7 @@ class FREDCalendarCollector(BaseCollector):
 
     def _collect_fallback(self, days_ahead: int) -> list[dict]:
         """하드코딩 캘린더 폴백."""
-        today = datetime.now()
+        today = kst_now().replace(tzinfo=None)
         end_date = today + timedelta(days=days_ahead)
         today_str = today.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
