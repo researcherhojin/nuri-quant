@@ -39,11 +39,19 @@ from nuri.api.routes import (
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("nuri.api")
 # yfinance 404/401 에러 로그 억제 (ETF/KS 종목에서 대량 발생)
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
+# ─── 보안 경고 ───
+if not os.getenv("API_SECRET_KEY"):
+    logger.warning("API_SECRET_KEY 미설정 — 재시작 시 JWT 무효화됩니다. .env에 설정하세요.")
+
 # ─── Rate Limiter ───
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["60/minute"],  # 전역 기본: 읽기 60/min
+)
 
 app = FastAPI(
     title="Nuri-Quant API",
@@ -86,6 +94,8 @@ app.include_router(signals.router, prefix="/api")
 app.include_router(rebalance.router, prefix="/api")
 app.include_router(engine.router, prefix="/api")
 app.include_router(pipeline.router, prefix="/api")
+# pipeline 실행에 엄격한 rate limit (2/min)
+pipeline.run_pipeline_step = limiter.limit("2/minute")(pipeline.run_pipeline_step)
 app.include_router(agents.router, prefix="/api")
 app.include_router(swing.router, prefix="/api")
 app.include_router(ticker.router, prefix="/api")
