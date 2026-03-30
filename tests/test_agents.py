@@ -800,15 +800,58 @@ class TestMacroAgentBranches:
         # 모멘텀 강세 → BUY 또는 기본 HOLD
         assert v.action in ("BUY", "HOLD")
 
+    def test_sideways_sell_momentum(self, db_path, monkeypatch):
+        """횡보 + 강한 하락 모멘텀 → SELL."""
+        from nuri.trading.agents.macro_agent import MacroAgent
+        self._mock_regime(monkeypatch, "sideways", "sideways_low_vol", 50)
+        # DB: date ASC (03-01~03-20). Agent: ORDER BY date DESC → iloc[0]=03-20(last)
+        # iloc[0]=last, iloc[4]=16th, iloc[9]=11th
+        # ret_5d = (last - 16th) / 16th, ret_10d = (last - 11th) / 11th
+        # Need: ret_5d < -8, ret_10d < -10 → sharp decline at the end
+        prices = [100] * 10 + [100, 99, 98, 97, 96, 95, 90, 85, 82, 78]
+        self._make_prices(db_path, "DROP", prices[:20])
+        v = MacroAgent().analyze("DROP", db_path=db_path)
+        assert v.action == "SELL"
+        assert "모멘텀 약세" in v.reasoning
+
     def test_bull_underperform_hold(self, db_path, monkeypatch):
         """상승장이나 개별 약세 → HOLD로 약화."""
         from nuri.trading.agents.macro_agent import MacroAgent
         self._mock_regime(monkeypatch, "bull", "bull_low_vol", 70)
-        # 최근 5일 -8% 하락 (bull_underperform < -5)
-        prices = [100] * 15 + [92, 91, 90, 89, 88]
+        # iloc[0]=03-20=last, iloc[4]=03-16 → ret_5d = (last-16th)/16th
+        # Need ret_5d < -5 → last=90, 16th=100 → (90-100)/100 = -10%
+        prices = [100] * 16 + [95, 93, 91, 90]
         self._make_prices(db_path, "WEAK", prices[:20])
         v = MacroAgent().analyze("WEAK", db_path=db_path)
-        assert v.action in ("BUY", "HOLD")
+        assert v.action == "HOLD"
+        assert "개별 약세" in v.reasoning
+
+    def test_bear_bounce_hold(self, db_path, monkeypatch):
+        """하락장이나 개별 반등 → HOLD로 약화."""
+        from nuri.trading.agents.macro_agent import MacroAgent
+        self._mock_regime(monkeypatch, "bear", "bear_low_vol", 30)
+        # iloc[0]=last, iloc[4]=16th → ret_5d = (last-16th)/16th
+        # Need ret_5d > 10 → last=115, 16th=100 → (115-100)/100 = +15%
+        prices = [100] * 16 + [108, 110, 112, 115]
+        self._make_prices(db_path, "BOUNCE", prices[:20])
+        v = MacroAgent().analyze("BOUNCE", db_path=db_path)
+        assert v.action == "HOLD"
+        assert "개별 반등" in v.reasoning
+
+    def test_bear_defensive_sector_hold(self, db_path, monkeypatch):
+        """하락장 + 방어 섹터 → SELL 대신 HOLD."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.macro_agent import MacroAgent
+        self._mock_regime(monkeypatch, "bear", "bear_low_vol", 25)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("test", "DEF", 10, 100.0, "USD", "Healthcare"),
+            )
+        self._make_prices(db_path, "DEF", [100 - i * 0.3 for i in range(20)])
+        v = MacroAgent().analyze("DEF", db_path=db_path)
+        assert v.action in ("SELL", "HOLD")
 
 
 class TestKoreanMarketFullBranches:
