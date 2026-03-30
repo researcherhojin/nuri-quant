@@ -10,7 +10,7 @@ Arctic Shift는 Reddit 데이터의 무료 아카이브 API (인증 불필요).
 import logging
 import re
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import requests
 
@@ -115,7 +115,8 @@ class RedditCollector(BaseCollector):
 
     def _fetch_posts(self, days: int = 1) -> list[dict]:
         """Arctic Shift API에서 WSB 포스트 가져오기 (페이징, 최대 500건)."""
-        after = datetime.now() - timedelta(days=days)
+        from nuri.core.timezone import kst_now
+        after = kst_now().replace(tzinfo=None) - timedelta(days=days)
         after_epoch = int(after.timestamp())
 
         all_posts = []
