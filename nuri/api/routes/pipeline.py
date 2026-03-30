@@ -3,9 +3,12 @@ import logging
 import time
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["pipeline"])
+_limiter = Limiter(key_func=get_remote_address)
 
 VALID_STEPS = ("collect", "validate", "classify", "diagnose", "recommend", "track")
 
@@ -27,9 +30,11 @@ def get_scheduler_health():
         return {"status": "unknown", "detail": "heartbeat 파일 없음 (스케줄러 미실행?)"}
 
     from datetime import datetime
+
+    from nuri.core.timezone import kst_now
     try:
         last = datetime.fromisoformat(heartbeat_path.read_text().strip())
-        age_seconds = (datetime.now() - last).total_seconds()
+        age_seconds = (kst_now().replace(tzinfo=None) - last).total_seconds()
         status = "ok" if age_seconds < 600 else "stale"  # 10분 기준
         return {
             "status": status,
@@ -66,7 +71,8 @@ def get_pipeline_timeline(
 
 
 @router.post("/pipeline/{step}/run")
-def run_pipeline_step(step: str, request: Request):  # noqa: ARG001 — request needed by slowapi
+@_limiter.limit("2/minute")
+def run_pipeline_step(step: str, request: Request):
     """특정 파이프라인 스텝 실행 (동기)."""
     if step not in VALID_STEPS:
         raise HTTPException(status_code=400, detail=f"Invalid step: {step}. Valid: {', '.join(VALID_STEPS)}")
