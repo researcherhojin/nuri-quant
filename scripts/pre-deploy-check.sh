@@ -101,7 +101,36 @@ else
     fail "frontend/package.json not found"
 fi
 
-# ── 6. 포트 충돌 ──
+# ── 6. 디스크 용량 ──
+echo ""
+echo "💿 Disk space..."
+AVAIL_MB=$(df -m . | tail -1 | awk '{print $4}')
+if [ "$AVAIL_MB" -gt 1000 ]; then
+    pass "Disk: ${AVAIL_MB}MB available"
+else
+    fail "Disk: only ${AVAIL_MB}MB available (need >1GB)"
+fi
+
+# ── 7. 스케줄러 프로세스 ──
+echo ""
+echo "⏰ Scheduler process..."
+if pgrep -f "nuri.scheduler" >/dev/null 2>&1; then
+    SCHED_PID=$(pgrep -f "nuri.scheduler" | head -1)
+    pass "Scheduler running (PID: $SCHED_PID)"
+else
+    warn "Scheduler not running (start: python -m nuri.scheduler)"
+fi
+
+# ── 8. API 응답 ──
+echo ""
+echo "🌐 API health..."
+if curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/api/health 2>/dev/null | grep -q "200"; then
+    pass "API responding (port 8001)"
+else
+    warn "API not responding (start: make api)"
+fi
+
+# ── 9. 포트 충돌 ──
 echo ""
 echo "🔌 Port availability..."
 for PORT in 8001 3000; do
