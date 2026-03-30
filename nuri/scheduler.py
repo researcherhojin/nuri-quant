@@ -12,6 +12,8 @@ import argparse
 import logging
 import signal
 import sys
+from datetime import datetime
+from pathlib import Path
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -177,6 +179,18 @@ SCHEDULES = [
 ]
 
 
+HEARTBEAT_PATH = Path(__file__).parent.parent / "data" / ".scheduler_heartbeat"
+
+
+def _write_heartbeat():
+    """heartbeat 파일에 현재 시각 기록 (API health check용)."""
+    try:
+        HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        HEARTBEAT_PATH.write_text(datetime.now().isoformat())
+    except Exception:
+        pass
+
+
 def create_scheduler() -> BlockingScheduler:
     """스케줄러 생성 및 작업 등록."""
     scheduler = BlockingScheduler()
@@ -191,6 +205,9 @@ def create_scheduler() -> BlockingScheduler:
             name=job["name"],
             misfire_grace_time=300,  # 5분 유예
         )
+
+    # heartbeat (1분 간격)
+    scheduler.add_job(_write_heartbeat, "interval", minutes=1, id="heartbeat", name="heartbeat")
 
     return scheduler
 
