@@ -119,6 +119,70 @@ class TestGetTickers:
         assert "005930.KS" in all_tickers
 
 
+class TestRetryLogic:
+    def test_retry_succeeds_on_second_attempt(self):
+        """1회 실패 후 2회째 성공."""
+        call_count = 0
+
+        class RetryCollector(BaseCollector):
+            def __init__(self):
+                super().__init__("retry")
+
+            def collect(self, **kwargs):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise ConnectionError("temporary")
+                return [1, 2]
+
+            def save(self, data):
+                return len(data)
+
+        c = RetryCollector()
+        count = c.run()
+        assert count == 2
+        assert call_count == 2  # 1회 실패 + 1회 성공
+
+    def test_all_retries_fail(self):
+        """3회 모두 실패 → 예외 전파."""
+        class AlwaysFailCollector(BaseCollector):
+            def __init__(self):
+                super().__init__("always_fail")
+
+            def collect(self, **kwargs):
+                raise ConnectionError("down")
+
+            def save(self, data):
+                return 0
+
+        c = AlwaysFailCollector()
+        with pytest.raises(ConnectionError, match="down"):
+            c.run()
+
+    def test_failure_alert_called(self, monkeypatch):
+        """3회 실패 시 _send_failure_alert 호출."""
+        alert_called = False
+
+        class AlertCollector(BaseCollector):
+            def __init__(self):
+                super().__init__("alert")
+
+            def collect(self, **kwargs):
+                raise RuntimeError("boom")
+
+            def save(self, data):
+                return 0
+
+            def _send_failure_alert(self, msg):
+                nonlocal alert_called
+                alert_called = True
+
+        c = AlertCollector()
+        with pytest.raises(RuntimeError):
+            c.run()
+        assert alert_called
+
+
 class TestMaxFailureRate:
     def test_constant(self):
         assert MAX_FAILURE_RATE == 0.10
