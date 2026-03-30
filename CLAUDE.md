@@ -333,7 +333,7 @@ data/
 
 ## Testing
 
-748 tests across 42 files (v10 migrations). Tests use `tmp_path` fixture for isolated SQLite databases:
+751 tests across 42 files (v10 migrations). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):

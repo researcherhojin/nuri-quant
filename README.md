@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-748_passed-26a69a?logo=pytest&logoColor=white)]()
+[![Tests](https://img.shields.io/badge/Tests-751_passed-26a69a?logo=pytest&logoColor=white)]()
 [![Coverage](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/CI-passing-4CAF50?logo=githubactions&logoColor=white)]()
@@ -66,7 +66,7 @@ make full-scan     # run full pipeline: collect → validate → classify → di
 | `make evidence` | 5 Plotly evidence charts |
 | `make report-llm` | Qwen3.5 LLM evidence-based report |
 | `make start` | API (:8001) + Dashboard (:3000) |
-| `make test` | pytest 748 tests (42 files, 19s) |
+| `make test` | pytest 751 tests (42 files, 19s) |
 
 </details>
 
@@ -114,7 +114,7 @@ Architecture inspired by [Palantir Foundry](https://www.palantir.com/docs/foundr
 |------|--------|
 | **Hit Calculation** | BUY: ret30 ≥ 5% (was > 0%), SELL: ret30 < -2%. `hit_quality` = achievement ratio |
 | **Execution Tracking** | `trades` table + API (`POST/GET/PUT /api/trades`) — recommendation vs actual execution |
-| **Agent Audit** | `agent_verdicts` JSON — 7 individual agent judgments recorded per recommendation |
+| **Agent Audit** | `agent_verdicts` JSON — 10 individual agent judgments recorded per recommendation |
 | **Confidence Audit** | `scoring_detail` JSON — drift/conflict/regime_fit coefficients for full audit trail |
 
 ## Tech Stack
