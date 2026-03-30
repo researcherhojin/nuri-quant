@@ -8,14 +8,12 @@ US 종목에는 HOLD(중립)을 반환하여 합의에 영향을 주지 않는�
 """
 import logging
 
+from nuri.core.agent_config import AGENT_CONFIG
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 logger = logging.getLogger(__name__)
 
-# 환율 임계값 (KRW/USD) — 90일 이동평균 기반 동적 캘리브레이션
-# 기본값은 2024~2026 평균 기반. _calibrate_fx_thresholds()로 DB 데이터 반영.
-FX_WEAK_KRW = 1400  # 원화 약세 → 수출주 유리 (기본값, 동적 갱신)
-FX_STRONG_KRW = 1250  # 원화 강세 → 내수주 유리 (기본값, 동적 갱신)
+_CFG = AGENT_CONFIG.get("korean_market", {})
 
 
 def _calibrate_fx_thresholds(db_path=None) -> tuple[float, float]:
@@ -25,19 +23,22 @@ def _calibrate_fx_thresholds(db_path=None) -> tuple[float, float]:
     강세: 90일 평균 - 1 표준편차
     데이터 부족 시 기본값 반환.
     """
+    fx_weak_default = _CFG.get("fx_weak_default", 1400)
+    fx_strong_default = _CFG.get("fx_strong_default", 1250)
+
     from nuri.core.db import query_df
     df = query_df(
         "SELECT value FROM macro WHERE indicator='usd_krw' ORDER BY date DESC LIMIT 90",
         db_path=db_path,
     )
-    if df.empty or len(df) < 30:
-        return FX_WEAK_KRW, FX_STRONG_KRW
+    if df.empty or len(df) < _CFG.get("fx_calibration_min", 30):
+        return fx_weak_default, fx_strong_default
 
     mean = df["value"].mean()
     std = df["value"].std()
     weak = round(mean + std, 0)
     strong = round(mean - std, 0)
-    return max(weak, 1300), min(strong, 1350)  # 최소/최대 안전장치
+    return max(weak, _CFG.get("fx_weak_floor", 1300)), min(strong, _CFG.get("fx_strong_ceil", 1350))
 
 # KOSPI/KOSDAQ 구분
 KOSDAQ_TICKERS = {
@@ -61,12 +62,12 @@ class KoreanMarketAgent(BaseAgent):
         if not ticker.endswith(".KS"):
             return AgentVerdict(
                 agent_name=self.name, ticker=ticker,
-                action="HOLD", confidence=50.0,
+                action="HOLD", confidence=_CFG.get("us_confidence", 50.0),
                 reasoning="US ticker — Korean market agent neutral",
                 data_points={"is_korean": False},
             )
 
-        score = 50.0  # 기본 중립
+        score = float(_CFG.get("score_base", 50))
         reasons = []
         data = {"is_korean": True, "market": "KOSDAQ" if ticker in KOSDAQ_TICKERS else "KOSPI"}
 
@@ -81,13 +82,13 @@ class KoreanMarketAgent(BaseAgent):
 
         if fx_rate:
             if fx_rate >= fx_weak and sector in EXPORT_SECTORS:
-                score += 10
+                score += _CFG.get("fx_export_strong", 10)
                 reasons.append(f"원화약세({fx_rate:.0f}) 수출주 유리")
             elif fx_rate >= fx_weak and sector not in EXPORT_SECTORS:
-                score -= 5
+                score += _CFG.get("fx_nonexport_weak", -5)
                 reasons.append(f"원화약세({fx_rate:.0f}) 내수주 부담")
             elif fx_rate <= fx_strong and sector not in EXPORT_SECTORS:
-                score += 5
+                score += _CFG.get("fx_nonexport_strong", 5)
                 reasons.append(f"원화강세({fx_rate:.0f}) 내수주 유리")
 
         # 2. 외국인 수급 (institutional_flows 테이블)
@@ -95,39 +96,40 @@ class KoreanMarketAgent(BaseAgent):
         data["foreign_net"] = foreign_net
         if foreign_net is not None:
             if foreign_net > 0:
-                score += 8
+                score += _CFG.get("foreign_positive", 8)
                 reasons.append("외국인 순매수")
             elif foreign_net < 0:
-                score -= 8
+                score += _CFG.get("foreign_negative", -8)
                 reasons.append("외국인 순매도")
 
         # 3. 가격 모멘텀 (20일 수익률)
         momentum = self._get_momentum(ticker, db_path)
         data["momentum_20d"] = momentum
         if momentum is not None:
-            if momentum > 5:
-                score += 5
+            if momentum > _CFG.get("momentum_positive_threshold", 5):
+                score += _CFG.get("momentum_positive_score", 5)
                 reasons.append(f"20일 모멘텀 +{momentum:.1f}%")
-            elif momentum < -10:
-                score -= 10
+            elif momentum < _CFG.get("momentum_negative_threshold", -10):
+                score += _CFG.get("momentum_negative_score", -10)
                 reasons.append(f"20일 모멘텀 {momentum:.1f}%")
 
         # 4. KOSDAQ 변동성 프리미엄
         if ticker in KOSDAQ_TICKERS:
-            score -= 3  # KOSDAQ은 변동성 리스크 할인
+            score += _CFG.get("kosdaq_discount", -3)
             reasons.append("KOSDAQ 변동성 할인")
 
         # 판정
-        if score >= 65:
+        score_base = _CFG.get("score_base", 50)
+        if score >= _CFG.get("score_buy", 65):
             action = "BUY"
-        elif score <= 35:
+        elif score <= _CFG.get("score_sell", 35):
             action = "SELL"
         else:
             action = "HOLD"
 
         return AgentVerdict(
             agent_name=self.name, ticker=ticker,
-            action=action, confidence=min(abs(score - 50) * 2, 100),
+            action=action, confidence=round(self.normalize_confidence(min(abs(score - score_base) * 2, 100)), 1),
             reasoning="; ".join(reasons) if reasons else "Korean market neutral",
             data_points=data,
         )

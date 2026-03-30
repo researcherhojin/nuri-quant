@@ -28,7 +28,7 @@ All pages are **Server Components** with `force-dynamic`. Data is fetched server
 |-------|------------|---------|
 | `/` | `/api/dashboard` | Action-oriented overview: verdict, allocation bar, BUY/SELL/WATCH actions |
 | `/signals` | `/api/scorecard`, `/api/cross-analysis` | Signal scorecard + regime cross-analysis |
-| `/consensus` | `/api/consensus` | 7-agent verdicts table + dissent + price targets |
+| `/consensus` | `/api/consensus` | 10-agent verdicts table + expandable reasoning + price targets |
 | `/scan` | `/api/scan`, `/api/swing/entries` | Market scanner + swing trade entries |
 | `/strategy` | `/api/strategy/status`, `/api/backtest` | L/S strategy + backtest + stress test |
 | `/rebalance` | `/api/rebalance?method=rp` | Regime-aware Risk Parity rebalancing |
