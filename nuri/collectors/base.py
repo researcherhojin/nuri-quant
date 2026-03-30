@@ -73,37 +73,60 @@ class BaseCollector(ABC):
         ...
 
     def run(self, **kwargs) -> int:
-        """collect → save 통합 실행. 실패율 체크 포함."""
+        """collect → save 통합 실행. 재시도(max 3) + 실패율 체크 포함."""
+        import time as _time
+
+        max_retries = 3
         self.logger.info("[%s] 수집 시작", self.name)
         start = datetime.now()
         self._failed_tickers = []
+
+        last_error = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                data = self.collect(**kwargs)
+
+                # 실패율 체크: expected_count 설정 시 + 결과가 리스트/DataFrame일 때
+                if self._expected_count > 0 and hasattr(data, "__len__"):
+                    actual = len(data)
+                    failure_rate = 1 - (actual / self._expected_count) if self._expected_count > 0 else 0
+                    if failure_rate > MAX_FAILURE_RATE:
+                        msg = (
+                            f"[{self.name}] 수집 실패율 {failure_rate:.0%} > {MAX_FAILURE_RATE:.0%} "
+                            f"({actual}/{self._expected_count}건). 저장 거부 (asymmetric data age 방지)"
+                        )
+                        self.logger.error(msg)
+                        if self._failed_tickers:
+                            self.logger.error("[%s] 실패 종목: %s", self.name, ", ".join(self._failed_tickers[:10]))
+                        raise CollectionFailureError(msg)
+
+                count = self.save(data)
+                elapsed = (datetime.now() - start).total_seconds()
+                self.logger.info("[%s] 완료: %d건, %.1f초", self.name, count, elapsed)
+                self._last_run = datetime.now()
+                return count
+            except CollectionFailureError:
+                raise
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    wait = 2 ** attempt  # 2, 4초 backoff
+                    self.logger.warning("[%s] 시도 %d/%d 실패, %d초 후 재시도: %s",
+                                        self.name, attempt, max_retries, wait, e)
+                    _time.sleep(wait)
+
+        # 모든 재시도 실패
+        self.logger.error("[%s] %d회 재시도 모두 실패: %s", self.name, max_retries, last_error, exc_info=True)
+        self._send_failure_alert(str(last_error))
+        raise last_error  # type: ignore[misc]
+
+    def _send_failure_alert(self, error_msg: str):
+        """수집기 실패 시 Discord 알림 (DISCORD_WEBHOOK_URL 설정 시)."""
         try:
-            data = self.collect(**kwargs)
-
-            # 실패율 체크: expected_count 설정 시 + 결과가 리스트/DataFrame일 때
-            if self._expected_count > 0 and hasattr(data, "__len__"):
-                actual = len(data)
-                failure_rate = 1 - (actual / self._expected_count) if self._expected_count > 0 else 0
-                if failure_rate > MAX_FAILURE_RATE:
-                    msg = (
-                        f"[{self.name}] 수집 실패율 {failure_rate:.0%} > {MAX_FAILURE_RATE:.0%} "
-                        f"({actual}/{self._expected_count}건). 저장 거부 (asymmetric data age 방지)"
-                    )
-                    self.logger.error(msg)
-                    if self._failed_tickers:
-                        self.logger.error("[%s] 실패 종목: %s", self.name, ", ".join(self._failed_tickers[:10]))
-                    raise CollectionFailureError(msg)
-
-            count = self.save(data)
-            elapsed = (datetime.now() - start).total_seconds()
-            self.logger.info("[%s] 완료: %d건, %.1f초", self.name, count, elapsed)
-            self._last_run = datetime.now()
-            return count
-        except CollectionFailureError:
-            raise
-        except Exception as e:
-            self.logger.error("[%s] 실패: %s", self.name, e, exc_info=True)
-            raise
+            from nuri.alerts.discord_bot import send_webhook_message
+            send_webhook_message(f"🚨 수집기 [{self.name}] 실패 (3회 재시도 후)\n```{error_msg[:200]}```")
+        except Exception:
+            self.logger.debug("Discord 알림 발송 실패 (webhook 미설정 가능)")
 
     def _get_tickers(self, market: Optional[str] = None) -> list[str]:
         """DB에서 보유 종목 티커 목록 조회. market으로 한국/미국 필터링."""
