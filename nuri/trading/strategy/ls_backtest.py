@@ -53,6 +53,8 @@ class BacktestResult:
     spy_sharpe: float
     spy_max_drawdown: float
     excess_return: float
+    # 일별 equity curve
+    equity_curve: list[dict] | None = None
 
 
 @dataclass
@@ -299,6 +301,19 @@ def run_backtest(regimes_df: pd.DataFrame, db_path=None) -> BacktestResult:
     strat_dd = (strat_cum / strat_cum.cummax() - 1).min() * 100
     spy_dd = (spy_cum / spy_cum.cummax() - 1).min() * 100
 
+    # 일별 equity curve (strategy vs SPY + drawdown)
+    dates = df["date"].iloc[1:].reset_index(drop=True)
+    strat_dd_series = (strat_cum / strat_cum.cummax() - 1) * 100
+    equity_curve = [
+        {
+            "date": str(dates.iloc[i])[:10],
+            "strategy": round(float((strat_cum.iloc[i] - 1) * 100), 2),
+            "spy": round(float((spy_cum.iloc[i] - 1) * 100), 2),
+            "drawdown": round(float(strat_dd_series.iloc[i]), 2),
+        }
+        for i in range(len(strat_cum))
+    ]
+
     return BacktestResult(
         total_return=round(total_return, 2),
         annual_return=round(annual_return, 2),
@@ -313,6 +328,7 @@ def run_backtest(regimes_df: pd.DataFrame, db_path=None) -> BacktestResult:
         spy_sharpe=round(spy_sharpe, 2),
         spy_max_drawdown=round(spy_dd, 2),
         excess_return=round(total_return - spy_total, 2),
+        equity_curve=equity_curve,
     )
 
 
