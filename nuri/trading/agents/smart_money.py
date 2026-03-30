@@ -1,5 +1,9 @@
 """스마트머니 에이전트 — 슈퍼투자자 + ARK + 애널리스트 컨센서스 기반 판정."""
+from nuri.core.agent_config import AGENT_CONFIG
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
+
+_CFG = AGENT_CONFIG.get("smart_money", {})
+_CONF = _CFG.get("confidence", {})
 
 
 class SmartMoneyAgent(BaseAgent):
@@ -9,6 +13,10 @@ class SmartMoneyAgent(BaseAgent):
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         score = 0
         reasons = []
+
+        pct_high = _CFG.get("portfolio_pct_high", 5)
+        upside_th = _CFG.get("upside_threshold", 20)
+        downside_th = _CFG.get("downside_threshold", -10)
 
         # 1. 슈퍼투자자 보유 여부
         si_rows = self._safe_query(
@@ -21,7 +29,7 @@ class SmartMoneyAgent(BaseAgent):
             max_pct = si_rows[0]["portfolio_pct"]
             score += min(2, len(si_rows))
             reasons.append(f"슈퍼투자자 {len(si_rows)}명 보유 ({', '.join(investors[:2])})")
-            if max_pct > 5:
+            if max_pct > pct_high:
                 score += 1
                 reasons.append(f"최대 비중 {max_pct:.1f}%")
 
@@ -62,10 +70,10 @@ class SmartMoneyAgent(BaseAgent):
 
             if target and current and current > 0:
                 upside = (target - current) / current * 100
-                if upside > 20:
+                if upside > upside_th:
                     score += 1
                     reasons.append(f"목표가 괴리 +{upside:.0f}%")
-                elif upside < -10:
+                elif upside < downside_th:
                     score -= 1
                     reasons.append(f"목표가 하회 {upside:.0f}%")
 
@@ -85,17 +93,26 @@ class SmartMoneyAgent(BaseAgent):
                 reasons.append(f"ARK 최근 매도 {sells}건")
 
         if not reasons:
-            return AgentVerdict(self.name, ticker, "HOLD", 30, "스마트머니 데이터 없음")
+            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 30), "스마트머니 데이터 없음")
 
-        if score >= 2:
-            action, confidence = "BUY", min(80, 40 + score * 12)
-        elif score <= -1:
-            action, confidence = "SELL", min(70, 40 + abs(score) * 12)
+        score_buy = _CFG.get("score_buy", 2)
+        score_sell = _CFG.get("score_sell", -1)
+
+        if score >= score_buy:
+            action, confidence = "BUY", min(
+                _CONF.get("buy_cap", 80),
+                _CONF.get("buy_base", 40) + score * _CONF.get("buy_multiplier", 12),
+            )
+        elif score <= score_sell:
+            action, confidence = "SELL", min(
+                _CONF.get("sell_cap", 70),
+                _CONF.get("sell_base", 40) + abs(score) * _CONF.get("sell_multiplier", 12),
+            )
         else:
-            action, confidence = "HOLD", 35 + abs(score) * 8
+            action, confidence = "HOLD", _CONF.get("hold_base", 35) + abs(score) * _CONF.get("hold_multiplier", 8)
 
         return AgentVerdict(
-            self.name, ticker, action, round(confidence, 1),
+            self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons),
             {"score": score, "n_superinvestors": len(si_rows)},
         )

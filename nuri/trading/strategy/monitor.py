@@ -46,7 +46,10 @@ def detect_regime_transition(db_path=None) -> dict | None:
 
     # 전환 방향 분류
     if prev_regime:
-        prev_trend = prev_regime.split("_")[0]
+        from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+        _dir_to_trend = {"long": "bull", "short": "bear", "neutral": "sideways"}
+        prev_alloc = REGIME_ALLOCATION.get(prev_regime, {})
+        prev_trend = _dir_to_trend.get(prev_alloc.get("direction"), prev_regime.split("_")[0])
         curr_trend = current.trend
 
         if prev_trend == "bull" and curr_trend == "bear":

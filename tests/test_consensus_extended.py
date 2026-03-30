@@ -53,11 +53,12 @@ class TestComputeWeights:
 class TestConsensusLogic:
     def test_all_agents_loaded(self):
         from nuri.trading.agents.consensus import ALL_AGENTS
-        assert len(ALL_AGENTS) == 7
+        assert len(ALL_AGENTS) == 10
 
     def test_default_weights_keys(self):
         from nuri.trading.agents.consensus import DEFAULT_WEIGHTS
-        expected = {"technical", "fundamental", "macro", "risk", "smart_money", "wallstreet", "korean_market"}
+        expected = {"technical", "fundamental", "macro", "risk", "smart_money",
+                    "wallstreet", "korean_market", "options", "crypto", "retail"}
         assert set(DEFAULT_WEIGHTS.keys()) == expected
 
     def test_risk_weight_highest(self):
@@ -92,6 +93,9 @@ class TestAnalyzeTicker:
             MockAgent("smart_money", "BUY", 55),
             MockAgent("wallstreet", "BUY", 60),
             MockAgent("korean_market", "HOLD", 30),
+            MockAgent("options", "HOLD", 40),
+            MockAgent("crypto", "BUY", 50),
+            MockAgent("retail", "HOLD", 0),
         ]
         monkeypatch.setattr(cons_mod, "ALL_AGENTS", mock_agents)
 
@@ -102,7 +106,7 @@ class TestAnalyzeTicker:
         assert result.final_action in ("BUY", "SELL", "HOLD")
         assert 0 <= result.final_confidence <= 100
         assert 0 <= result.agreement_rate <= 1
-        assert len(result.verdicts) == 7
+        assert len(result.verdicts) == 10
 
     def test_risk_veto(self, db_path, monkeypatch):
         """Risk 에이전트 거부권: SELL + confidence >= 80 → 전체 SELL."""
@@ -125,6 +129,9 @@ class TestAnalyzeTicker:
             MockAgent("smart_money", "BUY", 55),
             MockAgent("wallstreet", "BUY", 60),
             MockAgent("korean_market", "HOLD", 30),
+            MockAgent("options", "HOLD", 40),
+            MockAgent("crypto", "BUY", 50),
+            MockAgent("retail", "HOLD", 0),
         ]
         monkeypatch.setattr(cons_mod, "ALL_AGENTS", mock_agents)
 
@@ -144,7 +151,10 @@ class TestAnalyzeTicker:
             def analyze(self, ticker, db_path=None):
                 return AgentVerdict(self.name, ticker, "SELL", 70, "mock")
 
-        mock_agents = [MockAgent(n) for n in ["technical", "fundamental", "macro", "risk", "smart_money", "wallstreet", "korean_market"]]
+        mock_agents = [MockAgent(n) for n in [
+            "technical", "fundamental", "macro", "risk", "smart_money",
+            "wallstreet", "korean_market", "options", "crypto", "retail",
+        ]]
         monkeypatch.setattr(cons_mod, "ALL_AGENTS", mock_agents)
 
         from nuri.trading.agents.consensus import analyze_ticker
