@@ -896,3 +896,140 @@ class TestKoreanMarketFullBranches:
                 )
         v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
         assert "모멘텀" in v.reasoning
+
+
+# ═══════════════════════════════════════════════════════
+# 커버리지 강화 3: position/monitor/ls_backtest + wallstreet cached
+# ═══════════════════════════════════════════════════════
+
+
+class TestPositionRegimeAlignment:
+    """position.py certify_position의 REGIME_ALLOCATION 조회 분기."""
+
+    @pytest.fixture
+    def pos_data(self, db_path):
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("test", "SPY", 10, 400.0, "USD"),
+            )
+        dates = pd.bdate_range("2024-01-01", periods=250)
+        close = np.linspace(380, 450, 250)
+        df = pd.DataFrame({
+            "ticker": "SPY", "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close, "high": close * 1.01, "low": close * 0.99,
+            "close": close, "volume": [100000] * 250, "adj_close": close,
+        })
+        upsert_prices(df, db_path)
+        return db_path
+
+    def test_long_recovery_aligned(self, pos_data):
+        """특수 레짐 recovery(direction=long) → long 포지션 정합."""
+        from nuri.trading.strategy.position import certify_position
+        cert = certify_position("SPY", "long", "recovery", db_path=pos_data)
+        assert cert.regime_aligned is True
+
+    def test_long_stagflation_aligned(self, pos_data):
+        """특수 레짐 stagflation(direction=neutral) → long 포지션 정합."""
+        from nuri.trading.strategy.position import certify_position
+        cert = certify_position("SPY", "long", "stagflation", db_path=pos_data)
+        assert cert.regime_aligned is True  # neutral allows long
+
+    def test_short_bear_high_vol_aligned(self, pos_data):
+        """bear_high_vol(direction=short) + "high" in regime → short 정합."""
+        from nuri.trading.strategy.position import certify_position
+        cert = certify_position("SPY", "short", "bear_high_vol", db_path=pos_data)
+        assert cert.regime_aligned is True
+
+    def test_short_euphoria_misaligned(self, pos_data):
+        """특수 레짐 euphoria(direction=long) → short 포지션 부정합."""
+        from nuri.trading.strategy.position import certify_position
+        cert = certify_position("SPY", "short", "euphoria", db_path=pos_data)
+        assert cert.regime_aligned is False
+
+    def test_unknown_regime_fallback(self, pos_data):
+        """알 수 없는 레짐 → fallback 문자열 매칭."""
+        from nuri.trading.strategy.position import certify_position
+        cert = certify_position("SPY", "long", "bull_unknown_special", db_path=pos_data)
+        assert cert.regime_aligned is True  # "bull" in regime
+
+
+class TestMonitorRegimeTrend:
+    """monitor.py의 특수 레짐 trend 매핑 검증."""
+
+    def test_special_regime_trend_mapping(self):
+        from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+        _dir_to_trend = {"long": "bull", "short": "bear", "neutral": "sideways"}
+        assert _dir_to_trend[REGIME_ALLOCATION["recovery"]["direction"]] == "bull"
+        assert _dir_to_trend[REGIME_ALLOCATION["euphoria"]["direction"]] == "bull"
+        assert _dir_to_trend[REGIME_ALLOCATION["stagflation"]["direction"]] == "sideways"
+        assert _dir_to_trend[REGIME_ALLOCATION["sector_rotation"]["direction"]] == "sideways"
+
+
+class TestLsBacktestRegimeDirection:
+    """ls_backtest.py REGIME_ALLOCATION 방향 조회 검증."""
+
+    def test_all_regimes_have_direction(self):
+        from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+        for regime, alloc in REGIME_ALLOCATION.items():
+            assert "direction" in alloc, f"{regime} missing direction"
+            assert alloc["direction"] in ("long", "short", "neutral")
+
+    def test_special_regimes_registered(self):
+        from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+        for name in ["recovery", "euphoria", "stagflation", "sector_rotation"]:
+            assert name in REGIME_ALLOCATION
+
+    def test_long_direction_includes_specials(self):
+        from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+        long_regimes = [r for r, a in REGIME_ALLOCATION.items() if a["direction"] == "long"]
+        assert "recovery" in long_regimes
+        assert "euphoria" in long_regimes
+
+
+class TestWallStreetCachedBranches:
+    """wallstreet.py _check_cached config 사용 검증."""
+
+    def test_cached_upgrade_buy(self, db_path):
+        from nuri.core.db import get_db
+        from nuri.trading.agents.wallstreet import WallStreetAgent
+        with get_db(db_path) as conn:
+            for i in range(5):
+                conn.execute(
+                    "INSERT INTO analyst_ratings (ticker, date, action, target_price) "
+                    "VALUES (?, ?, ?, ?)",
+                    ("CACHED1", f"2025-03-{20+i:02d}", "upgrade", 200.0),
+                )
+            conn.execute(
+                "INSERT INTO earnings_surprises (ticker, quarter, surprise_pct) "
+                "VALUES (?, ?, ?)",
+                ("CACHED1", "2025Q1", 0.10),
+            )
+        v = WallStreetAgent().analyze("CACHED1", db_path=db_path)
+        assert v.action == "BUY"
+        assert v.data_points.get("cached") is True
+
+    def test_cached_downgrade_sell(self, db_path):
+        from nuri.core.db import get_db
+        from nuri.trading.agents.wallstreet import WallStreetAgent
+        with get_db(db_path) as conn:
+            for i in range(5):
+                conn.execute(
+                    "INSERT INTO analyst_ratings (ticker, date, action, target_price) "
+                    "VALUES (?, ?, ?, ?)",
+                    ("CACHED2", f"2025-03-{20+i:02d}", "downgrade", 50.0),
+                )
+            conn.execute(
+                "INSERT INTO earnings_surprises (ticker, quarter, surprise_pct) "
+                "VALUES (?, ?, ?)",
+                ("CACHED2", "2025Q1", -0.10),
+            )
+            for i in range(5):
+                conn.execute(
+                    "INSERT INTO insider_trades (ticker, date, transaction_type, shares, value) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    ("CACHED2", f"2025-03-{20+i:02d}", "sale", 1000, 50000),
+                )
+        v = WallStreetAgent().analyze("CACHED2", db_path=db_path)
+        assert v.action == "SELL"
