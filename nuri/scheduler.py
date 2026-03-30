@@ -91,6 +91,15 @@ def _run_backup():
         logger.error(f"[backup] 실행 실패: {e}", exc_info=True)
 
 
+def _run_db_maintenance():
+    """DB 유지보수 — 오래된 데이터 정리 + VACUUM."""
+    try:
+        from scripts.db_maintenance import run_maintenance
+        run_maintenance()
+    except Exception as e:
+        logger.error(f"[db_maintenance] 실행 실패: {e}", exc_info=True)
+
+
 # ═══════════════════════════════════════════════════════
 # 스케줄 정의
 # ═══════════════════════════════════════════════════════
@@ -161,6 +170,10 @@ SCHEDULES = [
     # DB 백업 (매일 자정)
     {"name": "backup", "func": _run_backup, "args": (),
      "cron": "0 0 * * *"},
+
+    # DB 유지보수 (일요일 새벽 3시)
+    {"name": "db_maintenance", "func": _run_db_maintenance, "args": (),
+     "cron": "0 3 * * 0"},
 ]
 
 

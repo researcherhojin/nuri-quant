@@ -46,6 +46,13 @@ class TestInitDb:
         init_db(db_path)
         init_db(db_path)
 
+    def test_busy_timeout_set(self, db_path):
+        """busy_timeout=5000 설정 확인."""
+        conn = get_connection(db_path)
+        result = conn.execute("PRAGMA busy_timeout").fetchone()
+        conn.close()
+        assert result[0] == 5000
+
 
 class TestUpsertPrices:
     def test_insert_and_query(self, db_path):
@@ -189,3 +196,30 @@ class TestSchemaMigration:
         init_db(db_path)
         rows = query("SELECT COUNT(*) as c FROM schema_version", db_path=db_path)
         assert rows[0]["c"] == len(_MIGRATIONS)
+
+
+class TestDbMaintenance:
+    def test_dry_run(self, db_path, monkeypatch):
+        """dry-run 모드에서 데이터 삭제 없음."""
+        import nuri.core.db as db_mod
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+        from nuri.core.db import get_db
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO pipeline_events (step, event_type, timestamp) "
+                "VALUES (?, ?, datetime('now', '-120 days'))",
+                ("collect", "step_completed"),
+            )
+
+        from scripts.db_maintenance import run_maintenance
+        run_maintenance(dry_run=True)
+        rows = query("SELECT COUNT(*) as c FROM pipeline_events", db_path=db_path)
+        assert rows[0]["c"] == 1  # dry-run이므로 삭제 안 됨
+
+    def test_scheduler_db_maintenance_runs(self, db_path, monkeypatch):
+        """스케줄러 _run_db_maintenance가 정상 실행."""
+        import nuri.core.db as db_mod
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+        from nuri.scheduler import _run_db_maintenance
+        _run_db_maintenance()  # 빈 DB에서도 에러 없이 실행
