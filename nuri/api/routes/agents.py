@@ -19,7 +19,23 @@ def get_consensus():
 
     from nuri.trading.agents.consensus import analyze_portfolio
     results = analyze_portfolio()
+
+    # VIX/regime 정보 (반포지션 배너용)
+    regime_info = None
+    try:
+        from nuri.quant.regime.classifier import classify_regime
+        regime = classify_regime()
+        if regime:
+            regime_info = {
+                "regime": regime.regime, "trend": regime.trend,
+                "vix": regime.details.get("vix") if regime.details else None,
+                "fear_greed": regime.details.get("fear_greed") if regime.details else None,
+            }
+    except Exception:
+        pass
+
     data = {
+        "regime": regime_info,
         "results": [
             {
                 "ticker": r.ticker,
