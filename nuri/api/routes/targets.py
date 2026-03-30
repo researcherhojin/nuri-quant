@@ -15,8 +15,14 @@ def get_portfolio_targets():
     targets = calculate_portfolio_targets()
 
     # 익절/트레일링 도달 종목 태깅
-    tp_signals = {s["ticker"]: s for s in check_take_profit_signals()}
-    ts_signals = {s["ticker"]: s for s in check_trailing_stop_signals()}
+    try:
+        tp_signals = {s["ticker"]: s for s in check_take_profit_signals()}
+    except Exception:
+        tp_signals = {}
+    try:
+        ts_signals = {s["ticker"]: s for s in check_trailing_stop_signals()}
+    except Exception:
+        ts_signals = {}
     for t in targets:
         tp = tp_signals.get(t["ticker"])
         ts = ts_signals.get(t["ticker"])

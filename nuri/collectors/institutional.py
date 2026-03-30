@@ -9,13 +9,14 @@ finnhub은 FINNHUB_API_KEY 환경변수가 있을 때만 동작.
 """
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 import pandas as pd
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import get_db
+from nuri.core.timezone import kst_now
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,8 @@ class InstitutionalCollector(BaseCollector):
         """pykrx로 한국 종목 기관/외인 순매수 수집."""
         from pykrx import stock
 
-        today = datetime.now().strftime("%Y%m%d")
-        start = (datetime.now() - timedelta(days=7)).strftime("%Y%m%d")
+        today = kst_now().replace(tzinfo=None).strftime("%Y%m%d")
+        start = (kst_now().replace(tzinfo=None) - timedelta(days=7)).strftime("%Y%m%d")
         results = []
 
         for ticker_full in tickers:
@@ -88,7 +89,7 @@ class InstitutionalCollector(BaseCollector):
     def _collect_us(self, tickers: list[str], api_key: str) -> list[dict]:
         """finnhub으로 미국 종목 기관 보유 비중 수집."""
         results = []
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = kst_now().replace(tzinfo=None).strftime("%Y-%m-%d")
 
         try:
             import finnhub
