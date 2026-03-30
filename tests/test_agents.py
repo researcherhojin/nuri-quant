@@ -430,3 +430,231 @@ class TestNewAgentDataPoints:
             )
         v = RetailAgent().analyze("TEST", db_path=db_path)
         assert "wsb_mentions" in v.data_points
+
+
+# ═══════════════════════════════════════════════════════
+# 커버리지 강화: 에이전트별 분기 테스트
+# ═══════════════════════════════════════════════════════
+
+
+class TestFundamentalBranches:
+    """펀더멘탈 에이전트 PE/ROE 분기 커버리지."""
+
+    def test_undervalued_buy(self, db_path):
+        from nuri.core.db import get_db
+        from nuri.trading.agents.fundamental import FundamentalAgent
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO fundamentals (ticker, date, pe_ratio, roe, revenue_growth, debt_to_equity) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("CHEAP", "2025-03-25", 10.0, 0.25, 0.30, 1.0),
+            )
+        v = FundamentalAgent().analyze("CHEAP", db_path=db_path)
+        assert v.action == "BUY"
+        assert "저평가" in v.reasoning
+
+    def test_overvalued_sell(self, db_path):
+        from nuri.core.db import get_db
+        from nuri.trading.agents.fundamental import FundamentalAgent
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO fundamentals (ticker, date, pe_ratio, roe, revenue_growth, debt_to_equity) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("EXPENSIVE", "2025-03-25", 50.0, -0.05, -0.15, 3.0),
+            )
+        v = FundamentalAgent().analyze("EXPENSIVE", db_path=db_path)
+        assert v.action == "SELL"
+
+    def test_fair_value_hold(self, db_path):
+        """PE 30 (적정~고) + ROE 8% (보통) → HOLD."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.fundamental import FundamentalAgent
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO fundamentals (ticker, date, pe_ratio, roe, revenue_growth) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("FAIR", "2025-03-25", 30.0, 0.08, 0.05),
+            )
+        v = FundamentalAgent().analyze("FAIR", db_path=db_path)
+        assert v.action == "HOLD"
+
+
+class TestSmartMoneyBranches:
+    """스마트머니 에이전트 분기 커버리지."""
+
+    def test_superinvestor_buy(self, db_path):
+        from nuri.core.db import get_db
+        from nuri.trading.agents.smart_money import SmartMoneyAgent
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO superinvestors (investor, ticker, portfolio_pct, filing_date) "
+                "VALUES (?, ?, ?, ?)",
+                ("Buffett", "GOOD", 8.0, "2025-03-01"),
+            )
+            conn.execute(
+                "INSERT INTO superinvestors (investor, ticker, portfolio_pct, filing_date) "
+                "VALUES (?, ?, ?, ?)",
+                ("Dalio", "GOOD", 3.0, "2025-03-01"),
+            )
+            conn.execute(
+                "INSERT INTO estimates (ticker, date, recommendation, target_mean, current_price, num_analysts) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("GOOD", "2025-03-25", "buy", 200.0, 100.0, 10),
+            )
+        v = SmartMoneyAgent().analyze("GOOD", db_path=db_path)
+        assert v.action == "BUY"
+        assert v.data_points["n_superinvestors"] == 2
+
+    def test_analyst_sell(self, db_path):
+        from nuri.core.db import get_db
+        from nuri.trading.agents.smart_money import SmartMoneyAgent
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO estimates (ticker, date, recommendation, target_mean, current_price, num_analysts) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("BAD", "2025-03-25", "sell", 50.0, 100.0, 5),
+            )
+        v = SmartMoneyAgent().analyze("BAD", db_path=db_path)
+        assert v.action == "SELL"
+
+    def test_ark_buy(self, db_path):
+        from nuri.core.db import get_db
+        from nuri.trading.agents.smart_money import SmartMoneyAgent
+        with get_db(db_path) as conn:
+            for i in range(3):
+                conn.execute(
+                    "INSERT INTO ark (ticker, date, direction, shares) VALUES (?, ?, ?, ?)",
+                    ("ARKY", f"2025-03-{20+i:02d}", "Buy", 1000),
+                )
+        v = SmartMoneyAgent().analyze("ARKY", db_path=db_path)
+        assert "ARK" in v.reasoning
+
+
+class TestKoreanMarketBranches:
+    """한국 시장 에이전트 분기 커버리지."""
+
+    def test_us_ticker_neutral(self, db_path):
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        v = KoreanMarketAgent().analyze("AAPL", db_path=db_path)
+        assert v.action == "HOLD"
+        assert v.data_points["is_korean"] is False
+
+    def test_kr_ticker_with_fx(self, db_path):
+        from nuri.core.db import get_db
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("test", "005930.KS", 10, 70000, "KRW", "Semiconductor"),
+            )
+            # 환율 데이터
+            conn.execute(
+                "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                ("2025-03-25", "usd_krw", 1420.0),
+            )
+            # 가격 데이터 (21일)
+            for i in range(21):
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ("005930.KS", f"2025-03-{i+1:02d}", 70000, 71000, 69000, 70000 + i * 100, 100000),
+                )
+        v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
+        assert v.data_points["is_korean"] is True
+        assert v.data_points["fx_rate"] == 1420.0
+
+    def test_kr_fx_calibration(self, db_path):
+        """90일 환율 데이터로 동적 캘리브레이션."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.korean_market import _calibrate_fx_thresholds
+        with get_db(db_path) as conn:
+            base = pd.Timestamp("2025-01-01")
+            for i in range(40):
+                d = (base + pd.Timedelta(days=i)).strftime("%Y-%m-%d")
+                conn.execute(
+                    "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                    (d, "usd_krw", 1380.0 + i * 0.5),
+                )
+        weak, strong = _calibrate_fx_thresholds(db_path)
+        assert weak >= 1300
+        assert strong <= 1350
+
+
+class TestOptionsBranches:
+    """옵션 에이전트 추가 분기."""
+
+    def test_neutral_pcr(self, db_path):
+        from nuri.core.db import get_db
+        from nuri.trading.agents.options_agent import OptionsAgent
+        with get_db(db_path) as conn:
+            for i in range(5):
+                conn.execute(
+                    "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                    (f"2025-03-{20+i:02d}", "put_call_ratio", 0.9),
+                )
+        v = OptionsAgent().analyze("TEST", db_path=db_path)
+        assert v.action == "HOLD"
+        assert "중립" in v.reasoning
+
+    def test_pcr_trend(self, db_path):
+        """PCR 상승 추세 감지."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.options_agent import OptionsAgent
+        with get_db(db_path) as conn:
+            # 최근 값이 평균보다 크게 높음
+            for i, val in enumerate([1.5, 0.9, 0.9, 0.9, 0.9]):
+                conn.execute(
+                    "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                    (f"2025-03-{25-i:02d}", "put_call_ratio", val),
+                )
+        v = OptionsAgent().analyze("TEST", db_path=db_path)
+        assert "상승 추세" in v.reasoning or "공포" in v.reasoning
+
+
+class TestCryptoBranches:
+    """크립토 에이전트 추가 분기."""
+
+    def test_dominance_high(self, db_path):
+        """BTC 지배력 높음 → 리스크오프."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.crypto_agent import CryptoAgent
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                ("2025-03-25", "btc_dominance", 65.0),
+            )
+        v = CryptoAgent().analyze("TEST", db_path=db_path)
+        assert "지배력" in v.reasoning
+
+    def test_btc_price_recorded(self, db_path):
+        """BTC 가격 data_points에 포함."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.crypto_agent import CryptoAgent
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                ("2025-03-25", "btc_usd_cg", 95000.0),
+            )
+            conn.execute(
+                "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                ("2025-03-25", "btc_24h_change_pct", 1.0),
+            )
+        v = CryptoAgent().analyze("TEST", db_path=db_path)
+        assert v.data_points.get("btc_price") == 95000.0
+
+
+class TestRetailBranches:
+    """리테일 에이전트 추가 분기."""
+
+    def test_post_count_overload(self, db_path):
+        """WSB 전체 과열."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.retail_agent import RetailAgent
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                ("2025-03-25", "wsb_post_count", 1500),
+            )
+        v = RetailAgent().analyze("TEST", db_path=db_path)
+        assert "전체 과열" in v.reasoning
