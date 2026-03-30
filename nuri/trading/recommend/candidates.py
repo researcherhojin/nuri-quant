@@ -18,6 +18,7 @@ import pandas as pd
 
 from nuri.core.db import get_tickers, query_df
 from nuri.quant.validation.signal_backtest import (
+    BUY_SIGNALS,
     SIGNAL_DEFINITIONS,
     compute_indicators,
     detect_signal_entries,
@@ -28,15 +29,6 @@ from nuri.quant.validation.signal_backtest import (
 logger = logging.getLogger(__name__)
 
 REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
-
-# 매수/매도 분류
-BUY_SIGNALS = {
-    "rsi_oversold", "macd_golden", "sma_golden", "bb_bounce",
-    "volume_spike", "gap_up",
-    "vix_reversal", "pcr_reversal", "yield_curve_recovery",
-    "insider_cluster", "short_squeeze",
-}
-SELL_SIGNALS = {"rsi_overbought", "macd_dead", "sma_dead", "gap_down"}
 
 
 @dataclass

@@ -69,9 +69,10 @@ class TestStrategyAction:
 
     def test_regime_allocation_keys(self):
         from nuri.trading.strategy.longshort import REGIME_ALLOCATION
-        expected_regimes = {"bull_low_vol", "bull_high_vol", "sideways_low_vol",
-                           "sideways_high_vol", "bear_low_vol", "bear_high_vol"}
-        assert set(REGIME_ALLOCATION.keys()) == expected_regimes
+        base_regimes = {"bull_low_vol", "bull_high_vol", "sideways_low_vol",
+                        "sideways_high_vol", "bear_low_vol", "bear_high_vol"}
+        special_regimes = {"recovery", "euphoria", "stagflation", "sector_rotation"}
+        assert set(REGIME_ALLOCATION.keys()) == base_regimes | special_regimes
 
     def test_transition_rules(self):
         from nuri.trading.strategy.longshort import REGIME_TRANSITION_RULES
