@@ -526,7 +526,7 @@ const DEFAULT_NODES: Node[] = [
     id: "diagnose",
     type: "pipeline",
     position: { x: 900, y: 80 },
-    data: { label: "\uD83E\uDD16 Diagnose", sub: "7 agents consensus", status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } as PipelineNodeData,
+    data: { label: "\uD83E\uDD16 Diagnose", sub: "10 agents consensus", status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } as PipelineNodeData,
   },
   {
     id: "recommend",
