@@ -39,10 +39,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
   const sliced = data.slice(-period);
   if (sliced.length === 0) return null;
 
-  const chartData = sliced.map((d) => ({
-    ...d,
-    date: d.date.slice(2, 7), // YY-MM
-  }));
+  const chartData = sliced;
 
   return (
     <div>
@@ -66,13 +63,14 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
 
       {/* Strategy vs SPY */}
       <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+        <ComposedChart data={chartData} syncId="equity" margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
           <XAxis
             dataKey="date"
             tick={{ fontSize: 10, fill: "#71717a" }}
             tickLine={false}
             interval={Math.floor(chartData.length / 6)}
+            tickFormatter={(v) => String(v).slice(2, 7)}
           />
           <YAxis
             tick={{ fontSize: 10, fill: "#71717a" }}
@@ -112,7 +110,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
 
       {/* Drawdown */}
       <ResponsiveContainer width="100%" height={80}>
-        <ComposedChart data={chartData} margin={{ top: 0, right: 5, bottom: 0, left: 0 }}>
+        <ComposedChart data={chartData} syncId="equity" margin={{ top: 0, right: 5, bottom: 0, left: 0 }}>
           <XAxis dataKey="date" hide />
           <YAxis
             tick={{ fontSize: 9, fill: "#71717a" }}
