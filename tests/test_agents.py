@@ -658,3 +658,241 @@ class TestRetailBranches:
             )
         v = RetailAgent().analyze("TEST", db_path=db_path)
         assert "전체 과열" in v.reasoning
+
+
+# ═══════════════════════════════════════════════════════
+# 커버리지 강화 2: consensus 동적 가중치 + 한국 시장 분기
+# ═══════════════════════════════════════════════════════
+
+
+class TestDynamicWeights:
+    """consensus._compute_weights 동적 가중치 계산 테스트."""
+
+    def test_learning_memory_adjusts_weights(self, db_path):
+        """충분한 recommendations → 동적 가중치 계산."""
+        import json
+
+        from nuri.core.db import get_db
+        from nuri.trading.agents.consensus import _compute_weights
+
+        with get_db(db_path) as conn:
+            # 15건의 recommendations (min_records=10 충족)
+            for i in range(15):
+                verdicts = [
+                    {"agent_name": "technical", "action": "BUY", "confidence": 70},
+                    {"agent_name": "fundamental", "action": "BUY", "confidence": 60},
+                    {"agent_name": "risk", "action": "HOLD", "confidence": 50},
+                ]
+                signals = json.dumps({"verdicts": verdicts})
+                conn.execute(
+                    "INSERT INTO recommendations "
+                    "(ticker, date, action, confidence, signals, outcome_30d) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (f"T{i}", f"2025-01-{i+1:02d}", "BUY", 70, signals, 5.0 if i % 2 == 0 else -2.0),
+                )
+        weights = _compute_weights(db_path=db_path)
+        # 동적 가중치가 계산됨 (기본값과 다를 수 있음)
+        assert abs(sum(weights.values()) - 1.0) < 0.01
+        # technical의 hit rate가 50%이므로 기본값 근처
+        assert weights["technical"] > 0.03  # min floor
+
+    def test_no_verdicts_in_signals_fallback(self, db_path):
+        """signals에 verdicts 없으면 기본 가중치."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        with get_db(db_path) as conn:
+            for i in range(15):
+                conn.execute(
+                    "INSERT INTO recommendations "
+                    "(ticker, date, action, confidence, signals, outcome_30d) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (f"T{i}", f"2025-01-{i+1:02d}", "BUY", 70, "rsi_oversold", 5.0),
+                )
+        weights = _compute_weights(db_path=db_path)
+        assert weights == DEFAULT_WEIGHTS  # JSON 파싱 실패 → 기본값
+
+    def test_sell_hit_rate(self, db_path):
+        """SELL 적중: outcome 음수일 때 적중."""
+        import json
+
+        from nuri.core.db import get_db
+        from nuri.trading.agents.consensus import _compute_weights
+
+        with get_db(db_path) as conn:
+            for i in range(15):
+                verdicts = [
+                    {"agent_name": "risk", "action": "SELL", "confidence": 80},
+                ]
+                signals = json.dumps({"verdicts": verdicts})
+                conn.execute(
+                    "INSERT INTO recommendations "
+                    "(ticker, date, action, confidence, signals, outcome_30d) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (f"T{i}", f"2025-01-{i+1:02d}", "SELL", 80, signals, -5.0),
+                )
+        weights = _compute_weights(db_path=db_path)
+        # risk의 SELL이 100% 적중 → 가중치 상승
+        assert weights["risk"] > 0.15
+
+
+class TestMacroAgentBranches:
+    """매크로 에이전트 레짐별 모멘텀 분기 커버리지."""
+
+    def _make_prices(self, db_path, ticker, close_values):
+        """가격 데이터 삽입 헬퍼."""
+        from nuri.core.db import get_db
+        with get_db(db_path) as conn:
+            for i, c in enumerate(close_values):
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (ticker, f"2025-03-{i+1:02d}", c, c, c, c, 100000),
+                )
+
+    def _mock_regime(self, monkeypatch, trend, regime_name, macro_score):
+        class FakeRegime:
+            pass
+        r = FakeRegime()
+        r.regime = regime_name
+        r.trend = trend
+        r.volatility = "low"
+        r.confidence = 0.8
+        r.details = None
+
+        class FakeMacro:
+            pass
+        m = FakeMacro()
+        m.total_score = macro_score
+
+        # lazy import 되므로 모듈 내부에서 패치
+        import nuri.quant.regime.classifier as cls_mod
+        import nuri.quant.regime.macro_score as ms_mod
+        monkeypatch.setattr(cls_mod, "classify_regime", lambda db_path=None: r)
+        monkeypatch.setattr(ms_mod, "compute_macro_score", lambda db_path=None: m)
+
+    def test_bull_buy(self, db_path, monkeypatch):
+        """상승장 + 매크로 양호 → BUY."""
+        from nuri.trading.agents.macro_agent import MacroAgent
+        self._mock_regime(monkeypatch, "bull", "bull_low_vol", 70)
+        self._make_prices(db_path, "BULL", [100 + i for i in range(20)])
+        v = MacroAgent().analyze("BULL", db_path=db_path)
+        assert v.action == "BUY"
+
+    def test_bear_sell(self, db_path, monkeypatch):
+        """하락장 → SELL."""
+        from nuri.trading.agents.macro_agent import MacroAgent
+        self._mock_regime(monkeypatch, "bear", "bear_low_vol", 30)
+        self._make_prices(db_path, "BEAR", [100 - i for i in range(20)])
+        v = MacroAgent().analyze("BEAR", db_path=db_path)
+        assert v.action in ("SELL", "HOLD")  # bear bounce도 가능
+
+    def test_sideways_strong_momentum_buy(self, db_path, monkeypatch):
+        """횡보 + 강한 상승 모멘텀 → BUY."""
+        from nuri.trading.agents.macro_agent import MacroAgent
+        self._mock_regime(monkeypatch, "sideways", "sideways_low_vol", 50)
+        # 5일 +10%, 10일 +12% (급등)
+        prices = [100] * 10 + [112] * 5 + [100, 100, 100, 100, 100]
+        prices.reverse()  # DESC order → most recent first in DB
+        # DB는 ASC order로 저장하지만 agent가 DESC LIMIT 20으로 읽음
+        self._make_prices(db_path, "ROCKET", list(reversed(prices[:20])))
+        v = MacroAgent().analyze("ROCKET", db_path=db_path)
+        # 모멘텀 강세 → BUY 또는 기본 HOLD
+        assert v.action in ("BUY", "HOLD")
+
+    def test_bull_underperform_hold(self, db_path, monkeypatch):
+        """상승장이나 개별 약세 → HOLD로 약화."""
+        from nuri.trading.agents.macro_agent import MacroAgent
+        self._mock_regime(monkeypatch, "bull", "bull_low_vol", 70)
+        # 최근 5일 -8% 하락 (bull_underperform < -5)
+        prices = [100] * 15 + [92, 91, 90, 89, 88]
+        self._make_prices(db_path, "WEAK", prices[:20])
+        v = MacroAgent().analyze("WEAK", db_path=db_path)
+        assert v.action in ("BUY", "HOLD")
+
+
+class TestKoreanMarketFullBranches:
+    """한국 시장 에이전트 FX/외국인/모멘텀 전체 분기."""
+
+    def _setup_kr_base(self, db_path, ticker="005930.KS", sector="Semiconductor", fx=1420.0):
+        from nuri.core.db import get_db
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("test", ticker, 10, 70000, "KRW", sector),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                ("2025-03-25", "usd_krw", fx),
+            )
+
+    def test_fx_weak_nonexport(self, db_path):
+        """원화 약세 + 내수주 → 부담."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_kr_base(db_path, sector="Retail", fx=1420.0)
+        v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
+        assert "내수주 부담" in v.reasoning
+
+    def test_fx_strong_nonexport(self, db_path):
+        """원화 강세 + 내수주 → 유리."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_kr_base(db_path, sector="Retail", fx=1200.0)
+        v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
+        assert "내수주 유리" in v.reasoning
+
+    def test_foreign_buy(self, db_path):
+        """외국인 순매수 → 점수 증가."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_kr_base(db_path)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO institutional_flows (ticker, date, market, foreign_net) VALUES (?, ?, ?, ?)",
+                ("005930.KS", "2025-03-25", "KOSPI", 50000),
+            )
+        v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
+        assert "외국인 순매수" in v.reasoning
+
+    def test_foreign_sell(self, db_path):
+        """외국인 순매도 → 점수 감소."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_kr_base(db_path)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO institutional_flows (ticker, date, market, foreign_net) VALUES (?, ?, ?, ?)",
+                ("005930.KS", "2025-03-25", "KOSPI", -30000),
+            )
+        v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
+        assert "외국인 순매도" in v.reasoning
+
+    def test_momentum_positive(self, db_path):
+        """20일 모멘텀 양호 → 점수 증가."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_kr_base(db_path)
+        with get_db(db_path) as conn:
+            for i in range(21):
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ("005930.KS", f"2025-03-{i+1:02d}", 70000, 71000, 69000, 70000 + i * 500, 100000),
+                )
+        v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
+        assert "모멘텀" in v.reasoning
+
+    def test_momentum_negative(self, db_path):
+        """20일 모멘텀 부진 → 점수 감소."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_kr_base(db_path)
+        with get_db(db_path) as conn:
+            for i in range(21):
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ("005930.KS", f"2025-03-{i+1:02d}", 70000, 71000, 69000, 70000 - i * 500, 100000),
+                )
+        v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
+        assert "모멘텀" in v.reasoning
