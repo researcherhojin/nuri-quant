@@ -2,7 +2,7 @@
 import logging
 import time
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["pipeline"])
@@ -36,7 +36,7 @@ def get_pipeline_timeline(
 
 
 @router.post("/pipeline/{step}/run")
-def run_pipeline_step(step: str):
+def run_pipeline_step(step: str, request: Request):  # noqa: ARG001 — request needed by slowapi
     """특정 파이프라인 스텝 실행 (동기)."""
     if step not in VALID_STEPS:
         raise HTTPException(status_code=400, detail=f"Invalid step: {step}. Valid: {', '.join(VALID_STEPS)}")
