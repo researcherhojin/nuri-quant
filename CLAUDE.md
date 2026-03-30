@@ -54,8 +54,8 @@ make recommend                          # candidates + tracker (signal-based buy
 python -m nuri.trading.recommend.candidates  # signal-based buy/sell candidates
 python -m nuri.trading.recommend.tracker --save  # save + track outcomes
 
-# Multi-Agent Consensus (7 agents)
-make consensus                                         # 보유 종목 7-agent analysis
+# Multi-Agent Consensus (10 agents)
+make consensus                                         # 보유 종목 10-agent analysis
 python -m nuri.trading.agents.consensus --ticker TSLA  # 단일 종목
 
 # Strategies
@@ -333,7 +333,7 @@ data/
 
 ## Testing
 
-710 tests across 42 files (v10 migrations). Tests use `tmp_path` fixture for isolated SQLite databases:
+748 tests across 42 files (v10 migrations). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):

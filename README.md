@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-684_passed-26a69a?logo=pytest&logoColor=white)]()
+[![Tests](https://img.shields.io/badge/Tests-748_passed-26a69a?logo=pytest&logoColor=white)]()
 [![Coverage](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/CI-passing-4CAF50?logo=githubactions&logoColor=white)]()
@@ -12,7 +12,7 @@
 
 </div>
 
-Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 21 data collectors ingest market data, 8,000+ historical trades validate 15 signals across 10 market regimes, 7 specialist agents vote independently, and a 10-condition gate mechanically certifies every recommendation before it reaches you.
+Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 21 data collectors ingest market data, 8,000+ historical trades validate 15 signals across 10 market regimes, 10 specialist agents vote independently, and a 10-condition gate mechanically certifies every recommendation before it reaches you.
 
 ## Pipeline
 
@@ -20,7 +20,7 @@ Open-source quantitative investment platform that **proves why you should buy or
 graph LR
     A["Collect<br/>21 collectors<br/>+ 11 external sources"] --> B["Validate<br/>8,000+ trades<br/>15 signals backtest"]
     B --> C["Classify<br/>10-regime model<br/>bull/bear/sideways<br/>+ special regimes"]
-    C --> D["Diagnose<br/>7 agents<br/>weighted consensus"]
+    C --> D["Diagnose<br/>10 agents<br/>weighted consensus"]
     D --> E["Certify<br/>SIEGE 10-gate<br/>pass / reject"]
     E --> F["Recommend<br/>entry / stop-loss<br/>take-profit targets"]
 
@@ -37,7 +37,7 @@ graph LR
 | **Collect** | US/KR equities, macro indicators (FRED), Fear & Greed, 13F filings, analyst estimates + 11 external sites (TipRanks, Dataroma, CBOE, CoinGecko, Reddit/WSB, ARK, etc.) |
 | **Validate** | Backtest 8,000+ historical trades across 15 signals (price, macro, data-driven). Learning Memory auto-downgrades signals with degrading win rates |
 | **Classify** | 10-regime classification: 6 base (bull/bear/sideways × high/low vol) + 4 special (recovery, euphoria, stagflation, sector rotation). Adaptive hysteresis with per-day historical VIX lookup |
-| **Diagnose** | 7 specialist agents with weighted voting. Risk agent holds veto power: forces SELL override when confidence ≥ 80 |
+| **Diagnose** | 10 specialist agents with weighted voting. Risk agent holds veto power: forces SELL override when confidence ≥ 80 |
 | **Certify** | [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) — 10-condition mechanical gate. Single error → REJECTED |
 | **Recommend** | Entry price, stop-loss (-7%), take-profit 1 (+20%, sell 50%), take-profit 2 (+40%, sell 25%), trailing stop (-15%) |
 
@@ -59,14 +59,14 @@ make full-scan     # run full pipeline: collect → validate → classify → di
 |---------|-------------|
 | `make full-scan` | Full 8-stage pipeline execution |
 | `make quick-scan` | Collect → analyze → consensus → targets (~2 min) |
-| `make consensus` | 7-agent consensus + price targets |
+| `make consensus` | 10-agent consensus + price targets |
 | `make certify` | SIEGE 10-condition certification |
 | `make targets` | Entry / stop-loss / take-profit for all holdings |
 | `make rebalance` | Rule violation detection + sell quantities |
 | `make evidence` | 5 Plotly evidence charts |
 | `make report-llm` | Qwen3.5 LLM evidence-based report |
 | `make start` | API (:8001) + Dashboard (:3000) |
-| `make test` | pytest 684 tests (42 files, 18s) |
+| `make test` | pytest 748 tests (42 files, 19s) |
 
 </details>
 
@@ -145,7 +145,7 @@ Architecture inspired by [Palantir Foundry](https://www.palantir.com/docs/foundr
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)]()
 [![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)]()
 
-> 49 endpoints · 28 tables (v10 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting · Pipeline Event Journal · Data Freshness SLA
+> 49 endpoints · 29 tables (v10 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting · Pipeline Event Journal · Data Freshness SLA
 
 ### 4. Frontend
 
