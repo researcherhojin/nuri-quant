@@ -5,7 +5,6 @@
     python -m nuri.collectors.news
 """
 import logging
-from datetime import datetime
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import upsert_news
@@ -42,7 +41,8 @@ class NewsCollector(BaseCollector):
                     elif "date" in row.index:
                         date = str(row["date"])[:10]
                     else:
-                        date = datetime.now().strftime("%Y-%m-%d")
+                        from nuri.core.timezone import today_kst
+                        date = today_kst()
 
                     records.append({
                         "ticker": ticker,

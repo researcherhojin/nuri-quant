@@ -8,7 +8,6 @@ AUM 변화를 주기적으로 수집하여 섹터 자금흐름(rotation)을 추�
     python -m nuri.collectors.etf_flows
 """
 import logging
-from datetime import datetime
 from typing import Any
 
 import pandas as pd
@@ -57,7 +56,8 @@ class EtfFlowsCollector(BaseCollector):
         from openbb import obb
         warnings.filterwarnings("ignore")
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        from nuri.core.timezone import today_kst
+        today = today_kst()
         results = []
 
         for ticker, label in ALL_ETFS.items():

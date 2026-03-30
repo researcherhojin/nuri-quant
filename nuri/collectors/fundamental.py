@@ -8,7 +8,6 @@ yfinance 프로바이더로 미국/한국 종목 모두 지원.
     python -m nuri.collectors.fundamental
 """
 import logging
-from datetime import datetime
 from typing import Any
 
 import pandas as pd
@@ -55,7 +54,8 @@ class FundamentalCollector(BaseCollector):
             return []
 
         self.logger.info(f"펀더멘탈 수집 대상: {len(tickers)}종목")
-        today = datetime.now().strftime("%Y-%m-%d")
+        from nuri.core.timezone import today_kst
+        today = today_kst()
         results = []
 
         for ticker in tickers:

@@ -8,13 +8,14 @@ FRED_API_KEY가 있으면 FRED 우선, 없으면 yfinance에서 핵심 지표를
 """
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pandas as pd
 from dotenv import load_dotenv
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import upsert_macro
+from nuri.core.timezone import kst_now
 
 load_dotenv()
 
@@ -80,7 +81,7 @@ class MacroCollector(BaseCollector):
         from fredapi import Fred
 
         fred = Fred(api_key=self.api_key)
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        start_date = (kst_now().replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")
 
         records = []
         for indicator, series_id in FRED_SERIES.items():
@@ -105,7 +106,7 @@ class MacroCollector(BaseCollector):
         from openbb import obb
         warnings.filterwarnings("ignore")
 
-        start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        start = (kst_now().replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")
         records = []
 
         for indicator, symbol in YFINANCE_SYMBOLS.items():
