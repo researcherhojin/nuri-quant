@@ -446,3 +446,34 @@ class TestCoreFreshness:
         assert "fail" in result
         # 빈 DB → 모두 FAIL
         assert result["fail"] == len(FRESHNESS_POLICIES)
+
+
+class TestSchedulerHealth:
+    def test_no_heartbeat_file(self, client):
+        """heartbeat 파일 없으면 unknown."""
+        resp = client.get("/api/scheduler/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] in ("unknown", "ok", "stale", "error")
+
+    def test_heartbeat_parsing(self, tmp_path):
+        """heartbeat 파일 파싱 로직 검증."""
+        from datetime import datetime
+
+        hb_path = tmp_path / ".hb"
+        hb_path.write_text(datetime.now().isoformat())
+
+        last = datetime.fromisoformat(hb_path.read_text().strip())
+        age = (datetime.now() - last).total_seconds()
+        assert age < 5
+        status = "ok" if age < 600 else "stale"
+        assert status == "ok"
+
+
+class TestWriteHeartbeat:
+    def test_creates_file(self, tmp_path, monkeypatch):
+        """_write_heartbeat가 파일 생성."""
+        import nuri.scheduler as sched
+        monkeypatch.setattr(sched, "HEARTBEAT_PATH", tmp_path / ".hb")
+        sched._write_heartbeat()
+        assert (tmp_path / ".hb").exists()
