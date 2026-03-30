@@ -85,6 +85,18 @@ class TestBacktest:
         result = run_backtest(regimes, db_path=backtest_data)
         assert result.max_drawdown > result.spy_max_drawdown  # 덜 빠짐 (음수이므로 >)
 
+    def test_equity_curve(self, backtest_data):
+        """equity_curve가 올바른 구조로 생성되는지 확인."""
+        from nuri.trading.strategy.ls_backtest import classify_historical_regimes, run_backtest
+        regimes = classify_historical_regimes(db_path=backtest_data)
+        result = run_backtest(regimes, db_path=backtest_data)
+        assert result.equity_curve is not None
+        assert len(result.equity_curve) == result.total_days
+        point = result.equity_curve[0]
+        assert set(point.keys()) == {"date", "strategy", "spy", "drawdown"}
+        last = result.equity_curve[-1]
+        assert abs(last["strategy"] - result.total_return) < 0.1
+
 
 class TestMonteCarlo:
 
