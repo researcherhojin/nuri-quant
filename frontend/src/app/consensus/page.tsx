@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
-import { ClientTable } from "@/components/ui/client-table";
+import { ConsensusTable } from "@/components/ui/consensus-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 async function ConsensusSection() {
@@ -14,9 +14,9 @@ async function ConsensusSection() {
     <Card className="bg-card border-border">
       <CardContent className="pt-5">
         <p className="text-xs text-muted-foreground mb-3">
-          6-Agent Consensus — {data.count} tickers × 6 agents = {data.count * 6} verdicts
+          10-Agent Consensus — {data.count} tickers × 10 agents = {data.count * 10} verdicts
         </p>
-        <ClientTable variant="consensus" data={sorted} compact />
+        <ConsensusTable data={sorted} />
       </CardContent>
     </Card>
   );
