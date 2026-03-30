@@ -460,11 +460,9 @@ class TestSchedulerHealth:
 
     def test_heartbeat_fresh(self, client, tmp_path, monkeypatch):
         """최근 heartbeat → ok."""
-        from datetime import datetime
-
         import nuri.api.routes.pipeline as pipe_mod
         hb = tmp_path / ".hb"
-        hb.write_text(datetime.now().isoformat())
+        hb.write_text(kst_now().strftime("%Y-%m-%dT%H:%M:%S"))
         monkeypatch.setattr(pipe_mod, "_HEARTBEAT_PATH", hb)
         resp = client.get("/api/scheduler/health")
         assert resp.status_code == 200
@@ -474,11 +472,9 @@ class TestSchedulerHealth:
 
     def test_heartbeat_stale(self, client, tmp_path, monkeypatch):
         """오래된 heartbeat → stale."""
-        from datetime import datetime
-
         import nuri.api.routes.pipeline as pipe_mod
         hb = tmp_path / ".hb"
-        old = (datetime.now() - timedelta(minutes=15)).isoformat()
+        old = (kst_now().replace(tzinfo=None) - timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M:%S")
         hb.write_text(old)
         monkeypatch.setattr(pipe_mod, "_HEARTBEAT_PATH", hb)
         resp = client.get("/api/scheduler/health")

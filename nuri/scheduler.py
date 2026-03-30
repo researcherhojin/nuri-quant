@@ -12,7 +12,6 @@ import argparse
 import logging
 import signal
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -185,8 +184,9 @@ HEARTBEAT_PATH = Path(__file__).parent.parent / "data" / ".scheduler_heartbeat"
 def _write_heartbeat():
     """heartbeat 파일에 현재 시각 기록 (API health check용)."""
     try:
+        from nuri.core.timezone import kst_now
         HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        HEARTBEAT_PATH.write_text(datetime.now().isoformat())
+        HEARTBEAT_PATH.write_text(kst_now().strftime("%Y-%m-%dT%H:%M:%S"))
     except Exception:
         pass
 
