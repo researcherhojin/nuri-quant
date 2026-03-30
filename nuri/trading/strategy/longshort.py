@@ -20,12 +20,18 @@ logger = logging.getLogger(__name__)
 # 레짐 → 전략 매핑 (롱/숏/현금 비중)
 # 근거: O'Neil/Minervini 방법론 + 6-사이트 외부 데이터 분석 (2026-03-28)
 REGIME_ALLOCATION = {
+    # ── 6 base regimes ──
     "bull_low_vol":     {"direction": "long",    "long_pct": 80, "short_pct": 0,  "cash_pct": 20, "note": "공격적 — 풀 포지션, 성장주 집중"},
     "bull_high_vol":    {"direction": "long",    "long_pct": 60, "short_pct": 0,  "cash_pct": 40, "note": "선택적 — 상위 시그널만, 팩터 상위 50%"},
     "sideways_low_vol": {"direction": "neutral", "long_pct": 40, "short_pct": 0,  "cash_pct": 60, "note": "중립 — 평균회귀, 스윙 위주"},
     "sideways_high_vol":{"direction": "neutral", "long_pct": 20, "short_pct": 0,  "cash_pct": 80, "note": "방어적 — 최소 포지션, 현금 극대화"},
     "bear_low_vol":     {"direction": "short",   "long_pct": 10, "short_pct": 30, "cash_pct": 60, "note": "숏 편향 — SH 헤지, 방어 섹터만 롱"},
     "bear_high_vol":    {"direction": "short",   "long_pct": 0,  "short_pct": 50, "cash_pct": 50, "note": "풀 숏 + 현금 — 관망, SH/SDS 보유"},
+    # ── 4 special regimes (classifier에서 base regime override) ──
+    "recovery":         {"direction": "long",    "long_pct": 80, "short_pct": 0,  "cash_pct": 20, "note": "회복기 — 공격적 롱, 성장주 재진입"},
+    "euphoria":         {"direction": "long",    "long_pct": 40, "short_pct": 0,  "cash_pct": 60, "note": "과열기 — 방어적, 익절 우선"},
+    "stagflation":      {"direction": "neutral", "long_pct": 10, "short_pct": 0,  "cash_pct": 90, "note": "스태그플레이션 — 최소 포지션, 현금 극대화"},
+    "sector_rotation":  {"direction": "neutral", "long_pct": 50, "short_pct": 0,  "cash_pct": 50, "note": "섹터 로테이션 — 선별적 롱, 모멘텀 섹터 집중"},
 }
 
 # 레짐 전환 시 행동 규칙

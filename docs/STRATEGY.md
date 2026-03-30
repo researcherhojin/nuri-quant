@@ -11,7 +11,7 @@
 
 ### 백엔드 — ✅ 충분
 - 21 collectors, 15 signals (detector registry), 10 regimes (6 base + 4 special)
-- 7 agents + consensus engine, SIEGE 10-condition gate
+- 10 agents + consensus engine, SIEGE 10-condition gate
 - 투자 규칙 자동화: take-profit, trailing stop, portfolio MDD gate
 - Pipeline observability: Event Journal + Freshness SLA + Operator Cockpit
 - 48 API endpoints, 29 tables (v10 migrations), 684 tests

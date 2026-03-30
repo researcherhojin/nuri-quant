@@ -47,12 +47,6 @@ const VARIANTS: Record<string, any[]> = {
     { key: "profit_factor", label: "PF", align: "right", render: num },
     { key: "avg_return", label: "Avg Return", align: "right", render: pct },
   ],
-  consensus: [
-    { key: "ticker", label: "Ticker", render: ticker },
-    { key: "final_action", label: "Action", align: "center", render: badgeMd },
-    { key: "final_confidence", label: "Conf", align: "right", render: num },
-    { key: "agreement_rate", label: "Agree", align: "right", render: (v: number) => pct(v * 100) },
-  ],
   scan: [
     { key: "ticker", label: "Ticker", render: ticker },
     { key: "price", label: "Price", align: "right", render: (v: number) => `$${v?.toFixed(2)}` },

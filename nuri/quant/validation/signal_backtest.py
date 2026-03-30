@@ -315,6 +315,15 @@ MACRO_SIGNAL_IDS = {"vix_reversal", "pcr_reversal", "yield_curve_recovery"}
 # 데이터 의존 시그널 ID 목록 (DB 별도 테이블 데이터 필요)
 DATA_SIGNAL_IDS = {"insider_cluster", "short_squeeze"}
 
+# 매수/매도 시그널 분류 (SIGNAL_DEFINITIONS와 동일 소스에서 관리)
+BUY_SIGNALS = {
+    "rsi_oversold", "macd_golden", "sma_golden", "bb_bounce",
+    "volume_spike", "gap_up",
+    "vix_reversal", "pcr_reversal", "yield_curve_recovery",
+    "insider_cluster", "short_squeeze",
+}
+SELL_SIGNALS = {"rsi_overbought", "macd_dead", "sma_dead", "gap_down"}
+
 
 # ═══════════════════════════════════════════════════════
 # 지표 계산 + 데이터 병합

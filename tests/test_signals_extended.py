@@ -170,7 +170,7 @@ class TestSignalDefinitions:
 
     def test_buy_sell_classification(self):
         """BUY/SELL 분류 업데이트 확인."""
-        from nuri.trading.recommend.candidates import BUY_SIGNALS, SELL_SIGNALS
+        from nuri.quant.validation.signal_backtest import BUY_SIGNALS, SELL_SIGNALS
         assert "volume_spike" in BUY_SIGNALS
         assert "gap_up" in BUY_SIGNALS
         assert "gap_down" in SELL_SIGNALS
@@ -198,7 +198,7 @@ class TestSignalDefinitions:
 
     def test_macro_signals_in_buy_classification(self):
         """매크로 시그널이 BUY_SIGNALS에 포함."""
-        from nuri.trading.recommend.candidates import BUY_SIGNALS
+        from nuri.quant.validation.signal_backtest import BUY_SIGNALS
         assert "vix_reversal" in BUY_SIGNALS
         assert "pcr_reversal" in BUY_SIGNALS
         assert "yield_curve_recovery" in BUY_SIGNALS

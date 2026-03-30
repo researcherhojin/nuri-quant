@@ -13,11 +13,15 @@ import argparse
 import logging
 from dataclasses import dataclass
 
+from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.db import get_tickers
 from nuri.trading.agents.base import AgentVerdict
+from nuri.trading.agents.crypto_agent import CryptoAgent
 from nuri.trading.agents.fundamental import FundamentalAgent
 from nuri.trading.agents.korean_market import KoreanMarketAgent
 from nuri.trading.agents.macro_agent import MacroAgent
+from nuri.trading.agents.options_agent import OptionsAgent
+from nuri.trading.agents.retail_agent import RetailAgent
 from nuri.trading.agents.risk_agent import RiskAgent
 from nuri.trading.agents.smart_money import SmartMoneyAgent
 from nuri.trading.agents.technical import TechnicalAgent
@@ -26,14 +30,18 @@ from nuri.trading.agents.wallstreet import WallStreetAgent
 logger = logging.getLogger(__name__)
 
 # 기본 가중치 (과거 데이터 없을 때)
+# 7→10 에이전트 확장: 기존 에이전트 비중 소폭 하향, 신규 3개 배분
 DEFAULT_WEIGHTS = {
-    "technical": 0.18,
-    "fundamental": 0.14,
-    "macro": 0.14,
-    "risk": 0.22,       # 리스크는 거부권 수준으로 높음
-    "smart_money": 0.09,
-    "wallstreet": 0.13,
-    "korean_market": 0.10,  # .KS 종목에서만 실질 영향
+    "technical": 0.16,       # 18→16
+    "fundamental": 0.12,     # 14→12
+    "macro": 0.12,           # 14→12
+    "risk": 0.20,            # 22→20 (거부권 유지)
+    "smart_money": 0.08,     # 9→8
+    "wallstreet": 0.11,      # 13→11
+    "korean_market": 0.08,   # 10→8 (.KS 종목에서만 실질 영향)
+    "options": 0.08,          # 신규: PCR 기반 시장 심리
+    "crypto": 0.05,           # 신규: BTC 리스크 선호
+    "retail": 0.00,           # 신규: WSB 센티먼트 (데이터 안정화까지 0%)
 }
 
 ALL_AGENTS = [
@@ -44,6 +52,9 @@ ALL_AGENTS = [
     SmartMoneyAgent(),
     WallStreetAgent(),
     KoreanMarketAgent(),
+    OptionsAgent(),
+    CryptoAgent(),
+    RetailAgent(),
 ]
 
 
@@ -68,17 +79,21 @@ def _compute_weights(db_path=None) -> dict[str, float]:
     """
     from nuri.core.db import query
 
-    # 최근 180일 내 outcome_30d가 기록된 추천 조회
+    _lm = AGENT_CONFIG.get("consensus", {}).get("learning_memory", {})
+    lookback = _lm.get("lookback_days", 180)
+    min_records = _lm.get("min_records", 10)
+
     rows = query(
         """
         SELECT signals FROM recommendations
         WHERE outcome_30d IS NOT NULL
-          AND date >= date('now', '-180 days')
+          AND date >= date('now', ? || ' days')
         """,
+        (f"-{lookback}",),
         db_path=db_path,
     )
 
-    if len(rows) < 10:
+    if len(rows) < min_records:
         return dict(DEFAULT_WEIGHTS)
 
     # 에이전트별 적중률 계산
@@ -112,24 +127,27 @@ def _compute_weights(db_path=None) -> dict[str, float]:
         except (json.JSONDecodeError, TypeError, KeyError):
             continue
 
-    # 적중률 기반 가중치 계산 (최소 5건 이상인 에이전트만)
+    # 적중률 기반 가중치 계산
+    min_agent_records = _lm.get("min_agent_records", 5)
     hit_rates = {}
     for name, hits in agent_hits.items():
-        if len(hits) >= 5:
+        if len(hits) >= min_agent_records:
             hit_rates[name] = sum(hits) / len(hits)
 
     if not hit_rates:
         return dict(DEFAULT_WEIGHTS)
 
     # 적중률을 가중치로 변환 (정규화)
-    # 기본 가중치의 ±30% 범위 내에서 조정
+    # 기본 가중치의 ±adjustment_range 범위 내에서 조정
+    adj_range = _lm.get("adjustment_range", 0.30)
+    min_weight = _lm.get("min_weight_floor", 0.03)
     weights = dict(DEFAULT_WEIGHTS)
     for name, rate in hit_rates.items():
         base = DEFAULT_WEIGHTS.get(name, 0.1)
         # 50% 적중률 = 기본값, 70% = +30%, 30% = -30%
         adjustment = (rate - 0.5) * 1.5  # -0.75 ~ +0.75 범위
-        adjusted = base * (1 + max(-0.3, min(0.3, adjustment)))
-        weights[name] = max(0.03, adjusted)  # 최소 3%
+        adjusted = base * (1 + max(-adj_range, min(adj_range, adjustment)))
+        weights[name] = max(min_weight, adjusted)
 
     # 총합 1.0으로 정규화
     total = sum(weights.values())
@@ -140,7 +158,7 @@ def _compute_weights(db_path=None) -> dict[str, float]:
 
 
 def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
-    """단일 종목에 대해 6개 에이전트 분석 + 합의."""
+    """단일 종목에 대해 10개 에이전트 분석 + 합의."""
     import concurrent.futures
     weights = _compute_weights(db_path)
     verdicts = []
@@ -152,7 +170,7 @@ def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
         except Exception as e:
             return AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(ALL_AGENTS)) as executor:
         futures = {executor.submit(_run_agent, agent): agent for agent in ALL_AGENTS}
         for future in concurrent.futures.as_completed(futures, timeout=15):
             try:
@@ -170,9 +188,10 @@ def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
         w = weights.get(v.agent_name, 0.1)
         action_scores[v.action] += w * (v.confidence / 100)
 
-    # 리스크 에이전트 거부권: SELL + confidence >= 80 이면 전체 override
+    # 리스크 에이전트 거부권: SELL + confidence >= threshold 이면 전체 override
+    veto_threshold = AGENT_CONFIG.get("consensus", {}).get("risk_veto_threshold", 80)
     risk_v = next((v for v in verdicts if v.agent_name == "risk"), None)
-    if risk_v and risk_v.action == "SELL" and risk_v.confidence >= 80:
+    if risk_v and risk_v.action == "SELL" and risk_v.confidence >= veto_threshold:
         final_action = "SELL"
         final_confidence = risk_v.confidence
         reasoning = f"리스크 에이전트 거부권 발동: {risk_v.reasoning}"
@@ -224,16 +243,20 @@ def print_consensus(results: list[ConsensusResult]) -> None:
         print("합의 결과 없음")
         return
 
-    print(f"\n{'=' * 85}")
-    print(f"  Multi-Agent Consensus ({len(results)} tickers)")
-    print(f"{'=' * 85}")
-    print(f"  {'Ticker':<10} {'Action':<6} {'Conf':>5} {'Agree':>6} {'Tech':>5} {'Fund':>5} {'Macro':>5} {'Risk':>5} {'Smart':>5}")
-    print(f"  {'-' * 78}")
+    print(f"\n{'=' * 120}")
+    print(f"  Multi-Agent Consensus ({len(results)} tickers, 10 agents)")
+    print(f"{'=' * 120}")
+    header_agents = ["Tech", "Fund", "Macro", "Risk", "Smart", "Wall", "KR", "Opt", "Crypto", "Ret"]
+    print(f"  {'Ticker':<10} {'Action':<6} {'Conf':>5} {'Agree':>6} " + " ".join(f"{h:>5}" for h in header_agents))
+    print(f"  {'-' * 110}")
+
+    agent_order = ["technical", "fundamental", "macro", "risk", "smart_money",
+                    "wallstreet", "korean_market", "options", "crypto", "retail"]
 
     for r in sorted(results, key=lambda x: x.final_confidence, reverse=True):
         agent_map = {v.agent_name: v for v in r.verdicts}
         cols = []
-        for name in ["technical", "fundamental", "macro", "risk", "smart_money"]:
+        for name in agent_order:
             v = agent_map.get(name)
             if v:
                 icon = {"BUY": "B", "SELL": "S", "HOLD": "H"}.get(v.action, "?")
@@ -242,7 +265,7 @@ def print_consensus(results: list[ConsensusResult]) -> None:
                 cols.append("--")
 
         print(f"  {r.ticker:<10} {r.final_action:<6} {r.final_confidence:>4.0f} {r.agreement_rate:>5.0%} "
-              f"{'  '.join(f'{c:>4}' for c in cols)}")
+              f"{' '.join(f'{c:>5}' for c in cols)}")
 
     # 반대 의견 요약
     dissents = [(r.ticker, r.dissent) for r in results if r.dissent]

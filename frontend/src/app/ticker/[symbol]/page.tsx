@@ -71,7 +71,7 @@ async function TickerDetail({ symbol }: { symbol: string }) {
         {/* Agent Verdicts */}
         <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground mb-3">6-Agent Analysis</p>
+            <p className="text-xs text-muted-foreground mb-3">10-Agent Analysis</p>
             <div className="space-y-2">
               {verdicts.map((v: any) => (
                 <div key={v.agent_name} className="flex items-center justify-between">

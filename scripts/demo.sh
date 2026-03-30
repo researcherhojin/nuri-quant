@@ -97,7 +97,7 @@ ok "Conflicts analyzed"
 # ═══════════════════════════════════════════════════════
 # STEP 7: Multi-Agent Consensus (Portfolio)
 # ═══════════════════════════════════════════════════════
-header "Multi-Agent Consensus — 7 agents × portfolio"
+header "Multi-Agent Consensus — 10 agents × portfolio"
 $PYTHON -m nuri.trading.agents.consensus 2>&1 | tail -30
 ok "Agent consensus complete"
 

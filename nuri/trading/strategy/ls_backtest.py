@@ -418,9 +418,12 @@ def analyze_entry_timing(regimes_df: pd.DataFrame, current_regime: str = None) -
         future_idx = min(entry_idx + 30, len(df) - 1)
         if future_idx < len(df):
             future_regime = df.iloc[future_idx]["regime"]
-            if "bull" in future_regime:
+            from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+            alloc = REGIME_ALLOCATION.get(future_regime, {})
+            future_dir = alloc.get("direction", "")
+            if future_dir == "long":
                 to_bull += 1
-            elif "bear" in future_regime:
+            elif future_dir == "short":
                 to_bear += 1
             else:
                 stay += 1

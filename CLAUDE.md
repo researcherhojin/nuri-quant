@@ -54,8 +54,8 @@ make recommend                          # candidates + tracker (signal-based buy
 python -m nuri.trading.recommend.candidates  # signal-based buy/sell candidates
 python -m nuri.trading.recommend.tracker --save  # save + track outcomes
 
-# Multi-Agent Consensus (7 agents)
-make consensus                                         # 보유 종목 7-agent analysis
+# Multi-Agent Consensus (10 agents)
+make consensus                                         # 보유 종목 10-agent analysis
 python -m nuri.trading.agents.consensus --ticker TSLA  # 단일 종목
 
 # Strategies
@@ -132,7 +132,7 @@ nuri/
 │   ├── backtest/      # VectorBT engine, grid search optimizer
 │   └── factors/       # Multi-factor scoring (momentum, value, quality, composite)
 ├── trading/           # Trading execution
-│   ├── agents/        # 7 agents + consensus engine
+│   ├── agents/        # 10 agents + consensus engine
 │   ├── engine/        # SIEGE: gate, conflicts, learning memory
 │   ├── strategy/      # L/S, mean-reversion, pairs trading
 │   ├── recommend/     # Candidates, rebalance, tracker, price_targets
@@ -166,7 +166,7 @@ All collectors inherit `BaseCollector` (`nuri/collectors/base.py`). The contract
 
 `signal_backtest.py` uses a **detector registry** — each signal registers `entry` and optional `exit` functions in `SIGNAL_DEFINITIONS`. Three categories:
 
-- **Price-based** (7): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
+- **Price-based** (10): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
 - **Macro-based** (3): vix_reversal, pcr_reversal, yield_curve_recovery — require `merge_macro_data()` (DB macro table)
 - **Data-dependent** (2): insider_cluster, short_squeeze — require `merge_data_signals()` (insider_trades, external_analysis tables)
 
@@ -185,23 +185,24 @@ The validation/regime/recommendation pipeline is connected by data, not imports:
 
 Re-running C-1 (`python -m nuri.quant.validation.signal_backtest`) updates the data that D-3 and E-1 use.
 
-### Multi-Agent Consensus (7 agents)
+### Multi-Agent Consensus (10 agents)
 
-`nuri/trading/agents/` — 7 specialist agents with weighted voting:
+`nuri/trading/agents/` — 10 specialist agents with weighted voting. Thresholds externalized to `config/agents.yaml`, loaded via `nuri/core/agent_config.py`. Confidence normalized to 0-100 via `BaseAgent.normalize_confidence()` (config: `confidence_normalization`).
 
 | Agent | Weight | Data Source |
 |-------|--------|-------------|
-| `technical.py` | 18% | RSI, MACD, SMA crossovers |
-| `fundamental.py` | 14% | PE, ROE, growth, debt |
-| `macro_agent.py` | 14% | Regime + macro score + momentum |
-| `risk_agent.py` | 22% | Stop-loss, volatility, concentration (**veto power**) |
-| `smart_money.py` | 9% | 13F flow + analyst consensus |
-| `wallstreet.py` | 13% | Analyst ratings + EPS surprise + insider |
-| `korean_market.py` | 10% | KRW/USD FX, foreign flows, KOSPI/KOSDAQ |
+| `technical.py` | 16% | RSI, MACD, SMA crossovers |
+| `fundamental.py` | 12% | PE, ROE, growth, debt |
+| `macro_agent.py` | 12% | Regime + macro score + momentum |
+| `risk_agent.py` | 20% | Stop-loss, volatility, concentration (**veto power**) |
+| `smart_money.py` | 8% | 13F flow + analyst consensus |
+| `wallstreet.py` | 11% | Analyst ratings + EPS surprise + insider |
+| `korean_market.py` | 8% | KRW/USD FX, foreign flows, KOSPI/KOSDAQ |
+| `options_agent.py` | 8% | CBOE Put/Call Ratio (contrarian) |
+| `crypto_agent.py` | 5% | BTC price/dominance (risk appetite proxy) |
+| `retail_agent.py` | 0% | WSB mentions/posts (data stabilization phase) |
 
-Risk agent has veto power: SELL + confidence >= 80 overrides all others. Korean market agent returns neutral HOLD for US tickers.
-
-**Known limitation**: All 7 agents use hardcoded thresholds (RSI 30/70, PE 15/40, etc.) and inconsistent confidence scales (Technical 0-90, Fundamental 0-80, Risk 0-90). These are rule-based checklist algorithms, not ML models. Thresholds are not yet externalized to config or calibrated against historical outcomes.
+Risk agent has veto power: SELL + confidence >= 80 overrides all others. Korean market agent returns neutral HOLD for US tickers. New agents return graceful HOLD when data unavailable.
 
 ### Regime classifier (6 base + 4 special)
 
@@ -215,7 +216,7 @@ Special regimes (checked in priority order, override base `regime` field):
 
 `RegimeState.trend`/`.volatility` always reflect the base classification. `details["special_regime"]` is `None` or the special name. `details["base_regime"]` always has the 6-regime name.
 
-**Known limitation**: `longshort.py` `REGIME_ALLOCATION` and `position.py` `"bull" in regime` pattern matching don't handle special regime names — they fall back to defaults via `.get()`.
+`REGIME_ALLOCATION` includes all 10 regimes (6 base + 4 special). `position.py` uses `REGIME_ALLOCATION` lookup for regime alignment (fallback to substring matching for unknown regimes).
 
 ### SIEGE Engine
 
@@ -304,6 +305,8 @@ Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_trans
 ### Config files (`config/`)
 
 - `portfolio.yaml` — 5 accounts (test/demo/sample/pension/irp), 30+ holdings
+- `stock_types.yaml` — Manual growth/value override per ticker. Controls stop-loss/take-profit thresholds (growth: -7%/+20%/+40%, value: -10%/+15%/+30%). Swing type is auto-tagged by scanner.
+- `agents.yaml` — Agent thresholds (RSI 30/70, PE 15/40, confidence caps, etc.) loaded via `nuri/core/agent_config.py`. Includes `confidence_normalization` scales for uniform 0-100 mapping.
 - `alerts.yaml` — Thresholds (price swing 3%, Fear&Greed bounds 20/80), report timing
 - `rules.yaml` — Investment rules loaded via `nuri/core/rules.py`. See [Investment Rules](#investment-rules) for full details.
 
@@ -330,7 +333,7 @@ data/
 
 ## Testing
 
-684 tests across 42 files (v10 migrations). Tests use `tmp_path` fixture for isolated SQLite databases:
+751 tests across 42 files (v10 migrations). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):

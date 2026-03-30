@@ -52,10 +52,22 @@ def certify_position(
     details = {}
 
     # 1. 레짐 정합성: long은 bull/sideways, short은 bear/sideways
-    if direction == "long":
-        regime_aligned = "bull" in regime or "sideways" in regime
+    # regime 문자열에서 trend 추출 (특수 레짐 "recovery" 등도 처리)
+    # 특수 레짐은 base_regime을 통해 trend 판단
+    from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+    alloc = REGIME_ALLOCATION.get(regime)
+    if alloc:
+        alloc_dir = alloc["direction"]
+        if direction == "long":
+            regime_aligned = alloc_dir in ("long", "neutral")
+        else:
+            regime_aligned = alloc_dir in ("short", "neutral") and "high" in regime
     else:
-        regime_aligned = "bear" in regime or ("sideways" in regime and "high" in regime)
+        # 레짐명에서 trend 추출 (fallback)
+        if direction == "long":
+            regime_aligned = "bull" in regime or "sideways" in regime
+        else:
+            regime_aligned = "bear" in regime or ("sideways" in regime and "high" in regime)
     details["regime"] = regime
     details["direction"] = direction
     details["regime_check"] = "aligned" if regime_aligned else "misaligned"

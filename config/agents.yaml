@@ -1,0 +1,218 @@
+# ═══════════════════════════════════════════════════════
+# 에이전트 임계값 설정
+# ═══════════════════════════════════════════════════════
+# 각 에이전트의 하드코딩 매직넘버를 외부화.
+# nuri/core/agent_config.py가 로드하며, 에이전트에서 AGENT_CONFIG["name"]으로 접근.
+
+# ═══════════════════════════════════════════════════════
+# Confidence 정규화 (normalize_confidence)
+# ═══════════════════════════════════════════════════════
+# 각 에이전트의 실효 confidence 범위를 선언.
+# BaseAgent.normalize_confidence()가 [raw_min, raw_max] → [0, 100]으로 매핑.
+# 정규화 비활성화: enabled: false
+confidence_normalization:
+  enabled: true
+  scales:
+    technical:    { raw_min: 0, raw_max: 90 }
+    fundamental:  { raw_min: 0, raw_max: 80 }
+    macro:        { raw_min: 30, raw_max: 80 }
+    risk:         { raw_min: 40, raw_max: 90 }
+    smart_money:  { raw_min: 0, raw_max: 80 }
+    wallstreet:   { raw_min: 0, raw_max: 85 }
+    korean_market: { raw_min: 0, raw_max: 100 }
+    options:      { raw_min: 0, raw_max: 80 }
+    crypto:       { raw_min: 0, raw_max: 80 }
+    retail:       { raw_min: 0, raw_max: 80 }
+
+technical:
+  rsi_period: 14
+  rsi_oversold: 30
+  rsi_overbought: 70
+  sma_short: 50
+  sma_long: 200
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  min_data_points: 50
+  confidence:
+    cap: 90
+    hold: 40
+
+fundamental:
+  pe_undervalued: 15        # +2점
+  pe_fair: 25               # +1점
+  pe_overvalued: 40         # -2점
+  roe_excellent: 0.20       # +2점
+  roe_good: 0.10            # +1점
+  growth_strong: 0.20       # +1점
+  growth_decline: -0.10     # -1점
+  debt_high: 2.0            # -1점
+  score_buy: 2
+  score_sell: -2
+  confidence:
+    cap: 80
+    buy_base: 50
+    buy_multiplier: 10
+    hold_base: 40
+    hold_multiplier: 5
+
+macro:
+  macro_score_bull: 60
+  macro_score_bear: 35
+  momentum_5d_bull: 8
+  momentum_10d_bull: 10
+  momentum_5d_bear: -8
+  momentum_10d_bear: -10
+  bull_underperform: -5
+  bear_bounce: 10
+  min_candles: 10
+  confidence:
+    cap: 80
+    momentum_cap: 65
+    sideways_base: 42
+    override_hold: 40
+    momentum_base: 45
+    no_data: 30
+
+risk:
+  loss_threshold: -10       # -1점 (경고)
+  profit_threshold: 20      # +1점
+  volatility_high: 5        # -1점 (일간 표준편차 %)
+  volatility_low: 2         # +1점
+  score_sell: -2
+  score_buy: 2
+  confidence:
+    sell_cap: 85
+    sell_base: 50
+    sell_multiplier: 15
+    stop_loss_override: 90
+    buy_base: 50
+    buy_multiplier: 10
+    hold_base: 40
+    hold_multiplier: 10
+
+smart_money:
+  portfolio_pct_high: 5     # +1점 (최대 비중 > 5%)
+  upside_threshold: 20      # +1점 (목표가 괴리)
+  downside_threshold: -10   # -1점
+  score_buy: 2
+  score_sell: -1
+  confidence:
+    buy_cap: 80
+    buy_base: 40
+    buy_multiplier: 12
+    sell_cap: 70
+    sell_base: 40
+    sell_multiplier: 12
+    hold_base: 35
+    hold_multiplier: 8
+    no_data: 30
+
+wallstreet:
+  upgrade_margin: 2         # up > down + margin → +2점
+  earnings_surprise: 0.05   # 5% 이상 → ±2점
+  insider_buy_margin: 1     # buy > sell + margin → +1점
+  insider_sell_margin: 3    # sell > buy + margin → -1점
+  consensus_bull: 0.60      # 매수 비율 > 60% → +1점
+  consensus_bear: 0.30      # 매도 비율 > 30% → -1점
+  score_buy: 3
+  score_sell: -2
+  confidence:
+    buy_cap: 85
+    buy_base: 45
+    buy_multiplier: 10
+    sell_cap: 80
+    sell_base: 45
+    sell_multiplier: 10
+    hold_base: 35
+    hold_multiplier: 8
+    no_data: 20
+    cached_buy: 60
+    cached_sell: 55
+    cached_hold: 40
+
+korean_market:
+  fx_weak_default: 1400
+  fx_strong_default: 1250
+  fx_calibration_min: 30    # 동적 캘리브레이션 최소 데이터 수
+  fx_weak_floor: 1300       # 동적 약세 임계값 하한
+  fx_strong_ceil: 1350      # 동적 강세 임계값 상한
+  score_base: 50
+  # 점수 조정값
+  fx_export_strong: 10      # 원화약세 + 수출주
+  fx_nonexport_weak: -5     # 원화약세 + 내수주
+  fx_nonexport_strong: 5    # 원화강세 + 내수주
+  foreign_positive: 8       # 외국인 순매수
+  foreign_negative: -8      # 외국인 순매도
+  momentum_positive_threshold: 5
+  momentum_positive_score: 5
+  momentum_negative_threshold: -10
+  momentum_negative_score: -10
+  kosdaq_discount: -3
+  score_buy: 65
+  score_sell: 35
+  us_confidence: 50
+
+options:
+  pcr_bearish: 1.2          # PCR ≥ 1.2 → 극도 공포 (역발상 매수 신호)
+  pcr_bullish: 0.7          # PCR ≤ 0.7 → 과도한 낙관 (경계 신호)
+  pcr_neutral_low: 0.8
+  pcr_neutral_high: 1.0
+  lookback_days: 5           # 최근 N일 PCR 평균
+  trend_rise_ratio: 1.1      # 최근 PCR > 평균 × ratio → 상승 추세
+  trend_fall_ratio: 0.9      # 최근 PCR < 평균 × ratio → 하락 추세
+  score_buy: 2
+  score_sell: -2
+  confidence:
+    cap: 80
+    buy_base: 45
+    buy_multiplier: 12
+    sell_base: 45
+    sell_multiplier: 12
+    hold_base: 35
+    hold_multiplier: 8
+    no_data: 0
+
+crypto:
+  btc_strong_rally: 10      # BTC 24h 변화 > 10% → 리스크온
+  btc_rally: 3              # BTC 24h 변화 > 3% → 약한 리스크온
+  btc_crash: -5             # BTC 24h 변화 < -5% → 리스크오프
+  btc_severe_crash: -10     # BTC 24h 변화 < -10% → 강한 리스크오프
+  dominance_high: 60        # BTC 지배력 > 60% → 알트 약세
+  dominance_low: 40         # BTC 지배력 < 40% → 알트 강세 (리스크온)
+  score_buy: 2
+  score_sell: -2
+  confidence:
+    cap: 80
+    buy_base: 40
+    buy_multiplier: 10
+    sell_base: 40
+    sell_multiplier: 10
+    hold_base: 30
+    hold_multiplier: 8
+    no_data: 0
+
+retail:
+  wsb_spike_threshold: 10   # WSB 언급 N건 이상 → 주의
+  wsb_hot_threshold: 30     # WSB 언급 N건 이상 → 과열
+  post_count_high: 1000     # 일일 포스트 > N → 시장 관심 과열
+  score_buy: 2
+  score_sell: -2
+  confidence:
+    cap: 80
+    buy_base: 35
+    buy_multiplier: 10
+    sell_base: 35
+    sell_multiplier: 10
+    hold_base: 30
+    hold_multiplier: 8
+    no_data: 0
+
+consensus:
+  risk_veto_threshold: 80
+  learning_memory:
+    lookback_days: 180
+    min_records: 10
+    min_agent_records: 5
+    adjustment_range: 0.30
+    min_weight_floor: 0.03

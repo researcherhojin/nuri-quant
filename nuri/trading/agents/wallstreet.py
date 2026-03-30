@@ -12,10 +12,14 @@ yfinance에서 직접 데이터를 가져오며 별도 API 키 불필요.
 import logging
 from datetime import timedelta
 
+from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.timezone import kst_now
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 logger = logging.getLogger(__name__)
+
+_CFG = AGENT_CONFIG.get("wallstreet", {})
+_CONF = _CFG.get("confidence", {})
 
 
 # yfinance에서 데이터가 없는 종목 (ETF, 한국주, 레버리지) — 스킵하여 속도 개선
@@ -73,10 +77,11 @@ class WallStreetAgent(BaseAgent):
                     elif target_action == "lowers":
                         downgrades += 1
 
-                if upgrades > downgrades + 2:
+                up_margin = _CFG.get("upgrade_margin", 2)
+                if upgrades > downgrades + up_margin:
                     score += 2
                     reasons.append(f"최근 업그레이드 우세({upgrades}↑ vs {downgrades}↓)")
-                elif downgrades > upgrades + 2:
+                elif downgrades > upgrades + up_margin:
                     score -= 2
                     reasons.append(f"최근 다운그레이드 우세({downgrades}↓ vs {upgrades}↑)")
                 elif upgrades > 0 or downgrades > 0:
@@ -100,13 +105,14 @@ class WallStreetAgent(BaseAgent):
                 latest = eh.iloc[-1]
                 surprise = latest.get("surprisePercent", 0) or 0
 
-                if surprise > 0.05:
+                earn_th = _CFG.get("earnings_surprise", 0.05)
+                if surprise > earn_th:
                     score += 2
                     reasons.append(f"실적 서프라이즈 +{surprise*100:.0f}%")
-                elif surprise < -0.05:
+                elif surprise < -earn_th:
                     score -= 2
                     reasons.append(f"실적 미스 {surprise*100:.0f}%")
-                elif abs(surprise) <= 0.05:
+                elif abs(surprise) <= earn_th:
                     reasons.append(f"실적 부합 ({surprise*100:+.1f}%)")
 
                 data_points["earnings_surprise"] = round(float(surprise), 4)
@@ -130,10 +136,10 @@ class WallStreetAgent(BaseAgent):
                     elif "sale" in text or "sell" in text:
                         sells += 1
 
-                if buys > sells + 1:
+                if buys > sells + _CFG.get("insider_buy_margin", 1):
                     score += 1
                     reasons.append(f"내부자 순매수({buys}B/{sells}S)")
-                elif sells > buys + 3:
+                elif sells > buys + _CFG.get("insider_sell_margin", 3):
                     score -= 1
                     reasons.append(f"내부자 순매도({sells}S/{buys}B)")
 
@@ -158,10 +164,10 @@ class WallStreetAgent(BaseAgent):
                     bull_pct = (strong_buy + buy) / total
                     bear_pct = (sell + strong_sell) / total
 
-                    if bull_pct > 0.6:
+                    if bull_pct > _CFG.get("consensus_bull", 0.60):
                         score += 1
                         reasons.append(f"컨센서스 매수 {bull_pct:.0%}({strong_buy+buy}/{total}명)")
-                    elif bear_pct > 0.3:
+                    elif bear_pct > _CFG.get("consensus_bear", 0.30):
                         score -= 1
                         reasons.append(f"컨센서스 매도 {bear_pct:.0%}({sell+strong_sell}/{total}명)")
                     else:
@@ -175,18 +181,24 @@ class WallStreetAgent(BaseAgent):
             pass
 
         if not reasons:
-            return AgentVerdict(self.name, ticker, "HOLD", 20, "Wall Street 데이터 부족")
+            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 20), "Wall Street 데이터 부족")
 
         # 판정
-        if score >= 3:
-            action, confidence = "BUY", min(85, 45 + score * 10)
-        elif score <= -2:
-            action, confidence = "SELL", min(80, 45 + abs(score) * 10)
+        if score >= _CFG.get("score_buy", 3):
+            action, confidence = "BUY", min(
+                _CONF.get("buy_cap", 85),
+                _CONF.get("buy_base", 45) + score * _CONF.get("buy_multiplier", 10),
+            )
+        elif score <= _CFG.get("score_sell", -2):
+            action, confidence = "SELL", min(
+                _CONF.get("sell_cap", 80),
+                _CONF.get("sell_base", 45) + abs(score) * _CONF.get("sell_multiplier", 10),
+            )
         else:
-            action, confidence = "HOLD", 35 + abs(score) * 8
+            action, confidence = "HOLD", _CONF.get("hold_base", 35) + abs(score) * _CONF.get("hold_multiplier", 8)
 
         return AgentVerdict(
-            self.name, ticker, action, round(confidence, 1),
+            self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons),
             data_points,
         )
@@ -212,6 +224,9 @@ class WallStreetAgent(BaseAgent):
         score = 0
         reasons = []
 
+        earn_th = _CFG.get("earnings_surprise", 0.05)
+        ins_sell_margin = _CFG.get("insider_sell_margin", 3)
+
         if ratings:
             ups = sum(1 for r in ratings if r.get("action") in ("up", "upgrade") or "raise" in str(r.get("action", "")).lower())
             downs = sum(1 for r in ratings if r.get("action") in ("down", "downgrade") or "lower" in str(r.get("action", "")).lower())
@@ -224,17 +239,17 @@ class WallStreetAgent(BaseAgent):
 
         if earnings:
             sp = earnings[0].get("surprise_pct")
-            if sp and sp > 0.05:
+            if sp and sp > earn_th:
                 score += 1
                 reasons.append(f"실적+{sp*100:.0f}%(cached)")
-            elif sp and sp < -0.05:
+            elif sp and sp < -earn_th:
                 score -= 1
                 reasons.append(f"실적{sp*100:.0f}%(cached)")
 
         if insiders:
             sells = sum(1 for i in insiders if i.get("transaction_type") == "sale")
             buys = len(insiders) - sells
-            if sells > buys + 3:
+            if sells > buys + ins_sell_margin:
                 score -= 1
                 reasons.append(f"내부자매도({sells}S, cached)")
 
@@ -242,10 +257,11 @@ class WallStreetAgent(BaseAgent):
             return None
 
         if score >= 2:
-            action, conf = "BUY", 60
+            action, conf = "BUY", _CONF.get("cached_buy", 60)
         elif score <= -1:
-            action, conf = "SELL", 55
+            action, conf = "SELL", _CONF.get("cached_sell", 55)
         else:
-            action, conf = "HOLD", 40
+            action, conf = "HOLD", _CONF.get("cached_hold", 40)
 
-        return AgentVerdict(self.name, ticker, action, conf, "; ".join(reasons), {"cached": True})
+        return AgentVerdict(self.name, ticker, action, round(self.normalize_confidence(conf), 1),
+                           "; ".join(reasons), {"cached": True})

@@ -75,8 +75,7 @@ def _load_chart_data(ticker: str) -> pd.DataFrame | None:
 
 def _detect_signals(df: pd.DataFrame) -> pd.DataFrame:
     """매수/매도 시그널 감지 — signal_backtest의 detector registry 재사용."""
-    from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS, detect_signal_entries
-    from nuri.trading.recommend.candidates import BUY_SIGNALS
+    from nuri.quant.validation.signal_backtest import BUY_SIGNALS, SIGNAL_DEFINITIONS, detect_signal_entries
 
     # charts.py는 date index 사용, signal_backtest는 positional index 사용
     # volume_sma_20 계산 (signal_backtest의 compute_indicators와 동일 패턴)

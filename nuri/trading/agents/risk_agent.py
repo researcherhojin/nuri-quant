@@ -1,6 +1,10 @@
 """리스크 관리 에이전트 — VaR, 손절선, 포지션 집중도 기반 판정."""
+from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.rules import MAX_SINGLE_POSITION, STOCK_STOP_LOSS
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
+
+_CFG = AGENT_CONFIG.get("risk", {})
+_CONF = _CFG.get("confidence", {})
 
 
 class RiskAgent(BaseAgent):
@@ -10,6 +14,9 @@ class RiskAgent(BaseAgent):
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         reasons = []
         score = 0  # 양수=안전, 음수=위험
+
+        loss_threshold = _CFG.get("loss_threshold", -10)
+        profit_threshold = _CFG.get("profit_threshold", 20)
 
         # 1. 손절선 체크
         holding = self._safe_query(
@@ -29,14 +36,17 @@ class RiskAgent(BaseAgent):
             if pnl_pct <= STOCK_STOP_LOSS:
                 score -= 3
                 reasons.append(f"손절선 돌파 ({pnl_pct:+.1f}% ≤ {STOCK_STOP_LOSS}%)")
-            elif pnl_pct < -10:
+            elif pnl_pct < loss_threshold:
                 score -= 1
                 reasons.append(f"손실 중 ({pnl_pct:+.1f}%)")
-            elif pnl_pct > 20:
+            elif pnl_pct > profit_threshold:
                 reasons.append(f"수익 양호 ({pnl_pct:+.1f}%)")
                 score += 1
 
         # 2. 변동성 체크 (최근 30일 수익률 표준편차)
+        vol_high = _CFG.get("volatility_high", 5)
+        vol_low = _CFG.get("volatility_low", 2)
+
         from nuri.core.db import query_df
         recent = query_df(
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 30",
@@ -44,10 +54,10 @@ class RiskAgent(BaseAgent):
         )
         if len(recent) >= 10:
             vol = recent["close"].pct_change().std() * 100
-            if vol > 5:
+            if vol > vol_high:
                 score -= 1
                 reasons.append(f"고변동성 (일간σ {vol:.1f}%)")
-            elif vol < 2:
+            elif vol < vol_low:
                 score += 1
                 reasons.append(f"저변동성 (일간σ {vol:.1f}%)")
 
@@ -62,17 +72,23 @@ class RiskAgent(BaseAgent):
                 reasons.append(f"비중 초과 ({weight*100:.1f}% > {MAX_SINGLE_POSITION*100:.0f}%)")
 
         # 판정
-        if score <= -2:
-            action, confidence = "SELL", min(85, 50 + abs(score) * 15)
+        score_sell = _CFG.get("score_sell", -2)
+        score_buy = _CFG.get("score_buy", 2)
+
+        if score <= score_sell:
+            action, confidence = "SELL", min(
+                _CONF.get("sell_cap", 85),
+                _CONF.get("sell_base", 50) + abs(score) * _CONF.get("sell_multiplier", 15),
+            )
             if any("손절선" in r for r in reasons):
-                confidence = 90  # 손절선 돌파는 최고 확신
-        elif score >= 2:
-            action, confidence = "BUY", 50 + score * 10
+                confidence = _CONF.get("stop_loss_override", 90)
+        elif score >= score_buy:
+            action, confidence = "BUY", _CONF.get("buy_base", 50) + score * _CONF.get("buy_multiplier", 10)
         else:
-            action, confidence = "HOLD", 40 + abs(score) * 10
+            action, confidence = "HOLD", _CONF.get("hold_base", 40) + abs(score) * _CONF.get("hold_multiplier", 10)
 
         return AgentVerdict(
-            self.name, ticker, action, round(confidence, 1),
+            self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons) or "리스크 정상",
             {"score": score},
         )
