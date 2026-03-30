@@ -6,9 +6,24 @@ router = APIRouter(tags=["targets"])
 
 @router.get("/targets")
 def get_portfolio_targets():
-    """전 종목 매수가/손절가/익절가 계산."""
-    from nuri.trading.recommend.price_targets import calculate_portfolio_targets
+    """전 종목 매수가/손절가/익절가 + 익절/트레일링 시그널."""
+    from nuri.trading.recommend.price_targets import (
+        calculate_portfolio_targets,
+        check_take_profit_signals,
+        check_trailing_stop_signals,
+    )
     targets = calculate_portfolio_targets()
+
+    # 익절/트레일링 도달 종목 태깅
+    tp_signals = {s["ticker"]: s for s in check_take_profit_signals()}
+    ts_signals = {s["ticker"]: s for s in check_trailing_stop_signals()}
+    for t in targets:
+        tp = tp_signals.get(t["ticker"])
+        ts = ts_signals.get(t["ticker"])
+        t["take_profit_triggered"] = tp["level"] if tp else None
+        t["take_profit_sell_pct"] = tp["sell_pct"] if tp else None
+        t["trailing_stop_triggered"] = ts is not None
+
     return {"targets": targets, "count": len(targets)}
 
 

@@ -40,16 +40,20 @@ async function TargetsSection() {
     return <p className="text-red-400 text-sm">API 연결 실패. make api 실행 필요.</p>;
   }
 
-  const valid = data.targets.filter((t) => !t.error);
-  const growth = valid.filter((t) => t.stock_type === "growth");
-  const value = valid.filter((t) => t.stock_type === "value");
+  const valid = data.targets.filter((t: any) => !t.error);
+  const growth = valid.filter((t: any) => t.stock_type === "growth");
+  const value = valid.filter((t: any) => t.stock_type === "value");
+  const tpTriggered = valid.filter((t: any) => t.take_profit_triggered);
+  const tsTriggered = valid.filter((t: any) => t.trailing_stop_triggered);
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Metric label="전체 종목" value={`${valid.length}개`} />
         <Metric label="성장주" value={`${growth.length}개`} sub="SL -7% / TP +20%/+40%" color="green" />
         <Metric label="가치주" value={`${value.length}개`} sub="SL -10% / TP +15%/+30%" />
+        <Metric label="익절 도달" value={`${tpTriggered.length}개`} sub={tpTriggered.length > 0 ? "매도 필요" : ""} color={tpTriggered.length > 0 ? "green" : "default"} />
+        <Metric label="트레일링 스톱" value={`${tsTriggered.length}개`} sub={tsTriggered.length > 0 ? "즉시 매도" : ""} color={tsTriggered.length > 0 ? "red" : "default"} />
       </div>
 
       <Card className="bg-card border-border">

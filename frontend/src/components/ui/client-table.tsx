@@ -92,6 +92,12 @@ const VARIANTS: Record<string, any[]> = {
     { key: "target_1", label: "1차 익절", align: "right", render: (v: number) => <span className="text-emerald-400">{price(v)}</span> },
     { key: "target_2", label: "2차 익절", align: "right", render: (v: number) => <span className="text-emerald-400">{price(v)}</span> },
     { key: "analyst_target", label: "목표가", align: "right", render: (v: number) => v ? <span className="text-blue-400">{price(v)}</span> : dim("—") },
+    { key: "take_profit_triggered", label: "시그널", align: "center", render: (_v: string | null, row: any) => {
+      if (row.trailing_stop_triggered) return <span className="text-red-400 text-[10px] font-medium">TRAIL STOP</span>;
+      if (_v === "target_2") return <span className="text-amber-400 text-[10px] font-medium">TP2 ({row.take_profit_sell_pct}%)</span>;
+      if (_v === "target_1") return <span className="text-emerald-400 text-[10px] font-medium">TP1 ({row.take_profit_sell_pct}%)</span>;
+      return dim("—");
+    }},
   ],
   swing: [
     { key: "ticker", label: "Ticker", render: ticker },
