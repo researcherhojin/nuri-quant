@@ -5,7 +5,8 @@ on:
     branches: [main]
 
 jobs:
-  Quick Checks:
+  quick-checks:
+    name: Quick Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -44,9 +45,10 @@ jobs:
             exit 1
           fi
 
-  PR Summary:
+  pr-summary:
+    name: PR Summary
     runs-on: ubuntu-latest
-    needs: [Quick Checks]
+    needs: [quick-checks]
     if: always()
     permissions:
       pull-requests: write
@@ -56,7 +58,7 @@ jobs:
         with:
           script: |
             const jobs = [
-              { name: 'Quick Checks', status: '${{ needs.Quick Checks.result }}' },
+              { name: 'Quick Checks', status: '${{ needs.quick-checks.result }}' },
             ];
 
             const icon = (s) => s === 'success' ? '✅' : s === 'skipped' ? '⏭️' : '❌';
