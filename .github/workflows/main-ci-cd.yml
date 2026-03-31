@@ -8,9 +8,65 @@ on:
 
 env:
   PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
 
 jobs:
-  lint:
+  # ─── Frontend ───
+
+  Frontend Tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Run tests with coverage
+        run: npx vitest run --coverage
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/lcov.info
+          flags: frontend
+          disable_search: true
+          fail_ci_if_error: false
+
+  Frontend Build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Production build
+        run: npm run build
+
+  # ─── Backend ───
+
+  Backend Lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -18,7 +74,7 @@ jobs:
         with:
           args: "check nuri/ tests/ scripts/"
 
-  test:
+  Backend Tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -96,30 +152,17 @@ jobs:
           disable_search: true
           fail_ci_if_error: false
 
-  frontend:
+  # ─── Security ───
+
+  Security Scan:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v4
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - name: Run frontend tests with coverage
-        run: npx vitest run --coverage
-      - name: Upload frontend coverage to Codecov
-        if: always()
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/lcov.info
-          flags: frontend
-          disable_search: true
-          fail_ci_if_error: false
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL
+          exit-code: 1
+          format: table
