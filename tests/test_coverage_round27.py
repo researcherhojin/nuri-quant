@@ -1755,6 +1755,12 @@ class TestScanner:
 class TestAPIMain:
     """Tests for nuri/api/main.py."""
 
+    @pytest.fixture(autouse=True)
+    def _disable_rate_limiter(self, monkeypatch):
+        """Disable rate limiter for all API main tests."""
+        from nuri.api import main as main_mod
+        monkeypatch.setattr(main_mod.limiter, "enabled", False)
+
     def test_health_endpoint(self):
         """Health endpoint returns ok."""
         from fastapi.testclient import TestClient
