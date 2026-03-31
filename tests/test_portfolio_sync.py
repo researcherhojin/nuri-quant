@@ -502,3 +502,26 @@ class TestExport:
         r = client.get("/api/portfolio/export")
         assert r.status_code == 200
         assert r.headers["content-type"] == "text/csv; charset=utf-8"
+
+
+class TestSamplePortfolio:
+    """POST /api/portfolio/sample 테스트."""
+
+    def test_load_sample(self, client):
+        """샘플 포트폴리오 로드."""
+        r = client.post("/api/portfolio/sample")
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+        assert r.json()["loaded"] == 5
+
+        # DB 반영 확인
+        r2 = client.get("/api/portfolio")
+        assert r2.json()["count"] == 5
+
+    def test_load_sample_replaces_existing(self, client):
+        """샘플 재로드 시 기존 sample 계좌 교체."""
+        client.post("/api/portfolio/sample")
+        client.post("/api/portfolio/sample")
+        r = client.get("/api/portfolio")
+        # 중복 없이 5개만
+        assert r.json()["count"] == 5

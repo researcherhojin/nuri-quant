@@ -9,6 +9,12 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+// next/navigation stub
+const mockSearchParams = new URLSearchParams();
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => mockSearchParams,
+}));
+
 const mockHoldings = [
   { ticker: "TSLA", account: "kakaopay", quantity: 33, avg_price: 343.39, currency: "USD", sector: "EV/AI", latest_price: 250, price_date: "2026-03-31" },
   { ticker: "005930.KS", account: "toss", quantity: 4, avg_price: 200500, currency: "KRW", sector: "Semiconductor", latest_price: 210000, price_date: "2026-03-31" },
@@ -70,11 +76,11 @@ describe("PortfolioPage", () => {
     expect(screen.getByText("toss")).toBeInTheDocument();
   });
 
-  it("shows empty state when no holdings", async () => {
+  it("shows onboarding guide when no holdings", async () => {
     global.fetch = mockFetch({ holdings: { holdings: [], count: 0 } });
     render(<PortfolioPage />);
     await waitFor(() => {
-      expect(screen.getByText(/No holdings yet/)).toBeInTheDocument();
+      expect(screen.getByText(/Start by adding your portfolio/)).toBeInTheDocument();
     });
   });
 
@@ -137,5 +143,34 @@ describe("PortfolioPage", () => {
       expect(screen.getByText("$250")).toBeInTheDocument();
       expect(screen.getByText("₩210,000")).toBeInTheDocument();
     });
+  });
+
+  it("shows onboarding guide when empty", async () => {
+    global.fetch = mockFetch({ holdings: { holdings: [], count: 0 } });
+    render(<PortfolioPage />);
+    await waitFor(() => {
+      expect(screen.getByText(/Start by adding your portfolio/)).toBeInTheDocument();
+      expect(screen.getByText("Add holdings")).toBeInTheDocument();
+      expect(screen.getByText("Collect market data")).toBeInTheDocument();
+      expect(screen.getByText("Run analysis")).toBeInTheDocument();
+    });
+  });
+
+  it("shows Load Sample Portfolio button when empty", async () => {
+    global.fetch = mockFetch({ holdings: { holdings: [], count: 0 } });
+    render(<PortfolioPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Load Sample Portfolio")).toBeInTheDocument();
+    });
+  });
+
+  it("shows welcome message with onboarding=true", async () => {
+    mockSearchParams.set("onboarding", "true");
+    global.fetch = mockFetch({ holdings: { holdings: [], count: 0 } });
+    render(<PortfolioPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Welcome to Nuri-Quant")).toBeInTheDocument();
+    });
+    mockSearchParams.delete("onboarding");
   });
 });
