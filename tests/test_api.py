@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    """테스트용 DB로 격리된 FastAPI TestClient."""
+    """테스트용 DB + 임시 YAML로 격리된 FastAPI TestClient."""
     from nuri.core.db import init_db
 
     db_path = tmp_path / "test.db"
@@ -18,6 +18,10 @@ def client(tmp_path, monkeypatch):
     # 모든 모듈이 참조하는 DB_PATH를 테스트 DB로 교체
     import nuri.core.db as db_mod
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+    # YAML 동기화가 실제 portfolio.yaml을 덮어쓰지 않도록 격리
+    import nuri.core.portfolio_sync as sync_mod
+    monkeypatch.setattr(sync_mod, "CONFIG_PATH", tmp_path / "portfolio.yaml")
 
     from nuri.api.main import app
     return TestClient(app)
