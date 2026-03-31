@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,14 @@ interface Holding {
 const ACCOUNTS = ["kakaopay", "mirae", "toss", "pension", "irp"];
 
 export default function PortfolioPage() {
+  return (
+    <Suspense fallback={<div className="h-32 bg-muted rounded animate-pulse" />}>
+      <PortfolioContent />
+    </Suspense>
+  );
+}
+
+function PortfolioContent() {
   const searchParams = useSearchParams();
   const isOnboarding = searchParams.get("onboarding") === "true";
 
