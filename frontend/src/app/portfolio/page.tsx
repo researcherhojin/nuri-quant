@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
@@ -21,9 +22,13 @@ interface Holding {
 const ACCOUNTS = ["kakaopay", "mirae", "toss", "pension", "irp"];
 
 export default function PortfolioPage() {
+  const searchParams = useSearchParams();
+  const isOnboarding = searchParams.get("onboarding") === "true";
+
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [loadingSample, setLoadingSample] = useState(false);
   const [form, setForm] = useState({
     account: "kakaopay", ticker: "", quantity: "", avg_price: "", currency: "USD", sector: "",
   });
@@ -59,6 +64,13 @@ export default function PortfolioPage() {
   }
 
   useEffect(() => { fetchHoldings(); }, []);
+
+  async function handleLoadSample() {
+    setLoadingSample(true);
+    await fetch(`${API_BASE}/api/portfolio/sample`, { method: "POST" });
+    setLoadingSample(false);
+    fetchHoldings();
+  }
 
   // ─── Add ───
   async function handleAdd(e: React.FormEvent) {
@@ -327,11 +339,45 @@ export default function PortfolioPage() {
       {loading ? (
         <div className="h-32 bg-muted rounded animate-pulse" />
       ) : Object.keys(grouped).length === 0 ? (
-        <Card className="bg-card border-border">
-          <CardContent className="pt-5">
+        <Card className={`bg-card border-border ${isOnboarding ? "border-emerald-700" : ""}`}>
+          <CardContent className="pt-5 space-y-4">
+            {isOnboarding && (
+              <p className="text-sm font-medium text-emerald-400">
+                Welcome to Nuri-Quant
+              </p>
+            )}
             <p className="text-sm text-muted-foreground">
-              No holdings yet. Add a holding or upload a CSV to get started.
+              Start by adding your portfolio. Follow these steps:
             </p>
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <span className="flex-none w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center">1</span>
+                <div>
+                  <p className="text-sm font-medium">Add holdings</p>
+                  <p className="text-xs text-muted-foreground">Click &quot;Add Holding&quot; above to enter your positions manually, or upload a CSV file.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="flex-none w-6 h-6 rounded-full bg-zinc-700 text-zinc-300 text-xs flex items-center justify-center">2</span>
+                <div>
+                  <p className="text-sm font-medium">Collect market data</p>
+                  <p className="text-xs text-muted-foreground">Run <code className="text-emerald-400">make collect</code> to fetch price/macro data for your tickers.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="flex-none w-6 h-6 rounded-full bg-zinc-700 text-zinc-300 text-xs flex items-center justify-center">3</span>
+                <div>
+                  <p className="text-sm font-medium">Run analysis</p>
+                  <p className="text-xs text-muted-foreground">Run <code className="text-emerald-400">make full-scan</code> for the complete pipeline, or visit the Dashboard.</p>
+                </div>
+              </div>
+            </div>
+            <div className="pt-2 flex gap-2">
+              <Button onClick={handleLoadSample} disabled={loadingSample}
+                variant="outline" className="text-xs h-8">
+                {loadingSample ? "Loading..." : "Load Sample Portfolio"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (

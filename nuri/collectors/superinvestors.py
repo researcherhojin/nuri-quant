@@ -24,6 +24,9 @@ SUPERINVESTORS = {
     "Ray Dalio": "0001350694",            # Bridgewater Associates
     "Bill Ackman": "0001336528",          # Pershing Square
     "David Tepper": "0001656456",         # Appaloosa Management
+    "National Pension Service": "0001608046",  # 국민연금 (NPS Korea)
+    "Scott Bessent (Key Square)": "0001662970",  # 미 재무장관, Key Square Capital
+    "Vivek Ramaswamy (Strive)": "0001954109",   # Strive Asset Management
 }
 
 # edgartools User-Agent (SEC 정책 준수)

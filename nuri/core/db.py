@@ -466,6 +466,9 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
     (10, "add high_water_mark to positions", """
         ALTER TABLE positions ADD COLUMN high_water_mark REAL;
     """),
+    (11, "add metadata to portfolio", """
+        ALTER TABLE portfolio ADD COLUMN metadata TEXT;
+    """),
 ]
 
 
@@ -528,12 +531,15 @@ def upsert_portfolio(records: list[dict], db_path: Optional[Path] = None) -> int
     """포트폴리오 보유 종목 upsert."""
     if not records:
         return 0
+    # metadata 필드 없는 레코드에 기본값 추가
+    for r in records:
+        r.setdefault("metadata", None)
     with get_db(db_path) as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO portfolio
-               (account, ticker, quantity, avg_price, currency, sector, updated_at)
+               (account, ticker, quantity, avg_price, currency, sector, metadata, updated_at)
                VALUES (:account, :ticker, :quantity, :avg_price, :currency, :sector,
-                       datetime('now'))""",
+                       :metadata, datetime('now'))""",
             records,
         )
         return len(records)
