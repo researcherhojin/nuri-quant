@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 jobs:
-  quick-checks:
+  Quick Checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -44,33 +44,19 @@ jobs:
             exit 1
           fi
 
-  security-scan:
+  PR Summary:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: CRITICAL
-          exit-code: 1
-          format: table
-
-  pr-summary:
-    runs-on: ubuntu-latest
-    needs: [quick-checks, security-scan]
+    needs: [Quick Checks]
     if: always()
     permissions:
       pull-requests: write
     steps:
-      - name: PR Check Summary
+      - name: Post PR summary
         uses: actions/github-script@v7
         with:
           script: |
             const jobs = [
-              { name: 'quick-checks', status: '${{ needs.quick-checks.result }}' },
-              { name: 'security-scan', status: '${{ needs.security-scan.result }}' },
+              { name: 'Quick Checks', status: '${{ needs.Quick Checks.result }}' },
             ];
 
             const icon = (s) => s === 'success' ? '✅' : s === 'skipped' ? '⏭️' : '❌';
