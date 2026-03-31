@@ -2,12 +2,16 @@
 
 config/portfolio.yaml에서 보유 종목을 읽어 portfolio 테이블에 upsert한다.
 연금저축(auto_invest)과 IRP(보유종목 없음)는 건너뛴다.
+ticker/qty/avg/sector 외 추가 필드는 metadata JSON으로 보존.
 """
+import json
 from pathlib import Path
 
 import yaml
 
 from nuri.core.db import init_db, upsert_portfolio
+
+_KNOWN_FIELDS = {"ticker", "qty", "avg", "sector"}
 
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "portfolio.yaml"
 
@@ -29,6 +33,8 @@ def load_holdings(config_path: Path = CONFIG_PATH) -> list[dict]:
             if "ticker" not in h or "qty" not in h or "avg" not in h:
                 continue
 
+            # ticker/qty/avg/sector 외 추가 필드 → metadata JSON
+            extra = {k: v for k, v in h.items() if k not in _KNOWN_FIELDS}
             records.append({
                 "account": account_id,
                 "ticker": str(h["ticker"]),
@@ -36,6 +42,7 @@ def load_holdings(config_path: Path = CONFIG_PATH) -> list[dict]:
                 "avg_price": float(h["avg"]),
                 "currency": currency,
                 "sector": h.get("sector", ""),
+                "metadata": json.dumps(extra, ensure_ascii=False) if extra else None,
             })
 
     return records
