@@ -525,3 +525,146 @@ class TestSamplePortfolio:
         r = client.get("/api/portfolio")
         # 중복 없이 5개만
         assert r.json()["count"] == 5
+
+
+class TestMetadata:
+    """metadata JSON 컬럼 roundtrip 테스트."""
+
+    def test_post_with_metadata(self, client):
+        """POST 시 metadata 저장."""
+        r = client.post("/api/portfolio", json={
+            "account": "test", "ticker": "TSLL",
+            "quantity": 96, "avg_price": 20.0,
+            "sector": "SectorB",
+            "metadata": {"flag": "SELL", "note": "레버리지 ETF 금지"},
+        })
+        assert r.status_code == 200
+
+    def test_put_with_metadata(self, client):
+        """PUT으로 metadata 수정."""
+        client.post("/api/portfolio", json={
+            "account": "test", "ticker": "AAPL",
+            "quantity": 10, "avg_price": 190.0,
+        })
+        r = client.put("/api/portfolio/test/AAPL", json={
+            "metadata": {"flag": "HOLD", "target": 220},
+        })
+        assert r.status_code == 200
+
+    def test_metadata_roundtrip_yaml(self, client, tmp_path):
+        """POST → YAML 동기화 → metadata 필드 복원 확인."""
+        client.post("/api/portfolio", json={
+            "account": "test", "ticker": "TSLL",
+            "quantity": 96, "avg_price": 20.0,
+            "sector": "SectorB",
+            "metadata": {"flag": "SELL"},
+        })
+        yaml_path = tmp_path / "portfolio.yaml"
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        holdings = data["accounts"]["test"]["holdings"]
+        tsll = [h for h in holdings if h["ticker"] == "TSLL"][0]
+        # flag가 YAML에 복원됨
+        assert tsll["flag"] == "SELL"
+
+    def test_metadata_in_import(self, tmp_path, monkeypatch):
+        """import_portfolio.py가 YAML의 추가 필드를 metadata로 보존."""
+        from nuri.core.db import init_db, query
+
+        db_path = tmp_path / "test.db"
+        init_db(db_path)
+
+        # flag 포함 YAML 생성
+        yaml_path = tmp_path / "portfolio.yaml"
+        yaml_content = {
+            "accounts": {
+                "test": {
+                    "currency": "USD",
+                    "holdings": [
+                        {"ticker": "TSLL", "qty": 96, "avg": 20.0,
+                         "sector": "SectorB", "flag": "SELL"},
+                    ],
+                },
+            },
+        }
+        with open(yaml_path, "w") as f:
+            yaml.dump(yaml_content, f)
+
+        # import 실행
+        import scripts.import_portfolio as imp
+        records = imp.load_holdings(config_path=yaml_path)
+        from nuri.core.db import upsert_portfolio
+        upsert_portfolio(records, db_path=db_path)
+
+        # DB에서 metadata 확인
+        rows = query("SELECT metadata FROM portfolio WHERE ticker='TSLL'", db_path=db_path)
+        assert rows
+        import json
+        meta = json.loads(rows[0]["metadata"])
+        assert meta["flag"] == "SELL"
+
+    def test_metadata_invalid_json_ignored(self, tmp_path, monkeypatch):
+        """DB에 잘못된 JSON이 있어도 에러 없이 무시."""
+        from nuri.core.db import get_db, init_db, upsert_portfolio
+        from nuri.core.portfolio_sync import sync_portfolio_to_yaml
+
+        db_path = tmp_path / "test.db"
+        init_db(db_path)
+        upsert_portfolio([{
+            "account": "test", "ticker": "BAD",
+            "quantity": 1, "avg_price": 100.0,
+            "currency": "USD", "sector": "",
+            "metadata": "not-valid-json{",
+        }], db_path=db_path)
+
+        yaml_path = tmp_path / "out.yaml"
+        # 에러 없이 동기화 완료
+        count = sync_portfolio_to_yaml(config_path=yaml_path, db_path=db_path)
+        assert count == 1
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        bad = data["accounts"]["test"]["holdings"][0]
+        assert bad["ticker"] == "BAD"
+        assert "flag" not in bad  # 잘못된 JSON은 무시됨
+
+    def test_metadata_full_roundtrip(self, tmp_path, monkeypatch):
+        """YAML → import → DB → sync → YAML: flag 완전 보존."""
+        from nuri.core.db import init_db, upsert_portfolio
+        from nuri.core.portfolio_sync import sync_portfolio_to_yaml
+
+        db_path = tmp_path / "test.db"
+        init_db(db_path)
+
+        # 1. YAML → import
+        yaml_path = tmp_path / "portfolio.yaml"
+        yaml_content = {
+            "accounts": {
+                "test": {
+                    "name": "Brokerage Alpha",
+                    "currency": "USD",
+                    "holdings": [
+                        {"ticker": "TSLL", "qty": 96, "avg": 20.0,
+                         "sector": "SectorB", "flag": "SELL"},
+                        {"ticker": "NVDA", "qty": 20, "avg": 100.0,
+                         "sector": "Semiconductor"},
+                    ],
+                },
+            },
+        }
+        with open(yaml_path, "w") as f:
+            yaml.dump(yaml_content, f, allow_unicode=True)
+
+        import scripts.import_portfolio as imp
+        records = imp.load_holdings(config_path=yaml_path)
+        upsert_portfolio(records, db_path=db_path)
+
+        # 2. DB → sync → YAML
+        sync_portfolio_to_yaml(config_path=yaml_path, db_path=db_path)
+
+        # 3. 검증: flag 보존, metadata 없는 종목은 flag 없음
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        holdings = data["accounts"]["test"]["holdings"]
+        tsll = [h for h in holdings if h["ticker"] == "TSLL"][0]
+        nvda = [h for h in holdings if h["ticker"] == "NVDA"][0]
+        assert tsll["flag"] == "SELL"
+        assert "flag" not in nvda
+        # 메타데이터 보존
+        assert data["accounts"]["test"]["name"] == "Brokerage Alpha"
