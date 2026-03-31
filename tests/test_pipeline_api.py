@@ -29,9 +29,11 @@ def client(db_path, monkeypatch):
     import nuri.core.db as db_mod
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
+    # xdist 병렬 실행 시 rate limiter 간섭 방지 (route-level + app-level)
+    import nuri.api.routes.pipeline as pipeline_mod
+    monkeypatch.setattr(pipeline_mod._limiter, "enabled", False)
+
     from nuri.api.main import app
-    # xdist 병렬 실행 시 rate limiter 간섭 방지
-    app.state.limiter._default_limits = []
     return TestClient(app)
 
 
