@@ -14,13 +14,17 @@ Open-source quantitative investment platform that **proves why you should buy or
 
 ## Pipeline
 
+`make full-scan` runs all 8 phases end-to-end:
+
 ```mermaid
 graph LR
-    A["Collect<br/>21 collectors<br/>+ 11 external sources"] --> B["Validate<br/>8,000+ trades<br/>15 signals backtest"]
-    B --> C["Classify<br/>10-regime model<br/>bull/bear/sideways<br/>+ special regimes"]
-    C --> D["Diagnose<br/>10 agents<br/>weighted consensus"]
-    D --> E["Certify<br/>SIEGE 10-gate<br/>pass / reject"]
-    E --> F["Recommend<br/>entry / stop-loss<br/>take-profit targets"]
+    A["A · Collect<br/>21 collectors"] --> B["B · Analyze<br/>portfolio + sector<br/>+ risk"]
+    B --> C["C · Validate<br/>15 signals backtest<br/>+ scorecard"]
+    C --> D["D · Classify<br/>10-regime model<br/>+ multi-factor"]
+    D --> E["E · Recommend<br/>10-agent consensus<br/>+ swing scan"]
+    E --> F["F · Certify<br/>price targets<br/>+ SIEGE 10-gate"]
+    F --> G["G · Evidence<br/>5 Plotly charts"]
+    G --> H["H · Notify<br/>Discord / Telegram"]
 
     style A fill:#e8eaf6,stroke:#5c6bc0
     style B fill:#e8f5e9,stroke:#66bb6a
@@ -28,6 +32,8 @@ graph LR
     style D fill:#e3f2fd,stroke:#42a5f5
     style E fill:#fce4ec,stroke:#ef5350
     style F fill:#f3e5f5,stroke:#ab47bc
+    style G fill:#e0f2f1,stroke:#26a69a
+    style H fill:#fff9c4,stroke:#fdd835
 ```
 
 ## Tech Stack
@@ -78,10 +84,13 @@ graph LR
 **Testing & CI/CD**<br/>
 ![pytest](https://img.shields.io/badge/pytest-9.0.2-0A9EDC?logo=pytest&logoColor=white)
 ![pytest-xdist](https://img.shields.io/badge/xdist-3.8.0-0A9EDC)
+![Vitest](https://img.shields.io/badge/Vitest-4.1.2-6E9F18?logo=vitest&logoColor=white)
 ![Ruff](https://img.shields.io/badge/Ruff-0.13.3-D7FF64?logo=ruff&logoColor=black)
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI/CD-2088FF?logo=githubactions&logoColor=white)
-![Codecov](https://img.shields.io/badge/Codecov-coverage-F01F7A?logo=codecov&logoColor=white)
+![Codecov](https://img.shields.io/badge/Codecov-88%25-F01F7A?logo=codecov&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)
+
+> 2,568 backend tests (90% coverage) + 421 frontend tests (62% coverage) · parallel via xdist/vitest
 
 ## Getting Started
 
@@ -103,7 +112,7 @@ make quick-scan            # Collect → analyze → consensus → targets (~2 m
 make consensus             # 10-agent consensus + price targets
 make certify               # SIEGE 10-condition certification
 make start                 # API (:8001) + Dashboard (:3000)
-make test                  # pytest (2419 tests, 70 files, parallel via xdist)
+make test                  # pytest (2568 tests, 71 files, parallel via xdist)
 make lint                  # ruff check
 
 # Single test
