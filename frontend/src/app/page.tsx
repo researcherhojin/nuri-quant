@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -68,6 +69,12 @@ async function Dashboard() {
     ]).catch(() => null),
     fetchAPI<any>("/api/rebalance-advisor").catch(() => null),
   ]);
+
+  // 포트폴리오 비어있으면 온보딩으로 리다이렉트
+  const holdingCount = portfolio?.count ?? portfolio?.holdings?.length ?? 0;
+  if (holdingCount === 0) {
+    redirect("/portfolio?onboarding=true");
+  }
 
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
 
