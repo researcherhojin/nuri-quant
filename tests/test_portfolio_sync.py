@@ -604,7 +604,7 @@ class TestMetadata:
 
     def test_metadata_invalid_json_ignored(self, tmp_path, monkeypatch):
         """DB에 잘못된 JSON이 있어도 에러 없이 무시."""
-        from nuri.core.db import get_db, init_db, upsert_portfolio
+        from nuri.core.db import init_db, upsert_portfolio
         from nuri.core.portfolio_sync import sync_portfolio_to_yaml
 
         db_path = tmp_path / "test.db"
