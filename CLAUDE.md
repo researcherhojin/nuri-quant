@@ -335,7 +335,7 @@ data/
 
 ## Testing
 
-2419 backend tests across 70 files + 209 frontend tests across 10 files (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 91% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
+2568 backend tests across 71 files + 421 frontend tests across 31 files (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 90% coverage, frontend 62% coverage (Codecov: 88% combined). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
