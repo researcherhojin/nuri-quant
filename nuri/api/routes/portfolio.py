@@ -1,12 +1,20 @@
 """포트폴리오 + 리스크 API."""
+import logging
 import re
 from enum import Enum
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
 from nuri.api.auth import require_write_auth
 from nuri.core.db import audit_log, query, upsert_portfolio
+from nuri.core.portfolio_sync import sync_portfolio_to_yaml
+
+logger = logging.getLogger(__name__)
+
+# PUT에서 허용하는 컬럼명 (동적 SQL 방어)
+_UPDATABLE_COLUMNS = {"quantity", "avg_price", "currency", "sector"}
 
 router = APIRouter(tags=["portfolio"])
 
@@ -72,6 +80,49 @@ class HoldingInput(BaseModel):
         return v.strip()
 
 
+class HoldingUpdate(BaseModel):
+    """보유 종목 수정용 모델. 모든 필드 optional — 전달된 필드만 업데이트."""
+    quantity: Optional[float] = None
+    avg_price: Optional[float] = None
+    currency: Optional[CurrencyEnum] = None
+    sector: Optional[str] = None
+
+    @field_validator("quantity")
+    @classmethod
+    def validate_quantity(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v <= 0:
+                raise ValueError("quantity는 0보다 커야 합니다")
+            if v > 100_000:
+                raise ValueError("quantity 최대 100,000주")
+        return v
+
+    @field_validator("avg_price")
+    @classmethod
+    def validate_avg_price(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v <= 0:
+                raise ValueError("avg_price는 0보다 커야 합니다")
+            if v > 10_000_000:
+                raise ValueError("avg_price 최대 10,000,000")
+        return v
+
+    @field_validator("sector")
+    @classmethod
+    def validate_sector(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 50:
+            raise ValueError("sector 최대 50자")
+        return v.strip() if v is not None else v
+
+
+def _try_sync_yaml():
+    """YAML 동기화 시도. 실패해도 DB 변경은 유지."""
+    try:
+        sync_portfolio_to_yaml()
+    except Exception:
+        logger.exception("portfolio.yaml 동기화 실패 — DB 변경은 정상 반영됨")
+
+
 @router.get("/portfolio")
 def get_portfolio():
     """종목별 보유 현황."""
@@ -97,6 +148,7 @@ def add_holding(holding: HoldingInput, user=Depends(require_write_auth)):
     audit_log("INSERT", "portfolio", record["ticker"],
               f"account={record['account']} qty={record['quantity']} avg={record['avg_price']}",
               user_id=user.get("sub", "unknown"))
+    _try_sync_yaml()
     return {"ok": True, "ticker": record["ticker"]}
 
 
@@ -122,7 +174,51 @@ def delete_holding(account: str, ticker: str, user=Depends(require_write_auth)):
         raise HTTPException(status_code=404, detail="종목 미발견")
     audit_log("DELETE", "portfolio", ticker,
               f"account={account}", user_id=user.get("sub", "unknown"))
+    _try_sync_yaml()
     return {"ok": True, "deleted": ticker}
+
+
+@router.put("/portfolio/{account}/{ticker}")
+def update_holding(account: str, ticker: str, update: HoldingUpdate, user=Depends(require_write_auth)):
+    """보유 종목 수정 (인증 필요). 전달된 필드만 업데이트."""
+    from nuri.core.db import get_db
+
+    account = account.lower().strip()
+    ticker = ticker.upper().strip()
+
+    if account not in _VALID_ACCOUNTS:
+        raise HTTPException(status_code=400, detail=f"유효하지 않은 계좌: {account}")
+    if not _TICKER_PATTERN.match(ticker):
+        raise HTTPException(status_code=400, detail=f"유효하지 않은 ticker: {ticker}")
+
+    # 변경할 필드만 추출
+    changes = update.model_dump(exclude_none=True)
+    if not changes:
+        raise HTTPException(status_code=400, detail="수정할 필드가 없습니다")
+
+    # 허용 컬럼 검증 (동적 SQL 방어)
+    invalid_cols = set(changes.keys()) - _UPDATABLE_COLUMNS
+    if invalid_cols:  # pragma: no cover — Pydantic이 먼저 필터링, 방어 코드
+        raise HTTPException(status_code=400, detail=f"수정 불가 필드: {invalid_cols}")
+
+    # SET 절 동적 생성
+    set_clauses = [f"{col} = ?" for col in changes]
+    set_clauses.append("updated_at = datetime('now')")
+    values = list(changes.values()) + [account, ticker]
+
+    with get_db() as conn:
+        cur = conn.execute(
+            f"UPDATE portfolio SET {', '.join(set_clauses)} WHERE account=? AND ticker=?",
+            values,
+        )
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="종목 미발견")
+
+    audit_log("UPDATE", "portfolio", ticker,
+              f"account={account} changes={changes}",
+              user_id=user.get("sub", "unknown"))
+    _try_sync_yaml()
+    return {"ok": True, "ticker": ticker, "updated": changes}
 
 
 @router.get("/risk")
