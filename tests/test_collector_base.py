@@ -119,6 +119,13 @@ class TestGetTickers:
         assert "005930.KS" in all_tickers
 
 
+@pytest.fixture(autouse=True)
+def _no_retry_sleep(monkeypatch):
+    """retry backoff sleep을 건너뛰어 테스트 속도 향상."""
+    import time
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+
+
 class TestRetryLogic:
     def test_retry_succeeds_on_second_attempt(self):
         """1회 실패 후 2회째 성공."""

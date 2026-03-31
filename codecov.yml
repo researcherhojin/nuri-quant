@@ -1,0 +1,31 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+
+flags:
+  backend:
+    paths:
+      - nuri/
+    carryforward: true
+  frontend:
+    paths:
+      - frontend/src/
+    carryforward: true
+
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+  individual_components:
+    - component_id: backend
+      name: Backend (Python)
+      flag_regexes:
+        - backend
+    - component_id: frontend
+      name: Frontend (Next.js)
+      flag_regexes:
+        - frontend
