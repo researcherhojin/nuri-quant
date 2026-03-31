@@ -350,3 +350,155 @@ class TestYamlSync:
         # holdings 업데이트
         assert len(kp["holdings"]) == 1
         assert kp["holdings"][0]["ticker"] == "TSLA"
+
+
+# ─── Import / Export Tests ───
+
+
+def _csv_file(content: str, filename: str = "test.csv"):
+    """테스트용 CSV UploadFile 생성."""
+    return {"file": (filename, content.encode("utf-8"), "text/csv")}
+
+
+class TestImport:
+    """POST /api/portfolio/import 테스트."""
+
+    def test_import_csv(self, client):
+        """정상 CSV import."""
+        csv_content = "account,ticker,quantity,avg_price,currency,sector\ntoss,AAPL,10,180.0,USD,Tech\nkakaopay,NVDA,5,130.0,USD,Semiconductor\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 200
+        data = r.json()
+        assert data["ok"] is True
+        assert data["imported"] == 2
+        assert data["errors"] == []
+
+        # DB 반영 확인
+        r2 = client.get("/api/portfolio")
+        assert r2.json()["count"] == 2
+
+    def test_import_minimal_columns(self, client):
+        """필수 컬럼만 있는 CSV — currency/sector 기본값."""
+        csv_content = "account,ticker,quantity,avg_price\ntoss,MSFT,3,400.0\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 200
+        assert r.json()["imported"] == 1
+
+    def test_import_missing_required_column(self, client):
+        """필수 컬럼 누락 → 400."""
+        csv_content = "account,ticker,quantity\ntoss,AAPL,10\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 400
+        assert "avg_price" in r.json()["detail"]
+
+    def test_import_not_csv(self, client):
+        """CSV가 아닌 파일 → 400."""
+        r = client.post("/api/portfolio/import",
+                        files={"file": ("data.txt", b"hello", "text/plain")})
+        assert r.status_code == 400
+        assert "CSV" in r.json()["detail"]
+
+    def test_import_empty_header(self, client):
+        """빈 CSV → 400."""
+        r = client.post("/api/portfolio/import", files=_csv_file(""))
+        assert r.status_code == 400
+
+    def test_import_invalid_ticker(self, client):
+        """유효하지 않은 ticker → errors에 포함."""
+        csv_content = "account,ticker,quantity,avg_price\ntoss,invalid!,10,100.0\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 400  # 유효한 행 0개
+        assert "ticker" in r.json()["detail"]
+
+    def test_import_invalid_account(self, client):
+        """유효하지 않은 계좌 → errors에 포함."""
+        csv_content = "account,ticker,quantity,avg_price\nfake,AAPL,10,100.0\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 400
+
+    def test_import_invalid_number(self, client):
+        """숫자 변환 실패 → errors에 포함."""
+        csv_content = "account,ticker,quantity,avg_price\ntoss,AAPL,abc,100.0\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 400
+
+    def test_import_zero_quantity(self, client):
+        """quantity 0 → errors에 포함."""
+        csv_content = "account,ticker,quantity,avg_price\ntoss,AAPL,0,100.0\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 400
+
+    def test_import_partial_errors(self, client):
+        """일부 행만 유효 → 유효한 행만 import, errors 반환."""
+        csv_content = "account,ticker,quantity,avg_price\ntoss,AAPL,10,180.0\nfake,BAD!,0,0\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 200
+        data = r.json()
+        assert data["imported"] == 1
+        assert len(data["errors"]) > 0
+
+    def test_import_empty_field(self, client):
+        """필수 필드가 비어있는 행 → errors."""
+        csv_content = "account,ticker,quantity,avg_price\ntoss,,10,100.0\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 400
+
+    def test_import_non_utf8(self, client):
+        """비UTF-8 파일 → 400."""
+        # EUC-KR 바이트 시퀀스 (UTF-8로 디코딩 불가)
+        bad_bytes = b"\xc7\xd1\xb1\xdb"
+        r = client.post("/api/portfolio/import",
+                        files={"file": ("test.csv", bad_bytes, "text/csv")})
+        assert r.status_code == 400
+        assert "UTF-8" in r.json()["detail"]
+
+    def test_import_over_max_rows(self, client):
+        """500행 초과 → 400."""
+        header = "account,ticker,quantity,avg_price\n"
+        rows = "".join(f"toss,T{i:04d},1,100.0\n" for i in range(501))
+        r = client.post("/api/portfolio/import", files=_csv_file(header + rows))
+        assert r.status_code == 400
+        assert "500" in r.json()["detail"]
+
+
+class TestExport:
+    """GET /api/portfolio/export 테스트."""
+
+    def test_export_csv_empty(self, client):
+        """빈 포트폴리오 CSV export."""
+        r = client.get("/api/portfolio/export?format=csv")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "text/csv; charset=utf-8"
+        content = r.text
+        assert "account" in content  # 헤더는 있음
+
+    def test_export_csv_with_data(self, seeded_client):
+        """데이터 있는 CSV export."""
+        r = seeded_client.get("/api/portfolio/export?format=csv")
+        assert r.status_code == 200
+        lines = r.text.strip().split("\n")
+        assert len(lines) == 2  # 헤더 + 데이터 1행
+        assert "AAPL" in lines[1]
+
+    def test_export_yaml_with_data(self, seeded_client):
+        """데이터 있는 YAML export."""
+        r = seeded_client.get("/api/portfolio/export?format=yaml")
+        assert r.status_code == 200
+        assert "yaml" in r.headers["content-type"]
+        data = yaml.safe_load(r.text)
+        assert "accounts" in data
+        assert "toss" in data["accounts"]
+        holdings = data["accounts"]["toss"]["holdings"]
+        assert len(holdings) == 1
+        assert holdings[0]["ticker"] == "AAPL"
+
+    def test_export_invalid_format(self, client):
+        """지원하지 않는 format → 400."""
+        r = client.get("/api/portfolio/export?format=json")
+        assert r.status_code == 400
+
+    def test_export_default_csv(self, client):
+        """format 미지정 → CSV 기본값."""
+        r = client.get("/api/portfolio/export")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "text/csv; charset=utf-8"
