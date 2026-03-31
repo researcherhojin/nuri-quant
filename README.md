@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Main CI/CD Pipeline](https://github.com/researcherhojin/nuri-quant/actions/workflows/ci.yml/badge.svg)](https://github.com/researcherhojin/nuri-quant/actions/workflows/ci.yml)
+[![CI/CD Pipeline](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml/badge.svg)](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml)
 [![codecov](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](LICENSE)
 
