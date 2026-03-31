@@ -1843,11 +1843,11 @@ class TestTechnicalAgent:
         assert result.action in ("BUY", "SELL", "HOLD")
         assert result.data_points.get("rsi") is not None
 
-    def test_yfinance_fallback_no_db_path(self, monkeypatch):
-        """Cover yfinance fallback when db_path is None and prices empty (lines 28-31)."""
+    def test_yfinance_fallback_no_db_path(self, db_path, monkeypatch):
+        """Cover yfinance fallback when prices table empty (lines 28-31)."""
         from nuri.trading.agents.technical import TechnicalAgent
-        # With db_path=None and no actual DB data, yfinance is mocked to empty -> HOLD
-        result = TechnicalAgent().analyze("NONEXIST")
+        # With empty DB, yfinance is mocked to empty (conftest) -> HOLD
+        result = TechnicalAgent().analyze("NONEXIST", db_path=db_path)
         assert result.action == "HOLD"
 
 
