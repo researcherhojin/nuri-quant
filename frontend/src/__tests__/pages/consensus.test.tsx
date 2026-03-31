@@ -49,7 +49,7 @@ const mockConsensus = {
   count: 3,
 };
 
-let mockFetchAPI: ReturnType<typeof vi.fn>;
+let mockFetchAPI: any;
 
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: any[]) => mockFetchAPI(...args),

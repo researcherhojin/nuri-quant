@@ -65,7 +65,7 @@ const mockGates = {
 };
 
 describe("PipelinePage", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: any;
 
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });

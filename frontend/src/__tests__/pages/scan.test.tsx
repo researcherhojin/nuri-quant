@@ -36,7 +36,7 @@ const mockSwing = {
   rejected: 2,
 };
 
-let mockFetchAPI: ReturnType<typeof vi.fn>;
+let mockFetchAPI: any;
 
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: any[]) => mockFetchAPI(...args),
