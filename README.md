@@ -103,7 +103,7 @@ make quick-scan            # Collect → analyze → consensus → targets (~2 m
 make consensus             # 10-agent consensus + price targets
 make certify               # SIEGE 10-condition certification
 make start                 # API (:8001) + Dashboard (:3000)
-make test                  # pytest (1686 tests, 64 files, parallel via xdist)
+make test                  # pytest (2419 tests, 70 files, parallel via xdist)
 make lint                  # ruff check
 
 # Single test

@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project
 
 Nuri-Quant (누리퀀트) — Open-source quant investment platform.
-Python 3.12, `uv` package manager, SQLite, 100% free open-source stack.
+Python 3.12, `uv` package manager (`uv.lock` for reproducibility), SQLite, 100% free open-source stack.
+Dependencies split: core in `[project.dependencies]`, pytest/ruff in `[project.optional-dependencies].dev`.
 Linter: `ruff` (E/F/W/I rules, line-length 120). CI: GitHub Actions (lint + test + frontend type-check).
 Ruff ignores: E402 (lazy imports in scheduler), E501 (existing long lines), E712 (pandas `== True` idiom).
 Conventional commits required in PRs: `(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(scope)?: message`.
@@ -19,8 +20,9 @@ Operational execution (`make full-scan`) runs 8 phases: collect → analyze → 
 
 ```bash
 # Setup (requires: Python 3.12, uv, brew install ta-lib, Node 22 for frontend)
-make setup                              # venv + deps + DB init + portfolio import
+make setup                              # venv + deps (--extra dev) + DB init + portfolio import
 cd frontend && npm ci                   # frontend deps (separate from make setup)
+uv sync --extra dev                     # manual: install with test/lint tools
 
 # Data collection
 make collect                            # Phase A 11 collectors (stock/stock_kr/macro/technical/fear_greed/ark/cboe/coingecko/finviz/reddit/fred_calendar)
@@ -333,7 +335,7 @@ data/
 
 ## Testing
 
-1686 tests across 64 files (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
+2419 backend tests across 70 files + 209 frontend tests across 10 files (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 91% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
