@@ -874,7 +874,7 @@ class TestRunBacktest:
         assert result.equity_curve is not None
         assert len(result.equity_curve) > 0
 
-    def test_backtest_empty_df(self):
+    def test_backtest_empty_df(self, rich_db):
         from nuri.trading.strategy.ls_backtest import run_backtest
         empty = pd.DataFrame(columns=["regime", "return", "date", "close"])
         # run_backtest crashes on empty input — verify it raises IndexError
@@ -982,7 +982,7 @@ class TestMonteCarloTest:
         assert result["n_simulations"] == 10
         assert result["statistically_significant"] in (True, False)
 
-    def test_monte_carlo_insufficient_data(self):
+    def test_monte_carlo_insufficient_data(self, rich_db):
         from nuri.trading.strategy.ls_backtest import monte_carlo_test
         # Only 5 rows — less than block_size=20
         df = pd.DataFrame({
