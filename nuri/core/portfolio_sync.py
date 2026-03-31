@@ -3,7 +3,9 @@
 portfolio 테이블의 현재 상태를 config/portfolio.yaml에 반영한다.
 YAML에만 존재하는 메타데이터(name, broker, total_invested, cash_*, auto_invest 등)는 보존.
 holdings dict는 flow style로 출력하여 원본 포맷과 일치시킨다.
+metadata JSON 컬럼의 추가 필드(flag 등)도 YAML에 복원.
 """
+import json
 import logging
 from pathlib import Path
 
@@ -50,22 +52,29 @@ def _load_yaml(config_path: Path | None = None) -> dict:
 
 
 def _build_holdings_from_db(db_path=None) -> dict[str, list[dict]]:
-    """DB portfolio 테이블에서 계좌별 보유 종목 조회."""
+    """DB portfolio 테이블에서 계좌별 보유 종목 조회. metadata JSON → 추가 필드 복원."""
     rows = query(
-        "SELECT account, ticker, quantity, avg_price, currency, sector "
+        "SELECT account, ticker, quantity, avg_price, currency, sector, metadata "
         "FROM portfolio ORDER BY account, ticker",
         db_path=db_path,
     )
     by_account: dict[str, list[dict]] = {}
     for r in rows:
         account = r["account"]
-        holding = {
+        holding: dict = {
             "ticker": r["ticker"],
             "qty": r["quantity"],
             "avg": r["avg_price"],
         }
         if r["sector"]:
             holding["sector"] = r["sector"]
+        # metadata JSON → YAML 추가 필드 복원 (flag 등)
+        if r["metadata"]:
+            try:
+                extra = json.loads(r["metadata"])
+                holding.update(extra)
+            except (json.JSONDecodeError, TypeError):
+                pass
         by_account.setdefault(account, []).append(holding)
     return by_account
 

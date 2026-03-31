@@ -1,6 +1,7 @@
 """포트폴리오 + 리스크 API."""
 import csv
 import io
+import json
 import logging
 import re
 from enum import Enum
@@ -18,7 +19,7 @@ from nuri.core.portfolio_sync import sync_portfolio_to_yaml
 logger = logging.getLogger(__name__)
 
 # PUT에서 허용하는 컬럼명 (동적 SQL 방어)
-_UPDATABLE_COLUMNS = {"quantity", "avg_price", "currency", "sector"}
+_UPDATABLE_COLUMNS = {"quantity", "avg_price", "currency", "sector", "metadata"}
 
 router = APIRouter(tags=["portfolio"])
 
@@ -41,6 +42,7 @@ class HoldingInput(BaseModel):
     avg_price: float
     currency: CurrencyEnum = CurrencyEnum.USD
     sector: str = ""
+    metadata: Optional[dict] = None
 
     @field_validator("ticker")
     @classmethod
@@ -90,6 +92,7 @@ class HoldingUpdate(BaseModel):
     avg_price: Optional[float] = None
     currency: Optional[CurrencyEnum] = None
     sector: Optional[str] = None
+    metadata: Optional[dict] = None
 
     @field_validator("quantity")
     @classmethod
@@ -148,6 +151,9 @@ def add_holding(holding: HoldingInput, user=Depends(require_write_auth)):
     """보유 종목 추가/수정 (인증 필요)."""
     record = holding.model_dump()
     record["ticker"] = record["ticker"].upper()
+    # metadata dict → JSON 문자열
+    if record.get("metadata") is not None:
+        record["metadata"] = json.dumps(record["metadata"], ensure_ascii=False)
     upsert_portfolio([record])
     audit_log("INSERT", "portfolio", record["ticker"],
               f"account={record['account']} qty={record['quantity']} avg={record['avg_price']}",
@@ -199,6 +205,10 @@ def update_holding(account: str, ticker: str, update: HoldingUpdate, user=Depend
     changes = update.model_dump(exclude_none=True)
     if not changes:
         raise HTTPException(status_code=400, detail="수정할 필드가 없습니다")
+
+    # metadata dict → JSON 문자열
+    if "metadata" in changes and isinstance(changes["metadata"], dict):
+        changes["metadata"] = json.dumps(changes["metadata"], ensure_ascii=False)
 
     # 허용 컬럼 검증 (동적 SQL 방어)
     invalid_cols = set(changes.keys()) - _UPDATABLE_COLUMNS
