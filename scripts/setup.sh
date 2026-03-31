@@ -19,7 +19,7 @@ fi
 # Install dependencies
 echo "Installing Python packages..."
 source .venv/bin/activate
-uv pip install -e "."
+uv sync --extra dev
 
 # Create data directories
 mkdir -p data/backups data/exports

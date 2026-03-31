@@ -2001,15 +2001,11 @@ dependencies = [
     { name = "plotly" },
     { name = "pyjwt" },
     { name = "pykrx" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "pytest-xdist" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "quantstats" },
     { name = "requests" },
     { name = "riskfolio-lib" },
-    { name = "ruff" },
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "seaborn" },
@@ -2017,6 +2013,14 @@ dependencies = [
     { name = "ta-lib" },
     { name = "uvicorn" },
     { name = "vectorbt" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -2040,15 +2044,15 @@ requires-dist = [
     { name = "plotly", specifier = ">=5.18.0" },
     { name = "pyjwt", specifier = ">=2.8.0" },
     { name = "pykrx", specifier = ">=1.2.0" },
-    { name = "pytest", specifier = ">=8.0.0" },
-    { name = "pytest-cov", specifier = ">=4.1.0" },
-    { name = "pytest-xdist", specifier = ">=3.5.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
+    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "quantstats", specifier = ">=0.0.60" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "riskfolio-lib", specifier = ">=7.0.0" },
-    { name = "ruff", specifier = ">=0.8.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
     { name = "scikit-learn", specifier = ">=1.4.0" },
     { name = "scipy", specifier = ">=1.12.0" },
     { name = "seaborn", specifier = ">=0.13.0" },
@@ -2057,6 +2061,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.32.0" },
     { name = "vectorbt", specifier = ">=0.28.0" },
 ]
+provides-extras = ["dev"]
 
 [[package]]
 name = "openbb"

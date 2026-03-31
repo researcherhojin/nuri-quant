@@ -52,8 +52,10 @@ dependencies = [
     # Config
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
+]
 
-    # Testing + Linting
+[project.optional-dependencies]
+dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
     "pytest-xdist>=3.5.0",
