@@ -19,7 +19,7 @@ const mockEvidence = {
   date: "2026-03-31",
 };
 
-let mockFetchAPI: ReturnType<typeof vi.fn>;
+let mockFetchAPI: any;
 
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: any[]) => mockFetchAPI(...args),
