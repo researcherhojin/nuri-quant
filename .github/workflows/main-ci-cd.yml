@@ -97,6 +97,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: false
 
       - name: Cache TA-Lib
         id: cache-talib
