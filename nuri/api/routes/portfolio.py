@@ -1,10 +1,14 @@
 """포트폴리오 + 리스크 API."""
+import csv
+import io
 import logging
 import re
 from enum import Enum
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+import yaml
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
 from nuri.api.auth import require_write_auth
@@ -219,6 +223,147 @@ def update_holding(account: str, ticker: str, update: HoldingUpdate, user=Depend
               user_id=user.get("sub", "unknown"))
     _try_sync_yaml()
     return {"ok": True, "ticker": ticker, "updated": changes}
+
+
+# ─── Import / Export ───
+
+_CSV_REQUIRED = {"account", "ticker", "quantity", "avg_price"}
+_CSV_OPTIONAL = {"currency", "sector"}
+_CSV_ALL = _CSV_REQUIRED | _CSV_OPTIONAL
+_MAX_IMPORT_ROWS = 500
+
+
+@router.post("/portfolio/import")
+def import_portfolio(file: UploadFile, user=Depends(require_write_auth)):
+    """CSV 파일로 포트폴리오 일괄 등록 (인증 필요).
+
+    CSV 필수 컬럼: account, ticker, quantity, avg_price
+    CSV 선택 컬럼: currency (default USD), sector (default "")
+    """
+    if not file.filename or not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="CSV 파일만 지원합니다 (.csv)")
+
+    try:
+        content = file.file.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="UTF-8 인코딩 파일만 지원합니다")
+
+    reader = csv.DictReader(io.StringIO(content))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV 헤더가 없습니다")
+
+    headers = {h.strip().lower() for h in reader.fieldnames}
+    missing = _CSV_REQUIRED - headers
+    if missing:
+        raise HTTPException(status_code=400, detail=f"필수 컬럼 누락: {', '.join(sorted(missing))}")
+
+    records = []
+    errors = []
+    for i, row in enumerate(reader, start=2):
+        if i - 1 > _MAX_IMPORT_ROWS:
+            raise HTTPException(status_code=400, detail=f"최대 {_MAX_IMPORT_ROWS}행까지 지원")
+
+        # 공백 정리 + 키 소문자화
+        row = {k.strip().lower(): v.strip() for k, v in row.items() if k}
+
+        # 필수 필드 비어있는지 체크
+        empty = [col for col in _CSV_REQUIRED if not row.get(col)]
+        if empty:
+            errors.append(f"행 {i}: 빈 필드 {', '.join(empty)}")
+            continue
+
+        ticker = row["ticker"].upper()
+        if not _TICKER_PATTERN.match(ticker):
+            errors.append(f"행 {i}: 유효하지 않은 ticker '{ticker}'")
+            continue
+
+        account = row["account"].lower()
+        if account not in _VALID_ACCOUNTS:
+            errors.append(f"행 {i}: 유효하지 않은 계좌 '{account}'")
+            continue
+
+        try:
+            qty = float(row["quantity"])
+            avg = float(row["avg_price"])
+        except ValueError:
+            errors.append(f"행 {i}: 숫자 변환 실패 (quantity/avg_price)")
+            continue
+
+        if qty <= 0 or avg <= 0:
+            errors.append(f"행 {i}: quantity/avg_price는 0보다 커야 합니다")
+            continue
+
+        records.append({
+            "account": account,
+            "ticker": ticker,
+            "quantity": qty,
+            "avg_price": avg,
+            "currency": row.get("currency", "USD").upper() or "USD",
+            "sector": row.get("sector", ""),
+        })
+
+    if not records and errors:
+        raise HTTPException(status_code=400, detail=f"유효한 행 없음: {'; '.join(errors[:5])}")
+
+    count = upsert_portfolio(records)
+    audit_log("IMPORT", "portfolio", f"{count} records",
+              f"file={file.filename}", user_id=user.get("sub", "unknown"))
+    _try_sync_yaml()
+    return {"ok": True, "imported": count, "errors": errors}
+
+
+@router.get("/portfolio/export")
+def export_portfolio(format: str = "csv"):
+    """포트폴리오 CSV/YAML 다운로드."""
+    rows = query(
+        "SELECT account, ticker, quantity, avg_price, currency, sector "
+        "FROM portfolio ORDER BY account, ticker"
+    )
+
+    if format == "yaml":
+        # 계좌별 그룹핑
+        accounts: dict = {}
+        for r in rows:
+            acct = r["account"]
+            if acct not in accounts:
+                accounts[acct] = {"currency": r["currency"], "holdings": []}
+            accounts[acct]["holdings"].append({
+                "ticker": r["ticker"],
+                "qty": r["quantity"],
+                "avg": r["avg_price"],
+                **({"sector": r["sector"]} if r["sector"] else {}),
+            })
+        from nuri.core.portfolio_sync import _HoldingFlowDumper
+        content = yaml.dump(
+            {"accounts": accounts}, Dumper=_HoldingFlowDumper,
+            allow_unicode=True, default_flow_style=False, sort_keys=False,
+        )
+        return StreamingResponse(
+            io.BytesIO(content.encode("utf-8")),
+            media_type="application/x-yaml",
+            headers={"Content-Disposition": "attachment; filename=portfolio.yaml"},
+        )
+
+    if format != "csv":
+        raise HTTPException(status_code=400, detail="format은 csv 또는 yaml만 지원")
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["account", "ticker", "quantity", "avg_price", "currency", "sector"])
+    writer.writeheader()
+    for r in rows:
+        writer.writerow({
+            "account": r["account"],
+            "ticker": r["ticker"],
+            "quantity": r["quantity"],
+            "avg_price": r["avg_price"],
+            "currency": r["currency"],
+            "sector": r["sector"] or "",
+        })
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8")),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=portfolio.csv"},
+    )
 
 
 @router.get("/risk")
