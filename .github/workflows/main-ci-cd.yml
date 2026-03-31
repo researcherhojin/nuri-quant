@@ -13,7 +13,8 @@ env:
 jobs:
   # ─── Frontend ───
 
-  Frontend Tests:
+  frontend-tests:
+    name: Frontend Tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -45,7 +46,8 @@ jobs:
           disable_search: true
           fail_ci_if_error: false
 
-  Frontend Build:
+  frontend-build:
+    name: Frontend Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -66,7 +68,8 @@ jobs:
 
   # ─── Backend ───
 
-  Backend Lint:
+  backend-lint:
+    name: Backend Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -74,7 +77,8 @@ jobs:
         with:
           args: "check nuri/ tests/ scripts/"
 
-  Backend Tests:
+  backend-tests:
+    name: Backend Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -154,7 +158,8 @@ jobs:
 
   # ─── Security ───
 
-  Security Scan:
+  security-scan:
+    name: Security Scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
