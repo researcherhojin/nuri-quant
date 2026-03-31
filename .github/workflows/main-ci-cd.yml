@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: "ci-${{ github.ref }}"
+  cancel-in-progress: true
 
 env:
   PYTHON_VERSION: "3.12"
@@ -17,13 +22,14 @@ jobs:
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -39,7 +45,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/lcov.info
@@ -50,13 +56,14 @@ jobs:
   frontend-build:
     name: Frontend Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -72,8 +79,9 @@ jobs:
   backend-lint:
     name: Backend Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: astral-sh/ruff-action@v3
         with:
           args: "check nuri/ tests/ scripts/"
@@ -81,17 +89,16 @@ jobs:
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: false
+        uses: astral-sh/setup-uv@v7
 
       - name: Cache TA-Lib
         id: cache-talib
@@ -121,21 +128,19 @@ jobs:
       - name: Configure TA-Lib
         run: sudo ldconfig
 
-      - name: Cache venv
-        id: cache-venv
+      - name: Cache uv packages
         uses: actions/cache@v5
         with:
-          path: .venv
-          key: venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          restore-keys: ${{ runner.os }}-uv-
 
-      - name: Create venv + install deps
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          uv venv
-          uv pip install -e .
+      - name: Install deps
+        run: uv sync --frozen
 
       - name: Run tests with coverage
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -x --cov=nuri --cov-report=xml --cov-report=term
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --cov=nuri --cov-report=xml --cov-report=term
+        timeout-minutes: 5
 
       - name: Coverage threshold check
         run: |
@@ -149,7 +154,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
@@ -162,10 +167,11 @@ jobs:
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
           scan-ref: .

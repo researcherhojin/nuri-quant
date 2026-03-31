@@ -333,7 +333,7 @@ data/
 
 ## Testing
 
-1119 tests across 58 files (v11 migrations). Tests use `tmp_path` fixture for isolated SQLite databases:
+1119 tests across 58 files (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -358,7 +358,7 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
 
 On push/PR to `main`:
 1. **Lint** — `ruff check nuri/ tests/ scripts/`
-2. **Test** — pytest with coverage, **40% minimum** enforced. TA-Lib compiled from source (cached).
+2. **Test** — pytest with `pytest-xdist` parallel (`-n auto`), coverage **40% minimum** enforced. TA-Lib compiled from source (cached). Deps installed via `uv sync --frozen` (lockfile: `uv.lock`).
 3. **Frontend** — `tsc --noEmit` + vitest with coverage
 
 PR-specific checks (`pr-checks.yml`):

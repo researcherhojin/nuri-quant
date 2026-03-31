@@ -55,7 +55,7 @@ graph LR
 ![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 
-> 53 endpoints · 29 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
+> 53 endpoints · 28 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
 
 **Frontend**<br/>
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)
@@ -63,7 +63,7 @@ graph LR
 ![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)
 ![shadcn/ui](https://img.shields.io/badge/shadcn/ui-latest-000000)
 
-> 14 pages · Dark mode · Palantir-style Operator Cockpit · FreshnessBar · Pipeline Control
+> 15 pages · Dark mode · Palantir-style Operator Cockpit · FreshnessBar · Pipeline Control
 
 **LLM**<br/>
 ![Ollama](https://img.shields.io/badge/Ollama-local-000000)
@@ -95,7 +95,7 @@ make quick-scan            # Collect → analyze → consensus → targets (~2 m
 make consensus             # 10-agent consensus + price targets
 make certify               # SIEGE 10-condition certification
 make start                 # API (:8001) + Dashboard (:3000)
-make test                  # pytest (1119 tests, 58 files)
+make test                  # pytest (1119 tests, 58 files, parallel via xdist)
 make lint                  # ruff check
 
 # Single test
