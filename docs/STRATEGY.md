@@ -14,7 +14,7 @@
 - 10 agents + consensus engine, SIEGE 10-condition gate
 - 투자 규칙 자동화: take-profit, trailing stop, portfolio MDD gate
 - Pipeline observability: Event Journal + Freshness SLA + Operator Cockpit
-- 53 API endpoints, 28 tables (v11 migrations), 1686 tests
+- 53 API endpoints, 28 tables (v11 migrations), 2419 backend + 209 frontend tests
 
 ### 프론트엔드 — 진행 중
 - 15 pages, dark mode, Palantir-style dashboard

@@ -23,6 +23,8 @@ jobs:
     name: Frontend Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # NOTE: defaults.run.working-directory only applies to `run` steps, NOT `uses` steps.
+    # All `uses` step paths (codecov, cache, etc.) must use repo-root-relative paths.
     defaults:
       run:
         working-directory: frontend
@@ -43,12 +45,27 @@ jobs:
       - name: Run tests with coverage
         run: npx vitest run --coverage
 
+      - name: Verify and fix coverage paths
+        run: |
+          if [ ! -f coverage/lcov.info ]; then
+            echo "::error::coverage/lcov.info not found — vitest coverage may have failed"
+            ls -la coverage/ 2>/dev/null || echo "coverage/ directory does not exist"
+            exit 1
+          fi
+          echo "✓ coverage/lcov.info found ($(wc -l < coverage/lcov.info) lines)"
+          # vitest outputs paths relative to frontend/ (e.g. SF:src/...).
+          # Codecov needs repo-root-relative paths (SF:frontend/src/...).
+          sed -i 's|^SF:src/|SF:frontend/src/|' coverage/lcov.info
+          echo "✓ Paths rewritten to repo-root-relative"
+          head -3 coverage/lcov.info
+
       - name: Upload coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/lcov.info
+          # uses steps ignore defaults.run.working-directory — must be repo-root-relative
+          files: frontend/coverage/lcov.info
           flags: frontend
           disable_search: true
           fail_ci_if_error: false
@@ -140,6 +157,14 @@ jobs:
       - name: Run tests with coverage
         run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
+
+      - name: Verify coverage file exists
+        run: |
+          if [ ! -f coverage.xml ]; then
+            echo "::error::coverage.xml not found — pytest-cov may have failed"
+            exit 1
+          fi
+          echo "✓ coverage.xml found ($(wc -l < coverage.xml) lines)"
 
       - name: Coverage threshold check
         run: |

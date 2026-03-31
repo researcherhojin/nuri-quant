@@ -4,6 +4,10 @@ coverage:
       default:
         target: auto
         threshold: 1%
+    # Per-flag status — shows separate backend/frontend badges in PR checks
+    patch:
+      default:
+        target: auto
 
 flags:
   backend:
@@ -14,6 +18,12 @@ flags:
     paths:
       - frontend/src/
     carryforward: true
+
+# Ignore paths that should never count toward coverage
+ignore:
+  - "frontend/src/__tests__/**"
+  - "tests/**"
+  - "scripts/**"
 
 component_management:
   default_rules:
