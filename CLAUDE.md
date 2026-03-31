@@ -354,11 +354,11 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
 ```
 `init_db()` auto-applies unapplied migrations and tracks them in `schema_version` table.
 
-### CI (GitHub Actions)
+### CI/CD Pipeline (`main-ci-cd.yml`)
 
 On push/PR to `main`:
 1. **Lint** — `ruff check nuri/ tests/ scripts/`
-2. **Test** — pytest with coverage, **40% minimum** enforced (currently 58%). TA-Lib compiled from source (cached).
+2. **Test** — pytest with coverage, **40% minimum** enforced. TA-Lib compiled from source (cached).
 3. **Frontend** — `tsc --noEmit` + vitest with coverage
 
 PR-specific checks (`pr-checks.yml`):
