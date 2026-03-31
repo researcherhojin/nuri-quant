@@ -97,8 +97,6 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
 
       - name: Cache TA-Lib
         id: cache-talib
@@ -128,12 +126,14 @@ jobs:
         run: sudo ldconfig
 
       - name: Cache venv
+        id: cache-venv
         uses: actions/cache@v5
         with:
           path: .venv
           key: venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('uv.lock') }}
 
       - name: Install deps
+        if: steps.cache-venv.outputs.cache-hit != 'true'
         run: uv sync --frozen --extra dev
 
       - name: Run tests with coverage
