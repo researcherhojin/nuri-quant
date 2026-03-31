@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-792_passed-26a69a?logo=pytest&logoColor=white)]()
+[![Tests](https://img.shields.io/badge/Tests-818_passed-26a69a?logo=pytest&logoColor=white)]()
 [![Coverage](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/CI-passing-4CAF50?logo=githubactions&logoColor=white)]()
@@ -66,7 +66,7 @@ make full-scan     # run full pipeline: collect → validate → classify → di
 | `make evidence` | 5 Plotly evidence charts |
 | `make report-llm` | Qwen3.5 LLM evidence-based report |
 | `make start` | API (:8001) + Dashboard (:3000) |
-| `make test` | pytest 792 tests (43 files) |
+| `make test` | pytest 818 tests (43 files) |
 
 </details>
 
@@ -145,7 +145,7 @@ Architecture inspired by [Palantir Foundry](https://www.palantir.com/docs/foundr
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)]()
 [![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)]()
 
-> 50 endpoints · 29 tables (v10 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting · Pipeline Event Journal · Data Freshness SLA
+> 53 endpoints · 29 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting · Pipeline Event Journal · Data Freshness SLA
 
 ### 4. Frontend
 
