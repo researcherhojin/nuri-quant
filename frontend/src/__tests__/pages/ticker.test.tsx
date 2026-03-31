@@ -50,7 +50,7 @@ const mockTargets = { stock_type: "growth", stop_loss: 172.52, stop_loss_pct: -7
 const mockExternal = { count: 1, data: [{ source: "TipRanks", data_type: "consensus", value: "Strong Buy" }] };
 
 import { fetchAPI } from "@/lib/api";
-const mockFetchAPI = fetchAPI as ReturnType<typeof vi.fn>;
+const mockFetchAPI = fetchAPI as any;
 
 function setupMocks(overrides: Record<string, any> = {}) {
   mockFetchAPI.mockImplementation((url: string) => {
