@@ -25,11 +25,13 @@ def db_path(tmp_path):
 
 @pytest.fixture()
 def client(db_path, monkeypatch):
-    """테스트용 DB로 격리된 FastAPI TestClient."""
+    """테스트용 DB로 격리된 FastAPI TestClient. Rate limiter 비활성화."""
     import nuri.core.db as db_mod
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
     from nuri.api.main import app
+    # xdist 병렬 실행 시 rate limiter 간섭 방지
+    app.state.limiter._default_limits = []
     return TestClient(app)
 
 
