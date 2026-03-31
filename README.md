@@ -2,11 +2,9 @@
 
 <div align="center">
 
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-818_passed-26a69a?logo=pytest&logoColor=white)]()
-[![Coverage](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
-[![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
-[![CI](https://img.shields.io/badge/CI-passing-4CAF50?logo=githubactions&logoColor=white)]()
+[![Main CI/CD Pipeline](https://github.com/researcherhojin/nuri-quant/actions/workflows/ci.yml/badge.svg)](https://github.com/researcherhojin/nuri-quant/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
+[![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](LICENSE)
 
 **[API Docs](http://localhost:8001/docs)** · **[Dashboard](http://localhost:3000)** · **[Issues](https://github.com/researcherhojin/nuri-quant/issues)**
 
