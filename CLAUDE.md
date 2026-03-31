@@ -333,7 +333,7 @@ data/
 
 ## Testing
 
-1119 tests across 58 files (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
+1205 tests across 59 files (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
