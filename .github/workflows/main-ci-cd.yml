@@ -93,17 +93,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Cache TA-Lib
         id: cache-talib
         uses: actions/cache@v5
-        continue-on-error: true
         with:
           path: /tmp/talib-installed
           key: talib-0.4.0-${{ runner.os }}-v5
@@ -127,13 +126,6 @@ jobs:
 
       - name: Configure TA-Lib
         run: sudo ldconfig
-
-      - name: Cache uv packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
-          restore-keys: ${{ runner.os }}-uv-
 
       - name: Install deps
         run: uv sync --frozen
