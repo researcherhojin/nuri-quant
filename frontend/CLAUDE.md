@@ -7,9 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev       # Dev server (:3000)
-npm run build     # Production build (type-check + compile)
-npm run lint      # ESLint
+npm run dev          # Dev server (:3000)
+npm run build        # Production build (type-check + compile)
+npm run lint         # ESLint
+npm run test         # vitest run (538 tests, 41 files)
+npm run test:coverage  # vitest with v8 coverage → ./coverage/
+npx vitest run src/__tests__/pages/dashboard.test.tsx   # single test file
+npx vitest run -t "renders verdict"                     # single test by name
 ```
 
 Requires backend API running at `http://localhost:8001` (see parent `make api`).
@@ -20,9 +24,9 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 
 ### Data flow
 
-All pages are **Server Components** with `force-dynamic`. Data is fetched server-side via `fetchAPI()` (`src/lib/api.ts`) which calls the FastAPI backend at `NEXT_PUBLIC_API_URL` (default `http://localhost:8001`). The only Client Component is `/report` (user-triggered LLM generation, imports `API_BASE` from `lib/api.ts`).
+All pages are **Server Components** with `force-dynamic`. Data is fetched server-side via `fetchAPI()` (`src/lib/api.ts`) which calls the FastAPI backend at `NEXT_PUBLIC_API_URL` (default `http://localhost:8001`). Two Client Components: `/report` (user-triggered LLM generation) and `/pipeline` (ReactFlow DAG visualization with real-time step execution).
 
-### Pages (14 routes)
+### Pages (15 routes)
 
 | Route | Data source | Purpose |
 |-------|------------|---------|
@@ -33,9 +37,10 @@ All pages are **Server Components** with `force-dynamic`. Data is fetched server
 | `/strategy` | `/api/strategy/status`, `/api/backtest` | L/S strategy + backtest + stress test |
 | `/rebalance` | `/api/rebalance?method=rp` | Regime-aware Risk Parity rebalancing |
 | `/engine` | `/api/gate`, `/api/conflicts`, `/api/memory` | SIEGE engine status (gate, conflicts, drift) |
+| `/pipeline` | `/api/pipeline/status`, `/api/freshness` | ReactFlow DAG — 6-step pipeline control + freshness SLA |
 | `/report` | `/api/report`, `/api/report/context` | Client-side LLM report generation |
 | `/evidence` | `/api/evidence` | Plotly 증거 차트 뷰어 (iframe embeds) |
-| `/portfolio` | `/api/portfolio`, `/api/risk` | 포트폴리오 보유 현황 + 리스크 지표 |
+| `/portfolio` | `/api/portfolio`, `/api/risk` | 포트폴리오 CRUD + 리스크 지표 + CSV import/export |
 | `/targets` | `/api/targets` | 전 종목 가격 타겟 (매수가/손절가/익절가/목표가) |
 | `/advisor` | `/api/rebalance-advisor` | 리밸런스 어드바이저 (규칙 위반 + 매도 수량) |
 | `/login` | `/api/auth` | 대시보드 로그인 (DASHBOARD_PASSWORD 설정 시) |
@@ -63,3 +68,37 @@ Use these instead of raw `<table>` or shadcn `Badge`. The shadcn `Badge`, `Card`
 - Color semantics: emerald = positive/BUY, red = negative/SELL, amber = warning/REDUCE, blue = WATCH, zinc = neutral/HOLD
 - Text sizes: `text-[10px]` for sub-labels, `text-xs` for secondary, `text-sm` for body
 - Card pattern: `<Card className="bg-zinc-900 border-zinc-800">` → `<CardContent className="pt-5">` → description `<p className="text-xs text-zinc-500 mb-3">` → content
+
+## Testing
+
+538 vitest tests across 41 files. 97% statement coverage. Uses `jsdom` environment + `@testing-library/react`.
+
+Test file layout mirrors source: `src/__tests__/pages/`, `src/__tests__/components/`, `src/__tests__/lib/`.
+
+### Mocking patterns
+
+Server Components (pages) are tested by mocking `@/lib/api`:
+```tsx
+vi.mock("@/lib/api", () => ({
+  API_BASE: "http://localhost:8001",
+  fetchAPI: vi.fn(),
+}));
+```
+
+`next/navigation` must be mocked for all page tests:
+```tsx
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => "/",
+  redirect: vi.fn(),
+}));
+```
+
+### Recharts mock hoisting caveat
+
+`vi.mock("recharts")` is **hoisted to file top** and affects ALL dynamic imports in the same vitest worker. This causes "Cannot find package" errors for modules that import recharts. Keep recharts-dependent tests (PriceChart, EquityCurveChart) in files that mock recharts, and recharts-free tests in separate files. Use `vi.doMock` (not hoisted) when capturing Tooltip formatter props per-test.
+
+### Auth middleware
+
+`src/middleware.ts` — SHA256 cookie-based auth. Active only when `DASHBOARD_PASSWORD` env is set. Login page and auth API bypass the check.
