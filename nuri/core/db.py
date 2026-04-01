@@ -204,18 +204,6 @@ CREATE TABLE IF NOT EXISTS fundamentals (
     UNIQUE(ticker, date)
 );
 
--- [Phase 2] LLM 벤치마크 결과
-CREATE TABLE IF NOT EXISTS llm_bench (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    model TEXT,
-    prompt_type TEXT,
-    prompt TEXT,
-    response TEXT,
-    score REAL,
-    latency_ms INTEGER,
-    timestamp TEXT
-);
-
 -- 스윙 트레이드 추적
 CREATE TABLE IF NOT EXISTS swing_trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
