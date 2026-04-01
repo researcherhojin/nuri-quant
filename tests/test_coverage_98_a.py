@@ -460,7 +460,9 @@ class TestDiscordBotMain:
 class TestDailyReportMain:
     def test_main_block(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["daily_report"])
-        with patch("nuri.alerts.daily_report.main"):
+        # main()은 같은 모듈에서 정의 → 내부 의존성을 source 레벨에서 mock
+        with patch("nuri.alerts.daily_report.generate_report", return_value={}), \
+             patch("nuri.alerts.daily_report.send_discord", return_value=True):
             runpy.run_module("nuri.alerts.daily_report", run_name="__main__")
 
 
