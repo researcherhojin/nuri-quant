@@ -458,12 +458,13 @@ class TestDiscordBotMain:
 
 
 class TestDailyReportMain:
-    def test_main_block(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["daily_report"])
-        # main()은 같은 모듈에서 정의 → 내부 의존성을 source 레벨에서 mock
+    def test_main_block(self, monkeypatch, db_with_portfolio):
+        """main() 직접 호출 — runpy는 CI에서 모듈 캐시 문제로 불안정."""
+        from nuri.alerts.daily_report import main
+
         with patch("nuri.alerts.daily_report.generate_report", return_value={}), \
              patch("nuri.alerts.daily_report.send_discord", return_value=True):
-            runpy.run_module("nuri.alerts.daily_report", run_name="__main__")
+            main()
 
 
 # ═══════════════════════════════════════════════════════════
