@@ -2894,8 +2894,9 @@ class TestMacroCollector_R24:
         assert collector._collect_fred(days=30) == []
 
     def test_collect_yfinance_fallback(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.macro import MacroCollector
         import yfinance as yf
+
+        from nuri.collectors.macro import MacroCollector
 
         mock_df = pd.DataFrame({
             "Date": pd.to_datetime(["2025-01-15"]),
