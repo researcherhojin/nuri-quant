@@ -43,9 +43,14 @@ class GateResult:
 # 조건 정의
 # ═══════════════════════════════════════════════════════
 
+def _safe_count(rows, key="c", default=0):
+    """rows[0][key] with guard for empty results."""
+    return rows[0][key] if rows else default
+
+
 def _check_prices(db_path=None) -> GateCondition:
     rows = query("SELECT COUNT(*) as c, COUNT(DISTINCT ticker) as t FROM prices", db_path=db_path)
-    count, tickers = rows[0]["c"], rows[0]["t"]
+    count, tickers = _safe_count(rows, "c"), _safe_count(rows, "t")
     ok = count >= 1000 and tickers >= 5
     return GateCondition(
         "prices_data", "collect",
@@ -57,7 +62,7 @@ def _check_prices(db_path=None) -> GateCondition:
 
 def _check_spy(db_path=None) -> GateCondition:
     rows = query("SELECT COUNT(*) as c FROM prices WHERE ticker = 'SPY'", db_path=db_path)
-    count = rows[0]["c"]
+    count = _safe_count(rows)
     ok = count >= 200
     return GateCondition(
         "spy_data", "regime",
@@ -69,7 +74,7 @@ def _check_spy(db_path=None) -> GateCondition:
 
 def _check_vix(db_path=None) -> GateCondition:
     rows = query("SELECT COUNT(*) as c FROM macro WHERE indicator = 'vix'", db_path=db_path)
-    count = rows[0]["c"]
+    count = _safe_count(rows)
     ok = count >= 20
     return GateCondition(
         "vix_data", "regime",
@@ -81,7 +86,7 @@ def _check_vix(db_path=None) -> GateCondition:
 
 def _check_macro(db_path=None) -> GateCondition:
     rows = query("SELECT COUNT(DISTINCT indicator) as c FROM macro", db_path=db_path)
-    count = rows[0]["c"]
+    count = _safe_count(rows)
     ok = count >= 3
     return GateCondition(
         "macro_indicators", "regime",
@@ -93,7 +98,7 @@ def _check_macro(db_path=None) -> GateCondition:
 
 def _check_portfolio(db_path=None) -> GateCondition:
     rows = query("SELECT COUNT(DISTINCT ticker) as c FROM portfolio", db_path=db_path)
-    count = rows[0]["c"]
+    count = _safe_count(rows)
     ok = count >= 1
     return GateCondition(
         "portfolio_exists", "collect",
@@ -122,7 +127,7 @@ def _check_signal_scorecard(db_path=None) -> GateCondition:
 
 def _check_superinvestor_quarters(db_path=None) -> GateCondition:
     rows = query("SELECT COUNT(DISTINCT filing_date) as c FROM superinvestors", db_path=db_path)
-    count = rows[0]["c"]
+    count = _safe_count(rows)
     ok = count >= 2
     return GateCondition(
         "superinvestor_history", "validate",
@@ -134,8 +139,8 @@ def _check_superinvestor_quarters(db_path=None) -> GateCondition:
 
 def _check_estimates_accumulation(db_path=None) -> GateCondition:
     rows = query("SELECT MIN(date) as oldest, COUNT(DISTINCT date) as days FROM estimates", db_path=db_path)
-    oldest = rows[0]["oldest"]
-    days = rows[0]["days"]
+    oldest = _safe_count(rows, "oldest", None)
+    days = _safe_count(rows, "days")
     if oldest:
         from nuri.core.timezone import kst_now
         elapsed = (kst_now().replace(tzinfo=None) - datetime.strptime(oldest, "%Y-%m-%d")).days
@@ -153,7 +158,7 @@ def _check_estimates_accumulation(db_path=None) -> GateCondition:
 
 def _check_fear_greed(db_path=None) -> GateCondition:
     rows = query("SELECT COUNT(*) as c FROM macro WHERE indicator = 'fear_greed'", db_path=db_path)
-    count = rows[0]["c"]
+    count = _safe_count(rows)
     ok = count >= 1
     return GateCondition(
         "fear_greed", "collect",
@@ -165,7 +170,7 @@ def _check_fear_greed(db_path=None) -> GateCondition:
 
 def _check_etf_flows(db_path=None) -> GateCondition:
     rows = query("SELECT COUNT(DISTINCT date) as c FROM etf_flows", db_path=db_path)
-    count = rows[0]["c"]
+    count = _safe_count(rows)
     ok = count >= 2
     return GateCondition(
         "etf_flows_history", "collect",
