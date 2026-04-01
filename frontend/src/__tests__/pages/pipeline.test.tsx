@@ -282,7 +282,7 @@ describe("PipelinePage", () => {
 
   it("renders step with error status", async () => {
     const errorSteps = [...mockSteps];
-    errorSteps[2] = { ...errorSteps[2], status: "error", error: "timeout" };
+    errorSteps[2] = { ...errorSteps[2], status: "error", error: "timeout" as any };
 
     fetchMock.mockImplementation((url: string) => {
       if (url.includes("/api/pipeline/status")) {
