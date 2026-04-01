@@ -11,8 +11,6 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
-import pytest
-
 
 # ═══════════════════════════════════════════════════════════
 # scheduler.py — _write_heartbeat, main
@@ -105,9 +103,9 @@ class TestStrategyMapMain:
         from nuri.core.db import init_db
         db = tmp_path / "test.db"
         init_db(db)
-        from nuri.quant.regime.strategy_map import map_regime_to_strategy, print_strategy
         from nuri.quant.regime.classifier import RegimeState
         from nuri.quant.regime.macro_score import compute_macro_score
+        from nuri.quant.regime.strategy_map import map_regime_to_strategy, print_strategy
         state = RegimeState(
             date="2025-01-01", regime="bull_low_vol", trend="bull",
             volatility="low", confidence=0.8, details={}
