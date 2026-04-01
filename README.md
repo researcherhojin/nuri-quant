@@ -61,7 +61,7 @@ graph LR
 ![OpenBB](https://img.shields.io/badge/OpenBB-4.7.1-00C853?logoColor=white)
 ![pykrx](https://img.shields.io/badge/pykrx-1.2.4-1565C0)
 ![TA-Lib](https://img.shields.io/badge/TA--Lib-0.6.8-FF5722)
-![edgartools](https://img.shields.io/badge/edgartools-5.26.0-795548)
+![edgartools](https://img.shields.io/badge/edgartools-5.28.0-795548)
 ![FRED API](https://img.shields.io/badge/FRED_API-0.5.2-FF6F00)
 ![Beautiful Soup](https://img.shields.io/badge/Beautiful_Soup-4.14.3-43853D)
 ![finvizfinance](https://img.shields.io/badge/finvizfinance-1.3.0-1E88E5)
@@ -69,11 +69,11 @@ graph LR
 > 21 collectors + 11 external sources (TipRanks · Dataroma · CBOE · CoinGecko · Reddit/WSB · ARK · ETF.com · Macrotrends · TradingEconomics · ShortInterest · FINVIZ)
 
 **Quantitative Analysis**<br/>
-![pandas](https://img.shields.io/badge/pandas-3.0.1-150458?logo=pandas&logoColor=white)
-![NumPy](https://img.shields.io/badge/NumPy-2.4.3-013243?logo=numpy&logoColor=white)
+![pandas](https://img.shields.io/badge/pandas-2.3.3-150458?logo=pandas&logoColor=white)
+![NumPy](https://img.shields.io/badge/NumPy-1.26.4-013243?logo=numpy&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-1.8.0-F7931E?logo=scikit-learn&logoColor=white)
 ![Riskfolio-Lib](https://img.shields.io/badge/Riskfolio--Lib-7.2.1-2196F3)
-![VectorBT](https://img.shields.io/badge/VectorBT-0.28.4-9C27B0)
+![VectorBT](https://img.shields.io/badge/VectorBT-0.28.5-9C27B0)
 ![cvxpy](https://img.shields.io/badge/cvxpy-1.7.5-00897B)
 ![SciPy](https://img.shields.io/badge/SciPy-1.17.1-8CAAE6?logo=scipy&logoColor=white)
 
@@ -104,13 +104,13 @@ graph LR
 ![pytest](https://img.shields.io/badge/pytest-9.0.2-0A9EDC?logo=pytest&logoColor=white)
 ![pytest-xdist](https://img.shields.io/badge/xdist-3.8.0-0A9EDC)
 ![Vitest](https://img.shields.io/badge/Vitest-4.1.2-6E9F18?logo=vitest&logoColor=white)
-![Ruff](https://img.shields.io/badge/Ruff-0.13.3-D7FF64?logo=ruff&logoColor=black)
+![Ruff](https://img.shields.io/badge/Ruff-0.15.8-D7FF64?logo=ruff&logoColor=black)
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI/CD-2088FF?logo=githubactions&logoColor=white)
 ![Codecov](https://img.shields.io/badge/Codecov-coverage-F01F7A?logo=codecov&logoColor=white)
 ![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)
 
-> 2,700 backend tests (93%) + 463 frontend unit + 21 E2E tests (86%) · parallel via xdist/vitest/playwright
+> 2,793 backend tests (97%) + 463 frontend unit + 21 E2E tests (86%) · parallel via xdist/vitest/playwright
 
 ## Getting Started
 
@@ -132,7 +132,7 @@ make quick-scan            # Collect → analyze → consensus → targets (~2 m
 make consensus             # 10-agent consensus + price targets
 make certify               # SIEGE 10-condition certification
 make start                 # API (:8001) + Dashboard (:3000)
-make test                  # pytest (2700 tests, 26 files, parallel via xdist)
+make test                  # pytest (2793 tests, 29 files, parallel via xdist)
 make lint                  # ruff check
 
 # Single test
