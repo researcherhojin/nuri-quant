@@ -286,4 +286,5 @@ describe("DashboardPage (OverviewPage)", () => {
     const pulseElements = container.querySelectorAll(".animate-pulse");
     expect(pulseElements.length).toBeGreaterThan(0);
   });
+
 });
