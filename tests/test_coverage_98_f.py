@@ -1,17 +1,12 @@
 """
 Coverage push F — target uncovered __main__ blocks, edge branches, agent conditions.
 """
-import logging
 import runpy
-import signal
 import sys
-from dataclasses import asdict
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pandas as pd
-import pytest
-
 
 # ═══════════════════════════════════════════════════════════
 # scheduler.py — _write_heartbeat, main
@@ -54,7 +49,7 @@ class TestScheduler:
 
 class TestConsensusExtra:
     def test_compute_weights_empty_signals(self, tmp_path):
-        from nuri.core.db import init_db, get_db
+        from nuri.core.db import get_db, init_db
         db = tmp_path / "test.db"
         init_db(db)
         with get_db(db) as conn:
@@ -241,6 +236,7 @@ class TestClassifierEdges:
 
     def test_detect_recovery_nan_sma(self):
         import numpy as np
+
         from nuri.quant.regime.classifier import _detect_recovery
         df = pd.DataFrame({"sma50": [np.nan] * 250, "sma200": [np.nan] * 250})
         assert _detect_recovery(df) is False
@@ -464,7 +460,7 @@ class TestAgentEdges:
         assert result.action in ("BUY", "SELL", "HOLD")
 
     def test_wallstreet_with_upgrades(self, tmp_path):
-        from nuri.core.db import init_db, get_db
+        from nuri.core.db import get_db, init_db
         db = tmp_path / "test.db"
         init_db(db)
         with get_db(db) as conn:
@@ -478,7 +474,7 @@ class TestAgentEdges:
         assert result.action in ("BUY", "SELL", "HOLD")
 
     def test_risk_agent_with_loss(self, tmp_path):
-        from nuri.core.db import init_db, get_db
+        from nuri.core.db import get_db, init_db
         db = tmp_path / "test.db"
         init_db(db)
         with get_db(db) as conn:
