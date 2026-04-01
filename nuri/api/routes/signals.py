@@ -35,6 +35,9 @@ def get_scorecard():
         if csv.exists():
             df = pd.read_csv(csv)
             total = df[df["ticker"].isna()].drop(columns=["ticker"])
+            # inf/NaN → None (JSON 직렬화 호환)
+            total = total.replace([float("inf"), float("-inf")], None)
+            total = total.where(total.notna(), None)
             return {
                 "scorecard": total.to_dict(orient="records"),
                 "date": d.name,
