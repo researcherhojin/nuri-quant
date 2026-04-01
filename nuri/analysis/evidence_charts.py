@@ -210,9 +210,10 @@ def generate_portfolio_heatmap(output_dir: Path, db_path=None) -> Path:
         "sector": "first",
     }).reset_index()
 
-    # 위반 감지
-    max_single = 0.15  # 15% 한도
-    stop_loss = -20     # -20% 손절선
+    # 위반 감지 (config/rules.yaml 기준)
+    from nuri.core.rules import MAX_SINGLE_POSITION, PORTFOLIO_STOP
+    max_single = MAX_SINGLE_POSITION  # 0.15 (15%)
+    stop_loss = PORTFOLIO_STOP        # -10
     violations = []
     border_colors = []
 
@@ -671,9 +672,10 @@ def _detect_portfolio_violations(db_path=None) -> list[dict]:
     if df.empty:
         return []
 
+    from nuri.core.rules import MAX_SINGLE_POSITION, PORTFOLIO_STOP
     violations = []
-    stop_loss_threshold = -20   # %
-    max_weight = 15.0           # %
+    stop_loss_threshold = PORTFOLIO_STOP       # -10%
+    max_weight = MAX_SINGLE_POSITION * 100     # 15.0%
 
     # 종목별 합산
     grouped = df.groupby("ticker").agg({
