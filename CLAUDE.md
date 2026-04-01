@@ -335,7 +335,7 @@ data/
 
 ## Testing
 
-2700 backend tests across 26 domain files + 463 frontend vitest + 21 Playwright E2E (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 93% coverage, frontend 86% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
+2793 backend tests across 29 domain files + 463 frontend vitest + 21 Playwright E2E (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 97% coverage, frontend 86% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -468,5 +468,5 @@ Growth stocks use -7% stop / +20%/+40% targets. Value stocks use -10% stop / +15
 
 `.mcp.json` configures an MCP SQLite server for direct DB queries via Claude Code:
 ```json
-{"mcpServers": {"nuri-db": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-sqlite", "./data/portfolio.db"]}}}
+{"mcpServers": {"nuri-db": {"command": "uvx", "args": ["mcp-server-sqlite", "--db-path", "./data/portfolio.db"]}}}
 ```
