@@ -124,8 +124,8 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend coverage | ≥ 95% | 97% (2,884 tests, 31 files) |
-| Frontend coverage | ≥ 90% | 95% (538 tests, 41 files) |
+| Backend coverage | ≥ 95% | 98% (2,929 tests, 32 files) |
+| Frontend coverage | ≥ 90% | 95% (552 tests, 42 files) |
 | E2E | 핵심 flow 커버 | 21 Playwright tests |
 | CI 통과 | 필수 | lint + test + coverage + security |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
@@ -244,7 +244,47 @@ LLM은 요청받은 것 이상을 "개선"하려는 경향이 있다.
 - CLAUDE.md, README.md, STRATEGY.md, 코드 내 주석을 모두 확인한다
 - 커밋 메시지에 변경된 숫자를 명시한다 (e.g., "update test counts 2808 → 2884")
 
-### 5.7 하네스 원칙 요약
+### 5.7 하네스 구성 요소 (Harness Components)
+
+LLM 에이전트를 안전하게 운용하기 위한 하네스는 4개 레이어로 구성된다.
+
+| 레이어 | 역할 | 현재 구현 |
+|--------|------|----------|
+| **Context Files** | 에이전트가 작업 시작 시 읽는 프로젝트 규칙 | `CLAUDE.md` (루트 + frontend), `AGENTS.md`, `docs/STRATEGY.md` |
+| **MCP Servers** | 외부 도구 연결 (DB 직접 쿼리 등) | `.mcp.json` → SQLite DB. 필요 최소한만 연결 (토큰 절약) |
+| **Skill Files** | 반복 작업 절차 문서화 | 배포: `scripts/deploy.sh`, 검증: `scripts/verify.py`, 마이그레이션: `scripts/migrate_db.py` |
+| **Mechanical Enforcement** | 규칙 위반을 문서가 아닌 시스템이 차단 | 아래 상세 |
+
+**Mechanical Enforcement 상세:**
+
+```
+린터         ruff check (E/F/W/I) — dead import, unused var 자동 감지
+CI 게이트     main-ci-cd.yml — lint + test + coverage threshold + Trivy security
+PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일 제한
+로컬 검증     make verify-quick (10초) / make verify-all (커밋 전 필수)
+파이프라인     SIEGE gate_check.py — exit 1 if BLOCKED (데이터 품질 미달 시 파이프라인 차단)
+```
+
+**엔트로피 자동 관리 (Code Garbage Collection):**
+
+코드베이스는 시간이 지나면 엔트로피가 증가한다. 이를 자동으로 관리하기 위한 메커니즘:
+
+| 엔트로피 유형 | 감지 | 방어 |
+|--------------|------|------|
+| Dead code | `ruff` (F401 unused import, F841 unused var) | CI에서 자동 차단 |
+| Stale data | Freshness SLA (`nuri/core/freshness.py`) | WARN/FAIL → 대시보드 경고 |
+| Stale tests | Coverage regression 감지 (Codecov PR comment) | 커버리지 하락 시 PR 경고 |
+| Schema drift | `schema_version` 테이블 + `_MIGRATIONS` 리스트 | `init_db()` 시 자동 마이그레이션 |
+| Config drift | `config/*.yaml` 중앙 관리 | 코드에 하드코딩 금지 원칙 |
+| Number drift | 숫자 변경 시 `grep -ri` 전수 검색 | 커밋 메시지에 변경 숫자 명시 |
+
+**Context Files 설계 원칙:**
+
+- 거대한 하나의 파일 ✕ → 디렉토리별 맵 ✓ (`CLAUDE.md`는 루트 + frontend 분리)
+- 코드에서 유추 가능한 정보 ✕ → 코드만으로 알 수 없는 결정의 "왜"만 기록
+- `STRATEGY.md`는 반드시 작업 시작 전에 읽도록 `CLAUDE.md`에 지시
+
+### 5.8 하네스 원칙 요약
 
 ```
 1. 모르면 읽는다         — 가정하지 않는다
@@ -252,6 +292,7 @@ LLM은 요청받은 것 이상을 "개선"하려는 경향이 있다.
 3. 수정 후 실행한다       — 논리적 확신을 신뢰하지 않는다
 4. 스코프를 지킨다       — 요청된 것만 한다
 5. 숫자를 grep한다       — 한 곳만 고치지 않는다
+6. 시스템이 차단한다      — 문서가 아닌 린터/CI/게이트가 강제한다
 ```
 
 ---
@@ -283,8 +324,7 @@ LLM은 요청받은 것 이상을 "개선"하려는 경향이 있다.
 - 21 collectors, 15 signals, 10 regimes, 10 agents, SIEGE 10-gate
 - 60 API endpoints, 27 tables (v11 migrations)
 - 15-page 대시보드 (Pipeline DAG, Portfolio CRUD, Evidence 차트)
-- 2,884 backend (97%) + 538 frontend (95%) + 21 E2E tests
-- Codecov 전체 95.10%
+- 2,929 backend (98%) + 552 frontend (95%) + 21 E2E tests
 
 ### 미완성 — 우선순위 순
 
