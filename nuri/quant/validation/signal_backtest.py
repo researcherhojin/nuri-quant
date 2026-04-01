@@ -517,11 +517,6 @@ def compute_exit(df: pd.DataFrame, entry_idx: int, signal_id: str) -> int | None
 # 하위호환 alias (기존 private import 지원)
 # ═══════════════════════════════════════════════════════
 
-_compute_indicators = compute_indicators
-_detect_signal_entries = detect_signal_entries
-_compute_exit = compute_exit
-_merge_macro_data = merge_macro_data
-_merge_data_signals = merge_data_signals
 
 
 # ═══════════════════════════════════════════════════════
