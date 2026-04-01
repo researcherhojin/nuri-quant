@@ -14,7 +14,7 @@
 - 10 agents + consensus engine, SIEGE 10-condition gate
 - 투자 규칙 자동화: take-profit, trailing stop, portfolio MDD gate
 - Pipeline observability: Event Journal + Freshness SLA + Operator Cockpit
-- 53 API endpoints, 28 tables (v11 migrations), 2568 backend + 421 frontend tests
+- 53 API endpoints, 27 tables (v11 migrations), 2166 backend + 421 frontend tests
 
 ### 프론트엔드 — 진행 중
 - 15 pages, dark mode, Palantir-style dashboard
@@ -52,8 +52,27 @@
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 에이전트별 판단 과정 스트리밍 |
 | [FreqUI](https://www.freqtrade.io/en/stable/freq-ui/) | 백테스트 시그널 마커 |
 
+## TODO (우선순위 순)
+
+### 코드 품질
+- [ ] pytest markers (`@pytest.mark.slow`) + CI fast/slow 분리
+- [ ] 커버리지 100% 달성 (현재 Codecov 88%, backend 90% / frontend 62%)
+
+### 프론트엔드 기능 — 미구현
+- [ ] 에이전트 reasoning trace — consensus 페이지에서 각 에이전트 판단 과정 스트리밍
+- [ ] SIEGE 드릴다운 — engine 페이지에서 10개 조건별 상세 클릭
+- [ ] 백테스트 인터랙티브 차트 — strategy 페이지에서 파라미터 조절 + 실시간 시뮬레이션
+- [ ] 투자 규칙 UI (#42) — 익절 하이라이트, 반포지션 경고, 트레일링 스톱 시각화
+
+### 실전 연동 (#17)
+- [ ] Alpaca Paper → Live 전환 (이중 확인: SIEGE CERTIFIED + 수동 승인)
+- [ ] 자동 매도 실행 (익절/손절 도달 시 자동 지정가 매도)
+- [ ] 멀티 포트폴리오 (계좌별 독립 분석 + Dashboard 계좌 전환)
+
+### 포트폴리오 온보딩 (#25)
+- [ ] 브로커 API 연동 (Alpaca/한국 증권사 자동 동기화)
+
 ## 관련 이슈
 
-- #16: 에이전트 10개 확장 + 시각화 (다음 작업)
-- #42: 투자 규칙 UI 반영 (익절 하이라이트, 반포지션 경고)
-- #43-47: 운영 안정성 (수집기, 스케줄러, DB, 배포, API 보안)
+- #17: 실전 연동 — Alpaca live + 멀티 포트폴리오
+- #25: 포트폴리오 온보딩 — Dashboard UI 입력
