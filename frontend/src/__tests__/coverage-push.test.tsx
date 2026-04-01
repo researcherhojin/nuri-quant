@@ -394,11 +394,9 @@ describe("Portfolio form interactions", () => {
     await act(async () => { render(<PortfolioPage />); });
     await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
 
-    // Click "Add Holding" button
     const addBtn = screen.queryByText("Add Holding");
     if (addBtn) {
       await act(async () => { fireEvent.click(addBtn); });
-      // Form should appear — fill and submit
       const tickerInput = screen.queryByPlaceholderText(/Ticker/);
       if (tickerInput) {
         fireEvent.change(tickerInput, { target: { value: "NVDA" } });
@@ -406,3 +404,6 @@ describe("Portfolio form interactions", () => {
     }
   });
 });
+
+
+// Additional portfolio/sma tests moved to coverage-push-3.test.tsx (no recharts mock conflict)

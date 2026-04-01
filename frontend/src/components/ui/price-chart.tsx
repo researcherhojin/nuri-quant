@@ -41,7 +41,7 @@ const PERIODS = [
 ] as const;
 
 /** 단순이동평균 계산 */
-function sma(data: number[], period: number): (number | null)[] {
+export function sma(data: number[], period: number): (number | null)[] {
   return data.map((_, i) => {
     if (i < period - 1) return null;
     const slice = data.slice(i - period + 1, i + 1);
@@ -49,7 +49,7 @@ function sma(data: number[], period: number): (number | null)[] {
   });
 }
 
-function formatVolume(v: number): string {
+export function formatVolume(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
   return String(v);
