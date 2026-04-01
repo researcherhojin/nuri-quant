@@ -16,9 +16,11 @@ from nuri.core.db import get_db, init_db, query, upsert_macro, upsert_prices
 
 
 @pytest.fixture
-def db_path(tmp_path):
+def db_path(tmp_path, monkeypatch):
+    import nuri.core.db as db_mod
     path = tmp_path / "test.db"
     init_db(path)
+    monkeypatch.setattr(db_mod, "DB_PATH", path)
     return path
 
 
