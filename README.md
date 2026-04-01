@@ -18,14 +18,14 @@ Open-source quantitative investment platform that **proves why you should buy or
 
 ```mermaid
 graph LR
-    A["<b>A Collect</b><br/>21 collectors<br/>→ prices · macro · signals"]
-    B["<b>B Analyze</b><br/>portfolio · sector · risk"]
-    C["<b>C Validate</b><br/>15 signals × 8K trades<br/>→ scorecard · memory"]
-    D["<b>D Classify</b><br/>10-regime strategy map<br/>+ multi-factor composite"]
-    E["<b>E Recommend</b><br/>candidates · 10-agent<br/>consensus · swing scan"]
-    F["<b>F Certify</b><br/>price targets · rebalance<br/>SIEGE 10-gate"]
-    G["<b>G Evidence</b><br/>5 Plotly charts"]
-    H["<b>H Notify</b><br/>Discord · Telegram"]
+    A["📡 <b>Collect</b><br/>21 collectors<br/>prices · macro · signals"]
+    B["📊 <b>Analyze</b><br/>portfolio · sector · risk"]
+    C["🧪 <b>Validate</b><br/>15 signals × 8K trades<br/>scorecard · memory"]
+    D["🏷️ <b>Classify</b><br/>10-regime strategy map<br/>multi-factor composite"]
+    E["🤖 <b>Recommend</b><br/>10-agent consensus<br/>candidates · swing scan"]
+    F["🛡️ <b>Certify</b><br/>price targets · rebalance<br/>SIEGE 10-gate"]
+    G["📈 <b>Evidence</b><br/>5 Plotly charts"]
+    H["🔔 <b>Notify</b><br/>Discord · Telegram"]
 
     A -->|DB| B -->|DB| C -->|CSV| D -->|DB| E -->|DB| F -->|pass/reject| G -->|HTML| H
 
@@ -44,14 +44,14 @@ graph LR
 
 | Phase | Modules | Input | Output |
 |-------|---------|-------|--------|
-| **A** | stock, stock_kr, macro, technical, fear_greed | External APIs | `prices`, `macro`, `signals` tables |
-| **B** | portfolio, sector, risk | DB tables | Portfolio analysis in DB |
-| **C** | signal_backtest, scorecard, memory | DB prices | `signal_results.csv`, `signal_scorecard.csv` |
-| **D** | strategy_map, composite | CSV + DB | Regime allocation, factor scores in DB |
-| **E** | candidates, consensus, swing scanner | DB + CSV stats | `recommendations` table |
-| **F** | price_targets, rebalance_advisor, certification | DB recommendations | CERTIFIED / REJECTED |
-| **G** | evidence_charts | DB + certification | 5 Plotly HTML files |
-| **H** | notify_scan_result | Evidence HTML | Discord/Telegram message |
+| 📡 **Collect** | stock, stock_kr, macro, technical, fear_greed | External APIs | `prices`, `macro`, `signals` tables |
+| 📊 **Analyze** | portfolio, sector, risk | DB tables | Portfolio analysis in DB |
+| 🧪 **Validate** | signal_backtest, scorecard, memory | DB prices | `signal_results.csv`, `signal_scorecard.csv` |
+| 🏷️ **Classify** | strategy_map, composite | CSV + DB | Regime allocation, factor scores in DB |
+| 🤖 **Recommend** | candidates, consensus, swing scanner | DB + CSV stats | `recommendations` table |
+| 🛡️ **Certify** | price_targets, rebalance_advisor, certification | DB recommendations | CERTIFIED / REJECTED |
+| 📈 **Evidence** | evidence_charts | DB + certification | 5 Plotly HTML files |
+| 🔔 **Notify** | notify_scan_result | Evidence HTML | Discord/Telegram message |
 
 </details>
 
