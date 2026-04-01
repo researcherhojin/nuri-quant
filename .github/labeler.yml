@@ -1,0 +1,47 @@
+# Auto-label PRs based on changed files
+backend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "nuri/**"
+          - "tests/**"
+          - "pyproject.toml"
+          - "uv.lock"
+
+frontend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "frontend/**"
+
+pipeline:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "nuri/collectors/**"
+          - "nuri/quant/**"
+          - "nuri/trading/**"
+          - "nuri/analysis/**"
+
+agents:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "nuri/trading/agents/**"
+          - "config/agents.yaml"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "codecov.yml"
+          - "Makefile"
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "*.md"
+          - "CLAUDE.md"
+
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "config/**"
+          - ".env.example"
