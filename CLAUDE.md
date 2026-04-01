@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Before starting any work, read `docs/STRATEGY.md`.** It defines the project's purpose, design principles, quality gates, and LLM harness rules (hallucination guards, confirmation bias prevention, scope creep controls). Every feature, fix, and refactor must align with STRATEGY.md principles.
+
 ## Project
 
 Nuri-Quant (누리퀀트) — Open-source quant investment platform.
