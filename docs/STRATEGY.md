@@ -56,7 +56,7 @@
 
 ### 코드 품질
 - [ ] pytest markers (`@pytest.mark.slow`) + CI fast/slow 분리
-- [ ] 커버리지 100% 달성 (현재 Codecov 88%, backend 90% / frontend 62%)
+- [ ] 커버리지 93% → 98% (#71) — `__main__` 블록 + 나머지 분기
 
 ### 프론트엔드 기능 — 미구현
 - [ ] 에이전트 reasoning trace — consensus 페이지에서 각 에이전트 판단 과정 스트리밍
@@ -76,3 +76,4 @@
 
 - #17: 실전 연동 — Alpaca live + 멀티 포트폴리오
 - #25: 포트폴리오 온보딩 — Dashboard UI 입력
+- #71: 커버리지 93% → 98%
