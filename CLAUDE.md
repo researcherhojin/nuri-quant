@@ -293,7 +293,7 @@ Configured in `.env` (see `.env.example`):
 | `insider_trades` | Insider buy/sell transactions |
 | `schema_version` | Migration version tracking |
 
-Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `llm_bench`, `pipeline_events`, `trades`.
+Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `pipeline_events`, `trades`.
 
 ## Code Conventions
 
@@ -335,7 +335,7 @@ data/
 
 ## Testing
 
-2568 backend tests across 71 files + 421 frontend tests across 31 files (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 90% coverage, frontend 62% coverage (Codecov: 88% combined). Tests use `tmp_path` fixture for isolated SQLite databases:
+2166 backend tests across 18 domain files + 421 frontend tests across 31 files (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 88% coverage, frontend 62% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):

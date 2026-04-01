@@ -37,7 +37,7 @@ class TestInitDb:
         table_names = {t["name"] for t in tables}
         expected = {
             "prices", "portfolio", "macro", "ark", "signals",
-            "events", "news", "llm_bench", "factors", "backtests",
+            "events", "news", "factors", "backtests",
         }
         assert expected.issubset(table_names)
 
