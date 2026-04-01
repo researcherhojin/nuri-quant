@@ -1350,6 +1350,7 @@ class TestMonitor:
 
     def test_daily_pnl_summary_with_positions(self, rich_db, monkeypatch):
         """With open positions → calculate PnL."""
+        monkeypatch.setattr("nuri.trading.strategy.position.update_prices", lambda db_path=None: None)
         # Insert open positions
         with get_db(rich_db) as conn:
             conn.execute(
