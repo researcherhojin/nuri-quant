@@ -71,7 +71,7 @@ describe("Pipeline — coverage branches", () => {
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
-    global.fetch = fetchMock;
+    global.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(() => {
