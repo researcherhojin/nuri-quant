@@ -107,9 +107,10 @@ graph LR
 ![Ruff](https://img.shields.io/badge/Ruff-0.13.3-D7FF64?logo=ruff&logoColor=black)
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI/CD-2088FF?logo=githubactions&logoColor=white)
 ![Codecov](https://img.shields.io/badge/Codecov-coverage-F01F7A?logo=codecov&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)
 
-> 2,166 backend tests (88% coverage) + 421 frontend tests (62% coverage) · parallel via xdist/vitest
+> 2,700 backend tests (93%) + 463 frontend unit + 21 E2E tests (86%) · parallel via xdist/vitest/playwright
 
 ## Getting Started
 
@@ -131,7 +132,7 @@ make quick-scan            # Collect → analyze → consensus → targets (~2 m
 make consensus             # 10-agent consensus + price targets
 make certify               # SIEGE 10-condition certification
 make start                 # API (:8001) + Dashboard (:3000)
-make test                  # pytest (2166 tests, 18 files, parallel via xdist)
+make test                  # pytest (2700 tests, 26 files, parallel via xdist)
 make lint                  # ruff check
 
 # Single test
