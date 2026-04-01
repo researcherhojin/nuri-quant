@@ -1,0 +1,48 @@
+name: Bug Report
+description: Report a bug in Nuri-Quant
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands or steps to reproduce the issue.
+      placeholder: |
+        1. Run `make full-scan`
+        2. Check `data/reports/` output
+        3. Error appears in ...
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error logs
+      description: Paste relevant error output.
+      render: shell
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Pipeline (collect/analyze/validate/classify/recommend/certify)
+        - Agents (consensus/individual agents)
+        - Trading (strategy/swing/execution)
+        - API (FastAPI endpoints)
+        - Dashboard (Next.js frontend)
+        - Database (schema/migrations)
+        - CI/CD
+        - Other
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "macOS 15, Python 3.12, Node 22"
