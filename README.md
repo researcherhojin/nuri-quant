@@ -86,10 +86,10 @@ graph LR
 ![bcrypt](https://img.shields.io/badge/bcrypt-5.0.0-004D40)
 ![slowapi](https://img.shields.io/badge/slowapi-0.1.9-FF7043)
 
-> 56 endpoints · 27 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
+> 58 endpoints · 27 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
 
 **Frontend**<br/>
-![Next.js](https://img.shields.io/badge/Next.js-16.2.1-000000?logo=next.js&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16.2.2-000000?logo=next.js&logoColor=white)
 ![React](https://img.shields.io/badge/React-19.2.4-61DAFB?logo=react&logoColor=black)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
 ![shadcn/ui](https://img.shields.io/badge/shadcn/ui-latest-000000)
@@ -110,7 +110,7 @@ graph LR
 ![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)
 
-> 2,929 backend tests (98%) + 552 frontend unit + 21 E2E tests (95%) · parallel via xdist/vitest/playwright
+> 2,928 backend tests (98%) + 552 frontend unit + 21 E2E tests (95%) · parallel via xdist/vitest/playwright
 
 ## Getting Started
 
@@ -132,7 +132,7 @@ make quick-scan            # Collect → analyze → consensus → targets (~2 m
 make consensus             # 10-agent consensus + price targets
 make certify               # SIEGE 10-condition certification
 make start                 # API (:8001) + Dashboard (:3000)
-make test                  # pytest (2929 tests, 32 files, parallel via xdist)
+make test                  # pytest (2928 tests, 32 files, parallel via xdist)
 make lint                  # ruff check
 
 # Single test

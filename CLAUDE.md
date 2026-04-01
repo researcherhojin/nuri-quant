@@ -271,7 +271,7 @@ Configured in `.env` (see `.env.example`):
 - `DISCORD_WEBHOOK_URL` — daily report delivery (optional; falls back to stdout)
 - `DISCORD_BOT_TOKEN` — bot mode alerts (optional)
 - `FINNHUB_API_KEY` — US institutional flows (optional)
-- `OLLAMA_HOST` / `OLLAMA_MODEL` — LLM report (default: localhost:11434, llama3.1)
+- `OLLAMA_HOST` / `OLLAMA_MODEL` — LLM report (default: localhost:11434, qwen3.5)
 - `DASHBOARD_PASSWORD` — Next.js dashboard auth (optional; unset = public)
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — Paper trading (optional; DryRun fallback)
 
@@ -337,7 +337,7 @@ data/
 
 ## Testing
 
-2929 backend tests across 32 domain files + 552 frontend vitest + 21 Playwright E2E (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 98% coverage, frontend 95% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
+2928 backend tests across 32 domain files + 552 frontend vitest + 21 Playwright E2E (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 98% coverage, frontend 95% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
