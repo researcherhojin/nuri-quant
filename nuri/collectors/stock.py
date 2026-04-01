@@ -59,43 +59,58 @@ class StockCollector(BaseCollector):
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     def _collect_ticker(self, ticker: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
-        """단일 종목 수집. 프로바이더 폴백 적용."""
-        from openbb import obb
+        """단일 종목 수집. OpenBB → yfinance 직접 폴백."""
+        # 1차: OpenBB
+        try:
+            from openbb import obb
+            result = obb.equity.price.historical(
+                symbol=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                provider="yfinance",
+            )
+            df = result.to_dataframe()
+            if not df.empty:
+                return self._standardize(df, ticker)
+        except Exception as e:
+            self.logger.debug(f"{ticker}: OpenBB 실패 — {e}")
 
-        for provider in PROVIDERS:
-            try:
-                result = obb.equity.price.historical(
-                    symbol=ticker,
-                    start_date=start_date,
-                    end_date=end_date,
-                    provider=provider,
-                )
-                df = result.to_dataframe()
-                if df.empty:
-                    continue
-
-                # 표준화
-                df = df.reset_index()
-                df["ticker"] = ticker
-                df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-
-                # adj_close가 없으면 close 사용
-                if "adj_close" not in df.columns:
-                    df["adj_close"] = df["close"]
-
-                cols = ["ticker", "date", "open", "high", "low", "close", "volume", "adj_close"]
-                for c in cols:
-                    if c not in df.columns:
-                        df[c] = None
-
-                return df[cols]
-
-            except Exception as e:
-                self.logger.debug(f"{ticker}: {provider} 실패 — {e}")
-                continue
+        # 2차: yfinance 직접 호출 (OpenBB 장애 시 폴백)
+        try:
+            import yfinance as yf
+            raw = yf.download(ticker, start=start_date, end=end_date, progress=False)
+            if not raw.empty:
+                df = raw.reset_index()
+                # MultiIndex 컬럼 처리 (yfinance가 단일 종목도 MultiIndex로 반환할 수 있음)
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = [c[0] if c[1] == ticker or c[1] == "" else c[0] for c in df.columns]
+                return self._standardize(df, ticker)
+        except Exception as e:
+            self.logger.debug(f"{ticker}: yfinance 직접 호출도 실패 — {e}")
 
         self.logger.warning(f"{ticker}: 모든 프로바이더 실패")
         return None
+
+    def _standardize(self, df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+        """DataFrame을 표준 OHLCV 포맷으로 변환."""
+        df = df.reset_index() if "date" not in df.columns and "Date" not in df.columns else df
+
+        # 컬럼명 소문자 통일
+        df.columns = [c.lower() if isinstance(c, str) else c for c in df.columns]
+        df["ticker"] = ticker
+
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+
+        if "adj_close" not in df.columns:
+            df["adj_close"] = df.get("close")
+
+        cols = ["ticker", "date", "open", "high", "low", "close", "volume", "adj_close"]
+        for c in cols:
+            if c not in df.columns:
+                df[c] = None
+
+        return df[cols]
 
     @staticmethod
     def _period_to_start_date(period: str) -> str:

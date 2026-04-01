@@ -103,7 +103,7 @@ class MacroCollector(BaseCollector):
         """yfinance에서 직접 매크로 지표 수집 (API 키 불필요)."""
         import warnings
 
-        from openbb import obb
+        import yfinance as yf
         warnings.filterwarnings("ignore")
 
         start = (kst_now().replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -111,11 +111,15 @@ class MacroCollector(BaseCollector):
 
         for indicator, symbol in YFINANCE_SYMBOLS.items():
             try:
-                r = obb.equity.price.historical(symbol, start_date=start, provider="yfinance")
-                df = r.to_df().reset_index()
-                if df.empty:
+                raw = yf.download(symbol, start=start, progress=False)
+                if raw.empty:
                     continue
 
+                df = raw.reset_index()
+                # MultiIndex 컬럼 처리
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = [c[0] for c in df.columns]
+                df.columns = [c.lower() for c in df.columns]
                 df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
 
                 for _, row in df.iterrows():
