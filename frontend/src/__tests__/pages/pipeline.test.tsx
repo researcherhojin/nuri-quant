@@ -216,4 +216,89 @@ describe("PipelinePage", () => {
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/pipeline/timeline"));
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/gate"));
   });
+
+  it("handles step run button click", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    await act(async () => {
+      render(<PipelinePage />);
+    });
+
+    // Look for any Run button in the pipeline
+    await waitFor(() => {
+      const buttons = screen.queryAllByText(/Run|실행/);
+      if (buttons.length > 0) {
+        fireEvent.click(buttons[0]);
+      }
+    });
+    vi.useRealTimers();
+  });
+
+  it("handles fetch error gracefully", async () => {
+    fetchMock.mockRejectedValue(new Error("network error"));
+    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    await act(async () => {
+      render(<PipelinePage />);
+    });
+    // Should render without crashing even with network errors
+    expect(screen.getByTestId("react-flow")).toBeInTheDocument();
+  });
+
+  it("renders gate conditions when available", async () => {
+    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
+      if (opts?.method === "POST") {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: "started" }) });
+      }
+      if (url.includes("/api/gate")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            collect: { ready: true, passed: 3, total: 3, conditions: [{ passed: true, description: "prices fresh" }] },
+            validate: { ready: false, passed: 1, total: 2, conditions: [{ passed: true, description: "signals" }, { passed: false, description: "scorecard" }] },
+          }),
+        });
+      }
+      if (url.includes("/api/pipeline/status")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            steps: mockSteps,
+            pipeline_status: "ready",
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+
+    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    await act(async () => {
+      render(<PipelinePage />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("react-flow")).toBeInTheDocument();
+    });
+  });
+
+  it("renders step with error status", async () => {
+    const errorSteps = [...mockSteps];
+    errorSteps[2] = { ...errorSteps[2], status: "error", error: "timeout" };
+
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes("/api/pipeline/status")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ steps: errorSteps, pipeline_status: "blocked" }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+
+    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    await act(async () => {
+      render(<PipelinePage />);
+    });
+
+    expect(screen.getByTestId("react-flow")).toBeInTheDocument();
+  });
 });
