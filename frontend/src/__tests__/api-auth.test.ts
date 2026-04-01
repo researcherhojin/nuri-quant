@@ -59,8 +59,9 @@ describe("POST /api/auth", () => {
     const resp = await POST(req);
     expect(resp.status).toBe(200);
     expect(resp.body).toEqual({ ok: true });
-    expect(resp.cookies._store["nuri-auth"]).toBeDefined();
-    expect(resp.cookies._store["nuri-auth"].httpOnly).toBe(true);
+    // Verify cookie was set (mock stores in _store, cast to any to access)
+    expect((resp.cookies as any)._store["nuri-auth"]).toBeDefined();
+    expect((resp.cookies as any)._store["nuri-auth"].httpOnly).toBe(true);
   });
 
   it("cookie value is SHA256 hash, not plaintext", async () => {
@@ -71,7 +72,7 @@ describe("POST /api/auth", () => {
       body: JSON.stringify({ password: "mypass" }),
     });
     const resp = await POST(req);
-    const cookie = resp.cookies._store["nuri-auth"];
+    const cookie = (resp.cookies as any)._store["nuri-auth"];
     expect(cookie.value).not.toBe("mypass");
     expect(cookie.value.length).toBe(64); // SHA256 hex = 64 chars
   });
