@@ -86,7 +86,7 @@ graph LR
 ![bcrypt](https://img.shields.io/badge/bcrypt-5.0.0-004D40)
 ![slowapi](https://img.shields.io/badge/slowapi-0.1.9-FF7043)
 
-> 60 endpoints · 27 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
+> 56 endpoints · 27 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
 
 **Frontend**<br/>
 ![Next.js](https://img.shields.io/badge/Next.js-16.2.1-000000?logo=next.js&logoColor=white)
