@@ -1,10 +1,10 @@
 {
   "mcpServers": {
     "nuri-db": {
-      "command": "npx",
+      "command": "uvx",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-sqlite",
+        "mcp-server-sqlite",
+        "--db-path",
         "./data/portfolio.db"
       ]
     }
