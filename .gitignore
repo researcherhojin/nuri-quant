@@ -19,6 +19,7 @@ config/portfolio.yaml
 *.egg-info/
 dist/
 build/
+test-results/
 
 # Testing / Linting
 .coverage
