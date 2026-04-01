@@ -1,24 +1,37 @@
 import { test, expect } from "@playwright/test";
-import { mockAllAPIs } from "./helpers";
 
-test.describe("Dashboard", () => {
-  test.beforeEach(async ({ page }) => {
-    await mockAllAPIs(page);
-  });
-
-  // Dashboard is a server component — fetchAPI runs server-side,
-  // so page.route() can't intercept it. These tests verify the
-  // error boundary works when backend is unavailable.
-
-  test("shows error boundary or loading when backend unavailable", async ({ page }) => {
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    // Either shows error UI or loading skeleton
+test.describe("Dashboard (with real backend)", () => {
+  test("renders main dashboard with verdict", async ({ page }) => {
+    await page.goto("/", { timeout: 15000 });
+    await expect(page.locator("text=Nuri-Quant")).toBeVisible({ timeout: 10000 });
+    // Dashboard should render — either with data or error boundary
     const body = await page.textContent("body");
-    expect(body).toBeTruthy();
+    expect(body!.length).toBeGreaterThan(100);
   });
 
-  test("sidebar navigation renders", async ({ page }) => {
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("text=Nuri-Quant")).toBeVisible({ timeout: 5000 });
+  test("sidebar shows navigation links", async ({ page }) => {
+    await page.goto("/", { timeout: 15000 });
+    await expect(page.locator("text=Dashboard").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("text=Portfolio").first()).toBeVisible();
+    await expect(page.locator("text=Signals").first()).toBeVisible();
+  });
+
+  test("sidebar shows SIEGE status badge", async ({ page }) => {
+    await page.goto("/", { timeout: 15000 });
+    await page.waitForTimeout(3000);
+    // SIEGE badge: CERTIFIED or REJECTED
+    const certified = page.locator("text=CERTIFIED");
+    const rejected = page.locator("text=REJECTED");
+    const hasSiege = (await certified.count()) > 0 || (await rejected.count()) > 0;
+    expect(hasSiege).toBe(true);
+  });
+
+  test("navigates to each page without crash", async ({ page }) => {
+    const routes = ["/signals", "/consensus", "/targets", "/engine", "/evidence"];
+    for (const route of routes) {
+      await page.goto(route, { timeout: 15000 });
+      const body = await page.textContent("body");
+      expect(body!.length).toBeGreaterThan(50);
+    }
   });
 });
