@@ -2895,15 +2895,13 @@ class TestMacroCollector_R24:
 
     def test_collect_yfinance_fallback(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.macro import MacroCollector
+        import yfinance as yf
 
-        mock_df = pd.DataFrame({"date": pd.to_datetime(["2025-01-15"]), "close": [4.5]})
-        mock_result = MagicMock()
-        mock_result.to_df.return_value = mock_df
-        mock_obb = MagicMock()
-        mock_obb.equity.price.historical.return_value = mock_result
-        import sys
-
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        mock_df = pd.DataFrame({
+            "Date": pd.to_datetime(["2025-01-15"]),
+            "Close": [4.5], "Open": [4.4], "High": [4.6], "Low": [4.3], "Volume": [0],
+        })
+        monkeypatch.setattr(yf, "download", lambda *a, **kw: mock_df)
         collector = MacroCollector()
         collector.api_key = ""
         assert len(collector._collect_yfinance(days=30)) > 0
