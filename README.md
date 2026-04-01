@@ -14,73 +14,46 @@ Open-source quantitative investment platform that **proves why you should buy or
 
 ## Pipeline
 
-`make full-scan` executes 8 phases. Each phase writes to SQLite or CSV; the next phase reads it — **no direct imports between phases**.
+`make full-scan` runs 8 phases end-to-end. Phases communicate via DB/CSV — no direct imports.
 
 ```mermaid
-graph TD
-    subgraph "A · Collect"
-        A1["stock · stock_kr<br/>macro · technical<br/>fear_greed"]
-    end
+graph LR
+    A["<b>A Collect</b><br/>21 collectors<br/>→ prices · macro · signals"]
+    B["<b>B Analyze</b><br/>portfolio · sector · risk"]
+    C["<b>C Validate</b><br/>15 signals × 8K trades<br/>→ scorecard · memory"]
+    D["<b>D Classify</b><br/>10-regime strategy map<br/>+ multi-factor composite"]
+    E["<b>E Recommend</b><br/>candidates · 10-agent<br/>consensus · swing scan"]
+    F["<b>F Certify</b><br/>price targets · rebalance<br/>SIEGE 10-gate"]
+    G["<b>G Evidence</b><br/>5 Plotly charts"]
+    H["<b>H Notify</b><br/>Discord · Telegram"]
 
-    subgraph "B · Analyze"
-        B1["portfolio"] --> B2["sector"]
-        B2 --> B3["risk"]
-    end
+    A -->|DB| B -->|DB| C -->|CSV| D -->|DB| E -->|DB| F -->|pass/reject| G -->|HTML| H
 
-    subgraph "C · Validate"
-        C1["signal_backtest<br/>15 signals × 8K+ trades"] --> C2["scorecard<br/>win_rate · PF · avg_return"]
-        C2 --> C3["memory --snapshot<br/>drift detection"]
-    end
-
-    subgraph "D · Classify"
-        D1["strategy_map<br/>10-regime × signal stats"] --> D2["composite<br/>momentum · value · quality"]
-    end
-
-    subgraph "E · Recommend"
-        E1["candidates<br/>signal → confidence"] --> E2["consensus<br/>10 agents · weighted vote"]
-        E2 --> E3["swing scanner<br/>market-wide scan"]
-    end
-
-    subgraph "F · Certify"
-        F1["price_targets<br/>entry · SL · TP1 · TP2"] --> F2["rebalance_advisor<br/>rule violation · sell qty"]
-        F2 --> F3["SIEGE certification<br/>10-condition gate"]
-    end
-
-    subgraph "G · Evidence"
-        G1["evidence_charts<br/>5 Plotly HTML"]
-    end
-
-    subgraph "H · Notify"
-        H1["Discord / Telegram<br/>daily report"]
-    end
-
-    A1 -- "prices · macro · signals<br/>→ DB tables" --> B1
-    B3 -- "portfolio_analysis<br/>→ DB" --> C1
-    C2 -- "signal_results.csv<br/>signal_scorecard.csv" --> D1
-    C3 -- "strategy_memory<br/>→ DB" --> D1
-    D2 -- "regime · factors<br/>→ DB" --> E1
-    E2 -- "recommendations<br/>→ DB" --> F1
-    F3 -- "CERTIFIED / REJECTED" --> G1
-    G1 -- "evidence/ HTML" --> H1
-
-    style A1 fill:#e8eaf6,stroke:#5c6bc0
-    style B1 fill:#e8f5e9,stroke:#66bb6a
-    style B2 fill:#e8f5e9,stroke:#66bb6a
-    style B3 fill:#e8f5e9,stroke:#66bb6a
-    style C1 fill:#fff3e0,stroke:#ffa726
-    style C2 fill:#fff3e0,stroke:#ffa726
-    style C3 fill:#fff3e0,stroke:#ffa726
-    style D1 fill:#e3f2fd,stroke:#42a5f5
-    style D2 fill:#e3f2fd,stroke:#42a5f5
-    style E1 fill:#fce4ec,stroke:#ef5350
-    style E2 fill:#fce4ec,stroke:#ef5350
-    style E3 fill:#fce4ec,stroke:#ef5350
-    style F1 fill:#f3e5f5,stroke:#ab47bc
-    style F2 fill:#f3e5f5,stroke:#ab47bc
-    style F3 fill:#f3e5f5,stroke:#ab47bc
-    style G1 fill:#e0f2f1,stroke:#26a69a
-    style H1 fill:#fff9c4,stroke:#fdd835
+    style A fill:#e8eaf6,stroke:#5c6bc0,color:#1a237e
+    style B fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    style C fill:#fff3e0,stroke:#ffa726,color:#e65100
+    style D fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    style E fill:#fce4ec,stroke:#ef5350,color:#b71c1c
+    style F fill:#f3e5f5,stroke:#ab47bc,color:#4a148c
+    style G fill:#e0f2f1,stroke:#26a69a,color:#004d40
+    style H fill:#fff9c4,stroke:#fdd835,color:#f57f17
 ```
+
+<details>
+<summary>Phase details (click to expand)</summary>
+
+| Phase | Modules | Input | Output |
+|-------|---------|-------|--------|
+| **A** | stock, stock_kr, macro, technical, fear_greed | External APIs | `prices`, `macro`, `signals` tables |
+| **B** | portfolio, sector, risk | DB tables | Portfolio analysis in DB |
+| **C** | signal_backtest, scorecard, memory | DB prices | `signal_results.csv`, `signal_scorecard.csv` |
+| **D** | strategy_map, composite | CSV + DB | Regime allocation, factor scores in DB |
+| **E** | candidates, consensus, swing scanner | DB + CSV stats | `recommendations` table |
+| **F** | price_targets, rebalance_advisor, certification | DB recommendations | CERTIFIED / REJECTED |
+| **G** | evidence_charts | DB + certification | 5 Plotly HTML files |
+| **H** | notify_scan_result | Evidence HTML | Discord/Telegram message |
+
+</details>
 
 ## Tech Stack
 
