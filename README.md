@@ -14,26 +14,72 @@ Open-source quantitative investment platform that **proves why you should buy or
 
 ## Pipeline
 
-`make full-scan` runs all 8 phases end-to-end:
+`make full-scan` executes 8 phases. Each phase writes to SQLite or CSV; the next phase reads it — **no direct imports between phases**.
 
 ```mermaid
-graph LR
-    A["A · Collect<br/>21 collectors"] --> B["B · Analyze<br/>portfolio + sector<br/>+ risk"]
-    B --> C["C · Validate<br/>15 signals backtest<br/>+ scorecard"]
-    C --> D["D · Classify<br/>10-regime model<br/>+ multi-factor"]
-    D --> E["E · Recommend<br/>10-agent consensus<br/>+ swing scan"]
-    E --> F["F · Certify<br/>price targets<br/>+ SIEGE 10-gate"]
-    F --> G["G · Evidence<br/>5 Plotly charts"]
-    G --> H["H · Notify<br/>Discord / Telegram"]
+graph TD
+    subgraph "A · Collect"
+        A1["stock · stock_kr<br/>macro · technical<br/>fear_greed"]
+    end
 
-    style A fill:#e8eaf6,stroke:#5c6bc0
-    style B fill:#e8f5e9,stroke:#66bb6a
-    style C fill:#fff3e0,stroke:#ffa726
-    style D fill:#e3f2fd,stroke:#42a5f5
-    style E fill:#fce4ec,stroke:#ef5350
-    style F fill:#f3e5f5,stroke:#ab47bc
-    style G fill:#e0f2f1,stroke:#26a69a
-    style H fill:#fff9c4,stroke:#fdd835
+    subgraph "B · Analyze"
+        B1["portfolio"] --> B2["sector"]
+        B2 --> B3["risk"]
+    end
+
+    subgraph "C · Validate"
+        C1["signal_backtest<br/>15 signals × 8K+ trades"] --> C2["scorecard<br/>win_rate · PF · avg_return"]
+        C2 --> C3["memory --snapshot<br/>drift detection"]
+    end
+
+    subgraph "D · Classify"
+        D1["strategy_map<br/>10-regime × signal stats"] --> D2["composite<br/>momentum · value · quality"]
+    end
+
+    subgraph "E · Recommend"
+        E1["candidates<br/>signal → confidence"] --> E2["consensus<br/>10 agents · weighted vote"]
+        E2 --> E3["swing scanner<br/>market-wide scan"]
+    end
+
+    subgraph "F · Certify"
+        F1["price_targets<br/>entry · SL · TP1 · TP2"] --> F2["rebalance_advisor<br/>rule violation · sell qty"]
+        F2 --> F3["SIEGE certification<br/>10-condition gate"]
+    end
+
+    subgraph "G · Evidence"
+        G1["evidence_charts<br/>5 Plotly HTML"]
+    end
+
+    subgraph "H · Notify"
+        H1["Discord / Telegram<br/>daily report"]
+    end
+
+    A1 -- "prices · macro · signals<br/>→ DB tables" --> B1
+    B3 -- "portfolio_analysis<br/>→ DB" --> C1
+    C2 -- "signal_results.csv<br/>signal_scorecard.csv" --> D1
+    C3 -- "strategy_memory<br/>→ DB" --> D1
+    D2 -- "regime · factors<br/>→ DB" --> E1
+    E2 -- "recommendations<br/>→ DB" --> F1
+    F3 -- "CERTIFIED / REJECTED" --> G1
+    G1 -- "evidence/ HTML" --> H1
+
+    style A1 fill:#e8eaf6,stroke:#5c6bc0
+    style B1 fill:#e8f5e9,stroke:#66bb6a
+    style B2 fill:#e8f5e9,stroke:#66bb6a
+    style B3 fill:#e8f5e9,stroke:#66bb6a
+    style C1 fill:#fff3e0,stroke:#ffa726
+    style C2 fill:#fff3e0,stroke:#ffa726
+    style C3 fill:#fff3e0,stroke:#ffa726
+    style D1 fill:#e3f2fd,stroke:#42a5f5
+    style D2 fill:#e3f2fd,stroke:#42a5f5
+    style E1 fill:#fce4ec,stroke:#ef5350
+    style E2 fill:#fce4ec,stroke:#ef5350
+    style E3 fill:#fce4ec,stroke:#ef5350
+    style F1 fill:#f3e5f5,stroke:#ab47bc
+    style F2 fill:#f3e5f5,stroke:#ab47bc
+    style F3 fill:#f3e5f5,stroke:#ab47bc
+    style G1 fill:#e0f2f1,stroke:#26a69a
+    style H1 fill:#fff9c4,stroke:#fdd835
 ```
 
 ## Tech Stack
