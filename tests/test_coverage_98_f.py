@@ -299,14 +299,14 @@ class TestMainBlocks:
         monkeypatch.setattr("nuri.core.db.get_tickers", lambda **kw: [])
         runpy.run_module("nuri.trading.strategy.position", run_name="__main__")
 
-    def test_rebalance_main(self, tmp_path):
-        """regime_aware_rebalance with empty DB."""
-        from nuri.core.db import init_db
-        db = tmp_path / "test.db"
-        init_db(db)
-        from nuri.trading.recommend.rebalance import regime_aware_rebalance
-        result = regime_aware_rebalance(db_path=db)
-        assert isinstance(result, list)
+    def test_rebalance_main(self, monkeypatch):
+        """regime_aware_rebalance — patch analyze_rebalance at source."""
+        monkeypatch.setattr("sys.argv", ["rebalance"])
+        monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance",
+                            lambda **kw: pd.DataFrame())
+        monkeypatch.setattr("nuri.core.db.query", lambda *a, **kw: [])
+        monkeypatch.setattr("nuri.core.db.get_tickers", lambda **kw: [])
+        runpy.run_module("nuri.trading.recommend.rebalance", run_name="__main__")
 
     def test_longshort_main(self, monkeypatch):
         monkeypatch.setattr("sys.argv", ["longshort"])

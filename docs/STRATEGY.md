@@ -322,7 +322,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 - 8-phase 파이프라인 (Collect → Notify) 전체 동작
 - 21 collectors, 15 signals, 10 regimes, 10 agents, SIEGE 10-gate
-- 60 API endpoints, 27 tables (v11 migrations)
+- 56 API endpoints, 27 tables (v11 migrations)
 - 15-page 대시보드 (Pipeline DAG, Portfolio CRUD, Evidence 차트)
 - 2,929 backend (98%) + 552 frontend (95%) + 21 E2E tests
 
