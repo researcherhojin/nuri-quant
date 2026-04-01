@@ -1,0 +1,42 @@
+name: Feature Request
+description: Propose a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? Link to STRATEGY.md principle if applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should it work?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Pipeline
+        - Agents
+        - Trading
+        - API
+        - Dashboard
+        - Database
+        - CI/CD
+        - Other
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - High (blocks current workflow)
+        - Medium (improves existing workflow)
+        - Low (nice to have)
