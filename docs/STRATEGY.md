@@ -124,7 +124,7 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend coverage | ≥ 95% | 98% (2,929 tests, 32 files) |
+| Backend coverage | ≥ 95% | 98% (2,928 tests, 32 files) |
 | Frontend coverage | ≥ 90% | 95% (552 tests, 42 files) |
 | E2E | 핵심 flow 커버 | 21 Playwright tests |
 | CI 통과 | 필수 | lint + test + coverage + security |
