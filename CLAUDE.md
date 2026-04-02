@@ -143,7 +143,7 @@ nuri/
 │   ├── swing/         # Market-wide scanner + rules
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
 ├── api/               # FastAPI REST API (routes/)
-├── alerts/            # Discord daily report + bot
+├── alerts/            # Discord daily report + bot, Telegram alerts
 └── llm/               # Ollama LLM report with SIEGE certification
 ```
 
@@ -217,7 +217,7 @@ Special regimes (priority order, override base `regime` field): euphoria, stagfl
 
 `nuri/core/events.py` — Append-only event journal. `emit_event()` records all state transitions (step_started/completed/failed/blocked). `get_pipeline_status()` returns 6-step status. `get_timeline()` returns event history with causation_id for chain tracing.
 
-`nuri/core/freshness.py` — Data freshness SLA monitoring. `FRESHNESS_POLICIES` defines warn/fail thresholds per data source. `check_freshness(key)` returns PASS/WARN/FAIL status with age. Sources: prices (18h/30h), VIX (24h/72h), F&G (24h/48h), consensus (24h/48h), certification (24h/48h).
+`nuri/core/freshness.py` — Data freshness SLA monitoring. `FRESHNESS_POLICIES` defines warn/fail thresholds per data source. `check_freshness(key)` returns PASS/WARN/FAIL status with age. Sources: prices (48h/120h), VIX (24h/72h), F&G (24h/48h), consensus (24h/48h), certification (24h/48h).
 
 `nuri/core/pipeline.py` — Pipeline orchestration. `STEP_DEPENDENCIES` defines the 6-step DAG. `run_step()` wrapper enforces dependency completion + records events.
 
@@ -251,6 +251,7 @@ Configured in `.env` (see `.env.example`):
 - `FINNHUB_API_KEY` — US institutional flows (optional)
 - `OLLAMA_HOST` / `OLLAMA_MODEL` — LLM report (default: localhost:11434, qwen3.5)
 - `DASHBOARD_PASSWORD` — Next.js dashboard auth (optional; unset = public)
+- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` — Telegram alerts (optional)
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — Paper trading (optional; DryRun fallback)
 
 ## DB Schema (SQLite, WAL mode)
@@ -277,7 +278,7 @@ Configured in `.env` (see `.env.example`):
 | `pipeline_events` | Append-only event journal |
 | `trades` | Trade execution records |
 
-Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`.
+Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `audit_log`, `external_analysis`.
 
 ## Code Conventions
 
@@ -290,7 +291,7 @@ Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime
 
 ### Config files (`config/`)
 
-- `portfolio.yaml` — 5 accounts (test/demo/sample/pension/irp), 30+ holdings
+- `portfolio.yaml` — 7 accounts (test/demo/sample/pension/irp/test/sample), 30+ holdings
 - `stock_types.yaml` — Manual growth/value override per ticker. Controls stop-loss/take-profit thresholds (growth: -7%/+20%/+40%, value: -10%/+15%/+30%). Swing type is auto-tagged by scanner.
 - `agents.yaml` — Agent thresholds (RSI 30/70, PE 15/40, confidence caps, etc.) loaded via `nuri/core/agent_config.py`. Includes `confidence_normalization` scales for uniform 0-100 mapping.
 - `alerts.yaml` — Thresholds (price swing 3%, Fear&Greed bounds 20/80), report timing
@@ -319,7 +320,7 @@ data/
 
 ## Testing
 
-2928 backend tests across 32 domain files + 552 frontend vitest + 21 Playwright E2E (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 98% coverage, frontend 95% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
+2928 backend tests across 32 domain files + 552 frontend vitest + 22 Playwright E2E (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 98% coverage, frontend 95% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -351,8 +352,9 @@ PR-specific checks (`pr-checks.yml`):
 - Merge conflict detection
 - Conventional commit validation (warning, not blocking)
 - File size limit: 5MB max
-- Trivy security scan (CRITICAL severity only)
 - Auto-posted PR summary comment
+
+Security: Trivy vulnerability scan (CRITICAL severity) runs in `main-ci-cd.yml` (not pr-checks).
 
 ## Gotchas
 
