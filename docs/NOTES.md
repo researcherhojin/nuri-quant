@@ -4,43 +4,61 @@
 
 ---
 
-## 2026-04-02: CLAUDE.md + README.md 코드 대조 검증
+## 2026-04-02: 컨텍스트 엔지니어링 + 하네스 적용 세션
 
-### 발견된 숫자 오류 (수정 완료)
+### 커밋 이력
+
+| SHA | 요약 |
+|-----|------|
+| `4ad4642` | CLAUDE.md 리팩토링 (-69줄), README.md 수정 (59 endpoints, 11 collectors, Architecture 추가) |
+| `42034e4` | CI flaky test 수정 (WAL checkpoint for tmpfs), docs/NOTES.md 생성 |
+| `8b21b69` | Swing 하드코딩 5개 파라미터 → config/rules.yaml 이동 |
+| `7f0b55c` | ruff I001 import sort 수정 |
+
+### 컨텍스트 구조 결정
+
+- `.claude/rules/strategy.md` 생성 → 희석 복제본 문제로 삭제
+- **최종 결정**: `CLAUDE.md`에서 `@docs/STRATEGY.md` 직접 import (단일 소스)
+- 이유: STRATEGY.md의 실제 사례(커밋 SHA, 구체적 함수명)가 규칙의 강제력을 높임. 축약하면 "조심하세요" 수준으로 희석됨
+
+### 코드 대조 검증 결과
+
+**수정한 오류:**
 
 | 주장 | 실제 | 파일 |
 |------|------|------|
 | "21 data collectors inheriting BaseCollector" | 19 inherit + 2 standalone (filings.py, external.py) | CLAUDE.md |
 | "17 cron jobs" | 18 (db_maintenance 누락) | CLAUDE.md |
-| "58 endpoints" | 59 (router 56 + app 3) | README.md |
-| Collect phase: 5 modules listed | 11 collectors run in `make collect` | README.md |
-| Validate phase: "memory" | Not a validation module. Actual: signal_backtest, superinvestor_backtest, analyst_backtest, scorecard | README.md |
+| "58 endpoints" | 59 (router 56 + app 3) | README.md, STRATEGY.md |
+| Collect phase: 5 modules | 11 collectors in `make collect` | README.md |
+| Validate phase: "memory" | Not a validation module | README.md |
+| Swing 5개 파라미터 하드코딩 | config/rules.yaml로 이동 | swing/rules.py |
 
-### 검증 통과 (변경 불필요)
+**검증 통과 (34개 버전 배지 + 숫자 12건 전수 일치):**
 
-- 15 signals (10 price + 3 macro + 2 data) — SIGNAL_DEFINITIONS 레지스트리 확인
-- 10 agents — DEFAULT_WEIGHTS 확인, risk 20% veto, korean HOLD for US, retail 0%
+- 15 signals (10 price + 3 macro + 2 data) — SIGNAL_DEFINITIONS 레지스트리
+- 10 agents — DEFAULT_WEIGHTS, risk 20% veto, korean HOLD for US, retail 0%
 - 27 tables (v11 migrations) — _SCHEMA + _MIGRATIONS 카운트
-- 2928 backend tests / 32 files — test_*.py 파일 카운트
-- 5 Plotly evidence charts — evidence_charts.py 함수 5개
-- 15 frontend pages — page.tsx 15개
-- Swing stop-loss -5% — nuri/trading/swing/rules.py:30 STOP_LOSS_PCT = -5.0
-- Discord + Telegram — 둘 다 구현 확인 (alerts/telegram.py)
-- 34개 README 버전 배지 — uv.lock + package.json 전수 대조 일치
+- 2928 backend tests / 32 files
+- 5 Plotly evidence charts, 15 frontend pages
+- Swing stop-loss -5% — config/rules.yaml로 이동 완료
+- Discord + Telegram — 둘 다 구현 확인
+- 34개 README 버전 배지 — uv.lock + package.json 전수 일치
 
-### 컨텍스트 구조 결정
+### CI 수정
 
-- `.claude/rules/strategy.md` 생성 → 희석 복제본 문제로 삭제
-- 최종 결정: `CLAUDE.md`에서 `@docs/STRATEGY.md` 직접 import (단일 소스)
-- 이유: STRATEGY.md의 실제 사례(커밋 SHA, 구체적 함수명)가 규칙의 강제력을 높임. 축약하면 "조심하세요" 수준으로 희석됨
+- `_wal_checkpoint(TRUNCATE)` 추가 — CI Ubuntu tmpfs에서 SQLite WAL 데이터 가시성 문제
+- 3개 gate 테스트 (populated_db_passes_basics, regime_gate_with_spy, estimates_accumulation_fresh)
+- 로컬 통과 + CI 실패 → WAL checkpoint 후 CI 통과 확인
 
-### 구조적 발견
+### 완료된 작업
 
-- `filings.py`, `external.py`는 BaseCollector를 상속하지 않는 standalone 모듈
-- `nuri/trading/engine/memory --snapshot`은 `make validate`의 마지막 단계로 실행되지만, validation 모듈이 아닌 engine 모듈
-- Swing stop-loss -5%는 `config/rules.yaml`이 아닌 `nuri/trading/swing/rules.py`에 하드코딩 — 설계 원칙 "config-driven rules" 위반 가능성
+- [x] Swing STOP_LOSS_PCT를 config/rules.yaml로 이동 (하드코딩 → config)
+- [x] STRATEGY.md §7 endpoint 수 58 → 59 수정
+- [x] CI flaky test 수정
 
-### 다음 작업
+### 다음 세션에서 할 작업
 
-- [ ] Swing STOP_LOSS_PCT를 config/rules.yaml로 이동 검토 (하드코딩 → config)
-- [ ] STRATEGY.md §7 "현재 상태" 섹션 업데이트 (미완성 항목 진행도 반영)
+- [ ] CI Node.js 20 경고 — 현재 조치 불필요 (actions 최신 버전, FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 적용). action 유지보수자가 Node.js 24 지원 시 업데이트
+- [ ] 컨텍스트 엔지니어링 4구성 요소 정리 — Context Files, MCP Servers, Skill Files, Mechanical Enforcement (세션 중 논의했으나 미착수)
+- [ ] STRATEGY.md §7 미완성 항목 진행도 반영 (#42 투자 규칙 UI, #17 Alpaca 실전, #25 브로커 API)
