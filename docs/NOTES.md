@@ -72,17 +72,6 @@
 - Structured Note-taking (Tasks / Memory / NOTES.md / Scratchpad)
 - 새 프로젝트 셋업 전략 (STRATEGY.md 먼저 → CLAUDE.md 최소 → 하네스 템플릿 → 증거 축적)
 
-### 완료된 작업
-
-- [x] CLAUDE.md 리팩토링 + `@docs/STRATEGY.md` import
-- [x] README.md 숫자 수정 + Architecture 섹션 추가
-- [x] Swing STOP_LOSS_PCT → config/rules.yaml 이동
-- [x] STRATEGY.md §7 endpoint 수 58 → 59 수정
-- [x] CI gate 테스트 근본 수정 (DELETE journal mode)
-- [x] Skills 3개 생성 (deploy/verify/review)
-- [x] Hooks 2개 생성 (ruff check + datetime.now() ban)
-- [x] Hook false positive 수정 (nuri/*.py 스코프)
-
 ### 다음 세션에서 할 작업
 
 - [ ] Hooks 동작 확인 — 다음 세션에서 `/hooks`로 2개 hook 활성 상태 확인
