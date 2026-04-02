@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Before starting any work, read `docs/STRATEGY.md`.** It defines the project's purpose, design principles, quality gates, and LLM harness rules (hallucination guards, confirmation bias prevention, scope creep controls). Every feature, fix, and refactor must align with STRATEGY.md principles.
+@docs/STRATEGY.md
 
 ## Project
 
@@ -128,7 +128,7 @@ All `make` targets use `.venv/bin/python` — activate the venv or use the full 
 ```
 nuri/
 ├── core/              # DB (sole sqlite3 importer), rules (config/rules.yaml loader)
-├── collectors/        # 21 data collectors inheriting BaseCollector
+├── collectors/        # 21 collector modules (19 BaseCollector subclasses + 2 standalone)
 ├── analysis/          # portfolio, risk, sector, charts, rebalance_advisor, evidence_charts
 ├── quant/             # Quantitative pipeline
 │   ├── regime/        # 10-regime classifier (6 base + 4 special), macro score, strategy map
@@ -191,32 +191,19 @@ Re-running C-1 (`python -m nuri.quant.validation.signal_backtest`) updates the d
 
 ### Multi-Agent Consensus (10 agents)
 
-`nuri/trading/agents/` — 10 specialist agents with weighted voting. Thresholds externalized to `config/agents.yaml`, loaded via `nuri/core/agent_config.py`. Confidence normalized to 0-100 via `BaseAgent.normalize_confidence()` (config: `confidence_normalization`).
+`nuri/trading/agents/` — 10 specialist agents with weighted voting. Config in `config/agents.yaml`, loaded via `nuri/core/agent_config.py`. Confidence normalized to 0-100 via `BaseAgent.normalize_confidence()`.
 
-| Agent | Weight | Data Source |
-|-------|--------|-------------|
-| `technical.py` | 16% | RSI, MACD, SMA crossovers |
-| `fundamental.py` | 12% | PE, ROE, growth, debt |
-| `macro_agent.py` | 12% | Regime + macro score + momentum |
-| `risk_agent.py` | 20% | Stop-loss, volatility, concentration (**veto power**) |
-| `smart_money.py` | 8% | 13F flow + analyst consensus |
-| `wallstreet.py` | 11% | Analyst ratings + EPS surprise + insider |
-| `korean_market.py` | 8% | KRW/USD FX, foreign flows, KOSPI/KOSDAQ |
-| `options_agent.py` | 8% | CBOE Put/Call Ratio (contrarian) |
-| `crypto_agent.py` | 5% | BTC price/dominance (risk appetite proxy) |
-| `retail_agent.py` | 0% | WSB mentions/posts (data stabilization phase) |
-
-Risk agent has veto power: SELL + confidence >= 80 overrides all others. Korean market agent returns neutral HOLD for US tickers. New agents return graceful HOLD when data unavailable.
+Key behaviors:
+- Risk agent (20% weight) has **veto power**: SELL + confidence >= 80 overrides all others
+- Korean market agent returns neutral HOLD for US tickers
+- Retail agent weight is 0% (data stabilization phase)
+- New agents return graceful HOLD when data unavailable
 
 ### Regime classifier (6 base + 4 special)
 
 Base regimes: `{bull,bear,sideways}_{low,high}_vol` — determined by SPY SMA50/200 position + VIX with adaptive hysteresis (5 days normal, 2 days if VIX≥25).
 
-Special regimes (checked in priority order, override base `regime` field):
-- **euphoria**: VIX < 12 AND F&G > 80 → position sizing `defensive`
-- **stagflation**: CPI > 4% AND GDP < 1% → `minimal` (GDP data rarely available)
-- **recovery**: SMA50 < SMA200 200 days ago AND SMA50 >= SMA200 now → `aggressive`
-- **sector_rotation**: SPY ±2% (20d) AND any sector ETF > 3% → `normal`
+Special regimes (priority order, override base `regime` field): euphoria, stagflation, recovery, sector_rotation. See `nuri/quant/regime/classifier.py` for thresholds.
 
 `RegimeState.trend`/`.volatility` always reflect the base classification. `details["special_regime"]` is `None` or the special name. `details["base_regime"]` always has the 6-regime name.
 
@@ -224,16 +211,7 @@ Special regimes (checked in priority order, override base `regime` field):
 
 ### SIEGE Engine
 
-`nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory.
-
-Confidence scoring pipeline (in `candidates.py`):
-```
-confidence = regime_win_rate × 60% + regime_pf × 40%
-           × drift_multiplier (0.3 ~ 1.1)        ← Learning Memory
-           × conflict_penalty (0.5x if high)      ← Conflict Detection
-           × regime_fit_penalty (0.4x if avoid)    ← Strategy Map
-           × position_penalty (0.3x if minimal)    ← Regime position sizing
-```
+`nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit. See `docs/STRATEGY.md` §3.3 for formula and §6 for SIEGE 10-Gate specification.
 
 ### Pipeline Observability (SIEGE Event Journal + Dagster Freshness)
 
@@ -262,7 +240,7 @@ confidence = regime_win_rate × 60% + regime_pf × 40%
 
 ### Scheduler
 
-`nuri/scheduler.py` defines 17 cron jobs in the `SCHEDULES` list. All times are KST. Lazy imports inside `_run_collector()` to avoid import-time side effects.
+`nuri/scheduler.py` defines 18 cron jobs in the `SCHEDULES` list. All times are KST. Lazy imports inside `_run_collector()` to avoid import-time side effects.
 
 ## Environment Variables
 
@@ -276,6 +254,8 @@ Configured in `.env` (see `.env.example`):
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — Paper trading (optional; DryRun fallback)
 
 ## DB Schema (SQLite, WAL mode)
+
+27 tables total (v11 migrations). Key tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -294,8 +274,10 @@ Configured in `.env` (see `.env.example`):
 | `earnings_surprises` | EPS actual vs estimate |
 | `insider_trades` | Insider buy/sell transactions |
 | `schema_version` | Migration version tracking |
+| `pipeline_events` | Append-only event journal |
+| `trades` | Trade execution records |
 
-Plus: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `pipeline_events`, `trades`.
+Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`.
 
 ## Code Conventions
 
@@ -372,52 +354,22 @@ PR-specific checks (`pr-checks.yml`):
 - Trivy security scan (CRITICAL severity only)
 - Auto-posted PR summary comment
 
+## Gotchas
+
+- **Next.js 16 breaking changes**: APIs differ from LLM training data — always read `node_modules/next/dist/docs/` first. See `frontend/CLAUDE.md`.
+- **vi.mock() hoisting** (frontend): `vi.mock("recharts")` affects ALL dynamic imports in the same vitest worker. Keep recharts-dependent and recharts-free tests in separate files. Use `vi.doMock` for per-test control.
+- **runpy + mock**: `runpy.run_module()` re-executes module source, invalidating mocks. Use `patch("source.module.function")` for source-level patching.
+- **OpenBB local import**: `obb` is imported inside functions (not at module level). `patch("module.obb")` fails — use `patch.dict(sys.modules, {"openbb": mock_module})`.
+
 ## Investment Rules
 
-Defined in `config/rules.yaml`, loaded via `nuri/core/rules.py`. Rules based on O'Neil (CAN SLIM), Minervini (SEPA), academic research (disposition effect), and 6 external site analysis.
+Defined in `config/rules.yaml`, loaded via `nuri/core/rules.py`. Full rule table with academic sources: `docs/STRATEGY.md` §3.4 and §6.
 
-Core principle: **3:1 profit-to-loss ratio** (loss at -7%, profit at +20%).
+Core principle: **3:1 profit-to-loss ratio** (growth: -7% stop / +20%/+40% targets, value: -10% stop / +15%/+30% targets).
 
-| Category | Rule | Value |
-|----------|------|-------|
-| Position | Max single | 15% |
-| Position | Max sector | 35% |
-| Position | Min cash reserve | 20% |
-| Stop-loss | Growth stocks | -7% |
-| Stop-loss | Value stocks | -10% |
-| Stop-loss | Portfolio MDD | -10% |
-| Take-profit | Growth 1st/2nd | +20% (50% sell) / +40% (25% sell) |
-| Take-profit | Value 1st/2nd | +15% (50% sell) / +30% (25% sell) |
-| Take-profit | Swing | +5% (50%) / +10% (rest) |
-| Trailing stop | Growth/Value | -15% from high |
-| Trailing stop | Volatile | -20% from high |
-| Entry | VIX > 30 | Block new buys |
-| Entry | VIX 25-30 | Half position only |
-| Entry | Scaling | Max 3 tranches, 5-day interval |
-| Leverage | Banned ETFs | TSLL, TQQQ, SQQQ, UPRO, SPXU |
+Automated enforcement in `price_targets.py`: take-profit signals, trailing stop (HWM-based), portfolio MDD check. Buy checklist: TipRanks >= Moderate Buy, superinvestors >= 3, PE < 100, revenue > $0, factor score top 50%.
 
-Buy checklist (all must pass): TipRanks >= Moderate Buy, superinvestors >= 3, PE < 100, revenue > $0, factor score top 50%.
-
-### Automated rule enforcement (`price_targets.py`)
-
-- `check_take_profit_signals()` — detects holdings reaching target_1/target_2 with correct sell percentages
-- `check_trailing_stop_signals()` — calculates High Water Mark from prices table, triggers at -15% (growth/value) or -20% (swing)
-- `check_portfolio_mdd()` — checks portfolio-wide PnL against -10% limit with KRW/USD conversion
-- DB migrations v8-v10 added `target_1_price`, `target_2_price`, `high_water_mark` to `positions` table
-
-### External data sources for investment decisions
-
-Before any buy/sell recommendation, verify against 10 external sites:
-1. **dataroma.com** — Superinvestor 13F holdings, buy/sell trends
-2. **tradingeconomics.com** — GDP, CPI, Fed rate, employment, recession signals
-3. **macrotrends.net** — PE ratios, revenue, historical valuations
-4. **tipranks.com** — Analyst consensus, price targets, upside %
-5. **etf.com** — Fund flows, sector rotation, risk-on/risk-off
-6. **ark-funds.com** — Cathie Wood buy/sell activity
-7. **shortinterest.com** — Short interest data, short squeeze signals
-8. **cboe.com** — VIX term structure, put/call ratios
-9. **coingecko.com** — BTC/crypto sentiment as risk appetite proxy
-10. **finviz.com** — Screener, sector heatmaps, insider trading
+Every recommendation requires 10 external data sources cross-referenced (dataroma, tipranks, tradingeconomics, macrotrends, etf.com, ark-funds, shortinterest, cboe, coingecko, finviz).
 
 ## OpenBB Provider Limitations
 
@@ -437,34 +389,14 @@ Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `mac
 ## Interface
 
 - **FastAPI** (`nuri/api/`) — REST API on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval).
-- **Next.js 16** (`frontend/`) — shadcn/ui + Tailwind 4. Dark theme. See `frontend/CLAUDE.md` for frontend-specific guidance. **Warning**: Next.js 16 has breaking API changes vs training data — read `node_modules/next/dist/docs/` before writing frontend code.
+- **Next.js 16** (`frontend/`) — shadcn/ui + Tailwind 4. Dark theme. See `frontend/CLAUDE.md` for frontend-specific guidance.
 - **Ollama** (`nuri/llm/report.py`) — LLM report with SIEGE certification.
 
 ## Portfolio Action Plan Format
 
-When generating portfolio recommendations, save to `data/reports/YYYY-MM-DD/portfolio_action_plan.md`. Must include:
-- Market environment table (regime, VIX, F&G, macro score, S&P 500 status)
-- Per-stock verdict with all 6 external data sources cross-referenced
-- Execution timeline (day-by-day sell/buy plan)
-- Re-entry conditions (VIX/F&G thresholds)
-- Buy priority ranked by multi-factor score + external data
+Save to `data/reports/YYYY-MM-DD/portfolio_action_plan.md`. Required sections: market environment table (regime, VIX, F&G, macro), per-stock verdict with external data cross-reference, execution timeline, re-entry conditions, buy priority by multi-factor score.
 
-### Price targets format
-
-Every buy/sell recommendation **must** include explicit price levels:
-
-```
-종목: NVDA
-현재가: $168.00
-├── 매수가 (진입): $165.00 (지지선 근처 지정가)
-├── 손절가: $153.45 (-7%)
-├── 1차 익절: $198.00 (+20%) → 보유량 50% 매도
-├── 2차 익절: $231.00 (+40%) → 보유량 25% 매도
-├── 트레일링 스톱: 고점 대비 -15% 추적 (나머지 25%)
-└── TipRanks 목표가: $273.61 (+63%)
-```
-
-Growth stocks use -7% stop / +20%/+40% targets. Value stocks use -10% stop / +15%/+30% targets. Always show the TipRanks consensus target for reference.
+Every recommendation **must** include explicit price levels: entry, stop-loss, target_1, target_2, trailing stop, TipRanks target. Growth: -7%/+20%/+40%. Value: -10%/+15%/+30%.
 
 ## MCP Integration
 
