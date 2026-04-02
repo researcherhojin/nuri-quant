@@ -20,7 +20,7 @@ Open-source quantitative investment platform that **proves why you should buy or
 graph LR
     A["📡 <b>Collect</b><br/>21 collectors<br/>prices · macro · signals"]
     B["📊 <b>Analyze</b><br/>portfolio · sector · risk"]
-    C["🧪 <b>Validate</b><br/>15 signals × 8K trades<br/>scorecard · memory"]
+    C["🧪 <b>Validate</b><br/>15 signals × 8K trades<br/>scorecard"]
     D["🏷️ <b>Classify</b><br/>10-regime strategy map<br/>multi-factor composite"]
     E["🤖 <b>Recommend</b><br/>10-agent consensus<br/>candidates · swing scan"]
     F["🛡️ <b>Certify</b><br/>price targets · rebalance<br/>SIEGE 10-gate"]
@@ -44,9 +44,9 @@ graph LR
 
 | Phase | Modules | Input | Output |
 |-------|---------|-------|--------|
-| 📡 **Collect** | stock, stock_kr, macro, technical, fear_greed | External APIs | `prices`, `macro`, `signals` tables |
+| 📡 **Collect** | 11 collectors (stock, stock_kr, macro, technical, fear_greed, ark, cboe, coingecko, finviz, reddit, fred_calendar) | External APIs | `prices`, `macro`, `signals` tables |
 | 📊 **Analyze** | portfolio, sector, risk | DB tables | Portfolio analysis in DB |
-| 🧪 **Validate** | signal_backtest, scorecard, memory | DB prices | `signal_results.csv`, `signal_scorecard.csv` |
+| 🧪 **Validate** | signal_backtest, superinvestor_backtest, analyst_backtest, scorecard | DB prices | `signal_results.csv`, `signal_scorecard.csv` |
 | 🏷️ **Classify** | strategy_map, composite | CSV + DB | Regime allocation, factor scores in DB |
 | 🤖 **Recommend** | candidates, consensus, swing scanner | DB + CSV stats | `recommendations` table |
 | 🛡️ **Certify** | price_targets, rebalance_advisor, certification | DB recommendations | CERTIFIED / REJECTED |
@@ -86,7 +86,7 @@ graph LR
 ![bcrypt](https://img.shields.io/badge/bcrypt-5.0.0-004D40)
 ![slowapi](https://img.shields.io/badge/slowapi-0.1.9-FF7043)
 
-> 58 endpoints · 27 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
+> 59 endpoints · 27 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
 
 **Frontend**<br/>
 ![Next.js](https://img.shields.io/badge/Next.js-16.2.2-000000?logo=next.js&logoColor=white)
@@ -150,6 +150,36 @@ make lint                  # ruff check
 - **Superinvestor tracking** — SEC 13F filings (Buffett, Dalio, NPS Korea, Key Square, Strive)
 - **Portfolio onboarding** — Dashboard UI for CRUD, CSV import/export, sample portfolio, YAML reverse sync
 - **LLM reports** — Qwen3.5 evidence-based analysis with SIEGE certification
+
+## Architecture
+
+```
+nuri/
+├── core/          # DB gateway (sole sqlite3 importer), rules, events, freshness, timezone
+├── collectors/    # 21 modules — BaseCollector pattern (collect → save → run)
+├── analysis/      # Portfolio, risk, sector, charts, rebalance advisor, evidence
+├── quant/
+│   ├── regime/    # 10-regime classifier + strategy map
+│   ├── validation/# Signal/superinvestor/analyst backtests + scorecard
+│   ├── backtest/  # VectorBT engine + grid search optimizer
+│   └── factors/   # Multi-factor scoring (momentum, value, quality)
+├── trading/
+│   ├── agents/    # 10 specialist agents + weighted consensus
+│   ├── engine/    # SIEGE: gate, conflicts, learning memory
+│   ├── strategy/  # Long/Short, mean-reversion, pairs trading
+│   ├── recommend/ # Candidates, price targets, rebalance, tracker
+│   ├── swing/     # Market-wide scanner + entry/exit rules
+│   └── execution/ # Broker interface (Alpaca paper + DryRun)
+├── api/           # FastAPI REST (59 endpoints) + SSE streaming
+├── alerts/        # Discord + Telegram notifications
+└── llm/           # Ollama LLM reports + SIEGE certification
+```
+
+**Design decisions:**
+- **DB as sole integration point** — `nuri/core/db.py` is the only `sqlite3` importer. All modules use `query()`, `query_df()`, `upsert_*()`. Tests inject `tmp_path` for isolation.
+- **Phase isolation** — 8 pipeline phases never import each other. Data flows through DB tables and CSV files only.
+- **Config-driven rules** — Investment rules in `config/rules.yaml`, agent thresholds in `config/agents.yaml`. Code executes rules, never defines them.
+- **Zero-cost stack** — SQLite (not Postgres), Ollama (not OpenAI), OpenBB + yfinance (not Bloomberg). No paid dependencies.
 
 ## Investment Rules
 
