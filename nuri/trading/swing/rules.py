@@ -21,18 +21,16 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from nuri.core.db import get_db, init_db, query
+from nuri.core.rules import (
+    SWING_MAX_HOLD_DAYS,
+    SWING_MIN_AGENT_CONFIDENCE,
+    SWING_MIN_SCAN_SCORE,
+    SWING_STOP_LOSS,
+    TAKE_PROFIT_SWING,
+)
 from nuri.core.timezone import kst_now, today_kst
 
 logger = logging.getLogger(__name__)
-
-# 스윙 트레이드 파라미터 (config/rules.yaml에서 로드)
-from nuri.core.rules import (
-    TAKE_PROFIT_SWING,
-    SWING_STOP_LOSS,
-    SWING_MAX_HOLD_DAYS,
-    SWING_MIN_SCAN_SCORE,
-    SWING_MIN_AGENT_CONFIDENCE,
-)
 
 TAKE_PROFIT_PCT = float(TAKE_PROFIT_SWING.get("target_2", 10))
 STOP_LOSS_PCT = float(SWING_STOP_LOSS)
