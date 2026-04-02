@@ -12,7 +12,7 @@
           },
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; if [[ \"$f\" == *.py ]] && grep -qn 'datetime\\.now()' \"$f\" 2>/dev/null; then echo '{\"decision\":\"block\",\"reason\":\"datetime.now() 금지 — kst_now() 또는 today_kst() 사용. See nuri/core/timezone.py\"}'; exit 1; fi; }",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; if [[ \"$f\" == */nuri/*.py ]] && grep -qn 'datetime\\.now()' \"$f\" 2>/dev/null; then echo '{\"decision\":\"block\",\"reason\":\"datetime.now() 금지 — kst_now() 또는 today_kst() 사용. See nuri/core/timezone.py\"}'; exit 1; fi; }",
             "timeout": 5,
             "statusMessage": "datetime.now() check..."
           }
