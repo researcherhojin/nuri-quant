@@ -43,12 +43,21 @@ def db_path_monkeypatched(tmp_path, monkeypatch):
     return path
 
 
-def _wal_checkpoint(db_path):
-    """CI tmpfs에서 WAL 데이터 가시성 보장 — WAL을 메인 DB로 flush."""
-    import sqlite3 as _sqlite3
-    c = _sqlite3.connect(str(db_path))
-    c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    c.close()
+def _force_delete_journal(db_path, monkeypatch):
+    """CI tmpfs WAL 호환성 문제 근본 해결 — 테스트 DB를 DELETE 모드로 강제.
+
+    get_connection()이 매 연결마다 WAL을 재설정하므로, checkpoint만으로는 불충분.
+    get_connection 자체를 패치하여 테스트 DB에서는 DELETE 모드를 사용하게 한다.
+    """
+    import nuri.core.db as db_mod
+    _orig = db_mod.get_connection
+
+    def _no_wal(dp=None):
+        conn = _orig(dp)
+        conn.execute("PRAGMA journal_mode=DELETE")
+        return conn
+
+    monkeypatch.setattr(db_mod, "get_connection", _no_wal)
 
 
 @pytest.fixture()
@@ -56,6 +65,7 @@ def populated_db(db_path, monkeypatch):
     """Gate/certification test data: portfolio + 300-day SPY + VIX."""
     import nuri.core.db as db_mod
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+    _force_delete_journal(db_path, monkeypatch)
 
     with get_db(db_path) as conn:
         conn.execute(
@@ -83,7 +93,6 @@ def populated_db(db_path, monkeypatch):
     upsert_macro([{"indicator": "fear_greed", "date": dates[-1].strftime("%Y-%m-%d"),
                     "value": 50.0, "source": "test"}], db_path)
 
-    _wal_checkpoint(db_path)
     return db_path
 
 
@@ -296,16 +305,16 @@ class TestGate_R23:
         assert result.phase == "all"
         assert result.total >= 8
 
-    def test_gate_check_estimates_accumulation_fresh(self, db_path):
+    def test_gate_check_estimates_accumulation_fresh(self, db_path, monkeypatch):
         """Estimates accumulation check — fresh data (from TestAdditionalEdgeCases)."""
         from nuri.trading.engine.gate import _check_estimates_accumulation
 
+        _force_delete_journal(db_path, monkeypatch)
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO estimates (ticker, date, recommendation) VALUES (?, ?, ?)",
                 ("AAPL", "2025-12-01", "buy"),
             )
-        _wal_checkpoint(db_path)
         cond = _check_estimates_accumulation(db_path)
         assert cond.passed is True
 
