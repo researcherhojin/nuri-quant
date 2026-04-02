@@ -38,6 +38,10 @@ _tp = RULES.get("take_profit", {})
 TAKE_PROFIT_GROWTH = _tp.get("growth", {"target_1": 20, "target_2": 40})
 TAKE_PROFIT_VALUE = _tp.get("value", {"target_1": 15, "target_2": 30})
 TAKE_PROFIT_SWING = _tp.get("swing", {"target_1": 5, "target_2": 10})
+SWING_STOP_LOSS = TAKE_PROFIT_SWING.get("stop_loss", -5)
+SWING_MAX_HOLD_DAYS = TAKE_PROFIT_SWING.get("max_hold_days", 7)
+SWING_MIN_SCAN_SCORE = TAKE_PROFIT_SWING.get("min_scan_score", 20)
+SWING_MIN_AGENT_CONFIDENCE = TAKE_PROFIT_SWING.get("min_agent_confidence", 50)
 
 # ─── 트레일링 스톱 ───
 _ts = RULES.get("trailing_stop", {})

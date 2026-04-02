@@ -25,12 +25,20 @@ from nuri.core.timezone import kst_now, today_kst
 
 logger = logging.getLogger(__name__)
 
-# 스윙 트레이드 파라미터
-TAKE_PROFIT_PCT = 10.0      # 목표 수익률
-STOP_LOSS_PCT = -5.0        # 손절 기준
-MAX_HOLD_DAYS = 7           # 최대 보유일
-MIN_SCAN_SCORE = 20         # 최소 스캐너 점수
-MIN_AGENT_CONFIDENCE = 50   # 최소 에이전트 합의 신뢰도
+# 스윙 트레이드 파라미터 (config/rules.yaml에서 로드)
+from nuri.core.rules import (
+    TAKE_PROFIT_SWING,
+    SWING_STOP_LOSS,
+    SWING_MAX_HOLD_DAYS,
+    SWING_MIN_SCAN_SCORE,
+    SWING_MIN_AGENT_CONFIDENCE,
+)
+
+TAKE_PROFIT_PCT = float(TAKE_PROFIT_SWING.get("target_2", 10))
+STOP_LOSS_PCT = float(SWING_STOP_LOSS)
+MAX_HOLD_DAYS = int(SWING_MAX_HOLD_DAYS)
+MIN_SCAN_SCORE = int(SWING_MIN_SCAN_SCORE)
+MIN_AGENT_CONFIDENCE = int(SWING_MIN_AGENT_CONFIDENCE)
 
 
 @dataclass
