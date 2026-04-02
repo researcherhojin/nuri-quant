@@ -43,6 +43,14 @@ def db_path_monkeypatched(tmp_path, monkeypatch):
     return path
 
 
+def _wal_checkpoint(db_path):
+    """CI tmpfs에서 WAL 데이터 가시성 보장 — WAL을 메인 DB로 flush."""
+    import sqlite3 as _sqlite3
+    c = _sqlite3.connect(str(db_path))
+    c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    c.close()
+
+
 @pytest.fixture()
 def populated_db(db_path, monkeypatch):
     """Gate/certification test data: portfolio + 300-day SPY + VIX."""
@@ -75,6 +83,7 @@ def populated_db(db_path, monkeypatch):
     upsert_macro([{"indicator": "fear_greed", "date": dates[-1].strftime("%Y-%m-%d"),
                     "value": 50.0, "source": "test"}], db_path)
 
+    _wal_checkpoint(db_path)
     return db_path
 
 
@@ -296,6 +305,7 @@ class TestGate_R23:
                 "INSERT INTO estimates (ticker, date, recommendation) VALUES (?, ?, ?)",
                 ("AAPL", "2025-12-01", "buy"),
             )
+        _wal_checkpoint(db_path)
         cond = _check_estimates_accumulation(db_path)
         assert cond.passed is True
 
