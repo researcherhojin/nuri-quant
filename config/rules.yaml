@@ -39,6 +39,10 @@ take_profit:
   swing:
     target_1: 5                 # 1차 익절: +5%에서 보유량 50% 매도
     target_2: 10                # 2차 익절: +10%에서 나머지 전량 매도
+    stop_loss: -5               # 스윙 손절 기준 (%)
+    max_hold_days: 7            # 최대 보유일
+    min_scan_score: 20          # 최소 스캐너 점수
+    min_agent_confidence: 50    # 최소 에이전트 합의 신뢰도
   # O'Neil 8주 규칙: 매수 후 3주 이내에 +20% 돌파 시 최소 8주 보유
   eight_week_hold: true
 
