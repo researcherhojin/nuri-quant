@@ -16,7 +16,7 @@ Conventional commits required in PRs: `(feat|fix|docs|style|refactor|test|chore|
 6-step conceptual pipeline: **Collect → Validate → Classify → Diagnose → Recommend → Track**
 Operational execution (`make full-scan`) runs 8 phases: collect → analyze → validate → regime+factors → recommend+consensus+scan → targets+rebalance+certify → evidence → notify.
 
-2-machine setup: M3 Max MacBook (dev) ↔ M2 Pro Mac Mini (24/7 production).
+2-machine setup: M5 Max MacBook (dev) ↔ M2 Pro Mac Mini (24/7 production).
 
 ## Commands
 
