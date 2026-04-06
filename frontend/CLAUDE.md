@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev          # Dev server (:3000)
 npm run build        # Production build (type-check + compile)
 npm run lint         # ESLint
-npm run test         # vitest run (552 tests, 42 files)
+npm run test         # vitest run (566 tests, 42 files)
 npm run test:coverage  # vitest with v8 coverage → ./coverage/
 npx vitest run src/__tests__/pages/dashboard.test.tsx   # single test file
 npx vitest run -t "renders verdict"                     # single test by name
@@ -71,7 +71,7 @@ Use these instead of raw `<table>` or shadcn `Badge`. The shadcn `Badge`, `Card`
 
 ## Testing
 
-552 vitest tests across 42 files. 97% statement coverage. Uses `jsdom` environment + `@testing-library/react`.
+566 vitest tests across 42 files. 97% statement coverage. Uses `jsdom` environment + `@testing-library/react`.
 
 Test file layout mirrors source: `src/__tests__/pages/`, `src/__tests__/components/`, `src/__tests__/lib/`.
 
