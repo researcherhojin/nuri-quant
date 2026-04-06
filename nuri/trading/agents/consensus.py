@@ -157,6 +157,45 @@ def _compute_weights(db_path=None) -> dict[str, float]:
     return weights
 
 
+def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -> ConsensusResult:
+    """가중 투표로 합의 결과 산출 (analyze_ticker / stream_analyze_ticker 공용)."""
+    action_scores = {"BUY": 0.0, "SELL": 0.0, "HOLD": 0.0}
+    for v in verdicts:
+        w = weights.get(v.agent_name, 0.1)
+        action_scores[v.action] += w * (v.confidence / 100)
+
+    # 리스크 에이전트 거부권
+    veto_threshold = AGENT_CONFIG.get("consensus", {}).get("risk_veto_threshold", 80)
+    risk_v = next((v for v in verdicts if v.agent_name == "risk"), None)
+    if risk_v and risk_v.action == "SELL" and risk_v.confidence >= veto_threshold:
+        final_action = "SELL"
+        final_confidence = risk_v.confidence
+        reasoning = f"리스크 에이전트 거부권 발동: {risk_v.reasoning}"
+    else:
+        final_action = max(action_scores, key=action_scores.get)
+        total_weight = sum(action_scores.values())
+        final_confidence = (action_scores[final_action] / total_weight * 100) if total_weight > 0 else 0
+        supporters = [v for v in verdicts if v.action == final_action]
+        reasoning = " | ".join(f"{v.agent_name}: {v.reasoning}" for v in supporters)
+
+    agree_count = sum(1 for v in verdicts if v.action == final_action)
+    agreement_rate = agree_count / len(verdicts) if verdicts else 0
+    dissent = [
+        f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}"
+        for v in verdicts if v.action != final_action
+    ]
+
+    return ConsensusResult(
+        ticker=ticker,
+        final_action=final_action,
+        final_confidence=round(final_confidence, 1),
+        agreement_rate=round(agreement_rate, 2),
+        verdicts=verdicts,
+        dissent=dissent,
+        reasoning=reasoning,
+    )
+
+
 def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
     """단일 종목에 대해 10개 에이전트 분석 + 합의."""
     import concurrent.futures
@@ -182,48 +221,41 @@ def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
                 agent = futures[future]
                 verdicts.append(AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}"))
 
-    # 가중 투표
-    action_scores = {"BUY": 0.0, "SELL": 0.0, "HOLD": 0.0}
-    for v in verdicts:
-        w = weights.get(v.agent_name, 0.1)
-        action_scores[v.action] += w * (v.confidence / 100)
+    return _build_consensus(ticker, verdicts, weights)
 
-    # 리스크 에이전트 거부권: SELL + confidence >= threshold 이면 전체 override
-    veto_threshold = AGENT_CONFIG.get("consensus", {}).get("risk_veto_threshold", 80)
-    risk_v = next((v for v in verdicts if v.agent_name == "risk"), None)
-    if risk_v and risk_v.action == "SELL" and risk_v.confidence >= veto_threshold:
-        final_action = "SELL"
-        final_confidence = risk_v.confidence
-        reasoning = f"리스크 에이전트 거부권 발동: {risk_v.reasoning}"
-    else:
-        # 최고 점수 action
-        final_action = max(action_scores, key=action_scores.get)
-        total_weight = sum(action_scores.values())
-        final_confidence = (action_scores[final_action] / total_weight * 100) if total_weight > 0 else 0
 
-        # 합의 근거 조립
-        supporters = [v for v in verdicts if v.action == final_action]
-        reasoning = " | ".join(f"{v.agent_name}: {v.reasoning}" for v in supporters)
+def stream_analyze_ticker(ticker: str, db_path=None):
+    """단일 종목 스트리밍 분석 — 에이전트 완료 순서대로 verdict 생성.
 
-    # 동의율
-    agree_count = sum(1 for v in verdicts if v.action == final_action)
-    agreement_rate = agree_count / len(verdicts) if verdicts else 0
+    Yields:
+        ("verdict", AgentVerdict) — 에이전트 완료 시마다
+        ("consensus", ConsensusResult) — 전체 합의 완료 시
+    """
+    import concurrent.futures
+    weights = _compute_weights(db_path)
+    verdicts = []
 
-    # 반대 의견
-    dissent = [
-        f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}"
-        for v in verdicts if v.action != final_action
-    ]
+    def _run_agent(agent):
+        try:
+            return agent.analyze(ticker, db_path)
+        except Exception as e:
+            return AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
 
-    return ConsensusResult(
-        ticker=ticker,
-        final_action=final_action,
-        final_confidence=round(final_confidence, 1),
-        agreement_rate=round(agreement_rate, 2),
-        verdicts=verdicts,
-        dissent=dissent,
-        reasoning=reasoning,
-    )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(ALL_AGENTS)) as executor:
+        futures = {executor.submit(_run_agent, agent): agent for agent in ALL_AGENTS}
+        for future in concurrent.futures.as_completed(futures, timeout=15):
+            try:
+                verdict = future.result()
+            except concurrent.futures.TimeoutError:
+                agent = futures[future]
+                verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃")
+            except Exception as e:
+                agent = futures[future]
+                verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
+            verdicts.append(verdict)
+            yield ("verdict", verdict)
+
+    yield ("consensus", _build_consensus(ticker, verdicts, weights))
 
 
 def analyze_portfolio(db_path=None) -> list[ConsensusResult]:
