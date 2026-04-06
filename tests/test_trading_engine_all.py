@@ -26,39 +26,14 @@ from nuri.core.db import get_db, init_db, upsert_macro, upsert_portfolio, upsert
 # ═══════════════════════════════════════════════════════
 
 
-@pytest.fixture()
-def db_path(tmp_path):
-    path = tmp_path / "test.db"
-    init_db(path)
-    return path
+def _patch_delete_journal(monkeypatch):
+    """CI tmpfs WAL 호환성 — get_connection을 DELETE 모드 전용으로 교체.
 
-
-@pytest.fixture()
-def db_path_monkeypatched(tmp_path, monkeypatch):
-    """DB with monkeypatched DB_PATH for modules that use the global."""
-    import nuri.core.db as db_mod
-    path = tmp_path / "test.db"
-    init_db(path)
-    monkeypatch.setattr(db_mod, "DB_PATH", path)
-    return path
-
-
-def _force_delete_journal(db_path, monkeypatch):
-    """CI tmpfs WAL 호환성 문제 근본 해결 — 테스트 DB를 DELETE 모드로 강제.
-
-    init_db()가 WAL 모드로 DB를 생성한 뒤 _force_delete_journal이 호출되므로,
-    기존 WAL 데이터를 먼저 checkpoint한 뒤 DELETE 모드로 전환한다.
-    get_connection을 WAL을 거치지 않는 버전으로 교체하여 WAL→DELETE 전환 경합을 제거.
+    init_db() 호출 전에 적용해야 WAL 파일이 생성되지 않는다.
     """
     import sqlite3 as _sqlite3
 
     import nuri.core.db as db_mod
-
-    # init_db()가 남긴 WAL 데이터를 main DB로 flush
-    _conn = _sqlite3.connect(str(db_path))
-    _conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    _conn.execute("PRAGMA journal_mode=DELETE")
-    _conn.close()
 
     def _no_wal(dp=None):
         path = dp or db_mod.DB_PATH
@@ -73,11 +48,29 @@ def _force_delete_journal(db_path, monkeypatch):
 
 
 @pytest.fixture()
+def db_path(tmp_path, monkeypatch):
+    _patch_delete_journal(monkeypatch)
+    path = tmp_path / "test.db"
+    init_db(path)
+    return path
+
+
+@pytest.fixture()
+def db_path_monkeypatched(tmp_path, monkeypatch):
+    """DB with monkeypatched DB_PATH for modules that use the global."""
+    import nuri.core.db as db_mod
+    _patch_delete_journal(monkeypatch)
+    path = tmp_path / "test.db"
+    init_db(path)
+    monkeypatch.setattr(db_mod, "DB_PATH", path)
+    return path
+
+
+@pytest.fixture()
 def populated_db(db_path, monkeypatch):
     """Gate/certification test data: portfolio + 300-day SPY + VIX."""
     import nuri.core.db as db_mod
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
-    _force_delete_journal(db_path, monkeypatch)
 
     with get_db(db_path) as conn:
         conn.execute(
@@ -112,6 +105,7 @@ def populated_db(db_path, monkeypatch):
 def populated_db_cert(tmp_path, monkeypatch):
     """Certification-specific populated DB (from test_certification.py)."""
     import nuri.core.db as db_mod
+    _patch_delete_journal(monkeypatch)
     path = tmp_path / "test.db"
     init_db(path)
     monkeypatch.setattr(db_mod, "DB_PATH", path)
@@ -148,6 +142,7 @@ def populated_db_cert(tmp_path, monkeypatch):
 def rich_db(tmp_path, monkeypatch):
     """Full DB with portfolio, 300+ days prices (SPY + tickers), macro (from round16/round10)."""
     import nuri.core.db as db_mod
+    _patch_delete_journal(monkeypatch)
 
     path = tmp_path / "test.db"
     init_db(path)
@@ -321,7 +316,6 @@ class TestGate_R23:
         """Estimates accumulation check — fresh data (from TestAdditionalEdgeCases)."""
         from nuri.trading.engine.gate import _check_estimates_accumulation
 
-        _force_delete_journal(db_path, monkeypatch)
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO estimates (ticker, date, recommendation) VALUES (?, ?, ?)",
