@@ -26,31 +26,8 @@ from nuri.core.db import get_db, init_db, upsert_macro, upsert_portfolio, upsert
 # ═══════════════════════════════════════════════════════
 
 
-def _patch_delete_journal(monkeypatch):
-    """CI tmpfs WAL 호환성 — get_connection을 DELETE 모드 전용으로 교체.
-
-    init_db() 호출 전에 적용해야 WAL 파일이 생성되지 않는다.
-    """
-    import sqlite3 as _sqlite3
-
-    import nuri.core.db as db_mod
-
-    def _no_wal(dp=None):
-        path = dp or db_mod.DB_PATH
-        conn = _sqlite3.connect(str(path))
-        conn.row_factory = _sqlite3.Row
-        conn.execute("PRAGMA journal_mode=OFF")
-        conn.execute("PRAGMA synchronous=FULL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA busy_timeout=5000")
-        return conn
-
-    monkeypatch.setattr(db_mod, "get_connection", _no_wal)
-
-
 @pytest.fixture()
-def db_path(tmp_path, monkeypatch):
-    _patch_delete_journal(monkeypatch)
+def db_path(tmp_path):
     path = tmp_path / "test.db"
     init_db(path)
     return path
@@ -60,7 +37,6 @@ def db_path(tmp_path, monkeypatch):
 def db_path_monkeypatched(tmp_path, monkeypatch):
     """DB with monkeypatched DB_PATH for modules that use the global."""
     import nuri.core.db as db_mod
-    _patch_delete_journal(monkeypatch)
     path = tmp_path / "test.db"
     init_db(path)
     monkeypatch.setattr(db_mod, "DB_PATH", path)
@@ -106,7 +82,6 @@ def populated_db(db_path, monkeypatch):
 def populated_db_cert(tmp_path, monkeypatch):
     """Certification-specific populated DB (from test_certification.py)."""
     import nuri.core.db as db_mod
-    _patch_delete_journal(monkeypatch)
     path = tmp_path / "test.db"
     init_db(path)
     monkeypatch.setattr(db_mod, "DB_PATH", path)
@@ -143,7 +118,6 @@ def populated_db_cert(tmp_path, monkeypatch):
 def rich_db(tmp_path, monkeypatch):
     """Full DB with portfolio, 300+ days prices (SPY + tickers), macro (from round16/round10)."""
     import nuri.core.db as db_mod
-    _patch_delete_journal(monkeypatch)
 
     path = tmp_path / "test.db"
     init_db(path)
