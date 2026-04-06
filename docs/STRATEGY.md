@@ -125,7 +125,7 @@ PR을 올리기 전 이 기준을 확인한다.
 | 항목 | 기준 | 현재 |
 |------|------|------|
 | Backend coverage | ≥ 95% | 98% (2,928 tests, 32 files) |
-| Frontend coverage | ≥ 90% | 95% (566 tests, 42 files) |
+| Frontend coverage | ≥ 90% | 95% (585 tests, 44 files) |
 | E2E | 핵심 flow 커버 | 21 Playwright tests |
 | CI 통과 | 필수 | lint + test + coverage + security |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
@@ -322,16 +322,16 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 - 8-phase 파이프라인 (Collect → Notify) 전체 동작
 - 21 collectors, 15 signals, 10 regimes, 10 agents, SIEGE 10-gate
-- 58 API endpoints, 27 tables (v11 migrations)
+- 60 API endpoints, 27 tables (v11 migrations)
 - 15-page 대시보드 (Pipeline DAG, Portfolio CRUD, Evidence 차트)
-- 2,928 backend (98%) + 566 frontend (95%) + 21 E2E tests
+- 2,928 backend (98%) + 585 frontend (95%) + 21 E2E tests
 
 ### 미완성 — 우선순위 순
 
 | 우선순위 | 항목 | 이슈 | 이유 |
 |---------|------|------|------|
-| 1 | 투자 규칙 UI | #42 | 익절/손절 시각화 없으면 규칙 준수 여부를 대시보드에서 확인할 수 없음 |
-| 2 | 에이전트 reasoning trace | — | "왜 이 판단을 했는지" 스트리밍이 없으면 증거 우선 원칙 위반 |
+| ~~1~~ | ~~투자 규칙 UI~~ | ~~#42~~ | ✅ 완료 — 익절 하이라이트, 반포지션 경고, 매도 우선순위 뱃지 |
+| ~~2~~ | ~~에이전트 reasoning trace~~ | — | ✅ 완료 — SSE 스트리밍 + AgentTrace 컴포넌트 |
 | 3 | Alpaca 실전 연동 | #17 | Paper → Live 전환, 자동 매도 실행 |
 | 4 | 브로커 API 연동 | #25 | 수동 포트폴리오 입력 제거, 자동 동기화 |
 | 5 | 백테스트 인터랙티브 차트 | — | 파라미터 조절 + 실시간 시뮬레이션 |

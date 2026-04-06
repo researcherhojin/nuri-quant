@@ -320,7 +320,7 @@ data/
 
 ## Testing
 
-2928 backend tests across 32 domain files + 566 frontend vitest + 21 Playwright E2E (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 98% coverage, frontend 95% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
+2928 backend tests across 32 domain files + 585 frontend vitest + 21 Playwright E2E (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 98% coverage, frontend 95% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
