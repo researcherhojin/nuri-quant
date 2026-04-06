@@ -55,7 +55,7 @@ function agentCell(verdict: AgentVerdict | undefined) {
   );
 }
 
-export function ConsensusTable({ data }: { data: ConsensusRow[] }) {
+export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: number | null }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   return (
@@ -90,7 +90,12 @@ export function ConsensusTable({ data }: { data: ConsensusRow[] }) {
                   onClick={() => setExpanded(isExpanded ? null : row.ticker)}
                 >
                   <td className="py-1.5 px-2 font-medium">{row.ticker}</td>
-                  <td className="py-1.5 px-2 text-center"><StatusBadge status={row.final_action} size="md" /></td>
+                  <td className="py-1.5 px-2 text-center">
+                    <StatusBadge status={row.final_action} size="md" />
+                    {vix && vix >= 25 && vix < 30 && row.final_action === "BUY" && (
+                      <span className="text-amber-400 text-[10px] ml-1">(반포지션)</span>
+                    )}
+                  </td>
                   <td className="py-1.5 px-2 text-right">{row.final_confidence.toFixed(1)}</td>
                   <td className="py-1.5 px-2 text-right hidden sm:table-cell">
                     <span className={row.agreement_rate >= 0.7 ? "text-emerald-400" : row.agreement_rate < 0.5 ? "text-red-400" : "text-muted-foreground"}>

@@ -21,9 +21,10 @@ interface DataTableProps {
   data: any[];
   compact?: boolean;
   onRowClick?: (row: any) => void;
+  rowClassName?: (row: any) => string;
 }
 
-export function DataTable({ columns, data, compact = false, onRowClick }: DataTableProps) {
+export function DataTable({ columns, data, compact = false, onRowClick, rowClassName }: DataTableProps) {
   const py = compact ? "py-1.5" : "py-2.5";
   const text = compact ? "text-xs" : "text-sm";
 
@@ -52,7 +53,7 @@ export function DataTable({ columns, data, compact = false, onRowClick }: DataTa
               key={i}
               className={`border-b border-border/40 hover:bg-muted/30 transition-colors ${
                 onRowClick ? "cursor-pointer" : ""
-              }`}
+              } ${rowClassName ? rowClassName(row) : ""}`}
               onClick={() => onRowClick?.(row)}
             >
               {columns.map((col) => (

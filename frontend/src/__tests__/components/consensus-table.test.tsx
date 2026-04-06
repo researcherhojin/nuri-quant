@@ -164,4 +164,31 @@ describe("ConsensusTable", () => {
     const dashes = screen.getAllByText("--");
     expect(dashes.length).toBeGreaterThan(0);
   });
+
+  // ─── VIX 반포지션 label ────────────────────────────────
+  it("shows (반포지션) label next to BUY when VIX is 25-30", () => {
+    render(<ConsensusTable data={mockData} vix={27.5} />);
+    expect(screen.getByText("(반포지션)")).toBeInTheDocument();
+  });
+
+  it("does not show (반포지션) when VIX is below 25", () => {
+    render(<ConsensusTable data={mockData} vix={18.5} />);
+    expect(screen.queryByText("(반포지션)")).not.toBeInTheDocument();
+  });
+
+  it("does not show (반포지션) when VIX is 30 or above", () => {
+    render(<ConsensusTable data={mockData} vix={32.0} />);
+    expect(screen.queryByText("(반포지션)")).not.toBeInTheDocument();
+  });
+
+  it("does not show (반포지션) for SELL or HOLD actions when VIX is 25-30", () => {
+    const sellOnly = [{ ...mockData[1], final_action: "SELL" }];
+    render(<ConsensusTable data={sellOnly} vix={27.5} />);
+    expect(screen.queryByText("(반포지션)")).not.toBeInTheDocument();
+  });
+
+  it("does not show (반포지션) when vix is null", () => {
+    render(<ConsensusTable data={mockData} vix={null} />);
+    expect(screen.queryByText("(반포지션)")).not.toBeInTheDocument();
+  });
 });
