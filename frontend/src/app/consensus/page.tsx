@@ -37,7 +37,7 @@ async function ConsensusSection() {
           <p className="text-xs text-muted-foreground mb-3">
             10-Agent Consensus — {data.count} tickers × 10 agents = {data.count * 10} verdicts
           </p>
-          <ConsensusTable data={sorted} />
+          <ConsensusTable data={sorted} vix={data.regime?.vix ?? null} />
         </CardContent>
       </Card>
     </>

@@ -108,7 +108,12 @@ const VARIANTS: Record<string, any[]> = {
     { key: "agent_confidence", label: "Conf", align: "right" },
   ],
   advisor: [
-    { key: "priority", label: "#", align: "center", render: dim },
+    { key: "priority", label: "#", align: "center", render: (v: number) => {
+      const color = v === 1 ? "bg-red-500/20 text-red-400 border-red-500/30"
+                   : v === 2 ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                   : "bg-zinc-500/20 text-muted-foreground border-zinc-500/30";
+      return <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-medium ${color}`}>{v}</span>;
+    }},
     { key: "ticker", label: "Ticker", render: ticker },
     { key: "severity", label: "심각도", align: "center", render: (v: string) => badge(v === "critical" ? "SELL" : v === "high" ? "REDUCE" : "WATCH") },
     { key: "action", label: "조치", align: "center", render: (v: string) => <span className={v === "SELL_ALL" ? "text-red-400 font-medium" : "text-amber-400"}>{v === "SELL_ALL" ? "전량 매도" : "일부 매도"}</span> },
@@ -118,13 +123,23 @@ const VARIANTS: Record<string, any[]> = {
   ],
 };
 
+// === 변형별 행 스타일 ===
+const ROW_CLASSNAMES: Record<string, (row: any) => string> = {
+  targets: (row) => {
+    if (row.trailing_stop_triggered) return "bg-red-500/8";
+    if (row.take_profit_triggered === "target_2") return "bg-amber-500/8";
+    if (row.take_profit_triggered === "target_1") return "bg-emerald-500/8";
+    return "";
+  },
+};
+
 export function ClientTable({ variant, data, compact, title }: Props) {
   const columns = VARIANTS[variant];
   if (!columns) return <p className="text-red-400 text-sm">Unknown variant: {variant}</p>;
   return (
     <>
       {title && <p className="text-xs text-muted-foreground mb-3">{title}</p>}
-      <DataTable columns={columns} data={data} compact={compact} />
+      <DataTable columns={columns} data={data} compact={compact} rowClassName={ROW_CLASSNAMES[variant]} />
     </>
   );
 }
