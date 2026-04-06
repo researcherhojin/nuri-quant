@@ -46,15 +46,27 @@ def db_path_monkeypatched(tmp_path, monkeypatch):
 def _force_delete_journal(db_path, monkeypatch):
     """CI tmpfs WAL 호환성 문제 근본 해결 — 테스트 DB를 DELETE 모드로 강제.
 
-    get_connection()이 매 연결마다 WAL을 재설정하므로, checkpoint만으로는 불충분.
-    get_connection 자체를 패치하여 테스트 DB에서는 DELETE 모드를 사용하게 한다.
+    init_db()가 WAL 모드로 DB를 생성한 뒤 _force_delete_journal이 호출되므로,
+    기존 WAL 데이터를 먼저 checkpoint한 뒤 DELETE 모드로 전환한다.
+    get_connection을 WAL을 거치지 않는 버전으로 교체하여 WAL→DELETE 전환 경합을 제거.
     """
+    import sqlite3 as _sqlite3
+
     import nuri.core.db as db_mod
-    _orig = db_mod.get_connection
+
+    # init_db()가 남긴 WAL 데이터를 main DB로 flush
+    _conn = _sqlite3.connect(str(db_path))
+    _conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    _conn.execute("PRAGMA journal_mode=DELETE")
+    _conn.close()
 
     def _no_wal(dp=None):
-        conn = _orig(dp)
+        path = dp or db_mod.DB_PATH
+        conn = _sqlite3.connect(str(path))
+        conn.row_factory = _sqlite3.Row
         conn.execute("PRAGMA journal_mode=DELETE")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
     monkeypatch.setattr(db_mod, "get_connection", _no_wal)
