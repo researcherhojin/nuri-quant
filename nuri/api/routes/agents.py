@@ -1,8 +1,13 @@
-"""멀티 에이전트 합의 API — 캐시 적용."""
+"""멀티 에이전트 합의 API — 캐시 적용 + SSE 스트리밍."""
+import asyncio
+import json
+import queue
+import threading
 import time
 from dataclasses import asdict
 
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 router = APIRouter(tags=["agents"])
 
@@ -69,3 +74,40 @@ def get_consensus_ticker(ticker: str):
         "dissent": r.dissent,
         "reasoning": r.reasoning,
     }
+
+
+@router.get("/consensus/{ticker}/stream")
+async def stream_consensus_ticker(ticker: str):
+    """단일 종목 에이전트 reasoning trace — SSE 스트리밍."""
+
+    async def _event_generator():
+        q: queue.Queue = queue.Queue()
+
+        def _run():
+            from nuri.trading.agents.consensus import stream_analyze_ticker
+            for event_type, data in stream_analyze_ticker(ticker.upper()):
+                q.put((event_type, data))
+            q.put(None)
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+
+        while True:
+            while q.empty():
+                await asyncio.sleep(0.05)
+            item = q.get()
+            if item is None:
+                break
+            event_type, data = item
+            payload = json.dumps(
+                {"type": event_type, "data": asdict(data)},
+                ensure_ascii=False,
+            )
+            yield f"data: {payload}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
