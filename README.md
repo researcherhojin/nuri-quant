@@ -120,26 +120,75 @@ graph LR
 
 ## Getting Started
 
-**Prerequisites**: Python 3.12, [uv](https://docs.astral.sh/uv/), `brew install ta-lib`, Node 22 (for frontend)
+### Prerequisites (macOS Apple Silicon)
 
 ```bash
-git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
-make setup                 # venv + deps + DB init + portfolio import
-cp .env.example .env
+# 1. Homebrew (if not installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# 2. System dependencies
+brew install uv ta-lib
+
+# 3. Node.js 22 (fnm recommended)
+brew install fnm
+fnm install 22 && fnm use 22
+echo 'eval "$(fnm env --use-on-cd)"' >> ~/.zshrc
+```
+
+### Setup
+
+```bash
+# Clone
+git clone https://github.com/researcherhojin/nuri-quant.git
+cd nuri-quant
+
+# Backend
+make setup                 # uv venv + deps + DB init + portfolio import
+
+# Frontend
+cd frontend && npm ci && cd ..
+
+# Config
+cp .env.example .env                                    # edit API keys (all optional)
 cp config/portfolio.example.yaml config/portfolio.yaml  # edit your holdings
-make full-scan             # 8-phase pipeline: collect → certify → recommend → notify
+
+# Verify
+make test                  # 2,928 backend tests
+cd frontend && npx vitest run && cd ..  # 585 frontend tests
+```
+
+### Existing environment migration
+
+If migrating from another machine (e.g., Mac Mini → MacBook):
+
+```bash
+# Copy 3 gitignored files from old machine
+scp <old>:~/workspace/nuri-quant/.env              .env
+scp <old>:~/workspace/nuri-quant/config/portfolio.yaml config/
+scp <old>:~/workspace/nuri-quant/data/portfolio.db data/
+
+# (Optional) Copy Claude Code memory for session continuity
+scp -r <old>:~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/ \
+       ~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/
+```
+
+### Run
+
+```bash
+make start                 # API (:8001) + Dashboard (:3000)
+make full-scan             # 8-phase pipeline: collect → certify → notify
+make quick-scan            # Fast 4-step: collect → analyze → consensus → targets (~2 min)
 ```
 
 ### Useful Commands
 
 ```bash
-make full-scan             # Full 8-stage pipeline
-make quick-scan            # Collect → analyze → consensus → targets (~2 min)
+make collect               # 11 collectors (all external data)
 make consensus             # 10-agent consensus + price targets
 make certify               # SIEGE 10-condition certification
-make start                 # API (:8001) + Dashboard (:3000)
-make test                  # pytest (2928 tests, 32 files, parallel via xdist)
+make test                  # pytest (2,928 tests, parallel via xdist)
 make lint                  # ruff check
+cd frontend && npm run test  # vitest (585 tests)
 
 # Single test
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v
