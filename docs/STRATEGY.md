@@ -125,7 +125,7 @@ PR을 올리기 전 이 기준을 확인한다.
 | 항목 | 기준 | 현재 |
 |------|------|------|
 | Backend coverage | ≥ 95% | 98% (2,928 tests, 32 files) |
-| Frontend coverage | ≥ 90% | 95% (552 tests, 42 files) |
+| Frontend coverage | ≥ 90% | 95% (566 tests, 42 files) |
 | E2E | 핵심 flow 커버 | 21 Playwright tests |
 | CI 통과 | 필수 | lint + test + coverage + security |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
@@ -324,7 +324,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 - 21 collectors, 15 signals, 10 regimes, 10 agents, SIEGE 10-gate
 - 58 API endpoints, 27 tables (v11 migrations)
 - 15-page 대시보드 (Pipeline DAG, Portfolio CRUD, Evidence 차트)
-- 2,928 backend (98%) + 552 frontend (95%) + 21 E2E tests
+- 2,928 backend (98%) + 566 frontend (95%) + 21 E2E tests
 
 ### 미완성 — 우선순위 순
 

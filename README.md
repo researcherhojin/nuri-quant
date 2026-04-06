@@ -110,7 +110,7 @@ graph LR
 ![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)
 
-> 2,928 backend tests (98%) + 552 frontend unit + 21 E2E tests (95%) · parallel via xdist/vitest/playwright
+> 2,928 backend tests (98%) + 566 frontend unit + 21 E2E tests (95%) · parallel via xdist/vitest/playwright
 
 ## Getting Started
 
