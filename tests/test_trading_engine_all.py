@@ -39,7 +39,8 @@ def _patch_delete_journal(monkeypatch):
         path = dp or db_mod.DB_PATH
         conn = _sqlite3.connect(str(path))
         conn.row_factory = _sqlite3.Row
-        conn.execute("PRAGMA journal_mode=DELETE")
+        conn.execute("PRAGMA journal_mode=OFF")
+        conn.execute("PRAGMA synchronous=FULL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA busy_timeout=5000")
         return conn
