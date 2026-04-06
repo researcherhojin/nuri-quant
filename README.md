@@ -86,7 +86,7 @@ graph LR
 ![bcrypt](https://img.shields.io/badge/bcrypt-5.0.0-004D40)
 ![slowapi](https://img.shields.io/badge/slowapi-0.1.9-FF7043)
 
-> 56 endpoints · 27 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
+> 58 endpoints · 27 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
 
 **Frontend**<br/>
 ![Next.js](https://img.shields.io/badge/Next.js-16.2.2-000000?logo=next.js&logoColor=white)
@@ -110,7 +110,7 @@ graph LR
 ![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)
 
-> 2,928 backend tests (98%) + 552 frontend unit + 22 E2E tests (95%) · parallel via xdist/vitest/playwright
+> 2,928 backend tests (98%) + 552 frontend unit + 21 E2E tests (95%) · parallel via xdist/vitest/playwright
 
 ## Getting Started
 
@@ -170,7 +170,7 @@ nuri/
 │   ├── recommend/ # Candidates, price targets, rebalance, tracker
 │   ├── swing/     # Market-wide scanner + entry/exit rules
 │   └── execution/ # Broker interface (Alpaca paper + DryRun)
-├── api/           # FastAPI REST (56 endpoints) + SSE streaming
+├── api/           # FastAPI REST (58 endpoints) + SSE streaming
 ├── alerts/        # Discord + Telegram notifications
 └── llm/           # Ollama LLM reports + SIEGE certification
 ```
