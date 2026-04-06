@@ -162,4 +162,74 @@ describe("ClientTable", () => {
     expect(screen.getByText("Agent")).toBeInTheDocument();
     expect(screen.getByText("PLTR")).toBeInTheDocument();
   });
+
+  // ─── Targets row highlighting ──────────────────────────
+  it("highlights target_1 row with emerald background", () => {
+    const data = [{
+      ticker: "AAPL", stock_type: "value", current_price: 195, stop_loss: 171, target_1: 218.5,
+      target_2: 247, analyst_target: 220, take_profit_triggered: "target_1", take_profit_sell_pct: 50,
+      trailing_stop_triggered: false,
+    }];
+    const { container } = render(<ClientTable variant="targets" data={data} />);
+    expect(container.querySelector("tbody tr")!.className).toContain("bg-emerald-500/8");
+  });
+
+  it("highlights target_2 row with amber background", () => {
+    const data = [{
+      ticker: "NVDA", stock_type: "growth", current_price: 240, stop_loss: 156, target_1: 198,
+      target_2: 235.2, analyst_target: 273, take_profit_triggered: "target_2", take_profit_sell_pct: 25,
+      trailing_stop_triggered: false,
+    }];
+    const { container } = render(<ClientTable variant="targets" data={data} />);
+    expect(container.querySelector("tbody tr")!.className).toContain("bg-amber-500/8");
+  });
+
+  it("highlights trailing stop row with red background", () => {
+    const data = [{
+      ticker: "TSLA", stock_type: "growth", current_price: 250, stop_loss: 260, target_1: 336,
+      target_2: 392, analyst_target: null, take_profit_triggered: null, take_profit_sell_pct: 0,
+      trailing_stop_triggered: true,
+    }];
+    const { container } = render(<ClientTable variant="targets" data={data} />);
+    expect(container.querySelector("tbody tr")!.className).toContain("bg-red-500/8");
+  });
+
+  it("does not highlight row when no signals triggered", () => {
+    const data = [{
+      ticker: "NVDA", stock_type: "growth", current_price: 168, stop_loss: 156, target_1: 201.6,
+      target_2: 235.2, analyst_target: 273, take_profit_triggered: null, take_profit_sell_pct: 0,
+      trailing_stop_triggered: false,
+    }];
+    const { container } = render(<ClientTable variant="targets" data={data} />);
+    const cls = container.querySelector("tbody tr")!.className;
+    expect(cls).not.toContain("bg-emerald");
+    expect(cls).not.toContain("bg-amber");
+    expect(cls).not.toContain("bg-red-500/8");
+  });
+
+  // ─── Advisor priority badge ────────────────────────────
+  it("renders priority 1 with red badge", () => {
+    const data = [{ priority: 1, ticker: "TSLA", severity: "critical", action: "SELL_ALL", sell_shares: 33, sell_value_usd: 8250, reason: "Stop loss" }];
+    const { container } = render(<ClientTable variant="advisor" data={data} />);
+    const badge = container.querySelector("tbody tr td span.rounded-full");
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toBe("1");
+    expect(badge!.className).toContain("text-red-400");
+  });
+
+  it("renders priority 2 with amber badge", () => {
+    const data = [{ priority: 2, ticker: "NVDA", severity: "high", action: "REDUCE", sell_shares: 5, sell_value_usd: 840, reason: "Position limit" }];
+    const { container } = render(<ClientTable variant="advisor" data={data} />);
+    const badge = container.querySelector("tbody tr td span.rounded-full");
+    expect(badge!.textContent).toBe("2");
+    expect(badge!.className).toContain("text-amber-400");
+  });
+
+  it("renders priority 3+ with muted badge", () => {
+    const data = [{ priority: 3, ticker: "AAPL", severity: "medium", action: "REDUCE", sell_shares: 2, sell_value_usd: 390, reason: "Sector limit" }];
+    const { container } = render(<ClientTable variant="advisor" data={data} />);
+    const badge = container.querySelector("tbody tr td span.rounded-full");
+    expect(badge!.textContent).toBe("3");
+    expect(badge!.className).toContain("text-muted-foreground");
+  });
 });

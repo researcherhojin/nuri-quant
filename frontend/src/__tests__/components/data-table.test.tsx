@@ -229,4 +229,21 @@ describe("DataTable", () => {
     const bodyRow = container.querySelector("tbody tr");
     expect(bodyRow!.className).toContain("hover:bg-muted/30");
   });
+
+  // ─── rowClassName ──────────────────────────────────────
+  it("applies rowClassName function to matching rows", () => {
+    const rowClassName = (row: any) => row.ticker === "TSLA" ? "bg-red-500/10" : "";
+    const { container } = render(
+      <DataTable columns={basicColumns} data={basicData} rowClassName={rowClassName} />
+    );
+    const rows = container.querySelectorAll("tbody tr");
+    expect(rows[0].className).not.toContain("bg-red-500/10");
+    expect(rows[1].className).toContain("bg-red-500/10");
+  });
+
+  it("does not break when rowClassName is not provided", () => {
+    const { container } = render(<DataTable columns={basicColumns} data={basicData} />);
+    const rows = container.querySelectorAll("tbody tr");
+    expect(rows[0].className).toContain("hover:bg-muted/30");
+  });
 });
