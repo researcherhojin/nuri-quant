@@ -6,6 +6,7 @@
  * 행 클릭 → 10개 에이전트의 개별 verdict, confidence, reasoning 표시.
  */
 import { Fragment, useState } from "react";
+import { AgentTrace } from "./agent-trace";
 import { StatusBadge } from "./status-badge";
 
 interface AgentVerdict {
@@ -126,6 +127,10 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
                             </div>
                           );
                         })}
+                      </div>
+                      {/* 에이전트 reasoning trace — 실시간 스트리밍 */}
+                      <div className="mt-3 pt-3 border-t border-border/20">
+                        <AgentTrace ticker={row.ticker} />
                       </div>
                     </td>
                   </tr>
