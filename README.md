@@ -14,20 +14,26 @@ Open-source quantitative investment platform that **proves why you should buy or
 
 ## Pipeline
 
-`make full-scan` runs 8 phases end-to-end. Phases communicate via DB/CSV — no direct imports.
+`make full-scan` runs 8 phases end-to-end. Phases communicate via DB/CSV — no direct imports between phases.
 
 ```mermaid
 graph LR
-    A["📡 <b>Collect</b><br/>21 collectors<br/>prices · macro · signals"]
-    B["📊 <b>Analyze</b><br/>portfolio · sector · risk"]
-    C["🧪 <b>Validate</b><br/>15 signals × 8K trades<br/>scorecard"]
-    D["🏷️ <b>Classify</b><br/>10-regime strategy map<br/>multi-factor composite"]
-    E["🤖 <b>Recommend</b><br/>10-agent consensus<br/>candidates · swing scan"]
-    F["🛡️ <b>Certify</b><br/>price targets · rebalance<br/>SIEGE 10-gate"]
-    G["📈 <b>Evidence</b><br/>5 Plotly charts"]
-    H["🔔 <b>Notify</b><br/>Discord · Telegram"]
+    A["📡 <b>A · Collect</b><br/>5 core collectors<br/>stock · macro · signals"]
+    B["📊 <b>B · Analyze</b><br/>portfolio · sector · risk"]
+    C["🧪 <b>C · Validate</b><br/>signal backtest + scorecard<br/>+ learning memory snapshot"]
+    D["🏷️ <b>D · Classify</b><br/>regime × strategy map<br/>+ multi-factor composite"]
+    E["🤖 <b>E · Recommend</b><br/>candidates + 10-agent consensus<br/>+ swing scanner"]
+    F["🛡️ <b>F · Certify</b><br/>price targets · rebalance<br/>SIEGE 10-gate certification"]
+    G["📈 <b>G · Evidence</b><br/>5 Plotly charts"]
+    H["🔔 <b>H · Notify</b><br/>Discord · Telegram"]
 
-    A -->|DB| B -->|DB| C -->|CSV| D -->|DB| E -->|DB| F -->|pass/reject| G -->|HTML| H
+    A -->|"prices · macro · signals (DB)"| B
+    B -->|"portfolio analysis (DB)"| C
+    C -->|"signal_results.csv"| D
+    D -->|"regime + factors (DB)"| E
+    E -->|"recommendations (DB)"| F
+    F -->|"CERTIFIED / REJECTED"| G
+    G -->|"evidence HTML"| H
 
     style A fill:#e8eaf6,stroke:#5c6bc0,color:#1a237e
     style B fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
@@ -42,16 +48,16 @@ graph LR
 <details>
 <summary>Phase details (click to expand)</summary>
 
-| Phase | Modules | Input | Output |
+| Phase | Modules (`make full-scan`) | Input | Output |
 |-------|---------|-------|--------|
-| 📡 **Collect** | 11 collectors (stock, stock_kr, macro, technical, fear_greed, ark, cboe, coingecko, finviz, reddit, fred_calendar) | External APIs | `prices`, `macro`, `signals` tables |
-| 📊 **Analyze** | portfolio, sector, risk | DB tables | Portfolio analysis in DB |
-| 🧪 **Validate** | signal_backtest, superinvestor_backtest, analyst_backtest, scorecard | DB prices | `signal_results.csv`, `signal_scorecard.csv` |
-| 🏷️ **Classify** | strategy_map, composite | CSV + DB | Regime allocation, factor scores in DB |
-| 🤖 **Recommend** | candidates, consensus, swing scanner | DB + CSV stats | `recommendations` table |
-| 🛡️ **Certify** | price_targets, rebalance_advisor, certification | DB recommendations | CERTIFIED / REJECTED |
-| 📈 **Evidence** | evidence_charts | DB + certification | 5 Plotly HTML files |
-| 🔔 **Notify** | notify_scan_result | Evidence HTML | Discord/Telegram message |
+| **A · Collect** | `stock`, `stock_kr`, `macro`, `technical`, `fear_greed` (5 core; `make collect` runs all 11) | External APIs | `prices`, `macro`, `signals` tables |
+| **B · Analyze** | `portfolio`, `sector`, `risk` | DB tables | Portfolio analysis in DB |
+| **C · Validate** | `signal_backtest`, `scorecard`, `memory --snapshot` | DB prices | `signal_results.csv`, `signal_scorecard.csv`, `strategy_memory` |
+| **D · Classify** | `strategy_map`, `composite` | CSV + DB | Regime allocation, factor scores in DB |
+| **E · Recommend** | `candidates`, `consensus` (10 agents), `swing.scanner` | DB + CSV stats | `recommendations` table |
+| **F · Certify** | `price_targets`, `rebalance_advisor`, `certification` (SIEGE 10-gate) | DB recommendations | CERTIFIED / REJECTED |
+| **G · Evidence** | `evidence_charts` | DB + certification | 5 Plotly HTML files in `data/reports/` |
+| **H · Notify** | `notify_scan_result` | Evidence HTML | Discord/Telegram message |
 
 </details>
 
@@ -143,9 +149,9 @@ make lint                  # ruff check
 
 - **Evidence-based decisions** — 8,000+ historical trade backtests across 15 signals validate every recommendation
 - **10-regime market classification** — 6 base (bull/bear/sideways × high/low vol) + 4 special (recovery, euphoria, stagflation, sector rotation)
-- **10 specialist agents** — Weighted consensus voting. Risk agent holds veto power (SELL + confidence ≥ 80 overrides all)
+- **10 specialist agents** — Weighted consensus voting with SSE reasoning trace. Risk agent holds veto power (SELL + confidence ≥ 80 overrides all)
 - **SIEGE certification** — [10-condition mechanical gate](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). Single failure → REJECTED
-- **Investment rules** — O'Neil (CAN SLIM) + Minervini (SEPA). 3:1 reward-to-risk ratio, -7% stop / +20%/+40% targets
+- **Investment rules UI** — Take-profit highlights (emerald/amber), VIX half-position warning, sell priority badges. O'Neil (CAN SLIM) + Minervini (SEPA), 3:1 reward-to-risk
 - **Pipeline observability** — [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview)-style Data Health + [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) Freshness SLA
 - **Superinvestor tracking** — SEC 13F filings (Buffett, Dalio, NPS Korea, Key Square, Strive)
 - **Portfolio onboarding** — Dashboard UI for CRUD, CSV import/export, sample portfolio, YAML reverse sync
