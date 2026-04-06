@@ -391,8 +391,36 @@ Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `mac
 ## Interface
 
 - **FastAPI** (`nuri/api/`) — REST API on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval).
-- **Next.js 16** (`frontend/`) — shadcn/ui + Tailwind 4. Dark theme. See `frontend/CLAUDE.md` for frontend-specific guidance.
+- **Next.js 16** (`frontend/`) — shadcn/ui + Tailwind 4. Dark-only theme (zinc-950 base). See below.
 - **Ollama** (`nuri/llm/report.py`) — LLM report with SIEGE certification.
+
+### Frontend (`frontend/`)
+
+**Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui.** APIs differ from LLM training data — always read `node_modules/next/dist/docs/` first.
+
+```bash
+cd frontend
+npm run dev            # Dev server (:3000)
+npm run build          # Production build (type-check + compile)
+npm run test           # vitest run (585 tests, 44 files)
+npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
+npx vitest run -t "renders verdict"                    # single test by name
+```
+
+All pages are **Server Components** with `force-dynamic`. Data fetched server-side via `fetchAPI()` (`src/lib/api.ts`). Two Client Components: `/report` (LLM generation) and `/pipeline` (ReactFlow DAG).
+
+**15 routes**: `/` (dashboard), `/signals`, `/consensus`, `/scan`, `/strategy`, `/rebalance`, `/engine`, `/pipeline`, `/report`, `/evidence`, `/portfolio`, `/targets`, `/advisor`, `/login`, `/ticker/[symbol]`.
+
+**Design system** — 3 shared components enforce visual consistency:
+- `DataTable` — Universal table with column config, renderers, `rowClassName`, compact mode
+- `StatusBadge` — BUY/SELL/HOLD/WATCH/LONG/SHORT + signal types
+- `Metric` — Label + value + sub-text with color
+
+**Conventions**: `async function Section()` in `<Suspense>`, `animate-pulse` skeletons, color semantics (emerald=BUY, red=SELL, amber=warning, blue=WATCH, zinc=HOLD), `text-[10px]` sub-labels.
+
+**Frontend testing** (585 vitest, 44 files, 97% coverage): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files.
+
+**Auth**: `src/middleware.ts` — SHA256 cookie-based, active only when `DASHBOARD_PASSWORD` is set.
 
 ## Portfolio Action Plan Format
 
