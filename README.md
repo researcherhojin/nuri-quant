@@ -159,18 +159,22 @@ cd frontend && npx vitest run && cd ..  # 585 frontend tests
 
 ### Existing environment migration
 
-If migrating from another machine (e.g., Mac Mini → MacBook):
+If migrating from another machine (e.g., Mac Mini → MacBook), use `scripts/sync_dev.sh`. It rsyncs gitignored state (`.env`, `config/portfolio.yaml`, `data/portfolio.db`) plus Claude Code state (`~/.claude/projects/...` conversation history + memory + global skills/plugins/settings) — caches and runtime state are excluded.
 
 ```bash
-# Copy 3 gitignored files from old machine
-scp <old>:~/workspace/nuri-quant/.env              .env
-scp <old>:~/workspace/nuri-quant/config/portfolio.yaml config/
-scp <old>:~/workspace/nuri-quant/data/portfolio.db data/
+# One-time setup on the receiving machine
+sudo systemsetup -setremotelogin on             # both Macs
+ssh-copy-id ehbebe@<other-mac>.local            # passwordless SSH
+echo "DEV2_HOST=<other-mac>.local" >> .env
 
-# (Optional) Copy Claude Code memory for session continuity
-scp -r <old>:~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/ \
-       ~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/
+# Recurring sync (run on whichever machine has the freshest state)
+scripts/sync_dev.sh push                        # this laptop → other
+scripts/sync_dev.sh pull                        # other → this laptop
+scripts/sync_dev.sh push --with-reports         # include data/reports/ (~136MB)
+scripts/sync_dev.sh push --no-claude            # project files only, skip ~/.claude
 ```
+
+The script does a SQLite WAL checkpoint before transfer, prompts before destructive overwrites, and uses `rsync --partial` for resumable delta transfers. Operate one machine at a time to avoid DB conflicts.
 
 ### Run
 
