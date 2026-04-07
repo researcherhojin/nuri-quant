@@ -160,7 +160,9 @@ FILES=(
     "data/portfolio.db-wal"
 )
 
-RSYNC_OPTS="-avz --partial --progress --relative"
+# --relative는 GNU rsync와 openrsync(macOS) 동작이 달라 사용하지 않는다.
+# 대신 파일 단위로 명시적 src/dst 지정.
+RSYNC_OPTS="-avz --partial --progress"
 
 if [[ "$DIRECTION" == "push" ]]; then
     echo "송신 측 DB 체크포인트..."
@@ -169,16 +171,20 @@ if [[ "$DIRECTION" == "push" ]]; then
     echo ""
     echo "[1/3] 프로젝트 파일 전송: 이 노트북 → ${REMOTE_HOST}"
     cd "$LOCAL_ROOT"
-    EXISTING=()
-    for f in "${FILES[@]}"; do [[ -e "$f" ]] && EXISTING+=("$f"); done
-    rsync $RSYNC_OPTS "${EXISTING[@]}" \
-        "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/"
+    for f in "${FILES[@]}"; do
+        [[ -e "$f" ]] || continue
+        # 원격에 부모 디렉토리 보장
+        ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_PATH_ABS}/$(dirname "$f")'"
+        rsync $RSYNC_OPTS "$f" \
+            "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH_ABS}/$f"
+    done
 
     if $WITH_REPORTS && [[ -d data/reports ]]; then
         echo ""
         echo "[2/3] reports/ 전송 (--with-reports)"
+        ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_PATH_ABS}/data/reports'"
         rsync -avz --partial --progress data/reports/ \
-            "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/data/reports/"
+            "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH_ABS}/data/reports/"
     else
         echo ""
         echo "[2/3] reports/ 스킵 (--with-reports 없음)"
@@ -199,21 +205,13 @@ else
     echo ""
     echo "[1/3] 프로젝트 파일 수신: ${REMOTE_HOST} → 이 노트북"
     cd "$LOCAL_ROOT"
-    # openrsync (macOS default)는 --ignore-missing-args 미지원.
-    # SSH로 원격 존재 여부를 먼저 확인하고, 존재하는 파일만 전송한다.
-    REMOTE_EXISTING=()
     for f in "${FILES[@]}"; do
         if ssh "${REMOTE_USER}@${REMOTE_HOST}" "[ -e '${REMOTE_PATH_ABS}/$f' ]" 2>/dev/null; then
-            REMOTE_EXISTING+=("$f")
+            mkdir -p "$(dirname "$f")"
+            rsync $RSYNC_OPTS \
+                "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH_ABS}/$f" "$f"
         fi
     done
-    if [[ ${#REMOTE_EXISTING[@]} -gt 0 ]]; then
-        rsync $RSYNC_OPTS \
-            $(printf "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/./%s " "${REMOTE_EXISTING[@]}") \
-            ./
-    else
-        echo "  (원격에 동기화할 파일 없음)"
-    fi
 
     if $WITH_REPORTS; then
         echo ""
