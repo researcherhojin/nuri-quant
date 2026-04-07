@@ -117,6 +117,7 @@ make deploy           # rsync to Mac Mini
 make backup           # DB backup (30-day rolling)
 scripts/sync_dev.sh push      # Dev↔dev 노트북 상태 동기화 (.env, DB, ~/.claude Tier 3)
 scripts/sync_dev.sh pull      # 반대 방향 (--with-reports / --no-claude 옵션)
+bash scripts/auto_deploy.sh   # Mac mini receiver: fetch + ff-only merge + 변경 분석 (수동 1회 실행)
 
 # Utilities
 make ports            # show port usage
@@ -308,6 +309,8 @@ Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime
 - `gate_check.py` — Pipeline gate verifier (exits 1 if BLOCKED)
 - `deploy.sh` — rsync dev → Mac Mini production
 - `sync_dev.sh` — dev↔dev 두 노트북 간 상태 동기화 (gitignore된 파일 + ~/.claude Tier 3, rsync over SSH)
+- `auto_deploy.sh` — Mac mini receiver. launchd `com.nuri-quant.autopull` (5분 간격)이 호출. fetch → ff-only merge → dependency/schema drift 경고 → 서비스 재시작 hook (placeholder). 로그: `~/Library/Logs/nuri-quant-autopull.log`
+- `com.nuri-quant.autopull.plist` — 위 스크립트의 launchd 템플릿. 설치: `cp ~/Library/LaunchAgents/ && launchctl load`
 - `backup.sh` — 30-day rolling DB backup
 
 ## Data Directory
