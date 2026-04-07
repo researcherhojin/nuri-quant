@@ -6,7 +6,7 @@
 [![codecov](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](LICENSE)
 
-**[API Docs](http://localhost:8001/docs)** | **[Dashboard](http://localhost:3000)** | **[Issues](https://github.com/researcherhojin/nuri-quant/issues)**
+**[Issues](https://github.com/researcherhojin/nuri-quant/issues)** · After `make start`: API Docs at `http://localhost:8001/docs`, Dashboard at `http://localhost:3000`
 
 </div>
 
@@ -157,41 +157,6 @@ make test                  # 2,928 backend tests
 cd frontend && npx vitest run && cd ..  # 585 frontend tests
 ```
 
-### Existing environment migration
-
-If migrating from another machine (e.g., Mac Mini → MacBook), use `scripts/sync_dev.sh`. It rsyncs gitignored state (`.env`, `config/portfolio.yaml`, `data/portfolio.db`) plus Claude Code state (`~/.claude/projects/...` conversation history + memory + global skills/plugins/settings) — caches and runtime state are excluded.
-
-```bash
-# One-time setup on the receiving machine
-sudo systemsetup -setremotelogin on             # both Macs
-ssh-copy-id ehbebe@<other-mac>.local            # passwordless SSH
-echo "DEV2_HOST=<other-mac>.local" >> .env
-
-# Recurring sync (run on whichever machine has the freshest state)
-scripts/sync_dev.sh push                        # this laptop → other
-scripts/sync_dev.sh pull                        # other → this laptop
-scripts/sync_dev.sh push --with-reports         # include data/reports/ (~136MB)
-scripts/sync_dev.sh push --no-claude            # project files only, skip ~/.claude
-```
-
-The script does a SQLite WAL checkpoint before transfer, prompts before destructive overwrites, and uses `rsync --partial` for resumable delta transfers. Operate one machine at a time to avoid DB conflicts.
-
-### Mac mini receiver — auto pull from MBP
-
-When the MacBook is portable and Mac mini stays as the always-on receiver, install the launchd auto-pull agent on Mac mini once. After this, every `git push` from MBP is reflected on Mac mini within 5 minutes.
-
-```bash
-# On Mac mini, one-time setup
-cp scripts/com.nuri-quant.autopull.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.nuri-quant.autopull.plist
-
-# Verify (RunAtLoad=true triggers immediately)
-launchctl list | grep nuri-quant.autopull
-tail -f ~/Library/Logs/nuri-quant-autopull.log
-```
-
-The agent runs `scripts/auto_deploy.sh` every 5 minutes: fetch → if `origin/main` advanced, ff-only merge → analyze the diff and log warnings if `pyproject.toml`/`uv.lock` (run `uv sync`), `frontend/package*.json` (run `npm ci`), or `nuri/core/db.py` (run migrate) changed → deploy hook (placeholder for restarting 24/7 services). It is safe-by-default: refuses non-fast-forward merges, refuses to touch a dirty worktree, and silently retries on network failures.
-
 ### Run
 
 ```bash
@@ -213,6 +178,45 @@ cd frontend && npm run test  # vitest (585 tests)
 # Single test
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v
 ```
+
+## Multi-machine Workflow
+
+Two patterns for running Nuri-Quant on more than one Mac. Pick whichever fits your hardware setup — they compose freely.
+
+### Migrating state between machines
+
+`scripts/sync_dev.sh` rsyncs everything git can't carry: gitignored project state (`.env`, `config/portfolio.yaml`, `data/portfolio.db`) plus Claude Code state (`~/.claude/projects/...` conversation history + memory + global skills/plugins/settings). Caches and runtime state are excluded.
+
+```bash
+# One-time setup on the receiving machine
+sudo systemsetup -setremotelogin on             # both Macs
+ssh-copy-id <other-mac>.local                   # passwordless SSH (uses $USER)
+echo "DEV2_HOST=<other-mac>.local" >> .env
+
+# Recurring sync (run on whichever machine has the freshest state)
+scripts/sync_dev.sh push                        # this laptop → other
+scripts/sync_dev.sh pull                        # other → this laptop
+scripts/sync_dev.sh push --with-reports         # include data/reports/ (~136MB)
+scripts/sync_dev.sh push --no-claude            # project files only, skip ~/.claude
+```
+
+The script does a SQLite WAL checkpoint before transfer, prompts before destructive overwrites, and uses `rsync --partial` for resumable delta transfers. Operate one machine at a time to avoid DB conflicts.
+
+### Auto-pull receiver (portable dev → always-on prod)
+
+When one Mac is portable dev (you take it out) and the other stays home as the 24/7 receiver, install the launchd auto-pull agent on the receiver once. After this, every `git push` from the portable machine is reflected on the receiver within 5 minutes — no manual sync needed.
+
+```bash
+# On the receiver (always-on Mac), one-time setup
+cp scripts/com.nuri-quant.autopull.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.nuri-quant.autopull.plist
+
+# Verify (RunAtLoad=true triggers immediately)
+launchctl list | grep nuri-quant.autopull
+tail -f ~/Library/Logs/nuri-quant-autopull.log
+```
+
+The agent runs `scripts/auto_deploy.sh` every 5 minutes: fetch → if `origin/main` advanced, ff-only merge → analyze the diff and log warnings if `pyproject.toml`/`uv.lock` (run `uv sync`), `frontend/package*.json` (run `npm ci`), or `nuri/core/db.py` (run migrate) changed → deploy hook (placeholder for restarting 24/7 services). Safe-by-default: refuses non-fast-forward merges, refuses to touch a dirty worktree, and silently retries on network failures.
 
 ## Key Features
 
