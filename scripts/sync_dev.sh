@@ -23,7 +23,9 @@
 
 set -e
 
-source .env 2>/dev/null || true
+# bash 3.2 (macOS default) quirk: `source nonexistent || true` 가 set -e 하에서
+# 가드를 우회한다. 명시적 -f 체크 사용. .env 자체의 syntax error는 fail-loud.
+[ -f .env ] && source .env
 
 REMOTE_HOST="${DEV2_HOST:-}"
 REMOTE_USER="${DEV2_USER:-$USER}"
