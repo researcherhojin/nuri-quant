@@ -115,6 +115,8 @@ make verify           # Master verification orchestrator → data/reports/YYYY-M
 make pre-deploy       # Safety checks before deploy
 make deploy           # rsync to Mac Mini
 make backup           # DB backup (30-day rolling)
+scripts/sync_dev.sh push      # Dev↔dev 노트북 상태 동기화 (.env, DB, ~/.claude Tier 3)
+scripts/sync_dev.sh pull      # 반대 방향 (--with-reports / --no-claude 옵션)
 
 # Utilities
 make ports            # show port usage
@@ -304,7 +306,8 @@ Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime
 - `import_portfolio.py` — Syncs `config/portfolio.yaml` → DB portfolio table
 - `verify.py` — Master verification orchestrator, saves to `data/reports/YYYY-MM-DD/`
 - `gate_check.py` — Pipeline gate verifier (exits 1 if BLOCKED)
-- `deploy.sh` — rsync to Mac Mini
+- `deploy.sh` — rsync dev → Mac Mini production
+- `sync_dev.sh` — dev↔dev 두 노트북 간 상태 동기화 (gitignore된 파일 + ~/.claude Tier 3, rsync over SSH)
 - `backup.sh` — 30-day rolling DB backup
 
 ## Data Directory
