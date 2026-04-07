@@ -69,11 +69,22 @@ LOCAL_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "=== Sync ($DIRECTION) — ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH} ==="
 
-# SSH 연결 확인
-if ! ssh -o ConnectTimeout=5 "${REMOTE_USER}@${REMOTE_HOST}" "echo ok" >/dev/null 2>&1; then
+# SSH 연결 확인 — 콜드 mDNS/NDP 캐시 대비 첫 시도는 timeout 길게, 실패시 재시도
+# (ConnectTimeout=5는 첫 패킷이 mDNS resolution + IPv6 NDP로 1초+ 늦는 경우에
+#  부족함. 두 번째 시도는 캐시가 따뜻해져서 빠름)
+ssh_ping() {
+    ssh -o ConnectTimeout="$1" -o BatchMode=yes \
+        "${REMOTE_USER}@${REMOTE_HOST}" "echo ok" >/dev/null 2>&1
+}
+if ! ssh_ping 15 && ! ssh_ping 10; then
     echo "❌ SSH 연결 실패: ${REMOTE_USER}@${REMOTE_HOST}"
-    echo "   1) System Settings → Sharing → Remote Login 켜졌는지 확인"
-    echo "   2) ssh-copy-id ${REMOTE_USER}@${REMOTE_HOST}"
+    echo "   진단:"
+    echo "     ping -c 2 ${REMOTE_HOST}                          # 도달 가능?"
+    echo "     ssh -v -o ConnectTimeout=10 ${REMOTE_USER}@${REMOTE_HOST}   # 정확한 실패 지점"
+    echo "   조치:"
+    echo "     1) Remote Login 켜졌는지 (수신 측 System Settings → Sharing)"
+    echo "     2) ssh-copy-id ${REMOTE_USER}@${REMOTE_HOST}"
+    echo "     3) 같은 LAN에 있는지 (외근 중이면 sync_dev.sh는 동작 안 함 — git push로 우회)"
     exit 1
 fi
 
