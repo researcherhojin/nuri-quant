@@ -19,7 +19,11 @@
 # 사전 조건:
 #   1. 양쪽 Mac 모두 Remote Login 활성화
 #   2. ssh-copy-id로 키 등록 완료
-#   3. .env에 DEV2_HOST / DEV2_USER / DEV2_PATH 설정 (또는 env var)
+#   3. ~/.zshrc 에 DEV2_HOST 등록 (또는 inline env var):
+#        echo 'export DEV2_HOST=<other-mac>.local' >> ~/.zshrc
+#      ⚠️ .env 에는 절대 두지 말 것 — 이 스크립트가 .env 자체를 sync하므로
+#         반대편 머신을 자기 자신으로 가리키게 만드는 cross-pollution 발생.
+#         DEV2_HOST는 머신마다 값이 다른 식별자라서 머신-로컬에 둬야 함.
 
 set -e
 
@@ -41,8 +45,16 @@ done
 
 if [[ -z "$REMOTE_HOST" ]]; then
     echo "❌ DEV2_HOST가 설정되지 않았습니다."
-    echo "   .env에 추가하거나 환경변수로 전달하세요:"
-    echo "   DEV2_HOST=mybook.local scripts/sync_dev.sh push"
+    echo ""
+    echo "영구 등록 (권장) — ~/.zshrc 에 한 줄 추가:"
+    echo "  echo 'export DEV2_HOST=<other-mac>.local' >> ~/.zshrc"
+    echo "  source ~/.zshrc"
+    echo ""
+    echo "또는 일회성 inline:"
+    echo "  DEV2_HOST=<other-mac>.local scripts/sync_dev.sh $DIRECTION"
+    echo ""
+    echo "⚠️ .env 에는 두지 말 것 — 이 스크립트가 .env를 sync하므로 반대편"
+    echo "   머신을 자기 자신으로 가리키게 만드는 cross-pollution 발생."
     exit 1
 fi
 
