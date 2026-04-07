@@ -176,6 +176,22 @@ scripts/sync_dev.sh push --no-claude            # project files only, skip ~/.cl
 
 The script does a SQLite WAL checkpoint before transfer, prompts before destructive overwrites, and uses `rsync --partial` for resumable delta transfers. Operate one machine at a time to avoid DB conflicts.
 
+### Mac mini receiver — auto pull from MBP
+
+When the MacBook is portable and Mac mini stays as the always-on receiver, install the launchd auto-pull agent on Mac mini once. After this, every `git push` from MBP is reflected on Mac mini within 5 minutes.
+
+```bash
+# On Mac mini, one-time setup
+cp scripts/com.nuri-quant.autopull.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.nuri-quant.autopull.plist
+
+# Verify (RunAtLoad=true triggers immediately)
+launchctl list | grep nuri-quant.autopull
+tail -f ~/Library/Logs/nuri-quant-autopull.log
+```
+
+The agent runs `scripts/auto_deploy.sh` every 5 minutes: fetch → if `origin/main` advanced, ff-only merge → analyze the diff and log warnings if `pyproject.toml`/`uv.lock` (run `uv sync`), `frontend/package*.json` (run `npm ci`), or `nuri/core/db.py` (run migrate) changed → deploy hook (placeholder for restarting 24/7 services). It is safe-by-default: refuses non-fast-forward merges, refuses to touch a dirty worktree, and silently retries on network failures.
+
 ### Run
 
 ```bash
