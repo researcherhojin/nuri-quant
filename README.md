@@ -188,10 +188,15 @@ Two patterns for running Nuri-Quant on more than one Mac. Pick whichever fits yo
 `scripts/sync_dev.sh` rsyncs everything git can't carry: gitignored project state (`.env`, `config/portfolio.yaml`, `data/portfolio.db`) plus Claude Code state (`~/.claude/projects/...` conversation history + memory + global skills/plugins/settings). Caches and runtime state are excluded.
 
 ```bash
-# One-time setup on the receiving machine
+# One-time setup on each machine
 sudo systemsetup -setremotelogin on             # both Macs
 ssh-copy-id <other-mac>.local                   # passwordless SSH (uses $USER)
-echo "DEV2_HOST=<other-mac>.local" >> .env
+
+# Tell the script who the "other" machine is. Put this in ~/.zshrc, NOT .env.
+# Reason: sync_dev.sh syncs .env between machines, so a DEV2_HOST in .env
+# would propagate and make the other machine point at itself.
+echo 'export DEV2_HOST=<other-mac>.local' >> ~/.zshrc
+source ~/.zshrc
 
 # Recurring sync (run on whichever machine has the freshest state)
 scripts/sync_dev.sh push                        # this laptop → other
@@ -200,7 +205,7 @@ scripts/sync_dev.sh push --with-reports         # include data/reports/ (~136MB)
 scripts/sync_dev.sh push --no-claude            # project files only, skip ~/.claude
 ```
 
-The script does a SQLite WAL checkpoint before transfer, prompts before destructive overwrites, and uses `rsync --partial` for resumable delta transfers. Operate one machine at a time to avoid DB conflicts.
+Each machine's `~/.zshrc` holds the *other* machine's hostname, so the value is asymmetric by design. The script does a SQLite WAL checkpoint before transfer, prompts before destructive overwrites, and uses `rsync --partial` for resumable delta transfers. Operate one machine at a time to avoid DB conflicts.
 
 ### Auto-pull receiver (portable dev → always-on prod)
 
