@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Nuri-Quant 자동 git pull launchd 설정 (Mac mini receiver용).
+
+  목적:
+    MBP에서 git push → 5분 이내에 Mac mini가 origin/main을 ff-only merge.
+    실제 동작은 scripts/auto_deploy.sh에 위임 — 거기서 dependency/schema
+    변경 감지, 서비스 재시작 hook 등을 처리.
+
+  설치 (Mac mini에서 1회):
+    cp scripts/com.nuri-quant.autopull.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.nuri-quant.autopull.plist
+    # 즉시 검증 (RunAtLoad=true이므로 load 직후 한 번 실행됨)
+    sleep 5 && tail -20 ~/Library/Logs/nuri-quant-autopull.log
+
+  상태 확인:
+    launchctl list | grep nuri-quant.autopull
+    tail -f ~/Library/Logs/nuri-quant-autopull.log
+
+  제거:
+    launchctl unload ~/Library/LaunchAgents/com.nuri-quant.autopull.plist
+    rm ~/Library/LaunchAgents/com.nuri-quant.autopull.plist
+
+  주의:
+    - REPO 경로는 머신마다 다르면 ProgramArguments + WorkingDirectory 둘 다 수정
+    - launchd는 PATH가 매우 빈약 — auto_deploy.sh 안에서 절대경로/명시적 PATH 사용
+    - StartInterval=300 (5분). 더 자주 원하면 줄일 수 있으나 GitHub API rate-limit 주의
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nuri-quant.autopull</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/ehbebe/workspace/nuri-quant/scripts/auto_deploy.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/ehbebe/workspace/nuri-quant</string>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/ehbebe/Library/Logs/nuri-quant-autopull.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/ehbebe/Library/Logs/nuri-quant-autopull.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+        <key>HOME</key>
+        <string>/Users/ehbebe</string>
+        <key>GIT_TERMINAL_PROMPT</key>
+        <string>0</string>
+    </dict>
+</dict>
+</plist>
