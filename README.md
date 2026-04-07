@@ -6,7 +6,7 @@
 [![codecov](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](LICENSE)
 
-**[Issues](https://github.com/researcherhojin/nuri-quant/issues)** · After `make start`: API Docs at `http://localhost:8001/docs`, Dashboard at `http://localhost:3000`
+**[Issues](https://github.com/researcherhojin/nuri-quant/issues)** · **[Strategy](docs/STRATEGY.md)**
 
 </div>
 
@@ -18,7 +18,7 @@ Open-source quantitative investment platform that **proves why you should buy or
 
 ```mermaid
 graph LR
-    A["📡 <b>A · Collect</b><br/>5 core collectors<br/>stock · macro · signals"]
+    A["📡 <b>A · Collect</b><br/>5 core collectors<br/>stock · macro · technicals"]
     B["📊 <b>B · Analyze</b><br/>portfolio · sector · risk"]
     C["🧪 <b>C · Validate</b><br/>signal backtest + scorecard<br/>+ learning memory snapshot"]
     D["🏷️ <b>D · Classify</b><br/>regime × strategy map<br/>+ multi-factor composite"]
@@ -45,21 +45,17 @@ graph LR
     style H fill:#fff9c4,stroke:#fdd835,color:#f57f17
 ```
 
-<details>
-<summary>Phase details (click to expand)</summary>
+## Key Features
 
-| Phase | Modules (`make full-scan`) | Input | Output |
-|-------|---------|-------|--------|
-| **A · Collect** | `stock`, `stock_kr`, `macro`, `technical`, `fear_greed` (5 core; `make collect` runs all 11) | External APIs | `prices`, `macro`, `signals` tables |
-| **B · Analyze** | `portfolio`, `sector`, `risk` | DB tables | Portfolio analysis in DB |
-| **C · Validate** | `signal_backtest`, `scorecard`, `memory --snapshot` | DB prices | `signal_results.csv`, `signal_scorecard.csv`, `strategy_memory` |
-| **D · Classify** | `strategy_map`, `composite` | CSV + DB | Regime allocation, factor scores in DB |
-| **E · Recommend** | `candidates`, `consensus` (10 agents), `swing.scanner` | DB + CSV stats | `recommendations` table |
-| **F · Certify** | `price_targets`, `rebalance_advisor`, `certification` (SIEGE 10-gate) | DB recommendations | CERTIFIED / REJECTED |
-| **G · Evidence** | `evidence_charts` | DB + certification | 5 Plotly HTML files in `data/reports/` |
-| **H · Notify** | `notify_scan_result` | Evidence HTML | Discord/Telegram message |
-
-</details>
+- **Evidence-based decisions** — 8,000+ historical trade backtests across 15 signals validate every recommendation
+- **10-regime market classification** — 6 base (bull/bear/sideways × high/low vol) + 4 special (recovery, euphoria, stagflation, sector rotation)
+- **10 specialist agents** — Weighted consensus voting with SSE reasoning trace. Risk agent holds veto power (SELL + confidence ≥ 80 overrides all)
+- **SIEGE certification** — [10-condition mechanical gate](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). Single failure → REJECTED
+- **Investment rules UI** — Take-profit highlights (emerald/amber), VIX half-position warning, sell priority badges. O'Neil (CAN SLIM) + Minervini (SEPA), 3:1 reward-to-risk
+- **Pipeline observability** — [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview)-style Data Health + [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) Freshness SLA
+- **Superinvestor tracking** — SEC 13F filings (Buffett, Dalio, NPS Korea, Key Square, Strive)
+- **Portfolio onboarding** — Dashboard UI for CRUD, CSV import/export, sample portfolio, YAML reverse sync
+- **LLM reports** — Qwen3.5 evidence-based analysis with SIEGE certification, fully local (Ollama)
 
 ## Tech Stack
 
@@ -165,6 +161,8 @@ make full-scan             # 8-phase pipeline: collect → certify → notify
 make quick-scan            # Fast 4-step: collect → analyze → consensus → targets (~2 min)
 ```
 
+After `make start`: Dashboard at <http://localhost:3000>, API docs at <http://localhost:8001/docs>.
+
 ### Useful Commands
 
 ```bash
@@ -221,19 +219,14 @@ launchctl list | grep nuri-quant.autopull
 tail -f ~/Library/Logs/nuri-quant-autopull.log
 ```
 
-The agent runs `scripts/auto_deploy.sh` every 5 minutes: fetch → if `origin/main` advanced, ff-only merge → analyze the diff and log warnings if `pyproject.toml`/`uv.lock` (run `uv sync`), `frontend/package*.json` (run `npm ci`), or `nuri/core/db.py` (run migrate) changed → deploy hook (placeholder for restarting 24/7 services). Safe-by-default: refuses non-fast-forward merges, refuses to touch a dirty worktree, and silently retries on network failures.
+The agent runs `scripts/auto_deploy.sh` every 5 minutes:
 
-## Key Features
+1. **Fetch** `origin/main`. If no new commits, exit.
+2. **Fast-forward merge** only — refuses non-ff and refuses to touch a dirty worktree.
+3. **Diff analysis** — warns if `pyproject.toml`/`uv.lock` (run `uv sync`), `frontend/package*.json` (run `npm ci`), or `nuri/core/db.py` (run migrate) changed.
+4. **Deploy hook** — placeholder for restarting 24/7 services.
 
-- **Evidence-based decisions** — 8,000+ historical trade backtests across 15 signals validate every recommendation
-- **10-regime market classification** — 6 base (bull/bear/sideways × high/low vol) + 4 special (recovery, euphoria, stagflation, sector rotation)
-- **10 specialist agents** — Weighted consensus voting with SSE reasoning trace. Risk agent holds veto power (SELL + confidence ≥ 80 overrides all)
-- **SIEGE certification** — [10-condition mechanical gate](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). Single failure → REJECTED
-- **Investment rules UI** — Take-profit highlights (emerald/amber), VIX half-position warning, sell priority badges. O'Neil (CAN SLIM) + Minervini (SEPA), 3:1 reward-to-risk
-- **Pipeline observability** — [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview)-style Data Health + [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) Freshness SLA
-- **Superinvestor tracking** — SEC 13F filings (Buffett, Dalio, NPS Korea, Key Square, Strive)
-- **Portfolio onboarding** — Dashboard UI for CRUD, CSV import/export, sample portfolio, YAML reverse sync
-- **LLM reports** — Qwen3.5 evidence-based analysis with SIEGE certification
+Network failures are silently retried on the next tick.
 
 ## Architecture
 
