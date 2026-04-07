@@ -51,7 +51,7 @@ python -m nuri.quant.regime.strategy_map     # regime + macro + strategy
 make validate                           # signal + superinvestor + analyst + scorecard
 
 # Regime classification (Phase D)
-make regime                             # 6-regime classifier + strategy map
+make regime                             # regime classifier (6 base + 4 special) + strategy map
 
 # Recommendations (Phase E)
 make recommend                          # candidates + tracker (signal-based buy/sell)
@@ -74,7 +74,7 @@ make mean-reversion   # mean-reversion scan + backtest
 make pairs            # pairs trading scan + backtest
 
 # Swing Trade
-make scan             # 89종목 스캔 → 시그널 필터
+make scan             # 88종목 스캔 (UNIVERSE) → 시그널 필터
 make swing            # 스캔 + 에이전트 합의 → 진입 저장
 make swing-check      # 진행중 스윙 트레이드 상태 확인
 
@@ -294,7 +294,7 @@ Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime
 
 ### Config files (`config/`)
 
-- `portfolio.yaml` — 7 accounts (test/demo/sample/pension/irp/test/sample), 30+ holdings
+- `portfolio.yaml` — 7 accounts (test/demo/sample/pension/irp/test/sample), 30 holdings (test 17 + demo 10 + sample 3)
 - `stock_types.yaml` — Manual growth/value override per ticker. Controls stop-loss/take-profit thresholds (growth: -7%/+20%/+40%, value: -10%/+15%/+30%). Swing type is auto-tagged by scanner.
 - `agents.yaml` — Agent thresholds (RSI 30/70, PE 15/40, confidence caps, etc.) loaded via `nuri/core/agent_config.py`. Includes `confidence_normalization` scales for uniform 0-100 mapping.
 - `alerts.yaml` — Thresholds (price swing 3%, Fear&Greed bounds 20/80), report timing
@@ -326,7 +326,7 @@ data/
 
 ## Testing
 
-2928 backend tests across 32 domain files + 585 frontend vitest + 21 Playwright E2E (v11 migrations). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 98% coverage, frontend 95% coverage. Tests use `tmp_path` fixture for isolated SQLite databases:
+2,928 backend tests across 32 domain files + 585 frontend vitest (44 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 98% coverage, frontend 95% coverage. CI minimum thresholds in `docs/STRATEGY.md` §4.1. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -336,6 +336,29 @@ def db_path(tmp_path):
 ```
 
 Pass `db_path` to all DB functions in tests. `conftest.py` (autouse) mocks `yfinance.download` → empty DataFrame and `yfinance.Ticker` → stub with None attributes. All tests run network-free.
+
+### Verifying numeric claims
+
+All counts in this doc are verified against code. Re-run after major changes — drift here causes future sessions to make decisions on stale facts.
+
+```bash
+# Tests
+.venv/bin/python -m pytest tests/ --collect-only -q | tail -1   # backend
+ls tests/test_*.py | wc -l                                       # backend test files
+cd frontend && npx vitest run | tail -5                          # frontend (Test Files / Tests)
+grep -rhE "^\s*test\(" frontend/e2e/ | wc -l                     # Playwright E2E
+
+# Architectural counts
+ls nuri/collectors/*.py | grep -vE 'base|__init__' | wc -l       # collectors
+ls nuri/trading/agents/*.py | grep -vE 'base|__init__|consensus|config' | wc -l  # agents
+.venv/bin/python -c "from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS; print(len(SIGNAL_DEFINITIONS))"  # signals
+.venv/bin/python -c "from nuri.trading.strategy.longshort import REGIME_ALLOCATION; print(len(REGIME_ALLOCATION))"  # regimes
+grep -rhE "@router\.(get|post|put|delete|patch)" nuri/api/routes/ | wc -l  # API endpoints
+grep -c "CREATE TABLE" nuri/core/db.py                           # DB tables
+find frontend/src/app -name "page.tsx" | wc -l                   # frontend routes
+```
+
+If any of these disagree with the numbers stated above, **fix the doc** — do not weaken the claim to be drift-immune. Precise numbers are load-bearing for trust.
 
 ### DB Migrations
 
@@ -424,7 +447,7 @@ All pages are **Server Components** with `force-dynamic`. Data fetched server-si
 
 **Conventions**: `async function Section()` in `<Suspense>`, `animate-pulse` skeletons, color semantics (emerald=BUY, red=SELL, amber=warning, blue=WATCH, zinc=HOLD), `text-[10px]` sub-labels.
 
-**Frontend testing** (585 vitest, 44 files, 97% coverage): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files.
+**Frontend testing** (585 vitest, 44 files, 95% coverage): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files.
 
 **Auth**: `src/middleware.ts` — SHA256 cookie-based, active only when `DASHBOARD_PASSWORD` is set.
 
