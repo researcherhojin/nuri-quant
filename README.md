@@ -88,7 +88,7 @@ graph LR
 ![bcrypt](https://img.shields.io/badge/bcrypt-5.0.0-004D40)
 ![slowapi](https://img.shields.io/badge/slowapi-0.1.9-FF7043)
 
-> 60 endpoints · 27 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
+> 54 endpoints · 27 tables (v11 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
 
 **Frontend**<br/>
 ![Next.js](https://img.shields.io/badge/Next.js-16.2.2-000000?logo=next.js&logoColor=white)
@@ -247,7 +247,7 @@ nuri/
 │   ├── recommend/ # Candidates, price targets, rebalance, tracker
 │   ├── swing/     # Market-wide scanner + entry/exit rules
 │   └── execution/ # Broker interface (Alpaca paper + DryRun)
-├── api/           # FastAPI REST (60 endpoints) + SSE streaming
+├── api/           # FastAPI REST (54 endpoints) + SSE streaming
 ├── alerts/        # Discord + Telegram notifications
 └── llm/           # Ollama LLM reports + SIEGE certification
 ```
