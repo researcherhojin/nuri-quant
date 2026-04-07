@@ -199,9 +199,21 @@ else
     echo ""
     echo "[1/3] 프로젝트 파일 수신: ${REMOTE_HOST} → 이 노트북"
     cd "$LOCAL_ROOT"
-    rsync $RSYNC_OPTS --ignore-missing-args \
-        $(printf "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/./%s " "${FILES[@]}") \
-        ./
+    # openrsync (macOS default)는 --ignore-missing-args 미지원.
+    # SSH로 원격 존재 여부를 먼저 확인하고, 존재하는 파일만 전송한다.
+    REMOTE_EXISTING=()
+    for f in "${FILES[@]}"; do
+        if ssh "${REMOTE_USER}@${REMOTE_HOST}" "[ -e '${REMOTE_PATH_ABS}/$f' ]" 2>/dev/null; then
+            REMOTE_EXISTING+=("$f")
+        fi
+    done
+    if [[ ${#REMOTE_EXISTING[@]} -gt 0 ]]; then
+        rsync $RSYNC_OPTS \
+            $(printf "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/./%s " "${REMOTE_EXISTING[@]}") \
+            ./
+    else
+        echo "  (원격에 동기화할 파일 없음)"
+    fi
 
     if $WITH_REPORTS; then
         echo ""
