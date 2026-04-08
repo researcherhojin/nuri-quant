@@ -63,12 +63,13 @@ jobs:
       run:
         working-directory: frontend
     steps:
+      # Always checkout — skip notice runs `echo` which would otherwise try to
+      # `cd frontend` (per defaults.run.working-directory) into a non-existent dir.
+      - uses: actions/checkout@v6
+
       - name: Skip notice (no frontend changes)
         if: needs.changes.outputs.frontend != 'true' && github.event_name == 'pull_request'
         run: echo "✓ No frontend changes — fast-pass to satisfy required check"
-
-      - uses: actions/checkout@v6
-        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
 
       - uses: actions/setup-node@v6
         if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
@@ -123,12 +124,11 @@ jobs:
       run:
         working-directory: frontend
     steps:
+      - uses: actions/checkout@v6
+
       - name: Skip notice (no frontend changes)
         if: needs.changes.outputs.frontend != 'true' && github.event_name == 'pull_request'
         run: echo "✓ No frontend changes — fast-pass to satisfy required check"
-
-      - uses: actions/checkout@v6
-        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
 
       - uses: actions/setup-node@v6
         if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
