@@ -269,6 +269,83 @@ def analyze_portfolio(db_path=None) -> list[ConsensusResult]:
     return results
 
 
+def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int:
+    """ConsensusResult를 recommendations 테이블에 INSERT.
+
+    이전: `make consensus`는 stdout만 출력하고 DB에 저장하지 않아 frontend
+    /decision 페이지가 빈 상태로 표시되었음 (routing failure).
+    이제 합의 직후 자동 저장하여 evidence trail 연속성 보장.
+
+    중복 방지: (date, ticker) 같은 날 재실행 시 INSERT OR REPLACE.
+    """
+    import json
+
+    from nuri.core.db import get_db, query
+    from nuri.core.timezone import today_kst
+
+    if not results:
+        return 0
+
+    today = today_kst()
+    records = []
+    for r in results:
+        # 현재가 조회
+        price_row = query(
+            "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
+            (r.ticker,),
+            db_path=db_path,
+        )
+        entry_price = price_row[0]["close"] if price_row else 0.0
+
+        verdicts_json = json.dumps(
+            [
+                {
+                    "agent_name": v.agent_name,
+                    "ticker": v.ticker,
+                    "action": v.action,
+                    "confidence": v.confidence,
+                    "reasoning": v.reasoning,
+                    "data_points": v.data_points,
+                }
+                for v in r.verdicts
+            ],
+            ensure_ascii=False,
+        )
+
+        records.append(
+            {
+                "date": today,
+                "ticker": r.ticker,
+                "action": r.final_action,
+                "confidence": r.final_confidence,
+                "regime": None,  # consensus는 regime 정보 없음 — tracker.py가 채움
+                "signals": json.dumps(
+                    {
+                        "agreement_rate": r.agreement_rate,
+                        "dissent_count": len(r.dissent),
+                        "reasoning": r.reasoning,
+                    }
+                ),
+                "entry_price": entry_price,
+                "agent_verdicts": verdicts_json,
+                "scoring_detail": None,
+            }
+        )
+
+    with get_db(db_path) as conn:
+        # 같은 날 같은 종목 재실행 시 덮어쓰기 (REPLACE)
+        # UNIQUE 제약(date, ticker)이 있으면 REPLACE 동작, 없으면 단순 INSERT
+        conn.executemany(
+            """INSERT OR REPLACE INTO recommendations
+               (date, ticker, action, confidence, regime, signals, entry_price,
+                agent_verdicts, scoring_detail)
+               VALUES (:date, :ticker, :action, :confidence, :regime, :signals, :entry_price,
+                       :agent_verdicts, :scoring_detail)""",
+            records,
+        )
+        return len(records)
+
+
 def print_consensus(results: list[ConsensusResult]) -> None:
     """합의 결과 CLI 출력."""
     if not results:
@@ -368,6 +445,13 @@ if __name__ == "__main__":
             print("  반대 의견:")
             for d in result.dissent:
                 print(f"    {d}")
+        # 단일 종목도 DB 저장 (frontend evidence 연속성)
+        saved = save_to_recommendations([result])
+        if saved:
+            logger.info(f"recommendations 테이블에 {saved}건 저장")
     else:
         results = analyze_portfolio()
         print_consensus(results)
+        saved = save_to_recommendations(results)
+        if saved:
+            logger.info(f"recommendations 테이블에 {saved}건 저장 (frontend /decision 활성화)")
