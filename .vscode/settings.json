@@ -1,0 +1,100 @@
+{
+  // ─── Python ─────────────────────────────────────────────
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.analysis.extraPaths": ["${workspaceFolder}"],
+  "python.analysis.typeCheckingMode": "basic",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests"],
+  "python.testing.unittestEnabled": false,
+
+  // ─── Ruff (lint + format) ───────────────────────────────
+  "ruff.enable": true,
+  "ruff.organizeImports": true,
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports.ruff": "explicit",
+      "source.fixAll.ruff": "explicit"
+    }
+  },
+
+  // ─── Frontend (TypeScript / React / Tailwind) ──────────
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "tailwindCSS.experimental.classRegex": [
+    ["clsx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"],
+    ["cn\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"]
+  ],
+  "tailwindCSS.includeLanguages": {
+    "typescript": "javascript",
+    "typescriptreact": "javascript"
+  },
+
+  // ─── Editor ─────────────────────────────────────────────
+  "editor.formatOnSave": true,
+  "editor.rulers": [120],
+  "editor.tabSize": 4,
+  "[typescript]": { "editor.tabSize": 2 },
+  "[typescriptreact]": { "editor.tabSize": 2 },
+  "[json]": { "editor.tabSize": 2 },
+  "[yaml]": { "editor.tabSize": 2 },
+
+  // ─── Files ──────────────────────────────────────────────
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true,
+    "**/.mypy_cache": true,
+    "**/*.egg-info": true,
+    "**/.coverage": true,
+    "**/coverage.xml": true,
+    "**/htmlcov": true,
+    "**/.next": true,
+    "**/.turbo": true,
+    "frontend/node_modules": true,
+    "data/.bfg-reports": true
+  },
+  "files.watcherExclude": {
+    "**/.venv/**": true,
+    "**/node_modules/**": true,
+    "**/data/reports/**": true,
+    "**/data/backups/**": true,
+    "**/.git/**": true
+  },
+
+  // ─── Search ─────────────────────────────────────────────
+  "search.exclude": {
+    "**/.venv": true,
+    "**/node_modules": true,
+    "**/data/reports": true,
+    "**/data/backups": true,
+    "**/uv.lock": true,
+    "**/package-lock.json": true,
+    "**/coverage": true
+  },
+
+  // ─── Git ────────────────────────────────────────────────
+  "git.ignoreLimitWarning": true,
+
+  // ─── Mermaid (Markdown 미리보기에서 다이어그램 렌더) ──────
+  "markdown.preview.fontSize": 13,
+
+  // ─── 보안 ────────────────────────────────────────────────
+  "files.readonlyInclude": {
+    "**/.env": true,
+    "**/.env.production": true,
+    "**/kis_devlp.yaml": true,
+    "**/token_*.json": true
+  }
+}
