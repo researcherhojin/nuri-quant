@@ -4,20 +4,11 @@
 # 배포 전 필수 검증: config, DB, API, 의존성
 # ═══════════════════════════════════════════════════════
 set -e
-cd "$(dirname "$0")/.."
 
-PYTHON=${PYTHON:-.venv/bin/python}
-PASS=0
-FAIL=0
-WARN=0
+# Source shared helpers (colors, PYTHON, REPO_ROOT cd, pass/fail/warn counters).
+source "$(dirname "$0")/_common.sh"
 
-pass()  { echo "  ✅ $1"; ((PASS++)); }
-fail()  { echo "  ❌ $1"; ((FAIL++)); }
-warn()  { echo "  ⚠️  $1"; ((WARN++)); }
-
-echo "═══════════════════════════════════════════════════════"
-echo "  Nuri-Quant Pre-Deploy Check"
-echo "═══════════════════════════════════════════════════════"
+banner "Nuri-Quant Pre-Deploy Check"
 echo ""
 
 # ── 1. Config 파일 검증 ──
@@ -144,15 +135,12 @@ done
 
 # ── 결과 ──
 echo ""
-echo "═══════════════════════════════════════════════════════"
-TOTAL=$((PASS + FAIL + WARN))
-echo "  Results: $PASS passed, $FAIL failed, $WARN warnings ($TOTAL checks)"
-echo "═══════════════════════════════════════════════════════"
+summary
 
 if [ "$FAIL" -gt 0 ]; then
-    echo "  ❌ Deploy BLOCKED — fix failures above"
+    echo -e "  ${RED}❌ Deploy BLOCKED — fix failures above${NC}"
     exit 1
 else
-    echo "  ✅ Deploy OK"
+    echo -e "  ${GREEN}✅ Deploy OK${NC}"
     exit 0
 fi

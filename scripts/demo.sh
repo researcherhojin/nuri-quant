@@ -5,12 +5,13 @@
 # ═══════════════════════════════════════════════════════
 set -e
 
-PYTHON=".venv/bin/python"
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# Source shared helpers (colors, PYTHON, REPO_ROOT cd, pass/fail/warn).
+source "$(dirname "$0")/_common.sh"
+
+# Local alias `ok` keeps existing demo.sh usage. _common.sh's pass()
+# increments PASS counter, so the demo's final tally now reflects success
+# count automatically.
+ok() { pass "$1"; }
 
 step=0
 total=14
@@ -22,10 +23,6 @@ header() {
     echo -e "${CYAN}  [$step/$total] $1${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
-
-ok() { echo -e "  ${GREEN}✓ $1${NC}"; }
-warn() { echo -e "  ${YELLOW}⚠ $1${NC}"; }
-fail() { echo -e "  ${RED}✗ $1${NC}"; }
 
 # ── 사전 체크 ──
 echo -e "${CYAN}"
