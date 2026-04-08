@@ -1,7 +1,15 @@
 """
-애널리스트 컨센서스 수집기 — OpenBB estimates.consensus 기반.
+애널리스트 컨센서스 수집기 — yfinance ticker.info 기반.
 
-목표가, 투자의견, 애널리스트 수를 수집.
+목표가, 투자의견, 애널리스트 수를 수집. 한국 종목(.KS)은 yfinance가 컨센서스
+데이터를 제공하지 않으므로 자동 스킵.
+
+이전 OpenBB equity.estimates.consensus는 openbb-core 버전 충돌(`OBBject_EquityInfo`
+import error)로 모든 종목에서 0건 수집. yfinance Ticker.info의 다음 필드를 직접
+사용하여 의존성 단순화 + 안정성 확보:
+    recommendationKey, recommendationMean, numberOfAnalystOpinions,
+    targetMeanPrice, targetMedianPrice, targetHighPrice, targetLowPrice,
+    currentPrice
 
 사용법:
     python -m nuri.collectors.estimates
@@ -18,44 +26,57 @@ logger = logging.getLogger(__name__)
 
 
 class EstimatesCollector(BaseCollector):
-    """OpenBB estimates.consensus로 애널리스트 컨센서스 수집."""
+    """yfinance Ticker.info로 애널리스트 컨센서스 수집."""
 
     def __init__(self):
         super().__init__("estimates")
 
     def collect(self, **kwargs) -> list[dict]:
-        """전 보유종목 애널리스트 컨센서스 수집."""
-        from openbb import obb
+        """전 보유종목 애널리스트 컨센서스 수집 (US 종목만)."""
+        import yfinance as yf
 
         tickers = self._get_tickers()
         if not tickers:
             self.logger.warning("수집할 종목이 없습니다")
             return []
 
-        self.logger.info(f"애널리스트 컨센서스 수집: {len(tickers)}종목")
+        # yfinance는 한국 종목(.KS) 컨센서스 데이터 미제공 — 스킵
+        us_tickers = [t for t in tickers if not t.endswith(".KS")]
+        if not us_tickers:
+            self.logger.warning("US 종목이 없습니다 (yfinance 컨센서스는 .KS 미지원)")
+            return []
+
+        self.logger.info(f"애널리스트 컨센서스 수집: {len(us_tickers)}종목")
         from nuri.core.timezone import today_kst
         today = today_kst()
         results = []
 
-        for ticker in tickers:
+        for ticker in us_tickers:
             try:
-                r = obb.equity.estimates.consensus(ticker, provider="yfinance")
-                df = r.to_dataframe()
-                if df.empty:
-                    self.logger.warning(f"{ticker}: 컨센서스 데이터 없음")
+                info = yf.Ticker(ticker).info
+                if not info or "regularMarketPrice" not in info:
+                    self.logger.warning(f"{ticker}: yfinance info 비어있음")
                     continue
 
-                row = df.iloc[0]
+                num_analysts = _safe_int(info.get("numberOfAnalystOpinions"))
+                target_mean = _safe_float(info.get("targetMeanPrice"))
+                # 분석가 데이터 없으면 스킵
+                if not num_analysts and not target_mean:
+                    self.logger.info(f"{ticker}: 분석가 컨센서스 미제공")
+                    continue
+
                 record = {
                     "ticker": ticker,
                     "date": today,
-                    "recommendation": row.get("recommendation"),
-                    "target_high": _safe_float(row.get("target_high")),
-                    "target_low": _safe_float(row.get("target_low")),
-                    "target_mean": _safe_float(row.get("target_consensus")),
-                    "target_median": _safe_float(row.get("target_median")),
-                    "num_analysts": _safe_int(row.get("number_of_analysts")),
-                    "current_price": _safe_float(row.get("current_price")),
+                    "recommendation": info.get("recommendationKey"),
+                    "target_high": _safe_float(info.get("targetHighPrice")),
+                    "target_low": _safe_float(info.get("targetLowPrice")),
+                    "target_mean": target_mean,
+                    "target_median": _safe_float(info.get("targetMedianPrice")),
+                    "num_analysts": num_analysts,
+                    "current_price": _safe_float(
+                        info.get("currentPrice") or info.get("regularMarketPrice")
+                    ),
                 }
                 results.append(record)
 
