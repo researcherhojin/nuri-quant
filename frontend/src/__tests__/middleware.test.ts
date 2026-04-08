@@ -77,11 +77,14 @@ describe("middleware", () => {
 
     // Generate the expected token using the same HMAC scheme as the
     // production auth-token helper. AUTH_SECRET is unset so the helper
-    // falls back to DASHBOARD_PASSWORD as the HMAC key.
+    // falls back to DASHBOARD_PASSWORD as the HMAC key. The body of the
+    // hash is the static label "nuri-auth-token:v1" — password content
+    // is intentionally NOT mixed in (CodeQL would flag that as an
+    // insecure password hash regardless of the HMAC key).
     const crypto = require("crypto");
     const expectedToken = crypto
       .createHmac("sha256", "secret123")
-      .update("secret123")
+      .update("nuri-auth-token:v1")
       .digest("hex");
 
     const request = {
