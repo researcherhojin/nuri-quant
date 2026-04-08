@@ -6,6 +6,7 @@ import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
+import { MarketPulse } from "@/components/ui/market-pulse";
 import Link from "next/link";
 
 interface DashboardData {
@@ -157,13 +158,18 @@ async function Dashboard() {
         <Card className="bg-card border-border">
           <CardContent className="pt-4 pb-3">
             <p className="text-[10px] text-muted-foreground mb-1">Market</p>
-            <p className="text-lg font-bold">{d.regime.trend?.toUpperCase()}</p>
+            <p className={`text-lg font-bold ${d.regime.trend === "bull" ? "text-emerald-400" : d.regime.trend === "bear" ? "text-red-400" : ""}`}>
+              {d.regime.trend?.toUpperCase()}
+            </p>
             <p className="text-[10px] text-muted-foreground/70">
-              VIX {d.regime.vix ?? "\u2014"} · F&G {d.regime.fear_greed ?? "\u2014"}
+              {d.regime.regime} · {d.regime.confidence}% conf
             </p>
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Market Pulse ── */}
+      <MarketPulse regime={d.regime} macro={d.macro} />
 
       {/* ── Verdict + Allocation ── */}
       <Card className={`${style.bg} ${style.border} border`}>
