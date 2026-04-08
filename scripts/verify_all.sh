@@ -1,23 +1,24 @@
 #!/bin/bash
 # Nuri-Quant System Verification — 커밋 전 필수
 set -e
-cd "$(dirname "$0")/.."
 
-PYTHON=".venv/bin/python"
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# Source shared helpers (colors, PYTHON, REPO_ROOT cd, counters).
+source "$(dirname "$0")/_common.sh"
 
-pass=0; fail=0
+# Local check() that inspects $? from the previous command — distinct from
+# _common.sh's check_cmd which takes the command as args. Updates _common.sh's
+# PASS/FAIL counters.
 check() {
-    if [ $? -eq 0 ]; then echo -e "  ${GREEN}✓ $1${NC}"; pass=$((pass+1))
-    else echo -e "  ${RED}✗ $1${NC}"; fail=$((fail+1)); fi
+    if [ $? -eq 0 ]; then
+        echo -e "  ${GREEN}✓ $1${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "  ${RED}✗ $1${NC}"
+        FAIL=$((FAIL + 1))
+    fi
 }
 
-echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║  Nuri-Quant System Verification                 ║${NC}"
-echo -e "${CYAN}╚══════════════════════════════════════════════════╝${NC}"
+banner "Nuri-Quant System Verification"
 
 # 1. Tests (yfinance mocked via conftest.py → ~5s)
 echo ""; echo "━━━ 1/5. Unit Tests ━━━"
@@ -112,7 +113,10 @@ check "File Integrity"
 # Summary
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-if [ $fail -eq 0 ]; then echo -e "${GREEN}  ✓ ALL $pass/$((pass+fail)) PASSED${NC}"
-else echo -e "${RED}  ✗ $fail FAILED${NC}"; fi
+if [ "$FAIL" -eq 0 ]; then
+    echo -e "${GREEN}  ✓ ALL $PASS/$((PASS + FAIL)) PASSED${NC}"
+else
+    echo -e "${RED}  ✗ $FAIL FAILED${NC}"
+fi
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-exit $fail
+exit "$FAIL"
