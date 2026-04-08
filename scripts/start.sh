@@ -4,17 +4,10 @@
 # ═══════════════════════════════════════════════════════
 set -e
 
-GREEN='\033[0;32m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# Source shared helpers (colors, PYTHON, REPO_ROOT cd).
+source "$(dirname "$0")/_common.sh"
 
-cd "$(dirname "$0")/.."
-
-echo -e "${CYAN}"
-echo "  ╔════════════════════════════════════════╗"
-echo "  ║    Nuri-Quant Service Starting         ║"
-echo "  ╚════════════════════════════════════════╝"
-echo -e "${NC}"
+banner "Nuri-Quant Service Starting"
 
 # 포트 충돌 확인
 for PORT in 8001 3000; do
@@ -27,7 +20,7 @@ done
 
 # Backend (FastAPI)
 echo -e "${GREEN}Starting FastAPI backend on :8001...${NC}"
-.venv/bin/python -m uvicorn nuri.api.main:app --host 0.0.0.0 --port 8001 &
+$PYTHON -m uvicorn nuri.api.main:app --host 0.0.0.0 --port 8001 &
 API_PID=$!
 echo "  API PID: $API_PID"
 

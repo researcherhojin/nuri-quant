@@ -14,10 +14,9 @@
 #   bash scripts/check_atomic.sh HEAD~3..HEAD   # custom range
 
 set -e
-cd "$(dirname "$0")/.."
 
-PYTHON=".venv/bin/python"
-GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+# Source shared helpers (colors, PYTHON, REPO_ROOT cd).
+source "$(dirname "$0")/_common.sh"
 
 range="${1:-origin/main..HEAD}"
 echo -e "${CYAN}━━━ Atomicity Check (${range}) ━━━${NC}\n"
