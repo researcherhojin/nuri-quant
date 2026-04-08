@@ -1,55 +1,77 @@
 [project]
 name = "nuri-quant"
-version = "0.1.0"
-description = "Open-source quant investment platform — Collect, Validate, Classify, Recommend, Track"
+version = "0.2.0"
+description = "Open-source quant investment platform — Collect, Validate, Classify, Diagnose, Recommend, Track"
+readme = "README.md"
+license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12"
+authors = [
+    { name = "Hojin Lee", email = "researcher.hojin@gmail.com" },
+]
+keywords = [
+    "quant", "investment", "portfolio", "backtest",
+    "siege", "trading", "fintech", "openbb",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
 dependencies = [
-    # Data collection
+    # ─── Data collection (collectors) ─────────────────────────
     "openbb>=4.6.0",
     "pykrx>=1.2.0",
     "fredapi>=0.5.1",
     "edgartools>=5.0.0",
+    "finvizfinance>=1.3.0",
     "requests>=2.31.0",
     "beautifulsoup4>=4.12.0",
-    "finvizfinance>=1.3.0",
+    "yfinance>=0.2.40",
 
-    # Analysis + technical indicators
+    # ─── Analysis + technical indicators ──────────────────────
     "pandas>=2.2.0",
     "numpy>=1.26.0",
     "TA-Lib>=0.4.28",
 
-    # Portfolio optimization + risk
+    # ─── Portfolio optimization + risk ────────────────────────
     "riskfolio-lib>=7.0.0",
     "quantstats>=0.0.60",
     "scipy>=1.12.0",
     "scikit-learn>=1.4.0",
     "cvxpy>=1.4.0",
 
-    # Backtesting
+    # ─── Backtesting ──────────────────────────────────────────
     "vectorbt>=0.28.0",
 
-    # Visualization
+    # ─── Visualization ────────────────────────────────────────
     "matplotlib>=3.8.0",
     "plotly>=5.18.0",
     "seaborn>=0.13.0",
     "mplfinance>=0.12.0",
 
-    # Alerts + scheduling
+    # ─── Alerts + scheduling ──────────────────────────────────
     "discord.py>=2.3.0",
     "apscheduler>=3.10.0",
 
-    # API + LLM
+    # ─── API server ───────────────────────────────────────────
     "fastapi>=0.115.0",
     "uvicorn>=0.32.0",
     "httpx>=0.27.0",
+
+    # ─── LLM providers ────────────────────────────────────────
+    "openai>=2.30.0",
     "llama-cpp-python>=0.3.0",
 
-    # Security
+    # ─── Security ─────────────────────────────────────────────
     "PyJWT>=2.8.0",
     "bcrypt>=4.0.0",
     "slowapi>=0.1.9",
 
-    # Config
+    # ─── Config / Environment ─────────────────────────────────
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
 ]
@@ -62,13 +84,26 @@ dev = [
     "ruff>=0.8.0",
 ]
 
-[tool.setuptools.packages.find]
-include = ["nuri*"]
+[project.urls]
+Homepage = "https://github.com/researcherhojin/nuri-quant"
+Repository = "https://github.com/researcherhojin/nuri-quant"
+Issues = "https://github.com/researcherhojin/nuri-quant/issues"
 
+
+# ═══════════════════════════════════════════════════════════════
+# Build (hatchling — egg-info 생성 X, setuptools보다 깔끔)
+# ═══════════════════════════════════════════════════════════════
 [build-system]
-requires = ["setuptools>=69.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["nuri"]
+
+
+# ═══════════════════════════════════════════════════════════════
+# pytest
+# ═══════════════════════════════════════════════════════════════
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
@@ -80,6 +115,10 @@ filterwarnings = [
     "ignore::pydantic.warnings.PydanticDeprecatedSince212:",
 ]
 
+
+# ═══════════════════════════════════════════════════════════════
+# ruff (lint + isort)
+# ═══════════════════════════════════════════════════════════════
 [tool.ruff]
 target-version = "py312"
 line-length = 120
@@ -91,6 +130,10 @@ ignore = [
     "E501",   # line-too-long (기존 코드 스타일 허용)
     "E712",   # true-false-comparison (pandas idiom: df[col] == True)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/**" = ["E402", "F401"]
+"tests/**" = ["F401", "F811"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["nuri"]
