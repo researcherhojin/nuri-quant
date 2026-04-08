@@ -1,0 +1,38 @@
+{
+  "recommendations": [
+    // ─── Python ─────────────────────────────────────────
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+
+    // ─── Frontend ───────────────────────────────────────
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "yoavbls.pretty-ts-errors",
+
+    // ─── Markdown / Mermaid ────────────────────────────
+    "yzhang.markdown-all-in-one",
+    "bierner.markdown-mermaid",
+
+    // ─── DB / SQLite ────────────────────────────────────
+    "qwtel.sqlite-viewer",
+    "alexcvzz.vscode-sqlite",
+
+    // ─── YAML / Config ──────────────────────────────────
+    "redhat.vscode-yaml",
+
+    // ─── Git ────────────────────────────────────────────
+    "eamodio.gitlens",
+
+    // ─── 일반 ───────────────────────────────────────────
+    "EditorConfig.EditorConfig",
+    "streetsidesoftware.code-spell-checker"
+  ],
+  "unwantedRecommendations": [
+    // 충돌 방지
+    "ms-python.black-formatter",
+    "ms-python.isort",
+    "ms-python.flake8"
+  ]
+}
