@@ -11,6 +11,7 @@ from nuri.core.db import (
     init_db,
     query,
     query_df,
+    replace_portfolio_account,
     upsert_macro,
     upsert_portfolio,
     upsert_prices,
@@ -111,6 +112,107 @@ class TestUpsertPortfolio:
         result = query("SELECT quantity FROM portfolio WHERE ticker='TSLA'", db_path=db_path)
         assert len(result) == 1
         assert result[0]["quantity"] == 33.0
+
+
+class TestReplacePortfolioAccount:
+    """yaml → DB sync용 stale 행 자동 삭제."""
+
+    def _seed(self, db_path):
+        """kakaopay 3종목 + toss 1종목 시드."""
+        upsert_portfolio([
+            {"account": "kakaopay", "ticker": "TSLA", "quantity": 10.0,
+             "avg_price": 300.0, "currency": "USD", "sector": "EV/AI"},
+            {"account": "kakaopay", "ticker": "TSLL", "quantity": 96.0,
+             "avg_price": 16.93, "currency": "USD", "sector": "Leveraged_ETF"},
+            {"account": "kakaopay", "ticker": "OKLO", "quantity": 20.0,
+             "avg_price": 125.99, "currency": "USD", "sector": "Nuclear"},
+            {"account": "toss", "ticker": "005930.KS", "quantity": 5.0,
+             "avg_price": 195840.0, "currency": "KRW", "sector": "Semiconductor"},
+        ], db_path)
+
+    def test_removes_stale_tickers(self, db_path):
+        """yaml에서 사라진 ticker가 DB에서도 삭제됨."""
+        self._seed(db_path)
+
+        # kakaopay에 TSLA만 남기고 sync (TSLL, OKLO는 청산)
+        new_records = [
+            {"account": "kakaopay", "ticker": "TSLA", "quantity": 33.0,
+             "avg_price": 343.39, "currency": "USD", "sector": "EV/AI"},
+        ]
+        deleted, inserted = replace_portfolio_account("kakaopay", new_records, db_path)
+
+        assert deleted == 3
+        assert inserted == 1
+
+        rows = query(
+            "SELECT ticker FROM portfolio WHERE account='kakaopay' ORDER BY ticker",
+            db_path=db_path,
+        )
+        assert [r["ticker"] for r in rows] == ["TSLA"]
+
+    def test_quantity_updated_on_replace(self, db_path):
+        """기존 ticker의 수량/가격이 새 값으로 갱신됨."""
+        self._seed(db_path)
+
+        replace_portfolio_account("kakaopay", [
+            {"account": "kakaopay", "ticker": "TSLA", "quantity": 33.0,
+             "avg_price": 343.39, "currency": "USD", "sector": "EV/AI"},
+        ], db_path)
+
+        rows = query("SELECT quantity, avg_price FROM portfolio WHERE ticker='TSLA'",
+                     db_path=db_path)
+        assert rows[0]["quantity"] == 33.0
+        assert rows[0]["avg_price"] == 343.39
+
+    def test_does_not_touch_other_accounts(self, db_path):
+        """toss 계좌는 kakaopay sync에 영향 받지 않음."""
+        self._seed(db_path)
+
+        replace_portfolio_account("kakaopay", [], db_path)
+
+        toss_rows = query("SELECT ticker FROM portfolio WHERE account='toss'",
+                          db_path=db_path)
+        assert len(toss_rows) == 1
+        assert toss_rows[0]["ticker"] == "005930.KS"
+
+    def test_empty_records_clears_account(self, db_path):
+        """빈 records → 해당 계좌의 모든 행 삭제 (전량 청산)."""
+        self._seed(db_path)
+
+        deleted, inserted = replace_portfolio_account("kakaopay", [], db_path)
+
+        assert deleted == 3
+        assert inserted == 0
+
+        rows = query("SELECT * FROM portfolio WHERE account='kakaopay'", db_path=db_path)
+        assert rows == []
+
+    def test_account_mismatch_raises(self, db_path):
+        """records의 account가 인자와 다르면 ValueError."""
+        with pytest.raises(ValueError, match="account mismatch"):
+            replace_portfolio_account("kakaopay", [
+                {"account": "toss", "ticker": "AAPL", "quantity": 1.0,
+                 "avg_price": 200.0, "currency": "USD", "sector": "BigTech"},
+            ], db_path)
+
+    def test_new_account_no_existing_rows(self, db_path):
+        """기존에 없던 계좌도 정상 INSERT (deleted=0)."""
+        deleted, inserted = replace_portfolio_account("mirae", [
+            {"account": "mirae", "ticker": "AMZN", "quantity": 2.0,
+             "avg_price": 200.0, "currency": "USD", "sector": "BigTech"},
+        ], db_path)
+
+        assert deleted == 0
+        assert inserted == 1
+
+    def test_metadata_default_none(self, db_path):
+        """metadata 필드 미지정 시 None으로 INSERT."""
+        replace_portfolio_account("test", [
+            {"account": "test", "ticker": "AAPL", "quantity": 1.0,
+             "avg_price": 200.0, "currency": "USD", "sector": "BigTech"},
+        ], db_path)
+        rows = query("SELECT metadata FROM portfolio WHERE ticker='AAPL'", db_path=db_path)
+        assert rows[0]["metadata"] is None
 
 
 class TestGetTickers:
