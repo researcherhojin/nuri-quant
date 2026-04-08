@@ -495,7 +495,7 @@ class TestMetadata:
     def test_post_with_metadata(self, client):
         """POST 시 metadata 저장."""
         r = client.post("/api/portfolio", json={
-            "account": "test", "ticker": "TSLL",
+            "account": "test", "ticker": "BBB",
             "quantity": 96, "avg_price": 20.0,
             "sector": "SectorB",
             "metadata": {"flag": "SELL", "note": "레버리지 ETF 금지"},
@@ -516,7 +516,7 @@ class TestMetadata:
     def test_metadata_roundtrip_yaml(self, client, tmp_path):
         """POST → YAML 동기화 → metadata 필드 복원 확인."""
         client.post("/api/portfolio", json={
-            "account": "test", "ticker": "TSLL",
+            "account": "test", "ticker": "BBB",
             "quantity": 96, "avg_price": 20.0,
             "sector": "SectorB",
             "metadata": {"flag": "SELL"},
@@ -524,7 +524,7 @@ class TestMetadata:
         yaml_path = tmp_path / "portfolio.yaml"
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         holdings = data["accounts"]["test"]["holdings"]
-        tsll = [h for h in holdings if h["ticker"] == "TSLL"][0]
+        tsll = [h for h in holdings if h["ticker"] == "BBB"][0]
         assert tsll["flag"] == "SELL"
 
     def test_metadata_in_import(self, tmp_path, monkeypatch):
@@ -540,7 +540,7 @@ class TestMetadata:
                 "test": {
                     "currency": "USD",
                     "holdings": [
-                        {"ticker": "TSLL", "qty": 96, "avg": 20.0,
+                        {"ticker": "BBB", "qty": 96, "avg": 20.0,
                          "sector": "SectorB", "flag": "SELL"},
                     ],
                 },
@@ -553,7 +553,7 @@ class TestMetadata:
         records = imp.load_holdings(config_path=yaml_path)
         upsert_portfolio(records, db_path=meta_db)
 
-        rows = query("SELECT metadata FROM portfolio WHERE ticker='TSLL'", db_path=meta_db)
+        rows = query("SELECT metadata FROM portfolio WHERE ticker='BBB'", db_path=meta_db)
         assert rows
         meta = json.loads(rows[0]["metadata"])
         assert meta["flag"] == "SELL"
@@ -593,7 +593,7 @@ class TestMetadata:
                     "name": "카카오페이",
                     "currency": "USD",
                     "holdings": [
-                        {"ticker": "TSLL", "qty": 96, "avg": 20.0,
+                        {"ticker": "BBB", "qty": 96, "avg": 20.0,
                          "sector": "SectorB", "flag": "SELL"},
                         {"ticker": "NVDA", "qty": 20, "avg": 100.0,
                          "sector": "Semiconductor"},
@@ -612,7 +612,7 @@ class TestMetadata:
 
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         holdings = data["accounts"]["test"]["holdings"]
-        tsll = [h for h in holdings if h["ticker"] == "TSLL"][0]
+        tsll = [h for h in holdings if h["ticker"] == "BBB"][0]
         nvda = [h for h in holdings if h["ticker"] == "NVDA"][0]
         assert tsll["flag"] == "SELL"
         assert "flag" not in nvda
