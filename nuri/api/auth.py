@@ -17,7 +17,6 @@ API 인증 모듈 — JWT 토큰 + API 키 인증.
     def write_data(user=Depends(require_write_auth)):
         ...
 """
-import hashlib
 import logging
 import os
 import secrets
@@ -110,5 +109,12 @@ async def require_write_auth(
 
 
 def _constant_time_compare(a: str, b: str) -> bool:
-    """타이밍 공격 방지 비교."""
-    return hashlib.sha256(a.encode()).hexdigest() == hashlib.sha256(b.encode()).hexdigest()
+    """타이밍 공격 방지 비교 (constant-time string comparison).
+
+    Uses secrets.compare_digest from the standard library — the canonical
+    Python primitive for constant-time equality. The earlier implementation
+    hashed both sides with SHA-256 first, which CodeQL flagged as
+    "weak password hashing" (false positive: hashing wasn't the goal,
+    constant-time comparison was). compare_digest is shorter and correct.
+    """
+    return secrets.compare_digest(a.encode(), b.encode())
