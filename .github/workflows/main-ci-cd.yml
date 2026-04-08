@@ -168,8 +168,10 @@ jobs:
 
       - name: Coverage threshold check
         run: |
-          # Threshold 80%: current actual ~84%, leaves 4pp headroom for refactor
-          # noise. ROADMAP: increase to 90% after coverage_push file cleanup (B4).
+          # Threshold 80%: actual ~85% after B4 (coverage_push padding removal,
+          # 14 files / 11.9K lines / 762 padding tests deleted). 5pp headroom
+          # for refactor noise. Bump to 83% only after split of monolithic
+          # test_*_all.py files to verify real coverage doesn't regress.
           COV=$(grep -oP 'line-rate="\K[0-9.]+' coverage.xml | head -1)
           PCT=$(python3 -c "print(int(float('${COV}') * 100))")
           echo "Coverage: ${PCT}%"
