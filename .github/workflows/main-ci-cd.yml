@@ -225,16 +225,25 @@ jobs:
         if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && steps.cache-venv.outputs.cache-hit != 'true'
         run: uv sync --frozen --extra dev
 
-      - name: Run tests with coverage
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+      # ── Test runner: split into "PR fast" (no coverage) and "main full" (with coverage) ──
+      # PR runs are the most frequent CI workload — dropping coverage saves ~30-60s
+      # by skipping coveragepy line instrumentation. Main pushes still collect coverage
+      # for Codecov + threshold enforcement.
+
+      - name: Run tests (PR — no coverage, fast)
+        if: needs.changes.outputs.backend == 'true' && github.event_name == 'pull_request'
         # --dist worksteal: faster workers steal tests from busy ones, balances
-        # uneven test files (test_trading_agents_all 3019 lines vs 200-line files).
-        # Local benchmark: 26-36% faster than default --dist load (3:13 → 2:23).
+        # uneven test files. Local benchmark: 26-36% faster than default --dist load.
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal
+        timeout-minutes: 5
+
+      - name: Run tests with coverage (main push)
+        if: github.event_name != 'pull_request'
         run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
 
       - name: Verify coverage file exists
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request'
         run: |
           if [ ! -f coverage.xml ]; then
             echo "::error::coverage.xml not found — pytest-cov may have failed"
@@ -243,7 +252,7 @@ jobs:
           echo "✓ coverage.xml found ($(wc -l < coverage.xml) lines)"
 
       - name: Coverage threshold check
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request'
         run: |
           # Threshold 80%: actual ~85% after B4 (coverage_push padding removal,
           # 14 files / 11.9K lines / 762 padding tests deleted). 5pp headroom
@@ -258,7 +267,7 @@ jobs:
           fi
 
       - name: Upload coverage to Codecov
-        if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && always()
+        if: github.event_name != 'pull_request' && always()
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
