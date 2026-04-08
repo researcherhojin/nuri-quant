@@ -29,7 +29,8 @@ help:
 	@echo "Nuri-Quant Makefile — 카테고리별 주요 명령"
 	@echo ""
 	@echo "  Setup:        make setup"
-	@echo "  Test/Lint:    make test, make lint, make lint-fix, make verify-quick, make verify-all"
+	@echo "  Test/Lint:    make test, make lint, make lint-fix"
+	@echo "  Verify:       make verify-help    (verify-quick → verify-all → verify-fast → verify, fastest first)"
 	@echo "  Data:         make collect, make collect-kis, make wallstreet, make filings"
 	@echo "  Analysis:     make analyze, make consensus, make scan, make backtest"
 	@echo "  Pipeline:     make full-scan, make quick-scan"
@@ -40,6 +41,24 @@ help:
 	@echo "  Server:       make api, make dashboard, make start"
 	@echo "  Deploy:       make pre-deploy, make deploy, make backup"
 	@echo "  Utility:      make ports, make ports-kill, make update-counts, make demo"
+
+verify-help:
+	@printf '\n'
+	@printf '  \033[1;36mNuri-Quant verify tiers\033[0m — pick the cheapest one that satisfies your need\n'
+	@printf '\n'
+	@printf '  \033[1m%-14s %-9s %s\033[0m\n' 'TIER' 'RUNTIME' 'WHAT IT DOES'
+	@printf '  \033[2m%s\033[0m\n' '──────────────────────────────────────────────────────────────────'
+	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-quick' '~10s'  'pytest + regime classifier (no network)'
+	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-all'   '~30s'  'tests + backend + frontend + file integrity'
+	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-fast'  '~2min' 'scripts/verify.py --skip-backtest'
+	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify'       '~5min' 'scripts/verify.py (full backtest run)'
+	@printf '\n'
+	@printf '  \033[1mWhen to use:\033[0m\n'
+	@printf '    Pre-commit   →  \033[36mmake verify-quick\033[0m\n'
+	@printf '    Pre-push     →  \033[36mmake verify-all\033[0m\n'
+	@printf '    Pre-deploy   →  \033[36mmake verify-fast\033[0m\n'
+	@printf '    Pre-release  →  \033[36mmake verify\033[0m\n'
+	@printf '\n'
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -63,18 +82,20 @@ lint:
 lint-fix:
 	$(PYTHON) -m ruff check nuri/ tests/ scripts/ --fix
 
-verify-quick:
+# Verify tiers — fastest to slowest. See `make verify-help` for the full table.
+
+verify-quick:    ## ~10s pre-commit smoke test (pytest + regime, no network)
 	$(PYTHON) -m pytest tests/ -q --tb=line -n auto --dist worksteal
 	$(PYTHON) -c "from nuri.core.db import query; from nuri.quant.regime.classifier import classify_regime; r=classify_regime(); print(f'Quick: tests + Regime {r.regime if r else \"N/A\"}')"
 
-verify-all:
+verify-all:      ## ~30s pre-push (tests + backend + frontend + file integrity)
 	bash scripts/verify_all.sh
 
-verify:
-	$(PYTHON) scripts/verify.py
-
-verify-fast:
+verify-fast:     ## ~2min pre-deploy (verify.py without backtest)
 	$(PYTHON) scripts/verify.py --skip-backtest
+
+verify:          ## ~5min pre-release (verify.py full, includes backtest)
+	$(PYTHON) scripts/verify.py
 
 
 # ═══════════════════════════════════════════════════════════════
