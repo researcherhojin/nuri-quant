@@ -47,7 +47,7 @@ KOSDAQ_TICKERS = {
 }
 
 # 수출 비중 높은 섹터
-EXPORT_SECTORS = {"Semiconductor", "Automobile", "Shipbuilding", "Steel", "SectorA"}
+EXPORT_SECTORS = {"Semiconductor", "Automobile", "Shipbuilding", "Steel", "Tech"}
 
 
 class KoreanMarketAgent(BaseAgent):

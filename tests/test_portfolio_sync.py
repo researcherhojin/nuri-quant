@@ -365,7 +365,7 @@ class TestImport:
 
     def test_import_csv(self, client):
         """정상 CSV import."""
-        csv_content = "account,ticker,quantity,avg_price,currency,sector\ntoss,AAPL,10,180.0,USD,Tech\ntest,NVDA,5,130.0,USD,Semiconductor\n"
+        csv_content = "account,ticker,quantity,avg_price,currency,sector\nsample,AAPL,10,180.0,USD,Tech\ntest,NVDA,5,130.0,USD,Semiconductor\n"
         r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
         assert r.status_code == 200
         data = r.json()
@@ -379,14 +379,14 @@ class TestImport:
 
     def test_import_minimal_columns(self, client):
         """필수 컬럼만 있는 CSV — currency/sector 기본값."""
-        csv_content = "account,ticker,quantity,avg_price\ntoss,MSFT,3,400.0\n"
+        csv_content = "account,ticker,quantity,avg_price\nsample,MSFT,3,400.0\n"
         r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
         assert r.status_code == 200
         assert r.json()["imported"] == 1
 
     def test_import_missing_required_column(self, client):
         """필수 컬럼 누락 → 400."""
-        csv_content = "account,ticker,quantity\ntoss,AAPL,10\n"
+        csv_content = "account,ticker,quantity\nsample,AAPL,10\n"
         r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
         assert r.status_code == 400
         assert "avg_price" in r.json()["detail"]
@@ -405,7 +405,7 @@ class TestImport:
 
     def test_import_invalid_ticker(self, client):
         """유효하지 않은 ticker → errors에 포함."""
-        csv_content = "account,ticker,quantity,avg_price\ntoss,invalid!,10,100.0\n"
+        csv_content = "account,ticker,quantity,avg_price\nsample,invalid!,10,100.0\n"
         r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
         assert r.status_code == 400  # 유효한 행 0개
         assert "ticker" in r.json()["detail"]
@@ -418,19 +418,19 @@ class TestImport:
 
     def test_import_invalid_number(self, client):
         """숫자 변환 실패 → errors에 포함."""
-        csv_content = "account,ticker,quantity,avg_price\ntoss,AAPL,abc,100.0\n"
+        csv_content = "account,ticker,quantity,avg_price\nsample,AAPL,abc,100.0\n"
         r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
         assert r.status_code == 400
 
     def test_import_zero_quantity(self, client):
         """quantity 0 → errors에 포함."""
-        csv_content = "account,ticker,quantity,avg_price\ntoss,AAPL,0,100.0\n"
+        csv_content = "account,ticker,quantity,avg_price\nsample,AAPL,0,100.0\n"
         r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
         assert r.status_code == 400
 
     def test_import_partial_errors(self, client):
         """일부 행만 유효 → 유효한 행만 import, errors 반환."""
-        csv_content = "account,ticker,quantity,avg_price\ntoss,AAPL,10,180.0\nfake,BAD!,0,0\n"
+        csv_content = "account,ticker,quantity,avg_price\nsample,AAPL,10,180.0\nfake,BAD!,0,0\n"
         r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
         assert r.status_code == 200
         data = r.json()
@@ -439,7 +439,7 @@ class TestImport:
 
     def test_import_empty_field(self, client):
         """필수 필드가 비어있는 행 → errors."""
-        csv_content = "account,ticker,quantity,avg_price\ntoss,,10,100.0\n"
+        csv_content = "account,ticker,quantity,avg_price\nsample,,10,100.0\n"
         r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
         assert r.status_code == 400
 

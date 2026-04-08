@@ -29,7 +29,7 @@ class TestSectorClassify:
     def test_growth_sectors(self):
         from nuri.trading.recommend.rebalance import _classify_sector
         assert _classify_sector("Technology") == "growth"
-        assert _classify_sector("SectorA") == "growth"
+        assert _classify_sector("EV") == "growth"
         assert _classify_sector("Semiconductor") == "growth"
 
     def test_defensive_sectors(self):
@@ -61,7 +61,7 @@ class TestClassifySector:
         assert _classify_sector("Technology") == "growth"
         assert _classify_sector("AI/Cloud") == "growth"
         assert _classify_sector("Semiconductor") == "growth"
-        assert _classify_sector("SectorA") == "growth"
+        assert _classify_sector("EV") == "growth"
         assert _classify_sector("Software") == "growth"
 
     def test_neutral(self):
@@ -82,7 +82,7 @@ class TestSectorClassification:
     def test_classify_sector(self):
         from nuri.trading.recommend.rebalance import _classify_sector
         assert _classify_sector("Technology") == "growth"
-        assert _classify_sector("SectorA") == "growth"
+        assert _classify_sector("EV") == "growth"
         assert _classify_sector("AI/Cloud") == "growth"
         assert _classify_sector("Consumer Staples") == "defensive"
         assert _classify_sector("Health Care") == "defensive"
