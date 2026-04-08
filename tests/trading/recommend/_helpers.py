@@ -70,7 +70,7 @@ def _seed_portfolio_nm(db_path, holdings=None):
             ("test", "TSLA", 33, 200.0, "USD", "SectorA"),
             ("test", "NVDA", 20, 100.0, "USD", "Semiconductor"),
             ("test", "GOOGL", 5, 269.91, "USD", "BigTech"),
-            ("test", "TSLL", 96, 20.0, "USD", "SectorB"),
+            ("test", "BBB", 96, 20.0, "USD", "SectorB"),
             ("test", "LLY", 1, 1087.10, "USD", "Pharma"),
         ]
     with get_db(db_path) as conn:
@@ -88,7 +88,7 @@ def _seed_prices_nm(db_path, prices=None):
             ("2026-03-27", "TSLA", 355.0, 365.0, 350.0, 360.17, 1000000),
             ("2026-03-27", "NVDA", 165.0, 170.0, 163.0, 167.99, 2000000),
             ("2026-03-27", "GOOGL", 270.0, 278.0, 268.0, 274.26, 500000),
-            ("2026-03-27", "TSLL", 11.0, 12.0, 10.5, 11.44, 300000),
+            ("2026-03-27", "BBB", 11.0, 12.0, 10.5, 11.44, 300000),
             ("2026-03-27", "LLY", 880.0, 895.0, 875.0, 888.34, 100000),
         ]
     with get_db(db_path) as conn:
