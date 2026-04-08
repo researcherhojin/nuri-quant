@@ -18,7 +18,7 @@ Open-source quantitative investment platform that **proves why you should buy or
 
 ```mermaid
 graph LR
-    A["📡 <b>A · Collect</b><br/>5 core collectors<br/>stock · macro · technicals"]
+    A["📡 <b>A · Collect</b><br/>11 collectors<br/>stock · macro · technicals"]
     B["📊 <b>B · Analyze</b><br/>portfolio · sector · risk"]
     C["🧪 <b>C · Validate</b><br/>signal backtest + scorecard<br/>+ learning memory snapshot"]
     D["🏷️ <b>D · Classify</b><br/>regime × strategy map<br/>+ multi-factor composite"]
@@ -47,7 +47,7 @@ graph LR
 
 ## Key Features
 
-- **Evidence-based decisions** — 8,000+ historical trade backtests across 15 signals validate every recommendation
+- **Evidence-based decisions** — 8,000+ historical trade backtests across 20 signals validate every recommendation
 - **10-regime market classification** — 6 base (bull/bear/sideways × high/low vol) + 4 special (recovery, euphoria, stagflation, sector rotation)
 - **10 specialist agents** — Weighted consensus voting with SSE reasoning trace. Risk agent holds veto power (SELL + confidence ≥ 80 overrides all)
 - **SIEGE certification** — [10-condition mechanical gate](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). Single failure → REJECTED
