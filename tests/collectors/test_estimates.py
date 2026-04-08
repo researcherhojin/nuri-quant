@@ -2,20 +2,10 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
-from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pandas as pd
-import pytest
-
-from nuri.collectors.base import MAX_FAILURE_RATE, BaseCollector, CollectionFailureError
 from nuri.core.db import (
-    get_db,
     init_db,
-    query,
-    upsert_macro,
-    upsert_portfolio,
-    upsert_prices,
 )
 
 
@@ -51,7 +41,6 @@ class TestEstimatesCollector:
 
 class TestEstimatesCollectorMockedYFinance:
     def test_collect_with_mocked_yfinance(self, rich_db, monkeypatch):
-        from nuri.collectors import estimates as est_mod
         from nuri.collectors.estimates import EstimatesCollector
 
         collector = EstimatesCollector()

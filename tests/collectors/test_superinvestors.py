@@ -6,16 +6,9 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 
-from nuri.collectors.base import MAX_FAILURE_RATE, BaseCollector, CollectionFailureError
 from nuri.core.db import (
     get_db,
-    init_db,
-    query,
-    upsert_macro,
-    upsert_portfolio,
-    upsert_prices,
 )
 
 
