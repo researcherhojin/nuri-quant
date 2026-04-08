@@ -61,7 +61,7 @@ describe("PortfolioPage — extended coverage", () => {
 
     fireEvent.click(screen.getByText("Add Holding"));
 
-    const tickerInput = screen.getByPlaceholderText("Ticker (e.g. TSLA)");
+    const tickerInput = screen.getByPlaceholderText("Ticker (e.g. AAPL)");
     const qtyInput = screen.getByPlaceholderText("Quantity");
     const priceInput = screen.getByPlaceholderText("Avg Price");
 

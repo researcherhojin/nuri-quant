@@ -85,7 +85,7 @@ describe("ClientTable branches", () => {
   it("renders advisor variant with severity levels", async () => {
     const { ClientTable } = await import("@/components/ui/client-table");
     render(<ClientTable variant="advisor" data={[
-      { priority: 1, ticker: "TSLL", severity: "critical", action: "SELL_ALL", sell_shares: 100, sell_value_usd: 5000, reason: "Leveraged ETF" },
+      { priority: 1, ticker: "BBB", severity: "critical", action: "SELL_ALL", sell_shares: 100, sell_value_usd: 5000, reason: "Leveraged ETF" },
       { priority: 2, ticker: "AAPL", severity: "high", action: "SELL_PARTIAL", sell_shares: 5, sell_value_usd: 900, reason: "Sector limit" },
     ]} />);
     expect(screen.getByText("전량 매도")).toBeInTheDocument();

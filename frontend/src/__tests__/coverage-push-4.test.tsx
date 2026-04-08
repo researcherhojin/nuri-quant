@@ -385,11 +385,20 @@ describe("Portfolio — add form field coverage", () => {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
+            // Multiple accounts so dynamic ACCOUNTS dropdown has options to test
             holdings: [
               { ticker: "AAPL", account: "test", quantity: 10, avg_price: 180,
                 currency: "USD", sector: "Tech", latest_price: 195, price_date: "2026-03-31" },
+              { ticker: "BBB", account: "demo", quantity: 5, avg_price: 100,
+                currency: "USD", sector: "ETF", latest_price: 110, price_date: "2026-03-31" },
+              { ticker: "CCC", account: "sample", quantity: 8, avg_price: 50,
+                currency: "USD", sector: "Tech", latest_price: 55, price_date: "2026-03-31" },
+              { ticker: "DDD", account: "pension", quantity: 3, avg_price: 200,
+                currency: "USD", sector: "Tech", latest_price: 220, price_date: "2026-03-31" },
+              { ticker: "EEE", account: "irp", quantity: 2, avg_price: 300,
+                currency: "USD", sector: "Tech", latest_price: 320, price_date: "2026-03-31" },
             ],
-            count: 1,
+            count: 5,
           }),
         });
       }

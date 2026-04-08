@@ -223,7 +223,7 @@ describe("ClientTable — variant coverage", () => {
     { name: "targets", data: [{ ticker: "NVDA", stock_type: "value", current_price: 50000, stop_loss: 45000, target_1: 57500, target_2: 65000, analyst_target: null, take_profit_triggered: "target_1", trailing_stop_triggered: false, take_profit_sell_pct: 50 }] },
     { name: "targets", data: [{ ticker: "TSLA", stock_type: "growth", current_price: 280, stop_loss: 260, target_1: 336, target_2: 392, analyst_target: 350, take_profit_triggered: "target_2", trailing_stop_triggered: true, take_profit_sell_pct: 25 }] },
     { name: "swing", data: [{ ticker: "TSLA", price: 280, scan_signal: "breakout", scan_score: 85, agent_action: "BUY", agent_confidence: 78 }] },
-    { name: "advisor", data: [{ priority: 1, ticker: "TSLL", severity: "critical", action: "SELL_ALL", sell_shares: 96, sell_value_usd: 1100, reason: "leveraged ETF" }] },
+    { name: "advisor", data: [{ priority: 1, ticker: "BBB", severity: "critical", action: "SELL_ALL", sell_shares: 96, sell_value_usd: 1100, reason: "leveraged ETF" }] },
     { name: "advisor", data: [{ priority: 2, ticker: "AAPL", severity: "high", action: "REDUCE", sell_shares: 5, sell_value_usd: 975, reason: "position limit" }] },
   ];
 

@@ -1,11 +1,14 @@
 /**
  * Shared mock data and route interceptors for E2E tests.
  * All API calls to localhost:8001 are intercepted — no backend needed.
+ *
+ * SECURITY: All ticker/account/price data uses generic placeholders
+ * (AAA/BBB/CCC, "test" account, round numbers). No real holdings exposed.
  */
 import type { Page } from "@playwright/test";
 
 export const mockDashboard = {
-  verdict: "시장 환경 안정. 보유 유지.",
+  verdict: "Market environment stable. Hold positions.",
   verdict_level: "hold",
   regime: "bull_low_vol",
   regime_confidence: 0.85,
@@ -14,11 +17,11 @@ export const mockDashboard = {
   vix: 15.5,
   fear_greed: 65,
   spy_change: 0.8,
-  total_value_usd: 125000,
+  total_value_usd: 100000,
   actions: {
-    buy: [{ ticker: "NVDA", confidence: 82, signal: "rsi_oversold" }],
-    sell: [{ ticker: "TSLL", confidence: 90, reason: "leveraged_etf" }],
-    watch: [{ ticker: "AAPL", note: "approaching support" }],
+    buy: [{ ticker: "AAA", confidence: 82, signal: "rsi_oversold" }],
+    sell: [{ ticker: "BBB", confidence: 90, reason: "leveraged_etf" }],
+    watch: [{ ticker: "CCC", note: "approaching support" }],
   },
   allocation: { cash: 20, equity_us: 60, equity_kr: 20 },
   freshness: { items: [] },
@@ -27,7 +30,7 @@ export const mockDashboard = {
 
 export const mockPipelineStatus = {
   steps: [
-    { step: "collect", label: "Collect", description: "21 collectors", record_count: 25000, last_updated: "2026-03-31T10:00:00", status: "done" },
+    { step: "collect", label: "Collect", description: "23 collectors", record_count: 25000, last_updated: "2026-03-31T10:00:00", status: "done" },
     { step: "validate", label: "Validate", description: "Signal backtest", record_count: 150, last_updated: "2026-03-31T09:00:00", status: "done" },
     { step: "classify", label: "Classify", description: "10-regime", record_count: 30, last_updated: "2026-03-31T08:00:00", status: "idle" },
     { step: "diagnose", label: "Diagnose", description: "10 agents", record_count: 10, last_updated: null, status: "idle" },

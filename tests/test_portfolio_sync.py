@@ -533,7 +533,7 @@ class TestMetadata:
     def test_post_with_metadata(self, client):
         """POST 시 metadata 저장."""
         r = client.post("/api/portfolio", json={
-            "account": "test", "ticker": "TSLL",
+            "account": "test", "ticker": "BBB",
             "quantity": 96, "avg_price": 20.0,
             "sector": "SectorB",
             "metadata": {"flag": "SELL", "note": "레버리지 ETF 금지"},
@@ -554,7 +554,7 @@ class TestMetadata:
     def test_metadata_roundtrip_yaml(self, client, tmp_path):
         """POST → YAML 동기화 → metadata 필드 복원 확인."""
         client.post("/api/portfolio", json={
-            "account": "test", "ticker": "TSLL",
+            "account": "test", "ticker": "BBB",
             "quantity": 96, "avg_price": 20.0,
             "sector": "SectorB",
             "metadata": {"flag": "SELL"},
@@ -562,7 +562,7 @@ class TestMetadata:
         yaml_path = tmp_path / "portfolio.yaml"
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         holdings = data["accounts"]["test"]["holdings"]
-        tsll = [h for h in holdings if h["ticker"] == "TSLL"][0]
+        tsll = [h for h in holdings if h["ticker"] == "BBB"][0]
         # flag가 YAML에 복원됨
         assert tsll["flag"] == "SELL"
 
@@ -580,7 +580,7 @@ class TestMetadata:
                 "test": {
                     "currency": "USD",
                     "holdings": [
-                        {"ticker": "TSLL", "qty": 96, "avg": 20.0,
+                        {"ticker": "BBB", "qty": 96, "avg": 20.0,
                          "sector": "SectorB", "flag": "SELL"},
                     ],
                 },
@@ -596,7 +596,7 @@ class TestMetadata:
         upsert_portfolio(records, db_path=db_path)
 
         # DB에서 metadata 확인
-        rows = query("SELECT metadata FROM portfolio WHERE ticker='TSLL'", db_path=db_path)
+        rows = query("SELECT metadata FROM portfolio WHERE ticker='BBB'", db_path=db_path)
         assert rows
         import json
         meta = json.loads(rows[0]["metadata"])
@@ -641,7 +641,7 @@ class TestMetadata:
                     "name": "Brokerage Alpha",
                     "currency": "USD",
                     "holdings": [
-                        {"ticker": "TSLL", "qty": 96, "avg": 20.0,
+                        {"ticker": "BBB", "qty": 96, "avg": 20.0,
                          "sector": "SectorB", "flag": "SELL"},
                         {"ticker": "NVDA", "qty": 20, "avg": 100.0,
                          "sector": "Semiconductor"},
@@ -662,7 +662,7 @@ class TestMetadata:
         # 3. 검증: flag 보존, metadata 없는 종목은 flag 없음
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         holdings = data["accounts"]["test"]["holdings"]
-        tsll = [h for h in holdings if h["ticker"] == "TSLL"][0]
+        tsll = [h for h in holdings if h["ticker"] == "BBB"][0]
         nvda = [h for h in holdings if h["ticker"] == "NVDA"][0]
         assert tsll["flag"] == "SELL"
         assert "flag" not in nvda
@@ -713,10 +713,10 @@ class TestImportScriptSync:
         self._write_yaml(yaml_path, {
             "accounts": {
                 "irp": {"currency": "KRW", "balance": 1000000},  # holdings 키 없음
-                "test": {"currency": "USD"},  # holdings 키 없음
+                "demo": {"currency": "USD"},  # holdings 키 없음
                 "test": {
                     "currency": "USD",
-                    "holdings": [{"ticker": "TSLA", "qty": 1, "avg": 300.0}],
+                    "holdings": [{"ticker": "AAA", "qty": 10, "avg": 100.0}],
                 },
             },
         })
@@ -780,13 +780,13 @@ class TestImportScriptSync:
         upsert_portfolio([
             {"account": "test", "ticker": "TSLA", "quantity": 10.0,
              "avg_price": 300.0, "currency": "USD", "sector": "SectorA"},
-            {"account": "test", "ticker": "TSLL", "quantity": 96.0,
+            {"account": "test", "ticker": "BBB", "quantity": 96.0,
              "avg_price": 20.0, "currency": "USD", "sector": "SectorB"},
-            {"account": "test", "ticker": "OKLO", "quantity": 20.0,
+            {"account": "test", "ticker": "CCC", "quantity": 20.0,
              "avg_price": 150.0, "currency": "USD", "sector": "SectorC"},
         ], db_path=db_path)
 
-        # 2. yaml에는 TSLA만 남김 (TSLL, OKLO 청산)
+        # 2. yaml에는 TSLA만 남김 (BBB, CCC 청산)
         yaml_path = tmp_path / "portfolio.yaml"
         self._write_yaml(yaml_path, {
             "accounts": {
@@ -804,7 +804,7 @@ class TestImportScriptSync:
         monkeypatch.setattr(imp, "CONFIG_PATH", yaml_path)
         imp.main()
 
-        # 4. DB는 yaml과 정확히 일치 (TSLL, OKLO 삭제됨)
+        # 4. DB는 yaml과 정확히 일치 (BBB, CCC 삭제됨)
         rows = query(
             "SELECT ticker, quantity FROM portfolio WHERE account='test' ORDER BY ticker",
             db_path=db_path,
