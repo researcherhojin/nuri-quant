@@ -27,7 +27,7 @@ router = APIRouter(tags=["portfolio"])
 _TICKER_PATTERN = re.compile(r"^[A-Z0-9]{1,10}(\.[A-Z]{1,3})?$")
 
 # 허용 계좌명
-_VALID_ACCOUNTS = {"test", "demo", "sample", "pension", "irp", "test", "sample"}
+_VALID_ACCOUNTS = {"test", "demo", "sample", "pension", "irp"}
 
 
 class CurrencyEnum(str, Enum):
@@ -382,7 +382,7 @@ _SAMPLE_PORTFOLIO = [
     {"account": "sample", "ticker": "AAPL", "quantity": 10, "avg_price": 190.0, "currency": "USD", "sector": "BigTech"},
     {"account": "sample", "ticker": "NVDA", "quantity": 5, "avg_price": 130.0, "currency": "USD", "sector": "Semiconductor"},
     {"account": "sample", "ticker": "GOOGL", "quantity": 3, "avg_price": 170.0, "currency": "USD", "sector": "BigTech"},
-    {"account": "sample", "ticker": "TSLA", "quantity": 8, "avg_price": 250.0, "currency": "USD", "sector": "SectorA"},
+    {"account": "sample", "ticker": "TSLA", "quantity": 8, "avg_price": 250.0, "currency": "USD", "sector": "EV"},
     {"account": "sample", "ticker": "VOO", "quantity": 2, "avg_price": 500.0, "currency": "USD", "sector": "ETF"},
 ]
 
