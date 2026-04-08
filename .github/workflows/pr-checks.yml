@@ -26,8 +26,15 @@ jobs:
 
       - name: Validate commit messages
         run: |
-          COMMITS=$(git log --format="%s" origin/main..HEAD)
-          PATTERN="^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+"
+          # --no-merges: actions/checkout@v6 creates a synthetic merge commit
+          # for the PR ref (refs/pull/N/merge), which would otherwise produce
+          # a false-positive "Merge xxx into yyy" warning on every PR.
+          COMMITS=$(git log --no-merges --format="%s" origin/main..HEAD)
+          # Allow compound types like `feat(scope)+fix(scope): message` for
+          # cross-cutting changes. Standard single-type is still preferred.
+          TYPE='(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)'
+          SCOPE='(\([^)]+\))?'
+          PATTERN="^${TYPE}${SCOPE}(\+${TYPE}${SCOPE})*: .+"
           FAILED=0
           while IFS= read -r msg; do
             if [[ -n "$msg" ]] && ! echo "$msg" | grep -qE "$PATTERN"; then
