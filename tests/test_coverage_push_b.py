@@ -1291,17 +1291,12 @@ class TestReportGenerateLLM:
         assert "완성도" in result["report"]
 
     def test_generate_report_llamacpp_priority(self, db_path):
-        """LLAMA_MODEL_PATH 설정 + OpenAI 미설정 시 llama.cpp 우선.
-
-        OpenAI 통합 후 우선순위: openai > llama.cpp > ollama (auto 모드).
-        OPENAI_API_KEY를 비워야 llama.cpp 폴백 경로가 활성화됨.
-        """
+        """LLAMA_MODEL_PATH 설정 시 llama.cpp 우선 (lines 557-558)."""
         from nuri.llm.report import ReportContext, generate_llm_report
 
         with patch("nuri.llm.report.gather_context") as mock_ctx, \
              patch("nuri.llm.report._generate_llamacpp", return_value="llamacpp output") as mock_llama, \
-             patch("nuri.llm.report.LLAMA_MODEL_PATH", "/some/model.gguf"), \
-             patch("nuri.llm.report.OPENAI_API_KEY", ""):
+             patch("nuri.llm.report.LLAMA_MODEL_PATH", "/some/model.gguf"):
             mock_ctx.return_value = ReportContext(
                 gate_summary="OK", gate_score=0.9,
                 regime_section="r", macro_section="m", risk_section="r",
