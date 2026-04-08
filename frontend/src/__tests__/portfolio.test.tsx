@@ -88,7 +88,7 @@ describe("PortfolioPage", () => {
     render(<PortfolioPage />);
     await waitFor(() => expect(screen.getByText("TSLA")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Add Holding"));
-    expect(screen.getByPlaceholderText("Ticker (e.g. TSLA)")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ticker (e.g. AAPL)")).toBeInTheDocument();
   });
 
   it("validates quantity > 0 on add", async () => {
@@ -100,7 +100,7 @@ describe("PortfolioPage", () => {
     fireEvent.change(qtyInput, { target: { value: "0" } });
     const avgInput = screen.getByPlaceholderText("Avg Price");
     fireEvent.change(avgInput, { target: { value: "100" } });
-    const tickerInput = screen.getByPlaceholderText("Ticker (e.g. TSLA)");
+    const tickerInput = screen.getByPlaceholderText("Ticker (e.g. AAPL)");
     fireEvent.change(tickerInput, { target: { value: "AAPL" } });
 
     fireEvent.click(screen.getByText("Save"));

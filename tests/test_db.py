@@ -122,9 +122,9 @@ class TestReplacePortfolioAccount:
         upsert_portfolio([
             {"account": "test", "ticker": "TSLA", "quantity": 10.0,
              "avg_price": 300.0, "currency": "USD", "sector": "SectorA"},
-            {"account": "test", "ticker": "TSLL", "quantity": 96.0,
+            {"account": "test", "ticker": "BBB", "quantity": 96.0,
              "avg_price": 20.0, "currency": "USD", "sector": "SectorB"},
-            {"account": "test", "ticker": "OKLO", "quantity": 20.0,
+            {"account": "test", "ticker": "CCC", "quantity": 20.0,
              "avg_price": 150.0, "currency": "USD", "sector": "SectorC"},
             {"account": "sample", "ticker": "005930.KS", "quantity": 5.0,
              "avg_price": 50000.0, "currency": "KRW", "sector": "Semiconductor"},
@@ -134,7 +134,7 @@ class TestReplacePortfolioAccount:
         """yaml에서 사라진 ticker가 DB에서도 삭제됨."""
         self._seed(db_path)
 
-        # test에 TSLA만 남기고 sync (TSLL, OKLO는 청산)
+        # test에 TSLA만 남기고 sync (BBB, OKLO는 청산)
         new_records = [
             {"account": "test", "ticker": "TSLA", "quantity": 33.0,
              "avg_price": 200.0, "currency": "USD", "sector": "SectorA"},

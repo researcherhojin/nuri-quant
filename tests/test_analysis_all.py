@@ -1599,15 +1599,17 @@ class TestAnalyzeRebalanceEmpty:
 class TestRebalanceDeep:
     """From test_coverage_round7.py."""
     def test_detect_violations_leveraged(self, rich_db):
+        # Uses TQQQ from the leverage_ban list (config/rules.yaml banned_etfs)
+        # to test detection. Generic quantity/price — no user-specific data.
         from nuri.analysis.rebalance_advisor import detect_violations
         with patch("nuri.analysis.rebalance_advisor.analyze_portfolio") as mock_ap:
             mock_df = pd.DataFrame([
-                {"ticker": "TSLL", "account": "test", "quantity": 96,
-                 "avg_price": 20.0, "current_price": 12.0,
-                 "current_value_usd": 1152, "pnl_pct": -29.1,
-                 "weight_pct": 5.0, "sector": "SectorB", "currency": "USD"},
+                {"ticker": "TQQQ", "account": "test", "quantity": 10,
+                 "avg_price": 100.0, "current_price": 90.0,
+                 "current_value_usd": 900, "pnl_pct": -10.0,
+                 "weight_pct": 5.0, "sector": "ETF", "currency": "USD"},
             ])
-            mock_df.attrs["total_value_usd"] = 23000
+            mock_df.attrs["total_value_usd"] = 18000
             mock_ap.return_value = mock_df
             violations = detect_violations()
         lev = [v for v in violations if v.get("violation_type") == "leverage_etf"]
@@ -1617,23 +1619,24 @@ class TestRebalanceDeep:
 class TestDetectViolations:
     """From test_new_modules.py."""
     def test_leverage_etf_detected(self, db_path):
+        # Uses TQQQ from leverage_ban list. Generic quantity/price.
         mock_df = pd.DataFrame([
-            {"account": "test", "ticker": "TSLL", "sector": "SectorB", "quantity": 96,
-             "avg_price": 20.0, "current_price": 11.44, "currency": "USD",
-             "current_value_usd": 1098.24, "cost_basis_usd": 1625.28,
-             "pnl_usd": -527.04, "pnl_pct": -32.4, "weight_pct": 5.0, "price_date": "2026-03-27"},
-            {"account": "test", "ticker": "NVDA", "sector": "Semiconductor", "quantity": 20,
-             "avg_price": 100.0, "current_price": 167.99, "currency": "USD",
-             "current_value_usd": 3359.8, "cost_basis_usd": 2642.8,
-             "pnl_usd": 717.0, "pnl_pct": 27.1, "weight_pct": 10.0, "price_date": "2026-03-27"},
+            {"account": "test", "ticker": "TQQQ", "sector": "ETF", "quantity": 10,
+             "avg_price": 100.0, "current_price": 90.0, "currency": "USD",
+             "current_value_usd": 900.0, "cost_basis_usd": 1000.0,
+             "pnl_usd": -100.0, "pnl_pct": -10.0, "weight_pct": 5.0, "price_date": "2026-03-27"},
+            {"account": "test", "ticker": "AAA", "sector": "Tech", "quantity": 10,
+             "avg_price": 100.0, "current_price": 110.0, "currency": "USD",
+             "current_value_usd": 1100.0, "cost_basis_usd": 1000.0,
+             "pnl_usd": 100.0, "pnl_pct": 10.0, "weight_pct": 10.0, "price_date": "2026-03-27"},
         ])
-        mock_df.attrs["total_value_usd"] = 4458.04
+        mock_df.attrs["total_value_usd"] = 2000.0
         from nuri.analysis.rebalance_advisor import detect_violations
         with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=mock_df):
             violations = detect_violations(db_path=db_path)
         leverage_violations = [v for v in violations if v["violation_type"] == "leverage_etf"]
         assert len(leverage_violations) >= 1
-        assert leverage_violations[0]["ticker"] == "TSLL"
+        assert leverage_violations[0]["ticker"] == "TQQQ"
 
     def test_stop_loss_exceeded(self, db_path):
         mock_df = pd.DataFrame([
@@ -1689,7 +1692,7 @@ class TestCalculateRebalanceActions:
     """From test_new_modules.py."""
     def test_sorted_by_priority(self, db_path):
         mock_df = pd.DataFrame([
-            {"account": "test", "ticker": "TSLL", "sector": "SectorB", "quantity": 96,
+            {"account": "test", "ticker": "BBB", "sector": "SectorB", "quantity": 96,
              "avg_price": 20.0, "current_price": 11.44, "currency": "USD",
              "current_value_usd": 1098.24, "cost_basis_usd": 1625.28,
              "pnl_usd": -527.04, "pnl_pct": -32.4, "weight_pct": 5.0, "price_date": "2026-03-27"},
@@ -1708,7 +1711,7 @@ class TestCalculateRebalanceActions:
 
     def test_total_recovery_calculated(self, db_path):
         mock_df = pd.DataFrame([
-            {"account": "test", "ticker": "TSLL", "sector": "SectorB", "quantity": 96,
+            {"account": "test", "ticker": "BBB", "sector": "SectorB", "quantity": 96,
              "avg_price": 20.0, "current_price": 11.44, "currency": "USD",
              "current_value_usd": 1098.24, "cost_basis_usd": 1625.28,
              "pnl_usd": -527.04, "pnl_pct": -32.4, "weight_pct": 100.0, "price_date": "2026-03-27"},
@@ -1726,7 +1729,7 @@ class TestGenerateAdvisorReport:
     """From test_new_modules.py."""
     def test_report_structure(self, db_path):
         mock_df = pd.DataFrame([
-            {"account": "test", "ticker": "TSLL", "sector": "SectorB", "quantity": 96,
+            {"account": "test", "ticker": "BBB", "sector": "SectorB", "quantity": 96,
              "avg_price": 20.0, "current_price": 11.44, "currency": "USD",
              "current_value_usd": 1098.24, "cost_basis_usd": 1625.28,
              "pnl_usd": -527.04, "pnl_pct": -32.4, "weight_pct": 5.0, "price_date": "2026-03-27"},
@@ -2039,7 +2042,7 @@ class TestEvidenceCharts_NewModules:
              "avg_price": 100.0, "current_price": 167.99, "currency": "USD",
              "current_value_usd": 3359.8, "cost_basis_usd": 2642.8,
              "pnl_usd": 717.0, "pnl_pct": 27.1, "weight_pct": 60.0, "price_date": "2026-03-27"},
-            {"account": "test", "ticker": "TSLL", "sector": "SectorB", "quantity": 96,
+            {"account": "test", "ticker": "BBB", "sector": "SectorB", "quantity": 96,
              "avg_price": 20.0, "current_price": 11.44, "currency": "USD",
              "current_value_usd": 1098.24, "cost_basis_usd": 1625.28,
              "pnl_usd": -527.04, "pnl_pct": -32.4, "weight_pct": 40.0, "price_date": "2026-03-27"},
@@ -2068,10 +2071,10 @@ class TestEvidenceCharts_NewModules:
 
     def test_sell_evidence_chart(self, tmp_path):
         violations = [
-            {"ticker": "TSLL", "violation_type": "leverage_etf", "severity": "critical",
+            {"ticker": "BBB", "violation_type": "leverage_etf", "severity": "critical",
              "current_value": -32.3, "sell_value_usd": 1100, "action": "SELL_ALL",
              "reason": "레버리지 ETF 금지"},
-            {"ticker": "OKLO", "violation_type": "stop_loss_exceeded", "severity": "critical",
+            {"ticker": "CCC", "violation_type": "stop_loss_exceeded", "severity": "critical",
              "current_value": -59.9, "sell_value_usd": 1011, "action": "SELL_ALL",
              "reason": "손절 -59.9% 초과"},
         ]
@@ -2081,7 +2084,7 @@ class TestEvidenceCharts_NewModules:
         result = generate_sell_evidence_chart(violations, output_dir)
         assert result.exists()
         content = result.read_text()
-        assert "TSLL" in content
+        assert "BBB" in content
 
     def test_signal_performance_empty(self, db_path, tmp_path):
         from nuri.analysis.evidence_charts import generate_signal_performance_chart
