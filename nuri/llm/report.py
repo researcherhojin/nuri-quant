@@ -123,8 +123,10 @@ def gather_context(db_path=None) -> ReportContext:
                     lines.append(f"    - FAIL: {c.description} → {c.detail}")
         gate_score = total_pass / total_all if total_all > 0 else 0
         gate_summary = _track(f"데이터 완성도: {total_pass}/{total_all} ({gate_score:.0%})\n" + "\n".join(lines))
-    except Exception as e:
-        gate_summary = f"Gate 검증 실패: {e}"
+    except Exception:
+        # Avoid leaking exception details to API responses (CodeQL py/stack-trace-exposure).
+        logger.exception("Gate 검증 실패")
+        gate_summary = "Gate 검증 실패 (자세한 내용은 서버 로그 참고)"
 
     # ── 2. Regime ──
     regime_section = "레짐 데이터 없음"
@@ -527,8 +529,10 @@ def _generate_ollama(prompt: str) -> str:
             f"방법 1: LLAMA_MODEL_PATH=모델.gguf 설정 (llama.cpp 직접)\n"
             f"방법 2: ollama serve 실행 후 ollama pull {OLLAMA_MODEL}"
         )
-    except Exception as e:
-        return f"[LLM 오류] {e}"
+    except Exception:
+        # Avoid leaking exception details to API responses (CodeQL py/stack-trace-exposure).
+        logger.exception("Ollama LLM 호출 실패")
+        return "[LLM 오류] 자세한 내용은 서버 로그 참고"
 
 
 def generate_llm_report(db_path=None) -> dict:
