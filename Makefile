@@ -55,7 +55,7 @@ setup:
 # TEST / LINT / VERIFY
 # ═══════════════════════════════════════════════════════════════
 test:
-	$(PYTHON) -m pytest tests/ -v --cov=nuri
+	$(PYTHON) -m pytest tests/ -v --cov=nuri -n auto --dist worksteal
 
 lint:
 	$(PYTHON) -m ruff check nuri/ tests/ scripts/
@@ -64,7 +64,7 @@ lint-fix:
 	$(PYTHON) -m ruff check nuri/ tests/ scripts/ --fix
 
 verify-quick:
-	$(PYTHON) -m pytest tests/ -q --tb=line
+	$(PYTHON) -m pytest tests/ -q --tb=line -n auto --dist worksteal
 	$(PYTHON) -c "from nuri.core.db import query; from nuri.quant.regime.classifier import classify_regime; r=classify_regime(); print(f'Quick: tests + Regime {r.regime if r else \"N/A\"}')"
 
 verify-all:
