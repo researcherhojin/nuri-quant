@@ -1,30 +1,37 @@
+# ═══════════════════════════════════════════════════════════════
+# Codecov Configuration — backend/frontend 분리 트래킹
+# ═══════════════════════════════════════════════════════════════
+# Codecov가 PR마다 backend/frontend 커버리지를 별도 배지로 표시
+# 정책: 자동 임계값 + 1% 허용범위 (작은 변동 무시)
+
 coverage:
   status:
     project:
       default:
-        target: auto
-        threshold: 1%
-    # Per-flag status — shows separate backend/frontend badges in PR checks
+        target: auto         # 직전 commit 기준 자동 비교
+        threshold: 1%        # ±1% 이내 변동은 통과
     patch:
       default:
-        target: auto
+        target: auto         # 신규 코드 기준
 
+# Backend = Python (nuri/), Frontend = TypeScript (frontend/src/)
 flags:
   backend:
     paths:
       - nuri/
-    carryforward: true
+    carryforward: true       # 미수정 파일 직전 커버리지 유지
   frontend:
     paths:
       - frontend/src/
     carryforward: true
 
-# Ignore paths that should never count toward coverage
+# 커버리지 계산 제외 — 테스트 코드, 스크립트, 자동 생성
 ignore:
   - "frontend/src/__tests__/**"
   - "tests/**"
   - "scripts/**"
 
+# Component 별 PR 배지
 component_management:
   default_rules:
     statuses:
