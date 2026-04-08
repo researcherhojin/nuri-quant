@@ -1,8 +1,10 @@
 """리밸런싱 API."""
+import logging
 from dataclasses import asdict
 
 from fastapi import APIRouter, Query
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["rebalance"])
 
 
@@ -17,8 +19,10 @@ def get_rebalance(method: str = Query("rp", pattern="^(mvo|rp)$")):
             "method": method,
             "actionable": len([a for a in actions if a.action != "HOLD"]),
         }
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception:
+        # Avoid leaking stack traces in HTTP responses (CodeQL py/stack-trace-exposure).
+        logger.exception("rebalance computation failed")
+        return {"error": "rebalance computation failed"}
 
 
 @router.get("/tracking")
