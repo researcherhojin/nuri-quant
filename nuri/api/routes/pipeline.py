@@ -41,8 +41,10 @@ def get_scheduler_health():
             "last_heartbeat": last.isoformat(),
             "age_seconds": round(age_seconds),
         }
-    except Exception as e:
-        return {"status": "error", "detail": str(e)}
+    except Exception:
+        # Avoid leaking stack traces in HTTP responses (CodeQL py/stack-trace-exposure).
+        logger.exception("heartbeat parse failed")
+        return {"status": "error", "detail": "heartbeat unavailable"}
 
 
 @router.get("/pipeline/status")
@@ -87,10 +89,14 @@ def run_pipeline_step(step: str, request: Request):
         duration_ms = int((time.time() - start) * 1000)
         emit_event("step_success", step=step, duration_ms=duration_ms, payload={"detail": detail})
         return {"status": "success", "duration_ms": duration_ms, "detail": detail}
-    except Exception as e:
+    except Exception:
+        # Log full exception (incl. stack) server-side, return generic detail to client
+        # to avoid leaking internals (CodeQL py/stack-trace-exposure). The pipeline event
+        # journal still records the failure for operator audit.
         duration_ms = int((time.time() - start) * 1000)
-        emit_event("step_failed", step=step, duration_ms=duration_ms, payload={"error": str(e)})
-        return {"status": "failed", "duration_ms": duration_ms, "detail": str(e)}
+        logger.exception("pipeline step %s failed", step)
+        emit_event("step_failed", step=step, duration_ms=duration_ms, payload={"error": "step execution failed"})
+        return {"status": "failed", "duration_ms": duration_ms, "detail": f"step '{step}' execution failed"}
 
 
 @router.get("/freshness")

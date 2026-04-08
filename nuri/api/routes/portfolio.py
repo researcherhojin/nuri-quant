@@ -419,5 +419,7 @@ def get_risk():
             else:
                 result[k] = str(v)
         return result
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception:
+        # Avoid leaking stack traces in HTTP responses (CodeQL py/stack-trace-exposure).
+        logger.exception("portfolio sync helper failed")
+        return {"error": "internal error"}
