@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # ─── 성장주 판별 섹터 (자동 분류 폴백용) ──────────────────────
 GROWTH_SECTORS = {
-    "EV", "AI", "Semiconductor", "Quantum", "SectorC", "Fintech",
+    "EV", "AI", "Semiconductor", "Quantum", "Energy", "Fintech",
     "전기차", "반도체", "양자컴퓨터", "원자력", "핀테크", "인공지능",
 }
 
