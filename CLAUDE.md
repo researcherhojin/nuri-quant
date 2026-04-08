@@ -130,14 +130,15 @@ All `make` targets use `.venv/bin/python` — activate the venv or use the full 
 
 ```
 nuri/
-├── core/              # DB (sole sqlite3 importer), rules (config/rules.yaml loader)
-├── collectors/        # 21 collector modules (19 BaseCollector subclasses + 2 standalone)
+├── core/              # DB (sole sqlite3 importer), rules, signal_config, timezone, events, freshness
+├── collectors/        # 23 collector modules (BaseCollector subclasses + standalone, incl. KIS Open API)
 ├── analysis/          # portfolio, risk, sector, charts, rebalance_advisor, evidence_charts
 ├── quant/             # Quantitative pipeline
 │   ├── regime/        # 10-regime classifier (6 base + 4 special), macro score, strategy map
-│   ├── validation/    # Signal backtest, superinvestor/analyst backtest, scorecard
+│   ├── validation/    # Signal backtest (20 signals), superinvestor/analyst backtest, scorecard
 │   ├── backtest/      # VectorBT engine, grid search optimizer
-│   └── factors/       # Multi-factor scoring (momentum, value, quality, composite)
+│   ├── factors/       # Multi-factor scoring (momentum, value, quality, composite)
+│   └── chart_analysis.py  # 시각 차트 패턴 분석 (BB, MACD turn, 52w, POC, 추세선)
 ├── trading/           # Trading execution
 │   ├── agents/        # 10 agents + consensus engine
 │   ├── engine/        # SIEGE: gate, conflicts, learning memory
@@ -159,6 +160,7 @@ Key DB access patterns:
 - `query(sql, params)` → list of `sqlite3.Row` (dict-like access)
 - `query_df(sql, params)` → pandas DataFrame
 - `upsert_*()` functions for each table (prices, portfolio, fundamentals, etc.)
+- `replace_portfolio_account(account, records)` — DELETE+INSERT in one tx for proper yaml→DB sync (removes stale rows when a ticker leaves yaml)
 
 ### Collector template pattern
 
@@ -169,15 +171,18 @@ All collectors inherit `BaseCollector` (`nuri/collectors/base.py`). The contract
 
 `_get_tickers(market=)` filters portfolio tickers: `"us"` excludes `.KS`, `"kr"` includes only `.KS`.
 
-### Signal system (15 signals, detector registry pattern)
+### Signal system (20 signals, YAML-driven registry)
 
-`signal_backtest.py` uses a **detector registry** — each signal registers `entry` and optional `exit` functions in `SIGNAL_DEFINITIONS`. Three categories:
+`signal_backtest.py` uses a **detector registry** — Python detector 함수와 메타데이터(임계값/분류/hold_days)를 분리.
+메타데이터는 `config/signals.yaml`에 외부화 (`nuri/core/signal_config.py` 로드). 4 카테고리:
 
 - **Price-based** (10): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
-- **Macro-based** (3): vix_reversal, pcr_reversal, yield_curve_recovery — require `merge_macro_data()` (DB macro table)
-- **Data-dependent** (2): insider_cluster, short_squeeze — require `merge_data_signals()` (insider_trades, external_analysis tables)
+- **Macro-based** (3): vix_reversal, pcr_reversal, yield_curve_recovery — `merge_macro_data()` 필요
+- **Data-dependent** (2): insider_cluster, short_squeeze — `merge_data_signals()` 필요
+- **Chart pattern** (5): macd_bullish_turn, macd_bearish_turn, bb_squeeze_breakout, near_52w_low_bounce, volume_profile_resistance — `nuri/quant/chart_analysis.py`와 동일 컨셉
 
-Public API: `compute_indicators()`, `detect_signal_entries()`, `compute_exit()`, `merge_macro_data()`, `merge_data_signals()`. Backward-compatible `_` aliases exist.
+`SIGNAL_DEFINITIONS`는 `_build_signal_definitions()`이 YAML + detector registry에서 빌드. 임계값 변경 → YAML만 수정 (코드 변경 0).
+`BUY_SIGNALS`/`SELL_SIGNALS`는 YAML의 `type` 필드에서 자동 추출.
 
 **Macro data quirk**: `us_3m_yield` (FRED) is absent in yfinance fallback — `^IRX` (13-week T-Bill) is stored as `us_2y_yield`. `merge_macro_data()` has a fallback: queries `us_2y_yield` when `us_3m_yield` is empty.
 
@@ -256,10 +261,12 @@ Configured in `.env` (see `.env.example`):
 - `DASHBOARD_PASSWORD` — Next.js dashboard auth (optional; unset = public)
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` — Telegram alerts (optional)
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — Paper trading (optional; DryRun fallback)
+- `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET` — KIS Open API live mode (optional; falls back to `~/KIS/config/kis_devlp.yaml`)
+- `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET` — KIS Open API paper mode (optional)
 
 ## DB Schema (SQLite, WAL mode)
 
-27 tables total (v11 migrations). Key tables:
+27 tables total (11 migrations). Key tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -326,7 +333,7 @@ data/
 
 ## Testing
 
-2,928 backend tests across 32 domain files + 585 frontend vitest (44 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto`). Backend 98% coverage, frontend 95% coverage. CI minimum thresholds in `docs/STRATEGY.md` §4.1. Tests use `tmp_path` fixture for isolated SQLite databases:
+2,253 backend tests across 91 files (top-level + `tests/{api,collectors,quant,trading/agents,trading/recommend}/` subdirs) + 585 frontend vitest (44 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). CI minimum coverage 80%. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -344,7 +351,7 @@ All counts in this doc are verified against code. Re-run after major changes —
 ```bash
 # Tests
 .venv/bin/python -m pytest tests/ --collect-only -q | tail -1   # backend
-ls tests/test_*.py | wc -l                                       # backend test files
+find tests -name "test_*.py" -type f | wc -l                     # backend test files (incl. subdirs)
 cd frontend && npx vitest run | tail -5                          # frontend (Test Files / Tests)
 grep -rhE "^\s*test\(" frontend/e2e/ | wc -l                     # Playwright E2E
 
