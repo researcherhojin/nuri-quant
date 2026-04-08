@@ -168,11 +168,13 @@ jobs:
 
       - name: Coverage threshold check
         run: |
+          # Threshold 80%: current actual ~84%, leaves 4pp headroom for refactor
+          # noise. ROADMAP: increase to 90% after coverage_push file cleanup (B4).
           COV=$(grep -oP 'line-rate="\K[0-9.]+' coverage.xml | head -1)
           PCT=$(python3 -c "print(int(float('${COV}') * 100))")
           echo "Coverage: ${PCT}%"
-          if [ "$PCT" -lt 40 ]; then
-            echo "::error::Coverage ${PCT}% is below 40% threshold"
+          if [ "$PCT" -lt 80 ]; then
+            echo "::error::Coverage ${PCT}% is below 80% threshold"
             exit 1
           fi
 
