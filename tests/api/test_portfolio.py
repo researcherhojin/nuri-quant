@@ -28,7 +28,7 @@ class TestPortfolio:
 
     def test_add_holding(self, client):
         r = client.post("/api/portfolio", json={
-            "account": "toss", "ticker": "AAPL",
+            "account": "sample", "ticker": "AAPL",
             "quantity": 10, "avg_price": 180.0,
             "currency": "USD", "sector": "Tech",
         })
@@ -40,10 +40,10 @@ class TestPortfolio:
 
     def test_delete_holding(self, client):
         client.post("/api/portfolio", json={
-            "account": "toss", "ticker": "AAPL",
+            "account": "sample", "ticker": "AAPL",
             "quantity": 10, "avg_price": 180.0,
         })
-        r = client.delete("/api/portfolio/toss/AAPL")
+        r = client.delete("/api/portfolio/sample/AAPL")
         assert r.status_code == 200
         assert r.json()["ok"] is True
 
@@ -69,7 +69,7 @@ class TestPortfolio:
 class TestPutEndpoint:
     def test_update_quantity(self, seeded_client):
         """수량 수정."""
-        r = seeded_client.put("/api/portfolio/toss/AAPL", json={"quantity": 20})
+        r = seeded_client.put("/api/portfolio/sample/AAPL", json={"quantity": 20})
         assert r.status_code == 200
         assert r.json()["ok"] is True
         assert r.json()["updated"]["quantity"] == 20
@@ -79,13 +79,13 @@ class TestPutEndpoint:
 
     def test_update_avg_price(self, seeded_client):
         """평균가 수정."""
-        r = seeded_client.put("/api/portfolio/toss/AAPL", json={"avg_price": 200.0})
+        r = seeded_client.put("/api/portfolio/sample/AAPL", json={"avg_price": 200.0})
         assert r.status_code == 200
         assert r.json()["updated"]["avg_price"] == 200.0
 
     def test_update_multiple_fields(self, seeded_client):
         """여러 필드 동시 수정."""
-        r = seeded_client.put("/api/portfolio/toss/AAPL", json={
+        r = seeded_client.put("/api/portfolio/sample/AAPL", json={
             "quantity": 15, "avg_price": 190.0, "sector": "BigTech",
         })
         assert r.status_code == 200
@@ -101,7 +101,7 @@ class TestPutEndpoint:
 
     def test_update_empty_body(self, seeded_client):
         """변경 필드 없으면 → 400."""
-        r = seeded_client.put("/api/portfolio/toss/AAPL", json={})
+        r = seeded_client.put("/api/portfolio/sample/AAPL", json={})
         assert r.status_code == 400
 
     def test_update_invalid_account(self, seeded_client):
@@ -111,7 +111,7 @@ class TestPutEndpoint:
 
     def test_update_invalid_quantity(self, seeded_client):
         """음수 수량 → 422."""
-        r = seeded_client.put("/api/portfolio/toss/AAPL", json={"quantity": -1})
+        r = seeded_client.put("/api/portfolio/sample/AAPL", json={"quantity": -1})
         assert r.status_code == 422
 
 
@@ -120,33 +120,33 @@ class TestPutValidation:
 
     def test_update_quantity_over_max(self, seeded_client):
         """수량 100,000 초과 → 422."""
-        r = seeded_client.put("/api/portfolio/toss/AAPL", json={"quantity": 100_001})
+        r = seeded_client.put("/api/portfolio/sample/AAPL", json={"quantity": 100_001})
         assert r.status_code == 422
 
     def test_update_avg_price_zero(self, seeded_client):
         """평균가 0 → 422."""
-        r = seeded_client.put("/api/portfolio/toss/AAPL", json={"avg_price": 0})
+        r = seeded_client.put("/api/portfolio/sample/AAPL", json={"avg_price": 0})
         assert r.status_code == 422
 
     def test_update_avg_price_over_max(self, seeded_client):
         """평균가 10,000,000 초과 → 422."""
-        r = seeded_client.put("/api/portfolio/toss/AAPL", json={"avg_price": 10_000_001})
+        r = seeded_client.put("/api/portfolio/sample/AAPL", json={"avg_price": 10_000_001})
         assert r.status_code == 422
 
     def test_update_sector_too_long(self, seeded_client):
         """섹터 50자 초과 → 422."""
-        r = seeded_client.put("/api/portfolio/toss/AAPL", json={"sector": "A" * 51})
+        r = seeded_client.put("/api/portfolio/sample/AAPL", json={"sector": "A" * 51})
         assert r.status_code == 422
 
     def test_update_currency(self, seeded_client):
         """통화 변경."""
-        r = seeded_client.put("/api/portfolio/toss/AAPL", json={"currency": "KRW"})
+        r = seeded_client.put("/api/portfolio/sample/AAPL", json={"currency": "KRW"})
         assert r.status_code == 200
         assert r.json()["updated"]["currency"] == "KRW"
 
     def test_update_invalid_ticker_format(self, seeded_client):
         """유효하지 않은 ticker 포맷 → 400."""
-        r = seeded_client.put("/api/portfolio/toss/invalid!", json={"quantity": 5})
+        r = seeded_client.put("/api/portfolio/sample/invalid!", json={"quantity": 5})
         assert r.status_code == 400
 
 
@@ -168,7 +168,7 @@ class TestSyncErrorHandling:
         c = TestClient(app)
 
         r = c.post("/api/portfolio", json={
-            "account": "toss", "ticker": "MSFT",
+            "account": "sample", "ticker": "MSFT",
             "quantity": 5, "avg_price": 400.0,
         })
         assert r.status_code == 200
@@ -183,7 +183,7 @@ class TestPostValidation:
     def test_post_invalid_ticker(self, client):
         """잘못된 ticker 포맷 → 422."""
         r = client.post("/api/portfolio", json={
-            "account": "toss", "ticker": "invalid!",
+            "account": "sample", "ticker": "invalid!",
             "quantity": 10, "avg_price": 100.0,
         })
         assert r.status_code == 422
@@ -191,7 +191,7 @@ class TestPostValidation:
     def test_post_quantity_zero(self, client):
         """수량 0 → 422."""
         r = client.post("/api/portfolio", json={
-            "account": "toss", "ticker": "AAPL",
+            "account": "sample", "ticker": "AAPL",
             "quantity": 0, "avg_price": 100.0,
         })
         assert r.status_code == 422
@@ -199,7 +199,7 @@ class TestPostValidation:
     def test_post_quantity_over_max(self, client):
         """수량 100,000 초과 → 422."""
         r = client.post("/api/portfolio", json={
-            "account": "toss", "ticker": "AAPL",
+            "account": "sample", "ticker": "AAPL",
             "quantity": 100_001, "avg_price": 100.0,
         })
         assert r.status_code == 422
@@ -207,7 +207,7 @@ class TestPostValidation:
     def test_post_avg_price_zero(self, client):
         """평균가 0 → 422."""
         r = client.post("/api/portfolio", json={
-            "account": "toss", "ticker": "AAPL",
+            "account": "sample", "ticker": "AAPL",
             "quantity": 10, "avg_price": 0,
         })
         assert r.status_code == 422
@@ -215,7 +215,7 @@ class TestPostValidation:
     def test_post_avg_price_over_max(self, client):
         """평균가 10,000,000 초과 → 422."""
         r = client.post("/api/portfolio", json={
-            "account": "toss", "ticker": "AAPL",
+            "account": "sample", "ticker": "AAPL",
             "quantity": 10, "avg_price": 10_000_001,
         })
         assert r.status_code == 422
@@ -231,7 +231,7 @@ class TestPostValidation:
     def test_post_sector_too_long(self, client):
         """섹터 50자 초과 → 422."""
         r = client.post("/api/portfolio", json={
-            "account": "toss", "ticker": "AAPL",
+            "account": "sample", "ticker": "AAPL",
             "quantity": 10, "avg_price": 100.0,
             "sector": "A" * 51,
         })
@@ -243,7 +243,7 @@ class TestDeleteValidation:
 
     def test_delete_invalid_ticker_format(self, client):
         """유효하지 않은 ticker 포맷 → 400."""
-        r = client.delete("/api/portfolio/toss/invalid!")
+        r = client.delete("/api/portfolio/sample/invalid!")
         assert r.status_code == 400
 
 
@@ -251,32 +251,32 @@ class TestYamlSync:
     def test_post_syncs_yaml(self, client, tmp_path):
         """POST 후 YAML 파일 생성 확인."""
         client.post("/api/portfolio", json={
-            "account": "kakaopay", "ticker": "NVDA",
+            "account": "test", "ticker": "NVDA",
             "quantity": 10, "avg_price": 130.0,
             "currency": "USD", "sector": "Semiconductor",
         })
         yaml_path = tmp_path / "portfolio.yaml"
         assert yaml_path.exists()
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-        holdings = data["accounts"]["kakaopay"]["holdings"]
+        holdings = data["accounts"]["test"]["holdings"]
         assert len(holdings) == 1
         assert holdings[0]["ticker"] == "NVDA"
 
     def test_put_syncs_yaml(self, seeded_client, tmp_path):
         """PUT 후 YAML에 변경 반영."""
-        seeded_client.put("/api/portfolio/toss/AAPL", json={"quantity": 25})
+        seeded_client.put("/api/portfolio/sample/AAPL", json={"quantity": 25})
         yaml_path = tmp_path / "portfolio.yaml"
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-        holdings = data["accounts"]["toss"]["holdings"]
+        holdings = data["accounts"]["sample"]["holdings"]
         assert holdings[0]["qty"] == 25
 
     def test_delete_syncs_yaml(self, seeded_client, tmp_path):
         """DELETE 후 YAML에서 제거."""
-        seeded_client.delete("/api/portfolio/toss/AAPL")
+        seeded_client.delete("/api/portfolio/sample/AAPL")
         yaml_path = tmp_path / "portfolio.yaml"
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-        toss = data["accounts"].get("toss", {})
-        assert "holdings" not in toss or len(toss.get("holdings", [])) == 0
+        sample = data["accounts"].get("sample", {})
+        assert "holdings" not in sample or len(sample.get("holdings", [])) == 0
 
     def test_load_yaml_default_path(self, tmp_path, monkeypatch):
         """_load_yaml()를 인수 없이 호출 시 CONFIG_PATH 사용."""
@@ -297,7 +297,7 @@ class TestYamlSync:
         yaml_path = tmp_path / "portfolio.yaml"
         existing = {
             "accounts": {
-                "kakaopay": {
+                "test": {
                     "name": "카카오페이 종합계좌",
                     "broker": "카카오페이증권",
                     "currency": "USD",
@@ -310,15 +310,15 @@ class TestYamlSync:
             yaml.dump(existing, f, allow_unicode=True)
 
         upsert_portfolio([{
-            "account": "kakaopay", "ticker": "TSLA",
+            "account": "test", "ticker": "TSLA",
             "quantity": 10, "avg_price": 300.0,
-            "currency": "USD", "sector": "EV/AI",
+            "currency": "USD", "sector": "SectorA",
         }], db_path=yaml_db)
 
         sync_portfolio_to_yaml(config_path=yaml_path, db_path=yaml_db)
 
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-        kp = data["accounts"]["kakaopay"]
+        kp = data["accounts"]["test"]
         assert kp["name"] == "카카오페이 종합계좌"
         assert kp["broker"] == "카카오페이증권"
         assert kp["total_invested"] == 48323344
@@ -331,7 +331,7 @@ class TestImport:
 
     def test_import_csv(self, client):
         """정상 CSV import."""
-        csv_content = "account,ticker,quantity,avg_price,currency,sector\ntoss,AAPL,10,180.0,USD,Tech\nkakaopay,NVDA,5,130.0,USD,Semiconductor\n"
+        csv_content = "account,ticker,quantity,avg_price,currency,sector\ntoss,AAPL,10,180.0,USD,Tech\ntest,NVDA,5,130.0,USD,Semiconductor\n"
         r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
         assert r.status_code == 200
         data = r.json()
@@ -419,7 +419,7 @@ class TestImport:
     def test_import_over_max_rows(self, client):
         """500행 초과 → 400."""
         header = "account,ticker,quantity,avg_price\n"
-        rows = "".join(f"toss,T{i:04d},1,100.0\n" for i in range(501))
+        rows = "".join(f"sample,T{i:04d},1,100.0\n" for i in range(501))
         r = client.post("/api/portfolio/import", files=_csv_file(header + rows))
         assert r.status_code == 400
         assert "500" in r.json()["detail"]
@@ -451,8 +451,8 @@ class TestExport:
         assert "yaml" in r.headers["content-type"]
         data = yaml.safe_load(r.text)
         assert "accounts" in data
-        assert "toss" in data["accounts"]
-        holdings = data["accounts"]["toss"]["holdings"]
+        assert "sample" in data["accounts"]
+        holdings = data["accounts"]["sample"]["holdings"]
         assert len(holdings) == 1
         assert holdings[0]["ticker"] == "AAPL"
 
@@ -495,9 +495,9 @@ class TestMetadata:
     def test_post_with_metadata(self, client):
         """POST 시 metadata 저장."""
         r = client.post("/api/portfolio", json={
-            "account": "test", "ticker": "TSLL",
-            "quantity": 96, "avg_price": 16.93,
-            "sector": "Leveraged_ETF",
+            "account": "test", "ticker": "BBB",
+            "quantity": 96, "avg_price": 20.0,
+            "sector": "SectorB",
             "metadata": {"flag": "SELL", "note": "레버리지 ETF 금지"},
         })
         assert r.status_code == 200
@@ -516,15 +516,15 @@ class TestMetadata:
     def test_metadata_roundtrip_yaml(self, client, tmp_path):
         """POST → YAML 동기화 → metadata 필드 복원 확인."""
         client.post("/api/portfolio", json={
-            "account": "test", "ticker": "TSLL",
-            "quantity": 96, "avg_price": 16.93,
-            "sector": "Leveraged_ETF",
+            "account": "test", "ticker": "BBB",
+            "quantity": 96, "avg_price": 20.0,
+            "sector": "SectorB",
             "metadata": {"flag": "SELL"},
         })
         yaml_path = tmp_path / "portfolio.yaml"
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         holdings = data["accounts"]["test"]["holdings"]
-        tsll = [h for h in holdings if h["ticker"] == "TSLL"][0]
+        tsll = [h for h in holdings if h["ticker"] == "BBB"][0]
         assert tsll["flag"] == "SELL"
 
     def test_metadata_in_import(self, tmp_path, monkeypatch):
@@ -540,8 +540,8 @@ class TestMetadata:
                 "test": {
                     "currency": "USD",
                     "holdings": [
-                        {"ticker": "TSLL", "qty": 96, "avg": 16.93,
-                         "sector": "Leveraged_ETF", "flag": "SELL"},
+                        {"ticker": "BBB", "qty": 96, "avg": 20.0,
+                         "sector": "SectorB", "flag": "SELL"},
                     ],
                 },
             },
@@ -553,7 +553,7 @@ class TestMetadata:
         records = imp.load_holdings(config_path=yaml_path)
         upsert_portfolio(records, db_path=meta_db)
 
-        rows = query("SELECT metadata FROM portfolio WHERE ticker='TSLL'", db_path=meta_db)
+        rows = query("SELECT metadata FROM portfolio WHERE ticker='BBB'", db_path=meta_db)
         assert rows
         meta = json.loads(rows[0]["metadata"])
         assert meta["flag"] == "SELL"
@@ -589,13 +589,13 @@ class TestMetadata:
         yaml_path = tmp_path / "portfolio.yaml"
         yaml_content = {
             "accounts": {
-                "kakaopay": {
+                "test": {
                     "name": "카카오페이",
                     "currency": "USD",
                     "holdings": [
-                        {"ticker": "TSLL", "qty": 96, "avg": 16.93,
-                         "sector": "Leveraged_ETF", "flag": "SELL"},
-                        {"ticker": "NVDA", "qty": 20, "avg": 132.14,
+                        {"ticker": "BBB", "qty": 96, "avg": 20.0,
+                         "sector": "SectorB", "flag": "SELL"},
+                        {"ticker": "NVDA", "qty": 20, "avg": 100.0,
                          "sector": "Semiconductor"},
                     ],
                 },
@@ -611,9 +611,9 @@ class TestMetadata:
         sync_portfolio_to_yaml(config_path=yaml_path, db_path=rt_db)
 
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-        holdings = data["accounts"]["kakaopay"]["holdings"]
-        tsll = [h for h in holdings if h["ticker"] == "TSLL"][0]
+        holdings = data["accounts"]["test"]["holdings"]
+        tsll = [h for h in holdings if h["ticker"] == "BBB"][0]
         nvda = [h for h in holdings if h["ticker"] == "NVDA"][0]
         assert tsll["flag"] == "SELL"
         assert "flag" not in nvda
-        assert data["accounts"]["kakaopay"]["name"] == "카카오페이"
+        assert data["accounts"]["test"]["name"] == "카카오페이"

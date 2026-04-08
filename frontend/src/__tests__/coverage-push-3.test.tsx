@@ -63,9 +63,9 @@ vi.mock("@/lib/api", () => ({
 }));
 
 const multiHoldings = [
-  { ticker: "AAPL", account: "kakaopay", quantity: 10, avg_price: 180,
+  { ticker: "AAPL", account: "test", quantity: 10, avg_price: 180,
     currency: "USD", sector: "Tech", latest_price: 195, price_date: "2026-03-31" },
-  { ticker: "005930.KS", account: "mirae", quantity: 4, avg_price: 60000,
+  { ticker: "005930.KS", account: "demo", quantity: 4, avg_price: 60000,
     currency: "KRW", sector: "Semi", latest_price: 65000, price_date: "2026-03-31" },
 ];
 

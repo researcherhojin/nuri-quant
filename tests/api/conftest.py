@@ -51,7 +51,7 @@ def client(tmp_path, monkeypatch):
 def seeded_client(client):
     """Client with one holding pre-added."""
     client.post("/api/portfolio", json={
-        "account": "toss", "ticker": "AAPL",
+        "account": "sample", "ticker": "AAPL",
         "quantity": 10, "avg_price": 180.0,
         "currency": "USD", "sector": "Tech",
     })
@@ -66,7 +66,7 @@ def populated_db(db_path):
         for ticker, qty, price, sector in [
             ("AAPL", 10, 150.0, "Technology"),
             ("MSFT", 5, 300.0, "Software"),
-            ("TSLA", 8, 340.0, "EV/AI"),
+            ("TSLA", 8, 340.0, "SectorA"),
         ]:
             conn.execute(
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "

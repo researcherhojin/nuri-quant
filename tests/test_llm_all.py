@@ -55,17 +55,17 @@ def rich_db(tmp_path, monkeypatch):
          "avg_price": 190, "currency": "USD", "sector": "Tech"},
         {"account": "test", "ticker": "NVDA", "quantity": 5,
          "avg_price": 130, "currency": "USD", "sector": "Semiconductor"},
-        {"account": "test", "ticker": "TSLL", "quantity": 96,
-         "avg_price": 16.93, "currency": "USD", "sector": "Leveraged_ETF"},
+        {"account": "test", "ticker": "BBB", "quantity": 96,
+         "avg_price": 20.0, "currency": "USD", "sector": "SectorB"},
         {"account": "test", "ticker": "005930.KS", "quantity": 4,
          "avg_price": 60000, "currency": "KRW", "sector": "Semiconductor"},
     ], path)
 
     dates = pd.date_range("2024-01-02", periods=500, freq="B")
     rows = []
-    for t in ["SPY", "AAPL", "NVDA", "TSLL", "005930.KS",
+    for t in ["SPY", "AAPL", "NVDA", "BBB", "005930.KS",
               "XLK", "XLF", "XLE", "XLV", "XLI", "XLP", "XLU", "XLY", "XLC", "XLRE", "VOO"]:
-        base = {"SPY": 450, "AAPL": 170, "NVDA": 120, "TSLL": 15,
+        base = {"SPY": 450, "AAPL": 170, "NVDA": 120, "BBB": 15,
                 "005930.KS": 58000, "VOO": 440}.get(t, 100)
         for i, d in enumerate(dates):
             p = base + i * 0.2 + np.sin(i / 20) * 5
@@ -102,7 +102,7 @@ def full_db(tmp_path, monkeypatch):
     upsert_portfolio([
         {"account": "test", "ticker": "AAPL", "quantity": 10, "avg_price": 190, "currency": "USD", "sector": "Tech"},
         {"account": "test", "ticker": "NVDA", "quantity": 5, "avg_price": 130, "currency": "USD", "sector": "Semiconductor"},
-        {"account": "test", "ticker": "TSLA", "quantity": 8, "avg_price": 250, "currency": "USD", "sector": "EV/AI"},
+        {"account": "test", "ticker": "TSLA", "quantity": 8, "avg_price": 250, "currency": "USD", "sector": "SectorA"},
     ], path)
 
     dates = pd.date_range("2024-06-01", periods=500, freq="B")

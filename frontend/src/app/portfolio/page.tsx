@@ -19,7 +19,10 @@ interface Holding {
   price_date: string | null;
 }
 
-const ACCOUNTS = ["kakaopay", "mirae", "toss", "pension", "irp"];
+// Account list is derived from existing holdings — no hardcoded broker names.
+// Empty initial state is supplemented from /api/portfolio/accounts when available
+// (test fixtures can mock either source).
+const FALLBACK_ACCOUNTS = ["test", "demo", "sample"];
 
 export default function PortfolioPage() {
   return (
@@ -38,7 +41,7 @@ function PortfolioContent() {
   const [showForm, setShowForm] = useState(false);
   const [loadingSample, setLoadingSample] = useState(false);
   const [form, setForm] = useState({
-    account: "kakaopay", ticker: "", quantity: "", avg_price: "", currency: "USD", sector: "",
+    account: "", ticker: "", quantity: "", avg_price: "", currency: "USD", sector: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
@@ -62,6 +65,19 @@ function PortfolioContent() {
     }
     return map;
   }, [holdings]);
+
+  // ACCOUNTS는 기존 holdings에서 동적 추출. 없으면 fallback 사용.
+  const ACCOUNTS = useMemo(() => {
+    const fromHoldings = Array.from(new Set(holdings.map((h) => h.account))).filter(Boolean);
+    return fromHoldings.length > 0 ? fromHoldings : FALLBACK_ACCOUNTS;
+  }, [holdings]);
+
+  // form.account 기본값을 첫 번째 ACCOUNTS로 자동 설정 (한 번만)
+  useEffect(() => {
+    if (!form.account && ACCOUNTS.length > 0) {
+      setForm((f) => ({ ...f, account: ACCOUNTS[0] }));
+    }
+  }, [ACCOUNTS, form.account]);
 
   async function fetchHoldings() {
     setLoading(true);
@@ -102,7 +118,7 @@ function PortfolioContent() {
       setSubmitting(false);
       return;
     }
-    setForm({ account: "kakaopay", ticker: "", quantity: "", avg_price: "", currency: "USD", sector: "" });
+    setForm({ account: ACCOUNTS[0] || "", ticker: "", quantity: "", avg_price: "", currency: "USD", sector: "" });
     setShowForm(false);
     setSubmitting(false);
     fetchHoldings();
@@ -286,7 +302,7 @@ function PortfolioContent() {
                 className={inputClass}>
                 {ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
-              <input placeholder="Ticker (e.g. TSLA)" value={form.ticker}
+              <input placeholder="Ticker (e.g. AAPL)" value={form.ticker}
                 onChange={(e) => setForm({ ...form, ticker: e.target.value })} className={inputClass} required />
               <input placeholder="Quantity" type="number" step="any" min="0" value={form.quantity}
                 onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={inputClass} required />

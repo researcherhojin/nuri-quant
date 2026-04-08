@@ -168,7 +168,7 @@ class TestFormatTargetTree:
         from nuri.trading.recommend.price_targets import format_target_tree
         target = {
             "ticker": "005930.KS", "stock_type": "growth",
-            "current_price": 179700.0, "entry_price": 59700.0,
+            "current_price": 179700.0, "entry_price": 55000.0,
             "stop_loss": 55521.0, "stop_loss_pct": -7.0,
             "target_1": 71640.0, "target_1_pct": 20.0, "target_1_sell_pct": 50,
             "target_2": 83580.0, "target_2_pct": 40.0, "target_2_sell_pct": 25,
@@ -423,7 +423,7 @@ class TestPriceTargets_R23:
         import nuri.trading.recommend.price_targets as pt_mod
         from nuri.trading.recommend.price_targets import classify_stock_type
         pt_mod._stock_types_cache = None
-        _seed_portfolio_r23(db_path, [("kakaopay", "SEMCO", 10, 100.0, "USD", "Semiconductor")])
+        _seed_portfolio_r23(db_path, [("test", "SEMCO", 10, 100.0, "USD", "Semiconductor")])
         result = classify_stock_type("SEMCO", db_path=db_path)
         assert result == "growth"
 
@@ -493,7 +493,7 @@ class TestPriceTargets_R23:
         import nuri.trading.recommend.price_targets as pt_mod
         from nuri.trading.recommend.price_targets import check_take_profit_signals
         pt_mod._stock_types_cache = None
-        _seed_portfolio_r23(db_path, [("kakaopay", "AAPL", 10, 100.0, "USD", "Technology")])
+        _seed_portfolio_r23(db_path, [("test", "AAPL", 10, 100.0, "USD", "Technology")])
         _seed_prices_r23(db_path, "AAPL", 145.0)
         signals = check_take_profit_signals(db_path=db_path)
         assert len(signals) >= 1
@@ -503,7 +503,7 @@ class TestPriceTargets_R23:
         import nuri.trading.recommend.price_targets as pt_mod
         from nuri.trading.recommend.price_targets import check_take_profit_signals
         pt_mod._stock_types_cache = None
-        _seed_portfolio_r23(db_path, [("kakaopay", "AAPL", 10, 100.0, "USD", "Technology")])
+        _seed_portfolio_r23(db_path, [("test", "AAPL", 10, 100.0, "USD", "Technology")])
         _seed_prices_r23(db_path, "AAPL", 122.0)
         signals = check_take_profit_signals(db_path=db_path)
         assert len(signals) >= 1
@@ -511,7 +511,7 @@ class TestPriceTargets_R23:
 
     def test_check_take_profit_no_entry(self, db_path):
         from nuri.trading.recommend.price_targets import check_take_profit_signals
-        _seed_portfolio_r23(db_path, [("kakaopay", "AAPL", 10, 0, "USD", "Technology")])
+        _seed_portfolio_r23(db_path, [("test", "AAPL", 10, 0, "USD", "Technology")])
         _seed_prices_r23(db_path, "AAPL", 200.0)
         signals = check_take_profit_signals(db_path=db_path)
         assert len(signals) == 0
@@ -520,7 +520,7 @@ class TestPriceTargets_R23:
         import nuri.trading.recommend.price_targets as pt_mod
         from nuri.trading.recommend.price_targets import check_trailing_stop_signals
         pt_mod._stock_types_cache = None
-        _seed_portfolio_r23(db_path, [("kakaopay", "AAPL", 10, 100.0, "USD", "Technology")])
+        _seed_portfolio_r23(db_path, [("test", "AAPL", 10, 100.0, "USD", "Technology")])
         with get_db(db_path) as conn:
             conn.execute("INSERT OR REPLACE INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
                          ("AAPL", "2026-03-01", 195, 200, 190, 195, 1000000))
@@ -534,21 +534,21 @@ class TestPriceTargets_R23:
         import nuri.trading.recommend.price_targets as pt_mod
         from nuri.trading.recommend.price_targets import check_trailing_stop_signals
         pt_mod._stock_types_cache = None
-        _seed_portfolio_r23(db_path, [("kakaopay", "AAPL", 10, 100.0, "USD", "Technology")])
+        _seed_portfolio_r23(db_path, [("test", "AAPL", 10, 100.0, "USD", "Technology")])
         _seed_prices_r23(db_path, "AAPL", 180.0, high=185.0)
         signals = check_trailing_stop_signals(db_path=db_path)
         assert len(signals) == 0
 
     def test_check_portfolio_mdd_no_violation(self, db_path):
         from nuri.trading.recommend.price_targets import check_portfolio_mdd
-        _seed_portfolio_r23(db_path, [("kakaopay", "AAPL", 10, 150.0, "USD", "Technology")])
+        _seed_portfolio_r23(db_path, [("test", "AAPL", 10, 150.0, "USD", "Technology")])
         _seed_prices_r23(db_path, "AAPL", 155.0)
         result = check_portfolio_mdd(db_path=db_path)
         assert result is None
 
     def test_check_portfolio_mdd_violation(self, db_path):
         from nuri.trading.recommend.price_targets import check_portfolio_mdd
-        _seed_portfolio_r23(db_path, [("kakaopay", "AAPL", 100, 200.0, "USD", "Technology")])
+        _seed_portfolio_r23(db_path, [("test", "AAPL", 100, 200.0, "USD", "Technology")])
         _seed_prices_r23(db_path, "AAPL", 170.0)
         result = check_portfolio_mdd(db_path=db_path)
         assert result is not None
@@ -556,7 +556,7 @@ class TestPriceTargets_R23:
 
     def test_check_portfolio_mdd_with_krw(self, db_path):
         from nuri.trading.recommend.price_targets import check_portfolio_mdd
-        _seed_portfolio_r23(db_path, [("kakaopay", "005930.KS", 10, 70000.0, "KRW", "Semiconductor")])
+        _seed_portfolio_r23(db_path, [("test", "005930.KS", 10, 70000.0, "KRW", "Semiconductor")])
         _seed_prices_r23(db_path, "005930.KS", 72000.0, high=73000.0)
         _seed_macro_r23(db_path, "usd_krw", 1350.0)
         result = check_portfolio_mdd(db_path=db_path)
@@ -598,7 +598,7 @@ class TestPriceTargets_R23:
         import nuri.trading.recommend.price_targets as pt_mod
         from nuri.trading.recommend.price_targets import calculate_portfolio_targets
         pt_mod._stock_types_cache = None
-        _seed_portfolio_r23(db_path, [("kakaopay", "AAPL", 10, 150.0, "USD", "Technology")])
+        _seed_portfolio_r23(db_path, [("test", "AAPL", 10, 150.0, "USD", "Technology")])
         _seed_prices_r23(db_path, "AAPL", 170.0)
         targets = calculate_portfolio_targets(db_path=db_path)
         assert len(targets) >= 1
@@ -609,8 +609,8 @@ class TestPriceTargets_R23:
         from nuri.trading.recommend.price_targets import calculate_portfolio_targets
         pt_mod._stock_types_cache = None
         _seed_portfolio_r23(db_path, [
-            ("kakaopay", "AAPL", 10, 150.0, "USD", "Technology"),
-            ("kakaopay", "NOPRICE", 5, 100.0, "USD", "Tech"),
+            ("test", "AAPL", 10, 150.0, "USD", "Technology"),
+            ("test", "NOPRICE", 5, 100.0, "USD", "Tech"),
         ])
         _seed_prices_r23(db_path, "AAPL", 170.0)
         targets = calculate_portfolio_targets(db_path=db_path)

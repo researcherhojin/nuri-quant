@@ -16,9 +16,9 @@ from nuri.core.db import get_db, init_db, upsert_macro, upsert_portfolio, upsert
 
 def _seed_portfolio(db_path, tickers=None):
     """Insert sample portfolio rows."""
-    tickers = tickers or [("kakaopay", "AAPL", 10, 150.0, "USD", "Technology"),
-                          ("kakaopay", "MSFT", 5, 300.0, "USD", "Technology"),
-                          ("kakaopay", "JNJ", 20, 160.0, "USD", "Health")]
+    tickers = tickers or [("test", "AAPL", 10, 150.0, "USD", "Technology"),
+                          ("test", "MSFT", 5, 300.0, "USD", "Technology"),
+                          ("test", "JNJ", 20, 160.0, "USD", "Health")]
     with get_db(db_path) as conn:
         for account, ticker, qty, avg_price, currency, sector in tickers:
             conn.execute(

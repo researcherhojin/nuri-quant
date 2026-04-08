@@ -14,8 +14,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 const mockHoldings = [
-  { ticker: "TSLA", account: "kakaopay", quantity: 33, avg_price: 343.39, currency: "USD", sector: "EV/AI", latest_price: 250, price_date: "2026-03-31" },
-  { ticker: "005930.KS", account: "toss", quantity: 4, avg_price: 200500, currency: "KRW", sector: "Semiconductor", latest_price: 210000, price_date: "2026-03-31" },
+  { ticker: "TSLA", account: "test", quantity: 33, avg_price: 200.0, currency: "USD", sector: "SectorA", latest_price: 250, price_date: "2026-03-31" },
+  { ticker: "005930.KS", account: "sample", quantity: 4, avg_price: 200500, currency: "KRW", sector: "Semiconductor", latest_price: 210000, price_date: "2026-03-31" },
 ];
 
 function mockFetch(overrides: Record<string, unknown> = {}) {
@@ -61,7 +61,7 @@ describe("PortfolioPage — extended coverage", () => {
 
     fireEvent.click(screen.getByText("Add Holding"));
 
-    const tickerInput = screen.getByPlaceholderText("Ticker (e.g. TSLA)");
+    const tickerInput = screen.getByPlaceholderText("Ticker (e.g. AAPL)");
     const qtyInput = screen.getByPlaceholderText("Quantity");
     const priceInput = screen.getByPlaceholderText("Avg Price");
 
@@ -159,8 +159,8 @@ describe("PortfolioPage — extended coverage", () => {
   it("shows account filter tabs", async () => {
     render(<PortfolioPage />);
     await waitFor(() => {
-      expect(screen.getByText("kakaopay")).toBeInTheDocument();
-      expect(screen.getByText("toss")).toBeInTheDocument();
+      expect(screen.getByText("test")).toBeInTheDocument();
+      expect(screen.getByText("sample")).toBeInTheDocument();
     });
   });
 });

@@ -16,8 +16,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 const mockHoldings = [
-  { ticker: "TSLA", account: "kakaopay", quantity: 33, avg_price: 343.39, currency: "USD", sector: "EV/AI", latest_price: 250, price_date: "2026-03-31" },
-  { ticker: "005930.KS", account: "toss", quantity: 4, avg_price: 200500, currency: "KRW", sector: "Semiconductor", latest_price: 210000, price_date: "2026-03-31" },
+  { ticker: "TSLA", account: "test", quantity: 33, avg_price: 200.0, currency: "USD", sector: "SectorA", latest_price: 250, price_date: "2026-03-31" },
+  { ticker: "005930.KS", account: "sample", quantity: 4, avg_price: 200500, currency: "KRW", sector: "Semiconductor", latest_price: 210000, price_date: "2026-03-31" },
 ];
 
 function mockFetch(overrides: Record<string, unknown> = {}) {
@@ -72,8 +72,8 @@ describe("PortfolioPage", () => {
       expect(screen.getByText("005930.KS")).toBeInTheDocument();
     });
     // 계좌별 그룹핑 확인
-    expect(screen.getByText("kakaopay")).toBeInTheDocument();
-    expect(screen.getByText("toss")).toBeInTheDocument();
+    expect(screen.getByText("test")).toBeInTheDocument();
+    expect(screen.getByText("sample")).toBeInTheDocument();
   });
 
   it("shows onboarding guide when no holdings", async () => {
@@ -88,7 +88,7 @@ describe("PortfolioPage", () => {
     render(<PortfolioPage />);
     await waitFor(() => expect(screen.getByText("TSLA")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Add Holding"));
-    expect(screen.getByPlaceholderText("Ticker (e.g. TSLA)")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ticker (e.g. AAPL)")).toBeInTheDocument();
   });
 
   it("validates quantity > 0 on add", async () => {
@@ -100,7 +100,7 @@ describe("PortfolioPage", () => {
     fireEvent.change(qtyInput, { target: { value: "0" } });
     const avgInput = screen.getByPlaceholderText("Avg Price");
     fireEvent.change(avgInput, { target: { value: "100" } });
-    const tickerInput = screen.getByPlaceholderText("Ticker (e.g. TSLA)");
+    const tickerInput = screen.getByPlaceholderText("Ticker (e.g. AAPL)");
     fireEvent.change(tickerInput, { target: { value: "AAPL" } });
 
     fireEvent.click(screen.getByText("Save"));

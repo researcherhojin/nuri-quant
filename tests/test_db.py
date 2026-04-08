@@ -92,9 +92,9 @@ class TestUpsertPortfolio:
     def test_insert_holdings(self, db_path):
         """보유 종목 삽입."""
         records = [
-            {"account": "kakaopay", "ticker": "TSLA", "quantity": 33.0,
-             "avg_price": 343.39, "currency": "USD", "sector": "EV/AI"},
-            {"account": "toss", "ticker": "005930.KS", "quantity": 4.0,
+            {"account": "test", "ticker": "TSLA", "quantity": 33.0,
+             "avg_price": 200.0, "currency": "USD", "sector": "SectorA"},
+            {"account": "sample", "ticker": "005930.KS", "quantity": 4.0,
              "avg_price": 200500, "currency": "KRW", "sector": "Semiconductor"},
         ]
         count = upsert_portfolio(records, db_path)
@@ -102,10 +102,10 @@ class TestUpsertPortfolio:
 
     def test_upsert_updates_existing(self, db_path):
         """같은 (account, ticker) 삽입 시 업데이트."""
-        r1 = [{"account": "kakaopay", "ticker": "TSLA", "quantity": 10.0,
-               "avg_price": 300.0, "currency": "USD", "sector": "EV/AI"}]
-        r2 = [{"account": "kakaopay", "ticker": "TSLA", "quantity": 33.0,
-               "avg_price": 343.39, "currency": "USD", "sector": "EV/AI"}]
+        r1 = [{"account": "test", "ticker": "TSLA", "quantity": 10.0,
+               "avg_price": 300.0, "currency": "USD", "sector": "SectorA"}]
+        r2 = [{"account": "test", "ticker": "TSLA", "quantity": 33.0,
+               "avg_price": 200.0, "currency": "USD", "sector": "SectorA"}]
         upsert_portfolio(r1, db_path)
         upsert_portfolio(r2, db_path)
 
@@ -118,34 +118,34 @@ class TestReplacePortfolioAccount:
     """yaml → DB sync용 stale 행 자동 삭제."""
 
     def _seed(self, db_path):
-        """kakaopay 3종목 + toss 1종목 시드."""
+        """test 3종목 + sample 1종목 시드."""
         upsert_portfolio([
-            {"account": "kakaopay", "ticker": "TSLA", "quantity": 10.0,
-             "avg_price": 300.0, "currency": "USD", "sector": "EV/AI"},
-            {"account": "kakaopay", "ticker": "TSLL", "quantity": 96.0,
-             "avg_price": 16.93, "currency": "USD", "sector": "Leveraged_ETF"},
-            {"account": "kakaopay", "ticker": "OKLO", "quantity": 20.0,
-             "avg_price": 125.99, "currency": "USD", "sector": "Nuclear"},
-            {"account": "toss", "ticker": "005930.KS", "quantity": 5.0,
-             "avg_price": 195840.0, "currency": "KRW", "sector": "Semiconductor"},
+            {"account": "test", "ticker": "TSLA", "quantity": 10.0,
+             "avg_price": 300.0, "currency": "USD", "sector": "SectorA"},
+            {"account": "test", "ticker": "BBB", "quantity": 96.0,
+             "avg_price": 20.0, "currency": "USD", "sector": "SectorB"},
+            {"account": "test", "ticker": "CCC", "quantity": 20.0,
+             "avg_price": 150.0, "currency": "USD", "sector": "SectorC"},
+            {"account": "sample", "ticker": "005930.KS", "quantity": 5.0,
+             "avg_price": 50000.0, "currency": "KRW", "sector": "Semiconductor"},
         ], db_path)
 
     def test_removes_stale_tickers(self, db_path):
         """yaml에서 사라진 ticker가 DB에서도 삭제됨."""
         self._seed(db_path)
 
-        # kakaopay에 TSLA만 남기고 sync (TSLL, OKLO는 청산)
+        # test에 TSLA만 남기고 sync (BBB, OKLO는 청산)
         new_records = [
-            {"account": "kakaopay", "ticker": "TSLA", "quantity": 33.0,
-             "avg_price": 343.39, "currency": "USD", "sector": "EV/AI"},
+            {"account": "test", "ticker": "TSLA", "quantity": 33.0,
+             "avg_price": 200.0, "currency": "USD", "sector": "SectorA"},
         ]
-        deleted, inserted = replace_portfolio_account("kakaopay", new_records, db_path)
+        deleted, inserted = replace_portfolio_account("test", new_records, db_path)
 
         assert deleted == 3
         assert inserted == 1
 
         rows = query(
-            "SELECT ticker FROM portfolio WHERE account='kakaopay' ORDER BY ticker",
+            "SELECT ticker FROM portfolio WHERE account='test' ORDER BY ticker",
             db_path=db_path,
         )
         assert [r["ticker"] for r in rows] == ["TSLA"]
@@ -154,23 +154,23 @@ class TestReplacePortfolioAccount:
         """기존 ticker의 수량/가격이 새 값으로 갱신됨."""
         self._seed(db_path)
 
-        replace_portfolio_account("kakaopay", [
-            {"account": "kakaopay", "ticker": "TSLA", "quantity": 33.0,
-             "avg_price": 343.39, "currency": "USD", "sector": "EV/AI"},
+        replace_portfolio_account("test", [
+            {"account": "test", "ticker": "TSLA", "quantity": 33.0,
+             "avg_price": 200.0, "currency": "USD", "sector": "SectorA"},
         ], db_path)
 
         rows = query("SELECT quantity, avg_price FROM portfolio WHERE ticker='TSLA'",
                      db_path=db_path)
         assert rows[0]["quantity"] == 33.0
-        assert rows[0]["avg_price"] == 343.39
+        assert rows[0]["avg_price"] == 200.0
 
     def test_does_not_touch_other_accounts(self, db_path):
-        """toss 계좌는 kakaopay sync에 영향 받지 않음."""
+        """sample 계좌는 test sync에 영향 받지 않음."""
         self._seed(db_path)
 
-        replace_portfolio_account("kakaopay", [], db_path)
+        replace_portfolio_account("test", [], db_path)
 
-        toss_rows = query("SELECT ticker FROM portfolio WHERE account='toss'",
+        toss_rows = query("SELECT ticker FROM portfolio WHERE account='sample'",
                           db_path=db_path)
         assert len(toss_rows) == 1
         assert toss_rows[0]["ticker"] == "005930.KS"
@@ -179,26 +179,26 @@ class TestReplacePortfolioAccount:
         """빈 records → 해당 계좌의 모든 행 삭제 (전량 청산)."""
         self._seed(db_path)
 
-        deleted, inserted = replace_portfolio_account("kakaopay", [], db_path)
+        deleted, inserted = replace_portfolio_account("test", [], db_path)
 
         assert deleted == 3
         assert inserted == 0
 
-        rows = query("SELECT * FROM portfolio WHERE account='kakaopay'", db_path=db_path)
+        rows = query("SELECT * FROM portfolio WHERE account='test'", db_path=db_path)
         assert rows == []
 
     def test_account_mismatch_raises(self, db_path):
         """records의 account가 인자와 다르면 ValueError."""
         with pytest.raises(ValueError, match="account mismatch"):
-            replace_portfolio_account("kakaopay", [
-                {"account": "toss", "ticker": "AAPL", "quantity": 1.0,
+            replace_portfolio_account("test", [
+                {"account": "sample", "ticker": "AAPL", "quantity": 1.0,
                  "avg_price": 200.0, "currency": "USD", "sector": "BigTech"},
             ], db_path)
 
     def test_new_account_no_existing_rows(self, db_path):
         """기존에 없던 계좌도 정상 INSERT (deleted=0)."""
-        deleted, inserted = replace_portfolio_account("mirae", [
-            {"account": "mirae", "ticker": "AMZN", "quantity": 2.0,
+        deleted, inserted = replace_portfolio_account("demo", [
+            {"account": "demo", "ticker": "AMZN", "quantity": 2.0,
              "avg_price": 200.0, "currency": "USD", "sector": "BigTech"},
         ], db_path)
 
@@ -219,9 +219,9 @@ class TestGetTickers:
     def test_all_tickers(self, db_path):
         """전체 티커 목록 조회."""
         upsert_portfolio([
-            {"account": "kakaopay", "ticker": "TSLA", "quantity": 33.0,
-             "avg_price": 343.39, "currency": "USD", "sector": "EV/AI"},
-            {"account": "toss", "ticker": "005930.KS", "quantity": 4.0,
+            {"account": "test", "ticker": "TSLA", "quantity": 33.0,
+             "avg_price": 200.0, "currency": "USD", "sector": "SectorA"},
+            {"account": "sample", "ticker": "005930.KS", "quantity": 4.0,
              "avg_price": 200500, "currency": "KRW", "sector": "Semiconductor"},
         ], db_path)
 
@@ -231,13 +231,13 @@ class TestGetTickers:
     def test_filter_by_account(self, db_path):
         """계좌별 필터링."""
         upsert_portfolio([
-            {"account": "kakaopay", "ticker": "TSLA", "quantity": 33.0,
-             "avg_price": 343.39, "currency": "USD", "sector": "EV/AI"},
-            {"account": "toss", "ticker": "005930.KS", "quantity": 4.0,
+            {"account": "test", "ticker": "TSLA", "quantity": 33.0,
+             "avg_price": 200.0, "currency": "USD", "sector": "SectorA"},
+            {"account": "sample", "ticker": "005930.KS", "quantity": 4.0,
              "avg_price": 200500, "currency": "KRW", "sector": "Semiconductor"},
         ], db_path)
 
-        tickers = get_tickers(account="toss", db_path=db_path)
+        tickers = get_tickers(account="sample", db_path=db_path)
         assert tickers == ["005930.KS"]
 
 

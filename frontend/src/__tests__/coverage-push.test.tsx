@@ -371,7 +371,7 @@ describe("Portfolio form interactions", () => {
           ok: true,
           json: () => Promise.resolve({
             holdings: [
-              { ticker: "AAPL", account: "kakaopay", quantity: 10, avg_price: 180,
+              { ticker: "AAPL", account: "test", quantity: 10, avg_price: 180,
                 currency: "USD", sector: "Tech", latest_price: 195, price_date: "2026-03-31" },
             ],
             count: 1,

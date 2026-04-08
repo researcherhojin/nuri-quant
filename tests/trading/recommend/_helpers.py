@@ -28,9 +28,9 @@ def _seed_recommendation(db_path, date, ticker, action, entry_price, confidence=
 
 def _seed_portfolio_r23(db_path, tickers=None):
     """Insert sample portfolio rows (from test_coverage_round23)."""
-    tickers = tickers or [("kakaopay", "AAPL", 10, 150.0, "USD", "Technology"),
-                          ("kakaopay", "MSFT", 5, 300.0, "USD", "Technology"),
-                          ("kakaopay", "JNJ", 20, 160.0, "USD", "Health")]
+    tickers = tickers or [("test", "AAPL", 10, 150.0, "USD", "Technology"),
+                          ("test", "MSFT", 5, 300.0, "USD", "Technology"),
+                          ("test", "JNJ", 20, 160.0, "USD", "Health")]
     with get_db(db_path) as conn:
         for account, ticker, qty, avg_price, currency, sector in tickers:
             conn.execute(
@@ -67,11 +67,11 @@ def _seed_portfolio_nm(db_path, holdings=None):
     """테스트 포트폴리오 데이터 삽입 (from test_new_modules)."""
     if holdings is None:
         holdings = [
-            ("kakaopay", "TSLA", 33, 343.39, "USD", "EV/AI"),
-            ("kakaopay", "NVDA", 20, 132.14, "USD", "Semiconductor"),
-            ("kakaopay", "GOOGL", 5, 269.91, "USD", "BigTech"),
-            ("kakaopay", "TSLL", 96, 16.93, "USD", "Leveraged_ETF"),
-            ("kakaopay", "LLY", 1, 1087.10, "USD", "Pharma"),
+            ("test", "TSLA", 33, 200.0, "USD", "SectorA"),
+            ("test", "NVDA", 20, 100.0, "USD", "Semiconductor"),
+            ("test", "GOOGL", 5, 269.91, "USD", "BigTech"),
+            ("test", "BBB", 96, 20.0, "USD", "SectorB"),
+            ("test", "LLY", 1, 1087.10, "USD", "Pharma"),
         ]
     with get_db(db_path) as conn:
         conn.executemany(
@@ -88,7 +88,7 @@ def _seed_prices_nm(db_path, prices=None):
             ("2026-03-27", "TSLA", 355.0, 365.0, 350.0, 360.17, 1000000),
             ("2026-03-27", "NVDA", 165.0, 170.0, 163.0, 167.99, 2000000),
             ("2026-03-27", "GOOGL", 270.0, 278.0, 268.0, 274.26, 500000),
-            ("2026-03-27", "TSLL", 11.0, 12.0, 10.5, 11.44, 300000),
+            ("2026-03-27", "BBB", 11.0, 12.0, 10.5, 11.44, 300000),
             ("2026-03-27", "LLY", 880.0, 895.0, 875.0, 888.34, 100000),
         ]
     with get_db(db_path) as conn:
