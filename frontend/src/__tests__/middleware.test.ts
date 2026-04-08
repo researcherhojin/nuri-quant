@@ -75,13 +75,21 @@ describe("middleware", () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
     const { middleware } = await import("@/middleware");
 
-    // Generate the expected hash
+    // Generate the expected token using the same HMAC scheme as the
+    // production auth-token helper. AUTH_SECRET is unset so the helper
+    // falls back to DASHBOARD_PASSWORD as the HMAC key. The body of the
+    // hash is the static label "nuri-auth-token:v1" — password content
+    // is intentionally NOT mixed in (CodeQL would flag that as an
+    // insecure password hash regardless of the HMAC key).
     const crypto = require("crypto");
-    const expectedHash = crypto.createHash("sha256").update("secret123").digest("hex");
+    const expectedToken = crypto
+      .createHmac("sha256", "secret123")
+      .update("nuri-auth-token:v1")
+      .digest("hex");
 
     const request = {
       nextUrl: { pathname: "/dashboard" },
-      cookies: { get: (name: string) => name === "nuri-auth" ? { value: expectedHash } : undefined },
+      cookies: { get: (name: string) => name === "nuri-auth" ? { value: expectedToken } : undefined },
       url: "http://localhost:3000/dashboard",
     };
 
