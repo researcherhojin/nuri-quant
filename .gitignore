@@ -1,53 +1,184 @@
-# Environment
-.env
-*.pyc
-__pycache__/
-.venv/
+# ═══════════════════════════════════════════════════════════════
+# Nuri-Quant — gitignore
+# ═══════════════════════════════════════════════════════════════
+# Security: secrets/credentials는 절대 커밋 X
+# Lockfiles: uv.lock는 트래킹 (재현성), node lock도 트래킹
+# Generated: 빌드 산출물 + 캐시 + 리포트는 트래킹 X
 
-# Data
+# ─── Secrets / Credentials ─────────────────────────────────────
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+.envrc
+
+# KIS Open API 자격 증명 (절대 git 금지)
+**/kis_devlp.yaml
+**/kis_devlp.yml
+.kis/
+config/kis_*.yaml
+config/kis_*.yml
+
+# 토큰 캐시 (런타임 생성)
+**/token_*.json
+**/.tokens/
+
+# Personal portfolio (보유 종목 정보)
+config/portfolio.yaml
+
+# TLS/SSL 인증서 + 개인 키 (defense-in-depth)
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+# 단, frontend public key/crt이 필요한 경우 explicit 예외 추가
+
+# SSH 키
+id_rsa
+id_rsa.*
+id_dsa
+id_dsa.*
+id_ecdsa
+id_ed25519
+id_ed25519.*
+.ssh/
+
+# 클라우드 자격증명
+.aws/
+.gcp/
+.azure/
+**/credentials.json
+**/service-account*.json
+**/gcloud-key*.json
+
+# 일반 secret 파일 패턴
+secrets.yaml
+secrets.yml
+secrets.json
+*.secret
+*.secrets
+
+# DB 백업/덤프 (sensitive data 포함 가능)
+*.dump
+*.sql
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db.bak
+
+# Rails-style DB config (defense-in-depth)
+database.yml
+database.yaml
+
+# macOS keychain
+*.keychain
+*.keychain-db
+
+# ─── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+*.egg
+MANIFEST
+
+# ─── Virtual environments ──────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Testing / Linting / Type checking ─────────────────────────
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+test-results/
+*.cover
+
+# ─── Data & runtime artifacts ──────────────────────────────────
 data/portfolio.db
 data/portfolio.db-wal
 data/portfolio.db-shm
 data/backups/
 data/exports/
 data/reports/
+data/.bfg-reports/
 
-# Portfolio (개인 보유 종목 정보)
-config/portfolio.yaml
+# Logs
+*.log
+logs/
 
-# Build
-*.egg-info/
-dist/
-build/
-test-results/
+# BFG Repo-Cleaner artifacts (위치 무관)
+**/*.bfg-report/
+**/.bfg-reports/
 
-# Testing / Linting
-.coverage
-coverage.xml
-.pytest_cache/
-.ruff_cache/
-htmlcov/
-
-# IDE
-.vscode/
-.idea/
-
-# Claude Code
-.claude/
-
-# Frontend
+# ─── Frontend (Next.js / Node) ─────────────────────────────────
 node_modules/
 frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/coverage/
+frontend/.turbo/
+frontend/playwright-report/
+frontend/test-results/
+.next/
+.turbo/
 
-# Temp / Backup
+# ─── IDE / Editor ──────────────────────────────────────────────
+# .vscode는 부분 공유 — 팀 표준 설정/extensions/launch/tasks는 트래킹
+# 개인 파일만 무시
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# ─── Claude Code / AI assistants ───────────────────────────────
+.claude/
+
+# ─── OS ────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ─── Build artifacts ───────────────────────────────────────────
 *.backup
 *.bak
 *.tmp
+*.orig
 ta-lib/
-
-# OS
-.DS_Store
-*.log
+ta-lib-*.tar.gz
