@@ -711,3 +711,58 @@ class TestConsensusFull:
         assert result.final_action == "BUY"
         assert len(result.verdicts) == 7
         assert len(result.dissent) > 0
+
+
+# ═══════════════════════════════════════════════════════
+# Consensus verbose 모드
+# ═══════════════════════════════════════════════════════
+
+
+class TestConsensusVerbose:
+    def test_print_consensus_verbose_keyword_only(self, capsys):
+        """verbose는 keyword-only — 위치 인자로 못 전달."""
+        from nuri.trading.agents.consensus import print_consensus
+        with pytest.raises(TypeError):
+            print_consensus([], True)  # positional bool intentionally — verbose is keyword-only
+
+    def test_print_consensus_no_verbose_for_multi(self, capsys):
+        """여러 종목 + verbose=False → supporting reasoning 출력 안 함."""
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import ConsensusResult, print_consensus
+        verdicts = [
+            AgentVerdict("technical", "TSLA", "BUY", 100, "MACD>Signal; 추세강세(+84)"),
+            AgentVerdict("risk", "TSLA", "BUY", 80, "수익 양호"),
+        ]
+        r1 = ConsensusResult("TSLA", "BUY", 90, 1.0, verdicts, [], "tech: foo")
+        r2 = ConsensusResult("NVDA", "BUY", 85, 1.0, verdicts, [], "tech: bar")
+        print_consensus([r1, r2], verbose=False)
+        out = capsys.readouterr().out
+        assert "▸" not in out  # supporters 출력 마커 없어야 함
+
+    def test_print_consensus_verbose_shows_supporters(self, capsys):
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import ConsensusResult, print_consensus
+        verdicts = [
+            AgentVerdict("technical", "TSLA", "BUY", 100, "MACD>Signal; 추세강세(+84)"),
+            AgentVerdict("risk", "TSLA", "BUY", 80, "수익 양호"),
+        ]
+        r = ConsensusResult("TSLA", "BUY", 90, 1.0, verdicts, [], "tech: foo")
+        print_consensus([r], verbose=True)
+        out = capsys.readouterr().out
+        assert "▸" in out
+        assert "supporters" in out
+        assert "MACD>Signal" in out  # technical reasoning 포함
+        assert "추세강세" in out
+
+    def test_print_consensus_single_ticker_auto_verbose(self, capsys):
+        """단일 종목은 verbose=False여도 자동으로 supporting 출력."""
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import ConsensusResult, print_consensus
+        verdicts = [
+            AgentVerdict("technical", "TSLA", "BUY", 100, "test reasoning"),
+        ]
+        r = ConsensusResult("TSLA", "BUY", 90, 1.0, verdicts, [], "tech: foo")
+        print_consensus([r], verbose=False)
+        out = capsys.readouterr().out
+        assert "▸" in out
+        assert "test reasoning" in out

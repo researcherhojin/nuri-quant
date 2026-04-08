@@ -346,8 +346,13 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
         return len(records)
 
 
-def print_consensus(results: list[ConsensusResult]) -> None:
-    """합의 결과 CLI 출력."""
+def print_consensus(results: list[ConsensusResult], *, verbose: bool = False) -> None:
+    """합의 결과 CLI 출력.
+
+    Args:
+        results: ConsensusResult 리스트
+        verbose: True 시 종목별 supporting verdicts (합의 의견의 reasoning) 함께 출력
+    """
     if not results:
         print("합의 결과 없음")
         return
@@ -375,6 +380,17 @@ def print_consensus(results: list[ConsensusResult]) -> None:
 
         print(f"  {r.ticker:<10} {r.final_action:<6} {r.final_confidence:>4.0f} {r.agreement_rate:>5.0%} "
               f"{' '.join(f'{c:>5}' for c in cols)}")
+
+    # 합의 supporters reasoning 출력 (verbose 모드 또는 단일 종목)
+    show_supporters = verbose or len(results) == 1
+    if show_supporters:
+        for r in sorted(results, key=lambda x: x.final_confidence, reverse=True):
+            supporters = [v for v in r.verdicts if v.action == r.final_action]
+            if not supporters:
+                continue
+            print(f"\n  ▸ {r.ticker} {r.final_action} ({r.final_confidence:.0f}, agree={r.agreement_rate:.0%}) — supporters:")
+            for v in sorted(supporters, key=lambda x: x.confidence, reverse=True):
+                print(f"      {v.agent_name}({v.confidence:.0f}): {v.reasoning}")
 
     # 반대 의견 요약
     dissents = [(r.ticker, r.dissent) for r in results if r.dissent]
@@ -436,22 +452,20 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 멀티 에이전트 합의")
     parser.add_argument("--ticker", help="특정 종목만")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="합의 의견의 supporting verdicts reasoning 함께 출력")
     args = parser.parse_args()
 
     if args.ticker:
         result = analyze_ticker(args.ticker)
-        print_consensus([result])
-        if result.dissent:
-            print("  반대 의견:")
-            for d in result.dissent:
-                print(f"    {d}")
+        print_consensus([result], verbose=args.verbose)
         # 단일 종목도 DB 저장 (frontend evidence 연속성)
         saved = save_to_recommendations([result])
         if saved:
             logger.info(f"recommendations 테이블에 {saved}건 저장")
     else:
         results = analyze_portfolio()
-        print_consensus(results)
+        print_consensus(results, verbose=args.verbose)
         saved = save_to_recommendations(results)
         if saved:
             logger.info(f"recommendations 테이블에 {saved}건 저장 (frontend /decision 활성화)")
