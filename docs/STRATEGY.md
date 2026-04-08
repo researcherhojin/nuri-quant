@@ -11,7 +11,7 @@
 **가설**: "왜 사야 하는지/팔아야 하는지"를 데이터로 증명하는 시스템을 만들면, 감정 개입을 제거하고 일관된 의사결정을 할 수 있다.
 
 **핵심 차별점**: 추천을 내리는 것이 아니라, 추천의 근거를 증명하는 것이 목적이다.
-- 15개 시그널 × 8,000+ 과거 트레이드 백테스트로 각 시그널의 승률/수익비(PF)를 검증
+- 20개 시그널 × 8,000+ 과거 트레이드 백테스트로 각 시그널의 승률/수익비(PF)를 검증
 - 10개 에이전트가 독립적으로 분석한 뒤 가중 합의 (risk agent 거부권)
 - SIEGE 10-gate가 모든 추천을 기계적으로 검증 — 1개라도 실패하면 REJECTED
 - 5개 Plotly 차트가 최종 증거를 시각화
@@ -124,9 +124,9 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend coverage | ≥ 95% | 98% (2,928 tests, 32 files) |
-| Frontend coverage | ≥ 90% | 95% (585 tests, 44 files) |
-| E2E | 핵심 flow 커버 | 21 Playwright tests |
+| Backend tests | CI 최소 40%, 목표 ≥ 95% | 2,253 tests, 91 files |
+| Frontend tests | 목표 ≥ 90% | 593 tests, 45 files |
+| E2E | 핵심 flow 커버 | 21 Playwright tests (4 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
 
@@ -155,7 +155,7 @@ PR을 올리기 전 이 기준을 확인한다.
 | 항목 | 기준 |
 |------|------|
 | 시크릿 | `.env` 파일, git에 커밋 금지 |
-| 인증 | DASHBOARD_PASSWORD 설정 시 SHA256 쿠키 기반 인증 |
+| 인증 | DASHBOARD_PASSWORD 설정 시 HMAC-SHA256 keyed 토큰 기반 쿠키 인증 (Edge Runtime 호환, CodeQL js/insufficient-password-hash 대응) |
 | CI | Trivy CRITICAL 취약점 → 머지 차단 |
 | LLM | 포트폴리오 데이터 외부 전송 금지 (Ollama local only) |
 
@@ -316,26 +316,56 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 ---
 
-## 7. 현재 상태
+## 7. 앞으로 진행할 순서
 
-### 완성된 것
+이 섹션은 **앞으로 할 일**만 기록한다. 완료된 항목은 git log + closed PR + closed issue가 진실 source. 새 작업을 시작하기 전에 이 순서를 확인하고, 새 발견은 GitHub 이슈로 등록한 뒤 이 표에 추가한다.
 
-- 8-phase 파이프라인 (Collect → Notify) 전체 동작
-- 21 collectors, 15 signals, 10 regimes, 10 agents, SIEGE 10-gate
-- 54 API endpoints, 27 tables (v11 migrations)
-- 15-page 대시보드 (Pipeline DAG, Portfolio CRUD, Evidence 차트)
-- 2,928 backend (98%) + 585 frontend (95%) + 21 E2E tests
+### Tier 1 — 다음 1~2 작업 사이클 (P0)
 
-### 미완성 — 우선순위 순
+가장 시급. 파이프라인 안정성·신뢰도 직결.
 
-| 우선순위 | 항목 | 이슈 | 이유 |
-|---------|------|------|------|
-| ~~1~~ | ~~투자 규칙 UI~~ | ~~#42~~ | ✅ 완료 — 익절 하이라이트, 반포지션 경고, 매도 우선순위 뱃지 |
-| ~~2~~ | ~~에이전트 reasoning trace~~ | — | ✅ 완료 — SSE 스트리밍 + AgentTrace 컴포넌트 |
-| 3 | Alpaca 실전 연동 | #17 | Paper → Live 전환, 자동 매도 실행 |
-| 4 | 브로커 API 연동 | #25 | 수동 포트폴리오 입력 제거, 자동 동기화 |
-| 5 | 백테스트 인터랙티브 차트 | — | 파라미터 조절 + 실시간 시뮬레이션 |
-| 6 | pytest slow marker | — | CI fast/slow 분리로 개발 속도 향상 |
+| # | 항목 | 이슈 | 카테고리 | 비고 |
+|---|------|------|---------|------|
+| 1 | consensus 15초 timeout 크래시 수정 | [#130](https://github.com/researcherhojin/nuri-quant/issues/130) | fix(agents) | `make full-scan` Phase E 중단 사유. 60초로 상향 + per-future timeout 패턴 |
+| 2 | SIEGE REJECTED → 행동 가능 remediation | [#132](https://github.com/researcherhojin/nuri-quant/issues/132) | feat(siege) | certify + rebalance를 한 번에. `make remediate` 신규 |
+| 3 | 상장폐지 한국 ETF 6개 정리 + 자동 검증 | [#131](https://github.com/researcherhojin/nuri-quant/issues/131) | chore(data) | 로그 오염 + Phase F warn. portfolio 검증 스크립트 추가 |
+
+### Tier 2 — 다음 1 달 (P1)
+
+전략적 가치 큼. Tier 1 끝나고 진행.
+
+| # | 항목 | 이슈 | 카테고리 | 비고 |
+|---|------|------|---------|------|
+| 4 | 티커 기반 First-Run 온보딩 UX | [#133](https://github.com/researcherhojin/nuri-quant/issues/133) | feat(frontend) | 신규 사용자 0분 가치 체험. `/analyze?ticker=NVDA` |
+| 5 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거 |
+| 6 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
+| 7 | rebalance-advisor priority 필드 노출 | [#87](https://github.com/researcherhojin/nuri-quant/issues/87) | feat(api) | 매도 우선순위 명시 |
+| 8 | 서비스 아키텍처 Mermaid + README 뱃지 미니멀화 + DX_GUIDE 한글화 | [#134](https://github.com/researcherhojin/nuri-quant/issues/134) | docs | Palantir-style 토폴로지 시각화 |
+| 9 | SECURITY.md + Community Health 100% | [#135](https://github.com/researcherhojin/nuri-quant/issues/135) | chore(security) | 보안 보고 채널 + diskcache dismissal 영구 문서화 |
+
+### Tier 3 — 다음 분기 (P2)
+
+큰 작업. 선행 종속성 또는 외부 통합.
+
+| # | 항목 | 이슈 | 카테고리 | 비고 |
+|---|------|------|---------|------|
+| 10 | Alpaca 실전 연동 (Paper → Live) | [#17](https://github.com/researcherhojin/nuri-quant/issues/17) | feat(execution) | 자동 매도 실행. SIEGE CERTIFIED 종목만 |
+| 11 | KIS Open API 한국 실전 연동 | — | feat(execution) | `kis_realtime.py` 기 구현. 매매 endpoint 미연결 |
+| 12 | pytest fast/slow marker 분리 | [#88](https://github.com/researcherhojin/nuri-quant/issues/88) | ci | PR feedback 가속 (현재 CI 약 2:47, slow split 시 ~1:30 목표) |
+
+### 영구 배경 작업 (낮은 우선순위, 발견 시 처리)
+
+| 항목 | 이슈 | 비고 |
+|------|------|------|
+| Position special regime trend matching | [#86](https://github.com/researcherhojin/nuri-quant/issues/86) | substring → state.trend 정확 매칭 |
+| TestGate flake on push (PR-only pass) | [#85](https://github.com/researcherhojin/nuri-quant/issues/85) | CI 환경 차이 조사 필요 |
+
+### 작업 규칙 (변경 없음)
+
+- **이슈 1개 = PR 1개**, 커밋 ≤ 3
+- 새 발견 → 별도 이슈, 같은 PR에 묶지 않음
+- Tier를 건너뛰지 않음 (Tier 2 시작 전 Tier 1 모두 close)
+- 새 항목 추가 시 이 표를 함께 업데이트, 이슈 번호 필수
 
 ---
 
