@@ -25,8 +25,10 @@ import crypto from "node:crypto";
 
 function getSecret(): string {
   // AUTH_SECRET first, fall back to the dashboard password itself.
-  // Either way the value is stable across restarts so cookies remain valid.
-  return process.env.AUTH_SECRET ?? process.env.DASHBOARD_PASSWORD ?? "";
+  // Use || (truthy) instead of ?? (nullish) so an empty-string env var
+  // also falls through — env vars are conventionally treated as "unset"
+  // when either undefined or "".
+  return process.env.AUTH_SECRET || process.env.DASHBOARD_PASSWORD || "";
 }
 
 /**
