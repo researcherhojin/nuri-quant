@@ -158,6 +158,7 @@ PR을 올리기 전 이 기준을 확인한다.
 | 인증 | DASHBOARD_PASSWORD 설정 시 HMAC-SHA256 keyed 토큰 기반 쿠키 인증 (Edge Runtime 호환, CodeQL js/insufficient-password-hash 대응) |
 | CI | Trivy CRITICAL 취약점 → 머지 차단 |
 | LLM | 포트폴리오 데이터 외부 전송 금지 (Ollama local only) |
+| **개인 금융 데이터** | commit · PR · issue · 코드 주석 · 테스트 fixture · CI 로그에 절대 노출 금지. `config/portfolio.yaml`이 gitignored이지만 그 *내용*도 git 추적 대상에 들어가면 안 됨. broker 계좌명, 보유 수량, 평단가, 현금 잔고, 매매 이력 모두 해당. 자세한 룰은 [#138](https://github.com/researcherhojin/nuri-quant/issues/138) 참고. |
 
 ---
 
@@ -322,13 +323,15 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 ### Tier 1 — 다음 1~2 작업 사이클 (P0)
 
-가장 시급. 파이프라인 안정성·신뢰도 직결.
+가장 시급. 파이프라인 안정성·신뢰도·시스템 가치 명제 직결.
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 1 | consensus 15초 timeout 크래시 수정 | [#130](https://github.com/researcherhojin/nuri-quant/issues/130) | fix(agents) | `make full-scan` Phase E 중단 사유. 60초로 상향 + per-future timeout 패턴 |
-| 2 | SIEGE REJECTED → 행동 가능 remediation | [#132](https://github.com/researcherhojin/nuri-quant/issues/132) | feat(siege) | certify + rebalance를 한 번에. `make remediate` 신규 |
-| 3 | 상장폐지 한국 ETF 6개 정리 + 자동 검증 | [#131](https://github.com/researcherhojin/nuri-quant/issues/131) | chore(data) | 로그 오염 + Phase F warn. portfolio 검증 스크립트 추가 |
+| 1 | **macro intelligence ingestion** (뉴스·이벤트 → regime classifier) | [#137](https://github.com/researcherhojin/nuri-quant/issues/137) | feat(macro) | **시스템의 raison d'être 직결.** 휴전·유가·sector rotation 같은 이벤트를 시스템이 모르면 사용자가 시스템보다 더 많이 알게 되어 본말 전도. macro_score 56/100 lock 해제. |
+| 2 | consensus 15초 timeout 크래시 수정 | [#130](https://github.com/researcherhojin/nuri-quant/issues/130) | fix(agents) | `make full-scan` Phase E 중단 사유. 60초로 상향 + per-future timeout 패턴 |
+| 3 | SIEGE REJECTED → 행동 가능 remediation | [#132](https://github.com/researcherhojin/nuri-quant/issues/132) | feat(siege) | certify + rebalance를 한 번에. `make remediate` 신규 |
+| 4 | 상장폐지 한국 ETF 6개 정리 + 자동 검증 | [#131](https://github.com/researcherhojin/nuri-quant/issues/131) | chore(data) | 로그 오염 + Phase F warn. portfolio 검증 스크립트 추가 |
+| 5 | 개인 금융 데이터 git/PR/issue 노출 금지 룰 명문화 | [#138](https://github.com/researcherhojin/nuri-quant/issues/138) | chore(privacy) | pre-commit hook + CI scan + STRATEGY.md §4.4 강화 (이미 일부 반영) |
 
 ### Tier 2 — 다음 1 달 (P1)
 
