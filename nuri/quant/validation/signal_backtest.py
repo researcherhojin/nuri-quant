@@ -19,6 +19,12 @@ import numpy as np
 import pandas as pd
 
 from nuri.core.db import get_tickers, query_df
+from nuri.core.signal_config import (
+    SIGNAL_CONFIG,
+    get_signal_params,
+    list_buy_signals,
+    list_sell_signals,
+)
 from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
@@ -72,13 +78,15 @@ ExitDetector = Callable[[pd.DataFrame, int], bool]
 # ── 진입 감지 함수 ──
 
 def _entry_rsi_oversold(df: pd.DataFrame, i: int) -> bool:
+    threshold = get_signal_params("rsi_oversold").get("threshold", 30)
     rsi, rsi_prev = df["rsi_14"].iloc[i], df["rsi_14"].iloc[i - 1]
-    return bool(pd.notna(rsi) and pd.notna(rsi_prev) and rsi_prev < 30 and rsi >= 30)
+    return bool(pd.notna(rsi) and pd.notna(rsi_prev) and rsi_prev < threshold and rsi >= threshold)
 
 
 def _entry_rsi_overbought(df: pd.DataFrame, i: int) -> bool:
+    threshold = get_signal_params("rsi_overbought").get("threshold", 70)
     rsi, rsi_prev = df["rsi_14"].iloc[i], df["rsi_14"].iloc[i - 1]
-    return bool(pd.notna(rsi) and pd.notna(rsi_prev) and rsi_prev > 70 and rsi <= 70)
+    return bool(pd.notna(rsi) and pd.notna(rsi_prev) and rsi_prev > threshold and rsi <= threshold)
 
 
 def _entry_macd_golden(df: pd.DataFrame, i: int) -> bool:
@@ -124,45 +132,56 @@ def _entry_bb_bounce(df: pd.DataFrame, i: int) -> bool:
 def _entry_volume_spike(df: pd.DataFrame, i: int) -> bool:
     if "volume" not in df.columns or "volume_sma_20" not in df.columns:
         return False
+    multiplier = get_signal_params("volume_spike").get("multiplier", 3.0)
     vol, vol_avg = df["volume"].iloc[i], df["volume_sma_20"].iloc[i]
-    return bool(pd.notna(vol) and pd.notna(vol_avg) and vol_avg > 0 and vol > vol_avg * 3)
+    return bool(pd.notna(vol) and pd.notna(vol_avg) and vol_avg > 0 and vol > vol_avg * multiplier)
 
 
 def _entry_gap_up(df: pd.DataFrame, i: int) -> bool:
     if "open" not in df.columns:
         return False
+    threshold = get_signal_params("gap_up").get("threshold", 0.02)
     op, cp = df["open"].iloc[i], df["close"].iloc[i - 1]
-    return bool(pd.notna(op) and pd.notna(cp) and op > cp * 1.02)
+    return bool(pd.notna(op) and pd.notna(cp) and op > cp * (1 + threshold))
 
 
 def _entry_gap_down(df: pd.DataFrame, i: int) -> bool:
     if "open" not in df.columns:
         return False
+    threshold = get_signal_params("gap_down").get("threshold", 0.02)
     op, cp = df["open"].iloc[i], df["close"].iloc[i - 1]
-    return bool(pd.notna(op) and pd.notna(cp) and op < cp * 0.98)
+    return bool(pd.notna(op) and pd.notna(cp) and op < cp * (1 - threshold))
 
 
 def _entry_vix_reversal(df: pd.DataFrame, i: int) -> bool:
-    if "macro_vix" not in df.columns or i < 3:
+    params = get_signal_params("vix_reversal")
+    vix_high = params.get("vix_high", 30)
+    vix_low = params.get("vix_low", 25)
+    consecutive = params.get("consecutive_days", 3)
+    if "macro_vix" not in df.columns or i < consecutive:
         return False
     vix_now = df["macro_vix"].iloc[i]
-    if not (pd.notna(vix_now) and bool(vix_now <= 25)):
+    if not (pd.notna(vix_now) and bool(vix_now <= vix_low)):
         return False
-    prev_3 = [df["macro_vix"].iloc[i - k] for k in range(1, 4)]
-    return all(pd.notna(v) and bool(v >= 30) for v in prev_3)
+    prev_n = [df["macro_vix"].iloc[i - k] for k in range(1, consecutive + 1)]
+    return all(pd.notna(v) and bool(v >= vix_high) for v in prev_n)
 
 
 def _entry_pcr_reversal(df: pd.DataFrame, i: int) -> bool:
-    if "macro_pcr" not in df.columns or i < 20:
+    params = get_signal_params("pcr_reversal")
+    pcr_high = params.get("pcr_high", 1.2)
+    pcr_low = params.get("pcr_low", 0.8)
+    lookback = params.get("lookback_days", 20)
+    if "macro_pcr" not in df.columns or i < lookback:
         return False
     pcr_now = df["macro_pcr"].iloc[i]
-    if not (pd.notna(pcr_now) and bool(pcr_now <= 0.8)):
+    if not (pd.notna(pcr_now) and bool(pcr_now <= pcr_low)):
         return False
-    window = df["macro_pcr"].iloc[max(0, i - 20):i].dropna()
+    window = df["macro_pcr"].iloc[max(0, i - lookback):i].dropna()
     if len(window) == 0:
         return False
     peak_val = window.max()
-    if not bool(peak_val >= 1.2):
+    if not bool(peak_val >= pcr_high):
         return False
     return bool(window.idxmax() < i)  # 고점이 먼저
 
@@ -178,18 +197,108 @@ def _entry_yield_curve_recovery(df: pd.DataFrame, i: int) -> bool:
 def _entry_insider_cluster(df: pd.DataFrame, i: int) -> bool:
     if "insider_buy_count_10d" not in df.columns:
         return False
+    min_count = get_signal_params("insider_cluster").get("min_count", 3)
     count = int(df["insider_buy_count_10d"].iloc[i])
     count_prev = int(df["insider_buy_count_10d"].iloc[i - 1])
-    return count >= 3 and count_prev < 3
+    return count >= min_count and count_prev < min_count
 
 
 def _entry_short_squeeze(df: pd.DataFrame, i: int) -> bool:
-    if "short_interest" not in df.columns or i < 3:
+    params = get_signal_params("short_squeeze")
+    min_si = params.get("min_short_interest", 10)
+    consecutive = params.get("consecutive_up_days", 3)
+    if "short_interest" not in df.columns or i < consecutive:
         return False
     si = df["short_interest"].iloc[i]
-    if not (pd.notna(si) and bool(si >= 10)):
+    if not (pd.notna(si) and bool(si >= min_si)):
         return False
-    return all(df["close"].iloc[i - k] > df["close"].iloc[i - k - 1] for k in range(3))
+    return all(df["close"].iloc[i - k] > df["close"].iloc[i - k - 1] for k in range(consecutive))
+
+
+# ── 차트 패턴 시그널 (chart_analysis.py와 동일 컨셉) ──
+
+
+def _entry_macd_bullish_turn(df: pd.DataFrame, i: int) -> bool:
+    """MACD 히스토그램 음→양 전환 (모멘텀 회복)."""
+    if "macd_hist" not in df.columns or i < 1:
+        return False
+    h, h_prev = df["macd_hist"].iloc[i], df["macd_hist"].iloc[i - 1]
+    return bool(pd.notna(h) and pd.notna(h_prev) and h_prev < 0 and h >= 0)
+
+
+def _entry_macd_bearish_turn(df: pd.DataFrame, i: int) -> bool:
+    """MACD 히스토그램 양→음 전환 (모멘텀 둔화)."""
+    if "macd_hist" not in df.columns or i < 1:
+        return False
+    h, h_prev = df["macd_hist"].iloc[i], df["macd_hist"].iloc[i - 1]
+    return bool(pd.notna(h) and pd.notna(h_prev) and h_prev > 0 and h <= 0)
+
+
+def _entry_bb_squeeze_breakout(df: pd.DataFrame, i: int) -> bool:
+    """BB squeeze 후 상단 돌파 (변동성 압축 → 방향성 출현)."""
+    params = get_signal_params("bb_squeeze_breakout")
+    squeeze_ratio = params.get("squeeze_ratio", 0.7)
+    lookback = params.get("lookback_days", 20)
+    required = {"bb_upper", "bb_lower", "bb_middle", "close"}
+    if not required.issubset(df.columns) or i < lookback:
+        return False
+    upper = df["bb_upper"].iloc[i]
+    lower = df["bb_lower"].iloc[i]
+    middle = df["bb_middle"].iloc[i]
+    close = df["close"].iloc[i]
+    close_prev = df["close"].iloc[i - 1]
+    upper_prev = df["bb_upper"].iloc[i - 1]
+    if pd.isna(upper) or pd.isna(lower) or pd.isna(middle) or middle == 0:
+        return False
+    width = (upper - lower) / middle
+    widths = ((df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]).iloc[max(0, i - lookback):i]
+    avg_width = widths.mean()
+    if pd.isna(avg_width) or avg_width == 0:
+        return False
+    is_squeezed = width < avg_width * squeeze_ratio
+    is_breakout = bool(close > upper and close_prev <= upper_prev)
+    return bool(is_squeezed and is_breakout)
+
+
+def _entry_near_52w_low_bounce(df: pd.DataFrame, i: int) -> bool:
+    """52주 저점 근접에서 반등 (가치 반등)."""
+    params = get_signal_params("near_52w_low_bounce")
+    proximity = params.get("proximity_pct", 0.10)
+    bounce = params.get("bounce_pct", 0.03)
+    bounce_days = params.get("bounce_days", 3)
+    lookback = params.get("lookback_days", 252)
+    if "close" not in df.columns or i < lookback:
+        return False
+    window = df["close"].iloc[max(0, i - lookback):i + 1]
+    low_window = window.min()
+    close = df["close"].iloc[i]
+    close_back = df["close"].iloc[i - bounce_days] if i >= bounce_days else close
+    if pd.isna(low_window) or low_window == 0:
+        return False
+    near_low = (close - low_window) / low_window <= proximity
+    bounced = (close - close_back) / close_back >= bounce
+    return bool(near_low and bounced)
+
+
+def _entry_volume_profile_resistance(df: pd.DataFrame, i: int) -> bool:
+    """매물대(POC) 구간 통과 + 거래량 급증."""
+    params = get_signal_params("volume_profile_resistance")
+    proximity = params.get("poc_proximity", 0.02)
+    vol_mult = params.get("volume_multiplier", 1.5)
+    lookback = params.get("lookback_days", 120)
+    required = {"close", "volume"}
+    if not required.issubset(df.columns) or i < lookback:
+        return False
+    sub = df[["close", "volume"]].iloc[max(0, i - lookback):i].dropna()
+    if sub.empty or sub["volume"].sum() == 0:
+        return False
+    vwap = (sub["close"] * sub["volume"]).sum() / sub["volume"].sum()
+    close = df["close"].iloc[i]
+    vol = df["volume"].iloc[i]
+    avg_vol = sub["volume"].mean()
+    near_poc = abs(close - vwap) / vwap <= proximity
+    high_vol = pd.notna(vol) and vol > avg_vol * vol_mult
+    return bool(near_poc and high_vol)
 
 
 # ── 청산 감지 함수 (hold_days=None 시그널용) ──
@@ -222,92 +331,70 @@ def _exit_yield_curve_recovery(df: pd.DataFrame, i: int) -> bool:
 
 
 # ── 시그널 레지스트리 ──
+#
+# 시그널 메타데이터 (description, hold_days, type=BUY/SELL, enabled, params)는
+# config/signals.yaml에서 관리. 본 모듈은 detector 함수만 등록하고,
+# _build_signal_definitions()가 YAML + detector를 결합해 SIGNAL_DEFINITIONS를 빌드.
 
-SIGNAL_DEFINITIONS: dict[str, dict] = {
-    "rsi_oversold": {
-        "description": "RSI 과매도 반등 (30 아래에서 위로)",
-        "hold_days": 20,
-        "entry": _entry_rsi_oversold,
-    },
-    "rsi_overbought": {
-        "description": "RSI 과매수 이탈 (70 위에서 아래로)",
-        "hold_days": 20,
-        "entry": _entry_rsi_overbought,
-    },
-    "macd_golden": {
-        "description": "MACD 골든크로스 (MACD > Signal)",
-        "hold_days": None,
-        "entry": _entry_macd_golden,
-        "exit": _exit_macd_golden,
-    },
-    "macd_dead": {
-        "description": "MACD 데드크로스 (MACD < Signal)",
-        "hold_days": None,
-        "entry": _entry_macd_dead,
-        "exit": _exit_macd_dead,
-    },
-    "sma_golden": {
-        "description": "SMA 골든크로스 (SMA50 > SMA200)",
-        "hold_days": None,
-        "entry": _entry_sma_golden,
-        "exit": _exit_sma_golden,
-    },
-    "sma_dead": {
-        "description": "SMA 데드크로스 (SMA50 < SMA200)",
-        "hold_days": None,
-        "entry": _entry_sma_dead,
-        "exit": _exit_sma_dead,
-    },
-    "bb_bounce": {
-        "description": "BB 하단 반등 (종가가 BB Lower 위로)",
-        "hold_days": 20,
-        "entry": _entry_bb_bounce,
-    },
-    # ── 가격 기반 시그널 ──
-    "volume_spike": {
-        "description": "거래량 급증 (20일 평균 대비 3배 초과)",
-        "hold_days": 10,
-        "entry": _entry_volume_spike,
-    },
-    "gap_up": {
-        "description": "갭 상승 (시가 > 전일 종가 × 1.02)",
-        "hold_days": 10,
-        "entry": _entry_gap_up,
-    },
-    "gap_down": {
-        "description": "갭 하락 (시가 < 전일 종가 × 0.98)",
-        "hold_days": 10,
-        "entry": _entry_gap_down,
-    },
-    # ── 매크로 기반 시그널 ──
-    "vix_reversal": {
-        "description": "VIX 공포 반전 (30+ 3일 연속 → 25 이하)",
-        "hold_days": 20,
-        "entry": _entry_vix_reversal,
-    },
-    "pcr_reversal": {
-        "description": "PCR 반전 (1.2+ → 0.8 이하, 고점→저점 순서)",
-        "hold_days": 15,
-        "entry": _entry_pcr_reversal,
-    },
-    "yield_curve_recovery": {
-        "description": "수익률곡선 정상화 (3M-10Y 음수→양수)",
-        "hold_days": None,
-        "entry": _entry_yield_curve_recovery,
-        "exit": _exit_yield_curve_recovery,
-    },
-    # ── 데이터 의존 시그널 ──
-    "insider_cluster": {
-        "description": "내부자 집중 매수 (10일 내 3건+ 매수)",
-        "hold_days": 20,
-        "entry": _entry_insider_cluster,
-    },
-    "short_squeeze": {
-        "description": "숏 스퀴즈 가능성 (short_interest 높음 + 가격 반등)",
-        "hold_days": 15,
-        "entry": _entry_short_squeeze,
-    },
+# detector 함수 레지스트리 (entry)
+_ENTRY_DETECTORS: dict[str, EntryDetector] = {
+    "rsi_oversold": _entry_rsi_oversold,
+    "rsi_overbought": _entry_rsi_overbought,
+    "macd_golden": _entry_macd_golden,
+    "macd_dead": _entry_macd_dead,
+    "sma_golden": _entry_sma_golden,
+    "sma_dead": _entry_sma_dead,
+    "bb_bounce": _entry_bb_bounce,
+    "volume_spike": _entry_volume_spike,
+    "gap_up": _entry_gap_up,
+    "gap_down": _entry_gap_down,
+    "vix_reversal": _entry_vix_reversal,
+    "pcr_reversal": _entry_pcr_reversal,
+    "yield_curve_recovery": _entry_yield_curve_recovery,
+    "insider_cluster": _entry_insider_cluster,
+    "short_squeeze": _entry_short_squeeze,
+    "macd_bullish_turn": _entry_macd_bullish_turn,
+    "macd_bearish_turn": _entry_macd_bearish_turn,
+    "bb_squeeze_breakout": _entry_bb_squeeze_breakout,
+    "near_52w_low_bounce": _entry_near_52w_low_bounce,
+    "volume_profile_resistance": _entry_volume_profile_resistance,
 }
+
+# detector 함수 레지스트리 (exit, hold_days=null 시그널용)
+_EXIT_DETECTORS: dict[str, ExitDetector] = {
+    "macd_golden": _exit_macd_golden,
+    "macd_dead": _exit_macd_dead,
+    "sma_golden": _exit_sma_golden,
+    "sma_dead": _exit_sma_dead,
+    "yield_curve_recovery": _exit_yield_curve_recovery,
+}
+
+
+def _build_signal_definitions() -> dict[str, dict]:
+    """config/signals.yaml + detector 레지스트리에서 SIGNAL_DEFINITIONS 빌드.
+
+    YAML 메타데이터 (description/hold_days/enabled) + Python detector 결합.
+    enabled=false 시그널은 제외.
+    """
+    cfg = SIGNAL_CONFIG.get("signals", {})
+    result: dict[str, dict] = {}
+    for sid, meta in cfg.items():
+        if not meta.get("enabled", True):
+            continue
+        if sid not in _ENTRY_DETECTORS:
+            logger.warning("signals.yaml에 정의된 %s에 대응하는 detector 함수 없음", sid)
+            continue
+        result[sid] = {
+            "description": meta.get("description", sid),
+            "hold_days": meta.get("hold_days"),
+            "entry": _ENTRY_DETECTORS[sid],
+        }
+        if sid in _EXIT_DETECTORS:
+            result[sid]["exit"] = _EXIT_DETECTORS[sid]
+    return result
+
+
+SIGNAL_DEFINITIONS: dict[str, dict] = _build_signal_definitions()
 
 # 매크로 시그널 ID 목록 (DB macro 테이블 데이터 필요)
 MACRO_SIGNAL_IDS = {"vix_reversal", "pcr_reversal", "yield_curve_recovery"}
@@ -315,14 +402,9 @@ MACRO_SIGNAL_IDS = {"vix_reversal", "pcr_reversal", "yield_curve_recovery"}
 # 데이터 의존 시그널 ID 목록 (DB 별도 테이블 데이터 필요)
 DATA_SIGNAL_IDS = {"insider_cluster", "short_squeeze"}
 
-# 매수/매도 시그널 분류 (SIGNAL_DEFINITIONS와 동일 소스에서 관리)
-BUY_SIGNALS = {
-    "rsi_oversold", "macd_golden", "sma_golden", "bb_bounce",
-    "volume_spike", "gap_up",
-    "vix_reversal", "pcr_reversal", "yield_curve_recovery",
-    "insider_cluster", "short_squeeze",
-}
-SELL_SIGNALS = {"rsi_overbought", "macd_dead", "sma_dead", "gap_down"}
+# 매수/매도 시그널 분류 — config/signals.yaml의 type 필드에서 자동 빌드
+BUY_SIGNALS: set[str] = list_buy_signals()
+SELL_SIGNALS: set[str] = list_sell_signals()
 
 
 # ═══════════════════════════════════════════════════════

@@ -233,9 +233,28 @@ class TestSignalDefinitions:
         assert "pcr_reversal" in BUY_SIGNALS
         assert "yield_curve_recovery" in BUY_SIGNALS
 
-    def test_total_signal_count_is_15(self):
+    def test_total_signal_count_is_20(self):
         from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS
-        assert len(SIGNAL_DEFINITIONS) == 15
+        # 15 base + 5 chart pattern signals (macd_bullish_turn, macd_bearish_turn,
+        # bb_squeeze_breakout, near_52w_low_bounce, volume_profile_resistance)
+        assert len(SIGNAL_DEFINITIONS) == 20
+
+    def test_chart_pattern_signals_in_definitions(self):
+        from nuri.quant.validation.signal_backtest import (
+            BUY_SIGNALS,
+            SELL_SIGNALS,
+            SIGNAL_DEFINITIONS,
+        )
+        chart_signals = {
+            "macd_bullish_turn", "macd_bearish_turn", "bb_squeeze_breakout",
+            "near_52w_low_bounce", "volume_profile_resistance",
+        }
+        assert chart_signals.issubset(SIGNAL_DEFINITIONS.keys())
+        assert "macd_bullish_turn" in BUY_SIGNALS
+        assert "macd_bearish_turn" in SELL_SIGNALS
+        assert "bb_squeeze_breakout" in BUY_SIGNALS
+        assert "near_52w_low_bounce" in BUY_SIGNALS
+        assert "volume_profile_resistance" in BUY_SIGNALS
 
 
 class TestVixReversal:
