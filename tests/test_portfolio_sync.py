@@ -668,3 +668,212 @@ class TestMetadata:
         assert "flag" not in nvda
         # 메타데이터 보존
         assert data["accounts"]["test"]["name"] == "Brokerage Alpha"
+
+
+class TestImportScriptSync:
+    """scripts/import_portfolio.py의 yaml→DB sync 시맨틱 검증."""
+
+    def _write_yaml(self, path, content):
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump(content, f, allow_unicode=True)
+
+    def test_load_holdings_by_account_groups_records(self, tmp_path):
+        """계좌별로 grouping된 dict 반환."""
+        import scripts.import_portfolio as imp
+
+        yaml_path = tmp_path / "portfolio.yaml"
+        self._write_yaml(yaml_path, {
+            "accounts": {
+                "test": {
+                    "currency": "USD",
+                    "holdings": [
+                        {"ticker": "TSLA", "qty": 10, "avg": 300.0, "sector": "SectorA"},
+                        {"ticker": "NVDA", "qty": 5, "avg": 130.0, "sector": "Semi"},
+                    ],
+                },
+                "sample": {
+                    "currency": "KRW",
+                    "holdings": [
+                        {"ticker": "005930.KS", "qty": 1, "avg": 55000.0, "sector": "Semi"},
+                    ],
+                },
+            },
+        })
+
+        result = imp.load_holdings_by_account(config_path=yaml_path)
+        assert set(result.keys()) == {"test", "sample"}
+        assert len(result["test"]) == 2
+        assert len(result["sample"]) == 1
+
+    def test_load_holdings_by_account_skips_accounts_without_holdings_key(self, tmp_path):
+        """holdings 키가 없는 계좌는 결과에서 제외."""
+        import scripts.import_portfolio as imp
+
+        yaml_path = tmp_path / "portfolio.yaml"
+        self._write_yaml(yaml_path, {
+            "accounts": {
+                "irp": {"currency": "KRW", "balance": 1000000},  # holdings 키 없음
+                "test": {"currency": "USD"},  # holdings 키 없음
+                "test": {
+                    "currency": "USD",
+                    "holdings": [{"ticker": "TSLA", "qty": 1, "avg": 300.0}],
+                },
+            },
+        })
+
+        result = imp.load_holdings_by_account(config_path=yaml_path)
+        assert set(result.keys()) == {"test"}
+
+    def test_load_holdings_by_account_empty_holdings_returns_empty_list(self, tmp_path):
+        """holdings: [] → 빈 리스트 (전량 청산 표현)."""
+        import scripts.import_portfolio as imp
+
+        yaml_path = tmp_path / "portfolio.yaml"
+        self._write_yaml(yaml_path, {
+            "accounts": {
+                "test": {"currency": "USD", "holdings": []},
+            },
+        })
+
+        result = imp.load_holdings_by_account(config_path=yaml_path)
+        assert result == {"test": []}
+
+    def test_legacy_load_holdings_still_returns_flat_list(self, tmp_path):
+        """하위 호환: load_holdings()는 평탄화된 리스트 반환."""
+        import scripts.import_portfolio as imp
+
+        yaml_path = tmp_path / "portfolio.yaml"
+        self._write_yaml(yaml_path, {
+            "accounts": {
+                "test": {
+                    "currency": "USD",
+                    "holdings": [
+                        {"ticker": "TSLA", "qty": 10, "avg": 300.0, "sector": "SectorA"},
+                    ],
+                },
+                "sample": {
+                    "currency": "KRW",
+                    "holdings": [
+                        {"ticker": "005930.KS", "qty": 1, "avg": 55000.0, "sector": "Semi"},
+                    ],
+                },
+            },
+        })
+
+        records = imp.load_holdings(config_path=yaml_path)
+        assert isinstance(records, list)
+        assert len(records) == 2
+        tickers = sorted(r["ticker"] for r in records)
+        assert tickers == ["005930.KS", "TSLA"]
+
+    def test_main_removes_stale_db_rows(self, tmp_path, monkeypatch):
+        """main() 실행 시 yaml에 없는 ticker가 DB에서 삭제됨."""
+        from nuri.core.db import init_db, query, upsert_portfolio
+
+        db_path = tmp_path / "test.db"
+        init_db(db_path)
+        # yaml과 무관하게 DB만 사용하도록 monkeypatch
+        import nuri.core.db as db_mod
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+        # 1. DB에 stale 데이터 미리 시드 (이전 보유 종목)
+        upsert_portfolio([
+            {"account": "test", "ticker": "TSLA", "quantity": 10.0,
+             "avg_price": 300.0, "currency": "USD", "sector": "SectorA"},
+            {"account": "test", "ticker": "TSLL", "quantity": 96.0,
+             "avg_price": 20.0, "currency": "USD", "sector": "SectorB"},
+            {"account": "test", "ticker": "OKLO", "quantity": 20.0,
+             "avg_price": 150.0, "currency": "USD", "sector": "SectorC"},
+        ], db_path=db_path)
+
+        # 2. yaml에는 TSLA만 남김 (TSLL, OKLO 청산)
+        yaml_path = tmp_path / "portfolio.yaml"
+        self._write_yaml(yaml_path, {
+            "accounts": {
+                "test": {
+                    "currency": "USD",
+                    "holdings": [
+                        {"ticker": "TSLA", "qty": 33, "avg": 200.0, "sector": "SectorA"},
+                    ],
+                },
+            },
+        })
+
+        # 3. main() 실행
+        import scripts.import_portfolio as imp
+        monkeypatch.setattr(imp, "CONFIG_PATH", yaml_path)
+        imp.main()
+
+        # 4. DB는 yaml과 정확히 일치 (TSLL, OKLO 삭제됨)
+        rows = query(
+            "SELECT ticker, quantity FROM portfolio WHERE account='test' ORDER BY ticker",
+            db_path=db_path,
+        )
+        assert len(rows) == 1
+        assert rows[0]["ticker"] == "TSLA"
+        assert rows[0]["quantity"] == 33.0
+
+    def test_main_does_not_touch_accounts_without_holdings_key(self, tmp_path, monkeypatch):
+        """yaml에 holdings 키가 없는 계좌의 DB 행은 보존."""
+        from nuri.core.db import init_db, query, upsert_portfolio
+
+        db_path = tmp_path / "test.db"
+        init_db(db_path)
+        import nuri.core.db as db_mod
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+        # demo 계좌 DB에 시드
+        upsert_portfolio([
+            {"account": "demo", "ticker": "AMZN", "quantity": 2.0,
+             "avg_price": 200.0, "currency": "USD", "sector": "BigTech"},
+        ], db_path=db_path)
+
+        # yaml에는 test만, demo는 holdings 키 자체가 없음
+        yaml_path = tmp_path / "portfolio.yaml"
+        self._write_yaml(yaml_path, {
+            "accounts": {
+                "test": {
+                    "currency": "USD",
+                    "holdings": [
+                        {"ticker": "TSLA", "qty": 33, "avg": 200.0, "sector": "SectorA"},
+                    ],
+                },
+                "demo": {"currency": "USD", "name": "Brokerage Beta"},  # holdings 키 없음
+            },
+        })
+
+        import scripts.import_portfolio as imp
+        monkeypatch.setattr(imp, "CONFIG_PATH", yaml_path)
+        imp.main()
+
+        # demo는 그대로 보존
+        demo_rows = query("SELECT ticker FROM portfolio WHERE account='demo'",
+                           db_path=db_path)
+        assert len(demo_rows) == 1
+        assert demo_rows[0]["ticker"] == "AMZN"
+
+    def test_main_empty_holdings_clears_account(self, tmp_path, monkeypatch):
+        """yaml의 holdings: [] → DB에서 해당 계좌 전량 삭제."""
+        from nuri.core.db import init_db, query, upsert_portfolio
+
+        db_path = tmp_path / "test.db"
+        init_db(db_path)
+        import nuri.core.db as db_mod
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+        upsert_portfolio([
+            {"account": "test", "ticker": "TSLA", "quantity": 10.0,
+             "avg_price": 300.0, "currency": "USD", "sector": "SectorA"},
+        ], db_path=db_path)
+
+        yaml_path = tmp_path / "portfolio.yaml"
+        self._write_yaml(yaml_path, {
+            "accounts": {"test": {"currency": "USD", "holdings": []}},
+        })
+
+        import scripts.import_portfolio as imp
+        monkeypatch.setattr(imp, "CONFIG_PATH", yaml_path)
+        imp.main()
+
+        rows = query("SELECT * FROM portfolio WHERE account='test'", db_path=db_path)
+        assert rows == []
