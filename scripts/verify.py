@@ -24,7 +24,6 @@ import json
 import logging
 import sys
 import traceback
-from datetime import datetime
 from pathlib import Path
 
 # 프로젝트 루트를 path에 추가
@@ -39,9 +38,9 @@ logger = logging.getLogger("verify")
 
 
 def create_report_dir() -> Path:
-    """오늘 날짜 리포트 디렉토리 생성."""
-    today = datetime.now().strftime("%Y-%m-%d")  # scripts는 항상 KST 환경에서 실행
-    report_dir = ROOT / "data" / "reports" / today
+    """오늘 날짜 리포트 디렉토리 생성 (KST)."""
+    from nuri.core.timezone import today_kst
+    report_dir = ROOT / "data" / "reports" / today_kst()
     report_dir.mkdir(parents=True, exist_ok=True)
     return report_dir
 
@@ -431,10 +430,11 @@ def main():
             logger.error(f"{name} 실패:\n{traceback.format_exc()}")
         print()  # 단계 간 구분
 
-    # 요약 저장
+    # 요약 저장 (KST timestamp)
+    from nuri.core.timezone import kst_now
     summary_text = "\n".join(summary)
     (report_dir / "summary.txt").write_text(
-        f"Nuri-Quant 검증 결과 — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+        f"Nuri-Quant 검증 결과 — {kst_now().strftime('%Y-%m-%d %H:%M')}\n"
         f"{'=' * 50}\n{summary_text}\n",
         encoding="utf-8",
     )
