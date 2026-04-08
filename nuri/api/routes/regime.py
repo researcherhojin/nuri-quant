@@ -1,8 +1,10 @@
 """레짐 + 매크로 + LLM 리포트 API."""
+import logging
 from dataclasses import asdict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["regime"])
 
 
@@ -28,7 +30,12 @@ def get_macro():
 def get_report():
     """LLM 리포트 (Gate → Context → Generate → Validate)."""
     from nuri.llm.report import generate_llm_report
-    return generate_llm_report()
+    try:
+        return generate_llm_report()
+    except Exception:
+        # Avoid leaking stack traces in HTTP responses (CodeQL py/stack-trace-exposure).
+        logger.exception("LLM report generation failed")
+        raise HTTPException(status_code=500, detail="LLM report generation failed")
 
 
 @router.get("/report/context")

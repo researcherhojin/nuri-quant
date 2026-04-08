@@ -65,9 +65,11 @@ async def _event_generator():
             snapshot = _get_snapshot()
             data = json.dumps(snapshot, ensure_ascii=False)
             yield f"data: {data}\n\n"
-        except Exception as e:
-            logger.debug(f"SSE snapshot error: {e}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        except Exception:
+            # Log full exception server-side, send a generic SSE error event to
+            # the client (CodeQL py/stack-trace-exposure).
+            logger.exception("SSE snapshot error")
+            yield f"data: {json.dumps({'error': 'snapshot unavailable'})}\n\n"
         await asyncio.sleep(INTERVAL)
 
 
