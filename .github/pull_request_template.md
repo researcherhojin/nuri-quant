@@ -1,11 +1,46 @@
+<!--
+PR Template — fill in each section before requesting review.
+Discipline checklist below catches the failure modes that wasted ~120 min in
+the previous session (drift bugs, atomicity, scope creep).
+-->
+
 ## Summary
 
-<!-- What does this PR do? Link the issue: Closes #__ -->
+<!-- 1-3 bullets explaining what changed and why. Link related issues: Closes #__ -->
 
-## Checklist
+-
 
+## Test plan
+
+<!-- How did you verify this works? -->
+
+- [ ] `bash scripts/pre_push_check.sh` passes locally (drift + lint + tests)
+- [ ] `bash scripts/ci_local.sh` passes (exact CI command parity)
+- [ ] If multi-commit: `bash scripts/check_atomic.sh` passes (each commit standalone)
 - [ ] `make lint` passes
-- [ ] Tests added/updated — `make test` passes
-- [ ] No hardcoded values — config in `config/*.yaml`
+- [ ] `make test` passes (or `make verify-quick`)
+
+## Drift check (catches "passes locally / fails CI" bugs)
+
+- [ ] `python scripts/check_drift.py` shows ≤5 unrelated uncommitted files
+- [ ] No file in this PR references an uncommitted file outside this PR scope
+- [ ] If touching `pyproject.toml` / `tests/conftest.py` / `nuri/llm/report.py`,
+      verified the committed version on this branch matches local working tree
+
+## Scope discipline
+
+- [ ] PR addresses a single concern (no scope creep)
+- [ ] Commits ≤ 3 (or justified in summary)
+- [ ] Conventional commit format on each commit (`type(scope): message`)
+- [ ] No previous-session work bundled in (separate PR)
 - [ ] Follows STRATEGY.md principles (evidence-first, mechanical execution)
+- [ ] Config in `config/*.yaml` (no hardcoded values)
 - [ ] Numbers updated if changed (README, CLAUDE.md, STRATEGY.md)
+
+## Risk
+
+<!-- What could go wrong? What's the rollback path? -->
+
+- Rollback:
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
