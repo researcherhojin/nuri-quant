@@ -10,7 +10,7 @@
 
 </div>
 
-Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 21 data collectors, 10 specialist agents, and a 10-condition mechanical gate certify every recommendation before it reaches you.
+Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 23 data collectors, 10 specialist agents, and a 10-condition mechanical gate certify every recommendation before it reaches you.
 
 ## Pipeline
 
@@ -68,7 +68,7 @@ graph LR
 ![Beautiful Soup](https://img.shields.io/badge/Beautiful_Soup-4.14.3-43853D)
 ![finvizfinance](https://img.shields.io/badge/finvizfinance-1.3.0-1E88E5)
 
-> 21 collectors + 11 external sources (TipRanks · Dataroma · CBOE · CoinGecko · Reddit/WSB · ARK · ETF.com · Macrotrends · TradingEconomics · ShortInterest · FINVIZ)
+> 23 collectors + 11 external sources (TipRanks · Dataroma · CBOE · CoinGecko · Reddit/WSB · ARK · ETF.com · Macrotrends · TradingEconomics · ShortInterest · FINVIZ)
 
 **Quantitative Analysis**<br/>
 ![pandas](https://img.shields.io/badge/pandas-2.3.3-150458?logo=pandas&logoColor=white)
@@ -112,7 +112,7 @@ graph LR
 ![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)
 
-> 2,928 backend tests (98%) + 585 frontend unit + 21 E2E tests (95%) · parallel via xdist/vitest/playwright
+> 2,253 backend tests across 91 files + 593 frontend unit (45 files) + 21 E2E tests · parallel via xdist/vitest/playwright (`-n auto --dist worksteal`)
 
 ## Getting Started
 
@@ -149,8 +149,8 @@ cp .env.example .env                                    # edit API keys (all opt
 cp config/portfolio.example.yaml config/portfolio.yaml  # edit your holdings
 
 # Verify
-make test                  # 2,928 backend tests
-cd frontend && npx vitest run && cd ..  # 585 frontend tests
+make test                  # 2,253 backend tests
+cd frontend && npx vitest run && cd ..  # 593 frontend tests
 ```
 
 ### Run
@@ -169,9 +169,9 @@ After `make start`: Dashboard at <http://localhost:3000>, API docs at <http://lo
 make collect               # 11 collectors (all external data)
 make consensus             # 10-agent consensus + price targets
 make certify               # SIEGE 10-condition certification
-make test                  # pytest (2,928 tests, parallel via xdist)
+make test                  # pytest (2,253 tests, parallel via xdist)
 make lint                  # ruff check
-cd frontend && npm run test  # vitest (585 tests)
+cd frontend && npm run test  # vitest (593 tests)
 
 # Single test
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v
@@ -233,7 +233,7 @@ Network failures are silently retried on the next tick.
 ```
 nuri/
 ├── core/          # DB gateway (sole sqlite3 importer), rules, events, freshness, timezone
-├── collectors/    # 21 modules — BaseCollector pattern (collect → save → run)
+├── collectors/    # 23 modules — BaseCollector pattern (collect → save → run)
 ├── analysis/      # Portfolio, risk, sector, charts, rebalance advisor, evidence
 ├── quant/
 │   ├── regime/    # 10-regime classifier + strategy map
