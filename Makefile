@@ -1,18 +1,85 @@
-.PHONY: setup test collect analyze report deploy backup backtest verify verify-fast validate regime recommend \
-       gate consensus scan swing swing-check strategy strategy-execute positions wallstreet filings \
-       backtest-ls backtest-stress optimize mean-reversion pairs api dashboard start lint lint-fix \
-       verify-quick verify-all demo pre-deploy ports ports-kill update-counts \
-       full-scan quick-scan targets rebalance evidence external report-llm certify backtest-rules
+# ═══════════════════════════════════════════════════════════════
+# Nuri-Quant Makefile
+# ═══════════════════════════════════════════════════════════════
+# 모든 target은 .venv/bin/python 사용 — venv 활성화 불필요
+# `make help` 로 카테고리별 명령 확인
+# ═══════════════════════════════════════════════════════════════
 
 PYTHON = .venv/bin/python
 
-# ── 초기 설정 ──
+.PHONY: help \
+        setup test lint lint-fix verify-quick verify-all verify verify-fast \
+        collect collect-kis collect-kis-check wallstreet filings \
+        analyze report report-llm \
+        validate regime recommend gate consensus certify \
+        scan swing swing-check strategy strategy-execute positions \
+        backtest backtest-ls backtest-stress backtest-rules backtest-event \
+        optimize mean-reversion pairs \
+        targets rebalance evidence external \
+        event-list event-trades \
+        api dashboard start \
+        full-scan quick-scan \
+        deploy pre-deploy backup ports ports-kill update-counts demo
+
+
+# ═══════════════════════════════════════════════════════════════
+# HELP
+# ═══════════════════════════════════════════════════════════════
+help:
+	@echo "Nuri-Quant Makefile — 카테고리별 주요 명령"
+	@echo ""
+	@echo "  Setup:        make setup"
+	@echo "  Test/Lint:    make test, make lint, make lint-fix, make verify-quick, make verify-all"
+	@echo "  Data:         make collect, make collect-kis, make wallstreet, make filings"
+	@echo "  Analysis:     make analyze, make consensus, make scan, make backtest"
+	@echo "  Pipeline:     make full-scan, make quick-scan"
+	@echo "  Trading:      make targets, make rebalance, make recommend, make certify"
+	@echo "  Strategy:     make strategy, make backtest-ls, make optimize, make mean-reversion, make pairs"
+	@echo "  Events:       make backtest-event, make event-list, make event-trades"
+	@echo "  Reports:      make report, make report-llm, make evidence, make external"
+	@echo "  Server:       make api, make dashboard, make start"
+	@echo "  Deploy:       make pre-deploy, make deploy, make backup"
+	@echo "  Utility:      make ports, make ports-kill, make update-counts, make demo"
+
+
+# ═══════════════════════════════════════════════════════════════
+# SETUP
+# ═══════════════════════════════════════════════════════════════
 setup:
 	bash scripts/setup.sh
 	$(PYTHON) scripts/migrate_db.py
 	$(PYTHON) scripts/import_portfolio.py
 
-# ── 데이터 수집 ──
+
+# ═══════════════════════════════════════════════════════════════
+# TEST / LINT / VERIFY
+# ═══════════════════════════════════════════════════════════════
+test:
+	$(PYTHON) -m pytest tests/ -v --cov=nuri
+
+lint:
+	$(PYTHON) -m ruff check nuri/ tests/ scripts/
+
+lint-fix:
+	$(PYTHON) -m ruff check nuri/ tests/ scripts/ --fix
+
+verify-quick:
+	$(PYTHON) -m pytest tests/ -q --tb=line
+	$(PYTHON) -c "from nuri.core.db import query; from nuri.quant.regime.classifier import classify_regime; r=classify_regime(); print(f'Quick: tests + Regime {r.regime if r else \"N/A\"}')"
+
+verify-all:
+	bash scripts/verify_all.sh
+
+verify:
+	$(PYTHON) scripts/verify.py
+
+verify-fast:
+	$(PYTHON) scripts/verify.py --skip-backtest
+
+
+# ═══════════════════════════════════════════════════════════════
+# DATA COLLECTION (Phase A)
+# ═══════════════════════════════════════════════════════════════
 collect:
 	$(PYTHON) -m nuri.collectors.stock
 	$(PYTHON) -m nuri.collectors.stock_kr
@@ -26,39 +93,31 @@ collect:
 	$(PYTHON) -m nuri.collectors.reddit
 	$(PYTHON) -m nuri.collectors.fred_calendar
 
-# ── 분석 실행 ──
+collect-kis:
+	$(PYTHON) -m nuri.collectors.kis_realtime
+
+collect-kis-check:
+	$(PYTHON) -m nuri.collectors.kis_realtime --check-creds
+
+wallstreet:
+	$(PYTHON) -m nuri.collectors.wallstreet
+
+filings:
+	$(PYTHON) -m nuri.collectors.filings
+
+
+# ═══════════════════════════════════════════════════════════════
+# ANALYSIS (Phase B)
+# ═══════════════════════════════════════════════════════════════
 analyze:
 	$(PYTHON) -m nuri.analysis.portfolio
 	$(PYTHON) -m nuri.analysis.sector
 	$(PYTHON) -m nuri.analysis.risk
 
-# ── 일일 리포트 ──
-report:
-	$(PYTHON) -m nuri.alerts.daily_report
 
-# ── Lint ──
-lint:
-	$(PYTHON) -m ruff check nuri/ tests/ scripts/
-
-lint-fix:
-	$(PYTHON) -m ruff check nuri/ tests/ scripts/ --fix
-
-# ── 테스트 ──
-test:
-	$(PYTHON) -m pytest tests/ -v --cov=nuri
-
-# ── 백테스트 ──
-backtest:
-	$(PYTHON) -m nuri.quant.backtest.engine
-
-# ── 기능 검증 (전체 Phase A~E + 결과 저장) ──
-verify:
-	$(PYTHON) scripts/verify.py
-
-verify-fast:
-	$(PYTHON) scripts/verify.py --skip-backtest
-
-# ── Phase C: 시그널/슈퍼투자자/애널리스트 검증 (Gate 검증 후 실행) ──
+# ═══════════════════════════════════════════════════════════════
+# VALIDATION (Phase C) — Gate 검증 후 실행
+# ═══════════════════════════════════════════════════════════════
 validate:
 	$(PYTHON) scripts/gate_check.py validate
 	$(PYTHON) -m nuri.quant.validation.signal_backtest
@@ -67,26 +126,36 @@ validate:
 	$(PYTHON) -m nuri.quant.validation.scorecard
 	$(PYTHON) -m nuri.trading.engine.memory --snapshot
 
-# ── Phase D: 시장 레짐 분류 (Gate 검증 후 실행) ──
+
+# ═══════════════════════════════════════════════════════════════
+# REGIME CLASSIFICATION (Phase D)
+# ═══════════════════════════════════════════════════════════════
 regime:
 	$(PYTHON) scripts/gate_check.py regime
 	$(PYTHON) -m nuri.quant.regime.strategy_map
 
-# ── Phase E: 매매 추천 + 추적 (Gate 검증 후 실행) ──
+
+# ═══════════════════════════════════════════════════════════════
+# RECOMMENDATIONS + AGENTS (Phase E)
+# ═══════════════════════════════════════════════════════════════
 recommend:
 	$(PYTHON) scripts/gate_check.py recommend
 	$(PYTHON) -m nuri.trading.recommend.candidates
 	$(PYTHON) -m nuri.trading.recommend.tracker --save
 
-# ── Gate 상태 확인 ──
-gate:
-	$(PYTHON) -m nuri.trading.engine.gate
-
-# ── Multi-Agent Consensus ──
 consensus:
 	$(PYTHON) -m nuri.trading.agents.consensus
 
-# ── Swing Trade Scanner ──
+gate:
+	$(PYTHON) -m nuri.trading.engine.gate
+
+certify:
+	$(PYTHON) -m nuri.trading.engine.certification
+
+
+# ═══════════════════════════════════════════════════════════════
+# SCAN / SWING TRADE
+# ═══════════════════════════════════════════════════════════════
 scan:
 	$(PYTHON) -m nuri.trading.swing.scanner
 
@@ -96,7 +165,10 @@ swing:
 swing-check:
 	$(PYTHON) -m nuri.trading.swing.rules --check
 
-# ── Long/Short Strategy ──
+
+# ═══════════════════════════════════════════════════════════════
+# STRATEGY (Long/Short, Mean Reversion, Pairs)
+# ═══════════════════════════════════════════════════════════════
 strategy:
 	$(PYTHON) -m nuri.trading.strategy.monitor
 
@@ -106,14 +178,19 @@ strategy-execute:
 positions:
 	$(PYTHON) -m nuri.trading.strategy.position
 
-# ── Wall Street 데이터 수집 ──
-wallstreet:
-	$(PYTHON) -m nuri.collectors.wallstreet
+mean-reversion:
+	$(PYTHON) -m nuri.trading.strategy.mean_reversion
 
-filings:
-	$(PYTHON) -m nuri.collectors.filings
+pairs:
+	$(PYTHON) -m nuri.trading.strategy.pairs
 
-# ── Strategy Backtest ──
+
+# ═══════════════════════════════════════════════════════════════
+# BACKTEST
+# ═══════════════════════════════════════════════════════════════
+backtest:
+	$(PYTHON) -m nuri.quant.backtest.engine
+
 backtest-ls:
 	$(PYTHON) -m nuri.trading.strategy.ls_backtest
 
@@ -123,17 +200,50 @@ backtest-stress:
 backtest-rules:
 	$(PYTHON) -m nuri.trading.strategy.ls_backtest --rules
 
-# ── 파라미터 최적화 + 다중 전략 ──
+backtest-event:
+	$(PYTHON) -m nuri.quant.event_study.ceasefire --instrument SPY
+	$(PYTHON) -m nuri.quant.event_study.ceasefire --instrument SOXX --leverage 3.0
+
 optimize:
 	$(PYTHON) -m nuri.quant.backtest.optimizer
 
-mean-reversion:
-	$(PYTHON) -m nuri.trading.strategy.mean_reversion
 
-pairs:
-	$(PYTHON) -m nuri.trading.strategy.pairs
+# ═══════════════════════════════════════════════════════════════
+# EVENT-DRIVEN (휴전, Fed 피봇)
+# ═══════════════════════════════════════════════════════════════
+event-list:
+	$(PYTHON) -m nuri.trading.strategy.event_driven list-events
+	$(PYTHON) -m nuri.trading.strategy.event_driven list-trades
 
-# ── Phase F: API + Dashboard ──
+event-trades:
+	$(PYTHON) -m nuri.trading.strategy.event_driven list-trades
+
+
+# ═══════════════════════════════════════════════════════════════
+# REPORTS / EVIDENCE / EXTERNAL
+# ═══════════════════════════════════════════════════════════════
+report:
+	$(PYTHON) -m nuri.alerts.daily_report
+
+report-llm:
+	$(PYTHON) -m nuri.llm.report
+
+targets:
+	$(PYTHON) -m nuri.trading.recommend.price_targets
+
+rebalance:
+	$(PYTHON) -m nuri.analysis.rebalance_advisor
+
+evidence:
+	$(PYTHON) -m nuri.analysis.evidence_charts
+
+external:
+	$(PYTHON) -m nuri.collectors.external --summary
+
+
+# ═══════════════════════════════════════════════════════════════
+# API + DASHBOARD (Phase F)
+# ═══════════════════════════════════════════════════════════════
 api:
 	$(PYTHON) -m nuri.api.main
 
@@ -143,38 +253,10 @@ dashboard:
 start:
 	bash scripts/start.sh
 
-# ── 빠른 검증 (~10초, 네트워크 호출 없음) ──
-verify-quick:
-	$(PYTHON) -m pytest tests/ -q --tb=line
-	$(PYTHON) -c "from nuri.core.db import query; from nuri.quant.regime.classifier import classify_regime; r=classify_regime(); print(f'Quick: tests + Regime {r.regime if r else \"N/A\"}')"
 
-# ── 전체 검증 (커밋 전 필수) ──
-verify-all:
-	bash scripts/verify_all.sh
-
-# ── 풀 데모 (전체 파이프라인 한 바퀴) ──
-demo:
-	bash scripts/demo.sh
-
-# ── 배포 ──
-pre-deploy:
-	bash scripts/pre-deploy-check.sh
-
-deploy:
-	bash scripts/pre-deploy-check.sh
-	bash scripts/deploy.sh
-
-# ── 유틸리티 ──
-ports:
-	bash scripts/ports.sh
-
-ports-kill:
-	bash scripts/ports.sh kill
-
-update-counts:
-	bash scripts/update-test-counts.sh
-
-# ── 종합 스캔 (전체 파이프라인: 수집→분석→검증→레짐→추천→합의→증거) ──
+# ═══════════════════════════════════════════════════════════════
+# FULL PIPELINE (수집→분석→검증→레짐→추천→합의→증거→알림)
+# ═══════════════════════════════════════════════════════════════
 full-scan:
 	@echo "=== Phase A: 데이터 수집 ==="
 	$(PYTHON) -m nuri.collectors.stock
@@ -208,7 +290,6 @@ full-scan:
 	$(PYTHON) scripts/notify_scan_result.py
 	@echo "\n=== 전체 스캔 완료 ==="
 
-# ── 빠른 스캔 (수집→분석→합의만, ~2분) ──
 quick-scan:
 	$(PYTHON) -m nuri.collectors.stock
 	$(PYTHON) -m nuri.collectors.stock_kr
@@ -219,30 +300,61 @@ quick-scan:
 	$(PYTHON) -m nuri.trading.agents.consensus
 	$(PYTHON) -m nuri.trading.recommend.price_targets
 
-# ── 가격 타겟 (전 종목 매수가/손절가/익절가) ──
-targets:
-	$(PYTHON) -m nuri.trading.recommend.price_targets
 
-# ── 리밸런스 어드바이저 (규칙 위반 감지 + 매도 수량 제시) ──
-rebalance:
-	$(PYTHON) -m nuri.analysis.rebalance_advisor
+# ═══════════════════════════════════════════════════════════════
+# DEPLOY / BACKUP / UTILITY
+# ═══════════════════════════════════════════════════════════════
+pre-deploy:
+	bash scripts/pre-deploy-check.sh
 
-# ── LLM 리포트 (Ollama) ──
-report-llm:
-	$(PYTHON) -m nuri.llm.report
+deploy:
+	bash scripts/pre-deploy-check.sh
+	bash scripts/deploy.sh
 
-# ── SIEGE 인증 (10-condition certification) ──
-certify:
-	$(PYTHON) -m nuri.trading.engine.certification
-
-# ── 외부 데이터 요약 ──
-external:
-	$(PYTHON) -m nuri.collectors.external --summary
-
-# ── 증거 시각화 (Plotly 차트 생성) ──
-evidence:
-	$(PYTHON) -m nuri.analysis.evidence_charts
-
-# ── DB 백업 ──
 backup:
 	bash scripts/backup.sh
+
+ports:
+	bash scripts/ports.sh
+
+ports-kill:
+	bash scripts/ports.sh kill
+
+update-counts:
+	bash scripts/update-test-counts.sh
+
+demo:
+	bash scripts/demo.sh
+
+
+# ═══════════════════════════════════════════════════════════════
+# CLEAN — 생성 파일 삭제
+# ═══════════════════════════════════════════════════════════════
+# make clean        : 빌드 산출물 + 캐시 (안전, 자주 실행 가능)
+# make clean-all    : clean + 모든 .pyc/__pycache__ + 토큰 캐시
+# make clean-deep   : clean-all + uv lock cache + frontend node_modules
+
+.PHONY: clean clean-all clean-deep
+
+clean:
+	@echo "=== Cleaning generated artifacts ==="
+	@rm -rf nuri_quant.egg-info nuri-quant.egg-info build/ dist/
+	@rm -rf .coverage .coverage.* coverage.xml htmlcov/
+	@rm -rf .pytest_cache/ .ruff_cache/ .mypy_cache/
+	@rm -rf data/.bfg-reports/
+	@find . -type d -name "*.egg-info" -prune -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	@echo "=== ✓ Clean complete ==="
+
+clean-all: clean
+	@echo "=== Clean: __pycache__ + 토큰 캐시 ==="
+	@find . -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
+	@rm -rf ~/KIS/cache/token_*.json 2>/dev/null || true
+	@echo "=== ✓ Clean-all complete ==="
+
+clean-deep: clean-all
+	@echo "⚠ Deep clean: node_modules + uv cache (재설치 필요)"
+	@read -p "정말 진행? (y/N) " ans && [ "$$ans" = "y" ] || exit 1
+	@rm -rf frontend/node_modules/ frontend/.next/ frontend/.turbo/
+	@rm -rf .venv/
+	@echo "=== ✓ Deep clean complete — 'make setup' 필요 ==="
