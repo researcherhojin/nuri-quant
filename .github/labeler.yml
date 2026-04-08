@@ -6,7 +6,6 @@ backend:
       - any-glob-to-any-file:
           - "nuri/**"
           - "tests/**"
-          - "tests/collectors/**"
           - "pyproject.toml"
           - "uv.lock"
 
