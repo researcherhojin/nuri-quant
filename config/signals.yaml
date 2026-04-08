@@ -1,0 +1,186 @@
+# ═══════════════════════════════════════════════════════
+# 시그널 정의 (description, 분류, 보유기간, 임계값)
+# ═══════════════════════════════════════════════════════
+# 시그널 detector는 nuri/quant/validation/signal_backtest.py의 함수,
+# 본 파일은 메타데이터/임계값/분류만 외부화한다.
+#
+# 핵심 원칙 (STRATEGY.md §2.2):
+#   - 새 임계값 추가 → 본 파일에 정의, 코드에 하드코딩 금지
+#   - BUY/SELL 분류 변경 → 본 파일의 type 필드만 수정
+#   - 시그널 비활성화 → enabled: false
+#   - 백테스트 튜닝 결과 → params 섹션 업데이트
+#
+# 로드: nuri/core/signal_config.py → SIGNAL_CONFIG
+
+signals:
+  # ═══ RSI ═══════════════════════════════════════════════
+  rsi_oversold:
+    description: "RSI 과매도 반등 (30 아래에서 위로)"
+    type: BUY
+    hold_days: 20
+    enabled: true
+    params:
+      threshold: 30
+
+  rsi_overbought:
+    description: "RSI 과매수 이탈 (70 위에서 아래로)"
+    type: SELL
+    hold_days: 20
+    enabled: true
+    params:
+      threshold: 70
+
+  # ═══ MACD (라인 크로스) ═══════════════════════════════
+  macd_golden:
+    description: "MACD 골든크로스 (MACD > Signal)"
+    type: BUY
+    hold_days: null  # null = exit detector 사용
+    enabled: true
+    params: {}
+
+  macd_dead:
+    description: "MACD 데드크로스 (MACD < Signal)"
+    type: SELL
+    hold_days: null
+    enabled: true
+    params: {}
+
+  # ═══ SMA 크로스 ═══════════════════════════════════════
+  sma_golden:
+    description: "SMA 골든크로스 (SMA50 > SMA200)"
+    type: BUY
+    hold_days: null
+    enabled: true
+    params: {}
+
+  sma_dead:
+    description: "SMA 데드크로스 (SMA50 < SMA200)"
+    type: SELL
+    hold_days: null
+    enabled: true
+    params: {}
+
+  # ═══ Bollinger Band ════════════════════════════════════
+  bb_bounce:
+    description: "BB 하단 반등 (종가가 BB Lower 위로)"
+    type: BUY
+    hold_days: 20
+    enabled: true
+    params: {}
+
+  # ═══ 거래량 / 갭 ════════════════════════════════════════
+  volume_spike:
+    description: "거래량 급증 (20일 평균 대비 N배 초과)"
+    type: BUY
+    hold_days: 10
+    enabled: true
+    params:
+      multiplier: 3.0
+
+  gap_up:
+    description: "갭 상승 (시가 > 전일 종가 × (1 + threshold))"
+    type: BUY
+    hold_days: 10
+    enabled: true
+    params:
+      threshold: 0.02
+
+  gap_down:
+    description: "갭 하락 (시가 < 전일 종가 × (1 - threshold))"
+    type: SELL
+    hold_days: 10
+    enabled: true
+    params:
+      threshold: 0.02
+
+  # ═══ 매크로 시그널 ══════════════════════════════════════
+  vix_reversal:
+    description: "VIX 공포 반전 (high+ N일 연속 → low 이하)"
+    type: BUY
+    hold_days: 20
+    enabled: true
+    params:
+      vix_high: 30
+      vix_low: 25
+      consecutive_days: 3
+
+  pcr_reversal:
+    description: "PCR 반전 (high+ → low 이하, 고점→저점 순서)"
+    type: BUY
+    hold_days: 15
+    enabled: true
+    params:
+      pcr_high: 1.2
+      pcr_low: 0.8
+      lookback_days: 20
+
+  yield_curve_recovery:
+    description: "수익률곡선 정상화 (3M-10Y 음수→양수)"
+    type: BUY
+    hold_days: null
+    enabled: true
+    params: {}
+
+  # ═══ 데이터 의존 ════════════════════════════════════════
+  insider_cluster:
+    description: "내부자 집중 매수 (N일 내 K건 이상 매수)"
+    type: BUY
+    hold_days: 20
+    enabled: true
+    params:
+      lookback_days: 10
+      min_count: 3
+
+  short_squeeze:
+    description: "숏 스퀴즈 가능성 (short_interest 높음 + 가격 N일 연속 반등)"
+    type: BUY
+    hold_days: 15
+    enabled: true
+    params:
+      min_short_interest: 10
+      consecutive_up_days: 3
+
+  # ═══ 차트 패턴 (chart_analysis.py 컨셉) ═════════════════
+  macd_bullish_turn:
+    description: "MACD 히스토그램 양전환 (모멘텀 회복)"
+    type: BUY
+    hold_days: 15
+    enabled: true
+    params: {}
+
+  macd_bearish_turn:
+    description: "MACD 히스토그램 음전환 (모멘텀 둔화)"
+    type: SELL
+    hold_days: 15
+    enabled: true
+    params: {}
+
+  bb_squeeze_breakout:
+    description: "BB squeeze 후 상단 돌파 (변동성 압축 → 방향성 출현)"
+    type: BUY
+    hold_days: 20
+    enabled: true
+    params:
+      squeeze_ratio: 0.7      # 직전 N일 평균 width 대비 비율 (이하면 squeeze)
+      lookback_days: 20
+
+  near_52w_low_bounce:
+    description: "52주 저점 +N% 이내에서 K일 +M% 반등"
+    type: BUY
+    hold_days: 30
+    enabled: true
+    params:
+      proximity_pct: 0.10     # 저점 +10% 이내
+      bounce_pct: 0.03        # 3일간 +3% 반등
+      bounce_days: 3
+      lookback_days: 252      # 52주
+
+  volume_profile_resistance:
+    description: "매물대(POC) 가격대 통과 + 거래량 N배"
+    type: BUY
+    hold_days: 10
+    enabled: true
+    params:
+      poc_proximity: 0.02     # POC ±2% 이내
+      volume_multiplier: 1.5
+      lookback_days: 120
