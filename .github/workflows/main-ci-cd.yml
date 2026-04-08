@@ -7,6 +7,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Workflow-level default permissions: read-only.
+# Jobs that need write access (e.g., to upload to Codecov via token) opt in
+# explicitly. Resolves CodeQL `actions/missing-workflow-permissions` alerts.
+permissions:
+  contents: read
+
 concurrency:
   group: "ci-${{ github.ref }}"
   cancel-in-progress: true
