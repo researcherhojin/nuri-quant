@@ -1,1 +1,14 @@
 blank_issues_enabled: true
+contact_links:
+  - name: GitHub Discussions
+    url: https://github.com/researcherhojin/nuri-quant/discussions
+    about: Ask questions, share ideas, or discuss the roadmap.
+  - name: Strategy & Architecture
+    url: https://github.com/researcherhojin/nuri-quant/blob/main/docs/STRATEGY.md
+    about: Understand the project's design principles before opening an issue.
+  - name: Roadmap (Phase 0-5)
+    url: https://github.com/researcherhojin/nuri-quant/blob/main/docs/ROADMAP.md
+    about: Check if your feature is already planned for a future phase.
+  - name: Security vulnerability
+    url: https://github.com/researcherhojin/nuri-quant/security/advisories/new
+    about: Report security issues privately (do NOT open a public issue).

@@ -1,2 +1,36 @@
-# Default owner for everything
+# CODEOWNERS — auto-request reviews based on touched paths.
+# Order matters: later patterns override earlier ones.
+# https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+
+# ─── Default ────────────────────────────────────────────
+# Anything not matched below requires owner approval.
 * @researcherhojin
+
+# ─── Critical infrastructure (extra scrutiny) ───────────
+/.github/                  @researcherhojin
+/.github/workflows/        @researcherhojin
+/pyproject.toml            @researcherhojin
+/uv.lock                   @researcherhojin
+/Makefile                  @researcherhojin
+/.gitignore                @researcherhojin
+
+# ─── Security-sensitive ─────────────────────────────────
+/config/rules.yaml         @researcherhojin
+/scripts/gate_check.py     @researcherhojin
+/nuri/api/main.py          @researcherhojin
+/nuri/api/routes/auth*.py  @researcherhojin
+/.env.example              @researcherhojin
+
+# ─── DB schema (migrations append-only — careful) ───────
+/nuri/core/db.py           @researcherhojin
+
+# ─── Trading rules + decisions ──────────────────────────
+/config/agents.yaml        @researcherhojin
+/nuri/trading/engine/      @researcherhojin
+/nuri/trading/recommend/   @researcherhojin
+
+# ─── Documentation ──────────────────────────────────────
+/docs/STRATEGY.md          @researcherhojin
+/docs/ROADMAP.md           @researcherhojin
+/CLAUDE.md                 @researcherhojin
+/README.md                 @researcherhojin

@@ -1,38 +1,120 @@
 version: 2
+# Grouped dependency updates — reduces PR noise by bundling related
+# minor/patch updates into a single PR per ecosystem.
+# Major version bumps still get individual PRs (manual review required).
 updates:
-  # Python dependencies (uv/pip)
+  # ─── Python (uv/pip) ────────────────────────────────────
   - package-ecosystem: pip
     directory: "/"
     schedule:
       interval: weekly
       day: monday
+      time: "09:00"
+      timezone: "Asia/Seoul"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+      - "backend"
     commit-message:
       prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      # Bundle all dev tooling (ruff/pytest/coverage) into one PR
+      python-dev:
+        applies-to: version-updates
+        patterns:
+          - "ruff*"
+          - "pytest*"
+          - "coverage*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Bundle data-collection libraries
+      python-data:
+        applies-to: version-updates
+        patterns:
+          - "pandas*"
+          - "numpy*"
+          - "scipy*"
+          - "pyarrow*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Bundle FastAPI ecosystem
+      python-api:
+        applies-to: version-updates
+        patterns:
+          - "fastapi*"
+          - "uvicorn*"
+          - "httpx*"
+          - "pydantic*"
+        update-types:
+          - "minor"
+          - "patch"
 
-  # Frontend dependencies (npm)
+  # ─── Frontend (npm) ─────────────────────────────────────
   - package-ecosystem: npm
     directory: "/frontend"
     schedule:
       interval: weekly
       day: monday
+      time: "09:00"
+      timezone: "Asia/Seoul"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "frontend"
     commit-message:
       prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      # Bundle all @types/* into one PR (always safe)
+      types:
+        applies-to: version-updates
+        patterns:
+          - "@types/*"
+      # Bundle test tooling
+      frontend-test:
+        applies-to: version-updates
+        patterns:
+          - "vitest*"
+          - "@vitest/*"
+          - "@testing-library/*"
+          - "@playwright/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Bundle build/lint tooling
+      frontend-build:
+        applies-to: version-updates
+        patterns:
+          - "eslint*"
+          - "tailwindcss*"
+          - "@tailwindcss/*"
+          - "typescript*"
+        update-types:
+          - "minor"
+          - "patch"
 
-  # GitHub Actions
+  # ─── GitHub Actions ─────────────────────────────────────
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: monthly
+      day: monday
     open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "ci"
     commit-message:
       prefix: "chore(ci)"
+      include: "scope"
+    groups:
+      # Bundle all GitHub Actions updates into one PR per month
+      actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

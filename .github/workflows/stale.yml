@@ -16,17 +16,31 @@ jobs:
     steps:
       - uses: actions/stale@v10
         with:
+          # Less aggressive timing — long-running discussions deserve patience.
+          # Issues: 90 days stale + 30 days close (was 60+14, too aggressive)
+          # PRs:    60 days stale + 14 days close (was 30+7, too aggressive)
+          days-before-issue-stale: 90
+          days-before-issue-close: 30
+          days-before-pr-stale: 60
+          days-before-pr-close: 14
           stale-issue-message: >
-            This issue has been inactive for 60 days.
-            It will be closed in 14 days unless there is new activity.
+            This issue has been inactive for 90 days.
+            It will be closed in 30 days unless there is new activity.
+            Add the `pinned` or `roadmap` label to exempt indefinitely.
           stale-pr-message: >
-            This PR has been inactive for 30 days.
-            It will be closed in 7 days unless updated.
-          days-before-issue-stale: 60
-          days-before-issue-close: 14
-          days-before-pr-stale: 30
-          days-before-pr-close: 7
+            This PR has been inactive for 60 days.
+            It will be closed in 14 days unless updated.
+            Push new commits or add `wip` label to keep open.
+          close-issue-message: |
+            Closed due to inactivity. Reopen if still relevant — full context preserved.
+          close-pr-message: |
+            Closed due to inactivity. Reopen and rebase if still relevant.
           stale-issue-label: stale
           stale-pr-label: stale
-          exempt-issue-labels: "pinned,in-progress"
-          exempt-pr-labels: "pinned,in-progress"
+          # Expanded exempt labels — bug/security never go stale; roadmap is multi-month
+          exempt-issue-labels: "pinned,in-progress,security,bug,roadmap,help wanted"
+          exempt-pr-labels: "pinned,in-progress,security,wip,dependencies"
+          # Operational tuning
+          enable-statistics: true       # log counts in workflow output
+          ascending: true               # process oldest first (clears debt first)
+          operations-per-run: 100       # cap to avoid rate limits on first run
