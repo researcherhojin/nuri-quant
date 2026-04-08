@@ -1,0 +1,121 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    // ─── Build / Test ──────────────────────────────────
+    {
+      "label": "make: test",
+      "type": "shell",
+      "command": "make test",
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "panel": "new", "clear": true }
+    },
+    {
+      "label": "make: lint",
+      "type": "shell",
+      "command": "make lint",
+      "group": "build",
+      "problemMatcher": ["$python"]
+    },
+    {
+      "label": "make: lint-fix",
+      "type": "shell",
+      "command": "make lint-fix",
+      "group": "build"
+    },
+    {
+      "label": "make: verify-quick",
+      "type": "shell",
+      "command": "make verify-quick",
+      "group": "test",
+      "presentation": { "panel": "new" }
+    },
+
+    // ─── 데이터 수집 ─────────────────────────────────────
+    {
+      "label": "make: collect",
+      "type": "shell",
+      "command": "make collect",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "make: collect-kis",
+      "type": "shell",
+      "command": "make collect-kis",
+      "presentation": { "panel": "new" }
+    },
+
+    // ─── 분석 ─────────────────────────────────────────────
+    {
+      "label": "make: consensus",
+      "type": "shell",
+      "command": "make consensus",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "make: full-scan",
+      "type": "shell",
+      "command": "make full-scan",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "make: quick-scan",
+      "type": "shell",
+      "command": "make quick-scan",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "make: certify (SIEGE)",
+      "type": "shell",
+      "command": "make certify",
+      "presentation": { "panel": "new" }
+    },
+
+    // ─── Server ──────────────────────────────────────────
+    {
+      "label": "make: start (API + Dashboard)",
+      "type": "shell",
+      "command": "make start",
+      "isBackground": true,
+      "presentation": { "panel": "new", "focus": false }
+    },
+
+    // ─── Clean ──────────────────────────────────────────
+    {
+      "label": "make: clean",
+      "type": "shell",
+      "command": "make clean",
+      "presentation": { "panel": "shared" }
+    },
+    {
+      "label": "make: clean-all",
+      "type": "shell",
+      "command": "make clean-all",
+      "presentation": { "panel": "shared" }
+    },
+
+    // ─── Frontend ────────────────────────────────────────
+    {
+      "label": "frontend: vitest",
+      "type": "shell",
+      "command": "npx vitest run",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "group": "test",
+      "presentation": { "panel": "new" }
+    },
+    {
+      "label": "frontend: tsc check",
+      "type": "shell",
+      "command": "npx tsc --noEmit",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "group": "build",
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "frontend: build",
+      "type": "shell",
+      "command": "npm run build",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "group": "build"
+    }
+  ]
+}

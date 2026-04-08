@@ -1,0 +1,100 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    // ─── FastAPI 서버 디버그 ────────────────────────────
+    {
+      "name": "FastAPI: api server",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "nuri.api.main:app",
+        "--host", "0.0.0.0",
+        "--port", "8001",
+        "--reload"
+      ],
+      "jinja": true,
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+
+    // ─── 현재 파일 디버그 ──────────────────────────────
+    {
+      "name": "Python: 현재 파일",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+
+    // ─── pytest 단일 파일 ───────────────────────────────
+    {
+      "name": "pytest: 현재 파일",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}", "-v", "--tb=short"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+
+    // ─── pytest 전체 ─────────────────────────────────────
+    {
+      "name": "pytest: 전체 (-n auto)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests/", "-q", "-n", "auto"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+
+    // ─── KIS check-creds ────────────────────────────────
+    {
+      "name": "KIS: check credentials",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "nuri.collectors.kis_realtime",
+      "args": ["--check-creds", "--env", "prod"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+
+    // ─── Evidence (NVDA) 디버그 ─────────────────────────
+    {
+      "name": "Evidence: NVDA",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "nuri.core.evidence",
+      "args": ["show", "NVDA", "--action", "trim"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+
+    // ─── Data Quality scan ──────────────────────────────
+    {
+      "name": "Data Quality: scan",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "nuri.core.data_quality",
+      "args": ["scan"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+
+    // ─── Next.js 프론트엔드 디버그 ──────────────────────
+    {
+      "name": "Next.js: dev server",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
