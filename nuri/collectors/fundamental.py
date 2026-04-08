@@ -1,52 +1,71 @@
 """
-펀더멘탈 데이터 수집기 — OpenBB fundamental.metrics 기반.
+펀더멘탈 데이터 수집기 — yfinance Ticker.info 기반.
 
-PER, PBR, ROE, 마진, 성장률, 부채비율 등 30+개 지표 수집.
-yfinance 프로바이더로 미국/한국 종목 모두 지원.
+PE, P/B, PEG, ROE, 마진, 성장률, 부채비율, 베타 등 16개 지표 수집.
+
+이전 OpenBB equity.fundamental.metrics는 openbb-core 버전 충돌(`OBBject_EquityInfo`
+import error)로 모든 종목 수집 실패. yfinance Ticker.info의 다음 필드를 직접
+사용:
+    marketCap, trailingPE, forwardPE, priceToBook, pegRatio,
+    returnOnEquity, returnOnAssets, grossMargins, operatingMargins,
+    profitMargins, revenueGrowth, earningsGrowth, debtToEquity,
+    currentRatio, dividendYield, beta
 
 사용법:
     python -m nuri.collectors.fundamental
 """
 import logging
+import math
 from typing import Any
-
-import pandas as pd
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import get_db, query
 
 logger = logging.getLogger(__name__)
 
-# metrics에서 수집할 필드 매핑 (OpenBB 필드명 → DB 컬럼명)
-METRICS_FIELDS = {
-    "market_cap": "market_cap",
-    "pe_ratio": "pe_ratio",
-    "forward_pe": "forward_pe",
-    "price_to_book": "price_to_book",
-    "peg_ratio_ttm": "peg_ratio",
-    "return_on_equity": "roe",
-    "return_on_assets": "roa",
-    "gross_margin": "gross_margin",
-    "operating_margin": "operating_margin",
-    "profit_margin": "profit_margin",
-    "revenue_growth": "revenue_growth",
-    "earnings_growth": "earnings_growth",
-    "debt_to_equity": "debt_to_equity",
-    "current_ratio": "current_ratio",
-    "dividend_yield": "dividend_yield",
+# yfinance Ticker.info 필드 → DB 컬럼 매핑
+YF_FIELDS = {
+    "marketCap": "market_cap",
+    "trailingPE": "pe_ratio",
+    "forwardPE": "forward_pe",
+    "priceToBook": "price_to_book",
+    "pegRatio": "peg_ratio",
+    "returnOnEquity": "roe",
+    "returnOnAssets": "roa",
+    "grossMargins": "gross_margin",
+    "operatingMargins": "operating_margin",
+    "profitMargins": "profit_margin",
+    "revenueGrowth": "revenue_growth",
+    "earningsGrowth": "earnings_growth",
+    "debtToEquity": "debt_to_equity",
+    "currentRatio": "current_ratio",
+    "dividendYield": "dividend_yield",
     "beta": "beta",
 }
 
 
+def _safe_num(val) -> float | None:
+    """yfinance dict 필드 → None 안전 float (NaN/Inf 방지)."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(f) or math.isinf(f):
+        return None
+    return f
+
+
 class FundamentalCollector(BaseCollector):
-    """OpenBB fundamental.metrics로 펀더멘탈 데이터 수집."""
+    """yfinance Ticker.info로 펀더멘탈 데이터 수집."""
 
     def __init__(self):
         super().__init__("fundamental")
 
     def collect(self, **kwargs) -> list[dict]:
         """전 보유종목 펀더멘탈 수집."""
-        from openbb import obb
+        import yfinance as yf
 
         tickers = self._get_tickers()
         if not tickers:
@@ -60,25 +79,27 @@ class FundamentalCollector(BaseCollector):
 
         for ticker in tickers:
             try:
-                r = obb.equity.fundamental.metrics(ticker, provider="yfinance")
-                df = r.to_dataframe()
-                if df.empty:
-                    self.logger.warning(f"{ticker}: 펀더멘탈 데이터 없음")
+                info = yf.Ticker(ticker).info
+                if not info or "regularMarketPrice" not in info:
+                    self.logger.warning(f"{ticker}: yfinance info 비어있음")
                     continue
 
-                row = df.iloc[0]
                 record = {"ticker": ticker, "date": today}
+                non_null = 0
+                for src_field, db_field in YF_FIELDS.items():
+                    val = _safe_num(info.get(src_field))
+                    record[db_field] = val
+                    if val is not None:
+                        non_null += 1
 
-                for src_field, db_field in METRICS_FIELDS.items():
-                    val = row.get(src_field)
-                    # NaN → None
-                    if pd.notna(val):
-                        record[db_field] = float(val)
-                    else:
-                        record[db_field] = None
+                if non_null == 0:
+                    self.logger.info(f"{ticker}: 모든 펀더멘탈 필드 None — 스킵")
+                    continue
 
                 results.append(record)
-                self.logger.debug(f"{ticker}: PE={record.get('pe_ratio')}, ROE={record.get('roe')}")
+                self.logger.debug(
+                    f"{ticker}: PE={record.get('pe_ratio')}, ROE={record.get('roe')}"
+                )
 
             except Exception as e:
                 self.logger.warning(f"{ticker}: 펀더멘탈 수집 실패 — {e}")
