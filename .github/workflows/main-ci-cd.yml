@@ -17,10 +17,44 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ─── Change detection ───
+  # All 5 required jobs (Backend Tests, Backend Lint, Frontend Tests, Frontend Build,
+  # Security Scan) ALWAYS run so their check names report to branch protection. But
+  # the expensive steps inside each are gated by these filter outputs — frontend-only
+  # PRs skip backend work (and vice versa), reporting SUCCESS in ~10s instead of 3min.
+  # Push to main always runs everything (no PR context to filter on).
+
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'nuri/**'
+              - 'tests/**'
+              - 'scripts/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'Makefile'
+              - 'config/**'
+              - '.github/workflows/main-ci-cd.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/main-ci-cd.yml'
+
   # ─── Frontend ───
 
   frontend-tests:
     name: Frontend Tests
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # NOTE: defaults.run.working-directory only applies to `run` steps, NOT `uses` steps.
@@ -29,23 +63,33 @@ jobs:
       run:
         working-directory: frontend
     steps:
+      - name: Skip notice (no frontend changes)
+        if: needs.changes.outputs.frontend != 'true' && github.event_name == 'pull_request'
+        run: echo "✓ No frontend changes — fast-pass to satisfy required check"
+
       - uses: actions/checkout@v6
+        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
 
       - uses: actions/setup-node@v6
+        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - run: npm ci
+      - if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+        run: npm ci
 
       - name: Type check
+        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
         run: npx tsc --noEmit
 
       - name: Run tests with coverage
+        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
         run: npx vitest run --coverage
 
       - name: Verify and fix coverage paths
+        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
         run: |
           if [ ! -f coverage/lcov.info ]; then
             echo "::error::coverage/lcov.info not found — vitest coverage may have failed"
@@ -60,7 +104,7 @@ jobs:
           head -3 coverage/lcov.info
 
       - name: Upload coverage to Codecov
-        if: always()
+        if: (needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request') && always()
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -72,51 +116,76 @@ jobs:
 
   frontend-build:
     name: Frontend Build
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend
     steps:
+      - name: Skip notice (no frontend changes)
+        if: needs.changes.outputs.frontend != 'true' && github.event_name == 'pull_request'
+        run: echo "✓ No frontend changes — fast-pass to satisfy required check"
+
       - uses: actions/checkout@v6
+        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
 
       - uses: actions/setup-node@v6
+        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - run: npm ci
+      - if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+        run: npm ci
 
       - name: Production build
+        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
         run: npm run build
 
   # ─── Backend ───
 
   backend-lint:
     name: Backend Lint
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Skip notice (no backend changes)
+        if: needs.changes.outputs.backend != 'true' && github.event_name == 'pull_request'
+        run: echo "✓ No backend changes — fast-pass to satisfy required check"
+
       - uses: actions/checkout@v6
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+
       - uses: astral-sh/ruff-action@v3
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
         with:
           args: "check nuri/ tests/ scripts/"
 
   backend-tests:
     name: Backend Tests
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Skip notice (no backend changes)
+        if: needs.changes.outputs.backend != 'true' && github.event_name == 'pull_request'
+        run: echo "✓ No backend changes — fast-pass to satisfy required check"
+
       - uses: actions/checkout@v6
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
 
       - name: Install uv
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
         uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: false
 
       - name: Cache TA-Lib
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
         id: cache-talib
         uses: actions/cache@v5
         with:
@@ -124,7 +193,7 @@ jobs:
           key: talib-0.4.0-${{ runner.os }}-v5
 
       - name: Build TA-Lib from source
-        if: steps.cache-talib.outputs.cache-hit != 'true'
+        if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && steps.cache-talib.outputs.cache-hit != 'true'
         run: |
           wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
           tar -xzf ta-lib-0.4.0-src.tar.gz
@@ -134,16 +203,18 @@ jobs:
           sudo cp -r /usr/include/ta-lib /tmp/talib-installed/
 
       - name: Restore TA-Lib from cache
-        if: steps.cache-talib.outputs.cache-hit == 'true'
+        if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && steps.cache-talib.outputs.cache-hit == 'true'
         run: |
           sudo cp /tmp/talib-installed/libta_lib* /usr/lib/
           sudo mkdir -p /usr/include/ta-lib
           sudo cp /tmp/talib-installed/ta-lib/* /usr/include/ta-lib/ 2>/dev/null || true
 
       - name: Configure TA-Lib
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
         run: sudo ldconfig
 
       - name: Cache venv
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
         id: cache-venv
         uses: actions/cache@v5
         with:
@@ -151,14 +222,16 @@ jobs:
           key: venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('uv.lock') }}
 
       - name: Install deps
-        if: steps.cache-venv.outputs.cache-hit != 'true'
+        if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && steps.cache-venv.outputs.cache-hit != 'true'
         run: uv sync --frozen --extra dev
 
       - name: Run tests with coverage
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
         run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
 
       - name: Verify coverage file exists
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
         run: |
           if [ ! -f coverage.xml ]; then
             echo "::error::coverage.xml not found — pytest-cov may have failed"
@@ -167,6 +240,7 @@ jobs:
           echo "✓ coverage.xml found ($(wc -l < coverage.xml) lines)"
 
       - name: Coverage threshold check
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
         run: |
           # Threshold 80%: actual ~85% after B4 (coverage_push padding removal,
           # 14 files / 11.9K lines / 762 padding tests deleted). 5pp headroom
@@ -181,7 +255,7 @@ jobs:
           fi
 
       - name: Upload coverage to Codecov
-        if: always()
+        if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && always()
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -194,11 +268,19 @@ jobs:
 
   security-scan:
     name: Security Scan
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Skip notice (no code changes)
+        if: needs.changes.outputs.backend != 'true' && needs.changes.outputs.frontend != 'true' && github.event_name == 'pull_request'
+        run: echo "✓ No backend/frontend changes — fast-pass to satisfy required check"
+
       - uses: actions/checkout@v6
+        if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+
       - name: Run Trivy vulnerability scanner
+        if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
