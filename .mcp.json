@@ -1,6 +1,8 @@
 {
+  "_comment": "MCP (Model Context Protocol) 서버 — Claude Code/Cursor가 사용할 도구. 추가 시 'mcpServers'에 entry 등록",
   "mcpServers": {
     "nuri-db": {
+      "_comment": "SQLite DB 직접 query (read-only 권장). schema 확인, 데이터 검증, ad-hoc 분석용",
       "command": "uvx",
       "args": [
         "mcp-server-sqlite",
