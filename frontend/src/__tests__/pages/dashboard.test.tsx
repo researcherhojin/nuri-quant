@@ -244,9 +244,10 @@ describe("DashboardPage (OverviewPage)", () => {
     });
 
     await waitFor(() => {
-      // BULL appears in the Market metric card and in the Quick Stats section
+      // BULL appears in the Market metric card and in the Market Pulse section
       expect(screen.getAllByText("BULL").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("65/100")).toBeInTheDocument();
+      // 65/100 appears in both the Verdict line and the Market Pulse Macro card
+      expect(screen.getAllByText("65/100").length).toBeGreaterThanOrEqual(1);
     });
   });
 
