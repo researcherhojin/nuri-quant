@@ -1,8 +1,9 @@
-"""기술적 분석 에이전트 — RSI, MACD, SMA, BB 기반 판정."""
+"""기술적 분석 에이전트 — RSI, MACD, SMA, BB, 차트 패턴(BB 위치/MACD 전환/52주/추세선) 기반 판정."""
 import pandas as pd
 
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.db import query_df
+from nuri.quant.chart_analysis import analyze_chart
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 _CFG = AGENT_CONFIG.get("technical", {})
@@ -56,6 +57,14 @@ class TechnicalAgent(BaseAgent):
         macd = float((ema_fast - ema_slow).iloc[-1])
         signal = float((ema_fast - ema_slow).ewm(span=_CFG.get("macd_signal", 9)).mean().iloc[-1])
 
+        # 차트 패턴 분석 (DB 기반 — yfinance fallback 시 skip)
+        chart = None
+        if not df.empty and "date" in df.columns:
+            try:
+                chart = analyze_chart(ticker, db_path=db_path)
+            except Exception:
+                chart = None
+
         # 판정 로직
         buy_signals = 0
         sell_signals = 0
@@ -85,6 +94,36 @@ class TechnicalAgent(BaseAgent):
             sell_signals += 1
             reasons.append("MACD<Signal")
 
+        # 차트 패턴 기여 (시각 정보)
+        if chart is not None and chart.price > 0:
+            if chart.macd_turn == "bullish":
+                buy_signals += 2
+                reasons.append("MACD 히스토그램 양전환")
+            elif chart.macd_turn == "bearish":
+                sell_signals += 2
+                reasons.append("MACD 히스토그램 음전환")
+
+            if chart.bb_position >= 80:
+                buy_signals += 1
+                reasons.append(f"BB 상단({chart.bb_position:.0f})")
+            elif chart.bb_position <= 20:
+                buy_signals += 1  # BB 하단은 반등 신호 (RSI와 동일 컨셉)
+                reasons.append(f"BB 하단({chart.bb_position:.0f})")
+
+            if chart.dist_from_52w_low <= 10 and chart.trend_strength > 0:
+                buy_signals += 1
+                reasons.append(f"52주 저점 +{chart.dist_from_52w_low:.0f}% 반등")
+            elif chart.dist_from_52w_high >= -3:
+                sell_signals += 1
+                reasons.append(f"52주 고점 근접({chart.dist_from_52w_high:.0f}%)")
+
+            if chart.trend_strength >= 30:
+                buy_signals += 1
+                reasons.append(f"추세강세({chart.trend_strength:+.0f})")
+            elif chart.trend_strength <= -30:
+                sell_signals += 1
+                reasons.append(f"추세약세({chart.trend_strength:+.0f})")
+
         conf_cap = _CONF.get("cap", 90)
         conf_hold = _CONF.get("hold", 40)
 
@@ -99,9 +138,23 @@ class TechnicalAgent(BaseAgent):
             action = "HOLD"
             confidence = conf_hold
 
+        data_points = {
+            "rsi": round(rsi, 1), "sma50": round(sma50, 2), "sma200": round(sma200, 2),
+            "macd": round(macd, 4), "price": round(latest, 2),
+        }
+        if chart is not None and chart.price > 0:
+            data_points.update({
+                "bb_pos": chart.bb_position,
+                "macd_turn": chart.macd_turn,
+                "dist_high_52w": chart.dist_from_52w_high,
+                "dist_low_52w": chart.dist_from_52w_low,
+                "poc": chart.poc_price,
+                "trend": chart.trend_strength,
+                "visual_bias": chart.visual_bias,
+            })
+
         return AgentVerdict(
             self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons) or "혼조",
-            {"rsi": round(rsi, 1), "sma50": round(sma50, 2), "sma200": round(sma200, 2),
-             "macd": round(macd, 4), "price": round(latest, 2)},
+            data_points,
         )
