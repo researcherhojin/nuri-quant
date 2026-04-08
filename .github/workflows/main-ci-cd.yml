@@ -227,7 +227,10 @@ jobs:
 
       - name: Run tests with coverage
         if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --cov=nuri --cov-report=xml --cov-report=term
+        # --dist worksteal: faster workers steal tests from busy ones, balances
+        # uneven test files (test_trading_agents_all 3019 lines vs 200-line files).
+        # Local benchmark: 26-36% faster than default --dist load (3:13 → 2:23).
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
 
       - name: Verify coverage file exists
