@@ -1,9 +1,12 @@
-# Auto-label PRs based on changed files
+# Auto-label PRs based on changed files (actions/labeler@v6 format).
+# Each label only catches the most specific path; broader labels add coverage.
+
 backend:
   - changed-files:
       - any-glob-to-any-file:
           - "nuri/**"
           - "tests/**"
+          - "tests/collectors/**"
           - "pyproject.toml"
           - "uv.lock"
 
@@ -26,12 +29,55 @@ agents:
           - "nuri/trading/agents/**"
           - "config/agents.yaml"
 
+api:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "nuri/api/**"
+
+llm:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "nuri/llm/**"
+
+evidence:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "nuri/core/evidence.py"
+          - "nuri/core/data_quality.py"
+          - "nuri/trading/recommend/institutional_check.py"
+          - "nuri/trading/recommend/momentum_filter.py"
+          - "frontend/src/app/decision/**"
+
+kis:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "nuri/collectors/kis_*.py"
+          - "docs/KIS_INTEGRATION.md"
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"
+          - "frontend/**/__tests__/**"
+          - "frontend/e2e/**"
+
 ci:
   - changed-files:
       - any-glob-to-any-file:
           - ".github/**"
           - "codecov.yml"
           - "Makefile"
+
+dx:
+  # Developer experience: scripts that improve dev workflow
+  - changed-files:
+      - any-glob-to-any-file:
+          - "scripts/ci_local.sh"
+          - "scripts/check_drift.py"
+          - "scripts/check_atomic.sh"
+          - "scripts/pre_push_check.sh"
+          - "docs/DX_GUIDE.md"
+          - ".github/pull_request_template.md"
 
 docs:
   - changed-files:
@@ -45,3 +91,11 @@ config:
       - any-glob-to-any-file:
           - "config/**"
           - ".env.example"
+
+security:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".gitignore"
+          - "config/rules.yaml"
+          - "nuri/api/middleware*.py"
+          - "scripts/gate_check.py"
