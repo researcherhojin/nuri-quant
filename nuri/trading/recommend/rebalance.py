@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 
 # 포트폴리오 sector 값 → 방어/공격 분류
-# portfolio.yaml의 sector 필드가 다양한 형태("SectorA", "Finance", "AI/Cloud" 등)이므로
+# portfolio.yaml의 sector 필드가 다양한 형태("Technology", "Finance", "AI/Cloud" 등)이므로
 # 키워드 포함 여부가 아닌 명시적 매핑 사용
 DEFENSIVE_SECTOR_KEYWORDS = {
     "Staples", "Utilities", "Health", "Real Estate", "Insurance", "Bond",
