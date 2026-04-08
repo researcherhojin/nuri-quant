@@ -333,7 +333,7 @@ data/
 
 ## Testing
 
-2,253 backend tests across 91 files (top-level + `tests/{api,collectors,quant,trading/agents,trading/recommend}/` subdirs) + 585 frontend vitest (44 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). CI minimum coverage 80%. Tests use `tmp_path` fixture for isolated SQLite databases:
+2,253 backend tests across 91 files (top-level + `tests/{api,collectors,quant,trading/agents,trading/recommend}/` subdirs) + 593 frontend vitest (45 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). CI minimum coverage 80%. Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -438,7 +438,7 @@ Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `mac
 cd frontend
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (585 tests, 44 files)
+npm run test           # vitest run (593 tests, 45 files)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
 ```
@@ -454,7 +454,7 @@ All pages are **Server Components** with `force-dynamic`. Data fetched server-si
 
 **Conventions**: `async function Section()` in `<Suspense>`, `animate-pulse` skeletons, color semantics (emerald=BUY, red=SELL, amber=warning, blue=WATCH, zinc=HOLD), `text-[10px]` sub-labels.
 
-**Frontend testing** (585 vitest, 44 files, 95% coverage): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files.
+**Frontend testing** (593 vitest, 45 files): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files.
 
 **Auth**: `src/middleware.ts` — SHA256 cookie-based, active only when `DASHBOARD_PASSWORD` is set.
 
