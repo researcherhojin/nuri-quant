@@ -1,7 +1,10 @@
 """
 ARK Invest 매매 추적 수집기.
 
-ARK의 일일 매매 CSV를 다운로드하고, 보유/관심 종목만 필터링하여 저장.
+소스 우선순위 (모두 무료, fallback chain):
+    1. cathiesark.com 통합 CSV (CSV)
+    2. ark-funds.com 공식 ARK_TRADE.csv (CSV)
+    3. yfinance ETF holdings (ARKK/ARKW/ARKG/ARKQ/ARKF) — REST 차단 시 폴백
 
 사용법:
     python -m nuri.collectors.ark
@@ -12,7 +15,7 @@ import logging
 
 import requests
 
-from nuri.collectors.base import DEFAULT_HEADERS, BaseCollector, parse_date
+from nuri.collectors.base import DEFAULT_HEADERS, BaseCollector, parse_date, today_str
 from nuri.core.db import get_tickers, upsert_ark
 
 # ARK 매매 내역 URL (우선순위 순)
@@ -20,6 +23,9 @@ ARK_TRADE_URLS = [
     "https://cathiesark.com/ark-combined-holdings-of-etf.csv",
     "https://ark-funds.com/wp-content/uploads/funds-etf-csv/ARK_TRADE.csv",
 ]
+
+# 폴백: yfinance로 직접 조회할 ARK ETF 목록
+ARK_ETFS = ["ARKK", "ARKW", "ARKG", "ARKQ", "ARKF"]
 
 
 class ARKCollector(BaseCollector):
@@ -29,17 +35,69 @@ class ARKCollector(BaseCollector):
         super().__init__("ark")
 
     def collect(self, **kwargs) -> list[dict]:
-        """ARK 매매 CSV 다운로드 및 파싱. 여러 URL 시도."""
+        """ARK 매매 CSV 다운로드 및 파싱. CSV 실패 시 yfinance fallback."""
         held_tickers = set(get_tickers())
 
         for url in ARK_TRADE_URLS:
             try:
-                return self._collect_csv(url, held_tickers)
+                records = self._collect_csv(url, held_tickers)
+                if records:
+                    return records
             except Exception as e:
                 self.logger.warning("ARK CSV 다운로드 실패 (%s): %s", url.split("/")[2], e)
 
-        self.logger.warning("모든 ARK 소스 실패")
+        # yfinance 폴백 — ETF holdings 조회
+        try:
+            records = self._collect_yfinance(held_tickers)
+            if records:
+                self.logger.info("ARK 데이터 yfinance fallback 사용 (%d건)", len(records))
+                return records
+        except Exception as e:
+            self.logger.warning("yfinance ARK fallback 실패: %s", e)
+
+        self.logger.warning("모든 ARK 소스 실패 (CSV + yfinance)")
         return []
+
+    def _collect_yfinance(self, held_tickers: set) -> list[dict]:
+        """yfinance Ticker.funds_data 또는 holdings로 ARK ETF의 보유 종목 조회.
+
+        yfinance API는 ETF의 일별 매매 내역은 제공하지 않으므로,
+        '오늘 날짜의 보유 비중' (held=hold) 스냅샷만 기록한다.
+        """
+        import yfinance as yf
+
+        records = []
+        today = today_str()
+        for etf in ARK_ETFS:
+            try:
+                t = yf.Ticker(etf)
+                # yfinance 0.2.x: funds_data.top_holdings → DataFrame
+                fd = getattr(t, "funds_data", None)
+                holdings_df = None
+                if fd is not None:
+                    holdings_df = getattr(fd, "top_holdings", None)
+                if holdings_df is None or len(holdings_df) == 0:
+                    continue
+                # 컬럼 정규화
+                cols = {c.lower(): c for c in holdings_df.columns}
+                weight_col = cols.get("holding percent") or cols.get("weight")
+                for symbol, row in holdings_df.iterrows():
+                    sym = str(symbol).strip().upper()
+                    if sym not in held_tickers:
+                        continue
+                    weight = float(row[weight_col]) * 100 if weight_col else 0.0
+                    records.append({
+                        "date": today,
+                        "ticker": sym,
+                        "direction": "Hold",  # 매매 내역 X, 보유 스냅샷
+                        "shares": 0.0,
+                        "weight": weight,
+                        "fund": etf,
+                    })
+            except Exception as e:
+                self.logger.debug("ARK yfinance %s 실패: %s", etf, e)
+                continue
+        return records
 
     def _collect_csv(self, url: str, held_tickers: set) -> list[dict]:
         """ARK CSV에서 매매/보유 내역 파싱."""

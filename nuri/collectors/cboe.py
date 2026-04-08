@@ -61,8 +61,109 @@ class CBOECollector(BaseCollector):
             except Exception as e:
                 self.logger.warning("FRED PCR 폴백 실패: %s", e)
 
+        # 4차: yfinance SPY 옵션 체인으로 PCR 직접 계산
+        try:
+            records = self._collect_yfinance_spy_pcr()
+            if records:
+                return records
+        except Exception as e:
+            self.logger.warning("yfinance SPY PCR 폴백 실패: %s", e)
+
+        # 5차: DB stale 재사용 (graceful degrade)
+        try:
+            stale = self._collect_db_stale()
+            if stale:
+                return stale
+        except Exception as e:
+            self.logger.warning("DB stale fallback 실패: %s", e)
+
         self.logger.error("CBOE 모든 소스 실패 (FRED_API_KEY 설정 시 FRED 폴백 가능)")
         return []
+
+    def _collect_yfinance_spy_pcr(self) -> list[dict]:
+        """yfinance SPY 옵션 체인에서 PCR을 proxy로 계산.
+
+        ⚠ 한계: CBOE 공식 Equity PCR (전체 미국 주식 옵션 기반, 통상 0.6~0.8)과
+        다름. SPY 단일 만기 PCR은 헤지 수요 때문에 보통 1.0~2.0 범위.
+        절대값보다 추세 (전일 대비 상승/하락)로 사용해야 정확.
+        source='yfinance_SPY'로 명시하여 downstream에서 구분 가능.
+
+        가장 가까운 만기일의 콜/풋 거래량을 합산해 PCR = put_vol / call_vol.
+        """
+        import yfinance as yf
+
+        ticker = yf.Ticker("SPY")
+        expirations = ticker.options
+        if not expirations:
+            return []
+        # 가장 가까운 만기 (보통 weekly/monthly)
+        nearest = expirations[0]
+        chain = ticker.option_chain(nearest)
+        call_vol = float(chain.calls["volume"].fillna(0).sum())
+        put_vol = float(chain.puts["volume"].fillna(0).sum())
+        if call_vol <= 0:
+            return []
+        pcr = put_vol / call_vol
+        self.logger.info(
+            "yfinance SPY PCR: %.3f (만기 %s, calls=%d puts=%d)",
+            pcr, nearest, int(call_vol), int(put_vol),
+        )
+        return [{
+            "indicator": "put_call_ratio",
+            "date": today_str(),
+            "value": round(pcr, 4),
+            "source": "yfinance_SPY",
+        }]
+
+    def _collect_db_stale(self) -> list[dict]:
+        """DB의 가장 최근 PCR 값을 stale로 재사용 (오늘 데이터 없을 때만)."""
+        from nuri.core.db import query
+        rows = query(
+            "SELECT date, value FROM macro WHERE indicator = 'put_call_ratio' "
+            "ORDER BY date DESC LIMIT 1"
+        )
+        if not rows:
+            return []
+        row = rows[0]
+        prev_date = row["date"] if hasattr(row, "__getitem__") else row[0]
+        prev_value = row["value"] if hasattr(row, "__getitem__") else row[1]
+        if prev_date == today_str():
+            return []  # 오늘 이미 있음 — fallback 불필요
+        self.logger.warning(
+            "CBOE: 라이브 데이터 없음, DB stale 재사용 (%s = %.3f)",
+            prev_date, prev_value,
+        )
+        return [{
+            "indicator": "put_call_ratio",
+            "date": prev_date,
+            "value": float(prev_value),
+            "source": "DB_STALE",
+        }]
+
+    def _collect_db_stale(self) -> list[dict]:
+        """DB의 가장 최근 PCR 값을 stale로 재사용 (오늘 데이터 없을 때만)."""
+        from nuri.core.db import query
+        rows = query(
+            "SELECT date, value FROM macro WHERE indicator = 'put_call_ratio' "
+            "ORDER BY date DESC LIMIT 1"
+        )
+        if not rows:
+            return []
+        row = rows[0]
+        prev_date = row["date"] if hasattr(row, "__getitem__") else row[0]
+        prev_value = row["value"] if hasattr(row, "__getitem__") else row[1]
+        if prev_date == today_str():
+            return []  # 오늘 이미 있음 — fallback 불필요
+        self.logger.warning(
+            "CBOE: 라이브 데이터 없음, DB stale 재사용 (%s = %.3f)",
+            prev_date, prev_value,
+        )
+        return [{
+            "indicator": "put_call_ratio",
+            "date": prev_date,  # 원래 날짜 유지 (freshness가 stale로 감지)
+            "value": float(prev_value),
+            "source": "DB_STALE",
+        }]
 
     def _collect_daily(self) -> list[dict]:
         """CBOE daily market statistics JSON에서 PCR 추출."""
