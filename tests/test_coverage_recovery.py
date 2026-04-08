@@ -1564,33 +1564,37 @@ class TestEstimatesCollector:
         c = EstimatesCollector()
         assert c.name == "estimates"
 
-    def test_collect_with_mock_openbb(self, db_path, monkeypatch):
-        """Mock OpenBB to test collect flow."""
+    def test_collect_with_mock_yfinance(self, db_path, monkeypatch):
+        """Mock yfinance Ticker.info to test collect flow.
+
+        Migrated from openbb after estimates collector switched backends
+        (broken openbb-core import path).
+        """
+        import sys
+
         from nuri.collectors.estimates import EstimatesCollector
 
-        mock_result = MagicMock()
-        mock_result.to_dataframe.return_value = pd.DataFrame([{
-            "recommendation": "Buy",
-            "target_high": 200.0,
-            "target_low": 150.0,
-            "target_consensus": 180.0,
-            "target_median": 175.0,
-            "number_of_analysts": 30,
-            "current_price": 160.0,
-        }])
-
-        mock_obb = MagicMock()
-        mock_obb.equity.estimates.consensus.return_value = mock_result
-        mock_mod = types.ModuleType("openbb")
-        mock_mod.obb = mock_obb
+        mock_ticker = MagicMock()
+        mock_ticker.info = {
+            "regularMarketPrice": 160.0,
+            "currentPrice": 160.0,
+            "recommendationKey": "buy",
+            "targetHighPrice": 200.0,
+            "targetLowPrice": 150.0,
+            "targetMeanPrice": 180.0,
+            "targetMedianPrice": 175.0,
+            "numberOfAnalystOpinions": 30,
+        }
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
 
         c = EstimatesCollector()
         monkeypatch.setattr(c, "_get_tickers", lambda: ["AAPL"])
-        with patch.dict("sys.modules", {"openbb": mock_mod}):
-            results = c.collect()
-            assert len(results) == 1
-            assert results[0]["ticker"] == "AAPL"
-            assert results[0]["target_mean"] == 180.0
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+        results = c.collect()
+        assert len(results) == 1
+        assert results[0]["ticker"] == "AAPL"
+        assert results[0]["target_mean"] == 180.0
 
     def test_collect_empty_result(self, db_path, monkeypatch):
         """Empty DataFrame from OpenBB."""
@@ -1760,98 +1764,104 @@ class TestFundamentalCollector:
         assert c.name == "fundamental"
 
     def test_collect_with_mock(self, db_path, monkeypatch):
-        """Mock OpenBB metrics to test collect flow."""
+        """Mock yfinance Ticker.info to test collect flow.
+
+        Migrated from openbb after fundamental collector switched backends
+        (broken openbb-core import path).
+        """
+        import sys
+
         from nuri.collectors.fundamental import FundamentalCollector
 
-        mock_result = MagicMock()
-        mock_result.to_dataframe.return_value = pd.DataFrame([{
-            "market_cap": 3e12,
-            "pe_ratio": 28.5,
-            "forward_pe": 25.0,
-            "price_to_book": 12.0,
-            "peg_ratio_ttm": 2.1,
-            "return_on_equity": 0.15,
-            "return_on_assets": 0.08,
-            "gross_margin": 0.45,
-            "operating_margin": 0.30,
-            "profit_margin": 0.25,
-            "revenue_growth": 0.12,
-            "earnings_growth": 0.15,
-            "debt_to_equity": 1.5,
-            "current_ratio": 1.8,
-            "dividend_yield": 0.006,
+        mock_ticker = MagicMock()
+        mock_ticker.info = {
+            "regularMarketPrice": 195.0,
+            "marketCap": 3e12,
+            "trailingPE": 28.5,
+            "forwardPE": 25.0,
+            "priceToBook": 12.0,
+            "pegRatio": 2.1,
+            "returnOnEquity": 0.15,
+            "returnOnAssets": 0.08,
+            "grossMargins": 0.45,
+            "operatingMargins": 0.30,
+            "profitMargins": 0.25,
+            "revenueGrowth": 0.12,
+            "earningsGrowth": 0.15,
+            "debtToEquity": 1.5,
+            "currentRatio": 1.8,
+            "dividendYield": 0.006,
             "beta": 1.2,
-        }])
-
-        mock_obb = MagicMock()
-        mock_obb.equity.fundamental.metrics.return_value = mock_result
-        mock_mod = types.ModuleType("openbb")
-        mock_mod.obb = mock_obb
+        }
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
 
         c = FundamentalCollector()
         monkeypatch.setattr(c, "_get_tickers", lambda: ["AAPL"])
-        with patch.dict("sys.modules", {"openbb": mock_mod}):
-            results = c.collect()
-            assert len(results) == 1
-            assert results[0]["ticker"] == "AAPL"
-            assert results[0]["pe_ratio"] == 28.5
-            assert results[0]["roe"] == 0.15
+        results = c.collect()
+        assert len(results) == 1
+        assert results[0]["ticker"] == "AAPL"
+        assert results[0]["pe_ratio"] == 28.5
+        assert results[0]["roe"] == 0.15
 
     def test_collect_nan_values(self, db_path, monkeypatch):
         """NaN values converted to None."""
+        import sys
+
         from nuri.collectors.fundamental import FundamentalCollector
 
-        data = {"market_cap": float("nan"), "pe_ratio": float("nan")}
-        # Fill remaining fields
-        for f in ["forward_pe", "price_to_book", "peg_ratio_ttm", "return_on_equity",
-                   "return_on_assets", "gross_margin", "operating_margin", "profit_margin",
-                   "revenue_growth", "earnings_growth", "debt_to_equity", "current_ratio",
-                   "dividend_yield", "beta"]:
-            data[f] = 1.0
-
-        mock_result = MagicMock()
-        mock_result.to_dataframe.return_value = pd.DataFrame([data])
-        mock_obb = MagicMock()
-        mock_obb.equity.fundamental.metrics.return_value = mock_result
-        mock_mod = types.ModuleType("openbb")
-        mock_mod.obb = mock_obb
+        # 일부 필드만 NaN, 나머지는 valid (전체 None이면 collector가 스킵)
+        mock_ticker = MagicMock()
+        mock_ticker.info = {
+            "regularMarketPrice": 195.0,
+            "marketCap": float("nan"),
+            "trailingPE": float("nan"),
+            "forwardPE": 25.0,
+            "returnOnEquity": 0.15,
+        }
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
 
         c = FundamentalCollector()
         monkeypatch.setattr(c, "_get_tickers", lambda: ["AAPL"])
-        with patch.dict("sys.modules", {"openbb": mock_mod}):
-            results = c.collect()
-            assert results[0]["market_cap"] is None
-            assert results[0]["pe_ratio"] is None
+        results = c.collect()
+        assert results[0]["market_cap"] is None
+        assert results[0]["pe_ratio"] is None
+        assert results[0]["forward_pe"] == 25.0
 
     def test_collect_exception_handled(self, db_path, monkeypatch):
         """API exception for a ticker doesn't crash."""
+        import sys
+
         from nuri.collectors.fundamental import FundamentalCollector
-        mock_obb = MagicMock()
-        mock_obb.equity.fundamental.metrics.side_effect = Exception("fail")
-        mock_mod = types.ModuleType("openbb")
-        mock_mod.obb = mock_obb
+
+        mock_yf = MagicMock()
+        mock_yf.Ticker.side_effect = Exception("fail")
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
 
         c = FundamentalCollector()
         monkeypatch.setattr(c, "_get_tickers", lambda: ["FAKE"])
-        with patch.dict("sys.modules", {"openbb": mock_mod}):
-            results = c.collect()
-            assert results == []
+        results = c.collect()
+        assert results == []
 
     def test_collect_empty_dataframe(self, db_path, monkeypatch):
-        """Empty DataFrame from OpenBB → skip."""
+        """Empty info from yfinance → skip."""
+        import sys
+
         from nuri.collectors.fundamental import FundamentalCollector
-        mock_result = MagicMock()
-        mock_result.to_dataframe.return_value = pd.DataFrame()
-        mock_obb = MagicMock()
-        mock_obb.equity.fundamental.metrics.return_value = mock_result
-        mock_mod = types.ModuleType("openbb")
-        mock_mod.obb = mock_obb
+
+        mock_ticker = MagicMock()
+        mock_ticker.info = {}  # 빈 info → regularMarketPrice 없음 → 스킵
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
 
         c = FundamentalCollector()
         monkeypatch.setattr(c, "_get_tickers", lambda: ["AAPL"])
-        with patch.dict("sys.modules", {"openbb": mock_mod}):
-            results = c.collect()
-            assert results == []
+        results = c.collect()
+        assert results == []
 
     def test_collect_no_tickers(self, db_path, monkeypatch):
         from nuri.collectors.fundamental import FundamentalCollector
@@ -1866,11 +1876,15 @@ class TestFundamentalCollector:
         assert c.save([]) == 0
         assert c.save(None) == 0
 
-    def test_metrics_fields_mapping(self):
-        from nuri.collectors.fundamental import METRICS_FIELDS
-        assert "pe_ratio" in METRICS_FIELDS
-        assert "return_on_equity" in METRICS_FIELDS
-        assert METRICS_FIELDS["return_on_equity"] == "roe"
+    def test_yf_fields_mapping(self):
+        """yfinance field mapping covers all DB columns."""
+        from nuri.collectors.fundamental import YF_FIELDS
+        # Critical columns
+        assert "trailingPE" in YF_FIELDS
+        assert YF_FIELDS["trailingPE"] == "pe_ratio"
+        assert "returnOnEquity" in YF_FIELDS
+        assert YF_FIELDS["returnOnEquity"] == "roe"
+        assert "debtToEquity" in YF_FIELDS
 
 
 # ═══════════════════════════════════════════════════════════════
