@@ -111,41 +111,55 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
                 "reason": "레버리지 ETF 금지",
             })
 
-    # ─── 2. 손절선 초과 (priority 2) ───
+    # ─── 2. 손절선 초과 (priority 2) — 계좌별 전략 적용 ───
+    # 동일 종목이 여러 계좌에 있으면 계좌별로 분리 판단
+    from nuri.core.rules import get_account_strategy
     stop_loss_violations = []
-    for _, row in ticker_agg.iterrows():
+    for _, row in df.iterrows():
         ticker = row["ticker"]
         if ticker in LEVERAGE_ETFS:
-            continue  # 이미 레버리지에서 처리
+            continue
         pnl_pct = row["pnl_pct"]
-        if pnl_pct < STOCK_STOP_LOSS:
+        account = row.get("account", "")
+        strategy = get_account_strategy(account)
+        account_stop_loss = strategy.get("stop_loss", STOCK_STOP_LOSS)
+
+        if pnl_pct < account_stop_loss:
             qty = int(row["quantity"])
-            sell_value = row["current_value_usd"]
+            sell_value = row.get("current_value_usd", 0)
             stop_loss_violations.append({
                 "ticker": ticker,
                 "violation_type": "stop_loss_exceeded",
                 "priority": _PRIORITY_MAP.get("stop_loss_exceeded", 2),
                 "current_value": pnl_pct,
-                "limit_value": STOCK_STOP_LOSS,
-                "severity": _severity("stop_loss_exceeded", pnl_pct, STOCK_STOP_LOSS),
+                "limit_value": account_stop_loss,
+                "severity": _severity("stop_loss_exceeded", pnl_pct, account_stop_loss),
                 "action": "SELL_ALL",
                 "sell_shares": qty,
                 "sell_value_usd": round(sell_value, 2),
-                "reason": f"손절 {pnl_pct:+.1f}% 초과 (한도 {STOCK_STOP_LOSS}%)",
+                "reason": f"손절 {pnl_pct:+.1f}% 초과 (한도 {account_stop_loss}%, {account})",
             })
     # 손실이 큰 순서로 정렬
     stop_loss_violations.sort(key=lambda v: v["current_value"])
     violations.extend(stop_loss_violations)
 
-    # ─── 3. 단일 종목 비중 초과 (priority 4) ───
+    # ─── 3. 단일 종목 비중 초과 (priority 4) — 계좌별 전략 적용 ───
+    # 종목이 여러 계좌에 걸쳐 있으면 가장 관대한 전략의 max_single_position 사용
+    _ticker_accounts = df.groupby("ticker")["account"].apply(list).to_dict()
     for _, row in ticker_agg.iterrows():
         ticker = row["ticker"]
         if ticker in LEVERAGE_ETFS:
             continue
         weight = row["weight_pct"]
-        if weight / 100 > MAX_SINGLE_POSITION:
+        # 해당 종목이 속한 계좌들의 max_single_position 중 최대값
+        accounts = _ticker_accounts.get(ticker, [])
+        max_pos = max(
+            (get_account_strategy(a).get("max_single_position", MAX_SINGLE_POSITION) for a in accounts),
+            default=MAX_SINGLE_POSITION,
+        )
+        if weight / 100 > max_pos:
             # 목표 비중까지 줄이기 위한 매도 수량 계산
-            target_value = total_value * MAX_SINGLE_POSITION
+            target_value = total_value * max_pos
             excess_value = row["current_value_usd"] - target_value
             current_price = row["current_price"]
             if current_price > 0:
@@ -159,12 +173,12 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
                 "violation_type": "position_limit_exceeded",
                 "priority": _PRIORITY_MAP.get("position_limit_exceeded", 4),
                 "current_value": weight,
-                "limit_value": MAX_SINGLE_POSITION,
-                "severity": _severity("position_limit_exceeded", weight, MAX_SINGLE_POSITION),
+                "limit_value": max_pos,
+                "severity": _severity("position_limit_exceeded", weight, max_pos),
                 "action": "REDUCE",
                 "sell_shares": sell_shares,
                 "sell_value_usd": round(sell_value, 2),
-                "reason": f"비중 {weight:.1f}% > 한도 {MAX_SINGLE_POSITION * 100:.0f}%",
+                "reason": f"비중 {weight:.1f}% > 한도 {max_pos * 100:.0f}%",
             })
 
     # ─── 4. 섹터 비중 초과 (priority 5) ───
