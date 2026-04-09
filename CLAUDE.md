@@ -117,7 +117,7 @@ make deploy           # rsync to Mac Mini
 make backup           # DB backup (30-day rolling)
 scripts/sync_dev.sh push      # Dev↔dev 노트북 상태 동기화 (.env, DB, ~/.claude Tier 3)
 scripts/sync_dev.sh pull      # 반대 방향 (--with-reports / --no-claude 옵션)
-bash scripts/auto_deploy.sh   # Mac mini receiver: fetch + ff-only merge + 변경 분석 (수동 1회 실행)
+bash scripts/auto_deploy.sh   # Mac mini receiver: fetch + ff-only merge + 변경 분석 (manual test; canonical run is launchd com.nuri-quant.autopull every 5min)
 
 # Utilities
 make ports            # show port usage
@@ -333,7 +333,7 @@ data/
 
 ## Testing
 
-2,253 backend tests across 91 files (top-level + `tests/{api,collectors,quant,trading/agents,trading/recommend}/` subdirs) + 593 frontend vitest (45 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). CI minimum coverage 80%. Tests use `tmp_path` fixture for isolated SQLite databases:
+2,253 backend tests across 91 files (top-level + `tests/{api,collectors,quant,trading/agents,trading/recommend}/` subdirs) + 593 frontend vitest (45 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -381,7 +381,7 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
 
 On push/PR to `main`:
 1. **Lint** — `ruff check nuri/ tests/ scripts/`
-2. **Test** — pytest with `pytest-xdist` parallel (`-n auto`), coverage **40% minimum** enforced. TA-Lib compiled from source (cached). Deps installed via `uv sync --frozen` (lockfile: `uv.lock`).
+2. **Test** — pytest with `pytest-xdist` parallel (`-n auto`, sharded into 2). Coverage uploaded to Codecov; no `--cov-fail-under` is set, so the gate is Codecov's 1% relative regression check (`codecov.yml`), not a fixed pytest threshold. TA-Lib compiled from source (cached). Deps installed via `uv sync --frozen` (lockfile: `uv.lock`).
 3. **Frontend** — `tsc --noEmit` + vitest with coverage
 
 PR-specific checks (`pr-checks.yml`):
