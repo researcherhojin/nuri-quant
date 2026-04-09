@@ -210,6 +210,11 @@ retail:
 
 consensus:
   risk_veto_threshold: 80
+  # 단일 ticker에 대한 10-agent 병렬 실행의 전체 timeout (초).
+  # 이전 15s → 60s. 외부 API fetch가 길어지는 에이전트(wallstreet, smart_money 등)
+  # 가 한 번만 느려도 전체 ticker가 죽던 #130 버그의 근본 수정.
+  # timeout 도달 시 미완료 에이전트는 HOLD/0/타임아웃 verdict로 폴백.
+  agent_timeout_sec: 60
   learning_memory:
     lookback_days: 180
     min_records: 10
