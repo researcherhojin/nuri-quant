@@ -267,7 +267,7 @@ Configured in `.env` (see `.env.example`):
 
 ## DB Schema (SQLite, WAL mode)
 
-29 tables total (13 migrations). Key tables:
+31 tables total (15 migrations). Key tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -334,7 +334,7 @@ data/
 
 ## Testing
 
-2,524 backend tests across 125 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 594 frontend vitest (45 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
+2,601 backend tests across 128 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 606 frontend vitest (46 files) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -439,14 +439,14 @@ Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `mac
 cd frontend
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (593 tests, 45 files)
+npm run test           # vitest run (606 tests, 46 files)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
 ```
 
 All pages are **Server Components** with `force-dynamic`. Data fetched server-side via `fetchAPI()` (`src/lib/api.ts`). Two Client Components: `/report` (LLM generation) and `/pipeline` (ReactFlow DAG).
 
-**15 routes**: `/` (dashboard), `/signals`, `/consensus`, `/scan`, `/strategy`, `/rebalance`, `/engine`, `/pipeline`, `/report`, `/evidence`, `/portfolio`, `/targets`, `/advisor`, `/login`, `/ticker/[symbol]`.
+**16 routes**: `/` (dashboard), `/signals`, `/consensus`, `/scan`, `/strategy`, `/rebalance`, `/engine`, `/pipeline`, `/report`, `/evidence`, `/portfolio`, `/targets`, `/advisor`, `/decisions`, `/login`, `/ticker/[symbol]`.
 
 **Design system** — 3 shared components enforce visual consistency:
 - `DataTable` — Universal table with column config, renderers, `rowClassName`, compact mode
@@ -455,7 +455,7 @@ All pages are **Server Components** with `force-dynamic`. Data fetched server-si
 
 **Conventions**: `async function Section()` in `<Suspense>`, `animate-pulse` skeletons, color semantics (emerald=BUY, red=SELL, amber=warning, blue=WATCH, zinc=HOLD), `text-[10px]` sub-labels.
 
-**Frontend testing** (593 vitest, 45 files): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files.
+**Frontend testing** (606 vitest, 46 files): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files.
 
 **Auth**: `src/middleware.ts` — SHA256 cookie-based, active only when `DASHBOARD_PASSWORD` is set.
 
