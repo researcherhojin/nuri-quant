@@ -491,6 +491,54 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_external_llm_calls_timestamp ON external_llm_calls(timestamp);
         CREATE INDEX IF NOT EXISTS idx_external_llm_calls_model ON external_llm_calls(model);
     """),
+    (14, "create decisions table for #178 Decision Intelligence", """
+        CREATE TABLE IF NOT EXISTS decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            action TEXT NOT NULL,
+            confidence REAL,
+            regime TEXT,
+            macro_score REAL,
+            event_score REAL,
+            vix REAL,
+            fear_greed REAL,
+            agent_verdicts TEXT,
+            agreement_rate REAL,
+            dissent TEXT,
+            reasoning TEXT,
+            scoring_detail TEXT,
+            entry_price REAL,
+            stop_loss REAL,
+            target_1 REAL,
+            target_2 REAL,
+            pnl_7d REAL,
+            pnl_30d REAL,
+            pnl_60d REAL,
+            pnl_90d REAL,
+            outcome TEXT DEFAULT 'pending',
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(date, ticker)
+        );
+        CREATE INDEX IF NOT EXISTS idx_decisions_ticker ON decisions(ticker);
+        CREATE INDEX IF NOT EXISTS idx_decisions_date ON decisions(date);
+        CREATE INDEX IF NOT EXISTS idx_decisions_outcome ON decisions(outcome);
+    """),
+    (15, "create decision_evidence table for #178 lineage", """
+        CREATE TABLE IF NOT EXISTS decision_evidence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            decision_id INTEGER NOT NULL,
+            source_type TEXT NOT NULL,
+            source_key TEXT NOT NULL,
+            action TEXT,
+            confidence REAL,
+            detail TEXT,
+            FOREIGN KEY (decision_id) REFERENCES decisions(id),
+            UNIQUE(decision_id, source_type, source_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_decision_evidence_decision ON decision_evidence(decision_id);
+    """),
 ]
 
 
@@ -854,3 +902,85 @@ def get_trades(ticker: Optional[str] = None, db_path: Optional[Path] = None) -> 
             (ticker,), db_path,
         )
     return query("SELECT * FROM trades ORDER BY executed_at DESC", db_path=db_path)
+
+
+# ═══════════════════════════════════════════════════════
+# Decision Intelligence (#178)
+# ═══════════════════════════════════════════════════════
+
+
+def upsert_decision(data: dict, db_path: Optional[Path] = None) -> int:
+    """의사결정 기록 멱등 삽입/갱신. UNIQUE(date, ticker) 기준.
+
+    같은 날 같은 종목에 대해 재실행하면 최신 데이터로 UPDATE.
+    Returns: decision id (신규 삽입 시 lastrowid, 기존 갱신 시 기존 id).
+    """
+    with get_db(db_path) as conn:
+        cols = ", ".join(data.keys())
+        placeholders = ", ".join(f":{k}" for k in data.keys())
+        # updated_at을 갱신하기 위해 ON CONFLICT 사용
+        update_cols = [k for k in data.keys() if k not in ("date", "ticker")]
+        on_conflict = ", ".join(f"{k} = :{k}" for k in update_cols)
+        sql = f"""INSERT INTO decisions ({cols}) VALUES ({placeholders})
+                  ON CONFLICT(date, ticker) DO UPDATE SET {on_conflict},
+                  updated_at = datetime('now')"""
+        cursor = conn.execute(sql, data)
+        if cursor.lastrowid:
+            return cursor.lastrowid
+        # ON CONFLICT UPDATE → lastrowid가 0일 수 있음, 기존 id 조회
+        row = conn.execute(
+            "SELECT id FROM decisions WHERE date = :date AND ticker = :ticker", data
+        ).fetchone()
+        return row[0] if row else 0
+
+
+def upsert_decision_evidence(decision_id: int, records: list[dict],
+                             db_path: Optional[Path] = None) -> int:
+    """의사결정 증거 기록 멱등 삽입. UNIQUE(decision_id, source_type, source_key) 기준."""
+    if not records:
+        return 0
+    with get_db(db_path) as conn:
+        for rec in records:
+            rec["decision_id"] = decision_id
+            conn.execute(
+                """INSERT INTO decision_evidence
+                   (decision_id, source_type, source_key, action, confidence, detail)
+                   VALUES (:decision_id, :source_type, :source_key, :action, :confidence, :detail)
+                   ON CONFLICT(decision_id, source_type, source_key)
+                   DO UPDATE SET action = :action, confidence = :confidence, detail = :detail""",
+                rec,
+            )
+        return len(records)
+
+
+def get_decisions(ticker: Optional[str] = None, outcome: Optional[str] = None,
+                  limit: int = 100, db_path: Optional[Path] = None) -> list[dict]:
+    """의사결정 목록 조회. 필터: ticker, outcome(pending/success/failure)."""
+    conditions = []
+    params: list = []
+    if ticker:
+        conditions.append("ticker = ?")
+        params.append(ticker)
+    if outcome:
+        conditions.append("outcome = ?")
+        params.append(outcome)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    return query(
+        f"SELECT * FROM decisions {where} ORDER BY date DESC LIMIT ?",
+        (*params, limit), db_path,
+    )
+
+
+def get_decision_with_evidence(decision_id: int,
+                               db_path: Optional[Path] = None) -> Optional[dict]:
+    """의사결정 + 증거 체인 조회 (lineage용)."""
+    rows = query("SELECT * FROM decisions WHERE id = ?", (decision_id,), db_path)
+    if not rows:
+        return None
+    decision = dict(rows[0])
+    evidence = query(
+        "SELECT * FROM decision_evidence WHERE decision_id = ? ORDER BY source_type, source_key",
+        (decision_id,), db_path,
+    )
+    decision["evidence"] = [dict(e) for e in evidence]
+    return decision

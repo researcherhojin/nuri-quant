@@ -172,7 +172,7 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         final_confidence = risk_v.confidence
         reasoning = f"리스크 에이전트 거부권 발동: {risk_v.reasoning}"
     else:
-        final_action = max(action_scores, key=action_scores.get)
+        final_action = max(action_scores, key=lambda k: action_scores[k])
         total_weight = sum(action_scores.values())
         final_confidence = (action_scores[final_action] / total_weight * 100) if total_weight > 0 else 0
         supporters = [v for v in verdicts if v.action == final_action]
@@ -502,9 +502,17 @@ if __name__ == "__main__":
         saved = save_to_recommendations([result])
         if saved:
             logger.info(f"recommendations 테이블에 {saved}건 저장")
+        # Decision Intelligence: 의사결정 저널 기록
+        from nuri.trading.engine.decisions import record_decisions
+        dec_count = record_decisions([result])
+        logger.info(f"decisions 테이블에 {dec_count}건 기록")
     else:
         results = analyze_portfolio()
         print_consensus(results, verbose=args.verbose)
         saved = save_to_recommendations(results)
         if saved:
             logger.info(f"recommendations 테이블에 {saved}건 저장 (frontend /decision 활성화)")
+        # Decision Intelligence: 의사결정 저널 기록
+        from nuri.trading.engine.decisions import record_decisions
+        dec_count = record_decisions(results)
+        logger.info(f"decisions 테이블에 {dec_count}건 기록")
