@@ -76,6 +76,12 @@ def _compute_weights(db_path=None) -> dict[str, float]:
     recommendations 테이블에서 에이전트별 적중률을 추적하여 가중치를 보정한다.
     30일 이상 경과한 추천 중 outcome_30d가 있는 건으로 계산.
     데이터 부족 시(< 10건) DEFAULT_WEIGHTS 반환.
+
+    TODO(#178): decisions 테이블 기반 compute_agent_accuracy()가 30건 이상
+    완료되면, recommendations 대신 decisions 테이블을 primary source로 전환.
+    decisions는 outcome 판정이 더 엄격하고 (90일 기준), agent_verdicts가
+    정규화된 JSON이라 파싱이 안정적. 현재는 additive — 두 소스가 공존.
+    See: nuri.trading.engine.decisions.compute_agent_accuracy()
     """
     from nuri.core.db import query
 
