@@ -339,7 +339,9 @@ class TestCBOEExtractPCR:
         c.fred_key = ""
         with patch.object(c, "_collect_daily", side_effect=RuntimeError("fail")):
             with patch.object(c, "_collect_totalpc", side_effect=RuntimeError("fail")):
-                result = c.collect()
+                with patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("fail")):
+                    with patch.object(c, "_collect_db_stale", side_effect=RuntimeError("fail")):
+                        result = c.collect()
         assert result == []
 
     def test_collect_daily_returns_empty(self, monkeypatch):
