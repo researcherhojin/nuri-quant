@@ -130,7 +130,7 @@ SUSPECT_NUMERIC_KEYS: tuple[str, ...] = (
 # Allow-list: paths the scanner should NEVER block on.
 ALLOWLIST_PATHS: tuple[str, ...] = (
     "scripts/check_privacy_leak.py",      # this file (documents patterns)
-    "tests/test_check_privacy_leak.py",   # tests for this file
+    "tests/scripts/test_check_privacy_leak.py",  # tests for this file (moved from top-level in #163)
     "docs/STRATEGY.md",                   # may codify pattern names
     ".claude/projects/",                  # private memory dir (git-ignored anyway)
     "node_modules/",
