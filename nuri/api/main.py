@@ -23,6 +23,7 @@ from slowapi.util import get_remote_address
 from nuri.api.routes import (
     agents,
     dashboard,
+    decisions,
     engine,
     evidence,
     external,
@@ -60,7 +61,7 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # ─── CORS 강화 ───
 # 프로덕션: CORS_ORIGINS 환경변수로 허용 도메인 지정
@@ -103,6 +104,7 @@ app.include_router(evidence.router, prefix="/api")
 app.include_router(external.router, prefix="/api")
 app.include_router(targets.router, prefix="/api")
 app.include_router(trades.router, prefix="/api")
+app.include_router(decisions.router, prefix="/api")
 
 
 # ─── 인증 엔드포인트 ───
