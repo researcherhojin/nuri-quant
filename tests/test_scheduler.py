@@ -1,6 +1,6 @@
-"""Consolidated scheduler tests — all classes testing nuri.scheduler from across the test suite.
+"""Scheduler tests — all classes testing nuri.scheduler.
 
-Sources:
+Sources (consolidated from legacy coverage rounds, renamed from test_scheduler_all.py):
   - test_coverage_round17.py  → TestScheduler (first occurrence, keeps name)
   - test_coverage_round2.py   → TestScheduler_R2
   - test_coverage_round27.py  → TestScheduler_R27
