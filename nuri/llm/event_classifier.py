@@ -1,5 +1,5 @@
 """
-매크로 이벤트 헤드라인 분류기 — Ollama Qwen3.5 (primary) + keyword regex (fallback).
+매크로 이벤트 헤드라인 분류기 — OpenAI gpt-5.4-nano (primary) + keyword regex (fallback).
 
 Phase A 단독 모듈 — macro_score / classifier 의 의사결정 로직은 일절 안 건드림.
 출력만 produce, 사용은 Phase B에서.
@@ -7,14 +7,22 @@ Phase A 단독 모듈 — macro_score / classifier 의 의사결정 로직은 �
 입력: headline (str)
 출력: {category, sentiment, confidence, regime_hint}
 
+LLM 경로는 STRATEGY.md §4.4.3 외부 LLM Egress Policy 하에서만 작동한다.
+이 분류기가 wrapper에 보내는 데이터는 **공개 RSS 헤드라인 한정 (Tier 0)** —
+사용자 narrative나 portfolio 데이터는 절대 이 함수를 통해 외부로 나가지 않는다.
+
+#152 Step 2 — 이전에는 Ollama Qwen3.5 (primary) + regex (fallback) 였으나,
+Mac mini production hardware에서 Ollama가 hang되는 문제 (Phase A 실측에서 확인)
++ regex의 nuance 손실 (Iran 키워드가 Fed 헤드라인 흡수 등) 때문에 LLM 경로를
+OpenAI gpt-5.4-nano로 교체. regex는 per-headline graceful degradation으로 유지
+(wrapper raise / opt-out / offline 시 단일 헤드라인은 regex로, 나머지는 정상).
+
 사용법:
     from nuri.llm.event_classifier import classify_event
     result = classify_event("Iran and Israel agree to ceasefire after 2 weeks of strikes")
     # → {'category': 'geopolitical_de_escalation', 'sentiment': 0.5, ...}
 """
-import json
 import logging
-import os
 import re
 
 from dotenv import load_dotenv
@@ -22,10 +30,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 logger = logging.getLogger(__name__)
-
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5")
-OLLAMA_TIMEOUT_SEC = 15  # collector를 블로킹하지 않도록 짧게
 
 
 # 카테고리 — 새 카테고리 추가 시 REGIME_HINT 매핑도 반드시 함께 추가.
@@ -93,8 +97,14 @@ _KEYWORD_PATTERNS: list[tuple[str, str, float]] = [
 def classify_event(headline: str, *, use_llm: bool = True) -> dict:
     """헤드라인 → 구조화된 분류 결과.
 
-    use_llm=True (기본): Ollama Qwen3.5 시도 후 실패 시 regex 폴백.
+    use_llm=True (기본): OpenAI gpt-5.4-nano 시도 → 실패 시 regex 폴백.
     use_llm=False: regex만 사용 (테스트/CI/오프라인용).
+
+    LLM 경로는 wrapper(`nuri.llm.openai_client`)를 통해 호출되며 audit log
+    + opt-out + 비용 logging이 자동 적용된다. 단일 헤드라인 호출 실패는
+    조용히 regex로 폴백한다 (collector 100건 batch 중 일부 실패가 전체를
+    죽이지 않게). wrapper 자체의 예외(Disabled/Unavailable/ResponseError)는
+    여기서 흡수되며 caller가 알 필요 없다.
 
     반환:
         {
@@ -109,9 +119,9 @@ def classify_event(headline: str, *, use_llm: bool = True) -> dict:
 
     if use_llm:
         try:
-            return _classify_with_ollama(headline)
-        except Exception as e:  # noqa: BLE001 — Ollama 다운 시 묵묵히 폴백
-            logger.debug("Ollama 분류 실패 (%s) → regex 폴백", type(e).__name__)
+            return _classify_with_openai(headline)
+        except Exception as e:  # noqa: BLE001 — wrapper 예외 → 조용히 regex 폴백
+            logger.debug("OpenAI 분류 실패 (%s) → regex 폴백", type(e).__name__)
 
     return _classify_with_regex(headline)
 
@@ -130,39 +140,34 @@ def _classify_with_regex(headline: str) -> dict:
     return _neutral_result()
 
 
-def _classify_with_ollama(headline: str) -> dict:
-    """Ollama HTTP API 호출 — JSON 모드. 실패 시 caller가 폴백."""
-    import requests  # lazy import: 모듈 import 시 네트워크 의존 안 가지게
+def _classify_with_openai(headline: str) -> dict:
+    """OpenAI gpt-5.4-nano 분류 — wrapper 경유.
 
-    prompt = (
-        "You are a financial news classifier. Classify this market headline.\n"
-        f'Headline: "{headline}"\n\n'
-        f"Categories: {', '.join(CATEGORIES)}\n\n"
-        "Output ONLY this JSON format, no thinking, no explanation:\n"
-        '{"category": "<one of categories>", "sentiment": <float -1.0 to 1.0>, '
-        '"confidence": <float 0.0 to 1.0>}\n'
+    실패 시 wrapper가 ExternalLLMDisabled / ExternalLLMUnavailable /
+    ExternalLLMResponseError 중 하나를 raise하며, 상위 classify_event가
+    이를 흡수해 regex 폴백한다. 이 함수는 wrapper 예외를 직접 처리하지 않는다.
+
+    데이터 클래스: 이 함수가 wrapper에 보내는 user 메시지는 **공개 RSS 헤드라인**
+    뿐이며 사용자 portfolio/narrative는 절대 포함하지 않는다 (STRATEGY.md §4.4.3
+    Tier 0 한정).
+    """
+    from nuri.llm.openai_client import get_client
+
+    system_prompt = (
+        "You classify financial news headlines for a quant investment system. "
+        "Return ONLY a JSON object with these fields:\n"
+        f"- category: one of {list(CATEGORIES)}\n"
+        "- sentiment: float -1.0 (very bearish) to 1.0 (very bullish)\n"
+        "- confidence: float 0.0 to 1.0\n\n"
+        "If a headline mentions multiple topics, classify by the PRIMARY topic, "
+        "not the first keyword. For example, 'Fed holds rates steady amid Iran war' "
+        "is fed_dovish (Fed is the primary actor), not geopolitical_escalation."
     )
 
-    resp = requests.post(
-        f"{OLLAMA_HOST}/api/generate",
-        json={
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False,
-            "format": "json",
-            "options": {"temperature": 0.1, "num_predict": 200},
-        },
-        timeout=OLLAMA_TIMEOUT_SEC,
+    parsed = get_client().chat_json(
+        system=system_prompt,
+        user=f"Headline: {headline}",
     )
-    resp.raise_for_status()
-    raw = resp.json().get("response", "{}")
-
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        # JSON 모드인데 깨진 응답 → fallback 트리거
-        raise ValueError(f"Ollama returned non-JSON: {raw[:100]!r}") from None
-
     return _normalize(parsed)
 
 
