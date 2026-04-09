@@ -51,6 +51,9 @@ def _run_collector(name: str, **kwargs):
         elif name == "news":
             from nuri.collectors.news import NewsCollector
             NewsCollector().run()
+        elif name == "macro_news":
+            from nuri.collectors.macro_news import MacroNewsCollector
+            MacroNewsCollector().run()
         elif name == "fundamental":
             from nuri.collectors.fundamental import FundamentalCollector
             FundamentalCollector().run()
@@ -139,6 +142,10 @@ SCHEDULES = [
     # 뉴스 (1시간 — SaveTicker 대체)
     {"name": "news", "func": _run_collector, "args": ("news",),
      "cron": "0 * * * *"},
+
+    # 매크로 뉴스 (KST 08:00, 14:00, 20:00 — 시장 영향 큰 이벤트만)
+    {"name": "macro_news", "func": _run_collector, "args": ("macro_news",),
+     "cron": "0 8,14,20 * * *"},
 
     # 펀더멘탈 (주 1회 일요일 00:00)
     {"name": "fundamental", "func": _run_collector, "args": ("fundamental",),
