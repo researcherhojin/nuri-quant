@@ -44,10 +44,12 @@ class TestStrategyMap:
         assert rec.position_sizing in ("defensive", "minimal")
 
     def test_no_data(self, db_path):
+        from unittest.mock import patch
+
         from nuri.quant.regime.strategy_map import map_regime_to_strategy
-        # 빈 DB → regime=None → 전략 없음. classify_regime 호출 없이 직접 None 전달
-        # (xdist shard에서 classify_regime mock leak 방지)
-        rec = map_regime_to_strategy(regime_state=None, db_path=db_path)
+        # classify_regime을 source 레벨에서 mock → xdist shard mock leak 차단 (#85)
+        with patch("nuri.quant.regime.strategy_map.classify_regime", return_value=None):
+            rec = map_regime_to_strategy(db_path=db_path)
         assert rec is None
 
     def test_strategy_has_sector_preference(self, bull_market):
