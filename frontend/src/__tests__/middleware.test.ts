@@ -25,7 +25,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/",
     };
 
-    const result = middleware(request as any);
+    const result = await middleware(request as any);
     expect(result).toEqual({ type: "next" });
   });
 
@@ -39,7 +39,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/login",
     };
 
-    const result = middleware(request as any);
+    const result = await middleware(request as any);
     expect(result).toEqual({ type: "next" });
   });
 
@@ -53,7 +53,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/api/auth",
     };
 
-    const result = middleware(request as any);
+    const result = await middleware(request as any);
     expect(result).toEqual({ type: "next" });
   });
 
@@ -67,7 +67,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/dashboard",
     };
 
-    const result = middleware(request as any);
+    const result = await middleware(request as any);
     expect(result.type).toBe("redirect");
   });
 
@@ -93,7 +93,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/dashboard",
     };
 
-    const result = middleware(request as any);
+    const result = await middleware(request as any);
     expect(result).toEqual({ type: "next" });
   });
 
@@ -107,7 +107,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/dashboard",
     };
 
-    const result = middleware(request as any);
+    const result = await middleware(request as any);
     expect(result.type).toBe("redirect");
   });
 

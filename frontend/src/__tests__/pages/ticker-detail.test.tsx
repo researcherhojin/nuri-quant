@@ -216,6 +216,31 @@ describe("TickerPage", () => {
     expect(screen.getByText("No insider data")).toBeInTheDocument();
   });
 
+  it("handles null earnings fields (partial branch coverage)", async () => {
+    mockFetchAPI.mockImplementation((url: string) => {
+      if (url.includes("/prices")) return Promise.resolve({ prices: [] });
+      if (url.includes("/targets/")) return Promise.reject(new Error("404"));
+      if (url.includes("/external/")) return Promise.reject(new Error("404"));
+      return Promise.resolve({
+        ticker: "NULL", price: { close: 50 }, consensus: { verdicts: [] },
+        analyst_ratings: [],
+        earnings: [
+          { quarter: null, eps_actual: null, eps_estimate: null, surprise_pct: null },
+          { quarter: "2026-Q1", eps_actual: 1.5, eps_estimate: 1.3, surprise_pct: 0 },
+        ],
+        insider_trades: [], superinvestors: [], fundamentals: null,
+      });
+    });
+
+    const mod = await import("@/app/ticker/[symbol]/page");
+    const element = await mod.default({ params: Promise.resolve({ symbol: "NULL" }) });
+    await act(async () => { render(element); });
+
+    // Null fields should render as "—"
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(3);
+  });
+
   it("handles no consensus data", async () => {
     mockFetchAPI.mockImplementation((url: string) => {
       if (url.includes("/prices")) return Promise.resolve({ prices: [] });
