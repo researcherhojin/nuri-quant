@@ -475,6 +475,22 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_macro_events_published ON macro_events(published_at);
         CREATE INDEX IF NOT EXISTS idx_macro_events_category ON macro_events(category);
     """),
+    (13, "create external_llm_calls audit log table for #152 LLM egress policy", """
+        CREATE TABLE IF NOT EXISTS external_llm_calls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            prompt_tokens INTEGER,
+            completion_tokens INTEGER,
+            latency_ms INTEGER,
+            success INTEGER NOT NULL,
+            error_type TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_external_llm_calls_timestamp ON external_llm_calls(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_external_llm_calls_model ON external_llm_calls(model);
+    """),
 ]
 
 
@@ -682,6 +698,38 @@ def upsert_macro_events(records: list[dict], db_path: Optional[Path] = None) -> 
             records,
         )
         return cursor.rowcount if cursor.rowcount >= 0 else len(records)
+
+
+def log_external_llm_call(
+    *,
+    provider: str,
+    model: str,
+    endpoint: str,
+    prompt_tokens: Optional[int] = None,
+    completion_tokens: Optional[int] = None,
+    latency_ms: Optional[int] = None,
+    success: bool = True,
+    error_type: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """STRATEGY.md §4.4.3 audit log — 외부 LLM 호출 1건 기록.
+
+    **content는 절대 저장하지 않는다.** prompt나 response 텍스트는
+    이 함수의 인자로 받지도, DB에 넣지도 않는다. token 카운트와
+    metadata만 audit한다.
+
+    Returns: 새로 insert된 row id
+    """
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO external_llm_calls
+               (provider, model, endpoint, prompt_tokens, completion_tokens,
+                latency_ms, success, error_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (provider, model, endpoint, prompt_tokens, completion_tokens,
+             latency_ms, 1 if success else 0, error_type),
+        )
+        return cursor.lastrowid or 0
 
 
 # ═══════════════════════════════════════════════════════
