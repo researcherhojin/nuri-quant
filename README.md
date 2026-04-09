@@ -10,7 +10,7 @@
 
 </div>
 
-Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 24 data collectors, 10 specialist agents, and a 10-condition mechanical gate certify every recommendation before it reaches you.
+Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 24 data collectors, 10 specialist agents, and an 11-condition mechanical gate certify every recommendation before it reaches you.
 
 ## Pipeline
 
@@ -23,7 +23,7 @@ graph LR
     C["🧪 <b>C · Validate</b><br/>signal backtest + scorecard<br/>+ learning memory snapshot"]
     D["🏷️ <b>D · Classify</b><br/>regime × strategy map<br/>+ multi-factor composite"]
     E["🤖 <b>E · Recommend</b><br/>candidates + 10-agent consensus<br/>+ swing scanner"]
-    F["🛡️ <b>F · Certify</b><br/>price targets · rebalance<br/>SIEGE 10-gate certification"]
+    F["🛡️ <b>F · Certify</b><br/>price targets · rebalance<br/>SIEGE 11-gate certification"]
     G["📈 <b>G · Evidence</b><br/>5 Plotly charts"]
     H["🔔 <b>H · Notify</b><br/>Discord · Telegram"]
 
@@ -50,7 +50,7 @@ graph LR
 - **Evidence-based decisions** — 8,000+ historical trade backtests across 20 signals validate every recommendation
 - **10-regime market classification** — 6 base (bull/bear/sideways × high/low vol) + 4 special (recovery, euphoria, stagflation, sector rotation)
 - **10 specialist agents** — Weighted consensus voting with SSE reasoning trace. Risk agent holds veto power (SELL + confidence ≥ 80 overrides all)
-- **SIEGE certification** — [10-condition mechanical gate](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). Single failure → REJECTED
+- **SIEGE certification** — [11-condition mechanical gate](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). Single failure → REJECTED
 - **Investment rules UI** — Take-profit highlights (emerald/amber), VIX half-position warning, sell priority badges. O'Neil (CAN SLIM) + Minervini (SEPA), 3:1 reward-to-risk
 - **Pipeline observability** — [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview)-style Data Health + [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) Freshness SLA
 - **Superinvestor tracking** — SEC 13F filings (Buffett, Dalio, NPS Korea, Key Square, Strive)
@@ -168,7 +168,7 @@ After `make start`: Dashboard at <http://localhost:3000>, API docs at <http://lo
 ```bash
 make collect               # 12 collectors (all external data)
 make consensus             # 10-agent consensus + price targets
-make certify               # SIEGE 10-condition certification
+make certify               # SIEGE 11-condition certification
 make test                  # pytest (2,524 tests, parallel via xdist)
 make lint                  # ruff check
 cd frontend && npm run test  # vitest (593 tests)
@@ -278,7 +278,7 @@ Defined in `config/rules.yaml`. Based on [O'Neil (CAN SLIM)](https://www.investo
 
 | Source | Application |
 |--------|-------------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 10-condition gate, certification, event journal |
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-condition gate, certification, event journal |
 | [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline monitoring |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Asset freshness PASS/WARN/FAIL |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Multi-agent consensus pattern |

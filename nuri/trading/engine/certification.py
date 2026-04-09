@@ -5,7 +5,7 @@ SIEGE Certification Engine — 추천 결과의 형식 검증.
 추천이 rules.yaml의 모든 규칙을 만족하는지 기계적으로 검증하고,
 위반 시 인증서를 거부한다.
 
-검증 항목 (10-condition):
+검증 항목 (11-condition):
 1. position_limit     — 종목 비중 <= 15%
 2. sector_limit       — 섹터 비중 <= 35%
 3. cash_reserve       — 현금 비중 >= 20%
@@ -16,6 +16,7 @@ SIEGE Certification Engine — 추천 결과의 형식 검증.
 8. buy_checklist      — TipRanks + 슈퍼투자자 + PE + 매출
 9. conflict_free      — BUY/SELL 동시 시그널 없음 (또는 관망)
 10. drift_safe        — critical drift 시그널 기반 매수 없음
+11. macro_event_alignment — |event_score| >= 10 시 경고
 
 사용법:
     python -m nuri.trading.engine.certification
@@ -238,6 +239,33 @@ def _check_data_freshness(db_path=None) -> CertCondition:
                         f"SPY {age_hours:.0f}시간 전 (72h 초과)", "warning")
 
 
+def _check_macro_event_alignment(db_path=None) -> CertCondition:
+    """11. 매크로 이벤트 정합성 — event_score 기반 경고."""
+    try:
+        from nuri.quant.regime.event_score import compute_event_score
+        es = compute_event_score(db_path=db_path)
+        score = es.score
+        dominant = es.dominant_category or "none"
+
+        if abs(score) >= 15:
+            return CertCondition(
+                "macro_event_alignment", "매크로 이벤트 정합성", False,
+                f"강한 매크로 이벤트 감지 (score={score:+.1f}): {dominant}", "warning",
+            )
+        if abs(score) >= 10:
+            return CertCondition(
+                "macro_event_alignment", "매크로 이벤트 정합성", False,
+                f"매크로 이벤트 주의 (score={score:+.1f}): {dominant}", "warning",
+            )
+        return CertCondition(
+            "macro_event_alignment", "매크로 이벤트 정합성", True,
+            f"event_score={score:+.1f} (정상)",
+        )
+    except Exception:
+        # graceful degradation — 이벤트 데이터 없어도 통과
+        return CertCondition("macro_event_alignment", "매크로 이벤트 정합성", True, "검증 스킵")
+
+
 def _check_rules_loaded(db_path=None) -> CertCondition:
     """규칙 파일 로드 확인."""
     from nuri.core.rules import RULES
@@ -249,23 +277,24 @@ def _check_rules_loaded(db_path=None) -> CertCondition:
                         f"{keys}개 섹션 (take_profit={has_take_profit}, entry={has_entry})")
 
 
-# 10개 조건 목록
+# 11개 조건 목록
 ALL_CERT_CHECKS = [
-    _check_position_limits,      # 1. 종목 비중
-    _check_sector_limits,        # 2. 섹터 비중
-    _check_stop_loss_compliance, # 3-4. 손절선
-    _check_data_freshness,       # 5. 데이터 신선도
-    _check_leverage_ban,         # 6. 레버리지 금지
-    _check_vix_gate,             # 7. VIX 게이트
-    _check_external_data,        # 8. 외부 데이터
-    _check_conflicts,            # 9. 충돌 해소
-    _check_drift_safety,         # 10. drift 안전
-    _check_rules_loaded,         # 규칙 로드
+    _check_position_limits,          # 1. 종목 비중
+    _check_sector_limits,            # 2. 섹터 비중
+    _check_stop_loss_compliance,     # 3-4. 손절선
+    _check_data_freshness,           # 5. 데이터 신선도
+    _check_leverage_ban,             # 6. 레버리지 금지
+    _check_vix_gate,                 # 7. VIX 게이트
+    _check_external_data,            # 8. 외부 데이터
+    _check_conflicts,                # 9. 충돌 해소
+    _check_drift_safety,             # 10. drift 안전
+    _check_macro_event_alignment,    # 11. 매크로 이벤트 정합성
+    _check_rules_loaded,             # 규칙 로드
 ]
 
 
 def certify(db_path=None) -> Certificate:
-    """SIEGE 인증서 발급. 10개 조건 검증 후 pass/fail 판정."""
+    """SIEGE 인증서 발급. 11개 조건 검증 후 pass/fail 판정."""
     conditions = [check(db_path=db_path) for check in ALL_CERT_CHECKS]
 
     total = len(conditions)
