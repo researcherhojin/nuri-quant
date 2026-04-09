@@ -196,24 +196,118 @@ class TestSectorLimits:
         assert result.passed is True
 
 
+class TestMacroEventAlignment:
+    """#143: Gate 11 — macro_event_alignment."""
+
+    def test_pass_no_events(self, db_path):
+        """이벤트 없으면 graceful pass."""
+        from nuri.trading.engine.certification import _check_macro_event_alignment
+        result = _check_macro_event_alignment(db_path=db_path)
+        assert result.passed is True
+        assert result.id == "macro_event_alignment"
+        assert "0.0" in result.detail
+
+    def test_pass_low_score(self, db_path, monkeypatch):
+        """event_score < 10 이면 pass."""
+        from nuri.quant.regime.event_score import EventScore
+        monkeypatch.setattr(
+            "nuri.quant.regime.event_score.compute_event_score",
+            lambda **kw: EventScore(
+                date="2026-04-10", score=5.0, event_count=2,
+                category_breakdown={}, dominant_category="fed_dovish", regime_hint=None,
+            ),
+        )
+        from nuri.trading.engine.certification import _check_macro_event_alignment
+        result = _check_macro_event_alignment(db_path=db_path)
+        assert result.passed is True
+        assert "+5.0" in result.detail
+
+    def test_warn_score_10(self, db_path, monkeypatch):
+        """|event_score| >= 10 이면 warning."""
+        from nuri.quant.regime.event_score import EventScore
+        monkeypatch.setattr(
+            "nuri.quant.regime.event_score.compute_event_score",
+            lambda **kw: EventScore(
+                date="2026-04-10", score=-12.0, event_count=5,
+                category_breakdown={}, dominant_category="trade_war", regime_hint=None,
+            ),
+        )
+        from nuri.trading.engine.certification import _check_macro_event_alignment
+        result = _check_macro_event_alignment(db_path=db_path)
+        assert result.passed is False
+        assert result.severity == "warning"
+        assert "주의" in result.detail
+        assert "trade_war" in result.detail
+
+    def test_warn_score_15(self, db_path, monkeypatch):
+        """|event_score| >= 15 이면 강한 경고."""
+        from nuri.quant.regime.event_score import EventScore
+        monkeypatch.setattr(
+            "nuri.quant.regime.event_score.compute_event_score",
+            lambda **kw: EventScore(
+                date="2026-04-10", score=18.0, event_count=10,
+                category_breakdown={}, dominant_category="geopolitical_escalation", regime_hint=None,
+            ),
+        )
+        from nuri.trading.engine.certification import _check_macro_event_alignment
+        result = _check_macro_event_alignment(db_path=db_path)
+        assert result.passed is False
+        assert result.severity == "warning"
+        assert "강한" in result.detail
+        assert "geopolitical_escalation" in result.detail
+
+    def test_warn_negative_score_15(self, db_path, monkeypatch):
+        """음수 event_score -15 이하도 경고."""
+        from nuri.quant.regime.event_score import EventScore
+        monkeypatch.setattr(
+            "nuri.quant.regime.event_score.compute_event_score",
+            lambda **kw: EventScore(
+                date="2026-04-10", score=-17.5, event_count=8,
+                category_breakdown={}, dominant_category="geopolitical_escalation", regime_hint=None,
+            ),
+        )
+        from nuri.trading.engine.certification import _check_macro_event_alignment
+        result = _check_macro_event_alignment(db_path=db_path)
+        assert result.passed is False
+        assert "강한" in result.detail
+
+    def test_exception_graceful_pass(self, db_path, monkeypatch):
+        """compute_event_score 예외 시 graceful pass."""
+        monkeypatch.setattr(
+            "nuri.quant.regime.event_score.compute_event_score",
+            lambda **kw: (_ for _ in ()).throw(RuntimeError("test")),
+        )
+        from nuri.trading.engine.certification import _check_macro_event_alignment
+        result = _check_macro_event_alignment(db_path=db_path)
+        assert result.passed is True
+        assert "스킵" in result.detail
+
+
 class TestCertify:
     """From test_certification.py."""
 
     def test_returns_certificate(self, populated_db_cert):
         from nuri.trading.engine.certification import certify
         cert = certify(db_path=populated_db_cert)
-        assert cert.total_conditions == 10
+        assert cert.total_conditions == 11
         assert 0 <= cert.score <= 100
         assert cert.passed + cert.failed + cert.warnings == cert.total_conditions
 
     def test_empty_db_still_runs(self, db_path):
         from nuri.trading.engine.certification import certify
         cert = certify(db_path=db_path)
-        assert cert.total_conditions == 10
+        assert cert.total_conditions == 11
 
     def test_all_checks_list(self):
         from nuri.trading.engine.certification import ALL_CERT_CHECKS
-        assert len(ALL_CERT_CHECKS) == 10
+        assert len(ALL_CERT_CHECKS) == 11
+
+    def test_certify_includes_macro_event_gate(self, db_path):
+        """certify() 결과에 macro_event_alignment gate이 포함되어야 함."""
+        from nuri.trading.engine.certification import certify
+        cert = certify(db_path=db_path)
+        gate_ids = [c.id for c in cert.conditions]
+        assert "macro_event_alignment" in gate_ids
 
 
 class TestPrintCertificate:
