@@ -23,8 +23,8 @@ account = {
 """
 
 LEAK_BROKER_EN = """\
-account_id = "brokerage_main"
-backup = "brokerage_secondary"
+account_id = "kakaopay_main"
+backup = "mirae_secondary"
 """
 
 LEAK_SUSPECT_NUMERIC = """\
@@ -79,8 +79,8 @@ class TestScanFile:
 
         findings = scan_path(tmp_file(LEAK_BROKER_EN))
         patterns = {f.pattern for f in findings}
-        assert "brokerage" in patterns
-        assert "brokerage" in patterns
+        assert "kakaopay" in patterns
+        assert "mirae" in patterns
 
     def test_detects_suspect_numeric(self, tmp_file):
         from scripts.check_privacy_leak import scan_path
