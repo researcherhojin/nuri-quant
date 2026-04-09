@@ -170,6 +170,21 @@ jobs:
         with:
           args: "check nuri/ tests/ scripts/"
 
+  # ── Privacy leak scan (#138) ──
+  # Always runs (no `needs: changes` gate) — a frontend-only PR could still
+  # introduce a markdown leak. Scanner uses stdlib only, no deps.
+  privacy-scan:
+    name: Privacy Leak Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Scan for personal financial data leaks
+        run: python scripts/check_privacy_leak.py
+
   # ── Backend Tests (sharded matrix) ──
   # Tests are split across 2 shards via pytest-shard, each running on its own
   # 4-core runner. Wall time roughly halves vs the single-job design.
