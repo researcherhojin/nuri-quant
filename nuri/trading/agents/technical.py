@@ -1,13 +1,27 @@
-"""기술적 분석 에이전트 — RSI, MACD, SMA, BB, 차트 패턴(BB 위치/MACD 전환/52주/추세선) 기반 판정."""
+"""기술적 분석 에이전트 — RSI, MACD, SMA, BB, 차트 패턴(BB 위치/MACD 전환/52주/추세선) 기반 판정.
+
+FINVIZ 스크리너 데이터를 보조 시그널로 활용 (external_analysis 테이블).
+"""
+import logging
+
 import pandas as pd
 
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.core.db import query_df
+from nuri.core.db import query, query_df
+from nuri.core.timezone import kst_now
 from nuri.quant.chart_analysis import analyze_chart
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
+logger = logging.getLogger(__name__)
+
 _CFG = AGENT_CONFIG.get("technical", {})
 _CONF = _CFG.get("confidence", {})
+_FINVIZ_CFG = _CFG.get("finviz", {})
+
+# FINVIZ 시그널 → BUY/SELL 분류
+_FINVIZ_BUY_SIGNALS = {"oversold_rsi", "new_low"}
+_FINVIZ_SELL_SIGNALS = {"overbought_rsi", "new_high"}
+# unusual_volume, most_volatile → 방향 중립 (가산 없음)
 
 
 class TechnicalAgent(BaseAgent):
@@ -124,6 +138,18 @@ class TechnicalAgent(BaseAgent):
                 sell_signals += 1
                 reasons.append(f"추세약세({chart.trend_strength:+.0f})")
 
+        # FINVIZ 스크리너 보조 시그널 (external_analysis 테이블)
+        finviz_signals = self._get_finviz_signals(ticker, db_path=db_path)
+        finviz_buy_boost = _FINVIZ_CFG.get("buy_boost", 1)
+        finviz_sell_boost = _FINVIZ_CFG.get("sell_boost", 1)
+        for sig in finviz_signals:
+            if sig in _FINVIZ_BUY_SIGNALS:
+                buy_signals += finviz_buy_boost
+                reasons.append(f"FINVIZ {sig}")
+            elif sig in _FINVIZ_SELL_SIGNALS:
+                sell_signals += finviz_sell_boost
+                reasons.append(f"FINVIZ {sig}")
+
         conf_cap = _CONF.get("cap", 90)
         conf_hold = _CONF.get("hold", 40)
 
@@ -152,9 +178,32 @@ class TechnicalAgent(BaseAgent):
                 "trend": chart.trend_strength,
                 "visual_bias": chart.visual_bias,
             })
+        if finviz_signals:
+            data_points["finviz_signals"] = sorted(finviz_signals)
 
         return AgentVerdict(
             self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons) or "혼조",
             data_points,
         )
+
+    def _get_finviz_signals(self, ticker: str, db_path=None) -> list[str]:
+        """external_analysis 테이블에서 최근 FINVIZ 시그널 조회.
+
+        max_age_days 이내의 데이터만 사용. 데이터 없으면 빈 리스트 (graceful fallback).
+        """
+        from datetime import timedelta
+        max_age = _FINVIZ_CFG.get("max_age_days", 3)
+        cutoff = (kst_now() - timedelta(days=max_age)).strftime("%Y-%m-%d")
+        try:
+            rows = query(
+                "SELECT value FROM external_analysis "
+                "WHERE source = 'FINVIZ' AND ticker = ? AND data_type = 'finviz_signal' "
+                "AND date >= ? ORDER BY date DESC",
+                (ticker, cutoff),
+                db_path=db_path,
+            )
+            return [r["value"] for r in rows if r.get("value")]
+        except Exception:
+            logger.debug("FINVIZ 데이터 조회 실패: %s", ticker, exc_info=True)
+            return []
