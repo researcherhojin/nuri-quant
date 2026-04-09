@@ -46,7 +46,7 @@ LLM failure mode):
 4. **Run `bash scripts/pre_push_check.sh`** before pushing.
 5. **Open the PR with a "Closes #N" footer** and a Test Plan section.
 6. **Wait for CI green** before requesting merge. Branch protection
-   requires all 5 required checks (Backend Lint, Backend Tests,
+   requires all 6 required checks (Backend Lint, Backend Tests,
    Frontend Tests, Frontend Build, Security Scan, Privacy Leak Scan).
 7. **Squash-merge** is the default. Maintain a clean linear history.
 
@@ -90,7 +90,7 @@ with `+`: e.g. `feat+test(macro): ...`.
 | A new investment rule | `config/rules.yaml` — never hardcode |
 | A new API endpoint | `nuri/api/routes/` |
 | A new dashboard page | `frontend/src/app/<route>/page.tsx` |
-| A new LLM call | `nuri/llm/` only — portfolio data must stay local (Ollama) |
+| A new LLM call | `nuri/llm/` only — portfolio data must stay local (Ollama). External LLM calls go through `nuri/llm/openai_client.py` wrapper only (see `docs/STRATEGY.md` §4.4.3). |
 | A new shell script | `scripts/` + source `_common.sh` |
 
 ## What goes in `config/` vs hardcoded
@@ -128,3 +128,10 @@ The harness lessons in `docs/STRATEGY.md` §5 are written for Claude
 Code agents but apply to humans too: if your second attempt fails the
 same way as your first, **change your approach instead of trying a
 third time**.
+
+## Reporting bugs
+
+Use the issue templates in
+[`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/). For security
+vulnerabilities, see [`SECURITY.md`](SECURITY.md) — do not open a
+public issue.
