@@ -73,6 +73,14 @@ def _run_collector(name: str, **kwargs):
             from nuri.trading.engine.memory import save_snapshot
             n = save_snapshot()
             logger.info(f"[memory_snapshot] {n}건 저장")
+        elif name == "decision_outcomes":
+            from nuri.trading.engine.decisions import track_decision_outcomes
+            n = track_decision_outcomes()
+            logger.info(f"[decision_outcomes] {n}건 업데이트")
+        elif name == "agent_accuracy":
+            from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
+            n = save_agent_accuracy_snapshot()
+            logger.info(f"[agent_accuracy] {n}건 저장")
     except Exception as e:
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
 
@@ -170,6 +178,14 @@ SCHEDULES = [
     # Learning Memory 스냅샷 (주 1회 일요일 04:00)
     {"name": "memory_snapshot", "func": _run_collector, "args": ("memory_snapshot",),
      "cron": "0 4 * * 0"},
+
+    # Decision outcome 추적 (매일 07:00 — 시장 개장 전)
+    {"name": "decision_outcomes", "func": _run_collector, "args": ("decision_outcomes",),
+     "cron": "0 7 * * *"},
+
+    # Agent accuracy 스냅샷 (주 1회 일요일 08:00)
+    {"name": "agent_accuracy", "func": _run_collector, "args": ("agent_accuracy",),
+     "cron": "0 8 * * 0"},
 
     # 일일 리포트 (매일 08:00)
     {"name": "daily_report", "func": _run_report, "args": (),
