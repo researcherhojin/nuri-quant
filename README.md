@@ -57,62 +57,76 @@ graph LR
 - **Portfolio onboarding** — Dashboard UI for CRUD, CSV import/export, sample portfolio, YAML reverse sync
 - **LLM reports** — Qwen3.5 evidence-based analysis with SIEGE certification, fully local (Ollama)
 
+## Architecture
+
+```mermaid
+graph TB
+    subgraph Frontend ["Frontend · Next.js 16 · :3000"]
+        UI["16-page Dashboard<br/>Palantir-style Operator Cockpit"]
+    end
+
+    subgraph Backend ["Backend · FastAPI · :8001"]
+        API["REST API · 57 endpoints<br/>SSE · JWT Auth"]
+    end
+
+    subgraph Core ["Core · nuri/core/"]
+        DB[("SQLite WAL<br/>31 tables · 15 migrations")]
+        Events["Event Journal<br/>pipeline_events"]
+        Fresh["Freshness SLA<br/>PASS / WARN / FAIL"]
+    end
+
+    subgraph Pipeline ["8-Phase Pipeline · make full-scan"]
+        direction LR
+        P1["Collect"] --> P2["Analyze"] --> P3["Validate"]
+        P3 --> P4["Classify"] --> P5["Recommend"] --> P6["Certify"]
+        P6 --> P7["Evidence"] --> P8["Notify"]
+    end
+
+    subgraph Intelligence ["Decision Intelligence"]
+        DI["decisions + evidence tables<br/>→ 7/30/60/90d outcome tracking<br/>→ agent accuracy learning loop"]
+    end
+
+    subgraph Trading ["Trading Engine"]
+        SIEGE["SIEGE 11-Gate<br/>Certification"]
+        Agents["10 Specialist Agents<br/>Weighted Consensus"]
+        Brokers["Alpaca · KIS · DryRun"]
+    end
+
+    subgraph External ["External"]
+        LLM["Ollama · Qwen3.5<br/>(local only)"]
+        Notify["Discord · Telegram"]
+        Data["24 Collectors<br/>11 External Sources"]
+    end
+
+    UI <-->|"fetchAPI()"| API
+    API <-->|"query() · upsert()"| DB
+    Pipeline -->|"DB / CSV"| DB
+    Data -->|"BaseCollector.run()"| DB
+    Trading <-->|"certify() · consensus()"| DB
+    Intelligence <-->|"record / track / learn"| DB
+    SIEGE -->|"CERTIFIED?"| Brokers
+    LLM -->|"local inference"| API
+    P8 -->|"webhook"| Notify
+
+    style Frontend fill:#1a1a2e,stroke:#10b981,color:#e2e8f0
+    style Backend fill:#1a1a2e,stroke:#3b82f6,color:#e2e8f0
+    style Core fill:#1a1a2e,stroke:#f59e0b,color:#e2e8f0
+    style Pipeline fill:#1a1a2e,stroke:#8b5cf6,color:#e2e8f0
+    style Intelligence fill:#1a1a2e,stroke:#10b981,color:#e2e8f0
+    style Trading fill:#1a1a2e,stroke:#ef4444,color:#e2e8f0
+    style External fill:#1a1a2e,stroke:#6b7280,color:#e2e8f0
+```
+
 ## Tech Stack
 
-**Data Collection**<br/>
-![OpenBB](https://img.shields.io/badge/OpenBB-4.7.1-00C853?logoColor=white)
-![pykrx](https://img.shields.io/badge/pykrx-1.2.4-1565C0)
-![TA-Lib](https://img.shields.io/badge/TA--Lib-0.6.8-FF5722)
-![edgartools](https://img.shields.io/badge/edgartools-5.28.0-795548)
-![FRED API](https://img.shields.io/badge/FRED_API-0.5.2-FF6F00)
-![Beautiful Soup](https://img.shields.io/badge/Beautiful_Soup-4.14.3-43853D)
-![finvizfinance](https://img.shields.io/badge/finvizfinance-1.3.0-1E88E5)
-
-> 24 collectors + 11 external sources (TipRanks · Dataroma · CBOE · CoinGecko · Reddit/WSB · ARK · ETF.com · Macrotrends · TradingEconomics · ShortInterest · FINVIZ)
-
-**Quantitative Analysis**<br/>
-![pandas](https://img.shields.io/badge/pandas-2.3.3-150458?logo=pandas&logoColor=white)
-![NumPy](https://img.shields.io/badge/NumPy-1.26.4-013243?logo=numpy&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-1.8.0-F7931E?logo=scikit-learn&logoColor=white)
-![Riskfolio-Lib](https://img.shields.io/badge/Riskfolio--Lib-7.2.1-2196F3)
-![VectorBT](https://img.shields.io/badge/VectorBT-0.28.5-9C27B0)
-![cvxpy](https://img.shields.io/badge/cvxpy-1.7.5-00897B)
-![SciPy](https://img.shields.io/badge/SciPy-1.17.1-8CAAE6?logo=scipy&logoColor=white)
-
-**Backend**<br/>
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.128.8-009688?logo=fastapi&logoColor=white)
-![Pydantic](https://img.shields.io/badge/Pydantic-2.12.5-E92063?logo=pydantic&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
-![PyJWT](https://img.shields.io/badge/PyJWT-2.12.1-000000?logo=jsonwebtokens&logoColor=white)
-![bcrypt](https://img.shields.io/badge/bcrypt-5.0.0-004D40)
-![slowapi](https://img.shields.io/badge/slowapi-0.1.9-FF7043)
-
-> 54 endpoints · 29 tables (v13 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
-
-**Frontend**<br/>
-![Next.js](https://img.shields.io/badge/Next.js-16.2.2-000000?logo=next.js&logoColor=white)
-![React](https://img.shields.io/badge/React-19.2.4-61DAFB?logo=react&logoColor=black)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
-![shadcn/ui](https://img.shields.io/badge/shadcn/ui-latest-000000)
-
-> 15 pages · Dark mode · Palantir-style Operator Cockpit · FreshnessBar · Pipeline Control
-
-**LLM**<br/>
-![Ollama](https://img.shields.io/badge/Ollama-local-000000?logo=ollama&logoColor=white)
-![Qwen](https://img.shields.io/badge/Qwen3.5-35B_MoE-7C3AED)
-
-**Testing & CI/CD**<br/>
-![pytest](https://img.shields.io/badge/pytest-9.0.2-0A9EDC?logo=pytest&logoColor=white)
-![pytest-xdist](https://img.shields.io/badge/xdist-3.8.0-0A9EDC)
-![Vitest](https://img.shields.io/badge/Vitest-4.1.2-6E9F18?logo=vitest&logoColor=white)
-![Ruff](https://img.shields.io/badge/Ruff-0.15.8-D7FF64?logo=ruff&logoColor=black)
-![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI/CD-2088FF?logo=githubactions&logoColor=white)
-![Codecov](https://img.shields.io/badge/Codecov-coverage-F01F7A?logo=codecov&logoColor=white)
-![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright&logoColor=white)
-![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)
-
-> 2,524 backend tests across 125 files + 594 frontend unit (45 files) + 21 E2E tests · parallel via xdist/vitest/playwright (`-n auto --dist worksteal`)
+| Layer | Stack |
+|-------|-------|
+| **Frontend** | Next.js 16 · React 19 · Tailwind 4 · shadcn/ui · Recharts · ReactFlow |
+| **Backend** | Python 3.12 · FastAPI · SQLite (WAL) · Pydantic · JWT · SSE |
+| **Quant** | pandas · NumPy · TA-Lib · VectorBT · Riskfolio-Lib · scikit-learn |
+| **Data** | OpenBB · pykrx · edgartools · FRED · yfinance · Beautiful Soup · FINVIZ |
+| **LLM** | Ollama (local) · Qwen3.5 35B MoE · OpenAI gpt-5.4-nano (Tier 0 only) |
+| **CI/CD** | GitHub Actions · pytest-xdist · Vitest · Playwright · Ruff · Codecov · Trivy |
 
 ## Getting Started
 

@@ -19,29 +19,42 @@ from tests.quant._helpers import (  # noqa: F401
 
 
 class TestStrategyMap:
-    """D-3 (from test_regime.py)."""
+    """D-3 (from test_regime.py).
+
+    classify_regime을 직접 호출하면 xdist shard에서 다른 테스트의
+    mock leak로 Exception("skip") 발생 가능 (#85).
+    regime_state를 명시적으로 전달하여 우회.
+    """
 
     def test_bull_strategy(self, bull_market):
+        from nuri.quant.regime.classifier import classify_regime
         from nuri.quant.regime.strategy_map import map_regime_to_strategy
-        rec = map_regime_to_strategy(db_path=bull_market)
+        regime = classify_regime(db_path=bull_market)
+        rec = map_regime_to_strategy(regime_state=regime, db_path=bull_market)
         assert rec is not None
         assert rec.position_sizing == "aggressive"
         assert len(rec.recommended_signals) > 0
 
     def test_bear_strategy(self, bear_market):
+        from nuri.quant.regime.classifier import classify_regime
         from nuri.quant.regime.strategy_map import map_regime_to_strategy
-        rec = map_regime_to_strategy(db_path=bear_market)
+        regime = classify_regime(db_path=bear_market)
+        rec = map_regime_to_strategy(regime_state=regime, db_path=bear_market)
         assert rec is not None
         assert rec.position_sizing in ("defensive", "minimal")
 
     def test_no_data(self, db_path):
+        from nuri.quant.regime.classifier import classify_regime
         from nuri.quant.regime.strategy_map import map_regime_to_strategy
-        rec = map_regime_to_strategy(db_path=db_path)
+        regime = classify_regime(db_path=db_path)
+        rec = map_regime_to_strategy(regime_state=regime, db_path=db_path)
         assert rec is None
 
     def test_strategy_has_sector_preference(self, bull_market):
+        from nuri.quant.regime.classifier import classify_regime
         from nuri.quant.regime.strategy_map import map_regime_to_strategy
-        rec = map_regime_to_strategy(db_path=bull_market)
+        regime = classify_regime(db_path=bull_market)
+        rec = map_regime_to_strategy(regime_state=regime, db_path=bull_market)
         assert rec is not None
         assert len(rec.sector_preference) > 0
 
