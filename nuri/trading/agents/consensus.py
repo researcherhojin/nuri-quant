@@ -197,29 +197,54 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
 
 
 def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
-    """단일 종목에 대해 10개 에이전트 분석 + 합의."""
-    import concurrent.futures
-    weights = _compute_weights(db_path)
-    verdicts = []
+    """단일 종목에 대해 10개 에이전트 분석 + 합의.
 
-    # 에이전트 병렬 실행 (타임아웃 10초)
+    한 에이전트가 외부 API 등으로 느려져도 전체가 죽지 않도록,
+    `as_completed` iterator의 TimeoutError를 잡고 미완료 future는
+    HOLD/0/타임아웃 verdict로 폴백한다 (#130 회귀 방지).
+
+    Timeout은 `config/agents.yaml` `consensus.agent_timeout_sec` 에서 설정.
+    """
+    import concurrent.futures
+
+    weights = _compute_weights(db_path)
+    verdicts: list[AgentVerdict] = []
+    agent_timeout = AGENT_CONFIG.get("consensus", {}).get("agent_timeout_sec", 60)
+
     def _run_agent(agent):
         try:
             return agent.analyze(ticker, db_path)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — 에이전트 예외를 verdict로 흡수
             return AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(ALL_AGENTS)) as executor:
+    # `with` 대신 명시적 shutdown — 미완료 future를 cancel하고 즉시 반환.
+    # `with` 블록은 __exit__에서 wait=True로 모든 future 완료를 기다리므로
+    # timeout의 의미가 사라짐.
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(ALL_AGENTS))
+    try:
         futures = {executor.submit(_run_agent, agent): agent for agent in ALL_AGENTS}
-        for future in concurrent.futures.as_completed(futures, timeout=15):
-            try:
-                verdicts.append(future.result())
-            except concurrent.futures.TimeoutError:
+        completed: set[concurrent.futures.Future] = set()
+        try:
+            for future in concurrent.futures.as_completed(futures, timeout=agent_timeout):
+                completed.add(future)
                 agent = futures[future]
-                verdicts.append(AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃"))
-            except Exception as e:
-                agent = futures[future]
-                verdicts.append(AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}"))
+                try:
+                    verdicts.append(future.result())
+                except Exception as e:  # noqa: BLE001
+                    verdicts.append(
+                        AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
+                    )
+        except concurrent.futures.TimeoutError:
+            # 전체 batch timeout — 미완료 future는 폴백 verdict로
+            for future, agent in futures.items():
+                if future not in completed:
+                    verdicts.append(
+                        AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃")
+                    )
+    finally:
+        # cancel_futures: 큐에 대기중인(아직 시작 안 한) future 취소
+        # wait=False: 실행 중인 future가 끝날 때까지 기다리지 않음
+        executor.shutdown(wait=False, cancel_futures=True)
 
     return _build_consensus(ticker, verdicts, weights)
 
@@ -227,33 +252,47 @@ def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
 def stream_analyze_ticker(ticker: str, db_path=None):
     """단일 종목 스트리밍 분석 — 에이전트 완료 순서대로 verdict 생성.
 
+    `analyze_ticker`와 동일한 timeout 폴백 로직 (#130). 미완료 에이전트는
+    timeout 도달 시점에 일괄 HOLD/0/타임아웃 verdict로 yield.
+
     Yields:
         ("verdict", AgentVerdict) — 에이전트 완료 시마다
         ("consensus", ConsensusResult) — 전체 합의 완료 시
     """
     import concurrent.futures
+
     weights = _compute_weights(db_path)
-    verdicts = []
+    verdicts: list[AgentVerdict] = []
+    agent_timeout = AGENT_CONFIG.get("consensus", {}).get("agent_timeout_sec", 60)
 
     def _run_agent(agent):
         try:
             return agent.analyze(ticker, db_path)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(ALL_AGENTS)) as executor:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(ALL_AGENTS))
+    try:
         futures = {executor.submit(_run_agent, agent): agent for agent in ALL_AGENTS}
-        for future in concurrent.futures.as_completed(futures, timeout=15):
-            try:
-                verdict = future.result()
-            except concurrent.futures.TimeoutError:
+        completed: set[concurrent.futures.Future] = set()
+        try:
+            for future in concurrent.futures.as_completed(futures, timeout=agent_timeout):
+                completed.add(future)
                 agent = futures[future]
-                verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃")
-            except Exception as e:
-                agent = futures[future]
-                verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
-            verdicts.append(verdict)
-            yield ("verdict", verdict)
+                try:
+                    verdict = future.result()
+                except Exception as e:  # noqa: BLE001
+                    verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
+                verdicts.append(verdict)
+                yield ("verdict", verdict)
+        except concurrent.futures.TimeoutError:
+            for future, agent in futures.items():
+                if future not in completed:
+                    verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃")
+                    verdicts.append(verdict)
+                    yield ("verdict", verdict)
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     yield ("consensus", _build_consensus(ticker, verdicts, weights))
 

@@ -766,3 +766,124 @@ class TestConsensusVerbose:
         out = capsys.readouterr().out
         assert "▸" in out
         assert "test reasoning" in out
+
+
+class TestConsensusTimeout_R130:
+    """Regression: #130 — consensus.py 15s timeout crashes Phase E pipeline.
+
+    Before the fix, `as_completed(timeout=N)` raised TimeoutError on the
+    iterator itself, escaping the inner `except` clause and crashing the
+    entire `analyze_ticker` call (and thus the `make full-scan` pipeline).
+
+    Fix: catch the iterator-level TimeoutError, emit HOLD/0/타임아웃 verdicts
+    for unfinished futures, and shut down the executor with cancel_futures=True
+    so the function returns promptly instead of waiting for slow agents.
+    """
+
+    def _patch_short_timeout(self, monkeypatch, seconds: float = 0.3):
+        """consensus가 짧은 timeout을 사용하도록 AGENT_CONFIG 패치."""
+        from nuri.trading.agents import consensus as cons_mod
+
+        new_config = dict(cons_mod.AGENT_CONFIG)
+        new_consensus = dict(new_config.get("consensus", {}))
+        new_consensus["agent_timeout_sec"] = seconds
+        new_config["consensus"] = new_consensus
+        monkeypatch.setattr(cons_mod, "AGENT_CONFIG", new_config)
+
+    def test_analyze_ticker_returns_when_one_agent_hangs(self, db_path, monkeypatch):
+        """한 에이전트가 timeout을 초과해도 analyze_ticker가 반환한다."""
+        import time as _time
+
+        from nuri.trading.agents import consensus as cons_mod
+        from nuri.trading.agents.base import AgentVerdict
+
+        class HangingAgent:
+            name = "hanging"
+
+            def analyze(self, ticker, db_path=None):
+                _time.sleep(5.0)  # timeout 0.3s보다 훨씬 길게
+                return AgentVerdict("hanging", ticker, "BUY", 90, "completed")
+
+        class FastAgent:
+            name = "technical"
+
+            def analyze(self, ticker, db_path=None):
+                return AgentVerdict("technical", ticker, "BUY", 70, "fast result")
+
+        monkeypatch.setattr(cons_mod, "ALL_AGENTS", [FastAgent(), HangingAgent()])
+        monkeypatch.setattr(
+            cons_mod, "_compute_weights",
+            lambda db_path=None: {"technical": 0.5, "hanging": 0.5},
+        )
+        self._patch_short_timeout(monkeypatch, 0.3)
+
+        # 회귀 전: TimeoutError 발생 → 함수가 죽었음
+        # 회귀 후: 0.3s 후 반환, hanging은 타임아웃 verdict
+        start = _time.monotonic()
+        result = cons_mod.analyze_ticker("AAPL", db_path=db_path)
+        elapsed = _time.monotonic() - start
+
+        assert elapsed < 3.0, f"analyze_ticker가 {elapsed:.1f}s 걸림 — timeout 후 즉시 반환해야 함"
+        assert result.ticker == "AAPL"
+
+        verdicts_by_name = {v.agent_name: v for v in result.verdicts}
+        assert "technical" in verdicts_by_name
+        assert verdicts_by_name["technical"].action == "BUY"
+        assert verdicts_by_name["technical"].confidence == 70
+
+        assert "hanging" in verdicts_by_name
+        timeout_verdict = verdicts_by_name["hanging"]
+        assert timeout_verdict.action == "HOLD"
+        assert timeout_verdict.confidence == 0
+        assert "타임아웃" in timeout_verdict.reasoning
+
+    def test_stream_analyze_ticker_yields_timeout_verdicts(self, db_path, monkeypatch):
+        """스트리밍 변형도 동일하게 timeout 시 fallback verdict yield."""
+        import time as _time
+
+        from nuri.trading.agents import consensus as cons_mod
+        from nuri.trading.agents.base import AgentVerdict
+
+        class HangingAgent:
+            name = "hanging"
+
+            def analyze(self, ticker, db_path=None):
+                _time.sleep(5.0)
+                return AgentVerdict("hanging", ticker, "BUY", 90, "completed")
+
+        class FastAgent:
+            name = "technical"
+
+            def analyze(self, ticker, db_path=None):
+                return AgentVerdict("technical", ticker, "BUY", 70, "fast result")
+
+        monkeypatch.setattr(cons_mod, "ALL_AGENTS", [FastAgent(), HangingAgent()])
+        monkeypatch.setattr(
+            cons_mod, "_compute_weights",
+            lambda db_path=None: {"technical": 0.5, "hanging": 0.5},
+        )
+        self._patch_short_timeout(monkeypatch, 0.3)
+
+        start = _time.monotonic()
+        events = list(cons_mod.stream_analyze_ticker("AAPL", db_path=db_path))
+        elapsed = _time.monotonic() - start
+
+        assert elapsed < 3.0, f"stream_analyze_ticker가 {elapsed:.1f}s 걸림"
+
+        verdict_events = [e for e in events if e[0] == "verdict"]
+        consensus_events = [e for e in events if e[0] == "consensus"]
+        assert len(verdict_events) == 2
+        assert len(consensus_events) == 1
+
+        verdicts_by_name = {e[1].agent_name: e[1] for e in verdict_events}
+        assert verdicts_by_name["hanging"].action == "HOLD"
+        assert verdicts_by_name["hanging"].confidence == 0
+        assert "타임아웃" in verdicts_by_name["hanging"].reasoning
+        assert verdicts_by_name["technical"].action == "BUY"
+
+    def test_default_timeout_is_60_seconds(self):
+        """기본 timeout이 60초 — 회귀 가드 (15초로 되돌리기 방지)."""
+        from nuri.core.agent_config import AGENT_CONFIG
+
+        timeout = AGENT_CONFIG.get("consensus", {}).get("agent_timeout_sec")
+        assert timeout == 60, f"agent_timeout_sec이 {timeout} — 60이어야 함 (#130)"
