@@ -183,3 +183,6 @@ Thumbs.db
 ta-lib/
 ta-lib-*.tar.gz
 NEXT_SESSION.md
+
+# Internal methodology (not for public repo)
+docs/SYSTEM.md
