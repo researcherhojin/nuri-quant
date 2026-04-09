@@ -19,16 +19,17 @@ from nuri.core.timezone import today_kst
 logger = logging.getLogger(__name__)
 
 # 가중치 (총합 1.0)
-# 기존 6개 비중 축소 + 신규 2개 (yield_spread_3m10y, put_call_ratio) 추가
+# 기존 8개 비중을 0.9배로 축소 + 신규 event_score 0.10 추가
 WEIGHTS = {
-    "yield_curve": 0.15,          # 10Y-2Y (기존, 0.20→0.15)
-    "yield_spread_3m10y": 0.10,   # 3M-10Y (신규, 경기침체 예측력 ↑)
-    "vix": 0.17,                  # VIX (기존, 0.20→0.17)
-    "put_call_ratio": 0.08,       # CBOE PCR (신규, 옵션 심리)
-    "sentiment": 0.12,            # F&G (기존, 0.15→0.12)
-    "employment": 0.13,           # 실업률 (기존, 0.15→0.13)
-    "inflation": 0.13,            # CPI (기존, 0.15→0.13)
-    "monetary": 0.12,             # FFR (기존, 0.15→0.12)
+    "yield_curve": 0.135,         # 10Y-2Y (0.15→0.135)
+    "yield_spread_3m10y": 0.09,   # 3M-10Y (0.10→0.09)
+    "vix": 0.153,                 # VIX (0.17→0.153)
+    "put_call_ratio": 0.072,      # CBOE PCR (0.08→0.072)
+    "sentiment": 0.108,           # F&G (0.12→0.108)
+    "employment": 0.117,          # 실업률 (0.13→0.117)
+    "inflation": 0.117,           # CPI (0.13→0.117)
+    "monetary": 0.108,            # FFR (0.12→0.108)
+    "event": 0.10,                # 매크로 이벤트 (신규, #142 Phase B)
 }
 
 
@@ -45,6 +46,7 @@ class MacroScore:
     employment_score: float
     inflation_score: float
     monetary_score: float
+    event_score: float          # 0~100 (event_score -20~+20 → 0~100 변환)
     interpretation: str         # "Favorable", "Neutral", "Cautious", "Adverse"
     details: dict               # 원본 지표 값
     warnings: list[str] | None = None  # 누락된 지표 경고 목록
@@ -301,7 +303,7 @@ def _score_put_call_ratio(db_path=None, date: str | None = None) -> tuple[float,
 
 
 def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
-    """거시경제 종합 점수 계산 (8개 지표)."""
+    """거시경제 종합 점수 계산 (9개 지표, event_score 포함)."""
     yc_score, yc_detail = _score_yield_curve(db_path, date)
     ys3m10y_score, ys3m10y_detail = _score_yield_spread_3m10y(db_path, date)
     vix_score, vix_detail = _score_vix(db_path, date)
@@ -310,6 +312,13 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
     emp_score, emp_detail = _score_employment(db_path, date)
     inf_score, inf_detail = _score_inflation(db_path, date)
     mon_score, mon_detail = _score_monetary(db_path, date)
+
+    # 9번째 입력: macro event score (-20~+20 → 0~100 변환)
+    from nuri.quant.regime.event_score import compute_event_score
+    es = compute_event_score(date=date, db_path=db_path)
+    # -20 → 0점, 0 → 50점, +20 → 100점
+    evt_score_normalized = 50.0 + es.score * 2.5
+    evt_score_normalized = max(0.0, min(100.0, evt_score_normalized))
 
     # 누락 지표 감지: 50점(중립) 폴백 시 원본 데이터가 None이면 경고
     warnings: list[str] = []
@@ -328,7 +337,7 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
             missing_keys = [k for k in keys if detail.get(k) is None]
             msg = f"{name}: 데이터 누락 ({', '.join(missing_keys)}) → 중립 50점 사용"
             warnings.append(msg)
-            logger.debug("매크로 지표 누락 — %s", msg)  # debug로 변경 (매 호출마다 반복 방지)
+            logger.debug("매크로 지표 누락 — %s", msg)
 
     total = (
         yc_score * WEIGHTS["yield_curve"]
@@ -339,6 +348,7 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
         + emp_score * WEIGHTS["employment"]
         + inf_score * WEIGHTS["inflation"]
         + mon_score * WEIGHTS["monetary"]
+        + evt_score_normalized * WEIGHTS["event"]
     )
 
     if total >= 70:
@@ -361,9 +371,12 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
         employment_score=round(emp_score, 1),
         inflation_score=round(inf_score, 1),
         monetary_score=round(mon_score, 1),
+        event_score=round(evt_score_normalized, 1),
         interpretation=interpretation,
         details={**yc_detail, **ys3m10y_detail, **vix_detail, **pcr_detail,
-                 **sent_detail, **emp_detail, **inf_detail, **mon_detail},
+                 **sent_detail, **emp_detail, **inf_detail, **mon_detail,
+                 "event_raw": es.score, "event_count": es.event_count,
+                 "event_dominant": es.dominant_category},
         warnings=warnings if warnings else None,
     )
 
@@ -382,6 +395,7 @@ def print_macro_score(score: MacroScore) -> None:
     print(f"  Employment:       {score.employment_score:5.1f}  (unemp: {score.details.get('unemployment', '—')}%)")
     print(f"  Inflation:        {score.inflation_score:5.1f}  (CPI: {score.details.get('cpi_yoy', '—')}%)")
     print(f"  Monetary:         {score.monetary_score:5.1f}  (FFR: {score.details.get('fed_funds', '—')}%)")
+    print(f"  Events:           {score.event_score:5.1f}  (raw: {score.details.get('event_raw', '—')}, {score.details.get('event_count', 0)} events)")
     print()
 
 
