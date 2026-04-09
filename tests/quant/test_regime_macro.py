@@ -120,3 +120,73 @@ class TestMacroScoreExtended:
         print_macro_score(score)
         output = capsys.readouterr().out
         assert "Macro" in output or "매크로" in output
+
+
+class TestMacroScoreEventIntegration:
+    """B2/B4: event_score 통합 및 회귀 테스트 (#142)."""
+
+    def test_no_events_score_near_original(self, db_path):
+        """B4 회귀: 이벤트 0건 → event_score 50 (중립) → 기존 대비 ±5점."""
+        from nuri.quant.regime.macro_score import compute_macro_score
+        score = compute_macro_score(db_path=db_path)
+        # event_score should be 50 (neutral, no events)
+        assert score.event_score == 50.0
+        # Empty DB → all indicators default to 50 → total ~50
+        # event weight (10%) × 50 = 5, same as other defaults
+        assert 40 <= score.total_score <= 60
+
+    def test_event_score_field_exists(self, db_path):
+        """MacroScore dataclass has event_score field."""
+        from nuri.quant.regime.macro_score import compute_macro_score
+        score = compute_macro_score(db_path=db_path)
+        assert hasattr(score, "event_score")
+        assert isinstance(score.event_score, float)
+
+    def test_negative_events_lower_score(self, db_path):
+        """Strong negative events → lower macro_score."""
+        from nuri.quant.regime.macro_score import compute_macro_score
+        # Baseline without events
+        baseline = compute_macro_score(db_path=db_path)
+
+        # Add strong negative events
+        with get_db(db_path) as conn:
+            for i in range(10):
+                conn.execute(
+                    "INSERT INTO macro_events (published_at, source, headline, url, category, sentiment, confidence) "
+                    "VALUES (?, 'test', 'war headline', ?, 'geopolitical_escalation', -0.8, 0.9)",
+                    (today_kst(), f"http://test/neg-{i}"),
+                )
+
+        with_events = compute_macro_score(db_path=db_path)
+        assert with_events.event_score < 50  # Below neutral
+        assert with_events.total_score < baseline.total_score
+
+    def test_positive_events_raise_score(self, db_path):
+        """Strong positive events → higher macro_score."""
+        from nuri.quant.regime.macro_score import compute_macro_score
+        baseline = compute_macro_score(db_path=db_path)
+
+        with get_db(db_path) as conn:
+            for i in range(10):
+                conn.execute(
+                    "INSERT INTO macro_events (published_at, source, headline, url, category, sentiment, confidence) "
+                    "VALUES (?, 'test', 'rate cut', ?, 'fed_dovish', 0.7, 0.85)",
+                    (today_kst(), f"http://test/pos-{i}"),
+                )
+
+        with_events = compute_macro_score(db_path=db_path)
+        assert with_events.event_score > 50
+        assert with_events.total_score > baseline.total_score
+
+    def test_event_details_in_output(self, db_path):
+        """details dict includes event metadata."""
+        from nuri.quant.regime.macro_score import compute_macro_score
+        score = compute_macro_score(db_path=db_path)
+        assert "event_raw" in score.details
+        assert "event_count" in score.details
+
+    def test_weights_sum_to_one(self):
+        """B2: all 9 weights sum to 1.0."""
+        from nuri.quant.regime.macro_score import WEIGHTS
+        assert len(WEIGHTS) == 9
+        assert abs(sum(WEIGHTS.values()) - 1.0) < 0.01
