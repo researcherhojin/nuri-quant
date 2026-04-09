@@ -606,7 +606,7 @@ describe("Sidebar — collapsed state and branch coverage", () => {
     expect(screen.getByText("OVERVIEW")).toBeInTheDocument();
     expect(screen.getByText("ANALYSIS")).toBeInTheDocument();
     expect(screen.getByText("TRADING")).toBeInTheDocument();
-    expect(screen.getByText("SYSTEM")).toBeInTheDocument();
+    expect(screen.getByText("INTELLIGENCE")).toBeInTheDocument();
 
     // Current page "/" — Dashboard link should exist
     const dashLink = screen.getByText("Dashboard");
