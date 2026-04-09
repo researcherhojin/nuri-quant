@@ -127,8 +127,8 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,469 tests, 123 files |
-| Frontend tests | 목표 ≥ 90% | 593 tests, 45 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,524 tests, 125 files |
+| Frontend tests | 목표 ≥ 90% | 594 tests, 45 files |
 | E2E | 핵심 flow 커버 | 21 Playwright tests (4 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
@@ -391,15 +391,13 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 ### Tier 1 — 다음 1~2 작업 사이클 (P0)
 
-가장 시급. 파이프라인 안정성·신뢰도·시스템 가치 명제 직결.
+시스템 핵심 가치 직결. 수익 극대화 + 의사결정 추적.
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 1 | **OpenAI gpt-5.4-nano headline classification 도입** (Step 0/1/2) | [#152](https://github.com/researcherhojin/nuri-quant/issues/152) | feat(llm) | **#137 macro intelligence의 사실상 prerequisite.** 실측: regex 1/9 vs nano 8/9 정확도 (4-9× quality), Ollama hang 회피, 연 ~$3.51. 이 PR이 §4.4.3 외부 LLM Egress Policy 발효의 트리거. |
-| 2 | macro intelligence Phase B — event_score + macro_score/classifier 통합 | [#142](https://github.com/researcherhojin/nuri-quant/issues/142) | feat(macro) | Phase A (#141) 머지 + #152 quality 회복 후. macro_score 56 lock 해제. |
-| 3 | macro intelligence Phase C — SIEGE gate + Active Macro Events 카드 + STRATEGY 갱신 | [#143](https://github.com/researcherhojin/nuri-quant/issues/143) | feat(macro) | Phase B 머지 + 1주 데이터 관찰 후. raison d'être 1차 검증 종료. |
-| 4 | SIEGE REJECTED → 행동 가능 remediation | [#132](https://github.com/researcherhojin/nuri-quant/issues/132) | feat(siege) | certify + rebalance를 한 번에. `make remediate` 신규 |
-| 5 | 개인 금융 데이터 history cleanup (#138 Stage 2) | [#151](https://github.com/researcherhojin/nuri-quant/issues/151) | chore(privacy) | main HEAD는 깨끗(Stage 1 머지 완료). 이전 commit 잔존 leak. Option C (GitHub Support cache invalidation) 권장. |
+| 1 | **Palantir-style Decision Intelligence** — ontology + lineage + outcome loop | [#178](https://github.com/researcherhojin/nuri-quant/issues/178) | feat(core) | decisions 테이블 + evidence chain + outcome 자동 추적 + 학습 루프. 시스템 raison d'être. |
+| 2 | macro intelligence Phase C — SIEGE gate + Active Macro Events 카드 | [#143](https://github.com/researcherhojin/nuri-quant/issues/143) | feat(macro) | Phase B 머지 완료. event_score가 SIEGE에 반영되면 macro intelligence 1차 완성. |
+| 3 | 대시보드 + 파이프라인 UX 리팩토링 | — | feat(frontend) | Palantir/Dagster/Ghostfolio 레퍼런스 수준으로. 의사결정 지원 관점 재설계. |
 
 ### Tier 2 — 다음 1 달 (P1)
 
@@ -410,7 +408,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 1 | 티커 기반 First-Run 온보딩 UX | [#133](https://github.com/researcherhojin/nuri-quant/issues/133) | feat(frontend) | 신규 사용자 0분 가치 체험. `/analyze?ticker=NVDA` |
 | 2 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거 |
 | 3 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
-| 4 | 서비스 아키텍처 Mermaid + README 뱃지 미니멀화 + DX_GUIDE 한글화 | [#134](https://github.com/researcherhojin/nuri-quant/issues/134) | docs | Palantir-style 토폴로지 시각화 |
+| 4 | 서비스 아키텍처 Mermaid | [#134](https://github.com/researcherhojin/nuri-quant/issues/134) | docs | 토폴로지 시각화 |
 
 ### Tier 3 — 다음 분기 (P2)
 
@@ -420,14 +418,13 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 |---|------|------|---------|------|
 | 1 | Alpaca 실전 연동 (Paper → Live) | [#17](https://github.com/researcherhojin/nuri-quant/issues/17) | feat(execution) | 자동 매도 실행. SIEGE CERTIFIED 종목만 |
 | 2 | KIS Open API 한국 실전 연동 | — | feat(execution) | `kis_realtime.py` 기 구현. 매매 endpoint 미연결 |
-| 3 | pytest fast/slow marker 분리 | [#88](https://github.com/researcherhojin/nuri-quant/issues/88) | ci | PR feedback 가속 (현재 CI 약 2:47, slow split 시 ~1:30 목표) |
+| 3 | pytest fast/slow marker 분리 | [#88](https://github.com/researcherhojin/nuri-quant/issues/88) | ci | PR feedback 가속 |
 
 ### 영구 배경 작업 (낮은 우선순위, 발견 시 처리)
 
 | 항목 | 이슈 | 비고 |
 |------|------|------|
 | TestGate flake on push (PR-only pass) | [#85](https://github.com/researcherhojin/nuri-quant/issues/85) | CI 환경 차이 조사 필요 |
-| Migration #12 멱등성 버그 — schema_version 12 marked applied without table create | — | data/portfolio.db 실측 발견. `_apply_migrations` race condition or stale install. 다른 머신에서 same DB 사용 시 재현 가능. 새 이슈 등록 가치. |
 
 ### 작업 규칙 (변경 없음)
 
@@ -455,7 +452,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 출처 | 적용 | 코드 위치 |
 |------|------|----------|
 | [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 10-gate, certification, event journal | `nuri/trading/engine/` |
-| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline 모니터링 | `nuri/core/freshness.py`, `events.py` |
+| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline 모니터링, Decision Intelligence (#178) | `nuri/core/freshness.py`, `events.py`, `decisions` (planned) |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA (PASS/WARN/FAIL) | `nuri/core/freshness.py` |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 패턴 | `nuri/trading/agents/` |
 | [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | Risk Parity 최적화 | `nuri/analysis/rebalance.py` |
