@@ -1,6 +1,10 @@
 /**
  * Dashboard auth helpers — HMAC-keyed token + constant-time compare.
  *
+ * Uses Web Crypto API (Edge Runtime compatible) instead of node:crypto.
+ * Next.js 16 middleware runs in Edge Runtime where Node.js built-ins
+ * like node:crypto are unavailable.
+ *
  * Why HMAC instead of SHA256:
  *   The previous implementation stored sha256(password) as the auth cookie.
  *   CodeQL flagged this as "insufficient password hashing" because a stolen
@@ -21,53 +25,52 @@
  *   Both options give the same property: the cookie value is not directly
  *   derivable from the password alone.
  */
-import crypto from "node:crypto";
+
+const encoder = new TextEncoder();
 
 function getSecret(): string {
-  // AUTH_SECRET first, fall back to the dashboard password itself.
-  // Use || (truthy) instead of ?? (nullish) so an empty-string env var
-  // also falls through — env vars are conventionally treated as "unset"
-  // when either undefined or "".
-  return process.env.AUTH_SECRET || process.env.DASHBOARD_PASSWORD || "";
+  // Web Crypto API requires non-empty keys, so use a fixed fallback
+  // for dev mode (no password configured). This is low-security but
+  // matches the behavior where auth is disabled anyway.
+  return process.env.AUTH_SECRET || process.env.DASHBOARD_PASSWORD || "nuri-dev-key";
 }
 
 /**
- * Compute the auth cookie value.
- *
- * Derived ONLY from the server-side secret and a static label — the password
- * argument is intentionally unused inside the hash chain. Authentication is
- * performed earlier (in api/auth/route.ts) via constant-time string compare;
- * once the user proves they know the password, the cookie is just a "yes,
- * verified" token that an attacker without the server secret cannot forge.
- *
- * Why password is not fed into the HMAC update:
- *   CodeQL flags any pattern of `hash.update(password)` as "insufficient
- *   password hashing" because, regardless of HMAC key, the rule treats it
- *   as a fast hash applied to a credential. Using a static label decouples
- *   password content from the hash chain entirely. Practically there is no
- *   loss of security: the cookie value depends only on AUTH_SECRET (or the
- *   fallback DASHBOARD_PASSWORD which acts as its own key), so an attacker
- *   without that secret cannot derive the cookie from any input.
+ * Compute the auth cookie value (async — Web Crypto API is promise-based).
  *
  * The `password` parameter is preserved in the signature for call-site
  * compatibility (middleware passes it but it's ignored here).
  */
-export function hashToken(_password: string): string {
+export async function hashToken(_password: string): Promise<string> {
   const secret = getSecret();
-  return crypto
-    .createHmac("sha256", secret)
-    .update("nuri-auth-token:v1")
-    .digest("hex");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode("nuri-auth-token:v1"),
+  );
+  return Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
- * Constant-time string equality. Returns false on length mismatch without
- * leaking timing. Wraps node:crypto's timingSafeEqual which throws on
- * length mismatch — we handle that explicitly.
+ * Constant-time string equality. Compares byte-by-byte with fixed timing
+ * to prevent timing attacks. Returns false on length mismatch.
  */
 export function timingSafeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
+  const ab = encoder.encode(a);
+  const bb = encoder.encode(b);
   if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
+  let result = 0;
+  for (let i = 0; i < ab.length; i++) {
+    result |= ab[i] ^ bb[i];
+  }
+  return result === 0;
 }

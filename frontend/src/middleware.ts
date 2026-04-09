@@ -7,7 +7,7 @@ import { hashToken, timingSafeEqual } from "@/lib/auth-token";
  * DASHBOARD_PASSWORD 설정 시 활성화, 미설정 시 공개 (개발 모드).
  * 쿠키에는 HMAC-SHA256 토큰 저장 (서버 secret으로 키잉).
  */
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const password = process.env.DASHBOARD_PASSWORD;
 
   // 비밀번호 미설정 → 인증 없이 통과
@@ -21,7 +21,7 @@ export function middleware(request: NextRequest) {
 
   // 쿠키의 토큰과 기대 토큰을 timing-safe로 비교
   const authCookie = request.cookies.get("nuri-auth")?.value;
-  if (authCookie && timingSafeEqual(authCookie, hashToken(password))) {
+  if (authCookie && timingSafeEqual(authCookie, await hashToken(password))) {
     return NextResponse.next();
   }
 

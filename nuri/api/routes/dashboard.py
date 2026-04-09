@@ -132,6 +132,22 @@ def _get_allocation(regime: str) -> dict:
         return {"long": 0, "short": 0, "cash": 100}
 
 
+def _extract_reason(signals_raw: str | None) -> tuple[str, float | None]:
+    """signals JSON에서 reasoning 텍스트와 agreement_rate 추출."""
+    if not signals_raw:
+        return "", None
+    import json
+    try:
+        data = json.loads(signals_raw)
+        reasoning = data.get("reasoning", "")
+        # 첫 60자만 (UI line-clamp-1)
+        reason = reasoning[:60] if reasoning else ""
+        agreement = data.get("agreement_rate")
+        return reason, agreement
+    except (json.JSONDecodeError, TypeError):
+        return signals_raw[:60], None
+
+
 def _get_latest_actions() -> list[dict]:
     """recommendations 테이블에서 최신 추천 조회 — analyze_portfolio() 대체."""
     from nuri.core.db import query
@@ -149,19 +165,23 @@ def _get_latest_actions() -> list[dict]:
         for row in rows:
             action = row["action"]
             confidence = round(row["confidence"] * 100) if row["confidence"] and row["confidence"] <= 1 else round(row["confidence"] or 0)
+            reason, agreement_rate = _extract_reason(row.get("signals"))
+
             if action == "BUY" and confidence >= 50:
                 actions.append({
                     "action": "BUY",
                     "ticker": row["ticker"],
                     "confidence": confidence,
-                    "reason": row.get("signals", "")[:60] if row.get("signals") else "",
+                    "reason": reason,
+                    "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
                 })
             elif action == "SELL" and confidence >= 70:
                 actions.append({
                     "action": "SELL",
                     "ticker": row["ticker"],
                     "confidence": confidence,
-                    "reason": row.get("signals", "")[:60] if row.get("signals") else "",
+                    "reason": reason,
+                    "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
                 })
 
         # 상위 5개만

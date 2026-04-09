@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   }
 
   // 쿠키에 HMAC 토큰 저장 (서버 secret으로 키잉, 평문 아님)
-  const token = hashToken(expected);
+  const token = await hashToken(expected);
   const response = NextResponse.json({ ok: true });
   response.cookies.set("nuri-auth", token, {
     httpOnly: true,
