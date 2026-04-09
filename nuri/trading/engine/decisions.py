@@ -250,69 +250,122 @@ def _snapshot_market_context(db_path=None) -> dict:
     return context
 
 
-def save_agent_accuracy_snapshot(db_path=None) -> int:
-    """에이전트별 적중률 스냅샷 저장 (주간 batch).
+def compute_agent_accuracy(db_path=None) -> dict:
+    """decisions 테이블에서 에이전트별 적중률 계산 (학습 루프).
 
-    decisions 테이블의 agent_verdicts(JSON)를 파싱하여
-    각 에이전트가 BUY/SELL 판단한 종목의 실제 outcome과 비교.
+    완료된 decisions (outcome = success/failure)의 agent_verdicts를 파싱하여
+    각 에이전트의 판단이 최종 결과와 일치하는지 계산한다.
+
+    적중 기준:
+      - BUY + outcome=success → hit
+      - SELL + outcome=failure → hit (올바르게 회피)
+      - BUY + outcome=failure → miss
+      - SELL + outcome=success → miss
+      - HOLD → 판정 제외
 
     Returns:
-        저장된 스냅샷 수 (에이전트 수)
+        {agent_name: {"total": N, "hits": N, "hit_rate": float, "weight_adjustment": float}}
+        weight_adjustment: hit_rate - 0.5, [-0.30, +0.30] 범위로 clamping
     """
-    from nuri.core.db import get_db, query
-    from nuri.core.timezone import kst_now
+    from nuri.core.db import query
 
-    now = kst_now().strftime("%Y-%m-%d %H:%M")
-
-    # outcome이 확정된 decisions만 집계
     rows = query(
-        "SELECT agent_verdicts, outcome FROM decisions WHERE outcome IN ('success', 'failure')",
+        "SELECT agent_verdicts, outcome FROM decisions "
+        "WHERE outcome IN ('success', 'failure')",
         db_path=db_path,
     )
 
     if not rows:
-        logger.info("No completed decisions for agent accuracy snapshot")
-        return 0
+        return {}
 
-    # 에이전트별 집계
-    agent_stats: dict[str, dict] = {}
+    # 에이전트별 적중/미스 집계
+    agent_stats: dict[str, dict[str, int]] = {}  # {name: {"hits": N, "total": N}}
 
     for row in rows:
+        verdicts_json = row["agent_verdicts"]
+        outcome = row["outcome"]
+        if not verdicts_json:
+            continue
+
         try:
-            verdicts = json.loads(row["agent_verdicts"])
+            verdicts = json.loads(verdicts_json)
         except (json.JSONDecodeError, TypeError):
             continue
 
-        outcome = row["outcome"]
         for v in verdicts:
-            name = v.get("agent_name", "unknown")
             action = v.get("action", "HOLD")
+            agent_name = v.get("agent_name", "")
+            if not agent_name or action == "HOLD":
+                continue
 
-            if name not in agent_stats:
-                agent_stats[name] = {"total": 0, "correct": 0}
+            if agent_name not in agent_stats:
+                agent_stats[agent_name] = {"hits": 0, "total": 0}
 
-            agent_stats[name]["total"] += 1
+            agent_stats[agent_name]["total"] += 1
 
-            # BUY + success 또는 SELL + success = 에이전트 판단 정확
-            if action in ("BUY", "SELL"):
-                is_correct = (outcome == "success")
-                if is_correct:
-                    agent_stats[name]["correct"] += 1
+            # BUY + success = hit, SELL + failure = hit
+            if (action == "BUY" and outcome == "success") or \
+               (action == "SELL" and outcome == "failure"):
+                agent_stats[agent_name]["hits"] += 1
 
-    # strategy_memory 테이블에 저장 (기존 패턴 재활용)
-    saved = 0
+    # 적중률 + weight_adjustment 계산
+    result = {}
+    for name, stats in agent_stats.items():
+        total = stats["total"]
+        hits = stats["hits"]
+        hit_rate = hits / total if total > 0 else 0.0
+
+        # baseline 50% = 조정 없음, [-0.30, +0.30] clamping
+        raw_adj = hit_rate - 0.5
+        weight_adjustment = max(-0.30, min(0.30, raw_adj))
+
+        result[name] = {
+            "total": total,
+            "hits": hits,
+            "hit_rate": round(hit_rate, 4),
+            "weight_adjustment": round(weight_adjustment, 4),
+        }
+
+    return result
+
+
+def save_agent_accuracy_snapshot(db_path=None) -> int:
+    """에이전트 적중률을 strategy_memory 테이블에 스냅샷 저장.
+
+    signal_id = "agent_{name}_accuracy", regime = "all", period = "all_time".
+    UNIQUE(snapshot_date, signal_id, regime, period)로 멱등.
+    """
+    from nuri.core.db import get_db
+    from nuri.core.timezone import today_kst
+
+    accuracy = compute_agent_accuracy(db_path=db_path)
+    if not accuracy:
+        return 0
+
+    today = today_kst()
+    records = []
+    for name, stats in accuracy.items():
+        records.append({
+            "snapshot_date": today,
+            "signal_id": f"agent_{name}_accuracy",
+            "regime": "all",
+            "period": "all_time",
+            "trades": stats["total"],
+            "win_rate": stats["hit_rate"],
+            "profit_factor": stats["weight_adjustment"],  # weight_adjustment 저장
+            "avg_return": 0.0,
+        })
+
     with get_db(db_path) as conn:
-        for agent_name, stats in agent_stats.items():
-            accuracy = stats["correct"] / stats["total"] * 100 if stats["total"] > 0 else 0.0
-            conn.execute(
-                "INSERT INTO strategy_memory (date, signal_name, ticker, metric, value) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (now[:10], f"agent_accuracy_{agent_name}", "ALL", "accuracy_pct", round(accuracy, 2)),
-            )
-            saved += 1
+        conn.executemany(
+            """INSERT OR REPLACE INTO strategy_memory
+               (snapshot_date, signal_id, regime, period, trades, win_rate, profit_factor, avg_return)
+               VALUES (:snapshot_date, :signal_id, :regime, :period, :trades, :win_rate, :profit_factor, :avg_return)""",
+            records,
+        )
 
-    logger.info(f"Agent accuracy snapshot saved: {saved} agents")
-    return saved
+    logger.info(f"에이전트 적중률 스냅샷 {len(records)}건 저장")
+    return len(records)
 
 
 def _get_price_targets(ticker: str, entry_price: float, db_path=None) -> dict:
@@ -329,20 +382,43 @@ def _get_price_targets(ticker: str, entry_price: float, db_path=None) -> dict:
 if __name__ == "__main__":
     import argparse
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    parser = argparse.ArgumentParser(description="Decision Intelligence CLI")
-    parser.add_argument("--track", action="store_true", help="Track decision outcomes (7/30/60/90d P&L)")
-    parser.add_argument("--snapshot", action="store_true", help="Save agent accuracy snapshot")
+    parser = argparse.ArgumentParser(description="Nuri-Quant Decision Intelligence")
+    parser.add_argument("--track", action="store_true", help="P&L 추적 (7/30/60/90일)")
+    parser.add_argument("--accuracy", action="store_true", help="에이전트 적중률 계산")
+    parser.add_argument("--snapshot", action="store_true", help="적중률 스냅샷 저장 (strategy_memory)")
+    parser.add_argument("--summary", action="store_true", help="의사결정 요약")
     args = parser.parse_args()
 
+    from nuri.core.db import init_db
+    init_db()
+
     if args.track:
-        n = track_decision_outcomes()
-        print(f"Updated {n} decision outcomes")
+        updated = track_decision_outcomes()
+        print(f"P&L 추적 업데이트: {updated}건")
 
-    if args.snapshot:
-        n = save_agent_accuracy_snapshot()
-        print(f"Saved {n} agent accuracy snapshots")
+    if args.accuracy or args.snapshot:
+        acc = compute_agent_accuracy()
+        if acc:
+            print(f"\n{'=' * 60}")
+            print("  Agent Accuracy — Decision Learning Loop")
+            print(f"{'=' * 60}")
+            print(f"  {'Agent':<18} {'Total':>6} {'Hits':>6} {'Rate':>8} {'Adj':>8}")
+            print(f"  {'-' * 50}")
+            for name, stats in sorted(acc.items(), key=lambda x: x[1]["hit_rate"], reverse=True):
+                print(f"  {name:<18} {stats['total']:>6} {stats['hits']:>6} "
+                      f"{stats['hit_rate']:>7.1%} {stats['weight_adjustment']:>+7.2f}")
+            print()
+        else:
+            print("완료된 decisions 없음 (outcome = success/failure 필요)")
 
-    if not args.track and not args.snapshot:
-        parser.print_help()
+        if args.snapshot and acc:
+            n = save_agent_accuracy_snapshot()
+            print(f"스냅샷 {n}건 저장 (strategy_memory)")
+
+    if args.summary:
+        summary = get_decision_summary()
+        print(f"\n의사결정 요약: total={summary['total']}, "
+              f"pending={summary['pending']}, success={summary['success']}, "
+              f"failure={summary['failure']}, neutral={summary['neutral']}")
