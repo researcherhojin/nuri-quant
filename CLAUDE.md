@@ -27,7 +27,7 @@ cd frontend && npm ci                   # frontend deps (separate from make setu
 uv sync --extra dev                     # manual: install with test/lint tools
 
 # Data collection
-make collect                            # Phase A 11 collectors (stock/stock_kr/macro/technical/fear_greed/ark/cboe/coingecko/finviz/reddit/fred_calendar)
+make collect                            # Phase A 12 collectors (stock/stock_kr/macro/technical/fear_greed/ark/cboe/coingecko/finviz/reddit/fred_calendar/macro_news)
 python -m nuri.collectors.stock --period 5y  # US stocks 5Y (OpenBB)
 python -m nuri.collectors.stock_kr --days 1825  # Korean stocks 5Y (pykrx)
 python -m nuri.collectors.fundamental   # PE/ROE/margins (OpenBB metrics)
@@ -131,7 +131,7 @@ All `make` targets use `.venv/bin/python` — activate the venv or use the full 
 ```
 nuri/
 ├── core/              # DB (sole sqlite3 importer), rules, signal_config, timezone, events, freshness
-├── collectors/        # 23 collector modules (BaseCollector subclasses + standalone, incl. KIS Open API)
+├── collectors/        # 24 collector modules (BaseCollector subclasses + standalone, incl. KIS Open API)
 ├── analysis/          # portfolio, risk, sector, charts, rebalance_advisor, evidence_charts
 ├── quant/             # Quantitative pipeline
 │   ├── regime/        # 10-regime classifier (6 base + 4 special), macro score, strategy map
@@ -148,7 +148,7 @@ nuri/
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
 ├── api/               # FastAPI REST API (routes/)
 ├── alerts/            # Discord daily report + bot, Telegram alerts
-└── llm/               # Ollama LLM report with SIEGE certification
+└── llm/               # LLM report (Ollama) + OpenAI wrapper + event classifier
 ```
 
 ### DB as the sole integration point
@@ -255,7 +255,7 @@ Special regimes (priority order, override base `regime` field): euphoria, stagfl
 Configured in `.env` (see `.env.example`):
 - `FRED_API_KEY` — FRED macro data (optional; yfinance fallback)
 - `DISCORD_WEBHOOK_URL` — daily report delivery (optional; falls back to stdout)
-- `DISCORD_BOT_TOKEN` — bot mode alerts (optional)
+- `DISCORD_TOKEN` — bot mode alerts (optional)
 - `FINNHUB_API_KEY` — US institutional flows (optional)
 - `OLLAMA_HOST` / `OLLAMA_MODEL` — LLM report (default: localhost:11434, qwen3.5)
 - `DASHBOARD_PASSWORD` — Next.js dashboard auth (optional; unset = public)
@@ -266,7 +266,7 @@ Configured in `.env` (see `.env.example`):
 
 ## DB Schema (SQLite, WAL mode)
 
-27 tables total (11 migrations). Key tables:
+29 tables total (13 migrations). Key tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -288,7 +288,7 @@ Configured in `.env` (see `.env.example`):
 | `pipeline_events` | Append-only event journal |
 | `trades` | Trade execution records |
 
-Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `audit_log`, `external_analysis`.
+Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `audit_log`, `external_analysis`, `macro_events`, `external_llm_calls`.
 
 ## Code Conventions
 
@@ -333,7 +333,7 @@ data/
 
 ## Testing
 
-2,253 backend tests across 91 files (top-level + `tests/{api,collectors,quant,trading/agents,trading/recommend}/` subdirs) + 593 frontend vitest (45 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
+2,375 backend tests across 119 files (top-level + `tests/{api,collectors,quant,trading/agents,trading/recommend}/` subdirs) + 593 frontend vitest (45 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
