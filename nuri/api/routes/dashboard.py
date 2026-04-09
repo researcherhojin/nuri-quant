@@ -73,6 +73,10 @@ def _build_dashboard() -> dict:
     freshness = _get_freshness()
     pipeline_status = _get_pipeline_status()
 
+    # ── 7. 환율 ──
+    rate_row = query("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1")
+    exchange_rate = rate_row[0]["value"] if rate_row else None
+
     return {
         "verdict": verdict,
         "verdict_level": verdict_level,
@@ -85,6 +89,7 @@ def _build_dashboard() -> dict:
         "n_positions": len(query("SELECT 1 FROM positions WHERE status='open'")),
         "freshness": freshness,
         "pipeline_status": pipeline_status,
+        "exchange_rate": exchange_rate,
     }
 
 

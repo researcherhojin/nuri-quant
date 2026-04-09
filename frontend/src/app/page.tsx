@@ -19,6 +19,7 @@ interface DashboardData {
   alerts: Array<{ level: string; message: string }>;
   gate_score: number;
   n_positions: number;
+  exchange_rate: number | null;
 }
 
 interface FreshnessData {
@@ -79,8 +80,8 @@ async function Dashboard() {
 
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
 
-  // 포트폴리오 평가액 계산 (KRW 종목은 환율 적용)
-  const KRW_RATE = 1514;
+  // 포트폴리오 평가액 계산 (KRW 종목은 환율 적용 — API에서 실시간 환율 조회)
+  const KRW_RATE = d.exchange_rate || 1400;
   const totalValue = portfolio?.holdings?.reduce((sum: number, h: any) => {
     const price = h.latest_price || 0;
     const qty = h.quantity || 0;

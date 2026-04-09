@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Sidebar } from "@/components/ui/sidebar";
 
+// Mock @/lib/api
+vi.mock("@/lib/api", () => ({
+  API_BASE: "http://localhost:8001",
+  fetchAPI: vi.fn().mockResolvedValue({}),
+}));
+
 // Mock next/navigation
 const mockPathname = vi.fn().mockReturnValue("/");
 vi.mock("next/navigation", () => ({
@@ -44,6 +50,7 @@ vi.mock("lucide-react", () => {
     Workflow: Icon,
     FileBarChart: Icon,
     Bot: Icon,
+    BookOpen: Icon,
     ChevronLeft: (props: any) => <svg data-testid="chevron-left" {...props} />,
     ChevronRight: (props: any) => <svg data-testid="chevron-right" {...props} />,
     ShieldCheck: (props: any) => <svg data-testid="shield-check" {...props} />,
@@ -77,7 +84,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("OVERVIEW")).toBeInTheDocument();
     expect(screen.getByText("ANALYSIS")).toBeInTheDocument();
     expect(screen.getByText("TRADING")).toBeInTheDocument();
-    expect(screen.getByText("SYSTEM")).toBeInTheDocument();
+    expect(screen.getByText("INTELLIGENCE")).toBeInTheDocument();
   });
 
   it("renders all navigation items", () => {

@@ -24,7 +24,10 @@ import {
   ShieldX,
   Sun,
   Moon,
+  BookOpen,
 } from "lucide-react";
+
+import { API_BASE } from "@/lib/api";
 
 // 팔란티어 스타일 그룹 네비게이션
 const NAV_GROUPS = [
@@ -54,8 +57,9 @@ const NAV_GROUPS = [
     ],
   },
   {
-    label: "SYSTEM",
+    label: "INTELLIGENCE",
     items: [
+      { href: "/decisions", label: "Decisions", icon: BookOpen },
       { href: "/engine", label: "SIEGE Engine", icon: Cog },
       { href: "/evidence", label: "Evidence", icon: FileBarChart },
       { href: "/report", label: "AI Report", icon: Bot },
@@ -75,7 +79,7 @@ export function Sidebar() {
 
   // SIEGE 인증 상태 조회
   useEffect(() => {
-    fetch("http://localhost:8001/api/certify")
+    fetch(`${API_BASE}/api/certify`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data) setSiegeStatus({ certified: data.certified, score: data.score });
