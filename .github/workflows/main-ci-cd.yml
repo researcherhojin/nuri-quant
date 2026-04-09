@@ -179,11 +179,9 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      # stdlib only — no setup-python needed (ubuntu runner has Python pre-installed)
       - name: Scan for personal financial data leaks
-        run: python scripts/check_privacy_leak.py
+        run: python3 scripts/check_privacy_leak.py
 
   # ── Backend Tests (sharded matrix) ──
   # Tests are split across 2 shards via pytest-shard, each running on its own
@@ -239,10 +237,12 @@ jobs:
           sudo cp /tmp/talib-installed/libta_lib* /usr/lib/
           sudo mkdir -p /usr/include/ta-lib
           sudo cp /tmp/talib-installed/ta-lib/* /usr/include/ta-lib/ 2>/dev/null || true
+          # Fix symlink to avoid ldconfig warning
+          sudo ln -sf /usr/lib/libta_lib.so.0.0.0 /usr/lib/libta_lib.so.0 2>/dev/null || true
 
       - name: Configure TA-Lib
         if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
-        run: sudo ldconfig
+        run: sudo ldconfig 2>/dev/null
 
       - name: Cache venv
         if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
@@ -259,19 +259,13 @@ jobs:
       # pytest-shard splits tests by hash(test_id) into N buckets. shard-id is
       # 0-indexed but the matrix exposes 1-indexed values for human readability.
 
-      - name: Run tests (PR — no coverage, fast)
-        if: needs.changes.outputs.backend == 'true' && github.event_name == 'pull_request'
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2
-        timeout-minutes: 5
-
-      - name: Run tests with coverage (main push)
-        if: github.event_name != 'pull_request'
+      - name: Run tests with coverage
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
         run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
 
       - name: Upload coverage to Codecov
-        # Codecov merges multiple uploads sharing the same flag from the same commit.
-        if: github.event_name != 'pull_request' && always()
+        if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && always()
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
