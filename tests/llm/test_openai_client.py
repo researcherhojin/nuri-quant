@@ -285,3 +285,67 @@ class TestSingleton:
         a = get_client()
         b = get_client()
         assert a is b
+
+
+class TestCostEstimation:
+    """estimate_cost_usd + INFO log emission per call (#152 user request)."""
+
+    def test_estimate_cost_known_model(self):
+        from nuri.llm.openai_client import estimate_cost_usd
+        # gpt-5.4-nano: $0.20/1M in, $1.25/1M out
+        # 1000 prompt + 500 completion = 0.001*0.20 + 0.0005*1.25 = $0.000825
+        cost = estimate_cost_usd("gpt-5.4-nano", 1000, 500)
+        assert cost is not None
+        assert abs(cost - 0.000825) < 1e-9
+
+    def test_estimate_cost_unknown_model_returns_none(self):
+        from nuri.llm.openai_client import estimate_cost_usd
+        assert estimate_cost_usd("nonexistent-model-x", 100, 100) is None
+
+    def test_estimate_cost_zero_tokens(self):
+        from nuri.llm.openai_client import estimate_cost_usd
+        assert estimate_cost_usd("gpt-5.4-nano", 0, 0) == 0.0
+
+    def test_chat_json_emits_info_log_with_cost(
+        self, fake_openai_success, db_path, caplog
+    ):
+        """Every successful call must produce one INFO line with the cost."""
+        import logging
+
+        from nuri.llm.openai_client import OpenAIClient
+
+        with caplog.at_level(logging.INFO, logger="nuri.llm.openai_client"):
+            OpenAIClient().chat_json(system="s", user="u", db_path=db_path)
+
+        # Find the external_llm log line
+        external_lines = [
+            r for r in caplog.records
+            if "[external_llm]" in r.getMessage()
+        ]
+        assert len(external_lines) == 1, f"expected 1 external_llm log, got {len(external_lines)}"
+        msg = external_lines[0].getMessage()
+        # Format: "[external_llm] openai/gpt-5.4-nano: 42→18 tokens, Nms, $0.xxxxxx"
+        assert "openai/gpt-5.4-nano" in msg
+        assert "42" in msg  # prompt tokens from fixture
+        assert "18" in msg  # completion tokens from fixture
+        assert "tokens" in msg
+        assert "$0." in msg  # cost present
+
+    def test_chat_json_log_uses_unknown_marker_for_unpriced_model(
+        self, fake_openai_success, db_path, caplog
+    ):
+        import logging
+
+        from nuri.llm.openai_client import OpenAIClient
+
+        # Override default model to one not in MODEL_PRICING_USD_PER_1M
+        with caplog.at_level(logging.INFO, logger="nuri.llm.openai_client"):
+            OpenAIClient().chat_json(
+                system="s", user="u", model="hypothetical-future-v9",
+                db_path=db_path,
+            )
+
+        msgs = [r.getMessage() for r in caplog.records if "[external_llm]" in r.getMessage()]
+        assert len(msgs) == 1
+        assert "hypothetical-future-v9" in msgs[0]
+        assert "$?(unknown model)" in msgs[0]

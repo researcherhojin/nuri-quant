@@ -61,6 +61,29 @@ logger = logging.getLogger(__name__)
 PROVIDER = "openai"
 DEFAULT_MODEL = "gpt-5.4-nano"
 
+# Per-1M-token pricing in USD. Keep in sync with STRATEGY.md §4.4.3.
+# When OpenAI changes prices, update both this table and the STRATEGY row.
+# Future: if we add more models or providers, move this to config/llm_pricing.yaml.
+MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
+    "gpt-5.4-nano":      {"input": 0.20, "output": 1.25},
+    "gpt-5.4-mini":      {"input": 0.75, "output": 4.50},
+    "gpt-5.4":           {"input": 2.50, "output": 15.00},
+    "gpt-5.4-pro":       {"input": 30.00, "output": 180.00},
+}
+
+
+def estimate_cost_usd(
+    model: str, prompt_tokens: int, completion_tokens: int
+) -> float | None:
+    """Compute estimated USD cost for a single call. None if model unknown."""
+    pricing = MODEL_PRICING_USD_PER_1M.get(model)
+    if pricing is None:
+        return None
+    return (
+        prompt_tokens / 1_000_000 * pricing["input"]
+        + completion_tokens / 1_000_000 * pricing["output"]
+    )
+
 
 class ExternalLLMError(Exception):
     """Base for all external LLM errors. Callers should catch this."""
@@ -191,13 +214,15 @@ class OpenAIClient:
 
         latency_ms = int((time.monotonic() - t0) * 1000)
         usage = resp.usage
+        prompt_tok = usage.prompt_tokens if usage else 0
+        completion_tok = usage.completion_tokens if usage else 0
         try:
             log_external_llm_call(
                 provider=PROVIDER,
                 model=chosen_model,
                 endpoint=endpoint,
-                prompt_tokens=usage.prompt_tokens if usage else None,
-                completion_tokens=usage.completion_tokens if usage else None,
+                prompt_tokens=prompt_tok if usage else None,
+                completion_tokens=completion_tok if usage else None,
                 latency_ms=latency_ms,
                 success=True,
                 error_type=None,
@@ -205,6 +230,17 @@ class OpenAIClient:
             )
         except Exception:  # noqa: BLE001
             logger.debug("audit log write failed", exc_info=True)
+
+        # Real-time visibility — every call emits one INFO line so the user
+        # can see model + token usage + estimated cost in standard logs
+        # (stdout when running collectors). Aggregate analysis comes from
+        # the external_llm_calls audit table.
+        cost_usd = estimate_cost_usd(chosen_model, prompt_tok, completion_tok)
+        cost_str = f"${cost_usd:.6f}" if cost_usd is not None else "$?(unknown model)"
+        logger.info(
+            "[external_llm] %s/%s: %d→%d tokens, %dms, %s",
+            PROVIDER, chosen_model, prompt_tok, completion_tok, latency_ms, cost_str,
+        )
 
         # Parse JSON body
         raw = resp.choices[0].message.content or "{}"
