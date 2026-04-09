@@ -112,7 +112,7 @@ graph LR
 ![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)
 
-> 2,375 backend tests across 119 files + 593 frontend unit (45 files) + 21 E2E tests · parallel via xdist/vitest/playwright (`-n auto --dist worksteal`)
+> 2,449 backend tests across 122 files + 593 frontend unit (45 files) + 21 E2E tests · parallel via xdist/vitest/playwright (`-n auto --dist worksteal`)
 
 ## Getting Started
 
@@ -149,7 +149,7 @@ cp .env.example .env                                    # edit API keys (all opt
 cp config/portfolio.example.yaml config/portfolio.yaml  # edit your holdings
 
 # Verify
-make test                  # 2,375 backend tests
+make test                  # 2,449 backend tests
 cd frontend && npx vitest run && cd ..  # 593 frontend tests
 ```
 
@@ -169,7 +169,7 @@ After `make start`: Dashboard at <http://localhost:3000>, API docs at <http://lo
 make collect               # 12 collectors (all external data)
 make consensus             # 10-agent consensus + price targets
 make certify               # SIEGE 10-condition certification
-make test                  # pytest (2,375 tests, parallel via xdist)
+make test                  # pytest (2,449 tests, parallel via xdist)
 make lint                  # ruff check
 cd frontend && npm run test  # vitest (593 tests)
 
