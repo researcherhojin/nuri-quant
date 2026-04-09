@@ -83,7 +83,7 @@ make full-scan        # 8-phase: collect→analyze→validate→regime→recomme
 make quick-scan       # 빠른 4-step: collect→analyze→consensus→targets (~2분)
 
 # SIEGE Certification
-make certify          # 10-condition 규칙 검증 → CERTIFIED / REJECTED
+make certify          # 11-condition 규칙 검증 → CERTIFIED / REJECTED
 make remediate        # REJECTED → 진단 + 매도 처방 + post-remediation 예측
 make gate             # Pipeline gate verifier (exits 1 if BLOCKED)
 
@@ -220,7 +220,7 @@ Special regimes (priority order, override base `regime` field): euphoria, stagfl
 
 ### SIEGE Engine
 
-`nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit. See `docs/STRATEGY.md` §3.3 for formula and §6 for SIEGE 10-Gate specification.
+`nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit. See `docs/STRATEGY.md` §3.3 for formula and §6 for SIEGE 11-Gate specification.
 
 ### Pipeline Observability (SIEGE Event Journal + Dagster Freshness)
 

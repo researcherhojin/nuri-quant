@@ -13,7 +13,7 @@
 **핵심 차별점**: 추천을 내리는 것이 아니라, 추천의 근거를 증명하는 것이 목적이다.
 - 20개 시그널 × 8,000+ 과거 트레이드 백테스트로 각 시그널의 승률/수익비(PF)를 검증
 - 10개 에이전트가 독립적으로 분석한 뒤 가중 합의 (risk agent 거부권)
-- SIEGE 10-gate가 모든 추천을 기계적으로 검증 — 1개라도 실패하면 REJECTED
+- SIEGE 11-gate가 모든 추천을 기계적으로 검증 — 1개라도 실패하면 REJECTED
 - 5개 Plotly 차트가 최종 증거를 시각화
 
 ---
@@ -54,7 +54,7 @@
 
 - `pipeline_events` 테이블: append-only event journal. `causation_id`로 이벤트 체인 추적.
 - Freshness SLA: 각 데이터 소스별 warn/fail 임계값. PASS가 아니면 대시보드에 경고.
-- SIEGE certification: 10개 조건의 pass/fail 결과가 매번 기록됨.
+- SIEGE certification: 11개 조건의 pass/fail 결과가 매번 기록됨.
 - **새 기능을 만들 때**: "이 기능이 실패하면 어떻게 알 수 있는가?"를 먼저 답하라.
 
 ### 2.5 비용 최소화 + 데이터 sovereignty (Lean-cost stack)
@@ -366,9 +366,9 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 ---
 
-## 6. SIEGE 10-Gate 명세
+## 6. SIEGE 11-Gate 명세
 
-모든 추천은 이 10개 조건을 통과해야 CERTIFIED 된다. 1개라도 error 등급 실패 시 REJECTED.
+모든 추천은 이 11개 조건을 통과해야 CERTIFIED 된다. 1개라도 error 등급 실패 시 REJECTED.
 
 | # | 조건 | 등급 | 기준 |
 |---|------|------|------|
@@ -382,6 +382,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 8 | external_data | warning | 외부 데이터 ≥ 10건 존재 |
 | 9 | conflict_free | warning | 동일 종목 BUY/SELL 충돌 없음 |
 | 10 | drift_safe | warning | 매수 후보에 critical drift 시그널 없음 |
+| 11 | macro_event_alignment | warning | \|event_score\| ≥ 10 시 경고 |
 
 ---
 
@@ -451,7 +452,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | 출처 | 적용 | 코드 위치 |
 |------|------|----------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 10-gate, certification, event journal | `nuri/trading/engine/` |
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-gate, certification, event journal | `nuri/trading/engine/` |
 | [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline 모니터링, Decision Intelligence (#178) | `nuri/core/freshness.py`, `events.py`, `decisions` (planned) |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA (PASS/WARN/FAIL) | `nuri/core/freshness.py` |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 패턴 | `nuri/trading/agents/` |
