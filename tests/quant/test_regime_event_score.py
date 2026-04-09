@@ -171,6 +171,52 @@ class TestComputeEventScore:
         assert es.category_breakdown["trade_war"] < 0
 
 
+class TestSimulation:
+    """B5: 시뮬레이션 검증 — 복합 이벤트 시나리오."""
+
+    def test_ceasefire_oil_drop_semi_rotation(self, db_path):
+        """Iran ceasefire + oil -8% + semi rotation → strong positive score."""
+        _insert_events(db_path, [
+            # 휴전 뉴스 (강한 긍정)
+            {"category": "geopolitical_de_escalation", "sentiment": 0.8, "confidence": 0.9,
+             "url": "http://t/ceasefire-1"},
+            {"category": "geopolitical_de_escalation", "sentiment": 0.7, "confidence": 0.85,
+             "url": "http://t/ceasefire-2"},
+            {"category": "geopolitical_de_escalation", "sentiment": 0.6, "confidence": 0.8,
+             "url": "http://t/ceasefire-3"},
+            # 유가 하락 (공급 정상화 → 긍정적 결과)
+            {"category": "oil_demand_drop", "sentiment": 0.3, "confidence": 0.7,
+             "url": "http://t/oil-1"},
+            # 반도체 섹터 랠리
+            {"category": "sector_rally", "sentiment": 0.6, "confidence": 0.8,
+             "url": "http://t/semi-1"},
+            {"category": "sector_rally", "sentiment": 0.5, "confidence": 0.75,
+             "url": "http://t/semi-2"},
+        ])
+        es = compute_event_score(db_path=db_path, date="2026-04-09")
+        assert es.score > 5, f"Expected positive score, got {es.score}"
+        assert es.event_count == 6
+        assert es.dominant_category == "geopolitical_de_escalation"
+        assert es.regime_hint == "recovery"
+
+    def test_war_escalation_scenario(self, db_path):
+        """War escalation + trade war → strong negative score."""
+        _insert_events(db_path, [
+            {"category": "geopolitical_escalation", "sentiment": -0.8, "confidence": 0.9,
+             "url": "http://t/war-1"},
+            {"category": "geopolitical_escalation", "sentiment": -0.7, "confidence": 0.85,
+             "url": "http://t/war-2"},
+            {"category": "trade_war", "sentiment": -0.6, "confidence": 0.8,
+             "url": "http://t/trade-1"},
+            {"category": "trade_war", "sentiment": -0.5, "confidence": 0.75,
+             "url": "http://t/trade-2"},
+        ])
+        es = compute_event_score(db_path=db_path, date="2026-04-09")
+        assert es.score < -5, f"Expected negative score, got {es.score}"
+        assert es.dominant_category == "geopolitical_escalation"
+        assert es.regime_hint == "bear_high_vol"
+
+
 class TestPrintEventScore:
     def test_print_with_events(self, capsys):
         es = EventScore(
