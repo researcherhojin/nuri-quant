@@ -457,6 +457,24 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
     (11, "add metadata to portfolio", """
         ALTER TABLE portfolio ADD COLUMN metadata TEXT;
     """),
+    (12, "create macro_events table for news-driven regime intelligence", """
+        CREATE TABLE IF NOT EXISTS macro_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+            published_at TEXT NOT NULL,
+            source TEXT NOT NULL,
+            query_keyword TEXT,
+            headline TEXT NOT NULL,
+            url TEXT UNIQUE NOT NULL,
+            category TEXT,
+            sentiment REAL,
+            confidence REAL,
+            regime_hint TEXT,
+            raw_json TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_macro_events_published ON macro_events(published_at);
+        CREATE INDEX IF NOT EXISTS idx_macro_events_category ON macro_events(category);
+    """),
 ]
 
 
@@ -643,6 +661,27 @@ def upsert_news(records: list[dict], db_path: Optional[Path] = None) -> int:
             records,
         )
         return len(records)
+
+
+def upsert_macro_events(records: list[dict], db_path: Optional[Path] = None) -> int:
+    """매크로 이벤트 upsert (URL 기준 중복 제거).
+
+    레코드 키: published_at, source, query_keyword, headline, url,
+              category, sentiment, confidence, regime_hint, raw_json
+    URL이 이미 존재하면 INSERT OR IGNORE로 스킵.
+    """
+    if not records:
+        return 0
+    with get_db(db_path) as conn:
+        cursor = conn.executemany(
+            """INSERT OR IGNORE INTO macro_events
+               (published_at, source, query_keyword, headline, url,
+                category, sentiment, confidence, regime_hint, raw_json)
+               VALUES (:published_at, :source, :query_keyword, :headline, :url,
+                       :category, :sentiment, :confidence, :regime_hint, :raw_json)""",
+            records,
+        )
+        return cursor.rowcount if cursor.rowcount >= 0 else len(records)
 
 
 # ═══════════════════════════════════════════════════════
