@@ -51,23 +51,19 @@ def certify_position(
     """SIEGE Certification Gate — 포지션 진입 전 5개 조건 검증."""
     details = {}
 
-    # 1. 레짐 정합성: long은 bull/sideways, short은 bear/sideways
-    # regime 문자열에서 trend 추출 (특수 레짐 "recovery" 등도 처리)
-    # 특수 레짐은 base_regime을 통해 trend 판단
+    # 1. 레짐 정합성 — REGIME_ALLOCATION의 long_pct / short_pct를 source of truth로
+    # 사용한다. 이 strategy table은 6 base + 4 special 레짐 모두 포함하므로
+    # 이전 코드의 substring fallback과 base/special 분기는 dead code였다 (#86).
+    # `long_pct > 0` / `short_pct > 0` 가 "이 방향으로 진입 허용되는가" 의 ground truth.
     from nuri.trading.strategy.longshort import REGIME_ALLOCATION
     alloc = REGIME_ALLOCATION.get(regime)
-    if alloc:
-        alloc_dir = alloc["direction"]
-        if direction == "long":
-            regime_aligned = alloc_dir in ("long", "neutral")
-        else:
-            regime_aligned = alloc_dir in ("short", "neutral") and "high" in regime
+    if alloc is None:
+        # 미등록 레짐 — fail closed (보수적으로 차단)
+        regime_aligned = False
+    elif direction == "long":
+        regime_aligned = alloc.get("long_pct", 0) > 0
     else:
-        # 레짐명에서 trend 추출 (fallback)
-        if direction == "long":
-            regime_aligned = "bull" in regime or "sideways" in regime
-        else:
-            regime_aligned = "bear" in regime or ("sideways" in regime and "high" in regime)
+        regime_aligned = alloc.get("short_pct", 0) > 0
     details["regime"] = regime
     details["direction"] = direction
     details["regime_check"] = "aligned" if regime_aligned else "misaligned"
