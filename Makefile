@@ -82,6 +82,9 @@ lint:
 lint-fix:
 	$(PYTHON) -m ruff check nuri/ tests/ scripts/ --fix
 
+validate-portfolio: ## Verify each ticker in config/portfolio.yaml has live data (#131)
+	$(PYTHON) scripts/validate_portfolio.py
+
 # Verify tiers — fastest to slowest. See `make verify-help` for the full table.
 
 verify-quick:    ## ~10s pre-commit smoke test (pytest + regime, no network)
