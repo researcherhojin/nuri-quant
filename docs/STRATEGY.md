@@ -392,13 +392,11 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 ### Tier 1 — 다음 1~2 작업 사이클 (P0)
 
-시스템 핵심 가치 직결. 수익 극대화 + 의사결정 추적.
+시스템 핵심 가치 직결. UX 품질 = 의사결정 품질.
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 1 | **Palantir-style Decision Intelligence** — ontology + lineage + outcome loop | [#178](https://github.com/researcherhojin/nuri-quant/issues/178) | feat(core) | decisions 테이블 + evidence chain + outcome 자동 추적 + 학습 루프. 시스템 raison d'être. |
-| 2 | macro intelligence Phase C — SIEGE gate + Active Macro Events 카드 | [#143](https://github.com/researcherhojin/nuri-quant/issues/143) | feat(macro) | Phase B 머지 완료. event_score가 SIEGE에 반영되면 macro intelligence 1차 완성. |
-| 3 | 대시보드 + 파이프라인 UX 리팩토링 | — | feat(frontend) | Palantir/Dagster/Ghostfolio 레퍼런스 수준으로. 의사결정 지원 관점 재설계. |
+| 1 | **대시보드 + 파이프라인 UX 리팩토링** | — | feat(frontend) | Dashboard → Decisions → Pipeline 순서. 근거 기반 의사결정 도구 느낌. Ghostfolio/FreqUI/Linear 레퍼런스. |
 
 ### Tier 2 — 다음 1 달 (P1)
 
@@ -409,7 +407,6 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 1 | 티커 기반 First-Run 온보딩 UX | [#133](https://github.com/researcherhojin/nuri-quant/issues/133) | feat(frontend) | 신규 사용자 0분 가치 체험. `/analyze?ticker=NVDA` |
 | 2 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거 |
 | 3 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
-| 4 | 서비스 아키텍처 Mermaid | [#134](https://github.com/researcherhojin/nuri-quant/issues/134) | docs | 토폴로지 시각화 |
 
 ### Tier 3 — 다음 분기 (P2)
 
@@ -425,7 +422,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | 항목 | 이슈 | 비고 |
 |------|------|------|
-| TestGate flake on push (PR-only pass) | [#85](https://github.com/researcherhojin/nuri-quant/issues/85) | CI 환경 차이 조사 필요 |
+| TestGate flake on push (PR-only pass) | [#85](https://github.com/researcherhojin/nuri-quant/issues/85) | classify_regime mock leak 수정 완료 (#188). 재발 시 추가 조사 |
 
 ### 작업 규칙 (변경 없음)
 
