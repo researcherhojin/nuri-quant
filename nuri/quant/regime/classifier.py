@@ -413,6 +413,26 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
     elif _detect_sector_rotation(db_path, date):
         special_regime = "sector_rotation"
 
+    # ── 이벤트 기반 special regime 보강 (#142 Phase B) ──
+    # 기존 detect가 감지 못한 경우, 강한 이벤트가 있으면 promotion
+    if special_regime is None:
+        try:
+            from nuri.quant.regime.event_score import compute_event_score
+            es = compute_event_score(date=date, db_path=db_path)
+            if es.event_count >= 3 and abs(es.score) >= 10:
+                hint = es.regime_hint
+                if hint == "recovery" and trend != "bear":
+                    special_regime = "recovery"
+                elif hint == "stagflation":
+                    special_regime = "stagflation"
+                elif hint == "bear_high_vol" and es.score <= -15:
+                    # 극단적 악재만 bear 전환 (약한 악재는 base regime 유지)
+                    pass  # base regime 유지, 향후 확장
+                elif hint == "sector_rotation":
+                    special_regime = "sector_rotation"
+        except Exception:
+            pass  # event_score 실패 시 기존 로직으로 fallback
+
     regime = special_regime if special_regime else base_regime
 
     # ── 신뢰도: 보조 지표 일치도 ──
