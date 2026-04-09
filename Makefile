@@ -116,6 +116,7 @@ collect:
 	$(PYTHON) -m nuri.collectors.finviz
 	$(PYTHON) -m nuri.collectors.reddit
 	$(PYTHON) -m nuri.collectors.fred_calendar
+	$(PYTHON) -m nuri.collectors.macro_news
 
 collect-kis:
 	$(PYTHON) -m nuri.collectors.kis_realtime
