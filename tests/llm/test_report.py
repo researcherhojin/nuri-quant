@@ -1,21 +1,8 @@
-"""Consolidated LLM report tests — all nuri.llm.* test classes from across the test suite.
+"""Tests for nuri.llm.report — gather_context, format_prompt, validate_output, generators.
 
-Sources:
-  - test_llm.py: TestReportContext, TestOutputValidation, TestDisclaimer
-  - test_coverage_round3.py: TestLLMReport_R3
-  - test_coverage_round5.py: TestLLMReportDeep
-  - test_coverage_round7.py: TestLLMDeep
-  - test_coverage_round11.py: TestLLMValidation
-  - test_coverage_round12.py: TestLLMSections
-  - test_coverage_round13.py: TestLLMReportFlow
-  - test_coverage_round14.py: TestLLMEnriched
-  - test_coverage_round19.py: TestReportContext_R19, TestFormatPrompt, TestValidateOutput,
-                               TestGenerateOllama, TestGenerateLlmReport
-  - test_coverage_round21.py: TestFormatPrompt_R21, TestValidateOutput_R21, TestGenerateLLMReport,
-                               TestReportContextPostInit, TestOllamaResponseProcessing, TestGatherContext
-  - test_coverage_round26.py: TestLlmReport
-  - test_coverage_round27.py: TestLLMReport_R27
-  - test_final_push.py: TestLLMReport_FinalPush
+Network-free: every Ollama/llama_cpp call is mocked. Split from the legacy
+tests/test_llm_all.py; all 24 classes covered only nuri.llm.report. The
+event_classifier tests live in tests/llm/test_event_classifier.py.
 """
 import sys
 from dataclasses import dataclass
