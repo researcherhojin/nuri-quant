@@ -31,6 +31,12 @@ ignore:
   - "tests/**"
   - "scripts/**"
 
+# PR comment 설정 — 변경 파일 + flag별 커버리지 표시
+comment:
+  layout: "diff, flags, components"
+  behavior: default               # 기존 comment 업데이트 (새 comment 생성 X)
+  require_changes: true           # 커버리지 변동 없으면 comment 생략
+
 # Component 별 PR 배지
 component_management:
   default_rules:

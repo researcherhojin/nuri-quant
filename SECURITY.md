@@ -85,14 +85,23 @@ cache invalidation (and, if necessary, coordinate a history rewrite).
 
 ## LLM and Model Safety
 
-- Portfolio data **must not** be sent to remote LLM APIs. The project
-  uses Ollama (local) for all LLM inference.
-- Outputs from `nuri/llm/` are validated for hallucinations: numbers
-  not present in the input data are flagged before the report is
-  surfaced.
-- The LLM event classifier (`nuri/llm/event_classifier.py`) is the
-  only component that calls Ollama; it has a deterministic regex
-  fallback so the data pipeline keeps working when Ollama is down.
+- **Portfolio and narrative data must not be sent to remote LLM APIs.**
+  Ollama (local) handles all portfolio-related inference. See
+  `docs/STRATEGY.md` §4.4 for the full data classification (Tier 0/1/2).
+- **Public data (Tier 0) only** may be sent to external LLMs, gated
+  by the External LLM Egress Policy (`docs/STRATEGY.md` §4.4.3).
+  Currently: OpenAI `gpt-5.4-nano` for public RSS headline
+  classification only. All external calls go through
+  `nuri/llm/openai_client.py` (per-call audit log to
+  `external_llm_calls` table, content never logged).
+- `NURI_DISABLE_EXTERNAL_LLM=1` disables all external LLM calls
+  (CI, offline, privacy mode).
+- Outputs from `nuri/llm/report.py` are validated for hallucinations:
+  numbers not present in the input data are flagged before the report
+  is surfaced.
+- The event classifier (`nuri/llm/event_classifier.py`) has a
+  deterministic regex fallback so the data pipeline keeps working when
+  the LLM provider is unavailable.
 
 ## Out of Scope
 
