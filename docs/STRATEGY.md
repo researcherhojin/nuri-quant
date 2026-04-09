@@ -57,14 +57,17 @@
 - SIEGE certification: 10개 조건의 pass/fail 결과가 매번 기록됨.
 - **새 기능을 만들 때**: "이 기능이 실패하면 어떻게 알 수 있는가?"를 먼저 답하라.
 
-### 2.5 비용 제로 (Zero-cost stack)
+### 2.5 비용 최소화 + 데이터 sovereignty (Lean-cost stack)
 
-유료 API, 클라우드 서비스, 상용 소프트웨어에 의존하지 않는다.
+유료 API, 클라우드 서비스, 상용 소프트웨어 의존도를 최소화한다. 100% 무료를
+교조적으로 고수하지는 않는다 — 의미 있는 quality 향상이 명확히 정량화되고
+연간 비용이 이자 한 잔 수준이며, 데이터 sovereignty 룰(아래 §4.4.3)을
+지킬 수 있을 때는 도입을 허용한다.
 
 | 선택 | 이유 |
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드로 동시 읽기. `tmp_path`로 테스트 격리. |
-| Ollama (not OpenAI API) | 포트폴리오 데이터가 외부로 나가지 않음. API 비용 $0. 오프라인 가능. |
+| **Hybrid LLM stack** | (a) 본인 portfolio·narrative·의사결정 데이터는 **local Ollama 한정** (data sovereignty 유지). (b) 공개 RSS 헤드라인 분류는 **OpenAI gpt-5.4-nano** 허용 — Ollama Qwen3.5가 production hardware에서 hang되는 hardware-bound 문제 회피 + 멀티-토픽 헤드라인 nuance 회복. 연간 \$3.51 (일 100 헤드라인 기준). 공개 데이터만 외부로 나가므로 §4.4 룰 위반 없음. 자세한 정책은 §4.4.3. |
 | OpenBB + yfinance (not Bloomberg) | 무료 데이터. OpenBB 추상화 → provider 교체 용이. yfinance는 폴백. |
 | GitHub Actions (not Jenkins) | 오픈소스 무료 tier. lint + test + coverage + security 자동화. |
 
@@ -157,7 +160,7 @@ PR을 올리기 전 이 기준을 확인한다.
 | 시크릿 | `.env` 파일, git에 커밋 금지 |
 | 인증 | DASHBOARD_PASSWORD 설정 시 HMAC-SHA256 keyed 토큰 기반 쿠키 인증 (Edge Runtime 호환, CodeQL js/insufficient-password-hash 대응) |
 | CI | Trivy CRITICAL 취약점 → 머지 차단 |
-| LLM | 포트폴리오 데이터 외부 전송 금지 (Ollama local only) |
+| LLM | **사용자 portfolio·narrative·의사결정 데이터는 외부 LLM 전송 금지 (Ollama local only).** 공개 RSS 헤드라인 분류는 §4.4.3의 외부 LLM Egress Policy에 등재된 provider 한정으로 허용. 새 데이터 클래스 추가는 STRATEGY 개정 + 본인 명시 승인 필수. |
 | **개인 금융 데이터** | commit · PR · issue · 코드 주석 · 테스트 fixture · CI 로그에 절대 노출 금지. `config/portfolio.yaml`이 gitignored이지만 그 *내용*도 git 추적 대상에 들어가면 안 됨. broker 계좌명, 보유 수량, 평단가, 현금 잔고, 매매 이력 모두 해당. 자세한 룰은 아래. |
 
 #### 4.4.1 개인 금융 데이터 enforcement (#138)
@@ -182,6 +185,48 @@ PR을 올리기 전 이 기준을 확인한다.
 
 **History cleanup (Stage 2 — 별도 작업)**:
 이 enforcement는 main HEAD를 깨끗하게 유지. 그러나 leak이 처음 들어간 이전 commit(들)은 force push 또는 GitHub Support 요청 없이는 제거 불가. STRATEGY.md §5.4 (스코프 팽창) + CLAUDE.md (force push to main 금지)를 동시에 준수하기 위해 별도 작업으로 분리. 권장 순서: GitHub Support 요청 (비파괴) → 만족 못 하면 `git filter-repo` (사용자 명시 force-push 승인 필수).
+
+#### 4.4.2 외부 데이터 처리 원칙
+
+§4.4 LLM 룰의 일반화. 모든 외부 서비스(LLM, API, webhook 등)는 **데이터 클래스별 화이트리스트** 방식으로 운영한다.
+
+| 데이터 클래스 | 기본 정책 | 외부 전송 허용 조건 |
+|---|---|---|
+| **Tier 0 — 공개 데이터** (RSS 헤드라인, 공시, 시세, ETF holdings 13F) | 외부 송신 가능 | §4.4.3 등재 provider 한정 |
+| **Tier 1 — 사용자 narrative** (주간 view, 정성 판단, 메모) | 외부 송신 금지 | 향후 STRATEGY 개정 + 본인 명시 승인 + retention 정책 결정 후에만 |
+| **Tier 2 — 사용자 portfolio** (broker, 보유종목, 평단가, 비중, 현금, 매매 이력) | **절대 외부 송신 금지** | (3) 전체 reasoning 도입 시 별도 STRATEGY 개정 + ZDR 검토 + 본인 명시 승인. 현 시점 미허용. |
+
+§4.4.1 broker name / monetary literal 차단은 Tier 2 데이터의 leak 방지가 직접적 목적. §4.4.3 외부 LLM Egress Policy는 Tier 0 데이터의 명시적 화이트리스트.
+
+#### 4.4.3 외부 LLM Egress Policy (#152)
+
+사용자 portfolio·narrative 데이터는 외부 LLM에 절대 전송하지 않는다. 이 정책은 **공개 데이터(Tier 0)에 한정한 외부 LLM 사용 화이트리스트**다.
+
+**현재 등재 provider (1개)**
+
+| Provider | Model | 허용 데이터 | 단가 (in/out per 1M tokens) | 비고 |
+|---|---|---|---|---|
+| OpenAI | `gpt-5.4-nano` | 공개 RSS 헤드라인 분류 | $0.20 / $1.25 | 일 100 헤드라인 기준 연 ~$3.51 |
+
+**필수 운영 룰**
+
+1. **모든 외부 LLM 호출은 `nuri/llm/openai_client.py` wrapper를 거쳐야 한다** (Step 1에서 구현). 직접 `import openai` 금지.
+2. **Per-call audit log** — wrapper가 `external_llm_calls` DB 테이블에 기록: `timestamp, provider, model, endpoint, prompt_tokens, completion_tokens, latency_ms`. **content는 절대 저장하지 않는다** (audit log 자체가 leak surface가 되지 않도록).
+3. **Opt-out** — 환경변수 `NURI_DISABLE_EXTERNAL_LLM=1` 설정 시 wrapper는 호출 즉시 raise. 오프라인 / 개인정보 보호 모드 / CI 등에서 활용.
+4. **Failure 정책** — OpenAI 실패 시 wrapper는 명시적으로 raise한다. 실리언트 fallback 금지. caller(`event_classifier` 등)가 graceful degradation 책임 (예: 단일 헤드라인 실패 → 그 헤드라인만 regex로 fallback, 나머지는 정상 처리).
+5. **Provider 추가** — 신규 provider 등재는 STRATEGY 개정 PR 필요. PR 본문에 단가, 데이터 클래스, retention 정책, 등재 사유 명시.
+6. **데이터 클래스 확장** — 현재는 Tier 0 (공개 헤드라인)만. Tier 1 (narrative) 또는 Tier 2 (portfolio) 추가는 별도 STRATEGY 개정 + 본인 명시 승인 + retention 정책 결정 (ZDR 사용 여부 등). 현 시점 두 Tier 모두 미허용.
+
+**의도적 비결정 사항 (deferred until needed)**
+
+- **OpenAI 30-day retention 수용 여부** — 현재 Tier 0만 보내므로 영향 없음. Tier 1/2 도입 시 결정.
+- **Ollama secondary fallback** — wrapper가 raise할 때 자동으로 Ollama로 떨어지는 chain. 오늘은 raise loud 정책. 추가는 future work.
+- **Narrative input UI** — Tier 1 정책 결정 이후에 설계.
+- **외부 LLM 비용 모니터링 대시보드** — `external_llm_calls` 테이블 기반. 월/모델별 비용 + token 추이. 일일 사용량이 예상치 초과 시 알림. 필요 시점에 추가.
+
+**모니터링 시작 트리거**
+
+이 정책은 #152가 닫히는 시점(Step 2 머지)부터 발효한다. Step 2 머지 후 1주일 동안 `external_llm_calls` 테이블의 row 수와 누적 token이 예상 (~700 calls / week, ~$0.07 / week)에 부합하는지 확인하고, 부합하면 (2)/(3) Tier 확장 토론 시작.
 
 ---
 
@@ -350,11 +395,11 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 1 | **macro intelligence ingestion** (뉴스·이벤트 → regime classifier) | [#137](https://github.com/researcherhojin/nuri-quant/issues/137) | feat(macro) | **시스템의 raison d'être 직결.** 휴전·유가·sector rotation 같은 이벤트를 시스템이 모르면 사용자가 시스템보다 더 많이 알게 되어 본말 전도. macro_score 56/100 lock 해제. |
-| 2 | consensus 15초 timeout 크래시 수정 | [#130](https://github.com/researcherhojin/nuri-quant/issues/130) | fix(agents) | `make full-scan` Phase E 중단 사유. 60초로 상향 + per-future timeout 패턴 |
-| 3 | SIEGE REJECTED → 행동 가능 remediation | [#132](https://github.com/researcherhojin/nuri-quant/issues/132) | feat(siege) | certify + rebalance를 한 번에. `make remediate` 신규 |
-| 4 | 상장폐지 한국 ETF 6개 정리 + 자동 검증 | [#131](https://github.com/researcherhojin/nuri-quant/issues/131) | chore(data) | 로그 오염 + Phase F warn. portfolio 검증 스크립트 추가 |
-| 5 | 개인 금융 데이터 git/PR/issue 노출 금지 룰 명문화 | [#138](https://github.com/researcherhojin/nuri-quant/issues/138) | chore(privacy) | pre-commit hook + CI scan + STRATEGY.md §4.4 강화 (이미 일부 반영) |
+| 1 | **OpenAI gpt-5.4-nano headline classification 도입** (Step 0/1/2) | [#152](https://github.com/researcherhojin/nuri-quant/issues/152) | feat(llm) | **#137 macro intelligence의 사실상 prerequisite.** 실측: regex 1/9 vs nano 8/9 정확도 (4-9× quality), Ollama hang 회피, 연 ~$3.51. 이 PR이 §4.4.3 외부 LLM Egress Policy 발효의 트리거. |
+| 2 | macro intelligence Phase B — event_score + macro_score/classifier 통합 | [#142](https://github.com/researcherhojin/nuri-quant/issues/142) | feat(macro) | Phase A (#141) 머지 + #152 quality 회복 후. macro_score 56 lock 해제. |
+| 3 | macro intelligence Phase C — SIEGE gate + Active Macro Events 카드 + STRATEGY 갱신 | [#143](https://github.com/researcherhojin/nuri-quant/issues/143) | feat(macro) | Phase B 머지 + 1주 데이터 관찰 후. raison d'être 1차 검증 종료. |
+| 4 | SIEGE REJECTED → 행동 가능 remediation | [#132](https://github.com/researcherhojin/nuri-quant/issues/132) | feat(siege) | certify + rebalance를 한 번에. `make remediate` 신규 |
+| 5 | 개인 금융 데이터 history cleanup (#138 Stage 2) | [#151](https://github.com/researcherhojin/nuri-quant/issues/151) | chore(privacy) | main HEAD는 깨끗(Stage 1 머지 완료). 이전 commit 잔존 leak. Option C (GitHub Support cache invalidation) 권장. |
 
 ### Tier 2 — 다음 1 달 (P1)
 
@@ -362,12 +407,10 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 4 | 티커 기반 First-Run 온보딩 UX | [#133](https://github.com/researcherhojin/nuri-quant/issues/133) | feat(frontend) | 신규 사용자 0분 가치 체험. `/analyze?ticker=NVDA` |
-| 5 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거 |
-| 6 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
-| 7 | rebalance-advisor priority 필드 노출 | [#87](https://github.com/researcherhojin/nuri-quant/issues/87) | feat(api) | 매도 우선순위 명시 |
-| 8 | 서비스 아키텍처 Mermaid + README 뱃지 미니멀화 + DX_GUIDE 한글화 | [#134](https://github.com/researcherhojin/nuri-quant/issues/134) | docs | Palantir-style 토폴로지 시각화 |
-| 9 | SECURITY.md + Community Health 100% | [#135](https://github.com/researcherhojin/nuri-quant/issues/135) | chore(security) | 보안 보고 채널 + diskcache dismissal 영구 문서화 |
+| 1 | 티커 기반 First-Run 온보딩 UX | [#133](https://github.com/researcherhojin/nuri-quant/issues/133) | feat(frontend) | 신규 사용자 0분 가치 체험. `/analyze?ticker=NVDA` |
+| 2 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거 |
+| 3 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
+| 4 | 서비스 아키텍처 Mermaid + README 뱃지 미니멀화 + DX_GUIDE 한글화 | [#134](https://github.com/researcherhojin/nuri-quant/issues/134) | docs | Palantir-style 토폴로지 시각화 |
 
 ### Tier 3 — 다음 분기 (P2)
 
@@ -375,16 +418,16 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 10 | Alpaca 실전 연동 (Paper → Live) | [#17](https://github.com/researcherhojin/nuri-quant/issues/17) | feat(execution) | 자동 매도 실행. SIEGE CERTIFIED 종목만 |
-| 11 | KIS Open API 한국 실전 연동 | — | feat(execution) | `kis_realtime.py` 기 구현. 매매 endpoint 미연결 |
-| 12 | pytest fast/slow marker 분리 | [#88](https://github.com/researcherhojin/nuri-quant/issues/88) | ci | PR feedback 가속 (현재 CI 약 2:47, slow split 시 ~1:30 목표) |
+| 1 | Alpaca 실전 연동 (Paper → Live) | [#17](https://github.com/researcherhojin/nuri-quant/issues/17) | feat(execution) | 자동 매도 실행. SIEGE CERTIFIED 종목만 |
+| 2 | KIS Open API 한국 실전 연동 | — | feat(execution) | `kis_realtime.py` 기 구현. 매매 endpoint 미연결 |
+| 3 | pytest fast/slow marker 분리 | [#88](https://github.com/researcherhojin/nuri-quant/issues/88) | ci | PR feedback 가속 (현재 CI 약 2:47, slow split 시 ~1:30 목표) |
 
 ### 영구 배경 작업 (낮은 우선순위, 발견 시 처리)
 
 | 항목 | 이슈 | 비고 |
 |------|------|------|
-| Position special regime trend matching | [#86](https://github.com/researcherhojin/nuri-quant/issues/86) | substring → state.trend 정확 매칭 |
 | TestGate flake on push (PR-only pass) | [#85](https://github.com/researcherhojin/nuri-quant/issues/85) | CI 환경 차이 조사 필요 |
+| Migration #12 멱등성 버그 — schema_version 12 marked applied without table create | — | data/portfolio.db 실측 발견. `_apply_migrations` race condition or stale install. 다른 머신에서 same DB 사용 시 재현 가능. 새 이슈 등록 가치. |
 
 ### 작업 규칙 (변경 없음)
 
