@@ -10,7 +10,7 @@
 
 </div>
 
-Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 24 data collectors, 10 specialist agents, and a 10-condition mechanical gate certify every recommendation before it reaches you.
+Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 24 data collectors, 10 specialist agents, and an 11-condition mechanical gate certify every recommendation before it reaches you.
 
 ## Pipeline
 
@@ -23,7 +23,7 @@ graph LR
     C["🧪 <b>C · Validate</b><br/>signal backtest + scorecard<br/>+ learning memory snapshot"]
     D["🏷️ <b>D · Classify</b><br/>regime × strategy map<br/>+ multi-factor composite"]
     E["🤖 <b>E · Recommend</b><br/>candidates + 10-agent consensus<br/>+ swing scanner"]
-    F["🛡️ <b>F · Certify</b><br/>price targets · rebalance<br/>SIEGE 10-gate certification"]
+    F["🛡️ <b>F · Certify</b><br/>price targets · rebalance<br/>SIEGE 11-gate certification"]
     G["📈 <b>G · Evidence</b><br/>5 Plotly charts"]
     H["🔔 <b>H · Notify</b><br/>Discord · Telegram"]
 
@@ -50,8 +50,9 @@ graph LR
 - **Evidence-based decisions** — 8,000+ historical trade backtests across 20 signals validate every recommendation
 - **10-regime market classification** — 6 base (bull/bear/sideways × high/low vol) + 4 special (recovery, euphoria, stagflation, sector rotation)
 - **10 specialist agents** — Weighted consensus voting with SSE reasoning trace. Risk agent holds veto power (SELL + confidence ≥ 80 overrides all)
-- **SIEGE certification** — [10-condition mechanical gate](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). Single failure → REJECTED
+- **SIEGE certification** — [11-condition mechanical gate](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). Single failure → REJECTED
 - **Investment rules UI** — Take-profit highlights (emerald/amber), VIX half-position warning, sell priority badges. O'Neil (CAN SLIM) + Minervini (SEPA), 3:1 reward-to-risk
+- **Decision Intelligence** — Palantir-style decision tracking with evidence chain, 7/30/90-day outcome tracking, and agent accuracy learning loop
 - **Pipeline observability** — [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview)-style Data Health + [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) Freshness SLA
 - **Superinvestor tracking** — SEC 13F filings (Buffett, Dalio, NPS Korea, Key Square, Strive)
 - **Portfolio onboarding** — Dashboard UI for CRUD, CSV import/export, sample portfolio, YAML reverse sync
@@ -88,7 +89,7 @@ graph LR
 ![bcrypt](https://img.shields.io/badge/bcrypt-5.0.0-004D40)
 ![slowapi](https://img.shields.io/badge/slowapi-0.1.9-FF7043)
 
-> 54 endpoints · 29 tables (v13 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
+> 57 endpoints · 31 tables (v15 migrations) · SSE streaming · JWT + bcrypt + slowapi rate limiting
 
 **Frontend**<br/>
 ![Next.js](https://img.shields.io/badge/Next.js-16.2.2-000000?logo=next.js&logoColor=white)
@@ -112,7 +113,7 @@ graph LR
 ![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-security-1904DA)
 
-> 2,524 backend tests across 125 files + 594 frontend unit (45 files) + 21 E2E tests · parallel via xdist/vitest/playwright (`-n auto --dist worksteal`)
+> 2,573 backend tests across 128 files + 594 frontend unit (45 files) + 21 E2E tests · parallel via xdist/vitest/playwright (`-n auto --dist worksteal`)
 
 ## Getting Started
 
@@ -149,7 +150,7 @@ cp .env.example .env                                    # edit API keys (all opt
 cp config/portfolio.example.yaml config/portfolio.yaml  # edit your holdings
 
 # Verify
-make test                  # 2,524 backend tests
+make test                  # 2,573 backend tests
 cd frontend && npx vitest run && cd ..  # 593 frontend tests
 ```
 
@@ -168,8 +169,8 @@ After `make start`: Dashboard at <http://localhost:3000>, API docs at <http://lo
 ```bash
 make collect               # 12 collectors (all external data)
 make consensus             # 10-agent consensus + price targets
-make certify               # SIEGE 10-condition certification
-make test                  # pytest (2,524 tests, parallel via xdist)
+make certify               # SIEGE 11-condition certification
+make test                  # pytest (2,573 tests, parallel via xdist)
 make lint                  # ruff check
 cd frontend && npm run test  # vitest (593 tests)
 
@@ -242,12 +243,12 @@ nuri/
 │   └── factors/   # Multi-factor scoring (momentum, value, quality)
 ├── trading/
 │   ├── agents/    # 10 specialist agents + weighted consensus
-│   ├── engine/    # SIEGE: gate, conflicts, learning memory
+│   ├── engine/    # SIEGE: gate, conflicts, learning memory, decisions
 │   ├── strategy/  # Long/Short, mean-reversion, pairs trading
 │   ├── recommend/ # Candidates, price targets, rebalance, tracker
 │   ├── swing/     # Market-wide scanner + entry/exit rules
 │   └── execution/ # Broker interface (Alpaca paper + DryRun)
-├── api/           # FastAPI REST (54 endpoints) + SSE streaming
+├── api/           # FastAPI REST (57 endpoints) + SSE streaming
 ├── alerts/        # Discord + Telegram notifications
 └── llm/           # LLM report (Ollama) + OpenAI wrapper + event classifier
 ```
@@ -278,8 +279,8 @@ Defined in `config/rules.yaml`. Based on [O'Neil (CAN SLIM)](https://www.investo
 
 | Source | Application |
 |--------|-------------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 10-condition gate, certification, event journal |
-| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline monitoring |
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-condition gate, certification, event journal |
+| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline monitoring, Decision Intelligence |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Asset freshness PASS/WARN/FAIL |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Multi-agent consensus pattern |
 | [O'Neil — CAN SLIM](https://www.investors.com/) | Stop-loss -7%, take-profit +20%/+40% |

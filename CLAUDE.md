@@ -83,7 +83,7 @@ make full-scan        # 8-phase: collect→analyze→validate→regime→recomme
 make quick-scan       # 빠른 4-step: collect→analyze→consensus→targets (~2분)
 
 # SIEGE Certification
-make certify          # 10-condition 규칙 검증 → CERTIFIED / REJECTED
+make certify          # 11-condition 규칙 검증 → CERTIFIED / REJECTED
 make remediate        # REJECTED → 진단 + 매도 처방 + post-remediation 예측
 make gate             # Pipeline gate verifier (exits 1 if BLOCKED)
 
@@ -142,7 +142,7 @@ nuri/
 │   └── chart_analysis.py  # 시각 차트 패턴 분석 (BB, MACD turn, 52w, POC, 추세선)
 ├── trading/           # Trading execution
 │   ├── agents/        # 10 agents + consensus engine
-│   ├── engine/        # SIEGE: gate, conflicts, learning memory
+│   ├── engine/        # SIEGE: gate, conflicts, learning memory, decisions
 │   ├── strategy/      # L/S, mean-reversion, pairs trading
 │   ├── recommend/     # Candidates, rebalance, tracker, price_targets
 │   ├── swing/         # Market-wide scanner + rules
@@ -220,7 +220,11 @@ Special regimes (priority order, override base `regime` field): euphoria, stagfl
 
 ### SIEGE Engine
 
-`nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit. See `docs/STRATEGY.md` §3.3 for formula and §6 for SIEGE 10-Gate specification.
+`nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory + Decision Intelligence. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit. See `docs/STRATEGY.md` §3.3 for formula and §6 for SIEGE 11-Gate specification.
+
+### Decision Intelligence
+
+`nuri/trading/engine/decisions.py` — Palantir-style decision tracking. `record_decision()` snapshots consensus result + market context (regime, macro_score, event_score, VIX, F&G) into `decisions` table. `track_decision_outcomes()` fills 7/30/90-day PnL outcomes. `compute_agent_accuracy()` compares each agent's verdict against realized outcomes for the learning loop. Evidence chain stored in `decision_evidence` table linking each decision to its supporting signals, agent verdicts, and certification results.
 
 ### Pipeline Observability (SIEGE Event Journal + Dagster Freshness)
 
@@ -237,6 +241,10 @@ Special regimes (priority order, override base `regime` field): euphoria, stagfl
 - `POST /api/pipeline/{step}/run` — Execute step (background)
 - `GET /api/pipeline/timeline` — Event log
 - `GET /api/freshness` — Data freshness report (PASS/WARN/FAIL per source)
+
+`nuri/api/routes/decisions.py` — Decision Intelligence API:
+- `GET /api/decisions` — List decisions (optional ticker/date filters)
+- `GET /api/decisions/{id}` — Decision detail with evidence chain
 
 `nuri/api/routes/trades.py` — Trade execution tracking:
 - `POST /api/trades` — Record trade execution
@@ -267,7 +275,7 @@ Configured in `.env` (see `.env.example`):
 
 ## DB Schema (SQLite, WAL mode)
 
-29 tables total (13 migrations). Key tables:
+31 tables total (15 migrations). Key tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -288,6 +296,8 @@ Configured in `.env` (see `.env.example`):
 | `schema_version` | Migration version tracking |
 | `pipeline_events` | Append-only event journal |
 | `trades` | Trade execution records |
+| `decisions` | Decision Intelligence — consensus snapshots + market context + outcome tracking |
+| `decision_evidence` | Evidence chain linking decisions to signals, agent verdicts, certifications |
 
 Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `audit_log`, `external_analysis`, `macro_events`, `external_llm_calls`.
 
@@ -334,7 +344,7 @@ data/
 
 ## Testing
 
-2,524 backend tests across 125 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 594 frontend vitest (45 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
+2,573 backend tests across 128 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 594 frontend vitest (45 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):

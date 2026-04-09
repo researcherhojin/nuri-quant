@@ -13,7 +13,7 @@
 **핵심 차별점**: 추천을 내리는 것이 아니라, 추천의 근거를 증명하는 것이 목적이다.
 - 20개 시그널 × 8,000+ 과거 트레이드 백테스트로 각 시그널의 승률/수익비(PF)를 검증
 - 10개 에이전트가 독립적으로 분석한 뒤 가중 합의 (risk agent 거부권)
-- SIEGE 10-gate가 모든 추천을 기계적으로 검증 — 1개라도 실패하면 REJECTED
+- SIEGE 11-gate가 모든 추천을 기계적으로 검증 — 1개라도 실패하면 REJECTED
 - 5개 Plotly 차트가 최종 증거를 시각화
 
 ---
@@ -54,7 +54,7 @@
 
 - `pipeline_events` 테이블: append-only event journal. `causation_id`로 이벤트 체인 추적.
 - Freshness SLA: 각 데이터 소스별 warn/fail 임계값. PASS가 아니면 대시보드에 경고.
-- SIEGE certification: 10개 조건의 pass/fail 결과가 매번 기록됨.
+- SIEGE certification: 11개 조건의 pass/fail 결과가 매번 기록됨.
 - **새 기능을 만들 때**: "이 기능이 실패하면 어떻게 알 수 있는가?"를 먼저 답하라.
 
 ### 2.5 비용 최소화 + 데이터 sovereignty (Lean-cost stack)
@@ -127,7 +127,7 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,524 tests, 125 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,573 tests, 128 files |
 | Frontend tests | 목표 ≥ 90% | 594 tests, 45 files |
 | E2E | 핵심 flow 커버 | 21 Playwright tests (4 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security |
@@ -366,9 +366,9 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 ---
 
-## 6. SIEGE 10-Gate 명세
+## 6. SIEGE 11-Gate 명세
 
-모든 추천은 이 10개 조건을 통과해야 CERTIFIED 된다. 1개라도 error 등급 실패 시 REJECTED.
+모든 추천은 이 11개 조건을 통과해야 CERTIFIED 된다. 1개라도 error 등급 실패 시 REJECTED.
 
 | # | 조건 | 등급 | 기준 |
 |---|------|------|------|
@@ -382,6 +382,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 8 | external_data | warning | 외부 데이터 ≥ 10건 존재 |
 | 9 | conflict_free | warning | 동일 종목 BUY/SELL 충돌 없음 |
 | 10 | drift_safe | warning | 매수 후보에 critical drift 시그널 없음 |
+| 11 | macro_event_alignment | warning | \|event_score\| ≥ 10 시 매크로 이벤트 정합성 경고 |
 
 ---
 
@@ -391,13 +392,11 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 ### Tier 1 — 다음 1~2 작업 사이클 (P0)
 
-시스템 핵심 가치 직결. 수익 극대화 + 의사결정 추적.
+시스템 핵심 가치 직결. 수익 극대화 + 의사결정 지원.
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 1 | **Palantir-style Decision Intelligence** — ontology + lineage + outcome loop | [#178](https://github.com/researcherhojin/nuri-quant/issues/178) | feat(core) | decisions 테이블 + evidence chain + outcome 자동 추적 + 학습 루프. 시스템 raison d'être. |
-| 2 | macro intelligence Phase C — SIEGE gate + Active Macro Events 카드 | [#143](https://github.com/researcherhojin/nuri-quant/issues/143) | feat(macro) | Phase B 머지 완료. event_score가 SIEGE에 반영되면 macro intelligence 1차 완성. |
-| 3 | 대시보드 + 파이프라인 UX 리팩토링 | — | feat(frontend) | Palantir/Dagster/Ghostfolio 레퍼런스 수준으로. 의사결정 지원 관점 재설계. |
+| 1 | 대시보드 + 파이프라인 UX 리팩토링 | — | feat(frontend) | Palantir/Dagster/Ghostfolio 레퍼런스 수준으로. 의사결정 지원 관점 재설계. |
 
 ### Tier 2 — 다음 1 달 (P1)
 
@@ -451,8 +450,8 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | 출처 | 적용 | 코드 위치 |
 |------|------|----------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 10-gate, certification, event journal | `nuri/trading/engine/` |
-| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline 모니터링, Decision Intelligence (#178) | `nuri/core/freshness.py`, `events.py`, `decisions` (planned) |
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-gate, certification, event journal | `nuri/trading/engine/` |
+| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline 모니터링, Decision Intelligence (#178) | `nuri/core/freshness.py`, `events.py`, `nuri/trading/engine/decisions.py` |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA (PASS/WARN/FAIL) | `nuri/core/freshness.py` |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 패턴 | `nuri/trading/agents/` |
 | [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | Risk Parity 최적화 | `nuri/analysis/rebalance.py` |
