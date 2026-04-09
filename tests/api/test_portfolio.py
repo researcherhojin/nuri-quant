@@ -298,10 +298,10 @@ class TestYamlSync:
         existing = {
             "accounts": {
                 "test": {
-                    "name": "카카오페이 종합계좌",
-                    "broker": "카카오페이증권",
+                    "name": "Brokerage Alpha Cash Account",
+                    "broker": "Brokerage Alpha Securities",
                     "currency": "USD",
-                    "total_invested": 48323344,
+                    "total_invested": 1000000,
                     "holdings": [],
                 },
             },
@@ -319,9 +319,9 @@ class TestYamlSync:
 
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         kp = data["accounts"]["test"]
-        assert kp["name"] == "카카오페이 종합계좌"
-        assert kp["broker"] == "카카오페이증권"
-        assert kp["total_invested"] == 48323344
+        assert kp["name"] == "Brokerage Alpha Cash Account"
+        assert kp["broker"] == "Brokerage Alpha Securities"
+        assert kp["total_invested"] == 1000000
         assert len(kp["holdings"]) == 1
         assert kp["holdings"][0]["ticker"] == "TSLA"
 
@@ -590,7 +590,7 @@ class TestMetadata:
         yaml_content = {
             "accounts": {
                 "test": {
-                    "name": "카카오페이",
+                    "name": "Brokerage Alpha",
                     "currency": "USD",
                     "holdings": [
                         {"ticker": "BBB", "qty": 96, "avg": 20.0,
@@ -616,4 +616,4 @@ class TestMetadata:
         nvda = [h for h in holdings if h["ticker"] == "NVDA"][0]
         assert tsll["flag"] == "SELL"
         assert "flag" not in nvda
-        assert data["accounts"]["test"]["name"] == "카카오페이"
+        assert data["accounts"]["test"]["name"] == "Brokerage Alpha"
