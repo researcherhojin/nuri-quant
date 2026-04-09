@@ -52,7 +52,7 @@ _certify_cache: dict = {"data": None, "ts": 0}
 
 @router.get("/certify")
 def get_certification():
-    """SIEGE 10-condition 인증 상태 (5분 캐시)."""
+    """SIEGE 11-condition 인증 상태 (5분 캐시)."""
     import time
     from dataclasses import asdict
 
