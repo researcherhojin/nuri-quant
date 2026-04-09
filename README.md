@@ -2,94 +2,74 @@
 
 <div align="center">
 
-[![CI/CD Pipeline](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml/badge.svg)](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml)
+[![CI/CD](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml/badge.svg)](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml)
 [![codecov](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](LICENSE)
 
-**[Issues](https://github.com/researcherhojin/nuri-quant/issues)** · **[Strategy](docs/STRATEGY.md)**
-
 </div>
 
-Open-source quantitative investment platform that **proves why you should buy or sell** — not gut feeling. 24 data collectors, 10 specialist agents, and an 11-condition mechanical gate certify every recommendation before it reaches you.
+데이터로 투자 판단의 **근거를 증명**하는 오픈소스 퀀트 플랫폼.
+
+수집 → 분석 → 합의 → 검증 파이프라인이 매 추천마다 실행되며, 모든 BUY/SELL 의사결정은 시장 컨텍스트와 에이전트 근거와 함께 기록되고, 30/60/90일 후 실제 성과가 자동 추적됩니다.
 
 ## Architecture
 
 ```mermaid
-graph LR
-    subgraph Collect ["A · Collect"]
-        D1["24 Collectors<br/>OpenBB · pykrx · FRED<br/>11 External Sources"]
-    end
-    subgraph Analyze ["B–D · Analyze"]
-        D2["Portfolio · Risk · Sector<br/>20 Signal Backtest<br/>10-Regime Classifier"]
-    end
-    subgraph Decide ["E · Decide"]
-        D3["10 Agents Consensus<br/>Decision Intelligence<br/>Learning Loop"]
-    end
-    subgraph Execute ["F–H · Execute"]
-        D4["SIEGE 11-Gate<br/>Price Targets · Rebalance<br/>Evidence · Notify"]
-    end
+flowchart LR
+    A["<b>Collect</b><br/>24 collectors"]
+    B["<b>Analyze</b><br/>20 signals · 10 regimes"]
+    C["<b>Consensus</b><br/>10 agents voting"]
+    D["<b>Certify</b><br/>SIEGE 11-gate"]
+    E["<b>Track</b><br/>outcome learning"]
 
-    Collect -->|"DB"| Analyze -->|"CSV"| Decide -->|"DB"| Execute
+    A -- DB --> B -- CSV --> C -- DB --> D -- DB --> E
+    E -. "weight feedback" .-> C
 
-    style Collect fill:#1e293b,stroke:#5c6bc0,color:#e2e8f0
-    style Analyze fill:#1e293b,stroke:#10b981,color:#e2e8f0
-    style Decide fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style Execute fill:#1e293b,stroke:#ef4444,color:#e2e8f0
+    style A fill:#1e293b,stroke:#6366f1,color:#e2e8f0
+    style B fill:#1e293b,stroke:#10b981,color:#e2e8f0
+    style C fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
+    style D fill:#1e293b,stroke:#ef4444,color:#e2e8f0
+    style E fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
 ```
 
-```
-nuri/
-├── core/          # DB (sole sqlite3), rules, events, freshness, timezone
-├── collectors/    # 24 modules — BaseCollector pattern
-├── analysis/      # Portfolio, risk, sector, charts, evidence
-├── quant/         # Regime classifier, signal backtest, VectorBT, multi-factor
-├── trading/
-│   ├── agents/    # 10 specialist agents + weighted consensus
-│   ├── engine/    # SIEGE 11-gate, Decision Intelligence, learning memory
-│   ├── strategy/  # Long/Short, mean-reversion, pairs trading
-│   ├── recommend/ # Candidates, price targets, rebalance, tracker
-│   └── execution/ # Alpaca · KIS · DryRun
-├── api/           # FastAPI (57 endpoints) + SSE
-├── alerts/        # Discord · Telegram
-└── llm/           # Ollama (local) + OpenAI wrapper
-```
-
-**Design:** DB as sole integration point · Phase isolation (no cross-phase imports) · Config-driven rules (`config/*.yaml`) · Decision Intelligence (outcome tracking + learning loop) · Lean-cost stack (SQLite, Ollama local, ~$3.51/yr OpenAI)
-
-## Key Features
-
-- **Evidence-based decisions** — 8,000+ historical trade backtests across 20 signals validate every recommendation
-- **Decision Intelligence** — Every BUY/SELL decision recorded with market context + agent evidence. 7/30/60/90-day outcome tracking feeds back into agent weight adjustment
-- **10-regime market classification** — 6 base (bull/bear/sideways × high/low vol) + 4 special (recovery, euphoria, stagflation, sector rotation)
-- **10 specialist agents** — Weighted consensus voting with SSE reasoning trace. Risk agent holds veto power (SELL + confidence ≥ 80 overrides all)
-- **SIEGE certification** — [11-condition mechanical gate](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). Single failure → REJECTED
-- **Pipeline observability** — [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview)-style Data Health + [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) Freshness SLA
+| Layer | Role |
+|-------|------|
+| `nuri/collectors/` | 24 data collectors (OpenBB, pykrx, FRED, edgartools, FINVIZ, etc.) |
+| `nuri/quant/` | Signal backtest, regime classifier, multi-factor scoring, VectorBT |
+| `nuri/trading/agents/` | 10 specialist agents + weighted consensus (risk agent veto power) |
+| `nuri/trading/engine/` | SIEGE 11-gate certification + Decision Intelligence + learning memory |
+| `nuri/api/` | FastAPI REST (57 endpoints) + SSE streaming |
+| `frontend/` | Next.js 16 dashboard (16 pages, dark theme, Tailwind 4 + shadcn/ui) |
+| `nuri/core/db.py` | Sole SQLite gateway (31 tables, WAL mode). All modules go through here |
 
 ## Tech Stack
 
-**Backend**<br/>
+**Backend**
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite_WAL-003B57?logo=sqlite&logoColor=white)
+![Pydantic](https://img.shields.io/badge/Pydantic-E92063?logo=pydantic&logoColor=white)
 
-**Frontend**<br/>
-![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)
-![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)
+**Frontend**
+![Next.js](https://img.shields.io/badge/Next.js_16-000000?logo=next.js&logoColor=white)
+![React](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=black)
+![Tailwind](https://img.shields.io/badge/Tailwind_4-06B6D4?logo=tailwindcss&logoColor=white)
 ![shadcn/ui](https://img.shields.io/badge/shadcn/ui-000000)
 
-**Data & Quant**<br/>
-![OpenBB](https://img.shields.io/badge/OpenBB-00C853)
+**Quant**
+![pandas](https://img.shields.io/badge/pandas-150458?logo=pandas&logoColor=white)
 ![TA-Lib](https://img.shields.io/badge/TA--Lib-FF5722)
 ![VectorBT](https://img.shields.io/badge/VectorBT-9C27B0)
-![pandas](https://img.shields.io/badge/pandas-150458?logo=pandas&logoColor=white)
-![Riskfolio](https://img.shields.io/badge/Riskfolio-2196F3)
+![OpenBB](https://img.shields.io/badge/OpenBB-00C853)
+![Riskfolio](https://img.shields.io/badge/Riskfolio--Lib-2196F3)
 
-**LLM**<br/>
-![Ollama](https://img.shields.io/badge/Ollama-local-000000?logo=ollama&logoColor=white)
-![Qwen](https://img.shields.io/badge/Qwen3.5-35B-7C3AED)
+**LLM**
+![Ollama](https://img.shields.io/badge/Ollama_(local)-000000?logo=ollama&logoColor=white)
+![OpenAI](https://img.shields.io/badge/OpenAI_gpt--5.4--nano-412991?logo=openai&logoColor=white)
 
-**CI/CD**<br/>
+> Ollama: 포트폴리오/의사결정 데이터 분석 (로컬 전용, 외부 전송 금지). OpenAI: 공개 RSS 헤드라인 분류만 (Tier 0, ~$3.51/yr). [상세 정책](docs/STRATEGY.md)
+
+**CI/CD**
 ![GitHub Actions](https://img.shields.io/badge/Actions-2088FF?logo=githubactions&logoColor=white)
 ![pytest](https://img.shields.io/badge/pytest-0A9EDC?logo=pytest&logoColor=white)
 ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white)
@@ -100,114 +80,45 @@ nuri/
 
 ## Getting Started
 
-### Prerequisites (macOS Apple Silicon)
-
 ```bash
-# 1. Homebrew (if not installed)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# Prerequisites: Python 3.12, uv, ta-lib, Node 22
+brew install uv ta-lib fnm && fnm install 22
 
-# 2. System dependencies
-brew install uv ta-lib
+# Setup
+git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
+make setup                                              # backend (uv venv + deps + DB init)
+cd frontend && npm ci && cd ..                          # frontend
+cp .env.example .env                                    # API keys (all optional)
+cp config/portfolio.example.yaml config/portfolio.yaml  # your holdings
 
-# 3. Node.js 22 (fnm recommended)
-brew install fnm
-fnm install 22 && fnm use 22
-echo 'eval "$(fnm env --use-on-cd)"' >> ~/.zshrc
+# Run
+make start       # API (:8001) + Dashboard (:3000)
+make full-scan   # 8-phase pipeline end-to-end
+make consensus   # 10-agent analysis + decision recording
+make certify     # SIEGE 11-gate certification
 ```
-
-### Setup
-
-```bash
-git clone https://github.com/researcherhojin/nuri-quant.git
-cd nuri-quant
-
-make setup                 # uv venv + deps + DB init + portfolio import
-cd frontend && npm ci && cd ..
-
-cp .env.example .env                                    # edit API keys (all optional)
-cp config/portfolio.example.yaml config/portfolio.yaml  # edit your holdings
-
-make test                  # backend tests (parallel via xdist)
-cd frontend && npx vitest run && cd ..  # frontend tests
-```
-
-### Run
-
-```bash
-make start                 # API (:8001) + Dashboard (:3000)
-make full-scan             # 8-phase pipeline: collect → certify → notify
-make quick-scan            # Fast 4-step: collect → analyze → consensus → targets (~2 min)
-make consensus             # 10-agent consensus + decision recording
-make certify               # SIEGE 11-gate certification
-```
-
-After `make start`: Dashboard at <http://localhost:3000>, API docs at <http://localhost:8001/docs>.
 
 ## Investment Rules
 
-Defined in `config/rules.yaml`. Based on [O'Neil (CAN SLIM)](https://www.investors.com/) + [Minervini (SEPA)](https://www.minervini.com/) + [Disposition Effect research (Shefrin 1985)](https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1985.tb05002.x).
+`config/rules.yaml` — [O'Neil](https://www.investors.com/) + [Minervini](https://www.minervini.com/) + [처분효과 연구 (Shefrin 1985)](https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1985.tb05002.x)
 
 | | Growth | Value | Swing |
 |---|--------|-------|-------|
 | **Stop-Loss** | -7% | -10% | -5% |
-| **Take-Profit 1** | +20% → sell 50% | +15% → sell 50% | +5% → sell 50% |
-| **Take-Profit 2** | +40% → sell 25% | +30% → sell 25% | +10% → sell all |
-| **Remainder** | Trailing -15% | Trailing -15% | — |
+| **Take-Profit** | +20%/+40% | +15%/+30% | +5%/+10% |
+| **Trailing** | -15% | -15% | — |
 
-**Core Rules:**
-- VIX > 30 → block all new buys (win rate collapses)
-- Buy checklist: TipRanks ≥ Moderate Buy, superinvestors ≥ 3, PE < 100, revenue > $0, multi-factor top 50%
-- Sell priority: Leveraged ETF → stop-loss breach → no superinvestors → position limit → sector limit
-
-## Multi-machine Workflow
-
-Two patterns for running Nuri-Quant on more than one Mac. Pick whichever fits your hardware setup — they compose freely.
-
-### Migrating state between machines
-
-`scripts/sync_dev.sh` rsyncs everything git can't carry: gitignored project state (`.env`, `config/portfolio.yaml`, `data/portfolio.db`) plus Claude Code state (`~/.claude/projects/...` conversation history + memory + global skills/plugins/settings). Caches and runtime state are excluded.
-
-```bash
-# One-time setup on each machine
-sudo systemsetup -setremotelogin on             # both Macs
-ssh-copy-id <other-mac>.local                   # passwordless SSH (uses $USER)
-
-# Tell the script who the "other" machine is. Put this in ~/.zshrc, NOT .env.
-echo 'export DEV2_HOST=<other-mac>.local' >> ~/.zshrc
-source ~/.zshrc
-
-# Recurring sync (run on whichever machine has the freshest state)
-scripts/sync_dev.sh push                        # this laptop → other
-scripts/sync_dev.sh pull                        # other → this laptop
-scripts/sync_dev.sh push --with-reports         # include data/reports/ (~136MB)
-scripts/sync_dev.sh push --no-claude            # project files only, skip ~/.claude
-```
-
-### Auto-pull receiver (portable dev → always-on prod)
-
-```bash
-# On the receiver (always-on Mac), one-time setup
-cp scripts/com.nuri-quant.autopull.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.nuri-quant.autopull.plist
-
-# Verify
-launchctl list | grep nuri-quant.autopull
-tail -f ~/Library/Logs/nuri-quant-autopull.log
-```
-
-The agent runs `scripts/auto_deploy.sh` every 5 minutes: fetch → ff-only merge → dependency/schema drift warning → deploy hook.
+VIX > 30 → 신규 매수 차단 · 슈퍼투자자 ≥ 3명 · PE < 100 · 멀티팩터 상위 50%
 
 ## References
 
-| Source | Application |
-|--------|-------------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-condition gate, certification, event journal |
-| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline monitoring, Decision Intelligence |
-| [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Asset freshness PASS/WARN/FAIL |
-| [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Multi-agent consensus pattern |
-| [O'Neil — CAN SLIM](https://www.investors.com/) | Stop-loss -7%, take-profit +20%/+40% |
-| [Minervini — SEPA](https://www.minervini.com/) | Trailing stop, 3:1 reward-to-risk |
+| Source | Usage |
+|--------|-------|
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-gate certification |
+| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Decision Intelligence |
+| [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA |
+| [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Multi-agent consensus |
 
 ## License
 
-[GNU Affero General Public License v3.0](LICENSE)
+[AGPL-3.0](LICENSE)
