@@ -792,7 +792,10 @@ def upsert_trade(data: dict, db_path: Optional[Path] = None) -> int:
             cursor = conn.execute(
                 f"INSERT INTO trades ({cols}) VALUES ({placeholders})", data
             )
-            return cursor.lastrowid
+            # cursor.lastrowid is Optional[int] per DB-API spec; coerce to int
+            # because the function signature is `-> int` and SQLite always
+            # populates lastrowid after an INSERT.
+            return cursor.lastrowid or 0
 
 
 def get_trades(ticker: Optional[str] = None, db_path: Optional[Path] = None) -> list[dict]:
