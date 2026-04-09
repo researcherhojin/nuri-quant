@@ -21,6 +21,30 @@ stop_loss:
   per_stock_value: -10          # 가치주 손절선 (%) — 변동성 감안 완화
   portfolio: -10                # 포트폴리오 전체 손절선 (%)
 
+# ─── 계좌별 전략 프로파일 ──────────────────────────────
+# portfolio.yaml의 strategy 필드와 매칭. 기본값 = core.
+account_strategies:
+  core:
+    stop_loss: -7
+    max_single_position: 0.15
+    max_sector_exposure: 0.35
+    description: 핵심 보유, 정석 운용
+  swing:
+    stop_loss: -15
+    max_single_position: 0.30
+    max_sector_exposure: 0.50
+    description: 스윙 기회, 공격적 허용
+  long_term:
+    stop_loss: -20
+    max_single_position: 0.25
+    max_sector_exposure: 0.50
+    description: 장기 보유, 변동성 감수
+  pension:
+    stop_loss: -30
+    max_single_position: 0.40
+    max_sector_exposure: 0.60
+    description: 연금 ETF, 초장기 리밸런싱
+
 # ─── 익절 규칙 ──────────────────────────────────────────
 # 원칙: 수익은 길게 가져가되 체계적으로 확보.
 # 손익비 최소 3:1 유지 (손절 -7% 대비 익절 +20% = 약 3:1)

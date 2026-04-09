@@ -77,3 +77,22 @@ SELL_PRIORITY = RULES.get("sell_priority", [
 # ─── 레버리지 제한 ───
 LEVERAGE_ETFS = set(RULES["leverage"]["banned_etfs"])
 LEVERAGE_MAX_DAYS = RULES.get("leverage", {}).get("max_holding_days", 5)
+
+# ─── 계좌별 전략 프로파일 ───
+ACCOUNT_STRATEGIES = RULES.get("account_strategies", {
+    "core": {"stop_loss": -7, "max_single_position": 0.15, "max_sector_exposure": 0.35},
+})
+_DEFAULT_STRATEGY = ACCOUNT_STRATEGIES.get("core", {"stop_loss": -7, "max_single_position": 0.15, "max_sector_exposure": 0.35})
+
+
+def get_account_strategy(account: str) -> dict:
+    """계좌명 → 전략 프로파일 반환. portfolio.yaml의 strategy 필드 기준."""
+    import yaml
+    _portfolio_path = Path(__file__).parent.parent.parent / "config" / "portfolio.yaml"
+    try:
+        with open(_portfolio_path, encoding="utf-8") as f:
+            portfolio = yaml.safe_load(f)
+        strategy_name = portfolio.get("accounts", {}).get(account, {}).get("strategy", "core")
+        return ACCOUNT_STRATEGIES.get(strategy_name, _DEFAULT_STRATEGY)
+    except Exception:
+        return _DEFAULT_STRATEGY

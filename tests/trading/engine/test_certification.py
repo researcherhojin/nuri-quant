@@ -257,6 +257,7 @@ class TestCertification_R23:
         mock_df = pd.DataFrame({
             "ticker": ["AAPL", "MSFT"],
             "weight_pct": [10.0, 8.0],
+            "account": ["test", "test"],
         })
         monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
         cond = _check_position_limits(db_path)
@@ -269,6 +270,7 @@ class TestCertification_R23:
         mock_df = pd.DataFrame({
             "ticker": ["AAPL", "AAPL"],
             "weight_pct": [50.0, 30.0],
+            "account": ["test", "test"],
         })
         monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
         cond = _check_position_limits(db_path)
@@ -527,3 +529,92 @@ class TestCertification_R27:
         cert = Certificate(timestamp="", total_conditions=0, passed=0, failed=0,
                            warnings=0, certified=True, conditions=[], score=100.0)
         assert cert.timestamp != ""
+
+
+class TestAccountStrategyIntegration:
+    """#177: 계좌별 전략 프로파일 적용 검증."""
+
+    def test_swing_account_stop_loss_not_violated(self, db_path, monkeypatch):
+        """swing 계좌의 -10% 손실은 위반이 아님 (한도 -15%)."""
+        from nuri.trading.engine.certification import _check_stop_loss_compliance
+
+        mock_df = pd.DataFrame({
+            "ticker": ["TEM"],
+            "pnl_pct": [-10.0],
+            "account": ["sub_account"],
+        })
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        # swing 전략: stop_loss -15%
+        monkeypatch.setattr("nuri.core.rules.get_account_strategy",
+                            lambda a: {"stop_loss": -15, "max_single_position": 0.30})
+
+        cond = _check_stop_loss_compliance(db_path)
+        assert cond.passed is True
+
+    def test_swing_account_stop_loss_violated_at_16pct(self, db_path, monkeypatch):
+        """swing 계좌의 -16% 손실은 위반 (한도 -15% 초과)."""
+        from nuri.trading.engine.certification import _check_stop_loss_compliance
+
+        mock_df = pd.DataFrame({
+            "ticker": ["TSLA"],
+            "pnl_pct": [-16.0],
+            "account": ["sub_account"],
+        })
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.core.rules.get_account_strategy",
+                            lambda a: {"stop_loss": -15, "max_single_position": 0.30})
+
+        cond = _check_stop_loss_compliance(db_path)
+        assert cond.passed is False
+        assert "TSLA" in cond.detail
+
+    def test_core_account_stop_loss_violated_at_8pct(self, db_path, monkeypatch):
+        """core 계좌의 -8% 손실은 위반 (한도 -7%)."""
+        from nuri.trading.engine.certification import _check_stop_loss_compliance
+
+        mock_df = pd.DataFrame({
+            "ticker": ["MSFT"],
+            "pnl_pct": [-8.0],
+            "account": ["main_account"],
+        })
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.core.rules.get_account_strategy",
+                            lambda a: {"stop_loss": -7, "max_single_position": 0.15})
+
+        cond = _check_stop_loss_compliance(db_path)
+        assert cond.passed is False
+
+    def test_position_limit_swing_allows_25pct(self, db_path, monkeypatch):
+        """swing 계좌의 25% 비중은 위반이 아님 (한도 30%)."""
+        from nuri.trading.engine.certification import _check_position_limits
+
+        mock_df = pd.DataFrame({
+            "ticker": ["TSLA", "TSLA"],
+            "weight_pct": [15.0, 10.0],
+            "account": ["main", "sub"],
+        })
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.core.rules.get_account_strategy",
+                            lambda a: {"stop_loss": -15, "max_single_position": 0.30} if a == "sub"
+                            else {"stop_loss": -7, "max_single_position": 0.15})
+
+        cond = _check_position_limits(db_path)
+        assert cond.passed is True
+
+    def test_position_limit_swing_violated_at_35pct(self, db_path, monkeypatch):
+        """swing 허용해도 35% 비중은 위반 (한도 30%)."""
+        from nuri.trading.engine.certification import _check_position_limits
+
+        mock_df = pd.DataFrame({
+            "ticker": ["TSLA", "TSLA"],
+            "weight_pct": [20.0, 15.0],
+            "account": ["main", "sub"],
+        })
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.core.rules.get_account_strategy",
+                            lambda a: {"stop_loss": -15, "max_single_position": 0.30} if a == "sub"
+                            else {"stop_loss": -7, "max_single_position": 0.15})
+
+        cond = _check_position_limits(db_path)
+        assert cond.passed is False
+        assert "TSLA" in cond.detail

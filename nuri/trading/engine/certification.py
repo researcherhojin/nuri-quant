@@ -66,24 +66,35 @@ class Certificate:
 
 
 def _check_position_limits(db_path=None) -> CertCondition:
-    """1. 단일 종목 비중 <= 15%."""
+    """1. 단일 종목 비중 — 계좌별 전략 프로파일 적용."""
     try:
         from nuri.analysis.portfolio import analyze_portfolio
+        from nuri.core.rules import get_account_strategy
         df = analyze_portfolio()
         if df.empty:
-            return CertCondition("position_limit", "종목 비중 <= 15%", True, "포트폴리오 비어있음")
+            return CertCondition("position_limit", "종목 비중 한도", True, "포트폴리오 비어있음")
 
-        # 종목별 합산 비중
+        # 종목별 합산 비중 + 해당 종목이 속한 계좌들의 가장 관대한 한도
         agg = df.groupby("ticker")["weight_pct"].sum()
-        violations = agg[agg / 100 > MAX_SINGLE_POSITION]
-        if violations.empty:
-            return CertCondition("position_limit", "종목 비중 <= 15%", True,
+        ticker_accounts = df.groupby("ticker")["account"].apply(list).to_dict()
+        violations = {}
+        for ticker, weight in agg.items():
+            accounts = ticker_accounts.get(ticker, [])
+            max_pos = max(
+                (get_account_strategy(a).get("max_single_position", MAX_SINGLE_POSITION) for a in accounts),
+                default=MAX_SINGLE_POSITION,
+            )
+            if weight / 100 > max_pos:
+                violations[ticker] = (weight, max_pos)
+
+        if not violations:
+            return CertCondition("position_limit", "종목 비중 한도", True,
                                 f"최대 비중: {agg.max():.1f}%")
-        tickers = ", ".join(f"{t}({v:.1f}%)" for t, v in violations.items())
-        return CertCondition("position_limit", "종목 비중 <= 15%", False,
+        tickers = ", ".join(f"{t}({w:.1f}%>{limit*100:.0f}%)" for t, (w, limit) in violations.items())
+        return CertCondition("position_limit", "종목 비중 한도", False,
                             f"위반: {tickers}", "error")
     except Exception as e:
-        return CertCondition("position_limit", "종목 비중 <= 15%", False, f"검증 실패: {e}")
+        return CertCondition("position_limit", "종목 비중 한도", False, f"검증 실패: {e}")
 
 
 def _check_sector_limits(db_path=None) -> CertCondition:
@@ -136,20 +147,29 @@ def _check_vix_gate(db_path=None) -> CertCondition:
 
 
 def _check_stop_loss_compliance(db_path=None) -> CertCondition:
-    """3-4. 손절선 준수 여부."""
+    """3-4. 손절선 준수 여부 — 계좌별 전략 프로파일 적용."""
     try:
         from nuri.analysis.portfolio import analyze_portfolio
+        from nuri.core.rules import get_account_strategy
         df = analyze_portfolio()
         if df.empty:
             return CertCondition("stop_loss", "손절선 준수", True, "포트폴리오 비어있음")
 
-        violations = df[df["pnl_pct"] < STOCK_STOP_LOSS]
-        if violations.empty:
+        # 계좌별 손절선 적용
+        violation_rows = []
+        for _, row in df.iterrows():
+            account = row.get("account", "")
+            strategy = get_account_strategy(account)
+            account_sl = strategy.get("stop_loss", STOCK_STOP_LOSS)
+            if row["pnl_pct"] < account_sl:
+                violation_rows.append(row)
+
+        if not violation_rows:
             return CertCondition("stop_loss", "손절선 준수", True,
                                 f"최대 손실: {df['pnl_pct'].min():.1f}%")
-        tickers = ", ".join(f"{r['ticker']}({r['pnl_pct']:.1f}%)" for _, r in violations.head(5).iterrows())
+        tickers = ", ".join(f"{r['ticker']}({r['pnl_pct']:.1f}%)" for r in violation_rows[:5])
         return CertCondition("stop_loss", "손절선 준수", False,
-                            f"위반 {len(violations)}건: {tickers}", "error")
+                            f"위반 {len(violation_rows)}건: {tickers}", "error")
     except Exception:
         return CertCondition("stop_loss", "손절선 준수", True, "검증 스킵")
 
