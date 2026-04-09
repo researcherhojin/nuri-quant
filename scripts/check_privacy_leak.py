@@ -18,7 +18,7 @@ This scanner runs in three places:
 Patterns
 --------
 1. Real broker names (Korean retail brokerages the project owner could use):
-   Brokerage Alpha, Brokerage Beta, 키움증권, 한국투자증권, 삼성증권, NH투자증권,
+   카카오페이, 미래에셋, 키움증권, 한국투자증권, 삼성증권, NH투자증권,
    토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권,
    대신증권, 이베스트, 흥국, IBK투자
    plus their romanized variants (kakaopay, mirae, kiwoom, ...)
@@ -81,8 +81,8 @@ NC = "\033[0m"
 # If a user account at KIS leaks, it would be via the credential file
 # pattern, not the broker name.
 BROKER_NAMES_KO: tuple[str, ...] = (
-    "Brokerage Alpha",
-    "Brokerage Beta",
+    "카카오페이",
+    "미래에셋",
     "키움증권",
     "삼성증권",
     "NH투자증권",
@@ -132,6 +132,8 @@ ALLOWLIST_PATHS: tuple[str, ...] = (
     "scripts/check_privacy_leak.py",      # this file (documents patterns)
     "tests/scripts/test_check_privacy_leak.py",  # tests for this file (moved from top-level in #163)
     "docs/STRATEGY.md",                   # may codify pattern names
+    "CONTRIBUTING.md",                    # references placeholder names as guidance
+    "SECURITY.md",                        # references privacy policy
     ".claude/projects/",                  # private memory dir (git-ignored anyway)
     "node_modules/",
     ".git/",
