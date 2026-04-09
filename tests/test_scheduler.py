@@ -585,6 +585,48 @@ class TestWriteHeartbeat_PipelineApi:
 # ═══════════════════════════════════════════════════════
 
 
+class TestSchedulerDecisions:
+    """Tests for decision_outcomes and agent_accuracy schedule entries."""
+
+    def test_decision_outcomes_in_schedules(self):
+        """SCHEDULES에 decision_outcomes 엔트리 존재."""
+        from nuri.scheduler import SCHEDULES
+        names = [s["name"] for s in SCHEDULES]
+        assert "decision_outcomes" in names
+
+    def test_agent_accuracy_in_schedules(self):
+        """SCHEDULES에 agent_accuracy 엔트리 존재."""
+        from nuri.scheduler import SCHEDULES
+        names = [s["name"] for s in SCHEDULES]
+        assert "agent_accuracy" in names
+
+    def test_decision_outcomes_cron(self):
+        """decision_outcomes: 매일 07:00 KST."""
+        from nuri.scheduler import SCHEDULES
+        entry = next(s for s in SCHEDULES if s["name"] == "decision_outcomes")
+        assert entry["cron"] == "0 7 * * *"
+
+    def test_agent_accuracy_cron(self):
+        """agent_accuracy: 일요일 08:00 KST."""
+        from nuri.scheduler import SCHEDULES
+        entry = next(s for s in SCHEDULES if s["name"] == "agent_accuracy")
+        assert entry["cron"] == "0 8 * * 0"
+
+    def test_run_collector_decision_outcomes(self):
+        """_run_collector dispatches to track_decision_outcomes."""
+        from nuri.scheduler import _run_collector
+        with patch("nuri.trading.engine.decisions.track_decision_outcomes", return_value=3) as mock_fn:
+            _run_collector("decision_outcomes")
+        mock_fn.assert_called_once()
+
+    def test_run_collector_agent_accuracy(self):
+        """_run_collector dispatches to save_agent_accuracy_snapshot."""
+        from nuri.scheduler import _run_collector
+        with patch("nuri.trading.engine.decisions.save_agent_accuracy_snapshot", return_value=5) as mock_fn:
+            _run_collector("agent_accuracy")
+        mock_fn.assert_called_once()
+
+
 class TestSchedulerDbMaintenance_Db:
     def test_scheduler_db_maintenance_runs(self, db_path, monkeypatch):
         """스케줄러 _run_db_maintenance가 정상 실행."""

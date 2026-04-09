@@ -250,6 +250,71 @@ def _snapshot_market_context(db_path=None) -> dict:
     return context
 
 
+def save_agent_accuracy_snapshot(db_path=None) -> int:
+    """에이전트별 적중률 스냅샷 저장 (주간 batch).
+
+    decisions 테이블의 agent_verdicts(JSON)를 파싱하여
+    각 에이전트가 BUY/SELL 판단한 종목의 실제 outcome과 비교.
+
+    Returns:
+        저장된 스냅샷 수 (에이전트 수)
+    """
+    from nuri.core.db import get_db, query
+    from nuri.core.timezone import kst_now
+
+    now = kst_now().strftime("%Y-%m-%d %H:%M")
+
+    # outcome이 확정된 decisions만 집계
+    rows = query(
+        "SELECT agent_verdicts, outcome FROM decisions WHERE outcome IN ('success', 'failure')",
+        db_path=db_path,
+    )
+
+    if not rows:
+        logger.info("No completed decisions for agent accuracy snapshot")
+        return 0
+
+    # 에이전트별 집계
+    agent_stats: dict[str, dict] = {}
+
+    for row in rows:
+        try:
+            verdicts = json.loads(row["agent_verdicts"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        outcome = row["outcome"]
+        for v in verdicts:
+            name = v.get("agent_name", "unknown")
+            action = v.get("action", "HOLD")
+
+            if name not in agent_stats:
+                agent_stats[name] = {"total": 0, "correct": 0}
+
+            agent_stats[name]["total"] += 1
+
+            # BUY + success 또는 SELL + success = 에이전트 판단 정확
+            if action in ("BUY", "SELL"):
+                is_correct = (outcome == "success")
+                if is_correct:
+                    agent_stats[name]["correct"] += 1
+
+    # strategy_memory 테이블에 저장 (기존 패턴 재활용)
+    saved = 0
+    with get_db(db_path) as conn:
+        for agent_name, stats in agent_stats.items():
+            accuracy = stats["correct"] / stats["total"] * 100 if stats["total"] > 0 else 0.0
+            conn.execute(
+                "INSERT INTO strategy_memory (date, signal_name, ticker, metric, value) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (now[:10], f"agent_accuracy_{agent_name}", "ALL", "accuracy_pct", round(accuracy, 2)),
+            )
+            saved += 1
+
+    logger.info(f"Agent accuracy snapshot saved: {saved} agents")
+    return saved
+
+
 def _get_price_targets(ticker: str, entry_price: float, db_path=None) -> dict:
     """가격 타겟 조회. price_targets 모듈 사용."""
     if entry_price <= 0:
@@ -259,3 +324,25 @@ def _get_price_targets(ticker: str, entry_price: float, db_path=None) -> dict:
         return calculate_targets(ticker, entry_price=entry_price, db_path=db_path)
     except Exception:
         return {}
+
+
+if __name__ == "__main__":
+    import argparse
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
+    parser = argparse.ArgumentParser(description="Decision Intelligence CLI")
+    parser.add_argument("--track", action="store_true", help="Track decision outcomes (7/30/60/90d P&L)")
+    parser.add_argument("--snapshot", action="store_true", help="Save agent accuracy snapshot")
+    args = parser.parse_args()
+
+    if args.track:
+        n = track_decision_outcomes()
+        print(f"Updated {n} decision outcomes")
+
+    if args.snapshot:
+        n = save_agent_accuracy_snapshot()
+        print(f"Saved {n} agent accuracy snapshots")
+
+    if not args.track and not args.snapshot:
+        parser.print_help()

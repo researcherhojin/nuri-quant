@@ -11,7 +11,7 @@ PYTHON = .venv/bin/python
         setup test lint lint-fix verify-quick verify-all verify verify-fast \
         collect collect-kis collect-kis-check wallstreet filings \
         analyze report report-llm \
-        validate regime recommend gate consensus certify remediate \
+        validate regime recommend gate consensus certify remediate track-decisions \
         scan swing swing-check strategy strategy-execute positions \
         backtest backtest-ls backtest-stress backtest-rules backtest-event \
         optimize mean-reversion pairs \
@@ -179,6 +179,9 @@ certify:
 
 remediate:
 	$(PYTHON) -m nuri.trading.engine.remediation
+
+track-decisions:
+	$(PYTHON) -m nuri.trading.engine.decisions --track --snapshot
 
 
 # ═══════════════════════════════════════════════════════════════

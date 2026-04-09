@@ -249,7 +249,7 @@ Special regimes (priority order, override base `regime` field): euphoria, stagfl
 
 ### Scheduler
 
-`nuri/scheduler.py` defines 18 cron jobs in the `SCHEDULES` list. All times are KST. Lazy imports inside `_run_collector()` to avoid import-time side effects.
+`nuri/scheduler.py` defines 21 cron jobs in the `SCHEDULES` list. All times are KST. Lazy imports inside `_run_collector()` to avoid import-time side effects.
 
 ## Environment Variables
 
