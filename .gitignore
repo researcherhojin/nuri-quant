@@ -182,3 +182,4 @@ Thumbs.db
 *.orig
 ta-lib/
 ta-lib-*.tar.gz
+NEXT_SESSION.md
