@@ -27,7 +27,7 @@ test.describe("Dashboard (with real backend)", () => {
   });
 
   test("navigates to each page without crash", async ({ page }) => {
-    const routes = ["/signals", "/consensus", "/targets", "/engine", "/evidence"];
+    const routes = ["/signals", "/consensus", "/targets", "/engine", "/evidence", "/decisions"];
     for (const route of routes) {
       await page.goto(route, { timeout: 15000 });
       const body = await page.textContent("body");
