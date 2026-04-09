@@ -11,7 +11,7 @@ PYTHON = .venv/bin/python
         setup test lint lint-fix verify-quick verify-all verify verify-fast \
         collect collect-kis collect-kis-check wallstreet filings \
         analyze report report-llm \
-        validate regime recommend gate consensus certify \
+        validate regime recommend gate consensus certify remediate \
         scan swing swing-check strategy strategy-execute positions \
         backtest backtest-ls backtest-stress backtest-rules backtest-event \
         optimize mean-reversion pairs \
@@ -34,7 +34,7 @@ help:
 	@echo "  Data:         make collect, make collect-kis, make wallstreet, make filings"
 	@echo "  Analysis:     make analyze, make consensus, make scan, make backtest"
 	@echo "  Pipeline:     make full-scan, make quick-scan"
-	@echo "  Trading:      make targets, make rebalance, make recommend, make certify"
+	@echo "  Trading:      make targets, make rebalance, make recommend, make certify, make remediate"
 	@echo "  Strategy:     make strategy, make backtest-ls, make optimize, make mean-reversion, make pairs"
 	@echo "  Events:       make backtest-event, make event-list, make event-trades"
 	@echo "  Reports:      make report, make report-llm, make evidence, make external"
@@ -176,6 +176,9 @@ gate:
 
 certify:
 	$(PYTHON) -m nuri.trading.engine.certification
+
+remediate:
+	$(PYTHON) -m nuri.trading.engine.remediation
 
 
 # ═══════════════════════════════════════════════════════════════

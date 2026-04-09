@@ -1,4 +1,4 @@
-"""가격 타겟 + 리밸런스 어드바이저 + SIEGE 인증 API."""
+"""가격 타겟 + 리밸런스 어드바이저 + SIEGE 인증 + Remediation API."""
 from fastapi import APIRouter
 
 router = APIRouter(tags=["targets"])
@@ -75,3 +75,22 @@ def get_certification():
     _certify_cache["data"] = result
     _certify_cache["ts"] = now
     return result
+
+
+@router.get("/remediate")
+def get_remediation():
+    """SIEGE remediation 계획 — REJECTED gate → 매도 액션 매핑."""
+    from dataclasses import asdict
+
+    from nuri.trading.engine.remediation import generate_remediation
+    plan = generate_remediation()
+    return {
+        "certified": plan.certified,
+        "score": plan.score,
+        "failed_gates": plan.failed_gates,
+        "warning_gates": plan.warning_gates,
+        "actions": [asdict(a) for a in plan.actions],
+        "unresolvable": plan.unresolvable,
+        "post_remediation_score": plan.post_remediation_score,
+        "post_remediation_pass": plan.post_remediation_pass,
+    }

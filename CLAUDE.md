@@ -84,6 +84,7 @@ make quick-scan       # 빠른 4-step: collect→analyze→consensus→targets (
 
 # SIEGE Certification
 make certify          # 10-condition 규칙 검증 → CERTIFIED / REJECTED
+make remediate        # REJECTED → 진단 + 매도 처방 + post-remediation 예측
 make gate             # Pipeline gate verifier (exits 1 if BLOCKED)
 
 # Price Targets & Rebalance & Evidence
@@ -333,7 +334,7 @@ data/
 
 ## Testing
 
-2,449 backend tests across 122 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 593 frontend vitest (45 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
+2,469 backend tests across 123 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 593 frontend vitest (45 files) + 21 Playwright E2E (4 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -394,7 +395,7 @@ Security: Trivy vulnerability scan (CRITICAL severity) runs in `main-ci-cd.yml` 
 
 ## Gotchas
 
-- **Next.js 16 breaking changes**: APIs differ from LLM training data — always read `node_modules/next/dist/docs/` first. See `frontend/CLAUDE.md`.
+- **Next.js 16 breaking changes**: APIs differ from LLM training data — always read `node_modules/next/dist/docs/` first. See `frontend/AGENTS.md`.
 - **vi.mock() hoisting** (frontend): `vi.mock("recharts")` affects ALL dynamic imports in the same vitest worker. Keep recharts-dependent and recharts-free tests in separate files. Use `vi.doMock` for per-test control.
 - **runpy + mock**: `runpy.run_module()` re-executes module source, invalidating mocks. Use `patch("source.module.function")` for source-level patching.
 - **OpenBB local import**: `obb` is imported inside functions (not at module level). `patch("module.obb")` fails — use `patch.dict(sys.modules, {"openbb": mock_module})`.

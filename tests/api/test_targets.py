@@ -25,3 +25,21 @@ class TestTargetsAPI:
     def test_targets_ticker(self, client):
         r = client.get("/api/targets/AAPL")
         assert r.status_code == 200
+
+
+class TestRemediateAPI:
+    def test_remediate_returns_200(self, client):
+        r = client.get("/api/remediate")
+        assert r.status_code == 200
+        data = r.json()
+        assert "certified" in data
+        assert "actions" in data
+        assert "post_remediation_pass" in data
+
+    def test_remediate_structure(self, client):
+        r = client.get("/api/remediate")
+        data = r.json()
+        assert isinstance(data["failed_gates"], list)
+        assert isinstance(data["warning_gates"], list)
+        assert isinstance(data["actions"], list)
+        assert isinstance(data["score"], (int, float))

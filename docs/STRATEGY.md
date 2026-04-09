@@ -127,7 +127,7 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,449 tests, 122 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,469 tests, 123 files |
 | Frontend tests | 목표 ≥ 90% | 593 tests, 45 files |
 | E2E | 핵심 flow 커버 | 21 Playwright tests (4 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security |
@@ -349,7 +349,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 **Context Files 설계 원칙:**
 
-- 거대한 하나의 파일 ✕ → 디렉토리별 맵 ✓ (`CLAUDE.md`는 루트 + frontend 분리)
+- 거대한 하나의 파일 ✕ → 디렉토리별 맵 ✓ (`CLAUDE.md` 루트 + `frontend/AGENTS.md`)
 - 코드에서 유추 가능한 정보 ✕ → 코드만으로 알 수 없는 결정의 "왜"만 기록
 - `STRATEGY.md`는 반드시 작업 시작 전에 읽도록 `CLAUDE.md`에 지시
 

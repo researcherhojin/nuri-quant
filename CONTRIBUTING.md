@@ -121,7 +121,7 @@ and every PR.
 
 - **Architecture / design questions** → read `docs/STRATEGY.md` first.
 - **Day-to-day rules** → read `CLAUDE.md`.
-- **Frontend specifics** → `frontend/CLAUDE.md`.
+- **Frontend specifics** → `frontend/AGENTS.md`.
 - **Where a function lives** → use `Grep` / `Glob`, don't guess.
 
 The harness lessons in `docs/STRATEGY.md` §5 are written for Claude
