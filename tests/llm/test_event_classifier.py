@@ -91,48 +91,95 @@ class TestNormalize:
         assert result["regime_hint"] == "recovery"
 
 
-class TestOllamaPath:
-    """Ollama JSON 경로 — requests.post mock."""
+class TestOpenAIPath_R152:
+    """OpenAI gpt-5.4-nano 경로 (#152 Step 2) — wrapper.chat_json mock.
 
-    def test_ollama_success(self, monkeypatch):
-        from nuri.llm import event_classifier as mod
+    LLM 경로의 wrapper 호출이 wrapper의 typed exceptions(Disabled,
+    Unavailable, ResponseError) 어느 것을 raise하더라도 단일 헤드라인은
+    조용히 regex로 폴백한다. wrapper의 audit/cost logging은 wrapper
+    자체 테스트(test_openai_client.py)에서 검증된다.
+    """
 
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.json.return_value = {
-            "response": '{"category": "fed_dovish", "sentiment": 0.4, "confidence": 0.85}'
-        }
-        mock_requests = MagicMock()
-        mock_requests.post.return_value = mock_resp
-        monkeypatch.setitem(__import__("sys").modules, "requests", mock_requests)
+    def _patch_wrapper(self, monkeypatch, *, returns=None, raises=None):
+        """get_client().chat_json을 패치한다."""
+        from nuri.llm import event_classifier as ec_mod
+        from nuri.llm import openai_client as cli_mod
 
+        fake_client = MagicMock()
+        if raises is not None:
+            fake_client.chat_json.side_effect = raises
+        else:
+            fake_client.chat_json.return_value = returns or {}
+
+        # Patch get_client to return our fake (event_classifier imports it lazily)
+        monkeypatch.setattr(cli_mod, "_singleton", fake_client)
+        # The lazy import inside _classify_with_openai uses get_client(), which
+        # returns _singleton if non-None — so setting _singleton is sufficient.
+        return fake_client, ec_mod
+
+    def test_openai_success(self, monkeypatch):
+        fake, mod = self._patch_wrapper(monkeypatch, returns={
+            "category": "fed_dovish",
+            "sentiment": 0.4,
+            "confidence": 0.85,
+        })
         result = mod.classify_event("Fed cuts rates by 50bps", use_llm=True)
         assert result["category"] == "fed_dovish"
         assert result["sentiment"] == 0.4
         assert result["confidence"] == 0.85
         assert result["regime_hint"] == "bull_low_vol"
+        # wrapper called once with public headline only (Tier 0)
+        assert fake.chat_json.call_count == 1
+        call = fake.chat_json.call_args
+        assert "Headline: Fed cuts rates by 50bps" in call.kwargs["user"]
 
-    def test_ollama_connection_error_falls_back_to_regex(self, monkeypatch):
-        from nuri.llm import event_classifier as mod
-
-        mock_requests = MagicMock()
-        mock_requests.post.side_effect = ConnectionError("Ollama down")
-        monkeypatch.setitem(__import__("sys").modules, "requests", mock_requests)
-
+    def test_unavailable_falls_back_to_regex(self, monkeypatch):
+        from nuri.llm.openai_client import ExternalLLMUnavailable
+        _, mod = self._patch_wrapper(
+            monkeypatch,
+            raises=ExternalLLMUnavailable("network down"),
+        )
         result = mod.classify_event("Iran ceasefire announced", use_llm=True)
+        # regex가 ceasefire를 잡음
         assert result["category"] == "geopolitical_de_escalation"
         assert result["confidence"] == 0.5  # regex fallback marker
 
-    def test_ollama_invalid_json_falls_back(self, monkeypatch):
-        from nuri.llm import event_classifier as mod
-
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.json.return_value = {"response": "not valid json {"}
-        mock_requests = MagicMock()
-        mock_requests.post.return_value = mock_resp
-        monkeypatch.setitem(__import__("sys").modules, "requests", mock_requests)
-
-        result = mod.classify_event("Russia escalates strikes on Ukraine", use_llm=True)
-        # 깨진 JSON → ValueError → regex fallback
+    def test_disabled_falls_back_to_regex(self, monkeypatch):
+        """NURI_DISABLE_EXTERNAL_LLM 시 wrapper raises Disabled → regex로 폴백."""
+        from nuri.llm.openai_client import ExternalLLMDisabled
+        _, mod = self._patch_wrapper(
+            monkeypatch,
+            raises=ExternalLLMDisabled("opt-out"),
+        )
+        result = mod.classify_event("Russia escalates strikes", use_llm=True)
         assert result["category"] == "geopolitical_escalation"
+
+    def test_response_error_falls_back_to_regex(self, monkeypatch):
+        from nuri.llm.openai_client import ExternalLLMResponseError
+        _, mod = self._patch_wrapper(
+            monkeypatch,
+            raises=ExternalLLMResponseError("non-JSON garbage"),
+        )
+        result = mod.classify_event("OPEC+ cut sends oil supply tumbling", use_llm=True)
+        assert result["category"] == "oil_supply_shock"
+
+    def test_unknown_category_from_llm_normalizes_to_neutral(self, monkeypatch):
+        """LLM이 미지의 category 반환 시 normalize로 neutral 변환."""
+        _, mod = self._patch_wrapper(monkeypatch, returns={
+            "category": "alien_invasion",
+            "sentiment": 0.9,
+            "confidence": 0.95,
+        })
+        result = mod.classify_event("Aliens land in Times Square", use_llm=True)
+        assert result["category"] == "neutral"
+        assert result["confidence"] == 0.2  # normalize의 unknown-category marker
+
+    def test_use_llm_false_skips_wrapper_entirely(self, monkeypatch):
+        """use_llm=False일 때 wrapper가 호출되지 않아야 한다 (offline test path)."""
+        from nuri.llm import openai_client as cli_mod
+        fake_client = MagicMock()
+        monkeypatch.setattr(cli_mod, "_singleton", fake_client)
+
+        from nuri.llm import event_classifier as mod
+        mod.classify_event("Fed cuts rates", use_llm=False)
+        assert fake_client.chat_json.call_count == 0
