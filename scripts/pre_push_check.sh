@@ -65,8 +65,18 @@ if [ "$mode" != "--skip-tests" ]; then
     fi
 fi
 
-# ─── 4. Conventional commit check (latest commit only) ───────────────
-echo -e "${YELLOW}━━━ 4. Latest Commit Message Format ━━━${NC}"
+# ─── 4. Privacy leak scan (#138) ─────────────────────────────────
+echo -e "${YELLOW}━━━ 4. Privacy Leak Scan ━━━${NC}"
+if $PYTHON scripts/check_privacy_leak.py --quiet; then
+    echo -e "${GREEN}✓ No personal financial data leaks${NC}\n"
+else
+    echo -e "${RED}✗ Personal financial data leak detected — see above${NC}"
+    echo -e "${RED}  See docs/STRATEGY.md §4.4 for the privacy enforcement rules.${NC}\n"
+    fail=1
+fi
+
+# ─── 5. Conventional commit check (latest commit only) ───────────────
+echo -e "${YELLOW}━━━ 5. Latest Commit Message Format ━━━${NC}"
 last_msg=$(git log -1 --no-merges --format="%s" 2>/dev/null || echo "")
 TYPE='(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)'
 SCOPE='(\([^)]+\))?'
