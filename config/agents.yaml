@@ -37,6 +37,11 @@ technical:
   confidence:
     cap: 90
     hold: 40
+  # FINVIZ 스크리너 보조 시그널 가중치 (buy/sell_signals에 가산)
+  finviz:
+    buy_boost: 1       # oversold_rsi, new_low → buy_signals += 1
+    sell_boost: 1       # overbought_rsi, new_high → sell_signals += 1
+    max_age_days: 3     # 최근 N일 이내 데이터만 사용
 
 fundamental:
   pe_undervalued: 15        # +2점
