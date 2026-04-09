@@ -32,16 +32,16 @@ logger = logging.getLogger(__name__)
 # 기본 가중치 (과거 데이터 없을 때)
 # 7→10 에이전트 확장: 기존 에이전트 비중 소폭 하향, 신규 3개 배분
 DEFAULT_WEIGHTS = {
-    "technical": 0.16,       # 18→16
-    "fundamental": 0.12,     # 14→12
-    "macro": 0.12,           # 14→12
-    "risk": 0.20,            # 22→20 (거부권 유지)
-    "smart_money": 0.08,     # 9→8
-    "wallstreet": 0.11,      # 13→11
-    "korean_market": 0.08,   # 10→8 (.KS 종목에서만 실질 영향)
-    "options": 0.08,          # 신규: PCR 기반 시장 심리
-    "crypto": 0.05,           # 신규: BTC 리스크 선호
-    "retail": 0.00,           # 신규: WSB 센티먼트 (데이터 안정화까지 0%)
+    "technical": 0.152,      # 16→15.2 (×0.95)
+    "fundamental": 0.114,    # 12→11.4
+    "macro": 0.114,          # 12→11.4
+    "risk": 0.19,            # 20→19 (거부권 유지)
+    "smart_money": 0.076,    # 8→7.6
+    "wallstreet": 0.105,     # 11→10.5
+    "korean_market": 0.076,  # 8→7.6 (.KS 종목에서만 실질 영향)
+    "options": 0.076,        # 8→7.6
+    "crypto": 0.047,         # 5→4.7
+    "retail": 0.05,          # 0→5% 활성화: WSB 역발상 시그널
 }
 
 ALL_AGENTS = [
