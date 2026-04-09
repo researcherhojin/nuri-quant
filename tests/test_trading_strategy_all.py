@@ -187,6 +187,77 @@ class TestCertification:
         assert cert.regime_aligned is True
 
 
+class TestRegimeAlignmentMatrix_R86:
+    """10 regime × 2 direction 풀 매트릭스 — #86 회귀 가드.
+
+    이전 코드는 substring fallback (`'bull' in regime`, `'high' in regime`)
+    을 썼는데, 이는 두 가지 문제를 만들었음:
+
+    1. 4개 special regime (recovery/euphoria/stagflation/sector_rotation)
+       이름에 'bull'/'sideways' 부분문자열이 없어서 LONG fallback이 항상
+       False였음. 다행히 REGIME_ALLOCATION 메인 lookup이 먼저 매칭되어
+       latent bug였음.
+    2. SHORT 로직의 `'high' in regime` 체크는 두 가지 잘못:
+       - bear_low_vol (short_pct=30)이 'high' 미포함이라 잘못 차단
+       - sideways_high_vol (short_pct=0)이 'high' 포함이라 잘못 허용
+
+    Fix: REGIME_ALLOCATION의 long_pct/short_pct를 ground truth로 사용.
+    이 클래스는 그 결정이 회귀하지 않도록 10×2 = 20 케이스를 lock한다.
+    """
+
+    @pytest.fixture
+    def db(self, bull_data):
+        return bull_data
+
+    @pytest.mark.parametrize(("regime", "expected_long"), [
+        # 6 base regimes — long_pct > 0 인 곳만 long aligned
+        ("bull_low_vol",      True),   # long_pct=80
+        ("bull_high_vol",     True),   # long_pct=60
+        ("sideways_low_vol",  True),   # long_pct=40
+        ("sideways_high_vol", True),   # long_pct=20
+        ("bear_low_vol",      True),   # long_pct=10 (방어 섹터 롱 허용)
+        ("bear_high_vol",     False),  # long_pct=0  (전량 청산)
+        # 4 special regimes — 이전엔 substring fallback이 dead code였음
+        ("recovery",          True),   # long_pct=80 (회복기 공격적 롱)
+        ("euphoria",          True),   # long_pct=40 (과열기 방어적이지만 롱 일부)
+        ("stagflation",       True),   # long_pct=10 (최소 롱)
+        ("sector_rotation",   True),   # long_pct=50 (선별 롱)
+    ])
+    def test_long_alignment(self, db, regime, expected_long):
+        from nuri.trading.strategy.position import certify_position
+        cert = certify_position("AAPL", "long", regime, db_path=db)
+        assert cert.regime_aligned is expected_long, (
+            f"long in {regime}: got {cert.regime_aligned}, expected {expected_long}"
+        )
+
+    @pytest.mark.parametrize(("regime", "expected_short"), [
+        # 6 base regimes — short_pct > 0 인 곳만 short aligned
+        ("bull_low_vol",      False),  # short_pct=0
+        ("bull_high_vol",     False),  # short_pct=0
+        ("sideways_low_vol",  False),  # short_pct=0
+        ("sideways_high_vol", False),  # short_pct=0  (이전 substring 로직은 잘못 True)
+        ("bear_low_vol",      True),   # short_pct=30 (이전 substring 로직은 잘못 False)
+        ("bear_high_vol",     True),   # short_pct=50
+        # 4 special regimes — 모두 short_pct=0
+        ("recovery",          False),
+        ("euphoria",          False),
+        ("stagflation",       False),
+        ("sector_rotation",   False),
+    ])
+    def test_short_alignment(self, db, regime, expected_short):
+        from nuri.trading.strategy.position import certify_position
+        cert = certify_position("SH", "short", regime, db_path=db)
+        assert cert.regime_aligned is expected_short, (
+            f"short in {regime}: got {cert.regime_aligned}, expected {expected_short}"
+        )
+
+    def test_unknown_regime_fails_closed(self, db):
+        """미등록 레짐은 보수적으로 차단."""
+        from nuri.trading.strategy.position import certify_position
+        cert = certify_position("AAPL", "long", "totally_made_up_regime", db_path=db)
+        assert cert.regime_aligned is False
+
+
 class TestPositionManager:
     """From test_strategy.py — position open/query."""
 
