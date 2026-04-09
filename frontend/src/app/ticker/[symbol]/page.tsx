@@ -24,18 +24,20 @@ async function TickerDetail({ symbol }: { symbol: string }) {
   const supers = data.superinvestors || [];
   const fund = data.fundamentals;
 
+  // Pre-format earnings data (no render functions — Next.js 16 forbids
+  // passing functions from Server to Client Components)
+  const earningsFormatted = earnings.map((e: any) => ({
+    quarter: e.quarter?.slice(0, 7) ?? "—",
+    eps_actual: e.eps_actual?.toFixed(2) ?? "—",
+    eps_estimate: e.eps_estimate?.toFixed(2) ?? "—",
+    surprise_pct: e.surprise_pct ? `${(e.surprise_pct * 100).toFixed(0)}%` : "—",
+    _surprise_positive: (e.surprise_pct || 0) > 0,
+  }));
   const earningsCols = [
-    { key: "quarter", label: "Quarter", render: (v: string) => v?.slice(0, 7) },
-    { key: "eps_actual", label: "Actual", align: "right" as const, render: (v: number) => v?.toFixed(2) },
-    { key: "eps_estimate", label: "Est", align: "right" as const, render: (v: number) => <span className="text-muted-foreground">{v?.toFixed(2)}</span> },
-    {
-      key: "surprise_pct", label: "Surprise", align: "right" as const,
-      render: (v: number) => (
-        <span className={`font-medium ${(v || 0) > 0 ? "text-emerald-400" : "text-red-400"}`}>
-          {v ? `${(v * 100).toFixed(0)}%` : "—"}
-        </span>
-      ),
-    },
+    { key: "quarter", label: "Quarter" },
+    { key: "eps_actual", label: "Actual", align: "right" as const },
+    { key: "eps_estimate", label: "Est", align: "right" as const },
+    { key: "surprise_pct", label: "Surprise", align: "right" as const },
   ];
 
   return (
@@ -127,8 +129,8 @@ async function TickerDetail({ symbol }: { symbol: string }) {
         <Card className="bg-card border-border">
           <CardContent className="pt-5">
             <p className="text-xs text-muted-foreground mb-3">Earnings ({earnings.length}Q)</p>
-            {earnings.length > 0 ? (
-              <DataTable columns={earningsCols} data={earnings} compact />
+            {earningsFormatted.length > 0 ? (
+              <DataTable columns={earningsCols} data={earningsFormatted} compact />
             ) : <p className="text-xs text-muted-foreground/70 text-center py-3">No earnings data</p>}
           </CardContent>
         </Card>
