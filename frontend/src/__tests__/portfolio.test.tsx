@@ -18,6 +18,7 @@ vi.mock("next/navigation", () => ({
 const mockHoldings = [
   { ticker: "TSLA", account: "test", quantity: 33, avg_price: 200.0, currency: "USD", sector: "SectorA", latest_price: 250, price_date: "2026-03-31" },
   { ticker: "005930.KS", account: "sample", quantity: 4, avg_price: 200500, currency: "KRW", sector: "Semiconductor", latest_price: 210000, price_date: "2026-03-31" },
+  { ticker: "VOO", account: "other", quantity: 1, avg_price: 500, currency: "USD", sector: "ETF", latest_price: null, price_date: null },
 ];
 
 function mockFetch(overrides: Record<string, unknown> = {}) {
