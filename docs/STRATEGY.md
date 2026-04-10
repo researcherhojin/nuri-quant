@@ -68,7 +68,7 @@
 | 선택 | 이유 |
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드로 동시 읽기. `tmp_path`로 테스트 격리. |
-| **Hybrid LLM stack** | (a) 본인 portfolio·narrative·의사결정 데이터는 **local Ollama 한정** (data sovereignty 유지). (b) 공개 RSS 헤드라인 분류는 **OpenAI gpt-5.4-nano** 허용 — Ollama Qwen3.5가 production hardware에서 hang되는 hardware-bound 문제 회피 + 멀티-토픽 헤드라인 nuance 회복. 연간 \$3.51 (일 100 헤드라인 기준). 공개 데이터만 외부로 나가므로 §4.4 룰 위반 없음. 자세한 정책은 §4.4.3. |
+| **Hybrid LLM stack** (현재 휴면) | 정책: (a) portfolio·narrative·의사결정은 **local Ollama 한정** (data sovereignty). (b) 공개 RSS 헤드라인은 **OpenAI gpt-5.4-nano** 허용 (Tier 0, ~\$3.51/yr). **현재 상태**: production에서 LLM은 비활성. `OLLAMA_HOST` 미설정 → `make report-llm` 실패; `OPENAI_API_KEY` 미설정 → event_classifier가 regex fallback. 코드는 wired되어 있고 환경변수만 추가하면 즉시 활성화됨. §4.4.3 참조. |
 | OpenBB + yfinance (not Bloomberg) | 무료 데이터. OpenBB 추상화 → provider 교체 용이. yfinance는 폴백. |
 | GitHub Actions (not Jenkins) | 오픈소스 무료 tier. lint + test + coverage + security 자동화. |
 
@@ -209,6 +209,14 @@ PR을 올리기 전 이 기준을 확인한다.
 
 **History cleanup (Stage 2 — 별도 작업)**:
 이 enforcement는 main HEAD를 깨끗하게 유지. 그러나 leak이 처음 들어간 이전 commit(들)은 force push 또는 GitHub Support 요청 없이는 제거 불가. STRATEGY.md §5.4 (스코프 팽창) + CLAUDE.md (force push to main 금지)를 동시에 준수하기 위해 별도 작업으로 분리. 권장 순서: GitHub Support 요청 (비파괴) → 만족 못 하면 `git filter-repo` (사용자 명시 force-push 승인 필수).
+
+**알려진 미정리 leak (Stage 2 후보)**:
+
+| commit | 내용 | 상태 |
+|--------|------|------|
+| PR #202 (squash 머지) | commit message body에 사용자 보유 종목 + 손실률 (TEM/RKLB/TSLA/PL + PnL) | main git history에 박힘. Stage 2 미실행 |
+
+§4.4.1 enforcement는 **scanner pattern 사각지대**가 있음: ticker name + PnL 조합은 broker name도 monetary literal도 아니므로 차단되지 않음. Tier 2에 "Privacy scanner ticker+PnL pattern" 등록 (§7).
 
 #### 4.4.2 외부 데이터 처리 원칙
 
@@ -434,7 +442,8 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 1 | 티커 기반 First-Run 온보딩 UX | [#133](https://github.com/researcherhojin/nuri-quant/issues/133) | feat(frontend) | 신규 사용자 0분 가치 체험. `/analyze?ticker=NVDA` |
 | 2 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거 |
 | 3 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
-| 4 | CI fast/slow marker 분리 | [#88](https://github.com/researcherhojin/nuri-quant/issues/88) | ci | PR feedback 가속 (~3분 → ~1분) |
+| 4 | **Privacy scanner ticker+PnL pattern** | — | security | 현재 broker name + monetary literal만 차단. ticker와 PnL이 같은 commit message/PR 본문에 있을 때 패턴 감지 추가. PR #202 commit message leak 같은 경우 방지 |
+| 5 | **LLM 휴면 코드 결정** | — | refactor | `nuri/llm/{report,event_classifier,openai_client}.py` 현재 production 비활성 (OLLAMA_HOST/OPENAI_API_KEY 미설정). 유지 vs 제거 vs 재활성화 결정 필요 |
 
 ### Tier 3 — 다음 분기 (P2)
 
@@ -444,13 +453,15 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 |---|------|------|---------|------|
 | 1 | Alpaca 실전 연동 (Paper → Live) | [#17](https://github.com/researcherhojin/nuri-quant/issues/17) | feat(execution) | 자동 매도 실행. SIEGE CERTIFIED 종목만 |
 | 2 | KIS Open API 한국 실전 연동 | — | feat(execution) | `kis_realtime.py` 기 구현. 매매 endpoint 미연결 |
-| 3 | pytest fast/slow marker 분리 | [#88](https://github.com/researcherhojin/nuri-quant/issues/88) | ci | PR feedback 가속 |
+| 3 | **PR #202 commit message Stage 2 history cleanup** | — | security | 사용자 보유 종목 + 손실률이 PR #202 commit message에 노출되어 main git history에 박힘 (TEM/RKLB/PL 등 + PnL). §4.4.1 Stage 2 절차 (GitHub Support 또는 `git filter-repo`) 적용 결정 필요 |
+| 4 | **Universe 추가 확장 (Russell 2000)** | — | feat(scanner) | 현재 419 (us_core 85 + us_sp500 254 + kospi200 80). 중소형주 발굴 위해 Russell 2000 (~2,000) 추가 검토 |
 
 ### 영구 배경 작업 (낮은 우선순위, 발견 시 처리)
 
 | 항목 | 이슈 | 비고 |
 |------|------|------|
 | TestGate flake on push (PR-only pass) | [#85](https://github.com/researcherhojin/nuri-quant/issues/85) | classify_regime mock leak 수정 완료 (#188). 재발 시 추가 조사 |
+| portfolio.yaml 데이터 정합성 모니터링 | — | 수동 매매 후 portfolio.yaml 동기화 필요. 평균가 drift 발견 시 즉시 교정 (사례: PR #204 세션에서 Sub RKLB avg \$60→\$87.7 발견) |
 
 ### 작업 규칙 (변경 없음)
 

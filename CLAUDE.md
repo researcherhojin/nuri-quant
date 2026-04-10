@@ -334,7 +334,9 @@ data/
 
 ## Testing
 
-2,601 backend tests across 128 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 606 frontend vitest (46 files) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
+2,633 backend tests across 128 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 634 frontend vitest (46 files) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
+
+**Slow marker** (PR #206): ~12 LLM/heavy tests are marked `@pytest.mark.slow`. PR CI excludes them via `-m "not slow"` (~24% wall time savings); main push runs the full suite. Use `make test-fast` locally for the same fast subset, `make test-slow` for slow only.
 ```python
 @pytest.fixture
 def db_path(tmp_path):
@@ -439,7 +441,7 @@ Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `mac
 cd frontend
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (610 tests, 46 files)
+npm run test           # vitest run (634 tests, 46 files)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
 ```
@@ -455,9 +457,9 @@ All pages are **Server Components** with `force-dynamic`. Data fetched server-si
 
 **Conventions**: `async function Section()` in `<Suspense>`, `animate-pulse` skeletons, color semantics (emerald=BUY, red=SELL, amber=warning, blue=WATCH, zinc=HOLD), `text-[10px]` sub-labels.
 
-**Frontend testing** (610 vitest, 46 files): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files.
+**Frontend testing** (634 vitest, 46 files): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files.
 
-**Auth**: `src/middleware.ts` — SHA256 cookie-based, active only when `DASHBOARD_PASSWORD` is set.
+**Auth**: `src/middleware.ts` — HMAC-SHA256 keyed cookie auth (Edge Runtime compatible), active only when `DASHBOARD_PASSWORD` is set.
 
 ## Portfolio Action Plan Format
 
