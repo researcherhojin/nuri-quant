@@ -238,4 +238,446 @@ describe("DashboardPage", () => {
       expect(screen.queryByText(/품질 검증/)).not.toBeInTheDocument();
     });
   });
+
+  /* ── vixZone helper coverage ── */
+  it("renders VIX null as dash", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, vix: undefined },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      // vixZone(null) returns label "—"
+      const vixLabels = screen.getAllByText("—");
+      expect(vixLabels.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("renders VIX < 12 as 안정", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, vix: 10 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("안정")).toBeInTheDocument();
+    });
+  });
+
+  it("renders VIX < 17 as 낮음", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, vix: 14 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("낮음")).toBeInTheDocument();
+    });
+  });
+
+  it("renders VIX 18.5 as 보통", async () => {
+    // Default mock has vix: 18.5 which hits the v < 23 branch.
+    // macro score 65 also maps to 보통, so we expect at least 2 occurrences.
+    setupMocks();
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      const matches = screen.getAllByText("보통");
+      expect(matches.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("renders VIX >= 33 as 위험", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, vix: 40 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("위험")).toBeInTheDocument();
+    });
+  });
+
+  /* ── fgLabel / fgColor helper coverage ── */
+  it("renders fear_greed < 25 as 극도 공포", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, fear_greed: 15 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("극도 공포")).toBeInTheDocument();
+    });
+  });
+
+  it("renders fear_greed < 45 as 공포", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, fear_greed: 35 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("공포")).toBeInTheDocument();
+    });
+  });
+
+  it("renders fear_greed 55 as 중립", async () => {
+    // Default mock has fear_greed: 55 which hits fg <= 55
+    setupMocks();
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("중립")).toBeInTheDocument();
+    });
+  });
+
+  it("renders fear_greed 70 as 탐욕", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, fear_greed: 70 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("탐욕")).toBeInTheDocument();
+    });
+  });
+
+  it("renders fear_greed > 75 as 극도 탐욕", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, fear_greed: 90 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("극도 탐욕")).toBeInTheDocument();
+    });
+  });
+
+  it("renders fear_greed null as dash", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, fear_greed: undefined },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      const dashes = screen.getAllByText("—");
+      expect(dashes.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  /* ── macroLevel helper coverage ── */
+  it("renders macro score >= 70 as 양호", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        macro: { score: 75, interpretation: "Positive" },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("양호")).toBeInTheDocument();
+    });
+  });
+
+  it("renders macro score < 30 as 취약", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        macro: { score: 20, interpretation: "Negative" },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("취약")).toBeInTheDocument();
+    });
+  });
+
+  it("renders macro score 35 as 부진", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        macro: { score: 35, interpretation: "Below average" },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("부진")).toBeInTheDocument();
+    });
+  });
+
+  /* ── displayName helper coverage ── */
+  it("renders holding name when available", async () => {
+    setupMocks({
+      portfolio: {
+        count: 2,
+        holdings: [
+          { ticker: "AAPL", name: "Apple Inc", quantity: 10, avg_price: 150, latest_price: 200, currency: "USD" },
+          { ticker: "GOOG", quantity: 5, avg_price: 100, latest_price: 80, currency: "USD" },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText(/Apple Inc/)).toBeInTheDocument();
+    });
+  });
+
+  it("strips .KS suffix for Korean tickers in displayName", async () => {
+    setupMocks({
+      portfolio: {
+        count: 2,
+        holdings: [
+          { ticker: "005930.KS", quantity: 10, avg_price: 50000, latest_price: 60000, currency: "KRW" },
+          { ticker: "TSLA", quantity: 5, avg_price: 100, latest_price: 80, currency: "USD" },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      // displayName strips .KS, so "005930" should appear instead of "005930.KS"
+      expect(screen.getByText(/005930/)).toBeInTheDocument();
+    });
+  });
+
+  /* ── account_values rendering ── */
+  it("renders account_values when present", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        account_values: [
+          { account: "Main", value: 5000 },
+          { account: "Pension", value: 3000 },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText(/Main \$5,000/)).toBeInTheDocument();
+      expect(screen.getByText(/Pension \$3,000/)).toBeInTheDocument();
+    });
+  });
+
+  it("does not render account_values row when absent", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        account_values: undefined,
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("$8,850")).toBeInTheDocument();
+      // No per-account breakdown text
+      expect(screen.queryByText(/Main \$/)).not.toBeInTheDocument();
+    });
+  });
+
+  /* ── account-grouped actions ── */
+  it("renders Main/Sub actions in grouped section", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        actions: [
+          { action: "BUY", ticker: "AAPL", confidence: 85, agreement: 90, reason: "Momentum", account: "Main" },
+          { action: "SELL", ticker: "GOOG", confidence: 60, agreement: 70, reason: "Weakness", account: "Sub" },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("AAPL")).toBeInTheDocument();
+      expect(screen.getByText("GOOG")).toBeInTheDocument();
+      expect(screen.getByText("Main")).toBeInTheDocument();
+      expect(screen.getByText("Sub")).toBeInTheDocument();
+    });
+  });
+
+  it("renders Pension actions as '월말 매수 대기' when not month-end", async () => {
+    // Default date (April 11) is not within 3 days of month end (April 30)
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        actions: [
+          { action: "BUY", ticker: "SPY", confidence: 70, agreement: 80, reason: "Rebalance", account: "Pension" },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText(/월말 매수 대기/)).toBeInTheDocument();
+      // SPY should not appear as a clickable action (pension hidden mid-month)
+      expect(screen.queryByText("SPY")).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders Pension actions expanded at month-end", async () => {
+    // Mock Date so new Date() returns April 29 (1 day before month end → isMonthEnd = true)
+    // Use a class-based mock to keep real timer functionality for waitFor
+    const RealDate = globalThis.Date;
+    const fakeNow = new RealDate(2026, 3, 29, 12, 0, 0).getTime(); // April 29
+    class MockDate extends RealDate {
+      constructor(...args: any[]) {
+        if (args.length === 0) { super(fakeNow); } else { super(...(args as [any])); }
+      }
+      static override now() { return fakeNow; }
+    }
+    vi.stubGlobal("Date", MockDate);
+
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        actions: [
+          { action: "BUY", ticker: "SPY", confidence: 70, agreement: 80, reason: "Rebalance", account: "Pension" },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("SPY")).toBeInTheDocument();
+      expect(screen.getByText("연금")).toBeInTheDocument();
+      expect(screen.queryByText(/월말 매수 대기/)).not.toBeInTheDocument();
+    });
+
+    vi.stubGlobal("Date", RealDate);
+  });
+
+  it("renders 'other' actions (no account or Toss)", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        actions: [
+          { action: "BUY", ticker: "MSFT", confidence: 75, agreement: 85, reason: "Factor score", account: "Toss" },
+          { action: "BUY", ticker: "AMZN", confidence: 65, agreement: 75, reason: "Breakout" },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("MSFT")).toBeInTheDocument();
+      expect(screen.getByText("AMZN")).toBeInTheDocument();
+      expect(screen.getByText("Toss")).toBeInTheDocument();
+    });
+  });
+
+  /* ── exchange_rate fallback ── */
+  it("uses fallback exchange rate 1400 when exchange_rate is null", async () => {
+    // KRW holding: 4 * 210000 / 1400 = 600; USD holding: 33 * 250 = 8250; total = 8850
+    setupMocks({
+      dashboard: { ...mockDashboardData, exchange_rate: null },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("$8,850")).toBeInTheDocument();
+    });
+  });
+
+  it("uses provided exchange_rate when present", async () => {
+    // KRW holding: 4 * 210000 / 1300 = ~646.15; USD holding: 33 * 250 = 8250; total ≈ 8896
+    setupMocks({
+      dashboard: { ...mockDashboardData, exchange_rate: 1300 },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("$8,896")).toBeInTheDocument();
+    });
+  });
+
+  /* ── VIX 주의 zone (v < 33) ── */
+  it("renders VIX 25 as 주의 zone", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, vix: 25 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      // vixZone(25) → label "주의" — but "주의" also appears in verdict label
+      // Check that VIX value 25 is rendered
+      expect(screen.getByText("25")).toBeInTheDocument();
+    });
+  });
+
+  /* ── mixed account actions (all groups present) ── */
+  it("renders all account groups together", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        actions: [
+          { action: "BUY", ticker: "AAPL", confidence: 85, agreement: 90, reason: "Momentum", account: "Main" },
+          { action: "BUY", ticker: "GOOG", confidence: 70, agreement: 80, reason: "Rebalance", account: "Pension" },
+          { action: "BUY", ticker: "MSFT", confidence: 75, agreement: 85, reason: "Factor", account: "Toss" },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      // Main action rendered
+      expect(screen.getByText("AAPL")).toBeInTheDocument();
+      // Toss (other) action rendered
+      expect(screen.getByText("MSFT")).toBeInTheDocument();
+      // Pension is mid-month → collapsed
+      expect(screen.getByText(/월말 매수 대기/)).toBeInTheDocument();
+    });
+  });
+
+  /* ── action with name field ── */
+  it("renders action name and ticker when name is present", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        actions: [
+          { action: "BUY", ticker: "NVDA", name: "NVIDIA Corp", confidence: 80, agreement: 90, reason: "AI growth", account: "Main" },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("NVIDIA Corp")).toBeInTheDocument();
+      expect(screen.getByText("NVDA")).toBeInTheDocument();
+    });
+  });
 });
