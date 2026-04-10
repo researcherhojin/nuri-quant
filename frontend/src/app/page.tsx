@@ -170,7 +170,7 @@ async function Dashboard() {
     .sort((a: any, b: any) => Math.abs(b.pnl) - Math.abs(a.pnl));
 
   return (
-    <div className="flex flex-col gap-3 min-h-0">
+    <div className="flex flex-col gap-4 h-full">
       {/* ═══ 히어로: 총 평가액 + 판단 ═══ */}
       <div>
         <p className="text-[10px] text-zinc-500 mb-0.5">총 평가액</p>
@@ -323,21 +323,21 @@ async function Dashboard() {
         <p className="text-sm text-zinc-500 text-center py-2">매매 신호 없음 &mdash; 현재 포지션 유지</p>
       )}
 
-      {/* ═══ 보유 종목 현황 (항상 표시) ═══ */}
+      {/* ═══ 보유 종목 현황 (항상 표시, 남은 공간 채움) ═══ */}
       {sortedHoldings.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
+        <div className="flex-1 min-h-0">
+          <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
               <span className="text-[10px] text-zinc-600">{winners.length > 0 && `수익 ${winners.length}`}{winners.length > 0 && losers.length > 0 && " · "}{losers.length > 0 && `손실 ${losers.length}`}</span>
             </div>
             <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
           </div>
-          <div className="space-y-0.5">
-            {sortedHoldings.slice(0, 6).map((h: any) => (
+          <div className="space-y-1">
+            {sortedHoldings.slice(0, 10).map((h: any) => (
               <Link key={h.ticker} href={`/ticker/${h.ticker}`}
-                className="flex items-center gap-2 px-2 py-1 rounded hover:bg-zinc-800/50 text-xs group">
-                <span className="text-zinc-100 font-medium w-14 truncate">{displayName(h)}</span>
+                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/50 text-xs group">
+                <span className="text-zinc-100 font-medium w-16 truncate">{displayName(h)}</span>
                 <span className={`font-semibold tabular-nums w-14 text-right ${h.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {h.pnl >= 0 ? "+" : ""}{h.pnl.toFixed(1)}%
                 </span>
