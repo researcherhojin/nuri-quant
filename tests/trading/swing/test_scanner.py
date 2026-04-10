@@ -3,6 +3,7 @@
 Extracted from the former tests/test_trading_strategy_all.py.
 Shared fixtures live in conftest.py for this directory.
 """
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -201,3 +202,75 @@ class TestScanner_R26:
         with patch("nuri.trading.swing.scanner._fetch_prices", return_value=None):
             results = scan_market()
         assert results == []
+
+
+class TestUniverseLoading:
+    """config/universe.yaml에서 universe 로드 테스트."""
+
+    def test_get_us_universe_core(self):
+        """us_core (extended=False)는 정상 로드."""
+        from nuri.trading.swing.scanner import get_us_universe
+        universe = get_us_universe(extended=False)
+        assert len(universe) > 0
+        assert "AAPL" in universe
+        assert "NVDA" in universe
+        # 중복 없음
+        assert len(universe) == len(set(universe))
+
+    def test_get_us_universe_extended(self):
+        """extended=True는 us_core보다 더 많은 종목."""
+        from nuri.trading.swing.scanner import get_us_universe
+        core = get_us_universe(extended=False)
+        extended = get_us_universe(extended=True)
+        assert len(extended) > len(core)
+        # core의 모든 종목이 extended에도 포함
+        for ticker in core:
+            assert ticker in extended
+
+    def test_get_kr_universe(self):
+        """KR universe는 .KS 종목들."""
+        from nuri.trading.swing.scanner import get_kr_universe
+        universe = get_kr_universe()
+        assert len(universe) > 0
+        assert all(t.endswith(".KS") for t in universe)
+        assert "005930.KS" in universe  # 삼성전자
+
+    def test_load_universe_handles_yaml_error(self, monkeypatch):
+        """yaml 로드 실패 시 빈 리스트 반환."""
+        import builtins
+
+        from nuri.trading.swing import scanner
+        real_open = builtins.open
+
+        def bad_open(*args, **kwargs):
+            if args and "universe.yaml" in str(args[0]):
+                raise OSError("simulated read failure")
+            return real_open(*args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", bad_open)
+        result = scanner._load_universe(["us_core"])
+        assert result == []
+
+    def test_load_universe_missing_group(self):
+        """존재하지 않는 group key는 무시."""
+        from nuri.trading.swing.scanner import _load_universe
+        result = _load_universe(["nonexistent_group"])
+        assert result == []
+
+    def test_get_us_universe_uses_fallback_when_yaml_missing(self, monkeypatch):
+        """YAML 누락 시 fallback hardcoded list 사용."""
+        from nuri.trading.swing import scanner
+        monkeypatch.setattr(scanner, "_load_universe", lambda keys: [])
+        universe = scanner.get_us_universe()
+        assert len(universe) > 0
+        assert "AAPL" in universe  # fallback에 포함
+
+    def test_scan_market_with_extended_flag(self, db_path):
+        """scan_market(extended=True)이 더 큰 universe 사용."""
+        from nuri.trading.swing.scanner import scan_market
+        with patch("nuri.trading.swing.scanner._fetch_prices", return_value=None):
+            results_core = scan_market(market="us", extended=False)
+            results_ext = scan_market(market="us", extended=True)
+        # 둘 다 빈 결과 (mock이라) — 호출 자체가 에러 없이 동작하면 OK
+        assert results_core == []
+        assert results_ext == []
