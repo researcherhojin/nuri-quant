@@ -94,23 +94,22 @@ function translateAlert(msg: string): string {
 function displayName(h: { name?: string | null; ticker?: string }) {
   return h?.name || (h?.ticker?.endsWith(".KS") ? h.ticker.replace(".KS", "") : h?.ticker) || "";
 }
-/** 알림 메시지를 1줄 요약으로 압축 */
-function summarizeAlerts(alerts: Array<{ level: string; message: string }>): string {
-  const parts: string[] = [];
-  for (const al of alerts) {
-    const translated = translateAlert(al.message);
-    // 손절 관련: 티커 + 퍼센트 추출
-    const stopMatch = translated.match(/(\S+)\s+손절선\s+돌파\s+\((-?\d+\.?\d*%)\)/);
-    if (stopMatch) { parts.push(`${stopMatch[1]} ${stopMatch[2]} 손절`); continue; }
-    const nearMatch = translated.match(/(\S+)\s+손절선\s+근접\s+\((-?\d+\.?\d*%)\)/);
-    if (nearMatch) { parts.push(`${nearMatch[1]} ${nearMatch[2]} 근접`); continue; }
-    // 충돌
-    const conflictMatch = translated.match(/충돌\s+(\d+)건/);
-    if (conflictMatch) { parts.push(`충돌 ${conflictMatch[1]}건`); continue; }
-    // 기타: 짧게 자르기
-    parts.push(translated.slice(0, 20));
-  }
-  return parts.join(" · ");
+/** 알림 → {label, href} 파싱 */
+function parseAlert(al: { level: string; message: string }): { label: string; href: string } {
+  const translated = translateAlert(al.message);
+  // 손절 돌파: 티커 → /ticker/{ticker}
+  const stopMatch = translated.match(/(\S+)\s+손절선\s+돌파\s+\((-?\d+\.?\d*%)\)/);
+  if (stopMatch) return { label: `${stopMatch[1]} ${stopMatch[2]} 손절`, href: `/ticker/${stopMatch[1]}` };
+  // 손절 근접
+  const nearMatch = translated.match(/(\S+)\s+손절선\s+근접\s+\((-?\d+\.?\d*%)\)/);
+  if (nearMatch) return { label: `${nearMatch[1]} ${nearMatch[2]} 근접`, href: `/ticker/${nearMatch[1]}` };
+  // 충돌
+  const conflictMatch = translated.match(/충돌\s+(\d+)건/);
+  if (conflictMatch) return { label: `충돌 ${conflictMatch[1]}건`, href: "/decisions" };
+  // 시그널 성과
+  if (translated.includes("성과 하락")) return { label: translated.slice(0, 30), href: "/signals" };
+  // 기타
+  return { label: translated.slice(0, 30), href: "/signals" };
 }
 
 /* ══════════════════════════════════════════════════════ */
@@ -222,11 +221,25 @@ async function Dashboard() {
         )}
       </div>
 
-      {/* ═══ 알림 — 1줄 인라인 (있을 때만) ═══ */}
+      {/* ═══ 알림 — 개별 라인, 클릭 시 상세 이동 ═══ */}
       {alertCount > 0 && (
-        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-red-950/20 border border-red-900/30 text-[10px]">
-          <span className="text-red-400 font-semibold shrink-0">주의 {alertCount}건</span>
-          <span className="text-red-400/70 truncate">{summarizeAlerts(d.alerts)}</span>
+        <div className="px-2 py-1.5 rounded bg-red-950/20 border border-red-900/30">
+          <p className="text-[10px] text-red-400 font-semibold mb-1">주의 {alertCount}건</p>
+          <div className="space-y-0.5">
+            {d.alerts.map((al, i) => {
+              const parsed = parseAlert(al);
+              return (
+                <Link key={i} href={parsed.href}
+                  className="flex items-center gap-1.5 text-[10px] hover:bg-red-950/30 rounded px-1 py-0.5 -mx-1 transition-colors group">
+                  <span className={al.level === "critical" ? "text-red-400" : "text-amber-400"}>
+                    {al.level === "critical" ? "\u2716" : "\u25B3"}
+                  </span>
+                  <span className="text-zinc-300 group-hover:text-zinc-100">{parsed.label}</span>
+                  <span className="text-zinc-700 ml-auto group-hover:text-zinc-500">&rarr;</span>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       )}
 
