@@ -14,34 +14,48 @@ Every BUY/SELL recommendation runs through a **collect → analyze → consensus
 
 ## Architecture
 
+The pipeline has **8 phases** organized into 5 conceptual stages. Phases never import each other — they communicate **only through DB tables and CSV files** (loose coupling, see [`docs/STRATEGY.md`](docs/STRATEGY.md#23-느슨한-결합-loose-coupling-via-data) §2.3). Re-running an upstream phase automatically refreshes downstream consumers.
+
 ```mermaid
 flowchart LR
-    A["<b>Collect</b><br/>24 collectors<br/>419 ticker universe"]
-    B["<b>Analyze</b><br/>20 signals · 10 regimes"]
-    C["<b>Consensus</b><br/>10 agents weighted vote"]
-    D["<b>Certify</b><br/>SIEGE 11-gate"]
-    E["<b>Track</b><br/>30/60/90d outcome"]
+    A["<b>1. Collect</b><br/>24 collectors<br/>419 ticker universe"]
+    B["<b>2. Analyze</b><br/>20 signals<br/>10 regimes<br/>multi-factor"]
+    C["<b>3. Consensus</b><br/>10 agents<br/>weighted vote<br/>risk veto"]
+    D["<b>4. Certify</b><br/>SIEGE 11-gate<br/>error gate=REJECTED"]
+    E["<b>5. Track</b><br/>30/60/90d outcomes<br/>weight feedback"]
 
-    A -- DB --> B -- CSV --> C -- DB --> D -- DB --> E
-    E -. "weight feedback" .-> C
+    A -- "prices, macro, fundamentals, signals tables" --> B
+    B -- "signal_results.csv, scorecard.csv" --> C
+    C -- "recommendations + decisions tables" --> D
+    D -- "audit_log table" --> E
+    E -. "strategy_memory snapshot<br/>±30% weight band" .-> C
 
-    style A fill:#1e293b,stroke:#6366f1,color:#e2e8f0
-    style B fill:#1e293b,stroke:#10b981,color:#e2e8f0
-    style C fill:#1e293b,stroke:#f59e0b,color:#e2e8f0
-    style D fill:#1e293b,stroke:#ef4444,color:#e2e8f0
-    style E fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0
+    style A fill:#1e293b,stroke:#6366f1,color:#e2e8f0,stroke-width:2px
+    style B fill:#1e293b,stroke:#10b981,color:#e2e8f0,stroke-width:2px
+    style C fill:#1e293b,stroke:#f59e0b,color:#e2e8f0,stroke-width:2px
+    style D fill:#1e293b,stroke:#ef4444,color:#e2e8f0,stroke-width:2px
+    style E fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0,stroke-width:2px
 ```
 
-| Layer | Role |
-|-------|------|
-| `nuri/collectors/` | 24 data collectors (OpenBB, pykrx, FRED, edgartools, FINVIZ, KIS Open API) |
-| `nuri/quant/` | Signal backtest (20 signals), regime classifier (10 regimes), multi-factor scoring, VectorBT |
-| `nuri/trading/agents/` | 10 specialist agents + weighted consensus (risk agent has SELL veto at confidence ≥ 80) |
-| `nuri/trading/engine/` | SIEGE 11-gate certification + Decision Intelligence + learning memory |
-| `nuri/api/` | FastAPI REST + SSE streaming on port 8001 |
-| `frontend/` | Next.js 16 dashboard (16 pages, dark theme, Tailwind 4 + shadcn/ui) |
-| `nuri/core/db.py` | Sole SQLite gateway (31 tables, WAL mode). Every other module reads/writes through here |
-| `config/` | All thresholds and rules — `rules.yaml`, `agents.yaml`, `signals.yaml`, `universe.yaml` (419 tickers) |
+### Key architectural decisions
+
+- **`nuri/core/db.py` is the sole SQLite gateway** — the only module that imports `sqlite3`. Every other module reads/writes through `query()`, `query_df()`, `upsert_*()`, `get_db()`. This makes WAL conflicts, transactions, schema migrations, and test isolation tractable. 31 tables total.
+- **Config-driven, code-static** — all thresholds, rules, and signal metadata live in `config/*.yaml`. Changing a stop-loss percentage means editing YAML, not Python. See `rules.yaml`, `agents.yaml`, `signals.yaml`, `universe.yaml`.
+- **DB-only integration between phases** — the only cross-phase coupling is data, not function calls. This is what makes the system rerun-safe and scheduler-friendly.
+
+### Code layout
+
+| Path | Pipeline phase | Role |
+|------|----------------|------|
+| `nuri/collectors/` | 1. Collect | 24 collectors. Each subclasses `BaseCollector(collect → save)`. Sources: OpenBB, pykrx, FRED, edgartools, FINVIZ, KIS Open API |
+| `nuri/quant/` | 2. Analyze | Signal backtest (20 signals), regime classifier (6 base + 4 special), multi-factor scoring, VectorBT |
+| `nuri/trading/agents/` | 3. Consensus | 10 specialist agents + weighted consensus. Risk agent has SELL veto at confidence ≥ 80 |
+| `nuri/trading/engine/` | 4. Certify | SIEGE 11-gate certification, conflict detection, learning memory |
+| `nuri/trading/recommend/` | 4-5 | Candidates, price targets, rebalance advisor, outcome tracker |
+| `nuri/api/` | Serve | FastAPI REST + SSE streaming on **:8001** |
+| `frontend/` | Serve | Next.js 16 dashboard on **:3000** (16 pages, dark theme, Tailwind 4 + shadcn/ui) |
+| `nuri/core/db.py` | All | **Sole** SQLite gateway. 31 tables, WAL mode |
+| `config/*.yaml` | All | Thresholds, rules, signal metadata, scan universe |
 
 ## Tech Stack
 
