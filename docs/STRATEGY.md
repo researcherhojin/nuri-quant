@@ -198,7 +198,7 @@ PR을 올리기 전 이 기준을 확인한다.
 | Suspect monetary literal | 7자리 이상 정수 (`>= 1_000_000`) 가 동일 라인에 `total_invested`, `cash_balance`, `deposit`, `withdraw`, `principal`, `net_worth`, `buying_power` 키와 함께 존재 | round million 값 (`1_000_000`, `5_000_000`, …, `100_000_000`)은 placeholder로 자동 허용 |
 
 **의도적 제외**:
-- `한국투자증권` (KIS) 은 Open API 통합 대상으로 코드베이스에 합법적으로 등장 (`nuri/collectors/kis_*`, `docs/KIS_INTEGRATION.md`). 사용자 개인 KIS 계좌가 leak되는 경로는 `~/KIS/config/kis_devlp.yaml` (gitignored, 위치 자체가 repo 밖) — broker name 패턴이 아닌 credential file 패턴이 막아야 할 surface.
+- `한국투자증권` (KIS) 은 Open API 통합 대상으로 코드베이스에 합법적으로 등장 (`nuri/collectors/kis_*`, `docs/KIS_INTEGRATION.md`). 사용자 개인 KIS 자격 증명 위치는 `config/kis/kis_devlp.yaml` (프로젝트 내 gitignored by `config/kis/*` 패턴, `~/KIS/` 레거시 위치도 하위 호환으로 자동 감지). broker name 패턴이 아닌 **credential file 패턴** + **디렉토리 whitelist 패턴** 두 층으로 차단.
 
 **방어 layer 3개** (defense in depth):
 1. `scripts/check_privacy_leak.py` — 핵심 scanner. stdlib only, no deps.

@@ -14,7 +14,8 @@ nuri/collectors/
 
 ### 우선순위
 1. **`.env` 파일** (권장 — git ignored)
-2. **`~/KIS/config/kis_devlp.yaml`** (KIS Open API SDK 호환 fallback)
+2. **`config/kis/kis_devlp.yaml`** (프로젝트 내 gitignored, KIS Open API SDK 호환)
+3. **`~/KIS/config/kis_devlp.yaml`** (레거시 위치, 하위 호환 fallback)
 
 ### .env 변수
 
@@ -33,9 +34,9 @@ KIS_PAPER_ACCOUNT=...
 KIS_HTS_ID=your_hts_id
 ```
 
-### YAML fallback (`~/KIS/config/kis_devlp.yaml`)
+### YAML fallback (`config/kis/kis_devlp.yaml`)
 
-KIS Open API 공식 SDK와 호환되는 형식. SDK 사용자는 추가 설정 없이 동작.
+KIS Open API 공식 SDK와 호환되는 형식. nuri-quant는 프로젝트 내 `config/kis/` 하위에 파일을 두는 것을 권장 (gitignored). 레거시 위치 `~/KIS/config/kis_devlp.yaml`도 자동 감지.
 
 ```yaml
 my_app: "실전 앱키"
@@ -47,6 +48,22 @@ my_acct_stock: "1000000"        # 실전 종합계좌
 my_paper_stock: "1000000"       # 모의 종합계좌
 my_prod: "01"                    # 종합계좌 (01) / 선물옵션 (03) / 해외선물옵션 (08)
 ```
+
+#### KIS Open API 공식 SDK와 동시 사용 시
+
+KIS 공식 SDK (`pykis` 등)는 hardcoded `~/KIS/config/kis_devlp.yaml` 경로를 사용합니다. nuri-quant와 공식 SDK를 동시에 쓰려면 두 위치에 파일이 모두 있어야 합니다:
+
+**옵션 1 — symlink (권장, 1개 파일)**:
+```bash
+mkdir -p ~/KIS/config ~/KIS/cache
+ln -sf "$(pwd)/config/kis/kis_devlp.yaml" ~/KIS/config/kis_devlp.yaml
+ln -sf "$(pwd)/config/kis/cache" ~/KIS/cache
+```
+
+**옵션 2 — legacy only (nuri-quant fallback 활용)**:
+`~/KIS/config/kis_devlp.yaml`에 파일을 두고 `config/kis/`는 비워두면 nuri-quant가 legacy 경로를 자동 감지. SDK는 기본 경로에서 읽음.
+
+**옵션 3 — SDK 미사용**: nuri-quant만 쓰면 `config/kis/`만으로 충분.
 
 ## 사용법
 
@@ -135,8 +152,8 @@ KIS는 토큰 발급 시 1분당 1회 제한. 연속 호출 시 거부됨.
 
 | 경로 | 형식 | TTL |
 |---|---|---|
-| `~/KIS/cache/token_prod.json` | `{access_token, issued_at, expires_in}` | 23h (실제 24h, 마진 1h) |
-| `~/KIS/cache/token_paper.json` | 동일 | 동일 |
+| `config/kis/cache/token_prod.json` | `{access_token, issued_at, expires_in}` | 23h (실제 24h, 마진 1h) |
+| `config/kis/cache/token_paper.json` | 동일 | 동일 |
 
 ### Cooldown 응답 감지
 

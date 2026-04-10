@@ -2,12 +2,13 @@
 
 자격 증명 우선순위:
     1. .env: KIS_PROD_APP_KEY/SECRET (실전), KIS_PAPER_APP_KEY/SECRET (모의)
-    2. ~/KIS/config/kis_devlp.yaml (KIS Open API SDK 호환 fallback)
+    2. config/kis/kis_devlp.yaml (프로젝트 내 gitignored, KIS Open API SDK 호환)
+    3. ~/KIS/config/kis_devlp.yaml (레거시 위치 fallback, 하위 호환)
 
 기능:
     - --check-creds: 자격 증명 확인만 (호출 X)
     - 보유 종목의 현재가 inquire-price (한국+미국)
-    - 24h token 캐시 (1분 cooldown 회피, ~/KIS/cache/)
+    - 24h token 캐시 (1분 cooldown 회피, config/kis/cache/)
     - DB upsert (prices 테이블)
 
 사용법:
@@ -41,12 +42,35 @@ logger = logging.getLogger(__name__)
 PROD_BASE = "https://openapi.koreainvestment.com:9443"
 PAPER_BASE = "https://openapivts.koreainvestment.com:29443"
 
-TOKEN_CACHE_DIR = Path.home() / "KIS" / "cache"
 TOKEN_CACHE_TTL_SEC = 23 * 3600  # 23h (실제 24h, 마진 1h)
 TOKEN_COOLDOWN_SEC = 60          # KIS 1분 cooldown
 
-# KIS Open API SDK 호환 yaml fallback
-KIS_YAML_PATH = Path.home() / "KIS" / "config" / "kis_devlp.yaml"
+# KIS 자격 증명 + token cache 위치 (우선순위 순):
+#   1) config/kis/ — 프로젝트 내 gitignored, 권장
+#   2) ~/KIS/ — 레거시 위치, 하위 호환 fallback
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_KIS_NEW_DIR = _PROJECT_ROOT / "config" / "kis"
+_KIS_LEGACY_DIR = Path.home() / "KIS"
+
+
+def _resolve_kis_paths(new_dir: Path, legacy_dir: Path) -> tuple[Path, Path]:
+    """KIS yaml / cache 경로 결정. 새 위치 우선, 없으면 레거시 fallback.
+
+    Args:
+        new_dir: 프로젝트 내 KIS 디렉토리 (config/kis/)
+        legacy_dir: 레거시 위치 (~/KIS/)
+
+    Returns:
+        (kis_yaml_path, token_cache_dir) 튜플
+    """
+    if (new_dir / "kis_devlp.yaml").exists():
+        return new_dir / "kis_devlp.yaml", new_dir / "cache"
+    # 레거시 또는 아예 없는 경우: legacy 위치 default (테스트 patch 호환)
+    return legacy_dir / "config" / "kis_devlp.yaml", legacy_dir / "cache"
+
+
+# Module load 시 1회 결정. 테스트는 KIS_YAML_PATH를 monkeypatch.
+KIS_YAML_PATH, TOKEN_CACHE_DIR = _resolve_kis_paths(_KIS_NEW_DIR, _KIS_LEGACY_DIR)
 
 # KIS rate limit (KIS 공지 2026.03.20 + 실측):
 #   - 실전(prod) 신규: 초당 3건 → 0.4s 간격 (초당 2.5건, 안전 마진)
@@ -82,7 +106,7 @@ class KISCredentials:
 
 
 def load_credentials(mode: str = "prod") -> KISCredentials | None:
-    """KIS 자격 증명 로드. 우선순위: .env → ~/KIS/config/kis_devlp.yaml.
+    """KIS 자격 증명 로드. 우선순위: .env → config/kis/kis_devlp.yaml → ~/KIS/config/kis_devlp.yaml.
 
     Args:
         mode: "prod" (실전) | "paper" (모의)
@@ -98,7 +122,7 @@ def load_credentials(mode: str = "prod") -> KISCredentials | None:
     if creds.is_valid():
         return creds
 
-    # YAML fallback (KIS SDK 호환)
+    # YAML fallback (KIS SDK 호환) — module-level KIS_YAML_PATH 사용 (테스트 patch 호환)
     if KIS_YAML_PATH.exists():
         try:
             import yaml
@@ -115,7 +139,12 @@ def load_credentials(mode: str = "prod") -> KISCredentials | None:
                 mode=mode,
             )
             if creds.is_valid():
-                logger.info("KIS 자격 증명 로드: ~/KIS/config/kis_devlp.yaml (%s)", mode)
+                # 경로 로깅 — 프로젝트 내부면 상대경로, 외부면 generic 표기 (사용자명 노출 방지)
+                try:
+                    rel_path = KIS_YAML_PATH.relative_to(_PROJECT_ROOT)
+                    logger.info("KIS 자격 증명 로드: %s (%s)", rel_path, mode)
+                except ValueError:
+                    logger.info("KIS 자격 증명 로드: ~/KIS/config/kis_devlp.yaml (%s)", mode)
                 return creds
         except Exception as e:
             logger.warning("KIS YAML 로드 실패: %s", e)
@@ -336,7 +365,7 @@ class KISRealtimeCollector(BaseCollector):
         """자격 증명 확인 (API 호출 X)."""
         self.creds = load_credentials(self.mode)
         if not self.creds:
-            self.logger.error("KIS 자격 증명 없음 (.env 또는 ~/KIS/config/kis_devlp.yaml 확인)")
+            self.logger.error("KIS 자격 증명 없음 (.env 또는 config/kis/kis_devlp.yaml 확인)")
             return False
         masked_key = self.creds.app_key[:8] + "..." if len(self.creds.app_key) > 8 else "***"
         self.logger.info("KIS 자격 증명 OK [%s] app_key=%s account=%s",

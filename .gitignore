@@ -13,12 +13,20 @@
 .env.*.local
 .envrc
 
-# KIS Open API 자격 증명 (절대 git 금지)
+# KIS Open API 자격 증명 (절대 git 금지) — 다층 방어
+# 1) 파일명 패턴 — 어디 있든 차단
 **/kis_devlp.yaml
 **/kis_devlp.yml
-.kis/
+# 2) config/ 내부의 kis_ prefixed 파일
 config/kis_*.yaml
 config/kis_*.yml
+# 3) config/kis/ 디렉토리 내부 전체 (credentials + token cache)
+#    파일명이 바뀌어도, 새 secret이 추가되어도 안전
+#    .gitkeep만 tracking해서 디렉토리 자체는 repo에 보존
+config/kis/*
+!config/kis/.gitkeep
+# 4) 레거시 ~/KIS 참조 (프로젝트 외부지만 안전장치)
+.kis/
 
 # 토큰 캐시 (런타임 생성)
 **/token_*.json

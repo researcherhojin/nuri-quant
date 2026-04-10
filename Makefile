@@ -375,7 +375,8 @@ clean:
 clean-all: clean
 	@echo "=== Clean: __pycache__ + 토큰 캐시 ==="
 	@find . -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
-	@rm -rf ~/KIS/cache/token_*.json 2>/dev/null || true
+	@rm -rf config/kis/cache/token_*.json 2>/dev/null || true
+	@rm -rf ~/KIS/cache/token_*.json 2>/dev/null || true  # legacy 위치도 정리
 	@echo "=== ✓ Clean-all complete ==="
 
 clean-deep: clean-all
