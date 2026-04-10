@@ -53,26 +53,19 @@ class EventsCollector(BaseCollector):
         return records
 
     def _collect_ticker_events(self, ticker: str) -> list[dict]:
-        """OpenBB로 종목별 실적/배당 일정 수집."""
-        from openbb import obb
+        """yfinance로 종목별 실적/배당 일정 수집."""
+        import yfinance as yf
 
         records = []
         try:
-            # 실적발표일
-            result = obb.equity.calendar.earnings(
-                symbol=ticker, provider="yfinance",
-            )
-            df = result.to_dataframe()
-            if not df.empty:
-                for _, row in df.iterrows():
-                    date_val = row.get("report_date", row.get("date"))
+            # 실적발표일 — yfinance 직접 호출 (OpenBB 추상화 우회)
+            t = yf.Ticker(ticker)
+            cal = t.calendar
+            if cal:
+                earnings_dates = cal.get("Earnings Date") or []
+                for date_val in earnings_dates:
                     if date_val is None:
-                        # index가 날짜일 수 있음
-                        if hasattr(row.name, "strftime"):
-                            date_val = row.name
-                        else:
-                            continue
-
+                        continue
                     date_str = date_val.strftime("%Y-%m-%d") if hasattr(date_val, "strftime") else str(date_val)[:10]
                     records.append({
                         "date": date_str,
@@ -85,14 +78,10 @@ class EventsCollector(BaseCollector):
             self.logger.debug(f"{ticker}: 실적 캘린더 조회 실패 — {e}")
 
         try:
-            # 배당 일정
-            result = obb.equity.calendar.dividend(
-                symbol=ticker, provider="yfinance",
-            )
-            df = result.to_dataframe()
-            if not df.empty:
-                row = df.iloc[0]
-                ex_date = row.get("ex_dividend_date", row.get("date"))
+            # 배당 일정 — yfinance Ticker.calendar에 ex-dividend date 포함
+            cal = t.calendar if "t" in dir() else yf.Ticker(ticker).calendar
+            if cal:
+                ex_date = cal.get("Ex-Dividend Date")
                 if ex_date:
                     date_str = ex_date.strftime("%Y-%m-%d") if hasattr(ex_date, "strftime") else str(ex_date)[:10]
                     records.append({

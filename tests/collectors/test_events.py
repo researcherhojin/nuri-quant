@@ -28,42 +28,36 @@ class TestEventsCollectorFOMCAndEarnings:
         assert len(fomc) == 8
 
     def test_collect_ticker_events_earnings(self, monkeypatch, db_with_portfolio):
+        from datetime import date
+
         from nuri.collectors.events import EventsCollector
 
-        earnings_df = pd.DataFrame({"report_date": pd.to_datetime(["2025-04-25"])})
-        dividend_df = pd.DataFrame({"ex_dividend_date": pd.to_datetime(["2025-05-10"])})
-        mock_obb = MagicMock()
-        mock_obb.equity.calendar.earnings.return_value = MagicMock(to_dataframe=MagicMock(return_value=earnings_df))
-        mock_obb.equity.calendar.dividend.return_value = MagicMock(to_dataframe=MagicMock(return_value=dividend_df))
-        import sys
-
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        mock_ticker = MagicMock()
+        mock_ticker.calendar = {"Earnings Date": [date(2025, 4, 25)], "Ex-Dividend Date": date(2025, 5, 10)}
+        monkeypatch.setattr("yfinance.Ticker", lambda t: mock_ticker)
         results = EventsCollector()._collect_ticker_events("AAPL")
         assert len(results) == 2
+        assert any(r["event_type"] == "earnings" for r in results)
+        assert any(r["event_type"] == "ex_dividend" for r in results)
 
-    def test_collect_ticker_events_with_index_date(self, monkeypatch, db_with_portfolio):
+    def test_collect_ticker_events_earnings_only(self, monkeypatch, db_with_portfolio):
+        from datetime import date
+
         from nuri.collectors.events import EventsCollector
 
-        earnings_df = pd.DataFrame({"dummy": [1]}, index=pd.to_datetime(["2025-04-25"]))
-        mock_obb = MagicMock()
-        mock_obb.equity.calendar.earnings.return_value = MagicMock(to_dataframe=MagicMock(return_value=earnings_df))
-        mock_obb.equity.calendar.dividend.side_effect = Exception("no dividend")
-        import sys
-
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        mock_ticker = MagicMock()
+        mock_ticker.calendar = {"Earnings Date": [date(2025, 4, 25)]}
+        monkeypatch.setattr("yfinance.Ticker", lambda t: mock_ticker)
         results = EventsCollector()._collect_ticker_events("AAPL")
         assert len(results) == 1
+        assert results[0]["event_type"] == "earnings"
 
-    def test_collect_ticker_events_no_date(self, monkeypatch, db_with_portfolio):
+    def test_collect_ticker_events_no_calendar(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.events import EventsCollector
 
-        earnings_df = pd.DataFrame({"dummy": [1]}, index=[0])
-        mock_obb = MagicMock()
-        mock_obb.equity.calendar.earnings.return_value = MagicMock(to_dataframe=MagicMock(return_value=earnings_df))
-        mock_obb.equity.calendar.dividend.return_value = MagicMock(to_dataframe=MagicMock(return_value=pd.DataFrame()))
-        import sys
-
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        mock_ticker = MagicMock()
+        mock_ticker.calendar = None
+        monkeypatch.setattr("yfinance.Ticker", lambda t: mock_ticker)
         assert EventsCollector()._collect_ticker_events("AAPL") == []
 
     def test_save(self, db_with_portfolio):
@@ -89,12 +83,9 @@ class TestEventsCollectorDividendNoDate:
     def test_dividend_no_date(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.events import EventsCollector
 
-        mock_obb = MagicMock()
-        mock_obb.equity.calendar.earnings.return_value = MagicMock(to_dataframe=MagicMock(return_value=pd.DataFrame()))
-        mock_obb.equity.calendar.dividend.return_value = MagicMock(to_dataframe=MagicMock(return_value=pd.DataFrame({"ex_dividend_date": [None]})))
-        import sys
-
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        mock_ticker = MagicMock()
+        mock_ticker.calendar = {"Earnings Date": [], "Ex-Dividend Date": None}
+        monkeypatch.setattr("yfinance.Ticker", lambda t: mock_ticker)
         assert isinstance(EventsCollector()._collect_ticker_events("AAPL"), list)
 
 
