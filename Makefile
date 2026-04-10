@@ -12,11 +12,10 @@ PYTHON = .venv/bin/python
         collect collect-kis collect-kis-check wallstreet filings \
         analyze report report-llm \
         validate regime recommend gate consensus certify remediate track-decisions \
-        scan swing swing-check strategy strategy-execute positions \
-        backtest backtest-ls backtest-stress backtest-rules backtest-event \
+        scan scan-extended scan-kr swing swing-check strategy strategy-execute positions \
+        backtest backtest-ls backtest-stress backtest-rules \
         optimize mean-reversion pairs \
         targets rebalance evidence external \
-        event-list event-trades \
         api dashboard start \
         full-scan quick-scan \
         deploy pre-deploy backup ports ports-kill update-counts demo
@@ -36,7 +35,6 @@ help:
 	@echo "  Pipeline:     make full-scan, make quick-scan"
 	@echo "  Trading:      make targets, make rebalance, make recommend, make certify, make remediate"
 	@echo "  Strategy:     make strategy, make backtest-ls, make optimize, make mean-reversion, make pairs"
-	@echo "  Events:       make backtest-event, make event-list, make event-trades"
 	@echo "  Reports:      make report, make report-llm, make evidence, make external"
 	@echo "  Server:       make api, make dashboard, make start"
 	@echo "  Deploy:       make pre-deploy, make deploy, make backup"
@@ -190,6 +188,12 @@ track-decisions:
 scan:
 	$(PYTHON) -m nuri.trading.swing.scanner
 
+scan-extended:
+	$(PYTHON) -m nuri.trading.swing.scanner --extended
+
+scan-kr:
+	$(PYTHON) -m nuri.trading.swing.scanner --market kr
+
 swing:
 	$(PYTHON) -m nuri.trading.swing.rules
 
@@ -231,23 +235,8 @@ backtest-stress:
 backtest-rules:
 	$(PYTHON) -m nuri.trading.strategy.ls_backtest --rules
 
-backtest-event:
-	$(PYTHON) -m nuri.quant.event_study.ceasefire --instrument SPY
-	$(PYTHON) -m nuri.quant.event_study.ceasefire --instrument SOXX --leverage 3.0
-
 optimize:
 	$(PYTHON) -m nuri.quant.backtest.optimizer
-
-
-# ═══════════════════════════════════════════════════════════════
-# EVENT-DRIVEN (휴전, Fed 피봇)
-# ═══════════════════════════════════════════════════════════════
-event-list:
-	$(PYTHON) -m nuri.trading.strategy.event_driven list-events
-	$(PYTHON) -m nuri.trading.strategy.event_driven list-trades
-
-event-trades:
-	$(PYTHON) -m nuri.trading.strategy.event_driven list-trades
 
 
 # ═══════════════════════════════════════════════════════════════
