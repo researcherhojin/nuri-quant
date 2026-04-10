@@ -168,13 +168,28 @@ def _get_ticker_account_map() -> dict[str, str]:
     return mapping
 
 
-# 계좌 표시명 (privacy: 실제 broker명 노출 금지)
-_ACCOUNT_LABELS = {
-    "kakaopay": "Main",
-    "kakaopay_sub": "Sub",
-    "pension": "Pension",
-    "toss": "Toss",
-}
+def _get_account_labels() -> dict[str, str]:
+    """계좌명 → 표시 라벨 매핑. portfolio.yaml strategy 필드 기반 (broker명 노출 금지)."""
+    from pathlib import Path  # noqa: E402
+
+    import yaml  # noqa: E402
+
+    _STRATEGY_LABELS = {"core": "Main", "swing": "Sub", "pension": "Pension", "longterm": "Long"}
+    portfolio_path = Path(__file__).parent.parent.parent.parent / "config" / "portfolio.yaml"
+    try:
+        with open(portfolio_path, encoding="utf-8") as f:
+            portfolio = yaml.safe_load(f)
+        labels: dict[str, str] = {}
+        seen: dict[str, int] = {}
+        for acc, info in (portfolio.get("accounts") or {}).items():
+            strategy_name = (info or {}).get("strategy", "core")
+            base_label = _STRATEGY_LABELS.get(strategy_name, strategy_name.title())
+            count = seen.get(base_label, 0)
+            seen[base_label] = count + 1
+            labels[acc] = base_label if count == 0 else f"{base_label} {count + 1}"
+        return labels
+    except Exception:
+        return {}
 
 
 def _get_latest_actions() -> list[dict]:
@@ -192,6 +207,7 @@ def _get_latest_actions() -> list[dict]:
             return []
 
         ticker_account = _get_ticker_account_map()
+        account_labels = _get_account_labels()
 
         actions = []
         for row in rows:
@@ -199,7 +215,7 @@ def _get_latest_actions() -> list[dict]:
             confidence = round(row["confidence"] * 100) if row["confidence"] and row["confidence"] <= 1 else round(row["confidence"] or 0)
             reason, agreement_rate = _extract_reason(row.get("signals"))
             raw_account = ticker_account.get(row["ticker"], "")
-            account_label = _ACCOUNT_LABELS.get(raw_account, raw_account)
+            account_label = account_labels.get(raw_account, raw_account)
 
             if action == "BUY" and confidence >= 50:
                 actions.append({
@@ -253,8 +269,9 @@ def _get_account_values(exchange_rate: float | None) -> list[dict]:
         val = price * qty / rate if is_kr else price * qty
         totals[acc] = totals.get(acc, 0) + val
 
+    account_labels = _get_account_labels()
     return [
-        {"account": _ACCOUNT_LABELS.get(acc, acc), "value": round(v, 2)}
+        {"account": account_labels.get(acc, acc), "value": round(v, 2)}
         for acc, v in sorted(totals.items(), key=lambda x: -x[1])
     ]
 
