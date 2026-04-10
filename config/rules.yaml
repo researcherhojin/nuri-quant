@@ -29,6 +29,12 @@ account_strategies:
     max_single_position: 0.15
     max_sector_exposure: 0.35
     description: 핵심 보유, 정석 운용
+  active:
+    stop_loss: -10                # 손실은 짧게 (-7~-15 사이)
+    max_single_position: 0.25     # 위너는 키움 (15~30 사이)
+    max_sector_exposure: 0.45
+    trailing_stop_arm: 15         # +15% 도달 시 트레일링 스톱 자동 발동
+    description: 적극 운용 — 손실은 짧게, 수익은 보호하며 길게
   swing:
     stop_loss: -15
     max_single_position: 0.30
