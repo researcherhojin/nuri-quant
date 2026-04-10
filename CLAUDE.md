@@ -73,8 +73,10 @@ make optimize         # grid search parameter tuning
 make mean-reversion   # mean-reversion scan + backtest
 make pairs            # pairs trading scan + backtest
 
-# Swing Trade
-make scan             # 88종목 스캔 (UNIVERSE) → 시그널 필터
+# Swing Trade / Market Scan
+make scan             # us_core 스캔 (~85종목, 일일, ~5초)
+make scan-extended    # us_core + S&P 500 (~339종목, 주간 풀스캔)
+make scan-kr          # KOSPI 200 (~80종목)
 make swing            # 스캔 + 에이전트 합의 → 진입 저장
 make swing-check      # 진행중 스윙 트레이드 상태 확인
 
@@ -97,7 +99,9 @@ make report-llm       # Qwen3.5 LLM 리포트 생성 + 자동 저장
 # Lint + Test
 make lint             # ruff check
 make lint-fix         # ruff check --fix
-make test             # pytest tests/ -v --cov=nuri
+make test             # pytest tests/ -v --cov=nuri (full suite, ~50s local)
+make test-fast        # -m "not slow" — slow LLM tests 제외 (~24s, PR CI 기본)
+make test-slow        # slow tests only
 make verify-quick     # fast pre-commit check: tests + regime (~10s, no network)
 make verify-all       # full verification with network (커밋 전 필수)
 .venv/bin/python -m pytest tests/test_db.py -v                                    # single file
@@ -404,9 +408,21 @@ Security: Trivy vulnerability scan (CRITICAL severity) runs in `main-ci-cd.yml` 
 
 ## Investment Rules
 
-Defined in `config/rules.yaml`, loaded via `nuri/core/rules.py`. Full rule table with academic sources: `docs/STRATEGY.md` §3.4 and §6.
+Defined in `config/rules.yaml`, loaded via `nuri/core/rules.py`. Full rule table with academic sources: `docs/STRATEGY.md` §3.4, §3.5, and §6.
 
 Core principle: **3:1 profit-to-loss ratio** (growth: -7% stop / +20%/+40% targets, value: -10% stop / +15%/+30% targets).
+
+**Account strategy profiles** (5): each `portfolio.yaml` account selects one via `strategy:` field.
+
+| Strategy | stop_loss | max_single_position | Notes |
+|----------|-----------|---------------------|-------|
+| `core` | -7% | 15% | Default. Strict O'Neil discipline |
+| `active` | -10% | 25% | + `trailing_stop_arm: 15` — auto-arms trailing at +15% (PR #202) |
+| `swing` | -15% | 30% | Short-term rotations |
+| `long_term` | -20% | 25% | Buy-and-hold |
+| `pension` | -30% | 40% | Retirement allocations |
+
+**execution_priority** (PR #200): mechanical action ordering — `stop_loss → take_profit → trailing_stop_set → new_buy`. Within stop_loss, sort by loss% desc; within take_profit, sort by excess% desc. Reasoning: declining momentum loses more per hour delayed; rising momentum is forgiving.
 
 Automated enforcement in `price_targets.py`: take-profit signals, trailing stop (HWM-based), portfolio MDD check. Buy checklist: TipRanks >= Moderate Buy, superinvestors >= 3, PE < 100, revenue > $0, factor score top 50%.
 
