@@ -185,12 +185,27 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders risk alerts as inline summary", async () => {
-    setupMocks();
+  it("renders clickable alert lines with navigation", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        alerts: [
+          { level: "critical", message: "TSLA 손절선 돌파 (-15.7%)" },
+          { level: "warning", message: "BUY/SELL 충돌 2건: AAPL, MSFT" },
+        ],
+      },
+    });
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
       expect(screen.getByText(/주의 2건/)).toBeInTheDocument();
+      // Stop-loss alert links to ticker page
+      const links = screen.getAllByRole("link");
+      const tslaAlert = links.find(l => l.getAttribute("href") === "/ticker/TSLA");
+      expect(tslaAlert).toBeTruthy();
+      // Conflict alert links to decisions
+      const conflictAlert = links.find(l => l.getAttribute("href") === "/decisions");
+      expect(conflictAlert).toBeTruthy();
     });
   });
 
