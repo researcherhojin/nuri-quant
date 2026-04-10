@@ -8,19 +8,19 @@
 
 </div>
 
-데이터로 투자 판단의 **근거를 증명**하는 오픈소스 퀀트 플랫폼.
+An open-source quant platform that **proves the evidence behind every investment decision**.
 
-수집 → 분석 → 합의 → 검증 파이프라인이 매 추천마다 실행되며, 모든 BUY/SELL 의사결정은 시장 컨텍스트와 에이전트 근거와 함께 기록되고, 30/60/90일 후 실제 성과가 자동 추적됩니다.
+Every BUY/SELL recommendation runs through a **collect → analyze → consensus → certify → track** pipeline. Each decision is recorded with its market context and per-agent reasoning, then automatically scored against actual outcomes after 30/60/90 days. The system gets more accurate as outcomes accumulate — agent weights adjust within a ±30% band based on hit rate.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A["<b>Collect</b><br/>24 collectors"]
+    A["<b>Collect</b><br/>24 collectors<br/>419 ticker universe"]
     B["<b>Analyze</b><br/>20 signals · 10 regimes"]
-    C["<b>Consensus</b><br/>10 agents voting"]
+    C["<b>Consensus</b><br/>10 agents weighted vote"]
     D["<b>Certify</b><br/>SIEGE 11-gate"]
-    E["<b>Track</b><br/>outcome learning"]
+    E["<b>Track</b><br/>30/60/90d outcome"]
 
     A -- DB --> B -- CSV --> C -- DB --> D -- DB --> E
     E -. "weight feedback" .-> C
@@ -34,49 +34,34 @@ flowchart LR
 
 | Layer | Role |
 |-------|------|
-| `nuri/collectors/` | 24 data collectors (OpenBB, pykrx, FRED, edgartools, FINVIZ, etc.) |
-| `nuri/quant/` | Signal backtest, regime classifier, multi-factor scoring, VectorBT |
-| `nuri/trading/agents/` | 10 specialist agents + weighted consensus (risk agent veto power) |
+| `nuri/collectors/` | 24 data collectors (OpenBB, pykrx, FRED, edgartools, FINVIZ, KIS Open API) |
+| `nuri/quant/` | Signal backtest (20 signals), regime classifier (10 regimes), multi-factor scoring, VectorBT |
+| `nuri/trading/agents/` | 10 specialist agents + weighted consensus (risk agent has SELL veto at confidence ≥ 80) |
 | `nuri/trading/engine/` | SIEGE 11-gate certification + Decision Intelligence + learning memory |
-| `nuri/api/` | FastAPI REST (57 endpoints) + SSE streaming |
+| `nuri/api/` | FastAPI REST + SSE streaming on port 8001 |
 | `frontend/` | Next.js 16 dashboard (16 pages, dark theme, Tailwind 4 + shadcn/ui) |
-| `nuri/core/db.py` | Sole SQLite gateway (31 tables, WAL mode). All modules go through here |
+| `nuri/core/db.py` | Sole SQLite gateway (31 tables, WAL mode). Every other module reads/writes through here |
+| `config/` | All thresholds and rules — `rules.yaml`, `agents.yaml`, `signals.yaml`, `universe.yaml` (419 tickers) |
 
 ## Tech Stack
 
-**Backend**
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite_WAL-003B57?logo=sqlite&logoColor=white)
-![Pydantic](https://img.shields.io/badge/Pydantic-E92063?logo=pydantic&logoColor=white)
+| Layer | Stack |
+|-------|-------|
+| **Backend** | Python 3.12 · FastAPI · SQLite (WAL) · uv |
+| **Frontend** | Next.js 16 · React 19 · Tailwind 4 · shadcn/ui |
+| **Quant** | pandas · TA-Lib · VectorBT · OpenBB · Riskfolio-Lib · yfinance |
+| **CI/CD** | GitHub Actions · pytest (xdist + shard) · Vitest · Playwright · Ruff · Codecov · Trivy |
 
-**Frontend**
-![Next.js](https://img.shields.io/badge/Next.js_16-000000?logo=next.js&logoColor=white)
-![React](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=black)
-![Tailwind](https://img.shields.io/badge/Tailwind_4-06B6D4?logo=tailwindcss&logoColor=white)
-![shadcn/ui](https://img.shields.io/badge/shadcn/ui-000000)
+### LLM (optional, off by default)
 
-**Quant**
-![pandas](https://img.shields.io/badge/pandas-150458?logo=pandas&logoColor=white)
-![TA-Lib](https://img.shields.io/badge/TA--Lib-FF5722)
-![VectorBT](https://img.shields.io/badge/VectorBT-9C27B0)
-![OpenBB](https://img.shields.io/badge/OpenBB-00C853)
-![Riskfolio](https://img.shields.io/badge/Riskfolio--Lib-2196F3)
+Both LLM integrations are **wired but inactive** unless you set the corresponding environment variable. The system runs without any LLM and falls back to regex/rule-based logic. See [`docs/STRATEGY.md`](docs/STRATEGY.md#443-외부-llm-egress-policy-152) §4.4.3 for the egress policy.
 
-**LLM**
-![Ollama](https://img.shields.io/badge/Ollama_(local)-000000?logo=ollama&logoColor=white)
-![OpenAI](https://img.shields.io/badge/OpenAI_gpt--5.4--nano-412991?logo=openai&logoColor=white)
+| Provider | Purpose | Activation | Data class |
+|----------|---------|------------|------------|
+| **Ollama** (local) | Daily LLM report (`make report-llm`) | `OLLAMA_HOST` set + Ollama running locally | Tier 2 (portfolio) — local only, never leaves machine |
+| **OpenAI gpt-5.4-nano** | RSS headline classification | `OPENAI_API_KEY` set | Tier 0 (public news only). ~$3.51/yr at 100 headlines/day |
 
-> Ollama: 포트폴리오/의사결정 데이터 분석 (로컬 전용, 외부 전송 금지). OpenAI: 공개 RSS 헤드라인 분류만 (Tier 0, ~$3.51/yr). [상세 정책](docs/STRATEGY.md)
-
-**CI/CD**
-![GitHub Actions](https://img.shields.io/badge/Actions-2088FF?logo=githubactions&logoColor=white)
-![pytest](https://img.shields.io/badge/pytest-0A9EDC?logo=pytest&logoColor=white)
-![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white)
-![Playwright](https://img.shields.io/badge/Playwright-2EAD33?logo=playwright&logoColor=white)
-![Ruff](https://img.shields.io/badge/Ruff-D7FF64?logo=ruff&logoColor=black)
-![Codecov](https://img.shields.io/badge/Codecov-F01F7A?logo=codecov&logoColor=white)
-![Trivy](https://img.shields.io/badge/Trivy-1904DA)
+The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper logs every external call to the `external_llm_calls` table (timestamp/model/tokens, **no content**), and `NURI_DISABLE_EXTERNAL_LLM=1` raises immediately.
 
 ## Getting Started
 
@@ -89,35 +74,68 @@ git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
 make setup                                              # backend (uv venv + deps + DB init)
 cd frontend && npm ci && cd ..                          # frontend
 cp .env.example .env                                    # API keys (all optional)
-cp config/portfolio.example.yaml config/portfolio.yaml  # your holdings
+cp config/portfolio.example.yaml config/portfolio.yaml  # your holdings (gitignored)
 
 # Run
-make start       # API (:8001) + Dashboard (:3000)
-make full-scan   # 8-phase pipeline end-to-end
-make consensus   # 10-agent analysis + decision recording
-make certify     # SIEGE 11-gate certification
+make start          # API (:8001) + Dashboard (:3000)
+make full-scan      # 8-phase pipeline end-to-end
+make consensus      # 10-agent analysis + decision recording
+make certify        # SIEGE 11-gate certification
+make scan           # Daily scan (us_core, ~85 tickers)
+make scan-extended  # Weekly scan (us_core + S&P 500, ~339 tickers)
+```
+
+### Test commands
+
+```bash
+make test       # full suite (2,633 backend + 634 frontend)
+make test-fast  # backend only, slow tests excluded (~24s, ~52% faster)
+make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
 
 ## Investment Rules
 
-`config/rules.yaml` — [O'Neil](https://www.investors.com/) + [Minervini](https://www.minervini.com/) + [처분효과 연구 (Shefrin 1985)](https://onlinelibrary.wiley.com/doi/10.1111/j.1540-6261.1985.tb05002.x)
+Defined in `config/rules.yaml` and loaded via `nuri/core/rules.py`. Sources: O'Neil (CAN SLIM), Minervini (SEPA), Shefrin & Statman (1985, 처분효과 / disposition effect).
 
-| | Growth | Value | Swing |
-|---|--------|-------|-------|
-| **Stop-Loss** | -7% | -10% | -5% |
-| **Take-Profit** | +20%/+40% | +15%/+30% | +5%/+10% |
-| **Trailing** | -15% | -15% | — |
+### Account strategy profiles
 
-VIX > 30 → 신규 매수 차단 · 슈퍼투자자 ≥ 3명 · PE < 100 · 멀티팩터 상위 50%
+Each account in `config/portfolio.yaml` selects one strategy via the `strategy` field. Stricter strategies cut losses earlier and limit concentration; looser strategies allow winners to grow.
+
+| Strategy | Stop-Loss | Max Single Position | Notes |
+|----------|-----------|---------------------|-------|
+| `core` | -7% | 15% | Default. Strict O'Neil-style discipline |
+| `active` | -10% | 25% | + `trailing_stop_arm: 15` — trailing stop auto-arms at +15% to protect winners |
+| `swing` | -15% | 30% | Short-term rotations only |
+| `long_term` | -20% | 25% | Buy-and-hold ETFs |
+| `pension` | -30% | 40% | Long-horizon retirement allocations |
+
+### Take-profit by stock type
+
+Each ticker is tagged growth/value via `config/stock_types.yaml`. Take-profit and trailing-stop levels apply per type.
+
+| Type | 1st Target | 2nd Target | Trailing |
+|------|-----------|-----------|----------|
+| Growth | +20% (sell 50%) | +40% (sell 25%) | -15% from HWM |
+| Value | +15% (sell 50%) | +30% (sell 25%) | -15% from HWM |
+
+### Hard gates (always-on, no override)
+
+- **VIX > 30** → new buys blocked
+- **execution_priority** → stop-loss → take-profit → trailing → new-buy (loss largest first)
+- **Buy checklist** → TipRanks ≥ Moderate Buy · superinvestors ≥ 3 · PE < 100 · revenue > $0 · multi-factor top 50%
+- **SIEGE 11-gate** → 1 error grade failure = REJECTED, no manual override
 
 ## References
 
 | Source | Usage |
 |--------|-------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-gate certification |
-| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Decision Intelligence |
-| [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA |
-| [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Multi-agent consensus |
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-gate certification, event journal |
+| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Decision Intelligence pattern |
+| [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA (PASS/WARN/FAIL) |
+| [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Multi-agent consensus pattern |
+| [VectorBT](https://vectorbt.dev/) | Vectorized backtest |
+| [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | Portfolio optimization |
+| [OpenBB](https://docs.openbb.co/) | Unified financial data abstraction |
 
 ## License
 
