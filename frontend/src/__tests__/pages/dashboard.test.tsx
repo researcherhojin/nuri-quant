@@ -107,7 +107,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/품질 검증 9\/10 통과/)).toBeInTheDocument();
+      expect(screen.getByText(/품질 9\/10/)).toBeInTheDocument();
     });
   });
 
@@ -121,8 +121,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/품질 검증 미통과/)).toBeInTheDocument();
-      expect(screen.getByText("4/10")).toBeInTheDocument();
+      expect(screen.getByText(/품질 미통과/)).toBeInTheDocument();
     });
   });
 
@@ -165,34 +164,72 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders risk alerts with guidance", async () => {
-    setupMocks();
+  it("shows portfolio holdings and upcoming events in footer", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        upcoming_events: [
+          { date: "2026-04-15", event_type: "earnings", ticker: "AAPL", description: "AAPL 실적발표", importance: 2 },
+          { date: "2026-05-07", event_type: "fomc", ticker: null, description: "FOMC 금리결정", importance: 3 },
+        ],
+      },
+    });
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/주의 사항/)).toBeInTheDocument();
-      expect(screen.getByText(/TSLA 손절선 돌파/)).toBeInTheDocument();
-      expect(screen.getByText(/매도 검토하여 손실 제한/)).toBeInTheDocument();
+      // 보유 종목 항상 표시
+      expect(screen.getByText(/보유 종목/)).toBeInTheDocument();
+      // 다음 이벤트 푸터에 표시
+      expect(screen.getByText(/AAPL 실적발표/)).toBeInTheDocument();
+      expect(screen.getByText(/FOMC 금리결정/)).toBeInTheDocument();
     });
   });
 
-  it("shows no risk message when empty", async () => {
+  it("renders clickable alert lines with navigation", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        alerts: [
+          { level: "critical", message: "TSLA 손절선 돌파 (-15.7%)" },
+          { level: "warning", message: "BUY/SELL 충돌 2건: AAPL, MSFT" },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText(/주의 2건/)).toBeInTheDocument();
+      // Stop-loss alert links to ticker page
+      const links = screen.getAllByRole("link");
+      const tslaAlert = links.find(l => l.getAttribute("href") === "/ticker/TSLA");
+      expect(tslaAlert).toBeTruthy();
+      // Conflict alert links to decisions
+      const conflictAlert = links.find(l => l.getAttribute("href") === "/decisions");
+      expect(conflictAlert).toBeTruthy();
+    });
+  });
+
+  it("shows nothing when alerts empty (no risk banner)", async () => {
     setupMocks({ dashboard: { ...mockDashboardData, alerts: [] } });
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/위험 요소 없음/)).toBeInTheDocument();
+      // Alert banner should not appear at all when no alerts
+      expect(screen.queryByText(/주의.*건/)).not.toBeInTheDocument();
+      // The old "위험 요소 없음" indicator is removed
+      expect(screen.queryByText(/위험 요소 없음/)).not.toBeInTheDocument();
     });
   });
 
-  it("renders market context in Korean", async () => {
+  it("renders market context inline strip in Korean", async () => {
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText("시장 온도")).toBeInTheDocument();
+      // Inline strip shows trend, VIX value, and regime
       expect(screen.getByText(/상승/)).toBeInTheDocument();
       expect(screen.getByText("18.5")).toBeInTheDocument();
+      expect(screen.getByText("VIX")).toBeInTheDocument();
     });
   });
 
@@ -205,12 +242,14 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders pipeline status", async () => {
+  it("renders pipeline link in footer", async () => {
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getAllByText("Collect").length).toBeGreaterThanOrEqual(1);
+      const links = screen.getAllByRole("link");
+      const pipelineLink = links.find(l => l.getAttribute("href") === "/pipeline");
+      expect(pipelineLink).toBeTruthy();
     });
   });
 

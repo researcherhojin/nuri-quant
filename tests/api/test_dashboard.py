@@ -747,6 +747,99 @@ class TestAccountValues:
         assert result[0]["account"] == "unknown_acc"
 
 
+class TestUpcomingEvents:
+    """Tests for _get_upcoming_events()."""
+
+    def test_empty_events_table(self, db_path):
+        """빈 events 테이블은 빈 리스트 반환."""
+        from nuri.api.routes.dashboard import _get_upcoming_events
+        result = _get_upcoming_events()
+        assert result == []
+
+    def test_events_within_14_days(self, db_path):
+        """14일 이내 이벤트가 date 순으로 반환."""
+        from nuri.api.routes.dashboard import _get_upcoming_events
+        from nuri.core.timezone import kst_now
+
+        now = kst_now()
+        d1 = now.strftime("%Y-%m-%d")
+        d2 = (now + timedelta(days=3)).strftime("%Y-%m-%d")
+        d3 = (now + timedelta(days=7)).strftime("%Y-%m-%d")
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO events (date, event_type, ticker, description, importance) VALUES (?,?,?,?,?)",
+                (d3, "earnings", "AAPL", "Apple earnings", 3),
+            )
+            conn.execute(
+                "INSERT INTO events (date, event_type, ticker, description, importance) VALUES (?,?,?,?,?)",
+                (d1, "fomc", None, "FOMC meeting", 5),
+            )
+            conn.execute(
+                "INSERT INTO events (date, event_type, ticker, description, importance) VALUES (?,?,?,?,?)",
+                (d2, "dividend", "MSFT", "MSFT ex-div", 2),
+            )
+
+        result = _get_upcoming_events()
+        assert len(result) == 3
+        # date 순 정렬 확인
+        assert result[0]["date"] == d1
+        assert result[1]["date"] == d2
+        assert result[2]["date"] == d3
+
+    def test_events_beyond_14_days_excluded(self, db_path):
+        """14일 이후 이벤트는 제외."""
+        from nuri.api.routes.dashboard import _get_upcoming_events
+        from nuri.core.timezone import kst_now
+
+        now = kst_now()
+        future = (now + timedelta(days=30)).strftime("%Y-%m-%d")
+        within = (now + timedelta(days=5)).strftime("%Y-%m-%d")
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO events (date, event_type, ticker, description, importance) VALUES (?,?,?,?,?)",
+                (future, "earnings", "NVDA", "NVDA earnings", 3),
+            )
+            conn.execute(
+                "INSERT INTO events (date, event_type, ticker, description, importance) VALUES (?,?,?,?,?)",
+                (within, "fomc", None, "FOMC decision", 5),
+            )
+
+        result = _get_upcoming_events()
+        assert len(result) == 1
+        assert result[0]["date"] == within
+        assert result[0]["event_type"] == "fomc"
+
+    def test_past_events_excluded(self, db_path):
+        """과거 이벤트는 제외."""
+        from nuri.api.routes.dashboard import _get_upcoming_events
+        from nuri.core.timezone import kst_now
+
+        now = kst_now()
+        past = (now - timedelta(days=3)).strftime("%Y-%m-%d")
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO events (date, event_type, ticker, description, importance) VALUES (?,?,?,?,?)",
+                (past, "earnings", "TSLA", "Past event", 2),
+            )
+
+        result = _get_upcoming_events()
+        assert result == []
+
+    def test_exception_returns_empty_list(self, db_path, monkeypatch):
+        """DB 오류 시 빈 리스트 반환."""
+        import nuri.api.routes.dashboard as dash_mod
+
+        def bad_query(*args, **kwargs):
+            raise RuntimeError("DB error")
+
+        monkeypatch.setattr("nuri.core.db.query", bad_query)
+        result = dash_mod._get_upcoming_events()
+        assert result == []
+
+
 class TestLatestActionsAccountField:
     """Tests that _get_latest_actions() includes the account field."""
 
