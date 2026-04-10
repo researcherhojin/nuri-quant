@@ -81,21 +81,116 @@ class TestDetectViolations:
         assert len(pos_violations) >= 1
 
     def test_no_violations(self, db_path):
+        # 8 positions × $1000 each, 4 sectors → 각 종목 12.5% < core 15%, 각 섹터 25% < 35%
+        sectors = ["Tech", "Health", "Energy", "Consumer"]
         mock_df = pd.DataFrame([
-            {"account": "test", "ticker": "NVDA", "sector": "Semiconductor", "quantity": 1,
-             "avg_price": 160.0, "current_price": 168.0, "currency": "USD",
-             "current_value_usd": 168.0, "cost_basis_usd": 160.0,
-             "pnl_usd": 8.0, "pnl_pct": 5.0, "weight_pct": 10.0, "price_date": "2026-03-27"},
-            {"account": "test", "ticker": "GOOGL", "sector": "BigTech", "quantity": 1,
-             "avg_price": 260.0, "current_price": 274.0, "currency": "USD",
-             "current_value_usd": 274.0, "cost_basis_usd": 260.0,
-             "pnl_usd": 14.0, "pnl_pct": 5.4, "weight_pct": 10.0, "price_date": "2026-03-27"},
+            {"account": "test", "ticker": f"T{i:02d}", "sector": sectors[i % 4], "quantity": 10,
+             "avg_price": 100.0, "current_price": 100.0, "currency": "USD",
+             "current_value_usd": 1000.0, "cost_basis_usd": 1000.0,
+             "pnl_usd": 0.0, "pnl_pct": 5.0, "weight_pct": 12.5, "price_date": "2026-03-27"}
+            for i in range(8)
         ])
-        mock_df.attrs["total_value_usd"] = 442.0
+        mock_df.attrs["total_value_usd"] = 8000.0
         from nuri.analysis.rebalance_advisor import detect_violations
         with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=mock_df):
             violations = detect_violations(db_path=db_path)
         assert len(violations) == 0
+
+
+def _two_account_df(main_tsla_qty: int, sub_tsla_qty: int):
+    """Helper: Main + Sub 2계좌, TSLA + 8개 filler 종목 (4 섹터 분산).
+
+    각 계좌 합계 $10,000 = TSLA(qty * $100) + 8 filler 균등 분할. price = $100.
+    filler는 항상 ≤ 12.5% per account → core(15%)/active(25%) 모두 미위반.
+    각 섹터는 ≤ 25% of total → 35% sector limit 미위반.
+    """
+    sectors = ["Tech", "Health", "Energy", "Consumer"]
+    rows = []
+    total_portfolio = 20000.0
+    for account, tsla_qty in (("Main", main_tsla_qty), ("Sub", sub_tsla_qty)):
+        tsla_value = float(tsla_qty * 100)
+        rows.append({
+            "account": account, "ticker": "TSLA", "sector": "Auto", "quantity": tsla_qty,
+            "avg_price": 100.0, "current_price": 100.0, "currency": "USD",
+            "current_value_usd": tsla_value, "cost_basis_usd": tsla_value,
+            "pnl_usd": 0.0, "pnl_pct": 0.0,
+            "weight_pct": tsla_value / total_portfolio * 100,
+            "price_date": "2026-04-10",
+        })
+        remaining = 10000.0 - tsla_value
+        per_filler_value = remaining / 8
+        per_filler_qty = per_filler_value / 100
+        for i in range(8):
+            rows.append({
+                "account": account, "ticker": f"F{account[0]}{i}", "sector": sectors[i % 4],
+                "quantity": per_filler_qty, "avg_price": 100.0, "current_price": 100.0,
+                "currency": "USD",
+                "current_value_usd": per_filler_value, "cost_basis_usd": per_filler_value,
+                "pnl_usd": 0.0, "pnl_pct": 0.0,
+                "weight_pct": per_filler_value / total_portfolio * 100,
+                "price_date": "2026-04-10",
+            })
+    df = pd.DataFrame(rows)
+    df.attrs["total_value_usd"] = total_portfolio
+    return df
+
+
+def _fake_account_strategy(account: str) -> dict:
+    """Test stub: Sub=active(25%), 그 외=core(15%)."""
+    if account == "Sub":
+        return {"stop_loss": -10, "max_single_position": 0.25, "max_sector_exposure": 0.45}
+    return {"stop_loss": -7, "max_single_position": 0.15, "max_sector_exposure": 0.35}
+
+
+class TestPositionLimitPerAccount:
+    """다계좌 종목의 단일종목 비중 위반은 계좌별 전략 한도가 독립적으로 적용되어야 함.
+
+    이전 버그: 종목이 Main(core,15%) + Sub(active,25%)에 동시 존재할 때
+    max(0.15, 0.25)=0.25를 사용 → core 계좌의 15% 위반이 가려졌음.
+    """
+
+    def test_within_account_limits_no_violation(self, db_path):
+        # Main TSLA 14% (core 15% 이내), Sub TSLA 12% (active 25% 이내)
+        mock_df = _two_account_df(main_tsla_qty=14, sub_tsla_qty=12)
+        from nuri.analysis.rebalance_advisor import detect_violations
+        with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=mock_df), \
+             patch("nuri.core.rules.get_account_strategy", side_effect=_fake_account_strategy):
+            violations = detect_violations(db_path=db_path)
+        pos = [v for v in violations if v["violation_type"] == "position_limit_exceeded"]
+        assert pos == [], f"Expected no position violations, got: {pos}"
+
+    def test_core_account_violation_isolated(self, db_path):
+        # Main TSLA 16% (core 15% 위반), Sub TSLA 10% (active 25% 이내)
+        # 이전 버그에서는 max(0.15,0.25)=0.25 → 종합 26% > 25% 1건만 검출 (limit_value 잘못)
+        mock_df = _two_account_df(main_tsla_qty=16, sub_tsla_qty=10)
+        from nuri.analysis.rebalance_advisor import detect_violations
+        with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=mock_df), \
+             patch("nuri.core.rules.get_account_strategy", side_effect=_fake_account_strategy):
+            violations = detect_violations(db_path=db_path)
+        pos = [v for v in violations if v["violation_type"] == "position_limit_exceeded"]
+        assert len(pos) == 1
+        assert pos[0]["limit_value"] == 0.15
+        assert pos[0]["current_value"] == 16.0
+        assert "Main" in pos[0]["reason"]
+
+    def test_both_accounts_violate_independently(self, db_path):
+        # Main TSLA 20% (core 15% 위반), Sub TSLA 30% (active 25% 위반)
+        mock_df = _two_account_df(main_tsla_qty=20, sub_tsla_qty=30)
+        from nuri.analysis.rebalance_advisor import detect_violations
+        with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=mock_df), \
+             patch("nuri.core.rules.get_account_strategy", side_effect=_fake_account_strategy):
+            violations = detect_violations(db_path=db_path)
+        pos = [v for v in violations if v["violation_type"] == "position_limit_exceeded"]
+        assert len(pos) == 2
+        by_account = {
+            ("Main" if "Main" in v["reason"] else "Sub"): v
+            for v in pos
+        }
+        assert set(by_account) == {"Main", "Sub"}
+        assert by_account["Main"]["limit_value"] == 0.15
+        assert by_account["Main"]["current_value"] == 20.0
+        assert by_account["Sub"]["limit_value"] == 0.25
+        assert by_account["Sub"]["current_value"] == 30.0
 
 
 class TestCalculateRebalanceActions:
