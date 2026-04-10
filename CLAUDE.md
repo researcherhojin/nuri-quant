@@ -266,7 +266,7 @@ Configured in `.env` (see `.env.example`):
 - `DASHBOARD_PASSWORD` — Next.js dashboard auth (optional; unset = public)
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` — Telegram alerts (optional)
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — Paper trading (optional; DryRun fallback)
-- `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET` — KIS Open API live mode (optional; falls back to `~/KIS/config/kis_devlp.yaml`)
+- `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET` — KIS Open API live mode (optional; falls back to `config/kis/kis_devlp.yaml`, gitignored)
 - `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET` — KIS Open API paper mode (optional)
 
 ## DB Schema (SQLite, WAL mode)
@@ -338,7 +338,7 @@ data/
 
 ## Testing
 
-2,633 backend tests across 128 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 634 frontend vitest (46 files) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
+2,638 backend tests across 128 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 634 frontend vitest (46 files) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
 
 **Slow marker** (PR #206): ~12 LLM/heavy tests are marked `@pytest.mark.slow`. PR CI excludes them via `-m "not slow"` (~24% wall time savings); main push runs the full suite. Use `make test-fast` locally for the same fast subset, `make test-slow` for slow only.
 ```python

@@ -151,6 +151,14 @@ Each ticker is tagged growth/value via `config/stock_types.yaml`. Take-profit an
 | [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | Portfolio optimization |
 | [OpenBB](https://docs.openbb.co/) | Unified financial data abstraction |
 
+## Further Documentation
+
+- [`docs/STRATEGY.md`](docs/STRATEGY.md) — project philosophy, architectural decisions, investment rules, roadmap
+- [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) — KIS (Korea Investment & Securities) Open API integration
+- [`CLAUDE.md`](CLAUDE.md) — Claude Code agent guide (commands, architecture, gotchas)
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow, PR discipline
+- [`SECURITY.md`](SECURITY.md) — security policy, LLM egress rules, credential handling
+
 ## License
 
 [AGPL-3.0](LICENSE)
