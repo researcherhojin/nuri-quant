@@ -452,3 +452,363 @@ class TestDashboard_R27:
         import nuri.api.routes.dashboard as dash_mod
         result = dash_mod._get_latest_actions()
         assert isinstance(result, list)
+
+
+class TestTickerAccountMap:
+    """Tests for _get_ticker_account_map()."""
+
+    def test_empty_portfolio(self, db_path):
+        """Empty portfolio returns empty mapping."""
+        from nuri.api.routes.dashboard import _get_ticker_account_map
+        result = _get_ticker_account_map()
+        assert result == {}
+
+    def test_single_account(self, db_path, _seed_portfolio):
+        """Portfolio entries in same account are mapped correctly."""
+        from nuri.api.routes.dashboard import _get_ticker_account_map
+        result = _get_ticker_account_map()
+        assert result["AAPL"] == "test"
+        assert result["MSFT"] == "test"
+
+    def test_multiple_accounts(self, db_path):
+        """Tickers in different accounts get correct mapping; first account wins for dupes."""
+        from nuri.api.routes.dashboard import _get_ticker_account_map
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("alpha", "AAPL", 10, 150.0, "USD", "Tech"),
+            )
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("beta", "MSFT", 5, 300.0, "USD", "Tech"),
+            )
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("beta", "AAPL", 20, 160.0, "USD", "Tech"),
+            )
+        result = _get_ticker_account_map()
+        # ORDER BY account → 'alpha' comes before 'beta', so AAPL maps to 'alpha'
+        assert result["AAPL"] == "alpha"
+        assert result["MSFT"] == "beta"
+
+    def test_kr_tickers_included(self, db_path):
+        """Korean tickers (.KS suffix) are included in the mapping."""
+        from nuri.api.routes.dashboard import _get_ticker_account_map
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("pension", "005930.KS", 100, 70000, "KRW", "Tech"),
+            )
+        result = _get_ticker_account_map()
+        assert result["005930.KS"] == "pension"
+
+
+class TestAccountLabels:
+    """Tests for _get_account_labels()."""
+
+    def test_happy_path(self, monkeypatch):
+        """YAML with strategy fields maps to correct labels."""
+        from nuri.api.routes.dashboard import _get_account_labels
+
+        mock_yaml = {
+            "accounts": {
+                "main_account": {"strategy": "core", "tickers": []},
+                "swing_account": {"strategy": "swing", "tickers": []},
+                "pension_account": {"strategy": "pension", "tickers": []},
+                "longterm_account": {"strategy": "longterm", "tickers": []},
+            }
+        }
+
+        import builtins
+        original_open = builtins.open
+
+        def mock_open(path, *args, **kwargs):
+            if "portfolio.yaml" in str(path):
+                from io import StringIO
+                return StringIO(yaml.dump(mock_yaml))
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", mock_open)
+        result = _get_account_labels()
+        assert result["main_account"] == "Main"
+        assert result["swing_account"] == "Sub"
+        assert result["pension_account"] == "Pension"
+        assert result["longterm_account"] == "Long"
+
+    def test_duplicate_strategy_gets_numbered(self, monkeypatch):
+        """Two accounts with same strategy get numbered labels (Main, Main 2)."""
+        from nuri.api.routes.dashboard import _get_account_labels
+
+        mock_yaml = {
+            "accounts": {
+                "acc_a": {"strategy": "core"},
+                "acc_b": {"strategy": "core"},
+            }
+        }
+
+        import builtins
+        original_open = builtins.open
+
+        def mock_open(path, *args, **kwargs):
+            if "portfolio.yaml" in str(path):
+                from io import StringIO
+                return StringIO(yaml.dump(mock_yaml))
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", mock_open)
+        result = _get_account_labels()
+        assert result["acc_a"] == "Main"
+        assert result["acc_b"] == "Main 2"
+
+    def test_unknown_strategy_uses_title(self, monkeypatch):
+        """Strategy not in _STRATEGY_LABELS gets Title-cased."""
+        from nuri.api.routes.dashboard import _get_account_labels
+
+        mock_yaml = {
+            "accounts": {
+                "custom_acc": {"strategy": "experimental"},
+            }
+        }
+
+        import builtins
+        original_open = builtins.open
+
+        def mock_open(path, *args, **kwargs):
+            if "portfolio.yaml" in str(path):
+                from io import StringIO
+                return StringIO(yaml.dump(mock_yaml))
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", mock_open)
+        result = _get_account_labels()
+        assert result["custom_acc"] == "Experimental"
+
+    def test_missing_strategy_defaults_to_core(self, monkeypatch):
+        """Account without strategy field defaults to 'core' -> 'Main'."""
+        from nuri.api.routes.dashboard import _get_account_labels
+
+        mock_yaml = {
+            "accounts": {
+                "no_strategy_acc": {"tickers": ["AAPL"]},
+            }
+        }
+
+        import builtins
+        original_open = builtins.open
+
+        def mock_open(path, *args, **kwargs):
+            if "portfolio.yaml" in str(path):
+                from io import StringIO
+                return StringIO(yaml.dump(mock_yaml))
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", mock_open)
+        result = _get_account_labels()
+        assert result["no_strategy_acc"] == "Main"
+
+    def test_file_not_found_returns_empty(self, monkeypatch):
+        """When portfolio.yaml does not exist, returns empty dict."""
+        import builtins
+
+        from nuri.api.routes.dashboard import _get_account_labels
+        original_open = builtins.open
+
+        def mock_open(path, *args, **kwargs):
+            if "portfolio.yaml" in str(path):
+                raise FileNotFoundError("no such file")
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", mock_open)
+        result = _get_account_labels()
+        assert result == {}
+
+    def test_malformed_yaml_returns_empty(self, monkeypatch):
+        """Malformed YAML returns empty dict (exception path)."""
+        import builtins
+
+        from nuri.api.routes.dashboard import _get_account_labels
+        original_open = builtins.open
+
+        def mock_open(path, *args, **kwargs):
+            if "portfolio.yaml" in str(path):
+                from io import StringIO
+                return StringIO("not: [valid: yaml: {{")
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", mock_open)
+        result = _get_account_labels()
+        # yaml.safe_load may parse this or raise; either way should not crash
+        assert isinstance(result, dict)
+
+
+class TestAccountValues:
+    """Tests for _get_account_values()."""
+
+    def test_empty_portfolio(self, db_path, monkeypatch):
+        """Empty portfolio returns empty list."""
+        import nuri.api.routes.dashboard as dash_mod
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {})
+        result = dash_mod._get_account_values(exchange_rate=1300)
+        assert result == []
+
+    def test_usd_tickers(self, db_path, _seed_portfolio, _seed_prices, monkeypatch):
+        """USD tickers have value = close * quantity."""
+        import nuri.api.routes.dashboard as dash_mod
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"test": "Main"})
+        result = dash_mod._get_account_values(exchange_rate=1300)
+        assert len(result) == 1
+        assert result[0]["account"] == "Main"
+        assert result[0]["value"] > 0
+
+    def test_kr_ticker_divided_by_exchange_rate(self, db_path, monkeypatch):
+        """Korean .KS tickers are divided by exchange rate to convert to USD."""
+        import nuri.api.routes.dashboard as dash_mod
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"kr_acc": "Pension"})
+
+        # Insert KR portfolio entry and price
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("kr_acc", "005930.KS", 100, 70000, "KRW", "Tech"),
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) VALUES (?,?,?,?,?,?,?,?)",
+                ("005930.KS", "2025-04-01", 69000, 71000, 68000, 70000, 5000000, 70000),
+            )
+        result = dash_mod._get_account_values(exchange_rate=1400)
+        assert len(result) == 1
+        assert result[0]["account"] == "Pension"
+        # 70000 * 100 / 1400 = 5000.0
+        assert result[0]["value"] == 5000.0
+
+    def test_exchange_rate_none_uses_fallback(self, db_path, monkeypatch):
+        """exchange_rate=None falls back to 1400."""
+        import nuri.api.routes.dashboard as dash_mod
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"kr_acc": "Pension"})
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("kr_acc", "005930.KS", 100, 70000, "KRW", "Tech"),
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) VALUES (?,?,?,?,?,?,?,?)",
+                ("005930.KS", "2025-04-01", 69000, 71000, 68000, 70000, 5000000, 70000),
+            )
+        result = dash_mod._get_account_values(exchange_rate=None)
+        assert len(result) == 1
+        # 70000 * 100 / 1400 = 5000.0
+        assert result[0]["value"] == 5000.0
+
+    def test_mixed_accounts_sorted_descending(self, db_path, monkeypatch):
+        """Multiple accounts are sorted by value descending."""
+        import nuri.api.routes.dashboard as dash_mod
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"big": "Main", "small": "Sub"})
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("big", "AAPL", 100, 150.0, "USD", "Tech"),
+            )
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("small", "MSFT", 1, 300.0, "USD", "Tech"),
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) VALUES (?,?,?,?,?,?,?,?)",
+                ("AAPL", "2025-04-01", 149, 151, 148, 150, 1000000, 150),
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) VALUES (?,?,?,?,?,?,?,?)",
+                ("MSFT", "2025-04-01", 299, 301, 298, 300, 800000, 300),
+            )
+        result = dash_mod._get_account_values(exchange_rate=1400)
+        assert len(result) == 2
+        # big: 150 * 100 = 15000, small: 300 * 1 = 300
+        assert result[0]["account"] == "Main"
+        assert result[0]["value"] > result[1]["value"]
+
+    def test_unlabeled_account_uses_raw_name(self, db_path, monkeypatch):
+        """Account not in labels dict falls back to raw account name."""
+        import nuri.api.routes.dashboard as dash_mod
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {})
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("unknown_acc", "AAPL", 10, 150.0, "USD", "Tech"),
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) VALUES (?,?,?,?,?,?,?,?)",
+                ("AAPL", "2025-04-01", 149, 151, 148, 150, 1000000, 150),
+            )
+        result = dash_mod._get_account_values(exchange_rate=1400)
+        assert len(result) == 1
+        assert result[0]["account"] == "unknown_acc"
+
+
+class TestLatestActionsAccountField:
+    """Tests that _get_latest_actions() includes the account field."""
+
+    def test_buy_action_has_account(self, db_path, monkeypatch):
+        """BUY action includes account label from portfolio mapping."""
+        import nuri.api.routes.dashboard as dash_mod
+        import nuri.core.db as db_mod
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+        # Insert portfolio entry for AAPL
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("main_acc", "AAPL", 10, 150.0, "USD", "Tech"),
+            )
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, regime, signals) VALUES (?,?,?,?,?,?)",
+                ("2025-04-01", "AAPL", "BUY", 0.80, "bull_low_vol", "rsi_oversold"),
+            )
+
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"main_acc": "Main"})
+        result = dash_mod._get_latest_actions()
+        buys = [a for a in result if a["action"] == "BUY"]
+        assert len(buys) >= 1
+        assert buys[0]["account"] == "Main"
+
+    def test_sell_action_has_account(self, db_path, monkeypatch):
+        """SELL action includes account label from portfolio mapping."""
+        import nuri.api.routes.dashboard as dash_mod
+        import nuri.core.db as db_mod
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("swing_acc", "TSLA", 8, 250.0, "USD", "Auto"),
+            )
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, regime, signals) VALUES (?,?,?,?,?,?)",
+                ("2025-04-01", "TSLA", "SELL", 0.90, "bear_high_vol", "macd_dead"),
+            )
+
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"swing_acc": "Sub"})
+        result = dash_mod._get_latest_actions()
+        sells = [a for a in result if a["action"] == "SELL"]
+        assert len(sells) >= 1
+        assert sells[0]["account"] == "Sub"
+
+    def test_action_without_portfolio_entry_has_empty_account(self, db_path, monkeypatch):
+        """Ticker not in portfolio gets empty string for account."""
+        import nuri.api.routes.dashboard as dash_mod
+        import nuri.core.db as db_mod
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, regime, signals) VALUES (?,?,?,?,?,?)",
+                ("2025-04-01", "GOOG", "BUY", 0.85, "bull_low_vol", "rsi_oversold"),
+            )
+
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {})
+        result = dash_mod._get_latest_actions()
+        buys = [a for a in result if a["action"] == "BUY"]
+        assert len(buys) >= 1
+        assert buys[0]["account"] == ""

@@ -77,6 +77,9 @@ def _build_dashboard() -> dict:
     rate_row = query("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1")
     exchange_rate = rate_row[0]["value"] if rate_row else None
 
+    # ── 8. 계좌별 평가액 ──
+    account_values = _get_account_values(exchange_rate)
+
     return {
         "verdict": verdict,
         "verdict_level": verdict_level,
@@ -90,6 +93,7 @@ def _build_dashboard() -> dict:
         "freshness": freshness,
         "pipeline_status": pipeline_status,
         "exchange_rate": exchange_rate,
+        "account_values": account_values,
     }
 
 
@@ -153,6 +157,41 @@ def _extract_reason(signals_raw: str | None) -> tuple[str, float | None]:
         return signals_raw[:60], None
 
 
+def _get_ticker_account_map() -> dict[str, str]:
+    """ticker → account 매핑 (첫 번째 계좌 기준)."""
+    from nuri.core.db import query
+    rows = query("SELECT ticker, account FROM portfolio ORDER BY account")
+    mapping: dict[str, str] = {}
+    for r in rows:
+        if r["ticker"] not in mapping:
+            mapping[r["ticker"]] = r["account"]
+    return mapping
+
+
+def _get_account_labels() -> dict[str, str]:
+    """계좌명 → 표시 라벨 매핑. portfolio.yaml strategy 필드 기반 (broker명 노출 금지)."""
+    from pathlib import Path  # noqa: E402
+
+    import yaml  # noqa: E402
+
+    _STRATEGY_LABELS = {"core": "Main", "swing": "Sub", "pension": "Pension", "longterm": "Long"}
+    portfolio_path = Path(__file__).parent.parent.parent.parent / "config" / "portfolio.yaml"
+    try:
+        with open(portfolio_path, encoding="utf-8") as f:
+            portfolio = yaml.safe_load(f)
+        labels: dict[str, str] = {}
+        seen: dict[str, int] = {}
+        for acc, info in (portfolio.get("accounts") or {}).items():
+            strategy_name = (info or {}).get("strategy", "core")
+            base_label = _STRATEGY_LABELS.get(strategy_name, strategy_name.title())
+            count = seen.get(base_label, 0)
+            seen[base_label] = count + 1
+            labels[acc] = base_label if count == 0 else f"{base_label} {count + 1}"
+        return labels
+    except Exception:
+        return {}
+
+
 def _get_latest_actions() -> list[dict]:
     """recommendations 테이블에서 최신 추천 조회 — analyze_portfolio() 대체."""
     from nuri.core.db import query
@@ -167,11 +206,16 @@ def _get_latest_actions() -> list[dict]:
         if not rows:
             return []
 
+        ticker_account = _get_ticker_account_map()
+        account_labels = _get_account_labels()
+
         actions = []
         for row in rows:
             action = row["action"]
             confidence = round(row["confidence"] * 100) if row["confidence"] and row["confidence"] <= 1 else round(row["confidence"] or 0)
             reason, agreement_rate = _extract_reason(row.get("signals"))
+            raw_account = ticker_account.get(row["ticker"], "")
+            account_label = account_labels.get(raw_account, raw_account)
 
             if action == "BUY" and confidence >= 50:
                 actions.append({
@@ -181,6 +225,7 @@ def _get_latest_actions() -> list[dict]:
                     "confidence": confidence,
                     "reason": reason,
                     "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
+                    "account": account_label,
                 })
             elif action == "SELL" and confidence >= 70:
                 actions.append({
@@ -190,6 +235,7 @@ def _get_latest_actions() -> list[dict]:
                     "confidence": confidence,
                     "reason": reason,
                     "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
+                    "account": account_label,
                 })
 
         # 상위 5개만
@@ -199,6 +245,35 @@ def _get_latest_actions() -> list[dict]:
     except Exception as e:
         logger.debug(f"Actions from DB: {e}")
         return []
+
+
+def _get_account_values(exchange_rate: float | None) -> list[dict]:
+    """계좌별 평가액 계산."""
+    from nuri.core.db import query
+    rate = exchange_rate or 1400
+    rows = query("""
+        SELECT p.account, p.ticker, p.quantity,
+               pr.close as latest_price
+        FROM portfolio p
+        LEFT JOIN (
+            SELECT ticker, close FROM prices
+            WHERE (ticker, date) IN (SELECT ticker, MAX(date) FROM prices GROUP BY ticker)
+        ) pr ON p.ticker = pr.ticker
+    """)
+    totals: dict[str, float] = {}
+    for r in rows:
+        acc = r["account"]
+        price = r["latest_price"] or 0
+        qty = r["quantity"] or 0
+        is_kr = r["ticker"].endswith(".KS")
+        val = price * qty / rate if is_kr else price * qty
+        totals[acc] = totals.get(acc, 0) + val
+
+    account_labels = _get_account_labels()
+    return [
+        {"account": account_labels.get(acc, acc), "value": round(v, 2)}
+        for acc, v in sorted(totals.items(), key=lambda x: -x[1])
+    ]
 
 
 def _get_gate_score() -> int:
