@@ -334,8 +334,8 @@ async function Dashboard() {
             <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
           </div>
           <div className="space-y-1">
-            {sortedHoldings.slice(0, 10).map((h: any) => (
-              <Link key={h.ticker} href={`/ticker/${h.ticker}`}
+            {sortedHoldings.slice(0, 8).map((h: any, i: number) => (
+              <Link key={`${h.ticker}-${i}`} href={`/ticker/${h.ticker}`}
                 className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/50 text-xs group">
                 <span className="text-zinc-100 font-medium w-16 truncate">{displayName(h)}</span>
                 <span className={`font-semibold tabular-nums w-14 text-right ${h.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
