@@ -2,6 +2,14 @@
 # Nuri-Quant Portfolio Configuration (Example)
 # 이 파일을 portfolio.yaml로 복사 후 본인 포트폴리오를 입력하세요:
 #   cp config/portfolio.example.yaml config/portfolio.yaml
+#
+# strategy 필드 (선택, 기본값 = core):
+#   - core:      stop_loss -7%,  max_position 15%  (정석 운용)
+#   - active:    stop_loss -10%, max_position 25%  (적극 운용 + trailing_stop_arm)
+#   - swing:     stop_loss -15%, max_position 30%  (단기 회전)
+#   - long_term: stop_loss -20%, max_position 25%  (장기 보유)
+#   - pension:   stop_loss -30%, max_position 40%  (연금)
+# 자세한 내용: config/rules.yaml의 account_strategies 섹션
 # ═══════════════════════════════════════════════════════
 
 accounts:
@@ -10,6 +18,7 @@ accounts:
     name: "내 증권 계좌"
     broker: "증권사명"
     currency: USD
+    strategy: core      # core | active | swing | long_term | pension
     holdings:
       - { ticker: AAPL,     qty: 10,   avg: 180.00, sector: BigTech }
       - { ticker: NVDA,     qty: 5,    avg: 130.00, sector: Semiconductor }
@@ -19,5 +28,6 @@ accounts:
     name: "한국 증권 계좌"
     broker: "증권사명"
     currency: KRW
+    strategy: long_term
     holdings:
       - { ticker: "005930.KS", qty: 10, avg: 70000, sector: Semiconductor }

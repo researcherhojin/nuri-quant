@@ -1,0 +1,457 @@
+# ═══════════════════════════════════════════════════════
+# Nuri-Quant Scan Universe
+# ═══════════════════════════════════════════════════════
+# 시장 스캐너가 사용하는 종목 목록.
+# 추가/삭제는 이 파일만 수정 (코드 변경 없음).
+#
+# Tier 구조:
+#   - core:     일일 빠른 스캔 (~108 종목, ~5초)
+#   - extended: 주간 풀스캔 (S&P 500 + KOSPI 200, ~700+ 종목, ~5~10분)
+# ═══════════════════════════════════════════════════════
+
+us_core:
+  description: 미국 — 일일 스캔 (mega cap + growth + ETF)
+  tickers:
+    # Mega cap (44)
+    - AAPL
+    - MSFT
+    - GOOG
+    - GOOGL
+    - AMZN
+    - NVDA
+    - META
+    - TSLA
+    - BRK-B
+    - UNH
+    - JPM
+    - V
+    - MA
+    - HD
+    - PG
+    - JNJ
+    - XOM
+    - CVX
+    - ABBV
+    - KO
+    - PEP
+    - MRK
+    - LLY
+    - AVGO
+    - COST
+    - WMT
+    - ADBE
+    - CRM
+    - NFLX
+    - AMD
+    - QCOM
+    - INTC
+    - BA
+    - CAT
+    - GS
+    - MS
+    - AXP
+    - DIS
+    - CMCSA
+    - VZ
+    - T
+    - NKE
+    - SBUX
+    - MCD
+    - LOW
+    # Growth / momentum (32)
+    - PLTR
+    - RKLB
+    - IONQ
+    - OKLO
+    - SOFI
+    - HOOD
+    - COIN
+    - UBER
+    - ABNB
+    - RIVN
+    - NIO
+    - SNAP
+    - ROKU
+    - DKNG
+    - MARA
+    - ARM
+    - SMCI
+    - MSTR
+    - APP
+    - DUOL
+    - HIMS
+    - RDDT
+    - CRWD
+    - PANW
+    - ZS
+    - NET
+    - DDOG
+    - MDB
+    - SNOW
+    - NBIS
+    - PL
+    - TEM
+    # ETF (8)
+    - SPY
+    - QQQ
+    - IWM
+    - ARKK
+    - XLK
+    - XLF
+    - XLE
+    - XLV
+
+us_sp500_extended:
+  description: 미국 S&P 500 — us_core에 없는 추가 종목
+  tickers:
+    # Financials (28)
+    - BAC
+    - WFC
+    - C
+    - SCHW
+    - BLK
+    - SPGI
+    - CB
+    - MMC
+    - PGR
+    - AON
+    - ICE
+    - CME
+    - MCO
+    - USB
+    - PNC
+    - TFC
+    - COF
+    - BK
+    - STT
+    - NTRS
+    - RJF
+    - AFL
+    - MET
+    - PRU
+    - ALL
+    - TRV
+    - HIG
+    - AJG
+    # Healthcare (30)
+    - PFE
+    - TMO
+    - DHR
+    - ABT
+    - BMY
+    - AMGN
+    - MDT
+    - CVS
+    - CI
+    - HUM
+    - ELV
+    - ISRG
+    - VRTX
+    - REGN
+    - GILD
+    - BIIB
+    - ZTS
+    - SYK
+    - BSX
+    - EW
+    - BDX
+    - HCA
+    - IDXX
+    - DXCM
+    - IQV
+    - WAT
+    - MTD
+    - WST
+    - PODD
+    - GEHC
+    # Tech additional (32)
+    - ORCL
+    - CSCO
+    - IBM
+    - TXN
+    - INTU
+    - NOW
+    - ACN
+    - WDAY
+    - TEAM
+    - FTNT
+    - LRCX
+    - AMAT
+    - KLAC
+    - ADI
+    - MCHP
+    - MRVL
+    - "ON"        # PyYAML 1.1: ON/OFF/YES/NO는 bool로 해석되므로 quote 필수
+    - ADSK
+    - ANSS
+    - CDNS
+    - SNPS
+    - HPQ
+    - DELL
+    - HPE
+    - NTAP
+    - WDC
+    - JNPR
+    - VRSN
+    - FFIV
+    - CTSH
+    - APH
+    - KEYS
+    # Consumer Discretionary (24)
+    - BKNG
+    - CMG
+    - ORLY
+    - AZO
+    - YUM
+    - HLT
+    - MAR
+    - GM
+    - F
+    - LEN
+    - PHM
+    - DHI
+    - ROST
+    - TJX
+    - DG
+    - DLTR
+    - BBY
+    - LULU
+    - ULTA
+    - TGT
+    - HAS
+    - MAT
+    - WSM
+    - GRMN
+    # Consumer Staples (24)
+    - MDLZ
+    - CL
+    - GIS
+    - HSY
+    - SJM
+    - CPB
+    - HRL
+    - CAG
+    - MKC
+    - ADM
+    - TSN
+    - TAP
+    - STZ
+    - MO
+    - PM
+    - KMB
+    - CHD
+    - CLX
+    - EL
+    - KDP
+    - MNST
+    - KHC
+    - KR
+    - SYY
+    # Energy (18)
+    - COP
+    - SLB
+    - OXY
+    - EOG
+    - PSX
+    - VLO
+    - MPC
+    - HES
+    - DVN
+    - HAL
+    - BKR
+    - FANG
+    - APA
+    - WMB
+    - KMI
+    - OKE
+    - LNG
+    - CTRA
+    # Industrials (32)
+    - UNP
+    - HON
+    - UPS
+    - RTX
+    - LMT
+    - GE
+    - DE
+    - NSC
+    - CSX
+    - MMM
+    - ITW
+    - EMR
+    - ETN
+    - PH
+    - JCI
+    - CMI
+    - CARR
+    - OTIS
+    - PCAR
+    - FDX
+    - ROP
+    - PWR
+    - URI
+    - FAST
+    - LHX
+    - GD
+    - NOC
+    - TDG
+    - WAB
+    - SWK
+    - DOV
+    - GWW
+    # Materials (16)
+    - LIN
+    - APD
+    - ECL
+    - SHW
+    - FCX
+    - NEM
+    - DOW
+    - DD
+    - PPG
+    - CTVA
+    - NUE
+    - VMC
+    - MLM
+    - IFF
+    - ALB
+    - LYB
+    # Real Estate (20)
+    - PLD
+    - AMT
+    - CCI
+    - EQIX
+    - PSA
+    - O
+    - WELL
+    - AVB
+    - EQR
+    - DLR
+    - SBAC
+    - VTR
+    - SPG
+    - ARE
+    - EXR
+    - INVH
+    - MAA
+    - WY
+    - VICI
+    - IRM
+    # Communication (10)
+    - CHTR
+    - TMUS
+    - TTWO
+    - EA
+    - WBD
+    - PARA
+    - FOX
+    - LYV
+    - OMC
+    - IPG
+    # Utilities (20)
+    - NEE
+    - SO
+    - DUK
+    - SRE
+    - AEP
+    - D
+    - EXC
+    - XEL
+    - PEG
+    - WEC
+    - ED
+    - ES
+    - DTE
+    - PCG
+    - EIX
+    - AWK
+    - ETR
+    - FE
+    - PPL
+    - AEE
+
+kr_kospi200:
+  description: 한국 KOSPI — 시가총액 상위 80종목
+  tickers:
+    # Top 50
+    - 005930.KS  # 삼성전자
+    - 000660.KS  # SK하이닉스
+    - 373220.KS  # LG에너지솔루션
+    - 207940.KS  # 삼성바이오로직스
+    - 005380.KS  # 현대차
+    - 006400.KS  # 삼성SDI
+    - 035420.KS  # NAVER
+    - 000270.KS  # 기아
+    - 068270.KS  # 셀트리온
+    - 028260.KS  # 삼성물산
+    - 105560.KS  # KB금융
+    - 055550.KS  # 신한지주
+    - 066570.KS  # LG전자
+    - 003670.KS  # 포스코퓨처엠
+    - 034730.KS  # SK
+    - 138930.KS  # BNK금융지주
+    - 012330.KS  # 현대모비스
+    - 096770.KS  # SK이노베이션
+    - 051910.KS  # LG화학
+    - 003550.KS  # LG
+    - 015760.KS  # 한국전력
+    - 035720.KS  # 카카오
+    - 086790.KS  # 하나금융지주
+    - 017670.KS  # SK텔레콤
+    - 030200.KS  # KT
+    - 009150.KS  # 삼성전기
+    - 010130.KS  # 고려아연
+    - 011200.KS  # HMM
+    - 018260.KS  # 삼성에스디에스
+    - 032830.KS  # 삼성생명
+    - 033780.KS  # KT&G
+    - 047050.KS  # 포스코인터내셔널
+    - 051900.KS  # LG생활건강
+    - 010950.KS  # S-Oil
+    - 024110.KS  # 기업은행
+    - 316140.KS  # 우리금융지주
+    - 011170.KS  # 롯데케미칼
+    - 090430.KS  # 아모레퍼시픽
+    - 097950.KS  # CJ제일제당
+    - 071050.KS  # 한국금융지주
+    - 005490.KS  # POSCO홀딩스
+    - 003490.KS  # 대한항공
+    - 042660.KS  # 한화오션
+    - 006800.KS  # 미래에셋증권
+    - 001040.KS  # CJ
+    - 010140.KS  # 삼성중공업
+    - 064350.KS  # 현대로템
+    - 000810.KS  # 삼성화재
+    - 326030.KS  # SK바이오팜
+    - 267260.KS  # HD현대일렉트릭
+    # Mid-cap (51-80)
+    - 047810.KS  # 한국항공우주
+    - 035250.KS  # 강원랜드
+    - 086280.KS  # 현대글로비스
+    - 161390.KS  # 한국타이어앤테크놀로지
+    - 018880.KS  # 한온시스템
+    - 008770.KS  # 호텔신라
+    - 023530.KS  # 롯데쇼핑
+    - 161890.KS  # 한국콜마
+    - 028050.KS  # 삼성엔지니어링
+    - 004020.KS  # 현대제철
+    - 069960.KS  # 현대백화점
+    - 006360.KS  # GS건설
+    - 088350.KS  # 한화생명
+    - 030000.KS  # 제일기획
+    - 081660.KS  # 휠라홀딩스
+    - 192820.KS  # 코스맥스
+    - 282330.KS  # BGF리테일
+    - 000080.KS  # 하이트진로
+    - 005830.KS  # DB손해보험
+    - 139130.KS  # DGB금융지주
+    - 005940.KS  # NH투자증권
+    - 029780.KS  # 삼성카드
+    - 138040.KS  # 메리츠금융지주
+    - 016360.KS  # 삼성증권
+    - 001450.KS  # 현대해상
+    - 004990.KS  # 롯데지주
+    - 002790.KS  # 아모레G
+    - 010620.KS  # 현대미포조선
+    - 078930.KS  # GS
+    - 067160.KS  # 카카오뱅크
