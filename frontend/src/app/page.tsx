@@ -21,6 +21,7 @@ interface DashboardData {
   exchange_rate: number | null;
   account_values?: Array<{ account: string; value: number }>;
   upcoming_events?: Array<{ date: string; event_type: string; ticker: string | null; description: string; importance: number }>;
+  ticker_accounts?: Record<string, string>;
 }
 
 interface FreshnessData {
@@ -162,9 +163,10 @@ async function Dashboard() {
   const now = new Date();
   const isMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() <= 3;
 
-  // 보유 종목 정렬 (손익률 절대값 기준 — 가장 움직인 종목이 위로)
+  // 보유 종목 정렬 (연금 제외, 손익률 절대값 기준)
+  const tickerAccounts = d.ticker_accounts || {};
   const sortedHoldings = [...holdings]
-    .filter((h: any) => h.latest_price && h.avg_price)
+    .filter((h: any) => h.latest_price && h.avg_price && tickerAccounts[h.ticker] !== "Pension")
     .map((h: any) => ({ ...h, pnl: ((h.latest_price / h.avg_price - 1) * 100) }))
     .sort((a: any, b: any) => Math.abs(b.pnl) - Math.abs(a.pnl));
 

@@ -83,6 +83,9 @@ def _build_dashboard() -> dict:
     # ── 9. 향후 이벤트 ──
     upcoming_events = _get_upcoming_events()
 
+    # ── 10. 티커별 계좌 라벨 ──
+    ticker_accounts = {t: _get_account_labels().get(acc, acc) for t, acc in _get_ticker_account_map().items()}
+
     return {
         "verdict": verdict,
         "verdict_level": verdict_level,
@@ -98,6 +101,7 @@ def _build_dashboard() -> dict:
         "exchange_rate": exchange_rate,
         "account_values": account_values,
         "upcoming_events": upcoming_events,
+        "ticker_accounts": ticker_accounts,
     }
 
 
