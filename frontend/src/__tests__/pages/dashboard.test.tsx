@@ -170,29 +170,33 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/주의 사항/)).toBeInTheDocument();
+      expect(screen.getByText(/주의 2건/)).toBeInTheDocument();
       expect(screen.getByText(/TSLA 손절선 돌파/)).toBeInTheDocument();
-      expect(screen.getByText(/매도 검토하여 손실 제한/)).toBeInTheDocument();
+      expect(screen.getByText(/매도 검토/)).toBeInTheDocument();
     });
   });
 
-  it("shows no risk message when empty", async () => {
+  it("shows nothing when alerts empty (no risk banner)", async () => {
     setupMocks({ dashboard: { ...mockDashboardData, alerts: [] } });
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/위험 요소 없음/)).toBeInTheDocument();
+      // Alert banner should not appear at all when no alerts
+      expect(screen.queryByText(/주의.*건/)).not.toBeInTheDocument();
+      // The old "위험 요소 없음" indicator is removed
+      expect(screen.queryByText(/위험 요소 없음/)).not.toBeInTheDocument();
     });
   });
 
-  it("renders market context in Korean", async () => {
+  it("renders market context inline strip in Korean", async () => {
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText("시장 온도")).toBeInTheDocument();
+      // Inline strip shows trend, VIX value, and regime
       expect(screen.getByText(/상승/)).toBeInTheDocument();
       expect(screen.getByText("18.5")).toBeInTheDocument();
+      expect(screen.getByText("VIX")).toBeInTheDocument();
     });
   });
 

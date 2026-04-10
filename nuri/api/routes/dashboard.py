@@ -80,6 +80,9 @@ def _build_dashboard() -> dict:
     # ── 8. 계좌별 평가액 ──
     account_values = _get_account_values(exchange_rate)
 
+    # ── 9. 향후 이벤트 ──
+    upcoming_events = _get_upcoming_events()
+
     return {
         "verdict": verdict,
         "verdict_level": verdict_level,
@@ -94,6 +97,7 @@ def _build_dashboard() -> dict:
         "pipeline_status": pipeline_status,
         "exchange_rate": exchange_rate,
         "account_values": account_values,
+        "upcoming_events": upcoming_events,
     }
 
 
@@ -326,6 +330,28 @@ def _get_active_alerts() -> list[dict]:
         pass
 
     return alerts
+
+
+def _get_upcoming_events() -> list[dict]:
+    """향후 14일 이내 주요 이벤트 조회."""
+    from datetime import timedelta
+
+    from nuri.core.db import query
+    from nuri.core.timezone import kst_now
+
+    now = kst_now()
+    today_str = now.strftime("%Y-%m-%d")
+    end_str = (now + timedelta(days=14)).strftime("%Y-%m-%d")
+    try:
+        rows = query(
+            "SELECT date, event_type, ticker, description, importance "
+            "FROM events WHERE date >= ? AND date <= ? "
+            "ORDER BY date, importance DESC LIMIT 10",
+            (today_str, end_str),
+        )
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
 
 
 def _get_freshness() -> dict:

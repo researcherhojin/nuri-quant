@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { fetchAPI } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/card";
+
 import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
 import Link from "next/link";
@@ -20,6 +20,7 @@ interface DashboardData {
   n_positions: number;
   exchange_rate: number | null;
   account_values?: Array<{ account: string; value: number }>;
+  upcoming_events?: Array<{ date: string; event_type: string; ticker: string | null; description: string; importance: number }>;
 }
 
 interface FreshnessData {
@@ -171,76 +172,65 @@ async function Dashboard() {
         )}
       </div>
 
-      {/* ═══ 상단: 히어로 + 시장 온도 (2열) ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-start">
-        {/* 좌: 총 평가액 + 판단 */}
-        <div>
-          <p className="text-[10px] text-zinc-500 mb-0.5">총 평가액</p>
-          <div className="flex items-baseline gap-3">
-            <span className="text-4xl font-semibold tabular-nums tracking-tight text-zinc-100">
-              ${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </span>
-            <StatusBadge status={verdictLabel} size="lg" />
-          </div>
-          {/* 계좌별 평가액 */}
-          {accountValues.length > 0 && (
-            <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500">
-              {accountValues.map(av => (
-                <span key={av.account}>{av.account} ${av.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-              ))}
-            </div>
-          )}
-          <p className={`text-xs ${style.text} mt-1.5 line-clamp-1`}>{d.verdict}</p>
-          <div className="flex items-center gap-3 mt-1 text-[10px]">
-            {winners.length > 0 && (
-              <span className="text-emerald-400/80">
-                수익 {winners.length}종목
-                {topWinner && <span className="text-zinc-500"> &middot; {displayName(topWinner)} +{((topWinner.latest_price / topWinner.avg_price - 1) * 100).toFixed(0)}%</span>}
-              </span>
-            )}
-            {losers.length > 0 && (
-              <span className="text-red-400/80">
-                손실 {losers.length}종목
-                {topLoser && <span className="text-zinc-500"> &middot; {displayName(topLoser)} {((topLoser.latest_price / topLoser.avg_price - 1) * 100).toFixed(0)}%</span>}
-              </span>
-            )}
-          </div>
+      {/* ═══ 히어로: 총 평가액 + 판단 (전폭) ═══ */}
+      <div>
+        <p className="text-[10px] text-zinc-500 mb-0.5">총 평가액</p>
+        <div className="flex items-baseline gap-3">
+          <span className="text-4xl font-semibold tabular-nums tracking-tight text-zinc-100">
+            ${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </span>
+          <StatusBadge status={verdictLabel} size="lg" />
         </div>
+        {/* 계좌별 평가액 */}
+        {accountValues.length > 0 && (
+          <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500">
+            {accountValues.map(av => (
+              <span key={av.account}>{av.account} ${av.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            ))}
+          </div>
+        )}
+        <p className={`text-xs ${style.text} mt-1.5 line-clamp-1`}>{d.verdict}</p>
+        <div className="flex items-center gap-3 mt-1 text-[10px]">
+          {winners.length > 0 && (
+            <span className="text-emerald-400/80">
+              수익 {winners.length}종목
+              {topWinner && <span className="text-zinc-500"> &middot; {displayName(topWinner)} +{((topWinner.latest_price / topWinner.avg_price - 1) * 100).toFixed(0)}%</span>}
+            </span>
+          )}
+          {losers.length > 0 && (
+            <span className="text-red-400/80">
+              손실 {losers.length}종목
+              {topLoser && <span className="text-zinc-500"> &middot; {displayName(topLoser)} {((topLoser.latest_price / topLoser.avg_price - 1) * 100).toFixed(0)}%</span>}
+            </span>
+          )}
+        </div>
+      </div>
 
-        {/* 우: 시장 온도 (컴팩트 카드) */}
-        <Card className="bg-zinc-900/50 border-zinc-800 min-w-[280px]">
-          <CardContent className="px-3 py-2">
-            <h2 className="text-[9px] text-zinc-600 uppercase tracking-wider mb-1.5">시장 온도</h2>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-600">추세</span>
-                <span className={`text-xs font-semibold ${trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-amber-400"}`}>{trendKo(trend)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-600">VIX</span>
-                <span className="flex items-center gap-1">
-                  <span className={`text-xs font-semibold tabular-nums ${vixInfo.color}`}>{vix != null ? Math.round(vix * 10) / 10 : "—"}</span>
-                  <span className={`text-[9px] ${vixInfo.color}`}>{vixInfo.label}</span>
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-600">심리</span>
-                <span className="flex items-center gap-1">
-                  <span className={`inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-bold tabular-nums ${fgColor(fg)}`}>{fg ?? "—"}</span>
-                  <span className="text-[9px] text-zinc-500">{fgLabel(fg)}</span>
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-600">경제</span>
-                <span className="flex items-center gap-1">
-                  <span className={`text-xs font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span>
-                  <span className={`text-[9px] ${macroInfo.color}`}>{macroInfo.label}</span>
-                </span>
-              </div>
-            </div>
-            <p className="text-[9px] text-zinc-600 mt-1.5">{d.regime.regime} &middot; 신뢰도 {d.regime.confidence}%</p>
-          </CardContent>
-        </Card>
+      {/* 시장 온도 — 인라인 스트립 */}
+      <div className="flex items-center gap-4 text-xs flex-wrap">
+        <span className={`font-semibold ${trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-amber-400"}`}>
+          {trendKo(trend)}
+        </span>
+        <span className="text-zinc-600">&middot;</span>
+        <span className="flex items-center gap-1">
+          <span className="text-zinc-500">VIX</span>
+          <span className={`font-semibold tabular-nums ${vixInfo.color}`}>{vix != null ? Math.round(vix * 10) / 10 : "—"}</span>
+          <span className={`text-[9px] ${vixInfo.color}`}>{vixInfo.label}</span>
+        </span>
+        <span className="text-zinc-600">&middot;</span>
+        <span className="flex items-center gap-1">
+          <span className="text-zinc-500">심리</span>
+          <span className={`inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-bold tabular-nums ${fgColor(fg)}`}>{fg ?? "—"}</span>
+          <span className="text-[9px] text-zinc-500">{fgLabel(fg)}</span>
+        </span>
+        <span className="text-zinc-600">&middot;</span>
+        <span className="flex items-center gap-1">
+          <span className="text-zinc-500">경제</span>
+          <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span>
+          <span className={`text-[9px] ${macroInfo.color}`}>{macroInfo.label}</span>
+        </span>
+        <span className="text-zinc-600">&middot;</span>
+        <span className="text-[10px] text-zinc-600">{d.regime.regime}</span>
       </div>
 
       {/* 비중 바 */}
@@ -261,6 +251,23 @@ async function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* ═══ 알림 배너 (alertCount > 0 일 때만) ═══ */}
+      {alertCount > 0 && (
+        <div className="px-3 py-2 rounded-lg bg-red-950/30 border border-red-900/50">
+          <p className="text-[10px] font-semibold text-red-400 mb-1">주의 {alertCount}건</p>
+          <div className="space-y-0.5">
+            {d.alerts.map((al, i) => (
+              <p key={i} className={`text-[10px] ${al.level === "critical" ? "text-red-400" : "text-amber-400"}`}>
+                {translateAlert(al.message)}
+                {al.level === "critical" && al.message.includes("손절") && (
+                  <span className="text-zinc-500"> &mdash; 매도 검토</span>
+                )}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ═══ 오늘의 할 일 — 계좌별 그룹핑 ═══ */}
       <div className="flex-1 min-h-0">
@@ -350,34 +357,46 @@ async function Dashboard() {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-zinc-500 py-4 text-center">매매 신호 없음 &mdash; 현재 포지션 유지</p>
-        )}
+          <div className="space-y-3">
+            <p className="text-sm text-zinc-500 text-center">매매 신호 없음 &mdash; 현재 포지션 유지</p>
 
-        {/* 주의 사항 — 컴팩트 */}
-        {alertCount > 0 && (
-          <div className="mt-2 pt-2 border-t border-zinc-800/60">
-            <p className="text-[10px] font-semibold text-zinc-400 mb-1">주의 사항 <span className="text-zinc-600 font-normal">{alertCount}건</span></p>
-            <div className="space-y-0.5">
-              {d.alerts.map((al, i) => (
-                <div key={i} className={`text-[10px] ${
-                  al.level === "critical" ? "text-red-400" : al.level === "warning" ? "text-amber-400" : "text-zinc-400"
-                }`}>
-                  <span>{translateAlert(al.message)}</span>
-                  {al.level === "critical" && al.message.includes("손절") && (
-                    <span className="text-zinc-500"> &mdash; 매도 검토하여 손실 제한</span>
-                  )}
-                  {al.level === "warning" && al.message.includes("손절") && (
-                    <span className="text-zinc-500"> &mdash; 추가 하락 시 매도 준비</span>
-                  )}
+            {/* 보유 종목 현황 */}
+            {holdings.length > 0 && (
+              <div>
+                <p className="text-[10px] text-zinc-500 mb-1">보유 종목 현황</p>
+                <div className="space-y-0.5">
+                  {holdings.slice(0, 5).map((h: any) => {
+                    const pnl = h.latest_price && h.avg_price ? ((h.latest_price / h.avg_price - 1) * 100) : 0;
+                    return (
+                      <Link key={h.ticker} href={`/ticker/${h.ticker}`}
+                        className="flex items-center gap-2 px-2 py-1 rounded hover:bg-zinc-800/50 text-xs">
+                        <span className="text-zinc-100 font-medium w-16 truncate">{displayName(h)}</span>
+                        <span className="text-zinc-600 text-[10px] w-12">{h.ticker}</span>
+                        <span className="text-zinc-500 text-[10px]">{h.quantity}주</span>
+                        <span className={`ml-auto font-semibold tabular-nums ${pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {pnl >= 0 ? "+" : ""}{pnl.toFixed(1)}%
+                        </span>
+                      </Link>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {alertCount === 0 && (
-          <div className="mt-2 pt-2 border-t border-zinc-800/60 flex items-center gap-1.5 text-[10px]">
-            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            <span className="text-zinc-400">위험 요소 없음 — 모든 규칙 준수 중</span>
+              </div>
+            )}
+
+            {/* 다음 이벤트 */}
+            {(d.upcoming_events?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-[10px] text-zinc-500 mb-1">다음 이벤트</p>
+                <div className="flex items-center gap-3 flex-wrap text-[10px]">
+                  {d.upcoming_events!.slice(0, 5).map((ev: any, i: number) => (
+                    <span key={i} className="text-zinc-400">
+                      <span className="text-zinc-600">{ev.date?.slice(5)}</span>{" "}
+                      {ev.description || ev.ticker}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -413,7 +432,8 @@ function LoadingSkeleton() {
   return (
     <div className="flex flex-col gap-4">
       <div className="h-6 bg-zinc-900 rounded animate-pulse" />
-      <div className="h-20 bg-zinc-900/50 rounded animate-pulse" />
+      <div className="h-16 bg-zinc-900/50 rounded animate-pulse" />
+      <div className="h-5 bg-zinc-800/50 rounded animate-pulse" />
       <div className="h-4 bg-zinc-800 rounded animate-pulse" />
       <div className="h-48 bg-zinc-900/50 rounded animate-pulse" />
     </div>
