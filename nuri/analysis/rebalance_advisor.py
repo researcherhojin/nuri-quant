@@ -143,43 +143,53 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
     stop_loss_violations.sort(key=lambda v: v["current_value"])
     violations.extend(stop_loss_violations)
 
-    # ─── 3. 단일 종목 비중 초과 (priority 4) — 계좌별 전략 적용 ───
-    # 종목이 여러 계좌에 걸쳐 있으면 가장 관대한 전략의 max_single_position 사용
-    _ticker_accounts = df.groupby("ticker")["account"].apply(list).to_dict()
-    for _, row in ticker_agg.iterrows():
+    # ─── 3. 단일 종목 비중 초과 (priority 4) — 계좌별 전략 독립 적용 ───
+    # 각 (account, ticker)에 대해 계좌 내부 비중(= ticker / account 총액)을
+    # 그 계좌의 전략 한도와 비교한다. 이전 로직은 max(strategies)를 사용해
+    # core 계좌(15%) 위반이 active(25%)에 가려졌음.
+    account_totals = df.groupby("account")["current_value_usd"].sum().to_dict()
+    account_ticker_df = df.groupby(["account", "ticker"]).agg(
+        ticker_value=("current_value_usd", "sum"),
+        quantity=("quantity", "sum"),
+        current_price=("current_price", "first"),
+    ).reset_index()
+
+    for _, row in account_ticker_df.iterrows():
+        account = row["account"]
         ticker = row["ticker"]
         if ticker in LEVERAGE_ETFS:
             continue
-        weight = row["weight_pct"]
-        # 해당 종목이 속한 계좌들의 max_single_position 중 최대값
-        accounts = _ticker_accounts.get(ticker, [])
-        max_pos = max(
-            (get_account_strategy(a).get("max_single_position", MAX_SINGLE_POSITION) for a in accounts),
-            default=MAX_SINGLE_POSITION,
-        )
-        if weight / 100 > max_pos:
-            # 목표 비중까지 줄이기 위한 매도 수량 계산
-            target_value = total_value * max_pos
-            excess_value = row["current_value_usd"] - target_value
-            current_price = row["current_price"]
-            if current_price > 0:
-                sell_shares = math.ceil(excess_value / current_price)
-            else:
-                sell_shares = int(row["quantity"])
-            sell_value = sell_shares * current_price
+        account_total = account_totals.get(account, 0.0)
+        if account_total <= 0:
+            continue
+        account_weight = row["ticker_value"] / account_total  # 0~1
+        strategy = get_account_strategy(account)
+        max_pos = strategy.get("max_single_position", MAX_SINGLE_POSITION)
+        if account_weight <= max_pos:
+            continue
 
-            violations.append({
-                "ticker": ticker,
-                "violation_type": "position_limit_exceeded",
-                "priority": _PRIORITY_MAP.get("position_limit_exceeded", 4),
-                "current_value": weight,
-                "limit_value": max_pos,
-                "severity": _severity("position_limit_exceeded", weight, max_pos),
-                "action": "REDUCE",
-                "sell_shares": sell_shares,
-                "sell_value_usd": round(sell_value, 2),
-                "reason": f"비중 {weight:.1f}% > 한도 {max_pos * 100:.0f}%",
-            })
+        target_value = account_total * max_pos
+        excess_value = row["ticker_value"] - target_value
+        current_price = row["current_price"]
+        if current_price > 0:
+            sell_shares = math.ceil(excess_value / current_price)
+        else:
+            sell_shares = int(row["quantity"])
+        sell_value = sell_shares * current_price
+        weight_pct = account_weight * 100
+
+        violations.append({
+            "ticker": ticker,
+            "violation_type": "position_limit_exceeded",
+            "priority": _PRIORITY_MAP.get("position_limit_exceeded", 4),
+            "current_value": weight_pct,
+            "limit_value": max_pos,
+            "severity": _severity("position_limit_exceeded", weight_pct, max_pos),
+            "action": "REDUCE",
+            "sell_shares": sell_shares,
+            "sell_value_usd": round(sell_value, 2),
+            "reason": f"{account} 비중 {weight_pct:.1f}% > 한도 {max_pos * 100:.0f}%",
+        })
 
     # ─── 4. 섹터 비중 초과 (priority 5) ───
     sector_weights = ticker_agg.groupby("sector")["weight_pct"].sum()
