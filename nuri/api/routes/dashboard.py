@@ -156,6 +156,7 @@ def _extract_reason(signals_raw: str | None) -> tuple[str, float | None]:
 def _get_latest_actions() -> list[dict]:
     """recommendations 테이블에서 최신 추천 조회 — analyze_portfolio() 대체."""
     from nuri.core.db import query
+    from nuri.core.ticker_names import get_ticker_name
     try:
         rows = query("""
             SELECT ticker, action, confidence, regime, signals, date
@@ -176,6 +177,7 @@ def _get_latest_actions() -> list[dict]:
                 actions.append({
                     "action": "BUY",
                     "ticker": row["ticker"],
+                    "name": get_ticker_name(row["ticker"]),
                     "confidence": confidence,
                     "reason": reason,
                     "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
@@ -184,6 +186,7 @@ def _get_latest_actions() -> list[dict]:
                 actions.append({
                     "action": "SELL",
                     "ticker": row["ticker"],
+                    "name": get_ticker_name(row["ticker"]),
                     "confidence": confidence,
                     "reason": reason,
                     "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,

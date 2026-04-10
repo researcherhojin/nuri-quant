@@ -20,14 +20,10 @@ import {
   Bot,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck,
-  ShieldX,
   Sun,
   Moon,
   BookOpen,
 } from "lucide-react";
-
-import { API_BASE } from "@/lib/api";
 
 // 팔란티어 스타일 그룹 네비게이션
 const NAV_GROUPS = [
@@ -70,22 +66,11 @@ const NAV_GROUPS = [
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [siegeStatus, setSiegeStatus] = useState<{ certified: boolean; score: number } | null>(null);
   const [mounted, setMounted] = useState(false);
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark";
 
   useEffect(() => { setMounted(true); }, []);
-
-  // SIEGE 인증 상태 조회
-  useEffect(() => {
-    fetch(`${API_BASE}/api/certify`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data) setSiegeStatus({ certified: data.certified, score: data.score });
-      })
-      .catch(() => {});
-  }, []);
 
   const w = collapsed ? "w-16" : "w-56";
   const ml = collapsed ? "ml-16" : "ml-56";
@@ -147,51 +132,46 @@ export function Sidebar() {
           ))}
         </nav>
 
-        {/* SIEGE Status + System — pb-16 to avoid Next.js dev indicator */}
-        <div className="border-t border-border px-4 py-3 pb-16 space-y-2">
-          {/* SIEGE 인증 배지 */}
-          {siegeStatus && !collapsed && (
-            <div className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${
-              siegeStatus.certified
-                ? "bg-emerald-400/10 text-emerald-400"
-                : "bg-red-400/10 text-red-400"
-            }`}>
-              {siegeStatus.certified ? <ShieldCheck size={20} /> : <ShieldX size={20} />}
-              <span className="font-medium">
-                {siegeStatus.certified ? "CERTIFIED" : "REJECTED"}
+        {/* System controls */}
+        <div className={`border-t border-border py-3 pb-3 space-y-2 ${collapsed ? "px-2" : "px-4"}`}>
+          {/* Theme Toggle + Online */}
+          {collapsed ? (
+            <div className="flex flex-col items-center gap-2">
+              {mounted && (
+                <button
+                  onClick={() => setTheme(isDark ? "light" : "dark")}
+                  className="text-muted-foreground hover:text-foreground/80 transition-colors p-1"
+                  title={isDark ? "Light mode" : "Dark mode"}
+                >
+                  {isDark ? <Sun size={14} /> : <Moon size={14} />}
+                </button>
+              )}
+              <span className="relative flex h-2 w-2" title="System Online">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
               </span>
-              <span className="ml-auto text-[10px] opacity-70">{siegeStatus.score}%</span>
             </div>
+          ) : (
+            <>
+              {mounted && (
+                <button
+                  onClick={() => setTheme(isDark ? "light" : "dark")}
+                  className="flex items-center gap-2 text-muted-foreground hover:text-foreground/80 transition-colors"
+                  title={isDark ? "Light mode" : "Dark mode"}
+                >
+                  {isDark ? <Sun size={16} /> : <Moon size={16} />}
+                  <span className="text-xs">{isDark ? "Light Mode" : "Dark Mode"}</span>
+                </button>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                <span className="text-[10px] text-muted-foreground">System Online</span>
+              </div>
+            </>
           )}
-          {siegeStatus && collapsed && (
-            <div className="flex justify-center" title={`SIEGE: ${siegeStatus.certified ? "CERTIFIED" : "REJECTED"} (${siegeStatus.score}%)`}>
-              {siegeStatus.certified
-                ? <ShieldCheck size={16} className="text-emerald-400" />
-                : <ShieldX size={16} className="text-red-400" />
-              }
-            </div>
-          )}
-
-          {/* Theme Toggle (mounted 후 렌더링 — SSR hydration 불일치 방지) */}
-          {mounted && (
-            <button
-              onClick={() => setTheme(isDark ? "light" : "dark")}
-              className={`flex items-center gap-2 text-muted-foreground hover:text-foreground/80 transition-colors ${collapsed ? "justify-center" : ""}`}
-              title={isDark ? "Light mode" : "Dark mode"}
-            >
-              {isDark ? <Sun size={16} /> : <Moon size={16} />}
-              {!collapsed && <span className="text-xs">{isDark ? "Light Mode" : "Dark Mode"}</span>}
-            </button>
-          )}
-
-          {/* Online 상태 */}
-          <div className={`flex items-center gap-2 ${collapsed ? "justify-center" : ""}`}>
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            {!collapsed && <span className="text-[10px] text-muted-foreground">System Online</span>}
-          </div>
         </div>
       </aside>
 

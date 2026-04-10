@@ -44,7 +44,8 @@ async function TickerDetail({ symbol }: { symbol: string }) {
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center gap-4 flex-wrap">
-        <h1 className="text-3xl font-bold">{data.ticker}</h1>
+        <h1 className="text-3xl font-bold">{data.name || data.ticker}</h1>
+        {data.name && <span className="text-lg text-muted-foreground">{data.ticker}</span>}
         {data.price?.close && (
           <span className="text-2xl text-foreground/80">${Number(data.price.close).toLocaleString()}</span>
         )}

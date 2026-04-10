@@ -145,37 +145,9 @@ describe("Sidebar", () => {
     expect(screen.getByText("System Online")).toBeInTheDocument();
   });
 
-  it("fetches and displays SIEGE certified status", async () => {
+  it("does not render SIEGE badge (moved to dashboard)", async () => {
     render(<Sidebar />);
 
-    await waitFor(() => {
-      expect(screen.getByText("CERTIFIED")).toBeInTheDocument();
-      expect(screen.getByText("90%")).toBeInTheDocument();
-    });
-  });
-
-  it("fetches and displays SIEGE rejected status", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ certified: false, score: 40 }),
-    });
-
-    render(<Sidebar />);
-
-    await waitFor(() => {
-      expect(screen.getByText("REJECTED")).toBeInTheDocument();
-      expect(screen.getByText("40%")).toBeInTheDocument();
-    });
-  });
-
-  it("handles SIEGE fetch failure gracefully", async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
-
-    render(<Sidebar />);
-
-    // Should render without crashing
-    expect(screen.getByText("Nuri-Quant")).toBeInTheDocument();
-    // No SIEGE badge should appear
     await waitFor(() => {
       expect(screen.queryByText("CERTIFIED")).not.toBeInTheDocument();
       expect(screen.queryByText("REJECTED")).not.toBeInTheDocument();

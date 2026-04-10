@@ -11,8 +11,9 @@ router = APIRouter(tags=["ticker"])
 @router.get("/ticker/{symbol}")
 def get_ticker_detail(symbol: str):
     """단일 종목의 모든 분석 데이터."""
+    from nuri.core.ticker_names import get_ticker_name
     ticker = symbol.upper()
-    result = {"ticker": ticker}
+    result = {"ticker": ticker, "name": get_ticker_name(ticker)}
 
     # 1. 가격
     price_row = query(
