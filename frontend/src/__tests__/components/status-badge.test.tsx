@@ -85,6 +85,14 @@ describe("StatusBadge", () => {
     expect(badge.className).toContain("px-2");
   });
 
+  it("applies lg size", () => {
+    render(<StatusBadge status="AGGRESSIVE" size="lg" />);
+    const badge = screen.getByText("AGGRESSIVE");
+    expect(badge.className).toContain("text-sm");
+    expect(badge.className).toContain("px-3");
+    expect(badge.className).toContain("py-1");
+  });
+
   // ─── Common styles ───────────────────────────────────
   it("always includes rounded-md and border", () => {
     render(<StatusBadge status="BUY" />);
