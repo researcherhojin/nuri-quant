@@ -107,7 +107,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/품질 검증 9\/10 통과/)).toBeInTheDocument();
+      expect(screen.getByText(/품질 9\/10/)).toBeInTheDocument();
     });
   });
 
@@ -121,8 +121,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/품질 검증 미통과/)).toBeInTheDocument();
-      expect(screen.getByText("4/10")).toBeInTheDocument();
+      expect(screen.getByText(/품질 미통과/)).toBeInTheDocument();
     });
   });
 
@@ -165,11 +164,10 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("shows portfolio summary and upcoming events in empty state", async () => {
+  it("shows portfolio holdings and upcoming events in footer", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
-        actions: [],
         upcoming_events: [
           { date: "2026-04-15", event_type: "earnings", ticker: "AAPL", description: "AAPL 실적발표", importance: 2 },
           { date: "2026-05-07", event_type: "fomc", ticker: null, description: "FOMC 금리결정", importance: 3 },
@@ -179,21 +177,20 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/보유 종목 현황/)).toBeInTheDocument();
-      expect(screen.getByText(/다음 이벤트/)).toBeInTheDocument();
+      // 보유 종목 항상 표시
+      expect(screen.getByText(/보유 종목/)).toBeInTheDocument();
+      // 다음 이벤트 푸터에 표시
       expect(screen.getByText(/AAPL 실적발표/)).toBeInTheDocument();
       expect(screen.getByText(/FOMC 금리결정/)).toBeInTheDocument();
     });
   });
 
-  it("renders risk alerts with guidance", async () => {
+  it("renders risk alerts as inline summary", async () => {
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
       expect(screen.getByText(/주의 2건/)).toBeInTheDocument();
-      expect(screen.getByText(/TSLA 손절선 돌파/)).toBeInTheDocument();
-      expect(screen.getByText(/매도 검토/)).toBeInTheDocument();
     });
   });
 
@@ -230,12 +227,14 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders pipeline status", async () => {
+  it("renders pipeline link in footer", async () => {
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getAllByText("Collect").length).toBeGreaterThanOrEqual(1);
+      const links = screen.getAllByRole("link");
+      const pipelineLink = links.find(l => l.getAttribute("href") === "/pipeline");
+      expect(pipelineLink).toBeTruthy();
     });
   });
 

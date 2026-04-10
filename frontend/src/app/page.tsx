@@ -93,6 +93,24 @@ function translateAlert(msg: string): string {
 function displayName(h: { name?: string | null; ticker?: string }) {
   return h?.name || (h?.ticker?.endsWith(".KS") ? h.ticker.replace(".KS", "") : h?.ticker) || "";
 }
+/** 알림 메시지를 1줄 요약으로 압축 */
+function summarizeAlerts(alerts: Array<{ level: string; message: string }>): string {
+  const parts: string[] = [];
+  for (const al of alerts) {
+    const translated = translateAlert(al.message);
+    // 손절 관련: 티커 + 퍼센트 추출
+    const stopMatch = translated.match(/(\S+)\s+손절선\s+돌파\s+\((-?\d+\.?\d*%)\)/);
+    if (stopMatch) { parts.push(`${stopMatch[1]} ${stopMatch[2]} 손절`); continue; }
+    const nearMatch = translated.match(/(\S+)\s+손절선\s+근접\s+\((-?\d+\.?\d*%)\)/);
+    if (nearMatch) { parts.push(`${nearMatch[1]} ${nearMatch[2]} 근접`); continue; }
+    // 충돌
+    const conflictMatch = translated.match(/충돌\s+(\d+)건/);
+    if (conflictMatch) { parts.push(`충돌 ${conflictMatch[1]}건`); continue; }
+    // 기타: 짧게 자르기
+    parts.push(translated.slice(0, 20));
+  }
+  return parts.join(" · ");
+}
 
 /* ══════════════════════════════════════════════════════ */
 
@@ -133,8 +151,6 @@ async function Dashboard() {
   const holdings = portfolio?.holdings || [];
   const winners = holdings.filter((h: any) => h.latest_price && h.avg_price && h.latest_price > h.avg_price);
   const losers = holdings.filter((h: any) => h.latest_price && h.avg_price && h.latest_price < h.avg_price);
-  const topWinner = winners.sort((a: any, b: any) => ((b.latest_price / b.avg_price) - (a.latest_price / a.avg_price)))[0];
-  const topLoser = losers.sort((a: any, b: any) => ((a.latest_price / a.avg_price) - (b.latest_price / b.avg_price)))[0];
   const vixInfo = vixZone(vix);
   const macroInfo = macroLevel(d.macro.score);
   const accountValues = d.account_values || [];
@@ -146,33 +162,15 @@ async function Dashboard() {
   const now = new Date();
   const isMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() <= 3;
 
-  return (
-    <div className="flex flex-col gap-4 min-h-0">
-      {/* ── 파이프라인 + 시장 온도 (1줄 통합) ── */}
-      <div className="flex items-center gap-3 flex-wrap">
-        {((freshness?.items?.length ?? 0) > 0 || (freshness?.details?.length ?? 0) > 0) && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-zinc-600 shrink-0">데이터</span>
-            <FreshnessBar items={freshness?.items ?? freshness?.details ?? []} />
-          </div>
-        )}
-        {pipelineStatus.steps.length > 0 && (
-          <div className="flex items-center gap-1">
-            {pipelineStatus.steps.map((s, i) => (
-              <div key={s.step} className="flex items-center gap-0.5">
-                <div className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-zinc-800/50" title={`${s.label}: ${s.record_count.toLocaleString()}건`}>
-                  <span className={`inline-flex h-1.5 w-1.5 rounded-full ${pipelineStatusColors[s.status] || "bg-zinc-500"}`} />
-                  <span className="text-[9px] text-zinc-500">{s.label}</span>
-                </div>
-                {i < pipelineStatus.steps.length - 1 && <span className="text-zinc-700 text-[9px]">&rarr;</span>}
-              </div>
-            ))}
-            <Link href="/pipeline" className="text-[9px] text-zinc-600 hover:text-zinc-400 ml-0.5">&rarr;</Link>
-          </div>
-        )}
-      </div>
+  // 보유 종목 정렬 (손익률 절대값 기준 — 가장 움직인 종목이 위로)
+  const sortedHoldings = [...holdings]
+    .filter((h: any) => h.latest_price && h.avg_price)
+    .map((h: any) => ({ ...h, pnl: ((h.latest_price / h.avg_price - 1) * 100) }))
+    .sort((a: any, b: any) => Math.abs(b.pnl) - Math.abs(a.pnl));
 
-      {/* ═══ 히어로: 총 평가액 + 판단 (전폭) ═══ */}
+  return (
+    <div className="flex flex-col gap-3 min-h-0">
+      {/* ═══ 히어로: 총 평가액 + 판단 ═══ */}
       <div>
         <p className="text-[10px] text-zinc-500 mb-0.5">총 평가액</p>
         <div className="flex items-baseline gap-3">
@@ -181,7 +179,6 @@ async function Dashboard() {
           </span>
           <StatusBadge status={verdictLabel} size="lg" />
         </div>
-        {/* 계좌별 평가액 */}
         {accountValues.length > 0 && (
           <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500">
             {accountValues.map(av => (
@@ -189,52 +186,23 @@ async function Dashboard() {
             ))}
           </div>
         )}
-        <p className={`text-xs ${style.text} mt-1.5 line-clamp-1`}>{d.verdict}</p>
-        <div className="flex items-center gap-3 mt-1 text-[10px]">
-          {winners.length > 0 && (
-            <span className="text-emerald-400/80">
-              수익 {winners.length}종목
-              {topWinner && <span className="text-zinc-500"> &middot; {displayName(topWinner)} +{((topWinner.latest_price / topWinner.avg_price - 1) * 100).toFixed(0)}%</span>}
-            </span>
-          )}
-          {losers.length > 0 && (
-            <span className="text-red-400/80">
-              손실 {losers.length}종목
-              {topLoser && <span className="text-zinc-500"> &middot; {displayName(topLoser)} {((topLoser.latest_price / topLoser.avg_price - 1) * 100).toFixed(0)}%</span>}
-            </span>
-          )}
+      </div>
+
+      {/* ═══ 시장 맥락 — verdict + 숫자 통합 ═══ */}
+      <div>
+        <p className={`text-xs ${style.text} leading-relaxed`}>{d.verdict}</p>
+        <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500 flex-wrap">
+          <span className={trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-amber-400"}>
+            {trendKo(trend)}
+          </span>
+          <span>VIX <span className={`font-semibold tabular-nums ${vixInfo.color}`}>{vix != null ? Math.round(vix * 10) / 10 : "—"}</span> <span className={vixInfo.color}>{vixInfo.label}</span></span>
+          <span>심리 <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg ?? "—"}</span> <span className="text-zinc-600">{fgLabel(fg)}</span></span>
+          <span>경제 <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span> <span className={macroInfo.color}>{macroInfo.label}</span></span>
         </div>
       </div>
 
-      {/* 시장 온도 — 인라인 스트립 */}
-      <div className="flex items-center gap-4 text-xs flex-wrap">
-        <span className={`font-semibold ${trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-amber-400"}`}>
-          {trendKo(trend)}
-        </span>
-        <span className="text-zinc-600">&middot;</span>
-        <span className="flex items-center gap-1">
-          <span className="text-zinc-500">VIX</span>
-          <span className={`font-semibold tabular-nums ${vixInfo.color}`}>{vix != null ? Math.round(vix * 10) / 10 : "—"}</span>
-          <span className={`text-[9px] ${vixInfo.color}`}>{vixInfo.label}</span>
-        </span>
-        <span className="text-zinc-600">&middot;</span>
-        <span className="flex items-center gap-1">
-          <span className="text-zinc-500">심리</span>
-          <span className={`inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-bold tabular-nums ${fgColor(fg)}`}>{fg ?? "—"}</span>
-          <span className="text-[9px] text-zinc-500">{fgLabel(fg)}</span>
-        </span>
-        <span className="text-zinc-600">&middot;</span>
-        <span className="flex items-center gap-1">
-          <span className="text-zinc-500">경제</span>
-          <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span>
-          <span className={`text-[9px] ${macroInfo.color}`}>{macroInfo.label}</span>
-        </span>
-        <span className="text-zinc-600">&middot;</span>
-        <span className="text-[10px] text-zinc-600">{d.regime.regime}</span>
-      </div>
-
       {/* 비중 바 */}
-      <div className="flex h-4 rounded overflow-hidden text-[9px] font-medium">
+      <div className="flex h-3.5 rounded overflow-hidden text-[9px] font-medium">
         {d.allocation.long > 0 && (
           <div className="bg-emerald-600/80 flex items-center justify-center text-emerald-100" style={{ width: `${d.allocation.long}%` }}>
             {d.allocation.long >= 15 && `투자 ${d.allocation.long}%`}
@@ -252,69 +220,48 @@ async function Dashboard() {
         )}
       </div>
 
-      {/* ═══ 알림 배너 (alertCount > 0 일 때만) ═══ */}
+      {/* ═══ 알림 — 1줄 인라인 (있을 때만) ═══ */}
       {alertCount > 0 && (
-        <div className="px-3 py-2 rounded-lg bg-red-950/30 border border-red-900/50">
-          <p className="text-[10px] font-semibold text-red-400 mb-1">주의 {alertCount}건</p>
-          <div className="space-y-0.5">
-            {d.alerts.map((al, i) => (
-              <p key={i} className={`text-[10px] ${al.level === "critical" ? "text-red-400" : "text-amber-400"}`}>
-                {translateAlert(al.message)}
-                {al.level === "critical" && al.message.includes("손절") && (
-                  <span className="text-zinc-500"> &mdash; 매도 검토</span>
-                )}
-              </p>
-            ))}
-          </div>
+        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-red-950/20 border border-red-900/30 text-[10px]">
+          <span className="text-red-400 font-semibold shrink-0">주의 {alertCount}건</span>
+          <span className="text-red-400/70 truncate">{summarizeAlerts(d.alerts)}</span>
         </div>
       )}
 
-      {/* ═══ 오늘의 할 일 — 계좌별 그룹핑 ═══ */}
-      <div className="flex-1 min-h-0">
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-zinc-200">오늘의 할 일</h2>
-            {d.actions.length > 0 && (
+      {/* ═══ 오늘의 할 일 ═══ */}
+      {d.actions.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-zinc-200">오늘의 할 일</h2>
               <span className="text-[10px] text-zinc-600">
                 {nBuys > 0 && `매수 ${nBuys}`}{nBuys > 0 && nSells > 0 && " \u00B7 "}{nSells > 0 && `매도 ${nSells}`}
               </span>
-            )}
-          </div>
-          {d.actions.length > 0 && (
+            </div>
             <Link href="/decisions" className="text-[9px] text-zinc-600 hover:text-zinc-400">기록 &rarr;</Link>
-          )}
-        </div>
-
-        {d.actions.length > 0 ? (
-          <div className="space-y-2">
-            {/* Main + Sub 액션 */}
-            {mainActions.length > 0 && (
-              <div>
-                {mainActions.map((a, i) => (
-                  <Link key={`${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
-                    className={`flex items-center gap-2 px-2 py-1.5 rounded border-l-2 hover:bg-zinc-800/50 transition-colors ${
-                      a.action === "BUY" ? "border-emerald-500" : "border-red-500"
-                    }`}>
-                    <StatusBadge status={a.action === "BUY" ? "매수" : "매도"} />
-                    {a.account && <span className="text-[9px] text-zinc-600 min-w-[2rem]">{a.account}</span>}
-                    <span className="font-medium text-xs text-zinc-100 truncate">{a.name || a.ticker}</span>
-                    {a.name && <span className="text-[10px] text-zinc-600 shrink-0">{a.ticker}</span>}
-                    {a.reason && <span className="text-[10px] text-zinc-600 truncate hidden lg:inline">{a.reason}</span>}
-                    <div className="ml-auto flex items-center gap-2 shrink-0">
-                      <span className={`inline-flex items-center justify-center w-7 h-5 rounded text-[10px] font-bold tabular-nums ${
-                        a.confidence >= 80 ? "bg-emerald-500/15 text-emerald-400" :
-                        a.confidence >= 50 ? "bg-amber-500/15 text-amber-400" :
-                        "bg-red-500/15 text-red-400"
-                      }`}>{a.confidence}</span>
-                      <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((a.agreement || 0) / 10)}/10</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {/* Other 액션 (Toss 등) */}
-            {otherActions.length > 0 && otherActions.map((a, i) => (
+          </div>
+          <div className="space-y-0.5">
+            {mainActions.map((a, i) => (
+              <Link key={`${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded border-l-2 hover:bg-zinc-800/50 transition-colors ${
+                  a.action === "BUY" ? "border-emerald-500" : "border-red-500"
+                }`}>
+                <StatusBadge status={a.action === "BUY" ? "매수" : "매도"} />
+                {a.account && <span className="text-[9px] text-zinc-600 min-w-[2rem]">{a.account}</span>}
+                <span className="font-medium text-xs text-zinc-100 truncate">{a.name || a.ticker}</span>
+                {a.name && <span className="text-[10px] text-zinc-600 shrink-0">{a.ticker}</span>}
+                {a.reason && <span className="text-[10px] text-zinc-600 truncate hidden lg:inline">{a.reason}</span>}
+                <div className="ml-auto flex items-center gap-2 shrink-0">
+                  <span className={`inline-flex items-center justify-center w-7 h-5 rounded text-[10px] font-bold tabular-nums ${
+                    a.confidence >= 80 ? "bg-emerald-500/15 text-emerald-400" :
+                    a.confidence >= 50 ? "bg-amber-500/15 text-amber-400" :
+                    "bg-red-500/15 text-red-400"
+                  }`}>{a.confidence}</span>
+                  <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((a.agreement || 0) / 10)}/10</span>
+                </div>
+              </Link>
+            ))}
+            {otherActions.map((a, i) => (
               <Link key={`o-${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
                 className={`flex items-center gap-2 px-2 py-1.5 rounded border-l-2 hover:bg-zinc-800/50 transition-colors ${
                   a.action === "BUY" ? "border-emerald-500" : "border-red-500"
@@ -332,8 +279,6 @@ async function Dashboard() {
                 </div>
               </Link>
             ))}
-
-            {/* Pension — 월말 아니면 축소 */}
             {pensionActions.length > 0 && !isMonthEnd && (
               <p className="text-[10px] text-zinc-600 px-2">연금 {pensionActions.length}건 &mdash; 월말 매수 대기</p>
             )}
@@ -356,66 +301,78 @@ async function Dashboard() {
               </Link>
             ))}
           </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm text-zinc-500 text-center">매매 신호 없음 &mdash; 현재 포지션 유지</p>
+        </div>
+      )}
 
-            {/* 보유 종목 현황 */}
-            {holdings.length > 0 && (
-              <div>
-                <p className="text-[10px] text-zinc-500 mb-1">보유 종목 현황</p>
-                <div className="space-y-0.5">
-                  {holdings.slice(0, 5).map((h: any) => {
-                    const pnl = h.latest_price && h.avg_price ? ((h.latest_price / h.avg_price - 1) * 100) : 0;
-                    return (
-                      <Link key={h.ticker} href={`/ticker/${h.ticker}`}
-                        className="flex items-center gap-2 px-2 py-1 rounded hover:bg-zinc-800/50 text-xs">
-                        <span className="text-zinc-100 font-medium w-16 truncate">{displayName(h)}</span>
-                        <span className="text-zinc-600 text-[10px] w-12">{h.ticker}</span>
-                        <span className="text-zinc-500 text-[10px]">{h.quantity}주</span>
-                        <span className={`ml-auto font-semibold tabular-nums ${pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                          {pnl >= 0 ? "+" : ""}{pnl.toFixed(1)}%
-                        </span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+      {d.actions.length === 0 && (
+        <p className="text-sm text-zinc-500 text-center py-2">매매 신호 없음 &mdash; 현재 포지션 유지</p>
+      )}
 
-            {/* 다음 이벤트 */}
-            {(d.upcoming_events?.length ?? 0) > 0 && (
-              <div>
-                <p className="text-[10px] text-zinc-500 mb-1">다음 이벤트</p>
-                <div className="flex items-center gap-3 flex-wrap text-[10px]">
-                  {d.upcoming_events!.slice(0, 5).map((ev: any, i: number) => (
-                    <span key={i} className="text-zinc-400">
-                      <span className="text-zinc-600">{ev.date?.slice(5)}</span>{" "}
-                      {ev.description || ev.ticker}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+      {/* ═══ 보유 종목 현황 (항상 표시) ═══ */}
+      {sortedHoldings.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
+              <span className="text-[10px] text-zinc-600">{winners.length > 0 && `수익 ${winners.length}`}{winners.length > 0 && losers.length > 0 && " · "}{losers.length > 0 && `손실 ${losers.length}`}</span>
+            </div>
+            <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
           </div>
-        )}
+          <div className="space-y-0.5">
+            {sortedHoldings.slice(0, 6).map((h: any) => (
+              <Link key={h.ticker} href={`/ticker/${h.ticker}`}
+                className="flex items-center gap-2 px-2 py-1 rounded hover:bg-zinc-800/50 text-xs group">
+                <span className="text-zinc-100 font-medium w-14 truncate">{displayName(h)}</span>
+                <span className={`font-semibold tabular-nums w-14 text-right ${h.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {h.pnl >= 0 ? "+" : ""}{h.pnl.toFixed(1)}%
+                </span>
+                <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${h.pnl >= 0 ? "bg-emerald-500/60" : "bg-red-500/60"}`}
+                    style={{ width: `${Math.min(100, Math.abs(h.pnl) * 2)}%` }}
+                  />
+                </div>
+                {h.pnl <= -7 && <span className="text-[9px] text-red-400 shrink-0">손절</span>}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
-        {/* 푸터 */}
-        <div className="mt-2 pt-2 border-t border-zinc-800/60 flex items-center gap-3 flex-wrap text-[10px]">
+      {/* ═══ 푸터: 품질 + 이벤트 + 파이프라인 ═══ */}
+      <div className="mt-auto pt-2 border-t border-zinc-800/60 space-y-1">
+        <div className="flex items-center gap-3 flex-wrap text-[10px]">
           {siegeTotal > 0 && siegeFailed.length === 0 && (
-            <span className="text-zinc-400"><span className="text-emerald-500">&#10003;</span> 품질 검증 {siege?.passed || 0}/{siegeTotal} 통과</span>
+            <span className="text-zinc-400"><span className="text-emerald-500">&#10003;</span> 품질 {siege?.passed || 0}/{siegeTotal}</span>
           )}
           {siegeTotal > 0 && siegeFailed.length > 0 && (
-            <span className="text-red-400"><span className="text-red-500">&#10007;</span> 품질 검증 미통과 ({siegeFailed.length}건) <span className="text-zinc-600">{siege?.passed || 0}/{siegeTotal}</span></span>
+            <span className="text-red-400"><span className="text-red-500">&#10007;</span> 품질 미통과 {siegeFailed.length}건</span>
           )}
           {(advisor?.total_violations || 0) > 0 && (
             <span className="text-red-400">규칙 위반 {advisor.total_violations}건</span>
           )}
-          <Link href="/portfolio" className="text-zinc-600 hover:text-zinc-400 ml-auto">포트폴리오 상세 &rarr;</Link>
+          {(d.upcoming_events?.length ?? 0) > 0 && d.upcoming_events!.slice(0, 3).map((ev: any, i: number) => (
+            <span key={i} className="text-zinc-500">
+              <span className="text-zinc-600">{ev.date?.slice(5)}</span> {ev.description || ev.ticker}
+            </span>
+          ))}
+          <div className="ml-auto flex items-center gap-2">
+            {((freshness?.items?.length ?? 0) > 0 || (freshness?.details?.length ?? 0) > 0) && (
+              <FreshnessBar items={freshness?.items ?? freshness?.details ?? []} />
+            )}
+            {pipelineStatus.steps.length > 0 && (
+              <div className="flex items-center gap-0.5">
+                {pipelineStatus.steps.map((s) => (
+                  <span key={s.step} className={`inline-flex h-1.5 w-1.5 rounded-full ${pipelineStatusColors[s.status] || "bg-zinc-500"}`} title={`${s.label}: ${s.record_count.toLocaleString()}건`} />
+                ))}
+                <Link href="/pipeline" className="text-[9px] text-zinc-600 hover:text-zinc-400 ml-0.5">&rarr;</Link>
+              </div>
+            )}
+          </div>
         </div>
         {siegeTotal > 0 && siegeFailed.length > 0 && (
-          <div className="mt-1 space-y-0.5">
-            {siegeFailed.slice(0, 3).map((c: any, i: number) => (
+          <div className="space-y-0.5">
+            {siegeFailed.slice(0, 2).map((c: any, i: number) => (
               <p key={i} className="text-[10px] text-zinc-400 pl-3">
                 <span className={c.severity === "error" ? "text-red-400" : "text-amber-400"}>{c.severity === "error" ? "\u2716" : "\u25B3"}</span>{" "}
                 {c.description} &mdash; <span className="text-zinc-600">{c.detail}</span>
@@ -430,12 +387,13 @@ async function Dashboard() {
 
 function LoadingSkeleton() {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="h-6 bg-zinc-900 rounded animate-pulse" />
+    <div className="flex flex-col gap-3">
       <div className="h-16 bg-zinc-900/50 rounded animate-pulse" />
-      <div className="h-5 bg-zinc-800/50 rounded animate-pulse" />
-      <div className="h-4 bg-zinc-800 rounded animate-pulse" />
-      <div className="h-48 bg-zinc-900/50 rounded animate-pulse" />
+      <div className="h-8 bg-zinc-900/30 rounded animate-pulse" />
+      <div className="h-3.5 bg-zinc-800 rounded animate-pulse" />
+      <div className="h-24 bg-zinc-900/50 rounded animate-pulse" />
+      <div className="h-32 bg-zinc-900/30 rounded animate-pulse" />
+      <div className="h-6 bg-zinc-800/30 rounded animate-pulse mt-auto" />
     </div>
   );
 }
