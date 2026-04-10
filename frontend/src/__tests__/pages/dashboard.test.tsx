@@ -165,6 +165,27 @@ describe("DashboardPage", () => {
     });
   });
 
+  it("shows portfolio summary and upcoming events in empty state", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        actions: [],
+        upcoming_events: [
+          { date: "2026-04-15", event_type: "earnings", ticker: "AAPL", description: "AAPL 실적발표", importance: 2 },
+          { date: "2026-05-07", event_type: "fomc", ticker: null, description: "FOMC 금리결정", importance: 3 },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText(/보유 종목 현황/)).toBeInTheDocument();
+      expect(screen.getByText(/다음 이벤트/)).toBeInTheDocument();
+      expect(screen.getByText(/AAPL 실적발표/)).toBeInTheDocument();
+      expect(screen.getByText(/FOMC 금리결정/)).toBeInTheDocument();
+    });
+  });
+
   it("renders risk alerts with guidance", async () => {
     setupMocks();
     const Page = await import("@/app/page");
