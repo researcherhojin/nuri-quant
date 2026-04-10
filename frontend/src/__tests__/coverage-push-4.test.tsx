@@ -542,37 +542,27 @@ describe("Sidebar — collapsed state and branch coverage", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders REJECTED SIEGE badge and toggles to collapsed", async () => {
+  it("toggles sidebar collapse state", async () => {
     const { Sidebar } = await import("@/components/ui/sidebar");
     await act(async () => { render(<Sidebar />); });
     await act(async () => { await new Promise(r => setTimeout(r, 300)); });
-
-    // REJECTED badge should be shown (certified: false)
-    await waitFor(() => {
-      const text = document.body.textContent || "";
-      expect(text).toContain("REJECTED");
-    });
 
     // Find collapse toggle (ChevronLeft icon button)
     const buttons = document.querySelectorAll("button");
     let collapseBtn: HTMLElement | null = null;
     buttons.forEach((btn) => {
-      // The collapse button is the one without text content in the header area
       if (btn.querySelector("svg") && !btn.textContent?.includes("Mode")) {
         collapseBtn = btn;
       }
     });
 
     if (collapseBtn) {
-      // Toggle to collapsed state
       await act(async () => { fireEvent.click(collapseBtn!); });
       await act(async () => { await new Promise(r => setTimeout(r, 100)); });
 
-      // In collapsed state, "Nuri-Quant" should be replaced with "N"
       expect(screen.queryByText("Nuri-Quant")).toBeNull();
       expect(screen.getByText("N")).toBeInTheDocument();
 
-      // Toggle back to expanded
       await act(async () => { fireEvent.click(collapseBtn!); });
       await act(async () => { await new Promise(r => setTimeout(r, 100)); });
 
@@ -613,98 +603,14 @@ describe("Sidebar — collapsed state and branch coverage", () => {
     expect(dashLink).toBeInTheDocument();
   });
 
-  it("renders CERTIFIED SIEGE badge", async () => {
-    global.fetch = vi.fn().mockImplementation((url: string) => {
-      if (url.includes("/api/certify")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ certified: true, score: 95 }),
-        });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    }) as unknown as typeof fetch;
-
+  it("sidebar no longer renders SIEGE badge (moved to dashboard)", async () => {
     const { Sidebar } = await import("@/components/ui/sidebar");
     await act(async () => { render(<Sidebar />); });
     await act(async () => { await new Promise(r => setTimeout(r, 300)); });
 
-    await waitFor(() => {
-      const text = document.body.textContent || "";
-      expect(text).toContain("CERTIFIED");
-      expect(text).toContain("95%");
-    });
-  });
-
-  it("collapsed state shows SIEGE icon with title (lines 162-164)", async () => {
-    global.fetch = vi.fn().mockImplementation((url: string) => {
-      if (url.includes("/api/certify")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ certified: true, score: 88 }),
-        });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    }) as unknown as typeof fetch;
-
-    const { Sidebar } = await import("@/components/ui/sidebar");
-    await act(async () => { render(<Sidebar />); });
-    await act(async () => { await new Promise(r => setTimeout(r, 300)); });
-
-    // Wait for SIEGE status to load
-    await waitFor(() => {
-      expect(screen.queryByText("CERTIFIED")).toBeTruthy();
-    });
-
-    // Now collapse the sidebar
-    const buttons = document.querySelectorAll("button");
-    let collapseBtn: HTMLElement | null = null;
-    buttons.forEach((btn) => {
-      if (btn.querySelector("svg") && !btn.textContent?.includes("Mode")) {
-        collapseBtn = btn;
-      }
-    });
-
-    if (collapseBtn) {
-      await act(async () => { fireEvent.click(collapseBtn!); });
-      await act(async () => { await new Promise(r => setTimeout(r, 100)); });
-
-      // In collapsed state: CERTIFIED text hidden, but icon with title remains (lines 162-164)
-      expect(screen.queryByText("CERTIFIED")).toBeNull();
-      // Check for title attribute on the collapsed SIEGE element
-      const siegeElement = document.querySelector('[title*="SIEGE"]');
-      expect(siegeElement).toBeTruthy();
-    }
-  });
-
-  it("collapsed state shows REJECTED SIEGE icon with title", async () => {
-    // Use default fetch mock with certified: false, score: 60
-    const { Sidebar } = await import("@/components/ui/sidebar");
-    await act(async () => { render(<Sidebar />); });
-    await act(async () => { await new Promise(r => setTimeout(r, 300)); });
-
-    await waitFor(() => {
-      expect(screen.queryByText("REJECTED")).toBeTruthy();
-    });
-
-    // Collapse
-    const buttons = document.querySelectorAll("button");
-    let collapseBtn: HTMLElement | null = null;
-    buttons.forEach((btn) => {
-      if (btn.querySelector("svg") && !btn.textContent?.includes("Mode")) {
-        collapseBtn = btn;
-      }
-    });
-
-    if (collapseBtn) {
-      await act(async () => { fireEvent.click(collapseBtn!); });
-      await act(async () => { await new Promise(r => setTimeout(r, 100)); });
-
-      // REJECTED text hidden, but collapsed icon with title remains
-      expect(screen.queryByText("REJECTED")).toBeNull();
-      const siegeElement = document.querySelector('[title*="SIEGE"]');
-      expect(siegeElement).toBeTruthy();
-      expect(siegeElement?.getAttribute("title")).toContain("REJECTED");
-    }
+    const text = document.body.textContent || "";
+    expect(text).not.toContain("CERTIFIED");
+    expect(text).not.toContain("REJECTED");
   });
 
   it("handles certify API returning non-ok response (lines 79-81)", async () => {

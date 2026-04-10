@@ -3,12 +3,18 @@
  */
 interface StatusBadgeProps {
   status: string;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
 }
 
 const styles: Record<string, string> = {
   BUY:        "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
   SELL:       "bg-red-500/15 text-red-400 border-red-500/20",
+  "\uB9E4\uC218": "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+  "\uB9E4\uB3C4": "bg-red-500/15 text-red-400 border-red-500/20",
+  "\uACF5\uACA9": "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+  "\uAD00\uB9DD": "bg-zinc-500/15 text-muted-foreground border-zinc-500/20",
+  "\uC8FC\uC758": "bg-amber-500/15 text-amber-400 border-amber-500/20",
+  "\uBC29\uC5B4": "bg-red-500/15 text-red-400 border-red-500/20",
   HOLD:       "bg-zinc-500/15 text-muted-foreground border-zinc-500/20",
   WATCH:      "bg-blue-500/15 text-blue-400 border-blue-500/20",
   LONG:       "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
@@ -30,7 +36,7 @@ const styles: Record<string, string> = {
 
 export function StatusBadge({ status, size = "sm" }: StatusBadgeProps) {
   const style = styles[status] || "bg-muted/50 text-muted-foreground border-zinc-600/20";
-  const sizeClass = size === "md" ? "text-xs px-2 py-0.5" : "text-[10px] px-1.5 py-0.5";
+  const sizeClass = size === "lg" ? "text-sm px-3 py-1" : size === "md" ? "text-xs px-2 py-0.5" : "text-[10px] px-1.5 py-0.5";
 
   return (
     <span className={`inline-flex items-center rounded-md border font-medium ${style} ${sizeClass}`}>
