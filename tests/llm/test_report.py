@@ -276,6 +276,7 @@ class TestLLMReport_R3:
 # ═══════════════════════════════════════════════════════
 
 
+@pytest.mark.slow
 class TestLLMReportDeep:
     def test_format_prompt_structure(self, rich_db):
         """프롬프트에 필수 섹션 포함."""
@@ -306,6 +307,7 @@ class TestLLMReportDeep:
 # ═══════════════════════════════════════════════════════
 
 
+@pytest.mark.slow
 class TestLLMDeep:
     def test_report_context_all_sections(self, rich_db):
         from nuri.llm.report import gather_context
@@ -379,6 +381,7 @@ class TestLLMValidation:
 # ═══════════════════════════════════════════════════════
 
 
+@pytest.mark.slow
 class TestLLMSections:
     def test_context_sections_content(self, rich_db):
         """gather_context returns valid context sections (may be empty if no SPY data)."""
@@ -447,6 +450,7 @@ class TestLLMReportFlow:
 # ═══════════════════════════════════════════════════════
 
 
+@pytest.mark.slow
 class TestLLMEnriched:
     def test_context_with_recommendations(self, full_db):
         from nuri.llm.report import gather_context
@@ -1141,6 +1145,7 @@ class TestOllamaResponseProcessing:
             assert result.startswith("# 1.")
 
 
+@pytest.mark.slow
 class TestGatherContext:
     """gather_context() — tests covering the 11 try/except sections."""
 
@@ -1623,12 +1628,9 @@ class TestLLMReport_FinalPush:
         import nuri.llm.report as report_mod
         assert hasattr(report_mod, "generate_report") or hasattr(report_mod, "generate_llm_report")
 
+    @pytest.mark.slow
     def test_context_builder(self, db_path):
         """보고서 컨텍스트 빌드 함수 테스트."""
-        try:
-            from nuri.llm.report import build_context
-            ctx = build_context(db_path=db_path)
-            assert isinstance(ctx, (str, dict))
-        except (ImportError, AttributeError):
-            # build_context가 없으면 스킵
-            pass
+        from nuri.llm.report import ReportContext, gather_context
+        ctx = gather_context(db_path=db_path)
+        assert isinstance(ctx, ReportContext)

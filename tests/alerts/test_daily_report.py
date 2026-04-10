@@ -4,11 +4,13 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from nuri.core.db import upsert_macro
 
 
 class TestGenerateReport:
+    @pytest.mark.slow
     def test_empty_portfolio(self, db_path, monkeypatch):
         """빈 포트폴리오에서도 리포트 생성."""
         monkeypatch.setattr("nuri.alerts.daily_report.analyze_portfolio", lambda **kw: pd.DataFrame())
@@ -77,6 +79,7 @@ class TestPrintReport:
 class TestDailyReport:
     """Tests for nuri/alerts/daily_report.py."""
 
+    @pytest.mark.slow
     def test_generate_report(self, monkeypatch, db_with_portfolio):
         from nuri.alerts.daily_report import generate_report
 
