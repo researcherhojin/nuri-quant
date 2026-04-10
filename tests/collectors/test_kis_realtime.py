@@ -259,3 +259,117 @@ class TestKISRealtimeCollector:
             result = collector.collect()
             assert isinstance(result, pd.DataFrame)
             assert result.empty
+
+
+# ═══════════════════════════════════════════════════════
+# _resolve_kis_paths — 경로 결정 로직
+# ═══════════════════════════════════════════════════════
+
+
+class TestResolveKISPaths:
+    """모듈 로드 시 KIS_YAML_PATH / TOKEN_CACHE_DIR을 결정하는 함수."""
+
+    def test_new_location_exists_takes_precedence(self, tmp_path):
+        """config/kis/kis_devlp.yaml가 존재하면 그 경로 사용."""
+        from nuri.collectors.kis_realtime import _resolve_kis_paths
+
+        new_dir = tmp_path / "project" / "config" / "kis"
+        legacy_dir = tmp_path / "home" / "KIS"
+        new_dir.mkdir(parents=True)
+        (new_dir / "kis_devlp.yaml").write_text("test: data")
+
+        yaml_path, cache_dir = _resolve_kis_paths(new_dir, legacy_dir)
+        assert yaml_path == new_dir / "kis_devlp.yaml"
+        assert cache_dir == new_dir / "cache"
+
+    def test_fallback_to_legacy_when_new_missing(self, tmp_path):
+        """새 위치가 없으면 legacy 경로 반환 (파일 존재 여부와 무관)."""
+        from nuri.collectors.kis_realtime import _resolve_kis_paths
+
+        new_dir = tmp_path / "project" / "config" / "kis"  # 존재 안 함
+        legacy_dir = tmp_path / "home" / "KIS"
+
+        yaml_path, cache_dir = _resolve_kis_paths(new_dir, legacy_dir)
+        assert yaml_path == legacy_dir / "config" / "kis_devlp.yaml"
+        assert cache_dir == legacy_dir / "cache"
+
+    def test_returns_tuple_of_two_paths(self, tmp_path):
+        """반환 형식: (yaml_path, cache_dir)."""
+        from pathlib import Path
+
+        from nuri.collectors.kis_realtime import _resolve_kis_paths
+
+        result = _resolve_kis_paths(tmp_path / "new", tmp_path / "legacy")
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert all(isinstance(p, Path) for p in result)
+
+
+class TestLoadCredentialsLogPath:
+    """load_credentials가 로깅 시 경로 format을 올바르게 선택하는지."""
+
+    @pytest.fixture
+    def env_off(self, monkeypatch):
+        for k in ["KIS_PROD_APP_KEY", "KIS_PROD_APP_SECRET",
+                  "KIS_PAPER_APP_KEY", "KIS_PAPER_APP_SECRET",
+                  "KIS_PROD_ACCOUNT", "KIS_PAPER_ACCOUNT", "KIS_HTS_ID"]:
+            monkeypatch.delenv(k, raising=False)
+
+    def test_log_uses_relative_path_when_inside_project(self, env_off, tmp_path, caplog):
+        """KIS_YAML_PATH가 프로젝트 내부면 상대 경로로 로깅."""
+        import logging
+
+        from nuri.collectors import kis_realtime
+
+        # 가짜 프로젝트 구조
+        project_root = tmp_path / "fake_project"
+        kis_dir = project_root / "config" / "kis"
+        kis_dir.mkdir(parents=True)
+        yaml_path = kis_dir / "kis_devlp.yaml"
+        yaml_path.write_text(
+            "my_app: test_key_01234567\n"
+            "my_sec: test_secret_01234567\n"
+            "my_acct_stock: '12345678'\n"
+            "my_htsid: test_hts\n"
+        )
+
+        with patch.object(kis_realtime, "KIS_YAML_PATH", yaml_path), \
+             patch.object(kis_realtime, "_PROJECT_ROOT", project_root), \
+             caplog.at_level(logging.INFO, logger="nuri.collectors.kis_realtime"):
+            creds = load_credentials(mode="prod")
+
+        assert creds is not None
+        assert creds.is_valid()
+        # 상대 경로 사용 (절대 경로 아님)
+        assert "config/kis/kis_devlp.yaml" in caplog.text
+        # 전체 tmp_path 절대 경로는 로그에 없어야 함
+        assert str(yaml_path) not in caplog.text
+
+    def test_log_uses_legacy_label_when_outside_project(self, env_off, tmp_path, caplog):
+        """KIS_YAML_PATH가 프로젝트 외부면 generic label 사용 (사용자명 보호)."""
+        import logging
+
+        from nuri.collectors import kis_realtime
+
+        # 프로젝트 외부에 fake legacy 파일
+        outside_path = tmp_path / "home" / "KIS" / "config" / "kis_devlp.yaml"
+        outside_path.parent.mkdir(parents=True)
+        outside_path.write_text(
+            "my_app: test_key_01234567\n"
+            "my_sec: test_secret_01234567\n"
+            "my_acct_stock: '12345678'\n"
+            "my_htsid: test_hts\n"
+        )
+
+        # _PROJECT_ROOT는 outside_path와 관련 없는 경로로 patch
+        fake_project = tmp_path / "unrelated_project"
+        fake_project.mkdir()
+
+        with patch.object(kis_realtime, "KIS_YAML_PATH", outside_path), \
+             patch.object(kis_realtime, "_PROJECT_ROOT", fake_project), \
+             caplog.at_level(logging.INFO, logger="nuri.collectors.kis_realtime"):
+            creds = load_credentials(mode="prod")
+
+        assert creds is not None
+        # generic label 사용 (사용자 절대 경로 노출 방지)
+        assert "~/KIS/config/kis_devlp.yaml" in caplog.text

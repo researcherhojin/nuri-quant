@@ -76,10 +76,11 @@ NC = "\033[0m"
 #
 # 한국투자증권 (KIS) is intentionally OMITTED — it appears legitimately in
 # the codebase as an Open API integration target (`nuri/collectors/kis_*`,
-# `docs/KIS_INTEGRATION.md`). Personal account credentials live outside
-# the repo at `~/KIS/config/kis_devlp.yaml` (gitignored by location).
-# If a user account at KIS leaks, it would be via the credential file
-# pattern, not the broker name.
+# `docs/KIS_INTEGRATION.md`). Personal account credentials live at
+# `config/kis/kis_devlp.yaml` (gitignored by `config/kis/*` directory pattern
+# AND by `**/kis_devlp.yaml` filename pattern). Legacy `~/KIS/` is auto-detected
+# as fallback. If a KIS credential leaks, it would be via the file pattern,
+# not the broker name.
 BROKER_NAMES_KO: tuple[str, ...] = (
     "카카오페이",
     "미래에셋",
