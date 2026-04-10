@@ -4,48 +4,107 @@
 yfinance batch download로 수백 종목을 빠르게 스캔.
 거래량 급증, 모멘텀, 기술적 브레이크아웃 3중 필터.
 
+Universe는 config/universe.yaml에서 로드 (외부화).
+폴백: hardcoded list.
+
 사용법:
-    python -m nuri.trading.swing.scanner
-    python -m nuri.trading.swing.scanner --market kr
+    python -m nuri.trading.swing.scanner                     # us core (~84종목, ~5초)
+    python -m nuri.trading.swing.scanner --market kr         # kr kospi200 (~80종목)
+    python -m nuri.trading.swing.scanner --extended          # us core + sp500 ext (~340종목)
 """
 import argparse
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════
-# 스캔 유니버스
+# 스캔 유니버스 — config/universe.yaml에서 로드
 # ═══════════════════════════════════════════════════════
 
-# 미국: 유동성 높은 대형주 + 고성장 중소형주 100개
-US_UNIVERSE = [
-    # Mega cap
-    "AAPL", "MSFT", "GOOG", "AMZN", "NVDA", "META", "TSLA", "BRK-B",
-    "UNH", "JPM", "V", "MA", "HD", "PG", "JNJ", "XOM", "CVX", "ABBV",
-    "KO", "PEP", "MRK", "LLY", "AVGO", "COST", "WMT", "ADBE", "CRM",
-    "NFLX", "AMD", "QCOM", "INTC", "BA", "CAT", "GS", "MS", "AXP",
-    "DIS", "CMCSA", "VZ", "T", "NKE", "SBUX", "MCD", "LOW",
-    # Growth / momentum
-    "PLTR", "RKLB", "IONQ", "OKLO", "SOFI", "HOOD", "COIN", "UBER",
-    "ABNB", "RIVN", "NIO", "SNAP", "ROKU", "DKNG", "MARA",
-    "ARM", "SMCI", "MSTR", "APP", "DUOL", "HIMS", "RDDT",
-    "CRWD", "PANW", "ZS", "NET", "DDOG", "MDB", "SNOW",
-    # ETF
+# Fallback hardcoded lists (config 파일 누락/오류 시)
+_FALLBACK_US_CORE = [
+    "AAPL", "MSFT", "GOOG", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+    "AMD", "AVGO", "INTC", "QCOM", "ORCL", "CRM", "ADBE", "NFLX",
+    "JPM", "BAC", "GS", "V", "MA", "BRK-B",
+    "JNJ", "PFE", "LLY", "UNH", "MRK", "ABBV",
+    "XOM", "CVX", "KO", "PEP", "WMT", "PG", "HD", "COST",
+    "PLTR", "RKLB", "IONQ", "OKLO", "SOFI", "ARM", "SMCI", "MSTR",
+    "NBIS", "PL", "TEM",
     "SPY", "QQQ", "IWM", "ARKK", "XLK", "XLF", "XLE", "XLV",
-    # 사용자 보유종목 (이미 prices에 있음)
-    "TSLL", "BULL", "FIG", "VOO", "TEM", "NBIS", "PL", "LLY",
 ]
 
-# 한국: KOSPI/KOSDAQ 시가총액 상위
-KR_UNIVERSE = [
+_FALLBACK_KR_KOSPI200 = [
     "005930.KS", "000660.KS", "373220.KS", "207940.KS", "005380.KS",
     "006400.KS", "035420.KS", "000270.KS", "068270.KS", "028260.KS",
     "105560.KS", "055550.KS", "066570.KS", "003670.KS", "034730.KS",
     "138930.KS", "012330.KS", "096770.KS", "051910.KS", "003550.KS",
 ]
+
+
+def _load_universe(group_keys: list[str]) -> list[str]:
+    """config/universe.yaml에서 종목 목록 로드.
+
+    Args:
+        group_keys: 합칠 그룹 이름 리스트 (예: ["us_core", "us_sp500_extended"])
+
+    Returns:
+        중복 제거된 종목 리스트
+    """
+    import yaml
+
+    config_path = Path(__file__).parent.parent.parent.parent / "config" / "universe.yaml"
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        logger.warning(f"{config_path} 없음 — fallback 사용")
+        return []
+    except Exception as e:
+        logger.error(f"universe.yaml 로드 실패: {e} — fallback 사용")
+        return []
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for key in group_keys:
+        group = config.get(key)
+        if not group:
+            logger.warning(f"universe.yaml에 {key} 그룹 없음")
+            continue
+        for ticker in group.get("tickers", []):
+            # YAML 1.1이 ON/OFF/YES/NO를 bool로 변환하는 것을 방어
+            if not isinstance(ticker, str):
+                logger.warning(f"non-string ticker 무시: {ticker!r} ({key})")
+                continue
+            if ticker and ticker not in seen:
+                seen.add(ticker)
+                result.append(ticker)
+    return result
+
+
+def get_us_universe(extended: bool = False) -> list[str]:
+    """미국 universe 반환. extended=True면 S&P 500 확장."""
+    keys = ["us_core", "us_sp500_extended"] if extended else ["us_core"]
+    universe = _load_universe(keys)
+    if not universe:
+        return list(_FALLBACK_US_CORE)
+    return universe
+
+
+def get_kr_universe() -> list[str]:
+    """한국 universe 반환 (KOSPI 200)."""
+    universe = _load_universe(["kr_kospi200"])
+    if not universe:
+        return list(_FALLBACK_KR_KOSPI200)
+    return universe
+
+
+# Backward compat (deprecated — use get_us_universe / get_kr_universe)
+US_UNIVERSE = _FALLBACK_US_CORE
+KR_UNIVERSE = _FALLBACK_KR_KOSPI200
 
 
 @dataclass
@@ -161,16 +220,18 @@ def _analyze_ticker(ticker: str, data: pd.DataFrame) -> ScanResult | None:
         return None
 
 
-def scan_market(market: str = "us", top_n: int = 20) -> list[ScanResult]:
-    """시장 스캔 → 상위 N개 후보 반환."""
-    raw_universe = US_UNIVERSE if market == "us" else KR_UNIVERSE
-    # 중복 제거 (순서 유지)
-    seen = set()
-    universe = []
-    for t in raw_universe:
-        if t not in seen:
-            seen.add(t)
-            universe.append(t)
+def scan_market(market: str = "us", top_n: int = 20, extended: bool = False) -> list[ScanResult]:
+    """시장 스캔 → 상위 N개 후보 반환.
+
+    Args:
+        market: "us" 또는 "kr"
+        top_n: 상위 N개 결과 반환
+        extended: True면 us_sp500_extended 포함 (us만 적용)
+    """
+    if market == "us":
+        universe = get_us_universe(extended=extended)
+    else:
+        universe = get_kr_universe()
     logger.info(f"{market.upper()} 시장 스캔: {len(universe)}종목")
 
     data = _fetch_prices(universe)
@@ -213,7 +274,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nuri-Quant Market Scanner")
     parser.add_argument("--market", choices=["us", "kr"], default="us")
     parser.add_argument("--top", type=int, default=20)
+    parser.add_argument("--extended", action="store_true",
+                        help="us_sp500_extended 포함 (us만 적용)")
     args = parser.parse_args()
 
-    results = scan_market(market=args.market, top_n=args.top)
+    results = scan_market(market=args.market, top_n=args.top, extended=args.extended)
     print_scan(results)
