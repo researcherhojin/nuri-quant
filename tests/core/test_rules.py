@@ -62,6 +62,7 @@ class TestAccountStrategies:
     def test_account_strategies_loaded(self):
         from nuri.core.rules import ACCOUNT_STRATEGIES
         assert "core" in ACCOUNT_STRATEGIES
+        assert "active" in ACCOUNT_STRATEGIES
         assert "swing" in ACCOUNT_STRATEGIES
         assert "long_term" in ACCOUNT_STRATEGIES
         assert "pension" in ACCOUNT_STRATEGIES
@@ -71,6 +72,21 @@ class TestAccountStrategies:
         core = ACCOUNT_STRATEGIES["core"]
         assert core["stop_loss"] == -7
         assert core["max_single_position"] == 0.15
+
+    def test_active_strategy_between_core_and_swing(self):
+        """active 전략은 core와 swing 사이의 중간값."""
+        from nuri.core.rules import ACCOUNT_STRATEGIES
+        core = ACCOUNT_STRATEGIES["core"]
+        active = ACCOUNT_STRATEGIES["active"]
+        swing = ACCOUNT_STRATEGIES["swing"]
+        # 손절은 core(-7)보다 넓고 swing(-15)보다 좁음
+        assert core["stop_loss"] > active["stop_loss"] > swing["stop_loss"]
+        assert active["stop_loss"] == -10
+        # 비중은 core(0.15)보다 크고 swing(0.30)보다 작음
+        assert core["max_single_position"] < active["max_single_position"] < swing["max_single_position"]
+        assert active["max_single_position"] == 0.25
+        # trailing_stop_arm 신규 필드
+        assert active["trailing_stop_arm"] == 15
 
     def test_swing_strategy_more_permissive(self):
         from nuri.core.rules import ACCOUNT_STRATEGIES
