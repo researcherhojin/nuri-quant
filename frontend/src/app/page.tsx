@@ -14,20 +14,19 @@ interface DashboardData {
   regime: { regime: string; trend: string; volatility?: string; confidence: number; vix?: number; fear_greed?: number };
   macro: { score: number; interpretation: string };
   allocation: { long: number; short: number; cash: number };
-  actions: Array<{ action: string; ticker: string; name?: string | null; confidence: number; agreement: number; reason: string }>;
+  actions: Array<{ action: string; ticker: string; name?: string | null; confidence: number; agreement: number; reason: string; account?: string }>;
   alerts: Array<{ level: string; message: string }>;
   gate_score: number;
   n_positions: number;
   exchange_rate: number | null;
+  account_values?: Array<{ account: string; value: number }>;
 }
 
 interface FreshnessData {
   items?: FreshnessItem[];
   details?: FreshnessItem[];
   overall?: "PASS" | "WARN" | "FAIL";
-  pass?: number;
-  warn?: number;
-  fail?: number;
+  pass?: number; warn?: number; fail?: number;
 }
 
 interface PipelineStatusData {
@@ -37,90 +36,64 @@ interface PipelineStatusData {
 const verdictLabels: Record<string, string> = {
   aggressive: "공격", neutral: "관망", cautious: "주의", defensive: "방어",
 };
-
-const levelStyles: Record<string, { bg: string; border: string; text: string }> = {
-  aggressive: { bg: "bg-emerald-950/50", border: "border-emerald-700", text: "text-emerald-400" },
-  neutral:    { bg: "bg-card",           border: "border-input",       text: "text-muted-foreground" },
-  cautious:   { bg: "bg-amber-950/50",   border: "border-amber-700",   text: "text-amber-400" },
-  defensive:  { bg: "bg-red-950/50",     border: "border-red-700",     text: "text-red-400" },
+const levelStyles: Record<string, { text: string }> = {
+  aggressive: { text: "text-emerald-400" },
+  neutral:    { text: "text-zinc-400" },
+  cautious:   { text: "text-amber-400" },
+  defensive:  { text: "text-red-400" },
 };
-
 const pipelineStatusColors: Record<string, string> = {
   idle: "bg-zinc-500", running: "bg-blue-500 animate-pulse", done: "bg-emerald-500", error: "bg-red-500",
 };
 
-/* ── Gauge bar component ── */
-function Gauge({ value, max, color, label, sub }: { value: number; max: number; color: string; label: string; sub: string }) {
-  const pct = Math.min(100, Math.max(0, (value / max) * 100));
-  return (
-    <div>
-      <div className="flex items-baseline justify-between mb-1">
-        <span className="text-[10px] text-muted-foreground">{label}</span>
-        <span className={`text-sm font-semibold ${color}`}>{value}</span>
-      </div>
-      <div className="h-1.5 bg-muted/50 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${color.replace("text-", "bg-")}`} style={{ width: `${pct}%` }} />
-      </div>
-      <p className="text-[10px] text-muted-foreground/70 mt-0.5">{sub}</p>
-    </div>
-  );
+/* ── 헬퍼 ── */
+function trendKo(t: string) { return t === "bull" ? "상승" : t === "bear" ? "하락" : "횡보"; }
+function vixZone(v: number | null): { label: string; color: string } {
+  if (v == null) return { label: "—", color: "text-zinc-500" };
+  if (v < 12) return { label: "안정", color: "text-blue-400" };
+  if (v < 17) return { label: "낮음", color: "text-emerald-400" };
+  if (v < 23) return { label: "보통", color: "text-zinc-300" };
+  if (v < 33) return { label: "주의", color: "text-orange-400" };
+  return { label: "위험", color: "text-red-400" };
 }
-
-/* ── Confidence bar (inline) ── */
-function ConfBar({ value }: { value: number }) {
-  const pct = Math.min(100, value);
-  const color = pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-red-500";
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className="h-1 w-12 bg-muted/50 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs font-semibold tabular-nums">{value}</span>
-    </div>
-  );
+function fgLabel(fg: number | null): string {
+  if (fg == null) return "—";
+  if (fg < 25) return "극도 공포"; if (fg < 45) return "공포";
+  if (fg <= 55) return "중립"; if (fg <= 75) return "탐욕";
+  return "극도 탐욕";
 }
-
-/* ── Alert message translation ── */
+function fgColor(fg: number | null): string {
+  if (fg == null) return "bg-zinc-700 text-zinc-400";
+  if (fg < 25) return "bg-red-500/20 text-red-400";
+  if (fg < 45) return "bg-orange-500/20 text-orange-400";
+  if (fg <= 55) return "bg-yellow-500/20 text-yellow-400";
+  if (fg <= 75) return "bg-lime-500/20 text-lime-400";
+  return "bg-emerald-500/20 text-emerald-400";
+}
+function macroLevel(s: number): { label: string; color: string } {
+  if (s >= 70) return { label: "양호", color: "text-emerald-400" };
+  if (s >= 50) return { label: "보통", color: "text-zinc-300" };
+  if (s >= 30) return { label: "부진", color: "text-orange-400" };
+  return { label: "취약", color: "text-red-400" };
+}
 function translateAlert(msg: string): string {
   return msg
     .replace("시그널 성과 급락:", "매매 신호 성과 하락:")
     .replace(/BUY\/SELL 충돌 (\d+)건:/, "매수·매도 신호 충돌 $1건:")
-    .replace("bb_bounce", "볼린저밴드 반등")
-    .replace("macd_bullish_turn", "MACD 상승전환")
-    .replace("macd_bearish_turn", "MACD 하락전환")
-    .replace("macd_golden", "MACD 골든크로스")
-    .replace("macd_dead", "MACD 데드크로스")
-    .replace("rsi_oversold", "RSI 과매도")
-    .replace("rsi_overbought", "RSI 과매수")
-    .replace("sma_golden", "이동평균 골든크로스")
-    .replace("sma_dead", "이동평균 데드크로스")
-    .replace("volume_spike", "거래량 급증")
-    .replace("gap_up", "갭 상승")
-    .replace("gap_down", "갭 하락")
-    .replace("bb_squeeze_breakout", "볼린저밴드 돌파")
-    .replace("near_52w_low_bounce", "52주 저점 반등")
+    .replace("bb_bounce", "볼린저밴드 반등").replace("macd_bullish_turn", "MACD 상승전환")
+    .replace("macd_bearish_turn", "MACD 하락전환").replace("macd_golden", "MACD 골든크로스")
+    .replace("macd_dead", "MACD 데드크로스").replace("rsi_oversold", "RSI 과매도")
+    .replace("rsi_overbought", "RSI 과매수").replace("sma_golden", "이동평균 골든크로스")
+    .replace("sma_dead", "이동평균 데드크로스").replace("volume_spike", "거래량 급증")
+    .replace("gap_up", "갭 상승").replace("gap_down", "갭 하락")
+    .replace("bb_squeeze_breakout", "볼린저밴드 돌파").replace("near_52w_low_bounce", "52주 저점 반등")
     .replace("volume_profile_resistance", "거래량 저항선");
 }
+function displayName(h: { name?: string | null; ticker?: string }) {
+  return h?.name || (h?.ticker?.endsWith(".KS") ? h.ticker.replace(".KS", "") : h?.ticker) || "";
+}
 
-/* ── Market helpers ── */
-function trendKo(t: string): string {
-  return t === "bull" ? "상승" : t === "bear" ? "하락" : "횡보";
-}
-function vixDesc(v: number | null): string {
-  if (v == null) return "데이터 없음";
-  if (v < 15) return "안정 — 매수에 유리한 구간";
-  if (v > 30) return "극도 불안 — 신규 매수 자제";
-  if (v > 25) return "불안정 — 주의 필요";
-  return "보통 — 정상 범위";
-}
-function fgDesc(fg: number | null): string {
-  if (fg == null) return "데이터 없음";
-  if (fg < 25) return "극도 공포 — 역발상 매수 구간";
-  if (fg < 45) return "공포 — 매수 기회 가능";
-  if (fg <= 55) return "중립";
-  if (fg <= 75) return "탐욕 — 과열 주의";
-  return "극도 탐욕 — 매수 자제";
-}
+/* ══════════════════════════════════════════════════════ */
 
 async function Dashboard() {
   const [d, freshness, pipelineStatus, portfolio, siege, advisor] = await Promise.all([
@@ -136,19 +109,15 @@ async function Dashboard() {
   ]);
 
   const holdingCount = portfolio?.count ?? portfolio?.holdings?.length ?? 0;
-  if (holdingCount === 0) {
-    redirect("/portfolio?onboarding=true");
-  }
+  if (holdingCount === 0) redirect("/portfolio?onboarding=true");
 
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
   const verdictLabel = verdictLabels[d.verdict_level] || "관망";
-
   const KRW_RATE = d.exchange_rate || 1400;
   const totalValue = portfolio?.holdings?.reduce((sum: number, h: any) => {
     const price = h.latest_price || 0;
     const qty = h.quantity || 0;
-    const isKr = h.ticker?.endsWith(".KS");
-    return sum + (isKr ? price * qty / KRW_RATE : price * qty);
+    return sum + (h.ticker?.endsWith(".KS") ? price * qty / KRW_RATE : price * qty);
   }, 0) || 0;
 
   const vix = d.regime.vix ?? null;
@@ -160,240 +129,281 @@ async function Dashboard() {
   const nBuys = d.actions.filter(a => a.action === "BUY").length;
   const nSells = d.actions.filter(a => a.action === "SELL").length;
 
-  // 수익/손실 종목 요약
   const holdings = portfolio?.holdings || [];
   const winners = holdings.filter((h: any) => h.latest_price && h.avg_price && h.latest_price > h.avg_price);
   const losers = holdings.filter((h: any) => h.latest_price && h.avg_price && h.latest_price < h.avg_price);
   const topWinner = winners.sort((a: any, b: any) => ((b.latest_price / b.avg_price) - (a.latest_price / a.avg_price)))[0];
   const topLoser = losers.sort((a: any, b: any) => ((a.latest_price / a.avg_price) - (b.latest_price / b.avg_price)))[0];
-  // 종목 표시명: name 필드 → ticker에서 .KS 제거 → ticker 그대로
-  const displayName = (h: any) => h?.name || (h?.ticker?.endsWith(".KS") ? h.ticker.replace(".KS", "") : h?.ticker) || "";
+  const vixInfo = vixZone(vix);
+  const macroInfo = macroLevel(d.macro.score);
+  const accountValues = d.account_values || [];
+
+  // 계좌별 액션 그룹핑
+  const mainActions = d.actions.filter(a => a.account === "Main" || a.account === "Sub");
+  const pensionActions = d.actions.filter(a => a.account === "Pension");
+  const otherActions = d.actions.filter(a => !a.account || (a.account !== "Main" && a.account !== "Sub" && a.account !== "Pension"));
+  const now = new Date();
+  const isMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() <= 3;
 
   return (
-    <div className="space-y-3">
-      {/* ── 데이터 상태 ── */}
-      <div className="flex items-center gap-4 flex-wrap">
+    <div className="flex flex-col gap-4 min-h-0">
+      {/* ── 파이프라인 + 시장 온도 (1줄 통합) ── */}
+      <div className="flex items-center gap-3 flex-wrap">
         {((freshness?.items?.length ?? 0) > 0 || (freshness?.details?.length ?? 0) > 0) && (
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground/70 shrink-0">데이터</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-zinc-600 shrink-0">데이터</span>
             <FreshnessBar items={freshness?.items ?? freshness?.details ?? []} />
           </div>
         )}
         {pipelineStatus.steps.length > 0 && (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {pipelineStatus.steps.map((s, i) => (
-              <div key={s.step} className="flex items-center gap-1">
-                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/30" title={`${s.label}: ${s.record_count.toLocaleString()}건`}>
+              <div key={s.step} className="flex items-center gap-0.5">
+                <div className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-zinc-800/50" title={`${s.label}: ${s.record_count.toLocaleString()}건`}>
                   <span className={`inline-flex h-1.5 w-1.5 rounded-full ${pipelineStatusColors[s.status] || "bg-zinc-500"}`} />
-                  <span className="text-[10px] text-muted-foreground">{s.label}</span>
+                  <span className="text-[9px] text-zinc-500">{s.label}</span>
                 </div>
-                {i < pipelineStatus.steps.length - 1 && <span className="text-muted-foreground/30 text-[10px]">&rarr;</span>}
+                {i < pipelineStatus.steps.length - 1 && <span className="text-zinc-700 text-[9px]">&rarr;</span>}
               </div>
             ))}
-            <Link href="/pipeline" className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground ml-1">&rarr;</Link>
+            <Link href="/pipeline" className="text-[9px] text-zinc-600 hover:text-zinc-400 ml-0.5">&rarr;</Link>
           </div>
         )}
       </div>
 
-      {/* ── 오늘의 판단 + 시장 현황 ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {/* 오늘의 판단 — 3/5 width */}
-        <Card className={`${style.bg} ${style.border} border`}>
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-foreground/80">오늘의 판단</span>
+      {/* ═══ 상단: 히어로 + 시장 온도 (2열) ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-start">
+        {/* 좌: 총 평가액 + 판단 */}
+        <div>
+          <p className="text-[10px] text-zinc-500 mb-0.5">총 평가액</p>
+          <div className="flex items-baseline gap-3">
+            <span className="text-4xl font-semibold tabular-nums tracking-tight text-zinc-100">
+              ${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
+            <StatusBadge status={verdictLabel} size="lg" />
+          </div>
+          {/* 계좌별 평가액 */}
+          {accountValues.length > 0 && (
+            <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500">
+              {accountValues.map(av => (
+                <span key={av.account}>{av.account} ${av.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              ))}
             </div>
-            <div className="flex items-center gap-3 mb-2">
-              <StatusBadge status={verdictLabel} size="lg" />
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span>총 평가액 <span className="font-semibold text-foreground">${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></span>
-                {siegeTotal > 0 && (
-                  <span>품질검증 <span className={`font-semibold ${siege?.certified ? "text-emerald-400" : "text-red-400"}`}>{siege?.certified ? "통과" : "미통과"}</span> <span className="text-muted-foreground/70">{siege?.passed || 0}/{siegeTotal}</span></span>
-                )}
-                {(advisor?.total_violations || 0) > 0 && (
-                  <span>규칙 위반 <span className="font-semibold text-red-400">{advisor.total_violations}건</span></span>
-                )}
-              </div>
-            </div>
-
-            {/* 판단 이유 + 요약 */}
-            <p className={`text-sm ${style.text} mb-1`}>{d.verdict}</p>
-            {/* 포트폴리오 수익/손실 요약 */}
-            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] mb-3">
-              {winners.length > 0 && (
-                <span className="text-emerald-400/80">
-                  수익 {winners.length}종목
-                  {topWinner && ` (최고 ${displayName(topWinner)} +${((topWinner.latest_price / topWinner.avg_price - 1) * 100).toFixed(0)}%)`}
-                </span>
-              )}
-              {losers.length > 0 && (
-                <span className="text-red-400/80">
-                  손실 {losers.length}종목
-                  {topLoser && ` (최대 ${displayName(topLoser)} ${((topLoser.latest_price / topLoser.avg_price - 1) * 100).toFixed(0)}%)`}
-                </span>
-              )}
-              {nBuys > 0 && <span className="text-muted-foreground/60">매수 신호 {nBuys}건</span>}
-              {nSells > 0 && <span className="text-muted-foreground/60">매도 신호 {nSells}건</span>}
-              {alertCount > 0 && <span className="text-amber-400/60">위험 {alertCount}건</span>}
-            </div>
-
-            {/* 비중 바 */}
-            <div className="flex h-4 rounded overflow-hidden text-[10px] font-medium">
-              {d.allocation.long > 0 && (
-                <div className="bg-emerald-600 flex items-center justify-center" style={{ width: `${d.allocation.long}%` }}>
-                  {d.allocation.long >= 15 && `투자 ${d.allocation.long}%`}
-                </div>
-              )}
-              {d.allocation.short > 0 && (
-                <div className="bg-red-600 flex items-center justify-center" style={{ width: `${d.allocation.short}%` }}>
-                  {d.allocation.short >= 10 && `숏 ${d.allocation.short}%`}
-                </div>
-              )}
-              {d.allocation.cash > 0 && (
-                <div className="bg-muted flex items-center justify-center text-muted-foreground" style={{ width: `${d.allocation.cash}%` }}>
-                  현금 {d.allocation.cash}%
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 시장 현황 — 2/5 width, gauge bars */}
-        <Card className="bg-card border-border">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-foreground/80">시장 현황</span>
-              <span className={`text-xs font-semibold ${trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-muted-foreground"}`}>
-                {trendKo(trend)} {trend === "bull" ? "\u2197" : trend === "bear" ? "\u2198" : "\u2194"}
+          )}
+          <p className={`text-xs ${style.text} mt-1.5 line-clamp-1`}>{d.verdict}</p>
+          <div className="flex items-center gap-3 mt-1 text-[10px]">
+            {winners.length > 0 && (
+              <span className="text-emerald-400/80">
+                수익 {winners.length}종목
+                {topWinner && <span className="text-zinc-500"> &middot; {displayName(topWinner)} +{((topWinner.latest_price / topWinner.avg_price - 1) * 100).toFixed(0)}%</span>}
               </span>
-            </div>
-            <div className="space-y-3">
-              <Gauge
-                label="변동성 지수 (VIX)"
-                value={vix != null ? Math.round(vix * 10) / 10 : 0}
-                max={50}
-                color={vix == null ? "text-zinc-400" : vix < 15 ? "text-emerald-400" : vix > 25 ? "text-red-400" : "text-zinc-200"}
-                sub={vixDesc(vix)}
-              />
-              <Gauge
-                label="공포·탐욕 지수"
-                value={fg ?? 0}
-                max={100}
-                color={fg == null ? "text-zinc-400" : fg < 25 ? "text-red-400" : fg > 75 ? "text-red-400" : fg >= 40 && fg <= 60 ? "text-emerald-400" : "text-zinc-200"}
-                sub={fgDesc(fg)}
-              />
-              <div className="flex items-baseline justify-between">
-                <span className="text-[10px] text-muted-foreground">경제 지표</span>
-                <span className={`text-sm font-semibold ${d.macro.score >= 60 ? "text-emerald-400" : d.macro.score < 40 ? "text-red-400" : "text-zinc-200"}`}>
-                  {d.macro.score}<span className="text-muted-foreground/50 font-normal text-xs">/100</span>
+            )}
+            {losers.length > 0 && (
+              <span className="text-red-400/80">
+                손실 {losers.length}종목
+                {topLoser && <span className="text-zinc-500"> &middot; {displayName(topLoser)} {((topLoser.latest_price / topLoser.avg_price - 1) * 100).toFixed(0)}%</span>}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 우: 시장 온도 (컴팩트 카드) */}
+        <Card className="bg-zinc-900/50 border-zinc-800 min-w-[280px]">
+          <CardContent className="px-3 py-2">
+            <h2 className="text-[9px] text-zinc-600 uppercase tracking-wider mb-1.5">시장 온도</h2>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-zinc-600">추세</span>
+                <span className={`text-xs font-semibold ${trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-amber-400"}`}>{trendKo(trend)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-zinc-600">VIX</span>
+                <span className="flex items-center gap-1">
+                  <span className={`text-xs font-semibold tabular-nums ${vixInfo.color}`}>{vix != null ? Math.round(vix * 10) / 10 : "—"}</span>
+                  <span className={`text-[9px] ${vixInfo.color}`}>{vixInfo.label}</span>
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-zinc-600">심리</span>
+                <span className="flex items-center gap-1">
+                  <span className={`inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-bold tabular-nums ${fgColor(fg)}`}>{fg ?? "—"}</span>
+                  <span className="text-[9px] text-zinc-500">{fgLabel(fg)}</span>
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-zinc-600">경제</span>
+                <span className="flex items-center gap-1">
+                  <span className={`text-xs font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span>
+                  <span className={`text-[9px] ${macroInfo.color}`}>{macroInfo.label}</span>
                 </span>
               </div>
             </div>
+            <p className="text-[9px] text-zinc-600 mt-1.5">{d.regime.regime} &middot; 신뢰도 {d.regime.confidence}%</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* ── 오늘의 매매 + 위험 관리 ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {/* 오늘의 매매 — 3/5 */}
-        <Card className="bg-card border-border">
-          <CardContent className="pt-4 pb-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-foreground/80">
-                오늘의 매매
-                {d.actions.length > 0 && <span className="ml-1.5 text-muted-foreground font-normal">{d.actions.length}건</span>}
-              </p>
-              {d.actions.length > 0 && <span className="text-[10px] text-muted-foreground/50">클릭하면 상세 분석</span>}
-            </div>
-            {d.actions.length > 0 ? (
-              <div className="space-y-1">
-                {d.actions.map((a, i) => (
+      {/* 비중 바 */}
+      <div className="flex h-4 rounded overflow-hidden text-[9px] font-medium">
+        {d.allocation.long > 0 && (
+          <div className="bg-emerald-600/80 flex items-center justify-center text-emerald-100" style={{ width: `${d.allocation.long}%` }}>
+            {d.allocation.long >= 15 && `투자 ${d.allocation.long}%`}
+          </div>
+        )}
+        {d.allocation.short > 0 && (
+          <div className="bg-red-600/80 flex items-center justify-center text-red-100" style={{ width: `${d.allocation.short}%` }}>
+            {d.allocation.short >= 10 && `숏 ${d.allocation.short}%`}
+          </div>
+        )}
+        {d.allocation.cash > 0 && (
+          <div className="bg-zinc-800 flex items-center justify-center text-zinc-400" style={{ width: `${d.allocation.cash}%` }}>
+            현금 {d.allocation.cash}%
+          </div>
+        )}
+      </div>
+
+      {/* ═══ 오늘의 할 일 — 계좌별 그룹핑 ═══ */}
+      <div className="flex-1 min-h-0">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-zinc-200">오늘의 할 일</h2>
+            {d.actions.length > 0 && (
+              <span className="text-[10px] text-zinc-600">
+                {nBuys > 0 && `매수 ${nBuys}`}{nBuys > 0 && nSells > 0 && " \u00B7 "}{nSells > 0 && `매도 ${nSells}`}
+              </span>
+            )}
+          </div>
+          {d.actions.length > 0 && (
+            <Link href="/decisions" className="text-[9px] text-zinc-600 hover:text-zinc-400">기록 &rarr;</Link>
+          )}
+        </div>
+
+        {d.actions.length > 0 ? (
+          <div className="space-y-2">
+            {/* Main + Sub 액션 */}
+            {mainActions.length > 0 && (
+              <div>
+                {mainActions.map((a, i) => (
                   <Link key={`${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
-                    className="block px-2.5 py-2 rounded-lg hover:bg-muted/50 transition-colors group">
-                    <div className="flex items-center gap-2">
-                      <StatusBadge status={a.action === "BUY" ? "매수" : "매도"} />
-                      <span className="font-medium text-sm group-hover:text-white transition-colors">
-                        {a.name || a.ticker}
-                      </span>
-                      {a.name && <span className="text-[10px] text-muted-foreground/40">{a.ticker}</span>}
-                      <div className="ml-auto flex items-center gap-3">
-                        <div className="text-right">
-                          <ConfBar value={a.confidence} />
-                          <p className="text-[9px] text-muted-foreground/50 mt-0.5">신뢰도</p>
-                        </div>
-                        <div className="text-right" title="10개 AI 에이전트 중 동의한 수">
-                          <span className="text-xs font-semibold tabular-nums">{Math.round((a.agreement || 0) / 10)}/10</span>
-                          <p className="text-[9px] text-muted-foreground/50">AI 동의</p>
-                        </div>
-                      </div>
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded border-l-2 hover:bg-zinc-800/50 transition-colors ${
+                      a.action === "BUY" ? "border-emerald-500" : "border-red-500"
+                    }`}>
+                    <StatusBadge status={a.action === "BUY" ? "매수" : "매도"} />
+                    {a.account && <span className="text-[9px] text-zinc-600 min-w-[2rem]">{a.account}</span>}
+                    <span className="font-medium text-xs text-zinc-100 truncate">{a.name || a.ticker}</span>
+                    {a.name && <span className="text-[10px] text-zinc-600 shrink-0">{a.ticker}</span>}
+                    {a.reason && <span className="text-[10px] text-zinc-600 truncate hidden lg:inline">{a.reason}</span>}
+                    <div className="ml-auto flex items-center gap-2 shrink-0">
+                      <span className={`inline-flex items-center justify-center w-7 h-5 rounded text-[10px] font-bold tabular-nums ${
+                        a.confidence >= 80 ? "bg-emerald-500/15 text-emerald-400" :
+                        a.confidence >= 50 ? "bg-amber-500/15 text-amber-400" :
+                        "bg-red-500/15 text-red-400"
+                      }`}>{a.confidence}</span>
+                      <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((a.agreement || 0) / 10)}/10</span>
                     </div>
-                    {a.reason && (
-                      <p className="text-[11px] text-muted-foreground/60 mt-1 pl-[52px] line-clamp-1">{a.reason}</p>
-                    )}
                   </Link>
                 ))}
               </div>
-            ) : (
-              <p className="text-xs text-muted-foreground/70 py-6 text-center">매매 신호 없음 &mdash; 현재 포지션 유지</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 위험 관리 — 2/5 */}
-        <Card className="bg-card border-border">
-          <CardContent className="pt-4 pb-3">
-            <p className="text-xs font-semibold text-foreground/80 mb-2">
-              위험 관리
-              {alertCount > 0 && <span className="ml-1.5 text-red-400 font-normal">{alertCount}건</span>}
-            </p>
-            {alertCount > 0 ? (
-              <div className="space-y-1.5">
-                {d.alerts.map((al, i) => (
-                  <div key={i} className={`text-xs px-2 py-1.5 rounded ${
-                    al.level === "critical" ? "bg-red-500/10 text-red-400" :
-                    al.level === "warning" ? "bg-amber-500/10 text-amber-400" :
-                    "bg-muted text-muted-foreground"
-                  }`}>
-                    <span>{translateAlert(al.message)}</span>
-                    {al.level === "critical" && al.message.includes("손절") && (
-                      <span className="block text-[10px] mt-0.5 opacity-70">조치: 매도 검토하여 손실 제한</span>
-                    )}
-                    {al.level === "warning" && al.message.includes("손절") && (
-                      <span className="block text-[10px] mt-0.5 opacity-70">조치: 추가 하락 시 매도 준비</span>
-                    )}
-                    {al.message.includes("시그널") && (
-                      <span className="block text-[10px] mt-0.5 opacity-70">조치: 시그널 신뢰도 재확인</span>
-                    )}
-                    {al.message.includes("충돌") && (
-                      <span className="block text-[10px] mt-0.5 opacity-70">조치: 신호 충돌 — 명확해질 때까지 대기</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-xs text-emerald-400/70 py-2 flex items-center gap-1.5">
-                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                위험 요소 없음 &mdash; 모든 규칙 준수 중
-              </div>
             )}
 
-            {siegeFailed.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-border/40">
-                <p className="text-[10px] text-red-400/80 mb-1.5">품질검증 미통과 ({siegeFailed.length}건)</p>
-                <div className="space-y-0.5">
-                  {siegeFailed.slice(0, 5).map((c: any, i: number) => (
-                    <p key={i} className="text-[11px] text-muted-foreground">
-                      <span className={c.severity === "error" ? "text-red-400" : "text-amber-400"}>
-                        {c.severity === "error" ? "\u2716" : "\u25B3"}
-                      </span>{" "}
-                      {c.description} &mdash; {c.detail}
-                    </p>
-                  ))}
+            {/* Other 액션 (Toss 등) */}
+            {otherActions.length > 0 && otherActions.map((a, i) => (
+              <Link key={`o-${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded border-l-2 hover:bg-zinc-800/50 transition-colors ${
+                  a.action === "BUY" ? "border-emerald-500" : "border-red-500"
+                }`}>
+                <StatusBadge status={a.action === "BUY" ? "매수" : "매도"} />
+                {a.account && <span className="text-[9px] text-zinc-600 min-w-[2rem]">{a.account}</span>}
+                <span className="font-medium text-xs text-zinc-100 truncate">{a.name || a.ticker}</span>
+                <div className="ml-auto flex items-center gap-2 shrink-0">
+                  <span className={`inline-flex items-center justify-center w-7 h-5 rounded text-[10px] font-bold tabular-nums ${
+                    a.confidence >= 80 ? "bg-emerald-500/15 text-emerald-400" :
+                    a.confidence >= 50 ? "bg-amber-500/15 text-amber-400" :
+                    "bg-red-500/15 text-red-400"
+                  }`}>{a.confidence}</span>
+                  <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((a.agreement || 0) / 10)}/10</span>
                 </div>
-              </div>
+              </Link>
+            ))}
+
+            {/* Pension — 월말 아니면 축소 */}
+            {pensionActions.length > 0 && !isMonthEnd && (
+              <p className="text-[10px] text-zinc-600 px-2">연금 {pensionActions.length}건 &mdash; 월말 매수 대기</p>
             )}
-          </CardContent>
-        </Card>
+            {pensionActions.length > 0 && isMonthEnd && pensionActions.map((a, i) => (
+              <Link key={`p-${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded border-l-2 hover:bg-zinc-800/50 transition-colors ${
+                  a.action === "BUY" ? "border-emerald-500" : "border-red-500"
+                }`}>
+                <StatusBadge status={a.action === "BUY" ? "매수" : "매도"} />
+                <span className="text-[9px] text-zinc-600">연금</span>
+                <span className="font-medium text-xs text-zinc-100 truncate">{a.name || a.ticker}</span>
+                <div className="ml-auto flex items-center gap-2 shrink-0">
+                  <span className={`inline-flex items-center justify-center w-7 h-5 rounded text-[10px] font-bold tabular-nums ${
+                    a.confidence >= 80 ? "bg-emerald-500/15 text-emerald-400" :
+                    a.confidence >= 50 ? "bg-amber-500/15 text-amber-400" :
+                    "bg-red-500/15 text-red-400"
+                  }`}>{a.confidence}</span>
+                  <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((a.agreement || 0) / 10)}/10</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-500 py-4 text-center">매매 신호 없음 &mdash; 현재 포지션 유지</p>
+        )}
+
+        {/* 주의 사항 — 컴팩트 */}
+        {alertCount > 0 && (
+          <div className="mt-2 pt-2 border-t border-zinc-800/60">
+            <p className="text-[10px] font-semibold text-zinc-400 mb-1">주의 사항 <span className="text-zinc-600 font-normal">{alertCount}건</span></p>
+            <div className="space-y-0.5">
+              {d.alerts.map((al, i) => (
+                <div key={i} className={`text-[10px] ${
+                  al.level === "critical" ? "text-red-400" : al.level === "warning" ? "text-amber-400" : "text-zinc-400"
+                }`}>
+                  <span>{translateAlert(al.message)}</span>
+                  {al.level === "critical" && al.message.includes("손절") && (
+                    <span className="text-zinc-500"> &mdash; 매도 검토하여 손실 제한</span>
+                  )}
+                  {al.level === "warning" && al.message.includes("손절") && (
+                    <span className="text-zinc-500"> &mdash; 추가 하락 시 매도 준비</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {alertCount === 0 && (
+          <div className="mt-2 pt-2 border-t border-zinc-800/60 flex items-center gap-1.5 text-[10px]">
+            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <span className="text-zinc-400">위험 요소 없음 — 모든 규칙 준수 중</span>
+          </div>
+        )}
+
+        {/* 푸터 */}
+        <div className="mt-2 pt-2 border-t border-zinc-800/60 flex items-center gap-3 flex-wrap text-[10px]">
+          {siegeTotal > 0 && siegeFailed.length === 0 && (
+            <span className="text-zinc-400"><span className="text-emerald-500">&#10003;</span> 품질 검증 {siege?.passed || 0}/{siegeTotal} 통과</span>
+          )}
+          {siegeTotal > 0 && siegeFailed.length > 0 && (
+            <span className="text-red-400"><span className="text-red-500">&#10007;</span> 품질 검증 미통과 ({siegeFailed.length}건) <span className="text-zinc-600">{siege?.passed || 0}/{siegeTotal}</span></span>
+          )}
+          {(advisor?.total_violations || 0) > 0 && (
+            <span className="text-red-400">규칙 위반 {advisor.total_violations}건</span>
+          )}
+          <Link href="/portfolio" className="text-zinc-600 hover:text-zinc-400 ml-auto">포트폴리오 상세 &rarr;</Link>
+        </div>
+        {siegeTotal > 0 && siegeFailed.length > 0 && (
+          <div className="mt-1 space-y-0.5">
+            {siegeFailed.slice(0, 3).map((c: any, i: number) => (
+              <p key={i} className="text-[10px] text-zinc-400 pl-3">
+                <span className={c.severity === "error" ? "text-red-400" : "text-amber-400"}>{c.severity === "error" ? "\u2716" : "\u25B3"}</span>{" "}
+                {c.description} &mdash; <span className="text-zinc-600">{c.detail}</span>
+              </p>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -401,16 +411,11 @@ async function Dashboard() {
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-3">
-      <div className="h-7 bg-card rounded border border-border animate-pulse" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="h-36 bg-card rounded-xl border border-border animate-pulse" />
-        <div className="h-36 bg-card rounded-xl border border-border animate-pulse" />
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="h-48 bg-card rounded-xl border border-border animate-pulse" />
-        <div className="h-48 bg-card rounded-xl border border-border animate-pulse" />
-      </div>
+    <div className="flex flex-col gap-4">
+      <div className="h-6 bg-zinc-900 rounded animate-pulse" />
+      <div className="h-20 bg-zinc-900/50 rounded animate-pulse" />
+      <div className="h-4 bg-zinc-800 rounded animate-pulse" />
+      <div className="h-48 bg-zinc-900/50 rounded animate-pulse" />
     </div>
   );
 }

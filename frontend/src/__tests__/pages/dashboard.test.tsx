@@ -83,6 +83,7 @@ describe("DashboardPage", () => {
       if (path.includes("/api/dashboard")) return Promise.resolve(overrides.dashboard ?? mockDashboardData);
       if (path.includes("/api/freshness")) return Promise.resolve(overrides.freshness ?? mockFreshness);
       if (path.includes("/api/pipeline/status")) return Promise.resolve(overrides.pipeline ?? mockPipelineStatus);
+      if (path.includes("/api/portfolio/history")) return Promise.resolve({ history: [] });
       if (path.includes("/api/portfolio")) return Promise.resolve(overrides.portfolio ?? mockPortfolio);
       if (path.includes("/api/certify")) return Promise.resolve(overrides.siege ?? mockSiege);
       if (path.includes("/api/rebalance-advisor")) return Promise.resolve(overrides.advisor ?? mockAdvisor);
@@ -106,8 +107,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText("통과")).toBeInTheDocument();
-      expect(screen.getByText("9/10")).toBeInTheDocument();
+      expect(screen.getByText(/품질 검증 9\/10 통과/)).toBeInTheDocument();
     });
   });
 
@@ -121,9 +121,8 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText("미통과")).toBeInTheDocument();
+      expect(screen.getByText(/품질 검증 미통과/)).toBeInTheDocument();
       expect(screen.getByText("4/10")).toBeInTheDocument();
-      expect(screen.getByText(/품질검증 미통과/)).toBeInTheDocument();
     });
   });
 
@@ -150,7 +149,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/오늘의 매매/)).toBeInTheDocument();
+      expect(screen.getByText(/오늘의 할 일/)).toBeInTheDocument();
       expect(screen.getByText("매수")).toBeInTheDocument();
       expect(screen.getByText("매도")).toBeInTheDocument();
       expect(screen.getByText("NVDA")).toBeInTheDocument();
@@ -171,7 +170,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/위험 관리/)).toBeInTheDocument();
+      expect(screen.getByText(/주의 사항/)).toBeInTheDocument();
       expect(screen.getByText(/TSLA 손절선 돌파/)).toBeInTheDocument();
       expect(screen.getByText(/매도 검토하여 손실 제한/)).toBeInTheDocument();
     });
@@ -191,7 +190,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText("시장 현황")).toBeInTheDocument();
+      expect(screen.getByText("시장 온도")).toBeInTheDocument();
       expect(screen.getByText(/상승/)).toBeInTheDocument();
       expect(screen.getByText("18.5")).toBeInTheDocument();
     });
@@ -227,7 +226,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText("3건")).toBeInTheDocument();
+      expect(screen.getByText(/규칙 위반 3건/)).toBeInTheDocument();
     });
   });
 
@@ -236,7 +235,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.queryByText("품질검증")).not.toBeInTheDocument();
+      expect(screen.queryByText(/품질 검증/)).not.toBeInTheDocument();
     });
   });
 });
