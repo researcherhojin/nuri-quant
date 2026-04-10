@@ -133,6 +133,7 @@ def _try_sync_yaml():
 @router.get("/portfolio")
 def get_portfolio():
     """종목별 보유 현황."""
+    from nuri.core.ticker_names import get_ticker_name
     rows = query("""
         SELECT p.ticker, p.account, p.quantity, p.avg_price, p.currency, p.sector,
                pr.close as latest_price, pr.date as price_date
@@ -143,7 +144,10 @@ def get_portfolio():
         ) pr ON p.ticker = pr.ticker
         ORDER BY p.ticker
     """)
-    return {"holdings": rows, "count": len(rows)}
+    holdings = [dict(r) for r in rows]
+    for h in holdings:
+        h["name"] = get_ticker_name(h["ticker"])
+    return {"holdings": holdings, "count": len(holdings)}
 
 
 @router.post("/portfolio")
