@@ -258,9 +258,17 @@ jobs:
 
       # pytest-shard splits tests by hash(test_id) into N buckets. shard-id is
       # 0-indexed but the matrix exposes 1-indexed values for human readability.
+      #
+      # PR runs: -m "not slow" — exclude ~12 slow tests (~135s saved per shard)
+      # main push: full suite including slow tests
 
-      - name: Run tests with coverage
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+      - name: Run tests with coverage (PR — fast)
+        if: github.event_name == 'pull_request' && needs.changes.outputs.backend == 'true'
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report=xml --cov-report=term
+        timeout-minutes: 5
+
+      - name: Run tests with coverage (main — full)
+        if: github.event_name != 'pull_request'
         run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
 

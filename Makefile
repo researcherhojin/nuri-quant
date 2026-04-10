@@ -8,7 +8,7 @@
 PYTHON = .venv/bin/python
 
 .PHONY: help \
-        setup test lint lint-fix verify-quick verify-all verify verify-fast \
+        setup test test-fast test-slow lint lint-fix verify-quick verify-all verify verify-fast \
         collect collect-kis collect-kis-check wallstreet filings \
         analyze report report-llm \
         validate regime recommend gate consensus certify remediate track-decisions \
@@ -73,6 +73,12 @@ setup:
 # ═══════════════════════════════════════════════════════════════
 test:
 	$(PYTHON) -m pytest tests/ -v --cov=nuri -n auto --dist worksteal
+
+test-fast:
+	$(PYTHON) -m pytest tests/ -v --cov=nuri -n auto --dist worksteal -m "not slow"
+
+test-slow:
+	$(PYTHON) -m pytest tests/ -v -n auto --dist worksteal -m "slow"
 
 lint:
 	$(PYTHON) -m ruff check nuri/ tests/ scripts/

@@ -122,6 +122,7 @@ class TestAPIDeep:
         from nuri.api.main import app
         return TestClient(app)
 
+    @pytest.mark.slow
     def test_dashboard_with_data(self, _client):
         r = _client.get("/api/dashboard")
         assert r.status_code == 200

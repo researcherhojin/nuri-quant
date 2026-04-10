@@ -493,6 +493,7 @@ class TestSchedulerLazy:
 
 
 class TestSchedulerLazy_R6:
+    @pytest.mark.slow
     def test_run_collector_known_names(self):
         """실제 collector 이름 호출 — conftest mock 덕분에 네트워크 안 탐."""
         from nuri.scheduler import _run_collector
