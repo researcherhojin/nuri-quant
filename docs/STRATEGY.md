@@ -38,6 +38,7 @@
 - 손절 -7%(성장)/-10%(가치), 익절 +20%/+40%, 트레일링 -15% — 예외 없음
 - VIX > 30이면 신규 매수 차단 — "이번엔 다르다"를 허용하지 않음
 - SIEGE gate 통과 실패 → REJECTED. 수동 오버라이드 없음
+- **execution_priority** (PR #200): 손절 → 익절 → 트레일링 설정 → 신규매수 순서 고정. 출혈 차단이 수익 확정보다 선행한다. 손절 내에서는 손실률 큰 것부터, 익절 내에서는 타겟 초과율 큰 것부터.
 - **규칙을 바꾸고 싶으면 YAML을 수정하고 백테스트로 검증한다. 코드에 예외 분기를 넣지 않는다.**
 
 ### 2.3 느슨한 결합 (Loose coupling via data)
@@ -116,6 +117,29 @@ base = regime_win_rate × 60% + profit_factor × 40%
 | VIX > 30 매수 차단 | 공포 구간 승률 붕괴 검증 | 자체 시그널 백테스트 |
 | 슈퍼투자자 ≥ 3명 | 13F 보유 종목의 초과수익 연구 | SEC EDGAR 분석 |
 | 처분효과 경고 | 수익 종목 조기 매도 편향 | Shefrin & Statman, 1985 |
+| **execution_priority** (손절>익절>트레일링>신규매수) | 하락 모멘텀의 1시간 지연 = 추가 손실 확정. 상승 모멘텀은 상대적으로 견딤. | 자체 재무 논리 (PR #200) |
+| **trailing_stop_arm +15%** | 수익이 자연스럽게 되돌아가는 give-back 방지 | active 전략 신규 (PR #202) |
+| **decisions 결과 추적** | 경험 기반 신뢰도: 에이전트별 적중률을 모아 가중치 동적 조정 | Decision Intelligence (PR #181, #183) |
+
+### 3.5 계좌별 전략 프로파일
+
+`config/rules.yaml`의 `account_strategies` 섹션에 정의. `portfolio.yaml`의 각 계좌 `strategy` 필드와 매칭.
+
+| 전략 | 손절 | 단일종목 | 섹터 | 특이사항 | 의도 |
+|------|------|--------|------|---------|------|
+| **core** | -7% | 15% | 35% | — | 정석 운용. Main 계좌 기본값 |
+| **active** | -10% | 25% | 45% | `trailing_stop_arm: 15` | 적극 운용 — 손실은 짧게, 수익은 보호하며 길게 (PR #202) |
+| **swing** | -15% | 30% | 50% | — | 단기 회전 (5~20일 보유) |
+| **long_term** | -20% | 25% | 50% | — | 장기 보유, 변동성 감수 |
+| **pension** | -30% | 40% | 60% | — | 연금 ETF, 초장기 리밸런싱 |
+
+**선택 가이드:**
+- **Core**: 빠른 손절로 보수적 운용, 위너 규모 작음
+- **Active**: -10% 이내 컷 + 위너 25%까지 + +15% 트레일링 자동 발동 → "손실은 짧게, 수익은 길게" 최적화
+- **Swing**: -15% 허용은 누적 손실 위험. 진짜 단기(5~20일)에만 적용
+- **Long_term / Pension**: 장기 ETF 위주, 단기 변동 무시
+
+규칙 변경 절차: `config/rules.yaml` 수정 → 백테스트 검증 → PR. 코드에 예외 분기 금지.
 
 ---
 
@@ -127,10 +151,10 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,524 tests, 125 files |
-| Frontend tests | 목표 ≥ 90% | 610 tests, 46 files |
-| E2E | 핵심 flow 커버 | 21 Playwright tests (4 spec) |
-| CI 통과 | 필수 | lint + test + coverage + security |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,633 tests, 128 files |
+| Frontend tests | 목표 ≥ 90% | 634 tests, 46 files |
+| E2E | 핵심 flow 커버 | 25 Playwright tests (5 spec) |
+| CI 통과 | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
 
 ### 4.2 코드
@@ -396,7 +420,10 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 1 | **대시보드 + 파이프라인 UX 리팩토링** | — | feat(frontend) | Dashboard → Decisions → Pipeline 순서. 근거 기반 의사결정 도구 느낌. Ghostfolio/FreqUI/Linear 레퍼런스. |
+| 1 | **보유 종목에 매매 상태 + 가격 타겟 통합** | [#199](https://github.com/researcherhojin/nuri-quant/issues/199) | feat(frontend) | Phase 2-C. 보유 종목에 BUY/SELL 배지 + 손절/익절 가격 + 실적 D-day. |
+| 2 | **rebalance_advisor 계좌별 위반 검출 버그** | — | fix(analysis) | 종목이 여러 계좌에 걸쳐 있을 때 `max(strategies)` 사용으로 가장 관대한 한도가 적용됨. 계좌별로 따로 검사하도록 리팩토링 필요. |
+
+> 대시보드 + 파이프라인 UX 1차 리팩토링은 PR #194/#197/#198/#200/#202/#204로 모두 완료. Phase 2-C(#199)가 다음 단계.
 
 ### Tier 2 — 다음 1 달 (P1)
 
@@ -407,6 +434,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 1 | 티커 기반 First-Run 온보딩 UX | [#133](https://github.com/researcherhojin/nuri-quant/issues/133) | feat(frontend) | 신규 사용자 0분 가치 체험. `/analyze?ticker=NVDA` |
 | 2 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거 |
 | 3 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
+| 4 | CI fast/slow marker 분리 | [#88](https://github.com/researcherhojin/nuri-quant/issues/88) | ci | PR feedback 가속 (~3분 → ~1분) |
 
 ### Tier 3 — 다음 분기 (P2)
 
@@ -450,7 +478,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 출처 | 적용 | 코드 위치 |
 |------|------|----------|
 | [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-gate, certification, event journal | `nuri/trading/engine/` |
-| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline 모니터링, Decision Intelligence (#178) | `nuri/core/freshness.py`, `events.py`, `decisions` (planned) |
+| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline 모니터링, Decision Intelligence (#178) | `nuri/core/freshness.py`, `nuri/core/events.py`, `decisions` 테이블 (PR #181 shipped) |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA (PASS/WARN/FAIL) | `nuri/core/freshness.py` |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 패턴 | `nuri/trading/agents/` |
 | [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | Risk Parity 최적화 | `nuri/analysis/rebalance.py` |
