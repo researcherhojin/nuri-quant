@@ -1,6 +1,51 @@
 import type { NextConfig } from "next";
 
+/**
+ * Dev-only cross-origin allowlist for Next.js dev assets (HMR, webpack chunks).
+ *
+ * Defaults cover RFC1918 private-network ranges so devs can open the dashboard
+ * on their LAN (e.g. a phone on the same Wi-Fi) without extra config. These
+ * wildcards never identify a specific machine — they describe generic
+ * private-network subnets.
+ *
+ * Override or extend via env:
+ *   NURI_DEV_ALLOWED_ORIGINS=my-laptop.local,203.0.113.42
+ *
+ * Production (`next build`) ignores this setting entirely.
+ */
+const DEFAULT_DEV_ORIGINS = [
+  "*.local",        // Bonjour / mDNS hostnames (macOS Network)
+  "192.168.*.*",   // Home Wi-Fi / 홈 공유기 (Class C private)
+  "10.*.*.*",      // Enterprise / Docker bridge (Class A private)
+  "172.16.*.*",    // Docker default (Class B private, lower range)
+  "172.17.*.*",
+  "172.18.*.*",
+  "172.19.*.*",
+  "172.20.*.*",
+  "172.21.*.*",
+  "172.22.*.*",
+  "172.23.*.*",
+  "172.24.*.*",
+  "172.25.*.*",
+  "172.26.*.*",
+  "172.27.*.*",
+  "172.28.*.*",
+  "172.29.*.*",
+  "172.30.*.*",
+  "172.31.*.*",
+];
+
+const extraDevOrigins = (process.env.NURI_DEV_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const devAllowedOrigins = [...DEFAULT_DEV_ORIGINS, ...extraDevOrigins];
+
 const nextConfig: NextConfig = {
+  // #214 polish: allow Next.js dev resources (HMR WebSocket, static chunks) from
+  // common private-network subnets. No personal or hard-coded host addresses.
+  allowedDevOrigins: devAllowedOrigins,
   async headers() {
     return [
       {

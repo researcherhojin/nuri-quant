@@ -130,9 +130,50 @@ def _try_sync_yaml():
         logger.exception("portfolio.yaml 동기화 실패 — DB 변경은 정상 반영됨")
 
 
+_SPARKLINE_DAYS = 90  # #214 polish — 90-day window; frontend slices to 14/30/60/90 via URL param
+
+
+def _enrich_with_history(holdings: list[dict]) -> None:
+    """Attach `previous_close` + `sparkline_30d` to each holding in-place (#214).
+
+    - `previous_close`: second-to-last close in the prices table (for daily delta %)
+    - `sparkline_30d`: up to 30 daily closes ordered oldest→newest (for text sparkline)
+
+    Uses a single batched query per ticker to keep the endpoint <500ms.
+    Gracefully tolerates missing history (sets field to None or empty list).
+    """
+    if not holdings:
+        return
+    tickers = {h["ticker"] for h in holdings if h.get("ticker")}
+    if not tickers:
+        return
+
+    placeholders = ",".join("?" for _ in tickers)
+    rows = query(
+        f"""
+        SELECT ticker, date, close
+        FROM prices
+        WHERE ticker IN ({placeholders})
+        ORDER BY ticker ASC, date DESC
+        """,
+        tuple(tickers),
+    )
+
+    # ticker → list of closes (newest first)
+    history: dict[str, list[float]] = {}
+    for r in rows:
+        history.setdefault(r["ticker"], []).append(r["close"])
+
+    for h in holdings:
+        closes = history.get(h["ticker"], [])
+        h["previous_close"] = closes[1] if len(closes) >= 2 else None
+        # newest → oldest, truncate to window, then reverse so sparkline reads left→right (old→new)
+        h["sparkline_30d"] = list(reversed(closes[:_SPARKLINE_DAYS]))
+
+
 @router.get("/portfolio")
 def get_portfolio():
-    """종목별 보유 현황 + 계좌별 cash 잔액 (#213)."""
+    """종목별 보유 현황 + 계좌별 cash 잔액 (#213) + 일변/sparkline (#214)."""
     from nuri.api.routes.dashboard import _get_cash_balances
     from nuri.core.ticker_names import get_ticker_name
     rows = query("""
@@ -148,6 +189,8 @@ def get_portfolio():
     holdings = [dict(r) for r in rows]
     for h in holdings:
         h["name"] = get_ticker_name(h["ticker"])
+
+    _enrich_with_history(holdings)
 
     # 환율 조회 (cash 환산용)
     rate_row = query("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1")

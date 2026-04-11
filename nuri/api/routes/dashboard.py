@@ -190,7 +190,16 @@ def _get_ticker_account_map() -> dict[str, str]:
 
 
 def _get_account_labels() -> dict[str, str]:
-    """계좌명 → 표시 라벨 매핑. portfolio.yaml strategy 필드 기반 (broker명 노출 금지)."""
+    """계좌명 → 표시 라벨 매핑.
+
+    Resolution order (#214 polish):
+      1. `label` field in portfolio.yaml (user custom, e.g. "Toss" or "hojin kakao")
+      2. strategy-based default ("core" → "Main", "swing" → "Sub", ...)
+      3. strategy name title-cased if unknown
+
+    Custom labels let the user put whatever they want **in their own gitignored
+    portfolio.yaml** — personal names never enter the code or git history.
+    """
     from pathlib import Path  # noqa: E402
 
     import yaml  # noqa: E402
@@ -203,7 +212,14 @@ def _get_account_labels() -> dict[str, str]:
         labels: dict[str, str] = {}
         seen: dict[str, int] = {}
         for acc, info in (portfolio.get("accounts") or {}).items():
-            strategy_name = (info or {}).get("strategy", "core")
+            info = info or {}
+            # (1) user custom `label` wins — bypasses duplicate-suffix logic
+            custom_label = info.get("label")
+            if isinstance(custom_label, str) and custom_label.strip():
+                labels[acc] = custom_label.strip()
+                continue
+            # (2) strategy-based default with duplicate-count suffix
+            strategy_name = info.get("strategy", "core")
             base_label = _STRATEGY_LABELS.get(strategy_name, strategy_name.title())
             count = seen.get(base_label, 0)
             seen[base_label] = count + 1

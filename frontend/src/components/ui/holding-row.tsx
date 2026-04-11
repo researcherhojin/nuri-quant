@@ -1,10 +1,12 @@
 /**
- * HoldingRow — 보유 종목 통합 행 (Phase 2-C #199)
+ * HoldingRow — 보유 종목 통합 행 (Phase 2-C #199 + Phase 2-D #214)
  *
- * 한 줄에 종목 정보 + 매매 상태 + 가격 타겟 + 워치 트리거를 담는다.
+ * 한 줄에 종목 정보 + 매매 상태 + 가격 타겟 + 일변 + sparkline + 워치 트리거를 담는다.
  * morning_brief 영감의 "1 row = 1 ticker, complete picture" 패턴.
  */
 import Link from "next/link";
+
+import { Sparkline } from "@/components/ui/sparkline";
 
 // ── Raw input shapes (API response surfaces) ─────────────────
 export interface RawHolding {
@@ -14,6 +16,8 @@ export interface RawHolding {
   quantity?: number;
   avg_price?: number | null;
   latest_price?: number | null;
+  previous_close?: number | null;   // #214: yesterday's close for daily delta
+  sparkline_30d?: number[];          // #214: 30 daily closes, oldest → newest
   currency?: string;
   sector?: string | null;
   name?: string | null;
@@ -73,6 +77,10 @@ export interface EnrichedHolding {
   name: string | null;
   currency: "USD" | "KRW";
   pnlPct: number;
+  dailyDeltaPct: number | null;  // #214: 오늘 종가 vs 어제 종가 % (price history 없으면 null)
+  sparkline: number[];            // #214: 30 closes oldest→newest (빈 배열이면 렌더 skip)
+  latestPrice: number | null;     // #214 polish: 현재가 (표에 직접 표시)
+  avgPrice: number | null;        // #214 polish: 평단가 (표시 + sparkline baseline)
   status: HoldingStatus;
   stopLoss: number | null;
   target1: number | null;
@@ -167,12 +175,24 @@ export function buildEnrichedHoldings(
       const currency: "USD" | "KRW" =
         h.currency === "KRW" || h.ticker.endsWith(".KS") ? "KRW" : "USD";
 
+      // #214: 일변 (오늘 vs 어제) + sparkline (30일 closes)
+      const prevClose = h.previous_close;
+      const dailyDeltaPct =
+        prevClose != null && prevClose > 0
+          ? ((latest - prevClose) / prevClose) * 100
+          : null;
+      const sparkline = Array.isArray(h.sparkline_30d) ? h.sparkline_30d : [];
+
       return {
         account: accountLabel,
         ticker: h.ticker,
         name: h.name ?? null,
         currency,
         pnlPct,
+        dailyDeltaPct,
+        sparkline,
+        latestPrice: h.latest_price ?? null,
+        avgPrice: h.avg_price ?? null,
         status,
         stopLoss: stopLossPrice,
         target1: target?.target_1 ?? null,
@@ -233,11 +253,13 @@ function statusVisual(s: HoldingStatus): { text: string; className: string } {
 function watchVisual(w: WatchTrigger): { text: string; className: string } | null {
   if (w.kind === "none") return null;
   if (w.kind === "earnings") {
-    if (w.daysUntil === 0) return { text: "실적 D-DAY", className: "text-amber-400" };
+    // #214 polish: bump contrast so `실적 D-N` stays readable on zinc-950 bg at 10px
+    if (w.daysUntil === 0) return { text: "실적 D-DAY", className: "text-amber-300 font-semibold" };
     if (w.daysUntil <= 7) return { text: `실적 D-${w.daysUntil}`, className: "text-amber-400" };
-    return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-500" };
+    if (w.daysUntil <= 14) return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-300" };
+    return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-400" };
   }
-  return null;
+  /* c8 ignore next */ return null; // defensive; WatchTrigger union is exhausted above
 }
 
 // ── Component ────────────────────────────────────────────────
@@ -252,6 +274,17 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
   const pnlClass = h.pnlPct >= 0 ? "text-emerald-400" : "text-red-400";
   const linkHref = href ?? `/ticker/${h.ticker}`;
   const displayName = h.name || h.ticker.replace(".KS", "");
+
+  // #214: 일변 (daily delta)
+  const hasDelta = h.dailyDeltaPct != null;
+  const deltaClass = !hasDelta
+    ? "text-zinc-700"
+    : h.dailyDeltaPct! >= 0
+    ? "text-emerald-400"
+    : "text-red-400";
+  const deltaText = !hasDelta
+    ? "—"
+    : `${h.dailyDeltaPct! >= 0 ? "+" : ""}${h.dailyDeltaPct!.toFixed(1)}%`;
 
   // target_1 cell
   const t1Cell = h.target1Reached ? (
@@ -285,43 +318,85 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       <span className="font-medium text-zinc-100 truncate min-w-0 flex-1 sm:flex-none sm:w-20">
         {displayName}
       </span>
-      {/* pnl */}
+      {/* 현재가 / 평단가 — md+ (768px+) */}
+      <span
+        className="hidden md:flex flex-col items-end text-right tabular-nums shrink-0 w-[72px] leading-[1.1]"
+        aria-label="현재가/평단가"
+      >
+        <span className="text-[10px] text-zinc-200">{formatPrice(h.latestPrice, h.currency)}</span>
+        <span className="text-[9px] text-zinc-500">{formatPrice(h.avgPrice, h.currency)}</span>
+      </span>
+      {/* pnl (누적) — 항상 */}
       <span className={`font-semibold tabular-nums text-right w-14 shrink-0 ${pnlClass}`}>
         {h.pnlPct >= 0 ? "+" : ""}
         {h.pnlPct.toFixed(1)}%
       </span>
-      {/* status badge */}
+      {/* 일변 (daily delta) — sm+ */}
+      <span
+        className={`hidden sm:inline-block tabular-nums text-right w-12 shrink-0 text-[10px] ${deltaClass}`}
+        aria-label="일변"
+        data-testid="daily-delta"
+      >
+        {deltaText}
+      </span>
+      {/* status badge — 항상 */}
       <span
         className={`inline-flex items-center justify-center text-[10px] font-medium rounded border px-1.5 py-0.5 w-[68px] shrink-0 ${status.className}`}
       >
         {status.text}
       </span>
-      {/* stop loss — sm+ */}
+      {/* watch trigger — 항상, 상태 바로 옆 */}
       <span
-        className="hidden sm:inline-block w-[72px] text-right tabular-nums text-zinc-500 shrink-0"
+        className={`w-[90px] text-[10px] text-right truncate shrink-0 ${watch ? watch.className : "text-zinc-600"}`}
+        data-testid="watch-cell"
+      >
+        {watch ? watch.text : "—"}
+      </span>
+      {/* stop loss — md+ */}
+      <span
+        className="hidden md:inline-block w-[68px] text-right tabular-nums text-zinc-500 shrink-0"
         aria-label="손절가"
       >
         {formatPrice(h.stopLoss, h.currency)}
       </span>
-      {/* target_1 — sm+ */}
+      {/* target_1 — lg+ */}
       <span
-        className="hidden sm:inline-block w-[72px] text-right tabular-nums shrink-0"
+        className="hidden lg:inline-block w-[68px] text-right tabular-nums shrink-0"
         aria-label="1차 익절가"
       >
         {t1Cell}
       </span>
-      {/* target_2 — sm+ */}
+      {/* target_2 — lg+ */}
       <span
-        className="hidden sm:inline-block w-[72px] text-right tabular-nums shrink-0"
+        className="hidden lg:inline-block w-[68px] text-right tabular-nums shrink-0"
         aria-label="2차 익절가"
       >
         {t2Cell}
       </span>
-      {/* watch trigger */}
+      {/*
+        sparkline — 두 variant를 CSS breakpoint로 swap.
+        xl (1280–1535): 고정 80px
+        2xl+ (1536+):   고정 240px — 80px 대비 3x, 읽기 좋은 밀도. flex 확장 안 함.
+        (나머지 27" 데드 스페이스는 #219의 섹터 / 비중% 컬럼으로 채움)
+      */}
+      <span className="hidden xl:inline-flex 2xl:hidden items-center shrink-0" data-testid="sparkline-narrow">
+        <Sparkline
+          series={h.sparkline}
+          width={80}
+          height={18}
+          baseline={h.avgPrice}
+        />
+      </span>
       <span
-        className={`flex-1 text-[10px] text-right truncate ${watch ? watch.className : "text-zinc-700"}`}
+        className="hidden 2xl:inline-flex items-center shrink-0"
+        data-testid="sparkline-wide"
       >
-        {watch ? watch.text : "—"}
+        <Sparkline
+          series={h.sparkline}
+          width={240}
+          height={18}
+          baseline={h.avgPrice}
+        />
       </span>
     </Link>
   );

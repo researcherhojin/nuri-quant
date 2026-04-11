@@ -722,6 +722,64 @@ class TestAccountLabels:
         result = _get_account_labels()
         assert result["custom_acc"] == "Experimental"
 
+    def test_custom_label_field_overrides_strategy(self, monkeypatch):
+        """#214 polish: `label` field in portfolio.yaml overrides the strategy default.
+
+        Lets users put custom display names (e.g. 'Toss', '호진 메인') in their
+        own gitignored yaml without any personal data reaching the code.
+        """
+        from nuri.api.routes.dashboard import _get_account_labels
+
+        mock_yaml = {
+            "accounts": {
+                "acc_alpha": {"strategy": "core", "label": "Brokerage Alpha"},
+                "acc_beta": {"strategy": "long_term", "label": "Brokerage Beta"},
+                "acc_default": {"strategy": "core"},  # no label → falls back to Main
+            }
+        }
+
+        import builtins
+        original_open = builtins.open
+
+        def mock_open(path, *args, **kwargs):
+            if "portfolio.yaml" in str(path):
+                from io import StringIO
+                return StringIO(yaml.dump(mock_yaml))
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", mock_open)
+        result = _get_account_labels()
+        # Custom labels used verbatim
+        assert result["acc_alpha"] == "Brokerage Alpha"
+        assert result["acc_beta"] == "Brokerage Beta"
+        # Account without `label` falls back to strategy default
+        assert result["acc_default"] == "Main"
+
+    def test_empty_label_falls_back_to_strategy(self, monkeypatch):
+        """Empty string or whitespace in `label` falls back to strategy default."""
+        from nuri.api.routes.dashboard import _get_account_labels
+
+        mock_yaml = {
+            "accounts": {
+                "acc_empty": {"strategy": "core", "label": ""},
+                "acc_whitespace": {"strategy": "swing", "label": "   "},
+            }
+        }
+
+        import builtins
+        original_open = builtins.open
+
+        def mock_open(path, *args, **kwargs):
+            if "portfolio.yaml" in str(path):
+                from io import StringIO
+                return StringIO(yaml.dump(mock_yaml))
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", mock_open)
+        result = _get_account_labels()
+        assert result["acc_empty"] == "Main"
+        assert result["acc_whitespace"] == "Sub"
+
     def test_missing_strategy_defaults_to_core(self, monkeypatch):
         """Account without strategy field defaults to 'core' -> 'Main'."""
         from nuri.api.routes.dashboard import _get_account_labels
