@@ -79,7 +79,8 @@ export interface EnrichedHolding {
   pnlPct: number;
   dailyDeltaPct: number | null;  // #214: 오늘 종가 vs 어제 종가 % (price history 없으면 null)
   sparkline: number[];            // #214: 30 closes oldest→newest (빈 배열이면 렌더 skip)
-  avgPrice: number | null;        // #214 polish: sparkline baseline (손익 분기점) 레퍼런스
+  latestPrice: number | null;     // #214 polish: 현재가 (표에 직접 표시)
+  avgPrice: number | null;        // #214 polish: 평단가 (표시 + sparkline baseline)
   status: HoldingStatus;
   stopLoss: number | null;
   target1: number | null;
@@ -190,6 +191,7 @@ export function buildEnrichedHoldings(
         pnlPct,
         dailyDeltaPct,
         sparkline,
+        latestPrice: h.latest_price ?? null,
         avgPrice: h.avg_price ?? null,
         status,
         stopLoss: stopLossPrice,
@@ -316,6 +318,14 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       <span className="font-medium text-zinc-100 truncate min-w-0 flex-1 sm:flex-none sm:w-20">
         {displayName}
       </span>
+      {/* 현재가 / 평단가 — compound cell, 2-line stack */}
+      <span
+        className="hidden sm:flex flex-col items-end text-right tabular-nums shrink-0 w-[72px] leading-[1.1]"
+        aria-label="현재가/평단가"
+      >
+        <span className="text-[10px] text-zinc-200">{formatPrice(h.latestPrice, h.currency)}</span>
+        <span className="text-[9px] text-zinc-500">{formatPrice(h.avgPrice, h.currency)}</span>
+      </span>
       {/* pnl (누적) */}
       <span className={`font-semibold tabular-nums text-right w-14 shrink-0 ${pnlClass}`}>
         {h.pnlPct >= 0 ? "+" : ""}
@@ -365,9 +375,9 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
           baseline={h.avgPrice}
         />
       </span>
-      {/* watch trigger */}
+      {/* watch trigger — min-w guarantees text fits even when row is tight */}
       <span
-        className={`flex-1 text-[10px] text-right truncate ${watch ? watch.className : "text-zinc-600"}`}
+        className={`flex-1 min-w-[80px] text-[10px] text-right truncate ${watch ? watch.className : "text-zinc-600"}`}
       >
         {watch ? watch.text : "—"}
       </span>

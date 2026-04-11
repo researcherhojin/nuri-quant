@@ -28,9 +28,10 @@ function holdingFixture(overrides: Partial<EnrichedHolding> = {}): EnrichedHoldi
     pnlPct: 5.2,
     dailyDeltaPct: null,
     sparkline: [],
-    avgPrice: null,
+    latestPrice: 105,
+    avgPrice: 100,
     status: { kind: "hold" },
-    stopLoss: 100,
+    stopLoss: 90,
     target1: 120,
     target2: 140,
     target1Reached: false,
@@ -309,6 +310,18 @@ describe("HoldingRow", () => {
     // at least one is present which is sufficient for this assertion.
     const dashes = screen.getAllByText("—");
     expect(dashes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders current price and avg price in compound cell (#214 polish)", () => {
+    render(<HoldingRow holding={holdingFixture({ latestPrice: 245.67, avgPrice: 180 })} />);
+    expect(screen.getByText("$246")).toBeInTheDocument();  // formatPrice rounds ≥100
+    expect(screen.getByText("$180")).toBeInTheDocument();
+  });
+
+  it("renders em dash when latestPrice or avgPrice is null", () => {
+    render(<HoldingRow holding={holdingFixture({ latestPrice: null, avgPrice: null })} />);
+    const cell = screen.getByLabelText("현재가/평단가");
+    expect(cell.textContent).toContain("—");
   });
 
   it("renders daily delta with + and color when positive", () => {
