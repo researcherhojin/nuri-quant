@@ -57,6 +57,19 @@ flowchart LR
 | `nuri/core/db.py` | All | **Sole** SQLite gateway. 31 tables, WAL mode |
 | `config/*.yaml` | All | Thresholds, rules, signal metadata, scan universe |
 
+## Dashboard
+
+The dashboard at `:3000/` is a **composition-first overview**, not a row-level decision tool. Inspired by Snowball Analytics' Korean retail layout. Vertical hierarchy:
+
+1. **Hero** — 4 stats: 총 자산 · 오늘 P&L · 누적 수익률 · 승률 (winners/losers ratio)
+2. **Market context strip** — verdict · trend · VIX · 심리 · 경제 · 실제/권장 비중 (1 row, null-safe)
+3. **Status strips** — collapsible 알림 / 이벤트 / 신규 후보
+4. **Composition section** — Recharts donut (320px, standard 12-o'clock clockwise) + tabs (자산/섹터/계좌) + rich legend (label · meta · $value · weight % · daily delta)
+5. **Mini cards strip** — Movers + 집중도 (HHI)
+6. **Holdings table (drilldown)** — sorted by `positionPct` desc, top 8 visible by default with `?holdings=expanded` toggle
+
+The composition section is the visual centerpiece. Holdings table is demoted to drilldown — the dashboard's structural job is "where is my money + how is it doing", not "act on every row". For row-level decisions see `/portfolio` and `/advisor`.
+
 ## Tech Stack
 
 | Layer | Stack |
@@ -102,7 +115,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, ~339 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (2,633 backend + 634 frontend)
+make test       # full suite (2,661 backend + 766 frontend)
 make test-fast  # backend only, slow tests excluded (~24s, ~52% faster)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```

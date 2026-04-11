@@ -98,8 +98,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Root-anchored — Python build artifacts only. Without the leading slash
+# any nested `lib/` directory (e.g. frontend/src/lib/) gets ignored, which
+# bit us in #221 when new lib files needed `git add -f`.
+/lib/
+/lib64/
 parts/
 sdist/
 var/
