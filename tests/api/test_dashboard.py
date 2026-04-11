@@ -151,6 +151,37 @@ class TestCashBalances:
         assert result["total_cash_usd"] == 2500.0
         assert len(result["accounts"]) == 2
 
+    def test_get_cash_balances_skips_non_dict_entries(self, tmp_path, monkeypatch):
+        """malformed yaml — accounts 아래에 dict가 아닌 값이 있으면 건너뜀 (방어적 guard).
+
+        covers dashboard.py line 335 (`if not isinstance(info, dict): continue`).
+        실전에서 portfolio.yaml이 `accounts: null` 이거나 잘못된 YAML을 먹었을 때 crash 방지.
+        """
+        import nuri.api.routes.dashboard as dash_mod
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        portfolio_yaml = config_dir / "portfolio.yaml"
+        # 하나는 dict, 하나는 null, 하나는 string — 모두 yaml 파싱 가능하지만 non-dict
+        portfolio_yaml.write_text(
+            "accounts:\n"
+            "  good:\n"
+            "    strategy: core\n"
+            "    cash_usd: 500.0\n"
+            "  broken_null: null\n"
+            "  broken_str: unexpected string\n",
+            encoding="utf-8",
+        )
+        fake_file = tmp_path / "l1" / "l2" / "l3" / "dashboard.py"
+        fake_file.parent.mkdir(parents=True)
+        fake_file.touch()
+        monkeypatch.setattr(dash_mod, "__file__", str(fake_file))
+
+        # 예외 없이 good 계정만 집계되어야 함
+        result = dash_mod._get_cash_balances(exchange_rate=1400)
+        assert result["total_cash_usd"] == 500.0
+        assert len(result["accounts"]) == 1
+
     def test_cache_mechanism(self, db_path, monkeypatch):
         """캐시 동작 확인."""
         import nuri.api.routes.dashboard as dash_mod
