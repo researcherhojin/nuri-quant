@@ -39,7 +39,7 @@ function holdingFixture(overrides: Partial<EnrichedHolding> = {}): EnrichedHoldi
 
 const baseHolding: RawHolding = {
   ticker: "AAPL",
-  account: "kakaopay",
+  account: "brokerage_alpha",
   accountLabel: "Main",
   quantity: 10,
   avg_price: 100,
@@ -121,7 +121,7 @@ describe("buildEnrichedHoldings status priority", () => {
       violation_type: "position_limit_exceeded",
       severity: "high",
       current_value: 22,
-      reason: "kakaopay 비중 22.0% > 한도 15%",
+      reason: "brokerage_alpha 비중 22.0% > 한도 15%",
     };
     const result = buildEnrichedHoldings([baseHolding], [], [], [advisor], []);
     expect(result[0].status.kind).toBe("violation");
@@ -136,7 +136,7 @@ describe("buildEnrichedHoldings status priority", () => {
       violation_type: "position_limit_exceeded",
       severity: "medium",
       current_value: 16,
-      reason: "kakaopay 비중 16.0%",
+      reason: "brokerage_alpha 비중 16.0%",
     };
     const result = buildEnrichedHoldings([baseHolding], [], [], [advisor], []);
     expect(result[0].status.kind).toBe("hold");
@@ -151,7 +151,7 @@ describe("buildEnrichedHoldings status priority", () => {
       violation_type: "position_limit_exceeded",
       severity: "high",
       current_value: 30,
-      reason: "kakaopay 비중 30%",
+      reason: "brokerage_alpha 비중 30%",
     };
     const result = buildEnrichedHoldings([holding], [action], [target], [advisor], []);
     expect(result[0].status.kind).toBe("stop_loss");

@@ -9,7 +9,7 @@ import Link from "next/link";
 // ── Raw input shapes (API response surfaces) ─────────────────
 export interface RawHolding {
   ticker: string;
-  account?: string;        // raw broker name (e.g. "kakaopay") — used for advisor reason matching
+  account?: string;        // raw broker account id — used for advisor reason matching
   accountLabel?: string;   // anonymized display label (e.g. "Main") — used for action matching + display
   quantity?: number;
   avg_price?: number | null;
