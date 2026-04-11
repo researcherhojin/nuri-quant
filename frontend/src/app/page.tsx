@@ -226,7 +226,14 @@ async function Dashboard({
   // 연금 전용 UI는 별도 페이지(/portfolio)에서 볼 수 있음.
   // "Pension" / "Pension 2" / "연금" / "연금 2" 등 모든 번호 suffix 변형을 prefix로 잡는다.
   const isPensionLabel = (label: string) => label.startsWith("연금") || label.startsWith("Pension");
-  const enrichedHoldings = allEnrichedHoldings.filter((h) => !isPensionLabel(h.account));
+  // #223 iter 7c: dashboard view sorts by positionPct desc (largest position first)
+  // — overrides the buildEnrichedHoldings default (account → status → pnl) which is
+  // useful for /portfolio's grouped view but wrong for the dashboard's "biggest
+  // positions first" expectation. The internal builder sort is preserved for other
+  // consumers; we just re-sort the visible subset here.
+  const enrichedHoldings = allEnrichedHoldings
+    .filter((h) => !isPensionLabel(h.account))
+    .sort((a, b) => (b.positionPct ?? 0) - (a.positionPct ?? 0));
   const hiddenPensionCount = allEnrichedHoldings.length - enrichedHoldings.length;
 
   // 신규 매수 후보 — 보유하지 않은 ticker의 액션만 (held tickers의 액션은 HoldingRow 상태로 흡수됨)
@@ -293,23 +300,53 @@ async function Dashboard({
         verdictLabel={verdictLabel}
       />
 
-      {/* ═══ #223 iter 7: market + allocation compact strip (1 row) ═══
-          Verdict + macro + 실제/권장 비중 모두 한 줄로 압축. 이전엔 2-3 줄 차지. */}
+      {/* ═══ #223 iter 7c: market + allocation compact strip (1 row).
+          Each metric only renders when it actually has data — no more
+          dangling "VIX — —" / "권장 0% / 100%" placeholders. */}
       {(() => {
+        // actual: API always provides this in real responses; mock tests
+        // sometimes don't, so default to a sentinel that still renders.
         const actual = d.actual_allocation ?? { long: 0, short: 0, cash: 100 };
-        const target = d.target_allocation ?? d.allocation;
+        const target = d.target_allocation ?? d.allocation ?? null;
+        // Hide 권장 entirely when it's the meaningless 0/100 default
+        // (means "no regime data") or matches actual.
+        const hasMeaningfulTarget =
+          target != null &&
+          (target.long > 0 || target.short > 0) &&
+          !(target.long === actual.long && target.cash === actual.cash);
+        const hasMacroScore = typeof d.macro?.score === "number" && d.macro.score > 0;
         return (
           <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
             <span className={trend === "bull" ? "text-emerald-400 font-semibold" : trend === "bear" ? "text-red-400 font-semibold" : "text-amber-400 font-semibold"}>
               {trendKo(trend)}
             </span>
-            <span>VIX <span className={`font-semibold tabular-nums ${vixInfo.color}`}>{vix != null ? Math.round(vix * 10) / 10 : "—"}</span> <span className={vixInfo.color}>{vixInfo.label}</span></span>
-            <span>심리 <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg ?? "—"}</span> <span className="text-zinc-600">{fgLabel(fg)}</span></span>
-            <span>경제 <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span> <span className={macroInfo.color}>{macroInfo.label}</span></span>
+            {vix != null && (
+              <span>
+                VIX <span className={`font-semibold tabular-nums ${vixInfo.color}`}>{Math.round(vix * 10) / 10}</span> <span className={vixInfo.color}>{vixInfo.label}</span>
+              </span>
+            )}
+            {fg != null && (
+              <span>
+                심리 <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span>
+              </span>
+            )}
+            {hasMacroScore && (
+              <span>
+                경제 <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span> <span className={macroInfo.color}>{macroInfo.label}</span>
+              </span>
+            )}
             <span className="text-zinc-700">·</span>
-            <span>실제 <span className="text-emerald-400 font-semibold tabular-nums">{actual.long}%</span> 투자 / <span className="text-zinc-300 font-semibold tabular-nums">{actual.cash}%</span> 현금</span>
-            <span className="text-zinc-700">→</span>
-            <span className="text-zinc-600">권장 <span className="text-emerald-500 tabular-nums">{target.long}%</span> / <span className="text-zinc-500 tabular-nums">{target.cash}%</span></span>
+            <span>
+              실제 <span className="text-emerald-400 font-semibold tabular-nums">{actual.long}%</span> 투자 / <span className="text-zinc-300 font-semibold tabular-nums">{actual.cash}%</span> 현금
+            </span>
+            {hasMeaningfulTarget && target && (
+              <>
+                <span className="text-zinc-700">→</span>
+                <span className="text-zinc-600">
+                  권장 <span className="text-emerald-500 tabular-nums">{target.long}%</span> / <span className="text-zinc-500 tabular-nums">{target.cash}%</span>
+                </span>
+              </>
+            )}
             <span className={`ml-auto text-[10px] ${style.text} truncate max-w-[40%]`} title={d.verdict}>
               {d.verdict}
             </span>
