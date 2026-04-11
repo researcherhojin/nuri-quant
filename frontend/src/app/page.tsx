@@ -6,6 +6,7 @@ import { fetchAPI } from "@/lib/api";
 
 import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
+import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import Link from "next/link";
 
 interface DashboardData {
@@ -22,6 +23,7 @@ interface DashboardData {
   account_values?: Array<{ account: string; value: number }>;
   upcoming_events?: Array<{ date: string; event_type: string; ticker: string | null; description: string; importance: number }>;
   ticker_accounts?: Record<string, string>;
+  account_labels?: Record<string, string>;
 }
 
 interface FreshnessData {
@@ -91,8 +93,11 @@ function translateAlert(msg: string): string {
     .replace("bb_squeeze_breakout", "볼린저밴드 돌파").replace("near_52w_low_bounce", "52주 저점 반등")
     .replace("volume_profile_resistance", "거래량 저항선");
 }
-function displayName(h: { name?: string | null; ticker?: string }) {
-  return h?.name || (h?.ticker?.endsWith(".KS") ? h.ticker.replace(".KS", "") : h?.ticker) || "";
+/** 계좌 라벨 한국어 표시 (Pension만 특수, 나머지는 원본 유지) */
+function accountKo(label: string | undefined): string {
+  if (!label) return "";
+  if (label === "Pension") return "연금";
+  return label;
 }
 /** 알림 → {label, href} 파싱 */
 function parseAlert(al: { level: string; message: string }): { label: string; href: string } {
@@ -115,7 +120,7 @@ function parseAlert(al: { level: string; message: string }): { label: string; hr
 /* ══════════════════════════════════════════════════════ */
 
 async function Dashboard() {
-  const [d, freshness, pipelineStatus, portfolio, siege, advisor] = await Promise.all([
+  const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets] = await Promise.all([
     fetchAPI<DashboardData>("/api/dashboard"),
     fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], details: [], overall: "FAIL", pass: 0, warn: 0, fail: 0 })),
     fetchAPI<PipelineStatusData>("/api/pipeline/status").catch((): PipelineStatusData => ({ steps: [] })),
@@ -125,6 +130,7 @@ async function Dashboard() {
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
     ]).catch(() => null),
     fetchAPI<any>("/api/rebalance-advisor").catch(() => null),
+    fetchAPI<{ targets: RawTarget[] }>("/api/targets").catch(() => ({ targets: [] as RawTarget[] })),
   ]);
 
   const holdingCount = portfolio?.count ?? portfolio?.holdings?.length ?? 0;
@@ -145,8 +151,6 @@ async function Dashboard() {
   const alertCount = d.alerts.length;
   const siegeFailed = siege?.conditions?.filter((c: any) => !c.passed) || [];
   const siegeTotal = siege?.total || 0;
-  const nBuys = d.actions.filter(a => a.action === "BUY").length;
-  const nSells = d.actions.filter(a => a.action === "SELL").length;
 
   const holdings = portfolio?.holdings || [];
   const winners = holdings.filter((h: any) => h.latest_price && h.avg_price && h.latest_price > h.avg_price);
@@ -155,19 +159,33 @@ async function Dashboard() {
   const macroInfo = macroLevel(d.macro.score);
   const accountValues = d.account_values || [];
 
-  // 계좌별 액션 그룹핑
-  const mainActions = d.actions.filter(a => a.account === "Main" || a.account === "Sub");
-  const pensionActions = d.actions.filter(a => a.account === "Pension");
-  const otherActions = d.actions.filter(a => !a.account || (a.account !== "Main" && a.account !== "Sub" && a.account !== "Pension"));
+  // 통합 보유 종목 — 매매 상태 + 가격 타겟 + 워치 트리거 결합
+  // account_labels: raw broker → 익명 label (per-account 매핑). 다계좌 ticker는
+  // ticker_accounts(ticker→label, 단일 매핑)로 풀 수 없어서 collision이 발생했음 — 각
+  // holding의 raw account를 key로 라벨을 lookup하여 fix.
+  const accountLabels = d.account_labels || {};
+  const labeledHoldings = holdings.map((h: any) => ({
+    ...h,
+    accountLabel: accountKo(accountLabels[h.account] || h.account || ""),
+  }));
+  const enrichedHoldings = buildEnrichedHoldings(
+    labeledHoldings as any,
+    d.actions as RawAction[],
+    targets?.targets ?? [],
+    (advisor?.actions ?? []) as RawAdvisorAction[],
+    (d.upcoming_events ?? []) as RawEvent[],
+  );
+
+  // 신규 매수 후보 — 보유하지 않은 ticker의 액션만 (held tickers의 액션은 HoldingRow 상태로 흡수됨)
+  const heldTickers = new Set(holdings.map((h: any) => h.ticker));
+  const newCandidates = d.actions.filter(a => !heldTickers.has(a.ticker));
+  // 연금 계좌는 월말에만 매수 (월간 1회). 비-월말이면 noise 방지를 위해 collapse.
   const now = new Date();
   const isMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() <= 3;
-
-  // 보유 종목 정렬 (연금 제외, 손익률 절대값 기준)
-  const tickerAccounts = d.ticker_accounts || {};
-  const sortedHoldings = [...holdings]
-    .filter((h: any) => h.latest_price && h.avg_price && tickerAccounts[h.ticker] !== "Pension")
-    .map((h: any) => ({ ...h, pnl: ((h.latest_price / h.avg_price - 1) * 100) }))
-    .sort((a: any, b: any) => Math.abs(b.pnl) - Math.abs(a.pnl));
+  const pensionCandidates = newCandidates.filter(a => a.account === "Pension");
+  const visibleCandidates = newCandidates.filter(a => a.account !== "Pension" || isMonthEnd);
+  const nNewBuys = visibleCandidates.filter(a => a.action === "BUY").length;
+  const nNewSells = visibleCandidates.filter(a => a.action === "SELL").length;
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -243,26 +261,61 @@ async function Dashboard() {
         </div>
       )}
 
-      {/* ═══ 오늘의 할 일 ═══ */}
-      {d.actions.length > 0 && (
+      {/* ═══ 보유 종목 통합 뷰 — 상태 + 가격 타겟 + 워치 트리거 ═══ */}
+      {enrichedHoldings.length > 0 && (
+        <div className="flex-1 min-h-0">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
+              <span className="text-[10px] text-zinc-600">
+                {winners.length > 0 && `수익 ${winners.length}`}
+                {winners.length > 0 && losers.length > 0 && " · "}
+                {losers.length > 0 && `손실 ${losers.length}`}
+              </span>
+            </div>
+            <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
+          </div>
+          {/* 컬럼 헤더 (sm+) */}
+          <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
+            <span className="w-10 shrink-0">계좌</span>
+            <span className="w-20 shrink-0">종목</span>
+            <span className="w-14 text-right shrink-0">손익</span>
+            <span className="w-[68px] text-center shrink-0">상태</span>
+            <span className="w-[72px] text-right shrink-0">손절</span>
+            <span className="w-[72px] text-right shrink-0">1차익절</span>
+            <span className="w-[72px] text-right shrink-0">2차익절</span>
+            <span className="flex-1 text-right">워치</span>
+          </div>
+          <div className="space-y-0.5">
+            {enrichedHoldings.map((h, i) => (
+              <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 신규 매수 후보 — 보유 외 ticker 매매 신호 ═══ */}
+      {visibleCandidates.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-zinc-200">오늘의 할 일</h2>
+              <h2 className="text-sm font-semibold text-zinc-200">신규 매수 후보</h2>
               <span className="text-[10px] text-zinc-600">
-                {nBuys > 0 && `매수 ${nBuys}`}{nBuys > 0 && nSells > 0 && " \u00B7 "}{nSells > 0 && `매도 ${nSells}`}
+                {nNewBuys > 0 && `매수 ${nNewBuys}`}
+                {nNewBuys > 0 && nNewSells > 0 && " \u00B7 "}
+                {nNewSells > 0 && `매도 ${nNewSells}`}
               </span>
             </div>
             <Link href="/decisions" className="text-[9px] text-zinc-600 hover:text-zinc-400">기록 &rarr;</Link>
           </div>
           <div className="space-y-0.5">
-            {mainActions.map((a, i) => (
+            {visibleCandidates.map((a, i) => (
               <Link key={`${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
                 className={`flex items-center gap-2 px-2 py-1.5 rounded border-l-2 hover:bg-zinc-800/50 transition-colors ${
                   a.action === "BUY" ? "border-emerald-500" : "border-red-500"
                 }`}>
                 <StatusBadge status={a.action === "BUY" ? "매수" : "매도"} />
-                {a.account && <span className="text-[9px] text-zinc-600 min-w-[2rem]">{a.account}</span>}
+                {a.account && <span className="text-[9px] text-zinc-600 min-w-[2rem]">{accountKo(a.account)}</span>}
                 <span className="font-medium text-xs text-zinc-100 truncate">{a.name || a.ticker}</span>
                 {a.name && <span className="text-[10px] text-zinc-600 shrink-0">{a.ticker}</span>}
                 {a.reason && <span className="text-[10px] text-zinc-600 truncate hidden lg:inline">{a.reason}</span>}
@@ -276,82 +329,19 @@ async function Dashboard() {
                 </div>
               </Link>
             ))}
-            {otherActions.map((a, i) => (
-              <Link key={`o-${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded border-l-2 hover:bg-zinc-800/50 transition-colors ${
-                  a.action === "BUY" ? "border-emerald-500" : "border-red-500"
-                }`}>
-                <StatusBadge status={a.action === "BUY" ? "매수" : "매도"} />
-                {a.account && <span className="text-[9px] text-zinc-600 min-w-[2rem]">{a.account}</span>}
-                <span className="font-medium text-xs text-zinc-100 truncate">{a.name || a.ticker}</span>
-                <div className="ml-auto flex items-center gap-2 shrink-0">
-                  <span className={`inline-flex items-center justify-center w-7 h-5 rounded text-[10px] font-bold tabular-nums ${
-                    a.confidence >= 80 ? "bg-emerald-500/15 text-emerald-400" :
-                    a.confidence >= 50 ? "bg-amber-500/15 text-amber-400" :
-                    "bg-red-500/15 text-red-400"
-                  }`}>{a.confidence}</span>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((a.agreement || 0) / 10)}/10</span>
-                </div>
-              </Link>
-            ))}
-            {pensionActions.length > 0 && !isMonthEnd && (
-              <p className="text-[10px] text-zinc-600 px-2">연금 {pensionActions.length}건 &mdash; 월말 매수 대기</p>
+            {pensionCandidates.length > 0 && !isMonthEnd && (
+              <p className="text-[10px] text-zinc-600 px-2 pt-1">연금 {pensionCandidates.length}건 &mdash; 월말 매수 대기</p>
             )}
-            {pensionActions.length > 0 && isMonthEnd && pensionActions.map((a, i) => (
-              <Link key={`p-${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded border-l-2 hover:bg-zinc-800/50 transition-colors ${
-                  a.action === "BUY" ? "border-emerald-500" : "border-red-500"
-                }`}>
-                <StatusBadge status={a.action === "BUY" ? "매수" : "매도"} />
-                <span className="text-[9px] text-zinc-600">연금</span>
-                <span className="font-medium text-xs text-zinc-100 truncate">{a.name || a.ticker}</span>
-                <div className="ml-auto flex items-center gap-2 shrink-0">
-                  <span className={`inline-flex items-center justify-center w-7 h-5 rounded text-[10px] font-bold tabular-nums ${
-                    a.confidence >= 80 ? "bg-emerald-500/15 text-emerald-400" :
-                    a.confidence >= 50 ? "bg-amber-500/15 text-amber-400" :
-                    "bg-red-500/15 text-red-400"
-                  }`}>{a.confidence}</span>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((a.agreement || 0) / 10)}/10</span>
-                </div>
-              </Link>
-            ))}
           </div>
         </div>
       )}
 
-      {d.actions.length === 0 && (
-        <p className="text-sm text-zinc-500 text-center py-2">매매 신호 없음 &mdash; 현재 포지션 유지</p>
+      {visibleCandidates.length === 0 && pensionCandidates.length > 0 && !isMonthEnd && (
+        <p className="text-[10px] text-zinc-600 text-center py-1">연금 {pensionCandidates.length}건 &mdash; 월말 매수 대기</p>
       )}
 
-      {/* ═══ 보유 종목 현황 (항상 표시, 남은 공간 채움) ═══ */}
-      {sortedHoldings.length > 0 && (
-        <div className="flex-1 min-h-0">
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
-              <span className="text-[10px] text-zinc-600">{winners.length > 0 && `수익 ${winners.length}`}{winners.length > 0 && losers.length > 0 && " · "}{losers.length > 0 && `손실 ${losers.length}`}</span>
-            </div>
-            <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
-          </div>
-          <div className="space-y-1">
-            {sortedHoldings.slice(0, 8).map((h: any, i: number) => (
-              <Link key={`${h.ticker}-${i}`} href={`/ticker/${h.ticker}`}
-                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/50 text-xs group">
-                <span className="text-zinc-100 font-medium w-16 truncate">{displayName(h)}</span>
-                <span className={`font-semibold tabular-nums w-14 text-right ${h.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                  {h.pnl >= 0 ? "+" : ""}{h.pnl.toFixed(1)}%
-                </span>
-                <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${h.pnl >= 0 ? "bg-emerald-500/60" : "bg-red-500/60"}`}
-                    style={{ width: `${Math.min(100, Math.abs(h.pnl) * 2)}%` }}
-                  />
-                </div>
-                {h.pnl <= -7 && <span className="text-[9px] text-red-400 shrink-0">손절</span>}
-              </Link>
-            ))}
-          </div>
-        </div>
+      {visibleCandidates.length === 0 && pensionCandidates.length === 0 && enrichedHoldings.length > 0 && (
+        <p className="text-[10px] text-zinc-600 text-center py-1">신규 매수 후보 없음 &mdash; 보유 종목 관리에 집중</p>
       )}
 
       {/* ═══ 푸터: 품질 + 이벤트 + 파이프라인 ═══ */}

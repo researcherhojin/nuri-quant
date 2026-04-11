@@ -83,8 +83,11 @@ def _build_dashboard() -> dict:
     # ── 9. 향후 이벤트 ──
     upcoming_events = _get_upcoming_events()
 
-    # ── 10. 티커별 계좌 라벨 ──
-    ticker_accounts = {t: _get_account_labels().get(acc, acc) for t, acc in _get_ticker_account_map().items()}
+    # ── 10. 계좌 라벨 매핑 (raw broker → 익명화 label) ──
+    # account_labels: 모든 raw 계좌명 → 익명 라벨 (중복-ticker per-account 식별용, #199 fix)
+    # ticker_accounts: ticker → label (단일 mapping, backward compat)
+    account_labels_map = _get_account_labels()
+    ticker_accounts = {t: account_labels_map.get(acc, acc) for t, acc in _get_ticker_account_map().items()}
 
     return {
         "verdict": verdict,
@@ -102,6 +105,7 @@ def _build_dashboard() -> dict:
         "account_values": account_values,
         "upcoming_events": upcoming_events,
         "ticker_accounts": ticker_accounts,
+        "account_labels": account_labels_map,
     }
 
 
