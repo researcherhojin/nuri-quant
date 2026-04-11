@@ -362,24 +362,38 @@ describe("HoldingRow", () => {
     expect(screen.getByTestId("daily-delta")).toHaveTextContent("—");
   });
 
-  it("renders SVG sparkline for valid series", () => {
+  it("renders SVG sparkline for valid series (dual narrow/wide variants)", () => {
     render(<HoldingRow holding={holdingFixture({ sparkline: [100, 105, 103, 108, 110, 115, 112, 118] })} />);
-    const spark = screen.getByTestId("sparkline");
-    // SVG element rendered (8-point series → polyline)
-    expect(spark.tagName.toLowerCase()).toBe("svg");
-    // Ascending series → data-direction="up"
-    expect(spark).toHaveAttribute("data-direction", "up");
+    // HoldingRow renders two sparkline variants — fixed 80px (xl-only) + flex-fill (2xl+).
+    // Both share the "sparkline" testid; they must both be SVG and agree on direction.
+    const sparks = screen.getAllByTestId("sparkline");
+    expect(sparks).toHaveLength(2);
+    for (const spark of sparks) {
+      expect(spark.tagName.toLowerCase()).toBe("svg");
+      expect(spark).toHaveAttribute("data-direction", "up");
+    }
+    // Wide variant is marked with data-fill-width="true"
+    const wide = sparks.find((s) => s.getAttribute("data-fill-width") === "true");
+    expect(wide).toBeTruthy();
   });
 
   it("renders em dash sparkline placeholder for empty series", () => {
     render(<HoldingRow holding={holdingFixture({ sparkline: [] })} />);
-    // Empty series renders a span placeholder (not SVG)
-    expect(screen.getByTestId("sparkline")).toHaveTextContent("—");
+    // Both narrow + wide variants fall back to em dash
+    const sparks = screen.getAllByTestId("sparkline");
+    expect(sparks).toHaveLength(2);
+    for (const spark of sparks) {
+      expect(spark).toHaveTextContent("—");
+    }
   });
 
   it("renders em dash sparkline placeholder for single-point series", () => {
     render(<HoldingRow holding={holdingFixture({ sparkline: [100] })} />);
-    expect(screen.getByTestId("sparkline")).toHaveTextContent("—");
+    const sparks = screen.getAllByTestId("sparkline");
+    expect(sparks).toHaveLength(2);
+    for (const spark of sparks) {
+      expect(spark).toHaveTextContent("—");
+    }
   });
 
   it("renders KRW prices with won symbol for .KS tickers", () => {

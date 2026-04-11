@@ -442,10 +442,10 @@ async function Dashboard({
       {/* ═══ 보유 종목 — full-width (사이드바 제거 후) ═══ */}
       {enrichedHoldings.length > 0 && (
         <section className="flex-1 min-h-0 flex flex-col">
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between mb-1.5 gap-3">
+            <div className="flex items-center gap-2 min-w-0">
               <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
-              <span className="text-[10px] text-zinc-600">
+              <span className="text-[10px] text-zinc-600 truncate">
                 {winners.length > 0 && `수익 ${winners.length}`}
                 {winners.length > 0 && losers.length > 0 && " · "}
                 {losers.length > 0 && `손실 ${losers.length}`}
@@ -457,14 +457,39 @@ async function Dashboard({
                 )}
               </span>
             </div>
-            <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
+            <div className="flex items-center gap-3 shrink-0">
+              {/* sparkline period toggle — xl+에서만 의미 있음 (<xl에서는 sparkline 숨김) */}
+              <div
+                className="hidden xl:inline-flex items-center gap-0.5 text-[9px] text-zinc-600 uppercase"
+                data-testid="sparkline-period-toggle"
+              >
+                <span className="text-zinc-700 mr-1 normal-case">추세</span>
+                {SPARKLINE_PERIOD_OPTIONS.map((p) => (
+                  <Link
+                    key={p}
+                    href={p === 30 ? "/" : `/?period=${p}`}
+                    scroll={false}
+                    className={`px-1 rounded normal-case ${
+                      p === sparklinePeriod
+                        ? "text-zinc-300 bg-zinc-800/80"
+                        : "text-zinc-600 hover:text-zinc-400"
+                    }`}
+                  >
+                    {p}
+                  </Link>
+                ))}
+                <span className="text-zinc-700 normal-case">일</span>
+              </div>
+              <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
+            </div>
           </div>
           {/* Responsive column tiers — 헤더와 rows가 동일 breakpoint·width로 정렬.
-              base (<sm): 계좌·종목·손익·상태·워치 (~380px)
-              sm+ (640+):  + 일변 (~438px)
-              md+ (768+):  + 현재/평단·손절 (~594px)
-              lg+ (1024+): + 1차익절·2차익절 (~746px, 752 content budget)
-              xl+ (1280+): + sparkline + period 토글 (~834px)
+              base (<sm):  계좌·종목·손익·상태·워치 (~380px)
+              sm+  (640+): + 일변 (~438px)
+              md+  (768+): + 현재/평단·손절 (~594px)
+              lg+  (1024+): + 1차익절·2차익절 (~746px, 752 content budget)
+              xl+  (1280+): + sparkline(80px 고정) (~834px)
+              2xl+ (1536+): sparkline flex-1 — 27" 데드 스페이스 채움
               overflow-x-auto는 narrow viewport safety net. */}
           <div className="overflow-x-auto">
             <div className="min-w-0">
@@ -482,23 +507,9 @@ async function Dashboard({
                 <span className="hidden md:inline-block w-[68px] text-right shrink-0">손절</span>
                 <span className="hidden lg:inline-block w-[68px] text-right shrink-0">1차익절</span>
                 <span className="hidden lg:inline-block w-[68px] text-right shrink-0">2차익절</span>
-                {/* sparkline period toggle: URL-driven, Server Component 호환 — xl+ */}
-                <span className="hidden xl:inline-flex w-[80px] items-center justify-center gap-0.5 normal-case shrink-0" data-testid="sparkline-period-toggle">
-                  {SPARKLINE_PERIOD_OPTIONS.map((p) => (
-                    <Link
-                      key={p}
-                      href={p === 30 ? "/" : `/?period=${p}`}
-                      scroll={false}
-                      className={`px-1 rounded ${
-                        p === sparklinePeriod
-                          ? "text-zinc-300 bg-zinc-800/80"
-                          : "text-zinc-600 hover:text-zinc-400"
-                      }`}
-                    >
-                      {p}
-                    </Link>
-                  ))}
-                  <span className="text-zinc-700">일</span>
+                {/* sparkline column label — xl(80px 고정) / 2xl(flex-1) 둘 다 동일 헤더 */}
+                <span className="hidden xl:inline-block w-20 2xl:w-auto 2xl:flex-1 2xl:min-w-[160px] text-left shrink-0 2xl:shrink">
+                  추세
                 </span>
               </div>
               <div className="space-y-0.5">

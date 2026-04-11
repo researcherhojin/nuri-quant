@@ -26,6 +26,14 @@ interface SparklineProps {
    * if it falls outside the range the line is drawn at the nearest edge.
    */
   baseline?: number | null;
+  /**
+   * When true, the SVG renders with `width="100%"` and `preserveAspectRatio="none"`,
+   * so it fills whatever horizontal space the parent cell gives it. Used in the 2xl
+   * (27" ultra-wide) breakpoint where the holdings row has lots of room to spare.
+   * The `width` prop still controls the viewBox coordinate space and point layout,
+   * so 80 works fine — pick it to match the narrow variant for visual consistency.
+   */
+  fillWidth?: boolean;
 }
 
 export function Sparkline({
@@ -35,6 +43,7 @@ export function Sparkline({
   strokeWidth = 1.25,
   className = "",
   baseline = null,
+  fillWidth = false,
 }: SparklineProps) {
   if (!series || series.length < 2) {
     return (
@@ -80,12 +89,14 @@ export function Sparkline({
 
   return (
     <svg
-      width={width}
+      width={fillWidth ? "100%" : width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
-      className={`shrink-0 ${className}`}
+      preserveAspectRatio={fillWidth ? "none" : "xMidYMid meet"}
+      className={`${fillWidth ? "" : "shrink-0"} ${className}`}
       data-testid="sparkline"
       data-direction={isUp ? "up" : "down"}
+      data-fill-width={fillWidth ? "true" : undefined}
       aria-label={`추세 (${isUp ? "상승" : "하락"})`}
       role="img"
     >
