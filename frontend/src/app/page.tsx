@@ -203,6 +203,9 @@ async function Dashboard({
     targets?.targets ?? [],
     (advisor?.actions ?? []) as RawAdvisorAction[],
     (d.upcoming_events ?? []) as RawEvent[],
+    // #218: 2xl+ 초광폭 컬럼(비중 %)을 위해 총 자산 + 환율 전달.
+    // totalValue 는 holdings (USD 환산) + cash 합계 — pie denominator 로 사용.
+    { totalPortfolioUsd: totalValue, usdKrwRate: KRW_RATE },
   );
   // #214 polish: sparkline은 90일을 backend에서 받고, 선택된 period에 맞춰 최근 N개만 frontend에서 slice
   const allEnrichedHoldings = builtHoldings.map((h) => ({
@@ -489,7 +492,7 @@ async function Dashboard({
               md+  (768+): + 현재/평단·손절 (~594px)
               lg+  (1024+): + 1차익절·2차익절 (~746px, 752 content budget)
               xl+  (1280+): + sparkline 80px (~834px)
-              2xl+ (1536+): sparkline 240px 고정 (~994px). 나머지 여백은 #219 (섹터/비중%) 가 채움.
+              2xl+ (1536+): sparkline 240px + 섹터 96px + 비중 56px (~1240px, 27" 전용)
               overflow-x-auto는 narrow viewport safety net. */}
           <div className="overflow-x-auto">
             <div className="min-w-0">
@@ -511,6 +514,9 @@ async function Dashboard({
                 <span className="hidden xl:inline-block w-20 2xl:w-60 text-left shrink-0">
                   추세
                 </span>
+                {/* #218 (PR #219): 2xl+ 27" 전용 초광폭 컬럼 */}
+                <span className="hidden 2xl:inline-block w-[96px] text-right shrink-0">섹터</span>
+                <span className="hidden 2xl:inline-block w-[56px] text-right shrink-0">비중</span>
               </div>
               <div className="space-y-0.5">
                 {enrichedHoldings.map((h, i) => (
