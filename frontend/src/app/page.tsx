@@ -498,12 +498,13 @@ async function Dashboard({
             </div>
           </div>
           {/* Responsive column tiers — 헤더와 rows가 동일 breakpoint·width로 정렬.
-              base (<sm):  계좌·종목·손익·상태·워치 (~380px)
-              sm+  (640+): + 일변 (~438px)
-              md+  (768+): + 현재/평단·손절 (~594px)
-              lg+  (1024+): + 1차익절·2차익절 (~746px, 752 content budget)
-              xl+  (1280+): + sparkline 80px (~834px)
-              2xl+ (1536+): sparkline 240px + 섹터 96px + 비중 56px (~1240px, 27" 전용)
+              #221 iter 4: watch column (90px) 제거, 같은 정보는 상단 이벤트 strip 에 있음.
+              base (<sm):  계좌·종목·손익·상태         (~300px)
+              sm+  (640+): + 일변                       (~350px)
+              md+  (768+): + 현재/평단·손절            (~500px)
+              lg+  (1024+): + 1차익절·2차익절          (~660px, 752 content budget)
+              xl+  (1280+): + sparkline 80px            (~748px)
+              2xl+ (1536+): sparkline 240px + 섹터 96px + 비중 56px (~1150px, 27" 전용)
               overflow-x-auto는 narrow viewport safety net. */}
           <div className="overflow-x-auto">
             <div className="min-w-0">
@@ -518,7 +519,6 @@ async function Dashboard({
                 <span className="w-14 text-right shrink-0">손익</span>
                 <span className="w-12 text-right shrink-0">일변</span>
                 <span className="w-[68px] text-center shrink-0">상태</span>
-                <span className="w-[90px] text-right shrink-0 truncate">워치</span>
                 <span className="hidden md:inline-block w-[68px] text-right shrink-0">손절</span>
                 <span className="hidden lg:inline-block w-[68px] text-right shrink-0">1차익절</span>
                 <span className="hidden lg:inline-block w-[68px] text-right shrink-0">2차익절</span>

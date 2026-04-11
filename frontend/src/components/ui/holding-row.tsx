@@ -282,17 +282,11 @@ function statusVisual(s: HoldingStatus): { text: string; className: string } {
   }
 }
 
-function watchVisual(w: WatchTrigger): { text: string; className: string } | null {
-  if (w.kind === "none") return null;
-  if (w.kind === "earnings") {
-    // #214 polish: bump contrast so `실적 D-N` stays readable on zinc-950 bg at 10px
-    if (w.daysUntil === 0) return { text: "실적 D-DAY", className: "text-amber-300 font-semibold" };
-    if (w.daysUntil <= 7) return { text: `실적 D-${w.daysUntil}`, className: "text-amber-400" };
-    if (w.daysUntil <= 14) return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-300" };
-    return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-400" };
-  }
-  /* c8 ignore next */ return null; // defensive; WatchTrigger union is exhausted above
-}
+// watchVisual() removed with #221 iter 4 — watch column was deleted from the
+// row because its information was already shown in the top 이벤트 strip
+// (single-source-of-truth UI). The `watch` field on EnrichedHolding is still
+// computed by buildEnrichedHoldings so future features (tooltip, badge, etc)
+// can consume it without touching the data layer.
 
 // ── Component ────────────────────────────────────────────────
 interface HoldingRowProps {
@@ -302,7 +296,6 @@ interface HoldingRowProps {
 
 export function HoldingRow({ holding: h, href }: HoldingRowProps) {
   const status = statusVisual(h.status);
-  const watch = watchVisual(h.watch);
   const pnlClass = h.pnlPct >= 0 ? "text-emerald-400" : "text-red-400";
   const linkHref = href ?? `/ticker/${h.ticker}`;
   const displayName = h.name || h.ticker.replace(".KS", "");
@@ -377,14 +370,6 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
         className={`inline-flex items-center justify-center text-[10px] font-medium rounded border px-1.5 py-0.5 w-[68px] shrink-0 ${status.className}`}
       >
         {status.text}
-      </span>
-      {/* watch trigger — 상태 바로 옆. 폭은 고정(90px) 으로 alignment 유지하되
-          watch 가 없을 땐 빈 cell — "—" 대시가 16 row × 90px 만큼 시각적 잡음을 만드는 걸 없앤다. */}
-      <span
-        className={`w-[90px] text-[10px] text-right truncate shrink-0 ${watch ? watch.className : ""}`}
-        data-testid="watch-cell"
-      >
-        {watch ? watch.text : ""}
       </span>
       {/* stop loss — md+ */}
       <span
