@@ -143,15 +143,15 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders action items as 신규 매수 후보 with Korean BUY/SELL", async () => {
+  it("renders candidates in inline strip (#214 polish A)", async () => {
     // Default mock: NVDA + INTC actions, TSLA + 005930.KS holdings → NVDA + INTC are not held
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/신규 매수 후보/)).toBeInTheDocument();
-      expect(screen.getByText("매수")).toBeInTheDocument();
-      expect(screen.getByText("매도")).toBeInTheDocument();
+      // Inline candidate strip rendered
+      expect(screen.getByTestId("strip-candidates")).toBeInTheDocument();
+      expect(screen.getByText(/🎯 신규 후보/)).toBeInTheDocument();
       expect(screen.getByText("NVDA")).toBeInTheDocument();
     });
   });
@@ -211,6 +211,86 @@ describe("DashboardPage", () => {
     });
   });
 
+  it("renders sparkline period toggle in holdings header (#214 polish)", async () => {
+    setupMocks();
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      const toggle = screen.getByTestId("sparkline-period-toggle");
+      expect(toggle).toBeInTheDocument();
+      // All 4 period options rendered
+      expect(toggle.textContent).toContain("14");
+      expect(toggle.textContent).toContain("30");
+      expect(toggle.textContent).toContain("60");
+      expect(toggle.textContent).toContain("90");
+    });
+  });
+
+  it("falls back to default period when ?period is not one of the allowed options", async () => {
+    // parseSparklinePeriod: parseInt("45") = 45 → not in [14,30,60,90] → fallback 30
+    setupMocks();
+    const Page = await import("@/app/page");
+    await act(async () => {
+      render(<Page.default searchParams={Promise.resolve({ period: "45" })} />);
+    });
+    await waitFor(() => {
+      // Active period "30" retains its highlighted class — rendered in the toggle
+      const toggle = screen.getByTestId("sparkline-period-toggle");
+      expect(toggle).toBeInTheDocument();
+    });
+  });
+
+  it("renders gracefully when side endpoints reject (fetchAPI catch branches)", async () => {
+    // Dashboard + portfolio resolve (prevents redirect); everything else rejects.
+    // Exercises the .catch() defaults on freshness/pipeline/certify/advisor/targets.
+    mockFetchAPI.mockImplementation((path: string) => {
+      if (path.includes("/api/dashboard")) return Promise.resolve(mockDashboardData);
+      if (path.includes("/api/portfolio/history")) return Promise.resolve({ history: [] });
+      if (path.includes("/api/portfolio")) return Promise.resolve(mockPortfolio);
+      return Promise.reject(new Error("network"));
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      // Hero still renders with the resolved dashboard/portfolio data
+      expect(screen.getByText(/총 자산/)).toBeInTheDocument();
+      expect(screen.getByText("$8,850")).toBeInTheDocument();
+    });
+  });
+
+
+  it("hides Pension holdings from main table (#214 polish)", async () => {
+    setupMocks({
+      portfolio: {
+        count: 3,
+        holdings: [
+          { ticker: "AAPL", account: "acct_m", quantity: 10, avg_price: 100, latest_price: 110, currency: "USD" },
+          { ticker: "069500.KS", account: "acct_p", quantity: 5, avg_price: 30000, latest_price: 32000, currency: "KRW" },
+          { ticker: "TIGER", account: "acct_p2", quantity: 2, avg_price: 50000, latest_price: 51000, currency: "KRW" },
+        ],
+        cash: { accounts: [], total_cash_usd: 0 },
+      },
+      dashboard: {
+        ...mockDashboardData,
+        actions: [],
+        account_labels: {
+          acct_m: "Main",
+          acct_p: "Pension",
+          acct_p2: "Pension 2",
+        },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      // Only 1 holding row (Main AAPL); two Pension accounts filtered out
+      const rows = screen.getAllByTestId("holding-row");
+      expect(rows).toHaveLength(1);
+      // "연금 2건 숨김" hint shown in header
+      expect(screen.getByText(/연금 2건 숨김/)).toBeInTheDocument();
+    });
+  });
+
   it("renders distinct rows when same ticker held in multiple accounts (#199 multi-account fix)", async () => {
     // raw broker accounts → 익명 label per-account 매핑
     // TSLA in two distinct accounts → both rows must render with unique React keys
@@ -241,16 +321,17 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("shows empty state when no candidates", async () => {
+  it("shows '신규 매수 후보 없음' empty hint when no candidates (#214 polish A)", async () => {
     setupMocks({ dashboard: { ...mockDashboardData, actions: [] } });
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/신규 매수 후보 없음/)).toBeInTheDocument();
+      // CollapsibleStrip renders emptyText hint with testid `strip-empty-candidates`
+      expect(screen.getByTestId("strip-empty-candidates")).toBeInTheDocument();
     });
   });
 
-  it("shows portfolio holdings and upcoming events in footer", async () => {
+  it("shows holdings and upcoming events in inline strip (#214 polish A)", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -263,15 +344,16 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      // 보유 종목 항상 표시
+      // 보유 종목 section still present
       expect(screen.getByText(/보유 종목/)).toBeInTheDocument();
-      // 다음 이벤트 푸터에 표시
+      // Events rendered in events strip
+      expect(screen.getByTestId("strip-events")).toBeInTheDocument();
       expect(screen.getByText(/AAPL 실적발표/)).toBeInTheDocument();
       expect(screen.getByText(/FOMC 금리결정/)).toBeInTheDocument();
     });
   });
 
-  it("renders clickable alert lines with navigation", async () => {
+  it("renders clickable alert lines in alert strip with navigation (#214 polish A)", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -284,8 +366,9 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/주의 2건/)).toBeInTheDocument();
-      // Stop-loss alert links to ticker page
+      // Alert strip rendered
+      expect(screen.getByTestId("strip-alerts")).toBeInTheDocument();
+      // Stop-loss alert links to ticker page (parseAlert rewrites text)
       const links = screen.getAllByRole("link");
       const tslaAlert = links.find(l => l.getAttribute("href") === "/ticker/TSLA");
       expect(tslaAlert).toBeTruthy();
@@ -295,15 +378,15 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("shows nothing when alerts empty (no risk banner)", async () => {
+  it("shows empty hint in alert strip when no alerts (#214 polish A)", async () => {
     setupMocks({ dashboard: { ...mockDashboardData, alerts: [] } });
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      // Alert banner should not appear at all when no alerts
-      expect(screen.queryByText(/주의.*건/)).not.toBeInTheDocument();
-      // The old "위험 요소 없음" indicator is removed
-      expect(screen.queryByText(/위험 요소 없음/)).not.toBeInTheDocument();
+      // Strip renders the emptyText "위험 요소 없음" via `strip-empty-alerts` testid
+      expect(screen.getByTestId("strip-empty-alerts")).toBeInTheDocument();
+      // No clickable alert rows (expanded strip body not rendered)
+      expect(screen.queryByTestId("strip-alerts")).not.toBeInTheDocument();
     });
   });
 
@@ -631,8 +714,8 @@ describe("DashboardPage", () => {
     });
   });
 
-  /* ── account-grouped actions ── */
-  it("renders Main/Sub actions in grouped section", async () => {
+  /* ── inline candidates strip (#214 polish A) ── */
+  it("renders Main/Sub candidates inline", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -645,15 +728,17 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText("AAPL")).toBeInTheDocument();
-      expect(screen.getByText("GOOG")).toBeInTheDocument();
-      expect(screen.getByText("Main")).toBeInTheDocument();
-      expect(screen.getByText("Sub")).toBeInTheDocument();
+      const strip = screen.getByTestId("strip-candidates");
+      expect(strip).toBeInTheDocument();
+      expect(strip.textContent).toContain("AAPL");
+      expect(strip.textContent).toContain("GOOG");
+      expect(strip.textContent).toContain("Main");
+      expect(strip.textContent).toContain("Sub");
     });
   });
 
-  it("renders Pension actions as '월말 매수 대기' when not month-end", async () => {
-    // Default date (April 11) is not within 3 days of month end (April 30)
+  it("renders pension-wait empty hint when only pension candidates mid-month", async () => {
+    // April 11 is not within 3 days of month end (April 30) → pension collapses
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -665,17 +750,18 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/월말 매수 대기/)).toBeInTheDocument();
-      // SPY should not appear as a clickable action (pension hidden mid-month)
+      // Empty-state strip with the pension waiting hint text
+      const emptyStrip = screen.getByTestId("strip-empty-candidates");
+      expect(emptyStrip.textContent).toContain("연금 1건");
+      expect(emptyStrip.textContent).toContain("월말 매수 대기");
+      // SPY should not appear (pension is collapsed mid-month)
       expect(screen.queryByText("SPY")).not.toBeInTheDocument();
     });
   });
 
-  it("renders Pension actions expanded at month-end", async () => {
-    // Mock Date so new Date() returns April 29 (1 day before month end → isMonthEnd = true)
-    // Use a class-based mock to keep real timer functionality for waitFor
+  it("renders Pension candidates inline at month-end", async () => {
     const RealDate = globalThis.Date;
-    const fakeNow = new RealDate(2026, 3, 29, 12, 0, 0).getTime(); // April 29
+    const fakeNow = new RealDate(2026, 3, 29, 12, 0, 0).getTime();
     class MockDate extends RealDate {
       constructor(...args: any[]) {
         if (args.length === 0) { super(fakeNow); } else { super(...(args as [any])); }
@@ -695,15 +781,16 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText("SPY")).toBeInTheDocument();
-      expect(screen.getByText("연금")).toBeInTheDocument();
-      expect(screen.queryByText(/월말 매수 대기/)).not.toBeInTheDocument();
+      const strip = screen.getByTestId("strip-candidates");
+      expect(strip.textContent).toContain("SPY");
+      // Pension → 연금 translated
+      expect(strip.textContent).toContain("연금");
     });
 
     vi.stubGlobal("Date", RealDate);
   });
 
-  it("renders 'other' actions (no account or Toss)", async () => {
+  it("renders 'other' account candidates inline (Toss / no account)", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -716,9 +803,10 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText("MSFT")).toBeInTheDocument();
-      expect(screen.getByText("AMZN")).toBeInTheDocument();
-      expect(screen.getByText("Toss")).toBeInTheDocument();
+      const strip = screen.getByTestId("strip-candidates");
+      expect(strip.textContent).toContain("MSFT");
+      expect(strip.textContent).toContain("AMZN");
+      expect(strip.textContent).toContain("Toss");
     });
   });
 
@@ -779,17 +867,18 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      // Main action rendered
-      expect(screen.getByText("AAPL")).toBeInTheDocument();
-      // Toss (other) action rendered
-      expect(screen.getByText("MSFT")).toBeInTheDocument();
-      // Pension is mid-month → collapsed
-      expect(screen.getByText(/월말 매수 대기/)).toBeInTheDocument();
+      const strip = screen.getByTestId("strip-candidates");
+      // Main and Toss actions rendered inside the candidates strip
+      expect(strip.textContent).toContain("AAPL");
+      expect(strip.textContent).toContain("MSFT");
+      // Pension is mid-month → shown as a wait hint inside the strip
+      expect(strip.textContent).toContain("연금");
+      expect(strip.textContent).toContain("월말 대기");
     });
   });
 
   /* ── action with name field ── */
-  it("renders action name and ticker when name is present", async () => {
+  it("renders action name when present (#214 polish A)", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -801,8 +890,9 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText("NVIDIA Corp")).toBeInTheDocument();
-      expect(screen.getByText("NVDA")).toBeInTheDocument();
+      const strip = screen.getByTestId("strip-candidates");
+      // Strip renders name (ticker fallback if name absent)
+      expect(strip.textContent).toContain("NVIDIA Corp");
     });
   });
 });

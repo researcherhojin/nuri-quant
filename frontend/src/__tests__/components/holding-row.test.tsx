@@ -26,8 +26,12 @@ function holdingFixture(overrides: Partial<EnrichedHolding> = {}): EnrichedHoldi
     name: "Apple Inc",
     currency: "USD",
     pnlPct: 5.2,
+    dailyDeltaPct: null,
+    sparkline: [],
+    latestPrice: 105,
+    avgPrice: 100,
     status: { kind: "hold" },
-    stopLoss: 100,
+    stopLoss: 90,
     target1: 120,
     target2: 140,
     target1Reached: false,
@@ -66,6 +70,8 @@ describe("formatPrice", () => {
     expect(formatPrice(2345, "USD")).toBe("$2,345");
   });
 });
+
+// Sparkline SVG component has its own test file (sparkline.test.tsx).
 
 // ─────────────────────────────────────────────────────────────
 // buildEnrichedHoldings — status priority
@@ -205,6 +211,20 @@ describe("buildEnrichedHoldings watch trigger", () => {
     const result = buildEnrichedHoldings([baseHolding], [], [], [], [event]);
     expect(result[0].watch.kind).toBe("none");
   });
+
+  it("picks the nearest of multiple upcoming earnings (sort branch)", () => {
+    // Multiple events for same ticker → sort by daysUntil ascending → pick first
+    const events: RawEvent[] = [
+      { date: localDateOffset(20), event_type: "earnings", ticker: "AAPL" },
+      { date: localDateOffset(5), event_type: "earnings", ticker: "AAPL" },
+      { date: localDateOffset(12), event_type: "earnings", ticker: "AAPL" },
+    ];
+    const result = buildEnrichedHoldings([baseHolding], [], [], [], events);
+    expect(result[0].watch.kind).toBe("earnings");
+    if (result[0].watch.kind === "earnings") {
+      expect(result[0].watch.daysUntil).toBe(5);
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -258,6 +278,19 @@ describe("HoldingRow", () => {
     expect(screen.getByText("✓ 익절₁")).toBeInTheDocument();
   });
 
+  it("renders ✓ 익절₂ when status is tp2 (statusVisual tp2 branch)", () => {
+    render(
+      <HoldingRow
+        holding={holdingFixture({
+          status: { kind: "tp2" },
+          target1Reached: true,
+          target2Reached: true,
+        })}
+      />,
+    );
+    expect(screen.getByText("✓ 익절₂")).toBeInTheDocument();
+  });
+
   it("renders 손절 status when stop_loss triggered", () => {
     render(<HoldingRow holding={holdingFixture({ status: { kind: "stop_loss" }, pnlPct: -8.5 })} />);
     expect(screen.getByText("손절")).toBeInTheDocument();
@@ -284,9 +317,83 @@ describe("HoldingRow", () => {
     expect(screen.getByText("실적 D-DAY")).toBeInTheDocument();
   });
 
+  it("renders earnings D-20 (watchVisual >14 branch)", () => {
+    render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 20 } })} />);
+    expect(screen.getByText("실적 D-20")).toBeInTheDocument();
+  });
+
+  it("renders earnings D-5 (watchVisual <=7 amber branch)", () => {
+    render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 5 } })} />);
+    expect(screen.getByText("실적 D-5")).toBeInTheDocument();
+  });
+
   it("renders em dash for empty watch", () => {
     render(<HoldingRow holding={holdingFixture({ watch: { kind: "none" } })} />);
-    expect(screen.getByText("—")).toBeInTheDocument();
+    // em dash appears in watch, daily delta (null), and sparkline (empty) columns —
+    // at least one is present which is sufficient for this assertion.
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders current price and avg price in compound cell (#214 polish)", () => {
+    render(<HoldingRow holding={holdingFixture({ latestPrice: 245.67, avgPrice: 180 })} />);
+    expect(screen.getByText("$246")).toBeInTheDocument();  // formatPrice rounds ≥100
+    expect(screen.getByText("$180")).toBeInTheDocument();
+  });
+
+  it("renders em dash when latestPrice or avgPrice is null", () => {
+    render(<HoldingRow holding={holdingFixture({ latestPrice: null, avgPrice: null })} />);
+    const cell = screen.getByLabelText("현재가/평단가");
+    expect(cell.textContent).toContain("—");
+  });
+
+  it("renders daily delta with + and color when positive", () => {
+    render(<HoldingRow holding={holdingFixture({ dailyDeltaPct: 1.2 })} />);
+    expect(screen.getByTestId("daily-delta")).toHaveTextContent("+1.2%");
+  });
+
+  it("renders daily delta with - for negative", () => {
+    render(<HoldingRow holding={holdingFixture({ dailyDeltaPct: -0.4 })} />);
+    expect(screen.getByTestId("daily-delta")).toHaveTextContent("-0.4%");
+  });
+
+  it("renders em dash in daily delta when dailyDeltaPct is null", () => {
+    render(<HoldingRow holding={holdingFixture({ dailyDeltaPct: null })} />);
+    expect(screen.getByTestId("daily-delta")).toHaveTextContent("—");
+  });
+
+  it("renders SVG sparkline for valid series (dual narrow/wide variants)", () => {
+    render(<HoldingRow holding={holdingFixture({ sparkline: [100, 105, 103, 108, 110, 115, 112, 118] })} />);
+    // HoldingRow renders two sparkline variants — 80px at xl (narrow) + 240px at 2xl (wide).
+    // Both share the "sparkline" testid; CSS breakpoints show only one at a time.
+    const sparks = screen.getAllByTestId("sparkline");
+    expect(sparks).toHaveLength(2);
+    for (const spark of sparks) {
+      expect(spark.tagName.toLowerCase()).toBe("svg");
+      expect(spark).toHaveAttribute("data-direction", "up");
+    }
+    const widths = sparks.map((s) => s.getAttribute("width"));
+    expect(widths).toContain("80");
+    expect(widths).toContain("240");
+  });
+
+  it("renders em dash sparkline placeholder for empty series", () => {
+    render(<HoldingRow holding={holdingFixture({ sparkline: [] })} />);
+    // Both narrow + wide variants fall back to em dash
+    const sparks = screen.getAllByTestId("sparkline");
+    expect(sparks).toHaveLength(2);
+    for (const spark of sparks) {
+      expect(spark).toHaveTextContent("—");
+    }
+  });
+
+  it("renders em dash sparkline placeholder for single-point series", () => {
+    render(<HoldingRow holding={holdingFixture({ sparkline: [100] })} />);
+    const sparks = screen.getAllByTestId("sparkline");
+    expect(sparks).toHaveLength(2);
+    for (const spark of sparks) {
+      expect(spark).toHaveTextContent("—");
+    }
   });
 
   it("renders KRW prices with won symbol for .KS tickers", () => {
