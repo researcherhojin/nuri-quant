@@ -38,6 +38,11 @@ interface CompositionSectionProps {
   activeTab: CompositionTab;
 }
 
+const sideCardClass =
+  "rounded bg-zinc-900/40 border border-zinc-800/60 px-3 py-2 flex flex-col gap-1";
+const sideCardLabelClass =
+  "text-[9px] text-zinc-500 uppercase tracking-wide";
+
 interface LegendRow {
   label: string;
   weight: number;
@@ -140,13 +145,13 @@ export function CompositionSection({
         </div>
       </div>
 
-      {/* Donut + Legend */}
-      <div className="flex flex-col lg:flex-row gap-6 items-start" data-testid="composition-body">
-        {/* Donut */}
+      {/* Donut + Legend + Side cards (3 columns at lg+) */}
+      <div className="flex flex-col lg:flex-row gap-5 items-start" data-testid="composition-body">
+        {/* Donut — bigger now (320px) for visual centerpiece */}
         <div className="shrink-0 self-center lg:self-start">
           <CompositionDonut
             slices={slices}
-            size={240}
+            size={320}
             centerLabel={hasData ? totalLabel : undefined}
             centerSubLabel={hasData ? "총 자산" : undefined}
           />
@@ -155,7 +160,7 @@ export function CompositionSection({
         {/* Legend table */}
         {hasData ? (
           <div
-            className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 self-stretch"
+            className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-1 self-stretch min-w-0"
             data-testid="composition-legend"
           >
             {legend.map((row) => (
@@ -185,6 +190,85 @@ export function CompositionSection({
         ) : (
           <p className="text-[11px] text-zinc-600">표시할 데이터가 없습니다.</p>
         )}
+
+        {/* Side cards (3xl+ only) — Movers + Concentration mini cards */}
+        <div
+          className="hidden min-[1280px]:flex flex-col gap-3 w-[200px] shrink-0"
+          data-testid="composition-side-cards"
+        >
+          {/* Movers — top 3 winners + losers */}
+          {(summary.topMovers.winners.length > 0 || summary.topMovers.losers.length > 0) && (
+            <div className={sideCardClass} data-testid="side-movers">
+              <p className={sideCardLabelClass}>Movers</p>
+              <div className="space-y-0.5">
+                {summary.topMovers.winners.map((m) => (
+                  <div
+                    key={`up-${m.account}-${m.ticker}`}
+                    className="flex items-center justify-between text-[10px]"
+                  >
+                    <span className="flex items-center gap-1 min-w-0">
+                      <span className="text-emerald-400 shrink-0">&uarr;</span>
+                      <span className="text-zinc-200 truncate">{m.ticker}</span>
+                    </span>
+                    <span className="text-emerald-400 tabular-nums shrink-0 ml-2">
+                      +{m.pnlPct.toFixed(1)}%
+                    </span>
+                  </div>
+                ))}
+                {summary.topMovers.winners.length > 0 &&
+                  summary.topMovers.losers.length > 0 && (
+                    <div className="border-t border-zinc-800/60 my-1" />
+                  )}
+                {summary.topMovers.losers.map((m) => (
+                  <div
+                    key={`down-${m.account}-${m.ticker}`}
+                    className="flex items-center justify-between text-[10px]"
+                  >
+                    <span className="flex items-center gap-1 min-w-0">
+                      <span className="text-red-400 shrink-0">&darr;</span>
+                      <span className="text-zinc-200 truncate">{m.ticker}</span>
+                    </span>
+                    <span className="text-red-400 tabular-nums shrink-0 ml-2">
+                      {m.pnlPct.toFixed(1)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Concentration */}
+          {summary.concentration.topHolding && (
+            <div className={sideCardClass} data-testid="side-concentration">
+              <p className={sideCardLabelClass}>Concentration</p>
+              <div className="flex items-baseline gap-2">
+                <span
+                  className={`text-sm font-semibold tabular-nums ${
+                    summary.concentration.level === "high"
+                      ? "text-amber-400"
+                      : summary.concentration.level === "medium"
+                      ? "text-zinc-200"
+                      : "text-emerald-400"
+                  }`}
+                >
+                  HHI {summary.concentration.herfindahl.toFixed(2)}
+                </span>
+                <span className="text-[9px] text-zinc-600 uppercase">
+                  {summary.concentration.level}
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-500 truncate">
+                Top:{" "}
+                <span className="text-zinc-200">
+                  {summary.concentration.topHolding.ticker}
+                </span>{" "}
+                <span className="text-zinc-400 tabular-nums">
+                  {summary.concentration.topHolding.weight.toFixed(1)}%
+                </span>
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

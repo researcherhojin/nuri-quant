@@ -139,16 +139,22 @@ function parseSparklinePeriod(raw: string | undefined): SparklinePeriod {
   return 30;
 }
 
+// #223 iter 7: holdings drilldown is collapsed by default (top 8 rows + "전체"
+// link). The new dashboard centerpiece is the composition section, not the
+// holdings table — so the table's role is "drill into details on demand".
+const HOLDINGS_COLLAPSED_LIMIT = 8;
+
 async function Dashboard({
   searchParams,
 }: {
-  searchParams?: Promise<{ period?: string; comp?: string }> | undefined;
+  searchParams?: Promise<{ period?: string; comp?: string; holdings?: string }> | undefined;
 }) {
   // Defensive: searchParams may be undefined when rendered outside the page boundary
   // (e.g. some error paths in dev). Default to an empty object.
   const params = (searchParams ? await searchParams : undefined) ?? {};
   const sparklinePeriod = parseSparklinePeriod(params.period);
   const compositionTab = parseCompositionTab(params.comp);
+  const holdingsExpanded = params.holdings === "expanded";
 
   const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets] = await Promise.all([
     fetchAPI<DashboardData>("/api/dashboard"),
@@ -311,8 +317,9 @@ async function Dashboard({
         );
       })()}
 
-      {/* ═══ 인라인 context strips — 알림 / 이벤트 / 후보 (각각 collapsible) ═══ */}
-      <div className="flex flex-col gap-1">
+      {/* ═══ #223 iter 7: status strips compact — horizontal row at lg+ ═══
+          이전엔 항상 vertical 3 줄을 차지했음. lg+ 에서 한 줄로 압축. */}
+      <div className="flex flex-col lg:flex-row lg:flex-wrap gap-1 lg:gap-2">
         {/* 알림 strip */}
         <CollapsibleStrip
           id="alerts"
@@ -469,6 +476,20 @@ async function Dashboard({
                 ))}
                 <span className="text-zinc-700 normal-case">일</span>
               </div>
+              {/* #223 iter 7: holdings collapse toggle. Default = top 8 visible.
+                  Click "전체 N" to expand to all rows; "접기" to collapse back. */}
+              {enrichedHoldings.length > HOLDINGS_COLLAPSED_LIMIT && (
+                <Link
+                  href={holdingsExpanded ? "/" : "/?holdings=expanded"}
+                  scroll={false}
+                  className="text-[9px] text-zinc-500 hover:text-zinc-300"
+                  data-testid="holdings-toggle"
+                >
+                  {holdingsExpanded
+                    ? "접기"
+                    : `전체 ${enrichedHoldings.length} 보기`}
+                </Link>
+              )}
               <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
             </div>
           </div>
@@ -506,7 +527,10 @@ async function Dashboard({
                 <span className="hidden 2xl:inline-block w-[56px] text-right shrink-0">비중</span>
               </div>
               <div className="space-y-0.5">
-                {enrichedHoldings.map((h, i) => (
+                {(holdingsExpanded
+                  ? enrichedHoldings
+                  : enrichedHoldings.slice(0, HOLDINGS_COLLAPSED_LIMIT)
+                ).map((h, i) => (
                   <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
                 ))}
               </div>
