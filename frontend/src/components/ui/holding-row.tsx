@@ -376,7 +376,8 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       {/*
         sparkline — 두 variant를 CSS breakpoint로 swap.
         xl (1280–1535): 고정 80px
-        2xl+ (1536+):   flex-1 + fillWidth 로 남은 가로 폭을 전부 차지 (27" 데드 스페이스 해소)
+        2xl+ (1536+):   고정 240px — 80px 대비 3x, 읽기 좋은 밀도. flex 확장 안 함.
+        (나머지 27" 데드 스페이스는 #219의 섹터 / 비중% 컬럼으로 채움)
       */}
       <span className="hidden xl:inline-flex 2xl:hidden items-center shrink-0" data-testid="sparkline-narrow">
         <Sparkline
@@ -387,16 +388,14 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
         />
       </span>
       <span
-        className="hidden 2xl:flex items-center flex-1 min-w-[160px]"
+        className="hidden 2xl:inline-flex items-center shrink-0"
         data-testid="sparkline-wide"
       >
         <Sparkline
           series={h.sparkline}
-          width={80}
+          width={240}
           height={18}
           baseline={h.avgPrice}
-          fillWidth
-          className="w-full"
         />
       </span>
     </Link>

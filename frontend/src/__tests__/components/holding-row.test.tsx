@@ -364,17 +364,17 @@ describe("HoldingRow", () => {
 
   it("renders SVG sparkline for valid series (dual narrow/wide variants)", () => {
     render(<HoldingRow holding={holdingFixture({ sparkline: [100, 105, 103, 108, 110, 115, 112, 118] })} />);
-    // HoldingRow renders two sparkline variants — fixed 80px (xl-only) + flex-fill (2xl+).
-    // Both share the "sparkline" testid; they must both be SVG and agree on direction.
+    // HoldingRow renders two sparkline variants — 80px at xl (narrow) + 240px at 2xl (wide).
+    // Both share the "sparkline" testid; CSS breakpoints show only one at a time.
     const sparks = screen.getAllByTestId("sparkline");
     expect(sparks).toHaveLength(2);
     for (const spark of sparks) {
       expect(spark.tagName.toLowerCase()).toBe("svg");
       expect(spark).toHaveAttribute("data-direction", "up");
     }
-    // Wide variant is marked with data-fill-width="true"
-    const wide = sparks.find((s) => s.getAttribute("data-fill-width") === "true");
-    expect(wide).toBeTruthy();
+    const widths = sparks.map((s) => s.getAttribute("width"));
+    expect(widths).toContain("80");
+    expect(widths).toContain("240");
   });
 
   it("renders em dash sparkline placeholder for empty series", () => {

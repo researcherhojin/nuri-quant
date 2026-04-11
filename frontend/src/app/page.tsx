@@ -488,8 +488,8 @@ async function Dashboard({
               sm+  (640+): + 일변 (~438px)
               md+  (768+): + 현재/평단·손절 (~594px)
               lg+  (1024+): + 1차익절·2차익절 (~746px, 752 content budget)
-              xl+  (1280+): + sparkline(80px 고정) (~834px)
-              2xl+ (1536+): sparkline flex-1 — 27" 데드 스페이스 채움
+              xl+  (1280+): + sparkline 80px (~834px)
+              2xl+ (1536+): sparkline 240px 고정 (~994px). 나머지 여백은 #219 (섹터/비중%) 가 채움.
               overflow-x-auto는 narrow viewport safety net. */}
           <div className="overflow-x-auto">
             <div className="min-w-0">
@@ -507,8 +507,8 @@ async function Dashboard({
                 <span className="hidden md:inline-block w-[68px] text-right shrink-0">손절</span>
                 <span className="hidden lg:inline-block w-[68px] text-right shrink-0">1차익절</span>
                 <span className="hidden lg:inline-block w-[68px] text-right shrink-0">2차익절</span>
-                {/* sparkline column label — xl(80px 고정) / 2xl(flex-1) 둘 다 동일 헤더 */}
-                <span className="hidden xl:inline-block w-20 2xl:w-auto 2xl:flex-1 2xl:min-w-[160px] text-left shrink-0 2xl:shrink">
+                {/* sparkline column label — xl: 80px / 2xl: 240px (둘 다 고정) */}
+                <span className="hidden xl:inline-block w-20 2xl:w-60 text-left shrink-0">
                   추세
                 </span>
               </div>
