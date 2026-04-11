@@ -37,6 +37,8 @@ function holdingFixture(overrides: Partial<EnrichedHolding> = {}): EnrichedHoldi
     target1Reached: false,
     target2Reached: false,
     watch: { kind: "none" },
+    sector: null,
+    positionPct: null,
     ...overrides,
   };
 }
@@ -329,7 +331,7 @@ describe("HoldingRow", () => {
 
   it("renders em dash for empty watch", () => {
     render(<HoldingRow holding={holdingFixture({ watch: { kind: "none" } })} />);
-    // em dash appears in watch, daily delta (null), and sparkline (empty) columns —
+    // em dash appears in watch, daily delta (null), sparkline (empty), sector/positionPct (null) columns —
     // at least one is present which is sufficient for this assertion.
     const dashes = screen.getAllByText("—");
     expect(dashes.length).toBeGreaterThanOrEqual(1);
@@ -423,5 +425,114 @@ describe("HoldingRow", () => {
     render(<HoldingRow holding={holdingFixture()} href="/portfolio?ticker=AAPL" />);
     const link = screen.getByTestId("holding-row");
     expect(link).toHaveAttribute("href", "/portfolio?ticker=AAPL");
+  });
+
+  // ── #218 wide-viewport columns (sector / position %) ──────
+  describe("#218 wide-viewport columns", () => {
+    it("renders sector text when present", () => {
+      render(<HoldingRow holding={holdingFixture({ sector: "Semiconductor" })} />);
+      expect(screen.getByTestId("sector-cell")).toHaveTextContent("Semiconductor");
+    });
+
+    it("renders em dash in sector cell when null", () => {
+      render(<HoldingRow holding={holdingFixture({ sector: null })} />);
+      expect(screen.getByTestId("sector-cell")).toHaveTextContent("—");
+    });
+
+    it("renders sector as title attribute for truncation tooltip", () => {
+      render(<HoldingRow holding={holdingFixture({ sector: "Consumer Discretionary" })} />);
+      expect(screen.getByTestId("sector-cell")).toHaveAttribute("title", "Consumer Discretionary");
+    });
+
+    it("renders positionPct with 1-decimal percent when present", () => {
+      render(<HoldingRow holding={holdingFixture({ positionPct: 12.3456 })} />);
+      expect(screen.getByTestId("position-pct-cell")).toHaveTextContent("12.3%");
+    });
+
+    it("renders em dash in position-pct cell when null", () => {
+      render(<HoldingRow holding={holdingFixture({ positionPct: null })} />);
+      expect(screen.getByTestId("position-pct-cell")).toHaveTextContent("—");
+    });
+
+    it("renders small positionPct rounded to one decimal", () => {
+      render(<HoldingRow holding={holdingFixture({ positionPct: 0.04 })} />);
+      expect(screen.getByTestId("position-pct-cell")).toHaveTextContent("0.0%");
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// buildEnrichedHoldings — #218 wide-viewport (sector / positionPct)
+// ─────────────────────────────────────────────────────────────
+describe("buildEnrichedHoldings wide-viewport fields", () => {
+  it("copies sector from raw holding through to enriched", () => {
+    const result = buildEnrichedHoldings([baseHolding], [], [], [], []);
+    expect(result[0].sector).toBe("Tech");
+  });
+
+  it("sets sector to null when raw holding omits it", () => {
+    const h: RawHolding = { ...baseHolding, sector: undefined };
+    const result = buildEnrichedHoldings([h], [], [], [], []);
+    expect(result[0].sector).toBeNull();
+  });
+
+  it("computes positionPct as USD value / totalPortfolioUsd", () => {
+    // USD holding: 10 shares @ $110 = $1,100 (latest_price). totalPortfolioUsd = $10,000 → 11%
+    const result = buildEnrichedHoldings(
+      [baseHolding],
+      [],
+      [],
+      [],
+      [],
+      { totalPortfolioUsd: 10_000, usdKrwRate: 1400 },
+    );
+    expect(result[0].positionPct).not.toBeNull();
+    expect(result[0].positionPct).toBeCloseTo(11, 5);
+  });
+
+  it("converts KRW holding to USD before computing positionPct", () => {
+    // KR holding: 2 shares @ ₩1,400,000 = ₩2,800,000 / 1400 rate = $2,000. total $10,000 → 20%
+    const krHolding: RawHolding = {
+      ticker: "005930.KS",
+      accountLabel: "Main",
+      quantity: 2,
+      avg_price: 1_000_000,
+      latest_price: 1_400_000,
+      currency: "KRW",
+    };
+    const result = buildEnrichedHoldings(
+      [krHolding],
+      [],
+      [],
+      [],
+      [],
+      { totalPortfolioUsd: 10_000, usdKrwRate: 1400 },
+    );
+    expect(result[0].positionPct).toBeCloseTo(20, 5);
+  });
+
+  it("returns null positionPct when totalPortfolioUsd is zero or missing", () => {
+    const result = buildEnrichedHoldings([baseHolding], [], [], [], []);
+    expect(result[0].positionPct).toBeNull();
+  });
+
+  it("returns null positionPct for KRW holding when usdKrwRate is 0", () => {
+    const krHolding: RawHolding = {
+      ticker: "005930.KS",
+      accountLabel: "Main",
+      quantity: 2,
+      avg_price: 1_000_000,
+      latest_price: 1_400_000,
+      currency: "KRW",
+    };
+    const result = buildEnrichedHoldings(
+      [krHolding],
+      [],
+      [],
+      [],
+      [],
+      { totalPortfolioUsd: 10_000 },  // usdKrwRate omitted
+    );
+    expect(result[0].positionPct).toBeNull();
   });
 });
