@@ -15,6 +15,12 @@ interface DashboardData {
   regime: { regime: string; trend: string; volatility?: string; confidence: number; vix?: number; fear_greed?: number };
   macro: { score: number; interpretation: string };
   allocation: { long: number; short: number; cash: number };
+  target_allocation?: { long: number; short: number; cash: number };
+  actual_allocation?: { long: number; short: number; cash: number };
+  cash_summary?: {
+    accounts: Array<{ account: string; cash_usd: number; cash_krw: number; total_usd: number }>;
+    total_cash_usd: number;
+  };
   actions: Array<{ action: string; ticker: string; name?: string | null; confidence: number; agreement: number; reason: string; account?: string }>;
   alerts: Array<{ level: string; message: string }>;
   gate_score: number;
@@ -139,11 +145,14 @@ async function Dashboard() {
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
   const verdictLabel = verdictLabels[d.verdict_level] || "관망";
   const KRW_RATE = d.exchange_rate || 1400;
-  const totalValue = portfolio?.holdings?.reduce((sum: number, h: any) => {
+  const holdingsValue = portfolio?.holdings?.reduce((sum: number, h: any) => {
     const price = h.latest_price || 0;
     const qty = h.quantity || 0;
     return sum + (h.ticker?.endsWith(".KS") ? price * qty / KRW_RATE : price * qty);
   }, 0) || 0;
+  // #213: 총 자산 = holdings + cash. cash는 portfolio.yaml 기반 /api/portfolio에서 옴.
+  const cashTotalUsd = portfolio?.cash?.total_cash_usd ?? d.cash_summary?.total_cash_usd ?? 0;
+  const totalValue = holdingsValue + cashTotalUsd;
 
   const vix = d.regime.vix ?? null;
   const fg = d.regime.fear_greed ?? null;
@@ -189,18 +198,24 @@ async function Dashboard() {
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      {/* ═══ 히어로: 총 평가액 + 판단 ═══ */}
+      {/* ═══ 히어로: 총 자산 (holdings + cash) + 판단 ═══ */}
       <div>
-        <p className="text-[10px] text-zinc-500 mb-0.5">총 평가액</p>
+        <p className="text-[10px] text-zinc-500 mb-0.5">총 자산</p>
         <div className="flex items-baseline gap-3">
           <span className="text-4xl font-semibold tabular-nums tracking-tight text-zinc-100">
             ${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </span>
           <StatusBadge status={verdictLabel} size="lg" />
         </div>
-        {accountValues.length > 0 && (
-          <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500">
-            {accountValues.map(av => (
+        {(cashTotalUsd > 0 || accountValues.length > 0) && (
+          <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500 flex-wrap">
+            {cashTotalUsd > 0 && (
+              <>
+                <span>보유 <span className="tabular-nums text-zinc-400">${holdingsValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></span>
+                <span>현금 <span className="tabular-nums text-zinc-400">${cashTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></span>
+              </>
+            )}
+            {accountValues.length > 0 && accountValues.map(av => (
               <span key={av.account}>{av.account} ${av.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
             ))}
           </div>
@@ -220,24 +235,57 @@ async function Dashboard() {
         </div>
       </div>
 
-      {/* 비중 바 */}
-      <div className="flex h-3.5 rounded overflow-hidden text-[9px] font-medium">
-        {d.allocation.long > 0 && (
-          <div className="bg-emerald-600/80 flex items-center justify-center text-emerald-100" style={{ width: `${d.allocation.long}%` }}>
-            {d.allocation.long >= 15 && `투자 ${d.allocation.long}%`}
+      {/* 비중 바 — 실제 (holdings+cash 기반) + 권장 (regime 기반) 2줄 */}
+      {(() => {
+        const actual = d.actual_allocation ?? { long: 0, short: 0, cash: 100 };
+        const target = d.target_allocation ?? d.allocation;
+        return (
+          <div className="space-y-1.5">
+            {/* 실제 */}
+            <div>
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[9px] text-zinc-500">실제</span>
+                <span className="text-[9px] text-zinc-600 tabular-nums">투자 {actual.long}% · 현금 {actual.cash}%</span>
+              </div>
+              <div className="flex h-3 rounded overflow-hidden text-[9px] font-medium">
+                {actual.long > 0 && (
+                  <div className="bg-emerald-600/80 flex items-center justify-center text-emerald-100" style={{ width: `${actual.long}%` }}>
+                    {actual.long >= 20 && `${actual.long}%`}
+                  </div>
+                )}
+                {actual.short > 0 && (
+                  <div className="bg-red-600/80 flex items-center justify-center text-red-100" style={{ width: `${actual.short}%` }}>
+                    {actual.short >= 10 && `${actual.short}%`}
+                  </div>
+                )}
+                {actual.cash > 0 && (
+                  <div className="bg-zinc-800 flex items-center justify-center text-zinc-400" style={{ width: `${actual.cash}%` }}>
+                    {actual.cash >= 20 && `${actual.cash}%`}
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* 권장 (regime) */}
+            <div>
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[9px] text-zinc-600">권장 (레짐)</span>
+                <span className="text-[9px] text-zinc-700 tabular-nums">투자 {target.long}% · 현금 {target.cash}%</span>
+              </div>
+              <div className="flex h-1.5 rounded overflow-hidden text-[9px] font-medium opacity-60">
+                {target.long > 0 && (
+                  <div className="bg-emerald-700/60" style={{ width: `${target.long}%` }} />
+                )}
+                {target.short > 0 && (
+                  <div className="bg-red-700/60" style={{ width: `${target.short}%` }} />
+                )}
+                {target.cash > 0 && (
+                  <div className="bg-zinc-700" style={{ width: `${target.cash}%` }} />
+                )}
+              </div>
+            </div>
           </div>
-        )}
-        {d.allocation.short > 0 && (
-          <div className="bg-red-600/80 flex items-center justify-center text-red-100" style={{ width: `${d.allocation.short}%` }}>
-            {d.allocation.short >= 10 && `숏 ${d.allocation.short}%`}
-          </div>
-        )}
-        {d.allocation.cash > 0 && (
-          <div className="bg-zinc-800 flex items-center justify-center text-zinc-400" style={{ width: `${d.allocation.cash}%` }}>
-            현금 {d.allocation.cash}%
-          </div>
-        )}
-      </div>
+        );
+      })()}
 
       {/* ═══ 알림 — 개별 라인, 클릭 시 상세 이동 ═══ */}
       {alertCount > 0 && (

@@ -55,6 +55,133 @@ class TestDashboardAPI:
         assert "account_labels" in result
         assert isinstance(result["account_labels"], dict)
 
+    def test_dashboard_exposes_actual_allocation_and_cash(self, db_path):
+        """#213: dashboard 응답이 actual_allocation + cash_summary + target_allocation을 노출."""
+        from nuri.api.routes.dashboard import _build_dashboard
+        result = _build_dashboard()
+        assert "actual_allocation" in result
+        assert "target_allocation" in result
+        assert "cash_summary" in result
+        actual = result["actual_allocation"]
+        assert set(actual.keys()) == {"long", "short", "cash"}
+        assert actual["long"] + actual["short"] + actual["cash"] == 100
+        cs = result["cash_summary"]
+        assert "accounts" in cs and isinstance(cs["accounts"], list)
+        assert "total_cash_usd" in cs and isinstance(cs["total_cash_usd"], (int, float))
+
+
+class TestCashBalances:
+    """#213: _get_cash_balances() — portfolio.yaml에서 cash 파싱."""
+
+    def test_compute_actual_allocation_holdings_only(self):
+        from nuri.api.routes.dashboard import _compute_actual_allocation
+        result = _compute_actual_allocation([{"value": 10000}], 0)
+        assert result == {"long": 100, "short": 0, "cash": 0}
+
+    def test_compute_actual_allocation_cash_only(self):
+        from nuri.api.routes.dashboard import _compute_actual_allocation
+        result = _compute_actual_allocation([], 5000)
+        assert result == {"long": 0, "short": 0, "cash": 100}
+
+    def test_compute_actual_allocation_empty_portfolio(self):
+        from nuri.api.routes.dashboard import _compute_actual_allocation
+        result = _compute_actual_allocation([], 0)
+        assert result == {"long": 0, "short": 0, "cash": 100}
+
+    def test_compute_actual_allocation_mixed(self):
+        from nuri.api.routes.dashboard import _compute_actual_allocation
+        # holdings 46, cash 54 → 46% / 54%
+        result = _compute_actual_allocation([{"value": 4600}], 5400)
+        assert result["long"] == 46
+        assert result["cash"] == 54
+        assert result["short"] == 0
+
+    def test_compute_actual_allocation_rounds_to_100(self):
+        """반올림 오차 흡수로 long + cash = 100 보장."""
+        from nuri.api.routes.dashboard import _compute_actual_allocation
+        # 333/1000 = 33.3%, 667/1000 = 66.7% → round(33.3)=33, cash=67
+        result = _compute_actual_allocation([{"value": 333}], 667)
+        assert result["long"] + result["cash"] == 100
+
+    def test_get_cash_balances_missing_yaml(self, tmp_path, monkeypatch):
+        """portfolio.yaml 없으면 빈 cash 반환 (graceful)."""
+        import nuri.api.routes.dashboard as dash_mod
+        monkeypatch.setattr(
+            dash_mod,
+            "__file__",
+            str(tmp_path / "fake_dashboard.py"),
+        )
+        # tmp_path에 portfolio.yaml 없음 → FileNotFoundError → 빈 dict 반환
+        result = dash_mod._get_cash_balances(exchange_rate=1400)
+        assert result == {"accounts": [], "total_cash_usd": 0.0}
+
+    def test_get_cash_balances_parses_usd_and_krw(self, tmp_path, monkeypatch):
+        """cash_usd + cash_krw 파싱 → USD 환산."""
+        import nuri.api.routes.dashboard as dash_mod
+
+        # 임시 portfolio.yaml 생성
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        portfolio_yaml = config_dir / "portfolio.yaml"
+        portfolio_yaml.write_text(
+            "accounts:\n"
+            "  acct_a:\n"
+            "    name: Test A\n"
+            "    strategy: core\n"
+            "    cash_usd: 1000.0\n"
+            "    cash_krw: 1400000\n"
+            "  acct_b:\n"
+            "    name: Test B\n"
+            "    strategy: active\n"
+            "    cash_usd: 500.0\n",
+            encoding="utf-8",
+        )
+        # __file__을 tmp_path 하위로 패치 → config/portfolio.yaml resolve 위치 변경
+        # dashboard.py의 경로 계산: Path(__file__).parent.parent.parent.parent / "config" / "portfolio.yaml"
+        # 즉 __file__이 tmp_path/level1/level2/level3/level4.py 이면 tmp_path/config/portfolio.yaml로 resolve
+        fake_file = tmp_path / "l1" / "l2" / "l3" / "dashboard.py"
+        fake_file.parent.mkdir(parents=True)
+        fake_file.touch()
+        monkeypatch.setattr(dash_mod, "__file__", str(fake_file))
+
+        result = dash_mod._get_cash_balances(exchange_rate=1400)
+        # acct_a: 1000 + 1400000/1400 = 2000 USD
+        # acct_b: 500 USD
+        # total: 2500
+        assert result["total_cash_usd"] == 2500.0
+        assert len(result["accounts"]) == 2
+
+    def test_get_cash_balances_skips_non_dict_entries(self, tmp_path, monkeypatch):
+        """malformed yaml — accounts 아래에 dict가 아닌 값이 있으면 건너뜀 (방어적 guard).
+
+        covers dashboard.py line 335 (`if not isinstance(info, dict): continue`).
+        실전에서 portfolio.yaml이 `accounts: null` 이거나 잘못된 YAML을 먹었을 때 crash 방지.
+        """
+        import nuri.api.routes.dashboard as dash_mod
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        portfolio_yaml = config_dir / "portfolio.yaml"
+        # 하나는 dict, 하나는 null, 하나는 string — 모두 yaml 파싱 가능하지만 non-dict
+        portfolio_yaml.write_text(
+            "accounts:\n"
+            "  good:\n"
+            "    strategy: core\n"
+            "    cash_usd: 500.0\n"
+            "  broken_null: null\n"
+            "  broken_str: unexpected string\n",
+            encoding="utf-8",
+        )
+        fake_file = tmp_path / "l1" / "l2" / "l3" / "dashboard.py"
+        fake_file.parent.mkdir(parents=True)
+        fake_file.touch()
+        monkeypatch.setattr(dash_mod, "__file__", str(fake_file))
+
+        # 예외 없이 good 계정만 집계되어야 함
+        result = dash_mod._get_cash_balances(exchange_rate=1400)
+        assert result["total_cash_usd"] == 500.0
+        assert len(result["accounts"]) == 1
+
     def test_cache_mechanism(self, db_path, monkeypatch):
         """캐시 동작 확인."""
         import nuri.api.routes.dashboard as dash_mod

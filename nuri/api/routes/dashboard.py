@@ -89,12 +89,21 @@ def _build_dashboard() -> dict:
     account_labels_map = _get_account_labels()
     ticker_accounts = {t: account_labels_map.get(acc, acc) for t, acc in _get_ticker_account_map().items()}
 
+    # ── 11. Cash + 실제 자산 배분 (#213) ──
+    # `allocation`은 regime **권장** 비율 (legacy). `actual_allocation`은 현재 portfolio의
+    # holdings + cash로 계산한 **실제** 비율. Hero의 총 자산도 cash 포함.
+    cash_summary = _get_cash_balances(exchange_rate)
+    actual_allocation = _compute_actual_allocation(account_values, cash_summary["total_cash_usd"])
+
     return {
         "verdict": verdict,
         "verdict_level": verdict_level,
         "regime": regime_data,
         "macro": macro_data,
-        "allocation": allocation,
+        "allocation": allocation,                   # target (regime 권장) — legacy 이름, backward compat
+        "target_allocation": allocation,            # explicit 이름 — regime 권장 비율
+        "actual_allocation": actual_allocation,     # 현재 portfolio 실제 비율 (holdings + cash)
+        "cash_summary": cash_summary,               # 계좌별 cash + 총 cash USD
         "actions": actions,
         "alerts": alerts,
         "gate_score": gate_score,
@@ -286,6 +295,76 @@ def _get_account_values(exchange_rate: float | None) -> list[dict]:
         {"account": account_labels.get(acc, acc), "value": round(v, 2)}
         for acc, v in sorted(totals.items(), key=lambda x: -x[1])
     ]
+
+
+def _get_cash_balances(exchange_rate: float | None = None) -> dict:
+    """portfolio.yaml의 계좌별 cash 잔액을 USD로 환산 합산 (#213).
+
+    Returns:
+        {
+            "accounts": [
+                {"account": "<label>", "cash_usd": N, "cash_krw": N, "total_usd": N},
+                ...
+            ],
+            "total_cash_usd": N,
+        }
+
+    portfolio.yaml의 각 계좌 레벨 `cash_usd` / `cash_krw` 필드가 있을 때 합산한다.
+    환율 누락 시 1400 기본값 (기존 dashboard 로직과 일치).
+    broker 이름은 노출하지 않고 `_get_account_labels()`의 익명 라벨로 치환한다.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    portfolio_path = Path(__file__).parent.parent.parent.parent / "config" / "portfolio.yaml"
+    try:
+        with open(portfolio_path, encoding="utf-8") as f:
+            portfolio = yaml.safe_load(f) or {}
+    except Exception as e:
+        logger.debug("portfolio.yaml cash read failed: %s", e)
+        return {"accounts": [], "total_cash_usd": 0.0}
+
+    rate = exchange_rate or 1400.0
+    labels = _get_account_labels()
+    accounts_out: list[dict] = []
+    total_usd = 0.0
+
+    for raw_acc, info in (portfolio.get("accounts") or {}).items():
+        if not isinstance(info, dict):
+            continue
+        cash_usd = float(info.get("cash_usd") or 0)
+        cash_krw = float(info.get("cash_krw") or 0)
+        acc_total = cash_usd + (cash_krw / rate if rate > 0 else 0)
+        if acc_total <= 0:
+            continue
+        accounts_out.append({
+            "account": labels.get(raw_acc, raw_acc),
+            "cash_usd": round(cash_usd, 2),
+            "cash_krw": round(cash_krw, 2),
+            "total_usd": round(acc_total, 2),
+        })
+        total_usd += acc_total
+
+    return {"accounts": accounts_out, "total_cash_usd": round(total_usd, 2)}
+
+
+def _compute_actual_allocation(account_values: list[dict], cash_total_usd: float) -> dict:
+    """실제 포트폴리오 구성 비율 — holdings vs cash (USD 기준, #213).
+
+    `_get_allocation()`은 regime이 권장하는 **target** 비율을 반환하는 반면
+    이 함수는 현재 portfolio의 **actual** 구성 비율을 계산한다.
+
+    Returns:
+        {"long": 46, "short": 0, "cash": 54}  — 백분율, 합 100
+    """
+    holdings_usd = sum(av.get("value", 0) for av in account_values)
+    total = holdings_usd + cash_total_usd
+    if total <= 0:
+        return {"long": 0, "short": 0, "cash": 100}
+    long_pct = round((holdings_usd / total) * 100)
+    cash_pct = 100 - long_pct  # 반올림 오차는 cash 쪽으로 흡수
+    return {"long": long_pct, "short": 0, "cash": cash_pct}
 
 
 def _get_gate_score() -> int:
