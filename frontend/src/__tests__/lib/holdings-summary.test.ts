@@ -89,7 +89,10 @@ describe("summarizeHoldings", () => {
   });
 
   describe("sectors", () => {
-    it("aggregates positionPct per sector, sorted descending", () => {
+    it("aggregates visible-normalized weight per sector, sorted descending", () => {
+      // Visible positionPct sum = 20+10+15 = 45 (these holdings are only 45%
+      // of the whole portfolio). The sector card should show each sector as a
+      // fraction of *visible* so the legend adds up to 100, not 45.
       const s = summarizeHoldings(
         [
           holding({ ticker: "NVDA", sector: "Semi", positionPct: 20 }),
@@ -99,11 +102,17 @@ describe("summarizeHoldings", () => {
         { totalPortfolioUsd: 100_000 },
       );
       expect(s.sectors.map((x) => x.name)).toEqual(["Semi", "BigTech"]);
-      expect(s.sectors[0].weight).toBe(30);
-      expect(s.sectors[1].weight).toBe(15);
+      // Semi = (20+10) / 45 × 100 = 66.66…
+      expect(s.sectors[0].weight).toBeCloseTo((30 / 45) * 100, 5);
+      // BigTech = 15 / 45 × 100 = 33.33…
+      expect(s.sectors[1].weight).toBeCloseTo((15 / 45) * 100, 5);
+      // Sanity: total should be 100 (± rounding)
+      const total = s.sectors.reduce((sum, x) => sum + x.weight, 0);
+      expect(total).toBeCloseTo(100, 5);
     });
 
     it("buckets sectors beyond top-4 into Other", () => {
+      // Visible sum = 30+20+15+10+5+5 = 85
       const s = summarizeHoldings(
         [
           holding({ ticker: "A", sector: "Semi", positionPct: 30 }),
@@ -119,7 +128,10 @@ describe("summarizeHoldings", () => {
       const names = s.sectors.map((x) => x.name);
       expect(names.slice(0, 4)).toEqual(["Semi", "BigTech", "Finance", "Energy"]);
       expect(names[4]).toBe("Other");
-      expect(s.sectors[4].weight).toBe(10); // REIT(5) + Utilities(5)
+      // Other = (5+5) / 85 × 100
+      expect(s.sectors[4].weight).toBeCloseTo((10 / 85) * 100, 5);
+      // Legend sums to 100
+      expect(s.sectors.reduce((sum, x) => sum + x.weight, 0)).toBeCloseTo(100, 5);
     });
 
     it("labels null sector as 'Other'", () => {
@@ -169,6 +181,7 @@ describe("summarizeHoldings", () => {
     });
 
     it("returns fewer than 3 when portfolio is small", () => {
+      // A is a winner, B is a loser. Each list gets exactly one entry.
       const s = summarizeHoldings(
         [
           holding({ ticker: "A", pnlPct: 5 }),
@@ -176,8 +189,39 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 10_000 },
       );
-      expect(s.topMovers.winners).toHaveLength(2);
-      expect(s.topMovers.losers).toHaveLength(2);
+      expect(s.topMovers.winners).toHaveLength(1);
+      expect(s.topMovers.winners[0].ticker).toBe("A");
+      expect(s.topMovers.losers).toHaveLength(1);
+      expect(s.topMovers.losers[0].ticker).toBe("B");
+    });
+
+    it("returns an empty losers list when every holding is in the green", () => {
+      // Previously the code just took the 3 smallest pnl entries — so an
+      // all-positive portfolio showed slightly-positive holdings under the red
+      // ↓ arrow, which reads as a loss. Now losers must be strictly < 0.
+      const s = summarizeHoldings(
+        [
+          holding({ ticker: "A", pnlPct: 10 }),
+          holding({ ticker: "B", pnlPct: 2 }),
+          holding({ ticker: "C", pnlPct: 0.1 }),
+        ],
+        { totalPortfolioUsd: 10_000 },
+      );
+      expect(s.topMovers.winners.map((m) => m.ticker)).toEqual(["A", "B", "C"]);
+      expect(s.topMovers.losers).toEqual([]);
+    });
+
+    it("excludes zero-pnl holdings from both winners and losers", () => {
+      const s = summarizeHoldings(
+        [
+          holding({ ticker: "A", pnlPct: 0 }),
+          holding({ ticker: "B", pnlPct: 5 }),
+          holding({ ticker: "C", pnlPct: -5 }),
+        ],
+        { totalPortfolioUsd: 10_000 },
+      );
+      expect(s.topMovers.winners.map((m) => m.ticker)).toEqual(["B"]);
+      expect(s.topMovers.losers.map((m) => m.ticker)).toEqual(["C"]);
     });
   });
 

@@ -78,9 +78,30 @@ export function summarizeHoldings(
 ): HoldingsSummary {
   const totalUsd = options.totalPortfolioUsd;
 
+  // ── NORMALIZATION ─────────────────────────────────────────────────────
+  // `positionPct` on each holding is "% of total portfolio (holdings + cash)"
+  // — e.g. NVDA = 2.8% of net worth. But the dashboard filters out pension
+  // holdings before passing the array here, so Σ positionPct < 100 for the
+  // visible subset (~27% in the user's current data). Showing those raw
+  // numbers in the summary panel creates a disconnect: the donut looks full
+  // but legends sum to 27%, HHI looks artificially low, today's weighted %
+  // is muted against the total instead of the visible subset.
+  //
+  // Fix: compute everything relative to the VISIBLE holdings only. Each
+  // holding's `visibleWeight` is its share of Σ positionPct, renormalized to
+  // [0, 100]. Sector rollup, HHI, top position, and today's % all use
+  // visibleWeight. Absolute USD values (today's $ move) stay as absolute.
+  const visiblePctSum = holdings.reduce(
+    (sum, h) => sum + (h.positionPct ?? 0),
+    0,
+  );
+  // visible_value_usd = (visiblePctSum/100) × totalPortfolioUsd
+  const visibleValueUsd = (visiblePctSum / 100) * totalUsd;
+  const visibleWeight = (h: EnrichedHolding): number =>
+    visiblePctSum > 0 ? ((h.positionPct ?? 0) / visiblePctSum) * 100 : 0;
+
   // 1) Today's P&L
   let todayUsdDelta = 0;
-  let todayWeightedPct = 0;
   let upCount = 0;
   let downCount = 0;
   for (const h of holdings) {
@@ -90,22 +111,23 @@ export function summarizeHoldings(
     if (h.positionPct != null && totalUsd > 0) {
       const valueUsd = (h.positionPct / 100) * totalUsd;
       todayUsdDelta += valueUsd * (h.dailyDeltaPct / 100);
-      todayWeightedPct += (h.positionPct / 100) * h.dailyDeltaPct;
     }
   }
+  const todayTotalPct =
+    visibleValueUsd > 0 ? (todayUsdDelta / visibleValueUsd) * 100 : 0;
   const today: TodayPnL = {
     totalUsd: todayUsdDelta,
-    totalPct: todayWeightedPct,
+    totalPct: todayTotalPct,
     upCount,
     downCount,
   };
 
-  // 2) Sector breakdown — aggregate positionPct per sector, top 4 + Other
+  // 2) Sector breakdown — aggregate visibleWeight per sector, top 4 + Other
   const sectorMap = new Map<string, number>();
   for (const h of holdings) {
-    const key = h.sector ?? "Other";
-    const weight = h.positionPct ?? 0;
+    const weight = visibleWeight(h);
     if (weight <= 0) continue;
+    const key = h.sector ?? "Other";
     sectorMap.set(key, (sectorMap.get(key) ?? 0) + weight);
   }
   const sortedSectors = Array.from(sectorMap.entries()).sort((a, b) => b[1] - a[1]);
@@ -121,24 +143,31 @@ export function summarizeHoldings(
     sectors.push({ name: "Other", weight: otherWeight, color: OTHER_COLOR });
   }
 
-  // 3) Top movers — 3 best, 3 worst by pnlPct
+  // 3) Top movers — 3 best winners, 3 worst losers.
+  //    Losers: only holdings whose pnlPct is strictly < 0. If everything is
+  //    green, the losers list is empty (don't fake a "loss" by showing the
+  //    least-green holding under a red ↓).
   const withPnl = holdings.filter((h) => Number.isFinite(h.pnlPct));
-  const byPnlDesc = [...withPnl].sort((a, b) => b.pnlPct - a.pnlPct);
-  const winners = byPnlDesc.slice(0, 3).map(
-    (h): MoverEntry => ({ account: h.account, ticker: h.ticker, pnlPct: h.pnlPct }),
-  );
+  const winners = [...withPnl]
+    .filter((h) => h.pnlPct > 0)
+    .sort((a, b) => b.pnlPct - a.pnlPct)
+    .slice(0, 3)
+    .map(
+      (h): MoverEntry => ({ account: h.account, ticker: h.ticker, pnlPct: h.pnlPct }),
+    );
   const losers = [...withPnl]
+    .filter((h) => h.pnlPct < 0)
     .sort((a, b) => a.pnlPct - b.pnlPct)
     .slice(0, 3)
     .map(
       (h): MoverEntry => ({ account: h.account, ticker: h.ticker, pnlPct: h.pnlPct }),
     );
 
-  // 4) Concentration — Herfindahl on portfolio fractions + single largest
+  // 4) Concentration — Herfindahl on VISIBLE-normalized fractions + single largest
   let hhi = 0;
   let topHolding: ConcentrationSummary["topHolding"] = null;
   for (const h of holdings) {
-    const weight = h.positionPct ?? 0;
+    const weight = visibleWeight(h);
     if (weight <= 0) continue;
     const frac = weight / 100;
     hhi += frac * frac;
