@@ -444,7 +444,14 @@ async function Dashboard({
 
       {/* ═══ 보유 종목 — full-width (사이드바 제거 후) ═══ */}
       {enrichedHoldings.length > 0 && (
-        <section className="flex-1 min-h-0 flex flex-col">
+        <section className="flex-1 min-h-0 flex flex-col items-start">
+          {/*
+            w-fit wrapper — 제목 바 + 테이블 이 모두 테이블의 natural width (현재 breakpoint 의
+            column sum)에 맞춰 shrink 한다. 덕분에 period toggle + 상세 링크가 테이블의 우측
+            가장자리에 정확히 정렬되어, 우측에 떠 있는 "disconnected toolbar" 문제가 사라진다.
+            max-w-full 은 narrow viewport safety net.
+          */}
+          <div className="w-fit max-w-full">
           <div className="flex items-center justify-between mb-1.5 gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
@@ -496,9 +503,10 @@ async function Dashboard({
               overflow-x-auto는 narrow viewport safety net. */}
           <div className="overflow-x-auto">
             <div className="min-w-0">
-              {/* 컬럼 헤더 — sm+ (< sm은 헤더 없이 row aria-label 만으로 충분) */}
-              <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
-                <span className="w-10 shrink-0">계좌</span>
+              {/* 컬럼 헤더 — sm+ (< sm은 헤더 없이 row aria-label 만으로 충분).
+                  w-fit 이라 rows 의 w-fit 과 정확히 같은 폭을 차지 → hover 정렬 + 우측 dead zone 제거. */}
+              <div className="hidden sm:flex w-fit items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
+                <span className="w-10 2xl:w-16 shrink-0">계좌</span>
                 <span className="w-20 shrink-0">종목</span>
                 <span className="hidden md:flex w-[72px] text-right shrink-0 leading-tight justify-end">
                   현재/<span className="text-zinc-700">평단</span>
@@ -514,8 +522,8 @@ async function Dashboard({
                 <span className="hidden xl:inline-block w-20 2xl:w-60 text-left shrink-0">
                   추세
                 </span>
-                {/* #218 (PR #219): 2xl+ 27" 전용 초광폭 컬럼 */}
-                <span className="hidden 2xl:inline-block w-[96px] text-right shrink-0">섹터</span>
+                {/* #218 (PR #219): 2xl+ 27" 전용 초광폭 컬럼. Sector 는 label 이라 text-left. */}
+                <span className="hidden 2xl:inline-block w-[96px] text-left shrink-0">섹터</span>
                 <span className="hidden 2xl:inline-block w-[56px] text-right shrink-0">비중</span>
               </div>
               <div className="space-y-0.5">
@@ -524,6 +532,7 @@ async function Dashboard({
                 ))}
               </div>
             </div>
+          </div>
           </div>
         </section>
       )}
