@@ -363,44 +363,52 @@ async function Dashboard({
                 </div>
                 <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
               </div>
-              {/* 컬럼 헤더 (sm+) */}
-              <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
-                <span className="w-10 shrink-0">계좌</span>
-                <span className="w-20 shrink-0">종목</span>
-                <span className="w-[72px] text-right shrink-0 leading-tight">
-                  현재/<span className="text-zinc-700">평단</span>
-                </span>
-                <span className="w-14 text-right shrink-0">손익</span>
-                <span className="w-12 text-right shrink-0">일변</span>
-                <span className="w-[68px] text-center shrink-0">상태</span>
-                <span className="w-[72px] text-right shrink-0">손절</span>
-                <span className="w-[72px] text-right shrink-0">1차익절</span>
-                <span className="w-[72px] text-right shrink-0">2차익절</span>
-                {/* sparkline period toggle: URL-driven, Server Component 호환 */}
-                <span className="w-[80px] text-center shrink-0 inline-flex items-center justify-center gap-0.5 normal-case" data-testid="sparkline-period-toggle">
-                  {SPARKLINE_PERIOD_OPTIONS.map((p) => (
-                    <Link
-                      key={p}
-                      href={p === 30 ? "/" : `/?period=${p}`}
-                      scroll={false}
-                      className={`px-1 rounded ${
-                        p === sparklinePeriod
-                          ? "text-zinc-300 bg-zinc-800/80"
-                          : "text-zinc-600 hover:text-zinc-400"
-                      }`}
-                    >
-                      {p}
-                    </Link>
-                  ))}
-                  <span className="text-zinc-700">일</span>
-                </span>
-                <span className="flex-1 text-right">워치</span>
-              </div>
-              {/* overflow-x-auto: 컬럼이 많아 viewport가 좁을 때 가로 스크롤로 모든 정보 유지 */}
-              <div className="space-y-0.5 overflow-x-auto">
-                {enrichedHoldings.map((h, i) => (
-                  <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
-                ))}
+              {/* 헤더 + 행을 같은 overflow-x-auto 컨테이너 안에 두어 항상 정렬.
+                  min-w-[900px]로 모든 컬럼 고정 너비 + gap을 확보; viewport가 더 좁으면
+                  컨테이너가 가로 스크롤. Column header는 sm+ 에서만 렌더 (narrow에선 생략).
+                  행은 한 번만 렌더 — 반복 렌더하면 DOM에 중복 노드가 생겨 테스트 + React 문제. */}
+              <div className="overflow-x-auto">
+                <div className="min-w-0 sm:min-w-[900px]">
+                  {/* 컬럼 헤더 (sm+) */}
+                  <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
+                    <span className="w-10 shrink-0">계좌</span>
+                    <span className="w-20 shrink-0">종목</span>
+                    <span className="w-[72px] text-right shrink-0 leading-tight">
+                      현재/<span className="text-zinc-700">평단</span>
+                    </span>
+                    <span className="w-14 text-right shrink-0">손익</span>
+                    <span className="w-12 text-right shrink-0">일변</span>
+                    <span className="w-[68px] text-center shrink-0">상태</span>
+                    <span className="w-[72px] text-right shrink-0">손절</span>
+                    <span className="w-[72px] text-right shrink-0">1차익절</span>
+                    <span className="w-[72px] text-right shrink-0">2차익절</span>
+                    {/* sparkline period toggle: URL-driven, Server Component 호환 */}
+                    <span className="w-[80px] text-center shrink-0 inline-flex items-center justify-center gap-0.5 normal-case" data-testid="sparkline-period-toggle">
+                      {SPARKLINE_PERIOD_OPTIONS.map((p) => (
+                        <Link
+                          key={p}
+                          href={p === 30 ? "/" : `/?period=${p}`}
+                          scroll={false}
+                          className={`px-1 rounded ${
+                            p === sparklinePeriod
+                              ? "text-zinc-300 bg-zinc-800/80"
+                              : "text-zinc-600 hover:text-zinc-400"
+                          }`}
+                        >
+                          {p}
+                        </Link>
+                      ))}
+                      <span className="text-zinc-700">일</span>
+                    </span>
+                    <span className="flex-1 min-w-[80px] text-right">워치</span>
+                  </div>
+                  {/* 행들 (단일 렌더) */}
+                  <div className="space-y-0.5">
+                    {enrichedHoldings.map((h, i) => (
+                      <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
+                    ))}
+                  </div>
+                </div>
               </div>
             </section>
           )}

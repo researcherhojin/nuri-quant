@@ -10,6 +10,11 @@
 #   - long_term: stop_loss -20%, max_position 25%  (장기 보유)
 #   - pension:   stop_loss -30%, max_position 40%  (연금)
 # 자세한 내용: config/rules.yaml의 account_strategies 섹션
+#
+# label 필드 (선택, dashboard 표시용 #214 polish):
+#   미지정 시 strategy 기반 기본 라벨 (core→Main, swing→Sub, pension→Pension, longterm→Long).
+#   지정 시 입력한 문자열이 대시보드 전체에 표시됨 (예: "Toss", "Brokerage Alpha").
+#   portfolio.yaml은 gitignored이므로 본인만의 라벨을 자유롭게 입력 가능.
 # ═══════════════════════════════════════════════════════
 
 accounts:
@@ -19,6 +24,7 @@ accounts:
     broker: "증권사명"
     currency: USD
     strategy: core      # core | active | swing | long_term | pension
+    label: "Brokerage Alpha"  # (선택) 대시보드 표시 라벨. 미지정 시 strategy 기반 "Main"
     holdings:
       - { ticker: AAPL,     qty: 10,   avg: 180.00, sector: BigTech }
       - { ticker: NVDA,     qty: 5,    avg: 130.00, sector: Semiconductor }
