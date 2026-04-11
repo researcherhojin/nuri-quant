@@ -7,12 +7,7 @@ import { fetchAPI } from "@/lib/api";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
 import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
-import {
-  DashboardSidebar,
-  type SidebarAlert,
-  type SidebarEvent,
-  type SidebarCandidate,
-} from "@/components/ui/dashboard-sidebar";
+import { CollapsibleStrip } from "@/components/ui/collapsible-strip";
 import Link from "next/link";
 
 interface DashboardData {
@@ -230,23 +225,30 @@ async function Dashboard({
   const pensionCandidates = newCandidates.filter(a => a.account === "Pension");
   const visibleCandidates = newCandidates.filter(a => a.account !== "Pension" || isMonthEnd);
 
-  // #214: Sidebar 데이터 prep
-  const sidebarAlerts: SidebarAlert[] = d.alerts.map((al) => {
-    const parsed = parseAlert(al);
-    return { level: al.level, message: parsed.label, href: parsed.href };
-  });
-  const sidebarEvents: SidebarEvent[] = (d.upcoming_events ?? []).slice(0, 8).map((ev: any) => ({
-    date: ev.date,
-    description: ev.description,
-    ticker: ev.ticker,
+  // #214 polish (A): inline context strips 대신 사이드바 제거 → 데이터 prep
+  const stripAlerts = d.alerts.map((al) => ({
+    level: al.level,
+    parsed: parseAlert(al),
   }));
-  const sidebarCandidates: SidebarCandidate[] = visibleCandidates.map((a) => ({
-    action: a.action,
-    ticker: a.ticker,
-    name: a.name,
-    account: a.account ? accountKo(a.account) : undefined,
-    confidence: a.confidence,
-  }));
+  const stripEvents = (d.upcoming_events ?? [])
+    .slice(0, 5)
+    .map((ev: any) => ({ date: ev.date as string, description: ev.description as string | undefined, ticker: ev.ticker as string | null }));
+  const stripCandidates = visibleCandidates.slice(0, 5);
+
+  // Helper — "MM-DD" format
+  const fmtEventDate = (iso: string) => (iso && iso.length >= 10 ? iso.slice(5, 10) : iso ?? "");
+  // Helper — D-day from YYYY-MM-DD (local time, timezone-safe)
+  const eventDday = (iso: string): string => {
+    if (!iso || iso.length < 10) return "";
+    const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+    if (!y || !m || !d) return "";
+    const eventMs = new Date(y, m - 1, d).getTime();
+    const today = new Date();
+    const todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const days = Math.round((eventMs - todayMs) / 86_400_000);
+    if (days === 0) return "D-DAY";
+    return days > 0 ? `D-${days}` : `D+${-days}`;
+  };
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -339,92 +341,169 @@ async function Dashboard({
         );
       })()}
 
-      {/* ═══ 2-column 본문: main (holdings) + sidebar (알림/이벤트/후보) ═══ */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-4">
-        {/* ─── main ─── */}
-        <main className="min-w-0 min-h-0 flex flex-col gap-3">
-          {/* 보유 종목 통합 뷰 */}
-          {enrichedHoldings.length > 0 && (
-            <section>
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
-                  <span className="text-[10px] text-zinc-600">
-                    {winners.length > 0 && `수익 ${winners.length}`}
-                    {winners.length > 0 && losers.length > 0 && " · "}
-                    {losers.length > 0 && `손실 ${losers.length}`}
-                    {hiddenPensionCount > 0 && (
-                      <>
-                        {(winners.length > 0 || losers.length > 0) && " · "}
-                        <span className="text-zinc-700">연금 {hiddenPensionCount}건 숨김</span>
-                      </>
-                    )}
+      {/* ═══ 인라인 context strips — 알림 / 이벤트 / 후보 (각각 collapsible) ═══ */}
+      <div className="flex flex-col gap-1">
+        {/* 알림 strip */}
+        <CollapsibleStrip
+          id="alerts"
+          title="알림"
+          icon="⚠"
+          count={stripAlerts.length}
+          emptyText="위험 요소 없음"
+        >
+          <div className="flex items-start gap-2 px-2 py-1 rounded bg-red-950/20 border border-red-900/30 pr-6">
+            <span className="text-[10px] text-red-400 font-semibold shrink-0">⚠ 주의 {stripAlerts.length}건</span>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
+              {stripAlerts.map((al, i) => (
+                <Link
+                  key={i}
+                  href={al.parsed.href}
+                  className="flex items-center gap-1 text-[10px] hover:text-zinc-100 transition-colors"
+                >
+                  <span className={al.level === "critical" ? "text-red-400" : "text-amber-400"}>
+                    {al.level === "critical" ? "\u2716" : "\u25B3"}
                   </span>
-                </div>
-                <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
-              </div>
-              {/* 헤더 + 행을 같은 overflow-x-auto 컨테이너 안에 두어 항상 정렬.
-                  min-w-[900px]로 모든 컬럼 고정 너비 + gap을 확보; viewport가 더 좁으면
-                  컨테이너가 가로 스크롤. Column header는 sm+ 에서만 렌더 (narrow에선 생략).
-                  행은 한 번만 렌더 — 반복 렌더하면 DOM에 중복 노드가 생겨 테스트 + React 문제. */}
-              <div className="overflow-x-auto">
-                <div className="min-w-0 sm:min-w-[900px]">
-                  {/* 컬럼 헤더 (sm+) */}
-                  <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
-                    <span className="w-10 shrink-0">계좌</span>
-                    <span className="w-20 shrink-0">종목</span>
-                    <span className="w-[72px] text-right shrink-0 leading-tight">
-                      현재/<span className="text-zinc-700">평단</span>
-                    </span>
-                    <span className="w-14 text-right shrink-0">손익</span>
-                    <span className="w-12 text-right shrink-0">일변</span>
-                    <span className="w-[68px] text-center shrink-0">상태</span>
-                    <span className="w-[72px] text-right shrink-0">손절</span>
-                    <span className="w-[72px] text-right shrink-0">1차익절</span>
-                    <span className="w-[72px] text-right shrink-0">2차익절</span>
-                    {/* sparkline period toggle: URL-driven, Server Component 호환 */}
-                    <span className="w-[80px] text-center shrink-0 inline-flex items-center justify-center gap-0.5 normal-case" data-testid="sparkline-period-toggle">
-                      {SPARKLINE_PERIOD_OPTIONS.map((p) => (
-                        <Link
-                          key={p}
-                          href={p === 30 ? "/" : `/?period=${p}`}
-                          scroll={false}
-                          className={`px-1 rounded ${
-                            p === sparklinePeriod
-                              ? "text-zinc-300 bg-zinc-800/80"
-                              : "text-zinc-600 hover:text-zinc-400"
-                          }`}
-                        >
-                          {p}
-                        </Link>
-                      ))}
-                      <span className="text-zinc-700">일</span>
-                    </span>
-                    <span className="flex-1 min-w-[80px] text-right">워치</span>
-                  </div>
-                  {/* 행들 (단일 렌더) */}
-                  <div className="space-y-0.5">
-                    {enrichedHoldings.map((h, i) => (
-                      <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
-        </main>
+                  <span className="text-zinc-300 truncate">{al.parsed.label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </CollapsibleStrip>
 
-        {/* ─── sidebar (lg+ 고정, narrow는 stack 아래로) ─── */}
-        <div className="lg:border-l lg:border-zinc-800/60 lg:pl-4 lg:-mr-1">
-          <DashboardSidebar
-            alerts={sidebarAlerts}
-            events={sidebarEvents}
-            candidates={sidebarCandidates}
-            pensionCandidatesCount={pensionCandidates.length}
-            isMonthEnd={isMonthEnd}
-          />
-        </div>
+        {/* 이벤트 strip */}
+        <CollapsibleStrip
+          id="events"
+          title="이벤트"
+          icon="📅"
+          count={stripEvents.length}
+        >
+          <div className="flex items-start gap-2 px-2 py-1 rounded bg-zinc-900/40 border border-zinc-800/60 pr-6">
+            <span className="text-[10px] text-zinc-400 font-semibold shrink-0">📅 다음 이벤트 {stripEvents.length}건</span>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
+              {stripEvents.map((ev, i) => {
+                const dday = eventDday(ev.date);
+                return (
+                  <span key={`${ev.date}-${i}`} className="text-[10px] text-zinc-400 truncate">
+                    <span className="text-zinc-600 tabular-nums">{fmtEventDate(ev.date)}</span>{" "}
+                    {ev.description || ev.ticker || "이벤트"}
+                    {dday && <span className="text-zinc-600 ml-1">({dday})</span>}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </CollapsibleStrip>
+
+        {/* 신규 매수 후보 strip */}
+        <CollapsibleStrip
+          id="candidates"
+          title="신규 후보"
+          icon="🎯"
+          count={stripCandidates.length}
+          emptyText={
+            pensionCandidates.length > 0 && !isMonthEnd
+              ? `연금 ${pensionCandidates.length}건 — 월말 매수 대기`
+              : "신규 매수 후보 없음"
+          }
+        >
+          <div className="flex items-start gap-2 px-2 py-1 rounded bg-zinc-900/40 border border-zinc-800/60 pr-6">
+            <span className="text-[10px] text-emerald-400 font-semibold shrink-0">🎯 신규 후보 {stripCandidates.length}건</span>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
+              {stripCandidates.map((c, i) => (
+                <Link
+                  key={`${c.ticker}-${i}`}
+                  href={`/ticker/${c.ticker}`}
+                  className="flex items-center gap-1 text-[10px] hover:text-zinc-100 transition-colors"
+                >
+                  {c.account && <span className="text-zinc-600">{accountKo(c.account)}</span>}
+                  <span className="text-zinc-200">{c.name || c.ticker}</span>
+                  <span
+                    className={`tabular-nums font-semibold ${
+                      c.confidence >= 80
+                        ? "text-emerald-400"
+                        : c.confidence >= 50
+                        ? "text-amber-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {c.action === "BUY" ? "매수" : "매도"} {c.confidence}
+                  </span>
+                </Link>
+              ))}
+              {pensionCandidates.length > 0 && !isMonthEnd && (
+                <span className="text-[10px] text-zinc-600">연금 {pensionCandidates.length}건 월말 대기</span>
+              )}
+            </div>
+          </div>
+        </CollapsibleStrip>
       </div>
+
+      {/* ═══ 보유 종목 — full-width (사이드바 제거 후) ═══ */}
+      {enrichedHoldings.length > 0 && (
+        <section className="flex-1 min-h-0 flex flex-col">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
+              <span className="text-[10px] text-zinc-600">
+                {winners.length > 0 && `수익 ${winners.length}`}
+                {winners.length > 0 && losers.length > 0 && " · "}
+                {losers.length > 0 && `손실 ${losers.length}`}
+                {hiddenPensionCount > 0 && (
+                  <>
+                    {(winners.length > 0 || losers.length > 0) && " · "}
+                    <span className="text-zinc-700">연금 {hiddenPensionCount}건 숨김</span>
+                  </>
+                )}
+              </span>
+            </div>
+            <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
+          </div>
+          {/* 단일 scroll container — 헤더와 rows 같은 min-w로 정렬 보장.
+              컬럼 reorder: 상태 → 워치 인접 (워치 isolation 해결), sparkline 마지막. */}
+          <div className="overflow-x-auto">
+            <div className="min-w-0 sm:min-w-[960px]">
+              {/* 컬럼 헤더 (sm+) */}
+              <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
+                <span className="w-10 shrink-0">계좌</span>
+                <span className="w-20 shrink-0">종목</span>
+                <span className="w-[72px] text-right shrink-0 leading-tight">
+                  현재/<span className="text-zinc-700">평단</span>
+                </span>
+                <span className="w-14 text-right shrink-0">손익</span>
+                <span className="w-12 text-right shrink-0">일변</span>
+                <span className="w-[68px] text-center shrink-0">상태</span>
+                <span className="w-[90px] text-right shrink-0 truncate">워치</span>
+                <span className="w-[72px] text-right shrink-0">손절</span>
+                <span className="w-[72px] text-right shrink-0">1차익절</span>
+                <span className="w-[72px] text-right shrink-0">2차익절</span>
+                {/* sparkline period toggle: URL-driven, Server Component 호환 */}
+                <span className="w-[80px] text-center shrink-0 inline-flex items-center justify-center gap-0.5 normal-case" data-testid="sparkline-period-toggle">
+                  {SPARKLINE_PERIOD_OPTIONS.map((p) => (
+                    <Link
+                      key={p}
+                      href={p === 30 ? "/" : `/?period=${p}`}
+                      scroll={false}
+                      className={`px-1 rounded ${
+                        p === sparklinePeriod
+                          ? "text-zinc-300 bg-zinc-800/80"
+                          : "text-zinc-600 hover:text-zinc-400"
+                      }`}
+                    >
+                      {p}
+                    </Link>
+                  ))}
+                  <span className="text-zinc-700">일</span>
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {enrichedHoldings.map((h, i) => (
+                  <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ═══ 푸터: 품질 + 이벤트 + 파이프라인 ═══ */}
       <div className="mt-auto pt-2 border-t border-zinc-800/60 space-y-1">

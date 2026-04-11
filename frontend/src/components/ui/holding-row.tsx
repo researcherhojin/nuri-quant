@@ -345,6 +345,13 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       >
         {status.text}
       </span>
+      {/* watch trigger — 상태 바로 옆에 붙여 action group 형성 (#214 polish: isolation 해결) */}
+      <span
+        className={`w-[90px] text-[10px] text-right truncate shrink-0 ${watch ? watch.className : "text-zinc-600"}`}
+        data-testid="watch-cell"
+      >
+        {watch ? watch.text : "—"}
+      </span>
       {/* stop loss — sm+ */}
       <span
         className="hidden sm:inline-block w-[72px] text-right tabular-nums text-zinc-500 shrink-0"
@@ -366,7 +373,7 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       >
         {t2Cell}
       </span>
-      {/* sparkline — sm+, 30일 SVG polyline + avg 수평선 (손익 분기점 reference) */}
+      {/* sparkline — sm+, 30일 SVG polyline + avg 수평선 (손익 분기점 reference). 마지막 컬럼. */}
       <span className="hidden sm:inline-flex items-center shrink-0">
         <Sparkline
           series={h.sparkline}
@@ -374,12 +381,6 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
           height={18}
           baseline={h.avgPrice}
         />
-      </span>
-      {/* watch trigger — min-w guarantees text fits even when row is tight */}
-      <span
-        className={`flex-1 min-w-[80px] text-[10px] text-right truncate ${watch ? watch.className : "text-zinc-600"}`}
-      >
-        {watch ? watch.text : "—"}
       </span>
     </Link>
   );
