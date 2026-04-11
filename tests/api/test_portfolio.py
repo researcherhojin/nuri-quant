@@ -26,6 +26,17 @@ class TestPortfolio:
         assert "count" in data
         assert data["count"] == 0
 
+    def test_portfolio_exposes_cash(self, client):
+        """#213: /api/portfolio 응답이 cash 필드를 포함해야 함."""
+        r = client.get("/api/portfolio")
+        assert r.status_code == 200
+        data = r.json()
+        assert "cash" in data
+        cash = data["cash"]
+        assert "accounts" in cash
+        assert "total_cash_usd" in cash
+        assert isinstance(cash["accounts"], list)
+
     def test_add_holding(self, client):
         r = client.post("/api/portfolio", json={
             "account": "sample", "ticker": "AAPL",

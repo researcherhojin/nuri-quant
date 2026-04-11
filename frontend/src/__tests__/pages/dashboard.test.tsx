@@ -97,7 +97,7 @@ describe("DashboardPage", () => {
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
       expect(screen.getByText("주의")).toBeInTheDocument();
-      expect(screen.getByText(/총 평가액/)).toBeInTheDocument();
+      expect(screen.getByText(/총 자산/)).toBeInTheDocument();
       expect(screen.getByText("$8,850")).toBeInTheDocument();
     });
   });
@@ -153,6 +153,61 @@ describe("DashboardPage", () => {
       expect(screen.getByText("매수")).toBeInTheDocument();
       expect(screen.getByText("매도")).toBeInTheDocument();
       expect(screen.getByText("NVDA")).toBeInTheDocument();
+    });
+  });
+
+  it("hero total includes cash from portfolio.cash (#213)", async () => {
+    // holdings $8,850 + cash $5,000 = total $13,850
+    setupMocks({
+      portfolio: {
+        count: 2,
+        holdings: [
+          { ticker: "TSLA", quantity: 33, avg_price: 343, latest_price: 250, currency: "USD" },
+          { ticker: "005930.KS", quantity: 4, avg_price: 200500, latest_price: 210000, currency: "KRW" },
+        ],
+        cash: {
+          accounts: [{ account: "Main", cash_usd: 5000, cash_krw: 0, total_usd: 5000 }],
+          total_cash_usd: 5000,
+        },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("$13,850")).toBeInTheDocument();
+      expect(screen.getByText(/총 자산/)).toBeInTheDocument();
+      // Hero sub-line shows holdings amount + cash amount (specific dollar values)
+      expect(screen.getByText("$8,850")).toBeInTheDocument();
+      expect(screen.getByText("$5,000")).toBeInTheDocument();
+    });
+  });
+
+  it("renders actual + target allocation bars (#213)", async () => {
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        actual_allocation: { long: 46, short: 0, cash: 54 },
+        target_allocation: { long: 20, short: 0, cash: 80 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText(/실제/)).toBeInTheDocument();
+      expect(screen.getByText(/권장 \(레짐\)/)).toBeInTheDocument();
+      expect(screen.getByText(/투자 46% · 현금 54%/)).toBeInTheDocument();
+      expect(screen.getByText(/투자 20% · 현금 80%/)).toBeInTheDocument();
+    });
+  });
+
+  it("falls back to holdings-only total when portfolio.cash is absent (#213)", async () => {
+    // No cash in portfolio → hero shows $8,850, no breakdown sub-line
+    setupMocks();
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("$8,850")).toBeInTheDocument();
+      expect(screen.queryByText(/보유 \$/)).not.toBeInTheDocument();
     });
   });
 
