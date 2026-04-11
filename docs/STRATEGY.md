@@ -428,10 +428,10 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 1 | **보유 종목에 매매 상태 + 가격 타겟 통합** | [#199](https://github.com/researcherhojin/nuri-quant/issues/199) | feat(frontend) | Phase 2-C. 보유 종목에 BUY/SELL 배지 + 손절/익절 가격 + 실적 D-day. |
-| 2 | **rebalance_advisor 계좌별 위반 검출 버그** | — | fix(analysis) | 종목이 여러 계좌에 걸쳐 있을 때 `max(strategies)` 사용으로 가장 관대한 한도가 적용됨. 계좌별로 따로 검사하도록 리팩토링 필요. |
+| 1 | **연 배당금 / 배당 수익률 데이터** | — | feat(collectors) | `fundamentals` 테이블에 `annual_dividend_usd` + `dividend_yield_pct` 컬럼 추가, yfinance/OpenBB 에서 수집. 단타 위주 호진님 use case 에는 배당 metric 이 hero 자리 차지할 만큼은 아니지만 필요 시 surface 가능 (#221 iter 7a 노트 참조). |
+| 2 | **i18n constants extraction** | — | refactor(frontend) | 컴포넌트 + 테스트 양쪽에 하드코딩된 한국어 라벨을 `lib/strings.ts` 단일 source 로 추출. 풀 i18n (next-intl) 은 호진님 single-user, 한국어 only 컨텍스트에는 오버킬. PR #224 머지 후 작업. |
 
-> 대시보드 + 파이프라인 UX 1차 리팩토링은 PR #194/#197/#198/#200/#202/#204로 모두 완료. Phase 2-C(#199)가 다음 단계.
+> 대시보드 composition-first restructure 완료 — PR #221/#222/#223/#224 로 holdings table → composition 중심 overview 전환. 각 PR 의 자세한 변경은 git log 참조.
 
 ### Tier 2 — 다음 1 달 (P1)
 
