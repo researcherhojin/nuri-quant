@@ -376,6 +376,7 @@ async function Dashboard({
           title="이벤트"
           icon="📅"
           count={stripEvents.length}
+          emptyText="예정된 이벤트 없음"
         >
           <div className="flex items-start gap-2 px-2 py-1 rounded bg-zinc-900/40 border border-zinc-800/60 pr-6">
             <span className="text-[10px] text-zinc-400 font-semibold shrink-0">📅 다음 이벤트 {stripEvents.length}건</span>
@@ -458,26 +459,31 @@ async function Dashboard({
             </div>
             <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
           </div>
-          {/* 단일 scroll container — 헤더와 rows 같은 min-w로 정렬 보장.
-              컬럼 reorder: 상태 → 워치 인접 (워치 isolation 해결), sparkline 마지막. */}
+          {/* Responsive column tiers — 헤더와 rows가 동일 breakpoint·width로 정렬.
+              base (<sm): 계좌·종목·손익·상태·워치 (~380px)
+              sm+ (640+):  + 일변 (~438px)
+              md+ (768+):  + 현재/평단·손절 (~594px)
+              lg+ (1024+): + 1차익절·2차익절 (~746px, 752 content budget)
+              xl+ (1280+): + sparkline + period 토글 (~834px)
+              overflow-x-auto는 narrow viewport safety net. */}
           <div className="overflow-x-auto">
-            <div className="min-w-0 sm:min-w-[960px]">
-              {/* 컬럼 헤더 (sm+) */}
+            <div className="min-w-0">
+              {/* 컬럼 헤더 — sm+ (< sm은 헤더 없이 row aria-label 만으로 충분) */}
               <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
                 <span className="w-10 shrink-0">계좌</span>
                 <span className="w-20 shrink-0">종목</span>
-                <span className="w-[72px] text-right shrink-0 leading-tight">
+                <span className="hidden md:flex w-[72px] text-right shrink-0 leading-tight justify-end">
                   현재/<span className="text-zinc-700">평단</span>
                 </span>
                 <span className="w-14 text-right shrink-0">손익</span>
                 <span className="w-12 text-right shrink-0">일변</span>
                 <span className="w-[68px] text-center shrink-0">상태</span>
                 <span className="w-[90px] text-right shrink-0 truncate">워치</span>
-                <span className="w-[72px] text-right shrink-0">손절</span>
-                <span className="w-[72px] text-right shrink-0">1차익절</span>
-                <span className="w-[72px] text-right shrink-0">2차익절</span>
-                {/* sparkline period toggle: URL-driven, Server Component 호환 */}
-                <span className="w-[80px] text-center shrink-0 inline-flex items-center justify-center gap-0.5 normal-case" data-testid="sparkline-period-toggle">
+                <span className="hidden md:inline-block w-[68px] text-right shrink-0">손절</span>
+                <span className="hidden lg:inline-block w-[68px] text-right shrink-0">1차익절</span>
+                <span className="hidden lg:inline-block w-[68px] text-right shrink-0">2차익절</span>
+                {/* sparkline period toggle: URL-driven, Server Component 호환 — xl+ */}
+                <span className="hidden xl:inline-flex w-[80px] items-center justify-center gap-0.5 normal-case shrink-0" data-testid="sparkline-period-toggle">
                   {SPARKLINE_PERIOD_OPTIONS.map((p) => (
                     <Link
                       key={p}

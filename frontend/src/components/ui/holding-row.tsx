@@ -318,63 +318,63 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       <span className="font-medium text-zinc-100 truncate min-w-0 flex-1 sm:flex-none sm:w-20">
         {displayName}
       </span>
-      {/* 현재가 / 평단가 — compound cell, 2-line stack */}
+      {/* 현재가 / 평단가 — md+ (768px+) */}
       <span
-        className="hidden sm:flex flex-col items-end text-right tabular-nums shrink-0 w-[72px] leading-[1.1]"
+        className="hidden md:flex flex-col items-end text-right tabular-nums shrink-0 w-[72px] leading-[1.1]"
         aria-label="현재가/평단가"
       >
         <span className="text-[10px] text-zinc-200">{formatPrice(h.latestPrice, h.currency)}</span>
         <span className="text-[9px] text-zinc-500">{formatPrice(h.avgPrice, h.currency)}</span>
       </span>
-      {/* pnl (누적) */}
+      {/* pnl (누적) — 항상 */}
       <span className={`font-semibold tabular-nums text-right w-14 shrink-0 ${pnlClass}`}>
         {h.pnlPct >= 0 ? "+" : ""}
         {h.pnlPct.toFixed(1)}%
       </span>
-      {/* 일변 (daily delta) — pnl 옆, 누적 vs 오늘 비교 */}
+      {/* 일변 (daily delta) — sm+ */}
       <span
-        className={`tabular-nums text-right w-12 shrink-0 text-[10px] ${deltaClass}`}
+        className={`hidden sm:inline-block tabular-nums text-right w-12 shrink-0 text-[10px] ${deltaClass}`}
         aria-label="일변"
         data-testid="daily-delta"
       >
         {deltaText}
       </span>
-      {/* status badge */}
+      {/* status badge — 항상 */}
       <span
         className={`inline-flex items-center justify-center text-[10px] font-medium rounded border px-1.5 py-0.5 w-[68px] shrink-0 ${status.className}`}
       >
         {status.text}
       </span>
-      {/* watch trigger — 상태 바로 옆에 붙여 action group 형성 (#214 polish: isolation 해결) */}
+      {/* watch trigger — 항상, 상태 바로 옆 */}
       <span
         className={`w-[90px] text-[10px] text-right truncate shrink-0 ${watch ? watch.className : "text-zinc-600"}`}
         data-testid="watch-cell"
       >
         {watch ? watch.text : "—"}
       </span>
-      {/* stop loss — sm+ */}
+      {/* stop loss — md+ */}
       <span
-        className="hidden sm:inline-block w-[72px] text-right tabular-nums text-zinc-500 shrink-0"
+        className="hidden md:inline-block w-[68px] text-right tabular-nums text-zinc-500 shrink-0"
         aria-label="손절가"
       >
         {formatPrice(h.stopLoss, h.currency)}
       </span>
-      {/* target_1 — sm+ */}
+      {/* target_1 — lg+ */}
       <span
-        className="hidden sm:inline-block w-[72px] text-right tabular-nums shrink-0"
+        className="hidden lg:inline-block w-[68px] text-right tabular-nums shrink-0"
         aria-label="1차 익절가"
       >
         {t1Cell}
       </span>
-      {/* target_2 — sm+ */}
+      {/* target_2 — lg+ */}
       <span
-        className="hidden sm:inline-block w-[72px] text-right tabular-nums shrink-0"
+        className="hidden lg:inline-block w-[68px] text-right tabular-nums shrink-0"
         aria-label="2차 익절가"
       >
         {t2Cell}
       </span>
-      {/* sparkline — sm+, 30일 SVG polyline + avg 수평선 (손익 분기점 reference). 마지막 컬럼. */}
-      <span className="hidden sm:inline-flex items-center shrink-0">
+      {/* sparkline — xl+ (1280px+), 30일 SVG polyline + avg 수평선 */}
+      <span className="hidden xl:inline-flex items-center shrink-0">
         <Sparkline
           series={h.sparkline}
           width={80}

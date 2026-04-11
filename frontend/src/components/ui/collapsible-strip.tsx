@@ -69,7 +69,7 @@ export function CollapsibleStrip({
     if (!emptyText) return null;
     return (
       <div
-        className={`text-[10px] text-zinc-700 px-2 py-0.5 ${className}`}
+        className={`text-[10px] text-zinc-500 px-2 py-0.5 ${className}`}
         data-testid={`strip-empty-${id}`}
       >
         {icon} {emptyText}
