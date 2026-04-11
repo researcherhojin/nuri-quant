@@ -37,6 +37,22 @@ class TestPortfolio:
         assert "total_cash_usd" in cash
         assert isinstance(cash["accounts"], list)
 
+    def test_portfolio_holdings_have_history_fields(self, client):
+        """#214: 각 holding에 previous_close + sparkline_30d 필드가 있어야 함."""
+        client.post("/api/portfolio", json={
+            "account": "sample", "ticker": "AAPL",
+            "quantity": 10, "avg_price": 180.0,
+            "currency": "USD", "sector": "Tech",
+        })
+        r = client.get("/api/portfolio")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["count"] == 1
+        h = data["holdings"][0]
+        assert "previous_close" in h
+        assert "sparkline_30d" in h
+        assert isinstance(h["sparkline_30d"], list)
+
     def test_add_holding(self, client):
         r = client.post("/api/portfolio", json={
             "account": "sample", "ticker": "AAPL",
@@ -75,6 +91,63 @@ class TestPortfolio:
         """빈 DB에서도 에러 대신 에러 dict 반환."""
         r = client.get("/api/risk")
         assert r.status_code == 200
+
+
+class TestEnrichWithHistory:
+    """#214: _enrich_with_history — previous_close + sparkline_30d 주입."""
+
+    def test_empty_holdings_noop(self):
+        from nuri.api.routes.portfolio import _enrich_with_history
+        holdings: list[dict] = []
+        _enrich_with_history(holdings)
+        assert holdings == []
+
+    def test_missing_history_sets_none_and_empty_list(self, monkeypatch):
+        """prices 테이블에 데이터 없으면 previous_close=None, sparkline_30d=[]."""
+        import nuri.api.routes.portfolio as portfolio_mod
+        monkeypatch.setattr(portfolio_mod, "query", lambda *args, **kwargs: [])
+        holdings = [{"ticker": "ZZZ"}]
+        portfolio_mod._enrich_with_history(holdings)
+        assert holdings[0]["previous_close"] is None
+        assert holdings[0]["sparkline_30d"] == []
+
+    def test_with_history_populates_fields(self, monkeypatch):
+        """여러 close 값 → previous_close는 두 번째 최신, sparkline은 오래된→최신."""
+        import nuri.api.routes.portfolio as portfolio_mod
+        mock_rows = [
+            {"ticker": "AAPL", "date": "2026-04-10", "close": 180.0},
+            {"ticker": "AAPL", "date": "2026-04-09", "close": 178.5},
+            {"ticker": "AAPL", "date": "2026-04-08", "close": 177.0},
+            {"ticker": "AAPL", "date": "2026-04-07", "close": 175.0},
+        ]
+        monkeypatch.setattr(portfolio_mod, "query", lambda *a, **kw: mock_rows)
+        holdings = [{"ticker": "AAPL"}]
+        portfolio_mod._enrich_with_history(holdings)
+        assert holdings[0]["previous_close"] == 178.5
+        assert holdings[0]["sparkline_30d"] == [175.0, 177.0, 178.5, 180.0]
+
+    def test_sparkline_truncated_to_30_days(self, monkeypatch):
+        """30일 초과 데이터는 최근 30개만 유지."""
+        import nuri.api.routes.portfolio as portfolio_mod
+        mock_rows = [
+            {"ticker": "AAPL", "date": f"2026-04-{i:02d}", "close": 100.0 + i}
+            for i in range(40, 0, -1)
+        ]
+        monkeypatch.setattr(portfolio_mod, "query", lambda *a, **kw: mock_rows)
+        holdings = [{"ticker": "AAPL"}]
+        portfolio_mod._enrich_with_history(holdings)
+        assert len(holdings[0]["sparkline_30d"]) == 30
+
+    def test_only_one_close_leaves_previous_none(self, monkeypatch):
+        """가격 데이터가 1개뿐이면 previous_close는 None (delta 계산 불가)."""
+        import nuri.api.routes.portfolio as portfolio_mod
+        monkeypatch.setattr(portfolio_mod, "query", lambda *a, **kw: [
+            {"ticker": "NEW", "date": "2026-04-10", "close": 50.0},
+        ])
+        holdings = [{"ticker": "NEW"}]
+        portfolio_mod._enrich_with_history(holdings)
+        assert holdings[0]["previous_close"] is None
+        assert holdings[0]["sparkline_30d"] == [50.0]
 
 
 class TestPutEndpoint:
