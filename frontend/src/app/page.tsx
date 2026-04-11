@@ -23,6 +23,7 @@ interface DashboardData {
   account_values?: Array<{ account: string; value: number }>;
   upcoming_events?: Array<{ date: string; event_type: string; ticker: string | null; description: string; importance: number }>;
   ticker_accounts?: Record<string, string>;
+  account_labels?: Record<string, string>;
 }
 
 interface FreshnessData {
@@ -159,11 +160,13 @@ async function Dashboard() {
   const accountValues = d.account_values || [];
 
   // 통합 보유 종목 — 매매 상태 + 가격 타겟 + 워치 트리거 결합
-  // ticker_accounts는 익명 라벨 매핑 (kakaopay → "Main"). raw broker명 노출 금지(§4.4.1).
-  const tickerAccounts = d.ticker_accounts || {};
+  // account_labels: raw broker → 익명 label (per-account 매핑). 다계좌 ticker는
+  // ticker_accounts(ticker→label, 단일 매핑)로 풀 수 없어서 collision이 발생했음 — 각
+  // holding의 raw account를 key로 라벨을 lookup하여 fix.
+  const accountLabels = d.account_labels || {};
   const labeledHoldings = holdings.map((h: any) => ({
     ...h,
-    accountLabel: accountKo(tickerAccounts[h.ticker]),
+    accountLabel: accountKo(accountLabels[h.account] || h.account || ""),
   }));
   const enrichedHoldings = buildEnrichedHoldings(
     labeledHoldings as any,
@@ -284,8 +287,8 @@ async function Dashboard() {
             <span className="flex-1 text-right">워치</span>
           </div>
           <div className="space-y-0.5">
-            {enrichedHoldings.map((h) => (
-              <HoldingRow key={`${h.account}-${h.ticker}`} holding={h} />
+            {enrichedHoldings.map((h, i) => (
+              <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
             ))}
           </div>
         </div>
