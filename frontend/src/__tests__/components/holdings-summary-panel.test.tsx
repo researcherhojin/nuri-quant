@@ -1,17 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-// Mock Recharts — jsdom can't render SVG charts. Kept in this file so the
-// mock hoisting doesn't affect unrelated tests (see CLAUDE.md gotchas on
-// vi.mock hoisting).
-vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: any) => <div data-testid="rc-container">{children}</div>,
-  PieChart: ({ children }: any) => <div data-testid="rc-pie-chart">{children}</div>,
-  Pie: ({ children }: any) => <div data-testid="rc-pie">{children}</div>,
-  Cell: () => <div data-testid="rc-cell" />,
-  Tooltip: () => <div data-testid="rc-tooltip" />,
-}));
-
+// #221 iter-3: panel no longer uses Recharts (donut replaced with a CSS
+// barlist) so this test file doesn't need any chart mocks anymore.
 import { HoldingsSummaryPanel } from "@/components/ui/holdings-summary-panel";
 import type { HoldingsSummary } from "@/lib/holdings-summary";
 
@@ -78,13 +69,20 @@ describe("HoldingsSummaryPanel", () => {
     expect(todayNeg.textContent).toContain("\u25BC");
   });
 
-  it("renders sector legend with percent labels", () => {
+  it("renders sector barlist with one row per slice + percent labels", () => {
     render(<HoldingsSummaryPanel summary={baseSummary()} />);
     const sectors = screen.getByTestId("summary-sectors");
     expect(sectors.textContent).toContain("Semi");
     expect(sectors.textContent).toContain("28.0%");
     expect(sectors.textContent).toContain("BigTech");
     expect(sectors.textContent).toContain("19.0%");
+    // Barlist has one row per slice
+    const barlist = screen.getByTestId("sector-barlist");
+    expect(barlist.children).toHaveLength(4);
+    expect(screen.getByTestId("sector-bar-Semi")).toBeInTheDocument();
+    expect(screen.getByTestId("sector-bar-BigTech")).toBeInTheDocument();
+    expect(screen.getByTestId("sector-bar-ETF")).toBeInTheDocument();
+    expect(screen.getByTestId("sector-bar-Other")).toBeInTheDocument();
   });
 
   it("renders winner and loser movers", () => {

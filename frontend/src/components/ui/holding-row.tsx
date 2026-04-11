@@ -351,9 +351,9 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       <span className="font-medium text-zinc-100 truncate min-w-0 flex-1 sm:flex-none sm:w-20">
         {displayName}
       </span>
-      {/* 현재가 / 평단가 — md+ (768px+) */}
+      {/* 현재가 / 평단가 — md+ (768px+). leading-[1.3] 으로 두 줄 사이 여유 살림. */}
       <span
-        className="hidden md:flex flex-col items-end text-right tabular-nums shrink-0 w-[72px] leading-[1.1]"
+        className="hidden md:flex flex-col items-end text-right tabular-nums shrink-0 w-[72px] leading-[1.3]"
         aria-label="현재가/평단가"
       >
         <span className="text-[10px] text-zinc-200">{formatPrice(h.latestPrice, h.currency)}</span>
@@ -378,12 +378,13 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       >
         {status.text}
       </span>
-      {/* watch trigger — 항상, 상태 바로 옆 */}
+      {/* watch trigger — 상태 바로 옆. 폭은 고정(90px) 으로 alignment 유지하되
+          watch 가 없을 땐 빈 cell — "—" 대시가 16 row × 90px 만큼 시각적 잡음을 만드는 걸 없앤다. */}
       <span
-        className={`w-[90px] text-[10px] text-right truncate shrink-0 ${watch ? watch.className : "text-zinc-600"}`}
+        className={`w-[90px] text-[10px] text-right truncate shrink-0 ${watch ? watch.className : ""}`}
         data-testid="watch-cell"
       >
-        {watch ? watch.text : "—"}
+        {watch ? watch.text : ""}
       </span>
       {/* stop loss — md+ */}
       <span

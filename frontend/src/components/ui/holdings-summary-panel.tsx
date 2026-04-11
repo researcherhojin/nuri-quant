@@ -1,18 +1,18 @@
 /**
- * HoldingsSummaryPanel — right-side sticky cards for 2xl+ wide screens (#221).
+ * HoldingsSummaryPanel — right-side sticky cards for 3xl+ wide screens (#221).
  *
  * Renders four compact cards fed by summarizeHoldings():
  *   1. Today       — aggregate $ and % move today
- *   2. By sector   — donut + top-5 legend
+ *   2. By sector   — label + horizontal barlist (pure CSS, no chart lib)
  *   3. Movers      — top 3 winners / top 3 losers by cumulative pnl
  *   4. Concentration — Herfindahl + single-largest position
  *
- * Server Component; the donut child is the only "use client" boundary.
- * No new data fetches — everything comes from the already-enriched holdings
- * array that page.tsx already has in scope.
+ * Pure Server Component — no "use client" boundary now that the donut
+ * has been replaced by a CSS barlist. The barlist matches the rest of
+ * the dashboard's text-heavy aesthetic better than a flashy Recharts
+ * donut did (#221 iter-3).
  */
 
-import { SectorDonut } from "@/components/ui/sector-donut";
 import type { HoldingsSummary } from "@/lib/holdings-summary";
 
 interface HoldingsSummaryPanelProps {
@@ -75,29 +75,35 @@ export function HoldingsSummaryPanel({
         </p>
       </div>
 
-      {/* 2) By sector */}
+      {/* 2) By sector — barlist (pure CSS, one row per slice).
+          Each row: colored bar (tinted by slice.color) as background at %
+          width, label + pct overlaid on top. No Recharts. */}
       {summary.sectors.length > 0 && (
         <div className={cardClass} data-testid="summary-sectors">
           <p className={cardLabelClass}>By sector</p>
-          <div className="flex justify-center py-1">
-            <SectorDonut slices={summary.sectors} size={110} />
-          </div>
-          <div className="flex flex-col gap-0.5 mt-1">
+          <div className="flex flex-col gap-1 mt-1.5" data-testid="sector-barlist">
             {summary.sectors.map((s) => (
               <div
                 key={s.name}
-                className="flex items-center justify-between text-[10px]"
+                className="relative h-[16px] rounded-sm overflow-hidden bg-zinc-900/60"
+                data-testid={`sector-bar-${s.name}`}
               >
-                <span className="flex items-center gap-1.5 text-zinc-400 min-w-0">
-                  <span
-                    className="inline-block h-1.5 w-1.5 rounded-sm shrink-0"
-                    style={{ background: s.color }}
-                  />
-                  <span className="truncate">{s.name}</span>
-                </span>
-                <span className="text-zinc-300 tabular-nums shrink-0 ml-2">
-                  {s.weight.toFixed(1)}%
-                </span>
+                <div
+                  className="absolute inset-y-0 left-0 rounded-sm"
+                  style={{ width: `${s.weight}%`, background: s.color, opacity: 0.28 }}
+                />
+                <div className="relative flex items-center justify-between h-full px-1.5 text-[10px]">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="inline-block h-1.5 w-1.5 rounded-sm shrink-0"
+                      style={{ background: s.color }}
+                    />
+                    <span className="truncate text-zinc-200">{s.name}</span>
+                  </span>
+                  <span className="text-zinc-300 tabular-nums shrink-0 ml-2">
+                    {s.weight.toFixed(1)}%
+                  </span>
+                </div>
               </div>
             ))}
           </div>
