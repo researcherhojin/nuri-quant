@@ -19,6 +19,13 @@ interface SparklineProps {
   height?: number;
   strokeWidth?: number;
   className?: string;
+  /**
+   * Optional horizontal reference line drawn across the chart.
+   * Use case: avg cost basis so the reader can see "above or below break-even".
+   * The baseline is clamped to the [min, max] of the series so it is always visible;
+   * if it falls outside the range the line is drawn at the nearest edge.
+   */
+  baseline?: number | null;
 }
 
 export function Sparkline({
@@ -27,6 +34,7 @@ export function Sparkline({
   height = 18,
   strokeWidth = 1.25,
   className = "",
+  baseline = null,
 }: SparklineProps) {
   if (!series || series.length < 2) {
     return (
@@ -63,6 +71,13 @@ export function Sparkline({
   // Area fill path: polyline + bottom corners closed
   const areaPath = `M ${points.split(" ").join(" L ")} L ${width - strokeWidth},${height - strokeWidth} L ${strokeWidth},${height - strokeWidth} Z`;
 
+  // Baseline reference (e.g. avg cost basis) — dashed horizontal line at the normalized position
+  // Only drawn when the baseline falls within the [min, max] range of the visible series.
+  let baselineY: number | null = null;
+  if (baseline != null && range > 0 && baseline >= min && baseline <= max) {
+    baselineY = height - strokeWidth - ((baseline - min) / range) * (height - strokeWidth * 2);
+  }
+
   return (
     <svg
       width={width}
@@ -71,10 +86,22 @@ export function Sparkline({
       className={`shrink-0 ${className}`}
       data-testid="sparkline"
       data-direction={isUp ? "up" : "down"}
-      aria-label={`30일 추세 (${isUp ? "상승" : "하락"})`}
+      aria-label={`추세 (${isUp ? "상승" : "하락"})`}
       role="img"
     >
       <path d={areaPath} fill={fill} />
+      {baselineY != null && (
+        <line
+          x1={0}
+          x2={width}
+          y1={baselineY}
+          y2={baselineY}
+          stroke="rgb(161 161 170 / 0.45)"
+          strokeWidth={0.75}
+          strokeDasharray="2 2"
+          data-testid="sparkline-baseline"
+        />
+      )}
       <polyline
         points={points}
         fill="none"

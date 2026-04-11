@@ -212,6 +212,53 @@ describe("DashboardPage", () => {
     });
   });
 
+  it("renders sparkline period toggle in holdings header (#214 polish)", async () => {
+    setupMocks();
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      const toggle = screen.getByTestId("sparkline-period-toggle");
+      expect(toggle).toBeInTheDocument();
+      // All 4 period options rendered
+      expect(toggle.textContent).toContain("14");
+      expect(toggle.textContent).toContain("30");
+      expect(toggle.textContent).toContain("60");
+      expect(toggle.textContent).toContain("90");
+    });
+  });
+
+  it("hides Pension holdings from main table (#214 polish)", async () => {
+    setupMocks({
+      portfolio: {
+        count: 3,
+        holdings: [
+          { ticker: "AAPL", account: "acct_m", quantity: 10, avg_price: 100, latest_price: 110, currency: "USD" },
+          { ticker: "069500.KS", account: "acct_p", quantity: 5, avg_price: 30000, latest_price: 32000, currency: "KRW" },
+          { ticker: "TIGER", account: "acct_p2", quantity: 2, avg_price: 50000, latest_price: 51000, currency: "KRW" },
+        ],
+        cash: { accounts: [], total_cash_usd: 0 },
+      },
+      dashboard: {
+        ...mockDashboardData,
+        actions: [],
+        account_labels: {
+          acct_m: "Main",
+          acct_p: "Pension",
+          acct_p2: "Pension 2",
+        },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      // Only 1 holding row (Main AAPL); two Pension accounts filtered out
+      const rows = screen.getAllByTestId("holding-row");
+      expect(rows).toHaveLength(1);
+      // "연금 2건 숨김" hint shown in header
+      expect(screen.getByText(/연금 2건 숨김/)).toBeInTheDocument();
+    });
+  });
+
   it("renders distinct rows when same ticker held in multiple accounts (#199 multi-account fix)", async () => {
     // raw broker accounts → 익명 label per-account 매핑
     // TSLA in two distinct accounts → both rows must render with unique React keys

@@ -130,7 +130,7 @@ def _try_sync_yaml():
         logger.exception("portfolio.yaml 동기화 실패 — DB 변경은 정상 반영됨")
 
 
-_SPARKLINE_DAYS = 30  # #214 sparkline window — 30 daily closes, rendered as text chars
+_SPARKLINE_DAYS = 90  # #214 polish — 90-day window; frontend slices to 14/30/60/90 via URL param
 
 
 def _enrich_with_history(holdings: list[dict]) -> None:

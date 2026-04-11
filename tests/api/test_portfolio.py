@@ -126,17 +126,19 @@ class TestEnrichWithHistory:
         assert holdings[0]["previous_close"] == 178.5
         assert holdings[0]["sparkline_30d"] == [175.0, 177.0, 178.5, 180.0]
 
-    def test_sparkline_truncated_to_30_days(self, monkeypatch):
-        """30일 초과 데이터는 최근 30개만 유지."""
+    def test_sparkline_truncated_to_window(self, monkeypatch):
+        """_SPARKLINE_DAYS 초과 데이터는 최근 window 크기만 유지 (#214 polish: 30 → 90)."""
         import nuri.api.routes.portfolio as portfolio_mod
+        # Generate 120 rows (newest first) — more than the 90-day window
         mock_rows = [
-            {"ticker": "AAPL", "date": f"2026-04-{i:02d}", "close": 100.0 + i}
-            for i in range(40, 0, -1)
+            {"ticker": "AAPL", "date": f"2026-{((i - 1) // 31) + 1:02d}-{((i - 1) % 31) + 1:02d}", "close": 100.0 + i}
+            for i in range(120, 0, -1)
         ]
         monkeypatch.setattr(portfolio_mod, "query", lambda *a, **kw: mock_rows)
         holdings = [{"ticker": "AAPL"}]
         portfolio_mod._enrich_with_history(holdings)
-        assert len(holdings[0]["sparkline_30d"]) == 30
+        assert len(holdings[0]["sparkline_30d"]) == portfolio_mod._SPARKLINE_DAYS
+        assert len(holdings[0]["sparkline_30d"]) == 90
 
     def test_only_one_close_leaves_previous_none(self, monkeypatch):
         """가격 데이터가 1개뿐이면 previous_close는 None (delta 계산 불가)."""

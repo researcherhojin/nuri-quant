@@ -131,7 +131,26 @@ function parseAlert(al: { level: string; message: string }): { label: string; hr
 
 /* ══════════════════════════════════════════════════════ */
 
-async function Dashboard() {
+// #214 polish: sparkline period options shown as URL-driven toggle (?period=14|30|60|90)
+const SPARKLINE_PERIOD_OPTIONS = [14, 30, 60, 90] as const;
+type SparklinePeriod = (typeof SPARKLINE_PERIOD_OPTIONS)[number];
+
+function parseSparklinePeriod(raw: string | undefined): SparklinePeriod {
+  const n = parseInt(raw ?? "30", 10);
+  if (SPARKLINE_PERIOD_OPTIONS.includes(n as SparklinePeriod)) return n as SparklinePeriod;
+  return 30;
+}
+
+async function Dashboard({
+  searchParams,
+}: {
+  searchParams?: Promise<{ period?: string }> | undefined;
+}) {
+  // Defensive: searchParams may be undefined when rendered outside the page boundary
+  // (e.g. some error paths in dev). Default to an empty object.
+  const params = (searchParams ? await searchParams : undefined) ?? {};
+  const sparklinePeriod = parseSparklinePeriod(params.period);
+
   const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets] = await Promise.all([
     fetchAPI<DashboardData>("/api/dashboard"),
     fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], details: [], overall: "FAIL", pass: 0, warn: 0, fail: 0 })),
@@ -183,13 +202,24 @@ async function Dashboard() {
     ...h,
     accountLabel: accountKo(accountLabels[h.account] || h.account || ""),
   }));
-  const enrichedHoldings = buildEnrichedHoldings(
+  const builtHoldings = buildEnrichedHoldings(
     labeledHoldings as any,
     d.actions as RawAction[],
     targets?.targets ?? [],
     (advisor?.actions ?? []) as RawAdvisorAction[],
     (d.upcoming_events ?? []) as RawEvent[],
   );
+  // #214 polish: sparkline은 90일을 backend에서 받고, 선택된 period에 맞춰 최근 N개만 frontend에서 slice
+  const allEnrichedHoldings = builtHoldings.map((h) => ({
+    ...h,
+    sparkline: h.sparkline.slice(-sparklinePeriod),
+  }));
+  // #214 polish: 연금 holdings은 월 리밸런싱이라 daily dashboard에서 제외.
+  // 연금 전용 UI는 별도 페이지(/portfolio)에서 볼 수 있음.
+  // "Pension" / "Pension 2" / "연금" / "연금 2" 등 모든 번호 suffix 변형을 prefix로 잡는다.
+  const isPensionLabel = (label: string) => label.startsWith("연금") || label.startsWith("Pension");
+  const enrichedHoldings = allEnrichedHoldings.filter((h) => !isPensionLabel(h.account));
+  const hiddenPensionCount = allEnrichedHoldings.length - enrichedHoldings.length;
 
   // 신규 매수 후보 — 보유하지 않은 ticker의 액션만 (held tickers의 액션은 HoldingRow 상태로 흡수됨)
   const heldTickers = new Set(holdings.map((h: any) => h.ticker));
@@ -323,6 +353,12 @@ async function Dashboard() {
                     {winners.length > 0 && `수익 ${winners.length}`}
                     {winners.length > 0 && losers.length > 0 && " · "}
                     {losers.length > 0 && `손실 ${losers.length}`}
+                    {hiddenPensionCount > 0 && (
+                      <>
+                        {(winners.length > 0 || losers.length > 0) && " · "}
+                        <span className="text-zinc-700">연금 {hiddenPensionCount}건 숨김</span>
+                      </>
+                    )}
                   </span>
                 </div>
                 <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
@@ -337,7 +373,24 @@ async function Dashboard() {
                 <span className="w-[72px] text-right shrink-0">손절</span>
                 <span className="w-[72px] text-right shrink-0">1차익절</span>
                 <span className="w-[72px] text-right shrink-0">2차익절</span>
-                <span className="w-[80px] text-center shrink-0">30일 추세</span>
+                {/* sparkline period toggle: URL-driven, Server Component 호환 */}
+                <span className="w-[80px] text-center shrink-0 inline-flex items-center justify-center gap-0.5 normal-case" data-testid="sparkline-period-toggle">
+                  {SPARKLINE_PERIOD_OPTIONS.map((p) => (
+                    <Link
+                      key={p}
+                      href={p === 30 ? "/" : `/?period=${p}`}
+                      scroll={false}
+                      className={`px-1 rounded ${
+                        p === sparklinePeriod
+                          ? "text-zinc-300 bg-zinc-800/80"
+                          : "text-zinc-600 hover:text-zinc-400"
+                      }`}
+                    >
+                      {p}
+                    </Link>
+                  ))}
+                  <span className="text-zinc-700">일</span>
+                </span>
                 <span className="flex-1 text-right">워치</span>
               </div>
               <div className="space-y-0.5">
@@ -416,10 +469,14 @@ function LoadingSkeleton() {
   );
 }
 
-export default function OverviewPage() {
+export default function OverviewPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ period?: string }>;
+} = {}) {
   return (
     <Suspense fallback={<LoadingSkeleton />}>
-      <Dashboard />
+      <Dashboard searchParams={searchParams} />
     </Suspense>
   );
 }

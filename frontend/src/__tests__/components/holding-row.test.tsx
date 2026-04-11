@@ -28,6 +28,7 @@ function holdingFixture(overrides: Partial<EnrichedHolding> = {}): EnrichedHoldi
     pnlPct: 5.2,
     dailyDeltaPct: null,
     sparkline: [],
+    avgPrice: null,
     status: { kind: "hold" },
     stopLoss: 100,
     target1: 120,

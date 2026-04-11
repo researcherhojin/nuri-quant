@@ -79,6 +79,7 @@ export interface EnrichedHolding {
   pnlPct: number;
   dailyDeltaPct: number | null;  // #214: 오늘 종가 vs 어제 종가 % (price history 없으면 null)
   sparkline: number[];            // #214: 30 closes oldest→newest (빈 배열이면 렌더 skip)
+  avgPrice: number | null;        // #214 polish: sparkline baseline (손익 분기점) 레퍼런스
   status: HoldingStatus;
   stopLoss: number | null;
   target1: number | null;
@@ -189,6 +190,7 @@ export function buildEnrichedHoldings(
         pnlPct,
         dailyDeltaPct,
         sparkline,
+        avgPrice: h.avg_price ?? null,
         status,
         stopLoss: stopLossPrice,
         target1: target?.target_1 ?? null,
@@ -249,9 +251,11 @@ function statusVisual(s: HoldingStatus): { text: string; className: string } {
 function watchVisual(w: WatchTrigger): { text: string; className: string } | null {
   if (w.kind === "none") return null;
   if (w.kind === "earnings") {
-    if (w.daysUntil === 0) return { text: "실적 D-DAY", className: "text-amber-400" };
+    // #214 polish: bump contrast so `실적 D-N` stays readable on zinc-950 bg at 10px
+    if (w.daysUntil === 0) return { text: "실적 D-DAY", className: "text-amber-300 font-semibold" };
     if (w.daysUntil <= 7) return { text: `실적 D-${w.daysUntil}`, className: "text-amber-400" };
-    return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-500" };
+    if (w.daysUntil <= 14) return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-300" };
+    return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-400" };
   }
   return null;
 }
@@ -352,13 +356,18 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       >
         {t2Cell}
       </span>
-      {/* sparkline — sm+, 30일 SVG polyline */}
+      {/* sparkline — sm+, 30일 SVG polyline + avg 수평선 (손익 분기점 reference) */}
       <span className="hidden sm:inline-flex items-center shrink-0">
-        <Sparkline series={h.sparkline} width={80} height={18} />
+        <Sparkline
+          series={h.sparkline}
+          width={80}
+          height={18}
+          baseline={h.avgPrice}
+        />
       </span>
       {/* watch trigger */}
       <span
-        className={`flex-1 text-[10px] text-right truncate ${watch ? watch.className : "text-zinc-700"}`}
+        className={`flex-1 text-[10px] text-right truncate ${watch ? watch.className : "text-zinc-600"}`}
       >
         {watch ? watch.text : "—"}
       </span>

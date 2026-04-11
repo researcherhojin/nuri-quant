@@ -61,7 +61,30 @@ describe("Sparkline", () => {
     render(<Sparkline series={[1, 2, 3]} />);
     const el = screen.getByTestId("sparkline");
     expect(el).toHaveAttribute("role", "img");
-    expect(el.getAttribute("aria-label")).toMatch(/30일 추세/);
+    expect(el.getAttribute("aria-label")).toMatch(/추세/);
+  });
+
+  it("renders baseline reference line when baseline is within series range", () => {
+    render(<Sparkline series={[100, 110, 120, 130]} baseline={115} />);
+    const baseline = screen.getByTestId("sparkline-baseline");
+    expect(baseline).toBeInTheDocument();
+    expect(baseline.tagName.toLowerCase()).toBe("line");
+  });
+
+  it("omits baseline when outside series range", () => {
+    render(<Sparkline series={[100, 110, 120]} baseline={50} />);
+    expect(screen.queryByTestId("sparkline-baseline")).not.toBeInTheDocument();
+  });
+
+  it("omits baseline when null or undefined", () => {
+    render(<Sparkline series={[100, 110, 120]} />);
+    expect(screen.queryByTestId("sparkline-baseline")).not.toBeInTheDocument();
+  });
+
+  it("omits baseline for flat series (range === 0)", () => {
+    render(<Sparkline series={[100, 100, 100]} baseline={100} />);
+    // Flat series → range is 0 → baseline can't be positioned meaningfully → omitted
+    expect(screen.queryByTestId("sparkline-baseline")).not.toBeInTheDocument();
   });
 
   it("polyline has the correct number of points", () => {
