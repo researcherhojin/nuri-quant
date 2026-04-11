@@ -287,67 +287,26 @@ async function Dashboard({
         verdictLabel={verdictLabel}
       />
 
-      {/* ═══ 시장 맥락 — verdict + 숫자 통합 ═══ */}
-      <div>
-        <p className={`text-xs ${style.text} leading-relaxed`}>{d.verdict}</p>
-        <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500 flex-wrap">
-          <span className={trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-amber-400"}>
-            {trendKo(trend)}
-          </span>
-          <span>VIX <span className={`font-semibold tabular-nums ${vixInfo.color}`}>{vix != null ? Math.round(vix * 10) / 10 : "—"}</span> <span className={vixInfo.color}>{vixInfo.label}</span></span>
-          <span>심리 <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg ?? "—"}</span> <span className="text-zinc-600">{fgLabel(fg)}</span></span>
-          <span>경제 <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span> <span className={macroInfo.color}>{macroInfo.label}</span></span>
-        </div>
-      </div>
-
-      {/* 비중 바 — 실제 (holdings+cash 기반) + 권장 (regime 기반) 2줄 */}
+      {/* ═══ #223 iter 7: market + allocation compact strip (1 row) ═══
+          Verdict + macro + 실제/권장 비중 모두 한 줄로 압축. 이전엔 2-3 줄 차지. */}
       {(() => {
         const actual = d.actual_allocation ?? { long: 0, short: 0, cash: 100 };
         const target = d.target_allocation ?? d.allocation;
         return (
-          <div className="space-y-1.5">
-            {/* 실제 */}
-            <div>
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[9px] text-zinc-500">실제</span>
-                <span className="text-[9px] text-zinc-600 tabular-nums">투자 {actual.long}% · 현금 {actual.cash}%</span>
-              </div>
-              <div className="flex h-3 rounded overflow-hidden text-[9px] font-medium">
-                {actual.long > 0 && (
-                  <div className="bg-emerald-600/80 flex items-center justify-center text-emerald-100" style={{ width: `${actual.long}%` }}>
-                    {actual.long >= 20 && `${actual.long}%`}
-                  </div>
-                )}
-                {actual.short > 0 && (
-                  <div className="bg-red-600/80 flex items-center justify-center text-red-100" style={{ width: `${actual.short}%` }}>
-                    {actual.short >= 10 && `${actual.short}%`}
-                  </div>
-                )}
-                {actual.cash > 0 && (
-                  <div className="bg-zinc-800 flex items-center justify-center text-zinc-400" style={{ width: `${actual.cash}%` }}>
-                    {actual.cash >= 20 && `${actual.cash}%`}
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* 권장 (regime) */}
-            <div>
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[9px] text-zinc-600">권장 (레짐)</span>
-                <span className="text-[9px] text-zinc-700 tabular-nums">투자 {target.long}% · 현금 {target.cash}%</span>
-              </div>
-              <div className="flex h-1.5 rounded overflow-hidden text-[9px] font-medium opacity-60">
-                {target.long > 0 && (
-                  <div className="bg-emerald-700/60" style={{ width: `${target.long}%` }} />
-                )}
-                {target.short > 0 && (
-                  <div className="bg-red-700/60" style={{ width: `${target.short}%` }} />
-                )}
-                {target.cash > 0 && (
-                  <div className="bg-zinc-700" style={{ width: `${target.cash}%` }} />
-                )}
-              </div>
-            </div>
+          <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
+            <span className={trend === "bull" ? "text-emerald-400 font-semibold" : trend === "bear" ? "text-red-400 font-semibold" : "text-amber-400 font-semibold"}>
+              {trendKo(trend)}
+            </span>
+            <span>VIX <span className={`font-semibold tabular-nums ${vixInfo.color}`}>{vix != null ? Math.round(vix * 10) / 10 : "—"}</span> <span className={vixInfo.color}>{vixInfo.label}</span></span>
+            <span>심리 <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg ?? "—"}</span> <span className="text-zinc-600">{fgLabel(fg)}</span></span>
+            <span>경제 <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span> <span className={macroInfo.color}>{macroInfo.label}</span></span>
+            <span className="text-zinc-700">·</span>
+            <span>실제 <span className="text-emerald-400 font-semibold tabular-nums">{actual.long}%</span> 투자 / <span className="text-zinc-300 font-semibold tabular-nums">{actual.cash}%</span> 현금</span>
+            <span className="text-zinc-700">→</span>
+            <span className="text-zinc-600">권장 <span className="text-emerald-500 tabular-nums">{target.long}%</span> / <span className="text-zinc-500 tabular-nums">{target.cash}%</span></span>
+            <span className={`ml-auto text-[10px] ${style.text} truncate max-w-[40%]`} title={d.verdict}>
+              {d.verdict}
+            </span>
           </div>
         );
       })()}

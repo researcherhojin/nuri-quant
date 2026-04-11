@@ -10,6 +10,7 @@ function baseSummary(over: Partial<HoldingsSummary> = {}): HoldingsSummary {
   return {
     today: { totalUsd: 340, totalPct: 0.46, upCount: 6, downCount: 4 },
     cumulative: { totalUsd: 8500, totalPct: 12.5 },
+    winRate: { winners: 8, losers: 2, flat: 0, winRatePct: 80 },
     byTicker: [
       { ticker: "NVDA", displayName: "NVDA", weight: 28, valueUsd: 21000, sector: "Semi", color: "#34d399" },
       { ticker: "TSLA", displayName: "TSLA", weight: 19, valueUsd: 14000, sector: "EV/AI", color: "#60a5fa" },

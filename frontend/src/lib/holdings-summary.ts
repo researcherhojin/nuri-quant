@@ -56,6 +56,17 @@ export interface CumulativePnL {
   totalPct: number;
 }
 
+export interface WinRateSummary {
+  /** Holdings with pnlPct > 0 */
+  winners: number;
+  /** Holdings with pnlPct < 0 */
+  losers: number;
+  /** Holdings with pnlPct == 0 (or non-finite) — neither win nor loss */
+  flat: number;
+  /** winners / (winners + losers) × 100. Excludes flat. 0 when both are 0. */
+  winRatePct: number;
+}
+
 export interface AccountSlice {
   account: string;
   /** USD total (holdings + cash) */
@@ -84,6 +95,8 @@ export interface ConcentrationSummary {
 export interface HoldingsSummary {
   today: TodayPnL;
   cumulative: CumulativePnL;
+  /** Win rate aggregation (#223 iter 7): replaces 배당 in the hero for 단타 use case */
+  winRate: WinRateSummary;
   byAccount: AccountSlice[];
   sectors: SectorSlice[];
   /** Ticker-level composition (#223): top N + Other bucket, normalized to 100 */
@@ -197,6 +210,32 @@ export function summarizeHoldings(
   const cumulative: CumulativePnL = {
     totalUsd: cumGainUsd,
     totalPct: cumGainPct,
+  };
+
+  // 1c) Win rate — # of holdings with pnlPct > 0 vs < 0. Drives the 4th hero
+  // stat in place of 연 배당 (which is irrelevant for the 단타-heavy active
+  // accounts). flat holdings (0 pnlPct or non-finite) are excluded from the
+  // ratio so a win rate of 90% means "of holdings with movement, 90% are up".
+  let wr_winners = 0;
+  let wr_losers = 0;
+  let wr_flat = 0;
+  for (const h of holdings) {
+    if (!Number.isFinite(h.pnlPct)) {
+      wr_flat++;
+    } else if (h.pnlPct > 0) {
+      wr_winners++;
+    } else if (h.pnlPct < 0) {
+      wr_losers++;
+    } else {
+      wr_flat++;
+    }
+  }
+  const wr_movers = wr_winners + wr_losers;
+  const winRate: WinRateSummary = {
+    winners: wr_winners,
+    losers: wr_losers,
+    flat: wr_flat,
+    winRatePct: wr_movers > 0 ? (wr_winners / wr_movers) * 100 : 0,
   };
 
   // 2) By account — each account's share of total portfolio. Uses the raw
@@ -317,6 +356,7 @@ export function summarizeHoldings(
   return {
     today,
     cumulative,
+    winRate,
     byAccount,
     sectors,
     byTicker,

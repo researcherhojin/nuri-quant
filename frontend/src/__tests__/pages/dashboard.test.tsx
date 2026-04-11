@@ -147,12 +147,18 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders allocation bar with Korean labels", async () => {
+  it("renders allocation values in compact market strip (#223 iter 7)", async () => {
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/현금 40%/)).toBeInTheDocument();
+      // #223 iter 7: market context strip is now a single compact row.
+      // Content includes "투자 50%" / "현금 40%" but as fragments not a single text node.
+      const candidates = screen.getAllByText((_, el) => {
+        const txt = el?.textContent ?? "";
+        return txt.includes("실제") && txt.includes("40%") && txt.includes("현금");
+      });
+      expect(candidates.length).toBeGreaterThan(0);
     });
   });
 
@@ -196,7 +202,7 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders actual + target allocation bars (#213)", async () => {
+  it("renders actual + target allocation values in compact strip (#213 / #223 iter 7)", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -207,10 +213,14 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/실제/)).toBeInTheDocument();
-      expect(screen.getByText(/권장 \(레짐\)/)).toBeInTheDocument();
-      expect(screen.getByText(/투자 46% · 현금 54%/)).toBeInTheDocument();
-      expect(screen.getByText(/투자 20% · 현금 80%/)).toBeInTheDocument();
+      // #223 iter 7: allocation now a fragment in the compact market strip.
+      // Numbers split across spans → assert via custom text matcher on the
+      // strip's container. The strip is the market context strip at the top.
+      const stripsWithAllocation = screen.getAllByText((_, el) => {
+        const t = el?.textContent ?? "";
+        return t.includes("실제") && t.includes("46%") && t.includes("권장") && t.includes("20%");
+      });
+      expect(stripsWithAllocation.length).toBeGreaterThan(0);
     });
   });
 
@@ -362,8 +372,9 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      // 보유 종목 section still present
-      expect(screen.getByText(/보유 종목/)).toBeInTheDocument();
+      // 보유 종목 section still present (#223: now via testid because the
+      // text appears in both section header AND CompositionSection legend)
+      expect(screen.getByTestId("holdings-section")).toBeInTheDocument();
       // Events rendered in events strip
       expect(screen.getByTestId("strip-events")).toBeInTheDocument();
       expect(screen.getByText(/AAPL 실적발표/)).toBeInTheDocument();

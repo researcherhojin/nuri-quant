@@ -62,6 +62,12 @@ export function CompositionDonut({
             stroke="#0a0a0a"
             strokeWidth={1}
             isAnimationActive={false}
+            // #223 iter 7: standard donut orientation — start at 12 o'clock
+            // (90°) and go clockwise (decreasing angle). Combined with the
+            // weight-desc sort upstream, the largest slice sits at the top
+            // and the rest follow clockwise — what users expect from a pie.
+            startAngle={90}
+            endAngle={-270}
           >
             {slices.map((s) => (
               <Cell key={s.label} fill={s.color} />

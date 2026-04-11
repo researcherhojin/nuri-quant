@@ -1,14 +1,19 @@
 /**
- * HeroStats — top-of-dashboard 4-stat hero strip (#223).
+ * HeroStats — top-of-dashboard 4-stat hero strip (#223 iter 7).
  *
  * Inspired by Snowball Analytics' overview header. Replaces the old single
  * "$74,237" + verdict pill hero. Each stat occupies an equal column.
  *
- * Stat order (Snowball convention):
+ * Stat order (#223 iter 7 — tuned for 단타 use case):
  *   1. 총 자산        — total wealth (holdings + cash)
  *   2. 오늘 P&L       — today's $ + % move (visible holdings)
  *   3. 누적 수익률    — cumulative gain $ + %
- *   4. 연 배당        — placeholder (data not yet collected)
+ *   4. 승률           — winners / (winners+losers) × 100
+ *
+ * Note: 연 배당 was originally planned as the 4th stat but the user's active
+ * accounts are short-term trading (단타), where dividend yield is not a
+ * meaningful metric. Long-term/dividend holdings live in pension which is
+ * filtered out of the visible subset. 승률 is the more useful 4th stat.
  *
  * Server Component. Pure presentational; consumes pre-computed numbers.
  */
@@ -106,14 +111,36 @@ export function HeroStats({
           <p className="text-[10px] text-zinc-500 mt-1">실현 미실현 합계</p>
         </div>
 
-        {/* 4. 연 배당 (placeholder — data not collected yet) */}
-        <div className="flex flex-col" data-testid="hero-dividend">
-          <p className="text-[10px] text-zinc-500 uppercase tracking-wide">연 배당</p>
-          <div className="flex items-baseline gap-2 mt-0.5 text-zinc-600">
-            <span className="text-3xl font-semibold tabular-nums tracking-tight">—</span>
-          </div>
-          <p className="text-[10px] text-zinc-700 mt-1">데이터 수집 예정</p>
-        </div>
+        {/* 4. 승률 (winners / (winners+losers) × 100) — replaces 연 배당.
+            Color: emerald when ≥60%, amber 40-60, red <40. */}
+        {(() => {
+          const wr = summary.winRate;
+          const movers = wr.winners + wr.losers;
+          const wrColor =
+            movers === 0
+              ? "text-zinc-600"
+              : wr.winRatePct >= 60
+              ? "text-emerald-400"
+              : wr.winRatePct >= 40
+              ? "text-amber-400"
+              : "text-red-400";
+          return (
+            <div className="flex flex-col" data-testid="hero-winrate">
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wide">승률</p>
+              <div className={`flex items-baseline gap-2 mt-0.5 ${wrColor}`}>
+                <span className="text-3xl font-semibold tabular-nums tracking-tight">
+                  {movers > 0 ? `${wr.winRatePct.toFixed(0)}%` : "—"}
+                </span>
+                <span className="text-sm tabular-nums">
+                  {movers > 0 ? `${wr.winners}W / ${wr.losers}L` : ""}
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-500 mt-1">
+                {wr.flat > 0 ? `보합 ${wr.flat}` : "보유 종목 기준"}
+              </p>
+            </div>
+          );
+        })()}
       </div>
     </section>
   );
