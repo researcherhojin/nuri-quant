@@ -43,6 +43,18 @@ class TestDashboardAPI:
         assert "regime" in result
         assert "actions" in result
 
+    def test_dashboard_exposes_account_labels(self, db_path):
+        """account_labels 필드가 응답에 포함되어야 함 (#199 multi-account fix).
+
+        frontend가 holding의 raw account → 익명 label을 lookup하기 위해 필요.
+        ticker_accounts(ticker→label, 단일 매핑)는 다계좌 ticker collision을
+        해결하지 못하므로 별도 필드 필요.
+        """
+        from nuri.api.routes.dashboard import _build_dashboard
+        result = _build_dashboard()
+        assert "account_labels" in result
+        assert isinstance(result["account_labels"], dict)
+
     def test_cache_mechanism(self, db_path, monkeypatch):
         """캐시 동작 확인."""
         import nuri.api.routes.dashboard as dash_mod

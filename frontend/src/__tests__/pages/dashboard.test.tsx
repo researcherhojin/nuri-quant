@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 
 vi.mock("next/link", () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  default: ({ children, href, ...rest }: { children: React.ReactNode; href: string; [k: string]: unknown }) => (
+    <a href={href} {...rest}>{children}</a>
   ),
 }));
 
@@ -143,24 +143,55 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders action items with Korean BUY/SELL", async () => {
+  it("renders action items as 신규 매수 후보 with Korean BUY/SELL", async () => {
+    // Default mock: NVDA + INTC actions, TSLA + 005930.KS holdings → NVDA + INTC are not held
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/오늘의 할 일/)).toBeInTheDocument();
+      expect(screen.getByText(/신규 매수 후보/)).toBeInTheDocument();
       expect(screen.getByText("매수")).toBeInTheDocument();
       expect(screen.getByText("매도")).toBeInTheDocument();
       expect(screen.getByText("NVDA")).toBeInTheDocument();
     });
   });
 
-  it("shows empty state for actions", async () => {
+  it("renders distinct rows when same ticker held in multiple accounts (#199 multi-account fix)", async () => {
+    // raw broker accounts → 익명 label per-account 매핑
+    // TSLA in two distinct accounts → both rows must render with unique React keys
+    const portfolio = {
+      count: 4,
+      holdings: [
+        { ticker: "TSLA", account: "broker_a", quantity: 10, avg_price: 200, latest_price: 240, currency: "USD" },
+        { ticker: "TSLA", account: "broker_b", quantity: 5, avg_price: 220, latest_price: 240, currency: "USD" },
+        { ticker: "AAPL", account: "broker_a", quantity: 8, avg_price: 150, latest_price: 165, currency: "USD" },
+        { ticker: "AAPL", account: "broker_b", quantity: 4, avg_price: 160, latest_price: 165, currency: "USD" },
+      ],
+    };
+    setupMocks({
+      portfolio,
+      dashboard: {
+        ...mockDashboardData,
+        actions: [],
+        ticker_accounts: { TSLA: "Main", AAPL: "Main" },  // 단일 매핑 (legacy)
+        account_labels: { broker_a: "Main", broker_b: "Sub" },  // per-account 매핑 (#199 fix)
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      // 4 holding rows (no React key collision, no rows omitted)
+      const rows = screen.getAllByTestId("holding-row");
+      expect(rows).toHaveLength(4);
+    });
+  });
+
+  it("shows empty state when no candidates", async () => {
     setupMocks({ dashboard: { ...mockDashboardData, actions: [] } });
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/매매 신호 없음/)).toBeInTheDocument();
+      expect(screen.getByText(/신규 매수 후보 없음/)).toBeInTheDocument();
     });
   });
 
