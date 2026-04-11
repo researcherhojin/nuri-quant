@@ -143,24 +143,25 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders action items with Korean BUY/SELL", async () => {
+  it("renders action items as 신규 매수 후보 with Korean BUY/SELL", async () => {
+    // Default mock: NVDA + INTC actions, TSLA + 005930.KS holdings → NVDA + INTC are not held
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/오늘의 할 일/)).toBeInTheDocument();
+      expect(screen.getByText(/신규 매수 후보/)).toBeInTheDocument();
       expect(screen.getByText("매수")).toBeInTheDocument();
       expect(screen.getByText("매도")).toBeInTheDocument();
       expect(screen.getByText("NVDA")).toBeInTheDocument();
     });
   });
 
-  it("shows empty state for actions", async () => {
+  it("shows empty state when no candidates", async () => {
     setupMocks({ dashboard: { ...mockDashboardData, actions: [] } });
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/매매 신호 없음/)).toBeInTheDocument();
+      expect(screen.getByText(/신규 매수 후보 없음/)).toBeInTheDocument();
     });
   });
 
