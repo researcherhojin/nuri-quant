@@ -451,10 +451,19 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 1 | Alpaca 실전 연동 (Paper → Live) | [#17](https://github.com/researcherhojin/nuri-quant/issues/17) | feat(execution) | 자동 매도 실행. SIEGE CERTIFIED 종목만 |
-| 2 | KIS Open API 한국 실전 연동 | — | feat(execution) | `kis_realtime.py` 기 구현. 매매 endpoint 미연결 |
-| 3 | **PR #202 commit message Stage 2 history cleanup** | — | security | 사용자 보유 종목 + 손실률이 PR #202 commit message에 노출되어 main git history에 박힘 (TEM/RKLB/PL 등 + PnL). §4.4.1 Stage 2 절차 (GitHub Support 또는 `git filter-repo`) 적용 결정 필요 |
-| 4 | **Universe 추가 확장 (Russell 2000)** | — | feat(scanner) | 현재 419 (us_core 85 + us_sp500 254 + kospi200 80). 중소형주 발굴 위해 Russell 2000 (~2,000) 추가 검토 |
+| 1 | **PR #202 commit message Stage 2 history cleanup** | — | security | 사용자 보유 종목 + 손실률이 PR #202 commit message에 노출되어 main git history에 박힘 (TEM/RKLB/PL 등 + PnL). §4.4.1 Stage 2 절차 (GitHub Support 또는 `git filter-repo`) 적용 결정 필요 |
+| 2 | **Universe 추가 확장 (Russell 2000)** | — | feat(scanner) | 현재 419 (us_core 85 + us_sp500 254 + kospi200 80). 중소형주 발굴 위해 Russell 2000 (~2,000) 추가 검토 |
+
+### 자동 매매 — 영구 deferred (사용자 opt-out)
+
+| 항목 | 이슈 | 결정 사유 |
+|------|------|---------|
+| Alpaca 실전 연동 (Paper → Live) | [#17](https://github.com/researcherhojin/nuri-quant/issues/17) | **영구 보류**. 2026-04-11 사용자 결정 — 자동 매매로 인한 손실 책임소재 이슈. 시스템 추천(확률적)과 실제 매매(결정적) 사이의 책임 경계가 모호해지는 걸 차단. |
+| KIS Open API 한국 실전 매매 endpoint | — | **영구 보류** (동일 사유). `kis_realtime.py`의 **read** endpoint(잔고/가격/drift 모니터링)는 그대로 사용. 매매 endpoint만 연결하지 않음. |
+
+**원칙**: 시스템은 추천과 알림에만 관여한다. 실제 주문은 호진님이 직접 카카오페이/토스/KIS 등에서 수동 실행한다. `DryRun` mode 및 paper trading 시뮬레이션은 백테스트/검증 용도로 계속 사용 가능.
+
+이 결정을 뒤집으려면 STRATEGY.md 개정 PR + 명시적 재승인 필요.
 
 ### 영구 배경 작업 (낮은 우선순위, 발견 시 처리)
 
