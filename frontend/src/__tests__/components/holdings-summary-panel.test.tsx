@@ -12,20 +12,20 @@ function baseSummary(over: Partial<HoldingsSummary> = {}): HoldingsSummary {
     cumulative: { totalUsd: 8500, totalPct: 12.5 },
     winRate: { winners: 8, losers: 2, flat: 0, winRatePct: 80 },
     byTicker: [
-      { ticker: "NVDA", displayName: "NVDA", weight: 28, valueUsd: 21000, sector: "Semi", color: "#34d399" },
-      { ticker: "TSLA", displayName: "TSLA", weight: 19, valueUsd: 14000, sector: "EV/AI", color: "#60a5fa" },
+      { ticker: "NVDA", displayName: "NVDA", weight: 28, valueUsd: 21000, sector: "Semi", dailyDeltaPct: 1.2, color: "#34d399" },
+      { ticker: "TSLA", displayName: "TSLA", weight: 19, valueUsd: 14000, sector: "EV/AI", dailyDeltaPct: -0.5, color: "#60a5fa" },
     ],
     byAccount: [
-      { account: "Main", valueUsd: 36700, weight: 49.4, color: "#34d399" },
-      { account: "Active", valueUsd: 20356, weight: 27.4, color: "#60a5fa" },
-      { account: "Pension", valueUsd: 13752, weight: 18.5, color: "#f472b6" },
-      { account: "Toss", valueUsd: 2517, weight: 3.4, color: "#fbbf24" },
+      { account: "Main", valueUsd: 36700, weight: 49.4, dailyDeltaPct: 0.8, color: "#34d399" },
+      { account: "Active", valueUsd: 20356, weight: 27.4, dailyDeltaPct: 0.4, color: "#60a5fa" },
+      { account: "Pension", valueUsd: 13752, weight: 18.5, dailyDeltaPct: null, color: "#f472b6" },
+      { account: "Toss", valueUsd: 2517, weight: 3.4, dailyDeltaPct: 0.1, color: "#fbbf24" },
     ],
     sectors: [
-      { name: "Semi", weight: 28, color: "#34d399" },
-      { name: "BigTech", weight: 19, color: "#60a5fa" },
-      { name: "ETF", weight: 12, color: "#f472b6" },
-      { name: "Other", weight: 41, color: "#71717a" },
+      { name: "Semi", weight: 28, valueUsd: 21000, dailyDeltaPct: 1.5, color: "#34d399" },
+      { name: "BigTech", weight: 19, valueUsd: 14000, dailyDeltaPct: 0.3, color: "#60a5fa" },
+      { name: "ETF", weight: 12, valueUsd: 9000, dailyDeltaPct: -0.1, color: "#f472b6" },
+      { name: "Other", weight: 41, valueUsd: 30000, dailyDeltaPct: null, color: "#71717a" },
     ],
     topMovers: {
       winners: [

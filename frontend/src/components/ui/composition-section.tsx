@@ -45,8 +45,12 @@ const sideCardLabelClass =
 
 interface LegendRow {
   label: string;
+  /** Optional second-line meta (e.g. sector for ticker rows) */
+  meta?: string | null;
   weight: number;
   valueUsd: number | null;
+  /** Aggregate daily move % across the slice (null when no data) */
+  dailyDeltaPct: number | null;
   color: string;
 }
 
@@ -63,8 +67,10 @@ function buildSlicesAndLegend(
       })),
       legend: summary.byTicker.map((t) => ({
         label: t.displayName,
+        meta: t.sector,
         weight: t.weight,
         valueUsd: t.valueUsd,
+        dailyDeltaPct: t.dailyDeltaPct,
         color: t.color,
       })),
     };
@@ -78,8 +84,10 @@ function buildSlicesAndLegend(
       })),
       legend: summary.sectors.map((s) => ({
         label: s.name,
+        meta: null,
         weight: s.weight,
-        valueUsd: null,
+        valueUsd: s.valueUsd,
+        dailyDeltaPct: s.dailyDeltaPct,
         color: s.color,
       })),
     };
@@ -93,8 +101,10 @@ function buildSlicesAndLegend(
     })),
     legend: summary.byAccount.map((a) => ({
       label: a.account,
+      meta: null,
       weight: a.weight,
       valueUsd: a.valueUsd,
+      dailyDeltaPct: a.dailyDeltaPct,
       color: a.color,
     })),
   };
@@ -145,9 +155,9 @@ export function CompositionSection({
         </div>
       </div>
 
-      {/* Donut + Legend + Side cards (3 columns at lg+) */}
-      <div className="flex flex-col lg:flex-row gap-5 items-start" data-testid="composition-body">
-        {/* Donut — bigger now (320px) for visual centerpiece */}
+      {/* Donut + Rich Legend (2 columns at lg+) */}
+      <div className="flex flex-col lg:flex-row gap-6 items-start" data-testid="composition-body">
+        {/* Donut — 320px centerpiece */}
         <div className="shrink-0 self-center lg:self-start">
           <CompositionDonut
             slices={slices}
@@ -157,50 +167,73 @@ export function CompositionSection({
           />
         </div>
 
-        {/* Legend table */}
+        {/* Rich legend — single column, dense rows. Each row:
+            color dot · label · sector(meta) · $value · weight % · daily delta % */}
         {hasData ? (
           <div
-            className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-1 self-stretch min-w-0"
+            className="flex-1 flex flex-col gap-1 self-stretch min-w-0 max-w-[640px]"
             data-testid="composition-legend"
           >
-            {legend.map((row) => (
-              <div
-                key={row.label}
-                className="flex items-center justify-between text-[11px] gap-2 min-w-0"
-                data-testid={`composition-legend-${row.label}`}
-              >
-                <span className="flex items-center gap-2 min-w-0">
+            {legend.map((row) => {
+              const deltaUp = (row.dailyDeltaPct ?? 0) >= 0;
+              const hasDelta = row.dailyDeltaPct != null && Number.isFinite(row.dailyDeltaPct);
+              const deltaColor = !hasDelta
+                ? "text-zinc-700"
+                : deltaUp
+                ? "text-emerald-400"
+                : "text-red-400";
+              return (
+                <div
+                  key={row.label}
+                  className="flex items-center gap-3 text-[11px] py-0.5 px-1 rounded hover:bg-zinc-900/40 min-w-0"
+                  data-testid={`composition-legend-${row.label}`}
+                >
+                  {/* color dot */}
                   <span
                     className="inline-block h-2 w-2 rounded-sm shrink-0"
                     style={{ background: row.color }}
                   />
-                  <span className="truncate text-zinc-200">{row.label}</span>
-                </span>
-                <span className="flex items-baseline gap-2 shrink-0 tabular-nums">
-                  {row.valueUsd != null && (
-                    <span className="text-[10px] text-zinc-600">
-                      ${row.valueUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </span>
-                  )}
-                  <span className="text-zinc-300">{row.weight.toFixed(1)}%</span>
-                </span>
-              </div>
-            ))}
+                  {/* primary label */}
+                  <span className="text-zinc-200 truncate min-w-0 flex-1 sm:flex-none sm:w-[120px]">
+                    {row.label}
+                  </span>
+                  {/* meta (sector for ticker rows) */}
+                  <span className="hidden sm:inline-block text-zinc-600 truncate w-[110px] text-[10px]">
+                    {row.meta ?? ""}
+                  </span>
+                  {/* USD value */}
+                  <span className="hidden md:inline-block text-zinc-500 tabular-nums w-[80px] text-right text-[10px]">
+                    {row.valueUsd != null
+                      ? `$${row.valueUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                      : ""}
+                  </span>
+                  {/* weight % */}
+                  <span className="text-zinc-200 font-semibold tabular-nums w-[52px] text-right">
+                    {row.weight.toFixed(1)}%
+                  </span>
+                  {/* daily delta */}
+                  <span className={`tabular-nums w-[58px] text-right text-[10px] ${deltaColor}`}>
+                    {hasDelta
+                      ? `${deltaUp ? "+" : ""}${row.dailyDeltaPct!.toFixed(2)}%`
+                      : "—"}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <p className="text-[11px] text-zinc-600">표시할 데이터가 없습니다.</p>
         )}
+      </div>
 
-        {/* Side cards (3xl+ only) — Movers + Concentration mini cards */}
-        <div
-          className="hidden min-[1280px]:flex flex-col gap-3 w-[200px] shrink-0"
-          data-testid="composition-side-cards"
-        >
-          {/* Movers — top 3 winners + losers */}
-          {(summary.topMovers.winners.length > 0 || summary.topMovers.losers.length > 0) && (
-            <div className={sideCardClass} data-testid="side-movers">
-              <p className={sideCardLabelClass}>Movers</p>
-              <div className="space-y-0.5">
+      {/* Mini stats strip — horizontal row of context cards below the donut.
+          Movers (top 3 / 3) · Concentration · (room for more later). */}
+      <div className="flex flex-row gap-3 mt-1 flex-wrap" data-testid="composition-side-cards">
+        {(summary.topMovers.winners.length > 0 || summary.topMovers.losers.length > 0) && (
+          <div className={`${sideCardClass} flex-1 min-w-[200px] max-w-[280px]`} data-testid="side-movers">
+            <p className={sideCardLabelClass}>Movers (cumulative)</p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-0.5">
+              <div>
                 {summary.topMovers.winners.map((m) => (
                   <div
                     key={`up-${m.account}-${m.ticker}`}
@@ -210,63 +243,92 @@ export function CompositionSection({
                       <span className="text-emerald-400 shrink-0">&uarr;</span>
                       <span className="text-zinc-200 truncate">{m.ticker}</span>
                     </span>
-                    <span className="text-emerald-400 tabular-nums shrink-0 ml-2">
+                    <span className="text-emerald-400 tabular-nums shrink-0 ml-1">
                       +{m.pnlPct.toFixed(1)}%
                     </span>
                   </div>
                 ))}
-                {summary.topMovers.winners.length > 0 &&
-                  summary.topMovers.losers.length > 0 && (
-                    <div className="border-t border-zinc-800/60 my-1" />
-                  )}
-                {summary.topMovers.losers.map((m) => (
-                  <div
-                    key={`down-${m.account}-${m.ticker}`}
-                    className="flex items-center justify-between text-[10px]"
-                  >
-                    <span className="flex items-center gap-1 min-w-0">
-                      <span className="text-red-400 shrink-0">&darr;</span>
-                      <span className="text-zinc-200 truncate">{m.ticker}</span>
-                    </span>
-                    <span className="text-red-400 tabular-nums shrink-0 ml-2">
-                      {m.pnlPct.toFixed(1)}%
-                    </span>
-                  </div>
-                ))}
+              </div>
+              <div>
+                {summary.topMovers.losers.length > 0 ? (
+                  summary.topMovers.losers.map((m) => (
+                    <div
+                      key={`down-${m.account}-${m.ticker}`}
+                      className="flex items-center justify-between text-[10px]"
+                    >
+                      <span className="flex items-center gap-1 min-w-0">
+                        <span className="text-red-400 shrink-0">&darr;</span>
+                        <span className="text-zinc-200 truncate">{m.ticker}</span>
+                      </span>
+                      <span className="text-red-400 tabular-nums shrink-0 ml-1">
+                        {m.pnlPct.toFixed(1)}%
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[10px] text-zinc-700">손실 없음</p>
+                )}
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Concentration */}
-          {summary.concentration.topHolding && (
-            <div className={sideCardClass} data-testid="side-concentration">
-              <p className={sideCardLabelClass}>Concentration</p>
-              <div className="flex items-baseline gap-2">
-                <span
-                  className={`text-sm font-semibold tabular-nums ${
-                    summary.concentration.level === "high"
-                      ? "text-amber-400"
-                      : summary.concentration.level === "medium"
-                      ? "text-zinc-200"
-                      : "text-emerald-400"
-                  }`}
-                >
-                  HHI {summary.concentration.herfindahl.toFixed(2)}
-                </span>
-                <span className="text-[9px] text-zinc-600 uppercase">
-                  {summary.concentration.level}
-                </span>
-              </div>
-              <p className="text-[10px] text-zinc-500 truncate">
-                Top:{" "}
-                <span className="text-zinc-200">
-                  {summary.concentration.topHolding.ticker}
-                </span>{" "}
-                <span className="text-zinc-400 tabular-nums">
-                  {summary.concentration.topHolding.weight.toFixed(1)}%
-                </span>
-              </p>
+        {summary.concentration.topHolding && (
+          <div className={`${sideCardClass} flex-1 min-w-[180px] max-w-[240px]`} data-testid="side-concentration">
+            <p className={sideCardLabelClass}>집중도 (HHI)</p>
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <span
+                className={`text-sm font-semibold tabular-nums ${
+                  summary.concentration.level === "high"
+                    ? "text-amber-400"
+                    : summary.concentration.level === "medium"
+                    ? "text-zinc-200"
+                    : "text-emerald-400"
+                }`}
+              >
+                {summary.concentration.herfindahl.toFixed(2)}
+              </span>
+              <span className="text-[9px] text-zinc-600 uppercase">
+                {summary.concentration.level}
+              </span>
             </div>
+            <p className="text-[10px] text-zinc-500 truncate">
+              Top:{" "}
+              <span className="text-zinc-200">
+                {summary.concentration.topHolding.ticker}
+              </span>{" "}
+              <span className="text-zinc-400 tabular-nums">
+                {summary.concentration.topHolding.weight.toFixed(1)}%
+              </span>
+            </p>
+          </div>
+        )}
+
+        {/* Win rate snapshot */}
+        <div className={`${sideCardClass} flex-1 min-w-[160px] max-w-[200px]`} data-testid="side-winrate">
+          <p className={sideCardLabelClass}>승률</p>
+          <div className="flex items-baseline gap-2 mt-0.5">
+            <span
+              className={`text-sm font-semibold tabular-nums ${
+                summary.winRate.winners + summary.winRate.losers === 0
+                  ? "text-zinc-600"
+                  : summary.winRate.winRatePct >= 60
+                  ? "text-emerald-400"
+                  : summary.winRate.winRatePct >= 40
+                  ? "text-amber-400"
+                  : "text-red-400"
+              }`}
+            >
+              {summary.winRate.winners + summary.winRate.losers > 0
+                ? `${summary.winRate.winRatePct.toFixed(0)}%`
+                : "—"}
+            </span>
+            <span className="text-[10px] text-zinc-500 tabular-nums">
+              {summary.winRate.winners}W / {summary.winRate.losers}L
+            </span>
+          </div>
+          {summary.winRate.flat > 0 && (
+            <p className="text-[10px] text-zinc-700">보합 {summary.winRate.flat}</p>
           )}
         </div>
       </div>

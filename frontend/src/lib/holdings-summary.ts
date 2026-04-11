@@ -31,6 +31,10 @@ export interface SectorSlice {
   name: string;
   /** % of portfolio that this sector represents (Σ positionPct) */
   weight: number;
+  /** USD value of all holdings in this sector */
+  valueUsd: number;
+  /** Aggregate daily move % (value-weighted across constituents) */
+  dailyDeltaPct: number | null;
   /** Deterministic color keyed to the rank (emerald/blue/pink/amber/violet/red) */
   color: string;
 }
@@ -45,6 +49,8 @@ export interface TickerSlice {
   valueUsd: number;
   /** Sector for color/grouping */
   sector: string | null;
+  /** Aggregate daily move % across multi-account holdings of this ticker */
+  dailyDeltaPct: number | null;
   /** Color hashed from rank */
   color: string;
 }
@@ -73,6 +79,8 @@ export interface AccountSlice {
   valueUsd: number;
   /** % of total portfolio (holdings + cash across all accounts) */
   weight: number;
+  /** Aggregate daily move % across this account's holdings (null when no data) */
+  dailyDeltaPct: number | null;
   /** Deterministic color keyed to rank (emerald/blue/pink/amber/violet/zinc) */
   color: string;
 }
@@ -238,6 +246,19 @@ export function summarizeHoldings(
     winRatePct: wr_movers > 0 ? (wr_winners / wr_movers) * 100 : 0,
   };
 
+  // Per-account weighted daily delta (visible holdings only — pension's
+  // daily delta is unavailable). Aggregate Σ(value × delta) / Σ(value) per
+  // account label, then attach to byAccount slices below.
+  const accountDeltaAgg = new Map<string, { value: number; deltaWeighted: number }>();
+  for (const h of holdings) {
+    if (h.dailyDeltaPct == null || h.positionPct == null || totalUsd <= 0) continue;
+    const v = (h.positionPct / 100) * totalUsd;
+    const cur = accountDeltaAgg.get(h.account) ?? { value: 0, deltaWeighted: 0 };
+    cur.value += v;
+    cur.deltaWeighted += v * h.dailyDeltaPct;
+    accountDeltaAgg.set(h.account, cur);
+  }
+
   // 2) By account — each account's share of total portfolio. Uses the raw
   //    `accountValues` (holdings + cash merged per account) not visibleWeight,
   //    because account breakdown is about "where is my money" — pension and
@@ -247,74 +268,139 @@ export function summarizeHoldings(
   const byAccount: AccountSlice[] = rawAccounts
     .filter((a) => a.value > 0)
     .sort((a, b) => b.value - a.value)
-    .map((a, i): AccountSlice => ({
-      account: a.account,
-      valueUsd: a.value,
-      weight: totalUsd > 0 ? (a.value / totalUsd) * 100 : 0,
-      color: SECTOR_COLORS[i] ?? OTHER_COLOR,
-    }));
+    .map((a, i): AccountSlice => {
+      const agg = accountDeltaAgg.get(a.account);
+      const dailyDeltaPct =
+        agg && agg.value > 0 ? agg.deltaWeighted / agg.value : null;
+      return {
+        account: a.account,
+        valueUsd: a.value,
+        weight: totalUsd > 0 ? (a.value / totalUsd) * 100 : 0,
+        dailyDeltaPct,
+        color: SECTOR_COLORS[i] ?? OTHER_COLOR,
+      };
+    });
 
-  // 3) Sector breakdown — aggregate visibleWeight per sector, top 4 + Other
-  const sectorMap = new Map<string, number>();
+  // 3) Sector breakdown — aggregate visibleWeight + value + delta per sector.
+  type SectorAgg = { weight: number; value: number; deltaW: number; deltaSum: number };
+  const sectorMap = new Map<string, SectorAgg>();
   for (const h of holdings) {
-    const weight = visibleWeight(h);
-    if (weight <= 0) continue;
+    const w = visibleWeight(h);
+    if (w <= 0) continue;
     const key = h.sector ?? "Other";
-    sectorMap.set(key, (sectorMap.get(key) ?? 0) + weight);
+    const v = (h.positionPct ?? 0) / 100 * totalUsd;
+    const cur = sectorMap.get(key) ?? { weight: 0, value: 0, deltaW: 0, deltaSum: 0 };
+    cur.weight += w;
+    cur.value += v;
+    if (h.dailyDeltaPct != null && v > 0) {
+      cur.deltaW += v;
+      cur.deltaSum += v * h.dailyDeltaPct;
+    }
+    sectorMap.set(key, cur);
   }
-  const sortedSectors = Array.from(sectorMap.entries()).sort((a, b) => b[1] - a[1]);
+  const sortedSectors = Array.from(sectorMap.entries()).sort((a, b) => b[1].weight - a[1].weight);
   const topSectors = sortedSectors.slice(0, 4);
   const restSectors = sortedSectors.slice(4);
-  const sectors: SectorSlice[] = topSectors.map(([name, weight], i) => ({
+  const buildSectorSlice = (name: string, agg: SectorAgg, color: string): SectorSlice => ({
     name,
-    weight,
-    color: SECTOR_COLORS[i],
-  }));
-  const otherWeight = restSectors.reduce((sum, [, w]) => sum + w, 0);
-  if (otherWeight > 0) {
-    sectors.push({ name: "Other", weight: otherWeight, color: OTHER_COLOR });
+    weight: agg.weight,
+    valueUsd: agg.value,
+    dailyDeltaPct: agg.deltaW > 0 ? agg.deltaSum / agg.deltaW : null,
+    color,
+  });
+  const sectors: SectorSlice[] = topSectors.map(([name, agg], i) =>
+    buildSectorSlice(name, agg, SECTOR_COLORS[i]),
+  );
+  if (restSectors.length > 0) {
+    const otherAgg = restSectors.reduce<SectorAgg>(
+      (acc, [, a]) => ({
+        weight: acc.weight + a.weight,
+        value: acc.value + a.value,
+        deltaW: acc.deltaW + a.deltaW,
+        deltaSum: acc.deltaSum + a.deltaSum,
+      }),
+      { weight: 0, value: 0, deltaW: 0, deltaSum: 0 },
+    );
+    if (otherAgg.weight > 0) {
+      sectors.push(buildSectorSlice("Other", otherAgg, OTHER_COLOR));
+    }
   }
 
   // 3b) By ticker — visible holdings, top 12 + Other. Same visibleWeight
   // normalization so the legend sums to 100. Multi-account holdings of the
-  // same ticker are merged into a single slice.
-  const tickerMap = new Map<string, { weight: number; valueUsd: number; sector: string | null; displayName: string }>();
+  // same ticker are merged into a single slice. Also aggregates value-weighted
+  // daily delta across constituent holdings.
+  type TickerAgg = {
+    weight: number;
+    valueUsd: number;
+    sector: string | null;
+    displayName: string;
+    deltaW: number;
+    deltaSum: number;
+  };
+  const tickerMap = new Map<string, TickerAgg>();
   for (const h of holdings) {
     const w = visibleWeight(h);
     if (w <= 0) continue;
     const valueUsd = (h.positionPct ?? 0) / 100 * totalUsd;
     const display = h.name || h.ticker.replace(/\.KS$/, "");
     const existing = tickerMap.get(h.ticker);
+    const deltaW = h.dailyDeltaPct != null && valueUsd > 0 ? valueUsd : 0;
+    const deltaSum = h.dailyDeltaPct != null && valueUsd > 0 ? valueUsd * h.dailyDeltaPct : 0;
     if (existing) {
       existing.weight += w;
       existing.valueUsd += valueUsd;
+      existing.deltaW += deltaW;
+      existing.deltaSum += deltaSum;
     } else {
-      tickerMap.set(h.ticker, { weight: w, valueUsd, sector: h.sector ?? null, displayName: display });
+      tickerMap.set(h.ticker, {
+        weight: w,
+        valueUsd,
+        sector: h.sector ?? null,
+        displayName: display,
+        deltaW,
+        deltaSum,
+      });
     }
   }
   const sortedTickers = Array.from(tickerMap.entries()).sort((a, b) => b[1].weight - a[1].weight);
   const TOP_TICKER_COUNT = 12;
   const topTickers = sortedTickers.slice(0, TOP_TICKER_COUNT);
   const restTickers = sortedTickers.slice(TOP_TICKER_COUNT);
-  const byTicker: TickerSlice[] = topTickers.map(([ticker, data], i) => ({
+  const buildTickerSlice = (
+    ticker: string,
+    displayName: string,
+    data: TickerAgg,
+    color: string,
+  ): TickerSlice => ({
     ticker,
-    displayName: data.displayName,
+    displayName,
     weight: data.weight,
     valueUsd: data.valueUsd,
     sector: data.sector,
-    color: TICKER_COLORS[i] ?? OTHER_COLOR,
-  }));
-  const restWeight = restTickers.reduce((sum, [, d]) => sum + d.weight, 0);
-  const restValue = restTickers.reduce((sum, [, d]) => sum + d.valueUsd, 0);
-  if (restWeight > 0) {
-    byTicker.push({
-      ticker: "__OTHER__",
-      displayName: `Other (${restTickers.length})`,
-      weight: restWeight,
-      valueUsd: restValue,
-      sector: null,
-      color: OTHER_COLOR,
-    });
+    dailyDeltaPct: data.deltaW > 0 ? data.deltaSum / data.deltaW : null,
+    color,
+  });
+  const byTicker: TickerSlice[] = topTickers.map(([ticker, data], i) =>
+    buildTickerSlice(ticker, data.displayName, data, TICKER_COLORS[i] ?? OTHER_COLOR),
+  );
+  if (restTickers.length > 0) {
+    const otherAgg = restTickers.reduce<TickerAgg>(
+      (acc, [, d]) => ({
+        weight: acc.weight + d.weight,
+        valueUsd: acc.valueUsd + d.valueUsd,
+        sector: null,
+        displayName: acc.displayName,
+        deltaW: acc.deltaW + d.deltaW,
+        deltaSum: acc.deltaSum + d.deltaSum,
+      }),
+      { weight: 0, valueUsd: 0, sector: null, displayName: `Other (${restTickers.length})`, deltaW: 0, deltaSum: 0 },
+    );
+    if (otherAgg.weight > 0) {
+      byTicker.push(
+        buildTickerSlice("__OTHER__", otherAgg.displayName, otherAgg, OTHER_COLOR),
+      );
+    }
   }
 
   // 4) Top movers — 3 best winners, 3 worst losers.
