@@ -151,8 +151,8 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,633 tests, 128 files |
-| Frontend tests | 목표 ≥ 90% | 634 tests, 46 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,661 tests, 128 files |
+| Frontend tests | 목표 ≥ 90% | 766 tests, 53 files |
 | E2E | 핵심 flow 커버 | 25 Playwright tests (5 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
@@ -428,8 +428,8 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 1 | **연 배당금 / 배당 수익률 데이터** | — | feat(collectors) | `fundamentals` 테이블에 `annual_dividend_usd` + `dividend_yield_pct` 컬럼 추가, yfinance/OpenBB 에서 수집. 단타 위주 호진님 use case 에는 배당 metric 이 hero 자리 차지할 만큼은 아니지만 필요 시 surface 가능 (#221 iter 7a 노트 참조). |
-| 2 | **i18n constants extraction** | — | refactor(frontend) | 컴포넌트 + 테스트 양쪽에 하드코딩된 한국어 라벨을 `lib/strings.ts` 단일 source 로 추출. 풀 i18n (next-intl) 은 호진님 single-user, 한국어 only 컨텍스트에는 오버킬. PR #224 머지 후 작업. |
+| 1 | **i18n constants extraction** | [#226](https://github.com/researcherhojin/nuri-quant/issues/226) | refactor(frontend) | 컴포넌트 + 테스트 양쪽에 하드코딩된 한국어 라벨을 `lib/strings.ts` 단일 source 로 추출. 풀 i18n (next-intl) 은 single-user / Korean-only 컨텍스트에 오버킬. ~30 파일, 1 PR. |
+| 2 | **연 배당금 / 배당 수익률 데이터** | [#227](https://github.com/researcherhojin/nuri-quant/issues/227) | feat(collectors) | `fundamentals` 테이블에 `annual_dividend_usd` + `dividend_yield_pct` 컬럼 추가, yfinance `Ticker.info.dividendRate / dividendYield` 에서 수집. 단타 위주 active 계좌에는 hero 자리 차지할 만큼은 아니지만 별도 surface 가능 (#221 iter 7a 노트 참조). UI surface 는 별도 issue. |
 
 > 대시보드 composition-first restructure 완료 — PR #221/#222/#223/#224 로 holdings table → composition 중심 overview 전환. 각 PR 의 자세한 변경은 git log 참조.
 
