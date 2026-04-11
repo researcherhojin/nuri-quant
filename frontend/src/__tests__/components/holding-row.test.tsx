@@ -309,33 +309,9 @@ describe("HoldingRow", () => {
     expect(reached.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders earnings D-N watch label", () => {
-    render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 9 } })} />);
-    expect(screen.getByText("실적 D-9")).toBeInTheDocument();
-  });
-
-  it("renders 실적 D-DAY when daysUntil is 0", () => {
-    render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 0 } })} />);
-    expect(screen.getByText("실적 D-DAY")).toBeInTheDocument();
-  });
-
-  it("renders earnings D-20 (watchVisual >14 branch)", () => {
-    render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 20 } })} />);
-    expect(screen.getByText("실적 D-20")).toBeInTheDocument();
-  });
-
-  it("renders earnings D-5 (watchVisual <=7 amber branch)", () => {
-    render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 5 } })} />);
-    expect(screen.getByText("실적 D-5")).toBeInTheDocument();
-  });
-
-  it("renders em dash for empty watch", () => {
-    render(<HoldingRow holding={holdingFixture({ watch: { kind: "none" } })} />);
-    // em dash appears in watch, daily delta (null), sparkline (empty), sector/positionPct (null) columns —
-    // at least one is present which is sufficient for this assertion.
-    const dashes = screen.getAllByText("—");
-    expect(dashes.length).toBeGreaterThanOrEqual(1);
-  });
+  // watch column row-render tests removed in #221 iter 4 — column deleted from
+  // the row (same info shown in the top 이벤트 strip). The buildEnrichedHoldings
+  // tests below still cover the watch computation; only the visual column is gone.
 
   it("renders current price and avg price in compound cell (#214 polish)", () => {
     render(<HoldingRow holding={holdingFixture({ latestPrice: 245.67, avgPrice: 180 })} />);
