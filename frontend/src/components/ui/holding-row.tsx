@@ -88,6 +88,18 @@ export interface EnrichedHolding {
   target1Reached: boolean;
   target2Reached: boolean;
   watch: WatchTrigger;
+  sector: string | null;         // #218: GICS-ish 섹터 (2xl+ 초광폭 화면에서만 표시)
+  positionPct: number | null;    // #218: 전체 포트폴리오(holdings+cash USD) 대비 비중 %
+}
+
+/**
+ * #218 초광폭(2xl+) 컬럼 옵션 — 27" 모니터에서 비어있던 오른쪽 공간을 활용.
+ * `totalPortfolioUsd` (holdings + cash USD)와 `usdKrwRate`를 받아 per-holding
+ * 비중(%)을 계산한다. 값 누락 시 positionPct 는 null (HoldingRow가 em dash 렌더).
+ */
+export interface BuildOptions {
+  totalPortfolioUsd?: number;
+  usdKrwRate?: number;
 }
 
 // ── Builder ──────────────────────────────────────────────────
@@ -97,7 +109,10 @@ export function buildEnrichedHoldings(
   targets: RawTarget[] = [],
   advisorActions: RawAdvisorAction[] = [],
   upcomingEvents: RawEvent[] = [],
+  options: BuildOptions = {},
 ): EnrichedHolding[] {
+  const totalUsd = options.totalPortfolioUsd ?? 0;
+  const usdKrwRate = options.usdKrwRate ?? 0;
   const targetByTicker = new Map(targets.map((t) => [t.ticker, t]));
   const earningsByTicker = new Map<string, RawEvent[]>();
   for (const ev of upcomingEvents) {
@@ -183,6 +198,21 @@ export function buildEnrichedHoldings(
           : null;
       const sparkline = Array.isArray(h.sparkline_30d) ? h.sparkline_30d : [];
 
+      // #218: per-holding 비중 계산 (USD 기준).
+      // KR 종목은 usdKrwRate 로 환산. totalUsd<=0 이거나 필수 값 누락 시 null.
+      const qty = h.quantity ?? 0;
+      const holdingValueLocal = latest * qty;
+      const holdingValueUsd =
+        currency === "KRW"
+          ? usdKrwRate > 0
+            ? holdingValueLocal / usdKrwRate
+            : null
+          : holdingValueLocal;
+      const positionPct =
+        holdingValueUsd != null && totalUsd > 0
+          ? (holdingValueUsd / totalUsd) * 100
+          : null;
+
       return {
         account: accountLabel,
         ticker: h.ticker,
@@ -200,6 +230,8 @@ export function buildEnrichedHoldings(
         target1Reached: tpTriggered === "target_1" || tpTriggered === "target_2",
         target2Reached: tpTriggered === "target_2",
         watch,
+        sector: h.sector ?? null,
+        positionPct,
       };
     });
 
@@ -377,7 +409,6 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
         sparkline — 두 variant를 CSS breakpoint로 swap.
         xl (1280–1535): 고정 80px
         2xl+ (1536+):   고정 240px — 80px 대비 3x, 읽기 좋은 밀도. flex 확장 안 함.
-        (나머지 27" 데드 스페이스는 #219의 섹터 / 비중% 컬럼으로 채움)
       */}
       <span className="hidden xl:inline-flex 2xl:hidden items-center shrink-0" data-testid="sparkline-narrow">
         <Sparkline
@@ -397,6 +428,23 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
           height={18}
           baseline={h.avgPrice}
         />
+      </span>
+      {/* #218: 섹터 — 2xl+ (1536px+) 27" 모니터용 */}
+      <span
+        className="hidden 2xl:inline-block w-[96px] text-right text-[10px] text-zinc-500 truncate shrink-0"
+        aria-label="섹터"
+        data-testid="sector-cell"
+        title={h.sector ?? undefined}
+      >
+        {h.sector ?? "—"}
+      </span>
+      {/* #218: 비중 (% of portfolio) — 2xl+ (1536px+) 27" 모니터용 */}
+      <span
+        className="hidden 2xl:inline-block w-[56px] text-right tabular-nums text-[10px] text-zinc-400 shrink-0"
+        aria-label="비중"
+        data-testid="position-pct-cell"
+      >
+        {h.positionPct != null ? `${h.positionPct.toFixed(1)}%` : "—"}
       </span>
     </Link>
   );
