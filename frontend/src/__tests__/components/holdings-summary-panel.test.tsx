@@ -1,0 +1,152 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+
+// Mock Recharts — jsdom can't render SVG charts. Kept in this file so the
+// mock hoisting doesn't affect unrelated tests (see CLAUDE.md gotchas on
+// vi.mock hoisting).
+vi.mock("recharts", () => ({
+  ResponsiveContainer: ({ children }: any) => <div data-testid="rc-container">{children}</div>,
+  PieChart: ({ children }: any) => <div data-testid="rc-pie-chart">{children}</div>,
+  Pie: ({ children }: any) => <div data-testid="rc-pie">{children}</div>,
+  Cell: () => <div data-testid="rc-cell" />,
+  Tooltip: () => <div data-testid="rc-tooltip" />,
+}));
+
+import { HoldingsSummaryPanel } from "@/components/ui/holdings-summary-panel";
+import type { HoldingsSummary } from "@/lib/holdings-summary";
+
+function baseSummary(over: Partial<HoldingsSummary> = {}): HoldingsSummary {
+  return {
+    today: { totalUsd: 340, totalPct: 0.46, upCount: 6, downCount: 4 },
+    sectors: [
+      { name: "Semi", weight: 28, color: "#34d399" },
+      { name: "BigTech", weight: 19, color: "#60a5fa" },
+      { name: "ETF", weight: 12, color: "#f472b6" },
+      { name: "Other", weight: 41, color: "#71717a" },
+    ],
+    topMovers: {
+      winners: [
+        { account: "Main", ticker: "NVDA", pnlPct: 5.6 },
+        { account: "Main", ticker: "PL", pnlPct: 38.2 },
+      ],
+      losers: [
+        { account: "Active", ticker: "VOO", pnlPct: -1.0 },
+      ],
+    },
+    concentration: {
+      herfindahl: 0.18,
+      topHolding: { ticker: "TSLA", weight: 18.5 },
+      level: "medium",
+    },
+    ...over,
+  };
+}
+
+describe("HoldingsSummaryPanel", () => {
+  it("renders all four cards with correct testids", () => {
+    render(<HoldingsSummaryPanel summary={baseSummary()} />);
+    expect(screen.getByTestId("holdings-summary-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("summary-today")).toBeInTheDocument();
+    expect(screen.getByTestId("summary-sectors")).toBeInTheDocument();
+    expect(screen.getByTestId("summary-movers")).toBeInTheDocument();
+    expect(screen.getByTestId("summary-concentration")).toBeInTheDocument();
+  });
+
+  it("renders today card with dollar + percent + up/down counts", () => {
+    render(<HoldingsSummaryPanel summary={baseSummary()} />);
+    const today = screen.getByTestId("summary-today");
+    expect(today.textContent).toContain("$340");
+    expect(today.textContent).toContain("+0.46%");
+    expect(today.textContent).toContain("6");
+    expect(today.textContent).toContain("4");
+  });
+
+  it("uses emerald styling for positive today and red for negative", () => {
+    const { rerender } = render(
+      <HoldingsSummaryPanel summary={baseSummary({ today: { totalUsd: 100, totalPct: 0.2, upCount: 1, downCount: 0 } })} />,
+    );
+    const today = screen.getByTestId("summary-today");
+    expect(today.innerHTML).toMatch(/text-emerald-400/);
+    // positive arrow (▲)
+    expect(today.textContent).toContain("\u25B2");
+
+    rerender(
+      <HoldingsSummaryPanel summary={baseSummary({ today: { totalUsd: -100, totalPct: -0.2, upCount: 0, downCount: 1 } })} />,
+    );
+    const todayNeg = screen.getByTestId("summary-today");
+    expect(todayNeg.innerHTML).toMatch(/text-red-400/);
+    expect(todayNeg.textContent).toContain("\u25BC");
+  });
+
+  it("renders sector legend with percent labels", () => {
+    render(<HoldingsSummaryPanel summary={baseSummary()} />);
+    const sectors = screen.getByTestId("summary-sectors");
+    expect(sectors.textContent).toContain("Semi");
+    expect(sectors.textContent).toContain("28.0%");
+    expect(sectors.textContent).toContain("BigTech");
+    expect(sectors.textContent).toContain("19.0%");
+  });
+
+  it("renders winner and loser movers", () => {
+    render(<HoldingsSummaryPanel summary={baseSummary()} />);
+    const movers = screen.getByTestId("summary-movers");
+    expect(movers.textContent).toContain("NVDA");
+    expect(movers.textContent).toContain("+5.6%");
+    expect(movers.textContent).toContain("VOO");
+    expect(movers.textContent).toContain("-1.0%");
+  });
+
+  it("renders concentration card with HHI + level + top holding", () => {
+    render(<HoldingsSummaryPanel summary={baseSummary()} />);
+    const conc = screen.getByTestId("summary-concentration");
+    expect(conc.textContent).toContain("HHI 0.18");
+    expect(conc.textContent).toContain("medium");
+    expect(conc.textContent).toContain("TSLA");
+    expect(conc.textContent).toContain("18.5%");
+  });
+
+  it("applies amber styling when concentration level is high", () => {
+    render(
+      <HoldingsSummaryPanel
+        summary={baseSummary({
+          concentration: {
+            herfindahl: 0.25,
+            topHolding: { ticker: "TSLA", weight: 45 },
+            level: "high",
+          },
+        })}
+      />,
+    );
+    const conc = screen.getByTestId("summary-concentration");
+    expect(conc.innerHTML).toMatch(/text-amber-400/);
+  });
+
+  it("hides sectors card when slices array is empty", () => {
+    render(
+      <HoldingsSummaryPanel
+        summary={baseSummary({ sectors: [] })}
+      />,
+    );
+    expect(screen.queryByTestId("summary-sectors")).not.toBeInTheDocument();
+  });
+
+  it("hides movers card when no winners and no losers", () => {
+    render(
+      <HoldingsSummaryPanel
+        summary={baseSummary({ topMovers: { winners: [], losers: [] } })}
+      />,
+    );
+    expect(screen.queryByTestId("summary-movers")).not.toBeInTheDocument();
+  });
+
+  it("hides concentration card when topHolding is null", () => {
+    render(
+      <HoldingsSummaryPanel
+        summary={baseSummary({
+          concentration: { herfindahl: 0, topHolding: null, level: "low" },
+        })}
+      />,
+    );
+    expect(screen.queryByTestId("summary-concentration")).not.toBeInTheDocument();
+  });
+});

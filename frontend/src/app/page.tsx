@@ -8,6 +8,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
 import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import { CollapsibleStrip } from "@/components/ui/collapsible-strip";
+import { HoldingsSummaryPanel } from "@/components/ui/holdings-summary-panel";
+import { summarizeHoldings } from "@/lib/holdings-summary";
 import Link from "next/link";
 
 interface DashboardData {
@@ -442,9 +444,11 @@ async function Dashboard({
         </CollapsibleStrip>
       </div>
 
-      {/* ═══ 보유 종목 — full-width (사이드바 제거 후) ═══ */}
+      {/* ═══ 보유 종목 — full-width (사이드바 제거 후) ═══
+          3xl+ (≥1680px) 에서는 우측에 <HoldingsSummaryPanel> 을 나란히 띄운다 (#221).
+          1680 미만 2xl 에서는 panel 숨김 — 가로 폭이 부족해 겹치므로. */}
       {enrichedHoldings.length > 0 && (
-        <section className="flex-1 min-h-0 flex flex-col items-start">
+        <section className="flex-1 min-h-0 flex flex-col items-start min-[1680px]:flex-row min-[1680px]:items-start min-[1680px]:gap-4">
           {/*
             w-fit wrapper — 제목 바 + 테이블 이 모두 테이블의 natural width (현재 breakpoint 의
             column sum)에 맞춰 shrink 한다. 덕분에 period toggle + 상세 링크가 테이블의 우측
@@ -534,6 +538,11 @@ async function Dashboard({
             </div>
           </div>
           </div>
+          {/* #221: 3xl+ 우측 요약 패널 (Today / Sector / Movers / Concentration) */}
+          <HoldingsSummaryPanel
+            summary={summarizeHoldings(enrichedHoldings, { totalPortfolioUsd: totalValue })}
+            className="hidden min-[1680px]:flex w-[200px] shrink-0 sticky top-0"
+          />
         </section>
       )}
 

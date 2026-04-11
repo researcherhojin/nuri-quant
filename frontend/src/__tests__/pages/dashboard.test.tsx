@@ -674,8 +674,14 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      // displayName strips .KS, so "005930" should appear instead of "005930.KS"
-      expect(screen.getByText(/005930/)).toBeInTheDocument();
+      // displayName strips .KS, so "005930" should appear instead of "005930.KS".
+      // #221 summary panel (hidden via CSS but still in DOM) may also include the
+      // ticker in its movers card, so assert presence via the holding row itself.
+      const row = screen.getAllByTestId("holding-row").find((r) =>
+        r.textContent?.includes("005930"),
+      );
+      expect(row).toBeTruthy();
+      expect(row?.textContent).not.toContain(".KS");
     });
   });
 

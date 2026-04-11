@@ -270,6 +270,16 @@ describe("Dashboard — error fallbacks and redirect", () => {
   });
 
   it("handles freshness and pipeline API failures gracefully", async () => {
+    // #221: summary panel uses Recharts via SectorDonut ("use client"). jsdom can't
+    // actually run ResponsiveContainer, which suspends on an uncached promise. Mock
+    // it out so the Dashboard render finishes without hitting the Suspense stall.
+    vi.doMock("recharts", () => ({
+      ResponsiveContainer: ({ children }: any) => <div>{children}</div>,
+      PieChart: ({ children }: any) => <div>{children}</div>,
+      Pie: ({ children }: any) => <div>{children}</div>,
+      Cell: () => <div />,
+      Tooltip: () => <div />,
+    }));
     vi.doMock("@/lib/api", () => ({
       API_BASE: "http://localhost:8001",
       fetchAPI: vi.fn().mockImplementation((path: string) => {
