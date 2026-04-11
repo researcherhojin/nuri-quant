@@ -1,0 +1,320 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import {
+  HoldingRow,
+  buildEnrichedHoldings,
+  formatPrice,
+  type RawHolding,
+  type RawAction,
+  type RawTarget,
+  type RawAdvisorAction,
+  type RawEvent,
+  type EnrichedHolding,
+} from "@/components/ui/holding-row";
+
+vi.mock("next/link", () => ({
+  default: ({ children, href, ...rest }: any) => (
+    <a href={href} {...rest}>{children}</a>
+  ),
+}));
+
+// ── helpers ──────────────────────────────────────────────────
+function holdingFixture(overrides: Partial<EnrichedHolding> = {}): EnrichedHolding {
+  return {
+    account: "Main",
+    ticker: "AAPL",
+    name: "Apple Inc",
+    currency: "USD",
+    pnlPct: 5.2,
+    status: { kind: "hold" },
+    stopLoss: 100,
+    target1: 120,
+    target2: 140,
+    target1Reached: false,
+    target2Reached: false,
+    watch: { kind: "none" },
+    ...overrides,
+  };
+}
+
+const baseHolding: RawHolding = {
+  ticker: "AAPL",
+  account: "brokerage_alpha",
+  accountLabel: "Main",
+  quantity: 10,
+  avg_price: 100,
+  latest_price: 110,
+  currency: "USD",
+  name: "Apple Inc",
+  sector: "Tech",
+};
+
+// ─────────────────────────────────────────────────────────────
+// formatPrice
+// ─────────────────────────────────────────────────────────────
+describe("formatPrice", () => {
+  it("formats null as em dash", () => {
+    expect(formatPrice(null, "USD")).toBe("—");
+  });
+  it("formats KRW with won symbol and thousands separator", () => {
+    expect(formatPrice(210000, "KRW")).toBe("₩210,000");
+  });
+  it("formats USD < 100 with 2 decimals", () => {
+    expect(formatPrice(45.67, "USD")).toBe("$45.67");
+  });
+  it("formats USD >= 100 as integer with thousands separator", () => {
+    expect(formatPrice(2345, "USD")).toBe("$2,345");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// buildEnrichedHoldings — status priority
+// ─────────────────────────────────────────────────────────────
+describe("buildEnrichedHoldings status priority", () => {
+  it("returns hold when no action, no target trigger, no violation", () => {
+    const result = buildEnrichedHoldings([baseHolding], [], [], [], []);
+    expect(result).toHaveLength(1);
+    expect(result[0].status.kind).toBe("hold");
+  });
+
+  it("returns buy when matching BUY action exists", () => {
+    const action: RawAction = { action: "BUY", ticker: "AAPL", account: "Main", confidence: 78 };
+    const result = buildEnrichedHoldings([baseHolding], [action], [], [], []);
+    expect(result[0].status.kind).toBe("buy");
+    if (result[0].status.kind === "buy") {
+      expect(result[0].status.confidence).toBe(78);
+    }
+  });
+
+  it("returns sell when matching SELL action exists", () => {
+    const action: RawAction = { action: "SELL", ticker: "AAPL", account: "Main", confidence: 85 };
+    const result = buildEnrichedHoldings([baseHolding], [action], [], [], []);
+    expect(result[0].status.kind).toBe("sell");
+  });
+
+  it("returns tp1 when take_profit_triggered=target_1", () => {
+    const target: RawTarget = { ticker: "AAPL", stop_loss: 90, target_1: 120, target_2: 140, take_profit_triggered: "target_1" };
+    const result = buildEnrichedHoldings([baseHolding], [], [target], [], []);
+    expect(result[0].status.kind).toBe("tp1");
+    expect(result[0].target1Reached).toBe(true);
+    expect(result[0].target2Reached).toBe(false);
+  });
+
+  it("returns tp2 when take_profit_triggered=target_2 (and target1Reached implied)", () => {
+    const target: RawTarget = { ticker: "AAPL", stop_loss: 90, target_1: 120, target_2: 140, take_profit_triggered: "target_2" };
+    const result = buildEnrichedHoldings([baseHolding], [], [target], [], []);
+    expect(result[0].status.kind).toBe("tp2");
+    expect(result[0].target1Reached).toBe(true);
+    expect(result[0].target2Reached).toBe(true);
+  });
+
+  it("returns stop_loss when latest price drops below stop", () => {
+    const holding = { ...baseHolding, latest_price: 80 };
+    const target: RawTarget = { ticker: "AAPL", stop_loss: 90, target_1: 120, target_2: 140 };
+    const result = buildEnrichedHoldings([holding], [], [target], [], []);
+    expect(result[0].status.kind).toBe("stop_loss");
+  });
+
+  it("returns violation when advisor flags severity high with matching account in reason", () => {
+    const advisor: RawAdvisorAction = {
+      ticker: "AAPL",
+      violation_type: "position_limit_exceeded",
+      severity: "high",
+      current_value: 22,
+      reason: "brokerage_alpha 비중 22.0% > 한도 15%",
+    };
+    const result = buildEnrichedHoldings([baseHolding], [], [], [advisor], []);
+    expect(result[0].status.kind).toBe("violation");
+    if (result[0].status.kind === "violation") {
+      expect(result[0].status.weight).toBe(22);
+    }
+  });
+
+  it("ignores advisor severity medium/low", () => {
+    const advisor: RawAdvisorAction = {
+      ticker: "AAPL",
+      violation_type: "position_limit_exceeded",
+      severity: "medium",
+      current_value: 16,
+      reason: "brokerage_alpha 비중 16.0%",
+    };
+    const result = buildEnrichedHoldings([baseHolding], [], [], [advisor], []);
+    expect(result[0].status.kind).toBe("hold");
+  });
+
+  it("stop_loss takes priority over violation and sell", () => {
+    const holding = { ...baseHolding, latest_price: 80 };
+    const action: RawAction = { action: "SELL", ticker: "AAPL", account: "Main", confidence: 80 };
+    const target: RawTarget = { ticker: "AAPL", stop_loss: 90 };
+    const advisor: RawAdvisorAction = {
+      ticker: "AAPL",
+      violation_type: "position_limit_exceeded",
+      severity: "high",
+      current_value: 30,
+      reason: "brokerage_alpha 비중 30%",
+    };
+    const result = buildEnrichedHoldings([holding], [action], [target], [advisor], []);
+    expect(result[0].status.kind).toBe("stop_loss");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// buildEnrichedHoldings — watch trigger
+// ─────────────────────────────────────────────────────────────
+// Build a YYYY-MM-DD string for `daysOffset` days from local today (timezone-safe)
+function localDateOffset(daysOffset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + daysOffset);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+describe("buildEnrichedHoldings watch trigger", () => {
+  it("returns earnings watch when upcoming earnings within 30 days", () => {
+    const event: RawEvent = {
+      date: localDateOffset(9),
+      event_type: "earnings",
+      ticker: "AAPL",
+      description: "Apple Q1 earnings",
+    };
+    const result = buildEnrichedHoldings([baseHolding], [], [], [], [event]);
+    expect(result[0].watch.kind).toBe("earnings");
+    if (result[0].watch.kind === "earnings") {
+      expect(result[0].watch.daysUntil).toBe(9);
+    }
+  });
+
+  it("returns none when earnings > 30 days away", () => {
+    const event: RawEvent = {
+      date: localDateOffset(60),
+      event_type: "earnings",
+      ticker: "AAPL",
+    };
+    const result = buildEnrichedHoldings([baseHolding], [], [], [], [event]);
+    expect(result[0].watch.kind).toBe("none");
+  });
+
+  it("ignores non-earnings events", () => {
+    const event: RawEvent = {
+      date: localDateOffset(5),
+      event_type: "fomc",
+      ticker: "AAPL",
+    };
+    const result = buildEnrichedHoldings([baseHolding], [], [], [], [event]);
+    expect(result[0].watch.kind).toBe("none");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// buildEnrichedHoldings — sorting
+// ─────────────────────────────────────────────────────────────
+describe("buildEnrichedHoldings sorting", () => {
+  it("sorts by account alphabetically, then status priority, then |pnl| desc", () => {
+    const holdings: RawHolding[] = [
+      { ticker: "AAA", accountLabel: "Sub", quantity: 10, avg_price: 100, latest_price: 105, currency: "USD" },
+      { ticker: "BBB", accountLabel: "Main", quantity: 10, avg_price: 100, latest_price: 50, currency: "USD" },  // -50% pnl
+      { ticker: "CCC", accountLabel: "Main", quantity: 10, avg_price: 100, latest_price: 102, currency: "USD" },
+    ];
+    const target: RawTarget = { ticker: "BBB", stop_loss: 80 };  // BBB triggers stop_loss (price 50 < 80)
+    const result = buildEnrichedHoldings(holdings, [], [target], [], []);
+    expect(result.map((h) => h.ticker)).toEqual(["BBB", "CCC", "AAA"]);
+    expect(result[0].status.kind).toBe("stop_loss");  // Main BBB first (priority 1)
+    expect(result[1].status.kind).toBe("hold");        // Main CCC (priority 7)
+    expect(result[2].status.kind).toBe("hold");        // Sub AAA (alphabetical after Main)
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// HoldingRow component rendering
+// ─────────────────────────────────────────────────────────────
+describe("HoldingRow", () => {
+  it("renders ticker name, account label, and pnl", () => {
+    render(<HoldingRow holding={holdingFixture()} />);
+    expect(screen.getByText("Apple Inc")).toBeInTheDocument();
+    expect(screen.getByText("Main")).toBeInTheDocument();
+    expect(screen.getByText("+5.2%")).toBeInTheDocument();
+  });
+
+  it("renders 보유 status badge for hold", () => {
+    render(<HoldingRow holding={holdingFixture()} />);
+    expect(screen.getByText("보유")).toBeInTheDocument();
+  });
+
+  it("renders 매수 N status with confidence for buy", () => {
+    render(<HoldingRow holding={holdingFixture({ status: { kind: "buy", confidence: 78 } })} />);
+    expect(screen.getByText("매수 78")).toBeInTheDocument();
+  });
+
+  it("renders 매도 N status for sell", () => {
+    render(<HoldingRow holding={holdingFixture({ status: { kind: "sell", confidence: 85 }, pnlPct: -3.0 })} />);
+    expect(screen.getByText("매도 85")).toBeInTheDocument();
+    expect(screen.getByText("-3.0%")).toBeInTheDocument();
+  });
+
+  it("renders ✓ 익절₁ when status is tp1", () => {
+    render(<HoldingRow holding={holdingFixture({ status: { kind: "tp1" }, target1Reached: true })} />);
+    expect(screen.getByText("✓ 익절₁")).toBeInTheDocument();
+  });
+
+  it("renders 손절 status when stop_loss triggered", () => {
+    render(<HoldingRow holding={holdingFixture({ status: { kind: "stop_loss" }, pnlPct: -8.5 })} />);
+    expect(screen.getByText("손절")).toBeInTheDocument();
+  });
+
+  it("renders ⚠ 위반 status for violation", () => {
+    render(<HoldingRow holding={holdingFixture({ status: { kind: "violation", weight: 22 } })} />);
+    expect(screen.getByText("⚠ 위반")).toBeInTheDocument();
+  });
+
+  it("renders ✓ 도달 in target_1 cell when reached", () => {
+    render(<HoldingRow holding={holdingFixture({ status: { kind: "tp1" }, target1Reached: true })} />);
+    const reached = screen.getAllByText("✓ 도달");
+    expect(reached.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders earnings D-N watch label", () => {
+    render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 9 } })} />);
+    expect(screen.getByText("실적 D-9")).toBeInTheDocument();
+  });
+
+  it("renders 실적 D-DAY when daysUntil is 0", () => {
+    render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 0 } })} />);
+    expect(screen.getByText("실적 D-DAY")).toBeInTheDocument();
+  });
+
+  it("renders em dash for empty watch", () => {
+    render(<HoldingRow holding={holdingFixture({ watch: { kind: "none" } })} />);
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("renders KRW prices with won symbol for .KS tickers", () => {
+    render(
+      <HoldingRow
+        holding={holdingFixture({
+          ticker: "005930.KS",
+          name: "삼성전자",
+          currency: "KRW",
+          stopLoss: 195000,
+          target1: 240000,
+          target2: 280000,
+        })}
+      />,
+    );
+    expect(screen.getByText("₩195,000")).toBeInTheDocument();
+    expect(screen.getByText("₩240,000")).toBeInTheDocument();
+  });
+
+  it("links to /ticker/{symbol}", () => {
+    render(<HoldingRow holding={holdingFixture()} />);
+    const link = screen.getByTestId("holding-row");
+    expect(link).toHaveAttribute("href", "/ticker/AAPL");
+  });
+
+  it("uses href override when provided", () => {
+    render(<HoldingRow holding={holdingFixture()} href="/portfolio?ticker=AAPL" />);
+    const link = screen.getByTestId("holding-row");
+    expect(link).toHaveAttribute("href", "/portfolio?ticker=AAPL");
+  });
+});
