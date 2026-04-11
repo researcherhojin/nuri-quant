@@ -4,6 +4,7 @@ import {
   HoldingRow,
   buildEnrichedHoldings,
   formatPrice,
+  renderSparkline,
   type RawHolding,
   type RawAction,
   type RawTarget,
@@ -26,6 +27,8 @@ function holdingFixture(overrides: Partial<EnrichedHolding> = {}): EnrichedHoldi
     name: "Apple Inc",
     currency: "USD",
     pnlPct: 5.2,
+    dailyDeltaPct: null,
+    sparkline: [],
     status: { kind: "hold" },
     stopLoss: 100,
     target1: 120,
@@ -64,6 +67,45 @@ describe("formatPrice", () => {
   });
   it("formats USD >= 100 as integer with thousands separator", () => {
     expect(formatPrice(2345, "USD")).toBe("$2,345");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// renderSparkline (#214)
+// ─────────────────────────────────────────────────────────────
+describe("renderSparkline", () => {
+  it("returns empty string for empty series", () => {
+    expect(renderSparkline([])).toBe("");
+  });
+
+  it("returns empty string for single-point series", () => {
+    expect(renderSparkline([100])).toBe("");
+  });
+
+  it("renders 8 block chars by default", () => {
+    const result = renderSparkline([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(result).toHaveLength(8);
+    // every char should be a block char (▁▂▃▄▅▆▇█)
+    expect(/^[▁▂▃▄▅▆▇█]+$/.test(result)).toBe(true);
+  });
+
+  it("uses horizontal bar for flat series", () => {
+    expect(renderSparkline([100, 100, 100, 100, 100])).toMatch(/^─+$/);
+  });
+
+  it("down-samples long series to requested width", () => {
+    const series = Array.from({ length: 60 }, (_, i) => i);
+    expect(renderSparkline(series, 10)).toHaveLength(10);
+  });
+
+  it("monotonic increasing series ends with full block", () => {
+    const result = renderSparkline([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(result[result.length - 1]).toBe("█");
+  });
+
+  it("monotonic decreasing series ends with low block", () => {
+    const result = renderSparkline([8, 7, 6, 5, 4, 3, 2, 1]);
+    expect(result[result.length - 1]).toBe("▁");
   });
 });
 
@@ -286,7 +328,43 @@ describe("HoldingRow", () => {
 
   it("renders em dash for empty watch", () => {
     render(<HoldingRow holding={holdingFixture({ watch: { kind: "none" } })} />);
-    expect(screen.getByText("—")).toBeInTheDocument();
+    // em dash appears in watch, daily delta (null), and sparkline (empty) columns —
+    // at least one is present which is sufficient for this assertion.
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders daily delta with + and color when positive", () => {
+    render(<HoldingRow holding={holdingFixture({ dailyDeltaPct: 1.2 })} />);
+    expect(screen.getByTestId("daily-delta")).toHaveTextContent("+1.2%");
+  });
+
+  it("renders daily delta with - for negative", () => {
+    render(<HoldingRow holding={holdingFixture({ dailyDeltaPct: -0.4 })} />);
+    expect(screen.getByTestId("daily-delta")).toHaveTextContent("-0.4%");
+  });
+
+  it("renders em dash in daily delta when dailyDeltaPct is null", () => {
+    render(<HoldingRow holding={holdingFixture({ dailyDeltaPct: null })} />);
+    expect(screen.getByTestId("daily-delta")).toHaveTextContent("—");
+  });
+
+  it("renders sparkline text from series", () => {
+    render(<HoldingRow holding={holdingFixture({ sparkline: [100, 105, 103, 108, 110, 115, 112, 118] })} />);
+    const spark = screen.getByTestId("sparkline");
+    // 8 unicode block chars expected (width=8, non-empty)
+    expect(spark.textContent).toBeTruthy();
+    expect(spark.textContent).not.toBe("—");
+  });
+
+  it("renders em dash sparkline for empty series", () => {
+    render(<HoldingRow holding={holdingFixture({ sparkline: [] })} />);
+    expect(screen.getByTestId("sparkline")).toHaveTextContent("—");
+  });
+
+  it("renders em dash sparkline for single-point series", () => {
+    render(<HoldingRow holding={holdingFixture({ sparkline: [100] })} />);
+    expect(screen.getByTestId("sparkline")).toHaveTextContent("—");
   });
 
   it("renders KRW prices with won symbol for .KS tickers", () => {

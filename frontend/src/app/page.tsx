@@ -7,6 +7,12 @@ import { fetchAPI } from "@/lib/api";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
 import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
+import {
+  DashboardSidebar,
+  type SidebarAlert,
+  type SidebarEvent,
+  type SidebarCandidate,
+} from "@/components/ui/dashboard-sidebar";
 import Link from "next/link";
 
 interface DashboardData {
@@ -193,8 +199,24 @@ async function Dashboard() {
   const isMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() <= 3;
   const pensionCandidates = newCandidates.filter(a => a.account === "Pension");
   const visibleCandidates = newCandidates.filter(a => a.account !== "Pension" || isMonthEnd);
-  const nNewBuys = visibleCandidates.filter(a => a.action === "BUY").length;
-  const nNewSells = visibleCandidates.filter(a => a.action === "SELL").length;
+
+  // #214: Sidebar 데이터 prep
+  const sidebarAlerts: SidebarAlert[] = d.alerts.map((al) => {
+    const parsed = parseAlert(al);
+    return { level: al.level, message: parsed.label, href: parsed.href };
+  });
+  const sidebarEvents: SidebarEvent[] = (d.upcoming_events ?? []).slice(0, 8).map((ev: any) => ({
+    date: ev.date,
+    description: ev.description,
+    ticker: ev.ticker,
+  }));
+  const sidebarCandidates: SidebarCandidate[] = visibleCandidates.map((a) => ({
+    action: a.action,
+    ticker: a.ticker,
+    name: a.name,
+    account: a.account ? accountKo(a.account) : undefined,
+    confidence: a.confidence,
+  }));
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -287,110 +309,55 @@ async function Dashboard() {
         );
       })()}
 
-      {/* ═══ 알림 — 개별 라인, 클릭 시 상세 이동 ═══ */}
-      {alertCount > 0 && (
-        <div className="px-2 py-1.5 rounded bg-red-950/20 border border-red-900/30">
-          <p className="text-[10px] text-red-400 font-semibold mb-1">주의 {alertCount}건</p>
-          <div className="space-y-0.5">
-            {d.alerts.map((al, i) => {
-              const parsed = parseAlert(al);
-              return (
-                <Link key={i} href={parsed.href}
-                  className="flex items-center gap-1.5 text-[10px] hover:bg-red-950/30 rounded px-1 py-0.5 -mx-1 transition-colors group">
-                  <span className={al.level === "critical" ? "text-red-400" : "text-amber-400"}>
-                    {al.level === "critical" ? "\u2716" : "\u25B3"}
+      {/* ═══ 2-column 본문: main (holdings) + sidebar (알림/이벤트/후보) ═══ */}
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-4">
+        {/* ─── main ─── */}
+        <main className="min-w-0 min-h-0 flex flex-col gap-3">
+          {/* 보유 종목 통합 뷰 */}
+          {enrichedHoldings.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
+                  <span className="text-[10px] text-zinc-600">
+                    {winners.length > 0 && `수익 ${winners.length}`}
+                    {winners.length > 0 && losers.length > 0 && " · "}
+                    {losers.length > 0 && `손실 ${losers.length}`}
                   </span>
-                  <span className="text-zinc-300 group-hover:text-zinc-100">{parsed.label}</span>
-                  <span className="text-zinc-700 ml-auto group-hover:text-zinc-500">&rarr;</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ═══ 보유 종목 통합 뷰 — 상태 + 가격 타겟 + 워치 트리거 ═══ */}
-      {enrichedHoldings.length > 0 && (
-        <div className="flex-1 min-h-0">
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
-              <span className="text-[10px] text-zinc-600">
-                {winners.length > 0 && `수익 ${winners.length}`}
-                {winners.length > 0 && losers.length > 0 && " · "}
-                {losers.length > 0 && `손실 ${losers.length}`}
-              </span>
-            </div>
-            <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
-          </div>
-          {/* 컬럼 헤더 (sm+) */}
-          <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
-            <span className="w-10 shrink-0">계좌</span>
-            <span className="w-20 shrink-0">종목</span>
-            <span className="w-14 text-right shrink-0">손익</span>
-            <span className="w-[68px] text-center shrink-0">상태</span>
-            <span className="w-[72px] text-right shrink-0">손절</span>
-            <span className="w-[72px] text-right shrink-0">1차익절</span>
-            <span className="w-[72px] text-right shrink-0">2차익절</span>
-            <span className="flex-1 text-right">워치</span>
-          </div>
-          <div className="space-y-0.5">
-            {enrichedHoldings.map((h, i) => (
-              <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ═══ 신규 매수 후보 — 보유 외 ticker 매매 신호 ═══ */}
-      {visibleCandidates.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-zinc-200">신규 매수 후보</h2>
-              <span className="text-[10px] text-zinc-600">
-                {nNewBuys > 0 && `매수 ${nNewBuys}`}
-                {nNewBuys > 0 && nNewSells > 0 && " \u00B7 "}
-                {nNewSells > 0 && `매도 ${nNewSells}`}
-              </span>
-            </div>
-            <Link href="/decisions" className="text-[9px] text-zinc-600 hover:text-zinc-400">기록 &rarr;</Link>
-          </div>
-          <div className="space-y-0.5">
-            {visibleCandidates.map((a, i) => (
-              <Link key={`${a.ticker}-${i}`} href={`/ticker/${a.ticker}`}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded border-l-2 hover:bg-zinc-800/50 transition-colors ${
-                  a.action === "BUY" ? "border-emerald-500" : "border-red-500"
-                }`}>
-                <StatusBadge status={a.action === "BUY" ? "매수" : "매도"} />
-                {a.account && <span className="text-[9px] text-zinc-600 min-w-[2rem]">{accountKo(a.account)}</span>}
-                <span className="font-medium text-xs text-zinc-100 truncate">{a.name || a.ticker}</span>
-                {a.name && <span className="text-[10px] text-zinc-600 shrink-0">{a.ticker}</span>}
-                {a.reason && <span className="text-[10px] text-zinc-600 truncate hidden lg:inline">{a.reason}</span>}
-                <div className="ml-auto flex items-center gap-2 shrink-0">
-                  <span className={`inline-flex items-center justify-center w-7 h-5 rounded text-[10px] font-bold tabular-nums ${
-                    a.confidence >= 80 ? "bg-emerald-500/15 text-emerald-400" :
-                    a.confidence >= 50 ? "bg-amber-500/15 text-amber-400" :
-                    "bg-red-500/15 text-red-400"
-                  }`}>{a.confidence}</span>
-                  <span className="text-[10px] text-zinc-500 tabular-nums">{Math.round((a.agreement || 0) / 10)}/10</span>
                 </div>
-              </Link>
-            ))}
-            {pensionCandidates.length > 0 && !isMonthEnd && (
-              <p className="text-[10px] text-zinc-600 px-2 pt-1">연금 {pensionCandidates.length}건 &mdash; 월말 매수 대기</p>
-            )}
-          </div>
-        </div>
-      )}
+                <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
+              </div>
+              {/* 컬럼 헤더 (sm+) */}
+              <div className="hidden sm:flex items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
+                <span className="w-10 shrink-0">계좌</span>
+                <span className="w-20 shrink-0">종목</span>
+                <span className="w-14 text-right shrink-0">손익</span>
+                <span className="w-12 text-right shrink-0">일변</span>
+                <span className="w-[68px] text-center shrink-0">상태</span>
+                <span className="w-[72px] text-right shrink-0">손절</span>
+                <span className="w-[72px] text-right shrink-0">1차익절</span>
+                <span className="w-[72px] text-right shrink-0">2차익절</span>
+                <span className="hidden md:inline-block shrink-0 text-center">추세</span>
+                <span className="flex-1 text-right">워치</span>
+              </div>
+              <div className="space-y-0.5">
+                {enrichedHoldings.map((h, i) => (
+                  <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
+                ))}
+              </div>
+            </section>
+          )}
+        </main>
 
-      {visibleCandidates.length === 0 && pensionCandidates.length > 0 && !isMonthEnd && (
-        <p className="text-[10px] text-zinc-600 text-center py-1">연금 {pensionCandidates.length}건 &mdash; 월말 매수 대기</p>
-      )}
-
-      {visibleCandidates.length === 0 && pensionCandidates.length === 0 && enrichedHoldings.length > 0 && (
-        <p className="text-[10px] text-zinc-600 text-center py-1">신규 매수 후보 없음 &mdash; 보유 종목 관리에 집중</p>
-      )}
+        {/* ─── sidebar (lg+ 고정, narrow는 stack 아래로) ─── */}
+        <DashboardSidebar
+          alerts={sidebarAlerts}
+          events={sidebarEvents}
+          candidates={sidebarCandidates}
+          pensionCandidatesCount={pensionCandidates.length}
+          isMonthEnd={isMonthEnd}
+        />
+      </div>
 
       {/* ═══ 푸터: 품질 + 이벤트 + 파이프라인 ═══ */}
       <div className="mt-auto pt-2 border-t border-zinc-800/60 space-y-1">
@@ -404,11 +371,7 @@ async function Dashboard() {
           {(advisor?.total_violations || 0) > 0 && (
             <span className="text-red-400">규칙 위반 {advisor.total_violations}건</span>
           )}
-          {(d.upcoming_events?.length ?? 0) > 0 && d.upcoming_events!.slice(0, 3).map((ev: any, i: number) => (
-            <span key={i} className="text-zinc-500">
-              <span className="text-zinc-600">{ev.date?.slice(5)}</span> {ev.description || ev.ticker}
-            </span>
-          ))}
+          {/* upcoming events moved to sidebar (#214). Footer keeps quality/violations/freshness. */}
           <div className="ml-auto flex items-center gap-2">
             {((freshness?.items?.length ?? 0) > 0 || (freshness?.details?.length ?? 0) > 0) && (
               <FreshnessBar items={freshness?.items ?? freshness?.details ?? []} />

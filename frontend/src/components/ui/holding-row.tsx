@@ -14,6 +14,8 @@ export interface RawHolding {
   quantity?: number;
   avg_price?: number | null;
   latest_price?: number | null;
+  previous_close?: number | null;   // #214: yesterday's close for daily delta
+  sparkline_30d?: number[];          // #214: 30 daily closes, oldest → newest
   currency?: string;
   sector?: string | null;
   name?: string | null;
@@ -73,6 +75,8 @@ export interface EnrichedHolding {
   name: string | null;
   currency: "USD" | "KRW";
   pnlPct: number;
+  dailyDeltaPct: number | null;  // #214: 오늘 종가 vs 어제 종가 % (price history 없으면 null)
+  sparkline: number[];            // #214: 30 closes oldest→newest (빈 배열이면 렌더 skip)
   status: HoldingStatus;
   stopLoss: number | null;
   target1: number | null;
@@ -167,12 +171,22 @@ export function buildEnrichedHoldings(
       const currency: "USD" | "KRW" =
         h.currency === "KRW" || h.ticker.endsWith(".KS") ? "KRW" : "USD";
 
+      // #214: 일변 (오늘 vs 어제) + sparkline (30일 closes)
+      const prevClose = h.previous_close;
+      const dailyDeltaPct =
+        prevClose != null && prevClose > 0
+          ? ((latest - prevClose) / prevClose) * 100
+          : null;
+      const sparkline = Array.isArray(h.sparkline_30d) ? h.sparkline_30d : [];
+
       return {
         account: accountLabel,
         ticker: h.ticker,
         name: h.name ?? null,
         currency,
         pnlPct,
+        dailyDeltaPct,
+        sparkline,
         status,
         stopLoss: stopLossPrice,
         target1: target?.target_1 ?? null,
@@ -209,6 +223,37 @@ export function formatPrice(price: number | null, currency: "USD" | "KRW"): stri
   if (price == null) return "—";
   if (currency === "KRW") return `₩${Math.round(price).toLocaleString()}`;
   return price < 100 ? `$${price.toFixed(2)}` : `$${Math.round(price).toLocaleString()}`;
+}
+
+/**
+ * Render a numeric series as a text sparkline using unicode block chars.
+ * Normalizes to [min, max] and maps each point to one of 8 levels (▁▂▃▄▅▆▇█).
+ * Returns empty string for series with <2 points or flat series.
+ */
+export function renderSparkline(series: number[], width = 8): string {
+  if (!series || series.length < 2) return "";
+  const min = Math.min(...series);
+  const max = Math.max(...series);
+  if (max === min) return "─".repeat(Math.min(width, series.length));
+
+  const bars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+  const range = max - min;
+
+  // Down-sample to `width` points by taking evenly-spaced indices
+  const step = (series.length - 1) / (width - 1);
+  const sampled: number[] = [];
+  for (let i = 0; i < width; i++) {
+    const idx = Math.round(i * step);
+    sampled.push(series[Math.min(idx, series.length - 1)]);
+  }
+
+  return sampled
+    .map((v) => {
+      const normalized = (v - min) / range;
+      const level = Math.min(bars.length - 1, Math.max(0, Math.round(normalized * (bars.length - 1))));
+      return bars[level];
+    })
+    .join("");
 }
 
 function statusVisual(s: HoldingStatus): { text: string; className: string } {
@@ -253,6 +298,24 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
   const linkHref = href ?? `/ticker/${h.ticker}`;
   const displayName = h.name || h.ticker.replace(".KS", "");
 
+  // #214: 일변 (daily delta)
+  const hasDelta = h.dailyDeltaPct != null;
+  const deltaClass = !hasDelta
+    ? "text-zinc-700"
+    : h.dailyDeltaPct! >= 0
+    ? "text-emerald-400"
+    : "text-red-400";
+  const deltaText = !hasDelta
+    ? "—"
+    : `${h.dailyDeltaPct! >= 0 ? "+" : ""}${h.dailyDeltaPct!.toFixed(1)}%`;
+
+  // #214: sparkline — 30일 추세 정방향 (green) / 역방향 (red) tint
+  const sparkText = renderSparkline(h.sparkline, 8);
+  const sparkTone =
+    h.sparkline.length >= 2 && h.sparkline[h.sparkline.length - 1] >= h.sparkline[0]
+      ? "text-emerald-500/70"
+      : "text-red-500/70";
+
   // target_1 cell
   const t1Cell = h.target1Reached ? (
     <span className="text-emerald-400 text-[10px]">✓ 도달</span>
@@ -285,10 +348,18 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       <span className="font-medium text-zinc-100 truncate min-w-0 flex-1 sm:flex-none sm:w-20">
         {displayName}
       </span>
-      {/* pnl */}
+      {/* pnl (누적) */}
       <span className={`font-semibold tabular-nums text-right w-14 shrink-0 ${pnlClass}`}>
         {h.pnlPct >= 0 ? "+" : ""}
         {h.pnlPct.toFixed(1)}%
+      </span>
+      {/* 일변 (daily delta) — pnl 옆, 누적 vs 오늘 비교 */}
+      <span
+        className={`tabular-nums text-right w-12 shrink-0 text-[10px] ${deltaClass}`}
+        aria-label="일변"
+        data-testid="daily-delta"
+      >
+        {deltaText}
       </span>
       {/* status badge */}
       <span
@@ -316,6 +387,15 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
         aria-label="2차 익절가"
       >
         {t2Cell}
+      </span>
+      {/* sparkline — md+ only, 30일 추세 텍스트 */}
+      <span
+        className={`hidden md:inline-block font-mono text-[11px] leading-none shrink-0 tracking-tighter ${sparkTone}`}
+        aria-label="30일 추세"
+        data-testid="sparkline"
+        title={sparkText ? `30-day trend: ${sparkText}` : undefined}
+      >
+        {sparkText || "—"}
       </span>
       {/* watch trigger */}
       <span

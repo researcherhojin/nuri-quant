@@ -143,15 +143,16 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders action items as 신규 매수 후보 with Korean BUY/SELL", async () => {
+  it("renders candidates in the sidebar (#214)", async () => {
     // Default mock: NVDA + INTC actions, TSLA + 005930.KS holdings → NVDA + INTC are not held
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/신규 매수 후보/)).toBeInTheDocument();
-      expect(screen.getByText("매수")).toBeInTheDocument();
-      expect(screen.getByText("매도")).toBeInTheDocument();
+      // sidebar rendered
+      expect(screen.getByTestId("dashboard-sidebar")).toBeInTheDocument();
+      // candidates panel shows non-held ticker names
+      expect(screen.getByText(/🎯 신규 매수 후보/)).toBeInTheDocument();
       expect(screen.getByText("NVDA")).toBeInTheDocument();
     });
   });
@@ -241,16 +242,16 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("shows empty state when no candidates", async () => {
+  it("shows '신규 후보 없음' in sidebar when no candidates", async () => {
     setupMocks({ dashboard: { ...mockDashboardData, actions: [] } });
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/신규 매수 후보 없음/)).toBeInTheDocument();
+      expect(screen.getByText("신규 후보 없음")).toBeInTheDocument();
     });
   });
 
-  it("shows portfolio holdings and upcoming events in footer", async () => {
+  it("shows holdings and upcoming events in sidebar (#214)", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -263,15 +264,15 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      // 보유 종목 항상 표시
+      // 보유 종목 section still present
       expect(screen.getByText(/보유 종목/)).toBeInTheDocument();
-      // 다음 이벤트 푸터에 표시
+      // Events moved to sidebar
       expect(screen.getByText(/AAPL 실적발표/)).toBeInTheDocument();
       expect(screen.getByText(/FOMC 금리결정/)).toBeInTheDocument();
     });
   });
 
-  it("renders clickable alert lines with navigation", async () => {
+  it("renders clickable alert lines in sidebar with navigation (#214)", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -284,8 +285,10 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/주의 2건/)).toBeInTheDocument();
-      // Stop-loss alert links to ticker page
+      // Alerts panel rendered in sidebar with count badge
+      const alertPanel = screen.getByTestId("sidebar-alerts");
+      expect(alertPanel).toBeInTheDocument();
+      // Stop-loss alert links to ticker page (parseAlert rewrites text)
       const links = screen.getAllByRole("link");
       const tslaAlert = links.find(l => l.getAttribute("href") === "/ticker/TSLA");
       expect(tslaAlert).toBeTruthy();
@@ -631,8 +634,8 @@ describe("DashboardPage", () => {
     });
   });
 
-  /* ── account-grouped actions ── */
-  it("renders Main/Sub actions in grouped section", async () => {
+  /* ── sidebar candidates (#214) ── */
+  it("renders Main/Sub candidates in sidebar", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -647,12 +650,15 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText("AAPL")).toBeInTheDocument();
       expect(screen.getByText("GOOG")).toBeInTheDocument();
-      expect(screen.getByText("Main")).toBeInTheDocument();
-      expect(screen.getByText("Sub")).toBeInTheDocument();
+      // Account labels rendered on sidebar candidate rows
+      const accountLabels = screen.getAllByTestId("candidate-account");
+      const labelTexts = accountLabels.map(n => n.textContent);
+      expect(labelTexts).toContain("Main");
+      expect(labelTexts).toContain("Sub");
     });
   });
 
-  it("renders Pension actions as '월말 매수 대기' when not month-end", async () => {
+  it("renders Pension candidates as '월말 매수 대기' in sidebar when not month-end", async () => {
     // Default date (April 11) is not within 3 days of month end (April 30)
     setupMocks({
       dashboard: {
@@ -665,17 +671,15 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByText(/월말 매수 대기/)).toBeInTheDocument();
-      // SPY should not appear as a clickable action (pension hidden mid-month)
+      // Sidebar shows pension-wait message instead of candidate row
+      expect(screen.getByText(/연금 1건 — 월말 매수 대기/)).toBeInTheDocument();
       expect(screen.queryByText("SPY")).not.toBeInTheDocument();
     });
   });
 
-  it("renders Pension actions expanded at month-end", async () => {
-    // Mock Date so new Date() returns April 29 (1 day before month end → isMonthEnd = true)
-    // Use a class-based mock to keep real timer functionality for waitFor
+  it("renders Pension candidates in sidebar at month-end", async () => {
     const RealDate = globalThis.Date;
-    const fakeNow = new RealDate(2026, 3, 29, 12, 0, 0).getTime(); // April 29
+    const fakeNow = new RealDate(2026, 3, 29, 12, 0, 0).getTime();
     class MockDate extends RealDate {
       constructor(...args: any[]) {
         if (args.length === 0) { super(fakeNow); } else { super(...(args as [any])); }
@@ -696,14 +700,16 @@ describe("DashboardPage", () => {
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
       expect(screen.getByText("SPY")).toBeInTheDocument();
-      expect(screen.getByText("연금")).toBeInTheDocument();
+      // Pension → 연금 translated
+      const accountLabels = screen.getAllByTestId("candidate-account");
+      expect(accountLabels.map(n => n.textContent)).toContain("연금");
       expect(screen.queryByText(/월말 매수 대기/)).not.toBeInTheDocument();
     });
 
     vi.stubGlobal("Date", RealDate);
   });
 
-  it("renders 'other' actions (no account or Toss)", async () => {
+  it("renders 'other' account candidates in sidebar (Toss / no account)", async () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
@@ -718,7 +724,8 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText("MSFT")).toBeInTheDocument();
       expect(screen.getByText("AMZN")).toBeInTheDocument();
-      expect(screen.getByText("Toss")).toBeInTheDocument();
+      const accountLabels = screen.getAllByTestId("candidate-account");
+      expect(accountLabels.map(n => n.textContent)).toContain("Toss");
     });
   });
 
