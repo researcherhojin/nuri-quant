@@ -337,7 +337,7 @@ async function Dashboard() {
                 <span className="w-[72px] text-right shrink-0">손절</span>
                 <span className="w-[72px] text-right shrink-0">1차익절</span>
                 <span className="w-[72px] text-right shrink-0">2차익절</span>
-                <span className="hidden md:inline-block shrink-0 text-center">추세</span>
+                <span className="w-[80px] text-center shrink-0">30일 추세</span>
                 <span className="flex-1 text-right">워치</span>
               </div>
               <div className="space-y-0.5">
@@ -350,13 +350,15 @@ async function Dashboard() {
         </main>
 
         {/* ─── sidebar (lg+ 고정, narrow는 stack 아래로) ─── */}
-        <DashboardSidebar
-          alerts={sidebarAlerts}
-          events={sidebarEvents}
-          candidates={sidebarCandidates}
-          pensionCandidatesCount={pensionCandidates.length}
-          isMonthEnd={isMonthEnd}
-        />
+        <div className="lg:border-l lg:border-zinc-800/60 lg:pl-4 lg:-mr-1">
+          <DashboardSidebar
+            alerts={sidebarAlerts}
+            events={sidebarEvents}
+            candidates={sidebarCandidates}
+            pensionCandidatesCount={pensionCandidates.length}
+            isMonthEnd={isMonthEnd}
+          />
+        </div>
       </div>
 
       {/* ═══ 푸터: 품질 + 이벤트 + 파이프라인 ═══ */}

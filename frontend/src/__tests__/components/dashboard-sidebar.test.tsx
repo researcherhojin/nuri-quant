@@ -135,6 +135,19 @@ describe("DashboardSidebar", () => {
     expect(screen.getByText("-0.3%")).toBeInTheDocument();
   });
 
+  it("applies neutral tone for market index with exactly 0 change (changeTone fallthrough)", () => {
+    render(
+      <DashboardSidebar
+        alerts={[]}
+        events={[]}
+        candidates={[]}
+        marketIndexes={[{ ticker: "FLAT", label: "FLAT", changePct: 0 }]}
+      />,
+    );
+    // changePct === 0 takes the fallthrough `return "text-zinc-500"` branch
+    expect(screen.getByText("+0.0%")).toBeInTheDocument();
+  });
+
   it("omits market section when marketIndexes is empty", () => {
     render(
       <DashboardSidebar

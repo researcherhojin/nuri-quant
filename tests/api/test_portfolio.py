@@ -149,6 +149,21 @@ class TestEnrichWithHistory:
         assert holdings[0]["previous_close"] is None
         assert holdings[0]["sparkline_30d"] == [50.0]
 
+    def test_holdings_with_no_tickers_early_return(self, monkeypatch):
+        """holdings에 유효한 ticker가 하나도 없으면 early return (portfolio.py line 149 guard)."""
+        import nuri.api.routes.portfolio as portfolio_mod
+        called = []
+        monkeypatch.setattr(portfolio_mod, "query", lambda *a, **kw: called.append(1) or [])
+        # 모든 엔트리가 empty/missing ticker → tickers set은 빈 set
+        holdings = [{}, {"ticker": ""}, {"ticker": None}]
+        portfolio_mod._enrich_with_history(holdings)
+        # DB query는 호출되지 않아야 함 (early return via `if not tickers`)
+        assert called == []
+        # holdings entries는 변경되지 않음
+        for h in holdings:
+            assert "previous_close" not in h
+            assert "sparkline_30d" not in h
+
 
 class TestPutEndpoint:
     def test_update_quantity(self, seeded_client):

@@ -1,10 +1,12 @@
 /**
- * HoldingRow — 보유 종목 통합 행 (Phase 2-C #199)
+ * HoldingRow — 보유 종목 통합 행 (Phase 2-C #199 + Phase 2-D #214)
  *
- * 한 줄에 종목 정보 + 매매 상태 + 가격 타겟 + 워치 트리거를 담는다.
+ * 한 줄에 종목 정보 + 매매 상태 + 가격 타겟 + 일변 + sparkline + 워치 트리거를 담는다.
  * morning_brief 영감의 "1 row = 1 ticker, complete picture" 패턴.
  */
 import Link from "next/link";
+
+import { Sparkline } from "@/components/ui/sparkline";
 
 // ── Raw input shapes (API response surfaces) ─────────────────
 export interface RawHolding {
@@ -225,37 +227,6 @@ export function formatPrice(price: number | null, currency: "USD" | "KRW"): stri
   return price < 100 ? `$${price.toFixed(2)}` : `$${Math.round(price).toLocaleString()}`;
 }
 
-/**
- * Render a numeric series as a text sparkline using unicode block chars.
- * Normalizes to [min, max] and maps each point to one of 8 levels (▁▂▃▄▅▆▇█).
- * Returns empty string for series with <2 points or flat series.
- */
-export function renderSparkline(series: number[], width = 8): string {
-  if (!series || series.length < 2) return "";
-  const min = Math.min(...series);
-  const max = Math.max(...series);
-  if (max === min) return "─".repeat(Math.min(width, series.length));
-
-  const bars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
-  const range = max - min;
-
-  // Down-sample to `width` points by taking evenly-spaced indices
-  const step = (series.length - 1) / (width - 1);
-  const sampled: number[] = [];
-  for (let i = 0; i < width; i++) {
-    const idx = Math.round(i * step);
-    sampled.push(series[Math.min(idx, series.length - 1)]);
-  }
-
-  return sampled
-    .map((v) => {
-      const normalized = (v - min) / range;
-      const level = Math.min(bars.length - 1, Math.max(0, Math.round(normalized * (bars.length - 1))));
-      return bars[level];
-    })
-    .join("");
-}
-
 function statusVisual(s: HoldingStatus): { text: string; className: string } {
   switch (s.kind) {
     case "stop_loss":
@@ -308,13 +279,6 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
   const deltaText = !hasDelta
     ? "—"
     : `${h.dailyDeltaPct! >= 0 ? "+" : ""}${h.dailyDeltaPct!.toFixed(1)}%`;
-
-  // #214: sparkline — 30일 추세 정방향 (green) / 역방향 (red) tint
-  const sparkText = renderSparkline(h.sparkline, 8);
-  const sparkTone =
-    h.sparkline.length >= 2 && h.sparkline[h.sparkline.length - 1] >= h.sparkline[0]
-      ? "text-emerald-500/70"
-      : "text-red-500/70";
 
   // target_1 cell
   const t1Cell = h.target1Reached ? (
@@ -388,14 +352,9 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       >
         {t2Cell}
       </span>
-      {/* sparkline — md+ only, 30일 추세 텍스트 */}
-      <span
-        className={`hidden md:inline-block font-mono text-[11px] leading-none shrink-0 tracking-tighter ${sparkTone}`}
-        aria-label="30일 추세"
-        data-testid="sparkline"
-        title={sparkText ? `30-day trend: ${sparkText}` : undefined}
-      >
-        {sparkText || "—"}
+      {/* sparkline — sm+, 30일 SVG polyline */}
+      <span className="hidden sm:inline-flex items-center shrink-0">
+        <Sparkline series={h.sparkline} width={80} height={18} />
       </span>
       {/* watch trigger */}
       <span

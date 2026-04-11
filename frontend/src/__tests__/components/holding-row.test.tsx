@@ -4,7 +4,6 @@ import {
   HoldingRow,
   buildEnrichedHoldings,
   formatPrice,
-  renderSparkline,
   type RawHolding,
   type RawAction,
   type RawTarget,
@@ -70,44 +69,7 @@ describe("formatPrice", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────
-// renderSparkline (#214)
-// ─────────────────────────────────────────────────────────────
-describe("renderSparkline", () => {
-  it("returns empty string for empty series", () => {
-    expect(renderSparkline([])).toBe("");
-  });
-
-  it("returns empty string for single-point series", () => {
-    expect(renderSparkline([100])).toBe("");
-  });
-
-  it("renders 8 block chars by default", () => {
-    const result = renderSparkline([1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(result).toHaveLength(8);
-    // every char should be a block char (▁▂▃▄▅▆▇█)
-    expect(/^[▁▂▃▄▅▆▇█]+$/.test(result)).toBe(true);
-  });
-
-  it("uses horizontal bar for flat series", () => {
-    expect(renderSparkline([100, 100, 100, 100, 100])).toMatch(/^─+$/);
-  });
-
-  it("down-samples long series to requested width", () => {
-    const series = Array.from({ length: 60 }, (_, i) => i);
-    expect(renderSparkline(series, 10)).toHaveLength(10);
-  });
-
-  it("monotonic increasing series ends with full block", () => {
-    const result = renderSparkline([1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(result[result.length - 1]).toBe("█");
-  });
-
-  it("monotonic decreasing series ends with low block", () => {
-    const result = renderSparkline([8, 7, 6, 5, 4, 3, 2, 1]);
-    expect(result[result.length - 1]).toBe("▁");
-  });
-});
+// Sparkline SVG component has its own test file (sparkline.test.tsx).
 
 // ─────────────────────────────────────────────────────────────
 // buildEnrichedHoldings — status priority
@@ -247,6 +209,20 @@ describe("buildEnrichedHoldings watch trigger", () => {
     const result = buildEnrichedHoldings([baseHolding], [], [], [], [event]);
     expect(result[0].watch.kind).toBe("none");
   });
+
+  it("picks the nearest of multiple upcoming earnings (sort branch)", () => {
+    // Multiple events for same ticker → sort by daysUntil ascending → pick first
+    const events: RawEvent[] = [
+      { date: localDateOffset(20), event_type: "earnings", ticker: "AAPL" },
+      { date: localDateOffset(5), event_type: "earnings", ticker: "AAPL" },
+      { date: localDateOffset(12), event_type: "earnings", ticker: "AAPL" },
+    ];
+    const result = buildEnrichedHoldings([baseHolding], [], [], [], events);
+    expect(result[0].watch.kind).toBe("earnings");
+    if (result[0].watch.kind === "earnings") {
+      expect(result[0].watch.daysUntil).toBe(5);
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -349,20 +325,22 @@ describe("HoldingRow", () => {
     expect(screen.getByTestId("daily-delta")).toHaveTextContent("—");
   });
 
-  it("renders sparkline text from series", () => {
+  it("renders SVG sparkline for valid series", () => {
     render(<HoldingRow holding={holdingFixture({ sparkline: [100, 105, 103, 108, 110, 115, 112, 118] })} />);
     const spark = screen.getByTestId("sparkline");
-    // 8 unicode block chars expected (width=8, non-empty)
-    expect(spark.textContent).toBeTruthy();
-    expect(spark.textContent).not.toBe("—");
+    // SVG element rendered (8-point series → polyline)
+    expect(spark.tagName.toLowerCase()).toBe("svg");
+    // Ascending series → data-direction="up"
+    expect(spark).toHaveAttribute("data-direction", "up");
   });
 
-  it("renders em dash sparkline for empty series", () => {
+  it("renders em dash sparkline placeholder for empty series", () => {
     render(<HoldingRow holding={holdingFixture({ sparkline: [] })} />);
+    // Empty series renders a span placeholder (not SVG)
     expect(screen.getByTestId("sparkline")).toHaveTextContent("—");
   });
 
-  it("renders em dash sparkline for single-point series", () => {
+  it("renders em dash sparkline placeholder for single-point series", () => {
     render(<HoldingRow holding={holdingFixture({ sparkline: [100] })} />);
     expect(screen.getByTestId("sparkline")).toHaveTextContent("—");
   });
