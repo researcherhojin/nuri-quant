@@ -1,16 +1,17 @@
 /**
  * HoldingsSummaryPanel — right-side sticky cards for 3xl+ wide screens (#221).
  *
- * Renders four compact cards fed by summarizeHoldings():
- *   1. Today       — aggregate $ and % move today
- *   2. By sector   — label + horizontal barlist (pure CSS, no chart lib)
- *   3. Movers      — top 3 winners / top 3 losers by cumulative pnl
- *   4. Concentration — Herfindahl + single-largest position
+ * Renders compact cards fed by summarizeHoldings():
+ *   1. Today        — aggregate $ and % move today
+ *   2. Accounts     — per-account USD + weight % (barlist)          [iter 5]
+ *   3. By sector    — label + horizontal barlist (pure CSS, no chart lib)
+ *   4. Movers       — top 3 winners / top 3 losers by cumulative pnl
+ *   5. Concentration — Herfindahl + single-largest position
  *
  * Pure Server Component — no "use client" boundary now that the donut
  * has been replaced by a CSS barlist. The barlist matches the rest of
  * the dashboard's text-heavy aesthetic better than a flashy Recharts
- * donut did (#221 iter-3).
+ * donut did.
  */
 
 import type { HoldingsSummary } from "@/lib/holdings-summary";
@@ -75,7 +76,41 @@ export function HoldingsSummaryPanel({
         </p>
       </div>
 
-      {/* 2) By sector — barlist (pure CSS, one row per slice).
+      {/* 2) Accounts — per-account breakdown (holdings + cash merged).
+          Uses same barlist pattern as By sector for visual consistency. */}
+      {summary.byAccount.length > 0 && (
+        <div className={cardClass} data-testid="summary-accounts">
+          <p className={cardLabelClass}>Accounts</p>
+          <div className="flex flex-col gap-1 mt-1.5" data-testid="account-barlist">
+            {summary.byAccount.map((a) => (
+              <div
+                key={a.account}
+                className="relative h-[16px] rounded-sm overflow-hidden bg-zinc-900/60"
+                data-testid={`account-bar-${a.account}`}
+              >
+                <div
+                  className="absolute inset-y-0 left-0 rounded-sm"
+                  style={{ width: `${a.weight}%`, background: a.color, opacity: 0.28 }}
+                />
+                <div className="relative flex items-center justify-between h-full px-1.5 text-[10px]">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="inline-block h-1.5 w-1.5 rounded-sm shrink-0"
+                      style={{ background: a.color }}
+                    />
+                    <span className="truncate text-zinc-200">{a.account}</span>
+                  </span>
+                  <span className="text-zinc-300 tabular-nums shrink-0 ml-2">
+                    {a.weight.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 3) By sector — barlist (pure CSS, one row per slice).
           Each row: colored bar (tinted by slice.color) as background at %
           width, label + pct overlaid on top. No Recharts. */}
       {summary.sectors.length > 0 && (

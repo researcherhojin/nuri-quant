@@ -35,6 +35,16 @@ export interface SectorSlice {
   color: string;
 }
 
+export interface AccountSlice {
+  account: string;
+  /** USD total (holdings + cash) */
+  valueUsd: number;
+  /** % of total portfolio (holdings + cash across all accounts) */
+  weight: number;
+  /** Deterministic color keyed to rank (emerald/blue/pink/amber/violet/zinc) */
+  color: string;
+}
+
 export interface MoverEntry {
   account: string;
   ticker: string;
@@ -52,6 +62,7 @@ export interface ConcentrationSummary {
 
 export interface HoldingsSummary {
   today: TodayPnL;
+  byAccount: AccountSlice[];
   sectors: SectorSlice[];
   topMovers: { winners: MoverEntry[]; losers: MoverEntry[] };
   concentration: ConcentrationSummary;
@@ -59,6 +70,12 @@ export interface HoldingsSummary {
 
 export interface SummarizeOptions {
   totalPortfolioUsd: number;
+  /**
+   * Per-account total USD (holdings + cash). page.tsx merges `account_values`
+   * and `cash_summary.accounts` from /api/dashboard before passing in.
+   * Empty → byAccount slice is []  (card not rendered).
+   */
+  accountValues?: Array<{ account: string; value: number }>;
 }
 
 // Palette — tailwind 400-level shades so the donut reads against zinc-950.
@@ -122,7 +139,23 @@ export function summarizeHoldings(
     downCount,
   };
 
-  // 2) Sector breakdown — aggregate visibleWeight per sector, top 4 + Other
+  // 2) By account — each account's share of total portfolio. Uses the raw
+  //    `accountValues` (holdings + cash merged per account) not visibleWeight,
+  //    because account breakdown is about "where is my money" — pension and
+  //    cash-only accounts should show up even though they're filtered out of
+  //    the main table.
+  const rawAccounts = options.accountValues ?? [];
+  const byAccount: AccountSlice[] = rawAccounts
+    .filter((a) => a.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .map((a, i): AccountSlice => ({
+      account: a.account,
+      valueUsd: a.value,
+      weight: totalUsd > 0 ? (a.value / totalUsd) * 100 : 0,
+      color: SECTOR_COLORS[i] ?? OTHER_COLOR,
+    }));
+
+  // 3) Sector breakdown — aggregate visibleWeight per sector, top 4 + Other
   const sectorMap = new Map<string, number>();
   for (const h of holdings) {
     const weight = visibleWeight(h);
@@ -181,6 +214,7 @@ export function summarizeHoldings(
 
   return {
     today,
+    byAccount,
     sectors,
     topMovers: { winners, losers },
     concentration: { herfindahl: hhi, topHolding, level },

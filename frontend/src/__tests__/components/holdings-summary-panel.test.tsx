@@ -9,6 +9,12 @@ import type { HoldingsSummary } from "@/lib/holdings-summary";
 function baseSummary(over: Partial<HoldingsSummary> = {}): HoldingsSummary {
   return {
     today: { totalUsd: 340, totalPct: 0.46, upCount: 6, downCount: 4 },
+    byAccount: [
+      { account: "Main", valueUsd: 36700, weight: 49.4, color: "#34d399" },
+      { account: "Active", valueUsd: 20356, weight: 27.4, color: "#60a5fa" },
+      { account: "Pension", valueUsd: 13752, weight: 18.5, color: "#f472b6" },
+      { account: "Toss", valueUsd: 2517, weight: 3.4, color: "#fbbf24" },
+    ],
     sectors: [
       { name: "Semi", weight: 28, color: "#34d399" },
       { name: "BigTech", weight: 19, color: "#60a5fa" },
@@ -34,13 +40,34 @@ function baseSummary(over: Partial<HoldingsSummary> = {}): HoldingsSummary {
 }
 
 describe("HoldingsSummaryPanel", () => {
-  it("renders all four cards with correct testids", () => {
+  it("renders all five cards with correct testids", () => {
     render(<HoldingsSummaryPanel summary={baseSummary()} />);
     expect(screen.getByTestId("holdings-summary-panel")).toBeInTheDocument();
     expect(screen.getByTestId("summary-today")).toBeInTheDocument();
+    expect(screen.getByTestId("summary-accounts")).toBeInTheDocument();
     expect(screen.getByTestId("summary-sectors")).toBeInTheDocument();
     expect(screen.getByTestId("summary-movers")).toBeInTheDocument();
     expect(screen.getByTestId("summary-concentration")).toBeInTheDocument();
+  });
+
+  it("renders accounts barlist with one row per account + weight labels", () => {
+    render(<HoldingsSummaryPanel summary={baseSummary()} />);
+    const accounts = screen.getByTestId("summary-accounts");
+    expect(accounts.textContent).toContain("Main");
+    expect(accounts.textContent).toContain("49.4%");
+    expect(accounts.textContent).toContain("Active");
+    expect(accounts.textContent).toContain("27.4%");
+    const barlist = screen.getByTestId("account-barlist");
+    expect(barlist.children).toHaveLength(4);
+    expect(screen.getByTestId("account-bar-Main")).toBeInTheDocument();
+    expect(screen.getByTestId("account-bar-Active")).toBeInTheDocument();
+    expect(screen.getByTestId("account-bar-Pension")).toBeInTheDocument();
+    expect(screen.getByTestId("account-bar-Toss")).toBeInTheDocument();
+  });
+
+  it("hides accounts card when byAccount is empty", () => {
+    render(<HoldingsSummaryPanel summary={baseSummary({ byAccount: [] })} />);
+    expect(screen.queryByTestId("summary-accounts")).not.toBeInTheDocument();
   });
 
   it("renders today card with dollar + percent + up/down counts", () => {

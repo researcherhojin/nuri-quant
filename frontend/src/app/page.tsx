@@ -538,11 +538,33 @@ async function Dashboard({
             </div>
           </div>
           </div>
-          {/* #221: 3xl+ 우측 요약 패널 (Today / Sector / Movers / Concentration) */}
-          <HoldingsSummaryPanel
-            summary={summarizeHoldings(enrichedHoldings, { totalPortfolioUsd: totalValue })}
-            className="hidden min-[1680px]:flex w-[200px] shrink-0 sticky top-0"
-          />
+          {/* #221: 3xl+ 우측 요약 패널 (Today / Accounts / Sector / Movers / Concentration).
+              Accounts 카드용 데이터: /api/dashboard 의 account_values (holdings per account)
+              와 cash_summary.accounts (cash per account) 를 계정 키로 merge. */}
+          {(() => {
+            const acctTotals = new Map<string, number>();
+            for (const av of accountValues) {
+              acctTotals.set(av.account, (acctTotals.get(av.account) ?? 0) + av.value);
+            }
+            for (const cash of d.cash_summary?.accounts ?? []) {
+              acctTotals.set(
+                cash.account,
+                (acctTotals.get(cash.account) ?? 0) + cash.total_usd,
+              );
+            }
+            const mergedAccountValues = Array.from(acctTotals.entries()).map(
+              ([account, value]) => ({ account, value }),
+            );
+            return (
+              <HoldingsSummaryPanel
+                summary={summarizeHoldings(enrichedHoldings, {
+                  totalPortfolioUsd: totalValue,
+                  accountValues: mergedAccountValues,
+                })}
+                className="hidden min-[1680px]:flex w-[200px] shrink-0 sticky top-0"
+              />
+            );
+          })()}
         </section>
       )}
 

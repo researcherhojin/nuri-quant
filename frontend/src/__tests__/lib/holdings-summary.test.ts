@@ -88,6 +88,62 @@ describe("summarizeHoldings", () => {
     });
   });
 
+  describe("byAccount", () => {
+    it("returns empty array when accountValues is not provided", () => {
+      const s = summarizeHoldings([holding()], { totalPortfolioUsd: 100_000 });
+      expect(s.byAccount).toEqual([]);
+    });
+
+    it("computes weight as value / totalPortfolioUsd × 100, sorted desc", () => {
+      const s = summarizeHoldings([holding()], {
+        totalPortfolioUsd: 100_000,
+        accountValues: [
+          { account: "Toss", value: 2_500 },
+          { account: "Main", value: 36_700 },
+          { account: "Active", value: 20_400 },
+        ],
+      });
+      expect(s.byAccount.map((a) => a.account)).toEqual(["Main", "Active", "Toss"]);
+      expect(s.byAccount[0].weight).toBeCloseTo(36.7, 5);
+      expect(s.byAccount[1].weight).toBeCloseTo(20.4, 5);
+      expect(s.byAccount[2].weight).toBeCloseTo(2.5, 5);
+    });
+
+    it("skips zero-value accounts", () => {
+      const s = summarizeHoldings([holding()], {
+        totalPortfolioUsd: 100_000,
+        accountValues: [
+          { account: "Active", value: 5_000 },
+          { account: "Empty", value: 0 },
+          { account: "Main", value: 10_000 },
+        ],
+      });
+      expect(s.byAccount.map((a) => a.account)).toEqual(["Main", "Active"]);
+    });
+
+    it("assigns a distinct color per rank", () => {
+      const s = summarizeHoldings([holding()], {
+        totalPortfolioUsd: 100_000,
+        accountValues: [
+          { account: "A", value: 50_000 },
+          { account: "B", value: 20_000 },
+          { account: "C", value: 10_000 },
+        ],
+      });
+      const colors = s.byAccount.map((a) => a.color);
+      expect(new Set(colors).size).toBe(3);
+    });
+
+    it("falls back to zero weight when totalPortfolioUsd is 0 (defensive)", () => {
+      const s = summarizeHoldings([], {
+        totalPortfolioUsd: 0,
+        accountValues: [{ account: "Main", value: 10_000 }],
+      });
+      expect(s.byAccount[0].weight).toBe(0);
+      expect(s.byAccount[0].valueUsd).toBe(10_000);
+    });
+  });
+
   describe("sectors", () => {
     it("aggregates visible-normalized weight per sector, sorted descending", () => {
       // Visible positionPct sum = 20+10+15 = 45 (these holdings are only 45%
