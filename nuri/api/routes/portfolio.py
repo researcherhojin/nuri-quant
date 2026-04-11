@@ -132,7 +132,8 @@ def _try_sync_yaml():
 
 @router.get("/portfolio")
 def get_portfolio():
-    """종목별 보유 현황."""
+    """종목별 보유 현황 + 계좌별 cash 잔액 (#213)."""
+    from nuri.api.routes.dashboard import _get_cash_balances
     from nuri.core.ticker_names import get_ticker_name
     rows = query("""
         SELECT p.ticker, p.account, p.quantity, p.avg_price, p.currency, p.sector,
@@ -147,7 +148,13 @@ def get_portfolio():
     holdings = [dict(r) for r in rows]
     for h in holdings:
         h["name"] = get_ticker_name(h["ticker"])
-    return {"holdings": holdings, "count": len(holdings)}
+
+    # 환율 조회 (cash 환산용)
+    rate_row = query("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1")
+    exchange_rate = rate_row[0]["value"] if rate_row else None
+    cash = _get_cash_balances(exchange_rate)
+
+    return {"holdings": holdings, "count": len(holdings), "cash": cash}
 
 
 @router.post("/portfolio")
