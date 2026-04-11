@@ -338,7 +338,7 @@ data/
 
 ## Testing
 
-2,638 backend tests across 128 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 634 frontend vitest (46 files) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
+2,661 backend tests across 128 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 766 frontend vitest (53 files, organized into `__tests__/{components,lib,pages,coverage}/` + 2 root system tests) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
 
 **Slow marker** (PR #206): ~12 LLM/heavy tests are marked `@pytest.mark.slow`. PR CI excludes them via `-m "not slow"` (~24% wall time savings); main push runs the full suite. Use `make test-fast` locally for the same fast subset, `make test-slow` for slow only.
 ```python
@@ -457,14 +457,16 @@ Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `mac
 cd frontend
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (634 tests, 46 files)
+npm run test           # vitest run (766 tests, 53 files)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
 ```
 
-All pages are **Server Components** with `force-dynamic`. Data fetched server-side via `fetchAPI()` (`src/lib/api.ts`). Two Client Components: `/report` (LLM generation) and `/pipeline` (ReactFlow DAG).
+All pages are **Server Components** with `force-dynamic`. Data fetched server-side via `fetchAPI()` (`src/lib/api.ts`). Three Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), and `<CompositionDonut>` (Recharts pie inside the dashboard composition section).
 
 **16 routes**: `/` (dashboard), `/signals`, `/consensus`, `/scan`, `/strategy`, `/rebalance`, `/engine`, `/pipeline`, `/report`, `/evidence`, `/portfolio`, `/targets`, `/advisor`, `/decisions`, `/login`, `/ticker/[symbol]`.
+
+**Dashboard layout** (composition-first overview, #224): Hero (4 stats: 총자산 / 오늘 P&L / 누적 / 승률) → market context strip (1 row, null-safe) → CollapsibleStrips (알림/이벤트/후보) → CompositionSection (320px Recharts donut + tabs `?comp=ticker|sector|account` + rich legend with daily delta) → mini cards strip (Movers + 집중도) → Holdings table (drilldown, sorted positionPct desc, top 8 + `?holdings=expanded` toggle) → footer. Data flows through `summarizeHoldings()` in `src/lib/holdings-summary.ts` which produces TodayPnL / CumulativePnL / WinRateSummary / SectorSlice[] / TickerSlice[] / AccountSlice[] / movers / concentration in one pass.
 
 **Design system** — 3 shared components enforce visual consistency:
 - `DataTable` — Universal table with column config, renderers, `rowClassName`, compact mode
@@ -473,7 +475,7 @@ All pages are **Server Components** with `force-dynamic`. Data fetched server-si
 
 **Conventions**: `async function Section()` in `<Suspense>`, `animate-pulse` skeletons, color semantics (emerald=BUY, red=SELL, amber=warning, blue=WATCH, zinc=HOLD), `text-[10px]` sub-labels.
 
-**Frontend testing** (634 vitest, 46 files): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files.
+**Frontend testing** (766 vitest, 53 files): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files. Dashboard tests mock recharts at file level to avoid jsdom suspense on `CompositionDonut`. Test files organized into `__tests__/{components,lib,pages,coverage}/` subdirs.
 
 **Auth**: `src/middleware.ts` — HMAC-SHA256 keyed cookie auth (Edge Runtime compatible), active only when `DASHBOARD_PASSWORD` is set.
 
