@@ -274,7 +274,7 @@ export function CompositionSection({
         )}
 
         {summary.concentration.topHolding && (
-          <div className={`${sideCardClass} flex-1 min-w-[180px] max-w-[240px]`} data-testid="side-concentration">
+          <div className={`${sideCardClass} flex-1 min-w-[200px] max-w-[280px]`} data-testid="side-concentration">
             <p className={sideCardLabelClass}>집중도 (HHI)</p>
             <div className="flex items-baseline gap-2 mt-0.5">
               <span
@@ -303,34 +303,7 @@ export function CompositionSection({
             </p>
           </div>
         )}
-
-        {/* Win rate snapshot */}
-        <div className={`${sideCardClass} flex-1 min-w-[160px] max-w-[200px]`} data-testid="side-winrate">
-          <p className={sideCardLabelClass}>승률</p>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span
-              className={`text-sm font-semibold tabular-nums ${
-                summary.winRate.winners + summary.winRate.losers === 0
-                  ? "text-zinc-600"
-                  : summary.winRate.winRatePct >= 60
-                  ? "text-emerald-400"
-                  : summary.winRate.winRatePct >= 40
-                  ? "text-amber-400"
-                  : "text-red-400"
-              }`}
-            >
-              {summary.winRate.winners + summary.winRate.losers > 0
-                ? `${summary.winRate.winRatePct.toFixed(0)}%`
-                : "—"}
-            </span>
-            <span className="text-[10px] text-zinc-500 tabular-nums">
-              {summary.winRate.winners}W / {summary.winRate.losers}L
-            </span>
-          </div>
-          {summary.winRate.flat > 0 && (
-            <p className="text-[10px] text-zinc-700">보합 {summary.winRate.flat}</p>
-          )}
-        </div>
+        {/* #223 iter 7e: 승률 mini card removed — duplicate with hero stat */}
       </div>
     </section>
   );
