@@ -8,6 +8,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
 import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import { CollapsibleStrip } from "@/components/ui/collapsible-strip";
+import { HoldingsSummaryPanel } from "@/components/ui/holdings-summary-panel";
+import { summarizeHoldings } from "@/lib/holdings-summary";
 import Link from "next/link";
 
 interface DashboardData {
@@ -442,9 +444,11 @@ async function Dashboard({
         </CollapsibleStrip>
       </div>
 
-      {/* ═══ 보유 종목 — full-width (사이드바 제거 후) ═══ */}
+      {/* ═══ 보유 종목 — full-width (사이드바 제거 후) ═══
+          3xl+ (≥1680px) 에서는 우측에 <HoldingsSummaryPanel> 을 나란히 띄운다 (#221).
+          1680 미만 2xl 에서는 panel 숨김 — 가로 폭이 부족해 겹치므로. */}
       {enrichedHoldings.length > 0 && (
-        <section className="flex-1 min-h-0 flex flex-col items-start">
+        <section className="flex-1 min-h-0 flex flex-col items-start min-[1680px]:flex-row min-[1680px]:items-start min-[1680px]:gap-4">
           {/*
             w-fit wrapper — 제목 바 + 테이블 이 모두 테이블의 natural width (현재 breakpoint 의
             column sum)에 맞춰 shrink 한다. 덕분에 period toggle + 상세 링크가 테이블의 우측
@@ -494,12 +498,13 @@ async function Dashboard({
             </div>
           </div>
           {/* Responsive column tiers — 헤더와 rows가 동일 breakpoint·width로 정렬.
-              base (<sm):  계좌·종목·손익·상태·워치 (~380px)
-              sm+  (640+): + 일변 (~438px)
-              md+  (768+): + 현재/평단·손절 (~594px)
-              lg+  (1024+): + 1차익절·2차익절 (~746px, 752 content budget)
-              xl+  (1280+): + sparkline 80px (~834px)
-              2xl+ (1536+): sparkline 240px + 섹터 96px + 비중 56px (~1240px, 27" 전용)
+              #221 iter 4: watch column (90px) 제거, 같은 정보는 상단 이벤트 strip 에 있음.
+              base (<sm):  계좌·종목·손익·상태         (~300px)
+              sm+  (640+): + 일변                       (~350px)
+              md+  (768+): + 현재/평단·손절            (~500px)
+              lg+  (1024+): + 1차익절·2차익절          (~660px, 752 content budget)
+              xl+  (1280+): + sparkline 80px            (~748px)
+              2xl+ (1536+): sparkline 240px + 섹터 96px + 비중 56px (~1150px, 27" 전용)
               overflow-x-auto는 narrow viewport safety net. */}
           <div className="overflow-x-auto">
             <div className="min-w-0">
@@ -514,7 +519,6 @@ async function Dashboard({
                 <span className="w-14 text-right shrink-0">손익</span>
                 <span className="w-12 text-right shrink-0">일변</span>
                 <span className="w-[68px] text-center shrink-0">상태</span>
-                <span className="w-[90px] text-right shrink-0 truncate">워치</span>
                 <span className="hidden md:inline-block w-[68px] text-right shrink-0">손절</span>
                 <span className="hidden lg:inline-block w-[68px] text-right shrink-0">1차익절</span>
                 <span className="hidden lg:inline-block w-[68px] text-right shrink-0">2차익절</span>
@@ -534,6 +538,33 @@ async function Dashboard({
             </div>
           </div>
           </div>
+          {/* #221: 3xl+ 우측 요약 패널 (Today / Accounts / Sector / Movers / Concentration).
+              Accounts 카드용 데이터: /api/dashboard 의 account_values (holdings per account)
+              와 cash_summary.accounts (cash per account) 를 계정 키로 merge. */}
+          {(() => {
+            const acctTotals = new Map<string, number>();
+            for (const av of accountValues) {
+              acctTotals.set(av.account, (acctTotals.get(av.account) ?? 0) + av.value);
+            }
+            for (const cash of d.cash_summary?.accounts ?? []) {
+              acctTotals.set(
+                cash.account,
+                (acctTotals.get(cash.account) ?? 0) + cash.total_usd,
+              );
+            }
+            const mergedAccountValues = Array.from(acctTotals.entries()).map(
+              ([account, value]) => ({ account, value }),
+            );
+            return (
+              <HoldingsSummaryPanel
+                summary={summarizeHoldings(enrichedHoldings, {
+                  totalPortfolioUsd: totalValue,
+                  accountValues: mergedAccountValues,
+                })}
+                className="hidden min-[1680px]:flex w-[200px] shrink-0 sticky top-0"
+              />
+            );
+          })()}
         </section>
       )}
 

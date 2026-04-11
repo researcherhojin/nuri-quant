@@ -282,17 +282,11 @@ function statusVisual(s: HoldingStatus): { text: string; className: string } {
   }
 }
 
-function watchVisual(w: WatchTrigger): { text: string; className: string } | null {
-  if (w.kind === "none") return null;
-  if (w.kind === "earnings") {
-    // #214 polish: bump contrast so `실적 D-N` stays readable on zinc-950 bg at 10px
-    if (w.daysUntil === 0) return { text: "실적 D-DAY", className: "text-amber-300 font-semibold" };
-    if (w.daysUntil <= 7) return { text: `실적 D-${w.daysUntil}`, className: "text-amber-400" };
-    if (w.daysUntil <= 14) return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-300" };
-    return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-400" };
-  }
-  /* c8 ignore next */ return null; // defensive; WatchTrigger union is exhausted above
-}
+// watchVisual() removed with #221 iter 4 — watch column was deleted from the
+// row because its information was already shown in the top 이벤트 strip
+// (single-source-of-truth UI). The `watch` field on EnrichedHolding is still
+// computed by buildEnrichedHoldings so future features (tooltip, badge, etc)
+// can consume it without touching the data layer.
 
 // ── Component ────────────────────────────────────────────────
 interface HoldingRowProps {
@@ -302,7 +296,6 @@ interface HoldingRowProps {
 
 export function HoldingRow({ holding: h, href }: HoldingRowProps) {
   const status = statusVisual(h.status);
-  const watch = watchVisual(h.watch);
   const pnlClass = h.pnlPct >= 0 ? "text-emerald-400" : "text-red-400";
   const linkHref = href ?? `/ticker/${h.ticker}`;
   const displayName = h.name || h.ticker.replace(".KS", "");
@@ -351,9 +344,9 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       <span className="font-medium text-zinc-100 truncate min-w-0 flex-1 sm:flex-none sm:w-20">
         {displayName}
       </span>
-      {/* 현재가 / 평단가 — md+ (768px+) */}
+      {/* 현재가 / 평단가 — md+ (768px+). leading-[1.3] 으로 두 줄 사이 여유 살림. */}
       <span
-        className="hidden md:flex flex-col items-end text-right tabular-nums shrink-0 w-[72px] leading-[1.1]"
+        className="hidden md:flex flex-col items-end text-right tabular-nums shrink-0 w-[72px] leading-[1.3]"
         aria-label="현재가/평단가"
       >
         <span className="text-[10px] text-zinc-200">{formatPrice(h.latestPrice, h.currency)}</span>
@@ -377,13 +370,6 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
         className={`inline-flex items-center justify-center text-[10px] font-medium rounded border px-1.5 py-0.5 w-[68px] shrink-0 ${status.className}`}
       >
         {status.text}
-      </span>
-      {/* watch trigger — 항상, 상태 바로 옆 */}
-      <span
-        className={`w-[90px] text-[10px] text-right truncate shrink-0 ${watch ? watch.className : "text-zinc-600"}`}
-        data-testid="watch-cell"
-      >
-        {watch ? watch.text : "—"}
       </span>
       {/* stop loss — md+ */}
       <span
