@@ -8,7 +8,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
 import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import { CollapsibleStrip } from "@/components/ui/collapsible-strip";
-import { HoldingsSummaryPanel } from "@/components/ui/holdings-summary-panel";
+import { HeroStats } from "@/components/ui/hero-stats";
+import { CompositionSection, parseCompositionTab } from "@/components/ui/composition-section";
 import { summarizeHoldings } from "@/lib/holdings-summary";
 import Link from "next/link";
 
@@ -138,15 +139,22 @@ function parseSparklinePeriod(raw: string | undefined): SparklinePeriod {
   return 30;
 }
 
+// #223 iter 7: holdings drilldown is collapsed by default (top 8 rows + "전체"
+// link). The new dashboard centerpiece is the composition section, not the
+// holdings table — so the table's role is "drill into details on demand".
+const HOLDINGS_COLLAPSED_LIMIT = 8;
+
 async function Dashboard({
   searchParams,
 }: {
-  searchParams?: Promise<{ period?: string }> | undefined;
+  searchParams?: Promise<{ period?: string; comp?: string; holdings?: string }> | undefined;
 }) {
   // Defensive: searchParams may be undefined when rendered outside the page boundary
   // (e.g. some error paths in dev). Default to an empty object.
   const params = (searchParams ? await searchParams : undefined) ?? {};
   const sparklinePeriod = parseSparklinePeriod(params.period);
+  const compositionTab = parseCompositionTab(params.comp);
+  const holdingsExpanded = params.holdings === "expanded";
 
   const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets] = await Promise.all([
     fetchAPI<DashboardData>("/api/dashboard"),
@@ -218,7 +226,14 @@ async function Dashboard({
   // 연금 전용 UI는 별도 페이지(/portfolio)에서 볼 수 있음.
   // "Pension" / "Pension 2" / "연금" / "연금 2" 등 모든 번호 suffix 변형을 prefix로 잡는다.
   const isPensionLabel = (label: string) => label.startsWith("연금") || label.startsWith("Pension");
-  const enrichedHoldings = allEnrichedHoldings.filter((h) => !isPensionLabel(h.account));
+  // #223 iter 7c: dashboard view sorts by positionPct desc (largest position first)
+  // — overrides the buildEnrichedHoldings default (account → status → pnl) which is
+  // useful for /portfolio's grouped view but wrong for the dashboard's "biggest
+  // positions first" expectation. The internal builder sort is preserved for other
+  // consumers; we just re-sort the visible subset here.
+  const enrichedHoldings = allEnrichedHoldings
+    .filter((h) => !isPensionLabel(h.account))
+    .sort((a, b) => (b.positionPct ?? 0) - (a.positionPct ?? 0));
   const hiddenPensionCount = allEnrichedHoldings.length - enrichedHoldings.length;
 
   // 신규 매수 후보 — 보유하지 않은 ticker의 액션만 (held tickers의 액션은 HoldingRow 상태로 흡수됨)
@@ -229,6 +244,25 @@ async function Dashboard({
   const isMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() <= 3;
   const pensionCandidates = newCandidates.filter(a => a.account === "Pension");
   const visibleCandidates = newCandidates.filter(a => a.account !== "Pension" || isMonthEnd);
+
+  // #223: composition section needs the same summarized data the old summary
+  // panel had. Compute once at page level so HeroStats + CompositionSection
+  // share it without recomputing. Merge account_values + cash_summary so
+  // every account (including pension/IRP) appears in the breakdown.
+  const acctTotals = new Map<string, number>();
+  for (const av of accountValues) {
+    acctTotals.set(av.account, (acctTotals.get(av.account) ?? 0) + av.value);
+  }
+  for (const cash of d.cash_summary?.accounts ?? []) {
+    acctTotals.set(cash.account, (acctTotals.get(cash.account) ?? 0) + cash.total_usd);
+  }
+  const mergedAccountValues = Array.from(acctTotals.entries()).map(
+    ([account, value]) => ({ account, value }),
+  );
+  const summary = summarizeHoldings(enrichedHoldings, {
+    totalPortfolioUsd: totalValue,
+    accountValues: mergedAccountValues,
+  });
 
   // #214 polish (A): inline context strips 대신 사이드바 제거 → 데이터 prep
   const stripAlerts = d.alerts.map((al) => ({
@@ -257,97 +291,72 @@ async function Dashboard({
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      {/* ═══ 히어로: 총 자산 (holdings + cash) + 판단 ═══ */}
-      <div>
-        <p className="text-[10px] text-zinc-500 mb-0.5">총 자산</p>
-        <div className="flex items-baseline gap-3">
-          <span className="text-4xl font-semibold tabular-nums tracking-tight text-zinc-100">
-            ${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          </span>
-          <StatusBadge status={verdictLabel} size="lg" />
-        </div>
-        {(cashTotalUsd > 0 || accountValues.length > 0) && (
-          <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500 flex-wrap">
-            {cashTotalUsd > 0 && (
+      {/* ═══ #223 NEW HERO: 4 big metrics row (총자산 · 오늘 · 누적 · 배당) ═══ */}
+      <HeroStats
+        totalUsd={totalValue}
+        cashTotalUsd={cashTotalUsd}
+        holdingsValueUsd={holdingsValue}
+        summary={summary}
+        verdictLabel={verdictLabel}
+      />
+
+      {/* ═══ #223 iter 7c: market + allocation compact strip (1 row).
+          Each metric only renders when it actually has data — no more
+          dangling "VIX — —" / "권장 0% / 100%" placeholders. */}
+      {(() => {
+        // actual: API always provides this in real responses; mock tests
+        // sometimes don't, so default to a sentinel that still renders.
+        const actual = d.actual_allocation ?? { long: 0, short: 0, cash: 100 };
+        const target = d.target_allocation ?? d.allocation ?? null;
+        // Hide 권장 entirely when it's the meaningless 0/100 default
+        // (means "no regime data") or matches actual.
+        const hasMeaningfulTarget =
+          target != null &&
+          (target.long > 0 || target.short > 0) &&
+          !(target.long === actual.long && target.cash === actual.cash);
+        const hasMacroScore = typeof d.macro?.score === "number" && d.macro.score > 0;
+        return (
+          <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
+            <span className={trend === "bull" ? "text-emerald-400 font-semibold" : trend === "bear" ? "text-red-400 font-semibold" : "text-amber-400 font-semibold"}>
+              {trendKo(trend)}
+            </span>
+            {vix != null && (
+              <span>
+                VIX <span className={`font-semibold tabular-nums ${vixInfo.color}`}>{Math.round(vix * 10) / 10}</span> <span className={vixInfo.color}>{vixInfo.label}</span>
+              </span>
+            )}
+            {fg != null && (
+              <span>
+                심리 <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span>
+              </span>
+            )}
+            {hasMacroScore && (
+              <span>
+                경제 <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span> <span className={macroInfo.color}>{macroInfo.label}</span>
+              </span>
+            )}
+            <span className="text-zinc-700">·</span>
+            <span>
+              실제 <span className="text-emerald-400 font-semibold tabular-nums">{actual.long}%</span> 투자 / <span className="text-zinc-300 font-semibold tabular-nums">{actual.cash}%</span> 현금
+            </span>
+            {hasMeaningfulTarget && target && (
               <>
-                <span>보유 <span className="tabular-nums text-zinc-400">${holdingsValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></span>
-                <span>현금 <span className="tabular-nums text-zinc-400">${cashTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></span>
+                <span className="text-zinc-700">→</span>
+                <span className="text-zinc-600">
+                  권장 <span className="text-emerald-500 tabular-nums">{target.long}%</span> / <span className="text-zinc-500 tabular-nums">{target.cash}%</span>
+                </span>
               </>
             )}
-            {accountValues.length > 0 && accountValues.map(av => (
-              <span key={av.account}>{av.account} ${av.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ═══ 시장 맥락 — verdict + 숫자 통합 ═══ */}
-      <div>
-        <p className={`text-xs ${style.text} leading-relaxed`}>{d.verdict}</p>
-        <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500 flex-wrap">
-          <span className={trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-amber-400"}>
-            {trendKo(trend)}
-          </span>
-          <span>VIX <span className={`font-semibold tabular-nums ${vixInfo.color}`}>{vix != null ? Math.round(vix * 10) / 10 : "—"}</span> <span className={vixInfo.color}>{vixInfo.label}</span></span>
-          <span>심리 <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg ?? "—"}</span> <span className="text-zinc-600">{fgLabel(fg)}</span></span>
-          <span>경제 <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span> <span className={macroInfo.color}>{macroInfo.label}</span></span>
-        </div>
-      </div>
-
-      {/* 비중 바 — 실제 (holdings+cash 기반) + 권장 (regime 기반) 2줄 */}
-      {(() => {
-        const actual = d.actual_allocation ?? { long: 0, short: 0, cash: 100 };
-        const target = d.target_allocation ?? d.allocation;
-        return (
-          <div className="space-y-1.5">
-            {/* 실제 */}
-            <div>
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[9px] text-zinc-500">실제</span>
-                <span className="text-[9px] text-zinc-600 tabular-nums">투자 {actual.long}% · 현금 {actual.cash}%</span>
-              </div>
-              <div className="flex h-3 rounded overflow-hidden text-[9px] font-medium">
-                {actual.long > 0 && (
-                  <div className="bg-emerald-600/80 flex items-center justify-center text-emerald-100" style={{ width: `${actual.long}%` }}>
-                    {actual.long >= 20 && `${actual.long}%`}
-                  </div>
-                )}
-                {actual.short > 0 && (
-                  <div className="bg-red-600/80 flex items-center justify-center text-red-100" style={{ width: `${actual.short}%` }}>
-                    {actual.short >= 10 && `${actual.short}%`}
-                  </div>
-                )}
-                {actual.cash > 0 && (
-                  <div className="bg-zinc-800 flex items-center justify-center text-zinc-400" style={{ width: `${actual.cash}%` }}>
-                    {actual.cash >= 20 && `${actual.cash}%`}
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* 권장 (regime) */}
-            <div>
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[9px] text-zinc-600">권장 (레짐)</span>
-                <span className="text-[9px] text-zinc-700 tabular-nums">투자 {target.long}% · 현금 {target.cash}%</span>
-              </div>
-              <div className="flex h-1.5 rounded overflow-hidden text-[9px] font-medium opacity-60">
-                {target.long > 0 && (
-                  <div className="bg-emerald-700/60" style={{ width: `${target.long}%` }} />
-                )}
-                {target.short > 0 && (
-                  <div className="bg-red-700/60" style={{ width: `${target.short}%` }} />
-                )}
-                {target.cash > 0 && (
-                  <div className="bg-zinc-700" style={{ width: `${target.cash}%` }} />
-                )}
-              </div>
-            </div>
+            <span className={`ml-auto text-[10px] ${style.text} truncate max-w-[40%]`} title={d.verdict}>
+              {d.verdict}
+            </span>
           </div>
         );
       })()}
 
-      {/* ═══ 인라인 context strips — 알림 / 이벤트 / 후보 (각각 collapsible) ═══ */}
-      <div className="flex flex-col gap-1">
+      {/* ═══ #223 iter 7: status strips compact — horizontal row at lg+ ═══
+          이전엔 항상 vertical 3 줄을 차지했음. lg+ 에서 한 줄로 압축. */}
+      <div className="flex flex-col lg:flex-row lg:flex-wrap gap-1 lg:gap-2">
         {/* 알림 strip */}
         <CollapsibleStrip
           id="alerts"
@@ -444,11 +453,21 @@ async function Dashboard({
         </CollapsibleStrip>
       </div>
 
-      {/* ═══ 보유 종목 — full-width (사이드바 제거 후) ═══
-          3xl+ (≥1680px) 에서는 우측에 <HoldingsSummaryPanel> 을 나란히 띄운다 (#221).
-          1680 미만 2xl 에서는 panel 숨김 — 가로 폭이 부족해 겹치므로. */}
+      {/* ═══ #223 NEW: Composition section (donut + tabs + legend).
+          Sits between status strips and the holdings drilldown table.
+          Hidden when there's nothing visible to show. */}
       {enrichedHoldings.length > 0 && (
-        <section className="flex-1 min-h-0 flex flex-col items-start min-[1680px]:flex-row min-[1680px]:items-start min-[1680px]:gap-4">
+        <CompositionSection
+          summary={summary}
+          totalUsd={totalValue}
+          activeTab={compositionTab}
+        />
+      )}
+
+      {/* ═══ 보유 종목 — drilldown 위치 (#223 restructure).
+          이전엔 메인이었지만 이제 composition 아래의 detail 뷰. */}
+      {enrichedHoldings.length > 0 && (
+        <section className="flex flex-col items-start" data-testid="holdings-section">
           {/*
             w-fit wrapper — 제목 바 + 테이블 이 모두 테이블의 natural width (현재 breakpoint 의
             column sum)에 맞춰 shrink 한다. 덕분에 period toggle + 상세 링크가 테이블의 우측
@@ -494,6 +513,20 @@ async function Dashboard({
                 ))}
                 <span className="text-zinc-700 normal-case">일</span>
               </div>
+              {/* #223 iter 7: holdings collapse toggle. Default = top 8 visible.
+                  Click "전체 N" to expand to all rows; "접기" to collapse back. */}
+              {enrichedHoldings.length > HOLDINGS_COLLAPSED_LIMIT && (
+                <Link
+                  href={holdingsExpanded ? "/" : "/?holdings=expanded"}
+                  scroll={false}
+                  className="text-[9px] text-zinc-500 hover:text-zinc-300"
+                  data-testid="holdings-toggle"
+                >
+                  {holdingsExpanded
+                    ? "접기"
+                    : `전체 ${enrichedHoldings.length} 보기`}
+                </Link>
+              )}
               <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
             </div>
           </div>
@@ -531,40 +564,18 @@ async function Dashboard({
                 <span className="hidden 2xl:inline-block w-[56px] text-right shrink-0">비중</span>
               </div>
               <div className="space-y-0.5">
-                {enrichedHoldings.map((h, i) => (
+                {(holdingsExpanded
+                  ? enrichedHoldings
+                  : enrichedHoldings.slice(0, HOLDINGS_COLLAPSED_LIMIT)
+                ).map((h, i) => (
                   <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
                 ))}
               </div>
             </div>
           </div>
           </div>
-          {/* #221: 3xl+ 우측 요약 패널 (Today / Accounts / Sector / Movers / Concentration).
-              Accounts 카드용 데이터: /api/dashboard 의 account_values (holdings per account)
-              와 cash_summary.accounts (cash per account) 를 계정 키로 merge. */}
-          {(() => {
-            const acctTotals = new Map<string, number>();
-            for (const av of accountValues) {
-              acctTotals.set(av.account, (acctTotals.get(av.account) ?? 0) + av.value);
-            }
-            for (const cash of d.cash_summary?.accounts ?? []) {
-              acctTotals.set(
-                cash.account,
-                (acctTotals.get(cash.account) ?? 0) + cash.total_usd,
-              );
-            }
-            const mergedAccountValues = Array.from(acctTotals.entries()).map(
-              ([account, value]) => ({ account, value }),
-            );
-            return (
-              <HoldingsSummaryPanel
-                summary={summarizeHoldings(enrichedHoldings, {
-                  totalPortfolioUsd: totalValue,
-                  accountValues: mergedAccountValues,
-                })}
-                className="hidden min-[1680px]:flex w-[200px] shrink-0 sticky top-0"
-              />
-            );
-          })()}
+          {/* #223: HoldingsSummaryPanel 제거. Today/Accounts/Sector/Movers/Concentration
+              은 새 HeroStats + CompositionSection 으로 흡수되었음. */}
         </section>
       )}
 
