@@ -35,6 +35,27 @@ export interface SectorSlice {
   color: string;
 }
 
+export interface TickerSlice {
+  ticker: string;
+  /** Display name (e.g. ".KS" stripped) */
+  displayName: string;
+  /** % of visible portfolio (renormalized to sum to 100) */
+  weight: number;
+  /** USD value of this position */
+  valueUsd: number;
+  /** Sector for color/grouping */
+  sector: string | null;
+  /** Color hashed from rank */
+  color: string;
+}
+
+export interface CumulativePnL {
+  /** Total unrealized USD gain across visible holdings */
+  totalUsd: number;
+  /** Total return % = totalGain / totalCostBasis × 100 */
+  totalPct: number;
+}
+
 export interface AccountSlice {
   account: string;
   /** USD total (holdings + cash) */
@@ -62,8 +83,11 @@ export interface ConcentrationSummary {
 
 export interface HoldingsSummary {
   today: TodayPnL;
+  cumulative: CumulativePnL;
   byAccount: AccountSlice[];
   sectors: SectorSlice[];
+  /** Ticker-level composition (#223): top N + Other bucket, normalized to 100 */
+  byTicker: TickerSlice[];
   topMovers: { winners: MoverEntry[]; losers: MoverEntry[] };
   concentration: ConcentrationSummary;
 }
@@ -79,13 +103,27 @@ export interface SummarizeOptions {
 }
 
 // Palette — tailwind 400-level shades so the donut reads against zinc-950.
-// Fifth slot is amber (warning), last slot is violet (neutral "other").
 const SECTOR_COLORS = [
   "#34d399", // emerald-400
   "#60a5fa", // blue-400
   "#f472b6", // pink-400
   "#fbbf24", // amber-400
   "#a78bfa", // violet-400
+] as const;
+// Larger palette for ticker-level composition (12 distinct colors for top 12).
+const TICKER_COLORS = [
+  "#34d399", // emerald-400
+  "#60a5fa", // blue-400
+  "#f472b6", // pink-400
+  "#fbbf24", // amber-400
+  "#a78bfa", // violet-400
+  "#f87171", // red-400
+  "#22d3ee", // cyan-400
+  "#facc15", // yellow-400
+  "#4ade80", // green-400
+  "#a3e635", // lime-400
+  "#fb923c", // orange-400
+  "#e879f9", // fuchsia-400
 ] as const;
 const OTHER_COLOR = "#71717a"; // zinc-500
 
@@ -139,6 +177,28 @@ export function summarizeHoldings(
     downCount,
   };
 
+  // 1b) Cumulative P&L — Σ (currentValue - costBasis) over visible holdings.
+  // costBasis_i = currentValue_i / (1 + pnlPct_i / 100). Then total return =
+  // totalGain / totalCost × 100. Skips holdings with non-finite pnlPct or
+  // missing positionPct (they can't contribute meaningfully).
+  let cumCostUsd = 0;
+  let cumValueUsd = 0;
+  for (const h of holdings) {
+    if (!Number.isFinite(h.pnlPct)) continue;
+    if (h.positionPct == null || totalUsd <= 0) continue;
+    const valueUsd = (h.positionPct / 100) * totalUsd;
+    const costUsd = valueUsd / (1 + h.pnlPct / 100);
+    if (!Number.isFinite(costUsd)) continue;
+    cumValueUsd += valueUsd;
+    cumCostUsd += costUsd;
+  }
+  const cumGainUsd = cumValueUsd - cumCostUsd;
+  const cumGainPct = cumCostUsd > 0 ? (cumGainUsd / cumCostUsd) * 100 : 0;
+  const cumulative: CumulativePnL = {
+    totalUsd: cumGainUsd,
+    totalPct: cumGainPct,
+  };
+
   // 2) By account — each account's share of total portfolio. Uses the raw
   //    `accountValues` (holdings + cash merged per account) not visibleWeight,
   //    because account breakdown is about "where is my money" — pension and
@@ -176,7 +236,49 @@ export function summarizeHoldings(
     sectors.push({ name: "Other", weight: otherWeight, color: OTHER_COLOR });
   }
 
-  // 3) Top movers — 3 best winners, 3 worst losers.
+  // 3b) By ticker — visible holdings, top 12 + Other. Same visibleWeight
+  // normalization so the legend sums to 100. Multi-account holdings of the
+  // same ticker are merged into a single slice.
+  const tickerMap = new Map<string, { weight: number; valueUsd: number; sector: string | null; displayName: string }>();
+  for (const h of holdings) {
+    const w = visibleWeight(h);
+    if (w <= 0) continue;
+    const valueUsd = (h.positionPct ?? 0) / 100 * totalUsd;
+    const display = h.name || h.ticker.replace(/\.KS$/, "");
+    const existing = tickerMap.get(h.ticker);
+    if (existing) {
+      existing.weight += w;
+      existing.valueUsd += valueUsd;
+    } else {
+      tickerMap.set(h.ticker, { weight: w, valueUsd, sector: h.sector ?? null, displayName: display });
+    }
+  }
+  const sortedTickers = Array.from(tickerMap.entries()).sort((a, b) => b[1].weight - a[1].weight);
+  const TOP_TICKER_COUNT = 12;
+  const topTickers = sortedTickers.slice(0, TOP_TICKER_COUNT);
+  const restTickers = sortedTickers.slice(TOP_TICKER_COUNT);
+  const byTicker: TickerSlice[] = topTickers.map(([ticker, data], i) => ({
+    ticker,
+    displayName: data.displayName,
+    weight: data.weight,
+    valueUsd: data.valueUsd,
+    sector: data.sector,
+    color: TICKER_COLORS[i] ?? OTHER_COLOR,
+  }));
+  const restWeight = restTickers.reduce((sum, [, d]) => sum + d.weight, 0);
+  const restValue = restTickers.reduce((sum, [, d]) => sum + d.valueUsd, 0);
+  if (restWeight > 0) {
+    byTicker.push({
+      ticker: "__OTHER__",
+      displayName: `Other (${restTickers.length})`,
+      weight: restWeight,
+      valueUsd: restValue,
+      sector: null,
+      color: OTHER_COLOR,
+    });
+  }
+
+  // 4) Top movers — 3 best winners, 3 worst losers.
   //    Losers: only holdings whose pnlPct is strictly < 0. If everything is
   //    green, the losers list is empty (don't fake a "loss" by showing the
   //    least-green holding under a red ↓).
@@ -196,7 +298,7 @@ export function summarizeHoldings(
       (h): MoverEntry => ({ account: h.account, ticker: h.ticker, pnlPct: h.pnlPct }),
     );
 
-  // 4) Concentration — Herfindahl on VISIBLE-normalized fractions + single largest
+  // 5) Concentration — Herfindahl on VISIBLE-normalized fractions + single largest
   let hhi = 0;
   let topHolding: ConcentrationSummary["topHolding"] = null;
   for (const h of holdings) {
@@ -214,8 +316,10 @@ export function summarizeHoldings(
 
   return {
     today,
+    cumulative,
     byAccount,
     sectors,
+    byTicker,
     topMovers: { winners, losers },
     concentration: { herfindahl: hhi, topHolding, level },
   };

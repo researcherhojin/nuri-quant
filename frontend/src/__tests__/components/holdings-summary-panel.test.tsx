@@ -9,6 +9,11 @@ import type { HoldingsSummary } from "@/lib/holdings-summary";
 function baseSummary(over: Partial<HoldingsSummary> = {}): HoldingsSummary {
   return {
     today: { totalUsd: 340, totalPct: 0.46, upCount: 6, downCount: 4 },
+    cumulative: { totalUsd: 8500, totalPct: 12.5 },
+    byTicker: [
+      { ticker: "NVDA", displayName: "NVDA", weight: 28, valueUsd: 21000, sector: "Semi", color: "#34d399" },
+      { ticker: "TSLA", displayName: "TSLA", weight: 19, valueUsd: 14000, sector: "EV/AI", color: "#60a5fa" },
+    ],
     byAccount: [
       { account: "Main", valueUsd: 36700, weight: 49.4, color: "#34d399" },
       { account: "Active", valueUsd: 20356, weight: 27.4, color: "#60a5fa" },

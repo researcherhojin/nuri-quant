@@ -8,7 +8,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
 import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import { CollapsibleStrip } from "@/components/ui/collapsible-strip";
-import { HoldingsSummaryPanel } from "@/components/ui/holdings-summary-panel";
+import { HeroStats } from "@/components/ui/hero-stats";
+import { CompositionSection, parseCompositionTab } from "@/components/ui/composition-section";
 import { summarizeHoldings } from "@/lib/holdings-summary";
 import Link from "next/link";
 
@@ -141,12 +142,13 @@ function parseSparklinePeriod(raw: string | undefined): SparklinePeriod {
 async function Dashboard({
   searchParams,
 }: {
-  searchParams?: Promise<{ period?: string }> | undefined;
+  searchParams?: Promise<{ period?: string; comp?: string }> | undefined;
 }) {
   // Defensive: searchParams may be undefined when rendered outside the page boundary
   // (e.g. some error paths in dev). Default to an empty object.
   const params = (searchParams ? await searchParams : undefined) ?? {};
   const sparklinePeriod = parseSparklinePeriod(params.period);
+  const compositionTab = parseCompositionTab(params.comp);
 
   const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets] = await Promise.all([
     fetchAPI<DashboardData>("/api/dashboard"),
@@ -230,6 +232,25 @@ async function Dashboard({
   const pensionCandidates = newCandidates.filter(a => a.account === "Pension");
   const visibleCandidates = newCandidates.filter(a => a.account !== "Pension" || isMonthEnd);
 
+  // #223: composition section needs the same summarized data the old summary
+  // panel had. Compute once at page level so HeroStats + CompositionSection
+  // share it without recomputing. Merge account_values + cash_summary so
+  // every account (including pension/IRP) appears in the breakdown.
+  const acctTotals = new Map<string, number>();
+  for (const av of accountValues) {
+    acctTotals.set(av.account, (acctTotals.get(av.account) ?? 0) + av.value);
+  }
+  for (const cash of d.cash_summary?.accounts ?? []) {
+    acctTotals.set(cash.account, (acctTotals.get(cash.account) ?? 0) + cash.total_usd);
+  }
+  const mergedAccountValues = Array.from(acctTotals.entries()).map(
+    ([account, value]) => ({ account, value }),
+  );
+  const summary = summarizeHoldings(enrichedHoldings, {
+    totalPortfolioUsd: totalValue,
+    accountValues: mergedAccountValues,
+  });
+
   // #214 polish (A): inline context strips 대신 사이드바 제거 → 데이터 prep
   const stripAlerts = d.alerts.map((al) => ({
     level: al.level,
@@ -257,29 +278,14 @@ async function Dashboard({
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      {/* ═══ 히어로: 총 자산 (holdings + cash) + 판단 ═══ */}
-      <div>
-        <p className="text-[10px] text-zinc-500 mb-0.5">총 자산</p>
-        <div className="flex items-baseline gap-3">
-          <span className="text-4xl font-semibold tabular-nums tracking-tight text-zinc-100">
-            ${totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          </span>
-          <StatusBadge status={verdictLabel} size="lg" />
-        </div>
-        {(cashTotalUsd > 0 || accountValues.length > 0) && (
-          <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500 flex-wrap">
-            {cashTotalUsd > 0 && (
-              <>
-                <span>보유 <span className="tabular-nums text-zinc-400">${holdingsValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></span>
-                <span>현금 <span className="tabular-nums text-zinc-400">${cashTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></span>
-              </>
-            )}
-            {accountValues.length > 0 && accountValues.map(av => (
-              <span key={av.account}>{av.account} ${av.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* ═══ #223 NEW HERO: 4 big metrics row (총자산 · 오늘 · 누적 · 배당) ═══ */}
+      <HeroStats
+        totalUsd={totalValue}
+        cashTotalUsd={cashTotalUsd}
+        holdingsValueUsd={holdingsValue}
+        summary={summary}
+        verdictLabel={verdictLabel}
+      />
 
       {/* ═══ 시장 맥락 — verdict + 숫자 통합 ═══ */}
       <div>
@@ -444,11 +450,21 @@ async function Dashboard({
         </CollapsibleStrip>
       </div>
 
-      {/* ═══ 보유 종목 — full-width (사이드바 제거 후) ═══
-          3xl+ (≥1680px) 에서는 우측에 <HoldingsSummaryPanel> 을 나란히 띄운다 (#221).
-          1680 미만 2xl 에서는 panel 숨김 — 가로 폭이 부족해 겹치므로. */}
+      {/* ═══ #223 NEW: Composition section (donut + tabs + legend).
+          Sits between status strips and the holdings drilldown table.
+          Hidden when there's nothing visible to show. */}
       {enrichedHoldings.length > 0 && (
-        <section className="flex-1 min-h-0 flex flex-col items-start min-[1680px]:flex-row min-[1680px]:items-start min-[1680px]:gap-4">
+        <CompositionSection
+          summary={summary}
+          totalUsd={totalValue}
+          activeTab={compositionTab}
+        />
+      )}
+
+      {/* ═══ 보유 종목 — drilldown 위치 (#223 restructure).
+          이전엔 메인이었지만 이제 composition 아래의 detail 뷰. */}
+      {enrichedHoldings.length > 0 && (
+        <section className="flex flex-col items-start" data-testid="holdings-section">
           {/*
             w-fit wrapper — 제목 바 + 테이블 이 모두 테이블의 natural width (현재 breakpoint 의
             column sum)에 맞춰 shrink 한다. 덕분에 period toggle + 상세 링크가 테이블의 우측
@@ -538,33 +554,8 @@ async function Dashboard({
             </div>
           </div>
           </div>
-          {/* #221: 3xl+ 우측 요약 패널 (Today / Accounts / Sector / Movers / Concentration).
-              Accounts 카드용 데이터: /api/dashboard 의 account_values (holdings per account)
-              와 cash_summary.accounts (cash per account) 를 계정 키로 merge. */}
-          {(() => {
-            const acctTotals = new Map<string, number>();
-            for (const av of accountValues) {
-              acctTotals.set(av.account, (acctTotals.get(av.account) ?? 0) + av.value);
-            }
-            for (const cash of d.cash_summary?.accounts ?? []) {
-              acctTotals.set(
-                cash.account,
-                (acctTotals.get(cash.account) ?? 0) + cash.total_usd,
-              );
-            }
-            const mergedAccountValues = Array.from(acctTotals.entries()).map(
-              ([account, value]) => ({ account, value }),
-            );
-            return (
-              <HoldingsSummaryPanel
-                summary={summarizeHoldings(enrichedHoldings, {
-                  totalPortfolioUsd: totalValue,
-                  accountValues: mergedAccountValues,
-                })}
-                className="hidden min-[1680px]:flex w-[200px] shrink-0 sticky top-0"
-              />
-            );
-          })()}
+          {/* #223: HoldingsSummaryPanel 제거. Today/Accounts/Sector/Movers/Concentration
+              은 새 HeroStats + CompositionSection 으로 흡수되었음. */}
         </section>
       )}
 
