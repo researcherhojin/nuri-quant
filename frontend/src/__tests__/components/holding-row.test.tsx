@@ -535,4 +535,19 @@ describe("buildEnrichedHoldings wide-viewport fields", () => {
     );
     expect(result[0].positionPct).toBeNull();
   });
+
+  it("falls back to qty=0 when raw holding omits quantity (?? branch)", () => {
+    // Covers BRDA:203 — `const qty = h.quantity ?? 0` when quantity is undefined.
+    // Without the fallback the multiplier would throw NaN; with it, positionPct is 0.
+    const noQty: RawHolding = { ...baseHolding, quantity: undefined };
+    const result = buildEnrichedHoldings(
+      [noQty],
+      [],
+      [],
+      [],
+      [],
+      { totalPortfolioUsd: 10_000 },
+    );
+    expect(result[0].positionPct).toBe(0);
+  });
 });
