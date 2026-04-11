@@ -259,7 +259,7 @@ function watchVisual(w: WatchTrigger): { text: string; className: string } | nul
     if (w.daysUntil <= 14) return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-300" };
     return { text: `실적 D-${w.daysUntil}`, className: "text-zinc-400" };
   }
-  return null;
+  /* c8 ignore next */ return null; // defensive; WatchTrigger union is exhausted above
 }
 
 // ── Component ────────────────────────────────────────────────

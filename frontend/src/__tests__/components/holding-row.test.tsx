@@ -278,6 +278,19 @@ describe("HoldingRow", () => {
     expect(screen.getByText("✓ 익절₁")).toBeInTheDocument();
   });
 
+  it("renders ✓ 익절₂ when status is tp2 (statusVisual tp2 branch)", () => {
+    render(
+      <HoldingRow
+        holding={holdingFixture({
+          status: { kind: "tp2" },
+          target1Reached: true,
+          target2Reached: true,
+        })}
+      />,
+    );
+    expect(screen.getByText("✓ 익절₂")).toBeInTheDocument();
+  });
+
   it("renders 손절 status when stop_loss triggered", () => {
     render(<HoldingRow holding={holdingFixture({ status: { kind: "stop_loss" }, pnlPct: -8.5 })} />);
     expect(screen.getByText("손절")).toBeInTheDocument();
@@ -302,6 +315,16 @@ describe("HoldingRow", () => {
   it("renders 실적 D-DAY when daysUntil is 0", () => {
     render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 0 } })} />);
     expect(screen.getByText("실적 D-DAY")).toBeInTheDocument();
+  });
+
+  it("renders earnings D-20 (watchVisual >14 branch)", () => {
+    render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 20 } })} />);
+    expect(screen.getByText("실적 D-20")).toBeInTheDocument();
+  });
+
+  it("renders earnings D-5 (watchVisual <=7 amber branch)", () => {
+    render(<HoldingRow holding={holdingFixture({ watch: { kind: "earnings", daysUntil: 5 } })} />);
+    expect(screen.getByText("실적 D-5")).toBeInTheDocument();
   });
 
   it("renders em dash for empty watch", () => {

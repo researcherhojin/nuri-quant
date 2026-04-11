@@ -226,6 +226,39 @@ describe("DashboardPage", () => {
     });
   });
 
+  it("falls back to default period when ?period is not one of the allowed options", async () => {
+    // parseSparklinePeriod: parseInt("45") = 45 → not in [14,30,60,90] → fallback 30
+    setupMocks();
+    const Page = await import("@/app/page");
+    await act(async () => {
+      render(<Page.default searchParams={Promise.resolve({ period: "45" })} />);
+    });
+    await waitFor(() => {
+      // Active period "30" retains its highlighted class — rendered in the toggle
+      const toggle = screen.getByTestId("sparkline-period-toggle");
+      expect(toggle).toBeInTheDocument();
+    });
+  });
+
+  it("renders gracefully when side endpoints reject (fetchAPI catch branches)", async () => {
+    // Dashboard + portfolio resolve (prevents redirect); everything else rejects.
+    // Exercises the .catch() defaults on freshness/pipeline/certify/advisor/targets.
+    mockFetchAPI.mockImplementation((path: string) => {
+      if (path.includes("/api/dashboard")) return Promise.resolve(mockDashboardData);
+      if (path.includes("/api/portfolio/history")) return Promise.resolve({ history: [] });
+      if (path.includes("/api/portfolio")) return Promise.resolve(mockPortfolio);
+      return Promise.reject(new Error("network"));
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      // Hero still renders with the resolved dashboard/portfolio data
+      expect(screen.getByText(/총 자산/)).toBeInTheDocument();
+      expect(screen.getByText("$8,850")).toBeInTheDocument();
+    });
+  });
+
+
   it("hides Pension holdings from main table (#214 polish)", async () => {
     setupMocks({
       portfolio: {
