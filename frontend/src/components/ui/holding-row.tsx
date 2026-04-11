@@ -340,10 +340,11 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       href={linkHref}
       data-testid="holding-row"
       data-status={h.status.kind}
-      className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/50 text-xs group"
+      className="flex w-fit items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/50 text-xs group"
     >
-      {/* account */}
-      <span className="text-[9px] text-zinc-600 uppercase w-10 shrink-0 truncate" title={h.account}>
+      {/* account — wider at 2xl+ so labels like "LONG_TERM" don't truncate. Stays w-10 below
+          2xl to keep the lg (1024) row width under the content budget (752 content). */}
+      <span className="text-[9px] text-zinc-600 uppercase w-10 2xl:w-16 shrink-0 truncate" title={h.account}>
         {h.account}
       </span>
       {/* name */}
@@ -429,9 +430,9 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
           baseline={h.avgPrice}
         />
       </span>
-      {/* #218: 섹터 — 2xl+ (1536px+) 27" 모니터용 */}
+      {/* #218: 섹터 — 2xl+ (1536px+) 27" 모니터용. Label 데이터라 text-left. */}
       <span
-        className="hidden 2xl:inline-block w-[96px] text-right text-[10px] text-zinc-500 truncate shrink-0"
+        className="hidden 2xl:inline-block w-[96px] text-left text-[10px] text-zinc-500 truncate shrink-0"
         aria-label="섹터"
         data-testid="sector-cell"
         title={h.sector ?? undefined}
