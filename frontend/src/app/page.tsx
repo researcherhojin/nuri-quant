@@ -12,6 +12,7 @@ import { HeroStats } from "@/components/ui/hero-stats";
 import { CompositionSection, parseCompositionTab } from "@/components/ui/composition-section";
 import { summarizeHoldings } from "@/lib/holdings-summary";
 import Link from "next/link";
+import { VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SIGNAL, SECTION, STRIP, MARKET, FOOTER, COL, HOLDING_STATUS, SPARKLINE as SPARK, COMMON } from "@/lib/strings";
 
 interface DashboardData {
   verdict: string;
@@ -48,7 +49,7 @@ interface PipelineStatusData {
 }
 
 const verdictLabels: Record<string, string> = {
-  aggressive: "공격", neutral: "관망", cautious: "주의", defensive: "방어",
+  aggressive: VERDICT.AGGRESSIVE, neutral: VERDICT.NEUTRAL, cautious: VERDICT.CAUTIOUS, defensive: VERDICT.DEFENSIVE,
 };
 const levelStyles: Record<string, { text: string }> = {
   aggressive: { text: "text-emerald-400" },
@@ -61,20 +62,20 @@ const pipelineStatusColors: Record<string, string> = {
 };
 
 /* ── 헬퍼 ── */
-function trendKo(t: string) { return t === "bull" ? "상승" : t === "bear" ? "하락" : "횡보"; }
+function trendKo(t: string) { return t === "bull" ? TREND.BULL : t === "bear" ? TREND.BEAR : TREND.SIDEWAYS; }
 function vixZone(v: number | null): { label: string; color: string } {
   if (v == null) return { label: "—", color: "text-zinc-500" };
-  if (v < 12) return { label: "안정", color: "text-blue-400" };
-  if (v < 17) return { label: "낮음", color: "text-emerald-400" };
-  if (v < 23) return { label: "보통", color: "text-zinc-300" };
-  if (v < 33) return { label: "주의", color: "text-orange-400" };
-  return { label: "위험", color: "text-red-400" };
+  if (v < 12) return { label: VIX_ZONE.CALM, color: "text-blue-400" };
+  if (v < 17) return { label: VIX_ZONE.LOW, color: "text-emerald-400" };
+  if (v < 23) return { label: VIX_ZONE.NORMAL, color: "text-zinc-300" };
+  if (v < 33) return { label: VIX_ZONE.CAUTION, color: "text-orange-400" };
+  return { label: VIX_ZONE.DANGER, color: "text-red-400" };
 }
 function fgLabel(fg: number | null): string {
   if (fg == null) return "—";
-  if (fg < 25) return "극도 공포"; if (fg < 45) return "공포";
-  if (fg <= 55) return "중립"; if (fg <= 75) return "탐욕";
-  return "극도 탐욕";
+  if (fg < 25) return FEAR_GREED.EXTREME_FEAR; if (fg < 45) return FEAR_GREED.FEAR;
+  if (fg <= 55) return FEAR_GREED.NEUTRAL; if (fg <= 75) return FEAR_GREED.GREED;
+  return FEAR_GREED.EXTREME_GREED;
 }
 function fgColor(fg: number | null): string {
   if (fg == null) return "bg-zinc-700 text-zinc-400";
@@ -85,28 +86,28 @@ function fgColor(fg: number | null): string {
   return "bg-emerald-500/20 text-emerald-400";
 }
 function macroLevel(s: number): { label: string; color: string } {
-  if (s >= 70) return { label: "양호", color: "text-emerald-400" };
-  if (s >= 50) return { label: "보통", color: "text-zinc-300" };
-  if (s >= 30) return { label: "부진", color: "text-orange-400" };
-  return { label: "취약", color: "text-red-400" };
+  if (s >= 70) return { label: MACRO_LEVEL.GOOD, color: "text-emerald-400" };
+  if (s >= 50) return { label: MACRO_LEVEL.NORMAL, color: "text-zinc-300" };
+  if (s >= 30) return { label: MACRO_LEVEL.WEAK, color: "text-orange-400" };
+  return { label: MACRO_LEVEL.FRAGILE, color: "text-red-400" };
 }
 function translateAlert(msg: string): string {
   return msg
-    .replace("시그널 성과 급락:", "매매 신호 성과 하락:")
-    .replace(/BUY\/SELL 충돌 (\d+)건:/, "매수·매도 신호 충돌 $1건:")
-    .replace("bb_bounce", "볼린저밴드 반등").replace("macd_bullish_turn", "MACD 상승전환")
-    .replace("macd_bearish_turn", "MACD 하락전환").replace("macd_golden", "MACD 골든크로스")
-    .replace("macd_dead", "MACD 데드크로스").replace("rsi_oversold", "RSI 과매도")
-    .replace("rsi_overbought", "RSI 과매수").replace("sma_golden", "이동평균 골든크로스")
-    .replace("sma_dead", "이동평균 데드크로스").replace("volume_spike", "거래량 급증")
-    .replace("gap_up", "갭 상승").replace("gap_down", "갭 하락")
-    .replace("bb_squeeze_breakout", "볼린저밴드 돌파").replace("near_52w_low_bounce", "52주 저점 반등")
-    .replace("volume_profile_resistance", "거래량 저항선");
+    .replace(SIGNAL.DRIFT_SOURCE, SIGNAL.DRIFT_REPLACE)
+    .replace(/BUY\/SELL 충돌 (\d+)건:/, `${SIGNAL.CONFLICT_REPLACE} $1${COMMON.COUNT_SUFFIX}:`)
+    .replace("bb_bounce", SIGNAL.BB_BOUNCE).replace("macd_bullish_turn", SIGNAL.MACD_BULLISH_TURN)
+    .replace("macd_bearish_turn", SIGNAL.MACD_BEARISH_TURN).replace("macd_golden", SIGNAL.MACD_GOLDEN)
+    .replace("macd_dead", SIGNAL.MACD_DEAD).replace("rsi_oversold", SIGNAL.RSI_OVERSOLD)
+    .replace("rsi_overbought", SIGNAL.RSI_OVERBOUGHT).replace("sma_golden", SIGNAL.SMA_GOLDEN)
+    .replace("sma_dead", SIGNAL.SMA_DEAD).replace("volume_spike", SIGNAL.VOLUME_SPIKE)
+    .replace("gap_up", SIGNAL.GAP_UP).replace("gap_down", SIGNAL.GAP_DOWN)
+    .replace("bb_squeeze_breakout", SIGNAL.BB_SQUEEZE_BREAKOUT).replace("near_52w_low_bounce", SIGNAL.NEAR_52W_LOW_BOUNCE)
+    .replace("volume_profile_resistance", SIGNAL.VOLUME_PROFILE_RESISTANCE);
 }
 /** 계좌 라벨 한국어 표시 (Pension만 특수, 나머지는 원본 유지) */
 function accountKo(label: string | undefined): string {
   if (!label) return "";
-  if (label === "Pension") return "연금";
+  if (label === "Pension") return SECTION.PENSION;
   return label;
 }
 /** 알림 → {label, href} 파싱 */
@@ -114,10 +115,10 @@ function parseAlert(al: { level: string; message: string }): { label: string; hr
   const translated = translateAlert(al.message);
   // 손절 돌파: 티커 → /ticker/{ticker}
   const stopMatch = translated.match(/(\S+)\s+손절선\s+돌파\s+\((-?\d+\.?\d*%)\)/);
-  if (stopMatch) return { label: `${stopMatch[1]} ${stopMatch[2]} 손절`, href: `/ticker/${stopMatch[1]}` };
+  if (stopMatch) return { label: `${stopMatch[1]} ${stopMatch[2]} ${SIGNAL.STOP_SUFFIX}`, href: `/ticker/${stopMatch[1]}` };
   // 손절 근접
   const nearMatch = translated.match(/(\S+)\s+손절선\s+근접\s+\((-?\d+\.?\d*%)\)/);
-  if (nearMatch) return { label: `${nearMatch[1]} ${nearMatch[2]} 근접`, href: `/ticker/${nearMatch[1]}` };
+  if (nearMatch) return { label: `${nearMatch[1]} ${nearMatch[2]} ${SIGNAL.NEAR_SUFFIX}`, href: `/ticker/${nearMatch[1]}` };
   // 충돌
   const conflictMatch = translated.match(/충돌\s+(\d+)건/);
   if (conflictMatch) return { label: `충돌 ${conflictMatch[1]}건`, href: "/decisions" };
@@ -173,7 +174,7 @@ async function Dashboard({
   if (holdingCount === 0) redirect("/portfolio?onboarding=true");
 
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
-  const verdictLabel = verdictLabels[d.verdict_level] || "관망";
+  const verdictLabel = verdictLabels[d.verdict_level] || VERDICT.NEUTRAL;
   const KRW_RATE = d.exchange_rate || 1400;
   const holdingsValue = portfolio?.holdings?.reduce((sum: number, h: any) => {
     const price = h.latest_price || 0;
@@ -225,7 +226,7 @@ async function Dashboard({
   // #214 polish: 연금 holdings은 월 리밸런싱이라 daily dashboard에서 제외.
   // 연금 전용 UI는 별도 페이지(/portfolio)에서 볼 수 있음.
   // "Pension" / "Pension 2" / "연금" / "연금 2" 등 모든 번호 suffix 변형을 prefix로 잡는다.
-  const isPensionLabel = (label: string) => label.startsWith("연금") || label.startsWith("Pension");
+  const isPensionLabel = (label: string) => label.startsWith(SECTION.PENSION) || label.startsWith("Pension");
   // #223 iter 7c: dashboard view sorts by positionPct desc (largest position first)
   // — overrides the buildEnrichedHoldings default (account → status → pnl) which is
   // useful for /portfolio's grouped view but wrong for the dashboard's "biggest
@@ -327,23 +328,23 @@ async function Dashboard({
             )}
             {fg != null && (
               <span>
-                심리 <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span>
+                {MARKET.SENTIMENT} <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span>
               </span>
             )}
             {hasMacroScore && (
               <span>
-                경제 <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span> <span className={macroInfo.color}>{macroInfo.label}</span>
+                {MARKET.ECONOMY} <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span> <span className={macroInfo.color}>{macroInfo.label}</span>
               </span>
             )}
             <span className="text-zinc-700">·</span>
             <span>
-              실제 <span className="text-emerald-400 font-semibold tabular-nums">{actual.long}%</span> 투자 / <span className="text-zinc-300 font-semibold tabular-nums">{actual.cash}%</span> 현금
+              {MARKET.ACTUAL} <span className="text-emerald-400 font-semibold tabular-nums">{actual.long}%</span> {MARKET.INVEST} / <span className="text-zinc-300 font-semibold tabular-nums">{actual.cash}%</span> {MARKET.CASH}
             </span>
             {hasMeaningfulTarget && target && (
               <>
                 <span className="text-zinc-700">→</span>
                 <span className="text-zinc-600">
-                  권장 <span className="text-emerald-500 tabular-nums">{target.long}%</span> / <span className="text-zinc-500 tabular-nums">{target.cash}%</span>
+                  {MARKET.TARGET} <span className="text-emerald-500 tabular-nums">{target.long}%</span> / <span className="text-zinc-500 tabular-nums">{target.cash}%</span>
                 </span>
               </>
             )}
@@ -360,13 +361,13 @@ async function Dashboard({
         {/* 알림 strip */}
         <CollapsibleStrip
           id="alerts"
-          title="알림"
+          title={STRIP.ALERTS_TITLE}
           icon="⚠"
           count={stripAlerts.length}
-          emptyText="위험 요소 없음"
+          emptyText={STRIP.ALERTS_EMPTY}
         >
           <div className="flex items-start gap-2 px-2 py-1 rounded bg-red-950/20 border border-red-900/30 pr-6">
-            <span className="text-[10px] text-red-400 font-semibold shrink-0">⚠ 주의 {stripAlerts.length}건</span>
+            <span className="text-[10px] text-red-400 font-semibold shrink-0">{STRIP.ALERTS_PREFIX} {stripAlerts.length}{COMMON.COUNT_SUFFIX}</span>
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
               {stripAlerts.map((al, i) => (
                 <Link
@@ -387,20 +388,20 @@ async function Dashboard({
         {/* 이벤트 strip */}
         <CollapsibleStrip
           id="events"
-          title="이벤트"
+          title={STRIP.EVENTS_TITLE}
           icon="📅"
           count={stripEvents.length}
-          emptyText="예정된 이벤트 없음"
+          emptyText={STRIP.EVENTS_EMPTY}
         >
           <div className="flex items-start gap-2 px-2 py-1 rounded bg-zinc-900/40 border border-zinc-800/60 pr-6">
-            <span className="text-[10px] text-zinc-400 font-semibold shrink-0">📅 다음 이벤트 {stripEvents.length}건</span>
+            <span className="text-[10px] text-zinc-400 font-semibold shrink-0">{STRIP.EVENTS_PREFIX} {stripEvents.length}{COMMON.COUNT_SUFFIX}</span>
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
               {stripEvents.map((ev, i) => {
                 const dday = eventDday(ev.date);
                 return (
                   <span key={`${ev.date}-${i}`} className="text-[10px] text-zinc-400 truncate">
                     <span className="text-zinc-600 tabular-nums">{fmtEventDate(ev.date)}</span>{" "}
-                    {ev.description || ev.ticker || "이벤트"}
+                    {ev.description || ev.ticker || STRIP.EVENTS_FALLBACK}
                     {dday && <span className="text-zinc-600 ml-1">({dday})</span>}
                   </span>
                 );
@@ -412,17 +413,17 @@ async function Dashboard({
         {/* 신규 매수 후보 strip */}
         <CollapsibleStrip
           id="candidates"
-          title="신규 후보"
+          title={STRIP.CANDIDATES_TITLE}
           icon="🎯"
           count={stripCandidates.length}
           emptyText={
             pensionCandidates.length > 0 && !isMonthEnd
-              ? `연금 ${pensionCandidates.length}건 — 월말 매수 대기`
-              : "신규 매수 후보 없음"
+              ? `${SECTION.PENSION} ${pensionCandidates.length}${COMMON.COUNT_SUFFIX} — ${SECTION.PENSION_MONTH_END_BUY_WAIT}`
+              : STRIP.CANDIDATES_EMPTY
           }
         >
           <div className="flex items-start gap-2 px-2 py-1 rounded bg-zinc-900/40 border border-zinc-800/60 pr-6">
-            <span className="text-[10px] text-emerald-400 font-semibold shrink-0">🎯 신규 후보 {stripCandidates.length}건</span>
+            <span className="text-[10px] text-emerald-400 font-semibold shrink-0">{STRIP.CANDIDATES_PREFIX} {stripCandidates.length}{COMMON.COUNT_SUFFIX}</span>
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
               {stripCandidates.map((c, i) => (
                 <Link
@@ -441,12 +442,12 @@ async function Dashboard({
                         : "text-red-400"
                     }`}
                   >
-                    {c.action === "BUY" ? "매수" : "매도"} {c.confidence}
+                    {c.action === "BUY" ? HOLDING_STATUS.BUY : HOLDING_STATUS.SELL} {c.confidence}
                   </span>
                 </Link>
               ))}
               {pensionCandidates.length > 0 && !isMonthEnd && (
-                <span className="text-[10px] text-zinc-600">연금 {pensionCandidates.length}건 월말 대기</span>
+                <span className="text-[10px] text-zinc-600">{SECTION.PENSION} {pensionCandidates.length}{COMMON.COUNT_SUFFIX} {SECTION.PENSION_MONTH_END_WAIT}</span>
               )}
             </div>
           </div>
@@ -477,15 +478,15 @@ async function Dashboard({
           <div className="w-fit max-w-full">
           <div className="flex items-center justify-between mb-1.5 gap-3">
             <div className="flex items-center gap-2 min-w-0">
-              <h2 className="text-sm font-semibold text-zinc-200">보유 종목</h2>
+              <h2 className="text-sm font-semibold text-zinc-200">{SECTION.HOLDINGS}</h2>
               <span className="text-[10px] text-zinc-600 truncate">
-                {winners.length > 0 && `수익 ${winners.length}`}
+                {winners.length > 0 && `${SECTION.WINNERS} ${winners.length}`}
                 {winners.length > 0 && losers.length > 0 && " · "}
-                {losers.length > 0 && `손실 ${losers.length}`}
+                {losers.length > 0 && `${SECTION.LOSERS} ${losers.length}`}
                 {hiddenPensionCount > 0 && (
                   <>
                     {(winners.length > 0 || losers.length > 0) && " · "}
-                    <span className="text-zinc-700">연금 {hiddenPensionCount}건 숨김</span>
+                    <span className="text-zinc-700">{SECTION.PENSION} {hiddenPensionCount}{SECTION.PENSION_HIDDEN_SUFFIX}</span>
                   </>
                 )}
               </span>
@@ -496,7 +497,7 @@ async function Dashboard({
                 className="hidden xl:inline-flex items-center gap-0.5 text-[9px] text-zinc-600 uppercase"
                 data-testid="sparkline-period-toggle"
               >
-                <span className="text-zinc-700 mr-1 normal-case">추세</span>
+                <span className="text-zinc-700 mr-1 normal-case">{SPARK.PERIOD_LABEL}</span>
                 {SPARKLINE_PERIOD_OPTIONS.map((p) => (
                   <Link
                     key={p}
@@ -511,7 +512,7 @@ async function Dashboard({
                     {p}
                   </Link>
                 ))}
-                <span className="text-zinc-700 normal-case">일</span>
+                <span className="text-zinc-700 normal-case">{SPARK.PERIOD_SUFFIX}</span>
               </div>
               {/* #223 iter 7: holdings collapse toggle. Default = top 8 visible.
                   Click "전체 N" to expand to all rows; "접기" to collapse back. */}
@@ -523,11 +524,11 @@ async function Dashboard({
                   data-testid="holdings-toggle"
                 >
                   {holdingsExpanded
-                    ? "접기"
-                    : `전체 ${enrichedHoldings.length} 보기`}
+                    ? SECTION.COLLAPSE
+                    : `${SECTION.VIEW_ALL} ${enrichedHoldings.length} ${SECTION.VIEW_SUFFIX}`}
                 </Link>
               )}
-              <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">상세 &rarr;</Link>
+              <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">{SECTION.DETAIL} &rarr;</Link>
             </div>
           </div>
           {/* Responsive column tiers — 헤더와 rows가 동일 breakpoint·width로 정렬.
@@ -544,24 +545,24 @@ async function Dashboard({
               {/* 컬럼 헤더 — sm+ (< sm은 헤더 없이 row aria-label 만으로 충분).
                   w-fit 이라 rows 의 w-fit 과 정확히 같은 폭을 차지 → hover 정렬 + 우측 dead zone 제거. */}
               <div className="hidden sm:flex w-fit items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
-                <span className="w-10 2xl:w-16 shrink-0">계좌</span>
-                <span className="w-20 shrink-0">종목</span>
+                <span className="w-10 2xl:w-16 shrink-0">{COL.ACCOUNT}</span>
+                <span className="w-20 shrink-0">{COL.TICKER}</span>
                 <span className="hidden md:flex w-[72px] text-right shrink-0 leading-tight justify-end">
-                  현재/<span className="text-zinc-700">평단</span>
+                  {COL.CURRENT}<span className="text-zinc-700">{COL.AVG}</span>
                 </span>
-                <span className="w-14 text-right shrink-0">손익</span>
-                <span className="w-12 text-right shrink-0">일변</span>
-                <span className="w-[68px] text-center shrink-0">상태</span>
-                <span className="hidden md:inline-block w-[68px] text-right shrink-0">손절</span>
-                <span className="hidden lg:inline-block w-[68px] text-right shrink-0">1차익절</span>
-                <span className="hidden lg:inline-block w-[68px] text-right shrink-0">2차익절</span>
+                <span className="w-14 text-right shrink-0">{COL.PNL}</span>
+                <span className="w-12 text-right shrink-0">{COL.DAILY}</span>
+                <span className="w-[68px] text-center shrink-0">{COL.STATUS}</span>
+                <span className="hidden md:inline-block w-[68px] text-right shrink-0">{COL.STOP}</span>
+                <span className="hidden lg:inline-block w-[68px] text-right shrink-0">{COL.TP1}</span>
+                <span className="hidden lg:inline-block w-[68px] text-right shrink-0">{COL.TP2}</span>
                 {/* sparkline column label — xl: 80px / 2xl: 240px (둘 다 고정) */}
                 <span className="hidden xl:inline-block w-20 2xl:w-60 text-left shrink-0">
-                  추세
+                  {COL.TREND}
                 </span>
                 {/* #218 (PR #219): 2xl+ 27" 전용 초광폭 컬럼. Sector 는 label 이라 text-left. */}
-                <span className="hidden 2xl:inline-block w-[96px] text-left shrink-0">섹터</span>
-                <span className="hidden 2xl:inline-block w-[56px] text-right shrink-0">비중</span>
+                <span className="hidden 2xl:inline-block w-[96px] text-left shrink-0">{COL.SECTOR}</span>
+                <span className="hidden 2xl:inline-block w-[56px] text-right shrink-0">{COL.WEIGHT}</span>
               </div>
               <div className="space-y-0.5">
                 {(holdingsExpanded
@@ -583,13 +584,13 @@ async function Dashboard({
       <div className="mt-auto pt-2 border-t border-zinc-800/60 space-y-1">
         <div className="flex items-center gap-3 flex-wrap text-[10px]">
           {siegeTotal > 0 && siegeFailed.length === 0 && (
-            <span className="text-zinc-400"><span className="text-emerald-500">&#10003;</span> 품질 {siege?.passed || 0}/{siegeTotal}</span>
+            <span className="text-zinc-400"><span className="text-emerald-500">&#10003;</span> {FOOTER.QUALITY} {siege?.passed || 0}/{siegeTotal}</span>
           )}
           {siegeTotal > 0 && siegeFailed.length > 0 && (
-            <span className="text-red-400"><span className="text-red-500">&#10007;</span> 품질 미통과 {siegeFailed.length}건</span>
+            <span className="text-red-400"><span className="text-red-500">&#10007;</span> {FOOTER.QUALITY_FAIL} {siegeFailed.length}{FOOTER.COUNT_SUFFIX}</span>
           )}
           {(advisor?.total_violations || 0) > 0 && (
-            <span className="text-red-400">규칙 위반 {advisor.total_violations}건</span>
+            <span className="text-red-400">{FOOTER.RULE_VIOLATION} {advisor.total_violations}{FOOTER.COUNT_SUFFIX}</span>
           )}
           {/* upcoming events moved to sidebar (#214). Footer keeps quality/violations/freshness. */}
           <div className="ml-auto flex items-center gap-2">

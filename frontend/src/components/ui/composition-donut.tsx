@@ -12,6 +12,7 @@
  */
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { COMPOSITION } from "@/lib/strings";
 
 export interface DonutSlice {
   /** Display label shown in the tooltip */
@@ -44,7 +45,7 @@ export function CompositionDonut({
         style={{ width: size, height: size }}
         data-testid="composition-donut-empty"
       >
-        — 데이터 없음
+        {COMPOSITION.NO_DATA}
       </div>
     );
   }

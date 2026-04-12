@@ -17,14 +17,15 @@ import Link from "next/link";
 
 import { CompositionDonut, type DonutSlice } from "@/components/ui/composition-donut";
 import type { HoldingsSummary } from "@/lib/holdings-summary";
+import { COMPOSITION } from "@/lib/strings";
 
 export const COMPOSITION_TABS = ["ticker", "sector", "account"] as const;
 export type CompositionTab = (typeof COMPOSITION_TABS)[number];
 
 const TAB_LABELS: Record<CompositionTab, string> = {
-  ticker: "자산",
-  sector: "섹터",
-  account: "계좌",
+  ticker: COMPOSITION.TAB_TICKER,
+  sector: COMPOSITION.TAB_SECTOR,
+  account: COMPOSITION.TAB_ACCOUNT,
 };
 
 export function parseCompositionTab(raw: string | undefined): CompositionTab {
@@ -163,7 +164,7 @@ export function CompositionSection({
             slices={slices}
             size={320}
             centerLabel={hasData ? totalLabel : undefined}
-            centerSubLabel={hasData ? "총 자산" : undefined}
+            centerSubLabel={hasData ? COMPOSITION.TOTAL_ASSET : undefined}
           />
         </div>
 
@@ -222,7 +223,7 @@ export function CompositionSection({
             })}
           </div>
         ) : (
-          <p className="text-[11px] text-zinc-600">표시할 데이터가 없습니다.</p>
+          <p className="text-[11px] text-zinc-600">{COMPOSITION.EMPTY}</p>
         )}
       </div>
 
@@ -266,7 +267,7 @@ export function CompositionSection({
                     </div>
                   ))
                 ) : (
-                  <p className="text-[10px] text-zinc-700">손실 없음</p>
+                  <p className="text-[10px] text-zinc-700">{COMPOSITION.NO_LOSERS}</p>
                 )}
               </div>
             </div>
@@ -275,7 +276,7 @@ export function CompositionSection({
 
         {summary.concentration.topHolding && (
           <div className={`${sideCardClass} flex-1 min-w-[200px] max-w-[280px]`} data-testid="side-concentration">
-            <p className={sideCardLabelClass}>집중도 (HHI)</p>
+            <p className={sideCardLabelClass}>{COMPOSITION.CONCENTRATION}</p>
             <div className="flex items-baseline gap-2 mt-0.5">
               <span
                 className={`text-sm font-semibold tabular-nums ${

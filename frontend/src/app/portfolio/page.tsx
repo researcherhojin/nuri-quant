@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { API_BASE } from "@/lib/api";
+import { PORTFOLIO } from "@/lib/strings";
 import Link from "next/link";
 
 interface Holding {
@@ -102,9 +103,9 @@ function PortfolioContent() {
     setFormError("");
     const qty = parseFloat(form.quantity);
     const avg = parseFloat(form.avg_price);
-    if (!qty || qty <= 0) { setFormError("수량은 0보다 커야 합니다"); return; }
-    if (!avg || avg <= 0) { setFormError("평균가는 0보다 커야 합니다"); return; }
-    if (!form.ticker.trim()) { setFormError("Ticker를 입력하세요"); return; }
+    if (!qty || qty <= 0) { setFormError(PORTFOLIO.QTY_ERROR); return; }
+    if (!avg || avg <= 0) { setFormError(PORTFOLIO.PRICE_ERROR); return; }
+    if (!form.ticker.trim()) { setFormError(PORTFOLIO.TICKER_ERROR); return; }
 
     setSubmitting(true);
     const res = await fetch(`${API_BASE}/api/portfolio`, {
@@ -114,7 +115,7 @@ function PortfolioContent() {
     });
     if (!res.ok) {
       const data = await res.json();
-      setFormError(data.detail || "추가 실패");
+      setFormError(data.detail || PORTFOLIO.ADD_FAILED);
       setSubmitting(false);
       return;
     }
@@ -150,8 +151,8 @@ function PortfolioContent() {
   async function saveEdit(account: string, ticker: string) {
     const qty = parseFloat(editValues.quantity);
     const avg = parseFloat(editValues.avg_price);
-    if (!qty || qty <= 0) { setEditError("수량은 0보다 커야 합니다"); return; }
-    if (!avg || avg <= 0) { setEditError("평균가는 0보다 커야 합니다"); return; }
+    if (!qty || qty <= 0) { setEditError(PORTFOLIO.QTY_ERROR); return; }
+    if (!avg || avg <= 0) { setEditError(PORTFOLIO.PRICE_ERROR); return; }
 
     setEditSaving(true);
     setEditError("");
@@ -162,7 +163,7 @@ function PortfolioContent() {
     });
     if (!res.ok) {
       const data = await res.json();
-      setEditError(data.detail || "수정 실패");
+      setEditError(data.detail || PORTFOLIO.EDIT_FAILED);
       setEditSaving(false);
       return;
     }

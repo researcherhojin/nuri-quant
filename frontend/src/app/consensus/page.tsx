@@ -5,6 +5,7 @@ import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConsensusTable } from "@/components/ui/consensus-table";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CONSENSUS as CS } from "@/lib/strings";
 
 function VixBanner({ vix }: { vix: number | null }) {
   if (!vix || vix < 25) return null;
@@ -16,10 +17,10 @@ function VixBanner({ vix }: { vix: number | null }) {
                 : "bg-amber-500/10 border border-amber-500/20 text-amber-400"
     }`}>
       <span className="font-medium">
-        {isBlocked ? `VIX ${vix.toFixed(1)} > 30 — 신규 매수 차단` : `VIX ${vix.toFixed(1)} (25-30) — 반포지션 적용 중`}
+        {isBlocked ? `VIX ${vix.toFixed(1)} > 30 — ${CS.VIX_BLOCKED}` : `VIX ${vix.toFixed(1)} (25-30) — ${CS.VIX_CAUTION}`}
       </span>
       <span className="text-xs opacity-70">
-        {isBlocked ? "win rate 붕괴 구간, 모든 BUY 차단" : "BUY 종목 confidence ×0.5, 수량 절반만 진입"}
+        {isBlocked ? CS.VIX_BLOCKED_SUB : CS.VIX_CAUTION_SUB}
       </span>
     </div>
   );
