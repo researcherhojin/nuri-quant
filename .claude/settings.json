@@ -1,12 +1,36 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | grep -qiE 'git\\s+push\\s+.*(-f|--force)|git\\s+reset\\s+--hard|git\\s+clean\\s+-[a-z]*f' && { echo '{\"decision\":\"block\",\"reason\":\"파괴적 git 명령 감지 (force push / hard reset / clean -f). 사용자에게 확인 후 진행.\"}'; exit 2; } || true",
+            "timeout": 5,
+            "statusMessage": "destructive git check..."
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "INPUT=$(cat); FILE=$(echo \"$INPUT\" | jq -r '.tool_input.file_path // \"\"'); if [[ \"$FILE\" == */nuri/*.py && \"$FILE\" != */core/db.py ]]; then CONTENT=$(echo \"$INPUT\" | jq -r '.tool_input.new_string // .tool_input.content // \"\"'); if echo \"$CONTENT\" | grep -q 'import sqlite3'; then echo '{\"decision\":\"block\",\"reason\":\"sqlite3는 nuri/core/db.py만 import 가능. query()/query_df()/upsert_*() 사용.\"}'; exit 2; fi; fi",
+            "timeout": 5,
+            "statusMessage": "sqlite3 import guard..."
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; if [[ \"$f\" == *.py ]]; then cd /Users/ehbebe/workspace/nuri-quant && .venv/bin/ruff check \"$f\" --no-fix 2>&1 | head -10; fi; }",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; if [[ \"$f\" == *.py ]]; then .venv/bin/ruff check \"$f\" --no-fix 2>&1 | head -10; fi; }",
             "timeout": 15,
             "statusMessage": "ruff check..."
           },
