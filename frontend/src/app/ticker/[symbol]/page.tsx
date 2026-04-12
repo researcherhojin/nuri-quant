@@ -7,6 +7,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
 import { PriceChart } from "@/components/ui/price-chart";
+import { TICKER_DETAIL as TD } from "@/lib/strings";
 
 async function TickerDetail({ symbol }: { symbol: string }) {
   const [data, priceData, targets, external] = await Promise.all([
@@ -201,12 +202,12 @@ async function TickerDetail({ symbol }: { symbol: string }) {
             <CardContent className="pt-5">
               <p className="text-xs text-muted-foreground mb-3">Price Targets ({targets.stock_type})</p>
               <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between"><span className="text-muted-foreground">손절가</span><span className="text-red-400">${targets.stop_loss?.toFixed(2)} ({targets.stop_loss_pct}%)</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">1차 익절</span><span className="text-emerald-400">${targets.target_1?.toFixed(2)} (+{targets.target_1_pct}%)</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">2차 익절</span><span className="text-emerald-400">${targets.target_2?.toFixed(2)} (+{targets.target_2_pct}%)</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">트레일링</span><span className="text-muted-foreground">{targets.trailing_stop_pct}% from high</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{TD.STOP_LOSS}</span><span className="text-red-400">${targets.stop_loss?.toFixed(2)} ({targets.stop_loss_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{TD.TARGET_1}</span><span className="text-emerald-400">${targets.target_1?.toFixed(2)} (+{targets.target_1_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{TD.TARGET_2}</span><span className="text-emerald-400">${targets.target_2?.toFixed(2)} (+{targets.target_2_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{TD.TRAILING}</span><span className="text-muted-foreground">{targets.trailing_stop_pct}% from high</span></div>
                 {targets.analyst_target && (
-                  <div className="flex justify-between"><span className="text-muted-foreground">애널리스트</span><span className="text-blue-400">${targets.analyst_target?.toFixed(2)} ({targets.analyst_upside_pct > 0 ? "+" : ""}{targets.analyst_upside_pct}%)</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{TD.ANALYST}</span><span className="text-blue-400">${targets.analyst_target?.toFixed(2)} ({targets.analyst_upside_pct > 0 ? "+" : ""}{targets.analyst_upside_pct}%)</span></div>
                 )}
               </div>
             </CardContent>
