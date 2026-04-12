@@ -18,6 +18,7 @@
 
 import { useEffect, useState } from "react";
 import { X, ChevronDown } from "lucide-react";
+import { COLLAPSIBLE } from "@/lib/strings";
 
 interface CollapsibleStripProps {
   id: string;                 // localStorage key suffix — must be stable + unique
@@ -85,7 +86,7 @@ export function CollapsibleStrip({
         onClick={toggle}
         className={`flex items-center gap-1.5 text-[10px] text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900/50 rounded px-2 py-0.5 transition-colors ${className}`}
         data-testid={`strip-collapsed-${id}`}
-        aria-label={`${title} 펼치기`}
+        aria-label={`${title} ${COLLAPSIBLE.EXPAND_SUFFIX}`}
       >
         <ChevronDown size={10} />
         <span>{icon}</span>
@@ -106,8 +107,8 @@ export function CollapsibleStrip({
         type="button"
         onClick={toggle}
         className="absolute top-0 right-0 text-zinc-700 hover:text-zinc-300 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-        title="숨기기"
-        aria-label={`${title} 숨기기`}
+        title={COLLAPSIBLE.HIDE}
+        aria-label={`${title} ${COLLAPSIBLE.HIDE_SUFFIX}`}
         data-testid={`strip-close-${id}`}
       >
         <X size={12} />

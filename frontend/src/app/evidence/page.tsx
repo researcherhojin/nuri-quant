@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { fetchAPI, API_BASE } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { EVIDENCE as E } from "@/lib/strings";
 
 // === Types ===
 interface ChartMeta {
@@ -43,7 +44,7 @@ function ChartEmbed({ chart }: { chart: ChartMeta }) {
             <StatusBadge status="BLOCKED" />
           </div>
           <p className="text-xs text-muted-foreground">
-            차트 미생성. <code>make evidence</code> 실행 필요
+            {E.NOT_GENERATED} <code>{E.MAKE_EVIDENCE}</code> {E.RUN_REQUIRED}
           </p>
         </CardContent>
       </Card>
@@ -81,7 +82,7 @@ async function EvidenceCharts() {
       <Card className="bg-card border-border">
         <CardContent className="pt-5">
           <p className="text-sm text-muted-foreground">
-            증거 차트 로드 실패. API 서버 확인 필요.
+            {E.LOAD_FAILED}
           </p>
         </CardContent>
       </Card>
@@ -93,8 +94,8 @@ async function EvidenceCharts() {
       <Card className="bg-card border-border">
         <CardContent className="pt-5">
           <p className="text-sm text-muted-foreground">
-            증거 차트 없음. <code>make evidence</code> 또는{" "}
-            <code>make full-scan</code> 실행 필요
+            {E.NO_CHARTS} <code>{E.MAKE_EVIDENCE}</code> {E.OR}{" "}
+            <code>{E.MAKE_FULLSCAN}</code> {E.RUN_REQUIRED}
           </p>
         </CardContent>
       </Card>
@@ -117,7 +118,7 @@ export default function EvidencePage() {
       <div className="mb-6">
         <h1 className="text-lg font-semibold">Evidence Charts</h1>
         <p className="text-xs text-muted-foreground mt-1">
-          투자 결정 근거 시각화 — 레짐, 포트폴리오, 시그널, 공포·탐욕, 매도 근거
+          {E.SUBTITLE}
         </p>
       </div>
 
