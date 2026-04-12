@@ -13,7 +13,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (766 tests, 53 files)
+npm run test           # vitest run (812 tests, 55 files)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
 ```

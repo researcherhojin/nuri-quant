@@ -151,8 +151,8 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,661 tests, 128 files |
-| Frontend tests | 목표 ≥ 90% | 766 tests, 53 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,674 tests, 129 files |
+| Frontend tests | 목표 ≥ 90% | 812 tests, 55 files |
 | E2E | 핵심 flow 커버 | 25 Playwright tests (5 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
