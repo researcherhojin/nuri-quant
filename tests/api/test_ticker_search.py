@@ -71,6 +71,7 @@ class TestLatestPricesWithData:
     def test_prices_with_seeded_data(self, seeded_client):
         """가격 데이터가 있으면 price/prev 반환."""
         import pandas as pd
+
         from nuri.core.db import upsert_prices
         df = pd.DataFrame([
             {"ticker": "AAPL", "date": "2026-04-09", "open": 220, "high": 222, "low": 218, "close": 219, "volume": 1000, "adj_close": 219},
