@@ -13,6 +13,10 @@ Nuri-Quant FastAPI — Phase A~E 분석 결과를 JSON API로 제공.
 import logging
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()  # .env → os.environ (CORS_ORIGINS 등)
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
