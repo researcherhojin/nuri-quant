@@ -11,7 +11,6 @@ import {
   Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { API_BASE } from "@/lib/api";
 import { PIPELINE as PL } from "@/lib/strings";
 
 // === Types ===
@@ -239,7 +238,7 @@ export default function PipelinePage() {
 
   // 파이프라인 상태 fetch
   const fetchStatus = useCallback(() => {
-    fetch(`${API_BASE}/api/pipeline/status`)
+    fetch(`/api/pipeline/status`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: PipelineStatusData | null) => {
         if (data?.steps) {
@@ -257,7 +256,7 @@ export default function PipelinePage() {
 
   // 타임라인 fetch
   const fetchTimeline = useCallback(() => {
-    fetch(`${API_BASE}/api/pipeline/timeline?limit=30`)
+    fetch(`/api/pipeline/timeline?limit=30`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { events: TimelineEvent[] } | null) => {
         if (data?.events) setTimeline(data.events);
@@ -267,7 +266,7 @@ export default function PipelinePage() {
 
   // 게이트 fetch
   const fetchGates = useCallback(() => {
-    fetch(`${API_BASE}/api/gate`)
+    fetch(`/api/gate`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: Record<string, GateResult> | null) => {
         if (data) setGates(data);
@@ -293,7 +292,7 @@ export default function PipelinePage() {
   const handleRunStep = useCallback((stepId: string) => {
     setRunningSteps((prev) => new Set([...prev, stepId]));
 
-    fetch(`${API_BASE}/api/pipeline/${stepId}/run`, { method: "POST" })
+    fetch(`/api/pipeline/${stepId}/run`, { method: "POST" })
       .then((r) => r.json())
       .then((data) => {
         if (data.error) {

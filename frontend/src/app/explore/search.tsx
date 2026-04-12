@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
-import { API_BASE } from "@/lib/api";
 import { EXPLORE } from "@/lib/strings";
 
 interface SearchResult {
@@ -42,7 +41,7 @@ export function ExploreSearch() {
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/tickers/search?q=${encodeURIComponent(query.trim())}`);
+        const res = await fetch(`/api/tickers/search?q=${encodeURIComponent(query.trim())}`);
         if (res.ok) {
           const data = await res.json();
           setResults(data.results ?? []);
