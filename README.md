@@ -52,8 +52,8 @@ flowchart LR
 | `nuri/trading/agents/` | 3. Consensus | 10 specialist agents + weighted consensus. Risk agent has SELL veto at confidence ≥ 80 |
 | `nuri/trading/engine/` | 4. Certify | SIEGE 11-gate certification, conflict detection, learning memory |
 | `nuri/trading/recommend/` | 4-5 | Candidates, price targets, rebalance advisor, outcome tracker |
-| `nuri/api/` | Serve | FastAPI REST + SSE streaming on **:8001** |
-| `frontend/` | Serve | Next.js 16 dashboard on **:3000** (16 pages, dark theme, Tailwind 4 + shadcn/ui) |
+| `nuri/api/` | Serve | FastAPI REST + SSE streaming on **:8001** (60 endpoints) |
+| `frontend/` | Serve | Next.js 16 dashboard on **:3000** (17 pages, dark theme, Tailwind 4 + shadcn/ui) |
 | `nuri/core/db.py` | All | **Sole** SQLite gateway. 31 tables, WAL mode |
 | `config/*.yaml` | All | Thresholds, rules, signal metadata, scan universe |
 
@@ -115,7 +115,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, ~339 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (2,661 backend + 766 frontend)
+make test       # full suite (2,674 backend + 775 frontend)
 make test-fast  # backend only, slow tests excluded (~24s, ~52% faster)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
