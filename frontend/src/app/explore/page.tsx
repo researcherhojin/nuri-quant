@@ -22,8 +22,8 @@ interface MacroData {
 
 interface Candidate {
   ticker: string;
-  action: string;
-  signal_name: string;
+  direction: string;
+  signal_id: string;
   confidence: number;
 }
 
@@ -136,7 +136,7 @@ async function MarketContext() {
         <span>VIX <span className={`font-semibold tabular-nums ${vInfo.color}`}>{Math.round(vix * 10) / 10}</span> <span className={vInfo.color}>{vInfo.label}</span></span>
       )}
       {fg != null && (
-        <span>{EXPLORE.MARKET_CONTEXT === "시장 현황" ? "심리" : "F&G"} <span className="font-semibold tabular-nums">{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span></span>
+        <span>심리 <span className="font-semibold tabular-nums">{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span></span>
       )}
       {mInfo && macro && (
         <span>경제 <span className={`font-semibold tabular-nums ${mInfo.color}`}>{macro.score}</span> <span className={mInfo.color}>{mInfo.label}</span></span>
@@ -167,8 +167,8 @@ async function RecentSignals() {
           className="flex items-center gap-1 text-[10px] hover:text-zinc-100 transition-colors"
         >
           <span className="text-zinc-200 font-medium">{c.ticker}</span>
-          <span className="text-zinc-500">{c.signal_name.replace(/_/g, " ")}</span>
-          <StatusBadge status={c.action} size="sm" />
+          <span className="text-zinc-500">{(c.signal_id ?? "").replace(/_/g, " ")}</span>
+          <StatusBadge status={c.direction} size="sm" />
         </Link>
       ))}
     </div>
