@@ -105,9 +105,9 @@ describe("EvidencePage", () => {
 
     // Check iframe src contains chart id
     const srcs = Array.from(iframes).map((f) => f.getAttribute("src"));
-    expect(srcs).toContain("http://localhost:8001/api/evidence/regime_timeline");
-    expect(srcs).toContain("http://localhost:8001/api/evidence/portfolio_allocation");
-    expect(srcs).toContain("http://localhost:8001/api/evidence/fear_greed_history");
+    expect(srcs).toContain("/api/evidence/regime_timeline");
+    expect(srcs).toContain("/api/evidence/portfolio_allocation");
+    expect(srcs).toContain("/api/evidence/fear_greed_history");
   });
 
   it("shows empty state when no charts exist", async () => {

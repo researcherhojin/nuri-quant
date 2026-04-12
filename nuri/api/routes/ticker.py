@@ -8,6 +8,127 @@ from nuri.core.db import query
 router = APIRouter(tags=["ticker"])
 
 
+@router.get("/tickers/search")
+def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
+    """종목 검색 — ticker code 또는 한국 종목명 부분 매칭. universe + DB 가격 기반."""
+    from pathlib import Path
+
+    import yaml
+
+    from nuri.core.ticker_names import get_ticker_name
+
+    term = q.strip().upper()
+    results: list[dict] = []
+    seen: set[str] = set()
+
+    # 1) universe.yaml에서 ticker code 매칭
+    universe_path = Path(__file__).resolve().parents[3] / "config" / "universe.yaml"
+    all_tickers: list[str] = []
+    if universe_path.exists():
+        with open(universe_path) as f:
+            uni = yaml.safe_load(f) or {}
+        for group in uni.values():
+            if isinstance(group, dict) and "tickers" in group:
+                all_tickers.extend(group["tickers"])
+
+    # ticker code 매칭 (NVDA, 005930 등)
+    for t in all_tickers:
+        if term in t.upper() and t not in seen:
+            seen.add(t)
+            price_row = query(
+                "SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (t,)
+            )
+            results.append({
+                "ticker": t,
+                "name": get_ticker_name(t),
+                "price": price_row[0]["close"] if price_row else None,
+                "date": price_row[0]["date"] if price_row else None,
+            })
+        if len(results) >= 8:
+            break
+
+    # 2) 한글 이름 매칭 (KR 종목 — "삼성" → 005930.KS)
+    if len(results) < 8:
+        term_lower = q.strip().lower()
+        for t in all_tickers:
+            if t in seen:
+                continue
+            if t.endswith(".KS") or t.endswith(".KQ"):
+                name = get_ticker_name(t)
+                if name and term_lower in name.lower():
+                    seen.add(t)
+                    price_row = query(
+                        "SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (t,)
+                    )
+                    results.append({
+                        "ticker": t,
+                        "name": name,
+                        "price": price_row[0]["close"] if price_row else None,
+                        "date": price_row[0]["date"] if price_row else None,
+                    })
+            if len(results) >= 8:
+                break
+
+    return {"results": results, "count": len(results)}
+
+
+@router.get("/tickers/market-context")
+def get_market_context():
+    """시장 현황 — VIX, Fear&Greed, 매크로 점수를 독립적으로 조회. 레짐 분류 실패해도 작동."""
+    vix_row = query("SELECT value, date FROM macro WHERE indicator='vix' ORDER BY date DESC LIMIT 1")
+    fg_row = query("SELECT value, date FROM macro WHERE indicator='fear_greed' ORDER BY date DESC LIMIT 1")
+
+    # Macro score
+    try:
+        from nuri.quant.regime.macro_score import compute_macro_score
+        macro = compute_macro_score()
+        macro_score = macro.get("total_score") if isinstance(macro, dict) else None
+    except Exception:
+        macro_score = None
+
+    # Regime (best effort — may fail if SPY stale)
+    trend = None
+    try:
+        from nuri.quant.regime.classifier import classify_regime
+        regime = classify_regime()
+        if regime:
+            trend = regime.trend
+    except Exception:
+        pass
+
+    return {
+        "trend": trend,
+        "vix": round(vix_row[0]["value"], 1) if vix_row else None,
+        "vix_date": vix_row[0]["date"] if vix_row else None,
+        "fear_greed": round(fg_row[0]["value"], 1) if fg_row else None,
+        "fg_date": fg_row[0]["date"] if fg_row else None,
+        "macro_score": round(macro_score, 1) if macro_score else None,
+    }
+
+
+@router.get("/tickers/latest-prices")
+def get_latest_prices(tickers: str = Query(..., description="Comma-separated ticker list")):
+    """여러 종목의 최신 가격을 한 번에 조회. quicklink 카드용 batch endpoint."""
+    ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+    if len(ticker_list) > 20:
+        ticker_list = ticker_list[:20]
+
+    result: dict[str, dict] = {}
+    for t in ticker_list:
+        rows = query(
+            "SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 2",
+            (t,),
+        )
+        if rows:
+            latest = rows[0]["close"]
+            prev = rows[1]["close"] if len(rows) > 1 else None
+            result[t] = {"price": latest, "prev": prev, "date": rows[0]["date"]}
+        else:
+            result[t] = {"price": None, "prev": None, "date": None}
+
+    return {"prices": result}
+
+
 @router.get("/ticker/{symbol}")
 def get_ticker_detail(symbol: str):
     """단일 종목의 모든 분석 데이터."""

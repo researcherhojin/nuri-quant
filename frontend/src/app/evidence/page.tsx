@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
-import { fetchAPI, API_BASE } from "@/lib/api";
+import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EVIDENCE as E } from "@/lib/strings";
@@ -62,7 +62,7 @@ function ChartEmbed({ chart }: { chart: ChartMeta }) {
           </div>
         </div>
         <iframe
-          src={`${API_BASE}/api/evidence/${chart.id}`}
+          src={`/api/evidence/${chart.id}`}
           className="w-full border-0 rounded-lg bg-background"
           style={{ height: "450px" }}
           title={chart.description}

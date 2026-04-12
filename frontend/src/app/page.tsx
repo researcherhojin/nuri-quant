@@ -171,7 +171,7 @@ async function Dashboard({
   ]);
 
   const holdingCount = portfolio?.count ?? portfolio?.holdings?.length ?? 0;
-  if (holdingCount === 0) redirect("/portfolio?onboarding=true");
+  if (holdingCount === 0) redirect("/explore");
 
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
   const verdictLabel = verdictLabels[d.verdict_level] || VERDICT.NEUTRAL;

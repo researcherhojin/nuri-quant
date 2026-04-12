@@ -42,10 +42,23 @@ const extraDevOrigins = (process.env.NURI_DEV_ALLOWED_ORIGINS || "")
 
 const devAllowedOrigins = [...DEFAULT_DEV_ORIGINS, ...extraDevOrigins];
 
+const API_BACKEND = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+
 const nextConfig: NextConfig = {
   // #214 polish: allow Next.js dev resources (HMR WebSocket, static chunks) from
   // common private-network subnets. No personal or hard-coded host addresses.
   allowedDevOrigins: devAllowedOrigins,
+  // Proxy /api/* to backend — client-side fetch uses relative URLs,
+  // Next.js handles the forwarding. Eliminates CORS/CSP issues for
+  // network access (Mac mini → MBP dev server).
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${API_BACKEND}/api/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {
@@ -79,8 +92,8 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' http://localhost:8001 ws://localhost:3000",
-              "frame-src 'self' http://localhost:8001",
+              `connect-src 'self' ${API_BACKEND} ws://localhost:3000 ws://${API_BACKEND.replace("http://", "")}`,
+              `frame-src 'self' ${API_BACKEND}`,
               "frame-ancestors 'none'",
             ].join("; "),
           },

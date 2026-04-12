@@ -76,7 +76,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 ## API (57 endpoints)
 
-`nuri/api/routes/` — 57 REST endpoints on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval).
+`nuri/api/routes/` — 60 REST endpoints on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval).
 
 ## Scheduler
 
@@ -168,7 +168,7 @@ data/
 
 ## Testing
 
-2,661 backend tests across 128 files + 766 frontend vitest (53 files) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
+2,674 backend tests across 129 files + 817 frontend vitest (55 files) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
 
 **Slow marker**: ~12 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
 

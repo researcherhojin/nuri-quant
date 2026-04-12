@@ -266,7 +266,7 @@ describe("Dashboard — error fallbacks and redirect", () => {
       // redirect() throws in Next.js test context
     }
 
-    expect(redirect).toHaveBeenCalledWith("/portfolio?onboarding=true");
+    expect(redirect).toHaveBeenCalledWith("/explore");
   });
 
   it("handles freshness and pipeline API failures gracefully", async () => {
@@ -693,7 +693,7 @@ describe("Dashboard — portfolio API failure (line 64)", () => {
       // redirect throws
     }
 
-    expect(redirect).toHaveBeenCalledWith("/portfolio?onboarding=true");
+    expect(redirect).toHaveBeenCalledWith("/explore");
   });
 });
 

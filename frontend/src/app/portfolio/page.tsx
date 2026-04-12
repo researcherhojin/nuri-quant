@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
-import { API_BASE } from "@/lib/api";
 import { PORTFOLIO } from "@/lib/strings";
 import Link from "next/link";
 
@@ -82,7 +81,7 @@ function PortfolioContent() {
 
   async function fetchHoldings() {
     setLoading(true);
-    const res = await fetch(`${API_BASE}/api/portfolio`);
+    const res = await fetch(`/api/portfolio`);
     const data = await res.json();
     setHoldings(data.holdings || []);
     setLoading(false);
@@ -92,7 +91,7 @@ function PortfolioContent() {
 
   async function handleLoadSample() {
     setLoadingSample(true);
-    await fetch(`${API_BASE}/api/portfolio/sample`, { method: "POST" });
+    await fetch(`/api/portfolio/sample`, { method: "POST" });
     setLoadingSample(false);
     fetchHoldings();
   }
@@ -108,7 +107,7 @@ function PortfolioContent() {
     if (!form.ticker.trim()) { setFormError(PORTFOLIO.TICKER_ERROR); return; }
 
     setSubmitting(true);
-    const res = await fetch(`${API_BASE}/api/portfolio`, {
+    const res = await fetch(`/api/portfolio`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, quantity: qty, avg_price: avg }),
@@ -128,7 +127,7 @@ function PortfolioContent() {
   // ─── Delete ───
   async function handleDelete(account: string, ticker: string) {
     if (!confirm(`Delete ${ticker} from ${account}?`)) return;
-    await fetch(`${API_BASE}/api/portfolio/${account}/${ticker}`, { method: "DELETE" });
+    await fetch(`/api/portfolio/${account}/${ticker}`, { method: "DELETE" });
     fetchHoldings();
   }
 
@@ -156,7 +155,7 @@ function PortfolioContent() {
 
     setEditSaving(true);
     setEditError("");
-    const res = await fetch(`${API_BASE}/api/portfolio/${account}/${ticker}`, {
+    const res = await fetch(`/api/portfolio/${account}/${ticker}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ quantity: qty, avg_price: avg, sector: editValues.sector }),
@@ -180,7 +179,7 @@ function PortfolioContent() {
     setImportResult(null);
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`${API_BASE}/api/portfolio/import`, { method: "POST", body: formData });
+    const res = await fetch(`/api/portfolio/import`, { method: "POST", body: formData });
     const data = await res.json();
     if (res.ok) {
       setImportResult({ imported: data.imported, errors: data.errors || [] });
@@ -337,10 +336,10 @@ function PortfolioContent() {
               variant="outline" className="text-xs h-8">
               {importing ? "Importing..." : "Upload CSV"}
             </Button>
-            <a href={`${API_BASE}/api/portfolio/export?format=csv`} download>
+            <a href={`/api/portfolio/export?format=csv`} download>
               <Button variant="outline" className="text-xs h-8">Download CSV</Button>
             </a>
-            <a href={`${API_BASE}/api/portfolio/export?format=yaml`} download>
+            <a href={`/api/portfolio/export?format=yaml`} download>
               <Button variant="outline" className="text-xs h-8">Download YAML</Button>
             </a>
           </div>
