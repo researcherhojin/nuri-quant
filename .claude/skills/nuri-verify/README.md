@@ -19,7 +19,7 @@ make verify-all
 ## Manual checklist
 
 - [ ] `make lint` passes (ruff check)
-- [ ] `make test` passes (2928 tests, xdist parallel)
+- [ ] `make test` passes (2661 tests, xdist parallel)
 - [ ] Numbers changed? → `grep -ri "old_value"` across CLAUDE.md, README.md, STRATEGY.md
 - [ ] New rule or threshold? → Added to `config/rules.yaml` or `config/agents.yaml`, not hardcoded
 - [ ] New feature? → "이 기능이 실패하면 어떻게 알 수 있는가?" 답할 것

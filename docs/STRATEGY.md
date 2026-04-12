@@ -381,7 +381,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 **Context Files 설계 원칙:**
 
-- 거대한 하나의 파일 ✕ → 디렉토리별 맵 ✓ (`CLAUDE.md` 루트 + `frontend/AGENTS.md`)
+- 거대한 하나의 파일 ✕ → 디렉토리별 맵 ✓ (`CLAUDE.md` 루트 + 7개 디렉토리 scoped `CLAUDE.md`)
 - 코드에서 유추 가능한 정보 ✕ → 코드만으로 알 수 없는 결정의 "왜"만 기록
 - `STRATEGY.md`는 반드시 작업 시작 전에 읽도록 `CLAUDE.md`에 지시
 
