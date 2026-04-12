@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { fetchAPI } from "@/lib/api";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { EXPLORE, VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SIGNAL, HOLDING_STATUS, COMMON } from "@/lib/strings";
+import { EXPLORE, VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SIGNAL, REGIME_GUIDE, HOLDING_STATUS, COMMON } from "@/lib/strings";
 
 // ── Types ──
 interface RegimeData {
@@ -86,21 +86,26 @@ function QuickLinkCard({ ticker, name, price, prev }: {
 }) {
   const delta = price != null && prev != null && prev > 0 ? ((price - prev) / prev) * 100 : null;
   const isKr = ticker.endsWith(".KS") || ticker.endsWith(".KQ");
-  const priceStr = price != null
+  const hasPrice = price != null;
+  const priceStr = hasPrice
     ? isKr ? `₩${Math.round(price).toLocaleString()}` : `$${price < 100 ? price.toFixed(2) : Math.round(price).toLocaleString()}`
-    : "—";
+    : EXPLORE.NO_PRICE;
   const deltaStr = delta != null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%` : "";
   const deltaColor = delta == null ? "" : delta >= 0 ? "text-emerald-400" : "text-red-400";
 
   return (
     <Link
       href={`/ticker/${ticker}`}
-      className="flex flex-col gap-0.5 rounded-lg border border-zinc-800/60 bg-zinc-900/40 px-3 py-2 hover:bg-zinc-800/60 hover:border-zinc-700 transition-colors min-w-0"
+      className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2 transition-colors min-w-0 ${
+        hasPrice
+          ? "border-zinc-800/60 bg-zinc-900/40 hover:bg-zinc-800/60 hover:border-zinc-700"
+          : "border-zinc-800/30 bg-zinc-900/20 opacity-60 hover:opacity-80"
+      }`}
       data-testid={`quicklink-${ticker}`}
     >
       <span className="text-xs font-semibold text-zinc-100 truncate">{name}</span>
       <div className="flex items-baseline gap-1.5">
-        <span className="text-[10px] text-zinc-400 tabular-nums">{priceStr}</span>
+        <span className={`text-[10px] tabular-nums ${hasPrice ? "text-zinc-400" : "text-zinc-600"}`}>{priceStr}</span>
         {deltaStr && <span className={`text-[10px] tabular-nums font-medium ${deltaColor}`}>{deltaStr}</span>}
       </div>
     </Link>
@@ -139,7 +144,12 @@ async function MarketContext() {
 
   return (
     <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
-      {trend && <span className={`${tColor} font-semibold`}>{trendKo(trend)}</span>}
+      {trend && (
+        <span className="flex items-center gap-1.5">
+          <span className={`${tColor} font-semibold`}>{trendKo(trend)}</span>
+          {REGIME_GUIDE[trend] && <span className="text-zinc-600">— {REGIME_GUIDE[trend]}</span>}
+        </span>
+      )}
       {vix != null && (
         <span>VIX <span className={`font-semibold tabular-nums ${vInfo.color}`}>{Math.round(vix * 10) / 10}</span> <span className={vInfo.color}>{vInfo.label}</span></span>
       )}
@@ -227,26 +237,35 @@ async function QuickLinksGrid() {
     `/api/tickers/latest-prices?tickers=${allTickers.join(",")}`
   ).catch((): BatchPriceData => ({ prices: {} }));
 
+  const hasAnyMissing = allTickers.some((t) => !batch.prices[t]?.price);
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div>
-        <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2">{EXPLORE.US_POPULAR}</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {POPULAR_US.map((t) => {
-            const p = batch.prices[t.ticker];
-            return <QuickLinkCard key={t.ticker} ticker={t.ticker} name={t.name} price={p?.price ?? null} prev={p?.prev ?? null} />;
-          })}
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2">{EXPLORE.US_POPULAR}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {POPULAR_US.map((t) => {
+              const p = batch.prices[t.ticker];
+              return <QuickLinkCard key={t.ticker} ticker={t.ticker} name={t.name} price={p?.price ?? null} prev={p?.prev ?? null} />;
+            })}
+          </div>
+        </div>
+        <div>
+          <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2">{EXPLORE.KR_POPULAR}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {POPULAR_KR.map((t) => {
+              const p = batch.prices[t.ticker];
+              return <QuickLinkCard key={t.ticker} ticker={t.ticker} name={t.name} price={p?.price ?? null} prev={p?.prev ?? null} />;
+            })}
+          </div>
         </div>
       </div>
-      <div>
-        <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2">{EXPLORE.KR_POPULAR}</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {POPULAR_KR.map((t) => {
-            const p = batch.prices[t.ticker];
-            return <QuickLinkCard key={t.ticker} ticker={t.ticker} name={t.name} price={p?.price ?? null} prev={p?.prev ?? null} />;
-          })}
-        </div>
-      </div>
+      {hasAnyMissing && (
+        <p className="text-[9px] text-zinc-600 px-1">
+          💡 흐린 카드는 가격 미수집 — <code className="text-zinc-500 bg-zinc-800/50 px-1 rounded">{EXPLORE.COLLECT_HINT}</code>
+        </p>
+      )}
     </div>
   );
 }

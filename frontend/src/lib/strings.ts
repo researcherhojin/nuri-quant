@@ -302,7 +302,15 @@ export const EXPLORE = {
   NO_RESULTS: "일치하는 종목이 없습니다",
   SEARCH_HINT: "ticker 코드 또는 종목명을 입력하세요",
   LOADING: "검색 중...",
+  NO_PRICE: "미수집",
+  COLLECT_HINT: "make scan-extended로 전체 종목 수집",
 } as const;
+
+export const REGIME_GUIDE: Record<string, string> = {
+  bull: "추세 매수 유리 — 시그널 매수 진입 가능",
+  bear: "방어 자세 — 신규 매수 자제, 손절 엄수",
+  sideways: "방향성 불명확 — 소량 분할 매수 또는 관망",
+};
 
 /* ── Common ─────────────────────────────────────────────────── */
 export const COMMON = {
