@@ -72,6 +72,40 @@ def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
     return {"results": results, "count": len(results)}
 
 
+@router.get("/tickers/market-context")
+def get_market_context():
+    """시장 현황 — VIX, Fear&Greed, 매크로 점수를 독립적으로 조회. 레짐 분류 실패해도 작동."""
+    vix_row = query("SELECT value, date FROM macro WHERE indicator='vix' ORDER BY date DESC LIMIT 1")
+    fg_row = query("SELECT value, date FROM macro WHERE indicator='fear_greed' ORDER BY date DESC LIMIT 1")
+
+    # Macro score
+    try:
+        from nuri.quant.regime.macro_score import compute_macro_score
+        macro = compute_macro_score()
+        macro_score = macro.get("total_score") if isinstance(macro, dict) else None
+    except Exception:
+        macro_score = None
+
+    # Regime (best effort — may fail if SPY stale)
+    trend = None
+    try:
+        from nuri.quant.regime.classifier import classify_regime
+        regime = classify_regime()
+        if regime:
+            trend = regime.trend
+    except Exception:
+        pass
+
+    return {
+        "trend": trend,
+        "vix": round(vix_row[0]["value"], 1) if vix_row else None,
+        "vix_date": vix_row[0]["date"] if vix_row else None,
+        "fear_greed": round(fg_row[0]["value"], 1) if fg_row else None,
+        "fg_date": fg_row[0]["date"] if fg_row else None,
+        "macro_score": round(macro_score, 1) if macro_score else None,
+    }
+
+
 @router.get("/tickers/latest-prices")
 def get_latest_prices(tickers: str = Query(..., description="Comma-separated ticker list")):
     """여러 종목의 최신 가격을 한 번에 조회. quicklink 카드용 batch endpoint."""

@@ -7,19 +7,6 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { EXPLORE, VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SIGNAL, REGIME_GUIDE, HOLDING_STATUS, COMMON } from "@/lib/strings";
 
 // ── Types ──
-interface RegimeData {
-  regime: string;
-  trend: string;
-  vix?: number;
-  fear_greed?: number;
-  confidence: number;
-}
-
-interface MacroData {
-  score: number;
-  interpretation: string;
-}
-
 interface Candidate {
   ticker: string;
   direction: string;
@@ -113,21 +100,24 @@ function QuickLinkCard({ ticker, name, price, prev }: {
 }
 
 // ── Market Context Strip ──
-// Shows whatever data is available — regime, VIX, F&G, macro independently.
-// Each metric renders only when its data exists. All-empty = fallback message.
-async function MarketContext() {
-  const [regime, macro, dashboard] = await Promise.all([
-    fetchAPI<{ regime_state: RegimeData }>("/api/regime").catch(() => null),
-    fetchAPI<MacroData>("/api/macro").catch(() => null),
-    fetchAPI<{ regime: { vix?: number; fear_greed?: number; trend?: string } }>("/api/dashboard").catch(() => null),
-  ]);
+// Single dedicated endpoint that queries VIX/F&G/macro from DB independently.
+// Works even when regime classification fails (SPY data stale).
+interface MarketContextData {
+  trend: string | null;
+  vix: number | null;
+  vix_date: string | null;
+  fear_greed: number | null;
+  fg_date: string | null;
+  macro_score: number | null;
+}
 
-  // Prefer regime API, fallback to dashboard for VIX/F&G
-  const r = regime?.regime_state;
-  const trend = r?.trend ?? dashboard?.regime?.trend ?? null;
-  const vix = r?.vix ?? dashboard?.regime?.vix ?? null;
-  const fg = r?.fear_greed ?? dashboard?.regime?.fear_greed ?? null;
-  const hasMacro = macro && typeof macro.score === "number" && macro.score > 0;
+async function MarketContext() {
+  const ctx = await fetchAPI<MarketContextData>("/api/tickers/market-context").catch(() => null);
+
+  const trend = ctx?.trend ?? null;
+  const vix = ctx?.vix ?? null;
+  const fg = ctx?.fear_greed ?? null;
+  const hasMacro = ctx?.macro_score != null && ctx.macro_score > 0;
   const hasAny = trend || vix != null || fg != null || hasMacro;
 
   if (!hasAny) {
@@ -139,7 +129,7 @@ async function MarketContext() {
   }
 
   const vInfo = vixZone(vix);
-  const mInfo = hasMacro ? macroLevel(macro!.score) : null;
+  const mInfo = hasMacro ? macroLevel(ctx!.macro_score!) : null;
   const tColor = trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-amber-400";
 
   return (
@@ -156,8 +146,8 @@ async function MarketContext() {
       {fg != null && (
         <span>심리 <span className="font-semibold tabular-nums">{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span></span>
       )}
-      {mInfo && macro && (
-        <span>경제 <span className={`font-semibold tabular-nums ${mInfo.color}`}>{macro.score}</span> <span className={mInfo.color}>{mInfo.label}</span></span>
+      {mInfo && ctx?.macro_score && (
+        <span>경제 <span className={`font-semibold tabular-nums ${mInfo.color}`}>{ctx.macro_score}</span> <span className={mInfo.color}>{mInfo.label}</span></span>
       )}
     </div>
   );
