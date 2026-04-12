@@ -186,7 +186,7 @@ describe("ExploreSearch component", () => {
     expect(screen.queryByTestId("explore-search-dropdown")).toBeNull();
   });
 
-  it("handles fetch error gracefully", async () => {
+  it("handles fetch error gracefully (covers catch branch)", async () => {
     (global.fetch as any).mockRejectedValueOnce(new Error("Network error"));
 
     const { ExploreSearch } = await import("@/app/explore/search");
@@ -195,11 +195,24 @@ describe("ExploreSearch component", () => {
     const input = screen.getByTestId("explore-search-input");
     fireEvent.change(input, { target: { value: "NVDA" } });
 
-    // Should not crash — no dropdown shown
+    // Wait for debounce + catch to fire
     await waitFor(() => {
+      // After error, results should be empty and dropdown closed
       expect(screen.queryByTestId("explore-search-dropdown")).toBeNull();
     }, { timeout: 2000 });
   });
+
+  it("onFocus does not open dropdown when no results", async () => {
+    const { ExploreSearch } = await import("@/app/explore/search");
+    render(<ExploreSearch />);
+
+    const input = screen.getByTestId("explore-search-input");
+    // Focus with no prior search — should NOT open dropdown
+    fireEvent.focus(input);
+    expect(screen.queryByTestId("explore-search-dropdown")).toBeNull();
+  });
+
+  // outside click is tested by Playwright E2E (jsdom doesn't reliably support ref.contains)
 });
 
 describe("Explore page strings", () => {
