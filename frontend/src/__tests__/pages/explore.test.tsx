@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-// Mock next/navigation
+// Mock next/navigation — shared mock push for assertion
+const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: mockPush }),
   usePathname: () => "/explore",
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -80,6 +81,109 @@ describe("ExploreSearch component", () => {
       },
       { timeout: 2000 },
     );
+  });
+
+  it("navigates on Enter key", async () => {
+    const { ExploreSearch } = await import("@/app/explore/search");
+    render(<ExploreSearch />);
+
+    const input = screen.getByTestId("explore-search-input");
+    fireEvent.change(input, { target: { value: "TSLA" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(mockPush).toHaveBeenCalledWith("/ticker/TSLA");
+  });
+
+  it("closes dropdown on Escape key", async () => {
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [{ ticker: "NVDA", name: "NVIDIA", price: 185, date: "2026-04-10" }],
+        count: 1,
+      }),
+    });
+
+    const { ExploreSearch } = await import("@/app/explore/search");
+    render(<ExploreSearch />);
+
+    const input = screen.getByTestId("explore-search-input");
+    fireEvent.change(input, { target: { value: "NVDA" } });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("explore-search-dropdown")).toBeTruthy();
+    }, { timeout: 2000 });
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByTestId("explore-search-dropdown")).toBeNull();
+  });
+
+  it("navigates on result click", async () => {
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [{ ticker: "AAPL", name: "Apple", price: 220, date: "2026-04-10" }],
+        count: 1,
+      }),
+    });
+
+    const { ExploreSearch } = await import("@/app/explore/search");
+    render(<ExploreSearch />);
+
+    const input = screen.getByTestId("explore-search-input");
+    fireEvent.change(input, { target: { value: "AAPL" } });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("search-result-AAPL")).toBeTruthy();
+    }, { timeout: 2000 });
+
+    fireEvent.click(screen.getByTestId("search-result-AAPL"));
+    expect(mockPush).toHaveBeenCalledWith("/ticker/AAPL");
+  });
+
+  it("shows KR price format in dropdown", async () => {
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [{ ticker: "005930.KS", name: "삼성전자", price: 206000, date: "2026-04-10" }],
+        count: 1,
+      }),
+    });
+
+    const { ExploreSearch } = await import("@/app/explore/search");
+    render(<ExploreSearch />);
+
+    fireEvent.change(screen.getByTestId("explore-search-input"), { target: { value: "삼성" } });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("search-result-005930.KS")).toBeTruthy();
+    }, { timeout: 2000 });
+
+    const result = screen.getByTestId("search-result-005930.KS");
+    expect(result.textContent).toContain("삼성전자");
+    expect(result.textContent).toContain("₩");
+  });
+
+  it("clears results when input is emptied", async () => {
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [{ ticker: "NVDA", name: "NVIDIA", price: 185, date: "2026-04-10" }],
+        count: 1,
+      }),
+    });
+
+    const { ExploreSearch } = await import("@/app/explore/search");
+    render(<ExploreSearch />);
+
+    const input = screen.getByTestId("explore-search-input");
+    fireEvent.change(input, { target: { value: "NVDA" } });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("explore-search-dropdown")).toBeTruthy();
+    }, { timeout: 2000 });
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.queryByTestId("explore-search-dropdown")).toBeNull();
   });
 
   it("handles fetch error gracefully", async () => {
