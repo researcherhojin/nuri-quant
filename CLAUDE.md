@@ -4,6 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @docs/STRATEGY.md
 
+## Harness Principles
+
+```
+1. 모르면 읽는다         — 가정하지 않는다
+2. 2번 실패하면 접근을 바꾼다  — 같은 시도 3회 금지
+3. 수정 후 실행한다       — 논리적 확신을 신뢰하지 않는다
+4. 스코프를 지킨다       — 요청된 것만 한다
+5. 숫자를 grep한다       — 한 곳만 고치지 않는다
+6. 시스템이 차단한다      — 문서가 아닌 린터/CI/게이트가 강제한다
+```
+
 ## Project
 
 Nuri-Quant (누리퀀트) — Open-source quant investment platform.
@@ -27,7 +38,9 @@ cd frontend && npm ci                   # frontend deps (separate from make setu
 uv sync --extra dev                     # manual: install with test/lint tools
 
 # Data collection
-make collect                            # Phase A 12 collectors (stock/stock_kr/macro/technical/fear_greed/ark/cboe/coingecko/finviz/reddit/fred_calendar/macro_news)
+make collect                            # Phase A daily collectors (stock/stock_kr/macro/technical/fear_greed/ark/cboe/coingecko/finviz/reddit/fred_calendar/macro_news)
+make collect-kis                        # KIS Open API 실시간 잔고/시세
+make collect-kis-check                  # KIS 연결 상태 확인
 python -m nuri.collectors.stock --period 5y  # US stocks 5Y (OpenBB)
 python -m nuri.collectors.stock_kr --days 1825  # Korean stocks 5Y (pykrx)
 python -m nuri.collectors.fundamental   # PE/ROE/margins (OpenBB metrics)
@@ -66,6 +79,7 @@ python -m nuri.trading.agents.consensus --ticker TSLA  # 단일 종목
 make strategy         # L/S regime + transition + actions
 make strategy-execute # Execute L/S strategy positions
 make positions        # Position status
+make backtest         # VectorBT backtest engine (single run)
 make backtest-ls      # full backtest + Monte Carlo
 make backtest-stress  # stress test scenarios
 make backtest-rules   # rules-based backtest
@@ -94,6 +108,7 @@ make targets          # 전 종목 매수가/손절가/익절가 계산
 make rebalance        # 규칙 위반 감지 + 매도 수량 제시
 make evidence         # 5개 Plotly 증거 차트 생성 (data/reports/{date}/evidence/)
 make external         # 외부 데이터 요약 (TipRanks, Dataroma, ARK 등)
+make report            # Daily report (Discord/stdout)
 make report-llm       # Qwen3.5 LLM 리포트 생성 + 자동 저장
 
 # Lint + Test
@@ -103,7 +118,9 @@ make test             # pytest tests/ -v --cov=nuri (full suite, ~50s local)
 make test-fast        # -m "not slow" — slow LLM tests 제외 (~24s, PR CI 기본)
 make test-slow        # slow tests only
 make verify-quick     # fast pre-commit check: tests + regime (~10s, no network)
+make verify-fast      # ~2min pre-deploy (verify.py without backtest)
 make verify-all       # full verification with network (커밋 전 필수)
+make validate-portfolio  # Verify each ticker in portfolio.yaml has live data
 .venv/bin/python -m pytest tests/test_db.py -v                                    # single file
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices -v                  # single class
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v  # single test
@@ -124,9 +141,17 @@ scripts/sync_dev.sh push      # Dev↔dev 노트북 상태 동기화 (.env, DB, 
 scripts/sync_dev.sh pull      # 반대 방향 (--with-reports / --no-claude 옵션)
 bash scripts/auto_deploy.sh   # Mac mini receiver: fetch + ff-only merge + 변경 분석 (manual test; canonical run is launchd com.nuri-quant.autopull every 5min)
 
+# Decision tracking
+make track-decisions  # Decision outcome tracking + snapshot
+
 # Utilities
 make ports            # show port usage
 make ports-kill       # kill conflicting port processes
+make update-counts    # Update test/architecture counts in docs
+make demo             # Demo mode setup (scripts/demo.sh)
+make clean            # Remove build artifacts
+make clean-all        # + __pycache__ + token cache
+make clean-deep       # + node_modules + uv cache (interactive, requires reinstall)
 ```
 
 All `make` targets use `.venv/bin/python` — activate the venv or use the full path.
@@ -151,149 +176,20 @@ nuri/
 │   ├── recommend/     # Candidates, rebalance, tracker, price_targets
 │   ├── swing/         # Market-wide scanner + rules
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
-├── api/               # FastAPI REST API (routes/)
+├── api/               # FastAPI REST API (57 endpoints, routes/)
 ├── alerts/            # Discord daily report + bot, Telegram alerts
 └── llm/               # LLM report (Ollama) + OpenAI wrapper + event classifier
 ```
 
-### DB as the sole integration point
+### Key Design Patterns
 
-`nuri/core/db.py` is the **only** module that imports `sqlite3`. Every other module reads/writes through its functions. The DB file lives at `data/portfolio.db` (WAL mode). All upsert functions accept an optional `db_path` parameter — tests use this to inject a `tmp_path` fixture for isolation. Schema versioning via `schema_version` table + `_MIGRATIONS` list for incremental changes.
-
-Key DB access patterns:
-- `get_db()` — context manager, auto-commits on success, auto-rollbacks on exception
-- `query(sql, params)` → list of `sqlite3.Row` (dict-like access)
-- `query_df(sql, params)` → pandas DataFrame
-- `upsert_*()` functions for each table (prices, portfolio, fundamentals, etc.)
-- `replace_portfolio_account(account, records)` — DELETE+INSERT in one tx for proper yaml→DB sync (removes stale rows when a ticker leaves yaml)
-
-### Collector template pattern
-
-All collectors inherit `BaseCollector` (`nuri/collectors/base.py`). The contract:
-1. Implement `collect(**kwargs) -> Any` (fetch data)
-2. Implement `save(data) -> int` (persist to DB)
-3. External code calls `run()` which does `collect()` → `save()` with logging and timing
-
-`_get_tickers(market=)` filters portfolio tickers: `"us"` excludes `.KS`, `"kr"` includes only `.KS`.
-
-### Signal system (20 signals, YAML-driven registry)
-
-`signal_backtest.py` uses a **detector registry** — Python detector 함수와 메타데이터(임계값/분류/hold_days)를 분리.
-메타데이터는 `config/signals.yaml`에 외부화 (`nuri/core/signal_config.py` 로드). 4 카테고리:
-
-- **Price-based** (10): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
-- **Macro-based** (3): vix_reversal, pcr_reversal, yield_curve_recovery — `merge_macro_data()` 필요
-- **Data-dependent** (2): insider_cluster, short_squeeze — `merge_data_signals()` 필요
-- **Chart pattern** (5): macd_bullish_turn, macd_bearish_turn, bb_squeeze_breakout, near_52w_low_bounce, volume_profile_resistance — `nuri/quant/chart_analysis.py`와 동일 컨셉
-
-`SIGNAL_DEFINITIONS`는 `_build_signal_definitions()`이 YAML + detector registry에서 빌드. 임계값 변경 → YAML만 수정 (코드 변경 0).
-`BUY_SIGNALS`/`SELL_SIGNALS`는 YAML의 `type` 필드에서 자동 추출.
-
-**Macro data quirk**: `us_3m_yield` (FRED) is absent in yfinance fallback — `^IRX` (13-week T-Bill) is stored as `us_2y_yield`. `merge_macro_data()` has a fallback: queries `us_2y_yield` when `us_3m_yield` is empty.
-
-### C→D→E data flow
-
-The validation/regime/recommendation pipeline is connected by data, not imports:
-
-1. **C-1** (`signal_backtest`) writes `signal_results.csv` + `signal_scorecard.csv` to `data/reports/YYYY-MM-DD/`
-2. **D-3** (`strategy_map.analyze_signal_by_regime()`) reads `signal_results.csv`, labels each trade with the regime active at entry
-3. **E-1** (`candidates`) reads the regime-specific stats from D-3 to calibrate confidence scores
-4. **E-3** (`tracker`) saves E-1/E-2 outputs to `recommendations` table for 30/60/90-day tracking
-
-Re-running C-1 (`python -m nuri.quant.validation.signal_backtest`) updates the data that D-3 and E-1 use.
-
-### Multi-Agent Consensus (10 agents)
-
-`nuri/trading/agents/` — 10 specialist agents with weighted voting. Config in `config/agents.yaml`, loaded via `nuri/core/agent_config.py`. Confidence normalized to 0-100 via `BaseAgent.normalize_confidence()`.
-
-Key behaviors:
-- Risk agent (20% weight) has **veto power**: SELL + confidence >= 80 overrides all others
-- Korean market agent returns neutral HOLD for US tickers
-- Retail agent weight is 0% (data stabilization phase)
-- New agents return graceful HOLD when data unavailable
-
-### Regime classifier (6 base + 4 special)
-
-Base regimes: `{bull,bear,sideways}_{low,high}_vol` — determined by SPY SMA50/200 position + VIX with adaptive hysteresis (5 days normal, 2 days if VIX≥25).
-
-Special regimes (priority order, override base `regime` field): euphoria, stagflation, recovery, sector_rotation. See `nuri/quant/regime/classifier.py` for thresholds.
-
-`RegimeState.trend`/`.volatility` always reflect the base classification. `details["special_regime"]` is `None` or the special name. `details["base_regime"]` always has the 6-regime name.
-
-`REGIME_ALLOCATION` includes all 10 regimes (6 base + 4 special). `position.py` uses `REGIME_ALLOCATION` lookup for regime alignment (fallback to substring matching for unknown regimes).
-
-### SIEGE Engine
-
-`nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit. See `docs/STRATEGY.md` §3.3 for formula and §6 for SIEGE 11-Gate specification.
-
-### Pipeline Observability (SIEGE Event Journal + Dagster Freshness)
-
-`nuri/core/events.py` — Append-only event journal. `emit_event()` records all state transitions (step_started/completed/failed/blocked). `get_pipeline_status()` returns 6-step status. `get_timeline()` returns event history with causation_id for chain tracing.
-
-`nuri/core/freshness.py` — Data freshness SLA monitoring. `FRESHNESS_POLICIES` defines warn/fail thresholds per data source. `check_freshness(key)` returns PASS/WARN/FAIL status with age. Sources: prices (48h/120h), VIX (24h/72h), F&G (24h/48h), consensus (24h/48h), certification (24h/48h).
-
-`nuri/core/pipeline.py` — Pipeline orchestration. `STEP_DEPENDENCIES` defines the 6-step DAG. `run_step()` wrapper enforces dependency completion + records events.
-
-`nuri/core/timezone.py` — All internal time is KST. `kst_now()`, `today_kst()`, `to_kst()`. DB stores dates as YYYY-MM-DD strings. **Never use `datetime.now()` directly** — always `kst_now()` or `today_kst()`.
-
-`nuri/api/routes/pipeline.py` — Pipeline control API:
-- `GET /api/pipeline/status` — 6-step status + record counts
-- `POST /api/pipeline/{step}/run` — Execute step (background)
-- `GET /api/pipeline/timeline` — Event log
-- `GET /api/freshness` — Data freshness report (PASS/WARN/FAIL per source)
-
-`nuri/api/routes/trades.py` — Trade execution tracking:
-- `POST /api/trades` — Record trade execution
-- `GET /api/trades` — List trades (optional ticker filter)
-- `PUT /api/trades/{id}` — Update exit info
-
-### Dashboard API (Projection-based, <5s)
-
-`/api/dashboard` reads pre-computed results from DB instead of running analysis inline. Consensus results come from `recommendations` table (populated by `make consensus`). Response includes `freshness` and `pipeline_status` fields so the UI shows data age.
-
-### Scheduler
-
-`nuri/scheduler.py` defines 21 cron jobs in the `SCHEDULES` list. All times are KST. Lazy imports inside `_run_collector()` to avoid import-time side effects.
-
-## Environment Variables
-
-Configured in `.env` (see `.env.example`):
-- `FRED_API_KEY` — FRED macro data (optional; yfinance fallback)
-- `DISCORD_WEBHOOK_URL` — daily report delivery (optional; falls back to stdout)
-- `DISCORD_TOKEN` — bot mode alerts (optional)
-- `FINNHUB_API_KEY` — US institutional flows (optional)
-- `OLLAMA_HOST` / `OLLAMA_MODEL` — LLM report (default: localhost:11434, qwen3.5)
-- `DASHBOARD_PASSWORD` — Next.js dashboard auth (optional; unset = public)
-- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` — Telegram alerts (optional)
-- `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — Paper trading (optional; DryRun fallback)
-- `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET` — KIS Open API live mode (optional; falls back to `config/kis/kis_devlp.yaml`, gitignored)
-- `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET` — KIS Open API paper mode (optional)
-
-## DB Schema (SQLite, WAL mode)
-
-31 tables total (15 migrations). Key tables:
-
-| Table | Purpose |
-|-------|---------|
-| `prices` | OHLCV 5Y (25K+ rows) |
-| `portfolio` | Holdings (account, ticker, qty, avg_price) |
-| `macro` | FRED indicators + Fear&Greed |
-| `signals` | TA-Lib technical indicators |
-| `fundamentals` | PE, ROE, margins, growth, beta |
-| `superinvestors` | 13F holdings (Buffett, etc.) |
-| `estimates` | Analyst consensus + target prices |
-| `recommendations` | Daily recs + 30/60/90d outcome tracking |
-| `positions` | Long/Short strategy positions |
-| `swing_trades` | Market-wide swing trade positions |
-| `strategy_memory` | Signal performance snapshots (append-only) |
-| `analyst_ratings` | Upgrade/downgrade history |
-| `earnings_surprises` | EPS actual vs estimate |
-| `insider_trades` | Insider buy/sell transactions |
-| `schema_version` | Migration version tracking |
-| `pipeline_events` | Append-only event journal |
-| `trades` | Trade execution records |
-
-Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `audit_log`, `external_analysis`, `macro_events`, `external_llm_calls`.
+- **DB sole integration point**: `nuri/core/db.py` is the ONLY `sqlite3` importer (hook-enforced). See `nuri/core/CLAUDE.md`.
+- **Loose coupling via data**: Pipeline phases communicate through DB/CSV, never direct imports. See `docs/ARCHITECTURE.md`.
+- **Collector template**: All inherit `BaseCollector` (collect→save→run). See `nuri/collectors/CLAUDE.md`.
+- **10-agent consensus**: Weighted voting, risk agent veto. See `nuri/trading/agents/CLAUDE.md`.
+- **SIEGE 11-gate**: All recommendations must pass 11 conditions. See `nuri/trading/engine/CLAUDE.md`.
+- **20 signals, YAML registry**: `config/signals.yaml` drives `signal_backtest.py`. See `docs/ARCHITECTURE.md`.
+- **Regime classifier**: 6 base + 4 special regimes. See `docs/ARCHITECTURE.md`.
 
 ## Code Conventions
 
@@ -304,190 +200,39 @@ Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime
 - Korean stock tickers use `.KS` suffix (e.g., `005930.KS` for 삼성전자)
 - **Timezone: always use `kst_now()` or `today_kst()` from `nuri.core.timezone`** — never `datetime.now()`
 
-### Config files (`config/`)
-
-- `portfolio.yaml` — 7 accounts (test/demo/sample/pension/irp/test/sample), 30 holdings (test 17 + demo 10 + sample 3)
-- `stock_types.yaml` — Manual growth/value override per ticker. Controls stop-loss/take-profit thresholds (growth: -7%/+20%/+40%, value: -10%/+15%/+30%). Swing type is auto-tagged by scanner.
-- `agents.yaml` — Agent thresholds (RSI 30/70, PE 15/40, confidence caps, etc.) loaded via `nuri/core/agent_config.py`. Includes `confidence_normalization` scales for uniform 0-100 mapping.
-- `alerts.yaml` — Thresholds (price swing 3%, Fear&Greed bounds 20/80), report timing
-- `rules.yaml` — Investment rules loaded via `nuri/core/rules.py`. See [Investment Rules](#investment-rules) for full details.
-
-### Scripts (`scripts/`)
-
-- `setup.sh` — Creates `.venv` via `uv`, installs deps
-- `migrate_db.py` — DB schema creation + migration runner
-- `import_portfolio.py` — Syncs `config/portfolio.yaml` → DB portfolio table
-- `verify.py` — Master verification orchestrator, saves to `data/reports/YYYY-MM-DD/`
-- `gate_check.py` — Pipeline gate verifier (exits 1 if BLOCKED)
-- `deploy.sh` — rsync dev → Mac Mini production
-- `sync_dev.sh` — dev↔dev 두 노트북 간 상태 동기화 (gitignore된 파일 + ~/.claude Tier 3, rsync over SSH)
-- `auto_deploy.sh` — Mac mini receiver. launchd `com.nuri-quant.autopull` (5분 간격)이 호출. fetch → ff-only merge → dependency/schema drift 경고 → 서비스 재시작 hook (placeholder). 로그: `~/Library/Logs/nuri-quant-autopull.log`
-- `com.nuri-quant.autopull.plist` — 위 스크립트의 launchd 템플릿. 설치: `cp ~/Library/LaunchAgents/ && launchctl load`
-- `backup.sh` — 30-day rolling DB backup
-
-## Data Directory
-
-```
-data/
-├── portfolio.db      # Main SQLite DB (WAL mode)
-├── reports/          # Pipeline outputs: data/reports/YYYY-MM-DD/
-│   └── YYYY-MM-DD/   # signal_results.csv, signal_scorecard.csv, portfolio_action_plan.md, evidence/
-├── backups/          # 30-day rolling DB backups
-└── exports/          # Ad-hoc exports
-```
-
-## Testing
-
-2,661 backend tests across 128 files (`tests/{alerts,analysis,api,collectors,core,llm,quant,scripts,trading/}` subdirs + `test_scheduler.py`) + 766 frontend vitest (53 files, organized into `__tests__/{components,lib,pages,coverage}/` + 2 root system tests) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` for parallel execution (`-n auto --dist worksteal`). Coverage policy: no fixed minimum — Codecov gates on a 1% relative regression vs prior commit (`codecov.yml` `target: auto`). Tests use `tmp_path` fixture for isolated SQLite databases:
-
-**Slow marker** (PR #206): ~12 LLM/heavy tests are marked `@pytest.mark.slow`. PR CI excludes them via `-m "not slow"` (~24% wall time savings); main push runs the full suite. Use `make test-fast` locally for the same fast subset, `make test-slow` for slow only.
-```python
-@pytest.fixture
-def db_path(tmp_path):
-    path = tmp_path / "test.db"
-    init_db(path)
-    return path
-```
-
-Pass `db_path` to all DB functions in tests. `conftest.py` (autouse) mocks `yfinance.download` → empty DataFrame and `yfinance.Ticker` → stub with None attributes. All tests run network-free.
-
-### Verifying numeric claims
-
-All counts in this doc are verified against code. Re-run after major changes — drift here causes future sessions to make decisions on stale facts.
-
-```bash
-# Tests
-.venv/bin/python -m pytest tests/ --collect-only -q | tail -1   # backend
-find tests -name "test_*.py" -type f | wc -l                     # backend test files (incl. subdirs)
-cd frontend && npx vitest run | tail -5                          # frontend (Test Files / Tests)
-grep -rhE "^\s*test\(" frontend/e2e/ | wc -l                     # Playwright E2E
-
-# Architectural counts
-ls nuri/collectors/*.py | grep -vE 'base|__init__' | wc -l       # collectors
-ls nuri/trading/agents/*.py | grep -vE 'base|__init__|consensus|config' | wc -l  # agents
-.venv/bin/python -c "from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS; print(len(SIGNAL_DEFINITIONS))"  # signals
-.venv/bin/python -c "from nuri.trading.strategy.longshort import REGIME_ALLOCATION; print(len(REGIME_ALLOCATION))"  # regimes
-grep -rhE "@router\.(get|post|put|delete|patch)" nuri/api/routes/ | wc -l  # API endpoints
-grep -c "CREATE TABLE" nuri/core/db.py                           # DB tables
-find frontend/src/app -name "page.tsx" | wc -l                   # frontend routes
-```
-
-If any of these disagree with the numbers stated above, **fix the doc** — do not weaken the claim to be drift-immune. Precise numbers are load-bearing for trust.
-
-### DB Migrations
-
-Add incremental schema changes to `_MIGRATIONS` in `nuri/core/db.py`:
-```python
-_MIGRATIONS: list[tuple[int, str, str]] = [
-    (1, "add column foo to prices", "ALTER TABLE prices ADD COLUMN foo TEXT;"),
-]
-```
-`init_db()` auto-applies unapplied migrations and tracks them in `schema_version` table.
-
-### CI/CD Pipeline (`main-ci-cd.yml`)
-
-On push/PR to `main`:
-1. **Lint** — `ruff check nuri/ tests/ scripts/`
-2. **Test** — pytest with `pytest-xdist` parallel (`-n auto`, sharded into 2). Coverage uploaded to Codecov; no `--cov-fail-under` is set, so the gate is Codecov's 1% relative regression check (`codecov.yml`), not a fixed pytest threshold. TA-Lib compiled from source (cached). Deps installed via `uv sync --frozen` (lockfile: `uv.lock`).
-3. **Frontend** — `tsc --noEmit` + vitest with coverage
-
-PR-specific checks (`pr-checks.yml`):
-- Merge conflict detection
-- Conventional commit validation (warning, not blocking)
-- File size limit: 5MB max
-- Auto-posted PR summary comment
-
-Security: Trivy vulnerability scan (CRITICAL severity) runs in `main-ci-cd.yml` (not pr-checks).
-
 ## Gotchas
 
-- **Next.js 16 breaking changes**: APIs differ from LLM training data — always read `node_modules/next/dist/docs/` first. See `frontend/AGENTS.md`.
+- **Next.js 16 breaking changes**: APIs differ from LLM training data — always read `node_modules/next/dist/docs/` first. See `frontend/CLAUDE.md`.
 - **vi.mock() hoisting** (frontend): `vi.mock("recharts")` affects ALL dynamic imports in the same vitest worker. Keep recharts-dependent and recharts-free tests in separate files. Use `vi.doMock` for per-test control.
 - **runpy + mock**: `runpy.run_module()` re-executes module source, invalidating mocks. Use `patch("source.module.function")` for source-level patching.
 - **OpenBB local import**: `obb` is imported inside functions (not at module level). `patch("module.obb")` fails — use `patch.dict(sys.modules, {"openbb": mock_module})`.
 
-## Investment Rules
+## Harness File Map
 
-Defined in `config/rules.yaml`, loaded via `nuri/core/rules.py`. Full rule table with academic sources: `docs/STRATEGY.md` §3.4, §3.5, and §6.
+This project uses layered context files. Root files load every session; directory-scoped files load when working in that directory.
 
-Core principle: **3:1 profit-to-loss ratio** (growth: -7% stop / +20%/+40% targets, value: -10% stop / +15%/+30% targets).
+| File | Role | Auto-loaded |
+|------|------|-------------|
+| `CLAUDE.md` (this file) | Commands, architecture overview, conventions | Always |
+| `AGENTS.md` | Cross-tool rules (Cursor/Copilot/Codex) | Not by Claude Code (for other agents) |
+| `docs/STRATEGY.md` | Design principles, investment rules, harness theory | Always (@import) |
+| `docs/ARCHITECTURE.md` | Detailed architecture, DB schema, env vars, CI/CD, testing | On demand |
+| `nuri/core/CLAUDE.md` | db.py rules, timezone, events, freshness | When editing nuri/core/ |
+| `nuri/collectors/CLAUDE.md` | BaseCollector contract, OpenBB quirks | When editing nuri/collectors/ |
+| `nuri/trading/agents/CLAUDE.md` | Agent system, consensus, veto rules | When editing nuri/trading/agents/ |
+| `nuri/trading/engine/CLAUDE.md` | SIEGE gates, confidence formula | When editing nuri/trading/engine/ |
+| `frontend/CLAUDE.md` | Next.js 16, design system, testing gotchas | When editing frontend/ |
+| `tests/CLAUDE.md` | Fixtures, mocks, testing gotchas | When editing tests/ |
+| `config/CLAUDE.md` | YAML structure, change procedures | When editing config/ |
 
-**Account strategy profiles** (5): each `portfolio.yaml` account selects one via `strategy:` field.
+### Mechanical Enforcement (Hooks + CI)
 
-| Strategy | stop_loss | max_single_position | Notes |
-|----------|-----------|---------------------|-------|
-| `core` | -7% | 15% | Default. Strict O'Neil discipline |
-| `active` | -10% | 25% | + `trailing_stop_arm: 15` — auto-arms trailing at +15% (PR #202) |
-| `swing` | -15% | 30% | Short-term rotations |
-| `long_term` | -20% | 25% | Buy-and-hold |
-| `pension` | -30% | 40% | Retirement allocations |
-
-**execution_priority** (PR #200): mechanical action ordering — `stop_loss → take_profit → trailing_stop_set → new_buy`. Within stop_loss, sort by loss% desc; within take_profit, sort by excess% desc. Reasoning: declining momentum loses more per hour delayed; rising momentum is forgiving.
-
-Automated enforcement in `price_targets.py`: take-profit signals, trailing stop (HWM-based), portfolio MDD check. Buy checklist: TipRanks >= Moderate Buy, superinvestors >= 3, PE < 100, revenue > $0, factor score top 50%.
-
-Every recommendation requires 10 external data sources cross-referenced (dataroma, tipranks, tradingeconomics, macrotrends, etf.com, ark-funds, shortinterest, cboe, coingecko, finviz).
-
-## OpenBB Provider Limitations
-
-| Endpoint | yfinance | Notes |
-|----------|----------|-------|
-| `obb.equity.price.historical` | OK | Primary price data source |
-| `obb.equity.fundamental.metrics` | OK | PE, PB, ROE, margins, growth, beta |
-| `obb.equity.estimates.consensus` | OK | Target price, recommendation, analyst count |
-| `obb.equity.fundamental.ratios` | No | Requires `fmp` or `intrinio` (paid) |
-| `obb.equity.estimates.price_target` | No | Requires `benzinga` or `fmp` (paid) |
-| `obb.equity.ownership.*` | No | Requires `fmp` (paid) |
-
-## Currency handling
-
-Multi-account portfolio mixes USD and KRW. Exchange rate fallback chain: DB `macro` table → OpenBB API → `StaleExchangeRateError` (no hardcoded fallback). Warns if rate > 7 days old. `.KS` tickers are always treated as KRW.
-
-## Interface
-
-- **FastAPI** (`nuri/api/`) — REST API on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval).
-- **Next.js 16** (`frontend/`) — shadcn/ui + Tailwind 4. Dark-only theme (zinc-950 base). See below.
-- **Ollama** (`nuri/llm/report.py`) — LLM report with SIEGE certification.
-
-### Frontend (`frontend/`)
-
-**Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui.** APIs differ from LLM training data — always read `node_modules/next/dist/docs/` first.
-
-```bash
-cd frontend
-npm run dev            # Dev server (:3000)
-npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (766 tests, 53 files)
-npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
-npx vitest run -t "renders verdict"                    # single test by name
-```
-
-All pages are **Server Components** with `force-dynamic`. Data fetched server-side via `fetchAPI()` (`src/lib/api.ts`). Three Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), and `<CompositionDonut>` (Recharts pie inside the dashboard composition section).
-
-**16 routes**: `/` (dashboard), `/signals`, `/consensus`, `/scan`, `/strategy`, `/rebalance`, `/engine`, `/pipeline`, `/report`, `/evidence`, `/portfolio`, `/targets`, `/advisor`, `/decisions`, `/login`, `/ticker/[symbol]`.
-
-**Dashboard layout** (composition-first overview, #224): Hero (4 stats: 총자산 / 오늘 P&L / 누적 / 승률) → market context strip (1 row, null-safe) → CollapsibleStrips (알림/이벤트/후보) → CompositionSection (320px Recharts donut + tabs `?comp=ticker|sector|account` + rich legend with daily delta) → mini cards strip (Movers + 집중도) → Holdings table (drilldown, sorted positionPct desc, top 8 + `?holdings=expanded` toggle) → footer. Data flows through `summarizeHoldings()` in `src/lib/holdings-summary.ts` which produces TodayPnL / CumulativePnL / WinRateSummary / SectorSlice[] / TickerSlice[] / AccountSlice[] / movers / concentration in one pass.
-
-**Design system** — 3 shared components enforce visual consistency:
-- `DataTable` — Universal table with column config, renderers, `rowClassName`, compact mode
-- `StatusBadge` — BUY/SELL/HOLD/WATCH/LONG/SHORT + signal types
-- `Metric` — Label + value + sub-text with color
-
-**Conventions**: `async function Section()` in `<Suspense>`, `animate-pulse` skeletons, color semantics (emerald=BUY, red=SELL, amber=warning, blue=WATCH, zinc=HOLD), `text-[10px]` sub-labels.
-
-**Frontend testing** (766 vitest, 53 files): Mock `@/lib/api` + `next/navigation`. Recharts mock hoisting caveat: keep recharts-dependent and recharts-free tests in separate files. Dashboard tests mock recharts at file level to avoid jsdom suspense on `CompositionDonut`. Test files organized into `__tests__/{components,lib,pages,coverage}/` subdirs.
-
-**Auth**: `src/middleware.ts` — HMAC-SHA256 keyed cookie auth (Edge Runtime compatible), active only when `DASHBOARD_PASSWORD` is set.
-
-## Portfolio Action Plan Format
-
-Save to `data/reports/YYYY-MM-DD/portfolio_action_plan.md`. Required sections: market environment table (regime, VIX, F&G, macro), per-stock verdict with external data cross-reference, execution timeline, re-entry conditions, buy priority by multi-factor score.
-
-Every recommendation **must** include explicit price levels: entry, stop-loss, target_1, target_2, trailing stop, TipRanks target. Growth: -7%/+20%/+40%. Value: -10%/+15%/+30%.
-
-## MCP Integration
-
-`.mcp.json` configures an MCP SQLite server for direct DB queries via Claude Code:
-```json
-{"mcpServers": {"nuri-db": {"command": "uvx", "args": ["mcp-server-sqlite", "--db-path", "./data/portfolio.db"]}}}
-```
+| What | How | When |
+|------|-----|------|
+| `import sqlite3` outside db.py | PreToolUse hook (exit 2 block) | Before every Edit/Write |
+| `datetime.now()` usage | PostToolUse hook | After every Edit/Write |
+| `git push --force`, `git reset --hard`, `git clean -f` | PreToolUse hook (exit 2 block) | Before every Bash |
+| Ruff lint violations | PostToolUse hook | After every Edit/Write |
+| Privacy leaks (broker names, monetary literals) | CI `privacy-scan` job + `pre_push_check.sh` | Every push + PR |
+| Test regression | CI + Codecov 1% gate | Every PR |
+| Trivy CRITICAL vulnerabilities | CI `security-scan` job | Every push |
