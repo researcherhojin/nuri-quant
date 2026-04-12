@@ -8,6 +8,68 @@ from nuri.core.db import query
 router = APIRouter(tags=["ticker"])
 
 
+@router.get("/tickers/search")
+def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
+    """종목 검색 — ticker code 또는 한국 종목명 부분 매칭. universe + DB 가격 기반."""
+    import yaml
+    from pathlib import Path
+    from nuri.core.ticker_names import get_ticker_name
+
+    term = q.strip().upper()
+    results: list[dict] = []
+    seen: set[str] = set()
+
+    # 1) universe.yaml에서 ticker code 매칭
+    universe_path = Path(__file__).resolve().parents[3] / "config" / "universe.yaml"
+    all_tickers: list[str] = []
+    if universe_path.exists():
+        with open(universe_path) as f:
+            uni = yaml.safe_load(f) or {}
+        for group in uni.values():
+            if isinstance(group, dict) and "tickers" in group:
+                all_tickers.extend(group["tickers"])
+
+    # ticker code 매칭 (NVDA, 005930 등)
+    for t in all_tickers:
+        if term in t.upper() and t not in seen:
+            seen.add(t)
+            price_row = query(
+                "SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (t,)
+            )
+            results.append({
+                "ticker": t,
+                "name": get_ticker_name(t),
+                "price": price_row[0]["close"] if price_row else None,
+                "date": price_row[0]["date"] if price_row else None,
+            })
+        if len(results) >= 8:
+            break
+
+    # 2) 한글 이름 매칭 (KR 종목 — "삼성" → 005930.KS)
+    if len(results) < 8:
+        term_lower = q.strip().lower()
+        for t in all_tickers:
+            if t in seen:
+                continue
+            if t.endswith(".KS") or t.endswith(".KQ"):
+                name = get_ticker_name(t)
+                if name and term_lower in name.lower():
+                    seen.add(t)
+                    price_row = query(
+                        "SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (t,)
+                    )
+                    results.append({
+                        "ticker": t,
+                        "name": name,
+                        "price": price_row[0]["close"] if price_row else None,
+                        "date": price_row[0]["date"] if price_row else None,
+                    })
+            if len(results) >= 8:
+                break
+
+    return {"results": results, "count": len(results)}
+
+
 @router.get("/ticker/{symbol}")
 def get_ticker_detail(symbol: str):
     """단일 종목의 모든 분석 데이터."""

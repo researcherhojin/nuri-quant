@@ -287,6 +287,23 @@ export const TICKER_DETAIL = {
   ANALYST: "애널리스트",
 } as const;
 
+/* ── Explore Page ───────────────────────────────────────────── */
+export const EXPLORE = {
+  SEARCH_PLACEHOLDER: "종목 검색 (NVDA, 삼성전자, 005930...)",
+  US_POPULAR: "US 인기 종목",
+  KR_POPULAR: "KR 인기 종목",
+  MARKET_CONTEXT: "시장 현황",
+  MARKET_NO_DATA: "시장 데이터 없음 — make collect 실행 후 표시됩니다",
+  RECENT_SIGNALS: "최근 시그널",
+  SIGNALS_NO_DATA: "시그널 데이터 없음 — make full-scan 실행 후 표시됩니다",
+  QUICK_START: "빠른 시작",
+  LOAD_SAMPLE: "sample portfolio 로드",
+  LOAD_SAMPLE_DESC: "대시보드 바로 체험",
+  NO_RESULTS: "일치하는 종목이 없습니다",
+  SEARCH_HINT: "ticker 코드 또는 종목명을 입력하세요",
+  LOADING: "검색 중...",
+} as const;
+
 /* ── Common ─────────────────────────────────────────────────── */
 export const COMMON = {
   API_ERROR: "API 연결 실패. make api 실행 필요.",

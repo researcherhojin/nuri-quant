@@ -1,0 +1,260 @@
+export const dynamic = "force-dynamic";
+
+import { Suspense } from "react";
+import Link from "next/link";
+import { fetchAPI } from "@/lib/api";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { EXPLORE, VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, HOLDING_STATUS, COMMON } from "@/lib/strings";
+
+// ── Types ──
+interface RegimeData {
+  regime: string;
+  trend: string;
+  vix?: number;
+  fear_greed?: number;
+  confidence: number;
+}
+
+interface MacroData {
+  score: number;
+  interpretation: string;
+}
+
+interface Candidate {
+  ticker: string;
+  action: string;
+  signal_name: string;
+  confidence: number;
+}
+
+// ── Popular tickers (from universe.yaml top tickers by market cap) ──
+const POPULAR_US = [
+  { ticker: "NVDA", name: "NVIDIA" },
+  { ticker: "TSLA", name: "Tesla" },
+  { ticker: "AAPL", name: "Apple" },
+  { ticker: "MSFT", name: "Microsoft" },
+  { ticker: "GOOGL", name: "Alphabet" },
+  { ticker: "AMZN", name: "Amazon" },
+];
+const POPULAR_KR = [
+  { ticker: "005930.KS", name: "삼성전자" },
+  { ticker: "000660.KS", name: "SK하이닉스" },
+  { ticker: "035420.KS", name: "NAVER" },
+  { ticker: "005380.KS", name: "현대차" },
+  { ticker: "373220.KS", name: "LG에너지솔루션" },
+  { ticker: "035720.KS", name: "카카오" },
+];
+
+// ── Helpers ──
+function trendKo(t: string) {
+  return t === "bull" ? TREND.BULL : t === "bear" ? TREND.BEAR : TREND.SIDEWAYS;
+}
+function vixZone(v: number | null): { label: string; color: string } {
+  if (v == null) return { label: "—", color: "text-zinc-500" };
+  if (v < 12) return { label: VIX_ZONE.CALM, color: "text-blue-400" };
+  if (v < 17) return { label: VIX_ZONE.LOW, color: "text-emerald-400" };
+  if (v < 23) return { label: VIX_ZONE.NORMAL, color: "text-zinc-300" };
+  if (v < 33) return { label: VIX_ZONE.CAUTION, color: "text-orange-400" };
+  return { label: VIX_ZONE.DANGER, color: "text-red-400" };
+}
+function fgLabel(fg: number | null): string {
+  if (fg == null) return "—";
+  if (fg < 25) return FEAR_GREED.EXTREME_FEAR;
+  if (fg < 45) return FEAR_GREED.FEAR;
+  if (fg <= 55) return FEAR_GREED.NEUTRAL;
+  if (fg <= 75) return FEAR_GREED.GREED;
+  return FEAR_GREED.EXTREME_GREED;
+}
+function macroLevel(s: number): { label: string; color: string } {
+  if (s >= 70) return { label: MACRO_LEVEL.GOOD, color: "text-emerald-400" };
+  if (s >= 50) return { label: MACRO_LEVEL.NORMAL, color: "text-zinc-300" };
+  if (s >= 30) return { label: MACRO_LEVEL.WEAK, color: "text-orange-400" };
+  return { label: MACRO_LEVEL.FRAGILE, color: "text-red-400" };
+}
+
+// ── Search component (Client) ──
+import { ExploreSearch } from "./search";
+
+// ── Quick-link card ──
+async function QuickLinkCard({ ticker, name }: { ticker: string; name: string }) {
+  const priceRow = await fetchAPI<{ ticker: string; prices: Array<{ close: number; date: string }>; count: number }>(
+    `/api/ticker/${ticker}/prices?days=30`
+  ).catch(() => null);
+
+  const prices = priceRow?.prices ?? [];
+  const latest = prices.length > 0 ? prices[prices.length - 1].close : null;
+  const prev = prices.length > 1 ? prices[prices.length - 2].close : null;
+  const delta = latest != null && prev != null && prev > 0 ? ((latest - prev) / prev) * 100 : null;
+  const isKr = ticker.endsWith(".KS") || ticker.endsWith(".KQ");
+  const priceStr = latest != null
+    ? isKr ? `₩${Math.round(latest).toLocaleString()}` : `$${latest < 100 ? latest.toFixed(2) : Math.round(latest).toLocaleString()}`
+    : "—";
+  const deltaStr = delta != null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%` : "";
+  const deltaColor = delta == null ? "" : delta >= 0 ? "text-emerald-400" : "text-red-400";
+
+  return (
+    <Link
+      href={`/ticker/${ticker}`}
+      className="flex flex-col gap-0.5 rounded-lg border border-zinc-800/60 bg-zinc-900/40 px-3 py-2 hover:bg-zinc-800/60 hover:border-zinc-700 transition-colors min-w-0"
+      data-testid={`quicklink-${ticker}`}
+    >
+      <span className="text-xs font-semibold text-zinc-100 truncate">{name}</span>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-[10px] text-zinc-400 tabular-nums">{priceStr}</span>
+        {deltaStr && <span className={`text-[10px] tabular-nums font-medium ${deltaColor}`}>{deltaStr}</span>}
+      </div>
+    </Link>
+  );
+}
+
+// ── Market Context Strip ──
+async function MarketContext() {
+  const [regime, macro] = await Promise.all([
+    fetchAPI<{ regime_state: RegimeData }>("/api/regime").catch(() => null),
+    fetchAPI<MacroData>("/api/macro").catch(() => null),
+  ]);
+
+  const r = regime?.regime_state;
+  if (!r || !r.trend) {
+    return (
+      <div className="text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
+        ⚠ {EXPLORE.MARKET_NO_DATA}
+      </div>
+    );
+  }
+
+  const vix = r.vix ?? null;
+  const fg = r.fear_greed ?? null;
+  const vInfo = vixZone(vix);
+  const mInfo = macro ? macroLevel(macro.score) : null;
+  const tColor = r.trend === "bull" ? "text-emerald-400" : r.trend === "bear" ? "text-red-400" : "text-amber-400";
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
+      <span className={`${tColor} font-semibold`}>{trendKo(r.trend)}</span>
+      {vix != null && (
+        <span>VIX <span className={`font-semibold tabular-nums ${vInfo.color}`}>{Math.round(vix * 10) / 10}</span> <span className={vInfo.color}>{vInfo.label}</span></span>
+      )}
+      {fg != null && (
+        <span>{EXPLORE.MARKET_CONTEXT === "시장 현황" ? "심리" : "F&G"} <span className="font-semibold tabular-nums">{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span></span>
+      )}
+      {mInfo && macro && (
+        <span>경제 <span className={`font-semibold tabular-nums ${mInfo.color}`}>{macro.score}</span> <span className={mInfo.color}>{mInfo.label}</span></span>
+      )}
+    </div>
+  );
+}
+
+// ── Recent Signals ──
+async function RecentSignals() {
+  const data = await fetchAPI<{ candidates: Candidate[] }>("/api/candidates?days=5").catch(() => null);
+  const candidates = data?.candidates ?? [];
+
+  if (candidates.length === 0) {
+    return (
+      <p className="text-[10px] text-zinc-500 px-2">
+        {EXPLORE.SIGNALS_NO_DATA}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2 px-2">
+      {candidates.slice(0, 8).map((c, i) => (
+        <Link
+          key={`${c.ticker}-${i}`}
+          href={`/ticker/${c.ticker}`}
+          className="flex items-center gap-1 text-[10px] hover:text-zinc-100 transition-colors"
+        >
+          <span className="text-zinc-200 font-medium">{c.ticker}</span>
+          <span className="text-zinc-500">{c.signal_name.replace(/_/g, " ")}</span>
+          <StatusBadge status={c.action} size="sm" />
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+// ── Loading skeletons ──
+function QuickLinkSkeleton() {
+  return <div className="h-14 rounded-lg bg-zinc-900/40 border border-zinc-800/60 animate-pulse" />;
+}
+
+function StripSkeleton() {
+  return <div className="h-8 rounded bg-zinc-900/40 border border-zinc-800/60 animate-pulse" />;
+}
+
+// ── Page ──
+export default function ExplorePage() {
+  return (
+    <div className="flex flex-col gap-5 max-w-4xl">
+      <div>
+        <h1 className="text-lg font-semibold">Explore</h1>
+        <p className="text-xs text-muted-foreground mt-1">
+          {EXPLORE.SEARCH_HINT}
+        </p>
+      </div>
+
+      {/* Search */}
+      <ExploreSearch />
+
+      {/* Quick-link grids */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* US */}
+        <div>
+          <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2">{EXPLORE.US_POPULAR}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {POPULAR_US.map((t) => (
+              <Suspense key={t.ticker} fallback={<QuickLinkSkeleton />}>
+                <QuickLinkCard ticker={t.ticker} name={t.name} />
+              </Suspense>
+            ))}
+          </div>
+        </div>
+        {/* KR */}
+        <div>
+          <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2">{EXPLORE.KR_POPULAR}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {POPULAR_KR.map((t) => (
+              <Suspense key={t.ticker} fallback={<QuickLinkSkeleton />}>
+                <QuickLinkCard ticker={t.ticker} name={t.name} />
+              </Suspense>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Market context */}
+      <div>
+        <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-1.5">{EXPLORE.MARKET_CONTEXT}</p>
+        <Suspense fallback={<StripSkeleton />}>
+          <MarketContext />
+        </Suspense>
+      </div>
+
+      {/* Recent signals */}
+      <div>
+        <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-1.5">{EXPLORE.RECENT_SIGNALS}</p>
+        <Suspense fallback={<StripSkeleton />}>
+          <RecentSignals />
+        </Suspense>
+      </div>
+
+      {/* Quick start */}
+      <div className="mt-2 rounded-lg border border-zinc-800/60 bg-zinc-900/30 px-4 py-3">
+        <p className="text-xs text-zinc-400">
+          💡 <span className="font-medium text-zinc-300">{EXPLORE.QUICK_START}</span>
+          {" — "}
+          <Link
+            href="/portfolio?onboarding=true"
+            className="text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
+          >
+            {EXPLORE.LOAD_SAMPLE}
+          </Link>
+          {" → "}
+          <span className="text-zinc-500">{EXPLORE.LOAD_SAMPLE_DESC}</span>
+        </p>
+      </div>
+    </div>
+  );
+}

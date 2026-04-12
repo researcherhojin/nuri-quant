@@ -51,6 +51,7 @@ vi.mock("lucide-react", () => {
     FileBarChart: Icon,
     Bot: Icon,
     BookOpen: Icon,
+    Compass: Icon,
     ChevronLeft: (props: any) => <svg data-testid="chevron-left" {...props} />,
     ChevronRight: (props: any) => <svg data-testid="chevron-right" {...props} />,
     ShieldCheck: (props: any) => <svg data-testid="shield-check" {...props} />,

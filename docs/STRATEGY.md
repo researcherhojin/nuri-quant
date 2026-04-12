@@ -422,16 +422,14 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 이 섹션은 **앞으로 할 일**만 기록한다. 완료된 항목은 git log + closed PR + closed issue가 진실 source. 새 작업을 시작하기 전에 이 순서를 확인하고, 새 발견은 GitHub 이슈로 등록한 뒤 이 표에 추가한다.
 
-### Tier 1 — 다음 1~2 작업 사이클 (P0)
+### Tier 1 — 완료 (2026-04-13)
 
-시스템 핵심 가치 직결. UX 품질 = 의사결정 품질.
+| # | 항목 | 이슈 | PR | 비고 |
+|---|------|------|----|------|
+| 1 | **i18n constants extraction** | [#226](https://github.com/researcherhojin/nuri-quant/issues/226) | #230, #231 | `lib/strings.ts` 에 ~145개 한국어 상수 추출. 19 파일 마이그레이션 완료. |
+| 2 | **하네스 계층화** | — | #229 | Fowler Guide/Sensor 기반 구조화: CLAUDE.md 슬림 (511→238줄) + 7 scoped CLAUDE.md + AGENTS.md + 4 hooks |
 
-| # | 항목 | 이슈 | 카테고리 | 비고 |
-|---|------|------|---------|------|
-| 1 | **i18n constants extraction** | [#226](https://github.com/researcherhojin/nuri-quant/issues/226) | refactor(frontend) | 컴포넌트 + 테스트 양쪽에 하드코딩된 한국어 라벨을 `lib/strings.ts` 단일 source 로 추출. 풀 i18n (next-intl) 은 single-user / Korean-only 컨텍스트에 오버킬. ~30 파일, 1 PR. |
-| 2 | **연 배당금 / 배당 수익률 데이터** | [#227](https://github.com/researcherhojin/nuri-quant/issues/227) | feat(collectors) | `fundamentals` 테이블에 `annual_dividend_usd` + `dividend_yield_pct` 컬럼 추가, yfinance `Ticker.info.dividendRate / dividendYield` 에서 수집. 단타 위주 active 계좌에는 hero 자리 차지할 만큼은 아니지만 별도 surface 가능 (#221 iter 7a 노트 참조). UI surface 는 별도 issue. |
-
-> 대시보드 composition-first restructure 완료 — PR #221/#222/#223/#224 로 holdings table → composition 중심 overview 전환. 각 PR 의 자세한 변경은 git log 참조.
+> #227 (배당 데이터)은 active 계좌 단타 전략에서 의사결정 변수가 아니므로 Tier 2로 강등 (2026-04-13 결정).
 
 ### Tier 2 — 다음 1 달 (P1)
 
@@ -444,6 +442,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 3 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
 | 4 | **Privacy scanner ticker+PnL pattern** | — | security | 현재 broker name + monetary literal만 차단. ticker와 PnL이 같은 commit message/PR 본문에 있을 때 패턴 감지 추가. PR #202 commit message leak 같은 경우 방지 |
 | 5 | **LLM 휴면 코드 결정** | — | refactor | `nuri/llm/{report,event_classifier,openai_client}.py` 현재 production 비활성 (OLLAMA_HOST/OPENAI_API_KEY 미설정). 유지 vs 제거 vs 재활성화 결정 필요 |
+| 6 | **연 배당금 / 배당 수익률 데이터** | [#227](https://github.com/researcherhojin/nuri-quant/issues/227) | feat(collectors) | Tier 1에서 강등. pension 계좌 별도 surface 필요 시 재평가 |
 
 ### Tier 3 — 다음 분기 (P2)
 
