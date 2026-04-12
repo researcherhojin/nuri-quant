@@ -6,6 +6,7 @@ import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
+import { DECISIONS, COMMON } from "@/lib/strings";
 
 // === Types ===
 interface Decision {
@@ -114,7 +115,7 @@ function DecisionTable({ decisions }: { decisions: Decision[] }) {
       <Card className="bg-card border-border">
         <CardContent className="pt-5">
           <p className="text-sm text-muted-foreground">
-            아직 기록된 의사결정 없음. <code className="text-xs bg-muted px-1 rounded">make consensus</code> 실행 필요.
+            {DECISIONS.EMPTY} <code className="text-xs bg-muted px-1 rounded">make consensus</code> {COMMON.RUN_REQUIRED}.
           </p>
         </CardContent>
       </Card>
@@ -187,7 +188,7 @@ async function DecisionsSection() {
   try {
     data = await fetchAPI<DecisionResponse>("/api/decisions?limit=100");
   } catch {
-    return <p className="text-red-400 text-sm">API 연결 실패. make api 실행 필요.</p>;
+    return <p className="text-red-400 text-sm">{COMMON.API_ERROR}</p>;
   }
 
   return (
@@ -204,7 +205,7 @@ export default function DecisionsPage() {
       <div>
         <h1 className="text-lg font-bold">Decision Intelligence</h1>
         <p className="text-xs text-muted-foreground">
-          의사결정 저널 — 모든 BUY/SELL 판단의 근거와 결과를 추적합니다.
+          {DECISIONS.SUBTITLE}
         </p>
       </div>
       <Suspense fallback={<Loading />}>

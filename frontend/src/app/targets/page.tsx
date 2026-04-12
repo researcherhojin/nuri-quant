@@ -5,6 +5,7 @@ import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { Metric } from "@/components/ui/metric";
+import { TARGETS as T, COMMON } from "@/lib/strings";
 
 // === Types ===
 interface PriceTarget {
@@ -37,7 +38,7 @@ async function TargetsSection() {
   try {
     data = await fetchAPI<{ targets: PriceTarget[]; count: number }>("/api/targets");
   } catch {
-    return <p className="text-red-400 text-sm">API 연결 실패. make api 실행 필요.</p>;
+    return <p className="text-red-400 text-sm">{COMMON.API_ERROR}</p>;
   }
 
   const valid = data.targets.filter((t: any) => !t.error);
@@ -49,17 +50,17 @@ async function TargetsSection() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <Metric label="전체 종목" value={`${valid.length}개`} />
-        <Metric label="성장주" value={`${growth.length}개`} sub="SL -7% / TP +20%/+40%" color="green" />
-        <Metric label="가치주" value={`${value.length}개`} sub="SL -10% / TP +15%/+30%" />
-        <Metric label="익절 도달" value={`${tpTriggered.length}개`} sub={tpTriggered.length > 0 ? "매도 필요" : ""} color={tpTriggered.length > 0 ? "green" : "default"} />
-        <Metric label="트레일링 스톱" value={`${tsTriggered.length}개`} sub={tsTriggered.length > 0 ? "즉시 매도" : ""} color={tsTriggered.length > 0 ? "red" : "default"} />
+        <Metric label={T.ALL} value={`${valid.length}${T.COUNT_SUFFIX}`} />
+        <Metric label={T.GROWTH} value={`${growth.length}${T.COUNT_SUFFIX}`} sub="SL -7% / TP +20%/+40%" color="green" />
+        <Metric label={T.VALUE} value={`${value.length}${T.COUNT_SUFFIX}`} sub="SL -10% / TP +15%/+30%" />
+        <Metric label={T.TP_TRIGGERED} value={`${tpTriggered.length}${T.COUNT_SUFFIX}`} sub={tpTriggered.length > 0 ? T.SELL_NEEDED : ""} color={tpTriggered.length > 0 ? "green" : "default"} />
+        <Metric label={T.TS_TRIGGERED} value={`${tsTriggered.length}${T.COUNT_SUFFIX}`} sub={tsTriggered.length > 0 ? T.SELL_IMMEDIATE : ""} color={tsTriggered.length > 0 ? "red" : "default"} />
       </div>
 
       <Card className="bg-card border-border">
         <CardContent className="pt-5">
           <p className="text-xs text-muted-foreground mb-3">
-            가격 타겟 — rules.yaml 기반 (O'Neil + Minervini)
+            {T.DESCRIPTION}
           </p>
           <ClientTable variant="targets" data={valid} compact />
         </CardContent>
@@ -74,7 +75,7 @@ export default function TargetsPage() {
       <div className="mb-6">
         <h1 className="text-lg font-semibold">Price Targets</h1>
         <p className="text-xs text-muted-foreground mt-1">
-          전 종목 매수가 · 손절가 · 익절가 · 트레일링 스톱 · 애널리스트 목표가
+          {T.SUBTITLE}
         </p>
       </div>
       <Suspense fallback={<Loading />}>

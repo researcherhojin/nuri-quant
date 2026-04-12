@@ -20,6 +20,7 @@
 
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { HoldingsSummary } from "@/lib/holdings-summary";
+import { HERO } from "@/lib/strings";
 
 interface HeroStatsProps {
   totalUsd: number;
@@ -61,7 +62,7 @@ export function HeroStats({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* 1. 총 자산 */}
         <div className="flex flex-col" data-testid="hero-total">
-          <p className="text-[10px] text-zinc-500 uppercase tracking-wide">총 자산</p>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-wide">{HERO.TOTAL_ASSET}</p>
           <div className="flex items-baseline gap-2 mt-0.5">
             <span className="text-3xl font-semibold tabular-nums tracking-tight text-zinc-100">
               {formatBigUsd(totalUsd)}
@@ -70,16 +71,16 @@ export function HeroStats({
           </div>
           {(holdingsValueUsd > 0 || cashTotalUsd > 0) && (
             <p className="text-[10px] text-zinc-500 mt-1 tabular-nums">
-              보유 ${holdingsValueUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              {HERO.HOLDINGS_PREFIX} ${holdingsValueUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               {" · "}
-              현금 ${cashTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              {HERO.CASH_PREFIX} ${cashTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </p>
           )}
         </div>
 
         {/* 2. 오늘 P&L */}
         <div className="flex flex-col" data-testid="hero-today">
-          <p className="text-[10px] text-zinc-500 uppercase tracking-wide">오늘 P&amp;L</p>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-wide">{HERO.TODAY_PNL}</p>
           <div className={`flex items-baseline gap-2 mt-0.5 ${todayColor}`}>
             <span className="text-3xl font-semibold tabular-nums tracking-tight">
               {todayArrow} {formatDeltaUsd(t.totalUsd)}
@@ -98,7 +99,7 @@ export function HeroStats({
 
         {/* 3. 누적 수익률 */}
         <div className="flex flex-col" data-testid="hero-cumulative">
-          <p className="text-[10px] text-zinc-500 uppercase tracking-wide">누적 수익률</p>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-wide">{HERO.CUMULATIVE_RETURN}</p>
           <div className={`flex items-baseline gap-2 mt-0.5 ${cumColor}`}>
             <span className="text-3xl font-semibold tabular-nums tracking-tight">
               {cumArrow} {formatDeltaUsd(c.totalUsd)}
@@ -108,7 +109,7 @@ export function HeroStats({
               {c.totalPct.toFixed(1)}%
             </span>
           </div>
-          <p className="text-[10px] text-zinc-500 mt-1">실현 미실현 합계</p>
+          <p className="text-[10px] text-zinc-500 mt-1">{HERO.CUMULATIVE_SUB}</p>
         </div>
 
         {/* 4. 승률 (winners / (winners+losers) × 100) — replaces 연 배당.
@@ -126,7 +127,7 @@ export function HeroStats({
               : "text-red-400";
           return (
             <div className="flex flex-col" data-testid="hero-winrate">
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wide">승률</p>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wide">{HERO.WIN_RATE}</p>
               <div className={`flex items-baseline gap-2 mt-0.5 ${wrColor}`}>
                 <span className="text-3xl font-semibold tabular-nums tracking-tight">
                   {movers > 0 ? `${wr.winRatePct.toFixed(0)}%` : "—"}
@@ -136,7 +137,7 @@ export function HeroStats({
                 </span>
               </div>
               <p className="text-[10px] text-zinc-500 mt-1">
-                {wr.flat > 0 ? `보합 ${wr.flat}` : "보유 종목 기준"}
+                {wr.flat > 0 ? `${HERO.FLAT} ${wr.flat}` : HERO.HOLDINGS_BASIS}
               </p>
             </div>
           );

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/api";
+import { REPORT } from "@/lib/strings";
 
 export default function ReportPage() {
   const [report, setReport] = useState<string | null>(null);
@@ -66,8 +67,8 @@ export default function ReportPage() {
       {!report && !loading && (
         <Card className="bg-card border-border">
           <CardContent className="py-12 text-center text-muted-foreground">
-            <p>Generate Report 버튼을 눌러 AI 투자 리포트를 생성하세요.</p>
-            <p className="text-xs mt-2">Ollama가 실행 중이어야 합니다 (ollama serve)</p>
+            <p>{REPORT.PLACEHOLDER}</p>
+            <p className="text-xs mt-2">{REPORT.OLLAMA_REQUIRED}</p>
           </CardContent>
         </Card>
       )}

@@ -13,6 +13,8 @@
  * - Empty/single-point series → em-dash placeholder
  */
 
+import { SPARKLINE as S } from "@/lib/strings";
+
 interface SparklineProps {
   series: number[];
   width?: number;
@@ -41,7 +43,7 @@ export function Sparkline({
       <span
         className={`text-zinc-700 text-[10px] ${className}`}
         data-testid="sparkline"
-        aria-label="30일 추세"
+        aria-label={S.TREND_30D}
       >
         —
       </span>
@@ -86,7 +88,7 @@ export function Sparkline({
       className={`shrink-0 ${className}`}
       data-testid="sparkline"
       data-direction={isUp ? "up" : "down"}
-      aria-label={`추세 (${isUp ? "상승" : "하락"})`}
+      aria-label={`${S.PERIOD_LABEL} (${isUp ? S.TREND_UP : S.TREND_DOWN})`}
       role="img"
     >
       <path d={areaPath} fill={fill} />
