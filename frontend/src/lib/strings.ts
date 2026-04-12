@@ -178,6 +178,7 @@ export const SIGNAL = {
   CONFLICT_REPLACE: "매수·매도 신호 충돌",
   STOP_SUFFIX: "손절",
   NEAR_SUFFIX: "근접",
+  CONFLICT_SHORT: "충돌",
 } as const;
 
 /* ── Sparkline ──────────────────────────────────────────────── */
@@ -261,6 +262,29 @@ export const REPORT = {
 export const DECISIONS = {
   EMPTY: "아직 기록된 의사결정 없음.",
   SUBTITLE: "의사결정 저널 — 모든 BUY/SELL 판단의 근거와 결과를 추적합니다.",
+} as const;
+
+/* ── Pipeline Page ──────────────────────────────────────────── */
+export const PIPELINE = {
+  RUNNING_SUFFIX: "개 실행 중",
+  AUTO_REFRESH: "10초 자동 갱신",
+  LEGEND_OK: "정상",
+  LEGEND_WARN: "경고 / 대기",
+  LEGEND_ERROR: "에러",
+  LEGEND_RUNNING: "실행 중",
+  EVENT_TIMELINE: "이벤트 타임라인",
+  NO_EVENTS: "아직 이벤트 없음",
+  RUN_STEP_HINT: "파이프라인 스텝을 실행하세요",
+  GATE_LOADING: "게이트 조건 로딩 중...",
+} as const;
+
+/* ── Ticker Detail Page ─────────────────────────────────────── */
+export const TICKER_DETAIL = {
+  STOP_LOSS: "손절가",
+  TARGET_1: "1차 익절",
+  TARGET_2: "2차 익절",
+  TRAILING: "트레일링",
+  ANALYST: "애널리스트",
 } as const;
 
 /* ── Common ─────────────────────────────────────────────────── */

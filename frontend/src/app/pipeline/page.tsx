@@ -12,6 +12,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { API_BASE } from "@/lib/api";
+import { PIPELINE as PL } from "@/lib/strings";
 
 // === Types ===
 interface PipelineStep {
@@ -369,11 +370,11 @@ export default function PipelinePage() {
           {runningSteps.size > 0 && (
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-400/10 text-blue-400 text-[10px] font-medium">
               <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-              <span>{runningSteps.size}개 실행 중</span>
+              <span>{runningSteps.size}{PL.RUNNING_SUFFIX}</span>
             </div>
           )}
           {/* 자동 새로고침 표시 */}
-          <span className="text-[10px] text-muted-foreground/50">10초 자동 갱신</span>
+          <span className="text-[10px] text-muted-foreground/50">{PL.AUTO_REFRESH}</span>
         </div>
       </div>
 
@@ -405,19 +406,19 @@ export default function PipelinePage() {
       <div className="flex items-center gap-6 text-[10px] text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-          <span>정상</span>
+          <span>{PL.LEGEND_OK}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
-          <span>경고 / 대기</span>
+          <span>{PL.LEGEND_WARN}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-flex h-2 w-2 rounded-full bg-red-500" />
-          <span>에러</span>
+          <span>{PL.LEGEND_ERROR}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-          <span>실행 중</span>
+          <span>{PL.LEGEND_RUNNING}</span>
         </div>
       </div>
 
@@ -425,10 +426,10 @@ export default function PipelinePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* 이벤트 타임라인 */}
         <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground mb-3">이벤트 타임라인</p>
+          <p className="text-xs text-muted-foreground mb-3">{PL.EVENT_TIMELINE}</p>
           {timeline.length === 0 ? (
             <p className="text-xs text-muted-foreground/50 py-6 text-center">
-              아직 이벤트 없음 &mdash; 파이프라인 스텝을 실행하세요
+              {PL.NO_EVENTS} &mdash; {PL.RUN_STEP_HINT}
             </p>
           ) : (
             <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
@@ -472,7 +473,7 @@ export default function PipelinePage() {
           <p className="text-xs text-muted-foreground mb-3">Gate Conditions</p>
           {allConditions.length === 0 ? (
             <p className="text-xs text-muted-foreground/50 py-6 text-center">
-              게이트 조건 로딩 중...
+              {PL.GATE_LOADING}
             </p>
           ) : (
             <div className="space-y-1.5 max-h-[400px] overflow-y-auto">

@@ -121,7 +121,7 @@ function parseAlert(al: { level: string; message: string }): { label: string; hr
   if (nearMatch) return { label: `${nearMatch[1]} ${nearMatch[2]} ${SIGNAL.NEAR_SUFFIX}`, href: `/ticker/${nearMatch[1]}` };
   // 충돌
   const conflictMatch = translated.match(/충돌\s+(\d+)건/);
-  if (conflictMatch) return { label: `충돌 ${conflictMatch[1]}건`, href: "/decisions" };
+  if (conflictMatch) return { label: `${SIGNAL.CONFLICT_SHORT} ${conflictMatch[1]}${COMMON.COUNT_SUFFIX}`, href: "/decisions" };
   // 시그널 성과
   if (translated.includes("성과 하락")) return { label: translated.slice(0, 30), href: "/signals" };
   // 기타
