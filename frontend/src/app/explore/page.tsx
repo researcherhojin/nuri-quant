@@ -75,19 +75,19 @@ function macroLevel(s: number): { label: string; color: string } {
 // ── Search component (Client) ──
 import { ExploreSearch } from "./search";
 
-// ── Quick-link card ──
-async function QuickLinkCard({ ticker, name }: { ticker: string; name: string }) {
-  const priceRow = await fetchAPI<{ ticker: string; prices: Array<{ close: number; date: string }>; count: number }>(
-    `/api/ticker/${ticker}/prices?days=30`
-  ).catch(() => null);
+// ── Price data types ──
+interface BatchPriceData {
+  prices: Record<string, { price: number | null; prev: number | null; date: string | null }>;
+}
 
-  const prices = priceRow?.prices ?? [];
-  const latest = prices.length > 0 ? prices[prices.length - 1].close : null;
-  const prev = prices.length > 1 ? prices[prices.length - 2].close : null;
-  const delta = latest != null && prev != null && prev > 0 ? ((latest - prev) / prev) * 100 : null;
+// ── Quick-link card (pure component — receives pre-fetched data) ──
+function QuickLinkCard({ ticker, name, price, prev }: {
+  ticker: string; name: string; price: number | null; prev: number | null;
+}) {
+  const delta = price != null && prev != null && prev > 0 ? ((price - prev) / prev) * 100 : null;
   const isKr = ticker.endsWith(".KS") || ticker.endsWith(".KQ");
-  const priceStr = latest != null
-    ? isKr ? `₩${Math.round(latest).toLocaleString()}` : `$${latest < 100 ? latest.toFixed(2) : Math.round(latest).toLocaleString()}`
+  const priceStr = price != null
+    ? isKr ? `₩${Math.round(price).toLocaleString()}` : `$${price < 100 ? price.toFixed(2) : Math.round(price).toLocaleString()}`
     : "—";
   const deltaStr = delta != null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%` : "";
   const deltaColor = delta == null ? "" : delta >= 0 ? "text-emerald-400" : "text-red-400";
@@ -184,6 +184,37 @@ function StripSkeleton() {
   return <div className="h-8 rounded bg-zinc-900/40 border border-zinc-800/60 animate-pulse" />;
 }
 
+// ── Quicklinks section (single batch fetch for all 12 tickers) ──
+async function QuickLinksGrid() {
+  const allTickers = [...POPULAR_US, ...POPULAR_KR].map((t) => t.ticker);
+  const batch = await fetchAPI<BatchPriceData>(
+    `/api/tickers/latest-prices?tickers=${allTickers.join(",")}`
+  ).catch((): BatchPriceData => ({ prices: {} }));
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2">{EXPLORE.US_POPULAR}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {POPULAR_US.map((t) => {
+            const p = batch.prices[t.ticker];
+            return <QuickLinkCard key={t.ticker} ticker={t.ticker} name={t.name} price={p?.price ?? null} prev={p?.prev ?? null} />;
+          })}
+        </div>
+      </div>
+      <div>
+        <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2">{EXPLORE.KR_POPULAR}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {POPULAR_KR.map((t) => {
+            const p = batch.prices[t.ticker];
+            return <QuickLinkCard key={t.ticker} ticker={t.ticker} name={t.name} price={p?.price ?? null} prev={p?.prev ?? null} />;
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──
 export default function ExplorePage() {
   return (
@@ -198,31 +229,15 @@ export default function ExplorePage() {
       {/* Search */}
       <ExploreSearch />
 
-      {/* Quick-link grids */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* US */}
-        <div>
-          <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2">{EXPLORE.US_POPULAR}</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {POPULAR_US.map((t) => (
-              <Suspense key={t.ticker} fallback={<QuickLinkSkeleton />}>
-                <QuickLinkCard ticker={t.ticker} name={t.name} />
-              </Suspense>
-            ))}
-          </div>
+      {/* Quick-link grids — single batch API call for all 12 tickers */}
+      <Suspense fallback={
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{POPULAR_US.map((t) => <QuickLinkSkeleton key={t.ticker} />)}</div></div>
+          <div><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{POPULAR_KR.map((t) => <QuickLinkSkeleton key={t.ticker} />)}</div></div>
         </div>
-        {/* KR */}
-        <div>
-          <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2">{EXPLORE.KR_POPULAR}</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {POPULAR_KR.map((t) => (
-              <Suspense key={t.ticker} fallback={<QuickLinkSkeleton />}>
-                <QuickLinkCard ticker={t.ticker} name={t.name} />
-              </Suspense>
-            ))}
-          </div>
-        </div>
-      </div>
+      }>
+        <QuickLinksGrid />
+      </Suspense>
 
       {/* Market context */}
       <div>

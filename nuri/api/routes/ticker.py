@@ -72,6 +72,29 @@ def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
     return {"results": results, "count": len(results)}
 
 
+@router.get("/tickers/latest-prices")
+def get_latest_prices(tickers: str = Query(..., description="Comma-separated ticker list")):
+    """여러 종목의 최신 가격을 한 번에 조회. quicklink 카드용 batch endpoint."""
+    ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+    if len(ticker_list) > 20:
+        ticker_list = ticker_list[:20]
+
+    result: dict[str, dict] = {}
+    for t in ticker_list:
+        rows = query(
+            "SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 2",
+            (t,),
+        )
+        if rows:
+            latest = rows[0]["close"]
+            prev = rows[1]["close"] if len(rows) > 1 else None
+            result[t] = {"price": latest, "prev": prev, "date": rows[0]["date"]}
+        else:
+            result[t] = {"price": None, "prev": None, "date": None}
+
+    return {"prices": result}
+
+
 @router.get("/ticker/{symbol}")
 def get_ticker_detail(symbol: str):
     """단일 종목의 모든 분석 데이터."""
