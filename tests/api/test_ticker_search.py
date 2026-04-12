@@ -51,10 +51,36 @@ class TestMarketContext:
         """데이터 없을 때 null 반환 (에러 아님)."""
         resp = client.get("/api/tickers/market-context")
         assert resp.status_code == 200
-        # 빈 DB에서는 null 가능 — 에러가 아닌 정상 응답
         data = resp.json()
         for key in ["trend", "vix", "fear_greed", "macro_score"]:
             assert key in data
+
+    def test_market_context_with_vix_data(self, seeded_client):
+        """VIX 데이터가 있으면 값 반환."""
+        from nuri.core.db import get_db
+        with get_db() as conn:
+            conn.execute("INSERT OR REPLACE INTO macro (indicator, date, value, source) VALUES ('vix','2026-04-10',19.2,'test')")
+            conn.execute("INSERT OR REPLACE INTO macro (indicator, date, value, source) VALUES ('fear_greed','2026-04-10',37.7,'test')")
+        resp = seeded_client.get("/api/tickers/market-context")
+        data = resp.json()
+        assert data["vix"] == 19.2
+        assert data["fear_greed"] == 37.7
+
+
+class TestLatestPricesWithData:
+    def test_prices_with_seeded_data(self, seeded_client):
+        """가격 데이터가 있으면 price/prev 반환."""
+        import pandas as pd
+        from nuri.core.db import upsert_prices
+        df = pd.DataFrame([
+            {"ticker": "AAPL", "date": "2026-04-09", "open": 220, "high": 222, "low": 218, "close": 219, "volume": 1000, "adj_close": 219},
+            {"ticker": "AAPL", "date": "2026-04-10", "open": 219, "high": 225, "low": 219, "close": 223, "volume": 1200, "adj_close": 223},
+        ])
+        upsert_prices(df)
+        resp = seeded_client.get("/api/tickers/latest-prices?tickers=AAPL")
+        data = resp.json()
+        assert data["prices"]["AAPL"]["price"] == 223
+        assert data["prices"]["AAPL"]["prev"] == 219
 
 
 class TestTickerSearch:
