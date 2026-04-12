@@ -15,6 +15,7 @@
  */
 
 import type { HoldingsSummary } from "@/lib/holdings-summary";
+import { HOLDING_LABEL } from "@/lib/strings";
 
 interface HoldingsSummaryPanelProps {
   summary: HoldingsSummary;
@@ -55,7 +56,7 @@ export function HoldingsSummaryPanel({
     <aside
       className={`flex flex-col gap-3 ${className}`}
       data-testid="holdings-summary-panel"
-      aria-label="보유 종목 요약"
+      aria-label={HOLDING_LABEL.SUMMARY_ARIA}
     >
       {/* 1) Today */}
       <div className={cardClass} data-testid="summary-today">

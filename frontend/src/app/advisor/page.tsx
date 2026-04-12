@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
+import { ADVISOR as A, COMMON } from "@/lib/strings";
 
 // === Types ===
 interface Violation {
@@ -41,7 +42,7 @@ async function AdvisorSection() {
   try {
     data = await fetchAPI<AdvisorReport>("/api/rebalance-advisor");
   } catch {
-    return <p className="text-red-400 text-sm">API 연결 실패. make api 실행 필요.</p>;
+    return <p className="text-red-400 text-sm">{COMMON.API_ERROR}</p>;
   }
 
   if (data.total_violations === 0) {
@@ -50,7 +51,7 @@ async function AdvisorSection() {
         <CardContent className="pt-5">
           <div className="flex items-center gap-2">
             <StatusBadge status="READY" size="md" />
-            <span className="text-sm">모든 투자 규칙 준수 중. 위반 사항 없음.</span>
+            <span className="text-sm">{A.NO_VIOLATIONS}</span>
           </div>
         </CardContent>
       </Card>
@@ -63,11 +64,11 @@ async function AdvisorSection() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-4 gap-3">
-        <Metric label="총 위반" value={`${data.total_violations}건`} color={critical > 0 ? "red" : "default"} />
-        <Metric label="Critical" value={`${critical}건`} color="red" />
-        <Metric label="High" value={`${high}건`} color="red" />
+        <Metric label={A.TOTAL_VIOLATIONS} value={`${data.total_violations}${COMMON.COUNT_SUFFIX}`} color={critical > 0 ? "red" : "default"} />
+        <Metric label="Critical" value={`${critical}${COMMON.COUNT_SUFFIX}`} color="red" />
+        <Metric label="High" value={`${high}${COMMON.COUNT_SUFFIX}`} color="red" />
         <Metric
-          label="총 회수 가능"
+          label={A.TOTAL_RECOVERABLE}
           value={`$${data.total_recovery_usd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
           color="green"
         />
@@ -77,7 +78,7 @@ async function AdvisorSection() {
         <Card className="bg-red-950/30 border-red-900">
           <CardContent className="pt-4 pb-3">
             <p className="text-sm text-red-400 font-medium">
-              ⚠ CRITICAL 위반 {critical}건 — 즉시 조치 필요
+              {A.CRITICAL_PREFIX} {critical}{COMMON.COUNT_SUFFIX} — {A.CRITICAL_SUFFIX}
             </p>
           </CardContent>
         </Card>
@@ -86,7 +87,7 @@ async function AdvisorSection() {
       <Card className="bg-card border-border">
         <CardContent className="pt-5">
           <p className="text-xs text-muted-foreground mb-3">
-            Rebalance Advisor — 매도 우선순위 순 (rules.yaml 기반)
+            {A.DESCRIPTION}
           </p>
           <ClientTable variant="advisor" data={data.actions} compact />
         </CardContent>
@@ -94,11 +95,11 @@ async function AdvisorSection() {
 
       <Card className="bg-card border-border">
         <CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground mb-3">위반 유형별 분포</p>
+          <p className="text-xs text-muted-foreground mb-3">{A.VIOLATION_DIST}</p>
           <div className="flex flex-wrap gap-2">
             {Object.entries(data.violations_by_type).map(([type, count]) => (
               <span key={type} className="text-xs bg-muted px-2 py-1 rounded">
-                {type}: {count}건
+                {type}: {count}{COMMON.COUNT_SUFFIX}
               </span>
             ))}
           </div>
@@ -114,7 +115,7 @@ export default function AdvisorPage() {
       <div className="mb-6">
         <h1 className="text-lg font-semibold">Rebalance Advisor</h1>
         <p className="text-xs text-muted-foreground mt-1">
-          투자 규칙 위반 감지 · 매도 수량 계산 · 회수 금액 · 우선순위 정렬
+          {A.SUBTITLE}
         </p>
       </div>
       <Suspense fallback={<Loading />}>

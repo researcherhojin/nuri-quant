@@ -7,6 +7,7 @@
 import Link from "next/link";
 
 import { Sparkline } from "@/components/ui/sparkline";
+import { HOLDING_STATUS, HOLDING_LABEL } from "@/lib/strings";
 
 // ── Raw input shapes (API response surfaces) ─────────────────
 export interface RawHolding {
@@ -266,19 +267,19 @@ export function formatPrice(price: number | null, currency: "USD" | "KRW"): stri
 function statusVisual(s: HoldingStatus): { text: string; className: string } {
   switch (s.kind) {
     case "stop_loss":
-      return { text: "손절", className: "bg-red-500/15 text-red-400 border-red-500/30" };
+      return { text: HOLDING_STATUS.STOP_LOSS, className: "bg-red-500/15 text-red-400 border-red-500/30" };
     case "violation":
-      return { text: "⚠ 위반", className: "bg-red-500/15 text-red-400 border-red-500/30" };
+      return { text: HOLDING_STATUS.VIOLATION, className: "bg-red-500/15 text-red-400 border-red-500/30" };
     case "sell":
-      return { text: `매도 ${s.confidence}`, className: "bg-red-500/15 text-red-400 border-red-500/30" };
+      return { text: `${HOLDING_STATUS.SELL} ${s.confidence}`, className: "bg-red-500/15 text-red-400 border-red-500/30" };
     case "tp2":
-      return { text: "✓ 익절₂", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" };
+      return { text: HOLDING_STATUS.TP2, className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" };
     case "tp1":
-      return { text: "✓ 익절₁", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" };
+      return { text: HOLDING_STATUS.TP1, className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" };
     case "buy":
-      return { text: `매수 ${s.confidence}`, className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" };
+      return { text: `${HOLDING_STATUS.BUY} ${s.confidence}`, className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" };
     case "hold":
-      return { text: "보유", className: "bg-zinc-800/60 text-zinc-400 border-zinc-700" };
+      return { text: HOLDING_STATUS.HOLD, className: "bg-zinc-800/60 text-zinc-400 border-zinc-700" };
   }
 }
 
@@ -313,7 +314,7 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
 
   // target_1 cell
   const t1Cell = h.target1Reached ? (
-    <span className="text-emerald-400 text-[10px]">✓ 도달</span>
+    <span className="text-emerald-400 text-[10px]">{HOLDING_STATUS.REACHED}</span>
   ) : (
     <span className="text-zinc-400">{formatPrice(h.target1, h.currency)}</span>
   );
@@ -321,7 +322,7 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
   // target_2 cell — highlight when target_1 reached but target_2 not (next goal)
   const t2NextGoal = h.target1Reached && !h.target2Reached;
   const t2Cell = h.target2Reached ? (
-    <span className="text-emerald-400 text-[10px]">✓ 도달</span>
+    <span className="text-emerald-400 text-[10px]">{HOLDING_STATUS.REACHED}</span>
   ) : (
     <span className={t2NextGoal ? "text-zinc-100 font-semibold" : "text-zinc-500"}>
       {formatPrice(h.target2, h.currency)}
@@ -347,7 +348,7 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       {/* 현재가 / 평단가 — md+ (768px+). leading-[1.3] 으로 두 줄 사이 여유 살림. */}
       <span
         className="hidden md:flex flex-col items-end text-right tabular-nums shrink-0 w-[72px] leading-[1.3]"
-        aria-label="현재가/평단가"
+        aria-label={HOLDING_LABEL.CURRENT_AVG}
       >
         <span className="text-[10px] text-zinc-200">{formatPrice(h.latestPrice, h.currency)}</span>
         <span className="text-[9px] text-zinc-500">{formatPrice(h.avgPrice, h.currency)}</span>
@@ -360,7 +361,7 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       {/* 일변 (daily delta) — sm+ */}
       <span
         className={`hidden sm:inline-block tabular-nums text-right w-12 shrink-0 text-[10px] ${deltaClass}`}
-        aria-label="일변"
+        aria-label={HOLDING_LABEL.DAILY_DELTA}
         data-testid="daily-delta"
       >
         {deltaText}
@@ -374,21 +375,21 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       {/* stop loss — md+ */}
       <span
         className="hidden md:inline-block w-[68px] text-right tabular-nums text-zinc-500 shrink-0"
-        aria-label="손절가"
+        aria-label={HOLDING_LABEL.STOP_LOSS}
       >
         {formatPrice(h.stopLoss, h.currency)}
       </span>
       {/* target_1 — lg+ */}
       <span
         className="hidden lg:inline-block w-[68px] text-right tabular-nums shrink-0"
-        aria-label="1차 익절가"
+        aria-label={HOLDING_LABEL.TARGET_1}
       >
         {t1Cell}
       </span>
       {/* target_2 — lg+ */}
       <span
         className="hidden lg:inline-block w-[68px] text-right tabular-nums shrink-0"
-        aria-label="2차 익절가"
+        aria-label={HOLDING_LABEL.TARGET_2}
       >
         {t2Cell}
       </span>
@@ -419,7 +420,7 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       {/* #218: 섹터 — 2xl+ (1536px+) 27" 모니터용. Label 데이터라 text-left. */}
       <span
         className="hidden 2xl:inline-block w-[96px] text-left text-[10px] text-zinc-500 truncate shrink-0"
-        aria-label="섹터"
+        aria-label={HOLDING_LABEL.SECTOR}
         data-testid="sector-cell"
         title={h.sector ?? undefined}
       >
@@ -428,7 +429,7 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       {/* #218: 비중 (% of portfolio) — 2xl+ (1536px+) 27" 모니터용 */}
       <span
         className="hidden 2xl:inline-block w-[56px] text-right tabular-nums text-[10px] text-zinc-400 shrink-0"
-        aria-label="비중"
+        aria-label={HOLDING_LABEL.POSITION_PCT}
         data-testid="position-pct-cell"
       >
         {h.positionPct != null ? `${h.positionPct.toFixed(1)}%` : "—"}
