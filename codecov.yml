@@ -13,6 +13,7 @@ coverage:
     patch:
       default:
         target: auto         # 신규 코드 기준
+        threshold: 5%        # 리팩토링(문자열 교체 등)에서 미커버 기존 라인 허용
 
 # Backend = Python (nuri/), Frontend = TypeScript (frontend/src/)
 flags:
