@@ -11,8 +11,10 @@ router = APIRouter(tags=["ticker"])
 @router.get("/tickers/search")
 def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
     """종목 검색 — ticker code 또는 한국 종목명 부분 매칭. universe + DB 가격 기반."""
-    import yaml
     from pathlib import Path
+
+    import yaml
+
     from nuri.core.ticker_names import get_ticker_name
 
     term = q.strip().upper()
