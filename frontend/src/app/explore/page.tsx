@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { fetchAPI } from "@/lib/api";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { EXPLORE, VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, HOLDING_STATUS, COMMON } from "@/lib/strings";
+import { EXPLORE, VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SIGNAL, HOLDING_STATUS, COMMON } from "@/lib/strings";
 
 // ── Types ──
 interface RegimeData {
@@ -108,14 +108,24 @@ function QuickLinkCard({ ticker, name, price, prev }: {
 }
 
 // ── Market Context Strip ──
+// Shows whatever data is available — regime, VIX, F&G, macro independently.
+// Each metric renders only when its data exists. All-empty = fallback message.
 async function MarketContext() {
-  const [regime, macro] = await Promise.all([
+  const [regime, macro, dashboard] = await Promise.all([
     fetchAPI<{ regime_state: RegimeData }>("/api/regime").catch(() => null),
     fetchAPI<MacroData>("/api/macro").catch(() => null),
+    fetchAPI<{ regime: { vix?: number; fear_greed?: number; trend?: string } }>("/api/dashboard").catch(() => null),
   ]);
 
+  // Prefer regime API, fallback to dashboard for VIX/F&G
   const r = regime?.regime_state;
-  if (!r || !r.trend) {
+  const trend = r?.trend ?? dashboard?.regime?.trend ?? null;
+  const vix = r?.vix ?? dashboard?.regime?.vix ?? null;
+  const fg = r?.fear_greed ?? dashboard?.regime?.fear_greed ?? null;
+  const hasMacro = macro && typeof macro.score === "number" && macro.score > 0;
+  const hasAny = trend || vix != null || fg != null || hasMacro;
+
+  if (!hasAny) {
     return (
       <div className="text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
         ⚠ {EXPLORE.MARKET_NO_DATA}
@@ -123,15 +133,13 @@ async function MarketContext() {
     );
   }
 
-  const vix = r.vix ?? null;
-  const fg = r.fear_greed ?? null;
   const vInfo = vixZone(vix);
-  const mInfo = macro ? macroLevel(macro.score) : null;
-  const tColor = r.trend === "bull" ? "text-emerald-400" : r.trend === "bear" ? "text-red-400" : "text-amber-400";
+  const mInfo = hasMacro ? macroLevel(macro!.score) : null;
+  const tColor = trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-amber-400";
 
   return (
     <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
-      <span className={`${tColor} font-semibold`}>{trendKo(r.trend)}</span>
+      {trend && <span className={`${tColor} font-semibold`}>{trendKo(trend)}</span>}
       {vix != null && (
         <span>VIX <span className={`font-semibold tabular-nums ${vInfo.color}`}>{Math.round(vix * 10) / 10}</span> <span className={vInfo.color}>{vInfo.label}</span></span>
       )}
@@ -143,6 +151,26 @@ async function MarketContext() {
       )}
     </div>
   );
+}
+
+// ── Signal name translation (English signal_id → Korean) ──
+const SIGNAL_KO: Record<string, string> = {
+  bb_bounce: SIGNAL.BB_BOUNCE, macd_bullish_turn: SIGNAL.MACD_BULLISH_TURN,
+  macd_bearish_turn: SIGNAL.MACD_BEARISH_TURN, macd_golden: SIGNAL.MACD_GOLDEN,
+  macd_dead: SIGNAL.MACD_DEAD, rsi_oversold: SIGNAL.RSI_OVERSOLD,
+  rsi_overbought: SIGNAL.RSI_OVERBOUGHT, sma_golden: SIGNAL.SMA_GOLDEN,
+  sma_dead: SIGNAL.SMA_DEAD, volume_spike: SIGNAL.VOLUME_SPIKE,
+  gap_up: SIGNAL.GAP_UP, gap_down: SIGNAL.GAP_DOWN,
+  bb_squeeze_breakout: SIGNAL.BB_SQUEEZE_BREAKOUT,
+  near_52w_low_bounce: SIGNAL.NEAR_52W_LOW_BOUNCE,
+  volume_profile_resistance: SIGNAL.VOLUME_PROFILE_RESISTANCE,
+};
+function signalKo(id: string): string { return SIGNAL_KO[id] ?? id.replace(/_/g, " "); }
+
+// KR ticker → display name from popular list
+const KR_NAMES: Record<string, string> = Object.fromEntries(POPULAR_KR.map((t) => [t.ticker, t.name]));
+function tickerDisplay(ticker: string): string {
+  return KR_NAMES[ticker] ?? ticker;
 }
 
 // ── Recent Signals ──
@@ -158,16 +186,24 @@ async function RecentSignals() {
     );
   }
 
+  // Deduplicate by ticker — show only latest signal per ticker
+  const seen = new Set<string>();
+  const unique = candidates.filter((c) => {
+    if (seen.has(c.ticker)) return false;
+    seen.add(c.ticker);
+    return true;
+  });
+
   return (
     <div className="flex flex-wrap gap-2 px-2">
-      {candidates.slice(0, 8).map((c, i) => (
+      {unique.slice(0, 8).map((c, i) => (
         <Link
           key={`${c.ticker}-${i}`}
           href={`/ticker/${c.ticker}`}
           className="flex items-center gap-1 text-[10px] hover:text-zinc-100 transition-colors"
         >
-          <span className="text-zinc-200 font-medium">{c.ticker}</span>
-          <span className="text-zinc-500">{(c.signal_id ?? "").replace(/_/g, " ")}</span>
+          <span className="text-zinc-200 font-medium">{tickerDisplay(c.ticker)}</span>
+          <span className="text-zinc-500">{signalKo(c.signal_id ?? "")}</span>
           <StatusBadge status={c.direction} size="sm" />
         </Link>
       ))}
