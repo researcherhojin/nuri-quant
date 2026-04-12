@@ -194,8 +194,8 @@ describe("ReportPage", () => {
     fireEvent.click(screen.getByText("Generate Report"));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith("http://localhost:8001/api/report/context");
-      expect(global.fetch).toHaveBeenCalledWith("http://localhost:8001/api/report");
+      expect(global.fetch).toHaveBeenCalledWith("/api/report/context");
+      expect(global.fetch).toHaveBeenCalledWith("/api/report");
     });
   });
 });

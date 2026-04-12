@@ -23,6 +23,7 @@ import {
   Sun,
   Moon,
   BookOpen,
+  Compass,
 } from "lucide-react";
 
 // 팔란티어 스타일 그룹 네비게이션
@@ -31,6 +32,7 @@ const NAV_GROUPS = [
     label: "OVERVIEW",
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/explore", label: "Explore", icon: Compass },
       { href: "/pipeline", label: "Pipeline", icon: Workflow },
     ],
   },

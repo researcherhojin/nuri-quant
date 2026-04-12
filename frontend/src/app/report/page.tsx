@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { API_BASE } from "@/lib/api";
 import { REPORT } from "@/lib/strings";
 
 export default function ReportPage() {
@@ -16,12 +15,12 @@ export default function ReportPage() {
     setReport(null);
     try {
       // 컨텍스트 먼저 표시
-      const ctxRes = await fetch(`${API_BASE}/api/report/context`);
+      const ctxRes = await fetch(`/api/report/context`);
       const ctxData = await ctxRes.json();
       setContext(ctxData.context);
 
       // LLM 리포트 생성
-      const res = await fetch(`${API_BASE}/api/report`);
+      const res = await fetch(`/api/report`);
       const data = await res.json();
       setReport(data.report);
     } catch (e) {

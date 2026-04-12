@@ -176,7 +176,7 @@ nuri/
 │   ├── recommend/     # Candidates, rebalance, tracker, price_targets
 │   ├── swing/         # Market-wide scanner + rules
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
-├── api/               # FastAPI REST API (57 endpoints, routes/)
+├── api/               # FastAPI REST API (60 endpoints, routes/)
 ├── alerts/            # Discord daily report + bot, Telegram alerts
 └── llm/               # LLM report (Ollama) + OpenAI wrapper + event classifier
 ```
@@ -199,6 +199,13 @@ nuri/
 - Configuration in YAML (`config/`), secrets in `.env` (git-ignored)
 - Korean stock tickers use `.KS` suffix (e.g., `005930.KS` for 삼성전자)
 - **Timezone: always use `kst_now()` or `today_kst()` from `nuri.core.timezone`** — never `datetime.now()`
+
+## API Access Pattern
+
+- **Server Components**: Use `fetchAPI("/api/...")` from `@/lib/api` (absolute URL, server-to-server)
+- **Client Components**: Use `fetch("/api/...")` (relative URL, proxied by Next.js `rewrites` in `next.config.ts`)
+- **Never** use `${API_BASE}/api/...` in Client Components — breaks on network access (CORS/CSP)
+- Backend: FastAPI on `:8001`, Frontend: Next.js on `:3000`. Next.js proxies `/api/*` to backend.
 
 ## Gotchas
 
