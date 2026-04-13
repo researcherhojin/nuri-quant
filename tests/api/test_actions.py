@@ -341,6 +341,44 @@ class TestBuildActionsLogic:
         assert len(result["hold"]) == 1
         assert "BUY (conf 60)" in result["hold"][0]["reasons"][0]
 
+    def test_pension_filtered_out(self):
+        result = self._run(
+            [{"ticker": "381170.KS", "action": "BUY", "confidence": 65, "agreement": 20}],
+            portfolio={"381170.KS": {"current_price": 29610, "avg_price": 21450, "quantity": 1, "pnl_pct": 38, "position_pct": 12, "account": "연금"}},
+        )
+        assert len(result["urgent"]) == 0
+        assert len(result["check"]) == 0
+        assert len(result["hold"]) == 0
+
+    def test_irp_filtered_out(self):
+        result = self._run(
+            [{"ticker": "448300.KS", "action": "BUY", "confidence": 72, "agreement": 20}],
+            portfolio={"448300.KS": {"current_price": 19535, "avg_price": 17450, "quantity": 1, "pnl_pct": 12, "position_pct": 10, "account": "IRP"}},
+        )
+        assert len(result["hold"]) == 0
+
+    def test_duplicate_ticker_deduped(self):
+        result = self._run(
+            [
+                {"ticker": "NVDA", "action": "BUY", "confidence": 70, "agreement": 40},
+                {"ticker": "NVDA", "action": "BUY", "confidence": 65, "agreement": 30},
+            ],
+            portfolio={"NVDA": self._pf(189, 132, 43, 8)},
+        )
+        # 같은 ticker가 2번 나와도 1번만 출력
+        all_items = result["urgent"] + result["check"] + result["hold"]
+        nvda = [i for i in all_items if i["ticker"] == "NVDA"]
+        assert len(nvda) == 1
+
+    def test_includes_ticker_name_for_kr(self):
+        result = self._run(
+            [{"ticker": "005930.KS", "action": "BUY", "confidence": 62, "agreement": 20}],
+            portfolio={"005930.KS": {"current_price": 200750, "avg_price": 59700, "quantity": 1, "pnl_pct": 236, "position_pct": 0.4, "account": "Main"}},
+        )
+        all_items = result["urgent"] + result["check"] + result["hold"]
+        assert len(all_items) == 1
+        assert "name" in all_items[0]
+
 
 # ═══════════════════════════════════════════════════
 # Unit tests — _build_opportunities business logic
