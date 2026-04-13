@@ -33,9 +33,12 @@ interface PriceChartProps {
 }
 
 const PERIODS = [
+  { label: "1D", days: 1 },
+  { label: "3D", days: 3 },
+  { label: "5D", days: 5 },
+  { label: "2W", days: 10 },
   { label: "1M", days: 22 },
   { label: "3M", days: 66 },
-  { label: "6M", days: 132 },
   { label: "1Y", days: 252 },
   { label: "ALL", days: 9999 },
 ] as const;
@@ -56,7 +59,7 @@ export function formatVolume(v: number): string {
 }
 
 export function PriceChart({ data, ticker }: PriceChartProps) {
-  const [period, setPeriod] = useState<number>(132); // 기본 6M
+  const [period, setPeriod] = useState<number>(10); // 기본 2W (단타 기준)
 
   const sliced = data.slice(-period);
   const closes = data.map((d) => d.close);

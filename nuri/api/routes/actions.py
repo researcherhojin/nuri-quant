@@ -45,8 +45,25 @@ def _build_actions() -> dict:
 
     violation_tickers = {v["ticker"] for v in siege_violations}
 
+    # 연금 계좌 종목 식별 (월간 리밸런싱 → daily action에서 제외)
+    pension_tickers = {
+        t for t, h in portfolio_holdings.items()
+        if any(kw in (h.get("account") or "").lower() for kw in ("연금", "pension", "irp"))
+    }
+
+    from nuri.core.ticker_names import get_ticker_name
+
+    seen_tickers: set[str] = set()  # 중복 방지
     for rec in recommendations:
         ticker = rec["ticker"]
+        # 연금 종목 skip (daily action 불필요)
+        if ticker in pension_tickers:
+            continue
+        # 중복 ticker skip (복수 계좌 동일 종목)
+        if ticker in seen_tickers:
+            continue
+        seen_tickers.add(ticker)
+
         action = rec["action"]
         confidence = rec["confidence"]
         holding = portfolio_holdings.get(ticker, {})
@@ -56,6 +73,7 @@ def _build_actions() -> dict:
 
         item = {
             "ticker": ticker,
+            "name": get_ticker_name(ticker),
             "action": action,
             "confidence": confidence,
             "agreement": rec.get("agreement"),
@@ -419,8 +437,26 @@ def _get_improving_signals() -> set[str]:
     return improving
 
 
+_CATEGORY_KO: dict[str, str] = {
+    "geopolitical_escalation": "지정학 긴장 고조",
+    "geopolitical_de_escalation": "지정학 긴장 완화",
+    "oil_supply_shock": "유가 충격",
+    "trade_war": "무역 분쟁",
+    "fed_dovish": "Fed 완화 시사",
+    "fed_hawkish": "Fed 긴축 시사",
+    "earnings_beat": "실적 호실적",
+    "earnings_miss": "실적 부진",
+    "sector_rally": "섹터 랠리",
+    "demand_growth": "수요 증가",
+    "export_surge": "수출 급증",
+}
+
+
 def _get_macro_events() -> list[dict]:
-    """최근 7일 매크로 이벤트 (category != neutral, confidence >= 0.5)."""
+    """최근 7일 매크로 이벤트 (category != neutral, confidence >= 0.5).
+
+    headline을 카테고리 한국어 + 원문 요약으로 변환.
+    """
     cutoff = (kst_now() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
     rows = query("""
         SELECT category, headline, sentiment, confidence, published_at, source
@@ -431,7 +467,20 @@ def _get_macro_events() -> list[dict]:
         ORDER BY ABS(sentiment) DESC
         LIMIT 10
     """, (cutoff,))
-    return [dict(r) for r in rows]
+    results = []
+    seen_categories: dict[str, int] = {}
+    for r in rows:
+        cat = r["category"] or ""
+        # 같은 카테고리 3개 이상이면 skip (중복 TSMC 뉴스 방지)
+        seen_categories[cat] = seen_categories.get(cat, 0) + 1
+        if seen_categories[cat] > 2:
+            continue
+        ko_label = _CATEGORY_KO.get(cat, cat)
+        results.append({
+            **dict(r),
+            "category_ko": ko_label,
+        })
+    return results[:8]
 
 
 def _get_system_health() -> dict:

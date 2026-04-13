@@ -6,6 +6,7 @@ import { ACTION } from "@/lib/strings";
 
 interface ActionItem {
   ticker: string;
+  name?: string | null;
   action: string;
   confidence: number;
   agreement?: number | null;
@@ -48,8 +49,9 @@ function ActionCard({ item }: { item: ActionItem }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <Link href={`/ticker/${item.ticker}`} className="text-sm font-semibold text-zinc-100 hover:text-white transition-colors">
-              {item.ticker}
+              {item.name || item.ticker}
             </Link>
+            {item.name && <span className="text-[10px] text-zinc-600">{item.ticker}</span>}
             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
               item.action === "SELL" ? "bg-red-500/20 text-red-400" :
               item.action === "BUY" ? "bg-emerald-500/20 text-emerald-400" :
@@ -116,7 +118,7 @@ export function ActionItems({ urgent, check, hold }: ActionItemsProps) {
             {ACTION.URGENT} ({urgent.length})
           </h3>
           <div className="space-y-2">
-            {urgent.map((item) => <ActionCard key={item.ticker} item={item} />)}
+            {urgent.map((item) => <ActionCard key={`${item.ticker}-${item.account}`} item={item} />)}
           </div>
         </div>
       )}
@@ -129,7 +131,7 @@ export function ActionItems({ urgent, check, hold }: ActionItemsProps) {
             {ACTION.CHECK} ({check.length})
           </h3>
           <div className="space-y-2">
-            {check.map((item) => <ActionCard key={item.ticker} item={item} />)}
+            {check.map((item) => <ActionCard key={`${item.ticker}-${item.account}`} item={item} />)}
           </div>
         </div>
       )}
@@ -144,11 +146,11 @@ export function ActionItems({ urgent, check, hold }: ActionItemsProps) {
           <div className="flex flex-wrap gap-1.5">
             {hold.map((item) => (
               <Link
-                key={item.ticker}
+                key={`${item.ticker}-${item.account}`}
                 href={`/ticker/${item.ticker}`}
                 className="inline-flex items-center gap-1 px-2 py-1 rounded bg-zinc-900/60 border border-zinc-800/40 text-[10px] hover:bg-zinc-800/60 transition-colors"
               >
-                <span className="text-zinc-300">{item.ticker}</span>
+                <span className="text-zinc-300">{item.name || item.ticker}</span>
                 <span className={`tabular-nums font-medium ${item.action === "BUY" ? "text-emerald-500" : "text-zinc-500"}`}>
                   {item.action} {item.confidence}
                 </span>
