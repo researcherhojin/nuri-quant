@@ -28,8 +28,8 @@
 
 ```
 Dimension 1: Account (계좌 전략)
-  ├── kakaopay      → core    (-7% SL, 15% pos)
-  ├── kakaopay_sub  → active  (-10% SL, 25% pos)
+  ├── brokerage_alpha      → core    (-7% SL, 15% pos)
+  ├── brokerage_alpha_sub  → active  (-10% SL, 25% pos)
   ├── toss          → long_term (-20% SL, 25% pos)
   └── pension       → pension (-30% SL, 40% pos)
 
@@ -53,10 +53,10 @@ Dimension 3: Execution Market (실행 시장)
    - 나머지 → `us_equity` (fallback)
    
 2. **같은 종목이 다른 계좌에 있으면 각각 계좌 전략 적용**:
-   - 삼성전자 in kakaopay (core, -7%) ≠ 삼성전자 in toss (long_term, -20%)
+   - 삼성전자 in brokerage_alpha (core, -7%) ≠ 삼성전자 in toss (long_term, -20%)
    
 3. **전체 포트폴리오 노출도 별도 체크**:
-   - NVDA: kakaopay 8.3% + sub 6.1% = 14.4% → total_max_single 20% 이내
+   - NVDA: brokerage_alpha 8.3% + sub 6.1% = 14.4% → total_max_single 20% 이내
 
 4. **환헤지 여부는 ETF metadata에서 결정**:
    - (H) ETF: `currency_shift` 이벤트 무관
