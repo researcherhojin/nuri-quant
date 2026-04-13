@@ -25,8 +25,8 @@
      - #254 SIEGE v2 아키텍처 문서 + README Mermaid 리팩토링
      - 핵심 발견: yfinance 한국 펀더멘탈 이미 지원, pykrx 수급 API 깨짐
      - SIEGE 생태계(nutshells3) 6개 레포 분석 → 3차원 인증 모델 결정
-     - 트레이딩: RECOVERY 레짐, AGGRESSIVE 포지션. KakaoPay 현금 66% 재진입 계획
-     - SOXS 500주 취소, 삼성전자 카카오페이 1주 매도 (+238%)
+     - 트레이딩: RECOVERY 레짐, AGGRESSIVE 포지션. Brokerage Alpha 현금 66% 재진입 계획
+     - SOXS 500주 취소, 삼성전자 Brokerage Alpha 1주 매도 (+238%)
 
   4. 핵심 원칙 (STRATEGY.md)
      - §2.1 증거 우선
@@ -71,7 +71,7 @@
 
   [3] 트레이딩 준비 (장 시작 전)
       make collect → make full-scan → 레짐 확인.
-      KakaoPay 현금 66% → 35% 재진입 구체 계획 (3회 분할).
+      Brokerage Alpha 현금 66% → 35% 재진입 구체 계획 (3회 분할).
       오늘 밤 미장 기준 NVDA/AMD 추매 타겟 + 손절가.
 
   [4] SIEGE v2 Phase 2 — Safety Lattice (~2h)
