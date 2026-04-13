@@ -109,6 +109,95 @@ class TestMarketContextEndpoint:
 
 
 # ═══════════════════════════════════════════════════
+# Unit tests — exception fallback + edge paths
+# ═══════════════════════════════════════════════════
+
+
+class TestEndpointExceptionFallbacks:
+    def test_actions_exception_returns_empty(self):
+        with patch("nuri.api.routes.actions._build_actions", side_effect=RuntimeError("boom")):
+            from nuri.api.routes.actions import get_actions
+            result = get_actions()
+            assert result == {"urgent": [], "check": [], "hold": []}
+
+    def test_opportunities_exception_returns_empty(self):
+        with patch("nuri.api.routes.actions._build_opportunities", side_effect=RuntimeError("boom")):
+            from nuri.api.routes.actions import get_opportunities
+            result = get_opportunities()
+            assert result == {"opportunities": []}
+
+    def test_market_context_exception_returns_empty(self):
+        with patch("nuri.api.routes.actions._get_macro_events", side_effect=RuntimeError("boom")):
+            from nuri.api.routes.actions import get_market_context
+            result = get_market_context()
+            assert result["macro_events"] == []
+            assert result["system_health"] == {}
+            assert "generated_at" in result
+
+
+class TestGetRecommendationsEdge:
+    @patch("nuri.api.routes.actions.query")
+    def test_malformed_signals_json(self, mock_query):
+        """signals가 유효하지 않은 JSON이면 agreement=None."""
+        mock_query.return_value = [
+            {"ticker": "BAD", "action": "BUY", "confidence": 0.6, "signals": "not-json{{{"}
+        ]
+        from nuri.api.routes.actions import _get_recommendations
+        result = _get_recommendations()
+        assert result[0]["agreement"] is None
+
+
+class TestGetSiegeViolationsEdge:
+    def test_position_limit_no_regex_match(self):
+        """position_limit detail에 ticker%(>)% 형식이 없으면 빈 ticker로 등록."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeCond:
+            id: str = "position_limit"
+            description: str = "종목 비중 한도"
+            passed: bool = False
+            detail: str = "데이터 없음"
+            severity: str = "error"
+
+        @dataclass
+        class FakeCert:
+            conditions: list = None
+            def __post_init__(self):
+                self.conditions = self.conditions or [FakeCond()]
+
+        with patch("nuri.trading.engine.certification.certify", return_value=FakeCert()):
+            from nuri.api.routes.actions import _get_siege_violations
+            result = _get_siege_violations()
+            assert len(result) == 1
+            assert result[0]["ticker"] == ""
+
+    def test_non_position_limit_error(self):
+        """position_limit 이외의 error condition도 등록."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeCond:
+            id: str = "leverage_ban"
+            description: str = "레버리지 ETF"
+            passed: bool = False
+            detail: str = "TQQQ 보유"
+            severity: str = "error"
+
+        @dataclass
+        class FakeCert:
+            conditions: list = None
+            def __post_init__(self):
+                self.conditions = self.conditions or [FakeCond()]
+
+        with patch("nuri.trading.engine.certification.certify", return_value=FakeCert()):
+            from nuri.api.routes.actions import _get_siege_violations
+            result = _get_siege_violations()
+            assert len(result) == 1
+            assert "레버리지" in result[0]["detail"]
+
+
+# ═══════════════════════════════════════════════════
 # Unit tests — _compute_verdict
 # ═══════════════════════════════════════════════════
 
@@ -411,6 +500,11 @@ class TestBuildOpportunitiesLogic:
     def test_oversold_with_improving(self):
         result = self._run([self._scan("DIP", rsi=28, vol=2.5)], improving={"rsi_oversold"})
         assert any("승률 상승" in p for p in result[0]["pros"])
+
+    def test_oversold_without_improving(self):
+        result = self._run([self._scan("DIP2", rsi=30, vol=1.0)], improving=set())
+        assert any("과매도" in p for p in result[0]["pros"])
+        assert not any("승률 상승" in p for p in result[0]["pros"])
 
     def test_volume_spike_pro(self):
         result = self._run([self._scan("VOL", vol=2.5)])

@@ -169,4 +169,45 @@ describe("ActionItems", () => {
     render(<ActionItems urgent={[]} check={[lossItem]} hold={[]} />);
     expect(screen.getByText("-5.3%")).toBeTruthy();
   });
+
+  it("shows Korean name with ticker subtext", () => {
+    const krItem = { ...urgentItem, ticker: "005930.KS", name: "삼성전자" };
+    render(<ActionItems urgent={[krItem]} check={[]} hold={[]} />);
+    expect(screen.getByText("삼성전자")).toBeTruthy();
+    expect(screen.getByText("005930.KS")).toBeTruthy();
+  });
+
+  it("shows ticker when name is null", () => {
+    const noName = { ...urgentItem, name: null };
+    render(<ActionItems urgent={[noName]} check={[]} hold={[]} />);
+    expect(screen.getByText("TSLA")).toBeTruthy();
+  });
+
+  it("hides account when empty", () => {
+    const noAccount = { ...urgentItem, account: "" };
+    render(<ActionItems urgent={[noAccount]} check={[]} hold={[]} />);
+    // Should not render empty account span
+    const body = document.body.textContent ?? "";
+    expect(body).not.toContain("Main");
+  });
+
+  it("shows HOLD action in hold chip", () => {
+    const holdAction = { ...holdItem, action: "HOLD", reasons: ["HOLD (conf 52)"] };
+    render(<ActionItems urgent={[]} check={[]} hold={[holdAction]} />);
+    expect(screen.getByText("HOLD 60")).toBeTruthy();
+  });
+
+  it("shows name in hold chips for KR tickers", () => {
+    const krHold = { ...holdItem, ticker: "000660.KS", name: "SK하이닉스" };
+    render(<ActionItems urgent={[]} check={[]} hold={[krHold]} />);
+    expect(screen.getByText("SK하이닉스")).toBeTruthy();
+  });
+
+  it("formats null prices as dash in expanded detail", () => {
+    const nullPrices = { ...urgentItem, stop_loss: null, target_1: null };
+    render(<ActionItems urgent={[nullPrices]} check={[]} hold={[]} />);
+    fireEvent.click(screen.getByText(/상세 근거/));
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("—");
+  });
 });
