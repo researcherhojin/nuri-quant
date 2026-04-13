@@ -32,6 +32,9 @@ CATEGORY_WEIGHT: dict[str, float] = {
     "sector_rally": 0.4,
     "sector_selloff": -0.6,
     "trade_war": -0.7,
+    "export_surge": 0.65,        # 한국/글로벌 수출 급증 → 강한 긍정 (#137)
+    "currency_shift": -0.35,     # FX 변동 → 불확실성 증가 (방향은 sentiment으로 구분)
+    "demand_growth": 0.55,       # 반도체/산업 수요 확대 → 긍정
     "neutral": 0.0,
 }
 
