@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { EquityCurveChart } from "@/components/ui/equity-curve-chart";
+import { InteractiveBacktest } from "@/components/ui/interactive-backtest";
 
 async function StrategyDashboard() {
   const [status, bt] = await Promise.all([
@@ -158,11 +158,21 @@ async function StrategyDashboard() {
         </Card>
       </div>
 
-      {/* ── Row 2.5: Equity Curve ── */}
+      {/* ── Row 2.5: Interactive Backtest (#89) ── */}
       {bt.result?.equity_curve && bt.result.equity_curve.length > 0 && (
         <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <EquityCurveChart data={bt.result.equity_curve} />
+            <InteractiveBacktest
+              initialData={bt.result.equity_curve}
+              initialMetrics={bt.result ? {
+                total_return: bt.result.total_return,
+                sharpe: bt.result.sharpe,
+                max_drawdown: bt.result.max_drawdown,
+                win_rate: bt.result.win_rate,
+                spy_total_return: bt.result.spy_total_return,
+                excess_return: bt.result.excess_return,
+              } : undefined}
+            />
           </CardContent>
         </Card>
       )}
