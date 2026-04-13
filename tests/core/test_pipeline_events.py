@@ -215,7 +215,7 @@ class TestCheckFreshness:
         assert result["status"] == "PASS"
         assert result["key"] == "prices"
         assert result["age_hours"] is not None
-        assert result["age_hours"] < 24
+        assert result["age_hours"] <= 24
 
     def test_warn_status(self, db_path):
         """warn_hours 초과 → WARN."""

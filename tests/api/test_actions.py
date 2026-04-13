@@ -113,6 +113,56 @@ class TestMarketContextEndpoint:
 # ═══════════════════════════════════════════════════
 
 
+class TestCacheHitPaths:
+    """캐시 hit 경로 테스트 — 5분 TTL 내 재호출 시 캐시된 결과 반환."""
+
+    def _clear_caches(self):
+        from nuri.api.routes import actions
+        for cache in (actions._actions_cache, actions._opportunities_cache, actions._market_context_cache):
+            cache["data"] = None
+            cache["timestamp"] = 0
+
+    def test_actions_cache_hit(self):
+        import time
+        from nuri.api.routes import actions
+        self._clear_caches()
+        fake_result = {"urgent": [{"ticker": "CACHED"}], "check": [], "hold": [], "generated_at": "test"}
+        actions._actions_cache["data"] = fake_result
+        actions._actions_cache["timestamp"] = time.time()
+        result = actions.get_actions()
+        assert result == fake_result
+
+    def test_opportunities_cache_hit(self):
+        import time
+        from nuri.api.routes import actions
+        self._clear_caches()
+        fake_result = {"opportunities": [{"ticker": "CACHED"}], "generated_at": "test"}
+        actions._opportunities_cache["data"] = fake_result
+        actions._opportunities_cache["timestamp"] = time.time()
+        result = actions.get_opportunities()
+        assert result == fake_result
+
+    def test_market_context_cache_hit(self):
+        import time
+        from nuri.api.routes import actions
+        self._clear_caches()
+        fake_result = {"macro_events": [], "system_health": {"cached": True}, "generated_at": "test"}
+        actions._market_context_cache["data"] = fake_result
+        actions._market_context_cache["timestamp"] = time.time()
+        result = actions.get_market_context()
+        assert result == fake_result
+
+    def test_stale_cache_recomputes(self):
+        import time
+        from nuri.api.routes import actions
+        self._clear_caches()
+        actions._actions_cache["data"] = {"stale": True}
+        actions._actions_cache["timestamp"] = time.time() - 600  # 10분 전 (TTL 5분 초과)
+        with patch("nuri.api.routes.actions._build_actions", return_value={"urgent": [], "check": [], "hold": [], "generated_at": "fresh"}):
+            result = actions.get_actions()
+            assert "stale" not in result
+
+
 class TestEndpointExceptionFallbacks:
     def _clear_caches(self):
         """캐시 오염 방지 — 이전 테스트의 캐시가 남아있으면 exception 경로 안 탐."""
