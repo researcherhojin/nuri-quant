@@ -75,8 +75,8 @@ flowchart TD
   end
 
   subgraph Serve["Interface"]
-    API("FastAPI :8001\n60 endpoints + SSE")
-    Dashboard("Next.js 16 :3000\n17 pages\nTailwind 4 + shadcn/ui")
+    API("FastAPI :8001\n68 endpoints + SSE")
+    Dashboard("Next.js 16 :3000\n17 pages\nAction-First dashboard")
     Discord("Discord/Telegram\nalerts + daily report")
   end
 
@@ -159,23 +159,25 @@ flowchart TD
 | `nuri/trading/engine/` | Certify | SIEGE 11-gate (v2: asset-class-aware), conflict detection, learning memory |
 | `nuri/trading/recommend/` | Certify+Track | Candidates, price targets, rebalance advisor, outcome tracker (30/60/90d) |
 | `nuri/llm/` | Classify | Event classifier (OpenAI/regex), LLM report (Ollama, dormant), OpenAI wrapper |
-| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (60 endpoints). Swagger at `/docs` |
-| `frontend/` | Serve | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, dark theme) |
+| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (68 endpoints incl. `/actions`, `/opportunities`, `/market-context`). Swagger at `/docs` |
+| `frontend/` | Serve | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme) |
 | `nuri/core/` | Foundation | db.py (sole SQLite), events.py (journal), freshness.py (SLA), timezone.py (KST), rules.py, signal_config.py |
 | `config/*.yaml` | Foundation | rules, agents, signals, universe, stock_types, portfolio (gitignored) |
 
 ## Dashboard
 
-The dashboard at `:3000/` is a **composition-first overview**, not a row-level decision tool. Inspired by Snowball Analytics' Korean retail layout. Vertical hierarchy:
+The dashboard at `:3000/` answers **"what should I do today?"** — an Action-First design that prioritizes actionable intelligence over raw data. Pension/IRP holdings are filtered out (monthly rebalancing, not daily).
 
-1. **Hero** — 4 stats: 총 자산 · 오늘 P&L · 누적 수익률 · 승률 (winners/losers ratio)
-2. **Market context strip** — verdict · trend · VIX · 심리 · 경제 · 실제/권장 비중 (1 row, null-safe)
-3. **Status strips** — collapsible 알림 / 이벤트 / 신규 후보
-4. **Composition section** — Recharts donut (320px, standard 12-o'clock clockwise) + tabs (자산/섹터/계좌) + rich legend (label · meta · $value · weight % · daily delta)
-5. **Mini cards strip** — Movers + 집중도 (HHI)
-6. **Holdings table (drilldown)** — sorted by `positionPct` desc, top 8 visible by default with `?holdings=expanded` toggle
+1. **Hero** — 4 stats: 총 자산 · 오늘 P&L · 누적 수익률 · 승률
+2. **System Health** — 4 cards: SIEGE score · Regime · Macro score · Data freshness (links to detail pages)
+3. **Macro Events** — Recent high-impact news with 한국어 category labels (지정학/실적/유가 등), deduplicated
+4. **Action Items** — 🔴 즉시 실행 (SIEGE violations, stop-loss) · 🟡 오늘 확인 (take-profit, short squeeze) · ✅ 유지 (compact chips)
+5. **Market context strip** — VIX · 심리 · 경제 · 실제/권장 비중
+6. **Composition** — Recharts donut + tabs (자산/섹터/계좌) + rich legend
+7. **Holdings table** — sorted by `positionPct` desc, top 8 + expand toggle
+8. **Opportunity Explorer** — top 3 non-portfolio tickers with pros/cons/verdict + "10-Agent 분석" button + /scan link
 
-The composition section is the visual centerpiece. Holdings table is demoted to drilldown — the dashboard's structural job is "where is my money + how is it doing", not "act on every row". For row-level decisions see `/portfolio` and `/advisor`.
+Korean tickers show names (삼성전자) instead of numbers (005930.KS). For row-level decisions see `/portfolio` and `/advisor`.
 
 ## Tech Stack
 
@@ -222,8 +224,8 @@ make scan-extended  # Weekly scan (us_core + S&P 500, ~339 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (2,674 backend + 817 frontend)
-make test-fast  # backend only, slow tests excluded (~24s, ~52% faster)
+make test       # full suite (2,763 backend + 876 frontend + 39 e2e)
+make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
 

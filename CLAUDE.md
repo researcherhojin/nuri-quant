@@ -176,7 +176,7 @@ nuri/
 │   ├── recommend/     # Candidates, rebalance, tracker, price_targets
 │   ├── swing/         # Market-wide scanner + rules
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
-├── api/               # FastAPI REST API (65 endpoints, routes/)
+├── api/               # FastAPI REST API (68 endpoints, routes/ incl. actions/opportunities/market-context)
 ├── alerts/            # Discord daily report + bot, Telegram alerts
 └── llm/               # LLM report (Ollama) + OpenAI wrapper + event classifier
 ```
