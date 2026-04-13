@@ -460,7 +460,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | Alpaca 실전 연동 (Paper → Live) | [#17](https://github.com/researcherhojin/nuri-quant/issues/17) | **영구 보류**. 2026-04-11 사용자 결정 — 자동 매매로 인한 손실 책임소재 이슈. 시스템 추천(확률적)과 실제 매매(결정적) 사이의 책임 경계가 모호해지는 걸 차단. |
 | KIS Open API 한국 실전 매매 endpoint | — | **영구 보류** (동일 사유). `kis_realtime.py`의 **read** endpoint(잔고/가격/drift 모니터링)는 그대로 사용. 매매 endpoint만 연결하지 않음. |
 
-**원칙**: 시스템은 추천과 알림에만 관여한다. 실제 주문은 호진님이 직접 카카오페이/토스/KIS 등에서 수동 실행한다. `DryRun` mode 및 paper trading 시뮬레이션은 백테스트/검증 용도로 계속 사용 가능.
+**원칙**: 시스템은 추천과 알림에만 관여한다. 실제 주문은 사용자가 직접 증권사 앱에서 수동 실행한다. `DryRun` mode 및 paper trading 시뮬레이션은 백테스트/검증 용도로 계속 사용 가능.
 
 이 결정을 뒤집으려면 STRATEGY.md 개정 PR + 명시적 재승인 필요.
 
