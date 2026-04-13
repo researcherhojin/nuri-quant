@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { OPPORTUNITY } from "@/lib/strings";
+
+interface AgentVerdict {
+  ticker: string;
+  action: string;
+  confidence: number;
+  agreement: number;
+}
 
 interface Opportunity {
   ticker: string;
@@ -30,6 +38,29 @@ const verdictStyles: Record<string, { bg: string; text: string; label: string }>
 };
 
 function OpportunityCard({ opp }: { opp: Opportunity }) {
+  const [analysis, setAnalysis] = useState<AgentVerdict | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const runAnalysis = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/consensus/${opp.ticker}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAnalysis({
+          ticker: opp.ticker,
+          action: data.action ?? "HOLD",
+          confidence: data.confidence ?? 0,
+          agreement: data.agreement_rate ? Math.round(data.agreement_rate * 100) : 0,
+        });
+      }
+    } catch {
+      // silent — button stays available for retry
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const style = verdictStyles[opp.verdict_level] || verdictStyles.muted;
   const change5dColor = (opp.change_5d ?? 0) >= 0 ? "text-emerald-400" : "text-red-400";
 
@@ -87,6 +118,22 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
         </div>
       </div>
 
+      {/* 10-Agent 분석 결과 (인라인) */}
+      {analysis && (
+        <div className="flex items-center gap-2 py-1.5 px-2 rounded bg-zinc-800/40 border border-zinc-800/30 text-[10px]">
+          <span className={`font-bold px-1.5 py-0.5 rounded ${
+            analysis.action === "BUY" ? "bg-emerald-500/20 text-emerald-400" :
+            analysis.action === "SELL" ? "bg-red-500/20 text-red-400" :
+            "bg-zinc-700 text-zinc-400"
+          }`}>
+            {analysis.action}
+          </span>
+          <span className="text-zinc-400">{OPPORTUNITY.VERDICT} {analysis.confidence}</span>
+          <span className="text-zinc-600">|</span>
+          <span className="text-zinc-500">{analysis.agreement}% 합의</span>
+        </div>
+      )}
+
       {/* 판정 + 링크 */}
       <div className="flex items-center justify-between pt-2 border-t border-zinc-800/40">
         <div className="flex items-center gap-1.5">
@@ -95,12 +142,23 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
           </span>
           <span className="text-[10px] text-zinc-500 truncate max-w-[200px]">{opp.verdict}</span>
         </div>
-        <Link
-          href={`/ticker/${opp.ticker}`}
-          className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
-        >
-          {OPPORTUNITY.CHART} →
-        </Link>
+        <div className="flex items-center gap-2">
+          {!analysis && (
+            <button
+              onClick={runAnalysis}
+              disabled={loading}
+              className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+            >
+              {loading ? "분석 중..." : OPPORTUNITY.ANALYZE + " ▶"}
+            </button>
+          )}
+          <Link
+            href={`/ticker/${opp.ticker}`}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {OPPORTUNITY.CHART} →
+          </Link>
+        </div>
       </div>
     </div>
   );
