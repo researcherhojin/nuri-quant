@@ -213,6 +213,9 @@ nuri/
 - **vi.mock() hoisting** (frontend): `vi.mock("recharts")` affects ALL dynamic imports in the same vitest worker. Keep recharts-dependent and recharts-free tests in separate files. Use `vi.doMock` for per-test control.
 - **runpy + mock**: `runpy.run_module()` re-executes module source, invalidating mocks. Use `patch("source.module.function")` for source-level patching.
 - **OpenBB local import**: `obb` is imported inside functions (not at module level). `patch("module.obb")` fails — use `patch.dict(sys.modules, {"openbb": mock_module})`.
+- **yfinance .KS fundamentals work**: Contrary to some code comments, `yfinance.Ticker("005930.KS").info` returns PE, ROE, margins, growth, debt for Korean individual stocks. ETFs return empty (expected). KIS API is NOT needed for fundamentals.
+- **pykrx API instability**: `get_market_fundamental`, `get_index_ohlcv`, `get_market_trading_value_by_date` — all broken (column name changes). KOSPI/KOSDAQ index collection uses yfinance `^KS11`/`^KQ11` fallback. Institutional flows currently unavailable.
+- **Macro event pipeline** (PR #249-#253): 15 categories (was 12), stale articles >7d filtered, confidence <0.3 excluded from event_score, recency weighting (today=1.0→3d=0.5), regime_hint requires 3+ events. Korean Market Agent reads `macro_events` table for `export_surge`/`demand_growth`.
 
 ## Harness File Map
 
@@ -227,7 +230,8 @@ This project uses layered context files. Root files load every session; director
 | `nuri/core/CLAUDE.md` | db.py rules, timezone, events, freshness | When editing nuri/core/ |
 | `nuri/collectors/CLAUDE.md` | BaseCollector contract, OpenBB quirks | When editing nuri/collectors/ |
 | `nuri/trading/agents/CLAUDE.md` | Agent system, consensus, veto rules | When editing nuri/trading/agents/ |
-| `nuri/trading/engine/CLAUDE.md` | SIEGE gates, confidence formula | When editing nuri/trading/engine/ |
+| `nuri/trading/engine/CLAUDE.md` | SIEGE gates, confidence formula, v2 spec | When editing nuri/trading/engine/ |
+| `docs/SIEGE_V2.md` | 3D certification architecture (Account × Asset Class × Market) | When editing nuri/trading/engine/ |
 | `frontend/CLAUDE.md` | Next.js 16, design system, testing gotchas | When editing frontend/ |
 | `tests/CLAUDE.md` | Fixtures, mocks, testing gotchas | When editing tests/ |
 | `config/CLAUDE.md` | YAML structure, change procedures | When editing config/ |
