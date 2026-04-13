@@ -4,6 +4,12 @@
 # Codecov가 PR마다 backend/frontend 커버리지를 별도 배지로 표시
 # 정책: 자동 임계값 + 1% 허용범위 (작은 변동 무시)
 
+# 2 backend shards + 1 frontend = 3 uploads per commit.
+# Wait for all before computing coverage to avoid partial-report artifacts.
+codecov:
+  notify:
+    after_n_builds: 3
+
 coverage:
   status:
     project:
