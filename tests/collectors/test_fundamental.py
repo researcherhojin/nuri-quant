@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from unittest.mock import MagicMock, patch
 
 from nuri.core.db import (
@@ -19,27 +20,71 @@ class TestFundamentalCollector:
     def test_save_records(self, db_path):
         from nuri.collectors.fundamental import _upsert_fundamentals
 
-        records = [{"ticker": "AAPL", "date": "2026-03-30", "market_cap": 3e12,
-                     "pe_ratio": 28.5, "forward_pe": 25.0, "price_to_book": 45.0,
-                     "peg_ratio": 2.1, "roe": 1.5, "roa": 0.3,
-                     "gross_margin": 0.46, "operating_margin": 0.31, "profit_margin": 0.26,
-                     "revenue_growth": 0.08, "earnings_growth": 0.1,
-                     "debt_to_equity": 1.8, "current_ratio": 1.1,
-                     "dividend_yield": 0.005, "beta": 1.2}]
+        records = [
+            {
+                "ticker": "AAPL",
+                "date": "2026-03-30",
+                "market_cap": 3e12,
+                "pe_ratio": 28.5,
+                "forward_pe": 25.0,
+                "price_to_book": 45.0,
+                "peg_ratio": 2.1,
+                "roe": 1.5,
+                "roa": 0.3,
+                "gross_margin": 0.46,
+                "operating_margin": 0.31,
+                "profit_margin": 0.26,
+                "revenue_growth": 0.08,
+                "earnings_growth": 0.1,
+                "debt_to_equity": 1.8,
+                "current_ratio": 1.1,
+                "dividend_yield": 0.005,
+                "beta": 1.2,
+                "annual_dividend_usd": 0.96,
+                "dividend_yield_pct": 0.5,
+            }
+        ]
         count = _upsert_fundamentals(records)
         assert count == 1
 
+        # 배당 컬럼 검증
+        from nuri.core.db import query
+
+        rows = query(
+            "SELECT annual_dividend_usd, dividend_yield_pct FROM fundamentals WHERE ticker='AAPL'", db_path=db_path
+        )
+        assert rows[0]["annual_dividend_usd"] == 0.96
+        assert rows[0]["dividend_yield_pct"] == 0.5
 
 
 class TestFundamentalCollectorMockedYFinance:
     def test_upsert_fundamentals(self, rich_db):
         from nuri.collectors.fundamental import _upsert_fundamentals
 
-        records = [{"ticker": "AAPL", "date": "2025-03-15", "market_cap": 3e12, "pe_ratio": 28.5,
-                     "forward_pe": 25.0, "price_to_book": 45.0, "peg_ratio": 1.5, "roe": 1.5,
-                     "roa": 0.3, "gross_margin": 0.45, "operating_margin": 0.30, "profit_margin": 0.25,
-                     "revenue_growth": 0.08, "earnings_growth": 0.12, "debt_to_equity": 1.8,
-                     "current_ratio": 1.1, "dividend_yield": 0.005, "beta": 1.2}]
+        records = [
+            {
+                "ticker": "AAPL",
+                "date": "2025-03-15",
+                "market_cap": 3e12,
+                "pe_ratio": 28.5,
+                "forward_pe": 25.0,
+                "price_to_book": 45.0,
+                "peg_ratio": 1.5,
+                "roe": 1.5,
+                "roa": 0.3,
+                "gross_margin": 0.45,
+                "operating_margin": 0.30,
+                "profit_margin": 0.25,
+                "revenue_growth": 0.08,
+                "earnings_growth": 0.12,
+                "debt_to_equity": 1.8,
+                "current_ratio": 1.1,
+                "dividend_yield": 0.005,
+                "beta": 1.2,
+                "annual_dividend_usd": 0.96,
+                "dividend_yield_pct": 0.5,
+            }
+        ]
         assert _upsert_fundamentals(records) == 1
 
     def test_upsert_fundamentals_empty(self, rich_db):
@@ -159,7 +204,6 @@ class TestFundamentalCollectorMockedYFinance:
         assert len(result) == 1
         assert result[0]["market_cap"] is None
         assert result[0]["pe_ratio"] == 28.5
-
 
 
 class TestFundamentalCollectorErrorHandling:

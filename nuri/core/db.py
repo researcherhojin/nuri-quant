@@ -4,6 +4,7 @@ Nuri-Quant 데이터베이스 모듈 — 모든 DB 접근의 단일 진입점.
 다른 모듈에서 sqlite3를 직접 import하지 않는다.
 모든 DB 작업은 이 모듈의 함수를 통해서만 수행한다.
 """
+
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -376,7 +377,10 @@ CREATE TABLE IF NOT EXISTS schema_version (
 # 증분 마이그레이션 목록: (version, description, sql)
 # 새 마이그레이션 추가 시 여기에 튜플을 append한다.
 _MIGRATIONS: list[tuple[int, str, str]] = [
-    (1, "create audit_log table", """
+    (
+        1,
+        "create audit_log table",
+        """
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL DEFAULT (datetime('now')),
@@ -388,8 +392,12 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
             ip_address TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
-    """),
-    (2, "create external_analysis table", """
+    """,
+    ),
+    (
+        2,
+        "create external_analysis table",
+        """
         CREATE TABLE IF NOT EXISTS external_analysis (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
@@ -404,11 +412,19 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
         CREATE INDEX IF NOT EXISTS idx_external_source ON external_analysis(source, ticker);
         CREATE INDEX IF NOT EXISTS idx_external_date ON external_analysis(date);
-    """),
-    (3, "add hit_quality to recommendations", """
+    """,
+    ),
+    (
+        3,
+        "add hit_quality to recommendations",
+        """
         ALTER TABLE recommendations ADD COLUMN hit_quality REAL;
-    """),
-    (4, "create trades table for execution tracking", """
+    """,
+    ),
+    (
+        4,
+        "create trades table for execution tracking",
+        """
         CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             recommendation_id INTEGER REFERENCES recommendations(id),
@@ -424,14 +440,26 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
         CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
         CREATE INDEX IF NOT EXISTS idx_trades_rec ON trades(recommendation_id);
-    """),
-    (5, "add agent_verdicts to recommendations", """
+    """,
+    ),
+    (
+        5,
+        "add agent_verdicts to recommendations",
+        """
         ALTER TABLE recommendations ADD COLUMN agent_verdicts TEXT;
-    """),
-    (6, "add scoring_detail to recommendations", """
+    """,
+    ),
+    (
+        6,
+        "add scoring_detail to recommendations",
+        """
         ALTER TABLE recommendations ADD COLUMN scoring_detail TEXT;
-    """),
-    (7, "create pipeline_events table", """
+    """,
+    ),
+    (
+        7,
+        "create pipeline_events table",
+        """
         CREATE TABLE IF NOT EXISTS pipeline_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL DEFAULT (datetime('now')),
@@ -444,20 +472,40 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
         CREATE INDEX IF NOT EXISTS idx_pipeline_events_step ON pipeline_events(step, timestamp);
         CREATE INDEX IF NOT EXISTS idx_pipeline_events_type ON pipeline_events(event_type, timestamp);
-    """),
-    (8, "add target prices to positions", """
+    """,
+    ),
+    (
+        8,
+        "add target prices to positions",
+        """
         ALTER TABLE positions ADD COLUMN target_1_price REAL;
-    """),
-    (9, "add target_2_price to positions", """
+    """,
+    ),
+    (
+        9,
+        "add target_2_price to positions",
+        """
         ALTER TABLE positions ADD COLUMN target_2_price REAL;
-    """),
-    (10, "add high_water_mark to positions", """
+    """,
+    ),
+    (
+        10,
+        "add high_water_mark to positions",
+        """
         ALTER TABLE positions ADD COLUMN high_water_mark REAL;
-    """),
-    (11, "add metadata to portfolio", """
+    """,
+    ),
+    (
+        11,
+        "add metadata to portfolio",
+        """
         ALTER TABLE portfolio ADD COLUMN metadata TEXT;
-    """),
-    (12, "create macro_events table for news-driven regime intelligence", """
+    """,
+    ),
+    (
+        12,
+        "create macro_events table for news-driven regime intelligence",
+        """
         CREATE TABLE IF NOT EXISTS macro_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -474,8 +522,12 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
         CREATE INDEX IF NOT EXISTS idx_macro_events_published ON macro_events(published_at);
         CREATE INDEX IF NOT EXISTS idx_macro_events_category ON macro_events(category);
-    """),
-    (13, "create external_llm_calls audit log table for #152 LLM egress policy", """
+    """,
+    ),
+    (
+        13,
+        "create external_llm_calls audit log table for #152 LLM egress policy",
+        """
         CREATE TABLE IF NOT EXISTS external_llm_calls (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL DEFAULT (datetime('now')),
@@ -490,8 +542,12 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
         CREATE INDEX IF NOT EXISTS idx_external_llm_calls_timestamp ON external_llm_calls(timestamp);
         CREATE INDEX IF NOT EXISTS idx_external_llm_calls_model ON external_llm_calls(model);
-    """),
-    (14, "create decisions table for #178 Decision Intelligence", """
+    """,
+    ),
+    (
+        14,
+        "create decisions table for #178 Decision Intelligence",
+        """
         CREATE TABLE IF NOT EXISTS decisions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
@@ -524,8 +580,12 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_decisions_ticker ON decisions(ticker);
         CREATE INDEX IF NOT EXISTS idx_decisions_date ON decisions(date);
         CREATE INDEX IF NOT EXISTS idx_decisions_outcome ON decisions(outcome);
-    """),
-    (15, "create decision_evidence table for #178 lineage", """
+    """,
+    ),
+    (
+        15,
+        "create decision_evidence table for #178 lineage",
+        """
         CREATE TABLE IF NOT EXISTS decision_evidence (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             decision_id INTEGER NOT NULL,
@@ -538,13 +598,36 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
             UNIQUE(decision_id, source_type, source_key)
         );
         CREATE INDEX IF NOT EXISTS idx_decision_evidence_decision ON decision_evidence(decision_id);
-    """),
-    (16, "add classification_method to macro_events for #137 data quality", """
+    """,
+    ),
+    (
+        16,
+        "add classification_method to macro_events for #137 data quality",
+        """
         ALTER TABLE macro_events ADD COLUMN classification_method TEXT;
-    """),
-    (17, "add first_buy_date to portfolio for #218 days-held tracking", """
+    """,
+    ),
+    (
+        17,
+        "add first_buy_date to portfolio for #218 days-held tracking",
+        """
         ALTER TABLE portfolio ADD COLUMN first_buy_date TEXT;
-    """),
+    """,
+    ),
+    (
+        18,
+        "add dividend columns to fundamentals for #227",
+        """
+        ALTER TABLE fundamentals ADD COLUMN annual_dividend_usd REAL;
+    """,
+    ),
+    (
+        19,
+        "add dividend_yield_pct to fundamentals for #227",
+        """
+        ALTER TABLE fundamentals ADD COLUMN dividend_yield_pct REAL;
+    """,
+    ),
 ]
 
 
@@ -558,10 +641,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
 
 def _apply_migrations(conn: sqlite3.Connection) -> None:
     """미적용 마이그레이션을 순서대로 실행."""
-    applied = {
-        row[0]
-        for row in conn.execute("SELECT version FROM schema_version").fetchall()
-    }
+    applied = {row[0] for row in conn.execute("SELECT version FROM schema_version").fetchall()}
     for version, desc, sql in _MIGRATIONS:
         if version not in applied:
             conn.executescript(sql)
@@ -575,7 +655,8 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
 def get_schema_version(db_path: Optional[Path] = None) -> int:
     """현재 적용된 최신 스키마 버전 반환. 마이그레이션 없으면 0."""
     rows = query(
-        "SELECT MAX(version) as v FROM schema_version", db_path=db_path,
+        "SELECT MAX(version) as v FROM schema_version",
+        db_path=db_path,
     )
     return rows[0]["v"] or 0 if rows and rows[0]["v"] is not None else 0
 
@@ -644,9 +725,7 @@ def replace_portfolio_account(
     """
     for r in records:
         if r.get("account") != account:
-            raise ValueError(
-                f"record account mismatch: expected {account!r}, got {r.get('account')!r}"
-            )
+            raise ValueError(f"record account mismatch: expected {account!r}, got {r.get('account')!r}")
         r.setdefault("metadata", None)
 
     with get_db(db_path) as conn:
@@ -786,8 +865,7 @@ def log_external_llm_call(
                (provider, model, endpoint, prompt_tokens, completion_tokens,
                 latency_ms, success, error_type)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (provider, model, endpoint, prompt_tokens, completion_tokens,
-             latency_ms, 1 if success else 0, error_type),
+            (provider, model, endpoint, prompt_tokens, completion_tokens, latency_ms, 1 if success else 0, error_type),
         )
         return cursor.lastrowid or 0
 
@@ -795,8 +873,6 @@ def log_external_llm_call(
 # ═══════════════════════════════════════════════════════
 # Trading-as-Git: 매매 이력 해시 (OpenAlice 패턴 적용)
 # ═══════════════════════════════════════════════════════
-
-
 
 
 # ═══════════════════════════════════════════════════════
@@ -897,9 +973,7 @@ def upsert_trade(data: dict, db_path: Optional[Path] = None) -> int:
             data.pop("id", None)
             cols = ", ".join(data.keys())
             placeholders = ", ".join(f":{k}" for k in data.keys())
-            cursor = conn.execute(
-                f"INSERT INTO trades ({cols}) VALUES ({placeholders})", data
-            )
+            cursor = conn.execute(f"INSERT INTO trades ({cols}) VALUES ({placeholders})", data)
             # cursor.lastrowid is Optional[int] per DB-API spec; coerce to int
             # because the function signature is `-> int` and SQLite always
             # populates lastrowid after an INSERT.
@@ -911,7 +985,8 @@ def get_trades(ticker: Optional[str] = None, db_path: Optional[Path] = None) -> 
     if ticker:
         return query(
             "SELECT * FROM trades WHERE ticker = ? ORDER BY executed_at DESC",
-            (ticker,), db_path,
+            (ticker,),
+            db_path,
         )
     return query("SELECT * FROM trades ORDER BY executed_at DESC", db_path=db_path)
 
@@ -940,14 +1015,11 @@ def upsert_decision(data: dict, db_path: Optional[Path] = None) -> int:
         if cursor.lastrowid:
             return cursor.lastrowid
         # ON CONFLICT UPDATE → lastrowid가 0일 수 있음, 기존 id 조회
-        row = conn.execute(
-            "SELECT id FROM decisions WHERE date = :date AND ticker = :ticker", data
-        ).fetchone()
+        row = conn.execute("SELECT id FROM decisions WHERE date = :date AND ticker = :ticker", data).fetchone()
         return row[0] if row else 0
 
 
-def upsert_decision_evidence(decision_id: int, records: list[dict],
-                             db_path: Optional[Path] = None) -> int:
+def upsert_decision_evidence(decision_id: int, records: list[dict], db_path: Optional[Path] = None) -> int:
     """의사결정 증거 기록 멱등 삽입. UNIQUE(decision_id, source_type, source_key) 기준."""
     if not records:
         return 0
@@ -965,8 +1037,9 @@ def upsert_decision_evidence(decision_id: int, records: list[dict],
         return len(records)
 
 
-def get_decisions(ticker: Optional[str] = None, outcome: Optional[str] = None,
-                  limit: int = 100, db_path: Optional[Path] = None) -> list[dict]:
+def get_decisions(
+    ticker: Optional[str] = None, outcome: Optional[str] = None, limit: int = 100, db_path: Optional[Path] = None
+) -> list[dict]:
     """의사결정 목록 조회. 필터: ticker, outcome(pending/success/failure)."""
     conditions = []
     params: list = []
@@ -979,12 +1052,12 @@ def get_decisions(ticker: Optional[str] = None, outcome: Optional[str] = None,
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return query(
         f"SELECT * FROM decisions {where} ORDER BY date DESC LIMIT ?",
-        (*params, limit), db_path,
+        (*params, limit),
+        db_path,
     )
 
 
-def get_decision_with_evidence(decision_id: int,
-                               db_path: Optional[Path] = None) -> Optional[dict]:
+def get_decision_with_evidence(decision_id: int, db_path: Optional[Path] = None) -> Optional[dict]:
     """의사결정 + 증거 체인 조회 (lineage용)."""
     rows = query("SELECT * FROM decisions WHERE id = ?", (decision_id,), db_path)
     if not rows:
@@ -992,7 +1065,8 @@ def get_decision_with_evidence(decision_id: int,
     decision = dict(rows[0])
     evidence = query(
         "SELECT * FROM decision_evidence WHERE decision_id = ? ORDER BY source_type, source_key",
-        (decision_id,), db_path,
+        (decision_id,),
+        db_path,
     )
     decision["evidence"] = [dict(e) for e in evidence]
     return decision
