@@ -42,6 +42,9 @@ LOOKBACK_DAYS = 3
 SCORE_MIN = -20.0
 SCORE_MAX = 20.0
 
+# 이 신뢰도 미만의 이벤트는 스코어 계산에서 제외 — 노이즈 방지 (#137)
+CONFIDENCE_FLOOR = 0.3
+
 
 @dataclass
 class EventScore:
@@ -86,9 +89,14 @@ def compute_event_score(
             category_breakdown={}, dominant_category=None, regime_hint=None,
         )
 
+    # 저신뢰 이벤트 필터링 — regex fallback이나 분류 실패로 인한 노이즈 제거
+    filtered = [r for r in rows if (r["confidence"] or 0.0) >= CONFIDENCE_FLOOR]
+    if len(filtered) < len(rows):
+        logger.debug("이벤트 %d건 중 %d건 신뢰도 미달 제외 (< %.1f)", len(rows), len(rows) - len(filtered), CONFIDENCE_FLOOR)
+
     # 카테고리별 기여 합산
     breakdown: dict[str, float] = {}
-    for row in rows:
+    for row in filtered:
         cat = row["category"]
         sentiment = row["sentiment"] or 0.0
         confidence = row["confidence"] or 0.5
@@ -106,7 +114,7 @@ def compute_event_score(
     raw_sum = sum(breakdown.values())
     # 이벤트 수가 많을수록 효과 감소 (diminishing returns)
     # √(event_count)로 정규화하여 1개 이벤트와 100개 이벤트의 차이를 줄임
-    event_count = len(rows)
+    event_count = len(filtered)
     normalized = raw_sum / (event_count ** 0.5) if event_count > 0 else 0.0
 
     # 20점 스케일로 변환 (경험적 스케일링 팩터)
