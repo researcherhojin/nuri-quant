@@ -542,6 +542,9 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
     (16, "add classification_method to macro_events for #137 data quality", """
         ALTER TABLE macro_events ADD COLUMN classification_method TEXT;
     """),
+    (17, "add first_buy_date to portfolio for #218 days-held tracking", """
+        ALTER TABLE portfolio ADD COLUMN first_buy_date TEXT;
+    """),
 ]
 
 

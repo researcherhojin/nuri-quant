@@ -25,6 +25,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from nuri.api.routes import (
+    actions,
     agents,
     dashboard,
     decisions,
@@ -93,6 +94,7 @@ async def security_headers(request: Request, call_next):
 
 
 # ─── 라우터 등록 ───
+app.include_router(actions.router, prefix="/api")
 app.include_router(portfolio.router, prefix="/api")
 app.include_router(regime.router, prefix="/api")
 app.include_router(signals.router, prefix="/api")
