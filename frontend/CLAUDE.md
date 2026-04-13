@@ -13,7 +13,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (818 tests, 55 files)
+npm run test           # vitest run (876 tests, 58 files)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
 ```
@@ -22,7 +22,7 @@ npx vitest run -t "renders verdict"                    # single test by name
 
 All pages are **Server Components** with `force-dynamic`. Data fetched server-side via `fetchAPI()` (`src/lib/api.ts`).
 
-Three Client Components only: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), `<CompositionDonut>` (Recharts pie).
+Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), `<CompositionDonut>` (Recharts pie), `<ActionItems>` (expand/collapse), `<OpportunityExplorer>` (10-Agent fetch), `<PriceChart>` (period selector).
 
 ## 17 Routes
 
@@ -36,11 +36,11 @@ Three Client Components only: `/report` (LLM generation), `/pipeline` (ReactFlow
 
 **Conventions**: `async function Section()` in `<Suspense>`, `animate-pulse` skeletons, color semantics (emerald=BUY, red=SELL, amber=warning, blue=WATCH, zinc=HOLD), `text-[10px]` sub-labels.
 
-## Dashboard Layout (#224)
+## Dashboard Layout (#264 Action-First)
 
-Hero (4 stats) → market context strip → CollapsibleStrips (alerts/events/candidates) → CompositionSection (320px Recharts donut + tabs `?comp=ticker|sector|account`) → mini cards strip (Movers + concentration) → Holdings table (top 8 + `?holdings=expanded`) → footer.
+Hero (4 stats) → **SystemHealth 4-card** (SIEGE/regime/macro/freshness) → **MacroEvents** (한국어 카테고리) → **ActionItems** (🔴urgent/🟡check/✅hold, 연금 제외) → market context strip → CompositionSection (320px donut + tabs) → Holdings table (top 8) → **OpportunityExplorer** (상위 3개 + /scan 링크) → footer.
 
-Data flows through `summarizeHoldings()` in `src/lib/holdings-summary.ts`.
+Data flows through `summarizeHoldings()` in `src/lib/holdings-summary.ts`. Action data from `/api/actions`, `/api/opportunities`, `/api/market-context`.
 
 ## Auth
 
