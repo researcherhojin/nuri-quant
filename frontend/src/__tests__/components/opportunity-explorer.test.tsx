@@ -157,10 +157,124 @@ describe("OpportunityExplorer", () => {
     expect(screen.getByText("$—")).toBeTruthy();
   });
 
+  it("shows SELL analysis result with red styling", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ action: "SELL", confidence: 80, agreement_rate: 0.6 }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      expect(screen.getByText("SELL")).toBeTruthy();
+      expect(screen.getByText("60% 합의")).toBeTruthy();
+    });
+  });
+
+  it("shows HOLD analysis result with neutral styling", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ action: "HOLD", confidence: 50, agreement_rate: null }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      expect(screen.getByText("HOLD")).toBeTruthy();
+      expect(screen.getByText("0% 합의")).toBeTruthy();
+    });
+  });
+
+  it("keeps button on fetch failure", async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("network"));
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      expect(screen.getByText("10-Agent 분석 ▶")).toBeTruthy();
+    });
+  });
+
+  it("keeps button when response not ok", async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      expect(screen.getByText("10-Agent 분석 ▶")).toBeTruthy();
+    });
+  });
+
+  it("handles missing action/agreement in response", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ confidence: 55 }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      expect(screen.getByText("HOLD")).toBeTruthy(); // default
+    });
+  });
+
+  it("shows negative 5D change in red", () => {
+    render(<OpportunityExplorer opportunities={[dangerOpp]} />);
+    const body = document.body.textContent;
+    expect(body).toContain("-20.2%");
+  });
+
+  it("hides volume when below 1.5x", () => {
+    const lowVol = { ...positiveOpp, volume_ratio: 1.0 };
+    render(<OpportunityExplorer opportunities={[lowVol]} />);
+    expect(screen.queryByText(/Vol/)).toBeNull();
+  });
+
+  it("hides signal badge when null", () => {
+    const noSignal = { ...positiveOpp, signal: null };
+    render(<OpportunityExplorer opportunities={[noSignal]} />);
+    expect(screen.queryByText("breakout")).toBeNull();
+  });
+
+  it("shows RSI < 30 in green", () => {
+    const oversold = { ...positiveOpp, rsi: 25 };
+    render(<OpportunityExplorer opportunities={[oversold]} />);
+    expect(screen.getByText("RSI 25")).toBeTruthy();
+  });
+
+  it("hides RSI when null", () => {
+    const noRsi = { ...positiveOpp, rsi: null };
+    const { container } = render(<OpportunityExplorer opportunities={[noRsi]} />);
+    // No RSI span should appear — check that no "RSI" text followed by a number exists
+    const spans = container.querySelectorAll("span");
+    const rsiSpans = Array.from(spans).filter(s => /RSI \d/.test(s.textContent ?? ""));
+    expect(rsiSpans.length).toBe(0);
+  });
+
   it("renders multiple opportunity cards", () => {
     render(<OpportunityExplorer opportunities={[positiveOpp, dangerOpp, mutedOpp]} />);
     expect(screen.getByText("MRVL")).toBeTruthy();
     expect(screen.getByText("SNOW")).toBeTruthy();
     expect(screen.getByText("ETN")).toBeTruthy();
+  });
+
+  it("falls back to muted style for unknown verdict_level", () => {
+    const unknownLevel = { ...positiveOpp, verdict_level: "unknown_level" };
+    render(<OpportunityExplorer opportunities={[unknownLevel]} />);
+    expect(screen.getByText("데이터 부족")).toBeTruthy();
+  });
+
+  it("shows zero change_5d with plus sign", () => {
+    const zeroChange = { ...positiveOpp, change_5d: 0 };
+    render(<OpportunityExplorer opportunities={[zeroChange]} />);
+    const body = document.body.textContent;
+    expect(body).toContain("+0.0%");
+  });
+
+  it("shows analysis with zero agreement_rate", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ action: "BUY", confidence: 60, agreement_rate: 0 }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      expect(screen.getByText("0% 합의")).toBeTruthy();
+    });
   });
 });
