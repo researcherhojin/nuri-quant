@@ -284,13 +284,18 @@ async function Dashboard({
           />
         </div>
 
-        {/* 기회 탐색 */}
+        {/* 기회 탐색 — 대시보드에는 상위 3개만 표시, 나머지는 /scan */}
         {(opportunitiesData?.opportunities?.length ?? 0) > 0 && (
           <div>
-            <h2 className="text-sm font-semibold text-zinc-300 mb-2 flex items-center gap-1.5">
-              🔍 {CONTEXT.TITLE} — 이슈 종목
-            </h2>
-            <OpportunityExplorer opportunities={opportunitiesData?.opportunities ?? []} />
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-semibold text-zinc-300 flex items-center gap-1.5">
+                🔍 기회 탐색
+              </h2>
+              <Link href="/scan" className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors">
+                전체 {opportunitiesData.opportunities.length}건 →
+              </Link>
+            </div>
+            <OpportunityExplorer opportunities={(opportunitiesData?.opportunities ?? []).slice(0, 3)} />
           </div>
         )}
       </div>

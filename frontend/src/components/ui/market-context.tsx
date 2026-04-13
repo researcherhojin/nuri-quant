@@ -3,6 +3,7 @@ import { CONTEXT } from "@/lib/strings";
 
 interface MacroEvent {
   category: string;
+  category_ko?: string;
   headline: string;
   sentiment: number;
   confidence: number;
@@ -98,12 +99,14 @@ export function MarketContext({ events, health }: MarketContextProps) {
             {events.map((ev, i) => {
               const style = categoryStyles[ev.category] || { emoji: "📌", color: "text-zinc-400" };
               const date = ev.published_at?.slice(5, 10) ?? "";
+              const label = ev.category_ko || style.color;
               return (
                 <div key={i} className="flex items-start gap-1.5 text-[10px]">
                   <span className="shrink-0">{style.emoji}</span>
                   <span className={`shrink-0 ${style.color} font-medium`}>{date}</span>
-                  <span className="text-zinc-400 truncate flex-1" title={ev.headline}>
-                    {ev.headline}
+                  <span className={`shrink-0 ${style.color} font-semibold`}>{ev.category_ko ?? ev.category}</span>
+                  <span className="text-zinc-500 truncate flex-1" title={ev.headline}>
+                    {ev.headline.length > 60 ? ev.headline.slice(0, 57) + "..." : ev.headline}
                   </span>
                 </div>
               );
