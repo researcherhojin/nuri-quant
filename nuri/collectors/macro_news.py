@@ -16,6 +16,7 @@ Phase B/C에서 별도 PR로 통합한다 (#142, #143).
 import logging
 import re
 import xml.etree.ElementTree as ET  # noqa: N817 — stdlib alias
+from datetime import timedelta
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote_plus
 
@@ -46,6 +47,8 @@ KEYWORDS: tuple[str, ...] = (
 GOOGLE_NEWS_RSS = "https://news.google.com/rss/search"
 RSS_TIMEOUT_SEC = 15
 MAX_ITEMS_PER_KEYWORD = 10
+# 이 기간보다 오래된 기사는 수집 단계에서 DROP — 시스템에 stale 데이터가 유입되지 않도록.
+MAX_ARTICLE_AGE_DAYS = 7
 
 
 class MacroNewsCollector(BaseCollector):
@@ -58,7 +61,9 @@ class MacroNewsCollector(BaseCollector):
 
     def collect(self, **kwargs) -> list[dict]:
         """모든 키워드에 대해 RSS 수집 + 분류."""
+        cutoff = (kst_now() - timedelta(days=MAX_ARTICLE_AGE_DAYS)).isoformat(timespec="seconds")
         records: list[dict] = []
+        stale_count = 0
         for keyword in KEYWORDS:
             try:
                 items = self._fetch_rss(keyword)
@@ -67,6 +72,11 @@ class MacroNewsCollector(BaseCollector):
                 continue
 
             for item in items:
+                # 7일 초과 기사 DROP — stale 데이터 유입 방지 (#137)
+                if item["published_at"] < cutoff:
+                    stale_count += 1
+                    continue
+
                 classified = classify_event(item["headline"], use_llm=self.use_llm)
                 records.append(
                     {
@@ -79,10 +89,13 @@ class MacroNewsCollector(BaseCollector):
                         "sentiment": classified["sentiment"],
                         "confidence": classified["confidence"],
                         "regime_hint": classified["regime_hint"],
+                        "classification_method": classified.get("classification_method", "unknown"),
                         "raw_json": None,
                     }
                 )
 
+        if stale_count:
+            self.logger.info("[%s] %d개 stale 기사 필터링 (>%d일)", self.name, stale_count, MAX_ARTICLE_AGE_DAYS)
         self.logger.info(
             "[%s] %d개 키워드 → %d개 raw items 수집",
             self.name,

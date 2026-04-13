@@ -171,6 +171,40 @@ class TestComputeEventScore:
         assert es.category_breakdown["trade_war"] < 0
 
 
+class TestConfidenceFloor:
+    """신뢰도 < 0.3 이벤트는 스코어 계산에서 제외 (#137)."""
+
+    def test_low_confidence_events_excluded(self, db_path):
+        """confidence < 0.3 이벤트는 무시된다."""
+        _insert_events(db_path, [
+            # 저신뢰 이벤트 — 제외되어야 함
+            {"category": "geopolitical_escalation", "sentiment": -0.8, "confidence": 0.2, "url": "http://t/low1"},
+            {"category": "sector_selloff", "sentiment": -0.9, "confidence": 0.1, "url": "http://t/low2"},
+        ])
+        es = compute_event_score(db_path=db_path, date="2026-04-09")
+        assert es.event_count == 0  # 둘 다 제외
+        assert es.score == 0.0
+
+    def test_mixed_confidence_only_high_counted(self, db_path):
+        """고신뢰만 스코어에 반영, 저신뢰는 제외."""
+        _insert_events(db_path, [
+            {"category": "earnings_beat", "sentiment": 0.7, "confidence": 0.8, "url": "http://t/high1"},
+            {"category": "sector_selloff", "sentiment": -0.9, "confidence": 0.15, "url": "http://t/low1"},
+        ])
+        es = compute_event_score(db_path=db_path, date="2026-04-09")
+        assert es.event_count == 1  # 고신뢰만
+        assert es.score > 0  # earnings_beat만 반영 → 양수
+
+    def test_threshold_boundary(self, db_path):
+        """confidence == 0.3 이벤트는 포함 (>=)."""
+        _insert_events(db_path, [
+            {"category": "fed_dovish", "sentiment": 0.5, "confidence": 0.3, "url": "http://t/boundary"},
+        ])
+        es = compute_event_score(db_path=db_path, date="2026-04-09")
+        assert es.event_count == 1
+        assert es.score > 0
+
+
 class TestSimulation:
     """B5: 시뮬레이션 검증 — 복합 이벤트 시나리오."""
 

@@ -136,6 +136,7 @@ def _classify_with_regex(headline: str) -> dict:
                 "sentiment": sentiment,
                 "confidence": 0.5,  # regex는 신뢰도 mid — LLM보다 낮음
                 "regime_hint": REGIME_HINT_BY_CATEGORY[category],
+                "classification_method": "regex",
             }
     return _neutral_result()
 
@@ -176,7 +177,7 @@ def _normalize(parsed: dict) -> dict:
     category = parsed.get("category", "neutral")
     if category not in CATEGORIES:
         # 미지의 카테고리 → neutral로 강제 (신뢰도 낮춤)
-        return {**_neutral_result(), "confidence": 0.2}
+        return {**_neutral_result(), "confidence": 0.2, "classification_method": "normalized_invalid"}
 
     sentiment = float(parsed.get("sentiment", 0.0))
     sentiment = max(-1.0, min(1.0, sentiment))
@@ -189,6 +190,7 @@ def _normalize(parsed: dict) -> dict:
         "sentiment": sentiment,
         "confidence": confidence,
         "regime_hint": REGIME_HINT_BY_CATEGORY[category],
+        "classification_method": "openai",
     }
 
 
@@ -198,4 +200,5 @@ def _neutral_result() -> dict:
         "sentiment": 0.0,
         "confidence": 0.3,
         "regime_hint": None,
+        "classification_method": "neutral_default",
     }

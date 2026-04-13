@@ -4,6 +4,8 @@ Network-free:
 - requests.get는 monkeypatch로 mock된 fixture XML 반환
 - classify_event는 use_llm=False로 regex만 사용
 """
+from datetime import timedelta
+from email.utils import format_datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,6 +16,12 @@ from nuri.collectors.macro_news import (
     _parse_rss_items,
 )
 from nuri.core.db import query
+from nuri.core.timezone import kst_now
+
+
+def _recent_date_rfc822() -> str:
+    """테스트용 — stale 필터를 통과하는 최근 날짜 RFC 822 문자열."""
+    return format_datetime(kst_now() - timedelta(hours=6))
 
 # 최소 fixture — Reuters source 분리, source 없는 item, 빈 link 등 edge case 포함
 RSS_FIXTURE = (
@@ -106,6 +114,41 @@ class TestCollect:
         assert records[0]["sentiment"] > 0
         # 둘째는 fed_dovish (rate cut 매칭)
         assert records[1]["category"] == "fed_dovish"
+        # classification_method 필드 존재 확인
+        assert records[0]["classification_method"] == "regex"
+
+    def test_collect_filters_stale_articles(self, monkeypatch, db_path):
+        """7일 초과 기사는 DROP된다."""
+        # 2025년 11월 기사를 포함하는 RSS
+        stale_rss = (
+            b'<?xml version="1.0"?>'
+            b'<rss version="2.0"><channel>'
+            b'<item>'
+            b'<title>Very old article about yen carry trade</title>'
+            b'<link>https://news.google.com/articles/old1</link>'
+            b'<pubDate>Thu, 19 Nov 2025 08:00:00 GMT</pubDate>'
+            b'<source url="https://example.com">Example</source>'
+            b'</item>'
+            b'<item>'
+            b'<title>Iran agrees to ceasefire today</title>'
+            b'<link>https://news.google.com/articles/fresh1</link>'
+            b'<pubDate>' + _recent_date_rfc822().encode() + b'</pubDate>'
+            b'<source url="https://reuters.com">Reuters</source>'
+            b'</item>'
+            b'</channel></rss>'
+        )
+        mock_resp = MagicMock()
+        mock_resp.content = stale_rss
+        mock_resp.raise_for_status = MagicMock()
+
+        import nuri.collectors.macro_news as mod
+        monkeypatch.setattr(mod.requests, "get", MagicMock(return_value=mock_resp))
+        monkeypatch.setattr(mod, "KEYWORDS", ("test",))
+
+        records = MacroNewsCollector(use_llm=False).collect()
+        # stale 기사는 필터링되고 최근 기사만 남아야 함
+        assert len(records) == 1
+        assert "ceasefire" in records[0]["headline"].lower()
 
     def test_collect_handles_keyword_failure(self, monkeypatch, db_path):
         """한 키워드 실패가 다른 키워드를 막지 않음."""
