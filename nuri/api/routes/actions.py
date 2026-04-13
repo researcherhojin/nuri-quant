@@ -7,6 +7,7 @@
 """
 import json
 import logging
+import time
 from datetime import timedelta
 
 from fastapi import APIRouter
@@ -17,6 +18,12 @@ from nuri.core.timezone import kst_now
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["actions"])
 
+# 캐시 (5분 TTL) — dashboard.py와 동일 패턴
+CACHE_TTL = 300  # 5분
+_actions_cache: dict = {"data": None, "timestamp": 0}
+_opportunities_cache: dict = {"data": None, "timestamp": 0}
+_market_context_cache: dict = {"data": None, "timestamp": 0}
+
 
 # ─── /api/actions ───
 
@@ -24,8 +31,14 @@ router = APIRouter(tags=["actions"])
 @router.get("/actions")
 def get_actions():
     """우선순위 분류된 오늘의 액션 리스트."""
+    now = time.time()
+    if _actions_cache["data"] and (now - _actions_cache["timestamp"]) < CACHE_TTL:
+        return _actions_cache["data"]
     try:
-        return _build_actions()
+        result = _build_actions()
+        _actions_cache["data"] = result
+        _actions_cache["timestamp"] = time.time()
+        return result
     except Exception:
         logger.exception("actions API error")
         return {"urgent": [], "check": [], "hold": []}
@@ -154,8 +167,14 @@ def _build_actions() -> dict:
 @router.get("/opportunities")
 def get_opportunities():
     """비보유 이슈 종목 탐색 — scan + WSB + macro events 기반 판정."""
+    now = time.time()
+    if _opportunities_cache["data"] and (now - _opportunities_cache["timestamp"]) < CACHE_TTL:
+        return _opportunities_cache["data"]
     try:
-        return {"opportunities": _build_opportunities(), "generated_at": kst_now().isoformat()}
+        result = {"opportunities": _build_opportunities(), "generated_at": kst_now().isoformat()}
+        _opportunities_cache["data"] = result
+        _opportunities_cache["timestamp"] = time.time()
+        return result
     except Exception:
         logger.exception("opportunities API error")
         return {"opportunities": []}
@@ -257,12 +276,18 @@ def _compute_verdict(pros: list[str], cons: list[str], scan: dict) -> tuple[str,
 @router.get("/market-context")
 def get_market_context():
     """시장 컨텍스트 — 매크로 이벤트 + 시스템 건강 (#137 UI)."""
+    now = time.time()
+    if _market_context_cache["data"] and (now - _market_context_cache["timestamp"]) < CACHE_TTL:
+        return _market_context_cache["data"]
     try:
-        return {
+        result = {
             "macro_events": _get_macro_events(),
             "system_health": _get_system_health(),
             "generated_at": kst_now().isoformat(),
         }
+        _market_context_cache["data"] = result
+        _market_context_cache["timestamp"] = time.time()
+        return result
     except Exception:
         logger.exception("market-context API error")
         return {"macro_events": [], "system_health": {}, "generated_at": kst_now().isoformat()}
