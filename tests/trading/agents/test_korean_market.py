@@ -221,6 +221,102 @@ class TestKoreanMarketAgent_R26:
         assert result.action == "HOLD"
 
 
+class TestMacroEventBoost:
+    """매크로 이벤트 → 한국 종목 부스트 (#247)."""
+
+    def _setup_with_events(self, db_path, events, sector="Semiconductor"):
+        """한국 종목 + 매크로 이벤트 세팅."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("test", "005930.KS", 10, 70000, "KRW", sector),
+            )
+            for i, evt in enumerate(events):
+                conn.execute(
+                    "INSERT INTO macro_events (published_at, source, headline, url, category, sentiment, confidence, regime_hint) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        evt.get("published_at", datetime.now().strftime("%Y-%m-%d")),
+                        "test", f"headline {i}", f"http://test/{i}",
+                        evt["category"], evt.get("sentiment", 0.5),
+                        evt.get("confidence", 0.7), evt.get("regime_hint"),
+                    ),
+                )
+
+    def test_no_events_zero_boost(self, db_path):
+        """매크로 이벤트 없으면 부스트 0."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        agent = KoreanMarketAgent()
+        boost = agent._get_macro_event_boost("Semiconductor", db_path=db_path)
+        assert boost == 0
+
+    def test_export_surge_boosts_semiconductor(self, db_path):
+        """export_surge 2건 이상 → 반도체 섹터 부스트."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_with_events(db_path, [
+            {"category": "export_surge", "confidence": 0.8},
+            {"category": "export_surge", "confidence": 0.7},
+        ])
+        agent = KoreanMarketAgent()
+        boost = agent._get_macro_event_boost("Semiconductor", db_path=db_path)
+        assert boost > 0
+
+    def test_single_event_ignored(self, db_path):
+        """이벤트 1건은 노이즈로 무시."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_with_events(db_path, [
+            {"category": "export_surge", "confidence": 0.9},
+        ])
+        agent = KoreanMarketAgent()
+        boost = agent._get_macro_event_boost("Semiconductor", db_path=db_path)
+        assert boost == 0  # cnt < 2 → 무시
+
+    def test_trade_war_penalizes(self, db_path):
+        """trade_war 2건 이상 → 전체 페널티."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_with_events(db_path, [
+            {"category": "trade_war", "confidence": 0.8},
+            {"category": "trade_war", "confidence": 0.7},
+        ])
+        agent = KoreanMarketAgent()
+        boost = agent._get_macro_event_boost("Semiconductor", db_path=db_path)
+        assert boost < 0
+
+    def test_export_surge_no_effect_on_nonexport(self, db_path):
+        """export_surge는 비수출 섹터에 영향 없음."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_with_events(db_path, [
+            {"category": "export_surge", "confidence": 0.8},
+            {"category": "export_surge", "confidence": 0.7},
+        ], sector="Finance")
+        agent = KoreanMarketAgent()
+        boost = agent._get_macro_event_boost("Finance", db_path=db_path)
+        assert boost == 0
+
+    def test_macro_boost_in_analyze(self, db_path):
+        """analyze()에서 매크로 부스트가 data_points에 포함."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_with_events(db_path, [
+            {"category": "demand_growth", "confidence": 0.85},
+            {"category": "demand_growth", "confidence": 0.9},
+        ])
+        v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
+        assert "macro_event_boost" in v.data_points
+        assert v.data_points["macro_event_boost"] > 0
+
+    def test_low_confidence_events_excluded(self, db_path):
+        """confidence < 0.3 이벤트는 쿼리에서 제외."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+        self._setup_with_events(db_path, [
+            {"category": "export_surge", "confidence": 0.1},
+            {"category": "export_surge", "confidence": 0.2},
+        ])
+        agent = KoreanMarketAgent()
+        boost = agent._get_macro_event_boost("Semiconductor", db_path=db_path)
+        assert boost == 0  # 둘 다 confidence < 0.3
+
+
 class TestKoreanMarketAgent_Source_Push:
     def test_us_ticker_returns_hold(self, db_path):
         from nuri.trading.agents.korean_market import KoreanMarketAgent
