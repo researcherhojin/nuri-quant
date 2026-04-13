@@ -9,6 +9,7 @@ macro_score.py의 9번째 입력으로 사용.
 """
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -48,6 +49,9 @@ SCORE_MAX = 20.0
 # 이 신뢰도 미만의 이벤트는 스코어 계산에서 제외 — 노이즈 방지 (#137)
 CONFIDENCE_FLOOR = 0.3
 
+# regime_hint를 신뢰하기 위한 최소 이벤트 수 — 1~2개로 레짐 전환 방지 (#137)
+MIN_EVENTS_FOR_REGIME_HINT = 3
+
 
 @dataclass
 class EventScore:
@@ -58,6 +62,25 @@ class EventScore:
     category_breakdown: dict  # {category: contribution}
     dominant_category: str | None  # 가장 영향력 큰 카테고리
     regime_hint: str | None   # dominant category의 regime hint
+
+
+def _compute_recency(published_at: str | None, ref_date: str, lookback_days: int) -> float:
+    """이벤트 최신도 가중치: 1.0(오늘) → 0.5(lookback 끝) 선형 감소."""
+    if not published_at:
+        return 0.75  # 날짜 없으면 중간값
+    try:
+        pub_date = datetime.fromisoformat(published_at).strftime("%Y-%m-%d")
+        ref = datetime.strptime(ref_date, "%Y-%m-%d")
+        pub = datetime.strptime(pub_date, "%Y-%m-%d")
+        age_days = (ref - pub).days
+    except (ValueError, TypeError):
+        return 0.75
+    if age_days <= 0:
+        return 1.0
+    if age_days >= lookback_days:
+        return 0.5
+    # 선형 보간: 0일 → 1.0, lookback_days → 0.5
+    return 1.0 - 0.5 * (age_days / lookback_days)
 
 
 def compute_event_score(
@@ -76,7 +99,7 @@ def compute_event_score(
 
     rows = query(
         """
-        SELECT category, sentiment, confidence, regime_hint
+        SELECT category, sentiment, confidence, regime_hint, published_at
         FROM macro_events
         WHERE published_at >= date(?, '-' || ? || ' days')
           AND category IS NOT NULL
@@ -97,7 +120,7 @@ def compute_event_score(
     if len(filtered) < len(rows):
         logger.debug("이벤트 %d건 중 %d건 신뢰도 미달 제외 (< %.1f)", len(rows), len(rows) - len(filtered), CONFIDENCE_FLOOR)
 
-    # 카테고리별 기여 합산
+    # 카테고리별 기여 합산 (시간 가중 적용)
     breakdown: dict[str, float] = {}
     for row in filtered:
         cat = row["category"]
@@ -109,7 +132,10 @@ def compute_event_score(
         # 카테고리 방향(weight)이 이미 부호를 내포하므로,
         # sentiment은 강도(절대값)만 사용. 이중 부정 방지.
         intensity = abs(sentiment) if abs(sentiment) > 0.01 else 0.5
-        contribution = weight * intensity * confidence
+
+        # 시간 가중: 최근 이벤트일수록 높은 가중 (1.0 → 0.5 선형 감소, #137)
+        recency = _compute_recency(row.get("published_at"), ref_date, lookback_days)
+        contribution = weight * intensity * confidence * recency
 
         breakdown[cat] = breakdown.get(cat, 0.0) + contribution
 
@@ -127,9 +153,11 @@ def compute_event_score(
     # dominant category 결정
     dominant = max(breakdown, key=lambda k: abs(breakdown[k])) if breakdown else None
     regime_hint = None
-    if dominant:
+    if dominant and event_count >= MIN_EVENTS_FOR_REGIME_HINT:
         from nuri.llm.event_classifier import REGIME_HINT_BY_CATEGORY
         regime_hint = REGIME_HINT_BY_CATEGORY.get(dominant)
+    elif dominant and event_count < MIN_EVENTS_FOR_REGIME_HINT:
+        logger.debug("이벤트 %d건 < %d → regime_hint 무효화", event_count, MIN_EVENTS_FOR_REGIME_HINT)
 
     return EventScore(
         date=ref_date,
