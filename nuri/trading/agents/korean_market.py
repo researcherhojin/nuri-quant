@@ -118,6 +118,16 @@ class KoreanMarketAgent(BaseAgent):
             score += _CFG.get("kosdaq_discount", -3)
             reasons.append("KOSDAQ 변동성 할인")
 
+        # 5. 매크로 이벤트 반영 (#247) — export_surge/demand_growth 시 한국 종목 부스트
+        macro_boost = self._get_macro_event_boost(sector, db_path)
+        data["macro_event_boost"] = macro_boost
+        if macro_boost != 0:
+            score += macro_boost
+            if macro_boost > 0:
+                reasons.append(f"매크로 이벤트 긍정적 (+{macro_boost})")
+            else:
+                reasons.append(f"매크로 이벤트 부정적 ({macro_boost})")
+
         # 판정
         score_base = _CFG.get("score_base", 50)
         if score >= _CFG.get("score_buy", 65):
@@ -158,6 +168,37 @@ class KoreanMarketAgent(BaseAgent):
             (ticker,), db_path=db_path,
         )
         return rows[0]["foreign_net"] if rows else None
+
+    def _get_macro_event_boost(self, sector: str, db_path=None) -> int:
+        """최근 3일 매크로 이벤트에서 한국 관련 시그널 추출 (#247).
+
+        export_surge, demand_growth → 수출 섹터(반도체 등)에 긍정적
+        trade_war, geopolitical_escalation → 전체 부정적
+        """
+        rows = self._safe_query(
+            """SELECT category, COUNT(*) as cnt, AVG(confidence) as avg_conf
+               FROM macro_events
+               WHERE published_at >= date('now', '-3 days')
+                 AND confidence >= 0.3
+                 AND category IN ('export_surge', 'demand_growth', 'trade_war', 'geopolitical_escalation')
+               GROUP BY category""",
+            db_path=db_path,
+        )
+        if not rows:
+            return 0
+
+        boost = 0
+        for row in rows:
+            cat = row["category"]
+            cnt = row["cnt"]
+            conf = row["avg_conf"] or 0.5
+            if cnt < 2:
+                continue  # 1건은 노이즈 가능성
+            if cat in ("export_surge", "demand_growth") and sector in EXPORT_SECTORS:
+                boost += int(min(cnt * conf * 3, 8))  # 최대 +8
+            elif cat in ("trade_war", "geopolitical_escalation"):
+                boost -= int(min(cnt * conf * 2, 6))  # 최대 -6
+        return boost
 
     def _get_momentum(self, ticker: str, db_path=None) -> float | None:
         """20일 가격 모멘텀."""

@@ -21,13 +21,16 @@ from nuri.core.db import upsert_prices
 
 
 class StockKRCollector(BaseCollector):
-    """pykrx로 한국 주가 수집 (KOSPI/KOSDAQ)."""
+    """pykrx로 한국 주가 수집 (KOSPI/KOSDAQ) + 지수 수집 (yfinance)."""
+
+    # 한국 시장 지수 — yfinance 티커 → DB 저장 티커 (#247)
+    INDEX_TICKERS = {"^KS11": "KOSPI", "^KQ11": "KOSDAQ"}
 
     def __init__(self):
         super().__init__("stock_kr")
 
     def collect(self, days: int = 5, **kwargs) -> pd.DataFrame:
-        """pykrx로 한국 보유 종목 OHLCV 수집."""
+        """pykrx로 한국 보유 종목 OHLCV + yfinance로 KOSPI/KOSDAQ 지수 수집."""
         tickers = self._get_tickers(market="kr")
         if not tickers:
             self.logger.warning("수집할 한국 종목이 없습니다")
@@ -47,6 +50,11 @@ class StockKRCollector(BaseCollector):
             df = self._collect_ticker(ticker_with_suffix, start_date, end_date)
             if df is not None and not df.empty:
                 frames.append(df)
+
+        # KOSPI/KOSDAQ 지수 수집 (#247)
+        index_df = self._collect_indices(days)
+        if index_df is not None and not index_df.empty:
+            frames.append(index_df)
 
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
@@ -80,6 +88,43 @@ class StockKRCollector(BaseCollector):
         except Exception as e:
             self.logger.warning(f"{ticker_full} ({ticker_code}): 수집 실패 — {e}")
             return None
+
+    def _collect_indices(self, days: int) -> Optional[pd.DataFrame]:
+        """yfinance로 KOSPI/KOSDAQ 지수 수집 (#247).
+
+        pykrx get_index_ohlcv는 컬럼명 변경으로 깨져 있어 yfinance 사용.
+        """
+        import yfinance as yf
+
+        frames = []
+        for yf_ticker, db_ticker in self.INDEX_TICKERS.items():
+            try:
+                raw = yf.download(yf_ticker, period=f"{days}d", progress=False)
+                if raw.empty:
+                    self.logger.warning(f"{db_ticker}: yfinance 지수 데이터 없음")
+                    continue
+
+                # 멀티인덱스 컬럼 처리
+                if isinstance(raw.columns, pd.MultiIndex):
+                    raw.columns = raw.columns.get_level_values(0)
+
+                df = pd.DataFrame({
+                    "ticker": db_ticker,
+                    "date": raw.index.strftime("%Y-%m-%d"),
+                    "open": raw["Open"].values,
+                    "high": raw["High"].values,
+                    "low": raw["Low"].values,
+                    "close": raw["Close"].values,
+                    "volume": raw["Volume"].values.astype(int),
+                    "adj_close": raw["Close"].values,
+                })
+                frames.append(df)
+                self.logger.info(f"  {db_ticker}: {len(df)}건 지수 데이터")
+
+            except Exception as e:
+                self.logger.warning(f"{db_ticker}: 지수 수집 실패 — {e}")
+
+        return pd.concat(frames, ignore_index=True) if frames else None
 
     def save(self, data: pd.DataFrame) -> int:
         """수집된 주가를 DB에 저장."""
