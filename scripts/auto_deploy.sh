@@ -25,7 +25,7 @@
 
 set -u   # set -e 사용 안 함 — 한 단계 실패가 launchd 전체를 멈추게 하면 안 됨
 
-REPO="/Users/ehbebe/workspace/nuri-quant"
+REPO="${NURI_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 LOG="$HOME/Library/Logs/nuri-quant-autopull.log"
 
 mkdir -p "$(dirname "$LOG")"
