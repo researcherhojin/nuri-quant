@@ -45,10 +45,25 @@ def _build_actions() -> dict:
 
     violation_tickers = {v["ticker"] for v in siege_violations}
 
+    # 연금 계좌 종목 식별 (월간 리밸런싱 → daily action에서 제외)
+    pension_tickers = {
+        t for t, h in portfolio_holdings.items()
+        if any(kw in (h.get("account") or "").lower() for kw in ("연금", "pension", "irp"))
+    }
+
     from nuri.core.ticker_names import get_ticker_name
 
+    seen_tickers: set[str] = set()  # 중복 방지
     for rec in recommendations:
         ticker = rec["ticker"]
+        # 연금 종목 skip (daily action 불필요)
+        if ticker in pension_tickers:
+            continue
+        # 중복 ticker skip (복수 계좌 동일 종목)
+        if ticker in seen_tickers:
+            continue
+        seen_tickers.add(ticker)
+
         action = rec["action"]
         confidence = rec["confidence"]
         holding = portfolio_holdings.get(ticker, {})

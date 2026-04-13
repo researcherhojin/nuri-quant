@@ -266,38 +266,20 @@ async function Dashboard({
         verdictLabel={verdictLabel}
       />
 
-      {/* ═══ Action-First: 오늘의 액션 + 시스템 건강 + 시장 컨텍스트 + 기회 탐색 ═══ */}
-      <div className="space-y-4">
-        {/* 시스템 건강 + 시장 컨텍스트 (#137 UI) */}
-        <MarketContext
-          events={marketCtx?.macro_events ?? []}
-          health={marketCtx?.system_health ?? {}}
+      {/* ═══ 시스템 건강 4카드 (compact, 1 row) ═══ */}
+      <MarketContext
+        events={marketCtx?.macro_events ?? []}
+        health={marketCtx?.system_health ?? {}}
+      />
+
+      {/* ═══ 오늘의 액션 (연금 제외, 간결) ═══ */}
+      <div>
+        <h2 className="text-sm font-semibold text-zinc-300 mb-2">{ACTION.TITLE}</h2>
+        <ActionItems
+          urgent={actionsData?.urgent ?? []}
+          check={actionsData?.check ?? []}
+          hold={actionsData?.hold ?? []}
         />
-
-        {/* 오늘의 액션 */}
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-300 mb-2">{ACTION.TITLE}</h2>
-          <ActionItems
-            urgent={actionsData?.urgent ?? []}
-            check={actionsData?.check ?? []}
-            hold={actionsData?.hold ?? []}
-          />
-        </div>
-
-        {/* 기회 탐색 — 대시보드에는 상위 3개만 표시, 나머지는 /scan */}
-        {(opportunitiesData?.opportunities?.length ?? 0) > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-zinc-300 flex items-center gap-1.5">
-                🔍 기회 탐색
-              </h2>
-              <Link href="/scan" className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors">
-                전체 {opportunitiesData.opportunities.length}건 →
-              </Link>
-            </div>
-            <OpportunityExplorer opportunities={(opportunitiesData?.opportunities ?? []).slice(0, 3)} />
-          </div>
-        )}
       </div>
 
       {/* ═══ #223 iter 7c: market + allocation compact strip (1 row).
@@ -507,6 +489,19 @@ async function Dashboard({
           {/* #223: HoldingsSummaryPanel 제거. Today/Accounts/Sector/Movers/Concentration
               은 새 HeroStats + CompositionSection 으로 흡수되었음. */}
         </section>
+      )}
+
+      {/* ═══ 기회 탐색 — 보유 종목 아래, 상위 3개 + /scan 링크 ═══ */}
+      {(opportunitiesData?.opportunities?.length ?? 0) > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-zinc-300">🔍 기회 탐색</h2>
+            <Link href="/scan" className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors">
+              전체 {opportunitiesData.opportunities.length}건 →
+            </Link>
+          </div>
+          <OpportunityExplorer opportunities={(opportunitiesData?.opportunities ?? []).slice(0, 3)} />
+        </div>
       )}
 
       {/* ═══ 푸터: 품질 + 이벤트 + 파이프라인 ═══ */}
