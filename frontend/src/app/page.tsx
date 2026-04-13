@@ -15,7 +15,7 @@ import { OpportunityExplorer } from "@/components/ui/opportunity-explorer";
 import { MarketContext } from "@/components/ui/market-context";
 import { summarizeHoldings } from "@/lib/holdings-summary";
 import Link from "next/link";
-import { VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SIGNAL, SECTION, STRIP, MARKET, FOOTER, COL, HOLDING_STATUS, SPARKLINE as SPARK, COMMON, ACTION, CONTEXT } from "@/lib/strings";
+import { VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SECTION, STRIP, MARKET, FOOTER, COL, SPARKLINE as SPARK, COMMON, ACTION, CONTEXT } from "@/lib/strings";
 
 interface DashboardData {
   verdict: string;
@@ -94,41 +94,11 @@ function macroLevel(s: number): { label: string; color: string } {
   if (s >= 30) return { label: MACRO_LEVEL.WEAK, color: "text-orange-400" };
   return { label: MACRO_LEVEL.FRAGILE, color: "text-red-400" };
 }
-function translateAlert(msg: string): string {
-  return msg
-    .replace(SIGNAL.DRIFT_SOURCE, SIGNAL.DRIFT_REPLACE)
-    .replace(/BUY\/SELL 충돌 (\d+)건:/, `${SIGNAL.CONFLICT_REPLACE} $1${COMMON.COUNT_SUFFIX}:`)
-    .replace("bb_bounce", SIGNAL.BB_BOUNCE).replace("macd_bullish_turn", SIGNAL.MACD_BULLISH_TURN)
-    .replace("macd_bearish_turn", SIGNAL.MACD_BEARISH_TURN).replace("macd_golden", SIGNAL.MACD_GOLDEN)
-    .replace("macd_dead", SIGNAL.MACD_DEAD).replace("rsi_oversold", SIGNAL.RSI_OVERSOLD)
-    .replace("rsi_overbought", SIGNAL.RSI_OVERBOUGHT).replace("sma_golden", SIGNAL.SMA_GOLDEN)
-    .replace("sma_dead", SIGNAL.SMA_DEAD).replace("volume_spike", SIGNAL.VOLUME_SPIKE)
-    .replace("gap_up", SIGNAL.GAP_UP).replace("gap_down", SIGNAL.GAP_DOWN)
-    .replace("bb_squeeze_breakout", SIGNAL.BB_SQUEEZE_BREAKOUT).replace("near_52w_low_bounce", SIGNAL.NEAR_52W_LOW_BOUNCE)
-    .replace("volume_profile_resistance", SIGNAL.VOLUME_PROFILE_RESISTANCE);
-}
 /** 계좌 라벨 한국어 표시 (Pension만 특수, 나머지는 원본 유지) */
 function accountKo(label: string | undefined): string {
   if (!label) return "";
   if (label === "Pension") return SECTION.PENSION;
   return label;
-}
-/** 알림 → {label, href} 파싱 */
-function parseAlert(al: { level: string; message: string }): { label: string; href: string } {
-  const translated = translateAlert(al.message);
-  // 손절 돌파: 티커 → /ticker/{ticker}
-  const stopMatch = translated.match(/(\S+)\s+손절선\s+돌파\s+\((-?\d+\.?\d*%)\)/);
-  if (stopMatch) return { label: `${stopMatch[1]} ${stopMatch[2]} ${SIGNAL.STOP_SUFFIX}`, href: `/ticker/${stopMatch[1]}` };
-  // 손절 근접
-  const nearMatch = translated.match(/(\S+)\s+손절선\s+근접\s+\((-?\d+\.?\d*%)\)/);
-  if (nearMatch) return { label: `${nearMatch[1]} ${nearMatch[2]} ${SIGNAL.NEAR_SUFFIX}`, href: `/ticker/${nearMatch[1]}` };
-  // 충돌
-  const conflictMatch = translated.match(/충돌\s+(\d+)건/);
-  if (conflictMatch) return { label: `${SIGNAL.CONFLICT_SHORT} ${conflictMatch[1]}${COMMON.COUNT_SUFFIX}`, href: "/decisions" };
-  // 시그널 성과
-  if (translated.includes("성과 하락")) return { label: translated.slice(0, 30), href: "/signals" };
-  // 기타
-  return { label: translated.slice(0, 30), href: "/signals" };
 }
 
 /* ══════════════════════════════════════════════════════ */
@@ -243,14 +213,8 @@ async function Dashboard({
     .sort((a, b) => (b.positionPct ?? 0) - (a.positionPct ?? 0));
   const hiddenPensionCount = allEnrichedHoldings.length - enrichedHoldings.length;
 
-  // 신규 매수 후보 — 보유하지 않은 ticker의 액션만 (held tickers의 액션은 HoldingRow 상태로 흡수됨)
+  // heldTickers: used by HoldingRow enrichment for action matching
   const heldTickers = new Set(holdings.map((h: any) => h.ticker));
-  const newCandidates = d.actions.filter(a => !heldTickers.has(a.ticker));
-  // 연금 계좌는 월말에만 매수 (월간 1회). 비-월말이면 noise 방지를 위해 collapse.
-  const now = new Date();
-  const isMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() <= 3;
-  const pensionCandidates = newCandidates.filter(a => a.account === "Pension");
-  const visibleCandidates = newCandidates.filter(a => a.account !== "Pension" || isMonthEnd);
 
   // #223: composition section needs the same summarized data the old summary
   // panel had. Compute once at page level so HeroStats + CompositionSection
@@ -271,15 +235,10 @@ async function Dashboard({
     accountValues: mergedAccountValues,
   });
 
-  // #214 polish (A): inline context strips 대신 사이드바 제거 → 데이터 prep
-  const stripAlerts = d.alerts.map((al) => ({
-    level: al.level,
-    parsed: parseAlert(al),
-  }));
+  // Upcoming events strip — retained as unique data (earnings calendar, not macro news)
   const stripEvents = (d.upcoming_events ?? [])
     .slice(0, 5)
     .map((ev: any) => ({ date: ev.date as string, description: ev.description as string | undefined, ticker: ev.ticker as string | null }));
-  const stripCandidates = visibleCandidates.slice(0, 5);
 
   // Helper — "MM-DD" format
   const fmtEventDate = (iso: string) => (iso && iso.length >= 10 ? iso.slice(5, 10) : iso ?? "");
@@ -390,37 +349,10 @@ async function Dashboard({
         );
       })()}
 
-      {/* ═══ #223 iter 7: status strips compact — horizontal row at lg+ ═══
-          이전엔 항상 vertical 3 줄을 차지했음. lg+ 에서 한 줄로 압축. */}
-      <div className="flex flex-col lg:flex-row lg:flex-wrap gap-1 lg:gap-2">
-        {/* 알림 strip */}
-        <CollapsibleStrip
-          id="alerts"
-          title={STRIP.ALERTS_TITLE}
-          icon="⚠"
-          count={stripAlerts.length}
-          emptyText={STRIP.ALERTS_EMPTY}
-        >
-          <div className="flex items-start gap-2 px-2 py-1 rounded bg-red-950/20 border border-red-900/30 pr-6">
-            <span className="text-[10px] text-red-400 font-semibold shrink-0">{STRIP.ALERTS_PREFIX} {stripAlerts.length}{COMMON.COUNT_SUFFIX}</span>
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
-              {stripAlerts.map((al, i) => (
-                <Link
-                  key={i}
-                  href={al.parsed.href}
-                  className="flex items-center gap-1 text-[10px] hover:text-zinc-100 transition-colors"
-                >
-                  <span className={al.level === "critical" ? "text-red-400" : "text-amber-400"}>
-                    {al.level === "critical" ? "\u2716" : "\u25B3"}
-                  </span>
-                  <span className="text-zinc-300 truncate">{al.parsed.label}</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </CollapsibleStrip>
-
-        {/* 이벤트 strip */}
+      {/* ═══ Collapsible strips removed — replaced by Action-First sections above.
+          Alerts → ActionItems 🔴 urgent, Candidates → ActionItems 🟡 check/✅ hold,
+          Events → MarketContext macro events. Only upcoming earnings strip retained. ═══ */}
+      {stripEvents.length > 0 && (
         <CollapsibleStrip
           id="events"
           title={STRIP.EVENTS_TITLE}
@@ -444,50 +376,7 @@ async function Dashboard({
             </div>
           </div>
         </CollapsibleStrip>
-
-        {/* 신규 매수 후보 strip */}
-        <CollapsibleStrip
-          id="candidates"
-          title={STRIP.CANDIDATES_TITLE}
-          icon="🎯"
-          count={stripCandidates.length}
-          emptyText={
-            pensionCandidates.length > 0 && !isMonthEnd
-              ? `${SECTION.PENSION} ${pensionCandidates.length}${COMMON.COUNT_SUFFIX} — ${SECTION.PENSION_MONTH_END_BUY_WAIT}`
-              : STRIP.CANDIDATES_EMPTY
-          }
-        >
-          <div className="flex items-start gap-2 px-2 py-1 rounded bg-zinc-900/40 border border-zinc-800/60 pr-6">
-            <span className="text-[10px] text-emerald-400 font-semibold shrink-0">{STRIP.CANDIDATES_PREFIX} {stripCandidates.length}{COMMON.COUNT_SUFFIX}</span>
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
-              {stripCandidates.map((c, i) => (
-                <Link
-                  key={`${c.ticker}-${i}`}
-                  href={`/ticker/${c.ticker}`}
-                  className="flex items-center gap-1 text-[10px] hover:text-zinc-100 transition-colors"
-                >
-                  {c.account && <span className="text-zinc-600">{accountKo(c.account)}</span>}
-                  <span className="text-zinc-200">{c.name || c.ticker}</span>
-                  <span
-                    className={`tabular-nums font-semibold ${
-                      c.confidence >= 80
-                        ? "text-emerald-400"
-                        : c.confidence >= 50
-                        ? "text-amber-400"
-                        : "text-red-400"
-                    }`}
-                  >
-                    {c.action === "BUY" ? HOLDING_STATUS.BUY : HOLDING_STATUS.SELL} {c.confidence}
-                  </span>
-                </Link>
-              ))}
-              {pensionCandidates.length > 0 && !isMonthEnd && (
-                <span className="text-[10px] text-zinc-600">{SECTION.PENSION} {pensionCandidates.length}{COMMON.COUNT_SUFFIX} {SECTION.PENSION_MONTH_END_WAIT}</span>
-              )}
-            </div>
-          </div>
-        </CollapsibleStrip>
-      </div>
+      )}
 
       {/* ═══ #223 NEW: Composition section (donut + tabs + legend).
           Sits between status strips and the holdings drilldown table.

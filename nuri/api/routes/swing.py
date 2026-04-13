@@ -69,6 +69,59 @@ def get_backtest():
     })
 
 
+@router.get("/backtest/equity")
+def get_backtest_equity():
+    """Equity curve + drawdown for interactive chart (#89).
+
+    Returns lightweight data: equity curve points, drawdown, regime bands,
+    SPY benchmark, and key metrics. Designed for Recharts frontend.
+    """
+    import json
+
+    from nuri.trading.strategy.ls_backtest import (
+        classify_historical_regimes,
+        run_backtest,
+    )
+
+    regimes = classify_historical_regimes()
+    if regimes.empty:
+        return {"error": "SPY data insufficient"}
+
+    result = run_backtest(regimes)
+
+    # numpy → native
+    def _clean(obj):
+        return json.loads(json.dumps(obj, default=lambda x: x.item() if hasattr(x, "item") else str(x)))
+
+    # equity curve with regime bands
+    equity = result.equity_curve or []
+
+    # drawdown from equity curve
+    drawdown = []
+    peak = 0
+    for pt in equity:
+        val = pt.get("equity", pt.get("value", 0))
+        peak = max(peak, val)
+        dd_pct = ((val - peak) / peak * 100) if peak > 0 else 0
+        drawdown.append({"date": pt.get("date"), "drawdown": round(dd_pct, 2)})
+
+    return _clean({
+        "equity": equity,
+        "drawdown": drawdown,
+        "metrics": {
+            "total_return": result.total_return,
+            "annual_return": result.annual_return,
+            "sharpe": result.sharpe,
+            "max_drawdown": result.max_drawdown,
+            "win_rate": result.win_rate,
+            "spy_total_return": result.spy_total_return,
+            "spy_sharpe": result.spy_sharpe,
+            "spy_max_drawdown": result.spy_max_drawdown,
+            "excess_return": result.excess_return,
+        },
+    })
+
+
 @router.get("/strategy/status")
 def get_strategy_status():
     """Current strategy + positions."""
