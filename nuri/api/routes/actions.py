@@ -26,9 +26,9 @@ def get_actions():
     """우선순위 분류된 오늘의 액션 리스트."""
     try:
         return _build_actions()
-    except Exception as e:
+    except Exception:
         logger.exception("actions API error")
-        return {"urgent": [], "check": [], "hold": [], "error": str(e)}
+        return {"urgent": [], "check": [], "hold": []}
 
 
 def _build_actions() -> dict:
@@ -138,9 +138,9 @@ def get_opportunities():
     """비보유 이슈 종목 탐색 — scan + WSB + macro events 기반 판정."""
     try:
         return {"opportunities": _build_opportunities(), "generated_at": kst_now().isoformat()}
-    except Exception as e:
+    except Exception:
         logger.exception("opportunities API error")
-        return {"opportunities": [], "error": str(e)}
+        return {"opportunities": []}
 
 
 def _build_opportunities() -> list[dict]:
