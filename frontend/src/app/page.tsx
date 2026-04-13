@@ -10,9 +10,12 @@ import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type
 import { CollapsibleStrip } from "@/components/ui/collapsible-strip";
 import { HeroStats } from "@/components/ui/hero-stats";
 import { CompositionSection, parseCompositionTab } from "@/components/ui/composition-section";
+import { ActionItems } from "@/components/ui/action-items";
+import { OpportunityExplorer } from "@/components/ui/opportunity-explorer";
+import { MarketContext } from "@/components/ui/market-context";
 import { summarizeHoldings } from "@/lib/holdings-summary";
 import Link from "next/link";
-import { VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SIGNAL, SECTION, STRIP, MARKET, FOOTER, COL, HOLDING_STATUS, SPARKLINE as SPARK, COMMON } from "@/lib/strings";
+import { VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SIGNAL, SECTION, STRIP, MARKET, FOOTER, COL, HOLDING_STATUS, SPARKLINE as SPARK, COMMON, ACTION, CONTEXT } from "@/lib/strings";
 
 interface DashboardData {
   verdict: string;
@@ -157,7 +160,7 @@ async function Dashboard({
   const compositionTab = parseCompositionTab(params.comp);
   const holdingsExpanded = params.holdings === "expanded";
 
-  const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets] = await Promise.all([
+  const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets, actionsData, opportunitiesData, marketCtx] = await Promise.all([
     fetchAPI<DashboardData>("/api/dashboard"),
     fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], details: [], overall: "FAIL", pass: 0, warn: 0, fail: 0 })),
     fetchAPI<PipelineStatusData>("/api/pipeline/status").catch((): PipelineStatusData => ({ steps: [] })),
@@ -168,6 +171,9 @@ async function Dashboard({
     ]).catch(() => null),
     fetchAPI<any>("/api/rebalance-advisor").catch(() => null),
     fetchAPI<{ targets: RawTarget[] }>("/api/targets").catch(() => ({ targets: [] as RawTarget[] })),
+    fetchAPI<any>("/api/actions").catch(() => ({ urgent: [], check: [], hold: [] })),
+    fetchAPI<any>("/api/opportunities").catch(() => ({ opportunities: [] })),
+    fetchAPI<any>("/api/market-context").catch(() => ({ macro_events: [], system_health: {} })),
   ]);
 
   const holdingCount = portfolio?.count ?? portfolio?.holdings?.length ?? 0;
@@ -300,6 +306,35 @@ async function Dashboard({
         summary={summary}
         verdictLabel={verdictLabel}
       />
+
+      {/* ═══ Action-First: 오늘의 액션 + 시스템 건강 + 시장 컨텍스트 + 기회 탐색 ═══ */}
+      <div className="space-y-4">
+        {/* 시스템 건강 + 시장 컨텍스트 (#137 UI) */}
+        <MarketContext
+          events={marketCtx?.macro_events ?? []}
+          health={marketCtx?.system_health ?? {}}
+        />
+
+        {/* 오늘의 액션 */}
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-300 mb-2">{ACTION.TITLE}</h2>
+          <ActionItems
+            urgent={actionsData?.urgent ?? []}
+            check={actionsData?.check ?? []}
+            hold={actionsData?.hold ?? []}
+          />
+        </div>
+
+        {/* 기회 탐색 */}
+        {(opportunitiesData?.opportunities?.length ?? 0) > 0 && (
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-300 mb-2 flex items-center gap-1.5">
+              🔍 {CONTEXT.TITLE} — 이슈 종목
+            </h2>
+            <OpportunityExplorer opportunities={opportunitiesData?.opportunities ?? []} />
+          </div>
+        )}
+      </div>
 
       {/* ═══ #223 iter 7c: market + allocation compact strip (1 row).
           Each metric only renders when it actually has data — no more

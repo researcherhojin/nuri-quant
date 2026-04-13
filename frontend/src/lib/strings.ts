@@ -320,6 +320,48 @@ export const COMMON = {
   RUN_REQUIRED: "실행 필요",
 } as const;
 
+/* ── Action-First Dashboard ────────────────────────────────── */
+export const ACTION = {
+  TITLE: "오늘의 액션",
+  URGENT: "즉시 실행",
+  CHECK: "오늘 확인",
+  HOLD: "유지",
+  HOLD_SUMMARY: "유지 종목",
+  DETAIL: "상세 근거",
+  DISMISS: "무시하기",
+  EMPTY: "오늘 실행할 액션이 없습니다.",
+  CONF: "확신도",
+  AGREE: "합의",
+  PNL: "손익",
+  WEIGHT: "비중",
+} as const;
+
+export const OPPORTUNITY = {
+  TITLE: "기회 탐색",
+  SUBTITLE: "뉴스·이슈 종목",
+  PROS: "찬성",
+  CONS: "반대",
+  VERDICT: "판정",
+  ANALYZE: "10-Agent 분석",
+  CHART: "차트 보기",
+  EMPTY: "현재 감지된 기회가 없습니다.",
+  POSITIVE: "매수 고려",
+  NEUTRAL: "관망",
+  DANGER: "매수 금지",
+  MUTED: "데이터 부족",
+} as const;
+
+export const CONTEXT = {
+  TITLE: "시장 컨텍스트",
+  SYSTEM_HEALTH: "시스템 건강",
+  SIEGE: "SIEGE",
+  REGIME: "레짐",
+  MACRO: "매크로",
+  FRESHNESS: "데이터",
+  CERTIFIED: "인증",
+  REJECTED: "미인증",
+} as const;
+
 /* ── StatusBadge Korean keys ────────────────────────────────── */
 export const STATUS_BADGE = {
   BUY: "\uB9E4\uC218",

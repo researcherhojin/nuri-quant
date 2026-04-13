@@ -16,13 +16,18 @@ test.describe("Dashboard (with real backend)", () => {
     await expect(page.locator("text=Signals").first()).toBeVisible();
   });
 
-  test("sidebar shows SIEGE status badge", async ({ page }) => {
+  test("shows SIEGE status in system health", async ({ page }) => {
     await page.goto("/", { timeout: 15000 });
     await page.waitForTimeout(3000);
-    // SIEGE badge: CERTIFIED or REJECTED
+    // SIEGE health card: shows score % or Korean status (인증/미인증) or English
+    const siege = page.locator("text=SIEGE");
     const certified = page.locator("text=CERTIFIED");
     const rejected = page.locator("text=REJECTED");
-    const hasSiege = (await certified.count()) > 0 || (await rejected.count()) > 0;
+    const korCertified = page.locator("text=인증");
+    const korRejected = page.locator("text=미인증");
+    const hasSiege = (await siege.count()) > 0 ||
+      (await certified.count()) > 0 || (await rejected.count()) > 0 ||
+      (await korCertified.count()) > 0 || (await korRejected.count()) > 0;
     expect(hasSiege).toBe(true);
   });
 
