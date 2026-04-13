@@ -171,6 +171,34 @@ class TestComputeEventScore:
         assert es.category_breakdown["trade_war"] < 0
 
 
+class TestNewCategories:
+    """#137 신규 카테고리 가중치 검증."""
+
+    def test_export_surge_positive(self, db_path):
+        _insert_events(db_path, [
+            {"category": "export_surge", "sentiment": 0.7, "confidence": 0.8, "url": "http://t/export1"},
+        ])
+        es = compute_event_score(db_path=db_path, date="2026-04-09")
+        assert es.score > 0
+        assert es.dominant_category == "export_surge"
+        assert es.regime_hint == "recovery"
+
+    def test_demand_growth_positive(self, db_path):
+        _insert_events(db_path, [
+            {"category": "demand_growth", "sentiment": 0.6, "confidence": 0.85, "url": "http://t/demand1"},
+        ])
+        es = compute_event_score(db_path=db_path, date="2026-04-09")
+        assert es.score > 0
+        assert es.regime_hint == "bull_low_vol"
+
+    def test_currency_shift_negative_by_default(self, db_path):
+        _insert_events(db_path, [
+            {"category": "currency_shift", "sentiment": -0.5, "confidence": 0.7, "url": "http://t/fx1"},
+        ])
+        es = compute_event_score(db_path=db_path, date="2026-04-09")
+        assert es.score < 0  # currency_shift weight is -0.35
+
+
 class TestConfidenceFloor:
     """신뢰도 < 0.3 이벤트는 스코어 계산에서 제외 (#137)."""
 
