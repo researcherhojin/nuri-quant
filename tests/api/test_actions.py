@@ -124,6 +124,7 @@ class TestCacheHitPaths:
 
     def test_actions_cache_hit(self):
         import time
+
         from nuri.api.routes import actions
         self._clear_caches()
         fake_result = {"urgent": [{"ticker": "CACHED"}], "check": [], "hold": [], "generated_at": "test"}
@@ -134,6 +135,7 @@ class TestCacheHitPaths:
 
     def test_opportunities_cache_hit(self):
         import time
+
         from nuri.api.routes import actions
         self._clear_caches()
         fake_result = {"opportunities": [{"ticker": "CACHED"}], "generated_at": "test"}
@@ -144,6 +146,7 @@ class TestCacheHitPaths:
 
     def test_market_context_cache_hit(self):
         import time
+
         from nuri.api.routes import actions
         self._clear_caches()
         fake_result = {"macro_events": [], "system_health": {"cached": True}, "generated_at": "test"}
@@ -154,6 +157,7 @@ class TestCacheHitPaths:
 
     def test_stale_cache_recomputes(self):
         import time
+
         from nuri.api.routes import actions
         self._clear_caches()
         actions._actions_cache["data"] = {"stale": True}
