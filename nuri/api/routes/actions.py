@@ -239,11 +239,15 @@ def _compute_verdict(pros: list[str], cons: list[str], scan: dict) -> tuple[str,
 @router.get("/market-context")
 def get_market_context():
     """시장 컨텍스트 — 매크로 이벤트 + 시스템 건강 (#137 UI)."""
-    return {
-        "macro_events": _get_macro_events(),
-        "system_health": _get_system_health(),
-        "generated_at": kst_now().isoformat(),
-    }
+    try:
+        return {
+            "macro_events": _get_macro_events(),
+            "system_health": _get_system_health(),
+            "generated_at": kst_now().isoformat(),
+        }
+    except Exception:
+        logger.exception("market-context API error")
+        return {"macro_events": [], "system_health": {}, "generated_at": kst_now().isoformat()}
 
 
 # ─── 내부 헬퍼 ──
