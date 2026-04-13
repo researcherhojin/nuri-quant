@@ -115,8 +115,9 @@ fi
 # ── 8. API 응답 ──
 echo ""
 echo "🌐 API health..."
-if curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/api/health 2>/dev/null | grep -q "200"; then
-    pass "API responding (port 8001)"
+_API_PORT="${API_PORT:-8001}"
+if curl -s -o /dev/null -w "%{http_code}" "http://localhost:${_API_PORT}/api/health" 2>/dev/null | grep -q "200"; then
+    pass "API responding (port ${_API_PORT})"
 else
     warn "API not responding (start: make api)"
 fi
