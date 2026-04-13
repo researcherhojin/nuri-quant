@@ -130,6 +130,27 @@ describe("OpportunityExplorer", () => {
     expect(screen.getByText("차트 보기 →")).toBeTruthy();
   });
 
+  it("shows 10-Agent analysis button", () => {
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    expect(screen.getByText("10-Agent 분석 ▶")).toBeTruthy();
+  });
+
+  it("hides analysis button after result", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ action: "BUY", confidence: 72, agreement_rate: 0.4 }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    const btn = screen.getByText("10-Agent 분석 ▶");
+    await btn.click();
+    // Wait for state update
+    await vi.waitFor(() => {
+      expect(screen.getByText("BUY")).toBeTruthy();
+      expect(screen.getByText("40% 합의")).toBeTruthy();
+    });
+    expect(screen.queryByText("10-Agent 분석 ▶")).toBeNull();
+  });
+
   it("handles null price gracefully", () => {
     const nullPriceOpp = { ...positiveOpp, price: null };
     render(<OpportunityExplorer opportunities={[nullPriceOpp]} />);
