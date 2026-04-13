@@ -28,10 +28,10 @@ describe("PriceChart", () => {
     const { PriceChart } = await import("@/components/ui/price-chart");
     render(<PriceChart data={mockData} ticker="AAPL" />);
     expect(screen.getByText("AAPL")).toBeInTheDocument();
+    expect(screen.getByText("1D")).toBeInTheDocument();
+    expect(screen.getByText("5D")).toBeInTheDocument();
+    expect(screen.getByText("2W")).toBeInTheDocument();
     expect(screen.getByText("1M")).toBeInTheDocument();
-    expect(screen.getByText("3M")).toBeInTheDocument();
-    expect(screen.getByText("6M")).toBeInTheDocument();
-    expect(screen.getByText("1Y")).toBeInTheDocument();
     expect(screen.getByText("ALL")).toBeInTheDocument();
   });
 
