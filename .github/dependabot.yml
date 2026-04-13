@@ -17,7 +17,6 @@ updates:
       - "backend"
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
     groups:
       # Bundle all dev tooling (ruff/pytest/coverage) into one PR
       python-dev:
@@ -66,7 +65,6 @@ updates:
       - "frontend"
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
     groups:
       # Bundle all @types/* into one PR (always safe)
       types:
@@ -108,7 +106,6 @@ updates:
       - "ci"
     commit-message:
       prefix: "chore(ci)"
-      include: "scope"
     groups:
       # Bundle all GitHub Actions updates into one PR per month
       actions:
