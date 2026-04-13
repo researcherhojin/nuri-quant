@@ -1,9 +1,16 @@
-"""Tests for /api/actions, /api/opportunities, /api/market-context endpoints."""
+"""Tests for /api/actions, /api/opportunities, /api/market-context endpoints.
+
+Combines integration tests (TestClient) + unit tests (mock-based).
+"""
 import json
-from unittest.mock import MagicMock, patch
+from dataclasses import dataclass
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+
+from nuri.core.db import get_db, init_db
 
 
 @pytest.fixture()
@@ -11,10 +18,7 @@ def client(tmp_path):
     """TestClient with isolated DB."""
     db = tmp_path / "test.db"
     with patch.dict("os.environ", {"NURI_DB_PATH": str(db)}):
-        from nuri.core.db import init_db
         init_db(db)
-        # Seed minimal data
-        from nuri.core.db import get_db
         with get_db(db) as conn:
             conn.execute(
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
@@ -48,118 +52,348 @@ def client(tmp_path):
         yield TestClient(app)
 
 
-class TestActionsEndpoint:
-    """Tests for GET /api/actions."""
+# ═══════════════════════════════════════════════════
+# Integration tests (TestClient)
+# ═══════════════════════════════════════════════════
 
+
+class TestActionsEndpoint:
     def test_returns_structured_response(self, client):
         resp = client.get("/api/actions")
         assert resp.status_code == 200
         data = resp.json()
-        assert "urgent" in data
-        assert "check" in data
-        assert "hold" in data
-        assert isinstance(data["urgent"], list)
-        assert isinstance(data["check"], list)
-        assert isinstance(data["hold"], list)
+        for key in ("urgent", "check", "hold"):
+            assert key in data
+            assert isinstance(data[key], list)
 
     def test_actions_contain_ticker_and_priority(self, client):
         resp = client.get("/api/actions")
-        data = resp.json()
-        all_items = data["urgent"] + data["check"] + data["hold"]
-        for item in all_items:
+        for item in resp.json()["urgent"] + resp.json()["check"] + resp.json()["hold"]:
             assert "ticker" in item
             assert "action" in item
             assert "priority" in item
-            assert "reasons" in item
             assert isinstance(item["reasons"], list)
-
-    def test_sell_action_classified_as_check_or_urgent(self, client):
-        resp = client.get("/api/actions")
-        data = resp.json()
-        sell_items = [i for i in data["urgent"] + data["check"] if i["action"] == "SELL"]
-        # TSLA should be SELL
-        tsla = [i for i in sell_items if i["ticker"] == "TSLA"]
-        assert len(tsla) >= 0  # May not appear if confidence filter changes
 
     def test_buy_action_has_confidence(self, client):
         resp = client.get("/api/actions")
         data = resp.json()
-        buy_items = [i for i in data["hold"] + data["check"] if i["action"] == "BUY"]
-        for item in buy_items:
-            assert "confidence" in item
-            assert isinstance(item["confidence"], (int, float))
-
-    def test_empty_recommendations_returns_empty_actions(self, client):
-        """No recommendations → all empty lists, no crash."""
-        # The seeded recommendations exist, but this tests the structure
-        resp = client.get("/api/actions")
-        data = resp.json()
-        # Should have the three priority lists regardless
-        assert isinstance(data.get("urgent", []), list)
-        assert isinstance(data.get("check", []), list)
-        assert isinstance(data.get("hold", []), list)
+        for item in data["hold"] + data["check"]:
+            if item["action"] == "BUY":
+                assert isinstance(item["confidence"], (int, float))
 
 
 class TestOpportunitiesEndpoint:
-    """Tests for GET /api/opportunities."""
-
     def test_returns_structured_response(self, client):
         resp = client.get("/api/opportunities")
         assert resp.status_code == 200
-        data = resp.json()
-        assert "opportunities" in data
-        assert isinstance(data["opportunities"], list)
+        assert isinstance(resp.json()["opportunities"], list)
 
     def test_opportunities_have_verdict(self, client):
-        resp = client.get("/api/opportunities")
-        data = resp.json()
-        for opp in data["opportunities"]:
-            assert "ticker" in opp
-            assert "verdict" in opp
-            assert "verdict_level" in opp
-            assert "pros" in opp
-            assert "cons" in opp
+        for opp in client.get("/api/opportunities").json()["opportunities"]:
+            for key in ("ticker", "verdict", "verdict_level", "pros", "cons"):
+                assert key in opp
 
     def test_excludes_portfolio_tickers(self, client):
-        resp = client.get("/api/opportunities")
-        data = resp.json()
-        portfolio_tickers = {"AAPL", "TSLA"}
-        for opp in data["opportunities"]:
-            assert opp["ticker"] not in portfolio_tickers
+        for opp in client.get("/api/opportunities").json()["opportunities"]:
+            assert opp["ticker"] not in {"AAPL", "TSLA"}
 
 
 class TestMarketContextEndpoint:
-    """Tests for GET /api/market-context."""
-
     def test_returns_structured_response(self, client):
         resp = client.get("/api/market-context")
         assert resp.status_code == 200
         data = resp.json()
         assert "macro_events" in data
         assert "system_health" in data
-        assert isinstance(data["macro_events"], list)
         assert "generated_at" in data
 
 
-class TestActionsLogic:
-    """Unit tests for action classification logic."""
+# ═══════════════════════════════════════════════════
+# Unit tests — _compute_verdict
+# ═══════════════════════════════════════════════════
 
-    def test_compute_verdict_danger(self):
+
+class TestComputeVerdict:
+    def setup_method(self):
         from nuri.api.routes.actions import _compute_verdict
-        verdict, level = _compute_verdict([], ["bad signal"], {"score": 10, "rsi": 15, "change_5d": -25})
+        self._verdict = _compute_verdict
+
+    def test_extreme_drop_danger(self):
+        _, level = self._verdict(["good"], ["bad"], {"score": 10, "rsi": 15, "change_5d": -25})
         assert level == "danger"
 
-    def test_compute_verdict_positive(self):
-        from nuri.api.routes.actions import _compute_verdict
-        verdict, level = _compute_verdict(["good 1", "good 2"], [], {"score": 50, "rsi": 45, "change_5d": 5})
-        assert level == "positive"
+    def test_no_pros_with_cons_danger(self):
+        text, level = self._verdict([], ["risky"], {"score": 20, "rsi": 50, "change_5d": -5})
+        assert level == "danger"
+        assert "근거 부족" in text
 
-    def test_compute_verdict_neutral(self):
-        from nuri.api.routes.actions import _compute_verdict
-        verdict, level = _compute_verdict(["good"], ["bad"], {"score": 30, "rsi": 50, "change_5d": 0})
+    def test_strong_positive(self):
+        text, level = self._verdict(["a", "b"], [], {"score": 50, "rsi": 50, "change_5d": 5})
+        assert level == "positive"
+        assert "매수 고려" in text
+
+    def test_mixed_signals_neutral(self):
+        _, level = self._verdict(["good"], ["bad"], {"score": 30, "rsi": 50, "change_5d": 5})
         assert level == "neutral"
 
-    def test_compute_verdict_muted(self):
-        from nuri.api.routes.actions import _compute_verdict
-        verdict, level = _compute_verdict([], [], {"score": 5, "rsi": 50, "change_5d": 0})
+    def test_overbought_neutral(self):
+        text, level = self._verdict(["one"], [], {"score": 20, "rsi": 50, "change_5d": 18})
+        assert level == "neutral"
+        assert "눌림목" in text
+
+    def test_empty_muted(self):
+        _, level = self._verdict([], [], {"score": 5, "rsi": 50, "change_5d": 0})
         assert level == "muted"
+
+    def test_positive_needs_high_score(self):
+        _, level = self._verdict(["a", "b"], [], {"score": 30, "rsi": 50, "change_5d": 5})
+        assert level != "positive"  # score 30 < 40 threshold
+
+
+# ═══════════════════════════════════════════════════
+# Unit tests — SIEGE violation regex parsing
+# ═══════════════════════════════════════════════════
+
+
+class TestSiegeViolationParsing:
+    def test_single_violation(self):
+        import re
+        matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", "위반: TSLA(15.4%>15%)")
+        assert matches == ["TSLA"]
+
+    def test_multiple_violations(self):
+        import re
+        matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", "위반: TSLA(15.4%>15%), NBIS(16.0%>15%)")
+        assert matches == ["TSLA", "NBIS"]
+
+    def test_no_match(self):
+        import re
+        matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", "모든 종목 15% 이하")
+        assert matches == []
+
+    def test_handles_certify_exception(self):
+        with patch("nuri.trading.engine.certification.certify", side_effect=Exception("DB")):
+            from nuri.api.routes.actions import _get_siege_violations
+            assert _get_siege_violations() == []
+
+
+# ═══════════════════════════════════════════════════
+# Unit tests — helper functions (mock-based)
+# ═══════════════════════════════════════════════════
+
+
+class TestGetTargetsStatus:
+    @patch("nuri.trading.recommend.price_targets.calculate_portfolio_targets")
+    def test_returns_target_dict(self, mock_fn):
+        mock_fn.return_value = [{"ticker": "AAPL", "stop_loss": 140, "target_1": 180, "target_2": 210, "trailing_stop_pct": 15, "analyst_target": 200}]
+        from nuri.api.routes.actions import _get_targets_status
+        result = _get_targets_status()
+        assert result["AAPL"]["stop_loss"] == 140
+
+    @patch("nuri.trading.recommend.price_targets.calculate_portfolio_targets", side_effect=Exception)
+    def test_handles_exception(self, _):
+        from nuri.api.routes.actions import _get_targets_status
+        assert _get_targets_status() == {}
+
+
+class TestGetImprovingSignals:
+    @patch("nuri.trading.engine.memory.detect_drift")
+    def test_returns_improving_set(self, mock_fn):
+        mock_fn.return_value = [
+            SimpleNamespace(signal_id="rsi_oversold", status="improving"),
+            SimpleNamespace(signal_id="bb_bounce", status="critical"),
+        ]
+        from nuri.api.routes.actions import _get_improving_signals
+        result = _get_improving_signals()
+        assert "rsi_oversold" in result
+        assert "bb_bounce" not in result
+
+    @patch("nuri.trading.engine.memory.detect_drift", side_effect=Exception)
+    def test_handles_exception(self, _):
+        from nuri.api.routes.actions import _get_improving_signals
+        assert _get_improving_signals() == set()
+
+
+class TestGetRecentScanResults:
+    @patch("nuri.trading.swing.scanner.scan_market")
+    def test_returns_scan_dicts(self, mock_fn):
+        mock_fn.return_value = [SimpleNamespace(ticker="MRVL", price=128, change_1d=7, change_5d=20, volume_ratio=1.7, rsi=83, signal="breakout", score=69)]
+        from nuri.api.routes.actions import _get_recent_scan_results
+        result = _get_recent_scan_results()
+        assert result[0]["ticker"] == "MRVL"
+
+    @patch("nuri.trading.swing.scanner.scan_market", side_effect=Exception)
+    def test_handles_exception(self, _):
+        from nuri.api.routes.actions import _get_recent_scan_results
+        assert _get_recent_scan_results() == []
+
+
+class TestGetSystemHealth:
+    @patch("nuri.api.routes.actions.query", return_value=[])
+    def test_returns_all_sections(self, _):
+        @dataclass
+        class FakeCert:
+            score: float = 54.0
+            certified: bool = False
+            passed: int = 6
+            failed: int = 1
+            warnings: int = 4
+            total_conditions: int = 11
+            conditions: list | None = None
+
+            def __post_init__(self):
+                self.conditions = self.conditions or []
+
+        with patch("nuri.trading.engine.certification.certify", return_value=FakeCert()), \
+             patch("nuri.quant.regime.classifier.classify_regime", return_value=SimpleNamespace(regime="recovery", trend="sideways", volatility="high", confidence=0.75)), \
+             patch("nuri.quant.regime.macro_score.compute_macro_score", return_value=SimpleNamespace(total_score=56, interpretation="Neutral")), \
+             patch("nuri.core.freshness.check_all_freshness", return_value=[{"status": "PASS"}, {"status": "WARN"}, {"status": "FAIL"}]):
+            from nuri.api.routes.actions import _get_system_health
+            result = _get_system_health()
+            assert result["siege"]["score"] == 54
+            assert result["regime"]["regime"] == "recovery"
+            assert result["macro"]["score"] == 56
+            assert result["freshness"]["fail_count"] == 1
+
+    @patch("nuri.api.routes.actions.query", return_value=[])
+    def test_handles_all_exceptions(self, _):
+        with patch("nuri.trading.engine.certification.certify", side_effect=Exception), \
+             patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception), \
+             patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception), \
+             patch("nuri.core.freshness.check_all_freshness", side_effect=Exception):
+            from nuri.api.routes.actions import _get_system_health
+            result = _get_system_health()
+            assert result["siege"] == {"score": 0, "certified": False}
+
+
+# ═══════════════════════════════════════════════════
+# Unit tests — _build_actions business logic
+# ═══════════════════════════════════════════════════
+
+
+class TestBuildActionsLogic:
+    def _run(self, recs, siege=None, targets=None, portfolio=None, short=None):
+        with patch("nuri.api.routes.actions._get_recommendations", return_value=recs), \
+             patch("nuri.api.routes.actions._get_siege_violations", return_value=siege or []), \
+             patch("nuri.api.routes.actions._get_targets_status", return_value=targets or {}), \
+             patch("nuri.api.routes.actions._get_portfolio_map", return_value=portfolio or {}), \
+             patch("nuri.api.routes.actions._get_short_interest", return_value=short):
+            from nuri.api.routes.actions import _build_actions
+            return _build_actions()
+
+    def _pf(self, price=105, avg=100, pnl=5, pos=3):
+        return {"current_price": price, "avg_price": avg, "quantity": 10, "pnl_pct": pnl, "position_pct": pos, "account": "Main"}
+
+    def test_siege_violation_urgent(self):
+        result = self._run(
+            [{"ticker": "TSLA", "action": "SELL", "confidence": 46, "agreement": 20}],
+            siege=[{"ticker": "TSLA", "detail": "SIEGE: 한도 — TSLA(15.4%>15%)", "condition_id": "position_limit"}],
+            portfolio={"TSLA": self._pf(349, 343, 1.6, 15.4)},
+        )
+        assert len(result["urgent"]) == 1
+        assert result["urgent"][0]["ticker"] == "TSLA"
+
+    def test_sell_with_loss_urgent(self):
+        result = self._run(
+            [{"ticker": "BAD", "action": "SELL", "confidence": 70, "agreement": 50}],
+            portfolio={"BAD": self._pf(90, 100, -10, 5)},
+        )
+        assert len(result["urgent"]) == 1
+        assert "손절선 근접" in result["urgent"][0]["reasons"][1]
+
+    def test_sell_without_loss_check(self):
+        result = self._run(
+            [{"ticker": "MEH", "action": "SELL", "confidence": 50, "agreement": 20}],
+            portfolio={"MEH": self._pf(105, 100, 5, 3)},
+        )
+        assert len(result["check"]) == 1
+
+    def test_target_1_hit_check(self):
+        result = self._run(
+            [{"ticker": "WIN", "action": "BUY", "confidence": 70, "agreement": 40}],
+            targets={"WIN": {"stop_loss": 90, "target_1": 120, "target_2": 140}},
+            portfolio={"WIN": self._pf(125, 100, 25, 5)},
+        )
+        assert len(result["check"]) == 1
+        assert "1차 익절" in result["check"][0]["reasons"][0]
+
+    def test_target_2_hit_check(self):
+        result = self._run(
+            [{"ticker": "BIG", "action": "BUY", "confidence": 80, "agreement": 60}],
+            targets={"BIG": {"stop_loss": 90, "target_1": 120, "target_2": 140}},
+            portfolio={"BIG": self._pf(145, 100, 45, 8)},
+        )
+        assert "2차 익절" in result["check"][0]["reasons"][0]
+
+    def test_high_short_interest_check(self):
+        result = self._run(
+            [{"ticker": "SQZ", "action": "BUY", "confidence": 60, "agreement": 40}],
+            portfolio={"SQZ": self._pf(110, 100, 10, 3)},
+            short=19.6,
+        )
+        assert "공매도" in result["check"][0]["reasons"][0]
+
+    def test_normal_buy_hold(self):
+        result = self._run(
+            [{"ticker": "OK", "action": "BUY", "confidence": 60, "agreement": 30}],
+            portfolio={"OK": self._pf()},
+        )
+        assert len(result["hold"]) == 1
+        assert "BUY (conf 60)" in result["hold"][0]["reasons"][0]
+
+
+# ═══════════════════════════════════════════════════
+# Unit tests — _build_opportunities business logic
+# ═══════════════════════════════════════════════════
+
+
+class TestBuildOpportunitiesLogic:
+    def _scan(self, ticker="X", signal="momentum", score=30, change_5d=5, rsi=50, vol=1.0):
+        return {"ticker": ticker, "price": 100, "change_1d": 1, "change_5d": change_5d, "volume_ratio": vol, "rsi": rsi, "signal": signal, "score": score}
+
+    def _run(self, scans, portfolio=None, improving=None):
+        with patch("nuri.api.routes.actions._get_portfolio_map", return_value=portfolio or {}), \
+             patch("nuri.api.routes.actions._get_recent_scan_results", return_value=scans), \
+             patch("nuri.api.routes.actions._get_improving_signals", return_value=improving or set()):
+            from nuri.api.routes.actions import _build_opportunities
+            return _build_opportunities()
+
+    def test_excludes_portfolio(self):
+        result = self._run([self._scan("AAPL"), self._scan("MRVL")], portfolio={"AAPL": {}})
+        assert [o["ticker"] for o in result] == ["MRVL"]
+
+    def test_breakout_pro(self):
+        result = self._run([self._scan("BRK", signal="breakout", score=55)])
+        assert any("breakout" in p for p in result[0]["pros"])
+
+    def test_momentum_pro(self):
+        result = self._run([self._scan("MOM", signal="momentum", change_5d=15)])
+        assert any("모멘텀" in p for p in result[0]["pros"])
+
+    def test_oversold_with_improving(self):
+        result = self._run([self._scan("DIP", rsi=28, vol=2.5)], improving={"rsi_oversold"})
+        assert any("승률 상승" in p for p in result[0]["pros"])
+
+    def test_volume_spike_pro(self):
+        result = self._run([self._scan("VOL", vol=2.5)])
+        assert any("거래량" in p for p in result[0]["pros"])
+
+    def test_overbought_con(self):
+        result = self._run([self._scan("HOT", rsi=85)])
+        assert any("과매수" in c for c in result[0]["cons"])
+
+    def test_crash_con(self):
+        result = self._run([self._scan("FALL", change_5d=-18)])
+        assert any("급락" in c for c in result[0]["cons"])
+
+    def test_chase_con(self):
+        result = self._run([self._scan("RUN", change_5d=25)])
+        assert any("급등" in c for c in result[0]["cons"])
+
+    def test_volume_spike_crash_con(self):
+        result = self._run([self._scan("BAD", signal="volume_spike", change_5d=-12)])
+        assert any("원인 확인" in c for c in result[0]["cons"])
+
+    def test_sorted_by_score(self):
+        result = self._run([self._scan("LOW", score=10), self._scan("HIGH", score=70)])
+        assert result[0]["ticker"] == "HIGH"
