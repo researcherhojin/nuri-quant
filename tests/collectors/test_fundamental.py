@@ -228,6 +228,7 @@ class TestFundamentalCollectorErrorHandling:
             "debtToEquity": 1.2,
             "currentRatio": 1.5,
             "dividendYield": 0.005,
+            "dividendRate": 0.96,
             "beta": 1.1,
         }
         mock_yf = MagicMock()
@@ -238,6 +239,9 @@ class TestFundamentalCollectorErrorHandling:
         results = FundamentalCollector().collect()
         assert len(results) >= 1
         assert results[0]["pe_ratio"] == 28.5
+        # #227: 배당 필드 검증
+        assert results[0]["annual_dividend_usd"] == 0.96
+        assert results[0]["dividend_yield_pct"] == 0.5  # 0.005 × 100
 
     def test_collect_empty_df(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.fundamental import FundamentalCollector
@@ -250,6 +254,25 @@ class TestFundamentalCollectorErrorHandling:
 
         monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
         assert FundamentalCollector().collect() == []
+
+    def test_collect_no_dividend(self, monkeypatch, db_with_portfolio):
+        """dividendYield/dividendRate가 None이면 배당 필드도 None."""
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        mock_ticker = MagicMock()
+        mock_ticker.info = {
+            "regularMarketPrice": 195.0,
+            "trailingPE": 28.5,
+        }
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
+        import sys
+
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+        results = FundamentalCollector().collect()
+        assert len(results) >= 1
+        assert results[0]["annual_dividend_usd"] is None
+        assert results[0]["dividend_yield_pct"] is None
 
     def test_collect_exception(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.fundamental import FundamentalCollector
