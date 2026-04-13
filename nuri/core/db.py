@@ -539,6 +539,9 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
         CREATE INDEX IF NOT EXISTS idx_decision_evidence_decision ON decision_evidence(decision_id);
     """),
+    (16, "add classification_method to macro_events for #137 data quality", """
+        ALTER TABLE macro_events ADD COLUMN classification_method TEXT;
+    """),
 ]
 
 
@@ -731,18 +734,24 @@ def upsert_macro_events(records: list[dict], db_path: Optional[Path] = None) -> 
     """매크로 이벤트 upsert (URL 기준 중복 제거).
 
     레코드 키: published_at, source, query_keyword, headline, url,
-              category, sentiment, confidence, regime_hint, raw_json
+              category, sentiment, confidence, regime_hint, raw_json,
+              classification_method (optional)
     URL이 이미 존재하면 INSERT OR IGNORE로 스킵.
     """
     if not records:
         return 0
+    # classification_method가 없는 레코드 호환 처리
+    for r in records:
+        r.setdefault("classification_method", None)
     with get_db(db_path) as conn:
         cursor = conn.executemany(
             """INSERT OR IGNORE INTO macro_events
                (published_at, source, query_keyword, headline, url,
-                category, sentiment, confidence, regime_hint, raw_json)
+                category, sentiment, confidence, regime_hint, raw_json,
+                classification_method)
                VALUES (:published_at, :source, :query_keyword, :headline, :url,
-                       :category, :sentiment, :confidence, :regime_hint, :raw_json)""",
+                       :category, :sentiment, :confidence, :regime_hint, :raw_json,
+                       :classification_method)""",
             records,
         )
         return cursor.rowcount if cursor.rowcount >= 0 else len(records)
