@@ -74,9 +74,18 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 `/api/dashboard` reads pre-computed results from DB instead of running analysis inline. Consensus from `recommendations` table (populated by `make consensus`). Response includes `freshness` and `pipeline_status` for data age display.
 
-## API (57 endpoints)
+## API (68 endpoints)
 
-`nuri/api/routes/` — 60 REST endpoints on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval).
+`nuri/api/routes/` — 68 REST endpoints on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval).
+
+### Action-First Dashboard APIs (PR #264-#266)
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/actions` | GET | 우선순위 분류된 오늘의 액션 (🔴urgent/🟡check/✅hold). 연금/IRP 제외, 중복 제거 |
+| `/api/opportunities` | GET | 비보유 이슈 종목 탐색 — scan + WSB + events 기반 찬성/반대/판정 |
+| `/api/market-context` | GET | 시스템 건강 (SIEGE/regime/macro/freshness) + 매크로 이벤트 (한국어 카테고리) |
+| `/api/backtest/equity` | GET | Equity curve + drawdown + metrics (Recharts frontend용 경량 데이터) |
 
 ## Scheduler
 
@@ -90,6 +99,7 @@ Configured in `.env` (see `.env.example`):
 - `DISCORD_TOKEN` — bot mode alerts (optional)
 - `FINNHUB_API_KEY` — US institutional flows (optional)
 - `OLLAMA_HOST` / `OLLAMA_MODEL` — LLM report (default: localhost:11434, qwen3.5)
+- `NURI_DB_PATH` — SQLite DB location override (optional; default: `data/portfolio.db`)
 - `DASHBOARD_PASSWORD` — Next.js auth (optional; unset = public)
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` — Telegram alerts (optional)
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — Paper trading (optional; DryRun fallback)
@@ -98,7 +108,7 @@ Configured in `.env` (see `.env.example`):
 
 ## DB Schema (SQLite, WAL mode)
 
-31 tables total (15 migrations). Key tables:
+31 tables total (17 migrations). Key tables:
 
 | Table | Purpose |
 |-------|---------|
