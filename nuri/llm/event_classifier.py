@@ -45,6 +45,9 @@ CATEGORIES: tuple[str, ...] = (
     "sector_rally",                # broad sector surge / rotation
     "sector_selloff",              # sector plunge / crash
     "trade_war",                   # tariff, retaliation, trade deal collapse
+    "export_surge",                # Korea/global export boom, trade surplus, shipment growth
+    "currency_shift",              # FX major move (USD/KRW, yen carry unwind, DXY)
+    "demand_growth",               # semiconductor demand, chip shortage, AI capex, global PMI up
     "neutral",                     # default — no actionable signal
 )
 
@@ -62,6 +65,9 @@ REGIME_HINT_BY_CATEGORY: dict[str, str | None] = {
     "sector_rally": "sector_rotation",
     "sector_selloff": "bear_high_vol",
     "trade_war": "bear_high_vol",
+    "export_surge": "recovery",
+    "currency_shift": "sideways_high_vol",
+    "demand_growth": "bull_low_vol",
     "neutral": None,
 }
 
@@ -85,6 +91,20 @@ _KEYWORD_PATTERNS: list[tuple[str, str, float]] = [
      "earnings_beat", 0.5),
     (r"\b(earnings miss|missed estimates|cut guidance|profit warn|guidance lower)\b",
      "earnings_miss", -0.5),
+    # 한국/글로벌 수출 + 반도체 수요 (#137) — sector_rally보다 먼저 매칭되어야 함 (구체적 패턴 우선)
+    (r"(export[s ].*surge|export[s ].*boom|export[s ].*jump|trade surplus|shipment.*grow)",
+     "export_surge", 0.6),
+    (r"(Korea.*export|Korean.*export|KR.*export|KOSPI.*export)",
+     "export_surge", 0.5),
+    (r"(semiconductor.*demand|chip.*demand|AI.*capex|chip.*shortage|fab.*expansion|HBM.*demand)",
+     "demand_growth", 0.5),
+    (r"(TSMC.*revenue|TSMC.*record|chip.*boom|foundry.*demand)",
+     "demand_growth", 0.5),
+    (r"\b(won.*weak|dollar.*strong|USD.*KRW.*rise|yen.*carry|DXY.*surge|currency.*depreciat)",
+     "currency_shift", -0.3),
+    (r"\b(won.*strong|dollar.*weak|USD.*KRW.*fall|DXY.*drop|currency.*appreciat)",
+     "currency_shift", 0.3),
+    # 일반 섹터 랠리/셀오프 — 위의 구체적 패턴에 안 걸린 경우만
     (r"\b(rall(y|ies|ied)|surges?|jumps?|soars?|rebounds?|sector rotation)\b",
      "sector_rally", 0.3),
     (r"\b(plunges?|sell[- ]?off|crash(es)?|tumbles?|sinks?|rout)\b",
@@ -136,6 +156,7 @@ def _classify_with_regex(headline: str) -> dict:
                 "sentiment": sentiment,
                 "confidence": 0.5,  # regex는 신뢰도 mid — LLM보다 낮음
                 "regime_hint": REGIME_HINT_BY_CATEGORY[category],
+                "classification_method": "regex",
             }
     return _neutral_result()
 
@@ -159,9 +180,19 @@ def _classify_with_openai(headline: str) -> dict:
         f"- category: one of {list(CATEGORIES)}\n"
         "- sentiment: float -1.0 (very bearish) to 1.0 (very bullish)\n"
         "- confidence: float 0.0 to 1.0\n\n"
-        "If a headline mentions multiple topics, classify by the PRIMARY topic, "
-        "not the first keyword. For example, 'Fed holds rates steady amid Iran war' "
-        "is fed_dovish (Fed is the primary actor), not geopolitical_escalation."
+        "RULES:\n"
+        "1. If a headline mentions multiple topics, classify by the PRIMARY topic.\n"
+        "   Example: 'Fed holds rates steady amid Iran war' → fed_dovish\n"
+        "2. MACRO vs SECTOR distinction:\n"
+        "   - sector_rally: single sector rotation (e.g., 'XLK rallies 2%')\n"
+        "   - export_surge: country-level export growth (e.g., 'Korea exports surge 36.7%')\n"
+        "   - demand_growth: industry demand expansion (e.g., 'semiconductor demand TSMC record')\n"
+        "3. KOREAN CONTEXT: Korea is a major semiconductor/auto/steel exporter.\n"
+        "   'Korea exports surge' = export_surge (NOT sector_rally or neutral).\n"
+        "   'Korean semiconductor shipments grow' = demand_growth.\n"
+        "4. CONFIDENCE: headline with specific data (%, $, YoY) → 0.7-0.9.\n"
+        "   Vague headline ('reports suggest') → 0.4-0.6.\n"
+        "5. currency_shift: major FX moves (USD/KRW, yen carry, DXY)."
     )
 
     parsed = get_client().chat_json(
@@ -176,7 +207,7 @@ def _normalize(parsed: dict) -> dict:
     category = parsed.get("category", "neutral")
     if category not in CATEGORIES:
         # 미지의 카테고리 → neutral로 강제 (신뢰도 낮춤)
-        return {**_neutral_result(), "confidence": 0.2}
+        return {**_neutral_result(), "confidence": 0.2, "classification_method": "normalized_invalid"}
 
     sentiment = float(parsed.get("sentiment", 0.0))
     sentiment = max(-1.0, min(1.0, sentiment))
@@ -189,6 +220,7 @@ def _normalize(parsed: dict) -> dict:
         "sentiment": sentiment,
         "confidence": confidence,
         "regime_hint": REGIME_HINT_BY_CATEGORY[category],
+        "classification_method": "openai",
     }
 
 
@@ -198,4 +230,5 @@ def _neutral_result() -> dict:
         "sentiment": 0.0,
         "confidence": 0.3,
         "regime_hint": None,
+        "classification_method": "neutral_default",
     }
