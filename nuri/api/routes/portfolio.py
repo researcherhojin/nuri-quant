@@ -178,6 +178,7 @@ def get_portfolio():
     from nuri.core.ticker_names import get_ticker_name
     rows = query("""
         SELECT p.ticker, p.account, p.quantity, p.avg_price, p.currency, p.sector,
+               p.first_buy_date,
                pr.close as latest_price, pr.date as price_date
         FROM portfolio p
         LEFT JOIN (
