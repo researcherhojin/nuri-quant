@@ -42,6 +42,13 @@ class TestRegexFallback:
             ("S&P 500 jumps 2% after CPI miss", "sector_rally"),
             ("Semiconductor sector plunges 5%", "sector_selloff"),
             ("Trump announces new tariff on China", "trade_war"),
+            # 신규 카테고리 (#137)
+            ("South Korea Exports Surge 36.7% Driven by Semiconductors", "export_surge"),
+            ("Korean export shipments grow 25% in March", "export_surge"),
+            ("TSMC revenue surges 35% on AI chip demand", "demand_growth"),
+            ("Global semiconductor demand hits record as AI capex rises", "demand_growth"),
+            ("HBM demand soars as hyperscalers expand AI infrastructure", "demand_growth"),
+            ("USD KRW rises past 1500 as dollar strengthens", "currency_shift"),
         ],
     )
     def test_keyword_categorization(self, headline, expected_category):
