@@ -114,19 +114,29 @@ class TestMarketContextEndpoint:
 
 
 class TestEndpointExceptionFallbacks:
+    def _clear_caches(self):
+        """캐시 오염 방지 — 이전 테스트의 캐시가 남아있으면 exception 경로 안 탐."""
+        from nuri.api.routes import actions
+        for cache in (actions._actions_cache, actions._opportunities_cache, actions._market_context_cache):
+            cache["data"] = None
+            cache["timestamp"] = 0
+
     def test_actions_exception_returns_empty(self):
+        self._clear_caches()
         with patch("nuri.api.routes.actions._build_actions", side_effect=RuntimeError("boom")):
             from nuri.api.routes.actions import get_actions
             result = get_actions()
             assert result == {"urgent": [], "check": [], "hold": []}
 
     def test_opportunities_exception_returns_empty(self):
+        self._clear_caches()
         with patch("nuri.api.routes.actions._build_opportunities", side_effect=RuntimeError("boom")):
             from nuri.api.routes.actions import get_opportunities
             result = get_opportunities()
             assert result == {"opportunities": []}
 
     def test_market_context_exception_returns_empty(self):
+        self._clear_caches()
         with patch("nuri.api.routes.actions._get_macro_events", side_effect=RuntimeError("boom")):
             from nuri.api.routes.actions import get_market_context
             result = get_market_context()
