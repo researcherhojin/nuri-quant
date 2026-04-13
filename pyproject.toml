@@ -30,7 +30,7 @@ dependencies = [
     "openbb>=4.7.1",
     "pykrx>=1.2.0",
     "requests>=2.31.0",
-    "yfinance>=0.2.40",
+    "yfinance>=1.2.1",
 
     # ─── Analysis + technical indicators ──────────────────────
     "numpy>=1.26.0",
