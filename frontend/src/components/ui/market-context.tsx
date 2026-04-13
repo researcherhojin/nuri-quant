@@ -99,7 +99,6 @@ export function MarketContext({ events, health }: MarketContextProps) {
             {events.map((ev, i) => {
               const style = categoryStyles[ev.category] || { emoji: "📌", color: "text-zinc-400" };
               const date = ev.published_at?.slice(5, 10) ?? "";
-              const label = ev.category_ko || style.color;
               return (
                 <div key={i} className="flex items-start gap-1.5 text-[10px]">
                   <span className="shrink-0">{style.emoji}</span>
