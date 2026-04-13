@@ -7,6 +7,7 @@ from nuri.core.db import get_db, init_db
 from nuri.quant.regime.event_score import (
     CATEGORY_WEIGHT,
     EventScore,
+    _compute_recency,
     compute_event_score,
     print_event_score,
 )
@@ -151,12 +152,23 @@ class TestComputeEventScore:
         assert es.score > 0  # Still positive because category weight is positive
 
     def test_regime_hint_from_dominant(self, db_path):
-        """Dominant category maps to regime hint."""
+        """Dominant category maps to regime hint (3+ events required)."""
         _insert_events(db_path, [
-            {"category": "geopolitical_de_escalation", "sentiment": 0.5, "confidence": 0.8},
+            {"category": "geopolitical_de_escalation", "sentiment": 0.5, "confidence": 0.8, "url": "http://t/rh1"},
+            {"category": "geopolitical_de_escalation", "sentiment": 0.4, "confidence": 0.7, "url": "http://t/rh2"},
+            {"category": "geopolitical_de_escalation", "sentiment": 0.6, "confidence": 0.9, "url": "http://t/rh3"},
         ])
         es = compute_event_score(db_path=db_path, date="2026-04-09")
         assert es.regime_hint == "recovery"
+
+    def test_regime_hint_none_when_few_events(self, db_path):
+        """이벤트 < 3개면 regime_hint는 None (#137)."""
+        _insert_events(db_path, [
+            {"category": "geopolitical_escalation", "sentiment": -0.9, "confidence": 0.95},
+        ])
+        es = compute_event_score(db_path=db_path, date="2026-04-09")
+        assert es.dominant_category == "geopolitical_escalation"
+        assert es.regime_hint is None  # 1개 이벤트 → regime_hint 무효
 
     def test_category_breakdown_populated(self, db_path):
         """Breakdown shows per-category contributions."""
@@ -171,12 +183,49 @@ class TestComputeEventScore:
         assert es.category_breakdown["trade_war"] < 0
 
 
+class TestRecency:
+    """시간 가중: 최근 이벤트일수록 기여가 큼 (#137)."""
+
+    def test_today_is_full_weight(self):
+        assert _compute_recency("2026-04-09T12:00:00+00:00", "2026-04-09", 3) == 1.0
+
+    def test_old_event_is_half_weight(self):
+        assert _compute_recency("2026-04-06T12:00:00+00:00", "2026-04-09", 3) == 0.5
+
+    def test_midpoint_is_interpolated(self):
+        # 1.5일 전 → 1.0 - 0.5*(1.5/3) = 0.75
+        recency = _compute_recency("2026-04-08T00:00:00+00:00", "2026-04-09", 3)
+        assert 0.7 < recency < 0.9
+
+    def test_none_returns_default(self):
+        assert _compute_recency(None, "2026-04-09", 3) == 0.75
+
+    def test_recency_affects_score(self, db_path):
+        """오래된 이벤트는 최근 이벤트보다 스코어 기여가 작다."""
+        # 같은 카테고리, 같은 신뢰도 — 날짜만 다름
+        _insert_events(db_path, [
+            {"category": "earnings_beat", "sentiment": 0.7, "confidence": 0.8,
+             "published_at": "2026-04-09", "url": "http://t/recent"},
+        ])
+        es_recent = compute_event_score(db_path=db_path, date="2026-04-09")
+
+        _insert_events(db_path, [
+            {"category": "earnings_beat", "sentiment": 0.7, "confidence": 0.8,
+             "published_at": "2026-04-07", "url": "http://t/old"},
+        ])
+        es_both = compute_event_score(db_path=db_path, date="2026-04-09")
+        # 2개 이벤트 합산이지만 오래된 것은 가중치가 낮으므로 2배가 안 됨
+        assert es_both.score < es_recent.score * 2
+
+
 class TestNewCategories:
     """#137 신규 카테고리 가중치 검증."""
 
     def test_export_surge_positive(self, db_path):
         _insert_events(db_path, [
             {"category": "export_surge", "sentiment": 0.7, "confidence": 0.8, "url": "http://t/export1"},
+            {"category": "export_surge", "sentiment": 0.6, "confidence": 0.75, "url": "http://t/export2"},
+            {"category": "export_surge", "sentiment": 0.5, "confidence": 0.7, "url": "http://t/export3"},
         ])
         es = compute_event_score(db_path=db_path, date="2026-04-09")
         assert es.score > 0
@@ -186,6 +235,8 @@ class TestNewCategories:
     def test_demand_growth_positive(self, db_path):
         _insert_events(db_path, [
             {"category": "demand_growth", "sentiment": 0.6, "confidence": 0.85, "url": "http://t/demand1"},
+            {"category": "demand_growth", "sentiment": 0.5, "confidence": 0.8, "url": "http://t/demand2"},
+            {"category": "demand_growth", "sentiment": 0.7, "confidence": 0.9, "url": "http://t/demand3"},
         ])
         es = compute_event_score(db_path=db_path, date="2026-04-09")
         assert es.score > 0
