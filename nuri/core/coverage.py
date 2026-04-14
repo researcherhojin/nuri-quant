@@ -40,6 +40,22 @@ DATA_THRESHOLDS: dict[str, float] = {
 # Spec §2.1 — universe self-coverage (always 1.0 for now)
 UNIVERSE_THRESHOLD = 0.95
 
+# 데이터 소스가 KR 종목을 지원하지 않는 테이블.
+# - analyst_ratings: yfinance .KS는 애널리스트 데이터 미제공
+# - insider_trades: SEC Form 4 — US 상장사 한정
+# - superinvestors: SEC 13F — US 자산운용사 한정
+# - estimates: yfinance .KS는 컨센서스 미제공 (estimates.py 자동 스킵)
+# - earnings_surprises: yfinance .KS earnings 미제공
+US_ONLY_TABLES: frozenset[str] = frozenset(
+    {
+        "analyst_ratings",
+        "insider_trades",
+        "superinvestors",
+        "estimates",
+        "earnings_surprises",
+    }
+)
+
 
 @dataclass
 class CoverageCheck:
@@ -125,6 +141,8 @@ def compute_data_coverage(
     pct = len(matched) / len(us_uni)
     status = "PASS" if pct >= threshold else "FAIL"
     detail = f"{len(matched)}/{len(us_uni)} US tickers"
+    if table in US_ONLY_TABLES:
+        detail += " (KR n/a — 소스 미지원)"
     return CoverageCheck(
         name=f"data.{table}",
         actual_pct=pct,
