@@ -26,7 +26,9 @@ echo -e "${CYAN}━━━ Atomicity Check (${range}) ━━━${NC}\n"
 original_branch=$(git rev-parse --abbrev-ref HEAD)
 original_sha=$(git rev-parse HEAD)
 
-# shellcheck disable=SC2329  # invoked via `trap cleanup EXIT` below
+# shellcheck disable=SC2329,SC2317
+# SC2329: function invoked via `trap cleanup EXIT` — shellcheck can't trace
+# SC2317: same reason — body lines look unreachable to static analysis
 cleanup() {
     echo -e "\n${YELLOW}Restoring to ${original_branch} @ ${original_sha:0:8}...${NC}"
     git checkout -q "$original_branch" 2>/dev/null || git checkout -q "$original_sha"
