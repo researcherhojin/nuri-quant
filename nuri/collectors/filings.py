@@ -8,6 +8,7 @@ US 대형주만 (SEC EDGAR CIK 필요).
     python -m nuri.collectors.filings
     python -m nuri.collectors.filings --ticker AAPL
 """
+
 import argparse
 import logging
 
@@ -22,6 +23,7 @@ EDGAR_IDENTITY = "Nuri-Quant research@nuri-quant.dev"
 def parse_10k(ticker: str) -> dict | None:
     """최신 10-K에서 핵심 재무 지표 추출."""
     from edgar import Company, set_identity
+
     set_identity(EDGAR_IDENTITY)
 
     try:
@@ -103,19 +105,34 @@ def parse_10k(ticker: str) -> dict | None:
 
 def collect_filings(tickers: list[str] | None = None) -> list[dict]:
     """복수 종목의 10-K 파싱."""
+    from tqdm import tqdm
+
     if tickers is None:
         tickers = [t for t in get_tickers() if not t.endswith(".KS")]  # US only
 
     results = []
-    for ticker in tickers:
+    failed: list[str] = []
+    iterator = tqdm(tickers, desc="  10-K filings", unit="tk", disable=len(tickers) < 20)
+    for ticker in iterator:
         result = parse_10k(ticker)
         if result:
             results.append(result)
-            rev = result.get("revenue", 0)
-            ni = result.get("net_income", 0)
-            logger.info(f"  {ticker}: Rev ${rev/1e9:.1f}B, NI ${ni/1e9:.1f}B ({result['filing_date']})")
+            if len(tickers) < 20:
+                rev = result.get("revenue", 0)
+                ni = result.get("net_income", 0)
+                logger.info(f"  {ticker}: Rev ${rev / 1e9:.1f}B, NI ${ni / 1e9:.1f}B ({result['filing_date']})")
         else:
-            logger.debug(f"  {ticker}: 10-K 없음")
+            failed.append(ticker)
+
+    if len(tickers) >= 20:
+        sample = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
+        logger.info(
+            "📊 SEC 10-K: ✅ %d 파싱 / ❌ %d 미발견 (%.1f%%) — failed: %s",
+            len(results),
+            len(failed),
+            len(results) / len(tickers) * 100,
+            sample or "없음",
+        )
 
     return results
 
@@ -132,10 +149,10 @@ def print_filings(results: list[dict]) -> None:
     print(f"  {'-' * 70}")
 
     for r in results:
-        rev = f"${r.get('revenue', 0)/1e9:.1f}B" if r.get("revenue") else "—"
-        ni = f"${r.get('net_income', 0)/1e9:.1f}B" if r.get("net_income") else "—"
-        assets = f"${r.get('total_assets', 0)/1e9:.1f}B" if r.get("total_assets") else "—"
-        cash = f"${r.get('cash', 0)/1e9:.1f}B" if r.get("cash") else "—"
+        rev = f"${r.get('revenue', 0) / 1e9:.1f}B" if r.get("revenue") else "—"
+        ni = f"${r.get('net_income', 0) / 1e9:.1f}B" if r.get("net_income") else "—"
+        assets = f"${r.get('total_assets', 0) / 1e9:.1f}B" if r.get("total_assets") else "—"
+        cash = f"${r.get('cash', 0) / 1e9:.1f}B" if r.get("cash") else "—"
         print(f"  {r['ticker']:<8} {r['filing_date']:>12} {rev:>12} {ni:>12} {assets:>12} {cash:>12}")
     print()
 

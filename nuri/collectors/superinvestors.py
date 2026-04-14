@@ -7,6 +7,7 @@ API 키 불필요. 분기별 갱신.
 사용법:
     python -m nuri.collectors.superinvestors
 """
+
 import logging
 from typing import Any
 
@@ -19,14 +20,14 @@ logger = logging.getLogger(__name__)
 
 # 추적 대상 슈퍼투자자 (이름, SEC CIK)
 SUPERINVESTORS = {
-    "Warren Buffett": "0001067983",      # Berkshire Hathaway
-    "Bill Gates": "0001166559",           # Bill & Melinda Gates Foundation
-    "Ray Dalio": "0001350694",            # Bridgewater Associates
-    "Bill Ackman": "0001336528",          # Pershing Square
-    "David Tepper": "0001656456",         # Appaloosa Management
+    "Warren Buffett": "0001067983",  # Berkshire Hathaway
+    "Bill Gates": "0001166559",  # Bill & Melinda Gates Foundation
+    "Ray Dalio": "0001350694",  # Bridgewater Associates
+    "Bill Ackman": "0001336528",  # Pershing Square
+    "David Tepper": "0001656456",  # Appaloosa Management
     "National Pension Service": "0001608046",  # 국민연금 (NPS Korea)
     "Scott Bessent (Key Square)": "0001662970",  # 미 재무장관, Key Square Capital
-    "Vivek Ramaswamy (Strive)": "0001954109",   # Strive Asset Management
+    "Vivek Ramaswamy (Strive)": "0001954109",  # Strive Asset Management
 }
 
 # edgartools User-Agent (SEC 정책 준수)
@@ -46,14 +47,22 @@ class SuperinvestorCollector(BaseCollector):
             quarters: 수집할 분기 수 (기본 8, 최대 20)
         """
         from edgar import Company, set_identity
+        from tqdm import tqdm
+
         set_identity(EDGAR_IDENTITY)
 
         num_quarters = kwargs.get("quarters", 8)
         results = []
+        succeeded: list[str] = []
+        failed: list[str] = []
 
-        for investor_name, cik in SUPERINVESTORS.items():
+        investors_list = list(SUPERINVESTORS.items())
+        self.logger.info(f"슈퍼투자자 13F 수집: {len(investors_list)}명, 최근 {num_quarters}분기")
+        iterator = tqdm(investors_list, desc="  superinvestors", unit="inv", disable=len(investors_list) < 5)
+
+        for investor_name, cik in iterator:
             try:
-                self.logger.info(f"{investor_name} ({cik}) 13F 수집 중... (최근 {num_quarters}분기)")
+                self.logger.debug(f"{investor_name} ({cik}) 13F 수집 중...")
                 company = Company(cik)
                 filings = company.get_filings(form="13F-HR")
 
@@ -76,11 +85,17 @@ class SuperinvestorCollector(BaseCollector):
                         continue
 
                     # 티커별 합산 (같은 종목이 여러 줄로 나옴)
-                    grouped = infotable.groupby("Ticker").agg({
-                        "Value": "sum",
-                        "SharesPrnAmount": "sum",
-                        "Issuer": "first",
-                    }).reset_index()
+                    grouped = (
+                        infotable.groupby("Ticker")
+                        .agg(
+                            {
+                                "Value": "sum",
+                                "SharesPrnAmount": "sum",
+                                "Issuer": "first",
+                            }
+                        )
+                        .reset_index()
+                    )
 
                     total_value = grouped["Value"].sum()
                     if total_value == 0:
@@ -93,27 +108,38 @@ class SuperinvestorCollector(BaseCollector):
 
                         pct = row["Value"] / total_value * 100
 
-                        results.append({
-                            "investor": investor_name,
-                            "filing_date": filing_date,
-                            "ticker": ticker,
-                            "shares": float(row["SharesPrnAmount"]),
-                            "market_value": float(row["Value"]),
-                            "portfolio_pct": round(pct, 4),
-                            "issuer_name": row["Issuer"],
-                        })
+                        results.append(
+                            {
+                                "investor": investor_name,
+                                "filing_date": filing_date,
+                                "ticker": ticker,
+                                "shares": float(row["SharesPrnAmount"]),
+                                "market_value": float(row["Value"]),
+                                "portfolio_pct": round(pct, 4),
+                                "issuer_name": row["Issuer"],
+                            }
+                        )
 
                     count += 1
-                    self.logger.info(
-                        f"  {investor_name} {filing_date}: {len(grouped)}종목, "
-                        f"총 ${total_value:,.0f}"
-                    )
+                    self.logger.info(f"  {investor_name} {filing_date}: {len(grouped)}종목, 총 ${total_value:,.0f}")
 
-                self.logger.info(f"{investor_name}: {count}분기 수집 완료")
+                self.logger.debug(f"{investor_name}: {count}분기 수집 완료")
+                succeeded.append(investor_name)
 
             except Exception as e:
-                self.logger.error(f"{investor_name}: 수집 실패 — {e}")
+                failed.append(investor_name)
+                self.logger.debug(f"{investor_name}: 수집 실패 — {e}")
                 continue
+
+        if len(investors_list) >= 5:
+            sample = ", ".join(failed[:3]) + (f" 외 {len(failed) - 3}명" if len(failed) > 3 else "")
+            self.logger.info(
+                "📊 슈퍼투자자 13F: ✅ %d 성공 / ❌ %d 실패 — total %d filings — failed: %s",
+                len(succeeded),
+                len(failed),
+                len(results),
+                sample or "없음",
+            )
 
         return results
 
@@ -149,7 +175,8 @@ def detect_changes(investor: str, db_path=None) -> pd.DataFrame:
     """
     quarters = query(
         "SELECT DISTINCT filing_date FROM superinvestors WHERE investor = ? ORDER BY filing_date",
-        (investor,), db_path=db_path,
+        (investor,),
+        db_path=db_path,
     )
     if len(quarters) < 2:
         return pd.DataFrame()
@@ -162,11 +189,13 @@ def detect_changes(investor: str, db_path=None) -> pd.DataFrame:
 
         prev_rows = query(
             "SELECT ticker, shares, issuer_name FROM superinvestors WHERE investor = ? AND filing_date = ?",
-            (investor, prev_date), db_path=db_path,
+            (investor, prev_date),
+            db_path=db_path,
         )
         curr_rows = query(
             "SELECT ticker, shares, issuer_name FROM superinvestors WHERE investor = ? AND filing_date = ?",
-            (investor, curr_date), db_path=db_path,
+            (investor, curr_date),
+            db_path=db_path,
         )
 
         prev_map = {r["ticker"]: r for r in prev_rows}
@@ -177,21 +206,33 @@ def detect_changes(investor: str, db_path=None) -> pd.DataFrame:
 
         # NEW: 이번 분기 신규
         for t in curr_tickers - prev_tickers:
-            all_changes.append({
-                "investor": investor, "filing_date": curr_date,
-                "prev_filing_date": prev_date, "ticker": t,
-                "change_type": "NEW", "shares": curr_map[t]["shares"],
-                "prev_shares": 0, "issuer_name": curr_map[t]["issuer_name"],
-            })
+            all_changes.append(
+                {
+                    "investor": investor,
+                    "filing_date": curr_date,
+                    "prev_filing_date": prev_date,
+                    "ticker": t,
+                    "change_type": "NEW",
+                    "shares": curr_map[t]["shares"],
+                    "prev_shares": 0,
+                    "issuer_name": curr_map[t]["issuer_name"],
+                }
+            )
 
         # CLOSED: 이번 분기 청산
         for t in prev_tickers - curr_tickers:
-            all_changes.append({
-                "investor": investor, "filing_date": curr_date,
-                "prev_filing_date": prev_date, "ticker": t,
-                "change_type": "CLOSED", "shares": 0,
-                "prev_shares": prev_map[t]["shares"], "issuer_name": prev_map[t]["issuer_name"],
-            })
+            all_changes.append(
+                {
+                    "investor": investor,
+                    "filing_date": curr_date,
+                    "prev_filing_date": prev_date,
+                    "ticker": t,
+                    "change_type": "CLOSED",
+                    "shares": 0,
+                    "prev_shares": prev_map[t]["shares"],
+                    "issuer_name": prev_map[t]["issuer_name"],
+                }
+            )
 
         # 기존 보유 비교
         for t in curr_tickers & prev_tickers:
@@ -206,21 +247,25 @@ def detect_changes(investor: str, db_path=None) -> pd.DataFrame:
             else:
                 change = "UNCHANGED"
 
-            all_changes.append({
-                "investor": investor, "filing_date": curr_date,
-                "prev_filing_date": prev_date, "ticker": t,
-                "change_type": change, "shares": curr_shares,
-                "prev_shares": prev_shares, "issuer_name": curr_map[t]["issuer_name"],
-            })
+            all_changes.append(
+                {
+                    "investor": investor,
+                    "filing_date": curr_date,
+                    "prev_filing_date": prev_date,
+                    "ticker": t,
+                    "change_type": change,
+                    "shares": curr_shares,
+                    "prev_shares": prev_shares,
+                    "issuer_name": curr_map[t]["issuer_name"],
+                }
+            )
 
     return pd.DataFrame(all_changes) if all_changes else pd.DataFrame()
 
 
 def print_summary():
     """슈퍼투자자 보유 현황 출력."""
-    investors = query(
-        "SELECT DISTINCT investor FROM superinvestors ORDER BY investor"
-    )
+    investors = query("SELECT DISTINCT investor FROM superinvestors ORDER BY investor")
     if not investors:
         print("슈퍼투자자 데이터가 없습니다.")
         return
@@ -245,9 +290,9 @@ def print_summary():
             continue
 
         filing_date = rows[0]["filing_date"]
-        total = sum(r["market_value"] for r in query(
-            "SELECT market_value FROM superinvestors WHERE investor = ?", (name,)
-        ))
+        total = sum(
+            r["market_value"] for r in query("SELECT market_value FROM superinvestors WHERE investor = ?", (name,))
+        )
 
         print(f"\n  {name} (공시일: {filing_date}, 총 ${total:,.0f})")
         print(f"  {'Ticker':<10} {'종목명':<25} {'비중%':>8} {'내보유':>6}")
@@ -255,8 +300,7 @@ def print_summary():
 
         for r in rows:
             mine = " *" if r["ticker"] in my_tickers else ""
-            print(f"  {r['ticker']:<10} {r['issuer_name'][:24]:<25} "
-                  f"{r['portfolio_pct']:>7.1f}%{mine}")
+            print(f"  {r['ticker']:<10} {r['issuer_name'][:24]:<25} {r['portfolio_pct']:>7.1f}%{mine}")
 
     # 내 보유종목 중 슈퍼투자자도 보유한 종목
     overlap = query(

@@ -7,6 +7,7 @@ TA-Lib 사용 (brew install ta-lib 필요).
 사용법:
     python -m nuri.collectors.technical
 """
+
 import logging
 
 import numpy as np
@@ -14,7 +15,7 @@ import pandas as pd
 import talib
 
 from nuri.collectors.base import BaseCollector
-from nuri.core.db import get_tickers, query_df, upsert_signals
+from nuri.core.db import query_df, upsert_signals
 
 
 class TechnicalCollector(BaseCollector):
@@ -23,18 +24,35 @@ class TechnicalCollector(BaseCollector):
     def __init__(self):
         super().__init__("technical")
 
-    def collect(self, **kwargs) -> pd.DataFrame:
-        """전체 보유 종목의 기술적 지표 계산."""
-        tickers = get_tickers()
+    def collect(self, source: str = "portfolio", **kwargs) -> pd.DataFrame:
+        """전체 보유 종목의 기술적 지표 계산. source='universe' 시 universe.yaml 전체 (#272)."""
+        tickers = self._get_tickers(source=source)
         if not tickers:
-            self.logger.warning("보유 종목 없음")
+            self.logger.warning("계산할 종목 없음")
             return pd.DataFrame()
 
-        frames = []
-        for ticker in tickers:
+        from tqdm import tqdm
+
+        self.logger.info(f"기술적 지표 대상: {len(tickers)}종목 (source={source})")
+        frames: list[pd.DataFrame] = []
+        succeeded: list[str] = []
+        skipped: list[str] = []
+        iterator = tqdm(tickers, desc=f"  technical [{source}]", unit="tk", disable=len(tickers) < 20)
+        for ticker in iterator:
             df = self._compute_for_ticker(ticker)
             if df is not None and not df.empty:
                 frames.append(df)
+                succeeded.append(ticker)
+            else:
+                skipped.append(ticker)
+
+        if len(tickers) >= 20:
+            self.logger.info(
+                "📊 기술적 지표: ✅ %d 계산 / ⚠️  %d 데이터부족 (총 %d)",
+                len(succeeded),
+                len(skipped),
+                len(tickers),
+            )
 
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 

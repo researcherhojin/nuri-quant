@@ -65,51 +65,92 @@ class FundamentalCollector(BaseCollector):
     def __init__(self):
         super().__init__("fundamental")
 
-    def collect(self, **kwargs) -> list[dict]:
-        """전 보유종목 펀더멘탈 수집."""
-        import yfinance as yf
+    def collect(self, source: str = "portfolio", **kwargs) -> list[dict]:
+        """펀더멘탈 수집. source='universe' 시 S&P500/KOSPI200 전체 (#272 Phase 2b)."""
+        import logging as _logging
 
-        tickers = self._get_tickers()
+        import yfinance as yf
+        from tqdm import tqdm
+
+        tickers = self._get_tickers(source=source)
         if not tickers:
             self.logger.warning("수집할 종목이 없습니다")
             return []
 
-        self.logger.info(f"펀더멘탈 수집 대상: {len(tickers)}종목")
+        self.logger.info(f"펀더멘탈 수집 대상: {len(tickers)}종목 (source={source})")
         from nuri.core.timezone import today_kst
 
         today = today_kst()
         results = []
+        skipped: list[str] = []
+        failed: list[str] = []
 
-        for ticker in tickers:
-            try:
-                info = yf.Ticker(ticker).info
-                if not info or "regularMarketPrice" not in info:
-                    self.logger.warning(f"{ticker}: yfinance info 비어있음")
+        # universe 모드: yfinance ERROR 노이즈 억제
+        _yflog = _logging.getLogger("yfinance")
+        _orig_level = _yflog.level
+        if source != "portfolio":
+            _yflog.setLevel(_logging.CRITICAL)
+
+        try:
+            iterator = tqdm(tickers, desc=f"  fundamentals [{source}]", unit="tk", disable=len(tickers) < 20)
+            for ticker in iterator:
+                try:
+                    info = yf.Ticker(ticker).info
+                    if not info or "regularMarketPrice" not in info:
+                        skipped.append(ticker)
+                        continue
+
+                    record = {"ticker": ticker, "date": today}
+                    non_null = 0
+                    for src_field, db_field in YF_FIELDS.items():
+                        val = _safe_num(info.get(src_field))
+                        record[db_field] = val
+                        if val is not None:
+                            non_null += 1
+
+                    dy = record.get("dividend_yield")
+                    record["dividend_yield_pct"] = round(dy * 100, 2) if dy else None
+
+                    if non_null == 0:
+                        skipped.append(ticker)
+                        continue
+
+                    results.append(record)
+                except Exception:
+                    failed.append(ticker)
                     continue
+        finally:
+            _yflog.setLevel(_orig_level)
 
-                record = {"ticker": ticker, "date": today}
-                non_null = 0
-                for src_field, db_field in YF_FIELDS.items():
-                    val = _safe_num(info.get(src_field))
-                    record[db_field] = val
-                    if val is not None:
-                        non_null += 1
+        if len(tickers) >= 20:
+            sample_failed = ", ".join((failed + skipped)[:5]) + (
+                f" 외 {len(failed) + len(skipped) - 5}개" if len(failed) + len(skipped) > 5 else ""
+            )
+            self.logger.info(
+                "📊 펀더멘탈: ✅ %d 성공 / ⚠️  %d 데이터부족 / ❌ %d 실패 (총 %d) — issues: %s",
+                len(results),
+                len(skipped),
+                len(failed),
+                len(tickers),
+                sample_failed or "없음",
+            )
 
-                # dividend_yield_pct: yfinance dividendYield는 소수 (0.005 = 0.5%)
-                # → 백분율로 변환 (0.5)
-                dy = record.get("dividend_yield")
-                record["dividend_yield_pct"] = round(dy * 100, 2) if dy else None
-
-                if non_null == 0:
-                    self.logger.info(f"{ticker}: 모든 펀더멘탈 필드 None — 스킵")
-                    continue
-
-                results.append(record)
-                self.logger.debug(f"{ticker}: PE={record.get('pe_ratio')}, ROE={record.get('roe')}")
-
-            except Exception as e:
-                self.logger.warning(f"{ticker}: 펀더멘탈 수집 실패 — {e}")
-                continue
+            # 필드별 N/A 분석 — 사용자 질문 응답: "N/A는 데이터 없는 거? 못 가져온 거?"
+            # 답: 성공 ticker 안에서 None 비율을 측정 → 진짜 데이터 부재 vs API 한계 구분
+            if results:
+                self.logger.info("📋 필드별 coverage (성공 %d ticker 중 non-null 비율):", len(results))
+                for db_field in ["pe_ratio", "forward_pe", "roe", "revenue_growth", "debt_to_equity", "dividend_yield"]:
+                    non_null = sum(1 for r in results if r.get(db_field) is not None)
+                    pct = non_null / len(results) * 100
+                    flag = "✅" if pct >= 80 else "⚠️ " if pct >= 50 else "🔴"
+                    self.logger.info(
+                        "   %s %-20s %5.1f%% (%d/%d) — N/A 는 yfinance가 미제공",
+                        flag,
+                        db_field,
+                        pct,
+                        non_null,
+                        len(results),
+                    )
 
         return results
 
@@ -141,13 +182,21 @@ def _upsert_fundamentals(records: list[dict]) -> int:
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Nuri-Quant 펀더멘탈 수집기 (yfinance)")
+    parser.add_argument(
+        "--source", default="portfolio", choices=["portfolio", "universe", "all"], help="ticker 소스 (#272 Phase 2b)"
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
     collector = FundamentalCollector()
-    count = collector.run()
+    count = collector.run(source=args.source)
 
     # 결과 출력
     rows = query(

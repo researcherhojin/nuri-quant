@@ -14,6 +14,7 @@ import error)로 모든 종목에서 0건 수집. yfinance Ticker.info의 다음
 사용법:
     python -m nuri.collectors.estimates
 """
+
 import logging
 from typing import Any
 
@@ -31,11 +32,14 @@ class EstimatesCollector(BaseCollector):
     def __init__(self):
         super().__init__("estimates")
 
-    def collect(self, **kwargs) -> list[dict]:
-        """전 보유종목 애널리스트 컨센서스 수집 (US 종목만)."""
-        import yfinance as yf
+    def collect(self, source: str = "portfolio", **kwargs) -> list[dict]:
+        """애널리스트 컨센서스 수집 (US 종목만). source='universe' 시 S&P500 전체 (#272)."""
+        import logging as _logging
 
-        tickers = self._get_tickers()
+        import yfinance as yf
+        from tqdm import tqdm
+
+        tickers = self._get_tickers(source=source)
         if not tickers:
             self.logger.warning("수집할 종목이 없습니다")
             return []
@@ -46,23 +50,33 @@ class EstimatesCollector(BaseCollector):
             self.logger.warning("US 종목이 없습니다 (yfinance 컨센서스는 .KS 미지원)")
             return []
 
-        self.logger.info(f"애널리스트 컨센서스 수집: {len(us_tickers)}종목")
+        self.logger.info(f"애널리스트 컨센서스 수집: {len(us_tickers)}종목 (source={source})")
         from nuri.core.timezone import today_kst
+
         today = today_kst()
         results = []
+        skipped: list[str] = []
+        failed: list[str] = []
 
-        for ticker in us_tickers:
+        # universe 모드: yfinance 노이즈 억제
+        _yflog = _logging.getLogger("yfinance")
+        _orig_level = _yflog.level
+        if source != "portfolio":
+            _yflog.setLevel(_logging.CRITICAL)
+
+        iterator = tqdm(us_tickers, desc=f"  estimates [{source}]", unit="tk", disable=len(us_tickers) < 20)
+        for ticker in iterator:
             try:
                 info = yf.Ticker(ticker).info
                 if not info or "regularMarketPrice" not in info:
-                    self.logger.warning(f"{ticker}: yfinance info 비어있음")
+                    skipped.append(ticker)
                     continue
 
                 num_analysts = _safe_int(info.get("numberOfAnalystOpinions"))
                 target_mean = _safe_float(info.get("targetMeanPrice"))
                 # 분석가 데이터 없으면 스킵
                 if not num_analysts and not target_mean:
-                    self.logger.info(f"{ticker}: 분석가 컨센서스 미제공")
+                    skipped.append(ticker)
                     continue
 
                 record = {
@@ -74,15 +88,27 @@ class EstimatesCollector(BaseCollector):
                     "target_mean": target_mean,
                     "target_median": _safe_float(info.get("targetMedianPrice")),
                     "num_analysts": num_analysts,
-                    "current_price": _safe_float(
-                        info.get("currentPrice") or info.get("regularMarketPrice")
-                    ),
+                    "current_price": _safe_float(info.get("currentPrice") or info.get("regularMarketPrice")),
                 }
                 results.append(record)
 
-            except Exception as e:
-                self.logger.warning(f"{ticker}: 컨센서스 수집 실패 — {e}")
+            except Exception:
+                failed.append(ticker)
                 continue
+
+        # 노이즈 억제 해제
+        _yflog.setLevel(_orig_level)
+
+        if len(us_tickers) >= 20:
+            sample = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
+            self.logger.info(
+                "📊 애널리스트 컨센서스: ✅ %d 성공 / ⚠️  %d 미제공 / ❌ %d 실패 (총 %d) — failed: %s",
+                len(results),
+                len(skipped),
+                len(failed),
+                len(us_tickers),
+                sample or "없음",
+            )
 
         return results
 

@@ -8,6 +8,7 @@ pykrx는 KRX/네이버 금융 데이터를 사용하며, EOD(종가) 데이터�
     python -m nuri.collectors.stock_kr
     python -m nuri.collectors.stock_kr --days 30
 """
+
 import argparse
 import logging
 from datetime import timedelta
@@ -45,11 +46,29 @@ class StockKRCollector(BaseCollector):
         end_date = now_kst.strftime("%Y%m%d")
         start_date = (now_kst - timedelta(days=days)).strftime("%Y%m%d")
 
-        frames = []
-        for ticker_with_suffix in tickers:
+        from tqdm import tqdm
+
+        frames: list = []
+        succeeded: list[str] = []
+        failed: list[str] = []
+        iterator = tqdm(tickers, desc="  KR prices", unit="tk", disable=len(tickers) < 20)
+        for ticker_with_suffix in iterator:
             df = self._collect_ticker(ticker_with_suffix, start_date, end_date)
             if df is not None and not df.empty:
                 frames.append(df)
+                succeeded.append(ticker_with_suffix)
+            else:
+                failed.append(ticker_with_suffix)
+
+        if len(tickers) >= 20:
+            sample_failed = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
+            self.logger.info(
+                "📊 KR 주가: ✅ %d 성공 / ❌ %d 실패 (%.1f%%) — failed: %s",
+                len(succeeded),
+                len(failed),
+                len(succeeded) / len(tickers) * 100,
+                sample_failed or "없음",
+            )
 
         # KOSPI/KOSDAQ 지수 수집 (#247)
         index_df = self._collect_indices(days)
@@ -58,9 +77,7 @@ class StockKRCollector(BaseCollector):
 
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-    def _collect_ticker(
-        self, ticker_full: str, start_date: str, end_date: str
-    ) -> Optional[pd.DataFrame]:
+    def _collect_ticker(self, ticker_full: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
         """단일 한국 종목 수집."""
         # .KS 접미사 제거 (pykrx는 순수 숫자 코드 사용)
         ticker_code = ticker_full.replace(".KS", "").replace(".KQ", "")
@@ -72,16 +89,18 @@ class StockKRCollector(BaseCollector):
                 return None
 
             # pykrx 한국어 컬럼 → Nuri-Quant 표준 컬럼 매핑
-            df = pd.DataFrame({
-                "ticker": ticker_full,
-                "date": raw.index.strftime("%Y-%m-%d"),
-                "open": raw["시가"].values,
-                "high": raw["고가"].values,
-                "low": raw["저가"].values,
-                "close": raw["종가"].values,
-                "volume": raw["거래량"].values,
-                "adj_close": raw["종가"].values,  # pykrx는 수정종가 미제공
-            })
+            df = pd.DataFrame(
+                {
+                    "ticker": ticker_full,
+                    "date": raw.index.strftime("%Y-%m-%d"),
+                    "open": raw["시가"].values,
+                    "high": raw["고가"].values,
+                    "low": raw["저가"].values,
+                    "close": raw["종가"].values,
+                    "volume": raw["거래량"].values,
+                    "adj_close": raw["종가"].values,  # pykrx는 수정종가 미제공
+                }
+            )
 
             return df
 
@@ -108,16 +127,18 @@ class StockKRCollector(BaseCollector):
                 if isinstance(raw.columns, pd.MultiIndex):
                     raw.columns = raw.columns.get_level_values(0)
 
-                df = pd.DataFrame({
-                    "ticker": db_ticker,
-                    "date": raw.index.strftime("%Y-%m-%d"),
-                    "open": raw["Open"].values,
-                    "high": raw["High"].values,
-                    "low": raw["Low"].values,
-                    "close": raw["Close"].values,
-                    "volume": raw["Volume"].values.astype(int),
-                    "adj_close": raw["Close"].values,
-                })
+                df = pd.DataFrame(
+                    {
+                        "ticker": db_ticker,
+                        "date": raw.index.strftime("%Y-%m-%d"),
+                        "open": raw["Open"].values,
+                        "high": raw["High"].values,
+                        "low": raw["Low"].values,
+                        "close": raw["Close"].values,
+                        "volume": raw["Volume"].values.astype(int),
+                        "adj_close": raw["Close"].values,
+                    }
+                )
                 frames.append(df)
                 self.logger.info(f"  {db_ticker}: {len(df)}건 지수 데이터")
 
@@ -135,8 +156,7 @@ class StockKRCollector(BaseCollector):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nuri-Quant 한국 주가 수집기 (pykrx)")
-    parser.add_argument("--days", type=int, default=5,
-                        help="수집 일수 (기본 5일)")
+    parser.add_argument("--days", type=int, default=5, help="수집 일수 (기본 5일)")
     args = parser.parse_args()
 
     logging.basicConfig(
