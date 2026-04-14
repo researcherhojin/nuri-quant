@@ -6,6 +6,7 @@ BaseCollector — 모든 데이터 수집기의 추상 기반 클래스.
 
 수집 실패 처리: expected_count를 설정하면 실패율 >10% 시 save를 거부한다.
 """
+
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -76,9 +77,11 @@ class BaseCollector(ABC):
         """collect → save 통합 실행. 재시도(max 3) + 실패율 체크 포함."""
         import time as _time
 
+        from nuri.core.timezone import kst_now
+
         max_retries = 3
         self.logger.info("[%s] 수집 시작", self.name)
-        start = datetime.now()
+        start = kst_now()
         self._failed_tickers = []
 
         last_error = None
@@ -101,18 +104,19 @@ class BaseCollector(ABC):
                         raise CollectionFailureError(msg)
 
                 count = self.save(data)
-                elapsed = (datetime.now() - start).total_seconds()
+                elapsed = (kst_now() - start).total_seconds()
                 self.logger.info("[%s] 완료: %d건, %.1f초", self.name, count, elapsed)
-                self._last_run = datetime.now()
+                self._last_run = kst_now()
                 return count
             except CollectionFailureError:
                 raise
             except Exception as e:
                 last_error = e
                 if attempt < max_retries:
-                    wait = 2 ** attempt  # 2, 4초 backoff
-                    self.logger.warning("[%s] 시도 %d/%d 실패, %d초 후 재시도: %s",
-                                        self.name, attempt, max_retries, wait, e)
+                    wait = 2**attempt  # 2, 4초 backoff
+                    self.logger.warning(
+                        "[%s] 시도 %d/%d 실패, %d초 후 재시도: %s", self.name, attempt, max_retries, wait, e
+                    )
                     _time.sleep(wait)
 
         # 모든 재시도 실패
@@ -124,17 +128,62 @@ class BaseCollector(ABC):
         """수집기 실패 시 Discord 알림 (DISCORD_WEBHOOK_URL 설정 시)."""
         try:
             from nuri.alerts.discord_bot import send_webhook_message
+
             send_webhook_message(f"🚨 수집기 [{self.name}] 실패 (3회 재시도 후)\n```{error_msg[:200]}```")
         except Exception:
             self.logger.debug("Discord 알림 발송 실패 (webhook 미설정 가능)")
 
-    def _get_tickers(self, market: Optional[str] = None) -> list[str]:
-        """DB에서 보유 종목 티커 목록 조회. market으로 한국/미국 필터링."""
+    def _get_tickers(self, market: Optional[str] = None, source: str = "portfolio") -> list[str]:
+        """티커 목록 조회. source로 범위 선택, market으로 한국/미국 필터링.
+
+        Args:
+            market: 'us' | 'kr' | None (전체)
+            source: 'portfolio' (default, 보유 종목만)
+                  | 'universe'  (config/universe.yaml 전체, us_core + us_sp500_extended + kr_kospi200)
+                  | 'all'       (portfolio ∪ universe)
+
+        #272 Phase 2b: universe/all 모드는 agent data silo 해결용. fundamental/analyst/
+        insider 데이터를 universe 전체에 대해 fetch하면 consensus 신뢰도 상승.
+        Default는 'portfolio' 유지 — backwards compat.
+        """
         from nuri.core.db import get_tickers
 
-        tickers = get_tickers()
+        portfolio_tickers = get_tickers()
+
+        if source == "portfolio":
+            tickers = portfolio_tickers
+        elif source == "universe":
+            tickers = _load_universe_tickers()
+        elif source == "all":
+            tickers = sorted(set(portfolio_tickers) | set(_load_universe_tickers()))
+        else:
+            raise ValueError(f"Unknown source: {source!r}. Must be 'portfolio' | 'universe' | 'all'")
+
         if market == "kr":
             return [t for t in tickers if t.endswith(".KS")]
         elif market == "us":
             return [t for t in tickers if not t.endswith(".KS")]
         return tickers
+
+
+def _load_universe_tickers() -> list[str]:
+    """config/universe.yaml에서 전체 universe ticker 로드.
+
+    us_core + us_sp500_extended + kr_kospi200 합산. 누락된 key 는 빈 리스트로 처리.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    path = Path("config/universe.yaml")
+    if not path.exists():
+        return []
+
+    with path.open() as f:
+        u = yaml.safe_load(f) or {}
+
+    tickers: set[str] = set()
+    for key in ("us_core", "us_sp500_extended", "kr_kospi200"):
+        section = u.get(key) or {}
+        tickers.update(section.get("tickers") or [])
+    return sorted(tickers)
