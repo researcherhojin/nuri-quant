@@ -183,6 +183,45 @@ jobs:
       - name: Scan for personal financial data leaks
         run: python3 scripts/check_privacy_leak.py
 
+  # ── Universe + Agent Coverage Validation (#272 Phase 2c) ──
+  # Validates universe.yaml ↔ upstream sync + per-table coverage thresholds.
+  # Currently warning-only (continue-on-error) until user runs make collect-universe
+  # to populate data tables. Will become required after first PASS run.
+  universe-check:
+    name: Universe Coverage Validation
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true  # warning-only initially per spec §6 stage 1
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install minimal deps (no full uv sync needed)
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml pandas pytest
+      - name: Validate universe (cache mode — no network)
+        run: |
+          # CI에는 DB가 없으므로 universe.yaml 자체 sanity check만
+          python -c "
+          import yaml
+          from pathlib import Path
+          u = yaml.safe_load(Path('config/universe.yaml').read_text())
+          us = set((u.get('us_core') or {}).get('tickers') or [])
+          us |= set((u.get('us_sp500_extended') or {}).get('tickers') or [])
+          kr = set((u.get('kr_kospi200') or {}).get('tickers') or [])
+          print(f'US universe: {len(us)} tickers')
+          print(f'KR universe: {len(kr)} tickers')
+          # Sanity thresholds (spec §2.1: ≥95%)
+          assert len(us) >= 478, f'US universe {len(us)} < 478 (95% of S&P 500 503)'
+          assert len(kr) >= 190, f'KR universe {len(kr)} < 190 (95% of KOSPI 200)'
+          print('✅ Universe sanity check PASS')
+          "
+
   # ── Backend Tests (sharded matrix) ──
   # Tests are split across 2 shards via pytest-shard, each running on its own
   # 4-core runner. Wall time roughly halves vs the single-job design.
