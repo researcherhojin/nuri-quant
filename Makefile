@@ -89,10 +89,16 @@ lint-fix:
 validate-portfolio: ## Verify each ticker in config/portfolio.yaml has live data (#131)
 	$(PYTHON) scripts/validate_portfolio.py
 
-universe-sync:   ## Sync universe.yaml against Wikipedia S&P 500 + KRX KOSPI 200 (#272)
+universe-sync:       ## Dry-run sync (US + KR). For --market/--allow-removal flags use `python -m` (#272)
 	$(PYTHON) -m nuri.collectors.universe_sync
 
-universe-sync-apply:  ## Apply universe.yaml updates (additions only — manual ETFs preserved)
+universe-sync-us:    ## Dry-run US S&P 500 sync only
+	$(PYTHON) -m nuri.collectors.universe_sync --market us
+
+universe-sync-kr:    ## Dry-run KR KOSPI 200 sync only (requires: uv pip install finance-datareader)
+	$(PYTHON) -m nuri.collectors.universe_sync --market kr
+
+universe-sync-apply: ## Apply universe.yaml updates (additions only — manual ETFs preserved)
 	$(PYTHON) -m nuri.collectors.universe_sync --apply
 
 # Verify tiers — fastest to slowest. See `make verify-help` for the full table.
