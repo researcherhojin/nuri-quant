@@ -12,6 +12,7 @@ from pathlib import Path
 
 import yaml
 
+from nuri.core.coverage import US_ONLY_TABLES
 from nuri.core.db import query
 
 
@@ -73,17 +74,25 @@ def main() -> None:
             rows = query(f"SELECT DISTINCT ticker FROM {table}")
             tickers_db = {r["ticker"] for r in rows}
             us_match = len(tickers_db & us_uni)
-            kr_match = len(tickers_db & kr_uni)
             us_pct = us_match / max(len(us_uni), 1)
-            kr_pct = kr_match / max(len(kr_uni), 1)
             # status: US 기준 (대부분 데이터가 US 위주)
             flag = "✅ PASS" if us_pct >= threshold else "🔴 FAIL"
             us_str = f"{us_match}/{len(us_uni)} ({us_pct:.0%})"
-            kr_str = f"{kr_match}/{len(kr_uni)} ({kr_pct:.0%})"
+            # KR 표시: 데이터 소스가 KR 미지원이면 "n/a (소스 미제공)" — 0%로 표시하면
+            # 수집 실패처럼 보임. 실제로는 yfinance .KS / SEC EDGAR 한계.
+            if table in US_ONLY_TABLES:
+                kr_str = "n/a (US-only)"
+            else:
+                kr_match = len(tickers_db & kr_uni)
+                kr_pct = kr_match / max(len(kr_uni), 1)
+                kr_str = f"{kr_match}/{len(kr_uni)} ({kr_pct:.0%})"
             print(f"  {table:22} {us_str:>15} {kr_str:>15} {f'≥{threshold:.0%}':>12} {flag:>8}")
         except Exception as e:
             print(f"  {table:22} ⚠️  err: {str(e)[:50]}")
 
+    print()
+    print("  주: KR 'n/a (US-only)' = 데이터 소스(yfinance .KS / SEC EDGAR)가")
+    print("      KR 종목을 지원하지 않음. 수집 실패가 아닌 소스 한계.")
     print()
 
 
