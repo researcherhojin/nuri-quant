@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -21,13 +22,21 @@ class TestStockCollector:
         assert "-" in result
 
 
-
 class TestStockCollectorTickerCollection:
     def test_collect_ticker_success(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.stock import StockCollector
 
-        mock_df = pd.DataFrame({"date": pd.to_datetime(["2025-01-15"]), "open": [190.0], "high": [195.0],
-                                "low": [189.0], "close": [194.0], "volume": [50000000], "adj_close": [194.0]})
+        mock_df = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2025-01-15"]),
+                "open": [190.0],
+                "high": [195.0],
+                "low": [189.0],
+                "close": [194.0],
+                "volume": [50000000],
+                "adj_close": [194.0],
+            }
+        )
         mock_result = MagicMock()
         mock_result.to_dataframe.return_value = mock_df
         mock_obb = MagicMock()
@@ -63,8 +72,16 @@ class TestStockCollectorTickerCollection:
     def test_collect_ticker_no_adj_close(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.stock import StockCollector
 
-        mock_df = pd.DataFrame({"date": pd.to_datetime(["2025-01-15"]), "open": [190.0], "high": [195.0],
-                                "low": [189.0], "close": [194.0], "volume": [50000000]})
+        mock_df = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2025-01-15"]),
+                "open": [190.0],
+                "high": [195.0],
+                "low": [189.0],
+                "close": [194.0],
+                "volume": [50000000],
+            }
+        )
         mock_result = MagicMock()
         mock_result.to_dataframe.return_value = mock_df
         mock_obb = MagicMock()
@@ -96,13 +113,21 @@ class TestStockCollectorTickerCollection:
         assert StockCollector().save(pd.DataFrame()) == 0
 
 
-
 class TestStockCollectorEdgeCases:
     def test_collect_full_flow(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.stock import StockCollector
 
-        mock_df = pd.DataFrame({"date": pd.to_datetime(["2025-01-15"]), "open": [190.0], "high": [195.0],
-                                "low": [189.0], "close": [194.0], "volume": [50000000], "adj_close": [194.0]})
+        mock_df = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2025-01-15"]),
+                "open": [190.0],
+                "high": [195.0],
+                "low": [189.0],
+                "close": [194.0],
+                "volume": [50000000],
+                "adj_close": [194.0],
+            }
+        )
         mock_result = MagicMock()
         mock_result.to_dataframe.return_value = mock_df
         mock_obb = MagicMock()
@@ -111,3 +136,40 @@ class TestStockCollectorEdgeCases:
 
         monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
         assert not StockCollector().collect(period="5d").empty
+
+
+class TestStockUniverseModeCoverage:
+    """#272 Phase 2b: tqdm + summary 패치 커버리지."""
+
+    def test_collect_universe_summary_logged(self, monkeypatch, db_with_portfolio, caplog):
+        """20+ tickers + universe 모드: summary 로그 fire."""
+        import logging
+
+        from nuri.collectors.stock import StockCollector
+
+        c = StockCollector()
+        # 25개 ticker, 모두 데이터 부족
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: [f"T{i}" for i in range(25)])
+        monkeypatch.setattr(c, "_collect_ticker", lambda *a, **kw: None)
+
+        with caplog.at_level(logging.INFO):
+            c.collect(source="universe", period="5d")
+
+        summary = [r for r in caplog.records if "수집 결과:" in r.message]
+        assert len(summary) >= 1, "Expected summary log for 25-ticker universe"
+
+    def test_collect_universe_source_in_log(self, monkeypatch, db_with_portfolio, caplog):
+        """수집 대상 메시지에 source 표시."""
+        import logging
+
+        from nuri.collectors.stock import StockCollector
+
+        c = StockCollector()
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["A"])
+        monkeypatch.setattr(c, "_collect_ticker", lambda *a, **kw: None)
+
+        with caplog.at_level(logging.INFO):
+            c.collect(source="universe", period="5d")
+
+        info = [r for r in caplog.records if "source=universe" in r.message]
+        assert len(info) >= 1
