@@ -48,6 +48,7 @@ Usage
     python scripts/check_privacy_leak.py path/to/file.py    # scan specific files
     python scripts/check_privacy_leak.py --diff             # scan staged diff only
 """
+
 from __future__ import annotations
 
 import argparse
@@ -128,18 +129,159 @@ SUSPECT_NUMERIC_KEYS: tuple[str, ...] = (
     "buying_power",
 )
 
+# Ticker + PnL pattern — PR #202 leak signature.
+# Example: "-34% (TEM), -22% (RKLB), -15% (TSLA)" or "PL +43% → +38%".
+# Detects two tight patterns that in practice correlate with personal holdings
+# + performance disclosure; loose `ticker + any signed %` patterns are too
+# noisy (CAN SLIM rule text, HWM, SL/MDD abbreviations all trigger).
+TICKER_PNL_PAREN = re.compile(r"[-+]\d+(?:\.\d+)?%\s*\(([A-Z]{2,5}(?:\.(?:KS|KQ))?)\)")
+TICKER_PNL_ADJACENT = re.compile(r"\b([A-Z]{2,5}(?:\.(?:KS|KQ))?)\s{1,3}([-+]\d+(?:\.\d+)?%)")
+
+# Ticker-lookalikes that are abbreviations, not equity symbols.
+# Keep conservative — false negatives on obscure tickers are acceptable; the
+# goal is catching personal portfolio mentions, not being a bourse registrar.
+TICKER_FALSE_POSITIVES: frozenset[str] = frozenset(
+    {
+        # Strategy / analysis abbreviations
+        "CAN",
+        "SLIM",
+        "HWM",
+        "SEPA",
+        "SL",
+        "TP",
+        "MDD",
+        "PnL",
+        "ROE",
+        "ROA",
+        "EPS",
+        "PER",
+        "PBR",
+        "PEG",
+        "PSR",
+        "SMA",
+        "EMA",
+        "RSI",
+        "MACD",
+        "VIX",
+        "POC",
+        "BB",
+        # Macro / econ
+        "GDP",
+        "CPI",
+        "PPI",
+        "PCE",
+        "NFP",
+        "FOMC",
+        "FED",
+        "ECB",
+        "BOJ",
+        "JOLTS",
+        # Generic / units
+        "USD",
+        "KRW",
+        "EUR",
+        "GBP",
+        "JPY",
+        "CNY",
+        "BTC",
+        "ETH",
+        "ETF",
+        "CEO",
+        "CFO",
+        "CTO",
+        "CMO",
+        "COO",
+        "API",
+        "SDK",
+        "CI",
+        "CD",
+        "PR",
+        "SQL",
+        "DB",
+        "AI",
+        "ML",
+        "UI",
+        "UX",
+        "OS",
+        "IT",
+        "HR",
+        "QA",
+        "HTTP",
+        "REST",
+        "RPC",
+        "DNS",
+        "SSH",
+        "TLS",
+        "SSL",
+        "URL",
+        "URI",
+        "JSON",
+        "YAML",
+        "CSV",
+        "HTML",
+        "CSS",
+        "RAM",
+        "CPU",
+        "SSD",
+        "GPU",
+        "TTM",
+        "YTD",
+        "LTM",
+        "QoQ",
+        "YoY",
+        "MoM",
+        "MTD",
+        "DTD",
+        "ARR",
+        "MRR",
+        "NATO",
+        "OECD",
+        "IMF",
+        "WTO",
+        "SEC",
+        "FINRA",
+        "KOFIA",
+        "KRX",
+        # Trade verbs
+        "BUY",
+        "SELL",
+        "HOLD",
+        "LONG",
+        "SHORT",
+        # Misc
+        "OK",
+        "NO",
+        "YES",
+        "AM",
+        "PM",
+        "US",
+        "UK",
+        "EU",
+        "KR",
+        "JP",
+        "CN",
+        "RU",
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "H1",
+        "H2",
+    }
+)
+
 # Allow-list: paths the scanner should NEVER block on.
 ALLOWLIST_PATHS: tuple[str, ...] = (
-    "scripts/check_privacy_leak.py",      # this file (documents patterns)
+    "scripts/check_privacy_leak.py",  # this file (documents patterns)
     "tests/scripts/test_check_privacy_leak.py",  # tests for this file (moved from top-level in #163)
-    "docs/STRATEGY.md",                   # may codify pattern names
-    "CONTRIBUTING.md",                    # references placeholder names as guidance
-    "SECURITY.md",                        # references privacy policy
-    ".claude/projects/",                  # private memory dir (git-ignored anyway)
+    "docs/STRATEGY.md",  # may codify pattern names
+    "CONTRIBUTING.md",  # references placeholder names as guidance
+    "SECURITY.md",  # references privacy policy
+    ".claude/projects/",  # private memory dir (git-ignored anyway)
     "node_modules/",
     ".git/",
     ".venv/",
-    "frontend/package-lock.json",         # npm hash collisions look like words
+    "frontend/package-lock.json",  # npm hash collisions look like words
 )
 
 
@@ -149,7 +291,7 @@ class Finding:
     line: int
     pattern: str
     snippet: str
-    category: str  # "broker_name" | "suspect_numeric"
+    category: str  # "broker_name" | "suspect_numeric" | "ticker_pnl"
 
 
 def is_allowlisted(path: Path) -> bool:
@@ -175,20 +317,30 @@ def scan_file_for_brokers(path: Path) -> list[Finding]:
         # Korean substring (case-insensitive doesn't matter for hangul)
         for pat in BROKER_NAMES_KO:
             if pat in line:
-                findings.append(Finding(
-                    file=path, line=ln_no, pattern=pat,
-                    snippet=line.strip()[:120], category="broker_name",
-                ))
+                findings.append(
+                    Finding(
+                        file=path,
+                        line=ln_no,
+                        pattern=pat,
+                        snippet=line.strip()[:120],
+                        category="broker_name",
+                    )
+                )
         # English: case-insensitive substring (variable names like
         # `kakaopay_main` would otherwise escape a \b regex because `_` is
         # a word character).
         line_lower = line.lower()
         for pat in BROKER_NAMES_EN:
             if pat.lower() in line_lower:
-                findings.append(Finding(
-                    file=path, line=ln_no, pattern=pat,
-                    snippet=line.strip()[:120], category="broker_name",
-                ))
+                findings.append(
+                    Finding(
+                        file=path,
+                        line=ln_no,
+                        pattern=pat,
+                        snippet=line.strip()[:120],
+                        category="broker_name",
+                    )
+                )
     return findings
 
 
@@ -216,11 +368,66 @@ def scan_file_for_numerics(path: Path) -> list[Finding]:
             # Allow round-number placeholders explicitly (1_000_000, 10_000_000, ...)
             if value % 1_000_000 == 0 and value <= 100_000_000:
                 continue
-            findings.append(Finding(
-                file=path, line=ln_no, pattern=str(value),
-                snippet=line.strip()[:120], category="suspect_numeric",
-            ))
+            findings.append(
+                Finding(
+                    file=path,
+                    line=ln_no,
+                    pattern=str(value),
+                    snippet=line.strip()[:120],
+                    category="suspect_numeric",
+                )
+            )
     return findings
+
+
+def scan_text_for_ticker_pnl(text: str, source: Path | str = "<input>") -> list[Finding]:
+    """Detect ticker + PnL co-occurrence (PR #202 leak signature).
+
+    Matches:
+    - `-34% (TEM)` — signed % followed by ticker in parens
+    - `PL +43%` — ticker directly followed by signed %
+
+    Uses TICKER_FALSE_POSITIVES to exclude abbreviations (HWM, SL, MDD, etc.).
+    """
+    findings: list[Finding] = []
+    file_path = source if isinstance(source, Path) else Path(str(source))
+    for ln_no, line in enumerate(text.splitlines(), start=1):
+        for m in TICKER_PNL_PAREN.finditer(line):
+            ticker = m.group(1)
+            if ticker in TICKER_FALSE_POSITIVES:
+                continue
+            findings.append(
+                Finding(
+                    file=file_path,
+                    line=ln_no,
+                    pattern=f"%({ticker})",
+                    snippet=line.strip()[:120],
+                    category="ticker_pnl",
+                )
+            )
+        for m in TICKER_PNL_ADJACENT.finditer(line):
+            ticker = m.group(1)
+            if ticker in TICKER_FALSE_POSITIVES:
+                continue
+            findings.append(
+                Finding(
+                    file=file_path,
+                    line=ln_no,
+                    pattern=f"{ticker} {m.group(2)}",
+                    snippet=line.strip()[:120],
+                    category="ticker_pnl",
+                )
+            )
+    return findings
+
+
+def scan_file_for_ticker_pnl(path: Path) -> list[Finding]:
+    """File wrapper around scan_text_for_ticker_pnl."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, FileNotFoundError):
+        return []
+    return scan_text_for_ticker_pnl(text, source=path)
 
 
 def scan_path(path: Path) -> list[Finding]:
@@ -229,10 +436,9 @@ def scan_path(path: Path) -> list[Finding]:
         return []
     if not path.is_file():
         return []
-    if path.suffix in {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".pyc",
-                       ".woff", ".woff2", ".ttf", ".eot", ".ico"}:
+    if path.suffix in {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".pyc", ".woff", ".woff2", ".ttf", ".eot", ".ico"}:
         return []
-    return scan_file_for_brokers(path) + scan_file_for_numerics(path)
+    return scan_file_for_brokers(path) + scan_file_for_numerics(path) + scan_file_for_ticker_pnl(path)
 
 
 def iter_repo_files() -> list[Path]:
@@ -274,8 +480,13 @@ def print_findings(findings: list[Finding]) -> None:
     for f in findings:
         by_file.setdefault(f.file, []).append(f)
 
-    print(f"{RED}✗ {len(findings)} potential leak(s) in "
-          f"{len(by_file)} file(s):{NC}\n")
+    print(f"{RED}✗ {len(findings)} potential leak(s) in {len(by_file)} file(s):{NC}\n")
+
+    category_label = {
+        "broker_name": "broker name",
+        "suspect_numeric": "suspect $",
+        "ticker_pnl": "ticker+PnL",
+    }
 
     for file_path, file_findings in by_file.items():
         try:
@@ -284,18 +495,54 @@ def print_findings(findings: list[Finding]) -> None:
             rel = file_path
         print(f"  {CYAN}{rel}{NC}")
         for f in file_findings:
-            cat_label = "broker name" if f.category == "broker_name" else "suspect $"
-            print(f"    line {f.line:5d}  [{cat_label}]  "
-                  f"{YELLOW}{f.pattern}{NC}  →  {f.snippet}")
+            cat_label = category_label.get(f.category, f.category)
+            print(f"    line {f.line:5d}  [{cat_label}]  {YELLOW}{f.pattern}{NC}  →  {f.snippet}")
         print()
 
-    print(f"{YELLOW}Action: replace real broker names with placeholders "
-          f"(Brokerage Alpha/Beta) and use round-number placeholders "
-          f"for monetary fields. See docs/STRATEGY.md §4.4.{NC}")
+    print(
+        f"{YELLOW}Action: replace real broker names with placeholders "
+        f"(Brokerage Alpha/Beta), use round-number placeholders for monetary "
+        f"fields, and avoid disclosing ticker + PnL combinations in commit "
+        f"messages / PR bodies. See docs/STRATEGY.md §4.4.{NC}"
+    )
+
+
+def iter_unpushed_commit_messages() -> list[tuple[str, str]]:
+    """Return [(sha, message)] for commits on current branch that are not yet on origin/main.
+
+    Used by pre_push_check.sh to scan commit messages before pushing — catches
+    the PR #202 class of leak (ticker + PnL in commit body) before it hits
+    git history permanently.
+    """
+    try:
+        shas = subprocess.run(
+            ["git", "log", "--format=%H", "origin/main..HEAD"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+    except subprocess.CalledProcessError:
+        return []
+    out: list[tuple[str, str]] = []
+    for sha in shas:
+        try:
+            msg = subprocess.run(
+                ["git", "log", "-1", "--format=%B", sha],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+        except subprocess.CalledProcessError:
+            continue
+        out.append((sha, msg))
+    return out
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    description = (__doc__ or "").split("\n", 1)[0]
+    parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
         "paths",
         nargs="*",
@@ -308,22 +555,40 @@ def main() -> int:
         help="Scan only files in git staged diff (for pre-commit hook)",
     )
     parser.add_argument(
+        "--message",
+        action="store_true",
+        help="Read text from stdin and scan it (for commit-msg / PR body hooks)",
+    )
+    parser.add_argument(
+        "--unpushed-commits",
+        action="store_true",
+        help="Scan commit messages of unpushed commits (origin/main..HEAD)",
+    )
+    parser.add_argument(
         "--quiet",
         action="store_true",
         help="No output on success — only print on findings",
     )
     args = parser.parse_args()
 
-    if args.diff:
-        targets = iter_staged_diff_files()
-    elif args.paths:
-        targets = args.paths
-    else:
-        targets = iter_repo_files()
-
     findings: list[Finding] = []
-    for path in targets:
-        findings.extend(scan_path(path))
+
+    if args.message:
+        text = sys.stdin.read()
+        findings.extend(scan_text_for_ticker_pnl(text, source="<stdin>"))
+    elif args.unpushed_commits:
+        for sha, msg in iter_unpushed_commit_messages():
+            for f in scan_text_for_ticker_pnl(msg, source=f"<commit:{sha[:8]}>"):
+                findings.append(f)
+    else:
+        if args.diff:
+            targets = iter_staged_diff_files()
+        elif args.paths:
+            targets = args.paths
+        else:
+            targets = iter_repo_files()
+        for path in targets:
+            findings.extend(scan_path(path))
 
     if findings or not args.quiet:
         print_findings(findings)
