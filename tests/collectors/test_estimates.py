@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from unittest.mock import MagicMock
 
 from nuri.core.db import (
@@ -29,14 +30,21 @@ class TestEstimatesCollector:
     def test_save_records(self, db_path):
         from nuri.collectors.estimates import _upsert_estimates
 
-        records = [{"ticker": "AAPL", "date": "2026-03-30",
-                     "recommendation": "buy", "target_high": 250.0,
-                     "target_low": 190.0, "target_mean": 220.0,
-                     "target_median": 218.0, "num_analysts": 30,
-                     "current_price": 195.0}]
+        records = [
+            {
+                "ticker": "AAPL",
+                "date": "2026-03-30",
+                "recommendation": "buy",
+                "target_high": 250.0,
+                "target_low": 190.0,
+                "target_mean": 220.0,
+                "target_median": 218.0,
+                "num_analysts": 30,
+                "current_price": 195.0,
+            }
+        ]
         count = _upsert_estimates(records)
         assert count == 1
-
 
 
 class TestEstimatesCollectorMockedYFinance:
@@ -44,7 +52,7 @@ class TestEstimatesCollectorMockedYFinance:
         from nuri.collectors.estimates import EstimatesCollector
 
         collector = EstimatesCollector()
-        monkeypatch.setattr(collector, "_get_tickers", lambda market=None: ["AAPL"])
+        monkeypatch.setattr(collector, "_get_tickers", lambda market=None, source="portfolio": ["AAPL"])
         mock_ticker = MagicMock()
         mock_ticker.info = {
             "regularMarketPrice": 200.0,
@@ -68,7 +76,7 @@ class TestEstimatesCollectorMockedYFinance:
         from nuri.collectors.estimates import EstimatesCollector
 
         collector = EstimatesCollector()
-        monkeypatch.setattr(collector, "_get_tickers", lambda market=None: ["AAPL"])
+        monkeypatch.setattr(collector, "_get_tickers", lambda market=None, source="portfolio": ["AAPL"])
         mock_ticker = MagicMock()
         mock_ticker.info = {}
         mock_yf = MagicMock()
@@ -81,7 +89,7 @@ class TestEstimatesCollectorMockedYFinance:
         from nuri.collectors.estimates import EstimatesCollector
 
         collector = EstimatesCollector()
-        monkeypatch.setattr(collector, "_get_tickers", lambda market=None: ["VOO"])
+        monkeypatch.setattr(collector, "_get_tickers", lambda market=None, source="portfolio": ["VOO"])
         mock_ticker = MagicMock()
         mock_ticker.info = {"regularMarketPrice": 500.0}  # 분석가 필드 없음
         mock_yf = MagicMock()
@@ -93,7 +101,7 @@ class TestEstimatesCollectorMockedYFinance:
         from nuri.collectors.estimates import EstimatesCollector
 
         collector = EstimatesCollector()
-        monkeypatch.setattr(collector, "_get_tickers", lambda market=None: ["AAPL"])
+        monkeypatch.setattr(collector, "_get_tickers", lambda market=None, source="portfolio": ["AAPL"])
         mock_yf = MagicMock()
         mock_yf.Ticker.side_effect = RuntimeError("API fail")
         monkeypatch.setitem(__import__("sys").modules, "yfinance", mock_yf)
@@ -103,7 +111,7 @@ class TestEstimatesCollectorMockedYFinance:
         from nuri.collectors.estimates import EstimatesCollector
 
         collector = EstimatesCollector()
-        monkeypatch.setattr(collector, "_get_tickers", lambda market=None: [])
+        monkeypatch.setattr(collector, "_get_tickers", lambda market=None, source="portfolio": [])
         assert collector.collect() == []
 
     def test_collect_skips_kr_tickers(self, rich_db, monkeypatch):
@@ -112,7 +120,7 @@ class TestEstimatesCollectorMockedYFinance:
 
         collector = EstimatesCollector()
         monkeypatch.setattr(
-            collector, "_get_tickers", lambda market=None: ["005930.KS", "000660.KS"]
+            collector, "_get_tickers", lambda market=None, source="portfolio": ["005930.KS", "000660.KS"]
         )
         assert collector.collect() == []
 
@@ -124,11 +132,21 @@ class TestEstimatesCollectorMockedYFinance:
     def test_save_records(self, rich_db):
         from nuri.collectors.estimates import EstimatesCollector
 
-        count = EstimatesCollector().save([{
-            "ticker": "MSFT", "date": "2025-01-01", "recommendation": "buy",
-            "target_high": 500, "target_low": 400, "target_mean": 450,
-            "target_median": 445, "num_analysts": 40, "current_price": 420,
-        }])
+        count = EstimatesCollector().save(
+            [
+                {
+                    "ticker": "MSFT",
+                    "date": "2025-01-01",
+                    "recommendation": "buy",
+                    "target_high": 500,
+                    "target_low": 400,
+                    "target_mean": 450,
+                    "target_median": 445,
+                    "num_analysts": 40,
+                    "current_price": 420,
+                }
+            ]
+        )
         assert count == 1
 
     def test_safe_float_and_int(self):
@@ -138,7 +156,6 @@ class TestEstimatesCollectorMockedYFinance:
         assert _safe_float(float("nan")) is None
         assert _safe_int(42) == 42
         assert _safe_int(float("nan")) is None
-
 
 
 class TestEstimatesCollectorErrorHandling:

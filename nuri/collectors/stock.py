@@ -9,6 +9,7 @@ OpenBB가 다중 프로바이더(yfinance, polygon, tiingo 등)를 지원하며,
     python -m nuri.collectors.stock               # 미국 전체 종목
     python -m nuri.collectors.stock --period 1mo   # 1개월 데이터
 """
+
 import argparse
 import logging
 from datetime import timedelta
@@ -33,16 +34,21 @@ class StockCollector(BaseCollector):
         self,
         market: Optional[str] = None,
         period: str = "5d",
+        source: str = "portfolio",
         **kwargs,
     ) -> pd.DataFrame:
-        """OpenBB로 미국 보유 종목 OHLCV 수집."""
+        """OpenBB로 미국 종목 OHLCV 수집.
+
+        Args:
+            source: 'portfolio' (default) | 'universe' | 'all'. #272 Phase 2b.
+        """
         # 한국 종목은 stock_kr.py에서 처리
-        tickers = self._get_tickers(market="us")
+        tickers = self._get_tickers(market="us", source=source)
         if not tickers:
             self.logger.warning("수집할 미국 종목이 없습니다")
             return pd.DataFrame()
 
-        self.logger.info(f"수집 대상: {len(tickers)} 미국 종목 ({period})")
+        self.logger.info(f"수집 대상: {len(tickers)} 미국 종목 ({period}, source={source})")
 
         # 기간 계산 (KST 기준 — 수집은 한국 시간대에서 실행)
         from nuri.core.timezone import kst_now
@@ -50,11 +56,44 @@ class StockCollector(BaseCollector):
         end_date = kst_now().strftime("%Y-%m-%d")
         start_date = self._period_to_start_date(period)
 
-        frames = []
-        for ticker in tickers:
-            df = self._collect_ticker(ticker, start_date, end_date)
-            if df is not None and not df.empty:
-                frames.append(df)
+        # yfinance ERROR 노이즈 억제 (universe 모드 시 수십~수백 traceback 방지)
+        # ANSS, HES 같은 delisted 종목은 정상 케이스이지 buggy code 아님
+        import logging as _logging
+
+        _yflog = _logging.getLogger("yfinance")
+        _orig_level = _yflog.level
+        if source != "portfolio":
+            _yflog.setLevel(_logging.CRITICAL)
+
+        # tqdm progress bar — universe (543종목) / all 모드에서 진행 가시성 필수
+        from tqdm import tqdm
+
+        frames: list[pd.DataFrame] = []
+        succeeded: list[str] = []
+        failed: list[str] = []
+        try:
+            iterator = tqdm(tickers, desc=f"  prices [{source}]", unit="tk", disable=len(tickers) < 20)
+            for ticker in iterator:
+                df = self._collect_ticker(ticker, start_date, end_date)
+                if df is not None and not df.empty:
+                    frames.append(df)
+                    succeeded.append(ticker)
+                else:
+                    failed.append(ticker)
+        finally:
+            _yflog.setLevel(_orig_level)
+
+        # 명확한 요약 — 어디서 X 했는지 한눈에
+        self._failed_tickers = failed
+        if len(tickers) >= 20:
+            sample_failed = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
+            self.logger.info(
+                "📊 수집 결과: ✅ %d 성공 / ❌ %d 실패 (%.1f%%) — failed: %s",
+                len(succeeded),
+                len(failed),
+                len(succeeded) / len(tickers) * 100,
+                sample_failed or "없음",
+            )
 
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
@@ -63,6 +102,7 @@ class StockCollector(BaseCollector):
         # 1차: OpenBB
         try:
             from openbb import obb
+
             result = obb.equity.price.historical(
                 symbol=ticker,
                 start_date=start_date,
@@ -78,6 +118,7 @@ class StockCollector(BaseCollector):
         # 2차: yfinance 직접 호출 (OpenBB 장애 시 폴백)
         try:
             import yfinance as yf
+
             raw = yf.download(ticker, start=start_date, end=end_date, progress=False)
             if not raw.empty:
                 df = raw.reset_index()
@@ -119,9 +160,16 @@ class StockCollector(BaseCollector):
 
         now = kst_now()
         mapping = {
-            "1d": 1, "5d": 5, "1mo": 30, "3mo": 90,
-            "6mo": 180, "1y": 365, "2y": 730, "3y": 1095,
-            "5y": 1825, "10y": 3650,
+            "1d": 1,
+            "5d": 5,
+            "1mo": 30,
+            "3mo": 90,
+            "6mo": 180,
+            "1y": 365,
+            "2y": 730,
+            "3y": 1095,
+            "5y": 1825,
+            "10y": 3650,
         }
         days = mapping.get(period, 5)
         return (now - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -135,8 +183,13 @@ class StockCollector(BaseCollector):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nuri-Quant 미국 주가 수집기 (OpenBB)")
-    parser.add_argument("--period", default="5d",
-                        help="수집 기간 (1d/5d/1mo/3mo/1y)")
+    parser.add_argument("--period", default="5d", help="수집 기간 (1d/5d/1mo/3mo/1y)")
+    parser.add_argument(
+        "--source",
+        default="portfolio",
+        choices=["portfolio", "universe", "all"],
+        help="ticker 소스 (#272 Phase 2b). portfolio=보유만, universe=yaml 전체, all=합집합",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -145,4 +198,4 @@ if __name__ == "__main__":
     )
 
     collector = StockCollector()
-    collector.run(period=args.period)
+    collector.run(period=args.period, source=args.source)

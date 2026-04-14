@@ -101,6 +101,11 @@ universe-sync-kr:    ## Dry-run KR KOSPI 200 sync only (requires: uv pip install
 universe-sync-apply: ## Apply universe.yaml updates (additions only — manual ETFs preserved)
 	$(PYTHON) -m nuri.collectors.universe_sync --apply
 
+collect-universe:    ## Collect prices + fundamentals + wallstreet for FULL universe (#272 Phase 2b)
+	$(PYTHON) -m nuri.collectors.stock --source universe
+	$(PYTHON) -m nuri.collectors.fundamental --source universe
+	$(PYTHON) -m nuri.collectors.wallstreet --source universe
+
 test-integration: ## Integration tests — real external APIs (Wikipedia, FDR, yfinance). Network required.
 	$(PYTHON) -m pytest tests/integration/ -m integration -v --no-header
 
