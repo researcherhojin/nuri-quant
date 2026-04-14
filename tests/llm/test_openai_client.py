@@ -479,3 +479,75 @@ class TestChatTextContent:
         monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
         out = OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
         assert out == ""
+
+
+class TestChatTextErrorPaths:
+    """Coverage for SDK exception + audit log failure branches (lines 326-341, 359-360)."""
+
+    def test_sdk_exception_raises_unavailable_and_writes_audit(self, monkeypatch, db_path):
+        """SDK call fails → wrapper raises ExternalLLMUnavailable + audit row with error_type."""
+        import nuri.llm.openai_client as mod
+        from nuri.llm.openai_client import ExternalLLMUnavailable, OpenAIClient
+
+        fake_sdk = MagicMock()
+        fake_sdk.chat.completions.create.side_effect = RuntimeError("boom")
+        fake_module = MagicMock()
+        fake_module.OpenAI = MagicMock(return_value=fake_sdk)
+        monkeypatch.setitem(__import__("sys").modules, "openai", fake_module)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
+        monkeypatch.delenv("NURI_DISABLE_EXTERNAL_LLM", raising=False)
+        mod._singleton = None
+
+        with pytest.raises(ExternalLLMUnavailable, match="RuntimeError"):
+            OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+
+        # Audit row must record the failure (error_type, success=False)
+        rows = query("SELECT * FROM external_llm_calls", db_path=db_path)
+        assert len(rows) == 1
+        row = dict(rows[0])
+        assert row["success"] == 0
+        assert row["error_type"] == "RuntimeError"
+        assert row["endpoint"] == "chat.completions(tier2)"
+        # Content never written
+        assert "boom" not in json.dumps(row)
+
+    def test_sdk_exception_with_audit_failure_still_raises_unavailable(self, monkeypatch, db_path):
+        """If both SDK fails AND audit log write fails, primary error still surfaces."""
+        import nuri.llm.openai_client as mod
+        from nuri.llm.openai_client import ExternalLLMUnavailable, OpenAIClient
+
+        fake_sdk = MagicMock()
+        fake_sdk.chat.completions.create.side_effect = RuntimeError("network down")
+        fake_module = MagicMock()
+        fake_module.OpenAI = MagicMock(return_value=fake_sdk)
+        monkeypatch.setitem(__import__("sys").modules, "openai", fake_module)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
+        monkeypatch.delenv("NURI_DISABLE_EXTERNAL_LLM", raising=False)
+        mod._singleton = None
+
+        # Make audit log itself raise — wrapper must still raise primary error
+        def boom(*a, **kw):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(mod, "log_external_llm_call", boom)
+
+        with pytest.raises(ExternalLLMUnavailable, match="RuntimeError"):
+            OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+
+    def test_success_path_audit_failure_does_not_mask_result(self, fake_openai_text_success, db_path, monkeypatch):
+        """If SDK succeeds but audit log write fails, the response still reaches the caller."""
+        import nuri.llm.openai_client as mod
+        from nuri.llm.openai_client import OpenAIClient
+
+        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
+
+        def boom(*a, **kw):
+            raise OSError("readonly fs")
+
+        monkeypatch.setattr(mod, "log_external_llm_call", boom)
+
+        result = OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+        # Content returned despite audit log failure — observable contract upheld.
+        assert "데이터 완성도" in result
