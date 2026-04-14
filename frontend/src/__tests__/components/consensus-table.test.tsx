@@ -209,4 +209,16 @@ describe("ConsensusTable", () => {
     render(<ConsensusTable data={mockData} vix={null} />);
     expect(screen.queryByTestId("divergence-badge")).not.toBeInTheDocument();
   });
+
+  it("falls back to default tooltip text when divergence_reason is empty string", () => {
+    // Exercise the `row.divergence_reason || "기술지표 반대"` fallback branch.
+    const withEmptyReason = [{
+      ...mockData[0],
+      divergence_flag: true,
+      divergence_reason: "",
+    }];
+    render(<ConsensusTable data={withEmptyReason} vix={null} />);
+    const badge = screen.getByTestId("divergence-badge");
+    expect(badge).toHaveAttribute("title", "기술지표 반대");
+  });
 });
