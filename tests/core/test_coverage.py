@@ -15,6 +15,7 @@ import yaml
 from nuri.core.coverage import (
     DATA_THRESHOLDS,
     UNIVERSE_THRESHOLD,
+    US_ONLY_TABLES,
     CoverageCheck,
     _load_universe,
     compute_all_data_coverage,
@@ -228,3 +229,77 @@ class TestConstants:
         assert DATA_THRESHOLDS["analyst_ratings"] == 0.70
         assert DATA_THRESHOLDS["insider_trades"] == 0.50
         assert DATA_THRESHOLDS["superinvestors"] == 0.80
+
+
+# ───────────────────────────────────────────────
+# US_ONLY_TABLES — #288 KR "n/a (US-only)" marker
+# ───────────────────────────────────────────────
+
+
+class TestUsOnlyTables:
+    """Tables whose data source doesn't cover KR (yfinance .KS / SEC EDGAR)."""
+
+    def test_expected_tables_are_us_only(self):
+        """Exact membership — guards against accidental additions/removals."""
+        assert US_ONLY_TABLES == frozenset(
+            {
+                "analyst_ratings",
+                "insider_trades",
+                "superinvestors",
+                "estimates",
+                "earnings_surprises",
+            }
+        )
+
+    def test_prices_and_fundamentals_not_us_only(self):
+        """KR price + fundamental data IS available via yfinance/pykrx."""
+        assert "prices" not in US_ONLY_TABLES
+        assert "fundamentals" not in US_ONLY_TABLES
+
+    def test_data_coverage_detail_notes_kr_unavailable(self, universe_yaml, tmp_path):
+        """compute_data_coverage appends KR-unavailable note to detail for US-only tables."""
+        from nuri.core.db import get_db, init_db
+
+        db = tmp_path / "test.db"
+        init_db(db)
+        with get_db(db) as conn:
+            for t in ["AAPL", "MSFT", "GOOGL", "NVDA"]:
+                conn.execute(
+                    "INSERT INTO analyst_ratings (ticker, date, firm, action, to_grade) VALUES (?, ?, ?, ?, ?)",
+                    (t, "2026-04-14", "Firm", "up", "Buy"),
+                )
+
+        universe = _load_universe(universe_yaml)
+        check = compute_data_coverage("analyst_ratings", 0.70, universe, db_path=db)
+        assert check.passed is True
+        assert "KR n/a" in check.detail or "소스 미지원" in check.detail
+
+    def test_data_coverage_non_us_only_table_omits_kr_note(self, universe_yaml, tmp_path):
+        """Non-US-only tables (prices) should NOT have the KR note."""
+        import pandas as pd
+
+        from nuri.core.db import init_db, upsert_prices
+
+        db = tmp_path / "test.db"
+        init_db(db)
+        df = pd.DataFrame(
+            [
+                {
+                    "ticker": t,
+                    "date": "2026-04-14",
+                    "open": 1,
+                    "high": 2,
+                    "low": 0.5,
+                    "close": 1.5,
+                    "volume": 1000,
+                    "adj_close": 1.5,
+                }
+                for t in ["AAPL", "MSFT", "GOOGL", "NVDA"]
+            ]
+        )
+        upsert_prices(df, db_path=db)
+
+        universe = _load_universe(universe_yaml)
+        check = compute_data_coverage("prices", 0.95, universe, db_path=db)
+        assert "KR n/a" not in check.detail
+        assert "소스 미지원" not in check.detail
