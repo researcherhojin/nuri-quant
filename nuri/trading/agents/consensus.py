@@ -9,6 +9,7 @@
     python -m nuri.trading.agents.consensus
     python -m nuri.trading.agents.consensus --ticker TSLA
 """
+
 import argparse
 import logging
 from dataclasses import dataclass
@@ -32,16 +33,16 @@ logger = logging.getLogger(__name__)
 # 기본 가중치 (과거 데이터 없을 때)
 # 7→10 에이전트 확장: 기존 에이전트 비중 소폭 하향, 신규 3개 배분
 DEFAULT_WEIGHTS = {
-    "technical": 0.152,      # 16→15.2 (×0.95)
-    "fundamental": 0.114,    # 12→11.4
-    "macro": 0.114,          # 12→11.4
-    "risk": 0.19,            # 20→19 (거부권 유지)
-    "smart_money": 0.076,    # 8→7.6
-    "wallstreet": 0.105,     # 11→10.5
+    "technical": 0.152,  # 16→15.2 (×0.95)
+    "fundamental": 0.114,  # 12→11.4
+    "macro": 0.114,  # 12→11.4
+    "risk": 0.19,  # 20→19 (거부권 유지)
+    "smart_money": 0.076,  # 8→7.6
+    "wallstreet": 0.105,  # 11→10.5
     "korean_market": 0.076,  # 8→7.6 (.KS 종목에서만 실질 영향)
-    "options": 0.076,        # 8→7.6
-    "crypto": 0.047,         # 5→4.7
-    "retail": 0.05,          # 0→5% 활성화: WSB 역발상 시그널
+    "options": 0.076,  # 8→7.6
+    "crypto": 0.047,  # 5→4.7
+    "retail": 0.05,  # 0→5% 활성화: WSB 역발상 시그널
 }
 
 ALL_AGENTS = [
@@ -61,13 +62,16 @@ ALL_AGENTS = [
 @dataclass
 class ConsensusResult:
     """멀티 에이전트 합의 결과."""
+
     ticker: str
-    final_action: str       # "BUY", "SELL", "HOLD"
-    final_confidence: float # 0~100
-    agreement_rate: float   # 0~1 (동일 action 비율)
+    final_action: str  # "BUY", "SELL", "HOLD"
+    final_confidence: float  # 0~100
+    agreement_rate: float  # 0~1 (동일 action 비율)
     verdicts: list[AgentVerdict]
-    dissent: list[str]      # 반대 의견 에이전트 목록
-    reasoning: str          # 합의 근거 요약
+    dissent: list[str]  # 반대 의견 에이전트 목록
+    reasoning: str  # 합의 근거 요약
+    divergence_flag: bool = False  # TechnicalAgent 가 합의 BUY/SELL 에 정면 반대 (#5.10 JKHY 방지)
+    divergence_reason: str = ""  # flag 가 True 일 때 사용자에게 노출할 설명
 
 
 def _compute_weights(db_path=None) -> dict[str, float]:
@@ -105,6 +109,7 @@ def _compute_weights(db_path=None) -> dict[str, float]:
     # 에이전트별 적중률 계산
     # signals 필드에 에이전트 verdict가 JSON으로 저장되어 있으면 파싱
     import json
+
     agent_hits: dict[str, list[bool]] = {name: [] for name in DEFAULT_WEIGHTS}
 
     for row in rows:
@@ -187,9 +192,26 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
     agree_count = sum(1 for v in verdicts if v.action == final_action)
     agreement_rate = agree_count / len(verdicts) if verdicts else 0
     dissent = [
-        f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}"
-        for v in verdicts if v.action != final_action
+        f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}" for v in verdicts if v.action != final_action
     ]
+
+    # Divergence detection — STRATEGY §5.10 (JKHY, 2026-04-14) 재발 방지.
+    # 9개 fundamentals-ish 에이전트가 BUY 를 몰아주면 TechnicalAgent 의 SELL
+    # 반대가 묻힘. 합의 action 이 BUY/SELL 이고 technical 이 정확히 반대 action
+    # 이면 flag + reason 을 surface 해 사용자가 교차 검증하도록 한다.
+    # HOLD 는 "약한 반대" 로 간주해 flag 하지 않는다 (noise 억제).
+    divergence_flag = False
+    divergence_reason = ""
+    tech_v = next((v for v in verdicts if v.agent_name == "technical"), None)
+    if tech_v and final_action in ("BUY", "SELL"):
+        opposite = {"BUY": "SELL", "SELL": "BUY"}[final_action]
+        if tech_v.action == opposite:
+            divergence_flag = True
+            divergence_reason = (
+                f"기술지표 반대: TechnicalAgent 가 {tech_v.action} "
+                f"(conf {tech_v.confidence:.0f}) — 합의 {final_action} 과 충돌. "
+                f"근거: {tech_v.reasoning[:120]}"
+            )
 
     return ConsensusResult(
         ticker=ticker,
@@ -199,6 +221,8 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         verdicts=verdicts,
         dissent=dissent,
         reasoning=reasoning,
+        divergence_flag=divergence_flag,
+        divergence_reason=divergence_reason,
     )
 
 
@@ -237,16 +261,12 @@ def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
                 try:
                     verdicts.append(future.result())
                 except Exception as e:  # noqa: BLE001
-                    verdicts.append(
-                        AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
-                    )
+                    verdicts.append(AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}"))
         except concurrent.futures.TimeoutError:
             # 전체 batch timeout — 미완료 future는 폴백 verdict로
             for future, agent in futures.items():
                 if future not in completed:
-                    verdicts.append(
-                        AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃")
-                    )
+                    verdicts.append(AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃"))
     finally:
         # cancel_futures: 큐에 대기중인(아직 시작 안 한) future 취소
         # wait=False: 실행 중인 future가 끝날 때까지 기다리지 않음
@@ -310,7 +330,9 @@ def analyze_portfolio(db_path=None) -> list[ConsensusResult]:
     for ticker in tickers:
         result = analyze_ticker(ticker, db_path)
         results.append(result)
-        logger.info(f"{ticker}: {result.final_action} (conf={result.final_confidence:.0f}, agree={result.agreement_rate:.0%})")
+        logger.info(
+            f"{ticker}: {result.final_action} (conf={result.final_confidence:.0f}, agree={result.agreement_rate:.0%})"
+        )
     return results
 
 
@@ -409,8 +431,18 @@ def print_consensus(results: list[ConsensusResult], *, verbose: bool = False) ->
     print(f"  {'Ticker':<10} {'Action':<6} {'Conf':>5} {'Agree':>6} " + " ".join(f"{h:>5}" for h in header_agents))
     print(f"  {'-' * 110}")
 
-    agent_order = ["technical", "fundamental", "macro", "risk", "smart_money",
-                    "wallstreet", "korean_market", "options", "crypto", "retail"]
+    agent_order = [
+        "technical",
+        "fundamental",
+        "macro",
+        "risk",
+        "smart_money",
+        "wallstreet",
+        "korean_market",
+        "options",
+        "crypto",
+        "retail",
+    ]
 
     for r in sorted(results, key=lambda x: x.final_confidence, reverse=True):
         agent_map = {v.agent_name: v for v in r.verdicts}
@@ -423,8 +455,10 @@ def print_consensus(results: list[ConsensusResult], *, verbose: bool = False) ->
             else:
                 cols.append("--")
 
-        print(f"  {r.ticker:<10} {r.final_action:<6} {r.final_confidence:>4.0f} {r.agreement_rate:>5.0%} "
-              f"{' '.join(f'{c:>5}' for c in cols)}")
+        print(
+            f"  {r.ticker:<10} {r.final_action:<6} {r.final_confidence:>4.0f} {r.agreement_rate:>5.0%} "
+            f"{' '.join(f'{c:>5}' for c in cols)}"
+        )
 
     # 합의 supporters reasoning 출력 (verbose 모드 또는 단일 종목)
     show_supporters = verbose or len(results) == 1
@@ -433,7 +467,9 @@ def print_consensus(results: list[ConsensusResult], *, verbose: bool = False) ->
             supporters = [v for v in r.verdicts if v.action == r.final_action]
             if not supporters:
                 continue
-            print(f"\n  ▸ {r.ticker} {r.final_action} ({r.final_confidence:.0f}, agree={r.agreement_rate:.0%}) — supporters:")
+            print(
+                f"\n  ▸ {r.ticker} {r.final_action} ({r.final_confidence:.0f}, agree={r.agreement_rate:.0%}) — supporters:"
+            )
             for v in sorted(supporters, key=lambda x: x.confidence, reverse=True):
                 print(f"      {v.agent_name}({v.confidence:.0f}): {v.reasoning}")
 
@@ -448,6 +484,7 @@ def print_consensus(results: list[ConsensusResult], *, verbose: bool = False) ->
     # 가격 타겟 출력
     try:
         from nuri.trading.recommend.price_targets import calculate_targets, format_target_tree
+
         buy_hold = [r for r in results if r.final_action in ("BUY", "HOLD")]
         if buy_hold:
             print(f"\n{'=' * 85}")
@@ -464,6 +501,7 @@ def print_consensus(results: list[ConsensusResult], *, verbose: bool = False) ->
     # 외부 데이터 요약 출력
     try:
         from nuri.collectors.external import get_external
+
         tickers_with_data = set()
         for r in results:
             ext = get_external(r.ticker)
@@ -497,8 +535,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 멀티 에이전트 합의")
     parser.add_argument("--ticker", help="특정 종목만")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="합의 의견의 supporting verdicts reasoning 함께 출력")
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="합의 의견의 supporting verdicts reasoning 함께 출력"
+    )
     args = parser.parse_args()
 
     if args.ticker:
@@ -510,6 +549,7 @@ if __name__ == "__main__":
             logger.info(f"recommendations 테이블에 {saved}건 저장")
         # Decision Intelligence: 의사결정 저널 기록
         from nuri.trading.engine.decisions import record_decisions
+
         dec_count = record_decisions([result])
         logger.info(f"decisions 테이블에 {dec_count}건 기록")
     else:
@@ -520,5 +560,6 @@ if __name__ == "__main__":
             logger.info(f"recommendations 테이블에 {saved}건 저장 (frontend /decision 활성화)")
         # Decision Intelligence: 의사결정 저널 기록
         from nuri.trading.engine.decisions import record_decisions
+
         dec_count = record_decisions(results)
         logger.info(f"decisions 테이블에 {dec_count}건 기록")
