@@ -65,11 +65,11 @@ class FundamentalCollector(BaseCollector):
     def __init__(self):
         super().__init__("fundamental")
 
-    def collect(self, **kwargs) -> list[dict]:
-        """전 보유종목 펀더멘탈 수집."""
+    def collect(self, source: str = "portfolio", **kwargs) -> list[dict]:
+        """펀더멘탈 수집. source='universe' 시 S&P500/KOSPI200 전체 (#272 Phase 2b)."""
         import yfinance as yf
 
-        tickers = self._get_tickers()
+        tickers = self._get_tickers(source=source)
         if not tickers:
             self.logger.warning("수집할 종목이 없습니다")
             return []
@@ -141,13 +141,21 @@ def _upsert_fundamentals(records: list[dict]) -> int:
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Nuri-Quant 펀더멘탈 수집기 (yfinance)")
+    parser.add_argument(
+        "--source", default="portfolio", choices=["portfolio", "universe", "all"], help="ticker 소스 (#272 Phase 2b)"
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
     collector = FundamentalCollector()
-    count = collector.run()
+    count = collector.run(source=args.source)
 
     # 결과 출력
     rows = query(

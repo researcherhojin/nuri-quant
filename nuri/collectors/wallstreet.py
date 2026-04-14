@@ -6,6 +6,7 @@ yfinance에서 직접 수집. API 키 불필요.
 사용법:
     python -m nuri.collectors.wallstreet
 """
+
 import logging
 from typing import Any
 
@@ -23,15 +24,39 @@ class WallStreetCollector(BaseCollector):
     def __init__(self):
         super().__init__("wallstreet")
 
-    def collect(self, **kwargs) -> dict:
-        """전 보유종목 + 유니버스의 Wall Street 데이터 수집."""
+    def collect(self, source: str = "portfolio", **kwargs) -> dict:
+        """Wall Street 데이터 수집 (#272 Phase 2b: source 파라미터 지원).
+
+        Args:
+            source: 'portfolio' (default, 기존 동작 + 하드코딩 14개 extra) |
+                    'universe' (config/universe.yaml 전체) |
+                    'all' (portfolio ∪ universe)
+        """
         import yfinance as yf
 
-        tickers = get_tickers()
-        # 스캐너 주요 종목도 추가
-        extra = ["AAPL", "MSFT", "GOOG", "AMZN", "NVDA", "META", "NFLX",
-                 "JPM", "V", "MA", "UNH", "BA", "CRM", "ADBE"]
-        all_tickers = list(set(tickers + extra))
+        if source == "portfolio":
+            tickers = get_tickers()
+            # 기존 하드코딩 extra — backwards compat
+            extra = [
+                "AAPL",
+                "MSFT",
+                "GOOG",
+                "AMZN",
+                "NVDA",
+                "META",
+                "NFLX",
+                "JPM",
+                "V",
+                "MA",
+                "UNH",
+                "BA",
+                "CRM",
+                "ADBE",
+            ]
+            all_tickers = list(set(tickers + extra))
+        else:
+            # universe / all: _get_tickers로 위임
+            all_tickers = self._get_tickers(source=source)
 
         ratings = []
         earnings = []
@@ -48,11 +73,13 @@ class WallStreetCollector(BaseCollector):
                     short_pct = info.get("shortPercentOfFloat")
                     short_ratio = info.get("shortRatio")  # days to cover
                     if short_pct is not None:
-                        short_data.append({
-                            "ticker": ticker,
-                            "short_pct_float": round(float(short_pct) * 100, 2),
-                            "days_to_cover": float(short_ratio) if short_ratio else None,
-                        })
+                        short_data.append(
+                            {
+                                "ticker": ticker,
+                                "short_pct_float": round(float(short_pct) * 100, 2),
+                                "days_to_cover": float(short_ratio) if short_ratio else None,
+                            }
+                        )
                 except Exception:
                     pass
 
@@ -61,28 +88,36 @@ class WallStreetCollector(BaseCollector):
                 if ud is not None and not ud.empty:
                     for idx, row in ud.head(20).iterrows():
                         date_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
-                        ratings.append({
-                            "ticker": ticker,
-                            "date": date_str,
-                            "firm": row.get("Firm", ""),
-                            "to_grade": row.get("ToGrade", ""),
-                            "from_grade": row.get("FromGrade", ""),
-                            "action": row.get("Action", ""),
-                            "target_price": float(row["currentPriceTarget"]) if pd.notna(row.get("currentPriceTarget")) else None,
-                        })
+                        ratings.append(
+                            {
+                                "ticker": ticker,
+                                "date": date_str,
+                                "firm": row.get("Firm", ""),
+                                "to_grade": row.get("ToGrade", ""),
+                                "from_grade": row.get("FromGrade", ""),
+                                "action": row.get("Action", ""),
+                                "target_price": float(row["currentPriceTarget"])
+                                if pd.notna(row.get("currentPriceTarget"))
+                                else None,
+                            }
+                        )
 
                 # 2. Earnings Surprise
                 eh = t.earnings_history
                 if eh is not None and not eh.empty:
                     for idx, row in eh.iterrows():
                         quarter = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)
-                        earnings.append({
-                            "ticker": ticker,
-                            "quarter": quarter,
-                            "eps_actual": float(row["epsActual"]) if pd.notna(row.get("epsActual")) else None,
-                            "eps_estimate": float(row["epsEstimate"]) if pd.notna(row.get("epsEstimate")) else None,
-                            "surprise_pct": float(row["surprisePercent"]) if pd.notna(row.get("surprisePercent")) else None,
-                        })
+                        earnings.append(
+                            {
+                                "ticker": ticker,
+                                "quarter": quarter,
+                                "eps_actual": float(row["epsActual"]) if pd.notna(row.get("epsActual")) else None,
+                                "eps_estimate": float(row["epsEstimate"]) if pd.notna(row.get("epsEstimate")) else None,
+                                "surprise_pct": float(row["surprisePercent"])
+                                if pd.notna(row.get("surprisePercent"))
+                                else None,
+                            }
+                        )
 
                 # 3. Insider Trades (최근 20건)
                 ins = t.insider_transactions
@@ -90,20 +125,26 @@ class WallStreetCollector(BaseCollector):
                     for _, row in ins.head(20).iterrows():
                         date_str = str(row.get("Start Date", ""))[:10]
                         text = str(row.get("Text", ""))
-                        tx_type = "sale" if "sale" in text.lower() else "purchase" if "purchase" in text.lower() else "other"
-                        insiders.append({
-                            "ticker": ticker,
-                            "date": date_str,
-                            "insider_name": row.get("Insider", ""),
-                            "position": row.get("Position", ""),
-                            "transaction_type": tx_type,
-                            "shares": float(row["Shares"]) if pd.notna(row.get("Shares")) else None,
-                            "value": float(row["Value"]) if pd.notna(row.get("Value")) else None,
-                        })
+                        tx_type = (
+                            "sale" if "sale" in text.lower() else "purchase" if "purchase" in text.lower() else "other"
+                        )
+                        insiders.append(
+                            {
+                                "ticker": ticker,
+                                "date": date_str,
+                                "insider_name": row.get("Insider", ""),
+                                "position": row.get("Position", ""),
+                                "transaction_type": tx_type,
+                                "shares": float(row["Shares"]) if pd.notna(row.get("Shares")) else None,
+                                "value": float(row["Value"]) if pd.notna(row.get("Value")) else None,
+                            }
+                        )
 
-                self.logger.info(f"  {ticker}: {len([r for r in ratings if r['ticker']==ticker])}ratings, "
-                                f"{len([e for e in earnings if e['ticker']==ticker])}earnings, "
-                                f"{len([i for i in insiders if i['ticker']==ticker])}insider")
+                self.logger.info(
+                    f"  {ticker}: {len([r for r in ratings if r['ticker'] == ticker])}ratings, "
+                    f"{len([e for e in earnings if e['ticker'] == ticker])}earnings, "
+                    f"{len([i for i in insiders if i['ticker'] == ticker])}insider"
+                )
 
             except Exception as e:
                 self.logger.debug(f"{ticker}: {e}")
@@ -170,26 +211,40 @@ def _save_short_interest(records, db_path=None):
     from datetime import date
 
     from nuri.collectors.external import save_external
+
     today = str(date.today())
     count = 0
     for r in records:
         save_external(
-            "short_interest", r["ticker"], "short_pct_float",
-            str(r["short_pct_float"]), r["short_pct_float"],
+            "short_interest",
+            r["ticker"],
+            "short_pct_float",
+            str(r["short_pct_float"]),
+            r["short_pct_float"],
             details=f"days_to_cover={r.get('days_to_cover', 'N/A')}",
-            target_date=today, db_path=db_path,
+            target_date=today,
+            db_path=db_path,
         )
         count += 1
     return count
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Nuri-Quant Wall Street 데이터 수집기")
+    parser.add_argument(
+        "--source", default="portfolio", choices=["portfolio", "universe", "all"], help="ticker 소스 (#272 Phase 2b)"
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     collector = WallStreetCollector()
-    collector.run()
+    collector.run(source=args.source)
 
     # 요약
     from nuri.core.db import query
+
     for table in ["analyst_ratings", "earnings_surprises", "insider_trades"]:
         rows = query(f"SELECT COUNT(*) as c FROM {table}")
         print(f"  {table}: {rows[0]['c']}건")
