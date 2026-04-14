@@ -64,21 +64,18 @@ class EstimatesCollector(BaseCollector):
         if source != "portfolio":
             _yflog.setLevel(_logging.CRITICAL)
 
-        iterator = tqdm(us_tickers, desc=f"  estimates [{source}]", unit="tk", disable=len(us_tickers) < 20)
-        for ticker in iterator:
+        # Parallel yfinance fetch — 10 concurrent OK
+        import concurrent.futures
+
+        def _fetch_one(ticker: str) -> tuple[str, dict | None, str]:
             try:
                 info = yf.Ticker(ticker).info
                 if not info or "regularMarketPrice" not in info:
-                    skipped.append(ticker)
-                    continue
-
+                    return ticker, None, "skipped"
                 num_analysts = _safe_int(info.get("numberOfAnalystOpinions"))
                 target_mean = _safe_float(info.get("targetMeanPrice"))
-                # 분석가 데이터 없으면 스킵
                 if not num_analysts and not target_mean:
-                    skipped.append(ticker)
-                    continue
-
+                    return ticker, None, "skipped"
                 record = {
                     "ticker": ticker,
                     "date": today,
@@ -90,11 +87,27 @@ class EstimatesCollector(BaseCollector):
                     "num_analysts": num_analysts,
                     "current_price": _safe_float(info.get("currentPrice") or info.get("regularMarketPrice")),
                 }
-                results.append(record)
-
+                return ticker, record, "ok"
             except Exception:
-                failed.append(ticker)
-                continue
+                return ticker, None, "failed"
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+            futures = {ex.submit(_fetch_one, t): t for t in us_tickers}
+            iterator = tqdm(
+                concurrent.futures.as_completed(futures),
+                total=len(us_tickers),
+                desc=f"  estimates [{source}]",
+                unit="tk",
+                disable=len(us_tickers) < 20,
+            )
+            for fut in iterator:
+                ticker, record, status = fut.result()
+                if status == "ok":
+                    results.append(record)
+                elif status == "skipped":
+                    skipped.append(ticker)
+                else:
+                    failed.append(ticker)
 
         # 노이즈 억제 해제
         _yflog.setLevel(_orig_level)

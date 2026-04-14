@@ -8,11 +8,39 @@ All collectors inherit `BaseCollector` (`base.py`):
 2. Implement `save(data) -> int` — persist to DB via `nuri/core/db.py` functions
 3. External code calls `run()` which does `collect()` → `save()` with logging and timing
 
-## Ticker Filtering
+## Ticker Filtering + Source
 
-`_get_tickers(market=)` filters portfolio tickers:
-- `"us"` — excludes `.KS` suffix tickers
-- `"kr"` — includes only `.KS` suffix tickers
+`_get_tickers(market=, source=)` (#272 Phase 2b):
+- `market`: `"us"` (no `.KS`) | `"kr"` (only `.KS`) | `None` (전체)
+- `source`: `"portfolio"` (default, 보유종목 — `SELECT FROM portfolio`) | `"universe"` (`config/universe.yaml` 전체 ~746) | `"all"` (union)
+
+CLI: `--source` flag is the standard way to switch (stock, stock_kr, fundamental, wallstreet, estimates, technical, events, news).
+
+## Parallelism Pattern (yfinance vs KRX) ⚠️
+
+**yfinance**: 10 concurrent threads OK. Use `ThreadPoolExecutor(max_workers=10)`.
+**KRX (pykrx)**: rate-limits aggressively. Use sequential + 100ms delay.
+
+| Collector | Source | Parallelism | Why |
+|-----------|--------|-------------|-----|
+| stock, fundamental, wallstreet, estimates | yfinance | **10 threads** | API tolerates concurrency |
+| stock_kr | pykrx (KRX) | **sequential + 0.1s sleep** | First ~60 fast then server hangs |
+| ark, finviz | yfinance/finviz | small loop | <20 items, no benefit |
+
+Standard parallel pattern (consistent across yfinance collectors):
+```python
+def _fetch_one(ticker: str) -> tuple[str, ...]:
+    """Returns (ticker, result, status)."""
+    ...
+
+with ThreadPoolExecutor(max_workers=10) as ex:
+    futures = {ex.submit(_fetch_one, t): t for t in tickers}
+    for fut in tqdm(as_completed(futures), total=len(tickers), desc=...):
+        ticker, result, status = fut.result()
+        ...  # aggregate in main thread
+```
+
+ThreadPoolExecutor caveat: `.result(timeout=)` cancels FUTURE only — underlying C extension call (e.g. pykrx) keeps running. **Don't rely on timeout for cancellable hangs**. Sequential + delay for hanging APIs (KRX).
 
 ## OpenBB Local Import Pattern
 

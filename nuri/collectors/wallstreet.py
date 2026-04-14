@@ -74,101 +74,117 @@ class WallStreetCollector(BaseCollector):
         if source != "portfolio":
             _yflog.setLevel(_logging.CRITICAL)
 
-        try:
-            self.logger.info(f"Wall Street 수집 대상: {len(all_tickers)}종목 (source={source})")
-            iterator = tqdm(all_tickers, desc=f"  wallstreet [{source}]", unit="tk", disable=len(all_tickers) < 20)
-        except Exception:
-            iterator = all_tickers
+        self.logger.info(f"Wall Street 수집 대상: {len(all_tickers)}종목 (source={source})")
 
-        for ticker in iterator:
+        # Parallel yfinance fetch — 10 concurrent OK (yfinance는 KRX와 달리 관대)
+        # 순차 (746 × 4-5s with 4 API calls/ticker) = 50+분 → parallel 10 = 약 5분
+        import concurrent.futures
+
+        def _fetch_one(ticker: str) -> tuple[str, dict]:
+            """Returns (ticker, {ratings, earnings, insiders, short_data}) or raises."""
+            t = yf.Ticker(ticker)
+            local_ratings, local_earnings, local_insiders, local_short = [], [], [], []
+
+            # 0. Short Interest
             try:
-                t = yf.Ticker(ticker)
+                info = t.info or {}
+                short_pct = info.get("shortPercentOfFloat")
+                short_ratio = info.get("shortRatio")
+                if short_pct is not None:
+                    local_short.append(
+                        {
+                            "ticker": ticker,
+                            "short_pct_float": round(float(short_pct) * 100, 2),
+                            "days_to_cover": float(short_ratio) if short_ratio else None,
+                        }
+                    )
+            except Exception:
+                pass
 
-                # 0. Short Interest (공매도 비율)
-                try:
-                    info = t.info or {}
-                    short_pct = info.get("shortPercentOfFloat")
-                    short_ratio = info.get("shortRatio")  # days to cover
-                    if short_pct is not None:
-                        short_data.append(
-                            {
-                                "ticker": ticker,
-                                "short_pct_float": round(float(short_pct) * 100, 2),
-                                "days_to_cover": float(short_ratio) if short_ratio else None,
-                            }
-                        )
-                except Exception:
-                    pass
-
-                # 1. Analyst Ratings (최근 20건)
-                ud = t.upgrades_downgrades
-                if ud is not None and not ud.empty:
-                    for idx, row in ud.head(20).iterrows():
-                        date_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
-                        ratings.append(
-                            {
-                                "ticker": ticker,
-                                "date": date_str,
-                                "firm": row.get("Firm", ""),
-                                "to_grade": row.get("ToGrade", ""),
-                                "from_grade": row.get("FromGrade", ""),
-                                "action": row.get("Action", ""),
-                                "target_price": float(row["currentPriceTarget"])
-                                if pd.notna(row.get("currentPriceTarget"))
-                                else None,
-                            }
-                        )
-
-                # 2. Earnings Surprise
-                eh = t.earnings_history
-                if eh is not None and not eh.empty:
-                    for idx, row in eh.iterrows():
-                        quarter = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)
-                        earnings.append(
-                            {
-                                "ticker": ticker,
-                                "quarter": quarter,
-                                "eps_actual": float(row["epsActual"]) if pd.notna(row.get("epsActual")) else None,
-                                "eps_estimate": float(row["epsEstimate"]) if pd.notna(row.get("epsEstimate")) else None,
-                                "surprise_pct": float(row["surprisePercent"])
-                                if pd.notna(row.get("surprisePercent"))
-                                else None,
-                            }
-                        )
-
-                # 3. Insider Trades (최근 20건)
-                ins = t.insider_transactions
-                if ins is not None and not ins.empty:
-                    for _, row in ins.head(20).iterrows():
-                        date_str = str(row.get("Start Date", ""))[:10]
-                        text = str(row.get("Text", ""))
-                        tx_type = (
-                            "sale" if "sale" in text.lower() else "purchase" if "purchase" in text.lower() else "other"
-                        )
-                        insiders.append(
-                            {
-                                "ticker": ticker,
-                                "date": date_str,
-                                "insider_name": row.get("Insider", ""),
-                                "position": row.get("Position", ""),
-                                "transaction_type": tx_type,
-                                "shares": float(row["Shares"]) if pd.notna(row.get("Shares")) else None,
-                                "value": float(row["Value"]) if pd.notna(row.get("Value")) else None,
-                            }
-                        )
-
-                # universe 모드(20종목 이상)는 per-ticker 로그 억제 — tqdm bar로 대체
-                if len(all_tickers) < 20:
-                    self.logger.info(
-                        f"  {ticker}: {len([r for r in ratings if r['ticker'] == ticker])}ratings, "
-                        f"{len([e for e in earnings if e['ticker'] == ticker])}earnings, "
-                        f"{len([i for i in insiders if i['ticker'] == ticker])}insider"
+            # 1. Analyst Ratings
+            ud = t.upgrades_downgrades
+            if ud is not None and not ud.empty:
+                for idx, row in ud.head(20).iterrows():
+                    date_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
+                    local_ratings.append(
+                        {
+                            "ticker": ticker,
+                            "date": date_str,
+                            "firm": row.get("Firm", ""),
+                            "to_grade": row.get("ToGrade", ""),
+                            "from_grade": row.get("FromGrade", ""),
+                            "action": row.get("Action", ""),
+                            "target_price": float(row["currentPriceTarget"])
+                            if pd.notna(row.get("currentPriceTarget"))
+                            else None,
+                        }
                     )
 
-            except Exception as e:
-                failed.append(ticker)
-                self.logger.debug(f"{ticker}: {e}")
-                continue
+            # 2. Earnings Surprise
+            eh = t.earnings_history
+            if eh is not None and not eh.empty:
+                for idx, row in eh.iterrows():
+                    quarter = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)
+                    local_earnings.append(
+                        {
+                            "ticker": ticker,
+                            "quarter": quarter,
+                            "eps_actual": float(row["epsActual"]) if pd.notna(row.get("epsActual")) else None,
+                            "eps_estimate": float(row["epsEstimate"]) if pd.notna(row.get("epsEstimate")) else None,
+                            "surprise_pct": float(row["surprisePercent"])
+                            if pd.notna(row.get("surprisePercent"))
+                            else None,
+                        }
+                    )
+
+            # 3. Insider Trades
+            ins = t.insider_transactions
+            if ins is not None and not ins.empty:
+                for _, row in ins.head(20).iterrows():
+                    date_str = str(row.get("Start Date", ""))[:10]
+                    text = str(row.get("Text", ""))
+                    tx_type = (
+                        "sale" if "sale" in text.lower() else "purchase" if "purchase" in text.lower() else "other"
+                    )
+                    local_insiders.append(
+                        {
+                            "ticker": ticker,
+                            "date": date_str,
+                            "insider_name": row.get("Insider", ""),
+                            "position": row.get("Position", ""),
+                            "transaction_type": tx_type,
+                            "shares": float(row["Shares"]) if pd.notna(row.get("Shares")) else None,
+                            "value": float(row["Value"]) if pd.notna(row.get("Value")) else None,
+                        }
+                    )
+
+            return ticker, {
+                "ratings": local_ratings,
+                "earnings": local_earnings,
+                "insiders": local_insiders,
+                "short": local_short,
+            }
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+            futures = {ex.submit(_fetch_one, t): t for t in all_tickers}
+            iterator = tqdm(
+                concurrent.futures.as_completed(futures),
+                total=len(all_tickers),
+                desc=f"  wallstreet [{source}]",
+                unit="tk",
+                disable=len(all_tickers) < 20,
+            )
+            for fut in iterator:
+                ticker = futures[fut]
+                try:
+                    _, data = fut.result()
+                    ratings.extend(data["ratings"])
+                    earnings.extend(data["earnings"])
+                    insiders.extend(data["insiders"])
+                    short_data.extend(data["short"])
+                except Exception as e:
+                    failed.append(ticker)
+                    self.logger.debug(f"{ticker}: {e}")
 
         # 노이즈 억제 해제
         _yflog.setLevel(_orig_level)
