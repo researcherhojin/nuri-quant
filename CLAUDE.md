@@ -44,6 +44,14 @@ python -m nuri.collectors.estimates     # Analyst consensus (OpenBB)
 make wallstreet                         # analyst ratings, earnings, insider trades
 make filings                            # SEC filings
 
+# Universe (#272)
+make universe-sync                      # Dry-run US+KR universe sync (Wikipedia S&P 500 + KRX KOSPI 200)
+make universe-sync-us                   # US-only dry-run
+make universe-sync-kr                   # KR-only dry-run (requires: uv pip install finance-datareader)
+make universe-sync-apply                # Apply universe.yaml updates (additions only — manual ETFs preserved)
+make collect-universe                   # Collect ALL universe data (prices/fundamentals/wallstreet/estimates for US+KR)
+make verify-universe-sync               # Smoke test — catches real universe API breakage
+
 # Analysis
 make analyze                            # portfolio + sector + risk
 python -m nuri.analysis.portfolio       # single module
@@ -157,7 +165,7 @@ All `make` targets use `.venv/bin/python` — activate the venv or use the full 
 ```
 nuri/
 ├── core/              # DB (sole sqlite3 importer), rules, signal_config, timezone, events, freshness
-├── collectors/        # 24 collector modules (BaseCollector subclasses + standalone, incl. KIS Open API)
+├── collectors/        # 26 collector modules (BaseCollector subclasses + standalone, incl. KIS Open API)
 ├── analysis/          # portfolio, risk, sector, charts, rebalance_advisor, evidence_charts
 ├── quant/             # Quantitative pipeline
 │   ├── regime/        # 10-regime classifier (6 base + 4 special), macro score, strategy map
@@ -216,6 +224,10 @@ nuri/
 - **OpenAI Tier 2 ZDR gate** (PR #294): `make report-llm`이 조용히 실패하면 `OPENAI_ZDR_APPROVED=1` 미설정이 원인. OpenAI ZDR 승인 후 `.env`에 설정. `NURI_DISABLE_EXTERNAL_LLM=1`로 전면 opt-out 가능. 정책: §4.4.3.
 - **fastapi < 0.129 pinned** (PR #291, #277): `openbb-core 1.6.7`이 `fastapi<0.129`를 요구하므로 pin됨. Dependabot 0.129+ 제안은 자동 무시 (`dependabot.yml`). openbb 제약 풀릴 때까지 유지.
 - **`pd.DataFrame` in-place mutation + 공유 mock 참조** (PR #294/#295): `_standardize(df, ticker)` 같은 헬퍼가 `df.columns = ...` / `df["new"] = ...` 로 in-place mutation하고 테스트에서 `mock.return_value = df_fixture` (동일 객체)가 병렬 스레드에 공유되면 race → `pandas.errors.InvalidIndexError`. **방어**: 함수 진입 시 `df = df.copy()`.
+- **외부 API 동시성 비대칭** (STRATEGY §5.9.2-3, PR #282/#283): yfinance는 10-thread parallel OK. **pykrx/KRX는 sequential + `time.sleep(0.1)` 필수** (rate-limit). `ThreadPoolExecutor.result(timeout=)` 은 future만 cancel — pykrx C-extension call은 계속 실행되어 메모리 leak + slowdown 누적. 새 외부 API 통합 시 동시성 측정 후 결정.
+- **Universe coverage 5-check gate** (PR #284/#286/#288/#296): `scripts/validate_universe.py` 는 prices/fundamentals/analyst/insider/super 5개 thresholds (≥95/80/70/50/80%) 검사. CI `Universe Coverage Validation` job 은 warning-only. `US_ONLY_TABLES` frozenset (analyst_ratings/insider_trades/superinvestors) 은 KR 에서 `n/a (US-only)` 표시 — 수집 실패 아닌 소스 한계. 새 테이블을 universe coverage 대상에 넣으려면 `check_universe_coverage.py` + `validate_universe.py` 둘 다 수정.
+- **추천 파이프라인 fundamentals-only 경고** (STRATEGY §5.10, 2026-04-14 JKHY 에피소드): `nuri/quant/chart_analysis.py` (BB/MACD/RSI) 는 존재하지만 `candidates.py` / `consensus.py` 에서 호출되지 않음. 즉 현재 BUY 추천은 fundamentals + analyst rating만 근거. 기술지표 하락 중인 종목에 upgrade만 따라가면 falling knife 가능. Tier 2 P1 A 에서 통합 예정. 그 전까지는 추천을 Investing.com 등 기술지표와 교차 검증.
+- **Commit message privacy scanning** (PR #289): `scripts/pre_push_check.sh` Section 4b가 `origin/main..HEAD` 범위의 unpushed commit message를 자동 스캔. 수동 확인은 `git log -1 --format=%B | .venv/bin/python scripts/check_privacy_leak.py --message` 또는 `.venv/bin/python scripts/check_privacy_leak.py --unpushed-commits`. 잡히는 패턴: broker name + ticker에 인접한 signed % (괄호 안 또는 뒤쪽). 스캐너가 본인의 문서나 PR 본문에서 이 패턴을 의심하면 placeholder (HWM/MDD 같은 false-positive whitelist 단어 또는 구체 티커 제거) 로 변경. 상세 룰: `docs/STRATEGY.md §4.4.1`.
 
 ## Harness File Map
 
