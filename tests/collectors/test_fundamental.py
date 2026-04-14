@@ -321,3 +321,85 @@ class TestFundamentalCollectorErrorHandling:
         c = FundamentalCollector()
         assert c.save([]) == 0
         assert c.save(None) == 0
+
+
+class TestUniverseModeCoverage:
+    """#272 Phase 2b: source 파라미터 + tqdm + 필드별 coverage 패치 커버리지."""
+
+    def test_collect_universe_source_passed_to_get_tickers(self, monkeypatch, db_with_portfolio):
+        """source='universe' 가 _get_tickers로 전달."""
+        from unittest.mock import MagicMock, patch
+
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        c = FundamentalCollector()
+        captured = {}
+
+        def fake_get(**kw):
+            captured.update(kw)
+            return []
+
+        monkeypatch.setattr(c, "_get_tickers", fake_get)
+        mock_yf = MagicMock()
+        import sys
+
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+        c.collect(source="universe")
+        assert captured.get("source") == "universe"
+
+    def test_collect_summary_with_per_field_coverage(self, monkeypatch, db_with_portfolio, caplog):
+        """20+ tickers + 데이터 있는 경우: 필드별 coverage table fired."""
+        import logging
+        from unittest.mock import MagicMock
+
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        c = FundamentalCollector()
+        # 25개 tickers, 모두 정상 반환
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: [f"T{i}" for i in range(25)])
+
+        def fake_ticker_info(ticker):
+            mock = MagicMock()
+            mock.info = {
+                "regularMarketPrice": 100.0,
+                "trailingPE": 25.0,
+                "forwardPE": 22.0,
+                "returnOnEquity": 0.15,
+                "revenueGrowth": 0.10,
+                "debtToEquity": 1.5,
+                "dividendYield": 0.02,
+            }
+            return mock
+
+        mock_yf = MagicMock()
+        mock_yf.Ticker.side_effect = fake_ticker_info
+        import sys
+
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+        with caplog.at_level(logging.INFO):
+            c.collect(source="universe")
+
+        # summary + per-field coverage logs
+        summary = [r for r in caplog.records if "펀더멘탈:" in r.message]
+        assert len(summary) >= 1
+        coverage_log = [r for r in caplog.records if "필드별 coverage" in r.message]
+        assert len(coverage_log) >= 1
+
+    def test_collect_skip_empty_info(self, monkeypatch, db_with_portfolio):
+        """info 비어있는 ticker는 skipped 카운트."""
+        from unittest.mock import MagicMock
+
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        c = FundamentalCollector()
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["EMPTY"])
+
+        mock_ticker = MagicMock()
+        mock_ticker.info = {}  # empty
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
+        import sys
+
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+        results = c.collect()
+        assert results == []  # skipped, no records
