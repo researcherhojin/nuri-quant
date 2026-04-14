@@ -68,7 +68,7 @@
 | 선택 | 이유 |
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드로 동시 읽기. `tmp_path`로 테스트 격리. |
-| **Hybrid LLM stack** (현재 휴면) | 정책: (a) portfolio·narrative·의사결정은 **local Ollama 한정** (data sovereignty). (b) 공개 RSS 헤드라인은 **OpenAI gpt-5.4-nano** 허용 (Tier 0, ~\$3.51/yr). **현재 상태**: production에서 LLM은 비활성. `OLLAMA_HOST` 미설정 → `make report-llm` 실패; `OPENAI_API_KEY` 미설정 → event_classifier가 regex fallback. 코드는 wired되어 있고 환경변수만 추가하면 즉시 활성화됨. §4.4.3 참조. |
+| **Hybrid LLM stack** | 정책: (a) portfolio·narrative·의사결정은 **local Ollama 한정** (data sovereignty). (b) 공개 RSS 헤드라인은 **OpenAI gpt-5.4-nano** 허용 (Tier 0, ~\$3.51/yr). **현재 상태**: OpenAI **active** (event_classifier 매일 ~100건, 2026-04-14 기준 누적 737 calls). Ollama는 휴면 (`OLLAMA_HOST` 미설정 → `make report-llm` 실패). 비활성화 원하면 `NURI_DISABLE_EXTERNAL_LLM=1`. §4.4.3 참조. |
 | OpenBB + yfinance (not Bloomberg) | 무료 데이터. OpenBB 추상화 → provider 교체 용이. yfinance는 폴백. |
 | GitHub Actions (not Jenkins) | 오픈소스 무료 tier. lint + test + coverage + security 자동화. |
 
@@ -422,15 +422,14 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 이 섹션은 **앞으로 할 일**만 기록한다. 완료된 항목은 git log + closed PR + closed issue가 진실 source. 새 작업을 시작하기 전에 이 순서를 확인하고, 새 발견은 GitHub 이슈로 등록한 뒤 이 표에 추가한다.
 
-### Tier 1 — 완료 (2026-04-13)
+### Tier 1 — 완료 (2026-04-13 ~ 04-14)
 
 | # | 항목 | 이슈 | PR | 비고 |
 |---|------|------|----|------|
 | 1 | **i18n constants extraction** | [#226](https://github.com/researcherhojin/nuri-quant/issues/226) | #230, #231 | `lib/strings.ts` 에 ~145개 한국어 상수 추출. 19 파일 마이그레이션 완료. |
 | 2 | **하네스 계층화** | — | #229 | Fowler Guide/Sensor 기반 구조화: CLAUDE.md 슬림 (511→238줄) + 7 scoped CLAUDE.md + AGENTS.md + 4 hooks |
 | 3 | **티커 기반 First-Run 온보딩 UX** | [#133](https://github.com/researcherhojin/nuri-quant/issues/133) | #234, #235 | `/explore` 페이지 + 티커 검색/분석 API. 커버리지 보강 포함. |
-
-> #227 (배당 데이터)은 active 계좌 단타 전략에서 의사결정 변수가 아니므로 Tier 2로 강등 (2026-04-13 결정).
+| 4 | **연 배당금 / 배당 수익률 데이터** | [#227](https://github.com/researcherhojin/nuri-quant/issues/227) | #270 | `dividendRate` (연 배당금 USD) + `dividend_yield_pct` (백분율) 컬럼 추가. fundamentals 테이블 마이그레이션 18-19. 2026-04-14 머지. |
 
 ### Tier 2 — 다음 1 달 (P1)
 
@@ -441,8 +440,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 1 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거 |
 | 2 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
 | 3 | **Privacy scanner ticker+PnL pattern** | — | security | 현재 broker name + monetary literal만 차단. ticker와 PnL이 같은 commit message/PR 본문에 있을 때 패턴 감지 추가. PR #202 commit message leak 같은 경우 방지 |
-| 4 | **LLM 휴면 코드 결정** | — | refactor | `nuri/llm/{report,event_classifier,openai_client}.py` 현재 production 비활성 (OLLAMA_HOST/OPENAI_API_KEY 미설정). 유지 vs 제거 vs 재활성화 결정 필요 |
-| 5 | **연 배당금 / 배당 수익률 데이터** | [#227](https://github.com/researcherhojin/nuri-quant/issues/227) | feat(collectors) | Tier 1에서 강등 후 PR [#270](https://github.com/researcherhojin/nuri-quant/pull/270) 진행 중 (`feat/227-dividend-data` 브랜치). pension 계좌 별도 surface 필요 시 재평가 |
+| 4 | **Ollama LLM 휴면 코드 결정** | — | refactor | `nuri/llm/report.py` Ollama 의존 (현재 OLLAMA_HOST 미설정으로 비활성). OpenAI event_classifier는 active (737 calls 누적). Ollama 부분 유지 vs 제거 결정 필요 |
 
 ### Tier 3 — 다음 분기 (P2)
 

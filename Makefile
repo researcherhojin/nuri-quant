@@ -305,6 +305,7 @@ full-scan:
 	$(PYTHON) -m nuri.trading.recommend.candidates
 	$(PYTHON) -m nuri.trading.agents.consensus
 	$(PYTHON) -m nuri.trading.swing.scanner
+	$(PYTHON) -m nuri.trading.swing.rules
 	@echo "\n=== Phase F: 가격 타겟 + 리밸런스 ==="
 	$(PYTHON) -m nuri.trading.recommend.price_targets
 	$(PYTHON) -m nuri.analysis.rebalance_advisor
