@@ -475,6 +475,25 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 
 **룰**: `gstack-codex` 등 외부 review tool 또는 사용자 review 단계 전에 ship 금지. 자동화된 integration test가 review 대체 가능.
 
+### 5.10 추천 파이프라인의 도구 사각지대 (JKHY 에피소드, 2026-04-14)
+
+**상황**: 세션 종료 직전 universe-wide BUY 추천 7종목 (TMUS/JKHY/V/MA/BX/ANET/NFLX) 제시. 사용자가 Investing.com 확인 → JKHY "적극 매도" (기술지표 종합). 시스템 추천과 정면 모순.
+
+**원인 (3층)**:
+
+1. **도구는 있으나 연결 안 됨** — `nuri/quant/chart_analysis.py` (BB/MACD/RSI/추세선) 구현 존재하지만, 추천 파이프라인 (`candidates.py`, `consensus.py`) 에서 호출하지 않음. "구현 = 사용"이 아님.
+2. **Fundamentals-only 추천** — 애널리스트 upgrade + ROE/PE 기반 Buy 신호만 사용. 가격 모멘텀/추세 완전 무시. 기본 시스템 design이 한 축에만 의존.
+3. **애널리스트 신호의 lag 속성 간과** — 애널리스트 target은 이미 오른 주식을 뒤늦게 upgrade하는 경향. 하락 중인 종목에 "upgrade + 30% upside"가 나오면 falling knife 신호일 수 있음. JKHY earnings surprise 4Q 연속 +0.0~0.2% = "soft beat" 성장 stall 신호도 놓침.
+
+**재발 방지 룰**:
+- 추천 내기 전 **반드시** 4개 축 통과: (a) fundamentals, (b) technicals, (c) earnings quality, (d) 시장 환경 (VIX/F&G/RSI)
+- "System has the tool" ≠ "Pipeline uses it". 통합 경로를 explicit 하게 테스트로 검증
+- 애널리스트 target upside + 현재가가 52주 고점/저점에서 어디 있는지 **반드시** 확인
+
+**방어 실행 (Tier 2 P1)**: `chart_analysis.py`를 `candidates.py`/`consensus.py`에 통합 + "fundamentals vs technicals divergence" 플래그 + earnings quality (soft beat) 자동 감지.
+
+**일반화된 교훈**: "Repo에 기능이 있다고 해서 실제 상품 경로에서 사용되고 있는 것은 아니다." 새 기능 추가 시 production path integration test 필수.
+
 ---
 
 ## 6. SIEGE 11-Gate 명세

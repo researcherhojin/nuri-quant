@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Harness Principles
 
-See `docs/STRATEGY.md` §5.8 — six principles (모르면 읽는다 / 2번 실패하면 접근을 바꾼다 / 수정 후 실행한다 / 스코프를 지킨다 / 숫자를 grep한다 / 시스템이 차단한다). STRATEGY.md is the canonical source; do not duplicate the list here.
+See `docs/STRATEGY.md` §5.8 — seven principles (모르면 읽는다 / 2번 실패하면 접근을 바꾼다 / 사용자 워크플로로 검증한다 / 스코프를 지킨다 / 숫자를 grep한다 / 시스템이 차단한다 / 외부 API는 측정한다). STRATEGY.md is the canonical source; do not duplicate the list here.
+
+**Work status & changelog**: `docs/STRATEGY.md §7` manages Tier 1 (완료) / Tier 2 (next) backlog. Historical commits live in `git log` — do not re-document.
 
 ## Project
 
@@ -102,11 +104,12 @@ make rebalance        # 규칙 위반 감지 + 매도 수량 제시
 make evidence         # 5개 Plotly 증거 차트 생성 (data/reports/{date}/evidence/)
 make external         # 외부 데이터 요약 (TipRanks, Dataroma, ARK 등)
 make report            # Daily report (Discord/stdout)
-make report-llm       # Qwen3.5 LLM 리포트 생성 + 자동 저장
+make report-llm       # LLM 리포트 (OpenAI gpt-5.4-nano primary, §4.4.3 Tier 2 — OPENAI_ZDR_APPROVED=1 필수)
 
 # Lint + Test
 make lint             # ruff check
 make lint-fix         # ruff check --fix
+make lint-sh          # shellcheck scripts/*.sh (brew install shellcheck 필요)
 make test             # pytest tests/ -v --cov=nuri (full suite, ~50s local)
 make test-fast        # -m "not slow" — slow LLM tests 제외 (~24s, PR CI 기본)
 make test-slow        # slow tests only
@@ -169,7 +172,7 @@ nuri/
 │   ├── recommend/     # Candidates, rebalance, tracker, price_targets
 │   ├── swing/         # Market-wide scanner + rules
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
-├── api/               # FastAPI REST API (68 endpoints, routes/ incl. actions/opportunities/market-context)
+├── api/               # FastAPI REST API (69 endpoints, routes/ incl. actions/opportunities/market-context/coverage)
 ├── alerts/            # Discord daily report + bot, Telegram alerts
 └── llm/               # LLM report (Ollama) + OpenAI wrapper + event classifier
 ```
@@ -183,6 +186,7 @@ nuri/
 - **SIEGE 11-gate**: All recommendations must pass 11 conditions. See `nuri/trading/engine/CLAUDE.md`.
 - **20 signals, YAML registry**: `config/signals.yaml` drives `signal_backtest.py`. See `docs/ARCHITECTURE.md`.
 - **Regime classifier**: 6 base + 4 special regimes. See `docs/ARCHITECTURE.md`.
+- **External LLM gateway**: `nuri/llm/openai_client.py` is the ONLY external LLM entry point. Direct `import openai` forbidden. `chat_json` (Tier 0 JSON) / `chat_text` (Tier 2 narrative, ZDR-gated). Every call audit-logged to `external_llm_calls` (content never stored). Policy: `docs/STRATEGY.md §4.4.3`.
 
 ## Code Conventions
 
@@ -209,6 +213,9 @@ nuri/
 - **yfinance .KS fundamentals work**: Contrary to some code comments, `yfinance.Ticker("005930.KS").info` returns PE, ROE, margins, growth, debt for Korean individual stocks. ETFs return empty (expected). KIS API is NOT needed for fundamentals.
 - **pykrx API instability**: `get_market_fundamental`, `get_index_ohlcv`, `get_market_trading_value_by_date` — all broken (column name changes). KOSPI/KOSDAQ index collection uses yfinance `^KS11`/`^KQ11` fallback. Institutional flows currently unavailable.
 - **Macro event pipeline** (PR #249-#253): 15 categories (was 12), stale articles >7d filtered, confidence <0.3 excluded from event_score, recency weighting (today=1.0→3d=0.5), regime_hint requires 3+ events. Korean Market Agent reads `macro_events` table for `export_surge`/`demand_growth`.
+- **OpenAI Tier 2 ZDR gate** (PR #294): `make report-llm`이 조용히 실패하면 `OPENAI_ZDR_APPROVED=1` 미설정이 원인. OpenAI ZDR 승인 후 `.env`에 설정. `NURI_DISABLE_EXTERNAL_LLM=1`로 전면 opt-out 가능. 정책: §4.4.3.
+- **fastapi < 0.129 pinned** (PR #291, #277): `openbb-core 1.6.7`이 `fastapi<0.129`를 요구하므로 pin됨. Dependabot 0.129+ 제안은 자동 무시 (`dependabot.yml`). openbb 제약 풀릴 때까지 유지.
+- **`pd.DataFrame` in-place mutation + 공유 mock 참조** (PR #294/#295): `_standardize(df, ticker)` 같은 헬퍼가 `df.columns = ...` / `df["new"] = ...` 로 in-place mutation하고 테스트에서 `mock.return_value = df_fixture` (동일 객체)가 병렬 스레드에 공유되면 race → `pandas.errors.InvalidIndexError`. **방어**: 함수 진입 시 `df = df.copy()`.
 
 ## Harness File Map
 
@@ -228,6 +235,7 @@ This project uses layered context files. Root files load every session; director
 | `frontend/CLAUDE.md` | Next.js 16, design system, testing gotchas | When editing frontend/ |
 | `tests/CLAUDE.md` | Fixtures, mocks, testing gotchas | When editing tests/ |
 | `config/CLAUDE.md` | YAML structure, change procedures | When editing config/ |
+| `NEXT_SESSION.md` | Session handoff doc — 다음 세션 시작 시 먼저 읽음 | gitignored (personal) |
 
 User-scoped auto-memory lives outside the repo at `~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/memory/` (`MEMORY.md` index + per-topic files). Auto-loaded each session for cross-conversation continuity; not committed.
 
