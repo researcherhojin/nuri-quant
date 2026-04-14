@@ -173,3 +173,46 @@ class TestStockUniverseModeCoverage:
 
         info = [r for r in caplog.records if "source=universe" in r.message]
         assert len(info) >= 1
+
+
+class TestStockOneYearBackfill:
+    """#272 후속: `make collect-universe-1y` — P1 A (tech analysis) 선행 조건.
+
+    1y = 252 trading days (chart_analysis.LOOKBACK_52W 와 정확히 일치).
+    chart_analysis.analyze_chart lookback_days=365 default 과 맞춤.
+    """
+
+    def test_period_1y_maps_to_365_days_ago(self):
+        """_period_to_start_date('1y') → 365일 전 (±1일 허용, 월말 경계)."""
+        from datetime import datetime, timedelta
+
+        from nuri.collectors.stock import StockCollector
+        from nuri.core.timezone import kst_now
+
+        c = StockCollector()
+        start = c._period_to_start_date("1y")
+        parsed = datetime.strptime(start, "%Y-%m-%d")
+        now = kst_now().replace(tzinfo=None)
+        delta = (now - parsed).days
+        # mapping["1y"] = 365. ±2일 tolerance (timezone 경계 + 반올림).
+        assert 363 <= delta <= 367, f"1y should map to ~365 days, got {delta}"
+
+    def test_collect_1y_universe_logs_period(self, monkeypatch, db_with_portfolio, caplog):
+        """collect(period='1y', source='universe') — 1y 로그 + universe source 모두 기록."""
+        import logging
+
+        from nuri.collectors.stock import StockCollector
+
+        c = StockCollector()
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["SPY"])
+        monkeypatch.setattr(c, "_collect_ticker", lambda *a, **kw: None)
+
+        with caplog.at_level(logging.INFO):
+            c.collect(source="universe", period="1y")
+
+        # "수집 대상: ... (1y, source=universe)" 단일 메시지
+        hits = [r for r in caplog.records if "1y" in r.message and "source=universe" in r.message]
+        assert len(hits) >= 1, (
+            f"Expected log with both '1y' and 'source=universe'. "
+            f"Got: {[r.message for r in caplog.records if '수집' in r.message]}"
+        )
