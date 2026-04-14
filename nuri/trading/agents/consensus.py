@@ -178,10 +178,12 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
     # 리스크 에이전트 거부권
     veto_threshold = AGENT_CONFIG.get("consensus", {}).get("risk_veto_threshold", 80)
     risk_v = next((v for v in verdicts if v.agent_name == "risk"), None)
+    risk_veto_fired = False
     if risk_v and risk_v.action == "SELL" and risk_v.confidence >= veto_threshold:
         final_action = "SELL"
         final_confidence = risk_v.confidence
         reasoning = f"리스크 에이전트 거부권 발동: {risk_v.reasoning}"
+        risk_veto_fired = True
     else:
         final_action = max(action_scores, key=lambda k: action_scores[k])
         total_weight = sum(action_scores.values())
@@ -189,17 +191,10 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         supporters = [v for v in verdicts if v.action == final_action]
         reasoning = " | ".join(f"{v.agent_name}: {v.reasoning}" for v in supporters)
 
-    agree_count = sum(1 for v in verdicts if v.action == final_action)
-    agreement_rate = agree_count / len(verdicts) if verdicts else 0
-    dissent = [
-        f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}" for v in verdicts if v.action != final_action
-    ]
-
     # Divergence detection — STRATEGY §5.10 (JKHY, 2026-04-14) 재발 방지.
     # 9개 fundamentals-ish 에이전트가 BUY 를 몰아주면 TechnicalAgent 의 SELL
     # 반대가 묻힘. 합의 action 이 BUY/SELL 이고 technical 이 정확히 반대 action
-    # 이면 flag + reason 을 surface 해 사용자가 교차 검증하도록 한다.
-    # HOLD 는 "약한 반대" 로 간주해 flag 하지 않는다 (noise 억제).
+    # 이면 flag + reason 을 surface. HOLD 는 "약한 반대" 로 간주해 flag 하지 않음.
     divergence_flag = False
     divergence_reason = ""
     tech_v = next((v for v in verdicts if v.agent_name == "technical"), None)
@@ -212,6 +207,32 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
                 f"(conf {tech_v.confidence:.0f}) — 합의 {final_action} 과 충돌. "
                 f"근거: {tech_v.reasoning[:120]}"
             )
+
+    # Divergence mechanical penalty — flag 가 informational 인 P1 A1/A2 한계 보완.
+    # tech confidence 가 threshold 이상일 때만 final_action 을 HOLD 로 downgrade.
+    # 원래 계산된 final_confidence 는 **그대로 유지** (downstream 이 신뢰도 정보
+    # 로 사용할 수 있게). reasoning 에 penalty 근거 prepend. Risk veto 가 이미
+    # 발동했다면 precedence 에 따라 penalty skip.
+    divergence_threshold = AGENT_CONFIG.get("consensus", {}).get("divergence_technical_threshold", 80)
+    if divergence_flag and not risk_veto_fired and tech_v and tech_v.confidence >= divergence_threshold:
+        final_action = "HOLD"
+        reasoning = f"기술지표 반대로 downgrade (tech {tech_v.action} conf {tech_v.confidence:.0f} ≥ {divergence_threshold}) | {reasoning}"
+
+    # agreement_rate / dissent 는 **penalty 이전** 의 원 verdict 분포 기준으로
+    # 계산 — 사용자가 "10 중 몇 개가 HOLD 동의" 가 아니라 "원래 BUY/SELL 쪽은
+    # 몇 개 였는지" 를 볼 수 있어야 penalty 맥락을 이해할 수 있다.
+    pre_penalty_action = (
+        final_action
+        if not (divergence_flag and not risk_veto_fired and tech_v and tech_v.confidence >= divergence_threshold)
+        else ("BUY" if tech_v and tech_v.action == "SELL" else "SELL")
+    )
+    agree_count = sum(1 for v in verdicts if v.action == pre_penalty_action)
+    agreement_rate = agree_count / len(verdicts) if verdicts else 0
+    dissent = [
+        f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}"
+        for v in verdicts
+        if v.action != pre_penalty_action
+    ]
 
     return ConsensusResult(
         ticker=ticker,
