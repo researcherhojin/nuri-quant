@@ -62,8 +62,25 @@ class WallStreetCollector(BaseCollector):
         earnings = []
         insiders = []
         short_data = []
+        failed: list[str] = []
 
-        for ticker in all_tickers:
+        # universe 모드: yfinance ERROR 노이즈 억제
+        import logging as _logging
+
+        from tqdm import tqdm
+
+        _yflog = _logging.getLogger("yfinance")
+        _orig_level = _yflog.level
+        if source != "portfolio":
+            _yflog.setLevel(_logging.CRITICAL)
+
+        try:
+            self.logger.info(f"Wall Street 수집 대상: {len(all_tickers)}종목 (source={source})")
+            iterator = tqdm(all_tickers, desc=f"  wallstreet [{source}]", unit="tk", disable=len(all_tickers) < 20)
+        except Exception:
+            iterator = all_tickers
+
+        for ticker in iterator:
             try:
                 t = yf.Ticker(ticker)
 
@@ -140,17 +157,41 @@ class WallStreetCollector(BaseCollector):
                             }
                         )
 
-                self.logger.info(
-                    f"  {ticker}: {len([r for r in ratings if r['ticker'] == ticker])}ratings, "
-                    f"{len([e for e in earnings if e['ticker'] == ticker])}earnings, "
-                    f"{len([i for i in insiders if i['ticker'] == ticker])}insider"
-                )
+                # universe 모드(20종목 이상)는 per-ticker 로그 억제 — tqdm bar로 대체
+                if len(all_tickers) < 20:
+                    self.logger.info(
+                        f"  {ticker}: {len([r for r in ratings if r['ticker'] == ticker])}ratings, "
+                        f"{len([e for e in earnings if e['ticker'] == ticker])}earnings, "
+                        f"{len([i for i in insiders if i['ticker'] == ticker])}insider"
+                    )
 
             except Exception as e:
+                failed.append(ticker)
                 self.logger.debug(f"{ticker}: {e}")
                 continue
 
-        if short_data:
+        # 노이즈 억제 해제
+        _yflog.setLevel(_orig_level)
+
+        # 명확한 요약 (universe 모드)
+        if len(all_tickers) >= 20:
+            with_data = len(set(r["ticker"] for r in ratings + earnings + insiders))
+            sample_failed = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
+            self.logger.info(
+                "📊 Wall Street: %d종목 데이터 확보 / %d 실패 (총 %d) — failed: %s",
+                with_data,
+                len(failed),
+                len(all_tickers),
+                sample_failed or "없음",
+            )
+            self.logger.info(
+                "  Ratings: %d, Earnings: %d, Insiders: %d, Short interest: %d",
+                len(ratings),
+                len(earnings),
+                len(insiders),
+                len(short_data),
+            )
+        elif short_data:
             self.logger.info(f"  Short interest: {len(short_data)}종목 수집")
 
         return {"ratings": ratings, "earnings": earnings, "insiders": insiders, "short_interest": short_data}

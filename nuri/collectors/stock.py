@@ -48,7 +48,7 @@ class StockCollector(BaseCollector):
             self.logger.warning("수집할 미국 종목이 없습니다")
             return pd.DataFrame()
 
-        self.logger.info(f"수집 대상: {len(tickers)} 미국 종목 ({period})")
+        self.logger.info(f"수집 대상: {len(tickers)} 미국 종목 ({period}, source={source})")
 
         # 기간 계산 (KST 기준 — 수집은 한국 시간대에서 실행)
         from nuri.core.timezone import kst_now
@@ -56,11 +56,44 @@ class StockCollector(BaseCollector):
         end_date = kst_now().strftime("%Y-%m-%d")
         start_date = self._period_to_start_date(period)
 
-        frames = []
-        for ticker in tickers:
-            df = self._collect_ticker(ticker, start_date, end_date)
-            if df is not None and not df.empty:
-                frames.append(df)
+        # yfinance ERROR 노이즈 억제 (universe 모드 시 수십~수백 traceback 방지)
+        # ANSS, HES 같은 delisted 종목은 정상 케이스이지 buggy code 아님
+        import logging as _logging
+
+        _yflog = _logging.getLogger("yfinance")
+        _orig_level = _yflog.level
+        if source != "portfolio":
+            _yflog.setLevel(_logging.CRITICAL)
+
+        # tqdm progress bar — universe (543종목) / all 모드에서 진행 가시성 필수
+        from tqdm import tqdm
+
+        frames: list[pd.DataFrame] = []
+        succeeded: list[str] = []
+        failed: list[str] = []
+        try:
+            iterator = tqdm(tickers, desc=f"  prices [{source}]", unit="tk", disable=len(tickers) < 20)
+            for ticker in iterator:
+                df = self._collect_ticker(ticker, start_date, end_date)
+                if df is not None and not df.empty:
+                    frames.append(df)
+                    succeeded.append(ticker)
+                else:
+                    failed.append(ticker)
+        finally:
+            _yflog.setLevel(_orig_level)
+
+        # 명확한 요약 — 어디서 X 했는지 한눈에
+        self._failed_tickers = failed
+        if len(tickers) >= 20:
+            sample_failed = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
+            self.logger.info(
+                "📊 수집 결과: ✅ %d 성공 / ❌ %d 실패 (%.1f%%) — failed: %s",
+                len(succeeded),
+                len(failed),
+                len(succeeded) / len(tickers) * 100,
+                sample_failed or "없음",
+            )
 
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
