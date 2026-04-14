@@ -9,6 +9,8 @@ interface AgentVerdict {
   action: string;
   confidence: number;
   agreement: number;
+  divergence_flag?: boolean;
+  divergence_reason?: string;
 }
 
 interface Opportunity {
@@ -49,9 +51,11 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
         const data = await res.json();
         setAnalysis({
           ticker: opp.ticker,
-          action: data.action ?? "HOLD",
-          confidence: data.confidence ?? 0,
+          action: data.final_action ?? data.action ?? "HOLD",
+          confidence: data.final_confidence ?? data.confidence ?? 0,
           agreement: data.agreement_rate ? Math.round(data.agreement_rate * 100) : 0,
+          divergence_flag: data.divergence_flag ?? false,
+          divergence_reason: data.divergence_reason ?? "",
         });
       }
     } catch {
@@ -131,6 +135,15 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
           <span className="text-zinc-400">{OPPORTUNITY.VERDICT} {analysis.confidence}</span>
           <span className="text-zinc-600">|</span>
           <span className="text-zinc-500">{analysis.agreement}% 합의</span>
+          {analysis.divergence_flag && (
+            <span
+              className="text-amber-400 font-medium cursor-help"
+              title={analysis.divergence_reason || "기술지표 반대"}
+              data-testid="divergence-badge"
+            >
+              ⚠ Tech
+            </span>
+          )}
         </div>
       )}
 

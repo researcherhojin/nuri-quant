@@ -1,4 +1,5 @@
 """멀티 에이전트 합의 API — 캐시 적용 + SSE 스트리밍."""
+
 import asyncio
 import json
 import queue
@@ -23,16 +24,19 @@ def get_consensus():
         return _cache["data"]
 
     from nuri.trading.agents.consensus import analyze_portfolio
+
     results = analyze_portfolio()
 
     # VIX/regime 정보 (반포지션 배너용)
     regime_info = None
     try:
         from nuri.quant.regime.classifier import classify_regime
+
         regime = classify_regime()
         if regime:
             regime_info = {
-                "regime": regime.regime, "trend": regime.trend,
+                "regime": regime.regime,
+                "trend": regime.trend,
                 "vix": regime.details.get("vix") if regime.details else None,
                 "fear_greed": regime.details.get("fear_greed") if regime.details else None,
             }
@@ -50,6 +54,8 @@ def get_consensus():
                 "verdicts": [asdict(v) for v in r.verdicts],
                 "dissent": r.dissent,
                 "reasoning": r.reasoning,
+                "divergence_flag": r.divergence_flag,
+                "divergence_reason": r.divergence_reason,
             }
             for r in results
         ],
@@ -64,6 +70,7 @@ def get_consensus():
 def get_consensus_ticker(ticker: str):
     """단일 종목 멀티 에이전트 합의."""
     from nuri.trading.agents.consensus import analyze_ticker
+
     r = analyze_ticker(ticker.upper())
     return {
         "ticker": r.ticker,
@@ -73,6 +80,8 @@ def get_consensus_ticker(ticker: str):
         "verdicts": [asdict(v) for v in r.verdicts],
         "dissent": r.dissent,
         "reasoning": r.reasoning,
+        "divergence_flag": r.divergence_flag,
+        "divergence_reason": r.divergence_reason,
     }
 
 
@@ -85,6 +94,7 @@ async def stream_consensus_ticker(ticker: str):
 
         def _run():
             from nuri.trading.agents.consensus import stream_analyze_ticker
+
             for event_type, data in stream_analyze_ticker(ticker.upper()):
                 q.put((event_type, data))
             q.put(None)

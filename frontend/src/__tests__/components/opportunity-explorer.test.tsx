@@ -277,4 +277,100 @@ describe("OpportunityExplorer", () => {
       expect(screen.getByText("0% 합의")).toBeTruthy();
     });
   });
+
+  // ─── Divergence flag badge (P1 A2, STRATEGY §5.10) ──
+  it("renders divergence badge when divergence_flag=true in API response", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        final_action: "BUY",
+        final_confidence: 42,
+        agreement_rate: 0.3,
+        divergence_flag: true,
+        divergence_reason: "기술지표 반대: TechnicalAgent 가 SELL (conf 100)",
+      }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      const badge = screen.getByTestId("divergence-badge");
+      expect(badge).toBeTruthy();
+      expect(badge.getAttribute("title")).toContain("TechnicalAgent");
+    });
+  });
+
+  it("does not render divergence badge when divergence_flag=false", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        final_action: "HOLD",
+        final_confidence: 50,
+        agreement_rate: 0.5,
+        divergence_flag: false,
+        divergence_reason: "",
+      }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      expect(screen.getByText("HOLD")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("divergence-badge")).toBeNull();
+  });
+
+  it("uses final_action/final_confidence over legacy action/confidence", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        // Legacy keys present but final_* should win
+        action: "HOLD",
+        confidence: 0,
+        final_action: "BUY",
+        final_confidence: 75,
+        agreement_rate: 0.8,
+      }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      expect(screen.getByText("BUY")).toBeTruthy();
+      expect(screen.getByText("80% 합의")).toBeTruthy();
+    });
+  });
+
+  it("falls back to legacy action field when final_action is missing", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        action: "SELL",
+        confidence: 60,
+        agreement_rate: 0.55,
+      }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      expect(screen.getByText("SELL")).toBeTruthy();
+      expect(screen.getByText("55% 합의")).toBeTruthy();
+    });
+  });
+
+  it("uses default tooltip text when divergence_reason is empty string", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        final_action: "BUY",
+        final_confidence: 60,
+        agreement_rate: 0.4,
+        divergence_flag: true,
+        divergence_reason: "",
+      }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      const badge = screen.getByTestId("divergence-badge");
+      expect(badge.getAttribute("title")).toBe("기술지표 반대");
+    });
+  });
 });
