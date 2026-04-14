@@ -1471,3 +1471,196 @@ class TestPenaltyTelemetryEvent:
         from nuri.core.events import EVENT_TYPES
 
         assert "consensus_penalty_applied" in EVENT_TYPES
+
+
+class TestSaveToRecommendations:
+    """`save_to_recommendations` coverage (lines 415-480) — consensus → DB data path.
+
+    Critical data integrity: 합의 결과를 `recommendations` 테이블에 저장하지 않으면
+    frontend /decision + tracker.py 가 ghost 상태. REPLACE 동작 + price fallback +
+    agent_verdicts JSON 직렬화가 모두 올바른지 검증.
+    """
+
+    @staticmethod
+    def _result(ticker="TEST", action="BUY", conf=70.0):
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import ConsensusResult
+
+        return ConsensusResult(
+            ticker=ticker,
+            final_action=action,
+            final_confidence=conf,
+            agreement_rate=0.7,
+            verdicts=[
+                AgentVerdict("technical", ticker, "BUY", 75, "MACD bullish", {"rsi": 55}),
+                AgentVerdict("fundamental", ticker, "BUY", 65, "PE 적정", {"pe": 20}),
+            ],
+            dissent=["macro(HOLD, 40): neutral"],
+            reasoning="strong technical + fundamental",
+        )
+
+    def test_empty_results_returns_zero(self, db_path):
+        """빈 리스트 → 조기 종료, 0 반환."""
+        from nuri.trading.agents.consensus import save_to_recommendations
+
+        assert save_to_recommendations([], db_path=db_path) == 0
+
+    def test_happy_path_saves_and_serializes_verdicts(self, db_path):
+        """정상 플로우: recommendations 테이블에 row 저장 + JSON agent_verdicts 직렬화."""
+        import json
+
+        # Price fixture — entry_price 를 실제값으로 fetch 하도록
+        import pandas as pd
+
+        from nuri.core.db import query, upsert_prices
+        from nuri.trading.agents.consensus import save_to_recommendations
+
+        upsert_prices(
+            pd.DataFrame(
+                [
+                    {
+                        "ticker": "TEST",
+                        "date": "2026-04-15",
+                        "open": 100.0,
+                        "high": 105.0,
+                        "low": 98.0,
+                        "close": 102.5,
+                        "volume": 1000000,
+                        "adj_close": 102.5,
+                    }
+                ]
+            ),
+            db_path=db_path,
+        )
+        saved = save_to_recommendations([self._result()], db_path=db_path)
+        assert saved == 1
+
+        rows = query("SELECT * FROM recommendations WHERE ticker='TEST'", db_path=db_path)
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["ticker"] == "TEST"
+        assert row["action"] == "BUY"
+        assert row["confidence"] == 70.0
+        assert row["entry_price"] == 102.5
+
+        # agent_verdicts JSON round-trip
+        verdicts = json.loads(row["agent_verdicts"])
+        assert len(verdicts) == 2
+        assert verdicts[0]["agent_name"] == "technical"
+        assert verdicts[0]["action"] == "BUY"
+
+        # signals JSON 에 agreement_rate + dissent_count 포함
+        signals = json.loads(row["signals"])
+        assert signals["agreement_rate"] == 0.7
+        assert signals["dissent_count"] == 1
+
+    def test_missing_price_falls_back_to_zero(self, db_path):
+        """prices 테이블에 ticker 없으면 entry_price=0.0 (crash 아님)."""
+        from nuri.core.db import query
+        from nuri.trading.agents.consensus import save_to_recommendations
+
+        saved = save_to_recommendations([self._result(ticker="NOPX")], db_path=db_path)
+        assert saved == 1
+        row = query("SELECT entry_price FROM recommendations WHERE ticker='NOPX'", db_path=db_path)[0]
+        assert row["entry_price"] == 0.0
+
+    def test_same_day_ticker_bug_creates_duplicate_rows(self, db_path):
+        """**실제 동작 문서화 (bug)**: recommendations 에 `UNIQUE(date, ticker)` 제약 없음 →
+        `INSERT OR REPLACE` 가 실질 REPLACE 안 됨. duplicate row 생성.
+
+        NEXT_SESSION Tier 3 후보: schema 마이그레이션 or 코드에서 DELETE-then-INSERT.
+        지금은 현 동작을 회귀 가드로만 lock in.
+        """
+        from nuri.core.db import query
+        from nuri.trading.agents.consensus import save_to_recommendations
+
+        save_to_recommendations([self._result(action="BUY", conf=70)], db_path=db_path)
+        save_to_recommendations([self._result(action="HOLD", conf=50)], db_path=db_path)
+
+        rows = query("SELECT * FROM recommendations WHERE ticker='TEST' ORDER BY id", db_path=db_path)
+        assert len(rows) == 2, "Known schema bug: no UNIQUE constraint, REPLACE not effective"
+        assert rows[-1]["action"] == "HOLD"
+
+
+class TestComputeWeightsHitRates:
+    """`_compute_weights` hit_rates 적중률 경로 — lines 138-142 (BUY/SELL hit 분기)."""
+
+    def _seed_recommendations(self, db_path, n_records=15, outcome_sign=1):
+        """recommendations 테이블에 N 건의 verdict JSON 삽입. outcome_sign 으로 적중/오답 제어.
+
+        outcome_sign=1 → 모두 양수 outcome (BUY 적중, SELL 오답).
+        outcome_sign=-1 → 모두 음수 outcome (BUY 오답, SELL 적중).
+        """
+        import json
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+
+        with get_db(db_path) as conn:
+            for i in range(n_records):
+                verdicts = [
+                    {"agent_name": "technical", "action": "BUY"},
+                    {"agent_name": "fundamental", "action": "SELL"},
+                    {"agent_name": "macro", "action": "HOLD"},  # HOLD 는 hit 판정 제외
+                ]
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        today_kst(),
+                        f"T{i}",
+                        "BUY",
+                        50.0,
+                        None,
+                        json.dumps({"verdicts": verdicts}),
+                        100.0,
+                        0.05 * outcome_sign,
+                    ),
+                )
+
+    def test_hit_rate_outcome_read_bug_documented(self, db_path):
+        """**실제 동작 문서화 (bug)**: `_compute_weights` line 128 에서
+        `row.get("outcome_30d", 0) if hasattr(row, "get") else 0` 는 sqlite3.Row 에
+        `.get()` 메서드가 없어서 **항상 0 으로 fallback**. 즉 `outcome_sign` 에 무관하게
+        `is_positive=False` → BUY 는 전부 miss, SELL 은 전부 hit 로 기록됨.
+
+        결과: 15 건 positive outcome seed → fundamental(SELL) 가중치 ↑, technical(BUY) ↓
+        (의도된 반대 방향).
+
+        NEXT_SESSION Tier 3 후보: `row_factory=sqlite3.Row` + `row['outcome_30d']` 직접
+        접근 또는 `dict(row).get()` 패턴으로 교정.
+        """
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        self._seed_recommendations(db_path, n_records=15, outcome_sign=1)
+        weights = _compute_weights(db_path=db_path)
+
+        # 현 버그로 인해 outcome=0 → BUY miss / SELL hit
+        assert weights["fundamental"] > DEFAULT_WEIGHTS["fundamental"], (
+            "현 bug: outcome 항상 0 → SELL always hits → fundamental 가중치 상승"
+        )
+        assert weights["technical"] < DEFAULT_WEIGHTS["technical"], (
+            "현 bug: outcome 항상 0 → BUY always miss → technical 가중치 하락"
+        )
+        assert abs(sum(weights.values()) - 1.0) < 0.001
+
+    def test_empty_signals_string_skipped(self, db_path):
+        """signals 필드가 빈 문자열이면 해당 row skip — crash 없이 DEFAULT_WEIGHTS 반환."""
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        with get_db(db_path) as conn:
+            # 15 건 모두 signals 빈 문자열
+            for i in range(15):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"X{i}", "BUY", 50.0, None, "", 100.0, 0.05),
+                )
+
+        weights = _compute_weights(db_path=db_path)
+        # 빈 signals → hit_rate 계산 불가 → DEFAULT_WEIGHTS
+        assert weights == DEFAULT_WEIGHTS
