@@ -366,8 +366,12 @@ class TestExtraCoverage:
         # current 그대로 → diff 0
         assert result["us_added"] == []
 
-    def test_kr_runtime_error_when_kr_only(self, monkeypatch, tmp_path):
-        """market='kr' + RuntimeError → raise (FDR 설치됐지만 fetch 실패)."""
+    def test_kr_runtime_error_never_raises(self, monkeypatch, tmp_path):
+        """market='kr' + RuntimeError → NO raise (regression for retry noise bug).
+
+        이전 behavior: raise → BaseCollector retry 3회 → 같은 traceback 3개.
+        새 behavior: 항상 _kr_skipped 플래그 + warning 1줄. exit clean.
+        """
         path = tmp_path / "u.yaml"
         path.write_text(
             yaml.safe_dump(
@@ -379,8 +383,10 @@ class TestExtraCoverage:
             "nuri.collectors.universe_sync._fetch_kospi200", side_effect=RuntimeError("KRX returned malformed data")
         ):
             c = UniverseSyncCollector()
-            with pytest.raises(RuntimeError, match="malformed"):
-                c.collect(market="kr", dry_run=True)
+            # raise 안 함
+            result = c.collect(market="kr", dry_run=True)
+        assert c._kr_skipped is True
+        assert result["kr_added"] == []  # current preserved
 
     def test_kr_full_path_save_apply(self, monkeypatch, tmp_path, capsys):
         """KR fetch 성공 + apply: kr_kospi200 갱신 검증."""
@@ -409,6 +415,48 @@ class TestExtraCoverage:
             after = yaml.safe_load(f)
         assert "000660.KS" in after["kr_kospi200"]["tickers"]
         assert "005930.KS" in after["kr_kospi200"]["tickers"]
+
+
+class TestRunNoRetry:
+    """Override run() should NOT retry on permanent failures (regression for noise bug)."""
+
+    def test_run_kr_only_with_runtime_error_no_retry_explosion(self, monkeypatch, tmp_path, caplog):
+        """Real-world bug: FDR 설치된 상태에서 KRX 일시 장애 시 BaseCollector retry로
+        같은 traceback 3개 발생. Override run()으로 1회만 시도되어야 함."""
+        import logging
+
+        path = tmp_path / "u.yaml"
+        path.write_text(
+            yaml.safe_dump(
+                {
+                    "us_core": {"tickers": []},
+                    "us_sp500_extended": {"tickers": []},
+                    "kr_kospi200": {"tickers": ["005930.KS"]},
+                }
+            )
+        )
+        monkeypatch.setattr("nuri.collectors.universe_sync.UNIVERSE_PATH", path)
+
+        call_count = {"n": 0}
+
+        def failing_fetch():
+            call_count["n"] += 1
+            raise RuntimeError("KRX upstream 500")
+
+        with patch("nuri.collectors.universe_sync._fetch_kospi200", side_effect=failing_fetch):
+            c = UniverseSyncCollector()
+            with caplog.at_level(logging.WARNING):
+                # market='kr' 이지만 retry 없이 1회만 호출되어야
+                count = c.run(market="kr", dry_run=True)
+
+        # Critical assertion: fetch 호출 1회만 (retry 없음)
+        assert call_count["n"] == 1, f"Expected 1 fetch call, got {call_count['n']} (retry should be disabled)"
+        # Counts as 0 changes since KR fetch failed
+        assert count == 0
+        assert c._kr_skipped is True
+        # No retry warnings
+        retry_warnings = [r for r in caplog.records if "재시도" in r.message]
+        assert retry_warnings == [], f"Expected no retry warnings, got {[r.message for r in retry_warnings]}"
 
 
 class TestNoNoisyOutput:

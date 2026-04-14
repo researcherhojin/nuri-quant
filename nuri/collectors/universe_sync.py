@@ -179,18 +179,35 @@ class UniverseSyncCollector(BaseCollector):
             try:
                 fetched_kr = set(_fetch_kospi200())
                 self.logger.info("KOSPI 200: %d종목 fetched", len(fetched_kr))
-            except FileNotFoundError as e:
-                # FDR 미설치 — 설치 안내 후 KR sync 건너뜀 (raise 안 함, 재시도 무의미)
+            except (FileNotFoundError, RuntimeError) as e:
+                # 영구 실패 (FDR 미설치 / KRX upstream 장애) — 절대 raise 안 함:
+                # BaseCollector retry 3회로 동일 traceback 3개 발생 방지.
+                # 명시적 --market kr 호출자는 _kr_skipped 플래그로 실패 감지 가능.
                 self.logger.warning("KR sync 건너뜀: %s", e)
-                self._kr_skipped = True
-            except RuntimeError as e:
-                # FDR 설치됐지만 fetch 실패 — 명시적 KR 요청 시만 raise
-                self.logger.warning("KOSPI 200 fetch 실패: %s", e)
-                if self._market_filter == "kr":
-                    raise
                 self._kr_skipped = True
 
         return compute_diff(current_us, current_kr, fetched_us, fetched_kr)
+
+    def run(self, **kwargs) -> int:
+        """Override BaseCollector.run() — universe_sync 실패는 transient 아니므로 retry 비활성.
+
+        BaseCollector는 모든 Exception에 3회 retry. 이는 network blip 같은 transient용.
+        Universe sync 실패는 영구적 (FDR 미설치 / KRX API 변경 / Wikipedia 404):
+        retry해도 같은 traceback 3개만 더 출력. 따라서 1회만 시도.
+        """
+        from nuri.core.timezone import kst_now
+
+        self.logger.info("[%s] 수집 시작", self.name)
+        start = kst_now()
+        try:
+            data = self.collect(**kwargs)
+            count = self.save(data)
+            elapsed = (kst_now() - start).total_seconds()
+            self.logger.info("[%s] 완료: %d건, %.1f초", self.name, count, elapsed)
+            return count
+        except Exception as e:
+            self.logger.error("[%s] 실행 실패: %s", self.name, e)
+            raise
 
     def save(self, data: dict) -> int:
         """diff 출력 + (apply 시) universe.yaml 갱신.
@@ -219,7 +236,9 @@ class UniverseSyncCollector(BaseCollector):
 
         if self._market_filter in (None, "kr"):
             if self._kr_skipped:
-                print("\n  KR KOSPI 200: ⏭️  건너뜀 (FinanceDataReader 미설치 또는 fetch 실패)")
+                print("\n  KR KOSPI 200: ⏭️  건너뜀 — 위 WARNING 로그 참조")
+                print("     • FDR 미설치: `uv pip install finance-datareader`")
+                print("     • FDR 설치됐는데 fetch 실패: KRX upstream 일시 장애 (재시도 또는 cache 필요)")
             else:
                 print(f"\n  KR KOSPI 200 (current coverage: {data['kr_coverage_pct']:.1%})")
                 print(
