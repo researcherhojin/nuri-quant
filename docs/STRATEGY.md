@@ -385,16 +385,80 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 - 코드에서 유추 가능한 정보 ✕ → 코드만으로 알 수 없는 결정의 "왜"만 기록
 - `STRATEGY.md`는 반드시 작업 시작 전에 읽도록 `CLAUDE.md`에 지시
 
-### 5.8 하네스 원칙 요약
+### 5.8 하네스 원칙 요약 (2026-04-14 #272 세션 반영, 7개)
 
 ```
-1. 모르면 읽는다         — 가정하지 않는다
-2. 2번 실패하면 접근을 바꾼다  — 같은 시도 3회 금지
-3. 수정 후 실행한다       — 논리적 확신을 신뢰하지 않는다
-4. 스코프를 지킨다       — 요청된 것만 한다
-5. 숫자를 grep한다       — 한 곳만 고치지 않는다
-6. 시스템이 차단한다      — 문서가 아닌 린터/CI/게이트가 강제한다
+1. 모르면 읽는다              — 가정하지 않는다
+2. 2번 실패하면 접근을 바꾼다  — 같은 시도 3회 금지. 같은 fix가 3번에 걸쳐
+                                부분만 해결하면 root cause 의심
+3. 사용자 워크플로로 검증한다  — mock test ≠ verification.
+                                ship 전 `make X --flag` 직접 실행
+4. 스코프를 지킨다            — 요청된 것만 한다
+5. 숫자를 grep한다            — 한 곳만 고치지 않는다
+6. 시스템이 차단한다          — 문서가 아닌 린터/CI/게이트가 강제한다
+7. 외부 API는 측정한다        — 동시성/timeout/rate-limit 추정 금지.
+                                yfinance 10-thread OK ≠ KRX 10-thread OK
 ```
+
+**변경 이력**:
+- 2026-04-14: #3 강화 ("실행한다" → "사용자 워크플로로 검증한다"), #7 추가 (외부 API 측정). Mock-only ship 함정 3회 반복 후 추가 (#5.9 참고).
+
+### 5.9 #272 세션 교훈 (2026-04-14, 12 PRs)
+
+**Universe + Agent Coverage 통합**(#272) 작업에서 8시간에 걸쳐 12개 PR 머지하며 누적된 패턴 — 미래 비슷한 작업에서 반복 실수 회피용.
+
+#### 5.9.1 Mock-only 테스트 함정
+
+| 사례 | 상황 | 결과 |
+|------|------|------|
+| PR #278 universe mode | mock test 28건 통과 → ship → 사용자 실행 시 yfinance ERROR 500줄 | rebuild 필요 |
+| PR #282 ThreadPool timeout | unit test 통과 → ship → 사용자 실행 시 여전히 hang | 2차 fix |
+| PR #283 sequential fix | live 검증 33초 → 머지 → 끝 | 처음으로 정상 ship |
+
+**룰**: ship 전 사용자 워크플로 1회 직접 실행. mock test와 별개로 `make X --source universe` 같은 실제 명령. `tests/integration/` marker (`@pytest.mark.integration`)로 분리하되 ship 게이트에 포함.
+
+#### 5.9.2 외부 API 동시성 차이
+
+| API | 동시 요청 | 패턴 |
+|-----|----------|------|
+| yfinance | **10 thread OK** | `ThreadPoolExecutor(max_workers=10)` |
+| KRX (pykrx) | **rate-limit, sequential 권장** | 순차 + `time.sleep(0.1)` |
+| Wikipedia | 10초 간격 권장 | User-Agent 헤더 + backoff |
+
+**룰**: 새 외부 API 통합 시 동시성 측정 후 결정. ThreadPool은 API 종류에 따라 도움/해악 갈림.
+
+#### 5.9.3 ThreadPool 한계
+
+`ThreadPoolExecutor.future.result(timeout=)`는 future를 cancel만 하고, **underlying C extension call (e.g. pykrx)은 계속 실행** → 누적되어 메모리 leak + slowdown.
+
+**룰**: hang 가능한 외부 호출에 timeout으로 cancel하려 하지 말 것. 진짜 cancellable 필요하면 subprocess 사용. 또는 sleep + 단순 try/except.
+
+#### 5.9.4 Iterative root cause
+
+같은 버그를 3회에 걸쳐 fix:
+1. PR #282: ThreadPool timeout 추가 → 부분 해결
+2. PR #283: 8 thread parallel → 첫 60건 빠르고 그 후 KRX rate-limit
+3. PR #283 (수정): sequential + 0.1s sleep → 진짜 fix
+
+**룰**: 같은 증상 2회 반복 fix 시 근본 원인 의심. 3회 시도 전에 `pytest --pdb` 또는 실제 환경에서 직접 디버깅.
+
+#### 5.9.5 사용자 관점 검증 누락
+
+`make X --flag` 형태로 사용자가 자연스럽게 시도한 명령이 실패 (`make universe-sync --market kr` → make는 arg 안 받음). 사용자가 아는 패턴 ≠ 코드가 지원하는 패턴.
+
+**룰**: Makefile target 추가 시 자주 쓰일 변형(`-us`, `-kr`, `-apply` 등)을 dedicated target으로 명시.
+
+#### 5.9.6 진행 가시성 = 신뢰
+
+543종목 1개씩 처리되는데 progress 표시 없으면 사용자는 "stuck" 판단. tqdm + 명확한 요약은 ship 필수.
+
+**룰**: ≥20 ticker iteration 모든 collector에 tqdm + 요약 (✅ N 성공 / ❌ M 실패) + per-field N/A 진단 추가.
+
+#### 5.9.7 Multi-role flow 강제
+
+PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰면 #5.9.1 함정에 빠짐. 본인 self-review가 아닌 별도 단계로 분리할 것.
+
+**룰**: `gstack-codex` 등 외부 review tool 또는 사용자 review 단계 전에 ship 금지. 자동화된 integration test가 review 대체 가능.
 
 ---
 
@@ -430,6 +494,11 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 2 | **하네스 계층화** | — | #229 | Fowler Guide/Sensor 기반 구조화: CLAUDE.md 슬림 (511→238줄) + 7 scoped CLAUDE.md + AGENTS.md + 4 hooks |
 | 3 | **티커 기반 First-Run 온보딩 UX** | [#133](https://github.com/researcherhojin/nuri-quant/issues/133) | #234, #235 | `/explore` 페이지 + 티커 검색/분석 API. 커버리지 보강 포함. |
 | 4 | **연 배당금 / 배당 수익률 데이터** | [#227](https://github.com/researcherhojin/nuri-quant/issues/227) | #270 | `dividendRate` (연 배당금 USD) + `dividend_yield_pct` (백분율) 컬럼 추가. fundamentals 테이블 마이그레이션 18-19. 2026-04-14 머지. |
+| 5 | **Universe + Agent Data Coverage 통합 (P0)** | [#272](https://github.com/researcherhojin/nuri-quant/issues/272) | #275-#286 (12 PRs) | Audit에서 발견한 데이터 사일로 (fundamentals 2%) + universe label drift 해결. fundamentals 99%, prices 99%, KOSPI 200 100% 달성. 자동 검증 게이트 추가. |
+| 5a | ↳ Phase 2a `universe_sync` | — | #276 | Wikipedia S&P 500 fetch + KRX/FDR KOSPI 200 fetch, manual ETF 보호 |
+| 5b | ↳ Phase 2b BaseCollector `--source` | — | #278 | portfolio/universe/all 모드. 9 collectors tqdm + N/A coverage 진단 |
+| 5c | ↳ Phase 2c validate_universe + CI | — | #284, #286 | 7-check coverage gate, warning-only CI job |
+| 5d | ↳ KR/yfinance 성능 + UX fix | — | #281, #283, #285 | KR collect 33초, yfinance 10-thread parallel, sequential delay |
 
 ### Tier 2 — 다음 1 달 (P1)
 
@@ -437,10 +506,14 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 
 | # | 항목 | 이슈 | 카테고리 | 비고 |
 |---|------|------|---------|------|
-| 1 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거 |
-| 2 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
+| 1 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거. 2026-04-14 portfolio.yaml 수동 수정 페인포인트 직접 경험 |
+| 2 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 (이미 PR #269로 일부 완료, 추가 작업 가능) |
 | 3 | **Privacy scanner ticker+PnL pattern** | — | security | 현재 broker name + monetary literal만 차단. ticker와 PnL이 같은 commit message/PR 본문에 있을 때 패턴 감지 추가. PR #202 commit message leak 같은 경우 방지 |
 | 4 | **Ollama LLM 휴면 코드 결정** | — | refactor | `nuri/llm/report.py` Ollama 의존 (현재 OLLAMA_HOST 미설정으로 비활성). OpenAI event_classifier는 active (737 calls 누적). Ollama 부분 유지 vs 제거 결정 필요 |
+| 5 | **OpenBB 호환성 fix** | [#274](https://github.com/researcherhojin/nuri-quant/issues/274) | bug(collectors) | openbb-core==1.6.7 ↔ openbb-news==1.6.1 충돌로 news/etf_flows 수집 불가. 점진적 upgrade 필요 (콜렉터별 smoke test 후 진행) |
+| 6 | **uv sync 충돌 해결** | [#277](https://github.com/researcherhojin/nuri-quant/issues/277) | bug(deps) | openbb-core ↔ fastapi version conflict로 `uv sync` / `uv add` 실패. fresh clone 시 영향 |
+| 7 | **#272 Phase 2c-3 — universe-check 필수 게이트화** | — | ops | `make collect-universe` 5/5 PASS 확인 후 branch protection에 universe-check를 required check로 토글 (사용자 manual) |
+| 8 | **wallstreet collect 성능 검증** | — | perf(collectors) | PR #285 parallel fetch 적용 후 실제 50min → 5min 효과 검증. universe collect 첫 머지 후 측정 |
 
 ### Tier 3 — 다음 분기 (P2)
 
