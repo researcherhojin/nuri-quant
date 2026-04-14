@@ -118,6 +118,10 @@ collect-universe:    ## Collect ALL universe data (US+KR prices, fundamentals, w
 	$(PYTHON) -m nuri.collectors.wallstreet --source universe
 	$(PYTHON) -m nuri.collectors.estimates --source universe
 
+collect-universe-1y: ## Backfill 1y OHLCV for full universe — prerequisite for P1 A tech analysis (BB/MACD/52w)
+	$(PYTHON) -m nuri.collectors.stock --source universe --period 1y
+	$(PYTHON) -m nuri.collectors.stock_kr --source universe --days 365
+
 test-integration: ## Integration tests — real external APIs (Wikipedia, FDR, yfinance). Network required.
 	$(PYTHON) -m pytest tests/integration/ -m integration -v --no-header
 
