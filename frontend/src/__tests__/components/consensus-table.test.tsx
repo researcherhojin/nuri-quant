@@ -191,4 +191,34 @@ describe("ConsensusTable", () => {
     render(<ConsensusTable data={mockData} vix={null} />);
     expect(screen.queryByText("(반포지션)")).not.toBeInTheDocument();
   });
+
+  // ─── Divergence flag badge (P1 A2, STRATEGY §5.10 JKHY) ──
+  it("renders divergence badge when divergence_flag is true", () => {
+    const withDivergence = [{
+      ...mockData[0],
+      divergence_flag: true,
+      divergence_reason: "기술지표 반대: TechnicalAgent 가 SELL",
+    }];
+    render(<ConsensusTable data={withDivergence} vix={null} />);
+    const badge = screen.getByTestId("divergence-badge");
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveAttribute("title", "기술지표 반대: TechnicalAgent 가 SELL");
+  });
+
+  it("does not render divergence badge when divergence_flag is false/undefined", () => {
+    render(<ConsensusTable data={mockData} vix={null} />);
+    expect(screen.queryByTestId("divergence-badge")).not.toBeInTheDocument();
+  });
+
+  it("falls back to default tooltip text when divergence_reason is empty string", () => {
+    // Exercise the `row.divergence_reason || "기술지표 반대"` fallback branch.
+    const withEmptyReason = [{
+      ...mockData[0],
+      divergence_flag: true,
+      divergence_reason: "",
+    }];
+    render(<ConsensusTable data={withEmptyReason} vix={null} />);
+    const badge = screen.getByTestId("divergence-badge");
+    expect(badge).toHaveAttribute("title", "기술지표 반대");
+  });
 });

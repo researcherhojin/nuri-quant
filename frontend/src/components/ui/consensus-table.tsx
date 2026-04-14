@@ -26,6 +26,8 @@ interface ConsensusRow {
   verdicts: AgentVerdict[];
   dissent: string[];
   reasoning: string;
+  divergence_flag?: boolean;
+  divergence_reason?: string;
 }
 
 const AGENT_ORDER = [
@@ -95,6 +97,15 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
                     <StatusBadge status={row.final_action} size="md" />
                     {vix && vix >= 25 && vix < 30 && row.final_action === "BUY" && (
                       <span className="text-amber-400 text-[10px] ml-1">(반포지션)</span>
+                    )}
+                    {row.divergence_flag && (
+                      <span
+                        className="text-amber-400 text-[10px] ml-1 cursor-help"
+                        title={row.divergence_reason || "기술지표 반대"}
+                        data-testid="divergence-badge"
+                      >
+                        ⚠
+                      </span>
                     )}
                   </td>
                   <td className="py-1.5 px-2 text-right">{row.final_confidence.toFixed(1)}</td>
