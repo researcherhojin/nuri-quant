@@ -4,6 +4,7 @@
 사용법:
     python -m nuri.collectors.news
 """
+
 import logging
 
 from nuri.collectors.base import BaseCollector
@@ -16,14 +17,26 @@ class NewsCollector(BaseCollector):
     def __init__(self):
         super().__init__("news")
 
-    def collect(self, **kwargs) -> list[dict]:
-        """보유 미국 종목 뉴스 수집."""
+    def collect(self, source: str = "portfolio", **kwargs) -> list[dict]:
+        """뉴스 수집. source='universe' 시 universe.yaml 전체.
+
+        Note: 2026-04 기준 OpenBB OBBject_CompanyNews import 깨짐 (#274). 모든 fetch 실패.
+        구조는 유지하되 실제 작동은 #274 fix 후 가능.
+        """
         from openbb import obb
+        from tqdm import tqdm
 
-        tickers = self._get_tickers(market="us")
+        tickers = self._get_tickers(market="us", source=source)
         records = []
+        failed: list[str] = []
 
-        for ticker in tickers:
+        if not tickers:
+            return []
+
+        self.logger.info(f"뉴스 수집 대상: {len(tickers)} 종목 (source={source})")
+        iterator = tqdm(tickers, desc=f"  news [{source}]", unit="tk", disable=len(tickers) < 20)
+
+        for ticker in iterator:
             try:
                 result = obb.news.company(symbol=ticker, provider="yfinance", limit=10)
                 df = result.to_dataframe()
@@ -42,21 +55,36 @@ class NewsCollector(BaseCollector):
                         date = str(row["date"])[:10]
                     else:
                         from nuri.core.timezone import today_kst
+
                         date = today_kst()
 
-                    records.append({
-                        "ticker": ticker,
-                        "date": date,
-                        "title": str(row.get("title", ""))[:500],
-                        "url": str(url)[:1000],
-                        "source": str(row.get("source", ""))[:100],
-                        "sentiment": None,
-                    })
+                    records.append(
+                        {
+                            "ticker": ticker,
+                            "date": date,
+                            "title": str(row.get("title", ""))[:500],
+                            "url": str(url)[:1000],
+                            "source": str(row.get("source", ""))[:100],
+                            "sentiment": None,
+                        }
+                    )
 
             except Exception as e:
+                failed.append(ticker)
                 self.logger.debug(f"{ticker}: 뉴스 수집 실패 — {e}")
 
-        self.logger.info(f"뉴스 {len(records)}건 수집")
+        if len(tickers) >= 20:
+            sample = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
+            self.logger.info(
+                "📊 뉴스: %d 건 수집 / ❌ %d 종목 실패 (총 %d) — failed: %s%s",
+                len(records),
+                len(failed),
+                len(tickers),
+                sample or "없음",
+                "  [⚠️ OpenBB #274 깨짐 — 대부분 실패 정상]" if len(failed) > len(tickers) * 0.5 else "",
+            )
+        else:
+            self.logger.info(f"뉴스 {len(records)}건 수집")
         return records
 
     def save(self, data: list[dict]) -> int:
