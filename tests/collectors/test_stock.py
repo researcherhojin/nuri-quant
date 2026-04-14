@@ -216,3 +216,67 @@ class TestStockOneYearBackfill:
             f"Expected log with both '1y' and 'source=universe'. "
             f"Got: {[r.message for r in caplog.records if '수집' in r.message]}"
         )
+
+
+class TestStandardizeThreadSafety:
+    """PR #743 — `_standardize(df)` 가 shared mock 객체를 mutate 하던 race 회귀 방지.
+
+    CLAUDE.md gotcha + PR #294/#295 에서 처음 기록된 패턴이지만, 실제 `df.copy()`
+    방어가 `_standardize` 에 적용 안 된 채로 merge 되었음. 이 세션 (#306 CI) 에서
+    재발 → 실제 fix + 전용 테스트.
+    """
+
+    def test_standardize_does_not_mutate_input(self):
+        """함수 호출 후 입력 df 는 원본 그대로 유지되어야 한다."""
+        from nuri.collectors.stock import StockCollector
+
+        original = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2025-01-15"]),
+                "Open": [190.0],
+                "High": [195.0],
+                "Low": [189.0],
+                "Close": [194.0],
+                "Volume": [50000000],
+            }
+        )
+        original_columns_before = list(original.columns)
+        StockCollector()._standardize(original, "AAPL")
+
+        # 원본 columns 가 '소문자 통일' 로 mutate 되면 안 됨
+        assert list(original.columns) == original_columns_before, (
+            "_standardize 가 입력 df 를 mutate 했음. df.copy() 누락 의심 (PR #743)"
+        )
+
+    def test_concurrent_standardize_calls_do_not_race(self):
+        """ThreadPoolExecutor 10-worker 로 동일 df 를 공유해서 _standardize 호출해도
+        race condition 없이 모두 성공해야 함. race 발생 시 InvalidIndexError.
+        """
+        import concurrent.futures
+
+        from nuri.collectors.stock import StockCollector
+
+        shared_df = pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2025-01-15"]),
+                "Open": [190.0],
+                "High": [195.0],
+                "Low": [189.0],
+                "Close": [194.0],
+                "Volume": [50000000],
+            }
+        )
+        c = StockCollector()
+
+        def _call(i):
+            return c._standardize(shared_df, f"TICK{i}")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+            futures = [ex.submit(_call, i) for i in range(50)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+        # 모두 정상 결과 (df 반환) — 예외 없이 완료
+        assert len(results) == 50
+        for r in results:
+            assert "ticker" in r.columns
+            assert "adj_close" in r.columns

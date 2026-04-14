@@ -152,7 +152,14 @@ class StockCollector(BaseCollector):
         return None
 
     def _standardize(self, df: pd.DataFrame, ticker: str) -> pd.DataFrame:
-        """DataFrame을 표준 OHLCV 포맷으로 변환."""
+        """DataFrame을 표준 OHLCV 포맷으로 변환.
+
+        `df = df.copy()` 가 함수 진입 시 필수. 테스트에서 `mock.return_value = df_fixture`
+        가 동일 객체를 parallel ThreadPoolExecutor 10-worker 에 공유하면 아래 in-place
+        mutation 이 race → `pandas.errors.InvalidIndexError`. CLAUDE.md gotcha 참조.
+        PR #294/#295 가 의도한 방어였으나 실제 코드에 적용 안 된 상태였음 (PR #743).
+        """
+        df = df.copy()
         df = df.reset_index() if "date" not in df.columns and "Date" not in df.columns else df
 
         # 컬럼명 소문자 통일

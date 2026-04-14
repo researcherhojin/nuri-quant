@@ -72,6 +72,9 @@ class ConsensusResult:
     reasoning: str  # 합의 근거 요약
     divergence_flag: bool = False  # TechnicalAgent 가 합의 BUY/SELL 에 정면 반대 (#5.10 JKHY 방지)
     divergence_reason: str = ""  # flag 가 True 일 때 사용자에게 노출할 설명
+    # Mechanical penalty 감사 필드 — caller 가 `consensus_penalty_applied` 이벤트 emit 시 사용.
+    penalty_applied: bool = False  # True 면 divergence penalty 로 action 이 downgrade 됨
+    pre_penalty_action: str = ""  # penalty 발동 전 원 action (BUY/SELL). flag=False 이면 빈 문자열.
 
 
 def _compute_weights(db_path=None) -> dict[str, float]:
@@ -214,24 +217,22 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
     # 로 사용할 수 있게). reasoning 에 penalty 근거 prepend. Risk veto 가 이미
     # 발동했다면 precedence 에 따라 penalty skip.
     divergence_threshold = AGENT_CONFIG.get("consensus", {}).get("divergence_technical_threshold", 80)
+    penalty_applied = False
+    pre_penalty_action_str = ""
     if divergence_flag and not risk_veto_fired and tech_v and tech_v.confidence >= divergence_threshold:
+        pre_penalty_action_str = final_action  # BUY 또는 SELL
         final_action = "HOLD"
         reasoning = f"기술지표 반대로 downgrade (tech {tech_v.action} conf {tech_v.confidence:.0f} ≥ {divergence_threshold}) | {reasoning}"
+        penalty_applied = True
 
     # agreement_rate / dissent 는 **penalty 이전** 의 원 verdict 분포 기준으로
     # 계산 — 사용자가 "10 중 몇 개가 HOLD 동의" 가 아니라 "원래 BUY/SELL 쪽은
     # 몇 개 였는지" 를 볼 수 있어야 penalty 맥락을 이해할 수 있다.
-    pre_penalty_action = (
-        final_action
-        if not (divergence_flag and not risk_veto_fired and tech_v and tech_v.confidence >= divergence_threshold)
-        else ("BUY" if tech_v and tech_v.action == "SELL" else "SELL")
-    )
-    agree_count = sum(1 for v in verdicts if v.action == pre_penalty_action)
+    dist_basis = pre_penalty_action_str if penalty_applied else final_action
+    agree_count = sum(1 for v in verdicts if v.action == dist_basis)
     agreement_rate = agree_count / len(verdicts) if verdicts else 0
     dissent = [
-        f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}"
-        for v in verdicts
-        if v.action != pre_penalty_action
+        f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}" for v in verdicts if v.action != dist_basis
     ]
 
     return ConsensusResult(
@@ -244,6 +245,8 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         reasoning=reasoning,
         divergence_flag=divergence_flag,
         divergence_reason=divergence_reason,
+        penalty_applied=penalty_applied,
+        pre_penalty_action=pre_penalty_action_str,
     )
 
 
@@ -293,7 +296,48 @@ def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
         # wait=False: 실행 중인 future가 끝날 때까지 기다리지 않음
         executor.shutdown(wait=False, cancel_futures=True)
 
-    return _build_consensus(ticker, verdicts, weights)
+    result = _build_consensus(ticker, verdicts, weights)
+    _emit_penalty_event_if_fired(result, verdicts, db_path=db_path)
+    return result
+
+
+def _emit_penalty_event_if_fired(result: ConsensusResult, verdicts: list[AgentVerdict], db_path=None) -> None:
+    """Mechanical penalty 발동 시 `consensus_penalty_applied` 이벤트 기록.
+
+    STRATEGY §2.6 Escalation Ladder — soft penalty rung 감사 로그. 1-2 달 후
+    `pipeline_events` 조회로 "penalty 가 몇 % 발동하고, 몇 % 티커에 영향이며,
+    BUY→HOLD swing 은 몇 건인가" 를 답할 수 있어야 한다. Emit 실패해도
+    consensus 자체는 정상 반환.
+    """
+    if not result.penalty_applied:
+        return
+    tech_v = next((v for v in verdicts if v.agent_name == "technical"), None)
+    if tech_v is None:
+        return
+    threshold = AGENT_CONFIG.get("consensus", {}).get("divergence_technical_threshold", 80)
+    try:
+        from nuri.core.events import emit_event
+
+        emit_event(
+            "consensus_penalty_applied",
+            step="recommend",
+            payload={
+                "ticker": result.ticker,
+                "penalty_kind": "divergence_technical",
+                "threshold": threshold,
+                "technical_action": tech_v.action,
+                "technical_confidence": tech_v.confidence,
+                "consensus_action_before": result.pre_penalty_action,
+                "consensus_confidence_before": result.final_confidence,
+                "consensus_action_after": result.final_action,
+                "consensus_confidence_after": result.final_confidence,
+                "swing": f"{result.pre_penalty_action}_TO_{result.final_action}",
+                "divergence_reason": result.divergence_reason,
+            },
+            db_path=db_path,
+        )
+    except Exception:
+        logger.warning("consensus_penalty_applied 이벤트 emit 실패 — consensus 결과는 정상 반환", exc_info=True)
 
 
 def stream_analyze_ticker(ticker: str, db_path=None):
@@ -341,7 +385,9 @@ def stream_analyze_ticker(ticker: str, db_path=None):
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
 
-    yield ("consensus", _build_consensus(ticker, verdicts, weights))
+    result = _build_consensus(ticker, verdicts, weights)
+    _emit_penalty_event_if_fired(result, verdicts, db_path=db_path)
+    yield ("consensus", result)
 
 
 def analyze_portfolio(db_path=None) -> list[ConsensusResult]:
