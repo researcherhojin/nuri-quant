@@ -1,0 +1,302 @@
+"""Universe sync — Wikipedia S&P 500 + KRX/FDR KOSPI 200 → universe.yaml diff.
+
+#272 Phase 2a 구현. Spec: docs/SPEC_universe_agent_coverage.md §3.1.
+
+사용법:
+    python -m nuri.collectors.universe_sync                # dry-run (diff 출력만)
+    python -m nuri.collectors.universe_sync --apply        # universe.yaml에 반영
+    python -m nuri.collectors.universe_sync --market us    # US만 sync
+    python -m nuri.collectors.universe_sync --market kr    # KR만 sync
+
+전략:
+- US S&P 500: Wikipedia (List_of_S%26P_500_companies, 503종목)
+- KR KOSPI 200: pykrx (CLAUDE.md 알려진 깨짐) → FinanceDataReader fallback
+- 변경 감지 시 STDOUT diff + (--apply 시) yaml 갱신
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import urllib.request
+from io import StringIO
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from nuri.collectors.base import DEFAULT_HEADERS, BaseCollector
+
+logger = logging.getLogger(__name__)
+
+UNIVERSE_PATH = Path("config/universe.yaml")
+SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+
+# 95% 임계 (spec §2.1)
+COVERAGE_THRESHOLD = 0.95
+
+
+def _fetch_sp500_from_wikipedia() -> list[str]:
+    """Wikipedia에서 S&P 500 ticker 503종목 fetch.
+
+    Wikipedia 표 첫 컬럼 'Symbol'. BRK.B 같은 종목은 BRK-B로 변환 (yfinance 호환).
+    """
+    import pandas as pd
+
+    req = urllib.request.Request(SP500_URL, headers=DEFAULT_HEADERS)
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        html = resp.read().decode("utf-8")
+
+    tables = pd.read_html(StringIO(html))
+    df = tables[0]
+    if "Symbol" not in df.columns:
+        raise RuntimeError(f"Wikipedia S&P 500 표 형식 변경 감지 — Symbol 컬럼 없음. cols={df.columns.tolist()}")
+
+    tickers = df["Symbol"].str.replace(".", "-", regex=False).tolist()
+    return sorted(set(tickers))
+
+
+def _fetch_kospi200() -> list[str]:
+    """KOSPI 200 fetch — FinanceDataReader 우선, 실패 시 RuntimeError.
+
+    CLAUDE.md 알려진 이슈: pykrx의 get_index_portfolio_deposit_file/get_market_cap_by_ticker
+    모두 깨짐 (column rename). FinanceDataReader 도 시도해보고 실패 시 명시적 raise.
+
+    반환 형식: ["005930.KS", "000660.KS", ...] (yfinance suffix 포함)
+    """
+    # FinanceDataReader 먼저 시도 (가장 안정적)
+    try:
+        import FinanceDataReader as fdr  # type: ignore[import-untyped]
+
+        df = fdr.SnapDataReader("KRX/INDEX/STOCK/KS200")
+        if df is not None and not df.empty and "Code" in df.columns:
+            tickers = sorted(set(f"{code}.KS" for code in df["Code"].astype(str)))
+            return tickers
+    except ImportError:
+        logger.warning("FinanceDataReader 미설치 — pip install finance-datareader")
+    except Exception as e:
+        logger.warning("FinanceDataReader KOSPI 200 fetch 실패: %s", e)
+
+    # pykrx fallback (CLAUDE.md 알려진 깨짐 — 보통 실패)
+    try:
+        from datetime import timedelta
+
+        from pykrx import stock
+
+        from nuri.core.timezone import kst_now
+
+        for delta in range(1, 7):
+            d = (kst_now() - timedelta(days=delta)).strftime("%Y%m%d")
+            try:
+                tickers_raw = stock.get_index_portfolio_deposit_file("1028", d)
+                if hasattr(tickers_raw, "__len__") and len(tickers_raw) > 0:
+                    tickers = sorted(set(f"{t}.KS" for t in tickers_raw))
+                    if len(tickers) >= 100:  # KOSPI 200 정상 최소 임계
+                        return tickers
+            except Exception:
+                continue
+    except ImportError:
+        pass
+
+    raise RuntimeError(
+        "KOSPI 200 fetch 실패 — FinanceDataReader / pykrx 모두 사용 불가. "
+        "수동 갱신 또는 finance-datareader 패키지 추가 필요."
+    )
+
+
+def _load_universe() -> dict[str, Any]:
+    """current universe.yaml 로드."""
+    with UNIVERSE_PATH.open() as f:
+        return yaml.safe_load(f)
+
+
+def _save_universe(u: dict[str, Any]) -> None:
+    """universe.yaml에 갱신 저장 (sort_keys=False 보존)."""
+    with UNIVERSE_PATH.open("w") as f:
+        yaml.safe_dump(u, f, allow_unicode=True, sort_keys=False, width=200)
+
+
+def compute_diff(current_us: set[str], current_kr: set[str], fetched_us: set[str], fetched_kr: set[str]) -> dict:
+    """universe diff 계산.
+
+    Returns:
+        {
+            'us_added': [ticker, ...],     # fetched에 있고 current에 없음
+            'us_removed': [ticker, ...],   # current에 있고 fetched에 없음
+            'kr_added': [...],
+            'kr_removed': [...],
+            'us_coverage_pct': float,      # current / fetched
+            'kr_coverage_pct': float,
+        }
+    """
+    return {
+        "us_added": sorted(fetched_us - current_us),
+        "us_removed": sorted(current_us - fetched_us),
+        "kr_added": sorted(fetched_kr - current_kr),
+        "kr_removed": sorted(current_kr - fetched_kr),
+        "us_coverage_pct": len(current_us & fetched_us) / max(len(fetched_us), 1),
+        "kr_coverage_pct": len(current_kr & fetched_kr) / max(len(fetched_kr), 1),
+    }
+
+
+class UniverseSyncCollector(BaseCollector):
+    """Universe definition sync collector.
+
+    BaseCollector 패턴이지만 collect()는 diff dict, save()는 yaml 쓰기 (또는 dry-run).
+    """
+
+    def __init__(self):
+        super().__init__("universe_sync")
+        self._dry_run = True
+        self._market_filter: str | None = None  # None | 'us' | 'kr'
+        self._allow_removal = False  # 기본적으로 자동 제거 금지 (manual ETF 보호)
+
+    def collect(self, **kwargs) -> dict:
+        """Wikipedia + KRX fetch → diff 계산.
+
+        Args:
+            market: 'us' | 'kr' | None (전체)
+            dry_run: True (default) — yaml 안 건드림. False — apply.
+            allow_removal: False (default) — added만 반영, removed는 무시 (manual ETF 보호).
+        """
+        self._dry_run = kwargs.get("dry_run", True)
+        self._market_filter = kwargs.get("market")
+        self._allow_removal = kwargs.get("allow_removal", False)
+
+        current = _load_universe()
+        current_us = set(current.get("us_core", {}).get("tickers", [])) | set(
+            current.get("us_sp500_extended", {}).get("tickers", [])
+        )
+        current_kr = set(current.get("kr_kospi200", {}).get("tickers", []))
+
+        # 필터된 시장 외에는 current를 그대로 사용 → diff 0건 보장
+        fetched_us: set[str] = current_us
+        fetched_kr: set[str] = current_kr
+
+        if self._market_filter in (None, "us"):
+            self.logger.info("Wikipedia에서 S&P 500 fetch...")
+            try:
+                fetched_us = set(_fetch_sp500_from_wikipedia())
+                self.logger.info("S&P 500: %d종목 fetched", len(fetched_us))
+            except Exception as e:
+                self.logger.error("S&P 500 fetch 실패: %s", e)
+                if self._market_filter == "us":
+                    raise
+
+        if self._market_filter in (None, "kr"):
+            self.logger.info("KOSPI 200 fetch (FinanceDataReader/pykrx)...")
+            try:
+                fetched_kr = set(_fetch_kospi200())
+                self.logger.info("KOSPI 200: %d종목 fetched", len(fetched_kr))
+            except Exception as e:
+                self.logger.warning("KOSPI 200 fetch 실패 (전체 sync는 계속): %s", e)
+                if self._market_filter == "kr":
+                    raise
+
+        return compute_diff(current_us, current_kr, fetched_us, fetched_kr)
+
+    def save(self, data: dict) -> int:
+        """diff 출력 + (apply 시) universe.yaml 갱신.
+
+        Returns: 변경된 ticker 총 수 (added + removed, US + KR 합산).
+        """
+        total_changes = (
+            len(data["us_added"]) + len(data["us_removed"]) + len(data["kr_added"]) + len(data["kr_removed"])
+        )
+
+        # diff 출력
+        print()
+        print("=" * 70)
+        print(f"  Universe Sync — {'DRY RUN' if self._dry_run else 'APPLYING'}")
+        print("=" * 70)
+        if self._market_filter in (None, "us"):
+            print(f"\n  US S&P 500 (current coverage: {data['us_coverage_pct']:.1%})")
+            print(
+                f"    + 추가될 종목 ({len(data['us_added'])}): {', '.join(data['us_added'][:10])}"
+                + (f" ... 외 {len(data['us_added']) - 10}개" if len(data["us_added"]) > 10 else "")
+            )
+            print(
+                f"    - 제거될 종목 ({len(data['us_removed'])}): {', '.join(data['us_removed'][:10])}"
+                + (f" ... 외 {len(data['us_removed']) - 10}개" if len(data["us_removed"]) > 10 else "")
+            )
+
+        if self._market_filter in (None, "kr"):
+            print(f"\n  KR KOSPI 200 (current coverage: {data['kr_coverage_pct']:.1%})")
+            print(
+                f"    + 추가될 종목 ({len(data['kr_added'])}): {', '.join(data['kr_added'][:10])}"
+                + (f" ... 외 {len(data['kr_added']) - 10}개" if len(data["kr_added"]) > 10 else "")
+            )
+            print(
+                f"    - 제거될 종목 ({len(data['kr_removed'])}): {', '.join(data['kr_removed'][:10])}"
+                + (f" ... 외 {len(data['kr_removed']) - 10}개" if len(data["kr_removed"]) > 10 else "")
+            )
+
+        print()
+
+        # 자동 제거 보호 안내
+        if not self._allow_removal and (data["us_removed"] or data["kr_removed"]):
+            print(
+                f"  ⚠️  manual ETF 보호: removed {len(data['us_removed']) + len(data['kr_removed'])}건 무시 "
+                f"(--allow-removal로 명시적 허용)"
+            )
+
+        # apply
+        if not self._dry_run and total_changes > 0:
+            current = _load_universe()
+            applied = 0
+            if self._market_filter in (None, "us") and data["us_added"]:
+                core = set(current["us_core"]["tickers"])
+                ext = set(current["us_sp500_extended"]["tickers"])
+                ext = ext | set(data["us_added"])
+                if self._allow_removal:
+                    ext = ext - set(data["us_removed"])
+                ext = ext - core  # core 중복 제거
+                current["us_sp500_extended"]["tickers"] = sorted(ext)
+                current["us_sp500_extended"]["description"] = (
+                    f"미국 S&P 500 + extras — us_core에 없는 추가 종목 ({len(ext)}개)"
+                )
+                applied += len(data["us_added"])
+                if self._allow_removal:
+                    applied += len(data["us_removed"])
+                self.logger.info("us_sp500_extended 갱신: %d종목", len(ext))
+
+            if self._market_filter in (None, "kr") and data["kr_added"]:
+                kr = set(current["kr_kospi200"]["tickers"])
+                kr = kr | set(data["kr_added"])
+                if self._allow_removal:
+                    kr = kr - set(data["kr_removed"])
+                current["kr_kospi200"]["tickers"] = sorted(kr)
+                current["kr_kospi200"]["description"] = f"한국 KOSPI 200 — 시가총액 상위 ({len(kr)}개)"
+                applied += len(data["kr_added"])
+                if self._allow_removal:
+                    applied += len(data["kr_removed"])
+                self.logger.info("kr_kospi200 갱신: %d종목", len(kr))
+
+            if applied > 0:
+                _save_universe(current)
+                print(f"  ✅ universe.yaml 갱신 완료 ({applied}건 반영, removed 보호 {total_changes - applied}건)")
+            else:
+                print("  ℹ️  반영 가능 변경 없음 (모두 removed인데 --allow-removal 미설정)")
+        elif self._dry_run and total_changes > 0:
+            print(f"  ℹ️  dry-run — 실제 변경 없음 (총 {total_changes}건). --apply 옵션으로 반영.")
+        else:
+            print("  ✅ 변경 없음 (universe.yaml = upstream)")
+
+        return total_changes
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    parser = argparse.ArgumentParser(description="Nuri-Quant Universe Sync (#272 Phase 2a)")
+    parser.add_argument("--apply", action="store_true", help="universe.yaml에 변경 반영 (기본: dry-run)")
+    parser.add_argument("--market", choices=["us", "kr"], help="특정 시장만 sync (기본: 전체)")
+    parser.add_argument(
+        "--allow-removal",
+        action="store_true",
+        help="upstream에서 제거된 종목을 universe에서도 자동 제거 (기본: manual ETF 보호 OFF)",
+    )
+    args = parser.parse_args()
+
+    collector = UniverseSyncCollector()
+    collector.run(dry_run=not args.apply, market=args.market, allow_removal=args.allow_removal)
