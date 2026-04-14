@@ -72,6 +72,25 @@
 | OpenBB + yfinance (not Bloomberg) | 무료 데이터. OpenBB 추상화 → provider 교체 용이. yfinance는 폴백. |
 | GitHub Actions (not Jenkins) | 오픈소스 무료 tier. lint + test + coverage + security 자동화. |
 
+### 2.6 Escalation Ladder (근거 기반 → 기계적 차단의 3단계)
+
+§2.1 (Evidence-first)와 §2.2 (Mechanical execution)는 같은 스펙트럼의 양 끝이다. 모든 반대 증거에 대해 어디까지 기계적 개입을 할지는 3단계 사다리로 결정한다. 새 feature 설계 시 이 단계를 **명시적으로** 고르고 PR/STRATEGY 에 기록한다.
+
+| 단계 | 행동 | 언제 | 구현 예시 |
+|------|------|------|----------|
+| **Surface** | 증거 노출만 (UI 배지, reasoning, log). action/confidence 불변. | 신호가 plausible 하지만 noisy, sparse, outcome-검증 부족. 사용자 판단 여지 유지. | PR #301 `divergence_flag` 감지, PR #302 UI 배지 |
+| **Soft penalty** | 결정적 downgrade/reweight (action HOLD 전환, confidence cap). 차단은 아님. | 같은 반대 시그널이 반복 감지되고, downside skew 는 명확하지만 universal fatal 은 아닐 때. config 로 tunable. | PR #303 `divergence_technical_threshold` (default 80), `config/agents.yaml` |
+| **Hard veto** | 해당 조건이 성립하면 action 강제 변경 또는 차단 (BUY 억제 포함). config 건드리기 어렵게. | 역사적으로 수용 불가, 정책 수준, 위험의 risk-of-ruin 성격. 투자 규칙 급. | Risk agent 거부권 (consensus.py:181, SELL + conf ≥ 80), execution_priority (PR #200), VIX > 30 신규 매수 차단 |
+
+**운용 원칙**:
+1. Surface → Soft penalty 이관은 **데이터 기반** 결정. penalty 를 정당화할 "발동 빈도 + 적중률" 측정이 선행. `pipeline_events` 에서 `consensus_penalty_applied` 같은 감사 이벤트로 수집.
+2. Soft penalty → Hard veto 이관은 **정책/이론 기반** 결정. STRATEGY 개정 PR + 백테스트 증거 필수.
+3. 등급 상향은 쉽고, 하향은 어렵다 (한 번 mechanical 로 올린 것을 informational 로 내리면 과거에 차단된 case 의 해석이 모호해짐).
+
+**Anti-pattern**: §2.1 "Evidence-first" 를 이유로 모든 것을 Surface 에 두면 P1 A1/A2 의 JKHY 에피소드처럼 ⚠ 배지가 실제 행동을 바꾸지 않는 "performative 경고" 가 된다. 반대로 모든 반대를 Hard veto 로 올리면 trade 기회 손실 + 사용자의 판단권 박탈. 3단계 구분이 명시적 framework.
+
+**변경 절차**: 단계 이동은 config 또는 docs 만 건드리는 PR 로. 코드에 매직 넘버 추가하는 방식으로 step 승격 금지 (§2.2 "규칙을 바꾸고 싶으면 YAML을 수정" 원칙).
+
 ---
 
 ## 3. 핵심 아키텍처 결정 기록
@@ -550,7 +569,7 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 | 🟡 P1 | 1 | **#272 Phase 5 (QA): Negative + Smoke run** | — | test | 1 세션 (네트워크 필요) | 빈 DB/yaml 삭제 negative 3건 + fresh clone → `make setup` → `make universe-sync-us/kr` → `make collect` → `validate_universe` 실행 기록 → `docs/SMOKE_RUN.md` 작성 |
 | 🟡 P1 | 2 | **기술분석 통합 to 추천 파이프라인** | — | feat(recommend) | 1-2 세션 | JKHY 에피소드 (2026-04-14) 재발 방지. `nuri/quant/chart_analysis.py` (BB/MACD/RSI) 을 `candidates.py` / consensus에 자동 연동. "fundamentals Buy, technicals Sell" divergence 플래그 추가 |
 | 🟡 P1 | 3 | **가격 히스토리 확장 (5d → 1y+)** | — | ops | 0.5 세션 | `prices` 테이블 5일치만 있음 → 52주 레인지 / 추세선 계산 불가. 정기 `make collect --period 1y` 실행 체계 + scheduler 등록 |
-| 🟡 P1 | 4 | **Earnings quality 분석 통합** | — | feat(recommend) | 0.5 세션 | JKHY 에피소드 — surprise 0% 반복 = 성장 stall 신호 놓침. `earnings_surprises` 기반 "soft beat" 플래그 (surprise < 2% 지속 3Q) 추가 |
+| ~~🟡 P1~~ | ~~4~~ | ~~**Earnings quality 분석 통합**~~ | — | ~~feat(recommend)~~ | ~~0.5 세션~~ | **Tier 3 research 로 이관** (2026-04-15). Codex challenge 로 (a) JKHY 실측 surprise 가 4-17% 정상 beat (STRATEGY §5.10 에 기록된 "0.0~0.2% soft beat" 는 unit 오독에서 온 문서 오류), (b) literature (Bartov 2002, Kasznik & McNichols 2002, Neururer 2020) 는 meet/beat streak 을 **양의** 신호로 본다. 원안 spec 은 repo-wide unit inconsistency + mature large-cap false positive + literature 반대 방향 문제로 **기각**. 재설계는 Tier 3 "#### Tier 3 — research note" 항목 참조. |
 | 🟢 P2 | 5 | **포트폴리오 온보딩 UI (YAML → Dashboard)** | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 2-3 세션 | 수동 yaml 편집 제거. 2026-04-14 portfolio.yaml 수동 수정 페인포인트 직접 경험 |
 | 🟢 P2 | 6 | **OpenBB 호환성 fix** | [#274](https://github.com/researcherhojin/nuri-quant/issues/274) | bug(collectors) | 1 세션 | openbb-core==1.6.7 ↔ openbb-news==1.6.1 충돌로 news/etf_flows 수집 불가. 점진적 upgrade 필요 (콜렉터별 smoke test 후 진행) |
 | 🟢 P2 | 7 | **백테스트 인터랙티브 equity curve** | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 1 세션 | 파라미터 sliders + 실시간 시뮬레이션 (PR #269로 일부 완료, 마무리) |
@@ -566,6 +585,40 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 |---|------|------|---------|------|
 | 1 | **PR #202 commit message Stage 2 history cleanup** | — | security | 사용자 보유 종목 + 손실률이 PR #202 commit message에 노출되어 main git history에 박힘 (TEM/RKLB/PL 등 + PnL). §4.4.1 Stage 2 절차 (GitHub Support 또는 `git filter-repo`) 적용 결정 필요 |
 | 2 | **Universe 추가 확장 (Russell 2000)** | — | feat(scanner) | 현재 419 (us_core 85 + us_sp500 254 + kospi200 80). 중소형주 발굴 위해 Russell 2000 (~2,000) 추가 검토 |
+| 3 | **Meet/beat streak research spike** (Tier 2 P1 #4 에서 이관) | — | research | 아래 research note 참조 |
+
+#### Tier 3 — research note: meet/beat streak in revenue-backed growth
+
+**기각된 원안**: `earnings_surprises` 기반 "soft beat" 플래그 (surprise < 2% 지속 3Q → 성장 stall 경고). FundamentalAgent score 에서 -1.
+
+**기각 이유** (2026-04-15 codex challenge + 실데이터 audit):
+
+1. **Unit 오독**: §5.10 에 기록된 "JKHY 4Q 연속 +0.0~0.2%" 는 저장 단위 오해. 실측 JKHY Q4'25~Q1'25 = 0.17 / 0.13 / 0.04 / 0.09 (decimal fraction) → **17% / 13% / 4% / 9% 실 beat** 이 맞음. 4-17% 전부 정상 beat 이고 soft beat 아님.
+2. **Mature large-cap false positive**: threshold 2% 로 audit 결과 17 개 정상 mature 종목 (ECL, ETN, ABT, LIN, CTAS, CME 등) 이 trigger. Analyst coverage 정밀도 효과 ≠ 성장 stall.
+3. **Literature 반대 방향**:
+   - Bartov/Givoly/Hayn (2002): meet/beat = premium + 미래 성과 예측. <https://www.sciencedirect.com/science/article/abs/pii/S0165410102000459>
+   - Kasznik & McNichols (2002): 꾸준한 meeter = valuation premium. <https://ideas.repec.org/a/bla/joares/v40y2002i3p727-759.html>
+   - Neururer / Papadakis / Riedl (2020): 긴 streak = 낮은 ex ante uncertainty. <https://pubsonline.informs.org/doi/10.1287/mnsc.2019.3320>
+4. **JKHY 실제 실패 모드**: falling knife (fundamentals 강 + technicals 약). P1 A3 divergence mechanical penalty 가 정확히 잡음 → soft-beat 탐지 불필요.
+
+**Literature-backed pivot (Tier 3 research spec)**:
+
+Neururer (2022) — meet/beat streak 은 **revenue-backed** 성장에서 양의 신호, **expense-backed** 에서는 warning. <https://www.sciencedirect.com/science/article/abs/pii/S106297692200103X>
+
+Research acceptance:
+- `earnings_surprises` cohort + 분기별 revenue_growth join
+- Expense backing proxy 추가 (gross margin / operating margin trend)
+- High-growth (revenue_growth ≥ 20%) universe 에만 적용
+- Live universe 에서 backtest:
+  - (a) streak 단독
+  - (b) streak + revenue-backed filter
+  - (c) streak + non-revenue-backed filter (expense engineering)
+- Sector/regime 별 안정성 검증
+- False positive 순 decision quality 향상 증명 필수
+
+**승격 조건**: 백테스트에서 (b) 가 baseline 대비 +Sharpe/-drawdown 둘 다 유의미 + `pipeline_events` 샘플로 false-positive rate 를 validate 한 후에만 §2.6 Escalation Ladder 의 **Soft penalty** 레벨에 올림.
+
+**참고**: 무작정 소환하지 말 것. 데이터 충분히 축적 (최소 2년 earnings + 4 분기 실시간 backtest) 이후 spike 로.
 
 ### 자동 매매 — 영구 deferred (사용자 opt-out)
 
