@@ -25,6 +25,7 @@ dependencies = [
     # ─── Data collection (collectors) ─────────────────────────
     "beautifulsoup4>=4.12.0",
     "edgartools>=5.0.0",
+    "finance-datareader>=0.9.110",  # KOSPI 200 fetch (universe_sync #272)
     "finvizfinance>=1.3.0",
     "fredapi>=0.5.2",
     "openbb>=4.7.1",
@@ -107,9 +108,10 @@ packages = ["nuri"]
 # ═══════════════════════════════════════════════════════════════
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -m \"not integration\""
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"'). PR CI excludes; main push runs all.",
+    "integration: marks tests that hit real external services (Wikipedia, FDR, yfinance). Run via `make test-integration`. Default test run excludes.",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:openbb_core.*:",
