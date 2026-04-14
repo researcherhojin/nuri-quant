@@ -9,6 +9,7 @@ ARK Invest 매매 추적 수집기.
 사용법:
     python -m nuri.collectors.ark
 """
+
 import csv
 import io
 import logging
@@ -65,10 +66,16 @@ class ARKCollector(BaseCollector):
         '오늘 날짜의 보유 비중' (held=hold) 스냅샷만 기록한다.
         """
         import yfinance as yf
+        from tqdm import tqdm
 
         records = []
+        succeeded: list[str] = []
+        failed: list[str] = []
         today = today_str()
-        for etf in ARK_ETFS:
+
+        self.logger.info(f"ARK ETF holdings 수집: {len(ARK_ETFS)}개 ETF")
+        iterator = tqdm(ARK_ETFS, desc="  ARK ETFs", unit="etf", disable=len(ARK_ETFS) < 5)
+        for etf in iterator:
             try:
                 t = yf.Ticker(etf)
                 # yfinance 0.2.x: funds_data.top_holdings → DataFrame
@@ -86,17 +93,28 @@ class ARKCollector(BaseCollector):
                     if sym not in held_tickers:
                         continue
                     weight = float(row[weight_col]) * 100 if weight_col else 0.0
-                    records.append({
-                        "date": today,
-                        "ticker": sym,
-                        "direction": "Hold",  # 매매 내역 X, 보유 스냅샷
-                        "shares": 0.0,
-                        "weight": weight,
-                        "fund": etf,
-                    })
+                    records.append(
+                        {
+                            "date": today,
+                            "ticker": sym,
+                            "direction": "Hold",  # 매매 내역 X, 보유 스냅샷
+                            "shares": 0.0,
+                            "weight": weight,
+                            "fund": etf,
+                        }
+                    )
+                succeeded.append(etf)
             except Exception as e:
+                failed.append(etf)
                 self.logger.debug("ARK yfinance %s 실패: %s", etf, e)
                 continue
+
+        self.logger.info(
+            "📊 ARK ETF holdings: ✅ %d 성공 / ❌ %d 실패 — total %d holdings recorded",
+            len(succeeded),
+            len(failed),
+            len(records),
+        )
         return records
 
     def _collect_csv(self, url: str, held_tickers: set) -> list[dict]:
@@ -127,14 +145,16 @@ class ARKCollector(BaseCollector):
             weight_raw = row.get("% of ETF", row.get("weight", "0"))
             weight = float(str(weight_raw).replace("%", "").replace(",", "")) if weight_raw else 0.0
 
-            records.append({
-                "date": date,
-                "ticker": ticker,
-                "direction": row.get("Direction", row.get("direction", "")).strip(),
-                "shares": shares,
-                "weight": weight,
-                "fund": row.get("Fund", row.get("fund", "")).strip(),
-            })
+            records.append(
+                {
+                    "date": date,
+                    "ticker": ticker,
+                    "direction": row.get("Direction", row.get("direction", "")).strip(),
+                    "shares": shares,
+                    "weight": weight,
+                    "fund": row.get("Fund", row.get("fund", "")).strip(),
+                }
+            )
 
         self.logger.info(f"ARK 매매 {len(records)}건 (보유 종목 필터)")
         return records

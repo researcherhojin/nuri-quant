@@ -7,6 +7,7 @@ AUM 변화를 주기적으로 수집하여 섹터 자금흐름(rotation)을 추�
 사용법:
     python -m nuri.collectors.etf_flows
 """
+
 import logging
 from typing import Any
 
@@ -50,17 +51,28 @@ class EtfFlowsCollector(BaseCollector):
         super().__init__("etf_flows")
 
     def collect(self, **kwargs) -> list[dict]:
-        """OpenBB etf.info로 ETF 정보 수집."""
+        """OpenBB etf.info로 ETF 정보 수집.
+
+        Note: 2026-04 기준 OpenBB OBBject_EtfCountries import 깨짐 (#274). 모든 fetch 실패.
+        """
         import warnings
 
         from openbb import obb
+        from tqdm import tqdm
+
         warnings.filterwarnings("ignore")
 
         from nuri.core.timezone import today_kst
+
         today = today_kst()
         results = []
+        failed: list[str] = []
 
-        for ticker, label in ALL_ETFS.items():
+        etfs_list = list(ALL_ETFS.items())
+        self.logger.info(f"ETF 정보 수집: {len(etfs_list)}개")
+        iterator = tqdm(etfs_list, desc="  etf_flows", unit="etf", disable=len(etfs_list) < 10)
+
+        for ticker, label in iterator:
             try:
                 r = obb.etf.info(ticker, provider="yfinance")
                 df = r.to_df()
@@ -68,20 +80,33 @@ class EtfFlowsCollector(BaseCollector):
                     continue
 
                 row = df.iloc[0]
-                results.append({
-                    "ticker": ticker,
-                    "date": today,
-                    "name": str(row.get("name", label))[:100],
-                    "total_assets": float(row["total_assets"]) if pd.notna(row.get("total_assets")) else None,
-                    "volume_avg": float(row["volume_avg"]) if pd.notna(row.get("volume_avg")) else None,
-                    "nav_price": float(row["nav_price"]) if pd.notna(row.get("nav_price")) else None,
-                })
-                self.logger.info(f"  {ticker} ({label}): AUM=${row.get('total_assets', 0) / 1e9:.1f}B")
+                results.append(
+                    {
+                        "ticker": ticker,
+                        "date": today,
+                        "name": str(row.get("name", label))[:100],
+                        "total_assets": float(row["total_assets"]) if pd.notna(row.get("total_assets")) else None,
+                        "volume_avg": float(row["volume_avg"]) if pd.notna(row.get("volume_avg")) else None,
+                        "nav_price": float(row["nav_price"]) if pd.notna(row.get("nav_price")) else None,
+                    }
+                )
+                if len(etfs_list) < 10:
+                    self.logger.info(f"  {ticker} ({label}): AUM=${row.get('total_assets', 0) / 1e9:.1f}B")
 
             except Exception as e:
-                self.logger.warning(f"{ticker}: 수집 실패 — {e}")
+                failed.append(ticker)
+                self.logger.debug(f"{ticker}: 수집 실패 — {e}")
                 continue
 
+        sample = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
+        self.logger.info(
+            "📊 ETF flows: ✅ %d 성공 / ❌ %d 실패 (총 %d) — failed: %s%s",
+            len(results),
+            len(failed),
+            len(etfs_list),
+            sample or "없음",
+            "  [⚠️ OpenBB #274 깨짐 — 모두 실패 정상]" if len(failed) == len(etfs_list) else "",
+        )
         return results
 
     def save(self, data: Any) -> int:
@@ -150,14 +175,16 @@ def analyze_sector_rotation(days: int = 30, db_path=None) -> pd.DataFrame | None
         else:
             vol_trend = 0.0
 
-        results.append({
-            "ticker": ticker,
-            "sector": SECTOR_ETFS[ticker],
-            "aum_current": aum_current,
-            "aum_prev": aum_prev,
-            "aum_change_pct": round(aum_change_pct, 2),
-            "volume_trend_pct": round(vol_trend, 2),
-        })
+        results.append(
+            {
+                "ticker": ticker,
+                "sector": SECTOR_ETFS[ticker],
+                "aum_current": aum_current,
+                "aum_prev": aum_prev,
+                "aum_change_pct": round(aum_change_pct, 2),
+                "volume_trend_pct": round(vol_trend, 2),
+            }
+        )
 
     if not results:
         return None
@@ -180,8 +207,10 @@ def print_sector_rotation(df: pd.DataFrame | None) -> None:
 
     for _, row in df.iterrows():
         aum_b = row["aum_current"] / 1e9 if row["aum_current"] else 0
-        print(f"  {row['ticker']:<6} {row['sector']:<25} "
-              f"{aum_b:>9.1f} {row['aum_change_pct']:>+9.1f}% {row['volume_trend_pct']:>+9.1f}%")
+        print(
+            f"  {row['ticker']:<6} {row['sector']:<25} "
+            f"{aum_b:>9.1f} {row['aum_change_pct']:>+9.1f}% {row['volume_trend_pct']:>+9.1f}%"
+        )
     print()
 
 

@@ -21,6 +21,26 @@ from nuri.collectors.base import BaseCollector
 from nuri.core.db import upsert_prices
 
 
+def _call_with_timeout(func, timeout_sec: int, *args, **kwargs):
+    """ThreadPool 기반 timeout 헬퍼 — pykrx hang 방지.
+
+    macOS/Linux signal.alarm 보다 안전 (메인 스레드 외에서도 동작).
+
+    Returns:
+        함수 결과 또는 None (timeout 시).
+    """
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(func, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout_sec)
+        except concurrent.futures.TimeoutError:
+            return None
+        except Exception:
+            raise
+
+
 class StockKRCollector(BaseCollector):
     """pykrx로 한국 주가 수집 (KOSPI/KOSDAQ) + 지수 수집 (yfinance)."""
 
@@ -30,14 +50,19 @@ class StockKRCollector(BaseCollector):
     def __init__(self):
         super().__init__("stock_kr")
 
-    def collect(self, days: int = 5, **kwargs) -> pd.DataFrame:
-        """pykrx로 한국 보유 종목 OHLCV + yfinance로 KOSPI/KOSDAQ 지수 수집."""
-        tickers = self._get_tickers(market="kr")
+    def collect(self, days: int = 5, source: str = "portfolio", **kwargs) -> pd.DataFrame:
+        """pykrx로 한국 종목 OHLCV + yfinance로 KOSPI/KOSDAQ 지수 수집.
+
+        Args:
+            source: 'portfolio' (default, 보유) | 'universe' (KOSPI 200 전체) | 'all'
+                    #272 Phase 2c bug fix — collect-universe에서 KR 사일로 잔존 해결.
+        """
+        tickers = self._get_tickers(market="kr", source=source)
         if not tickers:
             self.logger.warning("수집할 한국 종목이 없습니다")
             return pd.DataFrame()
 
-        self.logger.info(f"수집 대상: {len(tickers)} 한국 종목 ({days}일)")
+        self.logger.info(f"수집 대상: {len(tickers)} 한국 종목 ({days}일, source={source})")
 
         # KST 기준 날짜 (KRX는 한국 영업일 기준)
         from nuri.core.timezone import kst_now
@@ -45,6 +70,11 @@ class StockKRCollector(BaseCollector):
         now_kst = kst_now()
         end_date = now_kst.strftime("%Y%m%d")
         start_date = (now_kst - timedelta(days=days)).strftime("%Y%m%d")
+
+        # 순차 fetch — KRX는 동시 요청 rate-limit. parallel 시 첫 ~60건만 빠르고
+        # 그 다음부터 동시에 5+ 요청이 hang. 순차 + 100ms delay 가 가장 안정적.
+        # 순차 + per-call 5s timeout = 최악 ~17분, 정상 ~30초 (203 × 0.15s).
+        import time as _time
 
         from tqdm import tqdm
 
@@ -59,6 +89,8 @@ class StockKRCollector(BaseCollector):
                 succeeded.append(ticker_with_suffix)
             else:
                 failed.append(ticker_with_suffix)
+            # KRX rate-limit 회피: 짧은 delay (전체 ~30초 추가, hang 회피)
+            _time.sleep(0.1)
 
         if len(tickers) >= 20:
             sample_failed = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
@@ -78,12 +110,15 @@ class StockKRCollector(BaseCollector):
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     def _collect_ticker(self, ticker_full: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
-        """단일 한국 종목 수집."""
+        """단일 한국 종목 수집. pykrx hang 방지 위해 5초 타임아웃 적용."""
         # .KS 접미사 제거 (pykrx는 순수 숫자 코드 사용)
         ticker_code = ticker_full.replace(".KS", "").replace(".KQ", "")
 
         try:
-            raw = krx.get_market_ohlcv(start_date, end_date, ticker_code)
+            raw = _call_with_timeout(krx.get_market_ohlcv, 5, start_date, end_date, ticker_code)
+            if raw is None:
+                self.logger.debug(f"{ticker_full}: pykrx 호출 timeout (>5s) — KRX 응답 지연")
+                return None
             if raw.empty:
                 self.logger.warning(f"{ticker_full}: 데이터 없음")
                 return None
@@ -157,6 +192,12 @@ class StockKRCollector(BaseCollector):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nuri-Quant 한국 주가 수집기 (pykrx)")
     parser.add_argument("--days", type=int, default=5, help="수집 일수 (기본 5일)")
+    parser.add_argument(
+        "--source",
+        default="portfolio",
+        choices=["portfolio", "universe", "all"],
+        help="ticker 소스 (#272 Phase 2c). KOSPI 200 전체 수집 시 universe 사용",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -165,4 +206,4 @@ if __name__ == "__main__":
     )
 
     collector = StockKRCollector()
-    collector.run(days=args.days)
+    collector.run(days=args.days, source=args.source)
