@@ -243,7 +243,7 @@ class TestUniverseSyncCollector:
         ):
             c = UniverseSyncCollector()
             # market='kr' explicitly → should still NOT raise (FileNotFoundError, not RuntimeError)
-            result = c.collect(market="kr", dry_run=True)
+            c.collect(market="kr", dry_run=True)
 
         # kr skipped, returns empty diff (US untouched since market filter='kr')
         assert c._kr_skipped is True
