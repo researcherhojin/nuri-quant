@@ -6,6 +6,7 @@ import { fetchAPI } from "@/lib/api";
 
 import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
+import { CoverageStatus } from "@/components/ui/coverage-status";
 import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import { CollapsibleStrip } from "@/components/ui/collapsible-strip";
 import { HeroStats } from "@/components/ui/hero-stats";
@@ -130,7 +131,7 @@ async function Dashboard({
   const compositionTab = parseCompositionTab(params.comp);
   const holdingsExpanded = params.holdings === "expanded";
 
-  const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets, actionsData, opportunitiesData, marketCtx] = await Promise.all([
+  const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets, actionsData, opportunitiesData, marketCtx, coverage] = await Promise.all([
     fetchAPI<DashboardData>("/api/dashboard"),
     fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], details: [], overall: "FAIL", pass: 0, warn: 0, fail: 0 })),
     fetchAPI<PipelineStatusData>("/api/pipeline/status").catch((): PipelineStatusData => ({ steps: [] })),
@@ -144,6 +145,7 @@ async function Dashboard({
     fetchAPI<any>("/api/actions").catch(() => ({ urgent: [], check: [], hold: [] })),
     fetchAPI<any>("/api/opportunities").catch(() => ({ opportunities: [] })),
     fetchAPI<any>("/api/market-context").catch(() => ({ macro_events: [], system_health: {} })),
+    fetchAPI<import("@/components/ui/coverage-status").CoverageData>("/api/coverage").catch(() => null),
   ]);
 
   const holdingCount = portfolio?.count ?? portfolio?.holdings?.length ?? 0;
@@ -501,6 +503,13 @@ async function Dashboard({
             </Link>
           </div>
           <OpportunityExplorer opportunities={(opportunitiesData?.opportunities ?? []).slice(0, 3)} />
+        </div>
+      )}
+
+      {/* ═══ Data Coverage (#272 Phase 4) ═══ */}
+      {coverage && !coverage.error && coverage.checks?.length > 0 && (
+        <div className="pt-2">
+          <CoverageStatus data={coverage} />
         </div>
       )}
 

@@ -10,6 +10,7 @@ Nuri-Quant FastAPI — Phase A~E 분석 결과를 JSON API로 제공.
     API_KEY=xxx → 간단한 API 키 인증
     API_SECRET_KEY=xxx → JWT 서명 키
 """
+
 import logging
 import os
 
@@ -27,6 +28,7 @@ from slowapi.util import get_remote_address
 from nuri.api.routes import (
     actions,
     agents,
+    coverage,
     dashboard,
     decisions,
     engine,
@@ -81,6 +83,7 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+
 # ─── 보안 헤더 미들웨어 ───
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -99,6 +102,7 @@ app.include_router(portfolio.router, prefix="/api")
 app.include_router(regime.router, prefix="/api")
 app.include_router(signals.router, prefix="/api")
 app.include_router(rebalance.router, prefix="/api")
+app.include_router(coverage.router, prefix="/api")
 app.include_router(engine.router, prefix="/api")
 app.include_router(pipeline.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
@@ -139,6 +143,7 @@ async def login(request: Request):
 def root():
     """API root → redirect to docs."""
     from fastapi.responses import RedirectResponse
+
     return RedirectResponse(url="/docs")
 
 
@@ -151,5 +156,6 @@ if __name__ == "__main__":
     import os
 
     import uvicorn
+
     port = int(os.getenv("API_PORT", "8001"))
     uvicorn.run("nuri.api.main:app", host="0.0.0.0", port=port, reload=True)
