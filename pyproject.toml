@@ -107,9 +107,10 @@ packages = ["nuri"]
 # ═══════════════════════════════════════════════════════════════
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -m \"not integration\""
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"'). PR CI excludes; main push runs all.",
+    "integration: marks tests that hit real external services (Wikipedia, FDR, yfinance). Run via `make test-integration`. Default test run excludes.",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:openbb_core.*:",

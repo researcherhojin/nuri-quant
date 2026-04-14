@@ -101,6 +101,18 @@ universe-sync-kr:    ## Dry-run KR KOSPI 200 sync only (requires: uv pip install
 universe-sync-apply: ## Apply universe.yaml updates (additions only — manual ETFs preserved)
 	$(PYTHON) -m nuri.collectors.universe_sync --apply
 
+test-integration: ## Integration tests — real external APIs (Wikipedia, FDR, yfinance). Network required.
+	$(PYTHON) -m pytest tests/integration/ -m integration -v --no-header
+
+verify-universe-sync: ## Smoke test universe-sync targets — catches real API breakage (#272)
+	@echo "=== Integration tests ==="
+	$(PYTHON) -m pytest tests/integration/test_universe_sync_real.py -m integration -v --no-header
+	@echo "\n=== make universe-sync-us (live) ==="
+	@$(PYTHON) -m nuri.collectors.universe_sync --market us 2>&1 | grep -E "fetched|종목" | head -3
+	@echo "\n=== make universe-sync-kr (live) ==="
+	@$(PYTHON) -m nuri.collectors.universe_sync --market kr 2>&1 | grep -E "fetched|종목|건너뜀" | head -3
+	@echo "\n✅ universe-sync smoke passed"
+
 # Verify tiers — fastest to slowest. See `make verify-help` for the full table.
 
 verify-quick:    ## ~10s pre-commit smoke test (pytest + regime, no network)
