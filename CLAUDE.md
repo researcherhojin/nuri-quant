@@ -6,14 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Harness Principles
 
-```
-1. 모르면 읽는다         — 가정하지 않는다
-2. 2번 실패하면 접근을 바꾼다  — 같은 시도 3회 금지
-3. 수정 후 실행한다       — 논리적 확신을 신뢰하지 않는다
-4. 스코프를 지킨다       — 요청된 것만 한다
-5. 숫자를 grep한다       — 한 곳만 고치지 않는다
-6. 시스템이 차단한다      — 문서가 아닌 린터/CI/게이트가 강제한다
-```
+See `docs/STRATEGY.md` §5.8 — six principles (모르면 읽는다 / 2번 실패하면 접근을 바꾼다 / 수정 후 실행한다 / 스코프를 지킨다 / 숫자를 grep한다 / 시스템이 차단한다). STRATEGY.md is the canonical source; do not duplicate the list here.
 
 ## Project
 
@@ -235,6 +228,8 @@ This project uses layered context files. Root files load every session; director
 | `frontend/CLAUDE.md` | Next.js 16, design system, testing gotchas | When editing frontend/ |
 | `tests/CLAUDE.md` | Fixtures, mocks, testing gotchas | When editing tests/ |
 | `config/CLAUDE.md` | YAML structure, change procedures | When editing config/ |
+
+User-scoped auto-memory lives outside the repo at `~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/memory/` (`MEMORY.md` index + per-topic files). Auto-loaded each session for cross-conversation continuity; not committed.
 
 ### Mechanical Enforcement (Hooks + CI)
 
