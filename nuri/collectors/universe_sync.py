@@ -57,51 +57,37 @@ def _fetch_sp500_from_wikipedia() -> list[str]:
 
 
 def _fetch_kospi200() -> list[str]:
-    """KOSPI 200 fetch — FinanceDataReader 우선, 실패 시 RuntimeError.
+    """KOSPI 200 fetch — FinanceDataReader 전용 (pykrx 제거).
 
     CLAUDE.md 알려진 이슈: pykrx의 get_index_portfolio_deposit_file/get_market_cap_by_ticker
-    모두 깨짐 (column rename). FinanceDataReader 도 시도해보고 실패 시 명시적 raise.
+    모두 깨짐. 추가로 pykrx 내부에 logging.info(args, kwargs) TypeError 버그 있어서
+    실패 시 수십 줄 traceback 노이즈 발생. 따라서 pykrx fallback 제거 — 깨끗한 실패 경로만.
 
     반환 형식: ["005930.KS", "000660.KS", ...] (yfinance suffix 포함)
+
+    Raises:
+        FileNotFoundError: FDR 미설치 (pip install finance-datareader 안내)
+        RuntimeError: FDR 설치됐지만 데이터 못 받음 (KRX 변경 등)
     """
-    # FinanceDataReader 먼저 시도 (가장 안정적)
     try:
         import FinanceDataReader as fdr  # type: ignore[import-untyped]
+    except ImportError as e:
+        raise FileNotFoundError(
+            "KOSPI 200 sync requires finance-datareader. Install: `uv pip install finance-datareader`"
+        ) from e
 
-        df = fdr.SnapDataReader("KRX/INDEX/STOCK/KS200")
-        if df is not None and not df.empty and "Code" in df.columns:
-            tickers = sorted(set(f"{code}.KS" for code in df["Code"].astype(str)))
-            return tickers
-    except ImportError:
-        logger.warning("FinanceDataReader 미설치 — pip install finance-datareader")
-    except Exception as e:
-        logger.warning("FinanceDataReader KOSPI 200 fetch 실패: %s", e)
-
-    # pykrx fallback (CLAUDE.md 알려진 깨짐 — 보통 실패)
     try:
-        from datetime import timedelta
+        df = fdr.SnapDataReader("KRX/INDEX/STOCK/KS200")
+    except Exception as e:
+        raise RuntimeError(f"FinanceDataReader KOSPI 200 fetch 실패: {e}") from e
 
-        from pykrx import stock
+    if df is None or df.empty or "Code" not in df.columns:
+        raise RuntimeError("FinanceDataReader returned empty/malformed KOSPI 200 data")
 
-        from nuri.core.timezone import kst_now
-
-        for delta in range(1, 7):
-            d = (kst_now() - timedelta(days=delta)).strftime("%Y%m%d")
-            try:
-                tickers_raw = stock.get_index_portfolio_deposit_file("1028", d)
-                if hasattr(tickers_raw, "__len__") and len(tickers_raw) > 0:
-                    tickers = sorted(set(f"{t}.KS" for t in tickers_raw))
-                    if len(tickers) >= 100:  # KOSPI 200 정상 최소 임계
-                        return tickers
-            except Exception:
-                continue
-    except ImportError:
-        pass
-
-    raise RuntimeError(
-        "KOSPI 200 fetch 실패 — FinanceDataReader / pykrx 모두 사용 불가. "
-        "수동 갱신 또는 finance-datareader 패키지 추가 필요."
-    )
+    tickers = sorted(set(f"{code}.KS" for code in df["Code"].astype(str)))
+    if len(tickers) < 100:
+        raise RuntimeError(f"KOSPI 200 ticker 수 {len(tickers)} < 100 minimum — 데이터 이상")
+    return tickers
 
 
 def _load_universe() -> dict[str, Any]:
@@ -150,6 +136,7 @@ class UniverseSyncCollector(BaseCollector):
         self._dry_run = True
         self._market_filter: str | None = None  # None | 'us' | 'kr'
         self._allow_removal = False  # 기본적으로 자동 제거 금지 (manual ETF 보호)
+        self._kr_skipped = False  # KR fetch 건너뜀 플래그 (UX용)
 
     def collect(self, **kwargs) -> dict:
         """Wikipedia + KRX fetch → diff 계산.
@@ -173,6 +160,10 @@ class UniverseSyncCollector(BaseCollector):
         fetched_us: set[str] = current_us
         fetched_kr: set[str] = current_kr
 
+        # 재시도 비활성: universe_sync 는 영구 실패가 일반적 (FDR 미설치 등). transient retry 무의미.
+        # base.py는 _expected_count==0이면 실패율 체크 안 함. 그러나 raise시 3회 retry — 그래서 raise 최소화.
+        self._expected_count = 0
+
         if self._market_filter in (None, "us"):
             self.logger.info("Wikipedia에서 S&P 500 fetch...")
             try:
@@ -184,14 +175,20 @@ class UniverseSyncCollector(BaseCollector):
                     raise
 
         if self._market_filter in (None, "kr"):
-            self.logger.info("KOSPI 200 fetch (FinanceDataReader/pykrx)...")
+            self.logger.info("KOSPI 200 fetch (FinanceDataReader)...")
             try:
                 fetched_kr = set(_fetch_kospi200())
                 self.logger.info("KOSPI 200: %d종목 fetched", len(fetched_kr))
-            except Exception as e:
-                self.logger.warning("KOSPI 200 fetch 실패 (전체 sync는 계속): %s", e)
+            except FileNotFoundError as e:
+                # FDR 미설치 — 설치 안내 후 KR sync 건너뜀 (raise 안 함, 재시도 무의미)
+                self.logger.warning("KR sync 건너뜀: %s", e)
+                self._kr_skipped = True
+            except RuntimeError as e:
+                # FDR 설치됐지만 fetch 실패 — 명시적 KR 요청 시만 raise
+                self.logger.warning("KOSPI 200 fetch 실패: %s", e)
                 if self._market_filter == "kr":
                     raise
+                self._kr_skipped = True
 
         return compute_diff(current_us, current_kr, fetched_us, fetched_kr)
 
@@ -221,15 +218,18 @@ class UniverseSyncCollector(BaseCollector):
             )
 
         if self._market_filter in (None, "kr"):
-            print(f"\n  KR KOSPI 200 (current coverage: {data['kr_coverage_pct']:.1%})")
-            print(
-                f"    + 추가될 종목 ({len(data['kr_added'])}): {', '.join(data['kr_added'][:10])}"
-                + (f" ... 외 {len(data['kr_added']) - 10}개" if len(data["kr_added"]) > 10 else "")
-            )
-            print(
-                f"    - 제거될 종목 ({len(data['kr_removed'])}): {', '.join(data['kr_removed'][:10])}"
-                + (f" ... 외 {len(data['kr_removed']) - 10}개" if len(data["kr_removed"]) > 10 else "")
-            )
+            if self._kr_skipped:
+                print("\n  KR KOSPI 200: ⏭️  건너뜀 (FinanceDataReader 미설치 또는 fetch 실패)")
+            else:
+                print(f"\n  KR KOSPI 200 (current coverage: {data['kr_coverage_pct']:.1%})")
+                print(
+                    f"    + 추가될 종목 ({len(data['kr_added'])}): {', '.join(data['kr_added'][:10])}"
+                    + (f" ... 외 {len(data['kr_added']) - 10}개" if len(data["kr_added"]) > 10 else "")
+                )
+                print(
+                    f"    - 제거될 종목 ({len(data['kr_removed'])}): {', '.join(data['kr_removed'][:10])}"
+                    + (f" ... 외 {len(data['kr_removed']) - 10}개" if len(data["kr_removed"]) > 10 else "")
+                )
 
         print()
 
