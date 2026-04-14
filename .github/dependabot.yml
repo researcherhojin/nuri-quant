@@ -17,6 +17,11 @@ updates:
       - "backend"
     commit-message:
       prefix: "chore(deps)"
+    # fastapi: pinned to 0.128.x by openbb-core (#277). Ignore dependabot
+    # proposals to bump past 0.129 until openbb relaxes its constraint.
+    ignore:
+      - dependency-name: "fastapi"
+        versions: [">=0.129.0"]
     groups:
       # Bundle all dev tooling (ruff/pytest/coverage) into one PR
       python-dev:
