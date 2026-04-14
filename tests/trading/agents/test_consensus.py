@@ -417,6 +417,26 @@ class TestConsensusDivergenceMechanicalPenalty:
         assert result.divergence_reason != ""
         assert "SELL" in result.divergence_reason
 
+    def test_penalty_applied_flag_set_and_pre_penalty_action_captured(self):
+        """Q1 telemetry 준비: ConsensusResult 에 penalty_applied + pre_penalty_action 노출."""
+        from nuri.trading.agents.consensus import _build_consensus
+
+        verdicts, weights = self._scenario_buy_consensus_with_tech_sell(tech_conf=85)
+        result = _build_consensus("TEST", verdicts, weights)
+
+        assert result.penalty_applied is True
+        assert result.pre_penalty_action == "BUY"
+
+    def test_penalty_applied_false_when_below_threshold(self):
+        """No penalty → penalty_applied=False, pre_penalty_action empty."""
+        from nuri.trading.agents.consensus import _build_consensus
+
+        verdicts, weights = self._scenario_buy_consensus_with_tech_sell(tech_conf=60)
+        result = _build_consensus("TEST", verdicts, weights)
+
+        assert result.penalty_applied is False
+        assert result.pre_penalty_action == ""
+
     def test_final_confidence_preserved_after_penalty(self):
         """Penalty 가 action 만 바꾸고 final_confidence 는 원 계산값 유지.
 
@@ -1320,3 +1340,134 @@ class TestConsensusTimeout_R130:
 
         timeout = AGENT_CONFIG.get("consensus", {}).get("agent_timeout_sec")
         assert timeout == 60, f"agent_timeout_sec이 {timeout} — 60이어야 함 (#130)"
+
+
+class TestPenaltyTelemetryEvent:
+    """Q1 — `consensus_penalty_applied` 이벤트 발행 감사.
+
+    STRATEGY §2.6 Escalation Ladder 의 soft-penalty rung 이 실제로 얼마나
+    자주 발동하는지 1-2 달 후 측정 가능해야 한다. 이벤트는 penalty 가 실제로
+    action 을 downgrade 할 때만 emit. flag 만 set 된 sub-threshold 케이스는
+    emit 안 함 (noise 억제).
+    """
+
+    @staticmethod
+    def _verdict(name, action, confidence=70):
+        from nuri.trading.agents.base import AgentVerdict
+
+        return AgentVerdict(name, "JKHY", action, confidence, f"mock {name}")
+
+    def _scenario_buy_with_tech_sell(self, tech_conf: float):
+        verdicts = [
+            self._verdict("technical", "SELL", tech_conf),
+            self._verdict("fundamental", "BUY", 70),
+            self._verdict("wallstreet", "BUY", 70),
+            self._verdict("smart_money", "BUY", 70),
+            self._verdict("macro", "BUY", 70),
+            self._verdict("korean_market", "BUY", 70),
+            self._verdict("options", "BUY", 70),
+            self._verdict("crypto", "BUY", 70),
+            self._verdict("retail", "BUY", 70),
+            self._verdict("risk", "HOLD", 40),
+        ]
+        weights = {v.agent_name: 0.1 for v in verdicts}
+        return verdicts, weights
+
+    def test_emit_helper_fires_when_penalty_applied(self, db_path, monkeypatch):
+        """penalty_applied=True 인 result 전달 시 emit_event 호출."""
+        from nuri.trading.agents import consensus as cons_mod
+
+        verdicts, weights = self._scenario_buy_with_tech_sell(tech_conf=85)
+        result = cons_mod._build_consensus("JKHY", verdicts, weights)
+        assert result.penalty_applied is True
+
+        captured = []
+        monkeypatch.setattr(
+            "nuri.core.events.emit_event",
+            lambda event_type, step=None, payload=None, **kw: captured.append(
+                {"event_type": event_type, "step": step, "payload": payload}
+            ),
+        )
+        cons_mod._emit_penalty_event_if_fired(result, verdicts, db_path=db_path)
+
+        assert len(captured) == 1, f"expected 1 emit, got {len(captured)}"
+        evt = captured[0]
+        assert evt["event_type"] == "consensus_penalty_applied"
+        assert evt["step"] == "recommend"
+        p = evt["payload"]
+        assert p["ticker"] == "JKHY"
+        assert p["penalty_kind"] == "divergence_technical"
+        assert p["technical_action"] == "SELL"
+        assert p["technical_confidence"] == 85
+        assert p["consensus_action_before"] == "BUY"
+        assert p["consensus_action_after"] == "HOLD"
+        assert p["swing"] == "BUY_TO_HOLD"
+        assert "threshold" in p
+        assert "divergence_reason" in p
+
+    def test_no_emit_when_penalty_not_applied(self, db_path, monkeypatch):
+        """Sub-threshold (tech conf 60): flag 만 set, penalty 발동 안 함 → emit 없음."""
+        from nuri.trading.agents import consensus as cons_mod
+
+        verdicts, weights = self._scenario_buy_with_tech_sell(tech_conf=60)
+        result = cons_mod._build_consensus("JKHY", verdicts, weights)
+        assert result.penalty_applied is False
+
+        captured = []
+        monkeypatch.setattr(
+            "nuri.core.events.emit_event",
+            lambda *args, **kw: captured.append(kw.get("event_type") or args[0]),
+        )
+        cons_mod._emit_penalty_event_if_fired(result, verdicts, db_path=db_path)
+
+        assert captured == [], "sub-threshold 에서는 event emit 금지"
+
+    def test_sell_to_hold_swing_recorded(self, db_path, monkeypatch):
+        """역방향: SELL 합의 + tech BUY 80 → swing=SELL_TO_HOLD."""
+        from nuri.trading.agents import consensus as cons_mod
+
+        verdicts = [
+            self._verdict("technical", "BUY", 80),
+            self._verdict("fundamental", "SELL", 70),
+            self._verdict("wallstreet", "SELL", 70),
+            self._verdict("smart_money", "SELL", 70),
+            self._verdict("macro", "SELL", 70),
+            self._verdict("korean_market", "SELL", 70),
+            self._verdict("options", "SELL", 70),
+            self._verdict("crypto", "SELL", 70),
+            self._verdict("retail", "SELL", 70),
+            self._verdict("risk", "HOLD", 40),
+        ]
+        weights = {v.agent_name: 0.1 for v in verdicts}
+        result = cons_mod._build_consensus("X", verdicts, weights)
+        assert result.penalty_applied is True
+
+        captured = []
+        monkeypatch.setattr(
+            "nuri.core.events.emit_event",
+            lambda event_type, step=None, payload=None, **kw: captured.append(payload),
+        )
+        cons_mod._emit_penalty_event_if_fired(result, verdicts, db_path=db_path)
+
+        assert len(captured) == 1
+        assert captured[0]["swing"] == "SELL_TO_HOLD"
+
+    def test_emit_failure_does_not_propagate(self, db_path, monkeypatch):
+        """emit_event 실패 시 consensus 결과는 정상 반환 (graceful fallback)."""
+        from nuri.trading.agents import consensus as cons_mod
+
+        verdicts, weights = self._scenario_buy_with_tech_sell(tech_conf=85)
+        result = cons_mod._build_consensus("JKHY", verdicts, weights)
+
+        def _boom(*args, **kw):
+            raise RuntimeError("DB gone")
+
+        monkeypatch.setattr("nuri.core.events.emit_event", _boom)
+        # 예외 전파 안 함
+        cons_mod._emit_penalty_event_if_fired(result, verdicts, db_path=db_path)
+
+    def test_consensus_penalty_applied_registered_in_event_types(self):
+        """event type 이 EVENT_TYPES whitelist 에 등록되어야 pipeline_events 저장 가능."""
+        from nuri.core.events import EVENT_TYPES
+
+        assert "consensus_penalty_applied" in EVENT_TYPES
