@@ -7,6 +7,7 @@ FINVIZ에서 시장 전반 기술적 지표를 수집하여 market-wide 스캔�
 사용법:
     python -m nuri.collectors.finviz
 """
+
 import logging
 
 from nuri.collectors.base import BaseCollector, today_str
@@ -14,11 +15,11 @@ from nuri.core.db import get_db
 
 # finvizfinance 시그널 이름 → 내부 시그널 ID 매핑
 FINVIZ_SIGNALS = {
-    "oversold_rsi": "Oversold",          # RSI < 30
-    "overbought_rsi": "Overbought",      # RSI > 70
-    "new_high": "New High",              # 52주 신고가
-    "new_low": "New Low",                # 52주 신저가
-    "most_volatile": "Most Volatile",    # 고변동성
+    "oversold_rsi": "Oversold",  # RSI < 30
+    "overbought_rsi": "Overbought",  # RSI > 70
+    "new_high": "New High",  # 52주 신고가
+    "new_low": "New Low",  # 52주 신저가
+    "most_volatile": "Most Volatile",  # 고변동성
     "unusual_volume": "Unusual Volume",  # 비정상 거래량
 }
 
@@ -36,27 +37,46 @@ class FINVIZCollector(BaseCollector):
             self.logger.warning("보유 US 종목 없음")
             return []
 
+        from tqdm import tqdm
+
         records = []
         today = today_str()
+        succeeded: list[str] = []
+        failed: list[str] = []
 
-        for signal_name, finviz_signal in FINVIZ_SIGNALS.items():
+        signals_list = list(FINVIZ_SIGNALS.items())
+        self.logger.info(f"FINVIZ 시그널 스캔: {len(signals_list)}개 시그널")
+        iterator = tqdm(signals_list, desc="  FINVIZ signals", unit="sig", disable=len(signals_list) < 5)
+
+        for signal_name, finviz_signal in iterator:
             try:
                 tickers = self._fetch_signal_tickers(finviz_signal)
                 # 보유 종목과 교집합
                 matched = tickers & held_tickers
                 for ticker in matched:
-                    records.append({
-                        "date": today,
-                        "ticker": ticker,
-                        "signal": signal_name,
-                        "source": "FINVIZ",
-                    })
-                if matched:
+                    records.append(
+                        {
+                            "date": today,
+                            "ticker": ticker,
+                            "signal": signal_name,
+                            "source": "FINVIZ",
+                        }
+                    )
+                succeeded.append(signal_name)
+                if matched and len(signals_list) < 5:
                     self.logger.info("FINVIZ %s: %s", signal_name, ", ".join(sorted(matched)))
             except Exception as e:
-                self.logger.warning("FINVIZ %s 수집 실패: %s", signal_name, e)
+                failed.append(signal_name)
+                self.logger.debug("FINVIZ %s 수집 실패: %s", signal_name, e)
 
-        self.logger.info("FINVIZ 시그널 %d건 (보유 종목 필터)", len(records))
+        sample = ", ".join(failed[:3]) + (f" 외 {len(failed) - 3}개" if len(failed) > 3 else "")
+        self.logger.info(
+            "📊 FINVIZ 시그널: ✅ %d 성공 / ❌ %d 실패 — %d matches in portfolio — failed: %s",
+            len(succeeded),
+            len(failed),
+            len(records),
+            sample or "없음",
+        )
         return records
 
     def _fetch_signal_tickers(self, signal: str) -> set[str]:
@@ -64,6 +84,7 @@ class FINVIZCollector(BaseCollector):
         # 1차: finvizfinance 라이브러리
         try:
             from finvizfinance.screener.ticker import Ticker
+
             screener = Ticker()
             screener.set_filter(signal=signal)
             result = screener.screener_view(limit=500, verbose=0, sleep_sec=0.5)
@@ -124,8 +145,6 @@ class FINVIZCollector(BaseCollector):
                 data,
             )
             return len(data)
-
-
 
 
 if __name__ == "__main__":
