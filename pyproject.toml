@@ -51,6 +51,7 @@ dependencies = [
     # ─── Visualization ────────────────────────────────────────
     "matplotlib>=3.8.0",
     "mplfinance>=0.12.0",
+    "pillow>=12.2.0",  # security: CVE-2026-40192 FITS GZIP decompression bomb (Dependabot #15)
     "plotly>=5.18.0",
     "seaborn>=0.13.2",
 
@@ -79,7 +80,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
+    "pytest>=9.0.3",  # security: CVE-2025-71176 tmpdir handling (Dependabot #16)
     "pytest-cov>=7.1.0",
     "pytest-shard>=0.1.2",
     "pytest-xdist>=3.8.0",
