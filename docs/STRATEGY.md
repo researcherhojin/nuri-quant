@@ -334,11 +334,28 @@ LLM이 "수정했습니다"라고 말하지만, 실제로는 다른 곳을 고�
 **실제 사례:**
 - Recharts mock 충돌: `coverage-push.test.tsx`의 `vi.mock("recharts")`가 `coverage-push-3.test.tsx`의 `price-chart` import를 깨뜨림. 원인은 vitest의 mock hoisting이 같은 워커의 모든 dynamic import에 영향을 미치기 때문
 - OpenBB `obb.currency.price.historical` 패치 시도 — 모듈 레벨에 `obb`가 없어서 `AttributeError`. 실제로는 함수 내부 local import이므로 `patch.dict(sys.modules, {"openbb": mock_module})` 필요
+- **`df.copy()` 누락 재발** (2026-04-15, PR #306 CI Shard 2 fail → #307): PR #294/#295 가 "`_standardize(df)` 진입 시 `df = df.copy()`" 를 "의도한 방어" 라 commit message 에 기록하고 CLAUDE.md gotcha 에도 추가했지만 **실제 `nuri/collectors/stock.py` 에는 `df.copy()` 가 없었음**. `mock.return_value = df_fixture` 가 ThreadPoolExecutor 10-worker 에 공유 → `df.columns = ...` race → `pandas.errors.InvalidIndexError`. 수 세션 후 재발. Fix + `TestStandardizeThreadSafety` regression test 를 함께 ship 해 re-collapse 불가능하게 lock-in.
 
 **방어:**
 - 수정 후 반드시 테스트를 실행한다. "논리적으로 맞을 것"을 신뢰하지 않는다
 - 테스트가 통과하더라도 **의도한 라인이 실제로 커버되는지** coverage 리포트로 확인한다
 - `vi.mock()` 사용 시 hoisting 영향 범위를 인식한다 (파일 단위, 워커 단위)
+
+#### 5.3.1 Gotcha-Test Pair 원칙 (PR #307)
+
+`df.copy()` 재발 교훈. Gotcha 가 **folklore** (이야기) 로만 기록되면 다음 리뷰어가 해당 defensive 코드를 "불필요해 보임" 이라 제거해도 테스트가 안 막는다. **모든 fix-pattern gotcha 는 그 fix 가 사라졌을 때 fail 하는 test 를 명명해서 cite 해야 한다**.
+
+**프로토콜**:
+1. Gotcha 문장 끝에 `**Test:** `path/to/test.py::TestClass::test_name`` 추가.
+2. Cited test 는 **fix 가 없을 때 실제로 fail** 해야 함 (테스트 자체가 phantom 이면 안 됨). PR 에서 fix 를 임시로 revert 해 test 가 fail 하는지 local 검증 권장.
+3. Gotcha 가 단순 facts/quirks (e.g. "yfinance .KS fundamentals work") 이고 fix 절차가 아닌 경우 Test: 불필요.
+4. 새 gotcha 추가 시 Test: 없이 ship 하려면 PR body 에 "no fix, just facts" 명시.
+
+**Enforcement**:
+- 1차 (지금): 리뷰 checklist + STRATEGY §5.3.1 참조. 사람 규율.
+- 2차 (Tier 3 후보): `scripts/audit_phantom_fixes.py` — CLAUDE.md Gotchas 파싱 → 각 `**Test:**` 참조가 실존 테스트인지 verify → CI lint. 인간 규율 drift 방지.
+
+**관련**: STRATEGY §5.5 (Test Illusion), §5.8 원칙 1 "모르면 읽는다" — gotcha 는 "고쳤다" 는 이야기, 실제 고침은 코드에서 확인.
 
 ### 5.4 스코프 팽창 (Scope Creep)
 
@@ -496,22 +513,39 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 
 ### 5.10 추천 파이프라인의 도구 사각지대 (JKHY 에피소드, 2026-04-14)
 
+> **2026-04-15 정정 노트** (PR #307): 원 기록의 핵심 진단 2개가 심층 조사 결과 오독으로 밝혀졌다. 원 문장은 교훈용으로 stryke-through 보존하되 실제 root cause 와 대응은 아래 **"정정된 분석"** 참조.
+
 **상황**: 세션 종료 직전 universe-wide BUY 추천 7종목 (TMUS/JKHY/V/MA/BX/ANET/NFLX) 제시. 사용자가 Investing.com 확인 → JKHY "적극 매도" (기술지표 종합). 시스템 추천과 정면 모순.
 
-**원인 (3층)**:
+~~**원인 (3층)**:~~
 
-1. **도구는 있으나 연결 안 됨** — `nuri/quant/chart_analysis.py` (BB/MACD/RSI/추세선) 구현 존재하지만, 추천 파이프라인 (`candidates.py`, `consensus.py`) 에서 호출하지 않음. "구현 = 사용"이 아님.
-2. **Fundamentals-only 추천** — 애널리스트 upgrade + ROE/PE 기반 Buy 신호만 사용. 가격 모멘텀/추세 완전 무시. 기본 시스템 design이 한 축에만 의존.
-3. **애널리스트 신호의 lag 속성 간과** — 애널리스트 target은 이미 오른 주식을 뒤늦게 upgrade하는 경향. 하락 중인 종목에 "upgrade + 30% upside"가 나오면 falling knife 신호일 수 있음. JKHY earnings surprise 4Q 연속 +0.0~0.2% = "soft beat" 성장 stall 신호도 놓침.
+1. ~~**도구는 있으나 연결 안 됨** — `nuri/quant/chart_analysis.py` (BB/MACD/RSI/추세선) 구현 존재하지만, 추천 파이프라인 (`candidates.py`, `consensus.py`) 에서 호출하지 않음.~~
+2. ~~**Fundamentals-only 추천** — 애널리스트 upgrade + ROE/PE 기반 Buy 신호만 사용. 가격 모멘텀/추세 완전 무시.~~
+3. ~~**애널리스트 신호의 lag 속성 간과** — JKHY earnings surprise 4Q 연속 +0.0~0.2% = "soft beat" 성장 stall 신호도 놓침.~~
 
-**재발 방지 룰**:
-- 추천 내기 전 **반드시** 4개 축 통과: (a) fundamentals, (b) technicals, (c) earnings quality, (d) 시장 환경 (VIX/F&G/RSI)
-- "System has the tool" ≠ "Pipeline uses it". 통합 경로를 explicit 하게 테스트로 검증
-- 애널리스트 target upside + 현재가가 52주 고점/저점에서 어디 있는지 **반드시** 확인
+**정정된 분석** (PR #301-#303 + codex challenge 결과):
 
-**방어 실행 (Tier 2 P1)**: `chart_analysis.py`를 `candidates.py`/`consensus.py`에 통합 + "fundamentals vs technicals divergence" 플래그 + earnings quality (soft beat) 자동 감지.
+1. **TechnicalAgent 는 이미 `analyze_chart()` 호출 중** — `nuri/trading/agents/technical.py:12,78` 에서 import + invoke. 원 진단 "도구 연결 안 됨" 은 소스 코드 읽지 않은 추정이었음 (§5.1 "모르면 읽는다" 위반).
+2. **실제 실패 모드 = dissent overwhelmed, not missing** — JKHY 에 대해 TechnicalAgent 가 SELL(100 conf) 정확히 투표함. 하지만 9 개 fundamentals-ish 에이전트가 BUY/HOLD 로 outweighted → 합의 BUY. 문제는 TechnicalAgent 의 dissent 가 사용자에게 **surface 도 안 되고 action 에 영향도 안 주는** 것. 즉 "informational only" design 의 근본 한계.
+3. **JKHY 는 soft beat 이 아니다** — 실측 최근 4Q surprise_pct = 0.17 / 0.13 / 0.04 / 0.09 **decimal fraction** (= 4% ~ 17% 정상 beat). 원 기록의 "0.0~0.2%" 는 저장 단위 오독. JKHY 는 오히려 Bartov 2002 / Kasznik 2002 에서 말하는 "meet/beat premium" 수혜 대상. 진짜 실패 모드는 **falling knife** — fundamentals 강 + technicals 무너짐 + 시장이 구조적 우려 (SaaS competitive pressure 등) 를 먼저 price-in.
 
-**일반화된 교훈**: "Repo에 기능이 있다고 해서 실제 상품 경로에서 사용되고 있는 것은 아니다." 새 기능 추가 시 production path integration test 필수.
+**재발 방지 룰** (정정된 원인에 맞춰):
+- 추천 내기 전 **fundamentals + technicals 충돌 여부** 를 explicit 하게 surface 하고, technical 이 강하게 반대하면 mechanical 로 downgrade (STRATEGY §2.6 Escalation Ladder 참조).
+- "System has the tool" ≠ "Pipeline uses its output"; tool 이 있어도 **outcome 에 영향 주는 경로** 까지 integration test 로 검증.
+- Academic literature 기록된 증거 (meet/beat premium 같은) 와 **가설이 반대 방향** 이면 literature 우선 — codex challenge 로 cross-check.
+
+**방어 실행 현황** (2026-04-15 완료):
+- PR #300 (P1 B): universe 1y OHLCV backfill → TechnicalAgent 가 full chart 분석 가능
+- PR #301 (P1 A1): `divergence_flag` backend 감지
+- PR #302 (P1 A2): UI 배지 + tooltip surface
+- PR #303 (P1 A3): mechanical penalty — tech conf ≥ 80 + 반대 → HOLD downgrade
+- PR #306 (Q1): `consensus_penalty_applied` 감사 이벤트 + STRATEGY §2.6 Escalation Ladder + §7 P1 #4 (soft-beat 스펙) Tier 3 이관
+
+**Live 검증**: JKHY 가 이제 `action=HOLD` (was BUY), reasoning "기술지표 반대로 downgrade (tech SELL conf 100 ≥ 80) | ...".
+
+**일반화된 교훈** (정정):
+1. "Repo 에 기능이 있다고 해서 production path 에서 outcome 에 영향 주는 건 아님." — 통합 경로 + **mechanical effect** 검증 필수.
+2. "초기 진단이 틀리면 후속 모든 처방이 틀린다." — Codex challenge 같은 독립적 adversarial review 를 성급한 fix 전에 넣는 것이 scope + 시간 절약.
 
 ---
 
