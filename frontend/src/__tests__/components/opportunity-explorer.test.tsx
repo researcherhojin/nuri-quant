@@ -337,4 +337,40 @@ describe("OpportunityExplorer", () => {
       expect(screen.getByText("80% 합의")).toBeTruthy();
     });
   });
+
+  it("falls back to legacy action field when final_action is missing", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        action: "SELL",
+        confidence: 60,
+        agreement_rate: 0.55,
+      }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      expect(screen.getByText("SELL")).toBeTruthy();
+      expect(screen.getByText("55% 합의")).toBeTruthy();
+    });
+  });
+
+  it("uses default tooltip text when divergence_reason is empty string", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        final_action: "BUY",
+        final_confidence: 60,
+        agreement_rate: 0.4,
+        divergence_flag: true,
+        divergence_reason: "",
+      }),
+    });
+    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
+    await screen.getByText("10-Agent 분석 ▶").click();
+    await vi.waitFor(() => {
+      const badge = screen.getByTestId("divergence-badge");
+      expect(badge.getAttribute("title")).toBe("기술지표 반대");
+    });
+  });
 });
