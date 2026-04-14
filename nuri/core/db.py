@@ -284,13 +284,15 @@ CREATE TABLE IF NOT EXISTS analyst_ratings (
 );
 
 -- Wall Street 데이터: 실적 서프라이즈
+-- surprise_pct 단위: FRACTION (decimal). 0.05 = 5% beat. OpenBB 원 포맷 그대로.
+-- 변환 금지. Frontend/agent 는 × 100 해서 렌더/threshold 비교.
 CREATE TABLE IF NOT EXISTS earnings_surprises (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticker TEXT NOT NULL,
     quarter TEXT NOT NULL,
     eps_actual REAL,
     eps_estimate REAL,
-    surprise_pct REAL,
+    surprise_pct REAL,  -- FRACTION unit (0.05 = 5%). 변환 없이 raw 저장.
     UNIQUE(ticker, quarter)
 );
 

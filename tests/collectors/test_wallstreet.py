@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -19,19 +20,36 @@ class TestWallStreetCollector:
 
         c = WallStreetCollector()
         data = {
-            "ratings": [{"ticker": "AAPL", "date": "2026-03-30", "firm": "GS",
-                          "to_grade": "Buy", "from_grade": "Hold", "action": "upgrade",
-                          "target_price": 230.0}],
-            "earnings": [{"ticker": "AAPL", "quarter": "2026Q1",
-                           "eps_actual": 2.1, "eps_estimate": 1.9, "surprise_pct": 10.5}],
-            "insiders": [{"ticker": "AAPL", "date": "2026-03-20", "insider_name": "Tim Cook",
-                           "position": "CEO", "transaction_type": "Sale",
-                           "shares": 50000, "value": 9500000}],
+            "ratings": [
+                {
+                    "ticker": "AAPL",
+                    "date": "2026-03-30",
+                    "firm": "GS",
+                    "to_grade": "Buy",
+                    "from_grade": "Hold",
+                    "action": "upgrade",
+                    "target_price": 230.0,
+                }
+            ],
+            # surprise_pct: FRACTION unit (0.105 = 10.5% beat). db.py schema 주석 참조.
+            "earnings": [
+                {"ticker": "AAPL", "quarter": "2026Q1", "eps_actual": 2.1, "eps_estimate": 1.9, "surprise_pct": 0.105}
+            ],
+            "insiders": [
+                {
+                    "ticker": "AAPL",
+                    "date": "2026-03-20",
+                    "insider_name": "Tim Cook",
+                    "position": "CEO",
+                    "transaction_type": "Sale",
+                    "shares": 50000,
+                    "value": 9500000,
+                }
+            ],
             "short_data": [{"ticker": "AAPL", "short_pct_float": 0.8, "days_to_cover": 1.2}],
         }
         count = c.save(data)
         assert count > 0
-
 
 
 class TestWallStreetDeep:
@@ -39,19 +57,35 @@ class TestWallStreetDeep:
         from nuri.collectors.wallstreet import WallStreetCollector
 
         mock_ticker = MagicMock()
-        mock_ticker.upgrades_downgrades = pd.DataFrame([
-            {"GradeDate": pd.Timestamp("2026-03-01"), "Firm": "GS",
-             "ToGrade": "Buy", "FromGrade": "Hold", "Action": "upgrade"},
-        ])
-        mock_ticker.earnings_history = pd.DataFrame([
-            {"Quarter": pd.Timestamp("2026-01-01"), "epsActual": 2.1,
-             "epsEstimate": 1.9, "surprisePercent": 10.5},
-        ])
-        mock_ticker.insider_transactions = pd.DataFrame([
-            {"startDate": pd.Timestamp("2026-03-20"), "insiderName": "Tim Cook",
-             "position": "CEO", "transactionType": "Sale",
-             "shares": 50000, "value": 9500000},
-        ])
+        mock_ticker.upgrades_downgrades = pd.DataFrame(
+            [
+                {
+                    "GradeDate": pd.Timestamp("2026-03-01"),
+                    "Firm": "GS",
+                    "ToGrade": "Buy",
+                    "FromGrade": "Hold",
+                    "Action": "upgrade",
+                },
+            ]
+        )
+        mock_ticker.earnings_history = pd.DataFrame(
+            [
+                # surprisePercent: FRACTION — yfinance 실 반환 값 형식. db.py schema 주석 참조.
+                {"Quarter": pd.Timestamp("2026-01-01"), "epsActual": 2.1, "epsEstimate": 1.9, "surprisePercent": 0.105},
+            ]
+        )
+        mock_ticker.insider_transactions = pd.DataFrame(
+            [
+                {
+                    "startDate": pd.Timestamp("2026-03-20"),
+                    "insiderName": "Tim Cook",
+                    "position": "CEO",
+                    "transactionType": "Sale",
+                    "shares": 50000,
+                    "value": 9500000,
+                },
+            ]
+        )
         mock_ticker.info = {"shortPercentOfFloat": 0.008, "shortRatio": 1.2}
 
         c = WallStreetCollector()
@@ -76,7 +110,6 @@ class TestWallStreetDeep:
         assert isinstance(data, dict)
 
 
-
 class TestWallStreetCollectorRatingsAndInsiders:
     def test_collect_ratings(self, monkeypatch, db_with_portfolio):
         import yfinance as yf
@@ -84,13 +117,31 @@ class TestWallStreetCollectorRatingsAndInsiders:
         from nuri.collectors.wallstreet import WallStreetCollector
 
         mock_info = {"shortPercentOfFloat": 0.05, "shortRatio": 2.5}
-        mock_ud = pd.DataFrame({"Firm": ["GS"], "ToGrade": ["Buy"], "FromGrade": ["Hold"],
-                                "Action": ["up"], "currentPriceTarget": [250.0]},
-                               index=pd.to_datetime(["2025-01-28"]))
-        mock_eh = pd.DataFrame({"epsActual": [1.50], "epsEstimate": [1.40], "surprisePercent": [7.14]},
-                               index=pd.to_datetime(["2025-01-28"]))
-        mock_ins = pd.DataFrame({"Start Date": ["2025-01-20"], "Text": ["Sale of shares"], "Insider": ["CEO"],
-                                 "Position": ["Chief Executive"], "Shares": [5000], "Value": [1000000]})
+        mock_ud = pd.DataFrame(
+            {
+                "Firm": ["GS"],
+                "ToGrade": ["Buy"],
+                "FromGrade": ["Hold"],
+                "Action": ["up"],
+                "currentPriceTarget": [250.0],
+            },
+            index=pd.to_datetime(["2025-01-28"]),
+        )
+        # surprisePercent: FRACTION — yfinance 실 반환 값 형식. db.py schema 주석 참조.
+        mock_eh = pd.DataFrame(
+            {"epsActual": [1.50], "epsEstimate": [1.40], "surprisePercent": [0.0714]},
+            index=pd.to_datetime(["2025-01-28"]),
+        )
+        mock_ins = pd.DataFrame(
+            {
+                "Start Date": ["2025-01-20"],
+                "Text": ["Sale of shares"],
+                "Insider": ["CEO"],
+                "Position": ["Chief Executive"],
+                "Shares": [5000],
+                "Value": [1000000],
+            }
+        )
 
         class MockTicker:
             def __init__(self, ticker):
@@ -111,8 +162,16 @@ class TestWallStreetCollectorRatingsAndInsiders:
 
         from nuri.collectors.wallstreet import WallStreetCollector
 
-        mock_ins = pd.DataFrame({"Start Date": ["2025-01-20"], "Text": ["Purchase of shares"],
-                                 "Insider": ["CFO"], "Position": ["CFO"], "Shares": [1000], "Value": [200000]})
+        mock_ins = pd.DataFrame(
+            {
+                "Start Date": ["2025-01-20"],
+                "Text": ["Purchase of shares"],
+                "Insider": ["CFO"],
+                "Position": ["CFO"],
+                "Shares": [1000],
+                "Value": [200000],
+            }
+        )
 
         class MockTicker:
             def __init__(self, ticker):
@@ -132,8 +191,16 @@ class TestWallStreetCollectorRatingsAndInsiders:
 
         from nuri.collectors.wallstreet import WallStreetCollector
 
-        mock_ins = pd.DataFrame({"Start Date": ["2025-01-20"], "Text": ["Gift of shares"],
-                                 "Insider": ["Board"], "Position": ["Director"], "Shares": [500], "Value": [100000]})
+        mock_ins = pd.DataFrame(
+            {
+                "Start Date": ["2025-01-20"],
+                "Text": ["Gift of shares"],
+                "Insider": ["Board"],
+                "Position": ["Director"],
+                "Shares": [500],
+                "Value": [100000],
+            }
+        )
 
         class MockTicker:
             def __init__(self, ticker):
@@ -164,19 +231,47 @@ class TestWallStreetCollectorRatingsAndInsiders:
     def test_save(self, db_with_portfolio):
         from nuri.collectors.wallstreet import WallStreetCollector
 
-        data = {"ratings": [{"ticker": "AAPL", "date": "2025-01-28", "firm": "GS", "to_grade": "Buy",
-                              "from_grade": "Hold", "action": "up", "target_price": 250.0}],
-                "earnings": [{"ticker": "AAPL", "quarter": "2025-01-28", "eps_actual": 1.5, "eps_estimate": 1.4, "surprise_pct": 7.14}],
-                "insiders": [{"ticker": "AAPL", "date": "2025-01-20", "insider_name": "CEO", "position": "CEO",
-                               "transaction_type": "sale", "shares": 5000, "value": 1000000}],
-                "short_interest": [{"ticker": "AAPL", "short_pct_float": 5.0, "days_to_cover": 2.5}]}
+        data = {
+            "ratings": [
+                {
+                    "ticker": "AAPL",
+                    "date": "2025-01-28",
+                    "firm": "GS",
+                    "to_grade": "Buy",
+                    "from_grade": "Hold",
+                    "action": "up",
+                    "target_price": 250.0,
+                }
+            ],
+            # surprise_pct: FRACTION unit (0.0714 = 7.14% beat). db.py schema 주석 참조.
+            "earnings": [
+                {
+                    "ticker": "AAPL",
+                    "quarter": "2025-01-28",
+                    "eps_actual": 1.5,
+                    "eps_estimate": 1.4,
+                    "surprise_pct": 0.0714,
+                }
+            ],
+            "insiders": [
+                {
+                    "ticker": "AAPL",
+                    "date": "2025-01-20",
+                    "insider_name": "CEO",
+                    "position": "CEO",
+                    "transaction_type": "sale",
+                    "shares": 5000,
+                    "value": 1000000,
+                }
+            ],
+            "short_interest": [{"ticker": "AAPL", "short_pct_float": 5.0, "days_to_cover": 2.5}],
+        }
         assert WallStreetCollector().save(data) >= 4
 
     def test_save_empty(self, db_with_portfolio):
         from nuri.collectors.wallstreet import WallStreetCollector
 
         assert WallStreetCollector().save({"ratings": [], "earnings": [], "insiders": [], "short_interest": []}) == 0
-
 
 
 class TestWallStreetSaveShortInterest:
