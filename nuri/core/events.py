@@ -3,6 +3,7 @@
 모든 파이프라인 상태 전환을 append-only 기록.
 대시보드와 Pipeline UI는 이 이벤트의 projection으로 동작.
 """
+
 import json
 from pathlib import Path
 from typing import Optional
@@ -20,6 +21,9 @@ EVENT_TYPES = {
     "certification_result",
     "conflict_detected",
     "drift_detected",
+    # Mechanical penalty 발동 감사 로그 (STRATEGY §2.6 Escalation Ladder — soft penalty rung).
+    # 지금은 divergence_technical (P1 A3) 만 사용. 추후 다른 mechanical gate 추가 시 공유.
+    "consensus_penalty_applied",
 }
 
 # 6-step 파이프라인
@@ -64,6 +68,7 @@ def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
     except Exception as e:  # noqa: BLE001
         # pipeline_events 테이블 미존재(마이그레이션 미적용) 또는 DB 접근 실패
         import logging
+
         logging.getLogger(__name__).debug("pipeline_events 조회 실패: %s", e)
         return {"step": step, "status": "unknown", "timestamp": None, "payload": None}
     if not rows:
