@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.command' | grep -qiE 'git\\s+push\\s+.*(-f|--force)|git\\s+reset\\s+--hard|git\\s+clean\\s+-[a-z]*f' && { echo '{\"decision\":\"block\",\"reason\":\"파괴적 git 명령 감지 (force push / hard reset / clean -f). 사용자에게 확인 후 진행.\"}'; exit 2; } || true",
+            "command": "jq -r '.tool_input.command' | grep -qiE 'git[[:space:]]+push[[:space:]]+([^[:space:]]+[[:space:]]+)*(-f|--force)([[:space:]]|$)|git[[:space:]]+reset[[:space:]]+--hard|git[[:space:]]+clean[[:space:]]+-[a-z]*f([[:space:]]|$)' && { echo '{\"decision\":\"block\",\"reason\":\"파괴적 git 명령 감지 (force push / hard reset / clean -f). 사용자에게 확인 후 진행.\"}'; exit 2; } || true",
             "timeout": 5,
             "statusMessage": "destructive git check..."
           }
