@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Nuri-Quant 초기 환경 설정 스크립트
-set -e
+set -euo pipefail
 
 echo "=== Nuri-Quant Setup ==="
 
@@ -18,6 +18,7 @@ fi
 
 # Install dependencies
 echo "Installing Python packages..."
+# shellcheck disable=SC1091
 source .venv/bin/activate
 uv sync --extra dev
 

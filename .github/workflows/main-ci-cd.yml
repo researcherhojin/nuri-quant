@@ -183,6 +183,19 @@ jobs:
       - name: Scan for personal financial data leaks
         run: python3 scripts/check_privacy_leak.py
 
+  # ── Shell script lint ──
+  # shellcheck로 scripts/*.sh 린트. warning-only (첫 도입 단계; required check
+  # 승격은 stable 후). Cost: ~10s, no deps (Ubuntu runner에 shellcheck 기본 포함).
+  shell-lint:
+    name: Shell Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run shellcheck
+        run: shellcheck --source-path=SCRIPTDIR --external-sources scripts/*.sh
+
   # ── Universe + Agent Coverage Validation (#272 Phase 2c) ──
   # Validates universe.yaml ↔ upstream sync + per-table coverage thresholds.
   # Currently warning-only (continue-on-error) until user runs make collect-universe
