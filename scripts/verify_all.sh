@@ -1,8 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Nuri-Quant System Verification — 커밋 전 필수
-set -e
+# 주: pipefail 미사용 — 아래 5/5 integrity 체크가 여러 `grep -v` 체인을 쓰는데,
+# 중간에 match가 0개면 grep이 exit 1을 반환해 pipefail 하에서 전체 subshell
+# 실패. tolerance 위해 pipefail 생략.
+set -eu
 
 # Source shared helpers (colors, PYTHON, REPO_ROOT cd, counters).
+# shellcheck source=scripts/_common.sh
 source "$(dirname "$0")/_common.sh"
 
 # Local check() that inspects $? from the previous command — distinct from
@@ -105,6 +109,9 @@ check "Heavy Endpoints"
 
 # 5. Integrity
 echo ""; echo "━━━ 5/5. File Integrity ━━━"
+# 체인된 `grep -v`가 여러 개라 마지막만 `grep -vc`로 치환하면 의미가 달라짐 (이전
+# 단계 중 하나라도 all-excluded 결과면 exit 1). 의도적으로 `| wc -l` 유지.
+# shellcheck disable=SC2126
 old=$(grep -rn "from nuri\.regime\.\|from nuri\.agents\.\|from nuri\.strategy\.\|from nuri\.recommend\.\|from nuri\.swing\.\|from nuri\.quant\." nuri/ tests/ scripts/ --include="*.py" 2>/dev/null | grep -v __pycache__ | grep -v "nuri.quant.regime" | grep -v "nuri.quant.validation" | grep -v "nuri.analysis.factors" | grep -v "nuri.trading" | wc -l | tr -d ' ')
 echo "  Orphan imports: $old"
 test "$old" -eq "0"

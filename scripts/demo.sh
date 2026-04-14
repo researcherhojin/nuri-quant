@@ -1,11 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════
 # Nuri-Quant Full Service Flow Demo
 # 전체 파이프라인을 한 바퀴 돌려서 동작 확인
 # ═══════════════════════════════════════════════════════
-set -e
+set -euo pipefail
 
 # Source shared helpers (colors, PYTHON, REPO_ROOT cd, pass/fail/warn).
+# shellcheck source=scripts/_common.sh
 source "$(dirname "$0")/_common.sh"
 
 # Local alias `ok` keeps existing demo.sh usage. _common.sh's pass()

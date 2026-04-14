@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Nuri-Quant DB 백업 — 30일 롤링
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
