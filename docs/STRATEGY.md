@@ -442,7 +442,7 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 | 2 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 |
 | 3 | **Privacy scanner ticker+PnL pattern** | — | security | 현재 broker name + monetary literal만 차단. ticker와 PnL이 같은 commit message/PR 본문에 있을 때 패턴 감지 추가. PR #202 commit message leak 같은 경우 방지 |
 | 4 | **LLM 휴면 코드 결정** | — | refactor | `nuri/llm/{report,event_classifier,openai_client}.py` 현재 production 비활성 (OLLAMA_HOST/OPENAI_API_KEY 미설정). 유지 vs 제거 vs 재활성화 결정 필요 |
-| 5 | **연 배당금 / 배당 수익률 데이터** | [#227](https://github.com/researcherhojin/nuri-quant/issues/227) | feat(collectors) | Tier 1에서 강등. pension 계좌 별도 surface 필요 시 재평가 |
+| 5 | **연 배당금 / 배당 수익률 데이터** | [#227](https://github.com/researcherhojin/nuri-quant/issues/227) | feat(collectors) | Tier 1에서 강등 후 PR [#270](https://github.com/researcherhojin/nuri-quant/pull/270) 진행 중 (`feat/227-dividend-data` 브랜치). pension 계좌 별도 surface 필요 시 재평가 |
 
 ### Tier 3 — 다음 분기 (P2)
 
