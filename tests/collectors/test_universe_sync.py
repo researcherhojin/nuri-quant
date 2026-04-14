@@ -136,29 +136,44 @@ class TestFetchKospi200:
             with pytest.raises(FileNotFoundError, match="finance-datareader"):
                 _fetch_kospi200()
 
+    def _kospi_df(self, n: int):
+        """Mock StockListing('KOSPI') output — Code + Marcap 컬럼 포함."""
+        return pd.DataFrame(
+            {
+                "Code": [f"{i:06d}" for i in range(n)],
+                "Marcap": [n - i for i in range(n)],  # 내림차순 시총
+            }
+        )
+
     def test_fdr_returns_data(self):
         mock_fdr = MagicMock()
-        df = pd.DataFrame({"Code": [f"{i:06d}" for i in range(150)]})
-        mock_fdr.SnapDataReader.return_value = df
+        mock_fdr.StockListing.return_value = self._kospi_df(300)  # 300 KOSPI → top 200
 
         with patch.dict(sys.modules, {"FinanceDataReader": mock_fdr}):
             result = _fetch_kospi200()
 
-        assert len(result) == 150
+        assert len(result) == 200  # top 200 only
         assert result[0].endswith(".KS")
 
     def test_fdr_returns_empty(self):
         mock_fdr = MagicMock()
-        mock_fdr.SnapDataReader.return_value = pd.DataFrame()
+        mock_fdr.StockListing.return_value = pd.DataFrame()
 
         with patch.dict(sys.modules, {"FinanceDataReader": mock_fdr}):
-            with pytest.raises(RuntimeError, match="empty/malformed"):
+            with pytest.raises(RuntimeError, match="unexpected"):
+                _fetch_kospi200()
+
+    def test_fdr_missing_marcap(self):
+        mock_fdr = MagicMock()
+        mock_fdr.StockListing.return_value = pd.DataFrame({"Code": ["005930"]})  # no Marcap
+
+        with patch.dict(sys.modules, {"FinanceDataReader": mock_fdr}):
+            with pytest.raises(RuntimeError, match="unexpected"):
                 _fetch_kospi200()
 
     def test_fdr_too_few(self):
         mock_fdr = MagicMock()
-        df = pd.DataFrame({"Code": [f"{i:06d}" for i in range(50)]})  # < 100 minimum
-        mock_fdr.SnapDataReader.return_value = df
+        mock_fdr.StockListing.return_value = self._kospi_df(50)  # < 100 minimum
 
         with patch.dict(sys.modules, {"FinanceDataReader": mock_fdr}):
             with pytest.raises(RuntimeError, match="< 100 minimum"):
@@ -166,10 +181,10 @@ class TestFetchKospi200:
 
     def test_fdr_raises(self):
         mock_fdr = MagicMock()
-        mock_fdr.SnapDataReader.side_effect = ValueError("KRX API change")
+        mock_fdr.StockListing.side_effect = ValueError("KRX API change")
 
         with patch.dict(sys.modules, {"FinanceDataReader": mock_fdr}):
-            with pytest.raises(RuntimeError, match="KOSPI 200 fetch 실패"):
+            with pytest.raises(RuntimeError, match="KOSPI listing fetch 실패"):
                 _fetch_kospi200()
 
 

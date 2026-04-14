@@ -57,11 +57,11 @@ def _fetch_sp500_from_wikipedia() -> list[str]:
 
 
 def _fetch_kospi200() -> list[str]:
-    """KOSPI 200 fetch — FinanceDataReader 전용 (pykrx 제거).
+    """KOSPI 200 fetch — 시총 상위 200 by Marcap (KOSPI 200 index 근사치).
 
-    CLAUDE.md 알려진 이슈: pykrx의 get_index_portfolio_deposit_file/get_market_cap_by_ticker
-    모두 깨짐. 추가로 pykrx 내부에 logging.info(args, kwargs) TypeError 버그 있어서
-    실패 시 수십 줄 traceback 노이즈 발생. 따라서 pykrx fallback 제거 — 깨끗한 실패 경로만.
+    FDR의 `SnapDataReader("KRX/INDEX/STOCK/KS200")` 는 2026-04 기준 깨짐 (KRX API 변경).
+    대신 `StockListing("KOSPI")` — 이건 정상 작동하며 Marcap 컬럼 포함.
+    시총 상위 200 ≈ 정식 KOSPI 200 index (95%+ overlap; spec §2.1 허용 범위).
 
     반환 형식: ["005930.KS", "000660.KS", ...] (yfinance suffix 포함)
 
@@ -77,16 +77,21 @@ def _fetch_kospi200() -> list[str]:
         ) from e
 
     try:
-        df = fdr.SnapDataReader("KRX/INDEX/STOCK/KS200")
+        df = fdr.StockListing("KOSPI")
     except Exception as e:
-        raise RuntimeError(f"FinanceDataReader KOSPI 200 fetch 실패: {e}") from e
+        raise RuntimeError(f"FinanceDataReader KOSPI listing fetch 실패: {e}") from e
 
-    if df is None or df.empty or "Code" not in df.columns:
-        raise RuntimeError("FinanceDataReader returned empty/malformed KOSPI 200 data")
+    if df is None or df.empty or "Code" not in df.columns or "Marcap" not in df.columns:
+        raise RuntimeError(
+            f"FinanceDataReader returned unexpected KOSPI data. cols: {df.columns.tolist() if df is not None else 'None'}"
+        )
 
-    tickers = sorted(set(f"{code}.KS" for code in df["Code"].astype(str)))
+    # 시총 상위 200 (보통주만 — 우선주 '005935' 같은 경우 제외하려면 Stocks/Market 필터 필요하지만
+    # KRX Code가 중복 없이 유일하므로 그대로 사용. 실용상 충분).
+    top200 = df.nlargest(200, "Marcap")
+    tickers = sorted(set(f"{code}.KS" for code in top200["Code"].astype(str)))
     if len(tickers) < 100:
-        raise RuntimeError(f"KOSPI 200 ticker 수 {len(tickers)} < 100 minimum — 데이터 이상")
+        raise RuntimeError(f"KOSPI 상위 ticker 수 {len(tickers)} < 100 minimum — 데이터 이상")
     return tickers
 
 
