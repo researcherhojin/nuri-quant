@@ -1,8 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Nuri-Quant: Dev Machine → Mac Mini (Production) 배포
-set -e
+#
+# shellcheck disable=SC2029
+# ^ ssh "… ${REMOTE_PATH} …" — client-side expansion intentional.
+set -euo pipefail
 
-source .env 2>/dev/null || true
+# shellcheck disable=SC1091
+if [ -f .env ]; then source .env; fi
 
 REMOTE_HOST="${MACMINI_HOST:-macmini.local}"
 REMOTE_USER="${MACMINI_USER:-ehbebe}"

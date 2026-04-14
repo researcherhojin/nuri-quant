@@ -13,9 +13,10 @@
 #   bash scripts/check_atomic.sh                # check commits since origin/main
 #   bash scripts/check_atomic.sh HEAD~3..HEAD   # custom range
 
-set -e
+set -euo pipefail
 
 # Source shared helpers (colors, PYTHON, REPO_ROOT cd).
+# shellcheck source=scripts/_common.sh
 source "$(dirname "$0")/_common.sh"
 
 range="${1:-origin/main..HEAD}"
@@ -25,6 +26,7 @@ echo -e "${CYAN}━━━ Atomicity Check (${range}) ━━━${NC}\n"
 original_branch=$(git rev-parse --abbrev-ref HEAD)
 original_sha=$(git rev-parse HEAD)
 
+# shellcheck disable=SC2329  # invoked via `trap cleanup EXIT` below
 cleanup() {
     echo -e "\n${YELLOW}Restoring to ${original_branch} @ ${original_sha:0:8}...${NC}"
     git checkout -q "$original_branch" 2>/dev/null || git checkout -q "$original_sha"

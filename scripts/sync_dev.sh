@@ -1,5 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Nuri-Quant: 두 dev 노트북 간 상태 동기화
+#
+# shellcheck disable=SC2029
+# ^ ssh "…${REMOTE_PATH_ABS}…" — client-side expansion intentional.
+# REMOTE_PATH_ABS 는 origin machine의 로컬 변수로, ssh 호출 전에 expand된
+# 문자열을 원격 shell이 받아 실행한다. server-side expansion (원격 $REMOTE_PATH_ABS)
+# 은 정의 안 되어 있어 불가능.
 #
 # Git에 없는 파일만 옮긴다 (소스 코드는 git pull로):
 #   - .env, config/portfolio.yaml
@@ -25,10 +31,11 @@
 #         반대편 머신을 자기 자신으로 가리키게 만드는 cross-pollution 발생.
 #         DEV2_HOST는 머신마다 값이 다른 식별자라서 머신-로컬에 둬야 함.
 
-set -e
+set -euo pipefail
 
 # bash 3.2 (macOS default) quirk: `source nonexistent || true` 가 set -e 하에서
 # 가드를 우회한다. 명시적 -f 체크 사용. .env 자체의 syntax error는 fail-loud.
+# shellcheck disable=SC1091
 [ -f .env ] && source .env
 
 REMOTE_HOST="${DEV2_HOST:-}"
@@ -92,9 +99,10 @@ fi
 REMOTE_HOME="$(ssh "${REMOTE_USER}@${REMOTE_HOST}" 'echo $HOME')"
 REMOTE_PATH_ABS="${REMOTE_PATH/#\~/$REMOTE_HOME}"
 
-# Claude 프로젝트 디렉토리 hash (절대경로의 / → -)
-LOCAL_PROJECT_HASH="$(echo "$LOCAL_ROOT" | sed 's|/|-|g')"
-REMOTE_PROJECT_HASH="$(echo "$REMOTE_PATH_ABS" | sed 's|/|-|g')"
+# Claude 프로젝트 디렉토리 hash (절대경로의 / → -). bash parameter expansion으로
+# sed fork 제거 — 결과 동일하지만 fork 비용 삭감.
+LOCAL_PROJECT_HASH="${LOCAL_ROOT//\//-}"
+REMOTE_PROJECT_HASH="${REMOTE_PATH_ABS//\//-}"
 LOCAL_CLAUDE_PROJECT="$HOME/.claude/projects/${LOCAL_PROJECT_HASH}"
 REMOTE_CLAUDE_PROJECT="${REMOTE_HOME}/.claude/projects/${REMOTE_PROJECT_HASH}"
 
@@ -114,7 +122,8 @@ GLOBAL_CLAUDE_ITEMS=(
 echo ""
 echo "⚠️  DB 동기화는 단방향 덮어쓰기입니다."
 echo "    수신 측 portfolio.db 변경분이 손실될 수 있습니다."
-read -p "    계속하시겠습니까? (y/N): " confirm
+# -r: 백슬래시 literal 유지 (SC2162). -p: prompt inline.
+read -r -p "    계속하시겠습니까? (y/N): " confirm
 [[ "$confirm" == "y" || "$confirm" == "Y" ]] || { echo "취소됨"; exit 0; }
 
 # 송신 측 DB WAL 체크포인트 (sqlite3가 있을 때만)
@@ -185,7 +194,8 @@ FILES=(
 
 # --relative는 GNU rsync와 openrsync(macOS) 동작이 달라 사용하지 않는다.
 # 대신 파일 단위로 명시적 src/dst 지정.
-RSYNC_OPTS="-avz --partial --progress"
+# 배열로 유지해 `"${RSYNC_OPTS[@]}"`로 안전하게 expand (SC2086 방지).
+RSYNC_OPTS=(-avz --partial --progress)
 
 if [[ "$DIRECTION" == "push" ]]; then
     echo "송신 측 DB 체크포인트..."
@@ -198,7 +208,7 @@ if [[ "$DIRECTION" == "push" ]]; then
         [[ -e "$f" ]] || continue
         # 원격에 부모 디렉토리 보장
         ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_PATH_ABS}/$(dirname "$f")'"
-        rsync $RSYNC_OPTS "$f" \
+        rsync "${RSYNC_OPTS[@]}" "$f" \
             "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH_ABS}/$f"
     done
 
@@ -231,7 +241,7 @@ else
     for f in "${FILES[@]}"; do
         if ssh "${REMOTE_USER}@${REMOTE_HOST}" "[ -e '${REMOTE_PATH_ABS}/$f' ]" 2>/dev/null; then
             mkdir -p "$(dirname "$f")"
-            rsync $RSYNC_OPTS \
+            rsync "${RSYNC_OPTS[@]}" \
                 "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH_ABS}/$f" "$f"
         fi
     done

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Mac mini receiver: 5분마다 origin/main을 fetch하고, HEAD가 바뀌면 ff-only merge.
 #
 # 트리거: ~/Library/LaunchAgents/com.nuri-quant.autopull.plist (StartInterval=300)
