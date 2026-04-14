@@ -1,19 +1,28 @@
 """
-Ollama 기반 LLM 리포트 생성기 — SIEGE Certification 패턴 적용.
+LLM 리포트 생성기 — SIEGE Certification 패턴 적용.
 
+생성 경로 (우선순위 순):
+1. OpenAI `gpt-5.4-nano` (Tier 2, ZDR 필수) — 기본값 (2026-04-14 STRATEGY 개정 후)
+2. llama.cpp GGUF 로컬 모델 — `LLAMA_MODEL_PATH` 설정 시 사용
+3. Ollama HTTP API — `OLLAMA_HOST` 설정 시 사용
+
+모든 경로에서 동일한 파이프라인:
 1. Gate 검증 → 데이터 완성도 확인
 2. 전체 데이터 소스 수집 → 구조화된 컨텍스트
 3. LLM 생성 → 자연어 리포트
 4. Output Validation → 환각 검증 (입력에 없는 숫자/티커 감지)
 5. 면책 조항 + 데이터 완성도 경고 자동 첨부
 
+Opt-out: `NURI_DISABLE_EXTERNAL_LLM=1` → OpenAI 스킵, 로컬 경로만 시도.
+
 사용법:
     python -m nuri.llm.report
 """
+
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
@@ -21,10 +30,13 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+# ─── External (OpenAI — primary per STRATEGY §4.4.3) ────────────
+OPENAI_REPORT_MODEL = os.getenv("OPENAI_REPORT_MODEL", "gpt-5.4-nano")
+
+# ─── Local fallbacks (optional) ─────────────────────────────────
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "")  # empty = disabled
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5")
-# llama.cpp GGUF 모델 경로 (설정 시 Ollama 대신 직접 실행)
-LLAMA_MODEL_PATH = os.getenv("LLAMA_MODEL_PATH", "")
+LLAMA_MODEL_PATH = os.getenv("LLAMA_MODEL_PATH", "")  # GGUF path
 
 DISCLAIMER = (
     "⚠️ 본 리포트는 Nuri-Quant 시스템이 수집한 데이터와 AI(LLM)가 생성한 분석입니다. "
@@ -71,8 +83,9 @@ drift 상태별 시그널 정리. 최근 부진한 시그널 경고.
 @dataclass
 class ReportContext:
     """LLM에 전달하는 구조화된 컨텍스트."""
+
     gate_summary: str
-    gate_score: float           # 0~1
+    gate_score: float  # 0~1
     regime_section: str
     macro_section: str
     risk_section: str
@@ -82,15 +95,9 @@ class ReportContext:
     consensus_section: str
     strategy_section: str
     external_section: str = ""  # 외부 데이터 요약
-    rebalance_section: str = "" # 리밸런스 어드바이저 요약
-    known_tickers: set[str] = None
-    known_numbers: set[str] = None
-
-    def __post_init__(self):
-        if self.known_tickers is None:
-            self.known_tickers = set()
-        if self.known_numbers is None:
-            self.known_numbers = set()
+    rebalance_section: str = ""  # 리밸런스 어드바이저 요약
+    known_tickers: set[str] = field(default_factory=set)
+    known_numbers: set[str] = field(default_factory=set)
 
 
 def gather_context(db_path=None) -> ReportContext:
@@ -101,7 +108,7 @@ def gather_context(db_path=None) -> ReportContext:
     def _track(text: str) -> str:
         """텍스트에서 티커와 숫자를 추출하여 검증용 세트에 추가."""
         # 숫자 추출 (소수점 포함)
-        for m in re.findall(r'\d+\.?\d*', text):
+        for m in re.findall(r"\d+\.?\d*", text):
             known_numbers.add(m)
         return text
 
@@ -110,6 +117,7 @@ def gather_context(db_path=None) -> ReportContext:
     gate_score = 0.0
     try:
         from nuri.trading.engine.gate import check_all_gates
+
         gates = check_all_gates(db_path)
         lines = []
         total_pass = total_all = 0
@@ -132,6 +140,7 @@ def gather_context(db_path=None) -> ReportContext:
     regime_section = "레짐 데이터 없음"
     try:
         from nuri.quant.regime.classifier import classify_regime
+
         regime = classify_regime(db_path=db_path)
         if regime:
             d = regime.details
@@ -151,6 +160,7 @@ def gather_context(db_path=None) -> ReportContext:
     macro_section = "매크로 데이터 없음"
     try:
         from nuri.quant.regime.macro_score import compute_macro_score
+
         macro = compute_macro_score(db_path=db_path)
         det = macro.details
         macro_section = _track(
@@ -171,16 +181,14 @@ def gather_context(db_path=None) -> ReportContext:
     risk_section = "리스크 데이터 없음"
     try:
         from nuri.analysis.risk import analyze_risk
+
         metrics = analyze_risk()
         if metrics:
             sharpe = metrics.get("sharpe_ratio", "N/A")
             mdd = metrics.get("max_drawdown_pct", "N/A")
             var95 = metrics.get("var_95_daily_pct", "N/A")
             cvar95 = metrics.get("cvar_95_daily_pct", "N/A")
-            risk_section = _track(
-                f"Sharpe: {sharpe}, MDD: {mdd}%\n"
-                f"VaR(95%): {var95}%, CVaR(95%): {cvar95}%"
-            )
+            risk_section = _track(f"Sharpe: {sharpe}, MDD: {mdd}%\nVaR(95%): {var95}%, CVaR(95%): {cvar95}%")
             alerts = metrics.get("stop_loss_alerts", [])
             if alerts:
                 for a in alerts:
@@ -193,6 +201,7 @@ def gather_context(db_path=None) -> ReportContext:
     candidates_section = "매매 후보 없음"
     try:
         from nuri.trading.recommend.candidates import screen_candidates
+
         candidates = screen_candidates(lookback_days=5, db_path=db_path)
         buys = [c for c in candidates if c.direction == "BUY" and c.regime_fit]
         sells = [c for c in candidates if c.direction == "SELL" and c.regime_fit]
@@ -217,6 +226,7 @@ def gather_context(db_path=None) -> ReportContext:
     conflicts_section = "충돌 없음"
     try:
         from nuri.trading.engine.conflicts import detect_conflicts
+
         conflicts = detect_conflicts(db_path=db_path)
         if conflicts:
             lines = [f"시그널 충돌 {len(conflicts)}건:"]
@@ -235,6 +245,7 @@ def gather_context(db_path=None) -> ReportContext:
     drift_section = "성과 변화 데이터 없음"
     try:
         from nuri.trading.engine.memory import detect_drift
+
         drifts = detect_drift(db_path=db_path)
         if drifts:
             lines = ["시그널 성과 변화 (전체 기간 vs 최근 90일):"]
@@ -254,14 +265,13 @@ def gather_context(db_path=None) -> ReportContext:
     consensus_section = "에이전트 합의 데이터 없음"
     try:
         from nuri.trading.agents.consensus import analyze_portfolio as agent_analyze
+
         results = agent_analyze(db_path=db_path)
         if results:
             lines = [f"멀티 에이전트 합의 ({len(results)}종목):"]
             for r in sorted(results, key=lambda x: x.final_confidence, reverse=True)[:10]:
                 known_tickers.add(r.ticker)
-                agent_summary = ", ".join(
-                    f"{v.agent_name}={v.action}" for v in r.verdicts
-                )
+                agent_summary = ", ".join(f"{v.agent_name}={v.action}" for v in r.verdicts)
                 lines.append(
                     f"  {r.ticker}: {r.final_action} (신뢰도 {r.final_confidence:.0f}, "
                     f"동의율 {r.agreement_rate:.0%}) [{agent_summary}]"
@@ -277,6 +287,7 @@ def gather_context(db_path=None) -> ReportContext:
     strategy_section = "전략 데이터 없음"
     try:
         from nuri.quant.regime.strategy_map import map_regime_to_strategy
+
         rec = map_regime_to_strategy(db_path=db_path)
         if rec:
             strategy_section = _track(
@@ -293,6 +304,7 @@ def gather_context(db_path=None) -> ReportContext:
     external_section = "외부 데이터 없음"
     try:
         from nuri.collectors.external import get_external_summary
+
         ext_summary = get_external_summary(db_path)
         if ext_summary["total_records"] > 0:
             lines = [f"총 {ext_summary['total_records']}건 ({len(ext_summary['sources'])}개 소스)"]
@@ -306,9 +318,12 @@ def gather_context(db_path=None) -> ReportContext:
     rebalance_section = "리밸런스 데이터 없음"
     try:
         from nuri.analysis.rebalance_advisor import generate_advisor_report
+
         report = generate_advisor_report(db_path)
         if report["total_violations"] > 0:
-            lines = [f"위반 {report['total_violations']}건 (critical {report['violations_by_severity'].get('critical', 0)}건)"]
+            lines = [
+                f"위반 {report['total_violations']}건 (critical {report['violations_by_severity'].get('critical', 0)}건)"
+            ]
             lines.append(f"총 회수 가능: ${report['total_recovery_usd']:,.0f}")
             for a in report["actions"][:5]:
                 lines.append(f"  {a['ticker']}: {a['reason']} (${a['sell_value_usd']:,.0f})")
@@ -334,10 +349,9 @@ def gather_context(db_path=None) -> ReportContext:
     )
 
 
-def format_prompt(ctx: ReportContext) -> str:
-    """컨텍스트를 LLM 프롬프트로 조립."""
+def _build_user_payload(ctx: ReportContext) -> str:
+    """OpenAI 스타일 user content: SYSTEM 은 별도 role, DATA만 여기에."""
     return (
-        f"{SYSTEM_PROMPT}\n\n"
         f"[DATA]\n"
         f"## 1. 데이터 완성도\n{ctx.gate_summary}\n\n"
         f"## 2. 시장 레짐\n{ctx.regime_section}\n\n"
@@ -356,6 +370,11 @@ def format_prompt(ctx: ReportContext) -> str:
     )
 
 
+def format_prompt(ctx: ReportContext) -> str:
+    """legacy 단일-문자열 프롬프트 (llama.cpp/Ollama 호환)."""
+    return f"{SYSTEM_PROMPT}\n\n{_build_user_payload(ctx)}"
+
+
 # ═══════════════════════════════════════════════════════
 # Output Validation (SIEGE Certification 패턴)
 # ═══════════════════════════════════════════════════════
@@ -364,6 +383,7 @@ def format_prompt(ctx: ReportContext) -> str:
 @dataclass
 class ValidationResult:
     """LLM 출력 검증 결과."""
+
     passed: bool
     hallucinated_tickers: list[str]  # 입력에 없는 티커 언급
     warnings: list[str]
@@ -382,29 +402,65 @@ def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
     hallucinated = []
 
     # ── 1. 티커 환각 검증 ──
-    mentioned_tickers = set(re.findall(r'(?<![A-Za-z])([A-Z]{2,5})(?![A-Za-z])', text))
+    mentioned_tickers = set(re.findall(r"(?<![A-Za-z])([A-Z]{2,5})(?![A-Za-z])", text))
     common_words = {
-        "BUY", "SELL", "HOLD", "RSI", "MACD", "SMA", "VIX", "ETF",
-        "PF", "MDD", "PE", "ROE", "CPI", "GDP", "FOMC", "USD", "KRW",
-        "VOL", "OK", "ALL", "TOP", "MAX", "MIN", "AVG", "SPY",
-        "THE", "AND", "FOR", "NOT", "ARE", "BUT", "HAS", "WAS",
-        "BB", "EMA", "READY", "BLOCKED", "FAIL",
-        "DATA", "GATE", "PASS", "WARN", "NOTE", "CVaR", "VaR",
+        "BUY",
+        "SELL",
+        "HOLD",
+        "RSI",
+        "MACD",
+        "SMA",
+        "VIX",
+        "ETF",
+        "PF",
+        "MDD",
+        "PE",
+        "ROE",
+        "CPI",
+        "GDP",
+        "FOMC",
+        "USD",
+        "KRW",
+        "VOL",
+        "OK",
+        "ALL",
+        "TOP",
+        "MAX",
+        "MIN",
+        "AVG",
+        "SPY",
+        "THE",
+        "AND",
+        "FOR",
+        "NOT",
+        "ARE",
+        "BUT",
+        "HAS",
+        "WAS",
+        "BB",
+        "EMA",
+        "READY",
+        "BLOCKED",
+        "FAIL",
+        "DATA",
+        "GATE",
+        "PASS",
+        "WARN",
+        "NOTE",
+        "CVaR",
+        "VaR",
     }
     suspicious = mentioned_tickers - ctx.known_tickers - common_words
     for t in suspicious:
         if len(t) <= 5 and t.isalpha():
             hallucinated.append(t)
     if hallucinated:
-        warnings.append(
-            f"입력 데이터에 없는 티커 언급: {', '.join(hallucinated)}. "
-            f"LLM 환각 가능성."
-        )
+        warnings.append(f"입력 데이터에 없는 티커 언급: {', '.join(hallucinated)}. LLM 환각 가능성.")
 
     # ── 2. 숫자 환각 검증 ──
     # "승률 XX%" 패턴 추출 후 입력 데이터와 비교
-    wr_claims = re.findall(r'승률\s*(\d+)%', text)
-    pf_claims = re.findall(r'PF\s*(\d+\.?\d*)', text)
+    wr_claims = re.findall(r"승률\s*(\d+)%", text)
+    pf_claims = re.findall(r"PF\s*(\d+\.?\d*)", text)
     fabricated_numbers = []
 
     for wr in wr_claims:
@@ -425,34 +481,22 @@ def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
 
     for pf in pf_claims:
         pf_val = float(pf)
-        found = any(
-            abs(float(k) - pf_val) < 0.15
-            for k in ctx.known_numbers
-            if k.replace(".", "").isdigit()
-        )
+        found = any(abs(float(k) - pf_val) < 0.15 for k in ctx.known_numbers if k.replace(".", "").isdigit())
         if not found and pf_val > 0:
             fabricated_numbers.append(f"PF {pf}")
 
     if fabricated_numbers:
-        warnings.append(
-            f"입력 데이터와 불일치하는 수치: {', '.join(fabricated_numbers)}. "
-            f"LLM 숫자 환각 의심."
-        )
+        warnings.append(f"입력 데이터와 불일치하는 수치: {', '.join(fabricated_numbers)}. LLM 숫자 환각 의심.")
 
     # ── 3. 데이터 완성도 경고 ──
     if ctx.gate_score < 0.5:
-        warnings.append(
-            f"데이터 완성도 {ctx.gate_score:.0%}로 낮음. "
-            f"리포트 신뢰도 제한적."
-        )
+        warnings.append(f"데이터 완성도 {ctx.gate_score:.0%}로 낮음. 리포트 신뢰도 제한적.")
 
     # ── 4. 구조 검증: 7단 섹션 키워드 존재 확인 ──
     required_topics = ["완성도", "시장", "리스크", "시그널", "후보", "전략", "주의"]
     missing_topics = [t for t in required_topics if t not in text]
     if len(missing_topics) >= 4:
-        warnings.append(
-            f"리포트 구조 불완전: {', '.join(missing_topics)} 섹션 누락."
-        )
+        warnings.append(f"리포트 구조 불완전: {', '.join(missing_topics)} 섹션 누락.")
 
     passed = len(hallucinated) == 0 and len(fabricated_numbers) == 0 and ctx.gate_score >= 0.3
     return ValidationResult(passed=passed, hallucinated_tickers=hallucinated, warnings=warnings)
@@ -463,15 +507,57 @@ def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
 # ═══════════════════════════════════════════════════════
 
 
+def _generate_openai(system: str, user: str) -> str:
+    """OpenAI gpt-5.4-nano로 리포트 생성 (Tier 2, ZDR 필수).
+
+    STRATEGY.md §4.4.3: `openai_client` wrapper 단일 관문을 거친다.
+    `data_tier='tier2'` → wrapper가 `OPENAI_ZDR_APPROVED=1` 미설정 시 raise.
+    `NURI_DISABLE_EXTERNAL_LLM=1` → wrapper가 Disabled raise → 로컬 폴백.
+    """
+    from nuri.llm.openai_client import (
+        ExternalLLMDisabled,
+        ExternalLLMPolicyViolation,
+        ExternalLLMUnavailable,
+        get_client,
+    )
+
+    try:
+        client = get_client()
+        return client.chat_text(
+            system=system,
+            user=user,
+            model=OPENAI_REPORT_MODEL,
+            temperature=0.3,
+            max_tokens=2000,
+            data_tier="tier2",
+        )
+    except ExternalLLMDisabled:
+        logger.info("OpenAI opt-out (NURI_DISABLE_EXTERNAL_LLM=1) — 로컬 폴백 시도")
+        return ""
+    except ExternalLLMPolicyViolation as e:
+        logger.warning("OpenAI 정책 차단: %s", e)
+        return ""
+    except ExternalLLMUnavailable as e:
+        logger.warning("OpenAI 호출 실패: %s — 로컬 폴백 시도", e)
+        return ""
+
+
 def _generate_llamacpp(prompt: str) -> str:
     """llama.cpp로 직접 생성 (GGUF 모델 필요)."""
     if not LLAMA_MODEL_PATH:
         return ""
     try:
         from llama_cpp import Llama
+
         llm = Llama(model_path=LLAMA_MODEL_PATH, n_ctx=4096, n_gpu_layers=-1, verbose=False)
-        output = llm(prompt, max_tokens=1024, temperature=0.3, stop=["[/DATA]"])
-        return output["choices"][0]["text"].strip()
+        # stream=False (default) returns dict; the overloaded signature can
+        # otherwise resolve to Iterator[CreateCompletionStreamResponse] which
+        # breaks `output["choices"]` indexing (pylance reportIndexIssue).
+        output = llm(prompt, max_tokens=1024, temperature=0.3, stop=["[/DATA]"], stream=False)
+        if isinstance(output, dict):
+            return output["choices"][0]["text"].strip()
+        logger.warning("llama.cpp unexpected response type: %s", type(output).__name__)
+        return ""
     except ImportError:
         logger.warning("llama-cpp-python 미설치")
         return ""
@@ -482,7 +568,10 @@ def _generate_llamacpp(prompt: str) -> str:
 
 def _generate_ollama(prompt: str) -> str:
     """Ollama HTTP API로 생성. Qwen3.5 thinking 모델 호환."""
+    if not OLLAMA_HOST:
+        return ""
     import requests as _requests
+
     try:
         resp = _requests.post(
             f"{OLLAMA_HOST}/api/generate",
@@ -498,18 +587,13 @@ def _generate_ollama(prompt: str) -> str:
         data = resp.json()
         response = data.get("response", "")
 
-        # Qwen3.5 thinking 모델 처리:
-        # 1. response가 있으면 그대로 사용 (thinking 제외)
-        # 2. response가 비어있으면 thinking에서 실제 리포트 부분만 추출
+        # Qwen3.5 thinking 모델 처리
         if response.strip():
-            # thinking 잔여물 제거: "## 1." 이전 내용 필터링
             for marker in ["## 1.", "# 1. "]:
                 idx = response.find(marker)
                 if idx > 0:
                     response = response[idx:]
                     break
-            # "*   **## " 형식의 thinking indent 제거
-            import re
             response = re.sub(r"\s*\*\s*\*\*", "\n", response)
             response = re.sub(r"\*\*\s*$", "", response, flags=re.MULTILINE)
         elif data.get("thinking"):
@@ -524,15 +608,10 @@ def _generate_ollama(prompt: str) -> str:
 
         return response
     except _requests.ConnectionError:
-        return (
-            f"[LLM 연결 실패]\n"
-            f"방법 1: LLAMA_MODEL_PATH=모델.gguf 설정 (llama.cpp 직접)\n"
-            f"방법 2: ollama serve 실행 후 ollama pull {OLLAMA_MODEL}"
-        )
+        return ""
     except Exception:
-        # Avoid leaking exception details to API responses (CodeQL py/stack-trace-exposure).
         logger.exception("Ollama LLM 호출 실패")
-        return "[LLM 오류] 자세한 내용은 서버 로그 참고"
+        return ""
 
 
 def generate_llm_report(db_path=None) -> dict:
@@ -556,13 +635,26 @@ def generate_llm_report(db_path=None) -> dict:
 
     prompt = format_prompt(ctx)
 
-    # llama.cpp 우선 → Ollama 폴백
-    raw_report = ""
-    if LLAMA_MODEL_PATH:
+    # 생성 경로: OpenAI gpt-5.4-nano (primary) → llama.cpp → Ollama → error note.
+    # STRATEGY §4.4.3 Tier 2 허용 조건: `OPENAI_ZDR_APPROVED=1` 설정.
+    # `NURI_DISABLE_EXTERNAL_LLM=1` 시 OpenAI 스킵 → 로컬 경로만 시도.
+    raw_report = _generate_openai(SYSTEM_PROMPT, _build_user_payload(ctx))
+
+    if not raw_report and LLAMA_MODEL_PATH:
         raw_report = _generate_llamacpp(prompt)
 
-    if not raw_report:
+    if not raw_report and OLLAMA_HOST:
         raw_report = _generate_ollama(prompt)
+
+    if not raw_report:
+        raw_report = (
+            "[LLM 생성 실패]\n"
+            "설정 필요 (다음 중 하나):\n"
+            "  - OPENAI_API_KEY + OPENAI_ZDR_APPROVED=1  (primary, Tier 2)\n"
+            "  - LLAMA_MODEL_PATH=모델.gguf  (로컬 llama.cpp)\n"
+            "  - OLLAMA_HOST=http://localhost:11434  (로컬 Ollama)\n"
+            "오프라인 전용: NURI_DISABLE_EXTERNAL_LLM=1"
+        )
 
     # Output Validation
     validation = validate_output(raw_report, ctx)
@@ -622,6 +714,7 @@ if __name__ == "__main__":
         # 자동 저장
         from datetime import date
         from pathlib import Path
+
         report_dir = Path("data/reports") / str(date.today())
         report_dir.mkdir(parents=True, exist_ok=True)
         out_path = report_dir / "llm_report.md"

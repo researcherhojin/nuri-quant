@@ -4,6 +4,7 @@ Network-free: every Ollama/llama_cpp call is mocked. Split from the legacy
 tests/test_llm_all.py; all 24 classes covered only nuri.llm.report. The
 event_classifier tests live in tests/llm/test_event_classifier.py.
 """
+
 import sys
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
@@ -22,6 +23,7 @@ from nuri.core.db import get_db, init_db, upsert_macro, upsert_portfolio, upsert
 @pytest.fixture
 def db_path(tmp_path, monkeypatch):
     import nuri.core.db as db_mod
+
     path = tmp_path / "test.db"
     init_db(path)
     monkeypatch.setattr(db_mod, "DB_PATH", path)
@@ -37,43 +39,91 @@ def rich_db(tmp_path, monkeypatch):
     init_db(path)
     monkeypatch.setattr(db_mod, "DB_PATH", path)
 
-    upsert_portfolio([
-        {"account": "test", "ticker": "AAPL", "quantity": 10,
-         "avg_price": 190, "currency": "USD", "sector": "Tech"},
-        {"account": "test", "ticker": "NVDA", "quantity": 5,
-         "avg_price": 130, "currency": "USD", "sector": "Semiconductor"},
-        {"account": "test", "ticker": "BBB", "quantity": 96,
-         "avg_price": 20.0, "currency": "USD", "sector": "SectorB"},
-        {"account": "test", "ticker": "005930.KS", "quantity": 4,
-         "avg_price": 60000, "currency": "KRW", "sector": "Semiconductor"},
-    ], path)
+    upsert_portfolio(
+        [
+            {
+                "account": "test",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 190,
+                "currency": "USD",
+                "sector": "Tech",
+            },
+            {
+                "account": "test",
+                "ticker": "NVDA",
+                "quantity": 5,
+                "avg_price": 130,
+                "currency": "USD",
+                "sector": "Semiconductor",
+            },
+            {
+                "account": "test",
+                "ticker": "BBB",
+                "quantity": 96,
+                "avg_price": 20.0,
+                "currency": "USD",
+                "sector": "SectorB",
+            },
+            {
+                "account": "test",
+                "ticker": "005930.KS",
+                "quantity": 4,
+                "avg_price": 60000,
+                "currency": "KRW",
+                "sector": "Semiconductor",
+            },
+        ],
+        path,
+    )
 
     dates = pd.date_range("2024-01-02", periods=500, freq="B")
     rows = []
-    for t in ["SPY", "AAPL", "NVDA", "BBB", "005930.KS",
-              "XLK", "XLF", "XLE", "XLV", "XLI", "XLP", "XLU", "XLY", "XLC", "XLRE", "VOO"]:
-        base = {"SPY": 450, "AAPL": 170, "NVDA": 120, "BBB": 15,
-                "005930.KS": 58000, "VOO": 440}.get(t, 100)
+    for t in [
+        "SPY",
+        "AAPL",
+        "NVDA",
+        "BBB",
+        "005930.KS",
+        "XLK",
+        "XLF",
+        "XLE",
+        "XLV",
+        "XLI",
+        "XLP",
+        "XLU",
+        "XLY",
+        "XLC",
+        "XLRE",
+        "VOO",
+    ]:
+        base = {"SPY": 450, "AAPL": 170, "NVDA": 120, "BBB": 15, "005930.KS": 58000, "VOO": 440}.get(t, 100)
         for i, d in enumerate(dates):
             p = base + i * 0.2 + np.sin(i / 20) * 5
-            rows.append({"ticker": t, "date": d.strftime("%Y-%m-%d"),
-                         "open": p - 0.5, "high": p + 3, "low": p - 2,
-                         "close": p + 1, "volume": 50_000_000, "adj_close": p + 1})
+            rows.append(
+                {
+                    "ticker": t,
+                    "date": d.strftime("%Y-%m-%d"),
+                    "open": p - 0.5,
+                    "high": p + 3,
+                    "low": p - 2,
+                    "close": p + 1,
+                    "volume": 50_000_000,
+                    "adj_close": p + 1,
+                }
+            )
     upsert_prices(pd.DataFrame(rows), path)
 
     macros = []
     for i, d in enumerate(dates):
         ds = d.strftime("%Y-%m-%d")
-        macros.append({"indicator": "vix", "date": ds,
-                       "value": 15 + np.sin(i / 30) * 8, "source": "test"})
-        macros.append({"indicator": "fear_greed", "date": ds,
-                       "value": 50 + np.sin(i / 25) * 30, "source": "test"})
-        macros.append({"indicator": "us_10y_yield", "date": ds,
-                       "value": 4.2 + np.sin(i / 40) * 0.5, "source": "test"})
-        macros.append({"indicator": "us_3m_yield", "date": ds,
-                       "value": 5.0 - np.sin(i / 40) * 0.3, "source": "test"})
-        macros.append({"indicator": "put_call_ratio", "date": ds,
-                       "value": 0.8 + np.sin(i / 15) * 0.4, "source": "test"})
+        macros.append({"indicator": "vix", "date": ds, "value": 15 + np.sin(i / 30) * 8, "source": "test"})
+        macros.append({"indicator": "fear_greed", "date": ds, "value": 50 + np.sin(i / 25) * 30, "source": "test"})
+        macros.append({"indicator": "us_10y_yield", "date": ds, "value": 4.2 + np.sin(i / 40) * 0.5, "source": "test"})
+        macros.append({"indicator": "us_3m_yield", "date": ds, "value": 5.0 - np.sin(i / 40) * 0.3, "source": "test"})
+        macros.append(
+            {"indicator": "put_call_ratio", "date": ds, "value": 0.8 + np.sin(i / 15) * 0.4, "source": "test"}
+        )
     upsert_macro(macros, path)
     return path
 
@@ -82,15 +132,40 @@ def rich_db(tmp_path, monkeypatch):
 def full_db(tmp_path, monkeypatch):
     """Enriched DB with portfolio, prices, macro, superinvestors, estimates, recommendations, external."""
     import nuri.core.db as db_mod
+
     path = tmp_path / "test.db"
     init_db(path)
     monkeypatch.setattr(db_mod, "DB_PATH", path)
 
-    upsert_portfolio([
-        {"account": "test", "ticker": "AAPL", "quantity": 10, "avg_price": 190, "currency": "USD", "sector": "Tech"},
-        {"account": "test", "ticker": "NVDA", "quantity": 5, "avg_price": 130, "currency": "USD", "sector": "Semiconductor"},
-        {"account": "test", "ticker": "TSLA", "quantity": 8, "avg_price": 250, "currency": "USD", "sector": "SectorA"},
-    ], path)
+    upsert_portfolio(
+        [
+            {
+                "account": "test",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 190,
+                "currency": "USD",
+                "sector": "Tech",
+            },
+            {
+                "account": "test",
+                "ticker": "NVDA",
+                "quantity": 5,
+                "avg_price": 130,
+                "currency": "USD",
+                "sector": "Semiconductor",
+            },
+            {
+                "account": "test",
+                "ticker": "TSLA",
+                "quantity": 8,
+                "avg_price": 250,
+                "currency": "USD",
+                "sector": "SectorA",
+            },
+        ],
+        path,
+    )
 
     dates = pd.date_range("2024-06-01", periods=500, freq="B")
     rows = []
@@ -98,9 +173,18 @@ def full_db(tmp_path, monkeypatch):
         base = {"SPY": 450, "AAPL": 170, "NVDA": 120, "TSLA": 200}[t]
         for i, d in enumerate(dates):
             p = base + i * 0.2 + np.sin(i / 20) * 5
-            rows.append({"ticker": t, "date": d.strftime("%Y-%m-%d"),
-                         "open": p, "high": p + 3, "low": p - 2,
-                         "close": p + 1, "volume": 50000000, "adj_close": p + 1})
+            rows.append(
+                {
+                    "ticker": t,
+                    "date": d.strftime("%Y-%m-%d"),
+                    "open": p,
+                    "high": p + 3,
+                    "low": p - 2,
+                    "close": p + 1,
+                    "volume": 50000000,
+                    "adj_close": p + 1,
+                }
+            )
     upsert_prices(pd.DataFrame(rows), path)
 
     macro = []
@@ -113,21 +197,27 @@ def full_db(tmp_path, monkeypatch):
     upsert_macro(macro, path)
 
     with get_db(path) as conn:
-        conn.executemany("""INSERT OR REPLACE INTO superinvestors
+        conn.executemany(
+            """INSERT OR REPLACE INTO superinvestors
             (investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""", [
-            ("Buffett", "2025-08-15", "AAPL", 900000000, 171e9, 48.5, "Apple Inc"),
-            ("Buffett", "2025-02-15", "AAPL", 905000000, 165e9, 49.0, "Apple Inc"),
-            ("Dalio", "2025-08-15", "NVDA", 5000000, 650e6, 3.2, "NVIDIA Corp"),
-        ])
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            [
+                ("Buffett", "2025-08-15", "AAPL", 900000000, 171e9, 48.5, "Apple Inc"),
+                ("Buffett", "2025-02-15", "AAPL", 905000000, 165e9, 49.0, "Apple Inc"),
+                ("Dalio", "2025-08-15", "NVDA", 5000000, 650e6, 3.2, "NVIDIA Corp"),
+            ],
+        )
 
     with get_db(path) as conn:
-        conn.executemany("""INSERT OR REPLACE INTO estimates
+        conn.executemany(
+            """INSERT OR REPLACE INTO estimates
             (ticker, date, recommendation, target_high, target_low, target_mean, target_median, num_analysts, current_price)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", [
-            ("AAPL", "2025-06-01", "buy", 250, 180, 220, 215, 30, 190),
-            ("NVDA", "2025-06-01", "strong_buy", 200, 100, 170, 165, 25, 130),
-        ])
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                ("AAPL", "2025-06-01", "buy", 250, 180, 220, 215, 30, 190),
+                ("NVDA", "2025-06-01", "strong_buy", 200, 100, 170, 165, 25, 130),
+            ],
+        )
 
     with get_db(path) as conn:
         conn.execute("""INSERT OR REPLACE INTO recommendations
@@ -148,10 +238,10 @@ def full_db(tmp_path, monkeypatch):
 
 
 class TestReportContext:
-
     def test_context_has_all_sections(self, db_path):
         """빈 DB에서도 모든 섹션이 존재."""
         from nuri.llm.report import gather_context
+
         ctx = gather_context(db_path=db_path)
         assert ctx.gate_summary
         assert ctx.regime_section
@@ -164,12 +254,14 @@ class TestReportContext:
 
     def test_gate_score_range(self, db_path):
         from nuri.llm.report import gather_context
+
         ctx = gather_context(db_path=db_path)
         assert 0.0 <= ctx.gate_score <= 1.0
 
     def test_prompt_contains_data_tags(self, db_path):
         """프롬프트에 [DATA]...[/DATA] 구조가 있어야 함."""
         from nuri.llm.report import format_prompt, gather_context
+
         ctx = gather_context(db_path=db_path)
         prompt = format_prompt(ctx)
         assert "[DATA]" in prompt
@@ -177,15 +269,21 @@ class TestReportContext:
 
 
 class TestOutputValidation:
-
     def test_clean_output_passes(self, db_path):
         """입력 데이터와 일치하는 출력은 통과."""
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.7,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="TSLA BUY", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.7,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="TSLA BUY",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers={"TSLA", "NVDA"},
             known_numbers={"100", "50.5"},
         )
@@ -196,11 +294,18 @@ class TestOutputValidation:
     def test_hallucinated_ticker_detected(self, db_path):
         """입력에 없는 티커를 LLM이 언급하면 감지."""
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.7,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="TSLA BUY", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.7,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="TSLA BUY",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers={"TSLA"},
             known_numbers=set(),
         )
@@ -211,12 +316,20 @@ class TestOutputValidation:
     def test_low_gate_score_warning(self):
         """게이트 점수 낮으면 경고."""
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.3,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
-            known_tickers=set(), known_numbers=set(),
+            gate_summary="",
+            gate_score=0.3,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
+            known_tickers=set(),
+            known_numbers=set(),
         )
         result = validate_output("리포트 내용", ctx)
         assert any("완성도" in w for w in result.warnings)
@@ -224,15 +337,16 @@ class TestOutputValidation:
     def test_gate_blocked_below_30pct(self, db_path):
         """게이트 30% 미만이면 리포트 생성 차단."""
         from nuri.llm.report import gather_context
+
         ctx = gather_context(db_path=db_path)
         # 빈 DB → gate_score가 매우 낮을 것
         assert ctx.gate_score < 0.5
 
 
 class TestDisclaimer:
-
     def test_disclaimer_exists(self):
         from nuri.llm.report import DISCLAIMER
+
         assert "투자 조언이 아니며" in DISCLAIMER
         assert "투자자 본인" in DISCLAIMER
 
@@ -245,12 +359,14 @@ class TestDisclaimer:
 class TestLLMReport_R3:
     def test_gather_context(self, db_path):
         from nuri.llm.report import gather_context
+
         ctx = gather_context()
         assert hasattr(ctx, "gate_summary")
         assert hasattr(ctx, "regime_section")
 
     def test_format_prompt(self, db_path):
         from nuri.llm.report import format_prompt, gather_context
+
         ctx = gather_context()
         prompt = format_prompt(ctx)
         assert isinstance(prompt, str)
@@ -258,6 +374,7 @@ class TestLLMReport_R3:
 
     def test_validate_output(self, db_path):
         from nuri.llm.report import ValidationResult, gather_context, validate_output
+
         ctx = gather_context()
         result = validate_output("This is a test report about AAPL.", ctx)
         assert isinstance(result, ValidationResult)
@@ -265,8 +382,11 @@ class TestLLMReport_R3:
     def test_generate_llm_report_no_server(self, db_path):
         """Ollama 서버 없을 때 graceful error."""
         from nuri.llm.report import generate_llm_report
-        with patch("requests.post", side_effect=ConnectionError("no ollama")), \
-             patch("requests.get", side_effect=ConnectionError("no ollama")):
+
+        with (
+            patch("requests.post", side_effect=ConnectionError("no ollama")),
+            patch("requests.get", side_effect=ConnectionError("no ollama")),
+        ):
             result = generate_llm_report()
         assert "error" in result or isinstance(result, dict)
 
@@ -281,6 +401,7 @@ class TestLLMReportDeep:
     def test_format_prompt_structure(self, rich_db):
         """프롬프트에 필수 섹션 포함."""
         from nuri.llm.report import format_prompt, gather_context
+
         ctx = gather_context()
         prompt = format_prompt(ctx)
         assert "레짐" in prompt or "regime" in prompt.lower() or len(prompt) > 100
@@ -288,6 +409,7 @@ class TestLLMReportDeep:
     def test_validate_output_short(self, rich_db):
         """짧은 출력 → 검증 실패."""
         from nuri.llm.report import gather_context, validate_output
+
         ctx = gather_context()
         result = validate_output("too short", ctx)
         assert result.passed is False or result.passed is True  # 검증 결과 존재
@@ -295,6 +417,7 @@ class TestLLMReportDeep:
     def test_validate_output_hallucination(self, rich_db):
         """없는 종목 언급 → 환각 감지."""
         from nuri.llm.report import gather_context, validate_output
+
         ctx = gather_context()
         text = "FAKECORP의 PE ratio는 999999이며 매수를 추천합니다. " * 10
         result = validate_output(text, ctx)
@@ -311,17 +434,28 @@ class TestLLMReportDeep:
 class TestLLMDeep:
     def test_report_context_all_sections(self, rich_db):
         from nuri.llm.report import gather_context
+
         ctx = gather_context()
-        sections = ["gate_summary", "regime_section", "macro_section",
-                     "risk_section", "candidates_section", "conflicts_section",
-                     "drift_section", "consensus_section", "strategy_section",
-                     "external_section", "rebalance_section"]
+        sections = [
+            "gate_summary",
+            "regime_section",
+            "macro_section",
+            "risk_section",
+            "candidates_section",
+            "conflicts_section",
+            "drift_section",
+            "consensus_section",
+            "strategy_section",
+            "external_section",
+            "rebalance_section",
+        ]
         for s in sections:
             assert hasattr(ctx, s), f"missing section: {s}"
             assert isinstance(getattr(ctx, s), str)
 
     def test_known_tickers_set(self, rich_db):
         from nuri.llm.report import gather_context
+
         ctx = gather_context()
         assert "AAPL" in ctx.known_tickers
         assert "NVDA" in ctx.known_tickers
@@ -329,6 +463,7 @@ class TestLLMDeep:
     def test_generate_ollama_mock(self, rich_db):
         """Ollama API mock으로 LLM 생성."""
         from nuri.llm.report import _generate_ollama
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"response": "## 시장 분석\n테스트 리포트입니다."}
@@ -339,14 +474,17 @@ class TestLLMDeep:
     def test_generate_llm_report_full(self, rich_db):
         """전체 리포트 생성 (Ollama mock)."""
         from nuri.llm.report import generate_llm_report
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
             "response": "## 1. 완성도\nGate Score: 30%\n## 2. 시장\nbull\n## 3. 리스크\nlow\n"
-                        "## 4. 시그널\nnone\n## 5. 후보\nnone\n## 6. 전략\nhold\n## 7. 주의\nnone",
+            "## 4. 시그널\nnone\n## 5. 후보\nnone\n## 6. 전략\nhold\n## 7. 주의\nnone",
         }
-        with patch("requests.post", return_value=mock_resp), \
-             patch("requests.get", return_value=MagicMock(status_code=200)):
+        with (
+            patch("requests.post", return_value=mock_resp),
+            patch("requests.get", return_value=MagicMock(status_code=200)),
+        ):
             result = generate_llm_report()
         assert isinstance(result, dict)
 
@@ -359,17 +497,21 @@ class TestLLMDeep:
 class TestLLMValidation:
     def test_validate_good_report(self, rich_db):
         from nuri.llm.report import gather_context, validate_output
+
         ctx = gather_context()
         # 좋은 리포트 (알려진 종목 + 숫자 사용)
-        good = ("## 1. 완성도\nGate Score: 30%\n## 2. 시장\n"
-                "AAPL은 현재 bull_low_vol 레짐에서 190달러입니다.\n"
-                "## 3. 리스크\nSharpe 1.5\n## 4. 시그널\nrsi_oversold\n"
-                "## 5. 후보\nAAPL BUY\n## 6. 전략\naggressive\n## 7. 주의\n없음")
+        good = (
+            "## 1. 완성도\nGate Score: 30%\n## 2. 시장\n"
+            "AAPL은 현재 bull_low_vol 레짐에서 190달러입니다.\n"
+            "## 3. 리스크\nSharpe 1.5\n## 4. 시그널\nrsi_oversold\n"
+            "## 5. 후보\nAAPL BUY\n## 6. 전략\naggressive\n## 7. 주의\n없음"
+        )
         result = validate_output(good, ctx)
         assert hasattr(result, "passed")
 
     def test_validate_empty_report(self, rich_db):
         from nuri.llm.report import gather_context, validate_output
+
         ctx = gather_context()
         result = validate_output("", ctx)
         # 빈 리포트도 구조 검증은 통과할 수 있음 (warnings에 기록)
@@ -386,6 +528,7 @@ class TestLLMSections:
     def test_context_sections_content(self, rich_db):
         """gather_context returns valid context sections (may be empty if no SPY data)."""
         from nuri.llm.report import gather_context
+
         ctx = gather_context(db_path=rich_db)
         # Context should always return valid strings (even if empty due to missing SPY data)
         assert isinstance(ctx.regime_section, str)
@@ -396,6 +539,7 @@ class TestLLMSections:
     def test_llamacpp_generate(self):
         """_generate_llamacpp mock."""
         from nuri.llm.report import _generate_llamacpp
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"content": "테스트 리포트"}
@@ -407,6 +551,7 @@ class TestLLMSections:
     def test_generate_ollama_error(self):
         """Ollama 에러 응답."""
         from nuri.llm.report import _generate_ollama
+
         mock_resp = MagicMock()
         mock_resp.status_code = 500
         mock_resp.text = "Internal Server Error"
@@ -426,20 +571,32 @@ class TestLLMSections:
 class TestLLMReportFlow:
     def test_full_report_with_sections(self, rich_db):
         from nuri.llm.report import generate_llm_report
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        sections = "\n".join([
-            "## 1. 완성도", "Gate Score: 30%",
-            "## 2. 시장 환경", "bull_low_vol 레짐",
-            "## 3. 리스크", "Sharpe 1.5, MDD -5%",
-            "## 4. 시그널", "rsi_oversold 감지",
-            "## 5. 매수/매도 후보", "AAPL BUY",
-            "## 6. 전략", "aggressive",
-            "## 7. 주의사항", "VIX 모니터링 필요",
-        ])
+        sections = "\n".join(
+            [
+                "## 1. 완성도",
+                "Gate Score: 30%",
+                "## 2. 시장 환경",
+                "bull_low_vol 레짐",
+                "## 3. 리스크",
+                "Sharpe 1.5, MDD -5%",
+                "## 4. 시그널",
+                "rsi_oversold 감지",
+                "## 5. 매수/매도 후보",
+                "AAPL BUY",
+                "## 6. 전략",
+                "aggressive",
+                "## 7. 주의사항",
+                "VIX 모니터링 필요",
+            ]
+        )
         mock_resp.json.return_value = {"response": sections}
-        with patch("requests.post", return_value=mock_resp), \
-             patch("requests.get", return_value=MagicMock(status_code=200)):
+        with (
+            patch("requests.post", return_value=mock_resp),
+            patch("requests.get", return_value=MagicMock(status_code=200)),
+        ):
             result = generate_llm_report()
         assert isinstance(result, dict)
         assert "report" in result or "error" in result
@@ -454,18 +611,21 @@ class TestLLMReportFlow:
 class TestLLMEnriched:
     def test_context_with_recommendations(self, full_db):
         from nuri.llm.report import gather_context
+
         ctx = gather_context()
         # candidates 섹션에 BUY 포함
         assert "BUY" in ctx.candidates_section or "0건" in ctx.candidates_section
 
     def test_context_with_external(self, full_db):
         from nuri.llm.report import gather_context
+
         ctx = gather_context()
         # external 섹션
         assert "tipranks" in ctx.external_section.lower() or "외부" in ctx.external_section
 
     def test_context_known_numbers(self, full_db):
         from nuri.llm.report import gather_context
+
         ctx = gather_context()
         assert len(ctx.known_numbers) > 0
         assert len(ctx.known_tickers) >= 3
@@ -481,12 +641,18 @@ class TestReportContext_R19:
 
     def test_defaults_none_to_empty_sets(self):
         from nuri.llm.report import ReportContext
+
         ctx = ReportContext(
-            gate_summary="test", gate_score=0.5,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="test",
+            gate_score=0.5,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
         assert isinstance(ctx.known_tickers, set)
         assert isinstance(ctx.known_numbers, set)
@@ -494,12 +660,18 @@ class TestReportContext_R19:
 
     def test_explicit_known(self):
         from nuri.llm.report import ReportContext
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers={"AAPL", "NVDA"},
             known_numbers={"42", "3.14"},
         )
@@ -512,6 +684,7 @@ class TestFormatPrompt:
 
     def test_contains_all_sections(self):
         from nuri.llm.report import ReportContext, format_prompt
+
         ctx = ReportContext(
             gate_summary="Gate OK 5/5",
             gate_score=1.0,
@@ -536,12 +709,18 @@ class TestFormatPrompt:
 
     def test_system_prompt_included(self):
         from nuri.llm.report import SYSTEM_PROMPT, ReportContext, format_prompt
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.5,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.5,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
         prompt = format_prompt(ctx)
         assert SYSTEM_PROMPT in prompt
@@ -552,12 +731,18 @@ class TestValidateOutput:
 
     def test_clean_output_passes(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers={"AAPL", "NVDA"},
             known_numbers={"50", "0.65", "1.5"},
         )
@@ -576,12 +761,18 @@ class TestValidateOutput:
 
     def test_hallucinated_ticker_detected(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers={"AAPL"},
             known_numbers=set(),
         )
@@ -594,12 +785,18 @@ class TestValidateOutput:
 
     def test_low_gate_score_warning(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.2,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.2,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
         result = validate_output("완성도 시장 리스크 시그널 후보 전략 주의", ctx)
         assert result.passed is False
@@ -607,24 +804,36 @@ class TestValidateOutput:
 
     def test_missing_sections_warning(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
         result = validate_output("hello world", ctx)
         assert any("구조 불완전" in w for w in result.warnings)
 
     def test_fabricated_win_rate_detected(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers=set(),
             known_numbers={"0.65"},  # 65%
         )
@@ -635,12 +844,18 @@ class TestValidateOutput:
 
     def test_fabricated_pf_detected(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers=set(),
             known_numbers={"1.5"},
         )
@@ -655,30 +870,33 @@ class TestGenerateOllama:
     def test_connection_refused(self):
 
         from nuri.llm.report import _generate_ollama
+
         with patch("nuri.llm.report._generate_ollama.__module__", "nuri.llm.report"):
             # Mock requests inside the function
             mock_post = MagicMock(side_effect=__import__("requests").ConnectionError("refused"))
-            with patch.dict("sys.modules", {}), \
-                 patch("requests.post", mock_post):
+            with patch.dict("sys.modules", {}), patch("requests.post", mock_post):
                 # The function does lazy import of requests
                 result = _generate_ollama("test prompt")
         assert "연결 실패" in result or isinstance(result, str)
 
-    def test_connection_error_returns_help_message(self):
+    def test_connection_error_returns_empty(self, monkeypatch):
+        """New architecture: _generate_ollama returns '' on any failure.
+        The helpful error message moved to generate_llm_report() top level."""
+        monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "http://localhost:11434")
         from nuri.llm.report import _generate_ollama
+
         mock_requests = MagicMock()
         mock_requests.ConnectionError = ConnectionError
         mock_requests.post.side_effect = ConnectionError("refused")
         with patch.dict("sys.modules", {"requests": mock_requests}):
             result = _generate_ollama("test prompt")
-        assert "연결 실패" in result
+        assert result == ""
 
     def test_successful_response(self):
         from nuri.llm.report import _generate_ollama
+
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "response": "## 1. 데이터 완성도\n리포트 내용입니다."
-        }
+        mock_resp.json.return_value = {"response": "## 1. 데이터 완성도\n리포트 내용입니다."}
         mock_resp.raise_for_status = MagicMock()
         mock_requests = MagicMock()
         mock_requests.ConnectionError = ConnectionError
@@ -690,11 +908,9 @@ class TestGenerateOllama:
     def test_thinking_model_response(self):
         """Qwen3.5 thinking model: response empty, thinking has content."""
         from nuri.llm.report import _generate_ollama
+
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "response": "",
-            "thinking": "blah blah ## 1. 데이터 완성도\n실제 리포트"
-        }
+        mock_resp.json.return_value = {"response": "", "thinking": "blah blah ## 1. 데이터 완성도\n실제 리포트"}
         mock_resp.raise_for_status = MagicMock()
         mock_requests = MagicMock()
         mock_requests.ConnectionError = ConnectionError
@@ -703,14 +919,17 @@ class TestGenerateOllama:
             result = _generate_ollama("test prompt")
         assert "데이터 완성도" in result
 
-    def test_generic_exception(self):
+    def test_generic_exception(self, monkeypatch):
+        monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "http://localhost:11434")
         from nuri.llm.report import _generate_ollama
+
         mock_requests = MagicMock()
         mock_requests.ConnectionError = ConnectionError
         mock_requests.post.side_effect = RuntimeError("timeout")
         with patch.dict("sys.modules", {"requests": mock_requests}):
             result = _generate_ollama("test prompt")
-        assert "오류" in result
+        # New architecture: returns "" on any failure; error surfaces at top level
+        assert result == ""
 
 
 class TestGenerateLlmReport:
@@ -718,12 +937,18 @@ class TestGenerateLlmReport:
 
     def test_gate_blocked_low_score(self):
         from nuri.llm.report import ReportContext, generate_llm_report
+
         mock_ctx = ReportContext(
-            gate_summary="low data", gate_score=0.1,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="low data",
+            gate_score=0.1,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
         with patch("nuri.llm.report.gather_context", return_value=mock_ctx):
             result = generate_llm_report()
@@ -732,17 +957,28 @@ class TestGenerateLlmReport:
 
     def test_full_flow_with_mock_ollama(self):
         from nuri.llm.report import ReportContext, generate_llm_report
+
         mock_ctx = ReportContext(
-            gate_summary="OK 8/10", gate_score=0.8,
-            regime_section="bull_low_vol", macro_section="macro 60",
-            risk_section="Sharpe 1.2", candidates_section="BUY AAPL",
-            conflicts_section="", drift_section="stable",
-            consensus_section="", strategy_section="aggressive",
-            known_tickers={"AAPL"}, known_numbers={"60", "1.2"},
+            gate_summary="OK 8/10",
+            gate_score=0.8,
+            regime_section="bull_low_vol",
+            macro_section="macro 60",
+            risk_section="Sharpe 1.2",
+            candidates_section="BUY AAPL",
+            conflicts_section="",
+            drift_section="stable",
+            consensus_section="",
+            strategy_section="aggressive",
+            known_tickers={"AAPL"},
+            known_numbers={"60", "1.2"},
         )
-        with patch("nuri.llm.report.gather_context", return_value=mock_ctx), \
-             patch("nuri.llm.report._generate_ollama",
-                   return_value="## 1. 데이터 완성도\n시장 리스크 시그널 후보 전략 주의"):
+        with (
+            patch("nuri.llm.report.gather_context", return_value=mock_ctx),
+            patch(
+                "nuri.llm.report._generate_ollama",
+                return_value="## 1. 데이터 완성도\n시장 리스크 시그널 후보 전략 주의",
+            ),
+        ):
             result = generate_llm_report()
         assert result["gate_blocked"] is False
         assert result["report"] is not None
@@ -750,26 +986,40 @@ class TestGenerateLlmReport:
 
     def test_low_gate_score_adds_warning_to_report(self):
         from nuri.llm.report import ReportContext, generate_llm_report
+
         mock_ctx = ReportContext(
-            gate_summary="partial", gate_score=0.5,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="partial",
+            gate_score=0.5,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
-        with patch("nuri.llm.report.gather_context", return_value=mock_ctx), \
-             patch("nuri.llm.report._generate_ollama", return_value="report text"):
+        with (
+            patch("nuri.llm.report.gather_context", return_value=mock_ctx),
+            patch("nuri.llm.report._generate_ollama", return_value="report text"),
+        ):
             result = generate_llm_report()
         assert "완성도" in result["report"]
 
     def test_sync_alias(self):
         from nuri.llm.report import ReportContext, generate_llm_report_sync
+
         mock_ctx = ReportContext(
-            gate_summary="", gate_score=0.1,
-            regime_section="", macro_section="",
-            risk_section="", candidates_section="",
-            conflicts_section="", drift_section="",
-            consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.1,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
         with patch("nuri.llm.report.gather_context", return_value=mock_ctx):
             result = generate_llm_report_sync()
@@ -786,6 +1036,7 @@ class TestFormatPrompt_R21:
 
     def test_basic_prompt_structure(self):
         from nuri.llm.report import ReportContext, format_prompt
+
         ctx = ReportContext(
             gate_summary="PASS 10/10",
             gate_score=1.0,
@@ -806,12 +1057,18 @@ class TestFormatPrompt_R21:
 
     def test_prompt_includes_all_sections(self):
         from nuri.llm.report import ReportContext, format_prompt
+
         ctx = ReportContext(
-            gate_summary="G", gate_score=0.5,
-            regime_section="R", macro_section="M",
-            risk_section="Ri", candidates_section="C",
-            conflicts_section="Co", drift_section="D",
-            consensus_section="Cn", strategy_section="S",
+            gate_summary="G",
+            gate_score=0.5,
+            regime_section="R",
+            macro_section="M",
+            risk_section="Ri",
+            candidates_section="C",
+            conflicts_section="Co",
+            drift_section="D",
+            consensus_section="Cn",
+            strategy_section="S",
             external_section="외부 데이터 요약",
             rebalance_section="위반 3건",
         )
@@ -825,11 +1082,18 @@ class TestValidateOutput_R21:
 
     def test_clean_output_passes(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="pass", gate_score=0.8,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="pass",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers={"AAPL", "NVDA"},
             known_numbers={"0.65", "1.5"},
         )
@@ -845,11 +1109,18 @@ class TestValidateOutput_R21:
 
     def test_hallucinated_ticker_detected(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers={"AAPL"},
             known_numbers=set(),
         )
@@ -861,11 +1132,18 @@ class TestValidateOutput_R21:
 
     def test_fabricated_win_rate_detected(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers=set(),
             known_numbers={"0.55"},  # 55% in input
         )
@@ -877,11 +1155,18 @@ class TestValidateOutput_R21:
 
     def test_fabricated_pf_detected(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers=set(),
             known_numbers={"1.2"},
         )
@@ -892,11 +1177,18 @@ class TestValidateOutput_R21:
 
     def test_low_gate_score_warning(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.3,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.3,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers=set(),
             known_numbers=set(),
         )
@@ -906,11 +1198,18 @@ class TestValidateOutput_R21:
 
     def test_missing_sections_warning(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers=set(),
             known_numbers=set(),
         )
@@ -921,11 +1220,18 @@ class TestValidateOutput_R21:
 
     def test_very_low_gate_score_fails_validation(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.1,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.1,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers=set(),
             known_numbers=set(),
         )
@@ -936,11 +1242,18 @@ class TestValidateOutput_R21:
 
     def test_win_rate_close_match_passes(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
             known_tickers=set(),
             known_numbers={"0.64"},  # 64%
         )
@@ -970,11 +1283,16 @@ class TestGenerateLLMReport:
         from nuri.llm.report import ReportContext, generate_llm_report
 
         ctx = ReportContext(
-            gate_summary="PASS", gate_score=0.8,
-            regime_section="bull", macro_section="good",
-            risk_section="low", candidates_section="BUY AAPL",
-            conflicts_section="none", drift_section="stable",
-            consensus_section="합의", strategy_section="공격적",
+            gate_summary="PASS",
+            gate_score=0.8,
+            regime_section="bull",
+            macro_section="good",
+            risk_section="low",
+            candidates_section="BUY AAPL",
+            conflicts_section="none",
+            drift_section="stable",
+            consensus_section="합의",
+            strategy_section="공격적",
             known_tickers={"AAPL"},
             known_numbers={"0.8"},
         )
@@ -985,8 +1303,10 @@ class TestGenerateLLMReport:
             "## 6. 리밸런스 필요 사항\n없음\n## 7. 전략 요약\n공격적\n"
             "## 8. 주의사항\n없음"
         )
-        with patch("nuri.llm.report.gather_context", return_value=ctx), \
-             patch("nuri.llm.report._generate_ollama", return_value=mock_report):
+        with (
+            patch("nuri.llm.report.gather_context", return_value=ctx),
+            patch("nuri.llm.report._generate_ollama", return_value=mock_report),
+        ):
             result = generate_llm_report()
             assert result["gate_blocked"] is False
             assert result["report"] is not None
@@ -996,13 +1316,21 @@ class TestGenerateLLMReport:
         from nuri.llm.report import ReportContext, generate_llm_report
 
         ctx = ReportContext(
-            gate_summary="PASS", gate_score=0.5,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="PASS",
+            gate_score=0.5,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
-        with patch("nuri.llm.report.gather_context", return_value=ctx), \
-             patch("nuri.llm.report._generate_ollama", return_value=""):
+        with (
+            patch("nuri.llm.report.gather_context", return_value=ctx),
+            patch("nuri.llm.report._generate_ollama", return_value=""),
+        ):
             result = generate_llm_report()
             assert result["gate_blocked"] is False
             # Empty report still includes disclaimer
@@ -1012,13 +1340,21 @@ class TestGenerateLLMReport:
         from nuri.llm.report import ReportContext, generate_llm_report
 
         ctx = ReportContext(
-            gate_summary="LOW", gate_score=0.5,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="LOW",
+            gate_score=0.5,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
-        with patch("nuri.llm.report.gather_context", return_value=ctx), \
-             patch("nuri.llm.report._generate_ollama", return_value="report text"):
+        with (
+            patch("nuri.llm.report.gather_context", return_value=ctx),
+            patch("nuri.llm.report._generate_ollama", return_value="report text"),
+        ):
             result = generate_llm_report()
             # gate_score < 0.7 → includes completeness warning
             assert "완성도" in result["report"]
@@ -1033,27 +1369,34 @@ class TestGenerateLLMReport:
         mock_resp.json.return_value = mock_response
         mock_resp.raise_for_status = MagicMock()
 
-        with patch("nuri.llm.report._requests.post" if hasattr(
-            __import__("nuri.llm.report", fromlist=["_generate_ollama"]), "_requests"
-        ) else "requests.post", side_effect=Exception("direct test")):
+        with patch(
+            "nuri.llm.report._requests.post"
+            if hasattr(__import__("nuri.llm.report", fromlist=["_generate_ollama"]), "_requests")
+            else "requests.post",
+            side_effect=Exception("direct test"),
+        ):
             # Test via the function logic directly
             pass
 
-    def test_ollama_connection_error(self):
+    def test_ollama_connection_error(self, monkeypatch):
+        """New architecture: _generate_ollama returns '' on failure.
+        Helpful message now emitted at generate_llm_report() top level."""
+        monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "http://localhost:11434")
         import requests
 
         from nuri.llm.report import _generate_ollama
 
         with patch("requests.post", side_effect=requests.ConnectionError("refused")):
             result = _generate_ollama("test prompt")
-            assert "LLM 연결 실패" in result
+            assert result == ""
 
-    def test_ollama_generic_error(self):
+    def test_ollama_generic_error(self, monkeypatch):
+        monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "http://localhost:11434")
         from nuri.llm.report import _generate_ollama
 
         with patch("requests.post", side_effect=RuntimeError("boom")):
             result = _generate_ollama("test prompt")
-            assert "LLM 오류" in result
+            assert result == ""
 
     def test_ollama_thinking_only_response(self):
         from nuri.llm.report import _generate_ollama
@@ -1083,6 +1426,7 @@ class TestGenerateLLMReport:
 
     def test_generate_llm_report_sync(self):
         from nuri.llm.report import generate_llm_report_sync
+
         mock_ctx = MagicMock()
         mock_ctx.gate_score = 0.1
         mock_ctx.gate_summary = "blocked"
@@ -1096,23 +1440,38 @@ class TestReportContextPostInit:
 
     def test_defaults_to_empty_sets(self):
         from nuri.llm.report import ReportContext
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.5,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="",
+            gate_score=0.5,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
         assert ctx.known_tickers == set()
         assert ctx.known_numbers == set()
 
     def test_preserves_provided_sets(self):
         from nuri.llm.report import ReportContext
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.5,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
-            known_tickers={"AAPL"}, known_numbers={"1.5"},
+            gate_summary="",
+            gate_score=0.5,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
+            known_tickers={"AAPL"},
+            known_numbers={"1.5"},
         )
         assert "AAPL" in ctx.known_tickers
         assert "1.5" in ctx.known_numbers
@@ -1123,6 +1482,7 @@ class TestOllamaResponseProcessing:
 
     def test_response_with_thinking_indent(self):
         from nuri.llm.report import _generate_ollama
+
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
@@ -1135,6 +1495,7 @@ class TestOllamaResponseProcessing:
 
     def test_response_with_h1_marker(self):
         from nuri.llm.report import _generate_ollama
+
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
@@ -1152,6 +1513,7 @@ class TestGatherContext:
     def test_gather_context_all_failures_graceful(self):
         """When every sub-module import fails, gather_context should still return valid ctx."""
         from nuri.llm.report import gather_context
+
         # All imports inside gather_context will fail since no DB exists
         # but the function catches all exceptions and returns defaults
         ctx = gather_context(db_path=None)
@@ -1179,11 +1541,15 @@ class TestGatherContext:
 
         mock_gates = {
             "collect": MockGateResult(
-                ready=True, passed=3, total=3,
+                ready=True,
+                passed=3,
+                total=3,
                 conditions=[MockCondition(True, "prices", "OK")],
             ),
             "analyze": MockGateResult(
-                ready=False, passed=1, total=2,
+                ready=False,
+                passed=1,
+                total=2,
                 conditions=[
                     MockCondition(True, "portfolio", "OK"),
                     MockCondition(False, "risk", "데이터 부족"),
@@ -1211,14 +1577,21 @@ class TestGatherContext:
             regime="bull_low_vol",
             confidence=0.85,
             details={
-                "spy_close": 520.0, "sma50": 510.0, "sma200": 490.0,
-                "sma_diff_pct": 4.1, "vix": 14.5, "fear_greed": 65,
-                "rsi": 58, "thresholds": {"vix_threshold": 20, "sideways_pct": 2.5, "bb_width_threshold": 0.05},
+                "spy_close": 520.0,
+                "sma50": 510.0,
+                "sma200": 490.0,
+                "sma_diff_pct": 4.1,
+                "vix": 14.5,
+                "fear_greed": 65,
+                "rsi": 58,
+                "thresholds": {"vix_threshold": 20, "sideways_pct": 2.5, "bb_width_threshold": 0.05},
             },
         )
 
-        with patch("nuri.trading.engine.gate.check_all_gates", side_effect=Exception("skip")), \
-             patch("nuri.quant.regime.classifier.classify_regime", return_value=mock_regime):
+        with (
+            patch("nuri.trading.engine.gate.check_all_gates", side_effect=Exception("skip")),
+            patch("nuri.quant.regime.classifier.classify_regime", return_value=mock_regime),
+        ):
             ctx = gather_context(db_path=None)
             assert "bull_low_vol" in ctx.regime_section
             assert "520" in ctx.regime_section
@@ -1242,19 +1615,33 @@ class TestGatherContext:
             details: dict
 
         mock_macro = MockMacroScore(
-            total_score=72, interpretation="moderate",
-            yield_curve_score=60, yield_spread_3m10y_score=50,
-            vix_score=80, put_call_ratio_score=70,
-            sentiment_score=65, employment_score=75,
-            inflation_score=60, monetary_score=55,
-            details={"spread": 0.5, "spread_3m10y": -0.2, "vix": 15,
-                     "put_call_ratio": 0.8, "fear_greed": 60,
-                     "unemployment": 3.7, "cpi_yoy": 3.1, "fed_funds": 5.25},
+            total_score=72,
+            interpretation="moderate",
+            yield_curve_score=60,
+            yield_spread_3m10y_score=50,
+            vix_score=80,
+            put_call_ratio_score=70,
+            sentiment_score=65,
+            employment_score=75,
+            inflation_score=60,
+            monetary_score=55,
+            details={
+                "spread": 0.5,
+                "spread_3m10y": -0.2,
+                "vix": 15,
+                "put_call_ratio": 0.8,
+                "fear_greed": 60,
+                "unemployment": 3.7,
+                "cpi_yoy": 3.1,
+                "fed_funds": 5.25,
+            },
         )
 
-        with patch("nuri.trading.engine.gate.check_all_gates", side_effect=Exception("skip")), \
-             patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception("skip")), \
-             patch("nuri.quant.regime.macro_score.compute_macro_score", return_value=mock_macro):
+        with (
+            patch("nuri.trading.engine.gate.check_all_gates", side_effect=Exception("skip")),
+            patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception("skip")),
+            patch("nuri.quant.regime.macro_score.compute_macro_score", return_value=mock_macro),
+        ):
             ctx = gather_context(db_path=None)
             assert "72" in ctx.macro_section
             assert "moderate" in ctx.macro_section
@@ -1279,21 +1666,25 @@ class TestGatherContext:
 
         mock_results = [
             MockConsensus(
-                ticker="AAPL", final_action="BUY",
-                final_confidence=78, agreement_rate=0.8,
+                ticker="AAPL",
+                final_action="BUY",
+                final_confidence=78,
+                agreement_rate=0.8,
                 verdicts=[MockVerdict("technical", "BUY"), MockVerdict("risk", "HOLD")],
                 dissent=["risk agent disagrees"],
             ),
         ]
 
-        with patch("nuri.trading.engine.gate.check_all_gates", side_effect=Exception("skip")), \
-             patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception("skip")), \
-             patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception("skip")), \
-             patch("nuri.analysis.risk.analyze_risk", side_effect=Exception("skip")), \
-             patch("nuri.trading.recommend.candidates.screen_candidates", side_effect=Exception("skip")), \
-             patch("nuri.trading.engine.conflicts.detect_conflicts", side_effect=Exception("skip")), \
-             patch("nuri.trading.engine.memory.detect_drift", side_effect=Exception("skip")), \
-             patch("nuri.trading.agents.consensus.analyze_portfolio", return_value=mock_results):
+        with (
+            patch("nuri.trading.engine.gate.check_all_gates", side_effect=Exception("skip")),
+            patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception("skip")),
+            patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception("skip")),
+            patch("nuri.analysis.risk.analyze_risk", side_effect=Exception("skip")),
+            patch("nuri.trading.recommend.candidates.screen_candidates", side_effect=Exception("skip")),
+            patch("nuri.trading.engine.conflicts.detect_conflicts", side_effect=Exception("skip")),
+            patch("nuri.trading.engine.memory.detect_drift", side_effect=Exception("skip")),
+            patch("nuri.trading.agents.consensus.analyze_portfolio", return_value=mock_results),
+        ):
             ctx = gather_context(db_path=None)
             assert "AAPL" in ctx.consensus_section
             assert "BUY" in ctx.consensus_section
@@ -1308,12 +1699,14 @@ class TestGatherContext:
 class TestLlmReport:
     def test_report_context_defaults(self):
         from nuri.llm.report import ReportContext
+
         ctx = ReportContext("gate", 0.5, "regime", "macro", "risk", "cand", "confl", "drift", "cons", "strat")
         assert ctx.known_tickers == set()
         assert ctx.known_numbers == set()
 
     def test_format_prompt(self):
         from nuri.llm.report import ReportContext, format_prompt
+
         ctx = ReportContext("gate", 0.5, "regime", "macro", "risk", "cand", "confl", "drift", "cons", "strat")
         prompt = format_prompt(ctx)
         assert "[DATA]" in prompt
@@ -1321,22 +1714,27 @@ class TestLlmReport:
 
     def test_validate_output_clean(self):
         from nuri.llm.report import ReportContext, validate_output
-        ctx = ReportContext("g", 0.8, "r", "m", "ri", "c", "co", "d", "co", "s",
-                           known_tickers={"AAPL"}, known_numbers={"50", "0.75"})
+
+        ctx = ReportContext(
+            "g", 0.8, "r", "m", "ri", "c", "co", "d", "co", "s", known_tickers={"AAPL"}, known_numbers={"50", "0.75"}
+        )
         text = "## 1. 완성도\n시장 환경 리스크 시그널 후보 전략 주의\nAAPL 승률 75%"
         result = validate_output(text, ctx)
         assert isinstance(result.passed, bool)
 
     def test_validate_output_hallucination(self):
         from nuri.llm.report import ReportContext, validate_output
-        ctx = ReportContext("g", 0.8, "r", "m", "ri", "c", "co", "d", "co", "s",
-                           known_tickers=set(), known_numbers=set())
+
+        ctx = ReportContext(
+            "g", 0.8, "r", "m", "ri", "c", "co", "d", "co", "s", known_tickers=set(), known_numbers=set()
+        )
         text = "ZZZQ is great 완성도 시장 리스크 시그널 후보 전략 주의"
         result = validate_output(text, ctx)
         assert len(result.hallucinated_tickers) > 0
 
     def test_validate_output_low_gate(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext("g", 0.2, "r", "m", "ri", "c", "co", "d", "co", "s")
         text = "완성도 시장 리스크 시그널 후보 전략 주의"
         result = validate_output(text, ctx)
@@ -1344,6 +1742,7 @@ class TestLlmReport:
 
     def test_validate_output_missing_sections(self):
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext("g", 0.8, "r", "m", "ri", "c", "co", "d", "co", "s")
         text = "nothing here at all"
         result = validate_output(text, ctx)
@@ -1351,8 +1750,8 @@ class TestLlmReport:
 
     def test_validate_pf_claim(self):
         from nuri.llm.report import ReportContext, validate_output
-        ctx = ReportContext("g", 0.8, "r", "m", "ri", "c", "co", "d", "co", "s",
-                           known_numbers={"1.5"})
+
+        ctx = ReportContext("g", 0.8, "r", "m", "ri", "c", "co", "d", "co", "s", known_numbers={"1.5"})
         text = "PF 9.9 완성도 시장 리스크 시그널 후보 전략 주의"
         result = validate_output(text, ctx)
         assert any("불일치" in w for w in result.warnings)
@@ -1360,11 +1759,13 @@ class TestLlmReport:
     def test_generate_llamacpp_no_path(self, monkeypatch):
         monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "")
         from nuri.llm.report import _generate_llamacpp
+
         assert _generate_llamacpp("test") == ""
 
     def test_generate_llamacpp_import_error(self, monkeypatch):
         monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "/fake/path.gguf")
         from nuri.llm.report import _generate_llamacpp
+
         # llama_cpp not installed -> ImportError path
         result = _generate_llamacpp("test prompt")
         assert result == ""
@@ -1377,6 +1778,7 @@ class TestLlmReport:
         mock_module.Llama = mock_llama
         monkeypatch.setitem(sys.modules, "llama_cpp", mock_module)
         from nuri.llm.report import _generate_llamacpp
+
         result = _generate_llamacpp("test prompt")
         assert result == ""
 
@@ -1385,38 +1787,52 @@ class TestLlmReport:
         mock_resp.json.return_value = {"response": "## 1. 데이터 완성도\nOK"}
         mock_resp.raise_for_status = MagicMock()
         import requests as _req_mod
+
         monkeypatch.setattr(_req_mod, "post", MagicMock(return_value=mock_resp))
         from nuri.llm.report import _generate_ollama
+
         result = _generate_ollama("test prompt")
         assert "완성도" in result
 
     def test_generate_ollama_thinking_mode(self, monkeypatch):
         """Cover Qwen3.5 thinking mode (response empty, use thinking)."""
+        monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "http://localhost:11434")
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"response": "", "thinking": "## 1. 완성도 stuff"}
         mock_resp.raise_for_status = MagicMock()
         import requests as _req_mod
+
         monkeypatch.setattr(_req_mod, "post", MagicMock(return_value=mock_resp))
         from nuri.llm.report import _generate_ollama
+
         result = _generate_ollama("test")
         assert "완성도" in result
 
     def test_generate_ollama_connection_error(self, monkeypatch):
+        monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "http://localhost:11434")
         import requests as _req_mod
+
         monkeypatch.setattr(_req_mod, "post", MagicMock(side_effect=_req_mod.ConnectionError("fail")))
         from nuri.llm.report import _generate_ollama
+
         result = _generate_ollama("test")
-        assert "LLM 연결 실패" in result
+        # New: returns "" on failure; error surfaces at top-level generate_llm_report
+        assert result == ""
 
     def test_generate_ollama_other_error(self, monkeypatch):
+        monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "http://localhost:11434")
         import requests as _req_mod
+
         monkeypatch.setattr(_req_mod, "post", MagicMock(side_effect=RuntimeError("boom")))
         from nuri.llm.report import _generate_ollama
+
         result = _generate_ollama("test")
-        assert "LLM 오류" in result
+        # New: returns "" on any error; caller (generate_llm_report) emits help text
+        assert result == ""
 
     def test_generate_llm_report_gate_blocked(self, monkeypatch):
         from nuri.llm.report import ReportContext, generate_llm_report
+
         ctx = ReportContext("blocked", 0.1, "r", "m", "ri", "c", "co", "d", "co", "s")
         monkeypatch.setattr("nuri.llm.report.gather_context", lambda db_path=None: ctx)
         result = generate_llm_report()
@@ -1425,8 +1841,10 @@ class TestLlmReport:
 
     def test_generate_llm_report_success(self, monkeypatch):
         from nuri.llm.report import ReportContext, generate_llm_report
-        ctx = ReportContext("ok", 0.8, "r", "m", "ri", "c", "co", "d", "co", "s",
-                           known_tickers={"AAPL"}, known_numbers={"50"})
+
+        ctx = ReportContext(
+            "ok", 0.8, "r", "m", "ri", "c", "co", "d", "co", "s", known_tickers={"AAPL"}, known_numbers={"50"}
+        )
         monkeypatch.setattr("nuri.llm.report.gather_context", lambda db_path=None: ctx)
         monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "")
         monkeypatch.setattr(
@@ -1440,15 +1858,19 @@ class TestLlmReport:
     def test_generate_llm_report_low_gate(self, monkeypatch):
         """Gate score < 0.7 adds completeness warning."""
         from nuri.llm.report import ReportContext, generate_llm_report
+
         ctx = ReportContext("partial", 0.5, "r", "m", "ri", "c", "co", "d", "co", "s")
         monkeypatch.setattr("nuri.llm.report.gather_context", lambda db_path=None: ctx)
         monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "")
-        monkeypatch.setattr("nuri.llm.report._generate_ollama", lambda p: "report 완성도 시장 리스크 시그널 후보 전략 주의")
+        monkeypatch.setattr(
+            "nuri.llm.report._generate_ollama", lambda p: "report 완성도 시장 리스크 시그널 후보 전략 주의"
+        )
         result = generate_llm_report()
         assert "완성도" in result["report"]
 
     def test_sync_wrapper(self, monkeypatch):
         from nuri.llm.report import generate_llm_report_sync
+
         monkeypatch.setattr(
             "nuri.llm.report.generate_llm_report",
             lambda db_path=None: {"report": "ok", "gate_blocked": False},
@@ -1468,11 +1890,18 @@ class TestLLMReport_R27:
     def test_report_context_post_init(self):
         """ReportContext __post_init__ sets defaults."""
         from nuri.llm.report import ReportContext
+
         ctx = ReportContext(
-            gate_summary="test", gate_score=0.5,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="test",
+            gate_score=0.5,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
         assert ctx.known_tickers == set()
         assert ctx.known_numbers == set()
@@ -1480,13 +1909,20 @@ class TestLLMReport_R27:
     def test_format_prompt(self):
         """format_prompt assembles all sections."""
         from nuri.llm.report import ReportContext, format_prompt
+
         ctx = ReportContext(
-            gate_summary="Gate OK", gate_score=0.8,
-            regime_section="Bull", macro_section="Score 70",
-            risk_section="Low risk", candidates_section="3 buys",
-            conflicts_section="None", drift_section="Stable",
-            consensus_section="BUY", strategy_section="Aggressive",
-            external_section="TipRanks data", rebalance_section="No violations",
+            gate_summary="Gate OK",
+            gate_score=0.8,
+            regime_section="Bull",
+            macro_section="Score 70",
+            risk_section="Low risk",
+            candidates_section="3 buys",
+            conflicts_section="None",
+            drift_section="Stable",
+            consensus_section="BUY",
+            strategy_section="Aggressive",
+            external_section="TipRanks data",
+            rebalance_section="No violations",
         )
         prompt = format_prompt(ctx)
         assert "Gate OK" in prompt
@@ -1496,12 +1932,20 @@ class TestLLMReport_R27:
     def test_validate_output_clean(self):
         """Clean output passes validation."""
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
-            known_tickers={"AAPL", "TSLA"}, known_numbers={"0.65", "2.5"},
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
+            known_tickers={"AAPL", "TSLA"},
+            known_numbers={"0.65", "2.5"},
         )
         text = "## 1. 완성도\n시장 환경\n리스크\n시그널\n후보\n전략\n주의\nAAPL 승률 65%\nTSLA PF 2.5"
         result = validate_output(text, ctx)
@@ -1511,12 +1955,20 @@ class TestLLMReport_R27:
     def test_validate_output_hallucinated_ticker(self):
         """Hallucinated ticker is detected."""
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
-            known_tickers={"AAPL"}, known_numbers=set(),
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
+            known_tickers={"AAPL"},
+            known_numbers=set(),
         )
         text = "AAPL is good. ZZYZ is also interesting. 완성도 시장 리스크 시그널 후보 전략 주의"
         result = validate_output(text, ctx)
@@ -1525,12 +1977,20 @@ class TestLLMReport_R27:
     def test_validate_output_low_gate_score(self):
         """Low gate score adds warning."""
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.3,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
-            known_tickers=set(), known_numbers=set(),
+            gate_summary="",
+            gate_score=0.3,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
+            known_tickers=set(),
+            known_numbers=set(),
         )
         result = validate_output("완성도 시장 리스크 시그널 후보 전략 주의", ctx)
         assert any("완성도" in w for w in result.warnings)
@@ -1538,12 +1998,20 @@ class TestLLMReport_R27:
     def test_validate_output_missing_sections(self):
         """Missing sections add structure warning."""
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
-            known_tickers=set(), known_numbers=set(),
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
+            known_tickers=set(),
+            known_numbers=set(),
         )
         result = validate_output("Hello world", ctx)
         assert any("구조" in w for w in result.warnings)
@@ -1551,12 +2019,20 @@ class TestLLMReport_R27:
     def test_validate_output_fabricated_numbers(self):
         """Fabricated numbers detected."""
         from nuri.llm.report import ReportContext, validate_output
+
         ctx = ReportContext(
-            gate_summary="", gate_score=0.8,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
-            known_tickers=set(), known_numbers={"0.65"},
+            gate_summary="",
+            gate_score=0.8,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
+            known_tickers=set(),
+            known_numbers={"0.65"},
         )
         text = "승률 99% PF 8.8 완성도 시장 리스크 시그널 후보 전략 주의"
         result = validate_output(text, ctx)
@@ -1565,11 +2041,18 @@ class TestLLMReport_R27:
     def test_generate_llm_report_gate_blocked(self, monkeypatch):
         """generate_llm_report blocked by low gate score."""
         from nuri.llm.report import ReportContext, generate_llm_report
+
         ctx = ReportContext(
-            gate_summary="Low", gate_score=0.1,
-            regime_section="", macro_section="", risk_section="",
-            candidates_section="", conflicts_section="",
-            drift_section="", consensus_section="", strategy_section="",
+            gate_summary="Low",
+            gate_score=0.1,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
         )
         monkeypatch.setattr("nuri.llm.report.gather_context", lambda db_path=None: ctx)
         result = generate_llm_report()
@@ -1579,18 +2062,27 @@ class TestLLMReport_R27:
     def test_generate_llm_report_success(self, monkeypatch):
         """generate_llm_report with mocked LLM."""
         from nuri.llm.report import ReportContext, generate_llm_report
+
         ctx = ReportContext(
-            gate_summary="OK", gate_score=0.8,
-            regime_section="bull", macro_section="score 70",
-            risk_section="low", candidates_section="2 buys",
-            conflicts_section="none", drift_section="stable",
-            consensus_section="BUY", strategy_section="aggressive",
-            known_tickers={"AAPL"}, known_numbers={"70", "0.8"},
+            gate_summary="OK",
+            gate_score=0.8,
+            regime_section="bull",
+            macro_section="score 70",
+            risk_section="low",
+            candidates_section="2 buys",
+            conflicts_section="none",
+            drift_section="stable",
+            consensus_section="BUY",
+            strategy_section="aggressive",
+            known_tickers={"AAPL"},
+            known_numbers={"70", "0.8"},
         )
         monkeypatch.setattr("nuri.llm.report.gather_context", lambda db_path=None: ctx)
         monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "")
-        monkeypatch.setattr("nuri.llm.report._generate_ollama",
-                            lambda prompt: "## 1. 완성도 시장 리스크 시그널 후보 전략 주의 AAPL 승률 80%")
+        monkeypatch.setattr(
+            "nuri.llm.report._generate_ollama",
+            lambda prompt: "## 1. 완성도 시장 리스크 시그널 후보 전략 주의 AAPL 승률 80%",
+        )
         result = generate_llm_report()
         assert result["gate_blocked"] is False
         assert result["report"] is not None
@@ -1598,6 +2090,7 @@ class TestLLMReport_R27:
     def test_generate_llm_report_sync(self, monkeypatch):
         """generate_llm_report_sync delegates correctly."""
         from nuri.llm.report import generate_llm_report_sync
+
         monkeypatch.setattr("nuri.llm.report.generate_llm_report", lambda db_path=None: {"test": True})
         result = generate_llm_report_sync()
         assert result == {"test": True}
@@ -1605,17 +2098,20 @@ class TestLLMReport_R27:
     def test_generate_llamacpp_no_path(self):
         """_generate_llamacpp returns empty when no model path."""
         from nuri.llm.report import _generate_llamacpp
+
         result = _generate_llamacpp("test prompt")
         assert result == ""
 
     def test_generate_ollama_connection_error(self, monkeypatch):
-        """_generate_ollama handles connection error."""
+        """_generate_ollama returns '' on connection error (new architecture)."""
+        monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "http://localhost:11434")
         import requests
 
         from nuri.llm.report import _generate_ollama
+
         monkeypatch.setattr(requests, "post", MagicMock(side_effect=requests.ConnectionError))
         result = _generate_ollama("test prompt")
-        assert "연결 실패" in result
+        assert result == ""
 
 
 # ═══════════════════════════════════════════════════════
@@ -1626,11 +2122,128 @@ class TestLLMReport_R27:
 class TestLLMReport_FinalPush:
     def test_import(self):
         import nuri.llm.report as report_mod
+
         assert hasattr(report_mod, "generate_report") or hasattr(report_mod, "generate_llm_report")
 
     @pytest.mark.slow
     def test_context_builder(self, db_path):
         """보고서 컨텍스트 빌드 함수 테스트."""
         from nuri.llm.report import ReportContext, gather_context
+
         ctx = gather_context(db_path=db_path)
         assert isinstance(ctx, ReportContext)
+
+
+# ═══════════════════════════════════════════════════════
+# _generate_openai + fallback chain (2026-04-14 STRATEGY §4.4.3 Tier 2)
+# ═══════════════════════════════════════════════════════
+
+
+class TestGenerateOpenAI:
+    """_generate_openai wraps openai_client.chat_text with Tier 2 gating."""
+
+    def test_returns_text_on_success(self, monkeypatch):
+        fake_client = MagicMock()
+        fake_client.chat_text.return_value = "## 1. 리포트 본문"
+        monkeypatch.setattr("nuri.llm.openai_client.get_client", lambda: fake_client)
+        from nuri.llm.report import _generate_openai
+
+        result = _generate_openai("sys", "user")
+        assert result == "## 1. 리포트 본문"
+        kwargs = fake_client.chat_text.call_args.kwargs
+        assert kwargs["data_tier"] == "tier2"
+
+    def test_disabled_returns_empty(self, monkeypatch):
+        from nuri.llm.openai_client import ExternalLLMDisabled
+
+        fake_client = MagicMock()
+        fake_client.chat_text.side_effect = ExternalLLMDisabled("opt-out")
+        monkeypatch.setattr("nuri.llm.openai_client.get_client", lambda: fake_client)
+        from nuri.llm.report import _generate_openai
+
+        assert _generate_openai("sys", "user") == ""
+
+    def test_zdr_not_approved_returns_empty(self, monkeypatch):
+        from nuri.llm.openai_client import ExternalLLMPolicyViolation
+
+        fake_client = MagicMock()
+        fake_client.chat_text.side_effect = ExternalLLMPolicyViolation("no ZDR")
+        monkeypatch.setattr("nuri.llm.openai_client.get_client", lambda: fake_client)
+        from nuri.llm.report import _generate_openai
+
+        assert _generate_openai("sys", "user") == ""
+
+    def test_network_failure_returns_empty(self, monkeypatch):
+        from nuri.llm.openai_client import ExternalLLMUnavailable
+
+        fake_client = MagicMock()
+        fake_client.chat_text.side_effect = ExternalLLMUnavailable("503")
+        monkeypatch.setattr("nuri.llm.openai_client.get_client", lambda: fake_client)
+        from nuri.llm.report import _generate_openai
+
+        assert _generate_openai("sys", "user") == ""
+
+
+class TestGenerateLLMReportFallbackChain:
+    """generate_llm_report: OpenAI → llama.cpp → Ollama → help-text."""
+
+    def _make_context(self, monkeypatch):
+        from nuri.llm.report import ReportContext
+
+        ctx = ReportContext(
+            gate_summary="OK",
+            gate_score=0.9,
+            regime_section="r",
+            macro_section="m",
+            risk_section="ri",
+            candidates_section="c",
+            conflicts_section="co",
+            drift_section="d",
+            consensus_section="cs",
+            strategy_section="s",
+        )
+        monkeypatch.setattr("nuri.llm.report.gather_context", lambda db_path=None: ctx)
+
+    def test_openai_success_stops_chain(self, monkeypatch):
+        self._make_context(monkeypatch)
+        llamacpp_mock = MagicMock(return_value="SHOULD NOT SEE")
+        ollama_mock = MagicMock(return_value="SHOULD NOT SEE")
+        monkeypatch.setattr(
+            "nuri.llm.report._generate_openai", lambda s, u: "## 1. 완성도 시장 리스크 시그널 후보 전략 주의 정상 응답"
+        )
+        monkeypatch.setattr("nuri.llm.report._generate_llamacpp", llamacpp_mock)
+        monkeypatch.setattr("nuri.llm.report._generate_ollama", ollama_mock)
+        from nuri.llm.report import generate_llm_report
+
+        result = generate_llm_report()
+        assert "정상 응답" in result["report"]
+        llamacpp_mock.assert_not_called()
+        ollama_mock.assert_not_called()
+
+    def test_openai_empty_falls_to_llamacpp(self, monkeypatch):
+        self._make_context(monkeypatch)
+        monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "/fake/model.gguf")
+        monkeypatch.setattr("nuri.llm.report._generate_openai", lambda s, u: "")
+        monkeypatch.setattr(
+            "nuri.llm.report._generate_llamacpp", lambda p: "## 1. 완성도 시장 리스크 시그널 후보 전략 주의 local"
+        )
+        monkeypatch.setattr("nuri.llm.report._generate_ollama", lambda p: "SHOULD NOT SEE")
+        from nuri.llm.report import generate_llm_report
+
+        result = generate_llm_report()
+        assert "local" in result["report"]
+
+    def test_all_fail_yields_help_text(self, monkeypatch):
+        """When every path returns empty, user sees concrete setup guidance."""
+        self._make_context(monkeypatch)
+        monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "")
+        monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "")
+        monkeypatch.setattr("nuri.llm.report._generate_openai", lambda s, u: "")
+        monkeypatch.setattr("nuri.llm.report._generate_llamacpp", lambda p: "")
+        monkeypatch.setattr("nuri.llm.report._generate_ollama", lambda p: "")
+        from nuri.llm.report import generate_llm_report
+
+        result = generate_llm_report()
+        assert "OPENAI_API_KEY" in result["report"]
+        assert "LLAMA_MODEL_PATH" in result["report"]
+        assert "OLLAMA_HOST" in result["report"]
