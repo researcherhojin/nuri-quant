@@ -75,7 +75,7 @@ flowchart TD
   end
 
   subgraph Serve["Interface"]
-    API("FastAPI :8001\n68 endpoints + SSE")
+    API("FastAPI :8001\n69 endpoints + SSE")
     Dashboard("Next.js 16 :3000\n17 pages\nAction-First dashboard")
     Discord("Discord/Telegram\nalerts + daily report")
   end
@@ -159,7 +159,7 @@ flowchart TD
 | `nuri/trading/engine/` | Certify | SIEGE 11-gate (v2: asset-class-aware), conflict detection, learning memory |
 | `nuri/trading/recommend/` | Certify+Track | Candidates, price targets, rebalance advisor, outcome tracker (30/60/90d) |
 | `nuri/llm/` | Classify | Event classifier (OpenAI/regex), LLM report (Ollama, dormant), OpenAI wrapper |
-| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (68 endpoints incl. `/actions`, `/opportunities`, `/market-context`). Swagger at `/docs` |
+| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (69 endpoints incl. `/actions`, `/opportunities`, `/market-context`). Swagger at `/docs` |
 | `frontend/` | Serve | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme) |
 | `nuri/core/` | Foundation | db.py (sole SQLite), events.py (journal), freshness.py (SLA), timezone.py (KST), rules.py, signal_config.py |
 | `config/*.yaml` | Foundation | rules, agents, signals, universe, stock_types, portfolio (gitignored) |

@@ -85,15 +85,21 @@ cache invalidation (and, if necessary, coordinate a history rewrite).
 
 ## LLM and Model Safety
 
-- **Portfolio and narrative data must not be sent to remote LLM APIs.**
-  Ollama (local) handles all portfolio-related inference. See
-  `docs/STRATEGY.md` §4.4 for the full data classification (Tier 0/1/2).
-- **Public data (Tier 0) only** may be sent to external LLMs, gated
-  by the External LLM Egress Policy (`docs/STRATEGY.md` §4.4.3).
-  Currently: OpenAI `gpt-5.4-nano` for public RSS headline
-  classification only. All external calls go through
-  `nuri/llm/openai_client.py` (per-call audit log to
-  `external_llm_calls` table, content never logged).
+- **External LLM policy: whitelist per data tier** (updated 2026-04-14).
+  Full classification + rules: `docs/STRATEGY.md` §4.4.3.
+- **Tier 0 (public data)** — ALLOWED to external. Currently OpenAI
+  `gpt-5.4-nano` for RSS headline classification. No ZDR required.
+- **Tier 2 (portfolio/LLM daily report)** — ALLOWED to OpenAI
+  `gpt-5.4-nano` **only when `OPENAI_ZDR_APPROVED=1` env var is set**
+  (attestation that user obtained Zero Data Retention from OpenAI).
+  Without ZDR, `chat_text(data_tier="tier2")` raises
+  `ExternalLLMPolicyViolation` before any network call. Added in
+  PR #294 for prototype phase; local LLM transition planned.
+- **Tier 1 (user narrative/memos)** — NOT ALLOWED. Separate policy
+  revision + explicit user approval required to enable.
+- All external calls go through `nuri/llm/openai_client.py` (direct
+  `import openai` elsewhere is forbidden). Per-call audit row in
+  `external_llm_calls` table; content never logged.
 - `NURI_DISABLE_EXTERNAL_LLM=1` disables all external LLM calls
   (CI, offline, privacy mode).
 - Outputs from `nuri/llm/report.py` are validated for hallucinations:

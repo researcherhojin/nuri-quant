@@ -475,6 +475,25 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 
 **룰**: `gstack-codex` 등 외부 review tool 또는 사용자 review 단계 전에 ship 금지. 자동화된 integration test가 review 대체 가능.
 
+### 5.10 추천 파이프라인의 도구 사각지대 (JKHY 에피소드, 2026-04-14)
+
+**상황**: 세션 종료 직전 universe-wide BUY 추천 7종목 (TMUS/JKHY/V/MA/BX/ANET/NFLX) 제시. 사용자가 Investing.com 확인 → JKHY "적극 매도" (기술지표 종합). 시스템 추천과 정면 모순.
+
+**원인 (3층)**:
+
+1. **도구는 있으나 연결 안 됨** — `nuri/quant/chart_analysis.py` (BB/MACD/RSI/추세선) 구현 존재하지만, 추천 파이프라인 (`candidates.py`, `consensus.py`) 에서 호출하지 않음. "구현 = 사용"이 아님.
+2. **Fundamentals-only 추천** — 애널리스트 upgrade + ROE/PE 기반 Buy 신호만 사용. 가격 모멘텀/추세 완전 무시. 기본 시스템 design이 한 축에만 의존.
+3. **애널리스트 신호의 lag 속성 간과** — 애널리스트 target은 이미 오른 주식을 뒤늦게 upgrade하는 경향. 하락 중인 종목에 "upgrade + 30% upside"가 나오면 falling knife 신호일 수 있음. JKHY earnings surprise 4Q 연속 +0.0~0.2% = "soft beat" 성장 stall 신호도 놓침.
+
+**재발 방지 룰**:
+- 추천 내기 전 **반드시** 4개 축 통과: (a) fundamentals, (b) technicals, (c) earnings quality, (d) 시장 환경 (VIX/F&G/RSI)
+- "System has the tool" ≠ "Pipeline uses it". 통합 경로를 explicit 하게 테스트로 검증
+- 애널리스트 target upside + 현재가가 52주 고점/저점에서 어디 있는지 **반드시** 확인
+
+**방어 실행 (Tier 2 P1)**: `chart_analysis.py`를 `candidates.py`/`consensus.py`에 통합 + "fundamentals vs technicals divergence" 플래그 + earnings quality (soft beat) 자동 감지.
+
+**일반화된 교훈**: "Repo에 기능이 있다고 해서 실제 상품 경로에서 사용되고 있는 것은 아니다." 새 기능 추가 시 production path integration test 필수.
+
 ---
 
 ## 6. SIEGE 11-Gate 명세
@@ -514,21 +533,30 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 | 5b | ↳ Phase 2b BaseCollector `--source` | — | #278 | portfolio/universe/all 모드. 9 collectors tqdm + N/A coverage 진단 |
 | 5c | ↳ Phase 2c validate_universe + CI | — | #284, #286 | 7-check coverage gate, warning-only CI job |
 | 5d | ↳ KR/yfinance 성능 + UX fix | — | #281, #283, #285 | KR collect 33초, yfinance 10-thread parallel, sequential delay |
-| 6 | **Privacy scanner ticker+PnL pattern** | — | (TBD) | §4.4.1 ticker+PnL 사각지대 보완. `-34% (TEM)` / `PL +43%` 양 패턴 감지, `origin/main..HEAD` unpushed commit message 스캔 추가, `TICKER_FALSE_POSITIVES` 120개 (HWM/SL/MDD/VIX/BTC/ETH 등). PR #202 class 차단. |
+| 6 | **Privacy scanner ticker+PnL pattern** | — | #289 | §4.4.1 ticker+PnL 사각지대 보완. `-34% (TEM)` / `PL +43%` 양 패턴 감지, `origin/main..HEAD` unpushed commit message 스캔 추가, `TICKER_FALSE_POSITIVES` 120개. PR #202 class 차단. |
+| 7 | **Shell scripts 전수 shellcheck clean** | — | #290 | 16개 `.sh` (1,504 lines) → shellcheck 0 issues. `set -euo pipefail`, shebang 통일, 실제 버그 fix (trap SC2064, read -r, RSYNC_OPTS array), `make lint-sh` + CI job 추가 |
+| 8 | **OpenAI gpt-5.4-nano LLM 리포트 (§4.4.3 Tier 2)** | — | #294 | Ollama 휴면 → OpenAI primary. §4.4.3 정책 개정 (Tier 2 + ZDR 필수). `chat_text()` + `OPENAI_ZDR_APPROVED` 게이트. fallback chain (OpenAI → llama.cpp → Ollama). **부수 fix**: flaky `test_collect_full_flow` `df.copy()` (#295), security-scan 5m→10m timeout, codecov/patch 커버리지 테스트 3개 보강 |
+| 9 | **uv sync 충돌 해결 (fastapi <0.129 pin)** | [#277](https://github.com/researcherhojin/nuri-quant/issues/277) | #291 | openbb-core ↔ fastapi version conflict 해결. dependabot ignore 추가 |
+| 10 | **KR `n/a (US-only)` 표시 개선** | — | #288 | US_ONLY_TABLES frozenset + `check_universe_coverage.py` + `validate_universe.py` detail. 수집 실패 vs 소스 한계 시각 구분 |
+| 11 | **#272 Phase 3 (Eval): validate_universe + US_ONLY 회귀 테스트** | — | #296 | 20 tests: TestUsOnlyTables(4) + TestRunValidation/Print/Main/Fetch(11) + TestOutputFormat(5) |
+| 12 | **#272 Phase 4 (UX): Dashboard coverage widget + `/api/coverage`** | — | #297 | `CoverageStatus` widget (5/5 PASS 헤더 + 5-col 테이블 + 소스 한계 footer). 14 tests (backend 5 + frontend 9) |
 
 ### Tier 2 — 다음 1 달 (P1)
 
-전략적 가치 큼. Tier 1 끝나고 진행.
+**다음 세션 우선순위** — 구체적 작업 단위로 엄밀 정의 (2026-04-14 재평가).
 
-| # | 항목 | 이슈 | 카테고리 | 비고 |
-|---|------|------|---------|------|
-| 1 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거. 2026-04-14 portfolio.yaml 수동 수정 페인포인트 직접 경험 |
-| 2 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 (이미 PR #269로 일부 완료, 추가 작업 가능) |
-| 3 | **Ollama LLM 휴면 코드 결정** | — | refactor | `nuri/llm/report.py` Ollama 의존 (현재 OLLAMA_HOST 미설정으로 비활성). OpenAI event_classifier는 active (737 calls 누적). Ollama 부분 유지 vs 제거 결정 필요. 2026-04-14 사용자 assignment: gpt-5.4 nano로 대체 검토 |
-| 4 | **OpenBB 호환성 fix** | [#274](https://github.com/researcherhojin/nuri-quant/issues/274) | bug(collectors) | openbb-core==1.6.7 ↔ openbb-news==1.6.1 충돌로 news/etf_flows 수집 불가. 점진적 upgrade 필요 (콜렉터별 smoke test 후 진행) |
-| 5 | **uv sync 충돌 해결** | [#277](https://github.com/researcherhojin/nuri-quant/issues/277) | bug(deps) | openbb-core ↔ fastapi version conflict로 `uv sync` / `uv add` 실패. fresh clone 시 영향 |
-| 6 | **#272 Phase 2c-3 — universe-check 필수 게이트화** | — | ops | `make collect-universe` 5/5 PASS 확인 후 branch protection에 universe-check를 required check로 토글 (사용자 manual) |
-| 7 | **wallstreet collect 성능 검증** | — | perf(collectors) | PR #285 parallel fetch 적용 후 실제 50min → 5min 효과 검증. universe collect 첫 머지 후 측정 |
+| 우선 | # | 항목 | 이슈 | 카테고리 | 예상 | Acceptance |
+|------|---|------|------|---------|------|------------|
+| 🟡 P1 | 1 | **#272 Phase 5 (QA): Negative + Smoke run** | — | test | 1 세션 (네트워크 필요) | 빈 DB/yaml 삭제 negative 3건 + fresh clone → `make setup` → `make universe-sync-us/kr` → `make collect` → `validate_universe` 실행 기록 → `docs/SMOKE_RUN.md` 작성 |
+| 🟡 P1 | 2 | **기술분석 통합 to 추천 파이프라인** | — | feat(recommend) | 1-2 세션 | JKHY 에피소드 (2026-04-14) 재발 방지. `nuri/quant/chart_analysis.py` (BB/MACD/RSI) 을 `candidates.py` / consensus에 자동 연동. "fundamentals Buy, technicals Sell" divergence 플래그 추가 |
+| 🟡 P1 | 3 | **가격 히스토리 확장 (5d → 1y+)** | — | ops | 0.5 세션 | `prices` 테이블 5일치만 있음 → 52주 레인지 / 추세선 계산 불가. 정기 `make collect --period 1y` 실행 체계 + scheduler 등록 |
+| 🟡 P1 | 4 | **Earnings quality 분석 통합** | — | feat(recommend) | 0.5 세션 | JKHY 에피소드 — surprise 0% 반복 = 성장 stall 신호 놓침. `earnings_surprises` 기반 "soft beat" 플래그 (surprise < 2% 지속 3Q) 추가 |
+| 🟢 P2 | 5 | **포트폴리오 온보딩 UI (YAML → Dashboard)** | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 2-3 세션 | 수동 yaml 편집 제거. 2026-04-14 portfolio.yaml 수동 수정 페인포인트 직접 경험 |
+| 🟢 P2 | 6 | **OpenBB 호환성 fix** | [#274](https://github.com/researcherhojin/nuri-quant/issues/274) | bug(collectors) | 1 세션 | openbb-core==1.6.7 ↔ openbb-news==1.6.1 충돌로 news/etf_flows 수집 불가. 점진적 upgrade 필요 (콜렉터별 smoke test 후 진행) |
+| 🟢 P2 | 7 | **백테스트 인터랙티브 equity curve** | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 1 세션 | 파라미터 sliders + 실시간 시뮬레이션 (PR #269로 일부 완료, 마무리) |
+| 🟢 P2 | 8 | **#272 Phase 2c-3 — universe-check 필수 게이트화** | — | ops | 10분 | `make collect-universe` 5/5 PASS 상태 유지 중 → 사용자 수동으로 branch protection required check 토글 |
+| 🟢 P2 | 9 | **wallstreet collect 성능 검증** | — | perf(collectors) | 15분 | PR #285 parallel fetch 실제 50min → 15min 41초 (universe 746) 확인 완료 — **close 후보** |
+| ⚪ P3 | 10 | **flaky test 일반 stabilization** | — | test | 1 세션 | #295는 resolved. 다른 flaky 후보 (parallel sys.modules 오염 패턴) 전수 감사 |
 
 ### Tier 3 — 다음 분기 (P2)
 
