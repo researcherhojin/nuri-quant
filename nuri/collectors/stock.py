@@ -65,21 +65,40 @@ class StockCollector(BaseCollector):
         if source != "portfolio":
             _yflog.setLevel(_logging.CRITICAL)
 
-        # tqdm progress bar — universe (543종목) / all 모드에서 진행 가시성 필수
+        # Parallel yfinance fetch (10 concurrent OK — yfinance는 KRX와 달리 관대).
+        # 순차 (543 × 0.4s) = 3.5분 → parallel 10 = 약 30-50초.
+        import concurrent.futures
+
         from tqdm import tqdm
 
         frames: list[pd.DataFrame] = []
         succeeded: list[str] = []
         failed: list[str] = []
+
+        def _fetch_one(ticker: str):
+            return ticker, self._collect_ticker(ticker, start_date, end_date)
+
         try:
-            iterator = tqdm(tickers, desc=f"  prices [{source}]", unit="tk", disable=len(tickers) < 20)
-            for ticker in iterator:
-                df = self._collect_ticker(ticker, start_date, end_date)
-                if df is not None and not df.empty:
-                    frames.append(df)
-                    succeeded.append(ticker)
-                else:
-                    failed.append(ticker)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+                futures = {ex.submit(_fetch_one, t): t for t in tickers}
+                iterator = tqdm(
+                    concurrent.futures.as_completed(futures),
+                    total=len(tickers),
+                    desc=f"  prices [{source}]",
+                    unit="tk",
+                    disable=len(tickers) < 20,
+                )
+                for fut in iterator:
+                    ticker = futures[fut]
+                    try:
+                        _, df = fut.result()
+                        if df is not None and not df.empty:
+                            frames.append(df)
+                            succeeded.append(ticker)
+                        else:
+                            failed.append(ticker)
+                    except Exception:
+                        failed.append(ticker)
         finally:
             _yflog.setLevel(_orig_level)
 
