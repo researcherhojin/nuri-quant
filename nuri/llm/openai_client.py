@@ -41,6 +41,7 @@ Usage:
         # Network/API failure — caller falls back
         ...
 """
+
 from __future__ import annotations
 
 import json
@@ -65,24 +66,19 @@ DEFAULT_MODEL = "gpt-5.4-nano"
 # When OpenAI changes prices, update both this table and the STRATEGY row.
 # Future: if we add more models or providers, move this to config/llm_pricing.yaml.
 MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
-    "gpt-5.4-nano":      {"input": 0.20, "output": 1.25},
-    "gpt-5.4-mini":      {"input": 0.75, "output": 4.50},
-    "gpt-5.4":           {"input": 2.50, "output": 15.00},
-    "gpt-5.4-pro":       {"input": 30.00, "output": 180.00},
+    "gpt-5.4-nano": {"input": 0.20, "output": 1.25},
+    "gpt-5.4-mini": {"input": 0.75, "output": 4.50},
+    "gpt-5.4": {"input": 2.50, "output": 15.00},
+    "gpt-5.4-pro": {"input": 30.00, "output": 180.00},
 }
 
 
-def estimate_cost_usd(
-    model: str, prompt_tokens: int, completion_tokens: int
-) -> float | None:
+def estimate_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float | None:
     """Compute estimated USD cost for a single call. None if model unknown."""
     pricing = MODEL_PRICING_USD_PER_1M.get(model)
     if pricing is None:
         return None
-    return (
-        prompt_tokens / 1_000_000 * pricing["input"]
-        + completion_tokens / 1_000_000 * pricing["output"]
-    )
+    return prompt_tokens / 1_000_000 * pricing["input"] + completion_tokens / 1_000_000 * pricing["output"]
 
 
 class ExternalLLMError(Exception):
@@ -114,6 +110,16 @@ class ExternalLLMResponseError(ExternalLLMError):
     """
 
 
+class ExternalLLMPolicyViolation(ExternalLLMError):
+    """Raised when a caller tries to send a data tier not permitted by policy.
+
+    STRATEGY.md §4.4.3 whitelists data classes per endpoint. Tier 2
+    (portfolio) requires `OPENAI_ZDR_APPROVED=1` as a runtime attestation
+    that the user obtained ZDR from OpenAI. Without that flag, the wrapper
+    refuses to send. This is an explicit safety gate — not a network error.
+    """
+
+
 def is_disabled() -> bool:
     """True if external LLM is opted out via env var."""
     val = os.getenv("NURI_DISABLE_EXTERNAL_LLM", "").strip().lower()
@@ -123,6 +129,16 @@ def is_disabled() -> bool:
 def has_credentials() -> bool:
     """True if OPENAI_API_KEY is present (not necessarily valid)."""
     return bool(os.getenv("OPENAI_API_KEY", "").strip())
+
+
+def zdr_approved() -> bool:
+    """True if user has attested OpenAI ZDR approval (Tier 2 prerequisite).
+
+    Set `OPENAI_ZDR_APPROVED=1` after obtaining ZDR from OpenAI. Required
+    for any call declaring `data_tier='tier2'`. See STRATEGY.md §4.4.3.
+    """
+    val = os.getenv("OPENAI_ZDR_APPROVED", "").strip().lower()
+    return val in ("1", "true", "yes", "on")
 
 
 class OpenAIClient:
@@ -146,15 +162,12 @@ class OpenAIClient:
             )
         if not has_credentials():
             raise ExternalLLMUnavailable(
-                "OPENAI_API_KEY missing from environment. Set it in .env or "
-                "set NURI_DISABLE_EXTERNAL_LLM=1 to opt out."
+                "OPENAI_API_KEY missing from environment. Set it in .env or set NURI_DISABLE_EXTERNAL_LLM=1 to opt out."
             )
         try:
             from openai import OpenAI
         except ImportError as e:
-            raise ExternalLLMUnavailable(
-                f"openai SDK not installed: {e}"
-            ) from e
+            raise ExternalLLMUnavailable(f"openai SDK not installed: {e}") from e
         self._sdk_client = OpenAI()
         return self._sdk_client
 
@@ -202,15 +215,17 @@ class OpenAIClient:
             error_type = type(e).__name__
             try:
                 log_external_llm_call(
-                    provider=PROVIDER, model=chosen_model, endpoint=endpoint,
-                    latency_ms=latency_ms, success=False, error_type=error_type,
+                    provider=PROVIDER,
+                    model=chosen_model,
+                    endpoint=endpoint,
+                    latency_ms=latency_ms,
+                    success=False,
+                    error_type=error_type,
                     db_path=db_path,
                 )
             except Exception:  # noqa: BLE001 — audit log failure must not mask the real error
                 logger.debug("audit log write failed", exc_info=True)
-            raise ExternalLLMUnavailable(
-                f"OpenAI {endpoint} call failed: {error_type}: {str(e)[:200]}"
-            ) from e
+            raise ExternalLLMUnavailable(f"OpenAI {endpoint} call failed: {error_type}: {str(e)[:200]}") from e
 
         latency_ms = int((time.monotonic() - t0) * 1000)
         usage = resp.usage
@@ -239,7 +254,12 @@ class OpenAIClient:
         cost_str = f"${cost_usd:.6f}" if cost_usd is not None else "$?(unknown model)"
         logger.info(
             "[external_llm] %s/%s: %d→%d tokens, %dms, %s",
-            PROVIDER, chosen_model, prompt_tok, completion_tok, latency_ms, cost_str,
+            PROVIDER,
+            chosen_model,
+            prompt_tok,
+            completion_tok,
+            latency_ms,
+            cost_str,
         )
 
         # Parse JSON body
@@ -248,9 +268,111 @@ class OpenAIClient:
             return json.loads(raw)
         except json.JSONDecodeError as e:
             raise ExternalLLMResponseError(
-                f"OpenAI {chosen_model} returned non-JSON in JSON mode: "
-                f"{raw[:100]!r}"
+                f"OpenAI {chosen_model} returned non-JSON in JSON mode: {raw[:100]!r}"
             ) from e
+
+    def chat_text(
+        self,
+        *,
+        system: str,
+        user: str,
+        model: Optional[str] = None,
+        temperature: float = 0.3,
+        max_tokens: int = 2000,
+        data_tier: str = "tier0",
+        db_path: Optional[Any] = None,
+    ) -> str:
+        """Plain-text chat completion (no JSON mode).
+
+        Used for narrative outputs like the LLM daily report. Follows the
+        same audit-log + opt-out contract as `chat_json`, plus an extra
+        `data_tier` gate: `data_tier='tier2'` requires `OPENAI_ZDR_APPROVED=1`
+        (STRATEGY.md §4.4.3 precondition).
+
+        Args:
+            data_tier: 'tier0' (public) or 'tier2' (portfolio). Tier 2
+                requires ZDR attestation. Tier 1 is not currently permitted.
+
+        Raises:
+            ExternalLLMPolicyViolation: data_tier='tier2' without ZDR, or
+                data_tier not in the whitelist.
+            ExternalLLMDisabled: opt-out via NURI_DISABLE_EXTERNAL_LLM=1
+            ExternalLLMUnavailable: network/auth/SDK install failure
+        """
+        if data_tier not in ("tier0", "tier2"):
+            raise ExternalLLMPolicyViolation(f"data_tier={data_tier!r} not permitted. See STRATEGY.md §4.4.3.")
+        if data_tier == "tier2" and not zdr_approved():
+            raise ExternalLLMPolicyViolation(
+                "Tier 2 (portfolio) calls require OPENAI_ZDR_APPROVED=1 — set "
+                "this env var after obtaining ZDR from OpenAI. See "
+                "STRATEGY.md §4.4.3 Tier 2 precondition (1)."
+            )
+
+        sdk = self._ensure_sdk()
+        chosen_model = model or self.default_model
+        endpoint = f"chat.completions({data_tier})"
+
+        t0 = time.monotonic()
+        try:
+            resp = sdk.chat.completions.create(
+                model=chosen_model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                temperature=temperature,
+                max_completion_tokens=max_tokens,
+            )
+        except Exception as e:
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            error_type = type(e).__name__
+            try:
+                log_external_llm_call(
+                    provider=PROVIDER,
+                    model=chosen_model,
+                    endpoint=endpoint,
+                    latency_ms=latency_ms,
+                    success=False,
+                    error_type=error_type,
+                    db_path=db_path,
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug("audit log write failed", exc_info=True)
+            raise ExternalLLMUnavailable(f"OpenAI {endpoint} call failed: {error_type}: {str(e)[:200]}") from e
+
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        usage = resp.usage
+        prompt_tok = usage.prompt_tokens if usage else 0
+        completion_tok = usage.completion_tokens if usage else 0
+        try:
+            log_external_llm_call(
+                provider=PROVIDER,
+                model=chosen_model,
+                endpoint=endpoint,
+                prompt_tokens=prompt_tok if usage else None,
+                completion_tokens=completion_tok if usage else None,
+                latency_ms=latency_ms,
+                success=True,
+                error_type=None,
+                db_path=db_path,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("audit log write failed", exc_info=True)
+
+        cost_usd = estimate_cost_usd(chosen_model, prompt_tok, completion_tok)
+        cost_str = f"${cost_usd:.6f}" if cost_usd is not None else "$?(unknown model)"
+        logger.info(
+            "[external_llm] %s/%s [%s]: %d→%d tokens, %dms, %s",
+            PROVIDER,
+            chosen_model,
+            data_tier,
+            prompt_tok,
+            completion_tok,
+            latency_ms,
+            cost_str,
+        )
+
+        return resp.choices[0].message.content or ""
 
 
 _singleton: Optional[OpenAIClient] = None

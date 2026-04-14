@@ -68,7 +68,7 @@
 | 선택 | 이유 |
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드로 동시 읽기. `tmp_path`로 테스트 격리. |
-| **Hybrid LLM stack** | 정책: (a) portfolio·narrative·의사결정은 **local Ollama 한정** (data sovereignty). (b) 공개 RSS 헤드라인은 **OpenAI gpt-5.4-nano** 허용 (Tier 0, ~\$3.51/yr). **현재 상태**: OpenAI **active** (event_classifier 매일 ~100건, 2026-04-14 기준 누적 737 calls). Ollama는 휴면 (`OLLAMA_HOST` 미설정 → `make report-llm` 실패). 비활성화 원하면 `NURI_DISABLE_EXTERNAL_LLM=1`. §4.4.3 참조. |
+| **Hybrid LLM stack** | 정책 (2026-04-14 개정): (a) 공개 RSS 헤드라인 분류 → **OpenAI gpt-5.4-nano** (Tier 0, ~\$3.51/yr). (b) 일간 LLM 리포트 → **OpenAI gpt-5.4-nano** (Tier 2, ZDR 필수, 프로토타입 단계 임시 허용). (c) 사용자 narrative / Tier 1 → 현재 미허용. **로컬 LLM 전환 계획**: 사용자가 Ollama/llama.cpp 인프라 확정 시 (b)를 local로 이관. 비활성화: `NURI_DISABLE_EXTERNAL_LLM=1`. 상세: §4.4.3. |
 | OpenBB + yfinance (not Bloomberg) | 무료 데이터. OpenBB 추상화 → provider 교체 용이. yfinance는 폴백. |
 | GitHub Actions (not Jenkins) | 오픈소스 무료 tier. lint + test + coverage + security 자동화. |
 
@@ -236,35 +236,44 @@ PR을 올리기 전 이 기준을 확인한다.
 
 §4.4.1 broker name / monetary literal 차단은 Tier 2 데이터의 leak 방지가 직접적 목적. §4.4.3 외부 LLM Egress Policy는 Tier 0 데이터의 명시적 화이트리스트.
 
-#### 4.4.3 외부 LLM Egress Policy (#152)
+#### 4.4.3 외부 LLM Egress Policy (#152, 2026-04-14 개정)
 
-사용자 portfolio·narrative 데이터는 외부 LLM에 절대 전송하지 않는다. 이 정책은 **공개 데이터(Tier 0)에 한정한 외부 LLM 사용 화이트리스트**다.
+외부 LLM 사용은 **화이트리스트** 방식. 모든 호출은 `nuri/llm/openai_client.py` 단일 관문을 거친다.
 
-**현재 등재 provider (1개)**
+**등재 provider + 데이터 클래스**
 
-| Provider | Model | 허용 데이터 | 단가 (in/out per 1M tokens) | 비고 |
-|---|---|---|---|---|
-| OpenAI | `gpt-5.4-nano` | 공개 RSS 헤드라인 분류 | $0.20 / $1.25 | 일 100 헤드라인 기준 연 ~$3.51 |
+| Provider | Model | 허용 데이터 클래스 | 단가 (in/out per 1M) | ZDR | 비고 |
+|---|---|---|---|---|---|
+| OpenAI | `gpt-5.4-nano` | **Tier 0** (공개 RSS 헤드라인 분류) | $0.20 / $1.25 | 권장 | 일 100 헤드라인 기준 연 ~$3.51 |
+| OpenAI | `gpt-5.4-nano` | **Tier 2** (LLM 일간 리포트 — 보유 종목/손익/전략) | $0.20 / $1.25 | **필수** | 일 1회, ~3K in + 2K out = 연 ~$0.10. 2026-04-14 사용자 명시 승인 (프로토타입 단계; 향후 local LLM 전환 계획) |
 
-**필수 운영 룰**
+**Tier 2 허용의 전제조건 (2026-04-14 추가)**
 
-1. **모든 외부 LLM 호출은 `nuri/llm/openai_client.py` wrapper를 거쳐야 한다** (Step 1에서 구현). 직접 `import openai` 금지.
-2. **Per-call audit log** — wrapper가 `external_llm_calls` DB 테이블에 기록: `timestamp, provider, model, endpoint, prompt_tokens, completion_tokens, latency_ms`. **content는 절대 저장하지 않는다** (audit log 자체가 leak surface가 되지 않도록).
-3. **Opt-out** — 환경변수 `NURI_DISABLE_EXTERNAL_LLM=1` 설정 시 wrapper는 호출 즉시 raise. 오프라인 / 개인정보 보호 모드 / CI 등에서 활용.
-4. **Failure 정책** — OpenAI 실패 시 wrapper는 명시적으로 raise한다. 실리언트 fallback 금지. caller(`event_classifier` 등)가 graceful degradation 책임 (예: 단일 헤드라인 실패 → 그 헤드라인만 regex로 fallback, 나머지는 정상 처리).
-5. **Provider 추가** — 신규 provider 등재는 STRATEGY 개정 PR 필요. PR 본문에 단가, 데이터 클래스, retention 정책, 등재 사유 명시.
-6. **데이터 클래스 확장** — 현재는 Tier 0 (공개 헤드라인)만. Tier 1 (narrative) 또는 Tier 2 (portfolio) 추가는 별도 STRATEGY 개정 + 본인 명시 승인 + retention 정책 결정 (ZDR 사용 여부 등). 현 시점 두 Tier 모두 미허용.
+사용자가 Option C(본인 명시 승인)를 선택하면서 Tier 2 → `gpt-5.4-nano` 송신이 허용됨. 전제:
+
+1. **ZDR(Zero Data Retention) 필수** — OpenAI에 ZDR 승인 요청이 완료되어야 첫 Tier 2 호출 가능. 미승인 상태에서 Tier 2 호출 시 wrapper가 환경변수 `OPENAI_ZDR_APPROVED=1` 미설정으로 인해 raise.
+2. **`NURI_DISABLE_EXTERNAL_LLM=1`로 즉시 opt-out 가능** — 오프라인/CI/심사 모드에서 일괄 차단.
+3. **프롬프트 로그 금지** — wrapper는 토큰 수·지연·에러 타입만 기록, **content는 절대 DB에 남기지 않는다**.
+4. **로컬 LLM 전환 계획** — 프로토타입 단계 임시 허용. 사용자가 Ollama/llama.cpp로 전환하는 시점에 Tier 2 제거 PR 예정.
+
+**필수 운영 룰 (전 Tier 공통)**
+
+1. 모든 외부 LLM 호출은 wrapper(`openai_client.get_client()`)를 거친다. 직접 `import openai` 금지.
+2. **Per-call audit log** — `external_llm_calls` 테이블에 `timestamp, provider, model, endpoint, prompt_tokens, completion_tokens, latency_ms, success, error_type` 기록. **content는 금지**.
+3. **Opt-out** — `NURI_DISABLE_EXTERNAL_LLM=1` 시 wrapper는 `ExternalLLMDisabled` raise.
+4. **Failure loud** — OpenAI 실패 시 wrapper는 명시적으로 raise (silent fallback 금지). caller가 graceful degradation 책임 (예: `nuri/llm/report.py`는 OpenAI 실패 시 "[LLM 연결 실패]" 문자열 반환 + Ollama가 설정되어 있으면 secondary로 시도).
+5. **Provider 추가** — 신규 provider 등재는 STRATEGY 개정 PR 필요.
+6. **데이터 클래스 확장** — Tier 1 (narrative) 또는 추가 Tier 2 경로 확장은 별도 STRATEGY 개정 + 본인 명시 승인.
 
 **의도적 비결정 사항 (deferred until needed)**
 
-- **OpenAI 30-day retention 수용 여부** — 현재 Tier 0만 보내므로 영향 없음. Tier 1/2 도입 시 결정.
-- **Ollama secondary fallback** — wrapper가 raise할 때 자동으로 Ollama로 떨어지는 chain. 오늘은 raise loud 정책. 추가는 future work.
 - **Narrative input UI** — Tier 1 정책 결정 이후에 설계.
 - **외부 LLM 비용 모니터링 대시보드** — `external_llm_calls` 테이블 기반. 월/모델별 비용 + token 추이. 일일 사용량이 예상치 초과 시 알림. 필요 시점에 추가.
+- **Tier 2 → local LLM 전환 시점** — 사용자가 Ollama/llama.cpp 운영 인프라 확정 후.
 
 **모니터링 시작 트리거**
 
-이 정책은 #152가 닫히는 시점(Step 2 머지)부터 발효한다. Step 2 머지 후 1주일 동안 `external_llm_calls` 테이블의 row 수와 누적 token이 예상 (~700 calls / week, ~$0.07 / week)에 부합하는지 확인하고, 부합하면 (2)/(3) Tier 확장 토론 시작.
+이 정책은 #152가 닫히는 시점(Step 2 머지)부터 발효. 2026-04-14 Tier 2 추가 이후 1주일 동안 `external_llm_calls` 테이블의 LLM 리포트 호출 비용이 예상치 (~$0.02/주) 대비 10배 초과 시 사용자 알림 + 즉시 `NURI_DISABLE_EXTERNAL_LLM=1` 복귀 권장.
 
 ---
 
