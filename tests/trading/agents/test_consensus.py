@@ -301,6 +301,150 @@ class TestConsensusDivergence:
         assert result.divergence_flag is False
 
 
+class TestConsensusDivergenceMechanicalPenalty:
+    """P1 A3 — divergence_flag 가 informational 에서 실 action downgrade 로 전환.
+
+    Codex-reviewed design:
+    - tech confidence ≥ threshold (default 80) 일 때만 발동
+    - BUY/SELL → HOLD downgrade (risk veto 와 달리 full flip 아님)
+    - Symmetric: BUY vs SELL 같이 처리
+    - Risk veto 우선 — 그 경우 penalty skip
+    - final_confidence 는 **보존** (원 계산값). agreement_rate/dissent 도 원 final_action 기준.
+    """
+
+    @staticmethod
+    def _verdict(name, action, confidence=70):
+        from nuri.trading.agents.base import AgentVerdict
+
+        return AgentVerdict(name, "TEST", action, confidence, f"mock {name}")
+
+    def _scenario_buy_consensus_with_tech_sell(self, tech_conf: float):
+        """BUY 8 + HOLD 1 + tech=SELL — 합의 BUY 여야 자연스러움."""
+        verdicts = [
+            self._verdict("technical", "SELL", tech_conf),
+            self._verdict("fundamental", "BUY", 70),
+            self._verdict("wallstreet", "BUY", 70),
+            self._verdict("smart_money", "BUY", 70),
+            self._verdict("macro", "BUY", 70),
+            self._verdict("korean_market", "BUY", 70),
+            self._verdict("options", "BUY", 70),
+            self._verdict("crypto", "BUY", 70),
+            self._verdict("retail", "BUY", 70),
+            self._verdict("risk", "HOLD", 40),
+        ]
+        weights = {v.agent_name: 0.1 for v in verdicts}
+        return verdicts, weights
+
+    def test_buy_consensus_with_technical_sell_80_downgrades_to_hold(self):
+        """JKHY-class: BUY 합의 + tech SELL conf=80 → final_action=HOLD."""
+        from nuri.trading.agents.consensus import _build_consensus
+
+        verdicts, weights = self._scenario_buy_consensus_with_tech_sell(tech_conf=80)
+        result = _build_consensus("TEST", verdicts, weights)
+
+        assert result.final_action == "HOLD", f"Expected HOLD (penalty), got {result.final_action}"
+        assert result.divergence_flag is True
+        assert "downgrade" in result.reasoning, "reasoning should flag penalty"
+
+    def test_sell_consensus_with_technical_buy_80_downgrades_to_hold(self):
+        """역방향 대칭: SELL 합의 + tech BUY conf=80 → HOLD."""
+        from nuri.trading.agents.consensus import _build_consensus
+
+        verdicts = [
+            self._verdict("technical", "BUY", 80),
+            self._verdict("fundamental", "SELL", 70),
+            self._verdict("wallstreet", "SELL", 70),
+            self._verdict("smart_money", "SELL", 70),
+            self._verdict("macro", "SELL", 70),
+            self._verdict("korean_market", "SELL", 70),
+            self._verdict("options", "SELL", 70),
+            self._verdict("crypto", "SELL", 70),
+            self._verdict("retail", "SELL", 70),
+            self._verdict("risk", "HOLD", 40),
+        ]
+        weights = {v.agent_name: 0.1 for v in verdicts}
+        result = _build_consensus("TEST", verdicts, weights)
+
+        assert result.final_action == "HOLD"
+        assert result.divergence_flag is True
+
+    def test_technical_confidence_79_does_not_trigger_penalty(self):
+        """경계 조건: tech conf 79 < threshold 80 → action 유지, flag 만 설정."""
+        from nuri.trading.agents.consensus import _build_consensus
+
+        verdicts, weights = self._scenario_buy_consensus_with_tech_sell(tech_conf=79)
+        result = _build_consensus("TEST", verdicts, weights)
+
+        assert result.final_action == "BUY", f"79 < 80 — penalty 발동 안 해야 함, got {result.final_action}"
+        assert result.divergence_flag is True, "flag 는 여전히 set"
+
+    def test_risk_veto_wins_over_divergence_penalty(self):
+        """Precedence: risk SELL conf=90 거부권 발동 → final SELL 유지 (HOLD downgrade 아님).
+
+        Risk veto 는 포트폴리오 안전 규칙. tech=BUY 가 반대한다고 HOLD 로
+        희석되면 거부권 의미 상실. risk 거부권이 divergence penalty 보다 우선.
+        """
+        from nuri.trading.agents.consensus import _build_consensus
+
+        verdicts = [
+            self._verdict("technical", "BUY", 90),  # tech 반대 + 고confidence
+            self._verdict("fundamental", "BUY", 60),
+            self._verdict("wallstreet", "BUY", 60),
+            self._verdict("risk", "SELL", 90),  # risk 거부권 발동
+            self._verdict("smart_money", "HOLD", 40),
+            self._verdict("macro", "HOLD", 40),
+            self._verdict("korean_market", "HOLD", 40),
+            self._verdict("options", "HOLD", 40),
+            self._verdict("crypto", "HOLD", 40),
+            self._verdict("retail", "HOLD", 40),
+        ]
+        weights = {v.agent_name: 0.1 for v in verdicts}
+        result = _build_consensus("TEST", verdicts, weights)
+
+        # Risk veto 승. SELL 그대로. HOLD 로 downgrade 되면 안 됨.
+        assert result.final_action == "SELL"
+        assert "거부권" in result.reasoning
+
+    def test_divergence_flag_still_surfaces_after_penalty(self):
+        """Penalty 가 발동해도 flag + reason 은 사용자에게 여전히 노출."""
+        from nuri.trading.agents.consensus import _build_consensus
+
+        verdicts, weights = self._scenario_buy_consensus_with_tech_sell(tech_conf=85)
+        result = _build_consensus("TEST", verdicts, weights)
+
+        assert result.final_action == "HOLD"  # penalty fired
+        assert result.divergence_flag is True
+        assert result.divergence_reason != ""
+        assert "SELL" in result.divergence_reason
+
+    def test_final_confidence_preserved_after_penalty(self):
+        """Penalty 가 action 만 바꾸고 final_confidence 는 원 계산값 유지.
+
+        근거: downstream (dashboard, SIEGE) 이 confidence 를 신뢰도 정보로 사용.
+        Penalty 발동 시 "HOLD with 원 confidence 50" 이 "원래는 BUY 70% 였지만
+        tech 반대로 HOLD" 라는 의미를 유지. 0 으로 리셋하면 정보 손실.
+        """
+        from nuri.trading.agents.consensus import _build_consensus
+
+        verdicts, weights = self._scenario_buy_consensus_with_tech_sell(tech_conf=90)
+        # tech conf 79 는 penalty 발동 안 함 → 같은 weights/actions 로 원 final_confidence 확보
+        ref_verdicts, _ = self._scenario_buy_consensus_with_tech_sell(tech_conf=79)
+        ref_result = _build_consensus("TEST", ref_verdicts, weights)
+        # action_scores 에서 weight × (conf/100) 가 들어가므로 79 vs 90 이 결과에 영향.
+        # 동일 conf 로 확보하려면 79 → penalty 전 최대 79 의 BUY/SELL 분포로 비교
+        # 대신 중요한 assertion 은 final_confidence 가 0 으로 리셋 안 되었다는 것.
+        result = _build_consensus("TEST", verdicts, weights)
+
+        assert result.final_action == "HOLD"
+        assert result.final_confidence > 0, "penalty 가 confidence 를 0 으로 리셋하면 안 됨"
+        assert result.final_confidence != 0.0, "preserved original computed confidence"
+        # sanity: ref 는 penalty 발동 안 했으니 같은 크기 수준이어야
+        assert abs(result.final_confidence - ref_result.final_confidence) < 5, (
+            f"penalty 이후 confidence 크게 달라짐: ref={ref_result.final_confidence}, "
+            f"after penalty={result.final_confidence}"
+        )
+
+
 class TestComputeWeights:
     def test_default_weights(self, db_path):
         """추천 데이터 부족 시 기본 가중치."""
