@@ -14,6 +14,7 @@ import error)로 모든 종목 수집 실패. yfinance Ticker.info의 다음 필
 사용법:
     python -m nuri.collectors.fundamental
 """
+
 import logging
 import math
 from typing import Any
@@ -40,6 +41,7 @@ YF_FIELDS = {
     "debtToEquity": "debt_to_equity",
     "currentRatio": "current_ratio",
     "dividendYield": "dividend_yield",
+    "dividendRate": "annual_dividend_usd",
     "beta": "beta",
 }
 
@@ -74,6 +76,7 @@ class FundamentalCollector(BaseCollector):
 
         self.logger.info(f"펀더멘탈 수집 대상: {len(tickers)}종목")
         from nuri.core.timezone import today_kst
+
         today = today_kst()
         results = []
 
@@ -92,14 +95,17 @@ class FundamentalCollector(BaseCollector):
                     if val is not None:
                         non_null += 1
 
+                # dividend_yield_pct: yfinance dividendYield는 소수 (0.005 = 0.5%)
+                # → 백분율로 변환 (0.5)
+                dy = record.get("dividend_yield")
+                record["dividend_yield_pct"] = round(dy * 100, 2) if dy else None
+
                 if non_null == 0:
                     self.logger.info(f"{ticker}: 모든 펀더멘탈 필드 None — 스킵")
                     continue
 
                 results.append(record)
-                self.logger.debug(
-                    f"{ticker}: PE={record.get('pe_ratio')}, ROE={record.get('roe')}"
-                )
+                self.logger.debug(f"{ticker}: PE={record.get('pe_ratio')}, ROE={record.get('roe')}")
 
             except Exception as e:
                 self.logger.warning(f"{ticker}: 펀더멘탈 수집 실패 — {e}")
@@ -124,11 +130,11 @@ def _upsert_fundamentals(records: list[dict]) -> int:
                (ticker, date, market_cap, pe_ratio, forward_pe, price_to_book,
                 peg_ratio, roe, roa, gross_margin, operating_margin, profit_margin,
                 revenue_growth, earnings_growth, debt_to_equity, current_ratio,
-                dividend_yield, beta)
+                dividend_yield, beta, annual_dividend_usd, dividend_yield_pct)
                VALUES (:ticker, :date, :market_cap, :pe_ratio, :forward_pe, :price_to_book,
                        :peg_ratio, :roe, :roa, :gross_margin, :operating_margin, :profit_margin,
                        :revenue_growth, :earnings_growth, :debt_to_equity, :current_ratio,
-                       :dividend_yield, :beta)""",
+                       :dividend_yield, :beta, :annual_dividend_usd, :dividend_yield_pct)""",
             records,
         )
         return len(records)
@@ -144,7 +150,9 @@ if __name__ == "__main__":
     count = collector.run()
 
     # 결과 출력
-    rows = query("SELECT ticker, pe_ratio, forward_pe, roe, revenue_growth, debt_to_equity FROM fundamentals ORDER BY ticker")
+    rows = query(
+        "SELECT ticker, pe_ratio, forward_pe, roe, revenue_growth, debt_to_equity FROM fundamentals ORDER BY ticker"
+    )
     if rows:
         print(f"\n{'=' * 70}")
         print(f"  펀더멘탈 수집 완료: {count}종목")
@@ -152,10 +160,10 @@ if __name__ == "__main__":
         print(f"  {'Ticker':<12} {'PE':>8} {'Fwd PE':>8} {'ROE':>8} {'매출성장':>8} {'D/E':>8}")
         print(f"  {'-' * 56}")
         for r in rows:
-            pe = f"{r['pe_ratio']:.1f}" if r['pe_ratio'] else "N/A"
-            fpe = f"{r['forward_pe']:.1f}" if r['forward_pe'] else "N/A"
-            roe = f"{r['roe']*100:.1f}%" if r['roe'] else "N/A"
-            rg = f"{r['revenue_growth']*100:.1f}%" if r['revenue_growth'] else "N/A"
-            de = f"{r['debt_to_equity']:.1f}" if r['debt_to_equity'] else "N/A"
+            pe = f"{r['pe_ratio']:.1f}" if r["pe_ratio"] else "N/A"
+            fpe = f"{r['forward_pe']:.1f}" if r["forward_pe"] else "N/A"
+            roe = f"{r['roe'] * 100:.1f}%" if r["roe"] else "N/A"
+            rg = f"{r['revenue_growth'] * 100:.1f}%" if r["revenue_growth"] else "N/A"
+            de = f"{r['debt_to_equity']:.1f}" if r["debt_to_equity"] else "N/A"
             print(f"  {r['ticker']:<12} {pe:>8} {fpe:>8} {roe:>8} {rg:>8} {de:>8}")
         print()
