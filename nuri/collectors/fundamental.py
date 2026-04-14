@@ -91,34 +91,52 @@ class FundamentalCollector(BaseCollector):
         if source != "portfolio":
             _yflog.setLevel(_logging.CRITICAL)
 
+        # Parallel yfinance fetch — yfinance는 KRX와 달리 ~10 concurrent OK.
+        # 순차 (746 × 0.4s) = 5분 → parallel 10 = 약 30-50초.
+        import concurrent.futures
+
+        def _fetch_one(ticker: str) -> tuple[str, dict | None, str]:
+            """Returns (ticker, record_or_None, status). status: 'ok'|'skipped'|'failed'."""
+            try:
+                info = yf.Ticker(ticker).info
+                if not info or "regularMarketPrice" not in info:
+                    return ticker, None, "skipped"
+
+                record: dict = {"ticker": ticker, "date": today}
+                non_null = 0
+                for src_field, db_field in YF_FIELDS.items():
+                    val = _safe_num(info.get(src_field))
+                    record[db_field] = val
+                    if val is not None:
+                        non_null += 1
+
+                dy = record.get("dividend_yield")
+                record["dividend_yield_pct"] = round(dy * 100, 2) if dy else None
+
+                if non_null == 0:
+                    return ticker, None, "skipped"
+                return ticker, record, "ok"
+            except Exception:
+                return ticker, None, "failed"
+
         try:
-            iterator = tqdm(tickers, desc=f"  fundamentals [{source}]", unit="tk", disable=len(tickers) < 20)
-            for ticker in iterator:
-                try:
-                    info = yf.Ticker(ticker).info
-                    if not info or "regularMarketPrice" not in info:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+                futures = {ex.submit(_fetch_one, t): t for t in tickers}
+                iterator = tqdm(
+                    concurrent.futures.as_completed(futures),
+                    total=len(tickers),
+                    desc=f"  fundamentals [{source}]",
+                    unit="tk",
+                    disable=len(tickers) < 20,
+                )
+                for fut in iterator:
+                    ticker, record, status = fut.result()
+                    if status == "ok":
+                        results.append(record)
+                    elif status == "skipped":
                         skipped.append(ticker)
-                        continue
-
-                    record = {"ticker": ticker, "date": today}
-                    non_null = 0
-                    for src_field, db_field in YF_FIELDS.items():
-                        val = _safe_num(info.get(src_field))
-                        record[db_field] = val
-                        if val is not None:
-                            non_null += 1
-
-                    dy = record.get("dividend_yield")
-                    record["dividend_yield_pct"] = round(dy * 100, 2) if dy else None
-
-                    if non_null == 0:
-                        skipped.append(ticker)
-                        continue
-
-                    results.append(record)
-                except Exception:
-                    failed.append(ticker)
-                    continue
+                    else:
+                        failed.append(ticker)
         finally:
             _yflog.setLevel(_orig_level)
 
