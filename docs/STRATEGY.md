@@ -196,6 +196,7 @@ PR을 올리기 전 이 기준을 확인한다.
 | Korean broker name | Brokerage Alpha, Brokerage Beta, 키움증권, 삼성증권, NH투자증권, 토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권, 대신증권, 이베스트투자증권, 흥국증권, IBK투자증권 | `Brokerage Alpha`, `Brokerage Beta`, `Brokerage Alpha Cash Account`, `Brokerage Alpha Securities` |
 | Romanized broker | kakaopay, mirae, kiwoom, samsung_securities, nh_invest, toss_securities, shinhan_invest, hana_securities, meritz_securities (case-insensitive substring) | 동일 — 한글 placeholder를 영문 식별자로 변환 시 `brokerage_alpha` 등 사용 |
 | Suspect monetary literal | 7자리 이상 정수 (`>= 1_000_000`) 가 동일 라인에 `total_invested`, `cash_balance`, `deposit`, `withdraw`, `principal`, `net_worth`, `buying_power` 키와 함께 존재 | round million 값 (`1_000_000`, `5_000_000`, …, `100_000_000`)은 placeholder로 자동 허용 |
+| **Ticker + PnL 조합** (PR #202 class) | 두 패턴 중 하나 — (a) `[-+]\d+(\.\d+)?%\s*(TICKER)` 형태 (`-34% (TEM)`) (b) 인접한 `TICKER <signed %>` (`PL +43%`). 소스 파일 **+ unpushed commit messages** 모두 스캔. | 규칙 threshold 텍스트 (`손절 -7%`, `트레일링 -15%`)는 ticker 컨텍스트 없으면 통과. `TICKER_FALSE_POSITIVES` frozenset (HWM/SL/MDD/CPI/VIX/BTC/ETH 등 120개 abbreviation)은 ticker로 간주하지 않음. |
 
 **의도적 제외**:
 - `한국투자증권` (KIS) 은 Open API 통합 대상으로 코드베이스에 합법적으로 등장 (`nuri/collectors/kis_*`, `docs/KIS_INTEGRATION.md`). 사용자 개인 KIS 자격 증명 위치는 `config/kis/kis_devlp.yaml` (프로젝트 내 gitignored by `config/kis/*` 패턴, `~/KIS/` 레거시 위치도 하위 호환으로 자동 감지). broker name 패턴이 아닌 **credential file 패턴** + **디렉토리 whitelist 패턴** 두 층으로 차단.
@@ -207,6 +208,11 @@ PR을 올리기 전 이 기준을 확인한다.
 
 **새 broker name 추가 시**: `scripts/check_privacy_leak.py`의 `BROKER_NAMES_KO` / `BROKER_NAMES_EN` 튜플에 추가. 테스트는 `tests/test_check_privacy_leak.py`. 이 표도 같이 갱신.
 
+**Commit message 스캔 작동 방식 (PR #202 방지)**:
+- `scripts/pre_push_check.sh` Section 4b: `origin/main..HEAD` 범위의 모든 unpushed commit message를 `--unpushed-commits` 모드로 스캔 → push 차단
+- 로컬 hook이 정답 — push 후에는 git history에 박혀 제거 불가 (Stage 2 절차 필요)
+- CLI: `git log -1 --format=%B | python scripts/check_privacy_leak.py --message`
+
 **History cleanup (Stage 2 — 별도 작업)**:
 이 enforcement는 main HEAD를 깨끗하게 유지. 그러나 leak이 처음 들어간 이전 commit(들)은 force push 또는 GitHub Support 요청 없이는 제거 불가. STRATEGY.md §5.4 (스코프 팽창) + CLAUDE.md (force push to main 금지)를 동시에 준수하기 위해 별도 작업으로 분리. 권장 순서: GitHub Support 요청 (비파괴) → 만족 못 하면 `git filter-repo` (사용자 명시 force-push 승인 필수).
 
@@ -216,7 +222,7 @@ PR을 올리기 전 이 기준을 확인한다.
 |--------|------|------|
 | PR #202 (squash 머지) | commit message body에 사용자 보유 종목 + 손실률 (TEM/RKLB/TSLA/PL + PnL) | main git history에 박힘. Stage 2 미실행 |
 
-§4.4.1 enforcement는 **scanner pattern 사각지대**가 있음: ticker name + PnL 조합은 broker name도 monetary literal도 아니므로 차단되지 않음. Tier 2에 "Privacy scanner ticker+PnL pattern" 등록 (§7).
+§4.4.1 enforcement는 PR #202 이후 **ticker + PnL** 사각지대가 보완됨. 같은 방식의 신규 leak은 commit message 단계에서 차단. 다만 PR #202 commit 본문은 git history에 남아 있어 §4.4.1 "알려진 미정리 leak"으로 유지 — history cleanup은 Tier 3 별도 작업 (Stage 2).
 
 #### 4.4.2 외부 데이터 처리 원칙
 
@@ -499,6 +505,7 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 | 5b | ↳ Phase 2b BaseCollector `--source` | — | #278 | portfolio/universe/all 모드. 9 collectors tqdm + N/A coverage 진단 |
 | 5c | ↳ Phase 2c validate_universe + CI | — | #284, #286 | 7-check coverage gate, warning-only CI job |
 | 5d | ↳ KR/yfinance 성능 + UX fix | — | #281, #283, #285 | KR collect 33초, yfinance 10-thread parallel, sequential delay |
+| 6 | **Privacy scanner ticker+PnL pattern** | — | (TBD) | §4.4.1 ticker+PnL 사각지대 보완. `-34% (TEM)` / `PL +43%` 양 패턴 감지, `origin/main..HEAD` unpushed commit message 스캔 추가, `TICKER_FALSE_POSITIVES` 120개 (HWM/SL/MDD/VIX/BTC/ETH 등). PR #202 class 차단. |
 
 ### Tier 2 — 다음 1 달 (P1)
 
@@ -508,12 +515,11 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 |---|------|------|---------|------|
 | 1 | 포트폴리오 온보딩 UI (YAML → Dashboard) | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 수동 yaml 편집 제거. 2026-04-14 portfolio.yaml 수동 수정 페인포인트 직접 경험 |
 | 2 | 백테스트 인터랙티브 equity curve | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 파라미터 sliders + 실시간 시뮬레이션 (이미 PR #269로 일부 완료, 추가 작업 가능) |
-| 3 | **Privacy scanner ticker+PnL pattern** | — | security | 현재 broker name + monetary literal만 차단. ticker와 PnL이 같은 commit message/PR 본문에 있을 때 패턴 감지 추가. PR #202 commit message leak 같은 경우 방지 |
-| 4 | **Ollama LLM 휴면 코드 결정** | — | refactor | `nuri/llm/report.py` Ollama 의존 (현재 OLLAMA_HOST 미설정으로 비활성). OpenAI event_classifier는 active (737 calls 누적). Ollama 부분 유지 vs 제거 결정 필요 |
-| 5 | **OpenBB 호환성 fix** | [#274](https://github.com/researcherhojin/nuri-quant/issues/274) | bug(collectors) | openbb-core==1.6.7 ↔ openbb-news==1.6.1 충돌로 news/etf_flows 수집 불가. 점진적 upgrade 필요 (콜렉터별 smoke test 후 진행) |
-| 6 | **uv sync 충돌 해결** | [#277](https://github.com/researcherhojin/nuri-quant/issues/277) | bug(deps) | openbb-core ↔ fastapi version conflict로 `uv sync` / `uv add` 실패. fresh clone 시 영향 |
-| 7 | **#272 Phase 2c-3 — universe-check 필수 게이트화** | — | ops | `make collect-universe` 5/5 PASS 확인 후 branch protection에 universe-check를 required check로 토글 (사용자 manual) |
-| 8 | **wallstreet collect 성능 검증** | — | perf(collectors) | PR #285 parallel fetch 적용 후 실제 50min → 5min 효과 검증. universe collect 첫 머지 후 측정 |
+| 3 | **Ollama LLM 휴면 코드 결정** | — | refactor | `nuri/llm/report.py` Ollama 의존 (현재 OLLAMA_HOST 미설정으로 비활성). OpenAI event_classifier는 active (737 calls 누적). Ollama 부분 유지 vs 제거 결정 필요. 2026-04-14 사용자 assignment: gpt-5.4 nano로 대체 검토 |
+| 4 | **OpenBB 호환성 fix** | [#274](https://github.com/researcherhojin/nuri-quant/issues/274) | bug(collectors) | openbb-core==1.6.7 ↔ openbb-news==1.6.1 충돌로 news/etf_flows 수집 불가. 점진적 upgrade 필요 (콜렉터별 smoke test 후 진행) |
+| 5 | **uv sync 충돌 해결** | [#277](https://github.com/researcherhojin/nuri-quant/issues/277) | bug(deps) | openbb-core ↔ fastapi version conflict로 `uv sync` / `uv add` 실패. fresh clone 시 영향 |
+| 6 | **#272 Phase 2c-3 — universe-check 필수 게이트화** | — | ops | `make collect-universe` 5/5 PASS 확인 후 branch protection에 universe-check를 required check로 토글 (사용자 manual) |
+| 7 | **wallstreet collect 성능 검증** | — | perf(collectors) | PR #285 parallel fetch 적용 후 실제 50min → 5min 효과 검증. universe collect 첫 머지 후 측정 |
 
 ### Tier 3 — 다음 분기 (P2)
 

@@ -4,6 +4,7 @@ Network-free. Tests use temporary fixture files with intentional leak content
 that the scanner must catch — these fixtures live outside `tests/` paths to avoid
 the scanner flagging the test file itself.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -61,6 +62,7 @@ def tmp_file(tmp_path):
         path = tmp_path / name
         path.write_text(content, encoding="utf-8")
         return path
+
     return _make
 
 
@@ -115,6 +117,83 @@ class TestScanFile:
         assert numeric_findings == []
 
 
+class TestTickerPnlPattern:
+    """PR #202 leak signature — ticker + PnL co-occurrence."""
+
+    def test_detects_signed_pct_with_ticker_in_parens(self):
+        from scripts.check_privacy_leak import scan_text_for_ticker_pnl
+
+        text = "Losses: -34% (TEM), -22% (RKLB), -15% (TSLA) before trigger"
+        findings = scan_text_for_ticker_pnl(text)
+        tickers = {f.pattern for f in findings}
+        assert "%(TEM)" in tickers
+        assert "%(RKLB)" in tickers
+        assert "%(TSLA)" in tickers
+        assert all(f.category == "ticker_pnl" for f in findings)
+
+    def test_detects_ticker_adjacent_signed_pct(self):
+        from scripts.check_privacy_leak import scan_text_for_ticker_pnl
+
+        text = "trailing_stop_arm (PL +43% → +38%)"
+        findings = scan_text_for_ticker_pnl(text)
+        patterns = {f.pattern for f in findings}
+        assert "PL +43%" in patterns
+
+    def test_strategy_rule_text_is_not_flagged(self):
+        """Rule thresholds like '손절 -7%' should NOT trigger — no ticker context."""
+        from scripts.check_privacy_leak import scan_text_for_ticker_pnl
+
+        text = "O'Neil CAN SLIM: 손절 -7%, 익절 +20%/+40%, 트레일링 -15%"
+        findings = scan_text_for_ticker_pnl(text)
+        assert findings == []
+
+    def test_abbreviations_not_treated_as_tickers(self):
+        """HWM, SL, MDD, CPI, VIX should NOT trigger ticker+PnL."""
+        from scripts.check_privacy_leak import scan_text_for_ticker_pnl
+
+        texts = [
+            "Growth | +20% (sell 50%) | -15% from HWM",
+            "(-7% SL, 15% pos)",
+            "PnL -15% → MDD 한도(-10%) 초과",
+            "Sharpe 1.5, MDD -5%",
+            "CPI +0.3% MoM",
+        ]
+        for text in texts:
+            findings = scan_text_for_ticker_pnl(text)
+            assert findings == [], f"false positive on: {text!r}"
+
+    def test_kospi_ticker_with_pnl_is_detected(self):
+        """.KS suffix tickers should still match."""
+        from scripts.check_privacy_leak import scan_text_for_ticker_pnl
+
+        text = "-8% (SMCI) and 005930.KS +12% disclosure"
+        findings = scan_text_for_ticker_pnl(text)
+        patterns = {f.pattern for f in findings}
+        assert "%(SMCI)" in patterns
+
+    def test_message_cli_mode_scans_stdin(self, monkeypatch, capsys):
+        """--message reads stdin and scans as text."""
+        import io
+
+        from scripts import check_privacy_leak as mod
+
+        monkeypatch.setattr("sys.argv", ["check_privacy_leak.py", "--message"])
+        monkeypatch.setattr("sys.stdin", io.StringIO("Losses: -34% (TEM)"))
+        rc = mod.main()
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "ticker+PnL" in out
+
+    def test_message_cli_mode_exits_zero_on_clean(self, monkeypatch):
+        import io
+
+        from scripts import check_privacy_leak as mod
+
+        monkeypatch.setattr("sys.argv", ["check_privacy_leak.py", "--message", "--quiet"])
+        monkeypatch.setattr("sys.stdin", io.StringIO("Standard rule: 손절 -7%"))
+        assert mod.main() == 0
+
+
 class TestKisExclusion_R138:
     """KIS (Korea Investment Securities) is intentionally excluded from the
     broker name list because it's an Open API integration target."""
@@ -127,9 +206,7 @@ class TestKisExclusion_R138:
     def test_kis_documentation_does_not_trigger(self, tmp_file):
         from scripts.check_privacy_leak import scan_path
 
-        kis_doc = tmp_file(
-            '"""KIS Open API collector."""\n'
-        )
+        kis_doc = tmp_file('"""KIS Open API collector."""\n')
         findings = scan_path(kis_doc)
         assert findings == []
 

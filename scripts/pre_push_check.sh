@@ -66,12 +66,23 @@ if [ "$mode" != "--skip-tests" ]; then
 fi
 
 # ─── 4. Privacy leak scan (#138) ─────────────────────────────────
-echo -e "${YELLOW}━━━ 4. Privacy Leak Scan ━━━${NC}"
+echo -e "${YELLOW}━━━ 4. Privacy Leak Scan (files) ━━━${NC}"
 if $PYTHON scripts/check_privacy_leak.py --quiet; then
-    echo -e "${GREEN}✓ No personal financial data leaks${NC}\n"
+    echo -e "${GREEN}✓ No personal financial data leaks in tracked files${NC}\n"
 else
     echo -e "${RED}✗ Personal financial data leak detected — see above${NC}"
     echo -e "${RED}  See docs/STRATEGY.md §4.4 for the privacy enforcement rules.${NC}\n"
+    fail=1
+fi
+
+# ─── 4b. Unpushed commit messages (ticker+PnL, PR #202 class) ──────
+echo -e "${YELLOW}━━━ 4b. Commit Message Privacy Scan ━━━${NC}"
+if $PYTHON scripts/check_privacy_leak.py --unpushed-commits --quiet; then
+    echo -e "${GREEN}✓ No ticker+PnL leaks in unpushed commit messages${NC}\n"
+else
+    echo -e "${RED}✗ Ticker + PnL disclosure detected in a commit message${NC}"
+    echo -e "${RED}  Once pushed, this enters git history permanently (see PR #202).${NC}"
+    echo -e "${RED}  Amend the commit: git commit --amend  (or interactive rebase).${NC}\n"
     fail=1
 fi
 
