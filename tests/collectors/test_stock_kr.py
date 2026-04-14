@@ -187,7 +187,7 @@ class TestCallWithTimeout:
         df = c._collect_ticker("005930.KS", "20250101", "20250131")
         assert df is not None
         assert captured["called"] is True
-        assert captured["timeout"] == 10  # 10초 타임아웃 적용
+        assert captured["timeout"] == 5  # 5초 타임아웃 (parallel batch와 함께)
 
     def test_collect_ticker_returns_none_on_timeout(self, monkeypatch, db_with_portfolio):
         """timeout 시 _collect_ticker가 None 반환 (warning log + skip)."""

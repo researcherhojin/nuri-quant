@@ -71,6 +71,11 @@ class StockKRCollector(BaseCollector):
         end_date = now_kst.strftime("%Y%m%d")
         start_date = (now_kst - timedelta(days=days)).strftime("%Y%m%d")
 
+        # 순차 fetch — KRX는 동시 요청 rate-limit. parallel 시 첫 ~60건만 빠르고
+        # 그 다음부터 동시에 5+ 요청이 hang. 순차 + 100ms delay 가 가장 안정적.
+        # 순차 + per-call 5s timeout = 최악 ~17분, 정상 ~30초 (203 × 0.15s).
+        import time as _time
+
         from tqdm import tqdm
 
         frames: list = []
@@ -84,6 +89,8 @@ class StockKRCollector(BaseCollector):
                 succeeded.append(ticker_with_suffix)
             else:
                 failed.append(ticker_with_suffix)
+            # KRX rate-limit 회피: 짧은 delay (전체 ~30초 추가, hang 회피)
+            _time.sleep(0.1)
 
         if len(tickers) >= 20:
             sample_failed = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
@@ -103,14 +110,14 @@ class StockKRCollector(BaseCollector):
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     def _collect_ticker(self, ticker_full: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
-        """단일 한국 종목 수집. pykrx hang 방지 위해 10초 타임아웃 적용."""
+        """단일 한국 종목 수집. pykrx hang 방지 위해 5초 타임아웃 적용."""
         # .KS 접미사 제거 (pykrx는 순수 숫자 코드 사용)
         ticker_code = ticker_full.replace(".KS", "").replace(".KQ", "")
 
         try:
-            raw = _call_with_timeout(krx.get_market_ohlcv, 10, start_date, end_date, ticker_code)
+            raw = _call_with_timeout(krx.get_market_ohlcv, 5, start_date, end_date, ticker_code)
             if raw is None:
-                self.logger.warning(f"{ticker_full}: pykrx 호출 timeout (>10s) — KRX 응답 지연")
+                self.logger.debug(f"{ticker_full}: pykrx 호출 timeout (>5s) — KRX 응답 지연")
                 return None
             if raw.empty:
                 self.logger.warning(f"{ticker_full}: 데이터 없음")
