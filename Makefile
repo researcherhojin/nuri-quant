@@ -86,6 +86,10 @@ lint:
 lint-fix:
 	$(PYTHON) -m ruff check nuri/ tests/ scripts/ --fix
 
+lint-sh: ## Shell script lint via shellcheck (brew install shellcheck)
+	@command -v shellcheck >/dev/null 2>&1 || { echo "shellcheck not installed: brew install shellcheck"; exit 1; }
+	shellcheck --source-path=SCRIPTDIR --external-sources scripts/*.sh
+
 validate-portfolio: ## Verify each ticker in config/portfolio.yaml has live data (#131)
 	$(PYTHON) scripts/validate_portfolio.py
 

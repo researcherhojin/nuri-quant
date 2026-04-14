@@ -1,21 +1,24 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════
 # Nuri-Quant Pre-Deploy Check
 # 배포 전 필수 검증: config, DB, API, 의존성
 # ═══════════════════════════════════════════════════════
-set -e
+set -euo pipefail
 
 # Source shared helpers (colors, PYTHON, REPO_ROOT cd, pass/fail/warn counters).
+# shellcheck source=scripts/_common.sh
 source "$(dirname "$0")/_common.sh"
 
 banner "Nuri-Quant Pre-Deploy Check"
 echo ""
 
 # ── 1. Config 파일 검증 ──
+# `if … then … else …` 대신 `A && B || C`는 B의 exit code가 0이 아니면 C도 실행됨 (SC2015). 여기서는
+# `pass`/`fail`이 항상 0을 반환하므로 실제 버그는 없지만 가독성 + shellcheck 친화적으로 if문으로 교체.
 echo "📋 Config files..."
-[ -f config/portfolio.yaml ] && pass "portfolio.yaml" || fail "portfolio.yaml missing"
-[ -f config/alerts.yaml ]    && pass "alerts.yaml"    || fail "alerts.yaml missing"
-[ -f config/rules.yaml ]     && pass "rules.yaml"     || fail "rules.yaml missing"
+for cfg in config/portfolio.yaml config/alerts.yaml config/rules.yaml; do
+    if [ -f "$cfg" ]; then pass "$(basename "$cfg")"; else fail "$(basename "$cfg") missing"; fi
+done
 if [ -f .env ] || [ -f .env.local ]; then pass ".env exists"; else warn ".env not found (using defaults)"; fi
 
 # ── 2. Python 환경 ──

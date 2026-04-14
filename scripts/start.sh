@@ -1,10 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════
 # Nuri-Quant — Backend + Frontend 동시 실행
 # ═══════════════════════════════════════════════════════
-set -e
+set -euo pipefail
 
 # Source shared helpers (colors, PYTHON, REPO_ROOT cd).
+# shellcheck source=scripts/_common.sh
 source "$(dirname "$0")/_common.sh"
 
 banner "Nuri-Quant Service Starting"
@@ -52,8 +53,10 @@ echo ""
 echo "  Press Ctrl+C to stop both services"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-# Trap Ctrl+C to kill both
-trap "echo ''; echo 'Stopping services...'; kill $API_PID $NEXT_PID 2>/dev/null; exit 0" INT TERM
+# Trap Ctrl+C to kill both.
+# Single quotes so $API_PID / $NEXT_PID expand when the trap fires, not now
+# (defensive — makes it safe to reorder the trap earlier in the script).
+trap 'echo ""; echo "Stopping services..."; kill "$API_PID" "$NEXT_PID" 2>/dev/null; exit 0' INT TERM
 
 # Wait
 wait

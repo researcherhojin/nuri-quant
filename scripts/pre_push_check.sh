@@ -12,9 +12,10 @@
 #   bash scripts/pre_push_check.sh --quick   # skip full test run (~30s)
 #   bash scripts/pre_push_check.sh --skip-tests   # lint + drift only
 
-set -e
+set -euo pipefail
 
 # Source shared helpers (colors, PYTHON, REPO_ROOT cd).
+# shellcheck source=scripts/_common.sh
 source "$(dirname "$0")/_common.sh"
 
 mode="${1:-full}"

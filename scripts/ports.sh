@@ -1,8 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════
 # Nuri-Quant Port Manager
 # 사용법: bash scripts/ports.sh [kill]
 # ═══════════════════════════════════════════════════════
+set -uo pipefail   # -e 미사용 — 개별 포트 실패가 나머지 검사를 멈추면 안 됨
 
 declare -A PORTS=(
     [8001]="FastAPI"

@@ -1,11 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════
 # Nuri-Quant Test Count Updater
 # README badge + CLAUDE.md test count 자동 업데이트
 # ═══════════════════════════════════════════════════════
-set -e
+set -euo pipefail
 
 # Source shared helpers (PYTHON, REPO_ROOT cd, colors).
+# shellcheck source=scripts/_common.sh
 source "$(dirname "$0")/_common.sh"
 
 # Cross-platform sed -i

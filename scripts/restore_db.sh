@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════
 # Nuri-Quant DB 복원 — 백업에서 portfolio.db 복원
 #
@@ -6,7 +6,7 @@
 #   bash scripts/restore_db.sh                    # 최신 백업 복원
 #   bash scripts/restore_db.sh portfolio_20260330_120000.db  # 특정 백업 복원
 # ═══════════════════════════════════════════════════════
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -14,17 +14,22 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BACKUP_DIR="$PROJECT_DIR/data/backups"
 DB_FILE="$PROJECT_DIR/data/portfolio.db"
 
-# 백업 파일 선택
-if [ -n "$1" ]; then
+# 백업 파일 선택. backup 파일은 portfolio_YYYYMMDD_HHMMSS.db 포맷이라 파일명
+# 사전순 = 시간순. find + sort로 ls 파싱 회피 (SC2012).
+if [ -n "${1:-}" ]; then
     BACKUP_FILE="$BACKUP_DIR/$1"
 else
-    BACKUP_FILE=$(ls -t "$BACKUP_DIR"/portfolio_*.db 2>/dev/null | head -1)
+    BACKUP_FILE=$(find "$BACKUP_DIR" -maxdepth 1 -name "portfolio_*.db" -type f 2>/dev/null \
+        | sort -r | head -1)
 fi
 
 if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
     echo "❌ 백업 파일 없음: $BACKUP_FILE"
     echo "사용 가능한 백업:"
-    ls -lt "$BACKUP_DIR"/portfolio_*.db 2>/dev/null | head -5 || echo "  (없음)"
+    find "$BACKUP_DIR" -maxdepth 1 -name "portfolio_*.db" -type f 2>/dev/null \
+        | sort -r | head -5 \
+        | awk '{print "  " $0}' \
+        || echo "  (없음)"
     exit 1
 fi
 

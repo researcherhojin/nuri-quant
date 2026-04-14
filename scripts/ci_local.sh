@@ -10,9 +10,10 @@
 #   bash scripts/ci_local.sh --lint    # lint only (10s)
 #   bash scripts/ci_local.sh --quick   # smoke test (~30s)
 
-set -e
+set -euo pipefail
 
 # Source shared helpers (colors, PYTHON, REPO_ROOT cd).
+# shellcheck source=scripts/_common.sh
 source "$(dirname "$0")/_common.sh"
 
 mode="${1:-full}"
