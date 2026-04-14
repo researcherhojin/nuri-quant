@@ -30,14 +30,19 @@ class StockKRCollector(BaseCollector):
     def __init__(self):
         super().__init__("stock_kr")
 
-    def collect(self, days: int = 5, **kwargs) -> pd.DataFrame:
-        """pykrx로 한국 보유 종목 OHLCV + yfinance로 KOSPI/KOSDAQ 지수 수집."""
-        tickers = self._get_tickers(market="kr")
+    def collect(self, days: int = 5, source: str = "portfolio", **kwargs) -> pd.DataFrame:
+        """pykrx로 한국 종목 OHLCV + yfinance로 KOSPI/KOSDAQ 지수 수집.
+
+        Args:
+            source: 'portfolio' (default, 보유) | 'universe' (KOSPI 200 전체) | 'all'
+                    #272 Phase 2c bug fix — collect-universe에서 KR 사일로 잔존 해결.
+        """
+        tickers = self._get_tickers(market="kr", source=source)
         if not tickers:
             self.logger.warning("수집할 한국 종목이 없습니다")
             return pd.DataFrame()
 
-        self.logger.info(f"수집 대상: {len(tickers)} 한국 종목 ({days}일)")
+        self.logger.info(f"수집 대상: {len(tickers)} 한국 종목 ({days}일, source={source})")
 
         # KST 기준 날짜 (KRX는 한국 영업일 기준)
         from nuri.core.timezone import kst_now
@@ -157,6 +162,12 @@ class StockKRCollector(BaseCollector):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nuri-Quant 한국 주가 수집기 (pykrx)")
     parser.add_argument("--days", type=int, default=5, help="수집 일수 (기본 5일)")
+    parser.add_argument(
+        "--source",
+        default="portfolio",
+        choices=["portfolio", "universe", "all"],
+        help="ticker 소스 (#272 Phase 2c). KOSPI 200 전체 수집 시 universe 사용",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -165,4 +176,4 @@ if __name__ == "__main__":
     )
 
     collector = StockKRCollector()
-    collector.run(days=args.days)
+    collector.run(days=args.days, source=args.source)
