@@ -495,3 +495,56 @@ class TestNoNoisyOutput:
         # Only one KR warning should appear (no traceback explosion)
         kr_warnings = [r for r in caplog.records if "KR sync" in r.message or "KOSPI" in r.message]
         assert len(kr_warnings) <= 2  # one info ("fetching") + one warning ("skipped")
+
+
+class TestPhase5NegativeGuardrails:
+    """P1 D — Phase 5 QA negative cases (STRATEGY §7 Tier 2 #272 완결).
+
+    3 graceful-degradation contracts that must hold for fresh-clone /
+    corrupted-setup 상황. Codex-reviewed minimal set — API key 테스트는
+    collectors 가 keyless (wallstreet/estimates/stock* 모두 yfinance/FDR
+    기반) 이라서 의미 없어 제외.
+    """
+
+    def test_missing_universe_yaml_raises_actionable_error(self, tmp_path, monkeypatch):
+        """universe.yaml 이 없으면 FileNotFoundError 에 복구 명령 포함."""
+        import nuri.collectors.universe_sync as mod
+
+        # UNIVERSE_PATH 를 tmp_path 에 없는 경로로 치환
+        missing_path = tmp_path / "does_not_exist.yaml"
+        monkeypatch.setattr(mod, "UNIVERSE_PATH", missing_path)
+
+        with pytest.raises(FileNotFoundError) as exc:
+            mod._load_universe()
+
+        msg = str(exc.value)
+        assert "없습니다" in msg, "에러 메시지는 한국어로 상태 설명"
+        assert "make setup" in msg or "git checkout" in msg, "복구 명령 포함"
+
+    def test_malformed_universe_yaml_raises_actionable_error(self, tmp_path, monkeypatch):
+        """universe.yaml YAML 문법 오류면 ValueError 에 원인 + 해결 명령."""
+        import nuri.collectors.universe_sync as mod
+
+        bad_yaml = tmp_path / "universe.yaml"
+        bad_yaml.write_text("us:\n  - AAPL\n  bad_indent\nkr: [005930.KS]\n  extra:\n")
+        monkeypatch.setattr(mod, "UNIVERSE_PATH", bad_yaml)
+
+        with pytest.raises(ValueError) as exc:
+            mod._load_universe()
+
+        msg = str(exc.value)
+        assert "파싱 실패" in msg
+        assert "git checkout" in msg, "복구 명령 포함"
+
+    def test_empty_universe_yaml_raises_actionable_error(self, tmp_path, monkeypatch):
+        """universe.yaml 이 비어있으면 ValueError — 최소 섹션 필요 안내."""
+        import nuri.collectors.universe_sync as mod
+
+        empty = tmp_path / "universe.yaml"
+        empty.write_text("")
+        monkeypatch.setattr(mod, "UNIVERSE_PATH", empty)
+
+        with pytest.raises(ValueError) as exc:
+            mod._load_universe()
+
+        assert "비어있음" in str(exc.value)

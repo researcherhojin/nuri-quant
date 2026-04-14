@@ -96,9 +96,28 @@ def _fetch_kospi200() -> list[str]:
 
 
 def _load_universe() -> dict[str, Any]:
-    """current universe.yaml 로드."""
-    with UNIVERSE_PATH.open() as f:
-        return yaml.safe_load(f)
+    """current universe.yaml 로드.
+
+    Raises:
+        FileNotFoundError: universe.yaml 이 없으면 actionable error message 포함.
+        ValueError: yaml 파싱 실패 시 원인 + 해결 방법 안내.
+    """
+    if not UNIVERSE_PATH.exists():
+        raise FileNotFoundError(
+            f"{UNIVERSE_PATH} 가 없습니다. fresh clone 이면 `make setup` 실행, "
+            f"또는 `git checkout main -- {UNIVERSE_PATH}` 로 복구."
+        )
+    try:
+        with UNIVERSE_PATH.open() as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise ValueError(
+            f"{UNIVERSE_PATH} YAML 파싱 실패: {e}. 편집 중 문법 오류 확인 또는 "
+            f"`git checkout main -- {UNIVERSE_PATH}` 로 되돌리기."
+        ) from e
+    if data is None:
+        raise ValueError(f"{UNIVERSE_PATH} 가 비어있음. 최소 us + kr 섹션 필요.")
+    return data
 
 
 def _save_universe(u: dict[str, Any]) -> None:
