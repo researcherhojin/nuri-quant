@@ -21,6 +21,26 @@ from nuri.collectors.base import BaseCollector
 from nuri.core.db import upsert_prices
 
 
+def _call_with_timeout(func, timeout_sec: int, *args, **kwargs):
+    """ThreadPool 기반 timeout 헬퍼 — pykrx hang 방지.
+
+    macOS/Linux signal.alarm 보다 안전 (메인 스레드 외에서도 동작).
+
+    Returns:
+        함수 결과 또는 None (timeout 시).
+    """
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(func, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout_sec)
+        except concurrent.futures.TimeoutError:
+            return None
+        except Exception:
+            raise
+
+
 class StockKRCollector(BaseCollector):
     """pykrx로 한국 주가 수집 (KOSPI/KOSDAQ) + 지수 수집 (yfinance)."""
 
@@ -83,12 +103,15 @@ class StockKRCollector(BaseCollector):
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     def _collect_ticker(self, ticker_full: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
-        """단일 한국 종목 수집."""
+        """단일 한국 종목 수집. pykrx hang 방지 위해 10초 타임아웃 적용."""
         # .KS 접미사 제거 (pykrx는 순수 숫자 코드 사용)
         ticker_code = ticker_full.replace(".KS", "").replace(".KQ", "")
 
         try:
-            raw = krx.get_market_ohlcv(start_date, end_date, ticker_code)
+            raw = _call_with_timeout(krx.get_market_ohlcv, 10, start_date, end_date, ticker_code)
+            if raw is None:
+                self.logger.warning(f"{ticker_full}: pykrx 호출 timeout (>10s) — KRX 응답 지연")
+                return None
             if raw.empty:
                 self.logger.warning(f"{ticker_full}: 데이터 없음")
                 return None
