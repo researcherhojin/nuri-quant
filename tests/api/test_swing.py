@@ -36,6 +36,14 @@ class TestSwing:
 class TestBacktestEquity:
     """Tests for GET /api/backtest/equity (#89)."""
 
+    @pytest.fixture(autouse=True)
+    def clear_interactive_backtest_cache(self):
+        from nuri.api.routes import swing
+
+        swing._interactive_backtest_cache.clear()
+        yield
+        swing._interactive_backtest_cache.clear()
+
     @patch("nuri.trading.strategy.ls_backtest.classify_historical_regimes")
     def test_returns_error_when_no_spy(self, mock_classify, client):
         mock_classify.return_value = pd.DataFrame()
@@ -43,7 +51,7 @@ class TestBacktestEquity:
         assert r.status_code == 200
         assert r.json().get("error") == "SPY data insufficient"
 
-    @patch("nuri.trading.strategy.ls_backtest.run_backtest")
+    @patch("nuri.trading.strategy.ls_backtest.run_interactive_backtest")
     @patch("nuri.trading.strategy.ls_backtest.classify_historical_regimes")
     def test_returns_equity_and_metrics(self, mock_classify, mock_bt, client):
         mock_classify.return_value = pd.DataFrame({"regime": ["bull"], "return": [0.01]})
@@ -73,7 +81,7 @@ class TestBacktestEquity:
                 ]
 
         mock_bt.return_value = FakeResult()
-        r = client.get("/api/backtest/equity")
+        r = client.get("/api/backtest/equity?sma=100&period=1Y&sl=-10&tp=30")
         assert r.status_code == 200
         data = r.json()
 
@@ -90,8 +98,13 @@ class TestBacktestEquity:
         assert m["sharpe"] == 1.5
         assert m["spy_total_return"] == 30.0
         assert m["excess_return"] == 20.0
+        mock_classify.assert_called_once_with(sma_period=100)
+        mock_bt.assert_called_once()
+        args, kwargs = mock_bt.call_args
+        pd.testing.assert_frame_equal(args[0], mock_classify.return_value.tail(252).reset_index(drop=True))
+        assert kwargs == {"stop_loss_pct": -10, "take_profit_pct": 30}
 
-    @patch("nuri.trading.strategy.ls_backtest.run_backtest")
+    @patch("nuri.trading.strategy.ls_backtest.run_interactive_backtest")
     @patch("nuri.trading.strategy.ls_backtest.classify_historical_regimes")
     def test_drawdown_computed_from_equity(self, mock_classify, mock_bt, client):
         mock_classify.return_value = pd.DataFrame({"regime": ["bull"], "return": [0.01]})
@@ -130,7 +143,7 @@ class TestBacktestEquity:
             assert "date" in dd
             assert "drawdown" in dd
 
-    @patch("nuri.trading.strategy.ls_backtest.run_backtest")
+    @patch("nuri.trading.strategy.ls_backtest.run_interactive_backtest")
     @patch("nuri.trading.strategy.ls_backtest.classify_historical_regimes")
     def test_empty_equity_curve(self, mock_classify, mock_bt, client):
         mock_classify.return_value = pd.DataFrame({"regime": ["bull"], "return": [0.01]})
@@ -157,3 +170,42 @@ class TestBacktestEquity:
         data = r.json()
         assert data["equity"] == []
         assert data["drawdown"] == []
+
+    @patch("nuri.trading.strategy.ls_backtest.run_interactive_backtest")
+    @patch("nuri.trading.strategy.ls_backtest.classify_historical_regimes")
+    def test_returns_cached_response_for_same_params(self, mock_classify, mock_bt, client):
+        mock_classify.return_value = pd.DataFrame({"regime": ["bull"], "return": [0.01]})
+
+        @dataclass
+        class FakeResult:
+            total_return: float = 12.0
+            annual_return: float = 5.0
+            sharpe: float = 1.1
+            max_drawdown: float = -4.0
+            win_rate: float = 0.52
+            total_days: int = 20
+            regime_changes: int = 1
+            transaction_costs: float = 0.1
+            spy_total_return: float = 8.0
+            spy_annual_return: float = 4.0
+            spy_sharpe: float = 0.8
+            spy_max_drawdown: float = -6.0
+            excess_return: float = 4.0
+            equity_curve: list | None = None
+
+            def __post_init__(self):
+                self.equity_curve = self.equity_curve or [
+                    {"date": "2024-01-01", "strategy": 0, "spy": 0, "drawdown": 0},
+                    {"date": "2024-01-02", "strategy": 1, "spy": 0.5, "drawdown": 0},
+                ]
+
+        mock_bt.return_value = FakeResult()
+
+        first = client.get("/api/backtest/equity?sma=50&period=3Y&sl=-7&tp=20")
+        second = client.get("/api/backtest/equity?sma=50&period=3Y&sl=-7&tp=20")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json() == second.json()
+        mock_classify.assert_called_once_with(sma_period=50)
+        mock_bt.assert_called_once()

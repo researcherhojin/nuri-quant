@@ -56,6 +56,54 @@ class TestMonteCarlo:
         assert 0 <= mc["return_percentile"] <= 1
 
 
+class TestInteractiveBacktest:
+    def test_classify_historical_regimes_accepts_custom_sma(self, backtest_data):
+        from nuri.trading.strategy.ls_backtest import classify_historical_regimes
+
+        df_fast = classify_historical_regimes(db_path=backtest_data, sma_period=50)
+        df_slow = classify_historical_regimes(db_path=backtest_data, sma_period=100)
+
+        assert len(df_fast) == len(df_slow)
+        assert "sma_fast" in df_fast.columns
+        assert not df_fast["sma_gap"].equals(df_slow["sma_gap"])
+
+    def test_run_interactive_backtest_returns_equity_curve(self, backtest_data):
+        from nuri.trading.strategy.ls_backtest import classify_historical_regimes, run_interactive_backtest
+
+        regimes = classify_historical_regimes(db_path=backtest_data)
+        result = run_interactive_backtest(
+            regimes,
+            stop_loss_pct=-7,
+            take_profit_pct=20,
+            db_path=backtest_data,
+        )
+
+        assert result.total_days > 0
+        assert result.equity_curve is not None
+        assert len(result.equity_curve) == result.total_days
+        assert {"date", "strategy", "spy", "drawdown"} <= set(result.equity_curve[0])
+
+    def test_run_interactive_backtest_thresholds_change_result(self, backtest_data):
+        from nuri.trading.strategy.ls_backtest import classify_historical_regimes, run_interactive_backtest
+
+        regimes = classify_historical_regimes(db_path=backtest_data)
+        baseline = run_interactive_backtest(
+            regimes,
+            stop_loss_pct=-7,
+            take_profit_pct=20,
+            db_path=backtest_data,
+        )
+        tighter = run_interactive_backtest(
+            regimes,
+            stop_loss_pct=-3,
+            take_profit_pct=10,
+            db_path=backtest_data,
+        )
+
+        assert baseline.total_days == tighter.total_days
+        assert baseline.total_return != tighter.total_return
+
+
 class TestAllocation:
     """From test_backtest.py — allocation sums."""
 
