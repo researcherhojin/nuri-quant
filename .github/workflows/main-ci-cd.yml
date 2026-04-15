@@ -77,6 +77,9 @@ jobs:
   frontend-tests:
     name: Frontend Tests
     needs: changes
+    # See backend-lint for rationale — guard ensures `changes` failure doesn't
+    # silently false-green this required check via GitHub's skipped==passed policy.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # NOTE: defaults.run.working-directory only applies to `run` steps, NOT `uses` steps.
@@ -85,6 +88,16 @@ jobs:
       run:
         working-directory: frontend
     steps:
+      # Guard runs BEFORE checkout. Job-level `defaults.run.working-directory: frontend`
+      # WOULD apply to this run step (and fail cd-ing into non-existent `frontend/`
+      # pre-checkout), so we override to `.` (= $GITHUB_WORKSPACE, the empty runner dir).
+      - name: Guard — require changes to succeed
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: |
+          echo "::error::changes job did not succeed (result=${{ needs.changes.result }}) — cannot verify gates"
+          exit 1
+
       # Always checkout — skip notice runs `echo` which would otherwise try to
       # `cd frontend` (per defaults.run.working-directory) into a non-existent dir.
       - uses: actions/checkout@v6
@@ -140,12 +153,20 @@ jobs:
   frontend-build:
     name: Frontend Build
     needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend
     steps:
+      - name: Guard — require changes to succeed
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: |
+          echo "::error::changes job did not succeed (result=${{ needs.changes.result }}) — cannot verify gates"
+          exit 1
+
       - uses: actions/checkout@v6
 
       - name: Skip notice (no frontend changes)
@@ -171,9 +192,20 @@ jobs:
   backend-lint:
     name: Backend Lint
     needs: changes
+    # if: !cancelled() ensures this job runs even if `changes` failed or was skipped,
+    # so the guard step below can fail the required check explicitly. Without this,
+    # a failed `changes` would mark downstream jobs as skipped, which branch protection
+    # treats as passed → false green.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Guard — require changes to succeed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::changes job did not succeed (result=${{ needs.changes.result }}) — cannot verify gates"
+          exit 1
+
       - name: Skip notice (no backend changes)
         if: needs.changes.outputs.run_backend != 'true'
         run: echo "✓ No backend changes — fast-pass to satisfy required check"
@@ -375,7 +407,10 @@ jobs:
   backend-tests:
     name: Backend Tests
     needs: [changes, backend-tests-shard, backend-tests-slow]
-    if: always()
+    # !cancelled() matches the other guarded jobs — aggregator still runs on
+    # failure/skip to explicitly fail the required check, but user-cancel
+    # propagates rather than wasting runner time aggregating a dead run.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -406,9 +441,16 @@ jobs:
   security-scan:
     name: Security Scan
     needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Guard — require changes to succeed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::changes job did not succeed (result=${{ needs.changes.result }}) — cannot verify gates"
+          exit 1
+
       - name: Skip notice (no code changes)
         if: needs.changes.outputs.run_security != 'true'
         run: echo "✓ No backend/frontend changes — fast-pass to satisfy required check"
