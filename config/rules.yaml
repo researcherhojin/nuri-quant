@@ -143,3 +143,87 @@ buy_checklist:
   max_pe_ratio: 100                         # PE 100 이상 = 투기 경고
   min_revenue_growth: 0                     # 매출 > $0 (프리레비뉴 기업 금지)
   require_factor_top50pct: true             # 멀티팩터 상위 50% 이내
+
+# ─── SIEGE Gate 정책 (v2: Asset Class 차원) ────────────────
+# 근거: docs/SIEGE_V2.md §4. Issue #248.
+# Gate #5 (data_fresh), #7 (volatility / 구 vix_gate), #8 (external_data) 는
+# 포트폴리오를 asset_class 별로 group 한 뒤 각 group 에 해당 정책을 적용한다.
+# primary 실패는 현 severity 유지, secondary 는 warning only (cross-market
+# spillover 인지용). primary 를 error 로 올리려면 STRATEGY 개정 + 백테스트.
+#
+# Cross-market 의도: KR 종목 보유자에게 SPY/VIX 도 영향 (상관 > 0.5).
+# secondary 지표는 "US spillover / KR spillover" 를 명시적으로 경고로 노출.
+siege_gates:
+  # 포트폴리오 holdings 를 asset_class 로 분류. 위에서부터 순서대로 matching —
+  # 더 구체적인 rule 우선. default 는 마지막.
+  asset_class_rules:
+    - match: {sector_prefix: "ETF/USIndex"}
+      asset_class: us_equity
+    - match: {sector_prefix: "ETF/USTech"}
+      asset_class: us_equity
+    - match: {sector_prefix: "ETF/Commodity"}
+      asset_class: commodity
+    - match: {sector_prefix: "ETF/Bond"}
+      asset_class: bond
+    - match: {sector_prefix: "ETF/KRIndex"}
+      asset_class: kr_index
+    - match: {ticker_suffix: ".KS"}
+      asset_class: kr_equity
+    - match: {ticker_suffix: ".KQ"}
+      asset_class: kr_equity
+    - match: {sector: "ETF"}
+      asset_class: us_equity
+    - match: {default: true}
+      asset_class: us_equity
+
+  # Asset class 별 gate 정책. 현 PR: kr_equity + us_equity primary path.
+  # 기타 class (commodity/bond/kr_index) 는 정책만 선언 — 데이터 없으면 graceful skip.
+  asset_classes:
+    us_equity:
+      freshness_primary: SPY
+      freshness_secondary: []              # US leader — cross-ref 없음
+      freshness_max_hours: 72
+      volatility_primary: vix
+      volatility_primary_threshold: 30     # VIX > 30 → 매수 warning
+      volatility_secondary: []
+      external_min_records: 10
+      external_min_sources: 3
+    kr_equity:
+      freshness_primary: KOSPI
+      freshness_secondary: [SPY]           # US spillover (KR 은 follower)
+      freshness_max_hours: 72
+      volatility_primary: usd_krw_3d_change
+      volatility_primary_threshold: 3.0    # USD/KRW 3d 변동 > 3% → 매수 warning
+      volatility_secondary: [vix]          # US 변동성 전이
+      volatility_secondary_threshold: 30
+      external_min_records: 5              # KR 외부 소스 부족 — 완화
+      external_min_sources: 2
+    kr_index:
+      # KOSPI ETF 계열 (예: 292160.KS). 지수 ETF 는 국지 변동성 + US 교차.
+      freshness_primary: KOSPI
+      freshness_secondary: [SPY]
+      freshness_max_hours: 72
+      volatility_primary: kospi_3d_change
+      volatility_primary_threshold: 5.0
+      volatility_secondary: [usd_krw_3d_change]
+      volatility_secondary_threshold: 3.0
+      external_min_records: 3
+      external_min_sources: 1
+    commodity:
+      freshness_primary: "GC=F"            # gold futures
+      freshness_secondary: []
+      freshness_max_hours: 72
+      volatility_primary: gold_3d_change
+      volatility_primary_threshold: 5.0
+      volatility_secondary: []
+      external_min_records: 3
+      external_min_sources: 1
+    bond:
+      freshness_primary: TLT
+      freshness_secondary: []
+      freshness_max_hours: 120             # 채권 데이터 주말/이벤트 갭 허용
+      volatility_primary: yield_3d_change
+      volatility_primary_threshold: 0.3
+      volatility_secondary: []
+      external_min_records: 3
+      external_min_sources: 1
