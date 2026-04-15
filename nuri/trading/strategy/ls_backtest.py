@@ -88,8 +88,8 @@ class TimingAnalysis:
 # ═══════════════════════════════════════════════════════
 
 
-def classify_historical_regimes(db_path=None) -> pd.DataFrame:
-    """매 거래일의 레짐을 분류. SPY SMA50/200 + VIX 기반."""
+def classify_historical_regimes(db_path=None, sma_period: int = 50) -> pd.DataFrame:
+    """매 거래일의 레짐을 분류. SPY SMA/200 + VIX 기반."""
     spy = query_df(
         "SELECT date, close FROM prices WHERE ticker='SPY' ORDER BY date",
         db_path=db_path,
@@ -105,9 +105,9 @@ def classify_historical_regimes(db_path=None) -> pd.DataFrame:
 
     spy["date"] = pd.to_datetime(spy["date"])
     spy = spy.set_index("date")
-    spy["sma50"] = spy["close"].rolling(50).mean()
+    spy["sma_fast"] = spy["close"].rolling(sma_period).mean()
     spy["sma200"] = spy["close"].rolling(200).mean()
-    spy["sma_gap"] = (spy["sma50"] - spy["sma200"]) / spy["sma200"] * 100
+    spy["sma_gap"] = (spy["sma_fast"] - spy["sma200"]) / spy["sma200"] * 100
 
     # VIX 병합
     if not vix.empty:
@@ -132,14 +132,14 @@ def classify_historical_regimes(db_path=None) -> pd.DataFrame:
     for idx, row in spy.iterrows():
 
         close = row["close"]
-        sma50 = row["sma50"]
+        sma_fast = row["sma_fast"]
         sma200 = row["sma200"]
         gap = row["sma_gap"]
         sideways_th = row["sideways_th"] if pd.notna(row["sideways_th"]) else 2.0
 
         # 추세 — 가격 위치 + SMA 관계 + gap 종합
         price_above = close > sma200
-        sma_bullish = sma50 > sma200
+        sma_bullish = sma_fast > sma200
 
         if abs(gap) < sideways_th and not (price_above != sma_bullish):
             trend = "sideways"
@@ -171,6 +171,174 @@ def classify_historical_regimes(db_path=None) -> pd.DataFrame:
     spy["return"] = spy["close"].pct_change()
 
     return spy.reset_index()
+
+
+def run_interactive_backtest(
+    regimes_df: pd.DataFrame,
+    *,
+    stop_loss_pct: float,
+    take_profit_pct: float,
+    db_path=None,
+) -> BacktestResult:
+    """Parameterized backtest for the interactive strategy UI.
+
+    This keeps the core L/S regime allocation but allows the frontend to
+    pressure-test custom stop-loss and take-profit levels on the long sleeve.
+    """
+    df = regimes_df.copy()
+    df = df[df["regime"] != "unknown"].dropna(subset=["return"])
+    df = df.reset_index(drop=True)
+
+    if df.empty:
+        return BacktestResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [])
+
+    sh = query_df("SELECT date, close, open FROM prices WHERE ticker='SH' ORDER BY date", db_path=db_path)
+    if not sh.empty:
+        sh["date"] = pd.to_datetime(sh["date"])
+        sh = sh.set_index("date")
+        sh["sh_return"] = sh["close"].pct_change()
+    else:
+        sh = pd.DataFrame()
+
+    spy_open = query_df("SELECT date, open FROM prices WHERE ticker='SPY' ORDER BY date", db_path=db_path)
+    if not spy_open.empty:
+        spy_open["date"] = pd.to_datetime(spy_open["date"])
+        spy_open = spy_open.set_index("date")
+
+    active_regime = df.iloc[0]["regime"]
+    hold_count = 0
+    effective_regimes = []
+    for _, row in df.iterrows():
+        raw_regime = row["regime"]
+        if raw_regime != active_regime:
+            hold_count += 1
+            if hold_count >= MIN_HOLD_DAYS:
+                active_regime = raw_regime
+                hold_count = 0
+        else:
+            hold_count = 0
+        effective_regimes.append(active_regime)
+    df["effective_regime"] = effective_regimes
+
+    strategy_returns = []
+    spy_returns = []
+    prev_regime = None
+    total_cost = 0.0
+    regime_changes = 0
+    long_active = True
+    long_trade_return = 0.0
+
+    stop_threshold = stop_loss_pct / 100
+    take_profit_threshold = take_profit_pct / 100
+
+    for i in range(1, len(df)):
+        row = df.iloc[i]
+        prev_row = df.iloc[i - 1]
+        regime = row["effective_regime"]
+        date = pd.Timestamp(row["date"])
+        spy_ret = row["return"]
+
+        gap_cost = 0.0
+        if not spy_open.empty and date in spy_open.index:
+            spy_open_price = spy_open.loc[date, "open"]
+            spy_prev_close = prev_row["close"]
+            if spy_prev_close > 0:
+                gap_cost = abs(spy_open_price / spy_prev_close - 1) * 0.3
+
+        alloc = REGIME_ALLOCATION.get(regime, REGIME_ALLOCATION["sideways_high_vol"])
+
+        cost = 0.0
+        if regime != prev_regime and prev_regime is not None:
+            cost = TRANSACTION_COST * 2 + SLIPPAGE * 2 + gap_cost
+            total_cost += cost
+            regime_changes += 1
+            long_active = True
+            long_trade_return = 0.0
+
+        if alloc["short"] > 0 and not sh.empty and date in sh.index:
+            short_ret = float(sh.loc[date, "sh_return"])
+            if pd.isna(short_ret):
+                short_ret = -spy_ret
+        else:
+            short_ret = -spy_ret
+
+        long_component = 0.0
+        if alloc["long"] > 0:
+            if not long_active:
+                long_component = 0.0
+            else:
+                prev_trade_return = long_trade_return
+                next_trade_return = prev_trade_return + spy_ret
+                if next_trade_return <= stop_threshold:
+                    long_component = (stop_threshold - prev_trade_return) * alloc["long"]
+                    long_trade_return = stop_threshold
+                    long_active = False
+                elif next_trade_return >= take_profit_threshold:
+                    long_component = (take_profit_threshold - prev_trade_return) * alloc["long"]
+                    long_trade_return = take_profit_threshold
+                    long_active = False
+                else:
+                    long_component = spy_ret * alloc["long"]
+                    long_trade_return = next_trade_return
+        else:
+            long_active = True
+            long_trade_return = 0.0
+
+        strat_ret = long_component + alloc["short"] * short_ret - cost
+        strategy_returns.append(strat_ret)
+        spy_returns.append(spy_ret)
+        prev_regime = regime
+
+    strat = pd.Series(strategy_returns)
+    spy_s = pd.Series(spy_returns)
+
+    if strat.empty:
+        return BacktestResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [])
+
+    strat_cum = (1 + strat).cumprod()
+    spy_cum = (1 + spy_s).cumprod()
+
+    total_return = (strat_cum.iloc[-1] - 1) * 100
+    spy_total = (spy_cum.iloc[-1] - 1) * 100
+    years = len(strat) / 252
+
+    annual_return = ((1 + total_return / 100) ** (1 / max(years, 0.1)) - 1) * 100
+    spy_annual = ((1 + spy_total / 100) ** (1 / max(years, 0.1)) - 1) * 100
+
+    sharpe = strat.mean() / strat.std() * np.sqrt(252) if strat.std() > 0 else 0
+    spy_sharpe = spy_s.mean() / spy_s.std() * np.sqrt(252) if spy_s.std() > 0 else 0
+
+    strat_dd = (strat_cum / strat_cum.cummax() - 1).min() * 100
+    spy_dd = (spy_cum / spy_cum.cummax() - 1).min() * 100
+
+    dates = df["date"].iloc[1:].reset_index(drop=True)
+    strat_dd_series = (strat_cum / strat_cum.cummax() - 1) * 100
+    equity_curve = [
+        {
+            "date": str(dates.iloc[i])[:10],
+            "strategy": round(float((strat_cum.iloc[i] - 1) * 100), 2),
+            "spy": round(float((spy_cum.iloc[i] - 1) * 100), 2),
+            "drawdown": round(float(strat_dd_series.iloc[i]), 2),
+        }
+        for i in range(len(strat_cum))
+    ]
+
+    return BacktestResult(
+        total_return=round(total_return, 2),
+        annual_return=round(annual_return, 2),
+        sharpe=round(sharpe, 2),
+        max_drawdown=round(strat_dd, 2),
+        win_rate=round(float((strat > 0).mean()), 3),
+        total_days=len(strat),
+        regime_changes=regime_changes,
+        transaction_costs=round(total_cost * 100, 2),
+        spy_total_return=round(spy_total, 2),
+        spy_annual_return=round(spy_annual, 2),
+        spy_sharpe=round(spy_sharpe, 2),
+        spy_max_drawdown=round(spy_dd, 2),
+        excess_return=round(total_return - spy_total, 2),
+        equity_curve=equity_curve,
+    )
 
 
 # ═══════════════════════════════════════════════════════

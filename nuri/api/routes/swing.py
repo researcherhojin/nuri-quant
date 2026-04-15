@@ -1,9 +1,13 @@
 """스윙 트레이드 API."""
 from dataclasses import asdict
+from time import monotonic
 
 from fastapi import APIRouter, Query
 
 router = APIRouter(tags=["swing"])
+
+_BACKTEST_CACHE_TTL_SECONDS = 300
+_interactive_backtest_cache: dict[tuple[int, str, int, int], tuple[float, dict]] = {}
 
 
 @router.get("/scan")
@@ -70,7 +74,12 @@ def get_backtest():
 
 
 @router.get("/backtest/equity")
-def get_backtest_equity():
+def get_backtest_equity(
+    sma: int = Query(50, ge=50, le=200),
+    period: str = Query("3Y", pattern="^(1Y|3Y|5Y)$"),
+    sl: int = Query(-7, ge=-15, le=-3),
+    tp: int = Query(20, ge=10, le=40),
+):
     """Equity curve + drawdown for interactive chart (#89).
 
     Returns lightweight data: equity curve points, drawdown, regime bands,
@@ -80,14 +89,27 @@ def get_backtest_equity():
 
     from nuri.trading.strategy.ls_backtest import (
         classify_historical_regimes,
-        run_backtest,
+        run_interactive_backtest,
     )
 
-    regimes = classify_historical_regimes()
+    cache_key = (sma, period, sl, tp)
+    cached = _interactive_backtest_cache.get(cache_key)
+    now = monotonic()
+    if cached and now - cached[0] < _BACKTEST_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    regimes = classify_historical_regimes(sma_period=sma)
     if regimes.empty:
         return {"error": "SPY data insufficient"}
 
-    result = run_backtest(regimes)
+    lookback_days = {"1Y": 252, "3Y": 756, "5Y": 1260}[period]
+    regimes = regimes.tail(lookback_days).reset_index(drop=True)
+
+    result = run_interactive_backtest(
+        regimes,
+        stop_loss_pct=sl,
+        take_profit_pct=tp,
+    )
 
     # numpy → native
     def _clean(obj):
@@ -105,7 +127,7 @@ def get_backtest_equity():
         dd_pct = ((val - peak) / peak * 100) if peak > 0 else 0
         drawdown.append({"date": pt.get("date"), "drawdown": round(dd_pct, 2)})
 
-    return _clean({
+    response = _clean({
         "equity": equity,
         "drawdown": drawdown,
         "metrics": {
@@ -120,6 +142,8 @@ def get_backtest_equity():
             "excess_return": result.excess_return,
         },
     })
+    _interactive_backtest_cache[cache_key] = (now, response)
+    return response
 
 
 @router.get("/strategy/status")
