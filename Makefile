@@ -386,6 +386,15 @@ deploy:
 backup:
 	bash scripts/backup.sh
 
+sync-start:
+	bash scripts/dev_sync.sh start
+
+sync-end:
+	bash scripts/dev_sync.sh end
+
+sync-status:
+	bash scripts/dev_sync.sh status
+
 ports:
 	bash scripts/ports.sh
 
