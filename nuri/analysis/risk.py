@@ -11,7 +11,6 @@ import logging
 
 import numpy as np
 import pandas as pd
-import riskfolio as rp
 
 from nuri.core.db import query, query_df
 
@@ -66,10 +65,6 @@ def analyze_risk() -> dict:
     w = w_series[common]
     w = w / w.sum()
     port_returns = (returns[common] * w).sum(axis=1)
-
-    # Riskfolio 포트폴리오 객체
-    port = rp.Portfolio(returns=returns[common])
-    port.assets_stats(method_mu="hist", method_cov="hist")
 
     # 리스크프리 레이트
     rf_rows = query(

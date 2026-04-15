@@ -121,6 +121,7 @@ ENV/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.cache/
 .tox/
 .coverage
 .coverage.*
