@@ -31,7 +31,7 @@ flowchart TD
   end
 
   subgraph Core["Core (DB + Config)"]
-    DB[("SQLite WAL\n33 tables")]
+    DB[("SQLite WAL\n31 tables")]
     Config("config/*.yaml\nrules / agents / signals\nuniverse / siege_gates")
     Events("pipeline_events\nappend-only journal")
     Freshness("Freshness SLA\nPASS/WARN/FAIL")
@@ -75,7 +75,7 @@ flowchart TD
   end
 
   subgraph Serve["Interface"]
-    API("FastAPI :8001\n72 endpoints + SSE")
+    API("FastAPI :8001\n68 endpoints + SSE")
     Dashboard("Next.js 16 :3000\n17 pages\nAction-First dashboard")
     Discord("Discord/Telegram\nalerts + daily report")
   end
@@ -141,7 +141,7 @@ flowchart TD
 
 ### Key architectural decisions
 
-- **Sole SQLite gateway** — `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced). 33 tables, WAL mode. All modules use `query()`, `query_df()`, `upsert_*()`, `get_db()`. Tests inject `tmp_path` for full isolation.
+- **Sole SQLite gateway** — `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced). 31 tables, WAL mode. All modules use `query()`, `query_df()`, `upsert_*()`, `get_db()`. Tests inject `tmp_path` for full isolation.
 - **Config-driven, code-static** — all thresholds, rules, signal metadata, and SIEGE gate policies live in `config/*.yaml`. Changing a stop-loss or adding a new market means editing YAML, not Python. See `rules.yaml`, `agents.yaml`, `signals.yaml`, `universe.yaml`.
 - **DB-only integration between phases** — phases communicate through DB tables and CSV files, never direct imports. Re-running an upstream phase automatically refreshes downstream consumers.
 - **SIEGE v2: 3-dimensional certification** — gates apply per Account (strategy profile) × Asset Class (exposure: us_equity, kr_equity, commodity, bond) × Execution Market (KRX, NYSE). See [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md). Inspired by [nutshells3/SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution).
@@ -159,7 +159,7 @@ flowchart TD
 | `nuri/trading/engine/` | Certify | SIEGE 11-gate (v2: asset-class-aware), conflict detection, learning memory |
 | `nuri/trading/recommend/` | Certify+Track | Candidates, price targets, rebalance advisor, outcome tracker (30/60/90d) |
 | `nuri/llm/` | Classify | Event classifier (OpenAI/regex), LLM report (OpenAI primary, llama.cpp/Ollama fallback), OpenAI wrapper |
-| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (72 endpoints incl. `/actions`, `/opportunities`, `/market-context`). Swagger at `/docs` |
+| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (68 endpoints incl. `/actions`, `/opportunities`, `/market-context`). Swagger at `/docs` |
 | `frontend/` | Serve | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme) |
 | `nuri/core/` | Foundation | db.py (sole SQLite), events.py (journal), freshness.py (SLA), timezone.py (KST), rules.py, signal_config.py |
 | `config/*.yaml` | Foundation | rules, agents, signals, universe, stock_types, portfolio (gitignored) |
