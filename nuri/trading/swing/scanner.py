@@ -8,9 +8,9 @@ Universe는 config/universe.yaml에서 로드 (외부화).
 폴백: hardcoded list.
 
 사용법:
-    python -m nuri.trading.swing.scanner                     # us core (~84종목, ~5초)
-    python -m nuri.trading.swing.scanner --market kr         # kr kospi200 (~80종목)
-    python -m nuri.trading.swing.scanner --extended          # us core + sp500 ext (~340종목)
+    python -m nuri.trading.swing.scanner                     # us core (85종목, ~5초)
+    python -m nuri.trading.swing.scanner --market kr         # kr kospi200 (203종목)
+    python -m nuri.trading.swing.scanner --extended          # us core + sp500 ext (543종목)
 """
 import argparse
 import logging
