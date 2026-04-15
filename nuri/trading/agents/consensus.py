@@ -98,7 +98,7 @@ def _compute_weights(db_path=None) -> dict[str, float]:
 
     rows = query(
         """
-        SELECT signals FROM recommendations
+        SELECT signals, outcome_30d FROM recommendations
         WHERE outcome_30d IS NOT NULL
           AND date >= date('now', ? || ' days')
         """,
@@ -125,7 +125,8 @@ def _compute_weights(db_path=None) -> dict[str, float]:
             if not isinstance(data, dict) or "verdicts" not in data:
                 continue
 
-            outcome = row.get("outcome_30d", 0) if hasattr(row, "get") else 0
+            # WHERE outcome_30d IS NOT NULL guards the read; `or 0` is defensive only.
+            outcome = row["outcome_30d"] or 0
             is_positive = outcome > 0
 
             for v in data["verdicts"]:
