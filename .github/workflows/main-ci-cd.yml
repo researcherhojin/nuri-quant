@@ -235,13 +235,27 @@ jobs:
           print('✅ Universe sanity check PASS')
           "
 
-  # ── Backend Tests (sharded matrix) ──
-  # Tests are split across 3 shards via pytest-shard, each running on its own
-  # 4-core runner. Wall time ~= max(shards) instead of sum, so 3 shards cuts
-  # ~30% off the 2-shard wall-clock at the cost of one extra runner minute
-  # (per-shard setup overhead: ~20s uv + TA-Lib cache restore).
-  # Shard names are "Backend Tests Shard 1/2/3" — NOT a required check.
-  # The aggregator job below reports the single required check name "Backend Tests".
+  # ── Backend Tests — fast/slow split + fast shards ──
+  #
+  # Architecture (post PR #320 revert + STRATEGY §5.8 #2 "2번 실패하면 접근을
+  # 바꾼다"):
+  #   1. backend-tests-shard  — fast tests only (-m "not slow"), 2-shard matrix.
+  #      Runs on both PR and push. Always excludes slow.
+  #   2. backend-tests-slow   — 23 slow tests, unsharded, single job.
+  #      Runs ONLY on push to main (PR still skips slow, matching pre-split
+  #      behavior).
+  #   3. backend-tests        — aggregator. Reports the "Backend Tests"
+  #      required check. needs: [changes, backend-tests-shard, backend-tests-slow].
+  #
+  # Rationale: #320 tried increasing shards 2→3, but hash-based pytest-shard
+  # concentrated slow tests in one bucket (shard 3 = 2m48s, unchanged
+  # wall-clock). Splitting by marker isolates the heavy tests from fast ones,
+  # so wall-clock becomes max(fast_shard, slow_job) instead of max(shard
+  # containing slow). Coverage uploaded from both with distinct flags so
+  # Codecov merges correctly.
+  #
+  # Shard names are "Backend Tests Shard 1/2" — NOT required checks.
+  # Only the aggregator name "Backend Tests" is protected.
 
   backend-tests-shard:
     name: Backend Tests Shard ${{ matrix.shard }}
@@ -251,7 +265,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2]
     steps:
       - name: Skip notice (no backend changes)
         if: needs.changes.outputs.backend != 'true' && github.event_name == 'pull_request'
@@ -310,20 +324,14 @@ jobs:
         if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && steps.cache-venv.outputs.cache-hit != 'true'
         run: uv sync --frozen --extra dev
 
-      # pytest-shard splits tests by hash(test_id) into N buckets. shard-id is
-      # 0-indexed but the matrix exposes 1-indexed values for human readability.
-      #
-      # PR runs: -m "not slow" — exclude 23 slow tests (~135s saved per shard)
-      # main push: full suite including slow tests
+      # pytest-shard splits non-slow tests by hash(test_id) into 2 buckets.
+      # shard-id is 0-indexed but the matrix exposes 1-indexed values.
+      # Slow tests (23, LLM/scheduler) are ALWAYS excluded here and run
+      # separately in backend-tests-slow on push only.
 
-      - name: Run tests with coverage (PR — fast)
-        if: github.event_name == 'pull_request' && needs.changes.outputs.backend == 'true'
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=3 --cov=nuri --cov-report=xml --cov-report=term
-        timeout-minutes: 5
-
-      - name: Run tests with coverage (main — full)
-        if: github.event_name != 'pull_request'
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=3 --cov=nuri --cov-report=xml --cov-report=term
+      - name: Run fast tests with coverage
+        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
 
       - name: Upload coverage to Codecov
@@ -332,30 +340,125 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
-          flags: backend
+          flags: backend-fast
+          disable_search: true
+          fail_ci_if_error: false
+
+  # ── Backend Tests (slow) — isolated, push-only ──
+  # Runs the 23 @pytest.mark.slow tests (mostly LLM/scheduler) in a single
+  # unsharded job. Push-only: PRs deliberately skip slow tests, matching
+  # pre-split behavior (see STRATEGY §4.1 — slow excluded from PR CI).
+  # Coverage uploaded with flag `backend-slow` so Codecov merges with the
+  # fast shards' flag `backend-fast` for full-suite coverage on main.
+
+  backend-tests-slow:
+    name: Backend Tests (slow)
+    needs: changes
+    # Push-only (strict). workflow_dispatch and schedule won't run slow.
+    # PR deliberately skips slow (matches pre-split behavior, STRATEGY §4.1).
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: false
+
+      - name: Cache TA-Lib
+        id: cache-talib-slow
+        uses: actions/cache@v5
+        with:
+          path: /tmp/talib-installed
+          key: talib-0.4.0-${{ runner.os }}-v5
+
+      - name: Build TA-Lib from source
+        if: steps.cache-talib-slow.outputs.cache-hit != 'true'
+        run: |
+          wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+          tar -xzf ta-lib-0.4.0-src.tar.gz
+          cd ta-lib && ./configure --prefix=/usr && make && sudo make install
+          mkdir -p /tmp/talib-installed
+          sudo cp /usr/lib/libta_lib* /tmp/talib-installed/
+          sudo cp -r /usr/include/ta-lib /tmp/talib-installed/
+
+      - name: Restore TA-Lib from cache
+        if: steps.cache-talib-slow.outputs.cache-hit == 'true'
+        run: |
+          sudo cp /tmp/talib-installed/libta_lib* /usr/lib/
+          sudo mkdir -p /usr/include/ta-lib
+          sudo cp /tmp/talib-installed/ta-lib/* /usr/include/ta-lib/ 2>/dev/null || true
+          sudo ln -sf /usr/lib/libta_lib.so.0.0.0 /usr/lib/libta_lib.so.0 2>/dev/null || true
+
+      - name: Configure TA-Lib
+        run: sudo ldconfig 2>/dev/null
+
+      - name: Cache venv
+        id: cache-venv-slow
+        uses: actions/cache@v5
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('uv.lock') }}
+
+      - name: Install deps
+        if: steps.cache-venv-slow.outputs.cache-hit != 'true'
+        run: uv sync --frozen --extra dev
+
+      - name: Run slow tests with coverage
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow" --cov=nuri --cov-report=xml --cov-report=term
+        timeout-minutes: 5
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          flags: backend-slow
           disable_search: true
           fail_ci_if_error: false
 
   # ── Backend Tests aggregator ──
-  # Single check name "Backend Tests" reported to branch protection. Always runs
-  # (even if shards are skipped) so the required check always reports.
+  # Single check name "Backend Tests" reported to branch protection. Always
+  # runs (if: always()) so the required check always reports.
+  #
+  # needs both fast shards and slow job. On PR, slow is skipped by design —
+  # treated as OK (result=skipped). Only failure/cancelled propagates.
+  #
+  # ⚠ Keep name EXACTLY "Backend Tests" — that is the protected check.
+  # ⚠ Do not rename child jobs to collide with this name.
 
   backend-tests:
     name: Backend Tests
-    needs: [changes, backend-tests-shard]
+    needs: [changes, backend-tests-shard, backend-tests-slow]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Aggregate shard results
+      - name: Aggregate shard + slow results
         run: |
-          result="${{ needs.backend-tests-shard.result }}"
-          echo "Shards overall result: $result"
-          if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
-            echo "::error::One or more backend test shards failed"
+          changes="${{ needs.changes.result }}"
+          fast="${{ needs.backend-tests-shard.result }}"
+          slow="${{ needs.backend-tests-slow.result }}"
+          echo "changes=$changes fast=$fast slow=$slow"
+          # changes must actually succeed — if it failed, downstream jobs will
+          # be skipped and we'd false-green (Codex #2 Task A).
+          if [[ "$changes" != "success" ]]; then
+            echo "::error::changes job did not succeed (result=$changes) — cannot verify downstream"
             exit 1
           fi
-          echo "✓ All backend test shards passed (or skipped)"
+          if [[ "$fast" == "failure" || "$fast" == "cancelled" ]]; then
+            echo "::error::backend-tests-shard (fast) failed or cancelled"
+            exit 1
+          fi
+          if [[ "$slow" == "failure" || "$slow" == "cancelled" ]]; then
+            echo "::error::backend-tests-slow failed or cancelled"
+            exit 1
+          fi
+          echo "✓ backend tests passed (or skipped) — fast=$fast slow=$slow"
 
   # ─── Security ───
 
