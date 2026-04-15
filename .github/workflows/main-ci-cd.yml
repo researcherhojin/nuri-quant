@@ -37,6 +37,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      universe: ${{ steps.filter.outputs.universe }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -51,9 +52,15 @@ jobs:
               - 'uv.lock'
               - 'Makefile'
               - 'config/**'
-              - '.github/workflows/main-ci-cd.yml'
+              - '.github/workflows/**'
+              - '.github/actions/**'
             frontend:
               - 'frontend/**'
+              - '.github/workflows/**'
+              - '.github/actions/**'
+            universe:
+              - 'config/universe.yaml'
+              - 'scripts/validate_universe.py'
               - '.github/workflows/main-ci-cd.yml'
 
   # ─── Frontend ───
@@ -203,7 +210,13 @@ jobs:
   universe-check:
     name: Universe Coverage Validation
     needs: changes
-    if: needs.changes.outputs.python == 'true'
+    # Previous condition was `needs.changes.outputs.python`, but `changes` never
+    # emitted a `python` output — the gate was dead (always skipped) since
+    # workflow inception. Fixed to use the new dedicated `universe` output
+    # (triggered by config/universe.yaml, scripts/validate_universe.py, or
+    # this workflow). Always runs on non-PR events to track coverage drift on
+    # main, matching the pattern used by other backend jobs.
+    if: needs.changes.outputs.universe == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     continue-on-error: true  # warning-only initially per spec §6 stage 1
