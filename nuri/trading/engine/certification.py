@@ -5,23 +5,28 @@ SIEGE Certification Engine — 추천 결과의 형식 검증.
 추천이 rules.yaml의 모든 규칙을 만족하는지 기계적으로 검증하고,
 위반 시 인증서를 거부한다.
 
-검증 항목 (11-condition):
-1. position_limit     — 종목 비중 <= 15%
+검증 항목 (11 base gate checks → v2 asset-class expansion 으로 실행 시
+total_conditions 가변):
+
+1. position_limit     — 종목 비중 <= 15% (계좌별 전략 적용)
 2. sector_limit       — 섹터 비중 <= 35%
-3. cash_reserve       — 현금 비중 >= 20%
-4. stop_loss_growth   — 성장주 손절 -7% 이내
-5. stop_loss_value    — 가치주 손절 -10% 이내
+3. stop_loss_growth   — 성장주 손절 -7% 이내
+4. stop_loss_value    — 가치주 손절 -10% 이내
+5. data_fresh         — [v2] per-class freshness (us=SPY, kr=KOSPI+SPY, ...)
 6. leverage_ban       — 레버리지 ETF 비보유
-7. vix_gate           — VIX > 30 시 매수 없음
-8. buy_checklist      — TipRanks + 슈퍼투자자 + PE + 매출
+7. volatility_gate    — [v2] per-class 변동성 (us=VIX, kr=USD/KRW+VIX, ...)
+                       (구 vix_gate)
+8. external_data      — [v2] per-class 외부 데이터 카운트 (ticker 필터)
 9. conflict_free      — BUY/SELL 동시 시그널 없음 (또는 관망)
 10. drift_safe        — critical drift 시그널 기반 매수 없음
 11. macro_event_alignment — |event_score| >= 10 시 경고
 
 v2 (#248): Gate 5/7/8 은 portfolio 를 asset_class 로 group 한 뒤 per-class 정책
-(config/rules.yaml siege_gates) 적용. KR 종목 보유 시 KOSPI freshness + USD/KRW
-volatility + 완화된 external threshold 로 평가됨. US spillover 는 secondary
-지표로 warning emit.
+(config/rules.yaml siege_gates) 적용. 예: KR 종목 보유 시 KOSPI freshness +
+USD/KRW volatility + 완화된 external threshold 로 평가되고 US spillover 는
+secondary 지표로 warning emit. 따라서 실제 `Certificate.total_conditions` 는
+portfolio 의 asset_class 조합에 따라 11~30+ 범위. `certified` 판정은 기존과
+동일하게 error severity 0건 기준.
 
 사용법:
     python -m nuri.trading.engine.certification
@@ -543,8 +548,8 @@ def _check_rules_loaded(db_path=None) -> CertCondition:
     )
 
 
-# 11개 조건 목록. asset-class 분리 gate (5/7/8) 는 list[CertCondition] 반환,
-# 나머지는 CertCondition 단건. certify() 에서 자동 flatten.
+# 11개 base gate checks. asset-class 분리 gate (5/7/8) 는 list[CertCondition] 반환
+# (per-class expansion → 실행 시 total_conditions 가변), 나머지는 단건. certify() 에서 flatten.
 ALL_CERT_CHECKS = [
     _check_position_limits,  # 1. 종목 비중
     _check_sector_limits,  # 2. 섹터 비중
@@ -561,10 +566,11 @@ ALL_CERT_CHECKS = [
 
 
 def certify(db_path=None) -> Certificate:
-    """SIEGE 인증서 발급. 11개 조건 검증 후 pass/fail 판정.
+    """SIEGE 인증서 발급. 11 base gate check 실행 후 pass/fail 판정.
 
     v2 (#248): gate 5/7/8 은 portfolio asset_class 별로 multiple CertCondition
-    을 반환. certify() 가 flatten 하여 total_conditions 에 반영.
+    을 반환. certify() 가 flatten 하여 total_conditions 에 반영 (portfolio
+    구성에 따라 11 ~ 30+ 범위). `certified` 는 error severity 0건 기준 (기존 유지).
     """
     conditions: list[CertCondition] = []
     for check in ALL_CERT_CHECKS:
