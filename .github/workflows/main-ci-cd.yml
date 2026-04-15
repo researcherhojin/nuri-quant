@@ -236,9 +236,11 @@ jobs:
           "
 
   # ── Backend Tests (sharded matrix) ──
-  # Tests are split across 2 shards via pytest-shard, each running on its own
-  # 4-core runner. Wall time roughly halves vs the single-job design.
-  # Shard names are "Backend Tests Shard 1/2" — NOT a required check.
+  # Tests are split across 3 shards via pytest-shard, each running on its own
+  # 4-core runner. Wall time ~= max(shards) instead of sum, so 3 shards cuts
+  # ~30% off the 2-shard wall-clock at the cost of one extra runner minute
+  # (per-shard setup overhead: ~20s uv + TA-Lib cache restore).
+  # Shard names are "Backend Tests Shard 1/2/3" — NOT a required check.
   # The aggregator job below reports the single required check name "Backend Tests".
 
   backend-tests-shard:
@@ -249,7 +251,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - name: Skip notice (no backend changes)
         if: needs.changes.outputs.backend != 'true' && github.event_name == 'pull_request'
@@ -311,17 +313,17 @@ jobs:
       # pytest-shard splits tests by hash(test_id) into N buckets. shard-id is
       # 0-indexed but the matrix exposes 1-indexed values for human readability.
       #
-      # PR runs: -m "not slow" — exclude ~12 slow tests (~135s saved per shard)
+      # PR runs: -m "not slow" — exclude 23 slow tests (~135s saved per shard)
       # main push: full suite including slow tests
 
       - name: Run tests with coverage (PR — fast)
         if: github.event_name == 'pull_request' && needs.changes.outputs.backend == 'true'
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report=xml --cov-report=term
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=3 --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
 
       - name: Run tests with coverage (main — full)
         if: github.event_name != 'pull_request'
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report=xml --cov-report=term
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=3 --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
 
       - name: Upload coverage to Codecov
