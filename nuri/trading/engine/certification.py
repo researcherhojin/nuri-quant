@@ -18,9 +18,15 @@ SIEGE Certification Engine — 추천 결과의 형식 검증.
 10. drift_safe        — critical drift 시그널 기반 매수 없음
 11. macro_event_alignment — |event_score| >= 10 시 경고
 
+v2 (#248): Gate 5/7/8 은 portfolio 를 asset_class 로 group 한 뒤 per-class 정책
+(config/rules.yaml siege_gates) 적용. KR 종목 보유 시 KOSPI freshness + USD/KRW
+volatility + 완화된 external threshold 로 평가됨. US spillover 는 secondary
+지표로 warning emit.
+
 사용법:
     python -m nuri.trading.engine.certification
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -30,6 +36,7 @@ from nuri.core.rules import (
     LEVERAGE_ETFS,
     MAX_SECTOR_EXPOSURE,
     MAX_SINGLE_POSITION,
+    RULES,
     STOCK_STOP_LOSS,
     VIX_BLOCK_ABOVE,
 )
@@ -40,6 +47,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CertCondition:
     """인증 조건 결과."""
+
     id: str
     description: str
     passed: bool
@@ -50,14 +58,15 @@ class CertCondition:
 @dataclass
 class Certificate:
     """SIEGE 인증서."""
+
     timestamp: str
     total_conditions: int
     passed: int
     failed: int
     warnings: int
-    certified: bool          # 모든 error 조건 통과
+    certified: bool  # 모든 error 조건 통과
     conditions: list[CertCondition]
-    score: float             # 0~100
+    score: float  # 0~100
 
     def __post_init__(self):
         if not self.timestamp:
@@ -71,6 +80,7 @@ def _check_position_limits(db_path=None) -> CertCondition:
     try:
         from nuri.analysis.portfolio import analyze_portfolio
         from nuri.core.rules import get_account_strategy
+
         df = analyze_portfolio()
         if df.empty:
             return CertCondition("position_limit", "종목 비중 한도", True, "포트폴리오 비어있음")
@@ -89,11 +99,9 @@ def _check_position_limits(db_path=None) -> CertCondition:
                 violations[ticker] = (weight, max_pos)
 
         if not violations:
-            return CertCondition("position_limit", "종목 비중 한도", True,
-                                f"최대 비중: {agg.max():.1f}%")
-        tickers = ", ".join(f"{t}({w:.1f}%>{limit*100:.0f}%)" for t, (w, limit) in violations.items())
-        return CertCondition("position_limit", "종목 비중 한도", False,
-                            f"위반: {tickers}", "error")
+            return CertCondition("position_limit", "종목 비중 한도", True, f"최대 비중: {agg.max():.1f}%")
+        tickers = ", ".join(f"{t}({w:.1f}%>{limit * 100:.0f}%)" for t, (w, limit) in violations.items())
+        return CertCondition("position_limit", "종목 비중 한도", False, f"위반: {tickers}", "error")
     except Exception as e:
         return CertCondition("position_limit", "종목 비중 한도", False, f"검증 실패: {e}")
 
@@ -102,6 +110,7 @@ def _check_sector_limits(db_path=None) -> CertCondition:
     """2. 섹터 비중 <= 35%."""
     try:
         from nuri.analysis.portfolio import analyze_portfolio
+
         df = analyze_portfolio()
         if df.empty:
             return CertCondition("sector_limit", "섹터 비중 <= 35%", True, "포트폴리오 비어있음")
@@ -109,42 +118,170 @@ def _check_sector_limits(db_path=None) -> CertCondition:
         sector_agg = df.groupby("sector")["weight_pct"].sum()
         violations = sector_agg[sector_agg / 100 > MAX_SECTOR_EXPOSURE]
         if violations.empty:
-            return CertCondition("sector_limit", "섹터 비중 <= 35%", True,
-                                f"최대 섹터: {sector_agg.max():.1f}%")
+            return CertCondition("sector_limit", "섹터 비중 <= 35%", True, f"최대 섹터: {sector_agg.max():.1f}%")
         sectors = ", ".join(f"{s}({v:.1f}%)" for s, v in violations.items())
-        return CertCondition("sector_limit", "섹터 비중 <= 35%", False,
-                            f"위반: {sectors}", "error")
+        return CertCondition("sector_limit", "섹터 비중 <= 35%", False, f"위반: {sectors}", "error")
     except Exception:
         return CertCondition("sector_limit", "섹터 비중 <= 35%", True, "검증 스킵")
 
 
 def _check_leverage_ban(db_path=None) -> CertCondition:
     """6. 레버리지 ETF 비보유."""
-    rows = query("SELECT ticker FROM portfolio WHERE ticker IN ({})".format(
-        ",".join(f"'{t}'" for t in LEVERAGE_ETFS)
-    ), db_path=db_path)
+    rows = query(
+        "SELECT ticker FROM portfolio WHERE ticker IN ({})".format(",".join(f"'{t}'" for t in LEVERAGE_ETFS)),
+        db_path=db_path,
+    )
     held = [r["ticker"] for r in rows]
     if not held:
         return CertCondition("leverage_ban", "레버리지 ETF 비보유", True, "위반 없음")
-    return CertCondition("leverage_ban", "레버리지 ETF 비보유", False,
-                        f"보유 중: {', '.join(held)}", "error")
+    return CertCondition("leverage_ban", "레버리지 ETF 비보유", False, f"보유 중: {', '.join(held)}", "error")
 
 
-def _check_vix_gate(db_path=None) -> CertCondition:
-    """7. VIX > 30 시 매수 시그널 없음."""
-    vix_rows = query(
-        "SELECT value FROM macro WHERE indicator='vix' ORDER BY date DESC LIMIT 1",
+def _classify_asset_class(ticker: str, sector: str, rules: list[dict]) -> str:
+    """Portfolio holding 을 asset_class 로 분류.
+
+    config/rules.yaml siege_gates.asset_class_rules 순서대로 matching — 더 구체적인
+    rule 이 위에 있어야 함. match key: sector_prefix / ticker_suffix / sector / default.
+    """
+    sector = sector or ""
+    for rule in rules:
+        m = rule.get("match", {})
+        if m.get("default"):
+            return rule["asset_class"]
+        if "sector_prefix" in m and sector.startswith(m["sector_prefix"]):
+            return rule["asset_class"]
+        if "ticker_suffix" in m and ticker.endswith(m["ticker_suffix"]):
+            return rule["asset_class"]
+        if "sector" in m and sector == m["sector"]:
+            return rule["asset_class"]
+    return "us_equity"  # safety net — YAML 에 default rule 없을 때
+
+
+def _group_holdings_by_asset_class(db_path=None) -> dict[str, list[dict]]:
+    """portfolio 를 asset_class 로 group. 빈 portfolio 면 {}.
+
+    Returns: {asset_class: [{ticker, sector}, ...]}
+    """
+    gate_config = RULES.get("siege_gates", {})
+    rules = gate_config.get("asset_class_rules", [])
+    if not rules:
+        return {}
+
+    rows = query(
+        "SELECT DISTINCT ticker, sector FROM portfolio WHERE ticker != '' ",
         db_path=db_path,
     )
-    if not vix_rows:
-        return CertCondition("vix_gate", f"VIX > {VIX_BLOCK_ABOVE} 매수 차단", True, "VIX 데이터 없음")
+    groups: dict[str, list[dict]] = {}
+    for row in rows:
+        cls = _classify_asset_class(row["ticker"], row["sector"] or "", rules)
+        groups.setdefault(cls, []).append({"ticker": row["ticker"], "sector": row["sector"]})
+    return groups
 
-    vix = float(vix_rows[0]["value"])
-    if vix <= VIX_BLOCK_ABOVE:
-        return CertCondition("vix_gate", f"VIX > {VIX_BLOCK_ABOVE} 매수 차단", True,
-                            f"VIX {vix:.1f} (정상)")
-    return CertCondition("vix_gate", f"VIX > {VIX_BLOCK_ABOVE} 매수 차단", False,
-                        f"VIX {vix:.1f} — 신규 매수 금지 구간", "warning")
+
+def _read_indicator(name: str, db_path=None) -> float | None:
+    """macro 테이블에서 최신 지표 값. 없으면 None."""
+    rows = query(
+        "SELECT value FROM macro WHERE indicator=? ORDER BY date DESC LIMIT 1",
+        (name,),
+        db_path=db_path,
+    )
+    if not rows or rows[0]["value"] is None:
+        return None
+    return float(rows[0]["value"])
+
+
+def _compute_3d_change(indicator: str, db_path=None) -> float | None:
+    """indicator 의 최근 4개 값에서 3일 pct change 계산. 데이터 부족 시 None."""
+    rows = query(
+        "SELECT value FROM macro WHERE indicator=? ORDER BY date DESC LIMIT 4",
+        (indicator,),
+        db_path=db_path,
+    )
+    if len(rows) < 4 or rows[0]["value"] is None or rows[-1]["value"] is None:
+        return None
+    latest = float(rows[0]["value"])
+    past = float(rows[-1]["value"])
+    if past == 0:
+        return None
+    return abs((latest - past) / past * 100)
+
+
+def _get_indicator_value(name: str, db_path=None) -> float | None:
+    """volatility indicator 값 조회. computed 지표 (*_3d_change) 는 자동 계산."""
+    if name.endswith("_3d_change"):
+        base = name.replace("_3d_change", "")
+        return _compute_3d_change(base, db_path=db_path)
+    return _read_indicator(name, db_path=db_path)
+
+
+def _check_volatility_for_class(asset_class: str, policy: dict, db_path=None) -> list[CertCondition]:
+    """Asset class 별 변동성 gate. primary + secondary 각각 condition 발행.
+
+    Returns: [primary_condition, *secondary_conditions]. 데이터 없으면 PASS.
+    """
+    out: list[CertCondition] = []
+    prim_name = policy.get("volatility_primary")
+    prim_thr = policy.get("volatility_primary_threshold", 30)
+    if prim_name:
+        val = _get_indicator_value(prim_name, db_path=db_path)
+        cid = f"volatility_gate_{asset_class}"
+        desc = f"[{asset_class}] {prim_name} <= {prim_thr}"
+        if val is None:
+            out.append(CertCondition(cid, desc, True, f"{prim_name} 데이터 없음 — 스킵"))
+        elif val <= prim_thr:
+            out.append(CertCondition(cid, desc, True, f"{prim_name} {val:.2f} (정상)"))
+        else:
+            out.append(CertCondition(cid, desc, False, f"{prim_name} {val:.2f} > {prim_thr} — 매수 주의", "warning"))
+
+    # secondary — cross-market spillover (warning only)
+    sec_list = policy.get("volatility_secondary", []) or []
+    sec_thr = policy.get("volatility_secondary_threshold", prim_thr)
+    for sec_name in sec_list:
+        val = _get_indicator_value(sec_name, db_path=db_path)
+        cid = f"volatility_gate_{asset_class}_{sec_name}"
+        desc = f"[{asset_class}] {sec_name} spillover"
+        if val is None:
+            continue  # secondary 데이터 없으면 silent skip
+        if val <= sec_thr:
+            out.append(CertCondition(cid, desc, True, f"{sec_name} {val:.2f} (정상)"))
+        else:
+            out.append(CertCondition(cid, desc, False, f"{sec_name} {val:.2f} > {sec_thr} — 교차 시장 경고", "warning"))
+    return out
+
+
+def _check_volatility_gates(db_path=None) -> list[CertCondition]:
+    """Gate #7 (구 vix_gate) — 자산 클래스 별 변동성.
+
+    Legacy compatibility: portfolio 가 비어있거나 siege_gates 설정 없으면 구
+    VIX 전용 로직으로 fallback.
+    """
+    gate_config = RULES.get("siege_gates", {})
+    asset_classes = gate_config.get("asset_classes", {})
+    groups = _group_holdings_by_asset_class(db_path=db_path)
+
+    # Legacy fallback — 설정이 없거나 portfolio 비어있으면 기존 VIX 단일 체크
+    if not asset_classes or not groups:
+        val = _read_indicator("vix", db_path=db_path)
+        if val is None:
+            return [CertCondition("vix_gate", f"VIX > {VIX_BLOCK_ABOVE} 매수 차단", True, "VIX 데이터 없음")]
+        ok = val <= VIX_BLOCK_ABOVE
+        return [
+            CertCondition(
+                "vix_gate",
+                f"VIX > {VIX_BLOCK_ABOVE} 매수 차단",
+                ok,
+                f"VIX {val:.1f} {'(정상)' if ok else '— 신규 매수 금지 구간'}",
+                "error" if ok else "warning",
+            )
+        ]
+
+    out: list[CertCondition] = []
+    for cls in sorted(groups.keys()):
+        policy = asset_classes.get(cls)
+        if not policy:
+            continue  # YAML 에 클래스 정의 없으면 gate 스킵
+        out.extend(_check_volatility_for_class(cls, policy, db_path=db_path))
+    return out
 
 
 def _check_stop_loss_compliance(db_path=None) -> CertCondition:
@@ -152,6 +289,7 @@ def _check_stop_loss_compliance(db_path=None) -> CertCondition:
     try:
         from nuri.analysis.portfolio import analyze_portfolio
         from nuri.core.rules import get_account_strategy
+
         df = analyze_portfolio()
         if df.empty:
             return CertCondition("stop_loss", "손절선 준수", True, "포트폴리오 비어있음")
@@ -166,11 +304,9 @@ def _check_stop_loss_compliance(db_path=None) -> CertCondition:
                 violation_rows.append(row)
 
         if not violation_rows:
-            return CertCondition("stop_loss", "손절선 준수", True,
-                                f"최대 손실: {df['pnl_pct'].min():.1f}%")
+            return CertCondition("stop_loss", "손절선 준수", True, f"최대 손실: {df['pnl_pct'].min():.1f}%")
         tickers = ", ".join(f"{r['ticker']}({r['pnl_pct']:.1f}%)" for r in violation_rows[:5])
-        return CertCondition("stop_loss", "손절선 준수", False,
-                            f"위반 {len(violation_rows)}건: {tickers}", "error")
+        return CertCondition("stop_loss", "손절선 준수", False, f"위반 {len(violation_rows)}건: {tickers}", "error")
     except Exception:
         return CertCondition("stop_loss", "손절선 준수", True, "검증 스킵")
 
@@ -179,14 +315,13 @@ def _check_conflicts(db_path=None) -> CertCondition:
     """9. BUY/SELL 동시 시그널 해소."""
     try:
         from nuri.trading.engine.conflicts import detect_conflicts
+
         conflicts = detect_conflicts(db_path=db_path)
         high = [c for c in conflicts if c.severity == "high"]
         if not high:
-            return CertCondition("conflict_free", "방향 충돌 해소", True,
-                                f"충돌 {len(conflicts)}건 (high 0건)")
+            return CertCondition("conflict_free", "방향 충돌 해소", True, f"충돌 {len(conflicts)}건 (high 0건)")
         tickers = ", ".join(c.ticker for c in high[:5])
-        return CertCondition("conflict_free", "방향 충돌 해소", False,
-                            f"high 충돌 {len(high)}건: {tickers}", "warning")
+        return CertCondition("conflict_free", "방향 충돌 해소", False, f"high 충돌 {len(high)}건: {tickers}", "warning")
     except Exception:
         return CertCondition("conflict_free", "방향 충돌 해소", True, "검증 스킵")
 
@@ -195,70 +330,199 @@ def _check_drift_safety(db_path=None) -> CertCondition:
     """10. Critical drift 시그널 기반 매수 없음."""
     try:
         from nuri.trading.engine.memory import detect_drift
+
         drifts = detect_drift(db_path=db_path)
         critical = [d for d in drifts if d.status == "critical"]
         if not critical:
             return CertCondition("drift_safe", "시그널 drift 안전", True, "critical 없음")
         names = ", ".join(d.signal_id for d in critical)
-        return CertCondition("drift_safe", "시그널 drift 안전", False,
-                            f"critical {len(critical)}개: {names}", "warning")
+        return CertCondition(
+            "drift_safe", "시그널 drift 안전", False, f"critical {len(critical)}개: {names}", "warning"
+        )
     except Exception:
         return CertCondition("drift_safe", "시그널 drift 안전", True, "검증 스킵")
 
 
-def _check_external_data(db_path=None) -> CertCondition:
-    """8. 외부 데이터 수집 여부 (매수 체크리스트)."""
-    try:
-        from nuri.collectors.external import get_external_summary
-        summary = get_external_summary(db_path)
-        total = summary["total_records"]
-        sources = len(summary["sources"])
-        if total >= 10 and sources >= 3:
-            return CertCondition("external_data", "외부 데이터 충분", True,
-                                f"{total}건, {sources}개 소스")
-        return CertCondition("external_data", "외부 데이터 충분", False,
-                            f"{total}건, {sources}개 소스 (10건+, 3소스+ 필요)", "warning")
-    except Exception:
-        return CertCondition("external_data", "외부 데이터 충분", False, "external_analysis 테이블 없음", "warning")
-
-
-def _check_data_freshness(db_path=None) -> CertCondition:
-    """5. 데이터 신선도 (SPY 72h 이내)."""
-    rows = query("SELECT MAX(date) as latest FROM prices WHERE ticker='SPY'", db_path=db_path)
+def _ticker_age_hours(ticker: str, db_path=None) -> float | None:
+    """ticker 의 최신 price date 까지 age(시간). 데이터 없으면 None."""
+    rows = query("SELECT MAX(date) as latest FROM prices WHERE ticker=?", (ticker,), db_path=db_path)
     if not rows or not rows[0]["latest"]:
-        return CertCondition("data_fresh", "데이터 신선도 (72h)", False, "SPY 데이터 없음")
+        return None
     from nuri.core.timezone import kst_now
 
     latest = datetime.strptime(rows[0]["latest"], "%Y-%m-%d")
-    # KST 기준으로 신선도 비교 (naive datetime 통일)
-    age_hours = (kst_now().replace(tzinfo=None) - latest).total_seconds() / 3600
-    if age_hours <= 72:
-        return CertCondition("data_fresh", "데이터 신선도 (72h)", True,
-                            f"SPY {age_hours:.0f}시간 전")
-    return CertCondition("data_fresh", "데이터 신선도 (72h)", False,
-                        f"SPY {age_hours:.0f}시간 전 (72h 초과)", "warning")
+    return (kst_now().replace(tzinfo=None) - latest).total_seconds() / 3600
+
+
+def _check_freshness_for_class(asset_class: str, policy: dict, db_path=None) -> list[CertCondition]:
+    """Asset class 별 freshness gate. primary + secondary 개별 condition."""
+    out: list[CertCondition] = []
+    max_hours = policy.get("freshness_max_hours", 72)
+    prim = policy.get("freshness_primary")
+    if prim:
+        age = _ticker_age_hours(prim, db_path=db_path)
+        cid = f"data_fresh_{asset_class}"
+        desc = f"[{asset_class}] {prim} <= {max_hours}h"
+        if age is None:
+            out.append(CertCondition(cid, desc, False, f"{prim} 데이터 없음", "warning"))
+        elif age <= max_hours:
+            out.append(CertCondition(cid, desc, True, f"{prim} {age:.0f}시간 전"))
+        else:
+            out.append(CertCondition(cid, desc, False, f"{prim} {age:.0f}시간 전 ({max_hours}h 초과)", "warning"))
+
+    # secondary — cross-market reference
+    for sec in policy.get("freshness_secondary") or []:
+        age = _ticker_age_hours(sec, db_path=db_path)
+        cid = f"data_fresh_{asset_class}_{sec}"
+        desc = f"[{asset_class}] {sec} spillover freshness"
+        if age is None:
+            continue  # secondary 없으면 silent
+        if age <= max_hours:
+            out.append(CertCondition(cid, desc, True, f"{sec} {age:.0f}시간 전"))
+        else:
+            out.append(CertCondition(cid, desc, False, f"{sec} {age:.0f}시간 전 — 교차 시장 stale", "warning"))
+    return out
+
+
+def _check_data_freshness(db_path=None) -> list[CertCondition]:
+    """5. 데이터 신선도 — asset class 별 (v2). Legacy fallback: SPY 단일."""
+    gate_config = RULES.get("siege_gates", {})
+    asset_classes = gate_config.get("asset_classes", {})
+    groups = _group_holdings_by_asset_class(db_path=db_path)
+
+    if not asset_classes or not groups:
+        # Legacy — SPY 전용 체크
+        age = _ticker_age_hours("SPY", db_path=db_path)
+        if age is None:
+            return [CertCondition("data_fresh", "데이터 신선도 (72h)", False, "SPY 데이터 없음", "warning")]
+        ok = age <= 72
+        return [
+            CertCondition(
+                "data_fresh",
+                "데이터 신선도 (72h)",
+                ok,
+                f"SPY {age:.0f}시간 전" + ("" if ok else " (72h 초과)"),
+                "error" if ok else "warning",
+            )
+        ]
+
+    out: list[CertCondition] = []
+    for cls in sorted(groups.keys()):
+        policy = asset_classes.get(cls)
+        if not policy:
+            continue
+        out.extend(_check_freshness_for_class(cls, policy, db_path=db_path))
+    return out
+
+
+def _count_external_for_class(asset_class: str, tickers: list[str], db_path=None) -> tuple[int, int]:
+    """Asset class 에 속한 ticker 들의 external_analysis 집계. (records, sources).
+
+    kr_equity 등 자국 ticker 는 ticker column 으로 필터.
+    US ETF 는 ticker 기준. records 는 해당 ticker 쌓인 모든 행.
+    """
+    if not tickers:
+        # ticker 없으면 전체 조회로 fallback (미국 default class 등)
+        rows = query(
+            "SELECT COUNT(*) AS n, COUNT(DISTINCT source) AS s FROM external_analysis",
+            db_path=db_path,
+        )
+        return (int(rows[0]["n"]) if rows else 0, int(rows[0]["s"]) if rows else 0)
+    placeholders = ",".join("?" * len(tickers))
+    rows = query(
+        f"SELECT COUNT(*) AS n, COUNT(DISTINCT source) AS s FROM external_analysis WHERE ticker IN ({placeholders})",
+        tuple(tickers),
+        db_path=db_path,
+    )
+    return (int(rows[0]["n"]) if rows else 0, int(rows[0]["s"]) if rows else 0)
+
+
+def _check_external_for_class(asset_class: str, tickers: list[str], policy: dict, db_path=None) -> CertCondition:
+    """Asset class 별 external data gate."""
+    min_rec = policy.get("external_min_records", 10)
+    min_src = policy.get("external_min_sources", 3)
+    cid = f"external_data_{asset_class}"
+    desc = f"[{asset_class}] external >= {min_rec}건 / {min_src}소스"
+    try:
+        records, sources = _count_external_for_class(asset_class, tickers, db_path=db_path)
+    except Exception:
+        return CertCondition(cid, desc, False, "external_analysis 조회 실패", "warning")
+
+    if records >= min_rec and sources >= min_src:
+        return CertCondition(cid, desc, True, f"{records}건, {sources}개 소스")
+    return CertCondition(
+        cid, desc, False, f"{records}건, {sources}개 소스 (기준: {min_rec}+건/{min_src}+소스)", "warning"
+    )
+
+
+def _check_external_data(db_path=None) -> list[CertCondition]:
+    """8. 외부 데이터 — asset class 별 (v2). Legacy fallback: 전체 10/3."""
+    gate_config = RULES.get("siege_gates", {})
+    asset_classes = gate_config.get("asset_classes", {})
+    groups = _group_holdings_by_asset_class(db_path=db_path)
+
+    if not asset_classes or not groups:
+        # Legacy — get_external_summary 기반
+        try:
+            from nuri.collectors.external import get_external_summary
+
+            summary = get_external_summary(db_path)
+            total = summary["total_records"]
+            sources = len(summary["sources"])
+            ok = total >= 10 and sources >= 3
+            return [
+                CertCondition(
+                    "external_data",
+                    "외부 데이터 충분",
+                    ok,
+                    f"{total}건, {sources}개 소스" + ("" if ok else " (10건+, 3소스+ 필요)"),
+                    "warning" if not ok else "error",
+                )
+            ]
+        except Exception:
+            return [
+                CertCondition("external_data", "외부 데이터 충분", False, "external_analysis 테이블 없음", "warning")
+            ]
+
+    out: list[CertCondition] = []
+    for cls in sorted(groups.keys()):
+        policy = asset_classes.get(cls)
+        if not policy:
+            continue
+        tickers = [h["ticker"] for h in groups[cls]]
+        out.append(_check_external_for_class(cls, tickers, policy, db_path=db_path))
+    return out
 
 
 def _check_macro_event_alignment(db_path=None) -> CertCondition:
     """11. 매크로 이벤트 정합성 — event_score 기반 경고."""
     try:
         from nuri.quant.regime.event_score import compute_event_score
+
         es = compute_event_score(db_path=db_path)
         score = es.score
         dominant = es.dominant_category or "none"
 
         if abs(score) >= 15:
             return CertCondition(
-                "macro_event_alignment", "매크로 이벤트 정합성", False,
-                f"강한 매크로 이벤트 감지 (score={score:+.1f}): {dominant}", "warning",
+                "macro_event_alignment",
+                "매크로 이벤트 정합성",
+                False,
+                f"강한 매크로 이벤트 감지 (score={score:+.1f}): {dominant}",
+                "warning",
             )
         if abs(score) >= 10:
             return CertCondition(
-                "macro_event_alignment", "매크로 이벤트 정합성", False,
-                f"매크로 이벤트 주의 (score={score:+.1f}): {dominant}", "warning",
+                "macro_event_alignment",
+                "매크로 이벤트 정합성",
+                False,
+                f"매크로 이벤트 주의 (score={score:+.1f}): {dominant}",
+                "warning",
             )
         return CertCondition(
-            "macro_event_alignment", "매크로 이벤트 정합성", True,
+            "macro_event_alignment",
+            "매크로 이벤트 정합성",
+            True,
             f"event_score={score:+.1f} (정상)",
         )
     except Exception:
@@ -269,33 +533,46 @@ def _check_macro_event_alignment(db_path=None) -> CertCondition:
 def _check_rules_loaded(db_path=None) -> CertCondition:
     """규칙 파일 로드 확인."""
     from nuri.core.rules import RULES
+
     keys = len(RULES)
     has_take_profit = "take_profit" in RULES
     has_entry = "entry_rules" in RULES
     ok = keys >= 5 and has_take_profit and has_entry
-    return CertCondition("rules_loaded", "rules.yaml 완전 로드", ok,
-                        f"{keys}개 섹션 (take_profit={has_take_profit}, entry={has_entry})")
+    return CertCondition(
+        "rules_loaded", "rules.yaml 완전 로드", ok, f"{keys}개 섹션 (take_profit={has_take_profit}, entry={has_entry})"
+    )
 
 
-# 11개 조건 목록
+# 11개 조건 목록. asset-class 분리 gate (5/7/8) 는 list[CertCondition] 반환,
+# 나머지는 CertCondition 단건. certify() 에서 자동 flatten.
 ALL_CERT_CHECKS = [
-    _check_position_limits,          # 1. 종목 비중
-    _check_sector_limits,            # 2. 섹터 비중
-    _check_stop_loss_compliance,     # 3-4. 손절선
-    _check_data_freshness,           # 5. 데이터 신선도
-    _check_leverage_ban,             # 6. 레버리지 금지
-    _check_vix_gate,                 # 7. VIX 게이트
-    _check_external_data,            # 8. 외부 데이터
-    _check_conflicts,                # 9. 충돌 해소
-    _check_drift_safety,             # 10. drift 안전
-    _check_macro_event_alignment,    # 11. 매크로 이벤트 정합성
-    _check_rules_loaded,             # 규칙 로드
+    _check_position_limits,  # 1. 종목 비중
+    _check_sector_limits,  # 2. 섹터 비중
+    _check_stop_loss_compliance,  # 3-4. 손절선
+    _check_data_freshness,  # 5. 데이터 신선도 (per-class list)
+    _check_leverage_ban,  # 6. 레버리지 금지
+    _check_volatility_gates,  # 7. 변동성 게이트 (per-class list, 구 vix_gate)
+    _check_external_data,  # 8. 외부 데이터 (per-class list)
+    _check_conflicts,  # 9. 충돌 해소
+    _check_drift_safety,  # 10. drift 안전
+    _check_macro_event_alignment,  # 11. 매크로 이벤트 정합성
+    _check_rules_loaded,  # 규칙 로드
 ]
 
 
 def certify(db_path=None) -> Certificate:
-    """SIEGE 인증서 발급. 11개 조건 검증 후 pass/fail 판정."""
-    conditions = [check(db_path=db_path) for check in ALL_CERT_CHECKS]
+    """SIEGE 인증서 발급. 11개 조건 검증 후 pass/fail 판정.
+
+    v2 (#248): gate 5/7/8 은 portfolio asset_class 별로 multiple CertCondition
+    을 반환. certify() 가 flatten 하여 total_conditions 에 반영.
+    """
+    conditions: list[CertCondition] = []
+    for check in ALL_CERT_CHECKS:
+        result = check(db_path=db_path)
+        if isinstance(result, list):
+            conditions.extend(result)
+        else:
+            conditions.append(result)
 
     total = len(conditions)
     passed = sum(1 for c in conditions if c.passed)
@@ -325,8 +602,7 @@ def print_certificate(cert: Certificate) -> None:
     print(f"  SIEGE Certificate — {status} ({cert.score:.0f}%)")
     print(f"  {cert.timestamp}")
     print(f"{'═' * 60}")
-    print(f"  Passed: {cert.passed}/{cert.total_conditions} | "
-          f"Failed: {cert.failed} | Warnings: {cert.warnings}")
+    print(f"  Passed: {cert.passed}/{cert.total_conditions} | Failed: {cert.failed} | Warnings: {cert.warnings}")
     print(f"{'─' * 60}")
 
     for c in cert.conditions:
