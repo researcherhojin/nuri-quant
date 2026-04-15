@@ -197,10 +197,19 @@ def certify(db_path=None) -> Certificate:
 
 ## 7. 구현 Phase
 
-| Phase | 내용 | 선행 |
-|-------|------|------|
-| **1** | Gate 정책 YAML 외부화 + certification.py 리팩토링 | — |
-| **2** | Gate evidence 필드 + claim trace (OAE 패턴) | Phase 1 |
-| **3** | Safety lattice 5단계 (CERTIFIED → GUARDED → REVIEW_REQUIRED → BLOCKED → REJECTED) | Phase 2 |
-| **4** | safeslice 통계적 신뢰 구간 (drift_multiplier → Wilson CI + witness cliff) | Phase 3 |
-| **5** | Recursive improvement (failure memory + reuse signal) | Phase 4 |
+| Phase | 내용 | 선행 | 상태 |
+|-------|------|------|------|
+| **1** | Gate 정책 YAML 외부화 + certification.py 리팩토링 | — | ✅ **완료** (PR #312, issue #248) |
+| **2** | Gate evidence 필드 + claim trace (OAE 패턴) | Phase 1 | 미착수 |
+| **3** | Safety lattice 5단계 (CERTIFIED → GUARDED → REVIEW_REQUIRED → BLOCKED → REJECTED) | Phase 2 | 미착수 |
+| **4** | safeslice 통계적 신뢰 구간 (drift_multiplier → Wilson CI + witness cliff) | Phase 3 | 미착수 |
+| **5** | Recursive improvement (failure memory + reuse signal) | Phase 4 | 미착수 |
+
+**Phase 1 deliverables (#312)**:
+- `config/rules.yaml` `siege_gates` section (asset_class_rules + per-class policies)
+- `nuri/trading/engine/certification.py`: `_classify_asset_class`, `_group_holdings_by_asset_class`, per-class gate 5/7/8
+- Cross-market spillover (primary + secondary 지표 구조)
+- Legacy fallback (빈 portfolio / 설정 부재)
+- Tests: `TestAssetClassification` (4) + `TestAssetClassGates` (7)
+
+**Phase 1 scope out** (후속 PR 후보): Gate #11 macro event asset-class matrix (§6 표).

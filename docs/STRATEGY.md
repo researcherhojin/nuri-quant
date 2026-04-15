@@ -170,8 +170,8 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,763 tests, 130 files |
-| Frontend tests | 목표 ≥ 90% | 876 tests, 58 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,944 tests, 137 files |
+| Frontend tests | 목표 ≥ 90% | 913 tests, 60 files |
 | E2E | 핵심 flow 커버 | 39 Playwright tests (6 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
@@ -573,7 +573,7 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 
 이 섹션은 **앞으로 할 일**만 기록한다. 완료된 항목은 git log + closed PR + closed issue가 진실 source. 새 작업을 시작하기 전에 이 순서를 확인하고, 새 발견은 GitHub 이슈로 등록한 뒤 이 표에 추가한다.
 
-### Tier 1 — 완료 (2026-04-13 ~ 04-14)
+### Tier 1 — 완료 (2026-04-13 ~ 04-15)
 
 | # | 항목 | 이슈 | PR | 비고 |
 |---|------|------|----|------|
@@ -593,6 +593,10 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 | 10 | **KR `n/a (US-only)` 표시 개선** | — | #288 | US_ONLY_TABLES frozenset + `check_universe_coverage.py` + `validate_universe.py` detail. 수집 실패 vs 소스 한계 시각 구분 |
 | 11 | **#272 Phase 3 (Eval): validate_universe + US_ONLY 회귀 테스트** | — | #296 | 20 tests: TestUsOnlyTables(4) + TestRunValidation/Print/Main/Fetch(11) + TestOutputFormat(5) |
 | 12 | **#272 Phase 4 (UX): Dashboard coverage widget + `/api/coverage`** | — | #297 | `CoverageStatus` widget (5/5 PASS 헤더 + 5-col 테이블 + 소스 한계 footer). 14 tests (backend 5 + frontend 9) |
+| 13 | **README drift sync** | — | #309 | collectors 24→26, LLM 우선순위 (OpenAI primary), test counts 2,763→2,934. Codex APPROVED. |
+| 14 | **B2 — Learning Memory outcome read 역방향** | — | #310 | `_compute_weights` SELECT 에 `outcome_30d` 누락 + `sqlite3.Row.get()` 없음. 두 층 버그로 수개월간 weight 역방향. Fix + 3 regression (revert-proof). #308 lock-in 해제. |
+| 15 | **B1 — recommendations UNIQUE + UPSERT** | — | #311 | `UNIQUE(date, ticker, action)` → `UNIQUE(date, ticker)`. Migration 20 (MAX(id) dedup). `INSERT OR REPLACE` → `ON CONFLICT DO UPDATE` (id 보존 — `trades.recommendation_id` FK 안전). 프로덕션 20 중복 그룹 정리. |
+| 16 | **#248 SIEGE v2 Phase 1 — asset-class gates** | [#248](https://github.com/researcherhojin/nuri-quant/issues/248) | #312 | Gate 5/7/8 per-asset-class (us/kr_equity/kr_index/commodity/bond). Cross-market spillover (KOSPI+SPY, USD/KRW+VIX). `config/rules.yaml siege_gates` spec. Codex challenge (3 결함 지적) → 재설계 → APPROVED. |
 
 ### Tier 2 — 다음 1 달 (P1)
 

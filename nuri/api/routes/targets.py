@@ -1,4 +1,5 @@
 """가격 타겟 + 리밸런스 어드바이저 + SIEGE 인증 + Remediation API."""
+
 from fastapi import APIRouter
 
 router = APIRouter(tags=["targets"])
@@ -12,6 +13,7 @@ def get_portfolio_targets():
         check_take_profit_signals,
         check_trailing_stop_signals,
     )
+
     targets = calculate_portfolio_targets()
 
     # 익절/트레일링 도달 종목 태깅
@@ -37,6 +39,7 @@ def get_portfolio_targets():
 def get_ticker_targets(ticker: str):
     """단일 종목 가격 타겟."""
     from nuri.trading.recommend.price_targets import calculate_targets
+
     target = calculate_targets(ticker.upper())
     return target
 
@@ -45,14 +48,19 @@ def get_ticker_targets(ticker: str):
 def get_rebalance_advisor():
     """규칙 위반 감지 + 매도 수량 + 회수 금액."""
     from nuri.analysis.rebalance_advisor import generate_advisor_report
+
     return generate_advisor_report()
 
 
 _certify_cache: dict = {"data": None, "ts": 0}
 
+
 @router.get("/certify")
 def get_certification():
-    """SIEGE 11-condition 인증 상태 (5분 캐시)."""
+    """SIEGE 인증 상태 (5분 캐시).
+
+    v2 (#248): 11 base gate check × per-asset-class expansion 으로 total_conditions 가변.
+    """
     import time
     from dataclasses import asdict
 
@@ -61,6 +69,7 @@ def get_certification():
         return _certify_cache["data"]
 
     from nuri.trading.engine.certification import certify
+
     cert = certify()
     result = {
         "certified": cert.certified,
@@ -83,6 +92,7 @@ def get_remediation():
     from dataclasses import asdict
 
     from nuri.trading.engine.remediation import generate_remediation
+
     plan = generate_remediation()
     return {
         "certified": plan.certified,

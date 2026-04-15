@@ -25,21 +25,31 @@ Phase 4 (safeslice 패턴): `drift_multiplier`를 통계적 신뢰 구간(Wilson
 
 ## SIEGE 11-Gate Specification
 
-All recommendations must pass. 1 error-grade failure = REJECTED.
+All recommendations must pass. 1 error-grade failure = REJECTED. `Certificate.certified` = error severity 0건 기준.
+
+**v2 expansion (#248, PR #312)**: Gate 5/7/8 은 portfolio 를 `asset_class` 로 group
+한 뒤 per-class 정책 (`config/rules.yaml` `siege_gates`) 적용. 따라서 실행 시 실제
+`total_conditions` 는 portfolio 구성에 따라 **11 ~ 30+ 가변**. 예: US + KR + ETF
+혼합 포트폴리오면 us_equity/kr_equity/kr_index/commodity/bond 5 class × 3 gate =
+15 + 비asset 8 = 23 condition 발행. secondary spillover 지표 (예: KR 보유 시 VIX
+spillover) 는 추가 warning.
 
 | # | Condition | Grade | Threshold | v2 변경 |
 |---|-----------|-------|-----------|---------|
-| 1 | position_limit | error | Per-account strategy | v2: 계좌별 + 전체 이중 체크 |
-| 2 | sector_limit | error | Per-account strategy | v2: 계좌별 전략 기준 |
+| 1 | position_limit | error | Per-account strategy | 계좌별 + 전체 이중 체크 |
+| 2 | sector_limit | error | Per-account strategy | 계좌별 전략 기준 |
 | 3 | stop_loss_growth | error | Per-account strategy | 기존 유지 |
 | 4 | stop_loss_value | error | Per-account strategy | 기존 유지 |
-| 5 | data_fresh | warning | Per-asset-class ticker | v2: SPY or KOSPI or GC=F |
+| 5 | data_fresh | warning | **Per-asset-class** primary + secondary | ✅ 구현 (#312): us=SPY / kr_equity=KOSPI+[SPY spillover] / kr_index=KOSPI+[SPY] / commodity=GC=F / bond=TLT |
 | 6 | leverage_ban | error | No TSLL/TQQQ etc. | 기존 유지 |
-| 7 | vix_gate | warning | Per-asset-class indicator | v2: VIX or USD/KRW or gold vol |
-| 8 | external_data | warning | Per-asset-class threshold | v2: 자산별 기준 분리 |
+| 7 | volatility_gate (구 vix_gate) | warning | **Per-asset-class** primary + secondary | ✅ 구현 (#312): us=VIX / kr_equity=USD/KRW_3d+[VIX] / kr_index=KOSPI_3d+[USD/KRW] / commodity=gold_3d |
+| 8 | external_data | warning | **Per-asset-class** threshold + ticker filter | ✅ 구현 (#312): us ≥ 10/3, kr_equity ≥ 5/2 (ticker IN 쿼리로 실제 카운트) |
 | 9 | conflict_free | warning | No BUY/SELL conflict | 기존 유지 |
 | 10 | drift_safe | warning | No critical drift | 기존 유지 |
-| 11 | macro_event_alignment | warning | \|event_score\| >= 10 alert | 기존 유지 |
+| 11 | macro_event_alignment | warning | \|event_score\| >= 10 alert | 기존 유지 (asset-class matrix 는 별도 PR 예정) |
+
+**Legacy fallback**: empty portfolio 또는 `siege_gates` 설정 부재 시 Gate 5/7/8 은
+구 SPY/VIX 단일 체크로 안전하게 돌아감.
 
 ## Execution Priority
 

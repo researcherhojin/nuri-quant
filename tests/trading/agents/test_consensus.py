@@ -313,7 +313,7 @@ class TestConsensusDivergenceMechanicalPenalty:
     """
 
     @staticmethod
-    def _verdict(name, action, confidence=70):
+    def _verdict(name, action, confidence: float = 70.0):
         from nuri.trading.agents.base import AgentVerdict
 
         return AgentVerdict(name, "TEST", action, confidence, f"mock {name}")
@@ -1171,7 +1171,7 @@ class TestConsensusVerbose:
         from nuri.trading.agents.consensus import print_consensus
 
         with pytest.raises(TypeError):
-            print_consensus([], True)  # positional bool intentionally — verbose is keyword-only
+            print_consensus([], True)  # pyright: ignore[reportCallIssue]  # positional bool intentional — verbose is keyword-only
 
     def test_print_consensus_no_verbose_for_multi(self, capsys):
         """여러 종목 + verbose=False → supporting reasoning 출력 안 함."""
@@ -1352,7 +1352,7 @@ class TestPenaltyTelemetryEvent:
     """
 
     @staticmethod
-    def _verdict(name, action, confidence=70):
+    def _verdict(name, action, confidence: float = 70.0):
         from nuri.trading.agents.base import AgentVerdict
 
         return AgentVerdict(name, "JKHY", action, confidence, f"mock {name}")
