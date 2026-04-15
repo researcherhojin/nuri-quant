@@ -226,7 +226,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, ~339 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (2,934 backend + 913 frontend + 39 e2e)
+make test       # full suite (2,947 backend + 913 frontend + 39 e2e)
 make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
