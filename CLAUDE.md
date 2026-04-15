@@ -145,8 +145,11 @@ make verify           # Master verification orchestrator → data/reports/YYYY-M
 make pre-deploy       # Safety checks before deploy
 make deploy           # rsync to Mac Mini
 make backup           # DB backup (30-day rolling)
-scripts/sync_dev.sh push      # Dev↔dev 노트북 상태 동기화 (.env, DB, ~/.claude Tier 3)
-scripts/sync_dev.sh pull      # 반대 방향 (--with-reports / --no-claude 옵션)
+make sync-start       # Dev↔dev 작업 시작 — 다른 머신 → 이 머신 (pull) + NEXT_SESSION.md
+make sync-end         # Dev↔dev 작업 종료 — 이 머신 → 다른 머신 (push) + NEXT_SESSION.md
+make sync-status      # 양쪽 git HEAD + NEXT_SESSION timestamp 비교 (read-only)
+scripts/sync_dev.sh push      # 저수준 — make sync-end 가 wrap. NEXT_SESSION.md 미포함 (별도 scp)
+scripts/sync_dev.sh pull      # 저수준 — make sync-start 가 wrap (--with-reports / --no-claude)
 bash scripts/auto_deploy.sh   # Mac mini receiver: fetch + ff-only merge + 변경 분석 (manual test; canonical run is launchd com.nuri-quant.autopull every 5min)
 
 # Decision tracking
