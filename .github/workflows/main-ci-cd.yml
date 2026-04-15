@@ -290,55 +290,11 @@ jobs:
       - uses: actions/checkout@v6
         if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
 
-      - name: Install uv
+      - name: Setup backend env (uv + TA-Lib + venv)
         if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
-        uses: astral-sh/setup-uv@v7
+        uses: ./.github/actions/setup-backend-env
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          enable-cache: false
-
-      - name: Cache TA-Lib
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
-        id: cache-talib
-        uses: actions/cache@v5
-        with:
-          path: /tmp/talib-installed
-          key: talib-0.4.0-${{ runner.os }}-v5
-
-      - name: Build TA-Lib from source
-        if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && steps.cache-talib.outputs.cache-hit != 'true'
-        run: |
-          wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
-          tar -xzf ta-lib-0.4.0-src.tar.gz
-          cd ta-lib && ./configure --prefix=/usr && make && sudo make install
-          mkdir -p /tmp/talib-installed
-          sudo cp /usr/lib/libta_lib* /tmp/talib-installed/
-          sudo cp -r /usr/include/ta-lib /tmp/talib-installed/
-
-      - name: Restore TA-Lib from cache
-        if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && steps.cache-talib.outputs.cache-hit == 'true'
-        run: |
-          sudo cp /tmp/talib-installed/libta_lib* /usr/lib/
-          sudo mkdir -p /usr/include/ta-lib
-          sudo cp /tmp/talib-installed/ta-lib/* /usr/include/ta-lib/ 2>/dev/null || true
-          # Fix symlink to avoid ldconfig warning
-          sudo ln -sf /usr/lib/libta_lib.so.0.0.0 /usr/lib/libta_lib.so.0 2>/dev/null || true
-
-      - name: Configure TA-Lib
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
-        run: sudo ldconfig 2>/dev/null
-
-      - name: Cache venv
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
-        id: cache-venv
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('uv.lock') }}
-
-      - name: Install deps
-        if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && steps.cache-venv.outputs.cache-hit != 'true'
-        run: uv sync --frozen --extra dev
 
       # pytest-shard splits non-slow tests by hash(test_id) into 2 buckets.
       # shard-id is 0-indexed but the matrix exposes 1-indexed values.
@@ -378,50 +334,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - name: Setup backend env (uv + TA-Lib + venv)
+        uses: ./.github/actions/setup-backend-env
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          enable-cache: false
-
-      - name: Cache TA-Lib
-        id: cache-talib-slow
-        uses: actions/cache@v5
-        with:
-          path: /tmp/talib-installed
-          key: talib-0.4.0-${{ runner.os }}-v5
-
-      - name: Build TA-Lib from source
-        if: steps.cache-talib-slow.outputs.cache-hit != 'true'
-        run: |
-          wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
-          tar -xzf ta-lib-0.4.0-src.tar.gz
-          cd ta-lib && ./configure --prefix=/usr && make && sudo make install
-          mkdir -p /tmp/talib-installed
-          sudo cp /usr/lib/libta_lib* /tmp/talib-installed/
-          sudo cp -r /usr/include/ta-lib /tmp/talib-installed/
-
-      - name: Restore TA-Lib from cache
-        if: steps.cache-talib-slow.outputs.cache-hit == 'true'
-        run: |
-          sudo cp /tmp/talib-installed/libta_lib* /usr/lib/
-          sudo mkdir -p /usr/include/ta-lib
-          sudo cp /tmp/talib-installed/ta-lib/* /usr/include/ta-lib/ 2>/dev/null || true
-          sudo ln -sf /usr/lib/libta_lib.so.0.0.0 /usr/lib/libta_lib.so.0 2>/dev/null || true
-
-      - name: Configure TA-Lib
-        run: sudo ldconfig 2>/dev/null
-
-      - name: Cache venv
-        id: cache-venv-slow
-        uses: actions/cache@v5
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('uv.lock') }}
-
-      - name: Install deps
-        if: steps.cache-venv-slow.outputs.cache-hit != 'true'
-        run: uv sync --frozen --extra dev
 
       - name: Run slow tests with coverage
         run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow" --cov=nuri --cov-report=xml --cov-report=term
