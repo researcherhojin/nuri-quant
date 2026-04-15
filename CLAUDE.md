@@ -10,6 +10,8 @@ See `docs/STRATEGY.md` §5.8 — seven principles (모르면 읽는다 / 2번 �
 
 **Work status & changelog**: `docs/STRATEGY.md §7` manages Tier 1 (완료) / Tier 2 (next) backlog. Historical commits live in `git log` — do not re-document.
 
+**Session start**: read `NEXT_SESSION.md` first (gitignored) — carries the previous session's 10-min checklist and the next work item. Supersedes any stale "next task" recollection in user memory.
+
 ## Project
 
 Nuri-Quant (누리퀀트) — Open-source quant investment platform.
@@ -125,6 +127,7 @@ make verify-quick     # fast pre-commit check: tests + regime (~10s, no network)
 make verify-fast      # ~2min pre-deploy (verify.py without backtest)
 make verify-all       # full verification with network (커밋 전 필수)
 make validate-portfolio  # Verify each ticker in portfolio.yaml has live data
+# Single test — no make target; invoke pytest directly via .venv/bin/python:
 .venv/bin/python -m pytest tests/test_db.py -v                                    # single file
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices -v                  # single class
 .venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v  # single test
@@ -133,6 +136,7 @@ make validate-portfolio  # Verify each ticker in portfolio.yaml has live data
 make start            # API(:8001) + Dashboard(:3000) simultaneous
 make api              # FastAPI only (:8001)
 make dashboard        # Next.js only (:3000)
+# Frontend-only commands (npm run dev/build/test/lint/type-check): see frontend/CLAUDE.md
 
 # Verification
 make verify           # Master verification orchestrator → data/reports/YYYY-MM-DD/
@@ -216,17 +220,30 @@ nuri/
 
 > **Gotcha-Test Pair 원칙** (STRATEGY §5.3.1, PR #307): fix-pattern gotcha 는 반드시 `**Test:**` 로 회귀 테스트를 cite 한다. Test 가 명시되지 않은 gotcha 는 "folklore" — 수 세션 후 defensive code 가 제거돼도 아무도 못 막음 (df.copy() 재발 사례). 단순 facts/quirks 는 Test: 불필요.
 
+Grouped into 4 categories (NEXT_SESSION M3):
+
+### Framework & dependencies
+
 - **Next.js 16 breaking changes**: APIs differ from LLM training data — always read `node_modules/next/dist/docs/` first. See `frontend/CLAUDE.md`. *(facts, no fix)*
+- **fastapi < 0.129 pinned** (PR #291, #277): `openbb-core 1.6.7`이 `fastapi<0.129`를 요구하므로 pin됨. Dependabot 0.129+ 제안은 자동 무시 (`dependabot.yml`). openbb 제약 풀릴 때까지 유지.
+
+### Test mocking pitfalls
+
 - **vi.mock() hoisting** (frontend): `vi.mock("recharts")` affects ALL dynamic imports in the same vitest worker. Keep recharts-dependent and recharts-free tests in separate files. Use `vi.doMock` for per-test control.
 - **runpy + mock**: `runpy.run_module()` re-executes module source, invalidating mocks. Use `patch("source.module.function")` for source-level patching. **Test:** existing `tests/` runpy cases (source-level patch required to pass).
 - **OpenBB local import**: `obb` is imported inside functions (not at module level). `patch("module.obb")` fails — use `patch.dict(sys.modules, {"openbb": mock_module})`. **Test:** `tests/collectors/test_stock.py::TestStockCollectorTickerCollection::test_collect_ticker_success` (uses patch.dict pattern).
+- **`pd.DataFrame` in-place mutation + 공유 mock 참조** (PR #294/#295/#306/#307): `_standardize(df, ticker)` 같은 헬퍼가 `df.columns = ...` / `df["new"] = ...` 로 in-place mutation하고 테스트에서 `mock.return_value = df_fixture` (동일 객체)가 병렬 스레드에 공유되면 race → `pandas.errors.InvalidIndexError`. **방어**: 함수 진입 즉시 `df = df.copy()`. **주의**: PR #294/#295 가 commit message 에서 이 defense 를 claim 했지만 실제 `stock.py` 에 적용 안 됐음 → #306 CI 재발 → #307 에서 실제 fix + regression test lock-in (STRATEGY §5.3 phantom fix 사례). **Test:** `tests/collectors/test_stock.py::TestStandardizeThreadSafety::test_standardize_does_not_mutate_input` (mutation 감지) + `::test_concurrent_standardize_calls_do_not_race` (10-worker × 50 calls race simulation).
+
+### Data source quirks
+
 - **yfinance .KS fundamentals work**: Contrary to some code comments, `yfinance.Ticker("005930.KS").info` returns PE, ROE, margins, growth, debt for Korean individual stocks. ETFs return empty (expected). KIS API is NOT needed for fundamentals.
 - **pykrx API instability**: `get_market_fundamental`, `get_index_ohlcv`, `get_market_trading_value_by_date` — all broken (column name changes). KOSPI/KOSDAQ index collection uses yfinance `^KS11`/`^KQ11` fallback. Institutional flows currently unavailable.
+- **외부 API 동시성 비대칭** (STRATEGY §5.9.2-3, PR #282/#283): yfinance는 10-thread parallel OK. **pykrx/KRX는 sequential + `time.sleep(0.1)` 필수** (rate-limit). `ThreadPoolExecutor.result(timeout=)` 은 future만 cancel — pykrx C-extension call은 계속 실행되어 메모리 leak + slowdown 누적. 새 외부 API 통합 시 동시성 측정 후 결정.
+
+### Pipeline policies & defenses
+
 - **Macro event pipeline** (PR #249-#253): 15 categories (was 12), stale articles >7d filtered, confidence <0.3 excluded from event_score, recency weighting (today=1.0→3d=0.5), regime_hint requires 3+ events. Korean Market Agent reads `macro_events` table for `export_surge`/`demand_growth`.
 - **OpenAI Tier 2 ZDR gate** (PR #294): `make report-llm`이 조용히 실패하면 `OPENAI_ZDR_APPROVED=1` 미설정이 원인. OpenAI ZDR 승인 후 `.env`에 설정. `NURI_DISABLE_EXTERNAL_LLM=1`로 전면 opt-out 가능. 정책: §4.4.3.
-- **fastapi < 0.129 pinned** (PR #291, #277): `openbb-core 1.6.7`이 `fastapi<0.129`를 요구하므로 pin됨. Dependabot 0.129+ 제안은 자동 무시 (`dependabot.yml`). openbb 제약 풀릴 때까지 유지.
-- **`pd.DataFrame` in-place mutation + 공유 mock 참조** (PR #294/#295/#306/#307): `_standardize(df, ticker)` 같은 헬퍼가 `df.columns = ...` / `df["new"] = ...` 로 in-place mutation하고 테스트에서 `mock.return_value = df_fixture` (동일 객체)가 병렬 스레드에 공유되면 race → `pandas.errors.InvalidIndexError`. **방어**: 함수 진입 즉시 `df = df.copy()`. **주의**: PR #294/#295 가 commit message 에서 이 defense 를 claim 했지만 실제 `stock.py` 에 적용 안 됐음 → #306 CI 재발 → #307 에서 실제 fix + regression test lock-in (STRATEGY §5.3 phantom fix 사례). **Test:** `tests/collectors/test_stock.py::TestStandardizeThreadSafety::test_standardize_does_not_mutate_input` (mutation 감지) + `::test_concurrent_standardize_calls_do_not_race` (10-worker × 50 calls race simulation).
-- **외부 API 동시성 비대칭** (STRATEGY §5.9.2-3, PR #282/#283): yfinance는 10-thread parallel OK. **pykrx/KRX는 sequential + `time.sleep(0.1)` 필수** (rate-limit). `ThreadPoolExecutor.result(timeout=)` 은 future만 cancel — pykrx C-extension call은 계속 실행되어 메모리 leak + slowdown 누적. 새 외부 API 통합 시 동시성 측정 후 결정.
 - **Universe coverage 5-check gate** (PR #284/#286/#288/#296): `scripts/validate_universe.py` 는 prices/fundamentals/analyst/insider/super 5개 thresholds (≥95/80/70/50/80%) 검사. CI `Universe Coverage Validation` job 은 warning-only. `US_ONLY_TABLES` frozenset (analyst_ratings/insider_trades/superinvestors) 은 KR 에서 `n/a (US-only)` 표시 — 수집 실패 아닌 소스 한계. 새 테이블을 universe coverage 대상에 넣으려면 `check_universe_coverage.py` + `validate_universe.py` 둘 다 수정.
 - **JKHY falling knife pattern** (STRATEGY §5.10, PR #301-#303 완료 2026-04-15): 원 진단 ("chart_analysis.py 미연결") 은 오독 — TechnicalAgent 가 이미 호출 중. 실제 실패 모드는 "TechnicalAgent SELL 이 9 개 다른 에이전트 BUY 에 outweighted" + "dissent 가 사용자에게 surface/action 영향 없음". **현재 defense (4-layer)**: P1 B universe 1y backfill → P1 A1 `divergence_flag` 감지 → P1 A2 UI `⚠` 배지 → P1 A3 mechanical penalty (tech conf ≥ 80 opposite → HOLD downgrade). Live verified: JKHY 가 이제 action=HOLD. **Test:** `tests/trading/agents/test_consensus.py::TestConsensusDivergence*` (5 cases) + `TestConsensusDivergenceMechanicalPenalty` (8 cases) + `TestPenaltyTelemetryEvent` (5 cases).
 - **Commit message privacy scanning** (PR #289): `scripts/pre_push_check.sh` Section 4b가 `origin/main..HEAD` 범위의 unpushed commit message를 자동 스캔. 수동 확인은 `git log -1 --format=%B | .venv/bin/python scripts/check_privacy_leak.py --message` 또는 `.venv/bin/python scripts/check_privacy_leak.py --unpushed-commits`. 잡히는 패턴: broker name + ticker에 인접한 signed % (괄호 안 또는 뒤쪽). 스캐너가 본인의 문서나 PR 본문에서 이 패턴을 의심하면 placeholder (HWM/MDD 같은 false-positive whitelist 단어 또는 구체 티커 제거) 로 변경. 상세 룰: `docs/STRATEGY.md §4.4.1`.
@@ -255,12 +272,12 @@ User-scoped auto-memory lives outside the repo at `~/.claude/projects/-Users-ehb
 
 ### Mechanical Enforcement (Hooks + CI)
 
-| What | How | When |
-|------|-----|------|
-| `import sqlite3` outside db.py | PreToolUse hook (exit 2 block) | Before every Edit/Write |
-| `datetime.now()` usage | PostToolUse hook | After every Edit/Write |
-| `git push --force`, `git reset --hard`, `git clean -f` | PreToolUse hook (exit 2 block) | Before every Bash |
-| Ruff lint violations | PostToolUse hook | After every Edit/Write |
-| Privacy leaks (broker names, monetary literals) | CI `privacy-scan` job + `pre_push_check.sh` | Every push + PR |
-| Test regression | CI + Codecov 1% gate | Every PR |
-| Trivy CRITICAL vulnerabilities | CI `security-scan` job | Every push |
+| What | How | When | Where |
+|------|-----|------|-------|
+| `import sqlite3` outside db.py | PreToolUse hook (exit 2 block) | Before every Edit/Write | `.claude/settings.json` |
+| `datetime.now()` usage | PostToolUse hook | After every Edit/Write | `.claude/settings.json` |
+| `git push --force`, `git reset --hard`, `git clean -f` | PreToolUse hook (exit 2 block) | Before every Bash | `.claude/settings.json` |
+| Ruff lint violations | PostToolUse hook | After every Edit/Write | `.claude/settings.json` |
+| Privacy leaks (broker names, monetary literals) | CI `privacy-scan` job + `pre_push_check.sh` | Every push + PR | `.github/workflows/main-ci-cd.yml`, `scripts/pre_push_check.sh`, `scripts/check_privacy_leak.py` |
+| Test regression | CI + Codecov 1% gate | Every PR | `.github/workflows/main-ci-cd.yml` |
+| Trivy CRITICAL vulnerabilities | CI `security-scan` job | Every push | `.github/workflows/main-ci-cd.yml` |
