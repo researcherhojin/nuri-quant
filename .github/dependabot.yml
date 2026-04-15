@@ -84,6 +84,7 @@ updates:
           - "@vitest/*"
           - "@testing-library/*"
           - "@playwright/*"
+          - "playwright"         # standalone package (defensive — @playwright/test pulls it in)
         update-types:
           - "minor"
           - "patch"

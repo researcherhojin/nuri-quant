@@ -37,10 +37,14 @@ the previous session (drift bugs, atomicity, scope creep).
 - [ ] Config in `config/*.yaml` (no hardcoded values)
 - [ ] Numbers updated if changed (README, CLAUDE.md, STRATEGY.md)
 
+## Privacy (STRATEGY.md §4.4.1 — enforced by `scripts/check_privacy_leak.py`)
+
+- [ ] No broker names, account holdings, avg price, quantity, or ticker + PnL
+      in diff, tests, commit messages, or PR body
+- [ ] Scanner clean: `.venv/bin/python scripts/check_privacy_leak.py --unpushed-commits`
+
 ## Risk
 
 <!-- What could go wrong? What's the rollback path? -->
 
 - Rollback:
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
