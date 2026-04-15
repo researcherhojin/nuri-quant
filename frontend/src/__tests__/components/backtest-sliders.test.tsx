@@ -13,39 +13,46 @@ vi.mock("recharts", () => ({
   CartesianGrid: () => <div data-testid="grid" />,
 }));
 
+const mockReplace = vi.fn();
+let mockSearchParams = new URLSearchParams();
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => mockSearchParams,
+  useRouter: () => ({ replace: mockReplace }),
+  usePathname: () => "/strategy",
+}));
+
 // ── BacktestSliders ──────────────────────────────────────────────────
 
 describe("BacktestSliders", () => {
   let BacktestSliders: any;
 
   beforeEach(async () => {
+    mockSearchParams = new URLSearchParams();
     const mod = await import("@/components/ui/backtest-sliders");
     BacktestSliders = mod.BacktestSliders;
   });
 
-  it("renders all four sliders with labels", () => {
+  it("renders current slider labels", () => {
     render(<BacktestSliders onRun={vi.fn()} />);
     expect(screen.getByText("Stop")).toBeInTheDocument();
-    expect(screen.getByText("TP1")).toBeInTheDocument();
-    expect(screen.getByText("TP2")).toBeInTheDocument();
-    expect(screen.getByText("Trail")).toBeInTheDocument();
+    expect(screen.getByText("Take")).toBeInTheDocument();
   });
 
   it("shows default slider values", () => {
     render(<BacktestSliders onRun={vi.fn()} />);
     expect(screen.getByText("-7%")).toBeInTheDocument();
     expect(screen.getByText("20%")).toBeInTheDocument();
-    expect(screen.getByText("40%")).toBeInTheDocument();
-    expect(screen.getByText("-15%")).toBeInTheDocument();
   });
 
-  it("renders period buttons with 3Y active by default", () => {
+  it("renders lookback buttons with 3Y active by default", () => {
     render(<BacktestSliders onRun={vi.fn()} />);
     const btn3Y = screen.getByText("3Y");
     expect(btn3Y).toBeInTheDocument();
     expect(btn3Y.className).toContain("bg-muted");
     expect(screen.getByText("1Y")).toBeInTheDocument();
     expect(screen.getByText("5Y")).toBeInTheDocument();
+    expect(screen.getByText("SMA 50").className).toContain("bg-muted");
   });
 
   it("hides reset button when params are at defaults", () => {
@@ -53,7 +60,7 @@ describe("BacktestSliders", () => {
     expect(screen.queryByText("Reset defaults")).not.toBeInTheDocument();
   });
 
-  it("shows reset button after changing a period", () => {
+  it("shows reset button after changing lookback", () => {
     render(<BacktestSliders onRun={vi.fn()} />);
     fireEvent.click(screen.getByText("1Y"));
     expect(screen.getByText("Reset defaults")).toBeInTheDocument();
@@ -69,10 +76,9 @@ describe("BacktestSliders", () => {
 
   it("hides reset button again after clicking reset", () => {
     render(<BacktestSliders onRun={vi.fn()} />);
-    // Change period to make reset visible
+    // Change lookback to make reset visible
     fireEvent.click(screen.getByText("5Y"));
     expect(screen.getByText("Reset defaults")).toBeInTheDocument();
-    // Click reset
     fireEvent.click(screen.getByText("Reset defaults"));
     expect(screen.queryByText("Reset defaults")).not.toBeInTheDocument();
   });
@@ -82,11 +88,10 @@ describe("BacktestSliders", () => {
     render(<BacktestSliders onRun={onRun} />);
     fireEvent.click(screen.getByText("Run Backtest"));
     expect(onRun).toHaveBeenCalledWith({
+      smaPeriod: 50,
+      lookback: "3Y",
       stopLoss: -7,
-      takeProfit1: 20,
-      takeProfit2: 40,
-      trailing: -15,
-      period: "3Y",
+      takeProfit: 20,
     });
   });
 
@@ -105,12 +110,31 @@ describe("BacktestSliders", () => {
   it("passes changed params to onRun after slider change", () => {
     const onRun = vi.fn();
     render(<BacktestSliders onRun={onRun} />);
-    // Change period to 1Y
+    fireEvent.click(screen.getByText("SMA 100"));
     fireEvent.click(screen.getByText("1Y"));
     fireEvent.click(screen.getByText("Run Backtest"));
     expect(onRun).toHaveBeenCalledWith(
-      expect.objectContaining({ period: "1Y" }),
+      expect.objectContaining({ smaPeriod: 100, lookback: "1Y" }),
     );
+  });
+
+  it("uses initial params when provided", () => {
+    const onRun = vi.fn();
+    render(
+      <BacktestSliders
+        onRun={onRun}
+        initialParams={{ smaPeriod: 200, lookback: "5Y", stopLoss: -10, takeProfit: 30 }}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Run Backtest"));
+
+    expect(onRun).toHaveBeenCalledWith({
+      smaPeriod: 200,
+      lookback: "5Y",
+      stopLoss: -10,
+      takeProfit: 30,
+    });
   });
 });
 
@@ -137,6 +161,9 @@ describe("InteractiveBacktest", () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks();
+    mockReplace.mockReset();
+    mockSearchParams = new URLSearchParams();
+    global.fetch = vi.fn();
     const mod = await import("@/components/ui/interactive-backtest");
     InteractiveBacktest = mod.InteractiveBacktest;
   });
@@ -147,10 +174,10 @@ describe("InteractiveBacktest", () => {
     expect(screen.getAllByTestId("responsive-container").length).toBe(2);
   });
 
-  it("renders the sliders panel", () => {
+  it("starts in static mode", () => {
     render(<InteractiveBacktest initialData={mockEquity} initialMetrics={mockMetrics} />);
-    expect(screen.getByText("Backtest Parameters")).toBeInTheDocument();
-    expect(screen.getByText("Run Backtest")).toBeInTheDocument();
+    expect(screen.getByText("Static").className).toContain("bg-muted");
+    expect(screen.queryByText("Backtest Parameters")).not.toBeInTheDocument();
   });
 
   it("displays initial metrics", () => {
@@ -178,12 +205,16 @@ describe("InteractiveBacktest", () => {
   it("shows 'Custom params' after a successful backtest run", async () => {
     const updatedEquity = mockEquity.map((p) => ({ ...p, strategy: p.strategy + 5 }));
     const updatedMetrics = { ...mockMetrics, total_return: 30.0, excess_return: 14.8 };
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ equity: updatedEquity, metrics: updatedMetrics }),
-    });
+    } as Response);
 
     render(<InteractiveBacktest initialData={mockEquity} initialMetrics={mockMetrics} />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Interactive"));
+    });
+    await waitFor(() => expect(screen.getByText("Run Backtest")).toBeInTheDocument());
     await act(async () => {
       fireEvent.click(screen.getByText("Run Backtest"));
     });
@@ -192,12 +223,17 @@ describe("InteractiveBacktest", () => {
       expect(screen.getByText("Custom params")).toBeInTheDocument();
     });
     expect(screen.getByText(/Return \+30/)).toBeInTheDocument();
+    expect(mockReplace).toHaveBeenCalledWith("/strategy?sma=50&lb=3Y&sl=-7&tp=20");
   });
 
   it("keeps current data on fetch error", async () => {
-    global.fetch = vi.fn().mockRejectedValueOnce(new Error("network error"));
+    vi.mocked(global.fetch).mockRejectedValueOnce(new Error("network error"));
 
     render(<InteractiveBacktest initialData={mockEquity} initialMetrics={mockMetrics} />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Interactive"));
+    });
+    await waitFor(() => expect(screen.getByText("Run Backtest")).toBeInTheDocument());
     await act(async () => {
       fireEvent.click(screen.getByText("Run Backtest"));
     });
@@ -212,12 +248,16 @@ describe("InteractiveBacktest", () => {
   });
 
   it("keeps current data when API returns non-ok response", async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: false,
       json: async () => ({}),
-    });
+    } as Response);
 
     render(<InteractiveBacktest initialData={mockEquity} initialMetrics={mockMetrics} />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Interactive"));
+    });
+    await waitFor(() => expect(screen.getByText("Run Backtest")).toBeInTheDocument());
     await act(async () => {
       fireEvent.click(screen.getByText("Run Backtest"));
     });
@@ -229,20 +269,83 @@ describe("InteractiveBacktest", () => {
   });
 
   it("constructs the correct fetch URL with params", async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ equity: [], metrics: null }),
-    });
+    } as Response);
 
     render(<InteractiveBacktest initialData={mockEquity} initialMetrics={mockMetrics} />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Interactive"));
+    });
+    await waitFor(() => expect(screen.getByText("SMA 100")).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByText("SMA 100"));
+      fireEvent.click(screen.getAllByText("1Y")[0]);
+    });
+    await waitFor(() => expect(screen.getByText("SMA 100").className).toContain("bg-muted"));
     await act(async () => {
       fireEvent.click(screen.getByText("Run Backtest"));
     });
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        "/api/backtest/equity?sl=-7&tp1=20&tp2=40&trail=-15&period=3Y",
+        "/api/backtest/equity?sma=100&period=1Y&sl=-7&tp=20",
       );
     });
+  });
+
+  it("hydrates interactive mode from URL params", () => {
+    mockSearchParams = new URLSearchParams("sma=200&lb=5Y&sl=-10&tp=30");
+
+    render(<InteractiveBacktest initialData={mockEquity} initialMetrics={mockMetrics} />);
+
+    expect(screen.getByText("Interactive").className).toContain("bg-muted");
+    expect(screen.getByText("Backtest Parameters")).toBeInTheDocument();
+    expect(screen.getByText("Custom params")).toBeInTheDocument();
+  });
+
+  it("toggles back to static mode and hides sliders", async () => {
+    render(<InteractiveBacktest initialData={mockEquity} initialMetrics={mockMetrics} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Interactive"));
+    });
+    expect(screen.getByText("Backtest Parameters")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Static"));
+    });
+
+    expect(screen.getByText("Static").className).toContain("bg-muted");
+    expect(screen.queryByText("Backtest Parameters")).not.toBeInTheDocument();
+    expect(screen.getByText(/Return \+24\.5%/)).toBeInTheDocument();
+  });
+
+  it("reverts to initialMetrics after switching back to static post-run", async () => {
+    const customEquity = mockEquity.map((p) => ({ ...p, strategy: p.strategy + 10 }));
+    const customMetrics = { ...mockMetrics, total_return: 45.0, excess_return: 20.0 };
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ equity: customEquity, metrics: customMetrics }),
+    } as Response);
+
+    render(<InteractiveBacktest initialData={mockEquity} initialMetrics={mockMetrics} />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Interactive"));
+    });
+    await waitFor(() => expect(screen.getByText("Run Backtest")).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByText("Run Backtest"));
+    });
+    await waitFor(() => expect(screen.getByText(/Return \+45/)).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Static"));
+    });
+
+    expect(screen.getByText(/Return \+24\.5%/)).toBeInTheDocument();
+    expect(screen.queryByText(/Return \+45/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Custom params")).not.toBeInTheDocument();
   });
 });
