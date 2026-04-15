@@ -176,7 +176,13 @@ frontend/test-results/
 .pydevproject
 
 # ─── Claude Code / AI assistants ───────────────────────────────
-.claude/
+# Default-ignore .claude/ to keep personal state (settings.local.json,
+# hooks drafts, notes) out of git. Explicitly allowlist the curated
+# project-scoped assets so any Claude Code user working on this repo
+# picks them up automatically.
+.claude/*
+!.claude/settings.json
+!.claude/skills/
 
 # ─── OS ────────────────────────────────────────────────────────
 .DS_Store
