@@ -57,6 +57,36 @@ def client(db_path, monkeypatch):
     return TestClient(app)
 
 
+@pytest.fixture()
+def dashboard_fast_client(client, monkeypatch):
+    """Dashboard-focused fast client for payload-shape tests."""
+    import nuri.api.routes.dashboard as dashboard_mod
+
+    monkeypatch.setattr(
+        dashboard_mod,
+        "_get_cached_regime",
+        lambda: {
+            "regime": "bull_low_vol",
+            "trend": "bull",
+            "volatility": "low",
+            "confidence": 85,
+            "vix": None,
+            "fear_greed": None,
+        },
+    )
+    monkeypatch.setattr(
+        dashboard_mod,
+        "_get_macro",
+        lambda: {"score": 65, "interpretation": "Positive"},
+    )
+    monkeypatch.setattr(dashboard_mod, "_get_gate_score", lambda: 80)
+    monkeypatch.setattr(dashboard_mod, "_get_active_alerts", lambda: [])
+    monkeypatch.setattr(dashboard_mod, "_get_freshness", lambda: {})
+    monkeypatch.setattr(dashboard_mod, "_get_pipeline_status", lambda: {})
+    monkeypatch.setattr(dashboard_mod, "_get_upcoming_events", lambda: [])
+    return client
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Module-level seed helpers (used by TestDashboardV2, TestPipelineStatus, etc.)
 # Named `_seed_*_for_pipeline` to avoid shadowing conftest fixtures.
@@ -272,13 +302,13 @@ class TestPipelineAPI:
 
 
 class TestDashboardV2:
-    def test_dashboard_returns_fast(self, client, db_path):
+    def test_dashboard_returns_fast(self, dashboard_fast_client, db_path):
         """추천 데이터가 있을 때 대시보드 응답 검증."""
         _seed_recommendations_for_pipeline(db_path)
         _seed_pipeline_events_for_pipeline(db_path)
         _seed_prices_for_pipeline(db_path)
 
-        r = client.get("/api/dashboard")
+        r = dashboard_fast_client.get("/api/dashboard")
         assert r.status_code == 200
         data = r.json()
 
@@ -292,13 +322,13 @@ class TestDashboardV2:
         assert "freshness" in data
         assert "pipeline_status" in data
 
-    def test_dashboard_without_recommendations(self, client, db_path):
+    def test_dashboard_without_recommendations(self, dashboard_fast_client, db_path):
         """빈 DB에서도 에러 없이 정상 응답."""
         # 캐시 무효화 (이전 테스트 결과가 남아있을 수 있음)
         from nuri.api.routes.dashboard import _cache
         _cache["data"] = None
         _cache["timestamp"] = 0
-        r = client.get("/api/dashboard")
+        r = dashboard_fast_client.get("/api/dashboard")
         assert r.status_code == 200
         data = r.json()
 
@@ -308,7 +338,7 @@ class TestDashboardV2:
         assert "freshness" in data
         assert "pipeline_status" in data
 
-    def test_dashboard_actions_from_db(self, client, db_path):
+    def test_dashboard_actions_from_db(self, dashboard_fast_client, db_path):
         """recommendations 테이블에서 액션을 올바르게 읽는지 확인."""
         _seed_recommendations_for_pipeline(db_path)
 
@@ -317,7 +347,7 @@ class TestDashboardV2:
         _cache["data"] = None
         _cache["timestamp"] = 0
 
-        r = client.get("/api/dashboard")
+        r = dashboard_fast_client.get("/api/dashboard")
         assert r.status_code == 200
         data = r.json()
 
@@ -331,14 +361,14 @@ class TestDashboardV2:
         # HOLD: META(45%) < 50% → 포함 안 됨
         assert "META" not in tickers
 
-    def test_dashboard_cached(self, client, db_path):
+    def test_dashboard_cached(self, dashboard_fast_client, db_path):
         """두 번 호출 — 캐시 사용."""
-        r1 = client.get("/api/dashboard")
-        r2 = client.get("/api/dashboard")
+        r1 = dashboard_fast_client.get("/api/dashboard")
+        r2 = dashboard_fast_client.get("/api/dashboard")
         assert r1.status_code == 200
         assert r2.status_code == 200
 
-    def test_dashboard_freshness_fields(self, client, db_path):
+    def test_dashboard_freshness_fields(self, dashboard_fast_client, db_path):
         """신선도 정보 존재 확인."""
         _seed_prices_for_pipeline(db_path)
 
@@ -346,7 +376,7 @@ class TestDashboardV2:
         _cache["data"] = None
         _cache["timestamp"] = 0
 
-        r = client.get("/api/dashboard")
+        r = dashboard_fast_client.get("/api/dashboard")
         assert r.status_code == 200
         data = r.json()
 
