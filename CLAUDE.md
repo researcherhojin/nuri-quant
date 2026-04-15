@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 See `docs/STRATEGY.md` §5.8 — seven principles (모르면 읽는다 / 2번 실패하면 접근을 바꾼다 / 사용자 워크플로로 검증한다 / 스코프를 지킨다 / 숫자를 grep한다 / 시스템이 차단한다 / 외부 API는 측정한다). STRATEGY.md is the canonical source; do not duplicate the list here.
 
+## Flow (Think → Plan → Build → Review → Test → Ship → Reflect)
+
+See `docs/STRATEGY.md §2.7`. Every task goes through all 7 phases — don't skip. Each phase has explicit input/action/artifact/gate. Failed gate → regress to prior phase. Trivial chores may inline Think+Plan; everything from Build onward is mandatory. Codex unavailable → self-review + recover in next PR.
+
 **Work status & changelog**: `docs/STRATEGY.md §7` manages Tier 1 (완료) / Tier 2 (next) backlog. Historical commits live in `git log` — do not re-document.
 
 **Session start**: read `NEXT_SESSION.md` first (gitignored) — carries the previous session's 10-min checklist and the next work item. Supersedes any stale "next task" recollection in user memory.
@@ -104,7 +108,7 @@ make full-scan        # 8-phase: collect→analyze→validate→regime→recomme
 make quick-scan       # 빠른 4-step: collect→analyze→consensus→targets (~2분)
 
 # SIEGE Certification
-make certify          # 11-condition 규칙 검증 → CERTIFIED / REJECTED
+make certify          # SIEGE v2 규칙 검증 (asset-class per-expansion, conditions 가변) → CERTIFIED / REJECTED
 make remediate        # REJECTED → 진단 + 매도 처방 + post-remediation 예측
 make gate             # Pipeline gate verifier (exits 1 if BLOCKED)
 
@@ -187,7 +191,7 @@ nuri/
 │   ├── recommend/     # Candidates, rebalance, tracker, price_targets
 │   ├── swing/         # Market-wide scanner + rules
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
-├── api/               # FastAPI REST API (68 endpoints, routes/ incl. actions/opportunities/market-context/coverage)
+├── api/               # FastAPI REST API (65 endpoints, routes/ incl. actions/opportunities/market-context/coverage)
 ├── alerts/            # Discord daily report + bot, Telegram alerts
 └── llm/               # LLM report (Ollama) + OpenAI wrapper + event classifier
 ```
@@ -198,7 +202,7 @@ nuri/
 - **Loose coupling via data**: Pipeline phases communicate through DB/CSV, never direct imports. See `docs/ARCHITECTURE.md`.
 - **Collector template**: All inherit `BaseCollector` (collect→save→run). See `nuri/collectors/CLAUDE.md`.
 - **10-agent consensus**: Weighted voting, risk agent veto. See `nuri/trading/agents/CLAUDE.md`.
-- **SIEGE 11-gate**: All recommendations must pass 11 conditions. See `nuri/trading/engine/CLAUDE.md`.
+- **SIEGE v2 certification**: 3D gate (Account × Asset Class × Execution Market). `conditions` count is variable — per-asset-class expansion flattens at `certify()`. 1 error-grade fail → REJECTED. See `nuri/trading/engine/CLAUDE.md` + `docs/SIEGE_V2.md`.
 - **20 signals, YAML registry**: `config/signals.yaml` drives `signal_backtest.py`. See `docs/ARCHITECTURE.md`.
 - **Regime classifier**: 6 base + 4 special regimes. See `docs/ARCHITECTURE.md`.
 - **External LLM gateway**: `nuri/llm/openai_client.py` is the ONLY external LLM entry point. Direct `import openai` forbidden. `chat_json` (Tier 0 JSON) / `chat_text` (Tier 2 narrative, ZDR-gated). Every call audit-logged to `external_llm_calls` (content never stored). Policy: `docs/STRATEGY.md §4.4.3`.

@@ -31,7 +31,7 @@ flowchart TD
   end
 
   subgraph Core["Core (DB + Config)"]
-    DB[("SQLite WAL\n31 tables")]
+    DB[("SQLite WAL\n33 tables")]
     Config("config/*.yaml\nrules / agents / signals\nuniverse / siege_gates")
     Events("pipeline_events\nappend-only journal")
     Freshness("Freshness SLA\nPASS/WARN/FAIL")
@@ -63,7 +63,7 @@ flowchart TD
   subgraph SIEGE["Phase F: SIEGE Certification"]
     direction TB
     GatePolicy("Gate Policy\nconfig/rules.yaml\nasset_class × account")
-    Gate11("11-Gate Check\nposition/sector/SL\nVIX/freshness/external\nconflict/drift/macro")
+    Gates("SIEGE v2 Gates\nasset-class expansion\nposition/sector/SL\nVIX/freshness/external\nconflict/drift/macro")
     Cert("Certificate\nCERTIFIED / REJECTED")
     Evidence("Evidence Trace\nsource + value + threshold")
   end
@@ -75,7 +75,7 @@ flowchart TD
   end
 
   subgraph Serve["Interface"]
-    API("FastAPI :8001\n68 endpoints + SSE")
+    API("FastAPI :8001\n65 endpoints + SSE")
     Dashboard("Next.js 16 :3000\n17 pages\nAction-First dashboard")
     Discord("Discord/Telegram\nalerts + daily report")
   end
@@ -113,10 +113,10 @@ flowchart TD
   Retail --> ConsEngine
 
   %% Consensus → SIEGE
-  ConsEngine --> Gate11
-  Config --> GatePolicy --> Gate11
-  Gate11 --> Cert
-  Gate11 --> Evidence
+  ConsEngine --> Gates
+  Config --> GatePolicy --> Gates
+  Gates --> Cert
+  Gates --> Evidence
 
   %% SIEGE → Track
   Cert --> Tracker
@@ -141,7 +141,7 @@ flowchart TD
 
 ### Key architectural decisions
 
-- **Sole SQLite gateway** — `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced). 31 tables, WAL mode. All modules use `query()`, `query_df()`, `upsert_*()`, `get_db()`. Tests inject `tmp_path` for full isolation.
+- **Sole SQLite gateway** — `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced). 33 tables, WAL mode. All modules use `query()`, `query_df()`, `upsert_*()`, `get_db()`. Tests inject `tmp_path` for full isolation.
 - **Config-driven, code-static** — all thresholds, rules, signal metadata, and SIEGE gate policies live in `config/*.yaml`. Changing a stop-loss or adding a new market means editing YAML, not Python. See `rules.yaml`, `agents.yaml`, `signals.yaml`, `universe.yaml`.
 - **DB-only integration between phases** — phases communicate through DB tables and CSV files, never direct imports. Re-running an upstream phase automatically refreshes downstream consumers.
 - **SIEGE v2: 3-dimensional certification** — gates apply per Account (strategy profile) × Asset Class (exposure: us_equity, kr_equity, commodity, bond) × Execution Market (KRX, NYSE). See [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md). Inspired by [nutshells3/SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution).
@@ -156,10 +156,10 @@ flowchart TD
 | `nuri/quant/validation/` | Analyze | Signal backtest (20 signals from `config/signals.yaml`), superinvestor/analyst backtest, scorecard |
 | `nuri/quant/factors/` | Analyze | Multi-factor scoring (momentum, value, quality, composite) |
 | `nuri/trading/agents/` | Consensus | 10 specialist agents + weighted consensus. Risk agent veto. Korean Market Agent reads macro_events |
-| `nuri/trading/engine/` | Certify | SIEGE 11-gate (v2: asset-class-aware), conflict detection, learning memory |
+| `nuri/trading/engine/` | Certify | SIEGE v2 — 3D certification (Account × Asset Class × Market) with per-asset-class expansion, conflict detection, learning memory |
 | `nuri/trading/recommend/` | Certify+Track | Candidates, price targets, rebalance advisor, outcome tracker (30/60/90d) |
 | `nuri/llm/` | Classify | Event classifier (OpenAI/regex), LLM report (OpenAI primary, llama.cpp/Ollama fallback), OpenAI wrapper |
-| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (68 endpoints incl. `/actions`, `/opportunities`, `/market-context`). Swagger at `/docs` |
+| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (65 endpoints incl. `/actions`, `/opportunities`, `/market-context`, `/coverage`). Swagger at `/docs` |
 | `frontend/` | Serve | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme) |
 | `nuri/core/` | Foundation | db.py (sole SQLite), events.py (journal), freshness.py (SLA), timezone.py (KST), rules.py, signal_config.py |
 | `config/*.yaml` | Foundation | rules, agents, signals, universe, stock_types, portfolio (gitignored) |
@@ -218,7 +218,7 @@ cp config/portfolio.example.yaml config/portfolio.yaml  # your holdings (gitigno
 make start          # API (:8001) + Dashboard (:3000)
 make full-scan      # 8-phase pipeline end-to-end
 make consensus      # 10-agent analysis + decision recording
-make certify        # SIEGE 11-gate certification
+make certify        # SIEGE v2 certification (asset-class per-expansion)
 make scan           # Daily scan (us_core, 85 tickers)
 make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ```
@@ -226,7 +226,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (2,951 backend + 913 frontend + 38 e2e)
+make test       # full suite (2,969 backend + 917 frontend + 38 e2e)
 make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
@@ -261,13 +261,13 @@ Each ticker is tagged growth/value via `config/stock_types.yaml`. Take-profit an
 - **VIX > 30** → new buys blocked
 - **execution_priority** → stop-loss → take-profit → trailing → new-buy (loss largest first)
 - **Buy checklist** → TipRanks ≥ Moderate Buy · superinvestors ≥ 3 · PE < 100 · revenue > $0 · multi-factor top 50%
-- **SIEGE 11-gate** → 1 error grade failure = REJECTED, no manual override
+- **SIEGE v2 gate** → 1 error-grade failure = REJECTED, no manual override (conditions count varies per asset-class expansion)
 
 ## References
 
 | Source | Usage |
 |--------|-------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-gate certification, policy-driven gates, safety lattice, iterative learning |
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | Policy-driven gate certification (v2: asset-class expansion), safety lattice, iterative learning |
 | [OAE](https://github.com/nutshells3/orchestration-assurance-engine) | Claim trace, evidence lineage, audit pipeline |
 | [safeslice](https://github.com/nutshells3/safeslice) | Statistical reliability bounds, witness cliff detection (Phase 4 target) |
 | [fwp](https://github.com/nutshells3/fwp) | Protocol seam pattern, governed job lifecycle |

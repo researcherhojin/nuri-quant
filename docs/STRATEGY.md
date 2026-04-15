@@ -13,7 +13,7 @@
 **핵심 차별점**: 추천을 내리는 것이 아니라, 추천의 근거를 증명하는 것이 목적이다.
 - 20개 시그널 × 8,000+ 과거 트레이드 백테스트로 각 시그널의 승률/수익비(PF)를 검증
 - 10개 에이전트가 독립적으로 분석한 뒤 가중 합의 (risk agent 거부권)
-- SIEGE 11-gate가 모든 추천을 기계적으로 검증 — 1개라도 실패하면 REJECTED
+- SIEGE v2 gate (asset-class per-expansion) 가 모든 추천을 기계적으로 검증 — 1개 error-grade 라도 실패하면 REJECTED
 - 5개 Plotly 차트가 최종 증거를 시각화
 
 ---
@@ -90,6 +90,28 @@
 **Anti-pattern**: §2.1 "Evidence-first" 를 이유로 모든 것을 Surface 에 두면 P1 A1/A2 의 JKHY 에피소드처럼 ⚠ 배지가 실제 행동을 바꾸지 않는 "performative 경고" 가 된다. 반대로 모든 반대를 Hard veto 로 올리면 trade 기회 손실 + 사용자의 판단권 박탈. 3단계 구분이 명시적 framework.
 
 **변경 절차**: 단계 이동은 config 또는 docs 만 건드리는 PR 로. 코드에 매직 넘버 추가하는 방식으로 step 승격 금지 (§2.2 "규칙을 바꾸고 싶으면 YAML을 수정" 원칙).
+
+### 2.7 개발 Flow (gstack 7-phase, 2026-04-16 채택)
+
+모든 작업은 **Think → Plan → Build → Review → Test → Ship → Reflect** 7단계를 통과한다. [gstack](https://github.com/garrytan/gstack) 의 Flow 를 nuri-quant 운영 discipline 으로 채택. 단계를 건너뛰지 않는다 (§5.9.7 Multi-role flow 강제의 refinement).
+
+각 단계는 **입력 → 행동 → 산출물 → 통과 gate** 로 명세된다. Gate 를 통과하지 못하면 다음 단계로 넘어가지 못한다. 이전 "PM → Developer → Code Reviewer → QA → PR" 4-role flow 는 Think+Plan / Build / Review / Test / Ship 단계에 흡수됨.
+
+| # | 단계 | 입력 | 행동 | 산출물 | 통과 gate |
+|---|------|------|------|-------|-----------|
+| 1 | **Think** | 사용자 신호 (이슈, 관찰, 페인포인트) | 문제 framing, root-cause, literature/dual 확인 (§2.1 Evidence-first) | GitHub 이슈 본문 또는 `docs/plans/*.md` 에 problem statement + evidence + constraint | "왜 **지금** 이걸 하는가" 를 한 문장으로 답할 수 있는가 |
+| 2 | **Plan** | Think 산출물 | scope 정의, touched files, acceptance criteria, Escalation Ladder (§2.6) 레벨 선택 | PR description 초안 또는 `/plan` 출력 — 변경 파일 + 테스트 계획 + non-goals | 스코프 팽창 없는가? 이슈 1 = PR 1 준수? 커밋 ≤ 3 수렴 가능? |
+| 3 | **Build** | Plan 산출물 | 최소 범위 구현. `config/*.yaml` 우선 (§2.2), DB-only phase 통신 (§2.3), `kst_now()` 강제 | feature 브랜치 커밋 | hardcode 없는가? hook/lint 통과? `git branch --show-current` 확인했는가? |
+| 4 | **Review** | feature 브랜치 diff | Codex 독립 리뷰 (`/codex review`) + Claude self-review diff. P1 finding 해결 필수 | Review log, findings 목록, GATE verdict (PASS / FAIL) | P1 전부 해결? Claude ↔ codex disagreement 가 있다면 이유 명시? |
+| 5 | **Test** | reviewed 브랜치 | `make test-fast` + **사용자 워크플로 live 실행** (§5.9.1 mock ≠ ship). UI 면 browser QA | green CI + manual QA 로그 (UI 스크린샷 또는 명령어 출력) | 사용자가 실제 입력할 명령을 1회 이상 직접 돌렸는가? |
+| 6 | **Ship** | tested 브랜치 | `gh pr merge --squash --delete-branch`. 이슈 close. 로컬+원격 branch 정리. STRATEGY §7 Tier 1 업데이트 | MERGED PR, CLOSED 이슈, Tier 1 entry, 깨끗한 `git branch -a` | Tier 1 행 추가됐는가? 브랜치 정리됐는가? |
+| 7 | **Reflect** | ship 결과 | 무엇이 놀라웠는가? 새 gotcha? 메모리 업데이트? NEXT_SESSION refresh? | NEXT_SESSION.md 갱신 + 새 fix-pattern gotcha 는 STRATEGY gotchas 에 `**Test:**` cite (§5.3.1) + user memory 갱신 (해당되면) | 다음 세션이 이 작업 컨텍스트 없이 바로 뛸 수 있는가? |
+
+**단계 실패 = 이전 단계로 회귀**. 예: Test 에서 mock-only 함정 발견 → Build 로 돌아가서 실제 경로 fix. Review 에서 P1 지적 → Build 로 돌아가서 fix. Reflect 에서 drift 발견 → Plan/Build 회귀 아닌 별도 chore PR 로 분리.
+
+**Codex 부재 시 Review 단계**: Codex 사용량 한도 등으로 독립 리뷰가 막히면 Claude self-review diff 로 대체 + **다음 PR 의 Review 단계에서 회수** (이전 PR 을 함께 검토하도록 codex 에 cite). 무한정 지연하지 않는다.
+
+**Think/Plan 생략 패턴**: trivial chore (오타, 버전 번호, 주석 수정) 는 Think/Plan 을 inline 으로 압축 가능. 단 Build 이상부터는 반드시 모든 단계 준수. "trivial 로 시작했지만 커짐" 을 Build 중 발견하면 Think/Plan 으로 회귀.
 
 ---
 
@@ -170,8 +192,8 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,951 tests, 137 files |
-| Frontend tests | 목표 ≥ 90% | 913 tests, 60 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,969 tests, 137 files |
+| Frontend tests | 목표 ≥ 90% | 917 tests, 60 files |
 | E2E | 핵심 flow 커버 | 38 Playwright tests (6 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
@@ -549,23 +571,44 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 
 ---
 
-## 6. SIEGE 11-Gate 명세
+## 6. SIEGE Gate 명세 (v2)
 
-모든 추천은 이 11개 조건을 통과해야 CERTIFIED 된다. 1개라도 error 등급 실패 시 REJECTED.
+모든 추천은 아래 조건군을 통과해야 CERTIFIED 된다. 1개라도 **error 등급** 실패 시 REJECTED. Warning 은 경고 누적만.
+
+**v2 변경 (PR #312, #248)**: 조건 개수는 **가변**. `certify()` 가 asset class (us_equity / kr_equity / kr_index / commodity / bond) 별로 5 / 7 / 8 조건을 per-class expansion 후 flatten. 고정 "11-gate" 명칭은 deprecated — v1 레거시 잔재로 `Certificate.total_conditions` 를 읽는 doc/코드가 있으면 v2 표기로 교정.
+
+### Base 조건 (모든 asset class 공통)
 
 | # | 조건 | 등급 | 기준 |
 |---|------|------|------|
-| 1 | position_limit | error | 단일 종목 ≤ 15% |
-| 2 | sector_limit | error | 섹터 ≤ 35% |
-| 3 | stop_loss_growth | error | 성장주 손절 -7% 준수 |
-| 4 | stop_loss_value | error | 가치주 손절 -10% 준수 |
-| 5 | data_fresh | warning | SPY 데이터 ≤ 72시간 |
-| 6 | leverage_ban | error | 금지 ETF (TSLL, TQQQ 등) 미보유 |
-| 7 | vix_gate | warning | VIX > 30일 때 신규 매수 없음 |
-| 8 | external_data | warning | 외부 데이터 ≥ 10건 존재 |
+| 1 | position_limit | error | 단일 종목 비중. `config/rules.yaml account_strategies.<s>.per_position_max` — core 15%, active 25%, swing 30%, long_term 25%, pension 40% |
+| 2 | sector_limit | error | 섹터 비중. `position_limits.max_sector_exposure` = 35% (top-level, 전략 공통) |
+| 3 | stop_loss | error | 손절선 준수. 내부에서 종목 type (`config/stock_types.yaml` growth/value) 에 따라 threshold 분기. 전략별 override: `account_strategies.<s>.stop_loss` — core -7, active -10, swing -15, long_term -20, pension -30 |
+| 6 | leverage_ban | error | 금지 ETF (`leverage.banned_tickers` 목록) 미보유 |
 | 9 | conflict_free | warning | 동일 종목 BUY/SELL 충돌 없음 |
 | 10 | drift_safe | warning | 매수 후보에 critical drift 시그널 없음 |
 | 11 | macro_event_alignment | warning | \|event_score\| ≥ 10 시 경고 |
+
+### Per-asset-class 조건 (v2 expansion — primary + secondary)
+
+`config/rules.yaml siege_gates.asset_classes.<class>` 에 정의. 각 class 별 primary + secondary condition 이 flatten 된다.
+
+| # | 조건 | 등급 | 출처 필드 |
+|---|------|------|----------|
+| 5 | data_fresh | warning | `freshness_primary` + `freshness_secondary[]` + `freshness_max_hours`. primary/secondary 각각 condition emit. |
+| 7 | volatility_gate | warning | `volatility_primary` + `volatility_primary_threshold` (+ secondary). us_equity 는 VIX > 30, kr_equity 는 USD/KRW 3d change > 3% + VIX > 30 spillover, kr_index 는 KOSPI 3d > 5% + USD/KRW > 3% 등 |
+| 8 | external_data | warning | `external_min_records` + `external_min_sources`. us_equity ≥ 10 / 3 source, kr_equity ≥ 5 / 2, kr_index/commodity/bond ≥ 3 / 1 |
+
+### 예시 — us_equity 3종목 + kr_equity 2종목 포트폴리오
+
+`certify()` flatten 결과 (2026-04-16 기준 실측):
+- base 8 condition (#1-4, #6, #9-11)
+- data_fresh: us primary(SPY) 1 + kr primary(KOSPI) 1 + kr secondary(SPY) 1 = **3**
+- volatility: us(VIX) 1 + kr primary(USD/KRW) 1 + kr secondary(VIX) 1 = **3**
+- external_data: us 1 + kr 1 = **2**
+- **총 16 conditions**. 다른 포트폴리오는 다른 수치.
+
+상세 per-class rule 은 `config/rules.yaml siege_gates` 와 `docs/SIEGE_V2.md` 참조. 실제 condition 생성 로직: `nuri/trading/engine/certification.py` `_check_freshness_for_class()`, `_check_volatility_for_class()`, `_check_external_for_class()` — 각 함수는 `list[CertCondition]` 반환, `certify()` 가 flatten.
 
 ---
 
@@ -597,6 +640,7 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 | 14 | **B2 — Learning Memory outcome read 역방향** | — | #310 | `_compute_weights` SELECT 에 `outcome_30d` 누락 + `sqlite3.Row.get()` 없음. 두 층 버그로 수개월간 weight 역방향. Fix + 3 regression (revert-proof). #308 lock-in 해제. |
 | 15 | **B1 — recommendations UNIQUE + UPSERT** | — | #311 | `UNIQUE(date, ticker, action)` → `UNIQUE(date, ticker)`. Migration 20 (MAX(id) dedup). `INSERT OR REPLACE` → `ON CONFLICT DO UPDATE` (id 보존 — `trades.recommendation_id` FK 안전). 프로덕션 20 중복 그룹 정리. |
 | 16 | **#248 SIEGE v2 Phase 1 — asset-class gates** | [#248](https://github.com/researcherhojin/nuri-quant/issues/248) | #312 | Gate 5/7/8 per-asset-class (us/kr_equity/kr_index/commodity/bond). Cross-market spillover (KOSPI+SPY, USD/KRW+VIX). `config/rules.yaml siege_gates` spec. Codex challenge (3 결함 지적) → 재설계 → APPROVED. |
+| 17 | **#89 인터랙티브 백테스트 sliders + live equity curve** | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | #332 | `run_interactive_backtest()` — regime change arm, stop/tp threshold hit 시 disarm. `/swing/backtest/equity` 가 `sma`/`period`/`sl`/`tp` 쿼리 수락 + 5분 TTL cache. UI 4-param sliders + URL deep-link (`/strategy?sma=100&lb=3Y&sl=-10&tp=30`) + static/interactive toggle. Tier 2 P1 #7 완료. |
 
 ### Tier 2 — 다음 1 달 (P1)
 
@@ -610,10 +654,9 @@ PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰
 | ~~🟡 P1~~ | ~~4~~ | ~~**Earnings quality 분석 통합**~~ | — | ~~feat(recommend)~~ | ~~0.5 세션~~ | **Tier 3 research 로 이관** (2026-04-15). Codex challenge 로 (a) JKHY 실측 surprise 가 4-17% 정상 beat (STRATEGY §5.10 에 기록된 "0.0~0.2% soft beat" 는 unit 오독에서 온 문서 오류), (b) literature (Bartov 2002, Kasznik & McNichols 2002, Neururer 2020) 는 meet/beat streak 을 **양의** 신호로 본다. 원안 spec 은 repo-wide unit inconsistency + mature large-cap false positive + literature 반대 방향 문제로 **기각**. 재설계는 Tier 3 "#### Tier 3 — research note" 항목 참조. |
 | 🟢 P2 | 5 | **포트폴리오 온보딩 UI (YAML → Dashboard)** | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 2-3 세션 | 수동 yaml 편집 제거. 2026-04-14 portfolio.yaml 수동 수정 페인포인트 직접 경험 |
 | 🟢 P2 | 6 | **OpenBB 호환성 fix** | [#274](https://github.com/researcherhojin/nuri-quant/issues/274) | bug(collectors) | 1 세션 | openbb-core==1.6.7 ↔ openbb-news==1.6.1 충돌로 news/etf_flows 수집 불가. 점진적 upgrade 필요 (콜렉터별 smoke test 후 진행) |
-| 🟢 P2 | 7 | **백테스트 인터랙티브 equity curve** | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 1 세션 | 파라미터 sliders + 실시간 시뮬레이션 (PR #269로 일부 완료, 마무리) |
-| 🟢 P2 | 8 | **#272 Phase 2c-3 — universe-check 필수 게이트화** | — | ops | 10분 | `make collect-universe` 5/5 PASS 상태 유지 중 → 사용자 수동으로 branch protection required check 토글 |
-| 🟢 P2 | 9 | **wallstreet collect 성능 검증** | — | perf(collectors) | 15분 | PR #285 parallel fetch 실제 50min → 15min 41초 (universe 746) 확인 완료 — **close 후보** |
-| ⚪ P3 | 10 | **flaky test 일반 stabilization** | — | test | 1 세션 | #295는 resolved. 다른 flaky 후보 (parallel sys.modules 오염 패턴) 전수 감사 |
+| 🟢 P2 | 7 | **#272 Phase 2c-3 — universe-check 필수 게이트화** | — | ops | 10분 | `make collect-universe` 5/5 PASS 상태 유지 중 → 사용자 수동으로 branch protection required check 토글 |
+| 🟢 P2 | 8 | **wallstreet collect 성능 검증** | — | perf(collectors) | 15분 | PR #285 parallel fetch 실제 50min → 15min 41초 (universe 746) 확인 완료 — **close 후보** |
+| ⚪ P3 | 9 | **flaky test 일반 stabilization** | — | test | 1 세션 | #295는 resolved. 다른 flaky 후보 (parallel sys.modules 오염 패턴) 전수 감사 |
 
 ### Tier 3 — 다음 분기 (P2)
 
@@ -701,7 +744,7 @@ Research acceptance:
 
 | 출처 | 적용 | 코드 위치 |
 |------|------|----------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-gate, certification, event journal | `nuri/trading/engine/` |
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | Gate-based certification, event journal (외부 repo 는 11-gate v1, 본 프로젝트는 v2 asset-class expansion 으로 evolve) | `nuri/trading/engine/` |
 | [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline 모니터링, Decision Intelligence (#178) | `nuri/core/freshness.py`, `nuri/core/events.py`, `decisions` 테이블 (PR #181 shipped) |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA (PASS/WARN/FAIL) | `nuri/core/freshness.py` |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 패턴 | `nuri/trading/agents/` |
