@@ -1619,29 +1619,86 @@ class TestComputeWeightsHitRates:
                     ),
                 )
 
-    def test_hit_rate_outcome_read_bug_documented(self, db_path):
-        """**실제 동작 문서화 (bug)**: `_compute_weights` line 128 에서
-        `row.get("outcome_30d", 0) if hasattr(row, "get") else 0` 는 sqlite3.Row 에
-        `.get()` 메서드가 없어서 **항상 0 으로 fallback**. 즉 `outcome_sign` 에 무관하게
-        `is_positive=False` → BUY 는 전부 miss, SELL 은 전부 hit 로 기록됨.
+    def test_hit_rate_outcome_sign_positive(self, db_path):
+        """Positive outcome 15건 → technical(BUY) 가중치 ↑, fundamental(SELL) ↓.
 
-        결과: 15 건 positive outcome seed → fundamental(SELL) 가중치 ↑, technical(BUY) ↓
-        (의도된 반대 방향).
-
-        NEXT_SESSION Tier 3 후보: `row_factory=sqlite3.Row` + `row['outcome_30d']` 직접
-        접근 또는 `dict(row).get()` 패턴으로 교정.
+        STRATEGY §5.3.1 Gotcha-Test Pair: `consensus.py::_compute_weights` 의
+        SELECT 에 `outcome_30d` 포함 + `row["outcome_30d"]` 직접 읽기를 잠근다.
+        fix 되돌리면 (SELECT 축소 또는 `row.get()` 복구) 이 테스트 fail.
         """
         from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
 
         self._seed_recommendations(db_path, n_records=15, outcome_sign=1)
         weights = _compute_weights(db_path=db_path)
 
-        # 현 버그로 인해 outcome=0 → BUY miss / SELL hit
+        assert weights["technical"] > DEFAULT_WEIGHTS["technical"], (
+            "positive outcome → BUY hits → technical 가중치 상승 기대"
+        )
+        assert weights["fundamental"] < DEFAULT_WEIGHTS["fundamental"], (
+            "positive outcome → SELL miss → fundamental 가중치 하락 기대"
+        )
+        assert abs(sum(weights.values()) - 1.0) < 0.001
+
+    def test_hit_rate_outcome_sign_negative(self, db_path):
+        """Negative outcome 15건 → fundamental(SELL) 가중치 ↑, technical(BUY) ↓ (대칭)."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        self._seed_recommendations(db_path, n_records=15, outcome_sign=-1)
+        weights = _compute_weights(db_path=db_path)
+
         assert weights["fundamental"] > DEFAULT_WEIGHTS["fundamental"], (
-            "현 bug: outcome 항상 0 → SELL always hits → fundamental 가중치 상승"
+            "negative outcome → SELL hits → fundamental 가중치 상승 기대"
         )
         assert weights["technical"] < DEFAULT_WEIGHTS["technical"], (
-            "현 bug: outcome 항상 0 → BUY always miss → technical 가중치 하락"
+            "negative outcome → BUY miss → technical 가중치 하락 기대"
+        )
+        assert abs(sum(weights.values()) - 1.0) < 0.001
+
+    def test_hit_rate_outcome_zero_is_buy_miss_sell_hit(self, db_path):
+        """outcome_30d == 0.0 은 BUY miss, SELL hit 으로 처리 (비대칭).
+
+        Policy pin (codex consult): 현 로직은 `is_positive = outcome > 0` → zero 는
+        non-positive. BUY 는 `append(is_positive)` → miss, SELL 은 `append(not is_positive)`
+        → hit. 즉 "가격 불변" 도 SELL 에게는 적중으로 기록됨.
+
+        이 비대칭은 arguable design: SELL 이 "loss avoidance" 의미라면 flat 은 회피 성공이
+        아님. 하지만 현 구현을 의도적이라 가정하고 regression 으로 잠근다. 바꾸려면 별도
+        STRATEGY 개정 + 백테스트 필요 (scope 분리).
+        """
+        import json
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        with get_db(db_path) as conn:
+            for i in range(15):
+                verdicts = [
+                    {"agent_name": "technical", "action": "BUY"},
+                    {"agent_name": "fundamental", "action": "SELL"},
+                ]
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        today_kst(),
+                        f"Z{i}",
+                        "BUY",
+                        50.0,
+                        None,
+                        json.dumps({"verdicts": verdicts}),
+                        100.0,
+                        0.0,
+                    ),
+                )
+
+        weights = _compute_weights(db_path=db_path)
+        assert weights["technical"] < DEFAULT_WEIGHTS["technical"], (
+            "zero outcome → BUY miss → technical 가중치 하락 기대"
+        )
+        assert weights["fundamental"] > DEFAULT_WEIGHTS["fundamental"], (
+            "zero outcome → SELL hit (non-positive) → fundamental 가중치 상승 기대"
         )
         assert abs(sum(weights.values()) - 1.0) < 0.001
 
