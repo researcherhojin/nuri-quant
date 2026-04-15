@@ -199,6 +199,51 @@ KIS는 미국 종목을 거래소별로 분리:
 4. **`kis_research.py` skeleton**: KIS 리서치 페이지는 로그인 + JavaScript 렌더링 필요. Playwright 통합 후속 작업 대기
 5. **WebSocket "No close frame received" 오류**: HTS ID 정확성 확인 필요 (KIS 공식 안내)
 
+## 투자자매매동향 (기관/외인 수급, #247)
+
+`nuri/collectors/institutional.py`는 KIS Open API `investor-trade-by-stock-daily` endpoint를 사용해 한국 종목의 기관/외국인/개인 일별 순매수 데이터를 수집한다.
+
+### Endpoint
+
+```
+GET /uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily
+tr_id: FHPTJ04160001
+```
+
+**Parameters**:
+- `FID_COND_MRKT_DIV_CODE=J` (KRX)
+- `FID_INPUT_ISCD`: 6자리 ticker code (e.g. `005930`)
+- `FID_INPUT_DATE_1`: YYYYMMDD — **T-1 필수** (당일 날짜는 daily settlement 전 `OPSQ2001 TIME LIMIT` 에러)
+- `FID_ORG_ADJ_PRC`, `FID_ETC_CLS_CODE`: 공란
+
+**Response** (`output2`): 30일 history 배열, 101개 필드/row. 핵심:
+- `stck_bsop_date` — YYYYMMDD
+- `frgn_ntby_qty` — 외국인 순매수 수량
+- `orgn_ntby_qty` — 기관계 순매수 수량
+- `prsn_ntby_qty` — 개인 순매수 수량
+
+### Rate Limit
+
+`KIS_REQUEST_INTERVAL_PROD = 0.4s` (2.5 req/sec 안전 마진) + rate limit 감지 시 1.5s 대기 후 1회 재시도.
+
+universe 201 KR tickers × 0.4s = ~80초/run.
+
+### 실패 모드 (STRATEGY §2.6 Surface rung)
+
+| 상황 | 동작 | pipeline_events |
+|---|---|---|
+| KIS creds 미설정 | 즉시 `return []`, warning 로그 | `step_blocked` + `kis_creds_missing` |
+| Token 발급 실패 | 즉시 `return []`, error 로그 | `step_failed` + `kis_token_failed` |
+| HTTP 4xx/5xx | 해당 ticker skip, loop 지속 | (없음 — per-ticker 레벨) |
+| `rt_cd != 0` | 해당 ticker skip, debug 로그 | (없음) |
+| Connection error | 해당 ticker skip, debug 로그 | (없음) |
+
+**Surface only** — collector infra failure는 market signal이 아니므로 certify warning이나 pipeline block 으로 승격하지 않음. `institutional_flows` 테이블이 비어도 한국장 분석은 degraded mode 로 진행.
+
+### UPSERT (B1 lesson, PR #311)
+
+`UNIQUE(ticker, date, market)` + `ON CONFLICT DO UPDATE SET ...` — `INSERT OR REPLACE` 금지. id 보존으로 FK 안전.
+
 ## 참고 자료
 
 - **KIS Open API 포털**: https://apiportal.koreainvestment.com
