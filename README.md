@@ -151,14 +151,14 @@ flowchart TD
 
 | Path | Pipeline phase | Role |
 |------|----------------|------|
-| `nuri/collectors/` | Collect | 24 collectors (BaseCollector pattern). US: yfinance/OpenBB. KR: pykrx + KOSPI/KOSDAQ index. Macro: FRED/yfinance. News: GoogleNews RSS |
+| `nuri/collectors/` | Collect | 26 collectors (BaseCollector pattern). US: yfinance/OpenBB. KR: pykrx + KOSPI/KOSDAQ index. Macro: FRED/yfinance. News: GoogleNews RSS |
 | `nuri/quant/regime/` | Analyze | Regime classifier (6 base + 4 special), macro score (9 indicators), event score (15 categories) |
 | `nuri/quant/validation/` | Analyze | Signal backtest (20 signals × 8K+ trades), superinvestor/analyst backtest, scorecard |
 | `nuri/quant/factors/` | Analyze | Multi-factor scoring (momentum, value, quality, composite) |
 | `nuri/trading/agents/` | Consensus | 10 specialist agents + weighted consensus. Risk agent veto. Korean Market Agent reads macro_events |
 | `nuri/trading/engine/` | Certify | SIEGE 11-gate (v2: asset-class-aware), conflict detection, learning memory |
 | `nuri/trading/recommend/` | Certify+Track | Candidates, price targets, rebalance advisor, outcome tracker (30/60/90d) |
-| `nuri/llm/` | Classify | Event classifier (OpenAI/regex), LLM report (Ollama, dormant), OpenAI wrapper |
+| `nuri/llm/` | Classify | Event classifier (OpenAI/regex), LLM report (OpenAI primary, llama.cpp/Ollama fallback), OpenAI wrapper |
 | `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (69 endpoints incl. `/actions`, `/opportunities`, `/market-context`). Swagger at `/docs` |
 | `frontend/` | Serve | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme) |
 | `nuri/core/` | Foundation | db.py (sole SQLite), events.py (journal), freshness.py (SLA), timezone.py (KST), rules.py, signal_config.py |
@@ -190,12 +190,14 @@ Korean tickers show names (삼성전자) instead of numbers (005930.KS). For row
 
 ### LLM (optional, off by default)
 
-Both LLM integrations are **wired but inactive** unless you set the corresponding environment variable. The system runs without any LLM and falls back to regex/rule-based logic. See [`docs/STRATEGY.md`](docs/STRATEGY.md#443-외부-llm-egress-policy-152) §4.4.3 for the egress policy.
+All LLM integrations are **wired but inactive** unless you set the corresponding environment variable. The system runs without any LLM and falls back to regex/rule-based logic. See [`docs/STRATEGY.md`](docs/STRATEGY.md#443-외부-llm-egress-policy-152) §4.4.3 for the egress policy.
 
 | Provider | Purpose | Activation | Data class |
 |----------|---------|------------|------------|
-| **Ollama** (local) | Daily LLM report (`make report-llm`) | `OLLAMA_HOST` set + Ollama running locally | Tier 2 (portfolio) — local only, never leaves machine |
-| **OpenAI gpt-5.4-nano** | RSS headline classification | `OPENAI_API_KEY` set | Tier 0 (public news only). ~$3.51/yr at 100 headlines/day |
+| **OpenAI gpt-5.4-nano** | RSS headline classification | `OPENAI_API_KEY` set | Tier 0 (public news). ~$3.51/yr at 100 headlines/day |
+| **OpenAI gpt-5.4-nano** | Daily LLM report (`make report-llm`) — primary since 2026-04-14 | `OPENAI_API_KEY` + `OPENAI_ZDR_APPROVED=1` | Tier 2 (portfolio) — ZDR required. ~$0.10/yr at 1 call/day |
+| **llama.cpp** (local) | Daily LLM report fallback | `LLAMA_MODEL_PATH` set | Tier 2 — local only |
+| **Ollama** (local) | Daily LLM report fallback | `OLLAMA_HOST` set + Ollama running | Tier 2 — local only |
 
 The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper logs every external call to the `external_llm_calls` table (timestamp/model/tokens, **no content**), and `NURI_DISABLE_EXTERNAL_LLM=1` raises immediately.
 
@@ -224,7 +226,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, ~339 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (2,763 backend + 876 frontend + 39 e2e)
+make test       # full suite (2,934 backend + 913 frontend + 39 e2e)
 make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
