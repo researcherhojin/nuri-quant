@@ -39,13 +39,13 @@ llm:
           - "nuri/llm/**"
 
 evidence:
+  # 2026-04-15 Codex audit: previous 5 paths were ALL stale (non-existent files).
+  # Replaced with the actual evidence-related modules.
   - changed-files:
       - any-glob-to-any-file:
-          - "nuri/core/evidence.py"
-          - "nuri/core/data_quality.py"
-          - "nuri/trading/recommend/institutional_check.py"
-          - "nuri/trading/recommend/momentum_filter.py"
-          - "frontend/src/app/decision/**"
+          - "nuri/analysis/evidence_charts.py"
+          - "frontend/src/app/evidence/**"
+          - "frontend/src/__tests__/pages/evidence.test.tsx"
 
 kis:
   - changed-files:
@@ -92,9 +92,14 @@ config:
           - ".env.example"
 
 security:
+  # 2026-04-15 Codex audit: `nuri/api/middleware*.py` never existed — the
+  # label misrouted or matched nothing. Replaced with the actual security-
+  # sensitive modules (auth, privacy scanner, SIEGE gate, policy files).
   - changed-files:
       - any-glob-to-any-file:
           - ".gitignore"
           - "config/rules.yaml"
-          - "nuri/api/middleware*.py"
+          - "nuri/api/auth.py"
           - "scripts/gate_check.py"
+          - "scripts/check_privacy_leak.py"
+          - "SECURITY.md"
