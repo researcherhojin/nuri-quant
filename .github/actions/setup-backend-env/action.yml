@@ -1,0 +1,61 @@
+name: "Setup backend env"
+description: "Install uv, TA-Lib (cached), and backend dependencies (cached venv)"
+
+inputs:
+  python-version:
+    description: "Python version for uv to install"
+    required: false
+    default: "3.12"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        python-version: ${{ inputs.python-version }}
+        enable-cache: false
+
+    - name: Cache TA-Lib
+      id: cache-talib
+      uses: actions/cache@v5
+      with:
+        path: /tmp/talib-installed
+        key: talib-0.4.0-${{ runner.os }}-v5
+
+    - name: Build TA-Lib from source
+      if: steps.cache-talib.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+        tar -xzf ta-lib-0.4.0-src.tar.gz
+        cd ta-lib && ./configure --prefix=/usr && make && sudo make install
+        mkdir -p /tmp/talib-installed
+        sudo cp /usr/lib/libta_lib* /tmp/talib-installed/
+        sudo cp -r /usr/include/ta-lib /tmp/talib-installed/
+
+    - name: Restore TA-Lib from cache
+      if: steps.cache-talib.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        sudo cp /tmp/talib-installed/libta_lib* /usr/lib/
+        sudo mkdir -p /usr/include/ta-lib
+        sudo cp /tmp/talib-installed/ta-lib/* /usr/include/ta-lib/ 2>/dev/null || true
+        # Fix symlink to avoid ldconfig warning
+        sudo ln -sf /usr/lib/libta_lib.so.0.0.0 /usr/lib/libta_lib.so.0 2>/dev/null || true
+
+    - name: Configure TA-Lib
+      shell: bash
+      run: sudo ldconfig 2>/dev/null
+
+    - name: Cache venv
+      id: cache-venv
+      uses: actions/cache@v5
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-py${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
+
+    - name: Install deps
+      if: steps.cache-venv.outputs.cache-hit != 'true'
+      shell: bash
+      run: uv sync --frozen --extra dev
