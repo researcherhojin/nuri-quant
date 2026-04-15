@@ -1,0 +1,148 @@
+name: Dependabot Auto Merge
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    name: Enable Auto Merge
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Evaluate merge policy
+        id: policy
+        uses: actions/github-script@v9
+        env:
+          PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+          DEPENDENCY_GROUP: ${{ steps.metadata.outputs.dependency-group }}
+        with:
+          script: |
+            const ecosystem = process.env.PACKAGE_ECOSYSTEM || "";
+            const updateType = process.env.UPDATE_TYPE || "";
+            const dependencyGroup = process.env.DEPENDENCY_GROUP || "";
+            const dependencyNames = (process.env.DEPENDENCY_NAMES || "")
+              .split(",")
+              .map((name) => name.trim())
+              .filter(Boolean);
+
+            const supportedEcosystems = new Set(["pip", "npm", "github-actions", "github_actions"]);
+            const isGrouped = Boolean(dependencyGroup) || dependencyNames.length > 1;
+
+            let shouldMerge = false;
+            let reason = "unsupported ecosystem";
+
+            if (!supportedEcosystems.has(ecosystem)) {
+              shouldMerge = false;
+              reason = `unsupported ecosystem: ${ecosystem || "unknown"}`;
+            } else if (updateType === "version-update:semver-patch") {
+              shouldMerge = true;
+              reason = "patch update";
+            } else if (updateType === "version-update:semver-minor" && isGrouped) {
+              shouldMerge = true;
+              reason = dependencyGroup
+                ? `grouped minor update (${dependencyGroup})`
+                : `grouped minor update (${dependencyNames.length} dependencies)`;
+            } else if (updateType === "version-update:semver-minor") {
+              shouldMerge = false;
+              reason = "minor update is not grouped";
+            } else if (updateType === "version-update:semver-major") {
+              shouldMerge = false;
+              reason = "major update requires manual review";
+            } else {
+              shouldMerge = false;
+              reason = `unsupported update type: ${updateType || "unknown"}`;
+            }
+
+            core.info(`ecosystem=${ecosystem} updateType=${updateType} grouped=${isGrouped}`);
+            core.setOutput("should-merge", shouldMerge ? "true" : "false");
+            core.setOutput("reason", reason);
+
+      - name: Enable GitHub auto-merge
+        id: auto-merge-state
+        if: steps.policy.outputs.should-merge == 'true'
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const result = await github.graphql(
+              `
+                query PullRequestAutoMergeState($pullRequestId: ID!) {
+                  node(id: $pullRequestId) {
+                    ... on PullRequest {
+                      number
+                      autoMergeRequest {
+                        enabledAt
+                      }
+                    }
+                  }
+                }
+              `,
+              {
+                pullRequestId: context.payload.pull_request.node_id,
+              },
+            );
+
+            const alreadyEnabled = Boolean(result.node?.autoMergeRequest?.enabledAt);
+            core.setOutput("already-enabled", alreadyEnabled ? "true" : "false");
+
+            if (alreadyEnabled) {
+              core.notice(`Auto-merge already enabled for PR #${context.payload.pull_request.number}.`);
+            }
+
+      - name: Enable GitHub auto-merge
+        if: steps.policy.outputs.should-merge == 'true' && steps.auto-merge-state.outputs.already-enabled != 'true'
+        uses: actions/github-script@v9
+        env:
+          POLICY_REASON: ${{ steps.policy.outputs.reason }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.graphql(
+              `
+                mutation EnableAutoMerge($pullRequestId: ID!) {
+                  enablePullRequestAutoMerge(
+                    input: {
+                      pullRequestId: $pullRequestId
+                      mergeMethod: SQUASH
+                    }
+                  ) {
+                    pullRequest {
+                      number
+                      autoMergeRequest {
+                        enabledAt
+                      }
+                    }
+                  }
+                }
+              `,
+              {
+                pullRequestId: context.payload.pull_request.node_id,
+              },
+            );
+
+            core.notice(
+              `Auto-merge enabled for PR #${context.payload.pull_request.number} (${process.env.POLICY_REASON}).`,
+            );
+
+      - name: Skip notice
+        if: steps.policy.outputs.should-merge != 'true'
+        run: |
+          echo "Auto-merge not enabled: ${{ steps.policy.outputs.reason }}"
