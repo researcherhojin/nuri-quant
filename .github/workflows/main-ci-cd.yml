@@ -38,6 +38,15 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       universe: ${{ steps.filter.outputs.universe }}
+      # ── Policy outputs (Stage 2c) ──
+      # Collapse the repeated `X == 'true' || !pull_request` pattern into
+      # single booleans. Skip-notice steps use the inverse (`run_X != 'true'`),
+      # which is equivalent to `X != 'true' && PR` because run_X is always
+      # 'true' on push / workflow_dispatch (the non-PR triggers this workflow
+      # listens to).
+      run_backend: ${{ steps.filter.outputs.backend == 'true' || github.event_name != 'pull_request' }}
+      run_frontend: ${{ steps.filter.outputs.frontend == 'true' || github.event_name != 'pull_request' }}
+      run_security: ${{ steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true' || github.event_name != 'pull_request' }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -81,29 +90,29 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Skip notice (no frontend changes)
-        if: needs.changes.outputs.frontend != 'true' && github.event_name == 'pull_request'
+        if: needs.changes.outputs.run_frontend != 'true'
         run: echo "✓ No frontend changes — fast-pass to satisfy required check"
 
       - uses: actions/setup-node@v6
-        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_frontend == 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+      - if: needs.changes.outputs.run_frontend == 'true'
         run: npm ci
 
       - name: Type check
-        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_frontend == 'true'
         run: npx tsc --noEmit
 
       - name: Run tests with coverage
-        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_frontend == 'true'
         run: npx vitest run --coverage
 
       - name: Verify and fix coverage paths
-        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_frontend == 'true'
         run: |
           if [ ! -f coverage/lcov.info ]; then
             echo "::error::coverage/lcov.info not found — vitest coverage may have failed"
@@ -118,7 +127,7 @@ jobs:
           head -3 coverage/lcov.info
 
       - name: Upload coverage to Codecov
-        if: (needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request') && always()
+        if: needs.changes.outputs.run_frontend == 'true' && always()
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -140,21 +149,21 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Skip notice (no frontend changes)
-        if: needs.changes.outputs.frontend != 'true' && github.event_name == 'pull_request'
+        if: needs.changes.outputs.run_frontend != 'true'
         run: echo "✓ No frontend changes — fast-pass to satisfy required check"
 
       - uses: actions/setup-node@v6
-        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_frontend == 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+      - if: needs.changes.outputs.run_frontend == 'true'
         run: npm ci
 
       - name: Production build
-        if: needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_frontend == 'true'
         run: npm run build
 
   # ─── Backend ───
@@ -166,14 +175,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Skip notice (no backend changes)
-        if: needs.changes.outputs.backend != 'true' && github.event_name == 'pull_request'
+        if: needs.changes.outputs.run_backend != 'true'
         run: echo "✓ No backend changes — fast-pass to satisfy required check"
 
       - uses: actions/checkout@v6
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_backend == 'true'
 
       - uses: astral-sh/ruff-action@v4.0.0
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_backend == 'true'
         with:
           args: "check nuri/ tests/ scripts/"
 
@@ -284,14 +293,14 @@ jobs:
         shard: [1, 2]
     steps:
       - name: Skip notice (no backend changes)
-        if: needs.changes.outputs.backend != 'true' && github.event_name == 'pull_request'
+        if: needs.changes.outputs.run_backend != 'true'
         run: echo "✓ No backend changes — shard ${{ matrix.shard }} fast-pass"
 
       - uses: actions/checkout@v6
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_backend == 'true'
 
       - name: Setup backend env (uv + TA-Lib + venv)
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_backend == 'true'
         uses: ./.github/actions/setup-backend-env
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -302,12 +311,12 @@ jobs:
       # separately in backend-tests-slow on push only.
 
       - name: Run fast tests with coverage
-        if: needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_backend == 'true'
         run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
 
       - name: Upload coverage to Codecov
-        if: (needs.changes.outputs.backend == 'true' || github.event_name != 'pull_request') && always()
+        if: needs.changes.outputs.run_backend == 'true' && always()
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -401,14 +410,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Skip notice (no code changes)
-        if: needs.changes.outputs.backend != 'true' && needs.changes.outputs.frontend != 'true' && github.event_name == 'pull_request'
+        if: needs.changes.outputs.run_security != 'true'
         run: echo "✓ No backend/frontend changes — fast-pass to satisfy required check"
 
       - uses: actions/checkout@v6
-        if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_security == 'true'
 
       - name: Run Trivy vulnerability scanner
-        if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' || github.event_name != 'pull_request'
+        if: needs.changes.outputs.run_security == 'true'
         uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
