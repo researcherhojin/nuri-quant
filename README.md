@@ -38,7 +38,7 @@ flowchart TD
   end
 
   subgraph Analyze["Phase B-D: Analyze"]
-    Signals("20 Signals\nRSI/MACD/BB/Volume\n+ 3 macro signals")
+    Signals("20 Signals\nRSI/MACD/BB/Volume\nconfig/signals.yaml")
     Regime("Regime Classifier\n6 base + 4 special")
     EventScore("Event Score\n15 categories\n-20 ~ +20")
     MacroScore("Macro Score\n9 indicators\n0-100")
@@ -75,7 +75,7 @@ flowchart TD
   end
 
   subgraph Serve["Interface"]
-    API("FastAPI :8001\n69 endpoints + SSE")
+    API("FastAPI :8001\n68 endpoints + SSE")
     Dashboard("Next.js 16 :3000\n17 pages\nAction-First dashboard")
     Discord("Discord/Telegram\nalerts + daily report")
   end
@@ -153,13 +153,13 @@ flowchart TD
 |------|----------------|------|
 | `nuri/collectors/` | Collect | 26 collectors (BaseCollector pattern). US: yfinance/OpenBB. KR: pykrx + KOSPI/KOSDAQ index. Macro: FRED/yfinance. News: GoogleNews RSS |
 | `nuri/quant/regime/` | Analyze | Regime classifier (6 base + 4 special), macro score (9 indicators), event score (15 categories) |
-| `nuri/quant/validation/` | Analyze | Signal backtest (20 signals × 8K+ trades), superinvestor/analyst backtest, scorecard |
+| `nuri/quant/validation/` | Analyze | Signal backtest (20 signals from `config/signals.yaml`), superinvestor/analyst backtest, scorecard |
 | `nuri/quant/factors/` | Analyze | Multi-factor scoring (momentum, value, quality, composite) |
 | `nuri/trading/agents/` | Consensus | 10 specialist agents + weighted consensus. Risk agent veto. Korean Market Agent reads macro_events |
 | `nuri/trading/engine/` | Certify | SIEGE 11-gate (v2: asset-class-aware), conflict detection, learning memory |
 | `nuri/trading/recommend/` | Certify+Track | Candidates, price targets, rebalance advisor, outcome tracker (30/60/90d) |
 | `nuri/llm/` | Classify | Event classifier (OpenAI/regex), LLM report (OpenAI primary, llama.cpp/Ollama fallback), OpenAI wrapper |
-| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (69 endpoints incl. `/actions`, `/opportunities`, `/market-context`). Swagger at `/docs` |
+| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (68 endpoints incl. `/actions`, `/opportunities`, `/market-context`). Swagger at `/docs` |
 | `frontend/` | Serve | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme) |
 | `nuri/core/` | Foundation | db.py (sole SQLite), events.py (journal), freshness.py (SLA), timezone.py (KST), rules.py, signal_config.py |
 | `config/*.yaml` | Foundation | rules, agents, signals, universe, stock_types, portfolio (gitignored) |
@@ -219,14 +219,14 @@ make start          # API (:8001) + Dashboard (:3000)
 make full-scan      # 8-phase pipeline end-to-end
 make consensus      # 10-agent analysis + decision recording
 make certify        # SIEGE 11-gate certification
-make scan           # Daily scan (us_core, ~85 tickers)
-make scan-extended  # Weekly scan (us_core + S&P 500, ~339 tickers)
+make scan           # Daily scan (us_core, 85 tickers)
+make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ```
 
 ### Test commands
 
 ```bash
-make test       # full suite (2,947 backend + 913 frontend + 39 e2e)
+make test       # full suite (2,951 backend + 913 frontend + 38 e2e)
 make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
