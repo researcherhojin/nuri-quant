@@ -337,7 +337,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
     outcome_90d REAL,
     hit BOOLEAN,
     tracked_at TEXT,
-    UNIQUE(date, ticker, action)
+    UNIQUE(date, ticker)
 );
 
 -- ETF 자금흐름 추적 (섹터 ETF AUM/거래량)
@@ -628,6 +628,46 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         "add dividend_yield_pct to fundamentals for #227",
         """
         ALTER TABLE fundamentals ADD COLUMN dividend_yield_pct REAL;
+    """,
+    ),
+    (
+        20,
+        "recommendations UNIQUE(date, ticker) — drop 'action' from key (B1 fix)",
+        # NEXT_SESSION B1 — UNIQUE(date, ticker, action) 이 docstring 의도 (INSERT OR REPLACE
+        # on (date, ticker))와 어긋나 duplicate row 가 누적됐음. action 제외 후 MAX(id) 기준
+        # dedup. 기존 trades.recommendation_id FK 는 보존 (MAX id 는 남김).
+        """
+        CREATE TABLE recommendations_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            action TEXT NOT NULL,
+            confidence REAL,
+            regime TEXT,
+            signals TEXT,
+            entry_price REAL,
+            outcome_30d REAL,
+            outcome_60d REAL,
+            outcome_90d REAL,
+            hit BOOLEAN,
+            tracked_at TEXT,
+            hit_quality REAL,
+            agent_verdicts TEXT,
+            scoring_detail TEXT,
+            UNIQUE(date, ticker)
+        );
+        INSERT INTO recommendations_new (
+            id, date, ticker, action, confidence, regime, signals, entry_price,
+            outcome_30d, outcome_60d, outcome_90d, hit, tracked_at, hit_quality,
+            agent_verdicts, scoring_detail
+        )
+        SELECT id, date, ticker, action, confidence, regime, signals, entry_price,
+               outcome_30d, outcome_60d, outcome_90d, hit, tracked_at, hit_quality,
+               agent_verdicts, scoring_detail
+        FROM recommendations
+        WHERE id IN (SELECT MAX(id) FROM recommendations GROUP BY date, ticker);
+        DROP TABLE recommendations;
+        ALTER TABLE recommendations_new RENAME TO recommendations;
     """,
     ),
 ]
