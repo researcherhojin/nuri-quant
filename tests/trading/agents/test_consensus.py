@@ -1564,22 +1564,29 @@ class TestSaveToRecommendations:
         row = query("SELECT entry_price FROM recommendations WHERE ticker='NOPX'", db_path=db_path)[0]
         assert row["entry_price"] == 0.0
 
-    def test_same_day_ticker_bug_creates_duplicate_rows(self, db_path):
-        """**실제 동작 문서화 (bug)**: recommendations 에 `UNIQUE(date, ticker)` 제약 없음 →
-        `INSERT OR REPLACE` 가 실질 REPLACE 안 됨. duplicate row 생성.
+    def test_same_day_ticker_upsert_replaces_not_duplicates(self, db_path):
+        """같은 날 같은 종목 재호출 시 UPSERT 로 1 행만 유지, id 보존 (B1 fix).
 
-        NEXT_SESSION Tier 3 후보: schema 마이그레이션 or 코드에서 DELETE-then-INSERT.
-        지금은 현 동작을 회귀 가드로만 lock in.
+        STRATEGY §5.3.1 Gotcha-Test Pair:
+        - Migration 20 이 `UNIQUE(date, ticker, action)` → `UNIQUE(date, ticker)` 로 변경.
+        - save_to_recommendations 가 `INSERT OR REPLACE` → `ON CONFLICT DO UPDATE` 로 전환.
+
+        Revert 시 이 테스트 fail: (date, ticker, action) 키였을 때 두 호출이 각각 다른
+        action 이면 2 행 생성. 이제는 1 행 + action=HOLD 로 update, id 동일.
         """
         from nuri.core.db import query
         from nuri.trading.agents.consensus import save_to_recommendations
 
         save_to_recommendations([self._result(action="BUY", conf=70)], db_path=db_path)
-        save_to_recommendations([self._result(action="HOLD", conf=50)], db_path=db_path)
+        first_id = query("SELECT id FROM recommendations WHERE ticker='TEST'", db_path=db_path)[0]["id"]
 
+        save_to_recommendations([self._result(action="HOLD", conf=50)], db_path=db_path)
         rows = query("SELECT * FROM recommendations WHERE ticker='TEST' ORDER BY id", db_path=db_path)
-        assert len(rows) == 2, "Known schema bug: no UNIQUE constraint, REPLACE not effective"
-        assert rows[-1]["action"] == "HOLD"
+
+        assert len(rows) == 1, "UPSERT 작동 — (date, ticker) 하나당 1 행만 유지"
+        assert rows[0]["action"] == "HOLD"
+        assert rows[0]["confidence"] == 50.0
+        assert rows[0]["id"] == first_id, "ON CONFLICT DO UPDATE 는 id 보존 — FK 안전"
 
 
 class TestComputeWeightsHitRates:
