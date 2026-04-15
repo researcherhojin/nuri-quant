@@ -257,6 +257,39 @@ class TestCollectKrKisFailureModes:
 
         assert result == []
 
+    def test_rate_limit_retry_then_success(self, db_with_portfolio, mock_kis_creds):
+        """First response rate-limited → sleep → retry succeeds → records parsed.
+
+        Covers rate_limit retry branch (institutional.py L151-156) — close
+        Codecov gap from PR #316.
+        """
+        from nuri.collectors.institutional import InstitutionalCollector
+
+        rate_limited = MagicMock()
+        rate_limited.status_code = 200
+        rate_limited.json.return_value = {
+            "rt_cd": "1",
+            "msg_cd": "EGW00201",
+            "msg1": "초당 거래건수를 초과하였습니다.",
+            "output2": [],
+        }
+        success = MagicMock()
+        success.status_code = 200
+        success.json.return_value = _fake_kis_response(dates=["20260414"])
+
+        with (
+            patch("nuri.collectors.kis_realtime.load_credentials", return_value=mock_kis_creds),
+            patch("nuri.collectors.kis_realtime.get_access_token", return_value="tok"),
+            patch("requests.get", side_effect=[rate_limited, success]),
+            patch("time.sleep"),
+        ):
+            result = InstitutionalCollector()._collect_kr_kis(["005930.KS"])
+
+        # Second call's output2 parsed → 1 record
+        assert len(result) == 1
+        assert result[0]["date"] == "2026-04-14"
+        assert result[0]["source"] == "kis_openapi"
+
     def test_network_exception_skips_ticker(self, db_with_portfolio, mock_kis_creds):
         """requests.get raises → ticker skipped, loop continues."""
         from nuri.collectors.institutional import InstitutionalCollector
