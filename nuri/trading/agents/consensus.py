@@ -468,14 +468,22 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
         )
 
     with get_db(db_path) as conn:
-        # 같은 날 같은 종목 재실행 시 덮어쓰기 (REPLACE)
-        # UNIQUE 제약(date, ticker)이 있으면 REPLACE 동작, 없으면 단순 INSERT
+        # 같은 날 같은 종목 재실행 시 UPSERT — id 보존 (trades.recommendation_id FK 안전).
+        # INSERT OR REPLACE 는 DELETE+INSERT 라 id 바뀌어 FK 참조 끊김 위험.
         conn.executemany(
-            """INSERT OR REPLACE INTO recommendations
+            """INSERT INTO recommendations
                (date, ticker, action, confidence, regime, signals, entry_price,
                 agent_verdicts, scoring_detail)
                VALUES (:date, :ticker, :action, :confidence, :regime, :signals, :entry_price,
-                       :agent_verdicts, :scoring_detail)""",
+                       :agent_verdicts, :scoring_detail)
+               ON CONFLICT(date, ticker) DO UPDATE SET
+                   action = excluded.action,
+                   confidence = excluded.confidence,
+                   regime = excluded.regime,
+                   signals = excluded.signals,
+                   entry_price = excluded.entry_price,
+                   agent_verdicts = excluded.agent_verdicts,
+                   scoring_detail = excluded.scoring_detail""",
             records,
         )
         return len(records)
