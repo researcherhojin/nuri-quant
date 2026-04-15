@@ -93,9 +93,9 @@ make mean-reversion   # mean-reversion scan + backtest
 make pairs            # pairs trading scan + backtest
 
 # Swing Trade / Market Scan
-make scan             # us_core 스캔 (~85종목, 일일, ~5초)
-make scan-extended    # us_core + S&P 500 (~339종목, 주간 풀스캔)
-make scan-kr          # KOSPI 200 (~80종목)
+make scan             # us_core 스캔 (85종목, 일일, ~5초)
+make scan-extended    # us_core + S&P 500 (543종목, 주간 풀스캔)
+make scan-kr          # KOSPI 200 (203종목)
 make swing            # 스캔 + 에이전트 합의 → 진입 저장
 make swing-check      # 진행중 스윙 트레이드 상태 확인
 
@@ -184,7 +184,7 @@ nuri/
 │   ├── recommend/     # Candidates, rebalance, tracker, price_targets
 │   ├── swing/         # Market-wide scanner + rules
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
-├── api/               # FastAPI REST API (69 endpoints, routes/ incl. actions/opportunities/market-context/coverage)
+├── api/               # FastAPI REST API (72 endpoints, routes/ incl. actions/opportunities/market-context/coverage)
 ├── alerts/            # Discord daily report + bot, Telegram alerts
 └── llm/               # LLM report (Ollama) + OpenAI wrapper + event classifier
 ```

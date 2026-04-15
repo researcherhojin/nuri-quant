@@ -74,9 +74,9 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 `/api/dashboard` reads pre-computed results from DB instead of running analysis inline. Consensus from `recommendations` table (populated by `make consensus`). Response includes `freshness` and `pipeline_status` for data age display.
 
-## API (69 endpoints)
+## API (72 endpoints)
 
-`nuri/api/routes/` — 69 REST endpoints on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
+`nuri/api/routes/` — 72 REST endpoints on port **8001**. Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
 
 ### Action-First Dashboard APIs (PR #264-#266)
 
@@ -108,11 +108,11 @@ Configured in `.env` (see `.env.example`):
 
 ## DB Schema (SQLite, WAL mode)
 
-31 tables total (17 migrations). Key tables:
+33 tables total (20 migrations). Key tables:
 
 | Table | Purpose |
 |-------|---------|
-| `prices` | OHLCV 5Y (25K+ rows) |
+| `prices` | OHLCV 5Y daily bars per ticker |
 | `portfolio` | Holdings (account, ticker, qty, avg_price) |
 | `macro` | FRED indicators + Fear&Greed |
 | `signals` | TA-Lib technical indicators |
@@ -180,7 +180,7 @@ data/
 
 2,674 backend tests across 129 files + 817 frontend vitest (55 files) + 25 Playwright E2E (5 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
 
-**Slow marker**: ~12 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
+**Slow marker**: 23 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
 
 ```python
 @pytest.fixture
