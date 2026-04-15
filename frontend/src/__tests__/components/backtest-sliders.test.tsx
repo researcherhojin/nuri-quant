@@ -304,4 +304,48 @@ describe("InteractiveBacktest", () => {
     expect(screen.getByText("Backtest Parameters")).toBeInTheDocument();
     expect(screen.getByText("Custom params")).toBeInTheDocument();
   });
+
+  it("toggles back to static mode and hides sliders", async () => {
+    render(<InteractiveBacktest initialData={mockEquity} initialMetrics={mockMetrics} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Interactive"));
+    });
+    expect(screen.getByText("Backtest Parameters")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Static"));
+    });
+
+    expect(screen.getByText("Static").className).toContain("bg-muted");
+    expect(screen.queryByText("Backtest Parameters")).not.toBeInTheDocument();
+    expect(screen.getByText(/Return \+24\.5%/)).toBeInTheDocument();
+  });
+
+  it("reverts to initialMetrics after switching back to static post-run", async () => {
+    const customEquity = mockEquity.map((p) => ({ ...p, strategy: p.strategy + 10 }));
+    const customMetrics = { ...mockMetrics, total_return: 45.0, excess_return: 20.0 };
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ equity: customEquity, metrics: customMetrics }),
+    } as Response);
+
+    render(<InteractiveBacktest initialData={mockEquity} initialMetrics={mockMetrics} />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Interactive"));
+    });
+    await waitFor(() => expect(screen.getByText("Run Backtest")).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByText("Run Backtest"));
+    });
+    await waitFor(() => expect(screen.getByText(/Return \+45/)).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Static"));
+    });
+
+    expect(screen.getByText(/Return \+24\.5%/)).toBeInTheDocument();
+    expect(screen.queryByText(/Return \+45/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Custom params")).not.toBeInTheDocument();
+  });
 });

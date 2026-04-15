@@ -209,3 +209,48 @@ class TestBacktestEquity:
         assert first.json() == second.json()
         mock_classify.assert_called_once_with(sma_period=50)
         mock_bt.assert_called_once()
+
+    @patch("nuri.trading.strategy.ls_backtest.run_interactive_backtest")
+    @patch("nuri.trading.strategy.ls_backtest.classify_historical_regimes")
+    def test_cache_expires_after_ttl_and_re_runs(self, mock_classify, mock_bt, client, monkeypatch):
+        """Expired TTL entry triggers re-run (swing.py monotonic branch)."""
+        mock_classify.return_value = pd.DataFrame({"regime": ["bull"], "return": [0.01]})
+
+        @dataclass
+        class FakeResult:
+            total_return: float = 15.0
+            annual_return: float = 6.0
+            sharpe: float = 1.2
+            max_drawdown: float = -5.0
+            win_rate: float = 0.55
+            total_days: int = 30
+            regime_changes: int = 2
+            transaction_costs: float = 0.2
+            spy_total_return: float = 9.0
+            spy_annual_return: float = 4.5
+            spy_sharpe: float = 0.9
+            spy_max_drawdown: float = -7.0
+            excess_return: float = 6.0
+            equity_curve: list | None = None
+
+            def __post_init__(self):
+                self.equity_curve = self.equity_curve or [
+                    {"date": "2024-02-01", "strategy": 0, "spy": 0, "drawdown": 0},
+                ]
+
+        mock_bt.return_value = FakeResult()
+
+        from nuri.api.routes import swing
+        swing._interactive_backtest_cache.clear()
+
+        clock = [0.0]
+        monkeypatch.setattr(swing, "monotonic", lambda: clock[0])
+
+        first = client.get("/api/backtest/equity?sma=200&period=5Y&sl=-10&tp=25")
+        assert first.status_code == 200
+        assert mock_bt.call_count == 1
+
+        clock[0] = swing._BACKTEST_CACHE_TTL_SECONDS + 1.0
+        second = client.get("/api/backtest/equity?sma=200&period=5Y&sl=-10&tp=25")
+        assert second.status_code == 200
+        assert mock_bt.call_count == 2  # re-invoked after TTL

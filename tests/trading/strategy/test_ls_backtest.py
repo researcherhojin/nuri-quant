@@ -103,6 +103,111 @@ class TestInteractiveBacktest:
         assert baseline.total_days == tighter.total_days
         assert baseline.total_return != tighter.total_return
 
+    def test_empty_regimes_after_filtering_returns_zero_result(self, backtest_data):
+        """df.empty guard inside run_interactive_backtest (line 193)."""
+        from nuri.trading.strategy.ls_backtest import run_interactive_backtest
+
+        only_unknown = pd.DataFrame({
+            "regime": ["unknown"] * 5,
+            "return": [0.01] * 5,
+            "date": pd.bdate_range("2024-01-01", periods=5),
+            "close": [100.0] * 5,
+        })
+
+        result = run_interactive_backtest(
+            only_unknown,
+            stop_loss_pct=-7,
+            take_profit_pct=20,
+            db_path=backtest_data,
+        )
+
+        assert result.total_days == 0
+        assert result.equity_curve == []
+
+    def test_missing_sh_data_falls_back_to_spy_inverse(self, db_path):
+        """No SH ticker in DB → sh empty DataFrame path (line 201)."""
+        import numpy as np
+
+        from nuri.core.db import upsert_prices
+        from nuri.trading.strategy.ls_backtest import (
+            classify_historical_regimes,
+            run_interactive_backtest,
+        )
+
+        dates = pd.bdate_range("2022-01-01", periods=300)
+        spy_close = np.linspace(400, 500, 300) + np.random.normal(0, 2, 300)
+        upsert_prices(
+            pd.DataFrame({
+                "ticker": "SPY",
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": spy_close * 0.999,
+                "high": spy_close * 1.005,
+                "low": spy_close * 0.995,
+                "close": spy_close,
+                "volume": [50_000_000] * 300,
+                "adj_close": spy_close,
+            }),
+            db_path,
+        )
+
+        regimes = classify_historical_regimes(db_path=db_path)
+        result = run_interactive_backtest(
+            regimes,
+            stop_loss_pct=-7,
+            take_profit_pct=20,
+            db_path=db_path,
+        )
+
+        assert result.total_days > 0
+
+    def test_sh_nan_return_falls_back_to_spy_inverse(self, backtest_data, monkeypatch):
+        """sh_return NaN in bear regime (line 261)."""
+        import numpy as np
+
+        from nuri.trading.strategy import ls_backtest
+
+        original = ls_backtest.query_df
+
+        def query_df_with_nan(sql, *args, **kwargs):
+            df = original(sql, *args, **kwargs)
+            if "ticker='SH'" in sql and not df.empty:
+                df.loc[10:12, "close"] = np.nan
+            return df
+
+        monkeypatch.setattr(ls_backtest, "query_df", query_df_with_nan)
+
+        regimes = ls_backtest.classify_historical_regimes(db_path=backtest_data)
+        regimes["regime"] = "bear_low_vol"
+        result = ls_backtest.run_interactive_backtest(
+            regimes,
+            stop_loss_pct=-7,
+            take_profit_pct=20,
+            db_path=backtest_data,
+        )
+
+        assert result.total_days > 0
+
+    def test_single_row_regimes_returns_zero_result(self, backtest_data):
+        """df with 1 row → loop skips → empty strat guard (line 296)."""
+        from nuri.trading.strategy.ls_backtest import run_interactive_backtest
+
+        single = pd.DataFrame({
+            "regime": ["bull_low_vol"],
+            "return": [0.01],
+            "date": [pd.Timestamp("2024-01-02")],
+            "close": [100.0],
+        })
+
+        result = run_interactive_backtest(
+            single,
+            stop_loss_pct=-7,
+            take_profit_pct=20,
+            db_path=backtest_data,
+        )
+
+        assert result.total_days == 0
+        assert result.equity_curve == []
+
 
 class TestAllocation:
     """From test_backtest.py — allocation sums."""
