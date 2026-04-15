@@ -14,11 +14,14 @@ from nuri.core.db import get_db, init_db
 
 
 @pytest.fixture()
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
     """TestClient with isolated DB."""
     db = tmp_path / "test.db"
     with patch.dict("os.environ", {"NURI_DB_PATH": str(db)}):
+        import nuri.core.db as db_mod
+
         init_db(db)
+        monkeypatch.setattr(db_mod, "DB_PATH", db)
         with get_db(db) as conn:
             conn.execute(
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
@@ -52,6 +55,24 @@ def client(tmp_path):
         yield TestClient(app)
 
 
+@pytest.fixture()
+def fast_client(client, monkeypatch):
+    """TestClient with slow actions helpers stubbed for shape-only endpoint checks."""
+    import nuri.api.routes.actions as actions_mod
+
+    monkeypatch.setattr(actions_mod, "_get_siege_violations", lambda: [])
+    monkeypatch.setattr(actions_mod, "_get_targets_status", lambda: {})
+    monkeypatch.setattr(actions_mod, "_get_recent_scan_results", lambda: [])
+    monkeypatch.setattr(actions_mod, "_get_improving_signals", lambda: set())
+    monkeypatch.setattr(actions_mod, "_get_macro_events", lambda: [])
+    monkeypatch.setattr(
+        actions_mod,
+        "_get_system_health",
+        lambda: {"siege": {}, "regime": {}, "macro": {}, "freshness": {}},
+    )
+    return client
+
+
 # ═══════════════════════════════════════════════════
 # Integration tests (TestClient)
 # ═══════════════════════════════════════════════════
@@ -66,16 +87,16 @@ class TestActionsEndpoint:
             assert key in data
             assert isinstance(data[key], list)
 
-    def test_actions_contain_ticker_and_priority(self, client):
-        resp = client.get("/api/actions")
+    def test_actions_contain_ticker_and_priority(self, fast_client):
+        resp = fast_client.get("/api/actions")
         for item in resp.json()["urgent"] + resp.json()["check"] + resp.json()["hold"]:
             assert "ticker" in item
             assert "action" in item
             assert "priority" in item
             assert isinstance(item["reasons"], list)
 
-    def test_buy_action_has_confidence(self, client):
-        resp = client.get("/api/actions")
+    def test_buy_action_has_confidence(self, fast_client):
+        resp = fast_client.get("/api/actions")
         data = resp.json()
         for item in data["hold"] + data["check"]:
             if item["action"] == "BUY":
@@ -83,24 +104,24 @@ class TestActionsEndpoint:
 
 
 class TestOpportunitiesEndpoint:
-    def test_returns_structured_response(self, client):
-        resp = client.get("/api/opportunities")
+    def test_returns_structured_response(self, fast_client):
+        resp = fast_client.get("/api/opportunities")
         assert resp.status_code == 200
         assert isinstance(resp.json()["opportunities"], list)
 
-    def test_opportunities_have_verdict(self, client):
-        for opp in client.get("/api/opportunities").json()["opportunities"]:
+    def test_opportunities_have_verdict(self, fast_client):
+        for opp in fast_client.get("/api/opportunities").json()["opportunities"]:
             for key in ("ticker", "verdict", "verdict_level", "pros", "cons"):
                 assert key in opp
 
-    def test_excludes_portfolio_tickers(self, client):
-        for opp in client.get("/api/opportunities").json()["opportunities"]:
+    def test_excludes_portfolio_tickers(self, fast_client):
+        for opp in fast_client.get("/api/opportunities").json()["opportunities"]:
             assert opp["ticker"] not in {"AAPL", "TSLA"}
 
 
 class TestMarketContextEndpoint:
-    def test_returns_structured_response(self, client):
-        resp = client.get("/api/market-context")
+    def test_returns_structured_response(self, fast_client):
+        resp = fast_client.get("/api/market-context")
         assert resp.status_code == 200
         data = resp.json()
         assert "macro_events" in data
@@ -226,7 +247,7 @@ class TestGetSiegeViolationsEdge:
 
         @dataclass
         class FakeCert:
-            conditions: list = None
+            conditions: list[FakeCond] | None = None
             def __post_init__(self):
                 self.conditions = self.conditions or [FakeCond()]
 
@@ -250,7 +271,7 @@ class TestGetSiegeViolationsEdge:
 
         @dataclass
         class FakeCert:
-            conditions: list = None
+            conditions: list[FakeCond] | None = None
             def __post_init__(self):
                 self.conditions = self.conditions or [FakeCond()]
 
@@ -434,7 +455,13 @@ class TestBuildActionsLogic:
             from nuri.api.routes.actions import _build_actions
             return _build_actions()
 
-    def _pf(self, price=105, avg=100, pnl=5, pos=3):
+    def _pf(
+        self,
+        price: float = 105,
+        avg: float = 100,
+        pnl: float = 5,
+        pos: float = 3,
+    ):
         return {"current_price": price, "avg_price": avg, "quantity": 10, "pnl_pct": pnl, "position_pct": pos, "account": "Main"}
 
     def test_siege_violation_urgent(self):
@@ -524,10 +551,11 @@ class TestBuildActionsLogic:
         assert len(nvda) == 1
 
     def test_includes_ticker_name_for_kr(self):
-        result = self._run(
-            [{"ticker": "005930.KS", "action": "BUY", "confidence": 62, "agreement": 20}],
-            portfolio={"005930.KS": {"current_price": 200750, "avg_price": 59700, "quantity": 1, "pnl_pct": 236, "position_pct": 0.4, "account": "Main"}},
-        )
+        with patch("nuri.core.ticker_names.get_ticker_name", return_value="Samsung Electronics"):
+            result = self._run(
+                [{"ticker": "005930.KS", "action": "BUY", "confidence": 62, "agreement": 20}],
+                portfolio={"005930.KS": {"current_price": 200750, "avg_price": 59700, "quantity": 1, "pnl_pct": 236, "position_pct": 0.4, "account": "Main"}},
+            )
         all_items = result["urgent"] + result["check"] + result["hold"]
         assert len(all_items) == 1
         assert "name" in all_items[0]
