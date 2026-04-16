@@ -148,6 +148,7 @@ make verify           # Master verification orchestrator → data/reports/YYYY-M
 # Deploy & backup
 make pre-deploy       # Safety checks before deploy
 make deploy           # rsync to Mac Mini
+make deploy-mini      # MBP → Mac mini 전체 동기화: git pull + config (.env/portfolio.yaml/NEXT_SESSION.md) + scheduler reload (DB 제외)
 make backup           # DB backup (30-day rolling)
 make sync-start       # Dev↔dev 작업 시작 — 다른 머신 → 이 머신 (pull) + NEXT_SESSION.md
 make sync-end         # Dev↔dev 작업 종료 — 이 머신 → 다른 머신 (push) + NEXT_SESSION.md
