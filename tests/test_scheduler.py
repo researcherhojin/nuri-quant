@@ -633,3 +633,82 @@ class TestSchedulerDbMaintenance_Db:
         """스케줄러 _run_db_maintenance가 정상 실행."""
         from nuri.scheduler import _run_db_maintenance
         _run_db_maintenance()  # 빈 DB에서도 에러 없이 실행
+
+
+# ═══════════════════════════════════════════════════════
+# TestUniverseBackfill — weekly 1y refresh for universe coverage
+# ═══════════════════════════════════════════════════════
+
+
+class TestUniverseBackfill:
+    """Weekly 1y backfill SCHEDULE entries.
+
+    실제 문제: 기존 stock_us_night/dawn/stock_kr 는 source="portfolio" 기본으로
+    돌아 universe-only ticker (config/universe.yaml 만 등재) 는 일일 수집조차
+    되지 않음. 실측 시 730/752 ticker 가 1-7일 stale.
+
+    Fix: `stock_us_backfill` + `stock_kr_backfill` 주 1회 + source="all" + 1y
+    window 로 gap 을 메운다. 기존 데일리 job 은 그대로 (rate-limit 고려).
+    """
+
+    def test_stock_us_backfill_entry_exists_with_correct_cron(self):
+        """SCHEDULES 에 `stock_us_backfill` 항목이 있고 cron 이 일요일 05:00."""
+        from nuri.scheduler import SCHEDULES
+
+        entries = [s for s in SCHEDULES if s.get("name") == "stock_us_backfill"]
+        assert len(entries) == 1, "stock_us_backfill 엔트리가 정확히 1개 존재해야 함"
+        assert entries[0]["cron"] == "0 5 * * 0", "일요일 05:00 KST 실행"
+        assert entries[0]["args"] == ("stock",), "_run_collector('stock', ...) 로 dispatch"
+
+    def test_stock_us_backfill_kwargs_period_1y_source_all(self):
+        """Backfill 은 `period='1y'` + `source='all'` 로 universe 전체 1년치 수집."""
+        from nuri.scheduler import SCHEDULES
+
+        entry = next(s for s in SCHEDULES if s.get("name") == "stock_us_backfill")
+        assert entry.get("kwargs") == {"period": "1y", "source": "all"}, (
+            "kwargs 는 period/source 를 명시적으로 전달. "
+            "source='portfolio' 기본값으로 universe-only ticker 수집 누락 방지."
+        )
+
+    def test_stock_kr_backfill_entry_exists_with_correct_kwargs(self):
+        """SCHEDULES 에 `stock_kr_backfill` 항목이 있고 days=365 + source=all."""
+        from nuri.scheduler import SCHEDULES
+
+        entries = [s for s in SCHEDULES if s.get("name") == "stock_kr_backfill"]
+        assert len(entries) == 1
+        assert entries[0]["cron"] == "30 5 * * 0", "일요일 05:30 KST (US 직후)"
+        assert entries[0]["args"] == ("stock_kr",)
+        assert entries[0].get("kwargs") == {"days": 365, "source": "all"}, (
+            "stock_kr 는 `days=` 파라미터 사용. 1년치 = 365일."
+        )
+
+    def test_run_collector_stock_forwards_kwargs(self):
+        """_run_collector('stock', period='1y', source='all') 이 StockCollector.run 에 그대로 전달."""
+        from nuri.scheduler import _run_collector
+
+        mock_collector = MagicMock()
+        with patch("nuri.collectors.stock.StockCollector", return_value=mock_collector):
+            _run_collector("stock", period="1y", source="all")
+        mock_collector.run.assert_called_once_with(period="1y", source="all")
+
+    def test_run_collector_stock_kr_forwards_kwargs(self):
+        """_run_collector('stock_kr', days=365, source='all') 이 StockKRCollector.run 에 전달."""
+        from nuri.scheduler import _run_collector
+
+        mock_collector = MagicMock()
+        with patch("nuri.collectors.stock_kr.StockKRCollector", return_value=mock_collector):
+            _run_collector("stock_kr", days=365, source="all")
+        mock_collector.run.assert_called_once_with(days=365, source="all")
+
+    def test_create_scheduler_passes_kwargs_to_apscheduler(self):
+        """create_scheduler 가 SCHEDULES 의 kwargs 를 apscheduler add_job 에 전달."""
+        from nuri.scheduler import create_scheduler
+
+        scheduler = create_scheduler()
+        job = scheduler.get_job("stock_us_backfill")
+        assert job is not None, "stock_us_backfill job 이 등록돼야 함"
+        # apscheduler Job 에서 kwargs 는 job.kwargs 로 접근
+        assert job.kwargs == {"period": "1y", "source": "all"}, (
+            "create_scheduler 가 job.get('kwargs', {}) 를 add_job 으로 전달 해야 함. "
+            "이 한 줄이 누락되면 period/source 가 무시되고 기본값 (5d/portfolio) 로 돌아감."
+        )
