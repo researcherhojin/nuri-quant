@@ -248,9 +248,15 @@ jobs:
         run: shellcheck --source-path=SCRIPTDIR --external-sources scripts/*.sh
 
   # ── Universe + Agent Coverage Validation (#272 Phase 2c) ──
-  # Validates universe.yaml ↔ upstream sync + per-table coverage thresholds.
-  # Currently warning-only (continue-on-error) until user runs make collect-universe
-  # to populate data tables. Will become required after first PASS run.
+  # Validates universe.yaml ↔ upstream sync. CI 에서는 universe.yaml 의 ticker
+  # count sanity check 만 수행 (DB 부재). 5-table coverage 검증 (prices /
+  # fundamentals / analyst / insider / superinvestors) 은 로컬 또는 Mac mini
+  # scheduler 가 수행하며 `scripts/validate_universe.py --no-fetch` 로 5/5 PASS
+  # 가 유지되어야 함 (2026-04-16 마지막 실측 99/99/97/97/97%).
+  #
+  # **Required gate** — TODO.md Tier 2 P2 #7 에 따라 promotion 됨. universe.yaml
+  # 의 라벨 vs reality drift (예: us_sp500_extended 가 503→339 으로 silently
+  # 줄어듦) 를 PR 단계에서 차단. branch protection required check 에 추가됨.
   universe-check:
     name: Universe Coverage Validation
     needs: changes
@@ -263,7 +269,6 @@ jobs:
     if: needs.changes.outputs.universe == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true  # warning-only initially per spec §6 stage 1
     steps:
       - uses: actions/checkout@v6
       - name: Setup Python
