@@ -217,9 +217,15 @@ class TestYfinanceFallback:
         assert fn("2026-04-16T15:00:00+00:00") == "2026-04-17"
         # naive (no tz) — UTC 로 간주
         assert fn("2026-04-16T15:00:00") == "2026-04-17"
-        # 잘못된 입력
+        # 잘못된 입력 — early return (len<10) 경로
         assert fn("invalid") is None
         assert fn("") is None
         assert fn(None) is None
         # 짧은 ISO date-only
         assert fn("2026-04-17") == "2026-04-17"
+        # len >= 10 이지만 fromisoformat 가 raise 하는 경우 — except 경로 검증
+        # early return ("invalid"/"") 만 테스트하면 try/except 의 defense 가
+        # 한 번도 exercised 되지 않아 §5.5 Test Illusion (문서상 방어 != 실제 방어).
+        assert fn("2026-04-16T99:99:99Z") is None  # invalid hour → ValueError
+        assert fn("2026-13-40T12:00:00Z") is None  # invalid month → ValueError
+        assert fn("not-valid-iso-string-2026") is None  # 완전 malformed → ValueError
