@@ -19,31 +19,42 @@ from nuri.core.db import query
 from nuri.core.timezone import kst_now
 
 
-def _recent_date_rfc822() -> str:
+def _recent_date_rfc822(hours_ago: int = 6) -> str:
     """테스트용 — stale 필터를 통과하는 최근 날짜 RFC 822 문자열."""
-    return format_datetime(kst_now() - timedelta(hours=6))
+    return format_datetime(kst_now() - timedelta(hours=hours_ago))
 
-# 최소 fixture — Reuters source 분리, source 없는 item, 빈 link 등 edge case 포함
-RSS_FIXTURE = (
-    b'<?xml version="1.0"?>'
-    b'<rss version="2.0"><channel>'
-    b'<item>'
-    b'<title>Iran agrees to ceasefire - Reuters</title>'
-    b'<link>https://news.google.com/articles/abc123</link>'
-    b'<pubDate>Wed, 09 Apr 2026 12:00:00 GMT</pubDate>'
-    b'<source url="https://www.reuters.com">Reuters</source>'
-    b'</item>'
-    b'<item>'
-    b'<title>Fed signals rate cut next meeting</title>'
-    b'<link>https://news.google.com/articles/def456</link>'
-    b'<pubDate>Wed, 09 Apr 2026 13:00:00 GMT</pubDate>'
-    b'</item>'
-    b'<item>'
-    b'<title>No URL</title>'
-    b'<link></link>'
-    b'</item>'
-    b'</channel></rss>'
-)
+
+def _build_rss_fixture() -> bytes:
+    """최소 fixture — Reuters source 분리, source 없는 item, 빈 link 등 edge case 포함.
+
+    pubDate 는 실행 시각 기준 -2h / -1h 로 동적 생성 — 7일 stale filter 통과 보장.
+    (이전 하드코딩 `Wed, 09 Apr 2026 ...` 는 7일 경과 후 테스트 fail 하는 time-bomb.)
+    """
+    d1 = _recent_date_rfc822(hours_ago=2).encode()
+    d2 = _recent_date_rfc822(hours_ago=1).encode()
+    return (
+        b'<?xml version="1.0"?>'
+        b'<rss version="2.0"><channel>'
+        b'<item>'
+        b'<title>Iran agrees to ceasefire - Reuters</title>'
+        b'<link>https://news.google.com/articles/abc123</link>'
+        b'<pubDate>' + d1 + b'</pubDate>'
+        b'<source url="https://www.reuters.com">Reuters</source>'
+        b'</item>'
+        b'<item>'
+        b'<title>Fed signals rate cut next meeting</title>'
+        b'<link>https://news.google.com/articles/def456</link>'
+        b'<pubDate>' + d2 + b'</pubDate>'
+        b'</item>'
+        b'<item>'
+        b'<title>No URL</title>'
+        b'<link></link>'
+        b'</item>'
+        b'</channel></rss>'
+    )
+
+
+RSS_FIXTURE = _build_rss_fixture()
 
 EMPTY_RSS = b'<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>'
 
