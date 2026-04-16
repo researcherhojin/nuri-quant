@@ -220,7 +220,7 @@ consensus:
   # 가 한 번만 느려도 전체 ticker가 죽던 #130 버그의 근본 수정.
   # timeout 도달 시 미완료 에이전트는 HOLD/0/타임아웃 verdict로 폴백.
   agent_timeout_sec: 60
-  # Divergence mechanical penalty — STRATEGY §5.10 JKHY 재발 방지.
+  # Divergence mechanical penalty — docs/HARNESS.md §2 (JKHY) 재발 방지.
   # TechnicalAgent 가 합의 BUY/SELL 과 정면 반대 방향이면서 confidence 가
   # threshold 이상이면 final_action 을 HOLD 로 downgrade. 단순 surface 에서
   # 실질 guardrail 로 전환 (P1 A1/A2 가 informational only 였던 것 보완).

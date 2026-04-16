@@ -23,7 +23,7 @@ base = regime_win_rate * 60% + profit_factor * 40%
 
 Phase 4 (safeslice 패턴): `drift_multiplier`를 통계적 신뢰 구간(Wilson CI + witness cliff)으로 대체 예정.
 
-## SIEGE 11-Gate Specification
+## SIEGE Gate Specification (v2)
 
 All recommendations must pass. 1 error-grade failure = REJECTED. `Certificate.certified` = error severity 0건 기준.
 

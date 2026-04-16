@@ -13,7 +13,7 @@
 **핵심 차별점**: 추천을 내리는 것이 아니라, 추천의 근거를 증명하는 것이 목적이다.
 - 20개 시그널 × 8,000+ 과거 트레이드 백테스트로 각 시그널의 승률/수익비(PF)를 검증
 - 10개 에이전트가 독립적으로 분석한 뒤 가중 합의 (risk agent 거부권)
-- SIEGE 11-gate가 모든 추천을 기계적으로 검증 — 1개라도 실패하면 REJECTED
+- SIEGE v2 gate (asset-class per-expansion) 가 모든 추천을 기계적으로 검증 — 1개 error-grade 라도 실패하면 REJECTED
 - 5개 Plotly 차트가 최종 증거를 시각화
 
 ---
@@ -90,6 +90,28 @@
 **Anti-pattern**: §2.1 "Evidence-first" 를 이유로 모든 것을 Surface 에 두면 P1 A1/A2 의 JKHY 에피소드처럼 ⚠ 배지가 실제 행동을 바꾸지 않는 "performative 경고" 가 된다. 반대로 모든 반대를 Hard veto 로 올리면 trade 기회 손실 + 사용자의 판단권 박탈. 3단계 구분이 명시적 framework.
 
 **변경 절차**: 단계 이동은 config 또는 docs 만 건드리는 PR 로. 코드에 매직 넘버 추가하는 방식으로 step 승격 금지 (§2.2 "규칙을 바꾸고 싶으면 YAML을 수정" 원칙).
+
+### 2.7 개발 Flow (gstack 7-phase, 2026-04-16 채택)
+
+모든 작업은 **Think → Plan → Build → Review → Test → Ship → Reflect** 7단계를 통과한다. [gstack](https://github.com/garrytan/gstack) 의 Flow 를 nuri-quant 운영 discipline 으로 채택. 단계를 건너뛰지 않는다 (§5.9.7 Multi-role flow 강제의 refinement).
+
+각 단계는 **입력 → 행동 → 산출물 → 통과 gate** 로 명세된다. Gate 를 통과하지 못하면 다음 단계로 넘어가지 못한다. 이전 "PM → Developer → Code Reviewer → QA → PR" 4-role flow 는 Think+Plan / Build / Review / Test / Ship 단계에 흡수됨.
+
+| # | 단계 | 입력 | 행동 | 산출물 | 통과 gate |
+|---|------|------|------|-------|-----------|
+| 1 | **Think** | 사용자 신호 (이슈, 관찰, 페인포인트) | 문제 framing, root-cause, literature/dual 확인 (§2.1 Evidence-first) | GitHub 이슈 본문 또는 `docs/plans/*.md` 에 problem statement + evidence + constraint | "왜 **지금** 이걸 하는가" 를 한 문장으로 답할 수 있는가 |
+| 2 | **Plan** | Think 산출물 | scope 정의, touched files, acceptance criteria, Escalation Ladder (§2.6) 레벨 선택 | PR description 초안 또는 `/plan` 출력 — 변경 파일 + 테스트 계획 + non-goals | 스코프 팽창 없는가? 이슈 1 = PR 1 준수? 커밋 ≤ 3 수렴 가능? |
+| 3 | **Build** | Plan 산출물 | 최소 범위 구현. `config/*.yaml` 우선 (§2.2), DB-only phase 통신 (§2.3), `kst_now()` 강제 | feature 브랜치 커밋 | hardcode 없는가? hook/lint 통과? `git branch --show-current` 확인했는가? |
+| 4 | **Review** | feature 브랜치 diff | Codex 독립 리뷰 (`/codex review`) + Claude self-review diff. P1 finding 해결 필수 | Review log, findings 목록, GATE verdict (PASS / FAIL) | P1 전부 해결? Claude ↔ codex disagreement 가 있다면 이유 명시? |
+| 5 | **Test** | reviewed 브랜치 | `make test-fast` + **사용자 워크플로 live 실행** (§5.9.1 mock ≠ ship). UI 면 browser QA | green CI + manual QA 로그 (UI 스크린샷 또는 명령어 출력) | 사용자가 실제 입력할 명령을 1회 이상 직접 돌렸는가? |
+| 6 | **Ship** | tested 브랜치 | `gh pr merge --squash --delete-branch`. 이슈 close. 로컬+원격 branch 정리. `docs/TODO.md` Tier 1 업데이트 | MERGED PR, CLOSED 이슈, Tier 1 entry, 깨끗한 `git branch -a` | Tier 1 행 추가됐는가? 브랜치 정리됐는가? |
+| 7 | **Reflect** | ship 결과 | 무엇이 놀라웠는가? 새 gotcha? 메모리 업데이트? NEXT_SESSION refresh? | NEXT_SESSION.md 갱신 + 새 fix-pattern gotcha 는 STRATEGY gotchas 에 `**Test:**` cite (§5.3.1) + user memory 갱신 (해당되면) | 다음 세션이 이 작업 컨텍스트 없이 바로 뛸 수 있는가? |
+
+**단계 실패 = 이전 단계로 회귀**. 예: Test 에서 mock-only 함정 발견 → Build 로 돌아가서 실제 경로 fix. Review 에서 P1 지적 → Build 로 돌아가서 fix. Reflect 에서 drift 발견 → Plan/Build 회귀 아닌 별도 chore PR 로 분리.
+
+**Codex 부재 시 Review 단계**: Codex 사용량 한도 등으로 독립 리뷰가 막히면 Claude self-review diff 로 대체 + **다음 PR 의 Review 단계에서 회수** (이전 PR 을 함께 검토하도록 codex 에 cite). 무한정 지연하지 않는다.
+
+**Think/Plan 생략 패턴**: trivial chore (오타, 버전 번호, 주석 수정) 는 Think/Plan 을 inline 으로 압축 가능. 단 Build 이상부터는 반드시 모든 단계 준수. "trivial 로 시작했지만 커짐" 을 Build 중 발견하면 Think/Plan 으로 회귀.
 
 ---
 
@@ -170,8 +192,8 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,951 tests, 137 files |
-| Frontend tests | 목표 ≥ 90% | 913 tests, 60 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,969 tests, 137 files |
+| Frontend tests | 목표 ≥ 90% | 917 tests, 60 files |
 | E2E | 핵심 flow 커버 | 38 Playwright tests (6 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
@@ -452,213 +474,63 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 ```
 
 **변경 이력**:
-- 2026-04-14: #3 강화 ("실행한다" → "사용자 워크플로로 검증한다"), #7 추가 (외부 API 측정). Mock-only ship 함정 3회 반복 후 추가 (#5.9 참고).
+- 2026-04-14: #3 강화 ("실행한다" → "사용자 워크플로로 검증한다"), #7 추가 (외부 API 측정). Mock-only ship 함정 3회 반복 후 추가 (`docs/HARNESS.md §1` 참고).
 
-### 5.9 #272 세션 교훈 (2026-04-14, 12 PRs)
+### 5.9 Case Studies (on-demand reference)
 
-**Universe + Agent Coverage 통합**(#272) 작업에서 8시간에 걸쳐 12개 PR 머지하며 누적된 패턴 — 미래 비슷한 작업에서 반복 실수 회피용.
+실제 실패 세션의 구체적 교훈 (Mock-only 함정, 외부 API 동시성, ThreadPool 한계, JKHY falling knife 등) 은 `docs/HARNESS.md` 로 분리했다. 비슷한 패턴을 디버깅할 때만 참조. 본 STRATEGY §5 의 canonical 원칙 (§5.1-§5.8) 은 그대로 유지.
 
-#### 5.9.1 Mock-only 테스트 함정
-
-| 사례 | 상황 | 결과 |
-|------|------|------|
-| PR #278 universe mode | mock test 28건 통과 → ship → 사용자 실행 시 yfinance ERROR 500줄 | rebuild 필요 |
-| PR #282 ThreadPool timeout | unit test 통과 → ship → 사용자 실행 시 여전히 hang | 2차 fix |
-| PR #283 sequential fix | live 검증 33초 → 머지 → 끝 | 처음으로 정상 ship |
-
-**룰**: ship 전 사용자 워크플로 1회 직접 실행. mock test와 별개로 `make X --source universe` 같은 실제 명령. `tests/integration/` marker (`@pytest.mark.integration`)로 분리하되 ship 게이트에 포함.
-
-#### 5.9.2 외부 API 동시성 차이
-
-| API | 동시 요청 | 패턴 |
-|-----|----------|------|
-| yfinance | **10 thread OK** | `ThreadPoolExecutor(max_workers=10)` |
-| KRX (pykrx) | **rate-limit, sequential 권장** | 순차 + `time.sleep(0.1)` |
-| Wikipedia | 10초 간격 권장 | User-Agent 헤더 + backoff |
-
-**룰**: 새 외부 API 통합 시 동시성 측정 후 결정. ThreadPool은 API 종류에 따라 도움/해악 갈림.
-
-#### 5.9.3 ThreadPool 한계
-
-`ThreadPoolExecutor.future.result(timeout=)`는 future를 cancel만 하고, **underlying C extension call (e.g. pykrx)은 계속 실행** → 누적되어 메모리 leak + slowdown.
-
-**룰**: hang 가능한 외부 호출에 timeout으로 cancel하려 하지 말 것. 진짜 cancellable 필요하면 subprocess 사용. 또는 sleep + 단순 try/except.
-
-#### 5.9.4 Iterative root cause
-
-같은 버그를 3회에 걸쳐 fix:
-1. PR #282: ThreadPool timeout 추가 → 부분 해결
-2. PR #283: 8 thread parallel → 첫 60건 빠르고 그 후 KRX rate-limit
-3. PR #283 (수정): sequential + 0.1s sleep → 진짜 fix
-
-**룰**: 같은 증상 2회 반복 fix 시 근본 원인 의심. 3회 시도 전에 `pytest --pdb` 또는 실제 환경에서 직접 디버깅.
-
-#### 5.9.5 사용자 관점 검증 누락
-
-`make X --flag` 형태로 사용자가 자연스럽게 시도한 명령이 실패 (`make universe-sync --market kr` → make는 arg 안 받음). 사용자가 아는 패턴 ≠ 코드가 지원하는 패턴.
-
-**룰**: Makefile target 추가 시 자주 쓰일 변형(`-us`, `-kr`, `-apply` 등)을 dedicated target으로 명시.
-
-#### 5.9.6 진행 가시성 = 신뢰
-
-543종목 1개씩 처리되는데 progress 표시 없으면 사용자는 "stuck" 판단. tqdm + 명확한 요약은 ship 필수.
-
-**룰**: ≥20 ticker iteration 모든 collector에 tqdm + 요약 (✅ N 성공 / ❌ M 실패) + per-field N/A 진단 추가.
-
-#### 5.9.7 Multi-role flow 강제
-
-PM (spec) → Dev (impl) → Eval (test + smoke) → ship. Eval 단계 건너뛰면 #5.9.1 함정에 빠짐. 본인 self-review가 아닌 별도 단계로 분리할 것.
-
-**룰**: `gstack-codex` 등 외부 review tool 또는 사용자 review 단계 전에 ship 금지. 자동화된 integration test가 review 대체 가능.
-
-### 5.10 추천 파이프라인의 도구 사각지대 (JKHY 에피소드, 2026-04-14)
-
-> **2026-04-15 정정 노트** (PR #307): 원 기록의 핵심 진단 2개가 심층 조사 결과 오독으로 밝혀졌다. 원 문장은 교훈용으로 stryke-through 보존하되 실제 root cause 와 대응은 아래 **"정정된 분석"** 참조.
-
-**상황**: 세션 종료 직전 universe-wide BUY 추천 7종목 (TMUS/JKHY/V/MA/BX/ANET/NFLX) 제시. 사용자가 Investing.com 확인 → JKHY "적극 매도" (기술지표 종합). 시스템 추천과 정면 모순.
-
-~~**원인 (3층)**:~~
-
-1. ~~**도구는 있으나 연결 안 됨** — `nuri/quant/chart_analysis.py` (BB/MACD/RSI/추세선) 구현 존재하지만, 추천 파이프라인 (`candidates.py`, `consensus.py`) 에서 호출하지 않음.~~
-2. ~~**Fundamentals-only 추천** — 애널리스트 upgrade + ROE/PE 기반 Buy 신호만 사용. 가격 모멘텀/추세 완전 무시.~~
-3. ~~**애널리스트 신호의 lag 속성 간과** — JKHY earnings surprise 4Q 연속 +0.0~0.2% = "soft beat" 성장 stall 신호도 놓침.~~
-
-**정정된 분석** (PR #301-#303 + codex challenge 결과):
-
-1. **TechnicalAgent 는 이미 `analyze_chart()` 호출 중** — `nuri/trading/agents/technical.py:12,78` 에서 import + invoke. 원 진단 "도구 연결 안 됨" 은 소스 코드 읽지 않은 추정이었음 (§5.1 "모르면 읽는다" 위반).
-2. **실제 실패 모드 = dissent overwhelmed, not missing** — JKHY 에 대해 TechnicalAgent 가 SELL(100 conf) 정확히 투표함. 하지만 9 개 fundamentals-ish 에이전트가 BUY/HOLD 로 outweighted → 합의 BUY. 문제는 TechnicalAgent 의 dissent 가 사용자에게 **surface 도 안 되고 action 에 영향도 안 주는** 것. 즉 "informational only" design 의 근본 한계.
-3. **JKHY 는 soft beat 이 아니다** — 실측 최근 4Q surprise_pct = 0.17 / 0.13 / 0.04 / 0.09 **decimal fraction** (= 4% ~ 17% 정상 beat). 원 기록의 "0.0~0.2%" 는 저장 단위 오독. JKHY 는 오히려 Bartov 2002 / Kasznik 2002 에서 말하는 "meet/beat premium" 수혜 대상. 진짜 실패 모드는 **falling knife** — fundamentals 강 + technicals 무너짐 + 시장이 구조적 우려 (SaaS competitive pressure 등) 를 먼저 price-in.
-
-**재발 방지 룰** (정정된 원인에 맞춰):
-- 추천 내기 전 **fundamentals + technicals 충돌 여부** 를 explicit 하게 surface 하고, technical 이 강하게 반대하면 mechanical 로 downgrade (STRATEGY §2.6 Escalation Ladder 참조).
-- "System has the tool" ≠ "Pipeline uses its output"; tool 이 있어도 **outcome 에 영향 주는 경로** 까지 integration test 로 검증.
-- Academic literature 기록된 증거 (meet/beat premium 같은) 와 **가설이 반대 방향** 이면 literature 우선 — codex challenge 로 cross-check.
-
-**방어 실행 현황** (2026-04-15 완료):
-- PR #300 (P1 B): universe 1y OHLCV backfill → TechnicalAgent 가 full chart 분석 가능
-- PR #301 (P1 A1): `divergence_flag` backend 감지
-- PR #302 (P1 A2): UI 배지 + tooltip surface
-- PR #303 (P1 A3): mechanical penalty — tech conf ≥ 80 + 반대 → HOLD downgrade
-- PR #306 (Q1): `consensus_penalty_applied` 감사 이벤트 + STRATEGY §2.6 Escalation Ladder + §7 P1 #4 (soft-beat 스펙) Tier 3 이관
-
-**Live 검증**: JKHY 가 이제 `action=HOLD` (was BUY), reasoning "기술지표 반대로 downgrade (tech SELL conf 100 ≥ 80) | ...".
-
-**일반화된 교훈** (정정):
-1. "Repo 에 기능이 있다고 해서 production path 에서 outcome 에 영향 주는 건 아님." — 통합 경로 + **mechanical effect** 검증 필수.
-2. "초기 진단이 틀리면 후속 모든 처방이 틀린다." — Codex challenge 같은 독립적 adversarial review 를 성급한 fix 전에 넣는 것이 scope + 시간 절약.
+- `docs/HARNESS.md §1` — #272 세션 교훈 (2026-04-14, 12 PRs): Mock-only 테스트, API 동시성 비대칭, ThreadPool timeout 함정, 사용자 관점 검증, multi-role flow
+- `docs/HARNESS.md §2` — JKHY 에피소드 (2026-04-14, PR #300-#303, #306, #307): dissent overwhelmed 실패 모드, mechanical divergence penalty, 초기 진단 오독 정정
 
 ---
 
-## 6. SIEGE 11-Gate 명세
+## 6. SIEGE Gate 명세 (v2)
 
-모든 추천은 이 11개 조건을 통과해야 CERTIFIED 된다. 1개라도 error 등급 실패 시 REJECTED.
+모든 추천은 아래 조건군을 통과해야 CERTIFIED 된다. 1개라도 **error 등급** 실패 시 REJECTED. Warning 은 경고 누적만.
+
+**v2 변경 (PR #312, #248)**: 조건 개수는 **가변**. `certify()` 가 asset class (us_equity / kr_equity / kr_index / commodity / bond) 별로 5 / 7 / 8 조건을 per-class expansion 후 flatten. 고정 "11-gate" 명칭은 deprecated — v1 레거시 잔재로 `Certificate.total_conditions` 를 읽는 doc/코드가 있으면 v2 표기로 교정.
+
+### Base 조건 (모든 asset class 공통)
 
 | # | 조건 | 등급 | 기준 |
 |---|------|------|------|
-| 1 | position_limit | error | 단일 종목 ≤ 15% |
-| 2 | sector_limit | error | 섹터 ≤ 35% |
-| 3 | stop_loss_growth | error | 성장주 손절 -7% 준수 |
-| 4 | stop_loss_value | error | 가치주 손절 -10% 준수 |
-| 5 | data_fresh | warning | SPY 데이터 ≤ 72시간 |
-| 6 | leverage_ban | error | 금지 ETF (TSLL, TQQQ 등) 미보유 |
-| 7 | vix_gate | warning | VIX > 30일 때 신규 매수 없음 |
-| 8 | external_data | warning | 외부 데이터 ≥ 10건 존재 |
+| 1 | position_limit | error | 단일 종목 비중. `config/rules.yaml account_strategies.<s>.per_position_max` — core 15%, active 25%, swing 30%, long_term 25%, pension 40% |
+| 2 | sector_limit | error | 섹터 비중. `position_limits.max_sector_exposure` = 35% (top-level, 전략 공통) |
+| 3 | stop_loss | error | 손절선 준수. 내부에서 종목 type (`config/stock_types.yaml` growth/value) 에 따라 threshold 분기. 전략별 override: `account_strategies.<s>.stop_loss` — core -7, active -10, swing -15, long_term -20, pension -30 |
+| 6 | leverage_ban | error | 금지 ETF (`leverage.banned_tickers` 목록) 미보유 |
 | 9 | conflict_free | warning | 동일 종목 BUY/SELL 충돌 없음 |
 | 10 | drift_safe | warning | 매수 후보에 critical drift 시그널 없음 |
 | 11 | macro_event_alignment | warning | \|event_score\| ≥ 10 시 경고 |
 
+### Per-asset-class 조건 (v2 expansion — primary + secondary)
+
+`config/rules.yaml siege_gates.asset_classes.<class>` 에 정의. 각 class 별 primary + secondary condition 이 flatten 된다.
+
+| # | 조건 | 등급 | 출처 필드 |
+|---|------|------|----------|
+| 5 | data_fresh | warning | `freshness_primary` + `freshness_secondary[]` + `freshness_max_hours`. primary/secondary 각각 condition emit. |
+| 7 | volatility_gate | warning | `volatility_primary` + `volatility_primary_threshold` (+ secondary). us_equity 는 VIX > 30, kr_equity 는 USD/KRW 3d change > 3% + VIX > 30 spillover, kr_index 는 KOSPI 3d > 5% + USD/KRW > 3% 등 |
+| 8 | external_data | warning | `external_min_records` + `external_min_sources`. us_equity ≥ 10 / 3 source, kr_equity ≥ 5 / 2, kr_index/commodity/bond ≥ 3 / 1 |
+
+### 예시 — us_equity 3종목 + kr_equity 2종목 포트폴리오
+
+`certify()` flatten 결과 (2026-04-16 기준 실측):
+- base 8 condition (#1-4, #6, #9-11)
+- data_fresh: us primary(SPY) 1 + kr primary(KOSPI) 1 + kr secondary(SPY) 1 = **3**
+- volatility: us(VIX) 1 + kr primary(USD/KRW) 1 + kr secondary(VIX) 1 = **3**
+- external_data: us 1 + kr 1 = **2**
+- **총 16 conditions**. 다른 포트폴리오는 다른 수치.
+
+상세 per-class rule 은 `config/rules.yaml siege_gates` 와 `docs/SIEGE_V2.md` 참조. 실제 condition 생성 로직: `nuri/trading/engine/certification.py` `_check_freshness_for_class()`, `_check_volatility_for_class()`, `_check_external_for_class()` — 각 함수는 `list[CertCondition]` 반환, `certify()` 가 flatten.
+
 ---
 
-## 7. 앞으로 진행할 순서
+## 7. 작업 정책
 
-이 섹션은 **앞으로 할 일**만 기록한다. 완료된 항목은 git log + closed PR + closed issue가 진실 source. 새 작업을 시작하기 전에 이 순서를 확인하고, 새 발견은 GitHub 이슈로 등록한 뒤 이 표에 추가한다.
+운영 backlog (Tier 1 완료 / Tier 2 next / Tier 3 research, 영구 배경 작업) 는 `docs/TODO.md` 로 분리했다. STRATEGY 는 **변하지 않는 정책** 만 담는다. 새 세션 시작 시 `NEXT_SESSION.md` → `docs/TODO.md` 순으로 확인.
 
-### Tier 1 — 완료 (2026-04-13 ~ 04-15)
-
-| # | 항목 | 이슈 | PR | 비고 |
-|---|------|------|----|------|
-| 1 | **i18n constants extraction** | [#226](https://github.com/researcherhojin/nuri-quant/issues/226) | #230, #231 | `lib/strings.ts` 에 ~145개 한국어 상수 추출. 19 파일 마이그레이션 완료. |
-| 2 | **하네스 계층화** | — | #229 | Fowler Guide/Sensor 기반 구조화: CLAUDE.md 슬림 (511→238줄) + 7 scoped CLAUDE.md + AGENTS.md + 4 hooks |
-| 3 | **티커 기반 First-Run 온보딩 UX** | [#133](https://github.com/researcherhojin/nuri-quant/issues/133) | #234, #235 | `/explore` 페이지 + 티커 검색/분석 API. 커버리지 보강 포함. |
-| 4 | **연 배당금 / 배당 수익률 데이터** | [#227](https://github.com/researcherhojin/nuri-quant/issues/227) | #270 | `dividendRate` (연 배당금 USD) + `dividend_yield_pct` (백분율) 컬럼 추가. fundamentals 테이블 마이그레이션 18-19. 2026-04-14 머지. |
-| 5 | **Universe + Agent Data Coverage 통합 (P0)** | [#272](https://github.com/researcherhojin/nuri-quant/issues/272) | #275-#286 (12 PRs) | Audit에서 발견한 데이터 사일로 (fundamentals 2%) + universe label drift 해결. fundamentals 99%, prices 99%, KOSPI 200 100% 달성. 자동 검증 게이트 추가. |
-| 5a | ↳ Phase 2a `universe_sync` | — | #276 | Wikipedia S&P 500 fetch + KRX/FDR KOSPI 200 fetch, manual ETF 보호 |
-| 5b | ↳ Phase 2b BaseCollector `--source` | — | #278 | portfolio/universe/all 모드. 9 collectors tqdm + N/A coverage 진단 |
-| 5c | ↳ Phase 2c validate_universe + CI | — | #284, #286 | 7-check coverage gate, warning-only CI job |
-| 5d | ↳ KR/yfinance 성능 + UX fix | — | #281, #283, #285 | KR collect 33초, yfinance 10-thread parallel, sequential delay |
-| 6 | **Privacy scanner ticker+PnL pattern** | — | #289 | §4.4.1 ticker+PnL 사각지대 보완. `-34% (TEM)` / `PL +43%` 양 패턴 감지, `origin/main..HEAD` unpushed commit message 스캔 추가, `TICKER_FALSE_POSITIVES` 120개. PR #202 class 차단. |
-| 7 | **Shell scripts 전수 shellcheck clean** | — | #290 | 16개 `.sh` (1,504 lines) → shellcheck 0 issues. `set -euo pipefail`, shebang 통일, 실제 버그 fix (trap SC2064, read -r, RSYNC_OPTS array), `make lint-sh` + CI job 추가 |
-| 8 | **OpenAI gpt-5.4-nano LLM 리포트 (§4.4.3 Tier 2)** | — | #294 | Ollama 휴면 → OpenAI primary. §4.4.3 정책 개정 (Tier 2 + ZDR 필수). `chat_text()` + `OPENAI_ZDR_APPROVED` 게이트. fallback chain (OpenAI → llama.cpp → Ollama). **부수 fix**: flaky `test_collect_full_flow` `df.copy()` (#295), security-scan 5m→10m timeout, codecov/patch 커버리지 테스트 3개 보강 |
-| 9 | **uv sync 충돌 해결 (fastapi <0.129 pin)** | [#277](https://github.com/researcherhojin/nuri-quant/issues/277) | #291 | openbb-core ↔ fastapi version conflict 해결. dependabot ignore 추가 |
-| 10 | **KR `n/a (US-only)` 표시 개선** | — | #288 | US_ONLY_TABLES frozenset + `check_universe_coverage.py` + `validate_universe.py` detail. 수집 실패 vs 소스 한계 시각 구분 |
-| 11 | **#272 Phase 3 (Eval): validate_universe + US_ONLY 회귀 테스트** | — | #296 | 20 tests: TestUsOnlyTables(4) + TestRunValidation/Print/Main/Fetch(11) + TestOutputFormat(5) |
-| 12 | **#272 Phase 4 (UX): Dashboard coverage widget + `/api/coverage`** | — | #297 | `CoverageStatus` widget (5/5 PASS 헤더 + 5-col 테이블 + 소스 한계 footer). 14 tests (backend 5 + frontend 9) |
-| 13 | **README drift sync** | — | #309 | collectors 24→26, LLM 우선순위 (OpenAI primary), test counts 2,763→2,934. Codex APPROVED. |
-| 14 | **B2 — Learning Memory outcome read 역방향** | — | #310 | `_compute_weights` SELECT 에 `outcome_30d` 누락 + `sqlite3.Row.get()` 없음. 두 층 버그로 수개월간 weight 역방향. Fix + 3 regression (revert-proof). #308 lock-in 해제. |
-| 15 | **B1 — recommendations UNIQUE + UPSERT** | — | #311 | `UNIQUE(date, ticker, action)` → `UNIQUE(date, ticker)`. Migration 20 (MAX(id) dedup). `INSERT OR REPLACE` → `ON CONFLICT DO UPDATE` (id 보존 — `trades.recommendation_id` FK 안전). 프로덕션 20 중복 그룹 정리. |
-| 16 | **#248 SIEGE v2 Phase 1 — asset-class gates** | [#248](https://github.com/researcherhojin/nuri-quant/issues/248) | #312 | Gate 5/7/8 per-asset-class (us/kr_equity/kr_index/commodity/bond). Cross-market spillover (KOSPI+SPY, USD/KRW+VIX). `config/rules.yaml siege_gates` spec. Codex challenge (3 결함 지적) → 재설계 → APPROVED. |
-
-### Tier 2 — 다음 1 달 (P1)
-
-**다음 세션 우선순위** — 구체적 작업 단위로 엄밀 정의 (2026-04-14 재평가).
-
-| 우선 | # | 항목 | 이슈 | 카테고리 | 예상 | Acceptance |
-|------|---|------|------|---------|------|------------|
-| 🟡 P1 | 1 | **#272 Phase 5 (QA): Negative + Smoke run** | — | test | 1 세션 (네트워크 필요) | 빈 DB/yaml 삭제 negative 3건 + fresh clone → `make setup` → `make universe-sync-us/kr` → `make collect` → `validate_universe` 실행 기록 → `docs/SMOKE_RUN.md` 작성 |
-| 🟡 P1 | 2 | **기술분석 통합 to 추천 파이프라인** | — | feat(recommend) | 1-2 세션 | JKHY 에피소드 (2026-04-14) 재발 방지. `nuri/quant/chart_analysis.py` (BB/MACD/RSI) 을 `candidates.py` / consensus에 자동 연동. "fundamentals Buy, technicals Sell" divergence 플래그 추가 |
-| 🟡 P1 | 3 | **가격 히스토리 확장 (5d → 1y+)** | — | ops | 0.5 세션 | `prices` 테이블 5일치만 있음 → 52주 레인지 / 추세선 계산 불가. 정기 `make collect --period 1y` 실행 체계 + scheduler 등록 |
-| ~~🟡 P1~~ | ~~4~~ | ~~**Earnings quality 분석 통합**~~ | — | ~~feat(recommend)~~ | ~~0.5 세션~~ | **Tier 3 research 로 이관** (2026-04-15). Codex challenge 로 (a) JKHY 실측 surprise 가 4-17% 정상 beat (STRATEGY §5.10 에 기록된 "0.0~0.2% soft beat" 는 unit 오독에서 온 문서 오류), (b) literature (Bartov 2002, Kasznik & McNichols 2002, Neururer 2020) 는 meet/beat streak 을 **양의** 신호로 본다. 원안 spec 은 repo-wide unit inconsistency + mature large-cap false positive + literature 반대 방향 문제로 **기각**. 재설계는 Tier 3 "#### Tier 3 — research note" 항목 참조. |
-| 🟢 P2 | 5 | **포트폴리오 온보딩 UI (YAML → Dashboard)** | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 2-3 세션 | 수동 yaml 편집 제거. 2026-04-14 portfolio.yaml 수동 수정 페인포인트 직접 경험 |
-| 🟢 P2 | 6 | **OpenBB 호환성 fix** | [#274](https://github.com/researcherhojin/nuri-quant/issues/274) | bug(collectors) | 1 세션 | openbb-core==1.6.7 ↔ openbb-news==1.6.1 충돌로 news/etf_flows 수집 불가. 점진적 upgrade 필요 (콜렉터별 smoke test 후 진행) |
-| 🟢 P2 | 7 | **백테스트 인터랙티브 equity curve** | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | feat(frontend) | 1 세션 | 파라미터 sliders + 실시간 시뮬레이션 (PR #269로 일부 완료, 마무리) |
-| 🟢 P2 | 8 | **#272 Phase 2c-3 — universe-check 필수 게이트화** | — | ops | 10분 | `make collect-universe` 5/5 PASS 상태 유지 중 → 사용자 수동으로 branch protection required check 토글 |
-| 🟢 P2 | 9 | **wallstreet collect 성능 검증** | — | perf(collectors) | 15분 | PR #285 parallel fetch 실제 50min → 15min 41초 (universe 746) 확인 완료 — **close 후보** |
-| ⚪ P3 | 10 | **flaky test 일반 stabilization** | — | test | 1 세션 | #295는 resolved. 다른 flaky 후보 (parallel sys.modules 오염 패턴) 전수 감사 |
-
-### Tier 3 — 다음 분기 (P2)
-
-큰 작업. 선행 종속성 또는 외부 통합.
-
-| # | 항목 | 이슈 | 카테고리 | 비고 |
-|---|------|------|---------|------|
-| 1 | **PR #202 commit message Stage 2 history cleanup** | — | security | 사용자 보유 종목 + 손실률이 PR #202 commit message에 노출되어 main git history에 박힘 (TEM/RKLB/PL 등 + PnL). §4.4.1 Stage 2 절차 (GitHub Support 또는 `git filter-repo`) 적용 결정 필요 |
-| 2 | **Universe 추가 확장 (Russell 2000)** | — | feat(scanner) | 현재 419 (us_core 85 + us_sp500 254 + kospi200 80). 중소형주 발굴 위해 Russell 2000 (~2,000) 추가 검토 |
-| 3 | **Meet/beat streak research spike** (Tier 2 P1 #4 에서 이관) | — | research | 아래 research note 참조 |
-
-#### Tier 3 — research note: meet/beat streak in revenue-backed growth
-
-**기각된 원안**: `earnings_surprises` 기반 "soft beat" 플래그 (surprise < 2% 지속 3Q → 성장 stall 경고). FundamentalAgent score 에서 -1.
-
-**기각 이유** (2026-04-15 codex challenge + 실데이터 audit):
-
-1. **Unit 오독**: §5.10 에 기록된 "JKHY 4Q 연속 +0.0~0.2%" 는 저장 단위 오해. 실측 JKHY Q4'25~Q1'25 = 0.17 / 0.13 / 0.04 / 0.09 (decimal fraction) → **17% / 13% / 4% / 9% 실 beat** 이 맞음. 4-17% 전부 정상 beat 이고 soft beat 아님.
-2. **Mature large-cap false positive**: threshold 2% 로 audit 결과 17 개 정상 mature 종목 (ECL, ETN, ABT, LIN, CTAS, CME 등) 이 trigger. Analyst coverage 정밀도 효과 ≠ 성장 stall.
-3. **Literature 반대 방향**:
-   - Bartov/Givoly/Hayn (2002): meet/beat = premium + 미래 성과 예측. <https://www.sciencedirect.com/science/article/abs/pii/S0165410102000459>
-   - Kasznik & McNichols (2002): 꾸준한 meeter = valuation premium. <https://ideas.repec.org/a/bla/joares/v40y2002i3p727-759.html>
-   - Neururer / Papadakis / Riedl (2020): 긴 streak = 낮은 ex ante uncertainty. <https://pubsonline.informs.org/doi/10.1287/mnsc.2019.3320>
-4. **JKHY 실제 실패 모드**: falling knife (fundamentals 강 + technicals 약). P1 A3 divergence mechanical penalty 가 정확히 잡음 → soft-beat 탐지 불필요.
-
-**Literature-backed pivot (Tier 3 research spec)**:
-
-Neururer (2022) — meet/beat streak 은 **revenue-backed** 성장에서 양의 신호, **expense-backed** 에서는 warning. <https://www.sciencedirect.com/science/article/abs/pii/S106297692200103X>
-
-Research acceptance:
-- `earnings_surprises` cohort + 분기별 revenue_growth join
-- Expense backing proxy 추가 (gross margin / operating margin trend)
-- High-growth (revenue_growth ≥ 20%) universe 에만 적용
-- Live universe 에서 backtest:
-  - (a) streak 단독
-  - (b) streak + revenue-backed filter
-  - (c) streak + non-revenue-backed filter (expense engineering)
-- Sector/regime 별 안정성 검증
-- False positive 순 decision quality 향상 증명 필수
-
-**승격 조건**: 백테스트에서 (b) 가 baseline 대비 +Sharpe/-drawdown 둘 다 유의미 + `pipeline_events` 샘플로 false-positive rate 를 validate 한 후에만 §2.6 Escalation Ladder 의 **Soft penalty** 레벨에 올림.
-
-**참고**: 무작정 소환하지 말 것. 데이터 충분히 축적 (최소 2년 earnings + 4 분기 실시간 backtest) 이후 spike 로.
-
-### 자동 매매 — 영구 deferred (사용자 opt-out)
+### 7.1 자동 매매 — 영구 deferred (사용자 opt-out)
 
 | 항목 | 이슈 | 결정 사유 |
 |------|------|---------|
@@ -669,19 +541,12 @@ Research acceptance:
 
 이 결정을 뒤집으려면 STRATEGY.md 개정 PR + 명시적 재승인 필요.
 
-### 영구 배경 작업 (낮은 우선순위, 발견 시 처리)
-
-| 항목 | 이슈 | 비고 |
-|------|------|------|
-| TestGate flake on push (PR-only pass) | [#85](https://github.com/researcherhojin/nuri-quant/issues/85) | classify_regime mock leak 수정 완료 (#188). 재발 시 추가 조사 |
-| portfolio.yaml 데이터 정합성 모니터링 | — | 수동 매매 후 portfolio.yaml 동기화 필요. 평균가 drift 발견 시 즉시 교정 (사례: PR #204 세션에서 Sub RKLB avg \$60→\$87.7 발견) |
-
-### 작업 규칙 (변경 없음)
+### 7.2 작업 규칙 (PR discipline)
 
 - **이슈 1개 = PR 1개**, 커밋 ≤ 3
 - 새 발견 → 별도 이슈, 같은 PR에 묶지 않음
 - Tier를 건너뛰지 않음 (Tier 2 시작 전 Tier 1 모두 close)
-- 새 항목 추가 시 이 표를 함께 업데이트, 이슈 번호 필수
+- 새 항목 추가 시 `docs/TODO.md` 를 함께 업데이트, 이슈 번호 필수
 
 ---
 
@@ -701,7 +566,7 @@ Research acceptance:
 
 | 출처 | 적용 | 코드 위치 |
 |------|------|----------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-gate, certification, event journal | `nuri/trading/engine/` |
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | Gate-based certification, event journal (외부 repo 는 11-gate v1, 본 프로젝트는 v2 asset-class expansion 으로 evolve) | `nuri/trading/engine/` |
 | [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, pipeline 모니터링, Decision Intelligence (#178) | `nuri/core/freshness.py`, `nuri/core/events.py`, `decisions` 테이블 (PR #181 shipped) |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA (PASS/WARN/FAIL) | `nuri/core/freshness.py` |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 패턴 | `nuri/trading/agents/` |
