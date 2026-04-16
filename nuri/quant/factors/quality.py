@@ -1,4 +1,10 @@
-"""퀄리티 팩터 — ROE, 영업이익률 기반."""
+"""퀄리티 팩터 — ROE, 영업이익률 기반 (fundamentals 테이블 read).
+
+#349: 기존 구현은 `obb.equity.fundamental.ratios` 를 호출했으나 upstream #274 (`OBBject_EquityInfo`
+ImportError) 로 silent 실패 → 전 종목 `quality_score = 0.5` 상수. fundamental.py 가 이미 수집한
+`fundamentals` 테이블 (roe, operating_margin) 을 직접 읽도록 전환하여 아키텍처 일관성 회복
+(STRATEGY §2.3 / §3.1).
+"""
 import logging
 
 import pandas as pd
@@ -6,32 +12,45 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def compute_quality(tickers: list[str] | None = None) -> pd.DataFrame:
-    """종목별 퀄리티 스코어."""
-    from openbb import obb
+def compute_quality(tickers: list[str] | None = None, db_path=None) -> pd.DataFrame:
+    """종목별 퀄리티 스코어 — fundamentals 테이블 기반."""
+    from nuri.core.db import query
 
     if not tickers:
         from nuri.core.db import get_tickers
         tickers = [t for t in get_tickers() if not t.endswith(".KS")]
 
-    scores = {}
-    for ticker in tickers:
-        try:
-            result = obb.equity.fundamental.ratios(ticker, provider="yfinance", limit=1)
-            df = result.to_dataframe()
-            if df.empty:
-                continue
+    if not tickers:
+        return pd.DataFrame()
 
-            row = df.iloc[0]
-            roe = row.get("return_on_equity", row.get("roe"))
-            margin = row.get("operating_profit_margin", row.get("net_profit_margin"))
+    # ticker 별 최신 row 만 조회 (latest per ticker)
+    placeholders = ",".join("?" * len(tickers))
+    rows = query(
+        f"""
+        SELECT f.ticker, f.roe, f.operating_margin
+        FROM fundamentals f
+        INNER JOIN (
+            SELECT ticker, MAX(date) AS mx
+            FROM fundamentals
+            WHERE ticker IN ({placeholders})
+            GROUP BY ticker
+        ) latest ON f.ticker = latest.ticker AND f.date = latest.mx
+        """,
+        params=tuple(tickers),
+        db_path=db_path,
+    )
 
-            scores[ticker] = {
-                "roe": float(roe) if roe and roe == roe else None,
-                "operating_margin": float(margin) if margin and margin == margin else None,
-            }
-        except Exception as e:
-            logger.debug(f"{ticker}: 퀄리티 조회 실패 — {e}")
+    scores: dict[str, dict] = {}
+    for r in rows:
+        ticker = r["ticker"]
+        roe = r["roe"]
+        margin = r["operating_margin"]
+        if roe is None and margin is None:
+            continue
+        scores[ticker] = {
+            "roe": float(roe) if roe is not None else None,
+            "operating_margin": float(margin) if margin is not None else None,
+        }
 
     if not scores:
         return pd.DataFrame()
