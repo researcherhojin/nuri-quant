@@ -155,6 +155,7 @@ make sync-status      # 양쪽 git HEAD + NEXT_SESSION timestamp 비교 (read-on
 scripts/sync_dev.sh push      # 저수준 — make sync-end 가 wrap. NEXT_SESSION.md 미포함 (별도 scp)
 scripts/sync_dev.sh pull      # 저수준 — make sync-start 가 wrap (--with-reports / --no-claude)
 bash scripts/auto_deploy.sh   # Mac mini receiver: fetch + ff-only merge + 변경 분석 (manual test; canonical run is launchd com.nuri-quant.autopull every 5min)
+make scheduler-reload-remote  # Mac mini scheduler launchd reload (nuri/scheduler.py 변경 후 필수 — DEV2_HOST 환경변수 필요)
 
 # Decision tracking
 make track-decisions  # Decision outcome tracking + snapshot
