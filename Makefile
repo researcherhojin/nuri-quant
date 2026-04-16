@@ -18,7 +18,7 @@ PYTHON = .venv/bin/python
         targets rebalance evidence external \
         api dashboard start \
         full-scan quick-scan \
-        deploy pre-deploy backup ports ports-kill update-counts demo
+        deploy pre-deploy backup scheduler-reload-remote ports ports-kill update-counts demo
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -394,6 +394,17 @@ sync-end:
 
 sync-status:
 	bash scripts/dev_sync.sh status
+
+scheduler-reload-remote: ## Reload scheduler on Mac mini (nuri/scheduler.py 변경 반영)
+	@test -n "$$DEV2_HOST" || { echo "❌ DEV2_HOST 미설정. ~/.zshrc 에 export DEV2_HOST=ehbebe@Ehbebeui-Macmini.local 추가 필요"; exit 1; }
+	@echo "→ Mac mini scheduler reload..."
+	@ssh "$$DEV2_HOST" '\
+		launchctl unload ~/Library/LaunchAgents/com.nuri-quant.scheduler.plist 2>/dev/null; \
+		sleep 2; \
+		launchctl load ~/Library/LaunchAgents/com.nuri-quant.scheduler.plist && \
+		echo "✅ scheduler reloaded" && \
+		launchctl list | grep nuri-quant && \
+		tail -5 ~/workspace/nuri-quant/data/logs/scheduler.log'
 
 ports:
 	bash scripts/ports.sh
