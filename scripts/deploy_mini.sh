@@ -99,7 +99,7 @@ fi
 
 # ── 5. scheduler reload ──
 step 5 "scheduler 관리"
-PLIST_REMOTE="~/Library/LaunchAgents/${PLIST_NAME}"
+PLIST_REMOTE="\$HOME/Library/LaunchAgents/${PLIST_NAME}"
 
 # 5a. plist 설치 여부 확인
 SCHEDULER_INSTALLED=$(ssh "${REMOTE}" "[ -f ${PLIST_REMOTE} ] && echo yes || echo no")
