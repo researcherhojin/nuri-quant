@@ -28,17 +28,20 @@ help:
 	@echo "Nuri-Quant Makefile — 카테고리별 주요 명령"
 	@echo ""
 	@echo "  Setup:        make setup"
-	@echo "  Test/Lint:    make test, make lint, make lint-fix"
+	@echo "  Test/Lint:    make test, make test-fast, make lint, make lint-fix, make lint-sh"
 	@echo "  Verify:       make verify-help    (verify-quick → verify-all → verify-fast → verify, fastest first)"
 	@echo "  Data:         make collect, make collect-kis, make wallstreet, make filings"
+	@echo "  Universe:     make universe-sync[-us/-kr/-apply], make collect-universe[-1y], make validate-universe"
 	@echo "  Analysis:     make analyze, make consensus, make scan, make backtest"
 	@echo "  Pipeline:     make full-scan, make quick-scan"
 	@echo "  Trading:      make targets, make rebalance, make recommend, make certify, make remediate"
 	@echo "  Strategy:     make strategy, make backtest-ls, make optimize, make mean-reversion, make pairs"
 	@echo "  Reports:      make report, make report-llm, make evidence, make external"
 	@echo "  Server:       make api, make dashboard, make start"
-	@echo "  Deploy:       make pre-deploy, make deploy, make backup"
+	@echo "  Deploy:       make deploy-mini (★ MBP → Mac mini 1-cmd), make scheduler-reload-remote, make deploy, make backup"
+	@echo "  Dev sync:     make sync-start / sync-end / sync-status"
 	@echo "  Utility:      make ports, make ports-kill, make update-counts, make demo"
+	@echo "  Clean:        make clean, make clean-all, make clean-deep"
 
 verify-help:
 	@printf '\n'
