@@ -19,7 +19,7 @@
 | 5b | ↳ Phase 2b BaseCollector `--source` | — | #278 | portfolio/universe/all 모드. 9 collectors tqdm + N/A coverage 진단 |
 | 5c | ↳ Phase 2c validate_universe + CI | — | #284, #286 | 7-check coverage gate, warning-only CI job |
 | 5d | ↳ KR/yfinance 성능 + UX fix | — | #281, #283, #285 | KR collect 33초, yfinance 10-thread parallel, sequential delay |
-| 6 | **Privacy scanner ticker+PnL pattern** | — | #289 | STRATEGY §4.4.1 ticker+PnL 사각지대 보완. `-34% (TEM)` / `PL +43%` 양 패턴 감지, `origin/main..HEAD` unpushed commit message 스캔 추가, `TICKER_FALSE_POSITIVES` 120개. PR #202 class 차단. |
+| 6 | **Privacy scanner ticker+PnL pattern** | — | #289 | STRATEGY §4.4.1 ticker+PnL 사각지대 보완. `-NN% (SYMBOL)` 괄호형 + `SYMBOL ±NN%` 인접형 양 패턴 감지 (예시는 `docs/STRATEGY.md §4.4.1` 참조), `origin/main..HEAD` unpushed commit message 스캔 추가, `TICKER_FALSE_POSITIVES` 120개. PR #202 class 차단. |
 | 7 | **Shell scripts 전수 shellcheck clean** | — | #290 | 16개 `.sh` (1,504 lines) → shellcheck 0 issues. `set -euo pipefail`, shebang 통일, 실제 버그 fix (trap SC2064, read -r, RSYNC_OPTS array), `make lint-sh` + CI job 추가 |
 | 8 | **OpenAI gpt-5.4-nano LLM 리포트 (STRATEGY §4.4.3 Tier 2)** | — | #294 | Ollama 휴면 → OpenAI primary. STRATEGY §4.4.3 정책 개정 (Tier 2 + ZDR 필수). `chat_text()` + `OPENAI_ZDR_APPROVED` 게이트. fallback chain (OpenAI → llama.cpp → Ollama). **부수 fix**: flaky `test_collect_full_flow` `df.copy()` (#295), security-scan 5m→10m timeout, codecov/patch 커버리지 테스트 3개 보강 |
 | 9 | **uv sync 충돌 해결 (fastapi <0.129 pin)** | [#277](https://github.com/researcherhojin/nuri-quant/issues/277) | #291 | openbb-core ↔ fastapi version conflict 해결. dependabot ignore 추가 |
