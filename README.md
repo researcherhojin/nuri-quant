@@ -198,6 +198,27 @@ make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
 
+### Production: 2-Machine Setup
+
+Nuri-Quant runs across two Apple Silicon Macs.
+
+| | M5 Max MacBook Pro (dev) | M2 Pro Mac mini (24/7 receiver) |
+|---|---|---|
+| Role | Development, analysis, manual runs | Production scheduler, data collection, alerts |
+| Code sync | `git push` → | launchd `autopull` every 5 min (git fetch + ff-merge) |
+| Config sync | `make deploy-mini` → | `.env`, `portfolio.yaml`, `NEXT_SESSION.md` via SCP (DB excluded) |
+| Scheduler | N/A | 23 jobs: collectors, consensus, backtest, weekly 1y universe backfill |
+
+```bash
+# After shipping a PR from MBP — 1 command syncs everything to Mac mini:
+make deploy-mini
+# → git pull + config sync + scheduler reload (if changed) + verify (~30s)
+
+# Prerequisites:
+#   export DEV2_HOST=user@macmini.local   # in ~/.zshrc (NOT .env)
+#   SSH key registered (MBP → Mac mini)
+```
+
 ## Investment Rules
 
 Defined in `config/rules.yaml` and loaded via `nuri/core/rules.py`. Sources: O'Neil (CAN SLIM), Minervini (SEPA), Shefrin & Statman (1985, 처분효과 / disposition effect).
