@@ -44,14 +44,18 @@ These are enforced by hooks, CI, and pre-push scripts. Violations are blocked me
 ## Key Commands
 
 ```bash
-make setup          # Python venv + deps + DB init
-make test           # Full backend test suite
-make test-fast      # Exclude slow LLM tests
-make lint           # ruff check
-make verify-quick   # ~10s pre-commit smoke test
-make verify-all     # Full verification (before push)
-make start          # API(:8001) + Dashboard(:3000)
+make setup                   # Python venv + deps + DB init
+make test                    # Full backend test suite
+make test-fast               # Exclude slow LLM tests
+make lint                    # ruff check
+make verify-quick            # ~10s pre-commit smoke test
+make verify-all              # ~30s pre-push (tests + backend + frontend + file integrity)
+make start                   # API(:8001) + Dashboard(:3000)
+make deploy-mini             # MBP → Mac mini 전체 동기화 (git pull + config + scheduler reload, ~30s)
+make scheduler-reload-remote # Mac mini scheduler 단독 reload (scheduler.py 변경 후)
 ```
+
+2-machine setup details: `CLAUDE.md` §Deploy. Both targets require `DEV2_HOST` env var.
 
 ## Architecture Reference
 
