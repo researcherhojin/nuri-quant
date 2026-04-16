@@ -145,17 +145,26 @@ make dashboard        # Next.js only (:3000)
 # Verification
 make verify           # Master verification orchestrator → data/reports/YYYY-MM-DD/
 
-# Deploy & backup
+# Deploy — 2-Machine Setup (MBP dev ↔ Mac mini 24/7 receiver)
+# 일반 워크플로: PR merge 후 `make deploy-mini` 1 커맨드로 Mac mini 동기화 (~30초)
+# scripts/deploy_mini.sh 가 6 단계 자동 수행:
+#   1. SSH 연결 확인 (fail-fast)
+#   2. 원격 git pull --ff-only
+#   3. config 동기화: .env + portfolio.yaml + NEXT_SESSION.md (DB 제외 — Mac mini DB 가 production)
+#   4. uv sync (lock/pyproject 변경 시에만)
+#   5. scheduler reload (nuri/scheduler.py · config/agents.yaml · config/rules.yaml 변경 시에만, 최초 plist 미설치 시 자동 설치)
+#   6. 검증: git HEAD 일치 + scheduler PID + autopull 상태
+make deploy-mini      # ★ 권장 — MBP → Mac mini 전체 동기화 (위 6단계)
+make deploy           # rsync to Mac Mini (레거시, pre-deploy check 포함)
 make pre-deploy       # Safety checks before deploy
-make deploy           # rsync to Mac Mini
 make backup           # DB backup (30-day rolling)
 make sync-start       # Dev↔dev 작업 시작 — 다른 머신 → 이 머신 (pull) + NEXT_SESSION.md
-make sync-end         # Dev↔dev 작업 종료 — 이 머신 → 다른 머신 (push) + NEXT_SESSION.md
+make sync-end         # Dev↔dev 작업 종료 — 이 머신 → 다른 머신 (push, DB 포함 — 확인 prompt)
 make sync-status      # 양쪽 git HEAD + NEXT_SESSION timestamp 비교 (read-only)
+make scheduler-reload-remote  # Mac mini scheduler 만 reload (scheduler.py 변경 후 단독 사용, DEV2_HOST 필요)
 scripts/sync_dev.sh push      # 저수준 — make sync-end 가 wrap. NEXT_SESSION.md 미포함 (별도 scp)
 scripts/sync_dev.sh pull      # 저수준 — make sync-start 가 wrap (--with-reports / --no-claude)
-bash scripts/auto_deploy.sh   # Mac mini receiver: fetch + ff-only merge + 변경 분석 (manual test; canonical run is launchd com.nuri-quant.autopull every 5min)
-make scheduler-reload-remote  # Mac mini scheduler launchd reload (nuri/scheduler.py 변경 후 필수 — DEV2_HOST 환경변수 필요)
+bash scripts/auto_deploy.sh   # Mac mini receiver: fetch + ff-only merge + 변경 분석 (launchd com.nuri-quant.autopull 5분 간격)
 
 # Decision tracking
 make track-decisions  # Decision outcome tracking + snapshot

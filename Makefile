@@ -18,7 +18,7 @@ PYTHON = .venv/bin/python
         targets rebalance evidence external \
         api dashboard start \
         full-scan quick-scan \
-        deploy pre-deploy backup scheduler-reload-remote ports ports-kill update-counts demo
+        deploy deploy-mini pre-deploy backup scheduler-reload-remote ports ports-kill update-counts demo
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -382,6 +382,9 @@ pre-deploy:
 deploy:
 	bash scripts/pre-deploy-check.sh
 	bash scripts/deploy.sh
+
+deploy-mini: ## MBP → Mac mini 전체 동기화 (git pull + config + scheduler reload)
+	bash scripts/deploy_mini.sh
 
 backup:
 	bash scripts/backup.sh
