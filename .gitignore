@@ -139,6 +139,10 @@ data/backups/
 data/exports/
 data/reports/
 data/.bfg-reports/
+# scheduler.err/.log, auto-deploy log 등
+data/logs/
+# API health check heartbeat (scheduler 가 매분 rewrite)
+data/.scheduler_heartbeat
 
 # Logs
 *.log
@@ -180,9 +184,15 @@ frontend/test-results/
 # hooks drafts, notes) out of git. Explicitly allowlist the curated
 # project-scoped assets so any Claude Code user working on this repo
 # picks them up automatically.
+#
+# Skills allowlist: project 전용 `nuri-*` prefix 만 tracked.
+# 머신별 개인 설치 skill (agents-langchain, prompt-engineer 등) 은
+# 자동 ignored — repo 를 clone 한 다른 환경에 강제되지 않음.
 .claude/*
 !.claude/settings.json
 !.claude/skills/
+.claude/skills/*
+!.claude/skills/nuri-*/
 
 # ─── OS ────────────────────────────────────────────────────────
 .DS_Store
