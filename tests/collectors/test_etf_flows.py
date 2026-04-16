@@ -230,6 +230,124 @@ class TestEtfFlowsNanValues:
         assert results[0]["total_assets"] is None
 
 
+class TestEtfFlowsYfinanceFallback:
+    """yfinance Ticker.info 폴백 경로 (#274) regression lock-in.
+
+    - total_assets 누락 시 failed 처리 (analyze_sector_rotation TypeError 방지)
+    - NaN primary + usable secondary → pd.notna 기반 secondary 선택
+    """
+
+    def _patch_openbb_fail(self, monkeypatch):
+        """OpenBB primary 를 무조건 실패시켜 yfinance fallback 유도."""
+        import sys
+
+        mock_obb = MagicMock()
+        mock_obb.etf.info.side_effect = ImportError("OBBject_EtfCountries not found")
+        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+
+    def test_yfinance_fallback_full_fields(self, monkeypatch):
+        """yfinance .info 에 모든 필드 정상 — 변환 후 dict 반환."""
+        import sys
+
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        self._patch_openbb_fail(monkeypatch)
+
+        info = {
+            "longName": "SPDR S&P 500 ETF Trust",
+            "totalAssets": 650_000_000_000,
+            "averageVolume": 80_000_000,
+            "navPrice": 700.12,
+        }
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value.info = info
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        rec = EtfFlowsCollector()._fetch_etf("SPY", "S&P 500", "2026-04-17")
+        assert rec is not None
+        assert rec["ticker"] == "SPY"
+        assert rec["name"] == "SPDR S&P 500 ETF Trust"
+        assert rec["total_assets"] == 650_000_000_000
+        assert rec["volume_avg"] == 80_000_000
+        assert rec["nav_price"] == 700.12
+
+    def test_yfinance_fallback_rejects_missing_total_assets(self, monkeypatch):
+        """totalAssets 없으면 None 반환 (failed 처리).
+
+        downstream analyze_sector_rotation() 이 `aum_current - aum_prev` 를 수행 →
+        partial None 이 섞이면 TypeError → 분석 전체 crash.
+        """
+        import sys
+
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        self._patch_openbb_fail(monkeypatch)
+
+        # 1) totalAssets 자체 누락
+        info_missing = {"longName": "X", "averageVolume": 100, "navPrice": 50}
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value.info = info_missing
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+        assert EtfFlowsCollector()._fetch_etf("XX", "X", "2026-04-17") is None
+
+        # 2) totalAssets 가 NaN
+        info_nan = {"longName": "Y", "totalAssets": float("nan"), "averageVolume": 100, "navPrice": 50}
+        mock_yf.Ticker.return_value.info = info_nan
+        assert EtfFlowsCollector()._fetch_etf("YY", "Y", "2026-04-17") is None
+
+    def test_yfinance_fallback_secondary_when_primary_is_nan(self, monkeypatch):
+        """averageVolume 이 NaN 이면 averageVolume10days 로 fallback.
+
+        `a or b` 는 NaN 을 truthy 로 취급 → pd.notna 기반 명시적 선택 필요.
+        """
+        import sys
+
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        self._patch_openbb_fail(monkeypatch)
+
+        info = {
+            "longName": "Partial ETF",
+            "totalAssets": 100_000_000,
+            "averageVolume": float("nan"),        # primary NaN
+            "averageVolume10days": 5_000_000,     # secondary usable
+            "navPrice": float("nan"),             # primary NaN
+            "regularMarketPrice": 55.0,           # secondary usable
+        }
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value.info = info
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        rec = EtfFlowsCollector()._fetch_etf("PP", "Partial", "2026-04-17")
+        assert rec is not None
+        assert rec["volume_avg"] == 5_000_000, "secondary averageVolume10days must be picked when primary is NaN"
+        assert rec["nav_price"] == 55.0, "secondary regularMarketPrice must be picked when navPrice is NaN"
+
+    def test_yfinance_fallback_all_secondary_missing(self, monkeypatch):
+        """primary NaN + secondary 도 missing → volume_avg/nav_price 는 None (total_assets 있으면 row 유지)."""
+        import sys
+
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        self._patch_openbb_fail(monkeypatch)
+
+        info = {
+            "totalAssets": 1_000_000,
+            "averageVolume": float("nan"),
+            "navPrice": float("nan"),
+            # no secondary
+        }
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value.info = info
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        rec = EtfFlowsCollector()._fetch_etf("QQ", "Q", "2026-04-17")
+        assert rec is not None
+        assert rec["total_assets"] == 1_000_000
+        assert rec["volume_avg"] is None
+        assert rec["nav_price"] is None
+
+
 # ##############################################################################
 # Source: test_uncovered.py
 # ##############################################################################
