@@ -23,59 +23,59 @@ The pipeline has **8 phases** organized into 5 conceptual stages. Phases never i
 flowchart TD
 
   %% ───── ① Collect ─────
-  subgraph COLLECT["① Collect — 26 collectors"]
+  subgraph COLLECT["① Collect"]
     direction LR
-    C1["<b>US equities</b><br/>yfinance · OpenBB"]
-    C2["<b>KR equities</b><br/>pykrx · KIS Open API"]
-    C3["<b>Macro + news</b><br/>FRED · GoogleNews RSS"]
-    C4["<b>External</b><br/>ARK · FINVIZ · Reddit"]
+    C1["US equities<br/>yfinance · OpenBB"]
+    C2["KR equities<br/>pykrx · KIS Open API"]
+    C3["Macro + news<br/>FRED · GoogleNews RSS"]
+    C4["External<br/>ARK · FINVIZ · Reddit"]
   end
 
   %% ───── Core ─────
-  subgraph CORE["Core foundation"]
+  subgraph CORE["Foundation"]
     direction LR
-    DB[("<b>SQLite (WAL)</b><br/>33 tables · 20 migrations")]
-    CFG["<b>config/*.yaml</b><br/>rules · agents · signals<br/>universe · siege_gates"]
-    EVT["<b>pipeline_events</b><br/>append-only journal<br/>Freshness SLA"]
+    DB[("SQLite (WAL)<br/>sole sqlite3 importer")]
+    CFG["config/*.yaml<br/>rules · agents · signals<br/>universe · siege_gates"]
+    EVT["pipeline_events<br/>append-only journal<br/>Freshness SLA"]
   end
 
   %% ───── ② Analyze ─────
   subgraph ANALYZE["② Analyze"]
     direction LR
-    SIG["<b>20 signals</b><br/>RSI · MACD · BB · volume"]
-    REG["<b>Regime classifier</b><br/>6 base + 4 special"]
-    SCR["<b>Macro + event score</b><br/>9 indicators · 15 categories"]
-    FAC["<b>Multi-factor</b><br/>momentum · value · quality"]
+    SIG["Signals<br/>RSI · MACD · BB · volume"]
+    REG["Regime classifier<br/>base + special"]
+    SCR["Macro + event score<br/>FRED indicators · RSS categories"]
+    FAC["Multi-factor<br/>momentum · value · quality"]
   end
 
   %% ───── ③ Consensus ─────
-  subgraph CONSENSUS["③ Consensus — 10 specialist agents"]
+  subgraph CONSENSUS["③ Consensus"]
     direction LR
-    AGENTS["Technical · Fundamental · Macro<br/>Smart Money · Wall Street · Korean<br/>Options · Crypto · Retail<br/><b>Risk (veto power)</b>"]
-    VOTE["<b>Weighted vote</b><br/>drift ± 30% band<br/>learning memory feedback"]
+    AGENTS["Specialist agents<br/>Technical · Fundamental · Macro<br/>Smart Money · Wall Street · Korean<br/>Options · Crypto · Retail<br/><b>Risk (veto power)</b>"]
+    VOTE["Weighted vote<br/>drift ± 30% band<br/>learning memory feedback"]
   end
 
   %% ───── ④ SIEGE v2 ─────
   subgraph SIEGE["④ SIEGE v2 certification"]
     direction LR
-    BASE["<b>Base 8 conditions</b><br/>position · sector · stop-loss · leverage<br/>conflict · drift · macro · rules"]
-    EXP["<b>Per-asset-class expansion</b><br/>freshness · volatility · external<br/>(us · kr_equity · kr_index · commodity · bond)"]
-    RES["<b>CERTIFIED / REJECTED</b><br/>+ evidence trace"]
+    BASE["Base conditions<br/>position · sector · stop-loss · leverage<br/>conflict · drift · macro · rules"]
+    EXP["Per-asset-class expansion<br/>freshness · volatility · external<br/>(us_equity · kr_equity · kr_index · commodity · bond)"]
+    RES["CERTIFIED / REJECTED<br/>+ evidence trace"]
   end
 
   %% ───── ⑤ Track ─────
   subgraph TRACK["⑤ Track"]
     direction LR
-    OUT["<b>Outcome tracker</b><br/>30 / 60 / 90-day scoring"]
-    MEM["<b>Learning memory</b><br/>agent weight adjustment"]
+    OUT["Outcome tracker<br/>30 / 60 / 90-day scoring"]
+    MEM["Learning memory<br/>agent weight adjustment"]
   end
 
   %% ───── Serve ─────
   subgraph SERVE["Serve"]
     direction LR
-    API["<b>FastAPI :8001</b><br/>65 endpoints + SSE"]
-    UI["<b>Next.js 16 :3000</b><br/>17 pages · Action-First"]
-    ALR["<b>Discord · Telegram</b><br/>alerts + daily report"]
+    API["FastAPI :8001<br/>REST + SSE"]
+    UI["Next.js 16 :3000<br/>Action-First dashboard"]
+    ALR["Discord · Telegram<br/>alerts + daily report"]
   end
 
   %% ───── flow ─────
@@ -126,7 +126,7 @@ flowchart TD
 | `nuri/trading/engine/` | Certify | SIEGE v2 — 3D certification (Account × Asset Class × Market) with per-asset-class expansion, conflict detection, learning memory |
 | `nuri/trading/recommend/` | Certify+Track | Candidates, price targets, rebalance advisor, outcome tracker (30/60/90d) |
 | `nuri/llm/` | Classify | Event classifier (OpenAI/regex), LLM report (OpenAI primary, llama.cpp/Ollama fallback), OpenAI wrapper |
-| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (65 endpoints incl. `/actions`, `/opportunities`, `/market-context`, `/coverage`). Swagger at `/docs` |
+| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (incl. `/actions`, `/opportunities`, `/market-context`, `/coverage`). Swagger at `/docs` |
 | `frontend/` | Serve | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme) |
 | `nuri/core/` | Foundation | db.py (sole SQLite), events.py (journal), freshness.py (SLA), timezone.py (KST), rules.py, signal_config.py |
 | `config/*.yaml` | Foundation | rules, agents, signals, universe, stock_types, portfolio (gitignored) |
@@ -193,7 +193,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (2,969 backend + 917 frontend + 38 e2e)
+make test       # full suite (2,993 backend + 917 frontend + 39 e2e)
 make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```

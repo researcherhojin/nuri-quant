@@ -3,7 +3,7 @@
 **Issue**: [#272](https://github.com/researcherhojin/nuri-quant/issues/272)
 **Phase**: 1 (PM Spec)
 **Author**: 2026-04-14 audit session
-**Status**: Draft for review
+**Status**: **Complete** — #272 epic closed 2026-04-15 via Phase 5 QA PR #304. All 5 phases shipped (Phase 1 PM spec · 2a universe · 2b collectors · 2c CI gate · 3/4/5 agent+scorer+QA).
 
 ---
 
