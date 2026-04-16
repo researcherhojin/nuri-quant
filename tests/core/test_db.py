@@ -325,3 +325,58 @@ class TestDbMaintenance:
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
         from nuri.scheduler import _run_db_maintenance
         _run_db_maintenance()  # 빈 DB에서도 에러 없이 실행
+
+
+class TestUpsertNewsDedupCount:
+    """#351 regression lock-in — upsert_news 가 실제 신규 삽입 수 반환.
+
+    이전 구현은 `len(records)` 를 반환하여 URL UNIQUE 로 IGNORE 된 row 도 카운트 포함
+    → 로그 "뉴스 N 건 수집" 과 DB 실제 상태 불일치 (§2.4 Observability 위배).
+    `cursor.rowcount` 는 INSERT OR IGNORE 에서 실제 inserted rows 만 반환.
+    """
+
+    def _make_record(self, url: str, title: str = "t") -> dict:
+        return {
+            "ticker": "AAPL",
+            "date": "2026-04-17",
+            "title": title,
+            "url": url,
+            "source": "test",
+            "sentiment": None,
+        }
+
+    def test_returns_actual_insert_count_on_url_dedup(self, db_path):
+        """중복 URL 포함 input → 반환값이 dedup 후 실제 insert 건수."""
+        from nuri.core.db import upsert_news
+
+        records = [
+            self._make_record("http://ex.com/1", "t1"),
+            self._make_record("http://ex.com/1", "t2"),  # dup URL (IGNORED)
+            self._make_record("http://ex.com/2", "t3"),
+        ]
+        ret = upsert_news(records, db_path=db_path)
+        actual = query("SELECT COUNT(*) AS c FROM news", db_path=db_path)[0]["c"]
+
+        assert ret == 2, f"expected actual insert count (2), got {ret}"
+        assert ret == actual, "return value must equal DB row count (§2.4)"
+
+    def test_second_call_with_same_urls_returns_zero(self, db_path):
+        """동일 URL 재전송 → 전부 IGNORE → 반환 0 (이전엔 len(records) 반환 버그)."""
+        from nuri.core.db import upsert_news
+
+        r1 = [self._make_record("http://ex.com/A", "first")]
+        assert upsert_news(r1, db_path=db_path) == 1
+
+        # 같은 URL 다시 전송
+        r2 = [self._make_record("http://ex.com/A", "second"), self._make_record("http://ex.com/B", "new")]
+        ret = upsert_news(r2, db_path=db_path)
+        assert ret == 1, f"only /B is new, expected 1, got {ret}"
+        # DB 에 총 2 건 (A 는 first 그대로, B 신규)
+        actual = query("SELECT COUNT(*) AS c FROM news", db_path=db_path)[0]["c"]
+        assert actual == 2
+
+    def test_empty_returns_zero(self, db_path):
+        """빈 input → 0 (기존 동작 유지 — len([]) == cursor.rowcount == 0)."""
+        from nuri.core.db import upsert_news
+
+        assert upsert_news([], db_path=db_path) == 0
