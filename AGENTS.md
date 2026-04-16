@@ -20,6 +20,7 @@ These are enforced by hooks, CI, and pre-push scripts. Violations are blocked me
 5. **Privacy**: No real broker names, holdings, quantities, prices, or account identifiers in git (commits, PRs, issues, tests, comments). Use placeholders: `Brokerage Alpha`, `Brokerage Beta`, round-million values.
 6. **Conventional commits**: `type(scope): message` — types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert. English.
 7. **Scope discipline**: One issue = one PR, max 3 commits. Unrelated findings go to separate issues.
+8. **Flow (7-phase)**: Every task runs Think → Plan → Build → Review → Test → Ship → Reflect (`docs/STRATEGY.md §2.7`). Failed gate → regress to prior phase. No skipping. Trivial chores may inline Think+Plan; Build+ mandatory.
 
 ## Code Placement
 

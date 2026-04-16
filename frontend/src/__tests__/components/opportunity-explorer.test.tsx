@@ -278,7 +278,7 @@ describe("OpportunityExplorer", () => {
     });
   });
 
-  // ─── Divergence flag badge (P1 A2, STRATEGY §5.10) ──
+  // ─── Divergence flag badge (P1 A2, docs/HARNESS.md §2) ──
   it("renders divergence badge when divergence_flag=true in API response", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,

@@ -233,7 +233,7 @@ jobs:
 
   # ── Shell script lint ──
   # shellcheck로 scripts/*.sh 린트. Graduated from warning-only 2026-04-15 —
-  # passed cleanly across multiple consecutive runs (STRATEGY §7 Tier 1 #7
+  # passed cleanly across multiple consecutive runs (docs/TODO.md Tier 1 #7
   # shipped 16 files clean). Failures now block the job, but the check
   # is still not in required_status_checks (branch protection update is a
   # separate manual step when user chooses to enforce).

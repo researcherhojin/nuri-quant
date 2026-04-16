@@ -16,132 +16,99 @@ Every BUY/SELL recommendation runs through a **collect → analyze → consensus
 
 The pipeline has **8 phases** organized into 5 conceptual stages. Phases never import each other — they communicate **only through DB tables and CSV files** (loose coupling, see [`docs/STRATEGY.md`](docs/STRATEGY.md#23-느슨한-결합-loose-coupling-via-data) §2.3). Re-running an upstream phase automatically refreshes downstream consumers.
 
+**At a glance**: `Collect → Analyze → Consensus → Certify → Track → Serve` — driven by `config/*.yaml`, persisted in SQLite, feedback loop from outcomes back to agent weights.
+
 ```mermaid
-%%{ init: { 'flowchart': { 'curve': 'catmullRom' } } }%%
+%%{ init: { 'theme': 'dark', 'flowchart': { 'curve': 'basis', 'padding': 10 } } }%%
 flowchart TD
 
-  subgraph Collect["Phase A: Collect"]
-    StockUS("Stock US\nyfinance/OpenBB")
-    StockKR("Stock KR\npykrx + KOSPI/KOSDAQ")
-    MacroCol("Macro\nFRED/yfinance")
-    MacroNews("Macro News\nGoogleNews RSS")
-    FundCol("Fundamentals\nyfinance .info")
-    ExtCol("External\nARK/FINVIZ/Reddit")
-    KIS("KIS Open API\n실시간 잔고/시세")
+  %% ───── ① Collect ─────
+  subgraph COLLECT["① Collect — 26 collectors"]
+    direction LR
+    C1["<b>US equities</b><br/>yfinance · OpenBB"]
+    C2["<b>KR equities</b><br/>pykrx · KIS Open API"]
+    C3["<b>Macro + news</b><br/>FRED · GoogleNews RSS"]
+    C4["<b>External</b><br/>ARK · FINVIZ · Reddit"]
   end
 
-  subgraph Core["Core (DB + Config)"]
-    DB[("SQLite WAL\n31 tables")]
-    Config("config/*.yaml\nrules / agents / signals\nuniverse / siege_gates")
-    Events("pipeline_events\nappend-only journal")
-    Freshness("Freshness SLA\nPASS/WARN/FAIL")
+  %% ───── Core ─────
+  subgraph CORE["Core foundation"]
+    direction LR
+    DB[("<b>SQLite (WAL)</b><br/>33 tables · 20 migrations")]
+    CFG["<b>config/*.yaml</b><br/>rules · agents · signals<br/>universe · siege_gates"]
+    EVT["<b>pipeline_events</b><br/>append-only journal<br/>Freshness SLA"]
   end
 
-  subgraph Analyze["Phase B-D: Analyze"]
-    Signals("20 Signals\nRSI/MACD/BB/Volume\nconfig/signals.yaml")
-    Regime("Regime Classifier\n6 base + 4 special")
-    EventScore("Event Score\n15 categories\n-20 ~ +20")
-    MacroScore("Macro Score\n9 indicators\n0-100")
-    Factors("Multi-Factor\nmomentum/value/quality")
+  %% ───── ② Analyze ─────
+  subgraph ANALYZE["② Analyze"]
+    direction LR
+    SIG["<b>20 signals</b><br/>RSI · MACD · BB · volume"]
+    REG["<b>Regime classifier</b><br/>6 base + 4 special"]
+    SCR["<b>Macro + event score</b><br/>9 indicators · 15 categories"]
+    FAC["<b>Multi-factor</b><br/>momentum · value · quality"]
   end
 
-  subgraph Consensus["Phase E: Consensus"]
-    direction TB
-    Tech("Technical")
-    Fund("Fundamental")
-    Macro("Macro")
-    Risk("Risk\nveto power")
-    SmartMoney("Smart Money")
-    WallSt("Wall Street")
-    Korean("Korean Market\nmacro_events 연동")
-    Options("Options")
-    Crypto("Crypto")
-    Retail("Retail")
-    ConsEngine("Weighted Vote\n10 agents")
+  %% ───── ③ Consensus ─────
+  subgraph CONSENSUS["③ Consensus — 10 specialist agents"]
+    direction LR
+    AGENTS["Technical · Fundamental · Macro<br/>Smart Money · Wall Street · Korean<br/>Options · Crypto · Retail<br/><b>Risk (veto power)</b>"]
+    VOTE["<b>Weighted vote</b><br/>drift ± 30% band<br/>learning memory feedback"]
   end
 
-  subgraph SIEGE["Phase F: SIEGE Certification"]
-    direction TB
-    GatePolicy("Gate Policy\nconfig/rules.yaml\nasset_class × account")
-    Gate11("11-Gate Check\nposition/sector/SL\nVIX/freshness/external\nconflict/drift/macro")
-    Cert("Certificate\nCERTIFIED / REJECTED")
-    Evidence("Evidence Trace\nsource + value + threshold")
+  %% ───── ④ SIEGE v2 ─────
+  subgraph SIEGE["④ SIEGE v2 certification"]
+    direction LR
+    BASE["<b>Base 8 conditions</b><br/>position · sector · stop-loss · leverage<br/>conflict · drift · macro · rules"]
+    EXP["<b>Per-asset-class expansion</b><br/>freshness · volatility · external<br/>(us · kr_equity · kr_index · commodity · bond)"]
+    RES["<b>CERTIFIED / REJECTED</b><br/>+ evidence trace"]
   end
 
-  subgraph Track["Phase G: Track"]
-    Tracker("Outcome Tracker\n30/60/90d scoring")
-    Memory("Learning Memory\n±30% weight band")
-    Decisions("Decision Journal\nagent verdicts + evidence")
+  %% ───── ⑤ Track ─────
+  subgraph TRACK["⑤ Track"]
+    direction LR
+    OUT["<b>Outcome tracker</b><br/>30 / 60 / 90-day scoring"]
+    MEM["<b>Learning memory</b><br/>agent weight adjustment"]
   end
 
-  subgraph Serve["Interface"]
-    API("FastAPI :8001\n68 endpoints + SSE")
-    Dashboard("Next.js 16 :3000\n17 pages\nAction-First dashboard")
-    Discord("Discord/Telegram\nalerts + daily report")
+  %% ───── Serve ─────
+  subgraph SERVE["Serve"]
+    direction LR
+    API["<b>FastAPI :8001</b><br/>65 endpoints + SSE"]
+    UI["<b>Next.js 16 :3000</b><br/>17 pages · Action-First"]
+    ALR["<b>Discord · Telegram</b><br/>alerts + daily report"]
   end
 
-  %% Collect → DB
-  StockUS --> DB
-  StockKR --> DB
-  MacroCol --> DB
-  MacroNews --> DB
-  FundCol --> DB
-  ExtCol --> DB
-  KIS --> DB
+  %% ───── flow ─────
+  COLLECT ==> DB
+  DB ==> ANALYZE
+  CFG --> ANALYZE
+  CFG --> CONSENSUS
+  CFG --> SIEGE
+  ANALYZE ==> CONSENSUS
+  CONSENSUS ==> SIEGE
+  SIEGE ==> TRACK
+  TRACK -.->|weight feedback| CONSENSUS
 
-  %% DB → Analyze
-  DB --> Signals
-  DB --> Regime
-  DB --> EventScore
-  DB --> MacroScore
-  DB --> Factors
+  DB --> SERVE
+  SIEGE --> ALR
+  EVT --> API
 
-  %% Analyze → Consensus
-  Signals --> ConsEngine
-  Regime --> ConsEngine
-  MacroScore --> ConsEngine
-  EventScore --> Korean
-  Tech --> ConsEngine
-  Fund --> ConsEngine
-  Macro --> ConsEngine
-  Risk --> ConsEngine
-  SmartMoney --> ConsEngine
-  WallSt --> ConsEngine
-  Korean --> ConsEngine
-  Options --> ConsEngine
-  Crypto --> ConsEngine
-  Retail --> ConsEngine
+  %% ───── styling ─────
+  style COLLECT    fill:#0f172a,stroke:#6366f1,color:#e2e8f0,stroke-width:2px
+  style CORE       fill:#0f172a,stroke:#94a3b8,color:#e2e8f0,stroke-width:2px
+  style ANALYZE    fill:#0f172a,stroke:#10b981,color:#e2e8f0,stroke-width:2px
+  style CONSENSUS  fill:#0f172a,stroke:#f59e0b,color:#e2e8f0,stroke-width:2px
+  style SIEGE      fill:#0f172a,stroke:#ef4444,color:#e2e8f0,stroke-width:2px
+  style TRACK      fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0,stroke-width:2px
+  style SERVE      fill:#0f172a,stroke:#06b6d4,color:#e2e8f0,stroke-width:2px
 
-  %% Consensus → SIEGE
-  ConsEngine --> Gate11
-  Config --> GatePolicy --> Gate11
-  Gate11 --> Cert
-  Gate11 --> Evidence
-
-  %% SIEGE → Track
-  Cert --> Tracker
-  Evidence --> Decisions
-  Tracker --> Memory
-  Memory -.->|weight feedback| ConsEngine
-
-  %% Serve
-  DB --> API --> Dashboard
-  Cert --> Discord
-  Events --> API
-  Freshness --> API
-
-  style Collect fill:#1e293b,stroke:#6366f1,color:#e2e8f0,stroke-width:2px
-  style Core fill:#1e293b,stroke:#94a3b8,color:#e2e8f0,stroke-width:2px
-  style Analyze fill:#1e293b,stroke:#10b981,color:#e2e8f0,stroke-width:2px
-  style Consensus fill:#1e293b,stroke:#f59e0b,color:#e2e8f0,stroke-width:2px
-  style SIEGE fill:#1e293b,stroke:#ef4444,color:#e2e8f0,stroke-width:2px
-  style Track fill:#1e293b,stroke:#8b5cf6,color:#e2e8f0,stroke-width:2px
-  style Serve fill:#1e293b,stroke:#06b6d4,color:#e2e8f0,stroke-width:2px
+  classDef node fill:#1e293b,stroke:#334155,color:#e2e8f0,stroke-width:1px;
+  class C1,C2,C3,C4,DB,CFG,EVT,SIG,REG,SCR,FAC,AGENTS,VOTE,BASE,EXP,RES,OUT,MEM,API,UI,ALR node;
 ```
 
 ### Key architectural decisions
 
-- **Sole SQLite gateway** — `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced). 31 tables, WAL mode. All modules use `query()`, `query_df()`, `upsert_*()`, `get_db()`. Tests inject `tmp_path` for full isolation.
+- **Sole SQLite gateway** — `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced). 33 tables, WAL mode. All modules use `query()`, `query_df()`, `upsert_*()`, `get_db()`. Tests inject `tmp_path` for full isolation.
 - **Config-driven, code-static** — all thresholds, rules, signal metadata, and SIEGE gate policies live in `config/*.yaml`. Changing a stop-loss or adding a new market means editing YAML, not Python. See `rules.yaml`, `agents.yaml`, `signals.yaml`, `universe.yaml`.
 - **DB-only integration between phases** — phases communicate through DB tables and CSV files, never direct imports. Re-running an upstream phase automatically refreshes downstream consumers.
 - **SIEGE v2: 3-dimensional certification** — gates apply per Account (strategy profile) × Asset Class (exposure: us_equity, kr_equity, commodity, bond) × Execution Market (KRX, NYSE). See [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md). Inspired by [nutshells3/SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution).
@@ -156,10 +123,10 @@ flowchart TD
 | `nuri/quant/validation/` | Analyze | Signal backtest (20 signals from `config/signals.yaml`), superinvestor/analyst backtest, scorecard |
 | `nuri/quant/factors/` | Analyze | Multi-factor scoring (momentum, value, quality, composite) |
 | `nuri/trading/agents/` | Consensus | 10 specialist agents + weighted consensus. Risk agent veto. Korean Market Agent reads macro_events |
-| `nuri/trading/engine/` | Certify | SIEGE 11-gate (v2: asset-class-aware), conflict detection, learning memory |
+| `nuri/trading/engine/` | Certify | SIEGE v2 — 3D certification (Account × Asset Class × Market) with per-asset-class expansion, conflict detection, learning memory |
 | `nuri/trading/recommend/` | Certify+Track | Candidates, price targets, rebalance advisor, outcome tracker (30/60/90d) |
 | `nuri/llm/` | Classify | Event classifier (OpenAI/regex), LLM report (OpenAI primary, llama.cpp/Ollama fallback), OpenAI wrapper |
-| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (68 endpoints incl. `/actions`, `/opportunities`, `/market-context`). Swagger at `/docs` |
+| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (65 endpoints incl. `/actions`, `/opportunities`, `/market-context`, `/coverage`). Swagger at `/docs` |
 | `frontend/` | Serve | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme) |
 | `nuri/core/` | Foundation | db.py (sole SQLite), events.py (journal), freshness.py (SLA), timezone.py (KST), rules.py, signal_config.py |
 | `config/*.yaml` | Foundation | rules, agents, signals, universe, stock_types, portfolio (gitignored) |
@@ -218,7 +185,7 @@ cp config/portfolio.example.yaml config/portfolio.yaml  # your holdings (gitigno
 make start          # API (:8001) + Dashboard (:3000)
 make full-scan      # 8-phase pipeline end-to-end
 make consensus      # 10-agent analysis + decision recording
-make certify        # SIEGE 11-gate certification
+make certify        # SIEGE v2 certification (asset-class per-expansion)
 make scan           # Daily scan (us_core, 85 tickers)
 make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ```
@@ -226,7 +193,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (2,951 backend + 913 frontend + 38 e2e)
+make test       # full suite (2,969 backend + 917 frontend + 38 e2e)
 make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
@@ -261,13 +228,13 @@ Each ticker is tagged growth/value via `config/stock_types.yaml`. Take-profit an
 - **VIX > 30** → new buys blocked
 - **execution_priority** → stop-loss → take-profit → trailing → new-buy (loss largest first)
 - **Buy checklist** → TipRanks ≥ Moderate Buy · superinvestors ≥ 3 · PE < 100 · revenue > $0 · multi-factor top 50%
-- **SIEGE 11-gate** → 1 error grade failure = REJECTED, no manual override
+- **SIEGE v2 gate** → 1 error-grade failure = REJECTED, no manual override (conditions count varies per asset-class expansion)
 
 ## References
 
 | Source | Usage |
 |--------|-------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | 11-gate certification, policy-driven gates, safety lattice, iterative learning |
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | Policy-driven gate certification (v2: asset-class expansion), safety lattice, iterative learning |
 | [OAE](https://github.com/nutshells3/orchestration-assurance-engine) | Claim trace, evidence lineage, audit pipeline |
 | [safeslice](https://github.com/nutshells3/safeslice) | Statistical reliability bounds, witness cliff detection (Phase 4 target) |
 | [fwp](https://github.com/nutshells3/fwp) | Protocol seam pattern, governed job lifecycle |

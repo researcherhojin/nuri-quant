@@ -25,7 +25,7 @@ description: Code review checklist. Use when asked to "review", "리뷰", "코�
 - [ ] Quantitative evidence provided (signal win rate, PF, regime stats)
 - [ ] Price targets included (entry / stop-loss / target_1 / target_2 / trailing)
 - [ ] 10 external sources cross-referenced
-- [ ] SIEGE 11-gate would pass
+- [ ] SIEGE v2 gate (asset-class expansion) would pass — no error-grade failure
 
 ## Quality
 

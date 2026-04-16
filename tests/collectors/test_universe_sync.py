@@ -498,7 +498,7 @@ class TestNoNoisyOutput:
 
 
 class TestPhase5NegativeGuardrails:
-    """P1 D — Phase 5 QA negative cases (STRATEGY §7 Tier 2 #272 완결).
+    """P1 D — Phase 5 QA negative cases (docs/TODO.md Tier 2 #272 완결).
 
     3 graceful-degradation contracts that must hold for fresh-clone /
     corrupted-setup 상황. Codex-reviewed minimal set — API key 테스트는
