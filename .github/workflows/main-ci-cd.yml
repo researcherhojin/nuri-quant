@@ -248,22 +248,25 @@ jobs:
         run: shellcheck --source-path=SCRIPTDIR --external-sources scripts/*.sh
 
   # ── Universe + Agent Coverage Validation (#272 Phase 2c) ──
-  # Validates universe.yaml ↔ upstream sync + per-table coverage thresholds.
-  # Currently warning-only (continue-on-error) until user runs make collect-universe
-  # to populate data tables. Will become required after first PASS run.
+  # Validates universe.yaml ↔ upstream sync. CI 에서는 universe.yaml 의 ticker
+  # count sanity check 만 수행 (DB 부재). 5-table coverage 검증 (prices /
+  # fundamentals / analyst / insider / superinvestors) 은 로컬 또는 Mac mini
+  # scheduler 가 수행하며 `scripts/validate_universe.py --no-fetch` 로 5/5 PASS
+  # 가 유지되어야 함 (2026-04-16 마지막 실측 99/99/97/97/97%).
+  #
+  # **Required gate** — TODO.md Tier 2 P2 #7 에 따라 promotion 됨. universe.yaml
+  # 의 라벨 vs reality drift (예: us_sp500_extended 가 503→339 으로 silently
+  # 줄어듦) 를 PR 단계에서 차단. branch protection required check 에 추가됨.
   universe-check:
     name: Universe Coverage Validation
     needs: changes
-    # Previous condition was `needs.changes.outputs.python`, but `changes` never
-    # emitted a `python` output — the gate was dead (always skipped) since
-    # workflow inception. Fixed to use the new dedicated `universe` output
-    # (triggered by config/universe.yaml, scripts/validate_universe.py, or
-    # this workflow). Always runs on non-PR events to track coverage drift on
-    # main, matching the pattern used by other backend jobs.
-    if: needs.changes.outputs.universe == 'true' || github.event_name != 'pull_request'
+    # Always run — required gate (PR #343 promoted this to required_status_checks).
+    # Previous changes-conditional caused docs/gitignore-only PRs to report
+    # this check as "skipping", which blocks merge under the new required-check
+    # policy. The job is fast (~15s, no network), so always-on cost is trivial
+    # vs the merge-block cost.
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true  # warning-only initially per spec §6 stage 1
     steps:
       - uses: actions/checkout@v6
       - name: Setup Python
