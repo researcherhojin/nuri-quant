@@ -192,7 +192,7 @@ describe("ConsensusTable", () => {
     expect(screen.queryByText("(반포지션)")).not.toBeInTheDocument();
   });
 
-  // ─── Divergence flag badge (P1 A2, STRATEGY §5.10 JKHY) ──
+  // ─── Divergence flag badge (P1 A2, docs/HARNESS.md §2 JKHY) ──
   it("renders divergence badge when divergence_flag is true", () => {
     const withDivergence = [{
       ...mockData[0],
