@@ -132,9 +132,12 @@ test-results/
 *.cover
 
 # ─── Data & runtime artifacts ──────────────────────────────────
-data/portfolio.db
-data/portfolio.db-wal
-data/portfolio.db-shm
+# SQLite DB files in data/ — glob form so future DB names (e.g. nuri.db,
+# nuri.db-wal) are caught automatically. Only matches direct children;
+# tests/fixtures/*.db remain trackable.
+data/*.db
+data/*.db-wal
+data/*.db-shm
 data/backups/
 data/exports/
 data/reports/
