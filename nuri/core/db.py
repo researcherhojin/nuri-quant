@@ -842,16 +842,21 @@ def insert_events(records: list[dict], db_path: Optional[Path] = None) -> int:
 
 
 def upsert_news(records: list[dict], db_path: Optional[Path] = None) -> int:
-    """뉴스 upsert (URL 기준 중복 제거)."""
+    """뉴스 upsert (URL 기준 중복 제거). 반환값은 실제 신규 삽입 건수 (dedup 후).
+
+    이전에는 `len(records)` 를 그대로 반환하여 URL UNIQUE 로 IGNORE 된 행도 카운트에
+    포함됐다 (#351). `cursor.rowcount` 는 INSERT OR IGNORE 에서 실제 inserted 수만
+    반환하므로 로그 "뉴스 N 건 수집" 이 DB 상태와 일치한다 (§2.4 Observability).
+    """
     if not records:
         return 0
     with get_db(db_path) as conn:
-        conn.executemany(
+        cur = conn.executemany(
             """INSERT OR IGNORE INTO news (ticker, date, title, url, source, sentiment)
                VALUES (:ticker, :date, :title, :url, :source, :sentiment)""",
             records,
         )
-        return len(records)
+        return cur.rowcount
 
 
 def upsert_macro_events(records: list[dict], db_path: Optional[Path] = None) -> int:
