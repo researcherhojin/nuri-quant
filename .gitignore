@@ -215,6 +215,9 @@ ta-lib/
 ta-lib-*.tar.gz
 NEXT_SESSION.md
 SESSION_PROMPT.md
+# Personal trade plans (broker positions / prices — never commit)
+TRADE_PLAN.md
+TRADE_PLAN_*.md
 
 # Internal methodology (not for public repo)
 docs/SYSTEM.md
