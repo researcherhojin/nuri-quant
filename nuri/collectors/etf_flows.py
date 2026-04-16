@@ -1,7 +1,9 @@
 """
 ETF 자금흐름 수집기 — 섹터 ETF AUM/거래량 추적.
 
-OpenBB etf.info (yfinance) → total_assets, volume_avg, nav_price.
+OpenBB etf.info primary + yfinance `Ticker.info` fallback → total_assets, volume_avg,
+nav_price. OpenBB 상류 bug (#274, upstream #7379/#7460) 동안 yfinance 로 자동 수집.
+
 AUM 변화를 주기적으로 수집하여 섹터 자금흐름(rotation)을 추정한다.
 
 사용법:
@@ -51,13 +53,9 @@ class EtfFlowsCollector(BaseCollector):
         super().__init__("etf_flows")
 
     def collect(self, **kwargs) -> list[dict]:
-        """OpenBB etf.info로 ETF 정보 수집.
-
-        Note: 2026-04 기준 OpenBB OBBject_EtfCountries import 깨짐 (#274). 모든 fetch 실패.
-        """
+        """ETF 정보 수집. OpenBB etf.info primary + yfinance `Ticker.info` fallback."""
         import warnings
 
-        from openbb import obb
         from tqdm import tqdm
 
         warnings.filterwarnings("ignore")
@@ -73,41 +71,82 @@ class EtfFlowsCollector(BaseCollector):
         iterator = tqdm(etfs_list, desc="  etf_flows", unit="etf", disable=len(etfs_list) < 10)
 
         for ticker, label in iterator:
-            try:
-                r = obb.etf.info(ticker, provider="yfinance")
-                df = r.to_df()
-                if df.empty:
-                    continue
-
-                row = df.iloc[0]
-                results.append(
-                    {
-                        "ticker": ticker,
-                        "date": today,
-                        "name": str(row.get("name", label))[:100],
-                        "total_assets": float(row["total_assets"]) if pd.notna(row.get("total_assets")) else None,
-                        "volume_avg": float(row["volume_avg"]) if pd.notna(row.get("volume_avg")) else None,
-                        "nav_price": float(row["nav_price"]) if pd.notna(row.get("nav_price")) else None,
-                    }
-                )
-                if len(etfs_list) < 10:
-                    self.logger.info(f"  {ticker} ({label}): AUM=${row.get('total_assets', 0) / 1e9:.1f}B")
-
-            except Exception as e:
+            rec = self._fetch_etf(ticker, label, today)
+            if rec is None:
                 failed.append(ticker)
-                self.logger.debug(f"{ticker}: 수집 실패 — {e}")
                 continue
+            results.append(rec)
+            if len(etfs_list) < 10 and rec.get("total_assets"):
+                self.logger.info(f"  {ticker} ({label}): AUM=${rec['total_assets'] / 1e9:.1f}B")
 
         sample = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
         self.logger.info(
-            "📊 ETF flows: ✅ %d 성공 / ❌ %d 실패 (총 %d) — failed: %s%s",
+            "📊 ETF flows: ✅ %d 성공 / ❌ %d 실패 (총 %d) — failed: %s",
             len(results),
             len(failed),
             len(etfs_list),
             sample or "없음",
-            "  [⚠️ OpenBB #274 깨짐 — 모두 실패 정상]" if len(failed) == len(etfs_list) else "",
         )
         return results
+
+    def _fetch_etf(self, ticker: str, label: str, today: str) -> dict | None:
+        """단일 ETF 정보. OpenBB → yfinance 직접 폴백."""
+        # 1차: OpenBB
+        try:
+            from openbb import obb
+
+            r = obb.etf.info(ticker, provider="yfinance")
+            df = r.to_df()
+            if not df.empty:
+                row = df.iloc[0]
+                return {
+                    "ticker": ticker,
+                    "date": today,
+                    "name": str(row.get("name", label))[:100],
+                    "total_assets": float(row["total_assets"]) if pd.notna(row.get("total_assets")) else None,
+                    "volume_avg": float(row["volume_avg"]) if pd.notna(row.get("volume_avg")) else None,
+                    "nav_price": float(row["nav_price"]) if pd.notna(row.get("nav_price")) else None,
+                }
+        except Exception as e:
+            self.logger.debug(f"{ticker}: OpenBB etf.info 실패 — {e}")
+
+        # 2차: yfinance 직접 호출 (OpenBB 장애 시 폴백)
+        try:
+            import yfinance as yf
+
+            info = yf.Ticker(ticker).info or {}
+            if not info:
+                return None
+
+            name = info.get("longName") or info.get("shortName") or label
+            total_assets = info.get("totalAssets")
+
+            # total_assets 가 없는 row 는 failed 처리: analyze_sector_rotation 이
+            # `aum_current - aum_prev` 를 수행하는데 한쪽이 None 이면 TypeError → 분석 전체 실패.
+            if not pd.notna(total_assets):
+                return None
+
+            # yfinance .info 의 missing 필드는 float('nan') 으로 자주 반환되어 Python `or`
+            # 가 truthy 로 취급한다 (nan 은 0 이 아님). secondary 필드로 fallback 하려면
+            # pd.notna 로 명시적 NaN/None 체크 후 선택해야 한다.
+            av_primary = info.get("averageVolume")
+            volume_avg = av_primary if pd.notna(av_primary) else info.get("averageVolume10days")
+
+            nav_primary = info.get("navPrice")
+            nav_price = nav_primary if pd.notna(nav_primary) else info.get("regularMarketPrice")
+
+            # NaN → None 정규화: volume_avg / nav_price 는 downstream 에서 None 허용.
+            return {
+                "ticker": ticker,
+                "date": today,
+                "name": str(name)[:100],
+                "total_assets": float(total_assets),
+                "volume_avg": float(volume_avg) if pd.notna(volume_avg) else None,
+                "nav_price": float(nav_price) if pd.notna(nav_price) else None,
+            }
+        except Exception as e:
+            self.logger.debug(f"{ticker}: yfinance etf info 폴백 실패 — {e}")
+            return None
 
     def save(self, data: Any) -> int:
         """etf_flows 테이블에 upsert."""
