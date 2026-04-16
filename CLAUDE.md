@@ -8,7 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 See `docs/STRATEGY.md` §5.8 — seven principles (모르면 읽는다 / 2번 실패하면 접근을 바꾼다 / 사용자 워크플로로 검증한다 / 스코프를 지킨다 / 숫자를 grep한다 / 시스템이 차단한다 / 외부 API는 측정한다). STRATEGY.md is the canonical source; do not duplicate the list here.
 
-**Work status & changelog**: `docs/STRATEGY.md §7` manages Tier 1 (완료) / Tier 2 (next) backlog. Historical commits live in `git log` — do not re-document.
+## Flow (Think → Plan → Build → Review → Test → Ship → Reflect)
+
+See `docs/STRATEGY.md §2.7`. Every task goes through all 7 phases — don't skip. Each phase has explicit input/action/artifact/gate. Failed gate → regress to prior phase. Trivial chores may inline Think+Plan; everything from Build onward is mandatory. Codex unavailable → self-review + recover in next PR.
+
+**Work status & changelog**: `docs/TODO.md` manages Tier 1 (완료) / Tier 2 (next) / Tier 3 (research) backlog. Permanent policies (자동 매매 deferred, PR discipline) stay in `docs/STRATEGY.md §7`. Historical commits live in `git log` — do not re-document.
 
 **Session start**: read `NEXT_SESSION.md` first (gitignored) — carries the previous session's 10-min checklist and the next work item. Supersedes any stale "next task" recollection in user memory.
 
@@ -104,7 +108,7 @@ make full-scan        # 8-phase: collect→analyze→validate→regime→recomme
 make quick-scan       # 빠른 4-step: collect→analyze→consensus→targets (~2분)
 
 # SIEGE Certification
-make certify          # 11-condition 규칙 검증 → CERTIFIED / REJECTED
+make certify          # SIEGE v2 규칙 검증 (asset-class per-expansion, conditions 가변) → CERTIFIED / REJECTED
 make remediate        # REJECTED → 진단 + 매도 처방 + post-remediation 예측
 make gate             # Pipeline gate verifier (exits 1 if BLOCKED)
 
@@ -125,7 +129,7 @@ make test-fast        # -m "not slow" — slow LLM tests 제외 (~24s, PR CI 기
 make test-slow        # slow tests only
 make verify-quick     # fast pre-commit check: tests + regime (~10s, no network)
 make verify-fast      # ~2min pre-deploy (verify.py without backtest)
-make verify-all       # full verification with network (커밋 전 필수)
+make verify-all       # ~30s pre-push (tests + backend + frontend + file integrity, no network)
 make validate-portfolio  # Verify each ticker in portfolio.yaml has live data
 # Single test — no make target; invoke pytest directly via .venv/bin/python:
 .venv/bin/python -m pytest tests/test_db.py -v                                    # single file
@@ -187,7 +191,7 @@ nuri/
 │   ├── recommend/     # Candidates, rebalance, tracker, price_targets
 │   ├── swing/         # Market-wide scanner + rules
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
-├── api/               # FastAPI REST API (68 endpoints, routes/ incl. actions/opportunities/market-context/coverage)
+├── api/               # FastAPI REST API (65 endpoints, routes/ incl. actions/opportunities/market-context/coverage)
 ├── alerts/            # Discord daily report + bot, Telegram alerts
 └── llm/               # LLM report (Ollama) + OpenAI wrapper + event classifier
 ```
@@ -198,7 +202,7 @@ nuri/
 - **Loose coupling via data**: Pipeline phases communicate through DB/CSV, never direct imports. See `docs/ARCHITECTURE.md`.
 - **Collector template**: All inherit `BaseCollector` (collect→save→run). See `nuri/collectors/CLAUDE.md`.
 - **10-agent consensus**: Weighted voting, risk agent veto. See `nuri/trading/agents/CLAUDE.md`.
-- **SIEGE 11-gate**: All recommendations must pass 11 conditions. See `nuri/trading/engine/CLAUDE.md`.
+- **SIEGE v2 certification**: 3D gate (Account × Asset Class × Execution Market). `conditions` count is variable — per-asset-class expansion flattens at `certify()`. 1 error-grade fail → REJECTED. See `nuri/trading/engine/CLAUDE.md` + `docs/SIEGE_V2.md`.
 - **20 signals, YAML registry**: `config/signals.yaml` drives `signal_backtest.py`. See `docs/ARCHITECTURE.md`.
 - **Regime classifier**: 6 base + 4 special regimes. See `docs/ARCHITECTURE.md`.
 - **External LLM gateway**: `nuri/llm/openai_client.py` is the ONLY external LLM entry point. Direct `import openai` forbidden. `chat_json` (Tier 0 JSON) / `chat_text` (Tier 2 narrative, ZDR-gated). Every call audit-logged to `external_llm_calls` (content never stored). Policy: `docs/STRATEGY.md §4.4.3`.
@@ -242,14 +246,14 @@ Grouped into 4 categories (NEXT_SESSION M3):
 - **yfinance .KS fundamentals work**: Contrary to some code comments, `yfinance.Ticker("005930.KS").info` returns PE, ROE, margins, growth, debt for Korean individual stocks. ETFs return empty (expected). KIS API is NOT needed for fundamentals. **Exception**: `trailingPE` (stored as `pe_ratio`) is NOT provided for KR individual stocks — yfinance provider limit. Use `forward_pe` instead (182/201 KR coverage). *(facts, no fix)*
 - **pykrx institutional flow endpoint broken** (#247 investigation 2026-04-15): `get_market_trading_value_by_date` / `get_market_net_purchases_of_equities` return HTTP 400 (silent empty df) — KRX policy change requiring auth. pykrx 1.2.6 added `KRX_ID/KRX_PW` env login but **violates KRX Data Marketplace ToS** (Art. 6② automated collection). **Replacement**: KIS Open API `investor-trade-by-stock-daily` (tr_id=`FHPTJ04160001`) via `nuri/collectors/institutional.py`. `get_market_ohlcv_by_date` still works unauthenticated — keep for `stock_kr.py`. **Test:** `tests/collectors/test_institutional.py::TestCollectKrKisSuccess` (mock 30-row KIS response parse) + `TestCollectKrKisNoCreds::test_returns_empty_and_surfaces_event` (Surface §2.6 rung).
 - **KIS investor-trade TIME LIMIT** (#247): `investor-trade-by-stock-daily` rejects today's date before daily settlement (msg_cd=`OPSQ2001`, "TIME LIMIT 00:00 ~ 15:40"). Always query T-1; API returns 30-day history window ending at input date — T-1 covers yesterday back to T-30. Test with date 20260410 (known good) or anything ≥2 business days old.
-- **외부 API 동시성 비대칭** (STRATEGY §5.9.2-3, PR #282/#283): yfinance는 10-thread parallel OK. **pykrx/KRX는 sequential + `time.sleep(0.1)` 필수** (rate-limit). `ThreadPoolExecutor.result(timeout=)` 은 future만 cancel — pykrx C-extension call은 계속 실행되어 메모리 leak + slowdown 누적. 새 외부 API 통합 시 동시성 측정 후 결정.
+- **외부 API 동시성 비대칭** (`docs/HARNESS.md §1.2-1.3`, PR #282/#283): yfinance는 10-thread parallel OK. **pykrx/KRX는 sequential + `time.sleep(0.1)` 필수** (rate-limit). `ThreadPoolExecutor.result(timeout=)` 은 future만 cancel — pykrx C-extension call은 계속 실행되어 메모리 leak + slowdown 누적. 새 외부 API 통합 시 동시성 측정 후 결정.
 
 ### Pipeline policies & defenses
 
 - **Macro event pipeline** (PR #249-#253): 15 categories (was 12), stale articles >7d filtered, confidence <0.3 excluded from event_score, recency weighting (today=1.0→3d=0.5), regime_hint requires 3+ events. Korean Market Agent reads `macro_events` table for `export_surge`/`demand_growth`.
 - **OpenAI Tier 2 ZDR gate** (PR #294): `make report-llm`이 조용히 실패하면 `OPENAI_ZDR_APPROVED=1` 미설정이 원인. OpenAI ZDR 승인 후 `.env`에 설정. `NURI_DISABLE_EXTERNAL_LLM=1`로 전면 opt-out 가능. 정책: §4.4.3.
 - **Universe coverage 5-check gate** (PR #284/#286/#288/#296): `scripts/validate_universe.py` 는 prices/fundamentals/analyst/insider/super 5개 thresholds (≥95/80/70/50/80%) 검사. CI `Universe Coverage Validation` job 은 warning-only. `US_ONLY_TABLES` frozenset (analyst_ratings/insider_trades/superinvestors) 은 KR 에서 `n/a (US-only)` 표시 — 수집 실패 아닌 소스 한계. 새 테이블을 universe coverage 대상에 넣으려면 `check_universe_coverage.py` + `validate_universe.py` 둘 다 수정.
-- **JKHY falling knife pattern** (STRATEGY §5.10, PR #301-#303 완료 2026-04-15): 원 진단 ("chart_analysis.py 미연결") 은 오독 — TechnicalAgent 가 이미 호출 중. 실제 실패 모드는 "TechnicalAgent SELL 이 9 개 다른 에이전트 BUY 에 outweighted" + "dissent 가 사용자에게 surface/action 영향 없음". **현재 defense (4-layer)**: P1 B universe 1y backfill → P1 A1 `divergence_flag` 감지 → P1 A2 UI `⚠` 배지 → P1 A3 mechanical penalty (tech conf ≥ 80 opposite → HOLD downgrade). Live verified: JKHY 가 이제 action=HOLD. **Test:** `tests/trading/agents/test_consensus.py::TestConsensusDivergence*` (5 cases) + `TestConsensusDivergenceMechanicalPenalty` (8 cases) + `TestPenaltyTelemetryEvent` (5 cases).
+- **JKHY falling knife pattern** (`docs/HARNESS.md §2`, PR #301-#303 완료 2026-04-15): 원 진단 ("chart_analysis.py 미연결") 은 오독 — TechnicalAgent 가 이미 호출 중. 실제 실패 모드는 "TechnicalAgent SELL 이 9 개 다른 에이전트 BUY 에 outweighted" + "dissent 가 사용자에게 surface/action 영향 없음". **현재 defense (4-layer)**: P1 B universe 1y backfill → P1 A1 `divergence_flag` 감지 → P1 A2 UI `⚠` 배지 → P1 A3 mechanical penalty (tech conf ≥ 80 opposite → HOLD downgrade). Live verified: JKHY 가 이제 action=HOLD. **Test:** `tests/trading/agents/test_consensus.py::TestConsensusDivergence*` (5 cases) + `TestConsensusDivergenceMechanicalPenalty` (8 cases) + `TestPenaltyTelemetryEvent` (5 cases).
 - **Commit message privacy scanning** (PR #289): `scripts/pre_push_check.sh` Section 4b가 `origin/main..HEAD` 범위의 unpushed commit message를 자동 스캔. 수동 확인은 `git log -1 --format=%B | .venv/bin/python scripts/check_privacy_leak.py --message` 또는 `.venv/bin/python scripts/check_privacy_leak.py --unpushed-commits`. 잡히는 패턴: broker name + ticker에 인접한 signed % (괄호 안 또는 뒤쪽). 스캐너가 본인의 문서나 PR 본문에서 이 패턴을 의심하면 placeholder (HWM/MDD 같은 false-positive whitelist 단어 또는 구체 티커 제거) 로 변경. 상세 룰: `docs/STRATEGY.md §4.4.1`.
 
 ## Harness File Map
@@ -261,6 +265,8 @@ This project uses layered context files. Root files load every session; director
 | `CLAUDE.md` (this file) | Commands, architecture overview, conventions | Always |
 | `AGENTS.md` | Cross-tool rules (Cursor/Copilot/Codex) | Not by Claude Code (for other agents) |
 | `docs/STRATEGY.md` | Design principles, investment rules, harness theory | Always (@import) |
+| `docs/TODO.md` | Work backlog (Tier 1 완료 / Tier 2 next / Tier 3 research, 영구 배경) | On demand (planning/backlog) |
+| `docs/HARNESS.md` | Harness case studies (#272 session, JKHY episode) | On demand (debugging similar patterns) |
 | `docs/ARCHITECTURE.md` | Detailed architecture, DB schema, env vars, CI/CD, testing | On demand |
 | `nuri/core/CLAUDE.md` | db.py rules, timezone, events, freshness | When editing nuri/core/ |
 | `nuri/collectors/CLAUDE.md` | BaseCollector contract, OpenBB quirks | When editing nuri/collectors/ |
@@ -271,8 +277,9 @@ This project uses layered context files. Root files load every session; director
 | `tests/CLAUDE.md` | Fixtures, mocks, testing gotchas | When editing tests/ |
 | `config/CLAUDE.md` | YAML structure, change procedures | When editing config/ |
 | `NEXT_SESSION.md` | Session handoff doc — 다음 세션 시작 시 먼저 읽음 | gitignored (personal) |
+| `~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/memory/` | User-scoped auto-memory (`MEMORY.md` index + per-topic files) | Always (cross-conversation, not committed) |
 
-User-scoped auto-memory lives outside the repo at `~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/memory/` (`MEMORY.md` index + per-topic files). Auto-loaded each session for cross-conversation continuity; not committed.
+**Precedence when sources conflict**: repo truth (code/config) > `NEXT_SESSION.md` > auto-memory. If a recalled memory contradicts what you read now, trust the code and update the stale memory.
 
 ### Mechanical Enforcement (Hooks + CI)
 

@@ -195,7 +195,7 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         supporters = [v for v in verdicts if v.action == final_action]
         reasoning = " | ".join(f"{v.agent_name}: {v.reasoning}" for v in supporters)
 
-    # Divergence detection — STRATEGY §5.10 (JKHY, 2026-04-14) 재발 방지.
+    # Divergence detection — docs/HARNESS.md §2 (JKHY, 2026-04-14) 재발 방지.
     # 9개 fundamentals-ish 에이전트가 BUY 를 몰아주면 TechnicalAgent 의 SELL
     # 반대가 묻힘. 합의 action 이 BUY/SELL 이고 technical 이 정확히 반대 action
     # 이면 flag + reason 을 surface. HOLD 는 "약한 반대" 로 간주해 flag 하지 않음.
