@@ -3,7 +3,7 @@
 **Issue**: [#272](https://github.com/researcherhojin/nuri-quant/issues/272)
 **Phase**: 2c (Eval / CI gate)
 **Author**: 2026-04-14
-**Status**: Draft for review
+**Status**: **Shipped** 2026-04-15 — spec PR #280 · impl PR #284 · CI gate PR #286 (all merged). Retained for historical reference.
 **Depends on**: PR #276 (Phase 2a, merged), PR #278 (Phase 2b, merged)
 **Parent spec**: docs/SPEC_universe_agent_coverage.md §3.3
 
