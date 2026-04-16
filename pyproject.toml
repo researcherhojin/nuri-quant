@@ -99,6 +99,19 @@ Issues = "https://github.com/researcherhojin/nuri-quant/issues"
 
 
 # ═══════════════════════════════════════════════════════════════
+# uv override — openbb 상위 제약을 우회하여 보안 패치 강제
+# ═══════════════════════════════════════════════════════════════
+[tool.uv]
+override-dependencies = [
+    # GHSA-mj87-hwqh-73pj (DoS via multipart preamble/epilogue) —
+    # openbb-core 1.6.7 이 python-multipart>=0.0.22,<0.0.23 로 하드 핀했지만
+    # 0.0.22 → 0.0.26 은 패치 수준 API 차이 없음 (실측: test suite green).
+    # openbb 가 pin 을 완화하면 이 override 제거 가능.
+    "python-multipart>=0.0.26",
+]
+
+
+# ═══════════════════════════════════════════════════════════════
 # Build (hatchling — egg-info 생성 X, setuptools보다 깔끔)
 # ═══════════════════════════════════════════════════════════════
 [build-system]
