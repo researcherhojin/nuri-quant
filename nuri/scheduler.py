@@ -198,6 +198,20 @@ SCHEDULES = [
     # DB 유지보수 (일요일 새벽 3시)
     {"name": "db_maintenance", "func": _run_db_maintenance, "args": (),
      "cron": "0 3 * * 0"},
+
+    # Universe 1y backfill — US (일요일 새벽 5시, KST quiet window)
+    # 기존 stock_us_night/dawn 은 source="portfolio" 기본으로 universe-only
+    # 신규 ticker 를 수집하지 않음. 주 1회 1년치 + source="all" 로 gap 채움.
+    # universe-only 730개 ticker 가 1-7일 stale 로 누적되는 현상 방지.
+    {"name": "stock_us_backfill", "func": _run_collector, "args": ("stock",),
+     "kwargs": {"period": "1y", "source": "all"},
+     "cron": "0 5 * * 0"},
+
+    # Universe 1y backfill — KR (일요일 새벽 5시 30분)
+    # stock_kr 는 days= kwarg 사용. pykrx sequential + 0.1s delay 이미 내장.
+    {"name": "stock_kr_backfill", "func": _run_collector, "args": ("stock_kr",),
+     "kwargs": {"days": 365, "source": "all"},
+     "cron": "30 5 * * 0"},
 ]
 
 
@@ -224,6 +238,7 @@ def create_scheduler() -> BlockingScheduler:
             job["func"],
             trigger=trigger,
             args=job.get("args", ()),
+            kwargs=job.get("kwargs", {}),
             id=job["name"],
             name=job["name"],
             misfire_grace_time=300,  # 5분 유예
