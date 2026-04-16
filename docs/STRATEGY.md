@@ -55,7 +55,7 @@
 
 - `pipeline_events` 테이블: append-only event journal. `causation_id`로 이벤트 체인 추적.
 - Freshness SLA: 각 데이터 소스별 warn/fail 임계값. PASS가 아니면 대시보드에 경고.
-- SIEGE certification: 11개 조건의 pass/fail 결과가 매번 기록됨.
+- SIEGE certification: 조건 pass/fail 결과가 매번 기록됨 (count 는 가변 — §6 per-asset-class expansion 참조).
 - **새 기능을 만들 때**: "이 기능이 실패하면 어떻게 알 수 있는가?"를 먼저 답하라.
 
 ### 2.5 비용 최소화 + 데이터 sovereignty (Lean-cost stack)
@@ -192,9 +192,9 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,969 tests, 137 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 2,993 tests, 137 files |
 | Frontend tests | 목표 ≥ 90% | 917 tests, 60 files |
-| E2E | 핵심 flow 커버 | 38 Playwright tests (6 spec) |
+| E2E | 핵심 flow 커버 | 39 Playwright tests (6 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
 
