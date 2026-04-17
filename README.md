@@ -26,13 +26,13 @@ flowchart TD
         B(["2 Analyze<br/>20 signals · 10 regimes (6+4)<br/>4 factors · 15 event categories"])
         C(["3 Consensus<br/>10 agents · weighted vote<br/>risk veto (SELL conf ≥ 80)"])
         D(["4 Certify<br/>SIEGE v2 · 11+ conditions<br/>5 accounts × 5 asset classes"])
-        E(["5 Track<br/>outcome 30 / 60 / 90 d<br/>→ agent accuracy feedback"])
+        E(["5 Track<br/>outcome_30d · outcome_60d · outcome_90d<br/>→ agent accuracy feedback"])
 
         A -- "prices · fundamentals<br/>macro · news · events" --> B
         B -- "signal_results.csv · factors<br/>regime_transitions" --> C
         C -- "recommendations<br/>agent_verdicts · scoring_detail" --> D
         D -- "Certificate<br/>conditions + evidence" --> E
-        E -. "outcome_30/60/90d<br/>weight ±30% drift" .-> C
+        E -. "outcome_{30,60,90}d<br/>weight ±30% drift" .-> C
     end
 
     DB[("SQLite WAL · 32 tables<br/>pipeline_events · freshness SLA")]

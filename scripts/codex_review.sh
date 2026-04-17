@@ -2,19 +2,24 @@
 # codex_review.sh — Wrap `codex exec` to archive the prompt + response.
 #
 # Every codex review that goes through this script gets logged to
-# data/codex-reviews/PR<pr>-round<round>-<timestamp>.md so we can audit
+# codex-reviews/PR<pr>-round<round>-<timestamp>.md so we can audit
 # what the two AIs actually said to each other. The raw codex rollout
 # JSONL at ~/.codex/sessions/YYYY/MM/DD/ stays as the source of truth;
 # this is a human-readable excerpt scoped to a PR review.
 #
+# Prompt drafts: store under `codex-reviews/prompts/` (gitignored) — keeps
+# prompt sources project-local + accumulating across sessions rather than
+# scattered in /tmp/.
+#
+# Timebox default: prompts should request a 3-5 minute timebox unless the
+# task genuinely spans many files. Long prompts produce flaky results.
+#
 # Usage:
 #   scripts/codex_review.sh <pr> <round> "<prompt>"
-#   scripts/codex_review.sh <pr> <round> < prompt.txt
+#   scripts/codex_review.sh <pr> <round> < codex-reviews/prompts/<name>.txt
 #
 # Example:
-#   scripts/codex_review.sh 376 1 "Review diff between main and HEAD on \
-#     branch phase2/a4-sell-catalyst. Also re-review PR #374 (A-3, merge \
-#     SHA f0d0f82) as debt recovery per STRATEGY §4.3. Report P1/P2/LOW."
+#   scripts/codex_review.sh 376 1 < codex-reviews/prompts/PR376-round1.txt
 
 set -euo pipefail
 
