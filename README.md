@@ -14,71 +14,34 @@ Every BUY/SELL recommendation runs through a **collect → analyze → consensus
 
 ## Architecture
 
-The pipeline has **8 phases** organized into 5 conceptual stages. Phases never import each other — they communicate **only through DB tables and CSV files** (loose coupling, see [`docs/STRATEGY.md`](docs/STRATEGY.md#23-느슨한-결합-loose-coupling-via-data) §2.3). Re-running an upstream phase automatically refreshes downstream consumers.
-
-**At a glance**: `Collect → Analyze → Consensus → Certify → Track → Serve` — driven by `config/*.yaml`, persisted in SQLite, feedback loop from outcomes back to agent weights.
+Every BUY/SELL decision travels a **5-step pipeline**. Phases talk only through SQLite + CSV (loose coupling, [STRATEGY §2.3](docs/STRATEGY.md#23-느슨한-결합-loose-coupling-via-data)) — rerun an upstream phase and downstream refreshes automatically.
 
 ```mermaid
-flowchart LR
-    subgraph Collect["1 · Collect"]
-        direction TB
-        C1[US equities<br/>yfinance · OpenBB]
-        C2[KR equities<br/>pykrx · KIS]
-        C3[Macro + news<br/>FRED · RSS]
-        C4[External<br/>ARK · FINVIZ · Reddit]
+flowchart TD
+    CFG[/"config/*.yaml<br/>rules · agents · signals · gates"/]
+
+    subgraph Pipeline["Pipeline (5 phases · loose coupling via DB)"]
+        direction LR
+        A(["1 Collect<br/>25 collectors"])
+        B(["2 Analyze<br/>signals · regime · factors"])
+        C(["3 Consensus<br/>10 agents · risk veto"])
+        D(["4 Certify<br/>SIEGE v2 · 3D certification"])
+        E(["5 Track<br/>30 / 60 / 90-day outcomes"])
+
+        A -- "prices · fundamentals<br/>macro · news" --> B
+        B -- "signal_results · factors<br/>regime_transitions" --> C
+        C -- "recommendations<br/>per-agent verdicts" --> D
+        D -- "Certificate<br/>evidence trace" --> E
+        E -. "weight ±30% drift" .-> C
     end
 
-    subgraph Foundation["Foundation"]
-        direction TB
-        DB[(SQLite WAL<br/>sole sqlite3 importer)]
-        CFG[config/*.yaml<br/>rules · agents · signals<br/>universe · siege_gates]
-        EVT[pipeline_events<br/>append-only · freshness SLA]
-    end
+    DB[("SQLite WAL · 32 tables<br/>pipeline_events · freshness SLA")]
 
-    subgraph Analyze["2 · Analyze"]
-        direction TB
-        A1[Signals<br/>RSI · MACD · BB · volume]
-        A2[Regime — 6 base + 4 special]
-        A3[Macro + event score]
-        A4[Multi-factor<br/>momentum · value · quality]
-    end
-
-    subgraph Consensus["3 · Consensus"]
-        direction TB
-        AG[10 specialist agents<br/>Technical · Fundamental · Macro<br/>Smart Money · Wall Street · Korean<br/>Options · Crypto · Retail<br/>Risk — veto power]
-        VO[Weighted vote · drift ± 30%<br/>learning memory feedback]
-    end
-
-    subgraph Certify["4 · SIEGE v2"]
-        direction TB
-        B1[Base: position · sector · stop-loss<br/>leverage · conflict · drift · macro]
-        B2[Per-asset-class: freshness · volatility · external<br/>us_equity · kr_equity · kr_index · commodity · bond]
-        B3[CERTIFIED / REJECTED + evidence trace]
-    end
-
-    subgraph Track["5 · Track"]
-        direction TB
-        T1[Outcome tracker<br/>30 / 60 / 90-day scoring]
-        T2[Learning memory<br/>agent weight adjustment]
-    end
-
-    subgraph Serve["Serve"]
-        direction TB
-        S1[FastAPI :8001 REST + SSE]
-        S2[Next.js 16 :3000 dashboard]
-        S3[Discord · Telegram alerts]
-    end
-
-    Collect --> DB
-    CFG -.-> Analyze
-    CFG -.-> Consensus
-    CFG -.-> Certify
-    DB --> Analyze --> Consensus --> Certify --> Track
-    Track -.->|weight feedback| Consensus
-    DB --> Serve
-    Certify --> Serve
-    EVT -.-> Serve
+    CFG -. policies .-> Pipeline
+    Pipeline -. persist .-> DB
 ```
+
+Driven by `config/*.yaml` (rules · agents · signals · universe · SIEGE gates). Persisted in SQLite WAL — `nuri/core/db.py` is the only `sqlite3` importer. Per-phase detail, DB schema, and SIEGE v2 spec: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + [docs/SIEGE_V2.md](docs/SIEGE_V2.md).
 
 ### Key architectural decisions
 
