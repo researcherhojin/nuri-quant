@@ -244,6 +244,92 @@ class TestScreenCandidates:
             assert c.scoring_detail["drift_multiplier"] == 0.3
 
 
+class TestScoringDetailDiscriminator:
+    """A-2b-pre — candidates scoring_detail 에 `source="candidate"`/`schema_version=1`
+    discriminator 가 박혀야 consensus scoring_detail (source="consensus") 와 구분됨.
+
+    STRATEGY §5.3.1 Gotcha-Test Pair — discriminator 를 실수로 제거하면 A-2b API
+    가 두 schema 를 key-sniffing 으로 분기하게 되어 brittle.
+    """
+
+    def test_candidate_scoring_detail_has_discriminator(self, rich_db):
+        """candidates 의 모든 scoring_detail 에 source + schema_version 포함."""
+        from unittest.mock import patch
+
+        from nuri.trading.recommend.candidates import screen_candidates
+
+        with patch("nuri.trading.recommend.candidates._load_scorecard", return_value=({}, None)):
+            with patch("nuri.trading.recommend.candidates._get_regime_context", return_value=None):
+                with patch("nuri.trading.recommend.candidates._get_drift_map", return_value={}):
+                    with patch("nuri.trading.engine.conflicts.detect_conflicts", return_value=[]):
+                        candidates = screen_candidates(lookback_days=500, db_path=rich_db)
+
+        assert candidates, "fixture 가 최소 1 개 candidate 생성"
+        for c in candidates:
+            assert c.scoring_detail is not None
+            assert c.scoring_detail.get("source") == "candidate", (
+                "A-2b-pre regression: candidates scoring_detail 에 source 가 없으면 "
+                "A-2b API 가 consensus 와 구분할 수 없음"
+            )
+            assert c.scoring_detail.get("schema_version") == 1
+
+    def test_vix_gate_syncs_scoring_detail_final_confidence(self, rich_db):
+        """A-2b-pre (codex Medium fix) — VIX gate 가 c.confidence 를 업데이트하면
+        scoring_detail["final_confidence"] 도 동기화. A-2b 가 audit source 로
+        scoring_detail 을 쓸 때 stale 방지.
+
+        STRATEGY §5.3.1 Gotcha-Test Pair: VIX gate 에서 scoring_detail 업데이트를
+        제거하면 test fail — candidate.confidence=0 (blocked) 인데 scoring_detail
+        에는 pre-VIX 값이 남아 있는 모순 상태 lock-in.
+        """
+        from unittest.mock import patch
+
+        from nuri.trading.recommend.candidates import screen_candidates
+
+        # VIX blocked — 모든 BUY 후보 confidence 0
+        vix_blocked = {"gate": "blocked", "msg": "VIX > 30", "vix": 35.0}
+        with patch("nuri.trading.recommend.candidates._load_scorecard", return_value=({}, None)):
+            with patch("nuri.trading.recommend.candidates._get_regime_context", return_value=None):
+                with patch("nuri.trading.recommend.candidates._get_drift_map", return_value={}):
+                    with patch("nuri.trading.engine.conflicts.detect_conflicts", return_value=[]):
+                        with patch("nuri.trading.recommend.candidates._check_vix_gate", return_value=vix_blocked):
+                            candidates = screen_candidates(lookback_days=500, db_path=rich_db)
+
+        buys = [c for c in candidates if c.direction == "BUY"]
+        assert buys, "fixture 가 BUY 후보 생성"
+        for c in buys:
+            assert c.confidence == 0, "VIX blocked 는 BUY confidence=0"
+            assert c.scoring_detail is not None
+            assert c.scoring_detail["final_confidence"] == 0.0, (
+                "scoring_detail['final_confidence'] 도 0 으로 동기화 — audit trail 일관성"
+            )
+            assert c.scoring_detail["vix_penalty"] == 0.0
+
+    def test_vix_caution_syncs_scoring_detail_final_confidence(self, rich_db):
+        """VIX caution (25~30) 경로도 scoring_detail 동기화 — codex Round 2 residual
+        gap. confidence × 0.5 discount 가 scoring_detail['final_confidence'] 에도
+        반영되는지 확인."""
+        from unittest.mock import patch
+
+        from nuri.trading.recommend.candidates import screen_candidates
+
+        vix_caution = {"gate": "caution", "msg": "VIX 25~30", "vix": 27.5}
+        with patch("nuri.trading.recommend.candidates._load_scorecard", return_value=({}, None)):
+            with patch("nuri.trading.recommend.candidates._get_regime_context", return_value=None):
+                with patch("nuri.trading.recommend.candidates._get_drift_map", return_value={}):
+                    with patch("nuri.trading.engine.conflicts.detect_conflicts", return_value=[]):
+                        with patch("nuri.trading.recommend.candidates._check_vix_gate", return_value=vix_caution):
+                            candidates = screen_candidates(lookback_days=500, db_path=rich_db)
+
+        buys = [c for c in candidates if c.direction == "BUY"]
+        assert buys, "fixture 가 BUY 후보 생성"
+        for c in buys:
+            assert c.scoring_detail is not None
+            assert c.scoring_detail["vix_penalty"] == 0.5
+            # scoring_detail["final_confidence"] == c.confidence (round 차이 허용)
+            assert abs(c.scoring_detail["final_confidence"] - c.confidence) < 0.1
+
+
 class TestLoadScorecard:
     """_load_scorecard with and without CSV files (from test_coverage_round18)."""
 

@@ -73,8 +73,10 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
             # 에이전트 verdict 첨부
             if verdicts and c.ticker in verdicts:
                 rec["agent_verdicts"] = json.dumps(verdicts[c.ticker], ensure_ascii=False)
-            # scoring_detail 첨부
-            if hasattr(c, "scoring_detail") and c.scoring_detail:
+            # scoring_detail 첨부. A-2b-pre: `is not None` 로 guard 해 빈 dict `{}`
+            # 도 persist — consensus.py A-2a 수정과 동일 semantic (codex A-2a Round 2
+            # P3 연장선, falsy 실수 방지).
+            if hasattr(c, "scoring_detail") and c.scoring_detail is not None:
                 rec["scoring_detail"] = json.dumps(c.scoring_detail, ensure_ascii=False)
             records.append(rec)
 

@@ -1,6 +1,6 @@
 """Tests for tracker — split from test_trading_recommend_all.py."""
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -376,6 +376,42 @@ class TestTracker_R23:
 
         n = save_recommendations(candidates=[MockCandidate()], db_path=db_path)
         assert n == 1
+
+    def test_save_preserves_empty_scoring_detail_dict(self, db_path):
+        """A-2b-pre — 빈 dict `{}` 도 persist (falsy guard 제거).
+
+        STRATEGY §5.3.1 Gotcha-Test Pair: `if c.scoring_detail:` 로 revert 하면
+        empty dict 이 silently drop 되어 DB 에 NULL 로 저장 — downstream 이 "아직
+        scoring 없음" 과 "빈 compute 결과" 를 구분할 수 없음. consensus A-2a Round 2
+        P3 와 동일 semantic.
+        """
+        import json
+
+        from nuri.core.db import query
+        from nuri.trading.recommend.tracker import save_recommendations
+
+        @dataclass
+        class MockCandidate:
+            ticker: str = "EMPT"
+            direction: str = "BUY"
+            confidence: float = 50.0
+            signal_id: str = "test"
+            price: float = 100.0
+            regime_fit: bool = True
+            # 일부러 빈 dict — empty compute 결과 시뮬레이션
+            scoring_detail: dict = field(default_factory=dict)
+
+        n = save_recommendations(candidates=[MockCandidate()], db_path=db_path)
+        assert n == 1
+
+        row = query(
+            "SELECT scoring_detail FROM recommendations WHERE ticker='EMPT'",
+            db_path=db_path,
+        )[0]
+        assert row["scoring_detail"] is not None, (
+            "A-2b-pre regression: 빈 dict 이 NULL 로 drop 되면 안 됨"
+        )
+        assert json.loads(row["scoring_detail"]) == {}
 
     def test_print_tracking_report(self, db_path, capsys):
         """Print tracking report."""
