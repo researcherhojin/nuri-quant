@@ -151,3 +151,101 @@ class TestRiskAgentA3PerAccountThreshold:
             v = RiskAgent().analyze("CORE1", db_path=db_path)
 
         assert "손절선 돌파" not in v.reasoning
+
+    def test_multi_account_breach_not_masked_by_non_breaching_row(self, db_path, tmp_path):
+        """A-4 codex P2 lock: 동일 ticker 가 여러 계좌 보유될 때, 첫 row 가 breach 안
+        해도 다른 row 가 breach 하면 detect 해야 함. 이전 `holding[0]` 사용 →
+        SQLite 순서에 따라 breach 가 masking 될 수 있었음 (certification.py 는
+        per-row iterate 로 correct)."""
+        from unittest.mock import patch as _patch
+
+        import yaml as _yaml
+
+        from nuri.core.db import get_db as _get_db
+        from nuri.core.db import upsert_prices as _upsert_prices
+        from nuri.trading.agents.risk_agent import RiskAgent
+
+        # SharedTicker: Main(core -7) 에서 -3% (no breach), Toss(long_term -20) 에서
+        # -25% (breach). 첫 row 가 Main 이더라도 Toss 의 breach 가 감지돼야 함.
+        dates = pd.bdate_range("2026-01-01", periods=30)
+        close = np.linspace(100, 75, 30)  # 마지막 75 → Main(avg=100)=-25%, Toss(avg=75)=0%
+        df = pd.DataFrame({
+            "ticker": "SHARED", "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close, "high": close, "low": close, "close": close,
+            "volume": [100] * 30, "adj_close": close,
+        })
+        _upsert_prices(df, db_path)
+
+        with _get_db(db_path) as conn:
+            # 순서 바꿔 insert: Toss(long_term -20, 0% pnl, no breach) 먼저
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("Toss", "SHARED", 5, 75.0, "USD"),
+            )
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("Main", "SHARED", 10, 100.0, "USD"),  # -25% breach on -7 core
+            )
+
+        portfolio_yaml = tmp_path / "portfolio.yaml"
+        portfolio_yaml.write_text(_yaml.dump({"accounts": {
+            "Toss": {"strategy": "long_term"},
+            "Main": {"strategy": "core"},
+        }}))
+        real_open = open
+
+        def _opener(path, **kwargs):
+            if str(path).endswith("portfolio.yaml"):
+                return real_open(portfolio_yaml, **kwargs)
+            return real_open(path, **kwargs)
+
+        with _patch("builtins.open", side_effect=_opener):
+            v = RiskAgent().analyze("SHARED", db_path=db_path)
+
+        assert "손절선 돌파" in v.reasoning
+        assert "-25" in v.reasoning  # Main 계좌의 breach 정보가 올라옴
+        assert v.action == "SELL"
+
+    def test_concentration_aggregates_across_accounts(self, db_path, tmp_path):
+        """A-4 codex Round 2 P2 lock: 같은 ticker 가 여러 계좌에 분산 보유될 때,
+        비중 계산이 모든 row 를 합산해야 함. 이전 `holding[0]` 사용 시 첫 row 만
+        카운트 → 실제 집중도 undercount. 예: Main 60% + Toss 60% 공동 보유 시
+        전체 portfolio 기준 비중은 합쳐서 계산."""
+        from unittest.mock import patch as _patch
+
+        import yaml as _yaml
+
+        from nuri.core.db import get_db as _get_db
+        from nuri.trading.agents.risk_agent import RiskAgent
+
+        # CONC: 2 계좌 공동 보유. 합 exposure 가 매우 크면 비중 초과 감지.
+        self._seed_ticker_with_loss(db_path, "CONC", "Main", avg_price=100.0, current_price=101.0)
+        with _get_db(db_path) as conn:
+            # 추가 계좌에 같은 ticker — exposure 2배
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("Toss", "CONC", 10, 100.0, "USD"),
+            )
+
+        portfolio_yaml = tmp_path / "portfolio.yaml"
+        portfolio_yaml.write_text(_yaml.dump({"accounts": {
+            "Main": {"strategy": "core"}, "Toss": {"strategy": "long_term"},
+        }}))
+        real_open = open
+
+        def _opener(path, **kwargs):
+            if str(path).endswith("portfolio.yaml"):
+                return real_open(portfolio_yaml, **kwargs)
+            return real_open(path, **kwargs)
+
+        # portfolio 전체가 CONC 만 있으므로 비중 = 100% > MAX_SINGLE_POSITION(15%)
+        # → "비중 초과" 경고가 2 row 합산 기준으로 trigger
+        with _patch("builtins.open", side_effect=_opener):
+            v = RiskAgent().analyze("CONC", db_path=db_path)
+
+        assert "비중 초과" in v.reasoning
+        # 합산 비중이 리포트에 반영됐는지 숫자 확인 (100.0% expected, 50.0% 아님)
+        assert "100.0%" in v.reasoning
