@@ -18,26 +18,26 @@ Every BUY/SELL decision travels a **5-step pipeline**. Phases talk only through 
 
 ```mermaid
 flowchart TD
-    CFG[/"config/*.yaml<br/>rules · agents · signals · gates"/]
+    CFG[/"config/*.yaml<br/>rules · agents · signals · siege_gates · universe"/]
 
-    subgraph Pipeline["Pipeline (5 phases · loose coupling via DB)"]
+    subgraph Pipeline["Pipeline · 5 phases · DB-only coupling"]
         direction LR
-        A(["1 Collect<br/>25 collectors"])
-        B(["2 Analyze<br/>signals · regime · factors"])
-        C(["3 Consensus<br/>10 agents · risk veto"])
-        D(["4 Certify<br/>SIEGE v2 · 3D certification"])
-        E(["5 Track<br/>30 / 60 / 90-day outcomes"])
+        A(["1 Collect<br/>25 collectors<br/>US · KR · macro · news · 13F · ARK"])
+        B(["2 Analyze<br/>20 signals · 10 regimes (6+4)<br/>4 factors · 15 event categories"])
+        C(["3 Consensus<br/>10 agents · weighted vote<br/>risk veto (SELL conf ≥ 80)"])
+        D(["4 Certify<br/>SIEGE v2 · 11+ conditions<br/>5 accounts × 5 asset classes"])
+        E(["5 Track<br/>outcome 30 / 60 / 90 d<br/>→ agent accuracy feedback"])
 
-        A -- "prices · fundamentals<br/>macro · news" --> B
-        B -- "signal_results · factors<br/>regime_transitions" --> C
-        C -- "recommendations<br/>per-agent verdicts" --> D
-        D -- "Certificate<br/>evidence trace" --> E
-        E -. "weight ±30% drift" .-> C
+        A -- "prices · fundamentals<br/>macro · news · events" --> B
+        B -- "signal_results.csv · factors<br/>regime_transitions" --> C
+        C -- "recommendations<br/>agent_verdicts · scoring_detail" --> D
+        D -- "Certificate<br/>conditions + evidence" --> E
+        E -. "outcome_30/60/90d<br/>weight ±30% drift" .-> C
     end
 
     DB[("SQLite WAL · 32 tables<br/>pipeline_events · freshness SLA")]
 
-    CFG -. policies .-> Pipeline
+    CFG -. "policies<br/>(YAML loaders in nuri/core)" .-> Pipeline
     Pipeline -. persist .-> DB
 ```
 
