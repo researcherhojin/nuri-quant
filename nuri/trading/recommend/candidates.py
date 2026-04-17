@@ -273,8 +273,13 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                 regime_stats = regime_ctx.get("regime_stats", {}) if regime_ctx else {}
                 sig_in_regime = regime_stats.get(signal_id)
 
-                # scoring_detail 기록용
+                # scoring_detail 기록용. A-2b-pre: `source`/`schema_version` 으로
+                # consensus.py scoring_detail (schema: per-agent contributions) 와
+                # 구분 — A-2b API/frontend 가 같은 컬럼을 파싱할 때 key-sniffing
+                # 대신 discriminator 로 분기.
                 scoring = {
+                    "source": "candidate",
+                    "schema_version": 1,
                     "win_rate": round(win_rate, 4),
                     "profit_factor": round(pf, 2),
                     "regime": regime_ctx.get("regime", "") if regime_ctx else "",
@@ -395,16 +400,25 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
         logger.debug(f"Conflict detection 실패: {e}")
 
     # ── VIX Gate: 매수 후보 confidence 조정 ──
+    # A-2b-pre: scoring_detail["final_confidence"] 도 함께 업데이트해야 A-2b
+    # audit trail 이 stale 하지 않음 (codex A-2b-pre review Medium finding).
+    # `vix_penalty` 필드 기록해 어느 경로로 discount 됐는지 surface.
     if vix_gate["gate"] == "blocked":
         for c in candidates:
             if c.direction == "BUY":
                 c.confidence = 0  # VIX > 30: BUY 후보 전부 차단
                 c.notes = (c.notes + "; " if c.notes else "") + vix_gate["msg"]
+                if c.scoring_detail is not None:
+                    c.scoring_detail["vix_penalty"] = 0.0
+                    c.scoring_detail["final_confidence"] = 0.0
     elif vix_gate["gate"] == "caution":
         for c in candidates:
             if c.direction == "BUY":
                 c.confidence *= 0.5  # VIX 25~30: 절반 포지션
                 c.notes = (c.notes + "; " if c.notes else "") + vix_gate["msg"]
+                if c.scoring_detail is not None:
+                    c.scoring_detail["vix_penalty"] = 0.5
+                    c.scoring_detail["final_confidence"] = round(c.confidence, 2)
 
     # confidence 내림차순
     candidates.sort(key=lambda c: c.confidence, reverse=True)
