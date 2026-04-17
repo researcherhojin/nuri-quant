@@ -119,9 +119,13 @@ def _compute_weights(db_path=None) -> dict[str, float]:
     # 모든 row 가 skip 되면 min_records 문턱을 넘어도 가중치 변화 없이
     # DEFAULT_WEIGHTS 로 귀결되는 silent failure. 카운터로 drill-down 가능.
     rows_seen = len(rows)
-    rows_parsed = 0
+    rows_parsed = 0  # A-1b: BUY/SELL verdict 가 최소 1개 있는 row 만 counted.
     rows_skipped_schema = 0
     rows_skipped_json = 0
+    # A-1b: JSON 은 유효하지만 등록된 agent (DEFAULT_WEIGHTS) 에서 usable BUY/SELL
+    # verdict 하나도 없는 row — 즉 "학습 샘플 아님". 대부분 HOLD-only 지만, 미등록
+    # agent verdict 만 있는 row, 이상한 action 값 row 도 여기 합산됨 (codex Round 1).
+    rows_skipped_no_usable = 0
 
     for row in rows:
         try:
@@ -134,8 +138,13 @@ def _compute_weights(db_path=None) -> dict[str, float]:
             # WHERE outcome_30d IS NOT NULL guards the read; `or 0` is defensive only.
             outcome = row["outcome_30d"] or 0
             is_positive = outcome > 0
-            rows_parsed += 1
 
+            # A-1b (codex A-1a Round 2 residual P2): rows_parsed 를 "valid JSON" 이
+            # 아니라 "actual learning sample" 로 tighten. 모든 verdict 가 HOLD 면
+            # agent_hits 에 기여하지 않음 → sample 로 카운트되지 않는 게 정확.
+            # 이전: 10 개 row 모두 HOLD-only 여도 `rows_parsed=10 >= min_records=10`
+            # 통과하지만 hit_rates dict 가 empty 로 귀결되는 silent fallback.
+            row_has_usable_verdict = False
             for v in verdicts:
                 if not isinstance(v, dict):
                     continue
@@ -147,8 +156,15 @@ def _compute_weights(db_path=None) -> dict[str, float]:
                     # HOLD agent verdict 는 hit 판정 제외 (분기 없음 → 자동 skip).
                     if action == "BUY":
                         agent_hits[agent_name].append(is_positive)
+                        row_has_usable_verdict = True
                     elif action == "SELL":
                         agent_hits[agent_name].append(not is_positive)
+                        row_has_usable_verdict = True
+
+            if row_has_usable_verdict:
+                rows_parsed += 1
+            else:
+                rows_skipped_no_usable += 1
         except (json.JSONDecodeError, TypeError, KeyError):
             rows_skipped_json += 1
             continue
@@ -156,21 +172,22 @@ def _compute_weights(db_path=None) -> dict[str, float]:
     # min_records gate — parsed count 기반 (codex A-1 P1-2).
     # 이전: len(rows) < min_records 로 raw SQL 수 검증 → malformed row 가 gate 통과 후
     # 실제 학습 샘플이 문턱 미달로 가중치 shift. parsed 수로 gate 해야 샘플 신뢰성 보장.
+    # A-1b: rows_parsed 는 이제 "≥1 BUY/SELL verdict" row 만 포함.
     if rows_parsed < min_records:
         # fallback 발생 시 명시적 WARNING — normal path (early return) 과 구분.
         if rows_seen > 0:
             logger.warning(
-                "_compute_weights fallback to DEFAULT_WEIGHTS: rows_seen=%d rows_parsed=%d (< min_records=%d) skipped_schema=%d skipped_json=%d",
-                rows_seen, rows_parsed, min_records, rows_skipped_schema, rows_skipped_json,
+                "_compute_weights fallback to DEFAULT_WEIGHTS: rows_seen=%d rows_parsed=%d (< min_records=%d) skipped_schema=%d skipped_json=%d skipped_no_usable=%d",
+                rows_seen, rows_parsed, min_records, rows_skipped_schema, rows_skipped_json, rows_skipped_no_usable,
             )
         return dict(DEFAULT_WEIGHTS)
 
     # Normal path — DEBUG 레벨 (per-ticker 호출 hot path spam 방지).
     # Anomaly (skip 발생) 시 INFO 로 올려 operator 눈에 띄게.
-    if rows_skipped_schema > 0 or rows_skipped_json > 0:
+    if rows_skipped_schema > 0 or rows_skipped_json > 0 or rows_skipped_no_usable > 0:
         logger.info(
-            "_compute_weights anomaly: rows_seen=%d rows_parsed=%d rows_skipped_schema=%d rows_skipped_json=%d",
-            rows_seen, rows_parsed, rows_skipped_schema, rows_skipped_json,
+            "_compute_weights anomaly: rows_seen=%d rows_parsed=%d rows_skipped_schema=%d rows_skipped_json=%d rows_skipped_no_usable=%d",
+            rows_seen, rows_parsed, rows_skipped_schema, rows_skipped_json, rows_skipped_no_usable,
         )
     else:
         logger.debug(
