@@ -151,9 +151,9 @@ python scripts/validate_universe.py --no-fetch  # cached comparison only
 ### 3.4 Phase 3 — Tests
 
 **파일**:
-- `tests/test_universe_sync.py` — Wikipedia/KRX fetch mock + diff 정확성
-- `tests/test_validate_universe.py` — coverage threshold 검증
-- `tests/test_collector_universe_mode.py` — `_get_tickers(source='universe')` 동작
+- `tests/collectors/test_universe_sync.py` — Wikipedia/KRX fetch mock + diff 정확성
+- `tests/scripts/test_validate_universe.py` — coverage threshold 검증
+- `tests/collectors/test_base_universe_mode.py` — `_get_tickers(source='universe')` 동작
 
 **Coverage targets**: 신규 모듈 ≥ 90%
 
