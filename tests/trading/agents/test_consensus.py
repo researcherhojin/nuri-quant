@@ -2101,6 +2101,138 @@ class TestComputeWeightsHitRates:
             "이전 버그: raw count=10 으로 gate 통과 → shift 발생."
         )
 
+    def test_hold_only_rows_excluded_from_parsed_count(self, db_path):
+        """A-1b — HOLD-only row 는 rows_parsed 에 counted 되지 않음.
+
+        STRATEGY §5.3.1 Gotcha-Test Pair (codex A-1a Round 2 residual P2):
+        모든 verdict 가 HOLD 인 row 는 agent_hits 에 기여하지 않는데, 이전에는
+        rows_parsed += 1 로 카운트 → 10 개 HOLD-only row 가 gate 통과해 silent
+        fallback. Fix 후 rows_parsed=0 → DEFAULT_WEIGHTS 조기 반환.
+
+        Revert 시 이 테스트 fail (10 rows × HOLD-only 면 DEFAULT_WEIGHTS 로 귀결되는
+        normal path 가 gate 통과 실패 path 로 전환 — log level WARNING vs DEBUG 로 구분).
+        """
+        import json
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        hold_only_verdicts = [
+            {"agent_name": "technical", "action": "HOLD"},
+            {"agent_name": "fundamental", "action": "HOLD"},
+            {"agent_name": "risk", "action": "HOLD"},
+        ]
+        with get_db(db_path) as conn:
+            # 15 rows 모두 HOLD-only (min_records=10 보다 많지만 학습 샘플 0)
+            for i in range(15):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"H{i}", "HOLD", 50.0, None, None, 100.0,
+                     json.dumps(hold_only_verdicts), 0.05),
+                )
+
+        weights = _compute_weights(db_path=db_path)
+        assert weights == DEFAULT_WEIGHTS, (
+            "HOLD-only rows 15 개 → rows_parsed=0 → DEFAULT_WEIGHTS. "
+            "이전 버그: rows_parsed=15 >= min_records=10 으로 pass 했지만 "
+            "agent_hits 가 비어 있어 hit_rates 계산 무의미."
+        )
+
+    def test_mixed_usable_and_hold_only_rows_counts_only_usable(self, db_path, caplog):
+        """A-1b — mixed: 일부 BUY/SELL row + 일부 HOLD-only row. parsed 는 usable 만."""
+        import json
+        import logging
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        usable = [{"agent_name": "technical", "action": "BUY"}]
+        hold_only = [{"agent_name": "technical", "action": "HOLD"}]
+        with get_db(db_path) as conn:
+            # 6 usable + 9 HOLD-only = 15 total. 6 < min_records=10 → fallback 기대.
+            for i in range(6):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"U{i}", "BUY", 50.0, None, None, 100.0,
+                     json.dumps(usable), 0.05),
+                )
+            for i in range(9):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"H{i}", "HOLD", 50.0, None, None, 100.0,
+                     json.dumps(hold_only), 0.05),
+                )
+
+        with caplog.at_level(logging.WARNING, logger="nuri.trading.agents.consensus"):
+            weights = _compute_weights(db_path=db_path)
+
+        assert weights == DEFAULT_WEIGHTS
+        # WARNING log 에 skipped_no_usable=9 가 찍혀 observability 확인.
+        fallback_logs = [r for r in caplog.records if "fallback" in r.getMessage()]
+        assert fallback_logs, "rows_parsed < min_records 시 WARNING emit"
+        assert "skipped_no_usable=9" in fallback_logs[0].getMessage(), (
+            "HOLD-only skip counter 가 log 에 surface — operator 가 원인 식별 가능"
+        )
+
+    def test_usable_plus_hold_only_gate_passes_but_logs_info_anomaly(self, db_path, caplog):
+        """A-1b — 10 usable + 1 HOLD-only: gate 통과하지만 INFO anomaly 로 log.
+
+        codex A-1b Round 1 residual: fallback path (WARNING) 는 잠겼지만 "gate
+        통과하는 정상 경로에서 HOLD-only row 가 observability 에 노출되는가" 를
+        별도로 lock-in. INFO 레벨 (hot path 에서 다빈도 호출 고려).
+        """
+        import json
+        import logging
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        usable = [
+            {"agent_name": "technical", "action": "BUY"},
+            {"agent_name": "fundamental", "action": "SELL"},
+        ]
+        hold_only = [{"agent_name": "technical", "action": "HOLD"}]
+        with get_db(db_path) as conn:
+            for i in range(10):  # 10 usable → gate 통과
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"U{i}", "BUY", 50.0, None, None, 100.0,
+                     json.dumps(usable), 0.05),
+                )
+            conn.execute(  # 1 HOLD-only → skipped, anomaly INFO
+                """INSERT INTO recommendations
+                   (date, ticker, action, confidence, regime, signals, entry_price,
+                    agent_verdicts, outcome_30d)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (today_kst(), "H0", "HOLD", 50.0, None, None, 100.0,
+                 json.dumps(hold_only), 0.05),
+            )
+
+        with caplog.at_level(logging.INFO, logger="nuri.trading.agents.consensus"):
+            weights = _compute_weights(db_path=db_path)
+
+        # Gate 통과 — weights 는 기본값에서 shift (technical BUY 가 양수 outcome 으로 hit)
+        assert weights != dict(DEFAULT_WEIGHTS), "10 usable → weight shift 발생"
+        # INFO anomaly log 에 skipped_no_usable=1 포함
+        anomaly_logs = [r for r in caplog.records if "anomaly" in r.getMessage()]
+        assert anomaly_logs, "HOLD-only skip 있으면 INFO anomaly emit"
+        assert "skipped_no_usable=1" in anomaly_logs[0].getMessage()
+
     def test_observability_normal_path_debug(self, db_path, caplog):
         """Normal path (skip=0) 는 DEBUG 레벨 — per-ticker hot path spam 방지.
 
