@@ -152,7 +152,21 @@
     "hojin",
     "kakao",
     "TQQQ",
-    "MRVL"
+    "MRVL",
+    "tqdm",
+    "unpushed",
+    "pipefail",
+    "frozenset",
+    "technicals",
+    "kwargs",
+    "Bartov",
+    "Kasznik",
+    "Neururer",
+    "Givoly",
+    "Hayn",
+    "Papadakis",
+    "Riedl",
+    "RKLB"
   ],
   "ignorePaths": [
     "node_modules/**",
