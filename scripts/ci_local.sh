@@ -32,8 +32,10 @@ case "$mode" in
         # Smoke test — collect only + critical paths
         echo -e "${YELLOW}Running: pytest --collect-only${NC}"
         $PYTHON -m pytest tests/ --collect-only -q 2>&1 | tail -3
-        echo -e "${YELLOW}Running: pytest tests/test_db.py tests/test_trading_engine_all.py::TestGate -q${NC}"
-        $PYTHON -m pytest tests/test_db.py tests/test_trading_engine_all.py::TestGate -q --tb=line
+        # Paths reflect current test tree — DB tests moved to tests/core/,
+        # trading engine tests split by subject (gate.py / conflicts.py / etc).
+        echo -e "${YELLOW}Running: pytest tests/core/test_db.py tests/trading/engine/test_gate.py -q${NC}"
+        $PYTHON -m pytest tests/core/test_db.py tests/trading/engine/test_gate.py -q --tb=line
         echo -e "${GREEN}✓ Quick smoke OK${NC}"
         ;;
 
