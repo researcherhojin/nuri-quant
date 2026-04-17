@@ -3,15 +3,15 @@
 > 원본 SIEGE 생태계(nutshells3) 6개 레포 분석 기반 재설계.
 > 이 문서는 구현의 권위 있는 참조. 코드는 이 문서를 따른다.
 
-## 1. 현재 상태 (v1)의 한계
+## 1. v1 한계 → v2 해결 상태
 
-| 한계 | 설명 |
-|------|------|
-| 포트폴리오 전체 1회 인증 | `certify()`에 ticker 파라미터 없음. 한국/미국/원자재 구분 없이 동일 gate |
-| 하드코딩 임계값 | VIX 30, SPY 72h 등이 `certification.py`에 상수. §2.2 위반 |
-| US 중심 gate | VIX gate로 한국 종목 매수 차단, SPY 신선도로 한국 종목 판정 |
-| 이진 판정 | CERTIFIED/REJECTED만. 중간 단계 없음 |
-| 증거 추적 없음 | pass/fail만 기록, 왜 통과/실패했는지 lineage 없음 |
+| 한계 (v1) | 상태 | 해결 경로 |
+|-----------|------|----------|
+| 포트폴리오 전체 1회 인증 (ticker 구분 없음) | ✅ **해결** (Phase 1, PR #312) | `_group_holdings_by_asset_class` 로 asset_class 별 gate 5/7/8 분기 |
+| 하드코딩 임계값 (VIX 30, SPY 72h 등) | ✅ **해결** (Phase 1, PR #312) | `config/rules.yaml siege_gates.asset_classes.<class>` 로 외부화. STRATEGY §2.2 위반 해소 |
+| US 중심 gate (한국 종목도 VIX/SPY 기준) | ✅ **해결** (Phase 1, PR #312) | kr_equity primary=KOSPI/USD-KRW, secondary=SPY/VIX spillover |
+| 이진 판정 (CERTIFIED / REJECTED) | ⏳ **미해결** | Phase 3 (safety lattice 5단계 GUARDED/REVIEW_REQUIRED) 대상, 미착수 |
+| 증거 추적 없음 | ⏳ **미해결** | Phase 2 (evidence field + claim trace) 대상, 미착수 |
 
 ## 2. 원본 SIEGE 생태계에서 채택한 패턴
 
@@ -27,11 +27,15 @@
 ## 3. 3차원 인증 모델
 
 ```
-Dimension 1: Account (계좌 전략)
-  ├── brokerage_alpha      → core    (-7% SL, 15% pos)
-  ├── brokerage_alpha_sub  → active  (-10% SL, 25% pos)
-  ├── toss          → long_term (-20% SL, 25% pos)
-  └── pension       → pension (-30% SL, 40% pos)
+Dimension 1: Account (계좌 전략 프로파일)
+  Strategy 은 config/rules.yaml account_strategies 에 정의된 5 종 — 계좌
+  이름은 사용자별 portfolio.yaml 에서 매핑 (account.strategy 필드).
+  │
+  ├── core      → -7% SL, 15% pos, 35% sector  (기본)
+  ├── active    → -10% SL, 25% pos, 45% sector · trailing_stop_arm +15%
+  ├── swing     → -15% SL, 30% pos, 50% sector
+  ├── long_term → -20% SL, 25% pos, 50% sector
+  └── pension   → -30% SL, 40% pos, 60% sector
 
 Dimension 2: Asset Class (노출 기준, 실행 시장 아님)
   ├── us_equity     → SPY 신선도, VIX gate
@@ -55,87 +59,105 @@ Dimension 3: Execution Market (실행 시장)
 2. **같은 종목이 다른 계좌에 있으면 각각 계좌 전략 적용**:
    - 삼성전자 in brokerage_alpha (core, -7%) ≠ 삼성전자 in toss (long_term, -20%)
    
-3. **전체 포트폴리오 노출도 별도 체크**:
-   - NVDA: brokerage_alpha 8.3% + sub 6.1% = 14.4% → total_max_single 20% 이내
+3. **전체 포트폴리오 노출 합산 체크**:
+   - 예: 동일 ticker 가 여러 계좌 에 있으면 position_pct 합산 → 계좌 한도 + 전역 한도 둘 다 체크
+   - 현재 `_check_position_limits` 는 계좌별 per_position_max 만 체크. 전역 `total_max_single` 은 Phase 2 proposed 스키마 (§4).
 
-4. **환헤지 여부는 ETF metadata에서 결정**:
-   - (H) ETF: `currency_shift` 이벤트 무관
-   - 언헤지 ETF: `currency_shift` 이벤트 영향
+4. **환헤지 여부 분기** (**Phase 2 proposed — 현재 미구현**):
+   - `hedge_status` 스키마는 §4 에 sketch. 현재 `_check_macro_event_alignment` 는 hedge 여부 분기 안 함.
 
-## 4. config/rules.yaml 추가 스키마
+## 4. config/rules.yaml 스키마
+
+### 4.1 Phase 1 shipped (PR #312) — 실제 `config/rules.yaml siege_gates` 에 존재
+
+**canonical source**: `config/rules.yaml` (doc 은 snippet, config 가 최신).
 
 ```yaml
 siege_gates:
-  asset_class_rules:
-    - match: { sector_prefix: "ETF/USIndex" }
+  asset_class_rules:                    # 순서대로 matching, 더 구체적인 rule 우선
+    - match: {sector_prefix: "ETF/USIndex"}
       asset_class: us_equity
-    - match: { sector_prefix: "ETF/USTech" }
+    - match: {sector_prefix: "ETF/USTech"}
       asset_class: us_equity
-    - match: { sector_prefix: "ETF/Commodity" }
+    - match: {sector_prefix: "ETF/Commodity"}
       asset_class: commodity
-    - match: { sector_prefix: "ETF/Bond" }
+    - match: {sector_prefix: "ETF/Bond"}
       asset_class: bond
-    - match: { sector_prefix: "ETF/KRIndex" }
+    - match: {sector_prefix: "ETF/KRIndex"}
       asset_class: kr_index
-    - match: { sector: "ETF" }
+    - match: {ticker_suffix: ".KS"}
+      asset_class: kr_equity
+    - match: {ticker_suffix: ".KQ"}
+      asset_class: kr_equity
+    - match: {sector: "ETF"}
       asset_class: us_equity
-    - match: { ticker_suffix: ".KS" }
-      asset_class: kr_equity
-    - match: { ticker_suffix: ".KQ" }
-      asset_class: kr_equity
-    - match: { default: true }
+    - match: {default: true}
       asset_class: us_equity
 
-  asset_classes:
+  asset_classes:                        # primary + secondary 지표 구조 (cross-market spillover)
     us_equity:
-      freshness_ticker: SPY
+      freshness_primary: SPY
+      freshness_secondary: []
       freshness_max_hours: 72
-      volatility_indicator: vix
-      volatility_block: 30
+      volatility_primary: vix
+      volatility_primary_threshold: 30
+      volatility_secondary: []
       external_min_records: 10
       external_min_sources: 3
     kr_equity:
-      freshness_ticker: KOSPI
+      freshness_primary: KOSPI
+      freshness_secondary: [SPY]        # US leader spillover
       freshness_max_hours: 72
-      volatility_indicator: usd_krw_3d_change
-      volatility_block: 3.0
+      volatility_primary: usd_krw_3d_change
+      volatility_primary_threshold: 3.0
+      volatility_secondary: [vix]
+      volatility_secondary_threshold: 30
       external_min_records: 5
       external_min_sources: 2
-    commodity:
-      freshness_ticker: GC=F
+    kr_index:
+      freshness_primary: KOSPI
+      freshness_secondary: [SPY]
       freshness_max_hours: 72
-      volatility_indicator: gold_3d_change
-      volatility_block: 5.0
+      volatility_primary: kospi_3d_change
+      volatility_primary_threshold: 5.0
+      volatility_secondary: [usd_krw_3d_change]
+      volatility_secondary_threshold: 3.0
+      external_min_records: 3
+      external_min_sources: 1
+    commodity:
+      freshness_primary: "GC=F"
+      freshness_max_hours: 72
+      volatility_primary: gold_3d_change
+      volatility_primary_threshold: 5.0
       external_min_records: 3
       external_min_sources: 1
     bond:
-      freshness_ticker: TLT
+      freshness_primary: TLT
       freshness_max_hours: 120
-      volatility_indicator: yield_3d_change
-      volatility_block: 0.3
+      volatility_primary: yield_3d_change
+      volatility_primary_threshold: 0.3
       external_min_records: 3
       external_min_sources: 1
-    kr_index:
-      freshness_ticker: KOSPI
-      freshness_max_hours: 72
-      volatility_indicator: kospi_3d_change
-      volatility_block: 5.0
-      external_min_records: 3
-      external_min_sources: 1
+```
 
-  hedge_status:
+### 4.2 Phase 2 proposed — **미착수, config 에 없음**
+
+아래 스키마는 spec 용 sketch. 실제 `config/rules.yaml` 에는 존재하지 않으며 `certify()` 도 참조하지 않는다. Phase 2 작업 시 이 스키마를 기준으로 확장한다.
+
+```yaml
+# Phase 2 proposed — 현재 config/rules.yaml 에 NOT present
+siege_gates:
+  hedge_status:                         # §6 macro impact 의 currency_shift 분기용
     "448300.KS": hedged
-    "448290.KS": hedged
     "132030.KS": hedged
     "381170.KS": unhedged
-    "447660.KS": hedged
 
-  position_limits:
-    per_account: true
-    total_portfolio: true
-    total_max_single: 20
+  position_limits:                      # 전체 포트폴리오 cross-account 합산 체크
+    per_account: true                   # 기존 per-account (shipped)
+    total_portfolio: true               # NEW — 동일 ticker 여러 계좌 합산
+    total_max_single: 20                # NEW — 전역 단일 종목 상한
 
-  execution_markets:
+  execution_markets:                    # 시장 개장 시간 gate (Phase 3 후보)
     KRX:
       hours: "09:00-15:30"
       timezone: "Asia/Seoul"
@@ -144,42 +166,51 @@ siege_gates:
       timezone: "US/Eastern"
 ```
 
-## 5. certify() 흐름 (v2)
+## 5. certify() 흐름 (v2 — 실제 구현)
+
+**실제 코드**: `nuri/trading/engine/certification.py:553-601` (ALL_CERT_CHECKS def + certify() flatten). Phase 1, PR #312.
 
 ```python
+# 모든 gate 함수는 CertCondition 또는 list[CertCondition] 반환.
+# per-asset-class gate (5/7/8) 는 내부에서 portfolio 를 group 하고 list 반환.
+ALL_CERT_CHECKS = [
+    _check_position_limits,          # 1. 계좌별 single-position 한도
+    _check_sector_limits,            # 2. 섹터 비중
+    _check_stop_loss_compliance,     # 3-4. 계좌별 strategy stop_loss
+    _check_data_freshness,           # 5. → list (per-class primary + secondary)
+    _check_leverage_ban,             # 6. LEVERAGE_ETFS 보유 금지
+    _check_volatility_gates,         # 7. → list (per-class primary + secondary)
+    _check_external_data,            # 8. → list (per-class record/source minimum)
+    _check_conflicts,                # 9. BUY/SELL 충돌
+    _check_drift_safety,             # 10. critical drift 없음
+    _check_macro_event_alignment,    # 11. |event_score| ≥ 10 alert
+    _check_rules_loaded,             # sanity
+]
+
 def certify(db_path=None) -> Certificate:
-    accounts = _load_portfolio_by_account(db_path)
-    gate_config = load_siege_gates_config()  # config/rules.yaml
-    all_conditions = []
-
-    # 1. 계좌별 × 자산 클래스별 gate
-    for account_name, holdings in accounts.items():
-        strategy = get_account_strategy(account_name)
-        for asset_class, tickers in _group_by_asset_class(holdings, gate_config).items():
-            policy = gate_config["asset_classes"][asset_class]
-            all_conditions.append(_check_freshness(asset_class, policy, db_path))
-            all_conditions.append(_check_volatility(asset_class, policy, db_path))
-            all_conditions.append(_check_external_data(asset_class, policy, db_path))
-        # 계좌별 규칙 gate
-        all_conditions.append(_check_position_limit(account_name, strategy, holdings, db_path))
-        all_conditions.append(_check_stop_loss(account_name, strategy, db_path))
-
-    # 2. 전체 포트폴리오 gate
-    if gate_config["position_limits"]["total_portfolio"]:
-        all_conditions.append(_check_total_position_limit(gate_config, db_path))
-
-    # 3. 공통 gate (자산 클래스 무관)
-    all_conditions.append(_check_leverage_ban(db_path))
-    all_conditions.append(_check_conflicts(db_path))
-    all_conditions.append(_check_drift_safety(db_path))
-    all_conditions.append(_check_macro_event_alignment(db_path))
-    all_conditions.append(_check_rules_loaded(db_path))
-    ...
+    conditions: list[CertCondition] = []
+    for check in ALL_CERT_CHECKS:
+        result = check(db_path=db_path)
+        if isinstance(result, list):
+            conditions.extend(result)     # per-class flatten
+        else:
+            conditions.append(result)
+    failed = sum(1 for c in conditions if not c.passed and c.severity == "error")
+    certified = failed == 0               # error 0건이면 CERTIFIED
+    return Certificate(..., conditions=conditions, certified=certified)
 ```
 
-## 6. 매크로 이벤트 교차 영향 매트릭스
+**핵심**:
+- Gate 5 / 7 / 8 가 `_group_holdings_by_asset_class` 호출 → asset_class 별로 policy 읽고 primary + secondary 각각 CertCondition emit.
+- `certify()` 는 이 list 를 flatten → 최종 `total_conditions` 는 portfolio 구성에 따라 가변 (11 ~ 30+).
+- `certified = failed(error) == 0`. warning 은 누적만.
+- Phase 2 의 per-account × per-class 이중 loop (기존 §5 pseudocode 에 있던 것) 는 **미구현** — 현재 gate 함수들은 portfolio 전체를 한 번에 훑는 shape.
 
-이벤트가 자산 클래스별로 다른 방향으로 작용:
+## 6. 매크로 이벤트 교차 영향 매트릭스 (**Phase 2 proposed — 미구현**)
+
+> 현재 `_check_macro_event_alignment` (certification.py:502) 는 `|event_score| ≥ 10` 단순 threshold 알람만 emit. 아래 매트릭스는 asset_class × event type 가중치 sketch — 실제 가중치는 코드/config 어디에도 배선 안 됨. Phase 2 작업 시 `config/macro_impacts.yaml` 로 외부화하고 `_check_macro_event_alignment` 를 per-asset-class 체크로 확장한다.
+
+이벤트가 자산 클래스별로 다른 방향으로 작용 (설계 의도):
 
 | 이벤트 | us_equity | kr_equity | commodity | bond |
 |--------|-----------|-----------|-----------|------|

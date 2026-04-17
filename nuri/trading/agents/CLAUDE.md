@@ -36,14 +36,16 @@ Live probe (2026-04-17):
 4. Tests in `tests/trading/agents/`.
 5. If the agent has a limited effective scope (like korean_market / crypto), document it in the Specialization table above so the "10-agent" framing stays honest.
 
-## Learning Memory — currently dormant (see A-1 next session)
+## Learning Memory — shipped, warming up (2026-04-17 probe)
 
-`strategy_memory` table and `_compute_weights()` exist for dynamic per-agent reweighting based on historical hit rates. However, live DB probe (2026-04-17):
+Read/write path both live:
+- **A-1a (PR #361)** — `_compute_weights()` now reads `recommendations.agent_verdicts` (previously read `signals.verdicts` which was never populated). Live DB: 144 rows accumulated.
+- **A-1b (PR #372)** — `rows_parsed` gate excludes HOLD-only rows → prevents silent fallback when `min_records=10` is met by HOLD noise only.
+- **Scheduler (PR #363)** — `agent_accuracy` job (Sunday 08:00 KST) calls `save_agent_accuracy_snapshot` → writes to `strategy_memory` with `signal_id='agent_{name}_accuracy'`. No dedicated `agent_accuracy_snapshots` table — strategy_memory is reused.
 
-- `signals_with_verdicts = 0` — the save path in `tracker.py` writes signal IDs only, while `_compute_weights` expects `agent_verdicts`.
-- `agent_accuracy_snapshots = 0` — no periodic snapshot job running.
+Current state (probed 2026-04-17): `recommendations.agent_verdicts` = **144 rows**, `strategy_memory.agent_*_accuracy` = **0 rows**. Snapshot job populates only when `compute_agent_accuracy` has `outcome_30d` data — first recommendations date ~2026-04-17, so first real weight drift expected **~2026-05-17** (TODO.md Tier 1 row 20). Until then, `_compute_weights()` returns `DEFAULT_WEIGHTS` because `min_agent_records` threshold not met. Re-probe before citing these counts — they move daily.
 
-Result: weights fall back to `DEFAULT_WEIGHTS` static values on every call. The "dynamic reweighting" claim in older docs was aspirational, not operational. Fix tracked as A-1 in NEXT_SESSION.md.
+Weight drift is capped at ±30% per `adjustment_range` in `config/agents.yaml` (formula at `consensus.py:216`: `adjustment = (rate - 0.5) * 1.5`, clamped to `[-0.30, +0.30]`).
 
 ## References
 
