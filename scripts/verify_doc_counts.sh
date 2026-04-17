@@ -14,20 +14,16 @@ source "$(dirname "$0")/_common.sh"
 live_collectors()   { find nuri/collectors -maxdepth 1 -name "*.py" \
     ! -name "__init__.py" ! -name "base.py" -type f | wc -l | tr -d ' '; }
 
-live_agents()       { find nuri/trading/agents -maxdepth 1 -name "*.py" \
-    ! -name "__init__.py" ! -name "base.py" \
-    ! -name "consensus.py" ! -name "learning_memory.py" -type f | wc -l | tr -d ' '; }
-
 live_endpoints()    { grep -rhE '@router\.(get|post|put|delete|patch)' \
     nuri/api/routes/ | wc -l | tr -d ' '; }
 
 live_test_files_be() { find tests -name "test_*.py" -type f | wc -l | tr -d ' '; }
 
-live_test_files_fe() { find frontend -name "*.test.ts" -o -name "*.test.tsx" 2>/dev/null \
-    | grep -v node_modules | wc -l | tr -d ' '; }
+live_test_files_fe() { find frontend \( -name "*.test.ts" -o -name "*.test.tsx" \) \
+    ! -path '*/node_modules/*' 2>/dev/null | wc -l | tr -d ' '; }
 
-live_e2e_specs()    { find frontend/e2e -name "*.spec.ts" 2>/dev/null \
-    | grep -v node_modules | wc -l | tr -d ' '; }
+live_e2e_specs()    { find frontend/e2e -name "*.spec.ts" \
+    ! -path '*/node_modules/*' 2>/dev/null | wc -l | tr -d ' '; }
 
 # Extract the target integer from a file.
 # Strategy: match the claim's context substring (must be unique in the file),
@@ -62,7 +58,6 @@ check_claim() {
 banner "Doc Count Verify"
 
 COLL=$(live_collectors)
-AGT=$(live_agents)
 EP=$(live_endpoints)
 TFBE=$(live_test_files_be)
 TFFE=$(live_test_files_fe)
