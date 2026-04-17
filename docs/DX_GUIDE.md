@@ -19,7 +19,7 @@ previous session:
 | Test isolation flake | `pytest -n auto` (CI-parity flags) | 1+ CI roundtrips |
 | Atomicity violation | `check_atomic.sh` (multi-commit branches) | reset + re-stage cycle |
 
-## The 5 scripts
+## The 4 scripts + 1 PR template
 
 ### 1. `scripts/ci_local.sh` — exact CI parity
 

@@ -91,7 +91,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 ## Scheduler
 
-`nuri/scheduler.py` — 21 cron jobs in `SCHEDULES` list. All times KST. Lazy imports inside `_run_collector()` to avoid import-time side effects.
+`nuri/scheduler.py` — 24 cron jobs in `SCHEDULES` list. All times KST. Lazy imports inside `_run_collector()` to avoid import-time side effects.
 
 ## Environment Variables
 
@@ -110,7 +110,7 @@ Configured in `.env` (see `.env.example`):
 
 ## DB Schema (SQLite, WAL mode)
 
-33 tables total (20 migrations). Key tables:
+32 tables total (20 migrations). Key tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -180,9 +180,9 @@ data/
 
 ## Testing
 
-3,081 backend tests across 139 files + 917 frontend vitest (60 files) + 39 Playwright E2E (6 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
+3,074 backend tests across 139 files + 917 frontend vitest (60 files) + 38 Playwright E2E (6 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
 
-**Slow marker**: 23 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
+**Slow marker**: 11 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
 
 ```python
 @pytest.fixture
