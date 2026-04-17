@@ -32,6 +32,7 @@ class TestTracker_R27:
             regime_fit = True
             price = 150
             scoring_detail = {"test": 1}
+            tier = "actionable"
 
         n = save_recommendations(candidates=[MockCandidate()], db_path=db_path)
         assert n == 1

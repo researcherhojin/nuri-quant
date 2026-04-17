@@ -712,6 +712,103 @@ class TestBuildActionsLogic:
 
 
 # ═══════════════════════════════════════════════════
+# Unit tests — _get_portfolio_map multi-account aggregation (A-6)
+# ═══════════════════════════════════════════════════
+
+
+class TestGetPortfolioMapAggregation:
+    """A-6 codex A-4 Round 1-3 재발 flag lock — 동일 ticker 의 여러 계좌 보유 시
+    worst-pnl row 를 keep 해 stop-loss masking 방지 + position_pct 합산."""
+
+    def _run(self, portfolio_rows, rate=1400):
+        from unittest.mock import MagicMock
+
+        from nuri.api.routes.actions import _get_portfolio_map
+
+        def _query(sql, params=None, **kw):
+            s = " ".join(sql.split())
+            if "SELECT p.account" in s:
+                return portfolio_rows
+            if "usd_krw" in s.lower() or "indicator" in s:
+                return [{"value": rate}]
+            return []
+
+        with patch("nuri.api.routes.actions.query", side_effect=_query), \
+             patch("nuri.api.routes.dashboard._get_account_labels", return_value={}):
+            return _get_portfolio_map()
+
+    def test_single_account_single_row_unchanged(self):
+        rows = [{"account": "Main", "ticker": "AAPL", "quantity": 10, "avg_price": 100.0,
+                 "currency": "USD", "current_price": 110.0}]
+        result = self._run(rows)
+        assert result["AAPL"]["pnl_pct"] == 10.0
+        assert result["AAPL"]["account"] == "Main"
+
+    def test_multi_account_aggregates_position_pct(self):
+        """Main + Toss 양쪽 동일 ticker → position_pct 는 두 계좌 합산."""
+        rows = [
+            {"account": "Main", "ticker": "TSLA", "quantity": 10, "avg_price": 100.0,
+             "currency": "USD", "current_price": 110.0},  # +10%
+            {"account": "Toss", "ticker": "TSLA", "quantity": 10, "avg_price": 100.0,
+             "currency": "USD", "current_price": 110.0},  # +10%
+        ]
+        result = self._run(rows)
+        # 2 rows each $1100 = $2200 total; sum = 100% of portfolio
+        assert result["TSLA"]["position_pct"] == pytest.approx(100.0)
+
+    def test_multi_account_worst_pnl_wins(self):
+        """codex A-4 lock: Main 계좌에서 -25% breach, Toss 계좌는 0% → worst(-25%) 가
+        pnl_pct/account 를 차지해 downstream stop-loss 가 breach 감지."""
+        rows = [
+            {"account": "Toss", "ticker": "SHARED", "quantity": 20, "avg_price": 100.0,
+             "currency": "USD", "current_price": 100.0},  # 0% pnl (non-breach)
+            {"account": "Main", "ticker": "SHARED", "quantity": 10, "avg_price": 100.0,
+             "currency": "USD", "current_price": 75.0},   # -25% breach
+        ]
+        result = self._run(rows)
+        assert result["SHARED"]["pnl_pct"] == pytest.approx(-25.0)
+        assert result["SHARED"]["account"] == "Main"
+        assert result["SHARED"]["current_price"] == 75.0
+
+    def test_multi_account_order_independence(self):
+        """SQLite row 순서에 의존 안 함 — worst-pnl 이 첫 row 든 마지막 row 든 동일 결과."""
+        worst_first = [
+            {"account": "Main", "ticker": "X", "quantity": 10, "avg_price": 100, "currency": "USD", "current_price": 70},
+            {"account": "Toss", "ticker": "X", "quantity": 10, "avg_price": 100, "currency": "USD", "current_price": 100},
+        ]
+        worst_last = list(reversed(worst_first))
+        r1 = self._run(worst_first)
+        r2 = self._run(worst_last)
+        assert r1["X"]["pnl_pct"] == r2["X"]["pnl_pct"]
+        assert r1["X"]["account"] == r2["X"]["account"] == "Main"
+
+    def test_taxable_plus_pension_keeps_taxable_account(self):
+        """A-6 codex Round 1 P2 lock: taxable + 연금 공동 보유 ticker 에서 pension
+        slice 가 worst-pnl 이어도 account/threshold 는 taxable 유지 →
+        _build_actions 의 pension_tickers skip 이 taxable slice 를 삼키지 않음."""
+        rows = [
+            {"account": "연금", "ticker": "X", "quantity": 20, "avg_price": 100, "currency": "USD", "current_price": 75},  # -25% pension
+            {"account": "Main", "ticker": "X", "quantity": 10, "avg_price": 100, "currency": "USD", "current_price": 95},  # -5% taxable
+        ]
+        result = self._run(rows)
+        assert result["X"]["account"] == "Main"
+        assert result["X"]["pnl_pct"] == pytest.approx(-5.0)  # taxable side wins
+
+    def test_pension_only_ticker_retains_pension_account(self):
+        """모든 row 가 pension 이면 account 는 pension 으로 유지 — downstream
+        pension skip 이 정상 작동."""
+        rows = [
+            {"account": "연금", "ticker": "Y", "quantity": 10, "avg_price": 100, "currency": "USD", "current_price": 90},
+            {"account": "IRP", "ticker": "Y", "quantity": 5, "avg_price": 100, "currency": "USD", "current_price": 80},
+        ]
+        result = self._run(rows)
+        assert result["Y"]["account"] in ("연금", "IRP")
+        # 위에서 worst 는 IRP (-20% < -10%)
+        assert result["Y"]["pnl_pct"] == pytest.approx(-20.0)
+        assert result["Y"]["account"] == "IRP"
+
+
+# ═══════════════════════════════════════════════════
 # Unit tests — _build_opportunities business logic
 # ═══════════════════════════════════════════════════
 
