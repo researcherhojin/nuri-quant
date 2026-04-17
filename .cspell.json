@@ -183,7 +183,10 @@
     "OPSQ",
     "Bject",
     "outweighted",
-    "nunique"
+    "nunique",
+    "Intraday",
+    "intraday",
+    "dtime"
   ],
   "ignorePaths": [
     "node_modules/**",
