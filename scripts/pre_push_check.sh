@@ -44,6 +44,38 @@ else
     fail=1
 fi
 
+# ─── 2b. Shell Lint (shellcheck) ─────────────────────────────────
+# Local mirror of CI's `shell-lint` job. Added after PR #355 merged with a
+# red Shell Lint check because I did not run shellcheck locally — this
+# section prevents that class of recurrence (see memory
+# feedback_ci_check_reading.md).
+if command -v shellcheck > /dev/null 2>&1; then
+    echo -e "${YELLOW}━━━ 2b. Shell Lint (shellcheck) ━━━${NC}"
+    if shellcheck --source-path=SCRIPTDIR --external-sources scripts/*.sh; then
+        echo -e "${GREEN}✓ Shell lint clean${NC}\n"
+    else
+        echo -e "${RED}✗ Shellcheck failed — mirrors CI job 'Shell Lint'${NC}\n"
+        fail=1
+    fi
+else
+    echo -e "${YELLOW}━━━ 2b. Shell Lint ━━━${NC}"
+    echo -e "${YELLOW}⚠ shellcheck not installed — \`brew install shellcheck\`. CI will enforce.${NC}\n"
+fi
+
+# ─── 2c. Doc count drift ─────────────────────────────────
+# Local mirror of CI's `doc-counts-verify` job. Catches drift between docs and
+# live code (collectors/endpoints/test files/e2e specs) before push. Fast
+# (<1s, find + grep only).
+echo -e "${YELLOW}━━━ 2c. Doc Count Drift ━━━${NC}"
+if bash scripts/verify_doc_counts.sh > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Doc counts match live code${NC}\n"
+else
+    echo -e "${RED}✗ Doc drift detected — run \`make sync-doc-counts\` then amend commit${NC}"
+    bash scripts/verify_doc_counts.sh 2>&1 | grep -E "✗|DRIFT" | head -5
+    echo ""
+    fail=1
+fi
+
 # ─── 3. Tests (skipped in --skip-tests) ─────────────────────────────────
 if [ "$mode" != "--skip-tests" ]; then
     echo -e "${YELLOW}━━━ 3. Tests (CI parity) ━━━${NC}"
