@@ -2,6 +2,20 @@
 
 Detailed reference for Nuri-Quant internals. This file is NOT auto-loaded — agents read it when working on cross-cutting concerns.
 
+## Pipeline Phases (5-step)
+
+README shows the high-level flow. Per-phase orientation table — each row points at the canonical detail section below (or peer doc).
+
+| # | Phase | Inputs | Outputs | Key modules | Detail |
+|---|-------|--------|---------|-------------|--------|
+| 1 | **Collect** | External APIs (yfinance · OpenBB · pykrx · KIS · FRED · Wikipedia · GoogleNews RSS · FINVIZ · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (25 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
+| 2 | **Analyze** | Phase 1 tables | `signal_results.csv` + `signal_scorecard.csv` + `regime_transitions` + `factors` tables | `nuri/quant/regime/` · `nuri/quant/validation/` · `nuri/quant/factors/` · `nuri/llm/event_classifier.py` | "Signal System" + "Regime Classifier" below |
+| 3 | **Consensus** | Phase 2 outputs + `portfolio` + `macro_events` | `recommendations` table rows with per-agent verdicts + weighted final action | `nuri/trading/agents/` (10 specialists + consensus engine, risk veto) | `nuri/trading/agents/CLAUDE.md` |
+| 4 | **Certify** | Phase 3 recommendations + `config/rules.yaml siege_gates` | `Certificate` → CERTIFIED / REJECTED + evidence trace via `pipeline_events` | `nuri/trading/engine/certification.py` | "SIEGE Engine" below + [SIEGE_V2.md](SIEGE_V2.md) |
+| 5 | **Track** | Phase 3 `recommendations.action` + actual prices after N days | `outcome_30d` / `outcome_60d` / `outcome_90d` + `agent_accuracy_snapshots` (feeds Learning Memory back to Phase 3 weights) | `nuri/trading/recommend/tracker.py` + `nuri/trading/engine/learning_memory.py` | "C→D→E Data Flow" below |
+
+The **Serve** layer (FastAPI `:8001` + Next.js `:3000` + Discord/Telegram) is a read-only projection from the DB — not a pipeline phase. See "API (65 endpoints)" and "Dashboard API" sections below.
+
 ## DB as the Sole Integration Point
 
 `nuri/core/db.py` is the **only** module that imports `sqlite3`. DB file: `data/portfolio.db` (WAL mode). All upsert functions accept optional `db_path` — tests inject `tmp_path` for isolation. Schema versioning via `schema_version` table + `_MIGRATIONS` list.
@@ -51,7 +65,7 @@ Special regimes (priority order, override base `regime` field): euphoria, stagfl
 
 `nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit.
 
-Full certification architecture + 3D gate specification: **[`docs/SIEGE_V2.md`](SIEGE_V2.md)** (canonical). Confidence scoring formula: [`docs/STRATEGY.md` §3.3](STRATEGY.md). Gate policy: [`docs/STRATEGY.md` §6](STRATEGY.md).
+Full certification architecture + 3-dimensional certification specification: **[`docs/SIEGE_V2.md`](SIEGE_V2.md)** (canonical). Confidence scoring formula: [`docs/STRATEGY.md` §3.3](STRATEGY.md). Gate policy: [`docs/STRATEGY.md` §6](STRATEGY.md).
 
 ## Pipeline Observability
 
