@@ -439,6 +439,11 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
     today = today_kst()
     records = []
     for r in results:
+        # HOLD 는 Learning Memory 에 signal 없음 — outcome 이 "action 정확" 측정 불가.
+        # BUY/SELL 만 persist 해 가중치 학습 신호 품질 유지 (codex A-1 review).
+        if r.final_action not in ("BUY", "SELL"):
+            continue
+
         # 현재가 조회
         price_row = query(
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",

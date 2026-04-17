@@ -1572,7 +1572,10 @@ class TestSaveToRecommendations:
         - save_to_recommendations 가 `INSERT OR REPLACE` → `ON CONFLICT DO UPDATE` 로 전환.
 
         Revert 시 이 테스트 fail: (date, ticker, action) 키였을 때 두 호출이 각각 다른
-        action 이면 2 행 생성. 이제는 1 행 + action=HOLD 로 update, id 동일.
+        action 이면 2 행 생성. 이제는 1 행 + action=SELL 로 update, id 동일.
+
+        Note (A-1a): BUY→HOLD 대신 BUY→SELL 로 전이. save_to_recommendations 이
+        HOLD 를 Learning Memory 노이즈 방지 위해 제외하도록 변경됨.
         """
         from nuri.core.db import query
         from nuri.trading.agents.consensus import save_to_recommendations
@@ -1580,11 +1583,11 @@ class TestSaveToRecommendations:
         save_to_recommendations([self._result(action="BUY", conf=70)], db_path=db_path)
         first_id = query("SELECT id FROM recommendations WHERE ticker='TEST'", db_path=db_path)[0]["id"]
 
-        save_to_recommendations([self._result(action="HOLD", conf=50)], db_path=db_path)
+        save_to_recommendations([self._result(action="SELL", conf=50)], db_path=db_path)
         rows = query("SELECT * FROM recommendations WHERE ticker='TEST' ORDER BY id", db_path=db_path)
 
         assert len(rows) == 1, "UPSERT 작동 — (date, ticker) 하나당 1 행만 유지"
-        assert rows[0]["action"] == "HOLD"
+        assert rows[0]["action"] == "SELL"
         assert rows[0]["confidence"] == 50.0
         assert rows[0]["id"] == first_id, "ON CONFLICT DO UPDATE 는 id 보존 — FK 안전"
 
