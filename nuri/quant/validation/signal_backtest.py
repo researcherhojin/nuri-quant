@@ -183,7 +183,9 @@ def _entry_pcr_reversal(df: pd.DataFrame, i: int) -> bool:
     peak_val = window.max()
     if not bool(peak_val >= pcr_high):
         return False
-    return bool(window.idxmax() < i)  # 고점이 먼저
+    # window 은 reset_index 된 positional index 기반이므로 idxmax 는 int. 그러나
+    # Pylance 는 Index 타입을 Hashable (int|str 등) 로 보므로 명시적 int() cast.
+    return bool(int(window.idxmax()) < i)  # 고점이 먼저
 
 
 def _entry_yield_curve_recovery(df: pd.DataFrame, i: int) -> bool:
@@ -414,7 +416,9 @@ SELL_SIGNALS: set[str] = list_sell_signals()
 
 def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """가격 DataFrame에 TA-Lib 지표 추가."""
-    close = df["close"].values
+    # talib 는 NDArray[float64] 를 기대. pandas .values 는 ExtensionArray 포함 union
+    # 타입으로 추론되므로 명시적 float64 ndarray 변환이 type-safe.
+    close = np.asarray(df["close"].values, dtype=np.float64)
 
     try:
         import talib
@@ -706,12 +710,12 @@ def generate_scorecard(results: list[SignalResult]) -> list[SignalScorecard]:
             ticker=tkr,
             total_trades=len(group),
             win_rate=wins / len(group),
-            avg_return=round(np.mean(returns), 2),
+            avg_return=round(float(np.mean(returns)), 2),
             median_return=round(float(np.median(returns)), 2),
             max_return=round(max(returns), 2),
             max_loss=round(min(returns), 2),
             profit_factor=round(pf, 2) if pf != float("inf") else float("inf"),
-            avg_holding_days=round(np.mean([r.holding_days for r in group]), 1),
+            avg_holding_days=round(float(np.mean([r.holding_days for r in group])), 1),
         )
 
     scorecards = []
