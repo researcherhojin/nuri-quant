@@ -80,9 +80,9 @@ class ConsensusResult:
 def _compute_weights(db_path=None) -> dict[str, float]:
     """Learning Memory + recommendations 기반 동적 가중치 계산.
 
-    recommendations 테이블에서 에이전트별 적중률을 추적하여 가중치를 보정한다.
-    30일 이상 경과한 추천 중 outcome_30d가 있는 건으로 계산.
-    데이터 부족 시(< 10건) DEFAULT_WEIGHTS 반환.
+    recommendations.agent_verdicts (JSON list of verdict dicts) 를 primary source
+    로 읽어 에이전트별 적중률을 계산. 30일 이상 경과한 추천 중 outcome_30d 가
+    있는 건만 대상. 데이터 부족 시 (< min_records) DEFAULT_WEIGHTS 반환.
 
     TODO(#178): decisions 테이블 기반 compute_agent_accuracy()가 30건 이상
     완료되면, recommendations 대신 decisions 테이블을 primary source로 전환.
@@ -98,8 +98,10 @@ def _compute_weights(db_path=None) -> dict[str, float]:
 
     rows = query(
         """
-        SELECT signals, outcome_30d FROM recommendations
+        SELECT agent_verdicts, outcome_30d FROM recommendations
         WHERE outcome_30d IS NOT NULL
+          AND agent_verdicts IS NOT NULL
+          AND agent_verdicts != ''
           AND date >= date('now', ? || ' days')
         """,
         (f"-{lookback}",),
@@ -109,38 +111,51 @@ def _compute_weights(db_path=None) -> dict[str, float]:
     if len(rows) < min_records:
         return dict(DEFAULT_WEIGHTS)
 
-    # 에이전트별 적중률 계산
-    # signals 필드에 에이전트 verdict가 JSON으로 저장되어 있으면 파싱
     import json
 
     agent_hits: dict[str, list[bool]] = {name: [] for name in DEFAULT_WEIGHTS}
+    # Observability counters — silent fallback 방지 (codex A-1 review).
+    # 모든 row 가 skip 되면 min_records 문턱을 넘어도 가중치 변화 없이
+    # DEFAULT_WEIGHTS 로 귀결되는 silent failure. 카운터로 drill-down 가능.
+    rows_seen = len(rows)
+    rows_parsed = 0
+    rows_skipped_schema = 0
+    rows_skipped_json = 0
 
     for row in rows:
         try:
-            signals_str = row["signals"]
-            if not signals_str:
-                continue
-            # signals 필드가 에이전트 verdict JSON이 아닌 경우 스킵
-            data = json.loads(signals_str) if isinstance(signals_str, str) else None
-            if not isinstance(data, dict) or "verdicts" not in data:
+            verdicts_str = row["agent_verdicts"]
+            verdicts = json.loads(verdicts_str) if isinstance(verdicts_str, str) else None
+            if not isinstance(verdicts, list):
+                rows_skipped_schema += 1
                 continue
 
             # WHERE outcome_30d IS NOT NULL guards the read; `or 0` is defensive only.
             outcome = row["outcome_30d"] or 0
             is_positive = outcome > 0
+            rows_parsed += 1
 
-            for v in data["verdicts"]:
+            for v in verdicts:
+                if not isinstance(v, dict):
+                    continue
                 agent_name = v.get("agent_name", "")
                 action = v.get("action", "HOLD")
                 if agent_name in agent_hits:
-                    # BUY가 양수 수익이면 적중, SELL이 음수 수익이면 적중
+                    # BUY가 양수 수익이면 적중, SELL이 음수 수익이면 적중.
+                    # outcome_30d == 0 bias 는 의도적 pin (test_hit_rate_outcome_zero_is_buy_miss_sell_hit).
                     if action == "BUY":
                         agent_hits[agent_name].append(is_positive)
                     elif action == "SELL":
                         agent_hits[agent_name].append(not is_positive)
                     # HOLD는 적중 판정 제외
         except (json.JSONDecodeError, TypeError, KeyError):
+            rows_skipped_json += 1
             continue
+
+    logger.info(
+        "_compute_weights: rows_seen=%d rows_parsed=%d rows_skipped_schema=%d rows_skipped_json=%d",
+        rows_seen, rows_parsed, rows_skipped_schema, rows_skipped_json,
+    )
 
     # 적중률 기반 가중치 계산
     min_agent_records = _lm.get("min_agent_records", 5)
