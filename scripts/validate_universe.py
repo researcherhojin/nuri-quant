@@ -1,6 +1,6 @@
 """Universe + agent data coverage gate — CLI wrapper.
 
-#272 Phase 2c. Spec: docs/SPEC_phase2c_validate.md.
+#272 Phase 2c. 원 SPEC 은 PR #280/#284/#286 closed, TODO.md Tier 1 row 5 에 shipped 기록.
 
 Exit codes:
 - 0: 모든 check PASS
