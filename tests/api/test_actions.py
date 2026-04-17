@@ -446,17 +446,21 @@ class TestGetSystemHealth:
 
 
 class TestBuildActionsLogic:
-    def _run(self, recs, siege=None, targets=None, portfolio=None, short=None, catalyst=None):
+    def _run(self, recs, siege=None, targets=None, portfolio=None, short=None, catalyst=None, divergence=None):
         # A-4: `has_recent_catalyst` 를 default mock — CI fresh DB 는 news/macro_events
         # 테이블 migration 전 상태 가능성 (Lesson #7). 테스트별 override 는 `catalyst`
         # 인자 또는 with 스코프 내부에서 재패치.
+        # A-5: `check_divergence` 도 default mock — fetch 가 시장외 시 None 반환하도록
+        # 가정. 테스트별 override 는 `divergence=(bool, pct, live_price)`.
         cat_default = catalyst if catalyst is not None else (False, "no catalyst (test default)")
+        div_default = divergence if divergence is not None else (False, 0.0, None)
         with patch("nuri.api.routes.actions._get_recommendations", return_value=recs), \
              patch("nuri.api.routes.actions._get_siege_violations", return_value=siege or []), \
              patch("nuri.api.routes.actions._get_targets_status", return_value=targets or {}), \
              patch("nuri.api.routes.actions._get_portfolio_map", return_value=portfolio or {}), \
              patch("nuri.api.routes.actions._get_short_interest", return_value=short), \
-             patch("nuri.api.routes.actions.has_recent_catalyst", return_value=cat_default):
+             patch("nuri.api.routes.actions.has_recent_catalyst", return_value=cat_default), \
+             patch("nuri.api.routes.actions.check_divergence", return_value=div_default):
             from nuri.api.routes.actions import _build_actions
             return _build_actions()
 
@@ -561,6 +565,50 @@ class TestBuildActionsLogic:
         assert len(result["check"]) == 1
         assert "catalyst: news" in result["check"][0]["reasons"][1]
 
+    def test_a5_divergence_above_threshold_adds_reason(self):
+        """A-5: live price 가 stored 대비 >3% diverge 하면 reason 에 경고 추가.
+        NFLX 사례 방지 (stored $97.23 vs live $107.79)."""
+        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+            result = self._run(
+                [{"ticker": "NFLX", "action": "SELL", "confidence": 75, "agreement": 60}],
+                portfolio={"NFLX": self._pf(97.23, 100, -2.77, 5)},
+                catalyst=(True, "news (2 item(s) in 14d)"),
+                divergence=(True, 10.87, 107.79),
+            )
+        item = (result["urgent"] + result["check"] + result["hold"])[0]
+        assert item["live_price"] == 107.79
+        assert item["divergence_pct"] == 10.87
+        assert item["divergence_flag"] is True
+        assert any("divergence" in r for r in item["reasons"])
+        assert any("107.79" in r for r in item["reasons"])
+
+    def test_a5_divergence_below_threshold_no_reason(self):
+        """A-5: divergence < 3% → flag False, 경고 추가 안 함."""
+        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+            result = self._run(
+                [{"ticker": "QUIET", "action": "BUY", "confidence": 60, "agreement": 30}],
+                portfolio={"QUIET": self._pf(100, 100, 0, 5)},
+                divergence=(False, 1.2, 101.2),
+            )
+        item = result["hold"][0]
+        assert item["divergence_flag"] is False
+        assert item["live_price"] == 101.2
+        assert not any("divergence" in r for r in item["reasons"])
+
+    def test_a5_market_closed_sets_none_fields(self):
+        """A-5: 시장외 fetch (live_price=None) → divergence fields 가 None/False,
+        기존 reason 에 경고 추가 안 함."""
+        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+            result = self._run(
+                [{"ticker": "ZZZ", "action": "BUY", "confidence": 60, "agreement": 30}],
+                portfolio={"ZZZ": self._pf(100, 100, 0, 5)},
+                divergence=(False, 0.0, None),  # 시장외 fallback
+            )
+        item = result["hold"][0]
+        assert item["live_price"] is None
+        assert item["divergence_pct"] is None
+        assert item["divergence_flag"] is False
+
     def test_a4_stop_loss_breach_bypasses_catalyst_check(self):
         """A-4 exemption: stop-loss breach 는 catalyst 무관하게 urgent (§2.2 mechanical).
         has_recent_catalyst 가 호출조차 되지 않아야 함."""
@@ -573,7 +621,8 @@ class TestBuildActionsLogic:
              patch("nuri.api.routes.actions._get_portfolio_map", return_value={"DUMP": self._pf(90, 100, -10, 5)}), \
              patch("nuri.api.routes.actions._get_short_interest", return_value=None), \
              patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7), \
-             patch("nuri.api.routes.actions.has_recent_catalyst", mock_cat):
+             patch("nuri.api.routes.actions.has_recent_catalyst", mock_cat), \
+             patch("nuri.api.routes.actions.check_divergence", return_value=(False, 0.0, None)):
             from nuri.api.routes.actions import _build_actions
             result = _build_actions()
         assert len(result["urgent"]) == 1
