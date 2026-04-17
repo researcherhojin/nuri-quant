@@ -178,7 +178,7 @@ data/
 
 ## Testing
 
-3,052 backend tests across 138 files + 917 frontend vitest (60 files) + 39 Playwright E2E (6 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
+3,075 backend tests across 139 files + 917 frontend vitest (60 files) + 39 Playwright E2E (6 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
 
 **Slow marker**: 23 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
 
