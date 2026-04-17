@@ -17,15 +17,28 @@ Every BUY/SELL recommendation runs through a **collect → analyze → consensus
 Every BUY/SELL decision travels a **5-step pipeline**. Phases talk only through SQLite + CSV (loose coupling, [STRATEGY §2.3](docs/STRATEGY.md#23-느슨한-결합-loose-coupling-via-data)) — rerun an upstream phase and downstream refreshes automatically.
 
 ```mermaid
-flowchart LR
-    A(["1 Collect<br/>25 collectors<br/>US · KR · macro · news"])
-    B(["2 Analyze<br/>signals · regime<br/>factors · events"])
-    C(["3 Consensus<br/>10 agents<br/>risk veto"])
-    D(["4 Certify<br/>SIEGE v2<br/>3D certification"])
-    E(["5 Track<br/>30 / 60 / 90-day<br/>outcome scoring"])
+flowchart TD
+    CFG[/"config/*.yaml<br/>rules · agents · signals · gates"/]
 
-    A --> B --> C --> D --> E
-    E -. feedback .-> C
+    subgraph Pipeline["Pipeline (5 phases · loose coupling via DB)"]
+        direction LR
+        A(["1 Collect<br/>25 collectors"])
+        B(["2 Analyze<br/>signals · regime · factors"])
+        C(["3 Consensus<br/>10 agents · risk veto"])
+        D(["4 Certify<br/>SIEGE v2 · 3D certification"])
+        E(["5 Track<br/>30 / 60 / 90-day outcomes"])
+
+        A -- "prices · fundamentals<br/>macro · news" --> B
+        B -- "signal_results · factors<br/>regime_transitions" --> C
+        C -- "recommendations<br/>per-agent verdicts" --> D
+        D -- "Certificate<br/>evidence trace" --> E
+        E -. "weight ±30% drift" .-> C
+    end
+
+    DB[("SQLite WAL · 32 tables<br/>pipeline_events · freshness SLA")]
+
+    CFG -. policies .-> Pipeline
+    Pipeline -. persist .-> DB
 ```
 
 Driven by `config/*.yaml` (rules · agents · signals · universe · SIEGE gates). Persisted in SQLite WAL — `nuri/core/db.py` is the only `sqlite3` importer. Per-phase detail, DB schema, and SIEGE v2 spec: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + [docs/SIEGE_V2.md](docs/SIEGE_V2.md).
