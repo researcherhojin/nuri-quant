@@ -67,7 +67,7 @@ make start                       # API :8001 + Dashboard :3000
 
 | 스텝 | 성공 신호 | 실패 신호 |
 |------|----------|----------|
-| `make setup` | `Portfolio imported. 22 holdings across 4 accounts` | ModuleNotFoundError / sqlite 에러 |
+| `make setup` | `=== Sync complete: -N +M ===` (`scripts/import_portfolio.py` 종료 메시지) | ModuleNotFoundError / sqlite 에러 |
 | `make universe-sync-us` | `fetched 500+ tickers from Wikipedia` + diff summary | Wikipedia 403 / HTTP error |
 | `make universe-sync-kr` | `fetched 200 tickers` 또는 `KR sync skipped (FDR missing)` | 비정상 traceback |
 | `make collect-universe` | `prices [universe]: 100%\|` tqdm 완료 + `수집 결과: ... 성공 / ... 실패` summary | silent hang > 5분 / ERROR 500줄 |
@@ -96,7 +96,7 @@ make start                       # API :8001 + Dashboard :3000
 | Dashboard 500 error | API 서버 미기동 | `make api` 독립 기동 + 로그 확인 |
 | `make collect-universe-1y` 중 OOM | parallel worker 과다 | 현재 10-thread 기본 — stock.py `max_workers=10` 조정 가능 |
 
-**디버그 시**: `data/reports/YYYY-MM-DD/` 의 최신 리포트 확인. `scripts/validate_universe.py --verbose` 상세 출력.
+**디버그 시**: `data/reports/YYYY-MM-DD/` 의 최신 리포트 확인. `scripts/validate_universe.py --format=markdown` 상세 테이블 출력 (지원 플래그는 `--no-fetch`, `--format`).
 
 ---
 

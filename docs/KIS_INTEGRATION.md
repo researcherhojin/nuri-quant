@@ -140,7 +140,7 @@ def _yfinance_fallback(tickers):
     return recovered
 ```
 
-**효과**: KIS 22/23 → yfinance fallback +2 → **총 23/23 (100%)**
+**효과**: KIS 21/23 → yfinance fallback +2 → **총 23/23 (100%)**
 
 ## Token 관리
 
@@ -150,10 +150,11 @@ KIS는 토큰 발급 시 1분당 1회 제한. 연속 호출 시 거부됨.
 
 ### 디스크 캐시
 
-| 경로 | 형식 | TTL |
-|---|---|---|
-| `config/kis/cache/token_prod.json` | `{access_token, issued_at, expires_in}` | 23h (실제 24h, 마진 1h) |
-| `config/kis/cache/token_paper.json` | 동일 | 동일 |
+| 경로 | 형식 | TTL | 선택 조건 |
+|---|---|---|---|
+| `config/kis/cache/token_prod.json` | `{access_token, issued_at, expires_in}` | 23h (실제 24h, 마진 1h) | project-local `config/kis/kis_devlp.yaml` 또는 `.env` 사용 시 (기본) |
+| `config/kis/cache/token_paper.json` | 동일 | 동일 | 동일 |
+| `~/KIS/cache/token_*.json` | 동일 | 동일 | legacy — `~/KIS/config/kis_devlp.yaml` 만 존재할 때 (SDK 공존 케이스) |
 
 ### Cooldown 응답 감지
 
@@ -188,7 +189,7 @@ KIS는 미국 종목을 거래소별로 분리:
 | 테스트 | 결과 |
 |---|---|
 | **23개 보유 종목 수집** | 100% (KIS 21 + yfinance fallback 2) |
-| **단위 테스트** | 26 PASS (`tests/collectors/test_kis_realtime.py`) |
+| **단위 테스트** | 31 PASS (`tests/collectors/test_kis_realtime.py`) |
 | **검증 함수** | `_is_rate_limit`, `_is_token_cooldown`, `load_credentials`, `inquire_price_kr/us` |
 
 ## 알려진 한계
