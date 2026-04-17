@@ -20,13 +20,18 @@
   },
 
   // ─── Frontend (TypeScript / React / Tailwind) ──────────
+  // typescript / typescriptreact 언어 블록은 하나로 merge — JSONC 는 duplicate key
+  // 를 허용하지만 마지막 선언이 앞 선언을 완전히 덮어써 formatter 설정이 silently
+  // 사라질 위험 있음 (이전에 line 23/44 중복으로 severity-4 경고).
   "[typescript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2
   },
   "[typescriptreact]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2
   },
   "tailwindCSS.experimental.classRegex": [
     ["clsx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"],
@@ -36,13 +41,21 @@
     "typescript": "javascript",
     "typescriptreact": "javascript"
   },
+  // codex-reviews archive (gitignored) 는 real source 가 아닌 codex 응답 markdown —
+  // 내부에 인용된 arbitrary-value class (e.g. `min-w-[200px]`) 가 canonical-class
+  // suggest 경고를 trigger 하므로 tailwind scan 제외. data/ 아래 report 도 동일 이유.
+  "tailwindCSS.files.exclude": [
+    "**/.venv/**",
+    "**/node_modules/**",
+    "**/.next/**",
+    "codex-reviews/**",
+    "data/**"
+  ],
 
   // ─── Editor ─────────────────────────────────────────────
   "editor.formatOnSave": true,
   "editor.rulers": [120],
   "editor.tabSize": 4,
-  "[typescript]": { "editor.tabSize": 2 },
-  "[typescriptreact]": { "editor.tabSize": 2 },
   "[json]": { "editor.tabSize": 2 },
   "[yaml]": { "editor.tabSize": 2 },
 
