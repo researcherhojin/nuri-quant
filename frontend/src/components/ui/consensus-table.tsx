@@ -15,7 +15,42 @@ interface AgentVerdict {
   action: string;
   confidence: number;
   reasoning: string;
-  data_points: Record<string, any>;
+  data_points: Record<string, unknown>;
+}
+
+// A-2c (PR #368): backend scoring_detail contract. Populated by `_build_consensus`
+// (consensus.py) when source="consensus"; source="candidate" 도 같은 컬럼을 공유하나
+// 이 테이블은 consensus rows 전용.
+// Literal union 으로 backend enum 잠금 (codex A-2c review LOW 2 — contract drift 방어).
+// export — 회귀 테스트가 같은 literal shape 로 fixture 를 생성할 수 있게.
+export type Action = "BUY" | "SELL" | "HOLD";
+export type ScoringSource = "consensus" | "candidate";
+export type FinalActionSource = "weighted_sum" | "risk_veto" | "divergence_penalty";
+
+export interface ScoringContribution {
+  agent_name: string;
+  action: Action;
+  confidence: number;
+  weight: number;
+  weighted: number; // weight × (confidence/100) — action_scores[action] 에 누적된 값
+  counted_for_basis_action: boolean;
+}
+
+export interface ScoringDetail {
+  source: ScoringSource;
+  schema_version: number;
+  weights: Record<string, number>;
+  action_scores: Record<Action, number>;
+  contributions: ScoringContribution[];
+  final_action: Action;
+  final_confidence: number;
+  final_action_source: FinalActionSource;
+  basis_action: Action;
+  agreement_rate: number;
+  risk_veto_fired: boolean;
+  divergence_flag: boolean;
+  penalty_applied: boolean;
+  pre_penalty_action: Action | "";
 }
 
 interface ConsensusRow {
@@ -28,6 +63,7 @@ interface ConsensusRow {
   reasoning: string;
   divergence_flag?: boolean;
   divergence_reason?: string;
+  scoring_detail?: ScoringDetail | null;
 }
 
 const AGENT_ORDER = [
@@ -57,6 +93,14 @@ function agentCell(verdict: AgentVerdict | undefined) {
     </span>
   );
 }
+
+// A-2c: `final_action_source` 를 한국어 tooltip + 이모지 아이콘으로 시각화.
+// satisfies 로 backend literal union 과 key exhaustiveness 연결 (codex review LOW 2).
+const SOURCE_META = {
+  weighted_sum: { icon: "🗳️", tip: "가중 합의" },
+  risk_veto: { icon: "🛑", tip: "리스크 에이전트 거부권 (Risk SELL conf ≥ 80)" },
+  divergence_penalty: { icon: "⚠️", tip: "기술지표 반대로 HOLD 강등" },
+} satisfies Record<FinalActionSource, { icon: string; tip: string }>;
 
 export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: number | null }) {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -107,6 +151,25 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
                         ⚠
                       </span>
                     )}
+                    {/* A-2c: final_action_source 가 weighted_sum 이 아니면 아이콘으로 override 원인 surface.
+                        basis_action ≠ final_action 인 penalty 케이스에는 "pre_penalty → final" 미니 텍스트. */}
+                    {row.scoring_detail && row.scoring_detail.final_action_source !== "weighted_sum" && (
+                      <span
+                        className="text-[10px] ml-1 cursor-help"
+                        title={SOURCE_META[row.scoring_detail.final_action_source]?.tip || row.scoring_detail.final_action_source}
+                        data-testid="action-source-badge"
+                      >
+                        {SOURCE_META[row.scoring_detail.final_action_source]?.icon || "·"}
+                      </span>
+                    )}
+                    {row.scoring_detail?.penalty_applied && row.scoring_detail.basis_action !== row.final_action && (
+                      <div
+                        className="text-[9px] text-amber-400/80 mt-0.5 leading-tight"
+                        data-testid="penalty-basis-label"
+                      >
+                        {row.scoring_detail.pre_penalty_action} → {row.final_action}
+                      </div>
+                    )}
                   </td>
                   <td className="py-1.5 px-2 text-right">{row.final_confidence.toFixed(1)}</td>
                   <td className="py-1.5 px-2 text-right hidden sm:table-cell">
@@ -123,22 +186,64 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
                 {isExpanded && (
                   <tr className="bg-muted/10">
                     <td colSpan={4 + AGENT_ORDER.length} className="px-3 py-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {AGENT_ORDER.map((a) => {
-                          const v = agentMap[a.key];
-                          if (!v) return null;
-                          return (
-                            <div key={a.key} className="bg-muted/30 rounded-md p-2 border border-border/30">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-[10px] font-medium text-muted-foreground">{a.label}</span>
-                                <StatusBadge status={v.action} size="sm" />
-                                <span className="text-[10px] text-muted-foreground ml-auto">{v.confidence.toFixed(0)}%</span>
-                              </div>
-                              <p className="text-[10px] text-muted-foreground/80 leading-tight">{v.reasoning}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {/* A-2c: contributions 에서 agent 별 weighted 값을 lookup.
+                          분모는 basis_action bucket 의 action_scores 합 — "basis 방향 결정에 얼마나
+                          기여했는가" 가 UI 의도 (codex review LOW 1 — 전체 총합 분모는 semantic drift).
+                          basis_action 과 반대쪽 agent 의 `%` 는 null 로 렌더 (basis 기여 아니므로 무의미). */}
+                      {(() => {
+                        const sd = row.scoring_detail;
+                        const contribMap = Object.fromEntries(
+                          (sd?.contributions ?? []).map((c) => [c.agent_name, c])
+                        );
+                        const basisDenom = sd?.action_scores[sd.basis_action] ?? 0;
+                        return (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {AGENT_ORDER.map((a) => {
+                              const v = agentMap[a.key];
+                              if (!v) return null;
+                              const contrib = contribMap[a.key];
+                              // basis 방향에 기여한 에이전트만 % 계산 (의미 있는 causal share).
+                              const pctOfBasis = contrib?.counted_for_basis_action && basisDenom > 0
+                                ? (contrib.weighted / basisDenom) * 100
+                                : null;
+                              return (
+                                <div
+                                  key={a.key}
+                                  className={`bg-muted/30 rounded-md p-2 border ${
+                                    contrib?.counted_for_basis_action
+                                      ? "border-emerald-500/40"
+                                      : "border-border/30"
+                                  }`}
+                                  data-testid={`agent-card-${a.key}`}
+                                >
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[10px] font-medium text-muted-foreground">{a.label}</span>
+                                    <StatusBadge status={v.action} size="sm" />
+                                    <span className="text-[10px] text-muted-foreground ml-auto">{v.confidence.toFixed(0)}%</span>
+                                  </div>
+                                  {contrib && (
+                                    <div className="flex items-center gap-1 mb-1 text-[9px] text-muted-foreground/80">
+                                      <span title={`weighted = ${contrib.weight} × ${contrib.confidence}/100 = ${contrib.weighted}`}>
+                                        w={contrib.weight.toFixed(3)} · c={contrib.weighted.toFixed(3)}
+                                      </span>
+                                      {pctOfBasis !== null && (
+                                        <span
+                                          className="ml-auto font-mono"
+                                          data-testid={`contrib-pct-${a.key}`}
+                                          title={`${sd?.basis_action} 방향 결정 기여도 (action_scores[${sd?.basis_action}] 대비)`}
+                                        >
+                                          {pctOfBasis.toFixed(0)}%
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                  <p className="text-[10px] text-muted-foreground/80 leading-tight">{v.reasoning}</p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                       {/* 에이전트 reasoning trace — 실시간 스트리밍 */}
                       <div className="mt-3 pt-3 border-t border-border/20">
                         <AgentTrace ticker={row.ticker} />
