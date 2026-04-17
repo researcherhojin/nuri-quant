@@ -47,14 +47,19 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
         db_path: DB 경로 (테스트용)
     """
     from nuri.core.timezone import today_kst
+    from nuri.trading.recommend.candidates import TIER_ACTIONABLE
 
     today = today_kst()
     records = []
 
-    # E-1 후보에서 regime_fit인 것만
+    # E-1 후보에서 regime_fit + actionable tier 인 것만.
+    # CLI 경로 (__main__) 는 이미 actionable 필터 후 호출하지만 다른 caller (테스트/
+    # 내부 script) 가 advisory/avoid 를 섞어 persist 하는 것을 방어 (codex A-1 review).
     if candidates:
         for c in candidates:
             if not c.regime_fit:
+                continue
+            if getattr(c, "tier", TIER_ACTIONABLE) != TIER_ACTIONABLE:
                 continue
             rec = {
                 "date": today,
