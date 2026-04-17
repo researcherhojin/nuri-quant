@@ -5,6 +5,10 @@
 # Covers: collectors, endpoints, backend/frontend test files, e2e specs, pytest count.
 # Pair: scripts/verify_doc_counts.sh (read-only CI gate).
 # ═══════════════════════════════════════════════════════
+# All live_* functions are dispatched indirectly via $("$live_fn") in
+# update_claim — shellcheck 0.10 cannot trace dynamic dispatch, so disable
+# the false-positive "never invoked / unreachable" warnings file-wide.
+# shellcheck disable=SC2317,SC2329
 set -euo pipefail
 
 # shellcheck source=scripts/_common.sh
@@ -32,11 +36,11 @@ live_endpoints()    { grep -rhE '@router\.(get|post|put|delete|patch)' \
 
 live_test_files_be() { find tests -name "test_*.py" -type f | wc -l | tr -d ' '; }
 
-live_test_files_fe() { find frontend -name "*.test.ts" -o -name "*.test.tsx" 2>/dev/null \
-    | grep -v node_modules | wc -l | tr -d ' '; }
+live_test_files_fe() { find frontend \( -name "*.test.ts" -o -name "*.test.tsx" \) \
+    ! -path '*/node_modules/*' 2>/dev/null | wc -l | tr -d ' '; }
 
-live_e2e_specs()    { find frontend/e2e -name "*.spec.ts" 2>/dev/null \
-    | grep -v node_modules | wc -l | tr -d ' '; }
+live_e2e_specs()    { find frontend/e2e -name "*.spec.ts" \
+    ! -path '*/node_modules/*' 2>/dev/null | wc -l | tr -d ' '; }
 
 live_tests_be() {
     $PYTHON -m pytest tests/ --collect-only -q 2>/dev/null \
