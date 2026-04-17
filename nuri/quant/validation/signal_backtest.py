@@ -661,7 +661,15 @@ def backtest_signals(
 
                 entry_price = df["close"].iloc[entry_idx]
                 exit_price = df["close"].iloc[exit_idx]
-                return_pct = (exit_price - entry_price) / entry_price * 100
+                raw_return_pct = (exit_price - entry_price) / entry_price * 100
+                # SELL 시그널은 short/exit 관점 — 가격 하락이 "이김". sign 반전 필수.
+                # 2026-04-17 STRATEGY §2.1 Evidence-first 위반 버그 수정 (codex audit).
+                # 이전까지 SELL 시그널도 buy 와 동일 공식으로 측정 → 모든 SELL 의 scorecard
+                # avg_return/PF 가 "매도 후 가격 상승 = 이김" 으로 계산되던 문제.
+                if sig_id in SELL_SIGNALS:
+                    return_pct = -raw_return_pct
+                else:
+                    return_pct = raw_return_pct
                 holding_days = exit_idx - entry_idx
 
                 results.append(SignalResult(
