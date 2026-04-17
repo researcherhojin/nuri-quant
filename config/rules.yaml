@@ -16,8 +16,15 @@ position_limits:
 
 # ─── 손절 규칙 ──────────────────────────────────────────
 # 원칙: 손실은 짧게 자르기. 감정 배제, 기계적 실행.
+#
+# 주의: `per_stock: -7` 은 `account_strategies.core.stop_loss: -7` 와 동일한 값이
+# 서로 다른 경로로 로드됨. `STOCK_STOP_LOSS` (global) 는 legacy fallback 이고,
+# `get_stop_loss_for_account(account)` 가 실제 per-account threshold resolver.
+# 두 값이 divert 하면 core 계좌의 global fallback path 가 잘못된 threshold 를
+# 집어올 수 있음 → 변경 시 둘 다 업데이트 필수. 향후 PR 에서 single source 로
+# 통합 예정 (derive `STOCK_STOP_LOSS` from core strategy).
 stop_loss:
-  per_stock: -7                 # 종목별 손절선 (%) — O'Neil: -7~8%
+  per_stock: -7                 # 종목별 손절선 (%) — O'Neil: -7~8%. core 전략 default 와 동기화.
   per_stock_value: -10          # 가치주 손절선 (%) — 변동성 감안 완화
   portfolio: -10                # 포트폴리오 전체 손절선 (%)
 
