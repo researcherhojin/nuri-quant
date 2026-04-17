@@ -108,9 +108,6 @@ def _compute_weights(db_path=None) -> dict[str, float]:
         db_path=db_path,
     )
 
-    if len(rows) < min_records:
-        return dict(DEFAULT_WEIGHTS)
-
     import json
 
     agent_hits: dict[str, list[bool]] = {name: [] for name in DEFAULT_WEIGHTS}
@@ -143,19 +140,39 @@ def _compute_weights(db_path=None) -> dict[str, float]:
                 if agent_name in agent_hits:
                     # BUY가 양수 수익이면 적중, SELL이 음수 수익이면 적중.
                     # outcome_30d == 0 bias 는 의도적 pin (test_hit_rate_outcome_zero_is_buy_miss_sell_hit).
+                    # HOLD agent verdict 는 hit 판정 제외 (분기 없음 → 자동 skip).
                     if action == "BUY":
                         agent_hits[agent_name].append(is_positive)
                     elif action == "SELL":
                         agent_hits[agent_name].append(not is_positive)
-                    # HOLD는 적중 판정 제외
         except (json.JSONDecodeError, TypeError, KeyError):
             rows_skipped_json += 1
             continue
 
-    logger.info(
-        "_compute_weights: rows_seen=%d rows_parsed=%d rows_skipped_schema=%d rows_skipped_json=%d",
-        rows_seen, rows_parsed, rows_skipped_schema, rows_skipped_json,
-    )
+    # min_records gate — parsed count 기반 (codex A-1 P1-2).
+    # 이전: len(rows) < min_records 로 raw SQL 수 검증 → malformed row 가 gate 통과 후
+    # 실제 학습 샘플이 문턱 미달로 가중치 shift. parsed 수로 gate 해야 샘플 신뢰성 보장.
+    if rows_parsed < min_records:
+        # fallback 발생 시 명시적 WARNING — normal path (early return) 과 구분.
+        if rows_seen > 0:
+            logger.warning(
+                "_compute_weights fallback to DEFAULT_WEIGHTS: rows_seen=%d rows_parsed=%d (< min_records=%d) skipped_schema=%d skipped_json=%d",
+                rows_seen, rows_parsed, min_records, rows_skipped_schema, rows_skipped_json,
+            )
+        return dict(DEFAULT_WEIGHTS)
+
+    # Normal path — DEBUG 레벨 (per-ticker 호출 hot path spam 방지).
+    # Anomaly (skip 발생) 시 INFO 로 올려 operator 눈에 띄게.
+    if rows_skipped_schema > 0 or rows_skipped_json > 0:
+        logger.info(
+            "_compute_weights anomaly: rows_seen=%d rows_parsed=%d rows_skipped_schema=%d rows_skipped_json=%d",
+            rows_seen, rows_parsed, rows_skipped_schema, rows_skipped_json,
+        )
+    else:
+        logger.debug(
+            "_compute_weights: rows_seen=%d rows_parsed=%d",
+            rows_seen, rows_parsed,
+        )
 
     # 적중률 기반 가중치 계산
     min_agent_records = _lm.get("min_agent_records", 5)
@@ -439,11 +456,10 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
     today = today_kst()
     records = []
     for r in results:
-        # HOLD 는 Learning Memory 에 signal 없음 — outcome 이 "action 정확" 측정 불가.
-        # BUY/SELL 만 persist 해 가중치 학습 신호 품질 유지 (codex A-1 review).
-        if r.final_action not in ("BUY", "SELL"):
-            continue
-
+        # 모든 final_action (BUY/SELL/HOLD) persist — same-day 재실행 시 UPSERT 로 stale
+        # row 방지 (codex A-1 review P1-1). Learning Memory 는 개별 agent verdict 의
+        # action 으로 hit 판정하므로 rec.final_action=HOLD 라도 verdicts 배열 내 BUY/SELL
+        # 은 학습 대상. _compute_weights 의 action 분기가 HOLD 를 자동 skip.
         # 현재가 조회
         price_row = query(
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",

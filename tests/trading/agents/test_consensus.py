@@ -1572,10 +1572,10 @@ class TestSaveToRecommendations:
         - save_to_recommendations 가 `INSERT OR REPLACE` → `ON CONFLICT DO UPDATE` 로 전환.
 
         Revert 시 이 테스트 fail: (date, ticker, action) 키였을 때 두 호출이 각각 다른
-        action 이면 2 행 생성. 이제는 1 행 + action=SELL 로 update, id 동일.
+        action 이면 2 행 생성. 이제는 1 행 + action=HOLD 로 update, id 동일.
 
-        Note (A-1a): BUY→HOLD 대신 BUY→SELL 로 전이. save_to_recommendations 이
-        HOLD 를 Learning Memory 노이즈 방지 위해 제외하도록 변경됨.
+        A-1a P1-1 regression lock-in: HOLD 가 persist 되어야 stale BUY row 를 덮어
+        씀. HOLD skip 되면 UI 가 outdated BUY 표시 (codex A-1 review).
         """
         from nuri.core.db import query
         from nuri.trading.agents.consensus import save_to_recommendations
@@ -1583,11 +1583,11 @@ class TestSaveToRecommendations:
         save_to_recommendations([self._result(action="BUY", conf=70)], db_path=db_path)
         first_id = query("SELECT id FROM recommendations WHERE ticker='TEST'", db_path=db_path)[0]["id"]
 
-        save_to_recommendations([self._result(action="SELL", conf=50)], db_path=db_path)
+        save_to_recommendations([self._result(action="HOLD", conf=50)], db_path=db_path)
         rows = query("SELECT * FROM recommendations WHERE ticker='TEST' ORDER BY id", db_path=db_path)
 
         assert len(rows) == 1, "UPSERT 작동 — (date, ticker) 하나당 1 행만 유지"
-        assert rows[0]["action"] == "SELL"
+        assert rows[0]["action"] == "HOLD", "HOLD 가 BUY 를 덮어써야 UI stale 방지"
         assert rows[0]["confidence"] == 50.0
         assert rows[0]["id"] == first_id, "ON CONFLICT DO UPDATE 는 id 보존 — FK 안전"
 
@@ -1828,25 +1828,117 @@ class TestComputeWeightsHitRates:
             "dict items 정상 처리 — non-dict items skip 안전"
         )
 
-    def test_observability_counters_logged(self, db_path, caplog):
-        """rows_seen/rows_parsed/rows_skipped_schema/rows_skipped_json 로깅 검증.
+    def test_min_records_gate_on_parsed_count_not_raw(self, db_path):
+        """min_records gate 는 rows_parsed 기반 (codex A-1 P1-2 regression lock).
 
-        A-1a codex review (P1-3): silent skip opacity 방지. silent fallback 감지
-        가능해야 함. fix revert (logger.info 제거) 시 이 테스트 fail.
+        시나리오: 9 valid + 1 malformed = raw 10 rows. 이전 버그: len(rows) 가 10 이라
+        gate 통과 → 9 건으로 가중치 shift (sample 신뢰성 위반). Fix: rows_parsed 로 gate.
+        revert 시 이 테스트 fail (shift 가 발생 → != DEFAULT_WEIGHTS).
+        """
+        import json
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        valid_verdicts = [
+            {"agent_name": "technical", "action": "BUY"},
+            {"agent_name": "fundamental", "action": "SELL"},
+        ]
+        with get_db(db_path) as conn:
+            # 9 valid (min_records=10 미달)
+            for i in range(9):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"V{i}", "BUY", 50.0, None, None, 100.0,
+                     json.dumps(valid_verdicts), 0.05),
+                )
+            # 1 malformed — raw count 를 10 으로 올려 old gate 우회 공격
+            conn.execute(
+                """INSERT INTO recommendations
+                   (date, ticker, action, confidence, regime, signals, entry_price,
+                    agent_verdicts, outcome_30d)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (today_kst(), "M0", "BUY", 50.0, None, None, 100.0,
+                 "{bad json", 0.05),
+            )
+
+        weights = _compute_weights(db_path=db_path)
+        assert weights == DEFAULT_WEIGHTS, (
+            "rows_parsed=9 < min_records=10 → DEFAULT_WEIGHTS. "
+            "이전 버그: raw count=10 으로 gate 통과 → shift 발생."
+        )
+
+    def test_observability_normal_path_debug(self, db_path, caplog):
+        """Normal path (skip=0) 는 DEBUG 레벨 — per-ticker hot path spam 방지.
+
+        A-1a codex review (P2-3): analyze_portfolio 가 ticker 마다 _compute_weights
+        호출. 모든 row valid 면 DEBUG 레벨로 로그. revert (INFO 로 복구) 시 fail.
         """
         import logging
 
         from nuri.trading.agents.consensus import _compute_weights
 
         self._seed_recommendations(db_path, n_records=15, outcome_sign=1)
+
+        # INFO 레벨로 caplog 설정 — DEBUG 메시지는 안 잡힘. INFO 메시지 있으면 fail.
         with caplog.at_level(logging.INFO, logger="nuri.trading.agents.consensus"):
             _compute_weights(db_path=db_path)
 
-        # 로그 메시지에 observability 카운터 포함 확인
-        log_texts = [r.message for r in caplog.records]
-        assert any("rows_seen=15" in m for m in log_texts), (
-            f"rows_seen=15 로그 기대. 실제: {log_texts}"
+        info_msgs = [r.message for r in caplog.records
+                     if r.levelno >= logging.INFO and "_compute_weights" in r.message]
+        assert info_msgs == [], (
+            f"Normal path 는 DEBUG 레벨 — INFO 로그 없어야 함. 실제: {info_msgs}"
         )
-        assert any("rows_parsed=15" in m for m in log_texts), (
-            "rows_parsed=15 로그 기대 (모두 valid)"
+
+    def test_observability_anomaly_path_info(self, db_path, caplog):
+        """Skip 발생 시 INFO 레벨로 escalate — operator 감지 가능.
+
+        A-1a codex review (P2-3): normal 은 조용히, anomaly 는 요란하게.
+        """
+        import json
+        import logging
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import _compute_weights
+
+        valid_verdicts = [
+            {"agent_name": "technical", "action": "BUY"},
+            {"agent_name": "fundamental", "action": "SELL"},
+        ]
+        with get_db(db_path) as conn:
+            # min_records 통과 가능한 valid 12 + malformed 2 → INFO anomaly log
+            for i in range(12):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"V{i}", "BUY", 50.0, None, None, 100.0,
+                     json.dumps(valid_verdicts), 0.05),
+                )
+            for i in range(2):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"M{i}", "BUY", 50.0, None, None, 100.0,
+                     "{bad json", 0.05),
+                )
+
+        with caplog.at_level(logging.INFO, logger="nuri.trading.agents.consensus"):
+            _compute_weights(db_path=db_path)
+
+        info_msgs = [r.message for r in caplog.records
+                     if r.levelno == logging.INFO and "anomaly" in r.message]
+        assert len(info_msgs) >= 1, (
+            f"Skip 발생 시 INFO anomaly 로그 기대. 실제: {[r.message for r in caplog.records]}"
+        )
+        assert any("rows_skipped_json=2" in m for m in info_msgs), (
+            "rows_skipped_json=2 카운터 포함 기대"
         )
