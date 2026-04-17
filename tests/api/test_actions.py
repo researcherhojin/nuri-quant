@@ -732,7 +732,8 @@ class TestBuildActionsScoringDetail:
              patch("nuri.api.routes.actions._get_targets_status", return_value={}), \
              patch("nuri.api.routes.actions._get_portfolio_map", return_value={
                  "TSLA": {"account": "Main", "pnl_pct": 5, "position_pct": 10}
-             }):
+             }), \
+             patch("nuri.api.routes.actions._get_short_interest", return_value=None):
             result = _build_actions()
 
         # urgent/check/hold 중 어디든 TSLA item 찾기

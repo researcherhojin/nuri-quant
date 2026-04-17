@@ -150,7 +150,9 @@
     "longshort",
     "longterm",
     "hojin",
-    "kakao"
+    "kakao",
+    "TQQQ",
+    "MRVL"
   ],
   "ignorePaths": [
     "node_modules/**",
