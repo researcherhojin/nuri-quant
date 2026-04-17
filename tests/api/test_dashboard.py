@@ -1102,3 +1102,77 @@ class TestLatestActionsAccountField:
         buys = [a for a in result if a["action"] == "BUY"]
         assert len(buys) >= 1
         assert buys[0]["account"] == ""
+
+
+class TestLatestActionsScoringDetail:
+    """A-2b — /dashboard `_get_latest_actions` 가 scoring_detail + agent_verdicts
+    컬럼을 pass-through. Frontend (A-2c) 가 actions card 에서 agent breakdown
+    및 basis_action 을 시각화할 때 필수.
+    """
+
+    def test_latest_actions_passes_scoring_detail(self, db_path, monkeypatch):
+        """recommendations row 의 scoring_detail JSON 이 response dict 에 파싱돼 포함."""
+        import json as _json
+
+        import nuri.api.routes.dashboard as dash_mod
+        import nuri.core.db as db_mod
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+        scoring = {
+            "source": "consensus",
+            "schema_version": 1,
+            "basis_action": "BUY",
+            "final_action_source": "weighted_sum",
+            "contributions": [{"agent_name": "technical", "counted_for_basis_action": True}],
+        }
+        verdicts = [{"agent_name": "technical", "action": "BUY", "confidence": 75}]
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, regime, signals, scoring_detail, agent_verdicts) VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    "2026-04-18",
+                    "TSLA",
+                    "BUY",
+                    0.85,
+                    "bull_low_vol",
+                    '{"reasoning": "test", "agreement_rate": 0.8}',
+                    _json.dumps(scoring),
+                    _json.dumps(verdicts),
+                ),
+            )
+
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {})
+        monkeypatch.setattr(dash_mod, "_get_ticker_account_map", lambda: {})
+        result = dash_mod._get_latest_actions()
+
+        buys = [a for a in result if a["action"] == "BUY"]
+        assert buys, "BUY row 가 최소 1 개 반환"
+        first = buys[0]
+        assert "scoring_detail" in first, (
+            "A-2b regression: dashboard action dict 에 scoring_detail 누락 — "
+            "frontend 가 agent breakdown 조회 불가"
+        )
+        assert first["scoring_detail"] is not None
+        assert first["scoring_detail"]["source"] == "consensus"
+        assert first["scoring_detail"]["basis_action"] == "BUY"
+        assert first["agent_verdicts"] == verdicts
+
+    def test_latest_actions_handles_null_scoring_detail(self, db_path, monkeypatch):
+        """scoring_detail NULL (legacy row) → response 에 None 으로 graceful."""
+        import nuri.api.routes.dashboard as dash_mod
+        import nuri.core.db as db_mod
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, regime, signals) VALUES (?,?,?,?,?,?)",
+                ("2026-04-18", "NVDA", "BUY", 0.6, "bull", "{}"),
+            )
+
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {})
+        monkeypatch.setattr(dash_mod, "_get_ticker_account_map", lambda: {})
+        result = dash_mod._get_latest_actions()
+        buys = [a for a in result if a["action"] == "BUY"]
+        assert buys
+        assert buys[0]["scoring_detail"] is None
+        assert buys[0]["agent_verdicts"] is None

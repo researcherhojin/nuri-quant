@@ -139,7 +139,18 @@
     "NOPX",
     "SCDT",
     "SCDN",
-    "executemany"
+    "executemany",
+    "devlp",
+    "FINNHUB",
+    "finnhub",
+    "HMAC",
+    "MACMINI",
+    "macmini",
+    "TSMC",
+    "longshort",
+    "longterm",
+    "hojin",
+    "kakao"
   ],
   "ignorePaths": [
     "node_modules/**",
