@@ -19,91 +19,65 @@ The pipeline has **8 phases** organized into 5 conceptual stages. Phases never i
 **At a glance**: `Collect → Analyze → Consensus → Certify → Track → Serve` — driven by `config/*.yaml`, persisted in SQLite, feedback loop from outcomes back to agent weights.
 
 ```mermaid
-%%{ init: { 'theme': 'dark', 'flowchart': { 'curve': 'basis', 'padding': 10 } } }%%
-flowchart TD
+flowchart LR
+    subgraph Collect["1 · Collect"]
+        direction TB
+        C1[US equities<br/>yfinance · OpenBB]
+        C2[KR equities<br/>pykrx · KIS]
+        C3[Macro + news<br/>FRED · RSS]
+        C4[External<br/>ARK · FINVIZ · Reddit]
+    end
 
-  %% ───── ① Collect ─────
-  subgraph COLLECT["① Collect"]
-    direction LR
-    C1["US equities<br/>yfinance · OpenBB"]
-    C2["KR equities<br/>pykrx · KIS Open API"]
-    C3["Macro + news<br/>FRED · GoogleNews RSS"]
-    C4["External<br/>ARK · FINVIZ · Reddit"]
-  end
+    subgraph Foundation["Foundation"]
+        direction TB
+        DB[(SQLite WAL<br/>sole sqlite3 importer)]
+        CFG[config/*.yaml<br/>rules · agents · signals<br/>universe · siege_gates]
+        EVT[pipeline_events<br/>append-only · freshness SLA]
+    end
 
-  %% ───── Core ─────
-  subgraph CORE["Foundation"]
-    direction LR
-    DB[("SQLite (WAL)<br/>sole sqlite3 importer")]
-    CFG["config/*.yaml<br/>rules · agents · signals<br/>universe · siege_gates"]
-    EVT["pipeline_events<br/>append-only journal<br/>Freshness SLA"]
-  end
+    subgraph Analyze["2 · Analyze"]
+        direction TB
+        A1[Signals<br/>RSI · MACD · BB · volume]
+        A2[Regime — 6 base + 4 special]
+        A3[Macro + event score]
+        A4[Multi-factor<br/>momentum · value · quality]
+    end
 
-  %% ───── ② Analyze ─────
-  subgraph ANALYZE["② Analyze"]
-    direction LR
-    SIG["Signals<br/>RSI · MACD · BB · volume"]
-    REG["Regime classifier<br/>base + special"]
-    SCR["Macro + event score<br/>FRED indicators · RSS categories"]
-    FAC["Multi-factor<br/>momentum · value · quality"]
-  end
+    subgraph Consensus["3 · Consensus"]
+        direction TB
+        AG[10 specialist agents<br/>Technical · Fundamental · Macro<br/>Smart Money · Wall Street · Korean<br/>Options · Crypto · Retail<br/>Risk — veto power]
+        VO[Weighted vote · drift ± 30%<br/>learning memory feedback]
+    end
 
-  %% ───── ③ Consensus ─────
-  subgraph CONSENSUS["③ Consensus"]
-    direction LR
-    AGENTS["Specialist agents<br/>Technical · Fundamental · Macro<br/>Smart Money · Wall Street · Korean<br/>Options · Crypto · Retail<br/><b>Risk (veto power)</b>"]
-    VOTE["Weighted vote<br/>drift ± 30% band<br/>learning memory feedback"]
-  end
+    subgraph Certify["4 · SIEGE v2"]
+        direction TB
+        B1[Base: position · sector · stop-loss<br/>leverage · conflict · drift · macro]
+        B2[Per-asset-class: freshness · volatility · external<br/>us_equity · kr_equity · kr_index · commodity · bond]
+        B3[CERTIFIED / REJECTED + evidence trace]
+    end
 
-  %% ───── ④ SIEGE v2 ─────
-  subgraph SIEGE["④ SIEGE v2 certification"]
-    direction LR
-    BASE["Base conditions<br/>position · sector · stop-loss · leverage<br/>conflict · drift · macro · rules"]
-    EXP["Per-asset-class expansion<br/>freshness · volatility · external<br/>(us_equity · kr_equity · kr_index · commodity · bond)"]
-    RES["CERTIFIED / REJECTED<br/>+ evidence trace"]
-  end
+    subgraph Track["5 · Track"]
+        direction TB
+        T1[Outcome tracker<br/>30 / 60 / 90-day scoring]
+        T2[Learning memory<br/>agent weight adjustment]
+    end
 
-  %% ───── ⑤ Track ─────
-  subgraph TRACK["⑤ Track"]
-    direction LR
-    OUT["Outcome tracker<br/>30 / 60 / 90-day scoring"]
-    MEM["Learning memory<br/>agent weight adjustment"]
-  end
+    subgraph Serve["Serve"]
+        direction TB
+        S1[FastAPI :8001 REST + SSE]
+        S2[Next.js 16 :3000 dashboard]
+        S3[Discord · Telegram alerts]
+    end
 
-  %% ───── Serve ─────
-  subgraph SERVE["Serve"]
-    direction LR
-    API["FastAPI :8001<br/>REST + SSE"]
-    UI["Next.js 16 :3000<br/>Action-First dashboard"]
-    ALR["Discord · Telegram<br/>alerts + daily report"]
-  end
-
-  %% ───── flow ─────
-  COLLECT ==> DB
-  DB ==> ANALYZE
-  CFG --> ANALYZE
-  CFG --> CONSENSUS
-  CFG --> SIEGE
-  ANALYZE ==> CONSENSUS
-  CONSENSUS ==> SIEGE
-  SIEGE ==> TRACK
-  TRACK -.->|weight feedback| CONSENSUS
-
-  DB --> SERVE
-  SIEGE --> ALR
-  EVT --> API
-
-  %% ───── styling ─────
-  style COLLECT    fill:#0f172a,stroke:#6366f1,color:#e2e8f0,stroke-width:2px
-  style CORE       fill:#0f172a,stroke:#94a3b8,color:#e2e8f0,stroke-width:2px
-  style ANALYZE    fill:#0f172a,stroke:#10b981,color:#e2e8f0,stroke-width:2px
-  style CONSENSUS  fill:#0f172a,stroke:#f59e0b,color:#e2e8f0,stroke-width:2px
-  style SIEGE      fill:#0f172a,stroke:#ef4444,color:#e2e8f0,stroke-width:2px
-  style TRACK      fill:#0f172a,stroke:#8b5cf6,color:#e2e8f0,stroke-width:2px
-  style SERVE      fill:#0f172a,stroke:#06b6d4,color:#e2e8f0,stroke-width:2px
-
-  classDef node fill:#1e293b,stroke:#334155,color:#e2e8f0,stroke-width:1px;
-  class C1,C2,C3,C4,DB,CFG,EVT,SIG,REG,SCR,FAC,AGENTS,VOTE,BASE,EXP,RES,OUT,MEM,API,UI,ALR node;
+    Collect --> DB
+    CFG -.-> Analyze
+    CFG -.-> Consensus
+    CFG -.-> Certify
+    DB --> Analyze --> Consensus --> Certify --> Track
+    Track -.->|weight feedback| Consensus
+    DB --> Serve
+    Certify --> Serve
+    EVT -.-> Serve
 ```
 
 ### Key architectural decisions
