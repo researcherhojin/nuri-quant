@@ -12,7 +12,7 @@ All agents inherit `BaseAgent`. Confidence normalized to 0-100 via `normalize_co
 
 - **Risk agent** (20% weight) has **veto power**: SELL + confidence >= 80 overrides all others
 - **Korean market agent** returns neutral HOLD for US tickers (no Korean market data)
-- **Retail agent** weight is 0% (data stabilization phase)
+- **Retail agent** weight is 5% (WSB 역발상 시그널 활성화, `consensus.py:45` `retail: 0.05`)
 - New agents must return graceful HOLD when required data is unavailable
 
 ## Adding a New Agent

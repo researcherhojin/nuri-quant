@@ -247,6 +247,25 @@ jobs:
       - name: Run shellcheck
         run: shellcheck --source-path=SCRIPTDIR --external-sources scripts/*.sh
 
+  # ── Doc count drift gate ──
+  # verify_doc_counts.sh checks that numeric claims in CLAUDE.md / README.md /
+  # docs/ARCHITECTURE.md / docs/STRATEGY.md / nuri/collectors/CLAUDE.md match
+  # live code (collectors, endpoints, test file counts, e2e spec count).
+  # Runs in <1s — no Python env needed (find + grep only). Always-run so
+  # docs/gitignore-only PRs also report status (see CLAUDE.md "Branch
+  # protection conditional skip trap"). Currently **advisory** — not added to
+  # required_status_checks in this PR. Promotion to required is a separate
+  # manual step once the check has been observed clean for N consecutive merges
+  # (STRATEGY §2.6 — soft penalty before hard veto).
+  doc-counts-verify:
+    name: Doc Count Drift Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify doc counts match live code
+        run: bash scripts/verify_doc_counts.sh
+
   # ── Universe + Agent Coverage Validation (#272 Phase 2c) ──
   # Validates universe.yaml ↔ upstream sync. CI 에서는 universe.yaml 의 ticker
   # count sanity check 만 수행 (DB 부재). 5-table coverage 검증 (prices /

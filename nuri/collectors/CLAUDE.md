@@ -1,4 +1,4 @@
-# nuri/collectors/ — 24 Data Collectors
+# nuri/collectors/ — 25 Data Collectors
 
 ## BaseCollector Contract
 

@@ -74,9 +74,9 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 `/api/dashboard` reads pre-computed results from DB instead of running analysis inline. Consensus from `recommendations` table (populated by `make consensus`). Response includes `freshness` and `pipeline_status` for data age display.
 
-## API (72 endpoints)
+## API (65 endpoints)
 
-`nuri/api/routes/` — 72 REST endpoints on port **8001** (`@router.get/post/put/delete/patch` decorators counted across 18 route modules; excludes FastAPI's `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`). Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
+`nuri/api/routes/` — 65 REST endpoints on port **8001** (`@router.get/post/put/delete/patch` decorators counted across 18 route modules; excludes FastAPI's `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`). Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
 
 ### Action-First Dashboard APIs (PR #264-#266)
 
