@@ -115,9 +115,23 @@ update_claim live_e2e_specs      docs/ARCHITECTURE.md          'Playwright E2E \
 # Pytest collect count — runs pytest which is slow; do last so failures above
 # don't waste the call. Updates any "[0-9,]+ backend tests" / "[0-9,]+ tests,"
 # phrase where the number has a thousands-comma format.
+#
+# NOTE (codex P3, 2026-04-17): README line "(2,993 backend + 917 frontend +
+# 39 e2e)" only has the backend number auto-synced. Frontend "917 tests" and
+# e2e "39 tests" are TEST counts (not file counts), so syncing them would
+# require running `npm exec vitest` + `npx playwright test --list` — both
+# slow and requiring a full npm install. Left unmanaged: if those change,
+# update README manually for now. File counts (60 / 6) are still covered.
 TESTS_BE=$(live_tests_be || echo "")
 if [ -n "$TESTS_BE" ]; then
-    TESTS_DISPLAY=$(printf "%'d" "$TESTS_BE" 2>/dev/null || echo "$TESTS_BE")
+    # Portable thousands separator — `printf "%'d"` depends on LC_NUMERIC
+    # which is often unset on Ubuntu CI (→ would yield "2993" and produce
+    # spurious Mac↔Linux diffs). Use sed-based grouping (BSD/GNU compatible).
+    # Pattern anchors at (,|$) so re-invocation via `ta` stops once every
+    # triplet is grouped. Separate -e flags required (BSD sed rejects `;`
+    # between label/branch commands).
+    TESTS_DISPLAY=$(echo "$TESTS_BE" \
+        | sed -E -e ':a' -e 's/([0-9])([0-9]{3})(,|$)/\1,\2\3/' -e 'ta')
 
     update_comma_number() {
         local file="$1" pattern="$2"
