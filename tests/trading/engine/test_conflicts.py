@@ -73,6 +73,7 @@ class TestConflicts_R26:
             notes: str = ""
             conflict: str = ""
             scoring_detail: dict = None
+            tier: str = "actionable"
 
         candidates = [
             MockCand("AAPL", "BUY", "rsi_oversold", True, 2.0),
@@ -96,6 +97,7 @@ class TestConflicts_R26:
             notes: str = ""
             conflict: str = ""
             scoring_detail: dict = None
+            tier: str = "actionable"
 
         candidates = [
             MockCand("AAPL", "BUY", "rsi_oversold", True, 5.0),

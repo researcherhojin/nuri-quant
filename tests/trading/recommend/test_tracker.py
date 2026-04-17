@@ -346,6 +346,7 @@ class TestTracker_R23:
             price: float = 850.0
             regime_fit: bool = True
             scoring_detail: dict = None
+            tier: str = "actionable"
 
         n = save_recommendations(candidates=[MockCandidate()], db_path=db_path)
         assert n == 1
@@ -370,6 +371,7 @@ class TestTracker_R23:
             price: float = 200.0
             regime_fit: bool = True
             scoring_detail: dict = None
+            tier: str = "actionable"
 
             def __post_init__(self):
                 self.scoring_detail = {"base": 50, "drift": 1.0}
@@ -398,6 +400,7 @@ class TestTracker_R23:
             signal_id: str = "test"
             price: float = 100.0
             regime_fit: bool = True
+            tier: str = "actionable"
             # 일부러 빈 dict — empty compute 결과 시뮬레이션
             scoring_detail: dict = field(default_factory=dict)
 
@@ -449,6 +452,7 @@ class TestTracker_R23:
             price: float = 170.0
             regime_fit: bool = True
             scoring_detail: dict = None
+            tier: str = "actionable"
 
         @dataclass
         class MockAction:
@@ -523,6 +527,7 @@ class TestTracker_R27:
             regime_fit = True
             price = 150
             scoring_detail = {"test": 1}
+            tier = "actionable"
 
         n = save_recommendations(candidates=[MockCandidate()], db_path=db_path)
         assert n == 1

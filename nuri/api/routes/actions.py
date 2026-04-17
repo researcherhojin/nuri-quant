@@ -449,25 +449,66 @@ def _get_portfolio_map() -> dict[str, dict]:
         items.append((r, val, price, is_kr))
 
     labels = _get_account_labels()
+
+    def _is_pension_label(label: str | None) -> bool:
+        low = (label or "").lower()
+        return any(kw in low for kw in ("연금", "pension", "irp"))
+
+    # A-6: 동일 ticker 의 여러 계좌를 aggregate — 이전에는 largest-position row
+    # 하나만 keep 해 breach/divergence masking 버그 (A-4 codex Round 1-3 재발 flag).
+    # A-6 codex Round 1 P2: pension 계좌는 daily action 에서 제외되므로 aggregation
+    # 대상에서도 분리해야 taxable + pension 혼합 ticker 에서 taxable 슬라이스가
+    # pension label 에 의해 skip 되는 cross-contamination 방지. 규칙:
+    #   - non-pension rows 만 aggregate (worst-pnl 이 account/pnl 을 차지)
+    #   - non-pension rows 가 없으면(=pension-only ticker) pension 중 worst 로 채움
+    #     — 이 경우 downstream `_build_actions` 가 pension_tickers set 으로 suppress
+    #   - position_pct 는 항상 전체 합산 (실제 노출도)
     result: dict[str, dict] = {}
     for r, val, price, is_kr in items:
         ticker = r["ticker"]
         avg = r["avg_price"] or 0
         pnl = ((price - avg) / avg * 100) if avg > 0 else 0
         pos_pct = (val / total_value * 100) if total_value > 0 else 0
+        account_label = labels.get(r["account"], r["account"])
+        is_pension = _is_pension_label(account_label)
 
-        # 동일 티커 복수 계좌: 기존 데이터에 더 큰 비중을 보존
-        if ticker in result and result[ticker]["position_pct"] > pos_pct:
+        existing = result.get(ticker)
+        if existing is None:
+            result[ticker] = {
+                "current_price": price,
+                "avg_price": avg,
+                "quantity": r["quantity"],
+                "pnl_pct": pnl,
+                "position_pct": pos_pct,
+                "account": account_label,
+                "_pension_only": is_pension,  # 내부 flag — 아래 정리에서 제거
+            }
             continue
 
-        result[ticker] = {
-            "current_price": price,
-            "avg_price": avg,
-            "quantity": r["quantity"],
-            "pnl_pct": pnl,
-            "position_pct": pos_pct,
-            "account": labels.get(r["account"], r["account"]),
-        }
+        existing["position_pct"] += pos_pct
+        # non-pension row 가 들어오면 이전 pension-only state 를 non-pension 으로 승격
+        if not is_pension and existing["_pension_only"]:
+            existing["_pension_only"] = False
+            existing["pnl_pct"] = pnl
+            existing["current_price"] = price
+            existing["avg_price"] = avg
+            existing["quantity"] = r["quantity"]
+            existing["account"] = account_label
+            continue
+        # 현재까지 non-pension 이면 pension row 는 무시 (aggregation 오염 방지)
+        if is_pension and not existing["_pension_only"]:
+            continue
+        # 동질 (둘 다 pension 이거나 둘 다 non-pension) → worst-pnl 이 승리
+        if pnl < existing["pnl_pct"]:
+            existing["pnl_pct"] = pnl
+            existing["current_price"] = price
+            existing["avg_price"] = avg
+            existing["quantity"] = r["quantity"]
+            existing["account"] = account_label
+
+    # 내부 flag 정리 — caller 에 노출 안 함
+    for h in result.values():
+        h.pop("_pension_only", None)
     return result
 
 

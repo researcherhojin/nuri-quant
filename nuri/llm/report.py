@@ -208,10 +208,11 @@ def gather_context(db_path=None) -> ReportContext:
         )
 
         candidates = screen_candidates(lookback_days=5, db_path=db_path)
-        # B-2-ext: tier 분리 — actionable 만 "추천", advisory/avoid 는 disclosure
-        actionable = [c for c in candidates if getattr(c, "tier", TIER_ACTIONABLE) == TIER_ACTIONABLE and c.regime_fit]
-        advisory = [c for c in candidates if getattr(c, "tier", "") == TIER_ADVISORY and c.regime_fit]
-        avoid = [c for c in candidates if getattr(c, "tier", "") == TIER_AVOID and c.regime_fit]
+        # B-2-ext: tier 분리 — actionable 만 "추천", advisory/avoid 는 disclosure.
+        # A-6: dataclass default 덕분에 `c.tier` 는 항상 존재 — defensive getattr 제거.
+        actionable = [c for c in candidates if c.tier == TIER_ACTIONABLE and c.regime_fit]
+        advisory = [c for c in candidates if c.tier == TIER_ADVISORY and c.regime_fit]
+        avoid = [c for c in candidates if c.tier == TIER_AVOID and c.regime_fit]
         a_buys = [c for c in actionable if c.direction == "BUY"]
         a_sells = [c for c in actionable if c.direction == "SELL"]
 
