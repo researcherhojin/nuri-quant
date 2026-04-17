@@ -22,14 +22,29 @@
 
 코드를 작성하거나 리뷰할 때 이 원칙을 적용한다.
 
-### 2.1 증거 우선 (Evidence-first)
+### 2.1 증거 우선 (Evidence-first) — 3-tier bucket split
 
-모든 BUY/SELL 판단에는 정량적 근거가 따라야 한다.
+모든 BUY/SELL 판단은 **증거 품질에 따라 분류**된다. 숫자가 없을 때 "평균" 을 가정하지 않는다. 그런 가정이 사용자 손실의 원인이었다 (2026-04-17 codex audit 확인).
 
-- 시그널 발생 → 해당 시그널의 레짐별 승률/PF 조회
-- 에이전트 합의 → 각 에이전트의 판단 이유(reasoning) 기록
-- 가격 타겟 → 매수가/손절가/익절가를 명시적 숫자로 제시
-- **"좋아 보여서"는 이유가 아니다.** 숫자가 없으면 추천하지 않는다.
+**Tier 정의** (`nuri/trading/recommend/candidates.py` `TIER_*` 상수)
+
+| Tier | 조건 | 시스템 동작 |
+|---|---|---|
+| **actionable** | validated (≥ 30 trades) + positive edge (PF ≥ 1.0) | 정식 추천. confidence 수식 full 적용. UI 주요 리스트에 표시. |
+| **advisory** | unscored (백테스트 미커버) OR low-sample (< 30 trades) | confidence = 0. 별도 section 에 disclosure 만. "참고만" 문구 필수. |
+| **avoid** | validated 이지만 negative edge (PF < 1.0) | confidence = 0. 별도 section 에 "독립 행동 금지" 경고와 함께 노출. |
+
+**규칙**
+- 시그널 발생 → 해당 시그널의 scorecard 통계 조회 → tier 분류
+- 통계가 없거나 negative edge 면 **추천 리스트에 섞지 않는다**. 투명하게 advisory/avoid 섹션에 노출.
+- 에이전트 합의 → 각 에이전트의 판단 이유(reasoning) 기록. 통계 없는 agent 는 tier 와 별도로 specialization 표시 (`nuri/trading/agents/CLAUDE.md` 참조)
+- 가격 타겟 → 매수가/손절가/익절가를 명시적 숫자로 제시. Tier 와 무관 (mechanical 규칙, §2.2)
+- **"좋아 보여서"는 이유가 아니다.** 통계가 없으면 advisory 로만 노출하고, 추천으로 승격시키지 않는다.
+
+**이전 framing 의 실패 모드 (2026-04-17 codex audit 에서 확인)**
+- 원문 "숫자가 없으면 추천하지 않는다" 는 aspirational 이었으나 실제로는 `candidates.py:203` 에서 `win_rate=0.5, pf=1.0` 폴백 → confidence ~45 로 emit → user 입장에서 검증된 추천처럼 보였음. B-2 (PR 이번 Phase 1) 에서 제거.
+- 또 다른 경로: SELL 시그널 통계 자체가 역방향 측정이라 positive 로 보였음 (모두 PF>1). B-1 에서 sign-flip fix 후 실제 PF 0.52–0.60 으로 드러남 → B-2-ext 에서 "avoid" tier 로 자동 분류.
+- Learning Memory 동적 reweighting 은 현재 **dormant** (A-1 에서 부활 예정). 당분간 DEFAULT_WEIGHTS 정적 가중치로 동작.
 
 ### 2.2 기계적 실행 (Mechanical execution)
 

@@ -127,7 +127,9 @@
     "finviz",
     "coingecko",
     "nbis",
-    "NBIS"
+    "NBIS",
+    "venv",
+    "pycache"
   ],
   "ignorePaths": [
     "node_modules/**",
