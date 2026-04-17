@@ -49,7 +49,9 @@ Special regimes (priority order, override base `regime` field): euphoria, stagfl
 
 ## SIEGE Engine
 
-`nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit. See `docs/STRATEGY.md` §3.3 for formula and §6 for SIEGE v2 gate specification (base 8 + per-asset-class expansion, total conditions 가변).
+`nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit.
+
+Full certification architecture + 3D gate specification: **[`docs/SIEGE_V2.md`](SIEGE_V2.md)** (canonical). Confidence scoring formula: [`docs/STRATEGY.md` §3.3](STRATEGY.md). Gate policy: [`docs/STRATEGY.md` §6](STRATEGY.md).
 
 ## Pipeline Observability
 
@@ -144,7 +146,7 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
 
 ## Config Files (`config/`)
 
-- `portfolio.yaml` — 7 accounts, 30 holdings
+- `portfolio.yaml` — accounts + holdings (gitignored; shape ref: `portfolio.example.yaml`)
 - `stock_types.yaml` — Growth/value override per ticker. Controls stop-loss/take-profit thresholds.
 - `agents.yaml` — Agent thresholds + confidence normalization scales. Loaded via `nuri/core/agent_config.py`.
 - `alerts.yaml` — Alert thresholds, report timing
@@ -226,23 +228,7 @@ PR-specific (`pr-checks.yml`): merge conflict detection, conventional commit val
 
 ## Investment Rules
 
-Core principle: **3:1 profit-to-loss ratio** (growth: -7% stop / +20%/+40% targets, value: -10% stop / +15%/+30% targets).
-
-**Account strategy profiles** (5):
-
-| Strategy | stop_loss | max_single_position | Notes |
-|----------|-----------|---------------------|-------|
-| `core` | -7% | 15% | Default. Strict O'Neil discipline |
-| `active` | -10% | 25% | + `trailing_stop_arm: 15` — auto-arms at +15% |
-| `swing` | -15% | 30% | Short-term rotations |
-| `long_term` | -20% | 25% | Buy-and-hold |
-| `pension` | -30% | 40% | Retirement allocations |
-
-**execution_priority**: `stop_loss → take_profit → trailing_stop_set → new_buy`. Loss% desc within stop_loss, excess% desc within take_profit.
-
-Buy checklist: TipRanks >= Moderate Buy, superinvestors >= 3, PE < 100, revenue > $0, factor score top 50%.
-
-Every recommendation requires 10 external sources cross-referenced.
+All investment rules (stop-loss, take-profit, account strategy profiles, VIX gate, execution priority, buy checklist) live in `config/rules.yaml` and are documented canonically in [`docs/STRATEGY.md` §3.4 / §3.5](STRATEGY.md). Source code executes the YAML via `nuri/core/rules.py` (§2.2 mechanical execution — no hardcoded thresholds).
 
 ## OpenBB Provider Limitations
 

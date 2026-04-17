@@ -1,6 +1,6 @@
 """Universe + agent data coverage 측정 — 순수 함수.
 
-#272 Phase 2c 구현. Spec: docs/SPEC_phase2c_validate.md.
+#272 Phase 2c 구현. 원 SPEC 은 PR #280/#284/#286 closed (TODO.md Tier 1 row 5).
 
 이 모듈은 side effect 없이 결과만 계산. CLI/CI/UX 어디서나 재사용 가능.
 
@@ -28,7 +28,7 @@ from nuri.core.db import query
 
 UNIVERSE_PATH = Path("config/universe.yaml")
 
-# Spec §2.2 기준 (parent SPEC_universe_agent_coverage.md)
+# Coverage 임계값 (근거: TODO.md Tier 1 row 5, PR #284/#286/#288/#296/#343/#345 lineage — CLAUDE.md gotcha "Universe coverage 5-check gate")
 DATA_THRESHOLDS: dict[str, float] = {
     "prices": 0.95,
     "fundamentals": 0.80,
