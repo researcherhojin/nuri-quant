@@ -2,6 +2,32 @@
 
 Detailed reference for Nuri-Quant internals. This file is NOT auto-loaded — agents read it when working on cross-cutting concerns.
 
+## Pipeline Phases (5-step)
+
+README shows the high-level flow. Per-phase detail below — the source of truth for what each step actually consumes and emits.
+
+| # | Phase | Inputs | Outputs | Key modules |
+|---|-------|--------|---------|-------------|
+| 1 | **Collect** | External APIs (yfinance · OpenBB · pykrx · KIS · FRED · Wikipedia · GoogleNews RSS · FINVIZ · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (25 collectors, BaseCollector pattern) |
+| 2 | **Analyze** | Phase 1 tables | `signal_results.csv` + `signal_scorecard.csv` (daily reports) + `regime_transitions` + `factors` tables | `nuri/quant/regime/` · `nuri/quant/validation/` · `nuri/quant/factors/` · `nuri/llm/event_classifier.py` |
+| 3 | **Consensus** | Phase 2 outputs + `portfolio` + `macro_events` | `recommendations` table rows with per-agent verdicts + weighted final action | `nuri/trading/agents/` (10 specialists + consensus engine) |
+| 4 | **Certify** | Phase 3 recommendations + `config/rules.yaml siege_gates` | `Certificate` → CERTIFIED / REJECTED + evidence trace written via `pipeline_events` | `nuri/trading/engine/certification.py` |
+| 5 | **Track** | Phase 3 `recommendations.action` + actual prices after N days | `outcome_30d` / `outcome_60d` / `outcome_90d` + `agent_accuracy_snapshots` (feeds Learning Memory back to Phase 3 weights) | `nuri/trading/recommend/tracker.py` + `nuri/trading/engine/learning_memory.py` |
+
+**Collect sources (detail)**: US equities via yfinance/OpenBB · KR equities via pykrx + KIS Open API · macro + calendar via FRED/yfinance · news via GoogleNews RSS · external signals via ARK (cathiesark.com) · FINVIZ · Reddit (WallStreetBets). KIS details: [docs/KIS_INTEGRATION.md](KIS_INTEGRATION.md).
+
+**Analyze layers**:
+- Signals — 20 definitions from `config/signals.yaml` (price / macro / data-dependent / chart-pattern — see "Signal System" below)
+- Regime — 6 base × 2 vol + 4 special (euphoria, stagflation, recovery, sector_rotation) — see "Regime Classifier" below
+- Factors — momentum, value, quality, composite (from DB only — no external API, per `STRATEGY §3.1`)
+- Events — 15 macro event categories, OpenAI gpt-5.4-nano classifier (regex fallback). `export_surge`, `demand_growth`, `currency_shift` feed Korean Market Agent
+
+**Consensus layer**: 10 agents (Technical, Fundamental, Macro, Smart Money, Wall Street, Korean Market, Options, Crypto, Retail, Risk). Weighted vote — drift ±30% from learning memory feedback loop. Risk agent has veto power (SELL + confidence ≥ 80 overrides). See `nuri/trading/agents/CLAUDE.md`.
+
+**Certify dimensions** (SIEGE v2): Account (strategy profile: core / active / swing / long_term / pension) × Asset Class (us_equity / kr_equity / kr_index / commodity / bond) × Execution Market (KRX / NYSE). Base gates (position · sector · stop-loss · leverage · conflict · drift · macro) + per-asset-class gates (freshness · volatility · external data). 1 error-grade fail → REJECTED. Canonical: [docs/SIEGE_V2.md](SIEGE_V2.md).
+
+**Serve layer (not a pipeline phase — read-only projection)**: FastAPI REST + SSE on `:8001`, Next.js 16 dashboard on `:3000`, Discord + Telegram alerts. All read from DB; never run analysis inline (5s projection rule).
+
 ## DB as the Sole Integration Point
 
 `nuri/core/db.py` is the **only** module that imports `sqlite3`. DB file: `data/portfolio.db` (WAL mode). All upsert functions accept optional `db_path` — tests inject `tmp_path` for isolation. Schema versioning via `schema_version` table + `_MIGRATIONS` list.
