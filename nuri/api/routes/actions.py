@@ -13,6 +13,7 @@ from datetime import timedelta
 from fastapi import APIRouter
 
 from nuri.core.db import query
+from nuri.core.rules import get_stop_loss_for_account
 from nuri.core.timezone import kst_now
 
 logger = logging.getLogger(__name__)
@@ -119,8 +120,11 @@ def _build_actions() -> dict:
         # 강한 SELL 시그널
         if action == "SELL":
             item["reasons"].append(f"10-Agent SELL (conf {confidence})")
-            if pnl_pct < -7:
-                item["reasons"].append(f"손실 {pnl_pct:+.1f}% — 손절선 근접")
+            # A-3: 하드코딩 -7 제거. holding 이 최대 비중 계좌의 row 이므로 그
+            # account 의 strategy stop_loss 와 비교 — pnl_pct 와 cost basis 일치.
+            stop_loss_threshold = get_stop_loss_for_account(holding.get("account"))
+            if pnl_pct < stop_loss_threshold:
+                item["reasons"].append(f"손실 {pnl_pct:+.1f}% — 손절선 근접 ({stop_loss_threshold}%)")
                 item["priority"] = "urgent"
                 urgent.append(item)
                 continue
