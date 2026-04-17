@@ -621,3 +621,127 @@ class TestBuildOpportunitiesLogic:
     def test_sorted_by_score(self):
         result = self._run([self._scan("LOW", score=10), self._scan("HIGH", score=70)])
         assert result[0]["ticker"] == "HIGH"
+
+
+class TestGetRecommendationsScoringDetail:
+    """A-2b — /actions `_get_recommendations` 가 scoring_detail + agent_verdicts
+    pass-through. Frontend (A-2c) actions page 가 10-agent breakdown 표시에 사용.
+    """
+
+    @patch("nuri.api.routes.actions.query")
+    def test_passes_scoring_detail_and_agent_verdicts(self, mock_query):
+        """scoring_detail + agent_verdicts JSON → response dict 파싱 포함."""
+        scoring = {
+            "source": "consensus",
+            "schema_version": 1,
+            "basis_action": "BUY",
+            "final_action_source": "weighted_sum",
+        }
+        verdicts = [{"agent_name": "technical", "action": "BUY", "confidence": 80}]
+        mock_query.return_value = [
+            {
+                "ticker": "TSLA",
+                "action": "BUY",
+                "confidence": 0.75,
+                "signals": '{"agreement_rate": 0.8}',
+                "scoring_detail": json.dumps(scoring),
+                "agent_verdicts": json.dumps(verdicts),
+            }
+        ]
+        from nuri.api.routes.actions import _get_recommendations
+        result = _get_recommendations()
+        assert len(result) == 1
+        assert "scoring_detail" in result[0], (
+            "A-2b regression: /actions response 에 scoring_detail 누락"
+        )
+        assert result[0]["scoring_detail"]["source"] == "consensus"
+        assert result[0]["scoring_detail"]["basis_action"] == "BUY"
+        assert result[0]["agent_verdicts"] == verdicts
+
+    @patch("nuri.api.routes.actions.query")
+    def test_handles_null_scoring_detail(self, mock_query):
+        """NULL scoring_detail/agent_verdicts → None pass-through (legacy row)."""
+        mock_query.return_value = [
+            {
+                "ticker": "OLD",
+                "action": "HOLD",
+                "confidence": 0.5,
+                "signals": None,
+                "scoring_detail": None,
+                "agent_verdicts": None,
+            }
+        ]
+        from nuri.api.routes.actions import _get_recommendations
+        result = _get_recommendations()
+        assert result[0]["scoring_detail"] is None
+        assert result[0]["agent_verdicts"] is None
+
+    @patch("nuri.api.routes.actions.query")
+    def test_handles_malformed_json(self, mock_query):
+        """malformed JSON → None graceful degrade (crash 방지)."""
+        mock_query.return_value = [
+            {
+                "ticker": "BAD",
+                "action": "BUY",
+                "confidence": 0.6,
+                "signals": "{}",
+                "scoring_detail": "not-json{{{",
+                "agent_verdicts": "also-bad",
+            }
+        ]
+        from nuri.api.routes.actions import _get_recommendations
+        result = _get_recommendations()
+        assert result[0]["scoring_detail"] is None
+        assert result[0]["agent_verdicts"] is None
+
+
+class TestBuildActionsScoringDetail:
+    """A-2b — `_build_actions` 이 `_get_recommendations` 결과의 scoring_detail /
+    agent_verdicts 를 최종 item 에 포함 (codex A-2b Round 1 HIGH — drop bug 방지).
+
+    STRATEGY §5.3.1 Gotcha-Test Pair — `_build_actions` 이 `rec.get()` 안 하면
+    endpoint response 가 두 필드 누락해 A-2c UI 가 consume 불가.
+    """
+
+    def test_build_actions_exposes_scoring_detail_per_item(self):
+        """Urgent/check/hold 어느 bucket 에 들어가든 item 에 scoring_detail 포함."""
+        from unittest.mock import patch
+
+        from nuri.api.routes.actions import _build_actions
+
+        scoring = {
+            "source": "consensus",
+            "schema_version": 1,
+            "basis_action": "BUY",
+            "final_action_source": "weighted_sum",
+        }
+        verdicts = [{"agent_name": "technical", "action": "BUY", "confidence": 80}]
+        recs = [
+            {
+                "ticker": "TSLA",
+                "action": "BUY",
+                "confidence": 70,
+                "agreement": 80,
+                "scoring_detail": scoring,
+                "agent_verdicts": verdicts,
+            }
+        ]
+
+        with patch("nuri.api.routes.actions._get_recommendations", return_value=recs), \
+             patch("nuri.api.routes.actions._get_siege_violations", return_value=[]), \
+             patch("nuri.api.routes.actions._get_targets_status", return_value={}), \
+             patch("nuri.api.routes.actions._get_portfolio_map", return_value={
+                 "TSLA": {"account": "Main", "pnl_pct": 5, "position_pct": 10}
+             }), \
+             patch("nuri.api.routes.actions._get_short_interest", return_value=None):
+            result = _build_actions()
+
+        # urgent/check/hold 중 어디든 TSLA item 찾기
+        all_items = result.get("urgent", []) + result.get("check", []) + result.get("hold", [])
+        tsla = next((i for i in all_items if i["ticker"] == "TSLA"), None)
+        assert tsla is not None, "TSLA item 이 생성돼야 함"
+        assert "scoring_detail" in tsla, (
+            "A-2b Round 1 HIGH regression: _build_actions 이 scoring_detail 을 drop"
+        )
+        assert tsla["scoring_detail"] == scoring
+        assert tsla["agent_verdicts"] == verdicts
