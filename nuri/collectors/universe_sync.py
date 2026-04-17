@@ -1,6 +1,6 @@
 """Universe sync — Wikipedia S&P 500 + KRX/FDR KOSPI 200 → universe.yaml diff.
 
-#272 Phase 2a 구현. Spec: docs/SPEC_universe_agent_coverage.md §3.1.
+#272 Phase 2a 구현. 원 SPEC 은 PR #276 에 shipped 기록 (TODO.md Tier 1 row 5).
 
 사용법:
     python -m nuri.collectors.universe_sync                # dry-run (diff 출력만)
