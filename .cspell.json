@@ -17,6 +17,7 @@
     "talib",
     "yfinance",
     "pykrx",
+    "isinstance",
     "openbb",
     "edgartools",
     "datareader",
