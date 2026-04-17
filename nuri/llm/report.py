@@ -197,16 +197,29 @@ def gather_context(db_path=None) -> ReportContext:
     except Exception:
         pass
 
-    # ── 5. Candidates (drift + conflict 이미 반영됨) ──
+    # ── 5. Candidates (drift + conflict + tier 반영) ──
     candidates_section = "매매 후보 없음"
     try:
-        from nuri.trading.recommend.candidates import screen_candidates
+        from nuri.trading.recommend.candidates import (
+            TIER_ACTIONABLE,
+            TIER_ADVISORY,
+            TIER_AVOID,
+            screen_candidates,
+        )
 
         candidates = screen_candidates(lookback_days=5, db_path=db_path)
-        buys = [c for c in candidates if c.direction == "BUY" and c.regime_fit]
-        sells = [c for c in candidates if c.direction == "SELL" and c.regime_fit]
-        lines = [f"BUY {len(buys)}건, SELL {len(sells)}건"]
-        for c in (buys + sells)[:10]:
+        # B-2-ext: tier 분리 — actionable 만 "추천", advisory/avoid 는 disclosure
+        actionable = [c for c in candidates if getattr(c, "tier", TIER_ACTIONABLE) == TIER_ACTIONABLE and c.regime_fit]
+        advisory = [c for c in candidates if getattr(c, "tier", "") == TIER_ADVISORY and c.regime_fit]
+        avoid = [c for c in candidates if getattr(c, "tier", "") == TIER_AVOID and c.regime_fit]
+        a_buys = [c for c in actionable if c.direction == "BUY"]
+        a_sells = [c for c in actionable if c.direction == "SELL"]
+
+        lines = [
+            f"Actionable: BUY {len(a_buys)}건, SELL {len(a_sells)}건 / "
+            f"Advisory {len(advisory)}건 / Avoid {len(avoid)}건"
+        ]
+        for c in (a_buys + a_sells)[:10]:
             known_tickers.add(c.ticker)
             flags = []
             if c.drift_status in ("critical", "degrading"):
@@ -214,10 +227,20 @@ def gather_context(db_path=None) -> ReportContext:
             if c.conflict:
                 flags.append("충돌")
             flag_str = f" [{', '.join(flags)}]" if flags else ""
+            stats_str = f"승률 {c.win_rate:.0%}, PF {c.profit_factor:.1f}"
             lines.append(
-                f"  {c.direction} {c.ticker}: {c.signal_id} "
-                f"(신뢰도 {c.confidence:.0f}, 승률 {c.win_rate:.0%}, PF {c.profit_factor:.1f}){flag_str}"
+                f"  ✅ {c.direction} {c.ticker}: {c.signal_id} "
+                f"(신뢰도 {c.confidence:.0f}, {stats_str}){flag_str}"
             )
+        if advisory:
+            lines.append("\n  — Advisory (unscored/low-sample, 참고만): —")
+            for c in advisory[:5]:
+                known_tickers.add(c.ticker)
+                lines.append(f"  ⚠️  {c.direction} {c.ticker}: {c.signal_id} — {c.notes}")
+        if avoid:
+            lines.append("\n  — Avoid (negative-edge 시그널, 독립 행동 금지): —")
+            for c in avoid[:5]:
+                lines.append(f"  🚫 {c.direction} {c.ticker}: {c.signal_id} (PF={c.profit_factor:.2f})")
         candidates_section = _track("\n".join(lines))
     except Exception:
         pass

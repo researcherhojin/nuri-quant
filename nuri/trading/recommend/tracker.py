@@ -293,9 +293,18 @@ if __name__ == "__main__":
 
     if args.save:
         # E-1 + E-2 실행 후 저장
-        from nuri.trading.recommend.candidates import screen_candidates
-        candidates = screen_candidates(lookback_days=5)
-        logger.info(f"후보 {len(candidates)}건 스크리닝")
+        from nuri.trading.recommend.candidates import TIER_ACTIONABLE, screen_candidates
+        all_candidates = screen_candidates(lookback_days=5)
+        # B-2-ext codex P1: advisory/avoid tier 는 "disclosure only" 라 persist
+        # 하지 않는다. 정식 추천으로 저장되면 stat 없는 시그널이 history 에 섞여
+        # 다음 Learning Memory 재계산에 오염 전파. actionable 만 저장.
+        candidates = [c for c in all_candidates if getattr(c, "tier", TIER_ACTIONABLE) == TIER_ACTIONABLE]
+        dropped = len(all_candidates) - len(candidates)
+        if dropped:
+            logger.info(f"후보 {len(all_candidates)}건 중 actionable {len(candidates)}건 저장 "
+                        f"(advisory/avoid {dropped}건은 disclosure-only, persist 제외)")
+        else:
+            logger.info(f"후보 {len(candidates)}건 스크리닝")
 
         try:
             from nuri.trading.recommend.rebalance import regime_aware_rebalance

@@ -43,6 +43,17 @@ def detect_conflicts(candidates=None, db_path=None) -> list[SignalConflict]:
     if not candidates:
         return []
 
+    # B-2-ext codex P2: advisory/avoid 는 direction_conflict 산정에서 제외.
+    # 포함 시 actionable BUY + unscored SELL 이 "direction conflict" 로 flagged
+    # 되어 actionable BUY 의 confidence 가 0.5x 로 할인되는 regression 발생
+    # (약한 증거가 강한 증거를 suppress). 이전 B-2 패치에서 unscored 만 제외했으나
+    # low-sample/negative-edge (advisory/avoid) 도 동일 논리로 제외해야 함.
+    from nuri.trading.recommend.candidates import TIER_ACTIONABLE
+    candidates = [c for c in candidates if getattr(c, "tier", TIER_ACTIONABLE) == TIER_ACTIONABLE]
+
+    if not candidates:
+        return []
+
     # 종목별로 시그널 분류
     ticker_signals: dict[str, dict[str, list]] = {}
     for c in candidates:
@@ -92,6 +103,8 @@ def detect_conflicts(candidates=None, db_path=None) -> list[SignalConflict]:
             ))
 
         # ── 2. Strength Mismatch: PF 격차 큰 시그널 공존 ──
+        # Tier 필터가 이미 direction_conflict 스텝에서 적용됨 (actionable 만 통과)
+        # → sigs["candidates"] 는 전부 actionable. 추가 unscored 필터 불필요.
         all_cands = sigs["candidates"]
         if len(all_cands) >= 2:
             pfs = [c.profit_factor for c in all_cands]
