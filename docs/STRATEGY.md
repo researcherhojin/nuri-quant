@@ -44,7 +44,7 @@
 **이전 framing 의 실패 모드 (2026-04-17 codex audit 에서 확인)**
 - 원문 "숫자가 없으면 추천하지 않는다" 는 aspirational 이었으나 실제로는 `candidates.py:203` 에서 `win_rate=0.5, pf=1.0` 폴백 → confidence ~45 로 emit → user 입장에서 검증된 추천처럼 보였음. B-2 (PR 이번 Phase 1) 에서 제거.
 - 또 다른 경로: SELL 시그널 통계 자체가 역방향 측정이라 positive 로 보였음 (모두 PF>1). B-1 에서 sign-flip fix 후 실제 PF 0.52–0.60 으로 드러남 → B-2-ext 에서 "avoid" tier 로 자동 분류.
-- Learning Memory 동적 reweighting 은 현재 **dormant** (A-1 에서 부활 예정). 당분간 DEFAULT_WEIGHTS 정적 가중치로 동작.
+- Learning Memory read path (A-1a PR #361) + write path gate (A-1b PR #372) + scheduler snapshot job (PR #363) 모두 shipped. 현재는 **warming up** — `recommendations.agent_verdicts` 144 rows 누적 중이지만 `strategy_memory` 의 `agent_*_accuracy` 스냅샷이 `outcome_30d` 채워진 후에만 생성 → **첫 실제 weight drift 는 ~2026-05-17 예상** (TODO.md Tier 1 row 20). 그 전까지는 DEFAULT_WEIGHTS 정적.
 
 ### 2.2 기계적 실행 (Mechanical execution)
 
@@ -512,8 +512,8 @@ PR 검증      pr-checks.yml — merge conflict, conventional commit, 5MB 파일
 |---|------|------|------|
 | 1 | position_limit | error | 단일 종목 비중. `config/rules.yaml account_strategies.<s>.per_position_max` — core 15%, active 25%, swing 30%, long_term 25%, pension 40% |
 | 2 | sector_limit | error | 섹터 비중. `position_limits.max_sector_exposure` = 35% (top-level, 전략 공통) |
-| 3 | stop_loss | error | 손절선 준수. 내부에서 종목 type (`config/stock_types.yaml` growth/value) 에 따라 threshold 분기. 전략별 override: `account_strategies.<s>.stop_loss` — core -7, active -10, swing -15, long_term -20, pension -30 |
-| 6 | leverage_ban | error | 금지 ETF (`leverage.banned_tickers` 목록) 미보유 |
+| 3 | stop_loss | error | 손절선 준수. 계좌별 strategy 기준: `account_strategies.<s>.stop_loss` — core -7, active -10, swing -15, long_term -20, pension -30. `pnl_pct < account_sl` 위반 시 error. (`stock_types.yaml` growth/value 분기는 `config/rules.yaml stop_loss.per_stock / value` 상수에만 존재하며 SIEGE gate 는 참조 안 함.) |
+| 6 | leverage_ban | error | 금지 ETF (`config/rules.yaml leverage.banned_etfs` 목록 — TSLL/TQQQ/SQQQ/UPRO/SPXU, `nuri/core/rules.py::LEVERAGE_ETFS` 로 로드) 미보유 |
 | 9 | conflict_free | warning | 동일 종목 BUY/SELL 충돌 없음 |
 | 10 | drift_safe | warning | 매수 후보에 critical drift 시그널 없음 |
 | 11 | macro_event_alignment | warning | \|event_score\| ≥ 10 시 경고 |
