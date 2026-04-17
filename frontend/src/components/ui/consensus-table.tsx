@@ -22,11 +22,12 @@ interface AgentVerdict {
 // (consensus.py) when source="consensus"; source="candidate" 도 같은 컬럼을 공유하나
 // 이 테이블은 consensus rows 전용.
 // Literal union 으로 backend enum 잠금 (codex A-2c review LOW 2 — contract drift 방어).
-type Action = "BUY" | "SELL" | "HOLD";
-type ScoringSource = "consensus" | "candidate";
-type FinalActionSource = "weighted_sum" | "risk_veto" | "divergence_penalty";
+// export — 회귀 테스트가 같은 literal shape 로 fixture 를 생성할 수 있게.
+export type Action = "BUY" | "SELL" | "HOLD";
+export type ScoringSource = "consensus" | "candidate";
+export type FinalActionSource = "weighted_sum" | "risk_veto" | "divergence_penalty";
 
-interface ScoringContribution {
+export interface ScoringContribution {
   agent_name: string;
   action: Action;
   confidence: number;
@@ -35,7 +36,7 @@ interface ScoringContribution {
   counted_for_basis_action: boolean;
 }
 
-interface ScoringDetail {
+export interface ScoringDetail {
   source: ScoringSource;
   schema_version: number;
   weights: Record<string, number>;

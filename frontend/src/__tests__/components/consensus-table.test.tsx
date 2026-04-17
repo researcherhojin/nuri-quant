@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { ConsensusTable } from "@/components/ui/consensus-table";
+import { ConsensusTable, type ScoringDetail } from "@/components/ui/consensus-table";
 
 const mockData = [
   {
@@ -226,7 +226,8 @@ describe("ConsensusTable", () => {
   // Gotcha-Test Pair (STRATEGY §5.3.1): action-source 배지 / basis 라벨 / 기여도 강조를
   // 실수로 제거하면 아래 테스트가 fail.
   describe("scoring_detail surfacing (A-2c)", () => {
-    const makeScoring = (overrides = {}) => ({
+    // ScoringDetail 을 명시 반환 타입으로 — overrides 가 widen 해도 contract 유지.
+    const makeScoring = (overrides: Partial<ScoringDetail> = {}): ScoringDetail => ({
       source: "consensus",
       schema_version: 1,
       weights: { technical: 0.4, fundamental: 0.3, risk: 0.2, macro: 0.1 },
@@ -239,7 +240,7 @@ describe("ConsensusTable", () => {
       ],
       final_action: "BUY",
       final_confidence: 72.5,
-      final_action_source: "weighted_sum" as const,
+      final_action_source: "weighted_sum",
       basis_action: "BUY",
       agreement_rate: 0.75,
       risk_veto_fired: false,
