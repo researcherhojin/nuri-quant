@@ -31,6 +31,16 @@ logger = logging.getLogger(__name__)
 REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 
 
+# Evidence tier thresholds — B-2-ext per codex mid-review (2026-04-17)
+# 증거 품질로 3분류해서 scoring 이 약한 근거를 legitimize 하지 못하도록 차단.
+MIN_TRADES_FOR_VALIDATION = 30   # 30+ trades = statistically validated sample
+NEGATIVE_EDGE_PF_THRESHOLD = 1.0  # PF < 1.0 = losses > gains = avoid
+
+TIER_ACTIONABLE = "actionable"  # validated + adequate sample + positive edge
+TIER_ADVISORY = "advisory"      # unscored OR low-sample (disclosure only)
+TIER_AVOID = "avoid"            # validated negative edge (do NOT act on signal alone)
+
+
 @dataclass
 class Candidate:
     """매매 후보."""
@@ -47,6 +57,11 @@ class Candidate:
     drift_status: str = ""          # "stable", "degrading", "critical" (from Learning Memory)
     conflict: str = ""              # "" or "direction_conflict" (from Conflict Detection)
     scoring_detail: dict | None = None  # confidence 계산 요인 기록
+    unscored: bool = False          # True = signal 이 scorecard 에 없음 → 통계 미검증
+                                    # (이전 폴백 win_rate=0.5/pf=1.0 제거, B-2 honesty fix)
+    tier: str = TIER_ACTIONABLE     # "actionable" | "advisory" | "avoid"
+                                    # codex B-2-ext: 증거 품질 bucket split. advisory/avoid
+                                    # 는 normal recommendation 에 섞이지 않음 (개별 섹션).
 
 
 def _load_scorecard() -> tuple[dict[str, dict], int | None]:
@@ -54,7 +69,14 @@ def _load_scorecard() -> tuple[dict[str, dict], int | None]:
 
     Returns:
         (scorecard_dict, age_days): 스코어카드 데이터와 파일 나이(일). 파일 없으면 ({}, None).
+
+    B-2-ext codex P2: 2026-04-17 이전에 생성된 scorecard 는 SELL 시그널을
+    buy-perspective 로 잘못 측정 (B-1 이전). 감지 방법: SELL 시그널이 하나라도
+    PF>1 로 읽히면 pre-B-1 데이터. 이 경우 해당 SELL 들을 drop 해 unscored 로
+    취급 (conservative — 잘못된 stat 으로 confidence 쌓지 않음).
     """
+    from nuri.quant.validation.signal_backtest import SELL_SIGNALS as _SELL_SIGNALS
+
     if REPORT_DIR.exists():
         for d in sorted(REPORT_DIR.iterdir(), reverse=True):
             csv = d / "signal_scorecard.csv"
@@ -82,6 +104,18 @@ def _load_scorecard() -> tuple[dict[str, dict], int | None]:
                     }
                     for _, row in total.iterrows()
                 }
+                # Pre-B-1 cache detection: post-fix SELL 는 전부 PF<1 여야 함.
+                # SELL 중 PF>1 가 있으면 옛 측정 → 해당 시그널만 drop (unscored 로 fallback).
+                stale_sells = [sid for sid in _SELL_SIGNALS
+                               if sid in data and data[sid]["profit_factor"] > 1.0]
+                if stale_sells:
+                    logger.warning(
+                        "scorecard pre-B-1 (buy-perspective SELL) 데이터 감지: %s. "
+                        "`make validate` 재실행 필요. 이 SELL 시그널들은 unscored 로 강제 처리.",
+                        stale_sells,
+                    )
+                    for sid in stale_sells:
+                        data.pop(sid, None)
                 return data, age_days
     return {}, None
 
@@ -201,8 +235,27 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
 
             for entry_idx in recent:
                 stats = scorecard.get(signal_id, {})
-                win_rate = stats.get("win_rate", 0.5)
-                pf = stats.get("profit_factor", 1.0)
+                # B-2 honesty fix: no stats → unscored. 이전엔 win_rate=0.5, pf=1.0 으로
+                # 폴백해 confidence 수식에 그대로 먹여 "검증됨" 처럼 보였음. 이제 unscored
+                # candidate 는 confidence=0 + 명시적 flag 로 노출.
+                unscored = not stats
+                if unscored:
+                    win_rate = 0.0
+                    pf = 0.0
+                else:
+                    win_rate = stats.get("win_rate", 0.0)
+                    pf = stats.get("profit_factor", 0.0)
+
+                # B-2-ext: 증거 품질에 따라 3-tier 분류
+                total_trades = stats.get("total_trades", 0) if not unscored else 0
+                if unscored:
+                    tier = TIER_ADVISORY  # 통계 없음
+                elif total_trades < MIN_TRADES_FOR_VALIDATION:
+                    tier = TIER_ADVISORY  # sample too small
+                elif pf < NEGATIVE_EDGE_PF_THRESHOLD:
+                    tier = TIER_AVOID  # validated negative edge
+                else:
+                    tier = TIER_ACTIONABLE  # validated + adequate sample + positive edge
 
                 direction = "BUY" if signal_id in BUY_SIGNALS else "SELL"
 
@@ -226,9 +279,17 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     "profit_factor": round(pf, 2),
                     "regime": regime_ctx.get("regime", "") if regime_ctx else "",
                     "regime_fit": regime_fit,
+                    "unscored": unscored,
+                    "tier": tier,
+                    "total_trades": total_trades,
                 }
 
-                if sig_in_regime and sig_in_regime.get("trades", 0) >= 5:
+                if tier in (TIER_ADVISORY, TIER_AVOID):
+                    # B-2-ext: advisory (unscored/low-sample) 와 avoid (negative edge)
+                    # 모두 confidence=0. actionable 에 섞이지 않음. 노출은 별도 bucket.
+                    confidence = 0.0
+                    scoring["base_confidence"] = 0.0
+                elif sig_in_regime and sig_in_regime.get("trades", 0) >= 5:
                     # 데이터 기반: 현재 레짐에서의 실제 승률 × 100
                     regime_wr = sig_in_regime["win_rate"]
                     regime_pf = sig_in_regime["pf"]
@@ -239,7 +300,7 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     scoring["regime_win_rate"] = round(regime_wr, 4)
                     scoring["regime_pf"] = round(regime_pf, 2)
                 else:
-                    # 폴백: 전체 승률 기반 (레짐 무관)
+                    # 전체 승률 기반 (레짐 무관). win_rate/pf 는 scorecard 실측.
                     pf_normalized = min(pf / 5.0, 1.0)
                     regime_bonus = 1.0 if regime_fit else 0.3
                     confidence = (win_rate * 40 + pf_normalized * 30 + regime_bonus * 30)
@@ -270,6 +331,12 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                 scoring["drift_status"] = drift_status
 
                 notes_parts = []
+                if unscored:
+                    notes_parts.append("⚠️ 통계 없음 — 백테스트 미커버 (검증 불가)")
+                elif tier == TIER_ADVISORY:
+                    notes_parts.append(f"⚠️ low-sample ({total_trades}건, {MIN_TRADES_FOR_VALIDATION} 미만)")
+                elif tier == TIER_AVOID:
+                    notes_parts.append(f"🚫 negative-edge 시그널 (PF={pf:.2f}) — 독립 행동 금지")
                 if scorecard_stale:
                     notes_parts.append(f"⚠️ 스코어카드 {scorecard_age_days}일 전")
                 if stats.get("total_trades"):
@@ -295,6 +362,8 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     notes="; ".join(notes_parts),
                     drift_status=drift_status,
                     scoring_detail=scoring,
+                    unscored=unscored,
+                    tier=tier,
                 ))
 
     # ── Conflict Detection: 방향 충돌 감지 + annotate ──
@@ -348,10 +417,14 @@ def print_candidates(candidates: list[Candidate]) -> None:
         print("매매 후보 없음 (최근 시그널 미발생)")
         return
 
-    buys = [c for c in candidates if c.direction == "BUY" and c.regime_fit]
-    sells = [c for c in candidates if c.direction == "SELL" and c.regime_fit]
+    # B-2-ext: actionable vs advisory vs avoid 분리 — disclosure ≠ containment
+    actionable = [c for c in candidates if c.tier == TIER_ACTIONABLE and c.regime_fit]
+    advisory = [c for c in candidates if c.tier == TIER_ADVISORY and c.regime_fit]
+    avoid = [c for c in candidates if c.tier == TIER_AVOID and c.regime_fit]
+    buys = [c for c in actionable if c.direction == "BUY"]
+    sells = [c for c in actionable if c.direction == "SELL"]
     conflicted = [c for c in candidates if c.conflict]
-    avoided = [c for c in candidates if not c.regime_fit]
+    regime_avoided = [c for c in candidates if not c.regime_fit]
 
     # VIX gate 상태 표시
     vix_gate = _check_vix_gate()
@@ -360,7 +433,9 @@ def print_candidates(candidates: list[Candidate]) -> None:
         print(f"  ⚠ {vix_gate['msg']}")
     elif vix_gate["gate"] == "caution":
         print(f"  ⚠ {vix_gate['msg']}")
-    print(f"  Signal-Based Candidates ({len(candidates)}건, 레짐 적합 {len(buys)+len(sells)}건, 충돌 {len(set(c.ticker for c in conflicted))}종목)")
+    print(f"  Signal-Based Candidates — tier split ({len(actionable)} actionable / "
+          f"{len(advisory)} advisory / {len(avoid)} avoid, 충돌 "
+          f"{len(set(c.ticker for c in conflicted))}종목)")
     print(f"{'=' * 85}")
 
     def _print_table(title, items, limit=15):
@@ -371,20 +446,34 @@ def print_candidates(candidates: list[Candidate]) -> None:
         print(f"  {'-' * 80}")
         for c in items[:limit]:
             flags = []
+            if c.unscored:
+                flags.append("UNSCORED")
             if c.drift_status in ("critical", "degrading"):
                 flags.append(f"D:{c.drift_status[:4]}")
             if c.conflict:
                 flags.append("CONF")
             flag_str = " ".join(flags)
+            if c.unscored:
+                # 통계 없음 — 숫자 표시 대신 명시적 "—"
+                wr_str = "—"
+                pf_str = "—"
+            else:
+                wr_str = f"{c.win_rate:>5.0%}"
+                pf_str = f"{c.profit_factor:>5.1f}"
             print(f"  {c.ticker:<8} {c.signal_id:<18} {c.signal_date:<12} "
-                  f"{c.confidence:>4.0f} {c.win_rate:>5.0%} {c.profit_factor:>5.1f} ${c.price:>9,.2f} {flag_str:<12}")
+                  f"{c.confidence:>4.0f} {wr_str:>6} {pf_str:>6} ${c.price:>9,.2f} {flag_str:<12}")
 
-    _print_table("BUY Candidates", buys)
-    _print_table("SELL Candidates", sells)
+    # B-2-ext: tier 분리 표시 — actionable → advisory → avoid
+    _print_table("✅ Actionable BUY", buys)
+    _print_table("✅ Actionable SELL", sells)
+    if advisory:
+        _print_table("⚠️  Advisory (unscored / low-sample — 참고만)", advisory, limit=10)
+    if avoid:
+        _print_table("🚫 Avoid (negative-edge — 독립 행동 금지)", avoid, limit=10)
 
-    if avoided:
-        print(f"\n  Regime-Filtered ({len(avoided)}건 — 현재 레짐에서 비추천)")
-        for c in avoided[:5]:
+    if regime_avoided:
+        print(f"\n  Regime-Filtered ({len(regime_avoided)}건 — 현재 레짐에서 비추천)")
+        for c in regime_avoided[:5]:
             print(f"    {c.ticker} {c.signal_id} — {c.notes}")
 
     print()

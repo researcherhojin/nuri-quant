@@ -8,14 +8,15 @@ router = APIRouter(tags=["signals"])
 
 @router.get("/candidates")
 def get_candidates(days: int = Query(5, ge=1, le=30)):
-    """시그널 기반 매매 후보."""
-    from nuri.trading.recommend.candidates import screen_candidates
+    """시그널 기반 매매 후보. buy/sell 카운트는 actionable tier 만 (B-2-ext)."""
+    from nuri.trading.recommend.candidates import TIER_ACTIONABLE, screen_candidates
     candidates = screen_candidates(lookback_days=days)
+    actionable = [c for c in candidates if c.tier == TIER_ACTIONABLE and c.regime_fit]
     return {
         "candidates": [asdict(c) for c in candidates],
         "count": len(candidates),
-        "buy": len([c for c in candidates if c.direction == "BUY" and c.regime_fit]),
-        "sell": len([c for c in candidates if c.direction == "SELL" and c.regime_fit]),
+        "buy": sum(1 for c in actionable if c.direction == "BUY"),
+        "sell": sum(1 for c in actionable if c.direction == "SELL"),
     }
 
 

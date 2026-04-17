@@ -100,14 +100,14 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
     cash_target = CASH_TARGETS.get(position, 0.05)
     regime_name = regime.regime if regime else "unknown"
 
-    # 3. E-1 후보 시그널 매핑 + Conflict 감지
+    # 3. E-1 후보 시그널 매핑 + Conflict 감지 — actionable tier 만 (B-2-ext codex P1).
     signal_map: dict[str, list[str]] = {}
     conflict_tickers: set[str] = set()
     try:
-        from nuri.trading.recommend.candidates import screen_candidates
+        from nuri.trading.recommend.candidates import TIER_ACTIONABLE, screen_candidates
         candidates = screen_candidates(lookback_days=5, db_path=db_path)
         for c in candidates:
-            if c.regime_fit:
+            if c.regime_fit and c.tier == TIER_ACTIONABLE:
                 signal_map.setdefault(c.ticker, []).append(f"{c.signal_id}({c.direction})")
 
         from nuri.trading.engine.conflicts import detect_conflicts
