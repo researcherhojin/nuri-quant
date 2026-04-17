@@ -27,6 +27,24 @@ PR="${1:?missing PR number — usage: scripts/codex_review.sh <pr> <round> [prom
 ROUND="${2:?missing round number}"
 PROMPT="${3:-}"
 
+# Hard wall-clock limit on codex (shell-level, kills the process).
+# Prompt "timebox 3 min" is only advisory inside the LLM — it does NOT stop
+# the process. Without this, a confused codex can hang indefinitely.
+# Override via env: CODEX_TIMEOUT=600 scripts/codex_review.sh ...
+CODEX_TIMEOUT="${CODEX_TIMEOUT:-300}"  # 5 min default
+
+if ! command -v timeout >/dev/null 2>&1; then
+  echo "error: coreutils 'timeout' not installed (brew install coreutils → gtimeout also works)" >&2
+  if command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_BIN=gtimeout
+  else
+    echo "  falling back to no hard limit — prompt timebox is advisory only." >&2
+    TIMEOUT_BIN=""
+  fi
+else
+  TIMEOUT_BIN=timeout
+fi
+
 if [ -z "$PROMPT" ]; then
   if [ -t 0 ]; then
     echo "error: provide prompt as third arg or via stdin" >&2
@@ -65,8 +83,17 @@ OUT="$OUT_DIR/PR${PR}-round${ROUND}-${TS}.md"
 #
 # Capture codex's own exit code (tee would otherwise mask it via pipefail).
 set +e
-codex exec --sandbox read-only --skip-git-repo-check "$PROMPT" 2>&1 | tee -a "$OUT"
-CODEX_EXIT=${PIPESTATUS[0]}
+if [ -n "$TIMEOUT_BIN" ]; then
+  "$TIMEOUT_BIN" --kill-after=30s "${CODEX_TIMEOUT}" \
+    codex exec --sandbox read-only --skip-git-repo-check "$PROMPT" 2>&1 | tee -a "$OUT"
+  CODEX_EXIT=${PIPESTATUS[0]}
+  if [ "$CODEX_EXIT" = "124" ]; then
+    echo "⛔ codex exceeded ${CODEX_TIMEOUT}s hard limit and was killed." | tee -a "$OUT"
+  fi
+else
+  codex exec --sandbox read-only --skip-git-repo-check "$PROMPT" 2>&1 | tee -a "$OUT"
+  CODEX_EXIT=${PIPESTATUS[0]}
+fi
 set -e
 
 {
