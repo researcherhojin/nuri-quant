@@ -96,3 +96,17 @@ def get_account_strategy(account: str) -> dict:
         return ACCOUNT_STRATEGIES.get(strategy_name, _DEFAULT_STRATEGY)
     except Exception:
         return _DEFAULT_STRATEGY
+
+
+def get_stop_loss_for_account(account: str | None) -> int:
+    """계좌명 → stop_loss threshold (정수 %). 계좌 미지정/매칭 실패 → global fallback.
+
+    A-3 unified sell engine (§2.2 mechanical execution). `certification.py` 가 이미
+    per-row 로 `get_account_strategy(account)["stop_loss"]` 를 쓰는 패턴을 그대로
+    노출 — risk_agent/actions.py 도 동일하게 rows 의 `account` 기준으로 threshold
+    조회해야 PnL 이 그 row 의 cost basis 에서 계산된 것과 일치 (mismatch 방지).
+    """
+    if not account:
+        return int(STOCK_STOP_LOSS)
+    strategy = get_account_strategy(account)
+    return int(strategy.get("stop_loss", STOCK_STOP_LOSS))

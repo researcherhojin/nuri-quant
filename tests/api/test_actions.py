@@ -481,6 +481,53 @@ class TestBuildActionsLogic:
         assert len(result["urgent"]) == 1
         assert "손절선 근접" in result["urgent"][0]["reasons"][1]
 
+    def test_a3_long_term_account_minus_10_not_urgent(self):
+        """A-3: long_term 계좌(-20) 의 -10% 손실은 urgent 아님.
+        이전 동작(-7 하드코딩): urgent 로 분류 (pension/long_term 계좌에 잘못된 알림).
+        Regression lock: threshold 가 하드코딩으로 돌아가면 이 테스트 fail."""
+        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-20):
+            result = self._run(
+                [{"ticker": "LTMX", "action": "SELL", "confidence": 70, "agreement": 50}],
+                portfolio={"LTMX": self._pf(90, 100, -10, 5)},
+            )
+        # -10% > -20% (덜 나쁨) → urgent 가 아닌 check
+        assert len(result["urgent"]) == 0
+        assert len(result["check"]) == 1
+        assert result["check"][0]["ticker"] == "LTMX"
+
+    def test_a3_long_term_account_minus_22_urgent(self):
+        """A-3: long_term(-20) 계좌 -22% 는 실제 breach → urgent."""
+        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-20):
+            result = self._run(
+                [{"ticker": "LTMX", "action": "SELL", "confidence": 80, "agreement": 60}],
+                portfolio={"LTMX": self._pf(78, 100, -22, 5)},
+            )
+        assert len(result["urgent"]) == 1
+        assert "손절선 근접" in result["urgent"][0]["reasons"][1]
+        assert "-20%" in result["urgent"][0]["reasons"][1]
+
+    def test_a3_core_account_minus_10_still_urgent(self):
+        """A-3: core(-7) 계좌 -10% 는 기존 동작 유지 (regression 방지)."""
+        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+            result = self._run(
+                [{"ticker": "BAD", "action": "SELL", "confidence": 70, "agreement": 50}],
+                portfolio={"BAD": self._pf(90, 100, -10, 5)},
+            )
+        assert len(result["urgent"]) == 1
+        assert "손절선 근접" in result["urgent"][0]["reasons"][1]
+
+    def test_a3_boundary_equality_not_urgent(self):
+        """A-3 operator consistency: pnl == threshold 는 urgent 아님 (< 통일,
+        certification.py:308 과 일치)."""
+        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+            result = self._run(
+                [{"ticker": "EDGE", "action": "SELL", "confidence": 65, "agreement": 40}],
+                portfolio={"EDGE": self._pf(93, 100, -7, 5)},
+            )
+        # -7 < -7 은 False → check, not urgent
+        assert len(result["urgent"]) == 0
+        assert len(result["check"]) == 1
+
     def test_sell_without_loss_check(self):
         result = self._run(
             [{"ticker": "MEH", "action": "SELL", "confidence": 50, "agreement": 20}],

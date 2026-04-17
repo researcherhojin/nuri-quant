@@ -1,6 +1,6 @@
 """리스크 관리 에이전트 — VaR, 손절선, 포지션 집중도 기반 판정."""
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.core.rules import MAX_SINGLE_POSITION, STOCK_STOP_LOSS
+from nuri.core.rules import MAX_SINGLE_POSITION, get_stop_loss_for_account
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 _CFG = AGENT_CONFIG.get("risk", {})
@@ -18,9 +18,9 @@ class RiskAgent(BaseAgent):
         loss_threshold = _CFG.get("loss_threshold", -10)
         profit_threshold = _CFG.get("profit_threshold", 20)
 
-        # 1. 손절선 체크
+        # 1. 손절선 체크 — A-3: 같은 row 의 account 로 threshold 조회 (pnl 과 일치)
         holding = self._safe_query(
-            "SELECT avg_price, quantity FROM portfolio WHERE ticker = ?",
+            "SELECT account, avg_price, quantity FROM portfolio WHERE ticker = ?",
             (ticker,), db_path,
         )
         price_row = self._safe_query(
@@ -33,9 +33,12 @@ class RiskAgent(BaseAgent):
             current = price_row[0]["close"]
             pnl_pct = (current - avg) / avg * 100
 
-            if pnl_pct <= STOCK_STOP_LOSS:
+            # 같은 holding row 의 account 로 threshold 조회 — pnl_pct 는 이 row 의
+            # cost basis 에서 계산됨. certification.py 와 동일한 per-row 패턴.
+            stop_loss_threshold = get_stop_loss_for_account(holding[0]["account"])
+            if pnl_pct < stop_loss_threshold:
                 score -= 3
-                reasons.append(f"손절선 돌파 ({pnl_pct:+.1f}% ≤ {STOCK_STOP_LOSS}%)")
+                reasons.append(f"손절선 돌파 ({pnl_pct:+.1f}% < {stop_loss_threshold}%)")
             elif pnl_pct < loss_threshold:
                 score -= 1
                 reasons.append(f"손실 중 ({pnl_pct:+.1f}%)")
