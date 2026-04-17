@@ -75,6 +75,10 @@ class ConsensusResult:
     # Mechanical penalty 감사 필드 — caller 가 `consensus_penalty_applied` 이벤트 emit 시 사용.
     penalty_applied: bool = False  # True 면 divergence penalty 로 action 이 downgrade 됨
     pre_penalty_action: str = ""  # penalty 발동 전 원 action (BUY/SELL). flag=False 이면 빈 문자열.
+    # Phase 2 A-2a: per-agent contribution breakdown. `save_to_recommendations` 가
+    # JSON 직렬화해 recommendations.scoring_detail 에 persist. 이전에는 None 이라
+    # API/frontend 가 "왜 이 판정이 나왔는지" 를 reconstruct 할 수 없었음.
+    scoring_detail: dict | None = None
 
 
 def _compute_weights(db_path=None) -> dict[str, float]:
@@ -268,10 +272,64 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}" for v in verdicts if v.action != dist_basis
     ]
 
+    # Phase 2 A-2a — scoring breakdown. 사용자가 "왜 이 action 이 나왔는가" 를
+    # reconstruct 할 수 있도록 per-agent weight × confidence 기여도를 저장.
+    # Risk veto / divergence penalty 도 함께 기록해 audit trail 확보.
+    #
+    # Schema (codex A-2a review 대응):
+    # - `source="consensus"` + `schema_version=1` — candidates.py scoring_detail
+    #   (tier/conflict_penalty 기반) 와 같은 column 공유하므로 discriminator 필수.
+    # - `basis_action` — contributions 가 참조하는 action 방향. penalty 미발동 시
+    #   final_action 과 동일, 발동 시 pre_penalty_action (downgrade 전 원 방향).
+    # - `final_action_source` — 어느 메커니즘이 final_action 을 결정했는가.
+    #   "weighted_sum" | "risk_veto" | "divergence_penalty".
+    final_confidence_rounded = round(final_confidence, 1)
+    basis_action = pre_penalty_action_str if penalty_applied else final_action
+    if risk_veto_fired:
+        final_action_source = "risk_veto"
+    elif penalty_applied:
+        final_action_source = "divergence_penalty"
+    else:
+        final_action_source = "weighted_sum"
+    contributions = []
+    for v in verdicts:
+        w = weights.get(v.agent_name, 0.1)
+        weighted = round(w * (v.confidence / 100), 4)
+        contributions.append(
+            {
+                "agent_name": v.agent_name,
+                "action": v.action,
+                "confidence": round(float(v.confidence), 1),
+                "weight": round(float(w), 4),
+                "weighted": weighted,
+                # basis_action 방향 (penalty 발동 시 pre_penalty_action, 아니면
+                # final_action) 에 실제 기여한 verdict 를 True 로 마킹. UI 는 이
+                # 플래그로 "합의 방향 지지자" 를 강조하되 final_action 과 다를 수
+                # 있음을 `basis_action` 별도 노출로 처리.
+                "counted_for_basis_action": v.action == basis_action,
+            }
+        )
+    scoring_detail = {
+        "source": "consensus",
+        "schema_version": 1,
+        "weights": {k: round(float(v), 4) for k, v in weights.items()},
+        "action_scores": {k: round(float(val), 4) for k, val in action_scores.items()},
+        "contributions": contributions,
+        "final_action": final_action,
+        "final_confidence": final_confidence_rounded,
+        "final_action_source": final_action_source,
+        "basis_action": basis_action,
+        "agreement_rate": round(agreement_rate, 2),
+        "risk_veto_fired": risk_veto_fired,
+        "divergence_flag": divergence_flag,
+        "penalty_applied": penalty_applied,
+        "pre_penalty_action": pre_penalty_action_str,
+    }
+
     return ConsensusResult(
         ticker=ticker,
         final_action=final_action,
-        final_confidence=round(final_confidence, 1),
+        final_confidence=final_confidence_rounded,
         agreement_rate=round(agreement_rate, 2),
         verdicts=verdicts,
         dissent=dissent,
@@ -280,6 +338,7 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         divergence_reason=divergence_reason,
         penalty_applied=penalty_applied,
         pre_penalty_action=pre_penalty_action_str,
+        scoring_detail=scoring_detail,
     )
 
 
@@ -483,6 +542,12 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
             ensure_ascii=False,
         )
 
+        # Phase 2 A-2a: scoring_detail persist. _build_consensus 가 채웠지만 legacy
+        # 호출자가 직접 ConsensusResult 를 만들 수 있어 None 방어. `is not None`
+        # 사용해 빈 dict `{}` 는 persist (codex A-2a review P3 — falsy 실수 방지).
+        scoring_detail_json = (
+            json.dumps(r.scoring_detail, ensure_ascii=False) if r.scoring_detail is not None else None
+        )
         records.append(
             {
                 "date": today,
@@ -499,7 +564,7 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
                 ),
                 "entry_price": entry_price,
                 "agent_verdicts": verdicts_json,
-                "scoring_detail": None,
+                "scoring_detail": scoring_detail_json,
             }
         )
 

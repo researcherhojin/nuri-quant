@@ -1592,6 +1592,235 @@ class TestSaveToRecommendations:
         assert rows[0]["id"] == first_id, "ON CONFLICT DO UPDATE 는 id 보존 — FK 안전"
 
 
+class TestScoringDetailPersist:
+    """Phase 2 A-2a — scoring_detail JSON persist + shape 검증.
+
+    STRATEGY §5.3.1 Gotcha-Test Pair — consensus.py:502 `scoring_detail=None` 으로
+    회귀 시 이 테스트 fail. A-2b/c 에서 API/frontend 가 이 JSON 을 consume 하므로
+    contract (keys, types, value ranges) 가 깨지면 downstream 이 조용히 HOLD 로
+    fallback 하지 않고 명시적으로 fail.
+    """
+
+    def test_build_consensus_populates_scoring_detail(self):
+        """_build_consensus 가 scoring_detail 을 완전히 채움 — DB 저장 전 pure compute 검증."""
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import _build_consensus
+
+        verdicts = [
+            AgentVerdict("technical", "T", "BUY", 80, "bullish"),
+            AgentVerdict("fundamental", "T", "BUY", 70, "value"),
+            AgentVerdict("macro", "T", "HOLD", 50, "neutral"),
+            AgentVerdict("risk", "T", "HOLD", 40, "ok"),
+        ]
+        weights = {"technical": 0.4, "fundamental": 0.3, "macro": 0.2, "risk": 0.1}
+        result = _build_consensus("T", verdicts, weights)
+
+        sd = result.scoring_detail
+        assert sd is not None, "scoring_detail must be populated"
+        # 필수 키 — A-2b API 스키마의 contract. source/schema_version 은 candidates.py
+        # scoring_detail 와 구분하기 위한 discriminator (codex A-2a review P2).
+        for key in (
+            "source",
+            "schema_version",
+            "weights",
+            "action_scores",
+            "contributions",
+            "final_action",
+            "final_confidence",
+            "final_action_source",
+            "basis_action",
+            "agreement_rate",
+            "risk_veto_fired",
+            "divergence_flag",
+            "penalty_applied",
+            "pre_penalty_action",
+        ):
+            assert key in sd, f"scoring_detail missing required key: {key}"
+
+        # Discriminator
+        assert sd["source"] == "consensus"
+        assert sd["schema_version"] == 1
+
+        # weights round-trip
+        assert sd["weights"]["technical"] == 0.4
+
+        # action_scores — BUY = 0.4*0.8 + 0.3*0.7 = 0.32 + 0.21 = 0.53
+        assert abs(sd["action_scores"]["BUY"] - 0.53) < 0.001
+        # HOLD = 0.2*0.5 + 0.1*0.4 = 0.10 + 0.04 = 0.14
+        assert abs(sd["action_scores"]["HOLD"] - 0.14) < 0.001
+
+        # contributions — 4 agents, 정확히 4 entries
+        assert len(sd["contributions"]) == 4
+        tech = next(c for c in sd["contributions"] if c["agent_name"] == "technical")
+        assert tech["weight"] == 0.4
+        assert tech["action"] == "BUY"
+        assert tech["confidence"] == 80.0
+        assert abs(tech["weighted"] - 0.32) < 0.001
+        assert tech["counted_for_basis_action"] is True, "BUY 에이전트는 basis BUY 에 기여"
+
+        macro = next(c for c in sd["contributions"] if c["agent_name"] == "macro")
+        assert macro["counted_for_basis_action"] is False, "HOLD 는 BUY basis 에 기여 안 함"
+
+        assert sd["final_action"] == "BUY"
+        assert sd["basis_action"] == "BUY", "penalty 미발동 시 basis_action == final_action"
+        assert sd["final_action_source"] == "weighted_sum"
+        assert sd["risk_veto_fired"] is False
+        assert sd["penalty_applied"] is False
+
+    def test_risk_veto_marked_in_scoring_detail(self):
+        """Risk 에이전트 SELL + conf≥80 거부권 → scoring_detail.risk_veto_fired=True +
+        final_action_source=risk_veto."""
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import _build_consensus
+
+        verdicts = [
+            AgentVerdict("technical", "T", "BUY", 80, "bullish"),
+            AgentVerdict("risk", "T", "SELL", 90, "high drawdown"),
+        ]
+        weights = {"technical": 0.5, "risk": 0.5}
+        result = _build_consensus("T", verdicts, weights)
+
+        assert result.final_action == "SELL", "Risk veto 발동"
+        assert result.scoring_detail is not None
+        sd = result.scoring_detail
+        assert sd["risk_veto_fired"] is True
+        assert sd["final_action_source"] == "risk_veto"
+        assert sd["basis_action"] == "SELL", "veto 는 penalty 아니므로 basis == final"
+
+    def test_divergence_penalty_basis_action_disagrees_with_final(self):
+        """Divergence penalty 발동 시 final_action=HOLD 지만 contributions 는 pre_penalty
+        방향 기준으로 counted. codex A-2a review residual gap — A-2c UI 가 stacked bar
+        과 headline action 불일치를 다룰 때 혼동 방지."""
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import _build_consensus
+
+        # 9 에이전트가 BUY 몰이 + TechnicalAgent 가 conf 85 SELL 반대 → divergence
+        # penalty 발동 (threshold 80). final_action HOLD, basis_action BUY.
+        verdicts = [
+            AgentVerdict("fundamental", "T", "BUY", 70, "value"),
+            AgentVerdict("macro", "T", "BUY", 60, "bull regime"),
+            AgentVerdict("risk", "T", "BUY", 50, "ok"),  # conf < 80 → veto 미발동
+            AgentVerdict("smart_money", "T", "BUY", 65, "13F"),
+            AgentVerdict("wallstreet", "T", "BUY", 55, "upgrade"),
+            AgentVerdict("technical", "T", "SELL", 85, "breakdown"),
+        ]
+        weights = {
+            "fundamental": 0.2,
+            "macro": 0.15,
+            "risk": 0.15,
+            "smart_money": 0.1,
+            "wallstreet": 0.2,
+            "technical": 0.2,
+        }
+        result = _build_consensus("T", verdicts, weights)
+        sd = result.scoring_detail
+        assert sd is not None
+
+        # Penalty 발동 확인
+        assert result.penalty_applied is True
+        assert result.final_action == "HOLD", "downgrade 발동"
+        assert sd["final_action"] == "HOLD"
+        assert sd["final_action_source"] == "divergence_penalty"
+        assert sd["pre_penalty_action"] == "BUY"
+        assert sd["basis_action"] == "BUY", "contributions 가 참조하는 방향은 pre_penalty"
+
+        # BUY 방향 에이전트들이 counted_for_basis_action=True. HOLD 아닌 BUY 기준.
+        buy_counted = [c for c in sd["contributions"] if c["counted_for_basis_action"]]
+        assert all(c["action"] == "BUY" for c in buy_counted)
+        assert len(buy_counted) == 5, "5 개 BUY 에이전트가 basis 에 기여"
+
+        # TechnicalAgent 는 SELL 이라 basis(BUY) 에 기여 안 함
+        tech = next(c for c in sd["contributions"] if c["agent_name"] == "technical")
+        assert tech["counted_for_basis_action"] is False
+
+    def test_save_persists_scoring_detail_json(self, db_path):
+        """save_to_recommendations 가 scoring_detail 을 JSON 직렬화해 컬럼에 저장."""
+        import json
+
+        from nuri.core.db import query
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import ConsensusResult, save_to_recommendations
+
+        result = ConsensusResult(
+            ticker="SCDT",
+            final_action="BUY",
+            final_confidence=65.0,
+            agreement_rate=0.5,
+            verdicts=[AgentVerdict("technical", "SCDT", "BUY", 80, "r")],
+            dissent=[],
+            reasoning="t",
+            scoring_detail={
+                # Round 2 schema — source/schema_version/basis_action/final_action_source
+                # 포함. counted_for_basis_action (not counted_for_final). contract 가
+                # revert 되면 downstream assertion 이 fail.
+                "source": "consensus",
+                "schema_version": 1,
+                "weights": {"technical": 1.0},
+                "action_scores": {"BUY": 0.8, "SELL": 0.0, "HOLD": 0.0},
+                "contributions": [
+                    {
+                        "agent_name": "technical",
+                        "action": "BUY",
+                        "confidence": 80.0,
+                        "weight": 1.0,
+                        "weighted": 0.8,
+                        "counted_for_basis_action": True,
+                    }
+                ],
+                "final_action": "BUY",
+                "final_confidence": 65.0,
+                "final_action_source": "weighted_sum",
+                "basis_action": "BUY",
+                "agreement_rate": 1.0,
+                "risk_veto_fired": False,
+                "divergence_flag": False,
+                "penalty_applied": False,
+                "pre_penalty_action": "",
+            },
+        )
+
+        saved = save_to_recommendations([result], db_path=db_path)
+        assert saved == 1
+
+        row = query("SELECT scoring_detail FROM recommendations WHERE ticker='SCDT'", db_path=db_path)[0]
+        assert row["scoring_detail"] is not None, "scoring_detail 이 DB 에 저장돼야 함 (regression lock)"
+
+        parsed = json.loads(row["scoring_detail"])
+        # Round 2 contract lock — schema 가 revert 되면 fail (codex A-2a review Round 2).
+        assert parsed["source"] == "consensus"
+        assert parsed["schema_version"] == 1
+        assert parsed["final_action"] == "BUY"
+        assert parsed["basis_action"] == "BUY"
+        assert parsed["final_action_source"] == "weighted_sum"
+        assert len(parsed["contributions"]) == 1
+        assert parsed["contributions"][0]["agent_name"] == "technical"
+        # 필드명 revert 방지 — counted_for_final 옛 이름 금지
+        assert "counted_for_final" not in parsed["contributions"][0]
+        assert parsed["contributions"][0]["counted_for_basis_action"] is True
+
+    def test_save_tolerates_none_scoring_detail(self, db_path):
+        """Legacy caller 가 ConsensusResult(scoring_detail=None) 주입 → crash 없이 NULL 저장."""
+        from nuri.core.db import query
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import ConsensusResult, save_to_recommendations
+
+        result = ConsensusResult(
+            ticker="SCDN",
+            final_action="HOLD",
+            final_confidence=30.0,
+            agreement_rate=0.3,
+            verdicts=[AgentVerdict("technical", "SCDN", "HOLD", 30, "r")],
+            dissent=[],
+            reasoning="t",
+            scoring_detail=None,
+        )
+        saved = save_to_recommendations([result], db_path=db_path)
+        assert saved == 1
+
+        row = query("SELECT scoring_detail FROM recommendations WHERE ticker='SCDN'", db_path=db_path)[0]
+        assert row["scoring_detail"] is None, "None 입력 → NULL 저장"
+
+
 class TestComputeWeightsHitRates:
     """`_compute_weights` hit_rates 적중률 경로 — A-1a 이후 agent_verdicts 컬럼 기반.
 
