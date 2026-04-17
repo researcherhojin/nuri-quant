@@ -222,3 +222,6 @@ TRADE_PLAN_*.md
 # Internal methodology (not for public repo)
 docs/SYSTEM.md
 .gstack/
+
+# Tool session state (codex consult, etc.)
+.context/

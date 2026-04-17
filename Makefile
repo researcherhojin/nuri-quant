@@ -18,7 +18,8 @@ PYTHON = .venv/bin/python
         targets rebalance evidence external \
         api dashboard start \
         full-scan quick-scan \
-        deploy deploy-mini pre-deploy backup scheduler-reload-remote ports ports-kill update-counts demo
+        deploy deploy-mini pre-deploy backup scheduler-reload-remote ports ports-kill \
+        sync-doc-counts verify-doc-counts update-counts demo
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -40,7 +41,7 @@ help:
 	@echo "  Server:       make api, make dashboard, make start"
 	@echo "  Deploy:       make deploy-mini (★ MBP → Mac mini 1-cmd), make scheduler-reload-remote, make deploy, make backup"
 	@echo "  Dev sync:     make sync-start / sync-end / sync-status"
-	@echo "  Utility:      make ports, make ports-kill, make update-counts, make demo"
+	@echo "  Utility:      make ports, make ports-kill, make sync-doc-counts, make verify-doc-counts, make demo"
 	@echo "  Clean:        make clean, make clean-all, make clean-deep"
 
 verify-help:
@@ -418,8 +419,15 @@ ports:
 ports-kill:
 	bash scripts/ports.sh kill
 
-update-counts:
-	bash scripts/update-test-counts.sh
+sync-doc-counts:
+	bash scripts/sync_doc_counts.sh
+
+verify-doc-counts:
+	bash scripts/verify_doc_counts.sh
+
+# Back-compat alias — forwards to sync-doc-counts. Scheduled for removal after
+# external refs (if any) migrate.
+update-counts: sync-doc-counts
 
 demo:
 	bash scripts/demo.sh
