@@ -627,6 +627,29 @@ class TestSchedulerDecisions:
             _run_collector("agent_accuracy")
         mock_fn.assert_called_once()
 
+    def test_run_collector_consensus(self):
+        """_run_collector dispatches to analyze_portfolio + save_to_recommendations.
+
+        Phase 2 A-1a 의 read path fix 가 의미 있으려면 input 이 꾸준히 쌓여야 함 —
+        이 job 이 매일 07:05 에 agent_verdicts 를 recommendations 테이블에 저장.
+        Revert (dispatch 제거) 시 이 테스트 fail.
+        """
+        from nuri.scheduler import _run_collector
+        with patch("nuri.trading.agents.consensus.analyze_portfolio", return_value=[]) as m_analyze, \
+             patch("nuri.trading.agents.consensus.save_to_recommendations", return_value=0) as m_save:
+            _run_collector("consensus")
+        m_analyze.assert_called_once()
+        m_save.assert_called_once()
+
+    def test_schedules_include_consensus_job(self):
+        """SCHEDULES 리스트에 consensus job entry 존재 — cron 스펙 lock-in."""
+        from nuri.scheduler import SCHEDULES
+        consensus_jobs = [j for j in SCHEDULES if j["name"] == "consensus"]
+        assert len(consensus_jobs) == 1, "consensus job 정확히 1 개 필요"
+        assert consensus_jobs[0]["args"] == ("consensus",)
+        # 07:05 — technical 07:00 완료 후, daily_report 08:00 전
+        assert consensus_jobs[0]["cron"] == "5 7 * * *"
+
 
 class TestSchedulerDbMaintenance_Db:
     def test_scheduler_db_maintenance_runs(self, db_path, monkeypatch):

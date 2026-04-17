@@ -81,6 +81,13 @@ def _run_collector(name: str, **kwargs):
             from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
             n = save_agent_accuracy_snapshot()
             logger.info(f"[agent_accuracy] {n}건 저장")
+        elif name == "consensus":
+            # 10-agent 합의 결과를 recommendations 에 저장 → Learning Memory 자동 학습 input.
+            # decision_outcomes 가 30 일 후 outcome_30d 채우면 _compute_weights 가 가중치 조정.
+            from nuri.trading.agents.consensus import analyze_portfolio, save_to_recommendations
+            results = analyze_portfolio()
+            saved = save_to_recommendations(results)
+            logger.info(f"[consensus] {len(results)}건 분석, {saved}건 저장")
     except Exception as e:
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
 
@@ -182,6 +189,12 @@ SCHEDULES = [
     # Decision outcome 추적 (매일 07:00 — 시장 개장 전)
     {"name": "decision_outcomes", "func": _run_collector, "args": ("decision_outcomes",),
      "cron": "0 7 * * *"},
+
+    # 10-agent consensus (매일 07:05 — technical 07:00 완료 후, daily_report 08:00 전).
+    # agent_verdicts 를 recommendations 테이블에 쌓아 Learning Memory 가 30 일 후 학습.
+    # Phase 2 A-1a (PR #361) 의 read path fix 를 활용하려면 input 이 꾸준히 쌓여야 함.
+    {"name": "consensus", "func": _run_collector, "args": ("consensus",),
+     "cron": "5 7 * * *"},
 
     # Agent accuracy 스냅샷 (주 1회 일요일 08:00)
     {"name": "agent_accuracy", "func": _run_collector, "args": ("agent_accuracy",),
