@@ -32,6 +32,9 @@
 | 16 | **#248 SIEGE v2 Phase 1 — asset-class gates** | [#248](https://github.com/researcherhojin/nuri-quant/issues/248) | #312 | Gate 5/7/8 per-asset-class (us/kr_equity/kr_index/commodity/bond). Cross-market spillover (KOSPI+SPY, USD/KRW+VIX). `config/rules.yaml siege_gates` spec. Codex challenge (3 결함 지적) → 재설계 → APPROVED. |
 | 17 | **#89 인터랙티브 백테스트 sliders + live equity curve** | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | #332 | `run_interactive_backtest()` — regime change arm, stop/tp threshold hit 시 disarm. `/swing/backtest/equity` 가 `sma`/`period`/`sl`/`tp` 쿼리 수락 + 5분 TTL cache. UI 4-param sliders + URL deep-link (`/strategy?sma=100&lb=3Y&sl=-10&tp=30`) + static/interactive toggle. Tier 2 P1 #7 완료. |
 | 18 | **wallstreet collect 성능 검증** | — | #285 | `make collect-universe` 에서 wallstreet 50min → 15min 41초 실측 확인 (universe 746). Tier 2 P2 #8 완료. |
+| 19 | **Phase 2 A-1a — LM read path fix** | — | #361 | `_compute_weights` 가 `signals.verdicts` 대신 `agent_verdicts` 컬럼을 읽도록 수정. 133 rows silent fallback 해결. 5+3 regression (malformed JSON race, min_records parsed-gate, observability log level). Codex 2 round PASS. |
+| 20 | **Phase 2 scheduler automation** | — | #363 | 스케줄러에 `consensus` job (07:05 KST) 추가. technical 07:00 완료 후, daily_report 08:00 전. LM input 데이터를 매일 자동 누적 → 2026-05-17± 첫 weight shift 예상. |
+| 21 | **Phase 2 A-2a — consensus scoring_detail persist** | — | #364 | `save_to_recommendations` 의 hardcoded `scoring_detail=None` 제거. `_build_consensus` 가 per-agent weight × confidence contribution breakdown 계산, JSON 직렬화해 persist. Schema: `source`/`schema_version` discriminator + `basis_action` + `final_action_source` (weighted_sum/risk_veto/divergence_penalty). A-2b/c 가 consume 할 contract 완성. Codex 2 round (HIGH/MEDIUM/LOW + 1 residual gap → 모두 fix). |
 
 ## Tier 2 — 다음 1 달 (P1)
 
