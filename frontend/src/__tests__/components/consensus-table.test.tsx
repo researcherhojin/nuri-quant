@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ConsensusTable } from "@/components/ui/consensus-table";
 
@@ -220,5 +220,112 @@ describe("ConsensusTable", () => {
     render(<ConsensusTable data={withEmptyReason} vix={null} />);
     const badge = screen.getByTestId("divergence-badge");
     expect(badge).toHaveAttribute("title", "기술지표 반대");
+  });
+
+  // A-2c — scoring_detail (PR #368 API expose) 기반 UI 회귀 잠금.
+  // Gotcha-Test Pair (STRATEGY §5.3.1): action-source 배지 / basis 라벨 / 기여도 강조를
+  // 실수로 제거하면 아래 테스트가 fail.
+  describe("scoring_detail surfacing (A-2c)", () => {
+    const makeScoring = (overrides = {}) => ({
+      source: "consensus",
+      schema_version: 1,
+      weights: { technical: 0.4, fundamental: 0.3, risk: 0.2, macro: 0.1 },
+      action_scores: { BUY: 0.55, SELL: 0.0, HOLD: 0.15 },
+      contributions: [
+        { agent_name: "technical", action: "BUY", confidence: 75, weight: 0.4, weighted: 0.3, counted_for_basis_action: true },
+        { agent_name: "fundamental", action: "HOLD", confidence: 50, weight: 0.3, weighted: 0.15, counted_for_basis_action: false },
+        { agent_name: "risk", action: "BUY", confidence: 60, weight: 0.2, weighted: 0.12, counted_for_basis_action: true },
+        { agent_name: "macro", action: "BUY", confidence: 70, weight: 0.1, weighted: 0.07, counted_for_basis_action: true },
+      ],
+      final_action: "BUY",
+      final_confidence: 72.5,
+      final_action_source: "weighted_sum" as const,
+      basis_action: "BUY",
+      agreement_rate: 0.75,
+      risk_veto_fired: false,
+      divergence_flag: false,
+      penalty_applied: false,
+      pre_penalty_action: "",
+      ...overrides,
+    });
+
+    it("does not render action-source badge when weighted_sum", () => {
+      const d = [{ ...mockData[0], scoring_detail: makeScoring() }];
+      render(<ConsensusTable data={d} />);
+      expect(screen.queryByTestId("action-source-badge")).not.toBeInTheDocument();
+    });
+
+    it("renders risk_veto action-source badge with tooltip", () => {
+      const d = [{
+        ...mockData[0],
+        scoring_detail: makeScoring({ final_action_source: "risk_veto", risk_veto_fired: true }),
+      }];
+      render(<ConsensusTable data={d} />);
+      const badge = screen.getByTestId("action-source-badge");
+      expect(badge.textContent).toContain("🛑");
+      expect(badge.getAttribute("title")).toContain("거부권");
+    });
+
+    it("renders divergence_penalty badge + basis label when penalty_applied", () => {
+      const d = [{
+        ...mockData[0],
+        final_action: "HOLD",
+        scoring_detail: makeScoring({
+          final_action: "HOLD",
+          final_action_source: "divergence_penalty",
+          basis_action: "BUY",
+          penalty_applied: true,
+          pre_penalty_action: "BUY",
+        }),
+      }];
+      render(<ConsensusTable data={d} />);
+      expect(screen.getByTestId("action-source-badge").textContent).toContain("⚠️");
+      const basis = screen.getByTestId("penalty-basis-label");
+      // "BUY → HOLD" downgrade 표시 — 사용자가 원 방향 추정 가능
+      expect(basis.textContent).toContain("BUY");
+      expect(basis.textContent).toContain("HOLD");
+    });
+
+    it("renders weighted contribution % for agents that voted for basis_action", () => {
+      const d = [{ ...mockData[0], scoring_detail: makeScoring() }];
+      render(<ConsensusTable data={d} />);
+      fireEvent.click(screen.getByText("TSLA"));
+      // technical counted_for_basis_action=true, weighted 0.3 / action_scores.BUY=0.55 ≈ 55%
+      // (basis_action 분모 기반 — codex Round 1 LOW 1 fix)
+      const pct = screen.getByTestId("contrib-pct-technical");
+      const num = parseInt(pct.textContent!.replace("%", ""), 10);
+      expect(num).toBeGreaterThan(40);
+      expect(num).toBeLessThan(60);
+    });
+
+    it("omits contribution % for agents whose action differs from basis_action", () => {
+      // fundamental = HOLD (counted_for_basis_action=false when basis=BUY) → % 가 의미 없어 미렌더
+      const d = [{ ...mockData[0], scoring_detail: makeScoring() }];
+      render(<ConsensusTable data={d} />);
+      fireEvent.click(screen.getByText("TSLA"));
+      expect(screen.queryByTestId("contrib-pct-fundamental")).not.toBeInTheDocument();
+    });
+
+    it("highlights counted_for_basis_action agents with emerald ring", () => {
+      const d = [{ ...mockData[0], scoring_detail: makeScoring() }];
+      render(<ConsensusTable data={d} />);
+      fireEvent.click(screen.getByText("TSLA"));
+      const tech = screen.getByTestId("agent-card-technical");
+      expect(tech.className).toContain("emerald");
+      const fund = screen.getByTestId("agent-card-fundamental");
+      expect(fund.className).not.toContain("emerald-500");
+    });
+
+    it("falls back gracefully when scoring_detail is null (backward compat)", () => {
+      const d = [{ ...mockData[0], scoring_detail: null }];
+      render(<ConsensusTable data={d} />);
+      // Expanded row 는 여전히 reasoning 표시 (기존 경로)
+      fireEvent.click(screen.getByText("TSLA"));
+      expect(screen.getByText("RSI oversold bounce")).toBeInTheDocument();
+      // contribution % cell 은 없음
+      expect(screen.queryByTestId("contrib-pct-technical")).not.toBeInTheDocument();
+      // action-source 배지도 없음
+      expect(screen.queryByTestId("action-source-badge")).not.toBeInTheDocument();
+    });
   });
 });
