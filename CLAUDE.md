@@ -186,7 +186,7 @@ All `make` targets use `.venv/bin/python` — activate the venv or use the full 
 ```
 nuri/
 ├── core/              # DB (sole sqlite3 importer), rules, signal_config, timezone, events, freshness
-├── collectors/        # 26 collector modules (BaseCollector subclasses + standalone, incl. KIS Open API)
+├── collectors/        # 25 collector modules (BaseCollector subclasses + standalone, incl. KIS Open API)
 ├── analysis/          # portfolio, risk, sector, charts, rebalance_advisor, evidence_charts
 ├── quant/             # Quantitative pipeline
 │   ├── regime/        # 10-regime classifier (6 base + 4 special), macro score, strategy map
@@ -201,7 +201,7 @@ nuri/
 │   ├── recommend/     # Candidates, rebalance, tracker, price_targets
 │   ├── swing/         # Market-wide scanner + rules
 │   └── execution/     # Broker interface (Alpaca paper + DryRun)
-├── api/               # FastAPI REST API (72 endpoints, routes/ incl. actions/opportunities/market-context/coverage)
+├── api/               # FastAPI REST API (65 endpoints, routes/ incl. actions/opportunities/market-context/coverage)
 ├── alerts/            # Discord daily report + bot, Telegram alerts
 └── llm/               # LLM report (Ollama) + OpenAI wrapper + event classifier
 ```
@@ -297,12 +297,12 @@ This project uses layered context files. Root files load every session; director
 
 ### Mechanical Enforcement (Hooks + CI)
 
-| What | How | When | Where |
+| What | How | Enforcement | Where |
 |------|-----|------|-------|
-| `import sqlite3` outside db.py | PreToolUse hook (exit 2 block) | Before every Edit/Write | `.claude/settings.json` |
-| `datetime.now()` usage | PostToolUse hook | After every Edit/Write | `.claude/settings.json` |
-| `git push --force`, `git reset --hard`, `git clean -f` | PreToolUse hook (exit 2 block) | Before every Bash | `.claude/settings.json` |
-| Ruff lint violations | PostToolUse hook | After every Edit/Write | `.claude/settings.json` |
+| `import sqlite3` outside db.py | PreToolUse hook | **Blocking** (exit 2 + `decision:block`) | `.claude/settings.json` |
+| `git push --force`, `git reset --hard`, `git clean -f` | PreToolUse hook (Bash matcher) | **Blocking** (exit 2 + `decision:block`) | `.claude/settings.json` |
+| `datetime.now()` usage | PostToolUse hook | **Blocking** (exit 1 + `decision:block` surfaces to Claude) | `.claude/settings.json` |
+| Ruff lint violations | PostToolUse hook | **Advisory** (pipes `ruff check` output to `head -10`; no block) | `.claude/settings.json` |
 | Privacy leaks (broker names, monetary literals) | CI `privacy-scan` job + `pre_push_check.sh` | Every push + PR | `.github/workflows/main-ci-cd.yml`, `scripts/pre_push_check.sh`, `scripts/check_privacy_leak.py` |
 | Test regression | CI + Codecov 1% gate | Every PR | `.github/workflows/main-ci-cd.yml` |
 | Trivy CRITICAL vulnerabilities | CI `security-scan` job | Every push | `.github/workflows/main-ci-cd.yml` |

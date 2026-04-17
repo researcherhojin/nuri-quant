@@ -118,7 +118,7 @@ flowchart TD
 
 | Path | Pipeline phase | Role |
 |------|----------------|------|
-| `nuri/collectors/` | Collect | 26 collectors (BaseCollector pattern). US: yfinance/OpenBB. KR: pykrx + KOSPI/KOSDAQ index. Macro: FRED/yfinance. News: GoogleNews RSS |
+| `nuri/collectors/` | Collect | 25 collectors (BaseCollector pattern). US: yfinance/OpenBB. KR: pykrx + KOSPI/KOSDAQ index. Macro: FRED/yfinance. News: GoogleNews RSS |
 | `nuri/quant/regime/` | Analyze | Regime classifier (6 base + 4 special), macro score (9 indicators), event score (15 categories) |
 | `nuri/quant/validation/` | Analyze | Signal backtest (20 signals from `config/signals.yaml`), superinvestor/analyst backtest, scorecard |
 | `nuri/quant/factors/` | Analyze | Multi-factor scoring (momentum, value, quality, composite) |
