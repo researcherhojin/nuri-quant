@@ -247,7 +247,7 @@ PR을 올리기 전 이 기준을 확인한다.
 2. `scripts/pre_push_check.sh` Section 4 — local pre-push gate. 로컬에서 실수 자동 차단.
 3. `.github/workflows/main-ci-cd.yml` `privacy-scan` job — CI gate, 모든 PR에서 항상 실행 (frontend-only PR도 예외 없음). 머지 차단.
 
-**새 broker name 추가 시**: `scripts/check_privacy_leak.py`의 `BROKER_NAMES_KO` / `BROKER_NAMES_EN` 튜플에 추가. 테스트는 `tests/test_check_privacy_leak.py`. 이 표도 같이 갱신.
+**새 broker name 추가 시**: `scripts/check_privacy_leak.py`의 `BROKER_NAMES_KO` / `BROKER_NAMES_EN` 튜플에 추가. 테스트는 `tests/scripts/test_check_privacy_leak.py`. 이 표도 같이 갱신.
 
 **Commit message 스캔 작동 방식 (PR #202 방지)**:
 - `scripts/pre_push_check.sh` Section 4b: `origin/main..HEAD` 범위의 모든 unpushed commit message를 `--unpushed-commits` 모드로 스캔 → push 차단
