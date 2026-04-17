@@ -18,14 +18,14 @@ Every BUY/SELL decision travels a **5-step pipeline**. Phases talk only through 
 
 ```mermaid
 flowchart LR
-    A(["**1 Collect**<br/>25 collectors<br/>US · KR · macro · news"])
-    B(["**2 Analyze**<br/>signals · regime<br/>factors · events"])
-    C(["**3 Consensus**<br/>10 agents<br/>risk veto"])
-    D(["**4 Certify**<br/>SIEGE v2<br/>3D gate"])
-    E(["**5 Track**<br/>30 / 60 / 90-day<br/>outcome scoring"])
+    A(["1 Collect<br/>25 collectors<br/>US · KR · macro · news"])
+    B(["2 Analyze<br/>signals · regime<br/>factors · events"])
+    C(["3 Consensus<br/>10 agents<br/>risk veto"])
+    D(["4 Certify<br/>SIEGE v2<br/>3D certification"])
+    E(["5 Track<br/>30 / 60 / 90-day<br/>outcome scoring"])
 
     A --> B --> C --> D --> E
-    E -. weight feedback .-> C
+    E -. feedback .-> C
 ```
 
 Driven by `config/*.yaml` (rules · agents · signals · universe · SIEGE gates). Persisted in SQLite WAL — `nuri/core/db.py` is the only `sqlite3` importer. Per-phase detail, DB schema, and SIEGE v2 spec: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + [docs/SIEGE_V2.md](docs/SIEGE_V2.md).
