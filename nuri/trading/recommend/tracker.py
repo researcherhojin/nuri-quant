@@ -59,7 +59,8 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
         for c in candidates:
             if not c.regime_fit:
                 continue
-            if getattr(c, "tier", TIER_ACTIONABLE) != TIER_ACTIONABLE:
+            # A-6: dataclass default 이므로 `c.tier` 는 항상 존재.
+            if c.tier != TIER_ACTIONABLE:
                 continue
             rec = {
                 "date": today,
@@ -305,7 +306,8 @@ if __name__ == "__main__":
         # B-2-ext codex P1: advisory/avoid tier 는 "disclosure only" 라 persist
         # 하지 않는다. 정식 추천으로 저장되면 stat 없는 시그널이 history 에 섞여
         # 다음 Learning Memory 재계산에 오염 전파. actionable 만 저장.
-        candidates = [c for c in all_candidates if getattr(c, "tier", TIER_ACTIONABLE) == TIER_ACTIONABLE]
+        # A-6: dataclass default 로 tier 항상 존재 — defensive getattr 제거.
+        candidates = [c for c in all_candidates if c.tier == TIER_ACTIONABLE]
         dropped = len(all_candidates) - len(candidates)
         if dropped:
             logger.info(f"후보 {len(all_candidates)}건 중 actionable {len(candidates)}건 저장 "

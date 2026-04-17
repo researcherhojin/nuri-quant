@@ -49,7 +49,8 @@ def detect_conflicts(candidates=None, db_path=None) -> list[SignalConflict]:
     # (약한 증거가 강한 증거를 suppress). 이전 B-2 패치에서 unscored 만 제외했으나
     # low-sample/negative-edge (advisory/avoid) 도 동일 논리로 제외해야 함.
     from nuri.trading.recommend.candidates import TIER_ACTIONABLE
-    candidates = [c for c in candidates if getattr(c, "tier", TIER_ACTIONABLE) == TIER_ACTIONABLE]
+    # A-6: `Candidate.tier` 는 dataclass default 가 있어 항상 존재 → `getattr` 불필요.
+    candidates = [c for c in candidates if c.tier == TIER_ACTIONABLE]
 
     if not candidates:
         return []
