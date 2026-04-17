@@ -145,7 +145,8 @@ data/.bfg-reports/
 # codex review archive (scripts/codex_review.sh output) — raw codex output may
 # include code snippets we would not want in git history. Rollout JSONL at
 # ~/.codex/sessions/ is the canonical source; this is a per-PR excerpt.
-data/codex-reviews/
+# Root-level (accessible via `ls codex-reviews/`) per user preference.
+codex-reviews/
 # scheduler.err/.log, auto-deploy log 등
 data/logs/
 # API health check heartbeat (scheduler 가 매분 rewrite)

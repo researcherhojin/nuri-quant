@@ -31,7 +31,7 @@ if [ -z "$PROMPT" ]; then
 fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-OUT_DIR="$REPO_ROOT/data/codex-reviews"
+OUT_DIR="$REPO_ROOT/codex-reviews"
 mkdir -p "$OUT_DIR"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT="$OUT_DIR/PR${PR}-round${ROUND}-${TS}.md"
