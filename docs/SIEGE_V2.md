@@ -168,7 +168,7 @@ siege_gates:
 
 ## 5. certify() 흐름 (v2 — 실제 구현)
 
-**실제 코드**: `nuri/trading/engine/certification.py:568-601` (Phase 1, PR #312).
+**실제 코드**: `nuri/trading/engine/certification.py:553-601` (ALL_CERT_CHECKS def + certify() flatten). Phase 1, PR #312.
 
 ```python
 # 모든 gate 함수는 CertCondition 또는 list[CertCondition] 반환.
