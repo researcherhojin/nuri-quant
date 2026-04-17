@@ -129,7 +129,17 @@
     "nbis",
     "NBIS",
     "venv",
-    "pycache"
+    "pycache",
+    "capsys",
+    "caplog",
+    "wallstreet",
+    "superinvestor",
+    "superinvestors",
+    "bdate",
+    "NOPX",
+    "SCDT",
+    "SCDN",
+    "executemany"
   ],
   "ignorePaths": [
     "node_modules/**",
