@@ -35,6 +35,7 @@
 | 19 | **Phase 2 A-1a — LM read path fix** | — | #361 | `_compute_weights` 가 `signals.verdicts` 대신 `agent_verdicts` 컬럼을 읽도록 수정. 133 rows silent fallback 해결. 5+3 regression (malformed JSON race, min_records parsed-gate, observability log level). Codex 2 round PASS. |
 | 20 | **Phase 2 scheduler automation** | — | #363 | 스케줄러에 `consensus` job (07:05 KST) 추가. technical 07:00 완료 후, daily_report 08:00 전. LM input 데이터를 매일 자동 누적 → 2026-05-17± 첫 weight shift 예상. |
 | 21 | **Phase 2 A-2a — consensus scoring_detail persist** | — | #364 | `save_to_recommendations` 의 hardcoded `scoring_detail=None` 제거. `_build_consensus` 가 per-agent weight × confidence contribution breakdown 계산, JSON 직렬화해 persist. Schema: `source`/`schema_version` discriminator + `basis_action` + `final_action_source` (weighted_sum/risk_veto/divergence_penalty). A-2b/c 가 consume 할 contract 완성. Codex 2 round (HIGH/MEDIUM/LOW + 1 residual gap → 모두 fix). |
+| 22 | **Phase 2 A-2b-pre — candidates discriminator + VIX sync** | — | #366 | A-2a Round 2 follow-up. candidates.py scoring_detail 에 `source="candidate"` + `schema_version=1` 추가 (consensus 와 구분). VIX blocked/caution 경로에서 `scoring_detail["final_confidence"]` + `vix_penalty` 업데이트 — `c.confidence` 와 audit trail stale 방지. tracker.py falsy guard → `is not None` (empty dict `{}` persist). 4 regression lock. Codex 2 round (Medium VIX fix + Round 2 no findings). |
 
 ## Tier 2 — 다음 1 달 (P1)
 
