@@ -157,3 +157,73 @@ class TestFallback:
             fallback = _load_rules()
             assert fallback["position_limits"]["max_single_position"] == 0.15
             assert fallback["stop_loss"]["per_stock"] == -20
+
+
+# ═══════════════════════════════════════════════════════
+# A-3 Unified sell engine — get_stop_loss_for_account
+# ═══════════════════════════════════════════════════════
+
+
+class TestGetStopLossForAccount:
+    """§2.2 mechanical execution — risk_agent/actions 가 certification 과 동일한
+    per-account threshold 를 쓰게 하는 helper. PnL 이 계산된 행의 account 와 같은
+    account 의 threshold 를 쓰는지 검증 (aggregation mismatch 방지)."""
+
+    def _patch_portfolio_yaml(self, tmp_path, accounts_cfg: dict):
+        portfolio_yaml = tmp_path / "portfolio.yaml"
+        portfolio_yaml.write_text(yaml.dump({"accounts": accounts_cfg}))
+        real_open = open
+
+        def _opener(path, **kwargs):
+            if str(path).endswith("portfolio.yaml"):
+                return real_open(portfolio_yaml, **kwargs)
+            return real_open(path, **kwargs)
+
+        return patch("builtins.open", side_effect=_opener)
+
+    def test_none_account_falls_back_to_global(self):
+        """account 가 None 이면 global STOCK_STOP_LOSS 반환."""
+        from nuri.core.rules import STOCK_STOP_LOSS, get_stop_loss_for_account
+
+        assert get_stop_loss_for_account(None) == int(STOCK_STOP_LOSS)
+
+    def test_empty_account_falls_back_to_global(self):
+        """account 가 "" (labels 조회 실패 fallback) 이면 global STOCK_STOP_LOSS."""
+        from nuri.core.rules import STOCK_STOP_LOSS, get_stop_loss_for_account
+
+        assert get_stop_loss_for_account("") == int(STOCK_STOP_LOSS)
+
+    def test_core_account(self, tmp_path):
+        """core 전략 계좌 → -7."""
+        from nuri.core.rules import get_stop_loss_for_account
+
+        with self._patch_portfolio_yaml(tmp_path, {"Main": {"strategy": "core"}}):
+            assert get_stop_loss_for_account("Main") == -7
+
+    def test_long_term_account(self, tmp_path):
+        """long_term 전략 계좌 → -20 (핵심 fix: 이전 -7 global 하드코딩)."""
+        from nuri.core.rules import get_stop_loss_for_account
+
+        with self._patch_portfolio_yaml(tmp_path, {"Toss": {"strategy": "long_term"}}):
+            assert get_stop_loss_for_account("Toss") == -20
+
+    def test_pension_account(self, tmp_path):
+        """pension 전략 → -30."""
+        from nuri.core.rules import get_stop_loss_for_account
+
+        with self._patch_portfolio_yaml(tmp_path, {"IRP": {"strategy": "pension"}}):
+            assert get_stop_loss_for_account("IRP") == -30
+
+    def test_unknown_account_falls_back_to_core(self, tmp_path):
+        """portfolio.yaml 에 없는 account → get_account_strategy 가 core default 반환."""
+        from nuri.core.rules import get_stop_loss_for_account
+
+        with self._patch_portfolio_yaml(tmp_path, {"Main": {"strategy": "core"}}):
+            assert get_stop_loss_for_account("Unknown") == -7  # core default
+
+    def test_return_type_is_int(self):
+        """certification.py 와 비교 연산 안정성."""
+        from nuri.core.rules import get_stop_loss_for_account
+
+        result = get_stop_loss_for_account(None)
+        assert isinstance(result, int)
