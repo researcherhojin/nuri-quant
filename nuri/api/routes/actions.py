@@ -99,6 +99,11 @@ def _build_actions() -> dict:
             "target_1": target.get("target_1"),
             "target_2": target.get("target_2"),
             "reasons": [],
+            # A-2b: `_get_recommendations` 가 parse 해둔 JSON 을 그대로 노출.
+            # Frontend (A-2c) 가 actions card 에서 10-agent breakdown + basis/penalty
+            # 표시. codex A-2b Round 1 HIGH — `_build_actions` 이 drop 하던 bug fix.
+            "scoring_detail": rec.get("scoring_detail"),
+            "agent_verdicts": rec.get("agent_verdicts"),
         }
 
         # ── 🔴 즉시 실행 조건 ──
@@ -297,9 +302,13 @@ def get_market_context():
 
 
 def _get_recommendations() -> list[dict]:
-    """최신 consensus 결과 조회."""
+    """최신 consensus 결과 조회.
+
+    A-2b: `scoring_detail` + `agent_verdicts` 컬럼도 노출 — frontend (A-2c) 가
+    10-agent contribution breakdown 시각화 + basis_action/penalty 표시에 사용.
+    """
     rows = query("""
-        SELECT ticker, action, confidence, signals
+        SELECT ticker, action, confidence, signals, scoring_detail, agent_verdicts
         FROM recommendations
         WHERE date = (SELECT MAX(date) FROM recommendations)
         ORDER BY confidence DESC
@@ -313,11 +322,26 @@ def _get_recommendations() -> list[dict]:
                 agreement = data.get("agreement_rate")
             except (json.JSONDecodeError, TypeError):
                 pass
+        # Parse 실패 → None. source=consensus/candidate 로 frontend 분기 (PR #364/#366).
+        scoring_detail = None
+        if r.get("scoring_detail"):
+            try:
+                scoring_detail = json.loads(r["scoring_detail"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        agent_verdicts = None
+        if r.get("agent_verdicts"):
+            try:
+                agent_verdicts = json.loads(r["agent_verdicts"])
+            except (json.JSONDecodeError, TypeError):
+                pass
         results.append({
             "ticker": r["ticker"],
             "action": r["action"],
             "confidence": round(r["confidence"] * 100) if r["confidence"] and r["confidence"] <= 1 else round(r["confidence"] or 0),
             "agreement": round(agreement * 100) if agreement is not None and agreement <= 1 else agreement,
+            "scoring_detail": scoring_detail,
+            "agent_verdicts": agent_verdicts,
         })
     return results
 

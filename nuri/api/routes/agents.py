@@ -43,6 +43,9 @@ def get_consensus():
     except Exception:
         pass
 
+    # A-2b: scoring_detail 은 _build_consensus (PR #364) 에서 채워짐.
+    # `source="consensus"`/`schema_version=1`/`contributions`/`basis_action`/
+    # `final_action_source` 필드 포함. frontend A-2c 가 이 dict 를 consume.
     data = {
         "regime": regime_info,
         "results": [
@@ -56,6 +59,7 @@ def get_consensus():
                 "reasoning": r.reasoning,
                 "divergence_flag": r.divergence_flag,
                 "divergence_reason": r.divergence_reason,
+                "scoring_detail": r.scoring_detail,
             }
             for r in results
         ],
@@ -82,6 +86,7 @@ def get_consensus_ticker(ticker: str):
         "reasoning": r.reasoning,
         "divergence_flag": r.divergence_flag,
         "divergence_reason": r.divergence_reason,
+        "scoring_detail": r.scoring_detail,
     }
 
 

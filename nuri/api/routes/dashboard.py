@@ -178,6 +178,21 @@ def _extract_reason(signals_raw: str | None) -> tuple[str, float | None]:
         return signals_raw[:60], None
 
 
+def _parse_json_field(raw: str | None) -> dict | list | None:
+    """A-2b: `scoring_detail` / `agent_verdicts` 컬럼 JSON 파싱.
+
+    Parse 실패 또는 NULL → None 반환 (frontend 가 null-check 로 graceful degrade).
+    dict (scoring_detail) 또는 list (agent_verdicts) 둘 다 수용.
+    """
+    if not raw:
+        return None
+    import json
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
 def _get_ticker_account_map() -> dict[str, str]:
     """ticker → account 매핑 (첫 번째 계좌 기준)."""
     from nuri.core.db import query
@@ -219,7 +234,8 @@ def _get_account_labels() -> dict[str, str]:
                 labels[acc] = custom_label.strip()
                 continue
             # (2) strategy-based default with duplicate-count suffix
-            strategy_name = info.get("strategy", "core")
+            # Pylance type narrow — info.get()는 Any, 명시적 str coerce 로 dict.get 시그니처 만족.
+            strategy_name = str(info.get("strategy") or "core")
             base_label = _STRATEGY_LABELS.get(strategy_name, strategy_name.title())
             count = seen.get(base_label, 0)
             seen[base_label] = count + 1
@@ -235,7 +251,8 @@ def _get_latest_actions() -> list[dict]:
     from nuri.core.ticker_names import get_ticker_name
     try:
         rows = query("""
-            SELECT ticker, action, confidence, regime, signals, date
+            SELECT ticker, action, confidence, regime, signals, date,
+                   scoring_detail, agent_verdicts
             FROM recommendations
             WHERE date = (SELECT MAX(date) FROM recommendations)
             ORDER BY confidence DESC
@@ -253,6 +270,10 @@ def _get_latest_actions() -> list[dict]:
             reason, agreement_rate = _extract_reason(row.get("signals"))
             raw_account = ticker_account.get(row["ticker"], "")
             account_label = account_labels.get(raw_account, raw_account)
+            # A-2b: scoring_detail + agent_verdicts JSON 파싱. source=consensus/candidate
+            # 로 discriminate (PR #364/#366 스키마). Parse 실패는 None 로 graceful degrade.
+            scoring_detail = _parse_json_field(row.get("scoring_detail"))
+            agent_verdicts = _parse_json_field(row.get("agent_verdicts"))
 
             if action == "BUY" and confidence >= 50:
                 actions.append({
@@ -263,6 +284,8 @@ def _get_latest_actions() -> list[dict]:
                     "reason": reason,
                     "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
                     "account": account_label,
+                    "scoring_detail": scoring_detail,
+                    "agent_verdicts": agent_verdicts,
                 })
             elif action == "SELL" and confidence >= 70:
                 actions.append({
@@ -273,6 +296,8 @@ def _get_latest_actions() -> list[dict]:
                     "reason": reason,
                     "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
                     "account": account_label,
+                    "scoring_detail": scoring_detail,
+                    "agent_verdicts": agent_verdicts,
                 })
 
         # 상위 5개만
