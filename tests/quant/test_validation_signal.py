@@ -190,6 +190,76 @@ class TestGapSignals:
             assert df["open"].iloc[idx] < df["close"].iloc[idx - 1] * 0.98
 
 
+class TestSellSignalDirection:
+    """B-1 regression: SELL signal return_pct must be sign-flipped vs BUY.
+
+    이전 버그 (codex audit 2026-04-17): signal_backtest.py:664 가 BUY/SELL
+    구분 없이 `(exit - entry) / entry * 100` 공식 사용 → SELL 시그널은
+    "매도 후 가격 상승 = 이김" 으로 역방향 계산됨. 5개 SELL scorecard 전부
+    positive avg_return / PF>1 로 나와 실제 edge 검증 불가 상태였음.
+
+    Fix: sig_id in SELL_SIGNALS 면 return_pct 부호 반전.
+    Invariant: 같은 (entry, exit) 에 대해 SELL return_pct == -BUY return_pct.
+    이 테스트들은 fix 가 제거되면 fail 해서 regression 을 영구 차단.
+    """
+
+    def _raw_return_from_db(self, db_path, ticker, entry_date, exit_date):
+        """기록된 SignalResult 의 entry/exit 로부터 raw (buy-perspective) return 을 독립 계산."""
+        from nuri.core.db import query_df
+        df = query_df(
+            "SELECT date, close FROM prices WHERE ticker = ? AND date IN (?, ?)",
+            (ticker, entry_date, exit_date),
+            db_path=db_path,
+        )
+        by_date = {r["date"]: r["close"] for _, r in df.iterrows()}
+        return (by_date[exit_date] - by_date[entry_date]) / by_date[entry_date] * 100
+
+    def test_sell_signal_flips_return_sign(self, gap_prices):
+        """gap_down (SELL): return_pct == -raw_forward_return (부호 반전 확인)."""
+        from nuri.quant.validation.signal_backtest import SELL_SIGNALS, backtest_signals
+
+        assert "gap_down" in SELL_SIGNALS, "gap_down must be classified SELL for this test to be valid"
+        results = backtest_signals(ticker="GAPTEST", signals=["gap_down"], db_path=gap_prices)
+        assert len(results) >= 1, "gap_down must fire at least once in gap_prices fixture"
+        r = results[0]
+        raw = self._raw_return_from_db(gap_prices, "GAPTEST", r.entry_date, r.exit_date)
+        # Fix 후: return_pct == -raw (SELL sign flip). Fix 없으면 return_pct == raw (the bug).
+        assert abs(r.return_pct - (-round(raw, 2))) < 0.05, (
+            f"SELL signal return_pct should equal negated raw forward return.\n"
+            f"  raw (buy-perspective) = {raw:+.2f}%\n"
+            f"  r.return_pct          = {r.return_pct:+.2f}%\n"
+            f"  expected (negated)    = {-round(raw, 2):+.2f}%\n"
+            f"If r.return_pct == raw (not negated), the SELL direction fix in "
+            f"signal_backtest.py:664 was removed/reverted."
+        )
+        # won flag also must match the flipped sign
+        assert r.won == (r.return_pct > 0), "won field must reflect the (already-flipped) return_pct sign"
+
+    def test_buy_signal_return_unchanged(self, gap_prices):
+        """gap_up (BUY): return_pct == raw_forward_return (부호 불변)."""
+        from nuri.quant.validation.signal_backtest import BUY_SIGNALS, backtest_signals
+
+        assert "gap_up" in BUY_SIGNALS
+        results = backtest_signals(ticker="GAPTEST", signals=["gap_up"], db_path=gap_prices)
+        assert len(results) >= 1
+        r = results[0]
+        raw = self._raw_return_from_db(gap_prices, "GAPTEST", r.entry_date, r.exit_date)
+        assert abs(r.return_pct - round(raw, 2)) < 0.05, (
+            f"BUY signal return_pct must equal raw forward return (no flip).\n"
+            f"  raw          = {raw:+.2f}%\n"
+            f"  r.return_pct = {r.return_pct:+.2f}%\n"
+            f"If these differ, the SELL-only flip logic incorrectly affected BUY signals."
+        )
+        assert r.won == (r.return_pct > 0)
+
+    def test_sell_signals_registry_nonempty(self):
+        """SELL_SIGNALS 가 비면 위 테스트가 vacuous 해짐 — 방어."""
+        from nuri.quant.validation.signal_backtest import SELL_SIGNALS
+        expected_sells = {"rsi_overbought", "macd_dead", "sma_dead", "gap_down", "macd_bearish_turn"}
+        missing = expected_sells - SELL_SIGNALS
+        assert not missing, f"Expected SELL signals missing from registry: {missing}"
+
+
 class TestSignalDefinitions:
     """(from test_signals_extended.py)."""
 
