@@ -172,7 +172,9 @@ make track-decisions  # Decision outcome tracking + snapshot
 # Utilities
 make ports            # show port usage
 make ports-kill       # kill conflicting port processes
-make update-counts    # Update test/architecture counts in docs
+make sync-doc-counts    # Sync numeric claims in docs (collectors/endpoints/tests/e2e) with live code
+make verify-doc-counts  # Read-only drift check (exit 1 on drift — wired into PR CI)
+make update-counts      # Back-compat alias → sync-doc-counts (legacy, kept for muscle memory)
 make demo             # Demo mode setup (scripts/demo.sh)
 make clean            # Remove build artifacts
 make clean-all        # + __pycache__ + token cache
