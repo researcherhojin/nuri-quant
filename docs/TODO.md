@@ -59,6 +59,7 @@
 | 🟢 P2 | 6 | **OpenBB 호환성 fix** | [#274](https://github.com/researcherhojin/nuri-quant/issues/274) | bug(collectors) | 1 세션 | openbb-core==1.6.7 ↔ openbb-news==1.6.1 충돌로 news/etf_flows 수집 불가. 점진적 upgrade 필요 (콜렉터별 smoke test 후 진행) |
 | 🟢 P2 | 7 | **#272 Phase 2c-3 — universe-check 필수 게이트화** | — | ops | 10분 | `make collect-universe` 5/5 PASS 상태 유지 중 → 사용자 수동으로 branch protection required check 토글 |
 | ⚪ P3 | 9 | **flaky test 일반 stabilization** | — | test | 1 세션 | #295는 resolved. 다른 flaky 후보 (parallel sys.modules 오염 패턴) 전수 감사 |
+| 🟢 P2 | 10 | **Scheduler 로그 노이즈 감축** | — | chore(scheduler) | 0.5 세션 | 2026-04-18 Mac mini 첫 감사 발견. `data/logs/scheduler.err` 1.3MB/40hr (약 30MB/월) — 대부분 apscheduler INFO heartbeat. 3 개 tweak: (a) `logging.getLogger("yfinance").setLevel(logging.WARNING)` 로 401 Crumb / ETF fundamentals 404 같은 transient/expected 노이즈 suppress, (b) events collector 가 ETF ticker 에 대해 fundamentals 호출 skip (fundamental collector 의 ETF skip 패턴 복제 — VOO 404 재발 방지), (c) `RotatingFileHandler` 도입 (scheduler.err/log). 기능 영향 없음, 로그 가독성만 개선. Collector 자체는 정상 — ARK 도 3-tier fallback (cathiesark → ark-funds → yfinance) 으로 복구 확인됨. |
 
 ## Tier 3 — 다음 분기 (P2)
 
