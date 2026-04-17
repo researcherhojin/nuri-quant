@@ -69,7 +69,14 @@ def _load_scorecard() -> tuple[dict[str, dict], int | None]:
 
     Returns:
         (scorecard_dict, age_days): 스코어카드 데이터와 파일 나이(일). 파일 없으면 ({}, None).
+
+    B-2-ext codex P2: 2026-04-17 이전에 생성된 scorecard 는 SELL 시그널을
+    buy-perspective 로 잘못 측정 (B-1 이전). 감지 방법: SELL 시그널이 하나라도
+    PF>1 로 읽히면 pre-B-1 데이터. 이 경우 해당 SELL 들을 drop 해 unscored 로
+    취급 (conservative — 잘못된 stat 으로 confidence 쌓지 않음).
     """
+    from nuri.quant.validation.signal_backtest import SELL_SIGNALS as _SELL_SIGNALS
+
     if REPORT_DIR.exists():
         for d in sorted(REPORT_DIR.iterdir(), reverse=True):
             csv = d / "signal_scorecard.csv"
@@ -97,6 +104,18 @@ def _load_scorecard() -> tuple[dict[str, dict], int | None]:
                     }
                     for _, row in total.iterrows()
                 }
+                # Pre-B-1 cache detection: post-fix SELL 는 전부 PF<1 여야 함.
+                # SELL 중 PF>1 가 있으면 옛 측정 → 해당 시그널만 drop (unscored 로 fallback).
+                stale_sells = [sid for sid in _SELL_SIGNALS
+                               if sid in data and data[sid]["profit_factor"] > 1.0]
+                if stale_sells:
+                    logger.warning(
+                        "scorecard pre-B-1 (buy-perspective SELL) 데이터 감지: %s. "
+                        "`make validate` 재실행 필요. 이 SELL 시그널들은 unscored 로 강제 처리.",
+                        stale_sells,
+                    )
+                    for sid in stale_sells:
+                        data.pop(sid, None)
                 return data, age_days
     return {}, None
 
