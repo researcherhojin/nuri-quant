@@ -92,7 +92,10 @@ def detect_conflicts(candidates=None, db_path=None) -> list[SignalConflict]:
             ))
 
         # ── 2. Strength Mismatch: PF 격차 큰 시그널 공존 ──
-        all_cands = sigs["candidates"]
+        # B-2 fix: unscored 시그널은 profit_factor=0 (사실상 sentinel) 이므로
+        # strength mismatch 비교에서 제외. 포함 시 모든 unscored 가 자동으로
+        # "weak" 로 판정되어 의미 없는 conflict 경보 발생.
+        all_cands = [c for c in sigs["candidates"] if not getattr(c, "unscored", False)]
         if len(all_cands) >= 2:
             pfs = [c.profit_factor for c in all_cands]
             max_pf = max(pfs)

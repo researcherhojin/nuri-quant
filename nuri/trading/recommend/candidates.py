@@ -47,6 +47,8 @@ class Candidate:
     drift_status: str = ""          # "stable", "degrading", "critical" (from Learning Memory)
     conflict: str = ""              # "" or "direction_conflict" (from Conflict Detection)
     scoring_detail: dict | None = None  # confidence 계산 요인 기록
+    unscored: bool = False          # True = signal 이 scorecard 에 없음 → 통계 미검증
+                                    # (이전 폴백 win_rate=0.5/pf=1.0 제거, B-2 honesty fix)
 
 
 def _load_scorecard() -> tuple[dict[str, dict], int | None]:
@@ -201,8 +203,16 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
 
             for entry_idx in recent:
                 stats = scorecard.get(signal_id, {})
-                win_rate = stats.get("win_rate", 0.5)
-                pf = stats.get("profit_factor", 1.0)
+                # B-2 honesty fix: no stats → unscored. 이전엔 win_rate=0.5, pf=1.0 으로
+                # 폴백해 confidence 수식에 그대로 먹여 "검증됨" 처럼 보였음. 이제 unscored
+                # candidate 는 confidence=0 + 명시적 flag 로 노출.
+                unscored = not stats
+                if unscored:
+                    win_rate = 0.0
+                    pf = 0.0
+                else:
+                    win_rate = stats.get("win_rate", 0.0)
+                    pf = stats.get("profit_factor", 0.0)
 
                 direction = "BUY" if signal_id in BUY_SIGNALS else "SELL"
 
@@ -226,9 +236,16 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     "profit_factor": round(pf, 2),
                     "regime": regime_ctx.get("regime", "") if regime_ctx else "",
                     "regime_fit": regime_fit,
+                    "unscored": unscored,
                 }
 
-                if sig_in_regime and sig_in_regime.get("trades", 0) >= 5:
+                if unscored:
+                    # B-2 fix: scorecard 에 없는 시그널은 confidence 를 0 으로 박제.
+                    # 이전엔 win_rate=0.5/pf=1.0 폴백으로 아래 수식에 들어가 ~45 수준
+                    # "그럴듯한" confidence 가 나와 user 에게 검증된 추천처럼 보였음.
+                    confidence = 0.0
+                    scoring["base_confidence"] = 0.0
+                elif sig_in_regime and sig_in_regime.get("trades", 0) >= 5:
                     # 데이터 기반: 현재 레짐에서의 실제 승률 × 100
                     regime_wr = sig_in_regime["win_rate"]
                     regime_pf = sig_in_regime["pf"]
@@ -239,7 +256,7 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     scoring["regime_win_rate"] = round(regime_wr, 4)
                     scoring["regime_pf"] = round(regime_pf, 2)
                 else:
-                    # 폴백: 전체 승률 기반 (레짐 무관)
+                    # 전체 승률 기반 (레짐 무관). win_rate/pf 는 scorecard 실측.
                     pf_normalized = min(pf / 5.0, 1.0)
                     regime_bonus = 1.0 if regime_fit else 0.3
                     confidence = (win_rate * 40 + pf_normalized * 30 + regime_bonus * 30)
@@ -270,6 +287,8 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                 scoring["drift_status"] = drift_status
 
                 notes_parts = []
+                if unscored:
+                    notes_parts.append("⚠️ 통계 없음 — 백테스트 미커버 (검증 불가)")
                 if scorecard_stale:
                     notes_parts.append(f"⚠️ 스코어카드 {scorecard_age_days}일 전")
                 if stats.get("total_trades"):
@@ -295,6 +314,7 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     notes="; ".join(notes_parts),
                     drift_status=drift_status,
                     scoring_detail=scoring,
+                    unscored=unscored,
                 ))
 
     # ── Conflict Detection: 방향 충돌 감지 + annotate ──
@@ -371,13 +391,22 @@ def print_candidates(candidates: list[Candidate]) -> None:
         print(f"  {'-' * 80}")
         for c in items[:limit]:
             flags = []
+            if c.unscored:
+                flags.append("UNSCORED")
             if c.drift_status in ("critical", "degrading"):
                 flags.append(f"D:{c.drift_status[:4]}")
             if c.conflict:
                 flags.append("CONF")
             flag_str = " ".join(flags)
+            if c.unscored:
+                # 통계 없음 — 숫자 표시 대신 명시적 "—"
+                wr_str = "—"
+                pf_str = "—"
+            else:
+                wr_str = f"{c.win_rate:>5.0%}"
+                pf_str = f"{c.profit_factor:>5.1f}"
             print(f"  {c.ticker:<8} {c.signal_id:<18} {c.signal_date:<12} "
-                  f"{c.confidence:>4.0f} {c.win_rate:>5.0%} {c.profit_factor:>5.1f} ${c.price:>9,.2f} {flag_str:<12}")
+                  f"{c.confidence:>4.0f} {wr_str:>6} {pf_str:>6} ${c.price:>9,.2f} {flag_str:<12}")
 
     _print_table("BUY Candidates", buys)
     _print_table("SELL Candidates", sells)

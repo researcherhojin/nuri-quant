@@ -209,14 +209,21 @@ def gather_context(db_path=None) -> ReportContext:
         for c in (buys + sells)[:10]:
             known_tickers.add(c.ticker)
             flags = []
+            if getattr(c, "unscored", False):
+                flags.append("UNSCORED")
             if c.drift_status in ("critical", "degrading"):
                 flags.append(f"drift:{c.drift_status}")
             if c.conflict:
                 flags.append("충돌")
             flag_str = f" [{', '.join(flags)}]" if flags else ""
+            if getattr(c, "unscored", False):
+                # 통계 없음 — 승률/PF 숫자 대신 "—" (정직성: B-2)
+                stats_str = "통계 없음 — 검증 불가"
+            else:
+                stats_str = f"승률 {c.win_rate:.0%}, PF {c.profit_factor:.1f}"
             lines.append(
                 f"  {c.direction} {c.ticker}: {c.signal_id} "
-                f"(신뢰도 {c.confidence:.0f}, 승률 {c.win_rate:.0%}, PF {c.profit_factor:.1f}){flag_str}"
+                f"(신뢰도 {c.confidence:.0f}, {stats_str}){flag_str}"
             )
         candidates_section = _track("\n".join(lines))
     except Exception:
