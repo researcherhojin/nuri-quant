@@ -31,6 +31,7 @@
 | 15 | **B1 — recommendations UNIQUE + UPSERT** | — | #311 | `UNIQUE(date, ticker, action)` → `UNIQUE(date, ticker)`. Migration 20 (MAX(id) dedup). `INSERT OR REPLACE` → `ON CONFLICT DO UPDATE` (id 보존 — `trades.recommendation_id` FK 안전). 프로덕션 20 중복 그룹 정리. |
 | 16 | **#248 SIEGE v2 Phase 1 — asset-class gates** | [#248](https://github.com/researcherhojin/nuri-quant/issues/248) | #312 | Gate 5/7/8 per-asset-class (us/kr_equity/kr_index/commodity/bond). Cross-market spillover (KOSPI+SPY, USD/KRW+VIX). `config/rules.yaml siege_gates` spec. Codex challenge (3 결함 지적) → 재설계 → APPROVED. |
 | 17 | **#89 인터랙티브 백테스트 sliders + live equity curve** | [#89](https://github.com/researcherhojin/nuri-quant/issues/89) | #332 | `run_interactive_backtest()` — regime change arm, stop/tp threshold hit 시 disarm. `/swing/backtest/equity` 가 `sma`/`period`/`sl`/`tp` 쿼리 수락 + 5분 TTL cache. UI 4-param sliders + URL deep-link (`/strategy?sma=100&lb=3Y&sl=-10&tp=30`) + static/interactive toggle. Tier 2 P1 #7 완료. |
+| 18 | **wallstreet collect 성능 검증** | — | #285 | `make collect-universe` 에서 wallstreet 50min → 15min 41초 실측 확인 (universe 746). Tier 2 P2 #8 완료. |
 
 ## Tier 2 — 다음 1 달 (P1)
 
@@ -45,7 +46,6 @@
 | 🟢 P2 | 5 | **포트폴리오 온보딩 UI (YAML → Dashboard)** | [#25](https://github.com/researcherhojin/nuri-quant/issues/25) | feat(frontend) | 2-3 세션 | 수동 yaml 편집 제거. 2026-04-14 portfolio.yaml 수동 수정 페인포인트 직접 경험 |
 | 🟢 P2 | 6 | **OpenBB 호환성 fix** | [#274](https://github.com/researcherhojin/nuri-quant/issues/274) | bug(collectors) | 1 세션 | openbb-core==1.6.7 ↔ openbb-news==1.6.1 충돌로 news/etf_flows 수집 불가. 점진적 upgrade 필요 (콜렉터별 smoke test 후 진행) |
 | 🟢 P2 | 7 | **#272 Phase 2c-3 — universe-check 필수 게이트화** | — | ops | 10분 | `make collect-universe` 5/5 PASS 상태 유지 중 → 사용자 수동으로 branch protection required check 토글 |
-| 🟢 P2 | 8 | **wallstreet collect 성능 검증** | — | perf(collectors) | 15분 | PR #285 parallel fetch 실제 50min → 15min 41초 (universe 746) 확인 완료 — **close 후보** |
 | ⚪ P3 | 9 | **flaky test 일반 stabilization** | — | test | 1 세션 | #295는 resolved. 다른 flaky 후보 (parallel sys.modules 오염 패턴) 전수 감사 |
 
 ## Tier 3 — 다음 분기 (P2)
