@@ -12,6 +12,7 @@ from datetime import timedelta
 
 from fastapi import APIRouter
 
+from nuri.core.catalyst import has_recent_catalyst
 from nuri.core.db import query
 from nuri.core.rules import get_stop_loss_for_account
 from nuri.core.timezone import kst_now
@@ -124,10 +125,20 @@ def _build_actions() -> dict:
             # account 의 strategy stop_loss 와 비교 — pnl_pct 와 cost basis 일치.
             stop_loss_threshold = get_stop_loss_for_account(holding.get("account"))
             if pnl_pct < stop_loss_threshold:
+                # stop-loss breach — 기계적 실행 (§2.2). catalyst 무관.
                 item["reasons"].append(f"손실 {pnl_pct:+.1f}% — 손절선 근접 ({stop_loss_threshold}%)")
                 item["priority"] = "urgent"
                 urgent.append(item)
                 continue
+            # A-4: non-emergency SELL 은 catalyst 필요. 없으면 hold bucket 으로
+            # 강등 (사용자에게 "왜 매도?" 맥락 없이 urgent 로 올리지 않음).
+            has_catalyst, catalyst_reason = has_recent_catalyst(ticker)
+            if not has_catalyst:
+                item["reasons"].append(f"SELL 근거 없음 ({catalyst_reason}) — 관망")
+                item["priority"] = "hold"
+                hold.append(item)
+                continue
+            item["reasons"].append(f"catalyst: {catalyst_reason}")
             item["priority"] = "check"
             check.append(item)
             continue
