@@ -259,6 +259,20 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
 
                 direction = "BUY" if signal_id in BUY_SIGNALS else "SELL"
 
+                # A-4: non-emergency SELL 은 catalyst 요구 (STRATEGY §2.1 Evidence-first,
+                # §2.6 Soft penalty). stop-loss breach 는 risk_agent 경로 — 여기는 signal
+                # 기반 SELL 이므로 항상 catalyst 체크 대상. catalyst 없으면 advisory 로
+                # downgrade — 사용자가 맥락 없이 매도하지 않도록.
+                catalyst_note = ""
+                if direction == "SELL" and tier == TIER_ACTIONABLE:
+                    from nuri.core.catalyst import has_recent_catalyst
+                    has_catalyst, catalyst_reason = has_recent_catalyst(ticker, db_path=db_path)
+                    if not has_catalyst:
+                        tier = TIER_ADVISORY
+                        catalyst_note = f"SELL 근거 없음 ({catalyst_reason}) — advisory"
+                    else:
+                        catalyst_note = f"catalyst: {catalyst_reason}"
+
                 # 레짐 적합도
                 regime_fit = True
                 regime_note = ""
@@ -287,6 +301,8 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     "unscored": unscored,
                     "tier": tier,
                     "total_trades": total_trades,
+                    # A-4: SELL 경로의 catalyst 체크 결과 (empty string = BUY 또는 non-actionable SELL)
+                    "catalyst_note": catalyst_note,
                 }
 
                 if tier in (TIER_ADVISORY, TIER_AVOID):
@@ -338,6 +354,9 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                 notes_parts = []
                 if unscored:
                     notes_parts.append("⚠️ 통계 없음 — 백테스트 미커버 (검증 불가)")
+                elif tier == TIER_ADVISORY and catalyst_note.startswith("SELL 근거 없음"):
+                    # A-4: tier downgrade 사유가 catalyst 부재 → 그 이유를 우선 노출
+                    notes_parts.append(f"⚠️ {catalyst_note}")
                 elif tier == TIER_ADVISORY:
                     notes_parts.append(f"⚠️ low-sample ({total_trades}건, {MIN_TRADES_FOR_VALIDATION} 미만)")
                 elif tier == TIER_AVOID:

@@ -18,7 +18,9 @@ class RiskAgent(BaseAgent):
         loss_threshold = _CFG.get("loss_threshold", -10)
         profit_threshold = _CFG.get("profit_threshold", 20)
 
-        # 1. 손절선 체크 — A-3: 같은 row 의 account 로 threshold 조회 (pnl 과 일치)
+        # 1. 손절선 체크 — A-3 per-row, A-4 codex P2: 모든 account row 를 iterate.
+        # (이전: `holding[0]` 사용으로 SQLite 순서에 의존 → 다른 계좌가 breach 해도
+        # 첫 row 만 확인하는 masking 버그. certification.py:304 동일 패턴으로 정렬.)
         holding = self._safe_query(
             "SELECT account, avg_price, quantity FROM portfolio WHERE ticker = ?",
             (ticker,), db_path,
@@ -28,22 +30,32 @@ class RiskAgent(BaseAgent):
             (ticker,), db_path,
         )
 
-        if holding and price_row and holding[0]["avg_price"] and price_row[0]["close"]:
-            avg = holding[0]["avg_price"]
+        if holding and price_row and price_row[0]["close"]:
             current = price_row[0]["close"]
-            pnl_pct = (current - avg) / avg * 100
+            # 모든 row 에서 per-account breach check; 가장 큰 breach 만 보고.
+            worst_breach: tuple[float, int] | None = None  # (pnl_pct, threshold)
+            worst_loss_pct: float | None = None  # breach 없을 때만 사용
+            for row in holding:
+                avg = row["avg_price"]
+                if not avg:
+                    continue
+                row_pnl = (current - avg) / avg * 100
+                row_threshold = get_stop_loss_for_account(row["account"])
+                if row_pnl < row_threshold:
+                    if worst_breach is None or row_pnl < worst_breach[0]:
+                        worst_breach = (row_pnl, row_threshold)
+                elif worst_loss_pct is None or row_pnl < worst_loss_pct:
+                    worst_loss_pct = row_pnl
 
-            # 같은 holding row 의 account 로 threshold 조회 — pnl_pct 는 이 row 의
-            # cost basis 에서 계산됨. certification.py 와 동일한 per-row 패턴.
-            stop_loss_threshold = get_stop_loss_for_account(holding[0]["account"])
-            if pnl_pct < stop_loss_threshold:
+            if worst_breach is not None:
+                pnl_pct, th = worst_breach
                 score -= 3
-                reasons.append(f"손절선 돌파 ({pnl_pct:+.1f}% < {stop_loss_threshold}%)")
-            elif pnl_pct < loss_threshold:
+                reasons.append(f"손절선 돌파 ({pnl_pct:+.1f}% < {th}%)")
+            elif worst_loss_pct is not None and worst_loss_pct < loss_threshold:
                 score -= 1
-                reasons.append(f"손실 중 ({pnl_pct:+.1f}%)")
-            elif pnl_pct > profit_threshold:
-                reasons.append(f"수익 양호 ({pnl_pct:+.1f}%)")
+                reasons.append(f"손실 중 ({worst_loss_pct:+.1f}%)")
+            elif worst_loss_pct is not None and worst_loss_pct > profit_threshold:
+                reasons.append(f"수익 양호 ({worst_loss_pct:+.1f}%)")
                 score += 1
 
         # 2. 변동성 체크 (최근 30일 수익률 표준편차)
@@ -64,12 +76,17 @@ class RiskAgent(BaseAgent):
                 score += 1
                 reasons.append(f"저변동성 (일간σ {vol:.1f}%)")
 
-        # 3. 포지션 집중도
+        # 3. 포지션 집중도 — A-4 codex Round 2 P2: 같은 ticker 가 여러 계좌에
+        # 걸쳐 있으면 모든 row 의 exposure 를 합산. 이전 `holding[0]` 사용 시 첫
+        # row 만 카운트 → 집중도 undercount (SQLite 순서에 의존).
         total_rows = self._safe_query(
             "SELECT SUM(quantity * avg_price) as total FROM portfolio", db_path=db_path,
         )
         if holding and total_rows and total_rows[0]["total"]:
-            weight = (holding[0]["quantity"] * holding[0]["avg_price"]) / total_rows[0]["total"]
+            ticker_exposure = sum(
+                (row["quantity"] or 0) * (row["avg_price"] or 0) for row in holding
+            )
+            weight = ticker_exposure / total_rows[0]["total"]
             if weight > MAX_SINGLE_POSITION:
                 score -= 1
                 reasons.append(f"비중 초과 ({weight*100:.1f}% > {MAX_SINGLE_POSITION*100:.0f}%)")

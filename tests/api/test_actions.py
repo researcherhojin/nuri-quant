@@ -446,12 +446,17 @@ class TestGetSystemHealth:
 
 
 class TestBuildActionsLogic:
-    def _run(self, recs, siege=None, targets=None, portfolio=None, short=None):
+    def _run(self, recs, siege=None, targets=None, portfolio=None, short=None, catalyst=None):
+        # A-4: `has_recent_catalyst` 를 default mock — CI fresh DB 는 news/macro_events
+        # 테이블 migration 전 상태 가능성 (Lesson #7). 테스트별 override 는 `catalyst`
+        # 인자 또는 with 스코프 내부에서 재패치.
+        cat_default = catalyst if catalyst is not None else (False, "no catalyst (test default)")
         with patch("nuri.api.routes.actions._get_recommendations", return_value=recs), \
              patch("nuri.api.routes.actions._get_siege_violations", return_value=siege or []), \
              patch("nuri.api.routes.actions._get_targets_status", return_value=targets or {}), \
              patch("nuri.api.routes.actions._get_portfolio_map", return_value=portfolio or {}), \
-             patch("nuri.api.routes.actions._get_short_interest", return_value=short):
+             patch("nuri.api.routes.actions._get_short_interest", return_value=short), \
+             patch("nuri.api.routes.actions.has_recent_catalyst", return_value=cat_default):
             from nuri.api.routes.actions import _build_actions
             return _build_actions()
 
@@ -489,8 +494,9 @@ class TestBuildActionsLogic:
             result = self._run(
                 [{"ticker": "LTMX", "action": "SELL", "confidence": 70, "agreement": 50}],
                 portfolio={"LTMX": self._pf(90, 100, -10, 5)},
+                catalyst=(True, "news (1 item(s) in 14d)"),  # 원래 check 경로 유지
             )
-        # -10% > -20% (덜 나쁨) → urgent 가 아닌 check
+        # -10% > -20% (덜 나쁨) → urgent 가 아닌 check (catalyst 있으니 hold 가 아닌 check)
         assert len(result["urgent"]) == 0
         assert len(result["check"]) == 1
         assert result["check"][0]["ticker"] == "LTMX"
@@ -518,20 +524,68 @@ class TestBuildActionsLogic:
 
     def test_a3_boundary_equality_not_urgent(self):
         """A-3 operator consistency: pnl == threshold 는 urgent 아님 (< 통일,
-        certification.py:308 과 일치)."""
+        certification.py:308 과 일치). A-4 이후 catalyst 없으면 hold 로 강등."""
         with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
             result = self._run(
                 [{"ticker": "EDGE", "action": "SELL", "confidence": 65, "agreement": 40}],
                 portfolio={"EDGE": self._pf(93, 100, -7, 5)},
+                catalyst=(False, "no catalyst"),
             )
-        # -7 < -7 은 False → check, not urgent
+        # -7 < -7 은 False → non-urgent; A-4: no-catalyst → hold bucket
+        assert len(result["urgent"]) == 0
+        assert len(result["hold"]) == 1
+
+    def test_a4_sell_no_breach_no_catalyst_becomes_hold(self):
+        """A-4: non-emergency SELL (pnl > stop-loss threshold) + catalyst 없음 → hold.
+        이전 동작: check bucket 에 들어갔음. Regression lock: catalyst gate 제거 시 fail."""
+        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+            result = self._run(
+                [{"ticker": "QUIET", "action": "SELL", "confidence": 50, "agreement": 20}],
+                portfolio={"QUIET": self._pf(102, 100, 2, 5)},  # +2% (no breach)
+                catalyst=(False, "no ticker news + no significant macro event"),
+            )
+        assert len(result["urgent"]) == 0
+        assert len(result["check"]) == 0
+        assert len(result["hold"]) == 1
+        assert "SELL 근거 없음" in result["hold"][0]["reasons"][1]
+
+    def test_a4_sell_no_breach_with_catalyst_goes_to_check(self):
+        """A-4: SELL + catalyst 있으면 check bucket (기존 동작)."""
+        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+            result = self._run(
+                [{"ticker": "NEWSY", "action": "SELL", "confidence": 65, "agreement": 40}],
+                portfolio={"NEWSY": self._pf(98, 100, -2, 5)},  # -2% (no breach)
+                catalyst=(True, "news (2 item(s) in 14d)"),
+            )
         assert len(result["urgent"]) == 0
         assert len(result["check"]) == 1
+        assert "catalyst: news" in result["check"][0]["reasons"][1]
+
+    def test_a4_stop_loss_breach_bypasses_catalyst_check(self):
+        """A-4 exemption: stop-loss breach 는 catalyst 무관하게 urgent (§2.2 mechanical).
+        has_recent_catalyst 가 호출조차 되지 않아야 함."""
+        # 이 테스트는 _run 기본 mock 을 피하고 직접 MagicMock 으로 assert_not_called 체크
+        from unittest.mock import MagicMock
+        mock_cat = MagicMock(return_value=(False, "no catalyst"))
+        with patch("nuri.api.routes.actions._get_recommendations", return_value=[{"ticker": "DUMP", "action": "SELL", "confidence": 85, "agreement": 70}]), \
+             patch("nuri.api.routes.actions._get_siege_violations", return_value=[]), \
+             patch("nuri.api.routes.actions._get_targets_status", return_value={}), \
+             patch("nuri.api.routes.actions._get_portfolio_map", return_value={"DUMP": self._pf(90, 100, -10, 5)}), \
+             patch("nuri.api.routes.actions._get_short_interest", return_value=None), \
+             patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7), \
+             patch("nuri.api.routes.actions.has_recent_catalyst", mock_cat):
+            from nuri.api.routes.actions import _build_actions
+            result = _build_actions()
+        assert len(result["urgent"]) == 1
+        assert "손절선 근접" in result["urgent"][0]["reasons"][1]
+        # catalyst 함수 호출 자체가 없어야 함 (breach path 가 먼저 continue)
+        mock_cat.assert_not_called()
 
     def test_sell_without_loss_check(self):
         result = self._run(
             [{"ticker": "MEH", "action": "SELL", "confidence": 50, "agreement": 20}],
             portfolio={"MEH": self._pf(105, 100, 5, 3)},
+            catalyst=(True, "news (1 item(s) in 14d)"),  # catalyst 있어야 check (A-4 gate)
         )
         assert len(result["check"]) == 1
 
