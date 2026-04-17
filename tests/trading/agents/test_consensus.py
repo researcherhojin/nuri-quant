@@ -1593,13 +1593,21 @@ class TestSaveToRecommendations:
 
 
 class TestComputeWeightsHitRates:
-    """`_compute_weights` hit_rates 적중률 경로 — lines 138-142 (BUY/SELL hit 분기)."""
+    """`_compute_weights` hit_rates 적중률 경로 — A-1a 이후 agent_verdicts 컬럼 기반.
+
+    이전 schema (`signals={verdicts:[...]}` dict) → `agent_verdicts` 컬럼 + list shape.
+    Read path 가 save path (tracker.py:70, consensus.py:450) 와 일치하도록 수정됨.
+    """
 
     def _seed_recommendations(self, db_path, n_records=15, outcome_sign=1):
-        """recommendations 테이블에 N 건의 verdict JSON 삽입. outcome_sign 으로 적중/오답 제어.
+        """recommendations 테이블에 N 건의 agent_verdicts JSON 삽입.
 
         outcome_sign=1 → 모두 양수 outcome (BUY 적중, SELL 오답).
         outcome_sign=-1 → 모두 음수 outcome (BUY 오답, SELL 적중).
+
+        Note: `agent_verdicts` 컬럼에 list-of-dict shape 으로 저장 — live prod schema
+        와 일치. 이전 버전은 `signals={verdicts:[...]}` dict-wrapped 였으나 read
+        path 가 읽지 못했음 (A-1a silent fallback 버그).
         """
         import json
 
@@ -1615,16 +1623,18 @@ class TestComputeWeightsHitRates:
                 ]
                 conn.execute(
                     """INSERT INTO recommendations
-                       (date, ticker, action, confidence, regime, signals, entry_price, outcome_30d)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         today_kst(),
                         f"T{i}",
                         "BUY",
                         50.0,
                         None,
-                        json.dumps({"verdicts": verdicts}),
+                        None,
                         100.0,
+                        json.dumps(verdicts),
                         0.05 * outcome_sign,
                     ),
                 )
@@ -1632,9 +1642,9 @@ class TestComputeWeightsHitRates:
     def test_hit_rate_outcome_sign_positive(self, db_path):
         """Positive outcome 15건 → technical(BUY) 가중치 ↑, fundamental(SELL) ↓.
 
-        STRATEGY §5.3.1 Gotcha-Test Pair: `consensus.py::_compute_weights` 의
-        SELECT 에 `outcome_30d` 포함 + `row["outcome_30d"]` 직접 읽기를 잠근다.
-        fix 되돌리면 (SELECT 축소 또는 `row.get()` 복구) 이 테스트 fail.
+        STRATEGY §5.3.1 Gotcha-Test Pair: A-1a 이후 read path 는 `agent_verdicts`
+        컬럼 + list shape. revert 시 (SELECT signals → SELECT agent_verdicts 되돌림
+        또는 list → dict 재변경) 이 테스트 fail.
         """
         from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
 
@@ -1673,7 +1683,7 @@ class TestComputeWeightsHitRates:
 
         이 비대칭은 arguable design: SELL 이 "loss avoidance" 의미라면 flat 은 회피 성공이
         아님. 하지만 현 구현을 의도적이라 가정하고 regression 으로 잠근다. 바꾸려면 별도
-        STRATEGY 개정 + 백테스트 필요 (scope 분리).
+        STRATEGY 개정 + 백테스트 필요 (scope 분리 — A-1b 후보).
         """
         import json
 
@@ -1689,18 +1699,11 @@ class TestComputeWeightsHitRates:
                 ]
                 conn.execute(
                     """INSERT INTO recommendations
-                       (date, ticker, action, confidence, regime, signals, entry_price, outcome_30d)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        today_kst(),
-                        f"Z{i}",
-                        "BUY",
-                        50.0,
-                        None,
-                        json.dumps({"verdicts": verdicts}),
-                        100.0,
-                        0.0,
-                    ),
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"Z{i}", "BUY", 50.0, None, None, 100.0,
+                     json.dumps(verdicts), 0.0),
                 )
 
         weights = _compute_weights(db_path=db_path)
@@ -1712,22 +1715,138 @@ class TestComputeWeightsHitRates:
         )
         assert abs(sum(weights.values()) - 1.0) < 0.001
 
-    def test_empty_signals_string_skipped(self, db_path):
-        """signals 필드가 빈 문자열이면 해당 row skip — crash 없이 DEFAULT_WEIGHTS 반환."""
+    def test_null_agent_verdicts_filtered_at_sql(self, db_path):
+        """agent_verdicts IS NULL/empty → SQL WHERE 절에서 이미 필터됨.
+
+        A-1a: read path SQL 은 `agent_verdicts IS NOT NULL AND agent_verdicts != ''`.
+        15 건 모두 NULL 이면 rows=0 → min_records gate (10) 미달 → DEFAULT_WEIGHTS.
+        """
         from nuri.core.db import get_db
         from nuri.core.timezone import today_kst
         from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
 
         with get_db(db_path) as conn:
-            # 15 건 모두 signals 빈 문자열
             for i in range(15):
                 conn.execute(
                     """INSERT INTO recommendations
-                       (date, ticker, action, confidence, regime, signals, entry_price, outcome_30d)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"X{i}", "BUY", 50.0, None, "", 100.0, 0.05),
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)""",
+                    (today_kst(), f"X{i}", "BUY", 50.0, None, None, 100.0, 0.05),
                 )
 
         weights = _compute_weights(db_path=db_path)
-        # 빈 signals → hit_rate 계산 불가 → DEFAULT_WEIGHTS
         assert weights == DEFAULT_WEIGHTS
+
+    def test_malformed_json_does_not_poison_other_rows(self, db_path):
+        """Malformed JSON row 는 skip — 유효 row 의 hit rate 계산은 살아남음.
+
+        A-1a codex review (P1-3): silent skip opacity 방지. malformed row 는
+        rows_skipped_json 카운터만 올리고 computation 은 유효 rows 로 진행.
+        """
+        import json
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        # 유효 12 건 (positive outcome, BUY hit) + malformed 3 건.
+        valid_verdicts = [
+            {"agent_name": "technical", "action": "BUY"},
+            {"agent_name": "fundamental", "action": "SELL"},
+        ]
+        with get_db(db_path) as conn:
+            for i in range(12):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"V{i}", "BUY", 50.0, None, None, 100.0,
+                     json.dumps(valid_verdicts), 0.05),
+                )
+            # Malformed — JSON parse error
+            for i in range(3):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"M{i}", "BUY", 50.0, None, None, 100.0,
+                     "{not valid json", 0.05),
+                )
+
+        weights = _compute_weights(db_path=db_path)
+        # 유효 12 건 > min_records (10) → 계산 진행. Malformed 3 건은 skip.
+        # technical 이 12회 BUY 적중 → 가중치 상승.
+        assert weights["technical"] > DEFAULT_WEIGHTS["technical"], (
+            "malformed rows skip 후에도 유효 12 건으로 hit rate 계산 진행"
+        )
+
+    def test_min_records_gate(self, db_path):
+        """rows < min_records (10) 면 DEFAULT_WEIGHTS 반환 — hit rate 계산 skip."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        # min_records 기본값 10 미만 — 9 건만 seed
+        self._seed_recommendations(db_path, n_records=9, outcome_sign=1)
+        weights = _compute_weights(db_path=db_path)
+
+        assert weights == DEFAULT_WEIGHTS, "< min_records gate 작동"
+
+    def test_list_non_dict_items_skipped_gracefully(self, db_path):
+        """agent_verdicts 가 list 지만 내부 item 이 dict 아니면 해당 item skip.
+
+        A-1a codex review: `if not isinstance(v, dict): continue` 방어 코드 regression.
+        """
+        import json
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, _compute_weights
+
+        # list 이지만 일부 item 이 string — skip 되어야 함
+        mixed_verdicts = [
+            {"agent_name": "technical", "action": "BUY"},
+            "not a dict",  # skip 대상
+            {"agent_name": "fundamental", "action": "SELL"},
+            None,  # skip 대상
+        ]
+        with get_db(db_path) as conn:
+            for i in range(15):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"L{i}", "BUY", 50.0, None, None, 100.0,
+                     json.dumps(mixed_verdicts), 0.05),
+                )
+
+        weights = _compute_weights(db_path=db_path)
+        # dict items (technical/fundamental) 은 정상 처리, string/None 은 skip.
+        assert weights["technical"] > DEFAULT_WEIGHTS["technical"], (
+            "dict items 정상 처리 — non-dict items skip 안전"
+        )
+
+    def test_observability_counters_logged(self, db_path, caplog):
+        """rows_seen/rows_parsed/rows_skipped_schema/rows_skipped_json 로깅 검증.
+
+        A-1a codex review (P1-3): silent skip opacity 방지. silent fallback 감지
+        가능해야 함. fix revert (logger.info 제거) 시 이 테스트 fail.
+        """
+        import logging
+
+        from nuri.trading.agents.consensus import _compute_weights
+
+        self._seed_recommendations(db_path, n_records=15, outcome_sign=1)
+        with caplog.at_level(logging.INFO, logger="nuri.trading.agents.consensus"):
+            _compute_weights(db_path=db_path)
+
+        # 로그 메시지에 observability 카운터 포함 확인
+        log_texts = [r.message for r in caplog.records]
+        assert any("rows_seen=15" in m for m in log_texts), (
+            f"rows_seen=15 로그 기대. 실제: {log_texts}"
+        )
+        assert any("rows_parsed=15" in m for m in log_texts), (
+            "rows_parsed=15 로그 기대 (모두 valid)"
+        )
