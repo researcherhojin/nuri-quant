@@ -14,6 +14,7 @@ from fastapi import APIRouter
 
 from nuri.core.catalyst import has_recent_catalyst
 from nuri.core.db import query
+from nuri.core.live_price import DEFAULT_DIVERGENCE_THRESHOLD_PCT, check_divergence
 from nuri.core.rules import get_stop_loss_for_account
 from nuri.core.timezone import kst_now
 
@@ -86,6 +87,12 @@ def _build_actions() -> dict:
         position_pct = holding.get("position_pct", 0)
         target = targets_status.get(ticker, {})
 
+        # A-5: 시장 시간이면 live price fetch + divergence 체크. stored price 는
+        # T-1 이라 장중 >3% 차이가 날 수 있음 (NFLX 사례). 지금은 flag 만 — 실제
+        # threshold 비교는 stored 를 계속 사용 (A-5b 에서 live 로 승격 예정).
+        stored_price = holding.get("current_price") or 0
+        diverged, divergence_pct, live_price = check_divergence(ticker, stored_price)
+
         item = {
             "ticker": ticker,
             "name": get_ticker_name(ticker),
@@ -106,7 +113,16 @@ def _build_actions() -> dict:
             # 표시. codex A-2b Round 1 HIGH — `_build_actions` 이 drop 하던 bug fix.
             "scoring_detail": rec.get("scoring_detail"),
             "agent_verdicts": rec.get("agent_verdicts"),
+            # A-5: live oracle snapshot (None 이면 시장외 or fetch fail)
+            "live_price": live_price,
+            "divergence_pct": round(divergence_pct, 2) if live_price is not None else None,
+            "divergence_flag": diverged,
         }
+        if diverged:
+            item["reasons"].append(
+                f"⚠ 실시간 시세 divergence {divergence_pct:+.1f}% "
+                f"(stored {stored_price:.2f} → live {live_price:.2f}, 임계 {DEFAULT_DIVERGENCE_THRESHOLD_PCT}%)",
+            )
 
         # ── 🔴 즉시 실행 조건 ──
 
