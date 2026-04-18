@@ -234,3 +234,40 @@ siege_gates:
       volatility_secondary: []
       external_min_records: 3
       external_min_sources: 1
+
+  # E3-3c (PR TBD) — regime-adaptive position cap multipliers.
+  # STRATEGY §3.6 Stage 2 PASS verdict (#402, paired counterfactual N=254,
+  # 60d 95% CI [+0.0153, +0.1588]% → 60d mean ~+0.5%/year annualized) 가
+  # justify. Codex Round 1 권장 scope: per_position_max **only** —
+  # max_sector_exposure 는 portfolio simulator (E3-4) 후로 deferral
+  # (single-position model 로 검증 불가).
+  #
+  # Mechanics: _check_position_limits 가 현재 regime 조회 → multiplier 적용
+  # → effective_max = base_max × multiplier (account 별). 절대 cap 으로
+  # overflow 방지. Hard veto (VIX>30 신규 매수 차단) 는 별도 volatility_gate
+  # 에 그대로 — override 불가 (§2.6 Hard veto = policy-level).
+  #
+  # Neutral regime (sideways_*, sector_rotation, bear_low_vol) 는 미정의 =
+  # 1.0 default. classify_regime 실패 (data gap) → 1.0 fallback.
+  regime_overrides:
+    # Aggressive — Stage 2 paired counterfactual 에서 favorable forward outcome
+    bull_low_vol:
+      per_position_max_multiplier: 1.20
+    recovery:
+      per_position_max_multiplier: 1.20
+    # Conservative — high-vol, late-cycle, stagflation 에서 size-down
+    bear_high_vol:
+      per_position_max_multiplier: 0.80
+    bull_high_vol:
+      per_position_max_multiplier: 0.80
+    stagflation:
+      per_position_max_multiplier: 0.80
+    euphoria:
+      per_position_max_multiplier: 0.80
+    # Neutral regime 은 미정의 = 1.0 default (sideways_*, sector_rotation,
+    # bear_low_vol)
+
+  # Safety cap: multiplier × base_max 이 이 % 초과 시 cap 으로 clip.
+  # pension(40%) × 1.20 = 48% — under 50, OK. 만약 future strategy 가
+  # base_max 50%+ 가 되면 이 cap 도 함께 재검토.
+  regime_override_absolute_cap_pct: 50.0
