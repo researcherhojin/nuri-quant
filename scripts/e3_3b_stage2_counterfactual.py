@@ -381,11 +381,14 @@ def render_markdown(entries: list[Entry], metrics: dict[int, dict],
                "today's curated list — delisted tickers absent. Affects magnitude not "
                "direction. PASS = 'within current curated-survivor universe', not "
                "market-wide proof.")
-    out.append("- **Single-position model**: codex 원안 \"downside rate of adaptive vs "
-               "baseline\" 는 single-position 에서 trivially identical (둘 다 forward_return "
-               "× positive_size, same sign). `wrong_directional_pct` = P(paired_delta < 0) "
-               "로 reframe — 의미 있는 single-position risk metric. Multi-position portfolio "
-               "sim (sector cap interaction) 은 E3-3c 후속.")
+    out.append("- **Single-position model + `wrong_directional_pct` semantics** (codex Round 1): "
+               "원안 \"downside rate of adaptive vs baseline\" 는 single-position 에서 trivially "
+               "identical (둘 다 forward_return × positive_size, same sign). Reframe `wrong_directional_pct` "
+               "= P(paired_delta < 0) — answers \"did adaptive sizing **help** vs baseline?\", **NOT** "
+               "\"did loss frequency worsen?\". Weaker risk measure than codex 원안 — must be read "
+               "alongside MAE / CVaR (둘 다 reported above), not standalone. Caveat: neutral entries "
+               "(paired_delta == 0) mechanically improve this metric, so 55% threshold is loose. "
+               "Multi-position portfolio sim with true downside-rate gate 은 E3-3c 후속 (sector cap 도 함께).")
     out.append("- **Sector cap untested**: Q4 second axis (max_sector_exposure) NOT tested — "
                "single-position isolation 으로는 portfolio-level cap effect 측정 불가.")
     out.append("- **Single signal family**: SMA 50/200 cross only — momentum/RSI 등 "
