@@ -25,10 +25,10 @@ Methodology — paired counterfactual (same entries, same prices, only sizing di
 
 Stage 2 PASS criteria (codex Plan consult, adapted for single-position model):
 - Primary: 60d horizon 95% bootstrap CI lower bound > 0.00%
-- Risk gate (reframed): wrong-directional rate ≤ 55% 모든 horizon — adaptive 가
-  baseline 대비 손해 본 비율이 coin-flip 근접 이하 (single-position model 에서는
-  codex 의 "downside rate" gate 가 trivially identical 이라 wrong-directional rate
-  로 reframe; 자세한 limitation 은 §"Known limitations" 참조)
+- Risk gate (reframed): wrong-directional rate ≤ 55% 모든 horizon — adaptive
+  sizing 이 baseline 대비 도움이 됐는지 측정 (P(paired_delta < 0)). Loose gate —
+  neutral entry (delta == 0) 가 mechanically improve. MAE / CVaR 를 같이 읽어야
+  실제 risk picture 완성 (§"Known limitations" 참조)
 - Sanity: median paired delta ≥ 0 at 60d, CVaR_5% not materially worse
 
 Sector cap (E3-3 Q4 second axis) not tested here — single-position isolation
