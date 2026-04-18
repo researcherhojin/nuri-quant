@@ -211,16 +211,26 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **상태**: 미착수 (spec 은 `NEXT_SESSION.md §2.7`).
 
-§3.4 의 Kelly·Markowitz·Faber 와 §2.6 의 Symmetric amplifier 를 실제 config + code 로 배선하는 작업. SIEGE 가 regime 마다 자동으로 공격/보수 모드 전환하도록 `siege_gates.regime_overrides` 스키마 + `certification.py` 분기 + walk-forward 백테스트로 구성. **Hard veto (VIX>30, risk-of-ruin) 는 override 금지**.
+§3.4 의 Kelly·Markowitz·Faber 와 §2.6 의 Symmetric amplifier 를 실제 config + code 로 배선하는 작업. SIEGE 가 regime 마다 자동으로 공격/보수 모드 전환하도록 `siege_gates.regime_overrides` 스키마 + `certification.py` 분기로 구성. **Hard veto (VIX>30, risk-of-ruin) 는 override 금지**.
 
-**E3 acceptance preview** (실제 spec/risks 는 E3 PR 에서 확정):
-- **Baseline comparator**: 현 regime-agnostic SIEGE (ALL_CERT_CHECKS 11 base + per-asset-class expansion 그대로).
-- **Outcome horizon**: `recommendations` 테이블의 30/60/90-day return 컬럼 (`outcome_30d` / `outcome_60d` / `outcome_90d`).
-- **Benchmark**: ticker 의 asset class 별 — US equity → SPY, KR equity → KOSPI, KR ETF → KRX300, commodity → GC=F.
-- **"Positive outcome" 정의**: 30-day holding return > benchmark 동기간 return (excess > 0).
-- **Walk-forward 구조**: in-sample 5Y / out-of-sample 1Y, rolling.
-- **Quantitative gate** (E3 에서 reject/accept 결정): regime-adaptive 가 baseline 대비 (a) Sharpe +0.1 이상, (b) Max DD ±5% 이내 (절대 악화 금지), (c) Monte Carlo regime mis-classification 5% 주입 후 Sharpe 하락 < 0.05. 세 기준 모두 충족 시 채택.
-- **Symmetric amplifier 발동 사전 조건**: Surface 단계 측정에서 20+ 발동 중 70%+ "positive outcome" 누적 후 amplifier 로 승격 (운용 원칙 4 의 minimum sample/positive-outcome 정의).
+**E3 acceptance method** (2026-04-19 codex Plan consult 결과 — #391 ship 직후 발견된 데이터 부족 (recommendations.outcome_30/60/90d = 0/156, regime_transitions = 1 row) 반영해 재정의. 실제 spec/risks 는 E3 PR 에서 확정):
+
+3-stage validation: **Stage 0 + Stage 2 모두 통과 시 ship** (Stage 1 은 진단 신호 — fail 시 review 에 cite, hard gate 아님). 순서: Stage 0 → 1 (병행 가능) → 2.
+
+- **Stage 0 — No-lookahead audit** (`tests/quant/regime/test_no_lookahead.py` 신설 후보): classifier historical 호출 시 future row 가 rolling stats 에 유입되지 않음 검증. `compute_dynamic_thresholds()` + `_load_spy_series()` + special-regime detectors (`_detect_euphoria` / `_detect_stagflation` / `_detect_recovery` / `_detect_sector_rotation`) + `classify_regime_history()` monthly sampling 의 intra-month flip 은닉 가능성 점검.
+- **Stage 1 — Classifier plausibility (diagnostic, NOT a hard ship gate)**: N=24~36 historical date 샘플 → 각 date 의 regime label → 그 시점부터 forward 30d return (prices 직접 계산) 분포 측정. directional sanity 만 — "bull_low_vol" 분포가 "bear_high_vol" 보다 right-skewed 인지. **주의 (codex Round 1 P1)**: regime label 의 raw 30d sign predictivity 없어도 sizing rule 은 loss attenuation / exposure scaling 으로 가치 추가 가능. 따라서 Stage 1 이 fail 해도 Stage 2 가 PASS 하면 ship 가능 (Stage 1 은 진단 신호로 review 에 인용).
+- **Stage 2 — Paired counterfactual (main decision gate)**: **Frozen entry signal source** — 단일 entry signal 정의 (E3 PR 에서 확정 — 후보: SMA crossover / momentum top-decile / 자체 BUY signal 의 historical replay). 이 signal 을 prices 5Y 에 적용해 N≥200 historical entry 생성 (recommendations.outcome NULL 무관). 각 entry 에 대해 (a) baseline rule (현 15%/35%/-7%) vs (b) regime-adaptive rule 적용 → portfolio composition diff → forward 30/60/90d return 직접 계산. **Same entries, same prices, only sizing differs** — entry signal effect 와 sizing rule effect 분리. 단일 source 고정으로 mixed-regime 오염 방지.
+
+**Primary metrics** (Sharpe 가 아닌 paired metrics — 50-200 BUY signal 으로는 Sharpe Δ0.1 detect 통계 power 부족):
+- Mean paired excess return at 30/60/90d (regime-adaptive − baseline)
+- **Bootstrap CI on mean/median paired delta** (primary statistical significance — sign test 보다 robust)
+- Downside rate / Maximum Adverse Excursion (MAE)
+- CVaR / 시뮬 portfolio path drawdown
+- Sign test (보조 directional consistency)
+
+**Secondary** (현재 insufficient history 로 차단 — abandon 아님, future PR 에서 데이터 누적 후 진행): walk-forward 5Y in-sample / 1Y OOS Sharpe + DD 비교, Monte Carlo regime mis-classification 5% 주입.
+
+**Symmetric amplifier 발동 사전 조건**: Surface 단계 측정에서 20+ 발동 중 70%+ "positive outcome (paired excess return > 0 at 30d)" 누적 후 amplifier 로 승격 (§2.6 운용 원칙 4 의 minimum sample/positive-outcome 정의).
 
 ### 3.7 SIEGE 의 한계와 equity-context 재평가 (E3 가설)
 
@@ -231,8 +241,8 @@ base = regime_win_rate × 60% + profit_factor × 40%
 - 결과적으로 SIEGE output 은 "신규 매수가 안전한가" 만 판정 — "**현금 보유가 기회 비용을 부담하는가**" 는 invisible. VIX 12 + bull regime + momentum top-decile 같은 favorable 합치에서도 시스템적으로 silent.
 - 사용자 페인 ("너무 보수적, 돈 많이 벌고 싶다") 의 구조적 원인.
 
-**가설** (E3 에서 검증, accept/reject 기준은 §3.6):
-- §2.6 4번째 rung (Symmetric amplifier) + §3.4 Kelly / Markowitz / Faber 근거 위에서, SIEGE 의 양방향 균형 (REJECT 외 favorable 조건 측정) 도입이 위험조정수익을 개선할 수 있는가.
+**가설** (E3 에서 검증, accept/reject 기준은 §3.6 3-stage validation):
+- §2.6 4번째 rung (Symmetric amplifier) + §3.4 Kelly / Markowitz / Faber 근거 위에서, SIEGE 의 양방향 균형 (REJECT 외 favorable 조건 측정) 도입이 paired counterfactual (Stage 2) 에서 baseline 대비 paired outcomes 를 개선하는가 (구체 metric 은 §3.6 Primary metrics).
 - amplifier 와 Hard veto 충돌 우선순위는 §2.6 운용 원칙 4 (post-veto sizing) 로 사전 정의됨 — 본 가설은 그 전제 위에서만 유효.
 
 **경고**: 본 §3.7 진단·가설을 prescriptive (V2 design truth) 로 인용해 config/code 변경 PR 을 만드는 것은 금지. §3.6 백테스트 PASS 전까지는 hypothesis 등급.
