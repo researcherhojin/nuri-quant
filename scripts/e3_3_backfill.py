@@ -30,10 +30,11 @@ import yaml
 
 from nuri.collectors.stock import StockCollector
 from nuri.core.db import query, upsert_macro, upsert_prices
+from nuri.core.timezone import today_kst
 
 LOG = logging.getLogger("e3_3_backfill")
 
-VIX_BACKFILL_DAYS = 1825  # 5Y
+VIX_PERIOD_5Y = "5y"  # codex PR400-round1 — semantic period (provider-stable vs "1825d")
 PRICES_PERIOD_5Y = "5y"
 UNIVERSE_KEY = "us_core"  # codex Plan consult — frozen subset
 
@@ -60,7 +61,7 @@ def backfill_vix(dry_run: bool = False) -> int:
     warnings.filterwarnings("ignore")
 
     LOG.info("📈 VIX 5Y backfill (^VIX)")
-    raw = yf.download("^VIX", period=f"{VIX_BACKFILL_DAYS}d", progress=False)
+    raw = yf.download("^VIX", period=VIX_PERIOD_5Y, progress=False)
     if raw.empty:
         LOG.error("VIX yfinance fetch empty — network 또는 ticker symbol issue")
         return 0
@@ -91,7 +92,7 @@ def backfill_prices(tickers: list[str], dry_run: bool = False) -> tuple[int, int
     """frozen universe 의 각 ticker → 5Y prices upsert. 반환: (성공, 실패, failed_list)."""
     collector = StockCollector()
     start_date = collector._period_to_start_date(PRICES_PERIOD_5Y)
-    end_date = pd.Timestamp.today().strftime("%Y-%m-%d")
+    end_date = today_kst()  # codex PR400-round1 — repo timezone rule
 
     LOG.info(f"📊 Prices 5Y backfill — {len(tickers)} tickers ({start_date} ~ {end_date})")
 
