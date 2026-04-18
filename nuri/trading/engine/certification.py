@@ -80,8 +80,50 @@ class Certificate:
             self.timestamp = kst_now().isoformat()
 
 
+def _current_regime() -> str | None:
+    """현재 regime label. classify 실패 시 None (caller 가 1.0 multiplier fallback)."""
+    try:
+        from nuri.core.timezone import today_kst
+        from nuri.quant.regime.classifier import classify_regime
+        state = classify_regime(date=today_kst())
+        return state.regime if state else None
+    except Exception as e:
+        logger.warning(f"_current_regime 조회 실패 — neutral fallback: {e}")
+        return None
+
+
+def _get_position_multiplier(regime: str | None) -> float:
+    """siege_gates.regime_overrides[regime].per_position_max_multiplier.
+
+    Neutral regime (등록 안 됨) 또는 None regime → 1.0 (no adjustment).
+    Config 부재 → 1.0 (graceful fallback).
+    """
+    if regime is None:
+        return 1.0
+    overrides = RULES.get("siege_gates", {}).get("regime_overrides", {})
+    spec = overrides.get(regime, {})
+    return float(spec.get("per_position_max_multiplier", 1.0))
+
+
+def _apply_position_multiplier(base_pct: float, regime: str | None) -> float:
+    """base_pct (계좌 strategy 의 max_single_position, 0~1 단위) × regime multiplier.
+
+    Absolute cap (config: regime_override_absolute_cap_pct, 0~100 단위) 로 overflow
+    방지. base_pct 자체가 cap 보다 크면 base_pct 를 그대로 반환 (cap 은 multiplier 가
+    base 를 inflate 시켰을 때만 발동 — 보수적으로 strategy 자체 한도는 침해하지 않음).
+    """
+    multiplier = _get_position_multiplier(regime)
+    raised = base_pct * multiplier
+    cap_pct = float(RULES.get("siege_gates", {}).get("regime_override_absolute_cap_pct", 100.0))
+    cap_fraction = cap_pct / 100.0
+    # multiplier 가 raise 한 경우만 cap (multiplier <= 1.0 → original 보존)
+    if multiplier > 1.0 and raised > cap_fraction:
+        return cap_fraction
+    return raised
+
+
 def _check_position_limits(db_path=None) -> CertCondition:
-    """1. 단일 종목 비중 — 계좌별 전략 프로파일 적용."""
+    """1. 단일 종목 비중 — 계좌별 전략 프로파일 + regime override 적용 (E3-3c)."""
     try:
         from nuri.analysis.portfolio import analyze_portfolio
         from nuri.core.rules import get_account_strategy
@@ -90,23 +132,30 @@ def _check_position_limits(db_path=None) -> CertCondition:
         if df.empty:
             return CertCondition("position_limit", "종목 비중 한도", True, "포트폴리오 비어있음")
 
+        regime = _current_regime()
+        multiplier = _get_position_multiplier(regime)
+
         # 종목별 합산 비중 + 해당 종목이 속한 계좌들의 가장 관대한 한도
         agg = df.groupby("ticker")["weight_pct"].sum()
         ticker_accounts = df.groupby("ticker")["account"].apply(list).to_dict()
         violations = {}
         for ticker, weight in agg.items():
             accounts = ticker_accounts.get(ticker, [])
-            max_pos = max(
+            base_max = max(
                 (get_account_strategy(a).get("max_single_position", MAX_SINGLE_POSITION) for a in accounts),
                 default=MAX_SINGLE_POSITION,
             )
-            if weight / 100 > max_pos:
-                violations[ticker] = (weight, max_pos)
+            effective_max = _apply_position_multiplier(base_max, regime)
+            if weight / 100 > effective_max:
+                violations[ticker] = (weight, effective_max)
 
+        regime_tag = f" (regime={regime}, ×{multiplier:.2f})" if multiplier != 1.0 else ""
         if not violations:
-            return CertCondition("position_limit", "종목 비중 한도", True, f"최대 비중: {agg.max():.1f}%")
+            return CertCondition("position_limit", "종목 비중 한도", True,
+                                 f"최대 비중: {agg.max():.1f}%{regime_tag}")
         tickers = ", ".join(f"{t}({w:.1f}%>{limit * 100:.0f}%)" for t, (w, limit) in violations.items())
-        return CertCondition("position_limit", "종목 비중 한도", False, f"위반: {tickers}", "error")
+        return CertCondition("position_limit", "종목 비중 한도", False,
+                             f"위반: {tickers}{regime_tag}", "error")
     except Exception as e:
         return CertCondition("position_limit", "종목 비중 한도", False, f"검증 실패: {e}")
 
