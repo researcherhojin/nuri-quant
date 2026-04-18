@@ -87,22 +87,29 @@
 | OpenBB + yfinance (not Bloomberg) | 무료 데이터. OpenBB 추상화 → provider 교체 용이. yfinance는 폴백. |
 | GitHub Actions (not Jenkins) | 오픈소스 무료 tier. lint + test + coverage + security 자동화. |
 
-### 2.6 Escalation Ladder (근거 기반 → 기계적 차단의 3단계)
+### 2.6 Escalation Ladder (근거 기반 → 기계적 개입의 4단계)
 
-§2.1 (Evidence-first)와 §2.2 (Mechanical execution)는 같은 스펙트럼의 양 끝이다. 모든 반대 증거에 대해 어디까지 기계적 개입을 할지는 3단계 사다리로 결정한다. 새 feature 설계 시 이 단계를 **명시적으로** 고르고 PR/STRATEGY 에 기록한다.
+§2.1 (Evidence-first)와 §2.2 (Mechanical execution)는 같은 스펙트럼의 양 끝이다. 모든 증거에 대해 어디까지 기계적으로 개입할지는 4단계 사다리로 결정한다. **3단계는 제약 방향 (downside-block), 1단계는 보상 방향 (upside-amplify)**. 새 feature 설계 시 이 단계를 **명시적으로** 고르고 PR/STRATEGY 에 기록한다.
 
-| 단계 | 행동 | 언제 | 구현 예시 |
-|------|------|------|----------|
-| **Surface** | 증거 노출만 (UI 배지, reasoning, log). action/confidence 불변. | 신호가 plausible 하지만 noisy, sparse, outcome-검증 부족. 사용자 판단 여지 유지. | PR #301 `divergence_flag` 감지, PR #302 UI 배지 |
-| **Soft penalty** | 결정적 downgrade/reweight (action HOLD 전환, confidence cap). 차단은 아님. | 같은 반대 시그널이 반복 감지되고, downside skew 는 명확하지만 universal fatal 은 아닐 때. config 로 tunable. | PR #303 `divergence_technical_threshold` (default 80), `config/agents.yaml` |
-| **Hard veto** | 해당 조건이 성립하면 action 강제 변경 또는 차단 (BUY 억제 포함). config 건드리기 어렵게. | 역사적으로 수용 불가, 정책 수준, 위험의 risk-of-ruin 성격. 투자 규칙 급. | Risk agent 거부권 (consensus.py:181, SELL + conf ≥ 80), execution_priority (PR #200), VIX > 30 신규 매수 차단 |
+| 단계 | 방향 | 행동 | 언제 | 구현 예시 |
+|------|------|------|------|----------|
+| **Surface** | — | 증거 노출만 (UI 배지, reasoning, log). action/confidence 불변. | 신호가 plausible 하지만 noisy, sparse, outcome-검증 부족. 사용자 판단 여지 유지. | PR #301 `divergence_flag` 감지, PR #302 UI 배지 |
+| **Soft penalty** | down | 결정적 downgrade/reweight (action HOLD 전환, confidence cap). 차단은 아님. | 같은 반대 시그널이 반복 감지되고, downside skew 는 명확하지만 universal fatal 은 아닐 때. config 로 tunable. | PR #303 `divergence_technical_threshold` (default 80), `config/agents.yaml` |
+| **Hard veto** | down | 해당 조건이 성립하면 action 강제 변경 또는 차단 (BUY 억제 포함). config 건드리기 어렵게. | 역사적으로 수용 불가, 정책 수준, 위험의 risk-of-ruin 성격. 투자 규칙 급. | Risk agent 거부권 (consensus.py:181, SELL + conf ≥ 80), execution_priority (PR #200), VIX > 30 신규 매수 차단 |
+| **Symmetric amplifier** | up | **Post-veto sizing** — Hard veto / Soft penalty 통과해 이미 eligible 인 candidate 에 대해서만 다중 favorable 조건 동시 충족 시 position size / confidence 상향. cap 강제 (예: baseline × 1.5 한도). config tunable. veto/penalty 와 충돌하는 ticker 는 amplifier 평가 대상 아님. | regime + momentum + VIX 모두 favorable 신호가 eligible candidate 에 동시 발생. 단일 조건 발동 금지 (§2.1 evidence-first). | (E3 도착 예정 — `siege_gates.regime_overrides.amplifier_eligible` 후보, §3.6 참조) |
 
 **운용 원칙**:
 1. Surface → Soft penalty 이관은 **데이터 기반** 결정. penalty 를 정당화할 "발동 빈도 + 적중률" 측정이 선행. `pipeline_events` 에서 `consensus_penalty_applied` 같은 감사 이벤트로 수집.
 2. Soft penalty → Hard veto 이관은 **정책/이론 기반** 결정. STRATEGY 개정 PR + 백테스트 증거 필수.
 3. 등급 상향은 쉽고, 하향은 어렵다 (한 번 mechanical 로 올린 것을 informational 로 내리면 과거에 차단된 case 의 해석이 모호해짐).
+4. **Symmetric amplifier 평가 순서**: amplifier 는 항상 **veto/penalty 단계 이후** 에 실행. Hard veto 가 차단한 candidate 는 amplifier 평가 대상에서 제외 — "보상 증폭" 이 "손실 회피" 를 우회하는 경로는 구조적으로 불가능. 발동 후보 이벤트는 우선 Surface 단계에서 측정 (E3 acceptance 의 minimum sample/positive-outcome 기준은 §3.6 참조) 후 amplifier 로 승격.
 
-**Anti-pattern**: §2.1 "Evidence-first" 를 이유로 모든 것을 Surface 에 두면 P1 A1/A2 의 JKHY 에피소드처럼 ⚠ 배지가 실제 행동을 바꾸지 않는 "performative 경고" 가 된다. 반대로 모든 반대를 Hard veto 로 올리면 trade 기회 손실 + 사용자의 판단권 박탈. 3단계 구분이 명시적 framework.
+**Anti-pattern**:
+- §2.1 "Evidence-first" 를 이유로 모든 것을 Surface 에 두면 P1 A1/A2 의 JKHY 에피소드처럼 ⚠ 배지가 실제 행동을 바꾸지 않는 "performative 경고" 가 된다.
+- 반대로 모든 반대를 Hard veto 로 올리면 trade 기회 손실 + 사용자의 판단권 박탈.
+- **Symmetric amplifier 를 Soft penalty 의 대칭 mirror 로 잘못 단일 조건에 발동시키면 (예: VIX 한 가지만 보고 boost) noise pumping** — 다중 조건 합치 + Surface 측정 선행이 필수.
+
+4단계 구분이 명시적 framework.
 
 **변경 절차**: 단계 이동은 config 또는 docs 만 건드리는 PR 로. 코드에 매직 넘버 추가하는 방식으로 step 승격 금지 (§2.2 "규칙을 바꾸고 싶으면 YAML을 수정" 원칙).
 
@@ -176,6 +183,9 @@ base = regime_win_rate × 60% + profit_factor × 40%
 | **execution_priority** (손절>익절>트레일링>신규매수) | 하락 모멘텀의 1시간 지연 = 추가 손실 확정. 상승 모멘텀은 상대적으로 견딤. | 자체 재무 논리 (PR #200) |
 | **trailing_stop_arm +15%** | 수익이 자연스럽게 되돌아가는 give-back 방지 | active 전략 신규 (PR #202) |
 | **decisions 결과 추적** | 경험 기반 신뢰도: 에이전트별 적중률을 모아 가중치 동적 조정 | Decision Intelligence (PR #181, #183) |
+| **Kelly growth-optimal 비중 (f\* = (bp − q)/b)** | edge·승률·payoff 비율을 동시에 반영해 position size 결정 (기본 framework). 실전 배선은 fractional Kelly 형태로 — full Kelly 는 estimation error·variance·drawdown 로 부적합. (E3 에서 실 배선 예정) | **Framework**: Kelly, J. L. (1956). "A New Interpretation of Information Rate." *Bell System Technical Journal* 35(4), 917–926. DOI: 10.1002/j.1538-7305.1956.tb03809.x. **Fractional 실무 보정**: MacLean, Thorp, Ziemba (eds.), *The Kelly Capital Growth Investment Criterion: Theory and Practice* (World Scientific, 2011) |
+| **Mean-variance efficient frontier (sector cap 의 의도)** | 동일 expected return 에서 minimum variance 또는 동일 variance 에서 maximum expected return — 불완전 상관 자산 결합으로 frontier 도출. 현 `max_sector_exposure: 35%` 는 frontier 자체에서 도출된 값이 아니라 prudential risk-cap default. regime 변화 시 재평가 가능 (E3 후보) | Markowitz, H. (1952). "Portfolio Selection." *Journal of Finance* 7(1), 77–91. DOI: 10.1111/j.1540-6261.1952.tb01525.x |
+| **Trend-following regime filter (장기 이동평균)** | 장기 SMA 위/아래로 risk-on/off 전환 — 다중 자산군에 적용된 tactical asset allocation. 위험조정수익 개선 보고 (구체 수치는 §3.6 E3 자체 백테스트로 측정 후 채움). §3.6 regime-adaptive 의 empirical 출발점 | Faber, M. T. (2007). "A Quantitative Approach to Tactical Asset Allocation." *Journal of Wealth Management* 9(4), Spring 2007, 69–79. DOI: 10.3905/jwm.2007.674809 |
 
 ### 3.5 계좌별 전략 프로파일
 
@@ -196,6 +206,36 @@ base = regime_win_rate × 60% + profit_factor × 40%
 - **Long_term / Pension**: 장기 ETF 위주, 단기 변동 무시
 
 규칙 변경 절차: `config/rules.yaml` 수정 → 백테스트 검증 → PR. 코드에 예외 분기 금지.
+
+### 3.6 Regime-adaptive framework (E3, reserved)
+
+**상태**: 미착수 (spec 은 `NEXT_SESSION.md §2.7`).
+
+§3.4 의 Kelly·Markowitz·Faber 와 §2.6 의 Symmetric amplifier 를 실제 config + code 로 배선하는 작업. SIEGE 가 regime 마다 자동으로 공격/보수 모드 전환하도록 `siege_gates.regime_overrides` 스키마 + `certification.py` 분기 + walk-forward 백테스트로 구성. **Hard veto (VIX>30, risk-of-ruin) 는 override 금지**.
+
+**E3 acceptance preview** (실제 spec/risks 는 E3 PR 에서 확정):
+- **Baseline comparator**: 현 regime-agnostic SIEGE (ALL_CERT_CHECKS 11 base + per-asset-class expansion 그대로).
+- **Outcome horizon**: `recommendations` 테이블의 30/60/90-day return 컬럼 (`outcome_30d` / `outcome_60d` / `outcome_90d`).
+- **Benchmark**: ticker 의 asset class 별 — US equity → SPY, KR equity → KOSPI, KR ETF → KRX300, commodity → GC=F.
+- **"Positive outcome" 정의**: 30-day holding return > benchmark 동기간 return (excess > 0).
+- **Walk-forward 구조**: in-sample 5Y / out-of-sample 1Y, rolling.
+- **Quantitative gate** (E3 에서 reject/accept 결정): regime-adaptive 가 baseline 대비 (a) Sharpe +0.1 이상, (b) Max DD ±5% 이내 (절대 악화 금지), (c) Monte Carlo regime mis-classification 5% 주입 후 Sharpe 하락 < 0.05. 세 기준 모두 충족 시 채택.
+- **Symmetric amplifier 발동 사전 조건**: Surface 단계 측정에서 20+ 발동 중 70%+ "positive outcome" 누적 후 amplifier 로 승격 (운용 원칙 4 의 minimum sample/positive-outcome 정의).
+
+### 3.7 SIEGE 의 한계와 equity-context 재평가 (E3 가설)
+
+**라벨**: hypothesis for E3 validation. 현 단계는 **진단** 만 — 새 gate taxonomy 열거 / V2 design truth 선언 금지. 정량 acceptance 기준은 §3.6 에 위치.
+
+**진단** (2026-04-18, `nuri/trading/engine/certification.py:553` 실측):
+- 현 SIEGE 의 `ALL_CERT_CHECKS` 11 base check 함수 (per-asset-class expansion 후 portfolio 구성에 따라 11~30+ 가변) 가 **모두 downside-block 방향** — position cap, sector cap, stop-loss, leverage ban, freshness, volatility, external data, conflict, drift, macro 경고, rules-loaded sanity. **upside / opportunity-cost gate 0개**.
+- 결과적으로 SIEGE output 은 "신규 매수가 안전한가" 만 판정 — "**현금 보유가 기회 비용을 부담하는가**" 는 invisible. VIX 12 + bull regime + momentum top-decile 같은 favorable 합치에서도 시스템적으로 silent.
+- 사용자 페인 ("너무 보수적, 돈 많이 벌고 싶다") 의 구조적 원인.
+
+**가설** (E3 에서 검증, accept/reject 기준은 §3.6):
+- §2.6 4번째 rung (Symmetric amplifier) + §3.4 Kelly / Markowitz / Faber 근거 위에서, SIEGE 의 양방향 균형 (REJECT 외 favorable 조건 측정) 도입이 위험조정수익을 개선할 수 있는가.
+- amplifier 와 Hard veto 충돌 우선순위는 §2.6 운용 원칙 4 (post-veto sizing) 로 사전 정의됨 — 본 가설은 그 전제 위에서만 유효.
+
+**경고**: 본 §3.7 진단·가설을 prescriptive (V2 design truth) 로 인용해 config/code 변경 PR 을 만드는 것은 금지. §3.6 백테스트 PASS 전까지는 hypothesis 등급.
 
 ---
 
