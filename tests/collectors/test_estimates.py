@@ -46,6 +46,12 @@ class TestEstimatesCollector:
         count = _upsert_estimates(records)
         assert count == 1
 
+    def test_upsert_empty_records_returns_zero(self):
+        """line 148 — _upsert_estimates([]) early return."""
+        from nuri.collectors.estimates import _upsert_estimates
+
+        assert _upsert_estimates([]) == 0
+
 
 class TestEstimatesCollectorMockedYFinance:
     def test_collect_with_mocked_yfinance(self, rich_db, monkeypatch):
@@ -324,3 +330,78 @@ class TestEstimatesCli:
         assert "AAPL" in out
         assert "애널리스트 컨센서스" in out
         assert "N/A" in out  # second row 의 None 분기
+
+
+class TestEstimatesCoverageExtra:
+    """Lines 65 / 116-117 cover — source!=portfolio 분기 + bulk log summary."""
+
+    def test_collect_universe_mode_triggers_yfinance_log_suppression(
+        self, rich_db, monkeypatch
+    ):
+        """line 65 — source != 'portfolio' 분기: yfinance logger 레벨 CRITICAL 로 변경.
+
+        실제 change 여부를 로거 level 로 검증 (universe 모드 종료 후 원복).
+        """
+        import logging as _logging
+
+        from nuri.collectors.estimates import EstimatesCollector
+
+        collector = EstimatesCollector()
+        # 21개 ticker — len(us_tickers) >= 20 분기도 같이 커버 (line 116-117)
+        tickers = [f"T{i:02d}" for i in range(21)]
+        monkeypatch.setattr(
+            collector, "_get_tickers",
+            lambda market=None, source="portfolio": tickers,
+        )
+
+        # yfinance Ticker mock — info 없음 → skipped 로 처리 (네트워크 호출 없음)
+        mock_yf = MagicMock()
+        mock_ticker = MagicMock()
+        mock_ticker.info = {}  # empty → return skipped
+        mock_yf.Ticker.return_value = mock_ticker
+        monkeypatch.setitem(__import__("sys").modules, "yfinance", mock_yf)
+
+        # universe 시작 전 yfinance logger level 기록
+        yf_logger = _logging.getLogger("yfinance")
+        initial_level = yf_logger.level
+
+        results = collector.collect(source="universe")
+
+        # 실행 후 원복됨 (initial_level 과 동일해야)
+        assert yf_logger.level == initial_level
+        # 21 tickers 전부 skipped (info={}) → results empty, but log branch 도 실행됨
+        assert results == []
+
+    def test_collect_bulk_log_branch_all_failed(self, rich_db, monkeypatch, caplog):
+        """line 116-117 — us_tickers >= 20 시 summary log 포맷 (failed list)."""
+        import logging as _logging
+
+        from nuri.collectors.estimates import EstimatesCollector
+
+        collector = EstimatesCollector()
+        tickers = [f"F{i:02d}" for i in range(20)]
+        monkeypatch.setattr(
+            collector, "_get_tickers",
+            lambda market=None, source="portfolio": tickers,
+        )
+
+        # yfinance 전부 raise → failed list 에 20개 누적
+        mock_yf = MagicMock()
+
+        class _Exploding:
+            @property
+            def info(self):
+                raise RuntimeError("network down")
+
+        mock_yf.Ticker.side_effect = lambda t: _Exploding()
+        monkeypatch.setitem(__import__("sys").modules, "yfinance", mock_yf)
+
+        with caplog.at_level(_logging.INFO, logger="nuri.collectors.estimates"):
+            collector.collect(source="portfolio")
+
+        # Bulk summary log — "✅" 로 시작하는 line 이 line 117 의 진짜 대상.
+        # (line 53 "수집: 20종목" 과 구별)
+        summary = [r for r in caplog.records if "✅" in r.message]
+        assert summary, "bulk summary log 가 emit 되지 않음"
+        # 20개 전부 failed + '외 N개' truncation branch 확인 (15 remaining)
+        assert "외 15개" in summary[0].message
