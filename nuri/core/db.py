@@ -670,6 +670,33 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE recommendations_new RENAME TO recommendations;
     """,
     ),
+    (
+        21,
+        "create certifications table (E4-0a SIEGE instrumentation)",
+        # E4-0a — SIEGE 가 자체 실행 기록을 보관해야 엔진 predictivity 측정이 가능.
+        # 이전에는 certify() 가 return only 였음 (persist 0건). 이제 매 실행을 row 로 기록.
+        # 각 certify() 호출 = 새 row (dedup 없음; 동일 portfolio_hash 라도 시점이 다르면 별개).
+        """
+        CREATE TABLE IF NOT EXISTS certifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            certified INTEGER NOT NULL,
+            score REAL NOT NULL,
+            total_conditions INTEGER NOT NULL,
+            passed INTEGER NOT NULL,
+            failed INTEGER NOT NULL,
+            warnings INTEGER NOT NULL,
+            regime TEXT,
+            portfolio_hash TEXT,
+            conditions_json TEXT NOT NULL,
+            caller TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_cert_timestamp ON certifications(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_cert_certified ON certifications(certified);
+        CREATE INDEX IF NOT EXISTS idx_cert_regime ON certifications(regime);
+    """,
+    ),
 ]
 
 
@@ -1082,6 +1109,30 @@ def upsert_decision_evidence(decision_id: int, records: list[dict], db_path: Opt
                 rec,
             )
         return len(records)
+
+
+def insert_certification(data: dict, db_path: Optional[Path] = None) -> int:
+    """SIEGE Certificate 실행 기록 삽입 (E4-0a instrumentation).
+
+    각 certify() 호출 = 새 row. UNIQUE 제약 없음 — 동일 portfolio_hash 라도 시점이
+    다르면 별개로 기록되어야 엔진 predictivity 측정이 가능 (§3.7 E4 hypothesis).
+
+    Required keys: timestamp, certified, score, total_conditions, passed, failed,
+    warnings, conditions_json. Optional: regime, portfolio_hash, caller.
+
+    Returns: inserted row id (lastrowid).
+    """
+    required = {"timestamp", "certified", "score", "total_conditions", "passed", "failed", "warnings", "conditions_json"}
+    missing = required - data.keys()
+    if missing:
+        raise ValueError(f"insert_certification: missing required keys {missing}")
+
+    with get_db(db_path) as conn:
+        cols = ", ".join(data.keys())
+        placeholders = ", ".join(f":{k}" for k in data.keys())
+        sql = f"INSERT INTO certifications ({cols}) VALUES ({placeholders})"
+        cursor = conn.execute(sql, data)
+        return cursor.lastrowid or 0
 
 
 def get_decisions(
