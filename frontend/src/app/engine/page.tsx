@@ -6,6 +6,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
+import {
+  CertificationsCard,
+  type CertificationsListResponse,
+  type CertificationsSummary,
+} from "@/components/ui/certifications-card";
 
 // === Types ===
 interface GateCondition {
@@ -130,6 +135,16 @@ async function ConflictsSection() {
   );
 }
 
+// === Certifications History Section (V2 — E4-0a observation loop) ===
+// server-side fetch 만 담당; 실제 렌더는 CertificationsCard (unit-testable pure).
+async function CertificationsSection() {
+  const [history, summary] = await Promise.all([
+    fetchAPI<CertificationsListResponse>("/api/certifications?limit=30"),
+    fetchAPI<CertificationsSummary>("/api/certifications/summary?days=30"),
+  ]);
+  return <CertificationsCard history={history} summary={summary} />;
+}
+
 // === Memory Drift Section ===
 async function MemorySection() {
   const data = await fetchAPI<{ drifts: Drift[]; critical: number; degrading: number }>("/api/memory");
@@ -163,6 +178,12 @@ export default function EnginePage() {
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-bold">SIEGE Engine</h1>
+
+      {/* V2 — SIEGE history 관찰 loop (E4-0a persist + V1 API 소비) */}
+      <Suspense fallback={<Loading />}>
+        <CertificationsSection />
+      </Suspense>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Suspense fallback={<Loading />}><GateSection /></Suspense>
         <div className="space-y-4">
