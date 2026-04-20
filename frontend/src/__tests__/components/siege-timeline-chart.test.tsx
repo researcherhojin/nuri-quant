@@ -186,12 +186,20 @@ describe("SiegeTimelineChart helpers", () => {
       payload: samplePoint({ certified: true }),
       index: 3,
     });
+    // React 19 type: ReactElement.props 는 `unknown` → narrow cast 로 assertion.
+    const props = el.props as {
+      cx: number;
+      cy: number;
+      r: number;
+      fill: string;
+      stroke: string;
+    };
     expect(el.type).toBe("circle");
-    expect(el.props.cx).toBe(100);
-    expect(el.props.cy).toBe(50);
-    expect(el.props.r).toBe(3.5);
-    expect(el.props.fill).toBe("#10b981");
-    expect(el.props.stroke).toBe("#18181b");
+    expect(props.cx).toBe(100);
+    expect(props.cy).toBe(50);
+    expect(props.r).toBe(3.5);
+    expect(props.fill).toBe("#10b981");
+    expect(props.stroke).toBe("#18181b");
   });
 
   it("renderDot rejected point uses red fill", () => {
@@ -201,6 +209,7 @@ describe("SiegeTimelineChart helpers", () => {
       payload: samplePoint({ certified: false }),
       index: 0,
     });
-    expect(el.props.fill).toBe("#ef4444");
+    const props = el.props as { fill: string };
+    expect(props.fill).toBe("#ef4444");
   });
 });
