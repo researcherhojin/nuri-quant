@@ -30,7 +30,7 @@ class TestApiMain:
     def test_security_headers(self, client):
         resp = client.get("/api/health")
         assert resp.headers.get("X-Content-Type-Options") == "nosniff"
-        assert resp.headers.get("X-Frame-Options") == "DENY"
+        assert resp.headers.get("X-Frame-Options") == "SAMEORIGIN"  # A2 fix: /evidence iframe
 
     def test_login_no_password_env(self, client, monkeypatch):
         monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
@@ -84,7 +84,7 @@ class TestAPIMain_R27:
         c = TestClient(app)
         response = c.get("/api/health")
         assert response.headers.get("X-Content-Type-Options") == "nosniff"
-        assert response.headers.get("X-Frame-Options") == "DENY"
+        assert response.headers.get("X-Frame-Options") == "SAMEORIGIN"  # A2 fix: /evidence iframe
 
     def test_auth_no_password_set(self, monkeypatch):
         """Auth endpoint when no DASHBOARD_PASSWORD set."""
