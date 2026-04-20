@@ -389,6 +389,12 @@ class TestGetImprovingSignals:
 
 
 class TestGetRecentScanResults:
+    def setup_method(self):
+        """각 test 전 scan cache 초기화 — test 간 상호 오염 방지."""
+        import nuri.api.routes.actions as mod
+        mod._scan_results_cache["data"] = None
+        mod._scan_results_cache["timestamp"] = 0.0
+
     @patch("nuri.trading.swing.scanner.scan_market")
     def test_returns_scan_dicts(self, mock_fn):
         mock_fn.return_value = [SimpleNamespace(ticker="MRVL", price=128, change_1d=7, change_5d=20, volume_ratio=1.7, rsi=83, signal="breakout", score=69)]
@@ -992,3 +998,168 @@ class TestBuildActionsScoringDetail:
         )
         assert tsla["scoring_detail"] == scoring
         assert tsla["agent_verdicts"] == verdicts
+
+
+class TestScanResultsCache:
+    """`_get_recent_scan_results` cache + lock — dashboard 29.2s race 방지."""
+
+    def setup_method(self):
+        """각 test 전 cache 초기화."""
+        import nuri.api.routes.actions as mod
+        mod._scan_results_cache["data"] = None
+        mod._scan_results_cache["timestamp"] = 0.0
+
+    def test_cache_miss_calls_scan_market(self, monkeypatch):
+        """cache 비어있으면 scan_market 호출 후 결과 저장."""
+        from dataclasses import dataclass
+
+        import nuri.api.routes.actions as mod
+
+        @dataclass
+        class _R:
+            ticker: str = "AAPL"
+            price: float = 100.0
+            change_1d: float = 1.0
+            change_5d: float = 2.0
+            volume_ratio: float = 1.5
+            rsi: float = 60
+            signal: str = "breakout"
+            score: float = 55
+
+        called = {"n": 0}
+
+        def _fake_scan(**kw):
+            called["n"] += 1
+            return [_R()]
+
+        monkeypatch.setattr("nuri.trading.swing.scanner.scan_market", _fake_scan)
+        out = mod._get_recent_scan_results()
+        assert called["n"] == 1
+        assert len(out) == 1
+        assert out[0]["ticker"] == "AAPL"
+        assert out[0]["signal"] == "breakout"
+
+    def test_cache_hit_skips_scan_market(self, monkeypatch):
+        """2번째 호출은 cache hit — scan_market 호출 안 됨."""
+        from dataclasses import dataclass
+
+        import nuri.api.routes.actions as mod
+
+        @dataclass
+        class _R:
+            ticker: str = "AAPL"
+            price: float = 100.0
+            change_1d: float = 0
+            change_5d: float = 0
+            volume_ratio: float = 1.0
+            rsi: float = 50
+            signal: str = "momentum"
+            score: float = 50
+
+        called = {"n": 0}
+
+        def _fake_scan(**kw):
+            called["n"] += 1
+            return [_R()]
+
+        monkeypatch.setattr("nuri.trading.swing.scanner.scan_market", _fake_scan)
+        mod._get_recent_scan_results()  # 1st — miss
+        mod._get_recent_scan_results()  # 2nd — cache hit
+        mod._get_recent_scan_results()  # 3rd — cache hit
+        assert called["n"] == 1, "cache 가 scan 중복을 막아야 함"
+
+    def test_cache_expires_after_ttl(self, monkeypatch):
+        """TTL 초과 시 재scan."""
+        from dataclasses import dataclass
+
+        import nuri.api.routes.actions as mod
+
+        @dataclass
+        class _R:
+            ticker: str = "X"
+            price: float = 1
+            change_1d: float = 0
+            change_5d: float = 0
+            volume_ratio: float = 1
+            rsi: float = 50
+            signal: str = "s"
+            score: float = 1
+
+        call_count = {"n": 0}
+        monkeypatch.setattr(
+            "nuri.trading.swing.scanner.scan_market",
+            lambda **kw: (call_count.update({"n": call_count["n"] + 1}), [_R()])[1],
+        )
+
+        mod._get_recent_scan_results()
+        # TTL 초과 강제 — timestamp 를 과거로 밀어냄
+        mod._scan_results_cache["timestamp"] -= (mod._SCAN_CACHE_TTL + 10)
+        mod._get_recent_scan_results()
+        assert call_count["n"] == 2
+
+    def test_scan_exception_returns_empty_and_does_not_cache(self, monkeypatch):
+        """scan_market 예외 시 [] 반환 + cache 에 저장 안 함."""
+        import nuri.api.routes.actions as mod
+
+        def _failing(**kw):
+            raise RuntimeError("simulated scan failure")
+
+        monkeypatch.setattr("nuri.trading.swing.scanner.scan_market", _failing)
+        result = mod._get_recent_scan_results()
+        assert result == []
+        # cache 는 None 으로 유지 (실패 결과를 저장하면 이후 retry 불가)
+        assert mod._scan_results_cache["data"] is None
+
+    def test_double_checked_lock_prevents_concurrent_scans(self, monkeypatch):
+        """2 thread 가 동시에 호출해도 scan_market 은 1회만 실행."""
+        import threading as _threading
+        from dataclasses import dataclass
+
+        import nuri.api.routes.actions as mod
+
+        @dataclass
+        class _R:
+            ticker: str = "X"
+            price: float = 1
+            change_1d: float = 0
+            change_5d: float = 0
+            volume_ratio: float = 1
+            rsi: float = 50
+            signal: str = "s"
+            score: float = 1
+
+        # scan 이 1초 걸리는 것처럼 delay — 다른 thread 가 lock 대기 상태로 진입
+        import time as _time
+        scan_count = {"n": 0}
+
+        def _slow_scan(**kw):
+            scan_count["n"] += 1
+            _time.sleep(0.2)
+            return [_R()]
+
+        monkeypatch.setattr("nuri.trading.swing.scanner.scan_market", _slow_scan)
+
+        barrier = _threading.Barrier(3)  # 2 worker + main
+        results: list = []
+        errors: list = []
+
+        def _worker():
+            barrier.wait()
+            try:
+                results.append(mod._get_recent_scan_results())
+            except Exception as e:
+                errors.append(e)
+
+        t1 = _threading.Thread(target=_worker)
+        t2 = _threading.Thread(target=_worker)
+        t1.start()
+        t2.start()
+        barrier.wait()
+        t1.join(timeout=3)
+        t2.join(timeout=3)
+
+        assert errors == []
+        assert scan_count["n"] == 1, f"lock 이 concurrent scan 을 막아야 함 (실제 {scan_count['n']}회)"
+        assert len(results) == 2
+        # 두 thread 모두 동일 cache 결과 받음
+        assert results[0] == results[1]
