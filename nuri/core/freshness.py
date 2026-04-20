@@ -32,7 +32,10 @@ FRESHNESS_POLICIES = {
         "label": "에이전트 합의",
     },
     "certification": {
-        "query": "SELECT MAX(timestamp) FROM pipeline_events WHERE event_type = 'certification_result'",
+        # E4-0a (PR #410) 이후 SIEGE 인증 실행은 `certifications` 테이블에 직접 persist.
+        # 이전 policy 는 pipeline_events 'certification_result' 이벤트를 기대했으나 emitter 부재
+        # → 항상 FAIL. certifications.timestamp 는 ISO datetime (kst_now().isoformat()).
+        "query": "SELECT MAX(timestamp) FROM certifications",
         "warn_hours": 24,
         "fail_hours": 48,
         "label": "SIEGE 인증",
@@ -41,12 +44,27 @@ FRESHNESS_POLICIES = {
 
 
 def _parse_timestamp(value: str) -> datetime:
-    """날짜/시간 문자열 파싱 (YYYY-MM-DD 또는 ISO datetime)."""
-    # ISO datetime (YYYY-MM-DD HH:MM:SS 또는 YYYY-MM-DDTHH:MM:SS)
+    """날짜/시간 문자열 파싱 (YYYY-MM-DD 또는 ISO datetime, 옵션으로 microseconds/timezone).
+
+    지원 포맷:
+    - `YYYY-MM-DD`
+    - `YYYY-MM-DD HH:MM:SS` / `YYYY-MM-DDTHH:MM:SS`
+    - `YYYY-MM-DDTHH:MM:SS.ffffff±HH:MM` (kst_now().isoformat() — E4-0a certifications)
+
+    fromisoformat 은 Python 3.11+ 에서 extended ISO 를 완전 지원.
+    """
+    s = value.strip()
+    # fromisoformat 먼저 시도 — tz-aware / microseconds 모두 지원 (Python 3.11+)
+    try:
+        dt = datetime.fromisoformat(s)
+        # 타임존이 없으면 KST 로 간주
+        return dt.replace(tzinfo=KST) if dt.tzinfo is None else dt
+    except ValueError:
+        pass
+    # strptime fallback (date-only 같은 짧은 포맷)
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
         try:
-            dt = datetime.strptime(value.strip(), fmt)
-            # 타임존이 없으면 KST로 간주
+            dt = datetime.strptime(s, fmt)
             return dt.replace(tzinfo=KST)
         except ValueError:
             continue
