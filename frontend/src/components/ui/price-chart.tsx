@@ -99,7 +99,7 @@ export function PriceChart({ data, ticker }: PriceChartProps) {
       </div>
 
       {/* Price + Volume chart */}
-      <div className="w-full min-w-0 h-[280px]">
+      <div className="w-full min-w-0 h-70">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
           <ComposedChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />

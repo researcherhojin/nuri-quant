@@ -144,7 +144,7 @@ const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
   return (
     <div
       className={`
-        relative bg-card border rounded-xl px-5 py-4 min-w-[220px]
+        relative bg-card border rounded-xl px-5 py-4 min-w-55
         transition-all duration-200
         hover:bg-muted/80 hover:scale-[1.02]
         shadow-lg ${STATUS_GLOW[status]}
@@ -378,7 +378,7 @@ export default function PipelinePage() {
       </div>
 
       {/* React Flow 캔버스 */}
-      <div className="h-[320px] rounded-xl border border-border bg-background overflow-hidden">
+      <div className="h-80 rounded-xl border border-border bg-background overflow-hidden">
         <ReactFlow
           nodes={nodes}
           edges={EDGES}
@@ -431,7 +431,7 @@ export default function PipelinePage() {
               {PL.NO_EVENTS} &mdash; {PL.RUN_STEP_HINT}
             </p>
           ) : (
-            <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+            <div className="space-y-1.5 max-h-100 overflow-y-auto">
               {timeline.map((ev, i) => (
                 <div key={`${ev.timestamp}-${i}`} className="flex items-start gap-2 text-xs py-1.5 border-b border-border/30 last:border-0">
                   <span className="shrink-0 text-sm">{EVENT_ICONS[ev.event_type] || "\u2022"}</span>
@@ -475,7 +475,7 @@ export default function PipelinePage() {
               {PL.GATE_LOADING}
             </p>
           ) : (
-            <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+            <div className="space-y-1.5 max-h-100 overflow-y-auto">
               {allConditions.map((c) => (
                 <div key={c.id} className="flex items-start gap-2 text-xs py-1.5 border-b border-border/30 last:border-0">
                   <span className={`shrink-0 text-sm ${c.passed ? "text-emerald-400" : "text-red-400"}`}>
