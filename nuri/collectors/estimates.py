@@ -59,10 +59,10 @@ class EstimatesCollector(BaseCollector):
         failed: list[str] = []
 
         # universe 모드: yfinance 노이즈 억제
-        _yflog = _logging.getLogger("yfinance")
-        _orig_level = _yflog.level
+        _yf_logger = _logging.getLogger("yfinance")
+        _orig_level = _yf_logger.level
         if source != "portfolio":
-            _yflog.setLevel(_logging.CRITICAL)
+            _yf_logger.setLevel(_logging.CRITICAL)
 
         # Parallel yfinance fetch — 10 concurrent OK
         import concurrent.futures
@@ -110,7 +110,7 @@ class EstimatesCollector(BaseCollector):
                     failed.append(ticker)
 
         # 노이즈 억제 해제
-        _yflog.setLevel(_orig_level)
+        _yf_logger.setLevel(_orig_level)
 
         if len(us_tickers) >= 20:
             sample = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
@@ -210,5 +210,5 @@ def main(argv: list[str] | None = None) -> int:
     return count
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

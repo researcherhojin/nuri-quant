@@ -232,10 +232,10 @@ class TestForwardPortfolioNav:
 class TestBootstrapDiffCi:
     def test_reproducibility_same_seed(self):
         """같은 seed + 입력 → 같은 CI."""
-        fired = [1.0, 2.0, 3.0, 4.0, 5.0]
-        notf = [10.0, 12.0, 14.0, 16.0, 18.0]
-        a = _bootstrap_diff_ci(fired, notf, n_iter=500, seed=42)
-        b = _bootstrap_diff_ci(fired, notf, n_iter=500, seed=42)
+        fired: list[float] = [1.0, 2.0, 3.0, 4.0, 5.0]
+        not_fired = [10.0, 12.0, 14.0, 16.0, 18.0]
+        a = _bootstrap_diff_ci(fired, not_fired, n_iter=500, seed=42)
+        b = _bootstrap_diff_ci(fired, not_fired, n_iter=500, seed=42)
         assert a == b
 
     def test_insufficient_sample_returns_nan(self):
@@ -246,10 +246,10 @@ class TestBootstrapDiffCi:
 
     def test_diff_sign_preserved(self):
         """fired << not_fired → CI 가 음수 영역."""
-        fired = list(range(-20, -5))  # mean ~ -12.5
-        notf = list(range(10, 25))  # mean ~ 17
-        lo, hi = _bootstrap_diff_ci(fired, notf, n_iter=500, seed=42)
-        assert hi < 0  # fired - notf 음수
+        fired: list[float] = [float(i) for i in range(-20, -5)]  # mean ~ -12.5
+        not_fired: list[float] = [float(i) for i in range(10, 25)]  # mean ~ 17
+        lo, hi = _bootstrap_diff_ci(fired, not_fired, n_iter=500, seed=42)
+        assert hi < 0  # fired - not_fired 음수
 
 
 # ─── 7. analyze_predictivity ────────────────────────────────────────────────
@@ -573,3 +573,266 @@ class TestMainEntrypoint:
         mod.main(["--save"])
         out = capsys.readouterr().out
         assert "audit:historical rows persisted" in out
+
+
+class TestHelpersCoverage:
+    """Missing lines: _load_universe / _trading_day_on_or_before / momentum edge / synthesize None returns."""
+
+    def test_load_universe_reads_yaml(self, tmp_path, monkeypatch):
+        """_load_universe 가 config/universe.yaml 에서 key 의 tickers 로드."""
+        import scripts.siege_predictivity_audit as mod
+
+        yaml_path = tmp_path / "universe.yaml"
+        yaml_path.write_text("us_core:\n  tickers: [AAPL, MSFT, GOOG]\n")
+        monkeypatch.chdir(tmp_path)
+        # config/ 하위 디렉토리 구조 만들기
+        (tmp_path / "config").mkdir()
+        (tmp_path / "config" / "universe.yaml").write_text(
+            "us_core:\n  tickers: [AAPL, MSFT, GOOG]\n"
+        )
+        result = mod._load_universe("us_core")
+        assert result == ["AAPL", "GOOG", "MSFT"]  # sorted
+
+    def test_load_universe_empty_raises(self, tmp_path, monkeypatch):
+        """tickers 빈 리스트 → RuntimeError."""
+        import pytest as _pytest
+
+        import scripts.siege_predictivity_audit as mod
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "config").mkdir()
+        (tmp_path / "config" / "universe.yaml").write_text("us_core:\n  tickers: []\n")
+        with _pytest.raises(RuntimeError, match="empty"):
+            mod._load_universe("us_core")
+
+    def test_trading_day_on_or_before_finds_latest(self, tiny_db):
+        """prices 에서 date 이하 가장 최신 SPY 거래일."""
+        from scripts.siege_predictivity_audit import _trading_day_on_or_before
+
+        d = _trading_day_on_or_before("2024-06-15", db_path=tiny_db)
+        assert d is not None
+        assert d <= "2024-06-15"
+
+    def test_trading_day_on_or_before_no_data(self, tmp_path):
+        """데이터 없는 DB → None."""
+        from nuri.core.db import init_db
+        from scripts.siege_predictivity_audit import _trading_day_on_or_before
+
+        path = tmp_path / "empty.db"
+        init_db(path)
+        assert _trading_day_on_or_before("2024-06-15", db_path=path) is None
+
+    def test_top_n_momentum_skips_zero_close(self, tmp_path, monkeypatch):
+        """close_then <= 0 ticker 는 제외 (line 157)."""
+        import pandas as pd
+
+        from nuri.core.db import get_db, init_db, upsert_prices
+        from scripts.siege_predictivity_audit import top_n_momentum
+
+        path = tmp_path / "zero.db"
+        init_db(path)
+        # ZERO: 252+ rows, close_then (맨 뒤) = 0 → 제외. GOOD: 정상.
+        dates = pd.bdate_range("2022-01-01", periods=260)
+        rows = []
+        for i, d in enumerate(dates):
+            ds = d.strftime("%Y-%m-%d")
+            # ZERO: 마지막 (as_of=end, [lookback-1]=시작) close 가 0 이면 제외
+            rows.append({"ticker": "ZERO", "date": ds, "open": 1, "high": 1, "low": 1,
+                         "close": 0.0 if i < 10 else 1.0, "volume": 100, "adj_close": 0.0 if i < 10 else 1.0})
+            rows.append({"ticker": "GOOD", "date": ds, "open": 1, "high": 1, "low": 1,
+                         "close": 1.0 + i * 0.1, "volume": 100, "adj_close": 1.0 + i * 0.1})
+            rows.append({"ticker": "SPY", "date": ds, "open": 400, "high": 400, "low": 400,
+                         "close": 400, "volume": 100, "adj_close": 400})
+        upsert_prices(pd.DataFrame(rows), path)
+
+        picks = top_n_momentum(["ZERO", "GOOD"], "2022-12-30", n=2, db_path=path)
+        assert "ZERO" not in picks
+        assert "GOOD" in picks
+
+    def test_synthesize_portfolio_df_empty_tickers_returns_none(self, tiny_db):
+        """빈 ticker list → None (line 212: `if not rows: return None`)."""
+        from scripts.siege_predictivity_audit import synthesize_portfolio_df
+
+        assert synthesize_portfolio_df([], "2024-06-01", db_path=tiny_db) is None
+
+    def test_synthesize_cert_snapshot_empty_df_returns_none(self, tiny_db, monkeypatch):
+        """synthesize_portfolio_df 가 empty df 반환 시 None (line 240)."""
+        import pandas as pd
+
+        import scripts.siege_predictivity_audit as mod
+
+        # regime 은 정상, 그러나 portfolio_df 는 empty DataFrame 으로 mock
+        monkeypatch.setattr(mod, "synthesize_portfolio_df", lambda *a, **k: pd.DataFrame())
+        assert mod.synthesize_cert_snapshot(["AAPL"], "2024-06-01", db_path=tiny_db) is None
+
+    def test_forward_portfolio_nav_empty_tickers_returns_none(self, tiny_db):
+        """빈 ticker list → (None, None) (line 290)."""
+        from scripts.siege_predictivity_audit import forward_portfolio_nav
+
+        ret, mae = forward_portfolio_nav([], "2024-01-02", 30, db_path=tiny_db)
+        assert ret is None and mae is None
+
+
+class TestRunAuditSkipPaths:
+    """run_audit() 의 skip 경로 (330-375) 커버."""
+
+    def test_skip_when_already_audited(self, tiny_db, monkeypatch):
+        """line 330-331 — _already_audited True → skip + log (continue 전에 top_n_momentum 호출 금지)."""
+        import scripts.siege_predictivity_audit as mod
+        from nuri.core.db import insert_certification
+
+        monkeypatch.setattr(mod, "_load_universe", lambda k="us_core": ["AAPL"])
+        # monthly_snapshot_dates 를 단일 "2024-01-31" 로 mock — 이 날짜가 already_audited
+        monkeypatch.setattr(mod, "monthly_snapshot_dates", lambda end, months: ["2024-01-31"])
+        monkeypatch.setattr(mod, "today_kst", lambda: "2024-06-30")
+
+        insert_certification(
+            {
+                "timestamp": "2024-01-31T00:00:00+09:00",
+                "certified": 0, "score": 50, "total_conditions": 1,
+                "passed": 0, "failed": 1, "warnings": 0,
+                "regime": "sideways", "portfolio_hash": "h",
+                "conditions_json": "[]", "caller": "audit:historical",
+            },
+            db_path=tiny_db,
+        )
+
+        # top_n_momentum 호출되면 실패 — _already_audited 가 먼저 continue 해야 함
+        called = {"top_n": 0}
+
+        def _spy_top_n(*a, **k):
+            called["top_n"] += 1
+            return []
+
+        monkeypatch.setattr(mod, "top_n_momentum", _spy_top_n)
+
+        results = mod.run_audit(
+            universe_key="us_core", months=1, top_n=1, save=True, db_path=tiny_db
+        )
+        assert results == []
+        assert called["top_n"] == 0, "_already_audited 가 먼저 continue 해야 함"
+
+    def test_skip_when_momentum_insufficient(self, tiny_db, monkeypatch):
+        """line 335 — top-N 부족 시 skipped_reason 기록."""
+        import scripts.siege_predictivity_audit as mod
+
+        monkeypatch.setattr(mod, "_load_universe", lambda k="us_core": ["AAPL", "MSFT"])
+        monkeypatch.setattr(mod, "today_kst", lambda: "2024-06-30")
+        monkeypatch.setattr(mod, "top_n_momentum", lambda *a, **k: [])  # insufficient
+        results = mod.run_audit(
+            universe_key="us_core", months=1, top_n=5, save=False, db_path=tiny_db
+        )
+        assert len(results) == 1
+        assert "momentum top-N insufficient" in (results[0].skipped_reason or "")
+
+    def test_skip_when_snapshot_build_fails(self, tiny_db, monkeypatch):
+        """line 347 — synthesize_cert_snapshot 이 None → skip."""
+        import scripts.siege_predictivity_audit as mod
+
+        monkeypatch.setattr(mod, "_load_universe", lambda k="us_core": ["AAPL"])
+        monkeypatch.setattr(mod, "today_kst", lambda: "2024-06-30")
+        monkeypatch.setattr(mod, "top_n_momentum", lambda *a, **k: ["AAPL"])
+        monkeypatch.setattr(mod, "synthesize_cert_snapshot", lambda *a, **k: None)
+        results = mod.run_audit(
+            universe_key="us_core", months=1, top_n=1, save=False, db_path=tiny_db
+        )
+        assert len(results) == 1
+        assert "snapshot build 실패" in (results[0].skipped_reason or "")
+
+    def test_skip_when_certify_raises(self, tiny_db, monkeypatch):
+        """line 365 — certify() 예외 → skip, skipped_reason 기록."""
+        import scripts.siege_predictivity_audit as mod
+        from nuri.trading.engine.certification import CertSnapshot
+
+        monkeypatch.setattr(mod, "_load_universe", lambda k="us_core": ["AAPL"])
+        monkeypatch.setattr(mod, "today_kst", lambda: "2024-06-30")
+        monkeypatch.setattr(mod, "top_n_momentum", lambda *a, **k: ["AAPL"])
+
+        fake_snap = CertSnapshot(
+            regime="sideways_low_vol",
+            portfolio_raw=[{"account": "audit", "ticker": "AAPL", "sector": "T", "quantity": 1, "avg_price": 100.0}],
+            portfolio_df=None,
+            portfolio_hash="x",
+            portfolio_error=None,
+        )
+        monkeypatch.setattr(mod, "synthesize_cert_snapshot", lambda *a, **k: fake_snap)
+
+        def _raising_certify(**kw):
+            raise RuntimeError("simulated certify fail")
+
+        monkeypatch.setattr(mod, "certify", _raising_certify)
+        results = mod.run_audit(
+            universe_key="us_core", months=1, top_n=1, save=False, db_path=tiny_db
+        )
+        assert len(results) == 1
+        assert "certify raise" in (results[0].skipped_reason or "")
+
+
+class TestAnalyzePredictivityGateSkip:
+    """analyze_predictivity: snapshot 에 gate 없는 경우 line 478 continue."""
+
+    def test_gate_missing_in_snapshot_is_skipped(self):
+        """한 snapshot 에는 gate X 가 있지만 다른 snapshot 은 없을 때 continue 분기."""
+        from scripts.siege_predictivity_audit import AuditSnapshot, analyze_predictivity
+
+        s1 = AuditSnapshot(
+            snapshot_date="2024-01-31", tickers=["A"],
+            cert={"certified": 0, "score": 50, "total_conditions": 2,
+                  "passed": 1, "failed": 1, "warnings": 0, "timestamp": "x",
+                  "conditions": [
+                      {"id": "gate_A", "passed": False, "severity": "error"},
+                      {"id": "gate_B", "passed": True, "severity": "error"},
+                  ]},
+            regime="sideways", forward_nav={30: -1.0, 60: -1.5, 90: -2.0},
+            forward_mae={30: -2.0, 60: -2.5, 90: -3.0},
+        )
+        s2 = AuditSnapshot(
+            snapshot_date="2024-02-29", tickers=["B"],
+            cert={"certified": 1, "score": 100, "total_conditions": 1,
+                  "passed": 1, "failed": 0, "warnings": 0, "timestamp": "y",
+                  "conditions": [
+                      # gate_A 없음 — analyze 루프에서 continue
+                      {"id": "gate_B", "passed": True, "severity": "error"},
+                  ]},
+            regime="bull_low_vol", forward_nav={30: 2.0, 60: 3.0, 90: 4.0},
+            forward_mae={30: 1.0, 60: 1.5, 90: 2.0},
+        )
+        metrics = analyze_predictivity([s1, s2], n_iter=50)
+        # gate_A: s1 에서만 appear → fire=1 / not_fire=0, skipped in s2
+        gate_a = next(m for m in metrics if m.gate_id == "gate_A")
+        assert gate_a.fire_count == 1
+        assert gate_a.not_fire_count == 0
+
+
+class TestSkipBreakdown:
+    """_skip_breakdown 내부 counter (line 628-629)."""
+
+    def test_skip_breakdown_groups_by_colon_prefix(self):
+        """line 628-629 — _skip_breakdown 이 첫 ':' 이전 prefix 로 counter aggregate.
+
+        실제 구현: `key = (s.skipped_reason or "unknown").split(":")[0]`
+        즉 ":" 가 있는 이유는 prefix 만 group key 로. 없으면 전체 문자열.
+        """
+        from scripts.siege_predictivity_audit import AuditSnapshot, _skip_breakdown
+
+        skipped = [
+            # ":" 이후 부분 다르지만 같은 prefix 로 aggregate
+            AuditSnapshot(snapshot_date="2024-01-31", tickers=[], cert=None, regime=None,
+                          forward_nav={}, forward_mae={},
+                          skipped_reason="certify raise:RuntimeError"),
+            AuditSnapshot(snapshot_date="2024-02-29", tickers=[], cert=None, regime=None,
+                          forward_nav={}, forward_mae={},
+                          skipped_reason="certify raise:ValueError"),
+            AuditSnapshot(snapshot_date="2024-03-31", tickers=[], cert=None, regime=None,
+                          forward_nav={}, forward_mae={},
+                          skipped_reason="snapshot build 실패"),
+            # None → "unknown"
+            AuditSnapshot(snapshot_date="2024-04-30", tickers=[], cert=None, regime=None,
+                          forward_nav={}, forward_mae={},
+                          skipped_reason=None),
+        ]
+        out = _skip_breakdown(skipped)
+        # "certify raise:RuntimeError" 와 ":ValueError" 는 prefix "certify raise" 로 group
+        assert "certify raise=2" in out
+        assert "snapshot build 실패=1" in out
+        assert "unknown=1" in out
