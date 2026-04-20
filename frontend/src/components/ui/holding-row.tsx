@@ -347,7 +347,7 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       </span>
       {/* 현재가 / 평단가 — md+ (768px+). leading-[1.3] 으로 두 줄 사이 여유 살림. */}
       <span
-        className="hidden md:flex flex-col items-end text-right tabular-nums shrink-0 w-[72px] leading-[1.3]"
+        className="hidden md:flex flex-col items-end text-right tabular-nums shrink-0 w-18 leading-[1.3]"
         aria-label={HOLDING_LABEL.CURRENT_AVG}
       >
         <span className="text-[10px] text-zinc-200">{formatPrice(h.latestPrice, h.currency)}</span>
@@ -368,27 +368,27 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       </span>
       {/* status badge — 항상 */}
       <span
-        className={`inline-flex items-center justify-center text-[10px] font-medium rounded border px-1.5 py-0.5 w-[68px] shrink-0 ${status.className}`}
+        className={`inline-flex items-center justify-center text-[10px] font-medium rounded border px-1.5 py-0.5 w-17 shrink-0 ${status.className}`}
       >
         {status.text}
       </span>
       {/* stop loss — md+ */}
       <span
-        className="hidden md:inline-block w-[68px] text-right tabular-nums text-zinc-500 shrink-0"
+        className="hidden md:inline-block w-17 text-right tabular-nums text-zinc-500 shrink-0"
         aria-label={HOLDING_LABEL.STOP_LOSS}
       >
         {formatPrice(h.stopLoss, h.currency)}
       </span>
       {/* target_1 — lg+ */}
       <span
-        className="hidden lg:inline-block w-[68px] text-right tabular-nums shrink-0"
+        className="hidden lg:inline-block w-17 text-right tabular-nums shrink-0"
         aria-label={HOLDING_LABEL.TARGET_1}
       >
         {t1Cell}
       </span>
       {/* target_2 — lg+ */}
       <span
-        className="hidden lg:inline-block w-[68px] text-right tabular-nums shrink-0"
+        className="hidden lg:inline-block w-17 text-right tabular-nums shrink-0"
         aria-label={HOLDING_LABEL.TARGET_2}
       >
         {t2Cell}
@@ -419,7 +419,7 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       </span>
       {/* #218: 섹터 — 2xl+ (1536px+) 27" 모니터용. Label 데이터라 text-left. */}
       <span
-        className="hidden 2xl:inline-block w-[96px] text-left text-[10px] text-zinc-500 truncate shrink-0"
+        className="hidden 2xl:inline-block w-24 text-left text-[10px] text-zinc-500 truncate shrink-0"
         aria-label={HOLDING_LABEL.SECTOR}
         data-testid="sector-cell"
         title={h.sector ?? undefined}
@@ -428,7 +428,7 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
       </span>
       {/* #218: 비중 (% of portfolio) — 2xl+ (1536px+) 27" 모니터용 */}
       <span
-        className="hidden 2xl:inline-block w-[56px] text-right tabular-nums text-[10px] text-zinc-400 shrink-0"
+        className="hidden 2xl:inline-block w-14 text-right tabular-nums text-[10px] text-zinc-400 shrink-0"
         aria-label={HOLDING_LABEL.POSITION_PCT}
         data-testid="position-pct-cell"
       >

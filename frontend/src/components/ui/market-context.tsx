@@ -43,7 +43,7 @@ function healthColor(value: number, thresholds: [number, number]): string {
 
 function HealthCard({ label, value, sub, href, color }: { label: string; value: string; sub: string; href: string; color: string }) {
   return (
-    <Link href={href} className="flex-1 min-w-[80px] rounded-lg bg-zinc-900/60 border border-zinc-800/50 p-2.5 hover:bg-zinc-800/60 transition-colors">
+    <Link href={href} className="flex-1 min-w-20 rounded-lg bg-zinc-900/60 border border-zinc-800/50 p-2.5 hover:bg-zinc-800/60 transition-colors">
       <p className="text-[10px] text-zinc-600 mb-0.5">{label}</p>
       <p className={`text-lg font-bold tabular-nums leading-tight ${color}`}>{value}</p>
       <p className="text-[10px] text-zinc-500 mt-0.5 truncate">{sub}</p>
