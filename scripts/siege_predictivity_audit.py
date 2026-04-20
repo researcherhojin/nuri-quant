@@ -643,10 +643,12 @@ def main() -> int:
     parser.add_argument("--bootstrap-iter", type=int, default=5000, help="bootstrap iterations for CI")
     grp = parser.add_mutually_exclusive_group()
     grp.add_argument("--save", action="store_true", help="persist audit rows to certifications")
-    grp.add_argument("--dry-run", action="store_true", default=True, help="default — no DB write")
+    grp.add_argument("--dry-run", action="store_true",
+                     help="no DB write (default when --save not given)")
     args = parser.parse_args()
 
-    save = args.save and not args.dry_run
+    # 기본은 dry-run. --save 가 명시되면 실제 persist.
+    save = bool(args.save) and not bool(args.dry_run)
 
     LOG.info("═" * 60)
     LOG.info("  E4-0b SIEGE Historical Predictivity Audit")
