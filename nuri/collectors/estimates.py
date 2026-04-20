@@ -159,13 +159,24 @@ def _upsert_estimates(records: list[dict]) -> int:
 
 
 if __name__ == "__main__":
+    import argparse
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
+    parser = argparse.ArgumentParser(description="애널리스트 컨센서스 수집 (yfinance)")
+    parser.add_argument(
+        "--source",
+        choices=["portfolio", "universe", "all"],
+        default="portfolio",
+        help="티커 범위: portfolio(default, 보유종목만) / universe(config/universe.yaml 전체) / all(union)",
+    )
+    args = parser.parse_args()
+
     collector = EstimatesCollector()
-    count = collector.run()
+    count = collector.run(source=args.source)
 
     rows = query(
         """SELECT ticker, recommendation, target_mean, target_median,
