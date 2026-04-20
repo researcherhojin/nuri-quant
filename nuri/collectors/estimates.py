@@ -158,13 +158,9 @@ def _upsert_estimates(records: list[dict]) -> int:
         return len(records)
 
 
-if __name__ == "__main__":
+def _parse_args(argv: list[str] | None = None):
+    """argparse — unit-testable. argv=None 이면 sys.argv 사용."""
     import argparse
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    )
 
     parser = argparse.ArgumentParser(description="애널리스트 컨센서스 수집 (yfinance)")
     parser.add_argument(
@@ -173,8 +169,16 @@ if __name__ == "__main__":
         default="portfolio",
         help="티커 범위: portfolio(default, 보유종목만) / universe(config/universe.yaml 전체) / all(union)",
     )
-    args = parser.parse_args()
+    return parser.parse_args(argv)
 
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint — unit-testable via main(argv=[...])."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
+    args = _parse_args(argv)
     collector = EstimatesCollector()
     count = collector.run(source=args.source)
 
@@ -203,3 +207,8 @@ if __name__ == "__main__":
             rec = r["recommendation"] or "N/A"
             print(f"  {r['ticker']:<12} {rec:<12} {target_str:>10} {current_str:>10} {gap_str:>8} {analysts:>5}")
         print()
+    return count
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
