@@ -7,6 +7,7 @@
 """
 import json
 import logging
+import threading
 import time
 from datetime import timedelta
 
@@ -522,27 +523,51 @@ def _get_short_interest(ticker: str) -> float | None:
     return rows[0]["numeric_value"] if rows else None
 
 
+# Scan-level cache + double-checked lock — prevents duplicate scan_market() calls
+# when multiple concurrent /api/opportunities requests arrive before first completes.
+# (Race observed 2026-04-21: dashboard first-load 29.2s caused by 2 parallel scans.)
+_SCAN_CACHE_TTL = 60  # 1분 — scan 결과가 장중 급변하지 않음
+_scan_results_cache: dict = {"data": None, "timestamp": 0.0}
+_scan_lock = threading.Lock()
+
+
 def _get_recent_scan_results() -> list[dict]:
-    """최근 스캔 결과를 swing_trades 또는 직접 실행에서 가져옴."""
-    try:
-        from nuri.trading.swing.scanner import scan_market
-        results = scan_market(extended=False)
-        return [
-            {
-                "ticker": r.ticker,
-                "price": r.price,
-                "change_1d": r.change_1d,
-                "change_5d": r.change_5d,
-                "volume_ratio": r.volume_ratio,
-                "rsi": r.rsi,
-                "signal": r.signal,
-                "score": r.score,
-            }
-            for r in results[:30]
-        ]
-    except Exception as e:
-        logger.debug(f"Scan: {e}")
-        return []
+    """최근 스캔 결과를 cache + lock 경유로 반환 (중복 scan 방지)."""
+    now = time.time()
+    # Fast path — 다른 request 가 이미 채운 cache 재사용 (lock 없이 read)
+    if _scan_results_cache["data"] is not None:
+        if now - _scan_results_cache["timestamp"] < _SCAN_CACHE_TTL:
+            return _scan_results_cache["data"]
+
+    with _scan_lock:
+        # Double-check — lock 대기 중에 다른 thread 가 채웠을 수 있음
+        now = time.time()
+        if _scan_results_cache["data"] is not None:
+            if now - _scan_results_cache["timestamp"] < _SCAN_CACHE_TTL:
+                return _scan_results_cache["data"]
+
+        try:
+            from nuri.trading.swing.scanner import scan_market
+            results = scan_market(extended=False)
+            formatted = [
+                {
+                    "ticker": r.ticker,
+                    "price": r.price,
+                    "change_1d": r.change_1d,
+                    "change_5d": r.change_5d,
+                    "volume_ratio": r.volume_ratio,
+                    "rsi": r.rsi,
+                    "signal": r.signal,
+                    "score": r.score,
+                }
+                for r in results[:30]
+            ]
+            _scan_results_cache["data"] = formatted
+            _scan_results_cache["timestamp"] = time.time()
+            return formatted
+        except Exception as e:
+            logger.debug(f"Scan: {e}")
+            return []
 
 
 def _get_improving_signals() -> set[str]:
