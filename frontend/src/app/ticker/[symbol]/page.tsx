@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
-import { PriceChart } from "@/components/ui/price-chart";
+import { PriceChartLazy as PriceChart } from "@/components/ui/price-chart-lazy";
 import { TICKER_DETAIL as TD } from "@/lib/strings";
 
 async function TickerDetail({ symbol }: { symbol: string }) {

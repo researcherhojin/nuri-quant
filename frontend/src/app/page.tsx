@@ -10,7 +10,7 @@ import { CoverageStatus } from "@/components/ui/coverage-status";
 import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import { CollapsibleStrip } from "@/components/ui/collapsible-strip";
 import { HeroStats } from "@/components/ui/hero-stats";
-import { CompositionSection, parseCompositionTab } from "@/components/ui/composition-section";
+import { CompositionSectionLazy as CompositionSection, parseCompositionTab } from "@/components/ui/composition-section-lazy";
 import { ActionItems } from "@/components/ui/action-items";
 import { OpportunityExplorer } from "@/components/ui/opportunity-explorer";
 import { MarketContext } from "@/components/ui/market-context";

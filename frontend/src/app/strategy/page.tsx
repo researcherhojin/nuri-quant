@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { InteractiveBacktest } from "@/components/ui/interactive-backtest";
+import { InteractiveBacktestLazy as InteractiveBacktest } from "@/components/ui/interactive-backtest-lazy";
 
 async function StrategyDashboard() {
   const [status, bt] = await Promise.all([

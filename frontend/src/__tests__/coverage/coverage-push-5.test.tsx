@@ -29,6 +29,20 @@ vi.mock("@/components/ui/price-chart", () => ({
   formatVolume: (v: number) => String(v),
 }));
 
+// InteractiveBacktestLazy / PriceChartLazy / CompositionSectionLazy 의 lazy wrapper
+// 우회 — 각 모듈을 inner sync stub 으로 직접 mock. next/dynamic 의 async 성격을
+// 테스트에서 재현하면 unstable 해서 lazy wrapper 자체를 identity 로 대체.
+
+vi.mock("@/components/ui/interactive-backtest-lazy", () => ({
+  InteractiveBacktestLazy: ({ initialData }: { initialData: unknown[] }) => (
+    <div data-testid="equity-curve-chart">{initialData.length} points</div>
+  ),
+}));
+
+vi.mock("@/components/ui/price-chart-lazy", () => ({
+  PriceChartLazy: () => <div data-testid="price-chart" />,
+}));
+
 const mockFetchAPI = vi.fn();
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: any[]) => mockFetchAPI(...args),
