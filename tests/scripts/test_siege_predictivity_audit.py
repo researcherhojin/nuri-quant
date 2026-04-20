@@ -424,3 +424,152 @@ class TestEndToEndTiny:
         # 최소 1개는 cert 생성
         valid = [s for s in snapshots if s.cert is not None]
         assert len(valid) >= 1, f"no valid cert generated; skipped: {[s.skipped_reason for s in snapshots]}"
+
+
+class TestCliArgparse:
+    """CLI `_parse_args` + `resolve_save_flag` — PR #421 coverage gap fix."""
+
+    def test_parse_args_defaults(self):
+        from scripts.siege_predictivity_audit import _parse_args
+
+        args = _parse_args([])
+        assert args.universe == "us_core"
+        assert args.months == 60
+        assert args.top_n == 10
+        assert args.bootstrap_iter == 5000
+        assert args.save is False
+        assert args.dry_run is False
+
+    def test_parse_args_save_flag(self):
+        from scripts.siege_predictivity_audit import _parse_args
+
+        args = _parse_args(["--save"])
+        assert args.save is True
+        assert args.dry_run is False
+
+    def test_parse_args_dry_run_flag(self):
+        from scripts.siege_predictivity_audit import _parse_args
+
+        args = _parse_args(["--dry-run"])
+        assert args.save is False
+        assert args.dry_run is True
+
+    def test_parse_args_save_and_dry_run_mutually_exclusive(self):
+        import pytest as _pytest
+
+        from scripts.siege_predictivity_audit import _parse_args
+
+        with _pytest.raises(SystemExit):
+            _parse_args(["--save", "--dry-run"])
+
+    def test_parse_args_override_months_top_n(self):
+        from scripts.siege_predictivity_audit import _parse_args
+
+        args = _parse_args(["--months", "12", "--top-n", "5", "--bootstrap-iter", "100"])
+        assert args.months == 12
+        assert args.top_n == 5
+        assert args.bootstrap_iter == 100
+
+    def test_resolve_save_flag_default_false(self):
+        """neither --save nor --dry-run → False (dry-run default semantics)."""
+        from scripts.siege_predictivity_audit import _parse_args, resolve_save_flag
+
+        assert resolve_save_flag(_parse_args([])) is False
+
+    def test_resolve_save_flag_save_only_true(self):
+        """`--save` 단독 → True."""
+        from scripts.siege_predictivity_audit import _parse_args, resolve_save_flag
+
+        assert resolve_save_flag(_parse_args(["--save"])) is True
+
+    def test_resolve_save_flag_dry_run_only_false(self):
+        """`--dry-run` 단독 → False."""
+        from scripts.siege_predictivity_audit import _parse_args, resolve_save_flag
+
+        assert resolve_save_flag(_parse_args(["--dry-run"])) is False
+
+
+class TestMainEntrypoint:
+    """main() 함수 직접 호출 — audit loop 는 mock, CLI wiring 만 검증."""
+
+    def test_main_default_no_save_returns_zero(self, monkeypatch, tmp_path):
+        import scripts.siege_predictivity_audit as mod
+
+        called = {}
+
+        def fake_run_audit(**kwargs):
+            called.update(kwargs)
+            return []
+
+        def fake_analyze(*a, **k):
+            return []
+
+        def fake_write(snapshots, metrics, output_path):
+            called["output_path"] = output_path
+
+        monkeypatch.setattr(mod, "run_audit", fake_run_audit)
+        monkeypatch.setattr(mod, "analyze_predictivity", fake_analyze)
+        monkeypatch.setattr(mod, "write_report", fake_write)
+        monkeypatch.setattr(mod, "today_kst", lambda: "2026-04-21")
+        monkeypatch.chdir(tmp_path)
+
+        exit_code = mod.main([])
+        assert exit_code == 0
+        assert called["save"] is False  # default dry-run
+        assert called["universe_key"] == "us_core"
+        assert called["months"] == 60
+        assert called["top_n"] == 10
+        # output_path 기본값: data/reports/{today}/e4_0b_siege_predictivity.md
+        assert str(called["output_path"]).endswith("e4_0b_siege_predictivity.md")
+
+    def test_main_save_flag_propagates(self, monkeypatch, tmp_path):
+        import scripts.siege_predictivity_audit as mod
+
+        called = {}
+        monkeypatch.setattr(mod, "run_audit", lambda **kw: (called.update(kw), [])[1])
+        monkeypatch.setattr(mod, "analyze_predictivity", lambda *a, **k: [])
+        monkeypatch.setattr(mod, "write_report", lambda *a, **k: None)
+        monkeypatch.setattr(mod, "today_kst", lambda: "2026-04-21")
+        monkeypatch.chdir(tmp_path)
+
+        mod.main(["--save", "--months", "2", "--top-n", "3"])
+        assert called["save"] is True
+        assert called["months"] == 2
+        assert called["top_n"] == 3
+
+    def test_main_console_summary_dry_run(self, monkeypatch, tmp_path, capsys):
+        import scripts.siege_predictivity_audit as mod
+
+        monkeypatch.setattr(mod, "run_audit", lambda **kw: [])
+        monkeypatch.setattr(mod, "analyze_predictivity", lambda *a, **k: [])
+        monkeypatch.setattr(mod, "write_report", lambda *a, **k: None)
+        monkeypatch.setattr(mod, "today_kst", lambda: "2026-04-21")
+        monkeypatch.chdir(tmp_path)
+
+        mod.main([])
+        out = capsys.readouterr().out
+        assert "dry-run" in out
+        assert "Audit complete" in out
+
+    def test_main_console_summary_save(self, monkeypatch, tmp_path, capsys):
+        import scripts.siege_predictivity_audit as mod
+        from scripts.siege_predictivity_audit import AuditSnapshot
+
+        fake_snap = AuditSnapshot(
+            snapshot_date="2024-01-31", tickers=["AAPL"],
+            cert={"certified": False, "score": 50, "total_conditions": 1,
+                  "passed": 0, "failed": 1, "warnings": 0, "timestamp": "x",
+                  "conditions": []},
+            regime="sideways_low_vol",
+            forward_nav={30: None, 60: None, 90: None},
+            forward_mae={30: None, 60: None, 90: None},
+        )
+        monkeypatch.setattr(mod, "run_audit", lambda **kw: [fake_snap])
+        monkeypatch.setattr(mod, "analyze_predictivity", lambda *a, **k: [])
+        monkeypatch.setattr(mod, "write_report", lambda *a, **k: None)
+        monkeypatch.setattr(mod, "today_kst", lambda: "2026-04-21")
+        monkeypatch.chdir(tmp_path)
+
+        mod.main(["--save"])
+        out = capsys.readouterr().out
+        assert "audit:historical rows persisted" in out

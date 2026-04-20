@@ -231,3 +231,96 @@ class TestEstimatesCollectorErrorHandling:
 
         assert _safe_int(30) == 30
         assert _safe_int(float("nan")) is None
+
+
+class TestEstimatesCli:
+    """`if __name__ == '__main__'` 블록 coverage — argparse 분기 + main() 직접 호출."""
+
+    def test_parse_args_default_portfolio(self):
+        from nuri.collectors.estimates import _parse_args
+
+        args = _parse_args([])
+        assert args.source == "portfolio"
+
+    def test_parse_args_universe(self):
+        from nuri.collectors.estimates import _parse_args
+
+        args = _parse_args(["--source", "universe"])
+        assert args.source == "universe"
+
+    def test_parse_args_all(self):
+        from nuri.collectors.estimates import _parse_args
+
+        args = _parse_args(["--source", "all"])
+        assert args.source == "all"
+
+    def test_parse_args_invalid_source_rejected(self):
+        import pytest as _pytest
+
+        from nuri.collectors.estimates import _parse_args
+
+        with _pytest.raises(SystemExit):
+            _parse_args(["--source", "invalid"])
+
+    def test_main_calls_run_with_source_and_returns_count(self, monkeypatch, tmp_path):
+        """main(['--source', 'universe']) → run(source='universe') 호출되고 count 반환."""
+        import nuri.collectors.estimates as mod
+
+        called = {}
+
+        class _FakeCollector:
+            def run(self, source="portfolio"):
+                called["source"] = source
+                return 7
+
+        monkeypatch.setattr(mod, "EstimatesCollector", _FakeCollector)
+        monkeypatch.setattr(mod, "query", lambda *a, **k: [])  # no rows → skip print block
+
+        out = mod.main(["--source", "universe"])
+        assert called == {"source": "universe"}
+        assert out == 7
+
+    def test_main_default_source_portfolio_when_no_args(self, monkeypatch):
+        import nuri.collectors.estimates as mod
+
+        called = {}
+
+        class _FakeCollector:
+            def run(self, source="portfolio"):
+                called["source"] = source
+                return 0
+
+        monkeypatch.setattr(mod, "EstimatesCollector", _FakeCollector)
+        monkeypatch.setattr(mod, "query", lambda *a, **k: [])
+
+        mod.main([])
+        assert called["source"] == "portfolio"
+
+    def test_main_print_block_when_rows_present(self, monkeypatch, capsys):
+        """rows 존재 시 print 블록도 실행 — format branches 커버."""
+        import nuri.collectors.estimates as mod
+
+        class _FakeCollector:
+            def run(self, source="portfolio"):
+                return 2
+
+        fake_rows = [
+            {
+                "ticker": "AAPL", "recommendation": "buy",
+                "target_mean": 250.0, "target_median": 245.0,
+                "current_price": 230.0, "num_analysts": 30,
+            },
+            {
+                "ticker": "X", "recommendation": None,
+                "target_mean": None, "target_median": None,
+                "current_price": None, "num_analysts": None,
+            },
+        ]
+        monkeypatch.setattr(mod, "EstimatesCollector", _FakeCollector)
+        monkeypatch.setattr(mod, "query", lambda *a, **k: fake_rows)
+
+        mod.main([])
+        out = capsys.readouterr().out
+        assert "AAPL" in out
+        assert "애널리스트 컨센서스" in out
+        assert "N/A" in out  # second row 의 None 분기
