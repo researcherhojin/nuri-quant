@@ -6,10 +6,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
-import {
-  CertificationsCard,
-  type CertificationsListResponse,
-  type CertificationsSummary,
+import { CertificationsCardLazy } from "@/components/ui/certifications-card-lazy";
+import type {
+  CertificationsListResponse,
+  CertificationsSummary,
 } from "@/components/ui/certifications-card";
 
 // === Types ===
@@ -142,7 +142,7 @@ async function CertificationsSection() {
     fetchAPI<CertificationsListResponse>("/api/certifications?limit=30"),
     fetchAPI<CertificationsSummary>("/api/certifications/summary?days=30"),
   ]);
-  return <CertificationsCard history={history} summary={summary} />;
+  return <CertificationsCardLazy history={history} summary={summary} />;
 }
 
 // === Memory Drift Section ===

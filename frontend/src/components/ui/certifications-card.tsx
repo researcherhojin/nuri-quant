@@ -4,6 +4,7 @@
  * props 로 전달 → vitest 로 rendering 단독 검증 가능.
  */
 import { Card, CardContent } from "@/components/ui/card";
+import { GateFailureChart } from "@/components/ui/gate-failure-chart";
 import { Metric } from "@/components/ui/metric";
 import { SiegeTimelineChart, type CertificationPoint } from "@/components/ui/siege-timeline-chart";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -44,6 +45,18 @@ export function formatAvgScore(avg: number | null): string {
   return avg !== null ? avg.toFixed(1) : "—";
 }
 
+/**
+ * V2.1 #2 — distinct portfolio_hash count. null hash 는 별도 "(none)" bucket.
+ * "21 runs but 1 portfolio state" 같은 degenerate 데이터에서도 가시화.
+ */
+export function countDistinctStates(items: CertificationPoint[]): number {
+  const seen = new Set<string>();
+  for (const it of items) {
+    seen.add(it.portfolio_hash ?? "(none)");
+  }
+  return seen.size;
+}
+
 interface CertificationsCardProps {
   history: CertificationsListResponse;
   summary: CertificationsSummary;
@@ -63,12 +76,14 @@ export function CertificationsCard({ history, summary }: CertificationsCardProps
     );
   }
 
+  const distinctStates = countDistinctStates(history.items);
+
   return (
     <Card className="bg-card border-border">
       <CardContent className="pt-5 space-y-4">
         {/* Summary row */}
         <div className="flex items-center justify-between">
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <Metric
               label="Certified rate (30d)"
               value={formatRate(summary.certified_rate)}
@@ -78,6 +93,12 @@ export function CertificationsCard({ history, summary }: CertificationsCardProps
             <Metric label="Avg score" value={formatAvgScore(summary.avg_score)} size="sm" />
             <Metric label="Runs (30d)" value={summary.count} size="sm" />
             <Metric label="Total in DB" value={history.total_in_db} size="sm" />
+            <Metric
+              label="Distinct states"
+              value={distinctStates}
+              size="sm"
+              color={distinctStates <= 1 ? "red" : "default"}
+            />
           </div>
           {summary.latest && (
             <StatusBadge status={summary.latest.certified ? "READY" : "BLOCKED"} size="sm" />
@@ -86,6 +107,9 @@ export function CertificationsCard({ history, summary }: CertificationsCardProps
 
         {/* Timeline chart */}
         <SiegeTimelineChart items={history.items} />
+
+        {/* Gate breakdown — V2.1 #1 정보 밀도 강화 */}
+        <GateFailureChart items={history.items} />
 
         {/* Caller / regime distributions */}
         <div className="grid grid-cols-2 gap-3">

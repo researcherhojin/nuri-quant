@@ -24,11 +24,15 @@ import {
   SiegeTimelineChart,
   type CertificationPoint,
   type ChartPoint,
-  tickFormatter,
-  labelFormatter,
-  valueFormatter,
+  callerShape,
+  countByCaller,
   dotFill,
+  dotRadius,
+  labelFormatter,
+  LegendShape,
   renderDot,
+  tickFormatter,
+  valueFormatter,
 } from "@/components/ui/siege-timeline-chart";
 
 function makePoint(overrides: Partial<CertificationPoint> = {}): CertificationPoint {
@@ -211,5 +215,97 @@ describe("SiegeTimelineChart helpers", () => {
     });
     const props = el.props as { fill: string };
     expect(props.fill).toBe("#ef4444");
+  });
+
+  it("callerShape maps caller → DotShape", () => {
+    expect(callerShape("cli")).toBe("circle");
+    expect(callerShape("direct")).toBe("circle");
+    expect(callerShape("api:actions:health")).toBe("triangle");
+    expect(callerShape("api:certify")).toBe("triangle");
+    expect(callerShape("audit:historical")).toBe("square");
+    expect(callerShape("scheduler")).toBe("diamond");
+    expect(callerShape("unknown:stuff")).toBe("circle");
+    expect(callerShape(null)).toBe("circle");
+  });
+
+  it("dotRadius: hashChanged → 5, normal → 3.5", () => {
+    expect(dotRadius(false)).toBe(3.5);
+    expect(dotRadius(true)).toBe(5);
+  });
+
+  it("renderDot produces triangle for api:* caller", () => {
+    const el = renderDot({
+      cx: 40,
+      cy: 30,
+      payload: samplePoint({ caller: "api:certify", hashChanged: false }),
+      index: 1,
+    });
+    expect(el.type).toBe("polygon");
+    const props = el.props as { fill: string; points: string };
+    expect(props.fill).toBe("#10b981"); // certified=true 유지
+    expect(props.points).toContain("40,"); // cx 가 points 내에 포함
+  });
+
+  it("renderDot produces square for audit:* caller (E4-0b 호환)", () => {
+    const el = renderDot({
+      cx: 50,
+      cy: 50,
+      payload: samplePoint({ caller: "audit:historical" }),
+      index: 2,
+    });
+    expect(el.type).toBe("rect");
+    const props = el.props as { x: number; y: number; width: number; height: number };
+    expect(props.width).toBeGreaterThan(0);
+    expect(props.height).toBe(props.width);
+  });
+
+  it("renderDot produces diamond polygon for scheduler caller", () => {
+    const el = renderDot({
+      cx: 60,
+      cy: 40,
+      payload: samplePoint({ caller: "scheduler" }),
+      index: 3,
+    });
+    expect(el.type).toBe("polygon");
+    const props = el.props as { points: string };
+    // diamond: 4 points with `cx,cy±h` / `cx±h,cy` pattern
+    expect(props.points.split(" ")).toHaveLength(4);
+  });
+
+  it("renderDot hashChanged 포인트는 radius 증가 (circle 기준)", () => {
+    const el = renderDot({
+      cx: 70,
+      cy: 40,
+      payload: samplePoint({ caller: "cli", hashChanged: true }),
+      index: 4,
+    });
+    const props = el.props as { r: number };
+    expect(props.r).toBe(5);
+  });
+
+  it("countByCaller: 분포를 descending count 로 집계", () => {
+    const pts: ChartPoint[] = [
+      samplePoint({ caller: "cli", id: 1 }),
+      samplePoint({ caller: "cli", id: 2 }),
+      samplePoint({ caller: "api:actions:health", id: 3 }),
+      samplePoint({ caller: null, id: 4 }),
+    ];
+    const buckets = countByCaller(pts);
+    expect(buckets).toEqual([
+      { caller: "cli", count: 2, shape: "circle" },
+      { caller: "api:actions:health", count: 1, shape: "triangle" },
+      { caller: "(none)", count: 1, shape: "circle" },
+    ]);
+  });
+
+  it("LegendShape renders different elements per shape", () => {
+    const triangle = LegendShape({ shape: "triangle" });
+    expect(triangle.type).toBe("svg");
+    const square = LegendShape({ shape: "square" });
+    expect(square.type).toBe("span");
+    const diamond = LegendShape({ shape: "diamond" });
+    expect(diamond.type).toBe("svg");
+    const circle = LegendShape({ shape: "circle" });
+    expect(circle.type).toBe("span");
   });
 });
