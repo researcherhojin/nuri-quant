@@ -70,7 +70,9 @@ def get_certification():
 
     from nuri.trading.engine.certification import certify
 
-    cert = certify()
+    # API path — persist 실패가 HTTP 500 으로 전파되면 안 됨. swallow=True (E4-0a
+     # codex R1 P1). Engine/CLI/remediation 은 default loud 유지.
+    cert = certify(caller="api:targets", swallow_persist_errors=True)
     result = {
         "certified": cert.certified,
         "score": cert.score,

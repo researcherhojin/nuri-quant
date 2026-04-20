@@ -380,3 +380,92 @@ class TestUpsertNewsDedupCount:
         from nuri.core.db import upsert_news
 
         assert upsert_news([], db_path=db_path) == 0
+
+
+class TestInsertCertification:
+    """E4-0a — SIEGE Certificate instrumentation.
+
+    certifications 테이블이 없었던 시절 (SIEGE return-only) 에는 엔진 predictivity
+    측정이 불가능. 이 테이블 + insert helper 가 미래 audit 의 기반.
+    """
+
+    def _valid_data(self, **overrides):
+        base = {
+            "timestamp": "2026-04-20T10:00:00+09:00",
+            "certified": 0,
+            "score": 52.9,
+            "total_conditions": 17,
+            "passed": 9,
+            "failed": 1,
+            "warnings": 7,
+            "regime": "sideways_high_vol",
+            "portfolio_hash": "abc123def456",
+            "conditions_json": '[{"id":"position_limit","passed":false,"severity":"error"}]',
+            "caller": "test",
+        }
+        base.update(overrides)
+        return base
+
+    def test_insert_returns_row_id(self, db_path):
+        """insert_certification 은 lastrowid (> 0) 반환."""
+        from nuri.core.db import insert_certification
+
+        rid = insert_certification(self._valid_data(), db_path=db_path)
+        assert rid >= 1
+
+    def test_row_stored_with_all_fields(self, db_path):
+        """삽입된 row 가 input field 를 모두 보존 (JSON roundtrip, optional 포함)."""
+        from nuri.core.db import insert_certification, query
+
+        data = self._valid_data(caller="api:actions", regime="bull_low_vol")
+        insert_certification(data, db_path=db_path)
+
+        rows = query("SELECT * FROM certifications", db_path=db_path)
+        assert len(rows) == 1
+        r = rows[0]
+        assert r["timestamp"] == data["timestamp"]
+        assert r["certified"] == 0
+        assert r["score"] == 52.9
+        assert r["total_conditions"] == 17
+        assert r["regime"] == "bull_low_vol"
+        assert r["caller"] == "api:actions"
+        assert r["portfolio_hash"] == "abc123def456"
+        assert r["created_at"] is not None  # DB default
+
+    def test_missing_required_key_raises(self, db_path):
+        """required key 누락 → ValueError (silent default 금지 — §2.4 loud at boundary)."""
+        from nuri.core.db import insert_certification
+
+        data = self._valid_data()
+        del data["score"]
+        with pytest.raises(ValueError, match="missing required keys"):
+            insert_certification(data, db_path=db_path)
+
+    def test_multiple_runs_accumulate_no_dedup(self, db_path):
+        """동일 portfolio_hash 라도 시점이 다르면 별개로 기록 (UNIQUE 제약 없음)."""
+        from nuri.core.db import insert_certification, query
+
+        insert_certification(
+            self._valid_data(timestamp="2026-04-20T09:00:00+09:00"), db_path=db_path
+        )
+        insert_certification(
+            self._valid_data(timestamp="2026-04-20T10:00:00+09:00"), db_path=db_path
+        )
+        insert_certification(
+            self._valid_data(timestamp="2026-04-20T11:00:00+09:00"), db_path=db_path
+        )
+
+        rows = query("SELECT COUNT(*) AS c FROM certifications", db_path=db_path)
+        assert rows[0]["c"] == 3
+
+    def test_nullable_fields_accepted(self, db_path):
+        """regime / portfolio_hash / caller 는 None 허용 (empty portfolio, pre-regime DB)."""
+        from nuri.core.db import insert_certification, query
+
+        data = self._valid_data(regime=None, portfolio_hash=None, caller=None)
+        insert_certification(data, db_path=db_path)
+
+        rows = query("SELECT regime, portfolio_hash, caller FROM certifications", db_path=db_path)
+        assert rows[0]["regime"] is None
+        assert rows[0]["portfolio_hash"] is None
+        assert rows[0]["caller"] is None
