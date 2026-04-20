@@ -230,6 +230,12 @@ gate:
 certify:
 	$(PYTHON) -m nuri.trading.engine.certification
 
+certify-history:
+	@$(PYTHON) scripts/siege_history.py --limit $(or $(N),10)
+
+certify-diff:
+	@$(PYTHON) scripts/siege_history.py --limit 5 --detail
+
 remediate:
 	$(PYTHON) -m nuri.trading.engine.remediation
 
