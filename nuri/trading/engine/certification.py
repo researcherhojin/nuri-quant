@@ -35,8 +35,11 @@ portfolio 의 asset_class 조합에 따라 11~30+ 범위. `certified` 판정은 
 import hashlib
 import json
 import logging
+import sqlite3
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING, Literal, Optional
 
 from nuri.core.db import insert_certification, query
 from nuri.core.rules import (
@@ -48,7 +51,25 @@ from nuri.core.rules import (
     VIX_BLOCK_ABOVE,
 )
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 logger = logging.getLogger(__name__)
+
+# E4-0a — caller 는 persisted analytics 에 쓰이므로 typo 분산 방지. 새 caller
+# 추가 시 이 Literal 에 등록 (codex R1 #4). None 은 unattributed (default).
+CallerTag = Literal[
+    "cli",
+    "remediation",
+    "api:targets",
+    "api:actions:violations",
+    "api:actions:health",
+    # test 전용
+    "test",
+    "test:caller:example",
+    "direct",
+    "e4-0a-smoke",
+]
 
 
 @dataclass
@@ -82,16 +103,107 @@ class Certificate:
             self.timestamp = kst_now().isoformat()
 
 
-def _current_regime() -> str | None:
-    """현재 regime label. classify 실패 시 None (caller 가 1.0 multiplier fallback)."""
+@dataclass
+class CertSnapshot:
+    """Certify() 실행 시점의 state snapshot.
+
+    codex R2 P2 full rigor: 모든 portfolio consumer 가 같은 상태를 본다. ContextVar
+    로 gate signature 변경 없이 전파. Test 가 gate 를 직접 호출 시 fresh read
+    (back-compat).
+
+    **portfolio_raw** — `SELECT account, ticker, sector, quantity, avg_price FROM
+    portfolio WHERE ticker != '' ORDER BY account, ticker` 의 row 리스트. R4 시점
+    에 추가 (codex R4 High). `_check_leverage_ban` + `_group_holdings_by_asset_class`
+    + `_compute_portfolio_hash` 가 모두 이 단일 read 에서 파생 → raw-portfolio-backed
+    gates 들 과 persist 된 hash 가 identically 일치.
+
+    **portfolio_df** — `analyze_portfolio()` 의 transformed DataFrame. Position/
+    sector/stop_loss gate 용 (USD conversion + weight_pct). analyze_portfolio()
+    실패 시 `portfolio_error` 에 예외 저장, `_snapshot_portfolio()` 이 re-raise
+    → 각 gate 의 try/except 가 기존 semantic 대로 처리 (R3).
+    """
+
+    regime: str | None
+    portfolio_raw: list[dict]  # raw portfolio rows (ticker/sector/account/qty/avg_price)
+    portfolio_df: "pd.DataFrame | None"  # analyze_portfolio (USD 변환), None iff error
+    portfolio_hash: str | None
+    portfolio_error: Exception | None = None  # analyze_portfolio 실패 보존
+
+
+# ContextVar — certify() 가 진입 시 set, 종료 시 reset. thread-safe + async-safe.
+_CERT_SNAPSHOT: ContextVar[CertSnapshot | None] = ContextVar("cert_snapshot", default=None)
+
+
+def _classify_regime_fresh() -> str | None:
+    """DB fresh read. certify snapshot 과 무관하게 항상 재조회 (snapshot capture 용)."""
     try:
         from nuri.core.timezone import today_kst
         from nuri.quant.regime.classifier import classify_regime
         state = classify_regime(date=today_kst())
         return state.regime if state else None
     except Exception as e:
-        logger.warning(f"_current_regime 조회 실패 — neutral fallback: {e}")
+        logger.warning(f"regime 조회 실패 — neutral fallback: {e}")
         return None
+
+
+def _current_regime() -> str | None:
+    """현재 regime label. certify() scope 내에서 호출되면 snapshot regime, 아니면 fresh.
+
+    **Rigor invariant (R2 P2 full fix)**: certify() 실행 중 모든 `_current_regime()`
+    호출 (gate eval + _persist_certification) 은 **같은 값** 반환 → audit row regime
+    과 gate eval 에서 사용된 regime 이 identically 일치.
+    """
+    snap = _CERT_SNAPSHOT.get()
+    if snap is not None:
+        return snap.regime
+    return _classify_regime_fresh()
+
+
+def _snapshot_portfolio_raw(db_path=None) -> list[dict]:
+    """Certify() scope 내 snapshot.portfolio_raw, 아니면 fresh DB read.
+
+    `_check_leverage_ban` + `_group_holdings_by_asset_class` + `_compute_portfolio_hash`
+    의 공통 source — 한 certify() 안에서 모두 동일 상태 참조 (codex R4 fix).
+    """
+    snap = _CERT_SNAPSHOT.get()
+    if snap is not None:
+        return snap.portfolio_raw
+    return _read_portfolio_raw(db_path=db_path)
+
+
+def _read_portfolio_raw(db_path=None) -> list[dict]:
+    """Raw portfolio DB read (snapshot 과 무관, fresh). _capture_snapshot 이 호출."""
+    try:
+        rows = query(
+            "SELECT account, ticker, sector, quantity, avg_price FROM portfolio "
+            "WHERE ticker != '' ORDER BY account, ticker",
+            db_path=db_path,
+        )
+    except sqlite3.OperationalError as e:
+        logger.warning(f"portfolio_raw DB read 실패 (sqlite OperationalError): {e}")
+        return []
+    return [dict(r) for r in rows]
+
+
+def _snapshot_portfolio() -> "pd.DataFrame":
+    """Certify() scope 내에서 호출되면 snapshot portfolio_df, 아니면 fresh analyze_portfolio().
+
+    **Rigor invariant (R2 P2 full fix)**: certify() 실행 중 모든 gate 가 호출하는
+    analyze_portfolio 경로를 이 함수로 통과시켜 모두 **같은 DataFrame** 참조
+    → snapshot_hash 와 gate eval portfolio 가 identically 일치.
+
+    Empty portfolio 는 빈 DataFrame 으로 정상 반환 (analyze_portfolio 와 shape 일치).
+    """
+    snap = _CERT_SNAPSHOT.get()
+    if snap is not None:
+        # R3 correctness — 저장된 예외를 re-raise 해서 각 gate 의 try/except 가
+        # 기존 semantic 대로 처리 (silent empty fallback 금지).
+        if snap.portfolio_error is not None:
+            raise snap.portfolio_error
+        assert snap.portfolio_df is not None  # portfolio_error 없으면 df 존재
+        return snap.portfolio_df
+    from nuri.analysis.portfolio import analyze_portfolio
+    return analyze_portfolio()
 
 
 def _get_position_multiplier(regime: str | None) -> float:
@@ -125,12 +237,14 @@ def _apply_position_multiplier(base_pct: float, regime: str | None) -> float:
 
 
 def _check_position_limits(db_path=None) -> CertCondition:
-    """1. 단일 종목 비중 — 계좌별 전략 프로파일 + regime override 적용 (E3-3c)."""
+    """1. 단일 종목 비중 — 계좌별 전략 프로파일 + regime override 적용 (E3-3c).
+
+    Portfolio 는 certify() snapshot 을 우선 참조 (codex R2 P2 rigor).
+    """
     try:
-        from nuri.analysis.portfolio import analyze_portfolio
         from nuri.core.rules import get_account_strategy
 
-        df = analyze_portfolio()
+        df = _snapshot_portfolio()
         if df.empty:
             return CertCondition("position_limit", "종목 비중 한도", True, "포트폴리오 비어있음")
 
@@ -163,11 +277,9 @@ def _check_position_limits(db_path=None) -> CertCondition:
 
 
 def _check_sector_limits(db_path=None) -> CertCondition:
-    """2. 섹터 비중 <= 35%."""
+    """2. 섹터 비중 <= 35%. Portfolio snapshot 참조 (R2 P2 rigor)."""
     try:
-        from nuri.analysis.portfolio import analyze_portfolio
-
-        df = analyze_portfolio()
+        df = _snapshot_portfolio()
         if df.empty:
             return CertCondition("sector_limit", "섹터 비중 <= 35%", True, "포트폴리오 비어있음")
 
@@ -182,12 +294,9 @@ def _check_sector_limits(db_path=None) -> CertCondition:
 
 
 def _check_leverage_ban(db_path=None) -> CertCondition:
-    """6. 레버리지 ETF 비보유."""
-    rows = query(
-        "SELECT ticker FROM portfolio WHERE ticker IN ({})".format(",".join(f"'{t}'" for t in LEVERAGE_ETFS)),
-        db_path=db_path,
-    )
-    held = [r["ticker"] for r in rows]
+    """6. 레버리지 ETF 비보유. Snapshot raw portfolio 참조 (R4 rigor)."""
+    rows = _snapshot_portfolio_raw(db_path=db_path)
+    held = sorted({r["ticker"] for r in rows if r["ticker"] in LEVERAGE_ETFS})
     if not held:
         return CertCondition("leverage_ban", "레버리지 ETF 비보유", True, "위반 없음")
     return CertCondition("leverage_ban", "레버리지 ETF 비보유", False, f"보유 중: {', '.join(held)}", "error")
@@ -216,6 +325,10 @@ def _classify_asset_class(ticker: str, sector: str, rules: list[dict]) -> str:
 def _group_holdings_by_asset_class(db_path=None) -> dict[str, list[dict]]:
     """portfolio 를 asset_class 로 group. 빈 portfolio 면 {}.
 
+    Snapshot raw portfolio 참조 (R4 rigor). `_snapshot_portfolio_raw` 가
+    account+ticker ORDER + `ticker!=''` 필터 이미 적용. DISTINCT 는 같은 ticker 를
+    여러 계좌에서 보유하는 경우를 중복 제거하기 위해 여기서 set() 로 처리.
+
     Returns: {asset_class: [{ticker, sector}, ...]}
     """
     gate_config = RULES.get("siege_gates", {})
@@ -223,14 +336,19 @@ def _group_holdings_by_asset_class(db_path=None) -> dict[str, list[dict]]:
     if not rules:
         return {}
 
-    rows = query(
-        "SELECT DISTINCT ticker, sector FROM portfolio WHERE ticker != '' ",
-        db_path=db_path,
-    )
+    rows = _snapshot_portfolio_raw(db_path=db_path)
+    # (ticker, sector) DISTINCT — 기존 SQL DISTINCT 의 Python equivalent
+    seen: set[tuple[str, str]] = set()
     groups: dict[str, list[dict]] = {}
     for row in rows:
-        cls = _classify_asset_class(row["ticker"], row["sector"] or "", rules)
-        groups.setdefault(cls, []).append({"ticker": row["ticker"], "sector": row["sector"]})
+        ticker = row["ticker"]
+        sector = row["sector"] or ""
+        key = (ticker, sector)
+        if key in seen:
+            continue
+        seen.add(key)
+        cls = _classify_asset_class(ticker, sector, rules)
+        groups.setdefault(cls, []).append({"ticker": ticker, "sector": row["sector"]})
     return groups
 
 
@@ -341,12 +459,11 @@ def _check_volatility_gates(db_path=None) -> list[CertCondition]:
 
 
 def _check_stop_loss_compliance(db_path=None) -> CertCondition:
-    """3-4. 손절선 준수 여부 — 계좌별 전략 프로파일 적용."""
+    """3-4. 손절선 준수 여부 — 계좌별 전략 프로파일 적용. Snapshot 참조 (R2 P2 rigor)."""
     try:
-        from nuri.analysis.portfolio import analyze_portfolio
         from nuri.core.rules import get_account_strategy
 
-        df = analyze_portfolio()
+        df = _snapshot_portfolio()
         if df.empty:
             return CertCondition("stop_loss", "손절선 준수", True, "포트폴리오 비어있음")
 
@@ -616,35 +733,51 @@ ALL_CERT_CHECKS = [
 ]
 
 
-def _compute_portfolio_hash(db_path=None) -> str | None:
-    """Portfolio snapshot 의 deterministic sha256. Empty portfolio → None.
+def _compute_portfolio_hash(rows: list[dict] | None = None, db_path=None) -> str | None:
+    """Portfolio state 의 deterministic sha256 hash. Empty portfolio → None.
+
+    **codex R4 refactor**: `rows` 가 주어지면 그것을 직접 hash (snapshot source 와
+    일치 보장). 주어지지 않으면 fresh DB read (back-compat — test 가 directly 호출).
+    이전 버전은 자체 DB read 해서 `_read_portfolio_raw` 와 별도 source 였음 (race).
 
     SIEGE 실행 기록에서 "같은 portfolio 상태 재실행" 을 식별하기 위한 dedup key.
     E4-0b (historical backfill) 에서 snapshot-level grouping 에 사용 예정.
     """
-    try:
-        rows = query(
-            "SELECT account, ticker, quantity, avg_price FROM portfolio "
-            "WHERE ticker != '' ORDER BY account, ticker",
-            db_path=db_path,
-        )
-        if not rows:
-            return None
-        records = [
-            (r["account"], r["ticker"], float(r["quantity"] or 0), float(r["avg_price"] or 0))
-            for r in rows
-        ]
-        payload = json.dumps(records, sort_keys=True)
-        return hashlib.sha256(payload.encode()).hexdigest()
-    except Exception as e:
-        logger.warning(f"portfolio_hash 계산 실패 (non-fatal): {e}")
+    if rows is None:
+        rows = _read_portfolio_raw(db_path=db_path)
+    if not rows:
         return None
+    # R5 codex Low — sector 포함. asset_class_grouping 이 sector 기반이라 sector-only
+    # mutation 이 gate outcome 을 바꿈 → hash 가 이를 반영해야 audit fingerprint 완전.
+    records = [
+        (
+            r["account"],
+            r["ticker"],
+            r["sector"] or "",
+            float(r["quantity"] or 0),
+            float(r["avg_price"] or 0),
+        )
+        for r in rows
+    ]
+    payload = json.dumps(records, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def _persist_certification(cert: "Certificate", db_path=None, caller: str | None = None) -> None:
-    """Certificate 를 certifications 테이블에 insert. 실패는 non-fatal (warning only).
+def _persist_certification(
+    cert: "Certificate",
+    snapshot: CertSnapshot,
+    db_path=None,
+    caller: Optional[CallerTag] = None,
+    swallow_errors: bool = False,
+) -> None:
+    """Certificate 를 certifications 테이블에 insert.
 
-    E4-0a instrumentation — certify() 내부 호출. 실패해도 cert 반환은 정상 진행.
+    **codex R1 P1 fix**: engine default 는 loud (swallow_errors=False, raise).
+    API caller 만 명시적으로 swallow_errors=True 로 silent-fail opt-in.
+
+    **codex R2 P2 full rigor**: snapshot 은 certify() 시작 시 capture 되어 모든
+    gate 가 같은 state 를 본 상태 → row 의 regime/hash 는 gate eval 과 identically
+    일치 (race 없음).
     """
     try:
         insert_certification(
@@ -656,61 +789,122 @@ def _persist_certification(cert: "Certificate", db_path=None, caller: str | None
                 "passed": cert.passed,
                 "failed": cert.failed,
                 "warnings": cert.warnings,
-                "regime": _current_regime(),
-                "portfolio_hash": _compute_portfolio_hash(db_path=db_path),
+                "regime": snapshot.regime,
+                "portfolio_hash": snapshot.portfolio_hash,
                 "conditions_json": json.dumps([asdict(c) for c in cert.conditions]),
                 "caller": caller,
             },
             db_path=db_path,
         )
     except Exception as e:
-        logger.warning(f"SIEGE certificate persist 실패 (non-fatal): {e}")
+        if swallow_errors:
+            logger.warning(f"SIEGE certificate persist 실패 (silent — caller opt-in): {e}")
+            return
+        # Engine default — audit integrity 유지 위해 loud
+        raise
 
 
-def certify(db_path=None, persist: bool = True, caller: str | None = None) -> Certificate:
+def _capture_snapshot(db_path=None) -> CertSnapshot:
+    """Certify() 시작 시 모든 audit-relevant state 를 1회 read.
+
+    이후 ContextVar 로 설정되어 gate 가 호출하는 `_current_regime` /
+    `_snapshot_portfolio` / `_snapshot_portfolio_raw` 모두 여기서 읽은 값 참조
+    → audit row metadata 와 gate eval state 가 identically 일치 (R2/R4 rigor).
+
+    **Single-source-of-truth**: portfolio_raw 는 1회 DB read. portfolio_hash 는
+    그 rows 에서 직접 파생 (재읽기 금지 → hash 와 raw 가 동일 source).
+    leverage_ban + asset_class_grouping 도 portfolio_raw 사용.
+
+    **R3 correctness**: analyze_portfolio() 실패는 `portfolio_error` 에 저장,
+    `_snapshot_portfolio()` 에서 re-raise → 각 gate 의 try/except 가 기존 semantic
+    대로 처리 (silent empty fallback 금지).
+    """
+    from nuri.analysis.portfolio import analyze_portfolio
+
+    regime = _classify_regime_fresh()
+    portfolio_raw = _read_portfolio_raw(db_path=db_path)
+    portfolio_hash = _compute_portfolio_hash(rows=portfolio_raw)  # same source
+    try:
+        portfolio_df = analyze_portfolio()
+        portfolio_error: Exception | None = None
+    except Exception as e:
+        portfolio_df = None
+        portfolio_error = e
+
+    return CertSnapshot(
+        regime=regime,
+        portfolio_raw=portfolio_raw,
+        portfolio_df=portfolio_df,
+        portfolio_hash=portfolio_hash,
+        portfolio_error=portfolio_error,
+    )
+
+
+def certify(
+    db_path=None,
+    persist: bool = True,
+    caller: Optional[CallerTag] = None,
+    swallow_persist_errors: bool = False,
+) -> Certificate:
     """SIEGE 인증서 발급. 11 base gate check 실행 후 pass/fail 판정.
 
     v2 (#248): gate 5/7/8 은 portfolio asset_class 별로 multiple CertCondition
     을 반환. certify() 가 flatten 하여 total_conditions 에 반영 (portfolio
     구성에 따라 11 ~ 30+ 범위). `certified` 는 error severity 0건 기준 (기존 유지).
 
-    E4-0a (#TBD): persist=True (default) 면 certifications 테이블에 기록.
-    Persist 실패는 non-fatal — cert 는 항상 정상 반환. Test 격리 또는 read-only
-    검증은 persist=False 로 opt-out. `caller` 는 optional context string
-    (e.g. "cli", "api:actions").
+    E4-0a: persist=True (default) 면 certifications 테이블에 기록. `caller` 는
+    Literal CallerTag. `swallow_persist_errors` 는 API routes 용 (HTTP 500 방지).
+    Engine default 는 loud (codex R1 P1).
+
+    **codex R2 P2 full rigor**: certify() 시작 시 `_capture_snapshot()` 으로
+    regime + portfolio_df + portfolio_hash 를 1회 read → ContextVar 로 설정.
+    이후 모든 gate 가 호출하는 `_current_regime` / `_snapshot_portfolio` 은 snapshot
+    값 참조. finally 로 ContextVar reset → nested/parallel certify 안전.
     """
-    conditions: list[CertCondition] = []
-    for check in ALL_CERT_CHECKS:
-        result = check(db_path=db_path)
-        if isinstance(result, list):
-            conditions.extend(result)
-        else:
-            conditions.append(result)
+    snapshot = _capture_snapshot(db_path=db_path)
+    token = _CERT_SNAPSHOT.set(snapshot)
 
-    total = len(conditions)
-    passed = sum(1 for c in conditions if c.passed)
-    failed = sum(1 for c in conditions if not c.passed and c.severity == "error")
-    warnings = sum(1 for c in conditions if not c.passed and c.severity == "warning")
-    certified = failed == 0
-    score = round(passed / total * 100, 1) if total > 0 else 0
+    try:
+        conditions: list[CertCondition] = []
+        for check in ALL_CERT_CHECKS:
+            result = check(db_path=db_path)
+            if isinstance(result, list):
+                conditions.extend(result)
+            else:
+                conditions.append(result)
 
-    from nuri.core.timezone import kst_now
+        total = len(conditions)
+        passed = sum(1 for c in conditions if c.passed)
+        failed = sum(1 for c in conditions if not c.passed and c.severity == "error")
+        warnings = sum(1 for c in conditions if not c.passed and c.severity == "warning")
+        certified = failed == 0
+        score = round(passed / total * 100, 1) if total > 0 else 0
 
-    cert = Certificate(
-        timestamp=kst_now().isoformat(),
-        total_conditions=total,
-        passed=passed,
-        failed=failed,
-        warnings=warnings,
-        certified=certified,
-        conditions=conditions,
-        score=score,
-    )
+        from nuri.core.timezone import kst_now
 
-    if persist:
-        _persist_certification(cert, db_path=db_path, caller=caller)
+        cert = Certificate(
+            timestamp=kst_now().isoformat(),
+            total_conditions=total,
+            passed=passed,
+            failed=failed,
+            warnings=warnings,
+            certified=certified,
+            conditions=conditions,
+            score=score,
+        )
 
-    return cert
+        if persist:
+            _persist_certification(
+                cert,
+                snapshot=snapshot,
+                db_path=db_path,
+                caller=caller,
+                swallow_errors=swallow_persist_errors,
+            )
+
+        return cert
+    finally:
+        _CERT_SNAPSHOT.reset(token)
 
 
 def print_certificate(cert: Certificate) -> None:
