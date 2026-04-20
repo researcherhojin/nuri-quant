@@ -293,3 +293,75 @@ class TestGetFreshnessSummary:
         # prices should PASS, others should FAIL
         assert summary["pass"] >= 1
         assert summary["fail"] >= 1
+
+
+class TestCertificationFreshnessE4_0a:
+    """E4-0a post-merge fix — certification freshness 가 certifications 테이블을 조회.
+
+    E4-0a 전: pipeline_events 'certification_result' 이벤트 기대했으나 emitter 없어 항상 FAIL.
+    E4-0a 후: certify() 가 certifications 테이블에 직접 persist → freshness 가 거기 조회.
+    추가로 _parse_timestamp 가 kst_now().isoformat() 의 microseconds+tz 형식 파싱해야 함.
+    """
+
+    def test_policy_points_to_certifications_table(self):
+        """FRESHNESS_POLICIES['certification'] 이 certifications 테이블을 source 로."""
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
+        q = FRESHNESS_POLICIES["certification"]["query"]
+        assert "FROM certifications" in q, f"expected 'FROM certifications', got: {q}"
+        assert "pipeline_events" not in q, "pipeline_events 조회는 E4-0a 이후 deprecated"
+
+    def test_pass_when_recent_certification_exists(self, db_path):
+        """certifications 테이블에 최신 row 존재 → PASS."""
+        from nuri.core.db import get_db
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now
+
+        now_iso = kst_now().isoformat()  # microseconds + +09:00 timezone
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO certifications "
+                "(timestamp, certified, score, total_conditions, passed, failed, warnings, conditions_json) "
+                "VALUES (?, 1, 100.0, 11, 11, 0, 0, '[]')",
+                (now_iso,),
+            )
+
+        r = check_freshness("certification", db_path=db_path)
+        assert r["status"] == "PASS", f"expected PASS, got {r}"
+        assert r["last_updated"] == now_iso
+        assert r["age_hours"] is not None and r["age_hours"] < 1.0
+
+    def test_fail_when_certifications_empty(self, db_path):
+        """빈 certifications 테이블 → FAIL (데이터 없음)."""
+        from nuri.core.freshness import check_freshness
+
+        r = check_freshness("certification", db_path=db_path)
+        assert r["status"] == "FAIL"
+        assert r["last_updated"] is None
+
+    def test_parse_timestamp_handles_microseconds_timezone(self):
+        """_parse_timestamp 가 kst_now().isoformat() 형식 (microseconds + +09:00) 파싱.
+
+        이전 strptime 세 포맷은 이 형식 미지원 → '날짜 파싱 실패' 로 FAIL 이던 회귀 lock.
+        """
+        from nuri.core.freshness import _parse_timestamp
+
+        # E4-0a certifications.timestamp 실제 포맷
+        dt = _parse_timestamp("2026-04-20T22:31:56.191762+09:00")
+        assert dt.tzinfo is not None, "timezone 보존"
+        assert dt.year == 2026 and dt.month == 4 and dt.day == 20
+        assert dt.hour == 22 and dt.minute == 31
+
+    def test_parse_timestamp_backward_compat_short_formats(self):
+        """기존 strptime 포맷 (date-only, date-time no-tz) 여전히 작동."""
+        from nuri.core.freshness import _parse_timestamp
+
+        # date-only
+        dt1 = _parse_timestamp("2026-04-20")
+        assert dt1.year == 2026 and dt1.tzinfo is not None
+        # datetime no-tz space separator
+        dt2 = _parse_timestamp("2026-04-20 12:00:00")
+        assert dt2.hour == 12 and dt2.tzinfo is not None
+        # datetime no-tz T separator
+        dt3 = _parse_timestamp("2026-04-20T12:00:00")
+        assert dt3.hour == 12 and dt3.tzinfo is not None
