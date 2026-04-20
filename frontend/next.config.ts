@@ -73,8 +73,13 @@ const nextConfig: NextConfig = {
             value: "nosniff",
           },
           {
+            // SAMEORIGIN: /evidence 페이지가 /api/evidence/{chart_id} 를 iframe 으로 embed
+            // (Plotly 차트 HTML). DENY 로 두면 same-origin embed 까지 차단되어 Playwright
+            // 검증에서 5 X-Frame-Options 위반이 보였음. SAMEORIGIN 은 same-origin iframe 만
+            // 허용 + cross-origin clickjacking 은 여전히 차단 — CSP `frame-ancestors 'self'`
+            // 와 일관.
             key: "X-Frame-Options",
-            value: "DENY",
+            value: "SAMEORIGIN",
           },
           {
             key: "X-XSS-Protection",
@@ -94,7 +99,10 @@ const nextConfig: NextConfig = {
               "font-src 'self' data:",
               `connect-src 'self' ${API_BACKEND} ws://localhost:3000 ws://${API_BACKEND.replace("http://", "")}`,
               `frame-src 'self' ${API_BACKEND}`,
-              "frame-ancestors 'none'",
+              // 'self' 허용: /evidence 페이지가 /api/evidence/{chart_id} 를 iframe 으로
+              // embed (Plotly HTML). 'none' 으로 두면 X-Frame-Options SAMEORIGIN 보다
+              // CSP 가 우선이라 여전히 blocked. cross-origin clickjacking 은 여전히 차단.
+              "frame-ancestors 'self'",
             ].join("; "),
           },
         ],
