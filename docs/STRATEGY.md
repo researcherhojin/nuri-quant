@@ -247,6 +247,28 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **경고**: 본 §3.7 진단·가설을 prescriptive (V2 design truth) 로 인용해 config/code 변경 PR 을 만드는 것은 금지. §3.6 백테스트 PASS 전까지는 hypothesis 등급.
 
+### 3.8 SIEGE predictivity measurement (E4-0b)
+
+**상태**: infrastructure shipped — E4-0b (이 PR). 실측 audit run 은 `make siege-audit` 실행 필요 (post-merge).
+
+**Purpose**: §3.7 진단("upside/opportunity-cost gate 0개") 을 numeric evidence 로 승격. 각 SIEGE gate 가 실제로 forward NAV drop 을 예측하는지 historical snapshot × forward return 으로 측정. E4-0c 재-grading 의 근거.
+
+**Script**: `scripts/siege_predictivity_audit.py` (docs/plans/e4_0b.md 참조).
+- Monthly top-10 momentum snapshot (us_core 85, 60 snapshots over 5Y)
+- 각 snapshot 에서 `certify(snapshot=..., caller="audit:historical", timestamp=fixed)`
+- Forward 30/60/90d portfolio NAV + MAE 측정
+- Q4 B metric: `E[fwd_return | gate fired] - E[fwd_return | not fired]` + 95% bootstrap CI
+- Output: `data/reports/{today}/e4_0b_siege_predictivity.md`
+
+**Gate injection hook**: `certify(snapshot: CertSnapshot | None = None, timestamp: str | None = None)` — `_capture_snapshot()` 우회. Production default (snapshot=None) zero regression. Caller `"audit:historical"` 는 V1 API / V2.1 dashboard 에서 자연 분리 (square shape).
+
+**Acceptance** (이 PR 은 infra 만; predictivity 결과 승격은 별도 post-merge PR):
+- 60±10 audit rows → `certifications` (caller=audit:historical)
+- Per-gate Q4 B report 생성
+- §3.7 hypothesis 를 measured evidence 로 승격 PR 에서 인용 가능
+
+**Warning** (§3.7 정신 계승): 실측 결과를 단발 measurement 로 mechanical config 변경에 사용 금지. Surface 단계 rank + CI 만; Soft penalty 승격은 E4-0c + codex consult + 별도 STRATEGY 개정.
+
 ---
 
 ## 4. 개발 품질 기준
@@ -257,7 +279,7 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 3,199 tests, 144 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 3,239 tests, 146 files |
 | Frontend tests | 목표 ≥ 90% | 917 tests, 64 files |
 | E2E | 핵심 flow 커버 | 38 Playwright tests (6 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security + privacy |

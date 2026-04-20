@@ -64,6 +64,8 @@ CallerTag = Literal[
     "api:targets",
     "api:actions:violations",
     "api:actions:health",
+    # E4-0b audit 모드 — historical snapshot 기반 SIEGE 평가 (production cert 아님)
+    "audit:historical",
     # test 전용
     "test",
     "test:caller:example",
@@ -845,6 +847,8 @@ def certify(
     persist: bool = True,
     caller: Optional[CallerTag] = None,
     swallow_persist_errors: bool = False,
+    snapshot: Optional[CertSnapshot] = None,
+    timestamp: Optional[str] = None,
 ) -> Certificate:
     """SIEGE 인증서 발급. 11 base gate check 실행 후 pass/fail 판정.
 
@@ -860,8 +864,16 @@ def certify(
     regime + portfolio_df + portfolio_hash 를 1회 read → ContextVar 로 설정.
     이후 모든 gate 가 호출하는 `_current_regime` / `_snapshot_portfolio` 은 snapshot
     값 참조. finally 로 ContextVar reset → nested/parallel certify 안전.
+
+    **E4-0b audit 모드** (docs/plans/e4_0b.md §3.1): `snapshot` 이 주어지면
+    `_capture_snapshot()` 호출 대신 주입된 snapshot 을 그대로 사용. Historical
+    portfolio state 평가 용 — 실 DB 의 portfolio 를 건드리지 않고 synthetic
+    portfolio × 과거 regime 으로 certify 실행. `timestamp` 도 함께 주입되면
+    Certificate.timestamp + certifications row timestamp 에 반영 (idempotency
+    — 같은 snapshot_date 재실행 시 기존 row 중복 제거 가능).
     """
-    snapshot = _capture_snapshot(db_path=db_path)
+    if snapshot is None:
+        snapshot = _capture_snapshot(db_path=db_path)
     token = _CERT_SNAPSHOT.set(snapshot)
 
     try:
@@ -883,7 +895,7 @@ def certify(
         from nuri.core.timezone import kst_now
 
         cert = Certificate(
-            timestamp=kst_now().isoformat(),
+            timestamp=timestamp or kst_now().isoformat(),
             total_conditions=total,
             passed=passed,
             failed=failed,
