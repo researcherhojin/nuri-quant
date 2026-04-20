@@ -43,7 +43,7 @@ function fmtTime(iso: string): string {
   return iso.slice(5, 16).replace("T", " ");
 }
 
-interface ChartPoint {
+export interface ChartPoint {
   idx: number;
   id: number;
   timestamp: string;
@@ -55,6 +55,52 @@ interface ChartPoint {
   regime: string | null;
   caller: string | null;
   hashChanged: boolean;
+}
+
+// ─── Extracted render helpers — module-level 로 분리해 Recharts mock 과 무관하게 unit test ───
+
+export function tickFormatter(v: number): string {
+  return `${v}`;
+}
+
+export function labelFormatter(_label: unknown, payload?: { payload?: ChartPoint }[]): string {
+  const p = payload?.[0]?.payload;
+  return p ? `#${p.id} — ${p.short}` : "";
+}
+
+export function valueFormatter(value: unknown, _name: unknown, item: { payload: ChartPoint }): [string, string] {
+  const p = item.payload;
+  const status = p.certified ? "✅ CERTIFIED" : "❌ REJECTED";
+  return [
+    `${status} (${value}) — ${p.failed}F/${p.warnings}W  regime=${p.regime ?? "-"}  caller=${p.caller ?? "-"}`,
+    "score",
+  ];
+}
+
+export interface DotRenderProps {
+  cx: number;
+  cy: number;
+  payload: ChartPoint;
+  index: number;
+}
+
+export function dotFill(payload: ChartPoint): string {
+  return payload.certified ? "#10b981" : "#ef4444";
+}
+
+export function renderDot(dotProps: unknown): React.ReactElement {
+  const { cx, cy, payload, index } = dotProps as DotRenderProps;
+  return (
+    <circle
+      key={`dot-${index}`}
+      cx={cx}
+      cy={cy}
+      r={3.5}
+      fill={dotFill(payload)}
+      stroke="#18181b"
+      strokeWidth={1}
+    />
+  );
 }
 
 export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
@@ -114,7 +160,7 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
               tickLine={false}
               axisLine={false}
               domain={[0, 100]}
-              tickFormatter={(v) => `${v}`}
+              tickFormatter={tickFormatter}
               width={32}
             />
             <Tooltip
@@ -125,18 +171,8 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
                 fontSize: 12,
               }}
               labelStyle={{ color: "#a1a1aa" }}
-              labelFormatter={(_, payload) => {
-                const p = payload?.[0]?.payload as ChartPoint | undefined;
-                return p ? `#${p.id} — ${p.short}` : "";
-              }}
-              formatter={(value, _name, item) => {
-                const p = item.payload as ChartPoint;
-                const status = p.certified ? "✅ CERTIFIED" : "❌ REJECTED";
-                return [
-                  `${status} (${value}) — ${p.failed}F/${p.warnings}W  regime=${p.regime ?? "-"}  caller=${p.caller ?? "-"}`,
-                  "score",
-                ];
-              }}
+              labelFormatter={labelFormatter as never}
+              formatter={valueFormatter as never}
             />
             {transitionIndexes.map((i) => (
               <ReferenceLine
@@ -158,17 +194,7 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
               dataKey="score"
               stroke="#71717a"
               strokeWidth={1.5}
-              dot={(dotProps) => {
-                // 각 point 를 certified 여부 색상으로 찍기
-                const { cx, cy, payload, index } = dotProps as {
-                  cx: number;
-                  cy: number;
-                  payload: ChartPoint;
-                  index: number;
-                };
-                const fill = payload.certified ? "#10b981" : "#ef4444";
-                return <circle key={`dot-${index}`} cx={cx} cy={cy} r={3.5} fill={fill} stroke="#18181b" strokeWidth={1} />;
-              }}
+              dot={renderDot as never}
             />
           </LineChart>
         </ResponsiveContainer>
