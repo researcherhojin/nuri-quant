@@ -384,7 +384,7 @@ def _get_siege_violations() -> list[dict]:
     violations = []
     try:
         from nuri.trading.engine.certification import certify
-        cert = certify()
+        cert = certify(caller="api:actions:violations")
         for c in cert.conditions:
             if not c.passed and c.severity == "error":
                 detail = c.detail or ""
@@ -611,7 +611,7 @@ def _get_system_health() -> dict:
     # SIEGE
     try:
         from nuri.trading.engine.certification import certify
-        cert = certify()
+        cert = certify(caller="api:actions:health")
         health["siege"] = {
             "score": round(cert.score),
             "certified": cert.certified,

@@ -70,7 +70,7 @@ def get_certification():
 
     from nuri.trading.engine.certification import certify
 
-    cert = certify()
+    cert = certify(caller="api:targets")
     result = {
         "certified": cert.certified,
         "score": cert.score,

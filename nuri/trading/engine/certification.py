@@ -32,11 +32,13 @@ portfolio 의 asset_class 조합에 따라 11~30+ 범위. `certified` 판정은 
     python -m nuri.trading.engine.certification
 """
 
+import hashlib
+import json
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 
-from nuri.core.db import query
+from nuri.core.db import insert_certification, query
 from nuri.core.rules import (
     LEVERAGE_ETFS,
     MAX_SECTOR_EXPOSURE,
@@ -614,12 +616,68 @@ ALL_CERT_CHECKS = [
 ]
 
 
-def certify(db_path=None) -> Certificate:
+def _compute_portfolio_hash(db_path=None) -> str | None:
+    """Portfolio snapshot 의 deterministic sha256. Empty portfolio → None.
+
+    SIEGE 실행 기록에서 "같은 portfolio 상태 재실행" 을 식별하기 위한 dedup key.
+    E4-0b (historical backfill) 에서 snapshot-level grouping 에 사용 예정.
+    """
+    try:
+        rows = query(
+            "SELECT account, ticker, quantity, avg_price FROM portfolio "
+            "WHERE ticker != '' ORDER BY account, ticker",
+            db_path=db_path,
+        )
+        if not rows:
+            return None
+        records = [
+            (r["account"], r["ticker"], float(r["quantity"] or 0), float(r["avg_price"] or 0))
+            for r in rows
+        ]
+        payload = json.dumps(records, sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()
+    except Exception as e:
+        logger.warning(f"portfolio_hash 계산 실패 (non-fatal): {e}")
+        return None
+
+
+def _persist_certification(cert: "Certificate", db_path=None, caller: str | None = None) -> None:
+    """Certificate 를 certifications 테이블에 insert. 실패는 non-fatal (warning only).
+
+    E4-0a instrumentation — certify() 내부 호출. 실패해도 cert 반환은 정상 진행.
+    """
+    try:
+        insert_certification(
+            {
+                "timestamp": cert.timestamp,
+                "certified": 1 if cert.certified else 0,
+                "score": cert.score,
+                "total_conditions": cert.total_conditions,
+                "passed": cert.passed,
+                "failed": cert.failed,
+                "warnings": cert.warnings,
+                "regime": _current_regime(),
+                "portfolio_hash": _compute_portfolio_hash(db_path=db_path),
+                "conditions_json": json.dumps([asdict(c) for c in cert.conditions]),
+                "caller": caller,
+            },
+            db_path=db_path,
+        )
+    except Exception as e:
+        logger.warning(f"SIEGE certificate persist 실패 (non-fatal): {e}")
+
+
+def certify(db_path=None, persist: bool = True, caller: str | None = None) -> Certificate:
     """SIEGE 인증서 발급. 11 base gate check 실행 후 pass/fail 판정.
 
     v2 (#248): gate 5/7/8 은 portfolio asset_class 별로 multiple CertCondition
     을 반환. certify() 가 flatten 하여 total_conditions 에 반영 (portfolio
     구성에 따라 11 ~ 30+ 범위). `certified` 는 error severity 0건 기준 (기존 유지).
+
+    E4-0a (#TBD): persist=True (default) 면 certifications 테이블에 기록.
+    Persist 실패는 non-fatal — cert 는 항상 정상 반환. Test 격리 또는 read-only
+    검증은 persist=False 로 opt-out. `caller` 는 optional context string
+    (e.g. "cli", "api:actions").
     """
     conditions: list[CertCondition] = []
     for check in ALL_CERT_CHECKS:
@@ -638,7 +696,7 @@ def certify(db_path=None) -> Certificate:
 
     from nuri.core.timezone import kst_now
 
-    return Certificate(
+    cert = Certificate(
         timestamp=kst_now().isoformat(),
         total_conditions=total,
         passed=passed,
@@ -648,6 +706,11 @@ def certify(db_path=None) -> Certificate:
         conditions=conditions,
         score=score,
     )
+
+    if persist:
+        _persist_certification(cert, db_path=db_path, caller=caller)
+
+    return cert
 
 
 def print_certificate(cert: Certificate) -> None:
@@ -680,5 +743,5 @@ def print_certificate(cert: Certificate) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    cert = certify()
+    cert = certify(caller="cli")
     print_certificate(cert)
