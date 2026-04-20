@@ -87,10 +87,18 @@ app.add_middleware(
 # ─── 보안 헤더 미들웨어 ───
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
-    """보안 응답 헤더 추가."""
+    """보안 응답 헤더 추가.
+
+    X-Frame-Options: SAMEORIGIN — /evidence 페이지 (Next.js :3000) 가 Plotly
+    HTML evidence 를 `/api/evidence/{chart_id}` iframe 으로 embed. Next.js proxy
+    가 same-origin 으로 serve 하므로 SAMEORIGIN 정책이 허용. DENY 로 두면 chart
+    iframe 이 blocked (2026-04-20 Playwright audit 에서 5 violations 검출).
+    Cross-origin clickjacking 은 여전히 차단 — frontend/next.config.ts CSP
+    `frame-ancestors 'self'` 와 일관.
+    """
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
