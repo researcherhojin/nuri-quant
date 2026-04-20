@@ -18,7 +18,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
-interface PriceData {
+export interface PriceData {
   date: string;
   open: number;
   high: number;
