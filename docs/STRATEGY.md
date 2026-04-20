@@ -257,8 +257,8 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 3,197 tests, 144 files |
-| Frontend tests | 목표 ≥ 90% | 917 tests, 60 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 3,199 tests, 144 files |
+| Frontend tests | 목표 ≥ 90% | 917 tests, 62 files |
 | E2E | 핵심 flow 커버 | 38 Playwright tests (6 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 의존 | 금지 | conftest.py에서 yfinance/외부 API mock |
@@ -300,6 +300,7 @@ PR을 올리기 전 이 기준을 확인한다.
 | 카테고리 | 차단 대상 | 허용 placeholder |
 |---|---|---|
 | Korean broker name | Brokerage Alpha, Brokerage Beta, 키움증권, 삼성증권, NH투자증권, 토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권, 대신증권, 이베스트투자증권, 흥국증권, IBK투자증권 | `Brokerage Alpha`, `Brokerage Beta`, `Brokerage Alpha Cash Account`, `Brokerage Alpha Securities` |
+<!-- cspell:disable-next-line -->
 | Romanized broker | kakaopay, mirae, kiwoom, samsung_securities, nh_invest, toss_securities, shinhan_invest, hana_securities, meritz_securities (case-insensitive substring) | 동일 — 한글 placeholder를 영문 식별자로 변환 시 `brokerage_alpha` 등 사용 |
 | Suspect monetary literal | 7자리 이상 정수 (`>= 1_000_000`) 가 동일 라인에 `total_invested`, `cash_balance`, `deposit`, `withdraw`, `principal`, `net_worth`, `buying_power` 키와 함께 존재 | round million 값 (`1_000_000`, `5_000_000`, …, `100_000_000`)은 placeholder로 자동 허용 |
 | **Ticker + PnL 조합** (PR #202 class) | 두 패턴 중 하나 — (a) `[-+]\d+(\.\d+)?%\s*(TICKER)` 형태 (`-34% (TEM)`) (b) 인접한 `TICKER <signed %>` (`PL +43%`). 소스 파일 **+ unpushed commit messages** 모두 스캔. | 규칙 threshold 텍스트 (`손절 -7%`, `트레일링 -15%`)는 ticker 컨텍스트 없으면 통과. `TICKER_FALSE_POSITIVES` frozenset (HWM/SL/MDD/CPI/VIX/BTC/ETH 등 120개 abbreviation)은 ticker로 간주하지 않음. |
