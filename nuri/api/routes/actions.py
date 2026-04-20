@@ -384,7 +384,8 @@ def _get_siege_violations() -> list[dict]:
     violations = []
     try:
         from nuri.trading.engine.certification import certify
-        cert = certify()
+        # API path — persist 실패 swallow (E4-0a codex R1 P1).
+        cert = certify(caller="api:actions:violations", swallow_persist_errors=True)
         for c in cert.conditions:
             if not c.passed and c.severity == "error":
                 detail = c.detail or ""
@@ -611,7 +612,8 @@ def _get_system_health() -> dict:
     # SIEGE
     try:
         from nuri.trading.engine.certification import certify
-        cert = certify()
+        # API path — persist 실패 swallow (E4-0a codex R1 P1).
+        cert = certify(caller="api:actions:health", swallow_persist_errors=True)
         health["siege"] = {
             "score": round(cert.score),
             "certified": cert.certified,

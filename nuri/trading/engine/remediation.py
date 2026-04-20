@@ -60,7 +60,7 @@ def generate_remediation(db_path: Optional[Path] = None) -> RemediationPlan:
     from nuri.analysis.rebalance_advisor import generate_advisor_report
     from nuri.trading.engine.certification import certify
 
-    cert = certify(db_path=db_path)
+    cert = certify(db_path=db_path, caller="remediation")
     report = generate_advisor_report(db_path=db_path)
 
     # 실패/경고 gate 분류
