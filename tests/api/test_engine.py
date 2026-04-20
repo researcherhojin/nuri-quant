@@ -199,3 +199,22 @@ class TestCertificationsAPI:
         r = client.get("/api/certifications/99999")
         assert r.status_code == 404
         assert "없음" in r.json()["detail"]
+
+    def test_malformed_conditions_json_falls_back_to_empty_list(self, client):
+        """conditions_json 이 invalid JSON → conditions=[] (coverage: json.JSONDecodeError branch)."""
+        self._insert_cert(conditions_json="{not valid json")
+        r = client.get("/api/certifications")
+        data = r.json()
+        assert data["count"] == 1
+        assert data["items"][0]["conditions"] == []
+
+    def test_list_filter_since_cutoff(self, client):
+        """since 필터 — 지정 timestamp 이후 row 만 (coverage: since branch)."""
+        self._insert_cert(timestamp="2026-04-20T09:00:00+09:00")
+        self._insert_cert(timestamp="2026-04-20T11:00:00+09:00")
+        self._insert_cert(timestamp="2026-04-20T13:00:00+09:00")
+
+        r = client.get("/api/certifications?since=2026-04-20T10:30:00%2B09:00")
+        data = r.json()
+        assert data["count"] == 2  # 11:00, 13:00
+        assert all(item["timestamp"] >= "2026-04-20T10:30:00+09:00" for item in data["items"])

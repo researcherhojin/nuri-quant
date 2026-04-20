@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
+import { SiegeTimelineChart, type CertificationPoint } from "@/components/ui/siege-timeline-chart";
 
 // === Types ===
 interface GateCondition {
@@ -43,6 +44,23 @@ interface Drift {
   drift_pct: number;
   status: string;
   detail: string;
+}
+
+// === Certifications (V2 — E4-0a observation loop) ===
+interface CertificationsListResponse {
+  items: CertificationPoint[];
+  count: number;
+  total_in_db: number;
+}
+
+interface CertificationsSummary {
+  days: number;
+  count: number;
+  certified_rate: number | null;
+  avg_score: number | null;
+  by_caller: Record<string, number>;
+  by_regime: Record<string, number>;
+  latest: { timestamp: string; certified: boolean; score: number; regime: string | null; caller: string | null } | null;
 }
 
 // === Gate Section ===
@@ -130,6 +148,101 @@ async function ConflictsSection() {
   );
 }
 
+// === Certifications History Section (V2 — E4-0a observation loop) ===
+async function CertificationsSection() {
+  const [history, summary] = await Promise.all([
+    fetchAPI<CertificationsListResponse>("/api/certifications?limit=30"),
+    fetchAPI<CertificationsSummary>("/api/certifications/summary?days=30"),
+  ]);
+
+  if (history.total_in_db === 0) {
+    return (
+      <Card className="bg-card border-border">
+        <CardContent className="pt-5">
+          <p className="text-xs text-muted-foreground mb-3">SIEGE History</p>
+          <p className="text-xs text-muted-foreground/70 py-6 text-center">
+            아직 certification 기록이 없습니다. <code className="mx-1">make certify</code> 또는 scheduler 대기.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="bg-card border-border">
+      <CardContent className="pt-5 space-y-4">
+        {/* Summary row */}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-3">
+            <Metric
+              label="Certified rate (30d)"
+              value={summary.certified_rate !== null ? `${summary.certified_rate}%` : "—"}
+              size="sm"
+              color={
+                summary.certified_rate === null
+                  ? "default"
+                  : summary.certified_rate >= 80
+                  ? "default"
+                  : summary.certified_rate >= 50
+                  ? "default"
+                  : "red"
+              }
+            />
+            <Metric
+              label="Avg score"
+              value={summary.avg_score !== null ? summary.avg_score.toFixed(1) : "—"}
+              size="sm"
+            />
+            <Metric
+              label="Runs (30d)"
+              value={summary.count}
+              size="sm"
+            />
+            <Metric
+              label="Total in DB"
+              value={history.total_in_db}
+              size="sm"
+            />
+          </div>
+          {summary.latest && (
+            <StatusBadge
+              status={summary.latest.certified ? "READY" : "BLOCKED"}
+              size="sm"
+            />
+          )}
+        </div>
+
+        {/* Timeline chart */}
+        <SiegeTimelineChart items={history.items} />
+
+        {/* Caller / regime distributions */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">By caller</p>
+            <div className="flex flex-wrap gap-2 text-[10px]">
+              {Object.entries(summary.by_caller).map(([k, v]) => (
+                <span key={k} className="bg-muted/60 px-2 py-0.5 rounded">
+                  {k} <span className="text-muted-foreground/70">×{v}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">By regime</p>
+            <div className="flex flex-wrap gap-2 text-[10px]">
+              {Object.entries(summary.by_regime).map(([k, v]) => (
+                <span key={k} className="bg-muted/60 px-2 py-0.5 rounded">
+                  {k} <span className="text-muted-foreground/70">×{v}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // === Memory Drift Section ===
 async function MemorySection() {
   const data = await fetchAPI<{ drifts: Drift[]; critical: number; degrading: number }>("/api/memory");
@@ -163,6 +276,12 @@ export default function EnginePage() {
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-bold">SIEGE Engine</h1>
+
+      {/* V2 — SIEGE history 관찰 loop (E4-0a persist + V1 API 소비) */}
+      <Suspense fallback={<Loading />}>
+        <CertificationsSection />
+      </Suspense>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Suspense fallback={<Loading />}><GateSection /></Suspense>
         <div className="space-y-4">
