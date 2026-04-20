@@ -172,7 +172,7 @@ export function CompositionSection({
             color dot · label · sector(meta) · $value · weight % · daily delta % */}
         {hasData ? (
           <div
-            className="flex-1 flex flex-col gap-1 self-stretch min-w-0 max-w-[640px]"
+            className="flex-1 flex flex-col gap-1 self-stretch min-w-0 max-w-160"
             data-testid="composition-legend"
           >
             {legend.map((row) => {
@@ -195,25 +195,25 @@ export function CompositionSection({
                     style={{ background: row.color }}
                   />
                   {/* primary label */}
-                  <span className="text-zinc-200 truncate min-w-0 flex-1 sm:flex-none sm:w-[120px]">
+                  <span className="text-zinc-200 truncate min-w-0 flex-1 sm:flex-none sm:w-30">
                     {row.label}
                   </span>
                   {/* meta (sector for ticker rows) */}
-                  <span className="hidden sm:inline-block text-zinc-600 truncate w-[110px] text-[10px]">
+                  <span className="hidden sm:inline-block text-zinc-600 truncate w-27.5 text-[10px]">
                     {row.meta ?? ""}
                   </span>
                   {/* USD value */}
-                  <span className="hidden md:inline-block text-zinc-500 tabular-nums w-[80px] text-right text-[10px]">
+                  <span className="hidden md:inline-block text-zinc-500 tabular-nums w-20 text-right text-[10px]">
                     {row.valueUsd != null
                       ? `$${row.valueUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                       : ""}
                   </span>
                   {/* weight % */}
-                  <span className="text-zinc-200 font-semibold tabular-nums w-[52px] text-right">
+                  <span className="text-zinc-200 font-semibold tabular-nums w-13 text-right">
                     {row.weight.toFixed(1)}%
                   </span>
                   {/* daily delta */}
-                  <span className={`tabular-nums w-[58px] text-right text-[10px] ${deltaColor}`}>
+                  <span className={`tabular-nums w-14.5 text-right text-[10px] ${deltaColor}`}>
                     {hasDelta
                       ? `${deltaUp ? "+" : ""}${row.dailyDeltaPct!.toFixed(2)}%`
                       : "—"}
@@ -231,7 +231,7 @@ export function CompositionSection({
           Movers (top 3 / 3) · Concentration · (room for more later). */}
       <div className="flex flex-row gap-3 mt-1 flex-wrap" data-testid="composition-side-cards">
         {(summary.topMovers.winners.length > 0 || summary.topMovers.losers.length > 0) && (
-          <div className={`${sideCardClass} flex-1 min-w-[200px] max-w-[280px]`} data-testid="side-movers">
+          <div className={`${sideCardClass} flex-1 min-w-50 max-w-70`} data-testid="side-movers">
             <p className={sideCardLabelClass}>Movers (cumulative)</p>
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-0.5">
               <div>
@@ -275,7 +275,7 @@ export function CompositionSection({
         )}
 
         {summary.concentration.topHolding && (
-          <div className={`${sideCardClass} flex-1 min-w-[200px] max-w-[280px]`} data-testid="side-concentration">
+          <div className={`${sideCardClass} flex-1 min-w-50 max-w-70`} data-testid="side-concentration">
             <p className={sideCardLabelClass}>{COMPOSITION.CONCENTRATION}</p>
             <div className="flex items-baseline gap-2 mt-0.5">
               <span

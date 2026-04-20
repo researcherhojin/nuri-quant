@@ -62,7 +62,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
       </div>
 
       {/* Strategy vs SPY */}
-      <div className="w-full min-w-0 h-[200px]">
+      <div className="w-full min-w-0 h-50">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
           <ComposedChart data={chartData} syncId="equity" margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
@@ -111,7 +111,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
       </div>
 
       {/* Drawdown */}
-      <div className="w-full min-w-0 h-[80px]">
+      <div className="w-full min-w-0 h-20">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={80}>
           <ComposedChart data={chartData} syncId="equity" margin={{ top: 0, right: 5, bottom: 0, left: 0 }}>
             <XAxis dataKey="date" hide />
