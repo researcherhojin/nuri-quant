@@ -20,6 +20,14 @@ import {
   YAxis,
 } from "recharts";
 
+export interface GateCondition {
+  id: string;
+  description: string;
+  passed: boolean;
+  detail: string;
+  severity: "error" | "warning";
+}
+
 export interface CertificationPoint {
   id: number;
   timestamp: string;
@@ -32,6 +40,7 @@ export interface CertificationPoint {
   regime: string | null;
   portfolio_hash: string | null;
   caller: string | null;
+  conditions?: GateCondition[];
 }
 
 interface SiegeTimelineChartProps {
@@ -88,19 +97,113 @@ export function dotFill(payload: ChartPoint): string {
   return payload.certified ? "#10b981" : "#ef4444";
 }
 
+/**
+ * caller 별 shape 분류 — V2.1 교훈 #39:
+ * user-triggered (cli) vs automated (api:*) vs historical backfill (audit:*)
+ * 를 dot 모양으로 즉시 구별. legend 에 caller × count 도 함께.
+ */
+export type DotShape = "circle" | "triangle" | "square" | "diamond";
+
+export function callerShape(caller: string | null): DotShape {
+  if (!caller) return "circle";
+  if (caller === "cli" || caller === "direct") return "circle";
+  if (caller.startsWith("api:")) return "triangle";
+  if (caller.startsWith("audit:")) return "square"; // E4-0b historical backfill
+  if (caller === "scheduler") return "diamond";
+  return "circle";
+}
+
+/** hashChanged (portfolio state 전환) dot 은 radius 키워 강조. 그 외 기본 3.5. */
+export function dotRadius(hashChanged: boolean): number {
+  return hashChanged ? 5 : 3.5;
+}
+
 export function renderDot(dotProps: unknown): React.ReactElement {
   const { cx, cy, payload, index } = dotProps as DotRenderProps;
+  const fill = dotFill(payload);
+  const r = dotRadius(payload.hashChanged);
+  const shape = callerShape(payload.caller);
+  const key = `dot-${index}`;
+  const commonStroke = { stroke: "#18181b", strokeWidth: 1 };
+
+  if (shape === "triangle") {
+    const h = r * 1.3;
+    return (
+      <polygon
+        key={key}
+        points={`${cx},${cy - h} ${cx - h},${cy + h * 0.8} ${cx + h},${cy + h * 0.8}`}
+        fill={fill}
+        {...commonStroke}
+      />
+    );
+  }
+  if (shape === "square") {
+    const s = r * 1.1;
+    return (
+      <rect
+        key={key}
+        x={cx - s}
+        y={cy - s}
+        width={s * 2}
+        height={s * 2}
+        fill={fill}
+        {...commonStroke}
+      />
+    );
+  }
+  if (shape === "diamond") {
+    const h = r * 1.3;
+    return (
+      <polygon
+        key={key}
+        points={`${cx},${cy - h} ${cx + h},${cy} ${cx},${cy + h} ${cx - h},${cy}`}
+        fill={fill}
+        {...commonStroke}
+      />
+    );
+  }
   return (
-    <circle
-      key={`dot-${index}`}
-      cx={cx}
-      cy={cy}
-      r={3.5}
-      fill={dotFill(payload)}
-      stroke="#18181b"
-      strokeWidth={1}
-    />
+    <circle key={key} cx={cx} cy={cy} r={r} fill={fill} {...commonStroke} />
   );
+}
+
+/**
+ * Legend 용 SVG 아이콘 — renderDot 과 shape 동기화.
+ * tailwind 크기 (w-2 h-2) 와 시각 균형을 위해 8×8 viewBox.
+ */
+export function LegendShape({ shape, className = "" }: { shape: DotShape; className?: string }): React.ReactElement {
+  const common = "inline-block w-2 h-2 " + className;
+  const fill = "#71717a";
+  if (shape === "triangle") {
+    return (
+      <svg className={common} viewBox="0 0 8 8" aria-hidden>
+        <polygon points="4,0 8,8 0,8" fill={fill} />
+      </svg>
+    );
+  }
+  if (shape === "square") {
+    return <span className={common + " bg-zinc-400"} aria-hidden />;
+  }
+  if (shape === "diamond") {
+    return (
+      <svg className={common} viewBox="0 0 8 8" aria-hidden>
+        <polygon points="4,0 8,4 4,8 0,4" fill={fill} />
+      </svg>
+    );
+  }
+  return <span className={common + " rounded-full bg-zinc-400"} aria-hidden />;
+}
+
+/** caller 별 count — legend 에 표시 (distinct caller 수를 가시화). */
+export function countByCaller(points: ChartPoint[]): { caller: string; count: number; shape: DotShape }[] {
+  const counts = new Map<string, number>();
+  for (const p of points) {
+    const c = p.caller ?? "(none)";
+    counts.set(c, (counts.get(c) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([caller, count]) => ({ caller, count, shape: callerShape(caller === "(none)" ? null : caller) }));
 }
 
 export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
@@ -200,8 +303,8 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
         </ResponsiveContainer>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 text-[10px] text-muted-foreground">
+      {/* Legend — 결과 색 + 전환 선 + caller shape 분류 */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
         <span>
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5 align-middle" />
           CERTIFIED
@@ -214,6 +317,14 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
           <span className="inline-block w-3 h-px bg-zinc-400 mr-1.5 align-middle border-t border-dashed" />
           portfolio state 변경
         </span>
+        <span className="w-full mt-0.5 text-muted-foreground/70">caller:</span>
+        {countByCaller(chartData).map(({ caller, count, shape }) => (
+          <span key={caller} className="flex items-center">
+            <LegendShape shape={shape} className="mr-1 align-middle" />
+            {caller}
+            <span className="text-muted-foreground/60 ml-1">×{count}</span>
+          </span>
+        ))}
       </div>
     </div>
   );
