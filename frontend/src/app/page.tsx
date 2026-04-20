@@ -460,22 +460,22 @@ async function Dashboard({
               <div className="hidden sm:flex w-fit items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
                 <span className="w-10 2xl:w-16 shrink-0">{COL.ACCOUNT}</span>
                 <span className="w-20 shrink-0">{COL.TICKER}</span>
-                <span className="hidden md:flex w-[72px] text-right shrink-0 leading-tight justify-end">
+                <span className="hidden md:flex w-18 text-right shrink-0 leading-tight justify-end">
                   {COL.CURRENT}<span className="text-zinc-700">{COL.AVG}</span>
                 </span>
                 <span className="w-14 text-right shrink-0">{COL.PNL}</span>
                 <span className="w-12 text-right shrink-0">{COL.DAILY}</span>
-                <span className="w-[68px] text-center shrink-0">{COL.STATUS}</span>
-                <span className="hidden md:inline-block w-[68px] text-right shrink-0">{COL.STOP}</span>
-                <span className="hidden lg:inline-block w-[68px] text-right shrink-0">{COL.TP1}</span>
-                <span className="hidden lg:inline-block w-[68px] text-right shrink-0">{COL.TP2}</span>
+                <span className="w-17 text-center shrink-0">{COL.STATUS}</span>
+                <span className="hidden md:inline-block w-17 text-right shrink-0">{COL.STOP}</span>
+                <span className="hidden lg:inline-block w-17 text-right shrink-0">{COL.TP1}</span>
+                <span className="hidden lg:inline-block w-17 text-right shrink-0">{COL.TP2}</span>
                 {/* sparkline column label — xl: 80px / 2xl: 240px (둘 다 고정) */}
                 <span className="hidden xl:inline-block w-20 2xl:w-60 text-left shrink-0">
                   {COL.TREND}
                 </span>
                 {/* #218 (PR #219): 2xl+ 27" 전용 초광폭 컬럼. Sector 는 label 이라 text-left. */}
-                <span className="hidden 2xl:inline-block w-[96px] text-left shrink-0">{COL.SECTOR}</span>
-                <span className="hidden 2xl:inline-block w-[56px] text-right shrink-0">{COL.WEIGHT}</span>
+                <span className="hidden 2xl:inline-block w-24 text-left shrink-0">{COL.SECTOR}</span>
+                <span className="hidden 2xl:inline-block w-14 text-right shrink-0">{COL.WEIGHT}</span>
               </div>
               <div className="space-y-0.5">
                 {(holdingsExpanded

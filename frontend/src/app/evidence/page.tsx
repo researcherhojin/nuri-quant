@@ -26,7 +26,7 @@ function Loading() {
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className="animate-pulse bg-card rounded-xl border border-border h-[500px]"
+          className="animate-pulse bg-card rounded-xl border border-border h-125"
         />
       ))}
     </div>

@@ -86,7 +86,7 @@ export function HoldingsSummaryPanel({
             {summary.byAccount.map((a) => (
               <div
                 key={a.account}
-                className="relative h-[16px] rounded-sm overflow-hidden bg-zinc-900/60"
+                className="relative h-4 rounded-sm overflow-hidden bg-zinc-900/60"
                 data-testid={`account-bar-${a.account}`}
               >
                 <div
@@ -121,7 +121,7 @@ export function HoldingsSummaryPanel({
             {summary.sectors.map((s) => (
               <div
                 key={s.name}
-                className="relative h-[16px] rounded-sm overflow-hidden bg-zinc-900/60"
+                className="relative h-4 rounded-sm overflow-hidden bg-zinc-900/60"
                 data-testid={`sector-bar-${s.name}`}
               >
                 <div

@@ -153,7 +153,7 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${style.bg} ${style.text}`}>
             {style.label}
           </span>
-          <span className="text-[10px] text-zinc-500 truncate max-w-[200px]">{opp.verdict}</span>
+          <span className="text-[10px] text-zinc-500 truncate max-w-50">{opp.verdict}</span>
         </div>
         <div className="flex items-center gap-2">
           {!analysis && (
