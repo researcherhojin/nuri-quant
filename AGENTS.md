@@ -6,8 +6,16 @@ For Claude Code-specific features (hooks, @imports, skills), see `CLAUDE.md`.
 
 ## Project
 
-Nuri-Quant — open-source quant investment platform. Python 3.12, uv, SQLite, Next.js 16.
-8-phase pipeline: collect → analyze → validate → regime → recommend → certify → evidence → notify.
+Nuri-Quant — open-source quant investment platform. Python 3.12, uv, SQLite (WAL), Next.js 16 + React 19.
+
+Two pipeline views:
+
+- **Decision pipeline** (5 phases, README architecture, DB-only coupling):
+  `collect → analyze → consensus → certify → track`
+- **Operational pipeline** (8 phases, `make full-scan`, same modules regrouped):
+  `collect → analyze → validate → regime → recommend → certify → evidence → notify`
+
+Phases communicate through SQLite tables + CSV only. Rerun any upstream phase and downstream refreshes automatically.
 
 ## Hard Rules
 

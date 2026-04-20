@@ -17,35 +17,43 @@ Every BUY/SELL recommendation runs through a **collect → analyze → consensus
 Every BUY/SELL decision travels a **5-step pipeline**. Phases talk only through SQLite + CSV (loose coupling, [STRATEGY §2.3](docs/STRATEGY.md#23-느슨한-결합-loose-coupling-via-data)) — rerun an upstream phase and downstream refreshes automatically.
 
 ```mermaid
-flowchart TD
-    CFG[/"config/*.yaml<br/>rules · agents · signals · siege_gates · universe"/]
+flowchart LR
+    CFG[/"config/*.yaml<br/>rules · agents · signals · universe · siege_gates"/]:::config
 
-    subgraph Pipeline["Pipeline · 5 phases · DB-only coupling"]
+    subgraph Pipeline["Decision pipeline · 5 phases · DB-only coupling"]
         direction LR
-        A(["1 Collect<br/>25 collectors<br/>US · KR · macro · news · 13F · ARK"])
-        B(["2 Analyze<br/>20 signals · 10 regimes (6+4)<br/>4 factors · 15 event categories"])
-        C(["3 Consensus<br/>10 agents · weighted vote<br/>risk veto (SELL conf ≥ 80)"])
-        D(["4 Certify<br/>SIEGE v2 · 11+ conditions<br/>5 accounts × 5 asset classes"])
-        E(["5 Track<br/>outcome_30d · outcome_60d · outcome_90d<br/>→ agent accuracy feedback"])
+        A(["① Collect<br/>25 collectors<br/>US · KR · macro · news · 13F · ARK"]):::collect
+        B(["② Analyze<br/>20 signals · 10 regimes<br/>(6 base + 4 special) · 4 factors<br/>15 macro event categories"]):::analyze
+        C(["③ Consensus<br/>10 agents · weighted vote<br/>risk veto (SELL conf ≥ 80)"]):::consensus
+        D(["④ Certify<br/>SIEGE v2 · 11 base / 11-30+ per-class<br/>5 accounts × 5 asset classes<br/>regime-adaptive position cap"]):::certify
+        E(["⑤ Track<br/>outcome_30d · _60d · _90d<br/>→ agent accuracy feedback"]):::track
 
-        A -- "prices · fundamentals<br/>macro · news · events" --> B
-        B -- "signal_results.csv · factors<br/>regime_transitions" --> C
+        A -- "prices · fundamentals<br/>macro · news · institutional_flows" --> B
+        B -- "signal_results · factors<br/>regime_transitions · macro_events" --> C
         C -- "recommendations<br/>agent_verdicts · scoring_detail" --> D
-        D -- "Certificate<br/>conditions + evidence" --> E
-        E -. "outcome_{30,60,90}d<br/>weight ±30% drift" .-> C
+        D -- "certifications · conditions<br/>evidence + portfolio_hash" --> E
+        E -. "agent weight drift (±30%)" .-> C
     end
 
-    DB[("SQLite WAL · 32 tables<br/>pipeline_events · freshness SLA")]
+    DB[("SQLite WAL · 34 tables<br/>pipeline_events · certifications<br/>freshness SLA · audit trail")]:::db
 
     CFG -. "policies<br/>(YAML loaders in nuri/core)" .-> Pipeline
     Pipeline -. persist .-> DB
+
+    classDef config fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    classDef collect fill:#064e3b,stroke:#10b981,color:#ecfdf5
+    classDef analyze fill:#1e3a8a,stroke:#3b82f6,color:#dbeafe
+    classDef consensus fill:#581c87,stroke:#a855f7,color:#f3e8ff
+    classDef certify fill:#7c2d12,stroke:#f97316,color:#ffedd5
+    classDef track fill:#831843,stroke:#ec4899,color:#fce7f3
+    classDef db fill:#0f172a,stroke:#334155,color:#cbd5e1
 ```
 
 Driven by `config/*.yaml` (rules · agents · signals · universe · SIEGE gates). Persisted in SQLite WAL — `nuri/core/db.py` is the only `sqlite3` importer. Per-phase detail, DB schema, and SIEGE v2 spec: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + [docs/SIEGE_V2.md](docs/SIEGE_V2.md).
 
 ### Key architectural decisions
 
-- **Sole SQLite gateway** — `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced). 32 tables, WAL mode. All modules use `query()`, `query_df()`, `upsert_*()`, `get_db()`. Tests inject `tmp_path` for full isolation.
+- **Sole SQLite gateway** — `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced). 34 tables, WAL mode. All modules use `query()`, `query_df()`, `upsert_*()`, `get_db()`. Tests inject `tmp_path` for full isolation.
 - **Config-driven, code-static** — all thresholds, rules, signal metadata, and SIEGE gate policies live in `config/*.yaml`. Changing a stop-loss or adding a new market means editing YAML, not Python. See `rules.yaml`, `agents.yaml`, `signals.yaml`, `universe.yaml`.
 - **DB-only integration between phases** — phases communicate through DB tables and CSV files, never direct imports. Re-running an upstream phase automatically refreshes downstream consumers.
 - **SIEGE v2: 3-dimensional certification** — gates apply per Account (strategy profile) × Asset Class (exposure: us_equity, kr_equity, commodity, bond) × Execution Market (KRX, NYSE). See [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md). Inspired by [nutshells3/SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution).
@@ -131,7 +139,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (3,275 backend + 917 frontend + 38 e2e)
+make test       # full suite (3,280 backend + 984 frontend + 38 e2e)
 make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
@@ -145,7 +153,7 @@ Nuri-Quant runs across two Apple Silicon Macs.
 | Role | Development, analysis, manual runs | Production scheduler, data collection, alerts |
 | Code sync | `git push` → | launchd `autopull` every 5 min (git fetch + ff-merge) |
 | Config sync | `make deploy-mini` → | `.env`, `portfolio.yaml`, `NEXT_SESSION.md` via SCP (DB excluded) |
-| Scheduler | N/A | 23 jobs: collectors, consensus, backtest, weekly 1y universe backfill |
+| Scheduler | N/A | 24 jobs: collectors, consensus, backtest, weekly 1y universe backfill |
 
 ```bash
 # After shipping a PR from MBP — 1 command syncs everything to Mac mini:

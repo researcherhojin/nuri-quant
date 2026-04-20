@@ -6,13 +6,13 @@
 
 | File | Lines | Purpose | Loader |
 |------|-------|---------|--------|
-| `rules.yaml` | ~230 | Investment rules (stop-loss, take-profit, position limits, VIX gate, account_strategies, siege_gates) | `nuri/core/rules.py` |
-| `agents.yaml` | ~235 | Per-agent thresholds + confidence scale normalization + 10-agent consensus params | `nuri/core/agent_config.py` |
-| `signals.yaml` | ~190 | 20 signal definitions (type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
-| `alerts.yaml` | ~25 | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
-| `stock_types.yaml` | ~50 | Manual growth/value ticker override (bypasses auto-classification from PE + sector) | Direct YAML load |
-| `universe.yaml` | ~755 | S&P 500 + KOSPI 200 + manual ETFs. Auto-maintained by `make universe-sync` (Wikipedia + KRX/FDR); manual entries preserved | `nuri/collectors/universe_sync.py` |
-| `portfolio.example.yaml` | ~40 | Example template showing account + holdings shape | `scripts/import_portfolio.py` (via `cp` to `portfolio.yaml`) |
+| `rules.yaml` | 273 | Investment rules (stop-loss, take-profit, position limits, VIX gate, `account_strategies`, `siege_gates` incl. `regime_overrides`) | `nuri/core/rules.py` |
+| `agents.yaml` | 235 | Per-agent thresholds + confidence scale normalization + 10-agent consensus params | `nuri/core/agent_config.py` |
+| `signals.yaml` | 186 | 20 signal definitions (type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
+| `alerts.yaml` | 24 | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
+| `stock_types.yaml` | 49 | Manual growth/value ticker override (bypasses auto-classification from PE + sector) | Direct YAML load |
+| `universe.yaml` | 755 | 746 tickers: `us_core` (85) + `us_sp500_extended` (458) + `kr_kospi200` (203). Auto-maintained by `make universe-sync`; manual entries preserved | `nuri/collectors/universe_sync.py` |
+| `portfolio.example.yaml` | 39 | Example template showing account + holdings shape | `scripts/import_portfolio.py` (via `cp` to `portfolio.yaml`) |
 | `portfolio.yaml` | user | Real portfolio — **gitignored** (account labels, holdings, avg price). Shape matches `portfolio.example.yaml` | `scripts/import_portfolio.py` |
 | `kis/` | — | KIS Open API credentials directory — **gitignored** (`kis_devlp.yaml`, token cache). `.gitkeep` only is tracked. Legacy `~/KIS/` also supported for backward compat | `nuri/collectors/kis_*.py` |
 

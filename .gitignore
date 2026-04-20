@@ -1,9 +1,14 @@
 # ═══════════════════════════════════════════════════════════════
 # Nuri-Quant — gitignore
 # ═══════════════════════════════════════════════════════════════
-# Security: secrets/credentials는 절대 커밋 X
-# Lockfiles: uv.lock는 트래킹 (재현성), node lock도 트래킹
-# Generated: 빌드 산출물 + 캐시 + 리포트는 트래킹 X
+# Policy:
+#   - Secrets/credentials: never commit (다층 패턴 방어)
+#   - Lockfiles: track (uv.lock, package-lock.json) for reproducibility
+#   - Build/cache/generated reports: ignore
+#   - Personal state (portfolio, NEXT_SESSION, trade plans): ignore
+#
+# STRATEGY §4.4.1 privacy scanner 는 commit/PR/code 에서 broker name +
+# monetary literal 을 차단 — 이 파일은 그 defense 의 1차 layer.
 
 # ─── Secrets / Credentials ─────────────────────────────────────
 .env
