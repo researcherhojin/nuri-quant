@@ -633,9 +633,8 @@ def _skip_breakdown(skipped: list[AuditSnapshot]) -> str:
 # ─── CLI ────────────────────────────────────────────────────────────────────
 
 
-def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-
+def _parse_args(argv: list[str] | None = None):
+    """argparse — unit-testable. argv=None 이면 sys.argv 사용."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     parser.add_argument("--universe", default=DEFAULT_UNIVERSE, help="universe.yaml key")
     parser.add_argument("--months", type=int, default=DEFAULT_MONTHS, help="number of monthly snapshots")
@@ -645,10 +644,24 @@ def main() -> int:
     grp.add_argument("--save", action="store_true", help="persist audit rows to certifications")
     grp.add_argument("--dry-run", action="store_true",
                      help="no DB write (default when --save not given)")
-    args = parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def resolve_save_flag(args) -> bool:
+    """mutually-exclusive group 에서 실제 save 여부 결정.
+
+    `--save` 명시되고 `--dry-run` 아닐 때만 True. (mutually_exclusive 가
+    default=True 와 상호작용 시 버그 방지용 — unit test 에서 직접 검증 가능)
+    """
+    return bool(args.save) and not bool(args.dry_run)
+
+
+def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    args = _parse_args(argv)
 
     # 기본은 dry-run. --save 가 명시되면 실제 persist.
-    save = bool(args.save) and not bool(args.dry_run)
+    save = resolve_save_flag(args)
 
     LOG.info("═" * 60)
     LOG.info("  E4-0b SIEGE Historical Predictivity Audit")
