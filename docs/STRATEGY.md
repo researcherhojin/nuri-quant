@@ -234,18 +234,20 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 ### 3.7 SIEGE 의 한계와 equity-context 재평가 (E3 가설)
 
-**라벨**: hypothesis for E3 validation. 현 단계는 **진단** 만 — 새 gate taxonomy 열거 / V2 design truth 선언 금지. 정량 acceptance 기준은 §3.6 에 위치.
+**라벨**: hypothesis for E3 validation. 진단 자체는 여전히 유효 — "upside / opportunity-cost gate 0개". 정량 acceptance 기준은 §3.6 에 위치.
+
+**업데이트 2026-04-21 (PR A #429)**: 아래 "SIEGE output 의 하위 문제 중 하나" — SIEGE REJECT 이 사용자에게 "매도" 로 surface 되던 경로 — 는 structural fix 로 shipped. §2.6 Soft penalty 구현: concentration / sector_limit 위반은 `portfolio_action=REBALANCE` 로 분리되어 alpha (SELL) 경로에 흐르지 않음. Live verify (production DB): BAC/TSLA concentration → `portfolio` bucket, urgent 0 건. **그러나 §3.7 의 원 진단 (upside gate 부재) 은 여전히 open** — PR A 는 "downside-only 가 잘못된 방향으로 increse-risk 를 emit 하는 것" 을 막았지만 "upside / opportunity-cost gate 추가" 의 hypothesis 는 여전히 E3 paired counterfactual 의 검증 대상. §3.6 Stage 2 는 이 hypothesis 와 독립적으로 PASS (sizing-rule legitimacy 는 이미 증명됨, E3-3b #402).
 
 **진단** (2026-04-18, `nuri/trading/engine/certification.py:553` 실측):
 - 현 SIEGE 의 `ALL_CERT_CHECKS` 11 base check 함수 (per-asset-class expansion 후 portfolio 구성에 따라 11~30+ 가변) 가 **모두 downside-block 방향** — position cap, sector cap, stop-loss, leverage ban, freshness, volatility, external data, conflict, drift, macro 경고, rules-loaded sanity. **upside / opportunity-cost gate 0개**.
 - 결과적으로 SIEGE output 은 "신규 매수가 안전한가" 만 판정 — "**현금 보유가 기회 비용을 부담하는가**" 는 invisible. VIX 12 + bull regime + momentum top-decile 같은 favorable 합치에서도 시스템적으로 silent.
-- 사용자 페인 ("너무 보수적, 돈 많이 벌고 싶다") 의 구조적 원인.
+- 사용자 페인 ("너무 보수적, 돈 많이 벌고 싶다") 의 구조적 원인 중 일부.
 
 **가설** (E3 에서 검증, accept/reject 기준은 §3.6 3-stage validation):
 - §2.6 4번째 rung (Symmetric amplifier) + §3.4 Kelly / Markowitz / Faber 근거 위에서, SIEGE 의 양방향 균형 (REJECT 외 favorable 조건 측정) 도입이 paired counterfactual (Stage 2) 에서 baseline 대비 paired outcomes 를 개선하는가 (구체 metric 은 §3.6 Primary metrics).
 - amplifier 와 Hard veto 충돌 우선순위는 §2.6 운용 원칙 4 (post-veto sizing) 로 사전 정의됨 — 본 가설은 그 전제 위에서만 유효.
 
-**경고**: 본 §3.7 진단·가설을 prescriptive (V2 design truth) 로 인용해 config/code 변경 PR 을 만드는 것은 금지. §3.6 백테스트 PASS 전까지는 hypothesis 등급.
+**경고**: 본 §3.7 진단·가설을 prescriptive (V2 design truth) 로 인용해 config/code 변경 PR 을 만드는 것은 금지. §3.6 백테스트 PASS 전까지는 hypothesis 등급. PR A #429 는 이 경고의 예외 아님 — PR A 는 "alpha/portfolio 데이터 구조 분리" 만 shipped 했지 "upside gate 추가" 는 아님.
 
 ### 3.8 SIEGE predictivity measurement (E4-0b)
 
