@@ -395,11 +395,14 @@ class TestSaveToRecommendationsAlphaPortfolioPersist:
 
 
 class TestTrackerWriterStillWorksAfterMigration:
-    """tracker.save_recommendations 는 alpha/portfolio 컬럼을 설정하지 않지만,
-    INSERT OR IGNORE 가 새 컬럼에 NULL 폴백해야 fail 하지 않는다 (codex Q 권고:
-    forward-only NULL + split semantics guard)."""
+    """PR A: tracker.save_recommendations insert 가 새 컬럼 존재하에 fail 안함.
+    PR B: tracker 도 axis 채움 — `derive_alpha_action` 로 direction→alpha_action.
+    두 의도 (PR A insert safety + PR B writer discipline) 는 양립 가능."""
 
-    def test_e1_candidate_save_works_with_null_new_cols(self, db_path):
+    def test_e1_candidate_save_derives_alpha_action(self, db_path):
+        """PR B 전환 — tracker 는 이제 alpha_action 을 자동 derive. direction=BUY
+        → alpha_action=LONG, direction=SELL → alpha_action=FLAT. portfolio_action
+        은 E-1 signal-driven 이라 NULL 유지 (portfolio rule 아님)."""
         from dataclasses import dataclass
 
         from nuri.core.db import query
@@ -427,6 +430,7 @@ class TestTrackerWriterStillWorksAfterMigration:
             "SELECT alpha_action, portfolio_action FROM recommendations WHERE ticker='TKR'",
             db_path=db_path,
         )[0]
-        # tracker 는 새 axis 모르므로 NULL (OK)
-        assert row["alpha_action"] is None
+        # PR B: tracker 가 direction=BUY → alpha_action=LONG derive
+        assert row["alpha_action"] == "LONG"
+        # portfolio_action 은 E-1 scope 아니므로 NULL 유지
         assert row["portfolio_action"] is None
