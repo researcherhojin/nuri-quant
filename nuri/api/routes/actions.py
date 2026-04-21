@@ -45,14 +45,23 @@ def get_actions():
         return result
     except Exception:
         logger.exception("actions API error")
-        return {"urgent": [], "check": [], "hold": []}
+        # PR A: exception fallback 도 4-bucket shape 유지 (portfolio 포함).
+        # Frontend page.tsx fallback 과 동일 shape → "장애 시 포트폴리오 bucket
+        # 이 사라져 리밸런스 권고가 silent 됨" 이라는 class of failure 방지.
+        return {"urgent": [], "check": [], "hold": [], "portfolio": []}
 
 
 def _build_actions() -> dict:
-    """consensus + SIEGE + targets를 종합하여 🔴/🟡/✅ 분류."""
-    urgent: list[dict] = []  # 🔴
-    check: list[dict] = []   # 🟡
-    hold: list[dict] = []    # ✅
+    """consensus + SIEGE + targets를 종합하여 🔴/🟡/✅/📊 분류.
+
+    PR A (2026-04-21): `portfolio` bucket 추가. SIEGE position_limit/sector_limit
+    위반은 "매도 강제" (urgent) 가 아닌 "리밸런스 권고" (portfolio) 로 route.
+    Stop-loss breach 같은 alpha-driven 긴급 신호만 urgent 에 남김.
+    """
+    urgent: list[dict] = []  # 🔴 alpha-driven immediate action (stop-loss, SELL + catalyst)
+    check: list[dict] = []   # 🟡 today's review items (targets, short squeeze risk)
+    hold: list[dict] = []    # ✅ steady state
+    portfolio: list[dict] = []  # 📊 portfolio-rule signals (concentration, sector cap)
 
     # ── 데이터 수집 ──
     recommendations = _get_recommendations()
@@ -127,15 +136,8 @@ def _build_actions() -> dict:
 
         # ── 🔴 즉시 실행 조건 ──
 
-        # SIEGE 한도 초과
-        if ticker in violation_tickers:
-            violation = next(v for v in siege_violations if v["ticker"] == ticker)
-            item["reasons"].append(violation["detail"])
-            item["priority"] = "urgent"
-            urgent.append(item)
-            continue
-
-        # 강한 SELL 시그널
+        # 강한 SELL 시그널 — stop-loss breach 는 urgent (alpha-driven, 기계적).
+        # PR A: SIEGE 위반 bucket 은 여기서 처리하지 않음 (아래 portfolio bucket).
         if action == "SELL":
             item["reasons"].append(f"10-Agent SELL (conf {confidence})")
             # A-3: 하드코딩 -7 제거. holding 이 최대 비중 계좌의 row 이므로 그
@@ -158,6 +160,16 @@ def _build_actions() -> dict:
             item["reasons"].append(f"catalyst: {catalyst_reason}")
             item["priority"] = "check"
             check.append(item)
+            continue
+
+        # ── 📊 포트폴리오 리밸런스 (SIEGE 룰 위반) ──
+        # PR A: SIEGE position_limit/sector_limit 는 "매도 강제" 가 아니라 "리밸런스
+        # 권고" — 사용자가 타이밍·수단 결정. 사용자 -₩7M 손실 재발 차단 경로.
+        if ticker in violation_tickers:
+            violation = next(v for v in siege_violations if v["ticker"] == ticker)
+            item["reasons"].append(f"리밸런스 권고 — {violation['detail']}")
+            item["priority"] = "portfolio"
+            portfolio.append(item)
             continue
 
         # ── 🟡 오늘 확인 조건 ──
@@ -194,6 +206,7 @@ def _build_actions() -> dict:
         "urgent": urgent,
         "check": check,
         "hold": hold,
+        "portfolio": portfolio,
         "generated_at": kst_now().isoformat(),
     }
 
@@ -340,7 +353,8 @@ def _get_recommendations() -> list[dict]:
     10-agent contribution breakdown 시각화 + basis_action/penalty 표시에 사용.
     """
     rows = query("""
-        SELECT ticker, action, confidence, signals, scoring_detail, agent_verdicts
+        SELECT ticker, action, confidence, signals, scoring_detail, agent_verdicts,
+               alpha_action, portfolio_action
         FROM recommendations
         WHERE date = (SELECT MAX(date) FROM recommendations)
         ORDER BY confidence DESC
@@ -374,6 +388,10 @@ def _get_recommendations() -> list[dict]:
             "agreement": round(agreement * 100) if agreement is not None and agreement <= 1 else agreement,
             "scoring_detail": scoring_detail,
             "agent_verdicts": agent_verdicts,
+            # PR A: alpha/portfolio axis — Frontend UI 가 action 배지 옆에 바둑돌
+            # 형태로 표시할 수 있게 노출. legacy row 는 NULL (back-compat OK).
+            "alpha_action": r.get("alpha_action"),
+            "portfolio_action": r.get("portfolio_action"),
         })
     return results
 

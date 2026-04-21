@@ -232,11 +232,22 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         w = weights.get(v.agent_name, 0.1)
         action_scores[v.action] += w * (v.confidence / 100)
 
-    # 리스크 에이전트 거부권
+    # 리스크 에이전트 거부권 — PR A: alpha_action="FLAT" 만 발동 (기존
+    # `action=="SELL"` 에서 변경). concentration > 15% 같은 portfolio rule 은
+    # alpha=FLAT 을 emit 하지 않으므로 veto 못 건다 → SIEGE REJECT → SELL 경로
+    # 구조적 차단 (§ STRATEGY 2.6 Soft penalty vs Hard veto).
+    # Back-compat: `alpha_action` 이 None 인 legacy/기타 agent 는 action=="SELL"
+    # 로 폴백 판정 (risk agent 만 PR A 범위에서 axis 채움).
     veto_threshold = AGENT_CONFIG.get("consensus", {}).get("risk_veto_threshold", 80)
     risk_v = next((v for v in verdicts if v.agent_name == "risk"), None)
     risk_veto_fired = False
-    if risk_v and risk_v.action == "SELL" and risk_v.confidence >= veto_threshold:
+    veto_fired_now = False
+    if risk_v is not None and risk_v.confidence >= veto_threshold:
+        alpha_flat = risk_v.alpha_action == "FLAT"
+        legacy_sell = risk_v.alpha_action is None and risk_v.action == "SELL"
+        veto_fired_now = alpha_flat or legacy_sell
+    if veto_fired_now:
+        assert risk_v is not None  # veto_fired_now => risk_v non-None
         final_action = "SELL"
         final_confidence = risk_v.confidence
         reasoning = f"리스크 에이전트 거부권 발동: {risk_v.reasoning}"
@@ -530,6 +541,19 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
         return 0
 
     today = today_kst()
+
+    # PR A: regime 을 한 번 classify 해 배치 전체에 공유 (codex Q3 권고 — per-ticker
+    # classify 는 ~30ms × N 추가 latency). 실패 시 None 으로 폴백 (legacy 동작
+    # 유지), tracker.py 가 이후 backfill.
+    batch_regime: str | None = None
+    try:
+        from nuri.quant.regime.classifier import classify_regime
+        rr = classify_regime(db_path=db_path)
+        if rr is not None:
+            batch_regime = rr.regime
+    except Exception:
+        logger.debug("save_to_recommendations: regime classify 실패, NULL 유지", exc_info=True)
+
     records = []
     for r in results:
         # 모든 final_action (BUY/SELL/HOLD) persist — same-day 재실행 시 UPSERT 로 stale
@@ -553,6 +577,8 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
                     "confidence": v.confidence,
                     "reasoning": v.reasoning,
                     "data_points": v.data_points,
+                    "alpha_action": v.alpha_action,
+                    "portfolio_action": v.portfolio_action,
                 }
                 for v in r.verdicts
             ],
@@ -565,13 +591,28 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
         scoring_detail_json = (
             json.dumps(r.scoring_detail, ensure_ascii=False) if r.scoring_detail is not None else None
         )
+
+        # PR A: consensus 결과를 portfolio/alpha axis 로 surface. 현재 consensus
+        # 는 BUY/SELL/HOLD 만 emit 하므로 단순 derive — risk_v 가 portfolio_action
+        # 을 채웠으면 그대로 노출, 아니면 None. alpha_action 은 final_action 에서
+        # derive (LONG/SHORT/FLAT 이 아닌 None 은 "신호 없음" 의미; HOLD 는 alpha
+        # axis 중립 = None).
+        risk_verdict = next((v for v in r.verdicts if v.agent_name == "risk"), None)
+        portfolio_action = risk_verdict.portfolio_action if risk_verdict is not None else None
+        if r.final_action == "BUY":
+            alpha_action: str | None = "LONG"
+        elif r.final_action == "SELL":
+            alpha_action = "FLAT"
+        else:
+            alpha_action = None  # HOLD — alpha 중립
+
         records.append(
             {
                 "date": today,
                 "ticker": r.ticker,
                 "action": r.final_action,
                 "confidence": r.final_confidence,
-                "regime": None,  # consensus는 regime 정보 없음 — tracker.py가 채움
+                "regime": batch_regime,  # PR A: 배치 1회 classify 결과 공유
                 "signals": json.dumps(
                     {
                         "agreement_rate": r.agreement_rate,
@@ -582,6 +623,8 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
                 "entry_price": entry_price,
                 "agent_verdicts": verdicts_json,
                 "scoring_detail": scoring_detail_json,
+                "alpha_action": alpha_action,
+                "portfolio_action": portfolio_action,
             }
         )
 
@@ -591,9 +634,9 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
         conn.executemany(
             """INSERT INTO recommendations
                (date, ticker, action, confidence, regime, signals, entry_price,
-                agent_verdicts, scoring_detail)
+                agent_verdicts, scoring_detail, alpha_action, portfolio_action)
                VALUES (:date, :ticker, :action, :confidence, :regime, :signals, :entry_price,
-                       :agent_verdicts, :scoring_detail)
+                       :agent_verdicts, :scoring_detail, :alpha_action, :portfolio_action)
                ON CONFLICT(date, ticker) DO UPDATE SET
                    action = excluded.action,
                    confidence = excluded.confidence,
@@ -601,7 +644,9 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
                    signals = excluded.signals,
                    entry_price = excluded.entry_price,
                    agent_verdicts = excluded.agent_verdicts,
-                   scoring_detail = excluded.scoring_detail""",
+                   scoring_detail = excluded.scoring_detail,
+                   alpha_action = excluded.alpha_action,
+                   portfolio_action = excluded.portfolio_action""",
             records,
         )
         return len(records)
