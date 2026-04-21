@@ -19,7 +19,7 @@ from nuri.core.timezone import kst_now
 
 load_dotenv()
 
-# FRED 시리즈 ID 매핑 (확장: 풀 수익률 곡선 + 경제 지표)
+# FRED 시리즈 ID 매핑 (확장: 풀 수익률 곡선 + 경제 지표 + crash precursor)
 FRED_SERIES = {
     # 기존
     "fed_funds_rate": "FEDFUNDS",
@@ -38,6 +38,11 @@ FRED_SERIES = {
     # 추가 경제 지표
     "consumer_sentiment": "UMCSENT",  # 미시건대 소비자 심리
     "ism_manufacturing": "MANEMP",    # ISM 제조업 고용
+    # PR C (codex bubble-bear #3): crash precursor data.
+    # BofA US High Yield Option-Adjusted Spread — 신용 스트레스 조기 신호.
+    # Gilchrist-Zakrajsek 2012: HY OAS > 500bps + 63d 변화 > +150bps 경기침체 경고.
+    # 1997 년부터 daily 공개, FRED_API_KEY 필수 (yfinance fallback 없음).
+    "hy_oas": "BAMLH0A0HYM2",
 }
 
 # yfinance fallback 심볼 매핑 (FRED 없을 때 사용)
@@ -146,10 +151,27 @@ class MacroCollector(BaseCollector):
         return upsert_macro(data)
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry — --days N 으로 backfill 기간 조정."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Macro indicator collector (FRED + yfinance)")
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=365,
+        help="수집 기간 (일). PR C (codex #3): 5Y backfill 은 --days 1825",
+    )
+    args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
     collector = MacroCollector()
-    collector.run()
+    # BaseCollector.run 은 collect() 에 kwargs 전달 — collect(days=...) 로 흐름.
+    collector.run(days=args.days)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
