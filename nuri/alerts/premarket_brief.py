@@ -67,7 +67,22 @@ def _collect_context() -> dict:
         "opportunities": None,
         "macro_events": [],
         "portfolio_totals": None,
+        "shadow_signals": [],  # PR C (codex #3): market-wide crash precursor
     }
+
+    # Shadow signals — SHADOW (`actionable: false`) 는 candidates 에 안 들어가니까
+    # brief 에서만 surface. detect_all 은 내부적으로 graceful degrade.
+    try:
+        from nuri.quant.validation.market_signals import detect_all
+        ctx["shadow_signals"] = [
+            {
+                "signal_id": s.signal_id, "fired": s.fired,
+                "level": s.level, "threshold": s.threshold, "detail": s.detail,
+            }
+            for s in detect_all()
+        ]
+    except Exception:
+        logger.warning("shadow signals detect 실패", exc_info=True)
 
     # Regime
     try:
@@ -255,6 +270,22 @@ def format_brief_embed(ctx: dict) -> dict:
             )
         fields.append({"name": "🛡️ SIEGE", "value": siege_line, "inline": False})
 
+    # SHADOW crash precursor signals (PR C, codex #3). `actionable: false` 이므로
+    # action 에 직접 영향 없음 — "Surface" 단계 추적용. fired=True 는 주목 필요.
+    shadow = ctx.get("shadow_signals") or []
+    if shadow:
+        shadow_lines = []
+        for s in shadow:
+            emoji = "⚠️" if s["fired"] else "·"
+            shadow_lines.append(f"{emoji} {s['signal_id']}: {s['detail']}")
+        fired_count = sum(1 for s in shadow if s["fired"])
+        total = len(shadow)
+        fields.append({
+            "name": f"🌑 SHADOW crash precursor — {fired_count}/{total} fired",
+            "value": "\n".join(shadow_lines),
+            "inline": False,
+        })
+
     # Action buckets
     actions = ctx.get("actions") or {}
     for bucket, emoji, label in (
@@ -347,6 +378,15 @@ def format_brief_markdown(ctx: dict) -> str:
         lines.append(f"- {siege['passed']}P / {siege['failed']}F / {siege['warnings']}W of {siege['total']}")
         for e in siege["failing_errors"]:
             lines.append(f"- ❌ {e['id']}: {e['desc']} — {e['detail']}")
+        lines.append("")
+
+    shadow = ctx.get("shadow_signals") or []
+    if shadow:
+        fired_count = sum(1 for s in shadow if s["fired"])
+        lines.append(f"## SHADOW crash precursor ({fired_count}/{len(shadow)} fired)")
+        for s in shadow:
+            emoji = "⚠️" if s["fired"] else "·"
+            lines.append(f"- {emoji} {s['signal_id']}: {s['detail']}")
         lines.append("")
 
     actions = ctx.get("actions") or {}
