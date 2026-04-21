@@ -35,12 +35,23 @@ These are enforced by hooks, CI, and pre-push scripts. Violations are blocked me
 | Adding... | Put it in |
 |-----------|-----------|
 | Data source | `nuri/collectors/` — subclass `BaseCollector`, implement `collect()` + `save()` |
-| SQL table | `_MIGRATIONS` list in `nuri/core/db.py` — never edit existing migrations |
+| SQL table | `_MIGRATIONS` list in `nuri/core/db.py` — never edit existing migrations (current schema version: 22) |
 | Agent | `nuri/trading/agents/` + register in `consensus.py` `ALL_AGENTS` + weight in `config/agents.yaml` |
 | Investment rule | `config/rules.yaml` — never hardcode |
+| Signal (actionable) | `config/signals.yaml` with `actionable: true` — consumed by `signal_backtest.py` |
+| SHADOW signal (surface-only) | `config/signals.yaml` with `actionable: false` + `scope: market_wide` — detector in `nuri/quant/validation/market_signals.py` (separate from per-ticker `signal_backtest.py`). Excluded from candidates by `is_actionable` guard. |
 | API endpoint | `nuri/api/routes/` |
 | Dashboard page | `frontend/src/app/<route>/page.tsx` |
 | LLM call | `nuri/llm/` only — external calls through `nuri/llm/openai_client.py` wrapper only |
+
+## Action Axes (PR A #429)
+
+`recommendations` carries two orthogonal action axes — never conflate:
+
+- **`alpha_action`** ∈ {LONG, SHORT, FLAT} — expected-return signal from agents (buy/sell/exit). Only stop-loss breach emits FLAT.
+- **`portfolio_action`** ∈ {REBALANCE, TRIM, HEDGE, NONE} — portfolio-rule signal from SIEGE (concentration, sector, leverage). Never routes to urgent SELL.
+
+Risk-agent veto fires on `alpha_action=="FLAT"` only. `/api/actions` has 4 buckets: `urgent` (alpha FLAT), `check`, `hold`, `portfolio` (rebalance-only). See `nuri/core/axis.py` helpers + STRATEGY §2.6 Soft-penalty rung.
 
 ## Testing
 
