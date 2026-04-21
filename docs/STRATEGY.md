@@ -174,7 +174,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 | 규칙 | 근거 | 출처 |
 |------|------|------|
-| 손절 -7% | CAN SLIM 원칙 | O'Neil, *How to Make Money in Stocks* |
+| 손절 -7% | CAN SLIM 원칙 + repo 5Y 자체 검증 (PR F commit 2, 2026-04-22). us_core 85 tickers × SMA 50/200 golden cross 250 entries paired counterfactual: ATR-k×regime_mult grid (12 조합) 중 k∈{2.5, 3.0}×regime_mult=1.3 만 bootstrap CI lower bound > 0 달성, CAGR +13~15pp advantage 이지만 6-metric 중 3/6 (wider stop 의 MaxDD −9pp trade-off) 로 acceptance 4+ 미달. Walk-forward 에서 best k shift (fold1=3.0, fold2=2.5) — single-best robustness 부족. **결론**: -7% 유지, ATR shadow surface PR F2 로 deferred. | O'Neil, *How to Make Money in Stocks* + 자체 validation (`scripts/pr_f_atr_validation.py`) |
 | 익절 +20%/+40% | 손익비 3:1 유지 | Minervini, *Trade Like a Stock Market Wizard* |
 | 트레일링 -15% | 11년 백테스트 최적값 (73.9% 누적수익) | 자체 백테스트 |
 | VIX > 30 매수 차단 | 공포 구간 승률 붕괴 검증 | 자체 시그널 백테스트 |
@@ -281,7 +281,7 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 3,366 tests, 151 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 3,400 tests, 153 files |
 | Frontend tests | 목표 ≥ 90% | 917 tests, 67 files |
 | E2E | 핵심 flow 커버 | 38 Playwright tests (6 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security + privacy |
