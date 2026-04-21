@@ -58,6 +58,10 @@ Driven by `config/*.yaml` (rules · agents · signals · universe · SIEGE gates
 - **DB-only integration between phases** — phases communicate through DB tables and CSV files, never direct imports. Re-running an upstream phase automatically refreshes downstream consumers.
 - **SIEGE v2: 3-dimensional certification** — gates apply per Account (strategy profile) × Asset Class (exposure: us_equity, kr_equity, commodity, bond) × Execution Market (KRX, NYSE). See [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md). Inspired by [nutshells3/SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution).
 - **Regime-adaptive position cap** (E3-3c, 2026-04-19) — `siege_gates.regime_overrides` applies per-regime multipliers to `per_position_max`: aggressive 1.20× (`bull_low_vol`, `recovery`) / conservative 0.80× (`bear_high_vol`, `bull_high_vol`, `stagflation`, `euphoria`) / neutral 1.0×. Stage 2 paired counterfactual (N=254 entries, SMA 50/200 cross × 5Y) showed 60d 95% bootstrap CI [+0.0153%, +0.1588%] of mean paired delta — modest but statistically real (~+0.5%/year annualized). Hard veto (VIX>30) preserved orthogonally. Sector cap regime override deferred to portfolio simulator (E3-4).
+- **Alpha vs portfolio action separation** (PR A #429, 2026-04-21) — `recommendations` table carries orthogonal `alpha_action` (LONG/SHORT/FLAT) and `portfolio_action` (REBALANCE/TRIM/HEDGE/NONE) columns. SIEGE concentration violations route to `portfolio_action=REBALANCE` (not urgent SELL); only stop-loss breaches emit `alpha_action=FLAT`. Risk-agent veto fires only on `alpha_action=="FLAT"`. See [STRATEGY §2.6](docs/STRATEGY.md#26-escalation-ladder-근거-기반--기계적-개입의-4단계) Soft-penalty step.
+- **SHADOW crash precursor signals** (PR C #436, 2026-04-22) — `yield_curve_inversion` (Estrella-Mishkin 1998) + `hy_oas_widening` (Gilchrist-Zakrajsek 2012) surfaced as STRATEGY §2.6 Surface-only (`actionable: false` meta). Scope `market_wide`, structurally isolated from per-ticker candidates via `is_actionable` guard. Graceful degrade when FRED data missing.
+- **ATR/regime grid validation infra** (PR F #437, 2026-04-22) — `nuri/quant/exits/atr.py` ships ATR-based stop-loss core (`K_GRID = (1.5, 2.0, 2.5, 3.0)`, regime multipliers {0.8, 1.0, 1.3} E3-3c parity) with frozen `entry_atr_fixed` anchor contract. Paired counterfactual validation (us_core 85 × SMA 50/200 × 12 combos × walk-forward) returned MARGINAL verdict — top combos (k∈{2.5,3.0}, mult=1.3) paired CI positive but 6-metric 3/6 (wider-stop MaxDD trade-off). Shadow surface deferred to PR F2; `-7%` baseline retained.
+- **SIEGE predictivity audit** (E4-0b v2 #439, 2026-04-22) — historical snapshot-native gate predictivity measurement. `scripts/siege_predictivity_audit.py` + `certify(snapshot=..., caller="audit:historical")` hook. v2 variant ladder (4 templates) + gate eligibility matrix (`auditable_now` / `audit_incoherent` / `requires_replayed_state`) closes v1 Δ=null failure. Pilot run 144 snapshots: `position_limit` directional counter-evidence (provisional, CI crosses 0). See [STRATEGY §3.8](docs/STRATEGY.md#38-siege-predictivity-measurement-e4-0b).
 - **15 macro event categories** — RSS headlines classified by OpenAI gpt-5.4-nano (regex fallback). Includes `export_surge`, `demand_growth`, `currency_shift` for Korean market. Events feed into regime classification and Korean Market Agent.
 
 ### Code layout
@@ -139,7 +143,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (3,400 backend + 984 frontend + 38 e2e)
+make test       # full suite (3,381 backend across 153 files + 984 frontend across 67 files + 38 e2e)
 make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
