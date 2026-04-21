@@ -83,8 +83,9 @@ class TestActionsEndpoint:
         resp = client.get("/api/actions")
         assert resp.status_code == 200
         data = resp.json()
-        for key in ("urgent", "check", "hold"):
-            assert key in data
+        # PR A (2026-04-21): 4-bucket shape — SIEGE 룰 위반은 portfolio bucket.
+        for key in ("urgent", "check", "hold", "portfolio"):
+            assert key in data, f"{key} bucket missing from /api/actions response"
             assert isinstance(data[key], list)
 
     def test_actions_contain_ticker_and_priority(self, fast_client):
@@ -201,7 +202,8 @@ class TestEndpointExceptionFallbacks:
         with patch("nuri.api.routes.actions._build_actions", side_effect=RuntimeError("boom")):
             from nuri.api.routes.actions import get_actions
             result = get_actions()
-            assert result == {"urgent": [], "check": [], "hold": []}
+            # PR A: 4-bucket shape including portfolio — Frontend page.tsx fallback 과 일치
+            assert result == {"urgent": [], "check": [], "hold": [], "portfolio": []}
 
     def test_opportunities_exception_returns_empty(self):
         self._clear_caches()
@@ -230,6 +232,124 @@ class TestGetRecommendationsEdge:
         from nuri.api.routes.actions import _get_recommendations
         result = _get_recommendations()
         assert result[0]["agreement"] is None
+
+    @patch("nuri.api.routes.actions.query")
+    def test_exposes_alpha_and_portfolio_axes(self, mock_query):
+        """PR A: _get_recommendations 가 새 alpha_action/portfolio_action 컬럼을
+        노출 — Frontend UI 에서 바둑돌 형태로 표시할 수 있게."""
+        mock_query.return_value = [
+            {
+                "ticker": "BAC", "action": "HOLD", "confidence": 0.62,
+                "signals": json.dumps({"agreement_rate": 0.9}),
+                "scoring_detail": None, "agent_verdicts": None,
+                "alpha_action": None, "portfolio_action": "REBALANCE",
+            }
+        ]
+        from nuri.api.routes.actions import _get_recommendations
+        result = _get_recommendations()
+        assert result[0]["alpha_action"] is None
+        assert result[0]["portfolio_action"] == "REBALANCE"
+
+
+class TestPRABucketRouting:
+    """PR A regression — concentration 은 portfolio bucket, stop-loss 는 urgent.
+    사용자 -₩7M 손실 재발 차단 경로를 API 레벨에서 lock-in.
+    """
+
+    def _invoke_build_actions(self, *, recommendations, siege_violations, portfolio_map, targets_status=None):
+        """_build_actions 를 mock 된 helper 로 실행."""
+        from nuri.api.routes import actions as actions_mod
+
+        # catalyst 항상 False → non-emergency SELL 이 자동 hold bucket 으로 강등 (A-4)
+        with (
+            patch.object(actions_mod, "_get_recommendations", return_value=recommendations),
+            patch.object(actions_mod, "_get_siege_violations", return_value=siege_violations),
+            patch.object(actions_mod, "_get_targets_status", return_value=targets_status or {}),
+            patch.object(actions_mod, "_get_portfolio_map", return_value=portfolio_map),
+            patch.object(actions_mod, "_get_short_interest", return_value=None),
+            patch.object(actions_mod, "has_recent_catalyst", return_value=(False, "no data")),
+            patch.object(actions_mod, "check_divergence", return_value=(False, 0.0, None)),
+        ):
+            return actions_mod._build_actions()
+
+    def test_concentration_violation_goes_to_portfolio_bucket(self):
+        """SIEGE position_limit 위반 ticker 는 portfolio bucket — urgent 아님."""
+        result = self._invoke_build_actions(
+            recommendations=[{
+                "ticker": "BAC", "action": "HOLD", "confidence": 62,
+                "agreement": 90, "scoring_detail": None, "agent_verdicts": None,
+                "alpha_action": None, "portfolio_action": "REBALANCE",
+            }],
+            siege_violations=[{
+                "ticker": "BAC", "detail": "SIEGE: 종목 비중 한도 — 위반: BAC(19.8%>15%)",
+                "condition_id": "position_limit",
+            }],
+            portfolio_map={"BAC": {
+                "current_price": 40.0, "avg_price": 40.0, "quantity": 100,
+                "pnl_pct": 0.0, "position_pct": 19.8, "account": "Main",
+            }},
+        )
+        # PR A 핵심 assertion — "매도" urgent 가 아닌 portfolio bucket
+        assert len(result["urgent"]) == 0
+        assert len(result["portfolio"]) == 1
+        assert result["portfolio"][0]["ticker"] == "BAC"
+        assert result["portfolio"][0]["priority"] == "portfolio"
+        # reason 에 "리밸런스" 언어 (매도 압박 제거)
+        reasons_text = " ".join(result["portfolio"][0]["reasons"])
+        assert "리밸런스" in reasons_text
+
+    def test_stop_loss_breach_still_urgent(self):
+        """Stop-loss breach 는 alpha-driven → urgent bucket (기존 behavior 유지)."""
+        result = self._invoke_build_actions(
+            recommendations=[{
+                "ticker": "CRASH", "action": "SELL", "confidence": 85,
+                "agreement": 70, "scoring_detail": None, "agent_verdicts": None,
+                "alpha_action": "FLAT", "portfolio_action": None,
+            }],
+            siege_violations=[],
+            portfolio_map={"CRASH": {
+                "current_price": 70.0, "avg_price": 100.0, "quantity": 100,
+                "pnl_pct": -30.0, "position_pct": 5.0, "account": "Main",
+            }},
+        )
+        assert len(result["portfolio"]) == 0
+        assert len(result["urgent"]) == 1
+        assert result["urgent"][0]["ticker"] == "CRASH"
+
+    def test_hybrid_stop_loss_dominates_hybrid_concentration(self):
+        """Stop-loss + concentration 동시 → urgent bucket (stop-loss dominant).
+        Codex Plan Q5-B: axes parallel, legacy action=SELL 은 stop-loss 가 결정.
+        Action bucket 도 동일 — stop-loss 는 § 2.2 기계적 실행이므로 urgent.
+        portfolio_action=REBALANCE 는 scoring_detail 에 병렬 surface (사용자가 매도
+        대신 리밸런스 선택지 볼 수 있게)."""
+        result = self._invoke_build_actions(
+            recommendations=[{
+                "ticker": "HYBRID", "action": "SELL", "confidence": 85,
+                "agreement": 70, "scoring_detail": None, "agent_verdicts": None,
+                "alpha_action": "FLAT", "portfolio_action": "REBALANCE",
+            }],
+            siege_violations=[{
+                "ticker": "HYBRID", "detail": "SIEGE: 종목 비중 한도 — 위반: HYBRID(22%>15%)",
+                "condition_id": "position_limit",
+            }],
+            portfolio_map={"HYBRID": {
+                "current_price": 70.0, "avg_price": 100.0, "quantity": 200,
+                "pnl_pct": -30.0, "position_pct": 22.0, "account": "Main",
+            }},
+        )
+        # stop-loss (alpha-driven, 기계적) 이 dominant → urgent
+        assert len(result["urgent"]) == 1
+        assert result["urgent"][0]["ticker"] == "HYBRID"
+        # concentration 는 별도 bucket 추가 안 함 (urgent 로 이미 routed, continue)
+        assert len(result["portfolio"]) == 0
+
+    def test_portfolio_bucket_exposed_in_response_shape(self):
+        """빈 portfolio 도 response 에 key 존재해야 함 (Frontend fallback 보장)."""
+        result = self._invoke_build_actions(
+            recommendations=[], siege_violations=[], portfolio_map={},
+        )
+        assert "portfolio" in result
+        assert result["portfolio"] == []
 
 
 class TestGetSiegeViolationsEdge:
@@ -479,14 +599,27 @@ class TestBuildActionsLogic:
     ):
         return {"current_price": price, "avg_price": avg, "quantity": 10, "pnl_pct": pnl, "position_pct": pos, "account": "Main"}
 
-    def test_siege_violation_urgent(self):
+    def test_siege_violation_goes_to_portfolio_bucket(self):
+        """PR A (2026-04-21): SIEGE position_limit 위반은 "매도 강제" urgent 가
+        아닌 "리밸런스 권고" portfolio bucket. 이전 동작 (urgent) → 사용자 -₩7M
+        손실 재발 경로. Regression lock: 다시 urgent 로 돌아가면 이 테스트 fail.
+
+        참고: 이 시나리오는 action=SELL + no stop-loss breach (+1.6%) → SELL check
+        경로에서 catalyst 없음으로 hold 강등 후 portfolio 체크에서 재분류. 코드는
+        `continue` 로 bucket 간 이동 — 마지막에 assign 된 priority 가 최종.
+        현 구조에서는 SELL + no-breach → hold bucket 이고, SIEGE 체크는 SELL
+        check 에서 continue 로 먼저 끝남.
+        → 따라서 SIEGE violation 단독 surfacing 은 action=HOLD 일 때만 성립."""
         result = self._run(
-            [{"ticker": "TSLA", "action": "SELL", "confidence": 46, "agreement": 20}],
+            [{"ticker": "TSLA", "action": "HOLD", "confidence": 46, "agreement": 20}],
             siege=[{"ticker": "TSLA", "detail": "SIEGE: 한도 — TSLA(15.4%>15%)", "condition_id": "position_limit"}],
             portfolio={"TSLA": self._pf(349, 343, 1.6, 15.4)},
         )
-        assert len(result["urgent"]) == 1
-        assert result["urgent"][0]["ticker"] == "TSLA"
+        # urgent 아님 — PR A 핵심 assertion
+        assert len(result["urgent"]) == 0
+        assert len(result["portfolio"]) == 1
+        assert result["portfolio"][0]["ticker"] == "TSLA"
+        assert "리밸런스" in " ".join(result["portfolio"][0]["reasons"])
 
     def test_sell_with_loss_urgent(self):
         result = self._run(
