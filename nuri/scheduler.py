@@ -92,6 +92,19 @@ def _run_collector(name: str, **kwargs):
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
 
 
+def _run_premarket_brief():
+    """Pre-market brief (DST-aware, US/Eastern tz). PR #TBD.
+
+    사용자 명령 없이도 매일 자동 실행되는 판단 trigger. 생성 실패해도
+    scheduler 다음 job 영향 없게 exception 흡수.
+    """
+    try:
+        from nuri.alerts.premarket_brief import main as brief_main
+        brief_main([])
+    except Exception as e:
+        logger.error(f"[premarket_brief] 실행 실패: {e}", exc_info=True)
+
+
 def _run_report():
     """일일 리포트를 안전하게 실행."""
     try:
@@ -204,6 +217,14 @@ SCHEDULES = [
     {"name": "daily_report", "func": _run_report, "args": (),
      "cron": "0 8 * * *"},
 
+    # Pre-market brief (평일 US/Eastern 09:00 — pre-market 30분 전).
+    # DST-aware: tz="US/Eastern" 지정해 EDT/EST 전환 자동 처리 (codex Plan 권고).
+    # EDT 기간 (3월~11월 초) KST 22:00, EST 기간 (11월 초~3월) KST 23:00.
+    # 사용자 명령 없이도 매일 판단 trigger — session-start 에서 Claude 가
+    # 이 brief 를 pick up 해 qualitative 뉴스와 cross-ref.
+    {"name": "premarket_brief", "func": _run_premarket_brief, "args": (),
+     "cron": "0 9 * * 1-5", "tz": "US/Eastern"},
+
     # DB 백업 (매일 자정)
     {"name": "backup", "func": _run_backup, "args": (),
      "cron": "0 0 * * *"},
@@ -246,7 +267,29 @@ def create_scheduler() -> BlockingScheduler:
     scheduler = BlockingScheduler()
 
     for job in SCHEDULES:
-        trigger = CronTrigger.from_crontab(job["cron"])
+        # tz kwarg optional — CronTrigger.from_crontab 은 tz 를 직접 지원 안 함.
+        # tz 지정 job 은 CronTrigger() 직접 호출 (codex Plan: DST-aware).
+        # ⚠️ WEEKDAY SEMANTICS — APScheduler CronTrigger 는 `day_of_week="0-6"`
+        # 를 **Mon=0, Sun=6** 로 해석 (crontab standard 0=Sun 아님). 따라서
+        # crontab literal `1-5` 를 그대로 넘기면 Tue-Sat 로 fire 됨 (codex
+        # #432 Review). 안전하게 `mon-fri` 같은 명시적 literal 사용.
+        if "tz" in job:
+            import pytz
+            parts = job["cron"].split()
+            dow_raw = parts[4]
+            dow_map = {
+                "0": "sun", "1": "mon", "2": "tue", "3": "wed",
+                "4": "thu", "5": "fri", "6": "sat",
+                "1-5": "mon-fri", "0-6": "mon-sun", "*": "*",
+            }
+            dow = dow_map.get(dow_raw, dow_raw)
+            trigger = CronTrigger(
+                minute=parts[0], hour=parts[1], day=parts[2],
+                month=parts[3], day_of_week=dow,
+                timezone=pytz.timezone(job["tz"]),
+            )
+        else:
+            trigger = CronTrigger.from_crontab(job["cron"])
         scheduler.add_job(
             job["func"],
             trigger=trigger,
@@ -269,7 +312,8 @@ def print_schedule():
     print(f"  Nuri-Quant Scheduler — {len(SCHEDULES)}개 작업 등록")
     print(f"{'=' * 60}")
     for job in SCHEDULES:
-        print(f"  {job['name']:<20} {job['cron']}")
+        tz = f" ({job['tz']})" if "tz" in job else ""
+        print(f"  {job['name']:<22} {job['cron']}{tz}")
     print()
 
 

@@ -60,6 +60,8 @@ logger = logging.getLogger(__name__)
 # 추가 시 이 Literal 에 등록 (codex R1 #4). None 은 unattributed (default).
 CallerTag = Literal[
     "cli",
+    "cli:premarket_brief",  # proactive-daily-brief (scheduler + manual CLI, DB-only artifact)
+    "cli:session:today",  # interactive session snapshot
     "remediation",
     "api:targets",
     "api:actions:violations",
