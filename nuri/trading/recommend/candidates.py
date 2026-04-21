@@ -229,6 +229,15 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
         cutoff_idx = max(0, len(df) - lookback_days)
 
         for signal_id in SIGNAL_DEFINITIONS:
+            # PR C (codex bubble-bear #3): SHADOW 신호는 scorecard 집계에만 참여,
+            # candidates 추천 흐름에는 절대 스며들지 못하게 여기서 구조적 차단.
+            # codex Plan consult Biggest Risk: "shadow 를 validated signal 경로에
+            # 섞어 confidence/tier 에 간접 반영하지 않도록 분리". surface 는 별도
+            # market_signals.detect_all() 로 UI 노출.
+            from nuri.core.signal_config import is_actionable
+            if not is_actionable(signal_id):
+                continue
+
             entries = detect_signal_entries(df, signal_id)
             # cutoff 이후 발생한 시그널만
             recent = [idx for idx in entries if idx >= cutoff_idx]
