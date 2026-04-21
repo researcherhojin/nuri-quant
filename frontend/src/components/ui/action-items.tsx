@@ -26,12 +26,16 @@ interface ActionItemsProps {
   urgent: ActionItem[];
   check: ActionItem[];
   hold: ActionItem[];
+  // PR A (2026-04-21): portfolio bucket — SIEGE 룰 위반은 "매도 강제" 가 아닌
+  // "리밸런스 권고". optional 로 선언해 legacy 호출자 back-compat.
+  portfolio?: ActionItem[];
 }
 
 const priorityStyles = {
   urgent: { bg: "bg-red-950/30", border: "border-red-900/50", dot: "bg-red-500", text: "text-red-400" },
   check: { bg: "bg-amber-950/20", border: "border-amber-900/40", dot: "bg-amber-500", text: "text-amber-400" },
   hold: { bg: "bg-zinc-900/40", border: "border-zinc-800/60", dot: "bg-zinc-500", text: "text-zinc-400" },
+  portfolio: { bg: "bg-sky-950/20", border: "border-sky-900/40", dot: "bg-sky-500", text: "text-sky-400" },
 };
 
 function ActionCard({ item }: { item: ActionItem }) {
@@ -97,8 +101,8 @@ function ActionCard({ item }: { item: ActionItem }) {
   );
 }
 
-export function ActionItems({ urgent, check, hold }: ActionItemsProps) {
-  const total = urgent.length + check.length + hold.length;
+export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItemsProps) {
+  const total = urgent.length + check.length + hold.length + portfolio.length;
 
   if (total === 0) {
     return (
@@ -119,6 +123,19 @@ export function ActionItems({ urgent, check, hold }: ActionItemsProps) {
           </h3>
           <div className="space-y-2">
             {urgent.map((item) => <ActionCard key={`${item.ticker}-${item.account}`} item={item} />)}
+          </div>
+        </div>
+      )}
+
+      {/* 📊 포트폴리오 리밸런스 — PR A: SIEGE 룰 위반을 "매도" 로 surface 하지 않기 */}
+      {portfolio.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold text-sky-400 mb-1.5 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-sky-500" />
+            {ACTION.PORTFOLIO} ({portfolio.length})
+          </h3>
+          <div className="space-y-2">
+            {portfolio.map((item) => <ActionCard key={`${item.ticker}-${item.account}`} item={item} />)}
           </div>
         </div>
       )}
