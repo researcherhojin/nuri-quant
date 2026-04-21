@@ -697,6 +697,19 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_cert_regime ON certifications(regime);
     """,
     ),
+    (
+        22,
+        "separate alpha_action from portfolio_action on recommendations",
+        # PR A (codex bubble-bear #1, 2026-04-21) — SIEGE REJECT (portfolio rule) 가
+        # SELL (alpha signal) 로 surface 되는 경로 구조 분리. legacy `action` 은
+        # 유지 (BUY/SELL/HOLD 로 derive) — tracker.py / candidates.py / UI 가 계속
+        # 읽음. 새 axis 는 downstream consumer 에서 점진적으로 사용.
+        # Forward-only NULL: legacy row 는 NULL 유지 (lossy retrofit 금지).
+        """
+        ALTER TABLE recommendations ADD COLUMN alpha_action TEXT;
+        ALTER TABLE recommendations ADD COLUMN portfolio_action TEXT;
+    """,
+    ),
 ]
 
 

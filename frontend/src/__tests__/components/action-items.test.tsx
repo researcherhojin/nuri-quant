@@ -59,6 +59,24 @@ const holdItem = {
   priority: "hold",
 };
 
+// PR A (2026-04-21): portfolio bucket — SIEGE 룰 위반은 "매도" 아닌 "리밸런스 권고".
+const portfolioItem = {
+  ticker: "BAC",
+  action: "HOLD",
+  confidence: 62,
+  agreement: 90,
+  pnl_pct: 5.2,
+  position_pct: 19.8,
+  current_price: 40.5,
+  avg_price: 38.5,
+  account: "Main",
+  stop_loss: 35.79,
+  target_1: 46.2,
+  target_2: 53.9,
+  reasons: ["리밸런스 권고 — SIEGE: 종목 비중 한도 — 위반: BAC(19.8%>15%)"],
+  priority: "portfolio",
+};
+
 describe("ActionItems", () => {
   it("renders empty state when no actions", () => {
     render(<ActionItems urgent={[]} check={[]} hold={[]} />);
@@ -89,6 +107,55 @@ describe("ActionItems", () => {
     expect(screen.getByText("즉시 실행 (1)")).toBeTruthy();
     expect(screen.getByText("오늘 확인 (1)")).toBeTruthy();
     expect(screen.getByText("유지 종목 (1)")).toBeTruthy();
+  });
+
+  // PR A (2026-04-21): portfolio bucket regression — SIEGE 룰 위반은 "매도" 아닌
+  // "리밸런스 권고". optional prop, back-compat (legacy 3-bucket caller 지원).
+  describe("portfolio bucket (PR A)", () => {
+    it("renders portfolio section with sky styling", () => {
+      render(
+        <ActionItems urgent={[]} check={[]} hold={[]} portfolio={[portfolioItem]} />
+      );
+      expect(screen.getByText(/포트폴리오 리밸런스 \(1\)/)).toBeTruthy();
+      expect(screen.getByText("BAC")).toBeTruthy();
+      expect(screen.getByText(/리밸런스 권고/)).toBeTruthy();
+    });
+
+    it("does not count portfolio items in other buckets", () => {
+      render(
+        <ActionItems urgent={[]} check={[]} hold={[]} portfolio={[portfolioItem]} />
+      );
+      expect(screen.queryByText(/즉시 실행/)).toBeNull();
+      expect(screen.queryByText(/오늘 확인/)).toBeNull();
+      expect(screen.queryByText(/유지 종목/)).toBeNull();
+    });
+
+    it("renders all four sections when every bucket is populated", () => {
+      render(
+        <ActionItems
+          urgent={[urgentItem]}
+          check={[checkItem]}
+          hold={[holdItem]}
+          portfolio={[portfolioItem]}
+        />
+      );
+      expect(screen.getByText("즉시 실행 (1)")).toBeTruthy();
+      expect(screen.getByText(/포트폴리오 리밸런스 \(1\)/)).toBeTruthy();
+      expect(screen.getByText("오늘 확인 (1)")).toBeTruthy();
+      expect(screen.getByText("유지 종목 (1)")).toBeTruthy();
+    });
+
+    it("back-compat: legacy 3-bucket caller without portfolio prop works", () => {
+      // portfolio prop 누락 시 default [] → 렌더링 영향 없음.
+      render(<ActionItems urgent={[]} check={[]} hold={[holdItem]} />);
+      expect(screen.getByText("유지 종목 (1)")).toBeTruthy();
+      expect(screen.queryByText(/포트폴리오 리밸런스/)).toBeNull();
+    });
+
+    it("empty state when all four buckets are empty", () => {
+      render(<ActionItems urgent={[]} check={[]} hold={[]} portfolio={[]} />);
+      expect(screen.getByText("오늘 실행할 액션이 없습니다.")).toBeTruthy();
+    });
   });
 
   it("shows P&L percentage with correct color", () => {

@@ -10,13 +10,25 @@ from dataclasses import dataclass, field
 
 @dataclass
 class AgentVerdict:
-    """에이전트 개별 판정."""
+    """에이전트 개별 판정.
+
+    Alpha 와 portfolio 신호를 분리 (PR A, 2026-04-21 codex bubble-bear #1):
+    - `alpha_action` — 시장 기대 (LONG/SHORT/FLAT). Risk veto 와 UI action 노출
+      을 구동.
+    - `portfolio_action` — 포트폴리오 룰 신호 (REBALANCE/TRIM/HEDGE/NONE). UI
+      에 병렬 표시. veto 경로에 영향 없음.
+    - legacy `action` (BUY/SELL/HOLD) — 두 axis 에서 derive (back-compat). 기존
+      consumer (tracker.py, /decisions UI, Learning Memory hit 판정) 가 계속
+      사용. axis 가 None 이면 agent 별 기존 logic 유지.
+    """
     agent_name: str
     ticker: str
     action: str             # "BUY", "SELL", "HOLD"
     confidence: float       # 0~100 (정규화 후)
     reasoning: str          # 판정 근거 (1~2문장)
     data_points: dict = field(default_factory=dict)  # 사용한 데이터
+    alpha_action: str | None = None          # "LONG" | "SHORT" | "FLAT" | None
+    portfolio_action: str | None = None      # "REBALANCE" | "TRIM" | "HEDGE" | "NONE" | None
 
 
 def _load_norm_config() -> dict:

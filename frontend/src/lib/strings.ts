@@ -327,6 +327,7 @@ export const ACTION = {
   CHECK: "오늘 확인",
   HOLD: "유지",
   HOLD_SUMMARY: "유지 종목",
+  PORTFOLIO: "포트폴리오 리밸런스",
   DETAIL: "상세 근거",
   DISMISS: "무시하기",
   EMPTY: "오늘 실행할 액션이 없습니다.",

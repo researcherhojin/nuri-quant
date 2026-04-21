@@ -142,7 +142,7 @@ async function Dashboard({
     ]).catch(() => null),
     fetchAPI<any>("/api/rebalance-advisor").catch(() => null),
     fetchAPI<{ targets: RawTarget[] }>("/api/targets").catch(() => ({ targets: [] as RawTarget[] })),
-    fetchAPI<any>("/api/actions").catch(() => ({ urgent: [], check: [], hold: [] })),
+    fetchAPI<any>("/api/actions").catch(() => ({ urgent: [], check: [], hold: [], portfolio: [] })),
     fetchAPI<any>("/api/opportunities").catch(() => ({ opportunities: [] })),
     fetchAPI<any>("/api/market-context").catch(() => ({ macro_events: [], system_health: {} })),
     fetchAPI<import("@/components/ui/coverage-status").CoverageData>("/api/coverage").catch(() => null),
@@ -281,6 +281,7 @@ async function Dashboard({
           urgent={actionsData?.urgent ?? []}
           check={actionsData?.check ?? []}
           hold={actionsData?.hold ?? []}
+          portfolio={actionsData?.portfolio ?? []}
         />
       </div>
 
