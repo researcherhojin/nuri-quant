@@ -41,20 +41,30 @@ def detect_yield_curve_inversion(db_path=None) -> MarketSignalState:
     """3M-10Y 역전 감지. 가장 최근 observed date 에서 `us_3m_yield > us_10y_yield`.
 
     반환 level = spread (bps, 음수일수록 역전). threshold = 0 (cross-over point).
+
+    DB error (missing table / file) 시에도 graceful — insufficient data 반환하고
+    caller 에 에러 전파 금지. CI tmp DB + premarket brief auto-run 둘 다 대응.
     """
     params = get_signal_params("yield_curve_inversion")
     short_indicator = params.get("short_indicator", "us_3m_yield")
     long_indicator = params.get("long_indicator", "us_10y_yield")
 
-    row = query(
-        """
-        SELECT
-            (SELECT value FROM macro WHERE indicator = :short ORDER BY date DESC LIMIT 1) AS short_v,
-            (SELECT value FROM macro WHERE indicator = :long ORDER BY date DESC LIMIT 1) AS long_v
-        """,
-        {"short": short_indicator, "long": long_indicator},  # type: ignore[arg-type]
-        db_path=db_path,
-    )
+    try:
+        row = query(
+            """
+            SELECT
+                (SELECT value FROM macro WHERE indicator = :short ORDER BY date DESC LIMIT 1) AS short_v,
+                (SELECT value FROM macro WHERE indicator = :long ORDER BY date DESC LIMIT 1) AS long_v
+            """,
+            {"short": short_indicator, "long": long_indicator},  # type: ignore[arg-type]
+            db_path=db_path,
+        )
+    except Exception:
+        return MarketSignalState(
+            signal_id="yield_curve_inversion",
+            fired=False, level=None, threshold=0.0,
+            detail=f"DB 조회 실패 ({short_indicator} / {long_indicator}) — macro 테이블 확인",
+        )
     if not row or row[0]["short_v"] is None or row[0]["long_v"] is None:
         return MarketSignalState(
             signal_id="yield_curve_inversion",
@@ -86,17 +96,37 @@ def detect_hy_oas_widening(db_path=None) -> MarketSignalState:
     change_pct = float(params.get("change_threshold_pct", 1.5))
     lookback = int(params.get("lookback_days", 63))
 
-    rows = query(
-        "SELECT date, value FROM macro WHERE indicator = 'hy_oas' "
-        "ORDER BY date DESC LIMIT :limit",
-        {"limit": lookback + 1},  # type: ignore[arg-type]
-        db_path=db_path,
-    )
+    try:
+        rows = query(
+            "SELECT date, value FROM macro WHERE indicator = 'hy_oas' "
+            "ORDER BY date DESC LIMIT :limit",
+            {"limit": lookback + 1},  # type: ignore[arg-type]
+            db_path=db_path,
+        )
+    except Exception:
+        return MarketSignalState(
+            signal_id="hy_oas_widening",
+            fired=False, level=None, threshold=level_pct,
+            detail="DB 조회 실패 (macro 테이블) — 환경 확인",
+        )
     if not rows:
         return MarketSignalState(
             signal_id="hy_oas_widening",
             fired=False, level=None, threshold=level_pct,
             detail="데이터 부족 (hy_oas) — FRED_API_KEY 확인 필요 (BAMLH0A0HYM2)",
+        )
+    # codex PR #436 Review CONCERN: partial history (< lookback+1 rows) 시 rows[-1]
+    # 은 63d 전이 아니라 `len(rows)-1` 일 전. 63d change claim 이 거짓. 신규 backfill
+    # 직후 며칠 데이터로 false SHADOW fire 방지.
+    if len(rows) < lookback + 1:
+        current = float(rows[0]["value"])
+        return MarketSignalState(
+            signal_id="hy_oas_widening",
+            fired=False, level=current, threshold=level_pct,
+            detail=(
+                f"HY OAS 현재 {current:.2f}% — 히스토리 부족 ({len(rows)} rows "
+                f"< 필요 {lookback + 1}). {lookback}d 변화 측정 불가."
+            ),
         )
     current = float(rows[0]["value"])
     # 63 거래일 (lookback) 전 값. rows 이 DESC 라 마지막 element 가 가장 오래된.
