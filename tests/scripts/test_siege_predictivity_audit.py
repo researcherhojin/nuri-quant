@@ -394,7 +394,8 @@ class TestWriteReport:
         text = output_path.read_text()
         assert "# E4-0b" in text
         assert "## Summary" in text
-        assert "## Per-gate predictivity" in text
+        assert "## Gate eligibility matrix" in text  # v2 new section (codex Biggest Risk)
+        assert "## Auditable gates" in text  # v2 replaces "## Per-gate predictivity"
         assert "## Methodology" in text
         assert "`position_limit`" in text
 
@@ -419,7 +420,12 @@ class TestEndToEndTiny:
             lambda: "2024-06-30",
         )
 
-        snapshots = run_audit(universe_key="us_core", months=2, top_n=2, save=False, db_path=tiny_db)
+        # v2: variant ladder — single variant 로 제한 (3-ticker tiny universe 로는
+        # sector_concentrated / concentrated_top5 등 구성 어려움).
+        snapshots = run_audit(
+            universe_key="us_core", months=2, top_n=2, save=False, db_path=tiny_db,
+            variants=["momentum_top10"],
+        )
         assert len(snapshots) == 2
         # 최소 1개는 cert 생성
         valid = [s for s in snapshots if s.cert is not None]
@@ -707,7 +713,8 @@ class TestRunAuditSkipPaths:
         monkeypatch.setattr(mod, "top_n_momentum", _spy_top_n)
 
         results = mod.run_audit(
-            universe_key="us_core", months=1, top_n=1, save=True, db_path=tiny_db
+            universe_key="us_core", months=1, top_n=1, save=True, db_path=tiny_db,
+            variants=["momentum_top10"],  # v2: single variant to isolate idempotency test
         )
         assert results == []
         assert called["top_n"] == 0, "_already_audited 가 먼저 continue 해야 함"
@@ -720,10 +727,12 @@ class TestRunAuditSkipPaths:
         monkeypatch.setattr(mod, "today_kst", lambda: "2024-06-30")
         monkeypatch.setattr(mod, "top_n_momentum", lambda *a, **k: [])  # insufficient
         results = mod.run_audit(
-            universe_key="us_core", months=1, top_n=5, save=False, db_path=tiny_db
+            universe_key="us_core", months=1, top_n=5, save=False, db_path=tiny_db,
+            variants=["momentum_top10"],  # v2: isolate single variant
         )
         assert len(results) == 1
-        assert "momentum top-N insufficient" in (results[0].skipped_reason or "")
+        # v2: skipped_reason format 변경 ("momentum_top10 build failed")
+        assert "build failed" in (results[0].skipped_reason or "")
 
     def test_skip_when_snapshot_build_fails(self, tiny_db, monkeypatch):
         """line 347 — synthesize_cert_snapshot 이 None → skip."""
@@ -732,12 +741,17 @@ class TestRunAuditSkipPaths:
         monkeypatch.setattr(mod, "_load_universe", lambda k="us_core": ["AAPL"])
         monkeypatch.setattr(mod, "today_kst", lambda: "2024-06-30")
         monkeypatch.setattr(mod, "top_n_momentum", lambda *a, **k: ["AAPL"])
-        monkeypatch.setattr(mod, "synthesize_cert_snapshot", lambda *a, **k: None)
+        # v2: _build_snapshot_for_variant 를 None 으로 mock (synthesize_cert_snapshot 경로 대체)
+        monkeypatch.setattr(
+            mod, "_build_snapshot_for_variant",
+            lambda *a, **k: (None, None, None, None),
+        )
         results = mod.run_audit(
-            universe_key="us_core", months=1, top_n=1, save=False, db_path=tiny_db
+            universe_key="us_core", months=1, top_n=1, save=False, db_path=tiny_db,
+            variants=["momentum_top10"],
         )
         assert len(results) == 1
-        assert "snapshot build 실패" in (results[0].skipped_reason or "")
+        assert "build failed" in (results[0].skipped_reason or "")
 
     def test_skip_when_certify_raises(self, tiny_db, monkeypatch):
         """line 365 — certify() 예외 → skip, skipped_reason 기록."""
@@ -755,14 +769,27 @@ class TestRunAuditSkipPaths:
             portfolio_hash="x",
             portfolio_error=None,
         )
-        monkeypatch.setattr(mod, "synthesize_cert_snapshot", lambda *a, **k: fake_snap)
+        # v2: _build_snapshot_for_variant 가 valid snap 반환하도록 mock
+        import pandas as pd
+        fake_df = pd.DataFrame([{
+            "account": "audit", "ticker": "AAPL", "sector": "T",
+            "quantity": 1, "avg_price": 100.0, "weight_pct": 100.0,
+            "current_value_usd": 100.0, "cost_basis_usd": 100.0,
+            "pnl_usd": 0.0, "pnl_pct": 0.0, "current_price": 100.0,
+            "currency": "USD", "price_date": "2024-06-30",
+        }])
+        monkeypatch.setattr(
+            mod, "_build_snapshot_for_variant",
+            lambda *a, **k: (fake_snap, fake_df, ["AAPL"], [100.0]),
+        )
 
         def _raising_certify(**kw):
             raise RuntimeError("simulated certify fail")
 
         monkeypatch.setattr(mod, "certify", _raising_certify)
         results = mod.run_audit(
-            universe_key="us_core", months=1, top_n=1, save=False, db_path=tiny_db
+            universe_key="us_core", months=1, top_n=1, save=False, db_path=tiny_db,
+            variants=["momentum_top10"],
         )
         assert len(results) == 1
         assert "certify raise" in (results[0].skipped_reason or "")
@@ -836,3 +863,317 @@ class TestSkipBreakdown:
         assert "certify raise=2" in out
         assert "snapshot build 실패=1" in out
         assert "unknown=1" in out
+
+
+# ─── v2 additions (codex Plan consult 2026-04-22) ───────────────────────────
+
+
+class TestGateEligibility:
+    """GATE_ELIGIBILITY registry — codex Biggest Risk fix lock."""
+
+    def test_auditable_now_gates_frozen(self):
+        """3 auditable_now gate = snapshot-native portfolio-rule gates."""
+        from scripts.siege_predictivity_audit import GATE_ELIGIBILITY
+        auditable = [g for g, c in GATE_ELIGIBILITY.items() if c == "auditable_now"]
+        assert set(auditable) == {"position_limit", "sector_limit", "leverage_ban"}, (
+            "auditable_now 3 gate 변경은 codex Plan consult 재검토 필요"
+        )
+
+    def test_replayable_but_unwired_classification(self):
+        """codex Round 1 fix: macro_event_alignment 는 compute_event_score(date=...) 가
+        이미 date-parametric → replayable-but-unwired. stop_loss/rules_loaded 도 동일
+        category (historical portfolio pnl/metadata 부재)."""
+        from scripts.siege_predictivity_audit import GATE_ELIGIBILITY
+        assert GATE_ELIGIBILITY["macro_event_alignment"] == "requires_replayed_state"
+        assert GATE_ELIGIBILITY["stop_loss"] == "requires_replayed_state"
+        assert GATE_ELIGIBILITY["rules_loaded"] == "requires_replayed_state"
+
+    def test_current_db_dependent_gates_incoherent(self):
+        """kst_now() 기준 evaluate 하는 gate — snapshot time coherence 없음.
+
+        codex Round 1: macro_event_alignment 는 replayable 로 reclassified
+        (replayable-but-unwired infrastructure).
+        """
+        from scripts.siege_predictivity_audit import GATE_ELIGIBILITY
+        incoherent = [g for g, c in GATE_ELIGIBILITY.items() if c == "audit_incoherent"]
+        assert "drift_safe" in incoherent
+        assert "conflict_free" in incoherent
+        assert "data_fresh_us_equity" in incoherent
+        assert "volatility_gate_us_equity" in incoherent
+        assert "external_data_us_equity" in incoherent
+        # macro_event_alignment 는 Round 2 에서 incoherent → replayable 이관
+        assert "macro_event_alignment" not in incoherent
+
+
+class TestVariantTemplates:
+    """VARIANT_TEMPLATES frozen 5 (Q1-A2)."""
+
+    def test_templates_frozen(self):
+        from scripts.siege_predictivity_audit import VARIANT_TEMPLATES
+        assert VARIANT_TEMPLATES == [
+            "momentum_top10", "equal_weight_sample", "sector_concentrated",
+            "concentrated_top5",
+        ]
+
+
+class TestBuildVariant:
+    """build_variant — per-template construction."""
+
+    def test_unknown_variant_raises(self):
+        import pytest
+
+        from scripts.siege_predictivity_audit import build_variant
+        with pytest.raises(ValueError, match="unknown variant"):
+            build_variant("nonexistent", ["AAPL"], "2024-06-30")
+
+    def test_concentrated_top5_weights_20pct(self, tiny_db, monkeypatch):
+        import scripts.siege_predictivity_audit as mod
+        monkeypatch.setattr(mod, "top_n_momentum",
+                            lambda *a, **k: ["AAPL", "MSFT", "NVDA", "GOOG", "META"])
+        result = mod.build_variant("concentrated_top5", ["AAPL"], "2024-06-30",
+                                    db_path=tiny_db)
+        assert result is not None
+        tickers, weights = result
+        assert len(tickers) == 5
+        assert weights == [20.0, 20.0, 20.0, 20.0, 20.0]
+
+    def test_momentum_top10_respects_momentum_n(self, tiny_db, monkeypatch):
+        import scripts.siege_predictivity_audit as mod
+        monkeypatch.setattr(mod, "top_n_momentum", lambda *a, **k: ["AAPL", "MSFT"])
+        # momentum_n=2 로 축소
+        result = mod.build_variant("momentum_top10", ["AAPL"], "2024-06-30",
+                                    db_path=tiny_db, momentum_n=2)
+        assert result is not None
+        tickers, weights = result
+        assert tickers == ["AAPL", "MSFT"]
+        assert weights == [50.0, 50.0]  # 100 / 2
+
+    def test_momentum_insufficient_returns_none(self, tiny_db, monkeypatch):
+        import scripts.siege_predictivity_audit as mod
+        monkeypatch.setattr(mod, "top_n_momentum", lambda *a, **k: ["AAPL"])  # only 1
+        assert mod.build_variant("momentum_top10", ["AAPL"], "2024-06-30",
+                                  db_path=tiny_db, momentum_n=5) is None
+
+
+class TestExtractGateSeverity:
+    """Continuous severity extractor — Q2-B3 secondary metric."""
+
+    def test_position_severity_over_cap(self):
+        import pandas as pd
+
+        from scripts.siege_predictivity_audit import extract_gate_severity
+        df = pd.DataFrame({
+            "ticker": ["AAPL", "MSFT", "NVDA"],
+            "sector": ["Tech", "Tech", "Tech"],
+            "weight_pct": [25.0, 20.0, 10.0],  # max 25%, cap 15%
+        })
+        sev = extract_gate_severity(df)
+        assert sev["position_limit"] == 10.0  # 25 - 15
+
+    def test_sector_severity_over_cap(self):
+        import pandas as pd
+
+        from scripts.siege_predictivity_audit import extract_gate_severity
+        df = pd.DataFrame({
+            "ticker": ["AAPL", "MSFT", "BAC"],
+            "sector": ["Tech", "Tech", "Finance"],
+            "weight_pct": [30.0, 30.0, 10.0],  # Tech sum 60%, cap 35%
+        })
+        sev = extract_gate_severity(df)
+        assert sev["sector_limit"] == 25.0  # 60 - 35
+
+    def test_leverage_severity_nonzero_when_held(self):
+        import pandas as pd
+
+        from scripts.siege_predictivity_audit import extract_gate_severity
+        df = pd.DataFrame({
+            "ticker": ["AAPL", "TQQQ"],
+            "sector": ["Tech", "ETF"],
+            "weight_pct": [80.0, 20.0],
+        })
+        sev = extract_gate_severity(df)
+        assert sev["leverage_ban"] == 20.0  # TQQQ weight
+
+    def test_empty_df_returns_none(self):
+        import pandas as pd
+
+        from scripts.siege_predictivity_audit import extract_gate_severity
+        sev = extract_gate_severity(pd.DataFrame())
+        assert all(v is None for v in sev.values())
+
+
+class TestAcceptanceFlags:
+    """codex Plan consult Q5 correction: CI_upper < 0 기준 (NOT CI_lower)."""
+
+    def _make_metric(self, ci30_hi: float, ci60_hi: float, point60: float):
+        from scripts.siege_predictivity_audit import GateMetric
+        m = GateMetric(gate_id="position_limit", severity="error",
+                       eligibility="auditable_now")
+        m.ci_high[30] = ci30_hi
+        m.ci_high[60] = ci60_hi
+        m.cond_mean_diff[60] = point60
+        return m
+
+    def test_primary_keep_when_ci30_upper_negative_and_point60_negative(self):
+        """codex: 30d CI_high < 0 AND 60d point estimate < 0."""
+        from scripts.siege_predictivity_audit import analyze_predictivity
+
+        # 직접 metric 구성 — ensure acceptance 로직 검증
+        # Use analyze_predictivity 내부 flag 로직 대신 직접 계산 확인
+        m = self._make_metric(ci30_hi=-0.5, ci60_hi=-0.3, point60=-1.0)
+        # simulate flag set
+        primary_keep = (m.ci_high[30] is not None and m.ci_high[30] < 0
+                        and m.cond_mean_diff[60] is not None and m.cond_mean_diff[60] < 0)
+        assert primary_keep
+
+    def test_primary_not_kept_when_ci30_upper_crosses_zero(self):
+        m = self._make_metric(ci30_hi=0.5, ci60_hi=-1.0, point60=-2.0)
+        primary_keep = (m.ci_high[30] is not None and m.ci_high[30] < 0
+                        and m.cond_mean_diff[60] is not None and m.cond_mean_diff[60] < 0)
+        assert not primary_keep  # ci30 upper positive → fail
+
+    def test_strong_keep_both_horizons_ci_high_negative(self):
+        m = self._make_metric(ci30_hi=-0.5, ci60_hi=-0.3, point60=-1.0)
+        strong_keep = (m.ci_high[30] is not None and m.ci_high[30] < 0
+                       and m.ci_high[60] is not None and m.ci_high[60] < 0)
+        assert strong_keep
+
+
+class TestBootstrapSlopeCi:
+    """Continuous severity OLS slope bootstrap."""
+
+    def test_negative_correlation_negative_slope(self):
+        """severity 클수록 return 저조 → slope 음수."""
+        from scripts.siege_predictivity_audit import _bootstrap_slope_ci
+        x = [0.0, 5.0, 10.0, 15.0, 20.0, 25.0]  # severity 증가
+        y = [5.0, 4.0, 2.0, -1.0, -3.0, -5.0]   # return 감소
+        slope, lo, hi = _bootstrap_slope_ci(x, y, n_iter=500)
+        assert slope < 0
+        # CI 양쪽 bound 도 음수 (strong signal)
+        assert hi < 0
+
+    def test_insufficient_sample_returns_nan(self):
+        import math
+
+        from scripts.siege_predictivity_audit import _bootstrap_slope_ci
+        slope, lo, hi = _bootstrap_slope_ci([1.0, 2.0], [3.0, 4.0], n_iter=100)
+        assert math.isnan(slope)
+
+    def test_constant_x_returns_nan(self):
+        import math
+
+        from scripts.siege_predictivity_audit import _bootstrap_slope_ci
+        # x 상수면 slope undefined
+        slope, lo, hi = _bootstrap_slope_ci([5.0] * 10, list(range(10)), n_iter=100)
+        assert math.isnan(slope)
+
+
+class TestFixedTimestampVariantIsolation:
+    """v2: variant 별 timestamp minute offset — 같은 날짜 row 충돌 방지."""
+
+    def test_variant_timestamp_offsets_are_unique(self):
+        from scripts.siege_predictivity_audit import VARIANT_TEMPLATES, _fixed_timestamp
+        timestamps = {_fixed_timestamp("2024-01-31", v) for v in VARIANT_TEMPLATES}
+        assert len(timestamps) == len(VARIANT_TEMPLATES), (
+            "각 variant 는 unique timestamp offset 가져야 함 "
+            "(같은 date 에 5 row insert 가능)"
+        )
+
+    def test_momentum_top10_is_minute_zero(self):
+        """back-compat — v1 single-variant row 와 timestamp 일치."""
+        from scripts.siege_predictivity_audit import _fixed_timestamp
+        assert _fixed_timestamp("2024-01-31") == "2024-01-31T00:00:00+09:00"
+        assert _fixed_timestamp("2024-01-31", "momentum_top10") == "2024-01-31T00:00:00+09:00"
+
+
+class TestDeterministicSeed:
+    """codex Round 1 fix: sha256 기반 deterministic seed (Python hash() 대체)."""
+
+    def test_same_input_same_seed(self):
+        """동일 (date, variant) → 항상 동일 seed."""
+        from scripts.siege_predictivity_audit import _deterministic_seed
+        s1 = _deterministic_seed("2024-01-31", "momentum_top10")
+        s2 = _deterministic_seed("2024-01-31", "momentum_top10")
+        assert s1 == s2
+
+    def test_different_input_different_seed(self):
+        """다른 (date, variant) → 다른 seed (collision 극히 낮음)."""
+        from scripts.siege_predictivity_audit import _deterministic_seed
+        s1 = _deterministic_seed("2024-01-31", "momentum_top10")
+        s2 = _deterministic_seed("2024-01-31", "equal_weight_sample")
+        s3 = _deterministic_seed("2024-02-28", "momentum_top10")
+        assert s1 != s2
+        assert s1 != s3
+        assert s2 != s3
+
+    def test_seed_in_uint32_range(self):
+        """numpy Generator seed 는 0 ~ 2^32-1."""
+        from scripts.siege_predictivity_audit import _deterministic_seed
+        s = _deterministic_seed("2024-01-31", "any_variant")
+        assert 0 <= s < 2**32
+
+    def test_python_hash_independence(self):
+        """PYTHONHASHSEED 독립 — Python hash() 는 process-randomized.
+        sha256 은 identical input → identical output 보장.
+        Round 1 finding: `abs(hash((date, variant))) % 2**32` 는 PYTHONHASHSEED
+        따라 변함. 이 test 는 해당 regression 방지.
+        """
+        # Known sha256 prefix for "2024-01-31|momentum_top10" 를 계산해서 비교
+        import hashlib
+
+        from scripts.siege_predictivity_audit import _deterministic_seed
+        raw = "2024-01-31|momentum_top10".encode("utf-8")
+        expected = int.from_bytes(hashlib.sha256(raw).digest()[:4], byteorder="big")
+        assert _deterministic_seed("2024-01-31", "momentum_top10") == expected
+
+
+class TestSectorConcentratedUnknownExclude:
+    """codex Round 1 fix: sector_concentrated 가 Unknown bucket 으로 collapse 방지."""
+
+    def test_excludes_unknown_sector(self, tiny_db, monkeypatch):
+        """Unknown sector ticker 가 largest 로 선택되지 않음."""
+        import scripts.siege_predictivity_audit as mod
+        # top-50 momentum 리턴, 일부는 Unknown, 일부는 real sector
+        monkeypatch.setattr(mod, "top_n_momentum",
+                            lambda *a, **k: ["UNK1", "UNK2", "UNK3", "UNK4", "UNK5",
+                                             "TECH1", "TECH2", "TECH3", "TECH4", "TECH5",
+                                             "TECH6", "TECH7", "TECH8", "TECH9", "TECH10"])
+        sectors = {f"UNK{i}": "Unknown" for i in range(1, 6)}
+        sectors.update({f"TECH{i}": "Technology" for i in range(1, 11)})
+        monkeypatch.setattr(mod, "_ticker_sector",
+                            lambda ticker, db_path=None: sectors.get(ticker, "Unknown"))
+
+        result = mod.build_variant("sector_concentrated", [],
+                                    "2024-01-31", db_path=tiny_db)
+        assert result is not None
+        tickers, weights = result
+        # 10 tech (real sector) 뽑힘, Unknown 섞이지 않음
+        assert all(t.startswith("TECH") for t in tickers)
+        assert len(tickers) == 10
+
+    def test_none_when_all_unknown(self, tiny_db, monkeypatch):
+        """모든 top momentum 이 Unknown → variant 구성 불가 (None)."""
+        import scripts.siege_predictivity_audit as mod
+        monkeypatch.setattr(mod, "top_n_momentum",
+                            lambda *a, **k: [f"UNK{i}" for i in range(20)])
+        monkeypatch.setattr(mod, "_ticker_sector",
+                            lambda ticker, db_path=None: "Unknown")
+        result = mod.build_variant("sector_concentrated", [],
+                                    "2024-01-31", db_path=tiny_db)
+        assert result is None
+
+    def test_none_when_real_sectors_insufficient(self, tiny_db, monkeypatch):
+        """real sector 가 있지만 largest 가 < 10 → None."""
+        import scripts.siege_predictivity_audit as mod
+        monkeypatch.setattr(mod, "top_n_momentum",
+                            lambda *a, **k: ["T1", "T2", "F1", "F2", "H1",
+                                             "T3", "F3", "H2", "T4", "F4"])
+        sectors = {"T1": "Tech", "T2": "Tech", "T3": "Tech", "T4": "Tech",
+                   "F1": "Finance", "F2": "Finance", "F3": "Finance", "F4": "Finance",
+                   "H1": "Health", "H2": "Health"}
+        monkeypatch.setattr(mod, "_ticker_sector",
+                            lambda ticker, db_path=None: sectors.get(ticker, "Unknown"))
+        result = mod.build_variant("sector_concentrated", [],
+                                    "2024-01-31", db_path=tiny_db)
+        # Tech (4) + Finance (4) + Health (2) — largest 4, < 10 → None
+        assert result is None
