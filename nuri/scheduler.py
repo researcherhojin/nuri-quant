@@ -269,12 +269,23 @@ def create_scheduler() -> BlockingScheduler:
     for job in SCHEDULES:
         # tz kwarg optional — CronTrigger.from_crontab 은 tz 를 직접 지원 안 함.
         # tz 지정 job 은 CronTrigger() 직접 호출 (codex Plan: DST-aware).
+        # ⚠️ WEEKDAY SEMANTICS — APScheduler CronTrigger 는 `day_of_week="0-6"`
+        # 를 **Mon=0, Sun=6** 로 해석 (crontab standard 0=Sun 아님). 따라서
+        # crontab literal `1-5` 를 그대로 넘기면 Tue-Sat 로 fire 됨 (codex
+        # #432 Review). 안전하게 `mon-fri` 같은 명시적 literal 사용.
         if "tz" in job:
             import pytz
             parts = job["cron"].split()
+            dow_raw = parts[4]
+            dow_map = {
+                "0": "sun", "1": "mon", "2": "tue", "3": "wed",
+                "4": "thu", "5": "fri", "6": "sat",
+                "1-5": "mon-fri", "0-6": "mon-sun", "*": "*",
+            }
+            dow = dow_map.get(dow_raw, dow_raw)
             trigger = CronTrigger(
                 minute=parts[0], hour=parts[1], day=parts[2],
-                month=parts[3], day_of_week=parts[4],
+                month=parts[3], day_of_week=dow,
                 timezone=pytz.timezone(job["tz"]),
             )
         else:

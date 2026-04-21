@@ -141,7 +141,7 @@ class TestMarkdownPersist:
                               "rsi": 60, "signal": "momentum", "pros": [], "cons": []}],
             "macro_events": [{"category": "demand_growth", "sentiment": 0.85,
                              "confidence": 0.82, "headline": "AI chip demand surges"}],
-            "portfolio_totals": {"total_usd": 27000, "by_account": [("kakaopay", 18000)]},
+            "portfolio_totals": {"total_usd": 27000, "by_account": [("brokerage_alpha", 18000)]},
         }
         md = format_brief_markdown(ctx)
         assert "## Regime" in md
@@ -172,6 +172,155 @@ class TestGenerateBrief:
         monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
         from nuri.alerts.premarket_brief import send_brief
         assert send_brief({"title": "test"}) is False
+
+    def test_subsystem_exceptions_are_caught_not_raised(self, tmp_path, monkeypatch):
+        """_collect_context 는 각 subsystem raise 해도 graceful degrade — logger.warning
+        만 기록하고 브리프 생성 계속. except 블록 coverage lock (82-193 missing)."""
+        from nuri.alerts import premarket_brief as pb
+
+        # 모든 subsystem 에 실제 exception raise 주입 → except 블록이 전부 실행
+        with (
+            patch("nuri.quant.regime.classifier.classify_regime",
+                  side_effect=RuntimeError("regime fail")),
+            patch("nuri.quant.regime.macro_score.compute_macro_score",
+                  side_effect=RuntimeError("macro fail")),
+            patch("nuri.trading.engine.certification.certify",
+                  side_effect=RuntimeError("siege fail")),
+            patch("nuri.api.routes.actions._build_actions",
+                  side_effect=RuntimeError("actions fail")),
+            patch("nuri.api.routes.actions._build_opportunities",
+                  side_effect=RuntimeError("ops fail")),
+            patch("nuri.core.db.query", side_effect=RuntimeError("db fail")),
+        ):
+            ctx = pb._collect_context()
+        # 모든 subsystem 실패했지만 ctx dict 자체는 반환 — 값은 None/빈 리스트
+        assert ctx is not None
+        assert ctx["regime"] is None
+        assert ctx["macro"] is None
+        assert ctx["siege"] is None
+
+    def test_embed_populated_covers_all_sections(self):
+        """ctx 전부 채워서 format_brief_embed 내 모든 conditional branch 실행.
+        (226/230/239/241/243/245/253/278-288/297-301 miss line)."""
+        from nuri.alerts.premarket_brief import format_brief_embed
+        ctx = {
+            "regime": {"regime": "bull_low_vol", "trend": "bull",
+                       "volatility": "low", "confidence": 80},
+            "macro": {"score": 65.0, "interpretation": "Good"},
+            "vix": {"value": 15.0, "date": "2026-04-20"},
+            "fear_greed": {"value": 70, "date": "2026-04-21"},
+            "usd_krw": {"value": 1470, "date": "2026-04-20"},
+            "siege": {"certified": False, "score": 58, "passed": 10, "failed": 1,
+                      "warnings": 6, "total": 17,
+                      "failing_errors": [{"id": "position_limit",
+                                          "desc": "종목 비중", "detail": "BAC>15%"}]},
+            "actions": {
+                "urgent": [{"ticker": "CRASH", "action": "SELL", "confidence": 85,
+                            "pnl_pct": -30, "position_pct": 5}],
+                "portfolio": [{"ticker": "BAC", "action": "HOLD", "confidence": 62,
+                               "pnl_pct": -1, "position_pct": 19.8}],
+                "check": [{"ticker": "PL", "action": "HOLD", "confidence": 74,
+                           "pnl_pct": 46.8, "position_pct": 1.4}],
+                "hold": [],
+            },
+            "opportunities": [
+                {"ticker": "AMD", "score": 57, "change_5d": 5, "rsi": 60,
+                 "verdict_level": "positive"},
+                {"ticker": "IONQ", "score": 63, "change_5d": 31, "rsi": 84,
+                 "verdict_level": "neutral"},
+                {"ticker": "XLE", "score": 35, "change_5d": -1, "rsi": 22,
+                 "verdict_level": "danger"},
+            ],
+            "macro_events": [{"category": "demand_growth", "sentiment": 0.85,
+                              "confidence": 0.82, "headline": "AI chip demand surges"}],
+            "portfolio_totals": {"total_usd": 27000,
+                                 "by_account": [("brokerage_alpha", 18000),
+                                                ("brokerage_beta", 9000)]},
+        }
+        embed = format_brief_embed(ctx)
+        assert "fields" in embed
+        names = [f["name"] for f in embed["fields"]]
+        # 모든 섹션 label 존재 — 모든 branch 통과한 결과
+        assert any("Regime" in n for n in names)
+        assert any("지표" in n for n in names)
+        assert any("SIEGE" in n for n in names)
+        assert any("Urgent" in n for n in names)
+        assert any("Portfolio" in n for n in names)
+        assert any("Check" in n for n in names)
+        assert any("Opportunities" in n for n in names)
+        assert any("Macro Events" in n for n in names)
+        assert any("Portfolio" in n for n in names)
+
+
+class TestMainCLI:
+    """main() CLI — argparse + stdout + generate_brief 호출 경로 (413-445 miss)."""
+
+    def test_main_stdout_mode_prints_and_exits_zero(self, tmp_path, monkeypatch, capsys):
+        """--stdout 로 호출 시 markdown 표준출력 + Discord skip + exit 0."""
+        from nuri.alerts import premarket_brief as pb
+
+        monkeypatch.setattr(pb, "__file__",
+                            str(tmp_path / "nuri" / "alerts" / "premarket_brief.py"))
+        (tmp_path / "nuri" / "alerts").mkdir(parents=True)
+        # Discord webhook 없는 env 에서 실행 — send_brief 는 silent fallback
+        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+
+        rc = pb.main(["--stdout", "--no-discord"])
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Pre-market Brief" in captured.out
+
+    def test_main_default_attempts_discord_send(self, tmp_path, monkeypatch):
+        """default (no --no-discord) 경로 — send_brief 호출 branch cover."""
+        from nuri.alerts import premarket_brief as pb
+
+        monkeypatch.setattr(pb, "__file__",
+                            str(tmp_path / "nuri" / "alerts" / "premarket_brief.py"))
+        (tmp_path / "nuri" / "alerts").mkdir(parents=True)
+
+        send_calls = []
+        monkeypatch.setattr(pb, "send_brief", lambda embed: send_calls.append(embed) or True)
+        rc = pb.main([])
+        assert rc == 0
+        assert len(send_calls) == 1  # Discord 호출 시도됨
+
+    def test_main_send_brief_failure_does_not_crash(self, tmp_path, monkeypatch):
+        """send_brief False 반환해도 main() exit 0 (scheduler job 중단 금지)."""
+        from nuri.alerts import premarket_brief as pb
+
+        monkeypatch.setattr(pb, "__file__",
+                            str(tmp_path / "nuri" / "alerts" / "premarket_brief.py"))
+        (tmp_path / "nuri" / "alerts").mkdir(parents=True)
+        monkeypatch.setattr(pb, "send_brief", lambda _embed: False)
+        assert pb.main([]) == 0
+
+
+class TestMarkdownEdgeCases:
+    """format_brief_markdown 의 conditional branch 커버 (349/360/373/375 miss)."""
+
+    def test_markdown_with_opportunities_pros_cons_rendered(self):
+        from nuri.alerts.premarket_brief import format_brief_markdown
+        ctx = {
+            "opportunities": [
+                {"ticker": "AMD", "score": 57, "change_5d": 5, "rsi": 60,
+                 "signal": "momentum", "pros": ["pro1", "pro2"], "cons": ["con1"]},
+            ],
+        }
+        md = format_brief_markdown(ctx)
+        assert "✓ pro1" in md
+        assert "✗ con1" in md
+
+    def test_markdown_with_siege_failing_errors_rendered(self):
+        from nuri.alerts.premarket_brief import format_brief_markdown
+        ctx = {
+            "siege": {"certified": False, "score": 58, "passed": 10, "failed": 1,
+                      "warnings": 6, "total": 17,
+                      "failing_errors": [{"id": "position_limit", "desc": "비중 초과",
+                                          "detail": "BAC 19.8%>15%"}]},
+        }
+        md = format_brief_markdown(ctx)
+        assert "❌ position_limit" in md
+        assert "BAC 19.8%>15%" in md
 
 
 class TestSchedulerRegistration:
@@ -205,5 +354,50 @@ class TestSchedulerRegistration:
                 f"premarket_brief trigger timezone should be US/Eastern, got {tz_name!r}"
         finally:
             # BlockingScheduler 는 start() 전 shutdown() 이 raise. 등록만 검증하고 조용히 종료.
+            if getattr(scheduler, "running", False):
+                scheduler.shutdown(wait=False)
+
+    def test_weekday_semantics_mon_fri_not_tue_sat(self):
+        """codex #432 Review CRITICAL lock: APScheduler day_of_week 는
+        Mon=0 base 라 crontab literal `1-5` 를 그대로 넘기면 Tue-Sat 로
+        fire 됨. 올바른 동작 — Monday 는 fire, Saturday 는 skip.
+
+        Revert detection: 만약 mapping 이 없어지거나 "1-5" 를 직접 넘기면
+        Monday fire test 가 fail. 유사 DST-aware weekday regression 방지."""
+        from datetime import datetime
+
+        import pytz
+
+        from nuri.scheduler import create_scheduler
+
+        scheduler = create_scheduler()
+        try:
+            job = scheduler.get_job("premarket_brief")
+            assert job is not None, "premarket_brief job must be registered"
+            trig = job.trigger
+            eastern = pytz.timezone("US/Eastern")
+
+            # (a) Monday 월 09:00 직전에서 찾은 다음 fire time = 같은 Monday 09:00
+            mon_0859 = eastern.localize(datetime(2026, 4, 20, 8, 59, 0))  # Monday
+            next_fire = trig.get_next_fire_time(None, mon_0859)
+            assert next_fire is not None
+            assert next_fire.weekday() == 0, \
+                f"Monday 08:59 이후 다음 fire 가 Monday(weekday=0) 여야 함 — got weekday={next_fire.weekday()} ({next_fire})"
+            assert next_fire.hour == 9 and next_fire.minute == 0
+
+            # (b) Friday 09:00 직후에서 찾은 다음 fire time = Monday (Sat 아님)
+            fri_0901 = eastern.localize(datetime(2026, 4, 24, 9, 1, 0))  # Friday
+            next_after_fri = trig.get_next_fire_time(None, fri_0901)
+            assert next_after_fri is not None
+            assert next_after_fri.weekday() == 0, \
+                f"Friday 09:01 이후 다음 fire 가 Monday 여야 함 (Saturday 발화 금지). got weekday={next_after_fri.weekday()} ({next_after_fri})"
+
+            # (c) Saturday 08:00 에서 찾은 다음 fire time 도 Monday (Saturday 자체 skip)
+            sat_0800 = eastern.localize(datetime(2026, 4, 25, 8, 0, 0))
+            next_after_sat = trig.get_next_fire_time(None, sat_0800)
+            assert next_after_sat is not None
+            assert next_after_sat.weekday() == 0, \
+                f"Saturday 에서 찾은 다음 fire 는 Monday 여야 함. got weekday={next_after_sat.weekday()}"
+        finally:
             if getattr(scheduler, "running", False):
                 scheduler.shutdown(wait=False)
