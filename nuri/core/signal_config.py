@@ -63,3 +63,28 @@ def list_sell_signals() -> set[str]:
         sid for sid, meta in SIGNAL_CONFIG.get("signals", {}).items()
         if meta.get("type") == "SELL" and meta.get("enabled", True)
     }
+
+
+def is_actionable(signal_id: str) -> bool:
+    """시그널이 candidate 추천에 포함되어야 하는가 (PR C, codex #3).
+
+    YAML 의 `actionable: false` 로 설정된 SHADOW 신호 (STRATEGY §2.6 Surface 단계)
+    는 scorecard backtest 에는 들어가지만 `candidates.py` 가 제외.
+    Downstream (confidence/tier) 에 간접 반영되지 않도록 구조적 분리 — codex
+    Plan consult Biggest Risk.
+
+    미정의 시 True (기존 signal 은 전부 actionable 로 기본 동작 유지).
+    """
+    return bool(get_signal_meta(signal_id).get("actionable", True))
+
+
+def list_shadow_signals() -> set[str]:
+    """SHADOW (`actionable: false`) 신호 ID 집합.
+
+    PR C (codex bubble-bear #3) 로 도입된 crash precursor 신호들 — UI surface
+    용으로만 사용, candidates/confidence 에 영향 없음. scorecard 집계는 계속.
+    """
+    return {
+        sid for sid, meta in SIGNAL_CONFIG.get("signals", {}).items()
+        if meta.get("enabled", True) and meta.get("actionable", True) is False
+    }
