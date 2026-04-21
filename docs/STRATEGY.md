@@ -249,27 +249,47 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **경고**: 본 §3.7 진단·가설을 prescriptive (V2 design truth) 로 인용해 config/code 변경 PR 을 만드는 것은 금지. §3.6 백테스트 PASS 전까지는 hypothesis 등급. PR A #429 는 이 경고의 예외 아님 — PR A 는 "alpha/portfolio 데이터 구조 분리" 만 shipped 했지 "upside gate 추가" 는 아님.
 
-### 3.8 SIEGE predictivity measurement (E4-0b)
+### 3.8 SIEGE predictivity measurement (E4-0b v2)
 
-**상태**: infrastructure shipped — E4-0b (이 PR). 실측 audit run 은 `make siege-audit` 실행 필요 (post-merge).
+**상태**: v1 #417 → v2 재설계 완료 (2026-04-22). Codex Plan consult 로 측정 scope 을 "snapshot-native portfolio-rule gate predictivity audit" 로 좁힘 — §3.7 hypothesis 전체가 아니라 REBALANCE/downside-structure subset 만 수치화.
 
-**Purpose**: §3.7 진단("upside/opportunity-cost gate 0개") 을 numeric evidence 로 승격. 각 SIEGE gate 가 실제로 forward NAV drop 을 예측하는지 historical snapshot × forward return 으로 측정. E4-0c 재-grading 의 근거.
+**v1 failure mode (#417 → v2 fix)**:
+- 48 rows Δ 전부 null. 3 축 invariance — (a) 모든 snapshot 이 us_core top-10 momentum × equal 10% → position_limit/leverage/stop 0 fire, (b) `_age_hours()` 가 `kst_now()` 기준 → freshness/external/drift 47/0 fire (historical-date 평가 bias), (c) top-10 momentum 의 sector 밀집이 invariant.
 
-**Script**: `scripts/siege_predictivity_audit.py` (docs/plans/e4_0b.md 참조).
-- Monthly top-10 momentum snapshot (us_core 85, 60 snapshots over 5Y)
-- 각 snapshot 에서 `certify(snapshot=..., caller="audit:historical", timestamp=fixed)`
-- Forward 30/60/90d portfolio NAV + MAE 측정
-- Q4 B metric: `E[fwd_return | gate fired] - E[fwd_return | not fired]` + 95% bootstrap CI
-- Output: `data/reports/{today}/e4_0b_siege_predictivity.md`
+**v2 methodology** (codex Plan consult decisions):
+- **Variant ladder (Q1-A2)**: 4 templates × N months. momentum_top10 / equal_weight_sample / sector_concentrated / concentrated_top5. Construction-by-design 으로 각 gate 에 fire/not-fire 양쪽 sample 확보 (sector_limit 예외 — 모든 variant 에서 tech 밀집으로 fire). `leverage_included` 는 production DB 에 TQQQ/UPRO prices 0 rows 로 제거 (leveraged ETF backfill 별도 PR).
+- **Gate eligibility matrix (codex Biggest Risk fix)**:
+  - `auditable_now` {`position_limit`, `sector_limit`, `leverage_ban`} — snapshot-native portfolio-rule gates, 측정 대상.
+  - `audit_incoherent` {`data_fresh_*`, `external_data_*`, `volatility_gate_*`, `drift_safe`, `macro_event_alignment`, `conflict_free`} — current DB state 의존, snapshot 시점 coherence 없음, 측정 skip.
+  - `requires_replayed_state` {`stop_loss`, `rules_loaded`} — historical portfolio pnl/metadata 부재, 측정 불가.
+- **Hybrid metrics (Q2-B3)**: Binary Δ primary (fired − not_fired mean fwd return + 95% bootstrap CI) + continuous severity OLS slope secondary (auditable gates 만).
+- **Acceptance (codex Q5 correction — CI upper bound, NOT lower)**: `Δ = fired − not_fired` 이므로 downside predictivity 는 CI 전체가 0 아래. `primary_keep`: 30d `CI_high < 0` AND 60d point estimate < 0. `strong_keep`: 30d + 60d 모두 `CI_high < 0`.
 
-**Gate injection hook**: `certify(snapshot: CertSnapshot | None = None, timestamp: str | None = None)` — `_capture_snapshot()` 우회. Production default (snapshot=None) zero regression. Caller `"audit:historical"` 는 V1 API / V2.1 dashboard 에서 자연 분리 (square shape).
+**v2 실측 결과 (2026-04-22, 36 months × 4 variants = 144 valid snapshots)**:
 
-**Acceptance** (이 PR 은 infra 만; predictivity 결과 승격은 별도 post-merge PR):
-- 60±10 audit rows → `certifications` (caller=audit:historical)
-- Per-gate Q4 B report 생성
-- §3.7 hypothesis 를 measured evidence 로 승격 PR 에서 인용 가능
+| Gate | Fire/Not | Δ30d | Δ60d | Δ90d | Primary_keep | Strong_keep |
+|---|---|---|---|---|---|---|
+| `position_limit` | 35/105 | +4.34% [-3.59, +12.37] | +9.75% [-2.93, +22.69] | +15.69% [-0.80, +31.90] | ❌ | ❌ |
+| `sector_limit` | 140/0 | — (non-fire sample 부재) | — | — | N/A | N/A |
+| `leverage_ban` | 0/140 | — (fire sample 부재) | — | — | N/A | N/A |
 
-**Warning** (§3.7 정신 계승): 실측 결과를 단발 measurement 로 mechanical config 변경에 사용 금지. Surface 단계 rank + CI 만; Soft penalty 승격은 E4-0c + codex consult + 별도 STRATEGY 개정.
+**핵심 finding — §3.7 hypothesis 에 대한 directional counter-evidence (provisional)**:
+- `position_limit`: 35 fire / 105 not-fire, Δ30d=+4.34%, Δ60d=+9.75%, Δ90d=+15.69% (all CIs cross 0). Point estimates 모두 양수 = **directional counter-evidence** (concentrated portfolios 가 forward return 더 좋은 쪽으로 기울어짐) 이지만 CI 가 0을 가로지르므로 **not statistically conclusive**. "SIEGE concentration rule 이 structural downside risk 를 잡고 있다" 가설에 대한 tentative negative signal.
+- `sector_limit`: 모든 variant 에서 fire — non-fire sample 부재로 binary Δ 측정 불가. Continuous severity slope 도 CI 전부 0 포함 → **inconclusive**.
+- `leverage_ban`: production DB 에 TQQQ/UPRO prices 0 rows → fire sample 부재, **측정 불가** (leveraged ETF backfill 후 재측정 필요).
+
+**Framing discipline (codex Round 1 overreach fix)**: 이 결과는 §3.7 "hypothesis confirmation" 이 아니라 **"limited directional counter-evidence on `position_limit` (provisional pilot), inconclusive on `sector_limit`/`leverage_ban`"**. 60-month production rerun + leverage backfill 이후 measurement 가 durable evidence 로 승격 가능. 현재는 pilot.
+
+**사용자 페인 연결 (qualified)**: "너무 보수적, 돈 많이 벌고 싶다" 의 structural measurement 경로는 살아있음 — 그러나 v2 pilot 의 `position_limit` directional signal 만으로 SIEGE concentration rule 완화 결정 금지. E4-0c 재-grading 은 fuller measurement (60-month + leverage + sector coverage 개선) 를 consume 해야 함.
+
+**Caveats (codex Biggest Risk 대응)**:
+- Synthetic portfolio — variant ladder 는 hand-crafted construction, 실제 사용자 portfolio 분포와 직접 매핑 불가. "이 4 template family 내에서 gate predictivity" 해석만.
+- 36 months × 4 variants = 144 sample — 5Y 목표 (60 months × 5 variants = 300) 대비 현 제약. Mac mini production run 에서 full 60 months + leverage backfill 후 재측정 권장.
+- Sector coverage 희박 (us_core 85 중 26/30 top-momentum 이 "Unknown" sector) — portfolio.yaml sector tag 의존, GICS standard sector 전환 시 measurement 개선 가능.
+
+**Warning** (§3.7 정신 계승): 이 실측 결과를 단발 measurement 로 mechanical config 변경에 사용 금지. Surface 단계 rank + CI 만 제공 — Soft penalty (§2.6) 승격은 (1) leverage backfill + sample 확장, (2) E4-0c 재측정, (3) codex consult + 별도 STRATEGY 개정 필수.
+
+**Script + 실측 artifact**: `scripts/siege_predictivity_audit.py`, `data/reports/{today}/e4_0b_siege_predictivity.md`. Codex consult archive: `codex-reviews/PRe4-0b-v2-roundplan-20260421T175538Z.md`.
 
 ---
 
