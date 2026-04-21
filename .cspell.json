@@ -12,6 +12,7 @@
     "replayable",
     "unwired",
     "CAGR",
+    "hashlib",
     "Warsh",
     "delenv",
     "backcompat",
