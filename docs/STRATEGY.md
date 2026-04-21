@@ -135,6 +135,14 @@
 
 **Think/Plan 생략 패턴**: trivial chore (오타, 버전 번호, 주석 수정) 는 Think/Plan 을 inline 으로 압축 가능. 단 Build 이상부터는 반드시 모든 단계 준수. "trivial 로 시작했지만 커짐" 을 Build 중 발견하면 Think/Plan 으로 회귀.
 
+**Next-session entry artifact Plan gate** (2026-04-22 codex handoff consult): `NEXT_SESSION.md` / `SESSION_PROMPT.md` 같은 next-session entry artifact 는 docs-only 이고 gitignored 라도 **Reflect gate 산출물로 취급**. 이 문서의 수정 범위 분류:
+- **Inline 가능 (self-edit OK)**: typo, format, self-note, HEAD snapshot append.
+- **Plan consult 필수 (다음 primary PR 의 Plan consult 에 include 해 batch 검증)**: next primary 변경, 후보 우선순위 재정렬, 새 risk framing, live command 교체, acceptance criteria 변경.
+
+재-consult trigger: (a) next primary 가 바뀔 때, (b) 후보 우선순위 2+ 개 경쟁 상태, (c) handoff 실행 명령/HEAD/acceptance 가 stale 가능성, (d) 5 PR 누적 또는 48h burst ship 후 cadence reflection, (e) legal/TOS/production-risk 신규 도입. 매 세션 강제는 과잉.
+
+**Burst ship cadence 경계** (2026-04-22 실측, 48h 6 functional + 3 docs PR 사례): 재현 조건은 독립 scope + 명확한 queue + codex Plan consult 선행 이지만 **sustainable default 가 아님**. Side-effects 누적 — codex Round 2 skip 빈발 (quality regression), docs PR 의 scope-discipline 경계, reviewer fatigue, handoff doc drift. 48h 이상 burst 직후는 반드시 session handoff Plan consult (위 rule) + 다음 cycle 에 cadence 내림.
+
 ---
 
 ## 3. 핵심 아키텍처 결정 기록
