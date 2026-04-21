@@ -246,13 +246,20 @@ def _get_account_labels() -> dict[str, str]:
 
 
 def _get_latest_actions() -> list[dict]:
-    """recommendations 테이블에서 최신 추천 조회 — analyze_portfolio() 대체."""
+    """recommendations 테이블에서 최신 추천 조회 — analyze_portfolio() 대체.
+
+    PR B (codex #2): alpha-native read path. SELL 카드는 `alpha_action=="FLAT"`
+    명시 또는 pre-migration legacy SELL (back-compat) 만 surface. 이전엔 `action
+    == "SELL"` 단독 검사 — concentration-only SELL 이 writer 에서 누출되면 UI
+    까지 전파됐음. PR A actions.py 와 동일 semantic 적용 (shared helper).
+    """
+    from nuri.core.axis import is_alpha_flat_sell, is_alpha_long_buy
     from nuri.core.db import query
     from nuri.core.ticker_names import get_ticker_name
     try:
         rows = query("""
             SELECT ticker, action, confidence, regime, signals, date,
-                   scoring_detail, agent_verdicts
+                   scoring_detail, agent_verdicts, alpha_action, portfolio_action
             FROM recommendations
             WHERE date = (SELECT MAX(date) FROM recommendations)
             ORDER BY confidence DESC
@@ -266,6 +273,8 @@ def _get_latest_actions() -> list[dict]:
         actions = []
         for row in rows:
             action = row["action"]
+            alpha_action = row.get("alpha_action")
+            portfolio_action = row.get("portfolio_action")
             confidence = round(row["confidence"] * 100) if row["confidence"] and row["confidence"] <= 1 else round(row["confidence"] or 0)
             reason, agreement_rate = _extract_reason(row.get("signals"))
             raw_account = ticker_account.get(row["ticker"], "")
@@ -275,9 +284,11 @@ def _get_latest_actions() -> list[dict]:
             scoring_detail = _parse_json_field(row.get("scoring_detail"))
             agent_verdicts = _parse_json_field(row.get("agent_verdicts"))
 
-            if action == "BUY" and confidence >= 50:
+            if is_alpha_long_buy(alpha_action, action) and confidence >= 50:
                 actions.append({
                     "action": "BUY",
+                    "alpha_action": alpha_action,
+                    "portfolio_action": portfolio_action,
                     "ticker": row["ticker"],
                     "name": get_ticker_name(row["ticker"]),
                     "confidence": confidence,
@@ -287,9 +298,11 @@ def _get_latest_actions() -> list[dict]:
                     "scoring_detail": scoring_detail,
                     "agent_verdicts": agent_verdicts,
                 })
-            elif action == "SELL" and confidence >= 70:
+            elif is_alpha_flat_sell(alpha_action, action) and confidence >= 70:
                 actions.append({
                     "action": "SELL",
+                    "alpha_action": alpha_action,
+                    "portfolio_action": portfolio_action,
                     "ticker": row["ticker"],
                     "name": get_ticker_name(row["ticker"]),
                     "confidence": confidence,

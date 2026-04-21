@@ -13,6 +13,7 @@ from datetime import timedelta
 
 from fastapi import APIRouter
 
+from nuri.core.axis import is_alpha_flat_sell
 from nuri.core.catalyst import has_recent_catalyst
 from nuri.core.db import query
 from nuri.core.live_price import DEFAULT_DIVERGENCE_THRESHOLD_PCT, check_divergence
@@ -91,6 +92,10 @@ def _build_actions() -> dict:
         seen_tickers.add(ticker)
 
         action = rec["action"]
+        # PR B: alpha axis. consensus `save_to_recommendations` 가 PR A 이후 이미
+        # write 중. Legacy/pre-migration row 는 None.
+        alpha_action = rec.get("alpha_action")
+        portfolio_action = rec.get("portfolio_action")
         confidence = rec["confidence"]
         holding = portfolio_holdings.get(ticker, {})
         pnl_pct = holding.get("pnl_pct", 0)
@@ -107,6 +112,9 @@ def _build_actions() -> dict:
             "ticker": ticker,
             "name": get_ticker_name(ticker),
             "action": action,
+            # PR B: per-item axis 노출. Frontend 가 향후 badge surface 할 수 있게 (chore PR).
+            "alpha_action": alpha_action,
+            "portfolio_action": portfolio_action,
             "confidence": confidence,
             "agreement": rec.get("agreement"),
             "pnl_pct": round(pnl_pct, 1),
@@ -137,8 +145,17 @@ def _build_actions() -> dict:
         # ── 🔴 즉시 실행 조건 ──
 
         # 강한 SELL 시그널 — stop-loss breach 는 urgent (alpha-driven, 기계적).
-        # PR A: SIEGE 위반 bucket 은 여기서 처리하지 않음 (아래 portfolio bucket).
-        if action == "SELL":
+        # PR B (codex #2): `action == "SELL"` 대신 `is_alpha_flat_sell` 로 전환 —
+        # alpha_action == "FLAT" 명시 OR (back-compat) alpha_action=None +
+        # action="SELL" (pre-migration-22 legacy row). 두 경우 모두 SELL path 진입.
+        #
+        # **Known remaining risk** (PR C strict=True 승격까지 열려있음):
+        # post-migration 에 miswriter 가 `alpha_action=None, action="SELL"` 을 emit
+        # 하면 여전히 SELL path 로 들어간다. PR A (#429) risk_agent 는 concentration
+        # 을 `HOLD + portfolio_action=REBALANCE` 로 emit 해 이 경로에 진입 안 하지만,
+        # 미래의 임의 writer 까지 구조적 차단은 strict=True 승격 후에나 성립. 현 PR B
+        # scope 는 "legacy row 를 깨지 않는 전환" 수준. 승격 조건은 codex Plan Q1-B.
+        if is_alpha_flat_sell(alpha_action, action):
             item["reasons"].append(f"10-Agent SELL (conf {confidence})")
             # A-3: 하드코딩 -7 제거. holding 이 최대 비중 계좌의 row 이므로 그
             # account 의 strategy stop_loss 와 비교 — pnl_pct 와 cost basis 일치.

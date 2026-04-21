@@ -45,7 +45,13 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
         actions: E-2 리밸런싱 액션 리스트
         verdicts: 에이전트 verdict 딕셔너리 {ticker: [verdict_dict, ...]}
         db_path: DB 경로 (테스트용)
+
+    PR B (codex #2): E-1 candidates + E-2 actions 모두 `alpha_action` 를
+    `derive_alpha_action(direction / action)` 으로 채운다. `portfolio_action` 은
+    E-1/E-2 scope 에서 설정되지 않음 (concentration 같은 portfolio rule 은
+    risk_agent + consensus 경로에서만 emit — PR A) — NULL 유지.
     """
+    from nuri.core.axis import derive_alpha_action
     from nuri.core.timezone import today_kst
     from nuri.trading.recommend.candidates import TIER_ACTIONABLE
 
@@ -66,6 +72,8 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
                 "date": today,
                 "ticker": c.ticker,
                 "action": c.direction,
+                "alpha_action": derive_alpha_action(c.direction),
+                "portfolio_action": None,  # E-1 signal-driven — portfolio rule 아님
                 "confidence": c.confidence,
                 "regime": "",
                 "signals": json.dumps([c.signal_id]),
@@ -106,6 +114,8 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
                 "date": today,
                 "ticker": a.ticker,
                 "action": a.action,
+                "alpha_action": derive_alpha_action(a.action),
+                "portfolio_action": None,  # E-2 rebalance 는 legacy 경로. PR C 에서 재분류.
                 "confidence": 50.0,  # 리밸런싱 기반은 기본 50
                 "regime": a.regime_note,
                 "signals": json.dumps(a.signals),
@@ -122,9 +132,11 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
     with get_db(db_path) as conn:
         conn.executemany(
             """INSERT OR IGNORE INTO recommendations
-               (date, ticker, action, confidence, regime, signals, entry_price,
+               (date, ticker, action, alpha_action, portfolio_action,
+                confidence, regime, signals, entry_price,
                 agent_verdicts, scoring_detail)
-               VALUES (:date, :ticker, :action, :confidence, :regime, :signals, :entry_price,
+               VALUES (:date, :ticker, :action, :alpha_action, :portfolio_action,
+                       :confidence, :regime, :signals, :entry_price,
                        :agent_verdicts, :scoring_detail)""",
             # 누락된 키에 대해 기본값 None 보장
             [{**{"agent_verdicts": None, "scoring_detail": None}, **r} for r in records],

@@ -236,7 +236,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **라벨**: hypothesis for E3 validation. 진단 자체는 여전히 유효 — "upside / opportunity-cost gate 0개". 정량 acceptance 기준은 §3.6 에 위치.
 
-**업데이트 2026-04-21 (PR A #429)**: 아래 "SIEGE output 의 하위 문제 중 하나" — SIEGE REJECT 이 사용자에게 "매도" 로 surface 되던 경로 — 는 structural fix 로 shipped. §2.6 Soft penalty 구현: concentration / sector_limit 위반은 `portfolio_action=REBALANCE` 로 분리되어 alpha (SELL) 경로에 흐르지 않음. Live verify (production DB): BAC/TSLA concentration → `portfolio` bucket, urgent 0 건. **그러나 §3.7 의 원 진단 (upside gate 부재) 은 여전히 open** — PR A 는 "downside-only 가 잘못된 방향으로 increse-risk 를 emit 하는 것" 을 막았지만 "upside / opportunity-cost gate 추가" 의 hypothesis 는 여전히 E3 paired counterfactual 의 검증 대상. §3.6 Stage 2 는 이 hypothesis 와 독립적으로 PASS (sizing-rule legitimacy 는 이미 증명됨, E3-3b #402).
+**업데이트 2026-04-21 (PR A #429)**: 아래 "SIEGE output 의 하위 문제 중 하나" — SIEGE REJECT 이 사용자에게 "매도" 로 surface 되던 경로 — 는 structural fix 로 shipped. §2.6 Soft penalty 구현: concentration / sector_limit 위반은 `portfolio_action=REBALANCE` 로 분리되어 alpha (SELL) 경로에 흐르지 않음. Live verify (production DB): BAC/TSLA concentration → `portfolio` bucket, urgent 0 건. **그러나 §3.7 의 원 진단 (upside gate 부재) 은 여전히 open** — PR A 는 "downside-only 가 잘못된 방향으로 increase-risk 를 emit 하는 것" 을 막았지만 "upside / opportunity-cost gate 추가" 의 hypothesis 는 여전히 E3 paired counterfactual 의 검증 대상. §3.6 Stage 2 는 이 hypothesis 와 독립적으로 PASS (sizing-rule legitimacy 는 이미 증명됨, E3-3b #402).
 
 **진단** (2026-04-18, `nuri/trading/engine/certification.py:553` 실측):
 - 현 SIEGE 의 `ALL_CERT_CHECKS` 11 base check 함수 (per-asset-class expansion 후 portfolio 구성에 따라 11~30+ 가변) 가 **모두 downside-block 방향** — position cap, sector cap, stop-loss, leverage ban, freshness, volatility, external data, conflict, drift, macro 경고, rules-loaded sanity. **upside / opportunity-cost gate 0개**.
@@ -281,7 +281,7 @@ PR을 올리기 전 이 기준을 확인한다.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 3,320 tests, 148 files |
+| Backend tests | 고정 minimum 없음 — Codecov 1% relative regression gate (목표 ≥ 95%) | 3,345 tests, 150 files |
 | Frontend tests | 목표 ≥ 90% | 917 tests, 67 files |
 | E2E | 핵심 flow 커버 | 38 Playwright tests (6 spec) |
 | CI 통과 | 필수 | lint + test + coverage + security + privacy |
