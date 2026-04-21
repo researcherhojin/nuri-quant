@@ -32,6 +32,7 @@ class TestComputeAtr:
     def test_sufficient_rows_returns_series(self):
         """20 rows + 가격 변동 → ATR Series 정상 반환."""
         import numpy as np
+
         from nuri.quant.exits.atr import compute_atr
         rng = np.random.default_rng(42)
         n = 30
@@ -201,6 +202,7 @@ class TestAnchorContractFrozen:
         anchor 선택 책임 (held=avg_price, non-held=current_price). 함수 내부에서
         'current_price fallback' 같은 silent anchor 분기 없음."""
         import inspect
+
         from nuri.quant.exits import atr as atr_mod
         sig = inspect.signature(atr_mod.compute_atr_stop)
         # entry_price 는 keyword-only required (default 없음)

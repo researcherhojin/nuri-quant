@@ -7,6 +7,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "pr_f_atr_validation.py"
 _spec = importlib.util.spec_from_file_location("pr_f_atr_validation", _SCRIPT_PATH)
 assert _spec is not None and _spec.loader is not None
@@ -85,7 +87,7 @@ class TestComputeMetrics:
     def test_mixed_returns_ulcer_nonzero(self):
         m = v.compute_metrics([10.0, -5.0, -3.0], [30, 30, 30], [False, True, True])
         assert m["n"] == 3
-        assert m["turnover"] == pytest_approx(2 / 3 * 100)
+        assert m["turnover"] == pytest.approx(2 / 3 * 100, rel=1e-6)
         # Ulcer = sqrt(mean((-5)² + (-3)²)) = sqrt((25+9)/2) = sqrt(17) ≈ 4.12
         assert abs(m["ulcer"] - (17.0 ** 0.5)) < 0.01
 
@@ -171,8 +173,3 @@ class TestPairedDeltas:
         assert v.paired_deltas([], k=2.0, regime_mult=1.0, horizon=60) == []
 
 
-# pytest approx helper (since we import only top-level)
-import pytest  # noqa: E402
-
-def pytest_approx(value):
-    return pytest.approx(value, rel=1e-6)
