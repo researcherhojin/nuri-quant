@@ -146,10 +146,15 @@ def _build_actions() -> dict:
 
         # 강한 SELL 시그널 — stop-loss breach 는 urgent (alpha-driven, 기계적).
         # PR B (codex #2): `action == "SELL"` 대신 `is_alpha_flat_sell` 로 전환 —
-        # alpha_action=="FLAT" 명시 OR pre-migration legacy SELL (back-compat).
-        # 의도: future writer 가 concentration-only SELL 을 emit 해도 alpha_action
-        # 이 None 이면 여기 안 걸리고 portfolio bucket 으로 route (default-safe).
-        # SIEGE 위반 bucket 은 아래에서 처리.
+        # alpha_action == "FLAT" 명시 OR (back-compat) alpha_action=None +
+        # action="SELL" (pre-migration-22 legacy row). 두 경우 모두 SELL path 진입.
+        #
+        # **Known remaining risk** (PR C strict=True 승격까지 열려있음):
+        # post-migration 에 miswriter 가 `alpha_action=None, action="SELL"` 을 emit
+        # 하면 여전히 SELL path 로 들어간다. PR A (#429) risk_agent 는 concentration
+        # 을 `HOLD + portfolio_action=REBALANCE` 로 emit 해 이 경로에 진입 안 하지만,
+        # 미래의 임의 writer 까지 구조적 차단은 strict=True 승격 후에나 성립. 현 PR B
+        # scope 는 "legacy row 를 깨지 않는 전환" 수준. 승격 조건은 codex Plan Q1-B.
         if is_alpha_flat_sell(alpha_action, action):
             item["reasons"].append(f"10-Agent SELL (conf {confidence})")
             # A-3: 하드코딩 -7 제거. holding 이 최대 비중 계좌의 row 이므로 그
