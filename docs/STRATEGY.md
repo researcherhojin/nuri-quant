@@ -250,6 +250,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 - 현 SIEGE 의 `ALL_CERT_CHECKS` 11 base check 함수 (per-asset-class expansion 후 portfolio 구성에 따라 11~30+ 가변) 가 **모두 downside-block 방향** — position cap, sector cap, stop-loss, leverage ban, freshness, volatility, external data, conflict, drift, macro 경고, rules-loaded sanity. **upside / opportunity-cost gate 0개**.
 - 결과적으로 SIEGE output 은 "신규 매수가 안전한가" 만 판정 — "**현금 보유가 기회 비용을 부담하는가**" 는 invisible. VIX 12 + bull regime + momentum top-decile 같은 favorable 합치에서도 시스템적으로 silent.
 - 사용자 페인 ("너무 보수적, 돈 많이 벌고 싶다") 의 구조적 원인 중 일부.
+- **업데이트 2026-04-22 (§3.8 E4-0b v2 60-month)**: "gate 들이 downside-block 방향" 은 여전히 structural truth 이나, **"effectively downside-predictive 로 작동한다" 는 premise 는 synthetic audit 에서 tentatively refuted** (position_limit Δ wrong-sign 반복). 본 §3.7 hypothesis (symmetric amplifier 도입) 는 "downside-block 이 작동하고 있다" 위에 upside 를 추가하는 구조였지만, premise 가 흔들림 — upside-gate 를 논의할 때 "기존 gate 가 intended 대로 작동" 을 assumed 로 두지 말 것. Prudential constraint 로는 유효하나 predictive gate 로는 증명되지 않음.
 
 **가설** (E3 에서 검증, accept/reject 기준은 §3.6 3-stage validation):
 - §2.6 4번째 rung (Symmetric amplifier) + §3.4 Kelly / Markowitz / Faber 근거 위에서, SIEGE 의 양방향 균형 (REJECT 외 favorable 조건 측정) 도입이 paired counterfactual (Stage 2) 에서 baseline 대비 paired outcomes 를 개선하는가 (구체 metric 은 §3.6 Primary metrics).
@@ -259,7 +260,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 ### 3.8 SIEGE predictivity measurement (E4-0b v2)
 
-**상태**: v1 #417 → v2 재설계 완료 (2026-04-22). Codex Plan consult 로 측정 scope 을 "snapshot-native portfolio-rule gate predictivity audit" 로 좁힘 — §3.7 hypothesis 전체가 아니라 REBALANCE/downside-structure subset 만 수치화.
+**상태**: v1 #417 → v2 재설계 (2026-04-22) → **60-month production rerun 완료 (2026-04-22, Mac mini)**. 결과: acceptance `CI_upper < 0` 미달, point estimate 반복적으로 wrong-sign (fired > not_fired). **Synthetic audit 로는 §3.7 downside-predictive framing 증명 불가 — measurement 경로 closed**. Codex consult (2026-04-22 Round 2) verdict: 추가 variant/breadth 확장은 low-expected-value — wrong-sign 결과를 flip 시키지 못하며, 독립 date 수는 variant 증가로 늘지 않음. 본 §3.8 은 남은 measurement direction 이 아닌 **closed negative result** 로 읽어야 함.
 
 **v1 failure mode (#417 → v2 fix)**:
 - 48 rows Δ 전부 null. 3 축 invariance — (a) 모든 snapshot 이 us_core top-10 momentum × equal 10% → position_limit/leverage/stop 0 fire, (b) `_age_hours()` 가 `kst_now()` 기준 → freshness/external/drift 47/0 fire (historical-date 평가 bias), (c) top-10 momentum 의 sector 밀집이 invariant.
@@ -273,31 +274,43 @@ base = regime_win_rate × 60% + profit_factor × 40%
 - **Hybrid metrics (Q2-B3)**: Binary Δ primary (fired − not_fired mean fwd return + 95% bootstrap CI) + continuous severity OLS slope secondary (auditable gates 만).
 - **Acceptance (codex Q5 correction — CI upper bound, NOT lower)**: `Δ = fired − not_fired` 이므로 downside predictivity 는 CI 전체가 0 아래. `primary_keep`: 30d `CI_high < 0` AND 60d point estimate < 0. `strong_keep`: 30d + 60d 모두 `CI_high < 0`.
 
-**v2 실측 결과 (2026-04-22, 36 months × 4 variants = 144 valid snapshots)**:
+**v2 실측 결과 (pilot → 60-month trajectory)**:
 
-| Gate | Fire/Not | Δ30d | Δ60d | Δ90d | Primary_keep | Strong_keep |
+| Run | Date | Months × Variants | Valid | `position_limit` Δ30d | CI30d | Δ60d | Δ90d |
+|---|---|---|---|---|---|---|---|
+| Pilot (MBP) | 2026-04-22 03:50 | 36 × 4 | 144 | +4.34% | [-3.59, +12.37] | +9.75% | +15.69% |
+| Production (Mac mini) | 2026-04-22 10:39 | 60 × 4 | 144 (141 binary) | +2.45% | [-3.43, +8.77] | +2.93% | +4.60% |
+
+60-month production artifact: `data/reports/2026-04-22/e4_0b_siege_predictivity.md`.
+
+**60-month gate-level 결과** (Mac mini production DB):
+
+| Gate | Fire/Not | Δ30d CI | Δ60d CI | Δ90d CI | Primary_keep | Strong_keep |
 |---|---|---|---|---|---|---|
-| `position_limit` | 35/105 | +4.34% [-3.59, +12.37] | +9.75% [-2.93, +22.69] | +15.69% [-0.80, +31.90] | ❌ | ❌ |
-| `sector_limit` | 140/0 | — (non-fire sample 부재) | — | — | N/A | N/A |
-| `leverage_ban` | 0/140 | — (fire sample 부재) | — | — | N/A | N/A |
+| `position_limit` | 47/94 | [-3.43, +8.77] | [-6.79, +12.85] | [-8.17, +17.82] | ❌ | ❌ |
+| `sector_limit` | 141/0 | — (non-fire 부재) | — | — | N/A | N/A |
+| `leverage_ban` | 0/141 | — (fire 부재) | — | — | N/A | N/A |
 
-**핵심 finding — §3.7 hypothesis 에 대한 directional counter-evidence (provisional)**:
-- `position_limit`: 35 fire / 105 not-fire, Δ30d=+4.34%, Δ60d=+9.75%, Δ90d=+15.69% (all CIs cross 0). Point estimates 모두 양수 = **directional counter-evidence** (concentrated portfolios 가 forward return 더 좋은 쪽으로 기울어짐) 이지만 CI 가 0을 가로지르므로 **not statistically conclusive**. "SIEGE concentration rule 이 structural downside risk 를 잡고 있다" 가설에 대한 tentative negative signal.
-- `sector_limit`: 모든 variant 에서 fire — non-fire sample 부재로 binary Δ 측정 불가. Continuous severity slope 도 CI 전부 0 포함 → **inconclusive**.
-- `leverage_ban`: production DB 에 TQQQ/UPRO prices 0 rows → fire sample 부재, **측정 불가** (leveraged ETF backfill 후 재측정 필요).
+**핵심 finding — 반복적 directional counter-evidence, opposite-sign from §3.7 acceptance target**:
+- `position_limit`: pilot 과 60-month 양쪽 모두 **point estimate 양수** (fired > not-fired, 30d / 60d / 90d 전부). Sign 은 안정적으로 §3.7 downside-predictive hypothesis 와 **반대**. Magnitude 는 60-month 에서 축소 (Δ30d +4.34% → +2.45%). CI 는 모든 horizon 에서 0 가로지름 — statistically inconclusive 이지만 **wrong-sign 은 sample size 로 해결되지 않음** (CI 가 0 아래로 내려가려면 point 가 먼저 음수로 flip 해야 함). Acceptance `CI_upper < 0` 는 현재 audit design 으로 구조적 unachievable.
+- `sector_limit`: 60-month 에서 `sector_concentrated` variant 가 0/60 unbuildable — codex Round 1 "Unknown" exclusion fix 후 us_core 85 ticker 중 real GICS sector tag 가 5 뿐 (pilot 36/36 success 는 pre-fix bug 의 artifact). Non-fire sample 없음 → binary Δ 측정 불가. Continuous severity slope 도 CI 0 포함.
+- `leverage_ban`: 어떤 variant 도 leveraged ETF 미포함 → fire sample 0. MBP DB 에 TQQQ/UPRO prices backfill 완료했으나 variant design 에 반영 안 됨 — 측정 불가 상태 유지.
 
-**Framing discipline (codex Round 1 overreach fix)**: 이 결과는 §3.7 "hypothesis confirmation" 이 아니라 **"limited directional counter-evidence on `position_limit` (provisional pilot), inconclusive on `sector_limit`/`leverage_ban`"**. 60-month production rerun + leverage backfill 이후 measurement 가 durable evidence 로 승격 가능. 현재는 pilot.
+**Prudential constraints vs audit-demonstrated predictive gates**:
+`position_limit` / `sector_limit` / `leverage_ban` 는 여전히 **prudential portfolio constraints + user-preference defaults** 로 유효 — 사용자 감정 통제, §7 자동 매매 deferred, O'Neil/Minervini lineage 가 이 정당화 기반. **그러나 E4-0b v2 synthetic audit 은 이 rule 들이 "forward-downside-predictive gate" 로 기능한다는 주장을 증명하지 못함** (directional evidence 는 오히려 반대 방향). 두 축을 혼동하면 "audit 이 rule 을 validated 했다" 는 잘못된 인용 발생 — rule 은 prudential 근거로만 인용, downside-predictive framing 은 §3.8 측정에서 tentatively refuted 로 인용.
 
-**사용자 페인 연결 (qualified)**: "너무 보수적, 돈 많이 벌고 싶다" 의 structural measurement 경로는 살아있음 — 그러나 v2 pilot 의 `position_limit` directional signal 만으로 SIEGE concentration rule 완화 결정 금지. E4-0c 재-grading 은 fuller measurement (60-month + leverage + sector coverage 개선) 를 consume 해야 함.
+**사용자 페인 연결 (refined)**: "너무 보수적" 의 구조적 해결은 §3.7 "upside / opportunity-cost gate 부재" 진단에 남아있음 — 그 premise (existing gate 가 downside-block 로 작동) 자체가 §3.8 에서 약화됨. E4-0c "measurement consume 후 재-grading" 계획은 **무효화** — consume 할 durable evidence 가 없고, 추가 breadth 확보도 wrong-sign 결과를 flip 시키지 못함. §3.7 upside-gate hypothesis 는 §3.6 paired counterfactual (sizing-rule legitimacy, E3-3b PASS) 과 별도 경로로 검증돼야 함 — synthetic audit 재시도 아닌 다른 측정 (e.g. user actual portfolio replay, `recommendations.outcome` 누적 후 real-history 분석).
 
-**Caveats (codex Biggest Risk 대응)**:
-- Synthetic portfolio — variant ladder 는 hand-crafted construction, 실제 사용자 portfolio 분포와 직접 매핑 불가. "이 4 template family 내에서 gate predictivity" 해석만.
-- 36 months × 4 variants = 144 sample — 5Y 목표 (60 months × 5 variants = 300) 대비 현 제약. Mac mini production run 에서 full 60 months + leverage backfill 후 재측정 권장.
-- Sector coverage 희박 (us_core 85 중 26/30 top-momentum 이 "Unknown" sector) — portfolio.yaml sector tag 의존, GICS standard sector 전환 시 measurement 개선 가능.
+**Deferred low-value extensions** (codex Round 2 verdict):
+- **leverage_included variant 추가**: `leverage_ban` fire sample 확보 — 하지만 central wrong-sign finding 해결 안 함. 독립 date 수도 증가 없음 (같은 snapshot date 에 variant 추가는 correlated observation). Deferred.
+- **GICS sector tag backfill (us_core 85 tickers)**: `sector_concentrated` 재활성화 — 하지만 same rationale. Deferred.
+- **Sample 확장 (60 → 84 months 등)**: 60-month 에서 96 skip 발생 (older dates 의 universe history 부족). 실제 독립 date 는 ~48. Statistical power 한계 structural. Deferred.
+- **재활성화 조건**: audit design 자체 redesign 필요 (e.g. actual-portfolio replay from tracker outcomes, 또는 §2.6 Symmetric amplifier 이후 upside-measurement 전용 경로). 별도 Plan consult + STRATEGY 개정 필수.
 
-**Warning** (§3.7 정신 계승): 이 실측 결과를 단발 measurement 로 mechanical config 변경에 사용 금지. Surface 단계 rank + CI 만 제공 — Soft penalty (§2.6) 승격은 (1) leverage backfill + sample 확장, (2) E4-0c 재측정, (3) codex consult + 별도 STRATEGY 개정 필수.
-
-**Script + 실측 artifact**: `scripts/siege_predictivity_audit.py`, `data/reports/{today}/e4_0b_siege_predictivity.md`. Codex consult archive: `codex-reviews/PRe4-0b-v2-roundplan-20260421T175538Z.md`.
+**Script + artifact**:
+- Script: `scripts/siege_predictivity_audit.py` (variant builders — `sector_concentrated` Unknown 제외 fix 포함).
+- 60-month artifact: `data/reports/2026-04-22/e4_0b_siege_predictivity.md`.
+- Codex consult archive: `codex-reviews/PRe4-0b-v2-roundplan-20260421T175538Z.md` (v2 Plan) + `codex-reviews/PRe4-0b-60month-round1-20260422T022809Z.md` (60-month closure consult, Q1=(c) / Q3=(ii)).
 
 ---
 
