@@ -260,7 +260,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 ### 3.8 SIEGE predictivity measurement (E4-0b v2)
 
-**상태**: v1 #417 → v2 재설계 (2026-04-22) → **60-month production rerun 완료 (2026-04-22, Mac mini)**. 결과: acceptance `CI_upper < 0` 미달, point estimate 반복적으로 wrong-sign (fired > not_fired). **Synthetic audit 로는 §3.7 downside-predictive framing 증명 불가 — measurement 경로 closed**. Codex consult (2026-04-22 Round 2) verdict: 추가 variant/breadth 확장은 low-expected-value — wrong-sign 결과를 flip 시키지 못하며, 독립 date 수는 variant 증가로 늘지 않음. 본 §3.8 은 남은 measurement direction 이 아닌 **closed negative result** 로 읽어야 함.
+**상태**: v1 #417 → v2 재설계 (2026-04-22) → **60-month production rerun 완료 (2026-04-22, Mac mini)**. 결과: acceptance `CI_upper < 0` 미달, point estimate 반복적으로 wrong-sign (fired > not_fired). **본 synthetic-audit 경로 (variant ladder × momentum-based snapshot) 는 2026-04-22 시점 data/design quality 에서 §3.7 downside-predictive framing 을 증명하지 못함 — 이 audit route 는 closed**. 상위 §3.7 hypothesis 전체가 closed 된 것 아니며, 다른 측정 경로 (real-portfolio replay, `recommendations.outcome` 누적, §2.6 Symmetric amplifier 전용 측정 등) 는 열려있음. Codex consult (2026-04-22 Round 2) verdict: 현 audit 의 variant/breadth 확장은 low-expected-value — wrong-sign point estimate 를 flip 시키지 못하며 (point 가 음수로 flip 돼야 CI_upper < 0 가능), 독립 date 수도 variant 증가로 늘지 않음.
 
 **v1 failure mode (#417 → v2 fix)**:
 - 48 rows Δ 전부 null. 3 축 invariance — (a) 모든 snapshot 이 us_core top-10 momentum × equal 10% → position_limit/leverage/stop 0 fire, (b) `_age_hours()` 가 `kst_now()` 기준 → freshness/external/drift 47/0 fire (historical-date 평가 bias), (c) top-10 momentum 의 sector 밀집이 invariant.
@@ -292,7 +292,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 | `leverage_ban` | 0/141 | — (fire 부재) | — | — | N/A | N/A |
 
 **핵심 finding — 반복적 directional counter-evidence, opposite-sign from §3.7 acceptance target**:
-- `position_limit`: pilot 과 60-month 양쪽 모두 **point estimate 양수** (fired > not-fired, 30d / 60d / 90d 전부). Sign 은 안정적으로 §3.7 downside-predictive hypothesis 와 **반대**. Magnitude 는 60-month 에서 축소 (Δ30d +4.34% → +2.45%). CI 는 모든 horizon 에서 0 가로지름 — statistically inconclusive 이지만 **wrong-sign 은 sample size 로 해결되지 않음** (CI 가 0 아래로 내려가려면 point 가 먼저 음수로 flip 해야 함). Acceptance `CI_upper < 0` 는 현재 audit design 으로 구조적 unachievable.
+- `position_limit`: pilot 과 60-month 양쪽 모두 **point estimate 양수** (fired > not-fired, 30d / 60d / 90d 전부). Sign 은 안정적으로 §3.7 downside-predictive hypothesis 와 **반대**. Magnitude 는 60-month 에서 축소 (Δ30d +4.34% → +2.45%). CI 는 모든 horizon 에서 0 가로지름 — statistically inconclusive 이지만 **wrong-sign 은 sample size 로 해결되지 않음** (CI 가 0 아래로 내려가려면 point 가 먼저 음수로 flip 해야 함). Acceptance `CI_upper < 0` 는 현재 audit design (variant ladder × momentum snapshot, us_core 85 tickers, 2026-04-22 data state) 에서는 point estimate 가 먼저 음수로 flip 되지 않는 한 달성 불가 — 이 route 의 breadth 확장으로 salvageable 하지 않음.
 - `sector_limit`: 60-month 에서 `sector_concentrated` variant 가 0/60 unbuildable — codex Round 1 "Unknown" exclusion fix 후 us_core 85 ticker 중 real GICS sector tag 가 5 뿐 (pilot 36/36 success 는 pre-fix bug 의 artifact). Non-fire sample 없음 → binary Δ 측정 불가. Continuous severity slope 도 CI 0 포함.
 - `leverage_ban`: 어떤 variant 도 leveraged ETF 미포함 → fire sample 0. MBP DB 에 TQQQ/UPRO prices backfill 완료했으나 variant design 에 반영 안 됨 — 측정 불가 상태 유지.
 
@@ -309,8 +309,8 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **Script + artifact**:
 - Script: `scripts/siege_predictivity_audit.py` (variant builders — `sector_concentrated` Unknown 제외 fix 포함).
-- 60-month artifact: `data/reports/2026-04-22/e4_0b_siege_predictivity.md`.
-- Codex consult archive: `codex-reviews/PRe4-0b-v2-roundplan-20260421T175538Z.md` (v2 Plan) + `codex-reviews/PRe4-0b-60month-round1-20260422T022809Z.md` (60-month closure consult, Q1=(c) / Q3=(ii)).
+- 60-month artifact: `data/reports/2026-04-22/e4_0b_siege_predictivity.md` — **gitignored** (data/reports/\* 는 data sovereignty 정책으로 未 tracked). 재현 명령: `ssh $DEV2_HOST 'cd ~/workspace/nuri-quant && .venv/bin/python scripts/siege_predictivity_audit.py --months 60 --save'`. 위 §3.8 trajectory table 이 authoritative 수치 — 로컬 artifact 가 서로 다른 machine/run 에서 diverge 할 수 있으므로 strategy 본문의 숫자를 reference 로 사용.
+- Codex consult archive: `codex-reviews/PRe4-0b-v2-roundplan-20260421T175538Z.md` (v2 Plan) + `codex-reviews/PRe4-0b-60month-round1-20260422T022809Z.md` (60-month closure consult, Q1=(c) / Q3=(ii)) + `codex-reviews/PR443-round2-20260422T024801Z.md` (this PR Round 2 review).
 
 ---
 
