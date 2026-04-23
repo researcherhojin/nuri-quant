@@ -222,27 +222,13 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 ### 3.8 SIEGE predictivity measurement (E4-0b v2) — audit route closed
 
-**상태**: v1 #417 → v2 재설계 (2026-04-22) → **60-month production rerun 완료 (Mac mini)**. 결과: acceptance `CI_upper < 0` 미달, point estimate 반복 wrong-sign (fired > not_fired). **variant ladder × momentum-based snapshot audit route 는 2026-04-22 시점 data/design 에서 §3.7 downside-predictive framing 을 증명하지 못함 — closed**. §3.7 hypothesis 전체가 closed 된 것 아님 (real-portfolio replay, `recommendations.outcome` 누적, Symmetric amplifier 전용 측정은 열림).
+**상태**: v1 #417 → v2 재설계 → 60-month production rerun 완료 (2026-04-22, Mac mini). 결과: acceptance `CI_upper < 0` 미달, `position_limit` Δ point estimate 반복 wrong-sign (fired > not_fired, 30/60/90d 전부). **variant ladder × momentum-based snapshot audit route 는 2026-04-22 data/design 에서 §3.7 downside-predictive framing 을 증명하지 못함 — closed**. §3.7 hypothesis 전체가 closed 된 것 아님 (real-portfolio replay, `recommendations.outcome` 누적, Symmetric amplifier 전용 측정은 열림).
 
-**v2 methodology (요약)**: 4 templates × N months (momentum_top10 / equal_weight_sample / sector_concentrated / concentrated_top5). Gate eligibility matrix — `auditable_now` {position_limit, sector_limit, leverage_ban} 측정 대상, `audit_incoherent` {freshness, external, volatility, drift, macro, conflict} snapshot coherence 없음 skip, `requires_replayed_state` {stop_loss, rules_loaded} 측정 불가. Hybrid metrics: Binary Δ primary + continuous severity OLS secondary. Acceptance (codex Q5): `primary_keep` = 30d CI_high<0 AND 60d point<0; `strong_keep` = 30d+60d 둘 다 CI_high<0.
-
-**60-month 결과** (authoritative — 다른 machine/run artifact 와 diverge 가능 시 아래 값이 reference):
-
-| Gate | Fire/Not | Δ30d CI | Primary_keep |
-|---|---|---|---|
-| `position_limit` | 47/94 | [-3.43, +8.77] | ❌ |
-| `sector_limit` | 141/0 | non-fire 부재 | N/A |
-| `leverage_ban` | 0/141 | fire 부재 | N/A |
-
-**핵심 finding**: `position_limit` pilot + 60-month 양쪽 point estimate 양수 (fired > not-fired, 30/60/90d 전부). §3.7 downside-predictive 와 **반대 sign 안정적**. Magnitude 축소 (Δ30d +4.34% → +2.45%). CI 0 가로지름이나 **wrong-sign 은 sample size 로 해결 안 됨** (point 가 먼저 음수 flip 해야 CI_upper<0 가능). 현 audit design 에서 breadth 확장으로 salvageable 아님. `sector_limit` non-fire 부재 (us_core GICS sector tag 5개만 — Unknown exclusion fix 후), `leverage_ban` fire 부재 (leveraged ETF 미포함 variant).
-
-**Prudential vs predictive 축 분리**: `position_limit` / `sector_limit` / `leverage_ban` 는 **prudential portfolio constraints + user-preference defaults** 로 유효 — 감정 통제, §7 자동 매매 deferred, O'Neil/Minervini lineage. **그러나 synthetic audit 은 forward-downside-predictive gate 로 기능한다는 주장 미증명**. 혼동 금지 — rule 은 prudential 근거로만 인용, downside-predictive framing 은 §3.8 에서 tentatively refuted.
+**Prudential vs predictive 축 분리 (필수 인용 규칙)**: `position_limit` / `sector_limit` / `leverage_ban` 는 **prudential portfolio constraints + user-preference defaults** 로 유효 — 감정 통제, §7 자동 매매 deferred, O'Neil/Minervini lineage. **그러나 synthetic audit 은 forward-downside-predictive gate 로 기능한다는 주장 미증명**. 혼동 금지 — rule 은 prudential 근거로만 인용, downside-predictive framing 은 §3.8 에서 tentatively refuted.
 
 **E4-0c (measurement consume 후 재-grading) 무효화** — consume 할 durable evidence 없음. §3.7 upside-gate hypothesis 는 §3.6 paired counterfactual (sizing-rule legitimacy, E3-3b PASS) 과 별도 경로로 검증 (user actual portfolio replay, `recommendations.outcome` 누적 후 real-history).
 
-**Deferred low-value extensions (codex Round 2)**: leverage_included variant / GICS sector backfill / sample 확장 — central wrong-sign finding 해결 안 함. 재활성화 조건: audit design 자체 redesign (actual-portfolio replay, 또는 Symmetric amplifier 이후 upside-measurement 전용).
-
-**재현**: `ssh $DEV2_HOST 'cd ~/workspace/nuri-quant && .venv/bin/python scripts/siege_predictivity_audit.py --months 60 --save'`. Artifact `data/reports/2026-04-22/e4_0b_siege_predictivity.md` (gitignored). Codex archive: `codex-reviews/PRe4-0b-v2-roundplan-20260421T175538Z.md`, `PRe4-0b-60month-round1-20260422T022809Z.md`, `PR443-round2-20260422T024801Z.md`.
+**상세 methodology / gate eligibility matrix / 60-month gate-level table / deferred extensions / 재실행 명령**: `/nuri-siege-audit` skill (`.claude/skills/nuri-siege-audit/SKILL.md`, `disable-model-invocation: true` — 수동 invoke) 에 별도 관리. STRATEGY 본문은 canonical verdict 만.
 
 ---
 
@@ -370,32 +356,24 @@ Deferred (필요 시점에 추가):
 
 ## 5. LLM 에이전트 하네스 (Harness Engineering)
 
-이 프로젝트는 LLM (Claude Code) 이 주요 개발 도구. LLM 은 체계적으로 실패하는 패턴이 있다. 아래는 canonical 원칙 — 상세 case study 는 `docs/HARNESS.md` 참조.
+이 프로젝트는 LLM (Claude Code) 이 주요 개발 도구. LLM 은 체계적으로 실패하는 패턴이 있다. 본 섹션은 canonical 원칙 — 실제 사례·진단 절차·Gotcha-Test Pair 프로토콜 상세는 `/nuri-harness-debug` skill (`.claude/skills/nuri-harness-debug/SKILL.md`) 이 on-demand load. Case studies 는 `docs/HARNESS.md`.
 
-### 5.1–5.6 실패 패턴 요약
+### 5.1–5.6 실패 패턴 (canonical 목록)
 
-| # | 패턴 | 정의 | 방어 |
-|---|------|------|------|
-| 5.1 | **할루시네이션** | 존재하지 않는 함수/파라미터/경로를 자신 있게 말함 | 호출 전 시그니처 grep. 패치 대상이 모듈 레벨인지 local import 인지 확인. |
-| 5.2 | **확증 편향** | 긴 컨텍스트에서 이전 가정을 "맞다" 가정 + 같은 실패 반복 | 2 회 실패 시 접근 자체 의심. 3 회 시도 금지. `/compact` 후 가정 재검증. |
-| 5.3 | **유령 수정** | "수정했습니다" 라고 말하지만 실제 다른 곳 고침 / 원 문제 미해결 | 수정 후 반드시 테스트. 의도한 라인이 coverage 에 잡히는지 확인. `vi.mock()` hoisting 영향 인식. |
-| 5.4 | **스코프 팽창** | 요청받은 것 이상을 "개선" 하려는 경향 | 이슈 1 = PR 1, 커밋 ≤ 3. 선행 작업은 별도 이슈 분리. |
-| 5.5 | **테스트 환각** | 테스트 통과하지만 실제 타겟 코드 미실행 | coverage 리포트에서 의도한 라인 번호 실제 커버 확인. 조건부 로직 안에 핵심 assertion 금지. runpy 테스트 시 SOURCE 레벨 패치 확인. |
-| 5.6 | **숫자 전파 오류** | 한 곳의 숫자 변경 후 다른 참조 미업데이트 | 변경 시 `grep -ri "이전값"` 전수. 커밋 메시지에 변경 숫자 명시. |
+6 개 패턴이 시스템적으로 재발한다. 각 패턴의 증상·실제 사례·방어 절차는 `/nuri-harness-debug` skill.
 
-실제 사례 (`df.copy()` 재발, recharts mock 충돌, runpy+monkeypatch, JKHY falling knife, 에이전트 7→10 drift, etc.) 는 `docs/HARNESS.md` §1-§2 에 보관. 비슷한 패턴 디버깅 시 참조.
+| # | 패턴 | 1-줄 핵심 |
+|---|------|----------|
+| 5.1 | **할루시네이션** | 존재하지 않는 함수/파라미터/경로를 자신 있게 말함 — 호출 전 시그니처 grep |
+| 5.2 | **확증 편향** | 같은 실패를 같은 방식으로 반복 — 2회 실패 시 접근 자체 의심 |
+| 5.3 | **유령 수정** | "수정했다" 말하지만 실제 다른 곳 고침 — 수정 후 coverage 로 의도 라인 확인 |
+| 5.4 | **스코프 팽창** | 요청 이상 "개선" — 이슈 1 = PR 1, 커밋 ≤ 3 |
+| 5.5 | **테스트 환각** | 테스트 통과하지만 타겟 코드 미실행 — coverage 리포트로 라인 실제 커버 확인 |
+| 5.6 | **숫자 전파 오류** | 한 곳 변경 후 다른 참조 미업데이트 — `grep -ri "이전값"` 전수 + `make verify-doc-counts` |
 
 #### 5.3.1 Gotcha-Test Pair 원칙 (PR #307)
 
-`df.copy()` 재발 교훈. Gotcha 가 **folklore** 로만 기록되면 다음 리뷰어가 defensive 코드를 "불필요" 로 제거해도 테스트가 안 막는다. **모든 fix-pattern gotcha 는 fix 가 사라졌을 때 fail 하는 test 를 명명해서 cite 해야 한다**.
-
-**프로토콜**:
-1. Gotcha 문장 끝에 `**Test:** `path/to/test.py::TestClass::test_name`` 추가.
-2. Cited test 는 **fix 없을 때 실제 fail** 해야 함 (revert 로 local 검증 권장).
-3. 단순 facts/quirks (e.g. "yfinance .KS fundamentals work") 는 Test: 불필요.
-4. Test: 없이 ship 시 PR body "no fix, just facts" 명시.
-
-**Enforcement**: 1차 리뷰 checklist. 2차 Tier 3 `scripts/audit_phantom_fixes.py` — CLAUDE.md Gotchas 파싱 → `**Test:**` 참조 실존 verify → CI lint. 관련: §5.5 (Test Illusion), §5.8 #1 (모르면 읽는다).
+**모든 fix-pattern gotcha 는 fix 가 사라졌을 때 fail 하는 test 를 명명해서 cite 해야 한다.** 단순 facts/quirks 는 Test: 불필요 (PR body "no fix, just facts" 명시). Folklore 만 남으면 다음 리뷰어가 defensive 코드를 "불필요" 로 제거해도 막을 수 없음 (`df.copy()` 재발 교훈). 프로토콜 상세·enforcement 단계 (1차 리뷰 checklist, 2차 Tier 3 `scripts/audit_phantom_fixes.py`) 는 `/nuri-harness-debug` skill.
 
 ### 5.7 하네스 구성 요소
 
