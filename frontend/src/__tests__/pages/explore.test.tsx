@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 // Mock next/navigation — shared mock push for assertion
@@ -17,7 +17,7 @@ vi.mock("@/lib/api", () => ({
 
 // Mock lucide-react
 vi.mock("lucide-react", () => {
-  const Icon = (props: any) => <svg data-testid="icon" {...props} />;
+  const Icon = (props: Record<string, unknown>) => <svg data-testid="icon" {...props} />;
   return { Search: Icon };
 });
 
@@ -37,7 +37,7 @@ describe("ExploreSearch component", () => {
   });
 
   it("shows dropdown on search results", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as unknown as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         results: [
@@ -63,7 +63,7 @@ describe("ExploreSearch component", () => {
   });
 
   it("shows no results message when search returns empty", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as unknown as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ results: [], count: 0 }),
     });
@@ -95,7 +95,7 @@ describe("ExploreSearch component", () => {
   });
 
   it("closes dropdown on Escape key", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as unknown as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         results: [{ ticker: "NVDA", name: "NVIDIA", price: 185, date: "2026-04-10" }],
@@ -118,7 +118,7 @@ describe("ExploreSearch component", () => {
   });
 
   it("navigates on result click", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as unknown as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         results: [{ ticker: "AAPL", name: "Apple", price: 220, date: "2026-04-10" }],
@@ -141,7 +141,7 @@ describe("ExploreSearch component", () => {
   });
 
   it("shows KR price format in dropdown", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as unknown as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         results: [{ ticker: "005930.KS", name: "삼성전자", price: 206000, date: "2026-04-10" }],
@@ -164,7 +164,7 @@ describe("ExploreSearch component", () => {
   });
 
   it("clears results when input is emptied", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    (global.fetch as unknown as Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         results: [{ ticker: "NVDA", name: "NVIDIA", price: 185, date: "2026-04-10" }],
@@ -187,7 +187,7 @@ describe("ExploreSearch component", () => {
   });
 
   it("handles fetch error gracefully (covers catch branch)", async () => {
-    (global.fetch as any).mockRejectedValueOnce(new Error("Network error"));
+    (global.fetch as unknown as Mock).mockRejectedValueOnce(new Error("Network error"));
 
     const { ExploreSearch } = await import("@/app/explore/search");
     render(<ExploreSearch />);
@@ -240,7 +240,7 @@ describe("Explore page strings", () => {
       "RSI_OVERSOLD", "RSI_OVERBOUGHT", "SMA_GOLDEN", "SMA_DEAD", "VOLUME_SPIKE",
       "GAP_UP", "GAP_DOWN", "BB_SQUEEZE_BREAKOUT", "NEAR_52W_LOW_BOUNCE", "VOLUME_PROFILE_RESISTANCE"];
     for (const id of ids) {
-      expect((SIGNAL as any)[id]).toBeTruthy();
+      expect((SIGNAL as Record<string, unknown>)[id]).toBeTruthy();
     }
   });
 

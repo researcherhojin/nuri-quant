@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHmac } from "node:crypto";
+import type { NextRequest } from "next/server";
 
 // Mock next/server
 vi.mock("next/server", () => {
@@ -25,7 +27,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/",
     };
 
-    const result = await middleware(request as any);
+    const result = await middleware(request as unknown as NextRequest);
     expect(result).toEqual({ type: "next" });
   });
 
@@ -39,7 +41,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/login",
     };
 
-    const result = await middleware(request as any);
+    const result = await middleware(request as unknown as NextRequest);
     expect(result).toEqual({ type: "next" });
   });
 
@@ -53,7 +55,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/api/auth",
     };
 
-    const result = await middleware(request as any);
+    const result = await middleware(request as unknown as NextRequest);
     expect(result).toEqual({ type: "next" });
   });
 
@@ -67,7 +69,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/dashboard",
     };
 
-    const result = await middleware(request as any);
+    const result = await middleware(request as unknown as NextRequest);
     expect(result.type).toBe("redirect");
   });
 
@@ -81,9 +83,7 @@ describe("middleware", () => {
     // hash is the static label "nuri-auth-token:v1" — password content
     // is intentionally NOT mixed in (CodeQL would flag that as an
     // insecure password hash regardless of the HMAC key).
-    const crypto = require("crypto");
-    const expectedToken = crypto
-      .createHmac("sha256", "secret123")
+    const expectedToken = createHmac("sha256", "secret123")
       .update("nuri-auth-token:v1")
       .digest("hex");
 
@@ -93,7 +93,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/dashboard",
     };
 
-    const result = await middleware(request as any);
+    const result = await middleware(request as unknown as NextRequest);
     expect(result).toEqual({ type: "next" });
   });
 
@@ -107,7 +107,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/dashboard",
     };
 
-    const result = await middleware(request as any);
+    const result = await middleware(request as unknown as NextRequest);
     expect(result.type).toBe("redirect");
   });
 

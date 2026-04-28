@@ -36,8 +36,8 @@ vi.mock("@base-ui/react/tabs", () => {
 
 // Mock class-variance-authority
 vi.mock("class-variance-authority", () => ({
-  cva: (base: string, config?: any) => {
-    return (options?: any) => {
+  cva: (base: string, config?: { variants?: { variant?: Record<string, string> } }) => {
+    return (options?: { variant?: string }) => {
       let result = base;
       if (options?.variant && config?.variants?.variant?.[options.variant]) {
         result += " " + config.variants.variant[options.variant];

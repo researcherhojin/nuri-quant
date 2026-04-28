@@ -72,8 +72,8 @@ describe("PortfolioPage — extended coverage", () => {
 
     await waitFor(() => {
       // Form should have been submitted (fetch called with POST)
-      const calls = (global.fetch as any).mock.calls;
-      const postCall = calls.find((c: any) => c[1]?.method === "POST" && !c[0].includes("import"));
+      const calls = (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const postCall = calls.find((c: unknown[]) => (c[1] as RequestInit | undefined)?.method === "POST" && !(c[0] as string).includes("import"));
       expect(postCall).toBeTruthy();
     });
   });
@@ -90,8 +90,8 @@ describe("PortfolioPage — extended coverage", () => {
     fireEvent.click(screen.getByText("Save"));
 
     await waitFor(() => {
-      const calls = (global.fetch as any).mock.calls;
-      const putCall = calls.find((c: any) => c[1]?.method === "PUT");
+      const calls = (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const putCall = calls.find((c: unknown[]) => (c[1] as RequestInit | undefined)?.method === "PUT");
       expect(putCall).toBeTruthy();
     });
   });
@@ -107,8 +107,8 @@ describe("PortfolioPage — extended coverage", () => {
     fireEvent.click(deleteButtons[0]);
 
     await waitFor(() => {
-      const calls = (global.fetch as any).mock.calls;
-      const deleteCall = calls.find((c: any) => c[1]?.method === "DELETE");
+      const calls = (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const deleteCall = calls.find((c: unknown[]) => (c[1] as RequestInit | undefined)?.method === "DELETE");
       expect(deleteCall).toBeTruthy();
     });
   });
@@ -118,7 +118,7 @@ describe("PortfolioPage — extended coverage", () => {
     await waitFor(() => expect(screen.getByText("TSLA")).toBeInTheDocument());
 
     // Simulate file upload
-    const file = new File(["account,ticker,quantity,avg_price\ntest,AAPL,10,180"], "test.csv", { type: "text/csv" });
+    const _file = new File(["account,ticker,quantity,avg_price\ntest,AAPL,10,180"], "test.csv", { type: "text/csv" });
     const uploadButton = screen.getByText("Upload CSV");
     // Click triggers hidden file input
     fireEvent.click(uploadButton);

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 
 // Mock next/link
@@ -35,14 +35,14 @@ const mockEmptyResponse = {
   summary: { total: 0, pending: 0, success: 0, failure: 0, neutral: 0 },
 };
 
-let mockFetchAPI: any;
+let mockFetchAPI: Mock;
 
 vi.mock("@/lib/api", () => ({
-  fetchAPI: (...args: any[]) => mockFetchAPI(...args),
+  fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
 }));
 
-function setupFetchAPI(response: any = mockDecisionsResponse) {
+function setupFetchAPI(response: unknown = mockDecisionsResponse) {
   mockFetchAPI = vi.fn().mockResolvedValue(response);
 }
 

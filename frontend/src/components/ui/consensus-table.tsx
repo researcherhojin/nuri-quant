@@ -9,7 +9,7 @@ import { Fragment, useState } from "react";
 import { AgentTrace } from "./agent-trace";
 import { StatusBadge } from "./status-badge";
 
-interface AgentVerdict {
+export interface AgentVerdict {
   agent_name: string;
   ticker: string;
   action: string;
@@ -53,7 +53,7 @@ export interface ScoringDetail {
   pre_penalty_action: Action | "";
 }
 
-interface ConsensusRow {
+export interface ConsensusRow {
   ticker: string;
   final_action: string;
   final_confidence: number;

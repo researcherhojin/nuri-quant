@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CONTEXT } from "@/lib/strings";
 
-interface MacroEvent {
+export interface MacroEvent {
   category: string;
   category_ko?: string;
   headline: string;
@@ -11,7 +11,7 @@ interface MacroEvent {
   source: string;
 }
 
-interface SystemHealth {
+export interface SystemHealth {
   siege: { score: number; certified: boolean; passed?: number; failed?: number; warnings?: number; total?: number };
   regime: { regime: string; trend: string; confidence: number };
   macro: { score: number; interpretation: string };
@@ -20,7 +20,7 @@ interface SystemHealth {
 
 interface MarketContextProps {
   events: MacroEvent[];
-  health: SystemHealth;
+  health: Partial<SystemHealth>;
 }
 
 const categoryStyles: Record<string, { emoji: string; color: string }> = {
@@ -52,10 +52,10 @@ function HealthCard({ label, value, sub, href, color }: { label: string; value: 
 }
 
 export function MarketContext({ events, health }: MarketContextProps) {
-  const siege = health.siege || {};
-  const regime = health.regime || {};
-  const macro = health.macro || {};
-  const freshness = health.freshness || {};
+  const siege: Partial<SystemHealth["siege"]> = health.siege || {};
+  const regime: Partial<SystemHealth["regime"]> = health.regime || {};
+  const macro: Partial<SystemHealth["macro"]> = health.macro || {};
+  const freshness: Partial<SystemHealth["freshness"]> = health.freshness || {};
 
   return (
     <div className="space-y-3">

@@ -1,11 +1,12 @@
 /**
  * Pipeline page extended — handleRunStep, error paths.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
+import type { ReactNode } from "react";
 
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({ nodes, children }: any) => (
+  ReactFlow: ({ nodes, children }: { nodes?: unknown[]; children?: ReactNode }) => (
     <div data-testid="react-flow">{nodes?.length ?? 0} nodes{children}</div>
   ),
   Background: () => null,
@@ -25,7 +26,7 @@ const mockSteps = [
 ];
 
 describe("Pipeline handleRunStep", () => {
-  let fetchMock: any;
+  let fetchMock: Mock;
 
   beforeEach(() => {
     fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
@@ -40,7 +41,7 @@ describe("Pipeline handleRunStep", () => {
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
-    global.fetch = fetchMock;
+    global.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -59,7 +60,7 @@ describe("Pipeline handleRunStep", () => {
       await act(async () => { fireEvent.click(buttons[0]); });
       await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
 
-      const postCalls = fetchMock.mock.calls.filter((c: any) => c[1]?.method === "POST");
+      const postCalls = fetchMock.mock.calls.filter((c: unknown[]) => (c[1] as RequestInit | undefined)?.method === "POST");
       expect(postCalls.length).toBeGreaterThanOrEqual(0);
     }
   });
