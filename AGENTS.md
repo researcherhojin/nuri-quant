@@ -1,82 +1,62 @@
 # AGENTS.md
 
-Universal agent instructions for Nuri-Quant. Applies to all AI coding agents (Claude Code, Cursor, Copilot, Codex, Gemini CLI).
+Cross-tool agent instructions for Nuri-Quant. Applies to AI coding agents that don't load Claude Code's `CLAUDE.md` hierarchy directly (Cursor, Copilot, Codex CLI, Gemini CLI, etc.).
 
-For Claude Code-specific features (hooks, @imports, skills), see `CLAUDE.md`.
+**Claude Code reads `CLAUDE.md` (root + scoped) — start there.** This file is a minimal cross-tool fallback so non-Claude agents have the same operating rules without parsing `@import` / scoped-doc structure.
+
+For canonical detail:
+- Repo conventions, commands, load triggers → `CLAUDE.md`
+- Investment policy, design decisions → `docs/STRATEGY.md`
+- Architecture, DB schema, CI/CD → `docs/ARCHITECTURE.md`
+- File ownership of each fact → `docs/SOURCE_OF_TRUTH.md`
 
 ## Project
 
-Nuri-Quant — open-source quant investment platform. Python 3.12, uv, SQLite (WAL), Next.js 16 + React 19.
+Nuri-Quant — open-source quant investment platform. Python 3.12, `uv`, SQLite (WAL), Next.js 16. Pipeline (5 phases, DB-coupling only): `collect → analyze → consensus → certify → track`.
 
-Two pipeline views:
+## Hard Rules (mechanically enforced — do not violate)
 
-- **Decision pipeline** (5 phases, README architecture, DB-only coupling):
-  `collect → analyze → consensus → certify → track`
-- **Operational pipeline** (8 phases, `make full-scan`, same modules regrouped):
-  `collect → analyze → validate → regime → recommend → certify → evidence → notify`
-
-Phases communicate through SQLite tables + CSV only. Rerun any upstream phase and downstream refreshes automatically.
-
-## Hard Rules
-
-These are enforced by hooks, CI, and pre-push scripts. Violations are blocked mechanically.
-
-1. **DB access**: `nuri/core/db.py` is the ONLY module that imports `sqlite3`. All others use `query()`, `query_df()`, `upsert_*()`, `get_db()`.
-2. **Timezone**: Always `kst_now()` or `today_kst()` from `nuri.core.timezone` — never `datetime.now()`.
-3. **Config over code**: Rules in `config/rules.yaml`, thresholds in `config/agents.yaml`, signals in `config/signals.yaml`. Never hardcode.
-4. **Cross-phase isolation**: Pipeline phases communicate via DB tables and CSV files, not direct imports. Same-phase imports are OK.
-5. **Privacy**: No real broker names, holdings, quantities, prices, or account identifiers in git (commits, PRs, issues, tests, comments). Use placeholders: `Brokerage Alpha`, `Brokerage Beta`, round-million values.
-6. **Conventional commits**: `type(scope): message` — types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert. English.
-7. **Scope discipline**: One issue = one PR, max 3 commits. Unrelated findings go to separate issues.
-8. **Flow (7-phase)**: Every task runs Think → Plan → Build → Review → Test → Ship → Reflect (`docs/STRATEGY.md §2.7`). Failed gate → regress to prior phase. No skipping. Trivial chores may inline Think+Plan; Build+ mandatory.
+1. **DB**: `nuri/core/db.py` is the only `sqlite3` importer. Other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()`.
+2. **Time**: always `kst_now()` / `today_kst()` from `nuri.core.timezone`. Never `datetime.now()`.
+3. **Config over code**: rules in `config/rules.yaml`, agents in `config/agents.yaml`, signals in `config/signals.yaml`. Hardcoding is rejected.
+4. **Cross-phase isolation**: pipeline phases communicate via DB tables / CSV only, not direct imports. Same-phase imports OK.
+5. **Privacy**: never commit personal financial data (real broker names, holdings, prices, account ids, ticker+PnL). Use placeholders. Pre-push hook + CI privacy-scan blocks. Source: `scripts/check_privacy_leak.py`.
+6. **Conventional commits (English)**: `(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(scope)?: msg`. Korean comments in code, English identifiers.
+7. **PR scope**: 1 issue = 1 PR, ≤ 3 commits. New findings → separate issue.
+8. **7-phase Flow**: Think → Plan → Build → Review → Test → Ship → Reflect. No phase skipping. Failed gate → regress prior phase. Trivial chores may inline Think+Plan.
+9. **External LLM gateway**: `nuri/llm/openai_client.py` is the ONLY external LLM entry point. Direct `import openai` forbidden. ZDR + audit-log enforced. Policy: `docs/STRATEGY.md §4.4.3`.
+10. **Auto trading deferred (permanent)**: system emits recommendations + alerts only. User executes orders manually. Reverting requires STRATEGY PR + re-approval.
 
 ## Code Placement
 
 | Adding... | Put it in |
 |-----------|-----------|
-| Data source | `nuri/collectors/` — subclass `BaseCollector`, implement `collect()` + `save()` |
-| SQL table | `_MIGRATIONS` list in `nuri/core/db.py` — never edit existing migrations (current schema version: 22) |
-| Agent | `nuri/trading/agents/` + register in `consensus.py` `ALL_AGENTS` + weight in `config/agents.yaml` |
-| Investment rule | `config/rules.yaml` — never hardcode |
-| Signal (actionable) | `config/signals.yaml` with `actionable: true` — consumed by `signal_backtest.py` |
-| SHADOW signal (surface-only) | `config/signals.yaml` with `actionable: false` + `scope: market_wide` — detector in `nuri/quant/validation/market_signals.py` (separate from per-ticker `signal_backtest.py`). Excluded from candidates by `is_actionable` guard. |
+| New data source | `nuri/collectors/` — subclass `BaseCollector`, implement `collect()` + `save()` |
+| SQL table / column | `_MIGRATIONS` list in `nuri/core/db.py` — never edit existing migrations |
+| New agent | `nuri/trading/agents/` + register in `consensus.py` `ALL_AGENTS` + weight in `config/agents.yaml` |
+| Investment rule / threshold | `config/rules.yaml` (or `config/agents.yaml` for agent-specific) — never hardcode |
+| Actionable signal | `config/signals.yaml` with `actionable: true` — consumed by `signal_backtest.py` |
+| SHADOW signal (surface-only) | `config/signals.yaml` with `actionable: false` + `scope: market_wide` — detector in `nuri/quant/validation/market_signals.py`, excluded from candidates by `is_actionable` guard |
 | API endpoint | `nuri/api/routes/` |
 | Dashboard page | `frontend/src/app/<route>/page.tsx` |
-| LLM call | `nuri/llm/` only — external calls through `nuri/llm/openai_client.py` wrapper only |
+| External LLM call | `nuri/llm/openai_client.py` only (wrapper) |
 
-## Action Axes (PR A #429)
+## Action Axes (orthogonal, never conflate)
 
-`recommendations` carries two orthogonal action axes — never conflate:
+- `alpha_action ∈ {LONG, SHORT, FLAT}` — agents' expected-return signal. Only stop-loss breach emits FLAT.
+- `portfolio_action ∈ {REBALANCE, TRIM, HEDGE, NONE}` — SIEGE portfolio-rule signal (concentration / sector / leverage). Never routes to urgent SELL.
 
-- **`alpha_action`** ∈ {LONG, SHORT, FLAT} — expected-return signal from agents (buy/sell/exit). Only stop-loss breach emits FLAT.
-- **`portfolio_action`** ∈ {REBALANCE, TRIM, HEDGE, NONE} — portfolio-rule signal from SIEGE (concentration, sector, leverage). Never routes to urgent SELL.
-
-Risk-agent veto fires on `alpha_action=="FLAT"` only. `/api/actions` has 4 buckets: `urgent` (alpha FLAT), `check`, `hold`, `portfolio` (rebalance-only). See `nuri/core/axis.py` helpers + STRATEGY §2.6 Soft-penalty rung.
-
-## Testing
-
-- Backend: `make test` (pytest, xdist parallel). `tmp_path` fixture for DB isolation.
-- Frontend: `cd frontend && npm test` (vitest).
-- All tests run **network-free**. `conftest.py` mocks yfinance globally.
-- Coverage: Codecov 1% relative regression gate (no fixed minimum).
+Risk-agent veto fires on `alpha_action=="FLAT"` only. `/api/actions` 4 buckets: `urgent` / `check` / `hold` / `portfolio`. Helpers in `nuri/core/axis.py`.
 
 ## Key Commands
 
 ```bash
-make setup                   # Python venv + deps + DB init
-make test                    # Full backend test suite
-make test-fast               # Exclude slow LLM tests
-make lint                    # ruff check
-make verify-quick            # ~10s pre-commit smoke test
-make verify-all              # ~30s pre-push (tests + backend + frontend + file integrity)
+make setup                   # venv + deps + DB init
+make test                    # full pytest (xdist parallel)
+make test-fast               # exclude slow LLM tests (~24s, PR CI)
+make verify-quick            # ~10s pre-commit smoke
+make verify-all              # ~30s pre-push (tests + lint + frontend)
 make start                   # API(:8001) + Dashboard(:3000)
-make deploy-mini             # MBP → Mac mini 전체 동기화 (git pull + config + scheduler reload, ~30s)
-make scheduler-reload-remote # Mac mini scheduler 단독 reload (scheduler.py 변경 후)
 ```
 
-2-machine setup details: `CLAUDE.md` §Deploy. Both targets require `DEV2_HOST` env var.
-
-## Architecture Reference
-
-Detailed architecture, DB schema, environment variables, and CI/CD documentation: `docs/ARCHITECTURE.md`.
-Design principles and investment rules: `docs/STRATEGY.md`.
+Full make-target catalog: `CLAUDE.md`.
