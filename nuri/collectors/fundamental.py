@@ -163,27 +163,30 @@ class FundamentalCollector(BaseCollector):
         from nuri.core.timezone import today_kst
 
         today = today_kst()
-        results = []
+        results: list[dict] = []
         skipped: list[str] = []
         failed: list[str] = []
-        kis_collected: set[str] = set()  # KIS 가 채운 KR ticker — yfinance loop 가 skip
 
         # ── KR sub-batch: KIS inquire-price (sequential, rate-limited) ──
-        # yfinance KR limit (trailingPE/priceToBook 미제공) 우회. KIS 실패 시 fallback to yfinance.
+        # yfinance KR limit (trailingPE/priceToBook 미제공) 우회. KIS 실패 시 KR 도
+        # yfinance fallback 으로 넘어가 forward_pe/roe/margin/growth 만이라도 채움.
         kr_tickers = [t for t in tickers if t.endswith((".KS", ".KQ"))]
+        kis_by_ticker: dict[str, dict] = {}
         if kr_tickers:
             kis_results = self._collect_kr_via_kis(kr_tickers, today)
-            results.extend(kis_results)
-            kis_collected = {r["ticker"] for r in kis_results}
+            kis_by_ticker = {r["ticker"]: r for r in kis_results}
             self.logger.info(
-                "🇰🇷 KIS 펀더멘탈: ✅ %d / %d KR ticker (남은 %d 는 yfinance fallback)",
-                len(kis_collected), len(kr_tickers), len(kr_tickers) - len(kis_collected),
+                "🇰🇷 KIS 펀더멘탈: ✅ %d / %d KR ticker (yfinance loop 가 ROE/margin/growth 보충)",
+                len(kis_by_ticker), len(kr_tickers),
             )
 
-        # ── US + KR-fallback sub-batch: yfinance 10-thread parallel ──
-        # KIS 가 채운 KR ticker (kis_collected) 는 skip — KIS 데이터가 우선.
-        yf_tickers = [t for t in tickers if t not in kis_collected]
+        # ── 전체 sub-batch: yfinance 10-thread parallel ──
+        # KIS 가 채운 KR 도 yfinance 한 번 더 돌려 ROE / revenue_growth / profit_margin /
+        # debt_to_equity 같은 yfinance-only fields 보존 (codex Round 1 P1 fix).
+        # KIS 의 pe_ratio/price_to_book/market_cap 은 merge 단계에서 우선 적용.
+        yf_tickers = list(tickers)
         if not yf_tickers:
+            results.extend(kis_by_ticker.values())
             return results
 
         # universe 모드: yfinance ERROR 노이즈 억제
@@ -232,7 +235,7 @@ class FundamentalCollector(BaseCollector):
                 )
                 for fut in iterator:
                     ticker, record, status = fut.result()
-                    if status == "ok":
+                    if status == "ok" and record is not None:
                         results.append(record)
                     elif status == "skipped":
                         skipped.append(ticker)
@@ -240,6 +243,24 @@ class FundamentalCollector(BaseCollector):
                         failed.append(ticker)
         finally:
             _yflog.setLevel(_orig_level)
+
+        # ── KIS merge: KR ticker 의 KIS pe/pbr/market_cap 을 yfinance record 에 우선 적용 ──
+        # codex Round 1 P1 — KR 가 yfinance loop 바이패스했을 때 ROE/margin/growth 손실
+        # 회귀 차단. KIS 채운 columns 만 override, yfinance enrichment 보존.
+        if kis_by_ticker:
+            yf_seen = {r["ticker"] for r in results}
+            for record in results:
+                kis_data = kis_by_ticker.get(record["ticker"])
+                if kis_data is None:
+                    continue
+                for col in ("pe_ratio", "price_to_book", "market_cap"):
+                    val = kis_data.get(col)
+                    if val is not None:
+                        record[col] = val
+            # yfinance 가 fail 한 KR ticker — KIS-only record 추가 (yfinance fallback)
+            for ticker, kis_record in kis_by_ticker.items():
+                if ticker not in yf_seen:
+                    results.append(kis_record)
 
         if len(tickers) >= 20:
             sample_failed = ", ".join((failed + skipped)[:5]) + (

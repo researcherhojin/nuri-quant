@@ -531,36 +531,49 @@ class TestKISFundamentalBranch:
         result = c._collect_kr_via_kis(["005930.KS"], "2026-04-29")
         assert result == []
 
-    def test_collect_branches_kr_to_kis_us_to_yfinance(self, monkeypatch, db_with_portfolio):
-        """`.KS` → KIS, US → yfinance thread pool. KIS 가 채운 KR ticker 는 yfinance loop skip."""
+    def test_collect_kis_merge_preserves_yfinance_enrichment(self, monkeypatch, db_with_portfolio):
+        """codex Round 1 P1 회귀 — KIS 가 채운 KR ticker 도 yfinance loop 가 돌아 ROE/growth 보존.
+
+        KIS 의 pe_ratio/price_to_book/market_cap 은 yfinance 값을 override (정확).
+        yfinance 의 roe/revenue_growth/profit_margin/debt_to_equity 는 보존 (KIS 미제공).
+        """
         from nuri.collectors.fundamental import FundamentalCollector
 
         c = FundamentalCollector()
-        # universe-only (db_with_portfolio fixture 외 추가)
         monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["005930.KS", "AAPL"])
 
-        # KIS path stub — 005930.KS 정상 응답
+        # KIS stub — 005930.KS 에 정확한 trailing pe/pbr 제공
         def stub_kis(self, kr_tickers, today):
-            return [{
-                "ticker": "005930.KS",
-                "date": today,
-                "pe_ratio": 33.94,
-                "price_to_book": 3.48,
-                "market_cap": 1.3e15,
-            }]
+            from nuri.collectors.fundamental import _kis_record_skeleton
+            r = _kis_record_skeleton("005930.KS", today)
+            r["pe_ratio"] = 33.94
+            r["price_to_book"] = 3.48
+            r["market_cap"] = 1.3e15
+            return [r]
         monkeypatch.setattr(FundamentalCollector, "_collect_kr_via_kis", stub_kis)
 
-        # yfinance path stub — AAPL 만 응답해야 함 (005930.KS 는 KIS 가 처리해 skip)
+        # yfinance stub — KR 도 yfinance loop 거침 (forward_pe/roe/etc 채움)
         called_yf_tickers = []
 
         class _FakeTicker:
             def __init__(self, t):
                 called_yf_tickers.append(t)
-                self.info = {
-                    "regularMarketPrice": 200.0,
-                    "trailingPE": 25.0,
-                    "marketCap": 3e12,
-                }
+                if t == "005930.KS":
+                    self.info = {
+                        "regularMarketPrice": 222500.0,
+                        "trailingPE": 5.27,             # yfinance forward-derived (misleading per #465)
+                        "priceToBook": None,            # yfinance KR limit
+                        "returnOnEquity": 0.108,        # 10.8% — 보존 대상
+                        "revenueGrowth": 0.238,         # 23.8% — 보존 대상
+                        "profitMargins": 0.133,         # 13.3% — 보존 대상
+                        "debtToEquity": 6.0,            # — 보존 대상
+                    }
+                else:
+                    self.info = {
+                        "regularMarketPrice": 200.0,
+                        "trailingPE": 25.0,
+                        "marketCap": 3e12,
+                    }
 
         mock_yf = MagicMock()
         mock_yf.Ticker = _FakeTicker
@@ -569,8 +582,44 @@ class TestKISFundamentalBranch:
 
         results = c.collect(source="universe")
 
-        assert "005930.KS" not in called_yf_tickers, "KIS 가 채운 KR 은 yfinance 가 다시 호출하면 안 됨"
-        assert "AAPL" in called_yf_tickers
-        tickers_in_results = {r["ticker"] for r in results}
-        assert "005930.KS" in tickers_in_results
-        assert "AAPL" in tickers_in_results
+        # 005930.KS 가 yfinance loop 도 돌았는지 (KIS bypass 회귀 차단)
+        assert "005930.KS" in called_yf_tickers, "KR ticker 가 yfinance loop bypass 되면 ROE/growth 손실"
+
+        # 005930.KS record 검증 — KIS pe/pbr 우선 + yfinance ROE 보존
+        kr_record = next(r for r in results if r["ticker"] == "005930.KS")
+        assert kr_record["pe_ratio"] == 33.94, "KIS trailing PE 가 yfinance 5.27 override"
+        assert kr_record["price_to_book"] == 3.48, "KIS PBR (yfinance None) 채움"
+        assert kr_record["market_cap"] == 1.3e15, "KIS market_cap 우선"
+        # yfinance enrichment 보존 (codex P1)
+        assert kr_record["roe"] == pytest.approx(0.108)
+        assert kr_record["revenue_growth"] == pytest.approx(0.238)
+        assert kr_record["profit_margin"] == pytest.approx(0.133)
+
+    def test_collect_kis_only_record_when_yfinance_fails(self, monkeypatch, db_with_portfolio):
+        """KIS 가 채운 KR ticker 가 yfinance fetch 실패 시 KIS record 단독으로 results 포함."""
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        c = FundamentalCollector()
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["005930.KS"])
+
+        def stub_kis(self, kr_tickers, today):
+            from nuri.collectors.fundamental import _kis_record_skeleton
+            r = _kis_record_skeleton("005930.KS", today)
+            r["pe_ratio"] = 33.94
+            r["price_to_book"] = 3.48
+            return [r]
+        monkeypatch.setattr(FundamentalCollector, "_collect_kr_via_kis", stub_kis)
+
+        # yfinance fail (info 빈 dict — skipped)
+        mock_ticker = MagicMock()
+        mock_ticker.info = {}
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
+        import sys
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        results = c.collect(source="universe")
+        # yfinance 실패에도 KIS-only record 가 살아남아야 함
+        assert len(results) == 1
+        assert results[0]["ticker"] == "005930.KS"
+        assert results[0]["pe_ratio"] == 33.94
