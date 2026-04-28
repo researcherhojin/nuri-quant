@@ -614,7 +614,9 @@
     "sizeup",
     "deferable",
     "unconfigured",
-    "plists"
+    "plists",
+    "unstub",
+    "mypass"
   ],
   "ignorePaths": [
     "node_modules/**",
