@@ -1,4 +1,7 @@
+# pyright: reportMissingImports=false
 """기관/외인 수급 수집기 — 한국: KIS Open API / 미국: finnhub(선택).
+
+(finnhub optional dep — 미설치 시 dynamic skip, runtime 정상.)
 
 한국(.KS/.KQ) 종목은 KIS Open API `investor-trade-by-stock-daily` (FHPTJ04160001)
 사용. 1 호출 = 30일 history per ticker. 기존 pykrx 경로는 KRX 정책 변경으로

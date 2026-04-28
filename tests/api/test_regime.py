@@ -53,7 +53,7 @@ class TestRegimeAPI:
             trend: str = "bull"
             volatility: str = "low"
             confidence: float = 0.85
-            details: dict = None
+            details: dict | None = None
 
             def __post_init__(self):
                 if self.details is None:
@@ -70,7 +70,7 @@ class TestRegimeAPI:
         class FakeMacro:
             total_score: float = 65.0
             interpretation: str = "Positive"
-            details: dict = None
+            details: dict | None = None
 
             def __post_init__(self):
                 if self.details is None:

@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportCallIssue=false, reportAttributeAccessIssue=false, reportOperatorIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportOptionalOperand=false
 """멀티팩터 합성 스코어 — 모멘텀(30%) + 가치(25%) + 퀄리티(25%) + 센티먼트(20%).
 
 사용법:

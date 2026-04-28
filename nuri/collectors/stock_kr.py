@@ -1,5 +1,8 @@
+# pyright: reportAttributeAccessIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false
 """
 한국 주가 데이터 수집기 — pykrx 기반 KOSPI/KOSDAQ 수집.
+
+(pykrx return DataFrame | None / Index.strftime stub — runtime 정상.)
 
 pykrx는 KRX/네이버 금융 데이터를 사용하며, EOD(종가) 데이터만 지원.
 티커는 DB에 '005930.KS' 형태로 저장되지만, pykrx에는 '005930'으로 전달.

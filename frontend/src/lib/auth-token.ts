@@ -40,6 +40,7 @@ function getSecret(): string {
  *
  * The `password` parameter is preserved in the signature for call-site
  * compatibility (middleware passes it but it's ignored here).
+ * eslint config 의 argsIgnorePattern: '^_' 가 `_password` 통과시킴.
  */
 export async function hashToken(_password: string): Promise<string> {
   const secret = getSecret();

@@ -119,7 +119,7 @@ class TestIsRateLimit:
 
     def test_empty_payload(self):
         assert _is_rate_limit({}) is False
-        assert _is_rate_limit(None) is False
+        assert _is_rate_limit(None) is False  # type: ignore[arg-type]
 
 
 class TestIsTokenCooldown:

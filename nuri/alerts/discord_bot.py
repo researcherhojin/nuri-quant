@@ -82,8 +82,8 @@ async def send_bot(embed_dict: dict) -> bool:
             if footer:
                 embed.set_footer(text=footer.get("text", ""))
 
-            await channel.send(embed=embed)
-            logger.info(f"Bot 메시지 전송 완료: #{channel.name}")
+            await channel.send(embed=embed)  # type: ignore[union-attr]
+            logger.info(f"Bot 메시지 전송 완료: #{getattr(channel, 'name', channel_id)}")
         else:
             logger.error(f"채널 {channel_id}를 찾을 수 없음")
 

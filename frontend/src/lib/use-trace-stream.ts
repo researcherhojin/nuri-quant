@@ -15,7 +15,7 @@ interface AgentVerdict {
   action: string;
   confidence: number;
   reasoning: string;
-  data_points: Record<string, any>;
+  data_points: Record<string, unknown>;
 }
 
 interface ConsensusResult {

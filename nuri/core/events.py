@@ -38,8 +38,11 @@ def emit_event(
     record_count: int | None = None,
     causation_id: int | None = None,
     db_path: Optional[Path] = None,
-) -> int:
-    """이벤트를 pipeline_events 테이블에 기록하고 event ID 반환."""
+) -> int | None:
+    """이벤트를 pipeline_events 테이블에 기록하고 event ID 반환.
+
+    sqlite3 cursor.lastrowid 는 int | None — 통상 INSERT 후 int 이지만 type 정확.
+    """
     payload_str = None
     if payload is not None:
         payload_str = json.dumps(payload, ensure_ascii=False) if isinstance(payload, dict) else str(payload)

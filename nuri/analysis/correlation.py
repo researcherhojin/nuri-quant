@@ -1,7 +1,9 @@
+# pyright: reportArgumentType=false, reportCallIssue=false, reportOperatorIssue=false
 """
 상관관계 분석 — 종목 간 상관계수 계산 및 고상관 쌍 경고.
 
-|상관계수| > 0.80 경고.
+|상관계수| > 0.80 경고. (pandas Scalar union → 실행 시 float, type stub mismatch.)
+
 
 사용법:
     python -m nuri.analysis.correlation

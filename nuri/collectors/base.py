@@ -1,5 +1,8 @@
+# pyright: reportAttributeAccessIssue=false
 """
 BaseCollector — 모든 데이터 수집기의 추상 기반 클래스.
+
+(send_webhook_message 동적 import — runtime 정상.)
 
 모든 collector는 이 클래스를 상속하고 collect()와 save()를 구현한다.
 외부에서는 항상 run()을 호출한다.

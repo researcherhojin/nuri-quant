@@ -55,7 +55,7 @@ def main() -> int:
     sql += " ORDER BY id DESC LIMIT ?"
     params.append(args.limit)
 
-    rows = query(sql, params)
+    rows = query(sql, tuple(params))
 
     if not rows:
         print("certifications 테이블 비어있음. `make certify` 1회 실행 후 재시도.")

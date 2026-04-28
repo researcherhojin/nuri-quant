@@ -223,13 +223,17 @@ def aggregate_metrics(entries: list[Entry], n_iter: int = 10000) -> dict[int, di
     """
     out: dict[int, dict] = {}
     for h in HORIZONS:
-        deltas = [e.paired_deltas[h] for e in entries if e.paired_deltas[h] is not None]
-        adaptive_maes = [
-            e.forward_mae[h] * e.adaptive_size_pct / 100
+        # `is not None` filter 후 list[float] 로 narrow — Pylance 가 list-comp 안에서
+        # narrow 못 하므로 explicit cast (값은 수치, 의도된 시맨틱).
+        deltas: list[float] = [
+            float(e.paired_deltas[h]) for e in entries if e.paired_deltas[h] is not None
+        ]
+        adaptive_maes: list[float] = [
+            float(e.forward_mae[h]) * e.adaptive_size_pct / 100
             for e in entries if e.forward_mae[h] is not None
         ]
-        baseline_maes = [
-            e.forward_mae[h] * e.baseline_size_pct / 100
+        baseline_maes: list[float] = [
+            float(e.forward_mae[h]) * e.baseline_size_pct / 100
             for e in entries if e.forward_mae[h] is not None
         ]
         if not deltas:

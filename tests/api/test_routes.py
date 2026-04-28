@@ -20,12 +20,12 @@ from tests.api._helpers import _csv_file  # noqa: F401
 class TestAPIRoutes:
     def test_targets_route_exists(self):
         from nuri.api.routes.targets import router
-        routes = [r.path for r in router.routes]
+        routes = [getattr(r, "path", "") for r in router.routes]
         assert any("targets" in r for r in routes)
 
     def test_agents_route_exists(self):
         from nuri.api.routes.agents import router
-        routes = [r.path for r in router.routes]
+        routes = [getattr(r, "path", "") for r in router.routes]
         assert any("consensus" in r for r in routes)
 
 
@@ -36,17 +36,17 @@ class TestAPIRoutesExtended:
 
     def test_signals_route(self):
         from nuri.api.routes.signals import router
-        routes = [r.path for r in router.routes]
+        routes = [getattr(r, "path", "") for r in router.routes]
         assert len(routes) > 0
 
     def test_regime_route(self):
         from nuri.api.routes.regime import router
-        routes = [r.path for r in router.routes]
+        routes = [getattr(r, "path", "") for r in router.routes]
         assert len(routes) > 0
 
     def test_portfolio_route(self):
         from nuri.api.routes.portfolio import router
-        routes = [r.path for r in router.routes]
+        routes = [getattr(r, "path", "") for r in router.routes]
         assert len(routes) > 0
 
 

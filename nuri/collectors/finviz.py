@@ -1,5 +1,8 @@
+# pyright: reportArgumentType=false, reportOperatorIssue=false
 """
 FINVIZ 기술적 스크리너 수집기 — finvizfinance 라이브러리.
+
+(finvizfinance type stub float/int / `_AttributeValue|None` mismatch — runtime 정상.)
 
 FINVIZ에서 시장 전반 기술적 지표를 수집하여 market-wide 스캔에 활용.
 보유 종목의 FINVIZ 시그널 상태 (oversold, overbought, new high 등)를 저장.
