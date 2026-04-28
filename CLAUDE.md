@@ -215,7 +215,7 @@ Hook config: `.claude/settings.json`. CI workflows: `.github/workflows/main-ci-c
 Most gotchas live in scoped files (the right CLAUDE.md fires when you edit that directory) or in code lock-tests (STRATEGY §5.3.1 Gotcha-Test Pair). Don't list them here — they drift. The few that span scopes:
 
 - **fastapi < 0.129 pinned** (`openbb-core 1.6.7` constraint, dependabot.yml ignores 0.129+)
-- **Korean stock tickers**: `.KS` suffix (e.g., `005930.KS` for 삼성전자). yfinance `.KS` fundamentals work for individuals (PE/ROE/margins) but `trailingPE` missing — use `forward_pe`. ETFs return empty (expected).
+- **Korean stock tickers**: use `.KS` suffix (e.g., `005930.KS`). yfinance returns most fundamentals but **`trailingPE` is missing for KR individuals** — use `forward_pe` instead. ETFs return empty `info` (expected). Canonical rule + full quirks: `nuri/collectors/CLAUDE.md` "Korean Ticker `.KS` Suffix Convention".
 - **Concurrency asymmetry**: yfinance 10-thread parallel OK; pykrx/KRX **must be sequential** + `time.sleep(0.1)` (rate-limit). New external APIs require concurrency measurement before integration.
 - **Files structure**: `nuri/` directory layout above. New module → matching `tests/` mirror + import path verification.
 

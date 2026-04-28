@@ -8,10 +8,20 @@ All collectors inherit `BaseCollector` (`base.py`):
 2. Implement `save(data) -> int` — persist to DB via `nuri/core/db.py` functions
 3. External code calls `run()` which does `collect()` → `save()` with logging and timing
 
+## Korean Ticker `.KS` Suffix Convention (canonical)
+
+Korean equities are addressed by KRX 6-digit code suffixed with `.KS` (e.g., `005930.KS` for 삼성전자). yfinance accepts the suffix and returns:
+
+- ✅ Price history (`Ticker.history`), volume, dividend events
+- ✅ Fundamentals (`Ticker.info`) for individual stocks: PE, ROE, margins, growth, debt — **but `trailingPE` is NOT provided for KR individuals** (yfinance provider limit). Use `forward_pe` instead (currently 182/201 KR coverage).
+- ❌ Fundamentals for ETFs return empty (expected — ETF wrapper, no underlying P&L).
+
+KIS Open API is NOT needed for KR fundamentals (was previously believed required — corrected during #418 KIS Open API integration audit).
+
 ## Ticker Filtering + Source
 
 `_get_tickers(market=, source=)` (#272 Phase 2b):
-- `market`: `"us"` (no `.KS`) | `"kr"` (only `.KS`) | `None` (전체)
+- `market`: `"us"` (excludes `.KS`) | `"kr"` (only `.KS`) | `None` (전체)
 - `source`: `"portfolio"` (default, 보유종목 — `SELECT FROM portfolio`) | `"universe"` (`config/universe.yaml` 전체 ~746) | `"all"` (union)
 
 CLI: `--source` flag is the standard way to switch (stock, stock_kr, fundamental, wallstreet, estimates, technical, events, news).
