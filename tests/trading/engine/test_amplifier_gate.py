@@ -286,3 +286,29 @@ class TestAntiRevengeTrading:
                         f"amplifier_gate.py:{lineno} uses drawdown in arithmetic — "
                         f"revenge-trading anti-pattern (Codex verdict). Line: {stripped}"
                     )
+
+
+# ════════════════════════════════════════════════════════════
+# Coverage gap close — codex Round 2 codecov follow-up
+# ════════════════════════════════════════════════════════════
+class TestVixHelperEdgeCases:
+    """`_is_in_caution_zone` None-input early return path (line 95)."""
+
+    def test_caution_zone_none_vix_returns_false(self, amplifier_config):
+        """vix_value=None 일 때 in_caution_zone=False — caller 측 vix 미수집 시나리오."""
+        cfg = {**amplifier_config, "enabled": True, "shadow_mode": False}
+        cond = AmplifierConditions(
+            recovery_confirmed=True,
+            vix_favorable=True,
+            regime_favorable=True,
+            entry_strength=True,
+            macro_benign=True,
+            vix_value=None,  # 미수집/missing
+        )
+        result = evaluate(
+            config=cfg,
+            final_action="BUY",
+            final_action_source="weighted_sum",
+            conditions=cond,
+        )
+        assert result.in_caution_zone is False, "vix_value=None 은 caution zone 평가 대상 아님 (early return False)"
