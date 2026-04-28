@@ -373,7 +373,7 @@ class TestLoadScorecard:
 
         monkeypatch.setattr(cand_mod, "REPORT_DIR", report_dir)
         data, age = cand_mod._load_scorecard()
-        assert age > 7
+        assert age is not None and age > 7
         assert "rsi_oversold" in data
 
 

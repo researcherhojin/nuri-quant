@@ -345,7 +345,7 @@ class TestTracker_R23:
             signal_id: str = "rsi_oversold"
             price: float = 850.0
             regime_fit: bool = True
-            scoring_detail: dict = None
+            scoring_detail: dict | None = None
             tier: str = "actionable"
 
         n = save_recommendations(candidates=[MockCandidate()], db_path=db_path)
@@ -370,7 +370,7 @@ class TestTracker_R23:
             signal_id: str = "macd_golden"
             price: float = 200.0
             regime_fit: bool = True
-            scoring_detail: dict = None
+            scoring_detail: dict | None = None
             tier: str = "actionable"
 
             def __post_init__(self):
@@ -451,14 +451,14 @@ class TestTracker_R23:
             signal_id: str = "rsi_oversold"
             price: float = 170.0
             regime_fit: bool = True
-            scoring_detail: dict = None
+            scoring_detail: dict | None = None
             tier: str = "actionable"
 
         @dataclass
         class MockAction:
             ticker: str = "AAPL"
             action: str = "BUY"
-            signals: list = None
+            signals: list | None = None
             regime_note: str = "[bull]"
 
             def __post_init__(self):

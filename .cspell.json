@@ -387,7 +387,13 @@
     "yflog",
     "RECMP",
     "PREDEL",
-    "unsaturating"
+    "unsaturating",
+    "dbmod",
+    "EMPT",
+    "cand",
+    "NOPRICE",
+    "NEWCO",
+    "SEMCO"
   ],
   "ignorePaths": [
     "node_modules/**",
