@@ -42,6 +42,20 @@ live_test_files_fe() { find frontend \( -name "*.test.ts" -o -name "*.test.tsx" 
 live_e2e_specs()    { find frontend/e2e -name "*.spec.ts" \
     ! -path '*/node_modules/*' 2>/dev/null | wc -l | tr -d ' '; }
 
+# 2026-04-29: regime + DB-table counts (mirrors verify_doc_counts.sh additions).
+live_regimes()      { .venv/bin/python -c \
+    "from nuri.quant.regime.classifier import ALL_REGIMES; print(len(ALL_REGIMES))" 2>/dev/null; }
+
+live_db_tables()    { .venv/bin/python -c "
+import tempfile, sqlite3
+from pathlib import Path
+from nuri.core.db import init_db
+with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as _f:
+    _p = _f.name
+init_db(Path(_p))
+print(sqlite3.connect(_p).execute(\"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'\").fetchone()[0])
+" 2>/dev/null; }
+
 live_tests_be() {
     $PYTHON -m pytest tests/ --collect-only -q 2>/dev/null \
         | grep -oE '[0-9]+/[0-9]+ tests collected' \
@@ -115,6 +129,9 @@ update_claim live_test_files_fe  docs/STRATEGY.md              'Frontend tests.*
 
 # E2E specs (1 site)
 update_claim live_e2e_specs      docs/ARCHITECTURE.md          'Playwright E2E \([0-9]+ spec files\)'
+
+update_claim live_regimes        README.md                     '· [0-9]+ regimes'
+update_claim live_db_tables      README.md                     'SQLite WAL · [0-9]+ tables'
 
 # Pytest collect count — runs pytest which is slow; do last so failures above
 # don't waste the call. Updates any "[0-9,]+ backend tests" / "[0-9,]+ tests,"
