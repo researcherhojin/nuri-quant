@@ -372,7 +372,19 @@
     "langchain",
     "ehthumbs",
     "maint",
-    "signum"
+    "signum",
+    "FHKST",
+    "appkey",
+    "appsecret",
+    "lstn",
+    "stcn",
+    "prpr",
+    "oprc",
+    "hgpr",
+    "lwpr",
+    "acml",
+    "sdpr",
+    "yflog"
   ],
   "ignorePaths": [
     "node_modules/**",

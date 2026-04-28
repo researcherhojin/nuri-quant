@@ -5,9 +5,21 @@ Split from tests/test_collectors_all.py for module-level isolation.
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from nuri.core.db import (
     init_db,
 )
+
+
+@pytest.fixture(autouse=True)
+def _block_kis_live_calls(monkeypatch):
+    """#465 — fundamental.py 가 KR ticker 를 자동으로 KIS 로 보내므로,
+    yfinance branch 만 검증하는 기존 18 test 가 실제 KIS API 를 호출하지 않도록 차단.
+    KIS-specific test (TestKISFundamentalBranch) 는 자체 monkeypatch 로 override.
+    """
+    from nuri.collectors.fundamental import FundamentalCollector
+    monkeypatch.setattr(FundamentalCollector, "_collect_kr_via_kis", lambda self, kr, today: [])
 
 
 class TestFundamentalCollector:
@@ -403,3 +415,211 @@ class TestUniverseModeCoverage:
         monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
         results = c.collect()
         assert results == []  # skipped, no records
+
+
+class TestKISFundamentalBranch:
+    """Issue #465 — KIS Open API 가 KR ticker PER/PBR/market_cap 을 yfinance 보다 정확 제공.
+
+    fundamental.py 가 .KS/.KQ ticker → KIS sequential, US → yfinance thread pool 분기.
+    KIS 자격 증명 부재 / 토큰 발급 실패 / per-ticker 실패 모두 yfinance fallback.
+    """
+
+    def _kis_response(self, *, per=33.94, pbr=3.48, prpr=222500.0, shares=5846278608) -> dict:
+        """KIS inquire-price 응답 shape (raw probe 2026-04-29 005930 기준)."""
+        return {
+            "rt_cd": "0",
+            "output": {
+                "stck_prpr": str(int(prpr)),
+                "lstn_stcn": str(shares),
+                "per": str(per) if per is not None else "0",
+                "pbr": str(pbr) if pbr is not None else "0",
+                "stck_oprc": "220000", "stck_hgpr": "224000", "stck_lwpr": "219000",
+                "acml_vol": "12345678", "stck_sdpr": "221000",
+            },
+        }
+
+    def test_fetch_kis_kr_extracts_per_pbr_market_cap(self, monkeypatch):
+        """raw KIS payload → record 에 pe_ratio / price_to_book / market_cap 채워짐."""
+        from nuri.collectors import fundamental as fund_mod
+
+        # Outer self 를 closure 로 capture → R.json 의 self 와 충돌 회피 (Pylance reportSelfClsParameterName)
+        response_data = self._kis_response()
+
+        def stub_get(url, headers=None, params=None, timeout=10):
+            class R:
+                status_code = 200
+                def json(self):
+                    return response_data
+            return R()
+
+        monkeypatch.setattr("requests.get", stub_get)
+
+        from types import SimpleNamespace
+        creds = SimpleNamespace(base_url="https://x", app_key="k", app_secret="s")
+        record = fund_mod._fetch_kis_kr("005930.KS", creds, "TOKEN", "2026-04-29")
+
+        assert record is not None
+        assert record["ticker"] == "005930.KS"
+        assert record["date"] == "2026-04-29"
+        assert record["pe_ratio"] == 33.94
+        assert record["price_to_book"] == 3.48
+        # market_cap = 222,500 × 5,846,278,608 = 1,300,796,990,000,000
+        assert record["market_cap"] == pytest.approx(222500 * 5846278608, rel=1e-9)
+
+    def test_fetch_kis_kr_zero_per_pbr_treated_as_null(self, monkeypatch):
+        """KIS 가 0 으로 반환 (예: 우선주 PER) → None 처리 (false positive 방지)."""
+        from types import SimpleNamespace
+
+        from nuri.collectors import fundamental as fund_mod
+
+        response_data = self._kis_response(per=0, pbr=0)
+
+        def stub_get(url, headers=None, params=None, timeout=10):
+            class R:
+                status_code = 200
+                def json(self):
+                    return response_data
+            return R()
+
+        monkeypatch.setattr("requests.get", stub_get)
+        creds = SimpleNamespace(base_url="https://x", app_key="k", app_secret="s")
+        record = fund_mod._fetch_kis_kr("005935.KS", creds, "TOKEN", "2026-04-29")
+
+        # per=0/pbr=0 은 None 으로 — but market_cap 은 여전히 계산됨
+        assert record is not None
+        assert record["pe_ratio"] is None
+        assert record["price_to_book"] is None
+        assert record["market_cap"] is not None
+
+    def test_fetch_kis_kr_http_error_returns_none(self, monkeypatch):
+        """HTTP 500 / 빈 응답 → per-ticker fallback 신호 (None 반환)."""
+        from types import SimpleNamespace
+
+        from nuri.collectors import fundamental as fund_mod
+
+        def stub_get(url, headers=None, params=None, timeout=10):
+            class R:
+                status_code = 500
+                def json(self):
+                    return {}
+            return R()
+
+        monkeypatch.setattr("requests.get", stub_get)
+        creds = SimpleNamespace(base_url="https://x", app_key="k", app_secret="s")
+        assert fund_mod._fetch_kis_kr("005930.KS", creds, "TOKEN", "2026-04-29") is None
+
+    def test_collect_kr_via_kis_no_credentials_returns_empty(self, monkeypatch, db_with_portfolio):
+        """KIS 자격 증명 부재 → 빈 리스트 (caller 가 yfinance fallback)."""
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        monkeypatch.setattr("nuri.collectors.kis_realtime.load_credentials", lambda mode: None)
+        c = FundamentalCollector()
+        result = c._collect_kr_via_kis(["005930.KS", "000660.KS"], "2026-04-29")
+        assert result == []
+
+    def test_collect_kr_via_kis_token_failure_returns_empty(self, monkeypatch, db_with_portfolio):
+        """KIS 토큰 발급 실패 → 빈 리스트 (yfinance fallback)."""
+        from types import SimpleNamespace
+
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        creds = SimpleNamespace(base_url="https://x", app_key="k", app_secret="s")
+        monkeypatch.setattr("nuri.collectors.kis_realtime.load_credentials", lambda mode: creds)
+        monkeypatch.setattr("nuri.collectors.kis_realtime.get_access_token", lambda c: None)
+
+        c = FundamentalCollector()
+        result = c._collect_kr_via_kis(["005930.KS"], "2026-04-29")
+        assert result == []
+
+    def test_collect_kis_merge_preserves_yfinance_enrichment(self, monkeypatch, db_with_portfolio):
+        """codex Round 1 P1 회귀 — KIS 가 채운 KR ticker 도 yfinance loop 가 돌아 ROE/growth 보존.
+
+        KIS 의 pe_ratio/price_to_book/market_cap 은 yfinance 값을 override (정확).
+        yfinance 의 roe/revenue_growth/profit_margin/debt_to_equity 는 보존 (KIS 미제공).
+        """
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        c = FundamentalCollector()
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["005930.KS", "AAPL"])
+
+        # KIS stub — 005930.KS 에 정확한 trailing pe/pbr 제공
+        def stub_kis(self, kr_tickers, today):
+            from nuri.collectors.fundamental import _kis_record_skeleton
+            r = _kis_record_skeleton("005930.KS", today)
+            r["pe_ratio"] = 33.94
+            r["price_to_book"] = 3.48
+            r["market_cap"] = 1.3e15
+            return [r]
+        monkeypatch.setattr(FundamentalCollector, "_collect_kr_via_kis", stub_kis)
+
+        # yfinance stub — KR 도 yfinance loop 거침 (forward_pe/roe/etc 채움)
+        called_yf_tickers = []
+
+        class _FakeTicker:
+            def __init__(self, t):
+                called_yf_tickers.append(t)
+                if t == "005930.KS":
+                    self.info = {
+                        "regularMarketPrice": 222500.0,
+                        "trailingPE": 5.27,             # yfinance forward-derived (misleading per #465)
+                        "priceToBook": None,            # yfinance KR limit
+                        "returnOnEquity": 0.108,        # 10.8% — 보존 대상
+                        "revenueGrowth": 0.238,         # 23.8% — 보존 대상
+                        "profitMargins": 0.133,         # 13.3% — 보존 대상
+                        "debtToEquity": 6.0,            # — 보존 대상
+                    }
+                else:
+                    self.info = {
+                        "regularMarketPrice": 200.0,
+                        "trailingPE": 25.0,
+                        "marketCap": 3e12,
+                    }
+
+        mock_yf = MagicMock()
+        mock_yf.Ticker = _FakeTicker
+        import sys
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        results = c.collect(source="universe")
+
+        # 005930.KS 가 yfinance loop 도 돌았는지 (KIS bypass 회귀 차단)
+        assert "005930.KS" in called_yf_tickers, "KR ticker 가 yfinance loop bypass 되면 ROE/growth 손실"
+
+        # 005930.KS record 검증 — KIS pe/pbr 우선 + yfinance ROE 보존
+        kr_record = next(r for r in results if r["ticker"] == "005930.KS")
+        assert kr_record["pe_ratio"] == 33.94, "KIS trailing PE 가 yfinance 5.27 override"
+        assert kr_record["price_to_book"] == 3.48, "KIS PBR (yfinance None) 채움"
+        assert kr_record["market_cap"] == 1.3e15, "KIS market_cap 우선"
+        # yfinance enrichment 보존 (codex P1)
+        assert kr_record["roe"] == pytest.approx(0.108)
+        assert kr_record["revenue_growth"] == pytest.approx(0.238)
+        assert kr_record["profit_margin"] == pytest.approx(0.133)
+
+    def test_collect_kis_only_record_when_yfinance_fails(self, monkeypatch, db_with_portfolio):
+        """KIS 가 채운 KR ticker 가 yfinance fetch 실패 시 KIS record 단독으로 results 포함."""
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        c = FundamentalCollector()
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["005930.KS"])
+
+        def stub_kis(self, kr_tickers, today):
+            from nuri.collectors.fundamental import _kis_record_skeleton
+            r = _kis_record_skeleton("005930.KS", today)
+            r["pe_ratio"] = 33.94
+            r["price_to_book"] = 3.48
+            return [r]
+        monkeypatch.setattr(FundamentalCollector, "_collect_kr_via_kis", stub_kis)
+
+        # yfinance fail (info 빈 dict — skipped)
+        mock_ticker = MagicMock()
+        mock_ticker.info = {}
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
+        import sys
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        results = c.collect(source="universe")
+        # yfinance 실패에도 KIS-only record 가 살아남아야 함
+        assert len(results) == 1
+        assert results[0]["ticker"] == "005930.KS"
+        assert results[0]["pe_ratio"] == 33.94
