@@ -148,26 +148,9 @@ make test-fast  # backend only, slow tests excluded (~24s)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler)
 ```
 
-### Production: 2-Machine Setup
+### Production deployment
 
-Nuri-Quant runs across two Apple Silicon Macs.
-
-| | M5 Max MacBook Pro (dev) | M2 Pro Mac mini (24/7 receiver) |
-|---|---|---|
-| Role | Development, analysis, manual runs | Production scheduler, data collection, alerts |
-| Code sync | `git push` → | launchd `autopull` every 5 min (git fetch + ff-merge) |
-| Config sync | `make deploy-mini` → | `.env`, `portfolio.yaml`, `NEXT_SESSION.md` via SCP (DB excluded) |
-| Scheduler | N/A | 24 jobs: collectors, consensus, backtest, weekly 1y universe backfill |
-
-```bash
-# After shipping a PR from MBP — 1 command syncs everything to Mac mini:
-make deploy-mini
-# → git pull + config sync + scheduler reload (if changed) + verify (~30s)
-
-# Prerequisites:
-#   export DEV2_HOST=user@macmini.local   # in ~/.zshrc (NOT .env)
-#   SSH key registered (MBP → Mac mini)
-```
+The reference operator setup runs across two Apple Silicon Macs (MBP dev → Mac mini 24/7 receiver) with `make deploy-mini` 1-command sync. Full operator runbook (topology, deploy steps, scheduler control, recovery): [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
 ## Investment Rules
 
