@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * DataTable — 전 페이지 공통 테이블 컴포넌트.

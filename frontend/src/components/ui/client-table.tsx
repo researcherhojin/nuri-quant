@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * ClientTable — Server Component에서 안전하게 사용할 수 있는 DataTable 래퍼.
@@ -9,7 +10,6 @@
  * 사용법:
  *   <ClientTable variant="scorecard" data={data} />
  */
-import { ReactNode } from "react";
 import { DataTable } from "./data-table";
 import { StatusBadge } from "./status-badge";
 

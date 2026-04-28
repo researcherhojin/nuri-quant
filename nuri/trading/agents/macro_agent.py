@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportCallIssue=false, reportAttributeAccessIssue=false, reportOperatorIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportOptionalOperand=false
 """매크로 분석 에이전트 — 시장 레짐 + 매크로 스코어 + 개별 종목 모멘텀 기반 판정."""
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.db import query_df

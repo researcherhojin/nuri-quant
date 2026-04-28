@@ -1,5 +1,8 @@
+# pyright: reportAttributeAccessIssue=false
 """
 리스크 분석 — Riskfolio-Lib 기반.
+
+(pandas Series[Timestamp].sum stub mismatch — runtime: numeric Series, 정상.)
 
 VaR, CVaR, Sharpe, Sortino, Max Drawdown 등을 Riskfolio-Lib으로 계산.
 투자규칙 제약조건 (portfolio_stop -10%, stop_loss -20%) 검증.

@@ -147,7 +147,7 @@ class TestPairedDeltas:
     """paired_deltas — treatment 와 baseline 모두 있을 때만 pair."""
 
     def _trade(self, ticker: str, baseline_ret: float | None,
-               treat_ret: float | None, k: float = 2.0, mult: float = 1.0) -> v.Trade:
+               treat_ret: float | None, k: float = 2.0, mult: float = 1.0) -> "v.Trade":  # type: ignore[name-defined]
         return v.Trade(
             ticker=ticker, entry_date="2024-01-15", entry_price=100.0,
             regime="neutral", atr_at_entry=3.0,

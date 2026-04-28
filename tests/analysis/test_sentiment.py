@@ -62,7 +62,7 @@ class TestComputeSentiment:
     def test_empty_title(self):
         from nuri.analysis.sentiment import compute_sentiment
         assert compute_sentiment("") == 0.0
-        assert compute_sentiment(None) == 0.0
+        assert compute_sentiment(None) == 0.0  # type: ignore[arg-type]
 
     def test_positive_title(self):
         from nuri.analysis.sentiment import compute_sentiment

@@ -46,7 +46,7 @@ class TestAdaptiveSize:
 class TestPairedDeltaSignConvention:
     """paired_delta = (adaptive - baseline) × forward_return / 100. Sign verify."""
 
-    def _make_entry(self, regime: str, forward_return: float) -> s2.Entry:
+    def _make_entry(self, regime: str, forward_return: float) -> "s2.Entry":  # type: ignore[name-defined]
         baseline = 15.0
         adaptive = s2._adaptive_size(regime)
         size_diff = adaptive - baseline

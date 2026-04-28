@@ -43,10 +43,13 @@ export function CollapsibleStrip({
 }: CollapsibleStripProps) {
   const [hidden, setHidden] = useState(false);
 
-  // Load persisted state after mount to avoid SSR mismatch
+  // Load persisted state after mount to avoid SSR mismatch.
+  // setState within effect 가 React 권고와 반대 (cascading renders) 이지만,
+  // localStorage 는 SSR 단계 부재 → lazy initializer 사용 불가. 의도된 패턴.
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_PREFIX + id);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (saved === "true") setHidden(true);
     } catch {
       // localStorage unavailable (incognito, etc.) — ignore

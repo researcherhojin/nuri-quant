@@ -22,7 +22,7 @@ const AGENT_ORDER = [
   { key: "retail", label: "Ret" },
 ];
 
-function DataPills({ data }: { data: Record<string, any> }) {
+function DataPills({ data }: { data: Record<string, unknown> }) {
   const entries = Object.entries(data);
   if (!entries.length) return null;
   return (
