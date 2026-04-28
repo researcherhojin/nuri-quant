@@ -393,7 +393,19 @@
     "cand",
     "NOPRICE",
     "NEWCO",
-    "SEMCO"
+    "SEMCO",
+    "strat",
+    "perfs",
+    "dryrun",
+    "plpc",
+    "monkeypatched",
+    "contextvar",
+    "dedupe",
+    "conds",
+    "BRCH",
+    "REGI",
+    "kakaopay",
+    "mirae"
   ],
   "ignorePaths": [
     "node_modules/**",

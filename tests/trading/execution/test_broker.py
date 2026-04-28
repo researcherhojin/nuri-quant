@@ -199,7 +199,7 @@ class TestDryRunBroker:
         order = broker.submit_order("AAPL", "buy", 5, "market")
         assert order.status == "dry_run"
         assert order.broker == "dry_run"
-        assert order.order_id.startswith("DRY-")
+        assert order.order_id is not None and order.order_id.startswith("DRY-")
 
     def test_multiple_orders_increment_id(self):
         from nuri.trading.execution.broker import DryRunBroker
