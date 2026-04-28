@@ -1,5 +1,8 @@
+# pyright: reportArgumentType=false
 """
 기술적 지표 수집기 — prices 테이블 데이터 기반으로 지표 계산.
+
+(TA-Lib NDArray 호환 — pandas Series → float ndarray 정상.)
 
 RSI(14), MACD(12,26,9), Bollinger Bands(20,2), SMA(20/50/200), EMA(12/26)
 TA-Lib 사용 (brew install ta-lib 필요).

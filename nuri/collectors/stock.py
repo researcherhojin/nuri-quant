@@ -1,5 +1,8 @@
+# pyright: reportAttributeAccessIssue=false, reportOptionalMemberAccess=false
 """
 미국 주가 데이터 수집기 — OpenBB Platform 기반.
+
+(OpenBB BaseApp 동적 attribute, yfinance.download None-or-DataFrame — runtime 정상.)
 
 OpenBB가 다중 프로바이더(yfinance, polygon, tiingo 등)를 지원하며,
 에러 핸들링과 재시도 로직이 내장되어 있다.

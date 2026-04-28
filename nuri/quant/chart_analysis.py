@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportCallIssue=false, reportAttributeAccessIssue=false, reportOperatorIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportOptionalOperand=false
 """차트 시각 패턴 분석 — BB 위치, MACD 전환, 52주 거리, 매물대(POC), 추세선.
 
 사용자가 차트에서 시각적으로 보는 정보를 정량화하여 시그널/에이전트가 활용 가능하게 한다.

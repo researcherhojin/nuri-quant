@@ -1,5 +1,8 @@
+# pyright: reportArgumentType=false, reportCallIssue=false
 """
 리밸런싱 어드바이저 — 투자 규칙 위반 감지 및 매도 수량 추천.
+
+(pandas Scalar/NAType union stub mismatch — runtime 정상.)
 
 rules.yaml 기반으로 포트폴리오 위반 사항을 탐지하고,
 우선순위에 따라 구체적인 매도 수량과 회수 금액을 계산한다.

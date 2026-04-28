@@ -1,5 +1,8 @@
+# pyright: reportAttributeAccessIssue=false
 """
 수익률/성과 분석 — QuantStats 기반 HTML 티어시트 + 콘솔 출력.
+
+(pandas Series[Timestamp].sum stub mismatch — runtime: numeric Series, 정상.)
 
 QuantStats가 Sharpe, Sortino, Calmar, MaxDD 등 30+ 지표를 자동 계산하고
 HTML 리포트를 생성한다.
