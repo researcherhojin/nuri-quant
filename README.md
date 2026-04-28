@@ -14,28 +14,26 @@ Every BUY/SELL recommendation runs through a **collect → analyze → consensus
 
 ## Architecture
 
-Every BUY/SELL decision travels a **5-step pipeline**. Phases talk only through SQLite + CSV (loose coupling, [STRATEGY §2.3](docs/STRATEGY.md#23-느슨한-결합-loose-coupling-via-data)) — rerun an upstream phase and downstream refreshes automatically.
-
 ```mermaid
 flowchart LR
     CFG[/"config/*.yaml<br/>rules · agents · signals · universe · siege_gates"/]:::config
 
-    subgraph Pipeline["Decision pipeline · 5 phases · DB-only coupling"]
+    subgraph Pipeline["5-phase decision pipeline · DB-only coupling"]
         direction LR
         A(["① Collect<br/>25 collectors<br/>US · KR · macro · news · 13F · ARK"]):::collect
-        B(["② Analyze<br/>20 signals · 10 regimes<br/>(6 base + 4 special) · 4 factors<br/>15 macro event categories"]):::analyze
-        C(["③ Consensus<br/>10 agents · weighted vote<br/>risk veto (SELL conf ≥ 80)"]):::consensus
-        D(["④ Certify<br/>SIEGE v2 · 11 base / 11-30+ per-class<br/>5 accounts × 5 asset classes<br/>regime-adaptive position cap"]):::certify
-        E(["⑤ Track<br/>outcome_30d · _60d · _90d<br/>→ agent accuracy feedback"]):::track
+        B(["② Analyze<br/>22 signals (20 actionable + 2 shadow)<br/>10 regimes · 4 factors<br/>15 macro event categories"]):::analyze
+        C(["③ Consensus<br/>10 agents · weighted vote<br/>risk-agent veto on FLAT"]):::consensus
+        D(["④ Certify<br/>SIEGE v2 · per-asset-class expansion<br/>5 accounts × 5 asset classes"]):::certify
+        E(["⑤ Track<br/>outcome 30d / 60d / 90d<br/>→ agent weight drift"]):::track
 
-        A -- "prices · fundamentals<br/>macro · news · institutional_flows" --> B
-        B -- "signal_results · factors<br/>regime_transitions · macro_events" --> C
-        C -- "recommendations<br/>agent_verdicts · scoring_detail" --> D
+        A -- "prices · fundamentals<br/>macro · news · 13F flows" --> B
+        B -- "signal_results · factors<br/>regimes · macro_events" --> C
+        C -- "recommendations<br/>agent_verdicts" --> D
         D -- "certifications · conditions<br/>evidence + portfolio_hash" --> E
         E -. "agent weight drift (±30%)" .-> C
     end
 
-    DB[("SQLite WAL · 34 tables<br/>pipeline_events · certifications<br/>freshness SLA · audit trail")]:::db
+    DB[("SQLite WAL · 32 tables<br/>pipeline_events · certifications<br/>freshness SLA · audit trail")]:::db
 
     CFG -. "policies<br/>(YAML loaders in nuri/core)" .-> Pipeline
     Pipeline -. persist .-> DB
@@ -49,37 +47,36 @@ flowchart LR
     classDef db fill:#0f172a,stroke:#334155,color:#cbd5e1
 ```
 
-Driven by `config/*.yaml` (rules · agents · signals · universe · SIEGE gates). Persisted in SQLite WAL — `nuri/core/db.py` is the only `sqlite3` importer. Per-phase detail, DB schema, and SIEGE v2 spec: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + [docs/SIEGE_V2.md](docs/SIEGE_V2.md).
+Phases never import each other — they communicate through SQLite tables and CSV files. Rerun an upstream phase and downstream refreshes automatically. Policies live in `config/*.yaml`, never hardcoded. Per-phase detail and DB schema: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). SIEGE certification spec: [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md).
 
-### Key architectural decisions
+### Architectural principles
 
-- **Sole SQLite gateway** — `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced). 34 tables, WAL mode. All modules use `query()`, `query_df()`, `upsert_*()`, `get_db()`. Tests inject `tmp_path` for full isolation.
-- **Config-driven, code-static** — all thresholds, rules, signal metadata, and SIEGE gate policies live in `config/*.yaml`. Changing a stop-loss or adding a new market means editing YAML, not Python. See `rules.yaml`, `agents.yaml`, `signals.yaml`, `universe.yaml`.
-- **DB-only integration between phases** — phases communicate through DB tables and CSV files, never direct imports. Re-running an upstream phase automatically refreshes downstream consumers.
-- **SIEGE v2: 3-dimensional certification** — gates apply per Account (strategy profile) × Asset Class (exposure: us_equity, kr_equity, commodity, bond) × Execution Market (KRX, NYSE). See [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md). Inspired by [nutshells3/SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution).
-- **Regime-adaptive position cap** (E3-3c, 2026-04-19) — `siege_gates.regime_overrides` applies per-regime multipliers to `per_position_max`: aggressive 1.20× (`bull_low_vol`, `recovery`) / conservative 0.80× (`bear_high_vol`, `bull_high_vol`, `stagflation`, `euphoria`) / neutral 1.0×. Stage 2 paired counterfactual (N=254 entries, SMA 50/200 cross × 5Y) showed 60d 95% bootstrap CI [+0.0153%, +0.1588%] of mean paired delta — modest but statistically real (~+0.5%/year annualized). Hard veto (VIX>30) preserved orthogonally. Sector cap regime override deferred to portfolio simulator (E3-4).
-- **Alpha vs portfolio action separation** (PR A #429, 2026-04-21) — `recommendations` table carries orthogonal `alpha_action` (LONG/SHORT/FLAT) and `portfolio_action` (REBALANCE/TRIM/HEDGE/NONE) columns. SIEGE concentration violations route to `portfolio_action=REBALANCE` (not urgent SELL); only stop-loss breaches emit `alpha_action=FLAT`. Risk-agent veto fires only on `alpha_action=="FLAT"`. See [STRATEGY §2.6](docs/STRATEGY.md#26-escalation-ladder-근거-기반--기계적-개입의-4단계) Soft-penalty step.
-- **SHADOW crash precursor signals** (PR C #436, 2026-04-22) — `yield_curve_inversion` (Estrella-Mishkin 1998) + `hy_oas_widening` (Gilchrist-Zakrajsek 2012) surfaced as STRATEGY §2.6 Surface-only (`actionable: false` meta). Scope `market_wide`, structurally isolated from per-ticker candidates via `is_actionable` guard. Graceful degrade when FRED data missing.
-- **ATR/regime grid validation infra** (PR F #437, 2026-04-22) — `nuri/quant/exits/atr.py` ships ATR-based stop-loss core (`K_GRID = (1.5, 2.0, 2.5, 3.0)`, regime multipliers {0.8, 1.0, 1.3} E3-3c parity) with frozen `entry_atr_fixed` anchor contract. Paired counterfactual validation (us_core 85 × SMA 50/200 × 12 combos × walk-forward) returned MARGINAL verdict — top combos (k∈{2.5,3.0}, mult=1.3) paired CI positive but 6-metric 3/6 (wider-stop MaxDD trade-off). Shadow surface deferred to PR F2; `-7%` baseline retained.
-- **SIEGE predictivity audit** (E4-0b v2 #439, 2026-04-22) — historical snapshot-native gate predictivity measurement. `scripts/siege_predictivity_audit.py` + `certify(snapshot=..., caller="audit:historical")` hook. v2 variant ladder (4 templates) + gate eligibility matrix (`auditable_now` / `audit_incoherent` / `requires_replayed_state`) closes v1 Δ=null failure. Pilot run 144 snapshots: `position_limit` directional counter-evidence (provisional, CI crosses 0). See [STRATEGY §3.8](docs/STRATEGY.md#38-siege-predictivity-measurement-e4-0b).
-- **15 macro event categories** — RSS headlines classified by OpenAI gpt-5.4-nano (regex fallback). Includes `export_surge`, `demand_growth`, `currency_shift` for Korean market. Events feed into regime classification and Korean Market Agent.
+The system rests on five enduring decisions. Recent feature additions and tuning history live in [`docs/STRATEGY.md`](docs/STRATEGY.md) §3 (Architecture decisions) and `git log`.
 
-### Code layout
+| # | Principle | What it means in practice |
+|---|-----------|---------------------------|
+| 1 | **Sole SQLite gateway** | `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced — every other module uses `query()` / `upsert_*()` / `get_db()` with optional `db_path=` for test isolation). 32 tables, WAL mode. |
+| 2 | **Config over code** | Stop-loss thresholds, agent weights, signal metadata, SIEGE gate policies — all in `config/*.yaml`. Changing a rule or adding a market means editing YAML, never Python. |
+| 3 | **Loose phase coupling** | Pipeline phases communicate via DB tables / CSV only. No cross-phase imports. Re-run any upstream phase and downstream consumers refresh. |
+| 4 | **3-D SIEGE certification** | Gates apply per `Account (strategy)` × `Asset Class (us_equity / kr_equity / kr_index / commodity / bond)` × `Execution Market`. 1 error-grade fail → REJECTED, no manual override. Inspired by [nutshells3/SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). |
+| 5 | **Alpha vs portfolio action axes** | `recommendations` carries orthogonal `alpha_action ∈ {LONG, SHORT, FLAT}` and `portfolio_action ∈ {REBALANCE, TRIM, HEDGE, NONE}`. Concentration violations emit `portfolio_action=REBALANCE` only — never urgent SELL. Stop-loss breach is the only mechanical that emits `alpha_action=FLAT`. |
 
-| Path | Pipeline phase | Role |
-|------|----------------|------|
-| `nuri/collectors/` | Collect | 25 collectors (BaseCollector pattern). US: yfinance/OpenBB. KR: pykrx + KOSPI/KOSDAQ index. Macro: FRED/yfinance. News: GoogleNews RSS |
-| `nuri/quant/regime/` | Analyze | Regime classifier (6 base + 4 special), macro score (9 indicators), event score (15 categories) |
-| `nuri/quant/validation/` | Analyze | Signal backtest (20 signals from `config/signals.yaml`), superinvestor/analyst backtest, scorecard |
-| `nuri/quant/factors/` | Analyze | Multi-factor scoring (momentum, value, quality, composite) |
-| `nuri/trading/agents/` | Consensus | 10 specialist agents + weighted consensus. Risk agent veto. Korean Market Agent reads macro_events |
-| `nuri/trading/engine/` | Certify | SIEGE v2 — 3D certification (Account × Asset Class × Market) with per-asset-class expansion, conflict detection, learning memory |
-| `nuri/trading/recommend/` | Certify+Track | Candidates, price targets, rebalance advisor, outcome tracker (30/60/90d) |
-| `nuri/llm/` | Classify | Event classifier (OpenAI/regex), LLM report (OpenAI primary, llama.cpp/Ollama fallback), OpenAI wrapper |
-| `nuri/api/` | Serve | FastAPI REST + SSE on **:8001** (incl. `/actions`, `/opportunities`, `/market-context`, `/coverage`). Swagger at `/docs` |
-| `frontend/` | Serve | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme) |
-| `nuri/core/` | Foundation | db.py (sole SQLite), events.py (journal), freshness.py (SLA), timezone.py (KST), rules.py, signal_config.py |
-| `config/*.yaml` | Foundation | rules, agents, signals, universe, stock_types, portfolio (gitignored) |
+### Code layout (by pipeline phase)
+
+| Phase | Path | Role |
+|-------|------|------|
+| **Collect** | `nuri/collectors/` | 25 collectors (BaseCollector pattern). US: yfinance / OpenBB. KR: pykrx + KOSPI / KOSDAQ index. Macro: FRED / yfinance. News: GoogleNews RSS. KIS Open API: `kis_realtime` (잔고/시세) + `kis_analyst_opinion` (애널리스트 의견). |
+| **Analyze** | `nuri/quant/regime/` | Regime classifier (10 regimes), macro score (9 indicators), event score (15 categories). |
+|  | `nuri/quant/validation/` | Signal backtest engine over `config/signals.yaml` (20 actionable + 2 shadow precursors), superinvestor / analyst backtest, scorecard. |
+|  | `nuri/quant/factors/` | Multi-factor scoring — momentum / value / quality / composite. |
+| **Consensus** | `nuri/trading/agents/` | 10 specialist agents + weighted vote. Risk-agent veto on `alpha_action==FLAT`. Korean Market Agent reads `macro_events`. |
+| **Certify** | `nuri/trading/engine/` | SIEGE v2 (3-D) — per-asset-class expansion, conflict detection, evidence trail, learning memory. |
+|  | `nuri/trading/recommend/` | Candidates, price targets, rebalance advisor, outcome tracker (30 / 60 / 90d). |
+| **Serve** | `nuri/api/` | FastAPI REST + SSE on **:8001** (69 endpoints incl. `/actions`, `/opportunities`, `/market-context`, `/coverage`). Swagger at `/docs`. |
+|  | `frontend/` | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme). |
+| **Foundation** | `nuri/core/` | `db.py` (sole SQLite gateway) · `events.py` (journal) · `freshness.py` (SLA) · `timezone.py` (KST) · `rules.py` · `signal_config.py` · `axis.py` (alpha/portfolio helpers). |
+|  | `config/*.yaml` | `rules` · `agents` · `signals` · `universe` · `stock_types` · `portfolio` (gitignored) · `kis/` (gitignored credentials). |
+| **LLM gateway** | `nuri/llm/` | `openai_client.py` (sole external entry, audit-logged) · event classifier · LLM daily report (OpenAI primary, llama.cpp / Ollama fallback). |
 
 ## Dashboard
 
