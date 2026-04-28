@@ -126,7 +126,7 @@ brew install uv ta-lib fnm && fnm install 22
 
 # Setup
 git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
-make setup                                              # backend (uv venv + deps + DB init)
+make setup                                              # backend (uv venv + deps + DB init + git hooks)
 cd frontend && npm ci && cd ..                          # frontend
 cp .env.example .env                                    # API keys (all optional)
 cp config/portfolio.example.yaml config/portfolio.yaml  # your holdings (gitignored)
