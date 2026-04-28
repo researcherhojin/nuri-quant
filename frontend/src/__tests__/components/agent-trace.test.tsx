@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import type { TraceState } from "@/lib/use-trace-stream";
 
 // Mock useTraceStream
 const mockStart = vi.fn();
 const mockStop = vi.fn();
-let mockState = {
-  verdicts: [] as any[],
-  consensus: null as any,
+let mockState: TraceState = {
+  verdicts: [],
+  consensus: null,
   isStreaming: false,
-  error: null as string | null,
+  error: null,
 };
 
 vi.mock("@/lib/use-trace-stream", () => ({

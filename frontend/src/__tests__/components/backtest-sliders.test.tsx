@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ReactNode } from "react";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import type { BacktestSliders as BacktestSlidersType } from "@/components/ui/backtest-sliders";
+import type { InteractiveBacktest as InteractiveBacktestType } from "@/components/ui/interactive-backtest";
 
 // Mock recharts — jsdom can't render SVG charts
 vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
-  ComposedChart: ({ children }: any) => <div data-testid="composed-chart">{children}</div>,
+  ResponsiveContainer: ({ children }: { children: ReactNode }) => <div data-testid="responsive-container">{children}</div>,
+  ComposedChart: ({ children }: { children: ReactNode }) => <div data-testid="composed-chart">{children}</div>,
   Area: () => <div data-testid="area" />,
   Line: () => <div data-testid="line" />,
   XAxis: () => <div data-testid="x-axis" />,
@@ -25,7 +28,7 @@ vi.mock("next/navigation", () => ({
 // ── BacktestSliders ──────────────────────────────────────────────────
 
 describe("BacktestSliders", () => {
-  let BacktestSliders: any;
+  let BacktestSliders: typeof BacktestSlidersType;
 
   beforeEach(async () => {
     mockSearchParams = new URLSearchParams();
@@ -157,7 +160,7 @@ describe("InteractiveBacktest", () => {
     excess_return: 9.3,
   };
 
-  let InteractiveBacktest: any;
+  let InteractiveBacktest: typeof InteractiveBacktestType;
 
   beforeEach(async () => {
     vi.restoreAllMocks();
