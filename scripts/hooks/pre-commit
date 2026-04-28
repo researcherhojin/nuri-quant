@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Auto-fix lint issues before commit (advisory, not blocking).
+# Installed via `make setup-hooks` → symlink at .git/hooks/pre-commit.
+# Bypass with `git commit --no-verify` (use sparingly).
+#
+# NUL-delimited git output → bash arrays via `read -d ''` keeps things
+# safe for paths-with-spaces and portable across macOS BSD / Linux GNU
+# tooling (no awk/sed -z dependency).
+set -u
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+[ -z "$REPO_ROOT" ] && exit 0
+cd "$REPO_ROOT" || exit 0
+
+py_files=()
+ts_files=()
+ts_rel=()
+
+while IFS= read -r -d '' f; do
+    if [[ "$f" == *.py ]]; then
+        py_files+=("$f")
+    elif [[ "$f" == frontend/* && "$f" =~ \.(ts|tsx|js|jsx|mjs|cjs)$ ]]; then
+        ts_files+=("$f")
+        ts_rel+=("${f#frontend/}")
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACM -z 2>/dev/null)
+
+# Python — ruff auto-fix on staged .py files.
+if [ "${#py_files[@]}" -gt 0 ] && [ -x ".venv/bin/ruff" ]; then
+    .venv/bin/ruff check --fix --exit-zero --quiet "${py_files[@]}" 2>/dev/null || true
+    .venv/bin/ruff format --quiet "${py_files[@]}" 2>/dev/null || true
+    git add -- "${py_files[@]}" 2>/dev/null || true
+fi
+
+# Frontend — eslint auto-fix on staged ts/tsx/js/jsx under frontend/.
+# Skip if frontend/node_modules absent (fresh clone before npm ci).
+if [ "${#ts_files[@]}" -gt 0 ] && [ -d "frontend/node_modules" ]; then
+    (cd frontend && npx --no-install eslint --fix --quiet "${ts_rel[@]}" 2>/dev/null) || true
+    git add -- "${ts_files[@]}" 2>/dev/null || true
+fi
+
+exit 0

@@ -187,6 +187,47 @@ jobs:
         if: needs.changes.outputs.run_frontend == 'true'
         run: npm run build
 
+  # Frontend lint (eslint). Phase 1 (#470): errors-only gate; warnings tolerated
+  # while the existing 193 `any`/unused warnings are paid down. Promotion to
+  # `--max-warnings=0` is a separate cleanup PR. Default `npm run lint` already
+  # exits non-zero on errors, so `npm run lint` is sufficient here.
+  frontend-lint:
+    name: Frontend Lint
+    needs: changes
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Guard — require changes to succeed
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: |
+          echo "::error::changes job did not succeed (result=${{ needs.changes.result }}) — cannot verify gates"
+          exit 1
+
+      - uses: actions/checkout@v6
+
+      - name: Skip notice (no frontend changes)
+        if: needs.changes.outputs.run_frontend != 'true'
+        run: echo "✓ No frontend changes — fast-pass to satisfy required check"
+
+      - uses: actions/setup-node@v6
+        if: needs.changes.outputs.run_frontend == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - if: needs.changes.outputs.run_frontend == 'true'
+        run: npm ci
+
+      - name: ESLint (errors-only gate)
+        if: needs.changes.outputs.run_frontend == 'true'
+        run: npm run lint
+
   # ─── Backend ───
 
   backend-lint:
