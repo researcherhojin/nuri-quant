@@ -133,13 +133,13 @@ class TestScheduler:
         mock_collector.run.assert_called_once()
 
     def test_run_collector_estimates(self):
-        """_run_collector dispatches to EstimatesCollector."""
+        """_run_collector dispatches to EstimatesCollector + forwards kwargs (#420)."""
         from nuri.scheduler import _run_collector
 
         mock_collector = MagicMock()
         with patch("nuri.collectors.estimates.EstimatesCollector", return_value=mock_collector):
-            _run_collector("estimates")
-        mock_collector.run.assert_called_once()
+            _run_collector("estimates", source="universe")
+        mock_collector.run.assert_called_once_with(source="universe")
 
     def test_run_collector_etf_flows(self):
         """_run_collector dispatches to EtfFlowsCollector."""
@@ -722,6 +722,40 @@ class TestUniverseBackfill:
         with patch("nuri.collectors.stock_kr.StockKRCollector", return_value=mock_collector):
             _run_collector("stock_kr", days=365, source="all")
         mock_collector.run.assert_called_once_with(days=365, source="all")
+
+    def test_estimates_entry_uses_universe_source(self):
+        """SCHEDULES estimates 항목이 source='universe' kwargs 로 등록 (#420)."""
+        from nuri.scheduler import SCHEDULES
+
+        entries = [s for s in SCHEDULES if s.get("name") == "estimates"]
+        assert len(entries) == 1, "estimates 엔트리 정확히 1개"
+        assert entries[0]["cron"] == "0 2 * * 0", "일요일 02:00 KST"
+        assert entries[0]["args"] == ("estimates",)
+        assert entries[0].get("kwargs") == {"source": "universe"}, (
+            "kwargs 누락 → portfolio 기본값으로 떨어져 universe 543 종목 수집 누락 (#420). "
+            "이 lock 이 깨지면 estimates 테이블이 portfolio 8 종목만 누적."
+        )
+
+    def test_run_collector_estimates_forwards_kwargs(self):
+        """_run_collector('estimates', source='universe') 이 EstimatesCollector.run 에 전달 (#420)."""
+        from nuri.scheduler import _run_collector
+
+        mock_collector = MagicMock()
+        with patch("nuri.collectors.estimates.EstimatesCollector", return_value=mock_collector):
+            _run_collector("estimates", source="universe")
+        mock_collector.run.assert_called_once_with(source="universe")
+
+    def test_create_scheduler_estimates_universe_kwargs(self):
+        """create_scheduler 가 estimates universe kwargs 를 apscheduler 에 전달 (#420)."""
+        from nuri.scheduler import create_scheduler
+
+        scheduler = create_scheduler()
+        job = scheduler.get_job("estimates")
+        assert job is not None, "estimates job 이 등록돼야 함"
+        assert job.kwargs == {"source": "universe"}, (
+            "create_scheduler 가 SCHEDULES['kwargs'] 를 apscheduler 로 전달 누락 시 "
+            "default portfolio 모드로 fallback — universe 자동 수집 silently 차단."
+        )
 
     def test_create_scheduler_passes_kwargs_to_apscheduler(self):
         """create_scheduler 가 SCHEDULES 의 kwargs 를 apscheduler add_job 에 전달."""
