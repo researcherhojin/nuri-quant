@@ -107,15 +107,17 @@ def detect_prior_stress(as_of_date: str, db_path=None) -> tuple[bool, list[str]]
         if pd.notna(vix_peak) and vix_peak >= PRIOR_STRESS_VIX_PEAK_THRESHOLD:
             reasons.append(f"vix_peak_20d={vix_peak:.2f}")
 
-    # 63d SPY drawdown
+    # 63d SPY drawdown — running-max 기준 window 내 어느 날이라도 -8% 발생 시 stress
+    # (codex Round 1 P1 fix — naive `now/max-1` 은 회복 후 stress 흔적 망각, false negative)
     spy_df = _fetch_spy_series(as_of_date, days=PRIOR_STRESS_SPY_DD_LOOKBACK, db_path=db_path)
     if len(spy_df) >= 2:
-        spy_max = spy_df["close"].max()
-        spy_now = spy_df["close"].iloc[-1]
-        if pd.notna(spy_max) and pd.notna(spy_now) and spy_max > 0:
-            dd = (spy_now / spy_max) - 1.0
-            if dd <= PRIOR_STRESS_SPY_DD_THRESHOLD:
-                reasons.append(f"spy_dd_63d={dd:.4f}")
+        closes = spy_df["close"].dropna()
+        if len(closes) >= 2:
+            running_max = closes.cummax()
+            drawdowns = (closes / running_max) - 1.0
+            max_dd_observed = drawdowns.min()  # 가장 음수
+            if pd.notna(max_dd_observed) and max_dd_observed <= PRIOR_STRESS_SPY_DD_THRESHOLD:
+                reasons.append(f"spy_max_dd_63d={max_dd_observed:.4f}")
 
     # 10d F&G min (optional — 데이터 부족 시 skip)
     fg_df = _fetch_macro_series("fear_greed", as_of_date, days=PRIOR_STRESS_FG_LOOKBACK, db_path=db_path)
@@ -223,13 +225,28 @@ def evaluate_recovery(as_of_date: str, db_path=None) -> RecoveryEvaluation:
     # Q1 invariant 2: 3 연속 repair 필요
     recovery_confirmed = prior_stress and repair_day_today and consecutive >= REPAIR_PERSIST_DAYS
 
-    # Q1 invariant 3: exit hysteresis (현재는 entry 시점만 평가 — exit 은 caller 가 시계열로 추적)
-    # 단일 일자 평가에서는 VIX ≥ 25 면 exit signal 만 surface
+    # Q1 invariant 3: exit hysteresis — VIX ≥ 25 OR 최근 N 거래일 연속 repair 실패
+    # (codex Round 1 P2 fix — file header 가 "2 consecutive fails OR VIX≥25" 로 명세하나
+    # 기존 구현은 VIX 만 surface. 두 path 모두 lock 필요.)
     vix_df = _fetch_macro_series("vix", as_of_date, days=1, db_path=db_path)
     exit_recovery = False
     if not vix_df.empty:
         vix_now = vix_df["value"].iloc[-1]
         if pd.notna(vix_now) and vix_now >= EXIT_VIX_THRESHOLD:
+            exit_recovery = True
+
+    # Repair-fail 연속 — 가장 최근 EXIT_REPAIR_FAIL_DAYS 거래일 모두 repair_day=False 면 exit
+    spy_for_exit = _fetch_spy_series(as_of_date, days=EXIT_REPAIR_FAIL_DAYS + 5, db_path=db_path)
+    if len(spy_for_exit) >= EXIT_REPAIR_FAIL_DAYS:
+        exit_check_dates = spy_for_exit["date"].iloc[-EXIT_REPAIR_FAIL_DAYS:].tolist()
+        consecutive_fails = 0
+        for d in exit_check_dates:
+            rd_check, _ = evaluate_repair_day(d, db_path=db_path)
+            if rd_check:
+                consecutive_fails = 0
+            else:
+                consecutive_fails += 1
+        if consecutive_fails >= EXIT_REPAIR_FAIL_DAYS:
             exit_recovery = True
 
     return RecoveryEvaluation(

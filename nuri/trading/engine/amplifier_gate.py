@@ -1,10 +1,12 @@
 """
 Symmetric Amplifier Gate — STRATEGY §2.6 4번째 rung.
 
-Phase 1 (현재): SHADOW only.
-    - 모든 조건 평가 후 `pipeline_events` 에 emit
-    - 실제 confidence/size 변경 없음 (no-op)
-    - enabled=false (config) 일 때는 evaluate() 도 호출 안 됨
+Phase 1 (현재): SHADOW skeleton — 평가 로직만 정의, 호출자 미배선.
+    - `evaluate()` 반환만 함. `pipeline_events.emit_event` 직접 호출 안 함
+      (caller 측 — Phase 1.5 consensus.py 통합 시 wire).
+    - `enabled=false` (config 기본값) — Phase 3+ 활성화 전까지 어떤 caller 도
+      이 모듈을 production path 에서 호출하지 않음.
+    - shadow telemetry 가 정말 emit 되기 시작하는 시점 = 별도 PR.
 
 Source plan: docs/plans/E3_symmetric_amplifier_design.md
 Codex consult: 2026-04-28 session 019dd3f6
@@ -12,7 +14,7 @@ Codex consult: 2026-04-28 session 019dd3f6
 Anti-revenge guardrails (영구 — 코드 레벨):
     - drawdown × multiplier 형식 사용 금지 (이 모듈에 절대 import 안 함)
     - 단일 조건 발동 차단 (minimum_satisfied 항상 ≥ 2)
-    - Hard veto 우회 차단 (caller 책임 — 본 모듈은 post-veto 만 호출됨)
+    - Hard veto 우회 차단 (post-veto 진입점 + VIX > caution_max 모듈 자체 reject)
 """
 
 from __future__ import annotations
@@ -127,6 +129,8 @@ def evaluate(
     in_caution = _is_in_caution_zone(conditions.vix_value, caution_min, caution_max)
 
     # Q5: Hard veto / penalty 통과 못 한 candidate 는 amplifier 대상 아님
+    # (codex Round 1 P2 fix — VIX > caution_max 도 module invariant 로 lock.
+    # caller contract 만으로는 vix_favorable=True 가 잘못 emit 된 시나리오 차단 못함.)
     skip_reason: str | None = None
     if final_action_blocked_by_veto:
         skip_reason = "blocked_by_veto_or_penalty"
@@ -134,6 +138,9 @@ def evaluate(
         skip_reason = f"non_buy_action:{final_action}"
     elif final_action_source != "weighted_sum":
         skip_reason = f"non_weighted_source:{final_action_source}"
+    elif conditions.vix_value is not None and conditions.vix_value > caution_max:
+        # VIX > 30 (caution zone 상단) — caller 가 vix_favorable 잘못 set 해도 모듈 자체 차단
+        skip_reason = f"vix_above_caution_max:{conditions.vix_value}"
     elif in_caution:
         skip_reason = f"vix_caution_zone:{conditions.vix_value}"
 
