@@ -70,6 +70,10 @@ setup:
 	bash scripts/setup.sh
 	$(PYTHON) scripts/migrate_db.py
 	$(PYTHON) scripts/import_portfolio.py
+	$(MAKE) setup-hooks
+
+setup-hooks: ## Install repo-tracked git hooks (pre-commit auto-fix). Idempotent.
+	bash scripts/install_hooks.sh
 
 
 # ═══════════════════════════════════════════════════════════════
