@@ -109,7 +109,7 @@ describe("MarketContext", () => {
   });
 
   it("handles empty health gracefully", () => {
-    render(<MarketContext events={[]} health={{} as any} />);
+    render(<MarketContext events={[]} health={{}} />);
     expect(screen.getByText("SIEGE")).toBeTruthy();
     expect(screen.getByText("0%")).toBeTruthy();
   });

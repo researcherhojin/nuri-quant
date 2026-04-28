@@ -1,5 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 
 vi.mock("@/lib/api", () => ({
   fetchAPI: vi.fn(),
@@ -50,9 +49,9 @@ const mockTargets = { stock_type: "growth", stop_loss: 172.52, stop_loss_pct: -7
 const mockExternal = { count: 1, data: [{ source: "TipRanks", data_type: "consensus", value: "Strong Buy" }] };
 
 import { fetchAPI } from "@/lib/api";
-const mockFetchAPI = fetchAPI as any;
+const mockFetchAPI = fetchAPI as unknown as Mock;
 
-function setupMocks(overrides: Record<string, any> = {}) {
+function setupMocks(overrides: Record<string, unknown> = {}) {
   mockFetchAPI.mockImplementation((url: string) => {
     if (url.includes("/prices")) return Promise.resolve(overrides.prices ?? mockPriceData);
     if (url.includes("/targets/")) return Promise.resolve(overrides.targets ?? mockTargets);

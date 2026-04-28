@@ -7,6 +7,10 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+
+type RechartsTickFormatter = (value: number | string) => string;
+type RechartsTooltipFormatter = (value: number | string, name?: string) => [string, string];
 
 // ═══════════════════════════════════════════════════════════
 // 1. EquityCurveChart — Tooltip formatter coverage
@@ -14,28 +18,28 @@ import { render, screen, fireEvent, act, waitFor } from "@testing-library/react"
 // ═══════════════════════════════════════════════════════════
 
 describe("EquityCurveChart — Tooltip formatters", () => {
-  let capturedFormatters: any[] = [];
+  let capturedFormatters: RechartsTooltipFormatter[] = [];
 
   beforeEach(() => {
     vi.resetModules();
     capturedFormatters = [];
 
     vi.doMock("recharts", () => ({
-      ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
-      ComposedChart: ({ children }: any) => <div data-testid="composed-chart">{children}</div>,
+      ResponsiveContainer: ({ children }: { children?: ReactNode }) => <div data-testid="responsive-container">{children}</div>,
+      ComposedChart: ({ children }: { children?: ReactNode }) => <div data-testid="composed-chart">{children}</div>,
       Area: () => <div data-testid="area" />,
       Line: () => <div data-testid="line" />,
-      XAxis: ({ tickFormatter }: any) => {
+      XAxis: ({ tickFormatter }: { tickFormatter?: RechartsTickFormatter }) => {
         // Cover the XAxis tickFormatter: (v) => String(v).slice(2, 7)
         if (tickFormatter) tickFormatter("2024-06-15");
         return null;
       },
-      YAxis: ({ tickFormatter }: any) => {
+      YAxis: ({ tickFormatter }: { tickFormatter?: RechartsTickFormatter }) => {
         // Cover the YAxis tickFormatter: (v) => `${v}%`
         if (tickFormatter) tickFormatter(25);
         return null;
       },
-      Tooltip: (props: any) => {
+      Tooltip: (props: { formatter?: RechartsTooltipFormatter }) => {
         if (props.formatter) capturedFormatters.push(props.formatter);
         return null;
       },
@@ -112,25 +116,25 @@ describe("EquityCurveChart — Tooltip formatters", () => {
 // ═══════════════════════════════════════════════════════════
 
 describe("PriceChart — Tooltip formatter", () => {
-  let capturedFormatter: any = null;
+  let capturedFormatter: RechartsTooltipFormatter | null = null;
 
   beforeEach(() => {
     vi.resetModules();
     capturedFormatter = null;
 
     vi.doMock("recharts", () => ({
-      ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
-      ComposedChart: ({ children }: any) => <div data-testid="composed-chart">{children}</div>,
+      ResponsiveContainer: ({ children }: { children?: ReactNode }) => <div data-testid="responsive-container">{children}</div>,
+      ComposedChart: ({ children }: { children?: ReactNode }) => <div data-testid="composed-chart">{children}</div>,
       Area: () => <div data-testid="area" />,
       Line: () => <div data-testid="line" />,
       Bar: () => <div data-testid="bar" />,
       XAxis: () => null,
-      YAxis: ({ tickFormatter }: any) => {
+      YAxis: ({ tickFormatter }: { tickFormatter?: (v: number) => string }) => {
         // Cover price YAxis tickFormatter: (v) => v.toFixed(0)
         if (tickFormatter) tickFormatter(150.7);
         return null;
       },
-      Tooltip: (props: any) => {
+      Tooltip: (props: { formatter?: RechartsTooltipFormatter }) => {
         if (props.formatter) capturedFormatter = props.formatter;
         return null;
       },
@@ -152,23 +156,24 @@ describe("PriceChart — Tooltip formatter", () => {
     render(<PriceChart data={data} ticker="AAPL" />);
 
     expect(capturedFormatter).not.toBeNull();
+    const fmt = capturedFormatter!;
 
     // Volume branch
-    const [volLabel, volName] = capturedFormatter(1_500_000, "volume");
+    const [volLabel, volName] = fmt(1_500_000, "volume");
     expect(volLabel).toBe("1.5M");
     expect(volName).toBe("Vol");
 
     // Close branch
-    const [closeLabel, closeName] = capturedFormatter(195.50, "close");
+    const [closeLabel, closeName] = fmt(195.50, "close");
     expect(closeLabel).toBe("$195.50");
     expect(closeName).toBe("Close");
 
     // SMA name branch (fallback: any other name → uppercased)
-    const [sma20Label, sma20Name] = capturedFormatter(150.25, "sma20");
+    const [sma20Label, sma20Name] = fmt(150.25, "sma20");
     expect(sma20Label).toBe("$150.25");
     expect(sma20Name).toBe("SMA20");
 
-    const [sma50Label, sma50Name] = capturedFormatter(148.00, "sma50");
+    const [sma50Label, sma50Name] = fmt(148.00, "sma50");
     expect(sma50Label).toBe("$148.00");
     expect(sma50Name).toBe("SMA50");
   });
@@ -183,7 +188,7 @@ describe("PriceChart — Tooltip formatter", () => {
     render(<PriceChart data={data} ticker="TEST" />);
 
     expect(capturedFormatter).not.toBeNull();
-    const [volLabel] = capturedFormatter(50_000, "volume");
+    const [volLabel] = capturedFormatter!(50_000, "volume");
     expect(volLabel).toBe("50K");
   });
 
@@ -197,7 +202,7 @@ describe("PriceChart — Tooltip formatter", () => {
     render(<PriceChart data={data} ticker="MICRO" />);
 
     expect(capturedFormatter).not.toBeNull();
-    const [volLabel] = capturedFormatter(500, "volume");
+    const [volLabel] = capturedFormatter!(500, "volume");
     expect(volLabel).toBe("500");
   });
 });
@@ -218,7 +223,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ children, href }: any) => <a href={href}>{children}</a>,
+  default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
 describe("Dashboard — error fallbacks and redirect", () => {
@@ -274,9 +279,9 @@ describe("Dashboard — error fallbacks and redirect", () => {
     // jsdom can't run ResponsiveContainer (suspends on uncached promise) →
     // mock recharts so the Dashboard render finishes inside the test budget.
     vi.doMock("recharts", () => ({
-      ResponsiveContainer: ({ children }: any) => <div>{children}</div>,
-      PieChart: ({ children }: any) => <div>{children}</div>,
-      Pie: ({ children }: any) => <div>{children}</div>,
+      ResponsiveContainer: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+      PieChart: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+      Pie: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
       Cell: () => <div />,
       Tooltip: () => <div />,
     }));
@@ -531,7 +536,7 @@ describe("Portfolio — add form field coverage", () => {
 
 vi.mock("next-themes", () => ({
   useTheme: () => ({ theme: "light", setTheme: vi.fn() }),
-  ThemeProvider: ({ children }: any) => <div>{children}</div>,
+  ThemeProvider: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 
 describe("Sidebar — collapsed state and branch coverage", () => {

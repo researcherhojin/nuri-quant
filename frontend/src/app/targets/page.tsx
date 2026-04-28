@@ -24,6 +24,8 @@ interface PriceTarget {
   trailing_stop_pct: number;
   analyst_target: number | null;
   analyst_upside_pct: number | null;
+  take_profit_triggered?: boolean;
+  trailing_stop_triggered?: boolean;
   error?: string;
 }
 
@@ -41,11 +43,11 @@ async function TargetsSection() {
     return <p className="text-red-400 text-sm">{COMMON.API_ERROR}</p>;
   }
 
-  const valid = data.targets.filter((t: any) => !t.error);
-  const growth = valid.filter((t: any) => t.stock_type === "growth");
-  const value = valid.filter((t: any) => t.stock_type === "value");
-  const tpTriggered = valid.filter((t: any) => t.take_profit_triggered);
-  const tsTriggered = valid.filter((t: any) => t.trailing_stop_triggered);
+  const valid = data.targets.filter((t: PriceTarget) => !t.error);
+  const growth = valid.filter((t: PriceTarget) => t.stock_type === "growth");
+  const value = valid.filter((t: PriceTarget) => t.stock_type === "value");
+  const tpTriggered = valid.filter((t: PriceTarget) => t.take_profit_triggered);
+  const tsTriggered = valid.filter((t: PriceTarget) => t.trailing_stop_triggered);
 
   return (
     <div className="space-y-4">

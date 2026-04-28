@@ -33,7 +33,8 @@ vi.mock("next-themes", () => ({
 
 // Mock lucide-react icons
 vi.mock("lucide-react", () => {
-  const Icon = ({ size, className, ...props }: { size?: number; className?: string }) => (
+  type IconProps = { size?: number; className?: string; [key: string]: unknown };
+  const Icon = ({ className, ...props }: IconProps) => (
     <svg data-testid="icon" className={className} {...props} />
   );
   return {
@@ -52,12 +53,12 @@ vi.mock("lucide-react", () => {
     Bot: Icon,
     BookOpen: Icon,
     Compass: Icon,
-    ChevronLeft: (props: any) => <svg data-testid="chevron-left" {...props} />,
-    ChevronRight: (props: any) => <svg data-testid="chevron-right" {...props} />,
-    ShieldCheck: (props: any) => <svg data-testid="shield-check" {...props} />,
-    ShieldX: (props: any) => <svg data-testid="shield-x" {...props} />,
-    Sun: (props: any) => <svg data-testid="sun-icon" {...props} />,
-    Moon: (props: any) => <svg data-testid="moon-icon" {...props} />,
+    ChevronLeft: (props: IconProps) => <svg data-testid="chevron-left" {...props} />,
+    ChevronRight: (props: IconProps) => <svg data-testid="chevron-right" {...props} />,
+    ShieldCheck: (props: IconProps) => <svg data-testid="shield-check" {...props} />,
+    ShieldX: (props: IconProps) => <svg data-testid="shield-x" {...props} />,
+    Sun: (props: IconProps) => <svg data-testid="sun-icon" {...props} />,
+    Moon: (props: IconProps) => <svg data-testid="moon-icon" {...props} />,
   };
 });
 

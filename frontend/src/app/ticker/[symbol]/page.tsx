@@ -9,12 +9,104 @@ import { Metric } from "@/components/ui/metric";
 import { PriceChartLazy as PriceChart } from "@/components/ui/price-chart-lazy";
 import { TICKER_DETAIL as TD } from "@/lib/strings";
 
+interface AgentVerdict {
+  agent_name: string;
+  action: string;
+  confidence: number;
+  [key: string]: unknown;
+}
+
+interface AnalystRating {
+  firm: string;
+  date?: string;
+  action?: string;
+  target_price?: number;
+  [key: string]: unknown;
+}
+
+interface EarningsRow {
+  quarter?: string;
+  eps_actual?: number;
+  eps_estimate?: number;
+  surprise_pct?: number;
+  [key: string]: unknown;
+}
+
+interface InsiderTrade {
+  insider_name?: string;
+  transaction_type: string;
+  value?: number;
+  shares?: number;
+  [key: string]: unknown;
+}
+
+interface SuperInvestor {
+  investor: string;
+  portfolio_pct?: number;
+  [key: string]: unknown;
+}
+
+interface TickerData {
+  ticker: string;
+  name?: string;
+  price?: { close?: number };
+  consensus?: {
+    final_action?: string;
+    final_confidence?: number;
+    agreement_rate?: number;
+    verdicts?: AgentVerdict[];
+    dissent?: string[];
+  };
+  analyst_ratings?: AnalystRating[];
+  earnings?: EarningsRow[];
+  insider_trades?: InsiderTrade[];
+  superinvestors?: SuperInvestor[];
+  fundamentals?: {
+    pe_ratio?: number;
+    roe?: number;
+    revenue_growth?: number;
+    debt_to_equity?: number;
+    profit_margin?: number;
+    beta?: number;
+  };
+}
+
+interface PriceData {
+  prices: Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }>;
+}
+
+interface TickerTargets {
+  stock_type: string;
+  stop_loss?: number;
+  stop_loss_pct?: number;
+  target_1?: number;
+  target_1_pct?: number;
+  target_2?: number;
+  target_2_pct?: number;
+  trailing_stop_pct?: number;
+  analyst_target?: number | null;
+  analyst_upside_pct?: number | null;
+  error?: string;
+}
+
+interface ExternalRow {
+  source: string;
+  data_type: string;
+  value: string;
+  [key: string]: unknown;
+}
+
+interface ExternalData {
+  count: number;
+  data?: ExternalRow[];
+}
+
 async function TickerDetail({ symbol }: { symbol: string }) {
   const [data, priceData, targets, external] = await Promise.all([
-    fetchAPI<any>(`/api/ticker/${symbol}`),
-    fetchAPI<any>(`/api/ticker/${symbol}/prices?days=365`),
-    fetchAPI<any>(`/api/targets/${symbol}`).catch(() => null),
-    fetchAPI<any>(`/api/external/${symbol}`).catch(() => null),
+    fetchAPI<TickerData>(`/api/ticker/${symbol}`),
+    fetchAPI<PriceData>(`/api/ticker/${symbol}/prices?days=365`),
+    fetchAPI<TickerTargets>(`/api/targets/${symbol}`).catch(() => null),
+    fetchAPI<ExternalData>(`/api/external/${symbol}`).catch(() => null),
   ]);
 
   const consensus = data.consensus || {};
@@ -27,7 +119,7 @@ async function TickerDetail({ symbol }: { symbol: string }) {
 
   // Pre-format earnings data (no render functions — Next.js 16 forbids
   // passing functions from Server to Client Components)
-  const earningsFormatted = earnings.map((e: any) => ({
+  const earningsFormatted = earnings.map((e: EarningsRow) => ({
     quarter: e.quarter?.slice(0, 7) ?? "—",
     eps_actual: e.eps_actual?.toFixed(2) ?? "—",
     eps_estimate: e.eps_estimate?.toFixed(2) ?? "—",
@@ -77,7 +169,7 @@ async function TickerDetail({ symbol }: { symbol: string }) {
           <CardContent className="pt-5">
             <p className="text-xs text-muted-foreground mb-3">10-Agent Analysis</p>
             <div className="space-y-2">
-              {verdicts.map((v: any) => (
+              {verdicts.map((v: AgentVerdict) => (
                 <div key={v.agent_name} className="flex items-center justify-between">
                   <span className="text-sm capitalize">{v.agent_name}</span>
                   <div className="flex items-center gap-2">
@@ -87,10 +179,10 @@ async function TickerDetail({ symbol }: { symbol: string }) {
                 </div>
               ))}
             </div>
-            {consensus.dissent?.length > 0 && (
+            {(consensus.dissent?.length ?? 0) > 0 && (
               <div className="mt-3 pt-3 border-t border-border">
                 <p className="text-[10px] text-muted-foreground/70 mb-1">Dissent:</p>
-                {consensus.dissent.slice(0, 3).map((d: string, i: number) => (
+                {consensus.dissent!.slice(0, 3).map((d: string, i: number) => (
                   <p key={i} className="text-[10px] text-muted-foreground/70 leading-tight">{d}</p>
                 ))}
               </div>
@@ -104,7 +196,7 @@ async function TickerDetail({ symbol }: { symbol: string }) {
             <p className="text-xs text-muted-foreground mb-3">Analyst Ratings ({ratings.length})</p>
             {ratings.length > 0 ? (
               <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                {ratings.map((r: any, i: number) => (
+                {ratings.map((r: AnalystRating, i: number) => (
                   <div key={i} className="flex items-center justify-between text-xs">
                     <div>
                       <span className="text-foreground/80">{r.firm}</span>
@@ -143,7 +235,7 @@ async function TickerDetail({ symbol }: { symbol: string }) {
             <p className="text-xs text-muted-foreground mb-3">Insider Activity ({insiders.length})</p>
             {insiders.length > 0 ? (
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {insiders.map((ins: any, i: number) => (
+                {insiders.map((ins: InsiderTrade, i: number) => (
                   <div key={i} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5">
                       <StatusBadge status={ins.transaction_type === "sale" ? "SELL" : "BUY"} size="sm" />
@@ -186,7 +278,7 @@ async function TickerDetail({ symbol }: { symbol: string }) {
             <CardContent className="pt-5">
               <p className="text-xs text-muted-foreground mb-3">Smart Money ({supers.length})</p>
               <div className="space-y-1.5">
-                {supers.map((s: any, i: number) => (
+                {supers.map((s: SuperInvestor, i: number) => (
                   <div key={i} className="flex justify-between text-xs bg-muted/50 rounded px-2.5 py-1.5">
                     <span className="text-foreground/80">{s.investor}</span>
                     <span className="text-muted-foreground font-medium">{s.portfolio_pct?.toFixed(1)}%</span>
@@ -207,7 +299,7 @@ async function TickerDetail({ symbol }: { symbol: string }) {
                 <div className="flex justify-between"><span className="text-muted-foreground">{TD.TARGET_2}</span><span className="text-emerald-400">${targets.target_2?.toFixed(2)} (+{targets.target_2_pct}%)</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">{TD.TRAILING}</span><span className="text-muted-foreground">{targets.trailing_stop_pct}% from high</span></div>
                 {targets.analyst_target && (
-                  <div className="flex justify-between"><span className="text-muted-foreground">{TD.ANALYST}</span><span className="text-blue-400">${targets.analyst_target?.toFixed(2)} ({targets.analyst_upside_pct > 0 ? "+" : ""}{targets.analyst_upside_pct}%)</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{TD.ANALYST}</span><span className="text-blue-400">${targets.analyst_target?.toFixed(2)} ({(targets.analyst_upside_pct ?? 0) > 0 ? "+" : ""}{targets.analyst_upside_pct}%)</span></div>
                 )}
               </div>
             </CardContent>
@@ -220,7 +312,7 @@ async function TickerDetail({ symbol }: { symbol: string }) {
             <CardContent className="pt-5">
               <p className="text-xs text-muted-foreground mb-3">External Data ({external.count})</p>
               <div className="space-y-1.5 text-xs">
-                {external.data?.slice(0, 8).map((d: any, i: number) => (
+                {external.data?.slice(0, 8).map((d: ExternalRow, i: number) => (
                   <div key={i} className="flex justify-between bg-muted/50 rounded px-2.5 py-1">
                     <span className="text-muted-foreground">{d.source}/{d.data_type}</span>
                     <span className="text-foreground/80">{d.value}</span>

@@ -4,6 +4,7 @@
  * length-mismatch fallback that the route-level tests don't reach.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHmac } from "node:crypto";
 
 describe("auth-token", () => {
   beforeEach(() => {
@@ -36,9 +37,7 @@ describe("auth-token", () => {
       const tokenWithBoth = await hashToken("ignored");
 
       // Compute the expected value with node:crypto (available in vitest/Node)
-      const crypto = require("crypto");
-      const expected = crypto
-        .createHmac("sha256", "primary-key")
+      const expected = createHmac("sha256", "primary-key")
         .update("nuri-auth-token:v1")
         .digest("hex");
 
@@ -52,9 +51,7 @@ describe("auth-token", () => {
 
       const token = await hashToken("ignored");
 
-      const crypto = require("crypto");
-      const expected = crypto
-        .createHmac("sha256", "fallback-key")
+      const expected = createHmac("sha256", "fallback-key")
         .update("nuri-auth-token:v1")
         .digest("hex");
 
@@ -71,9 +68,7 @@ describe("auth-token", () => {
       expect(token).toHaveLength(64);
 
       // Verify it uses the dev fallback key
-      const crypto = require("crypto");
-      const expected = crypto
-        .createHmac("sha256", "nuri-dev-key")
+      const expected = createHmac("sha256", "nuri-dev-key")
         .update("nuri-auth-token:v1")
         .digest("hex");
       expect(token).toBe(expected);

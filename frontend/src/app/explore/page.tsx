@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { fetchAPI } from "@/lib/api";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { EXPLORE, REGIME_GUIDE, COMMON } from "@/lib/strings";
+import { EXPLORE, REGIME_GUIDE } from "@/lib/strings";
 import { trendKo, vixZone, fgLabel, macroLevel, signalKo, formatPrice, formatDelta, tickerDisplay, POPULAR_US, POPULAR_KR } from "./helpers";
 
 // ── Types ──
