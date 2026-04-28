@@ -56,6 +56,20 @@ YFINANCE_SYMBOLS = {
     "usd_krw": "KRW=X",          # USD/KRW
     # btc_usd는 CoinGecko collector에서 전담 (btc_usd_cg)
     "gold": "GC=F",              # Gold Futures (안전자산)
+    # 추가 지표 (#362 Part A, 2026-04-28 live probe 9/10 + DXY 대체 symbol)
+    # 지수 — regime classifier + macro agent breadth 지표
+    "nasdaq_composite": "^IXIC",   # NASDAQ Composite (tech breadth)
+    "sp500": "^GSPC",              # S&P 500 (broad US market — SPY 와 별도 index 직접 추적)
+    "dow": "^DJI",                 # Dow Jones (blue-chip 30)
+    "nasdaq100_futures": "NQ=F",   # NASDAQ 100 Futures (after-hours sentiment)
+    "sox": "^SOX",                 # Philadelphia Semiconductor (KR 반도체 spillover proxy)
+    # 환율 — DX=F yfinance 미제공 (live probe), DX-Y.NYB ICE Dollar Index 채택
+    "dxy": "DX-Y.NYB",             # ICE U.S. Dollar Index (USD strength)
+    # 원자재 — gold/wti 외 산업/안전자산 polish
+    "silver": "SI=F",              # Silver Futures
+    "natgas": "NG=F",              # Natural Gas Futures
+    "copper": "HG=F",              # Copper Futures (industrial demand barometer)
+    "wheat": "ZW=F",               # Wheat Futures (food inflation)
 }
 
 
