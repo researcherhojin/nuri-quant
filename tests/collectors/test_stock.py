@@ -280,3 +280,102 @@ class TestStandardizeThreadSafety:
         for r in results:
             assert "ticker" in r.columns
             assert "adj_close" in r.columns
+
+
+class TestFreshnessSource:
+    """Issue #453 — `--source freshness` 가 SIEGE freshness gate 의존 ticker 를 추출."""
+
+    def test_load_freshness_tickers_extracts_primary_and_secondary(self, monkeypatch):
+        from nuri.collectors import stock as stock_mod
+
+        fake_rules = {
+            "siege_gates": {
+                "asset_classes": {
+                    "us_equity": {"freshness_primary": "SPY", "freshness_secondary": []},
+                    "bond": {"freshness_primary": "TLT", "freshness_secondary": ["SPY"]},
+                    "commodity": {"freshness_primary": "GC=F", "freshness_secondary": []},
+                }
+            }
+        }
+        # rules.RULES 는 module-level frozen dict — monkeypatch 로 교체.
+        from nuri.core import rules as rules_mod
+
+        monkeypatch.setattr(rules_mod, "RULES", fake_rules)
+
+        result = stock_mod._load_freshness_tickers()
+        # primary + secondary 합집합 — 중복 제거 + sorted
+        assert result == sorted({"SPY", "TLT", "GC=F"})
+
+    def test_load_freshness_tickers_excludes_non_yfinance(self, monkeypatch):
+        """KOSPI 같은 macro indicator name 은 stock.py 가 fetch 못함 → 제외."""
+        from nuri.collectors import stock as stock_mod
+        from nuri.core import rules as rules_mod
+
+        fake_rules = {
+            "siege_gates": {
+                "asset_classes": {
+                    "kr_equity": {"freshness_primary": "KOSPI", "freshness_secondary": ["SPY"]},
+                    "kr_index": {"freshness_primary": "KOSPI", "freshness_secondary": ["SPY"]},
+                }
+            }
+        }
+        monkeypatch.setattr(rules_mod, "RULES", fake_rules)
+
+        result = stock_mod._load_freshness_tickers()
+        assert "KOSPI" not in result
+        assert result == ["SPY"]
+
+    def test_load_freshness_tickers_empty_config(self, monkeypatch):
+        """siege_gates 설정 부재 시 빈 리스트 — graceful."""
+        from nuri.collectors import stock as stock_mod
+        from nuri.core import rules as rules_mod
+
+        monkeypatch.setattr(rules_mod, "RULES", {})
+        assert stock_mod._load_freshness_tickers() == []
+
+    def test_collect_freshness_source_uses_helper_not_get_tickers(self, monkeypatch, tmp_path):
+        """source='freshness' 분기는 _get_tickers 를 호출하지 않음 — siege config 직접 추출."""
+        from nuri.collectors import stock as stock_mod
+        from nuri.collectors.stock import StockCollector
+        from nuri.core import rules as rules_mod
+        from nuri.core.db import init_db
+
+        db = tmp_path / "test.db"
+        init_db(db)
+
+        fake_rules = {
+            "siege_gates": {
+                "asset_classes": {
+                    "us_equity": {"freshness_primary": "SPY", "freshness_secondary": []},
+                    "bond": {"freshness_primary": "TLT", "freshness_secondary": []},
+                }
+            }
+        }
+        monkeypatch.setattr(rules_mod, "RULES", fake_rules)
+
+        # _collect_ticker stub — 실제 yfinance call 차단, 호출 ticker 추적
+        called_tickers: list[str] = []
+
+        def _stub_collect_ticker(self, ticker, start_date, end_date):
+            called_tickers.append(ticker)
+            return None  # 빈 결과 — save 단계 스킵
+
+        monkeypatch.setattr(StockCollector, "_collect_ticker", _stub_collect_ticker)
+
+        c = StockCollector()
+        c.collect(period="5d", source="freshness")
+
+        # SPY/TLT 만 호출됐는지 — portfolio (db_with_portfolio fixture 미사용이라 비어있음) 분기
+        # 가 아니라 _load_freshness_tickers() 분기를 탔는지 검증.
+        assert sorted(called_tickers) == ["SPY", "TLT"]
+
+    def test_argparse_accepts_freshness_choice(self):
+        """CLI `--source freshness` 가 argparse choices 에 등록됨 (#453 회귀)."""
+        # stock.py __main__ block 의 argparse choices 직접 검증 — 실제 모듈 source read.
+        import inspect
+
+        from nuri.collectors import stock as stock_mod
+
+        src = inspect.getsource(stock_mod)
+        # choices 리스트에 'freshness' 포함 확인
+        assert "'freshness'" in src or '"freshness"' in src

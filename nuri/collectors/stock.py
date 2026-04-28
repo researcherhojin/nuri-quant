@@ -23,6 +23,32 @@ from nuri.core.db import upsert_prices
 # OpenBB 프로바이더 우선순위 (무료)
 PROVIDERS = ["yfinance"]
 
+# SIEGE freshness extraction — yfinance 가 직접 fetch 못하는 macro/index 식별자.
+# config/rules.yaml siege_gates.asset_classes.*.freshness_primary 가 source of truth 이지만
+# KOSPI 같은 macro indicator name 은 stock.py 의 yfinance 경로에서 빈 결과 → 사전 제외.
+# KOSPI 는 macro 테이블 (issue #454 dual-source lookup 범위) — 본 collector 미담당.
+_NON_YFINANCE_FRESHNESS_TICKERS: frozenset[str] = frozenset({"KOSPI"})
+
+
+def _load_freshness_tickers() -> list[str]:
+    """siege_gates.asset_classes.*.freshness_primary + freshness_secondary → US/yfinance ticker list.
+
+    config/rules.yaml siege_gates 가 single source of truth. _NON_YFINANCE_FRESHNESS_TICKERS
+    에 등재된 식별자 (KOSPI 등) 는 macro/index 라 stock.py 가 못 다루므로 제외.
+    """
+    from nuri.core.rules import RULES
+
+    asset_classes = (RULES.get("siege_gates") or {}).get("asset_classes") or {}
+    out: set[str] = set()
+    for cls_policy in asset_classes.values():
+        prim = cls_policy.get("freshness_primary")
+        if prim and prim not in _NON_YFINANCE_FRESHNESS_TICKERS:
+            out.add(prim)
+        for sec in cls_policy.get("freshness_secondary") or []:
+            if sec and sec not in _NON_YFINANCE_FRESHNESS_TICKERS:
+                out.add(sec)
+    return sorted(out)
+
 
 class StockCollector(BaseCollector):
     """OpenBB Platform으로 미국 주가 수집."""
@@ -40,10 +66,15 @@ class StockCollector(BaseCollector):
         """OpenBB로 미국 종목 OHLCV 수집.
 
         Args:
-            source: 'portfolio' (default) | 'universe' | 'all'. #272 Phase 2b.
+            source: 'portfolio' (default) | 'universe' | 'all' | 'freshness'. #272 Phase 2b + #453.
+                freshness = config/rules.yaml siege_gates.asset_classes.*.freshness_primary +
+                freshness_secondary 에서 추출 (KOSPI 등 macro 식별자 제외).
         """
         # 한국 종목은 stock_kr.py에서 처리
-        tickers = self._get_tickers(market="us", source=source)
+        if source == "freshness":
+            tickers = _load_freshness_tickers()
+        else:
+            tickers = self._get_tickers(market="us", source=source)
         if not tickers:
             self.logger.warning("수집할 미국 종목이 없습니다")
             return pd.DataFrame()
@@ -213,8 +244,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--source",
         default="portfolio",
-        choices=["portfolio", "universe", "all"],
-        help="ticker 소스 (#272 Phase 2b). portfolio=보유만, universe=yaml 전체, all=합집합",
+        choices=["portfolio", "universe", "all", "freshness"],
+        help=(
+            "ticker 소스. portfolio=보유만 (#272 Phase 2b), universe=yaml 전체, "
+            "all=합집합, freshness=SIEGE freshness gate 의존 ticker (#453 — SPY/TLT/GC=F)"
+        ),
     )
     args = parser.parse_args()
 
