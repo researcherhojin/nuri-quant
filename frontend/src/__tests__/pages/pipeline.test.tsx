@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 // Mock @xyflow/react
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({ nodes, edges, children }: { nodes: any[]; edges: any[]; children: React.ReactNode }) => (
+  ReactFlow: ({ nodes, edges, children }: { nodes: unknown[]; edges: unknown[]; children: React.ReactNode }) => (
     <div data-testid="react-flow">
       <div data-testid="flow-nodes">{nodes.length} nodes</div>
       <div data-testid="flow-edges">{edges.length} edges</div>
@@ -65,7 +65,7 @@ const mockGates = {
 };
 
 describe("PipelinePage", () => {
-  let fetchMock: any;
+  let fetchMock: Mock;
 
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -84,7 +84,7 @@ describe("PipelinePage", () => {
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
-    global.fetch = fetchMock;
+    global.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -282,7 +282,7 @@ describe("PipelinePage", () => {
 
   it("renders step with error status", async () => {
     const errorSteps = [...mockSteps];
-    errorSteps[2] = { ...errorSteps[2], status: "error", error: "timeout" as any };
+    errorSteps[2] = { ...errorSteps[2], status: "error", error: "timeout" as unknown as null };
 
     fetchMock.mockImplementation((url: string) => {
       if (url.includes("/api/pipeline/status")) {

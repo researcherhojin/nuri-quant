@@ -4,8 +4,9 @@
  *
  * Target: frontend 89% → 93%+
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import type { ComponentType, ReactNode } from "react";
 
 // ═══════════════════════════════════════════════════════════
 // Portfolio — form submit, delete, edit, import, sample load
@@ -19,7 +20,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ children, href }: any) => <a href={href}>{children}</a>,
+  default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
 const mockHoldings = [
@@ -29,7 +30,14 @@ const mockHoldings = [
     currency: "USD", sector: "Semi", latest_price: 145, price_date: "2026-03-31" },
 ];
 
-function setupPortfolioMock(overrides: Record<string, any> = {}) {
+type MockHolding = (typeof mockHoldings)[number];
+interface PortfolioOverrides {
+  importResult?: { imported: number; errors: unknown[] };
+  addFail?: boolean;
+  editFail?: boolean;
+  holdings?: MockHolding[];
+}
+function setupPortfolioMock(overrides: PortfolioOverrides = {}) {
   const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
     if (typeof url === "string" && url.includes("/api/portfolio/sample") && opts?.method === "POST") {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
@@ -252,16 +260,22 @@ describe("ClientTable — variant coverage", () => {
 // ═══════════════════════════════════════════════════════════
 
 // Override the xyflow mock to actually render PipelineNode
+type FlowNode = { id: string; data?: { label?: ReactNode; [key: string]: unknown } };
+type NodeTypesMap = Record<string, ComponentType<{ data?: FlowNode["data"] }>>;
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({ nodes, nodeTypes, children }: any) => {
+  ReactFlow: ({ nodes, nodeTypes, children }: {
+    nodes?: FlowNode[];
+    nodeTypes?: NodeTypesMap | (() => NodeTypesMap);
+    children?: ReactNode;
+  }) => {
     const types = typeof nodeTypes === "function" ? nodeTypes() : nodeTypes;
     const NodeComponent = types?.pipeline;
     return (
       <div data-testid="react-flow">
-        {nodes?.map((n: any) => (
+        {nodes?.map((n: FlowNode) => (
           NodeComponent
             ? <NodeComponent key={n.id} data={n.data} />
-            : <div key={n.id}>{n.data?.label}</div>
+            : <div key={n.id}>{n.data?.label as ReactNode}</div>
         ))}
         {children}
       </div>
@@ -269,9 +283,9 @@ vi.mock("@xyflow/react", () => ({
   },
   Background: () => null,
   Controls: () => null,
-  Handle: ({ type, position }: any) => <div data-testid={`handle-${type}`} />,
+  Handle: ({ type }: { type: string; position?: string }) => <div data-testid={`handle-${type}`} />,
   Position: { Left: "left", Right: "right", Top: "top", Bottom: "bottom" },
-  memo: (fn: any) => { fn.displayName = "PipelineNode"; return fn; },
+  memo: <T extends { displayName?: string }>(fn: T): T => { (fn as { displayName?: string }).displayName = "PipelineNode"; return fn; },
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -280,7 +294,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 describe("Pipeline — PipelineNode rendering", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: Mock;
 
   const stepsWithAllStatuses = [
     { step: "collect", label: "Collect", description: "21 collectors", record_count: 25000,
@@ -371,7 +385,7 @@ describe("Pipeline — PipelineNode rendering", () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
 
       // POST should have been called
-      const postCalls = fetchMock.mock.calls.filter((c: any[]) => c[1]?.method === "POST");
+      const postCalls = fetchMock.mock.calls.filter((c: unknown[]) => (c[1] as RequestInit | undefined)?.method === "POST");
       expect(postCalls.length).toBeGreaterThanOrEqual(1);
     }
   });
@@ -406,7 +420,7 @@ describe("Pipeline — PipelineNode rendering", () => {
 
 vi.mock("next-themes", () => ({
   useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
-  ThemeProvider: ({ children }: any) => <div>{children}</div>,
+  ThemeProvider: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 
 describe("Sidebar interactions", () => {

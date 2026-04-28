@@ -50,7 +50,7 @@ describe("ReportPage", () => {
 
   it("shows loading state while generating", async () => {
     // Create promises that never resolve to keep loading state
-    let resolveCtx: (value: any) => void;
+    let resolveCtx: (value: unknown) => void;
     const ctxPromise = new Promise((resolve) => { resolveCtx = resolve; });
 
     global.fetch = vi.fn().mockReturnValue(ctxPromise);

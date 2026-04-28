@@ -13,7 +13,7 @@ interface AgentVerdict {
   divergence_reason?: string;
 }
 
-interface Opportunity {
+export interface Opportunity {
   ticker: string;
   price: number | null;
   change_1d: number | null;

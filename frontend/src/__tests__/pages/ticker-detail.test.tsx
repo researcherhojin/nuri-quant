@@ -19,7 +19,7 @@ vi.mock("@/components/ui/price-chart", () => ({
 // Mock fetchAPI at module level
 const mockFetchAPI = vi.fn();
 vi.mock("@/lib/api", () => ({
-  fetchAPI: (...args: any[]) => mockFetchAPI(...args),
+  fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
 }));
 

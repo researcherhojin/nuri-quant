@@ -616,7 +616,15 @@
     "unconfigured",
     "plists",
     "unstub",
-    "mypass"
+    "mypass",
+    "BRDA",
+    "cnbc",
+    "RECOVE",
+    "srcs",
+    "XYZZZZ",
+    "drilldown",
+    "Dday",
+    "dday"
   ],
   "ignorePaths": [
     "node_modules/**",

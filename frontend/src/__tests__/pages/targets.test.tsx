@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 
 // Mock next/link
@@ -35,14 +35,14 @@ const mockTargets = {
   count: 3,
 };
 
-let mockFetchAPI: any;
+let mockFetchAPI: Mock;
 
 vi.mock("@/lib/api", () => ({
-  fetchAPI: (...args: any[]) => mockFetchAPI(...args),
+  fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
 }));
 
-function setupFetchAPI(overrides: { targets?: any } = {}) {
+function setupFetchAPI(overrides: { targets?: unknown } = {}) {
   mockFetchAPI = vi.fn().mockImplementation((_path: string) => {
     return Promise.resolve(overrides.targets ?? mockTargets);
   });

@@ -407,8 +407,8 @@ function PortfolioContent() {
       ) : (
         Object.entries(grouped).sort(([, a], [, b]) => {
           // Sort by total holdings value descending (largest account first)
-          const aVal = a.reduce((s, h) => s + (h.quantity || 0) * ((h as any).latest_price || h.avg_price || 0), 0);
-          const bVal = b.reduce((s, h) => s + (h.quantity || 0) * ((h as any).latest_price || h.avg_price || 0), 0);
+          const aVal = a.reduce((s, h) => s + (h.quantity || 0) * ((h as { latest_price?: number }).latest_price || h.avg_price || 0), 0);
+          const bVal = b.reduce((s, h) => s + (h.quantity || 0) * ((h as { latest_price?: number }).latest_price || h.avg_price || 0), 0);
           return bVal - aVal;
         }).map(([account, items]) => (
           <Card key={account} className="bg-card border-border">

@@ -4,21 +4,80 @@ import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { InteractiveBacktestLazy as InteractiveBacktest } from "@/components/ui/interactive-backtest-lazy";
+import { InteractiveBacktestLazy as InteractiveBacktest, type EquityPoint, type BacktestMetrics } from "@/components/ui/interactive-backtest-lazy";
+
+interface StrategyAction {
+  action: string;
+  ticker: string;
+  reason?: string;
+  [key: string]: unknown;
+}
+
+interface StrategyPosition {
+  ticker: string;
+  direction: string;
+  return_pct?: number;
+  [key: string]: unknown;
+}
+
+interface StressRow {
+  name: string;
+  spy_return: number;
+  strategy_return: number;
+  protected: boolean;
+  [key: string]: unknown;
+}
+
+interface StrategyStatus {
+  regime?: { regime?: string; confidence?: number; [key: string]: unknown };
+  allocation?: { long_pct?: number; short_pct?: number; cash_pct?: number };
+  actions?: StrategyAction[];
+  positions?: { positions?: StrategyPosition[] };
+}
+
+interface BacktestResult {
+  total_return?: number;
+  sharpe?: number;
+  spy_sharpe?: number;
+  max_drawdown?: number;
+  spy_max_drawdown?: number;
+  win_rate?: number;
+  spy_total_return?: number;
+  excess_return?: number;
+  total_days?: number;
+  regime_changes?: number;
+  transaction_costs?: number;
+  equity_curve?: EquityPoint[];
+}
+
+interface BacktestTiming {
+  current_regime?: string;
+  avg_forward_30d: number;
+  avg_forward_60d: number;
+  avg_forward_90d: number;
+  pct_to_bull: number;
+  pct_to_bear: number;
+}
+
+interface BacktestData {
+  result?: BacktestResult;
+  timing?: BacktestTiming;
+  stress?: StressRow[];
+}
 
 async function StrategyDashboard() {
   const [status, bt] = await Promise.all([
-    fetchAPI<any>("/api/strategy/status"),
-    fetchAPI<any>("/api/backtest"),
+    fetchAPI<StrategyStatus>("/api/strategy/status"),
+    fetchAPI<BacktestData>("/api/backtest"),
   ]);
 
   const regime = status.regime;
-  const alloc = status.allocation || {};
-  const r = bt.result || {};
+  const alloc: NonNullable<StrategyStatus["allocation"]> = status.allocation || {};
+  const r: BacktestResult = bt.result || {};
   const t = bt.timing;
-  const stress = bt.stress || [];
-  const actions = status.actions || [];
-  const positions = status.positions?.positions || [];
+  const stress: StressRow[] = bt.stress || [];
+  const actions: StrategyAction[] = status.actions || [];
+  const positions: StrategyPosition[] = status.positions?.positions || [];
 
   const long_pct = alloc.long_pct || 0;
   const short_pct = alloc.short_pct || 0;
@@ -33,7 +92,7 @@ async function StrategyDashboard() {
         <CardContent className="pt-5">
           <div className="flex items-center gap-3 mb-3">
             <StatusBadge status={(regime?.regime || "unknown").toUpperCase()} size="md" />
-            <span className="text-xs text-muted-foreground">{regime ? `${(regime.confidence * 100).toFixed(0)}% confidence` : ""}</span>
+            <span className="text-xs text-muted-foreground">{regime?.confidence != null ? `${(regime.confidence * 100).toFixed(0)}% confidence` : ""}</span>
             <span className="text-xs text-muted-foreground/70">|</span>
             <span className="text-xs text-muted-foreground">{positions.length} positions open</span>
           </div>
@@ -60,7 +119,7 @@ async function StrategyDashboard() {
           {/* Actions */}
           {actions.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">
-              {actions.map((a: any, i: number) => (
+              {actions.map((a: StrategyAction, i: number) => (
                 <div key={i} className="flex items-center gap-1.5 text-xs bg-muted rounded px-2 py-1">
                   <StatusBadge status={a.action.replace("open_", "").toUpperCase()} />
                   <span className="font-medium">{a.ticker}</span>
@@ -142,7 +201,7 @@ async function StrategyDashboard() {
           <CardContent className="pt-5">
             <p className="text-xs text-muted-foreground mb-3">Crisis Protection</p>
             <div className="space-y-2">
-              {stress.map((s: any) => (
+              {stress.map((s: StressRow) => (
                 <div key={s.name} className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground w-28 truncate">{s.name}</span>
                   <span className="text-red-400 w-14 text-right">{s.spy_return}%</span>
@@ -165,13 +224,13 @@ async function StrategyDashboard() {
             <InteractiveBacktest
               initialData={bt.result.equity_curve}
               initialMetrics={bt.result ? {
-                total_return: bt.result.total_return,
-                sharpe: bt.result.sharpe,
-                max_drawdown: bt.result.max_drawdown,
-                win_rate: bt.result.win_rate,
-                spy_total_return: bt.result.spy_total_return,
-                excess_return: bt.result.excess_return,
-              } : undefined}
+                total_return: bt.result.total_return ?? 0,
+                sharpe: bt.result.sharpe ?? 0,
+                max_drawdown: bt.result.max_drawdown ?? 0,
+                win_rate: bt.result.win_rate ?? 0,
+                spy_total_return: bt.result.spy_total_return ?? 0,
+                excess_return: bt.result.excess_return ?? 0,
+              } satisfies BacktestMetrics : undefined}
             />
           </CardContent>
         </Card>
@@ -183,7 +242,7 @@ async function StrategyDashboard() {
           <CardContent className="pt-5">
             <p className="text-xs text-muted-foreground mb-2">Open Positions</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {positions.map((p: any, i: number) => (
+              {positions.map((p: StrategyPosition, i: number) => (
                 <div key={i} className="flex items-center justify-between bg-muted rounded px-2.5 py-1.5 text-xs">
                   <div className="flex items-center gap-1.5">
                     <span className={`w-1.5 h-1.5 rounded-full ${p.direction === "long" ? "bg-emerald-500" : "bg-red-500"}`} />

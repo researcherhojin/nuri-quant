@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -14,7 +15,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ children, href }: any) => <a href={href}>{children}</a>,
+  default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
 vi.mock("@/components/ui/equity-curve-chart", () => ({
@@ -25,7 +26,7 @@ vi.mock("@/components/ui/equity-curve-chart", () => ({
 
 vi.mock("@/components/ui/price-chart", () => ({
   PriceChart: () => <div data-testid="price-chart" />,
-  sma: (data: number[], period: number) => data.map(() => null),
+  sma: (data: number[], _period: number) => data.map(() => null),
   formatVolume: (v: number) => String(v),
 }));
 
@@ -45,7 +46,7 @@ vi.mock("@/components/ui/price-chart-lazy", () => ({
 
 const mockFetchAPI = vi.fn();
 vi.mock("@/lib/api", () => ({
-  fetchAPI: (...args: any[]) => mockFetchAPI(...args),
+  fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
 }));
 

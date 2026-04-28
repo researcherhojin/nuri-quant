@@ -21,7 +21,7 @@ function pfColor(v: number) {
 
 async function ScorecardSection() {
   const data = await fetchAPI<{ scorecard: Scorecard[]; date: string }>("/api/scorecard");
-  if ("error" in data) return <p className="text-red-400 text-sm">{String((data as any).error)}</p>;
+  if ("error" in data) return <p className="text-red-400 text-sm">{String((data as { error: unknown }).error)}</p>;
   const sorted = [...data.scorecard].sort((a, b) => b.profit_factor - a.profit_factor);
 
   return (
@@ -34,8 +34,15 @@ async function ScorecardSection() {
   );
 }
 
+interface CrossRow {
+  regime: string;
+  signal_id: string;
+  profit_factor: number;
+  [key: string]: unknown;
+}
+
 async function CrossSection() {
-  const data = await fetchAPI<{ data?: any[]; error?: string }>("/api/cross-analysis");
+  const data = await fetchAPI<{ data?: CrossRow[]; error?: string }>("/api/cross-analysis");
   if (data.error || !data.data) return null;
   const regimes = [...new Set(data.data.map((d) => d.regime))].sort();
 

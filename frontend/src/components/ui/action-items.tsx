@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ACTION } from "@/lib/strings";
 
-interface ActionItem {
+export interface ActionItem {
   ticker: string;
   name?: string | null;
   action: string;
