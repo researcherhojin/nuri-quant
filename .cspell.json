@@ -405,7 +405,20 @@
     "BRCH",
     "REGI",
     "kakaopay",
-    "mirae"
+    "mirae",
+    "XLRE",
+    "VSPK",
+    "GAPTEST",
+    "INSD",
+    "SQZZ",
+    "shortinterest",
+    "backoptimizer",
+    "NONEXIST",
+    "NOMACRO",
+    "NOINSD",
+    "NOSI",
+    "capex",
+    "hyperscalers"
   ],
   "ignorePaths": [
     "node_modules/**",
