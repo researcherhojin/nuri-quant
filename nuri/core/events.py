@@ -24,6 +24,13 @@ EVENT_TYPES = {
     # Mechanical penalty 발동 감사 로그 (STRATEGY §2.6 Escalation Ladder — soft penalty rung).
     # 지금은 divergence_technical (P1 A3) 만 사용. 추후 다른 mechanical gate 추가 시 공유.
     "consensus_penalty_applied",
+    # KIS analyst opinion collector (#418) run summary + truncation risk surface.
+    # `_run` carries covered / empty / failed / rows counts per Sunday cron;
+    # `_truncation_risk` fires when the per-ticker tr_cont pagination depth
+    # approaches the official-sample max_depth=10 cap (silent truncation
+    # would be the wrong failure mode — codex Round 2).
+    "kis_analyst_opinion_run",
+    "kis_analyst_opinion_truncation_risk",
 }
 
 # 6-step 파이프라인

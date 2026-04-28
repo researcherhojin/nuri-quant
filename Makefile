@@ -182,6 +182,9 @@ collect-kis:
 collect-kis-check:
 	$(PYTHON) -m nuri.collectors.kis_realtime --check-creds
 
+collect-kis-analyst: ## #418 — KR 애널리스트 투자의견 수집 (KIS invest-opinion REST endpoint)
+	$(PYTHON) -m nuri.collectors.kis_analyst_opinion
+
 wallstreet:
 	$(PYTHON) -m nuri.collectors.wallstreet
 
