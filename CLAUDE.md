@@ -225,7 +225,8 @@ For framework / test-mocking / data-source / pipeline-policy gotchas → see sco
 
 - `docs/STRATEGY.md` — canonical policy (load on demand): 8 sections (why / principles / architecture decisions / quality / harness / SIEGE spec / work policy / OSS refs)
 - `docs/SOURCE_OF_TRUTH.md` — file-ownership map. Consult before adding/de-duplicating any doc fact.
-- `docs/ARCHITECTURE.md` — detailed code/DB layout
+- `docs/ARCHITECTURE.md` — detailed code/DB layout (env vars, CI/CD, schema)
+- `docs/OPERATIONS.md` — operator runbook (2-machine setup, deploy / scheduler / recovery)
 - `docs/TODO.md` — forward-only backlog (Tier 2 next, Tier 3 research)
 - `docs/SIEGE_V2.md` — 3D certification spec
 - `docs/KIS_INTEGRATION.md` — KIS Open API integration details
