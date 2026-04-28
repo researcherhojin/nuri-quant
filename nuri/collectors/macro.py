@@ -81,19 +81,36 @@ class MacroCollector(BaseCollector):
         self.api_key = os.getenv("FRED_API_KEY", "")
 
     def collect(self, days: int = 365, **kwargs) -> list[dict]:
-        """매크로 지표 수집. FRED 우선, 실패 시 yfinance fallback."""
-        records = []
+        """매크로 지표 수집 — FRED 우선 + yfinance 보충 (#362 codex Review P1).
 
-        # 1. FRED 시도
+        Pre-#362 동작: FRED 결과 1건이라도 있으면 즉시 return → yfinance 분기 stub.
+        결과적으로 FRED_API_KEY 환경에서는 yfinance-only indicator (^IXIC, ^GSPC,
+        DX-Y.NYB 등 #362 Part A 10개 + Part B 향후 ECOS missing 도) 가 영구 미수집.
+
+        Fix: 두 source 모두 호출 후 indicator 단위로 merge — FRED 우선, FRED 에
+        없는 key 는 yfinance 보충. legacy 8 indicator 는 FRED 가 채우면 yfinance
+        를 무시 (per-row dup 방지).
+        """
+        fred_records: list[dict] = []
         if self.api_key and self.api_key != "your_fred_api_key_here":
-            records = self._collect_fred(days)
-            if records:
-                return records
+            fred_records = self._collect_fred(days)
 
-        # 2. yfinance fallback
-        self.logger.info("FRED 미사용 → yfinance fallback으로 매크로 수집")
-        records = self._collect_yfinance(days)
-        return records
+        # FRED 가 비었으면 legacy 경로 — yfinance only.
+        if not fred_records:
+            self.logger.info("FRED 미사용 → yfinance fallback으로 매크로 수집")
+            return self._collect_yfinance(days)
+
+        # FRED + yfinance merge — yfinance-only indicator 보충.
+        yf_records = self._collect_yfinance(days)
+        fred_indicators = {r["indicator"] for r in fred_records}
+        yf_supplement = [r for r in yf_records if r["indicator"] not in fred_indicators]
+        if yf_supplement:
+            yf_only_keys = sorted({r["indicator"] for r in yf_supplement})
+            self.logger.info(
+                "FRED + yfinance merge — FRED 외 yfinance-only %d개 보충: %s",
+                len(yf_only_keys), yf_only_keys,
+            )
+        return fred_records + yf_supplement
 
     def _collect_fred(self, days: int) -> list[dict]:
         """FRED API에서 매크로 지표 수집."""
