@@ -15,39 +15,42 @@ Every BUY/SELL recommendation runs through a **collect → analyze → consensus
 ## Architecture
 
 ```mermaid
-flowchart LR
-    CFG[/"config/*.yaml<br/>rules · agents · signals · universe · siege_gates"/]:::config
+flowchart TB
+    CFG[/"config/*.yaml<br/>policies (YAML loaders in nuri/core)"/]:::source
 
-    subgraph Pipeline["5-phase decision pipeline · DB-only coupling"]
-        direction LR
-        A(["① Collect<br/>25 collectors<br/>US · KR · macro · news · 13F · ARK"]):::collect
-        B(["② Analyze<br/>22 signals (20 actionable + 2 shadow)<br/>10 regimes · 4 factors<br/>15 macro event categories"]):::analyze
-        C(["③ Consensus<br/>10 agents · weighted vote<br/>risk-agent veto on FLAT"]):::consensus
-        D(["④ Certify<br/>SIEGE v2 · per-asset-class expansion<br/>5 accounts × 5 asset classes"]):::certify
-        E(["⑤ Track<br/>outcome 30d / 60d / 90d<br/>→ agent weight drift"]):::track
+    subgraph Pipeline["5-phase decision pipeline (DB-only coupling)"]
+        direction TB
+        A(["① Collect<br/>25 data collectors"]):::pipe
+        B(["② Analyze<br/>signals · regimes · factors"]):::pipe
+        C(["③ Consensus<br/>10-agent weighted vote"]):::pipe
+        D(["④ Certify<br/>SIEGE v2 (3-D gates)"]):::pipe
+        E(["⑤ Track<br/>30d / 60d / 90d outcomes"]):::pipe
 
-        A -- "prices · fundamentals<br/>macro · news · 13F flows" --> B
-        B -- "signal_results · factors<br/>regimes · macro_events" --> C
-        C -- "recommendations<br/>agent_verdicts" --> D
-        D -- "certifications · conditions<br/>evidence + portfolio_hash" --> E
+        A --> B --> C --> D --> E
         E -. "agent weight drift (±30%)" .-> C
     end
 
-    DB[("SQLite WAL · 32 tables<br/>pipeline_events · certifications<br/>freshness SLA · audit trail")]:::db
+    DB[("SQLite WAL · 32 tables<br/>pipeline_events · certifications · audit trail")]:::sink
 
-    CFG -. "policies<br/>(YAML loaders in nuri/core)" .-> Pipeline
+    CFG -. policies .-> Pipeline
     Pipeline -. persist .-> DB
 
-    classDef config fill:#1e293b,stroke:#64748b,color:#e2e8f0
-    classDef collect fill:#064e3b,stroke:#10b981,color:#ecfdf5
-    classDef analyze fill:#1e3a8a,stroke:#3b82f6,color:#dbeafe
-    classDef consensus fill:#581c87,stroke:#a855f7,color:#f3e8ff
-    classDef certify fill:#7c2d12,stroke:#f97316,color:#ffedd5
-    classDef track fill:#831843,stroke:#ec4899,color:#fce7f3
-    classDef db fill:#0f172a,stroke:#334155,color:#cbd5e1
+    classDef source fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    classDef pipe   fill:#0f3057,stroke:#3b82f6,color:#dbeafe
+    classDef sink   fill:#0f172a,stroke:#334155,color:#cbd5e1
 ```
 
-Phases never import each other — they communicate through SQLite tables and CSV files. Rerun an upstream phase and downstream refreshes automatically. Policies live in `config/*.yaml`, never hardcoded. Per-phase detail and DB schema: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). SIEGE certification spec: [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md).
+**Phase content** (the diagram keeps node text light; full counts here):
+
+| Phase | What it does | Inputs → Outputs |
+|-------|--------------|------------------|
+| ① **Collect** | 25 collectors — US: yfinance / OpenBB · KR: pykrx · Macro: FRED · News: GoogleNews RSS · 13F: edgartools · KIS Open API | external APIs → `prices` · `fundamentals` · `macro` · `news` · `institutional_flows` |
+| ② **Analyze** | 22 signals (20 actionable + 2 SHADOW crash precursors) · 10 regimes (6 base + 4 special) · 4 multi-factor scorers · 15 macro event categories | DB → `signal_results` · `factors` · `regime_transitions` · `macro_events` |
+| ③ **Consensus** | 10 specialist agents · weighted vote · risk-agent veto fires on `alpha_action==FLAT` only | DB → `recommendations` · `agent_verdicts` · `scoring_detail` |
+| ④ **Certify** | SIEGE v2 — Account × Asset Class × Execution Market. 1 error-grade fail → REJECTED, no manual override | DB → `certifications` · `conditions` (evidence + `portfolio_hash`) |
+| ⑤ **Track** | 30d / 60d / 90d outcomes vs prediction → agent accuracy snapshot → weight drift bounded ±30% (feedback to ③) | DB → `outcomes` (re-reads `recommendations`) |
+
+Phases never import each other — communication is via SQLite tables / CSV only. Rerun any upstream phase and downstream consumers refresh automatically. Per-phase implementation detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). SIEGE certification spec: [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md).
 
 ### Architectural principles
 
@@ -80,18 +83,20 @@ The system rests on five enduring decisions. Recent feature additions and tuning
 
 ## Dashboard
 
-The dashboard at `:3000/` answers **"what should I do today?"** — an Action-First design that prioritizes actionable intelligence over raw data. Pension/IRP holdings are filtered out (monthly rebalancing, not daily).
+The dashboard at `:3000/` answers **"what should I do today?"** — Action-First design that surfaces actionable intelligence ahead of raw data. Pension / IRP holdings are filtered out (monthly rebalance cadence ≠ daily decision).
 
-1. **Hero** — 4 stats: 총 자산 · 오늘 P&L · 누적 수익률 · 승률
-2. **System Health** — 4 cards: SIEGE score · Regime · Macro score · Data freshness (links to detail pages)
-3. **Macro Events** — Recent high-impact news with 한국어 category labels (지정학/실적/유가 등), deduplicated
-4. **Action Items** — 🔴 즉시 실행 (SIEGE violations, stop-loss) · 🟡 오늘 확인 (take-profit, short squeeze) · ✅ 유지 (compact chips)
-5. **Market context strip** — VIX · 심리 · 경제 · 실제/권장 비중
-6. **Composition** — Recharts donut + tabs (자산/섹터/계좌) + rich legend
-7. **Holdings table** — sorted by `positionPct` desc, top 8 + expand toggle
-8. **Opportunity Explorer** — top 3 non-portfolio tickers with pros/cons/verdict + "10-Agent 분석" button + /scan link
+| Section | Purpose |
+|---------|---------|
+| **Hero** | 4-stat ribbon — 총 자산 · 오늘 P&L · 누적 수익률 · 승률 |
+| **System Health** | 4 cards linking to detail pages — SIEGE score · Regime · Macro score · Data freshness |
+| **Macro Events** | Deduplicated high-impact headlines with 한국어 category labels (지정학/실적/유가 등) |
+| **Action Items** | 🔴 즉시 실행 (SIEGE violations, stop-loss breach) · 🟡 오늘 확인 (take-profit, short squeeze) · 🟦 리밸런스 (concentration, sector cap) · ✅ 유지 |
+| **Market Context strip** | VIX · 심리 · 경제 · 실제/권장 비중 |
+| **Composition** | Donut chart with 자산 / 섹터 / 계좌 tabs |
+| **Holdings table** | Sorted by `positionPct` desc, top 8 + expand toggle |
+| **Opportunity Explorer** | Top 3 non-portfolio tickers with pros / cons / verdict + 10-Agent 분석 deep-link |
 
-Korean tickers show names (삼성전자) instead of numbers (005930.KS). For row-level decisions see `/portfolio` and `/advisor`.
+Korean tickers display as names (삼성전자) instead of codes (005930.KS). Row-level decisions live on `/portfolio` and `/advisor` (17 routes total).
 
 ## Tech Stack
 
@@ -109,7 +114,7 @@ All LLM integrations are **wired but inactive** unless you set the corresponding
 | Provider | Purpose | Activation | Data class |
 |----------|---------|------------|------------|
 | **OpenAI gpt-5.4-nano** | RSS headline classification | `OPENAI_API_KEY` set | Tier 0 (public news). ~$3.51/yr at 100 headlines/day |
-| **OpenAI gpt-5.4-nano** | Daily LLM report (`make report-llm`) — primary since 2026-04-14 | `OPENAI_API_KEY` + `OPENAI_ZDR_APPROVED=1` | Tier 2 (portfolio) — ZDR required. ~$0.10/yr at 1 call/day |
+| **OpenAI gpt-5.4-nano** | Daily LLM report (`make report-llm`) | `OPENAI_API_KEY` + `OPENAI_ZDR_APPROVED=1` | Tier 2 (portfolio) — ZDR required. ~$0.10/yr at 1 call/day |
 | **llama.cpp** (local) | Daily LLM report fallback | `LLAMA_MODEL_PATH` set | Tier 2 — local only |
 | **Ollama** (local) | Daily LLM report fallback | `OLLAMA_HOST` set + Ollama running | Tier 2 — local only |
 
@@ -140,9 +145,9 @@ make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite (3,381 backend across 153 files + 984 frontend across 67 files + 38 e2e)
-make test-fast  # backend only, slow tests excluded (~24s)
-make test-slow  # backend slow tests only (LLM gather_context, scheduler)
+make test       # full suite — 3,577 backend (158 files) + 989 frontend (67 files) + 8 Playwright e2e specs
+make test-fast  # backend only, slow tests excluded (~24s, what PR CI runs)
+make test-slow  # backend slow tests only (LLM gather_context, scheduler integration)
 ```
 
 ### Production deployment
@@ -180,9 +185,14 @@ Take-profit ladders (growth: +20% / +40% / -15% trailing; value: +15% / +30% / -
 
 ## Further Documentation
 
-- [`docs/STRATEGY.md`](docs/STRATEGY.md) — project philosophy, architectural decisions, investment rules, roadmap
+- [`docs/STRATEGY.md`](docs/STRATEGY.md) — project philosophy, architectural decisions, investment rules, harness theory
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — detailed code/DB layout, schema, env vars, CI/CD
+- [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md) — 3-D certification spec (Account × Asset Class × Market)
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — operator runbook (2-machine setup, deploy, scheduler, recovery)
+- [`docs/SOURCE_OF_TRUTH.md`](docs/SOURCE_OF_TRUTH.md) — file-ownership map (which file owns which fact)
 - [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) — KIS (Korea Investment & Securities) Open API integration
-- [`CLAUDE.md`](CLAUDE.md) — Claude Code agent guide (commands, architecture, gotchas)
+- [`CLAUDE.md`](CLAUDE.md) — agent guide (Claude Code) — commands, always-on invariants, load triggers
+- [`AGENTS.md`](AGENTS.md) — cross-tool agent guide (Cursor / Copilot / Codex CLI)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow, PR discipline
 - [`SECURITY.md`](SECURITY.md) — security policy, LLM egress rules, credential handling
 
