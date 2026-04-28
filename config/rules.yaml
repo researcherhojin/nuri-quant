@@ -271,3 +271,87 @@ siege_gates:
   # pension(40%) × 1.20 = 48% — under 50, OK. 만약 future strategy 가
   # base_max 50%+ 가 되면 이 cap 도 함께 재검토.
   regime_override_absolute_cap_pct: 50.0
+
+# ─── Symmetric Amplifier (E3, STRATEGY §2.6 4번째 rung) ─────────
+# 근거: docs/plans/E3_symmetric_amplifier_design.md
+# 사용자 -₩7M 손실 (4월 2026) 후 시스템 redesign — 회복기 공격 amplifier 부재 fix.
+# Codex consult 2026-04-28 session 019dd3f6 (3.14M tokens).
+#
+# Phase 1 (현재): SHADOW only — telemetry 만 emit, 실제 conf/size 변경 없음.
+# Phase 2: Stage 2 paired counterfactual on 20d breakout entries.
+# Phase 3: Alpha-amplified live (conf boost only).
+# Phase 4: Portfolio-amplified live (Kelly quarter cap × 1.5).
+#
+# Anti-revenge guardrails (영구 룰):
+#   - drawdown × multiplier 형식 금지 (revenge trading)
+#   - 단일 조건 발동 금지 (§2.6 운용 원칙)
+#   - Stage 2 paired counterfactual PASS 전 live 금지 (§3.6)
+#   - Hard veto (VIX>30, risk veto, leverage_ban) 우회 금지
+symmetric_amplifier:
+  # 마스터 스위치 — Phase 1 shadow 출시까지 false 유지.
+  # Phase 3 alpha live 시 true 로 전환 (Stage 2 PASS 후).
+  enabled: false
+
+  # Shadow mode: 모든 조건 평가하고 pipeline_events 에만 emit.
+  # 실제 confidence/size 변경 안 함. enabled=true 라도 shadow_mode=true 면
+  # surface-only 동작 (§2.6 1단계 Surface).
+  shadow_mode: true
+
+  # Q2: Multi-condition gate. mandatory 2개 + optional 3개. 4/5 충족 시 fire.
+  # 단일 조건 발동 차단 (§2.6 anti-pattern).
+  conditions:
+    recovery_confirmed:
+      # Q1: prior_stress AND repair_persisted state machine
+      # 상세 spec: nuri/quant/regime/recovery_detector.py
+      mandatory: true
+    vix_favorable:
+      mandatory: true
+      threshold_max: 22           # VIX < 22
+      slope_must_be_negative: true # 3d slope < 0
+    regime_favorable:
+      mandatory: false
+      allowed_regimes:
+        - bull_low_vol
+        - recovery
+      min_confidence: 0.60
+    entry_strength:
+      mandatory: false
+      # Phase 1: price-only 20d breakout (factors 데이터 부족)
+      # Phase 2 Stage 2 시 frozen entry source.
+      source: breakout_20d
+    macro_benign:
+      mandatory: false
+      event_score_max_abs: 10
+  minimum_satisfied: 4              # of 5 conditions
+
+  # Q3: Cap derivation. base = quarter-Kelly (MacLean/Thorp/Ziemba 2011).
+  # NOT drawdown-based (revenge trading 차단).
+  cap:
+    base: quarter_kelly             # NOT drawdown × multiplier
+    amp_mult_max: 1.5               # baseline × 1.5 hard cap
+    respect_account_max: true       # account.per_position_max 절대 cap
+
+  # Q6: Alpha amplifier (confidence boost only).
+  alpha:
+    confidence_boost_pct: 20        # base conf × 1.20 (Phase 3 활성)
+    confidence_max: 95
+
+  # Q6: Portfolio amplifier (size boost). alpha LONG 필수 의존.
+  portfolio:
+    requires_alpha_long: true        # alpha_amplified 없이 portfolio fire 금지
+    requires_certify_pass: true      # SIEGE PASS 만
+
+  # Q5: Hard veto + caution zone 우회 금지. VIX 25-30 에서는 amplifier 완전 비활성.
+  caution_zone:
+    vix_min: 25
+    vix_max: 30
+
+  # Q7: Kill-switch — trailing 30d paired excess 음수 시 자동 강등.
+  # min_sample 미달 시 발동 안 함 (false negative 방지).
+  kill_switch:
+    enabled: true
+    min_sample: 10                  # n_amplified ≥ 10 누적 후 평가
+    trigger_paired_excess_negative: true
+    trigger_ci_lower_negative: true
+    trigger_cvar_ratio_max: 1.5     # amplified CVaR / baseline CVaR
+    cooldown_days: 30
