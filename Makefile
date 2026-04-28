@@ -159,6 +159,7 @@ verify:          ## ~5min pre-release (verify.py full, includes backtest)
 # ═══════════════════════════════════════════════════════════════
 collect:
 	$(PYTHON) -m nuri.collectors.stock
+	$(PYTHON) -m nuri.collectors.stock --source freshness   # #453 — SIEGE freshness pass (SPY/TLT/GC=F)
 	$(PYTHON) -m nuri.collectors.stock_kr
 	$(PYTHON) -m nuri.collectors.macro
 	$(PYTHON) -m nuri.collectors.technical
