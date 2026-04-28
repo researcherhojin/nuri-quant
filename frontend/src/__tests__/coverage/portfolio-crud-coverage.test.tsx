@@ -1,51 +1,13 @@
 /**
- * Coverage push 3: pure utility functions + portfolio CRUD interactions.
- * NO recharts or @xyflow/react mocks — avoids vitest mock hoisting conflicts.
+ * Portfolio page — edit/delete/CSV-import interactions, KRW rendering.
+ * Pure no-recharts test (sma/formatVolume unmocked) to avoid vitest mock hoist
+ * conflicts with portfolio-coverage.test.tsx (push-2 origin uses onboarding=true).
+ *
+ * Split from coverage-push-3.test.tsx (lines 50-200).
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import type { ReactNode } from "react";
-
-// ═══════════════════════════════════════════════════════════
-// sma + formatVolume — pure functions from price-chart.tsx
-// ═══════════════════════════════════════════════════════════
-
-describe("sma", () => {
-  it("returns nulls for insufficient data", async () => {
-    const { sma } = await import("@/components/ui/price-chart");
-    expect(sma([100, 101], 5)[0]).toBeNull();
-    expect(sma([100, 101], 5)[1]).toBeNull();
-  });
-
-  it("calculates correct moving average", async () => {
-    const { sma } = await import("@/components/ui/price-chart");
-    const result = sma([10, 20, 30, 40, 50], 3);
-    expect(result[2]).toBe(20);
-    expect(result[4]).toBe(40);
-  });
-});
-
-describe("formatVolume", () => {
-  it("formats millions", async () => {
-    const { formatVolume } = await import("@/components/ui/price-chart");
-    expect(formatVolume(5_000_000)).toBe("5.0M");
-  });
-
-  it("formats thousands", async () => {
-    const { formatVolume } = await import("@/components/ui/price-chart");
-    expect(formatVolume(50_000)).toBe("50K");
-  });
-
-  it("formats small numbers raw", async () => {
-    const { formatVolume } = await import("@/components/ui/price-chart");
-    expect(formatVolume(999)).toBe("999");
-  });
-});
-
-
-// ═══════════════════════════════════════════════════════════
-// Portfolio — edit, delete, import interactions
-// ═══════════════════════════════════════════════════════════
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
