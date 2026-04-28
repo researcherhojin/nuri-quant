@@ -376,12 +376,19 @@ def _build_signal_definitions() -> dict[str, dict]:
     """config/signals.yaml + detector 레지스트리에서 SIGNAL_DEFINITIONS 빌드.
 
     YAML 메타데이터 (description/hold_days/enabled) + Python detector 결합.
-    enabled=false 시그널은 제외.
+    `enabled=false` 시그널은 제외. `scope: market_wide` 시그널 (SHADOW crash
+    precursors, PR C #436) 은 per-ticker 백테스트 엔진에 들어가지 않음 — 별도
+    `nuri/quant/validation/market_signals.py::DETECTORS` 에 등록되어 daily brief
+    및 SHADOW surface 에서만 사용. silent skip (warning 발생 안 함).
     """
     cfg = SIGNAL_CONFIG.get("signals", {})
     result: dict[str, dict] = {}
     for sid, meta in cfg.items():
         if not meta.get("enabled", True):
+            continue
+        if meta.get("scope") == "market_wide":
+            # SHADOW market-wide signals — market_signals.DETECTORS 가 처리.
+            # per-ticker backtest 와 등록 경로 분리 (PR C codex Plan consult).
             continue
         if sid not in _ENTRY_DETECTORS:
             logger.warning("signals.yaml에 정의된 %s에 대응하는 detector 함수 없음", sid)

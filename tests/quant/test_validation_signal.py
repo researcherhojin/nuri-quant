@@ -307,7 +307,48 @@ class TestSignalDefinitions:
         from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS
         # 15 base + 5 chart pattern signals (macd_bullish_turn, macd_bearish_turn,
         # bb_squeeze_breakout, near_52w_low_bounce, volume_profile_resistance)
+        # SHADOW market_wide signals (yield_curve_inversion, hy_oas_widening) excluded —
+        # registered in market_signals.DETECTORS instead.
         assert len(SIGNAL_DEFINITIONS) == 20
+
+    def test_shadow_market_wide_signals_excluded_from_per_ticker_registry(self):
+        """SHADOW market_wide signals 는 per-ticker SIGNAL_DEFINITIONS 에 안 들어감.
+
+        PR C #436 등록한 `yield_curve_inversion` / `hy_oas_widening` 은 `scope:
+        market_wide` — `_build_signal_definitions()` 가 silent skip 해야 함.
+        regression: skip 룰 제거 시 두 signal 이 SIGNAL_DEFINITIONS 에 들어가서
+        per-ticker backtest 가 detector 없는 entry 호출로 실패하거나, warning 이
+        매번 fire (issue #455 재발).
+        """
+        from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS
+        assert "yield_curve_inversion" not in SIGNAL_DEFINITIONS
+        assert "hy_oas_widening" not in SIGNAL_DEFINITIONS
+
+    def test_shadow_signals_have_market_wide_registry(self):
+        """SHADOW signals 는 market_signals.DETECTORS 에 등록돼 있어야 daily brief
+        SHADOW 섹션이 작동. signal_backtest 에서 빠진 게 silent loss 가 아니라
+        교차 등록 invariant 임을 lock.
+        """
+        from nuri.quant.validation.market_signals import DETECTORS
+        assert "yield_curve_inversion" in DETECTORS
+        assert "hy_oas_widening" in DETECTORS
+
+    def test_shadow_signals_skip_emits_no_warning(self, caplog):
+        """`_build_signal_definitions()` re-call 시 SHADOW signal 에 대해 warning 없음.
+
+        Issue #455 trigger: 매 import 마다 `signals.yaml에 정의된 X에 대응하는
+        detector 함수 없음` 2회 fire. fix 후 0회.
+        """
+        import logging
+
+        from nuri.quant.validation.signal_backtest import _build_signal_definitions
+        with caplog.at_level(logging.WARNING, logger="nuri.quant.validation.signal_backtest"):
+            _build_signal_definitions()
+        shadow_warnings = [
+            r for r in caplog.records
+            if "yield_curve_inversion" in r.getMessage() or "hy_oas_widening" in r.getMessage()
+        ]
+        assert not shadow_warnings, f"SHADOW signals should skip silently, got: {[r.getMessage() for r in shadow_warnings]}"
 
     def test_chart_pattern_signals_in_definitions(self):
         from nuri.quant.validation.signal_backtest import (
