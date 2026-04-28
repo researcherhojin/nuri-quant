@@ -613,7 +613,8 @@
     "SOXL",
     "sizeup",
     "deferable",
-    "unconfigured"
+    "unconfigured",
+    "plists"
   ],
   "ignorePaths": [
     "node_modules/**",
