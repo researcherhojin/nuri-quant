@@ -624,7 +624,8 @@
     "XYZZZZ",
     "drilldown",
     "Dday",
-    "dday"
+    "dday",
+    "pathlib"
   ],
   "ignorePaths": [
     "node_modules/**",

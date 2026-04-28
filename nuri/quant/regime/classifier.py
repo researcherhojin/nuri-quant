@@ -8,6 +8,7 @@ D-1: 시장 레짐 분류기 — Bull/Bear/Sideways x High/Low Volatility.
     python -m nuri.quant.regime.classifier
     python -m nuri.quant.regime.classifier --history
 """
+
 import argparse
 import logging
 from dataclasses import asdict, dataclass
@@ -36,12 +37,13 @@ LOOKBACK_WINDOW = 252
 @dataclass
 class RegimeState:
     """시장 레짐 상태."""
+
     date: str
-    trend: str            # "bull", "bear", "sideways"
-    volatility: str       # "high", "low"
-    regime: str           # "bull_low_vol" 등
-    confidence: float     # 0.0 ~ 1.0
-    details: dict         # 개별 지표 값 + 사용된 임계값
+    trend: str  # "bull", "bear", "sideways"
+    volatility: str  # "high", "low"
+    regime: str  # "bull_low_vol" 등
+    confidence: float  # 0.0 ~ 1.0
+    details: dict  # 개별 지표 값 + 사용된 임계값
 
 
 # ═══════════════════════════════════════════════════════
@@ -60,8 +62,7 @@ def compute_dynamic_thresholds(db_path=None, date: str | None = None) -> dict:
 
     # VIX 이력
     vix_df = query_df(
-        f"SELECT value FROM macro WHERE indicator = 'vix' {date_filter} "
-        f"ORDER BY date DESC LIMIT {LOOKBACK_WINDOW}",
+        f"SELECT value FROM macro WHERE indicator = 'vix' {date_filter} ORDER BY date DESC LIMIT {LOOKBACK_WINDOW}",
         db_path=db_path,
     )
 
@@ -76,7 +77,8 @@ def compute_dynamic_thresholds(db_path=None, date: str | None = None) -> dict:
     # SPY SMA gap 이력 → sideways 범위 결정
     spy_df = query_df(
         f"SELECT date, close FROM prices WHERE ticker = ? {date_filter} ORDER BY date",
-        (MARKET_TICKER,), db_path=db_path,
+        (MARKET_TICKER,),
+        db_path=db_path,
     )
 
     if not spy_df.empty and len(spy_df) >= 250:
@@ -119,7 +121,8 @@ def _load_spy_series(date: str | None = None, db_path=None) -> pd.DataFrame | No
     date_filter = f"AND date <= '{date}'" if date else ""
     df = query_df(
         f"SELECT date, close FROM prices WHERE ticker = ? {date_filter} ORDER BY date",
-        (MARKET_TICKER,), db_path=db_path,
+        (MARKET_TICKER,),
+        db_path=db_path,
     )
     if df.empty or len(df) < 200:
         return None
@@ -202,11 +205,26 @@ def _classify_single(close, sma50, sma200, vix, bb_width, thresholds) -> tuple[s
 
 # 특수 레짐 → 포지션 사이징 매핑 (strategy_map 호환)
 SPECIAL_REGIME_SIZING = {
-    "euphoria": "defensive",       # 과열 → 방어적 (과매수 경고)
-    "stagflation": "minimal",      # 침체+인플레 → 최소
-    "recovery": "aggressive",      # 회복 초기 → 공격적
-    "sector_rotation": "normal",   # 섹터 순환 → 중립
+    "euphoria": "defensive",  # 과열 → 방어적 (과매수 경고)
+    "stagflation": "minimal",  # 침체+인플레 → 최소
+    "recovery": "aggressive",  # 회복 초기 → 공격적
+    "sector_rotation": "normal",  # 섹터 순환 → 중립
 }
+
+# Explicit regime enumeration — single source of truth for "10 regimes (6 base + 4 special)"
+# claims in README / STRATEGY / ARCHITECTURE. Keep this in sync with the classifier
+# logic: base regimes are generated from {trend} × {volatility} (`f"{trend}_{volatility}_vol"`
+# in classify()), and special regimes are the keys of SPECIAL_REGIME_SIZING.
+BASE_REGIMES: tuple[str, ...] = (
+    "bull_low_vol",
+    "bull_high_vol",
+    "bear_low_vol",
+    "bear_high_vol",
+    "sideways_low_vol",
+    "sideways_high_vol",
+)
+SPECIAL_REGIMES: tuple[str, ...] = tuple(SPECIAL_REGIME_SIZING.keys())
+ALL_REGIMES: tuple[str, ...] = BASE_REGIMES + SPECIAL_REGIMES  # 6 + 4 = 10
 
 
 def _detect_euphoria(vix: float | None, fear_greed: float | None) -> bool:
@@ -294,7 +312,8 @@ def _detect_sector_rotation(db_path=None, date: str | None = None) -> bool:
     for etf in sector_etfs:
         etf_prices = query(
             f"SELECT close FROM prices WHERE ticker = ? {date_filter} ORDER BY date DESC LIMIT 21",
-            (etf,), db_path=db_path,
+            (etf,),
+            db_path=db_path,
         )
         if len(etf_prices) < 21:
             continue
@@ -319,6 +338,7 @@ def _check_data_freshness(db_path=None) -> bool:
     """
     global _freshness_warned
     from nuri.core.db import query as _query
+
     rows = _query(
         "SELECT MAX(date) as latest FROM prices WHERE ticker = 'SPY'",
         db_path=db_path,
@@ -379,7 +399,9 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
             row_date = spy_df["date"].iloc[i]
             day_vix = _get_vix(date=row_date, db_path=db_path) if row_date else vix
             t, v = _classify_single(
-                row["close"], row["sma50"], row["sma200"],
+                row["close"],
+                row["sma50"],
+                row["sma200"],
                 day_vix,
                 float(row["bb_width"]) if pd.notna(row["bb_width"]) else 0,
                 thresholds,
@@ -390,6 +412,7 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
         if recent_trends:
             # 다수결
             from collections import Counter
+
             trend_counts = Counter(recent_trends)
             vol_counts = Counter(recent_vols)
             trend = trend_counts.most_common(1)[0][0]
@@ -418,6 +441,7 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
     if special_regime is None:
         try:
             from nuri.quant.regime.event_score import compute_event_score
+
             es = compute_event_score(date=date, db_path=db_path)
             if es.event_count >= 3 and abs(es.score) >= 10:
                 hint = es.regime_hint
@@ -509,7 +533,8 @@ def classify_regime_history(
 
     dates = query(
         f"SELECT DISTINCT date FROM prices WHERE ticker = ? {date_filter} ORDER BY date",
-        (MARKET_TICKER,), db_path=db_path,
+        (MARKET_TICKER,),
+        db_path=db_path,
     )
     if not dates:
         return []
@@ -547,16 +572,22 @@ def print_regime(state: RegimeState | None) -> None:
 
     trend_label = {"bull": "BULL", "bear": "BEAR", "sideways": "SIDEWAYS"}
     vol_label = {"high": "HIGH VOL", "low": "LOW VOL"}
-    special_label = {"euphoria": "EUPHORIA", "stagflation": "STAGFLATION",
-                     "recovery": "RECOVERY", "sector_rotation": "SECTOR ROTATION"}
+    special_label = {
+        "euphoria": "EUPHORIA",
+        "stagflation": "STAGFLATION",
+        "recovery": "RECOVERY",
+        "sector_rotation": "SECTOR ROTATION",
+    }
     d = state.details
     th = d.get("thresholds", {})
     special = d.get("special_regime")
 
     print(f"\n{'=' * 60}")
     if special:
-        print(f"  Market Regime: {special_label.get(special, special.upper())} "
-              f"(base: {trend_label[state.trend]} + {vol_label[state.volatility]})")
+        print(
+            f"  Market Regime: {special_label.get(special, special.upper())} "
+            f"(base: {trend_label[state.trend]} + {vol_label[state.volatility]})"
+        )
     else:
         print(f"  Market Regime: {trend_label[state.trend]} + {vol_label[state.volatility]}")
     print(f"  ({state.regime})  Confidence: {state.confidence:.0%}")
@@ -595,8 +626,7 @@ def print_history(history: list[RegimeState]) -> None:
         d = s.details
         vix = f"{d['vix']:.0f}" if d.get("vix") else "—"
         fg = f"{d['fear_greed']:.0f}" if d.get("fear_greed") else "—"
-        print(f"  {s.date:<12} {s.regime:<22} {s.confidence:>4.0%} "
-              f"${d['spy_close']:>8,.2f} {vix:>6} {fg:>5}")
+        print(f"  {s.date:<12} {s.regime:<22} {s.confidence:>4.0%} ${d['spy_close']:>8,.2f} {vix:>6} {fg:>5}")
     print()
 
 
@@ -619,9 +649,7 @@ if __name__ == "__main__":
             today = today_kst()
             output_dir = REPORT_DIR / today
             output_dir.mkdir(parents=True, exist_ok=True)
-            pd.DataFrame([asdict(s) for s in history]).to_csv(
-                output_dir / "regime_history.csv", index=False
-            )
+            pd.DataFrame([asdict(s) for s in history]).to_csv(output_dir / "regime_history.csv", index=False)
     else:
         state = classify_regime()
         print_regime(state)

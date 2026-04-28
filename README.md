@@ -45,10 +45,10 @@ flowchart TB
 | Phase | What it does | Inputs → Outputs |
 |-------|--------------|------------------|
 | ① **Collect** | 25 collectors — US: yfinance / OpenBB · KR: pykrx · Macro: FRED · News: GoogleNews RSS · 13F: edgartools · KIS Open API | external APIs → `prices` · `fundamentals` · `macro` · `news` · `institutional_flows` |
-| ② **Analyze** | 22 signals (20 actionable + 2 SHADOW crash precursors) · 10 regimes (6 base + 4 special) · 4 multi-factor scorers · 15 macro event categories | DB → `signal_results` · `factors` · `regime_transitions` · `macro_events` |
-| ③ **Consensus** | 10 specialist agents · weighted vote · risk-agent veto fires on `alpha_action==FLAT` only | DB → `recommendations` · `agent_verdicts` · `scoring_detail` |
-| ④ **Certify** | SIEGE v2 — Account × Asset Class × Execution Market. 1 error-grade fail → REJECTED, no manual override | DB → `certifications` · `conditions` (evidence + `portfolio_hash`) |
-| ⑤ **Track** | 30d / 60d / 90d outcomes vs prediction → agent accuracy snapshot → weight drift bounded ±30% (feedback to ③) | DB → `outcomes` (re-reads `recommendations`) |
+| ② **Analyze** | 22 signals (20 actionable + 2 SHADOW crash precursors) · 10 regimes (6 base + 4 special) · 3 factor scorers + composite aggregator · 15 macro event categories | DB → `signals` · `factors` · `regime_transitions` · `macro_events` |
+| ③ **Consensus** | 10 specialist agents · weighted vote · risk-agent veto fires on `alpha_action==FLAT` only | DB → `recommendations` (incl. `agent_verdicts`, `scoring_detail` JSON columns) |
+| ④ **Certify** | SIEGE v2 — Account × Asset Class × Execution Market. 1 error-grade fail → REJECTED, no manual override | DB → `certifications` (incl. `conditions_json` evidence + `portfolio_hash`) |
+| ⑤ **Track** | 30 / 60 / 90 d outcomes vs prediction → agent accuracy snapshot → weight drift bounded ±30 % (feedback to ③) | DB → `recommendations.outcome_{30,60,90}d` columns (in-place update); `strategy_memory` rows for agent accuracy snapshots |
 
 Phases never import each other — communication is via SQLite tables / CSV only. Rerun any upstream phase and downstream consumers refresh automatically. Per-phase implementation detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). SIEGE certification spec: [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md).
 

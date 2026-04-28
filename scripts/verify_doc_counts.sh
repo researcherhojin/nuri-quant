@@ -25,6 +25,33 @@ live_test_files_fe() { find frontend \( -name "*.test.ts" -o -name "*.test.tsx" 
 live_e2e_specs()    { find frontend/e2e -name "*.spec.ts" \
     ! -path '*/node_modules/*' 2>/dev/null | wc -l | tr -d ' '; }
 
+# 2026-04-29: regime + DB-table counts. README claims "10 regimes (6 base + 4 special)"
+# and "32 tables" were drift-prone (no code-truth verification). Backed by
+# nuri.quant.regime.classifier.ALL_REGIMES tuple + live init_db sqlite_master count.
+#
+# CI contract preservation: this script must run in <1s with no Python env (per
+# CI workflow comment "find + grep only"). When .venv/bin/python is absent
+# (CI / fresh clone), these checks gracefully skip (return empty → check_claim
+# emits warning, not failure). Local `make verify-doc-counts` catches drift.
+live_regimes()      {
+    [ -x .venv/bin/python ] || { echo ""; return; }
+    .venv/bin/python -c \
+        "from nuri.quant.regime.classifier import ALL_REGIMES; print(len(ALL_REGIMES))" 2>/dev/null || echo ""
+}
+
+live_db_tables()    {
+    [ -x .venv/bin/python ] || { echo ""; return; }
+    .venv/bin/python -c "
+import tempfile, sqlite3
+from pathlib import Path
+from nuri.core.db import init_db
+with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as _f:
+    _p = _f.name
+init_db(Path(_p))
+print(sqlite3.connect(_p).execute(\"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'\").fetchone()[0])
+" 2>/dev/null || echo ""
+}
+
 # Extract the target integer from a file.
 # Strategy: match the claim's context substring (must be unique in the file),
 # then take the LAST [0-9]+ in that substring. Target numbers are consistently
@@ -62,6 +89,8 @@ EP=$(live_endpoints)
 TFBE=$(live_test_files_be)
 TFFE=$(live_test_files_fe)
 E2E=$(live_e2e_specs)
+REGIMES=$(live_regimes)
+DBT=$(live_db_tables)
 
 # Claim checks: pattern must uniquely identify the phrase containing the target
 # number. Target is always the LAST [0-9]+ in the matched substring.
@@ -76,6 +105,17 @@ check_claim "test_files_be"  "$TFBE" "docs/STRATEGY.md"           'Backend tests
 check_claim "test_files_fe"  "$TFFE" "docs/ARCHITECTURE.md"       'frontend vitest \([0-9]+ files\)' || true
 check_claim "test_files_fe"  "$TFFE" "docs/STRATEGY.md"           'Frontend tests.*tests, [0-9]+ files' || true
 check_claim "e2e_specs"      "$E2E"  "docs/ARCHITECTURE.md"       'Playwright E2E \([0-9]+ spec files\)' || true
+# Python-dependent checks: skip silently when .venv absent (CI contract — see live_regimes comment)
+if [ -n "$REGIMES" ]; then
+    check_claim "regimes"    "$REGIMES" "README.md"                '· [0-9]+ regimes' || true
+else
+    info "regimes: skipped (no .venv/bin/python — local check via make verify-doc-counts)"
+fi
+if [ -n "$DBT" ]; then
+    check_claim "db_tables"  "$DBT"  "README.md"                   'SQLite WAL · [0-9]+ tables' || true
+else
+    info "db_tables: skipped (no .venv/bin/python)"
+fi
 
 # Note: agent count + pytest collect count intentionally excluded from hard
 # verify. Agent count has no single stable grep pattern across docs (multiple
