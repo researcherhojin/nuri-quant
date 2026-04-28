@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { ReactNode } from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 // Mock recharts — jsdom can't render SVG charts
 vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
-  ComposedChart: ({ children }: any) => <div data-testid="composed-chart">{children}</div>,
+  ResponsiveContainer: ({ children }: { children: ReactNode }) => <div data-testid="responsive-container">{children}</div>,
+  ComposedChart: ({ children }: { children: ReactNode }) => <div data-testid="composed-chart">{children}</div>,
   Area: () => <div data-testid="area" />,
   Line: () => <div data-testid="line" />,
   Bar: () => <div data-testid="bar" />,
