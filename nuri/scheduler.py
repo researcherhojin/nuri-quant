@@ -62,7 +62,7 @@ def _run_collector(name: str, **kwargs):
             SuperinvestorCollector().run()
         elif name == "estimates":
             from nuri.collectors.estimates import EstimatesCollector
-            EstimatesCollector().run()
+            EstimatesCollector().run(**kwargs)
         elif name == "etf_flows":
             from nuri.collectors.etf_flows import EtfFlowsCollector
             EtfFlowsCollector().run()
@@ -183,8 +183,11 @@ SCHEDULES = [
     {"name": "superinvestors", "func": _run_collector, "args": ("superinvestors",),
      "cron": "0 1 * * 0"},
 
-    # 애널리스트 컨센서스 (주 1회 일요일 02:00)
+    # 애널리스트 컨센서스 (주 1회 일요일 02:00) — universe 전체 (#420).
+    # universe 543 US tickers ~27s elapsed (2026-04-28 live probe 96.7% OK / 0 rate-limit).
+    # universe ⊃ portfolio 이므로 별도 portfolio entry 없어도 보유종목 자동 갱신.
     {"name": "estimates", "func": _run_collector, "args": ("estimates",),
+     "kwargs": {"source": "universe"},
      "cron": "0 2 * * 0"},
 
     # ETF 자금흐름 (주 1회 일요일 03:00)
