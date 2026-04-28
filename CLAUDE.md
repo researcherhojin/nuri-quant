@@ -224,6 +224,7 @@ For framework / test-mocking / data-source / pipeline-policy gotchas → see sco
 ## Reference
 
 - `docs/STRATEGY.md` — canonical policy (load on demand): 8 sections (why / principles / architecture decisions / quality / harness / SIEGE spec / work policy / OSS refs)
+- `docs/SOURCE_OF_TRUTH.md` — file-ownership map. Consult before adding/de-duplicating any doc fact.
 - `docs/ARCHITECTURE.md` — detailed code/DB layout
 - `docs/TODO.md` — forward-only backlog (Tier 2 next, Tier 3 research)
 - `docs/SIEGE_V2.md` — 3D certification spec
