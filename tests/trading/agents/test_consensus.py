@@ -2234,10 +2234,15 @@ class TestComputeWeightsHitRates:
         assert "skipped_no_usable=1" in anomaly_logs[0].getMessage()
 
     def test_observability_normal_path_debug(self, db_path, caplog):
-        """Normal path (skip=0) 는 DEBUG 레벨 — per-ticker hot path spam 방지.
+        """Normal path 의 INFO surface 는 #468 codex Round 1 #7 에 의해 의도된 것.
 
-        A-1a codex review (P2-3): analyze_portfolio 가 ticker 마다 _compute_weights
-        호출. 모든 row valid 면 DEBUG 레벨로 로그. revert (INFO 로 복구) 시 fail.
+        - "anomaly" (skip 발생) INFO 는 normal path 에서 emit 안 됨 (기존 의미 보존).
+        - "_compute_weights per-agent source" INFO 는 structurally_unsaturating
+          agent 가 있을 때 발생 — Codex 가 명시적으로 요구한 surface (retail/crypto
+          영구 default 구분 가능). DEBUG-only 강제는 새 semantic 과 충돌.
+
+        A-1a codex review (P2-3) 의 anti-spam 의도는 anomaly 로그에 한정. 새 per-agent
+        source surface 는 별도 semantic 으로 INFO 유지.
         """
         import logging
 
@@ -2245,14 +2250,14 @@ class TestComputeWeightsHitRates:
 
         self._seed_recommendations(db_path, n_records=15, outcome_sign=1)
 
-        # INFO 레벨로 caplog 설정 — DEBUG 메시지는 안 잡힘. INFO 메시지 있으면 fail.
         with caplog.at_level(logging.INFO, logger="nuri.trading.agents.consensus"):
             _compute_weights(db_path=db_path)
 
-        info_msgs = [r.message for r in caplog.records
-                     if r.levelno >= logging.INFO and "_compute_weights" in r.message]
-        assert info_msgs == [], (
-            f"Normal path 는 DEBUG 레벨 — INFO 로그 없어야 함. 실제: {info_msgs}"
+        # anomaly INFO 는 emit 안 됨 (skip=0 이므로)
+        anomaly_msgs = [r.message for r in caplog.records
+                        if r.levelno >= logging.INFO and "anomaly" in r.message]
+        assert anomaly_msgs == [], (
+            f"Normal path 에 anomaly INFO 있으면 안 됨. 실제: {anomaly_msgs}"
         )
 
     def test_observability_anomaly_path_info(self, db_path, caplog):
@@ -2303,3 +2308,295 @@ class TestComputeWeightsHitRates:
         assert any("rows_skipped_json=2" in m for m in info_msgs), (
             "rows_skipped_json=2 카운터 포함 기대"
         )
+
+
+class TestProvisionalLearningMemory:
+    """#468 codex Plan consult Round 1 — provisional 21d weights + per-agent precedence."""
+
+    def _seed_outcome_at_horizon(self, db_path, n_records, horizon_col, outcome_sign=1):
+        """outcome_{horizon}d 만 채운 row N건 시드 (다른 outcome 컬럼은 NULL)."""
+        import json
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+
+        with get_db(db_path) as conn:
+            for i in range(n_records):
+                verdicts = [
+                    {"agent_name": "technical", "action": "BUY"},
+                    {"agent_name": "fundamental", "action": "SELL"},
+                ]
+                conn.execute(
+                    f"""INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, {horizon_col})
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"S{i}", "BUY", 50.0, None, None, 100.0,
+                     json.dumps(verdicts), 0.05 * outcome_sign),
+                )
+
+    def test_canonical_returns_eligibility_dict(self, db_path):
+        """compute_canonical_weights 는 dict[name, AgentEligibility] 반환."""
+        from nuri.trading.agents.consensus import (
+            DEFAULT_WEIGHTS,
+            AgentEligibility,
+            compute_canonical_weights,
+        )
+
+        self._seed_outcome_at_horizon(db_path, n_records=15, horizon_col="outcome_30d")
+        result = compute_canonical_weights(db_path=db_path)
+        assert set(result.keys()) == set(DEFAULT_WEIGHTS.keys())
+        for name, e in result.items():
+            assert isinstance(e, AgentEligibility)
+            assert e.name == name
+
+    def test_provisional_returns_eligibility_dict_from_21d_only(self, db_path):
+        """compute_provisional_weights 는 outcome_21d 만 read — 30d 무시."""
+        from nuri.trading.agents.consensus import compute_provisional_weights
+
+        # 30d 만 시드 → provisional sample_count 모두 0
+        self._seed_outcome_at_horizon(db_path, n_records=15, horizon_col="outcome_30d")
+        prov = compute_provisional_weights(db_path=db_path)
+        assert all(e.sample_count == 0 for e in prov.values()), (
+            "provisional 은 outcome_21d 만 읽어야 하는데 30d 데이터를 흡수함"
+        )
+
+    def test_provisional_eligible_when_21d_filled(self, db_path):
+        """outcome_21d 시드 시 provisional 이 eligible 만들고 weight 조정."""
+        from nuri.trading.agents.consensus import compute_provisional_weights
+
+        self._seed_outcome_at_horizon(db_path, n_records=15, horizon_col="outcome_21d")
+        prov = compute_provisional_weights(db_path=db_path)
+        # technical 은 BUY + outcome_21d>0 → hit, fundamental 은 SELL + outcome_21d>0 → miss
+        assert prov["technical"].eligible
+        assert prov["technical"].sample_count == 15
+        assert prov["fundamental"].eligible
+
+    def test_canonical_isolated_from_21d_data(self, db_path):
+        """compute_canonical_weights 는 outcome_30d 만 read — 21d 무시 (structural lock)."""
+        from nuri.trading.agents.consensus import compute_canonical_weights
+
+        self._seed_outcome_at_horizon(db_path, n_records=15, horizon_col="outcome_21d")
+        canon = compute_canonical_weights(db_path=db_path)
+        # 21d 만 채워진 상태에서 canonical 은 모두 sample_count=0
+        assert all(e.sample_count == 0 for e in canon.values()), (
+            "canonical 이 21d 데이터 흡수 — structural separation 깨짐"
+        )
+
+    def test_provisional_uses_smaller_adjustment_range(self, db_path):
+        """provisional adjustment_range=0.10 (canonical 0.30 의 1/3, codex Round 1 #2)."""
+        import json
+
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import (
+            DEFAULT_WEIGHTS,
+            compute_canonical_weights,
+            compute_provisional_weights,
+        )
+
+        # 같은 row 에 outcome_30d + outcome_21d 동시 시드 (UNIQUE(date,ticker) 회피).
+        verdicts = [
+            {"agent_name": "technical", "action": "BUY"},
+            {"agent_name": "fundamental", "action": "SELL"},
+        ]
+        with get_db(db_path) as conn:
+            for i in range(15):
+                conn.execute(
+                    """INSERT INTO recommendations
+                       (date, ticker, action, confidence, regime, signals, entry_price,
+                        agent_verdicts, outcome_30d, outcome_21d)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (today_kst(), f"D{i}", "BUY", 50.0, None, None, 100.0,
+                     json.dumps(verdicts), 0.05, 0.05),
+                )
+
+        canon = compute_canonical_weights(db_path=db_path)
+        prov = compute_provisional_weights(db_path=db_path)
+
+        # technical = 100% BUY hit. canonical 은 +30% 까지 boost 가능, provisional 은 +10%.
+        canon_lift = canon["technical"].weight - DEFAULT_WEIGHTS["technical"]
+        prov_lift = prov["technical"].weight - DEFAULT_WEIGHTS["technical"]
+        assert canon_lift > prov_lift > 0, (
+            f"canonical lift ({canon_lift:.4f}) 이 provisional lift ({prov_lift:.4f}) 보다 커야 함"
+        )
+
+
+class TestPerAgentPrecedence:
+    """#468 codex Round 1 #1 — per-agent precedence: canonical > provisional > default."""
+
+    def _make_eligibility(self, name, sample_count, weight, eligible):
+        from nuri.trading.agents.consensus import AgentEligibility
+        return AgentEligibility(
+            name=name, sample_count=sample_count, weight=weight, eligible=eligible
+        )
+
+    def test_canonical_wins_when_eligible(self):
+        """동일 agent 가 canonical+provisional 둘 다 eligible → canonical 우선."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
+
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                     for n in DEFAULT_WEIGHTS}
+        canonical["technical"] = self._make_eligibility("technical", 20, 0.20, True)
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                       for n in DEFAULT_WEIGHTS}
+        provisional["technical"] = self._make_eligibility("technical", 30, 0.18, True)
+
+        weights, sources = select_weight_source(canonical, provisional)
+        assert sources["technical"] == "canonical_30d"
+
+    def test_provisional_used_when_canonical_not_eligible(self):
+        """canonical 미eligible + provisional eligible → provisional 사용."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
+
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                     for n in DEFAULT_WEIGHTS}
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                       for n in DEFAULT_WEIGHTS}
+        provisional["technical"] = self._make_eligibility("technical", 15, 0.16, True)
+
+        weights, sources = select_weight_source(canonical, provisional)
+        assert sources["technical"] == "provisional_21d"
+
+    def test_default_when_no_eligibility_with_samples(self):
+        """둘 다 미eligible 이지만 sample_count > 0 → 'default' (not unsaturating)."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
+
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                     for n in DEFAULT_WEIGHTS}
+        canonical["risk"] = self._make_eligibility("risk", 3, DEFAULT_WEIGHTS["risk"], False)
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                       for n in DEFAULT_WEIGHTS}
+
+        weights, sources = select_weight_source(canonical, provisional)
+        assert sources["risk"] == "default"
+
+    def test_structurally_unsaturating_when_zero_samples(self):
+        """canonical+provisional 모두 sample=0 → structurally_unsaturating."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
+
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                     for n in DEFAULT_WEIGHTS}
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                       for n in DEFAULT_WEIGHTS}
+
+        weights, sources = select_weight_source(canonical, provisional)
+        # 모든 agent 가 BUY+SELL=0 → structurally_unsaturating
+        assert all(s == "structurally_unsaturating" for s in sources.values())
+
+    def test_mixed_state_some_canonical_some_provisional_some_default(self):
+        """동시에 다른 source 사용 가능 — global label 의 부적절성 증명 (codex #1)."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
+
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                     for n in DEFAULT_WEIGHTS}
+        canonical["technical"] = self._make_eligibility("technical", 20, 0.18, True)
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                       for n in DEFAULT_WEIGHTS}
+        provisional["fundamental"] = self._make_eligibility("fundamental", 15, 0.13, True)
+        # macro: sample 있지만 미eligible → default
+        canonical["macro"] = self._make_eligibility("macro", 4, DEFAULT_WEIGHTS["macro"], False)
+
+        weights, sources = select_weight_source(canonical, provisional)
+        assert sources["technical"] == "canonical_30d"
+        assert sources["fundamental"] == "provisional_21d"
+        assert sources["macro"] == "default"
+        # retail/crypto 등 나머지는 sample=0 이므로 unsaturating
+        assert sources["retail"] == "structurally_unsaturating"
+        assert sources["crypto"] == "structurally_unsaturating"
+
+    def test_weights_normalized_to_sum_one(self):
+        """select_weight_source 는 weights sum=1.0 정규화."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
+
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                     for n in DEFAULT_WEIGHTS}
+        canonical["technical"] = self._make_eligibility("technical", 20, 0.20, True)
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
+                       for n in DEFAULT_WEIGHTS}
+
+        weights, _ = select_weight_source(canonical, provisional)
+        assert abs(sum(weights.values()) - 1.0) < 1e-9
+
+
+class TestStructuralSeparation:
+    """#468 codex Round 1 #4 — canonical/provisional 함수 자체에 access boundary."""
+
+    def test_canonical_does_not_query_outcome_21d(self):
+        """compute_canonical_weights source 가 outcome_21d 를 read 하지 않음 (AST grep)."""
+        import inspect
+
+        from nuri.trading.agents import consensus
+
+        src = inspect.getsource(consensus.compute_canonical_weights)
+        assert "outcome_30d" in src
+        assert "outcome_21d" not in src, (
+            "compute_canonical_weights 가 outcome_21d 를 read 하면 structural separation 깨짐"
+        )
+
+    def test_provisional_does_not_query_outcome_30d(self):
+        """compute_provisional_weights source 가 outcome_30d 를 read 하지 않음."""
+        import inspect
+
+        from nuri.trading.agents import consensus
+
+        src = inspect.getsource(consensus.compute_provisional_weights)
+        assert "outcome_21d" in src
+        assert "outcome_30d" not in src, (
+            "compute_provisional_weights 가 outcome_30d 를 read 하면 structural separation 깨짐"
+        )
+
+    def test_select_weight_source_does_not_query_db(self):
+        """select_weight_source 는 pure function — DB query 안 함 (입력 dict 만 사용)."""
+        import inspect
+
+        from nuri.trading.agents import consensus
+
+        src = inspect.getsource(consensus.select_weight_source)
+        for forbidden in ("query(", "get_db(", "outcome_30d", "outcome_21d"):
+            assert forbidden not in src, (
+                f"select_weight_source 가 '{forbidden}' 사용 — pure selector 위반"
+            )
+
+
+class TestAgentReadiness:
+    """#468 codex Round 1 #6/#7 — readiness API 응답 형태."""
+
+    def test_readiness_returns_per_agent_source_list(self, db_path):
+        """agent_readiness() 응답이 per-agent source breakdown 포함."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, agent_readiness
+
+        result = agent_readiness(db_path=db_path)
+        assert "agents" in result
+        assert "summary" in result
+        names = {a["name"] for a in result["agents"]}
+        assert names == set(DEFAULT_WEIGHTS.keys())
+        for a in result["agents"]:
+            assert "source" in a
+            assert a["source"] in (
+                "canonical_30d", "provisional_21d", "default", "structurally_unsaturating"
+            )
+            assert "canonical_30d" in a
+            assert "provisional_21d" in a
+
+    def test_readiness_summary_counts_match_agents(self, db_path):
+        """summary 카운트가 agents 의 source 분포와 일치."""
+        from nuri.trading.agents.consensus import agent_readiness
+
+        result = agent_readiness(db_path=db_path)
+        actual = {
+            "canonical_30d": 0, "provisional_21d": 0,
+            "default": 0, "structurally_unsaturating": 0,
+        }
+        for a in result["agents"]:
+            actual[a["source"]] += 1
+        assert result["summary"] == actual
+
+    def test_readiness_empty_db_all_unsaturating(self, db_path):
+        """빈 DB → 모든 agent structurally_unsaturating (BUY+SELL=0)."""
+        from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, agent_readiness
+
+        result = agent_readiness(db_path=db_path)
+        assert result["summary"]["structurally_unsaturating"] == len(DEFAULT_WEIGHTS)
+        assert result["summary"]["canonical_30d"] == 0
+        assert result["summary"]["provisional_21d"] == 0

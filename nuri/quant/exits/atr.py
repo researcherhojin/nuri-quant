@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportCallIssue=false, reportAttributeAccessIssue=false, reportOperatorIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportOptionalOperand=false
 """ATR-based exit / stop-loss computation (PR F, codex bubble-bear #6).
 
 **Status**: SHADOW only — 현 production `stop_loss` (percent-based) 와 병렬

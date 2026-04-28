@@ -34,6 +34,7 @@ from nuri.api.routes import (
     engine,
     evidence,
     external,
+    learning_memory,
     pipeline,
     portfolio,
     rebalance,
@@ -123,6 +124,7 @@ app.include_router(external.router, prefix="/api")
 app.include_router(targets.router, prefix="/api")
 app.include_router(trades.router, prefix="/api")
 app.include_router(decisions.router, prefix="/api")
+app.include_router(learning_memory.router, prefix="/api")
 
 
 # ─── 인증 엔드포인트 ───

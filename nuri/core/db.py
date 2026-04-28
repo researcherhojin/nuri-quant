@@ -710,6 +710,20 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE recommendations ADD COLUMN portfolio_action TEXT;
     """,
     ),
+    (
+        23,
+        "short-horizon outcomes (7d/14d/21d) on recommendations",
+        # #468 (codex Plan consult Round 1, 2026-04-28) — provisional learning memory.
+        # 30d 만으로는 scheduler 시작 (2026-04-08) 이후 첫 outcome 이 5/8 부터 채워짐.
+        # 21d provisional weights + 7d/14d readiness/monitoring 를 위해 컬럼 추가.
+        # Forward-only NULL: 기존 row 는 next track_outcomes() 에서 elapsed gate 통과 시 채워짐.
+        # outcome immutability: tracker 가 non-null 절대 overwrite 안 함 (recompute=True 명시 시만).
+        """
+        ALTER TABLE recommendations ADD COLUMN outcome_7d REAL;
+        ALTER TABLE recommendations ADD COLUMN outcome_14d REAL;
+        ALTER TABLE recommendations ADD COLUMN outcome_21d REAL;
+    """,
+    ),
 ]
 
 

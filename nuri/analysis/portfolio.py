@@ -1,5 +1,8 @@
+# pyright: reportAttributeAccessIssue=false
 """
 포트폴리오 현황 분석 — 종목별 현재가치, 비중, 손익 계산.
+
+(OpenBB BaseApp 동적 attribute (currency 등) stub 부재 — runtime 정상.)
 
 투자규칙 적용:
 - 단일 종목 비중 15% 초과 경고

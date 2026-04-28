@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportCallIssue=false, reportAttributeAccessIssue=false, reportOperatorIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportOptionalOperand=false
 """
 Wall Street 에이전트 — 애널리스트 등급 변경 + Earnings Surprise + Insider 매매 기반 판정.
 

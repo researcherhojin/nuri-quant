@@ -89,6 +89,7 @@ class TestCheckTicker:
         is_valid, rows, error = check_ticker("TEST_NETWORK_FAIL")
         assert is_valid is False
         assert rows == 0
+        assert error is not None
         assert "ConnectionError" in error
         assert "network down" in error
 

@@ -116,32 +116,11 @@ class CBOECollector(BaseCollector):
         }]
 
     def _collect_db_stale(self) -> list[dict]:
-        """DB의 가장 최근 PCR 값을 stale로 재사용 (오늘 데이터 없을 때만)."""
-        from nuri.core.db import query
-        rows = query(
-            "SELECT date, value FROM macro WHERE indicator = 'put_call_ratio' "
-            "ORDER BY date DESC LIMIT 1"
-        )
-        if not rows:
-            return []
-        row = rows[0]
-        prev_date = row["date"] if hasattr(row, "__getitem__") else row[0]
-        prev_value = row["value"] if hasattr(row, "__getitem__") else row[1]
-        if prev_date == today_str():
-            return []  # 오늘 이미 있음 — fallback 불필요
-        self.logger.warning(
-            "CBOE: 라이브 데이터 없음, DB stale 재사용 (%s = %.3f)",
-            prev_date, prev_value,
-        )
-        return [{
-            "indicator": "put_call_ratio",
-            "date": prev_date,
-            "value": float(prev_value),
-            "source": "DB_STALE",
-        }]
+        """DB의 가장 최근 PCR 값을 stale로 재사용 (오늘 데이터 없을 때만).
 
-    def _collect_db_stale(self) -> list[dict]:
-        """DB의 가장 최근 PCR 값을 stale로 재사용 (오늘 데이터 없을 때만)."""
+        codex Review (2026-04-28): 같은 메서드 2번 정의 → 첫 정의는 dead code.
+        통합 단일 정의 유지.
+        """
         from nuri.core.db import query
         rows = query(
             "SELECT date, value FROM macro WHERE indicator = 'put_call_ratio' "

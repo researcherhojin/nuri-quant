@@ -1,5 +1,8 @@
+# pyright: reportGeneralTypeIssues=false
 """
 슈퍼투자자 포트폴리오 수집기 — SEC EDGAR 13F 기반.
+
+(edgartools EntityFiling iter() stub 부재 — runtime 정상.)
 
 edgartools를 사용하여 SEC EDGAR에서 직접 13F 공시를 파싱.
 API 키 불필요. 분기별 갱신.

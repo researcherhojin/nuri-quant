@@ -81,29 +81,48 @@ class ConsensusResult:
     scoring_detail: dict | None = None
 
 
-def _compute_weights(db_path=None) -> dict[str, float]:
-    """Learning Memory + recommendations 기반 동적 가중치 계산.
+@dataclass
+class AgentEligibility:
+    """Per-agent state at a single outcome horizon (canonical 30d or provisional 21d).
 
-    recommendations.agent_verdicts (JSON list of verdict dicts) 를 primary source
-    로 읽어 에이전트별 적중률을 계산. 30일 이상 경과한 추천 중 outcome_30d 가
-    있는 건만 대상. 데이터 부족 시 (< min_records) DEFAULT_WEIGHTS 반환.
+    #468 codex Plan consult Round 1 — structural separation: canonical vs provisional
+    return identical shapes so `select_weight_source` can run per-agent precedence.
+    """
 
-    TODO(#178): decisions 테이블 기반 compute_agent_accuracy()가 30건 이상
-    완료되면, recommendations 대신 decisions 테이블을 primary source로 전환.
-    decisions는 outcome 판정이 더 엄격하고 (90일 기준), agent_verdicts가
-    정규화된 JSON이라 파싱이 안정적. 현재는 additive — 두 소스가 공존.
-    See: nuri.trading.engine.decisions.compute_agent_accuracy()
+    name: str
+    sample_count: int  # BUY/SELL verdicts with non-null outcome at this horizon
+    weight: float  # adjusted (capped) weight, or DEFAULT_WEIGHTS[name] when not eligible
+    eligible: bool  # sample_count >= min_agent_records (per-agent gate)
+
+
+def _compute_horizon_eligibility(
+    *,
+    outcome_col: str,
+    adjustment_range: float,
+    label: str,
+    db_path=None,
+) -> dict[str, AgentEligibility]:
+    """Shared per-horizon eligibility + weight calc.
+
+    canonical_30d 와 provisional_21d 가 같은 shape 으로 결과 emit. 차이는:
+    - outcome_col: 'outcome_30d' (canonical) vs 'outcome_21d' (provisional)
+    - adjustment_range: 0.30 vs 0.10 (codex Round 1 — provisional 은 conservative cap)
+
+    Observability: rows_seen / rows_parsed / rows_skipped_* 는 label 로 prefix 해
+    canonical/provisional 가 같은 hot path 에서 구분 가능.
     """
     from nuri.core.db import query
 
     _lm = AGENT_CONFIG.get("consensus", {}).get("learning_memory", {})
     lookback = _lm.get("lookback_days", 180)
     min_records = _lm.get("min_records", 10)
+    min_agent_records = _lm.get("min_agent_records", 5)
+    min_weight = _lm.get("min_weight_floor", 0.03)
 
     rows = query(
-        """
-        SELECT agent_verdicts, outcome_30d FROM recommendations
-        WHERE outcome_30d IS NOT NULL
+        f"""
+        SELECT agent_verdicts, {outcome_col} AS outcome FROM recommendations
+        WHERE {outcome_col} IS NOT NULL
           AND agent_verdicts IS NOT NULL
           AND agent_verdicts != ''
           AND date >= date('now', ? || ' days')
@@ -115,16 +134,10 @@ def _compute_weights(db_path=None) -> dict[str, float]:
     import json
 
     agent_hits: dict[str, list[bool]] = {name: [] for name in DEFAULT_WEIGHTS}
-    # Observability counters — silent fallback 방지 (codex A-1 review).
-    # 모든 row 가 skip 되면 min_records 문턱을 넘어도 가중치 변화 없이
-    # DEFAULT_WEIGHTS 로 귀결되는 silent failure. 카운터로 drill-down 가능.
     rows_seen = len(rows)
-    rows_parsed = 0  # A-1b: BUY/SELL verdict 가 최소 1개 있는 row 만 counted.
+    rows_parsed = 0
     rows_skipped_schema = 0
     rows_skipped_json = 0
-    # A-1b: JSON 은 유효하지만 등록된 agent (DEFAULT_WEIGHTS) 에서 usable BUY/SELL
-    # verdict 하나도 없는 row — 즉 "학습 샘플 아님". 대부분 HOLD-only 지만, 미등록
-    # agent verdict 만 있는 row, 이상한 action 값 row 도 여기 합산됨 (codex Round 1).
     rows_skipped_no_usable = 0
 
     for row in rows:
@@ -135,15 +148,9 @@ def _compute_weights(db_path=None) -> dict[str, float]:
                 rows_skipped_schema += 1
                 continue
 
-            # WHERE outcome_30d IS NOT NULL guards the read; `or 0` is defensive only.
-            outcome = row["outcome_30d"] or 0
+            outcome = row["outcome"] or 0
             is_positive = outcome > 0
 
-            # A-1b (codex A-1a Round 2 residual P2): rows_parsed 를 "valid JSON" 이
-            # 아니라 "actual learning sample" 로 tighten. 모든 verdict 가 HOLD 면
-            # agent_hits 에 기여하지 않음 → sample 로 카운트되지 않는 게 정확.
-            # 이전: 10 개 row 모두 HOLD-only 여도 `rows_parsed=10 >= min_records=10`
-            # 통과하지만 hit_rates dict 가 empty 로 귀결되는 silent fallback.
             row_has_usable_verdict = False
             for v in verdicts:
                 if not isinstance(v, dict):
@@ -151,9 +158,6 @@ def _compute_weights(db_path=None) -> dict[str, float]:
                 agent_name = v.get("agent_name", "")
                 action = v.get("action", "HOLD")
                 if agent_name in agent_hits:
-                    # BUY가 양수 수익이면 적중, SELL이 음수 수익이면 적중.
-                    # outcome_30d == 0 bias 는 의도적 pin (test_hit_rate_outcome_zero_is_buy_miss_sell_hit).
-                    # HOLD agent verdict 는 hit 판정 제외 (분기 없음 → 자동 skip).
                     if action == "BUY":
                         agent_hits[agent_name].append(is_positive)
                         row_has_usable_verdict = True
@@ -169,60 +173,195 @@ def _compute_weights(db_path=None) -> dict[str, float]:
             rows_skipped_json += 1
             continue
 
-    # min_records gate — parsed count 기반 (codex A-1 P1-2).
-    # 이전: len(rows) < min_records 로 raw SQL 수 검증 → malformed row 가 gate 통과 후
-    # 실제 학습 샘플이 문턱 미달로 가중치 shift. parsed 수로 gate 해야 샘플 신뢰성 보장.
-    # A-1b: rows_parsed 는 이제 "≥1 BUY/SELL verdict" row 만 포함.
-    if rows_parsed < min_records:
-        # fallback 발생 시 명시적 WARNING — normal path (early return) 과 구분.
-        if rows_seen > 0:
-            logger.warning(
-                "_compute_weights fallback to DEFAULT_WEIGHTS: rows_seen=%d rows_parsed=%d (< min_records=%d) skipped_schema=%d skipped_json=%d skipped_no_usable=%d",
-                rows_seen, rows_parsed, min_records, rows_skipped_schema, rows_skipped_json, rows_skipped_no_usable,
-            )
-        return dict(DEFAULT_WEIGHTS)
+    # Total-rows gate — backward compat: 기존 _compute_weights 가 rows_parsed <
+    # min_records 일 때 early return DEFAULT_WEIGHTS 였음. 같은 의미를 per-agent
+    # 구조에서 보존하려면 이 gate 미통과 시 모든 agent eligible=False 강제.
+    total_gate_passed = rows_parsed >= min_records
 
-    # Normal path — DEBUG 레벨 (per-ticker 호출 hot path spam 방지).
-    # Anomaly (skip 발생) 시 INFO 로 올려 operator 눈에 띄게.
-    if rows_skipped_schema > 0 or rows_skipped_json > 0 or rows_skipped_no_usable > 0:
+    eligibility: dict[str, AgentEligibility] = {}
+    for name, hits in agent_hits.items():
+        sample = len(hits)
+        eligible = total_gate_passed and sample >= min_agent_records
+        if eligible and sample > 0:
+            rate = sum(hits) / sample
+            base = DEFAULT_WEIGHTS.get(name, 0.1)
+            # 50% 적중률 = 기본값, 70% = +adjustment_range, 30% = -adjustment_range
+            adjustment = (rate - 0.5) * 1.5
+            adjusted = base * (1 + max(-adjustment_range, min(adjustment_range, adjustment)))
+            weight = max(min_weight, adjusted)
+        else:
+            weight = DEFAULT_WEIGHTS.get(name, 0.1)
+        eligibility[name] = AgentEligibility(
+            name=name, sample_count=sample, weight=weight, eligible=eligible
+        )
+
+    # Observability — 기존 _compute_weights 와 동일 키 이름 보존 (회귀 테스트).
+    # WARNING: total gate 미통과 (fallback). INFO: skip 발생. DEBUG: normal path.
+    if not total_gate_passed and rows_seen > 0:
+        logger.warning(
+            "%s fallback to DEFAULT_WEIGHTS: rows_seen=%d rows_parsed=%d (< min_records=%d) "
+            "rows_skipped_schema=%d rows_skipped_json=%d rows_skipped_no_usable=%d",
+            label, rows_seen, rows_parsed, min_records,
+            rows_skipped_schema, rows_skipped_json, rows_skipped_no_usable,
+        )
+    elif rows_skipped_schema or rows_skipped_json or rows_skipped_no_usable:
         logger.info(
-            "_compute_weights anomaly: rows_seen=%d rows_parsed=%d rows_skipped_schema=%d rows_skipped_json=%d rows_skipped_no_usable=%d",
-            rows_seen, rows_parsed, rows_skipped_schema, rows_skipped_json, rows_skipped_no_usable,
+            "%s anomaly: rows_seen=%d rows_parsed=%d "
+            "rows_skipped_schema=%d rows_skipped_json=%d rows_skipped_no_usable=%d",
+            label, rows_seen, rows_parsed,
+            rows_skipped_schema, rows_skipped_json, rows_skipped_no_usable,
         )
     else:
         logger.debug(
-            "_compute_weights: rows_seen=%d rows_parsed=%d",
-            rows_seen, rows_parsed,
+            "%s: rows_seen=%d rows_parsed=%d", label, rows_seen, rows_parsed,
         )
 
-    # 적중률 기반 가중치 계산
-    min_agent_records = _lm.get("min_agent_records", 5)
-    hit_rates = {}
-    for name, hits in agent_hits.items():
-        if len(hits) >= min_agent_records:
-            hit_rates[name] = sum(hits) / len(hits)
+    return eligibility
 
-    if not hit_rates:
-        return dict(DEFAULT_WEIGHTS)
 
-    # 적중률을 가중치로 변환 (정규화)
-    # 기본 가중치의 ±adjustment_range 범위 내에서 조정
-    adj_range = _lm.get("adjustment_range", 0.30)
-    min_weight = _lm.get("min_weight_floor", 0.03)
+def compute_canonical_weights(db_path=None) -> dict[str, AgentEligibility]:
+    """Canonical 30d Learning Memory.
+
+    #468 codex Round 1 — STRUCTURAL separation: 이 함수는 ONLY outcome_30d 만 read.
+    Hard veto / amplifier (STRATEGY §2.6) 경로는 이 함수만 호출 — provisional 미접촉.
+    adjustment_range = 0.30 (config default).
+    """
+    return _compute_horizon_eligibility(
+        outcome_col="outcome_30d",
+        adjustment_range=AGENT_CONFIG.get("consensus", {}).get("learning_memory", {}).get("adjustment_range", 0.30),
+        label="canonical_30d",
+        db_path=db_path,
+    )
+
+
+def compute_provisional_weights(db_path=None) -> dict[str, AgentEligibility]:
+    """Provisional 21d short-horizon (warm-start before 30d outcomes saturate).
+
+    #468 codex Round 1 — STRUCTURAL separation: ONLY outcome_21d read. 0.10 cap
+    (canonical 의 1/3, conservative policy — calibration 별도 작업). veto/amplifier
+    절대 호출 금지 (mainline `select_weight_source` 만 호출).
+    """
+    return _compute_horizon_eligibility(
+        outcome_col="outcome_21d",
+        adjustment_range=AGENT_CONFIG.get("consensus", {}).get("learning_memory", {}).get(
+            "provisional_adjustment_range", 0.10
+        ),
+        label="provisional_21d",
+        db_path=db_path,
+    )
+
+
+def select_weight_source(
+    canonical: dict[str, AgentEligibility],
+    provisional: dict[str, AgentEligibility],
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Per-agent precedence: canonical_30d > provisional_21d > default.
+
+    #468 codex Round 1 #1 — global label 이 아니라 per-agent. 일부 agent canonical,
+    일부 provisional, 일부 default 동시 상태 가능. structurally_unsaturating 은
+    BUY+SELL verdict 이력 없이 default fallback 인 agent (retail/crypto HOLD-only).
+
+    Returns:
+        (final_weights, source_per_agent)
+        source_per_agent[name] ∈ {'canonical_30d', 'provisional_21d', 'default', 'structurally_unsaturating'}
+    """
     weights = dict(DEFAULT_WEIGHTS)
-    for name, rate in hit_rates.items():
-        base = DEFAULT_WEIGHTS.get(name, 0.1)
-        # 50% 적중률 = 기본값, 70% = +30%, 30% = -30%
-        adjustment = (rate - 0.5) * 1.5  # -0.75 ~ +0.75 범위
-        adjusted = base * (1 + max(-adj_range, min(adj_range, adjustment)))
-        weights[name] = max(min_weight, adjusted)
+    sources: dict[str, str] = {}
 
-    # 총합 1.0으로 정규화
+    for name in DEFAULT_WEIGHTS:
+        c = canonical.get(name)
+        p = provisional.get(name)
+        if c is not None and c.eligible:
+            weights[name] = c.weight
+            sources[name] = "canonical_30d"
+        elif p is not None and p.eligible:
+            weights[name] = p.weight
+            sources[name] = "provisional_21d"
+        else:
+            # Default fallback. structurally_unsaturating: 두 호라이즌 모두 BUY+SELL=0.
+            total_samples = (c.sample_count if c else 0) + (p.sample_count if p else 0)
+            sources[name] = "structurally_unsaturating" if total_samples == 0 else "default"
+
+    # 정규화
     total = sum(weights.values())
     if total > 0:
         weights = {k: v / total for k, v in weights.items()}
 
+    return weights, sources
+
+
+def _compute_weights(db_path=None) -> dict[str, float]:
+    """Legacy entry — backward compat. mainline (analyze_ticker / stream_analyze_ticker) 만 사용.
+
+    #468 codex Round 1: 내부적으로 select_weight_source 위임. veto/amplifier 절대
+    이 함수 직접 호출 금지 — `compute_canonical_weights` 만 사용 (structural separation).
+
+    TODO(#178): decisions 테이블 기반 compute_agent_accuracy() 가 30건 이상 완료되면
+    recommendations 대신 decisions 를 primary source 로 전환.
+    See: nuri.trading.engine.decisions.compute_agent_accuracy()
+    """
+    canonical = compute_canonical_weights(db_path=db_path)
+    provisional = compute_provisional_weights(db_path=db_path)
+    weights, sources = select_weight_source(canonical, provisional)
+
+    # provisional 발동 또는 structurally_unsaturating 시만 INFO surface
+    # (조작자에게 low-confidence warm-start 또는 영구 default 상태 알림).
+    # Pure canonical-only success 는 DEBUG (기존 _compute_weights normal path 와 동일 톤).
+    prov_agents = [n for n, s in sources.items() if s == "provisional_21d"]
+    unsaturating = [n for n, s in sources.items() if s == "structurally_unsaturating"]
+    canon_agents = [n for n, s in sources.items() if s == "canonical_30d"]
+    if prov_agents or unsaturating:
+        logger.info(
+            "_compute_weights per-agent source: canonical_30d=%s provisional_21d=%s structurally_unsaturating=%s",
+            canon_agents, prov_agents, unsaturating,
+        )
+    elif canon_agents:
+        logger.debug(
+            "_compute_weights per-agent: all canonical_30d eligible (n=%d)", len(canon_agents)
+        )
+
     return weights
+
+
+def agent_readiness(db_path=None) -> dict:
+    """Per-agent readiness snapshot for /api/learning-memory/readiness.
+
+    #468 codex Round 1 #6/#7 — API 응답 형태 per-agent (global label 금지).
+    structurally_unsaturating 표시 (HOLD-only emit pattern).
+    """
+    canonical = compute_canonical_weights(db_path=db_path)
+    provisional = compute_provisional_weights(db_path=db_path)
+    final_weights, sources = select_weight_source(canonical, provisional)
+
+    agents = []
+    for name in DEFAULT_WEIGHTS:
+        c = canonical.get(name)
+        p = provisional.get(name)
+        agents.append({
+            "name": name,
+            "default_weight": DEFAULT_WEIGHTS[name],
+            "final_weight": round(final_weights[name], 4),
+            "source": sources[name],
+            "canonical_30d": {
+                "sample_count": c.sample_count if c else 0,
+                "eligible": c.eligible if c else False,
+                "weight": round(c.weight, 4) if c else DEFAULT_WEIGHTS[name],
+            },
+            "provisional_21d": {
+                "sample_count": p.sample_count if p else 0,
+                "eligible": p.eligible if p else False,
+                "weight": round(p.weight, 4) if p else DEFAULT_WEIGHTS[name],
+            },
+        })
+    return {
+        "agents": agents,
+        "summary": {
+            "canonical_30d": sum(1 for s in sources.values() if s == "canonical_30d"),
+            "provisional_21d": sum(1 for s in sources.values() if s == "provisional_21d"),
+            "default": sum(1 for s in sources.values() if s == "default"),
+            "structurally_unsaturating": sum(1 for s in sources.values() if s == "structurally_unsaturating"),
+        },
+    }
 
 
 def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -> ConsensusResult:

@@ -1,5 +1,8 @@
+# pyright: reportAttributeAccessIssue=false, reportOptionalMemberAccess=false
 """
 매크로 지표 수집기 — FRED API + yfinance fallback.
+
+(yfinance.download None-or-DataFrame, pandas Hashable.strftime stub — runtime 정상.)
 
 FRED_API_KEY가 있으면 FRED 우선, 없으면 yfinance에서 핵심 지표를 직접 수집.
 

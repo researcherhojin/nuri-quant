@@ -39,7 +39,7 @@ class TestQuality:
                 df[col + "_norm"] = 0.5
         norm_cols = [c for c in df.columns if c.endswith("_norm")]
         df["quality_score"] = df[norm_cols].mean(axis=1)
-        assert df.loc["AAPL", "quality_score"] > df.loc["MSFT", "quality_score"]
+        assert float(df.loc["AAPL", "quality_score"]) > float(df.loc["MSFT", "quality_score"])
 
 
 class TestQualityDbRead:
@@ -83,8 +83,8 @@ class TestQualityDbRead:
             "fundamentals read 로 source 가 되었는지 확인"
         )
         # NVDA (최고 ROE + margin) > AAPL > MSFT 순서 검증
-        assert df.loc["NVDA", "quality_score"] > df.loc["AAPL", "quality_score"]
-        assert df.loc["AAPL", "quality_score"] > df.loc["MSFT", "quality_score"]
+        assert float(df.loc["NVDA", "quality_score"]) > float(df.loc["AAPL", "quality_score"])
+        assert float(df.loc["AAPL", "quality_score"]) > float(df.loc["MSFT", "quality_score"])
 
     def test_quality_reads_latest_date_per_ticker(self, db_path_mp):
         """동일 ticker 여러 날짜 → 가장 최신 row 만 사용."""
@@ -101,7 +101,7 @@ class TestQualityDbRead:
         df = compute_quality(tickers=["AAPL", "MSFT"])
         # min-max 정규화 → AAPL roe=0.30 이 max → AAPL quality_score 가 더 큼.
         # 만약 old row (0.10) 를 사용했다면 MSFT (0.20) 가 더 커진다.
-        assert df.loc["AAPL", "quality_score"] > df.loc["MSFT", "quality_score"]
+        assert float(df.loc["AAPL", "quality_score"]) > float(df.loc["MSFT", "quality_score"])
 
     def test_quality_source_has_no_openbb_import(self):
         """아키텍처 회귀 방어: quality.py 가 OpenBB 를 다시 import 하지 않는지 확인.

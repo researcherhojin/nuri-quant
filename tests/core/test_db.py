@@ -5,6 +5,7 @@ import pytest
 
 from nuri.core.db import (
     get_connection,
+    get_db,
     get_latest_price,
     get_schema_version,
     get_tickers,
@@ -298,6 +299,45 @@ class TestSchemaMigration:
         init_db(db_path)
         rows = query("SELECT COUNT(*) as c FROM schema_version", db_path=db_path)
         assert rows[0]["c"] == len(_MIGRATIONS)
+
+
+class TestMigration23ShortHorizonOutcomes:
+    """#468 — outcome_7d/14d/21d columns added to recommendations."""
+
+    def test_columns_exist_after_init(self, db_path):
+        """Migration 23 적용 후 outcome_{7,14,21}d 모두 존재."""
+        cols = {row["name"] for row in query("PRAGMA table_info(recommendations)", db_path=db_path)}
+        assert {"outcome_7d", "outcome_14d", "outcome_21d"} <= cols
+
+    def test_columns_are_real_nullable(self, db_path):
+        """REAL nullable — forward-only NULL 호환성 (기존 row 보존)."""
+        info = {row["name"]: row for row in query("PRAGMA table_info(recommendations)", db_path=db_path)}
+        for col in ("outcome_7d", "outcome_14d", "outcome_21d"):
+            assert info[col]["type"] == "REAL"
+            assert info[col]["notnull"] == 0  # nullable
+
+    def test_idempotent_rerun(self, db_path):
+        """init_db() 재호출 시 ALTER TABLE 중복 실행 안 됨 (schema_version gate)."""
+        init_db(db_path)
+        init_db(db_path)
+        # 컬럼 한 번만 존재 (재실행 시 OperationalError 'duplicate column' 안 발생)
+        cols = [row["name"] for row in query("PRAGMA table_info(recommendations)", db_path=db_path)]
+        assert cols.count("outcome_7d") == 1
+        assert cols.count("outcome_14d") == 1
+        assert cols.count("outcome_21d") == 1
+
+    def test_existing_rows_have_null_outcomes(self, db_path):
+        """Forward-only: 기존 row insert 후 outcome_*d 모두 NULL (lossy retrofit 금지)."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, regime, signals) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("2026-04-08", "AAPL", "BUY", 75.0, "bull_low_vol", "[]"),
+            )
+        rows = query("SELECT outcome_7d, outcome_14d, outcome_21d FROM recommendations", db_path=db_path)
+        assert rows[0]["outcome_7d"] is None
+        assert rows[0]["outcome_14d"] is None
+        assert rows[0]["outcome_21d"] is None
 
 
 class TestDbMaintenance:

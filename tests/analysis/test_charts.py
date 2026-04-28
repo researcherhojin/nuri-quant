@@ -126,6 +126,7 @@ class TestChartsLoad:
     def test_detect_signals_all_types(self, rich_db):
         from nuri.analysis.charts import _detect_signals, _load_chart_data
         df = _load_chart_data("AAPL")
+        assert df is not None
         result = _detect_signals(df)
         assert "signal" in result.columns or "type" in result.columns or len(result.columns) > 0
 

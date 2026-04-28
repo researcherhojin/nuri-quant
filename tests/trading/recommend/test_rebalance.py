@@ -201,7 +201,7 @@ class TestRebalance_R23:
         @dataclass
         class MockGateResult:
             ready: bool = False
-            conditions: list = None
+            conditions: list | None = None
 
             def __post_init__(self):
                 if self.conditions is None:

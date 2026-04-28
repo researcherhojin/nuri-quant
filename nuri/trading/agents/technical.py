@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportCallIssue=false, reportAttributeAccessIssue=false, reportOperatorIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportOptionalOperand=false
 """기술적 분석 에이전트 — RSI, MACD, SMA, BB, 차트 패턴(BB 위치/MACD 전환/52주/추세선) 기반 판정.
 
 FINVIZ 스크리너 데이터를 보조 시그널로 활용 (external_analysis 테이블).

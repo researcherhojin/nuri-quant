@@ -144,20 +144,88 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
         return len(records)
 
 
-def track_outcomes(db_path=None) -> int:
-    """과거 추천의 30/60/90일 수익률을 업데이트."""
+# 추적 호라이즌 — short (provisional/readiness) + canonical (30) + extended (60/90).
+# 21d 만 _compute_weights_provisional 의 weight source. 7/14 는 readiness/monitoring only.
+# 30 은 canonical — Learning Memory hit/hit_quality 판정 기준 (변경 금지).
+TRACK_HORIZONS = (7, 14, 21, 30, 60, 90)
+
+
+# forward-close lookup tolerance — target ± HORIZON_TOLERANCE_DAYS 안에 trading day 있어야 valid.
+# 주말+공휴일+간헐 gap 흡수용 작은 window. 너무 크면 codex P2 (delisting → day-1 close 가
+# day-21 으로 저장) 재발 — 보수적으로 7일 (한 주 휴장 한도).
+HORIZON_TOLERANCE_DAYS = 7
+
+
+def _forward_close_at_horizon(
+    ticker: str,
+    entry_date: datetime,
+    horizon_days: int,
+    db_path=None,
+) -> float | None:
+    """단일 deterministic forward-close 조회 helper (#468 codex Round 1 #5 + Review P2).
+
+    Rule: entry_date + horizon_days (calendar) 의 ±HORIZON_TOLERANCE_DAYS window 안에
+    가장 최근 trading day close. window 밖 (e.g., delisting 으로 horizon 이전에 거래 중단)
+    → None 반환 → caller 가 NULL 유지 (immutable, 오염 방지).
+
+    codex review P2 lock-in: 기존 `WHERE date <= target` 만으로는 horizon 이전 어느
+    시점이든 통과 → delisting 시 day-1 close 를 day-21 outcome 으로 저장하는 silent
+    contamination. lower bound (target - tolerance) 추가로 차단.
+    """
+    target_dt = entry_date + timedelta(days=horizon_days)
+    target = target_dt.strftime("%Y-%m-%d")
+    lower_bound = (target_dt - timedelta(days=HORIZON_TOLERANCE_DAYS)).strftime("%Y-%m-%d")
+    rows = query(
+        "SELECT close FROM prices "
+        "WHERE ticker = ? AND date <= ? AND date >= ? "
+        "ORDER BY date DESC LIMIT 1",
+        (ticker, target, lower_bound),
+        db_path=db_path,
+    )
+    if not rows:
+        return None
+    return rows[0]["close"]
+
+
+def track_outcomes(db_path=None, recompute: bool = False) -> int:
+    """과거 추천의 7/14/21/30/60/90일 forward return 을 업데이트.
+
+    #468 codex Plan consult Round 1:
+    - Multi-horizon: 7/14/21/30/60/90. 7/14/21 = provisional/readiness, 30 = canonical, 60/90 = extended.
+    - Outcome immutability: non-null outcome 절대 overwrite 안 함 (recompute=True 명시 시만).
+    - Deterministic: `_forward_close_at_horizon` 헬퍼 단일 정의.
+    - Hit/hit_quality 는 outcome_30d (canonical) 기준만. 짧은 호라이즌은 monitoring only.
+
+    Args:
+        db_path: DB 경로 (테스트용)
+        recompute: True 일 때만 기존 non-null outcome overwrite 허용. 기본 False.
+    """
     from nuri.core.timezone import kst_now
 
     # naive datetime으로 통일 (DB 날짜는 naive)
     now = kst_now().replace(tzinfo=None)
     updated = 0
 
-    # 아직 추적 안 된 추천 조회
-    recs = query(
-        "SELECT id, date, ticker, action, entry_price FROM recommendations "
-        "WHERE entry_price > 0 AND (outcome_30d IS NULL OR outcome_60d IS NULL OR outcome_90d IS NULL)",
-        db_path=db_path,
-    )
+    # 아직 추적 안 된 추천 조회 — 전체 호라이즌 중 하나라도 미채움이면 후보.
+    # recompute=True 면 모든 row scan (immutability 무시 후 덮어쓰기).
+    if recompute:
+        recs = query(
+            "SELECT id, date, ticker, action, entry_price, "
+            "outcome_7d, outcome_14d, outcome_21d, outcome_30d, outcome_60d, outcome_90d "
+            "FROM recommendations WHERE entry_price > 0",
+            db_path=db_path,
+        )
+    else:
+        recs = query(
+            "SELECT id, date, ticker, action, entry_price, "
+            "outcome_7d, outcome_14d, outcome_21d, outcome_30d, outcome_60d, outcome_90d "
+            "FROM recommendations "
+            "WHERE entry_price > 0 AND ("
+            "  outcome_7d IS NULL OR outcome_14d IS NULL OR outcome_21d IS NULL"
+            "  OR outcome_30d IS NULL OR outcome_60d IS NULL OR outcome_90d IS NULL"
+            ")",
+            db_path=db_path,
+        )
 
     for rec in recs:
         rec_date = datetime.strptime(rec["date"], "%Y-%m-%d")
@@ -165,53 +233,37 @@ def track_outcomes(db_path=None) -> int:
         ticker = rec["ticker"]
         entry = rec["entry_price"]
 
-        updates = {}
+        if entry <= 0:
+            continue
 
-        # 30일 추적
-        if elapsed >= 30 and rec.get("outcome_30d") is None:
-            target = (rec_date + timedelta(days=30)).strftime("%Y-%m-%d")
-            price = query(
-                "SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
-                (ticker, target), db_path=db_path,
-            )
-            if price and entry > 0:
-                ret = (price[0]["close"] - entry) / entry * 100
-                updates["outcome_30d"] = round(ret, 2)
+        updates: dict[str, float | bool | str] = {}
+        ret30: float | None = None  # canonical hit 판정용 로컬 캡처 (type narrowing)
 
-        # 60일 추적
-        if elapsed >= 60 and rec.get("outcome_60d") is None:
-            target = (rec_date + timedelta(days=60)).strftime("%Y-%m-%d")
-            price = query(
-                "SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
-                (ticker, target), db_path=db_path,
-            )
-            if price and entry > 0:
-                ret = (price[0]["close"] - entry) / entry * 100
-                updates["outcome_60d"] = round(ret, 2)
+        for horizon in TRACK_HORIZONS:
+            col = f"outcome_{horizon}d"
+            current = rec[col]
+            # Outcome immutability — non-null 절대 overwrite 금지 (recompute 시만 예외).
+            if current is not None and not recompute:
+                continue
+            if elapsed < horizon:
+                continue
+            close = _forward_close_at_horizon(ticker, rec_date, horizon, db_path=db_path)
+            if close is None:
+                continue
+            ret = round((close - entry) / entry * 100, 2)
+            updates[col] = ret
+            if horizon == 30:
+                ret30 = ret
 
-        # 90일 추적
-        if elapsed >= 90 and rec.get("outcome_90d") is None:
-            target = (rec_date + timedelta(days=90)).strftime("%Y-%m-%d")
-            price = query(
-                "SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
-                (ticker, target), db_path=db_path,
-            )
-            if price and entry > 0:
-                ret = (price[0]["close"] - entry) / entry * 100
-                updates["outcome_90d"] = round(ret, 2)
-
-        # hit 판정 (30일 기준): 의미 있는 수익만 적중으로 인정
-        # BUY: +5% 이상 (성장 +20% 목표의 25%), SELL: -2% 이하 (의미 있는 하락 회피)
-        if "outcome_30d" in updates:
+        # hit / hit_quality 는 canonical 30d 만 결정 (의도된 단일 기준).
+        # BUY: +5% 이상 (성장 +20% 목표의 25%), SELL: -2% 이하.
+        if ret30 is not None:
             action = rec["action"]
-            ret30 = updates["outcome_30d"]
             if action == "BUY":
                 updates["hit"] = ret30 >= 5.0
-                # hit_quality: 목표 수익률(+20%) 대비 달성 비율 (0.0~1.0+)
                 updates["hit_quality"] = round(ret30 / 20.0, 3) if ret30 > 0 else 0.0
             else:
                 updates["hit"] = ret30 < -2.0
-                # SELL hit_quality: 하락폭 대비 회피 효과 (기대 손실 -10% 기준)
                 updates["hit_quality"] = round(abs(ret30) / 10.0, 3) if ret30 < 0 else 0.0
 
         if updates:

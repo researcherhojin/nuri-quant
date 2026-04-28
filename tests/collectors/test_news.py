@@ -220,7 +220,7 @@ class TestYfinanceFallback:
         # 잘못된 입력 — early return (len<10) 경로
         assert fn("invalid") is None
         assert fn("") is None
-        assert fn(None) is None
+        assert fn(None) is None  # type: ignore[arg-type]
         # 짧은 ISO date-only
         assert fn("2026-04-17") == "2026-04-17"
         # len >= 10 이지만 fromisoformat 가 raise 하는 경우 — except 경로 검증

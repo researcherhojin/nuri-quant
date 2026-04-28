@@ -1,5 +1,9 @@
+# pyright: reportAttributeAccessIssue=false, reportArgumentType=false, reportOptionalMemberAccess=false
 """
 SEC 10-K/10-Q 핵심 지표 파서 — edgartools 기반.
+
+(edgartools EntityFilings/EntityFiling stub 부재, pandas dict[Hashable]
+indexing — runtime 정상.)
 
 최신 10-K에서 매출, 순이익, 총자산, 부채, 현금을 추출.
 US 대형주만 (SEC EDGAR CIK 필요).

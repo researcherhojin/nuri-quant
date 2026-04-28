@@ -1,5 +1,8 @@
+# pyright: reportArgumentType=false, reportCallIssue=false, reportAttributeAccessIssue=false
 """
 증거 기반 차트 — 포트폴리오 의사결정 근거를 시각화하는 Plotly HTML 차트.
+
+(pandas Scalar union / Plotly add_hline row/col Literal stub mismatch — runtime 정상.)
 
 레짐, 포트폴리오 히트맵, 시그널 성과, 공포·탐욕 지수, 매도 근거를 차트로 생성.
 

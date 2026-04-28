@@ -72,7 +72,7 @@ class TestConflicts_R26:
             confidence: float = 50
             notes: str = ""
             conflict: str = ""
-            scoring_detail: dict = None
+            scoring_detail: dict | None = None
             tier: str = "actionable"
 
         candidates = [
@@ -96,7 +96,7 @@ class TestConflicts_R26:
             confidence: float = 50
             notes: str = ""
             conflict: str = ""
-            scoring_detail: dict = None
+            scoring_detail: dict | None = None
             tier: str = "actionable"
 
         candidates = [

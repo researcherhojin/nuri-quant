@@ -1,5 +1,8 @@
+# pyright: reportAttributeAccessIssue=false
 """
 ETF 자금흐름 수집기 — 섹터 ETF AUM/거래량 추적.
+
+(OpenBB BaseApp 동적 attribute (etf 등) stub 부재 — runtime 정상.)
 
 OpenBB etf.info primary + yfinance `Ticker.info` fallback → total_assets, volume_avg,
 nav_price. OpenBB 상류 bug (#274, upstream #7379/#7460) 동안 yfinance 로 자동 수집.

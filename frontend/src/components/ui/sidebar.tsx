@@ -72,10 +72,13 @@ export function Sidebar() {
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark";
 
-  useEffect(() => { setMounted(true); }, []);
+  // SSR mismatch 회피용 mount 표시 (theme toggle 표시 전 hydration 동기화).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   const w = collapsed ? "w-16" : "w-56";
-  const ml = collapsed ? "ml-16" : "ml-56";
 
   return (
     <>

@@ -345,7 +345,7 @@ class TestTracker_R23:
             signal_id: str = "rsi_oversold"
             price: float = 850.0
             regime_fit: bool = True
-            scoring_detail: dict = None
+            scoring_detail: dict | None = None
             tier: str = "actionable"
 
         n = save_recommendations(candidates=[MockCandidate()], db_path=db_path)
@@ -370,7 +370,7 @@ class TestTracker_R23:
             signal_id: str = "macd_golden"
             price: float = 200.0
             regime_fit: bool = True
-            scoring_detail: dict = None
+            scoring_detail: dict | None = None
             tier: str = "actionable"
 
             def __post_init__(self):
@@ -451,14 +451,14 @@ class TestTracker_R23:
             signal_id: str = "rsi_oversold"
             price: float = 170.0
             regime_fit: bool = True
-            scoring_detail: dict = None
+            scoring_detail: dict | None = None
             tier: str = "actionable"
 
         @dataclass
         class MockAction:
             ticker: str = "AAPL"
             action: str = "BUY"
-            signals: list = None
+            signals: list | None = None
             regime_note: str = "[bull]"
 
             def __post_init__(self):
@@ -806,3 +806,198 @@ class TestScoringDetail:
         assert parsed["base_confidence"] == 60.0
         assert parsed["regime_win_rate"] == 0.65
         assert parsed["final_confidence"] == 75.0
+
+
+class TestShortHorizonTracking:
+    """#468 codex Plan consult Round 1 — multi-horizon outcomes (7d/14d/21d)."""
+
+    def test_outcome_7d_filled_when_elapsed_7(self, db_path):
+        """7일 경과 → outcome_7d 채워짐. 30일 미만이면 outcome_30d=NULL."""
+        rec_date = (datetime.now() - timedelta(days=8)).strftime("%Y-%m-%d")
+        _seed_recommendation(db_path, rec_date, "AAA", "BUY", 100.0)
+        d7 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
+        prices = pd.DataFrame([{
+            "ticker": "AAA", "date": d7, "open": 102, "high": 104, "low": 101,
+            "close": 103.0, "volume": 1000000, "adj_close": 103.0
+        }])
+        upsert_prices(prices, db_path)
+        from nuri.trading.recommend.tracker import track_outcomes
+        track_outcomes(db_path=db_path)
+        rows = query(
+            "SELECT outcome_7d, outcome_14d, outcome_21d, outcome_30d FROM recommendations",
+            db_path=db_path,
+        )
+        assert rows[0]["outcome_7d"] == 3.0
+        assert rows[0]["outcome_14d"] is None
+        assert rows[0]["outcome_21d"] is None
+        assert rows[0]["outcome_30d"] is None
+
+    def test_outcome_21d_filled_when_elapsed_22(self, db_path):
+        """21일 경과 → outcome_7/14/21 채워짐, 30 은 NULL."""
+        rec_date = (datetime.now() - timedelta(days=22)).strftime("%Y-%m-%d")
+        _seed_recommendation(db_path, rec_date, "BBB", "BUY", 100.0)
+        # 7/14/21 각각 다른 가격
+        rows_to_seed = []
+        for h, c in [(7, 105.0), (14, 110.0), (21, 115.0)]:
+            d = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=h)).strftime("%Y-%m-%d")
+            rows_to_seed.append({
+                "ticker": "BBB", "date": d, "open": c-1, "high": c+1, "low": c-2,
+                "close": c, "volume": 1000000, "adj_close": c,
+            })
+        upsert_prices(pd.DataFrame(rows_to_seed), db_path)
+        from nuri.trading.recommend.tracker import track_outcomes
+        track_outcomes(db_path=db_path)
+        rows = query(
+            "SELECT outcome_7d, outcome_14d, outcome_21d, outcome_30d FROM recommendations",
+            db_path=db_path,
+        )
+        assert rows[0]["outcome_7d"] == 5.0
+        assert rows[0]["outcome_14d"] == 10.0
+        assert rows[0]["outcome_21d"] == 15.0
+        assert rows[0]["outcome_30d"] is None
+
+    def test_short_horizons_do_not_set_hit(self, db_path):
+        """7/14/21d 채워져도 hit/hit_quality 는 NULL (canonical 30d 만 hit 판정)."""
+        rec_date = (datetime.now() - timedelta(days=22)).strftime("%Y-%m-%d")
+        _seed_recommendation(db_path, rec_date, "CCC", "BUY", 100.0)
+        d21 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=21)).strftime("%Y-%m-%d")
+        prices = pd.DataFrame([{
+            "ticker": "CCC", "date": d21, "open": 119, "high": 121, "low": 118,
+            "close": 120.0, "volume": 1000000, "adj_close": 120.0
+        }])
+        upsert_prices(prices, db_path)
+        from nuri.trading.recommend.tracker import track_outcomes
+        track_outcomes(db_path=db_path)
+        rows = query(
+            "SELECT outcome_21d, hit, hit_quality FROM recommendations",
+            db_path=db_path,
+        )
+        assert rows[0]["outcome_21d"] == 20.0
+        assert rows[0]["hit"] is None  # canonical 30d 미경과
+        assert rows[0]["hit_quality"] is None
+
+
+class TestOutcomeImmutability:
+    """#468 codex Round 1 #5 — non-null outcome 절대 overwrite 금지."""
+
+    def test_existing_outcome_not_overwritten_by_default(self, db_path):
+        """기존 outcome_30d 값이 있으면 track_outcomes 가 덮어쓰지 않음."""
+        rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
+        _seed_recommendation(db_path, rec_date, "IMM", "BUY", 100.0)
+        # 먼저 +8% outcome_30d 직접 set (예: 이전 run 결과)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "UPDATE recommendations SET outcome_30d = 8.0, hit = 1 WHERE ticker = 'IMM'"
+            )
+        # 그 후 prices 가 다른 값으로 수정됐다고 가정
+        d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
+        prices = pd.DataFrame([{
+            "ticker": "IMM", "date": d30, "open": 89, "high": 91, "low": 88,
+            "close": 90.0, "volume": 1000000, "adj_close": 90.0  # 가격이 -10% 로 revised
+        }])
+        upsert_prices(prices, db_path)
+        from nuri.trading.recommend.tracker import track_outcomes
+        track_outcomes(db_path=db_path)  # recompute=False (default)
+        rows = query("SELECT outcome_30d, hit FROM recommendations", db_path=db_path)
+        # 기존 +8% 그대로 유지 (vendor revision 으로부터 보호)
+        assert rows[0]["outcome_30d"] == 8.0
+        assert rows[0]["hit"] == 1
+
+    def test_recompute_true_overwrites_outcome(self, db_path):
+        """recompute=True 명시 시에는 overwrite 허용."""
+        rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
+        _seed_recommendation(db_path, rec_date, "RECMP", "BUY", 100.0)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "UPDATE recommendations SET outcome_30d = 8.0 WHERE ticker = 'RECMP'"
+            )
+        d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
+        prices = pd.DataFrame([{
+            "ticker": "RECMP", "date": d30, "open": 89, "high": 91, "low": 88,
+            "close": 90.0, "volume": 1000000, "adj_close": 90.0
+        }])
+        upsert_prices(prices, db_path)
+        from nuri.trading.recommend.tracker import track_outcomes
+        track_outcomes(db_path=db_path, recompute=True)
+        rows = query("SELECT outcome_30d FROM recommendations", db_path=db_path)
+        # recompute 로 새 값 반영
+        assert rows[0]["outcome_30d"] == -10.0
+
+    def test_partial_outcomes_no_overwrite_only_fills_null(self, db_path):
+        """outcome_7d 가 이미 있고 outcome_30d 는 NULL 인 row → 30d 만 새로 채움."""
+        rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
+        _seed_recommendation(db_path, rec_date, "PART", "BUY", 100.0)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "UPDATE recommendations SET outcome_7d = 2.0 WHERE ticker = 'PART'"
+            )
+        # 7d 와 30d 모두 prices 시드
+        for h, c in [(7, 99.0), (30, 110.0)]:
+            d = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=h)).strftime("%Y-%m-%d")
+            upsert_prices(pd.DataFrame([{
+                "ticker": "PART", "date": d, "open": c, "high": c, "low": c,
+                "close": c, "volume": 1000000, "adj_close": c,
+            }]), db_path)
+        from nuri.trading.recommend.tracker import track_outcomes
+        track_outcomes(db_path=db_path)
+        rows = query(
+            "SELECT outcome_7d, outcome_30d FROM recommendations", db_path=db_path
+        )
+        assert rows[0]["outcome_7d"] == 2.0  # 보존 (immutable)
+        assert rows[0]["outcome_30d"] == 10.0  # 신규
+
+
+class TestForwardCloseHelper:
+    """#468 codex Round 1 #5 — _forward_close_at_horizon deterministic rule."""
+
+    def test_returns_close_on_target_date(self, db_path):
+        from nuri.trading.recommend.tracker import _forward_close_at_horizon
+        entry = datetime(2026, 4, 1)
+        target = (entry + timedelta(days=21)).strftime("%Y-%m-%d")
+        upsert_prices(pd.DataFrame([{
+            "ticker": "FWD", "date": target, "open": 100, "high": 100, "low": 100,
+            "close": 100.0, "volume": 0, "adj_close": 100.0,
+        }]), db_path)
+        assert _forward_close_at_horizon("FWD", entry, 21, db_path=db_path) == 100.0
+
+    def test_returns_most_recent_close_on_or_before_target(self, db_path):
+        """target 일 close 가 없으면 그 이전 가장 최근 trading day."""
+        from nuri.trading.recommend.tracker import _forward_close_at_horizon
+        entry = datetime(2026, 4, 1)
+        # target = 4-22, 마지막 trading day = 4-19
+        upsert_prices(pd.DataFrame([
+            {"ticker": "FWD", "date": "2026-04-19", "open": 99, "high": 99, "low": 99,
+             "close": 99.0, "volume": 0, "adj_close": 99.0},
+        ]), db_path)
+        assert _forward_close_at_horizon("FWD", entry, 21, db_path=db_path) == 99.0
+
+    def test_delisted_ticker_returns_none(self, db_path):
+        """ticker 자체가 prices 에 없으면 None (graceful degrade)."""
+        from nuri.trading.recommend.tracker import _forward_close_at_horizon
+        entry = datetime(2026, 4, 1)
+        assert _forward_close_at_horizon("DELISTED", entry, 30, db_path=db_path) is None
+
+    def test_pre_horizon_delisted_returns_none_not_stale_close(self, db_path):
+        """codex Review P2 — horizon 훨씬 이전에 거래 중단된 ticker 의 day-1 close 가
+        day-21 outcome 으로 잘못 채워지지 않아야 한다 (tolerance window lower bound).
+        """
+        from nuri.trading.recommend.tracker import _forward_close_at_horizon
+        entry = datetime(2026, 4, 1)
+        # entry+1 일에만 거래 (그 이후 delisting). horizon=21 (target = 4-22) 시
+        # tolerance window = 4-15 ~ 4-22. day-1 close (4-2) 는 window 밖 → None.
+        upsert_prices(pd.DataFrame([
+            {"ticker": "PREDEL", "date": "2026-04-02", "open": 100, "high": 100,
+             "low": 100, "close": 100.0, "volume": 0, "adj_close": 100.0},
+        ]), db_path)
+        assert _forward_close_at_horizon("PREDEL", entry, 21, db_path=db_path) is None
+
+    def test_close_within_tolerance_window_accepted(self, db_path):
+        """target 보다 며칠 이전이지만 tolerance window 안 → close 반환."""
+        from nuri.trading.recommend.tracker import _forward_close_at_horizon
+        entry = datetime(2026, 4, 1)
+        # target = 4-22, tolerance 7일 → 4-15 ~ 4-22. 4-18 close 는 valid.
+        upsert_prices(pd.DataFrame([
+            {"ticker": "TOL", "date": "2026-04-18", "open": 100, "high": 100,
+             "low": 100, "close": 105.0, "volume": 0, "adj_close": 105.0},
+        ]), db_path)
+        assert _forward_close_at_horizon("TOL", entry, 21, db_path=db_path) == 105.0

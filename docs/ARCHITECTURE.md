@@ -90,9 +90,9 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 `/api/dashboard` reads pre-computed results from DB instead of running analysis inline. Consensus from `recommendations` table (populated by `make consensus`). Response includes `freshness` and `pipeline_status` for data age display.
 
-## API (68 endpoints)
+## API (69 endpoints)
 
-`nuri/api/routes/` — 68 REST endpoints on port **8001** (`@router.get/post/put/delete/patch` decorators counted across 18 route modules; excludes FastAPI's `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`). Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
+`nuri/api/routes/` — 69 REST endpoints on port **8001** (`@router.get/post/put/delete/patch` decorators counted across 18 route modules; excludes FastAPI's `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`). Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
 
 ### Action-First Dashboard APIs (PR #264-#266)
 
@@ -194,7 +194,7 @@ data/
 
 ## Testing
 
-3,400 backend tests across 153 files + 917 frontend vitest (67 files) + 38 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
+3,485 backend tests across 154 files + 917 frontend vitest (67 files) + 38 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
 
 **Slow marker**: 11 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
 

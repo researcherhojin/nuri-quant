@@ -124,7 +124,8 @@ def print_report(results: list[TickerCheckResult], *, quiet: bool = False) -> No
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    doc = __doc__ or ""
+    parser = argparse.ArgumentParser(description=doc.split("\n")[0])
     parser.add_argument(
         "--config",
         type=Path,

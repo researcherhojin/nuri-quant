@@ -1,4 +1,7 @@
+# pyright: reportArgumentType=false
 """KIS (한국투자증권) Open API 실시간 시세 수집기.
+
+(KISCredentials | None Pylance narrowing — caller 가 None check 후 호출, runtime 정상.)
 
 자격 증명 우선순위:
     1. .env: KIS_PROD_APP_KEY/SECRET (실전), KIS_PAPER_APP_KEY/SECRET (모의)

@@ -40,6 +40,7 @@ class TestRegimeClassifier:
     def test_confidence_range(self, bull_market):
         from nuri.quant.regime.classifier import classify_regime
         state = classify_regime(db_path=bull_market)
+        assert state is not None
         assert 0.0 <= state.confidence <= 1.0
 
     def test_insufficient_data(self, db_path):
@@ -130,7 +131,7 @@ class TestRecovery:
 
     def test_recovery_none_input(self):
         from nuri.quant.regime.classifier import _detect_recovery
-        assert _detect_recovery(None) is False
+        assert _detect_recovery(None) is False  # type: ignore[arg-type]
 
 
 class TestSectorRotation:
@@ -517,7 +518,7 @@ class TestSpecialRegimes_R19:
         from nuri.quant.regime.classifier import _detect_recovery
         df = pd.DataFrame({"date": ["2024-01-01"], "close": [100], "sma50": [100], "sma200": [100]})
         assert _detect_recovery(df) is False
-        assert _detect_recovery(None) is False
+        assert _detect_recovery(None) is False  # type: ignore[arg-type]
 
     def test_sector_rotation_detected(self, tmp_path):
         from nuri.quant.regime.classifier import _detect_sector_rotation

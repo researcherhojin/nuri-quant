@@ -1,5 +1,8 @@
+# pyright: reportAttributeAccessIssue=false
 """
 뉴스 수집기 — OpenBB Platform primary + yfinance direct fallback.
+
+(OpenBB BaseApp 동적 attribute (news 등) stub 부재 — runtime 정상.)
 
 OpenBB 상류 bug (#274, upstream OpenBB-finance/OpenBB #7379/#7460) 로 news.company import
 가 깨진 상태 — yfinance `Ticker.news` 로 자동 fallback 하여 수집 지속. upstream release
