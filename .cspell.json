@@ -606,7 +606,13 @@
     "nums",
     "LOOKBACKS",
     "refreshable",
-    "barlist"
+    "barlist",
+    "drawdowns",
+    "bdates",
+    "SOXS",
+    "SOXL",
+    "sizeup",
+    "deferable"
   ],
   "ignorePaths": [
     "node_modules/**",
