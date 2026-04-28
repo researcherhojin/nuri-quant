@@ -617,3 +617,218 @@ class TestRequestParams:
 
         params = mock_get.call_args_list[0].kwargs["params"]
         assert params["FID_INPUT_ISCD"] == "123456"
+
+
+class TestSmallBranches:
+    """Codecov gap-fillers for short edge-case branches missed by main suite."""
+
+    def test_format_yyyymmdd_non_eight_digit_passthrough(self):
+        from nuri.collectors.kis_analyst_opinion import _format_yyyymmdd
+
+        # Non-8-digit / non-numeric strings pass through unchanged.
+        assert _format_yyyymmdd("2026-04-21") == "2026-04-21"
+        assert _format_yyyymmdd("xxx") == "xxx"
+        assert _format_yyyymmdd("") == ""
+
+    def test_parse_kis_row_non_dict_input(self):
+        from nuri.collectors.kis_analyst_opinion import _parse_kis_row
+
+        # Non-dict input → defensive None return (covers isinstance guard).
+        assert _parse_kis_row("not a dict", "005930.KS") is None  # type: ignore[arg-type]
+        assert _parse_kis_row(None, "005930.KS") is None  # type: ignore[arg-type]
+
+    def test_upsert_empty_records_returns_zero(self, db_with_portfolio):
+        from nuri.collectors.kis_analyst_opinion import _upsert_analyst_ratings
+
+        # Early return path when records list is empty.
+        assert _upsert_analyst_ratings([], db_path=db_with_portfolio) == 0
+
+    def test_collect_no_tickers_returns_empty(self, db_with_portfolio):
+        """No KR tickers in universe → early return without load_credentials."""
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        c = KISAnalystOpinionCollector()
+        with (
+            patch.object(c, "_get_tickers", return_value=[]),
+            patch("nuri.collectors.kis_realtime.load_credentials") as mock_load,
+        ):
+            # collect() called with no tickers kwarg → falls back to _get_tickers,
+            # which we mocked to []. No load_credentials call expected.
+            result = c.collect()
+        assert result == []
+        assert mock_load.call_count == 0
+
+    def test_post_retry_http_failure_classified_failed(self, db_with_portfolio, mock_kis_creds):
+        """Rate-limited then post-retry HTTP non-200 → failed (not empty)."""
+        import json as _json
+
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        rate_limited = _resp({"rt_cd": "1", "msg_cd": "EGW00201", "msg1": "거래건수 초과", "output": []})
+        retry_fail = _resp({}, status=503)
+        with (
+            patch("nuri.collectors.kis_realtime.load_credentials", return_value=mock_kis_creds),
+            patch("nuri.collectors.kis_realtime.get_access_token", return_value="tok"),
+            patch("requests.get", side_effect=[rate_limited, retry_fail]),
+            patch("time.sleep"),
+        ):
+            KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+
+        events = query(
+            "SELECT payload FROM pipeline_events WHERE event_type='kis_analyst_opinion_run'",
+            db_path=db_with_portfolio,
+        )
+        payload = _json.loads(events[0]["payload"])
+        assert payload["failed"] == 1
+        assert payload["empty"] == 0
+
+    def test_output_dict_wrapped_to_list(self, db_with_portfolio, mock_kis_creds):
+        """KIS sometimes returns output as a single dict instead of list — collector wraps it."""
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        # Single row as bare dict (not wrapped in list).
+        body = {
+            "rt_cd": "0",
+            "msg_cd": "MCA00000",
+            "msg1": "정상",
+            "output": _default_rows()[0],  # dict, not list
+        }
+        fake = _resp(body)
+        with (
+            patch("nuri.collectors.kis_realtime.load_credentials", return_value=mock_kis_creds),
+            patch("nuri.collectors.kis_realtime.get_access_token", return_value="tok"),
+            patch("requests.get", return_value=fake),
+            patch("time.sleep"),
+        ):
+            result = KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+        assert len(result) == 1
+        assert result[0]["firm"] == "Test Securities A"
+
+    def test_save_method_upserts(self, db_with_portfolio):
+        """Cover KISAnalystOpinionCollector.save() — small wrapper around _upsert_analyst_ratings."""
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        records = [
+            {
+                "ticker": "005930.KS",
+                "date": "2026-04-21",
+                "firm": "Test Securities A",
+                "to_grade": "매수",
+                "from_grade": None,
+                "action": "init",
+                "target_price": 300000.0,
+            }
+        ]
+        c = KISAnalystOpinionCollector()
+        # save() reaches _upsert_analyst_ratings using default DB_PATH (patched
+        # by db_with_portfolio fixture's monkeypatch).
+        n = c.save(records)
+        assert n == 1
+
+
+class TestDefensiveGuards:
+    """Cover the try/except: pass guards around emit_event so those defensive
+    blocks are exercised at least once. Pipeline-event persistence failure
+    must never propagate up and abort the collector run."""
+
+    def test_no_creds_emit_event_raise_swallowed(self, db_with_portfolio, monkeypatch):
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        def _emit_raise(*a, **kw):
+            raise RuntimeError("emit failed")
+
+        monkeypatch.setattr("nuri.collectors.kis_realtime.load_credentials", lambda mode="prod": None)
+        monkeypatch.setattr("nuri.collectors.kis_analyst_opinion.emit_event", _emit_raise)
+        # Should still return [] without raising.
+        result = KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+        assert result == []
+
+    def test_token_fail_emit_event_raise_swallowed(self, db_with_portfolio, mock_kis_creds, monkeypatch):
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        def _emit_raise(*a, **kw):
+            raise RuntimeError("emit failed")
+
+        monkeypatch.setattr("nuri.collectors.kis_realtime.load_credentials", lambda mode="prod": mock_kis_creds)
+        monkeypatch.setattr("nuri.collectors.kis_realtime.get_access_token", lambda creds: None)
+        monkeypatch.setattr("nuri.collectors.kis_analyst_opinion.emit_event", _emit_raise)
+        result = KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+        assert result == []
+
+    def test_run_summary_emit_event_raise_swallowed(self, db_with_portfolio, mock_kis_creds, monkeypatch):
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        fake = _resp(_fake_invest_opinion_response())
+        monkeypatch.setattr("nuri.collectors.kis_realtime.load_credentials", lambda mode="prod": mock_kis_creds)
+        monkeypatch.setattr("nuri.collectors.kis_realtime.get_access_token", lambda creds: "tok")
+        monkeypatch.setattr(
+            "nuri.collectors.kis_analyst_opinion.emit_event",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("emit failed")),
+        )
+        with patch("requests.get", return_value=fake), patch("time.sleep"):
+            # Even if emit_event raises, the collector returns parsed results.
+            result = KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+        assert len(result) == 2
+
+    def test_truncation_emit_event_raise_swallowed(self, db_with_portfolio, mock_kis_creds, monkeypatch):
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        pages = [_resp(_fake_invest_opinion_response(rows=[_default_rows()[0]]), tr_cont="M") for _ in range(10)]
+        monkeypatch.setattr("nuri.collectors.kis_realtime.load_credentials", lambda mode="prod": mock_kis_creds)
+        monkeypatch.setattr("nuri.collectors.kis_realtime.get_access_token", lambda creds: "tok")
+        monkeypatch.setattr(
+            "nuri.collectors.kis_analyst_opinion.emit_event",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("emit failed")),
+        )
+        with patch("requests.get", side_effect=pages), patch("time.sleep"):
+            # Truncation risk emit raises but collector continues.
+            result = KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+        assert len(result) == 10  # 10 pages * 1 row
+
+    def test_safe_str_object_with_failing_str_method(self):
+        """_safe_str returns '' when str(obj) itself raises (defensive)."""
+        from nuri.collectors.kis_analyst_opinion import _safe_str
+
+        class Boom:
+            def __str__(self):
+                raise RuntimeError("str() crash")
+
+        # Triggers `try: str(raw) except: return ''` path.
+        assert _safe_str(Boom()) == ""
+
+    def test_per_row_parse_exception_skipped(self, db_with_portfolio, mock_kis_creds, monkeypatch):
+        """Per-row try/except in collect() catches anything _parse_kis_row leaks."""
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        fake = _resp(_fake_invest_opinion_response())  # 2 rows
+        monkeypatch.setattr("nuri.collectors.kis_realtime.load_credentials", lambda mode="prod": mock_kis_creds)
+        monkeypatch.setattr("nuri.collectors.kis_realtime.get_access_token", lambda creds: "tok")
+
+        # Patch _parse_kis_row to raise — collect() must skip the row, not crash.
+        def _parse_raise(row, ticker):
+            raise RuntimeError("parse boom")
+
+        monkeypatch.setattr("nuri.collectors.kis_analyst_opinion._parse_kis_row", _parse_raise)
+        with patch("requests.get", return_value=fake), patch("time.sleep"):
+            result = KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+        assert result == []  # All rows skipped, no crash.
+
+
+class TestMainEntry:
+    """Cover the `if __name__ == "__main__"` argparse block."""
+
+    def test_main_with_ticker_argument(self, db_with_portfolio, mock_kis_creds, monkeypatch):
+        import runpy
+        import sys
+
+        fake = _resp(_fake_invest_opinion_response())
+
+        monkeypatch.setattr(sys, "argv", ["nuri.collectors.kis_analyst_opinion", "--ticker", "005930.KS"])
+        with (
+            patch("nuri.collectors.kis_realtime.load_credentials", return_value=mock_kis_creds),
+            patch("nuri.collectors.kis_realtime.get_access_token", return_value="tok"),
+            patch("requests.get", return_value=fake),
+            patch("time.sleep"),
+        ):
+            sys.modules.pop("nuri.collectors.kis_analyst_opinion", None)
+            runpy.run_module("nuri.collectors.kis_analyst_opinion", run_name="__main__")
