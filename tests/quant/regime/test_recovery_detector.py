@@ -328,3 +328,59 @@ class TestRecoveryGracefulFallbackWithoutFG:
         assert all(isinstance(v, bool) for v in components.values())
         assert "spy_above_20dma" in components
         assert "vix_3d_slope_negative" in components
+
+
+# ════════════════════════════════════════════════════════════
+# Coverage gap close — codex Round 2 codecov follow-up
+# ════════════════════════════════════════════════════════════
+class TestDataAvailabilityEdgeCases:
+    """SPY/VIX/F&G 가용성 edge case lock — graceful fallback 보장."""
+
+    def test_fetch_spy_empty_returns_empty_df(self, db_path):
+        """SPY data 가 0 rows 면 _fetch_spy_series 가 empty df early-return.
+
+        Why this lock matters: 신규 deploy / DB reset 직후 SPY 미수집 상황.
+        예외 던지지 않고 graceful 동작해야.
+        """
+        # SPY/VIX/F&G 모두 empty
+        result = evaluate_recovery("2024-12-31", db_path=db_path)
+        assert result is not None
+        # 데이터 없으니 prior_stress 도 False
+        assert result.prior_stress is False
+        # repair components 모두 False (data 없음)
+        assert result.repair_day is False
+
+    def test_fear_greed_below_30_triggers_prior_stress(self, db_path):
+        """F&G 10d min < 30 path lock — 시장 panic 의 alternative 신호.
+
+        Why this lock matters: VIX 만으로 stress 판정 시 F&G drift 놓침.
+        Codex consult 가 F&G 를 third stress source 로 명시.
+        """
+        from nuri.core.db import upsert_macro
+
+        dates = _bdates("2024-01-02", 30)
+        _seed_spy(db_path, dates, [100.0] * 30)
+        _seed_vix(db_path, dates, [16.0] * 30)  # VIX 평탄
+        # F&G: 마지막 10일 안에 25 등장 (threshold 30 below)
+        fg_rows = [{"indicator": "fear_greed", "date": d, "value": 50.0, "source": "test"} for d in dates[:-5]]
+        fg_rows += [{"indicator": "fear_greed", "date": d, "value": 25.0, "source": "test"} for d in dates[-5:]]
+        upsert_macro(fg_rows, db_path)
+
+        prior_stress, reasons = detect_prior_stress(dates[-1], db_path=db_path)
+        assert prior_stress is True
+        assert any("fg_min_10d" in r for r in reasons), reasons
+
+
+class TestExitVixThresholdPath:
+    """exit_recovery 의 VIX ≥ 25 path lock (line 236)."""
+
+    def test_vix_above_threshold_triggers_exit_recovery(self, db_path):
+        """VIX 27 인 시점은 exit_recovery=True — repair 충족 여부 무관."""
+        dates = _bdates("2024-01-02", 90)
+        _seed_spy(db_path, dates, [100.0] * 90)
+        # 마지막 일자만 VIX 27 (EXIT_VIX_THRESHOLD=25 초과)
+        vix_vals = [16.0] * 89 + [27.0]
+        _seed_vix(db_path, dates, vix_vals)
+
+        result = evaluate_recovery(dates[-1], db_path=db_path)
+        assert result.exit_recovery is True, "VIX 27 (≥ EXIT_VIX_THRESHOLD=25) 시점은 exit signal 강제"
