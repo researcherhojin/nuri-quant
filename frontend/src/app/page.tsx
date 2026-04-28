@@ -4,19 +4,18 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { fetchAPI } from "@/lib/api";
 
-import { StatusBadge } from "@/components/ui/status-badge";
 import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
 import { CoverageStatus } from "@/components/ui/coverage-status";
 import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import { CollapsibleStrip } from "@/components/ui/collapsible-strip";
 import { HeroStats } from "@/components/ui/hero-stats";
 import { CompositionSectionLazy as CompositionSection, parseCompositionTab } from "@/components/ui/composition-section-lazy";
-import { ActionItems } from "@/components/ui/action-items";
-import { OpportunityExplorer } from "@/components/ui/opportunity-explorer";
-import { MarketContext } from "@/components/ui/market-context";
+import { ActionItems, type ActionItem } from "@/components/ui/action-items";
+import { OpportunityExplorer, type Opportunity } from "@/components/ui/opportunity-explorer";
+import { MarketContext, type MacroEvent, type SystemHealth } from "@/components/ui/market-context";
 import { summarizeHoldings } from "@/lib/holdings-summary";
 import Link from "next/link";
-import { VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SECTION, STRIP, MARKET, FOOTER, COL, SPARKLINE as SPARK, COMMON, ACTION, CONTEXT } from "@/lib/strings";
+import { VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SECTION, STRIP, MARKET, FOOTER, COL, SPARKLINE as SPARK, COMMON, ACTION } from "@/lib/strings";
 
 interface DashboardData {
   verdict: string;
@@ -50,6 +49,58 @@ interface FreshnessData {
 
 interface PipelineStatusData {
   steps: Array<{ step: string; label: string; status: string; record_count: number; last_updated: string | null }>;
+}
+
+interface PortfolioHolding {
+  ticker: string;
+  account?: string;
+  quantity?: number;
+  avg_price?: number;
+  latest_price?: number;
+  currency?: string;
+  sector?: string;
+  [key: string]: unknown;
+}
+
+interface PortfolioData {
+  count?: number;
+  holdings?: PortfolioHolding[];
+  cash?: { total_cash_usd?: number };
+}
+
+interface CertifyCondition {
+  passed: boolean;
+  severity?: string;
+  description?: string;
+  detail?: string;
+  [key: string]: unknown;
+}
+
+interface CertifyData {
+  conditions?: CertifyCondition[];
+  total?: number;
+  passed?: number;
+}
+
+interface AdvisorData {
+  actions?: RawAdvisorAction[];
+  total_violations?: number;
+}
+
+interface ActionsData {
+  urgent: ActionItem[];
+  check: ActionItem[];
+  hold: ActionItem[];
+  portfolio: ActionItem[];
+}
+
+interface OpportunitiesData {
+  opportunities: Opportunity[];
+}
+
+interface MarketContextData {
+  macro_events: MacroEvent[];
+  system_health: Partial<SystemHealth>;
 }
 
 const verdictLabels: Record<string, string> = {
@@ -135,16 +186,16 @@ async function Dashboard({
     fetchAPI<DashboardData>("/api/dashboard"),
     fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], details: [], overall: "FAIL", pass: 0, warn: 0, fail: 0 })),
     fetchAPI<PipelineStatusData>("/api/pipeline/status").catch((): PipelineStatusData => ({ steps: [] })),
-    fetchAPI<any>("/api/portfolio").catch(() => null),
+    fetchAPI<PortfolioData>("/api/portfolio").catch(() => null),
     Promise.race([
-      fetchAPI<any>("/api/certify"),
+      fetchAPI<CertifyData>("/api/certify"),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
     ]).catch(() => null),
-    fetchAPI<any>("/api/rebalance-advisor").catch(() => null),
+    fetchAPI<AdvisorData>("/api/rebalance-advisor").catch(() => null),
     fetchAPI<{ targets: RawTarget[] }>("/api/targets").catch(() => ({ targets: [] as RawTarget[] })),
-    fetchAPI<any>("/api/actions").catch(() => ({ urgent: [], check: [], hold: [], portfolio: [] })),
-    fetchAPI<any>("/api/opportunities").catch(() => ({ opportunities: [] })),
-    fetchAPI<any>("/api/market-context").catch(() => ({ macro_events: [], system_health: {} })),
+    fetchAPI<ActionsData>("/api/actions").catch((): ActionsData => ({ urgent: [], check: [], hold: [], portfolio: [] })),
+    fetchAPI<OpportunitiesData>("/api/opportunities").catch((): OpportunitiesData => ({ opportunities: [] })),
+    fetchAPI<MarketContextData>("/api/market-context").catch((): MarketContextData => ({ macro_events: [], system_health: {} })),
     fetchAPI<import("@/components/ui/coverage-status").CoverageData>("/api/coverage").catch(() => null),
   ]);
 
@@ -154,7 +205,7 @@ async function Dashboard({
   const style = levelStyles[d.verdict_level] || levelStyles.neutral;
   const verdictLabel = verdictLabels[d.verdict_level] || VERDICT.NEUTRAL;
   const KRW_RATE = d.exchange_rate || 1400;
-  const holdingsValue = portfolio?.holdings?.reduce((sum: number, h: any) => {
+  const holdingsValue = portfolio?.holdings?.reduce((sum: number, h: PortfolioHolding) => {
     const price = h.latest_price || 0;
     const qty = h.quantity || 0;
     return sum + (h.ticker?.endsWith(".KS") ? price * qty / KRW_RATE : price * qty);
@@ -166,13 +217,13 @@ async function Dashboard({
   const vix = d.regime.vix ?? null;
   const fg = d.regime.fear_greed ?? null;
   const trend = d.regime.trend || "unknown";
-  const alertCount = d.alerts.length;
-  const siegeFailed = siege?.conditions?.filter((c: any) => !c.passed) || [];
+  const _alertCount = d.alerts.length;
+  const siegeFailed: CertifyCondition[] = siege?.conditions?.filter((c) => !c.passed) || [];
   const siegeTotal = siege?.total || 0;
 
-  const holdings = portfolio?.holdings || [];
-  const winners = holdings.filter((h: any) => h.latest_price && h.avg_price && h.latest_price > h.avg_price);
-  const losers = holdings.filter((h: any) => h.latest_price && h.avg_price && h.latest_price < h.avg_price);
+  const holdings: PortfolioHolding[] = portfolio?.holdings || [];
+  const winners = holdings.filter((h: PortfolioHolding) => h.latest_price && h.avg_price && h.latest_price > h.avg_price);
+  const losers = holdings.filter((h: PortfolioHolding) => h.latest_price && h.avg_price && h.latest_price < h.avg_price);
   const vixInfo = vixZone(vix);
   const macroInfo = macroLevel(d.macro.score);
   const accountValues = d.account_values || [];
@@ -182,12 +233,12 @@ async function Dashboard({
   // ticker_accounts(ticker→label, 단일 매핑)로 풀 수 없어서 collision이 발생했음 — 각
   // holding의 raw account를 key로 라벨을 lookup하여 fix.
   const accountLabels = d.account_labels || {};
-  const labeledHoldings = holdings.map((h: any) => ({
+  const labeledHoldings = holdings.map((h: PortfolioHolding) => ({
     ...h,
-    accountLabel: accountKo(accountLabels[h.account] || h.account || ""),
+    accountLabel: accountKo(accountLabels[h.account ?? ""] || h.account || ""),
   }));
   const builtHoldings = buildEnrichedHoldings(
-    labeledHoldings as any,
+    labeledHoldings as Parameters<typeof buildEnrichedHoldings>[0],
     d.actions as RawAction[],
     targets?.targets ?? [],
     (advisor?.actions ?? []) as RawAdvisorAction[],
@@ -216,7 +267,7 @@ async function Dashboard({
   const hiddenPensionCount = allEnrichedHoldings.length - enrichedHoldings.length;
 
   // heldTickers: used by HoldingRow enrichment for action matching
-  const heldTickers = new Set(holdings.map((h: any) => h.ticker));
+  const _heldTickers = new Set(holdings.map((h: PortfolioHolding) => h.ticker));
 
   // #223: composition section needs the same summarized data the old summary
   // panel had. Compute once at page level so HeroStats + CompositionSection
@@ -240,7 +291,7 @@ async function Dashboard({
   // Upcoming events strip — retained as unique data (earnings calendar, not macro news)
   const stripEvents = (d.upcoming_events ?? [])
     .slice(0, 5)
-    .map((ev: any) => ({ date: ev.date as string, description: ev.description as string | undefined, ticker: ev.ticker as string | null }));
+    .map((ev) => ({ date: ev.date as string, description: ev.description as string | undefined, ticker: ev.ticker as string | null }));
 
   // Helper — "MM-DD" format
   const fmtEventDate = (iso: string) => (iso && iso.length >= 10 ? iso.slice(5, 10) : iso ?? "");
@@ -524,7 +575,7 @@ async function Dashboard({
             <span className="text-red-400"><span className="text-red-500">&#10007;</span> {FOOTER.QUALITY_FAIL} {siegeFailed.length}{FOOTER.COUNT_SUFFIX}</span>
           )}
           {(advisor?.total_violations || 0) > 0 && (
-            <span className="text-red-400">{FOOTER.RULE_VIOLATION} {advisor.total_violations}{FOOTER.COUNT_SUFFIX}</span>
+            <span className="text-red-400">{FOOTER.RULE_VIOLATION} {advisor!.total_violations}{FOOTER.COUNT_SUFFIX}</span>
           )}
           {/* upcoming events moved to sidebar (#214). Footer keeps quality/violations/freshness. */}
           <div className="ml-auto flex items-center gap-2">
@@ -543,7 +594,7 @@ async function Dashboard({
         </div>
         {siegeTotal > 0 && siegeFailed.length > 0 && (
           <div className="space-y-0.5">
-            {siegeFailed.slice(0, 2).map((c: any, i: number) => (
+            {siegeFailed.slice(0, 2).map((c: CertifyCondition, i: number) => (
               <p key={i} className="text-[10px] text-zinc-400 pl-3">
                 <span className={c.severity === "error" ? "text-red-400" : "text-amber-400"}>{c.severity === "error" ? "\u2716" : "\u25B3"}</span>{" "}
                 {c.description} &mdash; <span className="text-zinc-600">{c.detail}</span>

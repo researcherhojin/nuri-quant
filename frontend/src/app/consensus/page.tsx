@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
-import { ConsensusTable } from "@/components/ui/consensus-table";
+import { ConsensusTable, type ConsensusRow } from "@/components/ui/consensus-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CONSENSUS as CS } from "@/lib/strings";
 
@@ -26,8 +26,13 @@ function VixBanner({ vix }: { vix: number | null }) {
   );
 }
 
+interface ConsensusRegime {
+  vix?: number | null;
+  [key: string]: unknown;
+}
+
 async function ConsensusSection() {
-  const data = await fetchAPI<{ regime: any; results: any[]; count: number }>("/api/consensus");
+  const data = await fetchAPI<{ regime: ConsensusRegime; results: ConsensusRow[]; count: number }>("/api/consensus");
   const sorted = [...data.results].sort((a, b) => b.final_confidence - a.final_confidence);
 
   return (
@@ -46,7 +51,7 @@ async function ConsensusSection() {
 }
 
 async function DissentSection() {
-  const data = await fetchAPI<{ results: any[] }>("/api/consensus");
+  const data = await fetchAPI<{ results: ConsensusRow[] }>("/api/consensus");
   const withDissent = data.results.filter((r) => r.dissent.length > 0).slice(0, 6);
   if (!withDissent.length) return null;
 

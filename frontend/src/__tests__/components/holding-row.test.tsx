@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import type { AnchorHTMLAttributes, ReactNode } from "react";
 import {
   HoldingRow,
   buildEnrichedHoldings,
@@ -13,7 +14,7 @@ import {
 } from "@/components/ui/holding-row";
 
 vi.mock("next/link", () => ({
-  default: ({ children, href, ...rest }: any) => (
+  default: ({ children, href, ...rest }: { children: ReactNode; href: string } & AnchorHTMLAttributes<HTMLAnchorElement>) => (
     <a href={href} {...rest}>{children}</a>
   ),
 }));

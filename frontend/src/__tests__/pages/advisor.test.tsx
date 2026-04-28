@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 
 // Mock next/link
@@ -28,14 +28,14 @@ const mockAdvisorReport = {
   has_critical: true,
 };
 
-let mockFetchAPI: any;
+let mockFetchAPI: Mock;
 
 vi.mock("@/lib/api", () => ({
-  fetchAPI: (...args: any[]) => mockFetchAPI(...args),
+  fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
 }));
 
-function setupFetchAPI(overrides: { advisor?: any } = {}) {
+function setupFetchAPI(overrides: { advisor?: unknown } = {}) {
   mockFetchAPI = vi.fn().mockImplementation((_path: string) => {
     return Promise.resolve(overrides.advisor ?? mockAdvisorReport);
   });

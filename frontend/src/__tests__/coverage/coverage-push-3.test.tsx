@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
+import type { ReactNode } from "react";
 
 // ═══════════════════════════════════════════════════════════
 // sma + formatVolume — pure functions from price-chart.tsx
@@ -54,7 +55,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ children, href }: any) => <a href={href}>{children}</a>,
+  default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -69,7 +70,12 @@ const multiHoldings = [
     currency: "KRW", sector: "Semi", latest_price: 65000, price_date: "2026-03-31" },
 ];
 
-function setupFetch(overrides: Record<string, any> = {}) {
+interface FetchOverrides {
+  importFail?: boolean;
+  importErrors?: unknown[];
+  editFail?: boolean;
+}
+function setupFetch(overrides: FetchOverrides = {}) {
   global.fetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
     if (typeof url === "string" && url.includes("/api/portfolio/import") && opts?.method === "POST") {
       return Promise.resolve({

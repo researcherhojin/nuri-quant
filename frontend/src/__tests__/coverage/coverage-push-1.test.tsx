@@ -2,17 +2,27 @@
  * Coverage push: pipeline branches + chart components + portfolio edge cases.
  * Target: frontend 85% → 90%+
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+import type { ReactNode } from "react";
 
 // ═══════════════════════════════════════════════════════════
 // Pipeline — handleRunStep setTimeout, running state, error display
 // ═══════════════════════════════════════════════════════════
 
+type PipelineNode = {
+  id: string;
+  data?: {
+    label?: ReactNode;
+    isRunning?: boolean;
+    status?: string;
+    onRun?: (id: string) => void;
+  };
+};
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({ nodes, children }: any) => (
+  ReactFlow: ({ nodes, children }: { nodes?: PipelineNode[]; children?: ReactNode }) => (
     <div data-testid="react-flow">
-      {nodes?.map((n: any) => (
+      {nodes?.map((n: PipelineNode) => (
         <div key={n.id} data-testid={`node-${n.id}`}>
           {/* Render the custom node type to cover PipelineNode */}
           {n.data?.label}
@@ -52,7 +62,7 @@ const mockTimelineWithPayloads = [
 ];
 
 describe("Pipeline — coverage branches", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: Mock;
 
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -206,8 +216,8 @@ describe("Pipeline — coverage branches", () => {
 // ═══════════════════════════════════════════════════════════
 
 vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
-  ComposedChart: ({ children }: any) => <div data-testid="composed-chart">{children}</div>,
+  ResponsiveContainer: ({ children }: { children?: ReactNode }) => <div data-testid="responsive-container">{children}</div>,
+  ComposedChart: ({ children }: { children?: ReactNode }) => <div data-testid="composed-chart">{children}</div>,
   Area: () => <div data-testid="area" />,
   Line: () => <div data-testid="line" />,
   Bar: () => <div data-testid="bar" />,
@@ -327,7 +337,7 @@ vi.mock("next/font/google", () => ({
 }));
 
 vi.mock("next-themes", () => ({
-  ThemeProvider: ({ children }: any) => <div data-testid="theme-provider">{children}</div>,
+  ThemeProvider: ({ children }: { children?: ReactNode }) => <div data-testid="theme-provider">{children}</div>,
 }));
 
 vi.mock("@/components/ui/sidebar", () => ({

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { render, screen, act } from "@testing-library/react";
 
 // Mock next/link
 vi.mock("next/link", () => ({
@@ -49,14 +49,14 @@ const mockConsensus = {
   count: 3,
 };
 
-let mockFetchAPI: any;
+let mockFetchAPI: Mock;
 
 vi.mock("@/lib/api", () => ({
-  fetchAPI: (...args: any[]) => mockFetchAPI(...args),
+  fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
 }));
 
-function setupFetchAPI(overrides: { consensus?: any } = {}) {
+function setupFetchAPI(overrides: { consensus?: unknown } = {}) {
   mockFetchAPI = vi.fn().mockImplementation((_path: string) => {
     return Promise.resolve(overrides.consensus ?? mockConsensus);
   });

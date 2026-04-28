@@ -218,8 +218,15 @@ async function getInternalComponents() {
   // We know the module structure, so we create equivalent functions that use fetchAPI
   const { fetchAPI } = await import("@/lib/api");
 
+  type ConflictRow = {
+    ticker: string;
+    severity: string;
+    conflict_type: string;
+    detail: string;
+    recommendation: string;
+  };
   async function ConflictsSection() {
-    const data = await fetchAPI<{ conflicts: any[]; count: number; high: number }>("/api/conflicts");
+    const data = await fetchAPI<{ conflicts: ConflictRow[]; count: number; high: number }>("/api/conflicts");
 
     // Replicate the render logic from the source
     const { Card, CardContent } = await import("@/components/ui/card");
@@ -240,7 +247,7 @@ async function getInternalComponents() {
             <p className="text-xs text-muted-foreground/70 py-3 text-center">No signal conflicts detected</p>
           ) : (
             <div className="space-y-2">
-              {data.conflicts.map((c: any, i: number) => (
+              {data.conflicts.map((c: ConflictRow, i: number) => (
                 <div key={`${c.ticker}-${i}`} className="bg-muted/50 rounded-lg p-2.5">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-medium">{c.ticker}</span>
@@ -259,7 +266,7 @@ async function getInternalComponents() {
   }
 
   async function MemorySection() {
-    const data = await fetchAPI<{ drifts: any[]; critical: number; degrading: number }>("/api/memory");
+    const data = await fetchAPI<{ drifts: Record<string, unknown>[]; critical: number; degrading: number }>("/api/memory");
     const { Card, CardContent } = await import("@/components/ui/card");
     const { Metric } = await import("@/components/ui/metric");
     const { ClientTable } = await import("@/components/ui/client-table");

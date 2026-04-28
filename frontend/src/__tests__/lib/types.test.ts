@@ -47,7 +47,7 @@ describe("RegimeSchema", () => {
   });
 
   it("rejects missing required fields", () => {
-    const { date, ...noDate } = valid;
+    const { date: _date, ...noDate } = valid;
     expect(() => RegimeSchema.parse(noDate)).toThrow();
   });
 
@@ -93,7 +93,7 @@ describe("MacroSchema", () => {
   });
 
   it("rejects missing total_score", () => {
-    const { total_score, ...noScore } = valid;
+    const { total_score: _total_score, ...noScore } = valid;
     expect(() => MacroSchema.parse(noScore)).toThrow();
   });
 
@@ -187,7 +187,7 @@ describe("CandidateSchema", () => {
   });
 
   it("rejects missing ticker", () => {
-    const { ticker, ...noTicker } = valid;
+    const { ticker: _ticker, ...noTicker } = valid;
     expect(() => CandidateSchema.parse(noTicker)).toThrow();
   });
 
@@ -239,7 +239,7 @@ describe("ScorecardSchema", () => {
   });
 
   it("rejects missing signal_id", () => {
-    const { signal_id, ...noId } = valid;
+    const { signal_id: _signal_id, ...noId } = valid;
     expect(() => ScorecardSchema.parse(noId)).toThrow();
   });
 
@@ -300,7 +300,7 @@ describe("RebalanceActionSchema", () => {
   });
 
   it("rejects missing required fields", () => {
-    const { sector, ...noSector } = valid;
+    const { sector: _sector, ...noSector } = valid;
     expect(() => RebalanceActionSchema.parse(noSector)).toThrow();
   });
 
@@ -352,7 +352,7 @@ describe("StrategySchema", () => {
   });
 
   it("rejects missing regime", () => {
-    const { regime, ...noRegime } = valid;
+    const { regime: _regime, ...noRegime } = valid;
     expect(() => StrategySchema.parse(noRegime)).toThrow();
   });
 

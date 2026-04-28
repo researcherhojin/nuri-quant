@@ -8,14 +8,14 @@
  */
 import nextDynamic from "next/dynamic";
 
-interface EquityPoint {
+export interface EquityPoint {
   date: string;
   strategy: number;
   spy: number;
   drawdown: number;
 }
 
-interface BacktestMetrics {
+export interface BacktestMetrics {
   total_return: number;
   sharpe: number;
   max_drawdown: number;
@@ -46,4 +46,3 @@ export function InteractiveBacktestLazy(props: InteractiveBacktestLazyProps) {
   return <LazyInteractive {...props} />;
 }
 
-export type { BacktestMetrics, EquityPoint };
