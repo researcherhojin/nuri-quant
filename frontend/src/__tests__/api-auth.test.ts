@@ -1,16 +1,37 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+interface CookieEntry {
+  value: string;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: string;
+  path?: string;
+  maxAge?: number;
+  [key: string]: unknown;
+}
+
+interface MockCookies {
+  _store: Record<string, CookieEntry>;
+  set(name: string, value: string, opts: Record<string, unknown>): void;
+}
+
+interface MockResponse {
+  body: unknown;
+  status: number;
+  cookies: MockCookies;
+}
+
 // Mock next/server
 vi.mock("next/server", () => {
   return {
     NextResponse: {
-      json: (body: any, init?: any) => {
-        const resp = {
+      json: (body: unknown, init?: { status?: number }): MockResponse => {
+        const resp: MockResponse = {
           body,
           status: init?.status || 200,
           cookies: {
-            _store: {} as Record<string, any>,
-            set(name: string, value: string, opts: any) {
+            _store: {},
+            set(name: string, value: string, opts: Record<string, unknown>) {
               this._store[name] = { value, ...opts };
             },
           },
@@ -59,9 +80,9 @@ describe("POST /api/auth", () => {
     const resp = await POST(req);
     expect(resp.status).toBe(200);
     expect(resp.body).toEqual({ ok: true });
-    // Verify cookie was set (mock stores in _store, cast to any to access)
-    expect((resp.cookies as any)._store["nuri-auth"]).toBeDefined();
-    expect((resp.cookies as any)._store["nuri-auth"].httpOnly).toBe(true);
+    // Verify cookie was set — mock stores into _store
+    expect((resp.cookies as unknown as MockCookies)._store["nuri-auth"]).toBeDefined();
+    expect((resp.cookies as unknown as MockCookies)._store["nuri-auth"].httpOnly).toBe(true);
   });
 
   it("cookie value is SHA256 hash, not plaintext", async () => {
@@ -72,7 +93,7 @@ describe("POST /api/auth", () => {
       body: JSON.stringify({ password: "mypass" }),
     });
     const resp = await POST(req);
-    const cookie = (resp.cookies as any)._store["nuri-auth"];
+    const cookie = (resp.cookies as unknown as MockCookies)._store["nuri-auth"];
     expect(cookie.value).not.toBe("mypass");
     expect(cookie.value.length).toBe(64); // SHA256 hex = 64 chars
   });
