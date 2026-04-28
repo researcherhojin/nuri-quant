@@ -156,14 +156,32 @@ def _format_yyyymmdd(date_str: str) -> str:
     return f"{date_str[0:4]}-{date_str[4:6]}-{date_str[6:8]}"
 
 
+def _safe_str(raw: Any) -> str:
+    """Coerce a KIS field to a stripped string. Tolerates None / non-str / numeric drift —
+    one malformed payload row must not abort the per-ticker loop (codex Round 1 review P1)."""
+    if raw is None:
+        return ""
+    if not isinstance(raw, str):
+        try:
+            raw = str(raw)
+        except Exception:
+            return ""
+    return raw.strip()
+
+
 def _parse_kis_row(row: dict, ticker_full: str) -> dict | None:
-    """Map one KIS `invest_opinion` row → analyst_ratings record dict."""
-    bsop_date = row.get("stck_bsop_date", "").strip()
+    """Map one KIS `invest_opinion` row → analyst_ratings record dict.
+
+    Defensive against None/non-string field values (codex review P1).
+    """
+    if not isinstance(row, dict):
+        return None
+    bsop_date = _safe_str(row.get("stck_bsop_date"))
     if not bsop_date:
         return None
-    curr_text = row.get("invt_opnn", "").strip() or None
-    prev_text = row.get("rgbf_invt_opnn", "").strip() or None
-    firm = (row.get("mbcr_name") or "").strip() or _FIRM_UNKNOWN
+    curr_text = _safe_str(row.get("invt_opnn")) or None
+    prev_text = _safe_str(row.get("rgbf_invt_opnn")) or None
+    firm = _safe_str(row.get("mbcr_name")) or _FIRM_UNKNOWN
     return {
         "ticker": ticker_full,
         "date": _format_yyyymmdd(bsop_date),
@@ -265,7 +283,7 @@ class KISAnalystOpinionCollector(BaseCollector):
         for ticker_full in iterator:
             code = ticker_full.replace(".KS", "").replace(".KQ", "")
             try:
-                rows = self._fetch_ticker_paginated(
+                rows, status = self._fetch_ticker_paginated(
                     url=url,
                     creds=creds,
                     token=token,
@@ -281,6 +299,12 @@ class KISAnalystOpinionCollector(BaseCollector):
                 time.sleep(interval)
                 continue
 
+            # Codex Round 1 review P1: HTTP non-200 / rt_cd != 0 must increment
+            # `failed`, not `empty` — telemetry honesty about run health.
+            if status == "failed":
+                failed.append(ticker_full)
+                time.sleep(interval)
+                continue
             if not rows:
                 empty += 1
                 time.sleep(interval)
@@ -288,7 +312,13 @@ class KISAnalystOpinionCollector(BaseCollector):
 
             covered += 1
             for raw in rows:
-                rec = _parse_kis_row(raw, ticker_full)
+                try:
+                    rec = _parse_kis_row(raw, ticker_full)
+                except Exception as e:
+                    # _parse_kis_row is defensive but a future-proof guard so a
+                    # single malformed payload row never aborts the run.
+                    self.logger.debug("%s: row parse error — %s", ticker_full, e)
+                    continue
                 if rec:
                     results.append(rec)
             time.sleep(interval)
@@ -330,12 +360,20 @@ class KISAnalystOpinionCollector(BaseCollector):
         end_date: str,
         is_rate_limit,
         rate_limit_retry_delay: float,
-    ) -> list[dict]:
-        """Fetch all pages for one ticker via tr_cont recursion. Returns raw output rows."""
+    ) -> tuple[list[dict], str]:
+        """Fetch all pages for one ticker via tr_cont recursion.
+
+        Returns `(rows, status)` where status ∈ {"ok", "empty", "failed"}.
+        Codex Round 1 review P1: callers must distinguish empty (KIS returned
+        no opinions) from failed (HTTP error / non-zero rt_cd) so the run-summary
+        telemetry doesn't lie about health.
+        """
         import requests
 
         accumulated: list[dict] = []
         tr_cont = ""  # First page sends empty tr_cont.
+        had_failure = False
+        truncation_emitted = False
 
         for depth in range(KIS_INVEST_OPINION_MAX_DEPTH):
             headers = {
@@ -357,15 +395,20 @@ class KISAnalystOpinionCollector(BaseCollector):
             resp = requests.get(url, headers=headers, params=params, timeout=10)
             if resp.status_code != 200:
                 self.logger.debug("%s page %d: HTTP %d", code, depth, resp.status_code)
+                had_failure = True
                 break
             body = resp.json()
             if is_rate_limit(body):
                 self.logger.warning("%s page %d: rate limit — %ss 대기 후 재시도", code, depth, rate_limit_retry_delay)
                 time.sleep(rate_limit_retry_delay)
                 resp = requests.get(url, headers=headers, params=params, timeout=10)
-                body = resp.json() if resp.status_code == 200 else {}
+                if resp.status_code != 200:
+                    had_failure = True
+                    break
+                body = resp.json()
             if body.get("rt_cd") != "0":
                 self.logger.debug("%s page %d: rt_cd=%s msg=%s", code, depth, body.get("rt_cd"), body.get("msg1"))
+                had_failure = True
                 break
             output = body.get("output") or []
             if isinstance(output, dict):
@@ -376,7 +419,11 @@ class KISAnalystOpinionCollector(BaseCollector):
             next_tr_cont = (resp.headers.get("tr_cont") or "").strip()
             if next_tr_cont == "M":
                 tr_cont = "N"  # Continuation flag for subsequent pages (per official sample).
-                if depth + 1 >= KIS_INVEST_OPINION_TRUNCATION_DEPTH:
+                # Codex review P2: surface truncation_risk **once per ticker**,
+                # not once per continued page. Doc contract is "한 번 surface,
+                # 계속 진행".
+                if depth + 1 >= KIS_INVEST_OPINION_TRUNCATION_DEPTH and not truncation_emitted:
+                    truncation_emitted = True
                     try:
                         emit_event(
                             event_type="kis_analyst_opinion_truncation_risk",
@@ -393,7 +440,9 @@ class KISAnalystOpinionCollector(BaseCollector):
                 continue
             break
 
-        return accumulated
+        if had_failure:
+            return accumulated, "failed"
+        return accumulated, "ok" if accumulated else "empty"
 
     def save(self, data: list[dict]) -> int:
         return _upsert_analyst_ratings(data)

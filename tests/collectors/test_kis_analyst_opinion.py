@@ -312,11 +312,12 @@ class TestPagination:
             result = KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
         assert len(result) == 2
 
-    def test_truncation_risk_event_at_high_depth(self, db_with_portfolio, mock_kis_creds):
-        """8+ pages → kis_analyst_opinion_truncation_risk surface."""
+    def test_truncation_risk_event_emits_exactly_once_per_ticker(self, db_with_portfolio, mock_kis_creds):
+        """Codex review P2: truncation_risk surfaces ONCE per ticker, not on every
+        continued page (depth 8/9/10). Doc contract: '한 번 surface, 계속 진행'."""
         from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
 
-        # 10 pages all returning tr_cont=M (will hit max_depth)
+        # 10 pages all returning tr_cont=M (will hit max_depth — covers depths 8, 9, 10).
         pages = [_resp(_fake_invest_opinion_response(rows=[_default_rows()[0]]), tr_cont="M") for _ in range(10)]
         with (
             patch("nuri.collectors.kis_realtime.load_credentials", return_value=mock_kis_creds),
@@ -330,7 +331,29 @@ class TestPagination:
             "SELECT payload FROM pipeline_events WHERE event_type='kis_analyst_opinion_truncation_risk'",
             db_path=db_with_portfolio,
         )
-        assert len(events) >= 1
+        # Exactly one — not 3 (one per page from depth 8 onward).
+        assert len(events) == 1
+
+    def test_continuation_request_carries_tr_cont_N(self, db_with_portfolio, mock_kis_creds):
+        """Codex review test gap: assert second paginated request actually sends
+        tr_cont='N' (continuation flag per official sample)."""
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        page_1 = _resp(_fake_invest_opinion_response(rows=[_default_rows()[0]]), tr_cont="M")
+        page_2 = _resp(_fake_invest_opinion_response(rows=[_default_rows()[1]]), tr_cont="")
+        with (
+            patch("nuri.collectors.kis_realtime.load_credentials", return_value=mock_kis_creds),
+            patch("nuri.collectors.kis_realtime.get_access_token", return_value="tok"),
+            patch("requests.get", side_effect=[page_1, page_2]) as mock_get,
+            patch("time.sleep"),
+        ):
+            KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+
+        # First request sends empty tr_cont; second sends "N".
+        first_headers = mock_get.call_args_list[0].kwargs["headers"]
+        second_headers = mock_get.call_args_list[1].kwargs["headers"]
+        assert first_headers["tr_cont"] == ""
+        assert second_headers["tr_cont"] == "N"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -371,6 +394,114 @@ class TestPerTickerErrorSkip:
             # Should not raise.
             result = KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
         assert result == []
+
+
+class TestFailureClassification:
+    """Codex Round 1 review P1: HTTP non-200 / rt_cd != 0 must increment
+    `failed` counter, not `empty`. Telemetry honesty about run health."""
+
+    def test_http_500_increments_failed_not_empty(self, db_with_portfolio, mock_kis_creds):
+        import json as _json
+
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        err = _resp({}, status=500)
+        with (
+            patch("nuri.collectors.kis_realtime.load_credentials", return_value=mock_kis_creds),
+            patch("nuri.collectors.kis_realtime.get_access_token", return_value="tok"),
+            patch("requests.get", return_value=err),
+            patch("time.sleep"),
+        ):
+            KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+
+        events = query(
+            "SELECT payload FROM pipeline_events WHERE event_type='kis_analyst_opinion_run'",
+            db_path=db_with_portfolio,
+        )
+        assert len(events) == 1
+        payload = _json.loads(events[0]["payload"])
+        assert payload["failed"] == 1
+        assert payload["empty"] == 0
+        assert payload["covered"] == 0
+
+    def test_rt_cd_nonzero_increments_failed_not_empty(self, db_with_portfolio, mock_kis_creds):
+        """rt_cd != "0" (KIS application-level error) → failed, not empty."""
+        import json as _json
+
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        err_body = {"rt_cd": "1", "msg_cd": "EHTC0001", "msg1": "권한 오류", "output": []}
+        with (
+            patch("nuri.collectors.kis_realtime.load_credentials", return_value=mock_kis_creds),
+            patch("nuri.collectors.kis_realtime.get_access_token", return_value="tok"),
+            patch("requests.get", return_value=_resp(err_body)),
+            patch("time.sleep"),
+        ):
+            KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+
+        events = query(
+            "SELECT payload FROM pipeline_events WHERE event_type='kis_analyst_opinion_run'",
+            db_path=db_with_portfolio,
+        )
+        payload = _json.loads(events[0]["payload"])
+        assert payload["failed"] == 1
+        assert payload["empty"] == 0
+
+
+class TestMalformedRowResilience:
+    """Codex Round 1 review P1: a single malformed row (None / non-string fields)
+    must not abort the per-ticker loop."""
+
+    def test_none_in_fields_does_not_crash(self, db_with_portfolio, mock_kis_creds):
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        rows = [
+            {  # First row malformed — None everywhere.
+                "stck_bsop_date": None,
+                "invt_opnn": None,
+                "rgbf_invt_opnn": None,
+                "mbcr_name": None,
+                "hts_goal_prc": None,
+            },
+            {  # Second row valid — must still be parsed.
+                "stck_bsop_date": "20260421",
+                "invt_opnn": "매수",
+                "invt_opnn_cls_code": "2",
+                "rgbf_invt_opnn": "보유",
+                "mbcr_name": "Test Securities A",
+                "hts_goal_prc": "300000",
+            },
+        ]
+        fake = _resp(_fake_invest_opinion_response(rows=rows))
+        with (
+            patch("nuri.collectors.kis_realtime.load_credentials", return_value=mock_kis_creds),
+            patch("nuri.collectors.kis_realtime.get_access_token", return_value="tok"),
+            patch("requests.get", return_value=fake),
+            patch("time.sleep"),
+        ):
+            result = KISAnalystOpinionCollector().collect(tickers=["005930.KS"])
+        # Malformed row dropped, valid row kept — no crash.
+        assert len(result) == 1
+        assert result[0]["firm"] == "Test Securities A"
+
+    def test_non_string_field_types(self):
+        """Numeric or other non-string types must coerce gracefully."""
+        from nuri.collectors.kis_analyst_opinion import _parse_kis_row
+
+        row = {
+            "stck_bsop_date": 20260421,  # int instead of str
+            "invt_opnn": 0,  # falsy non-str
+            "rgbf_invt_opnn": "매수",
+            "mbcr_name": 12345,  # int broker code-style
+            "hts_goal_prc": "150000",
+        }
+        rec = _parse_kis_row(row, "005930.KS")
+        assert rec is not None
+        assert rec["date"] == "2026-04-21"  # int coerced
+        assert rec["firm"] == "12345"  # int coerced to string
+        # invt_opnn=0 (falsy) → empty after coercion → curr_text=None →
+        # action falls to init since prev couldn't compare meaningfully.
+        assert rec["action"] == "init"
 
 
 class TestRateLimitRetry:
