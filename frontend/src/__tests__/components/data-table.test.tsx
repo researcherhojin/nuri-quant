@@ -232,7 +232,7 @@ describe("DataTable", () => {
 
   // ─── rowClassName ──────────────────────────────────────
   it("applies rowClassName function to matching rows", () => {
-    const rowClassName = (row: any) => row.ticker === "TSLA" ? "bg-red-500/10" : "";
+    const rowClassName = (row: (typeof basicData)[number]) => row.ticker === "TSLA" ? "bg-red-500/10" : "";
     const { container } = render(
       <DataTable columns={basicColumns} data={basicData} rowClassName={rowClassName} />
     );

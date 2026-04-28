@@ -1,18 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
+import type { ReactNode, AnchorHTMLAttributes } from "react";
 import { render, screen } from "@testing-library/react";
 
 // jsdom can't render Recharts; mock the chart primitives so the
 // CompositionSection's child donut renders as a stub container.
 vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: any) => <div>{children}</div>,
-  PieChart: ({ children }: any) => <div>{children}</div>,
-  Pie: ({ children }: any) => <div>{children}</div>,
+  ResponsiveContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  PieChart: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Pie: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   Cell: () => <div />,
   Tooltip: () => <div />,
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ children, href, ...rest }: any) => (
+  default: ({ children, href, ...rest }: { children: ReactNode; href: string } & AnchorHTMLAttributes<HTMLAnchorElement>) => (
     <a href={href} {...rest}>{children}</a>
   ),
 }));
