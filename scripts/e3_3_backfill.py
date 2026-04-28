@@ -62,7 +62,7 @@ def backfill_vix(dry_run: bool = False) -> int:
 
     LOG.info("📈 VIX 5Y backfill (^VIX)")
     raw = yf.download("^VIX", period=VIX_PERIOD_5Y, progress=False)
-    if raw.empty:
+    if raw is None or raw.empty:
         LOG.error("VIX yfinance fetch empty — network 또는 ticker symbol issue")
         return 0
 

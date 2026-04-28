@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportCallIssue=false
 """
 기술적 분석 차트 — 투자 플랫폼 스타일 인터랙티브 HTML.
 
@@ -6,6 +7,10 @@
 사용법:
     python -m nuri.analysis.charts --ticker TSLA
     python -m nuri.analysis.charts --all
+
+Pylance 정책: TA-Lib NDArray 호환성 / Plotly add_hline row/col Literal 시그니처
+mismatch 는 광범위 false positive — 실행 시점에는 모두 정상 동작 (pandas Series
+→ float ndarray, plotly subplot 정수 row/col 표준 사용). file-level disable.
 """
 import argparse
 import logging
