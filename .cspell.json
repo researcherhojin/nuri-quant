@@ -591,7 +591,16 @@
     "productionization",
     "hermeticity",
     "blocklist",
-    "unbuildable"
+    "unbuildable",
+    "exfiltrated",
+    "Herfindahl",
+    "Hirschman",
+    "herfindahl",
+    "FULLSCAN",
+    "nums",
+    "LOOKBACKS",
+    "refreshable",
+    "barlist"
   ],
   "ignorePaths": [
     "node_modules/**",
