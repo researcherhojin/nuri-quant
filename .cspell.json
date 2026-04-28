@@ -442,7 +442,20 @@
     "natgas",
     "IXIC",
     "GSPC",
-    "selftext"
+    "selftext",
+    "infotable",
+    "cusip",
+    "Prnamt",
+    "randn",
+    "miswriter",
+    "sparkline",
+    "SPARKLINE",
+    "XYZNOTEXIST",
+    "XYZZZZNONE",
+    "novoo",
+    "BADSTOCK",
+    "sortino",
+    "ARKW"
   ],
   "ignorePaths": [
     "node_modules/**",
