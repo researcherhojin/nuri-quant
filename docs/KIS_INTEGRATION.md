@@ -1,14 +1,17 @@
 # KIS Open API 통합 가이드
 
-한국투자증권 (KIS) Open API 실시간 시세 + 리서치 보고서 통합 모듈.
+한국투자증권 (KIS) Open API 실시간 시세 + 애널리스트 투자의견 통합 모듈.
 
 ## 모듈 구조
 
 ```
 nuri/collectors/
-├── kis_realtime.py  # 실시간 시세 (한국 + 미국), 토큰 캐시, rate limit 처리
-└── kis_research.py  # 리서치 보고서 스크래퍼 (skeleton, Playwright 통합 대기)
+├── kis_realtime.py         # 실시간 시세 (한국 + 미국), 토큰 캐시, rate limit 처리
+├── institutional.py        # 기관/외인 수급 (#247 — investor-trade-by-stock-daily)
+└── kis_analyst_opinion.py  # KR 애널리스트 투자의견 (#418 — invest-opinion REST endpoint)
 ```
+
+`kis_analyst_opinion.py` 는 #418 (Playwright 기반 리서치 페이지 스크래퍼 design) 의 후속이다. 공식 KIS Open API REST endpoint `invest-opinion` (tr_id `FHKST663300C0`) 만 사용하므로 Playwright / 로그인 세션 자동화 / DOM 렌더링 우회는 더 이상 필요 없다 (2026-04-28 user challenge → official repo 재조사 → endpoint 발견).
 
 ## 자격 증명 (Credentials)
 
@@ -197,8 +200,58 @@ KIS는 미국 종목을 거래소별로 분리:
 1. **모의(vps) 데이터 누락**: 일부 미국 종목 (OKLO, IONQ, FIG)은 모의에서 빈 응답. yfinance fallback 자동.
 2. **KIS_HTS_ID 필요**: WebSocket 실시간 호가 사용 시 HTS ID 필수 (현재 REST만 사용 시 불필요)
 3. **종합계좌 (account) 미설정 OK**: 시세 조회만 사용 시 계좌번호 비워둬도 작동. 매매 주문 시 필요
-4. **`kis_research.py` skeleton**: KIS 리서치 페이지는 로그인 + JavaScript 렌더링 필요. Playwright 통합 후속 작업 대기
-5. **WebSocket "No close frame received" 오류**: HTS ID 정확성 확인 필요 (KIS 공식 안내)
+4. **WebSocket "No close frame received" 오류**: HTS ID 정확성 확인 필요 (KIS 공식 안내)
+
+## 애널리스트 투자의견 (#418)
+
+`nuri/collectors/kis_analyst_opinion.py` 는 KIS Open API `invest-opinion` (tr_id `FHKST663300C0`) endpoint 를 사용해 KR 종목별 애널리스트 투자의견을 수집한다.
+
+### Endpoint
+```
+GET /uapi/domestic-stock/v1/quotations/invest-opinion
+tr_id: FHKST663300C0
+```
+
+**Parameters**:
+- `FID_COND_MRKT_DIV_CODE=J` (KRX)
+- `FID_COND_SCR_DIV_CODE=16633` (Primary key)
+- `FID_INPUT_ISCD`: 6자리 ticker code (e.g. `005930`)
+- `FID_INPUT_DATE_1` / `FID_INPUT_DATE_2`: YYYYMMDD 시작/종료. 6 month rolling window default. T-0 (당일) 도 정상 동작 — `investor-trade-by-stock-daily` 의 T-1 제약과 다름 (live probe 2026-04-28 verified).
+
+**Output** (`output[]`, broker-level rows):
+- `stck_bsop_date` — YYYYMMDD
+- `invt_opnn` / `invt_opnn_cls_code` — 현재 의견 + 코드
+- `rgbf_invt_opnn` / `rgbf_invt_opnn_cls_code` — 직전 의견 + 코드
+- `mbcr_name` — 발표 증권사명 (한국어 raw text)
+- `hts_goal_prc` — 목표가 (KRW)
+- `stck_nday_esdg` / `nday_dprt` / `stft_esdg` / `dprt` — 괴리도/괴리율 (현 단계 미저장)
+
+### 설계 결정 (codex Round 1+2 consult, 2026-04-28)
+
+| 결정 | 이유 |
+|---|---|
+| `cls_code` 무시, `invt_opnn` 텍스트로 정규화 | live probe — 같은 cls_code 가 broker 별로 BUY / HOLD / Outperform / Neutral 으로 다르게 매핑 (broker-inconsistent ranking). 텍스트 normalization 으로 canonical bucket 추출. |
+| `firm` = 원본 broker 이름, 빈 값은 stable fallback (`KIS_UNKNOWN`) | `INSERT OR IGNORE` UPSERT 의 UNIQUE `(ticker, date, firm)` 가 NULL≠NULL SQLite quirk 로 깨지지 않도록 보장. |
+| `to_grade` / `from_grade` 원본 KIS 텍스트 그대로 | 기존 US 행 (브로커별 영문) 과 동일 패턴; 정규화는 consumer 책임. |
+| `action` 4-value derivation: `init` / `main` / `up` / `down` | 기존 `analyst_ratings.action` vocabulary (`init`, `up`, `down`, `main`, `reit`) 와 호환. KIS 의 `reit` 의미는 없어 `main` 으로 흡수. |
+| 6 month rolling window, 매 Sunday 재실행 idempotent | strict T-7d watermark 보다 안전 — scheduler miss 이후 hole 방지. UPSERT IGNORE 가 dup 흡수. |
+
+### 운영 한계 (Round 2 codex flagged, 후속 이슈 대상)
+
+1. **`analyst_ratings` 는 `nuri/core/coverage.py::US_ONLY_TABLES` 에 그대로** — KR 행이 DB 에는 들어오지만 coverage 통계에서는 여전히 "n/a (US-only)" 로 표시됨. 후속 PR 에서 KR 지원 reclassify.
+2. **`WallStreetAgent` 는 `.KS` ticker hard-skip 유지** (`nuri/trading/agents/wallstreet.py` 라인 ~40) — KR 의견이 consensus 까지 흐르지 않음. UI ticker detail 에는 표시. 후속 PR 에서 read-path 활성화.
+3. **Privacy scanner 의 `BROKER_NAMES_KO`** — DB row 의 broker 이름은 scanner pattern 과 일치. **DB / runtime log 은 검사 대상 아님** (scanner 는 committed code/docs/PR/commit 만 검사), 그러나 test fixture 와 docs 에서는 합성 broker 이름 ("Test Securities A" 등) 사용. 본 문서의 broker 이름 언급도 generic.
+
+### 실패 모드 (STRATEGY §2.6 Surface rung)
+
+| 상황 | 동작 | pipeline_events |
+|---|---|---|
+| KIS creds 미설정 | 즉시 `[]`, warning | `step_blocked` + `kis_creds_missing` |
+| Token 발급 실패 | 즉시 `[]`, error | `step_failed` + `kis_token_failed` |
+| 전체 실행 완료 | 결과 반환 | `kis_analyst_opinion_run` (covered / empty / failed / rows) |
+| `tr_cont` recursion ≥ 8 | 한 번 surface, 계속 진행 | `kis_analyst_opinion_truncation_risk` (ticker_code, depth) |
+| HTTP 4xx/5xx, `rt_cd != 0`, exception | 해당 ticker skip, debug 로그 | (없음 — per-ticker level) |
+| Empty `output` | 해당 ticker `empty++`, continue | (없음 — 통합 run 이벤트에 합산) |
 
 ## 투자자매매동향 (기관/외인 수급, #247)
 
