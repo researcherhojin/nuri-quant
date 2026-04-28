@@ -433,10 +433,12 @@ Deferred (필요 시점에 추가):
 
 ### 5.9 Case Studies (on-demand reference)
 
-실제 실패 세션의 구체 교훈은 `docs/HARNESS.md` 로 분리. 비슷한 패턴 디버깅 시만 참조.
+실제 실패 세션의 구체 교훈은 `/nuri-harness-debug` skill 이 canonical (2026-04-29 doc refactor PR 4 로 `docs/HARNESS.md` → pointer 화). 비슷한 패턴 디버깅 시 auto-trigger 또는 manual `/nuri-harness-debug` invoke.
 
-- `docs/HARNESS.md §1` — #272 세션 교훈 (2026-04-14, 12 PRs): Mock-only 테스트, API 동시성 비대칭, ThreadPool timeout, 사용자 관점 검증, multi-role flow
-- `docs/HARNESS.md §2` — JKHY 에피소드 (PR #300-#303, #306, #307): dissent overwhelmed, mechanical divergence penalty, 초기 진단 오독 정정
+- **Case #1** — #272 세션 (2026-04-14, 12 PRs): Mock-only 테스트, API 동시성 비대칭, ThreadPool timeout, 사용자 관점 검증, multi-role flow.
+- **Case #2** — JKHY 에피소드 (PR #300-#303, #306, #307): dissent overwhelmed, mechanical divergence penalty, 초기 진단 오독 정정.
+
+Skill 미가용 시 `docs/HARNESS.md` (pointer) → `.claude/skills/nuri-harness-debug/SKILL.md` 로 fallback.
 
 ---
 
