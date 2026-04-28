@@ -976,3 +976,28 @@ class TestForwardCloseHelper:
         from nuri.trading.recommend.tracker import _forward_close_at_horizon
         entry = datetime(2026, 4, 1)
         assert _forward_close_at_horizon("DELISTED", entry, 30, db_path=db_path) is None
+
+    def test_pre_horizon_delisted_returns_none_not_stale_close(self, db_path):
+        """codex Review P2 — horizon 훨씬 이전에 거래 중단된 ticker 의 day-1 close 가
+        day-21 outcome 으로 잘못 채워지지 않아야 한다 (tolerance window lower bound).
+        """
+        from nuri.trading.recommend.tracker import _forward_close_at_horizon
+        entry = datetime(2026, 4, 1)
+        # entry+1 일에만 거래 (그 이후 delisting). horizon=21 (target = 4-22) 시
+        # tolerance window = 4-15 ~ 4-22. day-1 close (4-2) 는 window 밖 → None.
+        upsert_prices(pd.DataFrame([
+            {"ticker": "PREDEL", "date": "2026-04-02", "open": 100, "high": 100,
+             "low": 100, "close": 100.0, "volume": 0, "adj_close": 100.0},
+        ]), db_path)
+        assert _forward_close_at_horizon("PREDEL", entry, 21, db_path=db_path) is None
+
+    def test_close_within_tolerance_window_accepted(self, db_path):
+        """target 보다 며칠 이전이지만 tolerance window 안 → close 반환."""
+        from nuri.trading.recommend.tracker import _forward_close_at_horizon
+        entry = datetime(2026, 4, 1)
+        # target = 4-22, tolerance 7일 → 4-15 ~ 4-22. 4-18 close 는 valid.
+        upsert_prices(pd.DataFrame([
+            {"ticker": "TOL", "date": "2026-04-18", "open": 100, "high": 100,
+             "low": 100, "close": 105.0, "volume": 0, "adj_close": 105.0},
+        ]), db_path)
+        assert _forward_close_at_horizon("TOL", entry, 21, db_path=db_path) == 105.0

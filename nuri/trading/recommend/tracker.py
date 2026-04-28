@@ -150,21 +150,36 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
 TRACK_HORIZONS = (7, 14, 21, 30, 60, 90)
 
 
+# forward-close lookup tolerance — target ± HORIZON_TOLERANCE_DAYS 안에 trading day 있어야 valid.
+# 주말+공휴일+간헐 gap 흡수용 작은 window. 너무 크면 codex P2 (delisting → day-1 close 가
+# day-21 으로 저장) 재발 — 보수적으로 7일 (한 주 휴장 한도).
+HORIZON_TOLERANCE_DAYS = 7
+
+
 def _forward_close_at_horizon(
     ticker: str,
     entry_date: datetime,
     horizon_days: int,
     db_path=None,
 ) -> float | None:
-    """단일 deterministic forward-close 조회 helper (#468 codex Round 1 #5).
+    """단일 deterministic forward-close 조회 helper (#468 codex Round 1 #5 + Review P2).
 
-    Rule: entry_date + horizon_days (calendar) 이후의 가장 최근 trading day close.
-    delisting / suspension / 미존재 ticker → None (caller 가 NULL 유지).
+    Rule: entry_date + horizon_days (calendar) 의 ±HORIZON_TOLERANCE_DAYS window 안에
+    가장 최근 trading day close. window 밖 (e.g., delisting 으로 horizon 이전에 거래 중단)
+    → None 반환 → caller 가 NULL 유지 (immutable, 오염 방지).
+
+    codex review P2 lock-in: 기존 `WHERE date <= target` 만으로는 horizon 이전 어느
+    시점이든 통과 → delisting 시 day-1 close 를 day-21 outcome 으로 저장하는 silent
+    contamination. lower bound (target - tolerance) 추가로 차단.
     """
-    target = (entry_date + timedelta(days=horizon_days)).strftime("%Y-%m-%d")
+    target_dt = entry_date + timedelta(days=horizon_days)
+    target = target_dt.strftime("%Y-%m-%d")
+    lower_bound = (target_dt - timedelta(days=HORIZON_TOLERANCE_DAYS)).strftime("%Y-%m-%d")
     rows = query(
-        "SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
-        (ticker, target),
+        "SELECT close FROM prices "
+        "WHERE ticker = ? AND date <= ? AND date >= ? "
+        "ORDER BY date DESC LIMIT 1",
+        (ticker, target, lower_bound),
         db_path=db_path,
     )
     if not rows:
