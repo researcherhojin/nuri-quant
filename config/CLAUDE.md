@@ -24,17 +24,19 @@
 4. Commit the YAML change **separately** from code changes when possible — makes diffs easier to review and bisect.
 5. If you're also changing a Python-exposed constant (e.g. `STOCK_STOP_LOSS`), update the loader in `nuri/core/` AND the callers. Don't silently leave YAML and code out of sync.
 
-## Account strategy profiles (authoritative in `rules.yaml`)
+## Account strategy profiles
 
-| Strategy | stop_loss | max_single_position | max_sector_exposure | Extra |
-|----------|-----------|---------------------|---------------------|-------|
-| `core` | -7% | 15% | 35% | Default |
-| `active` | -10% | 25% | 45% | `trailing_stop_arm: 15` (auto-arm trailing stop at +15%) |
-| `swing` | -15% | 30% | 50% | — |
-| `long_term` | -20% | 25% | 50% | — |
-| `pension` | -30% | 40% | 60% | — |
+5 profiles defined; each `portfolio.yaml` account selects via the `strategy:` field; default = `core`. Cognitive map only (no values — full table is canonical in `rules.yaml account_strategies` + `docs/STRATEGY.md §3.5`):
 
-Each `portfolio.yaml` account chooses via `strategy:` field. Default = `core`. Cross-referenced in `docs/STRATEGY.md §3.5`.
+| Strategy | Risk profile |
+|----------|--------------|
+| `core` | Strict O'Neil discipline (default) |
+| `active` | Cut losses early, ride winners (auto-trailing) |
+| `swing` | Short-term rotations |
+| `long_term` | Buy-and-hold ETFs |
+| `pension` | Long-horizon retirement allocations |
+
+Editing a value? → `rules.yaml`. Editing rationale / adding a new strategy? → `STRATEGY.md §3.5` first, then YAML.
 
 ## Schema landmarks
 

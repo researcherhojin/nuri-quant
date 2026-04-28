@@ -171,35 +171,17 @@ make deploy-mini
 
 ## Investment Rules
 
-Defined in `config/rules.yaml` and loaded via `nuri/core/rules.py`. Sources: O'Neil (CAN SLIM), Minervini (SEPA), Shefrin & Statman (1985, 처분효과 / disposition effect).
+Rules live in `config/rules.yaml` (loaded via `nuri/core/rules.py`); code never hardcodes them. Sources: O'Neil (CAN SLIM), Minervini (SEPA), Shefrin & Statman (1985, 처분효과 / disposition effect).
 
-### Account strategy profiles
+| Strategy | Stop-loss | Risk profile |
+|----------|-----------|-------|
+| `core` | -7% | Default — strict O'Neil discipline |
+| `active` | -10% | Cut losses early, auto-trailing-stop arms at +15% |
+| `swing` | -15% | Short-term 5–20d rotations |
+| `long_term` | -20% | Buy-and-hold ETFs |
+| `pension` | -30% | Long-horizon retirement allocations |
 
-Each account in `config/portfolio.yaml` selects one strategy via the `strategy` field. Stricter strategies cut losses earlier and limit concentration; looser strategies allow winners to grow.
-
-| Strategy | Stop-Loss | Max Single Position | Notes |
-|----------|-----------|---------------------|-------|
-| `core` | -7% | 15% | Default. Strict O'Neil-style discipline |
-| `active` | -10% | 25% | + `trailing_stop_arm: 15` — trailing stop auto-arms at +15% to protect winners |
-| `swing` | -15% | 30% | Short-term rotations only |
-| `long_term` | -20% | 25% | Buy-and-hold ETFs |
-| `pension` | -30% | 40% | Long-horizon retirement allocations |
-
-### Take-profit by stock type
-
-Each ticker is tagged growth/value via `config/stock_types.yaml`. Take-profit and trailing-stop levels apply per type.
-
-| Type | 1st Target | 2nd Target | Trailing |
-|------|-----------|-----------|----------|
-| Growth | +20% (sell 50%) | +40% (sell 25%) | -15% from HWM |
-| Value | +15% (sell 50%) | +30% (sell 25%) | -15% from HWM |
-
-### Hard gates (always-on, no override)
-
-- **VIX > 30** → new buys blocked
-- **execution_priority** → stop-loss → take-profit → trailing → new-buy (loss largest first)
-- **Buy checklist** → TipRanks ≥ Moderate Buy · superinvestors ≥ 3 · PE < 100 · revenue > $0 · multi-factor top 50%
-- **SIEGE v2 gate** → 1 error-grade failure = REJECTED, no manual override (conditions count varies per asset-class expansion)
+Take-profit ladders (growth: +20% / +40% / -15% trailing; value: +15% / +30% / -15%) and hard gates (VIX > 30 blocks new buys, SIEGE v2 certification rejects on any error-grade gate fail) apply on top. Full tables with per-class thresholds and the full rationale: [`docs/STRATEGY.md §3.4-§3.5, §6`](docs/STRATEGY.md) and [`config/rules.yaml`](config/rules.yaml).
 
 ## References
 

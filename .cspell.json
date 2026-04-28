@@ -612,7 +612,8 @@
     "SOXS",
     "SOXL",
     "sizeup",
-    "deferable"
+    "deferable",
+    "unconfigured"
   ],
   "ignorePaths": [
     "node_modules/**",
