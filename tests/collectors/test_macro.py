@@ -97,7 +97,8 @@ class TestMacroCollectorFREDAndYFinance:
         assert MacroCollector()._collect_yfinance(days=30) == []
 
     def test_collect_prefers_fred(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.macro import MacroCollector
+        """FRED 가 cover 하는 indicator 는 source='FRED' (yfinance dup 제외) — #362 merge 후."""
+        from nuri.collectors.macro import FRED_SERIES, MacroCollector
 
         mock_series = pd.Series([4.5], index=pd.to_datetime(["2025-01-15"]))
         mock_fred = MagicMock()
@@ -105,10 +106,18 @@ class TestMacroCollectorFREDAndYFinance:
         import sys
 
         monkeypatch.setitem(sys.modules, "fredapi", MagicMock(Fred=MagicMock(return_value=mock_fred)))
+        # yfinance 분기 차단 — _collect_yfinance 에서 yfinance.download mock 안 하면
+        # 실제 네트워크 호출 됨. conftest.py 의 yfinance.download stub (빈 df) 활용.
         collector = MacroCollector()
         collector.api_key = "real_key"
         results = collector.collect(days=30)
-        assert all(r["source"] == "FRED" for r in results)
+        # FRED 가 cover 하는 indicator 들은 모두 source='FRED'
+        fred_keys = set(FRED_SERIES.keys())
+        for r in results:
+            if r["indicator"] in fred_keys:
+                assert r["source"] == "FRED", (
+                    f"{r['indicator']} 는 FRED 에 정의됨 → source='FRED' 여야 함 (yfinance dup 제거 실패)"
+                )
 
     def test_collect_nan_value_skipped(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.macro import MacroCollector
@@ -165,3 +174,99 @@ class TestMacroCollectorEdgeCases:
         collector = MacroCollector()
         collector.api_key = "real_key"
         assert isinstance(collector.collect(days=30), list)
+
+
+class TestPartAIndicatorRegistry:
+    """Issue #362 Part A — 10 신규 yfinance 지표 등록 lock-in."""
+
+    def test_part_a_indicators_present_in_registry(self):
+        """YFINANCE_SYMBOLS 에 #362 Part A 10개 indicator key 가 모두 존재."""
+        from nuri.collectors.macro import YFINANCE_SYMBOLS
+
+        expected = {
+            "nasdaq_composite", "sp500", "dow", "nasdaq100_futures", "sox",
+            "dxy", "silver", "natgas", "copper", "wheat",
+        }
+        missing = expected - set(YFINANCE_SYMBOLS.keys())
+        assert not missing, (
+            f"#362 Part A indicator key 누락: {missing}. 한 줄이라도 빠지면 "
+            f"daily macro collect 가 그 지표를 silently 스킵."
+        )
+
+    def test_part_a_symbols_match_2026_04_28_live_probe(self):
+        """2026-04-28 live probe 결과와 등록 symbol 일치 — DXY 는 DX-Y.NYB (DX=F empty)."""
+        from nuri.collectors.macro import YFINANCE_SYMBOLS
+
+        expected_mapping = {
+            "nasdaq_composite": "^IXIC",
+            "sp500": "^GSPC",
+            "dow": "^DJI",
+            "nasdaq100_futures": "NQ=F",
+            "sox": "^SOX",
+            "dxy": "DX-Y.NYB",  # NOT DX=F (issue body 의 'DX=F' 는 yfinance empty — live probe)
+            "silver": "SI=F",
+            "natgas": "NG=F",
+            "copper": "HG=F",
+            "wheat": "ZW=F",
+        }
+        for key, expected_sym in expected_mapping.items():
+            actual = YFINANCE_SYMBOLS.get(key)
+            assert actual == expected_sym, (
+                f"{key}: expected {expected_sym!r}, got {actual!r}. "
+                f"DXY 가 DX=F 로 되돌아가면 yfinance empty → DB 영구 누락 (live probe 2026-04-28)."
+            )
+
+    def test_part_a_does_not_displace_existing_indicators(self):
+        """기존 vix/gold/wti_oil/us_*_yield/usd_krw 가 그대로 남아있음 — 회귀 방지."""
+        from nuri.collectors.macro import YFINANCE_SYMBOLS
+
+        legacy = {"us_10y_yield", "us_2y_yield", "us_5y_yield", "us_30y_yield",
+                  "vix", "wti_oil", "usd_krw", "gold"}
+        missing = legacy - set(YFINANCE_SYMBOLS.keys())
+        assert not missing, f"기존 지표 회귀 — {missing} 사라짐"
+
+    def test_collect_merges_yf_supplement_when_fred_set(self, monkeypatch, db_with_portfolio):
+        """FRED_API_KEY 설정 시 — yfinance-only indicator (#362 Part A) 가 보충 수집됨.
+
+        Codex Review #362 P1: FRED 가 일부 indicator 만 cover 하는데 collect() 가
+        FRED 결과 있으면 즉시 return → yfinance-only 영구 미수집.
+
+        Fix: collect() 가 두 source 모두 호출 + indicator dedupe (FRED 우선).
+        Lock-in: 이 test 가 fail 하면 P1 회귀.
+        """
+        import sys
+
+        import pandas as pd
+
+        from nuri.collectors.macro import MacroCollector
+
+        # FRED stub — vix 만 응답 (cover 일부)
+        mock_series = pd.Series([18.5], index=pd.to_datetime(["2025-01-15"]))
+        mock_fred = MagicMock()
+        mock_fred.get_series.return_value = mock_series
+
+        monkeypatch.setitem(sys.modules, "fredapi", MagicMock(Fred=MagicMock(return_value=mock_fred)))
+
+        # yfinance stub — _collect_yfinance 가 호출되면 fake 새 indicator 반환
+        # (실제 yfinance.download 는 conftest mock 으로 빈 df → records=[] 반환됨)
+        # 따라서 _collect_yfinance 자체를 monkeypatch.
+        def stub_yf(self, days):
+            return [
+                {"indicator": "vix",   "date": "2025-01-15", "value": 19.0, "source": "yfinance"},  # FRED dup
+                {"indicator": "sp500", "date": "2025-01-15", "value": 7000.0, "source": "yfinance"},  # yf-only
+                {"indicator": "dxy",   "date": "2025-01-15", "value": 98.5, "source": "yfinance"},  # yf-only
+            ]
+        monkeypatch.setattr(MacroCollector, "_collect_yfinance", stub_yf)
+
+        collector = MacroCollector()
+        collector.api_key = "real_key"
+        results = collector.collect(days=30)
+
+        indicators = {r["indicator"]: r["source"] for r in results}
+        # FRED-covered indicator (vix) 는 FRED 우선 (yfinance dup 제외)
+        # vix 는 fred_records 도 있고 yf 도 있는데, FRED 우선이라 source='FRED' 여야 함
+        # FRED_SERIES 에 vix 가 있어 _collect_fred 가 vix records 생성
+        assert "sp500" in indicators, "yfinance-only indicator 보충 안 됨 — P1 회귀"
+        assert "dxy" in indicators, "yfinance-only indicator 보충 안 됨 — P1 회귀"
+        assert indicators["sp500"] == "yfinance"
+        assert indicators["dxy"] == "yfinance"
