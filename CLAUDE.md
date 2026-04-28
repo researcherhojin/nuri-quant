@@ -224,6 +224,7 @@ nuri/
 - **20 signals + 2 SHADOW, YAML registry**: `config/signals.yaml` drives `signal_backtest.py` (20 actionable) + `market_signals.py` (2 SHADOW, scope `market_wide`). See `docs/ARCHITECTURE.md`.
 - **Regime classifier**: 6 base + 4 special regimes. See `docs/ARCHITECTURE.md`.
 - **External LLM gateway**: `nuri/llm/openai_client.py` is the ONLY external LLM entry point. Direct `import openai` forbidden. `chat_json` (Tier 0 JSON) / `chat_text` (Tier 2 narrative, ZDR-gated). Every call audit-logged to `external_llm_calls` (content never stored). Policy: `docs/STRATEGY.md §4.4.3`.
+- **Provisional vs canonical Learning Memory** (#468, PR #469, 2026-04-28): per-agent precedence `canonical_30d > provisional_21d > default > structurally_unsaturating`. Migration 23 added `outcome_7/14/21d` to `recommendations`. `compute_canonical_weights()` reads `outcome_30d` only; `compute_provisional_weights()` reads `outcome_21d` only — structural separation (no spy-test). Canonical cap `0.30` / provisional cap `0.10` (weaker evidence → conservative). retail/crypto agents marked `structurally_unsaturating` (BUY+SELL emit freq=0). API `/api/learning-memory/readiness` per-agent source list. See STRATEGY §3.9 for design rationale (why 30d canonical / why 21d provisional / why structural separation). **Test:** `tests/trading/agents/test_consensus.py::TestPerAgentPrecedence` (6) + `TestProvisionalLearningMemory` (5) + `TestStructuralSeparation` (3) + `tests/trading/recommend/test_tracker.py::TestOutcomeImmutability` (3) + `TestForwardCloseHelper` (5).
 
 ## Code Conventions
 
@@ -306,6 +307,8 @@ This project uses layered context files. Root files load every session; director
 | `frontend/CLAUDE.md` | Next.js 16, design system, testing gotchas | When editing frontend/ |
 | `tests/CLAUDE.md` | Fixtures, mocks, testing gotchas | When editing tests/ |
 | `config/CLAUDE.md` | YAML structure, change procedures | When editing config/ |
+| `.claude/skills/nuri-harness-debug/` | Harness failure-pattern playbook (case studies, Gotcha-Test Pair protocol detail) | On demand (debugging similar patterns) — STRATEGY §5 directs invocation |
+| `.claude/skills/nuri-siege-audit/` | SIEGE predictivity audit methodology (E4-0b v2 60-month rerun, gate eligibility matrix) | On demand (audit/replay work) — STRATEGY §3.8 directs invocation |
 | `NEXT_SESSION.md` | Session handoff doc — 다음 세션 시작 시 먼저 읽음 | gitignored (personal) |
 | `~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/memory/` | User-scoped auto-memory (`MEMORY.md` index + per-topic files) | Always (cross-conversation, not committed) |
 
