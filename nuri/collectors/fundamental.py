@@ -59,6 +59,82 @@ def _safe_num(val) -> float | None:
     return f
 
 
+# KIS Open API inquire-price (FHKST01010100) 응답 필드 → fundamentals 컬럼 매핑.
+# yfinance KR 한계 (#465): trailingPE / priceToBook 미제공 → KIS 공식 데이터로 보충.
+# eps/bps/lstn_stcn 은 market_cap 계산에만 사용 (별도 컬럼 없음 — scope creep 회피, codex Plan).
+KIS_FIELDS = {
+    "per": "pe_ratio",          # KIS trailing P/E
+    "pbr": "price_to_book",     # KIS P/B
+}
+
+
+def _kis_record_skeleton(ticker: str, today: str) -> dict:
+    """모든 fundamentals 컬럼을 None 으로 초기화 — _upsert_fundamentals named binding 호환.
+
+    KIS 가 채우지 않는 yfinance-only 컬럼 (forward_pe / roe / margin / growth 등) 은
+    None 으로 명시적 채워야 sqlite3 NamedParam binding 에러 방지.
+    """
+    return {
+        "ticker": ticker, "date": today,
+        "market_cap": None, "pe_ratio": None, "forward_pe": None, "price_to_book": None,
+        "peg_ratio": None, "roe": None, "roa": None, "gross_margin": None,
+        "operating_margin": None, "profit_margin": None, "revenue_growth": None,
+        "earnings_growth": None, "debt_to_equity": None, "current_ratio": None,
+        "dividend_yield": None, "beta": None,
+        "annual_dividend_usd": None, "dividend_yield_pct": None,
+    }
+
+
+def _fetch_kis_kr(ticker: str, creds, token, today: str) -> dict | None:
+    """KR 종목 KIS inquire-price 응답에서 fundamentals 추출.
+
+    Returns record dict (yfinance shape 호환, missing columns = None) or None on failure.
+    market_cap = stck_prpr × lstn_stcn 계산 (raw KIS 응답에 직접 없음).
+    """
+    import requests
+
+    code = ticker.replace(".KS", "").replace(".KQ", "")
+    url = f"{creds.base_url}/uapi/domestic-stock/v1/quotations/inquire-price"
+    headers = {
+        "content-type": "application/json; charset=utf-8",
+        "authorization": f"Bearer {token}",
+        "appkey": creds.app_key,
+        "appsecret": creds.app_secret,
+        "tr_id": "FHKST01010100",
+    }
+    params = {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code}
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        if resp.status_code != 200:
+            return None
+        output = resp.json().get("output", {})
+        if not output or not output.get("stck_prpr"):
+            return None
+
+        record = _kis_record_skeleton(ticker, today)
+        non_null = 0
+        for src_field, db_field in KIS_FIELDS.items():
+            val = _safe_num(output.get(src_field))
+            if val == 0:  # KIS 가 미제공 종목 (예: 우선주) 은 0 → None 처리
+                val = None
+            record[db_field] = val
+            if val is not None:
+                non_null += 1
+
+        # market_cap = 현재가 × 상장주식수 (KIS 가 직접 제공 안함)
+        price = _safe_num(output.get("stck_prpr"))
+        shares = _safe_num(output.get("lstn_stcn"))
+        if price and shares:
+            record["market_cap"] = price * shares
+            non_null += 1
+
+        if non_null == 0:
+            return None
+        return record
+    except Exception:
+        return None
+
+
 class FundamentalCollector(BaseCollector):
     """yfinance Ticker.info로 펀더멘탈 데이터 수집."""
 
@@ -66,7 +142,13 @@ class FundamentalCollector(BaseCollector):
         super().__init__("fundamental")
 
     def collect(self, source: str = "portfolio", **kwargs) -> list[dict]:
-        """펀더멘탈 수집. source='universe' 시 S&P500/KOSPI200 전체 (#272 Phase 2b)."""
+        """펀더멘탈 수집. source='universe' 시 S&P500/KOSPI200 전체 (#272 Phase 2b).
+
+        KR 종목 (.KS/.KQ): KIS Open API inquire-price (FHKST01010100) 가 trailing PER/PBR
+        직접 제공 — yfinance KR 한계 우회 (#465). KIS 자격 증명 부재 / 토큰 발급 실패 시
+        기존 yfinance 경로로 graceful fallback (forward_pe / roe / margin / growth 만 채움).
+        US 종목: yfinance 그대로.
+        """
         import logging as _logging
 
         import yfinance as yf
@@ -81,9 +163,31 @@ class FundamentalCollector(BaseCollector):
         from nuri.core.timezone import today_kst
 
         today = today_kst()
-        results = []
+        results: list[dict] = []
         skipped: list[str] = []
         failed: list[str] = []
+
+        # ── KR sub-batch: KIS inquire-price (sequential, rate-limited) ──
+        # yfinance KR limit (trailingPE/priceToBook 미제공) 우회. KIS 실패 시 KR 도
+        # yfinance fallback 으로 넘어가 forward_pe/roe/margin/growth 만이라도 채움.
+        kr_tickers = [t for t in tickers if t.endswith((".KS", ".KQ"))]
+        kis_by_ticker: dict[str, dict] = {}
+        if kr_tickers:
+            kis_results = self._collect_kr_via_kis(kr_tickers, today)
+            kis_by_ticker = {r["ticker"]: r for r in kis_results}
+            self.logger.info(
+                "🇰🇷 KIS 펀더멘탈: ✅ %d / %d KR ticker (yfinance loop 가 ROE/margin/growth 보충)",
+                len(kis_by_ticker), len(kr_tickers),
+            )
+
+        # ── 전체 sub-batch: yfinance 10-thread parallel ──
+        # KIS 가 채운 KR 도 yfinance 한 번 더 돌려 ROE / revenue_growth / profit_margin /
+        # debt_to_equity 같은 yfinance-only fields 보존 (codex Round 1 P1 fix).
+        # KIS 의 pe_ratio/price_to_book/market_cap 은 merge 단계에서 우선 적용.
+        yf_tickers = list(tickers)
+        if not yf_tickers:
+            results.extend(kis_by_ticker.values())
+            return results
 
         # universe 모드: yfinance ERROR 노이즈 억제
         _yflog = _logging.getLogger("yfinance")
@@ -121,17 +225,17 @@ class FundamentalCollector(BaseCollector):
 
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-                futures = {ex.submit(_fetch_one, t): t for t in tickers}
+                futures = {ex.submit(_fetch_one, t): t for t in yf_tickers}
                 iterator = tqdm(
                     concurrent.futures.as_completed(futures),
-                    total=len(tickers),
+                    total=len(yf_tickers),
                     desc=f"  fundamentals [{source}]",
                     unit="tk",
-                    disable=len(tickers) < 20,
+                    disable=len(yf_tickers) < 20,
                 )
                 for fut in iterator:
                     ticker, record, status = fut.result()
-                    if status == "ok":
+                    if status == "ok" and record is not None:
                         results.append(record)
                     elif status == "skipped":
                         skipped.append(ticker)
@@ -139,6 +243,24 @@ class FundamentalCollector(BaseCollector):
                         failed.append(ticker)
         finally:
             _yflog.setLevel(_orig_level)
+
+        # ── KIS merge: KR ticker 의 KIS pe/pbr/market_cap 을 yfinance record 에 우선 적용 ──
+        # codex Round 1 P1 — KR 가 yfinance loop 바이패스했을 때 ROE/margin/growth 손실
+        # 회귀 차단. KIS 채운 columns 만 override, yfinance enrichment 보존.
+        if kis_by_ticker:
+            yf_seen = {r["ticker"] for r in results}
+            for record in results:
+                kis_data = kis_by_ticker.get(record["ticker"])
+                if kis_data is None:
+                    continue
+                for col in ("pe_ratio", "price_to_book", "market_cap"):
+                    val = kis_data.get(col)
+                    if val is not None:
+                        record[col] = val
+            # yfinance 가 fail 한 KR ticker — KIS-only record 추가 (yfinance fallback)
+            for ticker, kis_record in kis_by_ticker.items():
+                if ticker not in yf_seen:
+                    results.append(kis_record)
 
         if len(tickers) >= 20:
             sample_failed = ", ".join((failed + skipped)[:5]) + (
@@ -170,6 +292,47 @@ class FundamentalCollector(BaseCollector):
                         len(results),
                     )
 
+        return results
+
+    def _collect_kr_via_kis(self, kr_tickers: list[str], today: str) -> list[dict]:
+        """KR sub-batch — KIS Open API inquire-price 로 PER/PBR/시가총액 수집.
+
+        Sequential + KIS_REQUEST_INTERVAL_PROD (0.4s) 페이싱 (KIS rate limit).
+        자격 증명 / 토큰 발급 실패 시 빈 리스트 반환 → caller 가 yfinance fallback.
+        """
+        import time as _time
+
+        try:
+            from nuri.collectors.kis_realtime import (
+                KIS_REQUEST_INTERVAL_PROD,
+                get_access_token,
+                load_credentials,
+            )
+        except ImportError:
+            self.logger.warning("KIS module import 실패 — KR 전부 yfinance fallback")
+            return []
+
+        creds = load_credentials("prod")
+        if not creds:
+            self.logger.info("KIS 자격 증명 부재 — KR 전부 yfinance fallback (forward_pe 만)")
+            return []
+
+        token = get_access_token(creds)
+        if not token:
+            self.logger.warning("KIS 토큰 발급 실패 — KR 전부 yfinance fallback")
+            return []
+
+        self.logger.info(
+            "🇰🇷 KIS inquire-price sequential (interval=%.1fs, ~%.0fs total) — %d KR ticker",
+            KIS_REQUEST_INTERVAL_PROD, KIS_REQUEST_INTERVAL_PROD * len(kr_tickers), len(kr_tickers),
+        )
+
+        results: list[dict] = []
+        for ticker in kr_tickers:
+            record = _fetch_kis_kr(ticker, creds, token, today)
+            if record:
+                results.append(record)
+            _time.sleep(KIS_REQUEST_INTERVAL_PROD)
         return results
 
     def save(self, data: Any) -> int:
