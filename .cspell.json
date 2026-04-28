@@ -384,7 +384,9 @@
     "lwpr",
     "acml",
     "sdpr",
-    "yflog"
+    "yflog",
+    "RECMP",
+    "unsaturating"
   ],
   "ignorePaths": [
     "node_modules/**",

@@ -230,6 +230,26 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **상세 methodology / gate eligibility matrix / 60-month gate-level table / deferred extensions / 재실행 명령**: `/nuri-siege-audit` skill (`.claude/skills/nuri-siege-audit/SKILL.md`, `disable-model-invocation: true` — 수동 invoke) 에 별도 관리. STRATEGY 본문은 canonical verdict 만.
 
+### 3.9 Provisional vs canonical Learning Memory (#468)
+
+`_compute_weights` 가 `recommendations.outcome_30d` 만 read 하던 단일 호라이즌 구조에서, **per-agent 다중 호라이즌 precedence** 구조로 확장. 30d 는 canonical, 21d 는 provisional warm-start. 7d/14d 는 readiness/monitoring only.
+
+**Why 30d is canonical, not changeable**: O'Neil 8주 보유 (CAN SLIM)·Minervini 손익비 3:1 (SEPA) 의 holding window 와 정합. 트레일링 -15% 발동 (PR #202) 도 30d 내 측정. hit/hit_quality 판정 기준 (BUY +5% / SELL -2%) 은 30d 에 한정.
+
+**Why 21d is the only provisional source (no 7-14-21 blend)**: blend 는 horizon-specific decay 가중치를 임의로 설정해야 함 → "heuristic disguised as learning". 21d 는 30d 의 70% 진행률 + sample distribution 비교적 안정. 7d/14d 는 noisy (intraday/short-term 영향) — readiness/monitoring 에만 사용.
+
+**Why per-agent precedence, not global**: agent 별 verdict 빈도가 비대칭. 2026-04-28 production: technical 158 BUY+SELL / risk 5 / retail+crypto 0. global label (single weight source) 은 "일부 canonical, 일부 provisional, 일부 default" 동시 상태를 표현 못 함. per-agent 가 정확한 모델.
+
+**Why `0.10` provisional cap (vs canonical `0.30`)**: weaker evidence (shorter window + same min_agent_records gate) 는 conservative cap. 정확한 calibration 은 별도 작업 (statistical shrinkage, Bayesian posterior). 현 단계는 **policy cap, not inference**.
+
+**Why structural separation, not spy-test**: `compute_canonical_weights` 와 `compute_provisional_weights` 가 별도 함수로 각자 다른 outcome 컬럼만 read. import-graph 가 contract 보장 — Hard veto / amplifier (§2.6) 경로는 `compute_canonical_weights` 만 호출 (provisional 무접근). spy-test (mock + assert_not_called) 는 brittle 하므로 채택 안 함.
+
+**Why retail/crypto 는 `structurally_unsaturating`** (not "underpowered"): 두 agent 는 현 동작 패턴상 BUY+SELL 발동 빈도 0. Natural-wait 으로도 영영 saturate 안 됨. `default_weight` 영구 사용 의도. agent emit 정책 변경은 별도 이슈 (PR scope 밖).
+
+**API surface**: `/api/learning-memory/readiness` per-agent source list 응답 (canonical_30d / provisional_21d / default / structurally_unsaturating + 호라이즌별 sample_count + eligible). 5분 캐시.
+
+**참조**: `nuri/trading/agents/consensus.py` (`compute_canonical_weights` / `compute_provisional_weights` / `select_weight_source` / `agent_readiness`), Migration 23 (`outcome_7/14/21d` 컬럼), `nuri/trading/recommend/tracker.py::TRACK_HORIZONS`.
+
 ---
 
 ## 4. 개발 품질 기준
