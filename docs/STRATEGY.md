@@ -190,9 +190,31 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **선택**: Core 보수, Active 적극 컷+위너보호, Swing 진짜 단기, Long_term/Pension 장기 ETF. 규칙 변경은 YAML + 백테스트 + PR.
 
-### 3.6 Regime-adaptive framework (E3, reserved)
+### 3.6 Regime-adaptive framework (E3)
 
-**상태**: 미착수 (spec `NEXT_SESSION.md §2.7`). §3.4 Kelly·Markowitz·Faber + §2.6 Symmetric amplifier 를 config + code 로 배선. `siege_gates.regime_overrides` 스키마 + `certification.py` 분기. **Hard veto (VIX>30, risk-of-ruin) override 금지**.
+**상태 (2026-04-29)**: Phase 1 shadow shipped (#479). **Phase 2 paired counterfactual: FAIL by binary rule** — 30d horizon CI_lower=-1.06% ≤ 0. 60d/90d horizons는 robust PASS (CI_lower=+1.95% / +2.60%). 자세히 아래 "Phase 2 verdict" 참조. Phase 3 (alpha-amplified live) 진입 보류 — redesign 옵션 메뉴는 spec falsification path 참조.
+
+**Phase 2 verdict (2026-04-29, branch `feat/e3-phase2-paired-counterfactual`)**:
+- Spec: `docs/plans/E3_phase2_paired_counterfactual.md` (post Round 5 codex GATE PASS)
+- Universe: us_core 85 frozen (81/85 with ≥1000 price rows), 2020-01-01+
+- Gate: `recovery_confirmed AND vix_favorable(VIX<22 AND 3d_slope<0) AND regime_favorable(in {bull_low_vol, recovery} AND conf≥0.60)`. macro_benign dropped — no 5Y backfill.
+- Sample: 14,728 raw 20d-breakouts → 166 eligible (post-90d-window) on 7 unique trading days. Effective N≈7 (binding power-limit caveat).
+- Bootstrap: 1000 iter × block_size=20 trading days (frozen primary), seed=42.
+- Metrics:
+
+| Horizon | N | Mean Δ | CI95 Lower | CI95 Upper | Verdict signal |
+|---------|---|--------|-----------|-----------|----------------|
+| **30d (primary)** | 166 | +0.54% | **−1.06%** | +2.59% | **FAIL** |
+| 60d | 166 | +4.46% | +1.95% | +7.75% | (would PASS) |
+| 90d | 166 | +6.76% | +2.60% | +12.53% | (would PASS) |
+
+- Sensitivity (block 10/40 informational): 60d/90d remain robust PASS across all block sizes; 30d remains FAIL.
+- Decision: **FAIL** by spec acceptance rule (PASS iff 30d CI_lower > 0).
+- Honest framing: amplifier effect is real and large at 60d/90d but power-limited at 30d. Per spec falsification path, this is a CI-crosses-0 FAIL — redesign options (sample extension, universe widening, macro_benign accumulation) tabled to user. Phase 1 shadow continues collecting telemetry; amplifier remains `enabled: false`.
+- Verdict artifact: `data/reports/<YYYY-MM-DD>/e3_phase2_verdict.json` (gitignored).
+- Lock-tests: `tests/quant/exits/test_amplifier_paired_replay.py` (24 invariants), `tests/quant/exits/test_amplifier_stage0_audit.py` (13 invariants).
+
+**원래 framework intent**: §3.4 Kelly·Markowitz·Faber + §2.6 Symmetric amplifier 를 config + code 로 배선. `siege_gates.regime_overrides` 스키마 + `certification.py` 분기. **Hard veto (VIX>30, risk-of-ruin) override 금지**.
 
 **E3 acceptance (2026-04-19 codex Plan consult)**: 3-stage validation — **Stage 0 + Stage 2 모두 통과 시 ship** (Stage 1 진단 신호). 순서: Stage 0 → 1 (병행) → 2.
 
@@ -260,7 +282,7 @@ PR 전 확인.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 3,584 tests, 158 files |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 3,621 tests, 160 files |
 | Frontend tests | 목표 ≥ 90% | 917 tests, 81 files |
 | E2E | 핵심 flow | 38 Playwright (6 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
