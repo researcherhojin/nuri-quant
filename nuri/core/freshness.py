@@ -1,4 +1,5 @@
 """데이터 신선도 체크 — Dagster PASS/WARN/FAIL + Palantir TSLU 패턴."""
+
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -39,6 +40,15 @@ FRESHNESS_POLICIES = {
         "warn_hours": 24,
         "fail_hours": 48,
         "label": "SIEGE 인증",
+    },
+    "portfolio": {
+        # P0 stale-data fix (#507 audit 2026-04-30): broker 매도/매수 발생 후 yaml
+        # sync 누락 시 0주 ticker 에 SELL 권고가 누설됨. 24h 이상이면 WARN, 72h
+        # FAIL — `import_portfolio.py` 매일 수동 실행 가정. updated_at 은 KST naive.
+        "query": "SELECT MAX(updated_at) FROM portfolio",
+        "warn_hours": 24,
+        "fail_hours": 72,
+        "label": "포트폴리오 sync",
     },
 }
 
