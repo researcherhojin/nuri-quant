@@ -192,7 +192,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 ### 3.6 Regime-adaptive framework (E3)
 
-**상태 (2026-04-29)**: Phase 1 shadow shipped (#479). **Phase 2 paired counterfactual: FAIL by binary rule** — 30d horizon CI_lower=-1.06% ≤ 0. 60d/90d horizons는 robust PASS (CI_lower=+1.95% / +2.60%). 자세히 아래 "Phase 2 verdict" 참조. Phase 3 (alpha-amplified live) 진입 보류 — redesign 옵션 메뉴는 spec falsification path 참조.
+**상태 (2026-04-29)**: Phase 1 shadow shipped (#479). **Phase 2 paired counterfactual: FAIL by binary rule** — 30d horizon CI_lower=-1.06% ≤ 0. 60d/90d horizons는 robust PASS (CI_lower=+1.95% / +2.60%). 자세히 아래 "Phase 2 verdict" 참조. **Phase 3 영구 보류 (2026-04-29 3-LLM consensus)** — Codex(gpt-5.4) Round 1 B → Round 2 A, Qwen3.5-122B Round 1 D → Round 2 A, Claude A 일관. Phase 1 shadow telemetry 영구 유지 (`enabled: false`, 무기한). Reopen trigger: §7.1 auto-trade reversal only. 자세한 Round 1/2 verdicts: `data/llm_consults/2026-04-29_e3-phase2-shelve-decision.md` + `..._round2-three-way.md` (gitignored, 사용자 머신 local).
 
 **Phase 2 verdict (2026-04-29, branch `feat/e3-phase2-paired-counterfactual`)**:
 - Spec: `docs/plans/E3_phase2_paired_counterfactual.md` (post Round 5 codex GATE PASS)
@@ -210,7 +210,10 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 - Sensitivity (block 10/40 informational): 60d/90d remain robust PASS across all block sizes; 30d remains FAIL.
 - Decision: **FAIL** by spec acceptance rule (PASS iff 30d CI_lower > 0).
-- Honest framing: amplifier effect is real and large at 60d/90d but power-limited at 30d. Per spec falsification path, this is a CI-crosses-0 FAIL — redesign options (sample extension, universe widening, macro_benign accumulation) tabled to user. Phase 1 shadow continues collecting telemetry; amplifier remains `enabled: false`.
+- Honest framing: amplifier effect is real and large at 60d/90d but power-limited at 30d.
+- **Final disposition (2026-04-29 3-LLM consensus)**: Phase 3 (alpha-amplified live) **permanently shelved**. Decisive argument: §7.1 auto-trade is permanently deferred → E3 effect path collapses to conf-boost-only on recommendations, which user manual judgment already moderates → Phase 3 의 product value chain 이 broken. Redesign options (a/b/c/d) 모두 **각하** — (a) sample extension은 effective N≈7 power-limit 미해결, (b) universe widening은 survivorship bias trade-off 가 conf-boost-only 가치에 비해 과함, (c) regime threshold 완화는 result-fitting risk, (d) macro_events 누적 후 재시도는 §7.1 deferral 이 product-layer 답을 안 바꿈. **Spec amend (D-style 30d→60d primary) 거부** — 5-round GATE PASS 후 사후 amend 는 process credibility 훼손. 60d/90d PASS 는 "supportive horizon evidence" 로만 기록 (Phase 3 promotion 근거 아님).
+- **Reopen trigger**: STRATEGY §7.1 reversal (auto-trade 재개) 결정 시에만. 그 시점에 fresh spec 재작성 (real execution path tied) 후 Phase 2 재실행.
+- Phase 1 shadow telemetry 영구 유지: amplifier `enabled: false` 무기한, gate evaluation 만 logging.
 - Verdict artifact: `data/reports/<YYYY-MM-DD>/e3_phase2_verdict.json` (gitignored).
 - Lock-tests: `tests/quant/exits/test_amplifier_paired_replay.py` (24 invariants), `tests/quant/exits/test_amplifier_stage0_audit.py` (13 invariants).
 
