@@ -27,7 +27,11 @@ FRESHNESS_POLICIES = {
         "label": "Fear & Greed",
     },
     "consensus": {
-        "query": "SELECT MAX(timestamp) FROM pipeline_events WHERE step = 'diagnose' AND event_type = 'step_completed'",
+        # FIX (Session 10): `diagnose` step_completed event 가 실제로 emit 되지 않아 항상 FAIL.
+        # `recommendations.date` (consensus 결과 persist) 를 source of truth 로 변경.
+        # save_to_recommendations 가 매 consensus run 마다 today date row 갱신.
+        # date 는 'YYYY-MM-DD' string — datetime 비교 위해 datetime() 캐스트.
+        "query": "SELECT datetime(MAX(date)) FROM recommendations",
         "warn_hours": 24,
         "fail_hours": 48,
         "label": "에이전트 합의",
