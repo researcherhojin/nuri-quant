@@ -163,6 +163,8 @@ data/logs/
 # carry portfolio context, verdicts may quote it. Decision audit trail kept
 # locally, not committed. Mirror policy of codex-reviews/.
 data/llm_consults/
+# Thesis Q&A archive (#508) — DB context + LLM verdict 포함, portfolio holdings 노출
+data/thesis_query/
 # API health check heartbeat (scheduler 가 매분 rewrite)
 data/.scheduler_heartbeat
 
