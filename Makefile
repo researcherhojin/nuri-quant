@@ -232,6 +232,14 @@ recommend:
 consensus:
 	$(PYTHON) -m nuri.trading.agents.consensus
 
+# Holdings post-entry technical-divergence monitor.
+# Daily 07:10 KST via APScheduler (after consensus 07:05). CLI form for ad-hoc / dry-run.
+holdings-monitor:
+	$(PYTHON) -m nuri.trading.recommend.holdings_monitor
+
+holdings-monitor-dry:
+	$(PYTHON) -m nuri.trading.recommend.holdings_monitor --dry-run
+
 gate:
 	$(PYTHON) -m nuri.trading.engine.gate
 

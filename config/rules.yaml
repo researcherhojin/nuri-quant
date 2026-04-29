@@ -355,3 +355,38 @@ symmetric_amplifier:
     trigger_ci_lower_negative: true
     trigger_cvar_ratio_max: 1.5     # amplified CVaR / baseline CVaR
     cooldown_days: 30
+
+# ─── Holdings Monitor (post-entry technical-divergence gap) ─────
+# Codex Plan consult 2026-04-29 (B branch). 진입-단계 보호 (PR #303
+# divergence penalty + risk_agent veto) 와 별개로, 이미 매수한 종목이
+# falling-knife 패턴으로 turn 했을 때 surface 하는 alert layer.
+# Auto-trade 안 함 — STRATEGY §7.1 영구 deferred 와 정합 (REVIEW CTA only).
+#
+# 운용:
+#   - 매일 07:10 KST (consensus 07:05 직후) APScheduler job 실행
+#   - portfolio DB table 의 holdings × TechnicalAgent → trigger 평가
+#   - Alert 발동 시 pipeline_events 에 기록 + Discord/Telegram surface
+holdings_monitor:
+  enabled: true
+
+  # Trigger 1: TechnicalAgent SELL (직접 약세 시그널)
+  technical_sell_min_confidence: 80      # ≥ 80 일 때만 alert (false positive 억제)
+
+  # Trigger 2: Divergence (fundamentals BUY/HOLD + technicals SELL)
+  # consensus.py:401-430 entry-time penalty 와 동일 로직, holding 에 적용.
+  # 70 으로 더 일찍 surface — divergence 는 softer "review me" 신호.
+  divergence_min_tech_confidence: 70
+
+  # Dedup window — same (ticker, trigger_type) 는 N 일 동안 재발동 안 함.
+  # pipeline_events 자체가 state journal — 별도 dedup 테이블 만들지 않음.
+  dedup_calendar_days: 7
+
+  # Asset class scope (v1: US + KR equities only).
+  # crypto 는 별도 trigger 로직 (volatility profile 다름) — 추후 PR.
+  asset_class_scope:
+    - equity_us
+    - equity_kr
+
+  # Data gap handling — TechnicalAgent fail / yfinance empty 시 skip + warn.
+  # run-summary event payload 에 failed_count 포함, user-facing alert 안 함.
+  on_data_gap: skip_and_log
