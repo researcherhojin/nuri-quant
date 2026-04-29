@@ -176,7 +176,7 @@ All `make` targets use `.venv/bin/python` — activate the venv or use the full 
 ```
 nuri/
 ├── core/              # DB (sole sqlite3 importer), rules, signal_config, timezone, events, freshness, axis
-├── collectors/        # 25 collector modules (BaseCollector + KIS Open API)
+├── collectors/        # 26 collector modules (BaseCollector + KIS Open API)
 ├── analysis/          # portfolio, risk, sector, charts, rebalance_advisor, evidence_charts
 ├── quant/             # regime / validation / backtest / factors / chart_analysis
 ├── trading/           # agents (10) / engine (SIEGE) / strategy / recommend / swing / execution

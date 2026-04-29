@@ -68,7 +68,7 @@ The system rests on five enduring decisions. Recent feature additions and tuning
 
 | Phase | Path | Role |
 |-------|------|------|
-| **Collect** | `nuri/collectors/` | 25 collectors (BaseCollector pattern). US: yfinance / OpenBB. KR: pykrx + KOSPI / KOSDAQ index. Macro: FRED / yfinance. News: GoogleNews RSS. KIS Open API: `kis_realtime` (잔고/시세) + `kis_analyst_opinion` (애널리스트 의견). |
+| **Collect** | `nuri/collectors/` | 26 collectors (BaseCollector pattern). US: yfinance / OpenBB. KR: pykrx + KOSPI / KOSDAQ index. Macro: FRED / yfinance. News: GoogleNews RSS. KIS Open API: `kis_realtime` (잔고/시세) + `kis_analyst_opinion` (애널리스트 의견). |
 | **Analyze** | `nuri/quant/regime/` | Regime classifier (10 regimes), macro score (9 indicators), event score (15 categories). |
 |  | `nuri/quant/validation/` | Signal backtest engine over `config/signals.yaml` (20 actionable + 2 shadow precursors), superinvestor / analyst backtest, scorecard. |
 |  | `nuri/quant/factors/` | Multi-factor scoring — momentum / value / quality / composite. |
