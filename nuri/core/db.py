@@ -724,6 +724,19 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE recommendations ADD COLUMN outcome_21d REAL;
     """,
     ),
+    (
+        24,
+        "add event_subtype to pipeline_events for cooldown SELL-type split (#517)",
+        # #517 Phase 2b — Forward-only event taxonomy. holdings_monitor.payload.action_type
+        # 가 신규 emit 부터 채움 ('hard_sell' / 'trim_action' / 'position_reduce' /
+        # 'divergence_alert'). 레거시 row 는 NULL 유지 (B2 STOP — backfill heuristic 위험).
+        # buy_candidate_emitter._get_cooldown_tickers_by_type 가 NULL 일 때
+        # legacy event_type fallback (holdings_monitor_alert / take_profit_trigger /
+        # trim_recommendation) 으로 5d cooldown 적용.
+        """
+        ALTER TABLE pipeline_events ADD COLUMN event_subtype TEXT;
+    """,
+    ),
 ]
 
 
@@ -1149,7 +1162,16 @@ def insert_certification(data: dict, db_path: Optional[Path] = None) -> int:
 
     Returns: inserted row id (lastrowid).
     """
-    required = {"timestamp", "certified", "score", "total_conditions", "passed", "failed", "warnings", "conditions_json"}
+    required = {
+        "timestamp",
+        "certified",
+        "score",
+        "total_conditions",
+        "passed",
+        "failed",
+        "warnings",
+        "conditions_json",
+    }
     missing = required - data.keys()
     if missing:
         raise ValueError(f"insert_certification: missing required keys {missing}")
