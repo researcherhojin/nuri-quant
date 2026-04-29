@@ -70,7 +70,18 @@ def _collect_context() -> dict:
         "portfolio_totals": None,
         "shadow_signals": [],  # PR C (codex #3): market-wide crash precursor
         "buy_candidates": None,  # #507 Phase 1: cash deploy candidate emit
+        "freshness": None,  # #513: 데이터 신선도 surface (PASS/WARN/FAIL 3-tier)
     }
+
+    # Data freshness (#513) — backend gate (#512 PR) 가 작동해도 brief 에 surface 되지 않으면
+    # 사용자 가시성 0. 매 brief 에 PASS/WARN/FAIL 3-tier summary + per-policy detail 표시.
+    # FAIL 1+ → embed RED, WARN 1+ → embed AMBER 가능 (기존 SIEGE AMBER 와 동일 priority).
+    try:
+        from nuri.core.freshness import get_freshness_summary
+
+        ctx["freshness"] = get_freshness_summary()
+    except Exception:
+        logger.warning("freshness summary 실패", exc_info=True)
 
     # BUY candidates (#507) — sell-bias 결함 fix. emitter 가 0 emit 일때도
     # blocked_reason 으로 surface (VIX>30 / regime / threshold 미달 모두 표시).
@@ -234,12 +245,18 @@ def _collect_context() -> dict:
 
 
 def _brief_color(ctx: dict) -> int:
-    """Brief 색상 — urgent bucket 있으면 red, siege not certified → amber, 평상시 blue."""
+    """Brief 색상 priority — RED > AMBER > BLUE.
+
+    RED:    urgent action OR freshness FAIL (#513)
+    AMBER:  SIEGE not certified OR freshness WARN (#513)
+    BLUE:   평상시
+    """
     actions = ctx.get("actions") or {}
-    if actions.get("urgent"):
+    fresh = ctx.get("freshness") or {}
+    if actions.get("urgent") or fresh.get("fail", 0) > 0:
         return COLOR_RED
     siege = ctx.get("siege") or {}
-    if siege.get("certified") is False:
+    if siege.get("certified") is False or fresh.get("warn", 0) > 0:
         return COLOR_AMBER
     return COLOR_BLUE
 
@@ -290,6 +307,28 @@ def format_brief_embed(ctx: dict) -> dict:
         if siege["failing_errors"]:
             siege_line += "\n" + "\n".join(f"❌ {e['id']}: {e['detail']}" for e in siege["failing_errors"][:3])
         fields.append({"name": "🛡️ SIEGE", "value": siege_line, "inline": False})
+
+    # Data Freshness (#513) — backend gate 결과를 사용자에게 surface.
+    # PR #512 가 portfolio policy 등록 + dual-layer write/read filter 했지만
+    # brief 본문에 표시되지 않으면 사용자 가시성 0. WARN/FAIL 시 즉시 attention.
+    fresh = ctx.get("freshness") or {}
+    if fresh.get("details"):
+        n_pass, n_warn, n_fail = fresh.get("pass", 0), fresh.get("warn", 0), fresh.get("fail", 0)
+        if n_fail > 0:
+            tier_emoji = "❌"
+        elif n_warn > 0:
+            tier_emoji = "⚠️"
+        else:
+            tier_emoji = "✅"
+        header = f"{tier_emoji} {n_pass}P / {n_warn}W / {n_fail}F"
+        # WARN/FAIL 만 detail 출력 (PASS 는 count 만으로 충분 — noise 절감)
+        problem_lines = [
+            f"{'❌' if d['status'] == 'FAIL' else '⚠️'} {d['label']}: {d['message']}"
+            for d in fresh["details"]
+            if d["status"] != "PASS"
+        ]
+        value = header + ("\n" + "\n".join(problem_lines) if problem_lines else "")
+        fields.append({"name": "🕐 Data Freshness", "value": value, "inline": False})
 
     # SHADOW crash precursor signals (PR C, codex #3). `actionable: false` 이므로
     # action 에 직접 영향 없음 — "Surface" 단계 추적용. fired=True 는 주목 필요.
@@ -429,6 +468,27 @@ def format_brief_markdown(ctx: dict) -> str:
         lines.append(f"- {siege['passed']}P / {siege['failed']}F / {siege['warnings']}W of {siege['total']}")
         for e in siege["failing_errors"]:
             lines.append(f"- ❌ {e['id']}: {e['desc']} — {e['detail']}")
+        lines.append("")
+
+    # Data Freshness (#513) — markdown 출력. embed 와 동일 로직 (#512 backend → user surface).
+    fresh = ctx.get("freshness") or {}
+    if fresh.get("details"):
+        n_pass, n_warn, n_fail = fresh.get("pass", 0), fresh.get("warn", 0), fresh.get("fail", 0)
+        if n_fail > 0:
+            tier_emoji = "❌"
+        elif n_warn > 0:
+            tier_emoji = "⚠️"
+        else:
+            tier_emoji = "✅"
+        lines.append(f"## Data Freshness {tier_emoji} {n_pass}P / {n_warn}W / {n_fail}F")
+        for d in fresh["details"]:
+            if d["status"] == "PASS":
+                emoji = "✅"
+            elif d["status"] == "WARN":
+                emoji = "⚠️"
+            else:
+                emoji = "❌"
+            lines.append(f"- {emoji} {d['label']}: {d['message']}")
         lines.append("")
 
     shadow = ctx.get("shadow_signals") or []
