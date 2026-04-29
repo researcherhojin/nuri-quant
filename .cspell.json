@@ -634,10 +634,7 @@
     "KODEX",
     "TIGER",
     "Kapoor",
-    "rollouts",
-    "kakaopay",
-    "RVOL",
-    "lowvol"
+    "rollouts"
   ],
   "ignorePaths": [
     "node_modules/**",
