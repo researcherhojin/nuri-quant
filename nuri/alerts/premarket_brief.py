@@ -33,6 +33,7 @@ Artifact 정책 (codex Plan Q4 A+B):
 - Discord 실패해도 scheduler job exit 0 — persist 자체가 primary artifact.
 - `data/` 는 `.gitignore` 돼있어 commit 됨 없음.
 """
+
 from __future__ import annotations
 
 import logging
@@ -68,16 +69,30 @@ def _collect_context() -> dict:
         "macro_events": [],
         "portfolio_totals": None,
         "shadow_signals": [],  # PR C (codex #3): market-wide crash precursor
+        "buy_candidates": None,  # #507 Phase 1: cash deploy candidate emit
     }
+
+    # BUY candidates (#507) — sell-bias 결함 fix. emitter 가 0 emit 일때도
+    # blocked_reason 으로 surface (VIX>30 / regime / threshold 미달 모두 표시).
+    try:
+        from nuri.trading.recommend.buy_candidate_emitter import emit_buy_candidates
+
+        ctx["buy_candidates"] = emit_buy_candidates()
+    except Exception:
+        logger.warning("buy candidates emit 실패", exc_info=True)
 
     # Shadow signals — SHADOW (`actionable: false`) 는 candidates 에 안 들어가니까
     # brief 에서만 surface. detect_all 은 내부적으로 graceful degrade.
     try:
         from nuri.quant.validation.market_signals import detect_all
+
         ctx["shadow_signals"] = [
             {
-                "signal_id": s.signal_id, "fired": s.fired,
-                "level": s.level, "threshold": s.threshold, "detail": s.detail,
+                "signal_id": s.signal_id,
+                "fired": s.fired,
+                "level": s.level,
+                "threshold": s.threshold,
+                "detail": s.detail,
             }
             for s in detect_all()
         ]
@@ -87,10 +102,12 @@ def _collect_context() -> dict:
     # Regime
     try:
         from nuri.quant.regime.classifier import classify_regime
+
         r = classify_regime()
         if r:
             ctx["regime"] = {
-                "regime": r.regime, "trend": r.trend,
+                "regime": r.regime,
+                "trend": r.trend,
                 "volatility": r.volatility,
                 "confidence": round(float(r.confidence) * 100, 0),
             }
@@ -100,6 +117,7 @@ def _collect_context() -> dict:
     # Macro score
     try:
         from nuri.quant.regime.macro_score import compute_macro_score
+
         m = compute_macro_score()
         ctx["macro"] = {"score": round(m.total_score, 1), "interpretation": m.interpretation}
     except Exception:
@@ -108,6 +126,7 @@ def _collect_context() -> dict:
     # Quick macro indicators
     try:
         from nuri.core.db import query
+
         for ind, key in (("vix", "vix"), ("usd_krw", "usd_krw"), ("fear_greed", "fear_greed")):
             rows = query(
                 "SELECT value, date FROM macro WHERE indicator = ? ORDER BY date DESC LIMIT 1",
@@ -121,6 +140,7 @@ def _collect_context() -> dict:
     # SIEGE certify
     try:
         from nuri.trading.engine.certification import certify
+
         cert = certify(caller="cli:premarket_brief", swallow_persist_errors=True)
         ctx["siege"] = {
             "certified": cert.certified,
@@ -131,7 +151,8 @@ def _collect_context() -> dict:
             "total": cert.total_conditions,
             "failing_errors": [
                 {"id": c.id, "desc": c.description, "detail": (c.detail or "")[:100]}
-                for c in cert.conditions if not c.passed and c.severity == "error"
+                for c in cert.conditions
+                if not c.passed and c.severity == "error"
             ],
         }
     except Exception:
@@ -140,17 +161,17 @@ def _collect_context() -> dict:
     # 4-bucket actions (cache bypass)
     try:
         from nuri.api.routes.actions import _actions_cache, _build_actions
+
         _actions_cache["data"] = None
         a = _build_actions()
-        ctx["actions"] = {
-            k: a.get(k, []) for k in ("urgent", "portfolio", "check", "hold")
-        }
+        ctx["actions"] = {k: a.get(k, []) for k in ("urgent", "portfolio", "check", "hold")}
     except Exception:
         logger.warning("build_actions 실패", exc_info=True)
 
     # Top opportunities (비보유)
     try:
         from nuri.api.routes.actions import _build_opportunities, _opportunities_cache
+
         _opportunities_cache["data"] = None
         ops = _build_opportunities() or []
         ctx["opportunities"] = ops[:5]
@@ -160,6 +181,7 @@ def _collect_context() -> dict:
     # Last 24h macro events
     try:
         from nuri.core.db import query
+
         rows = query(
             """
             SELECT published_at, category, sentiment, confidence,
@@ -179,6 +201,7 @@ def _collect_context() -> dict:
     # Portfolio totals
     try:
         from nuri.core.db import query
+
         rows = query(
             """
             SELECT p.account, p.ticker, p.quantity, p.avg_price, p.currency, pr.close
@@ -265,9 +288,7 @@ def format_brief_embed(ctx: dict) -> dict:
         status = "CERTIFIED" if siege["certified"] else "REJECTED"
         siege_line = f"{status} ({siege['score']:.0f}% — {siege['passed']}P/{siege['failed']}F/{siege['warnings']}W)"
         if siege["failing_errors"]:
-            siege_line += "\n" + "\n".join(
-                f"❌ {e['id']}: {e['detail']}" for e in siege["failing_errors"][:3]
-            )
+            siege_line += "\n" + "\n".join(f"❌ {e['id']}: {e['detail']}" for e in siege["failing_errors"][:3])
         fields.append({"name": "🛡️ SIEGE", "value": siege_line, "inline": False})
 
     # SHADOW crash precursor signals (PR C, codex #3). `actionable: false` 이므로
@@ -280,11 +301,13 @@ def format_brief_embed(ctx: dict) -> dict:
             shadow_lines.append(f"{emoji} {s['signal_id']}: {s['detail']}")
         fired_count = sum(1 for s in shadow if s["fired"])
         total = len(shadow)
-        fields.append({
-            "name": f"🌑 SHADOW crash precursor — {fired_count}/{total} fired",
-            "value": "\n".join(shadow_lines),
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": f"🌑 SHADOW crash precursor — {fired_count}/{total} fired",
+                "value": "\n".join(shadow_lines),
+                "inline": False,
+            }
+        )
 
     # Action buckets
     actions = ctx.get("actions") or {}
@@ -297,11 +320,40 @@ def format_brief_embed(ctx: dict) -> dict:
         if items:
             lines = [_short_ticker_line(it) for it in items[:3]]
             more = f" (+{len(items) - 3} more)" if len(items) > 3 else ""
-            fields.append({
-                "name": f"{emoji} {label} — {len(items)}",
-                "value": "\n".join(lines) + more,
-                "inline": False,
-            })
+            fields.append(
+                {
+                    "name": f"{emoji} {label} — {len(items)}",
+                    "value": "\n".join(lines) + more,
+                    "inline": False,
+                }
+            )
+
+    # BUY Candidates (#507) — opportunities 보다 우선 surface (entry/stop/target 명시)
+    bc = ctx.get("buy_candidates")
+    if bc is not None:
+        if bc.blocked_reason:
+            fields.append(
+                {
+                    "name": "🛒 BUY Candidates — 0 (blocked)",
+                    "value": f"{bc.blocked_reason}\nregime={bc.regime} · VIX={bc.vix:.1f}",
+                    "inline": False,
+                }
+            )
+        elif bc.candidates:
+            cand_lines = []
+            for c in bc.candidates[:5]:
+                cand_lines.append(
+                    f"**{c.ticker}** {c.score}/100 · deploy {c.deploy_pct}% · "
+                    f"entry ${c.entry} stop ${c.stop} TP1 ${c.tp1}\n"
+                    f"  · {c.why_now}"
+                )
+            fields.append(
+                {
+                    "name": f"🛒 BUY Candidates — {len(bc.candidates)} (total {bc.total_deploy_pct}% cash)",
+                    "value": "\n".join(cand_lines),
+                    "inline": False,
+                }
+            )
 
     # Opportunities
     ops = ctx.get("opportunities") or []
@@ -316,19 +368,18 @@ def format_brief_embed(ctx: dict) -> dict:
                 f"5D {o.get('change_5d', 0) or 0:+.1f}% · "
                 f"RSI {o.get('rsi', 0) or 0:.0f}"
             )
-        fields.append({
-            "name": f"💡 Top Opportunities (비보유) — {len(ops)}",
-            "value": "\n".join(op_lines),
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": f"💡 Top Opportunities (비보유) — {len(ops)}",
+                "value": "\n".join(op_lines),
+                "inline": False,
+            }
+        )
 
     # Macro events (24h)
     events = ctx.get("macro_events") or []
     if events:
-        ev_lines = [
-            f"{e['category']} (sent {e['sentiment']:+.2f}): {e['headline'][:70]}"
-            for e in events[:3]
-        ]
+        ev_lines = [f"{e['category']} (sent {e['sentiment']:+.2f}): {e['headline'][:70]}" for e in events[:3]]
         fields.append({"name": "📰 24h Macro Events", "value": "\n".join(ev_lines), "inline": False})
 
     # Portfolio totals
@@ -400,6 +451,26 @@ def format_brief_markdown(ctx: dict) -> str:
                     lines.append(f"  · {reason}")
             lines.append("")
 
+    bc = ctx.get("buy_candidates")
+    if bc is not None:
+        if bc.blocked_reason:
+            lines.append("## BUY Candidates (0 — blocked)")
+            lines.append(f"- **{bc.blocked_reason}**")
+            lines.append(f"- regime={bc.regime} · VIX={bc.vix:.1f}")
+            lines.append("")
+        elif bc.candidates:
+            lines.append(f"## BUY Candidates ({len(bc.candidates)} — total deploy {bc.total_deploy_pct}% of cash)")
+            lines.append(f"- regime={bc.regime} · VIX={bc.vix:.1f} · {bc.timestamp_kst}")
+            for i, c in enumerate(bc.candidates, 1):
+                lines.append(f"{i}. **{c.ticker}** score={c.score}/100 deploy={c.deploy_pct}%")
+                lines.append(f"   - Why now: {c.why_now}")
+                lines.append(f"   - Entry ${c.entry} / Stop ${c.stop} / TP1 ${c.tp1} / TP2 ${c.tp2}")
+                src = " · ".join(f"{k}={v:.0f}" for k, v in c.sources.items())
+                lines.append(f"   - Sources: {src}")
+            if bc.skipped:
+                lines.append(f"   - skipped: {len(bc.skipped)} (held/cooldown/leverage)")
+            lines.append("")
+
     ops = ctx.get("opportunities") or []
     if ops:
         lines.append(f"## Opportunities (비보유, top {len(ops)})")
@@ -419,10 +490,7 @@ def format_brief_markdown(ctx: dict) -> str:
     if events:
         lines.append("## 24h Macro Events")
         for e in events:
-            lines.append(
-                f"- [{e['category']}] sent={e['sentiment']:+.2f} conf={e['confidence']:.2f}: "
-                f"{e['headline']}"
-            )
+            lines.append(f"- [{e['category']}] sent={e['sentiment']:+.2f} conf={e['confidence']:.2f}: {e['headline']}")
         lines.append("")
 
     totals = ctx.get("portfolio_totals")
@@ -449,6 +517,7 @@ def send_brief(embed: dict) -> bool:
     """Discord webhook 전송. 실패 시 False."""
     try:
         from nuri.alerts.discord_bot import send_webhook
+
         return send_webhook(embed)
     except Exception:
         logger.warning("Discord webhook 전송 실패", exc_info=True)
@@ -468,6 +537,7 @@ def generate_brief() -> dict:
 def main(argv: list[str] | None = None) -> int:
     """CLI: scheduler 와 manual 양쪽 entry. --no-discord 로 stdout only."""
     import argparse
+
     parser = argparse.ArgumentParser(description="Pre-market daily brief")
     parser.add_argument("--no-discord", action="store_true", help="Skip Discord webhook")
     parser.add_argument("--stdout", action="store_true", help="Print markdown to stdout")

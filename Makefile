@@ -248,6 +248,11 @@ llm-consult:
 	@test -n "$(prompt)" || (echo "usage: make llm-consult slug=<kebab> prompt=<file>"; exit 1)
 	$(PYTHON) scripts/llm_consult.py --slug "$(slug)" --prompt-file "$(prompt)"
 
+# BUY candidate emitter (Issue #507 Phase 1) — sell-bias 결함 fix.
+# 매일 0~5 candidate emit, entry/stop/TP1/TP2 명시. premarket_brief 통합.
+buy-candidates:
+	$(PYTHON) -m nuri.trading.recommend.buy_candidate_emitter
+
 # Thesis Q&A engine (Issue #508) — reactive ticker analysis with DB context + LLM.
 # Sister to buy_candidate_emitter.py (#507 proactive). Output to data/thesis_query/.
 # Usage:
@@ -256,6 +261,15 @@ llm-consult:
 thesis:
 	@test -n "$(ticker)" || (echo "usage: make thesis ticker=<TICKER> [question=\"...\"]"; exit 1)
 	$(PYTHON) -m nuri.llm.thesis_query --ticker "$(ticker)" $(if $(question),--question "$(question)") --print
+
+# Earnings preview (Issue #509) — consensus EPS/revenue + ATM straddle implied move.
+# yfinance-based, on-demand. Future: 위스퍼 (Estimize/StockTwits) Phase 2.
+# Usage:
+#   make earnings-preview ticker=MSFT
+#   make earnings-preview watchlist=MSFT,META,AMZN,GOOGL,QCOM
+earnings-preview:
+	@test -n "$(ticker)$(watchlist)" || (echo "usage: make earnings-preview ticker=<T> | watchlist=<T1,T2,...>"; exit 1)
+	$(PYTHON) -m nuri.collectors.earnings_preview $(if $(ticker),--ticker "$(ticker)") $(if $(watchlist),--watchlist "$(watchlist)")
 
 gate:
 	$(PYTHON) -m nuri.trading.engine.gate
