@@ -335,6 +335,8 @@ PR 전 확인.
 
 **의도적 제외**: `한국투자증권` (KIS) 은 Open API 통합 대상 (`nuri/collectors/kis_*`, `docs/KIS_INTEGRATION.md`). 자격 증명은 `config/kis/kis_devlp.yaml` (gitignored by `config/kis/*`, `~/KIS/` legacy 호환).
 
+**Plan / spec 노트 보호 (2026-04-30 Session 8 통합)**: `docs/plans/` 디렉토리 전체가 `.gitignore` 처리됨. 이전에는 개별 파일 (`E3_symmetric_amplifier_design.md`, `507_buy_candidate_emitter_phase1.md`)만 등록됐으나, 새 spec 추가 시 누락 위험 — 디렉토리 단위로 통합. 기존 tracked 3건 (`E3_phase2_paired_counterfactual.md`, `E3_symmetric_amplifier_design.md`, `e4_0b.md`)는 `git rm --cached` 처리. 사용자 본인 spec 노트의 broker name / financial figure 누설 방어. **새 spec 작성 시 broker name placeholder 사용** (`Brokerage Alpha Main` 등) — gitignored 라도 future commit 사고 회피.
+
 **방어 layer 3개** (defense in depth):
 1. `scripts/check_privacy_leak.py` — 핵심 scanner (stdlib only).
 2. `scripts/pre_push_check.sh` Section 4 — local pre-push gate.
@@ -533,6 +535,73 @@ Skill 미가용 시 `docs/HARNESS.md` (pointer) → `.claude/skills/nuri-harness
 | **Standardized eval framework (HAL)** | ❌ 없음 | **Gap C** (Tier 3 research) |
 
 **결론**: 7 of 10 frontier 권장 적용. 3 gap 은 측정 + 결정 layer (autonomy / coupling / eval) — **시스템 코드가 아니라 시스템에 대한 시스템**. Tier 2 P2 (Gap B) 만 **build value 즉시**, 나머지는 research / 정책 결정.
+
+### 5.11 BUY Signal Asymmetry — #507 Phase 1 ship + Phase 2 v2 sequence (2026-04-30 Session 8)
+
+**문제 (4-29 발견, #507 격상)**: 시스템이 `Collect → Analyze → Consensus → Certify → Track` 전체에서 **sell-side gate 7개** 와 **buy-side emitter 0개** 를 운영. SIEGE / stop-loss / take-profit / position-limit / VIX / holdings_monitor 모두 SELL 또는 block. 4월 사용자 ₩3.25M 실현 + ~₩2-4M 추정 기회비용 attribution. 자세한 inventory: `data/llm_consults/2026-04-30_507-system-audit.md`.
+
+**Phase 1 ship (PR #508 / #512)**:
+- `nuri/trading/recommend/buy_candidate_emitter.py` — factor + momentum + RSI + breakout fusion → BUY candidate stream + entry/stop/TP1/TP2.
+- `_get_held_tickers()` SELL/TRIM/REDUCE filter + `_get_cooldown_tickers(days=5)` 단일 cooldown (PR #508 ship 시).
+- API + read-side dual-layer guard (PR #512): `recommendations.action ∈ {SELL,TRIM,REDUCE}` 는 portfolio JOIN으로 0주 ticker 차단.
+- `FRESHNESS_POLICIES["portfolio"]` 24h warn / 72h fail 정책 등록.
+- 4-30 brief 검증: GOOGL/TSM 0주 SELL 누설 0건, MSFT/GOOGL 신규 매수 후 brief surface 정상.
+- **잔여 결손**: held=skip 100% / threshold 70 floor / cooldown 5d uniform / brief에 freshness 미surface / 신규 매수 시 consensus 수동 호출 / 0주 HOLD stale row.
+
+**Phase 2 spec v2 sequence (Session 8 codex+Qwen consult REJECT v1)**:
+1. **#517 (2b)** — Cooldown SELL-type split + event taxonomy 통일. Forward-only ALTER (no backfill). `payload.action_type ∈ {hard_sell, trim_action, position_reduce, divergence_alert}`. hard_sell 21d / trim 0d (re-add allowed) / reduce 7d / divergence 3d / legacy fallback 5d. Session-level dedup lock for trim 0d spam.
+2. **#518 (2a)** — Held add-mode + multi-account cap + earnings blackout. 3 modes precedence (`tp1_residual_add` > `ride_winner` > `average_down`) — 같은 (ticker, account, session) 단 1건 emit. Account별 cap: `account_strategies.<acct>.cap_max` derive (active=25%, core=15%, hardcoded 금지). Avg_down window: `account.stop_loss × [0.3, 0.7]` derive. **Earnings blackout: held_add는 earnings_date ± 5d 차단** (binary event risk). **Shadow mode 14d 의무** — 첫 14일 brief 미surface, calibration sample 생성.
+3. **#519 (2c)** — Threshold backtest 104 weekly (2024-04 ~ 2026-04). In-sample 60% / OOS 40% (peek 금지). Objective: max profit_factor s.t. MaxDD ≥ -10% AND n_emit ≥ 1.5/session. Liquidity-tier slippage. Tie-break: T*와 1σ within 시 conservative 선택. **3-LLM consult 의무**.
+
+**v1 → v2 변경 (LLM 8개 STOP/REFINE 합의)**:
+- 시퀀스: ~~2b → 2c → 2a~~ → **2b → 2a (shadow) → 2c** (threshold tune은 held-add 활성 후 calibrate)
+- C1 sample: ~~13 weekly Q1-2026~~ → **104 weekly 2년**
+- A3 hardcoded [-3,-10] → account-derived
+- A4 cap hardcoded 5%p → account_strategy derive
+- A2 mutual exclusion: 3 modes 같은 ticker 동시 emit 차단
+- B2 backfill 폐기 (heuristic 위험)
+- E2 multi-account cap 분리
+- G 정량 수치 ~₩1.2-2.3M 폐기 → April audit replay에서 backtest로 derive
+
+**Spec**: `docs/plans/507_buy_candidate_emitter_phase2_spec.md` (gitignored, v2 작성 완료)
+**Consult archive**: `data/llm_consults/2026-04-30_507-phase2-spec-review.md`
+
+### 5.12 Session 8 결함 격상 (2026-04-30, #513–#516)
+
+Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
+
+| # | 발견 | 우선순위 |
+|---|---|---|
+| **#513** | `premarket_brief.py`가 `FRESHNESS_POLICIES["portfolio"]` 결과를 brief 본문에 surface 안 함 (backend 작동, 사용자 가시성 0) | P1 |
+| **#514** | `recommendations.action='HOLD'` 행이 portfolio JOIN filter 미적용 → 0주 ticker (TSM 등) HOLD noise surface | P2 |
+| **#515** | 신규 매수 후 `make consensus` 수동 호출 운영 burden — `scripts/import_portfolio.py` 에 newly-added ticker detection + auto-trigger 필요 | P1 |
+| **#516** | Pension 4-18 매도 종목 3개 (테크TOP10/나스닥100/KRX300) 4-30 재진입 — 한화증권 자동매수 설정 의도 검증 필요 | P3 |
+
+### 5.13 BUY candidate backtracking ledger (Session 8 신설)
+
+**Goal**: Phase 1 emitter score 신뢰도 검증 + Phase 2c threshold backtest 표본 자동 적립.
+
+**Mechanism**:
+- 매 세션 emit한 BUY 후보를 `data/reports/buy_tracking/candidate_ledger.jsonl` (gitignored, append-only)에 baseline 기록.
+- 다음 세션 진입 시 `scripts/compare_buy_candidates.py --session N` (tracked infra) 실행 → baseline vs current close + tier별 평균 return.
+- 4주간 누적 → 13 weekly samples → Phase 2c threshold backtest 입력 보강.
+
+**Tier 정의**:
+- `A_high`: 고확신 (AI capex 직결, fundamentals 강함)
+- `B_mid`: 중확신 (catalyst 후 진입)
+- `C_chase`: 추격 회피 (5d momentum 과열, breakout+RVOL 후만)
+- `ADD_ride`: 보유 ride-winner (Phase 2a 미ship 수동 판단)
+- `ADD_held`: 보유 add (Phase 2a 미ship 수동 판단)
+
+**검증 항목 (acceptance — score function 신뢰도 측정)**:
+- A_high 평균 1d return > 0 → score 신호 valid
+- A_high − C_chase spread > 0 → score 차등화 valid (5d momentum 과열이 더 잘 가는 비정상 차단)
+- ADD_ride peak 대비 흐름 → ride-winner 명분 정량 검증
+- B_mid 평균 → catalyst 전이 측정
+
+**Session 8 baseline**: 11종 (A_high 3 / B_mid 3 / C_chase 2 / ADD_ride 1 / ADD_held 2). 4-29 close 기준. 다음 세션 첫 task로 검증 실행 (`SESSION_PROMPT.md` SESSION-START 의무 #2).
+
+**부정 결과 시 액션**: A_high avg < 0 → 즉시 P0 격상 + Phase 2c threshold backtest 우선순위 격상 + score function 재교정 issue 격상.
 
 ---
 

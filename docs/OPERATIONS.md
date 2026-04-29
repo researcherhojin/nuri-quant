@@ -102,11 +102,53 @@ Dual-stack pattern, single helper: `scripts/llm_consult.py` (codex + Qwen3.5 arc
 
 **Current state (2026-04-29)**: only the dev box runs LM Studio. Mac mini has no local LLM running because no Mac mini code path calls one — `nuri/llm/openai_client.py` is the only LLM gateway and it talks to OpenAI cloud (gpt-5.4-nano). Set up Mac mini llama.cpp **only when** a code path on the receiver needs local inference (e.g. if `macro_news` classifier ever migrates from OpenAI cloud to local for cost / privacy).
 
+## BUY Candidate Backtracking (2026-04-30 Session 8 신설)
+
+**Goal**: Phase 1 BUY emitter score 신뢰도 검증 + Phase 2c threshold backtest 표본 누적. 자세한 정책: `docs/STRATEGY.md §5.13`.
+
+### 매 세션 사이클
+
+1. **세션 N 종료 시**: emit한 BUY 후보 11종 (또는 그 세션 N개)을 `data/reports/buy_tracking/candidate_ledger.jsonl` (gitignored, append-only)에 baseline 가격 + tier (`A_high` / `B_mid` / `C_chase` / `ADD_ride` / `ADD_held`) + score + stop/TP1/TP2 사전 계산 박힘.
+2. **세션 N+1 진입 시 (의무, SESSION_PROMPT.md SESSION-START #2)**:
+   ```bash
+   .venv/bin/python scripts/compare_buy_candidates.py --session N
+   # 또는 특정 close 기준:
+   .venv/bin/python scripts/compare_buy_candidates.py --session N --as-of 2026-05-01
+   ```
+3. 출력: ticker별 ret%, vs TP1, vs Stop, ✅ TP1 hit / ❌ STOP hit / 📈 진행 중 verdict, **tier별 평균 return**.
+4. 4가지 검증 항목 (`docs/STRATEGY.md §5.13`) 정량 평가 후 `data/reports/buy_tracking/<date>_session<N>_buy_candidates.md` backtrack 표 채우기.
+5. 부정 결과 (A_high avg < 0) → P0 격상 + Phase 2c 우선순위 격상 + score function 재교정 issue.
+
+### 4 주 누적 후
+
+13 weekly samples 자동 적립 → Phase 2c (#519) threshold backtest 입력 보강. 2024-04 ~ 2026-04 historical 데이터와 함께 104 weekly window 구성.
+
+### 파일 위치
+
+- Ledger: `data/reports/buy_tracking/candidate_ledger.jsonl` (gitignored, JSON line per emit)
+- 사람용 표: `data/reports/buy_tracking/<date>_session<N>_buy_candidates.md` (gitignored, baseline + backtrack 표 2개)
+- 비교 스크립트: `scripts/compare_buy_candidates.py` (**tracked**, 재사용 인프라, ~75 LOC)
+
+## Portfolio sync (broker app → DB)
+
+매 세션 시작 의무 (SESSION_PROMPT.md SESSION-START #6):
+
+1. broker 앱 화면 캡처 (모든 활성 계좌 — Brokerage Alpha Main / Sub / Brokerage Beta / Pension / IRP).
+2. `config/portfolio.yaml` (gitignored) 의 holdings + cash 갱신.
+   - 신규 매수 ticker 추가 시 broker name placeholder 사용 (`Brokerage Alpha Main` 등 — STRATEGY §4.4.1).
+   - cash_krw / cash_usd 분해 정확도 확인 (총합 = 화면 표시 현금).
+3. `python scripts/import_portfolio.py` 실행 — yaml → DB sync (4 accounts, holdings 키 정의된 계좌만 대상).
+4. `make consensus` 실행 — 신규 ticker가 stale recommendation (4-30 이전 SELL conf 100 등) 으로 brief에 잘못 표시되지 않도록 4-30 date row 갱신.
+   - 자동화는 #515 (`scripts/import_portfolio.py` 에 newly-added ticker detection + auto-trigger) 추가 예정.
+5. `make brief` (또는 `make quick-scan`) 실행 — 새 holdings + cash 반영된 brief 검증.
+
 ## Reference
 
 - Deploy script: `scripts/deploy_mini.sh`
 - Sync script: `scripts/sync_dev.sh` (push / pull modes)
 - Receiver script: `scripts/auto_deploy.sh`
+- Portfolio sync: `scripts/import_portfolio.py`
+- BUY candidate backtracking: `scripts/compare_buy_candidates.py`
 - launchd plists: `~/Library/LaunchAgents/com.nuri-quant.{autopull,scheduler}.plist`
 - Architecture (DB schema, env var inventory, CI/CD): `docs/ARCHITECTURE.md`
 - Investment policy / harness rules: `docs/STRATEGY.md`

@@ -8,7 +8,22 @@
 
 ## Tier 2 — 다음 1 달 (P1)
 
-**다음 세션 우선순위** — 구체적 작업 단위로 엄밀 정의 (2026-04-14 재평가).
+**다음 세션 우선순위** — 구체적 작업 단위로 엄밀 정의 (2026-04-30 Session 8 재평가).
+
+### Top of stack — Session 9 P0 (의무, 시간 gated)
+
+| 우선 | # | 항목 | 이슈 | 카테고리 | 예상 | Acceptance |
+|------|---|------|------|---------|------|------------|
+| 🔴 P0 | 8.0 | **Session 8 BUY candidate backtracking 검증 (의무)** | — | analysis | 0.1 세션 | `.venv/bin/python scripts/compare_buy_candidates.py --session 8` 실행 → 11종 baseline (4-29 close) vs 5-1 close 비교. 4가지 검증 항목 (`docs/STRATEGY.md §5.13`) 정량 평가. A_high avg < 0 → 즉시 P0 격상 + score function 재교정 issue. |
+| 🔴 P0 | 8.1 | **#517 Phase 2b ship — cooldown SELL-type split + event taxonomy** | [#517](https://github.com/researcherhojin/nuri-quant/issues/517) | feat(events) | 1 세션 (~70-95분) | Forward-only ALTER (no backfill). hard_sell 21d / trim 0d / reduce 7d / divergence 3d / legacy 5d. Session-level dedup lock. 5 lock-tests + 4 action_type emit test. Spec §3 참조. 3-LLM consult NOT required (Codex D2 GO). |
+| 🔴 P0 | 8.2 | **#518 Phase 2a ship — held add-mode (shadow 14d 의무)** | [#518](https://github.com/researcherhojin/nuri-quant/issues/518) | feat(signals) | 1-2 세션 | 3 modes (tp1_residual_add > ride_winner > average_down) + multi-account cap + earnings blackout. account_strategies.<acct>.cap_max derive (active=25%, core=15%). Avg_down window: account.stop_loss × [0.3, 0.7]. Shadow mode 14d 의무 (calibration sample for 2c). Spec §4. |
+| 🟡 P1 | 8.3 | **#513 brief freshness surface 추가** | [#513](https://github.com/researcherhojin/nuri-quant/issues/513) | fix(alerts) | ~30분 | `format_brief_embed()` + `format_brief_markdown()` 에 `## Data Freshness` section 추가. PASS / WARN / FAIL 3-tier color. Lock-test `tests/alerts/test_premarket_brief.py` freshness section 존재 검증. |
+| 🟡 P1 | 8.4 | **#515 신규 매수 자동 consensus 트리거** | [#515](https://github.com/researcherhojin/nuri-quant/issues/515) | feat(consensus) | 1 PR | `scripts/import_portfolio.py` 에 newly-added ticker detection. Sync 후 `run_consensus(tickers=new_list)` 자동 호출. Lock-test: 신규 ticker 추가 → recommendations latest=today. |
+| 🟡 P1 | 8.5 | **#519 Phase 2c — threshold backtest (104w + OOS + 3-LLM)** | [#519](https://github.com/researcherhojin/nuri-quant/issues/519) | feat(backtest) | 2-3 세션 (8.2 shadow 14d 후) | 104 weekly samples (2024-04 ~ 2026-04), 60% in-sample / 40% OOS. max profit_factor s.t. MaxDD ≥ -10%. Liquidity-tier slippage. Tie-break conservative. **3-LLM consult 의무**. Spec §5. |
+| 🟢 P2 | 8.6 | **#514 0주 HOLD stale fix** | [#514](https://github.com/researcherhojin/nuri-quant/issues/514) | fix(brief) | ~20분 | `recommendations.action='HOLD'` 도 portfolio JOIN filter (PR #512 SELL/TRIM/REDUCE 패턴 확장). Lock-test 0주 ticker HOLD 누설 0건 검증. |
+| 🟢 P2 | 8.7 | **#516 pension auto_invest 의도 검증** | [#516](https://github.com/researcherhojin/nuri-quant/issues/516) | config(pension) | manual | 한화증권 자동매수 화면 캡처 → 6종 등록인지 3종 등록인지 확인. portfolio.yaml `auto_invest` reconcile. |
+
+### 진행 중 / 후속 항목
 
 | 우선 | # | 항목 | 이슈 | 카테고리 | 예상 | Acceptance |
 |------|---|------|------|---------|------|------------|
