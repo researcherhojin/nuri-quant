@@ -252,8 +252,21 @@ class TestCheckFreshness:
         assert result["message"] == "데이터 없음"
 
     def test_consensus_freshness(self, db_path):
-        """pipeline_events 기반 consensus 신선도 체크."""
-        emit_event("step_completed", "diagnose", db_path=db_path)
+        """recommendations.date 기반 consensus 신선도 체크.
+
+        Session 10 fix (PR #526): query 가 'pipeline_events.diagnose step_completed'
+        를 보던 always-FAIL bug → 'recommendations.date' 로 교체. save_to_recommendations
+        가 매 consensus run 마다 today date row 갱신하므로 정확한 source.
+        """
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence) VALUES (?, 'AAPL', 'HOLD', 80.0)",
+                (today_kst(),),
+            )
+            conn.commit()
         result = check_freshness("consensus", db_path)
         assert result["status"] == "PASS"
         assert result["key"] == "consensus"
