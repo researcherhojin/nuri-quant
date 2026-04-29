@@ -240,6 +240,14 @@ holdings-monitor:
 holdings-monitor-dry:
 	$(PYTHON) -m nuri.trading.recommend.holdings_monitor --dry-run
 
+# Dual-LLM consult helper — codex + Qwen3.5 in parallel, archive both verdicts
+# to data/llm_consults/ (gitignored). Use for design-ambiguity decisions.
+# Usage: make llm-consult slug=<kebab> prompt=<file>
+llm-consult:
+	@test -n "$(slug)" || (echo "usage: make llm-consult slug=<kebab> prompt=<file>"; exit 1)
+	@test -n "$(prompt)" || (echo "usage: make llm-consult slug=<kebab> prompt=<file>"; exit 1)
+	$(PYTHON) scripts/llm_consult.py --slug "$(slug)" --prompt-file "$(prompt)"
+
 gate:
 	$(PYTHON) -m nuri.trading.engine.gate
 
