@@ -376,6 +376,10 @@ def _get_recommendations() -> list[dict]:
     # P0 stale-data fix (#507 audit 2026-04-30): SELL/TRIM/REDUCE 는 portfolio.qty>0
     # 인 경우만 surface. tracker.py write-side filter 가 1차 차단하지만, 이미 persist
     # 된 stale row + 다른 writer 경로 (legacy / future) 도 이중으로 막음.
+    #
+    # #514 (Session 8 발견): HOLD 도 동일 filter 확장. 4-18 매도된 TSM 의 stale HOLD
+    # row (conf 80) 가 brief 에 surface 되는 noise 차단. BUY 는 비보유 ticker 도 valid
+    # emit 이므로 filter 제외.
     rows = query("""
         SELECT r.ticker, r.action, r.confidence, r.signals,
                r.scoring_detail, r.agent_verdicts,
@@ -383,7 +387,7 @@ def _get_recommendations() -> list[dict]:
         FROM recommendations r
         WHERE r.date = (SELECT MAX(date) FROM recommendations)
           AND (
-              r.action NOT IN ('SELL', 'TRIM', 'REDUCE')
+              r.action NOT IN ('SELL', 'TRIM', 'REDUCE', 'HOLD')
               OR r.ticker IN (SELECT ticker FROM portfolio WHERE quantity > 0)
           )
         ORDER BY r.confidence DESC
