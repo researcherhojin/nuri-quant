@@ -11,6 +11,8 @@ Mac Mini에서 `python -m nuri.scheduler`로 24/7 운영.
 
 import argparse
 import logging
+import logging.handlers
+import os
 import signal
 import sys
 from pathlib import Path
@@ -18,10 +20,44 @@ from pathlib import Path
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(name)s %(levelname)s %(message)s",
-)
+
+def _configure_logging() -> None:
+    """Set up scheduler logging with optional file rotation.
+
+    Mac mini 24/7 receiver runs the scheduler indefinitely; without rotation
+    `data/logs/scheduler.log` grows unbounded. Activate via env var
+    `NURI_SCHEDULER_LOG_DIR=<path>` (default: `data/logs/` under repo root)
+    or `NURI_SCHEDULER_LOG_DISABLE_FILE=1` to opt out (e.g. CI / tests).
+
+    Format and console behavior unchanged — only adds a rotating sibling.
+    """
+    fmt = "%(asctime)s %(name)s %(levelname)s %(message)s"
+    logging.basicConfig(level=logging.INFO, format=fmt)
+
+    if os.environ.get("NURI_SCHEDULER_LOG_DISABLE_FILE", "0") == "1":
+        return
+
+    repo_root = Path(__file__).resolve().parent.parent
+    log_dir_env = os.environ.get("NURI_SCHEDULER_LOG_DIR")
+    log_dir = Path(log_dir_env) if log_dir_env else (repo_root / "data" / "logs")
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Read-only filesystem (CI sandboxes) — keep console-only logging.
+        return
+
+    handler = logging.handlers.RotatingFileHandler(
+        log_dir / "scheduler.log",
+        maxBytes=5 * 1024 * 1024,  # 5 MB per file
+        backupCount=3,  # keep 3 rotated archives → 20 MB total cap
+        encoding="utf-8",
+    )
+    handler.setFormatter(logging.Formatter(fmt))
+    handler.setLevel(logging.INFO)
+    logging.getLogger().addHandler(handler)
+
+
+_configure_logging()
 logger = logging.getLogger("nuri.scheduler")
 
 

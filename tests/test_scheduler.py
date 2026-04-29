@@ -13,6 +13,7 @@ Sources (consolidated from legacy coverage rounds, renamed from test_scheduler_a
   - test_pipeline_api.py      → TestWriteHeartbeat_PipelineApi
   - test_db.py                → TestSchedulerDbMaintenance_Db
 """
+
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -24,10 +25,12 @@ from nuri.core.db import init_db
 # Fixtures
 # ─────────────────────────────────────────────
 
+
 @pytest.fixture
 def db_path(tmp_path, monkeypatch):
     """Isolated DB for scheduler tests."""
     import nuri.core.db as db_mod
+
     path = tmp_path / "test.db"
     init_db(path)
     monkeypatch.setattr(db_mod, "DB_PATH", path)
@@ -269,6 +272,7 @@ class TestScheduler:
 class TestScheduler_R2:
     def test_schedules_structure(self):
         from nuri.scheduler import SCHEDULES
+
         assert len(SCHEDULES) >= 17
         for s in SCHEDULES:
             assert "name" in s
@@ -278,11 +282,13 @@ class TestScheduler_R2:
     def test_run_collector_unknown(self):
         """존재하지 않는 collector → 에러 로그만, 예외 없음."""
         from nuri.scheduler import _run_collector
+
         # 존재하지 않는 collector 이름 → 로그만 남기고 반환
         _run_collector("nonexistent_collector_xyz")
 
     def test_write_heartbeat(self, tmp_path, monkeypatch):
         from nuri.scheduler import _write_heartbeat
+
         hb_path = tmp_path / ".scheduler_heartbeat"
         monkeypatch.setattr("nuri.scheduler.HEARTBEAT_PATH", hb_path)
         _write_heartbeat()
@@ -302,12 +308,14 @@ class TestScheduler_R27:
     def test_run_collector_unknown(self):
         """_run_collector with unknown name does nothing."""
         from nuri.scheduler import _run_collector
+
         # Should not raise
         _run_collector("totally_unknown_collector_name")
 
     def test_run_collector_stock_exception(self, monkeypatch):
         """_run_collector handles runtime errors."""
         from nuri.scheduler import _run_collector
+
         # Mock the actual collector to raise
         mock_collector = MagicMock()
         mock_collector.return_value.run.side_effect = Exception("test error")
@@ -318,6 +326,7 @@ class TestScheduler_R27:
     def test_run_report_exception(self, monkeypatch):
         """_run_report handles exception."""
         from nuri.scheduler import _run_report
+
         # Should not raise
         _run_report()
 
@@ -326,18 +335,21 @@ class TestScheduler_R27:
         import subprocess
 
         from nuri.scheduler import _run_backup
+
         monkeypatch.setattr(subprocess, "run", MagicMock(side_effect=Exception("no script")))
         _run_backup()
 
     def test_run_db_maintenance_exception(self):
         """_run_db_maintenance handles exception."""
         from nuri.scheduler import _run_db_maintenance
+
         _run_db_maintenance()  # Script likely doesn't exist in test env
 
     def test_write_heartbeat(self, tmp_path, monkeypatch):
         """_write_heartbeat writes file."""
         import nuri.scheduler as sched_mod
         from nuri.scheduler import _write_heartbeat
+
         monkeypatch.setattr(sched_mod, "HEARTBEAT_PATH", tmp_path / ".heartbeat")
         _write_heartbeat()
         assert (tmp_path / ".heartbeat").exists()
@@ -345,6 +357,7 @@ class TestScheduler_R27:
     def test_print_schedule(self, capsys):
         """print_schedule outputs schedule list."""
         from nuri.scheduler import print_schedule
+
         print_schedule()
         captured = capsys.readouterr()
         assert "Nuri-Quant Scheduler" in captured.out
@@ -352,6 +365,7 @@ class TestScheduler_R27:
     def test_create_scheduler(self):
         """create_scheduler creates and registers jobs."""
         from nuri.scheduler import SCHEDULES, create_scheduler
+
         scheduler = create_scheduler()
         jobs = scheduler.get_jobs()
         # Should have SCHEDULES + heartbeat
@@ -366,6 +380,7 @@ class TestScheduler_R27:
 class TestScheduler_R26:
     def test_create_scheduler(self, monkeypatch):
         from nuri.scheduler import SCHEDULES, create_scheduler
+
         scheduler = create_scheduler()
         # Should have all schedules + heartbeat
         jobs = scheduler.get_jobs()
@@ -373,6 +388,7 @@ class TestScheduler_R26:
 
     def test_print_schedule(self, capsys):
         from nuri.scheduler import print_schedule
+
         print_schedule()
         out = capsys.readouterr().out
         assert "Nuri-Quant Scheduler" in out
@@ -380,6 +396,7 @@ class TestScheduler_R26:
     def test_main_dry_run(self, monkeypatch, capsys):
         monkeypatch.setattr("sys.argv", ["scheduler", "--dry-run"])
         from nuri.scheduler import main
+
         main()
         out = capsys.readouterr().out
         assert "Scheduler" in out
@@ -394,10 +411,12 @@ class TestScheduler_R26:
         mock_scheduler.start.return_value = None
 
         monkeypatch.setattr(
-            "nuri.scheduler.create_scheduler", lambda: mock_scheduler,
+            "nuri.scheduler.create_scheduler",
+            lambda: mock_scheduler,
         )
 
         from nuri.scheduler import main
+
         main()
         mock_scheduler.start.assert_called_once()
 
@@ -408,11 +427,13 @@ class TestScheduler_R26:
         monkeypatch.setattr("nuri.scheduler.create_scheduler", lambda: mock_scheduler)
         # We can't easily test signal handlers, so just verify create_scheduler works
         from nuri.scheduler import create_scheduler
+
         sched = create_scheduler()
         assert sched is not None
 
     def test_run_collector_unknown(self):
         from nuri.scheduler import _run_collector
+
         _run_collector("unknown_name")  # Should not raise
 
     def test_run_collector_error(self, monkeypatch):
@@ -422,6 +443,7 @@ class TestScheduler_R26:
             MagicMock(side_effect=Exception("import fail")),
         )
         from nuri.scheduler import _run_collector
+
         _run_collector("stock")  # Should log error, not raise
 
     def test_run_report_error(self, monkeypatch):
@@ -430,17 +452,21 @@ class TestScheduler_R26:
             MagicMock(side_effect=Exception("fail")),
         )
         from nuri.scheduler import _run_report
+
         _run_report()  # Should not raise
 
     def test_run_backup_error(self, monkeypatch):
         monkeypatch.setattr("subprocess.run", MagicMock(side_effect=Exception("fail")))
         from nuri.scheduler import _run_backup
+
         _run_backup()  # Should not raise
 
     def test_write_heartbeat(self, tmp_path, monkeypatch):
         import nuri.scheduler as sched_mod
+
         monkeypatch.setattr(sched_mod, "HEARTBEAT_PATH", tmp_path / ".scheduler_heartbeat")
         from nuri.scheduler import _write_heartbeat
+
         _write_heartbeat()
         assert (tmp_path / ".scheduler_heartbeat").exists()
 
@@ -451,6 +477,7 @@ class TestScheduler_R26:
         mock_mod.run_maintenance = MagicMock(side_effect=Exception("fail"))
         monkeypatch.setitem(sys.modules, "scripts.db_maintenance", mock_mod)
         from nuri.scheduler import _run_db_maintenance
+
         _run_db_maintenance()  # Should not raise
 
 
@@ -462,6 +489,7 @@ class TestScheduler_R26:
 class TestScheduler_Final:
     def test_schedules_list(self):
         from nuri.scheduler import SCHEDULES
+
         assert len(SCHEDULES) > 0
         for s in SCHEDULES:
             assert "name" in s or "job" in s or len(s) >= 2
@@ -476,6 +504,7 @@ class TestSchedulerLazy:
     def test_run_collector_all_names(self):
         """모든 collector name에 대해 _run_collector 호출."""
         from nuri.scheduler import SCHEDULES, _run_collector
+
         collector_names = [s["name"] for s in SCHEDULES if s["func"] == _run_collector]
         for name in collector_names[:5]:  # 처음 5개만 테스트 (속도)
             _run_collector(name)
@@ -483,6 +512,7 @@ class TestSchedulerLazy:
     def test_main_signal_handler(self):
         """main()의 시그널 핸들러 등록."""
         from nuri.scheduler import SCHEDULES
+
         # SCHEDULES가 올바른 구조인지만 확인
         assert all("func" in s for s in SCHEDULES)
 
@@ -497,18 +527,33 @@ class TestSchedulerLazy_R6:
     def test_run_collector_known_names(self):
         """실제 collector 이름 호출 — conftest mock 덕분에 네트워크 안 탐."""
         from nuri.scheduler import _run_collector
-        names = ["stock", "stock_kr", "macro", "technical", "fear_greed",
-                 "ark", "news", "fundamental", "estimates", "wallstreet",
-                 "cboe", "finviz", "etf_flows"]
+
+        names = [
+            "stock",
+            "stock_kr",
+            "macro",
+            "technical",
+            "fear_greed",
+            "ark",
+            "news",
+            "fundamental",
+            "estimates",
+            "wallstreet",
+            "cboe",
+            "finviz",
+            "etf_flows",
+        ]
         for name in names:
             _run_collector(name)  # lazy import + run() 호출
 
     def test_run_collector_reddit(self):
         from nuri.scheduler import _run_collector
+
         _run_collector("reddit")
 
     def test_run_collector_events(self):
         from nuri.scheduler import _run_collector
+
         _run_collector("events")
 
 
@@ -520,21 +565,25 @@ class TestSchedulerLazy_R6:
 class TestSchedulerDispatch:
     def test_run_collector_memory_snapshot(self):
         from nuri.scheduler import _run_collector
+
         _run_collector("memory_snapshot")
 
     def test_run_backup(self):
         from nuri.scheduler import _run_backup
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
             _run_backup()
 
     def test_run_db_maintenance(self):
         from nuri.scheduler import _run_db_maintenance
+
         with patch("scripts.db_maintenance.run_maintenance"):
             _run_db_maintenance()
 
     def test_schedules_cron_format(self):
         from nuri.scheduler import SCHEDULES
+
         for s in SCHEDULES:
             cron = s["cron"]
             assert isinstance(cron, str), f"{s['name']}: cron should be str"
@@ -543,6 +592,7 @@ class TestSchedulerDispatch:
 
     def test_print_schedule(self, capsys):
         from nuri.scheduler import print_schedule
+
         print_schedule()
         output = capsys.readouterr().out
         assert "stock" in output.lower() or "schedule" in output.lower() or len(output) > 0
@@ -556,6 +606,7 @@ class TestSchedulerDispatch:
 class TestSchedulerExtended:
     def test_schedules_structure(self):
         from nuri.scheduler import SCHEDULES
+
         for s in SCHEDULES:
             assert isinstance(s, dict)
             # 각 스케줄에 cron과 job이 있어야 함
@@ -564,6 +615,7 @@ class TestSchedulerExtended:
     def test_run_collector_import(self):
         """_run_collector 함수가 존재하는지."""
         from nuri.scheduler import _run_collector
+
         assert callable(_run_collector)
 
 
@@ -576,6 +628,7 @@ class TestWriteHeartbeat_PipelineApi:
     def test_creates_file(self, tmp_path, monkeypatch):
         """_write_heartbeat가 파일 생성."""
         import nuri.scheduler as sched
+
         monkeypatch.setattr(sched, "HEARTBEAT_PATH", tmp_path / ".hb")
         sched._write_heartbeat()
         assert (tmp_path / ".hb").exists()
@@ -592,30 +645,35 @@ class TestSchedulerDecisions:
     def test_decision_outcomes_in_schedules(self):
         """SCHEDULES에 decision_outcomes 엔트리 존재."""
         from nuri.scheduler import SCHEDULES
+
         names = [s["name"] for s in SCHEDULES]
         assert "decision_outcomes" in names
 
     def test_agent_accuracy_in_schedules(self):
         """SCHEDULES에 agent_accuracy 엔트리 존재."""
         from nuri.scheduler import SCHEDULES
+
         names = [s["name"] for s in SCHEDULES]
         assert "agent_accuracy" in names
 
     def test_decision_outcomes_cron(self):
         """decision_outcomes: 매일 07:00 KST."""
         from nuri.scheduler import SCHEDULES
+
         entry = next(s for s in SCHEDULES if s["name"] == "decision_outcomes")
         assert entry["cron"] == "0 7 * * *"
 
     def test_agent_accuracy_cron(self):
         """agent_accuracy: 일요일 08:00 KST."""
         from nuri.scheduler import SCHEDULES
+
         entry = next(s for s in SCHEDULES if s["name"] == "agent_accuracy")
         assert entry["cron"] == "0 8 * * 0"
 
     def test_run_collector_decision_outcomes(self):
         """_run_collector dispatches to track_decision_outcomes."""
         from nuri.scheduler import _run_collector
+
         with patch("nuri.trading.engine.decisions.track_decision_outcomes", return_value=3) as mock_fn:
             _run_collector("decision_outcomes")
         mock_fn.assert_called_once()
@@ -623,6 +681,7 @@ class TestSchedulerDecisions:
     def test_run_collector_agent_accuracy(self):
         """_run_collector dispatches to save_agent_accuracy_snapshot."""
         from nuri.scheduler import _run_collector
+
         with patch("nuri.trading.engine.decisions.save_agent_accuracy_snapshot", return_value=5) as mock_fn:
             _run_collector("agent_accuracy")
         mock_fn.assert_called_once()
@@ -635,8 +694,11 @@ class TestSchedulerDecisions:
         Revert (dispatch 제거) 시 이 테스트 fail.
         """
         from nuri.scheduler import _run_collector
-        with patch("nuri.trading.agents.consensus.analyze_portfolio", return_value=[]) as m_analyze, \
-             patch("nuri.trading.agents.consensus.save_to_recommendations", return_value=0) as m_save:
+
+        with (
+            patch("nuri.trading.agents.consensus.analyze_portfolio", return_value=[]) as m_analyze,
+            patch("nuri.trading.agents.consensus.save_to_recommendations", return_value=0) as m_save,
+        ):
             _run_collector("consensus")
         m_analyze.assert_called_once()
         m_save.assert_called_once()
@@ -644,6 +706,7 @@ class TestSchedulerDecisions:
     def test_schedules_include_consensus_job(self):
         """SCHEDULES 리스트에 consensus job entry 존재 — cron 스펙 lock-in."""
         from nuri.scheduler import SCHEDULES
+
         consensus_jobs = [j for j in SCHEDULES if j["name"] == "consensus"]
         assert len(consensus_jobs) == 1, "consensus job 정확히 1 개 필요"
         assert consensus_jobs[0]["args"] == ("consensus",)
@@ -655,6 +718,7 @@ class TestSchedulerDbMaintenance_Db:
     def test_scheduler_db_maintenance_runs(self, db_path, monkeypatch):
         """스케줄러 _run_db_maintenance가 정상 실행."""
         from nuri.scheduler import _run_db_maintenance
+
         _run_db_maintenance()  # 빈 DB에서도 에러 없이 실행
 
 
@@ -769,3 +833,75 @@ class TestUniverseBackfill:
             "create_scheduler 가 job.get('kwargs', {}) 를 add_job 으로 전달 해야 함. "
             "이 한 줄이 누락되면 period/source 가 무시되고 기본값 (5d/portfolio) 로 돌아감."
         )
+
+
+# ═══════════════════════════════════════════════════════
+# TestSchedulerLogRotation — RotatingFileHandler (PR #498)
+# ═══════════════════════════════════════════════════════
+
+
+class TestSchedulerLogRotation:
+    """Mac mini 24/7 receiver runs the scheduler indefinitely; without
+    rotation `data/logs/scheduler.log` grows unbounded. PR #498 adds a
+    RotatingFileHandler with env-var tunable path.
+
+    Per STRATEGY §5.3.1 Gotcha-Test Pair: this lock-test catches if the
+    rotating handler is silently removed in a future refactor (the file
+    would still get written via the basicConfig stream, but rotation
+    would stop and the disk would fill).
+    """
+
+    def test_configure_logging_creates_rotating_handler(self, tmp_path, monkeypatch):
+        """`_configure_logging` adds a RotatingFileHandler when env var is set."""
+        import logging.handlers
+
+        monkeypatch.setenv("NURI_SCHEDULER_LOG_DIR", str(tmp_path))
+        monkeypatch.delenv("NURI_SCHEDULER_LOG_DISABLE_FILE", raising=False)
+        # Re-import to re-run the module-level _configure_logging() with the
+        # patched env var.
+        import importlib
+
+        import nuri.scheduler
+
+        importlib.reload(nuri.scheduler)
+        try:
+            handlers = logging.getLogger().handlers
+            rotating = [h for h in handlers if isinstance(h, logging.handlers.RotatingFileHandler)]
+            assert len(rotating) >= 1, "RotatingFileHandler must be attached"
+            # Verify path + size cap match the documented contract
+            h = rotating[-1]
+            assert str(tmp_path) in str(h.baseFilename)
+            assert h.maxBytes == 5 * 1024 * 1024
+            assert h.backupCount == 3
+        finally:
+            # Clean up — the reload registered a real file handler. Detach so
+            # subsequent tests don't accumulate handlers.
+            for h in list(logging.getLogger().handlers):
+                if isinstance(h, logging.handlers.RotatingFileHandler):
+                    h.close()
+                    logging.getLogger().removeHandler(h)
+
+    def test_disable_env_var_skips_file_handler(self, tmp_path, monkeypatch):
+        """`NURI_SCHEDULER_LOG_DISABLE_FILE=1` opt-out for CI / read-only FS."""
+        import logging.handlers
+
+        monkeypatch.setenv("NURI_SCHEDULER_LOG_DISABLE_FILE", "1")
+        monkeypatch.setenv("NURI_SCHEDULER_LOG_DIR", str(tmp_path))
+        import importlib
+
+        import nuri.scheduler
+
+        importlib.reload(nuri.scheduler)
+        try:
+            handlers = logging.getLogger().handlers
+            rotating = [
+                h
+                for h in handlers
+                if isinstance(h, logging.handlers.RotatingFileHandler) and str(tmp_path) in str(h.baseFilename)
+            ]
+            assert rotating == [], "disable env var must suppress file handler"
+        finally:
+            for h in list(logging.getLogger().handlers):
+                if isinstance(h, logging.handlers.RotatingFileHandler):
+                    h.close()
+                    logging.getLogger().removeHandler(h)
