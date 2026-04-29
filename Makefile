@@ -248,6 +248,15 @@ llm-consult:
 	@test -n "$(prompt)" || (echo "usage: make llm-consult slug=<kebab> prompt=<file>"; exit 1)
 	$(PYTHON) scripts/llm_consult.py --slug "$(slug)" --prompt-file "$(prompt)"
 
+# Earnings preview (Issue #509) — consensus EPS/revenue + ATM straddle implied move.
+# yfinance-based, on-demand. Future: 위스퍼 (Estimize/StockTwits) Phase 2.
+# Usage:
+#   make earnings-preview ticker=MSFT
+#   make earnings-preview watchlist=MSFT,META,AMZN,GOOGL,QCOM
+earnings-preview:
+	@test -n "$(ticker)$(watchlist)" || (echo "usage: make earnings-preview ticker=<T> | watchlist=<T1,T2,...>"; exit 1)
+	$(PYTHON) -m nuri.collectors.earnings_preview $(if $(ticker),--ticker "$(ticker)") $(if $(watchlist),--watchlist "$(watchlist)")
+
 gate:
 	$(PYTHON) -m nuri.trading.engine.gate
 

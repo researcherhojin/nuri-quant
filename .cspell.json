@@ -632,7 +632,13 @@
     "INDA",
     "MCHI",
     "KODEX",
-    "TIGER"
+    "TIGER",
+    "hyperscaler",
+    "Hyperscaler",
+    "hyperscalers",
+    "Estimize",
+    "watchlist",
+    "Watchlist"
   ],
   "ignorePaths": [
     "node_modules/**",
