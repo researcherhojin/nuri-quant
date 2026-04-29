@@ -465,6 +465,75 @@ Deferred (필요 시점에 추가):
 
 Skill 미가용 시 `docs/HARNESS.md` (pointer) → `.claude/skills/nuri-harness-debug/SKILL.md` 로 fallback.
 
+### 5.10 Frontier Alignment + Improvement Roadmap (2026-04-30)
+
+§5.8 의 7 원칙은 **2026-02 OpenAI 공표 ("Harness engineering: leveraging Codex in an agent-first world", <https://openai.com/index/harness-engineering/>) + Anthropic Claude Code Best Practices (<https://www.anthropic.com/engineering/claude-code-best-practices>) + 학술 evidence (HAL Kapoor et al. 2026 / AgencyBench Li et al. 2026)** 와 **본질적으로 align**. 다만 frontier 대비 **3 개 measurable gap** 존재. 본 sub-section 은 각 gap 의 정량 spec + acceptance + risk 를 박는다 (TODO 와 분리 — 정책 layer).
+
+#### Gap A. Agent autonomy 확장 (OpenAI 1M LOC pattern)
+
+**Frontier 사례**: OpenAI Codex team — `1,000,000+ LOC` production app, `사람 손 0줄` (2026-02 OpenAI blog). AGENTS.md + mechanical CI invariants + layered architecture (Types → Config → Repo → Service → Runtime → UI) 로 enable.
+
+**현재 상태 (nuri-quant)**: Build/Review/Test/Ship/Reflect 7-phase Flow (§2.7) — 인간 review 단계 mandatory. Codex consult + Claude self-review 양쪽 hooks. Merge 는 사용자 명시 승인. **agent-only PR merge rate ≈ 0%**.
+
+**Gap 의 양면성 (정직한 평가)**:
+- *확장 정당화*: harness invariants (privacy-scan, doc count drift, hooks, ruff, conventional commits, ≤3 commits/PR) 가 이미 deterministic 차단 실효. autonomous merge 가 안전한 PR class 존재 (예: doc-only, lint-only).
+- *확장 거부 근거*: STRATEGY §7.1 자동 매매 영구 deferred 와 동일 ethos — **financial-impact 코드는 사용자 review 필수**. ₩7M 손실 cascade 직접 경험 후 system 책임 인정한 ecosystem 에서 autonomy 키우는 건 trust budget 역행.
+
+**Acceptance criterion** (research, no commit by default):
+- Phase α: PR class taxonomy (doc-only / lint / test / src / config / strategy) 정의 + autonomy_safe_class 명시 (initial: `doc-only` only, ≤ 5% of merged PRs).
+- Phase β: `autonomy_safe_class` PR 의 사후 측정 — 4 주 후 regression rate (post-merge revert 또는 fix-forward 빈도) < 10%.
+- Phase γ: **strategy / src / config 는 영구 인간 review** (STRATEGY change 필수).
+
+**Priority**: Tier 3 research. 우선순위 낮음. **사용자 review 가 ₩2-4M 손실 회피 가치 (#507 격상 사례) — autonomy 확장 EV 낮음**.
+
+#### Gap B. Harness-model coupling 측정 (AgencyBench-style)
+
+**Frontier evidence**: AgencyBench (Li et al. 2026, 138 real-world tasks, <https://www.preprints.org/manuscript/202604.0428>) — **"agent task reliability 가 model 능력 < harness layer (infrastructure)"** 정량 입증. Same harness × different model = different success rate. HAL (Kapoor et al. 2026, 21,000+ rollouts) 도 동일 결론.
+
+**현재 상태 (nuri-quant)**: 다중 LLM consumer (`nuri/llm/openai_client.py` gpt-5.4-nano cloud + `scripts/llm_consult.py` codex+Qwen3.5 dual-LLM consult). **Model 변경 시 reliability 변동 측정 0**. Codex GPT-5.4 → GPT-4-class 강등 시 어느 phase 가 깨지는지 unknown. Qwen3.5-122B → Qwen3.5-32B 양자화 시 same.
+
+**Acceptance criterion**:
+- Phase 1: `data/harness_telemetry.jsonl` 신설 — 매 LLM 호출 기록 (timestamp / model / phase / outcome / token_count). `nuri/llm/openai_client.py` 와 `scripts/llm_consult.py` 양쪽에 wired.
+- Phase 2: weekly aggregation script — `make harness-quality-report` → model-별 success rate / failure pattern / phase breakdown. 4 주 데이터 후 model swap recommendation (gpt-5.4-nano vs gpt-5.4 cloud cost-quality tradeoff).
+- Phase 3: AgencyBench subset adaptation — nuri-specific eval suite (예: 10 fixed prompts × 5 ticker × 3 question types = 150 task) → model compare matrix.
+
+**Priority**: **Tier 2 P2** (1-2 세션 build + 4 주 데이터 수집). 측정 가능, ship 후 의사결정 즉시 활용. Issue 격상 후보.
+
+#### Gap C. HAL evaluation framework 도입 검토
+
+**Frontier evidence**: HAL (Holistic Agent Leaderboard, Kapoor et al. 2026, 21,000+ agent rollouts) — 산업 표준 평가 protocol. SWE-bench (Jimenez et al. ICLR 2024) + AgencyBench 과 함께 frontier benchmark trio.
+
+**현재 상태**: nuri-quant 는 domain-specific (quant 투자) repo. HAL benchmark task (e.g. SWE-bench code editing tasks) 가 직접 적용되지 않음.
+
+**Gap 의 본질**:
+- *직접 적용 어려움*: HAL/SWE-bench 는 generic — quant 투자 의사결정 측정 안 함.
+- *간접 활용 가능*: HAL methodology (rollout sampling, 표준 evaluation harness) 를 nuri 에 어댑테이션 — `nuri-eval-suite` 신설.
+- *비용*: HAL-style evaluation 1 회 ~ \$50-200 (token cost, 1000+ rollouts). 정기 적용 시 cost-quality tradeoff 평가 필수.
+
+**Acceptance criterion** (research):
+- Phase 1: HAL methodology 검토 — generic 부분 vs nuri-specific 어댑테이션 가능 부분 분류.
+- Phase 2: `nuri-eval-suite` 신설 (예: 50 fixed test cases on portfolio analysis / signal scoring / earnings preview) — Gap B 의 telemetry 와 통합.
+- Phase 3: Quarterly evaluation report → model swap / harness change 의사결정 입력.
+
+**Priority**: **Tier 3 research**. Gap B 가 선행 (Gap C 는 Gap B 의 데이터 위에 build). 단독 build 는 EV 낮음.
+
+#### Frontier alignment 종합
+
+| Frontier 권장 | nuri-quant 적용 | Gap |
+|---|---|---|
+| AGENTS.md + machine-readable instructions | ✅ `AGENTS.md` + `CLAUDE.md` + `STRATEGY.md` | 0 |
+| Mechanical CI invariants | ✅ privacy-scan, doc count drift, ruff, hook | 0 |
+| Layered architecture | ✅ `nuri/core/` → `collectors/` → `quant/` → `trading/` → `api/` | 0 |
+| Pre-commit deterministic hooks | ✅ `.claude/settings.json` PreToolUse/PostToolUse | 0 |
+| Conventional commits + scope discipline | ✅ ≤3 commits/PR, 1 issue = 1 PR | 0 |
+| Subagents (parallel, context isolation) | ✅ codex consult + Qwen3.5 dual-LLM | 0 |
+| Skills (reusable templates) | ✅ `make` targets + `nuri-*` skills | 0 |
+| **Agent autonomy (OpenAI 1M LOC)** | ⚠ 인간 review 필수 (의도된 conservative) | **Gap A** |
+| **Harness-model coupling 측정** | ❌ telemetry 없음 | **Gap B** (Tier 2 P2) |
+| **Standardized eval framework (HAL)** | ❌ 없음 | **Gap C** (Tier 3 research) |
+
+**결론**: 7 of 10 frontier 권장 적용. 3 gap 은 측정 + 결정 layer (autonomy / coupling / eval) — **시스템 코드가 아니라 시스템에 대한 시스템**. Tier 2 P2 (Gap B) 만 **build value 즉시**, 나머지는 research / 정책 결정.
+
 ---
 
 ## 6. SIEGE Gate 명세 (v2)
