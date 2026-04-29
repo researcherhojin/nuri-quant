@@ -56,6 +56,14 @@ def _configure_logging() -> None:
     handler.setLevel(logging.INFO)
     logging.getLogger().addHandler(handler)
 
+    # yfinance internal logger emits 401 Crumb / 404 ETF-calendar noise at INFO/ERROR
+    # for routine cases (ETFs without earnings calendar, transient cookie refresh).
+    # Each line is per-ticker and floods scheduler.log on universe runs (746 tickers).
+    # Raise to WARNING — we still see real auth/network failures, but the routine
+    # 4xx-on-missing-data noise stops. fundamental.py already does this per-source
+    # (CRITICAL on universe); this is the global belt-and-suspenders.
+    logging.getLogger("yfinance").setLevel(logging.WARNING)
+
 
 _configure_logging()
 logger = logging.getLogger("nuri.scheduler")
