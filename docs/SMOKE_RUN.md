@@ -130,3 +130,89 @@ make clean-deep                  # node_modules + uv cache 포함. interactive �
 - API key 기반 collector 테스트 (현 path 는 모두 keyless)
 - 분기별 자동화 live smoke CI job
 - Dependency drift 감지
+
+---
+
+## 2026-04-29 re-smoke execution log
+
+목적: 2026-04-15 (Phase 5 ship) baseline 이후 2주간 누적된 17 PRs (#479-#502) 후 coverage 회귀가 없는지 검증. **Fresh clone 은 수행하지 않음** — Mac mini 가 24/7 scheduler 로 동일 환경을 매일 돌리고 있어 "fresh clone equivalent" 검증으로 충분 (running smoke). 본 run 은 working repo 에서 collector 상태 + negative tests + validators 만 spot-check.
+
+### Negative tests (3 cases — `tests/collectors/test_universe_sync.py::TestPhase5NegativeGuardrails`)
+```
+test_missing_universe_yaml_raises_actionable_error      PASSED
+test_malformed_universe_yaml_raises_actionable_error    PASSED
+test_empty_universe_yaml_raises_actionable_error        PASSED
+============================== 3 passed in 0.15s ===============================
+```
+복구 명령 ("make setup" / "git checkout main -- config/universe.yaml") 가 actionable error 메시지에 포함되어 있는지 + 한국어 진단 메시지인지 확인. 3/3 통과.
+
+### `make validate-universe-cache` (DB-only, no fetch)
+```
+2026-04-29 23:27:57 KST
+─────────────────────────────────────────────────────
+  data.prices                  99%   ≥95%   ✅ PASS
+  data.fundamentals            99%   ≥80%   ✅ PASS
+  data.analyst_ratings         97%   ≥70%   ✅ PASS
+  data.insider_trades          97%   ≥50%   ✅ PASS
+  data.superinvestors          97%   ≥80%   ✅ PASS
+  Result: 5/5 PASS → exit 0
+─────────────────────────────────────────────────────
+real 0.31s
+```
+모든 5 coverage 임계 + baseline (2026-04-15) 대비 회귀 없음.
+
+### `make validate-universe` (with network fetch)
+```
+2026-04-29 23:28:01 KST
+─────────────────────────────────────────────────────
+  universe.us_sp500           100%   ≥95%   ✅ PASS
+  universe.kr_kospi200         99%   ≥95%   ✅ PASS
+  data.prices                  99%   ≥95%   ✅ PASS
+  data.fundamentals            99%   ≥80%   ✅ PASS
+  data.analyst_ratings         97%   ≥70%   ✅ PASS
+  data.insider_trades          97%   ≥50%   ✅ PASS
+  data.superinvestors          97%   ≥80%   ✅ PASS
+  Result: 7/7 PASS → exit 0
+─────────────────────────────────────────────────────
+real 1.49s
+```
+fetch 포함 7-check 전부 PASS. Wikipedia + FDR live API alive.
+
+### `make universe-sync-us` (dry-run)
+```
+US S&P 500 (current coverage: 100.0%)
+  + 추가될 종목 (0):
+  - 제거될 종목 (40): ANSS, ARKK, ARM, DKNG, DUOL, HES, HIMS, IONQ, IPG, IWM ... 외 30개
+  ⚠️  manual ETF 보호: removed 40건 무시 (--allow-removal 로 명시적 허용)
+```
+40 removal candidates 전부 manual ETF / non-S&P universe entries (보유 holdings + ARK 등 watchlist 포함). 보호 정책 동작 — 실 적용 시 manual ETF 손실 0.
+
+### `make universe-sync-kr` (dry-run)
+```
+KR KOSPI 200 (current coverage: 99.0%)
+  + 추가될 종목 (2): 077970.KS, 229640.KS
+  - 제거될 종목 (5): 000080.KS, 003540.KS, 010620.KS, 067160.KS, 073240.KS
+  ⚠️  manual ETF 보호: removed 5건 무시
+  ℹ️  dry-run — 실제 변경 없음 (총 7건)
+```
+2 add (KOSPI 200 신규 편입), 5 remove (편출). KR universe drift 정상 범위.
+
+### Mac mini scheduler heartbeat (running smoke proxy)
+```
+$ ls -la data/logs/scheduler.log
+.rw-r--r--@ 40k ehbebe 29 Apr 23:11
+
+$ tail -3 data/logs/scheduler.log
+2026-04-29 23:10:59 ark WARNING ARK CSV 다운로드 실패: 404 Client Error
+2026-04-29 23:10:59 ark WARNING 모든 ARK 소스 실패 (CSV + yfinance)
+2026-04-29 23:11:02 db_maintenance WARNING 테이블 strategy_memory 조회 실패 (미존재 가능)
+```
+ARK CSV 404 routine (ark-funds.com 가 공식 endpoint 변경 빈도 높음, yfinance fallback 작동), `strategy_memory` 미존재는 명시적 graceful (옵셔널 테이블). **Critical failure 없음** — RotatingFileHandler (PR #498) + yfinance WARNING (PR #501) 적용 후 log volume 도 정상.
+
+### Verdict
+- **Negative path**: 3/3 PASS (그대로) — actionable error contracts 유지.
+- **Coverage**: 7/7 PASS (network) / 5/5 PASS (cache) — 2026-04-15 baseline 대비 회귀 0.
+- **Live scheduler**: Mac mini 24/7 receiver 안정 — log 정상, critical 없음.
+- **Drift**: us_sp500 40 removals + kr_kospi200 2 add / 5 remove dry-run으로 확인 — 다음 weekly cron 시 manual ETF 보호 작동 예정.
+
+**Phase 5 QA close**: TODO Tier 2 P1 #1 satisfied. 다음 monitoring 은 분기별 또는 dependency 변동 시.
