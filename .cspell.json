@@ -632,7 +632,9 @@
     "INDA",
     "MCHI",
     "KODEX",
-    "TIGER"
+    "TIGER",
+    "Kapoor",
+    "rollouts"
   ],
   "ignorePaths": [
     "node_modules/**",
