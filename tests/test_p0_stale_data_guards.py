@@ -258,3 +258,51 @@ def test_get_recommendations_filters_sell_on_zero_qty(db):
     assert ("AAPL", "SELL") in tickers_actions
     assert ("MSFT", "BUY") in tickers_actions
     assert ("GOOGL", "SELL") not in tickers_actions, "stale SELL 누설"
+
+
+# --- 4. #514 (Session 8): HOLD 도 portfolio JOIN filter ----------------
+
+
+def test_get_recommendations_filters_hold_on_zero_qty(db):
+    """0주 ticker 의 stale HOLD recommendation 도 surface 차단 (#514).
+
+    원인: 4-18 매도된 TSM 의 4-30 latest HOLD conf 80 row 가 brief Hold 섹션에 surface.
+    수정: SELL/TRIM/REDUCE 와 동일 패턴으로 HOLD 도 portfolio JOIN filter 적용.
+    BUY 는 비보유 ticker 도 valid emit 이므로 filter 제외.
+    """
+    from nuri.api.routes.actions import _get_recommendations
+
+    upsert_portfolio(
+        [
+            {
+                "account": "main",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 100,
+                "currency": "USD",
+                "sector": "Tech",
+            },
+        ],
+        db,
+    )
+    # Direct DB write — stale HOLD on non-held ticker (TSM 4-18 매도 시뮬레이션)
+    with get_db(db) as conn:
+        for ticker, action in [
+            ("AAPL", "HOLD"),  # held → surface
+            ("TSM", "HOLD"),  # 0주 → 차단되어야 함
+            ("MSFT", "BUY"),  # 비보유 BUY → surface 유지 (BUY 는 valid)
+        ]:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence) VALUES ('2026-04-30', ?, ?, 80.0)",
+                (ticker, action),
+            )
+
+    import nuri.core.db as db_mod
+
+    db_mod.DB_PATH = db
+    results = _get_recommendations()
+
+    tickers_actions = {(r["ticker"], r["action"]) for r in results}
+    assert ("AAPL", "HOLD") in tickers_actions, "held HOLD 누락"
+    assert ("MSFT", "BUY") in tickers_actions, "비보유 BUY 누락 (BUY 는 filter 제외)"
+    assert ("TSM", "HOLD") not in tickers_actions, "stale HOLD 누설 (#514 fix)"
