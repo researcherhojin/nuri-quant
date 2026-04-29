@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -65,7 +66,12 @@ class TestEventsCollectorFOMCAndEarnings:
 
         c = EventsCollector()
         assert c.save([]) == 0
-        assert c.save([{"date": "2025-03-17", "event_type": "fomc", "ticker": None, "description": "FOMC", "importance": 3}]) == 1
+        assert (
+            c.save(
+                [{"date": "2025-03-17", "event_type": "fomc", "ticker": None, "description": "FOMC", "importance": 3}]
+            )
+            == 1
+        )
 
     def test_save_deduplicates(self, db_with_portfolio):
         from nuri.collectors.events import EventsCollector
@@ -74,9 +80,55 @@ class TestEventsCollectorFOMCAndEarnings:
         record = {"date": "2025-03-17", "event_type": "fomc", "ticker": None, "description": "FOMC", "importance": 3}
         c.save([record])
         c.save([record])
-        rows = query("SELECT * FROM events WHERE event_type = 'fomc' AND date = '2025-03-17'", db_path=db_with_portfolio)
+        rows = query(
+            "SELECT * FROM events WHERE event_type = 'fomc' AND date = '2025-03-17'", db_path=db_with_portfolio
+        )
         assert len(rows) == 1
 
+
+class TestEventsCollectorETFSkip:
+    """ETF tickers must short-circuit before yfinance call (no earnings calendar).
+
+    Lock-tests the (b) fix in scheduler-log-noise PR — ETF list maintained in
+    `events.ETF_TICKERS`, calendar call is skipped, log surfaces a `skipped_etfs`
+    count separate from `failed`.
+    """
+
+    def test_etf_set_contains_canonical_index_etfs(self):
+        from nuri.collectors.events import ETF_TICKERS
+
+        # Canon — these are in universe.yaml us_core; if removed, events would
+        # 404 on every run for them.
+        for canonical in ("SPY", "QQQ", "XLK", "XLF", "XLV", "ARKK", "TLT", "GLD"):
+            assert canonical in ETF_TICKERS, f"{canonical} must stay in ETF_TICKERS"
+
+    def test_etf_set_includes_kr_with_ks_suffix(self):
+        from nuri.collectors.events import ETF_TICKERS
+
+        # KR ETFs use 6-digit + .KS — the suffix MUST be present in the set
+        # otherwise the equality check (`ticker in ETF_TICKERS`) misses them.
+        for kr_etf in ("069500.KS", "229200.KS"):
+            assert kr_etf in ETF_TICKERS
+
+    def test_collect_skips_etf_calendar_call(self, monkeypatch, db_with_portfolio):
+        from nuri.collectors.events import EventsCollector
+
+        called = []
+
+        def boom(ticker):
+            called.append(ticker)
+            raise AssertionError(f"yfinance.Ticker called for ETF {ticker}")
+
+        monkeypatch.setattr("yfinance.Ticker", boom)
+        # _get_tickers normally returns portfolio holdings; force-feed ETFs to
+        # exercise the short-circuit path even on minimal portfolio fixtures.
+        monkeypatch.setattr(EventsCollector, "_get_tickers", lambda self, **kw: ["SPY", "QQQ", "XLK"])
+
+        collector = EventsCollector()
+        results = collector.collect()
+        # No ticker_events emitted; only FOMC records.
+        assert all(r["event_type"] == "fomc" for r in results)
+        assert called == [], f"yfinance was called for ETFs: {called}"
 
 
 class TestEventsCollectorDividendNoDate:
@@ -89,7 +141,6 @@ class TestEventsCollectorDividendNoDate:
         assert isinstance(EventsCollector()._collect_ticker_events("AAPL"), list)
 
 
-
 class TestEventsCollector_Uncovered:
     def test_save_empty(self, db_path):
         from nuri.collectors.events import EventsCollector
@@ -99,8 +150,15 @@ class TestEventsCollector_Uncovered:
     def test_save_records(self, db_path):
         from nuri.collectors.events import EventsCollector
 
-        count = EventsCollector().save([{
-            "date": "2025-06-01", "event_type": "earnings",
-            "ticker": "AAPL", "description": "Q2 earnings", "importance": "high",
-        }])
+        count = EventsCollector().save(
+            [
+                {
+                    "date": "2025-06-01",
+                    "event_type": "earnings",
+                    "ticker": "AAPL",
+                    "description": "Q2 earnings",
+                    "importance": "high",
+                }
+            ]
+        )
         assert count >= 0
