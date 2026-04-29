@@ -8,6 +8,7 @@ E-1 후보 + E-2 리밸런싱 결과를 DB에 저장하고,
     python -m nuri.trading.recommend.tracker --save      # 오늘 추천 저장 + 과거 추적
     python -m nuri.trading.recommend.tracker              # 추적 리포트만
 """
+
 import argparse
 import json
 import logging
@@ -27,12 +28,14 @@ def _serialize_verdicts(consensus_results) -> dict[str, list[dict]]:
     for result in consensus_results:
         ticker_verdicts = []
         for v in result.verdicts:
-            ticker_verdicts.append({
-                "agent_name": v.agent_name,
-                "action": v.action,
-                "confidence": round(v.confidence, 1),
-                "reasoning": v.reasoning[:100] if v.reasoning else "",
-            })
+            ticker_verdicts.append(
+                {
+                    "agent_name": v.agent_name,
+                    "action": v.action,
+                    "confidence": round(v.confidence, 1),
+                    "reasoning": v.reasoning[:100] if v.reasoning else "",
+                }
+            )
         verdicts_map[result.ticker] = ticker_verdicts
     return verdicts_map
 
@@ -50,6 +53,12 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
     `derive_alpha_action(direction / action)` 으로 채운다. `portfolio_action` 은
     E-1/E-2 scope 에서 설정되지 않음 (concentration 같은 portfolio rule 은
     risk_agent + consensus 경로에서만 emit — PR A) — NULL 유지.
+
+    P0 stale-data fix (#507 audit 2026-04-30): SELL/TRIM/REDUCE action 은
+    portfolio.quantity > 0 인 ticker 에만 persist. portfolio.yaml live sync
+    누락 / broker 매도 미반영으로 인한 "0 주 ticker SELL 권고" 차단.
+    BUY 는 universe scan 이므로 qty 무관 (held 면 candidates emitter 가 add 모드
+    에서 처리, 여기서는 신호 path 만 책임).
     """
     from nuri.core.axis import derive_alpha_action
     from nuri.core.timezone import today_kst
@@ -57,6 +66,14 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
 
     today = today_kst()
     records = []
+
+    # held set 한 번만 fetch — SELL/TRIM filter 용. set 검사 O(1).
+    held_rows = query(
+        "SELECT DISTINCT ticker FROM portfolio WHERE quantity > 0",
+        db_path=db_path,
+    )
+    held: set[str] = {r["ticker"] for r in held_rows}
+    sell_actions = {"SELL", "TRIM", "REDUCE"}
 
     # E-1 후보에서 regime_fit + actionable tier 인 것만.
     # CLI 경로 (__main__) 는 이미 actionable 필터 후 호출하지만 다른 caller (테스트/
@@ -67,6 +84,10 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
                 continue
             # A-6: dataclass default 이므로 `c.tier` 는 항상 존재.
             if c.tier != TIER_ACTIONABLE:
+                continue
+            # P0 fix: SELL on 0-qty ticker 차단 (stale broker state guard).
+            if c.direction in sell_actions and c.ticker not in held:
+                logger.info("skip SELL on non-held %s (broker sync 후 sweeper 가 정리)", c.ticker)
                 continue
             rec = {
                 "date": today,
@@ -94,19 +115,22 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
         for a in actions:
             if a.action in ("HOLD",):
                 continue
+            # P0 fix: SELL on 0-qty 차단 (rebalance 가 0주 ticker 권고하면 안 됨).
+            if a.action in sell_actions and a.ticker not in held:
+                logger.info("skip rebalance SELL on non-held %s", a.ticker)
+                continue
             # 이미 같은 ticker+action이 있으면 건너뜀
             existing = [r for r in records if r["ticker"] == a.ticker and r["action"] == a.action]
             if existing:
                 # 시그널 정보 병합
-                existing[0]["signals"] = json.dumps(
-                    json.loads(existing[0]["signals"]) + a.signals
-                )
+                existing[0]["signals"] = json.dumps(json.loads(existing[0]["signals"]) + a.signals)
                 continue
 
             # 현재 가격 조회
             price_row = query(
                 "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
-                (a.ticker,), db_path=db_path,
+                (a.ticker,),
+                db_path=db_path,
             )
             price = price_row[0]["close"] if price_row else 0
 
@@ -176,9 +200,7 @@ def _forward_close_at_horizon(
     target = target_dt.strftime("%Y-%m-%d")
     lower_bound = (target_dt - timedelta(days=HORIZON_TOLERANCE_DAYS)).strftime("%Y-%m-%d")
     rows = query(
-        "SELECT close FROM prices "
-        "WHERE ticker = ? AND date <= ? AND date >= ? "
-        "ORDER BY date DESC LIMIT 1",
+        "SELECT close FROM prices WHERE ticker = ? AND date <= ? AND date >= ? ORDER BY date DESC LIMIT 1",
         (ticker, target, lower_bound),
         db_path=db_path,
     )
@@ -334,8 +356,7 @@ def print_tracking_report(db_path=None) -> None:
             for row in report["by_action"]:
                 rate = row["hits"] / row["total"] if row["total"] > 0 else 0
                 avg = row["avg_30d"] or 0
-                print(f"  {row['action']:<8} {row['total']:>6} {row['hits']:>6} "
-                      f"{rate:>6.0%} {avg:>+7.1f}%")
+                print(f"  {row['action']:<8} {row['total']:>6} {row['hits']:>6} {rate:>6.0%} {avg:>+7.1f}%")
     else:
         print("  아직 추적 가능한 데이터 없음 (30일 대기)")
 
@@ -350,8 +371,10 @@ def print_tracking_report(db_path=None) -> None:
         for r in recent:
             outcome = f"{r['outcome_30d']:+.1f}%" if r["outcome_30d"] is not None else "pending"
             hit_mark = "O" if r.get("hit") else ("X" if r.get("hit") is not None else "—")
-            print(f"    {r['date']} {r['ticker']:<8} {r['action']:<6} "
-                  f"conf={r['confidence']:.0f} ${r['entry_price']:,.2f} → {outcome} [{hit_mark}]")
+            print(
+                f"    {r['date']} {r['ticker']:<8} {r['action']:<6} "
+                f"conf={r['confidence']:.0f} ${r['entry_price']:,.2f} → {outcome} [{hit_mark}]"
+            )
 
     print()
 
@@ -366,6 +389,7 @@ if __name__ == "__main__":
     if args.save:
         # E-1 + E-2 실행 후 저장
         from nuri.trading.recommend.candidates import TIER_ACTIONABLE, screen_candidates
+
         all_candidates = screen_candidates(lookback_days=5)
         # B-2-ext codex P1: advisory/avoid tier 는 "disclosure only" 라 persist
         # 하지 않는다. 정식 추천으로 저장되면 stat 없는 시그널이 history 에 섞여
@@ -374,13 +398,16 @@ if __name__ == "__main__":
         candidates = [c for c in all_candidates if c.tier == TIER_ACTIONABLE]
         dropped = len(all_candidates) - len(candidates)
         if dropped:
-            logger.info(f"후보 {len(all_candidates)}건 중 actionable {len(candidates)}건 저장 "
-                        f"(advisory/avoid {dropped}건은 disclosure-only, persist 제외)")
+            logger.info(
+                f"후보 {len(all_candidates)}건 중 actionable {len(candidates)}건 저장 "
+                f"(advisory/avoid {dropped}건은 disclosure-only, persist 제외)"
+            )
         else:
             logger.info(f"후보 {len(candidates)}건 스크리닝")
 
         try:
             from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
             actions = regime_aware_rebalance(method="rp")
             logger.info(f"리밸런싱 {len(actions)}건")
         except Exception as e:
