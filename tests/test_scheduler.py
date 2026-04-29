@@ -905,3 +905,29 @@ class TestSchedulerLogRotation:
                 if isinstance(h, logging.handlers.RotatingFileHandler):
                     h.close()
                     logging.getLogger().removeHandler(h)
+
+    def test_yfinance_logger_silenced_to_warning(self, tmp_path, monkeypatch):
+        """`_configure_logging` raises yfinance logger to WARNING.
+
+        Lock-tests TODO Tier 2 P2 #10 (a) — ETF 404 / 401 Crumb noise must be
+        suppressed at the global yfinance logger so scheduler.log doesn't flood
+        on universe runs (746 tickers × routine 4xx). If a future refactor
+        accidentally drops the line, this test catches the regression.
+        """
+        import logging as _logging
+
+        monkeypatch.setenv("NURI_SCHEDULER_LOG_DISABLE_FILE", "1")
+        import importlib
+
+        import nuri.scheduler
+
+        importlib.reload(nuri.scheduler)
+        try:
+            yflog = _logging.getLogger("yfinance")
+            assert yflog.level == _logging.WARNING, (
+                f"yfinance logger must be WARNING (got {yflog.level}) — "
+                "scheduler.py::_configure_logging silenced INFO/ERROR noise"
+            )
+        finally:
+            # Restore default for downstream tests that might assert on it.
+            _logging.getLogger("yfinance").setLevel(_logging.NOTSET)

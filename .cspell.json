@@ -625,7 +625,14 @@
     "drilldown",
     "Dday",
     "dday",
-    "pathlib"
+    "pathlib",
+    "UVXY",
+    "SOXX",
+    "KWEB",
+    "INDA",
+    "MCHI",
+    "KODEX",
+    "TIGER"
   ],
   "ignorePaths": [
     "node_modules/**",

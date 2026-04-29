@@ -24,6 +24,91 @@ FOMC_2026 = [
     "2026-12-15",
 ]
 
+# ETF tickers in our universe — no earnings calendar / dividend-only.
+# yfinance returns 404 on Ticker.calendar for these, which floods scheduler.log
+# until the noise is suppressed at source (here) AND at the logger level
+# (`scheduler.py::_configure_logging` sets yfinance to WARNING). This set lets
+# events.collect() short-circuit before the network round-trip.
+#
+# Coverage: index ETFs + sector SPDRs + leveraged + bond/commodity + ARK +
+# KR index/leverage ETFs found in `config/universe.yaml`. Extending the set
+# is safe — false-positive (skipping a non-ETF) just loses earnings tracking
+# for that ticker; no data corruption. Verify via `yf.Ticker(t).info["quoteType"] == "ETF"`.
+ETF_TICKERS: frozenset[str] = frozenset(
+    {
+        # US broad index
+        "SPY",
+        "QQQ",
+        "IVV",
+        "VOO",
+        "VTI",
+        "DIA",
+        "IWM",
+        "VEA",
+        "VWO",
+        "EFA",
+        "EEM",
+        # US sector SPDRs
+        "XLK",
+        "XLF",
+        "XLE",
+        "XLV",
+        "XLY",
+        "XLP",
+        "XLI",
+        "XLU",
+        "XLB",
+        "XLRE",
+        "XLC",
+        # Leveraged / inverse
+        "TQQQ",
+        "SQQQ",
+        "SOXL",
+        "SOXS",
+        "TNA",
+        "TZA",
+        "UPRO",
+        "SPXU",
+        # Bond / treasury
+        "TLT",
+        "IEF",
+        "SHY",
+        "AGG",
+        "BND",
+        "HYG",
+        "LQD",
+        "TIPS",
+        # Commodity / volatility
+        "GLD",
+        "SLV",
+        "USO",
+        "UNG",
+        "VXX",
+        "UVXY",
+        # Thematic
+        "ARKK",
+        "ARKQ",
+        "ARKW",
+        "ARKG",
+        "ARKF",
+        "SOXX",
+        "SMH",
+        "JETS",
+        "KWEB",
+        "FXI",
+        "INDA",
+        "MCHI",
+        # KR index / leverage (.KS suffix)
+        "069500.KS",  # KODEX 200
+        "229200.KS",  # KODEX KOSDAQ150
+        "233740.KS",  # KODEX 코스닥150 레버리지
+        "252670.KS",  # KODEX 200 선물인버스 2X
+        "292160.KS",  # KODEX 미국S&P500
+        "360750.KS",  # TIGER 미국S&P500
+        "381180.KS",  # TIGER 미국나스닥100
+    }
+)
+
 
 class EventsCollector(BaseCollector):
     """실적발표/FOMC/배당 이벤트 수집."""
@@ -44,8 +129,14 @@ class EventsCollector(BaseCollector):
         tickers = self._get_tickers(market="us", source=source)
         ticker_events_count = 0
         failed: list[str] = []
+        skipped_etfs = 0
         iterator = tqdm(tickers, desc=f"  events [{source}]", unit="tk", disable=len(tickers) < 20)
         for ticker in iterator:
+            if ticker in ETF_TICKERS:
+                # ETFs have no earnings calendar — yfinance returns 404. Short-circuit
+                # to avoid network round-trip + log noise.
+                skipped_etfs += 1
+                continue
             try:
                 ev = self._collect_ticker_events(ticker)
                 records.extend(ev)
@@ -56,8 +147,9 @@ class EventsCollector(BaseCollector):
         if len(tickers) >= 20:
             sample = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
             self.logger.info(
-                "📊 이벤트 캘린더: %d 이벤트 수집 / ❌ %d 종목 실패 (총 %d) — failed: %s",
+                "📊 이벤트 캘린더: %d 이벤트 수집 / 🪙 %d ETF skip / ❌ %d 종목 실패 (총 %d) — failed: %s",
                 ticker_events_count,
+                skipped_etfs,
                 len(failed),
                 len(tickers),
                 sample or "없음",
