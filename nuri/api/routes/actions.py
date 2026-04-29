@@ -5,6 +5,7 @@
 ✅ 유지: 정상 보유 종목
 🔍 기회 탐색: 비보유 이슈 종목 + 매수 판정
 """
+
 import json
 import logging
 import threading
@@ -60,8 +61,8 @@ def _build_actions() -> dict:
     Stop-loss breach 같은 alpha-driven 긴급 신호만 urgent 에 남김.
     """
     urgent: list[dict] = []  # 🔴 alpha-driven immediate action (stop-loss, SELL + catalyst)
-    check: list[dict] = []   # 🟡 today's review items (targets, short squeeze risk)
-    hold: list[dict] = []    # ✅ steady state
+    check: list[dict] = []  # 🟡 today's review items (targets, short squeeze risk)
+    hold: list[dict] = []  # ✅ steady state
     portfolio: list[dict] = []  # 📊 portfolio-rule signals (concentration, sector cap)
 
     # ── 데이터 수집 ──
@@ -74,7 +75,8 @@ def _build_actions() -> dict:
 
     # 연금 계좌 종목 식별 (월간 리밸런싱 → daily action에서 제외)
     pension_tickers = {
-        t for t, h in portfolio_holdings.items()
+        t
+        for t, h in portfolio_holdings.items()
         if any(kw in (h.get("account") or "").lower() for kw in ("연금", "pension", "irp"))
     }
 
@@ -292,23 +294,25 @@ def _build_opportunities() -> list[dict]:
         # 판정
         verdict, verdict_level = _compute_verdict(pros, cons, s)
 
-        opportunities.append({
-            "ticker": ticker,
-            "price": s.get("price"),
-            "change_1d": s.get("change_1d"),
-            "change_5d": s.get("change_5d"),
-            "volume_ratio": s.get("volume_ratio"),
-            "rsi": s.get("rsi"),
-            "signal": s.get("signal"),
-            "score": s.get("score"),
-            "pros": pros,
-            "cons": cons,
-            "verdict": verdict,
-            "verdict_level": verdict_level,
-        })
+        opportunities.append(
+            {
+                "ticker": ticker,
+                "price": s.get("price"),
+                "change_1d": s.get("change_1d"),
+                "change_5d": s.get("change_5d"),
+                "volume_ratio": s.get("volume_ratio"),
+                "rsi": s.get("rsi"),
+                "signal": s.get("signal"),
+                "score": s.get("score"),
+                "pros": pros,
+                "cons": cons,
+                "verdict": verdict,
+                "verdict_level": verdict_level,
+            }
+        )
 
     # score 높은 순 + volume_spike 우선
-    opportunities.sort(key=lambda x: (x["score"] or 0), reverse=True)
+    opportunities.sort(key=lambda x: x["score"] or 0, reverse=True)
     return opportunities[:10]
 
 
@@ -369,12 +373,20 @@ def _get_recommendations() -> list[dict]:
     A-2b: `scoring_detail` + `agent_verdicts` 컬럼도 노출 — frontend (A-2c) 가
     10-agent contribution breakdown 시각화 + basis_action/penalty 표시에 사용.
     """
+    # P0 stale-data fix (#507 audit 2026-04-30): SELL/TRIM/REDUCE 는 portfolio.qty>0
+    # 인 경우만 surface. tracker.py write-side filter 가 1차 차단하지만, 이미 persist
+    # 된 stale row + 다른 writer 경로 (legacy / future) 도 이중으로 막음.
     rows = query("""
-        SELECT ticker, action, confidence, signals, scoring_detail, agent_verdicts,
-               alpha_action, portfolio_action
-        FROM recommendations
-        WHERE date = (SELECT MAX(date) FROM recommendations)
-        ORDER BY confidence DESC
+        SELECT r.ticker, r.action, r.confidence, r.signals,
+               r.scoring_detail, r.agent_verdicts,
+               r.alpha_action, r.portfolio_action
+        FROM recommendations r
+        WHERE r.date = (SELECT MAX(date) FROM recommendations)
+          AND (
+              r.action NOT IN ('SELL', 'TRIM', 'REDUCE')
+              OR r.ticker IN (SELECT ticker FROM portfolio WHERE quantity > 0)
+          )
+        ORDER BY r.confidence DESC
     """)
     results = []
     for r in rows:
@@ -398,18 +410,22 @@ def _get_recommendations() -> list[dict]:
                 agent_verdicts = json.loads(r["agent_verdicts"])
             except (json.JSONDecodeError, TypeError):
                 pass
-        results.append({
-            "ticker": r["ticker"],
-            "action": r["action"],
-            "confidence": round(r["confidence"] * 100) if r["confidence"] and r["confidence"] <= 1 else round(r["confidence"] or 0),
-            "agreement": round(agreement * 100) if agreement is not None and agreement <= 1 else agreement,
-            "scoring_detail": scoring_detail,
-            "agent_verdicts": agent_verdicts,
-            # PR A: alpha/portfolio axis — Frontend UI 가 action 배지 옆에 바둑돌
-            # 형태로 표시할 수 있게 노출. legacy row 는 NULL (back-compat OK).
-            "alpha_action": r.get("alpha_action"),
-            "portfolio_action": r.get("portfolio_action"),
-        })
+        results.append(
+            {
+                "ticker": r["ticker"],
+                "action": r["action"],
+                "confidence": round(r["confidence"] * 100)
+                if r["confidence"] and r["confidence"] <= 1
+                else round(r["confidence"] or 0),
+                "agreement": round(agreement * 100) if agreement is not None and agreement <= 1 else agreement,
+                "scoring_detail": scoring_detail,
+                "agent_verdicts": agent_verdicts,
+                # PR A: alpha/portfolio axis — Frontend UI 가 action 배지 옆에 바둑돌
+                # 형태로 표시할 수 있게 노출. legacy row 는 NULL (back-compat OK).
+                "alpha_action": r.get("alpha_action"),
+                "portfolio_action": r.get("portfolio_action"),
+            }
+        )
     return results
 
 
@@ -420,6 +436,7 @@ def _get_siege_violations() -> list[dict]:
     violations = []
     try:
         from nuri.trading.engine.certification import certify
+
         # API path — persist 실패 swallow (E4-0a codex R1 P1).
         cert = certify(caller="api:actions:violations", swallow_persist_errors=True)
         for c in cert.conditions:
@@ -429,11 +446,17 @@ def _get_siege_violations() -> list[dict]:
                     # "위반: TSLA(15.4%>15%)" or "위반: TSLA(15.4%>15%), NBIS(16%>15%)"
                     matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", detail)
                     for ticker in matches:
-                        violations.append({"ticker": ticker, "detail": f"SIEGE: {c.description} — {detail}", "condition_id": c.id})
+                        violations.append(
+                            {"ticker": ticker, "detail": f"SIEGE: {c.description} — {detail}", "condition_id": c.id}
+                        )
                     if not matches:
-                        violations.append({"ticker": "", "detail": f"SIEGE: {c.description} — {detail}", "condition_id": c.id})
+                        violations.append(
+                            {"ticker": "", "detail": f"SIEGE: {c.description} — {detail}", "condition_id": c.id}
+                        )
                 else:
-                    violations.append({"ticker": "", "detail": f"SIEGE: {c.description} — {detail}", "condition_id": c.id})
+                    violations.append(
+                        {"ticker": "", "detail": f"SIEGE: {c.description} — {detail}", "condition_id": c.id}
+                    )
     except Exception as e:
         logger.debug(f"SIEGE violations: {e}")
     return violations
@@ -444,6 +467,7 @@ def _get_targets_status() -> dict[str, dict]:
     targets = {}
     try:
         from nuri.trading.recommend.price_targets import calculate_portfolio_targets
+
         for t in calculate_portfolio_targets():
             targets[t["ticker"]] = {
                 "stop_loss": t.get("stop_loss"),
@@ -583,6 +607,7 @@ def _get_recent_scan_results() -> list[dict]:
 
         try:
             from nuri.trading.swing.scanner import scan_market
+
             results = scan_market(extended=False)
             formatted = [
                 {
@@ -610,6 +635,7 @@ def _get_improving_signals() -> set[str]:
     improving = set()
     try:
         from nuri.trading.engine.memory import detect_drift
+
         drifts = detect_drift()
         for d in drifts:
             if d.status == "improving":
@@ -640,7 +666,8 @@ def _get_macro_events() -> list[dict]:
     headline을 카테고리 한국어 + 원문 요약으로 변환.
     """
     cutoff = (kst_now() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
-    rows = query("""
+    rows = query(
+        """
         SELECT category, headline, sentiment, confidence, published_at, source
         FROM macro_events
         WHERE published_at >= ?
@@ -648,7 +675,9 @@ def _get_macro_events() -> list[dict]:
           AND confidence >= 0.5
         ORDER BY ABS(sentiment) DESC
         LIMIT 10
-    """, (cutoff,))
+    """,
+        (cutoff,),
+    )
     results = []
     seen_categories: dict[str, int] = {}
     for r in rows:
@@ -658,10 +687,12 @@ def _get_macro_events() -> list[dict]:
         if seen_categories[cat] > 2:
             continue
         ko_label = _CATEGORY_KO.get(cat, cat)
-        results.append({
-            **dict(r),
-            "category_ko": ko_label,
-        })
+        results.append(
+            {
+                **dict(r),
+                "category_ko": ko_label,
+            }
+        )
     return results[:8]
 
 
@@ -672,6 +703,7 @@ def _get_system_health() -> dict:
     # SIEGE
     try:
         from nuri.trading.engine.certification import certify
+
         # API path — persist 실패 swallow (E4-0a codex R1 P1).
         cert = certify(caller="api:actions:health", swallow_persist_errors=True)
         health["siege"] = {
@@ -688,6 +720,7 @@ def _get_system_health() -> dict:
     # 레짐
     try:
         from nuri.quant.regime.classifier import classify_regime
+
         r = classify_regime()
         if r:
             health["regime"] = {
@@ -702,6 +735,7 @@ def _get_system_health() -> dict:
     # 매크로
     try:
         from nuri.quant.regime.macro_score import compute_macro_score
+
         m = compute_macro_score()
         health["macro"] = {"score": round(m.total_score), "interpretation": m.interpretation}
     except Exception:
@@ -710,6 +744,7 @@ def _get_system_health() -> dict:
     # 신선도
     try:
         from nuri.core.freshness import check_all_freshness
+
         details = check_all_freshness()
         fail_count = sum(1 for d in details if d["status"] == "FAIL")
         warn_count = sum(1 for d in details if d["status"] == "WARN")

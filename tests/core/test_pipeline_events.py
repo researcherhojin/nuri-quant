@@ -1,4 +1,5 @@
 """파이프라인 이벤트 저널 + 신선도 + 의존성 + run_step 테스트."""
+
 from datetime import timedelta
 
 import pytest
@@ -267,22 +268,22 @@ class TestCheckAllFreshness:
     def test_returns_all_policies(self, db_path):
         """모든 정책 결과 반환."""
         results = check_all_freshness(db_path)
-        assert len(results) == 5
+        assert len(results) == 6
         keys = {r["key"] for r in results}
-        assert keys == {"prices", "macro_vix", "macro_fear_greed", "consensus", "certification"}
+        assert keys == {"prices", "macro_vix", "macro_fear_greed", "consensus", "certification", "portfolio"}
 
 
 class TestGetFreshnessSummary:
     def test_summary_counts(self, db_path):
         """pass/warn/fail 카운트 합계."""
         summary = get_freshness_summary(db_path)
-        assert summary["pass"] + summary["warn"] + summary["fail"] == 5
-        assert len(summary["details"]) == 5
+        assert summary["pass"] + summary["warn"] + summary["fail"] == 6
+        assert len(summary["details"]) == 6
 
     def test_all_fail_when_empty(self, db_path):
         """빈 DB → 전부 FAIL."""
         summary = get_freshness_summary(db_path)
-        assert summary["fail"] == 5
+        assert summary["fail"] == 6
         assert summary["pass"] == 0
         assert summary["warn"] == 0
 
@@ -350,6 +351,7 @@ class TestCheckDependencies:
 class TestRunStep:
     def test_success_path(self, db_path):
         """정상 실행 → success + 이벤트 2개 (started + completed)."""
+
         def my_func():
             return 42
 
@@ -366,6 +368,7 @@ class TestRunStep:
 
     def test_success_with_int_result_records_count(self, db_path):
         """int 결과 → record_count에 기록."""
+
         def my_func():
             return 100
 
@@ -376,6 +379,7 @@ class TestRunStep:
 
     def test_failure_path(self, db_path):
         """예외 발생 → failed + 이벤트 2개 (started + failed)."""
+
         def failing_func():
             raise ValueError("something broke")
 
@@ -390,6 +394,7 @@ class TestRunStep:
 
     def test_blocked_path(self, db_path):
         """의존성 미충족 → blocked."""
+
         def my_func():
             return "should not run"
 
@@ -404,6 +409,7 @@ class TestRunStep:
 
     def test_kwargs_passed_to_func(self, db_path):
         """kwargs가 func에 전달."""
+
         def my_func(x, y):
             return x + y
 
@@ -413,6 +419,7 @@ class TestRunStep:
 
     def test_causation_id_links(self, db_path):
         """completed 이벤트의 causation_id가 started ID와 연결."""
+
         def my_func():
             return "ok"
 

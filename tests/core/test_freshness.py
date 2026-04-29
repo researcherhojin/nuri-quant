@@ -40,15 +40,14 @@ class TestFreshnessPolicies:
 
         for key, policy in FRESHNESS_POLICIES.items():
             assert policy["warn_hours"] < policy["fail_hours"], (
-                f"Policy '{key}': warn_hours ({policy['warn_hours']}) "
-                f">= fail_hours ({policy['fail_hours']})"
+                f"Policy '{key}': warn_hours ({policy['warn_hours']}) >= fail_hours ({policy['fail_hours']})"
             )
 
     def test_expected_policy_keys(self):
         """예상되는 정책 키 목록 확인."""
         from nuri.core.freshness import FRESHNESS_POLICIES
 
-        expected = {"prices", "macro_vix", "macro_fear_greed", "consensus", "certification"}
+        expected = {"prices", "macro_vix", "macro_fear_greed", "consensus", "certification", "portfolio"}
         assert expected == set(FRESHNESS_POLICIES.keys())
 
 
