@@ -638,7 +638,9 @@
     "hyperscalers",
     "Estimize",
     "watchlist",
-    "Watchlist"
+    "Watchlist",
+    "Kapoor",
+    "rollouts"
   ],
   "ignorePaths": [
     "node_modules/**",

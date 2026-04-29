@@ -75,101 +75,39 @@ This project's primary developer is an LLM (Claude Code). LLMs fail systematical
 | 6 | **Ship** | `gh pr merge --squash --delete-branch`. Issue closed. Branch cleaned. TODO Tier 2 / 3 updated if scope shifted |
 | 7 | **Reflect** | NEXT_SESSION refreshed. New gotcha → Gotcha-Test Pair (§5.3.1) cite. Memory updated if surprising |
 
-## Commands
+## Commands (essentials — full list in `Makefile`)
 
 ```bash
-# Setup (Python 3.12, uv, brew install ta-lib, Node 22 for frontend)
-make setup                              # venv + deps (--extra dev) + DB init + portfolio import
-cd frontend && npm ci                   # frontend deps (separate from make setup)
-uv sync --extra dev                     # manual: install with test/lint tools
+# Setup
+make setup                          # venv + deps + DB init + portfolio import
+cd frontend && npm ci               # frontend deps (separate)
 
-# Data collection
-make collect                            # Phase A daily collectors
-make collect-kis                        # KIS Open API 실시간 잔고/시세
-make collect-kis-check                  # KIS 연결 상태 확인
-python -m nuri.collectors.stock --period 5y          # US stocks 5Y (OpenBB)
-python -m nuri.collectors.stock_kr --days 1825       # Korean stocks 5Y (pykrx)
-python -m nuri.collectors.fundamental                # PE/ROE/margins
-python -m nuri.collectors.superinvestors             # 13F (edgartools)
-python -m nuri.collectors.estimates                  # Analyst consensus
-make wallstreet                         # ratings, earnings, insider
-make filings                            # SEC filings
+# Daily pipeline
+make quick-scan                     # 4-step: collect→analyze→consensus→targets (~2분)
+make full-scan                      # 8-phase including SIEGE certify + report
+make consensus                      # 10-agent BUY/SELL/HOLD on holdings
+make certify / remediate            # SIEGE v2 gate
 
-# Universe (#272)
-make universe-sync / universe-sync-us / universe-sync-kr / universe-sync-apply
-make collect-universe                   # ALL universe data (US+KR)
-make verify-universe-sync               # smoke test universe APIs
+# Issue #507/#508/#509 (2026-04-30)
+make buy-candidates                 # cash deploy candidate emit (#507)
+make thesis ticker=<T> [question=]  # ticker thesis Q&A (#508)
+make earnings-preview ticker=<T>    # consensus EPS + IV implied move (#509)
 
-# Analysis + Quant
-make analyze                            # portfolio + sector + risk
-python -m nuri.analysis.charts --all    # interactive HTML charts
-python -m nuri.quant.factors.composite       # multi-factor scores
-python -m nuri.quant.regime.classifier       # current regime
-python -m nuri.quant.regime.strategy_map     # regime + macro + strategy
-
-# Validation / Regime / Recommendations
-make validate                           # signal + superinvestor + analyst + scorecard
-make regime                             # 6 base + 4 special regimes
-make recommend                          # candidates + tracker
-
-# Multi-Agent Consensus (10 agents)
-make consensus                                         # 보유 종목 analysis
-python -m nuri.trading.agents.consensus --ticker TSLA  # 단일 종목
-
-# Strategies / Backtest
-make strategy / strategy-execute / positions
-make backtest / backtest-ls / backtest-stress / backtest-rules
-make optimize / mean-reversion / pairs
-
-# Swing / Market Scan
-make scan / scan-extended / scan-kr / swing / swing-check
-
-# Full Pipeline
-make full-scan        # 8-phase: collect→analyze→validate→regime→recommend→certify→evidence→notify
-make quick-scan       # 4-step: collect→analyze→consensus→targets (~2분)
-
-# SIEGE Certification
-make certify          # SIEGE v2 (asset-class per-expansion) → CERTIFIED / REJECTED
-make remediate        # REJECTED → 진단 + 매도 처방
-make gate             # Pipeline gate verifier (exit 1 if BLOCKED)
-
-# Targets / Rebalance / Evidence / Reports
-make targets / rebalance / evidence / external
-make report           # Daily report (Discord/stdout)
-make report-llm       # LLM 리포트 (gpt-5.4-nano, OPENAI_ZDR_APPROVED=1 필수, STRATEGY §4.4.3)
+# LLM consult (codex + Qwen3.5 dual archive)
+make llm-consult slug=<kebab> prompt=<file>
 
 # Lint + Test
-make lint / lint-fix / lint-sh
-make test / test-fast / test-slow
-make verify-quick / verify-fast / verify-all
-make validate-portfolio
-# Single test (no make target — invoke pytest directly):
-.venv/bin/python -m pytest tests/test_db.py::TestUpsertPrices::test_insert_and_query -v
+make lint / lint-fix / test / test-fast
+.venv/bin/python -m pytest <path>::<class>::<test> -v   # single test
 
-# Interface
-make start            # API(:8001) + Dashboard(:3000)
-make api / dashboard
+# Interface + Deploy
+make start                          # API :8001 + Dashboard :3000
+make deploy-mini                    # MBP → Mac mini 6단계 동기화
 
-# Verification
-make verify           # Master orchestrator → data/reports/YYYY-MM-DD/
-
-# Deploy (2-Machine: MBP dev ↔ Mac mini 24/7 receiver)
-make deploy-mini      # ★ 권장 — MBP→Mac mini 6단계 동기화 (~30초)
-make deploy           # 레거시 rsync
-make pre-deploy / backup
-make sync-start / sync-end / sync-status
-make scheduler-reload-remote
-scripts/sync_dev.sh push|pull          # 저수준
-bash scripts/auto_deploy.sh            # Mac mini receiver (launchd 5분 간격)
-
-# Decision tracking + utilities
-make track-decisions
-make ports / ports-kill
-make sync-doc-counts / verify-doc-counts
-make demo / clean / clean-all / clean-deep
+# Run `make help` or scan Makefile for the full target inventory.
 ```
 
-All `make` targets use `.venv/bin/python` — activate the venv or use the full path. Frontend-only commands (`npm run dev/build/test/lint/type-check`) → `frontend/CLAUDE.md`.
+Frontend-only (`npm run dev/build/test/lint/type-check`) → `frontend/CLAUDE.md`.
 
 ## Architecture
 
@@ -210,6 +148,19 @@ Backend: FastAPI on `:8001`. Frontend: Next.js on `:3000`. Next.js proxies `/api
 
 Hook config: `.claude/settings.json`. CI workflows: `.github/workflows/main-ci-cd.yml`.
 
+## .claude/ (4-Layer Architecture per 2026 frontier — STRATEGY §5.10)
+
+L1 CLAUDE.md (memory) → L2 Skills (auto-invoked) → L3 Hooks (deterministic) → L4 Agents (parallel context).
+
+| Layer | Where | Inventory |
+|-------|-------|-----------|
+| L1 Memory | 8 scoped `CLAUDE.md` (this file + 7 subdirs) + `~/.claude/CLAUDE.md` global | Subfolder appends, never overwrites parent |
+| L2 Skills | `.claude/skills/nuri-{deploy,harness-debug,review,siege-audit,verify}/SKILL.md` | Auto-invoke via natural language (description field critical) |
+| L3 Hooks | `.claude/settings.json` PreToolUse + PostToolUse | sqlite3 / datetime.now / destructive-git block; ruff advisory |
+| L4 Agents | `.claude/agents/{nuri-codex-second-opinion,nuri-thesis-batch}.md` | Own context, parallel work |
+| Slash | `.claude/commands/{thesis,buy-candidates,earnings-preview}.md` | Custom CLI shortcuts (#507/#508/#509) |
+| Permissions | `.claude/settings.json::permissions` | allow/deny rules for auto-approve / auto-block |
+
 ## Gotchas
 
 Most gotchas live in scoped files (the right CLAUDE.md fires when you edit that directory) or in code lock-tests (STRATEGY §5.3.1 Gotcha-Test Pair). Don't list them here — they drift. The few that span scopes:
@@ -223,13 +174,13 @@ For framework / test-mocking / data-source / pipeline-policy gotchas → see sco
 
 ## Reference
 
-- `docs/STRATEGY.md` — canonical policy (load on demand): 8 sections (why / principles / architecture decisions / quality / harness / SIEGE spec / work policy / OSS refs)
+- `docs/STRATEGY.md` — canonical policy (load on demand): 8 sections + §5.10 frontier alignment (OpenAI 2026-02 + Anthropic Best Practices + AgencyBench/HAL)
 - `docs/SOURCE_OF_TRUTH.md` — file-ownership map. Consult before adding/de-duplicating any doc fact.
 - `docs/ARCHITECTURE.md` — detailed code/DB layout (env vars, CI/CD, schema)
 - `docs/OPERATIONS.md` — operator runbook (2-machine setup, deploy / scheduler / recovery)
-- `docs/TODO.md` — forward-only backlog (Tier 2 next, Tier 3 research)
+- `docs/TODO.md` (gitignored) — forward-only backlog. Tier 2 P0=#507 (BUY signal asymmetry) / P1 #0a-#0b (#508 thesis / #509 earnings preview) / P2 #0c (Gap B harness telemetry)
 - `docs/SIEGE_V2.md` — 3D certification spec
 - `docs/KIS_INTEGRATION.md` — KIS Open API integration details
 - `AGENTS.md` — cross-tool rules (Cursor / Copilot / Codex CLI), not auto-loaded by Claude Code
-- `NEXT_SESSION.md` — gitignored handoff (read first per session)
+- `NEXT_SESSION.md` (gitignored) — handoff (read first per session)
 - `~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/memory/` — user-scoped auto-memory
