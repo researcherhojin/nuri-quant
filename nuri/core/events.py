@@ -31,6 +31,14 @@ EVENT_TYPES = {
     # would be the wrong failure mode — codex Round 2).
     "kis_analyst_opinion_run",
     "kis_analyst_opinion_truncation_risk",
+    # Holdings monitor — close post-entry technical-divergence gap exposed
+    # by JKHY-class entry failures. `_run` is the parent batch event each
+    # daily run emits (covered / alerted / skipped counts); `_technical_sell`
+    # and `_divergence` are per-holding alerts. Caller is `nuri.trading.
+    # recommend.holdings_monitor` (cron 07:10 KST, after consensus 07:05).
+    "holdings_monitor_run",
+    "holdings_monitor_technical_sell",
+    "holdings_monitor_divergence",
 }
 
 # 6-step 파이프라인

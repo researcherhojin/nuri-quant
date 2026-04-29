@@ -111,6 +111,17 @@ def _run_collector(name: str, **kwargs):
             results = analyze_portfolio()
             saved = save_to_recommendations(results)
             logger.info(f"[consensus] {len(results)}건 분석, {saved}건 저장")
+        elif name == "holdings_monitor":
+            # Holdings post-entry technical-divergence monitor (07:10 KST, after consensus 07:05).
+            # JKHY-class entry-stage defenses (PR #303) cover before-buy; this covers after-buy
+            # falling-knife. REVIEW CTA only — auto-trade deferred (STRATEGY §7.1).
+            from nuri.trading.recommend.holdings_monitor import run_monitor, send_alerts
+
+            summary = run_monitor()
+            sent = send_alerts(summary)
+            logger.info(
+                f"[holdings_monitor] {summary.n_holdings}건 분석, {summary.n_alerted}건 alert, {sent}건 surface"
+            )
     except Exception as e:
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
 
@@ -213,6 +224,10 @@ SCHEDULES = [
     # agent_verdicts 를 recommendations 테이블에 쌓아 Learning Memory 가 30 일 후 학습.
     # Phase 2 A-1a (PR #361) 의 read path fix 를 활용하려면 input 이 꾸준히 쌓여야 함.
     {"name": "consensus", "func": _run_collector, "args": ("consensus",), "cron": "5 7 * * *"},
+    # Holdings post-entry technical-divergence monitor (매일 07:10 — consensus 직후).
+    # JKHY-class entry 단계 보호 (PR #303) 의 hold-stage 보강. REVIEW alert only,
+    # auto-trade 없음 (STRATEGY §7.1 deferred). pipeline_events 로 7d dedup.
+    {"name": "holdings_monitor", "func": _run_collector, "args": ("holdings_monitor",), "cron": "10 7 * * *"},
     # Agent accuracy 스냅샷 (주 1회 일요일 08:00)
     {"name": "agent_accuracy", "func": _run_collector, "args": ("agent_accuracy",), "cron": "0 8 * * 0"},
     # 일일 리포트 (매일 08:00)
