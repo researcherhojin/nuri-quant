@@ -632,7 +632,12 @@
     "INDA",
     "MCHI",
     "KODEX",
-    "TIGER"
+    "TIGER",
+    "Kapoor",
+    "rollouts",
+    "kakaopay",
+    "RVOL",
+    "lowvol"
   ],
   "ignorePaths": [
     "node_modules/**",
