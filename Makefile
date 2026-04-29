@@ -248,6 +248,15 @@ llm-consult:
 	@test -n "$(prompt)" || (echo "usage: make llm-consult slug=<kebab> prompt=<file>"; exit 1)
 	$(PYTHON) scripts/llm_consult.py --slug "$(slug)" --prompt-file "$(prompt)"
 
+# Thesis Q&A engine (Issue #508) — reactive ticker analysis with DB context + LLM.
+# Sister to buy_candidate_emitter.py (#507 proactive). Output to data/thesis_query/.
+# Usage:
+#   make thesis ticker=INTC
+#   make thesis ticker=INTC question="hyperscaler 수혜자인가?"
+thesis:
+	@test -n "$(ticker)" || (echo "usage: make thesis ticker=<TICKER> [question=\"...\"]"; exit 1)
+	$(PYTHON) -m nuri.llm.thesis_query --ticker "$(ticker)" $(if $(question),--question "$(question)") --print
+
 gate:
 	$(PYTHON) -m nuri.trading.engine.gate
 
