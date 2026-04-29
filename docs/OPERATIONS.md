@@ -87,6 +87,21 @@ Scheduler runs under separate launchd `com.nuri-quant.scheduler.plist`. It is **
 
 DB (`data/portfolio.db`) is intentionally NOT synced — Mac mini DB is the canonical production state. Backup only.
 
+## Local LLM stack (M5 Max ↔ Mac mini)
+
+Dual-stack pattern, single helper: `scripts/llm_consult.py` (codex + Qwen3.5 archive). Both backends expose the OpenAI-compatible `/v1/chat/completions` shape; the helper picks via `NURI_LLM_QWEN_URL` / `NURI_LLM_QWEN_MODEL` env vars (`.env.example` has both forms commented).
+
+| Machine | Backend | Port | Model | When to use |
+|---------|---------|------|-------|-------------|
+| **M5 Max MBP** (dev) | LM Studio (MLX) | 1234 | `qwen3.5-122b-a10b` (4-bit MLX) | Interactive `make llm-consult` during sessions. MLX = ~63 tok/s on M5 Max, GUI lifecycle, multi-model concurrency. |
+| **M2 Pro Mac mini** (24/7 receiver) | llama.cpp (GGUF) | 8081 | `qwen3.5-122b-a10b-q4` (Q4_K_M GGUF) | Headless production. Smaller footprint than Electron-based LM Studio. Currently not load-bearing — install only when a Mac mini consumer (e.g. scheduler-side classifier) actually needs local LLM. |
+
+**Why dual-stack rather than one**: MLX 4-bit quantization preserves accuracy better than GGUF Q4_K_M on Apple Silicon and is faster (~50% throughput at the same model size). LM Studio's GUI is convenient on the dev box. Mac mini, conversely, runs headlessly under launchd — `brew install llama.cpp` + GGUF + a `keepalive` plist is more hermetic than an Electron app and survives reboots without the desktop session.
+
+**No code changes needed to swap** — `scripts/llm_consult.py` reads `NURI_LLM_QWEN_URL` / `NURI_LLM_QWEN_MODEL` from env. Defaults are the LM Studio dev shape; Mac mini sets the llama.cpp shape in its `.env` only when local LLM consumers are actually deployed there.
+
+**Current state (2026-04-29)**: only the dev box runs LM Studio. Mac mini has no local LLM running because no Mac mini code path calls one — `nuri/llm/openai_client.py` is the only LLM gateway and it talks to OpenAI cloud (gpt-5.4-nano). Set up Mac mini llama.cpp **only when** a code path on the receiver needs local inference (e.g. if `macro_news` classifier ever migrates from OpenAI cloud to local for cost / privacy).
+
 ## Reference
 
 - Deploy script: `scripts/deploy_mini.sh`
