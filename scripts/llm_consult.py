@@ -1,12 +1,17 @@
 """Dual-LLM consult helper — archive Codex + Qwen3.5 verdicts side-by-side.
 
-Codex sessions auto-log to ~/.codex/sessions/, but local Qwen3.5 (llama.cpp on
-:8081) has no persistent log. Decision-rationale across sessions is lost when
-Qwen verdicts vanish with /tmp/.
+Codex sessions auto-log to ~/.codex/sessions/, but local Qwen3.5 has no
+persistent log. Decision-rationale across sessions is lost when Qwen verdicts
+vanish with /tmp/.
 
 This wraps both, saves prompt + both responses to data/llm_consults/{date}_{slug}.md
 (gitignored — prompts may quote portfolio holdings). Use for any design
 ambiguity where a single LLM verdict isn't enough (axis A vs B style decisions).
+
+Local LLM backend (default): **LM Studio** at http://127.0.0.1:1234
+(OpenAI-compatible, MLX-backed Qwen3.5-122B-A10B-4bit on M5 Max). Override via
+env vars `NURI_LLM_QWEN_URL` / `NURI_LLM_QWEN_MODEL` to point elsewhere
+(e.g. llama.cpp at :8081 — historical default until 2026-04-29).
 
 Usage:
     .venv/bin/python scripts/llm_consult.py --slug <slug> --prompt-file <path>
@@ -21,6 +26,8 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures as cf
+import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -29,10 +36,15 @@ import requests
 
 from nuri.core.timezone import kst_now, today_kst
 
-QWEN_URL = "http://localhost:8081/v1/chat/completions"
-QWEN_MODEL = "qwen3.5-122b-a10b-q4"
+QWEN_URL = os.environ.get("NURI_LLM_QWEN_URL", "http://127.0.0.1:1234/v1/chat/completions")
+QWEN_MODEL = os.environ.get("NURI_LLM_QWEN_MODEL", "qwen3.5-122b-a10b")
 QWEN_TIMEOUT_S = 600
 CODEX_TIMEOUT_S = 600
+
+# LM Studio inlines reasoning into `content` (no separate `reasoning_content`
+# field). llama.cpp splits them. Strip <think>...</think> blocks if the model
+# emits them despite /no_think directive. Pattern is non-greedy + DOTALL.
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a rigorous quant systems architect. Be ruthlessly honest. "
@@ -66,7 +78,11 @@ def consult_codex(prompt: str) -> dict:
 
 
 def consult_qwen(prompt: str, system: str = DEFAULT_SYSTEM_PROMPT) -> dict:
-    """Hit local llama.cpp Qwen3.5 endpoint, return verdict text + metadata."""
+    """Hit local Qwen3.5 endpoint (LM Studio default), return verdict + metadata.
+
+    Backend-agnostic: works with LM Studio (`/v1/chat/completions`), llama.cpp,
+    Ollama, or any OpenAI-compatible server. Override via NURI_LLM_QWEN_URL.
+    """
     resp = requests.post(
         QWEN_URL,
         headers={"Content-Type": "application/json"},
@@ -83,13 +99,20 @@ def consult_qwen(prompt: str, system: str = DEFAULT_SYSTEM_PROMPT) -> dict:
     )
     result = resp.json()
     msg = result["choices"][0]["message"]
-    content = (msg.get("content") or "").strip()
-    reasoning = (msg.get("reasoning_content") or "").strip()
+    raw_content = (msg.get("content") or "").strip()
+    # llama.cpp surfaces a `reasoning_content` field; LM Studio inlines reasoning
+    # into `content` instead. Strip <think>...</think> blocks if present so the
+    # archived verdict stays clean across backends.
+    stripped_inline = _THINK_BLOCK_RE.sub("", raw_content).strip()
+    reasoning_inline = "\n".join(_THINK_BLOCK_RE.findall(raw_content)).strip()
+    reasoning_field = (msg.get("reasoning_content") or "").strip()
+    reasoning = reasoning_inline or reasoning_field
+    content = stripped_inline or raw_content
     finish = result["choices"][0].get("finish_reason")
     usage = result.get("usage", {})
     return {
         "ok": resp.status_code == 200 and bool(content),
-        "verdict": content if content else f"(empty content; reasoning truncated, finish_reason={finish})",
+        "verdict": content if content else f"(empty content; finish_reason={finish})",
         "reasoning": reasoning,
         "finish_reason": finish,
         "tokens_in": usage.get("prompt_tokens"),
