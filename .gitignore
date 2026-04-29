@@ -40,7 +40,7 @@ config/kis/*
 # Personal portfolio (보유 종목 정보)
 config/portfolio.yaml
 
-# Backlog + 개인 plan 노트 (broker names + ticker+PnL 노출 가능 — STRATEGY §4.4.1)
+# Backlog + 개인 plan 노트 (broker names + ticker+PnL + 실현 손실 노출 — STRATEGY §4.4.1)
 docs/TODO.md
 docs/plans/E3_symmetric_amplifier_design.md
 docs/plans/507_buy_candidate_emitter_phase1.md
