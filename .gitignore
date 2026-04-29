@@ -154,6 +154,10 @@ data/.bfg-reports/
 codex-reviews/
 # scheduler.err/.log, auto-deploy log 등
 data/logs/
+# LLM dual-consult archives (scripts/llm_consult.py output) — prompts may
+# carry portfolio context, verdicts may quote it. Decision audit trail kept
+# locally, not committed. Mirror policy of codex-reviews/.
+data/llm_consults/
 # API health check heartbeat (scheduler 가 매분 rewrite)
 data/.scheduler_heartbeat
 
