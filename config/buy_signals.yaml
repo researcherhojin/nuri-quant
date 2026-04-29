@@ -28,7 +28,18 @@ quality_bar:
 gates:
   vix_block_above: 30         # VIX > 30 → 모든 candidate 0 (rules.yaml entry_rules.vix_gate.block_above 와 동일)
   vix_caution_above: 25       # VIX 25-30 → 사이즈 절반
-  cooldown_days: 5            # 최근 N일 내 trim/sell 한 ticker 제외 (cascade 차단)
+
+  # #517 Phase 2b — Cooldown SELL-type split (codex+Qwen consult B3 REFINE: hard_sell 14→21d).
+  # event taxonomy unified: payload.action_type ∈ {hard_sell, trim_action, position_reduce, divergence_alert}.
+  # Forward-only: 신규 emit 부터 type-aware. Legacy row (NULL action_type) 는 fallback_days 적용.
+  cooldown:
+    hard_sell_days: 21        # SIEGE veto / stop_loss breach / alpha=FLAT — thesis 회복 시간
+    trim_days: 0              # TP1 partial — re-add 허용 (50% 잔여 holding, thesis intact)
+    reduce_days: 7            # cap rebalance — 기계적 사이징, 짧음
+    divergence_days: 3        # divergence alert — 정보성, 빠른 회복
+    fallback_days: 5          # legacy event (action_type IS NULL) — 보수적 default
+
+  cooldown_days: 5            # DEPRECATED (#517 cooldown.fallback_days 로 대체). 호환성 유지 — 다음 세션 제거.
 
 # ─── Allocation (regime-gated total deploy %) ──────────────────────
 # 사용자 cash * total_pct = 이번 세션 deploy 추천 금액

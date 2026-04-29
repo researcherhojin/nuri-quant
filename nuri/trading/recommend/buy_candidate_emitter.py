@@ -104,10 +104,9 @@ def _get_held_tickers() -> set[str]:
 
 
 def _get_cooldown_tickers(days: int) -> set[str]:
-    """Tickers with recent SELL/trim events — suppress BUY emit for N trading days.
+    """DEPRECATED — Phase 1 single-window cooldown. Use _get_cooldown_tickers_by_type (#517 Phase 2b).
 
-    Reads pipeline_events for holdings_monitor SELL alerts + take-profit triggers.
-    Phase 1 simplified: any pipeline_events with SELL/trim event_type in last N days.
+    유지 이유: 호환성 (외부 caller / 테스트 fixture). 다음 세션에 제거 예정.
     """
     df = query_df(
         f"""SELECT DISTINCT
@@ -118,6 +117,63 @@ def _get_cooldown_tickers(days: int) -> set[str]:
               AND json_extract(payload, '$.ticker') IS NOT NULL"""
     )
     return {str(t) for t in df["ticker"].dropna().tolist()} if not df.empty else set()
+
+
+def _get_cooldown_tickers_by_type(cooldown_cfg: dict) -> set[str]:
+    """#517 Phase 2b — Type-aware cooldown.
+
+    payload.action_type ∈ {hard_sell, trim_action, position_reduce, divergence_alert}
+    각각 별도 days. action_type IS NULL (legacy) → fallback_days.
+
+    forward-only: 신규 emit 부터 action_type 채워짐 (holdings_monitor.py).
+    backfill 폐기 (codex+Qwen B2 STOP — heuristic 위험).
+
+    Returns: ticker set 으로 BUY emit 차단.
+    """
+    suppressed: set[str] = set()
+    type_map = {
+        "hard_sell": cooldown_cfg.get("hard_sell_days", 21),
+        "trim_action": cooldown_cfg.get("trim_days", 0),
+        "position_reduce": cooldown_cfg.get("reduce_days", 7),
+        "divergence_alert": cooldown_cfg.get("divergence_days", 3),
+    }
+
+    # Type-aware (post-#517 events)
+    for action_type, days in type_map.items():
+        if days <= 0:
+            continue  # trim_days=0 → cooldown 차단 안 함 (re-add 허용)
+        df = query_df(
+            f"""SELECT DISTINCT json_extract(payload, '$.ticker') AS ticker
+                  FROM pipeline_events
+                  WHERE json_extract(payload, '$.action_type') = ?
+                    AND timestamp >= datetime('now', '-{days} days')
+                    AND json_extract(payload, '$.ticker') IS NOT NULL""",
+            params=(action_type,),
+        )
+        if not df.empty:
+            suppressed.update(str(t) for t in df["ticker"].dropna().tolist())
+
+    # Legacy fallback (pre-#517: payload.action_type IS NULL)
+    fallback = cooldown_cfg.get("fallback_days", 5)
+    if fallback > 0:
+        df_legacy = query_df(
+            f"""SELECT DISTINCT json_extract(payload, '$.ticker') AS ticker
+                  FROM pipeline_events
+                  WHERE json_extract(payload, '$.action_type') IS NULL
+                    AND event_type IN (
+                        'holdings_monitor_alert',
+                        'holdings_monitor_technical_sell',
+                        'holdings_monitor_divergence',
+                        'take_profit_trigger',
+                        'trim_recommendation'
+                    )
+                    AND timestamp >= datetime('now', '-{fallback} days')
+                    AND json_extract(payload, '$.ticker') IS NOT NULL"""
+        )
+        if not df_legacy.empty:
+            suppressed.update(str(t) for t in df_legacy["ticker"].dropna().tolist())
+
+    return suppressed
 
 
 def _get_factor_scores() -> dict[str, dict[str, float]]:
@@ -325,7 +381,13 @@ def emit_buy_candidates(
         return result
 
     held = _get_held_tickers() if cfg.get("exclude_held", True) else set()
-    cooldown = _get_cooldown_tickers(gates.get("cooldown_days", 5))
+    # #517 Phase 2b — type-aware cooldown 우선. legacy gates.cooldown_days 는 fallback 용.
+    cooldown_cfg = gates.get("cooldown")
+    if cooldown_cfg:
+        cooldown = _get_cooldown_tickers_by_type(cooldown_cfg)
+    else:
+        # 호환성: gates.cooldown 미정의 시 legacy single-window
+        cooldown = _get_cooldown_tickers(gates.get("cooldown_days", 5))
     factors = _get_factor_scores()
     prices = _get_price_signals()
     rsi_map = _get_rsi_snapshot()

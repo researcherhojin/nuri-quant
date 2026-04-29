@@ -63,6 +63,11 @@ class AlertPayload:
     dedupe_key: str  # f"{ticker}:{trigger_type}"
     price_date: str | None
     technical_reasoning: str  # short excerpt (≤120 chars)
+    # #517 Phase 2b — Cooldown SELL-type split. trigger_type → action_type 매핑:
+    #   technical_sell → "hard_sell" (SELL conf ≥ 80, thesis 회복 21d cooldown)
+    #   divergence    → "divergence_alert" (정보성, 3d cooldown)
+    # buy_candidate_emitter._get_cooldown_tickers_by_type 가 SQL filter.
+    action_type: str = ""  # "hard_sell" | "divergence_alert" (set in _emit_alert)
 
 
 @dataclass
@@ -275,6 +280,9 @@ def run_monitor(db_path=None, dry_run: bool = False) -> RunSummary:
         avg = h.get("avg_price")
         pnl_pct = (cur / float(avg) - 1.0) * 100 if (cur and avg) else None
 
+        # #517 Phase 2b — trigger_type → action_type 매핑 (cooldown SELL-type split)
+        action_type = "hard_sell" if trigger_type == TRIGGER_TECHNICAL_SELL else "divergence_alert"
+
         payload = AlertPayload(
             ticker=ticker,
             account=h["account"],
@@ -290,6 +298,7 @@ def run_monitor(db_path=None, dry_run: bool = False) -> RunSummary:
             dedupe_key=dedupe_key,
             price_date=price_date,
             technical_reasoning=diag["technical_reasoning"],
+            action_type=action_type,
         )
 
         event_type = EVENT_TYPE_TECHNICAL_SELL if trigger_type == TRIGGER_TECHNICAL_SELL else EVENT_TYPE_DIVERGENCE
