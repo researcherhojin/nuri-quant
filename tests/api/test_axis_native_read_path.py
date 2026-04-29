@@ -9,6 +9,7 @@
 이 테스트가 fail 하면 axis-native read path 가 regressed 됐거나 writer 가
 concentration-only SELL 을 emit 하는 경로가 재도입된 것.
 """
+
 from unittest.mock import patch
 
 
@@ -32,15 +33,28 @@ class TestActionsReadPathAxisNative:
     def test_explicit_alpha_flat_enters_sell_path(self):
         """alpha_action=FLAT + stop-loss breach → urgent."""
         result = self._invoke_build_actions(
-            recommendations=[{
-                "ticker": "CRASH", "action": "SELL", "confidence": 85,
-                "agreement": 70, "scoring_detail": None, "agent_verdicts": None,
-                "alpha_action": "FLAT", "portfolio_action": None,
-            }],
-            portfolio={"CRASH": {
-                "current_price": 70.0, "avg_price": 100.0, "quantity": 100,
-                "pnl_pct": -30.0, "position_pct": 5.0, "account": "Main",
-            }},
+            recommendations=[
+                {
+                    "ticker": "CRASH",
+                    "action": "SELL",
+                    "confidence": 85,
+                    "agreement": 70,
+                    "scoring_detail": None,
+                    "agent_verdicts": None,
+                    "alpha_action": "FLAT",
+                    "portfolio_action": None,
+                }
+            ],
+            portfolio={
+                "CRASH": {
+                    "current_price": 70.0,
+                    "avg_price": 100.0,
+                    "quantity": 100,
+                    "pnl_pct": -30.0,
+                    "position_pct": 5.0,
+                    "account": "Main",
+                }
+            },
         )
         assert len(result["urgent"]) == 1
         assert result["urgent"][0]["ticker"] == "CRASH"
@@ -49,15 +63,28 @@ class TestActionsReadPathAxisNative:
     def test_legacy_null_axis_sell_backcompat(self):
         """alpha_action=None + action=SELL (pre-migration row) → SELL 경로 허용."""
         result = self._invoke_build_actions(
-            recommendations=[{
-                "ticker": "LEGACY", "action": "SELL", "confidence": 75,
-                "agreement": 60, "scoring_detail": None, "agent_verdicts": None,
-                "alpha_action": None, "portfolio_action": None,
-            }],
-            portfolio={"LEGACY": {
-                "current_price": 95.0, "avg_price": 100.0, "quantity": 50,
-                "pnl_pct": -5.0, "position_pct": 3.0, "account": "Main",
-            }},
+            recommendations=[
+                {
+                    "ticker": "LEGACY",
+                    "action": "SELL",
+                    "confidence": 75,
+                    "agreement": 60,
+                    "scoring_detail": None,
+                    "agent_verdicts": None,
+                    "alpha_action": None,
+                    "portfolio_action": None,
+                }
+            ],
+            portfolio={
+                "LEGACY": {
+                    "current_price": 95.0,
+                    "avg_price": 100.0,
+                    "quantity": 50,
+                    "pnl_pct": -5.0,
+                    "position_pct": 3.0,
+                    "account": "Main",
+                }
+            },
         )
         # -5% 는 core stop-loss -7% 넘지 않음 → non-emergency SELL → catalyst 없음 → hold
         # 그러나 이 테스트의 핵심은 "legacy SELL 이 action="SELL" 처리 분기 진입 은 한다"
@@ -75,19 +102,35 @@ class TestActionsReadPathAxisNative:
         조합 (PR A 이후 risk_agent 가 emit 하는 concentration-only 형태) 은 SELL 경로에
         절대 진입하면 안 된다. SIEGE violation 으로 portfolio bucket 에만 route."""
         result = self._invoke_build_actions(
-            recommendations=[{
-                "ticker": "BAC", "action": "HOLD", "confidence": 62,
-                "agreement": 90, "scoring_detail": None, "agent_verdicts": None,
-                "alpha_action": None, "portfolio_action": "REBALANCE",
-            }],
-            siege=[{
-                "ticker": "BAC", "detail": "SIEGE: 종목 비중 한도 — 위반: BAC(19.8%>15%)",
-                "condition_id": "position_limit",
-            }],
-            portfolio={"BAC": {
-                "current_price": 40.0, "avg_price": 40.5, "quantity": 100,
-                "pnl_pct": -1.2, "position_pct": 19.8, "account": "Main",
-            }},
+            recommendations=[
+                {
+                    "ticker": "BAC",
+                    "action": "HOLD",
+                    "confidence": 62,
+                    "agreement": 90,
+                    "scoring_detail": None,
+                    "agent_verdicts": None,
+                    "alpha_action": None,
+                    "portfolio_action": "REBALANCE",
+                }
+            ],
+            siege=[
+                {
+                    "ticker": "BAC",
+                    "detail": "SIEGE: 종목 비중 한도 — 위반: BAC(19.8%>15%)",
+                    "condition_id": "position_limit",
+                }
+            ],
+            portfolio={
+                "BAC": {
+                    "current_price": 40.0,
+                    "avg_price": 40.5,
+                    "quantity": 100,
+                    "pnl_pct": -1.2,
+                    "position_pct": 19.8,
+                    "account": "Main",
+                }
+            },
         )
         # 절대 urgent/check 진입 금지 (SELL 경로 차단)
         assert len(result["urgent"]) == 0
@@ -106,21 +149,31 @@ class TestActionsReadPathAxisNative:
 
         이 테스트는 `is_alpha_flat_sell` 의 strict=False default semantic 문서화 목적."""
         result = self._invoke_build_actions(
-            recommendations=[{
-                "ticker": "FUTURE", "action": "SELL", "confidence": 80,
-                "agreement": 55, "scoring_detail": None, "agent_verdicts": None,
-                "alpha_action": None, "portfolio_action": None,
-            }],
-            portfolio={"FUTURE": {
-                "current_price": 100.0, "avg_price": 100.0, "quantity": 10,
-                "pnl_pct": 0.0, "position_pct": 5.0, "account": "Main",
-            }},
+            recommendations=[
+                {
+                    "ticker": "FUTURE",
+                    "action": "SELL",
+                    "confidence": 80,
+                    "agreement": 55,
+                    "scoring_detail": None,
+                    "agent_verdicts": None,
+                    "alpha_action": None,
+                    "portfolio_action": None,
+                }
+            ],
+            portfolio={
+                "FUTURE": {
+                    "current_price": 100.0,
+                    "avg_price": 100.0,
+                    "quantity": 10,
+                    "pnl_pct": 0.0,
+                    "position_pct": 5.0,
+                    "account": "Main",
+                }
+            },
         )
         # back-compat: alpha=None + action=SELL 이 SELL 경로로 진입됨.
-        all_sells = [
-            i for i in result["urgent"] + result["check"] + result["hold"]
-            if i["ticker"] == "FUTURE"
-        ]
+        all_sells = [i for i in result["urgent"] + result["check"] + result["hold"] if i["ticker"] == "FUTURE"]
         assert len(all_sells) == 1
         assert all_sells[0]["action"] == "SELL"
 
@@ -137,16 +190,28 @@ class TestActionsReadPathAxisNative:
         strict=True 승격 (PR C) 이 되면 이 테스트는 거꾸로 "SELL 경로 안 들어감" 으로
         update 되어야 함 — 승격 시점의 lock-in point."""
         result = self._invoke_build_actions(
-            recommendations=[{
-                "ticker": "MISWRITE", "action": "SELL", "confidence": 80,
-                "agreement": 55, "scoring_detail": None, "agent_verdicts": None,
-                "alpha_action": None,
-                "portfolio_action": "REBALANCE",  # 의도적으로 이상한 조합
-            }],
-            portfolio={"MISWRITE": {
-                "current_price": 100.0, "avg_price": 100.0, "quantity": 10,
-                "pnl_pct": 0.0, "position_pct": 5.0, "account": "Main",
-            }},
+            recommendations=[
+                {
+                    "ticker": "MISWRITE",
+                    "action": "SELL",
+                    "confidence": 80,
+                    "agreement": 55,
+                    "scoring_detail": None,
+                    "agent_verdicts": None,
+                    "alpha_action": None,
+                    "portfolio_action": "REBALANCE",  # 의도적으로 이상한 조합
+                }
+            ],
+            portfolio={
+                "MISWRITE": {
+                    "current_price": 100.0,
+                    "avg_price": 100.0,
+                    "quantity": 10,
+                    "pnl_pct": 0.0,
+                    "position_pct": 5.0,
+                    "account": "Main",
+                }
+            },
         )
         # 현 PR B (strict=False) 에서는 SELL 경로에 들어감 — 의도된 known risk.
         all_buckets_items = {
@@ -199,13 +264,16 @@ class TestDashboardAxisNativeSELL:
             )
 
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db)
 
         from nuri.api.routes.dashboard import _get_latest_actions
+
         latest = _get_latest_actions()
         # BAC 는 alpha_action=None + action=HOLD → `is_alpha_flat_sell` False → SELL 카드 제외
-        assert all(a["ticker"] != "BAC" for a in latest), \
+        assert all(a["ticker"] != "BAC" for a in latest), (
             f"BAC (concentration-only) must NOT appear as dashboard action, got {latest}"
+        )
         # CRASH 는 alpha_action=FLAT → SELL 카드 진입
         crash = [a for a in latest if a["ticker"] == "CRASH"]
         assert len(crash) == 1
@@ -232,9 +300,11 @@ class TestDashboardAxisNativeSELL:
             )
 
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db)
 
         from nuri.api.routes.dashboard import _get_latest_actions
+
         latest = _get_latest_actions()
         # back-compat: legacy SELL 은 dashboard SELL 카드에 surface
         legacy = [a for a in latest if a["ticker"] == "LEGACY"]
@@ -267,9 +337,11 @@ class TestDashboardAxisNativeSELL:
             )
 
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db)
 
         from nuri.api.routes.dashboard import _get_latest_actions
+
         latest = _get_latest_actions()
         tickers = {a["ticker"]: a for a in latest}
         assert "NEW" in tickers and tickers["NEW"]["alpha_action"] == "LONG"
@@ -297,8 +369,7 @@ class TestTrackerAxisPersist:
             tier: str = TIER_ACTIONABLE
             scoring_detail: dict | None = None
 
-        c = _Candidate(ticker="AAA", direction="BUY", confidence=70.0,
-                       signal_id="momentum", price=50.0)
+        c = _Candidate(ticker="AAA", direction="BUY", confidence=70.0, signal_id="momentum", price=50.0)
         n = save_recommendations(candidates=[c], db_path=db_path)
         assert n == 1
         row = query(
@@ -327,8 +398,24 @@ class TestTrackerAxisPersist:
             tier: str = TIER_ACTIONABLE
             scoring_detail: dict | None = None
 
-        c = _Candidate(ticker="ZZZ", direction="SELL", confidence=65.0,
-                       signal_id="bb_reversal", price=100.0)
+        # P0 fix (#512): SELL on non-held ticker is filtered. Seed portfolio
+        # so the test still exercises the alpha_action persistence path.
+        from nuri.core.db import upsert_portfolio
+
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "ZZZ",
+                    "quantity": 5,
+                    "avg_price": 100,
+                    "currency": "USD",
+                    "sector": "Tech",
+                }
+            ],
+            db_path,
+        )
+        c = _Candidate(ticker="ZZZ", direction="SELL", confidence=65.0, signal_id="bb_reversal", price=100.0)
         save_recommendations(candidates=[c], db_path=db_path)
         row = query(
             "SELECT action, alpha_action FROM recommendations WHERE ticker='ZZZ'",
