@@ -140,8 +140,10 @@ Backend: FastAPI on `:8001`. Frontend: Next.js on `:3000`. Next.js proxies `/api
 | `import sqlite3` outside `db.py` | PreToolUse hook | **Blocking** (exit 2) |
 | `git push --force` / `reset --hard` / `clean -f` | PreToolUse hook | **Blocking** (exit 2) |
 | `datetime.now()` usage | PostToolUse hook | **Blocking** (exit 1, surfaces to Claude) |
+| Privacy ticker+PnL inline write (LLM-emitted `+12% (TICKER)` 패턴) | PreToolUse hook (`scripts/check_privacy_leak.py --message --quiet` stdin) | **Blocking** (exit 2) — defense-in-depth before CI |
 | Ruff lint violations | PostToolUse hook | Advisory (pipes `ruff check` output) |
-| Privacy leaks (broker names, monetary literals, ticker+PnL) | CI `privacy-scan` + `pre_push_check.sh` | Every push + PR (STRATEGY §4.4.1) |
+| Privacy leaks full coverage (broker names + monetary literals + ticker+PnL) | CI `privacy-scan` + `pre_push_check.sh` (canonical) | Every push + PR (STRATEGY §4.4.1) |
+| PR commit count > 3 (PR Discipline) | CI `pr-discipline` workflow | Every PR (escape hatch: `scope-expand-approved` label) |
 | Test regression | CI + Codecov 1% relative gate | Every PR |
 | Trivy CRITICAL | CI `security-scan` | Every push |
 | Doc count drift (collectors/endpoints/tests/e2e) | CI `Doc Count Drift Check` | Every PR (`make verify-doc-counts`) |
@@ -155,11 +157,12 @@ L1 CLAUDE.md (memory) → L2 Skills (auto-invoked) → L3 Hooks (deterministic) 
 | Layer | Where | Inventory |
 |-------|-------|-----------|
 | L1 Memory | 8 scoped `CLAUDE.md` (this file + 7 subdirs) + `~/.claude/CLAUDE.md` global | Subfolder appends, never overwrites parent |
-| L2 Skills | `.claude/skills/nuri-{deploy,harness-debug,review,siege-audit,verify}/SKILL.md` | Auto-invoke via natural language (description field critical) |
-| L3 Hooks | `.claude/settings.json` PreToolUse + PostToolUse | sqlite3 / datetime.now / destructive-git block; ruff advisory |
-| L4 Agents | `.claude/agents/{nuri-codex-second-opinion,nuri-thesis-batch}.md` | Own context, parallel work |
-| Slash | `.claude/commands/{thesis,buy-candidates,earnings-preview}.md` | Custom CLI shortcuts (#507/#508/#509) |
+| L2 Skills | `.claude/skills/nuri-{deploy,flow,harness-debug,review,siege-audit,verify}/SKILL.md` (6) | Auto-invoke via natural language. `nuri-flow` = 7-phase Flow recommend-only orchestrator (audit P1-1) |
+| L3 Hooks | `.claude/settings.json` PreToolUse + PostToolUse | sqlite3 / datetime.now / destructive-git / privacy ticker+PnL block; ruff advisory |
+| L4 Agents | `.claude/agents/nuri-{codex-second-opinion,thesis-batch}.md` (2) | Own context, parallel work |
+| Slash | `.claude/commands/nuri-{review,verify,deploy,harness-debug,siege-audit,thesis,buy-candidates,earnings-preview}.md` (8) | `nuri-` prefix로 gstack `/review` `/deploy` 등과 namespace 분리 (audit 후속) |
 | Permissions | `.claude/settings.json::permissions` | allow/deny rules for auto-approve / auto-block |
+| Tracking | `.gitignore` allowlist: `.claude/{agents,commands,skills}/nuri-*` only | 머신별 개인 설치는 자동 ignored, project-scoped `nuri-*` 만 cross-machine sync |
 
 ## Gotchas
 
@@ -181,6 +184,7 @@ For framework / test-mocking / data-source / pipeline-policy gotchas → see sco
 - `docs/TODO.md` (gitignored) — forward-only backlog. Tier 2 P0=#507 (BUY signal asymmetry) / P1 #0a-#0b (#508 thesis / #509 earnings preview) / P2 #0c (Gap B harness telemetry)
 - `docs/SIEGE_V2.md` — 3D certification spec
 - `docs/KIS_INTEGRATION.md` — KIS Open API integration details
-- `AGENTS.md` — cross-tool rules (Cursor / Copilot / Codex CLI), not auto-loaded by Claude Code
+- `AGENTS.md` — **cross-tool** rules (Cursor / Copilot / Codex CLI), not auto-loaded by Claude Code. **`.claude/agents/` 와 별개 메커니즘** — `.claude/agents/nuri-*.md` 가 Claude Code 의 sub-agent 정의, `AGENTS.md` 는 비-Claude 도구용 contributor 가이드. 이름이 비슷해도 혼동 금지.
+- `docs/HARNESS_AUDIT.md` — single canonical 하네스 감사 보고서 (revfactory 6 패턴 매핑, spec compliance, P0/P1/P2 권고). 매 audit overwrite — 이력은 git log.
 - `NEXT_SESSION.md` (gitignored) — handoff (read first per session)
 - `~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/memory/` — user-scoped auto-memory
