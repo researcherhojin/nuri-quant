@@ -119,3 +119,51 @@ class TestRepoRoot:
 
         assert (REPO_ROOT / "Makefile").exists()
         assert (REPO_ROOT / "nuri" / "core" / "db.py").exists()
+
+
+class TestMainRuntime:
+    """main() 의 token 통과 후 분기 (default run vs --sync-only) 검증."""
+
+    def test_main_default_calls_bot_run(self, monkeypatch):
+        """token + guild_id 있으면 bot.run(token) 호출."""
+        from unittest.mock import MagicMock
+
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "fake-token")
+        monkeypatch.setenv("DISCORD_GUILD_ID", "1234567890")
+
+        mock_bot = MagicMock()
+        mock_tree = MagicMock()
+        mock_guild = MagicMock(id=1234567890)
+
+        with patch("nuri.agents.discord.bot.build_bot", return_value=(mock_bot, mock_tree, mock_guild)):
+            from nuri.agents.discord.bot import main
+
+            rc = main([])
+
+        assert rc == 0
+        mock_bot.run.assert_called_once_with("fake-token")
+
+    def test_main_sync_only_runs_async_sync(self, monkeypatch, capsys):
+        """--sync-only 분기: asyncio.run + tree.sync 호출 + bot.run 미호출."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "fake-token")
+        monkeypatch.setenv("DISCORD_GUILD_ID", "9999")
+
+        mock_bot = MagicMock()
+        mock_bot.login = AsyncMock()
+        mock_bot.close = AsyncMock()
+        mock_tree = MagicMock()
+        mock_tree.sync = AsyncMock()
+        mock_guild = MagicMock(id=9999)
+
+        with patch("nuri.agents.discord.bot.build_bot", return_value=(mock_bot, mock_tree, mock_guild)):
+            from nuri.agents.discord.bot import main
+
+            rc = main(["--sync-only"])
+
+        assert rc == 0
+        mock_bot.run.assert_not_called()
+        mock_tree.sync.assert_awaited_once()
+        out = capsys.readouterr().out
+        assert "9999" in out and "synced" in out

@@ -72,8 +72,10 @@ def build_bot():
     guild = discord.Object(id=int(guild_id_str))
 
     # ─── /buy-candidates ───
+    # NOTE: handler 본문은 discord.py Interaction object chain (defer / followup.send) 의존.
+    # Integration test 영역 — interaction mock 자체가 테스트 가치 < 비용. 등록 + _run_make 단위 검증으로 충분.
     @tree.command(name="buy-candidates", description="현금 배포 후보 ticker emit (recommendations only)", guild=guild)
-    async def buy_candidates(interaction: "discord.Interaction") -> None:
+    async def buy_candidates(interaction: "discord.Interaction") -> None:  # pragma: no cover
         await interaction.response.defer(thinking=True)
         rc, out = await asyncio.to_thread(_run_make, "buy-candidates")
         status = "✅ OK" if rc == 0 else f"❌ exit {rc}"
@@ -82,7 +84,7 @@ def build_bot():
     # ─── /thesis ticker:<TICKER> ───
     @tree.command(name="thesis", description="ticker thesis Q&A (Codex + Qwen3.5 dual archive)", guild=guild)
     @app_commands.describe(ticker="대상 ticker (e.g. MSFT, NVDA)")
-    async def thesis(interaction: "discord.Interaction", ticker: str) -> None:
+    async def thesis(interaction: "discord.Interaction", ticker: str) -> None:  # pragma: no cover
         ticker = ticker.upper().strip()
         if not ticker.isalpha() or len(ticker) > 6:
             await interaction.response.send_message(f"❌ invalid ticker: {ticker!r}", ephemeral=True)
@@ -94,7 +96,7 @@ def build_bot():
 
     # ─── /health ───
     @tree.command(name="health", description="agent infra health check (single-writer + schema + tables)", guild=guild)
-    async def health(interaction: "discord.Interaction") -> None:
+    async def health(interaction: "discord.Interaction") -> None:  # pragma: no cover
         await interaction.response.defer(thinking=True)
 
         def _run() -> tuple[int, str]:
@@ -116,7 +118,7 @@ def build_bot():
         await interaction.followup.send(f"{emoji} health (exit {rc})\n```\n{out}\n```")
 
     @bot.event
-    async def on_ready() -> None:
+    async def on_ready() -> None:  # pragma: no cover
         await tree.sync(guild=guild)
         logger.info("bot ready user=%s commands synced to guild=%s", bot.user, guild.id)
 
