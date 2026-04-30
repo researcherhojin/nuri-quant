@@ -25,9 +25,14 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
+
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+
+# .env auto-load — `python -m` / launchd 양쪽 다 동일하게 작동.
+load_dotenv(REPO_ROOT / ".env")
 
 
 def _run_make(target: str, args: Optional[dict[str, str]] = None, timeout: int = 120) -> tuple[int, str]:
