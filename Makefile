@@ -527,6 +527,9 @@ discord-test: ## Smoke test webhook publish. usage: make discord-test channel=br
 	@test -n "$(msg)" || (echo "usage: make discord-test channel=<brief|ops|incidents|rollout> msg=<text>"; exit 1)
 	@.venv/bin/python -m nuri.agents.discord.publisher "$(channel)" "$(msg)"
 
+discord-test-embed: ## Visual smoke test — publish 4 sample embeds (status ok/fail + freshness + actor) to #brief.
+	@PYTHONPATH=. .venv/bin/python scripts/discord_embed_smoke.py
+
 discord-sync-commands: ## Register slash commands to guild (no long-running). Requires DISCORD_BOT_TOKEN + DISCORD_GUILD_ID.
 	@.venv/bin/python -m nuri.agents.discord.bot --sync-only
 
