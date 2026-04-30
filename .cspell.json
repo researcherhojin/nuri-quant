@@ -687,7 +687,9 @@
     "plutil",
     "dogfooding",
     "qualname",
-    "PSI"
+    "PSI",
+    "apublish",
+    "ROLLOUT"
   ],
   "ignorePaths": [
     "node_modules/**",

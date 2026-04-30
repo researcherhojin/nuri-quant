@@ -817,6 +817,30 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_run_parent ON agent_run_ledger(parent_run_id);
     """,
     ),
+    (
+        28,
+        "agent_messages — Discord publish audit (#529 Phase 2 — DiscordBridge)",
+        # #529 Phase 2 — Discord 채널 routing 영구 기록. 모든 actor → channel publish 는
+        # 여기에 1 row. webhook HTTP status + retry count 포함, 발송 실패 시 SRE alert
+        # trigger 가능. run_id 로 agent_run_ledger / agent_audit_ledger 와 join.
+        """
+        CREATE TABLE IF NOT EXISTS agent_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            channel TEXT NOT NULL CHECK(channel IN ('brief','ops','incidents','rollout')),
+            actor_name TEXT,
+            run_id TEXT,
+            decision_id TEXT,
+            content_preview TEXT,
+            http_status INTEGER,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            error_message TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_msg_channel_time ON agent_messages(channel, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_msg_run ON agent_messages(run_id);
+        CREATE INDEX IF NOT EXISTS idx_msg_status ON agent_messages(http_status, timestamp);
+    """,
+    ),
 ]
 
 
@@ -1469,3 +1493,42 @@ def finish_agent_run(
                WHERE run_id = ?""",
             (status, duration_ms, error_message, run_id),
         )
+
+
+def log_agent_message(
+    channel: str,
+    content_preview: str,
+    actor_name: Optional[str] = None,
+    run_id: Optional[str] = None,
+    decision_id: Optional[str] = None,
+    http_status: Optional[int] = None,
+    retry_count: int = 0,
+    error_message: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """Discord publish audit (#529 Phase 2 — DiscordBridge).
+
+    channel: 'brief' / 'ops' / 'incidents' / 'rollout'.
+    content_preview: 첫 200자 (긴 embed 도 grep 가능하도록).
+    http_status: 204 정상 발송, 4xx/5xx 실패. NULL = 네트워크 실패 전 단계.
+    """
+    if channel not in ("brief", "ops", "incidents", "rollout"):
+        raise ValueError(f"channel must be brief/ops/incidents/rollout, got {channel!r}")
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO agent_messages
+               (channel, actor_name, run_id, decision_id, content_preview,
+                http_status, retry_count, error_message)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                channel,
+                actor_name,
+                run_id,
+                decision_id,
+                content_preview[:200],
+                http_status,
+                retry_count,
+                error_message,
+            ),
+        )
+        return cursor.lastrowid or 0

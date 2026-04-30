@@ -518,6 +518,34 @@ agent-launchd-uninstall: ## Uninstall launchd plists.
 	    fi; \
 	  done
 
+# ═══════════════════════════════════════════════════════════════
+# Discord Bridge (#529 Phase 2 — DiscordBridge: webhook + bot)
+# ═══════════════════════════════════════════════════════════════
+
+discord-test: ## Smoke test webhook publish. usage: make discord-test channel=brief msg="hello"
+	@test -n "$(channel)" || (echo "usage: make discord-test channel=<brief|ops|incidents|rollout> msg=<text>"; exit 1)
+	@test -n "$(msg)" || (echo "usage: make discord-test channel=<brief|ops|incidents|rollout> msg=<text>"; exit 1)
+	@.venv/bin/python -m nuri.agents.discord.publisher "$(channel)" "$(msg)"
+
+discord-sync-commands: ## Register slash commands to guild (no long-running). Requires DISCORD_BOT_TOKEN + DISCORD_GUILD_ID.
+	@.venv/bin/python -m nuri.agents.discord.bot --sync-only
+
+discord-bot-install: ## (Mac mini) Install discord-bot launchd plist (long-running gateway).
+	@NAME=com.nuri-quant.discord-bot.plist; \
+	  sed "s|/Users/USER/|$$HOME/|g" "scripts/launchd/$$NAME" > "$$HOME/Library/LaunchAgents/$$NAME"; \
+	  launchctl unload "$$HOME/Library/LaunchAgents/$$NAME" 2>/dev/null || true; \
+	  launchctl load "$$HOME/Library/LaunchAgents/$$NAME"; \
+	  echo "  ✅ installed: $$NAME — tail data/logs/discord_bot.log"
+
+discord-bot-uninstall: ## (Mac mini) Uninstall discord-bot launchd plist.
+	@NAME=com.nuri-quant.discord-bot.plist; \
+	  PATH_FULL="$$HOME/Library/LaunchAgents/$$NAME"; \
+	  if [ -f "$$PATH_FULL" ]; then \
+	    launchctl unload "$$PATH_FULL" 2>/dev/null || true; \
+	    rm "$$PATH_FULL"; \
+	    echo "  ✅ uninstalled: $$NAME"; \
+	  else echo "  (not installed)"; fi
+
 sync-start:
 	bash scripts/dev_sync.sh start
 
