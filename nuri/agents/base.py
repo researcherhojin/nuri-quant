@@ -24,7 +24,7 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Optional, TypeVar
 
 from nuri.core.db import (
     finish_agent_run,
@@ -203,6 +203,9 @@ class Actor(ABC):
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
+_ActorT = TypeVar("_ActorT", bound=Actor)
+
+
 class ActorRegistry:
     """15-actor 인벤토리 — name → class 매핑 + 검증.
 
@@ -246,12 +249,15 @@ class ActorRegistry:
     def __init__(self) -> None:
         self._registry: dict[str, type[Actor]] = {}
 
-    def register(self, actor_cls: type[Actor]) -> type[Actor]:
+    def register(self, actor_cls: "type[_ActorT]") -> "type[_ActorT]":
         """Decorator-friendly 등록. canonical 15 중 하나여야 함.
 
         Idempotent — 같은 module:qualname 재등록 OK (`python -m` re-import 패턴 —
         Python 이 같은 module 을 `__main__` 로 한 번 더 로드해 class identity 가 달라짐).
         다른 module/qualname 으로 같은 name 등록 시 ValueError.
+
+        TypeVar로 반환 타입을 입력 subclass 로 보존 — Pylance 가 클래스 변수
+        (VALID_ACTIONS 등) 접근을 정확히 추론하도록.
         """
         if actor_cls.name not in self.CANONICAL_15:
             raise ValueError(

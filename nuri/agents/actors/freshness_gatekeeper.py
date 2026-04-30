@@ -142,9 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     import sys
 
     parser = argparse.ArgumentParser(prog="freshness-gatekeeper")
-    # 명시적 list cast (Pylance Actor base type 좁은 추론 회피).
-    valid_actions: list[str] = list(FreshnessGatekeeper.VALID_ACTIONS)
-    parser.add_argument("action", choices=valid_actions)
+    parser.add_argument("action", choices=FreshnessGatekeeper.VALID_ACTIONS)
     parser.add_argument("--key", help="freshness policy key (required for 'check')")
 
     args = parser.parse_args(argv)

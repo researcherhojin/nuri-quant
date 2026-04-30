@@ -139,14 +139,11 @@ def main(argv: list[str] | None = None) -> int:
     import sys
 
     parser = argparse.ArgumentParser(prog="release-rollback-manager")
-    # 명시적 list cast (Pylance 가 Actor 베이스 type 으로 좁게 추론하는 것 회피).
-    valid_actions = list(ReleaseRollbackManager.VALID_ACTIONS)
-    valid_scopes = list(ReleaseRollbackManager.VALID_SCOPES)
-    parser.add_argument("action", choices=valid_actions)
+    parser.add_argument("action", choices=ReleaseRollbackManager.VALID_ACTIONS)
     parser.add_argument("flag", help="feature flag name")
     parser.add_argument(
         "--scope",
-        choices=valid_scopes,
+        choices=ReleaseRollbackManager.VALID_SCOPES,
         help="canary scope (required for enable)",
     )
     parser.add_argument("--reason", help="rollback reason (required for rollback)")
