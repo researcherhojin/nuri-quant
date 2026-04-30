@@ -479,6 +479,35 @@ actor-status: ## Print 15-actor canonical inventory + registration status
 health-check: ## Verify single-writer invariant + DB schema + recent runs (#529 mandatory #1)
 	bash scripts/health_check.sh
 
+state-verify: ## State-Replicator-DR — local DB + replicas digest verify (read-only)
+	bash scripts/state_replicator.sh verify
+
+state-push: ## (Mac mini only) snapshot + rsync push to MBP. Requires DEV2_HOST.
+	bash scripts/state_replicator.sh primary
+
+state-pull: ## (MBP only) verify latest replica file received from Mac mini.
+	bash scripts/state_replicator.sh replica
+
+agent-launchd-install: ## Install launchd plists (state-replicator + health-check, USER 자동 치환)
+	@USER_NAME=$$(whoami); \
+	  for plist in scripts/launchd/com.nuri-quant.state-replicator.plist scripts/launchd/com.nuri-quant.health-check.plist; do \
+	    NAME=$$(basename "$$plist"); \
+	    sed "s|/Users/USER/|$$HOME/|g" "$$plist" > "$$HOME/Library/LaunchAgents/$$NAME"; \
+	    launchctl unload "$$HOME/Library/LaunchAgents/$$NAME" 2>/dev/null || true; \
+	    launchctl load "$$HOME/Library/LaunchAgents/$$NAME"; \
+	    echo "  ✅ installed: $$NAME"; \
+	  done
+
+agent-launchd-uninstall: ## Uninstall launchd plists.
+	@for plist in com.nuri-quant.state-replicator.plist com.nuri-quant.health-check.plist; do \
+	    PATH_FULL="$$HOME/Library/LaunchAgents/$$plist"; \
+	    if [ -f "$$PATH_FULL" ]; then \
+	      launchctl unload "$$PATH_FULL" 2>/dev/null || true; \
+	      rm "$$PATH_FULL"; \
+	      echo "  ✅ uninstalled: $$plist"; \
+	    fi; \
+	  done
+
 sync-start:
 	bash scripts/dev_sync.sh start
 

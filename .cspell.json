@@ -678,7 +678,13 @@
     "tandfonline",
     "mktemp",
     "Iseconds",
-    "macbook"
+    "macbook",
+    "hexdigest",
+    "VACUUM",
+    "PRIMARY",
+    "REPLICA",
+    "rsync",
+    "plutil"
   ],
   "ignorePaths": [
     "node_modules/**",
