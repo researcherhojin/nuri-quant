@@ -1051,6 +1051,46 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_outcomes_run ON decision_outcomes(run_id);
     """,
     ),
+    (
+        35,
+        "execution_blocks — Execution-Firewall hard constraint audit (#529 Phase 2 actor #9, Layer A)",
+        # #529 Phase 2 actor #9 — Layer A enforcement (Codex Round 5).
+        # DecisionCompiler emit 직후 / 사용자 매매 직전 마지막 hard constraint gate.
+        # 모든 block 결정 영구 기록 — 사후 사고 분석 + 향후 룰 보정 input.
+        #
+        # block_type:
+        #   vix_too_high             — VIX > 30 BUY 차단 (사용자 규칙 + rules.yaml)
+        #   banned_leverage_etf      — TQQQ/SQQQ 등 금지 ETF (rules.yaml)
+        #   position_cap             — 단일 종목 > 15%
+        #   sector_concentration     — 단일 섹터 > 35%
+        #   cash_reserve             — 매수 후 현금 < 20%
+        #   leverage_cap             — 총 long exposure / cash > 1.5x
+        #   max_daily_loss           — 일일 손실 한도 도달
+        #
+        # severity:
+        #   hard — emit 차단 (사용자에게 Discord INCIDENTS alert)
+        #   soft — emit 허용 + warn (예: VIX 25-30 caution)
+        """
+        CREATE TABLE IF NOT EXISTS execution_blocks (
+            block_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            decision_id TEXT NOT NULL,
+            block_type TEXT NOT NULL CHECK(block_type IN (
+                'vix_too_high','banned_leverage_etf','position_cap',
+                'sector_concentration','cash_reserve','leverage_cap','max_daily_loss'
+            )),
+            severity TEXT NOT NULL CHECK(severity IN ('hard','soft')),
+            block_reason TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            run_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (decision_id) REFERENCES agent_decisions(decision_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_blocks_decision ON execution_blocks(decision_id);
+        CREATE INDEX IF NOT EXISTS idx_blocks_type ON execution_blocks(block_type, created_at);
+        CREATE INDEX IF NOT EXISTS idx_blocks_severity ON execution_blocks(severity, created_at);
+        CREATE INDEX IF NOT EXISTS idx_blocks_run ON execution_blocks(run_id);
+    """,
+    ),
 ]
 
 
@@ -2209,3 +2249,58 @@ def log_decision_outcome(
                 run_id,
             ),
         )
+
+
+# ═══════════════════════════════════════════════════════
+# Execution-Firewall helper (#529 Phase 2 actor #9 — Layer A)
+# ═══════════════════════════════════════════════════════
+
+_BLOCK_TYPES = (
+    "vix_too_high",
+    "banned_leverage_etf",
+    "position_cap",
+    "sector_concentration",
+    "cash_reserve",
+    "leverage_cap",
+    "max_daily_loss",
+)
+_BLOCK_SEVERITIES = ("hard", "soft")
+
+
+def log_execution_block(
+    decision_id: str,
+    block_type: str,
+    severity: str,
+    block_reason: str,
+    evidence: dict,
+    run_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """Execution-Firewall block 결정 영구 기록 (#529 Phase 2 actor #9).
+
+    block_type / severity enum 검증. evidence_json 에 위반 detail (현재 값 vs 임계값) 기록.
+    Layer A enforcement: hard severity 위반 = emit 차단, soft = warn only.
+
+    Returns: 신규 block_id (lastrowid).
+    """
+    if block_type not in _BLOCK_TYPES:
+        raise ValueError(f"block_type must be {_BLOCK_TYPES}, got {block_type!r}")
+    if severity not in _BLOCK_SEVERITIES:
+        raise ValueError(f"severity must be {_BLOCK_SEVERITIES}, got {severity!r}")
+    if not block_reason or not block_reason.strip():
+        raise ValueError("block_reason required (Layer A enforcement audit)")
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO execution_blocks
+               (decision_id, block_type, severity, block_reason, evidence_json, run_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                decision_id,
+                block_type,
+                severity,
+                block_reason,
+                json.dumps(evidence, sort_keys=True, default=str),
+                run_id,
+            ),
+        )
+        return cursor.lastrowid or 0
