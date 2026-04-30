@@ -34,15 +34,15 @@ fi
 
 # 1) Schema version
 SCHEMA_VERSION=$(.venv/bin/python -c "from nuri.core.db import get_schema_version; print(get_schema_version())" 2>/dev/null || echo "0")
-if [ "$SCHEMA_VERSION" -ge 28 ]; then
-    echo " ✅ schema version: $SCHEMA_VERSION (>=29)"
+if [ "$SCHEMA_VERSION" -ge 30 ]; then
+    echo " ✅ schema version: $SCHEMA_VERSION (>=30)"
 else
-    echo " ❌ schema version: $SCHEMA_VERSION (need >=29 for #529 Phase 1+2)"
+    echo " ❌ schema version: $SCHEMA_VERSION (need >=30 for #529 Phase 1+2)"
     EXIT_CODE=2
 fi
 
 # 2) Required Phase 1+2 tables
-for table in agent_audit_ledger feature_flags agent_run_ledger agent_messages walkforward_runs; do
+for table in agent_audit_ledger feature_flags agent_run_ledger agent_messages walkforward_runs regime_posteriors; do
     EXISTS=$(.venv/bin/python -c "from nuri.core.db import query; r=query(\"SELECT 1 FROM sqlite_master WHERE type='table' AND name='$table'\"); print(len(r))" 2>/dev/null || echo "0")
     if [ "$EXISTS" = "1" ]; then
         echo " ✅ table exists: $table"

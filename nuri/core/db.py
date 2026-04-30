@@ -869,6 +869,40 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_wf_pit ON walkforward_runs(pit_hash);
     """,
     ),
+    (
+        30,
+        "regime_posteriors — sticky-HMM smoothed posterior audit (#529 Phase 2 — Regime-Posterior #3)",
+        # #529 Phase 2 actor #3 — Layer B (deterministic, ZERO LLM).
+        # Codex consult 2026-05-01 (data/llm_consults/2026-05-01_regime-posterior-design.md):
+        # 12-field audit row schema — `(as_of_date, model_version)` 가 PK 로 동일 일자 동일 모델
+        # 재학습 시 idempotent upsert (ON CONFLICT DO UPDATE).
+        # posterior_json = smoothed P(state_t | data_1:T). transition_params_hash +
+        # emission_params_hash 로 모델 동일성 확인 (parameter drift detect).
+        # data_freshness_status: PASS/WARN/FAIL — Freshness-Gatekeeper 결과 snapshot.
+        # Decision-Compiler (#8) 가 향후 read-only consumer (producer/consumer 분리, consult 권고).
+        """
+        CREATE TABLE IF NOT EXISTS regime_posteriors (
+            as_of_date TEXT NOT NULL,
+            model_version TEXT NOT NULL,
+            state_space_version TEXT NOT NULL,
+            feature_snapshot_json TEXT NOT NULL,
+            posterior_json TEXT NOT NULL,
+            argmax_state INTEGER NOT NULL,
+            entropy REAL NOT NULL,
+            top2_margin REAL NOT NULL,
+            transition_params_hash TEXT NOT NULL,
+            emission_params_hash TEXT NOT NULL,
+            train_window TEXT NOT NULL,
+            data_freshness_status TEXT NOT NULL CHECK(data_freshness_status IN ('PASS','WARN','FAIL')),
+            run_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (as_of_date, model_version)
+        );
+        CREATE INDEX IF NOT EXISTS idx_regime_date ON regime_posteriors(as_of_date);
+        CREATE INDEX IF NOT EXISTS idx_regime_argmax ON regime_posteriors(argmax_state, as_of_date);
+        CREATE INDEX IF NOT EXISTS idx_regime_run ON regime_posteriors(run_id);
+    """,
+    ),
 ]
 
 
@@ -1605,3 +1639,71 @@ def log_agent_message(
             ),
         )
         return cursor.lastrowid or 0
+
+
+def log_regime_posterior(
+    as_of_date: str,
+    model_version: str,
+    state_space_version: str,
+    feature_snapshot: dict,
+    posterior: list[float],
+    argmax_state: int,
+    entropy: float,
+    top2_margin: float,
+    transition_params_hash: str,
+    emission_params_hash: str,
+    train_window: str,
+    data_freshness_status: str,
+    run_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Sticky-HMM smoothed posterior audit (#529 Phase 2 — Regime-Posterior actor #3).
+
+    Codex Round 5 Layer B. (as_of_date, model_version) 가 PK 로 동일 학습 재실행 시 idempotent
+    upsert. posterior_json = list[float] (state 별 P(state_t | data_1:T), sum=1).
+    data_freshness_status: PASS/WARN/FAIL — Freshness-Gatekeeper 의 결정 snapshot.
+
+    Layer A 가 이 row 를 read 하여 enforce 가능 (e.g. argmax 변경 시 SIEGE re-run trigger).
+    """
+    if data_freshness_status not in ("PASS", "WARN", "FAIL"):
+        raise ValueError(f"data_freshness_status must be PASS/WARN/FAIL, got {data_freshness_status!r}")
+    if abs(sum(posterior) - 1.0) > 1e-6:
+        raise ValueError(f"posterior must sum to 1 (got {sum(posterior):.6f}) — sticky-HMM smoothed P violation")
+    if not (0 <= argmax_state < len(posterior)):
+        raise ValueError(f"argmax_state {argmax_state} out of range [0, {len(posterior)})")
+    with get_db(db_path) as conn:
+        conn.execute(
+            """INSERT INTO regime_posteriors
+               (as_of_date, model_version, state_space_version, feature_snapshot_json,
+                posterior_json, argmax_state, entropy, top2_margin,
+                transition_params_hash, emission_params_hash, train_window,
+                data_freshness_status, run_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(as_of_date, model_version) DO UPDATE SET
+                 state_space_version = excluded.state_space_version,
+                 feature_snapshot_json = excluded.feature_snapshot_json,
+                 posterior_json = excluded.posterior_json,
+                 argmax_state = excluded.argmax_state,
+                 entropy = excluded.entropy,
+                 top2_margin = excluded.top2_margin,
+                 transition_params_hash = excluded.transition_params_hash,
+                 emission_params_hash = excluded.emission_params_hash,
+                 train_window = excluded.train_window,
+                 data_freshness_status = excluded.data_freshness_status,
+                 run_id = excluded.run_id""",
+            (
+                as_of_date,
+                model_version,
+                state_space_version,
+                json.dumps(feature_snapshot, sort_keys=True, default=str),
+                json.dumps(posterior),
+                argmax_state,
+                entropy,
+                top2_margin,
+                transition_params_hash,
+                emission_params_hash,
+                train_window,
+                data_freshness_status,
+                run_id,
+            ),
+        )
