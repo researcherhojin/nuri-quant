@@ -5,6 +5,7 @@ Nuri-Quant 데이터베이스 모듈 — 모든 DB 접근의 단일 진입점.
 모든 DB 작업은 이 모듈의 함수를 통해서만 수행한다.
 """
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -841,6 +842,33 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_msg_status ON agent_messages(http_status, timestamp);
     """,
     ),
+    (
+        29,
+        "walkforward_runs — model evaluation audit (#529 Phase 2 — WalkForward-Validator)",
+        # #529 Phase 2 actor #5 — Layer B (deterministic, ZERO LLM).
+        # Rolling/expanding fold 기반 model evaluation 결과 영구 기록.
+        # pit_hash = (data range + fold spec + model_id) digest →
+        # 동일 입력 → 동일 hash → reproducibility 검증 가능.
+        # metrics_json = {"folds": [{"fold": 0, "brier": 0.21, ...}, ...], "aggregate": {...}}
+        # 향후 Regime-Posterior, Causal-Factor-Auditor, Foundation-Benchmark 가 모두 이 테이블 사용.
+        """
+        CREATE TABLE IF NOT EXISTS walkforward_runs (
+            run_id TEXT PRIMARY KEY,
+            model_id TEXT NOT NULL,
+            fold_spec_json TEXT NOT NULL,
+            metrics_json TEXT NOT NULL,
+            pit_hash TEXT NOT NULL,
+            n_folds INTEGER NOT NULL,
+            n_train_obs INTEGER,
+            n_test_obs INTEGER,
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            finished_at TEXT,
+            error_message TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_wf_model_time ON walkforward_runs(model_id, started_at);
+        CREATE INDEX IF NOT EXISTS idx_wf_pit ON walkforward_runs(pit_hash);
+    """,
+    ),
 ]
 
 
@@ -1492,6 +1520,51 @@ def finish_agent_run(
                    duration_ms = ?, error_message = ?
                WHERE run_id = ?""",
             (status, duration_ms, error_message, run_id),
+        )
+
+
+def log_walkforward_run(
+    run_id: str,
+    model_id: str,
+    fold_spec: dict,
+    metrics: dict,
+    pit_hash: str,
+    n_folds: int,
+    n_train_obs: Optional[int] = None,
+    n_test_obs: Optional[int] = None,
+    finished_at: Optional[str] = None,
+    error_message: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Walk-forward evaluation result audit (#529 Phase 2 — WalkForward-Validator).
+
+    fold_spec: {"kind": "rolling"|"expanding", "train_size": N, "test_size": M, "step": K}
+    metrics: {"aggregate": {"brier": .., "logloss": ..}, "folds": [{"fold": 0, ..}, ...]}
+    pit_hash: data digest + fold spec + model_id → reproducibility key.
+    finished_at None → run still in progress (started_at default).
+    """
+    with get_db(db_path) as conn:
+        conn.execute(
+            """INSERT INTO walkforward_runs
+               (run_id, model_id, fold_spec_json, metrics_json, pit_hash,
+                n_folds, n_train_obs, n_test_obs, finished_at, error_message)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(run_id) DO UPDATE SET
+                 metrics_json = excluded.metrics_json,
+                 finished_at = COALESCE(excluded.finished_at, finished_at),
+                 error_message = excluded.error_message""",
+            (
+                run_id,
+                model_id,
+                json.dumps(fold_spec, sort_keys=True),
+                json.dumps(metrics, default=str),
+                pit_hash,
+                n_folds,
+                n_train_obs,
+                n_test_obs,
+                finished_at,
+                error_message,
+            ),
         )
 
 

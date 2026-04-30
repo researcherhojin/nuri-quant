@@ -549,6 +549,21 @@ discord-bot-uninstall: ## (Mac mini) Uninstall discord-bot launchd plist.
 	    echo "  ✅ uninstalled: $$NAME"; \
 	  else echo "  (not installed)"; fi
 
+# ═══════════════════════════════════════════════════════════════
+# Walk-Forward Validator (#529 Phase 2 — actor #5)
+# ═══════════════════════════════════════════════════════════════
+
+walkforward-history: ## Print recent walk-forward runs. usage: make walkforward-history [limit=N]
+	@LIMIT=$${limit:-10}; \
+	.venv/bin/python -c "from nuri.core.db import query; \
+	  rows = query('SELECT run_id, model_id, n_folds, pit_hash, started_at, finished_at FROM walkforward_runs ORDER BY started_at DESC LIMIT ?', ($$LIMIT,)); \
+	  print(f'recent {len(rows)} walk-forward runs:'); \
+	  print(chr(10).join(f'  {r[\"started_at\"]:<25} {r[\"model_id\"]:<20} folds={r[\"n_folds\"]:<3} pit={r[\"pit_hash\"]} run={r[\"run_id\"][:8]}' for r in rows))"
+
+walkforward-pit-hash: ## Compute PIT hash for a CSV. usage: make walkforward-pit-hash csv=path/to.csv [model=name]
+	@test -n "$(csv)" || (echo "usage: make walkforward-pit-hash csv=path [model=name]"; exit 1)
+	@.venv/bin/python -m nuri.agents.actors.walkforward_validator pit_hash --csv "$(csv)" --model-id "$${model:-cli}"
+
 sync-start:
 	bash scripts/dev_sync.sh start
 

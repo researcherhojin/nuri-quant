@@ -689,7 +689,13 @@
     "qualname",
     "PSI",
     "apublish",
-    "ROLLOUT"
+    "ROLLOUT",
+    "López",
+    "overfit",
+    "tobytes",
+    "ddof",
+    "logloss",
+    "preds"
   ],
   "ignorePaths": [
     "node_modules/**",

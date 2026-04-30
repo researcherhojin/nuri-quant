@@ -5,7 +5,7 @@
 # Mac mini = sole writer (production), MBP = read-only replica.
 #
 # 검증 항목:
-#   1. DB schema version >= 28 (Phase 1+2 migrations 적용)
+#   1. DB schema version >= 29 (Phase 1+2 migrations 적용)
 #   2. agent_audit_ledger / feature_flags / agent_run_ledger / agent_messages 테이블 존재
 #   3. orphan run 탐지 (started + finished_at NULL + 1h 경과) → SRE alert
 #   4. 머신 식별 (Mac mini vs MBP) + writer 권한 추정
@@ -35,14 +35,14 @@ fi
 # 1) Schema version
 SCHEMA_VERSION=$(.venv/bin/python -c "from nuri.core.db import get_schema_version; print(get_schema_version())" 2>/dev/null || echo "0")
 if [ "$SCHEMA_VERSION" -ge 28 ]; then
-    echo " ✅ schema version: $SCHEMA_VERSION (>=28)"
+    echo " ✅ schema version: $SCHEMA_VERSION (>=29)"
 else
-    echo " ❌ schema version: $SCHEMA_VERSION (need >=28 for #529 Phase 1+2)"
+    echo " ❌ schema version: $SCHEMA_VERSION (need >=29 for #529 Phase 1+2)"
     EXIT_CODE=2
 fi
 
 # 2) Required Phase 1+2 tables
-for table in agent_audit_ledger feature_flags agent_run_ledger agent_messages; do
+for table in agent_audit_ledger feature_flags agent_run_ledger agent_messages walkforward_runs; do
     EXISTS=$(.venv/bin/python -c "from nuri.core.db import query; r=query(\"SELECT 1 FROM sqlite_master WHERE type='table' AND name='$table'\"); print(len(r))" 2>/dev/null || echo "0")
     if [ "$EXISTS" = "1" ]; then
         echo " ✅ table exists: $table"
