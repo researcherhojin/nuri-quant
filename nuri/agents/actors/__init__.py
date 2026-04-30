@@ -10,8 +10,10 @@ Phase 2 actors (Codex Round 5):
 - DecisionCompiler (#8, Layer B) — Phase 2 capstone: producer/gate 통합 → emit
 - ForwardOutcomeTracker (#11, Layer B) — closed-loop: outcome 추적 → hypothesis auto-validate
 - ExecutionFirewall (#9, Layer A) — emit 직전 마지막 hard constraint gate
+- AuditLedger (#10, Layer A) — read-only audit ledger query + retention policy
 """
 
+from nuri.agents.actors.audit_ledger import AuditLedger
 from nuri.agents.actors.causal_factor_auditor import CausalFactorAuditor
 from nuri.agents.actors.decision_compiler import DecisionCompiler
 from nuri.agents.actors.execution_firewall import ExecutionFirewall
@@ -23,6 +25,7 @@ from nuri.agents.actors.release_rollback_manager import ReleaseRollbackManager
 from nuri.agents.actors.walkforward_validator import WalkForwardValidator
 
 __all__ = [
+    "AuditLedger",
     "CausalFactorAuditor",
     "DecisionCompiler",
     "ExecutionFirewall",
