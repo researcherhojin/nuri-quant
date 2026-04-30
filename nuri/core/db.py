@@ -976,6 +976,44 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_causal_run ON causal_audits(run_id);
     """,
     ),
+    (
+        33,
+        "agent_decisions — Decision-Compiler audit (#529 Phase 2 capstone — actor #8, Layer B)",
+        # #529 Phase 2 capstone — RegimePosterior + HypothesisRegistry + CausalFactorAuditor 의
+        # 출력 통합 → 매매 추천. ZERO LLM, deterministic. 자동 매매 영구 X (#7.1) — emit 만.
+        #
+        # 테이블명 `agent_decisions` (legacy `decisions` from #178 과 분리) — service-grade
+        # actor 의 audit-traceable form 보장. agent_audit_ledger / agent_run_ledger 와 동일한
+        # `agent_*` 네이밍 컨벤션.
+        #
+        # decision lifecycle:
+        #   pending — 계산 진행 중 (race-condition 방지)
+        #   emitted — 사용자 추천 발행 완료 (Discord brief publish)
+        #   blocked — 게이트 통과 X (Hypothesis BLOCK / Causal MIRAGE / 낮은 conviction)
+        #   superseded — 같은 ticker 의 새 decision 등장 시 이전 decision 표시
+        #
+        # inputs_json: 모든 source actor run_id 영구 기록 (audit traceable form)
+        #   { regime_run_id, hypothesis_id, causal_audit_id, walkforward_run_id (opt) }
+        # rationale_json: 각 input 의 contribution + score breakdown (사용자/감사인 reproducible)
+        """
+        CREATE TABLE IF NOT EXISTS agent_decisions (
+            decision_id TEXT PRIMARY KEY,
+            ticker TEXT NOT NULL,
+            as_of_date TEXT NOT NULL,
+            action TEXT NOT NULL CHECK(action IN ('BUY','SELL','HOLD')),
+            conviction REAL NOT NULL,
+            inputs_json TEXT NOT NULL,
+            rationale_json TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('pending','emitted','blocked','superseded')),
+            block_reason TEXT,
+            run_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_decisions_ticker ON agent_decisions(ticker, as_of_date);
+        CREATE INDEX IF NOT EXISTS idx_agent_decisions_status ON agent_decisions(status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_agent_decisions_run ON agent_decisions(run_id);
+    """,
+    ),
 ]
 
 
@@ -1980,6 +2018,87 @@ def log_causal_audit(
                 int(event_study_pass),
                 int(negative_control_pass),
                 json.dumps(test_results, sort_keys=True, default=str),
+                run_id,
+            ),
+        )
+
+
+# ═══════════════════════════════════════════════════════
+# Decision-Compiler helper (#529 Phase 2 capstone — actor #8, Layer B)
+# ═══════════════════════════════════════════════════════
+
+_DECISION_ACTIONS = ("BUY", "SELL", "HOLD")
+_DECISION_STATUSES = ("pending", "emitted", "blocked", "superseded")
+_REQUIRED_INPUT_KEYS = ("regime_run_id", "hypothesis_id", "causal_audit_id")
+
+
+def log_decision(
+    decision_id: str,
+    ticker: str,
+    as_of_date: str,
+    action: str,
+    conviction: float,
+    inputs: dict,
+    rationale: dict,
+    status: str,
+    block_reason: Optional[str] = None,
+    run_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Decision-Compiler 출력 영구 기록 (#529 Phase 2 capstone).
+
+    audit traceable form 강제: inputs 에 source actor run_id 누락 시 panic.
+    Layer B contract: ZERO LLM, deterministic. 모든 emit / block 결정 기록.
+
+    inputs 필수 키:
+        regime_run_id — RegimePosterior 의 run_id
+        hypothesis_id — HypothesisRegistry 의 hypothesis_id (check_emit 통과한 것)
+        causal_audit_id — CausalFactorAuditor 의 (factor_id, as_of_date) 식별자
+        walkforward_run_id (optional) — WalkForwardValidator 결과
+    """
+    if action not in _DECISION_ACTIONS:
+        raise ValueError(f"action must be {_DECISION_ACTIONS}, got {action!r}")
+    if status not in _DECISION_STATUSES:
+        raise ValueError(f"status must be {_DECISION_STATUSES}, got {status!r}")
+    if not (0.0 <= conviction <= 1.0):
+        raise ValueError(f"conviction must be in [0,1], got {conviction}")
+    missing = [k for k in _REQUIRED_INPUT_KEYS if k not in inputs]
+    if missing:
+        raise ValueError(f"inputs missing required audit keys: {missing} (audit traceability enforcement)")
+    if status == "blocked" and not block_reason:
+        raise ValueError("blocked decision must include block_reason")
+
+    with get_db(db_path) as conn:
+        # 동일 ticker 의 이전 emitted/pending decision 은 superseded 처리 (idempotent)
+        if status in ("emitted", "blocked"):
+            conn.execute(
+                """UPDATE agent_decisions SET status='superseded'
+                   WHERE ticker=? AND as_of_date=? AND decision_id != ?
+                   AND status IN ('pending','emitted')""",
+                (ticker, as_of_date, decision_id),
+            )
+        conn.execute(
+            """INSERT INTO agent_decisions
+               (decision_id, ticker, as_of_date, action, conviction,
+                inputs_json, rationale_json, status, block_reason, run_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(decision_id) DO UPDATE SET
+                 action = excluded.action,
+                 conviction = excluded.conviction,
+                 inputs_json = excluded.inputs_json,
+                 rationale_json = excluded.rationale_json,
+                 status = excluded.status,
+                 block_reason = excluded.block_reason""",
+            (
+                decision_id,
+                ticker,
+                as_of_date,
+                action,
+                conviction,
+                json.dumps(inputs, sort_keys=True, default=str),
+                json.dumps(rationale, sort_keys=True, default=str),
+                status,
+                block_reason,
                 run_id,
             ),
         )
