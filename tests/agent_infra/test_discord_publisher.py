@@ -204,21 +204,88 @@ class TestModulePublish:
 
 
 class TestAsyncPublish:
-    def test_async_text_success(self, env_webhooks, patched_db):
-        import asyncio
+    @staticmethod
+    def _mock_async_client(*responses):
+        """Build httpx.AsyncClient mock yielding given responses (or raising)."""
         from unittest.mock import AsyncMock, MagicMock
 
         mock_client = MagicMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=httpx.Response(204))
+        mock_client.post = AsyncMock(side_effect=list(responses))
+        return mock_client
 
+    def test_async_text_success(self, env_webhooks, patched_db):
+        import asyncio
+
+        mock_client = self._mock_async_client(httpx.Response(204))
         with patch("httpx.AsyncClient", return_value=mock_client):
             pub = DiscordPublisher()
             result = asyncio.run(pub.apublish_text(Channel.BRIEF, "async-hi"))
-
         assert result.ok is True
         assert result.http_status == 204
+
+    def test_async_embed_success(self, env_webhooks, patched_db):
+        import asyncio
+
+        mock_client = self._mock_async_client(httpx.Response(200))
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            pub = DiscordPublisher()
+            result = asyncio.run(pub.apublish_embed(Channel.OPS, {"title": "T", "description": "D"}))
+        assert result.ok is True
+        rows = query("SELECT content_preview FROM agent_messages", db_path=patched_db)
+        assert "T" in rows[0]["content_preview"] and "D" in rows[0]["content_preview"]
+
+    def test_async_503_retried_then_success(self, env_webhooks, patched_db):
+        import asyncio
+
+        mock_client = self._mock_async_client(httpx.Response(503), httpx.Response(204))
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch(
+                "asyncio.sleep", new_callable=lambda: __import__("unittest.mock", fromlist=["AsyncMock"]).AsyncMock()
+            ):
+                pub = DiscordPublisher()
+                result = asyncio.run(pub.apublish_text(Channel.OPS, "async-retry"))
+        assert result.ok is True
+        assert result.retry_count == 1
+
+    def test_async_503_persistent_fails(self, env_webhooks, patched_db):
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        mock_client = self._mock_async_client(
+            httpx.Response(503, text="overloaded"),
+            httpx.Response(503, text="overloaded"),
+        )
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                pub = DiscordPublisher()
+                result = asyncio.run(pub.apublish_text(Channel.INCIDENTS, "async-die"))
+        assert result.ok is False
+        assert result.http_status == 503
+        assert "503" in (result.error or "")
+
+    def test_async_connect_error_retried_to_success(self, env_webhooks, patched_db):
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        mock_client = self._mock_async_client(httpx.ConnectError("nope"), httpx.Response(204))
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                pub = DiscordPublisher()
+                result = asyncio.run(pub.apublish_text(Channel.ROLLOUT, "async-net"))
+        assert result.ok is True
+        assert result.retry_count == 1
+
+    def test_async_missing_env_skips(self, monkeypatch, patched_db):
+        import asyncio
+
+        monkeypatch.delenv("DISCORD_WEBHOOK_BRIEF", raising=False)
+        pub = DiscordPublisher()
+        result = asyncio.run(pub.apublish_text(Channel.BRIEF, "async-no-env"))
+        assert result.ok is False
+        assert result.http_status is None
+        assert "missing" in (result.error or "").lower()
 
 
 class TestCli:

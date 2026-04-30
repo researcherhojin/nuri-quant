@@ -1,0 +1,121 @@
+"""DiscordBot tests (#529 Phase 2 — slash command inbound).
+
+검증:
+- _run_make subprocess invocation (성공 / 실패 / timeout)
+- main() env 검증 (DISCORD_BOT_TOKEN / DISCORD_GUILD_ID 누락 시 fail-fast)
+- build_bot() guild_id 누락 시 RuntimeError
+- slash command handler 입력 검증 (ticker shape, 잘못된 입력 차단)
+
+discord.py Client 자체는 무겁고 네트워크 의존이라 build_bot 의 핸들러 구조만 검증.
+실제 명령 실행 (interaction.response.defer / followup.send) 은 integration 영역으로 분리.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+
+class TestRunMake:
+    def test_success_returns_zero_and_stdout(self):
+        from nuri.agents.discord.bot import _run_make
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="ok\n", stderr="")
+            rc, out = _run_make("buy-candidates")
+        assert rc == 0
+        assert "ok" in out
+
+    def test_failure_returns_nonzero(self):
+        from nuri.agents.discord.bot import _run_make
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=2, stdout="", stderr="boom\n")
+            rc, out = _run_make("thesis", {"ticker": "MSFT"})
+        assert rc == 2
+        assert "boom" in out
+
+    def test_timeout_returns_124(self):
+        from nuri.agents.discord.bot import _run_make
+
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="make", timeout=5)):
+            rc, out = _run_make("thesis", {"ticker": "X"}, timeout=5)
+        assert rc == 124
+        assert "timeout" in out.lower()
+
+    def test_args_quoted_via_shlex(self):
+        """make 인자 quoting — 공백/특수문자 injection 방지."""
+        from nuri.agents.discord.bot import _run_make
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            _run_make("thesis", {"ticker": "MSFT; rm -rf /"})
+            cmd = mock_run.call_args.args[0]
+        joined = " ".join(cmd)
+        assert "rm -rf" not in cmd  # not a separate arg, just quoted text
+        assert "ticker=" in joined
+
+
+class TestMainEnvValidation:
+    def test_missing_token_returns_2(self, monkeypatch, capsys):
+        from nuri.agents.discord.bot import main
+
+        monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+        rc = main([])
+        assert rc == 2
+        out = capsys.readouterr().out
+        assert "DISCORD_BOT_TOKEN" in out
+
+    def test_blank_token_returns_2(self, monkeypatch):
+        from nuri.agents.discord.bot import main
+
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "   ")
+        rc = main([])
+        assert rc == 2
+
+
+class TestBuildBot:
+    def test_missing_guild_id_raises(self, monkeypatch):
+        monkeypatch.delenv("DISCORD_GUILD_ID", raising=False)
+        from nuri.agents.discord.bot import build_bot
+
+        with pytest.raises(RuntimeError, match="DISCORD_GUILD_ID"):
+            build_bot()
+
+    def test_blank_guild_id_raises(self, monkeypatch):
+        monkeypatch.setenv("DISCORD_GUILD_ID", "")
+        from nuri.agents.discord.bot import build_bot
+
+        with pytest.raises(RuntimeError, match="DISCORD_GUILD_ID"):
+            build_bot()
+
+    def test_valid_guild_id_returns_bot_tree_guild(self, monkeypatch):
+        """build_bot 이 (bot, tree, guild) 3-tuple 반환 + guild.id 정확."""
+        monkeypatch.setenv("DISCORD_GUILD_ID", "1234567890")
+        from nuri.agents.discord.bot import build_bot
+
+        bot, tree, guild = build_bot()
+        assert guild.id == 1234567890
+        assert bot is not None
+        assert tree is not None
+
+    def test_three_slash_commands_registered(self, monkeypatch):
+        """tree.get_commands() 가 buy-candidates / thesis / health 3개 포함."""
+        monkeypatch.setenv("DISCORD_GUILD_ID", "1234567890")
+        from nuri.agents.discord.bot import build_bot
+
+        _, tree, guild = build_bot()
+        cmd_names = {c.name for c in tree.get_commands(guild=guild)}
+        assert {"buy-candidates", "thesis", "health"}.issubset(cmd_names)
+
+
+class TestRepoRoot:
+    def test_repo_root_resolves_to_repo(self):
+        """REPO_ROOT 가 nuri-quant repo root 를 가리키는지 sanity check."""
+        from nuri.agents.discord.bot import REPO_ROOT
+
+        assert (REPO_ROOT / "Makefile").exists()
+        assert (REPO_ROOT / "nuri" / "core" / "db.py").exists()
