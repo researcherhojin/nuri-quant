@@ -655,7 +655,9 @@
     "watchlist",
     "Watchlist",
     "Kapoor",
-    "rollouts"
+    "rollouts",
+    "revfactory",
+    "oneline"
   ],
   "ignorePaths": [
     "node_modules/**",

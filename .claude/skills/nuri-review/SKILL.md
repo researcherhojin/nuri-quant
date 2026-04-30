@@ -1,4 +1,5 @@
 ---
+name: nuri-review
 description: Code review checklist. Use when asked to "review", "리뷰", "코드 검토", or when reviewing a PR diff.
 ---
 

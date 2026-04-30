@@ -216,6 +216,12 @@ frontend/test-results/
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/nuri-*/
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/nuri-*.md
+!.claude/commands/
+.claude/commands/*
+!.claude/commands/nuri-*.md
 
 # ─── OS ────────────────────────────────────────────────────────
 .DS_Store

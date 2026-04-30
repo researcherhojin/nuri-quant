@@ -1,0 +1,57 @@
+name: PR Discipline
+
+# STRATEGY §5.8 #4 mechanical enforcement — 1 issue = 1 PR, ≤ 3 commits.
+# Audit origin: docs/HARNESS_AUDIT.md §6 P1-3 (commit-count gate).
+#
+# Escape hatch: add label `scope-expand-approved` to PR (e.g. for refactor 시리즈).
+# Other doc-only principles (#1 모르면 읽는다 / #2 2번 실패 / #3 사용자 워크플로
+# 검증 / #7 외부 API 측정) 은 mechanical enforcement 어려움 — 인간 규율 유지.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  commit-count:
+    name: Commit count gate (≤ 3)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check escape hatch label
+        id: label
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          if echo "$LABELS" | grep -q '"scope-expand-approved"'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::scope-expand-approved label present — gate skipped"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.label.outputs.skip == 'false'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Count commits in PR
+        if: steps.label.outputs.skip == 'false'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$BASE_SHA" --depth=50 --quiet || true
+          COUNT=$(git rev-list --count "$BASE_SHA..$HEAD_SHA")
+          echo "PR has $COUNT commit(s) since base"
+          if [ "$COUNT" -gt 3 ]; then
+            echo "::error::PR has $COUNT commits (limit: 3 per STRATEGY §5.8 #4 / PR Discipline)."
+            echo "::error::Either squash extra commits or add label 'scope-expand-approved' for an intentional series."
+            exit 1
+          fi
+          echo "✅ PR within 3-commit limit"
