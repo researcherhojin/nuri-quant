@@ -942,6 +942,40 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_hyp_flag ON hypotheses(feature_flag);
     """,
     ),
+    (
+        32,
+        "causal_audits — Causal-Factor-Auditor 4-test verdict (#529 Phase 2 actor #6, Layer B)",
+        # #529 Phase 2 actor #6 — Layer B (López de Prado 2025 *Causal Factor Investing*).
+        # 4-test framework: DAG plausibility / placebo falsification / event-study / negative control.
+        # composite causal_certainty (0-1) → Hypothesis-Registry (#4) 가 register/reject 결정 input.
+        # factor_id + as_of_date 가 PK → 동일 factor 재audit 시 idempotent upsert.
+        #
+        # verdict enum:
+        #   ROBUST  — all 4 tests pass, causal_certainty >= 0.7
+        #   WEAK    — 일부 test 실패, certainty 0.4-0.7 (use with caution)
+        #   MIRAGE  — placebo 가 origin 의 80%+ t-stat → spurious correlation 의심 (BLOCK 권고)
+        #   INSUFFICIENT — sample 부족 (n<100) 또는 DAG cycle (검증 불가)
+        """
+        CREATE TABLE IF NOT EXISTS causal_audits (
+            factor_id TEXT NOT NULL,
+            as_of_date TEXT NOT NULL,
+            n_obs INTEGER NOT NULL,
+            verdict TEXT NOT NULL CHECK(verdict IN ('ROBUST','WEAK','MIRAGE','INSUFFICIENT')),
+            causal_certainty REAL NOT NULL,
+            dag_pass INTEGER NOT NULL DEFAULT 0,
+            placebo_pass INTEGER NOT NULL DEFAULT 0,
+            event_study_pass INTEGER NOT NULL DEFAULT 0,
+            negative_control_pass INTEGER NOT NULL DEFAULT 0,
+            test_results_json TEXT NOT NULL,
+            run_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (factor_id, as_of_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_causal_factor ON causal_audits(factor_id, as_of_date);
+        CREATE INDEX IF NOT EXISTS idx_causal_verdict ON causal_audits(verdict, as_of_date);
+        CREATE INDEX IF NOT EXISTS idx_causal_run ON causal_audits(run_id);
+    """,
+    ),
 ]
 
 
@@ -1881,3 +1915,71 @@ def expire_hypotheses(db_path: Optional[Path] = None) -> int:
                WHERE status='open' AND date(expiry_date) < date('now')"""
         )
         return cursor.rowcount
+
+
+# ═══════════════════════════════════════════════════════
+# Causal-Factor-Auditor helper (#529 Phase 2 actor #6 — Layer B)
+# ═══════════════════════════════════════════════════════
+
+_CAUSAL_VERDICTS = ("ROBUST", "WEAK", "MIRAGE", "INSUFFICIENT")
+
+
+def log_causal_audit(
+    factor_id: str,
+    as_of_date: str,
+    n_obs: int,
+    verdict: str,
+    causal_certainty: float,
+    dag_pass: bool,
+    placebo_pass: bool,
+    event_study_pass: bool,
+    negative_control_pass: bool,
+    test_results: dict,
+    run_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Causal-Factor-Auditor 4-test verdict audit (#529 Phase 2 actor #6).
+
+    López de Prado 2025: 4 tests = DAG plausibility / placebo / event-study / negative control.
+    causal_certainty ∈ [0,1] composite = 4 test pass-rate weighted by t-stat strength.
+    (factor_id, as_of_date) PK → 동일 factor 재audit 시 idempotent upsert.
+
+    Layer B contract: ZERO LLM, deterministic. 결과는 Hypothesis-Registry (#4) consumer.
+    """
+    if verdict not in _CAUSAL_VERDICTS:
+        raise ValueError(f"verdict must be {_CAUSAL_VERDICTS}, got {verdict!r}")
+    if not (0.0 <= causal_certainty <= 1.0):
+        raise ValueError(f"causal_certainty must be in [0,1], got {causal_certainty}")
+    if n_obs < 0:
+        raise ValueError(f"n_obs must be >= 0, got {n_obs}")
+    with get_db(db_path) as conn:
+        conn.execute(
+            """INSERT INTO causal_audits
+               (factor_id, as_of_date, n_obs, verdict, causal_certainty,
+                dag_pass, placebo_pass, event_study_pass, negative_control_pass,
+                test_results_json, run_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(factor_id, as_of_date) DO UPDATE SET
+                 n_obs = excluded.n_obs,
+                 verdict = excluded.verdict,
+                 causal_certainty = excluded.causal_certainty,
+                 dag_pass = excluded.dag_pass,
+                 placebo_pass = excluded.placebo_pass,
+                 event_study_pass = excluded.event_study_pass,
+                 negative_control_pass = excluded.negative_control_pass,
+                 test_results_json = excluded.test_results_json,
+                 run_id = excluded.run_id""",
+            (
+                factor_id,
+                as_of_date,
+                n_obs,
+                verdict,
+                causal_certainty,
+                int(dag_pass),
+                int(placebo_pass),
+                int(event_study_pass),
+                int(negative_control_pass),
+                json.dumps(test_results, sort_keys=True, default=str),
+                run_id,
+            ),
+        )
