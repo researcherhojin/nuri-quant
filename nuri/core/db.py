@@ -1014,6 +1014,43 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_agent_decisions_run ON agent_decisions(run_id);
     """,
     ),
+    (
+        34,
+        "decision_outcomes — Forward-Outcome-Tracker closed-loop (#529 Phase 2 actor #11, Layer B)",
+        # #529 Phase 2 closed-loop — DecisionCompiler #8 가 emit 한 decision 의 realized
+        # outcome 추적. observation_window (7/14/30d) 후 가격 데이터로 realized_return,
+        # benchmark_return (alpha), hit_threshold (target 도달) 측정 → hypothesis 자동
+        # validate/reject trigger.
+        #
+        # 핵심 invariant:
+        # - (decision_id, observation_window) PK → 동일 decision 의 7d/14d/30d 별도 row
+        # - hypothesis_validation enum: pass/reject/insufficient_data
+        # - tracked_as_of_date: 측정 시점의 KST date (lookahead 검증용)
+        # - benchmark_return: 시장 베타 (예: SPY 또는 portfolio benchmark) 의 같은 기간 return
+        #   alpha = realized_return - benchmark_return
+        """
+        CREATE TABLE IF NOT EXISTS decision_outcomes (
+            decision_id TEXT NOT NULL,
+            observation_window INTEGER NOT NULL CHECK(observation_window IN (7, 14, 30)),
+            tracked_as_of_date TEXT NOT NULL,
+            entry_price REAL,
+            exit_price REAL,
+            realized_return REAL,
+            benchmark_return REAL,
+            alpha REAL,
+            hit_threshold INTEGER NOT NULL DEFAULT 0,
+            hypothesis_validation TEXT NOT NULL CHECK(hypothesis_validation IN ('pass','reject','insufficient_data')),
+            notes TEXT,
+            run_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (decision_id, observation_window),
+            FOREIGN KEY (decision_id) REFERENCES agent_decisions(decision_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_outcomes_decision ON decision_outcomes(decision_id);
+        CREATE INDEX IF NOT EXISTS idx_outcomes_validation ON decision_outcomes(hypothesis_validation, tracked_as_of_date);
+        CREATE INDEX IF NOT EXISTS idx_outcomes_run ON decision_outcomes(run_id);
+    """,
+    ),
 ]
 
 
@@ -2099,6 +2136,76 @@ def log_decision(
                 json.dumps(rationale, sort_keys=True, default=str),
                 status,
                 block_reason,
+                run_id,
+            ),
+        )
+
+
+# ═══════════════════════════════════════════════════════
+# Forward-Outcome-Tracker helper (#529 Phase 2 actor #11 — Layer B)
+# ═══════════════════════════════════════════════════════
+
+_OUTCOME_VALIDATIONS = ("pass", "reject", "insufficient_data")
+_OUTCOME_WINDOWS = (7, 14, 30)
+
+
+def log_decision_outcome(
+    decision_id: str,
+    observation_window: int,
+    tracked_as_of_date: str,
+    hypothesis_validation: str,
+    entry_price: Optional[float] = None,
+    exit_price: Optional[float] = None,
+    realized_return: Optional[float] = None,
+    benchmark_return: Optional[float] = None,
+    alpha: Optional[float] = None,
+    hit_threshold: bool = False,
+    notes: Optional[str] = None,
+    run_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Decision outcome audit (#529 Phase 2 closed-loop — Forward-Outcome-Tracker).
+
+    (decision_id, observation_window) PK 로 동일 decision 의 7d/14d/30d 별도 row.
+    동일 (decision_id, window) 재계산 시 idempotent upsert.
+
+    hypothesis_validation: pass/reject/insufficient_data — Hypothesis-Registry 의 validate/reject
+    호출 trigger. insufficient_data 는 false validation 차단 (가격 데이터 부족).
+    """
+    if observation_window not in _OUTCOME_WINDOWS:
+        raise ValueError(f"observation_window must be {_OUTCOME_WINDOWS}, got {observation_window}")
+    if hypothesis_validation not in _OUTCOME_VALIDATIONS:
+        raise ValueError(f"hypothesis_validation must be {_OUTCOME_VALIDATIONS}, got {hypothesis_validation!r}")
+    with get_db(db_path) as conn:
+        conn.execute(
+            """INSERT INTO decision_outcomes
+               (decision_id, observation_window, tracked_as_of_date,
+                entry_price, exit_price, realized_return, benchmark_return, alpha,
+                hit_threshold, hypothesis_validation, notes, run_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(decision_id, observation_window) DO UPDATE SET
+                 tracked_as_of_date = excluded.tracked_as_of_date,
+                 entry_price = excluded.entry_price,
+                 exit_price = excluded.exit_price,
+                 realized_return = excluded.realized_return,
+                 benchmark_return = excluded.benchmark_return,
+                 alpha = excluded.alpha,
+                 hit_threshold = excluded.hit_threshold,
+                 hypothesis_validation = excluded.hypothesis_validation,
+                 notes = excluded.notes,
+                 run_id = excluded.run_id""",
+            (
+                decision_id,
+                observation_window,
+                tracked_as_of_date,
+                entry_price,
+                exit_price,
+                realized_return,
+                benchmark_return,
+                alpha,
+                int(hit_threshold),
+                hypothesis_validation,
+                notes,
                 run_id,
             ),
         )
