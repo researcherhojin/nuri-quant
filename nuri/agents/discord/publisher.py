@@ -18,13 +18,18 @@ import os
 import time
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, Optional
 
 import httpx
+from dotenv import load_dotenv
 
 from nuri.core.db import log_agent_message
 
 logger = logging.getLogger(__name__)
+
+# .env auto-load — `python -m nuri.agents.discord.publisher ...` 단독 실행도 환경변수 로드.
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 
 class Channel(str, Enum):

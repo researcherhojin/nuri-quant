@@ -1,4 +1,5 @@
 """Decision Intelligence 테스트 — 멱등성, 기록, 결과 추적."""
+
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -26,8 +27,7 @@ def db_path(tmp_path):
 def _insert_price(db_path, ticker, close, date="2026-04-10"):
     with get_db(db_path) as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO prices (ticker, date, open, high, low, close, volume) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (ticker, date, close * 0.99, close * 1.02, close * 0.98, close, 1000000),
         )
 
@@ -128,26 +128,37 @@ class TestUpsertDecision:
 
 class TestUpsertEvidence:
     def test_insert_evidence(self, db_path):
-        dec_id = upsert_decision(
-            {"date": "2026-04-10", "ticker": "NVDA", "action": "BUY", "confidence": 75.0}, db_path
-        )
+        dec_id = upsert_decision({"date": "2026-04-10", "ticker": "NVDA", "action": "BUY", "confidence": 75.0}, db_path)
         records = [
-            {"source_type": "agent", "source_key": "technical", "action": "BUY", "confidence": 80.0,
-             "detail": json.dumps({"rsi": 28})},
-            {"source_type": "agent", "source_key": "fundamental", "action": "BUY", "confidence": 72.0,
-             "detail": json.dumps({"pe": 36})},
+            {
+                "source_type": "agent",
+                "source_key": "technical",
+                "action": "BUY",
+                "confidence": 80.0,
+                "detail": json.dumps({"rsi": 28}),
+            },
+            {
+                "source_type": "agent",
+                "source_key": "fundamental",
+                "action": "BUY",
+                "confidence": 72.0,
+                "detail": json.dumps({"pe": 36}),
+            },
         ]
         count = upsert_decision_evidence(dec_id, records, db_path)
         assert count == 2
 
     def test_evidence_idempotent(self, db_path):
         """같은 decision_id + source_type + source_key → UPDATE."""
-        dec_id = upsert_decision(
-            {"date": "2026-04-10", "ticker": "NVDA", "action": "BUY", "confidence": 75.0}, db_path
-        )
+        dec_id = upsert_decision({"date": "2026-04-10", "ticker": "NVDA", "action": "BUY", "confidence": 75.0}, db_path)
         records = [
-            {"source_type": "agent", "source_key": "technical", "action": "BUY", "confidence": 80.0,
-             "detail": json.dumps({"rsi": 28})},
+            {
+                "source_type": "agent",
+                "source_key": "technical",
+                "action": "BUY",
+                "confidence": 80.0,
+                "detail": json.dumps({"rsi": 28}),
+            },
         ]
         upsert_decision_evidence(dec_id, records, db_path)
 
@@ -157,7 +168,8 @@ class TestUpsertEvidence:
 
         evidence = query(
             "SELECT * FROM decision_evidence WHERE decision_id = ? AND source_key = 'technical'",
-            (dec_id,), db_path,
+            (dec_id,),
+            db_path,
         )
         assert len(evidence) == 1
         assert evidence[0]["confidence"] == 85.0  # 최신 값
@@ -196,13 +208,20 @@ class TestQueryDecisions:
         assert len(rows) == 0
 
     def test_get_decision_with_evidence(self, db_path):
-        dec_id = upsert_decision(
-            {"date": "2026-04-10", "ticker": "NVDA", "action": "BUY", "confidence": 75.0}, db_path
+        dec_id = upsert_decision({"date": "2026-04-10", "ticker": "NVDA", "action": "BUY", "confidence": 75.0}, db_path)
+        upsert_decision_evidence(
+            dec_id,
+            [
+                {
+                    "source_type": "agent",
+                    "source_key": "technical",
+                    "action": "BUY",
+                    "confidence": 80.0,
+                    "detail": json.dumps({"rsi": 28}),
+                },
+            ],
+            db_path,
         )
-        upsert_decision_evidence(dec_id, [
-            {"source_type": "agent", "source_key": "technical", "action": "BUY", "confidence": 80.0,
-             "detail": json.dumps({"rsi": 28})},
-        ], db_path)
 
         result = get_decision_with_evidence(dec_id, db_path)
         assert result is not None
@@ -282,16 +301,26 @@ class TestRecordDecision:
         _insert_price(db_path, "NVDA", 120.0)
 
         result1 = MockConsensusResult(
-            ticker="NVDA", final_action="BUY", final_confidence=70.0,
-            agreement_rate=0.7, verdicts=[
+            ticker="NVDA",
+            final_action="BUY",
+            final_confidence=70.0,
+            agreement_rate=0.7,
+            verdicts=[
                 MockAgentVerdict("technical", "NVDA", "BUY", 80.0, "RSI low", {"rsi": 30}),
-            ], dissent=[], reasoning="First run",
+            ],
+            dissent=[],
+            reasoning="First run",
         )
         result2 = MockConsensusResult(
-            ticker="NVDA", final_action="BUY", final_confidence=80.0,
-            agreement_rate=0.9, verdicts=[
+            ticker="NVDA",
+            final_action="BUY",
+            final_confidence=80.0,
+            agreement_rate=0.9,
+            verdicts=[
                 MockAgentVerdict("technical", "NVDA", "BUY", 85.0, "RSI very low", {"rsi": 25}),
-            ], dissent=[], reasoning="Second run",
+            ],
+            dissent=[],
+            reasoning="Second run",
         )
 
         record_decision(result1, db_path)
@@ -310,16 +339,26 @@ class TestRecordDecision:
 
         results = [
             MockConsensusResult(
-                ticker="NVDA", final_action="BUY", final_confidence=75.0,
-                agreement_rate=0.8, verdicts=[
+                ticker="NVDA",
+                final_action="BUY",
+                final_confidence=75.0,
+                agreement_rate=0.8,
+                verdicts=[
                     MockAgentVerdict("technical", "NVDA", "BUY", 80.0, "ok", {}),
-                ], dissent=[], reasoning="NVDA buy",
+                ],
+                dissent=[],
+                reasoning="NVDA buy",
             ),
             MockConsensusResult(
-                ticker="TSLA", final_action="SELL", final_confidence=60.0,
-                agreement_rate=0.6, verdicts=[
+                ticker="TSLA",
+                final_action="SELL",
+                final_confidence=60.0,
+                agreement_rate=0.6,
+                verdicts=[
                     MockAgentVerdict("risk", "TSLA", "SELL", 90.0, "high risk", {}),
-                ], dissent=[], reasoning="TSLA sell",
+                ],
+                dissent=[],
+                reasoning="TSLA sell",
             ),
         ]
 
@@ -336,22 +375,38 @@ class TestRecordDecision:
 class TestTrackOutcomes:
     def test_no_pending_decisions(self, db_path):
         from nuri.trading.engine.decisions import track_decision_outcomes
+
         assert track_decision_outcomes(db_path) == 0
 
     def test_7d_outcome_filled(self, db_path):
-        """7일 경과 → pnl_7d만 채워짐."""
+        """7일 경과 → pnl_7d만 채워짐.
+
+        오늘 - 14일 (7~29일 윈도우 내) 로 픽: pnl_7d 는 채워지고 pnl_30d 는 미경과.
+        과거 하드코딩 (2026-04-01) 패턴은 calendar drift 로 깨졌음 (오늘이 30일째 되는 날 fail).
+        """
+        from datetime import date as _date
+        from datetime import timedelta
+
+        from nuri.core.timezone import today_kst
         from nuri.trading.engine.decisions import track_decision_outcomes
 
-        _insert_price(db_path, "NVDA", 120.0, "2026-04-01")
-        _insert_price(db_path, "NVDA", 132.0, "2026-04-08")  # 7일 후 +10%
+        anchor = _date.fromisoformat(today_kst()) - timedelta(days=14)
+        anchor_str = anchor.isoformat()
+        plus_7 = (anchor + timedelta(days=7)).isoformat()
 
-        upsert_decision({
-            "date": "2026-04-01",
-            "ticker": "NVDA",
-            "action": "BUY",
-            "confidence": 75.0,
-            "entry_price": 120.0,
-        }, db_path)
+        _insert_price(db_path, "NVDA", 120.0, anchor_str)
+        _insert_price(db_path, "NVDA", 132.0, plus_7)  # 7일 후 +10%
+
+        upsert_decision(
+            {
+                "date": anchor_str,
+                "ticker": "NVDA",
+                "action": "BUY",
+                "confidence": 75.0,
+                "entry_price": 120.0,
+            },
+            db_path,
+        )
 
         updated = track_decision_outcomes(db_path)
         assert updated == 1
@@ -363,24 +418,35 @@ class TestTrackOutcomes:
 
     def test_outcome_idempotent(self, db_path):
         """이미 채워진 PnL은 재실행해도 변경 없음."""
+        from datetime import date as _date
+        from datetime import timedelta
+
+        from nuri.core.timezone import today_kst
         from nuri.trading.engine.decisions import track_decision_outcomes
 
-        _insert_price(db_path, "NVDA", 120.0, "2026-04-01")
-        _insert_price(db_path, "NVDA", 132.0, "2026-04-08")
+        anchor = _date.fromisoformat(today_kst()) - timedelta(days=14)
+        anchor_str = anchor.isoformat()
+        plus_7 = (anchor + timedelta(days=7)).isoformat()
 
-        upsert_decision({
-            "date": "2026-04-01",
-            "ticker": "NVDA",
-            "action": "BUY",
-            "confidence": 75.0,
-            "entry_price": 120.0,
-        }, db_path)
+        _insert_price(db_path, "NVDA", 120.0, anchor_str)
+        _insert_price(db_path, "NVDA", 132.0, plus_7)
+
+        upsert_decision(
+            {
+                "date": anchor_str,
+                "ticker": "NVDA",
+                "action": "BUY",
+                "confidence": 75.0,
+                "entry_price": 120.0,
+            },
+            db_path,
+        )
 
         track_decision_outcomes(db_path)  # 1회
         rows1 = get_decisions(ticker="NVDA", db_path=db_path)
 
         # 가격 변경 후 재실행
-        _insert_price(db_path, "NVDA", 150.0, "2026-04-08")
+        _insert_price(db_path, "NVDA", 150.0, plus_7)
         track_decision_outcomes(db_path)  # 2회
         rows2 = get_decisions(ticker="NVDA", db_path=db_path)
 
@@ -397,13 +463,16 @@ class TestTrackOutcomes:
         _insert_price(db_path, "NVDA", 120.0, "2026-03-02")
         _insert_price(db_path, "NVDA", 130.0, "2026-04-01")
 
-        upsert_decision({
-            "date": "2026-01-01",
-            "ticker": "NVDA",
-            "action": "BUY",
-            "confidence": 75.0,
-            "entry_price": 100.0,
-        }, db_path)
+        upsert_decision(
+            {
+                "date": "2026-01-01",
+                "ticker": "NVDA",
+                "action": "BUY",
+                "confidence": 75.0,
+                "entry_price": 100.0,
+            },
+            db_path,
+        )
 
         updated = track_decision_outcomes(db_path)
         assert updated == 1
@@ -422,13 +491,16 @@ class TestTrackOutcomes:
         _insert_price(db_path, "BAD", 75.0, "2026-03-02")
         _insert_price(db_path, "BAD", 70.0, "2026-04-01")
 
-        upsert_decision({
-            "date": "2026-01-01",
-            "ticker": "BAD",
-            "action": "SELL",
-            "confidence": 80.0,
-            "entry_price": 100.0,
-        }, db_path)
+        upsert_decision(
+            {
+                "date": "2026-01-01",
+                "ticker": "BAD",
+                "action": "SELL",
+                "confidence": 80.0,
+                "entry_price": 100.0,
+            },
+            db_path,
+        )
 
         track_decision_outcomes(db_path)
 
@@ -444,6 +516,7 @@ class TestTrackOutcomes:
 class TestDecisionSummary:
     def test_empty_summary(self, db_path):
         from nuri.trading.engine.decisions import get_decision_summary
+
         summary = get_decision_summary(db_path)
         assert summary["total"] == 0
         assert summary["pending"] == 0
@@ -488,13 +561,20 @@ class TestComputeAgentAccuracy:
         """outcome='pending'인 decisions는 제외."""
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
-        upsert_decision({
-            "date": "2026-04-10", "ticker": "NVDA", "action": "BUY",
-            "confidence": 75.0,
-            "agent_verdicts": json.dumps([
-                {"agent_name": "technical", "action": "BUY", "confidence": 80},
-            ]),
-        }, db_path)
+        upsert_decision(
+            {
+                "date": "2026-04-10",
+                "ticker": "NVDA",
+                "action": "BUY",
+                "confidence": 75.0,
+                "agent_verdicts": json.dumps(
+                    [
+                        {"agent_name": "technical", "action": "BUY", "confidence": 80},
+                    ]
+                ),
+            },
+            db_path,
+        )
 
         result = compute_agent_accuracy(db_path)
         assert result == {}
@@ -503,10 +583,16 @@ class TestComputeAgentAccuracy:
         """BUY 판단 + outcome=success → 적중."""
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
-        _insert_decision_with_outcome(db_path, "NVDA", "BUY", "success", [
-            {"agent_name": "technical", "action": "BUY", "confidence": 80},
-            {"agent_name": "fundamental", "action": "BUY", "confidence": 70},
-        ])
+        _insert_decision_with_outcome(
+            db_path,
+            "NVDA",
+            "BUY",
+            "success",
+            [
+                {"agent_name": "technical", "action": "BUY", "confidence": 80},
+                {"agent_name": "fundamental", "action": "BUY", "confidence": 70},
+            ],
+        )
 
         result = compute_agent_accuracy(db_path)
         assert result["technical"]["hits"] == 1
@@ -518,9 +604,15 @@ class TestComputeAgentAccuracy:
         """SELL 판단 + outcome=failure → 적중 (올바르게 회피)."""
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
-        _insert_decision_with_outcome(db_path, "BAD", "BUY", "failure", [
-            {"agent_name": "risk", "action": "SELL", "confidence": 90},
-        ])
+        _insert_decision_with_outcome(
+            db_path,
+            "BAD",
+            "BUY",
+            "failure",
+            [
+                {"agent_name": "risk", "action": "SELL", "confidence": 90},
+            ],
+        )
 
         result = compute_agent_accuracy(db_path)
         assert result["risk"]["hits"] == 1
@@ -531,9 +623,15 @@ class TestComputeAgentAccuracy:
         """BUY 판단 + outcome=failure → 미스."""
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
-        _insert_decision_with_outcome(db_path, "BAD", "BUY", "failure", [
-            {"agent_name": "technical", "action": "BUY", "confidence": 80},
-        ])
+        _insert_decision_with_outcome(
+            db_path,
+            "BAD",
+            "BUY",
+            "failure",
+            [
+                {"agent_name": "technical", "action": "BUY", "confidence": 80},
+            ],
+        )
 
         result = compute_agent_accuracy(db_path)
         assert result["technical"]["hits"] == 0
@@ -544,9 +642,15 @@ class TestComputeAgentAccuracy:
         """SELL 판단 + outcome=success → 미스 (매도 권유했으나 상승)."""
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
-        _insert_decision_with_outcome(db_path, "NVDA", "BUY", "success", [
-            {"agent_name": "risk", "action": "SELL", "confidence": 85},
-        ])
+        _insert_decision_with_outcome(
+            db_path,
+            "NVDA",
+            "BUY",
+            "success",
+            [
+                {"agent_name": "risk", "action": "SELL", "confidence": 85},
+            ],
+        )
 
         result = compute_agent_accuracy(db_path)
         assert result["risk"]["hits"] == 0
@@ -557,10 +661,16 @@ class TestComputeAgentAccuracy:
         """HOLD 판단은 적중 판정에서 제외."""
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
-        _insert_decision_with_outcome(db_path, "NVDA", "BUY", "success", [
-            {"agent_name": "technical", "action": "BUY", "confidence": 80},
-            {"agent_name": "risk", "action": "HOLD", "confidence": 50},
-        ])
+        _insert_decision_with_outcome(
+            db_path,
+            "NVDA",
+            "BUY",
+            "success",
+            [
+                {"agent_name": "technical", "action": "BUY", "confidence": 80},
+                {"agent_name": "risk", "action": "HOLD", "confidence": 50},
+            ],
+        )
 
         result = compute_agent_accuracy(db_path)
         assert "technical" in result
@@ -571,22 +681,43 @@ class TestComputeAgentAccuracy:
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
         # Decision 1: BUY NVDA → success (technical BUY=hit, risk SELL=miss)
-        _insert_decision_with_outcome(db_path, "NVDA", "BUY", "success", [
-            {"agent_name": "technical", "action": "BUY", "confidence": 80},
-            {"agent_name": "risk", "action": "SELL", "confidence": 60},
-        ], date="2026-01-01")
+        _insert_decision_with_outcome(
+            db_path,
+            "NVDA",
+            "BUY",
+            "success",
+            [
+                {"agent_name": "technical", "action": "BUY", "confidence": 80},
+                {"agent_name": "risk", "action": "SELL", "confidence": 60},
+            ],
+            date="2026-01-01",
+        )
 
         # Decision 2: BUY TSLA → success (technical BUY=hit, risk BUY=hit)
-        _insert_decision_with_outcome(db_path, "TSLA", "BUY", "success", [
-            {"agent_name": "technical", "action": "BUY", "confidence": 75},
-            {"agent_name": "risk", "action": "BUY", "confidence": 55},
-        ], date="2026-02-01")
+        _insert_decision_with_outcome(
+            db_path,
+            "TSLA",
+            "BUY",
+            "success",
+            [
+                {"agent_name": "technical", "action": "BUY", "confidence": 75},
+                {"agent_name": "risk", "action": "BUY", "confidence": 55},
+            ],
+            date="2026-02-01",
+        )
 
         # Decision 3: BUY BAD → failure (technical BUY=miss, risk SELL=hit)
-        _insert_decision_with_outcome(db_path, "BAD", "BUY", "failure", [
-            {"agent_name": "technical", "action": "BUY", "confidence": 70},
-            {"agent_name": "risk", "action": "SELL", "confidence": 85},
-        ], date="2026-03-01")
+        _insert_decision_with_outcome(
+            db_path,
+            "BAD",
+            "BUY",
+            "failure",
+            [
+                {"agent_name": "technical", "action": "BUY", "confidence": 70},
+                {"agent_name": "risk", "action": "SELL", "confidence": 85},
+            ],
+            date="2026-03-01",
+        )
 
         result = compute_agent_accuracy(db_path)
 
@@ -604,9 +735,16 @@ class TestComputeAgentAccuracy:
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
         # 100% 적중 → raw adjustment = 0.5, clamped to 0.30
-        _insert_decision_with_outcome(db_path, "A", "BUY", "success", [
-            {"agent_name": "perfect_agent", "action": "BUY", "confidence": 90},
-        ], date="2026-01-01")
+        _insert_decision_with_outcome(
+            db_path,
+            "A",
+            "BUY",
+            "success",
+            [
+                {"agent_name": "perfect_agent", "action": "BUY", "confidence": 90},
+            ],
+            date="2026-01-01",
+        )
 
         result = compute_agent_accuracy(db_path)
         assert result["perfect_agent"]["weight_adjustment"] == 0.30  # clamped
@@ -615,9 +753,16 @@ class TestComputeAgentAccuracy:
         """0% 적중 → raw adjustment = -0.5, clamped to -0.30."""
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
-        _insert_decision_with_outcome(db_path, "A", "BUY", "failure", [
-            {"agent_name": "bad_agent", "action": "BUY", "confidence": 90},
-        ], date="2026-01-01")
+        _insert_decision_with_outcome(
+            db_path,
+            "A",
+            "BUY",
+            "failure",
+            [
+                {"agent_name": "bad_agent", "action": "BUY", "confidence": 90},
+            ],
+            date="2026-01-01",
+        )
 
         result = compute_agent_accuracy(db_path)
         assert result["bad_agent"]["weight_adjustment"] == -0.30  # clamped
@@ -627,12 +772,26 @@ class TestComputeAgentAccuracy:
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
         # 1 hit + 1 miss = 50%
-        _insert_decision_with_outcome(db_path, "A", "BUY", "success", [
-            {"agent_name": "neutral_agent", "action": "BUY", "confidence": 80},
-        ], date="2026-01-01")
-        _insert_decision_with_outcome(db_path, "B", "BUY", "failure", [
-            {"agent_name": "neutral_agent", "action": "BUY", "confidence": 80},
-        ], date="2026-02-01")
+        _insert_decision_with_outcome(
+            db_path,
+            "A",
+            "BUY",
+            "success",
+            [
+                {"agent_name": "neutral_agent", "action": "BUY", "confidence": 80},
+            ],
+            date="2026-01-01",
+        )
+        _insert_decision_with_outcome(
+            db_path,
+            "B",
+            "BUY",
+            "failure",
+            [
+                {"agent_name": "neutral_agent", "action": "BUY", "confidence": 80},
+            ],
+            date="2026-02-01",
+        )
 
         result = compute_agent_accuracy(db_path)
         assert result["neutral_agent"]["hit_rate"] == 0.5
@@ -643,9 +802,16 @@ class TestComputeAgentAccuracy:
         from nuri.trading.engine.decisions import compute_agent_accuracy
 
         # 올바른 decision
-        _insert_decision_with_outcome(db_path, "NVDA", "BUY", "success", [
-            {"agent_name": "technical", "action": "BUY", "confidence": 80},
-        ], date="2026-01-01")
+        _insert_decision_with_outcome(
+            db_path,
+            "NVDA",
+            "BUY",
+            "success",
+            [
+                {"agent_name": "technical", "action": "BUY", "confidence": 80},
+            ],
+            date="2026-01-01",
+        )
 
         # 잘못된 JSON 직접 삽입
         with get_db(db_path) as conn:
@@ -674,10 +840,16 @@ class TestSaveAgentAccuracySnapshot:
         """적중률이 strategy_memory에 저장됨."""
         from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
 
-        _insert_decision_with_outcome(db_path, "NVDA", "BUY", "success", [
-            {"agent_name": "technical", "action": "BUY", "confidence": 80},
-            {"agent_name": "fundamental", "action": "BUY", "confidence": 70},
-        ])
+        _insert_decision_with_outcome(
+            db_path,
+            "NVDA",
+            "BUY",
+            "success",
+            [
+                {"agent_name": "technical", "action": "BUY", "confidence": 80},
+                {"agent_name": "fundamental", "action": "BUY", "confidence": 70},
+            ],
+        )
 
         count = save_agent_accuracy_snapshot(db_path)
         assert count == 2  # 2 agents
@@ -697,9 +869,15 @@ class TestSaveAgentAccuracySnapshot:
         """같은 날 재실행 → 덮어쓰기 (UNIQUE 제약)."""
         from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
 
-        _insert_decision_with_outcome(db_path, "NVDA", "BUY", "success", [
-            {"agent_name": "technical", "action": "BUY", "confidence": 80},
-        ])
+        _insert_decision_with_outcome(
+            db_path,
+            "NVDA",
+            "BUY",
+            "success",
+            [
+                {"agent_name": "technical", "action": "BUY", "confidence": 80},
+            ],
+        )
 
         save_agent_accuracy_snapshot(db_path)
         save_agent_accuracy_snapshot(db_path)  # 2회 실행
