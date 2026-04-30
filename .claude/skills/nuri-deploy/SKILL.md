@@ -1,4 +1,5 @@
 ---
+name: nuri-deploy
 description: Deploy to Mac Mini production server. Use when asked to "deploy", "배포", "push to production", or "서버 반영".
 ---
 

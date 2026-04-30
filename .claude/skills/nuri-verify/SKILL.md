@@ -1,4 +1,5 @@
 ---
+name: nuri-verify
 description: Pre-commit verification. Use when about to commit, asked to "verify", "검증", "커밋 전 확인", or before any git commit.
 ---
 
