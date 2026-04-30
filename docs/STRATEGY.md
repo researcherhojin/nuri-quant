@@ -285,7 +285,7 @@ PR 전 확인.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 4,102 tests, 179 files |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 4,138 tests, 180 files |
 | Frontend tests | 목표 ≥ 90% | 917 tests, 81 files |
 | E2E | 핵심 flow | 38 Playwright (6 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
