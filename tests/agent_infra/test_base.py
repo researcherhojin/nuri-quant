@@ -321,11 +321,27 @@ class TestActorRegistry:
         with pytest.raises(ValueError, match="not in canonical 15"):
             reg.register(FooActor)
 
-    def test_register_duplicate_raises(self):
+    def test_register_same_class_idempotent(self):
+        """re-import 시 같은 class 재등록 OK (python -m 패턴)."""
         reg = ActorRegistry()
         reg.register(_FreshnessGatekeeperFake)
-        with pytest.raises(ValueError, match="already registered"):
-            reg.register(_FreshnessGatekeeperFake)
+        reg.register(_FreshnessGatekeeperFake)
+        assert reg.get("freshness-gatekeeper") is _FreshnessGatekeeperFake
+
+    def test_register_different_class_same_name_raises(self):
+        """다른 class 가 같은 name 으로 등록 시도 시 거부 (silent overwrite 방지)."""
+
+        class Conflicting(Actor):
+            name = "freshness-gatekeeper"
+            layer = Layer.A
+
+            def execute(self, input_data, ctx):
+                return ActorResult(output={}, outcome=Outcome.PASS)
+
+        reg = ActorRegistry()
+        reg.register(_FreshnessGatekeeperFake)
+        with pytest.raises(ValueError, match="refusing to overwrite"):
+            reg.register(Conflicting)
 
     def test_missing_returns_unregistered_actors(self):
         reg = ActorRegistry()

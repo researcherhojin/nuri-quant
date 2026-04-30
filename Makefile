@@ -469,12 +469,22 @@ flag-enable: ## Enable a feature flag. usage: make flag-enable flag=<name> scope
 	  print(f'enabled: $(flag) (scope=$(scope)) -> {is_feature_enabled(\"$(flag)\")}')"
 
 actor-status: ## Print 15-actor canonical inventory + registration status
-	@.venv/bin/python -c "from nuri.agents.base import REGISTRY; \
+	@.venv/bin/python -c "import nuri.agents.actors; from nuri.agents.base import REGISTRY; \
 	  reg = REGISTRY.all(); missing = REGISTRY.missing(); \
 	  print(f'registered: {len(reg)}/15'); \
-	  print(f'  - {chr(10).join(\"    \" + n for n in sorted(reg.keys()))}' if reg else '  (none)'); \
+	  print(chr(10).join(f'  - {n}' for n in sorted(reg.keys())) if reg else '  (none)'); \
 	  print(f'missing ({len(missing)}/15):'); \
 	  print(chr(10).join(f'  - {n}' for n in missing))"
+
+actor-rollback: ## ReleaseRollbackManager actor: rollback flag. usage: make actor-rollback flag=<name> reason=<text>
+	@test -n "$(flag)" || (echo "usage: make actor-rollback flag=<name> reason=<text>"; exit 1)
+	@test -n "$(reason)" || (echo "usage: make actor-rollback flag=<name> reason=<text>"; exit 1)
+	@.venv/bin/python -m nuri.agents.actors.release_rollback_manager rollback "$(flag)" --reason "$(reason)"
+
+actor-enable: ## ReleaseRollbackManager actor: enable flag with canary. usage: make actor-enable flag=<name> scope=<paper|partial|full>
+	@test -n "$(flag)" || (echo "usage: make actor-enable flag=<name> scope=<paper|partial|full>"; exit 1)
+	@test -n "$(scope)" || (echo "usage: make actor-enable flag=<name> scope=<paper|partial|full>"; exit 1)
+	@.venv/bin/python -m nuri.agents.actors.release_rollback_manager enable "$(flag)" --scope "$(scope)"
 
 health-check: ## Verify single-writer invariant + DB schema + recent runs (#529 mandatory #1)
 	bash scripts/health_check.sh

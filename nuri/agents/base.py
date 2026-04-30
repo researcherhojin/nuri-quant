@@ -247,13 +247,24 @@ class ActorRegistry:
         self._registry: dict[str, type[Actor]] = {}
 
     def register(self, actor_cls: type[Actor]) -> type[Actor]:
-        """Decorator-friendly 등록. canonical 15 중 하나여야 함."""
+        """Decorator-friendly 등록. canonical 15 중 하나여야 함.
+
+        Idempotent — 같은 module:qualname 재등록 OK (`python -m` re-import 패턴 —
+        Python 이 같은 module 을 `__main__` 로 한 번 더 로드해 class identity 가 달라짐).
+        다른 module/qualname 으로 같은 name 등록 시 ValueError.
+        """
         if actor_cls.name not in self.CANONICAL_15:
             raise ValueError(
                 f"{actor_cls.__name__}.name={actor_cls.name!r} not in canonical 15. Allowed: {self.CANONICAL_15}"
             )
-        if actor_cls.name in self._registry:
-            raise ValueError(f"actor {actor_cls.name!r} already registered")
+        existing = self._registry.get(actor_cls.name)
+        if existing is not None and (existing.__qualname__, getattr(existing, "name", None)) != (
+            actor_cls.__qualname__,
+            actor_cls.name,
+        ):
+            raise ValueError(
+                f"actor {actor_cls.name!r} already registered as {existing.__module__}.{existing.__qualname__}, refusing to overwrite with {actor_cls.__module__}.{actor_cls.__qualname__}"
+            )
         self._registry[actor_cls.name] = actor_cls
         return actor_cls
 
