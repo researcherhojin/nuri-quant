@@ -12,6 +12,7 @@ Phase 2 actors (Codex Round 5):
 - ExecutionFirewall (#9, Layer A) — emit 직전 마지막 hard constraint gate
 - AuditLedger (#10, Layer A) — read-only audit ledger query + retention policy
 - SREIncidentAgent (#14, Layer A) — operational incident detection + alert routing
+- StateReplicatorDR (#15, Layer A) — MBP ↔ Mac mini DR readiness 추적 + 검증
 """
 
 from nuri.agents.actors.audit_ledger import AuditLedger
@@ -24,6 +25,7 @@ from nuri.agents.actors.hypothesis_registry import HypothesisRegistry
 from nuri.agents.actors.regime_posterior import RegimePosterior
 from nuri.agents.actors.release_rollback_manager import ReleaseRollbackManager
 from nuri.agents.actors.sre_incident_agent import SREIncidentAgent
+from nuri.agents.actors.state_replicator_dr import StateReplicatorDR
 from nuri.agents.actors.walkforward_validator import WalkForwardValidator
 
 __all__ = [
@@ -37,5 +39,6 @@ __all__ = [
     "RegimePosterior",
     "ReleaseRollbackManager",
     "SREIncidentAgent",
+    "StateReplicatorDR",
     "WalkForwardValidator",
 ]
