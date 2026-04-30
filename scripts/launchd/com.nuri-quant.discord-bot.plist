@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.nuri-quant.discord-bot (#529 Phase 2, DiscordBridge inbound slash commands)
+
+  Mac mini 24/7 long-running 봇 프로세스. discord.py Client 가 gateway 연결 유지하며
+  /buy-candidates /thesis /health slash command 수신.
+
+  요구 env (~/workspace/nuri-quant/.env):
+    DISCORD_BOT_TOKEN=...
+    DISCORD_GUILD_ID=...
+
+  설치:
+    cp scripts/launchd/com.nuri-quant.discord-bot.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.nuri-quant.discord-bot.plist
+
+  로그:
+    tail -f data/logs/discord_bot.log
+    tail -f data/logs/discord_bot.err
+
+  주의: PROGRAM_PATH 는 사용자 환경에 맞게 수정 필요 (USER 자리).
+        make discord-bot-install 이 자동 치환 후 launchctl load.
+-->
+<dict>
+    <key>Label</key>
+    <string>com.nuri-quant.discord-bot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd /Users/USER/workspace/nuri-quant &amp;&amp; set -a &amp;&amp; [ -f .env ] &amp;&amp; source .env; set +a; .venv/bin/python -m nuri.agents.discord.bot</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USER/workspace/nuri-quant</string>
+
+    <!-- 봇은 long-running. crash 시 즉시 재시작. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- crash 후 최소 30초 텀 (rapid loop 방지). -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/discord_bot.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/discord_bot.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

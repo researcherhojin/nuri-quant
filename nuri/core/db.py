@@ -737,6 +737,110 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE pipeline_events ADD COLUMN event_subtype TEXT;
     """,
     ),
+    (
+        25,
+        "agent_audit_ledger — append-only decision audit for 15-actor service-grade infra (#529)",
+        # #529 Phase 1 — Service-grade 15-actor architecture (Round 5 codex consult,
+        # data/llm_consults/2026-04-30_round5-service-grade-agents.md).
+        # Append-only audit ledger: 모든 actor 의 input → judgment → output 영구 기록.
+        # 사고 후 원인 재구성 가능하도록 input_hash + sample_n + duration_ms 포함.
+        # Knight Capital 2012-08-01 (45분/4M+ 오류주문) 류 사고에서 사후 분석 가능 보장.
+        # Layer A (enforcement) 결정만 audit 필수. Layer C (interpretation) narrative 는
+        # 별도 컬럼 (선택). LLM down 이어도 actor 결정은 기록됨.
+        """
+        CREATE TABLE IF NOT EXISTS agent_audit_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            decision_id TEXT NOT NULL,
+            actor_name TEXT NOT NULL,
+            actor_version TEXT NOT NULL,
+            layer TEXT NOT NULL CHECK(layer IN ('A','B','C')),
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            input_hash TEXT NOT NULL,
+            input_summary TEXT,
+            output TEXT NOT NULL,
+            sample_n INTEGER,
+            duration_ms INTEGER,
+            outcome TEXT CHECK(outcome IN ('pass','block','warn','error')),
+            llm_narrative TEXT,
+            run_id TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_decision ON agent_audit_ledger(decision_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_actor ON agent_audit_ledger(actor_name, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_audit_run ON agent_audit_ledger(run_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_outcome ON agent_audit_ledger(outcome, timestamp);
+    """,
+    ),
+    (
+        26,
+        "feature_flags — rollback + canary control for hypothesis lifecycle (#529)",
+        # #529 Phase 1 — Release-Rollback-Manager 기반. 모든 hypothesis / actor / signal
+        # 은 feature flag 로 enable/disable. `make rollback flag=<name>` 즉시 disable.
+        # canary scope: 1차 (paper-trade only), 2차 (10% size cap), 3차 (full).
+        # owner 는 incident response 시 누구에게 ping 할지 (현재는 사용자 본인).
+        # disabled_at 채워지면 즉시 OFF (Codex Round 5 mandatory: enforcement는 100% rule).
+        """
+        CREATE TABLE IF NOT EXISTS feature_flags (
+            flag_name TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            canary_scope TEXT CHECK(canary_scope IN ('paper','partial','full')),
+            owner TEXT NOT NULL DEFAULT 'system',
+            description TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            disabled_at TEXT,
+            disabled_reason TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_flags_enabled ON feature_flags(enabled, canary_scope);
+    """,
+    ),
+    (
+        27,
+        "agent_run_ledger — run lifecycle (started/finished/failed) for 15-actor system (#529)",
+        # #529 Phase 1 — SRE-Incident-Agent + Drift-Sentinel 기반. 각 actor invocation 의
+        # lifecycle 추적: started_at + finished_at + status + error. heartbeat 식 활용.
+        # actor crash 시 finished_at NULL 로 남아 SRE alert trigger.
+        # run_id 는 agent_audit_ledger.run_id 와 join 가능 (cross-actor causation chain).
+        # parent_run_id 로 trigger chain 추적 (Decision-Compiler → Firewall → emit).
+        """
+        CREATE TABLE IF NOT EXISTS agent_run_ledger (
+            run_id TEXT PRIMARY KEY,
+            actor_name TEXT NOT NULL,
+            parent_run_id TEXT,
+            status TEXT NOT NULL CHECK(status IN ('started','finished','failed','timeout','cancelled')),
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            finished_at TEXT,
+            duration_ms INTEGER,
+            error_message TEXT,
+            machine TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_run_actor_status ON agent_run_ledger(actor_name, status, started_at);
+        CREATE INDEX IF NOT EXISTS idx_run_parent ON agent_run_ledger(parent_run_id);
+    """,
+    ),
+    (
+        28,
+        "agent_messages — Discord publish audit (#529 Phase 2 — DiscordBridge)",
+        # #529 Phase 2 — Discord 채널 routing 영구 기록. 모든 actor → channel publish 는
+        # 여기에 1 row. webhook HTTP status + retry count 포함, 발송 실패 시 SRE alert
+        # trigger 가능. run_id 로 agent_run_ledger / agent_audit_ledger 와 join.
+        """
+        CREATE TABLE IF NOT EXISTS agent_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            channel TEXT NOT NULL CHECK(channel IN ('brief','ops','incidents','rollout')),
+            actor_name TEXT,
+            run_id TEXT,
+            decision_id TEXT,
+            content_preview TEXT,
+            http_status INTEGER,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            error_message TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_msg_channel_time ON agent_messages(channel, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_msg_run ON agent_messages(run_id);
+        CREATE INDEX IF NOT EXISTS idx_msg_status ON agent_messages(http_status, timestamp);
+    """,
+    ),
 ]
 
 
@@ -1217,3 +1321,214 @@ def get_decision_with_evidence(decision_id: int, db_path: Optional[Path] = None)
     )
     decision["evidence"] = [dict(e) for e in evidence]
     return decision
+
+
+# ═══════════════════════════════════════════════════════
+# Service-grade 15-actor agent infra (#529 Phase 1)
+# Round 5 codex consult — Layer A enforcement / B compute / C interpret 분리.
+# ═══════════════════════════════════════════════════════
+
+
+def log_agent_audit(
+    decision_id: str,
+    actor_name: str,
+    actor_version: str,
+    layer: str,
+    input_hash: str,
+    output: str,
+    input_summary: Optional[str] = None,
+    sample_n: Optional[int] = None,
+    duration_ms: Optional[int] = None,
+    outcome: Optional[str] = None,
+    llm_narrative: Optional[str] = None,
+    run_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """Append-only agent decision audit (#529).
+
+    layer: 'A' enforcement / 'B' computation / 'C' interpretation.
+    outcome: 'pass' / 'block' / 'warn' / 'error'. Layer A 결정 시 필수.
+    """
+    if layer not in ("A", "B", "C"):
+        raise ValueError(f"layer must be A/B/C, got {layer!r}")
+    if outcome is not None and outcome not in ("pass", "block", "warn", "error"):
+        raise ValueError(f"outcome must be pass/block/warn/error, got {outcome!r}")
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO agent_audit_ledger
+               (decision_id, actor_name, actor_version, layer, input_hash, input_summary,
+                output, sample_n, duration_ms, outcome, llm_narrative, run_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                decision_id,
+                actor_name,
+                actor_version,
+                layer,
+                input_hash,
+                input_summary,
+                output,
+                sample_n,
+                duration_ms,
+                outcome,
+                llm_narrative,
+                run_id,
+            ),
+        )
+        return cursor.lastrowid or 0
+
+
+def is_feature_enabled(
+    flag_name: str,
+    default: bool = False,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Feature flag 조회 (#529 Release-Rollback-Manager).
+
+    flag 미존재 시 default 반환. disabled_at 채워진 row 는 무조건 False.
+    """
+    rows = query(
+        "SELECT enabled, disabled_at FROM feature_flags WHERE flag_name = ?",
+        (flag_name,),
+        db_path,
+    )
+    if not rows:
+        return default
+    row = rows[0]
+    if row["disabled_at"]:
+        return False
+    return bool(row["enabled"])
+
+
+def set_feature_flag(
+    flag_name: str,
+    enabled: bool,
+    canary_scope: Optional[str] = None,
+    owner: str = "system",
+    description: Optional[str] = None,
+    disabled_reason: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Feature flag set/update (#529).
+
+    canary_scope: 'paper' / 'partial' / 'full'.
+    enabled=False 로 호출 시 disabled_at + disabled_reason 자동 채움.
+    """
+    if canary_scope is not None and canary_scope not in ("paper", "partial", "full"):
+        raise ValueError(f"canary_scope must be paper/partial/full, got {canary_scope!r}")
+    with get_db(db_path) as conn:
+        if enabled:
+            conn.execute(
+                """INSERT INTO feature_flags
+                   (flag_name, enabled, canary_scope, owner, description, updated_at,
+                    disabled_at, disabled_reason)
+                   VALUES (?, 1, ?, ?, ?, datetime('now'), NULL, NULL)
+                   ON CONFLICT(flag_name) DO UPDATE SET
+                     enabled = 1,
+                     canary_scope = COALESCE(?, canary_scope),
+                     owner = ?,
+                     description = COALESCE(?, description),
+                     updated_at = datetime('now'),
+                     disabled_at = NULL,
+                     disabled_reason = NULL""",
+                (
+                    flag_name,
+                    canary_scope,
+                    owner,
+                    description,
+                    canary_scope,
+                    owner,
+                    description,
+                ),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO feature_flags
+                   (flag_name, enabled, owner, description, updated_at,
+                    disabled_at, disabled_reason)
+                   VALUES (?, 0, ?, ?, datetime('now'), datetime('now'), ?)
+                   ON CONFLICT(flag_name) DO UPDATE SET
+                     enabled = 0,
+                     updated_at = datetime('now'),
+                     disabled_at = datetime('now'),
+                     disabled_reason = ?""",
+                (flag_name, owner, description, disabled_reason, disabled_reason),
+            )
+
+
+def start_agent_run(
+    run_id: str,
+    actor_name: str,
+    parent_run_id: Optional[str] = None,
+    machine: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Agent run lifecycle 시작 (#529 SRE-Incident + Drift-Sentinel)."""
+    with get_db(db_path) as conn:
+        conn.execute(
+            """INSERT INTO agent_run_ledger (run_id, actor_name, parent_run_id, status, machine)
+               VALUES (?, ?, ?, 'started', ?)""",
+            (run_id, actor_name, parent_run_id, machine),
+        )
+
+
+def finish_agent_run(
+    run_id: str,
+    status: str = "finished",
+    duration_ms: Optional[int] = None,
+    error_message: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """Agent run lifecycle 완료 (#529).
+
+    status: 'finished' / 'failed' / 'timeout' / 'cancelled'.
+    finished_at NULL 로 남으면 SRE-Incident-Agent alert trigger.
+    """
+    if status not in ("finished", "failed", "timeout", "cancelled"):
+        raise ValueError(f"status must be finished/failed/timeout/cancelled, got {status!r}")
+    with get_db(db_path) as conn:
+        conn.execute(
+            """UPDATE agent_run_ledger
+               SET status = ?, finished_at = datetime('now'),
+                   duration_ms = ?, error_message = ?
+               WHERE run_id = ?""",
+            (status, duration_ms, error_message, run_id),
+        )
+
+
+def log_agent_message(
+    channel: str,
+    content_preview: str,
+    actor_name: Optional[str] = None,
+    run_id: Optional[str] = None,
+    decision_id: Optional[str] = None,
+    http_status: Optional[int] = None,
+    retry_count: int = 0,
+    error_message: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """Discord publish audit (#529 Phase 2 — DiscordBridge).
+
+    channel: 'brief' / 'ops' / 'incidents' / 'rollout'.
+    content_preview: 첫 200자 (긴 embed 도 grep 가능하도록).
+    http_status: 204 정상 발송, 4xx/5xx 실패. NULL = 네트워크 실패 전 단계.
+    """
+    if channel not in ("brief", "ops", "incidents", "rollout"):
+        raise ValueError(f"channel must be brief/ops/incidents/rollout, got {channel!r}")
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO agent_messages
+               (channel, actor_name, run_id, decision_id, content_preview,
+                http_status, retry_count, error_message)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                channel,
+                actor_name,
+                run_id,
+                decision_id,
+                content_preview[:200],
+                http_status,
+                retry_count,
+                error_message,
+            ),
+        )
+        return cursor.lastrowid or 0

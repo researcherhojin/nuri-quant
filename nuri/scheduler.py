@@ -34,6 +34,15 @@ def _configure_logging() -> None:
     fmt = "%(asctime)s %(name)s %(levelname)s %(message)s"
     logging.basicConfig(level=logging.INFO, format=fmt)
 
+    # yfinance internal logger emits 401 Crumb / 404 ETF-calendar noise at INFO/ERROR
+    # for routine cases (ETFs without earnings calendar, transient cookie refresh).
+    # Each line is per-ticker and floods scheduler.log on universe runs (746 tickers).
+    # Raise to WARNING — we still see real auth/network failures, but the routine
+    # 4xx-on-missing-data noise stops. fundamental.py already does this per-source
+    # (CRITICAL on universe); this is the global belt-and-suspenders.
+    # MUST be set before any early-return so DISABLE_FILE / read-only paths still silence.
+    logging.getLogger("yfinance").setLevel(logging.WARNING)
+
     if os.environ.get("NURI_SCHEDULER_LOG_DISABLE_FILE", "0") == "1":
         return
 
@@ -55,14 +64,6 @@ def _configure_logging() -> None:
     handler.setFormatter(logging.Formatter(fmt))
     handler.setLevel(logging.INFO)
     logging.getLogger().addHandler(handler)
-
-    # yfinance internal logger emits 401 Crumb / 404 ETF-calendar noise at INFO/ERROR
-    # for routine cases (ETFs without earnings calendar, transient cookie refresh).
-    # Each line is per-ticker and floods scheduler.log on universe runs (746 tickers).
-    # Raise to WARNING — we still see real auth/network failures, but the routine
-    # 4xx-on-missing-data noise stops. fundamental.py already does this per-source
-    # (CRITICAL on universe); this is the global belt-and-suspenders.
-    logging.getLogger("yfinance").setLevel(logging.WARNING)
 
 
 _configure_logging()

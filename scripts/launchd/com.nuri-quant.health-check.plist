@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.nuri-quant.health-check (#529 Phase 1, SRE-Incident-Agent precursor)
+
+  매시간 health_check.sh 실행. exit code 1/2 시 stderr 로그가
+  data/logs/health_check.err 에 남음. SRE-Incident-Agent (Phase 6) 가 이 로그 watch.
+
+  설치:
+    cp scripts/launchd/com.nuri-quant.health-check.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.nuri-quant.health-check.plist
+
+  주의: PROGRAM_PATH 는 사용자 환경에 맞게 수정 필요 (USER 자리).
+-->
+<dict>
+    <key>Label</key>
+    <string>com.nuri-quant.health-check</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd /Users/USER/workspace/nuri-quant &amp;&amp; bash scripts/health_check.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USER/workspace/nuri-quant</string>
+
+    <!-- 1시간 간격. -->
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/health_check.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/health_check.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
