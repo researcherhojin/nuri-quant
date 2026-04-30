@@ -72,8 +72,34 @@ def _resolve_kis_paths(new_dir: Path, legacy_dir: Path) -> tuple[Path, Path]:
     return legacy_dir / "config" / "kis_devlp.yaml", legacy_dir / "cache"
 
 
-# Module load 시 1회 결정. 테스트는 KIS_YAML_PATH를 monkeypatch.
-KIS_YAML_PATH, TOKEN_CACHE_DIR = _resolve_kis_paths(_KIS_NEW_DIR, _KIS_LEGACY_DIR)
+def _resolve_token_cache_dir(new_dir: Path, legacy_dir: Path) -> Path:
+    """Token cache 경로 결정 (Issue #532).
+
+    `_resolve_kis_paths` 와 다르게 **yaml 존재 여부와 무관하게 항상 project-local
+    `config/kis/cache/` 사용**. 이유:
+
+    1. **결정성**: `.env` only 셋업 (yaml 부재) 에서도 cache 위치가 예측 가능.
+       기존 로직은 yaml 없으면 `~/KIS/cache/` 로 fallback → "cache 가 어디
+       갔는지" 추적 어려움 → Issue #532 의 "매일 새 토큰 발급" 노이즈 원인.
+    2. **2-machine setup 안전**: project-local 이면 양쪽 머신에서 동일 경로
+       (각자 cache 보유, sync 는 안 되지만 위치는 동일).
+    3. **gitignored 보장**: `.gitignore` 가 `config/kis/*` 전체 ignore →
+       토큰 git 유출 위험 없음.
+
+    Args:
+        new_dir: 프로젝트 내 KIS 디렉토리 (config/kis/)
+        legacy_dir: 레거시 위치 (~/KIS/) — 현재는 사용 안 함, 호환성 위해 유지
+
+    Returns:
+        token cache 디렉토리 Path
+    """
+    del legacy_dir  # 의도적으로 미사용 (legacy fallback 제거)
+    return new_dir / "cache"
+
+
+# Module load 시 1회 결정. 테스트는 KIS_YAML_PATH / TOKEN_CACHE_DIR 를 patch.
+KIS_YAML_PATH, _ = _resolve_kis_paths(_KIS_NEW_DIR, _KIS_LEGACY_DIR)
+TOKEN_CACHE_DIR = _resolve_token_cache_dir(_KIS_NEW_DIR, _KIS_LEGACY_DIR)
 
 # KIS rate limit (KIS 공지 2026.03.20 + 실측):
 #   - 실전(prod) 신규: 초당 3건 → 0.4s 간격 (초당 2.5건, 안전 마진)
