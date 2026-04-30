@@ -21,11 +21,14 @@ import asyncio
 import logging
 import os
 import shlex
+import socket
 import subprocess
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
+
+from nuri.agents.discord.embeds import build_status_embed
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +86,13 @@ def build_bot():
     async def buy_candidates(interaction: "discord.Interaction") -> None:  # pragma: no cover
         await interaction.response.defer(thinking=True)
         rc, out = await asyncio.to_thread(_run_make, "buy-candidates")
-        status = "✅ OK" if rc == 0 else f"❌ exit {rc}"
-        await interaction.followup.send(f"**buy-candidates** {status}\n```\n{out[-1500:]}\n```")
+        embed_dict = build_status_embed(
+            title="Buy Candidates",
+            success=(rc == 0),
+            body=out[-3500:],
+            fields={"exit": str(rc), "host": socket.gethostname()},
+        )
+        await interaction.followup.send(embed=discord.Embed.from_dict(embed_dict))
 
     # ─── /thesis ticker:<TICKER> ───
     @tree.command(name="thesis", description="ticker thesis Q&A (Codex + Qwen3.5 dual archive)", guild=guild)
@@ -96,8 +104,13 @@ def build_bot():
             return
         await interaction.response.defer(thinking=True)
         rc, out = await asyncio.to_thread(_run_make, "thesis", {"ticker": ticker}, 300)
-        status = "✅ OK" if rc == 0 else f"❌ exit {rc}"
-        await interaction.followup.send(f"**thesis {ticker}** {status}\n```\n{out[-1500:]}\n```")
+        embed_dict = build_status_embed(
+            title=f"Thesis · {ticker}",
+            success=(rc == 0),
+            body=out[-3500:],
+            fields={"ticker": ticker, "exit": str(rc), "host": socket.gethostname()},
+        )
+        await interaction.followup.send(embed=discord.Embed.from_dict(embed_dict))
 
     # ─── /health ───
     @tree.command(name="health", description="agent infra health check (single-writer + schema + tables)", guild=guild)
@@ -119,8 +132,13 @@ def build_bot():
                 return 124, "timeout 30s"
 
         rc, out = await asyncio.to_thread(_run)
-        emoji = {0: "✅", 1: "⚠️", 2: "❌"}.get(rc, "❌")
-        await interaction.followup.send(f"{emoji} health (exit {rc})\n```\n{out}\n```")
+        embed_dict = build_status_embed(
+            title="Health Check",
+            success=(rc == 0),
+            body=out[-3500:],
+            fields={"exit": str(rc), "host": socket.gethostname()},
+        )
+        await interaction.followup.send(embed=discord.Embed.from_dict(embed_dict))
 
     @bot.event
     async def on_ready() -> None:  # pragma: no cover
