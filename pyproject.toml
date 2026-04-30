@@ -45,6 +45,11 @@ dependencies = [
     "scikit-learn>=1.4.0",
     "scipy>=1.12.0",
 
+    # ─── Regime modeling (Layer B actor #3 — sticky-HMM, #529 Phase 2) ─
+    # Codex consult 2026-05-01: sticky-HMM (diagonal Dirichlet prior on transition
+    # matrix) 가 production-ready regime posterior. BOCPD 는 2차 승격 후보.
+    "hmmlearn>=0.3.0",
+
     # ─── Backtesting ──────────────────────────────────────────
     "vectorbt>=0.28.0",
 
