@@ -432,6 +432,53 @@ deploy-mini: ## MBP → Mac mini 전체 동기화 (git pull + config + scheduler
 backup:
 	bash scripts/backup.sh
 
+# ─── Service-grade 15-actor infra (#529 Phase 1) ─────────────────────────
+snapshot: ## SQLite VACUUM INTO snapshot to data/backups/snapshot_<ts>.db
+	@mkdir -p data/backups
+	@TS=$$(date +%Y%m%d_%H%M%S); \
+	  OUT="data/backups/snapshot_$${TS}.db"; \
+	  .venv/bin/python -c "import sqlite3; from nuri.core.db import DB_PATH; c=sqlite3.connect(DB_PATH); c.execute(\"VACUUM INTO '$$OUT'\"); c.close(); print('snapshot:', '$$OUT')"
+
+restore-drill: ## Restore latest snapshot to /tmp + integrity + schema check (DR rehearsal, prod 무영향)
+	@LATEST=$$(ls -t data/backups/snapshot_*.db 2>/dev/null | head -1); \
+	  if [ -z "$$LATEST" ]; then echo "no snapshot found — run 'make snapshot' first"; exit 1; fi; \
+	  TMP=$$(mktemp /tmp/restore_drill_XXXXXX.db); cp "$$LATEST" "$$TMP"; \
+	  .venv/bin/python -c "import sqlite3, sys; \
+	  c=sqlite3.connect('$$TMP'); \
+	  r=c.execute('PRAGMA integrity_check').fetchone()[0]; \
+	  v=c.execute('SELECT MAX(version) FROM schema_version').fetchone()[0]; \
+	  c.close(); \
+	  print('restored:', '$$LATEST', '->', '$$TMP'); \
+	  print('integrity:', r); \
+	  print('schema_version:', v); \
+	  sys.exit(0 if r=='ok' and v and v >= 27 else 1)" || (rm -f "$$TMP"; echo "❌ DR drill FAIL"; exit 1); \
+	  rm -f "$$TMP"; echo "✅ DR drill OK"
+
+rollback: ## Disable a feature flag immediately. usage: make rollback flag=<name> reason=<text>
+	@test -n "$(flag)" || (echo "usage: make rollback flag=<name> reason=<text>"; exit 1)
+	@test -n "$(reason)" || (echo "usage: make rollback flag=<name> reason=<text>"; exit 1)
+	@.venv/bin/python -c "from nuri.core.db import set_feature_flag, is_feature_enabled; \
+	  set_feature_flag('$(flag)', enabled=False, disabled_reason='$(reason)', owner='manual-rollback'); \
+	  print(f'rolled back: $(flag) -> enabled={is_feature_enabled(\"$(flag)\")}')"
+
+flag-enable: ## Enable a feature flag. usage: make flag-enable flag=<name> scope=<paper|partial|full>
+	@test -n "$(flag)" || (echo "usage: make flag-enable flag=<name> scope=<paper|partial|full>"; exit 1)
+	@test -n "$(scope)" || (echo "usage: make flag-enable flag=<name> scope=<paper|partial|full>"; exit 1)
+	@.venv/bin/python -c "from nuri.core.db import set_feature_flag, is_feature_enabled; \
+	  set_feature_flag('$(flag)', enabled=True, canary_scope='$(scope)', owner='manual-enable'); \
+	  print(f'enabled: $(flag) (scope=$(scope)) -> {is_feature_enabled(\"$(flag)\")}')"
+
+actor-status: ## Print 15-actor canonical inventory + registration status
+	@.venv/bin/python -c "from nuri.agents.base import REGISTRY; \
+	  reg = REGISTRY.all(); missing = REGISTRY.missing(); \
+	  print(f'registered: {len(reg)}/15'); \
+	  print(f'  - {chr(10).join(\"    \" + n for n in sorted(reg.keys()))}' if reg else '  (none)'); \
+	  print(f'missing ({len(missing)}/15):'); \
+	  print(chr(10).join(f'  - {n}' for n in missing))"
+
+health-check: ## Verify single-writer invariant + DB schema + recent runs (#529 mandatory #1)
+	bash scripts/health_check.sh
+
 sync-start:
 	bash scripts/dev_sync.sh start
 
