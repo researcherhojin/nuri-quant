@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.nuri-quant.state-replicator (#529 Phase 1, State-Replicator-DR actor)
+
+  Mac mini (PRIMARY): primary mode - DB snapshot 만들고 MBP 에 push (1시간 간격)
+  MBP (REPLICA): replica mode - 받은 snapshot verify (수동 호출 권장)
+
+  설치:
+    cp scripts/launchd/com.nuri-quant.state-replicator.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.nuri-quant.state-replicator.plist
+
+  제거:
+    launchctl unload ~/Library/LaunchAgents/com.nuri-quant.state-replicator.plist
+    rm ~/Library/LaunchAgents/com.nuri-quant.state-replicator.plist
+
+  사전 조건:
+    1. ~/.zshrc 에 DEV2_HOST 등록 (NOT .env — sync_dev.sh 가 .env 자체를 sync)
+    2. 양쪽 Mac SSH key 등록 (ssh-copy-id)
+    3. data/replicas/ 디렉토리 양쪽에 존재 (script 가 mkdir -p 함)
+
+  주의: PROGRAM_PATH 는 사용자 환경에 맞게 수정 필요 (USER 자리).
+-->
+<dict>
+    <key>Label</key>
+    <string>com.nuri-quant.state-replicator</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd /Users/USER/workspace/nuri-quant &amp;&amp; source ~/.zshrc &amp;&amp; bash scripts/state_replicator.sh primary</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USER/workspace/nuri-quant</string>
+
+    <!-- 1시간 간격 (3600 sec). 변경 시 launchctl unload + load 필요. -->
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <!-- launchd 로딩 시 즉시 실행 (재부팅 후 첫 실행 보장). -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- stdout/stderr 로깅 (debug + audit). -->
+    <key>StandardOutPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/state_replicator.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/state_replicator.err</string>
+
+    <!-- 환경 변수 (DEV2_HOST 는 ~/.zshrc 에서 source). -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <!-- 비정상 종료 시 자동 재시작 안 함 (수동 진단 의도). -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- 동시 실행 방지 (이전 run 안 끝났으면 skip). -->
+    <key>AbandonProcessGroup</key>
+    <false/>
+</dict>
+</plist>
