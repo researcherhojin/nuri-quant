@@ -27,11 +27,11 @@ def db_path(tmp_path):
 
 
 class TestSchemaMigrations:
-    """6 신규 migration (#25 audit / #26 flags / #27 runs / #28 messages / #29 walkforward_runs / #30 regime_posteriors) 적용 확인."""
+    """7 신규 migration (#25 audit / #26 flags / #27 runs / #28 messages / #29 walkforward_runs / #30 regime_posteriors / #31 hypotheses) 적용 확인."""
 
-    def test_schema_version_at_30(self, db_path):
-        """Phase 1+2 migrations 모두 적용 → schema version 30 (#30 regime_posteriors 포함)."""
-        assert get_schema_version(db_path) == 30
+    def test_schema_version_at_31(self, db_path):
+        """Phase 1+2 migrations 모두 적용 → schema version 31 (#31 hypotheses 포함)."""
+        assert get_schema_version(db_path) == 31
 
     def test_audit_ledger_table_exists(self, db_path):
         """agent_audit_ledger 테이블이 생성되었는지 확인."""

@@ -903,6 +903,45 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_regime_run ON regime_posteriors(run_id);
     """,
     ),
+    (
+        31,
+        "hypotheses — Hypothesis-Registry audit + lifecycle (#529 Phase 2 actor #4, Layer A)",
+        # #529 Phase 2 actor #4 — Layer A enforcement (Codex Round 5 #128, #130, #347, #350).
+        # Hypothesis = producer actor (RegimePosterior 등) 의 claim 1 건.
+        # Lifecycle: open → validated|rejected|expired. validated 만 emit 허용.
+        # Outcome attribution + deployment/rollback hub.
+        #
+        # 핵심 invariant:
+        # - claim_hash UNIQUE: 동일 producer + claim 재등록 시 idempotent (기존 row id 반환)
+        # - status CHECK: 4-state machine (Layer A enforcement)
+        # - validated 는 validation_metrics_json 필수 (helper 강제)
+        # - rejected 는 rejection_reason 필수 (helper 강제)
+        # - expiry_date 지난 open → expire_hypotheses() 가 일괄 expired 처리
+        # - feature_flag → feature_flags.flag_name 와 join: Release-Rollback 즉시 disable
+        """
+        CREATE TABLE IF NOT EXISTS hypotheses (
+            hypothesis_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            producer_actor TEXT NOT NULL,
+            producer_run_id TEXT,
+            claim_text TEXT NOT NULL,
+            claim_hash TEXT NOT NULL UNIQUE,
+            evidence_json TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('open','validated','rejected','expired')),
+            feature_flag TEXT,
+            canary_scope TEXT CHECK(canary_scope IN ('paper','partial','full')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            expiry_date TEXT NOT NULL,
+            validated_at TEXT,
+            validation_metrics_json TEXT,
+            rejection_reason TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_hyp_status ON hypotheses(status, expiry_date);
+        CREATE INDEX IF NOT EXISTS idx_hyp_producer ON hypotheses(producer_actor, created_at);
+        CREATE INDEX IF NOT EXISTS idx_hyp_flag ON hypotheses(feature_flag);
+    """,
+    ),
 ]
 
 
@@ -1707,3 +1746,138 @@ def log_regime_posterior(
                 run_id,
             ),
         )
+
+
+# ═══════════════════════════════════════════════════════
+# Hypothesis-Registry helpers (#529 Phase 2 actor #4 — Layer A)
+# ═══════════════════════════════════════════════════════
+
+_HYPOTHESIS_STATUSES = ("open", "validated", "rejected", "expired")
+_CANARY_SCOPES = ("paper", "partial", "full")
+
+
+def register_hypothesis(
+    hypothesis_id: str,
+    name: str,
+    version: str,
+    producer_actor: str,
+    claim_text: str,
+    evidence: dict,
+    expiry_date: str,
+    producer_run_id: Optional[str] = None,
+    feature_flag: Optional[str] = None,
+    canary_scope: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> tuple[str, bool]:
+    """Hypothesis 등록 — claim_hash idempotent (동일 producer + claim 재등록 시 기존 id 반환).
+
+    Returns (hypothesis_id, is_new) — is_new=False 시 기존 row 그대로.
+    Initial status = 'open'. 명시적 validate/reject/expire 호출로만 전이.
+
+    Codex Round 5 Layer A: open→validated 는 validation_metrics_json 필수.
+    """
+    import hashlib
+
+    if canary_scope is not None and canary_scope not in _CANARY_SCOPES:
+        raise ValueError(f"canary_scope must be {_CANARY_SCOPES}, got {canary_scope!r}")
+    claim_hash = hashlib.sha256(f"{producer_actor}|{claim_text}".encode()).hexdigest()[:32]
+
+    with get_db(db_path) as conn:
+        existing = conn.execute(
+            "SELECT hypothesis_id FROM hypotheses WHERE claim_hash = ?",
+            (claim_hash,),
+        ).fetchone()
+        if existing:
+            return existing["hypothesis_id"], False
+        conn.execute(
+            """INSERT INTO hypotheses
+               (hypothesis_id, name, version, producer_actor, producer_run_id,
+                claim_text, claim_hash, evidence_json, status,
+                feature_flag, canary_scope, expiry_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)""",
+            (
+                hypothesis_id,
+                name,
+                version,
+                producer_actor,
+                producer_run_id,
+                claim_text,
+                claim_hash,
+                json.dumps(evidence, sort_keys=True, default=str),
+                feature_flag,
+                canary_scope,
+                expiry_date,
+            ),
+        )
+        return hypothesis_id, True
+
+
+def validate_hypothesis(
+    hypothesis_id: str,
+    validation_metrics: dict,
+    db_path: Optional[Path] = None,
+) -> None:
+    """open → validated 전이. validation_metrics 필수 (Layer A enforcement).
+
+    Codex Round 5 mandatory: 검증 metrics 없이 validated 로 변경 불가.
+    이미 validated/rejected/expired 면 ValueError (status machine 위반).
+    """
+    if not validation_metrics:
+        raise ValueError("validation_metrics dict required to validate (Layer A enforcement)")
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT status FROM hypotheses WHERE hypothesis_id = ?",
+            (hypothesis_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError(f"hypothesis {hypothesis_id!r} not found")
+        if row["status"] != "open":
+            raise ValueError(
+                f"cannot validate hypothesis {hypothesis_id!r}: status={row['status']!r} "
+                "(only open → validated allowed)"
+            )
+        conn.execute(
+            """UPDATE hypotheses SET status='validated',
+               validated_at=datetime('now'),
+               validation_metrics_json=?
+               WHERE hypothesis_id=?""",
+            (json.dumps(validation_metrics, sort_keys=True, default=str), hypothesis_id),
+        )
+
+
+def reject_hypothesis(
+    hypothesis_id: str,
+    rejection_reason: str,
+    db_path: Optional[Path] = None,
+) -> None:
+    """open → rejected. rejection_reason 필수."""
+    if not rejection_reason or not rejection_reason.strip():
+        raise ValueError("rejection_reason required to reject (Layer A enforcement)")
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT status FROM hypotheses WHERE hypothesis_id = ?",
+            (hypothesis_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError(f"hypothesis {hypothesis_id!r} not found")
+        if row["status"] != "open":
+            raise ValueError(
+                f"cannot reject hypothesis {hypothesis_id!r}: status={row['status']!r} (only open → rejected allowed)"
+            )
+        conn.execute(
+            "UPDATE hypotheses SET status='rejected', rejection_reason=? WHERE hypothesis_id=?",
+            (rejection_reason, hypothesis_id),
+        )
+
+
+def expire_hypotheses(db_path: Optional[Path] = None) -> int:
+    """open + expiry_date < today → expired. 반환: 만료 처리된 row 수.
+
+    SRE-Incident-Agent / scheduler 가 cron 으로 주기 호출. idempotent.
+    """
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """UPDATE hypotheses SET status='expired'
+               WHERE status='open' AND date(expiry_date) < date('now')"""
+        )
+        return cursor.rowcount
