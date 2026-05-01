@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# cspell:ignore kakaopay mirae kiwoom
 """scripts/check_privacy_leak.py — block personal financial data from leaking
 into git-tracked code (#138).
 
