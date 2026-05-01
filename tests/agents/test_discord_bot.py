@@ -118,7 +118,7 @@ class TestRepoRoot:
         from nuri.agents.discord.bot import REPO_ROOT
 
         assert (REPO_ROOT / "Makefile").exists()
-        assert (REPO_ROOT / "nuri" / "core" / "db.py").exists()
+        assert (REPO_ROOT / "nuri" / "core" / "db" / "__init__.py").exists()  # Stage 2 package
 
 
 class TestMainRuntime:
