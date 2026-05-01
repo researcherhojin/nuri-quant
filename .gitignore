@@ -164,6 +164,9 @@ data/logs/
 data/llm_consults/
 # Thesis Q&A archive (#508) — DB context + LLM verdict 포함, portfolio holdings 노출
 data/thesis_query/
+# Portfolio recommendation backtracking archive (per-day .md) — broker holdings +
+# rebalance proposals 노출, public repo 절대 금지. STRATEGY §4.4.1 privacy.
+data/portfolio_recommendations/
 # API health check heartbeat (scheduler 가 매분 rewrite)
 data/.scheduler_heartbeat
 
