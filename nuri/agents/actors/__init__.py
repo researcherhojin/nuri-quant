@@ -1,6 +1,7 @@
 """nuri.agents.actors — concrete 15-actor implementations (#529 Phase 2+).
 
 Phase 2 actors (Codex Round 5):
+- CollectorOrchestrator (#1, Layer B) — 21+ collectors oversight + retry + health scan
 - ReleaseRollbackManager (#13, Layer A) — canary rollout + emergency rollback
 - FreshnessGatekeeper (#2, Layer A) — stale data emit block
 - HypothesisRegistry (#4, Layer A) — hypothesis lifecycle gate
@@ -17,6 +18,7 @@ Phase 2 actors (Codex Round 5):
 
 from nuri.agents.actors.audit_ledger import AuditLedger
 from nuri.agents.actors.causal_factor_auditor import CausalFactorAuditor
+from nuri.agents.actors.collector_orchestrator import CollectorOrchestrator
 from nuri.agents.actors.decision_compiler import DecisionCompiler
 from nuri.agents.actors.execution_firewall import ExecutionFirewall
 from nuri.agents.actors.forward_outcome_tracker import ForwardOutcomeTracker
@@ -31,6 +33,7 @@ from nuri.agents.actors.walkforward_validator import WalkForwardValidator
 __all__ = [
     "AuditLedger",
     "CausalFactorAuditor",
+    "CollectorOrchestrator",
     "DecisionCompiler",
     "ExecutionFirewall",
     "ForwardOutcomeTracker",
