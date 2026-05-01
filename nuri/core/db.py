@@ -1239,6 +1239,45 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_drift_actor ON drift_alerts(actor_name, detected_at);
     """,
     ),
+    (
+        40,
+        "foundation_benchmarks — Foundation-Benchmark 모델 비교 ledger (#529 Phase 2 actor #7, Layer B)",
+        # #529 Phase 2 canonical actor #7 — Foundation-Benchmark.
+        # TimesFM/Chronos/Moirai 같은 foundation time-series 모델을 우리 sticky-HMM
+        # baseline 과 동일 protocol 로 벤치마킹 — "신모델이라 좋아 보이는" 착시 방지.
+        #
+        # 본 PR 은 infrastructure 만 ship — 실제 foundation 모델 통합은 별도 PR.
+        # WalkForwardValidator 의 pit_hash + walkforward_run_id 와 join 가능해서
+        # 동일 fold spec 기반의 cross-model 비교를 audit-traceable form 으로 보존.
+        #
+        # benchmark_run: 'YYYY-MM-DD-<slug>' 그루핑 키 (같은 protocol 의 비교군).
+        # model_kind:
+        #   baseline    — 기존 우리 모델 (sticky-HMM, simple regression 등)
+        #   foundation  — TimesFM / Chronos / Moirai 등 pretrained foundation models
+        #   traditional — 통계적 baseline (ARIMA, Prophet, naive seasonal 등)
+        # metric_name: brier/logloss/sharpe/mse/mae/hit_rate (enum 강제).
+        # higher_is_better: 0/1 — sort 방향 결정 (sharpe/hit_rate=1, brier/mse/mae=0).
+        """
+        CREATE TABLE IF NOT EXISTS foundation_benchmarks (
+            benchmark_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            benchmark_run TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            model_kind TEXT NOT NULL CHECK(model_kind IN ('baseline','foundation','traditional')),
+            metric_name TEXT NOT NULL CHECK(metric_name IN ('brier','logloss','sharpe','mse','mae','hit_rate')),
+            metric_value REAL NOT NULL,
+            higher_is_better INTEGER NOT NULL,
+            sample_n INTEGER NOT NULL,
+            pit_hash TEXT,
+            walkforward_run_id TEXT,
+            notes TEXT,
+            actor_run_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_fbench_run ON foundation_benchmarks(benchmark_run, model_id);
+        CREATE INDEX IF NOT EXISTS idx_fbench_model ON foundation_benchmarks(model_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_fbench_metric ON foundation_benchmarks(metric_name, created_at);
+    """,
+    ),
 ]
 
 
@@ -2762,6 +2801,72 @@ def log_drift_alert(
                 json.dumps(distribution_summary, sort_keys=True, default=str),
                 actor_name,
                 run_id,
+            ),
+        )
+        return cursor.lastrowid or 0
+
+
+# ═══════════════════════════════════════════════════════
+# Foundation-Benchmark helper (#529 Phase 2 actor #7 — Layer B)
+# ═══════════════════════════════════════════════════════
+
+_FBENCH_VALID_KINDS: tuple[str, ...] = ("baseline", "foundation", "traditional")
+_FBENCH_VALID_METRICS: tuple[str, ...] = ("brier", "logloss", "sharpe", "mse", "mae", "hit_rate")
+
+
+def log_foundation_benchmark(
+    benchmark_run: str,
+    model_id: str,
+    model_kind: str,
+    metric_name: str,
+    metric_value: float,
+    higher_is_better: bool,
+    sample_n: int,
+    pit_hash: Optional[str] = None,
+    walkforward_run_id: Optional[str] = None,
+    notes: Optional[str] = None,
+    actor_run_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """Foundation-Benchmark 단일 metric 기록 (#529 Phase 2 actor #7).
+
+    benchmark_run: 'YYYY-MM-DD-<slug>' 그루핑 키 (같은 protocol 의 비교군).
+    model_kind ∈ ('baseline','foundation','traditional') 검증.
+    metric_name ∈ ('brier','logloss','sharpe','mse','mae','hit_rate') 검증.
+    sample_n >= 0 검증 (음수 panic).
+    pit_hash / walkforward_run_id: WalkForwardValidator audit join 용.
+
+    Returns: lastrowid (benchmark_id).
+    """
+    if model_kind not in _FBENCH_VALID_KINDS:
+        raise ValueError(
+            f"model_kind must be one of {_FBENCH_VALID_KINDS}, got {model_kind!r}"
+        )
+    if metric_name not in _FBENCH_VALID_METRICS:
+        raise ValueError(
+            f"metric_name must be one of {_FBENCH_VALID_METRICS}, got {metric_name!r}"
+        )
+    if sample_n < 0:
+        raise ValueError(f"sample_n must be >= 0, got {sample_n}")
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO foundation_benchmarks
+               (benchmark_run, model_id, model_kind, metric_name, metric_value,
+                higher_is_better, sample_n, pit_hash, walkforward_run_id,
+                notes, actor_run_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                benchmark_run,
+                model_id,
+                model_kind,
+                metric_name,
+                float(metric_value),
+                1 if higher_is_better else 0,
+                int(sample_n),
+                pit_hash,
+                walkforward_run_id,
+                notes,
+                actor_run_id,
             ),
         )
         return cursor.lastrowid or 0
