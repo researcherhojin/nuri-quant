@@ -15,7 +15,7 @@ import pandas as pd
 
 from nuri.core.db_migrations import _MIGRATIONS, _SCHEMA, _SCHEMA_VERSION_TABLE
 
-DB_PATH = Path(__file__).parent.parent.parent / "data" / "portfolio.db"
+DB_PATH = Path(__file__).parent.parent.parent.parent / "data" / "portfolio.db"
 
 # ═══════════════════════════════════════════════════════
 # 연결 관리
