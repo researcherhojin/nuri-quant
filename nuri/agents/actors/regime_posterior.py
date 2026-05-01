@@ -440,25 +440,25 @@ class RegimePosterior(Actor):
         실패도 actor decision 자체를 fail 시키지 않음 (best-effort notification).
         """
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_rollout
 
-            posterior_str = ", ".join(f"{p:.3f}" for p in summary.posterior)
-            embed = {
-                "title": f"Regime change — {model_version}",
-                "description": (
-                    f"as_of_date: `{as_of_date}`\n"
-                    f"argmax: **{prev_argmax}** → **{summary.argmax_state}**\n"
-                    f"top2_margin: {summary.top2_margin:.3f} · entropy: {summary.entropy:.3f}"
-                ),
-                "color": 0x3498DB,
-                "fields": [
-                    {"name": "posterior", "value": f"`[{posterior_str}]`", "inline": False},
-                ],
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]}"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.ROLLOUT,
-                embed=embed,
+            stage_rollout(
+                payload={
+                    "kind": "regime_change",
+                    "summary": (
+                        f"{model_version} @ {as_of_date}: "
+                        f"{prev_argmax} → {summary.argmax_state} "
+                        f"(margin {summary.top2_margin:.2f}, entropy {summary.entropy:.2f})"
+                    ),
+                    "model_version": model_version,
+                    "as_of_date": as_of_date,
+                    "prev_argmax": prev_argmax,
+                    "new_argmax": summary.argmax_state,
+                    "top2_margin": summary.top2_margin,
+                    "entropy": summary.entropy,
+                    "posterior": list(summary.posterior),
+                },
+                dedupe_key=f"regime_change:{model_version}:{as_of_date}",
                 actor_name="regime-posterior",
                 run_id=run_id,
             )

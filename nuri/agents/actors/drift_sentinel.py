@@ -125,7 +125,7 @@ def _compute_ks(baseline: np.ndarray, current: np.ndarray) -> float:
         from scipy.stats import ks_2samp
 
         result = ks_2samp(baseline, current)
-        return float(result.statistic)
+        return float(result.statistic)  # type: ignore[union-attr]
     except Exception:  # noqa: BLE001 — scipy 부재 또는 numerical issue
         # fallback: empirical CDF 비교 (numpy only)
         combined = np.sort(np.concatenate([baseline, current]))
@@ -308,10 +308,7 @@ class DriftSentinel(Actor):
 
         if baseline.ndim != 1 or current.ndim != 1:
             return ActorResult(
-                output={
-                    "error": f"baseline/current must be 1-D, got shapes "
-                    f"{baseline.shape} / {current.shape}"
-                },
+                output={"error": f"baseline/current must be 1-D, got shapes {baseline.shape} / {current.shape}"},
                 outcome=Outcome.BLOCK,
                 input_summary=f"check {feature_name}",
             )
@@ -493,34 +490,34 @@ class DriftSentinel(Actor):
         actor_name: Optional[str],
         run_id: str,
     ) -> None:
-        """critical → INCIDENTS (RED), major → OPS (AMBER). minor/stable publish X."""
+        """critical → #incidents, major → #ops outbox (PR3 Codex Round 6). minor/stable X."""
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_incident, stage_ops
 
             if severity == "critical":
-                channel = Channel.INCIDENTS
-                color = 0xE74C3C  # RED
+                stage_fn = stage_incident
+                priority = "high"
             elif severity == "major":
-                channel = Channel.OPS
-                color = 0xF39C12  # AMBER
+                stage_fn = stage_ops
+                priority = "normal"
             else:
                 return
 
-            embed = {
-                "title": f"Drift detected — {feature_name} ({test_type.upper()})",
-                "description": (
-                    f"feature: **{feature_name}**\n"
-                    f"actor: **{actor_name or 'n/a'}**\n"
-                    f"test: **{test_type.upper()}**\n"
-                    f"statistic: **{statistic:.4f}** (threshold {threshold:.4f})\n"
-                    f"severity: **{severity}**"
-                ),
-                "color": color,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]} • Drift-Sentinel"},
-            }
-            DiscordPublisher().publish_embed(
-                channel,
-                embed=embed,
+            stage_fn(
+                payload={
+                    "kind": f"drift_{severity}",
+                    "summary": (
+                        f"{feature_name} ({test_type.upper()}) stat={statistic:.4f} > {threshold:.4f} ({severity})"
+                    ),
+                    "feature": feature_name,
+                    "actor": actor_name,
+                    "test_type": test_type,
+                    "statistic": statistic,
+                    "threshold": threshold,
+                    "severity": severity,
+                },
+                priority=priority,
+                dedupe_key=f"drift:{feature_name}:{test_type}:{severity}",
                 actor_name="drift-sentinel",
                 run_id=run_id,
             )

@@ -104,9 +104,7 @@ class TestStateReplicatorDRLayer:
 class TestSnapshotAction:
     def test_snapshot_primary(self, patched_db):
         actor = StateReplicatorDR()
-        result = actor.run(
-            {"action": "snapshot", "replica_id": "macmini-primary", "role": "primary"}
-        )
+        result = actor.run({"action": "snapshot", "replica_id": "macmini-primary", "role": "primary"})
         assert result.outcome == Outcome.PASS
         assert result.output["role"] == "primary"
         assert result.output["status"] == "healthy"
@@ -121,14 +119,10 @@ class TestSnapshotAction:
 
     def test_snapshot_replica_no_heartbeat_unreachable(self, patched_db):
         """heartbeat 파일 없을 때 → unreachable 처리 (Docker 이전 placeholder)."""
-        with patch(
-            "nuri.agents.actors.state_replicator_dr.HEARTBEAT_PATH"
-        ) as mock_path:
+        with patch("nuri.agents.actors.state_replicator_dr.HEARTBEAT_PATH") as mock_path:
             mock_path.exists.return_value = False
             actor = StateReplicatorDR()
-            result = actor.run(
-                {"action": "snapshot", "replica_id": "mbp-replica", "role": "replica"}
-            )
+            result = actor.run({"action": "snapshot", "replica_id": "mbp-replica", "role": "replica"})
         assert result.outcome == Outcome.PASS  # snapshot 자체는 성공
         assert result.output["status"] == "unreachable"
         assert result.output["sync_lag_seconds"] is None
@@ -138,13 +132,9 @@ class TestSnapshotAction:
         """heartbeat 파일 mtime 이 최근 (< 600s) → healthy."""
         hb = tmp_path / ".autopull_heartbeat"
         hb.touch()  # mtime = now
-        with patch(
-            "nuri.agents.actors.state_replicator_dr.HEARTBEAT_PATH", hb
-        ):
+        with patch("nuri.agents.actors.state_replicator_dr.HEARTBEAT_PATH", hb):
             actor = StateReplicatorDR()
-            result = actor.run(
-                {"action": "snapshot", "replica_id": "mbp-replica", "role": "replica"}
-            )
+            result = actor.run({"action": "snapshot", "replica_id": "mbp-replica", "role": "replica"})
         assert result.outcome == Outcome.PASS
         assert result.output["status"] == "healthy"
         assert result.output["sync_lag_seconds"] is not None
@@ -159,13 +149,9 @@ class TestSnapshotAction:
         hb.touch()
         old_ts = _time.time() - 1200  # 20분 전
         os.utime(hb, (old_ts, old_ts))
-        with patch(
-            "nuri.agents.actors.state_replicator_dr.HEARTBEAT_PATH", hb
-        ):
+        with patch("nuri.agents.actors.state_replicator_dr.HEARTBEAT_PATH", hb):
             actor = StateReplicatorDR()
-            result = actor.run(
-                {"action": "snapshot", "replica_id": "mbp-replica", "role": "replica"}
-            )
+            result = actor.run({"action": "snapshot", "replica_id": "mbp-replica", "role": "replica"})
         assert result.output["status"] == "stale"
         assert 600 <= result.output["sync_lag_seconds"] < 3600
 
@@ -178,13 +164,9 @@ class TestSnapshotAction:
         hb.touch()
         old_ts = _time.time() - 7200  # 2시간 전
         os.utime(hb, (old_ts, old_ts))
-        with patch(
-            "nuri.agents.actors.state_replicator_dr.HEARTBEAT_PATH", hb
-        ):
+        with patch("nuri.agents.actors.state_replicator_dr.HEARTBEAT_PATH", hb):
             actor = StateReplicatorDR()
-            result = actor.run(
-                {"action": "snapshot", "replica_id": "mbp-replica", "role": "replica"}
-            )
+            result = actor.run({"action": "snapshot", "replica_id": "mbp-replica", "role": "replica"})
         assert result.output["status"] == "unreachable"
         assert result.output["sync_lag_seconds"] >= 3600
 
@@ -202,9 +184,7 @@ class TestSnapshotAction:
 
     def test_snapshot_invalid_role_blocks(self, patched_db):
         actor = StateReplicatorDR()
-        result = actor.run(
-            {"action": "snapshot", "replica_id": "x", "role": "tertiary"}
-        )
+        result = actor.run({"action": "snapshot", "replica_id": "x", "role": "tertiary"})
         assert result.outcome == Outcome.BLOCK
         rows = query("SELECT COUNT(*) AS c FROM dr_replicas", db_path=patched_db)
         assert rows[0]["c"] == 0  # state 변경 X
@@ -212,12 +192,8 @@ class TestSnapshotAction:
     def test_snapshot_idempotent_upsert(self, patched_db):
         """동일 replica_id 두 번 snapshot → row 1개 (upsert)."""
         actor = StateReplicatorDR()
-        actor.run(
-            {"action": "snapshot", "replica_id": "macmini-primary", "role": "primary"}
-        )
-        actor.run(
-            {"action": "snapshot", "replica_id": "macmini-primary", "role": "primary"}
-        )
+        actor.run({"action": "snapshot", "replica_id": "macmini-primary", "role": "primary"})
+        actor.run({"action": "snapshot", "replica_id": "macmini-primary", "role": "primary"})
         rows = query("SELECT * FROM dr_replicas", db_path=patched_db)
         assert len(rows) == 1
 
@@ -235,16 +211,14 @@ class TestVerifyAction:
 
     def test_verify_all_healthy_passes(self, patched_db):
         actor = StateReplicatorDR()
-        actor.run(
-            {"action": "snapshot", "replica_id": "macmini-primary", "role": "primary"}
-        )
+        actor.run({"action": "snapshot", "replica_id": "macmini-primary", "role": "primary"})
         # replica 도 healthy 로 직접 등록 (heartbeat probe 우회)
         upsert_dr_replica(
             replica_id="mbp-replica",
             role="replica",
             hostname="mbp-test",
             last_sync_at="2026-05-01 12:00:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=120,
             status="healthy",
             db_path=patched_db,
@@ -259,7 +233,7 @@ class TestVerifyAction:
             role="primary",
             hostname="macmini",
             last_sync_at="2026-05-01 12:00:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=0,
             status="healthy",
             db_path=patched_db,
@@ -269,7 +243,7 @@ class TestVerifyAction:
             role="replica",
             hostname="mbp",
             last_sync_at="2026-05-01 11:30:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=1800,
             status="stale",
             db_path=patched_db,
@@ -286,7 +260,7 @@ class TestVerifyAction:
             role="primary",
             hostname="macmini",
             last_sync_at="2026-05-01 12:00:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=0,
             status="healthy",
             db_path=patched_db,
@@ -296,7 +270,7 @@ class TestVerifyAction:
             role="replica",
             hostname="mbp",
             last_sync_at="2026-05-01 09:00:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=10800,
             status="unreachable",
             db_path=patched_db,
@@ -314,7 +288,7 @@ class TestVerifyAction:
             role="primary",
             hostname="macmini",
             last_sync_at="2026-05-01 12:00:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=0,
             status="healthy",
             db_path=patched_db,
@@ -340,9 +314,7 @@ class TestVerifyAction:
         )
         assert rows[0]["status"] == "out_of_sync"
         # blocks 에 mismatch 정보 포함
-        assert any(
-            "schema mismatch" in b["reason"] for b in result.output["blocks"]
-        )
+        assert any("schema mismatch" in b["reason"] for b in result.output["blocks"])
 
     def test_verify_invalid_max_lag_blocks(self, patched_db):
         actor = StateReplicatorDR()
@@ -356,7 +328,7 @@ class TestVerifyAction:
             role="primary",
             hostname="macmini",
             last_sync_at="2026-05-01 12:00:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=0,
             status="healthy",
             db_path=patched_db,
@@ -366,7 +338,7 @@ class TestVerifyAction:
             role="replica",
             hostname="mbp",
             last_sync_at="2026-05-01 11:55:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=300,
             status="healthy",
             db_path=patched_db,
@@ -393,7 +365,7 @@ class TestListReplicasAction:
             role="primary",
             hostname="macmini",
             last_sync_at="2026-05-01 12:00:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=0,
             status="healthy",
             db_path=patched_db,
@@ -403,7 +375,7 @@ class TestListReplicasAction:
             role="replica",
             hostname="mbp",
             last_sync_at="2026-05-01 11:55:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=300,
             status="healthy",
             db_path=patched_db,
@@ -433,9 +405,7 @@ class TestAuditTrail:
 
     def test_snapshot_recorded_in_audit_ledger(self, patched_db):
         actor = StateReplicatorDR()
-        actor.run(
-            {"action": "snapshot", "replica_id": "macmini-primary", "role": "primary"}
-        )
+        actor.run({"action": "snapshot", "replica_id": "macmini-primary", "role": "primary"})
         rows = query(
             "SELECT actor_name, layer, outcome FROM agent_audit_ledger",
             db_path=patched_db,
@@ -518,7 +488,7 @@ class TestDiscordPublish:
             role="primary",
             hostname="macmini",
             last_sync_at="2026-05-01 12:00:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=0,
             status="healthy",
             db_path=patched_db,
@@ -528,14 +498,12 @@ class TestDiscordPublish:
             role="replica",
             hostname="mbp",
             last_sync_at="2026-05-01 09:00:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=10800,
             status="unreachable",
             db_path=patched_db,
         )
-        with patch(
-            "nuri.agents.actors.state_replicator_dr.StateReplicatorDR._publish_incidents"
-        ) as mock_publish:
+        with patch("nuri.agents.actors.state_replicator_dr.StateReplicatorDR._publish_incidents") as mock_publish:
             actor = StateReplicatorDR()
             result = actor.run({"action": "verify"})
             assert result.outcome == Outcome.BLOCK
@@ -547,14 +515,12 @@ class TestDiscordPublish:
             role="primary",
             hostname="macmini",
             last_sync_at="2026-05-01 12:00:00",
-            last_sync_schema_version=40,
+            last_sync_schema_version=41,
             sync_lag_seconds=0,
             status="healthy",
             db_path=patched_db,
         )
-        with patch(
-            "nuri.agents.actors.state_replicator_dr.StateReplicatorDR._publish_incidents"
-        ) as mock_publish:
+        with patch("nuri.agents.actors.state_replicator_dr.StateReplicatorDR._publish_incidents") as mock_publish:
             actor = StateReplicatorDR()
             actor.run({"action": "verify"})
             assert not mock_publish.called

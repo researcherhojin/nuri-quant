@@ -671,7 +671,7 @@ class TestRegimeChangeDetection:
 
         with (
             patch.object(rp_module, "_summarize_last_step", side_effect=flip_summary),
-            patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish,
+            patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage,
         ):
             result = actor.run(
                 {
@@ -684,11 +684,10 @@ class TestRegimeChangeDetection:
             )
             assert result.output["regime_changed"] is True
             assert result.output["prev_argmax"] is not None
-            mock_publish.assert_called_once()
-            # ROLLOUT channel + embed
-            call_kwargs = mock_publish.call_args.kwargs
-            assert call_kwargs["actor_name"] == "regime-posterior"
-            assert "title" in call_kwargs["embed"]
+            mock_stage.assert_called_once()
+            kw = mock_stage.call_args.kwargs
+            assert kw["actor_name"] == "regime-posterior"
+            assert kw["payload"]["kind"] == "regime_change"
 
     def test_publish_failure_does_not_block_actor(self, patched_db, two_regime_data):
         """ROLLOUT publish 실패 시에도 actor outcome 은 PASS 유지 (best-effort)."""
@@ -721,7 +720,7 @@ class TestRegimeChangeDetection:
 
         with (
             patch.object(rp_module, "_summarize_last_step", side_effect=flip),
-            patch("nuri.agents.discord.publisher.publish", side_effect=RuntimeError("network")),
+            patch("nuri.agents.discord.outbox.stage_rollout", side_effect=RuntimeError("outbox down")),
         ):
             result = actor.run(
                 {

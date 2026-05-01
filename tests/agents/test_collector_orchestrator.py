@@ -398,9 +398,7 @@ class TestOrchestrateInputValidation:
 class TestScanHealth:
     def _seed(self, db_path, name, statuses):
         for s in statuses:
-            log_collector_run(
-                collector_name=name, status=s, db_path=db_path
-            )
+            log_collector_run(collector_name=name, status=s, db_path=db_path)
 
     def test_no_data_returns_pass(self, patched_db):
         actor = CollectorOrchestrator()
@@ -425,9 +423,7 @@ class TestScanHealth:
         result = actor.run({"action": "scan_health", "hours": 24})
         assert result.outcome == Outcome.WARN
         assert result.output["unhealthy_count"] == 1
-        unhealthy = [
-            s for s in result.output["summaries"] if s["health_status"] == "unhealthy"
-        ]
+        unhealthy = [s for s in result.output["summaries"] if s["health_status"] == "unhealthy"]
         assert unhealthy[0]["collector_name"] == "yfinance"
 
     def test_all_unhealthy_block(self, patched_db):
@@ -460,25 +456,17 @@ class TestScanHealth:
 class TestListRecent:
     def test_lists_all_when_no_filter(self, patched_db):
         for name in ("kis_prices", "yfinance", "fred"):
-            log_collector_run(
-                collector_name=name, status="finished", db_path=patched_db
-            )
+            log_collector_run(collector_name=name, status="finished", db_path=patched_db)
         actor = CollectorOrchestrator()
         result = actor.run({"action": "list_recent", "limit": 10})
         assert result.outcome == Outcome.PASS
         assert result.output["count"] == 3
 
     def test_filters_by_collector_name(self, patched_db):
-        log_collector_run(
-            collector_name="kis_prices", status="finished", db_path=patched_db
-        )
-        log_collector_run(
-            collector_name="yfinance", status="finished", db_path=patched_db
-        )
+        log_collector_run(collector_name="kis_prices", status="finished", db_path=patched_db)
+        log_collector_run(collector_name="yfinance", status="finished", db_path=patched_db)
         actor = CollectorOrchestrator()
-        result = actor.run(
-            {"action": "list_recent", "collector_name": "yfinance", "limit": 10}
-        )
+        result = actor.run({"action": "list_recent", "collector_name": "yfinance", "limit": 10})
         assert result.output["count"] == 1
         assert result.output["runs"][0]["collector_name"] == "yfinance"
 
@@ -505,80 +493,51 @@ class TestListRecent:
 
 
 class TestDiscordPublish:
-    def test_orchestrate_failure_publishes_to_ops(self, patched_db):
-        with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher"
-        ) as MockPub:
+    def test_orchestrate_failure_stages_to_ops(self, patched_db):
+        """orchestrate failure → outbox stage_ops (PR3 Codex Round 6)."""
+        with patch("nuri.agents.discord.outbox.stage_ops") as mock_stage:
             actor = CollectorOrchestrator()
             actor.run(
                 {
                     "action": "orchestrate",
                     "collector_name": "kis_prices",
-                    "collector_fn": lambda: (_ for _ in ()).throw(
-                        RuntimeError("boom")
-                    ),
+                    "collector_fn": lambda: (_ for _ in ()).throw(RuntimeError("boom")),
                     "max_retries": 0,
                 }
             )
-            assert MockPub.return_value.publish_embed.called
-            args, kwargs = MockPub.return_value.publish_embed.call_args
-            from nuri.agents.discord.publisher import Channel
+            mock_stage.assert_called_once()
+            assert mock_stage.call_args.kwargs["payload"]["kind"] == "collector_failure"
 
-            assert args[0] == Channel.OPS
-
-    def test_scan_health_block_publishes_to_incidents(self, patched_db):
-        # 모두 unhealthy → BLOCK → INCIDENTS
+    def test_scan_health_block_stages_to_incidents(self, patched_db):
         for name in ("kis_prices", "yfinance"):
             for _ in range(5):
-                log_collector_run(
-                    collector_name=name, status="failed", db_path=patched_db
-                )
-        with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher"
-        ) as MockPub:
+                log_collector_run(collector_name=name, status="failed", db_path=patched_db)
+        with patch("nuri.agents.discord.outbox.stage_incident") as mock_stage:
             actor = CollectorOrchestrator()
             actor.run({"action": "scan_health", "hours": 24})
-            assert MockPub.return_value.publish_embed.called
-            args, kwargs = MockPub.return_value.publish_embed.call_args
-            from nuri.agents.discord.publisher import Channel
+            mock_stage.assert_called_once()
+            assert mock_stage.call_args.kwargs["payload"]["kind"] == "collector_health_catastrophic"
 
-            assert args[0] == Channel.INCIDENTS
-
-    def test_scan_health_warn_publishes_to_ops(self, patched_db):
-        log_collector_run(
-            collector_name="kis_prices", status="finished", db_path=patched_db
-        )
+    def test_scan_health_warn_stages_to_ops(self, patched_db):
+        log_collector_run(collector_name="kis_prices", status="finished", db_path=patched_db)
         for _ in range(5):
-            log_collector_run(
-                collector_name="yfinance", status="failed", db_path=patched_db
-            )
-        with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher"
-        ) as MockPub:
+            log_collector_run(collector_name="yfinance", status="failed", db_path=patched_db)
+        with patch("nuri.agents.discord.outbox.stage_ops") as mock_stage:
             actor = CollectorOrchestrator()
             actor.run({"action": "scan_health", "hours": 24})
-            assert MockPub.return_value.publish_embed.called
-            args, kwargs = MockPub.return_value.publish_embed.call_args
-            from nuri.agents.discord.publisher import Channel
-
-            assert args[0] == Channel.OPS
+            mock_stage.assert_called_once()
+            assert mock_stage.call_args.kwargs["payload"]["kind"] == "collector_health_warn"
 
     def test_publish_failure_does_not_break_actor(self, patched_db):
         """Discord 가 raise 해도 actor outcome 영향 없음 — best-effort 보장."""
-        with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher"
-        ) as MockPub:
-            MockPub.return_value.publish_embed.side_effect = RuntimeError(
-                "discord down"
-            )
+        with patch("nuri.agents.discord.publisher.DiscordPublisher") as MockPub:
+            MockPub.return_value.publish_embed.side_effect = RuntimeError("discord down")
             actor = CollectorOrchestrator()
             result = actor.run(
                 {
                     "action": "orchestrate",
                     "collector_name": "kis_prices",
-                    "collector_fn": lambda: (_ for _ in ()).throw(
-                        RuntimeError("boom")
-                    ),
+                    "collector_fn": lambda: (_ for _ in ()).throw(RuntimeError("boom")),
                     "max_retries": 0,
                 }
             )
@@ -679,22 +638,16 @@ class TestCli:
 
     def test_cli_warn_returns_1(self, patched_db, capsys):
         # 1 healthy + 1 unhealthy → WARN → rc=1
-        log_collector_run(
-            collector_name="kis_prices", status="finished", db_path=patched_db
-        )
+        log_collector_run(collector_name="kis_prices", status="finished", db_path=patched_db)
         for _ in range(5):
-            log_collector_run(
-                collector_name="yfinance", status="failed", db_path=patched_db
-            )
+            log_collector_run(collector_name="yfinance", status="failed", db_path=patched_db)
         rc = main(["scan_health", "--hours", "24"])
         assert rc == 1
 
     def test_cli_block_returns_2(self, patched_db, capsys):
         # 모두 unhealthy → BLOCK → rc=2
         for _ in range(5):
-            log_collector_run(
-                collector_name="kis_prices", status="failed", db_path=patched_db
-            )
+            log_collector_run(collector_name="kis_prices", status="failed", db_path=patched_db)
         rc = main(["scan_health", "--hours", "24"])
         assert rc == 2
 

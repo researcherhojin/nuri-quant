@@ -73,7 +73,12 @@ class FoundationBenchmark(Actor):
     VALID_ACTIONS: tuple[str, ...] = ("benchmark", "compare", "list_runs")
     VALID_KINDS: tuple[str, ...] = ("baseline", "foundation", "traditional")
     VALID_METRICS: tuple[str, ...] = (
-        "brier", "logloss", "sharpe", "mse", "mae", "hit_rate",
+        "brier",
+        "logloss",
+        "sharpe",
+        "mse",
+        "mae",
+        "hit_rate",
     )
 
     def execute(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult:
@@ -140,9 +145,7 @@ class FoundationBenchmark(Actor):
             )
 
         # higher_is_better 기본값 (caller override 가능)
-        higher_is_better = bool(
-            input_data.get("higher_is_better", _DEFAULT_HIGHER_IS_BETTER[metric_name])
-        )
+        higher_is_better = bool(input_data.get("higher_is_better", _DEFAULT_HIGHER_IS_BETTER[metric_name]))
 
         try:
             benchmark_id = log_foundation_benchmark(
@@ -239,12 +242,14 @@ class FoundationBenchmark(Actor):
         any_significant_foundation_win = False
         for metric_name, group in per_metric.items():
             if len(group) < 2:
-                comparisons.append({
-                    "metric_name": metric_name,
-                    "n_models": len(group),
-                    "verdict": "insufficient_models",
-                    "models": group,
-                })
+                comparisons.append(
+                    {
+                        "metric_name": metric_name,
+                        "n_models": len(group),
+                        "verdict": "insufficient_models",
+                        "models": group,
+                    }
+                )
                 continue
             higher_is_better = bool(group[0]["higher_is_better"])
             ranked = sorted(
@@ -255,26 +260,26 @@ class FoundationBenchmark(Actor):
             winner = ranked[0]
             runner = ranked[1]
             # baseline vs foundation 비교 — foundation 이 winner 이고 baseline runner 면 delta 산출
-            delta = self._relative_improvement(
-                winner["metric_value"], runner["metric_value"], higher_is_better
-            )
+            delta = self._relative_improvement(winner["metric_value"], runner["metric_value"], higher_is_better)
             verdict = self._verdict(winner, runner, delta)
             if verdict == "foundation_wins_significantly":
                 any_significant_foundation_win = True
-            comparisons.append({
-                "metric_name": metric_name,
-                "n_models": len(group),
-                "winner_model_id": winner["model_id"],
-                "winner_kind": winner["model_kind"],
-                "winner_value": winner["metric_value"],
-                "runner_model_id": runner["model_id"],
-                "runner_kind": runner["model_kind"],
-                "runner_value": runner["metric_value"],
-                "delta_relative": delta,
-                "higher_is_better": higher_is_better,
-                "verdict": verdict,
-                "ranked_models": ranked,
-            })
+            comparisons.append(
+                {
+                    "metric_name": metric_name,
+                    "n_models": len(group),
+                    "winner_model_id": winner["model_id"],
+                    "winner_kind": winner["model_kind"],
+                    "winner_value": winner["metric_value"],
+                    "runner_model_id": runner["model_id"],
+                    "runner_kind": runner["model_kind"],
+                    "runner_value": runner["metric_value"],
+                    "delta_relative": delta,
+                    "higher_is_better": higher_is_better,
+                    "verdict": verdict,
+                    "ranked_models": ranked,
+                }
+            )
 
         # 단 1개 model 만 등록된 경우 (모든 metric 그룹이 insufficient_models) → WARN
         all_insufficient = all(c["verdict"] == "insufficient_models" for c in comparisons)
@@ -298,9 +303,7 @@ class FoundationBenchmark(Actor):
         )
 
     @staticmethod
-    def _relative_improvement(
-        winner_val: float, runner_val: float, higher_is_better: bool
-    ) -> float:
+    def _relative_improvement(winner_val: float, runner_val: float, higher_is_better: bool) -> float:
         """winner 가 runner 대비 얼마나 우수한가 — relative pct (0.10 = 10% 개선).
 
         higher_is_better=True 일 때: (winner - runner) / |runner|
@@ -380,28 +383,18 @@ class FoundationBenchmark(Actor):
     ) -> None:
         """foundation 우수 시 ROLLOUT 채널에 promotion 권고. 실패해도 actor outcome 영향 X."""
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_rollout
 
             wins = [c for c in comparisons if c.get("verdict") == "foundation_wins_significantly"]
-            lines = []
-            for c in wins:
-                lines.append(
-                    f"- **{c['metric_name']}**: {c['winner_model_id']} "
-                    f"({c['winner_value']:.4f}) > {c['runner_model_id']} "
-                    f"({c['runner_value']:.4f}) — Δ {c['delta_relative'] * 100:.1f}%"
-                )
-            embed = {
-                "title": f"Foundation model win — {benchmark_run}",
-                "description": (
-                    "Consider promotion — foundation model significantly outperforms baseline "
-                    f"on {len(wins)} metric(s):\n" + "\n".join(lines)
-                ),
-                "color": 0x2ECC71,
-                "footer": {"text": f"nuri-quant • foundation-benchmark • run_id={run_id[:8]}"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.ROLLOUT,
-                embed=embed,
+            metrics = ",".join(c["metric_name"] for c in wins)
+            stage_rollout(
+                payload={
+                    "kind": "foundation_promotion",
+                    "summary": (f"foundation wins {len(wins)} metric(s) on {benchmark_run}: {metrics}"),
+                    "benchmark_run": benchmark_run,
+                    "wins": wins,
+                },
+                dedupe_key=f"foundation_promotion:{benchmark_run}",
                 actor_name="foundation-benchmark",
                 run_id=run_id,
             )
@@ -418,9 +411,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("action", choices=["benchmark", "compare", "list_runs"])
     parser.add_argument("--benchmark-run", default=None)
     parser.add_argument("--model-id", default=None)
-    parser.add_argument(
-        "--model-kind", default="baseline", choices=["baseline", "foundation", "traditional"]
-    )
+    parser.add_argument("--model-kind", default="baseline", choices=["baseline", "foundation", "traditional"])
     parser.add_argument(
         "--metric-name",
         default="brier",

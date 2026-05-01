@@ -215,6 +215,62 @@ def _run_db_maintenance():
         logger.error(f"[db_maintenance] 실행 실패: {e}", exc_info=True)
 
 
+def _run_brief_audit():
+    """BriefAuditor — Discord-as-dev-loop self-quality check.
+
+    매 6시간마다 #brief 채널 emit 24h windowing audit. quality issue 발견 시
+    deterministic check (C1-C3) 결과를 #incidents 로 surface. dedupe 24h.
+    실행 실패가 다음 job 영향 없게 exception 흡수 (다른 _run_* 와 동일).
+    """
+    try:
+        from nuri.agents.actors.brief_auditor import BriefAuditor
+
+        result = BriefAuditor().run({"hours": 24})
+        logger.info(
+            f"[brief_audit] decisions={result.output['decisions_audited']} "
+            f"found={result.output['issues_found']} "
+            f"emitted={result.output['issues_emitted']}"
+        )
+    except Exception as e:
+        logger.error(f"[brief_audit] 실행 실패: {e}", exc_info=True)
+
+
+def _run_channel_dispatcher(channel: str):
+    """ChannelDispatcher — single-writer Discord outbox flush (Codex Round 6).
+
+    pending events 종합 → 1 embed → webhook. #brief 만 quiet-period (60s) gate.
+    """
+    try:
+        from nuri.agents.actors.channel_dispatcher import ChannelDispatcher
+
+        result = ChannelDispatcher().run({"channel": channel})
+        out = result.output
+        if "skipped" in out:
+            logger.info(f"[dispatcher:{channel}] skipped={out['skipped']}")
+        else:
+            logger.info(
+                f"[dispatcher:{channel}] claimed={out.get('claimed_n')} "
+                f"sent={out.get('marked_sent_n')} http={out.get('http_status')}"
+            )
+    except Exception as e:
+        logger.error(f"[dispatcher:{channel}] 실행 실패: {e}", exc_info=True)
+
+
+def _run_outbox_watchdog():
+    """OutboxWatchdog — 직접 #ops 발송 (recursion 방지). 10분 마다."""
+    try:
+        from nuri.agents.actors.outbox_watchdog import OutboxWatchdog
+
+        result = OutboxWatchdog().run({})
+        n = len(result.output.get("breaches", []))
+        if n > 0:
+            logger.warning(f"[outbox_watchdog] {n} breach(es) — alert sent")
+        else:
+            logger.info("[outbox_watchdog] healthy")
+    except Exception as e:
+        logger.error(f"[outbox_watchdog] 실행 실패: {e}", exc_info=True)
+
+
 # ═══════════════════════════════════════════════════════
 # 스케줄 정의
 # ═══════════════════════════════════════════════════════
@@ -283,6 +339,20 @@ SCHEDULES = [
     # 사용자 명령 없이도 매일 판단 trigger — session-start 에서 Claude 가
     # 이 brief 를 pick up 해 qualitative 뉴스와 cross-ref.
     {"name": "premarket_brief", "func": _run_premarket_brief, "args": (), "cron": "0 9 * * 1-5", "tz": "US/Eastern"},
+    # Brief auditor (Discord-as-dev-loop) — 매 6시간 #brief 품질 self-audit.
+    # decision_compiler emit 의 conflict / noise / identical-conviction 검출 →
+    # #incidents 로 ticket 자동 emit. dedupe 24h. recommend-only, ZERO LLM.
+    {"name": "brief_audit", "func": _run_brief_audit, "args": (), "cron": "0 */6 * * *"},
+    # Discord channel dispatcher (Codex Round 6, 2026-05-02) — single-writer outbox flush.
+    # PR1 shadow mode: outbox 는 비어있으므로 발송 없음. 실제 사용자 화면 변화는 PR2/PR3 channel-migration 시.
+    # #brief: 1분 polling + quiet-period gate (60s no-new-event)
+    # #ops: 10분, #incidents: 10분, #rollout: 일요일 06:00 KST
+    {"name": "dispatcher_brief", "func": _run_channel_dispatcher, "args": ("brief",), "cron": "* * * * *"},
+    {"name": "dispatcher_ops", "func": _run_channel_dispatcher, "args": ("ops",), "cron": "*/10 * * * *"},
+    {"name": "dispatcher_incidents", "func": _run_channel_dispatcher, "args": ("incidents",), "cron": "*/10 * * * *"},
+    {"name": "dispatcher_rollout", "func": _run_channel_dispatcher, "args": ("rollout",), "cron": "0 6 * * 0"},
+    # Watchdog — outbox backlog / oldest-pending-age threshold breach 시 #ops 직접 발송 (recursion 방지).
+    {"name": "outbox_watchdog", "func": _run_outbox_watchdog, "args": (), "cron": "*/10 * * * *"},
     # DB 백업 (매일 자정)
     {"name": "backup", "func": _run_backup, "args": (), "cron": "0 0 * * *"},
     # DB 유지보수 (일요일 새벽 3시)

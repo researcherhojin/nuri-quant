@@ -305,16 +305,12 @@ class TestInvalidAction:
 class TestCheckInputValidation:
     def test_missing_feature_name_blocks(self, patched_db, no_publish):
         actor = DriftSentinel()
-        result = actor.run(
-            {"action": "check", "baseline": [1.0, 2.0], "current": [1.0], "test_type": "psi"}
-        )
+        result = actor.run({"action": "check", "baseline": [1.0, 2.0], "current": [1.0], "test_type": "psi"})
         assert result.outcome == Outcome.BLOCK
 
     def test_missing_baseline_blocks(self, patched_db, no_publish):
         actor = DriftSentinel()
-        result = actor.run(
-            {"action": "check", "feature_name": "x", "current": [1.0], "test_type": "psi"}
-        )
+        result = actor.run({"action": "check", "feature_name": "x", "current": [1.0], "test_type": "psi"})
         assert result.outcome == Outcome.BLOCK
 
     def test_invalid_test_type_blocks(self, patched_db, no_publish):
@@ -647,9 +643,7 @@ class TestListAlerts:
         self._seed_alerts(patched_db)
         actor = DriftSentinel()
         # 미래 시점 → 0 hits
-        result = actor.run(
-            {"action": "list_alerts", "since_iso": "2099-01-01 00:00:00"}
-        )
+        result = actor.run({"action": "list_alerts", "since_iso": "2099-01-01 00:00:00"})
         assert result.outcome == Outcome.PASS
         assert result.output["count"] == 0
 
@@ -660,14 +654,13 @@ class TestListAlerts:
 
 
 class TestDiscordPublishRouting:
-    def test_critical_publishes_to_incidents(self, patched_db):
+    """PR3 Codex Round 6: drift critical → outbox stage_incident, major → stage_ops."""
+
+    def test_critical_stages_to_incidents(self, patched_db):
         rng = np.random.default_rng(42)
         baseline = rng.normal(0, 1, 1000).tolist()
         current = rng.normal(5, 1, 1000).tolist()
-        with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-            return_value=MagicMock(ok=True, channel="incidents", http_status=204, retry_count=0),
-        ) as pub_embed:
+        with patch("nuri.agents.discord.outbox.stage_incident") as mock_stage:
             actor = DriftSentinel()
             actor.run(
                 {
@@ -679,22 +672,17 @@ class TestDiscordPublishRouting:
                     "actor_name": "regime-posterior",
                 }
             )
-        from nuri.agents.discord.publisher import Channel
+        assert mock_stage.called
+        assert mock_stage.call_args.kwargs["payload"]["kind"] == "drift_critical"
 
-        assert pub_embed.called
-        call = pub_embed.call_args
-        channel_arg = call.args[0] if call.args else call.kwargs.get("channel")
-        assert channel_arg == Channel.INCIDENTS
-
-    def test_major_publishes_to_ops(self, patched_db):
-        # PSI major (0.25-0.50) 강제
+    def test_major_stages_to_ops(self, patched_db):
         rng = np.random.default_rng(42)
         baseline = rng.normal(0, 1, 5000).tolist()
         current = rng.normal(0.7, 1, 5000).tolist()
-        with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-            return_value=MagicMock(ok=True, channel="ops", http_status=204, retry_count=0),
-        ) as pub_embed:
+        with (
+            patch("nuri.agents.discord.outbox.stage_ops") as mock_ops,
+            patch("nuri.agents.discord.outbox.stage_incident") as mock_inc,
+        ):
             actor = DriftSentinel()
             result = actor.run(
                 {
@@ -705,28 +693,22 @@ class TestDiscordPublishRouting:
                     "test_type": "psi",
                 }
             )
-        # severity major 가 나와야 publish 호출됨
         if result.output["severity"] == "major":
-            from nuri.agents.discord.publisher import Channel
-
-            assert pub_embed.called
-            channel_arg = pub_embed.call_args.args[0] if pub_embed.call_args.args else pub_embed.call_args.kwargs.get(
-                "channel"
-            )
-            assert channel_arg == Channel.OPS
+            assert mock_ops.called
+            assert mock_ops.call_args.kwargs["payload"]["kind"] == "drift_major"
+        elif result.output["severity"] == "critical":
+            assert mock_inc.called
         else:
-            # severity 가 critical 이라면 INCIDENTS 로 가야 — 본 테스트 invariant 미충족
-            # 하지만 publish 자체는 호출되어야 함 (defensive)
-            assert pub_embed.called
+            assert not mock_ops.called and not mock_inc.called
 
-    def test_stable_does_not_publish(self, patched_db):
+    def test_stable_does_not_stage(self, patched_db):
         rng = np.random.default_rng(42)
         baseline = rng.normal(0, 1, 1000).tolist()
         current = rng.normal(0, 1, 1000).tolist()
-        with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-            return_value=MagicMock(ok=True, channel="ops", http_status=204, retry_count=0),
-        ) as pub_embed:
+        with (
+            patch("nuri.agents.discord.outbox.stage_ops") as mock_ops,
+            patch("nuri.agents.discord.outbox.stage_incident") as mock_inc,
+        ):
             actor = DriftSentinel()
             actor.run(
                 {
@@ -737,15 +719,16 @@ class TestDiscordPublishRouting:
                     "test_type": "psi",
                 }
             )
-        assert not pub_embed.called
+        assert not mock_ops.called
+        assert not mock_inc.called
 
     def test_publish_failure_does_not_break_check(self, patched_db):
         rng = np.random.default_rng(42)
         baseline = rng.normal(0, 1, 1000).tolist()
         current = rng.normal(5, 1, 1000).tolist()
         with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-            side_effect=RuntimeError("webhook 500"),
+            "nuri.agents.discord.outbox.stage_incident",
+            side_effect=RuntimeError("outbox down"),
         ):
             actor = DriftSentinel()
             result = actor.run(
@@ -906,12 +889,7 @@ class TestAuditTrail:
             "SELECT actor_name, layer, outcome FROM agent_audit_ledger",
             db_path=patched_db,
         )
-        assert any(
-            r["actor_name"] == "drift-sentinel"
-            and r["layer"] == "B"
-            and r["outcome"] == "pass"
-            for r in rows
-        )
+        assert any(r["actor_name"] == "drift-sentinel" and r["layer"] == "B" and r["outcome"] == "pass" for r in rows)
 
     def test_invalid_action_block_audited(self, patched_db, no_publish):
         actor = DriftSentinel()
