@@ -38,13 +38,13 @@ class TestEmitEvent:
     def test_emit_returns_id(self, db_path):
         """emit_event가 양수 event ID를 반환."""
         event_id = emit_event("step_started", "collect", db_path=db_path)
-        assert event_id > 0
+        assert event_id is not None and event_id > 0
 
     def test_emit_multiple_sequential_ids(self, db_path):
         """여러 이벤트의 ID가 순차 증가."""
         id1 = emit_event("step_started", "collect", db_path=db_path)
         id2 = emit_event("step_completed", "collect", duration_ms=100, db_path=db_path)
-        assert id2 > id1
+        assert id1 is not None and id2 is not None and id2 > id1
 
     def test_emit_with_payload(self, db_path):
         """payload가 JSON으로 저장/조회."""
