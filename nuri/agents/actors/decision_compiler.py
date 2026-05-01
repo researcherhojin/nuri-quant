@@ -393,47 +393,47 @@ class DecisionCompiler(Actor):
         rationale: dict,
         run_id: str,
     ) -> None:
-        """emit 된 decision → BRIEF 채널 (사용자 추천)."""
-        try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+        """emit 된 decision → #brief outbox stage (Codex Round 6, 2026-05-02).
 
-            color = 0x2ECC71 if action == "BUY" else 0xE74C3C if action == "SELL" else 0x95A5A6
-            embed = {
-                "title": f"{action} — {ticker}",
-                "description": (
-                    f"decision_id: `{decision_id}`\n"
-                    f"conviction: **{conviction:.3f}**\n"
-                    f"causal: {rationale.get('causal_certainty', 0):.3f} · "
-                    f"regime_top: {rationale.get('regime_top_prob', 0):.3f} · "
-                    f"margin: {rationale.get('top2_margin', 0):.3f}"
-                ),
-                "color": color,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]} • emit only, manual execute"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.BRIEF,
-                embed=embed,
+        ChannelDispatcher 가 quiet-period (60s) 후 종합 1 embed 발송.
+        per-event direct publish 패턴 폐기 — 사용자 통증 (NVDA BUY/BUY/SELL noise).
+        """
+        try:
+            from nuri.agents.discord.outbox import stage_brief
+
+            stage_brief(
+                payload={
+                    "kind": action,
+                    "ticker": ticker,
+                    "conviction": conviction,
+                    "regime": f"top {rationale.get('regime_top_prob', 0):.2f}",
+                    "causal": f"{rationale.get('causal_certainty', 0):.2f}",
+                    "decision_id": decision_id,
+                    "margin": f"{rationale.get('top2_margin', 0):.2f}",
+                },
+                # 같은 decision 이 retry 로 두 번 stage 되어도 1건만 — decision_id 가 dedupe key
+                dedupe_key=f"decision:{decision_id}",
                 actor_name="decision-compiler",
                 run_id=run_id,
             )
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — outbox stage failure must not break decision pipeline
             pass
 
     @staticmethod
     def _publish_block(decision_id: str, ticker: str, reason: str, run_id: str) -> None:
-        """blocked decision → OPS 채널 (operator alert)."""
+        """blocked decision → #ops outbox stage (PR3 Codex Round 6)."""
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_ops
 
-            embed = {
-                "title": f"Decision BLOCKED — {ticker}",
-                "description": (f"decision_id: `{decision_id}`\nreason: {reason}"),
-                "color": 0xF39C12,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]}"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.OPS,
-                embed=embed,
+            stage_ops(
+                payload={
+                    "kind": "decision_blocked",
+                    "ticker": ticker,
+                    "summary": f"{ticker} BLOCKED — {reason} (decision_id={decision_id})",
+                    "decision_id": decision_id,
+                    "reason": reason,
+                },
+                dedupe_key=f"block:{decision_id}",
                 actor_name="decision-compiler",
                 run_id=run_id,
             )
