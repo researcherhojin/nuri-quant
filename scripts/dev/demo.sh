@@ -7,7 +7,8 @@ set -euo pipefail
 
 # Source shared helpers (colors, PYTHON, REPO_ROOT cd, pass/fail/warn).
 # shellcheck source=scripts/_common.sh
-source "$(dirname "$0")/_common.sh"
+# (sourced via $(dirname "$0")/../_common.sh — moved to subdir)
+source "$(dirname "$0")/../_common.sh"
 
 # Local alias `ok` keeps existing demo.sh usage. _common.sh's pass()
 # increments PASS counter, so the demo's final tally now reflects success

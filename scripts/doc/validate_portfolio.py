@@ -30,7 +30,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.import_portfolio import load_holdings_by_account
+from scripts.ops.import_portfolio import load_holdings_by_account
 
 ROOT = Path(__file__).parent.parent
 DEFAULT_CONFIG = ROOT / "config" / "portfolio.yaml"

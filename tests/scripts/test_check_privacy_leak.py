@@ -68,7 +68,7 @@ def tmp_file(tmp_path):
 
 class TestScanFile:
     def test_detects_korean_broker_name(self, tmp_file):
-        from scripts.check_privacy_leak import scan_path
+        from scripts.verify.check_privacy_leak import scan_path
 
         findings = scan_path(tmp_file(LEAK_BROKER_KO))
         broker_findings = [f for f in findings if f.category == "broker_name"]
@@ -78,7 +78,7 @@ class TestScanFile:
         assert "broker_name" in categories
 
     def test_detects_romanized_broker_name(self, tmp_file):
-        from scripts.check_privacy_leak import scan_path
+        from scripts.verify.check_privacy_leak import scan_path
 
         findings = scan_path(tmp_file(LEAK_BROKER_EN))
         patterns = {f.pattern for f in findings}
@@ -86,7 +86,7 @@ class TestScanFile:
         assert "mirae" in patterns
 
     def test_detects_suspect_numeric(self, tmp_file):
-        from scripts.check_privacy_leak import scan_path
+        from scripts.verify.check_privacy_leak import scan_path
 
         findings = scan_path(tmp_file(LEAK_SUSPECT_NUMERIC))
         numeric_findings = [f for f in findings if f.category == "suspect_numeric"]
@@ -97,20 +97,20 @@ class TestScanFile:
 
     def test_round_million_placeholder_is_allowed(self, tmp_file):
         """1_000_000 / 5_000_000 etc. round values treated as placeholders."""
-        from scripts.check_privacy_leak import scan_path
+        from scripts.verify.check_privacy_leak import scan_path
 
         findings = scan_path(tmp_file(LEAK_NUMERIC_NEAR_KEY_BUT_ROUND))
         assert findings == []
 
     def test_clean_fixture_yields_no_findings(self, tmp_file):
-        from scripts.check_privacy_leak import scan_path
+        from scripts.verify.check_privacy_leak import scan_path
 
         findings = scan_path(tmp_file(CLEAN_FIXTURE))
         assert findings == []
 
     def test_large_numeric_far_from_money_key_is_ignored(self, tmp_file):
         """ROW_COUNT, SAMPLE_SIZE etc. are not financial data."""
-        from scripts.check_privacy_leak import scan_path
+        from scripts.verify.check_privacy_leak import scan_path
 
         findings = scan_path(tmp_file(NUMERIC_WITHOUT_MONEY_KEY))
         numeric_findings = [f for f in findings if f.category == "suspect_numeric"]
@@ -121,7 +121,7 @@ class TestTickerPnlPattern:
     """PR #202 leak signature — ticker + PnL co-occurrence."""
 
     def test_detects_signed_pct_with_ticker_in_parens(self):
-        from scripts.check_privacy_leak import scan_text_for_ticker_pnl
+        from scripts.verify.check_privacy_leak import scan_text_for_ticker_pnl
 
         text = "Losses: -34% (TEM), -22% (RKLB), -15% (TSLA) before trigger"
         findings = scan_text_for_ticker_pnl(text)
@@ -132,7 +132,7 @@ class TestTickerPnlPattern:
         assert all(f.category == "ticker_pnl" for f in findings)
 
     def test_detects_ticker_adjacent_signed_pct(self):
-        from scripts.check_privacy_leak import scan_text_for_ticker_pnl
+        from scripts.verify.check_privacy_leak import scan_text_for_ticker_pnl
 
         text = "trailing_stop_arm (PL +43% → +38%)"
         findings = scan_text_for_ticker_pnl(text)
@@ -141,7 +141,7 @@ class TestTickerPnlPattern:
 
     def test_strategy_rule_text_is_not_flagged(self):
         """Rule thresholds like '손절 -7%' should NOT trigger — no ticker context."""
-        from scripts.check_privacy_leak import scan_text_for_ticker_pnl
+        from scripts.verify.check_privacy_leak import scan_text_for_ticker_pnl
 
         text = "O'Neil CAN SLIM: 손절 -7%, 익절 +20%/+40%, 트레일링 -15%"
         findings = scan_text_for_ticker_pnl(text)
@@ -149,7 +149,7 @@ class TestTickerPnlPattern:
 
     def test_abbreviations_not_treated_as_tickers(self):
         """HWM, SL, MDD, CPI, VIX should NOT trigger ticker+PnL."""
-        from scripts.check_privacy_leak import scan_text_for_ticker_pnl
+        from scripts.verify.check_privacy_leak import scan_text_for_ticker_pnl
 
         texts = [
             "Growth | +20% (sell 50%) | -15% from HWM",
@@ -164,7 +164,7 @@ class TestTickerPnlPattern:
 
     def test_kospi_ticker_with_pnl_is_detected(self):
         """.KS suffix tickers should still match."""
-        from scripts.check_privacy_leak import scan_text_for_ticker_pnl
+        from scripts.verify.check_privacy_leak import scan_text_for_ticker_pnl
 
         text = "-8% (SMCI) and 005930.KS +12% disclosure"
         findings = scan_text_for_ticker_pnl(text)
@@ -175,7 +175,7 @@ class TestTickerPnlPattern:
         """--message reads stdin and scans as text."""
         import io
 
-        from scripts import check_privacy_leak as mod
+        from scripts.verify import check_privacy_leak as mod
 
         monkeypatch.setattr("sys.argv", ["check_privacy_leak.py", "--message"])
         monkeypatch.setattr("sys.stdin", io.StringIO("Losses: -34% (TEM)"))
@@ -187,7 +187,7 @@ class TestTickerPnlPattern:
     def test_message_cli_mode_exits_zero_on_clean(self, monkeypatch):
         import io
 
-        from scripts import check_privacy_leak as mod
+        from scripts.verify import check_privacy_leak as mod
 
         monkeypatch.setattr("sys.argv", ["check_privacy_leak.py", "--message", "--quiet"])
         monkeypatch.setattr("sys.stdin", io.StringIO("Standard rule: 손절 -7%"))
@@ -199,12 +199,12 @@ class TestKisExclusion_R138:
     broker name list because it's an Open API integration target."""
 
     def test_kis_not_in_blocked_list(self):
-        from scripts.check_privacy_leak import BROKER_NAMES_KO
+        from scripts.verify.check_privacy_leak import BROKER_NAMES_KO
 
         assert "\ud55c\uad6d\ud22c\uc790\uc99d\uad8c" not in BROKER_NAMES_KO
 
     def test_kis_documentation_does_not_trigger(self, tmp_file):
-        from scripts.check_privacy_leak import scan_path
+        from scripts.verify.check_privacy_leak import scan_path
 
         kis_doc = tmp_file('"""KIS Open API collector."""\n')
         findings = scan_path(kis_doc)
@@ -213,14 +213,14 @@ class TestKisExclusion_R138:
 
 class TestAllowlist:
     def test_self_allowlisted(self):
-        from scripts.check_privacy_leak import is_allowlisted
+        from scripts.verify.check_privacy_leak import is_allowlisted
 
-        path = Path("scripts/check_privacy_leak.py")
+        path = Path("scripts/verify/check_privacy_leak.py")
         assert is_allowlisted(path) is True
 
     def test_external_path_not_allowlisted(self, tmp_path):
         """Repo-external paths should not be allowlisted."""
-        from scripts.check_privacy_leak import is_allowlisted
+        from scripts.verify.check_privacy_leak import is_allowlisted
 
         external = tmp_path / "outside.py"
         external.write_text("noop")
@@ -229,14 +229,14 @@ class TestAllowlist:
 
 class TestExitCodes:
     def test_main_returns_one_on_leak(self, monkeypatch, tmp_file, capsys):
-        from scripts import check_privacy_leak as mod
+        from scripts.verify import check_privacy_leak as mod
 
         leak_file = tmp_file(LEAK_BROKER_KO)
         monkeypatch.setattr("sys.argv", ["check_privacy_leak.py", str(leak_file)])
         assert mod.main() == 1
 
     def test_main_returns_zero_on_clean(self, monkeypatch, tmp_file, capsys):
-        from scripts import check_privacy_leak as mod
+        from scripts.verify import check_privacy_leak as mod
 
         clean_file = tmp_file(CLEAN_FIXTURE)
         monkeypatch.setattr(
@@ -246,7 +246,7 @@ class TestExitCodes:
         assert mod.main() == 0
 
     def test_quiet_suppresses_output_on_clean(self, monkeypatch, tmp_file, capsys):
-        from scripts import check_privacy_leak as mod
+        from scripts.verify import check_privacy_leak as mod
 
         clean_file = tmp_file(CLEAN_FIXTURE)
         monkeypatch.setattr(

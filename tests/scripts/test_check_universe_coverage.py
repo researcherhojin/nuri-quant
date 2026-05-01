@@ -67,7 +67,7 @@ class TestOutputFormat:
         init_db(db)
         monkeypatch.setattr(db_mod, "DB_PATH", db)
 
-        from scripts.check_universe_coverage import main
+        from scripts.verify.check_universe_coverage import main
 
         main()
         out = capsys.readouterr().out
@@ -89,7 +89,7 @@ class TestOutputFormat:
 
     def test_us_only_tables_show_na_label(self, universe_cwd, populated_db, capsys):
         """#288: analyst_ratings KR column = 'n/a (US-only)' in coverage section."""
-        from scripts.check_universe_coverage import main
+        from scripts.verify.check_universe_coverage import main
 
         main()
         out = capsys.readouterr().out
@@ -103,7 +103,7 @@ class TestOutputFormat:
 
     def test_non_us_only_tables_show_real_kr_percentage(self, universe_cwd, populated_db, capsys):
         """prices: KR column shows X/2 (Y%) in coverage section."""
-        from scripts.check_universe_coverage import main
+        from scripts.verify.check_universe_coverage import main
 
         main()
         out = capsys.readouterr().out
@@ -117,7 +117,7 @@ class TestOutputFormat:
 
     def test_footer_explains_us_only_label(self, universe_cwd, populated_db, capsys):
         """Footer teaches the reader what 'n/a (US-only)' means — a docs invariant."""
-        from scripts.check_universe_coverage import main
+        from scripts.verify.check_universe_coverage import main
 
         main()
         out = capsys.readouterr().out
@@ -133,7 +133,7 @@ class TestOutputFormat:
         init_db(db)
         monkeypatch.setattr(db_mod, "DB_PATH", db)
 
-        from scripts.check_universe_coverage import main
+        from scripts.verify.check_universe_coverage import main
 
         main()  # should not raise
         out = capsys.readouterr().out

@@ -3,6 +3,7 @@
 codex Round 1 권장 — light tests for sample date generation cutoff +
 forward anchor behavior + Round 2 P1 output invariant lock-in.
 """
+
 import importlib.util
 import sys
 from pathlib import Path
@@ -16,7 +17,7 @@ from nuri.core.db import init_db, upsert_macro, upsert_prices
 # scripts/ 는 패키지가 아니라 stand-alone — importlib 로 명시 dynamic load
 # (sys.path manipulation 은 runtime OK 지만 Pylance 정적 분석에서 미탐).
 # sys.modules 등록 필수 — @dataclass 의 cls.__module__ lookup path.
-_SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "stage1_classifier_plausibility.py"
+_SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "analysis" / "stage1_classifier_plausibility.py"
 _spec = importlib.util.spec_from_file_location("stage1_classifier_plausibility", _SCRIPT_PATH)
 assert _spec is not None and _spec.loader is not None
 s1 = importlib.util.module_from_spec(_spec)
@@ -37,16 +38,21 @@ def _seed_spy_and_vix(db_path, n_days: int, start_date: str = "2025-01-01"):
     dates = pd.bdate_range(start=start_date, periods=n_days)
     rng = np.random.default_rng(42)
     close = 200 + np.linspace(0, 50, n_days) + rng.normal(0, 0.5, n_days)
-    df = pd.DataFrame({
-        "ticker": "SPY",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.999, "high": close * 1.001, "low": close * 0.999,
-        "close": close, "volume": [50_000_000] * n_days, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "SPY",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.999,
+            "high": close * 1.001,
+            "low": close * 0.999,
+            "close": close,
+            "volume": [50_000_000] * n_days,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
     upsert_macro(
-        [{"indicator": "vix", "date": d.strftime("%Y-%m-%d"), "value": 18.0, "source": "test"}
-         for d in dates],
+        [{"indicator": "vix", "date": d.strftime("%Y-%m-%d"), "value": 18.0, "source": "test"} for d in dates],
         db_path=db_path,
     )
     return [d.strftime("%Y-%m-%d") for d in dates]
@@ -60,20 +66,20 @@ class TestGenerateSampleDates:
         from unittest.mock import patch
 
         from nuri.core.db import query
+
         all_dates = _seed_spy_and_vix(db_path, n_days=100)
         # cutoff = all_dates[-22] (most recent 21 days excluded)
         expected_cutoff = all_dates[-22]
 
         # _generate_sample_dates uses default db (data/portfolio.db) — patch query module-level
         from nuri.quant.regime import classifier as _clf  # noqa: F401  ensures module loaded
+
         with patch.object(s1, "query", side_effect=lambda *a, **kw: query(*a, **kw, db_path=db_path)):
             sample_dates = s1._generate_sample_dates(n=12)
 
         assert sample_dates, "should generate at least 1 sample"
         for d in sample_dates:
-            assert d <= expected_cutoff, (
-                f"sample {d} is past cutoff {expected_cutoff} — forward 21d not measurable"
-            )
+            assert d <= expected_cutoff, f"sample {d} is past cutoff {expected_cutoff} — forward 21d not measurable"
 
 
 class TestForwardAnchorBehavior:
@@ -84,6 +90,7 @@ class TestForwardAnchorBehavior:
         from unittest.mock import patch
 
         from nuri.core.db import query
+
         all_dates = _seed_spy_and_vix(db_path, n_days=100)
         entry_idx = 30  # mid-range
         entry_date = all_dates[entry_idx]
@@ -103,6 +110,7 @@ class TestForwardAnchorBehavior:
         from unittest.mock import patch
 
         from nuri.core.db import query
+
         all_dates = _seed_spy_and_vix(db_path, n_days=100)
         # entry = 95번째 → 이후 SPY 5 거래일만 → 21 부족
         entry_date = all_dates[95]
@@ -122,12 +130,15 @@ class TestRenderMarkdownInvariants:
     def _build_results(self):
         # 3 sampled, 2 with return (1 N/A — usable 분리 검증)
         return [
-            s1.SampleResult(date="2025-06-30", regime="bull_low_vol", confidence=0.8,
-                            exit_date="2025-07-29", forward_return_pct=2.5),
-            s1.SampleResult(date="2025-07-31", regime="recovery", confidence=0.6,
-                            exit_date="2025-08-29", forward_return_pct=-1.2),
-            s1.SampleResult(date="2026-04-01", regime="bull_low_vol", confidence=0.7,
-                            exit_date=None, forward_return_pct=None),  # data not yet available
+            s1.SampleResult(
+                date="2025-06-30", regime="bull_low_vol", confidence=0.8, exit_date="2025-07-29", forward_return_pct=2.5
+            ),
+            s1.SampleResult(
+                date="2025-07-31", regime="recovery", confidence=0.6, exit_date="2025-08-29", forward_return_pct=-1.2
+            ),
+            s1.SampleResult(
+                date="2026-04-01", regime="bull_low_vol", confidence=0.7, exit_date=None, forward_return_pct=None
+            ),  # data not yet available
         ]
 
     def test_render_includes_recency_bias_disclosure(self):

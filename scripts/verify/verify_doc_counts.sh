@@ -2,13 +2,14 @@
 # ═══════════════════════════════════════════════════════
 # Nuri-Quant Doc Count Verify (read-only)
 # 문서의 수치 claim 이 코드 실측과 일치하는지 검증. drift 발견 시 exit 1.
-# Pair: scripts/sync_doc_counts.sh (mutator).
+# Pair: scripts/doc/sync_doc_counts.sh (mutator).
 # Intended for CI — catches drift before merge.
 # ═══════════════════════════════════════════════════════
 set -euo pipefail
 
 # shellcheck source=scripts/_common.sh
-source "$(dirname "$0")/_common.sh"
+# (sourced via $(dirname "$0")/../_common.sh — moved to subdir)
+source "$(dirname "$0")/../_common.sh"
 
 # ─── 실측 count 함수 (sync_doc_counts.sh 와 동일 — self-contained) ──
 live_collectors()   { find nuri/collectors -maxdepth 1 -name "*.py" \
@@ -125,7 +126,7 @@ fi
 summary
 if [ "$FAIL" -gt 0 ]; then
     echo ""
-    echo -e "${RED}Doc drift detected. Run: bash scripts/sync_doc_counts.sh${NC}"
+    echo -e "${RED}Doc drift detected. Run: bash scripts/doc/sync_doc_counts.sh${NC}"
     exit 1
 fi
 exit 0

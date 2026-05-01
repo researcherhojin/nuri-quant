@@ -3,6 +3,7 @@
 Privacy: per project memory, no real tickers/quantities/prices/accounts in
 fixtures. All fixtures use TEST_* placeholders.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -42,6 +43,7 @@ def fixture_yaml(tmp_path: Path) -> Path:
 @pytest.fixture()
 def mock_yfinance_per_ticker(monkeypatch):
     """yfinance.download이 ticker별로 다른 결과를 내도록 패치."""
+
     def fake_download(ticker, *args, **kwargs):
         if ticker == "TEST_VALID":
             return pd.DataFrame(
@@ -57,12 +59,13 @@ def mock_yfinance_per_ticker(monkeypatch):
         return pd.DataFrame()
 
     import yfinance as yf
+
     monkeypatch.setattr(yf, "download", fake_download)
 
 
 class TestCheckTicker:
     def test_valid_ticker_returns_truthy(self, mock_yfinance_per_ticker):
-        from scripts.validate_portfolio import check_ticker
+        from scripts.doc.validate_portfolio import check_ticker
 
         is_valid, rows, error = check_ticker("TEST_VALID")
         assert is_valid is True
@@ -70,7 +73,7 @@ class TestCheckTicker:
         assert error is None
 
     def test_empty_dataframe_returns_invalid(self, mock_yfinance_per_ticker):
-        from scripts.validate_portfolio import check_ticker
+        from scripts.doc.validate_portfolio import check_ticker
 
         is_valid, rows, error = check_ticker("TEST_DELISTED")
         assert is_valid is False
@@ -84,7 +87,7 @@ class TestCheckTicker:
             raise ConnectionError("network down")
 
         monkeypatch.setattr(yf, "download", boom)
-        from scripts.validate_portfolio import check_ticker
+        from scripts.doc.validate_portfolio import check_ticker
 
         is_valid, rows, error = check_ticker("TEST_NETWORK_FAIL")
         assert is_valid is False
@@ -96,7 +99,7 @@ class TestCheckTicker:
 
 class TestValidatePortfolio:
     def test_returns_one_result_per_ticker(self, fixture_yaml, mock_yfinance_per_ticker):
-        from scripts.validate_portfolio import validate_portfolio
+        from scripts.doc.validate_portfolio import validate_portfolio
 
         results = validate_portfolio(fixture_yaml)
         assert len(results) == 3
@@ -111,7 +114,7 @@ class TestValidatePortfolio:
 
 class TestPrintReport:
     def test_lists_valid_and_invalid(self, capsys, mock_yfinance_per_ticker, fixture_yaml):
-        from scripts.validate_portfolio import print_report, validate_portfolio
+        from scripts.doc.validate_portfolio import print_report, validate_portfolio
 
         results = validate_portfolio(fixture_yaml)
         print_report(results)
@@ -124,7 +127,7 @@ class TestPrintReport:
         assert "Action:" in out
 
     def test_quiet_skips_valid_section(self, capsys, mock_yfinance_per_ticker, fixture_yaml):
-        from scripts.validate_portfolio import print_report, validate_portfolio
+        from scripts.doc.validate_portfolio import print_report, validate_portfolio
 
         results = validate_portfolio(fixture_yaml)
         print_report(results, quiet=True)
@@ -150,12 +153,15 @@ class TestPrintReport:
         )
 
         import yfinance as yf
+
         monkeypatch.setattr(
-            yf, "download",
+            yf,
+            "download",
             lambda *a, **kw: pd.DataFrame({"Close": [100]}, index=pd.to_datetime(["2026-04-09"])),
         )
 
-        from scripts.validate_portfolio import print_report, validate_portfolio
+        from scripts.doc.validate_portfolio import print_report, validate_portfolio
+
         results = validate_portfolio(yaml_path)
         print_report(results)
 
@@ -172,23 +178,26 @@ class TestMainExitCodes:
         )
 
         import yfinance as yf
+
         monkeypatch.setattr(
-            yf, "download",
+            yf,
+            "download",
             lambda *a, **kw: pd.DataFrame({"Close": [100]}, index=pd.to_datetime(["2026-04-09"])),
         )
 
-        from scripts import validate_portfolio as mod
+        from scripts.doc import validate_portfolio as mod
+
         monkeypatch.setattr("sys.argv", ["validate_portfolio.py", "--config", str(yaml_path)])
         assert mod.main() == 0
 
     def test_returns_one_when_any_invalid(self, monkeypatch, fixture_yaml, mock_yfinance_per_ticker):
-        from scripts import validate_portfolio as mod
+        from scripts.doc import validate_portfolio as mod
 
         monkeypatch.setattr("sys.argv", ["validate_portfolio.py", "--config", str(fixture_yaml)])
         assert mod.main() == 1
 
     def test_returns_two_when_config_missing(self, monkeypatch, tmp_path):
-        from scripts import validate_portfolio as mod
+        from scripts.doc import validate_portfolio as mod
 
         missing = tmp_path / "does_not_exist.yaml"
         monkeypatch.setattr("sys.argv", ["validate_portfolio.py", "--config", str(missing)])

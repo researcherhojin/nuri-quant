@@ -220,7 +220,7 @@ class TestScheduler:
         """_run_db_maintenance calls run_maintenance."""
         from nuri.scheduler import _run_db_maintenance
 
-        with patch("scripts.db_maintenance.run_maintenance") as mock_maint:
+        with patch("scripts.db.db_maintenance.run_maintenance") as mock_maint:
             _run_db_maintenance()
         mock_maint.assert_called_once()
 
@@ -228,7 +228,7 @@ class TestScheduler:
         """_run_db_maintenance catches exceptions."""
         from nuri.scheduler import _run_db_maintenance
 
-        with patch("scripts.db_maintenance.run_maintenance", side_effect=RuntimeError("fail")):
+        with patch("scripts.db.db_maintenance.run_maintenance", side_effect=RuntimeError("fail")):
             _run_db_maintenance()
 
     def test_create_scheduler(self):
@@ -475,7 +475,7 @@ class TestScheduler_R26:
         # The import happens inside the function, so mock the module
         mock_mod = MagicMock()
         mock_mod.run_maintenance = MagicMock(side_effect=Exception("fail"))
-        monkeypatch.setitem(sys.modules, "scripts.db_maintenance", mock_mod)
+        monkeypatch.setitem(sys.modules, "scripts.db.db_maintenance", mock_mod)
         from nuri.scheduler import _run_db_maintenance
 
         _run_db_maintenance()  # Should not raise
@@ -578,7 +578,7 @@ class TestSchedulerDispatch:
     def test_run_db_maintenance(self):
         from nuri.scheduler import _run_db_maintenance
 
-        with patch("scripts.db_maintenance.run_maintenance"):
+        with patch("scripts.db.db_maintenance.run_maintenance"):
             _run_db_maintenance()
 
     def test_schedules_cron_format(self):

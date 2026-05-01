@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from nuri.core.db import get_db, init_db, query, upsert_portfolio
-from scripts.import_portfolio import _diff_new_tickers, _trigger_consensus
+from scripts.ops.import_portfolio import _diff_new_tickers, _trigger_consensus
 
 
 @pytest.fixture
@@ -198,7 +198,7 @@ def test_trigger_consensus_empty_set_no_calls(db):
 
 def test_main_no_consensus_flag_skips_trigger(db, tmp_path, monkeypatch):
     """--no-consensus 지정 시 신규 ticker 있어도 consensus 호출 X."""
-    import scripts.import_portfolio as ip
+    import scripts.ops.import_portfolio as ip
 
     yaml_path = tmp_path / "portfolio.yaml"
     yaml_path.write_text(
@@ -213,7 +213,7 @@ accounts:
     )
     monkeypatch.setattr(ip, "CONFIG_PATH", yaml_path)
 
-    with patch("scripts.import_portfolio._trigger_consensus") as mock_trigger:
+    with patch("scripts.ops.import_portfolio._trigger_consensus") as mock_trigger:
         rc = ip.main(["--no-consensus"])
 
     assert rc == 0
@@ -225,7 +225,7 @@ accounts:
 
 def test_main_default_calls_trigger_for_new_tickers(db, tmp_path, monkeypatch):
     """default (--no-consensus 없음) 신규 ticker 발견 시 _trigger_consensus 호출."""
-    import scripts.import_portfolio as ip
+    import scripts.ops.import_portfolio as ip
 
     yaml_path = tmp_path / "portfolio.yaml"
     yaml_path.write_text(
@@ -240,7 +240,7 @@ accounts:
     )
     monkeypatch.setattr(ip, "CONFIG_PATH", yaml_path)
 
-    with patch("scripts.import_portfolio._trigger_consensus", return_value=1) as mock_trigger:
+    with patch("scripts.ops.import_portfolio._trigger_consensus", return_value=1) as mock_trigger:
         rc = ip.main([])
 
     assert rc == 0
@@ -252,7 +252,7 @@ accounts:
 
 def test_main_no_new_tickers_skips_trigger(db, tmp_path, monkeypatch):
     """yaml 과 DB 일치 시 _trigger_consensus 호출 X (불필요한 LLM 호출 회피)."""
-    import scripts.import_portfolio as ip
+    import scripts.ops.import_portfolio as ip
 
     upsert_portfolio(
         [{"account": "main", "ticker": "AAPL", "quantity": 1, "avg_price": 100, "currency": "USD", "sector": "Tech"}],
@@ -271,7 +271,7 @@ accounts:
     )
     monkeypatch.setattr(ip, "CONFIG_PATH", yaml_path)
 
-    with patch("scripts.import_portfolio._trigger_consensus") as mock_trigger:
+    with patch("scripts.ops.import_portfolio._trigger_consensus") as mock_trigger:
         rc = ip.main([])
 
     assert rc == 0

@@ -18,10 +18,10 @@ This scanner runs in three places:
 Patterns
 --------
 1. Real broker names (Korean retail brokerages the project owner could use):
-   증권사, 증권사, 증권사, 한국투자증권, 증권사, 증권사,
-   증권사, 증권사, 증권사, 증권사, 증권사, 증권사,
-   증권사, 이베스트, 흥국, IBK투자
-   plus their romanized variants (brokerage, brokerage, brokerage, ...)
+   카카오페이, 미래에셋, 키움증권, 한국투자증권, 삼성증권, NH투자증권,
+   토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권,
+   대신증권, 이베스트, 흥국, IBK투자
+   plus their romanized variants (kakaopay, mirae, kiwoom, ...)
 
 2. Suspect-large numeric literals (≥7 digits) that look like real KRW
    total_invested or cash balances. To avoid false positives on
@@ -58,7 +58,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).parent.parent
+ROOT = Path(__file__).parent.parent.parent  # repo root (scripts/verify/X.py → 3 levels up)
 
 # ANSI colors
 RED = "\033[0;31m"
@@ -83,39 +83,39 @@ NC = "\033[0m"
 # as fallback. If a KIS credential leaks, it would be via the file pattern,
 # not the broker name.
 BROKER_NAMES_KO: tuple[str, ...] = (
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
-    "증권사",
+    "카카오페이",
+    "미래에셋",
+    "키움증권",
+    "삼성증권",
+    "NH투자증권",
+    "토스증권",
+    "KB증권",
+    "신한투자증권",
+    "하나증권",
+    "메리츠증권",
+    "유안타증권",
+    "대신증권",
+    "이베스트투자증권",
+    "흥국증권",
+    "IBK투자증권",
 )
 
 # Romanized aliases — case-insensitive substring match.
 # Verified absent from the codebase outside this scanner + its tests, so
 # substring match is safe. Each entry is specific enough that false positives
-# are unlikely (e.g. `brokerage` is the only Korean word containing that ngram;
-# `brokerage` requires the underscore to avoid matching the design
+# are unlikely (e.g. `kiwoom` is the only Korean word containing that ngram;
+# `toss_securities` requires the underscore to avoid matching the design
 # system or RxJS Tossing actions).
 BROKER_NAMES_EN: tuple[str, ...] = (
-    "brokerage",
-    "brokerage",
-    "brokerage",
-    "brokerage",
-    "brokerage",
-    "brokerage",
-    "brokerage",
-    "brokerage",
-    "brokerage",
+    "kakaopay",
+    "mirae",
+    "kiwoom",
+    "samsung_securities",
+    "nh_invest",
+    "toss_securities",
+    "shinhan_invest",
+    "hana_securities",
+    "meritz_securities",
 )
 
 # Suspect numeric context — large literals near these key names = real money.
@@ -130,7 +130,7 @@ SUSPECT_NUMERIC_KEYS: tuple[str, ...] = (
 )
 
 # Ticker + PnL pattern — PR #202 leak signature.
-# Example: "-X% (TEM), -X% (RKLB), -X% (TSLA)" or "PL +X% → +X%".
+# Example: "-34% (TEM), -22% (RKLB), -15% (TSLA)" or "PL +43% → +38%".
 # Detects two tight patterns that in practice correlate with personal holdings
 # + performance disclosure; loose `ticker + any signed %` patterns are too
 # noisy (CAN SLIM rule text, HWM, SL/MDD abbreviations all trigger).
@@ -272,7 +272,7 @@ TICKER_FALSE_POSITIVES: frozenset[str] = frozenset(
 
 # Allow-list: paths the scanner should NEVER block on.
 ALLOWLIST_PATHS: tuple[str, ...] = (
-    "scripts/check_privacy_leak.py",  # this file (documents patterns)
+    "scripts/verify/check_privacy_leak.py",  # this file (documents patterns)
     "tests/scripts/test_check_privacy_leak.py",  # tests for this file (moved from top-level in #163)
     "docs/STRATEGY.md",  # may codify pattern names
     "CONTRIBUTING.md",  # references placeholder names as guidance
@@ -327,7 +327,7 @@ def scan_file_for_brokers(path: Path) -> list[Finding]:
                     )
                 )
         # English: case-insensitive substring (variable names like
-        # `brokerage_main` would otherwise escape a \b regex because `_` is
+        # `kakaopay_main` would otherwise escape a \b regex because `_` is
         # a word character).
         line_lower = line.lower()
         for pat in BROKER_NAMES_EN:
@@ -384,8 +384,8 @@ def scan_text_for_ticker_pnl(text: str, source: Path | str = "<input>") -> list[
     """Detect ticker + PnL co-occurrence (PR #202 leak signature).
 
     Matches:
-    - `-X% (TEM)` — signed % followed by ticker in parens
-    - `PL +X%` — ticker directly followed by signed %
+    - `-34% (TEM)` — signed % followed by ticker in parens
+    - `PL +43%` — ticker directly followed by signed %
 
     Uses TICKER_FALSE_POSITIVES to exclude abbreviations (HWM, SL, MDD, etc.).
     """
