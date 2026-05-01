@@ -22,7 +22,7 @@ fi
 
 # 자동 백업 (배포 전)
 echo "배포 전 DB 백업..."
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "cd ${REMOTE_PATH} && bash scripts/backup.sh" 2>/dev/null || echo "  (리모트 백업 스킵 — 최초 배포일 수 있음)"
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "cd ${REMOTE_PATH} && bash scripts/db/backup.sh" 2>/dev/null || echo "  (리모트 백업 스킵 — 최초 배포일 수 있음)"
 
 # rsync 코드 (DB, .env, .venv, 개인 설정 제외)
 rsync -avz --delete \
@@ -44,7 +44,7 @@ rsync -avz --delete \
 echo "파일 전송 완료. 리모트 설정 시작..."
 
 # 리모트에서 setup 실행
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "cd ${REMOTE_PATH} && bash scripts/setup.sh"
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "cd ${REMOTE_PATH} && bash scripts/dev/setup.sh"
 
 # cron 등록 (crontab.txt 있을 때만)
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "cd ${REMOTE_PATH} && [ -f crontab.txt ] && crontab crontab.txt || echo 'crontab.txt 없음 — 스킵'"

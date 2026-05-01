@@ -7,7 +7,8 @@ set -eu
 
 # Source shared helpers (colors, PYTHON, REPO_ROOT cd, counters).
 # shellcheck source=scripts/_common.sh
-source "$(dirname "$0")/_common.sh"
+# (sourced via $(dirname "$0")/../_common.sh — moved to subdir)
+source "$(dirname "$0")/../_common.sh"
 
 # Local check() that inspects $? from the previous command — distinct from
 # _common.sh's check_cmd which takes the command as args. Updates _common.sh's

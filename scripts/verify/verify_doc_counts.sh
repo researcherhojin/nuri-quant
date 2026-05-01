@@ -8,7 +8,8 @@
 set -euo pipefail
 
 # shellcheck source=scripts/_common.sh
-source "$(dirname "$0")/_common.sh"
+# (sourced via $(dirname "$0")/../_common.sh — moved to subdir)
+source "$(dirname "$0")/../_common.sh"
 
 # ─── 실측 count 함수 (sync_doc_counts.sh 와 동일 — self-contained) ──
 live_collectors()   { find nuri/collectors -maxdepth 1 -name "*.py" \
