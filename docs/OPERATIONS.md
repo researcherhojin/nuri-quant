@@ -19,7 +19,7 @@ Nuri-Quant runs across two Apple Silicon Macs. The MBP is the dev workstation; t
 
 ## Standard Deploy: `make deploy-mini`
 
-Run from MBP after a PR merges to `main`. `scripts/deploy_mini.sh` performs 6 steps automatically (~30 seconds total):
+Run from MBP after a PR merges to `main`. `scripts/deploy_to_mini.sh` performs 6 steps automatically (~30 seconds total):
 
 1. **SSH connection check** — fail-fast if `$DEV2_HOST` unreachable
 2. **Remote `git pull --ff-only`** — picks up the merged PR
@@ -44,13 +44,13 @@ Prerequisites:
 | `make backup` | DB backup (30-day rolling) | Pre-risky-deploy or scheduled |
 | `make pre-deploy` | Safety checks before legacy `make deploy` | Pre-rsync flow only |
 | `scripts/sync_dev.sh push\|pull` | Low-level wrapper | Manual / debug |
-| `bash scripts/auto_deploy.sh` | Mac mini receiver (`fetch + ff-only + change-analysis`) | Driven by launchd `com.nuri-quant.autopull` every 5 min — do not invoke manually unless debugging the receiver |
+| `bash scripts/autopull_receiver.sh` | Mac mini receiver (`fetch + ff-only + change-analysis`) | Driven by launchd `com.nuri-quant.autopull` every 5 min — do not invoke manually unless debugging the receiver |
 
 ## Mac mini autopull (launchd)
 
 `com.nuri-quant.autopull` (`~/Library/LaunchAgents/com.nuri-quant.autopull.plist`):
 - **StartInterval** 300 (every 5 min)
-- **ProgramArguments** `/bin/bash scripts/auto_deploy.sh`
+- **ProgramArguments** `/bin/bash scripts/autopull_receiver.sh`
 - **Logs** `data/logs/autopull.log` / `autopull.err`
 
 The plist installs automatically on first `make deploy-mini` if missing. Status check: `launchctl list | grep nuri-quant`.
@@ -144,9 +144,9 @@ Dual-stack pattern, single helper: `scripts/llm_consult.py` (codex + Qwen3.5 arc
 
 ## Reference
 
-- Deploy script: `scripts/deploy_mini.sh`
+- Deploy script: `scripts/deploy_to_mini.sh`
 - Sync script: `scripts/sync_dev.sh` (push / pull modes)
-- Receiver script: `scripts/auto_deploy.sh`
+- Receiver script: `scripts/autopull_receiver.sh`
 - Portfolio sync: `scripts/import_portfolio.py`
 - BUY candidate backtracking: `scripts/compare_buy_candidates.py`
 - launchd plists: `~/Library/LaunchAgents/com.nuri-quant.{autopull,scheduler}.plist`

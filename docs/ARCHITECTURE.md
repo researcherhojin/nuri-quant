@@ -170,13 +170,13 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
 ## Scripts (`scripts/`)
 
 - `setup.sh` — `.venv` via `uv`, installs deps
-- `migrate_db.py` — DB schema creation + migration runner
+- `migrate.py` — DB schema creation + migration runner
 - `import_portfolio.py` — Syncs `config/portfolio.yaml` → DB
 - `verify.py` — Master verification orchestrator → `data/reports/YYYY-MM-DD/`
 - `gate_check.py` — Pipeline gate verifier (exits 1 if BLOCKED)
-- `deploy.sh` — rsync dev → Mac Mini production
+- `deploy_remote.sh` — rsync dev → Mac Mini production
 - `sync_dev.sh` — dev↔dev state sync (gitignored files + ~/.claude Tier 3)
-- `auto_deploy.sh` — Mac mini receiver (launchd 5min auto-pull)
+- `autopull_receiver.sh` — Mac mini receiver (launchd 5min auto-pull)
 - `backup.sh` — 30-day rolling DB backup
 - `check_privacy_leak.py` — Privacy scanner (broker names, monetary literals)
 - `pre_push_check.sh` — Pre-push gate (drift + lint + tests + privacy + commits)

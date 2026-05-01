@@ -528,7 +528,7 @@ class TestDbMaintenance:
                 ("collect", "step_completed"),
             )
 
-        from scripts.db.db_maintenance import run_maintenance
+        from scripts.db.maintenance import run_maintenance
 
         run_maintenance(dry_run=True)
         rows = query("SELECT COUNT(*) as c FROM pipeline_events", db_path=db_path)

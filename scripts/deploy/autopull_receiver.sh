@@ -13,7 +13,7 @@
 #   6. (선택) 24/7 서비스 재시작 hook — 현재는 placeholder
 #
 # 수동 테스트:
-#   bash scripts/auto_deploy.sh
+#   bash scripts/autopull_receiver.sh
 #
 # 설치:
 #   cp scripts/launchd/com.nuri-quant.autopull.plist ~/Library/LaunchAgents/
@@ -95,7 +95,7 @@ fi
 
 if echo "$CHANGED" | grep -qE "^(nuri/core/db\.py|scripts/migrate_db\.py)$"; then
     log "WARN: DB schema may have changed. Run manually:"
-    log "  cd $REPO && .venv/bin/python scripts/migrate_db.py"
+    log "  cd $REPO && .venv/bin/python scripts/migrate.py"
 fi
 
 if echo "$CHANGED" | grep -qE "^config/"; then
