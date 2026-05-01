@@ -124,7 +124,7 @@ Configured in `.env` (see `.env.example`):
 
 ## DB Schema (SQLite, WAL mode)
 
-32 tables total (20 migrations). Key tables:
+48 tables total (40 migrations as of 2026-05-01). Key tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -135,7 +135,11 @@ Configured in `.env` (see `.env.example`):
 | `fundamentals` | PE, ROE, margins, growth, beta |
 | `superinvestors` | 13F holdings (Buffett, etc.) |
 | `estimates` | Analyst consensus + target prices |
-| `recommendations` | Daily recs + 30/60/90d outcome tracking |
+| `recommendations` | Daily recs + 30/60/90d outcome tracking (E-3, user-facing emit) |
+| `decisions` | #178 Decision Intelligence — rich record (regime/macro/event/agent_verdicts/scoring_detail/dissent/pnl_7/30/60/90d) |
+| `agent_decisions` | #33 + #529 Phase 2 actor #8 — production state machine (decision_id, action, conviction, inputs_json with run_id, status pending/emitted/blocked/superseded) |
+| `decision_evidence` | #178 lineage — per-decision evidence rows for audit reproducibility |
+| `decision_outcomes` | #529 Phase 2 actor #11 — Forward-Outcome-Tracker closed-loop (realized return, alpha, hit threshold at 7/14/30d) |
 | `positions` | Long/Short strategy positions |
 | `swing_trades` | Market-wide swing trade positions |
 | `strategy_memory` | Signal performance snapshots (append-only) |
@@ -146,11 +150,28 @@ Configured in `.env` (see `.env.example`):
 | `pipeline_events` | Append-only event journal |
 | `trades` | Trade execution records |
 
-Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `audit_log`, `external_analysis`, `macro_events`, `external_llm_calls`.
+Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `audit_log`, `external_analysis`, `macro_events`, `external_llm_calls`, `agent_audit_ledger`, `agent_messages`, `agent_run_ledger`, `causal_audits`, `certifications`, `collector_runs`, `dr_replicas`, `drift_alerts`, `execution_blocks`, `feature_flags`, `foundation_benchmarks`, `hypotheses`, `incidents`, `regime_posteriors`, `walkforward_runs`.
+
+### Three decision-related tables — intentional, not duplicate
+
+The `recommendations` / `decisions` / `agent_decisions` triplet looks redundant at first glance. It is not — each serves a distinct purpose:
+
+| Table | Era | Role | Cardinality | Lifecycle |
+|---|---|---|---|---|
+| `recommendations` | E-3 (legacy, pre-#178) | User-facing emit + 30/60/90d outcome backfill. Source of truth for "what we told the user." | 1 row per (date, ticker) emit | `outcome_30d/60d/90d` filled by `tracker.py` |
+| `decisions` | #178 Decision Intelligence (2026) | Analytical record with rich features (regime, macro_score, event_score, scoring_detail, dissent, agent_verdicts) for backtest/learning. | 1 row per (date, ticker) decision computation | `outcome` enum + `pnl_7/30/60/90d` |
+| `agent_decisions` | #33 + #529 Phase 2 actor #8 | Production state machine with run_id traceability (`inputs_json` references regime_run / hypothesis / causal_audit IDs). Status lifecycle prevents race conditions and tracks block reasons. | N rows per (ticker, date) — one per state transition or revision | `status ∈ {pending, emitted, blocked, superseded}` with `decision_outcomes` closing the loop |
+
+**Why all three coexist**:
+- `recommendations` is the user-contract surface — never break this format.
+- `decisions` is the research-grade dataset; columns map 1:1 to features the Learning Memory layer studies.
+- `agent_decisions` is the auditable production record; `decision_id` joins to `decision_outcomes` for the #529 closed-loop validation.
+
+Cross-validation between `decisions` and `agent_decisions` is intentional (audit `docs/TRADING_AUDIT.md`). Removing either would lose research expressiveness or production audit-ability.
 
 ## DB Migrations
 
-Add incremental schema changes to `_MIGRATIONS` in `nuri/core/db.py`:
+Add incremental schema changes to `_MIGRATIONS` in `nuri/core/db_migrations.py` (extracted from `db.py` in PR #553 P2 Stage 1):
 ```python
 _MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "add column foo to prices", "ALTER TABLE prices ADD COLUMN foo TEXT;"),
