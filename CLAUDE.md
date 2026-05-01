@@ -88,10 +88,10 @@ make full-scan                      # 8-phase including SIEGE certify + report
 make consensus                      # 10-agent BUY/SELL/HOLD on holdings
 make certify / remediate            # SIEGE v2 gate
 
-# Issue #507/#508/#509 (2026-04-30)
-make buy-candidates                 # cash deploy candidate emit (#507)
-make thesis ticker=<T> [question=]  # ticker thesis Q&A (#508)
-make earnings-preview ticker=<T>    # consensus EPS + IV implied move (#509)
+# Reactive analysis (recommend-only, all 3 ship 2026-04-30)
+make buy-candidates                 # top-N cash deploy candidate emit
+make thesis ticker=<T> [question=]  # on-demand ticker thesis Q&A (codex+Qwen)
+make earnings-preview ticker=<T>    # consensus EPS + IV implied move
 
 # LLM consult (codex + Qwen3.5 dual archive)
 make llm-consult slug=<kebab> prompt=<file>
@@ -156,7 +156,7 @@ L1 CLAUDE.md (memory) → L2 Skills (auto-invoked) → L3 Hooks (deterministic) 
 
 | Layer | Where | Inventory |
 |-------|-------|-----------|
-| L1 Memory | 8 scoped `CLAUDE.md` (this file + 7 subdirs) + `~/.claude/CLAUDE.md` global | Subfolder appends, never overwrites parent |
+| L1 Memory | 12 scoped `CLAUDE.md` (this file + 11 subdirs) + `~/.claude/CLAUDE.md` global | Subfolder appends, never overwrites parent |
 | L2 Skills | `.claude/skills/nuri-{deploy,flow,harness-debug,review,siege-audit,verify}/SKILL.md` (6) | Auto-invoke via natural language. `nuri-flow` = 7-phase Flow recommend-only orchestrator (audit P1-1) |
 | L3 Hooks | `.claude/settings.json` PreToolUse + PostToolUse | sqlite3 / datetime.now / destructive-git / privacy ticker+PnL block; ruff advisory |
 | L4 Agents | `.claude/agents/nuri-{codex-second-opinion,thesis-batch}.md` (2) | Own context, parallel work |
@@ -181,7 +181,7 @@ For framework / test-mocking / data-source / pipeline-policy gotchas → see sco
 - `docs/SOURCE_OF_TRUTH.md` — file-ownership map. Consult before adding/de-duplicating any doc fact.
 - `docs/ARCHITECTURE.md` — detailed code/DB layout (env vars, CI/CD, schema)
 - `docs/OPERATIONS.md` — operator runbook (2-machine setup, deploy / scheduler / recovery)
-- `docs/TODO.md` (gitignored) — forward-only backlog. Tier 2 P0=#507 (BUY signal asymmetry) / P1 #0a-#0b (#508 thesis / #509 earnings preview) / P2 #0c (Gap B harness telemetry)
+- `docs/TODO.md` (gitignored) — forward-only backlog (Tier 2 next, Tier 3 research). Contents drift fast — read the file, never duplicate items here.
 - `docs/SIEGE_V2.md` — 3D certification spec
 - `docs/KIS_INTEGRATION.md` — KIS Open API integration details
 - `AGENTS.md` — **cross-tool** rules (Cursor / Copilot / Codex CLI), not auto-loaded by Claude Code. **`.claude/agents/` 와 별개 메커니즘** — `.claude/agents/nuri-*.md` 가 Claude Code 의 sub-agent 정의, `AGENTS.md` 는 비-Claude 도구용 contributor 가이드. 이름이 비슷해도 혼동 금지.

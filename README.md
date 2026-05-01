@@ -20,7 +20,7 @@ flowchart TB
 
     subgraph Pipeline["5-phase decision pipeline (DB-only coupling)"]
         direction TB
-        A(["① Collect<br/>25 data collectors"]):::pipe
+        A(["① Collect<br/>26 data collectors"]):::pipe
         B(["② Analyze<br/>signals · regimes · factors"]):::pipe
         C(["③ Consensus<br/>10-agent weighted vote"]):::pipe
         D(["④ Certify<br/>SIEGE v2 (3-D gates)"]):::pipe
@@ -44,7 +44,7 @@ flowchart TB
 
 | Phase | What it does | Inputs → Outputs |
 |-------|--------------|------------------|
-| ① **Collect** | 25 collectors — US: yfinance / OpenBB · KR: pykrx · Macro: FRED · News: GoogleNews RSS · 13F: edgartools · KIS Open API | external APIs → `prices` · `fundamentals` · `macro` · `news` · `institutional_flows` |
+| ① **Collect** | 26 collectors — US: yfinance / OpenBB · KR: pykrx · Macro: FRED · News: GoogleNews RSS · 13F: edgartools · KIS Open API | external APIs → `prices` · `fundamentals` · `macro` · `news` · `institutional_flows` |
 | ② **Analyze** | 22 signals (20 actionable + 2 SHADOW crash precursors) · 10 regimes (6 base + 4 special) · 3 factor scorers + composite aggregator · 15 macro event categories | DB → `signals` · `factors` · `regime_transitions` · `macro_events` |
 | ③ **Consensus** | 10 specialist agents · weighted vote · risk-agent veto fires on `alpha_action==FLAT` only | DB → `recommendations` (incl. `agent_verdicts`, `scoring_detail` JSON columns) |
 | ④ **Certify** | SIEGE v2 — Account × Asset Class × Execution Market. 1 error-grade fail → REJECTED, no manual override | DB → `certifications` (incl. `conditions_json` evidence + `portfolio_hash`) |
@@ -58,7 +58,7 @@ The system rests on five enduring decisions. Recent feature additions and tuning
 
 | # | Principle | What it means in practice |
 |---|-----------|---------------------------|
-| 1 | **Sole SQLite gateway** | `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced — every other module uses `query()` / `upsert_*()` / `get_db()` with optional `db_path=` for test isolation). 32 tables, WAL mode. |
+| 1 | **Sole SQLite gateway** | `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced — every other module uses `query()` / `upsert_*()` / `get_db()` with optional `db_path=` for test isolation). 48 tables, WAL mode. |
 | 2 | **Config over code** | Stop-loss thresholds, agent weights, signal metadata, SIEGE gate policies — all in `config/*.yaml`. Changing a rule or adding a market means editing YAML, never Python. |
 | 3 | **Loose phase coupling** | Pipeline phases communicate via DB tables / CSV only. No cross-phase imports. Re-run any upstream phase and downstream consumers refresh. |
 | 4 | **3-D SIEGE certification** | Gates apply per `Account (strategy)` × `Asset Class (us_equity / kr_equity / kr_index / commodity / bond)` × `Execution Market`. 1 error-grade fail → REJECTED, no manual override. Inspired by [nutshells3/SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). |
@@ -145,7 +145,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite — 3,577 backend (158 files) + 989 frontend (67 files) + 8 Playwright e2e specs
+make test       # full suite — 4,485 backend (187 files) + 989 frontend (81 files) + 8 Playwright e2e specs
 make test-fast  # backend only, slow tests excluded (~24s, what PR CI runs)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler integration)
 ```
