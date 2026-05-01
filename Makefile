@@ -52,8 +52,8 @@ verify-help:
 	@printf '  \033[2m%s\033[0m\n' '──────────────────────────────────────────────────────────────────'
 	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-quick' '~10s'  'pytest + regime classifier (no network)'
 	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-all'   '~30s'  'tests + backend + frontend + file integrity'
-	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-fast'  '~2min' 'scripts/verify.py --skip-backtest'
-	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify'       '~5min' 'scripts/verify.py (full backtest run)'
+	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-fast'  '~2min' 'scripts/verify/verify.py --skip-backtest'
+	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify'       '~5min' 'scripts/verify/verify.py (full backtest run)'
 	@printf '\n'
 	@printf '  \033[1mWhen to use:\033[0m\n'
 	@printf '    Pre-commit   →  \033[36mmake verify-quick\033[0m\n'
@@ -67,13 +67,13 @@ verify-help:
 # SETUP
 # ═══════════════════════════════════════════════════════════════
 setup:
-	bash scripts/setup.sh
-	$(PYTHON) scripts/migrate.py
-	$(PYTHON) scripts/import_portfolio.py
+	bash scripts/dev/setup.sh
+	$(PYTHON) scripts/db/migrate.py
+	$(PYTHON) scripts/ops/import_portfolio.py
 	$(MAKE) setup-hooks
 
 setup-hooks: ## Install repo-tracked git hooks (pre-commit auto-fix). Idempotent.
-	bash scripts/install_hooks.sh
+	bash scripts/dev/install_hooks.sh
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -145,7 +145,7 @@ spellcheck: ## cspell check (uses .cspell.json — add words there for false pos
 diagnostics: typecheck spellcheck ## Run pyright + cspell — surfaces all IDE-level issues
 
 validate-portfolio: ## Verify each ticker in config/portfolio.yaml has live data (#131)
-	$(PYTHON) scripts/validate_portfolio.py
+	$(PYTHON) scripts/doc/validate_portfolio.py
 
 universe-sync:       ## Dry-run sync (US + KR). For --market/--allow-removal flags use `python -m` (#272)
 	$(PYTHON) -m nuri.collectors.universe_sync
@@ -160,10 +160,10 @@ universe-sync-apply: ## Apply universe.yaml updates (additions only — manual E
 	$(PYTHON) -m nuri.collectors.universe_sync --apply
 
 validate-universe:   ## Universe + agent coverage 검증 (#272 Phase 2c)
-	$(PYTHON) scripts/validate_universe.py
+	$(PYTHON) scripts/doc/validate_universe.py
 
 validate-universe-cache:  ## DB만 검사 (network fetch skip — CI용)
-	$(PYTHON) scripts/validate_universe.py --no-fetch
+	$(PYTHON) scripts/doc/validate_universe.py --no-fetch
 
 collect-universe:    ## Collect ALL universe data (US+KR prices, fundamentals, wallstreet, estimates) (#272)
 	$(PYTHON) -m nuri.collectors.stock --source universe
@@ -195,13 +195,13 @@ verify-quick:    ## ~10s pre-commit smoke test (pytest + regime, no network)
 	$(PYTHON) -c "from nuri.core.db import query; from nuri.quant.regime.classifier import classify_regime; r=classify_regime(); print(f'Quick: tests + Regime {r.regime if r else \"N/A\"}')"
 
 verify-all:      ## ~30s pre-push (tests + backend + frontend + file integrity)
-	bash scripts/verify_all.sh
+	bash scripts/verify/verify_all.sh
 
 verify-fast:     ## ~2min pre-deploy (verify.py without backtest)
-	$(PYTHON) scripts/verify.py --skip-backtest
+	$(PYTHON) scripts/verify/verify.py --skip-backtest
 
 verify:          ## ~5min pre-release (verify.py full, includes backtest)
-	$(PYTHON) scripts/verify.py
+	$(PYTHON) scripts/verify/verify.py
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -251,7 +251,7 @@ analyze:
 # VALIDATION (Phase C) — Gate 검증 후 실행
 # ═══════════════════════════════════════════════════════════════
 validate:
-	$(PYTHON) scripts/gate_check.py validate
+	$(PYTHON) scripts/verify/gate_check.py validate
 	$(PYTHON) -m nuri.quant.validation.signal_backtest
 	$(PYTHON) -m nuri.quant.validation.superinvestor_backtest
 	$(PYTHON) -m nuri.quant.validation.analyst_backtest
@@ -263,7 +263,7 @@ validate:
 # REGIME CLASSIFICATION (Phase D)
 # ═══════════════════════════════════════════════════════════════
 regime:
-	$(PYTHON) scripts/gate_check.py regime
+	$(PYTHON) scripts/verify/gate_check.py regime
 	$(PYTHON) -m nuri.quant.regime.strategy_map
 
 
@@ -271,7 +271,7 @@ regime:
 # RECOMMENDATIONS + AGENTS (Phase E)
 # ═══════════════════════════════════════════════════════════════
 recommend:
-	$(PYTHON) scripts/gate_check.py recommend
+	$(PYTHON) scripts/verify/gate_check.py recommend
 	$(PYTHON) -m nuri.trading.recommend.candidates
 	$(PYTHON) -m nuri.trading.recommend.tracker --save
 
@@ -310,10 +310,10 @@ certify:
 	$(PYTHON) -m nuri.trading.engine.certification
 
 certify-history:
-	@$(PYTHON) scripts/siege_history.py --limit $(or $(N),10)
+	@$(PYTHON) scripts/analysis/siege_history.py --limit $(or $(N),10)
 
 certify-diff:
-	@$(PYTHON) scripts/siege_history.py --limit 5 --detail
+	@$(PYTHON) scripts/analysis/siege_history.py --limit 5 --detail
 
 remediate:
 	$(PYTHON) -m nuri.trading.engine.remediation
@@ -411,7 +411,7 @@ dashboard:
 	cd frontend && npm run dev
 
 start:
-	bash scripts/start.sh
+	bash scripts/dev/start.sh
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -448,7 +448,7 @@ full-scan:
 	@echo "\n=== Phase G: 증거 시각화 ==="
 	$(PYTHON) -m nuri.analysis.evidence_charts
 	@echo "\n=== Phase H: 알림 발송 ==="
-	$(PYTHON) scripts/notify_scan_result.py
+	$(PYTHON) scripts/ops/notify_scan_result.py
 	@echo "\n=== 전체 스캔 완료 ==="
 
 quick-scan:
@@ -466,17 +466,17 @@ quick-scan:
 # DEPLOY / BACKUP / UTILITY
 # ═══════════════════════════════════════════════════════════════
 pre-deploy:
-	bash scripts/pre_deploy_check.sh
+	bash scripts/deploy/pre_deploy_check.sh
 
 deploy:
-	bash scripts/pre_deploy_check.sh
-	bash scripts/deploy_remote.sh
+	bash scripts/deploy/pre_deploy_check.sh
+	bash scripts/deploy/deploy_remote.sh
 
 deploy-mini: ## MBP → Mac mini 전체 동기화 (git pull + config + scheduler reload)
-	bash scripts/deploy_to_mini.sh
+	bash scripts/deploy/deploy_to_mini.sh
 
 backup:
-	bash scripts/backup.sh
+	bash scripts/db/backup.sh
 
 # ─── Service-grade 15-actor infra (#529 Phase 1) ─────────────────────────
 snapshot: ## SQLite VACUUM INTO snapshot to data/backups/snapshot_<ts>.db
@@ -533,16 +533,16 @@ actor-enable: ## ReleaseRollbackManager actor: enable flag with canary. usage: m
 	@.venv/bin/python -m nuri.agents.actors.release_rollback_manager enable "$(flag)" --scope "$(scope)"
 
 health-check: ## Verify single-writer invariant + DB schema + recent runs (#529 mandatory #1)
-	bash scripts/health_check.sh
+	bash scripts/ops/health_check.sh
 
 state-verify: ## State-Replicator-DR — local DB + replicas digest verify (read-only)
-	bash scripts/state_replicator.sh verify
+	bash scripts/deploy/state_replicator.sh verify
 
 state-push: ## (Mac mini only) snapshot + rsync push to MBP. Requires DEV2_HOST.
-	bash scripts/state_replicator.sh primary
+	bash scripts/deploy/state_replicator.sh primary
 
 state-pull: ## (MBP only) verify latest replica file received from Mac mini.
-	bash scripts/state_replicator.sh replica
+	bash scripts/deploy/state_replicator.sh replica
 
 agent-launchd-install: ## Install launchd plists (state-replicator + health-check, USER 자동 치환)
 	@USER_NAME=$$(whoami); \
@@ -574,7 +574,7 @@ discord-test: ## Smoke test webhook publish. usage: make discord-test channel=br
 	@.venv/bin/python -m nuri.agents.discord.publisher "$(channel)" "$(msg)"
 
 discord-test-embed: ## Visual smoke test — publish 4 sample embeds (status ok/fail + freshness + actor) to #brief.
-	@PYTHONPATH=. .venv/bin/python scripts/discord_embed_smoke.py
+	@PYTHONPATH=. .venv/bin/python scripts/ops/discord_embed_smoke.py
 
 discord-sync-commands: ## Register slash commands to guild (no long-running). Requires DISCORD_BOT_TOKEN + DISCORD_GUILD_ID.
 	@.venv/bin/python -m nuri.agents.discord.bot --sync-only
@@ -611,13 +611,13 @@ walkforward-pit-hash: ## Compute PIT hash for a CSV. usage: make walkforward-pit
 	@.venv/bin/python -m nuri.agents.actors.walkforward_validator pit_hash --csv "$(csv)" --model-id "$${model:-cli}"
 
 sync-start:
-	bash scripts/dev_sync.sh start
+	bash scripts/deploy/dev_sync.sh start
 
 sync-end:
-	bash scripts/dev_sync.sh end
+	bash scripts/deploy/dev_sync.sh end
 
 sync-status:
-	bash scripts/dev_sync.sh status
+	bash scripts/deploy/dev_sync.sh status
 
 scheduler-reload-remote: ## Reload scheduler on Mac mini (nuri/scheduler.py 변경 반영)
 	@test -n "$$DEV2_HOST" || { echo "❌ DEV2_HOST 미설정. ~/.zshrc 에 export DEV2_HOST=ehbebe@Ehbebeui-Macmini.local 추가 필요"; exit 1; }
@@ -631,10 +631,10 @@ scheduler-reload-remote: ## Reload scheduler on Mac mini (nuri/scheduler.py 변�
 		tail -5 ~/workspace/nuri-quant/data/logs/scheduler.log'
 
 ports:
-	bash scripts/ports.sh
+	bash scripts/ops/ports.sh
 
 ports-kill:
-	bash scripts/ports.sh kill
+	bash scripts/ops/ports.sh kill
 
 sync-doc-counts:
 	bash scripts/doc/sync_doc_counts.sh
@@ -647,7 +647,7 @@ verify-doc-counts:
 update-counts: sync-doc-counts
 
 demo:
-	bash scripts/demo.sh
+	bash scripts/dev/demo.sh
 
 
 # ═══════════════════════════════════════════════════════════════
