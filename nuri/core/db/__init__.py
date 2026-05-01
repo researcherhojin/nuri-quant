@@ -42,6 +42,12 @@ from .decisions import (  # noqa: F401, E402
     upsert_decision,
     upsert_decision_evidence,
 )
+from .discord_outbox_ops import CLAIM_LEASE_SECONDS as CLAIM_LEASE_SECONDS  # noqa: E402
+from .discord_outbox_ops import claim_pending_outbox as claim_pending_outbox  # noqa: E402
+from .discord_outbox_ops import mark_outbox_failed as mark_outbox_failed  # noqa: E402
+from .discord_outbox_ops import mark_outbox_sent as mark_outbox_sent  # noqa: E402
+from .discord_outbox_ops import outbox_health as outbox_health  # noqa: E402
+from .discord_outbox_ops import stage_outbox as stage_outbox  # noqa: E402
 from .execution_ops import (  # noqa: F401, E402
     acknowledge_incident,
     log_decision,
