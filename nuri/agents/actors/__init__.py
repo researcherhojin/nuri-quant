@@ -14,12 +14,14 @@ Phase 2 actors (Codex Round 5):
 - AuditLedger (#10, Layer A) — read-only audit ledger query + retention policy
 - SREIncidentAgent (#14, Layer A) — operational incident detection + alert routing
 - StateReplicatorDR (#15, Layer A) — MBP ↔ Mac mini DR readiness 추적 + 검증
+- DriftSentinel (#12, Layer B) — input distribution drift 감지 (PSI + KS)
 """
 
 from nuri.agents.actors.audit_ledger import AuditLedger
 from nuri.agents.actors.causal_factor_auditor import CausalFactorAuditor
 from nuri.agents.actors.collector_orchestrator import CollectorOrchestrator
 from nuri.agents.actors.decision_compiler import DecisionCompiler
+from nuri.agents.actors.drift_sentinel import DriftSentinel
 from nuri.agents.actors.execution_firewall import ExecutionFirewall
 from nuri.agents.actors.forward_outcome_tracker import ForwardOutcomeTracker
 from nuri.agents.actors.freshness_gatekeeper import FreshnessGatekeeper
@@ -35,6 +37,7 @@ __all__ = [
     "CausalFactorAuditor",
     "CollectorOrchestrator",
     "DecisionCompiler",
+    "DriftSentinel",
     "ExecutionFirewall",
     "ForwardOutcomeTracker",
     "FreshnessGatekeeper",

@@ -1199,6 +1199,46 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_collector_runs_status ON collector_runs(status, started_at);
     """,
     ),
+    (
+        39,
+        "drift_alerts — Drift-Sentinel input distribution drift ledger (#529 Phase 2 actor #12, Layer B)",
+        # #529 Phase 2 actor #12 — Layer B 통계 검증 (Codex Round 5).
+        # 모델 input distribution drift 영구 기록. PSI / KS 2-sample test 결과 archive.
+        #
+        # severity (PSI 기준 산업 표준 + KS D-statistic):
+        #   stable   — 분포 동일 (PSI<0.10 또는 D<0.05)
+        #   minor    — 관찰 권고 (PSI 0.10-0.25 또는 D 0.05-0.10)
+        #   major    — 재학습 권고 (PSI 0.25-0.50 또는 D 0.10-0.20)
+        #   critical — 즉시 조치 (PSI≥0.50 또는 D≥0.20)
+        #
+        # test_type:
+        #   psi  — Population Stability Index (binned categorical-friendly)
+        #   ks   — Kolmogorov-Smirnov 2-sample D-statistic (continuous)
+        #
+        # 영구 기록 (idempotent X) — 매 detection 이 신규 row.
+        # actor_name 은 drift 대상 actor (예: 'regime-posterior', 'decision-compiler').
+        """
+        CREATE TABLE IF NOT EXISTS drift_alerts (
+            alert_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            feature_name TEXT NOT NULL,
+            test_type TEXT NOT NULL CHECK(test_type IN ('psi','ks')),
+            test_statistic REAL NOT NULL,
+            threshold REAL NOT NULL,
+            severity TEXT NOT NULL CHECK(severity IN ('stable','minor','major','critical')),
+            baseline_window TEXT NOT NULL,
+            current_window TEXT NOT NULL,
+            n_baseline INTEGER NOT NULL,
+            n_current INTEGER NOT NULL,
+            distribution_summary_json TEXT NOT NULL,
+            actor_name TEXT,
+            run_id TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_drift_feature ON drift_alerts(feature_name, detected_at);
+        CREATE INDEX IF NOT EXISTS idx_drift_severity ON drift_alerts(severity, detected_at);
+        CREATE INDEX IF NOT EXISTS idx_drift_actor ON drift_alerts(actor_name, detected_at);
+    """,
+    ),
 ]
 
 
@@ -2645,3 +2685,83 @@ def resolve_incident(
             (incident_id,),
         )
         return (cursor.rowcount or 0) > 0
+
+
+# ═══════════════════════════════════════════════════════
+# Drift-Sentinel helper (#529 Phase 2 actor #12 — Layer B)
+# ═══════════════════════════════════════════════════════
+
+_DRIFT_TEST_TYPES = ("psi", "ks")
+_DRIFT_SEVERITIES = ("stable", "minor", "major", "critical")
+
+
+def log_drift_alert(
+    feature_name: str,
+    test_type: str,
+    test_statistic: float,
+    threshold: float,
+    severity: str,
+    baseline_window: str,
+    current_window: str,
+    n_baseline: int,
+    n_current: int,
+    distribution_summary: dict,
+    actor_name: Optional[str] = None,
+    run_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """Drift-Sentinel 분포 drift 결과 영구 기록 (#529 Phase 2 actor #12, Layer B).
+
+    PSI / KS 2-sample test 결과 archive. 매 detection 이 신규 row (idempotent X) —
+    historical drift trend 분석용.
+
+    enum 검증:
+        test_type ∈ ('psi','ks')
+        severity ∈ ('stable','minor','major','critical')
+    값 검증:
+        test_statistic / threshold ≥ 0.0 (PSI / KS D-stat 양수)
+        n_baseline / n_current ≥ 0
+
+    Returns: alert_id (lastrowid).
+
+    Layer B contract: ZERO LLM, deterministic. SREIncidentAgent 가 critical drift
+    surfaced 시 incident 로 escalate 가능 (별도 trigger).
+    """
+    if test_type not in _DRIFT_TEST_TYPES:
+        raise ValueError(f"test_type must be {_DRIFT_TEST_TYPES}, got {test_type!r}")
+    if severity not in _DRIFT_SEVERITIES:
+        raise ValueError(f"severity must be {_DRIFT_SEVERITIES}, got {severity!r}")
+    if test_statistic < 0.0:
+        raise ValueError(f"test_statistic must be >= 0.0, got {test_statistic}")
+    if threshold < 0.0:
+        raise ValueError(f"threshold must be >= 0.0, got {threshold}")
+    if n_baseline < 0 or n_current < 0:
+        raise ValueError(
+            f"n_baseline / n_current must be >= 0, got {n_baseline} / {n_current}"
+        )
+    if not feature_name or not str(feature_name).strip():
+        raise ValueError("feature_name required")
+
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO drift_alerts
+               (feature_name, test_type, test_statistic, threshold, severity,
+                baseline_window, current_window, n_baseline, n_current,
+                distribution_summary_json, actor_name, run_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                feature_name,
+                test_type,
+                float(test_statistic),
+                float(threshold),
+                severity,
+                baseline_window,
+                current_window,
+                int(n_baseline),
+                int(n_current),
+                json.dumps(distribution_summary, sort_keys=True, default=str),
+                actor_name,
+                run_id,
+            ),
+        )
+        return cursor.lastrowid or 0
