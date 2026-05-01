@@ -215,7 +215,7 @@ class TestAllowlist:
     def test_self_allowlisted(self):
         from scripts.verify.check_privacy_leak import is_allowlisted
 
-        path = Path("scripts/check_privacy_leak.py")
+        path = Path("scripts/verify/check_privacy_leak.py")
         assert is_allowlisted(path) is True
 
     def test_external_path_not_allowlisted(self, tmp_path):
