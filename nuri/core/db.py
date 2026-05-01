@@ -1133,6 +1133,40 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
     """,
     ),
+    (
+        37,
+        "dr_replicas — State-Replicator-DR readiness ledger (#529 Phase 2 actor #15, Layer A)",
+        # #529 Phase 2 actor #15 — Layer A enforcement (Codex Round 5).
+        # MBP ↔ Mac mini DR (Disaster Recovery) state 추적. 실제 sync 는 launchd
+        # autopull (5min) 이 처리, 본 actor 는 readiness 기록 + 검증 담당.
+        #
+        # 핵심 invariant:
+        # - replica_id = 사용자 명명 (PK, e.g. 'macmini-primary', 'mbp-replica')
+        # - role = primary / replica (single-writer 모델 — Round 5 mandatory #1)
+        # - status = healthy / stale / unreachable / out_of_sync
+        #   healthy        — sync_lag < 600s, schema 일치
+        #   stale          — 600s ≤ lag < 3600s
+        #   unreachable    — lag ≥ 3600s 또는 heartbeat 없음
+        #   out_of_sync    — schema_version mismatch (verify action 시 산출)
+        # - sync_lag_seconds = now - last_sync_at
+        # - run_id 영구 기록 (audit traceable form, agent_run_ledger 와 join 가능)
+        """
+        CREATE TABLE IF NOT EXISTS dr_replicas (
+            replica_id TEXT PRIMARY KEY,
+            role TEXT NOT NULL CHECK(role IN ('primary','replica')),
+            hostname TEXT NOT NULL,
+            last_sync_at TEXT,
+            last_sync_schema_version INTEGER,
+            sync_lag_seconds INTEGER,
+            status TEXT NOT NULL CHECK(status IN ('healthy','stale','unreachable','out_of_sync')),
+            notes TEXT,
+            run_id TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_dr_status ON dr_replicas(status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_dr_role ON dr_replicas(role);
+    """,
+    ),
 ]
 
 
@@ -1784,6 +1818,68 @@ def finish_agent_run(
                    duration_ms = ?, error_message = ?
                WHERE run_id = ?""",
             (status, duration_ms, error_message, run_id),
+        )
+
+
+# ═══════════════════════════════════════════════════════
+# State-Replicator-DR helpers (#529 Phase 2 actor #15, Layer A)
+# ═══════════════════════════════════════════════════════
+
+_DR_VALID_ROLES: tuple[str, ...] = ("primary", "replica")
+_DR_VALID_STATUSES: tuple[str, ...] = ("healthy", "stale", "unreachable", "out_of_sync")
+
+
+def upsert_dr_replica(
+    replica_id: str,
+    role: str,
+    hostname: str,
+    last_sync_at: Optional[str],
+    last_sync_schema_version: Optional[int],
+    sync_lag_seconds: Optional[int],
+    status: str,
+    notes: Optional[str] = None,
+    run_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """DR replica state upsert (#529 State-Replicator-DR).
+
+    role: 'primary' / 'replica' — single-writer 모델 (Codex Round 5 mandatory #1).
+    status: 'healthy' / 'stale' / 'unreachable' / 'out_of_sync'.
+    enum 위반 시 ValueError — Layer A actor 호출 전 validation 강제.
+    """
+    if role not in _DR_VALID_ROLES:
+        raise ValueError(f"role must be primary/replica, got {role!r}")
+    if status not in _DR_VALID_STATUSES:
+        raise ValueError(
+            f"status must be healthy/stale/unreachable/out_of_sync, got {status!r}"
+        )
+    with get_db(db_path) as conn:
+        conn.execute(
+            """INSERT INTO dr_replicas
+               (replica_id, role, hostname, last_sync_at, last_sync_schema_version,
+                sync_lag_seconds, status, notes, run_id, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(replica_id) DO UPDATE SET
+                 role = excluded.role,
+                 hostname = excluded.hostname,
+                 last_sync_at = excluded.last_sync_at,
+                 last_sync_schema_version = excluded.last_sync_schema_version,
+                 sync_lag_seconds = excluded.sync_lag_seconds,
+                 status = excluded.status,
+                 notes = COALESCE(excluded.notes, notes),
+                 run_id = COALESCE(excluded.run_id, run_id),
+                 updated_at = datetime('now')""",
+            (
+                replica_id,
+                role,
+                hostname,
+                last_sync_at,
+                last_sync_schema_version,
+                sync_lag_seconds,
+                status,
+                notes,
+                run_id,
+            ),
         )
 
 
