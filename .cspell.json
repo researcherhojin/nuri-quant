@@ -711,7 +711,16 @@
     "tobytes",
     "ddof",
     "logloss",
-    "preds"
+    "preds",
+    "ARKY",
+    "BADCO",
+    "SELLCO",
+    "TESTCO",
+    "NEWSTOCK",
+    "Brok",
+    "BRKR",
+    "SCRY",
+    "aopay"
   ],
   "ignorePaths": [
     "node_modules/**",
