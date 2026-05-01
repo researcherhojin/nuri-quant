@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.nuri-quant.track-forward (#529 Phase 2 — O2 ForwardOutcomeTracker daily cron)
+
+  매일 KST 17:00 (한국장 마감 후) ForwardOutcomeTracker.scan 실행 — agent_decisions
+  의 emit 결과를 7d/14d/30d window 후 측정하여 HypothesisRegistry validate/reject
+  자동 trigger. closed-loop 자동화의 핵심.
+
+  설치:
+    cp scripts/launchd/com.nuri-quant.track-forward.plist ~/Library/LaunchAgents/
+    sed -i '' "s|/Users/USER|$HOME|g" ~/Library/LaunchAgents/com.nuri-quant.track-forward.plist
+    launchctl load ~/Library/LaunchAgents/com.nuri-quant.track-forward.plist
+
+  주의: PROGRAM_PATH 는 사용자 환경에 맞게 수정 필요 (USER 자리).
+-->
+<dict>
+    <key>Label</key>
+    <string>com.nuri-quant.track-forward</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd /Users/USER/workspace/nuri-quant &amp;&amp; .venv/bin/python -m nuri.agents.actors.forward_outcome_tracker scan</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USER/workspace/nuri-quant</string>
+
+    <!-- 매일 KST 17:00 (한국장 마감 후, 한국 사용자 기준) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>17</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/track_forward.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/track_forward.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>

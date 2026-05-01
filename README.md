@@ -30,7 +30,7 @@ flowchart TB
         E -. "agent weight drift (±30%)" .-> C
     end
 
-    DB[("SQLite WAL · 43 tables<br/>pipeline_events · certifications · audit trail")]:::sink
+    DB[("SQLite WAL · 48 tables<br/>pipeline_events · certifications · audit trail")]:::sink
 
     CFG -. policies .-> Pipeline
     Pipeline -. persist .-> DB

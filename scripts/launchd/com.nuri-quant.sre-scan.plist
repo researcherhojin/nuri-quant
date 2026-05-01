@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.nuri-quant.sre-scan (#529 Phase 2 — O3 SREIncidentAgent hourly cron)
+
+  매시간 SREIncidentAgent.scan 실행 — 6 detector (orphan_run / disk_full / db_lock /
+  scheduler_heartbeat / actor_failure_streak / data_freshness_critical) 일괄 검사.
+  critical 발견 시 Discord INCIDENTS 자동 publish, warning 시 OPS publish.
+
+  health_check.sh 와 보완 관계 — health_check 는 schema/table 검증 (build-time),
+  sre-scan 은 runtime incident 추적 (operation-time).
+
+  설치:
+    cp scripts/launchd/com.nuri-quant.sre-scan.plist ~/Library/LaunchAgents/
+    sed -i '' "s|/Users/USER|$HOME|g" ~/Library/LaunchAgents/com.nuri-quant.sre-scan.plist
+    launchctl load ~/Library/LaunchAgents/com.nuri-quant.sre-scan.plist
+-->
+<dict>
+    <key>Label</key>
+    <string>com.nuri-quant.sre-scan</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd /Users/USER/workspace/nuri-quant &amp;&amp; .venv/bin/python -m nuri.agents.actors.sre_incident_agent scan</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USER/workspace/nuri-quant</string>
+
+    <!-- 매시간 (3600초) -->
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/sre_scan.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/sre_scan.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
