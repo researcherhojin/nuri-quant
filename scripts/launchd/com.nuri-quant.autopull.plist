@@ -5,7 +5,7 @@
 
   목적:
     MBP에서 git push → 5분 이내에 Mac mini가 origin/main을 ff-only merge.
-    실제 동작은 scripts/auto_deploy.sh에 위임 — 거기서 dependency/schema
+    실제 동작은 scripts/autopull_receiver.sh에 위임 — 거기서 dependency/schema
     변경 감지, 서비스 재시작 hook 등을 처리.
 
   설치 (Mac mini에서 1회):
@@ -24,7 +24,7 @@
 
   주의:
     - REPO 경로는 머신마다 다르면 ProgramArguments + WorkingDirectory 둘 다 수정
-    - launchd는 PATH가 매우 빈약 — auto_deploy.sh 안에서 절대경로/명시적 PATH 사용
+    - launchd는 PATH가 매우 빈약 — autopull_receiver.sh 안에서 절대경로/명시적 PATH 사용
     - StartInterval=300 (5분). 더 자주 원하면 줄일 수 있으나 GitHub API rate-limit 주의
 -->
 <plist version="1.0">
@@ -35,7 +35,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/ehbebe/workspace/nuri-quant/scripts/auto_deploy.sh</string>
+        <string>/Users/ehbebe/workspace/nuri-quant/scripts/autopull_receiver.sh</string>
     </array>
 
     <key>WorkingDirectory</key>

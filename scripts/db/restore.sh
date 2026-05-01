@@ -3,8 +3,8 @@
 # Nuri-Quant DB 복원 — 백업에서 portfolio.db 복원
 #
 # 사용법:
-#   bash scripts/restore_db.sh                    # 최신 백업 복원
-#   bash scripts/restore_db.sh portfolio_20260330_120000.db  # 특정 백업 복원
+#   bash scripts/restore.sh                    # 최신 백업 복원
+#   bash scripts/restore.sh portfolio_20260330_120000.db  # 특정 백업 복원
 # ═══════════════════════════════════════════════════════
 set -euo pipefail
 
