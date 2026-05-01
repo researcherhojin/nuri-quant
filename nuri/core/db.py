@@ -1091,6 +1091,48 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_blocks_run ON execution_blocks(run_id);
     """,
     ),
+    (
+        36,
+        "incidents — SRE-Incident-Agent infra alert ledger (#529 Phase 2 actor #14, Layer A)",
+        # #529 Phase 2 actor #14 — Layer A SRE 운영 alert.
+        # 6 detector (orphan_run / disk_full / db_lock / scheduler_heartbeat /
+        # actor_failure_streak / data_freshness_critical) 의 영구 incident ledger.
+        #
+        # idempotent semantics:
+        #   동일 (incident_type, target) 의 open incident 는 단 1개만 존재.
+        #   재detection 시 last_detected_at + evidence_json 만 update (신규 row X).
+        #   resolve 후 동일 (type,target) 재발 시 신규 row 생성 가능 (status 가 UNIQUE 의 일부).
+        #
+        # severity:
+        #   critical — Discord INCIDENTS 채널 alert (operator urgent)
+        #   warning  — Discord OPS 채널 alert
+        #   info     — audit only (Discord publish X)
+        #
+        # status:
+        #   open         — 활성 incident
+        #   acknowledged — 사용자가 본 (audit-only — Discord re-publish 차단)
+        #   resolved     — 종료 (resolved_at 채워짐)
+        """
+        CREATE TABLE IF NOT EXISTS incidents (
+            incident_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_type TEXT NOT NULL CHECK(incident_type IN (
+                'orphan_run','disk_full','db_lock','scheduler_heartbeat',
+                'actor_failure_streak','data_freshness_critical'
+            )),
+            severity TEXT NOT NULL CHECK(severity IN ('critical','warning','info')),
+            target TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('open','acknowledged','resolved')),
+            first_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT,
+            evidence_json TEXT NOT NULL,
+            run_id TEXT,
+            UNIQUE(incident_type, target, status)
+        );
+        CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status, severity);
+        CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
+    """,
+    ),
 ]
 
 
@@ -2304,3 +2346,113 @@ def log_execution_block(
             ),
         )
         return cursor.lastrowid or 0
+
+
+# ═══════════════════════════════════════════════════════
+# SRE-Incident-Agent helpers (#529 Phase 2 actor #14 — Layer A)
+# ═══════════════════════════════════════════════════════
+
+_INCIDENT_TYPES = (
+    "orphan_run",
+    "disk_full",
+    "db_lock",
+    "scheduler_heartbeat",
+    "actor_failure_streak",
+    "data_freshness_critical",
+)
+_INCIDENT_SEVERITIES = ("critical", "warning", "info")
+_INCIDENT_STATUSES = ("open", "acknowledged", "resolved")
+
+
+def log_incident(
+    incident_type: str,
+    severity: str,
+    target: str,
+    evidence: dict,
+    run_id: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """SRE-Incident 영구 기록 (#529 Phase 2 actor #14, Layer A).
+
+    Idempotent semantics:
+        동일 (incident_type, target, status='open') incident 가 존재하면
+        last_detected_at + evidence_json 만 update (신규 row X — 동일 incident_id 반환).
+        존재하지 않으면 신규 INSERT (status='open', first_detected_at=now).
+
+    Returns: incident_id (기존 or 신규).
+
+    enum 검증: incident_type, severity 모두 _INCIDENT_TYPES / _INCIDENT_SEVERITIES 에서.
+    """
+    if incident_type not in _INCIDENT_TYPES:
+        raise ValueError(f"incident_type must be {_INCIDENT_TYPES}, got {incident_type!r}")
+    if severity not in _INCIDENT_SEVERITIES:
+        raise ValueError(f"severity must be {_INCIDENT_SEVERITIES}, got {severity!r}")
+    if not target or not str(target).strip():
+        raise ValueError("target required (actor_name / table / ticker / 'system')")
+
+    evidence_json = json.dumps(evidence, sort_keys=True, default=str)
+    with get_db(db_path) as conn:
+        # open 인 동일 (type, target) 가 있으면 update + 기존 incident_id 반환.
+        existing = conn.execute(
+            """SELECT incident_id FROM incidents
+               WHERE incident_type = ? AND target = ? AND status = 'open'""",
+            (incident_type, target),
+        ).fetchone()
+        if existing is not None:
+            existing_id = existing[0]
+            conn.execute(
+                """UPDATE incidents
+                   SET last_detected_at = datetime('now'),
+                       evidence_json = ?,
+                       severity = ?,
+                       run_id = COALESCE(?, run_id)
+                   WHERE incident_id = ?""",
+                (evidence_json, severity, run_id, existing_id),
+            )
+            return int(existing_id)
+        # 신규 incident.
+        cursor = conn.execute(
+            """INSERT INTO incidents
+               (incident_type, severity, target, status, evidence_json, run_id)
+               VALUES (?, ?, ?, 'open', ?, ?)""",
+            (incident_type, severity, target, evidence_json, run_id),
+        )
+        return cursor.lastrowid or 0
+
+
+def acknowledge_incident(
+    incident_id: int,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Incident 를 사용자가 봤음 표시 (audit-only — Discord re-publish 차단용).
+
+    Returns: True if updated, False if no open incident with that id.
+    """
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """UPDATE incidents
+               SET status = 'acknowledged'
+               WHERE incident_id = ? AND status = 'open'""",
+            (incident_id,),
+        )
+        return (cursor.rowcount or 0) > 0
+
+
+def resolve_incident(
+    incident_id: int,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """Incident 종료 — status='resolved' + resolved_at=now.
+
+    Returns: True if updated, False if no open/acknowledged incident with that id.
+    Resolve 후 동일 (type, target) 재발 시 신규 row 가능 (status 가 UNIQUE 의 일부).
+    """
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """UPDATE incidents
+               SET status = 'resolved',
+                   resolved_at = datetime('now')
+               WHERE incident_id = ? AND status IN ('open','acknowledged')""",
+            (incident_id,),
+        )
+        return (cursor.rowcount or 0) > 0
