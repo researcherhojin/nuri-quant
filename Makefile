@@ -125,6 +125,25 @@ lint-sh: ## Shell script lint via shellcheck (brew install shellcheck)
 	@command -v shellcheck >/dev/null 2>&1 || { echo "shellcheck not installed: brew install shellcheck"; exit 1; }
 	shellcheck --source-path=SCRIPTDIR --external-sources scripts/*.sh
 
+typecheck: ## Pyright static type-check across nuri/, tests/, scripts/ (advisory; severity 8 only)
+	@command -v npx >/dev/null 2>&1 || { echo "npx not installed: install Node.js"; exit 1; }
+	npx --yes -p pyright pyright nuri/ tests/ scripts/ --outputjson 2>/dev/null | \
+		.venv/bin/python -c "import json,sys; d=json.load(sys.stdin); diags=[x for x in d.get('generalDiagnostics',[]) if x.get('severity')=='error']; \
+		print(f'pyright: {len(diags)} error(s) across {len({x[\"file\"] for x in diags})} files'); \
+		[print(f'  {x[\"file\"]}:{x[\"range\"][\"start\"][\"line\"]+1} [{x.get(\"rule\",\"?\")}]: {x[\"message\"].splitlines()[0]}') for x in diags[:50]]; \
+		sys.exit(1 if diags else 0)" || true
+
+spellcheck: ## cspell check (uses .cspell.json — add words there for false positives)
+	@command -v npx >/dev/null 2>&1 || { echo "npx not installed: install Node.js"; exit 1; }
+	@# Excludes gitignored files (NEXT_SESSION.md / SESSION_PROMPT.md may contain personal info)
+	npx --yes -p cspell cspell --config .cspell.json --no-progress --no-summary \
+		--exclude SESSION_PROMPT.md --exclude NEXT_SESSION.md \
+		"nuri/**/*.py" "tests/**/*.py" "scripts/**/*.py" \
+		"nuri/**/CLAUDE.md" "tests/**/CLAUDE.md" "scripts/**/*.md" \
+		"docs/*.md" "README.md" "CLAUDE.md" "AGENTS.md" "CONTRIBUTING.md" 2>&1 | tail -80 || true
+
+diagnostics: typecheck spellcheck ## Run pyright + cspell — surfaces all IDE-level issues
+
 validate-portfolio: ## Verify each ticker in config/portfolio.yaml has live data (#131)
 	$(PYTHON) scripts/validate_portfolio.py
 
