@@ -11,6 +11,7 @@ Phase 2 actors (Codex Round 5):
 - ForwardOutcomeTracker (#11, Layer B) — closed-loop: outcome 추적 → hypothesis auto-validate
 - ExecutionFirewall (#9, Layer A) — emit 직전 마지막 hard constraint gate
 - AuditLedger (#10, Layer A) — read-only audit ledger query + retention policy
+- SREIncidentAgent (#14, Layer A) — operational incident detection + alert routing
 """
 
 from nuri.agents.actors.audit_ledger import AuditLedger
@@ -22,6 +23,7 @@ from nuri.agents.actors.freshness_gatekeeper import FreshnessGatekeeper
 from nuri.agents.actors.hypothesis_registry import HypothesisRegistry
 from nuri.agents.actors.regime_posterior import RegimePosterior
 from nuri.agents.actors.release_rollback_manager import ReleaseRollbackManager
+from nuri.agents.actors.sre_incident_agent import SREIncidentAgent
 from nuri.agents.actors.walkforward_validator import WalkForwardValidator
 
 __all__ = [
@@ -34,5 +36,6 @@ __all__ = [
     "HypothesisRegistry",
     "RegimePosterior",
     "ReleaseRollbackManager",
+    "SREIncidentAgent",
     "WalkForwardValidator",
 ]
