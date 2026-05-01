@@ -490,38 +490,40 @@ class TestLastOutcome:
 
 
 class TestDiscordPublish:
-    def test_validate_publishes_to_rollout(self, patched_db):
+    """PR3 Codex Round 6: validate/reject → outbox stage_rollout."""
+
+    def test_validate_stages_to_rollout(self, patched_db):
         _seed_hypothesis(patched_db, "h-pub", "pub-claim")
         _seed_decision(patched_db, decision_id="dc-pub", ticker="TESTPB", hypothesis_id="h-pub")
         _seed_prices(
             patched_db,
             [("TESTPB", "2026-04-20", 100.0), ("TESTPB", "2026-04-27", 110.0)],
         )
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             ForwardOutcomeTracker().run({"action": "track_one", "decision_id": "dc-pub", "observation_window": 7})
-            mock_publish.assert_called_once()
-            kw = mock_publish.call_args.kwargs
+            mock_stage.assert_called_once()
+            kw = mock_stage.call_args.kwargs
             assert kw["actor_name"] == "forward-outcome-tracker"
-            assert "validated" in kw["embed"]["title"]
+            assert kw["payload"]["kind"] == "hypothesis_validated"
 
-    def test_reject_publishes_to_rollout(self, patched_db):
+    def test_reject_stages_to_rollout(self, patched_db):
         _seed_hypothesis(patched_db, "h-pub2", "pub2-claim")
         _seed_decision(patched_db, decision_id="dc-pub2", ticker="TESTPC", hypothesis_id="h-pub2")
         _seed_prices(
             patched_db,
             [("TESTPC", "2026-04-20", 100.0), ("TESTPC", "2026-04-27", 90.0)],
         )
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             ForwardOutcomeTracker().run({"action": "track_one", "decision_id": "dc-pub2", "observation_window": 7})
-            mock_publish.assert_called_once()
-            assert "rejected" in mock_publish.call_args.kwargs["embed"]["title"]
+            mock_stage.assert_called_once()
+            assert mock_stage.call_args.kwargs["payload"]["kind"] == "hypothesis_rejected"
 
-    def test_insufficient_does_not_publish(self, patched_db):
+    def test_insufficient_does_not_stage(self, patched_db):
         _seed_hypothesis(patched_db, "h-np", "np-claim")
         _seed_decision(patched_db, decision_id="dc-np", ticker="MISSING2", hypothesis_id="h-np")
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             ForwardOutcomeTracker().run({"action": "track_one", "decision_id": "dc-np", "observation_window": 7})
-            mock_publish.assert_not_called()
+            mock_stage.assert_not_called()
 
     def test_publish_failure_does_not_block_actor(self, patched_db):
         _seed_hypothesis(patched_db, "h-pf", "pf-claim")
@@ -531,8 +533,8 @@ class TestDiscordPublish:
             [("TESTPF", "2026-04-20", 100.0), ("TESTPF", "2026-04-27", 110.0)],
         )
         with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-            side_effect=RuntimeError("network"),
+            "nuri.agents.discord.outbox.stage_rollout",
+            side_effect=RuntimeError("outbox down"),
         ):
             result = ForwardOutcomeTracker().run(
                 {"action": "track_one", "decision_id": "dc-pf", "observation_window": 7}

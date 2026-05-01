@@ -246,11 +246,7 @@ class CollectorOrchestrator(Actor):
     ) -> ActorResult:
         """orchestrate finished 케이스 — under-fetch 판정 + Outcome 결정."""
         # under-fetch: expected_rows 가 주어지면 90% threshold.
-        warn_under_fetch = (
-            expected_rows is not None
-            and expected_rows > 0
-            and rows_collected < expected_rows * 0.9
-        )
+        warn_under_fetch = expected_rows is not None and expected_rows > 0 and rows_collected < expected_rows * 0.9
         if warn_under_fetch:
             outcome = Outcome.WARN
             self._publish_orchestrate_failure(
@@ -454,30 +450,23 @@ class CollectorOrchestrator(Actor):
         attempts: int,
         run_id: str,
     ) -> None:
-        """Final orchestrate failure → OPS 채널. 예외 발생해도 audit 영향 없음."""
+        """Final orchestrate failure → #ops outbox stage (PR3 Codex Round 6)."""
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_ops
 
-            description = (
-                f"collector: **{collector_name}**\n"
-                f"attempts: {attempts}\n"
-                f"error: ```\n{error[:300]}\n```"
-            )
-            embed = {
-                "title": "Collector orchestrate failed",
-                "description": description,
-                "color": 0xF39C12,  # AMBER
-                "footer": {
-                    "text": f"nuri-quant • run_id={run_id[:8]} • Collector-Orchestrator"
+            stage_ops(
+                payload={
+                    "kind": "collector_failure",
+                    "summary": (f"{collector_name} failed after {attempts} attempts: {error[:120]}"),
+                    "collector_name": collector_name,
+                    "attempts": attempts,
+                    "error": error[:300],
                 },
-            }
-            DiscordPublisher().publish_embed(
-                Channel.OPS,
-                embed=embed,
+                dedupe_key=f"collector_failure:{collector_name}",
                 actor_name="collector-orchestrator",
                 run_id=run_id,
             )
-        except Exception:  # noqa: BLE001 — publish 실패는 audit 무관.
+        except Exception:  # noqa: BLE001
             pass
 
     @staticmethod
@@ -487,55 +476,48 @@ class CollectorOrchestrator(Actor):
         hours: int,
         run_id: str,
     ) -> None:
-        """scan_health WARN → OPS, BLOCK → INCIDENTS. info 는 publish X."""
+        """scan_health WARN → #ops, BLOCK → #incidents (PR3 Codex Round 6). info 는 publish X."""
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_incident, stage_ops
 
             unhealthy = [s for s in summaries if s["health_status"] == "unhealthy"]
             if outcome == Outcome.BLOCK:
-                channel = Channel.INCIDENTS
-                color = 0xE74C3C
-                title = f"Collector health CATASTROPHIC ({len(unhealthy)}/{len(summaries)} unhealthy)"
+                stage_fn = stage_incident
+                kind = "collector_health_catastrophic"
             elif outcome == Outcome.WARN:
-                channel = Channel.OPS
-                color = 0xF39C12
-                title = f"Collector health WARN ({len(unhealthy)}/{len(summaries)} unhealthy)"
+                stage_fn = stage_ops
+                kind = "collector_health_warn"
             else:
                 return
 
-            unhealthy_lines = "\n".join(
-                f"- **{s['collector_name']}** pass_rate={s['pass_rate']:.1%} "
-                f"runs={s['total_runs']} last={s['last_status']}"
-                for s in unhealthy[:10]
-            )
-            description = (
-                f"window: last **{hours}h**\n"
-                f"unhealthy collectors:\n{unhealthy_lines or '(none)'}"
-            )
-            embed = {
-                "title": title,
-                "description": description,
-                "color": color,
-                "footer": {
-                    "text": f"nuri-quant • run_id={run_id[:8]} • Collector-Orchestrator"
+            unhealthy_names = ",".join(s["collector_name"] for s in unhealthy[:5])
+            stage_fn(
+                payload={
+                    "kind": kind,
+                    "summary": (f"{len(unhealthy)}/{len(summaries)} unhealthy in {hours}h: {unhealthy_names}"),
+                    "hours": hours,
+                    "unhealthy": [
+                        {
+                            "name": s["collector_name"],
+                            "pass_rate": s["pass_rate"],
+                            "runs": s["total_runs"],
+                            "last_status": s["last_status"],
+                        }
+                        for s in unhealthy[:10]
+                    ],
                 },
-            }
-            DiscordPublisher().publish_embed(
-                channel,
-                embed=embed,
+                dedupe_key=f"collector_health:{kind}",
                 actor_name="collector-orchestrator",
                 run_id=run_id,
             )
-        except Exception:  # noqa: BLE001 — best-effort.
+        except Exception:  # noqa: BLE001
             pass
 
 
 # ─── helpers ───────────────────────────────────────────────
 
 
-def make_collector_fn(
-    fn: Callable[..., Any], *args: Any, **kwargs: Any
-) -> Callable[[], Any]:
+def make_collector_fn(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Callable[[], Any]:
     """편의 wrapper — 기존 collector 함수를 zero-arg 형태로 변환.
 
     e.g. `make_collector_fn(fetch_prices, tickers=['AAPL'])`.

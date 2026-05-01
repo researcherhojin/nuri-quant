@@ -139,32 +139,52 @@ class TestHelperLockTests:
     def test_unknown_model_kind_rejected(self, db_path):
         with pytest.raises(ValueError, match="model_kind"):
             log_foundation_benchmark(
-                benchmark_run="r", model_id="m", model_kind="weird",
-                metric_name="brier", metric_value=0.1, higher_is_better=False,
-                sample_n=10, db_path=db_path,
+                benchmark_run="r",
+                model_id="m",
+                model_kind="weird",
+                metric_name="brier",
+                metric_value=0.1,
+                higher_is_better=False,
+                sample_n=10,
+                db_path=db_path,
             )
 
     def test_unknown_metric_name_rejected(self, db_path):
         with pytest.raises(ValueError, match="metric_name"):
             log_foundation_benchmark(
-                benchmark_run="r", model_id="m", model_kind="baseline",
-                metric_name="unknown", metric_value=0.1, higher_is_better=False,
-                sample_n=10, db_path=db_path,
+                benchmark_run="r",
+                model_id="m",
+                model_kind="baseline",
+                metric_name="unknown",
+                metric_value=0.1,
+                higher_is_better=False,
+                sample_n=10,
+                db_path=db_path,
             )
 
     def test_negative_sample_n_rejected(self, db_path):
         with pytest.raises(ValueError, match="sample_n"):
             log_foundation_benchmark(
-                benchmark_run="r", model_id="m", model_kind="baseline",
-                metric_name="brier", metric_value=0.1, higher_is_better=False,
-                sample_n=-1, db_path=db_path,
+                benchmark_run="r",
+                model_id="m",
+                model_kind="baseline",
+                metric_name="brier",
+                metric_value=0.1,
+                higher_is_better=False,
+                sample_n=-1,
+                db_path=db_path,
             )
 
     def test_returns_lastrowid(self, db_path):
         bid = log_foundation_benchmark(
-            benchmark_run="r", model_id="m", model_kind="baseline",
-            metric_name="brier", metric_value=0.1, higher_is_better=False,
-            sample_n=10, db_path=db_path,
+            benchmark_run="r",
+            model_id="m",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.1,
+            higher_is_better=False,
+            sample_n=10,
+            db_path=db_path,
         )
         assert bid >= 1
 
@@ -177,15 +197,17 @@ class TestHelperLockTests:
 class TestBenchmarkAction:
     def test_benchmark_inserts_row(self, patched_db):
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "benchmark",
-            "benchmark_run": "2026-05-01-pilot",
-            "model_id": "sticky-hmm-v1",
-            "model_kind": "baseline",
-            "metric_name": "brier",
-            "metric_value": 0.18,
-            "sample_n": 252,
-        })
+        result = actor.run(
+            {
+                "action": "benchmark",
+                "benchmark_run": "2026-05-01-pilot",
+                "model_id": "sticky-hmm-v1",
+                "model_kind": "baseline",
+                "metric_name": "brier",
+                "metric_value": 0.18,
+                "sample_n": 252,
+            }
+        )
         assert result.outcome == Outcome.PASS
         assert result.output["benchmark_id"] >= 1
         assert result.output["model_kind"] == "baseline"
@@ -196,60 +218,68 @@ class TestBenchmarkAction:
 
     def test_benchmark_higher_is_better_default_for_sharpe(self, patched_db):
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "benchmark",
-            "benchmark_run": "r1",
-            "model_id": "m1",
-            "model_kind": "baseline",
-            "metric_name": "sharpe",
-            "metric_value": 1.2,
-            "sample_n": 100,
-        })
+        result = actor.run(
+            {
+                "action": "benchmark",
+                "benchmark_run": "r1",
+                "model_id": "m1",
+                "model_kind": "baseline",
+                "metric_name": "sharpe",
+                "metric_value": 1.2,
+                "sample_n": 100,
+            }
+        )
         assert result.outcome == Outcome.PASS
         assert result.output["higher_is_better"] is True
 
     def test_benchmark_higher_is_better_default_for_brier(self, patched_db):
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "benchmark",
-            "benchmark_run": "r1",
-            "model_id": "m1",
-            "model_kind": "baseline",
-            "metric_name": "brier",
-            "metric_value": 0.15,
-            "sample_n": 100,
-        })
+        result = actor.run(
+            {
+                "action": "benchmark",
+                "benchmark_run": "r1",
+                "model_id": "m1",
+                "model_kind": "baseline",
+                "metric_name": "brier",
+                "metric_value": 0.15,
+                "sample_n": 100,
+            }
+        )
         assert result.outcome == Outcome.PASS
         assert result.output["higher_is_better"] is False
 
     def test_benchmark_caller_can_override_higher_is_better(self, patched_db):
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "benchmark",
-            "benchmark_run": "r1",
-            "model_id": "m1",
-            "model_kind": "foundation",
-            "metric_name": "sharpe",
-            "metric_value": 1.5,
-            "sample_n": 100,
-            "higher_is_better": False,  # override (의도적)
-        })
+        result = actor.run(
+            {
+                "action": "benchmark",
+                "benchmark_run": "r1",
+                "model_id": "m1",
+                "model_kind": "foundation",
+                "metric_name": "sharpe",
+                "metric_value": 1.5,
+                "sample_n": 100,
+                "higher_is_better": False,  # override (의도적)
+            }
+        )
         assert result.output["higher_is_better"] is False
 
     def test_benchmark_persists_walkforward_link(self, patched_db):
         actor = FoundationBenchmark()
-        actor.run({
-            "action": "benchmark",
-            "benchmark_run": "r1",
-            "model_id": "m1",
-            "model_kind": "baseline",
-            "metric_name": "brier",
-            "metric_value": 0.2,
-            "sample_n": 50,
-            "pit_hash": "abc123",
-            "walkforward_run_id": "wf-uuid-1",
-            "notes": "fold spec rolling/252/21/21",
-        })
+        actor.run(
+            {
+                "action": "benchmark",
+                "benchmark_run": "r1",
+                "model_id": "m1",
+                "model_kind": "baseline",
+                "metric_name": "brier",
+                "metric_value": 0.2,
+                "sample_n": 50,
+                "pit_hash": "abc123",
+                "walkforward_run_id": "wf-uuid-1",
+                "notes": "fold spec rolling/252/21/21",
+            }
+        )
         rows = query("SELECT * FROM foundation_benchmarks", db_path=patched_db)
         assert rows[0]["pit_hash"] == "abc123"
         assert rows[0]["walkforward_run_id"] == "wf-uuid-1"
@@ -257,15 +287,17 @@ class TestBenchmarkAction:
 
     def test_benchmark_records_actor_run_id(self, patched_db):
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "benchmark",
-            "benchmark_run": "r1",
-            "model_id": "m1",
-            "model_kind": "baseline",
-            "metric_name": "brier",
-            "metric_value": 0.2,
-            "sample_n": 50,
-        })
+        result = actor.run(
+            {
+                "action": "benchmark",
+                "benchmark_run": "r1",
+                "model_id": "m1",
+                "model_kind": "baseline",
+                "metric_name": "brier",
+                "metric_value": 0.2,
+                "sample_n": 50,
+            }
+        )
         rows = query("SELECT * FROM foundation_benchmarks", db_path=patched_db)
         # actor_run_id is set by actor (RunContext.run_id)
         assert rows[0]["actor_run_id"] is not None
@@ -283,57 +315,65 @@ class TestBenchmarkValidation:
 
     def test_invalid_model_kind_blocked(self, patched_db):
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "benchmark",
-            "benchmark_run": "r1",
-            "model_id": "m",
-            "model_kind": "not_a_kind",
-            "metric_name": "brier",
-            "metric_value": 0.1,
-            "sample_n": 10,
-        })
+        result = actor.run(
+            {
+                "action": "benchmark",
+                "benchmark_run": "r1",
+                "model_id": "m",
+                "model_kind": "not_a_kind",
+                "metric_name": "brier",
+                "metric_value": 0.1,
+                "sample_n": 10,
+            }
+        )
         assert result.outcome == Outcome.BLOCK
         assert "model_kind" in result.output["error"]
 
     def test_invalid_metric_name_blocked(self, patched_db):
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "benchmark",
-            "benchmark_run": "r1",
-            "model_id": "m",
-            "model_kind": "baseline",
-            "metric_name": "not_a_metric",
-            "metric_value": 0.1,
-            "sample_n": 10,
-        })
+        result = actor.run(
+            {
+                "action": "benchmark",
+                "benchmark_run": "r1",
+                "model_id": "m",
+                "model_kind": "baseline",
+                "metric_name": "not_a_metric",
+                "metric_value": 0.1,
+                "sample_n": 10,
+            }
+        )
         assert result.outcome == Outcome.BLOCK
         assert "metric_name" in result.output["error"]
 
     def test_negative_sample_n_blocked(self, patched_db):
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "benchmark",
-            "benchmark_run": "r1",
-            "model_id": "m",
-            "model_kind": "baseline",
-            "metric_name": "brier",
-            "metric_value": 0.1,
-            "sample_n": -5,
-        })
+        result = actor.run(
+            {
+                "action": "benchmark",
+                "benchmark_run": "r1",
+                "model_id": "m",
+                "model_kind": "baseline",
+                "metric_name": "brier",
+                "metric_value": 0.1,
+                "sample_n": -5,
+            }
+        )
         assert result.outcome == Outcome.BLOCK
         assert "sample_n" in result.output["error"]
 
     def test_uncastable_metric_value_blocked(self, patched_db):
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "benchmark",
-            "benchmark_run": "r1",
-            "model_id": "m",
-            "model_kind": "baseline",
-            "metric_name": "brier",
-            "metric_value": "not_a_number",
-            "sample_n": 10,
-        })
+        result = actor.run(
+            {
+                "action": "benchmark",
+                "benchmark_run": "r1",
+                "model_id": "m",
+                "model_kind": "baseline",
+                "metric_name": "brier",
+                "metric_value": "not_a_number",
+                "sample_n": 10,
+            }
+        )
         assert result.outcome == Outcome.BLOCK
 
 
@@ -363,10 +403,22 @@ class TestCompareAction:
 
     def test_foundation_wins_significantly_pass(self, patched_db):
         # baseline brier 0.20, foundation brier 0.15 → foundation 25% 우수 (lower better)
-        _seed(patched_db, benchmark_run="rcmp", model_id="hmm-base",
-              model_kind="baseline", metric_name="brier", metric_value=0.20)
-        _seed(patched_db, benchmark_run="rcmp", model_id="timesfm-2.5",
-              model_kind="foundation", metric_name="brier", metric_value=0.15)
+        _seed(
+            patched_db,
+            benchmark_run="rcmp",
+            model_id="hmm-base",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.20,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rcmp",
+            model_id="timesfm-2.5",
+            model_kind="foundation",
+            metric_name="brier",
+            metric_value=0.15,
+        )
         actor = FoundationBenchmark()
         result = actor.run({"action": "compare", "benchmark_run": "rcmp"})
         assert result.outcome == Outcome.PASS
@@ -377,10 +429,22 @@ class TestCompareAction:
 
     def test_baseline_wins_pass(self, patched_db):
         # baseline brier 0.10 < foundation brier 0.30 → baseline winner
-        _seed(patched_db, benchmark_run="rb", model_id="hmm",
-              model_kind="baseline", metric_name="brier", metric_value=0.10)
-        _seed(patched_db, benchmark_run="rb", model_id="big-foundation",
-              model_kind="foundation", metric_name="brier", metric_value=0.30)
+        _seed(
+            patched_db,
+            benchmark_run="rb",
+            model_id="hmm",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.10,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rb",
+            model_id="big-foundation",
+            model_kind="foundation",
+            metric_name="brier",
+            metric_value=0.30,
+        )
         actor = FoundationBenchmark()
         result = actor.run({"action": "compare", "benchmark_run": "rb"})
         assert result.outcome == Outcome.PASS
@@ -391,10 +455,22 @@ class TestCompareAction:
 
     def test_foundation_wins_marginal(self, patched_db):
         # baseline 0.20, foundation 0.198 → 1% improvement (< SIGNIFICANT 10%)
-        _seed(patched_db, benchmark_run="rm", model_id="hmm",
-              model_kind="baseline", metric_name="brier", metric_value=0.20)
-        _seed(patched_db, benchmark_run="rm", model_id="found-light",
-              model_kind="foundation", metric_name="brier", metric_value=0.198)
+        _seed(
+            patched_db,
+            benchmark_run="rm",
+            model_id="hmm",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.20,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rm",
+            model_id="found-light",
+            model_kind="foundation",
+            metric_name="brier",
+            metric_value=0.198,
+        )
         actor = FoundationBenchmark()
         result = actor.run({"action": "compare", "benchmark_run": "rm"})
         assert result.outcome == Outcome.PASS
@@ -404,10 +480,22 @@ class TestCompareAction:
 
     def test_tie_verdict(self, patched_db):
         # 둘 다 0.200 ≈ 동일 → tie (delta < 1%)
-        _seed(patched_db, benchmark_run="rt", model_id="hmm",
-              model_kind="baseline", metric_name="brier", metric_value=0.200)
-        _seed(patched_db, benchmark_run="rt", model_id="found-tie",
-              model_kind="foundation", metric_name="brier", metric_value=0.2005)
+        _seed(
+            patched_db,
+            benchmark_run="rt",
+            model_id="hmm",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.200,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rt",
+            model_id="found-tie",
+            model_kind="foundation",
+            metric_name="brier",
+            metric_value=0.2005,
+        )
         actor = FoundationBenchmark()
         result = actor.run({"action": "compare", "benchmark_run": "rt"})
         cmp = result.output["comparisons"][0]
@@ -415,12 +503,24 @@ class TestCompareAction:
 
     def test_higher_is_better_direction_sharpe(self, patched_db):
         # sharpe higher better — baseline 0.8 vs foundation 1.5 → foundation winner (87% improvement)
-        _seed(patched_db, benchmark_run="rs", model_id="hmm",
-              model_kind="baseline", metric_name="sharpe", metric_value=0.8,
-              higher_is_better=True)
-        _seed(patched_db, benchmark_run="rs", model_id="found",
-              model_kind="foundation", metric_name="sharpe", metric_value=1.5,
-              higher_is_better=True)
+        _seed(
+            patched_db,
+            benchmark_run="rs",
+            model_id="hmm",
+            model_kind="baseline",
+            metric_name="sharpe",
+            metric_value=0.8,
+            higher_is_better=True,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rs",
+            model_id="found",
+            model_kind="foundation",
+            metric_name="sharpe",
+            metric_value=1.5,
+            higher_is_better=True,
+        )
         actor = FoundationBenchmark()
         result = actor.run({"action": "compare", "benchmark_run": "rs"})
         cmp = result.output["comparisons"][0]
@@ -430,20 +530,42 @@ class TestCompareAction:
         assert cmp["delta_relative"] > SIGNIFICANT_IMPROVEMENT_PCT
 
     def test_metric_name_filter(self, patched_db):
-        _seed(patched_db, benchmark_run="rfilt", model_id="m1",
-              model_kind="baseline", metric_name="brier", metric_value=0.20)
-        _seed(patched_db, benchmark_run="rfilt", model_id="m2",
-              model_kind="foundation", metric_name="brier", metric_value=0.10)
-        _seed(patched_db, benchmark_run="rfilt", model_id="m1",
-              model_kind="baseline", metric_name="sharpe", metric_value=0.5,
-              higher_is_better=True)
-        _seed(patched_db, benchmark_run="rfilt", model_id="m2",
-              model_kind="foundation", metric_name="sharpe", metric_value=1.0,
-              higher_is_better=True)
+        _seed(
+            patched_db,
+            benchmark_run="rfilt",
+            model_id="m1",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.20,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rfilt",
+            model_id="m2",
+            model_kind="foundation",
+            metric_name="brier",
+            metric_value=0.10,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rfilt",
+            model_id="m1",
+            model_kind="baseline",
+            metric_name="sharpe",
+            metric_value=0.5,
+            higher_is_better=True,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rfilt",
+            model_id="m2",
+            model_kind="foundation",
+            metric_name="sharpe",
+            metric_value=1.0,
+            higher_is_better=True,
+        )
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "compare", "benchmark_run": "rfilt", "metric_name": "brier"
-        })
+        result = actor.run({"action": "compare", "benchmark_run": "rfilt", "metric_name": "brier"})
         assert result.outcome == Outcome.PASS
         # only brier compared
         assert result.output["n_metrics"] == 1
@@ -452,24 +574,21 @@ class TestCompareAction:
     def test_invalid_metric_filter_blocked(self, patched_db):
         _seed(patched_db, benchmark_run="rx")
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "compare", "benchmark_run": "rx", "metric_name": "garbage"
-        })
+        result = actor.run({"action": "compare", "benchmark_run": "rx", "metric_name": "garbage"})
         assert result.outcome == Outcome.BLOCK
 
     def test_model_ids_filter(self, patched_db):
-        _seed(patched_db, benchmark_run="rmid", model_id="a",
-              model_kind="baseline", metric_value=0.20)
-        _seed(patched_db, benchmark_run="rmid", model_id="b",
-              model_kind="foundation", metric_value=0.10)
-        _seed(patched_db, benchmark_run="rmid", model_id="c",
-              model_kind="traditional", metric_value=0.30)
+        _seed(patched_db, benchmark_run="rmid", model_id="a", model_kind="baseline", metric_value=0.20)
+        _seed(patched_db, benchmark_run="rmid", model_id="b", model_kind="foundation", metric_value=0.10)
+        _seed(patched_db, benchmark_run="rmid", model_id="c", model_kind="traditional", metric_value=0.30)
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "compare",
-            "benchmark_run": "rmid",
-            "model_ids": ["a", "b"],
-        })
+        result = actor.run(
+            {
+                "action": "compare",
+                "benchmark_run": "rmid",
+                "model_ids": ["a", "b"],
+            }
+        )
         assert result.outcome == Outcome.PASS
         cmp = result.output["comparisons"][0]
         # winner among {a, b} should be b (foundation 0.10 < baseline 0.20)
@@ -479,18 +598,32 @@ class TestCompareAction:
     def test_invalid_model_ids_filter_blocked(self, patched_db):
         _seed(patched_db, benchmark_run="rmid2")
         actor = FoundationBenchmark()
-        result = actor.run({
-            "action": "compare",
-            "benchmark_run": "rmid2",
-            "model_ids": "not_a_list",
-        })
+        result = actor.run(
+            {
+                "action": "compare",
+                "benchmark_run": "rmid2",
+                "model_ids": "not_a_list",
+            }
+        )
         assert result.outcome == Outcome.BLOCK
 
     def test_traditional_winner_verdict(self, patched_db):
-        _seed(patched_db, benchmark_run="rtr", model_id="naive",
-              model_kind="traditional", metric_name="brier", metric_value=0.10)
-        _seed(patched_db, benchmark_run="rtr", model_id="hmm",
-              model_kind="baseline", metric_name="brier", metric_value=0.20)
+        _seed(
+            patched_db,
+            benchmark_run="rtr",
+            model_id="naive",
+            model_kind="traditional",
+            metric_name="brier",
+            metric_value=0.10,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rtr",
+            model_id="hmm",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.20,
+        )
         actor = FoundationBenchmark()
         result = actor.run({"action": "compare", "benchmark_run": "rtr"})
         cmp = result.output["comparisons"][0]
@@ -522,8 +655,9 @@ class TestListRuns:
     def test_n_models_aggregation(self, patched_db):
         _seed(patched_db, benchmark_run="rN", model_id="m1")
         _seed(patched_db, benchmark_run="rN", model_id="m2")
-        _seed(patched_db, benchmark_run="rN", model_id="m1", metric_name="sharpe",
-              metric_value=1.0, higher_is_better=True)  # 같은 model_id 다른 metric
+        _seed(
+            patched_db, benchmark_run="rN", model_id="m1", metric_name="sharpe", metric_value=1.0, higher_is_better=True
+        )  # 같은 model_id 다른 metric
         actor = FoundationBenchmark()
         result = actor.run({"action": "list_runs"})
         runs = {r["benchmark_run"]: r for r in result.output["runs"]}
@@ -572,73 +706,116 @@ class TestInvalidAction:
 
 
 class TestDiscordPublish:
-    def test_significant_foundation_win_publishes(self, patched_db):
-        _seed(patched_db, benchmark_run="rpub", model_id="hmm",
-              model_kind="baseline", metric_name="brier", metric_value=0.20)
-        _seed(patched_db, benchmark_run="rpub", model_id="found",
-              model_kind="foundation", metric_name="brier", metric_value=0.10)
-        with patch("nuri.agents.discord.publisher.DiscordPublisher") as mock_pub:
-            mock_instance = MagicMock()
-            mock_pub.return_value = mock_instance
+    """PR3 Codex Round 6: foundation win → outbox stage_rollout."""
+
+    def test_significant_foundation_win_stages(self, patched_db):
+        _seed(
+            patched_db,
+            benchmark_run="rpub",
+            model_id="hmm",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.20,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rpub",
+            model_id="found",
+            model_kind="foundation",
+            metric_name="brier",
+            metric_value=0.10,
+        )
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             actor = FoundationBenchmark()
             result = actor.run({"action": "compare", "benchmark_run": "rpub"})
             assert result.outcome == Outcome.PASS
-            assert mock_instance.publish_embed.called
-            call_kwargs = mock_instance.publish_embed.call_args
-            embed = call_kwargs.kwargs.get("embed") or call_kwargs.args[1]
-            assert "Foundation model win" in embed["title"]
+            mock_stage.assert_called_once()
+            assert mock_stage.call_args.kwargs["payload"]["kind"] == "foundation_promotion"
 
-    def test_baseline_winner_does_not_publish(self, patched_db):
-        _seed(patched_db, benchmark_run="rnopub", model_id="hmm",
-              model_kind="baseline", metric_name="brier", metric_value=0.10)
-        _seed(patched_db, benchmark_run="rnopub", model_id="found",
-              model_kind="foundation", metric_name="brier", metric_value=0.30)
-        with patch("nuri.agents.discord.publisher.DiscordPublisher") as mock_pub:
-            mock_instance = MagicMock()
-            mock_pub.return_value = mock_instance
+    def test_baseline_winner_does_not_stage(self, patched_db):
+        _seed(
+            patched_db,
+            benchmark_run="rnopub",
+            model_id="hmm",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.10,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rnopub",
+            model_id="found",
+            model_kind="foundation",
+            metric_name="brier",
+            metric_value=0.30,
+        )
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             actor = FoundationBenchmark()
             actor.run({"action": "compare", "benchmark_run": "rnopub"})
-            assert not mock_instance.publish_embed.called
+            assert not mock_stage.called
 
-    def test_marginal_foundation_win_does_not_publish(self, patched_db):
-        _seed(patched_db, benchmark_run="rmar", model_id="hmm",
-              model_kind="baseline", metric_name="brier", metric_value=0.20)
-        _seed(patched_db, benchmark_run="rmar", model_id="found",
-              model_kind="foundation", metric_name="brier", metric_value=0.198)
-        with patch("nuri.agents.discord.publisher.DiscordPublisher") as mock_pub:
-            mock_instance = MagicMock()
-            mock_pub.return_value = mock_instance
+    def test_marginal_foundation_win_does_not_stage(self, patched_db):
+        _seed(
+            patched_db,
+            benchmark_run="rmar",
+            model_id="hmm",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.20,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rmar",
+            model_id="found",
+            model_kind="foundation",
+            metric_name="brier",
+            metric_value=0.198,
+        )
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             actor = FoundationBenchmark()
             actor.run({"action": "compare", "benchmark_run": "rmar"})
-            assert not mock_instance.publish_embed.called
+            assert not mock_stage.called
 
     def test_publish_failure_does_not_block_actor(self, patched_db):
-        _seed(patched_db, benchmark_run="rfail", model_id="hmm",
-              model_kind="baseline", metric_name="brier", metric_value=0.20)
-        _seed(patched_db, benchmark_run="rfail", model_id="found",
-              model_kind="foundation", metric_name="brier", metric_value=0.10)
-        with patch("nuri.agents.discord.publisher.DiscordPublisher") as mock_pub:
-            mock_pub.side_effect = RuntimeError("network down")
+        _seed(
+            patched_db,
+            benchmark_run="rfail",
+            model_id="hmm",
+            model_kind="baseline",
+            metric_name="brier",
+            metric_value=0.20,
+        )
+        _seed(
+            patched_db,
+            benchmark_run="rfail",
+            model_id="found",
+            model_kind="foundation",
+            metric_name="brier",
+            metric_value=0.10,
+        )
+        with patch(
+            "nuri.agents.discord.outbox.stage_rollout",
+            side_effect=RuntimeError("outbox down"),
+        ):
             actor = FoundationBenchmark()
             result = actor.run({"action": "compare", "benchmark_run": "rfail"})
-            # actor 는 PASS 유지 — Discord 실패는 best-effort
             assert result.outcome == Outcome.PASS
 
     def test_benchmark_action_does_not_publish(self, patched_db):
-        with patch("nuri.agents.discord.publisher.DiscordPublisher") as mock_pub:
-            mock_instance = MagicMock()
-            mock_pub.return_value = mock_instance
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             actor = FoundationBenchmark()
-            actor.run({
-                "action": "benchmark",
-                "benchmark_run": "r1",
-                "model_id": "m1",
-                "model_kind": "foundation",
-                "metric_name": "brier",
-                "metric_value": 0.05,
-                "sample_n": 100,
-            })
-            assert not mock_instance.publish_embed.called
+            actor.run(
+                {
+                    "action": "benchmark",
+                    "benchmark_run": "r1",
+                    "model_id": "m1",
+                    "model_kind": "foundation",
+                    "metric_name": "brier",
+                    "metric_value": 0.05,
+                    "sample_n": 100,
+                }
+            )
+            assert not mock_stage.called
 
 
 # ═══════════════════════════════════════════════════════
@@ -662,15 +839,23 @@ class TestCLI:
         assert rc == 2
 
     def test_cli_benchmark_happy_path(self, patched_db, capsys):
-        rc = main([
-            "benchmark",
-            "--benchmark-run", "cli-test",
-            "--model-id", "m-cli",
-            "--model-kind", "baseline",
-            "--metric-name", "brier",
-            "--metric-value", "0.15",
-            "--sample-n", "50",
-        ])
+        rc = main(
+            [
+                "benchmark",
+                "--benchmark-run",
+                "cli-test",
+                "--model-id",
+                "m-cli",
+                "--model-kind",
+                "baseline",
+                "--metric-name",
+                "brier",
+                "--metric-value",
+                "0.15",
+                "--sample-n",
+                "50",
+            ]
+        )
         assert rc == 0
         out = capsys.readouterr().out
         assert "benchmark_id" in out

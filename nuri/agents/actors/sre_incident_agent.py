@@ -283,9 +283,7 @@ class SREIncidentAgent(Actor):
             if len(statuses) >= FAILURE_STREAK_CRIT and all(s == "failed" for s in statuses):
                 severity = "critical"
                 streak = FAILURE_STREAK_CRIT
-            elif len(statuses) >= FAILURE_STREAK_WARN and all(
-                s == "failed" for s in statuses[:FAILURE_STREAK_WARN]
-            ):
+            elif len(statuses) >= FAILURE_STREAK_WARN and all(s == "failed" for s in statuses[:FAILURE_STREAK_WARN]):
                 severity = "warning"
                 streak = FAILURE_STREAK_WARN
             else:
@@ -463,38 +461,35 @@ class SREIncidentAgent(Actor):
         evidence: dict[str, Any],
         run_id: str,
     ) -> None:
-        """critical → INCIDENTS, warning → OPS. info 는 publish X."""
+        """critical → #incidents, warning → #ops outbox (PR3 Codex Round 6). info X."""
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_incident, stage_ops
 
             if severity == "critical":
-                channel = Channel.INCIDENTS
-                color = 0xE74C3C  # RED
+                stage_fn = stage_incident
+                priority = "high"
             elif severity == "warning":
-                channel = Channel.OPS
-                color = 0xF39C12  # AMBER
+                stage_fn = stage_ops
+                priority = "normal"
             else:
-                return  # info — publish 안 함
+                return
 
-            description = (
-                f"target: **{target}**\n"
-                f"incident_id: `{incident_id}`\n"
-                f"severity: **{severity}**\n"
-                f"\nevidence:\n```json\n{_short_json(evidence)}\n```"
-            )
-            embed = {
-                "title": f"SRE Incident — {incident_type}",
-                "description": description,
-                "color": color,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]} • SRE-Incident-Agent"},
-            }
-            DiscordPublisher().publish_embed(
-                channel,
-                embed=embed,
+            stage_fn(
+                payload={
+                    "kind": f"sre_{incident_type}",
+                    "summary": (f"{incident_type} {severity} on {target} (incident_id={incident_id})"),
+                    "incident_id": incident_id,
+                    "incident_type": incident_type,
+                    "severity": severity,
+                    "target": target,
+                    "evidence": evidence,
+                },
+                priority=priority,
+                dedupe_key=f"sre_incident:{incident_id}",
                 actor_name="sre-incident-agent",
                 run_id=run_id,
             )
-        except Exception:  # noqa: BLE001 — publish 실패는 incident 기록 자체에 영향 X
+        except Exception:  # noqa: BLE001
             pass
 
 

@@ -403,22 +403,22 @@ class ExecutionFirewall(Actor):
         blocks: list[dict[str, Any]],
         run_id: str,
     ) -> None:
+        """Hard-veto execution block → #incidents outbox stage (PR3 Codex Round 6)."""
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_incident
 
-            block_types = ", ".join(b["type"] for b in blocks)
-            description = f"decision_id: `{decision_id}`\nblocks: **{block_types}**\n"
-            for b in blocks[:5]:
-                description += f"\n• {b['reason']}"
-            embed = {
-                "title": f"Execution BLOCK — {ticker}",
-                "description": description,
-                "color": 0xE74C3C,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]} • emit 차단됨"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.INCIDENTS,
-                embed=embed,
+            block_types = ",".join(b["type"] for b in blocks)
+            stage_incident(
+                payload={
+                    "kind": "execution_block",
+                    "ticker": ticker,
+                    "summary": f"{ticker} EXEC BLOCK [{block_types}] decision_id={decision_id}",
+                    "decision_id": decision_id,
+                    "blocks": blocks[:5],
+                    "block_types": block_types,
+                },
+                priority="high",  # hard-veto = 즉시 surface
+                dedupe_key=f"exec_block:{decision_id}",
                 actor_name="execution-firewall",
                 run_id=run_id,
             )

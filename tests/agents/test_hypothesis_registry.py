@@ -404,21 +404,23 @@ class TestAuditLedger:
 
 
 class TestDiscordPublish:
-    def test_validate_publishes_to_rollout(self, patched_db):
+    """PR3 Codex Round 6: validate/reject → outbox stage_rollout."""
+
+    def test_validate_stages_to_rollout(self, patched_db):
         actor = HypothesisRegistry()
         actor.run(_register_payload())
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             result = actor.run({"action": "validate", "hypothesis_id": "h-1", "validation_metrics": {"brier": 0.2}})
             assert result.outcome == Outcome.PASS
-            mock_publish.assert_called_once()
-            call_kwargs = mock_publish.call_args.kwargs
-            assert call_kwargs["actor_name"] == "hypothesis-registry"
-            assert "validated" in call_kwargs["embed"]["title"]
+            mock_stage.assert_called_once()
+            kw = mock_stage.call_args.kwargs
+            assert kw["actor_name"] == "hypothesis-registry"
+            assert kw["payload"]["kind"] == "hypothesis_validated"
 
-    def test_reject_publishes_to_rollout(self, patched_db):
+    def test_reject_stages_to_rollout(self, patched_db):
         actor = HypothesisRegistry()
         actor.run(_register_payload())
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             actor.run(
                 {
                     "action": "reject",
@@ -426,18 +428,18 @@ class TestDiscordPublish:
                     "rejection_reason": "Brier > 0.4",
                 }
             )
-            mock_publish.assert_called_once()
-            assert "rejected" in mock_publish.call_args.kwargs["embed"]["title"]
+            mock_stage.assert_called_once()
+            assert mock_stage.call_args.kwargs["payload"]["kind"] == "hypothesis_rejected"
 
     def test_publish_failure_does_not_block_actor(self, patched_db):
         actor = HypothesisRegistry()
         actor.run(_register_payload())
         with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-            side_effect=RuntimeError("network down"),
+            "nuri.agents.discord.outbox.stage_rollout",
+            side_effect=RuntimeError("outbox down"),
         ):
             result = actor.run({"action": "validate", "hypothesis_id": "h-1", "validation_metrics": {"x": 1}})
-            assert result.outcome == Outcome.PASS  # publish 실패해도 PASS
+            assert result.outcome == Outcome.PASS
 
 
 # ═══════════════════════════════════════════════════════
