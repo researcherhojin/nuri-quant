@@ -1,4 +1,6 @@
+# pyright: reportArgumentType=false
 """Tests for factors_value — split from test_quant_all.py."""
+
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -23,12 +25,12 @@ class TestValue:
 
     def test_empty_when_no_data(self, db_path_mp):
         from nuri.quant.factors.value import compute_value
+
         result = compute_value(tickers=["FAKE"])
         assert result.empty
 
     def test_normalization_logic(self):
-        scores = {"AAPL": {"pe_ratio": 15.0, "pb_ratio": 2.0},
-                  "MSFT": {"pe_ratio": 30.0, "pb_ratio": 5.0}}
+        scores = {"AAPL": {"pe_ratio": 15.0, "pb_ratio": 2.0}, "MSFT": {"pe_ratio": 30.0, "pb_ratio": 5.0}}
         df = pd.DataFrame(scores).T
         for col in ["pe_ratio", "pb_ratio"]:
             valid = df[col].dropna()
@@ -56,8 +58,7 @@ class TestValueDbRead:
         with get_db(db_path) as conn:
             for ticker, date, pe, pb in rows:
                 conn.execute(
-                    "INSERT OR REPLACE INTO fundamentals (ticker, date, pe_ratio, price_to_book)"
-                    " VALUES (?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO fundamentals (ticker, date, pe_ratio, price_to_book) VALUES (?, ?, ?, ?)",
                     (ticker, date, pe, pb),
                 )
 
@@ -68,8 +69,8 @@ class TestValueDbRead:
         self._seed_fundamentals(
             db_path_mp,
             [
-                ("AAPL", "2026-04-15", 15.0, 2.0),   # 저평가
-                ("MSFT", "2026-04-15", 30.0, 5.0),   # 중간
+                ("AAPL", "2026-04-15", 15.0, 2.0),  # 저평가
+                ("MSFT", "2026-04-15", 30.0, 5.0),  # 중간
                 ("NVDA", "2026-04-15", 60.0, 10.0),  # 고평가
             ],
         )
@@ -78,8 +79,7 @@ class TestValueDbRead:
         assert "value_score" in df.columns
         # 핵심 회귀 방어: score 가 상수화되면 이 assert 가 깨진다
         assert df["value_score"].nunique() > 1, (
-            "value_score 가 상수 (이전 0.5 버그 재발) — "
-            "fundamentals read 로 source 가 되었는지 확인"
+            "value_score 가 상수 (이전 0.5 버그 재발) — fundamentals read 로 source 가 되었는지 확인"
         )
         # 낮은 PE/PB = 높은 가치 스코어 (역수 정규화)
         assert float(df.loc["AAPL", "value_score"]) > float(df.loc["MSFT", "value_score"])
@@ -93,7 +93,7 @@ class TestValueDbRead:
             db_path_mp,
             [
                 ("AAPL", "2026-04-10", 100.0, 20.0),  # old (should be ignored)
-                ("AAPL", "2026-04-15", 15.0, 2.0),    # latest — 저평가
+                ("AAPL", "2026-04-15", 15.0, 2.0),  # latest — 저평가
                 ("MSFT", "2026-04-15", 30.0, 5.0),
             ],
         )
@@ -119,6 +119,4 @@ class TestValueDbRead:
                 )
             elif isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert "openbb" not in alias.name.lower(), (
-                        f"value.py `import {alias.name}` 재도입됨 (§2.3 위배)"
-                    )
+                    assert "openbb" not in alias.name.lower(), f"value.py `import {alias.name}` 재도입됨 (§2.3 위배)"
