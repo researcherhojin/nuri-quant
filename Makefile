@@ -618,10 +618,10 @@ ports-kill:
 	bash scripts/ports.sh kill
 
 sync-doc-counts:
-	bash scripts/sync_doc_counts.sh
+	bash scripts/doc/sync_doc_counts.sh
 
 verify-doc-counts:
-	bash scripts/verify_doc_counts.sh
+	bash scripts/verify/verify_doc_counts.sh
 
 # Back-compat alias — forwards to sync-doc-counts. Scheduled for removal after
 # external refs (if any) migrate.
