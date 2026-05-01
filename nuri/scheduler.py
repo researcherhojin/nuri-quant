@@ -208,7 +208,7 @@ def _run_backup():
 def _run_db_maintenance():
     """DB 유지보수 — 오래된 데이터 정리 + VACUUM."""
     try:
-        from scripts.db.db_maintenance import run_maintenance
+        from scripts.db.maintenance import run_maintenance
 
         run_maintenance()
     except Exception as e:

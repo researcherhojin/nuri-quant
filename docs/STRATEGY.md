@@ -428,7 +428,7 @@ Deferred (필요 시점에 추가):
 |--------|------|------|
 | **Context Files** | 프로젝트 규칙 | `CLAUDE.md` 루트 + 7 scoped + `AGENTS.md` + `docs/STRATEGY.md` |
 | **MCP Servers** | 외부 도구 연결 | `.mcp.json` → SQLite DB. 필요 최소. |
-| **Skill Files** | 반복 작업 | `scripts/deploy.sh`, `scripts/verify.py`, `scripts/migrate_db.py` |
+| **Skill Files** | 반복 작업 | `scripts/deploy_remote.sh`, `scripts/verify.py`, `scripts/migrate.py` |
 | **Mechanical Enforcement** | 시스템 강제 | ruff · main-ci-cd.yml · pr-checks.yml · `make verify-*` · SIEGE `gate_check.py` |
 
 **엔트로피 GC**:

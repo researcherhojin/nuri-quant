@@ -3,7 +3,7 @@
 #
 # 사용법:
 #   make deploy-mini                # 권장
-#   bash scripts/deploy_mini.sh     # 직접
+#   bash scripts/deploy_to_mini.sh     # 직접
 #
 # 수행 내역:
 #   1. SSH 연결 확인

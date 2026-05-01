@@ -7,8 +7,8 @@
   - recommendations (outcome 기록 완료): 180일
 
 사용법:
-    python scripts/db_maintenance.py
-    python scripts/db_maintenance.py --dry-run
+    python scripts/maintenance.py
+    python scripts/maintenance.py --dry-run
 """
 import argparse
 import logging

@@ -42,7 +42,7 @@ ok "Python venv found"
 
 if [ ! -f "data/portfolio.db" ]; then
     warn "DB not found. Initializing..."
-    $PYTHON scripts/migrate_db.py
+    $PYTHON scripts/migrate.py
     $PYTHON scripts/import_portfolio.py
 fi
 ok "Database ready"
