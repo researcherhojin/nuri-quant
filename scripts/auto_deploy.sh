@@ -16,7 +16,7 @@
 #   bash scripts/auto_deploy.sh
 #
 # 설치:
-#   cp scripts/com.nuri-quant.autopull.plist ~/Library/LaunchAgents/
+#   cp scripts/launchd/com.nuri-quant.autopull.plist ~/Library/LaunchAgents/
 #   launchctl load ~/Library/LaunchAgents/com.nuri-quant.autopull.plist
 #
 # 상태 확인:
