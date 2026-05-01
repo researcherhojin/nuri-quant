@@ -273,7 +273,7 @@ holdings-monitor-dry:
 llm-consult:
 	@test -n "$(slug)" || (echo "usage: make llm-consult slug=<kebab> prompt=<file>"; exit 1)
 	@test -n "$(prompt)" || (echo "usage: make llm-consult slug=<kebab> prompt=<file>"; exit 1)
-	$(PYTHON) scripts/llm_consult.py --slug "$(slug)" --prompt-file "$(prompt)"
+	$(PYTHON) scripts/dev/llm_consult.py --slug "$(slug)" --prompt-file "$(prompt)"
 
 # Earnings preview (Issue #509) — consensus EPS/revenue + ATM straddle implied move.
 # yfinance-based, on-demand. Future: 위스퍼 (Estimize/StockTwits) Phase 2.
