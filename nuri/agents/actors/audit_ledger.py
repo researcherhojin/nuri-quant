@@ -250,8 +250,7 @@ class AuditLedger(Actor):
 
         # since_days 보다 오래된 row — sqlite julianday 기반 (datetime('now') 와 동일 격)
         old_rows_result = query(
-            "SELECT COUNT(*) AS n FROM agent_audit_ledger "
-            "WHERE julianday('now') - julianday(timestamp) > ?",
+            "SELECT COUNT(*) AS n FROM agent_audit_ledger WHERE julianday('now') - julianday(timestamp) > ?",
             (since_days,),
         )
         old_rows = int(old_rows_result[0]["n"]) if old_rows_result else 0
@@ -271,8 +270,7 @@ class AuditLedger(Actor):
             outcome = Outcome.WARN
         else:
             recommendation = (
-                f"PASS: total_rows {total_rows:,} ≤ max_rows {max_rows:,} "
-                f"(>{since_days}d: {old_rows:,} rows)."
+                f"PASS: total_rows {total_rows:,} ≤ max_rows {max_rows:,} (>{since_days}d: {old_rows:,} rows)."
             )
             outcome = Outcome.PASS
 
@@ -302,24 +300,24 @@ class AuditLedger(Actor):
 
     @staticmethod
     def _publish_incidents(output: dict[str, Any], run_id: str) -> None:
-        """retention_check BLOCK → INCIDENTS 채널 (RED)."""
+        """retention_check BLOCK → #incidents outbox stage (PR3 Codex Round 6)."""
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_incident
 
-            embed = {
-                "title": "Audit-Ledger BLOCK — DB bloat 위험",
-                "description": (
-                    f"total_rows: **{output['total_rows']:,}**\n"
-                    f"block_threshold: {output['block_threshold']:,}\n"
-                    f"max_rows: {output['max_rows']:,}\n\n"
-                    f"{output['recommendation']}"
-                ),
-                "color": 0xE74C3C,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]} • 즉시 archive 필요"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.INCIDENTS,
-                embed=embed,
+            stage_incident(
+                payload={
+                    "kind": "audit_ledger_block",
+                    "summary": (
+                        f"DB bloat BLOCK: total={output['total_rows']:,} > "
+                        f"threshold={output['block_threshold']:,}, immediate archive required"
+                    ),
+                    "total_rows": output["total_rows"],
+                    "block_threshold": output["block_threshold"],
+                    "max_rows": output["max_rows"],
+                    "recommendation": output["recommendation"],
+                },
+                priority="high",  # bloat block 은 즉시 surface
+                dedupe_key="audit_ledger_block",  # 1건만 (반복 alert 방지)
                 actor_name="audit-ledger",
                 run_id=run_id,
             )
@@ -328,24 +326,24 @@ class AuditLedger(Actor):
 
     @staticmethod
     def _publish_ops(output: dict[str, Any], run_id: str) -> None:
-        """retention_check WARN → OPS 채널 (AMBER)."""
+        """retention_check WARN → #ops outbox stage (PR3 Codex Round 6)."""
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_ops
 
-            embed = {
-                "title": "Audit-Ledger WARN — cleanup 권고",
-                "description": (
-                    f"total_rows: **{output['total_rows']:,}**\n"
-                    f"max_rows: {output['max_rows']:,}\n"
-                    f"older than {output['since_days']}d: {output['rows_older_than_n_days']:,}\n\n"
-                    f"{output['recommendation']}"
-                ),
-                "color": 0xF39C12,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]} • cleanup 권고"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.OPS,
-                embed=embed,
+            stage_ops(
+                payload={
+                    "kind": "audit_ledger_warn",
+                    "summary": (
+                        f"cleanup recommended: total={output['total_rows']:,}, "
+                        f"older than {output['since_days']}d = {output['rows_older_than_n_days']:,}"
+                    ),
+                    "total_rows": output["total_rows"],
+                    "max_rows": output["max_rows"],
+                    "since_days": output["since_days"],
+                    "rows_older_than_n_days": output["rows_older_than_n_days"],
+                    "recommendation": output["recommendation"],
+                },
+                dedupe_key="audit_ledger_warn",
                 actor_name="audit-ledger",
                 run_id=run_id,
             )

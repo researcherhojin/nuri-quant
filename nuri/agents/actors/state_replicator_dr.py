@@ -39,8 +39,8 @@ from nuri.core.timezone import kst_now
 HEARTBEAT_PATH = Path("data/.autopull_heartbeat")
 
 # status 임계값 (사용자 룰 명세)
-HEALTHY_LAG_SECONDS = 600       # 10분 이내 = healthy
-STALE_LAG_SECONDS = 3600        # 10분 ~ 1시간 = stale, 그 이상 = unreachable
+HEALTHY_LAG_SECONDS = 600  # 10분 이내 = healthy
+STALE_LAG_SECONDS = 3600  # 10분 ~ 1시간 = stale, 그 이상 = unreachable
 
 
 @REGISTRY.register
@@ -115,9 +115,7 @@ class StateReplicatorDR(Actor):
             status = "healthy"
             notes = "primary writer — last_sync_at=now"
         else:
-            last_sync_at, sync_lag_seconds, status, notes = self._probe_replica_heartbeat(
-                now_kst
-            )
+            last_sync_at, sync_lag_seconds, status, notes = self._probe_replica_heartbeat(now_kst)
 
         upsert_dr_replica(
             replica_id=replica_id,
@@ -228,10 +226,7 @@ class StateReplicatorDR(Actor):
 
             # schema mismatch 검증: replica 만 (primary 는 자기 자신 기준)
             schema_mismatch = (
-                role == "replica"
-                and primary_schema is not None
-                and schema_v is not None
-                and schema_v != primary_schema
+                role == "replica" and primary_schema is not None and schema_v is not None and schema_v != primary_schema
             )
             if schema_mismatch:
                 # status 를 out_of_sync 로 update (idempotent)
@@ -246,29 +241,35 @@ class StateReplicatorDR(Actor):
                     notes=f"schema mismatch: replica={schema_v} vs primary={primary_schema}",
                     run_id=ctx.run_id,
                 )
-                unhealthy_blocks.append({
-                    "replica_id": replica_id,
-                    "role": role,
-                    "status": "out_of_sync",
-                    "reason": f"schema mismatch: replica={schema_v} vs primary={primary_schema}",
-                })
+                unhealthy_blocks.append(
+                    {
+                        "replica_id": replica_id,
+                        "role": role,
+                        "status": "out_of_sync",
+                        "reason": f"schema mismatch: replica={schema_v} vs primary={primary_schema}",
+                    }
+                )
                 continue
 
             # lag 기반 분류
             if status in ("unreachable", "out_of_sync"):
-                unhealthy_blocks.append({
-                    "replica_id": replica_id,
-                    "role": role,
-                    "status": status,
-                    "reason": f"status={status}, lag={lag}s",
-                })
+                unhealthy_blocks.append(
+                    {
+                        "replica_id": replica_id,
+                        "role": role,
+                        "status": status,
+                        "reason": f"status={status}, lag={lag}s",
+                    }
+                )
             elif status == "stale" or (lag is not None and lag > max_lag):
-                stale_warns.append({
-                    "replica_id": replica_id,
-                    "role": role,
-                    "status": status,
-                    "reason": f"lag {lag}s exceeds max_lag {max_lag}s",
-                })
+                stale_warns.append(
+                    {
+                        "replica_id": replica_id,
+                        "role": role,
+                        "status": status,
+                        "reason": f"lag {lag}s exceeds max_lag {max_lag}s",
+                    }
+                )
 
         # outcome 결정 — worst-case enforcement
         if unhealthy_blocks:
@@ -316,9 +317,7 @@ class StateReplicatorDR(Actor):
 
     @staticmethod
     def _list_replicas() -> ActorResult:
-        rows = query(
-            "SELECT * FROM dr_replicas ORDER BY role, replica_id"
-        )
+        rows = query("SELECT * FROM dr_replicas ORDER BY role, replica_id")
         items = [dict(r) for r in rows]
         return ActorResult(
             output={"count": len(items), "replicas": items},
@@ -331,22 +330,20 @@ class StateReplicatorDR(Actor):
 
     @staticmethod
     def _publish_incidents(blocks: list[dict[str, Any]], run_id: str) -> None:
+        """DR replica BLOCK → #incidents outbox stage (PR3 Codex Round 6)."""
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_incident
 
-            block_lines = "\n".join(
-                f"• `{b['replica_id']}` ({b['role']}): {b['reason']}"
-                for b in blocks[:5]
-            )
-            embed = {
-                "title": "DR Replica BLOCK — readiness compromised",
-                "description": f"unhealthy replicas: **{len(blocks)}**\n{block_lines}",
-                "color": 0xE74C3C,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]} • DR readiness fail"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.INCIDENTS,
-                embed=embed,
+            replica_ids = ",".join(b["replica_id"] for b in blocks[:5])
+            stage_incident(
+                payload={
+                    "kind": "dr_replica_block",
+                    "summary": f"DR readiness compromised: {len(blocks)} unhealthy [{replica_ids}]",
+                    "n_unhealthy": len(blocks),
+                    "blocks": blocks[:5],
+                },
+                priority="high",  # DR readiness 위반 = 즉시 surface
+                dedupe_key="dr_replica_block",
                 actor_name="state-replicator-dr",
                 run_id=run_id,
             )

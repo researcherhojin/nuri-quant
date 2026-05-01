@@ -1237,4 +1237,44 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_fbench_metric ON foundation_benchmarks(metric_name, created_at);
     """,
     ),
+    (
+        41,
+        "discord_outbox — single-writer outbox for Discord channel digests (Codex Round 6, 2026-05-02)",
+        # 사용자 통증 (2026-05-02): #brief 채널에 NVDA BUY/BUY/SELL 같은 conviction 으로
+        # 따로 따로 emit 되어 노이즈 폭발. Codex 권고: per-event publish → outbox stage →
+        # cron/quiet-period dispatcher 가 종합 1 embed 발송 (single-writer 패턴).
+        #
+        # status lifecycle:
+        #   pending  → claim_pending() → claimed (claim_token + claimed_at) → mark_sent → sent
+        #                                                                  → mark_failed → failed (재시도 또는 dropped)
+        # lease semantics: dispatcher crash 시 claimed_at 이 stale (>5min) 이면 다른 dispatcher 가
+        # 다시 claim 가능 → at-least-once 발송 (멱등성은 dedupe_key 로 caller 책임).
+        #
+        # priority: high → scheduled_for=now (즉시), normal → cron 주기, low → 다음 digest 까지 대기
+        # dedupe_key: 같은 key 의 pending 이 있으면 stage() 가 skip 또는 update (caller 선택)
+        # scheduled_for: now() default, future timestamp 면 그 시점 이후 dispatcher 픽업
+        """
+        CREATE TABLE IF NOT EXISTS discord_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL CHECK(channel IN ('brief','ops','incidents','rollout')),
+            payload_json TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('high','normal','low')),
+            dedupe_key TEXT,
+            scheduled_for TEXT NOT NULL DEFAULT (datetime('now')),
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','claimed','sent','failed','dropped')),
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            claim_token TEXT,
+            claimed_at TEXT,
+            sent_at TEXT,
+            last_error TEXT,
+            actor_name TEXT,
+            run_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_outbox_pending ON discord_outbox(channel, status, scheduled_for);
+        CREATE INDEX IF NOT EXISTS idx_outbox_claim ON discord_outbox(status, claimed_at);
+        CREATE INDEX IF NOT EXISTS idx_outbox_dedupe ON discord_outbox(channel, dedupe_key, status);
+        CREATE INDEX IF NOT EXISTS idx_outbox_run ON discord_outbox(run_id);
+    """,
+    ),
 ]

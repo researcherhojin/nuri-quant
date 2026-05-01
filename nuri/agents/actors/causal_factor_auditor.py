@@ -492,24 +492,22 @@ class CausalFactorAuditor(Actor):
         run_id: str,
     ) -> None:
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_rollout
 
-            embed = {
-                "title": f"Factor MIRAGE detected — {factor_id}",
-                "description": (
-                    f"as_of_date: `{as_of_date}`\n"
-                    f"causal_certainty: **{certainty:.3f}**\n"
-                    f"placebo_t_ratio: **{placebo.get('placebo_t_ratio', 0):.3f}** "
-                    f"(cutoff {PLACEBO_T_RATIO_MIRAGE_CUTOFF})\n"
-                    f"origin_t_stat: {placebo.get('origin_t_stat', 0):.3f}, "
-                    f"placebo_p95: {placebo.get('placebo_p95_t_stat', 0):.3f}"
-                ),
-                "color": 0xE74C3C,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]}"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.ROLLOUT,
-                embed=embed,
+            stage_rollout(
+                payload={
+                    "kind": "factor_mirage",
+                    "summary": (
+                        f"MIRAGE {factor_id} @ {as_of_date}: "
+                        f"certainty={certainty:.2f}, "
+                        f"placebo_t_ratio={placebo.get('placebo_t_ratio', 0):.2f}"
+                    ),
+                    "factor_id": factor_id,
+                    "as_of_date": as_of_date,
+                    "certainty": certainty,
+                    "placebo_t_ratio": placebo.get("placebo_t_ratio"),
+                },
+                dedupe_key=f"mirage:{factor_id}:{as_of_date}",
                 actor_name="causal-factor-auditor",
                 run_id=run_id,
             )

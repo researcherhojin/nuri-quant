@@ -185,9 +185,7 @@ class TestInputValidation:
         assert result.outcome == Outcome.BLOCK
 
     def test_retention_negative_since_days_blocked(self, patched_db):
-        result = AuditLedger().run(
-            {"action": "retention_check", "max_rows": 100, "since_days": -1}
-        )
+        result = AuditLedger().run({"action": "retention_check", "max_rows": 100, "since_days": -1})
         assert result.outcome == Outcome.BLOCK
 
 
@@ -214,9 +212,7 @@ class TestQuery:
         _seed_audit(patched_db, "d1", "execution-firewall")
         _seed_audit(patched_db, "d2", "freshness-gatekeeper")
         _seed_audit(patched_db, "d3", "execution-firewall")
-        result = AuditLedger().run(
-            {"action": "query", "actor_name": "execution-firewall"}
-        )
+        result = AuditLedger().run({"action": "query", "actor_name": "execution-firewall"})
         assert result.output["count"] == 2
         for row in result.output["rows"]:
             assert row["actor_name"] == "execution-firewall"
@@ -253,15 +249,9 @@ class TestQuery:
         assert result.output["rows"][0]["outcome"] == "block"
 
     def test_query_filter_by_since_iso(self, patched_db):
-        _seed_audit(
-            patched_db, "old", "execution-firewall", timestamp="2020-01-01 00:00:00"
-        )
-        _seed_audit(
-            patched_db, "new", "execution-firewall", timestamp="2030-01-01 00:00:00"
-        )
-        result = AuditLedger().run(
-            {"action": "query", "since_iso": "2025-01-01 00:00:00"}
-        )
+        _seed_audit(patched_db, "old", "execution-firewall", timestamp="2020-01-01 00:00:00")
+        _seed_audit(patched_db, "new", "execution-firewall", timestamp="2030-01-01 00:00:00")
+        result = AuditLedger().run({"action": "query", "since_iso": "2025-01-01 00:00:00"})
         assert result.output["count"] == 1
         assert result.output["rows"][0]["decision_id"] == "new"
 
@@ -272,12 +262,8 @@ class TestQuery:
         assert result.output["count"] == 3
 
     def test_query_sorted_desc(self, patched_db):
-        _seed_audit(
-            patched_db, "old", "execution-firewall", timestamp="2020-01-01 00:00:00"
-        )
-        _seed_audit(
-            patched_db, "new", "execution-firewall", timestamp="2030-01-01 00:00:00"
-        )
+        _seed_audit(patched_db, "old", "execution-firewall", timestamp="2020-01-01 00:00:00")
+        _seed_audit(patched_db, "new", "execution-firewall", timestamp="2030-01-01 00:00:00")
         result = AuditLedger().run({"action": "query"})
         # Newest first
         assert result.output["rows"][0]["decision_id"] == "new"
@@ -313,9 +299,7 @@ class TestSummarizeByOutcome:
     def test_filter_by_actor(self, patched_db):
         _seed_audit(patched_db, "d1", "execution-firewall", outcome="block")
         _seed_audit(patched_db, "d2", "freshness-gatekeeper", outcome="block")
-        result = AuditLedger().run(
-            {"action": "summarize_by_outcome", "actor_name": "execution-firewall"}
-        )
+        result = AuditLedger().run({"action": "summarize_by_outcome", "actor_name": "execution-firewall"})
         assert result.output["totals"]["block"] == 1
         assert result.output["total_count"] == 1
 
@@ -328,9 +312,7 @@ class TestSummarizeByOutcome:
             timestamp="2020-01-01 00:00:00",
         )
         _seed_audit(patched_db, "new", "execution-firewall", outcome="pass")
-        result = AuditLedger().run(
-            {"action": "summarize_by_outcome", "since_iso": "2025-01-01 00:00:00"}
-        )
+        result = AuditLedger().run({"action": "summarize_by_outcome", "since_iso": "2025-01-01 00:00:00"})
         assert result.output["totals"]["pass"] == 1
         assert result.output["total_count"] == 1
 
@@ -431,13 +413,9 @@ class TestRetentionCheck:
         assert "BLOCK" in result.output["recommendation"]
 
     def test_old_rows_counted(self, patched_db):
-        _seed_audit(
-            patched_db, "old", "execution-firewall", timestamp="2020-01-01 00:00:00"
-        )
+        _seed_audit(patched_db, "old", "execution-firewall", timestamp="2020-01-01 00:00:00")
         _seed_audit(patched_db, "fresh", "execution-firewall")
-        result = AuditLedger().run(
-            {"action": "retention_check", "max_rows": 1000, "since_days": 30}
-        )
+        result = AuditLedger().run({"action": "retention_check", "max_rows": 1000, "since_days": 30})
         assert result.output["rows_older_than_n_days"] == 1
         assert result.output["total_rows"] == 2
 
@@ -503,37 +481,27 @@ class TestDiscordPublish:
             result = AuditLedger().run({"action": "retention_check", "max_rows": 10})
         assert result.outcome == Outcome.WARN
 
-    def test_block_publish_real_path(self, patched_db):
-        """BLOCK path 가 실제 _publish_incidents body 를 실행 — coverage 보강."""
+    def test_block_stages_to_incidents(self, patched_db):
+        """BLOCK path → outbox stage_incident (PR3 Codex Round 6)."""
         for i in range(4):
             _seed_audit(patched_db, f"d{i}", "execution-firewall")
-        with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed"
-        ) as mock_pub:
+        with patch("nuri.agents.discord.outbox.stage_incident") as mock_stage:
             result = AuditLedger().run({"action": "retention_check", "max_rows": 2})
         assert result.outcome == Outcome.BLOCK
-        # publish_embed 호출 — INCIDENTS channel 인지 확인
-        mock_pub.assert_called_once()
-        from nuri.agents.discord.publisher import Channel
+        mock_stage.assert_called_once()
+        kw = mock_stage.call_args.kwargs
+        assert kw["actor_name"] == "audit-ledger"
+        assert kw["payload"]["kind"] == "audit_ledger_block"
 
-        kwargs = mock_pub.call_args
-        # positional: (channel,) ; kwargs: embed=..., actor_name=...
-        assert kwargs.args[0] == Channel.INCIDENTS
-
-    def test_warn_publish_real_path(self, patched_db):
-        """WARN path 가 실제 _publish_ops body 를 실행 — coverage 보강."""
+    def test_warn_stages_to_ops(self, patched_db):
+        """WARN path → outbox stage_ops (PR3 Codex Round 6)."""
         for i in range(11):
             _seed_audit(patched_db, f"d{i}", "execution-firewall")
-        with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed"
-        ) as mock_pub:
+        with patch("nuri.agents.discord.outbox.stage_ops") as mock_stage:
             result = AuditLedger().run({"action": "retention_check", "max_rows": 10})
         assert result.outcome == Outcome.WARN
-        mock_pub.assert_called_once()
-        from nuri.agents.discord.publisher import Channel
-
-        kwargs = mock_pub.call_args
-        assert kwargs.args[0] == Channel.OPS
+        mock_stage.assert_called_once()
+        assert mock_stage.call_args.kwargs["payload"]["kind"] == "audit_ledger_warn"
 
 
 # ═══════════════════════════════════════════════════════

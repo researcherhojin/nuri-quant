@@ -523,29 +523,31 @@ class TestListBlocks:
 
 
 class TestDiscordPublish:
-    def test_hard_block_publishes_to_incidents(self, patched_db):
-        _seed_decision(patched_db, "dc-pub", ticker="TQQQ")
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
-            ExecutionFirewall().run(_check_payload("dc-pub", "TQQQ"))
-            mock_publish.assert_called_once()
-            kw = mock_publish.call_args.kwargs
-            assert kw["actor_name"] == "execution-firewall"
-            assert "BLOCK" in kw["embed"]["title"]
+    """PR3 Codex Round 6: hard-block → outbox stage_incident."""
 
-    def test_pass_does_not_publish(self, patched_db):
+    def test_hard_block_stages_to_incidents(self, patched_db):
+        _seed_decision(patched_db, "dc-pub", ticker="TQQQ")
+        with patch("nuri.agents.discord.outbox.stage_incident") as mock_stage:
+            ExecutionFirewall().run(_check_payload("dc-pub", "TQQQ"))
+            mock_stage.assert_called_once()
+            kw = mock_stage.call_args.kwargs
+            assert kw["actor_name"] == "execution-firewall"
+            assert kw["payload"]["kind"] == "execution_block"
+            assert kw["priority"] == "high"
+
+    def test_pass_does_not_stage(self, patched_db):
         _seed_decision(patched_db, "dc-pubp")
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
+        with patch("nuri.agents.discord.outbox.stage_incident") as mock_stage:
             ExecutionFirewall().run(_check_payload("dc-pubp", "AMD", sector="tech"))
-            mock_publish.assert_not_called()
+            mock_stage.assert_not_called()
 
     def test_publish_failure_does_not_block_actor(self, patched_db):
         _seed_decision(patched_db, "dc-pubf", ticker="TQQQ")
         with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-            side_effect=RuntimeError("network"),
+            "nuri.agents.discord.outbox.stage_incident",
+            side_effect=RuntimeError("outbox down"),
         ):
             result = ExecutionFirewall().run(_check_payload("dc-pubf", "TQQQ"))
-            # publish 실패해도 BLOCK outcome 유지
             assert result.outcome == Outcome.BLOCK
 
 

@@ -57,7 +57,10 @@ def patched_db(db_path):
 
     def make_redirect(fn):
         def wrapped(*args, **kwargs):
-            kwargs.setdefault("db_path", db_path)
+            # setdefault 가 아니라 None 도 override — outbox stage_brief 처럼
+            # caller 가 db_path=None 명시 전달하는 경로 대응 (PR channel-migration).
+            if kwargs.get("db_path") is None:
+                kwargs["db_path"] = db_path
             return fn(*args, **kwargs)
 
         return wrapped
@@ -110,6 +113,11 @@ def patched_db(db_path):
         patch(
             "nuri.agents.actors.causal_factor_auditor.query",
             side_effect=make_redirect(db_module.query),
+        ),
+        # PR #brief outbox channel-migration (Codex Round 6, 2026-05-02)
+        patch(
+            "nuri.agents.discord.outbox.stage_outbox",
+            side_effect=make_redirect(db_module.stage_outbox),
         ),
     ]
     for p in patches:
@@ -503,16 +511,23 @@ class TestLastDecision:
 
 
 class TestDiscordPublish:
-    def test_emit_publishes_to_brief(self, patched_db):
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
-            DecisionCompiler().run(_compile_payload())
-            mock_publish.assert_called_once()
-            kw = mock_publish.call_args.kwargs
-            assert kw["actor_name"] == "decision-compiler"
-            assert "BUY" in kw["embed"]["title"]
+    """#brief channel-migration (Codex Round 6): decision_compiler._publish_brief 가 outbox stage 로 전환.
+    #ops (block path) 는 PR3 에서 별도 channel-migration. 본 클래스의 emit 검사는 outbox 기준."""
 
-    def test_blocked_publishes_to_ops(self, patched_db):
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
+    def test_emit_stages_to_brief_outbox(self, patched_db):
+        from nuri.core.db import claim_pending_outbox
+
+        DecisionCompiler().run(_compile_payload())
+        _, rows = claim_pending_outbox("brief", db_path=patched_db)
+        assert len(rows) == 1
+        payload = rows[0]["payload"]
+        assert payload["kind"] == "BUY"
+        assert payload["ticker"]
+        assert "decision_id" in payload
+
+    def test_blocked_stages_to_ops(self, patched_db):
+        """Block path → outbox stage_ops (PR3 Codex Round 6)."""
+        with patch("nuri.agents.discord.outbox.stage_ops") as mock_stage:
             DecisionCompiler().run(
                 _compile_payload(
                     causal_evidence={
@@ -523,40 +538,41 @@ class TestDiscordPublish:
                     }
                 )
             )
-            mock_publish.assert_called_once()
-            assert "BLOCKED" in mock_publish.call_args.kwargs["embed"]["title"]
+            mock_stage.assert_called_once()
+            assert mock_stage.call_args.kwargs["payload"]["kind"] == "decision_blocked"
 
     def test_publish_failure_does_not_block_actor(self, patched_db):
+        # outbox stage 가 어떤 이유로든 raise 해도 actor pipeline 죽지 않아야 함.
         with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-            side_effect=RuntimeError("network"),
+            "nuri.agents.discord.outbox.stage_brief",
+            side_effect=RuntimeError("outbox down"),
         ):
             result = DecisionCompiler().run(_compile_payload())
-            assert result.outcome == Outcome.PASS  # publish 실패해도 emit 유지
+            assert result.outcome == Outcome.PASS
             assert result.output["status"] == "emitted"
 
-    def test_hold_emit_does_not_publish_brief(self, patched_db):
-        """HOLD (low conviction emit) 은 BRIEF publish X (사용자 noise)."""
-        # 조건: low conviction → HOLD blocked path (publish_block 호출됨)
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
-            DecisionCompiler().run(
-                _compile_payload(
-                    causal_evidence={
-                        "factor_id": "weak",
-                        "as_of_date": "2026-05-01",
-                        "verdict": "WEAK",
-                        "causal_certainty": 0.3,
-                    },
-                    regime_evidence={
-                        "regime_run_id": "r-weak",
-                        "posterior": [0.4, 0.35, 0.25],
-                        "argmax_state": 0,
-                        "top2_margin": 0.05,
-                    },
-                )
+    def test_hold_emit_does_not_stage_brief(self, patched_db):
+        """HOLD (low conviction) 은 BRIEF outbox stage X — 사용자 noise 방지."""
+        from nuri.core.db import claim_pending_outbox
+
+        DecisionCompiler().run(
+            _compile_payload(
+                causal_evidence={
+                    "factor_id": "weak",
+                    "as_of_date": "2026-05-01",
+                    "verdict": "WEAK",
+                    "causal_certainty": 0.3,
+                },
+                regime_evidence={
+                    "regime_run_id": "r-weak",
+                    "posterior": [0.4, 0.35, 0.25],
+                    "argmax_state": 0,
+                    "top2_margin": 0.05,
+                },
             )
-            # Block path → OPS publish, not BRIEF
-            assert mock_publish.call_args.kwargs["actor_name"] == "decision-compiler"
+        )
+        _, rows = claim_pending_outbox("brief", db_path=patched_db)
+        assert rows == []
 
 
 # ═══════════════════════════════════════════════════════
