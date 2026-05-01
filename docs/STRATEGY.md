@@ -163,7 +163,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 | 규칙 | 근거 | 출처 |
 |------|------|------|
-| 손절 -7% | CAN SLIM + 자체 validation PR F (2026-04-22). us_core 85 × SMA golden cross 250 entries paired counterfactual: ATR shadow surface 는 6-metric 3/6 로 acceptance 미달 → **PR F2 deferred**, -7% 유지. 상세: `scripts/pr_f_atr_validation.py` docstring + commit `c834049`. | O'Neil, *How to Make Money in Stocks* |
+| 손절 -7% | CAN SLIM + 자체 validation PR F (2026-04-22). us_core 85 × SMA golden cross 250 entries paired counterfactual: ATR shadow surface 는 6-metric 3/6 로 acceptance 미달 → **PR F2 deferred**, -7% 유지. 상세: `scripts/episodes/pr_f_atr_validation.py` docstring + commit `c834049`. | O'Neil, *How to Make Money in Stocks* |
 | 익절 +20%/+40% | 손익비 3:1 유지 | Minervini, *Trade Like a Stock Market Wizard* |
 | 트레일링 -15% | 11년 백테스트 최적 (73.9% 누적) | 자체 백테스트 |
 | VIX > 30 매수 차단 | 공포 구간 승률 붕괴 검증 | 자체 시그널 백테스트 |

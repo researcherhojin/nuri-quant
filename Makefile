@@ -101,16 +101,16 @@ track-forward:    ## ForwardOutcomeTracker scan — emit decision outcome 측정
 sre-scan:    ## SREIncidentAgent scan — 6 detector (orphan/disk/heartbeat/freshness/...)
 	$(PYTHON) -m nuri.agents.actors.sre_incident_agent scan
 
-phase2-crons-install:    ## launchd cron 설치 (track-forward daily, sre-scan hourly)
-	bash scripts/launchd/install_phase2_crons.sh
+crons-install:    ## launchd cron 일괄 설치 (모든 plist auto-discover, --only/--exclude 가능)
+	bash scripts/launchd/install_crons.sh $(ARGS)
 
-phase2-crons-uninstall:    ## launchd cron 제거
-	bash scripts/launchd/uninstall_phase2_crons.sh
+crons-uninstall:    ## launchd cron 일괄 제거
+	bash scripts/launchd/uninstall_crons.sh $(ARGS)
 
-phase2-crons-status:    ## 설치된 cron 상태 + 로그 위치 표시
-	@launchctl list | grep -E "(track-forward|sre-scan)" || echo "  (none installed)"
+crons-status:    ## 설치된 cron 상태 + 로그 위치 표시
+	@launchctl list | grep -E "com\.nuri-quant\." || echo "  (none installed)"
 	@echo ""
-	@echo "  로그: data/logs/{track_forward,sre_scan}.log"
+	@echo "  로그: data/logs/"
 
 test-slow:
 	$(PYTHON) -m pytest tests/ -v -n auto --dist worksteal -m "slow"

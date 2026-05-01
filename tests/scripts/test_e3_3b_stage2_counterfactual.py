@@ -3,6 +3,7 @@
 Tests the math correctness of the sim pieces, not the live verdict (which
 depends on DB state). Verdict integration test would need full DB seed.
 """
+
 import importlib.util
 import sys
 from pathlib import Path
@@ -12,7 +13,7 @@ import pytest
 # Same importlib pattern as test_stage1_classifier_plausibility.py
 # (scripts/ are stand-alone, not packages — Pylance / @dataclass require
 # explicit dynamic load + sys.modules registration).
-_SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "e3_3b_stage2_counterfactual.py"
+_SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "episodes" / "e3_3b_stage2_counterfactual.py"
 _spec = importlib.util.spec_from_file_location("e3_3b_stage2_counterfactual", _SCRIPT_PATH)
 assert _spec is not None and _spec.loader is not None
 s2 = importlib.util.module_from_spec(_spec)
@@ -34,8 +35,7 @@ class TestAdaptiveSize:
         assert s2._adaptive_size("euphoria") == 12.0
 
     def test_neutral_regimes_unchanged(self):
-        for regime in ["sideways_low_vol", "sideways_high_vol", "bear_low_vol",
-                       "sector_rotation"]:
+        for regime in ["sideways_low_vol", "sideways_high_vol", "bear_low_vol", "sector_rotation"]:
             assert s2._adaptive_size(regime) == 15.0, f"{regime} should be neutral"
 
     def test_none_regime_uses_baseline(self):
@@ -51,8 +51,12 @@ class TestPairedDeltaSignConvention:
         adaptive = s2._adaptive_size(regime)
         size_diff = adaptive - baseline
         return s2.Entry(
-            ticker="TEST", date="2024-01-15", regime=regime, confidence=1.0,
-            baseline_size_pct=baseline, adaptive_size_pct=adaptive,
+            ticker="TEST",
+            date="2024-01-15",
+            regime=regime,
+            confidence=1.0,
+            baseline_size_pct=baseline,
+            adaptive_size_pct=adaptive,
             forward_returns={30: forward_return, 60: forward_return, 90: forward_return},
             forward_mae={30: -2.0, 60: -3.0, 90: -4.0},
             paired_deltas={
@@ -111,6 +115,7 @@ class TestBootstrapCI:
     def test_lower_bound_below_upper_bound(self):
         """CI is well-formed: lo ≤ hi."""
         import random
+
         random.seed(123)
         values = [random.gauss(0, 1) for _ in range(100)]
         lo, hi = s2.bootstrap_ci(values, n_iter=1000, seed=42)
@@ -127,14 +132,19 @@ class TestBootstrapCI:
 class TestEvaluateStage2Gate:
     """Acceptance criteria evaluation logic."""
 
-    def _make_metrics(self, ci_lo: float, wrong_pct: float = 30.0,
-                      median: float = 0.05) -> dict:
+    def _make_metrics(self, ci_lo: float, wrong_pct: float = 30.0, median: float = 0.05) -> dict:
         base = {
-            "n": 200, "mean_delta": 0.05, "median_delta": median,
-            "ci_95_lo": ci_lo, "ci_95_hi": 0.15,
-            "wrong_directional_pct": wrong_pct, "positive_pct": 35.0,
-            "mae_baseline_pct": -1.5, "mae_adaptive_pct": -1.6,
-            "mae_delta_pp": -0.1, "cvar_5pct": -1.0,
+            "n": 200,
+            "mean_delta": 0.05,
+            "median_delta": median,
+            "ci_95_lo": ci_lo,
+            "ci_95_hi": 0.15,
+            "wrong_directional_pct": wrong_pct,
+            "positive_pct": 35.0,
+            "mae_baseline_pct": -1.5,
+            "mae_adaptive_pct": -1.6,
+            "mae_delta_pp": -0.1,
+            "cvar_5pct": -1.0,
         }
         return {30: base.copy(), 60: base.copy(), 90: base.copy()}
 
@@ -187,8 +197,12 @@ class TestAggregateMetricsInvariants:
         size_diff = adaptive - baseline
         returns = {30: ret_30, 60: ret_60, 90: ret_90}
         return s2.Entry(
-            ticker="T", date="2024-01-01", regime=regime, confidence=1.0,
-            baseline_size_pct=baseline, adaptive_size_pct=adaptive,
+            ticker="T",
+            date="2024-01-01",
+            regime=regime,
+            confidence=1.0,
+            baseline_size_pct=baseline,
+            adaptive_size_pct=adaptive,
             forward_returns=returns,
             forward_mae={30: -1.0, 60: -2.0, 90: -3.0},
             paired_deltas={h: size_diff * r / 100 for h, r in returns.items()},

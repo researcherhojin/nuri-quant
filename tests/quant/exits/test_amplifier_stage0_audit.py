@@ -18,8 +18,8 @@ Spec: docs/plans/E3_phase2_paired_counterfactual.md §"Stage 0".
 
 from __future__ import annotations
 
-import scripts.e3_amplifier_stage0_audit as audit_mod
-from scripts.e3_amplifier_stage0_audit import (
+import scripts.episodes.e3_amplifier_stage0_audit as audit_mod
+from scripts.episodes.e3_amplifier_stage0_audit import (
     AS_OF_DATE,
     FUTURE_VIX_VALUE,
     AuditResult,

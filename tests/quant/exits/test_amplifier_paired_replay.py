@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import numpy as np
 
-import scripts.e3_amplifier_paired_replay as replay
-from scripts.e3_amplifier_paired_replay import (
+import scripts.episodes.e3_amplifier_paired_replay as replay
+from scripts.episodes.e3_amplifier_paired_replay import (
     AMP_MULT,
     BASELINE_MULT,
     BLOCK_SIZE_PRIMARY,
@@ -306,7 +306,7 @@ class TestStage0Precondition:
         assert len(audit["checks_run"]) == 6
 
     def test_replay_aborts_when_stage0_fails(self, monkeypatch):
-        from scripts import e3_amplifier_stage0_audit as audit_mod
+        from scripts.episodes import e3_amplifier_stage0_audit as audit_mod
 
         def fake_run_audit():
             return audit_mod.AuditResult(
@@ -319,7 +319,7 @@ class TestStage0Precondition:
         monkeypatch.setattr(audit_mod, "run_audit", fake_run_audit)
         # replay.run_stage0_precondition imports run_audit lazily → patch must
         # also affect any cached import path; the function does
-        # `from scripts.e3_amplifier_stage0_audit import ...` each call.
+        # `from scripts.episodes.e3_amplifier_stage0_audit import ...` each call.
         try:
             replay.run_replay()
         except RuntimeError as e:

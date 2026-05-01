@@ -123,7 +123,7 @@ def run_stage0_precondition() -> tuple[bool, dict]:
     Per spec: if Stage 0 fails, no verdict.json is produced — caller exits
     with code 2 and a contamination report (already emitted by audit script).
     """
-    from scripts.e3_amplifier_stage0_audit import _result_to_json, run_audit
+    from scripts.episodes.e3_amplifier_stage0_audit import _result_to_json, run_audit
 
     LOG.info("running Stage 0 audit precondition…")
     result = run_audit()
