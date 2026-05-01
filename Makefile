@@ -68,7 +68,7 @@ verify-help:
 # ═══════════════════════════════════════════════════════════════
 setup:
 	bash scripts/setup.sh
-	$(PYTHON) scripts/migrate_db.py
+	$(PYTHON) scripts/migrate.py
 	$(PYTHON) scripts/import_portfolio.py
 	$(MAKE) setup-hooks
 
@@ -447,14 +447,14 @@ quick-scan:
 # DEPLOY / BACKUP / UTILITY
 # ═══════════════════════════════════════════════════════════════
 pre-deploy:
-	bash scripts/pre-deploy-check.sh
+	bash scripts/pre_deploy_check.sh
 
 deploy:
-	bash scripts/pre-deploy-check.sh
-	bash scripts/deploy.sh
+	bash scripts/pre_deploy_check.sh
+	bash scripts/deploy_remote.sh
 
 deploy-mini: ## MBP → Mac mini 전체 동기화 (git pull + config + scheduler reload)
-	bash scripts/deploy_mini.sh
+	bash scripts/deploy_to_mini.sh
 
 backup:
 	bash scripts/backup.sh
