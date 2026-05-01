@@ -85,6 +85,15 @@ test:
 test-fast:
 	$(PYTHON) -m pytest tests/ -v --cov=nuri -n auto --dist worksteal -m "not slow"
 
+# ─── #529 Phase 2 production verification ────────────────
+phase2-chain:    ## Phase 2 4-actor chain end-to-end on real macro + ticker (default NVDA)
+	$(PYTHON) scripts/run_phase2_chain.py --ticker $(or $(ticker),NVDA) \
+	    --proposed-action $(or $(action),BUY) \
+	    --proposed-value $(or $(value),3000)
+
+phase2-chain-dry:    ## Phase 2 chain dry-run (no DB write, validation only)
+	$(PYTHON) scripts/run_phase2_chain.py --ticker $(or $(ticker),NVDA) --dry-run
+
 test-slow:
 	$(PYTHON) -m pytest tests/ -v -n auto --dist worksteal -m "slow"
 
