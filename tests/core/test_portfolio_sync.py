@@ -1,4 +1,5 @@
 """포트폴리오 CRUD API + DB→YAML 역동기화 테스트."""
+
 from pathlib import Path
 
 import pytest
@@ -15,25 +16,34 @@ def client(tmp_path, monkeypatch):
     init_db(db_path)
 
     import nuri.core.db as db_mod
+
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
     # YAML 동기화 경로를 tmp_path로 교체
     yaml_path = tmp_path / "portfolio.yaml"
     import nuri.core.portfolio_sync as sync_mod
+
     monkeypatch.setattr(sync_mod, "CONFIG_PATH", yaml_path)
 
     from nuri.api.main import app
+
     return TestClient(app)
 
 
 @pytest.fixture()
 def seeded_client(client):
     """종목 1개가 미리 추가된 client."""
-    client.post("/api/portfolio", json={
-        "account": "sample", "ticker": "AAPL",
-        "quantity": 10, "avg_price": 180.0,
-        "currency": "USD", "sector": "Tech",
-    })
+    client.post(
+        "/api/portfolio",
+        json={
+            "account": "sample",
+            "ticker": "AAPL",
+            "quantity": 10,
+            "avg_price": 180.0,
+            "currency": "USD",
+            "sector": "Tech",
+        },
+    )
     return client
 
 
@@ -57,9 +67,14 @@ class TestPutEndpoint:
 
     def test_update_multiple_fields(self, seeded_client):
         """여러 필드 동시 수정."""
-        r = seeded_client.put("/api/portfolio/sample/AAPL", json={
-            "quantity": 15, "avg_price": 190.0, "sector": "BigTech",
-        })
+        r = seeded_client.put(
+            "/api/portfolio/sample/AAPL",
+            json={
+                "quantity": 15,
+                "avg_price": 190.0,
+                "sector": "BigTech",
+            },
+        )
         assert r.status_code == 200
         updated = r.json()["updated"]
         assert updated["quantity"] == 15
@@ -133,21 +148,29 @@ class TestSyncErrorHandling:
         init_db(db_path)
 
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
         # 쓰기 불가능한 경로로 설정 → sync 실패 유도
         import nuri.core.portfolio_sync as sync_mod
+
         monkeypatch.setattr(sync_mod, "CONFIG_PATH", Path("/dev/null/impossible/path.yaml"))
 
         from fastapi.testclient import TestClient
 
         from nuri.api.main import app
+
         client = TestClient(app)
 
-        r = client.post("/api/portfolio", json={
-            "account": "sample", "ticker": "MSFT",
-            "quantity": 5, "avg_price": 400.0,
-        })
+        r = client.post(
+            "/api/portfolio",
+            json={
+                "account": "sample",
+                "ticker": "MSFT",
+                "quantity": 5,
+                "avg_price": 400.0,
+            },
+        )
         # sync 실패해도 API는 200
         assert r.status_code == 200
 
@@ -161,59 +184,94 @@ class TestPostValidation:
 
     def test_post_invalid_ticker(self, client):
         """잘못된 ticker 포맷 → 422."""
-        r = client.post("/api/portfolio", json={
-            "account": "sample", "ticker": "invalid!",
-            "quantity": 10, "avg_price": 100.0,
-        })
+        r = client.post(
+            "/api/portfolio",
+            json={
+                "account": "sample",
+                "ticker": "invalid!",
+                "quantity": 10,
+                "avg_price": 100.0,
+            },
+        )
         assert r.status_code == 422
 
     def test_post_quantity_zero(self, client):
         """수량 0 → 422."""
-        r = client.post("/api/portfolio", json={
-            "account": "sample", "ticker": "AAPL",
-            "quantity": 0, "avg_price": 100.0,
-        })
+        r = client.post(
+            "/api/portfolio",
+            json={
+                "account": "sample",
+                "ticker": "AAPL",
+                "quantity": 0,
+                "avg_price": 100.0,
+            },
+        )
         assert r.status_code == 422
 
     def test_post_quantity_over_max(self, client):
         """수량 100,000 초과 → 422."""
-        r = client.post("/api/portfolio", json={
-            "account": "sample", "ticker": "AAPL",
-            "quantity": 100_001, "avg_price": 100.0,
-        })
+        r = client.post(
+            "/api/portfolio",
+            json={
+                "account": "sample",
+                "ticker": "AAPL",
+                "quantity": 100_001,
+                "avg_price": 100.0,
+            },
+        )
         assert r.status_code == 422
 
     def test_post_avg_price_zero(self, client):
         """평균가 0 → 422."""
-        r = client.post("/api/portfolio", json={
-            "account": "sample", "ticker": "AAPL",
-            "quantity": 10, "avg_price": 0,
-        })
+        r = client.post(
+            "/api/portfolio",
+            json={
+                "account": "sample",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 0,
+            },
+        )
         assert r.status_code == 422
 
     def test_post_avg_price_over_max(self, client):
         """평균가 10,000,000 초과 → 422."""
-        r = client.post("/api/portfolio", json={
-            "account": "sample", "ticker": "AAPL",
-            "quantity": 10, "avg_price": 10_000_001,
-        })
+        r = client.post(
+            "/api/portfolio",
+            json={
+                "account": "sample",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 10_000_001,
+            },
+        )
         assert r.status_code == 422
 
     def test_post_invalid_account(self, client):
         """유효하지 않은 계좌 → 422."""
-        r = client.post("/api/portfolio", json={
-            "account": "fake", "ticker": "AAPL",
-            "quantity": 10, "avg_price": 100.0,
-        })
+        r = client.post(
+            "/api/portfolio",
+            json={
+                "account": "fake",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 100.0,
+            },
+        )
         assert r.status_code == 422
 
     def test_post_sector_too_long(self, client):
         """섹터 50자 초과 → 422."""
-        r = client.post("/api/portfolio", json={
-            "account": "sample", "ticker": "AAPL",
-            "quantity": 10, "avg_price": 100.0,
-            "sector": "A" * 51,
-        })
+        r = client.post(
+            "/api/portfolio",
+            json={
+                "account": "sample",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "sector": "A" * 51,
+            },
+        )
         assert r.status_code == 422
 
 
@@ -241,10 +299,10 @@ class TestRiskEndpoint:
         custom_obj = object()
 
         mock_metrics = {
-            "sharpe": numpy_val,       # line 234: v.item()
-            "vol": 0.25,               # line 236: isinstance 통과
-            "label": "low",            # line 236: isinstance 통과
-            "other": custom_obj,       # line 238: str(v)
+            "sharpe": numpy_val,  # line 234: v.item()
+            "vol": 0.25,  # line 236: isinstance 통과
+            "label": "low",  # line 236: isinstance 통과
+            "other": custom_obj,  # line 238: str(v)
         }
         with patch("nuri.analysis.risk.analyze_risk", return_value=mock_metrics):
             r = client.get("/api/risk")
@@ -258,6 +316,7 @@ class TestRiskEndpoint:
     def test_risk_exception(self, client):
         """analyze_risk 예외 → error dict."""
         from unittest.mock import patch
+
         with patch("nuri.analysis.risk.analyze_risk", side_effect=RuntimeError("fail")):
             r = client.get("/api/risk")
         assert r.status_code == 200
@@ -267,11 +326,17 @@ class TestRiskEndpoint:
 class TestYamlSync:
     def test_post_syncs_yaml(self, client, tmp_path):
         """POST 후 YAML 파일 생성 확인."""
-        client.post("/api/portfolio", json={
-            "account": "test", "ticker": "NVDA",
-            "quantity": 10, "avg_price": 130.0,
-            "currency": "USD", "sector": "Semiconductor",
-        })
+        client.post(
+            "/api/portfolio",
+            json={
+                "account": "test",
+                "ticker": "NVDA",
+                "quantity": 10,
+                "avg_price": 130.0,
+                "currency": "USD",
+                "sector": "Semiconductor",
+            },
+        )
         yaml_path = tmp_path / "portfolio.yaml"
         assert yaml_path.exists()
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
@@ -300,6 +365,7 @@ class TestYamlSync:
         """_load_yaml()를 인수 없이 호출 시 CONFIG_PATH 사용."""
         import nuri.core.portfolio_sync as sync_mod
         from nuri.core.portfolio_sync import _load_yaml
+
         nonexistent = tmp_path / "nonexistent.yaml"
         monkeypatch.setattr(sync_mod, "CONFIG_PATH", nonexistent)
 
@@ -332,11 +398,19 @@ class TestYamlSync:
             yaml.dump(existing, f, allow_unicode=True)
 
         # DB에 종목 추가
-        upsert_portfolio([{
-            "account": "test", "ticker": "TSLA",
-            "quantity": 10, "avg_price": 300.0,
-            "currency": "USD", "sector": "SectorA",
-        }], db_path=db_path)
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "TSLA",
+                    "quantity": 10,
+                    "avg_price": 300.0,
+                    "currency": "USD",
+                    "sector": "SectorA",
+                }
+            ],
+            db_path=db_path,
+        )
 
         # 동기화
         sync_portfolio_to_yaml(config_path=yaml_path, db_path=db_path)
@@ -393,8 +467,7 @@ class TestImport:
 
     def test_import_not_csv(self, client):
         """CSV가 아닌 파일 → 400."""
-        r = client.post("/api/portfolio/import",
-                        files={"file": ("data.txt", b"hello", "text/plain")})
+        r = client.post("/api/portfolio/import", files={"file": ("data.txt", b"hello", "text/plain")})
         assert r.status_code == 400
         assert "CSV" in r.json()["detail"]
 
@@ -447,8 +520,7 @@ class TestImport:
         """비UTF-8 파일 → 400."""
         # EUC-KR 바이트 시퀀스 (UTF-8로 디코딩 불가)
         bad_bytes = b"\xc7\xd1\xb1\xdb"
-        r = client.post("/api/portfolio/import",
-                        files={"file": ("test.csv", bad_bytes, "text/csv")})
+        r = client.post("/api/portfolio/import", files={"file": ("test.csv", bad_bytes, "text/csv")})
         assert r.status_code == 400
         assert "UTF-8" in r.json()["detail"]
 
@@ -532,33 +604,51 @@ class TestMetadata:
 
     def test_post_with_metadata(self, client):
         """POST 시 metadata 저장."""
-        r = client.post("/api/portfolio", json={
-            "account": "test", "ticker": "BBB",
-            "quantity": 96, "avg_price": 20.0,
-            "sector": "SectorB",
-            "metadata": {"flag": "SELL", "note": "레버리지 ETF 금지"},
-        })
+        r = client.post(
+            "/api/portfolio",
+            json={
+                "account": "test",
+                "ticker": "BBB",
+                "quantity": 96,
+                "avg_price": 20.0,
+                "sector": "SectorB",
+                "metadata": {"flag": "SELL", "note": "레버리지 ETF 금지"},
+            },
+        )
         assert r.status_code == 200
 
     def test_put_with_metadata(self, client):
         """PUT으로 metadata 수정."""
-        client.post("/api/portfolio", json={
-            "account": "test", "ticker": "AAPL",
-            "quantity": 10, "avg_price": 190.0,
-        })
-        r = client.put("/api/portfolio/test/AAPL", json={
-            "metadata": {"flag": "HOLD", "target": 220},
-        })
+        client.post(
+            "/api/portfolio",
+            json={
+                "account": "test",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 190.0,
+            },
+        )
+        r = client.put(
+            "/api/portfolio/test/AAPL",
+            json={
+                "metadata": {"flag": "HOLD", "target": 220},
+            },
+        )
         assert r.status_code == 200
 
     def test_metadata_roundtrip_yaml(self, client, tmp_path):
         """POST → YAML 동기화 → metadata 필드 복원 확인."""
-        client.post("/api/portfolio", json={
-            "account": "test", "ticker": "BBB",
-            "quantity": 96, "avg_price": 20.0,
-            "sector": "SectorB",
-            "metadata": {"flag": "SELL"},
-        })
+        client.post(
+            "/api/portfolio",
+            json={
+                "account": "test",
+                "ticker": "BBB",
+                "quantity": 96,
+                "avg_price": 20.0,
+                "sector": "SectorB",
+                "metadata": {"flag": "SELL"},
+            },
+        )
         yaml_path = tmp_path / "portfolio.yaml"
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         holdings = data["accounts"]["test"]["holdings"]
@@ -580,8 +670,7 @@ class TestMetadata:
                 "test": {
                     "currency": "USD",
                     "holdings": [
-                        {"ticker": "BBB", "qty": 96, "avg": 20.0,
-                         "sector": "SectorB", "flag": "SELL"},
+                        {"ticker": "BBB", "qty": 96, "avg": 20.0, "sector": "SectorB", "flag": "SELL"},
                     ],
                 },
             },
@@ -590,15 +679,18 @@ class TestMetadata:
             yaml.dump(yaml_content, f)
 
         # import 실행
-        import scripts.import_portfolio as imp
+        import scripts.ops.import_portfolio as imp
+
         records = imp.load_holdings(config_path=yaml_path)
         from nuri.core.db import upsert_portfolio
+
         upsert_portfolio(records, db_path=db_path)
 
         # DB에서 metadata 확인
         rows = query("SELECT metadata FROM portfolio WHERE ticker='BBB'", db_path=db_path)
         assert rows
         import json
+
         meta = json.loads(rows[0]["metadata"])
         assert meta["flag"] == "SELL"
 
@@ -609,12 +701,20 @@ class TestMetadata:
 
         db_path = tmp_path / "test.db"
         init_db(db_path)
-        upsert_portfolio([{
-            "account": "test", "ticker": "BAD",
-            "quantity": 1, "avg_price": 100.0,
-            "currency": "USD", "sector": "",
-            "metadata": "not-valid-json{",
-        }], db_path=db_path)
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "BAD",
+                    "quantity": 1,
+                    "avg_price": 100.0,
+                    "currency": "USD",
+                    "sector": "",
+                    "metadata": "not-valid-json{",
+                }
+            ],
+            db_path=db_path,
+        )
 
         yaml_path = tmp_path / "out.yaml"
         # 에러 없이 동기화 완료
@@ -641,10 +741,8 @@ class TestMetadata:
                     "name": "Brokerage Alpha",
                     "currency": "USD",
                     "holdings": [
-                        {"ticker": "BBB", "qty": 96, "avg": 20.0,
-                         "sector": "SectorB", "flag": "SELL"},
-                        {"ticker": "NVDA", "qty": 20, "avg": 100.0,
-                         "sector": "Semiconductor"},
+                        {"ticker": "BBB", "qty": 96, "avg": 20.0, "sector": "SectorB", "flag": "SELL"},
+                        {"ticker": "NVDA", "qty": 20, "avg": 100.0, "sector": "Semiconductor"},
                     ],
                 },
             },
@@ -652,7 +750,8 @@ class TestMetadata:
         with open(yaml_path, "w") as f:
             yaml.dump(yaml_content, f, allow_unicode=True)
 
-        import scripts.import_portfolio as imp
+        import scripts.ops.import_portfolio as imp
+
         records = imp.load_holdings(config_path=yaml_path)
         upsert_portfolio(records, db_path=db_path)
 
@@ -679,26 +778,29 @@ class TestImportScriptSync:
 
     def test_load_holdings_by_account_groups_records(self, tmp_path):
         """계좌별로 grouping된 dict 반환."""
-        import scripts.import_portfolio as imp
+        import scripts.ops.import_portfolio as imp
 
         yaml_path = tmp_path / "portfolio.yaml"
-        self._write_yaml(yaml_path, {
-            "accounts": {
-                "test": {
-                    "currency": "USD",
-                    "holdings": [
-                        {"ticker": "TSLA", "qty": 10, "avg": 300.0, "sector": "SectorA"},
-                        {"ticker": "NVDA", "qty": 5, "avg": 130.0, "sector": "Semi"},
-                    ],
-                },
-                "sample": {
-                    "currency": "KRW",
-                    "holdings": [
-                        {"ticker": "005930.KS", "qty": 1, "avg": 55000.0, "sector": "Semi"},
-                    ],
+        self._write_yaml(
+            yaml_path,
+            {
+                "accounts": {
+                    "test": {
+                        "currency": "USD",
+                        "holdings": [
+                            {"ticker": "TSLA", "qty": 10, "avg": 300.0, "sector": "SectorA"},
+                            {"ticker": "NVDA", "qty": 5, "avg": 130.0, "sector": "Semi"},
+                        ],
+                    },
+                    "sample": {
+                        "currency": "KRW",
+                        "holdings": [
+                            {"ticker": "005930.KS", "qty": 1, "avg": 55000.0, "sector": "Semi"},
+                        ],
+                    },
                 },
             },
-        })
+        )
 
         result = imp.load_holdings_by_account(config_path=yaml_path)
         assert set(result.keys()) == {"test", "sample"}
@@ -707,58 +809,67 @@ class TestImportScriptSync:
 
     def test_load_holdings_by_account_skips_accounts_without_holdings_key(self, tmp_path):
         """holdings 키가 없는 계좌는 결과에서 제외."""
-        import scripts.import_portfolio as imp
+        import scripts.ops.import_portfolio as imp
 
         yaml_path = tmp_path / "portfolio.yaml"
-        self._write_yaml(yaml_path, {
-            "accounts": {
-                "irp": {"currency": "KRW", "balance": 1000000},  # holdings 키 없음
-                "demo": {"currency": "USD"},  # holdings 키 없음
-                "test": {
-                    "currency": "USD",
-                    "holdings": [{"ticker": "AAA", "qty": 10, "avg": 100.0}],
+        self._write_yaml(
+            yaml_path,
+            {
+                "accounts": {
+                    "irp": {"currency": "KRW", "balance": 1000000},  # holdings 키 없음
+                    "demo": {"currency": "USD"},  # holdings 키 없음
+                    "test": {
+                        "currency": "USD",
+                        "holdings": [{"ticker": "AAA", "qty": 10, "avg": 100.0}],
+                    },
                 },
             },
-        })
+        )
 
         result = imp.load_holdings_by_account(config_path=yaml_path)
         assert set(result.keys()) == {"test"}
 
     def test_load_holdings_by_account_empty_holdings_returns_empty_list(self, tmp_path):
         """holdings: [] → 빈 리스트 (전량 청산 표현)."""
-        import scripts.import_portfolio as imp
+        import scripts.ops.import_portfolio as imp
 
         yaml_path = tmp_path / "portfolio.yaml"
-        self._write_yaml(yaml_path, {
-            "accounts": {
-                "test": {"currency": "USD", "holdings": []},
+        self._write_yaml(
+            yaml_path,
+            {
+                "accounts": {
+                    "test": {"currency": "USD", "holdings": []},
+                },
             },
-        })
+        )
 
         result = imp.load_holdings_by_account(config_path=yaml_path)
         assert result == {"test": []}
 
     def test_legacy_load_holdings_still_returns_flat_list(self, tmp_path):
         """하위 호환: load_holdings()는 평탄화된 리스트 반환."""
-        import scripts.import_portfolio as imp
+        import scripts.ops.import_portfolio as imp
 
         yaml_path = tmp_path / "portfolio.yaml"
-        self._write_yaml(yaml_path, {
-            "accounts": {
-                "test": {
-                    "currency": "USD",
-                    "holdings": [
-                        {"ticker": "TSLA", "qty": 10, "avg": 300.0, "sector": "SectorA"},
-                    ],
-                },
-                "sample": {
-                    "currency": "KRW",
-                    "holdings": [
-                        {"ticker": "005930.KS", "qty": 1, "avg": 55000.0, "sector": "Semi"},
-                    ],
+        self._write_yaml(
+            yaml_path,
+            {
+                "accounts": {
+                    "test": {
+                        "currency": "USD",
+                        "holdings": [
+                            {"ticker": "TSLA", "qty": 10, "avg": 300.0, "sector": "SectorA"},
+                        ],
+                    },
+                    "sample": {
+                        "currency": "KRW",
+                        "holdings": [
+                            {"ticker": "005930.KS", "qty": 1, "avg": 55000.0, "sector": "Semi"},
+                        ],
+                    },
                 },
             },
-        })
+        )
 
         records = imp.load_holdings(config_path=yaml_path)
         assert isinstance(records, list)
@@ -774,33 +885,59 @@ class TestImportScriptSync:
         init_db(db_path)
         # yaml과 무관하게 DB만 사용하도록 monkeypatch
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
         # 1. DB에 stale 데이터 미리 시드 (이전 보유 종목)
-        upsert_portfolio([
-            {"account": "test", "ticker": "TSLA", "quantity": 10.0,
-             "avg_price": 300.0, "currency": "USD", "sector": "SectorA"},
-            {"account": "test", "ticker": "BBB", "quantity": 96.0,
-             "avg_price": 20.0, "currency": "USD", "sector": "SectorB"},
-            {"account": "test", "ticker": "CCC", "quantity": 20.0,
-             "avg_price": 150.0, "currency": "USD", "sector": "SectorC"},
-        ], db_path=db_path)
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "TSLA",
+                    "quantity": 10.0,
+                    "avg_price": 300.0,
+                    "currency": "USD",
+                    "sector": "SectorA",
+                },
+                {
+                    "account": "test",
+                    "ticker": "BBB",
+                    "quantity": 96.0,
+                    "avg_price": 20.0,
+                    "currency": "USD",
+                    "sector": "SectorB",
+                },
+                {
+                    "account": "test",
+                    "ticker": "CCC",
+                    "quantity": 20.0,
+                    "avg_price": 150.0,
+                    "currency": "USD",
+                    "sector": "SectorC",
+                },
+            ],
+            db_path=db_path,
+        )
 
         # 2. yaml에는 TSLA만 남김 (BBB, CCC 청산)
         yaml_path = tmp_path / "portfolio.yaml"
-        self._write_yaml(yaml_path, {
-            "accounts": {
-                "test": {
-                    "currency": "USD",
-                    "holdings": [
-                        {"ticker": "TSLA", "qty": 33, "avg": 200.0, "sector": "SectorA"},
-                    ],
+        self._write_yaml(
+            yaml_path,
+            {
+                "accounts": {
+                    "test": {
+                        "currency": "USD",
+                        "holdings": [
+                            {"ticker": "TSLA", "qty": 33, "avg": 200.0, "sector": "SectorA"},
+                        ],
+                    },
                 },
             },
-        })
+        )
 
         # 3. main() 실행
-        import scripts.import_portfolio as imp
+        import scripts.ops.import_portfolio as imp
+
         monkeypatch.setattr(imp, "CONFIG_PATH", yaml_path)
         imp.main()
 
@@ -820,35 +957,48 @@ class TestImportScriptSync:
         db_path = tmp_path / "test.db"
         init_db(db_path)
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
         # demo 계좌 DB에 시드
-        upsert_portfolio([
-            {"account": "demo", "ticker": "AMZN", "quantity": 2.0,
-             "avg_price": 200.0, "currency": "USD", "sector": "BigTech"},
-        ], db_path=db_path)
+        upsert_portfolio(
+            [
+                {
+                    "account": "demo",
+                    "ticker": "AMZN",
+                    "quantity": 2.0,
+                    "avg_price": 200.0,
+                    "currency": "USD",
+                    "sector": "BigTech",
+                },
+            ],
+            db_path=db_path,
+        )
 
         # yaml에는 test만, demo는 holdings 키 자체가 없음
         yaml_path = tmp_path / "portfolio.yaml"
-        self._write_yaml(yaml_path, {
-            "accounts": {
-                "test": {
-                    "currency": "USD",
-                    "holdings": [
-                        {"ticker": "TSLA", "qty": 33, "avg": 200.0, "sector": "SectorA"},
-                    ],
+        self._write_yaml(
+            yaml_path,
+            {
+                "accounts": {
+                    "test": {
+                        "currency": "USD",
+                        "holdings": [
+                            {"ticker": "TSLA", "qty": 33, "avg": 200.0, "sector": "SectorA"},
+                        ],
+                    },
+                    "demo": {"currency": "USD", "name": "Brokerage Beta"},  # holdings 키 없음
                 },
-                "demo": {"currency": "USD", "name": "Brokerage Beta"},  # holdings 키 없음
             },
-        })
+        )
 
-        import scripts.import_portfolio as imp
+        import scripts.ops.import_portfolio as imp
+
         monkeypatch.setattr(imp, "CONFIG_PATH", yaml_path)
         imp.main()
 
         # demo는 그대로 보존
-        demo_rows = query("SELECT ticker FROM portfolio WHERE account='demo'",
-                           db_path=db_path)
+        demo_rows = query("SELECT ticker FROM portfolio WHERE account='demo'", db_path=db_path)
         assert len(demo_rows) == 1
         assert demo_rows[0]["ticker"] == "AMZN"
 
@@ -859,19 +1009,33 @@ class TestImportScriptSync:
         db_path = tmp_path / "test.db"
         init_db(db_path)
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
-        upsert_portfolio([
-            {"account": "test", "ticker": "TSLA", "quantity": 10.0,
-             "avg_price": 300.0, "currency": "USD", "sector": "SectorA"},
-        ], db_path=db_path)
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "TSLA",
+                    "quantity": 10.0,
+                    "avg_price": 300.0,
+                    "currency": "USD",
+                    "sector": "SectorA",
+                },
+            ],
+            db_path=db_path,
+        )
 
         yaml_path = tmp_path / "portfolio.yaml"
-        self._write_yaml(yaml_path, {
-            "accounts": {"test": {"currency": "USD", "holdings": []}},
-        })
+        self._write_yaml(
+            yaml_path,
+            {
+                "accounts": {"test": {"currency": "USD", "holdings": []}},
+            },
+        )
 
-        import scripts.import_portfolio as imp
+        import scripts.ops.import_portfolio as imp
+
         monkeypatch.setattr(imp, "CONFIG_PATH", yaml_path)
         imp.main()
 

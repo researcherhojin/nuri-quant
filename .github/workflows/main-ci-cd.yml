@@ -270,7 +270,7 @@ jobs:
       - uses: actions/checkout@v6
       # stdlib only — no setup-python needed (ubuntu runner has Python pre-installed)
       - name: Scan for personal financial data leaks
-        run: python3 scripts/check_privacy_leak.py
+        run: python3 scripts/verify/check_privacy_leak.py
 
   # ── Shell script lint ──
   # shellcheck로 scripts/*.sh 린트. Graduated from warning-only 2026-04-15 —
@@ -305,7 +305,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Verify doc counts match live code
-        run: bash scripts/verify_doc_counts.sh
+        run: bash scripts/verify/verify_doc_counts.sh
 
   # ── Universe + Agent Coverage Validation (#272 Phase 2c) ──
   # Validates universe.yaml ↔ upstream sync. CI 에서는 universe.yaml 의 ticker

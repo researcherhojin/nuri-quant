@@ -58,7 +58,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).parent.parent
+ROOT = Path(__file__).parent.parent.parent  # repo root (scripts/verify/X.py → 3 levels up)
 
 # ANSI colors
 RED = "\033[0;31m"
@@ -272,7 +272,7 @@ TICKER_FALSE_POSITIVES: frozenset[str] = frozenset(
 
 # Allow-list: paths the scanner should NEVER block on.
 ALLOWLIST_PATHS: tuple[str, ...] = (
-    "scripts/check_privacy_leak.py",  # this file (documents patterns)
+    "scripts/verify/check_privacy_leak.py",  # this file (documents patterns)
     "tests/scripts/test_check_privacy_leak.py",  # tests for this file (moved from top-level in #163)
     "docs/STRATEGY.md",  # may codify pattern names
     "CONTRIBUTING.md",  # references placeholder names as guidance
