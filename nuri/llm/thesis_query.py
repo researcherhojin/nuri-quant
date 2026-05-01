@@ -40,7 +40,7 @@ from nuri.core.timezone import today_kst
 logger = logging.getLogger(__name__)
 
 OUT_DIR = Path("data/thesis_query")
-LLM_CONSULT_SCRIPT = Path("scripts/llm_consult.py")
+LLM_CONSULT_SCRIPT = Path("scripts/dev/llm_consult.py")
 
 DEFAULT_QUESTION = "investment thesis (long/short/avoid) + portfolio implications"
 
