@@ -12,7 +12,8 @@
 set -euo pipefail
 
 # shellcheck source=scripts/_common.sh
-source "$(dirname "$0")/_common.sh"
+# (sourced via $(dirname "$0")/../_common.sh — moved to subdir)
+source "$(dirname "$0")/../_common.sh"
 
 # Cross-platform sed -i
 sedi() {
