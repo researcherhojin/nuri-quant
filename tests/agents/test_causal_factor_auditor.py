@@ -589,9 +589,10 @@ class TestLastAudit:
 
 
 class TestDiscordPublish:
-    def test_mirage_publishes_to_rollout(self, patched_db, random_factor):
+    def test_mirage_stages_to_rollout(self, patched_db, random_factor):
+        """MIRAGE → outbox stage_rollout (PR3 Codex Round 6)."""
         f, r = random_factor
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             CausalFactorAuditor().run(
                 {
                     "action": "audit",
@@ -603,14 +604,14 @@ class TestDiscordPublish:
                     "n_placebo_runs": 100,
                 }
             )
-            mock_publish.assert_called_once()
-            call_kwargs = mock_publish.call_args.kwargs
-            assert call_kwargs["actor_name"] == "causal-factor-auditor"
-            assert "MIRAGE" in call_kwargs["embed"]["title"]
+            mock_stage.assert_called_once()
+            kw = mock_stage.call_args.kwargs
+            assert kw["actor_name"] == "causal-factor-auditor"
+            assert kw["payload"]["kind"] == "factor_mirage"
 
-    def test_robust_does_not_publish(self, patched_db, genuine_factor):
+    def test_robust_does_not_stage(self, patched_db, genuine_factor):
         f, r = genuine_factor
-        with patch("nuri.agents.discord.publisher.DiscordPublisher.publish_embed") as mock_publish:
+        with patch("nuri.agents.discord.outbox.stage_rollout") as mock_stage:
             CausalFactorAuditor().run(
                 {
                     "action": "audit",
@@ -622,13 +623,13 @@ class TestDiscordPublish:
                     "n_placebo_runs": 30,
                 }
             )
-            mock_publish.assert_not_called()
+            mock_stage.assert_not_called()
 
     def test_publish_failure_does_not_block_actor(self, patched_db, random_factor):
         f, r = random_factor
         with patch(
-            "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-            side_effect=RuntimeError("network"),
+            "nuri.agents.discord.outbox.stage_rollout",
+            side_effect=RuntimeError("outbox down"),
         ):
             result = CausalFactorAuditor().run(
                 {

@@ -429,22 +429,21 @@ class ForwardOutcomeTracker(Actor):
         run_id: str,
     ) -> None:
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_rollout
 
-            color = 0x2ECC71 if new_status == "validated" else 0xE74C3C
-            embed = {
-                "title": f"Hypothesis auto-{new_status} — {hypothesis_id}",
-                "description": (
-                    f"trigger: forward-outcome-tracker\n"
-                    f"realized_return: **{realized:.4f}**\n"
-                    f"alpha: {alpha if alpha is not None else 'N/A'}"
-                ),
-                "color": color,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]}"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.ROLLOUT,
-                embed=embed,
+            stage_rollout(
+                payload={
+                    "kind": f"hypothesis_{new_status}",
+                    "summary": (
+                        f"{hypothesis_id} → {new_status} "
+                        f"realized={realized:+.4f} alpha={alpha if alpha is not None else 'N/A'}"
+                    ),
+                    "hypothesis_id": hypothesis_id,
+                    "new_status": new_status,
+                    "realized": realized,
+                    "alpha": alpha,
+                },
+                dedupe_key=f"hyp_validation:{hypothesis_id}:{new_status}",
                 actor_name="forward-outcome-tracker",
                 run_id=run_id,
             )

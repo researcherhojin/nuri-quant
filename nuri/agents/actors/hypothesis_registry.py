@@ -284,30 +284,28 @@ class HypothesisRegistry(Actor):
         publish 실패해도 actor outcome 영향 X (best-effort).
         """
         try:
-            from nuri.agents.discord.publisher import Channel, DiscordPublisher
+            from nuri.agents.discord.outbox import stage_rollout
 
-            color = 0x2ECC71 if new_status == "validated" else 0xE74C3C
-            description_parts = [
-                f"hypothesis_id: `{hypothesis_id}`",
-                f"status: **{new_status}**",
-            ]
+            metrics_str = ""
             if "metrics" in extra:
-                metrics_preview = ", ".join(
+                metrics_str = ", ".join(
                     f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}"
                     for k, v in list(extra["metrics"].items())[:5]
                 )
-                description_parts.append(f"metrics: `{metrics_preview}`")
-            if "reason" in extra:
-                description_parts.append(f"reason: {extra['reason']}")
-            embed = {
-                "title": f"Hypothesis {new_status} — {hypothesis_id}",
-                "description": "\n".join(description_parts),
-                "color": color,
-                "footer": {"text": f"nuri-quant • run_id={run_id[:8]}"},
-            }
-            DiscordPublisher().publish_embed(
-                Channel.ROLLOUT,
-                embed=embed,
+            stage_rollout(
+                payload={
+                    "kind": f"hypothesis_{new_status}",
+                    "summary": (
+                        f"{hypothesis_id} → {new_status}"
+                        + (f" [{metrics_str}]" if metrics_str else "")
+                        + (f" reason={extra['reason']}" if extra.get("reason") else "")
+                    ),
+                    "hypothesis_id": hypothesis_id,
+                    "new_status": new_status,
+                    "metrics": extra.get("metrics"),
+                    "reason": extra.get("reason"),
+                },
+                dedupe_key=f"hyp_status:{hypothesis_id}:{new_status}",
                 actor_name="hypothesis-registry",
                 run_id=run_id,
             )

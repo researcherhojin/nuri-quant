@@ -651,12 +651,11 @@ class TestListOpenAction:
 
 
 class TestDiscordPublishRouting:
-    def test_critical_publishes_to_incidents(self, patched_db):
+    """PR3 Codex Round 6: critical → outbox stage_incident, warning → stage_ops."""
+
+    def test_critical_stages_to_incidents(self, patched_db):
         with (
-            patch(
-                "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-                return_value=MagicMock(ok=True, channel="incidents", http_status=204, retry_count=0),
-            ) as pub_embed,
+            patch("nuri.agents.discord.outbox.stage_incident") as mock_inc,
             patch(
                 "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
                 return_value=MagicMock(total=1000, used=950, free=50),
@@ -665,21 +664,14 @@ class TestDiscordPublishRouting:
         ):
             actor = SREIncidentAgent()
             actor.run({"action": "scan"})
-        # 최소 1번 호출 — channel 인자 검증
-        from nuri.agents.discord.publisher import Channel
+        assert mock_inc.called
+        kw = mock_inc.call_args.kwargs
+        assert kw["actor_name"] == "sre-incident-agent"
+        assert kw["priority"] == "high"
 
-        assert pub_embed.called
-        call_kwargs = pub_embed.call_args
-        # 첫 positional arg 가 channel (publish_embed signature)
-        channel_arg = call_kwargs.args[0] if call_kwargs.args else call_kwargs.kwargs.get("channel")
-        assert channel_arg == Channel.INCIDENTS
-
-    def test_warning_publishes_to_ops(self, patched_db):
+    def test_warning_stages_to_ops(self, patched_db):
         with (
-            patch(
-                "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-                return_value=MagicMock(ok=True, channel="ops", http_status=204, retry_count=0),
-            ) as pub_embed,
+            patch("nuri.agents.discord.outbox.stage_ops") as mock_ops,
             patch(
                 "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
                 return_value=MagicMock(total=1000, used=850, free=150),
@@ -688,21 +680,12 @@ class TestDiscordPublishRouting:
         ):
             actor = SREIncidentAgent()
             actor.run({"action": "scan"})
-        from nuri.agents.discord.publisher import Channel
+        assert mock_ops.called
 
-        assert pub_embed.called
-        channel_arg = pub_embed.call_args.args[0] if pub_embed.call_args.args else pub_embed.call_args.kwargs.get(
-            "channel"
-        )
-        assert channel_arg == Channel.OPS
-
-    def test_repeat_detection_does_not_republish(self, patched_db):
-        """재detection 시 동일 incident → publish 차단 (UNIQUE update)."""
+    def test_repeat_detection_does_not_restage(self, patched_db):
+        """재detection 시 동일 incident → stage 차단 (UNIQUE update)."""
         with (
-            patch(
-                "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-                return_value=MagicMock(ok=True, channel="incidents", http_status=204, retry_count=0),
-            ) as pub_embed,
+            patch("nuri.agents.discord.outbox.stage_incident") as mock_inc,
             patch(
                 "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
                 return_value=MagicMock(total=1000, used=950, free=50),
@@ -711,16 +694,16 @@ class TestDiscordPublishRouting:
         ):
             actor = SREIncidentAgent()
             actor.run({"action": "scan"})
-            first_count = pub_embed.call_count
+            first_count = mock_inc.call_count
             actor.run({"action": "scan"})
-            assert pub_embed.call_count == first_count, "재detection 은 publish 안 해야 함"
+            assert mock_inc.call_count == first_count, "재detection 은 stage 안 해야 함"
 
     def test_publish_failure_does_not_break_scan(self, patched_db):
-        """Discord publish 실패해도 scan 자체는 PASS."""
+        """outbox stage 실패해도 scan 자체는 PASS."""
         with (
             patch(
-                "nuri.agents.discord.publisher.DiscordPublisher.publish_embed",
-                side_effect=RuntimeError("webhook 500"),
+                "nuri.agents.discord.outbox.stage_incident",
+                side_effect=RuntimeError("outbox down"),
             ),
             patch(
                 "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
@@ -807,8 +790,7 @@ class TestAuditTrail:
             db_path=patched_db,
         )
         assert any(
-            r["actor_name"] == "sre-incident-agent" and r["layer"] == "A" and r["outcome"] == "pass"
-            for r in rows
+            r["actor_name"] == "sre-incident-agent" and r["layer"] == "A" and r["outcome"] == "pass" for r in rows
         )
 
     def test_acknowledge_block_audited(self, patched_db, no_publish):
