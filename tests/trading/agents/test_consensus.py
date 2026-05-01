@@ -1931,8 +1931,7 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"Z{i}", "BUY", 50.0, None, None, 100.0,
-                     json.dumps(verdicts), 0.0),
+                    (today_kst(), f"Z{i}", "BUY", 50.0, None, None, 100.0, json.dumps(verdicts), 0.0),
                 )
 
         weights = _compute_weights(db_path=db_path)
@@ -1991,8 +1990,7 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"V{i}", "BUY", 50.0, None, None, 100.0,
-                     json.dumps(valid_verdicts), 0.05),
+                    (today_kst(), f"V{i}", "BUY", 50.0, None, None, 100.0, json.dumps(valid_verdicts), 0.05),
                 )
             # Malformed — JSON parse error
             for i in range(3):
@@ -2001,8 +1999,7 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"M{i}", "BUY", 50.0, None, None, 100.0,
-                     "{not valid json", 0.05),
+                    (today_kst(), f"M{i}", "BUY", 50.0, None, None, 100.0, "{not valid json", 0.05),
                 )
 
         weights = _compute_weights(db_path=db_path)
@@ -2047,15 +2044,12 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"L{i}", "BUY", 50.0, None, None, 100.0,
-                     json.dumps(mixed_verdicts), 0.05),
+                    (today_kst(), f"L{i}", "BUY", 50.0, None, None, 100.0, json.dumps(mixed_verdicts), 0.05),
                 )
 
         weights = _compute_weights(db_path=db_path)
         # dict items (technical/fundamental) 은 정상 처리, string/None 은 skip.
-        assert weights["technical"] > DEFAULT_WEIGHTS["technical"], (
-            "dict items 정상 처리 — non-dict items skip 안전"
-        )
+        assert weights["technical"] > DEFAULT_WEIGHTS["technical"], "dict items 정상 처리 — non-dict items skip 안전"
 
     def test_min_records_gate_on_parsed_count_not_raw(self, db_path):
         """min_records gate 는 rows_parsed 기반 (codex A-1 P1-2 regression lock).
@@ -2082,8 +2076,7 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"V{i}", "BUY", 50.0, None, None, 100.0,
-                     json.dumps(valid_verdicts), 0.05),
+                    (today_kst(), f"V{i}", "BUY", 50.0, None, None, 100.0, json.dumps(valid_verdicts), 0.05),
                 )
             # 1 malformed — raw count 를 10 으로 올려 old gate 우회 공격
             conn.execute(
@@ -2091,14 +2084,12 @@ class TestComputeWeightsHitRates:
                    (date, ticker, action, confidence, regime, signals, entry_price,
                     agent_verdicts, outcome_30d)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (today_kst(), "M0", "BUY", 50.0, None, None, 100.0,
-                 "{bad json", 0.05),
+                (today_kst(), "M0", "BUY", 50.0, None, None, 100.0, "{bad json", 0.05),
             )
 
         weights = _compute_weights(db_path=db_path)
         assert weights == DEFAULT_WEIGHTS, (
-            "rows_parsed=9 < min_records=10 → DEFAULT_WEIGHTS. "
-            "이전 버그: raw count=10 으로 gate 통과 → shift 발생."
+            "rows_parsed=9 < min_records=10 → DEFAULT_WEIGHTS. 이전 버그: raw count=10 으로 gate 통과 → shift 발생."
         )
 
     def test_hold_only_rows_excluded_from_parsed_count(self, db_path):
@@ -2131,8 +2122,7 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"H{i}", "HOLD", 50.0, None, None, 100.0,
-                     json.dumps(hold_only_verdicts), 0.05),
+                    (today_kst(), f"H{i}", "HOLD", 50.0, None, None, 100.0, json.dumps(hold_only_verdicts), 0.05),
                 )
 
         weights = _compute_weights(db_path=db_path)
@@ -2161,8 +2151,7 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"U{i}", "BUY", 50.0, None, None, 100.0,
-                     json.dumps(usable), 0.05),
+                    (today_kst(), f"U{i}", "BUY", 50.0, None, None, 100.0, json.dumps(usable), 0.05),
                 )
             for i in range(9):
                 conn.execute(
@@ -2170,8 +2159,7 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"H{i}", "HOLD", 50.0, None, None, 100.0,
-                     json.dumps(hold_only), 0.05),
+                    (today_kst(), f"H{i}", "HOLD", 50.0, None, None, 100.0, json.dumps(hold_only), 0.05),
                 )
 
         with caplog.at_level(logging.WARNING, logger="nuri.trading.agents.consensus"):
@@ -2211,16 +2199,14 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"U{i}", "BUY", 50.0, None, None, 100.0,
-                     json.dumps(usable), 0.05),
+                    (today_kst(), f"U{i}", "BUY", 50.0, None, None, 100.0, json.dumps(usable), 0.05),
                 )
             conn.execute(  # 1 HOLD-only → skipped, anomaly INFO
                 """INSERT INTO recommendations
                    (date, ticker, action, confidence, regime, signals, entry_price,
                     agent_verdicts, outcome_30d)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (today_kst(), "H0", "HOLD", 50.0, None, None, 100.0,
-                 json.dumps(hold_only), 0.05),
+                (today_kst(), "H0", "HOLD", 50.0, None, None, 100.0, json.dumps(hold_only), 0.05),
             )
 
         with caplog.at_level(logging.INFO, logger="nuri.trading.agents.consensus"):
@@ -2254,11 +2240,8 @@ class TestComputeWeightsHitRates:
             _compute_weights(db_path=db_path)
 
         # anomaly INFO 는 emit 안 됨 (skip=0 이므로)
-        anomaly_msgs = [r.message for r in caplog.records
-                        if r.levelno >= logging.INFO and "anomaly" in r.message]
-        assert anomaly_msgs == [], (
-            f"Normal path 에 anomaly INFO 있으면 안 됨. 실제: {anomaly_msgs}"
-        )
+        anomaly_msgs = [r.message for r in caplog.records if r.levelno >= logging.INFO and "anomaly" in r.message]
+        assert anomaly_msgs == [], f"Normal path 에 anomaly INFO 있으면 안 됨. 실제: {anomaly_msgs}"
 
     def test_observability_anomaly_path_info(self, db_path, caplog):
         """Skip 발생 시 INFO 레벨로 escalate — operator 감지 가능.
@@ -2284,8 +2267,7 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"V{i}", "BUY", 50.0, None, None, 100.0,
-                     json.dumps(valid_verdicts), 0.05),
+                    (today_kst(), f"V{i}", "BUY", 50.0, None, None, 100.0, json.dumps(valid_verdicts), 0.05),
                 )
             for i in range(2):
                 conn.execute(
@@ -2293,21 +2275,15 @@ class TestComputeWeightsHitRates:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"M{i}", "BUY", 50.0, None, None, 100.0,
-                     "{bad json", 0.05),
+                    (today_kst(), f"M{i}", "BUY", 50.0, None, None, 100.0, "{bad json", 0.05),
                 )
 
         with caplog.at_level(logging.INFO, logger="nuri.trading.agents.consensus"):
             _compute_weights(db_path=db_path)
 
-        info_msgs = [r.message for r in caplog.records
-                     if r.levelno == logging.INFO and "anomaly" in r.message]
-        assert len(info_msgs) >= 1, (
-            f"Skip 발생 시 INFO anomaly 로그 기대. 실제: {[r.message for r in caplog.records]}"
-        )
-        assert any("rows_skipped_json=2" in m for m in info_msgs), (
-            "rows_skipped_json=2 카운터 포함 기대"
-        )
+        info_msgs = [r.message for r in caplog.records if r.levelno == logging.INFO and "anomaly" in r.message]
+        assert len(info_msgs) >= 1, f"Skip 발생 시 INFO anomaly 로그 기대. 실제: {[r.message for r in caplog.records]}"
+        assert any("rows_skipped_json=2" in m for m in info_msgs), "rows_skipped_json=2 카운터 포함 기대"
 
 
 class TestProvisionalLearningMemory:
@@ -2331,8 +2307,7 @@ class TestProvisionalLearningMemory:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, {horizon_col})
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"S{i}", "BUY", 50.0, None, None, 100.0,
-                     json.dumps(verdicts), 0.05 * outcome_sign),
+                    (today_kst(), f"S{i}", "BUY", 50.0, None, None, 100.0, json.dumps(verdicts), 0.05 * outcome_sign),
                 )
 
     def test_canonical_returns_eligibility_dict(self, db_path):
@@ -2407,8 +2382,7 @@ class TestProvisionalLearningMemory:
                        (date, ticker, action, confidence, regime, signals, entry_price,
                         agent_verdicts, outcome_30d, outcome_21d)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (today_kst(), f"D{i}", "BUY", 50.0, None, None, 100.0,
-                     json.dumps(verdicts), 0.05, 0.05),
+                    (today_kst(), f"D{i}", "BUY", 50.0, None, None, 100.0, json.dumps(verdicts), 0.05, 0.05),
                 )
 
         canon = compute_canonical_weights(db_path=db_path)
@@ -2427,19 +2401,16 @@ class TestPerAgentPrecedence:
 
     def _make_eligibility(self, name, sample_count, weight, eligible):
         from nuri.trading.agents.consensus import AgentEligibility
-        return AgentEligibility(
-            name=name, sample_count=sample_count, weight=weight, eligible=eligible
-        )
+
+        return AgentEligibility(name=name, sample_count=sample_count, weight=weight, eligible=eligible)
 
     def test_canonical_wins_when_eligible(self):
         """동일 agent 가 canonical+provisional 둘 다 eligible → canonical 우선."""
         from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
 
-        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                     for n in DEFAULT_WEIGHTS}
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
         canonical["technical"] = self._make_eligibility("technical", 20, 0.20, True)
-        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                       for n in DEFAULT_WEIGHTS}
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
         provisional["technical"] = self._make_eligibility("technical", 30, 0.18, True)
 
         weights, sources = select_weight_source(canonical, provisional)
@@ -2449,10 +2420,8 @@ class TestPerAgentPrecedence:
         """canonical 미eligible + provisional eligible → provisional 사용."""
         from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
 
-        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                     for n in DEFAULT_WEIGHTS}
-        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                       for n in DEFAULT_WEIGHTS}
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
         provisional["technical"] = self._make_eligibility("technical", 15, 0.16, True)
 
         weights, sources = select_weight_source(canonical, provisional)
@@ -2462,11 +2431,9 @@ class TestPerAgentPrecedence:
         """둘 다 미eligible 이지만 sample_count > 0 → 'default' (not unsaturating)."""
         from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
 
-        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                     for n in DEFAULT_WEIGHTS}
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
         canonical["risk"] = self._make_eligibility("risk", 3, DEFAULT_WEIGHTS["risk"], False)
-        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                       for n in DEFAULT_WEIGHTS}
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
 
         weights, sources = select_weight_source(canonical, provisional)
         assert sources["risk"] == "default"
@@ -2475,10 +2442,8 @@ class TestPerAgentPrecedence:
         """canonical+provisional 모두 sample=0 → structurally_unsaturating."""
         from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
 
-        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                     for n in DEFAULT_WEIGHTS}
-        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                       for n in DEFAULT_WEIGHTS}
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
 
         weights, sources = select_weight_source(canonical, provisional)
         # 모든 agent 가 BUY+SELL=0 → structurally_unsaturating
@@ -2488,11 +2453,9 @@ class TestPerAgentPrecedence:
         """동시에 다른 source 사용 가능 — global label 의 부적절성 증명 (codex #1)."""
         from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
 
-        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                     for n in DEFAULT_WEIGHTS}
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
         canonical["technical"] = self._make_eligibility("technical", 20, 0.18, True)
-        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                       for n in DEFAULT_WEIGHTS}
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
         provisional["fundamental"] = self._make_eligibility("fundamental", 15, 0.13, True)
         # macro: sample 있지만 미eligible → default
         canonical["macro"] = self._make_eligibility("macro", 4, DEFAULT_WEIGHTS["macro"], False)
@@ -2509,11 +2472,9 @@ class TestPerAgentPrecedence:
         """select_weight_source 는 weights sum=1.0 정규화."""
         from nuri.trading.agents.consensus import DEFAULT_WEIGHTS, select_weight_source
 
-        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                     for n in DEFAULT_WEIGHTS}
+        canonical = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
         canonical["technical"] = self._make_eligibility("technical", 20, 0.20, True)
-        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False)
-                       for n in DEFAULT_WEIGHTS}
+        provisional = {n: self._make_eligibility(n, 0, DEFAULT_WEIGHTS[n], False) for n in DEFAULT_WEIGHTS}
 
         weights, _ = select_weight_source(canonical, provisional)
         assert abs(sum(weights.values()) - 1.0) < 1e-9
@@ -2554,9 +2515,7 @@ class TestStructuralSeparation:
 
         src = inspect.getsource(consensus.select_weight_source)
         for forbidden in ("query(", "get_db(", "outcome_30d", "outcome_21d"):
-            assert forbidden not in src, (
-                f"select_weight_source 가 '{forbidden}' 사용 — pure selector 위반"
-            )
+            assert forbidden not in src, f"select_weight_source 가 '{forbidden}' 사용 — pure selector 위반"
 
 
 class TestAgentReadiness:
@@ -2573,9 +2532,7 @@ class TestAgentReadiness:
         assert names == set(DEFAULT_WEIGHTS.keys())
         for a in result["agents"]:
             assert "source" in a
-            assert a["source"] in (
-                "canonical_30d", "provisional_21d", "default", "structurally_unsaturating"
-            )
+            assert a["source"] in ("canonical_30d", "provisional_21d", "default", "structurally_unsaturating")
             assert "canonical_30d" in a
             assert "provisional_21d" in a
 
@@ -2585,8 +2542,10 @@ class TestAgentReadiness:
 
         result = agent_readiness(db_path=db_path)
         actual = {
-            "canonical_30d": 0, "provisional_21d": 0,
-            "default": 0, "structurally_unsaturating": 0,
+            "canonical_30d": 0,
+            "provisional_21d": 0,
+            "default": 0,
+            "structurally_unsaturating": 0,
         }
         for a in result["agents"]:
             actual[a["source"]] += 1
@@ -2600,3 +2559,80 @@ class TestAgentReadiness:
         assert result["summary"]["structurally_unsaturating"] == len(DEFAULT_WEIGHTS)
         assert result["summary"]["canonical_30d"] == 0
         assert result["summary"]["provisional_21d"] == 0
+
+
+class TestConsensusCLIMain:
+    """Smoke coverage for `python -m nuri.trading.agents.consensus` CLI entry.
+
+    P2.1 split (PR #560) extracted CLI into __main__.py — was inlined in
+    monolithic consensus.py before. These tests drive `main()` to keep the
+    CLI module covered post-split.
+    """
+
+    def test_main_single_ticker_path(self, monkeypatch):
+        """--ticker mode: analyze_ticker → save_to_recommendations → record_decisions."""
+        from unittest.mock import MagicMock, patch
+
+        from nuri.trading.agents.consensus import __main__ as cli
+
+        fake_result = MagicMock(
+            ticker="NVDA",
+            final_action="HOLD",
+            final_confidence=50.0,
+            agreement_rate=0.5,
+            verdicts=[],
+            dissent=[],
+            reasoning="",
+            divergence_flag=False,
+            divergence_reason="",
+            penalty_applied=False,
+            pre_penalty_action="",
+            scoring_detail=None,
+        )
+        monkeypatch.setattr("sys.argv", ["consensus", "--ticker", "NVDA"])
+        with (
+            patch.object(cli, "analyze_ticker", return_value=fake_result) as m_analyze,
+            patch.object(cli, "save_to_recommendations", return_value=1) as m_save,
+            patch.object(cli, "print_consensus") as m_print,
+            patch("nuri.trading.engine.decisions.record_decisions", return_value=1) as m_record,
+        ):
+            cli.main()
+            m_analyze.assert_called_once_with("NVDA")
+            m_save.assert_called_once()
+            m_print.assert_called_once()
+            m_record.assert_called_once()
+
+    def test_main_portfolio_path(self, monkeypatch):
+        """no --ticker: analyze_portfolio → save_to_recommendations → record_decisions."""
+        from unittest.mock import patch
+
+        from nuri.trading.agents.consensus import __main__ as cli
+
+        monkeypatch.setattr("sys.argv", ["consensus"])
+        with (
+            patch.object(cli, "analyze_portfolio", return_value=[]) as m_analyze,
+            patch.object(cli, "save_to_recommendations", return_value=0) as m_save,
+            patch.object(cli, "print_consensus") as m_print,
+            patch("nuri.trading.engine.decisions.record_decisions", return_value=0) as m_record,
+        ):
+            cli.main()
+            m_analyze.assert_called_once()
+            m_save.assert_called_once()
+            m_print.assert_called_once()
+            m_record.assert_called_once()
+
+    def test_main_verbose_flag(self, monkeypatch):
+        """--verbose flag forwarded to print_consensus."""
+        from unittest.mock import patch
+
+        from nuri.trading.agents.consensus import __main__ as cli
+
+        monkeypatch.setattr("sys.argv", ["consensus", "--verbose"])
+        with (
+            patch.object(cli, "analyze_portfolio", return_value=[]),
+            patch.object(cli, "save_to_recommendations", return_value=0),
+            patch.object(cli, "print_consensus") as m_print,
+            patch("nuri.trading.engine.decisions.record_decisions", return_value=0),
+        ):
+            cli.main()
+            assert m_print.call_args.kwargs.get("verbose") is True
