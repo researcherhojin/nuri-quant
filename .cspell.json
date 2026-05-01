@@ -720,7 +720,12 @@
     "Brok",
     "BRKR",
     "SCRY",
-    "aopay"
+    "aopay",
+    "CBOEY",
+    "CBOEDB",
+    "prdy",
+    "clpr",
+    "EHTC"
   ],
   "ignorePaths": [
     "node_modules/**",

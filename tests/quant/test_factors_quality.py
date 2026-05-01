@@ -1,4 +1,6 @@
+# pyright: reportArgumentType=false
 """Tests for factors_quality — split from test_quant_all.py."""
+
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -23,12 +25,12 @@ class TestQuality:
 
     def test_empty_when_no_data(self, db_path_mp):
         from nuri.quant.factors.quality import compute_quality
+
         result = compute_quality(tickers=["FAKE"])
         assert result.empty
 
     def test_normalization_logic(self):
-        scores = {"AAPL": {"roe": 0.30, "operating_margin": 0.25},
-                  "MSFT": {"roe": 0.15, "operating_margin": 0.10}}
+        scores = {"AAPL": {"roe": 0.30, "operating_margin": 0.25}, "MSFT": {"roe": 0.15, "operating_margin": 0.10}}
         df = pd.DataFrame(scores).T
         for col in ["roe", "operating_margin"]:
             valid = df[col].dropna()
@@ -57,8 +59,7 @@ class TestQualityDbRead:
         with get_db(db_path) as conn:
             for ticker, date, roe, margin in rows:
                 conn.execute(
-                    "INSERT OR REPLACE INTO fundamentals (ticker, date, roe, operating_margin)"
-                    " VALUES (?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO fundamentals (ticker, date, roe, operating_margin) VALUES (?, ?, ?, ?)",
                     (ticker, date, roe, margin),
                 )
 
@@ -79,8 +80,7 @@ class TestQualityDbRead:
         assert "quality_score" in df.columns
         # 핵심 회귀 방어: score 가 상수화되면 이 assert 가 깨진다
         assert df["quality_score"].nunique() > 1, (
-            "quality_score 가 상수 (이전 0.5 버그 재발) — "
-            "fundamentals read 로 source 가 되었는지 확인"
+            "quality_score 가 상수 (이전 0.5 버그 재발) — fundamentals read 로 source 가 되었는지 확인"
         )
         # NVDA (최고 ROE + margin) > AAPL > MSFT 순서 검증
         assert float(df.loc["NVDA", "quality_score"]) > float(df.loc["AAPL", "quality_score"])
@@ -120,6 +120,4 @@ class TestQualityDbRead:
                 )
             elif isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert "openbb" not in alias.name.lower(), (
-                        f"quality.py `import {alias.name}` 재도입됨 (§2.3 위배)"
-                    )
+                    assert "openbb" not in alias.name.lower(), f"quality.py `import {alias.name}` 재도입됨 (§2.3 위배)"

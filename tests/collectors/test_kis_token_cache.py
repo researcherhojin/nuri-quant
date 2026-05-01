@@ -9,6 +9,7 @@
 
 Issue: https://github.com/researcherhojin/nuri-quant/issues/532
 """
+
 from __future__ import annotations
 
 import json
@@ -58,9 +59,7 @@ def legacy_cache_dir(tmp_path):
 class TestCacheLocationDeterminism:
     """Cache 는 항상 project-local 이어야 한다 (yaml 존재 여부 무관)."""
 
-    def test_cache_dir_is_project_local_when_yaml_absent(
-        self, project_cache_dir, legacy_cache_dir
-    ):
+    def test_cache_dir_is_project_local_when_yaml_absent(self, project_cache_dir, legacy_cache_dir):
         """`.env` only 셋업 (yaml 없음) → cache 가 project-local 로 결정됨.
 
         이 테스트가 실패하면 Issue #532 재발: cache 가 legacy `~/KIS/cache/` 로
@@ -77,9 +76,7 @@ class TestCacheLocationDeterminism:
             f"(expected: {project_cache_dir}). Issue #532 회귀."
         )
 
-    def test_cache_dir_is_project_local_when_yaml_present(
-        self, project_cache_dir, legacy_cache_dir
-    ):
+    def test_cache_dir_is_project_local_when_yaml_present(self, project_cache_dir, legacy_cache_dir):
         """yaml 있을 때도 동일하게 project-local cache. 결정성 보장."""
         project_kis_dir = project_cache_dir.parent
         project_kis_dir.mkdir(parents=True, exist_ok=True)
@@ -97,9 +94,7 @@ class TestCacheLocationDeterminism:
 class TestTokenCacheTTL:
     """TTL 이내 두 번째 호출은 캐시된 token 반환 (HTTP 0회)."""
 
-    def test_two_calls_within_ttl_only_one_http_request(
-        self, fake_creds, project_cache_dir
-    ):
+    def test_two_calls_within_ttl_only_one_http_request(self, fake_creds, project_cache_dir):
         """24h cache 의 핵심: 2번 호출 → HTTP 1번만 발생."""
         project_cache_dir.mkdir(parents=True, exist_ok=True)
         cache_file = project_cache_dir / "token_prod.json"
@@ -112,9 +107,7 @@ class TestTokenCacheTTL:
         }
 
         with (
-            patch(
-                "nuri.collectors.kis_realtime.TOKEN_CACHE_DIR", project_cache_dir
-            ),
+            patch("nuri.collectors.kis_realtime.TOKEN_CACHE_DIR", project_cache_dir),
             patch("nuri.collectors.kis_realtime.requests.post", return_value=mock_response) as mock_post,
         ):
             # 1차: HTTP 호출 → cache 작성
@@ -125,8 +118,7 @@ class TestTokenCacheTTL:
         assert tok1 == "TOKEN_FROM_HTTP"
         assert tok2 == "TOKEN_FROM_HTTP", "Cache hit 시 같은 token 반환해야 함"
         assert mock_post.call_count == 1, (
-            f"TTL 이내 2회 호출이 HTTP {mock_post.call_count}회 발생 — "
-            "Issue #532 회귀 (cache 미작동)"
+            f"TTL 이내 2회 호출이 HTTP {mock_post.call_count}회 발생 — Issue #532 회귀 (cache 미작동)"
         )
         assert cache_file.exists(), "Cache 파일이 작성되어야 함"
 
@@ -136,11 +128,13 @@ class TestTokenCacheTTL:
         cache_file = project_cache_dir / "token_prod.json"
         # 25시간 전 issued (TTL 23h 초과)
         cache_file.write_text(
-            json.dumps({
-                "access_token": "STALE_TOKEN",
-                "issued_at": time.time() - 25 * 3600,
-                "expires_in": 86400,
-            })
+            json.dumps(
+                {
+                    "access_token": "STALE_TOKEN",
+                    "issued_at": time.time() - 25 * 3600,
+                    "expires_in": 86400,
+                }
+            )
         )
 
         mock_response = MagicMock()
@@ -151,9 +145,7 @@ class TestTokenCacheTTL:
         }
 
         with (
-            patch(
-                "nuri.collectors.kis_realtime.TOKEN_CACHE_DIR", project_cache_dir
-            ),
+            patch("nuri.collectors.kis_realtime.TOKEN_CACHE_DIR", project_cache_dir),
             patch("nuri.collectors.kis_realtime.requests.post", return_value=mock_response) as mock_post,
         ):
             tok = get_access_token(fake_creds)
@@ -161,9 +153,7 @@ class TestTokenCacheTTL:
         assert tok == "FRESH_TOKEN"
         assert mock_post.call_count == 1
 
-    def test_corrupted_cache_falls_back_to_new_issue(
-        self, fake_creds, project_cache_dir
-    ):
+    def test_corrupted_cache_falls_back_to_new_issue(self, fake_creds, project_cache_dir):
         """깨진 JSON cache → silently 무시 + 새로 발급."""
         project_cache_dir.mkdir(parents=True, exist_ok=True)
         cache_file = project_cache_dir / "token_prod.json"
@@ -177,9 +167,7 @@ class TestTokenCacheTTL:
         }
 
         with (
-            patch(
-                "nuri.collectors.kis_realtime.TOKEN_CACHE_DIR", project_cache_dir
-            ),
+            patch("nuri.collectors.kis_realtime.TOKEN_CACHE_DIR", project_cache_dir),
             patch("nuri.collectors.kis_realtime.requests.post", return_value=mock_response),
         ):
             tok = get_access_token(fake_creds)
@@ -201,15 +189,14 @@ class TestModeSeparation:
         prod_creds = KISCredentials("k", "s", "1", "h", "prod")
         paper_creds = KISCredentials("k", "s", "1", "h", "paper")
 
-        responses = [
-            MagicMock(status_code=200, **{"json.return_value": {"access_token": "PROD_TOK", "expires_in": 86400}}),
-            MagicMock(status_code=200, **{"json.return_value": {"access_token": "PAPER_TOK", "expires_in": 86400}}),
-        ]
+        prod_resp = MagicMock(status_code=200)
+        prod_resp.json.return_value = {"access_token": "PROD_TOK", "expires_in": 86400}
+        paper_resp = MagicMock(status_code=200)
+        paper_resp.json.return_value = {"access_token": "PAPER_TOK", "expires_in": 86400}
+        responses = [prod_resp, paper_resp]
 
         with (
-            patch(
-                "nuri.collectors.kis_realtime.TOKEN_CACHE_DIR", project_cache_dir
-            ),
+            patch("nuri.collectors.kis_realtime.TOKEN_CACHE_DIR", project_cache_dir),
             patch("nuri.collectors.kis_realtime.requests.post", side_effect=responses),
         ):
             assert get_access_token(prod_creds) == "PROD_TOK"
