@@ -1,77 +1,30 @@
 """
 Nuri-Quant 데이터베이스 모듈 — 모든 DB 접근의 단일 진입점.
 
-다른 모듈에서 sqlite3를 직접 import하지 않는다.
+다른 모듈에서 sqlite3를 직접 import하지 않는다 (PreToolUse hook 차단).
 모든 DB 작업은 이 모듈의 함수를 통해서만 수행한다.
+
+Package layout (P2 Stage 2 — PR #566):
+    connection.py — sole sqlite3 importer + lifecycle (get_db, init_db, DB_PATH)
+    __init__.py   — facade: query/query_df/get_tickers + all writer functions
+                    (behavior modules to be extracted in follow-up commits)
 """
 
 import json
-import sqlite3
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 
-from nuri.core.db_migrations import _MIGRATIONS, _SCHEMA, _SCHEMA_VERSION_TABLE
+from nuri.core.db_migrations import _MIGRATIONS, _SCHEMA, _SCHEMA_VERSION_TABLE  # noqa: F401 — back-compat re-export
 
-DB_PATH = Path(__file__).parent.parent.parent / "data" / "portfolio.db"
-
-# ═══════════════════════════════════════════════════════
-# 연결 관리
-# ═══════════════════════════════════════════════════════
-
-
-def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
-    """DB 연결 반환. WAL 모드, foreign keys 활성화."""
-    path = db_path or DB_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=5000")
-    return conn
-
-
-@contextmanager
-def get_db(db_path: Optional[Path] = None):
-    """DB 컨텍스트 매니저. 성공 시 자동 commit, 실패 시 rollback."""
-    conn = get_connection(db_path)
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-# ═══════════════════════════════════════════════════════
-# 스키마 초기화
-# ═══════════════════════════════════════════════════════
-
-
-def init_db(db_path: Optional[Path] = None) -> None:
-    """전체 테이블 스키마 생성 + 증분 마이그레이션 적용."""
-    with get_db(db_path) as conn:
-        conn.executescript(_SCHEMA)
-        conn.executescript(_SCHEMA_VERSION_TABLE)
-        _apply_migrations(conn)
-
-
-def _apply_migrations(conn: sqlite3.Connection) -> None:
-    """미적용 마이그레이션을 순서대로 실행."""
-    applied = {row[0] for row in conn.execute("SELECT version FROM schema_version").fetchall()}
-    for version, desc, sql in _MIGRATIONS:
-        if version not in applied:
-            conn.executescript(sql)
-            conn.execute(
-                "INSERT INTO schema_version (version, description) VALUES (?, ?)",
-                (version, desc),
-            )
-            conn.commit()
+from .connection import (  # noqa: F401 — facade re-exports for back-compat
+    DB_PATH,
+    _apply_migrations,
+    get_connection,
+    get_db,
+    init_db,
+)
 
 
 def get_schema_version(db_path: Optional[Path] = None) -> int:
