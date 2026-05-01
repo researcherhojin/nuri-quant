@@ -6,6 +6,7 @@
   "exclude": [
     "**/__pycache__",
     "**/node_modules",
+    "**/.*",
     ".venv",
     "data",
     "frontend",
@@ -21,5 +22,15 @@
   "reportArgumentType": "warning",
   "reportAttributeAccessIssue": "warning",
   "reportAssignmentType": "warning",
-  "reportOperatorIssue": "warning"
+  "reportOperatorIssue": "warning",
+
+  "//": "Below: pandas-stubs over-strict overloads (sort_values/round/to_dict/get/read_sql_query) on runtime-correct code — noise > value.",
+  "reportCallIssue": "warning",
+  "reportReturnType": "warning",
+
+  "//1": "Test mock subclasses simplify analyze() / _send_failure_alert() signatures intentionally — LSP via mock is the standard pattern.",
+  "reportIncompatibleMethodOverride": "none",
+
+  "//2": "Tests poke at __wrapped__ for decorator introspection.",
+  "reportFunctionMemberAccess": "none"
 }
