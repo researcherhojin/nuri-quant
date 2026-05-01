@@ -46,6 +46,12 @@ def _print_step(n: int, name: str, status: str, summary: str) -> None:
     print(f"{DIM}[{n}/6]{RESET} {color}{status:5}{RESET} {name:30} {summary}")
 
 
+def _ov(result) -> str:
+    """ActorResult.outcome.value or 'unknown' — Layer A actors guarantee non-None
+    by contract, but pyright sees Optional[Outcome]. Helper narrows + safely defaults."""
+    return result.outcome.value if result.outcome is not None else "unknown"
+
+
 def fetch_macro_features(start_date: str = "2025-01-01") -> pd.DataFrame:
     """vix + 10y/2y yield → vix_z + yield_curve_slope DataFrame.
 
@@ -147,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
             "spec": spec,
         }
     )
-    if regime_result.outcome.value == "block":
+    if _ov(regime_result) == "block":
         _print_step(2, "RegimePosterior", "BLOCK", str(regime_result.output.get("error", ""))[:80])
         return 2
     posterior = regime_result.output["posterior"]
@@ -157,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     _print_step(
         2,
         "RegimePosterior",
-        regime_result.outcome.value.upper(),
+        _ov(regime_result).upper(),
         f"argmax={argmax} posterior={[round(p, 3) for p in posterior]} margin={top2_margin:.3f}",
     )
 
@@ -175,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
             "evidence": {"posterior": posterior, "top2_margin": top2_margin},
         }
     )
-    if register_result.outcome.value == "block":
+    if _ov(register_result) == "block":
         _print_step(3, "HypothesisRegistry register", "BLOCK", str(register_result.output.get("error", ""))[:80])
         return 2
     is_new = register_result.output.get("is_new")
@@ -199,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
         _print_step(
             3,
             "HypothesisRegistry validate (manual seed)",
-            validate_result.outcome.value.upper(),
+            _ov(validate_result).upper(),
             "manual seed for first run",
         )
 
@@ -208,9 +214,9 @@ def main(argv: list[str] | None = None) -> int:
     hypothesis_check = {
         "hypothesis_id": hypothesis_id,
         "status": check_result.output.get("status"),
-        "outcome": check_result.outcome.value,
+        "outcome": _ov(check_result),
     }
-    if check_result.outcome.value != "pass":
+    if _ov(check_result) != "pass":
         _print_step(3, "HypothesisRegistry check_emit", "BLOCK", str(check_result.output.get("reason", ""))[:80])
         return 2
 
@@ -237,14 +243,14 @@ def main(argv: list[str] | None = None) -> int:
             "n_placebo_runs": 50,
         }
     )
-    if causal_result.outcome.value == "block":
+    if _ov(causal_result) == "block":
         _print_step(4, "CausalFactorAuditor", "BLOCK", str(causal_result.output.get("error", ""))[:80])
         return 2
     causal_evidence = causal_result.output
     _print_step(
         4,
         "CausalFactorAuditor",
-        causal_result.outcome.value.upper(),
+        _ov(causal_result).upper(),
         f"verdict={causal_evidence['verdict']} certainty={causal_evidence['causal_certainty']:.3f} placebo_ratio={causal_evidence['tests']['placebo']['placebo_t_ratio']:.3f}",
     )
 
@@ -276,15 +282,16 @@ def main(argv: list[str] | None = None) -> int:
     _print_step(
         5,
         "DecisionCompiler",
-        dc_result.outcome.value.upper(),
+        _ov(dc_result).upper(),
         f"action={action} conviction={conviction:.3f} status={status}",
     )
     if status == "blocked":
         print(f"      {AMBER}block_reason{RESET}: {dc_result.output.get('block_reason')}")
     if not decision_id:
-        return 2 if dc_result.outcome.value == "block" else 1
+        return 2 if _ov(dc_result) == "block" else 1
 
     # ─── Step 6: ExecutionFirewall (only if BUY/SELL emit, HOLD skip) ───
+    ef_result = None  # sentinel — None 이면 firewall 미실행 (HOLD path)
     if action in ("BUY", "SELL"):
         portfolio = fetch_portfolio_state()
         ef_result = ExecutionFirewall().run(
@@ -303,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         _print_step(
             6,
             "ExecutionFirewall",
-            ef_result.outcome.value.upper(),
+            _ov(ef_result).upper(),
             f"verdict={verdict} blocks={len(blocks)} warns={len(warns)} portfolio_vix={portfolio.get('vix')}",
         )
         for b in blocks:
@@ -317,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\n{BLUE}═══ Chain complete ═══{RESET}")
     if action == "BUY" or action == "SELL":
         if dc_result.output.get("status") == "emitted" and (args.proposed_action == action):
-            ef_outcome = ef_result.outcome.value if "ef_result" in dir() else "n/a"
+            ef_outcome = _ov(ef_result) if ef_result is not None else "n/a"
             if ef_outcome == "pass":
                 print(f"{GREEN}✓ EMIT 성공{RESET} — decision_id={decision_id}")
                 print("  Discord BRIEF embed published (best-effort)")

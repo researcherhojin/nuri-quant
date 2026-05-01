@@ -177,6 +177,7 @@ class EventsCollector(BaseCollector):
         import yfinance as yf
 
         records = []
+        t = None  # sentinel — 첫 try 가 raise 해도 두 번째 try 의 t.calendar 안전 (#138 follow-up)
         try:
             # 실적발표일 — yfinance 직접 호출 (OpenBB 추상화 우회)
             t = yf.Ticker(ticker)
@@ -201,7 +202,7 @@ class EventsCollector(BaseCollector):
 
         try:
             # 배당 일정 — yfinance Ticker.calendar에 ex-dividend date 포함
-            cal = t.calendar if "t" in dir() else yf.Ticker(ticker).calendar
+            cal = t.calendar if t is not None else yf.Ticker(ticker).calendar
             if cal:
                 ex_date = cal.get("Ex-Dividend Date")
                 if ex_date:
