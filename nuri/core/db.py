@@ -1167,6 +1167,38 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_dr_role ON dr_replicas(role);
     """,
     ),
+    (
+        38,
+        "collector_runs — Collector-Orchestrator run audit (#529 Phase 2 actor #1, Layer B)",
+        # #529 Phase 2 actor #1 — Layer B oversight (Codex Round 5).
+        # 21+ collector 의 health audit form. 매 collector run (kis_prices, yfinance,
+        # pykrx, fred, finviz, etc.) 을 status (started/finished/failed/timeout/
+        # rate_limited) 와 함께 기록 → scan_health 가 GROUP BY 로 health 산출.
+        #
+        # 핵심 invariant:
+        # - run_id INTEGER PK AUTOINCREMENT (collector run 마다 새 row, idempotent X)
+        # - actor_run_id (TEXT) 는 agent_run_ledger.run_id 와 join 가능
+        # - rows_collected vs rows_expected 비교로 PASS/WARN 구분
+        # - retry_count / rate_limit_hits 로 외부 API 안정성 추적
+        """
+        CREATE TABLE IF NOT EXISTS collector_runs (
+            run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            collector_name TEXT NOT NULL,
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            finished_at TEXT,
+            duration_ms INTEGER,
+            status TEXT NOT NULL CHECK(status IN ('started','finished','failed','timeout','rate_limited')),
+            rows_collected INTEGER DEFAULT 0,
+            rows_expected INTEGER,
+            error_message TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            rate_limit_hits INTEGER NOT NULL DEFAULT 0,
+            actor_run_id TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_collector_runs_name ON collector_runs(collector_name, started_at);
+        CREATE INDEX IF NOT EXISTS idx_collector_runs_status ON collector_runs(status, started_at);
+    """,
+    ),
 ]
 
 
@@ -1881,6 +1913,67 @@ def upsert_dr_replica(
                 run_id,
             ),
         )
+
+
+# ═══════════════════════════════════════════════════════
+# Collector-Orchestrator helpers (#529 Phase 2 actor #1, Layer B)
+# ═══════════════════════════════════════════════════════
+
+_COLLECTOR_VALID_STATUSES: tuple[str, ...] = (
+    "started",
+    "finished",
+    "failed",
+    "timeout",
+    "rate_limited",
+)
+
+
+def log_collector_run(
+    collector_name: str,
+    status: str,
+    rows_collected: int = 0,
+    rows_expected: Optional[int] = None,
+    duration_ms: Optional[int] = None,
+    error_message: Optional[str] = None,
+    retry_count: int = 0,
+    rate_limit_hits: int = 0,
+    actor_run_id: Optional[str] = None,
+    finished_at: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """Single INSERT — 매 collector run 의 결과 영구 기록. lastrowid 반환.
+
+    enum 검증: status ∈ ('started','finished','failed','timeout','rate_limited').
+    Layer B Collector-Orchestrator 가 21+ collector 의 health 추적용으로 호출.
+
+    actor_run_id: agent_run_ledger.run_id 와 join 가능 (오케스트레이션 chain 추적).
+    finished_at None 이면 in-progress 상태 (started 직후 호출 시).
+    """
+    if status not in _COLLECTOR_VALID_STATUSES:
+        raise ValueError(
+            f"status must be one of {_COLLECTOR_VALID_STATUSES}, got {status!r}"
+        )
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO collector_runs
+               (collector_name, status, rows_collected, rows_expected,
+                duration_ms, error_message, retry_count, rate_limit_hits,
+                actor_run_id, finished_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                collector_name,
+                status,
+                rows_collected,
+                rows_expected,
+                duration_ms,
+                error_message,
+                retry_count,
+                rate_limit_hits,
+                actor_run_id,
+                finished_at,
+            ),
+        )
+        return int(cursor.lastrowid or 0)
 
 
 def log_walkforward_run(
