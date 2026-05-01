@@ -1,3 +1,4 @@
+# cspell:ignore kakaopay mirae kiwoom
 """Tests for scripts/check_privacy_leak.py — #138 regression guard.
 
 Network-free. Tests use temporary fixture files with intentional leak content
