@@ -161,55 +161,48 @@ class TestTrackOutcomesNeutral:
         assert row[0] == "neutral"
 
 
-# ─── certification.py: small branches ──────────────────────────────────
-
-
-class TestCertificationEdges:
-    def test_module_imports(self):
-        """Defensive sanity — certification.py loads."""
-        import nuri.trading.engine.certification as cert_mod
-
-        assert cert_mod is not None
-
-
-# ─── conflicts.py: lines 56, 163, 199-201 ──────────────────────────────
+# ─── conflicts.py: empty input early returns ──────────────────────────
 
 
 class TestConflictsBranches:
-    def test_conflict_detect_basic(self, db_path):
-        """Sanity smoke for conflicts module (line 56 / 163 are guard branches)."""
-        import nuri.trading.engine.conflicts as conflicts_mod
+    def test_no_candidates_returns_empty_list(self, db_path, monkeypatch):
+        """Lines 39-44: candidates=None → screen_candidates([]) → return []."""
+        from nuri.trading.engine.conflicts import detect_conflicts
 
-        # Module attribute existence
-        assert hasattr(conflicts_mod, "__file__")
+        # screen_candidates returns [] → detect_conflicts short-circuits
+        monkeypatch.setattr(
+            "nuri.trading.recommend.candidates.screen_candidates",
+            lambda **kw: [],
+        )
+        result = detect_conflicts(db_path=db_path)
+        assert result == []
+
+    def test_only_non_actionable_filtered_out(self, db_path, monkeypatch):
+        """Lines 53-56: actionable filter strips advisory/avoid → empty list."""
+        from unittest.mock import MagicMock
+
+        from nuri.trading.engine.conflicts import detect_conflicts
+        from nuri.trading.recommend.candidates import TIER_ADVISORY
+
+        adv = MagicMock(
+            ticker="AAA",
+            tier=TIER_ADVISORY,
+            direction="BUY",
+            signal_id="adv1",
+            regime_fit=True,
+            profit_factor=1.0,
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.candidates.screen_candidates",
+            lambda **kw: [adv],
+        )
+        result = detect_conflicts(db_path=db_path)
+        assert result == []
 
 
-# ─── gate.py: lines 273-286 (gate-detail block) ───────────────────────
-
-
-class TestGateDetail:
-    def test_module_imports(self):
-        """gate.py imports cleanly."""
-        import nuri.trading.engine.gate as gate_mod
-
-        assert gate_mod is not None
-
-
-# ─── memory.py: lines 114, 241-254 ─────────────────────────────────────
-
-
-class TestMemoryBranches:
-    def test_module_imports(self):
-        import nuri.trading.engine.memory as memory_mod
-
-        assert memory_mod is not None
-
-
-# ─── remediation.py: lines 90, 193-195 ────────────────────────────────
-
-
-class TestRemediationBranches:
-    def test_module_imports(self):
-        import nuri.trading.engine.remediation as remediation_mod
-
-        assert remediation_mod is not None
+# ─── certification / gate / memory / remediation: deleted pure smoke ──
+# 이전에 있던 4개 `test_module_imports` 는 import 만 검증 → 컴파일 가능 여부만
+# 보장하고 실제 로직 회귀를 잡지 못함. coverage 도 import-time 코드 (모듈
+# top-level constant) 만 1줄 늘려 의미 없음. 다른 파일/E2E 테스트가 같은
+# import 를 이미 트리거 — 중복. 재작성 가능한 behavior 가 없는 모듈은 별도
+# behavioral 테스트가 추가될 때 함께 만든다.

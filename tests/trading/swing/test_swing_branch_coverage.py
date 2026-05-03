@@ -31,77 +31,82 @@ def basic_db(tmp_path, monkeypatch):
 
 
 class TestScannerBranches:
-    def test_load_universe_file_not_found(self, monkeypatch, tmp_path):
-        """Lines 64-66: FileNotFoundError → fallback empty."""
+    def test_load_universe_file_not_found_returns_empty(self, monkeypatch, tmp_path):
+        """scanner.py:64-66: FileNotFoundError on yaml read → return [].
+
+        Patch builtins.open inside scanner module to raise FileNotFoundError
+        deterministically (the real config path may or may not exist).
+        """
         from nuri.trading.swing import scanner as scanner_mod
 
-        # Point to a non-existent path
-        nonexistent = tmp_path / "no_such.yaml"
-        monkeypatch.setattr(
-            "nuri.trading.swing.scanner.Path",
-            lambda *args, **kw: nonexistent,
-        )
-        # Just call function with bogus group
+        def fake_open(*args, **kwargs):
+            raise FileNotFoundError("synthetic")
+
+        monkeypatch.setattr("builtins.open", fake_open)
         result = scanner_mod._load_universe(["us_core"])
-        # File not found returns []
-        assert isinstance(result, list)
-
-    def test_load_universe_yaml_error(self, tmp_path, monkeypatch):
-        """Lines 67-69: generic Exception path."""
-        from nuri.trading.swing import scanner as scanner_mod
-
-        bad_yaml = tmp_path / "bad.yaml"
-        bad_yaml.write_text("::not yaml::: invalid")
-
-        # Patch the config_path resolution
-
-        def patched(group_keys):
-            import yaml
-
-            try:
-                with open(bad_yaml, encoding="utf-8") as f:
-                    yaml.safe_load(f)
-            except Exception:
-                return []
-            return []
-
-        result = patched(["us_core"])
+        # Source contract: FileNotFoundError caught → return []
         assert result == []
 
-    def test_load_universe_non_string_ticker(self, tmp_path, monkeypatch):
-        """Lines 80-82: non-string ticker (YAML 1.1 bool conversion) skipped."""
+    def test_load_universe_yaml_parse_error_returns_empty(self, tmp_path, monkeypatch):
+        """scanner.py:67-69: generic Exception (YAML parse fail) → return [].
+
+        Real source-level test (NOT inlined re-impl): patch builtins.open to
+        return malformed YAML so yaml.safe_load raises → except branch fires.
+        """
+        from io import StringIO
+
         from nuri.trading.swing import scanner as scanner_mod
 
-        bad_yaml = tmp_path / "universe.yaml"
-        bad_yaml.write_text(
+        def fake_open(*args, **kwargs):
+            return StringIO("::not yaml::: invalid")
+
+        monkeypatch.setattr("builtins.open", fake_open)
+        result = scanner_mod._load_universe(["us_core"])
+        assert result == []
+
+    def test_load_universe_non_string_ticker_skipped(self, tmp_path, monkeypatch):
+        """scanner.py:80-82: YAML 1.1 bool ticker skipped, real strings preserved.
+
+        Real source-level test: route _load_universe through a tmp YAML with
+        embedded bool, verify scanner._load_universe filters it out.
+        """
+        from io import StringIO
+
+        from nuri.trading.swing import scanner as scanner_mod
+
+        yaml_text = (
             "us_core:\n"
             "  tickers:\n"
             "    - AAPL\n"
-            "    - true\n"  # YAML bool
+            "    - true\n"  # YAML 1.1 bool
             "    - MSFT\n"
         )
-        monkeypatch.setattr(
-            scanner_mod,
-            "_load_universe",
-            lambda keys: ["AAPL", "MSFT"],  # simulate filtered result
-        )
-        # Direct call to verify behavior in isolation
-        import yaml
 
-        with open(bad_yaml, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
-        tickers = cfg["us_core"]["tickers"]
-        result = [t for t in tickers if isinstance(t, str)]
-        assert "AAPL" in result and "MSFT" in result
+        def fake_open(*args, **kwargs):
+            return StringIO(yaml_text)
+
+        monkeypatch.setattr("builtins.open", fake_open)
+        result = scanner_mod._load_universe(["us_core"])
+        # bool 은 source 의 isinstance(str) 가드에서 skip 됨
+        assert "AAPL" in result
+        assert "MSFT" in result
         assert True not in result
+        assert len(result) == 2
 
     def test_get_kr_universe_fallback(self, monkeypatch):
-        """Line 102: empty universe → fallback list."""
+        """Line 102: empty universe → list(_FALLBACK_KR_KOSPI200).
+
+        Source contract: when _load_universe returns [], get_kr_universe
+        returns list(_FALLBACK_KR_KOSPI200). Lock identity to fallback constant.
+        """
         from nuri.trading.swing import scanner as scanner_mod
 
         monkeypatch.setattr(scanner_mod, "_load_universe", lambda keys: [])
         result = scanner_mod.get_kr_universe()
-        assert len(result) > 0  # fallback used
+        assert result == list(scanner_mod._FALLBACK_KR_KOSPI200)
+        assert len(result) > 0
+        # KR fallback 은 .KS suffix 만 (root CLAUDE.md "Korean Ticker .KS" 규약)
+        assert all(t.endswith(".KS") for t in result)
 
     def test_fetch_prices_exception_swallowed(self, monkeypatch):
         """Lines 133-135: yfinance exception → returns None."""
