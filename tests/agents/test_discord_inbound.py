@@ -123,6 +123,7 @@ class TestEmitMessage:
     def test_masks_monetary_content(self, sandbox):
         msg = _mock_message(111, content="execute $50,000 buy now", msg_id=42)
         path = inbound.emit_message(msg, targets={111: "agent-control"})
+        assert path is not None
         body = json.loads(path.read_text())
         assert "[REDACTED]" in body["content_masked"]
         assert "$50,000" not in body["content_masked"]
@@ -167,6 +168,7 @@ class TestEmitReaction:
     def test_remove_kind_persists(self, sandbox):
         payload = _mock_reaction(222, emoji="❌")
         path = inbound.emit_reaction(payload, "reaction_remove", targets={222: "agent-dev-log"})
+        assert path is not None
         body = json.loads(path.read_text())
         assert body["type"] == "reaction_remove"
 
