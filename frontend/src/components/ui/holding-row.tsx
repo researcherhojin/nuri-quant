@@ -290,16 +290,29 @@ function statusVisual(s: HoldingStatus): { text: string; className: string } {
 // can consume it without touching the data layer.
 
 // ── Component ────────────────────────────────────────────────
-interface HoldingRowProps {
+// #503 Phase C — macro-aware sectors prop. 이 set 에 포함되는 sector keyword 를
+// substring 으로 가진 holding 은 sector cell 옆에 📡 뱃지를 띄운다.
+interface HoldingRowProps_macroAware {
+  macroAwareSectors?: Set<string>;
+}
+
+interface HoldingRowProps extends HoldingRowProps_macroAware {
   holding: EnrichedHolding;
   href?: string;
 }
 
-export function HoldingRow({ holding: h, href }: HoldingRowProps) {
+export function HoldingRow({ holding: h, href, macroAwareSectors }: HoldingRowProps) {
   const status = statusVisual(h.status);
   const pnlClass = h.pnlPct >= 0 ? "text-emerald-400" : "text-red-400";
   const linkHref = href ?? `/ticker/${h.ticker}`;
   const displayName = h.name || h.ticker.replace(".KS", "");
+
+  // #503 Phase C — sector 가 활성 macro event 영향권에 있는지 lazy 검사.
+  // import 하면 macro-impact 모듈에 의존 — single import 만, prop 처럼 행 단위
+  // 검사가 필요하다.
+  const macroAware = macroAwareSectors && h.sector
+    ? Array.from(macroAwareSectors).some(k => h.sector!.toLowerCase().includes(k))
+    : false;
 
   // #214: 일변 (daily delta)
   const hasDelta = h.dailyDeltaPct != null;
@@ -417,13 +430,15 @@ export function HoldingRow({ holding: h, href }: HoldingRowProps) {
           baseline={h.avgPrice}
         />
       </span>
-      {/* #218: 섹터 — 2xl+ (1536px+) 27" 모니터용. Label 데이터라 text-left. */}
+      {/* #218: 섹터 — 2xl+ (1536px+) 27" 모니터용. Label 데이터라 text-left.
+          #503 Phase C: macro 영향권 sector 는 📡 뱃지 + amber 색강조. */}
       <span
-        className="hidden 2xl:inline-block w-24 text-left text-[10px] text-zinc-500 truncate shrink-0"
+        className={`hidden 2xl:inline-block w-24 text-left text-[10px] truncate shrink-0 ${macroAware ? "text-amber-400 font-semibold" : "text-zinc-500"}`}
         aria-label={HOLDING_LABEL.SECTOR}
         data-testid="sector-cell"
-        title={h.sector ?? undefined}
+        title={macroAware ? `${h.sector} — macro 영향권` : h.sector ?? undefined}
       >
+        {macroAware && <span aria-label="macro-aware" className="mr-0.5">📡</span>}
         {h.sector ?? "—"}
       </span>
       {/* #218: 비중 (% of portfolio) — 2xl+ (1536px+) 27" 모니터용 */}
