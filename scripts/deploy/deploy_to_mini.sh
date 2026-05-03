@@ -93,12 +93,20 @@ echo "  ${SYNC_COUNT}개 파일 동기화"
 # 예) 이전 deploy 에서 lock 변경이 `|| warn` 으로 silently fail → 다음 deploy 의
 # diff 엔 lock 없음 → 영영 미적용. hmmlearn 누락 사례 (2026-05-02).
 # 수정: 매 deploy 마다 `uv sync --frozen --extra dev` 강제. lock 일치 시 거의 no-op,
-# 불일치 시 명시 abort 해 silent drift 차단.
+# 불일치 시 명시 abort 해 silent drift 차단. transient 인프라 (네트워크) 흡수 위해
+# 1회 retry 추가 (Codex review #584 Round 1 blocker #1).
+#
+# TODO #576: scheduler 가 launchd 로 동작 중 .venv 가 변경되면 race condition
+# 가능성 — sync 전 launchctl unload, sync 후 launchctl load 로 보정 필요. 본 PR
+# scope 외, 별 PR 로 해결.
 step 4 "의존성 동기화 (uv sync --frozen, 항상 실행)"
-if ssh "${REMOTE}" "cd ${REMOTE_PATH} && uv sync --extra dev --frozen --quiet"; then
+SYNC_CMD="cd ${REMOTE_PATH} && uv sync --extra dev --frozen --quiet"
+if ssh "${REMOTE}" "${SYNC_CMD}" 2>&1; then
     ok "uv sync --frozen 성공"
+elif sleep 5 && ssh "${REMOTE}" "${SYNC_CMD}" 2>&1; then
+    ok "uv sync --frozen 성공 (retry 1회 후)"
 else
-    fail "uv sync --frozen 실패 — uv.lock 과 pyproject.toml / .venv 불일치. 로컬에서 'uv lock' 후 commit/push, 또는 Mac mini 에 .venv 재생성 필요"
+    fail "uv sync --frozen 실패 (1 retry 후) — uv.lock divergence 또는 transient 인프라 (네트워크/디스크). 로컬에서 'uv lock' 재생성 후 commit/push, 또는 Mac mini 에서 'rm -rf .venv && uv sync' 수동 복구"
 fi
 
 # ── 5. scheduler reload ──
