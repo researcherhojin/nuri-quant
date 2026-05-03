@@ -355,7 +355,7 @@ export const OPPORTUNITY = {
 export const CONTEXT = {
   TITLE: "시장 컨텍스트",
   SYSTEM_HEALTH: "시스템 건강",
-  SIEGE: "SIEGE",
+  SIEGE: "Certification",
   REGIME: "레짐",
   MACRO: "매크로",
   FRESHNESS: "데이터",

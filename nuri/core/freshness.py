@@ -43,7 +43,7 @@ FRESHNESS_POLICIES = {
         "query": "SELECT MAX(timestamp) FROM certifications",
         "warn_hours": 24,
         "fail_hours": 48,
-        "label": "SIEGE 인증",
+        "label": "Certification",
     },
     "portfolio": {
         # P0 stale-data fix (#507 audit 2026-04-30): broker 매도/매수 발생 후 yaml

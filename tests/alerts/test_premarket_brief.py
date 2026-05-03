@@ -218,7 +218,7 @@ class TestMarkdownPersist:
         }
         md = format_brief_markdown(ctx)
         assert "## Regime" in md
-        assert "## SIEGE" in md
+        assert "## Certification" in md
         assert "## Hold" in md
         assert "## Opportunities" in md
         assert "## 24h Macro Events" in md
@@ -432,7 +432,7 @@ class TestGenerateBrief:
         # 모든 섹션 label 존재 — 모든 branch 통과한 결과
         assert any("Regime" in n for n in names)
         assert any("지표" in n for n in names)
-        assert any("SIEGE" in n for n in names)
+        assert any("Certification" in n for n in names)
         assert any("Urgent" in n for n in names)
         assert any("Portfolio" in n for n in names)
         assert any("Check" in n for n in names)
