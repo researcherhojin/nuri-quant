@@ -406,6 +406,15 @@ class TestBuyCandidateEmitterMain:
         re-executed main() picks up our stub. SystemExit(0) is the expected outcome.
         """
         import runpy
+        import tempfile
+        from pathlib import Path as _P
+
+        import nuri.core.db as _db_mod
+        from nuri.core.db import init_db
+
+        _tmp = _P(tempfile.mkdtemp()) / "rp.db"
+        init_db(_tmp)
+        monkeypatch.setattr(_db_mod, "DB_PATH", _tmp)
 
         from nuri.trading.recommend.buy_candidate_emitter import EmitResult
 
@@ -1265,6 +1274,75 @@ class TestTrackerCliMain:
         rows = query("SELECT COUNT(*) AS c FROM recommendations", db_path=fresh_db)
         assert rows[0]["c"] == 0  # nothing persisted (empty input) — flow ran
 
+    def test_main_save_with_dropped_advisory_logs_count(self, fresh_db, monkeypatch, caplog):
+        """Lines 399-404: when advisory/avoid candidates filtered out → log info with count.
+
+        Stub screen_candidates to return mix; the dropped count > 0 triggers line 401.
+        """
+        import logging
+        import runpy
+
+        import nuri.core.db as db_mod
+        from nuri.trading.recommend.candidates import (
+            TIER_ACTIONABLE,
+            TIER_ADVISORY,
+            Candidate,
+        )
+
+        cands = [
+            Candidate(
+                ticker="AAA",
+                signal_id="s1",
+                signal_date="2026-05-04",
+                direction="BUY",
+                confidence=70.0,
+                win_rate=0.6,
+                profit_factor=1.5,
+                regime_fit=True,
+                price=100.0,
+                notes="",
+                tier=TIER_ACTIONABLE,
+            ),
+            Candidate(
+                ticker="BBB",
+                signal_id="s2",
+                signal_date="2026-05-04",
+                direction="BUY",
+                confidence=20.0,
+                win_rate=0.3,
+                profit_factor=0.8,
+                regime_fit=True,
+                price=50.0,
+                notes="",
+                tier=TIER_ADVISORY,  # → dropped
+            ),
+        ]
+
+        # Patch screen_candidates at source so __main__ block sees the mix
+        monkeypatch.setattr(
+            "nuri.trading.recommend.candidates.screen_candidates",
+            lambda lookback_days=5: cands,
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.rebalance.regime_aware_rebalance",
+            lambda method="rp": [],
+        )
+        monkeypatch.setattr(db_mod, "DB_PATH", fresh_db)
+        monkeypatch.setattr(sys, "argv", ["tracker.py", "--save"])
+
+        import io as _io
+
+        monkeypatch.setattr(sys, "stdout", _io.StringIO())
+
+        with caplog.at_level(logging.INFO):
+            runpy.run_module("nuri.trading.recommend.tracker", run_name="__main__")
+
+        # Lock: dropped count = 1 (BBB advisory) → line 401-404 logged
+        msgs = " ".join(r.getMessage() for r in caplog.records)
+        assert "actionable 1건 저장" in msgs and "advisory/avoid 1건" in msgs, (
+            f"line 401 log not emitted; captured: {msgs}"
+        )
+
     def test_main_save_with_rebalance_failure_via_runpy(self, fresh_db, monkeypatch):
         """Lines 413-415: rebalance raises → except path → actions=None, save still runs.
 
@@ -1331,7 +1409,7 @@ class TestHoldingsMonitorMainCli:
         from nuri.trading.recommend import holdings_monitor as hm
         from nuri.trading.recommend.holdings_monitor import RunSummary
 
-        captured_dry_run = {"v": None}
+        captured_dry_run: dict[str, bool | None] = {"v": None}
 
         def fake_run(db_path=None, dry_run=False):
             captured_dry_run["v"] = dry_run
@@ -1387,6 +1465,15 @@ class TestHoldingsMonitorMainCli:
     def test_main_module_invocation_via_runpy(self, monkeypatch):
         """Line 408: `if __name__ == '__main__': raise SystemExit(main())`."""
         import runpy
+        import tempfile
+        from pathlib import Path as _P
+
+        import nuri.core.db as _db_mod
+        from nuri.core.db import init_db
+
+        _tmp = _P(tempfile.mkdtemp()) / "rp.db"
+        init_db(_tmp)
+        monkeypatch.setattr(_db_mod, "DB_PATH", _tmp)
 
         from nuri.trading.recommend import holdings_monitor as hm
         from nuri.trading.recommend.holdings_monitor import RunSummary
@@ -1635,3 +1722,144 @@ class TestPriceTargetsMainModule:
         out = buf.getvalue()
         # Lock: print_portfolio_targets ran via __main__ (line 547) and printed empty msg
         assert "포트폴리오에 가격 목표 대상 종목 없음" in out
+
+
+# ════════════════════════════════════════════════════════════════════
+# Additional: held_add residual gaps (115-117, 224-226, 351)
+# ════════════════════════════════════════════════════════════════════
+
+
+class TestHeldAddDefaultYfinanceFetcher:
+    """Lines 113-117: when fetcher is None, the function imports yfinance.
+
+    Conftest globally mocks yf.Ticker so it's network-free.
+    """
+
+    def test_default_fetcher_path_returns_false(self):
+        """fetcher=None → import yfinance + yf.Ticker() (lines 115-117)."""
+        from nuri.trading.recommend.held_add import is_in_earnings_blackout
+
+        result = is_in_earnings_blackout("AAA", days=5, today=date(2026, 5, 4), fetcher=None)
+        # Lock: no exception; default-fetcher branch traversed.
+        assert result is False
+
+
+class TestHeldAddAccountStrategyProfileLive:
+    """Lines 224-226: _get_account_strategy_profile imports + returns from rules."""
+
+    def test_returns_account_strategy_dict(self):
+        """Inner-import + return path runs and yields a dict (not None)."""
+        from nuri.trading.recommend.held_add import _get_account_strategy_profile
+
+        result = _get_account_strategy_profile("main")
+        # Lock: dict (empty allowed for unknown). Confirms inner import + return ran.
+        assert isinstance(result, dict)
+
+
+class TestHeldAddSelectModeUnknownMode:
+    """Line 350-351: else: r=None branch for unknown mode key."""
+
+    def test_unknown_mode_yields_none_branch(self, monkeypatch):
+        """Inject unknown key into MODE_PRECEDENCE → else (line 351) executes."""
+        from nuri.trading.recommend import held_add as ha
+
+        monkeypatch.setattr(
+            ha,
+            "MODE_PRECEDENCE",
+            {"unknown_mode": 0, "tp1_residual_add": 1, "ride_winner": 2, "average_down": 3},
+        )
+        monkeypatch.setattr(ha, "_evaluate_tp1_residual_add", lambda *a, **kw: None)
+        monkeypatch.setattr(ha, "_evaluate_ride_winner", lambda *a, **kw: None)
+        monkeypatch.setattr(ha, "_evaluate_average_down", lambda *a, **kw: None)
+
+        cfg = {"modes": {}}
+        pos = {"ticker": "AAA", "account": "x", "pnl_pct": 0, "days_held": 0}
+        result = ha.select_held_mode(pos, cfg, score=50, rsi=None, regime="neutral", vix=18)
+        # Lock: None — unknown mode → else r=None (351), known modes → None, final → None.
+        assert result is None
+
+
+# ════════════════════════════════════════════════════════════════════
+# Additional: tracker residual gap (87)
+# ════════════════════════════════════════════════════════════════════
+
+
+class TestTrackerTierFilter:
+    """Line 86-87: candidate with tier != actionable → continue."""
+
+    def test_advisory_tier_candidate_skipped(self, fresh_db):
+        """A non-actionable Candidate must NOT be persisted."""
+        from nuri.trading.recommend.candidates import (
+            TIER_ACTIONABLE,
+            TIER_ADVISORY,
+            Candidate,
+        )
+        from nuri.trading.recommend.tracker import save_recommendations
+
+        with get_db(fresh_db) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
+                ("acct_x", "AAA", 10, 100.0, "USD"),
+            )
+
+        cands = [
+            Candidate(
+                ticker="AAA",
+                signal_id="rsi_30",
+                signal_date="2026-05-04",
+                direction="BUY",
+                confidence=80.0,
+                win_rate=0.6,
+                profit_factor=1.5,
+                regime_fit=True,
+                price=100.0,
+                notes="",
+                tier=TIER_ADVISORY,
+            ),
+            Candidate(
+                ticker="AAA",
+                signal_id="rsi_31",
+                signal_date="2026-05-04",
+                direction="BUY",
+                confidence=80.0,
+                win_rate=0.6,
+                profit_factor=1.5,
+                regime_fit=True,
+                price=100.0,
+                notes="",
+                tier=TIER_ACTIONABLE,
+            ),
+        ]
+        n = save_recommendations(candidates=cands, db_path=fresh_db)
+        # Lock: 1/2 persisted — advisory filtered at line 87.
+        assert n == 1
+
+
+class TestCandidatesScreenInsufficientPriceRows:
+    """Line 217-218: ticker with < 50 price rows → continue."""
+
+    def test_sparse_prices_yields_empty_candidates(self, fresh_db, monkeypatch):
+        from nuri.trading.recommend.candidates import screen_candidates
+
+        monkeypatch.setattr(
+            "nuri.trading.recommend.candidates.get_tickers",
+            lambda db_path=None: ["SPARSE"],
+        )
+        dates = pd.bdate_range(end="2026-04-30", periods=10)
+        df = pd.DataFrame(
+            {
+                "ticker": "SPARSE",
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0,
+                "volume": 1_000_000,
+                "adj_close": 100.0,
+            }
+        )
+        upsert_prices(df, fresh_db)
+
+        result = screen_candidates(lookback_days=5, db_path=fresh_db)
+        # Lock: < 50 rows → silent skip (line 217-218).
+        assert result == []
