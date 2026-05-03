@@ -109,7 +109,7 @@ Dual-stack pattern, single helper: `scripts/llm_consult.py` (codex + Qwen3.5 arc
 ### 매 세션 사이클
 
 1. **세션 N 종료 시**: emit한 BUY 후보 11종 (또는 그 세션 N개)을 `data/reports/buy_tracking/candidate_ledger.jsonl` (gitignored, append-only)에 baseline 가격 + tier (`A_high` / `B_mid` / `C_chase` / `ADD_ride` / `ADD_held`) + score + stop/TP1/TP2 사전 계산 박힘.
-2. **세션 N+1 진입 시 (의무, SESSION_PROMPT.md SESSION-START #2)**:
+2. **세션 N+1 진입 시 (의무, NEXT_SESSION.md cold-start checklist)**:
    ```bash
    .venv/bin/python scripts/compare_buy_candidates.py --session N
    # 또는 특정 close 기준:
@@ -131,7 +131,7 @@ Dual-stack pattern, single helper: `scripts/llm_consult.py` (codex + Qwen3.5 arc
 
 ## Portfolio sync (broker app → DB)
 
-매 세션 시작 의무 (SESSION_PROMPT.md SESSION-START #6):
+매 세션 시작 의무 (NEXT_SESSION.md cold-start):
 
 1. broker 앱 화면 캡처 (모든 활성 계좌 — Brokerage Alpha Main / Sub / Brokerage Beta / Pension / IRP).
 2. `config/portfolio.yaml` (gitignored) 의 holdings + cash 갱신.
