@@ -53,6 +53,8 @@ def test_run_loop_writes_artifacts_with_token_and_usd(out_dir):
                 "tokens_out": 200,
             },
         ),
+        patch("agent_loop.stage_agent_dev_log") as mock_dev_log,
+        patch("agent_loop.stage_agent_control") as mock_hitl,
     ):
         rc = agent_loop.run_loop(issue_num=999, budget_tokens=100_000, budget_usd=1.0, out_root=out_dir)
 
@@ -68,6 +70,16 @@ def test_run_loop_writes_artifacts_with_token_and_usd(out_dir):
     assert "step1_codex_out" in cost["by_step_usd"]
     # Codex output 가격 적용 확인 ($15.00/M tokens — agent_loop.CODEX_OUTPUT_USD_PER_M 와 동기)
     assert cost["by_step_usd"]["step1_codex_out"] > 0
+    # E1 #582 — Discord stage 호출 검증.
+    # spec / patch / review 3 단계 #agent-dev-log 에 stage.
+    assert mock_dev_log.call_count == 3
+    kinds = {call.kwargs["payload"]["kind"] for call in mock_dev_log.call_args_list}
+    assert kinds == {"spec", "patch", "review"}
+    # HITL gate (verdict=PASS) #agent-control 에 stage.
+    assert mock_hitl.call_count == 1
+    hitl_payload = mock_hitl.call_args.kwargs["payload"]
+    assert hitl_payload["verdict"] == "PASS"
+    assert hitl_payload["issue"] == 999
 
 
 def test_budget_tokens_exceeded_aborts_before_qwen(out_dir):

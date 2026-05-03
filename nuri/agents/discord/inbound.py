@@ -72,13 +72,28 @@ def _emit_event(label: str, event_type: str, payload: dict[str, Any]) -> Path:
     return path
 
 
+def _resolve_label(channel: Any, targets: dict[int, str]) -> str | None:
+    """Thread 안의 메시지도 parent channel ID 기준으로 매핑 (issue 별 thread 운영 대비).
+
+    discord.py: TextChannel 은 parent_id attribute 미보유 (또는 None);
+    Thread 는 parent_id 가 부모 TextChannel.id 와 일치.
+    """
+    label = targets.get(channel.id)
+    if label:
+        return label
+    parent_id = getattr(channel, "parent_id", None)
+    if parent_id is not None:
+        return targets.get(parent_id)
+    return None
+
+
 def emit_message(message: Any, *, targets: dict[int, str] | None = None) -> Path | None:
     """on_message 처리 본체 — file path 반환 (target 외 / bot author 시 None).
 
     sync 함수: async wrapper 와 unit test 양쪽 공용.
     """
     targets = targets if targets is not None else _channel_targets()
-    label = targets.get(message.channel.id)
+    label = _resolve_label(message.channel, targets)
     if not label:
         return None
     if getattr(message.author, "bot", False):
@@ -99,7 +114,10 @@ def emit_message(message: Any, *, targets: dict[int, str] | None = None) -> Path
 def emit_reaction(payload_obj: Any, kind: str, *, targets: dict[int, str] | None = None) -> Path | None:
     """on_raw_reaction_add / _remove 본체. RawReactionActionEvent 받음.
 
-    raw 변형 사용 — message cache miss 무관, off-channel 만 거름.
+    raw 변형 사용 — message cache miss 무관, off-channel 만 거름. Thread 안의
+    reaction 도 처리 — RawReactionActionEvent 는 thread 일 때 channel_id 가 thread
+    ID 라 parent_id 없이는 매칭 불가 → discord.py 가 0.x 버전 별로 reaction.parent_id
+    제공 여부 다르므로 thread reaction 은 후행 별 issue.
     """
     targets = targets if targets is not None else _channel_targets()
     label = targets.get(payload_obj.channel_id)
