@@ -33,15 +33,23 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 
 class Channel(str, Enum):
-    """4-채널 enum — DB CHECK 제약과 동일 string."""
+    """6-채널 enum — DB CHECK 제약과 동일 string. agent_control/agent_dev_log 는 E1 #582.
+
+    BRIEF/OPS/INCIDENTS/ROLLOUT — 기존 알림 routing.
+    AGENT_CONTROL — agent loop 의 HITL gate (사용자 ✅/❌ reaction 응답).
+    AGENT_DEV_LOG — agent loop transcript (Codex spec → Claude patch → Qwen review).
+    """
 
     BRIEF = "brief"
     OPS = "ops"
     INCIDENTS = "incidents"
     ROLLOUT = "rollout"
+    AGENT_CONTROL = "agent_control"
+    AGENT_DEV_LOG = "agent_dev_log"
 
     @property
     def env_var(self) -> str:
+        # agent_control → DISCORD_WEBHOOK_AGENT_CONTROL (underscore-aware uppercase).
         return f"DISCORD_WEBHOOK_{self.value.upper()}"
 
 
@@ -153,6 +161,28 @@ class DiscordPublisher:
         url = os.getenv(channel.env_var, "").strip()
         return url or None
 
+    @staticmethod
+    def _enrich_embed_payload(payload: dict[str, Any], actor_name: Optional[str]) -> dict[str, Any]:
+        """First embed 에 author=actor_name 자동 주입 (caller 가 author 미지정 시만).
+
+        Discord embed 의 author 는 title 위에 표시 → 같은 채널의 여러 actor emit 을
+        한눈에 구분 (사용자 통증 2026-05-03 — '어느 actor 가 publish 했는지' 채널만
+        보고 알기 어려움). caller 가 author 를 직접 set 했으면 존중 + 미주입.
+        """
+        if not actor_name:
+            return payload
+        embeds = payload.get("embeds")
+        if not embeds:
+            return payload
+        first = embeds[0]
+        if not isinstance(first, dict) or "author" in first:
+            return payload
+        new_first = dict(first)
+        new_first["author"] = {"name": actor_name[:256]}  # Discord author.name 제한
+        new_payload = dict(payload)
+        new_payload["embeds"] = [new_first, *list(embeds[1:])]
+        return new_payload
+
     def _publish(
         self,
         channel: Channel,
@@ -171,7 +201,7 @@ class DiscordPublisher:
         for attempt in range(self.MAX_RETRIES + 1):
             try:
                 with httpx.Client(timeout=self.timeout) as client:
-                    resp = client.post(url, json=payload)
+                    resp = client.post(url, json=self._enrich_embed_payload(payload, actor_name))
                 last_status = resp.status_code
                 if 200 <= resp.status_code < 300:
                     log_agent_message(
@@ -229,7 +259,7 @@ class DiscordPublisher:
         for attempt in range(self.MAX_RETRIES + 1):
             try:
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    resp = await client.post(url, json=payload)
+                    resp = await client.post(url, json=self._enrich_embed_payload(payload, actor_name))
                 last_status = resp.status_code
                 if 200 <= resp.status_code < 300:
                     log_agent_message(

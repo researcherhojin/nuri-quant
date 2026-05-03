@@ -26,6 +26,8 @@ from nuri.agents.base import Outcome
 from nuri.agents.discord.outbox import (
     bucket_brief_digest,
     bucket_generic_digest,
+    stage_agent_control,
+    stage_agent_dev_log,
     stage_brief,
     stage_incident,
 )
@@ -114,6 +116,35 @@ def test_stage_brief_helper_routes_to_brief_channel(db_path):
     assert len(rows) == 1
     _, ops_rows = claim_pending_outbox("ops", db_path=db_path)
     assert ops_rows == []
+
+
+def test_stage_agent_control_helper_routes_to_agent_control_channel(db_path):
+    """E1 #582 — HITL gate stage 가 agent_control 채널에 락인 + 다른 채널에 안 샘."""
+    stage_agent_control(
+        {"kind": "HITL", "issue": 575, "verdict": "NEEDS_REWORK"},
+        actor_name="agent_loop_orchestrator",
+        run_id="test-run-1",
+        db_path=db_path,
+    )
+    _, rows = claim_pending_outbox("agent_control", db_path=db_path)
+    assert len(rows) == 1
+    assert rows[0]["payload"]["issue"] == 575
+    # 다른 채널에 누설 없음.
+    for c in ("brief", "ops", "incidents", "rollout", "agent_dev_log"):
+        _, leak = claim_pending_outbox(c, db_path=db_path)
+        assert leak == [], f"누설 detected on channel={c}"
+
+
+def test_stage_agent_dev_log_helper_routes_to_agent_dev_log_channel(db_path):
+    """E2 #578 — transcript stage 3 step (spec/patch/review) 모두 락인."""
+    for step in ("spec", "patch", "review"):
+        stage_agent_dev_log(
+            {"step": step, "issue": 587, "summary": f"{step} ok"},
+            actor_name="agent_loop_orchestrator",
+            db_path=db_path,
+        )
+    _, rows = claim_pending_outbox("agent_dev_log", db_path=db_path)
+    assert {r["payload"]["step"] for r in rows} == {"spec", "patch", "review"}
 
 
 # ─── claim / priority / lease ────────────────────────────

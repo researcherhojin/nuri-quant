@@ -1277,4 +1277,70 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_outbox_run ON discord_outbox(run_id);
     """,
     ),
+    (
+        42,
+        "discord channel enum 확장 — agent_control + agent_dev_log (E1 #582)",
+        # SQLite 는 ALTER TABLE … ALTER CONSTRAINT 미지원 → 신 테이블 생성 + INSERT
+        # SELECT + DROP + RENAME 패턴 사용. 기존 row 100% 보존.
+        # 두 테이블 (agent_messages, discord_outbox) 의 channel CHECK 를 동시에 확장.
+        """
+        -- agent_messages: rebuild with extended CHECK
+        CREATE TABLE agent_messages_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            channel TEXT NOT NULL CHECK(channel IN ('brief','ops','incidents','rollout','agent_control','agent_dev_log')),
+            actor_name TEXT,
+            run_id TEXT,
+            decision_id TEXT,
+            content_preview TEXT,
+            http_status INTEGER,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            error_message TEXT
+        );
+        INSERT INTO agent_messages_new
+            (id, timestamp, channel, actor_name, run_id, decision_id,
+             content_preview, http_status, retry_count, error_message)
+            SELECT id, timestamp, channel, actor_name, run_id, decision_id,
+                   content_preview, http_status, retry_count, error_message
+              FROM agent_messages;
+        DROP TABLE agent_messages;
+        ALTER TABLE agent_messages_new RENAME TO agent_messages;
+        CREATE INDEX IF NOT EXISTS idx_msg_channel_time ON agent_messages(channel, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_msg_run ON agent_messages(run_id);
+        CREATE INDEX IF NOT EXISTS idx_msg_status ON agent_messages(http_status, timestamp);
+
+        -- discord_outbox: rebuild with extended CHECK
+        CREATE TABLE discord_outbox_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL CHECK(channel IN ('brief','ops','incidents','rollout','agent_control','agent_dev_log')),
+            payload_json TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('high','normal','low')),
+            dedupe_key TEXT,
+            scheduled_for TEXT NOT NULL DEFAULT (datetime('now')),
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','claimed','sent','failed','dropped')),
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            claim_token TEXT,
+            claimed_at TEXT,
+            sent_at TEXT,
+            last_error TEXT,
+            actor_name TEXT,
+            run_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO discord_outbox_new
+            (id, channel, payload_json, priority, dedupe_key, scheduled_for,
+             status, attempt_count, claim_token, claimed_at, sent_at, last_error,
+             actor_name, run_id, created_at)
+            SELECT id, channel, payload_json, priority, dedupe_key, scheduled_for,
+                   status, attempt_count, claim_token, claimed_at, sent_at, last_error,
+                   actor_name, run_id, created_at
+              FROM discord_outbox;
+        DROP TABLE discord_outbox;
+        ALTER TABLE discord_outbox_new RENAME TO discord_outbox;
+        CREATE INDEX IF NOT EXISTS idx_outbox_pending ON discord_outbox(channel, status, scheduled_for);
+        CREATE INDEX IF NOT EXISTS idx_outbox_claim ON discord_outbox(status, claimed_at);
+        CREATE INDEX IF NOT EXISTS idx_outbox_dedupe ON discord_outbox(channel, dedupe_key, status);
+        CREATE INDEX IF NOT EXISTS idx_outbox_run ON discord_outbox(run_id);
+    """,
+    ),
 ]

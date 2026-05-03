@@ -279,12 +279,13 @@ def log_agent_message(
 ) -> int:
     """Discord publish audit (#529 Phase 2 — DiscordBridge).
 
-    channel: 'brief' / 'ops' / 'incidents' / 'rollout'.
+    channel: 'brief' / 'ops' / 'incidents' / 'rollout' / 'agent_control' / 'agent_dev_log'.
     content_preview: 첫 200자 (긴 embed 도 grep 가능하도록).
     http_status: 204 정상 발송, 4xx/5xx 실패. NULL = 네트워크 실패 전 단계.
     """
-    if channel not in ("brief", "ops", "incidents", "rollout"):
-        raise ValueError(f"channel must be brief/ops/incidents/rollout, got {channel!r}")
+    valid = ("brief", "ops", "incidents", "rollout", "agent_control", "agent_dev_log")
+    if channel not in valid:
+        raise ValueError(f"channel must be one of {valid}, got {channel!r}")
     with get_db(db_path) as conn:
         cursor = conn.execute(
             """INSERT INTO agent_messages

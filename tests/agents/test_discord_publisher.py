@@ -64,10 +64,53 @@ class TestChannelEnum:
         assert Channel.OPS.env_var == "DISCORD_WEBHOOK_OPS"
         assert Channel.INCIDENTS.env_var == "DISCORD_WEBHOOK_INCIDENTS"
         assert Channel.ROLLOUT.env_var == "DISCORD_WEBHOOK_ROLLOUT"
+        assert Channel.AGENT_CONTROL.env_var == "DISCORD_WEBHOOK_AGENT_CONTROL"
+        assert Channel.AGENT_DEV_LOG.env_var == "DISCORD_WEBHOOK_AGENT_DEV_LOG"
 
     def test_string_values_match_db_check(self):
-        # DB CHECK constraint: brief / ops / incidents / rollout
-        assert {c.value for c in Channel} == {"brief", "ops", "incidents", "rollout"}
+        # DB CHECK constraint (migration 41 + 42): 6 채널.
+        assert {c.value for c in Channel} == {
+            "brief",
+            "ops",
+            "incidents",
+            "rollout",
+            "agent_control",
+            "agent_dev_log",
+        }
+
+
+class TestEnrichEmbedPayload:
+    def test_injects_author_when_actor_name_set_and_no_author(self):
+        payload = {"embeds": [{"title": "Decision BLOCKED — NVDA", "description": "..."}]}
+        out = DiscordPublisher._enrich_embed_payload(payload, "decision_compiler")
+        assert out["embeds"][0]["author"] == {"name": "decision_compiler"}
+
+    def test_preserves_caller_provided_author(self):
+        payload = {"embeds": [{"title": "T", "author": {"name": "custom"}}]}
+        out = DiscordPublisher._enrich_embed_payload(payload, "decision_compiler")
+        assert out["embeds"][0]["author"] == {"name": "custom"}
+
+    def test_noop_when_no_actor_name(self):
+        payload = {"embeds": [{"title": "T"}]}
+        out = DiscordPublisher._enrich_embed_payload(payload, None)
+        assert out is payload  # 원본 reference 그대로
+
+    def test_noop_when_no_embeds(self):
+        payload = {"content": "text-only message"}
+        out = DiscordPublisher._enrich_embed_payload(payload, "actor")
+        assert out is payload
+
+    def test_truncates_long_actor_name_to_256(self):
+        payload = {"embeds": [{"title": "T"}]}
+        out = DiscordPublisher._enrich_embed_payload(payload, "x" * 500)
+        assert len(out["embeds"][0]["author"]["name"]) == 256
+
+    def test_does_not_mutate_input_dict(self):
+        original_embed = {"title": "T"}
+        payload = {"embeds": [original_embed]}
+        DiscordPublisher._enrich_embed_payload(payload, "actor")
+        # caller 의 dict 가 변경되면 안 됨 (idempotency)
+        assert "author" not in original_embed
 
 
 class TestPublishSuccess:

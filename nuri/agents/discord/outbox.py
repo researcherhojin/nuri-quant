@@ -134,6 +134,54 @@ def stage_rollout(
     )
 
 
+def stage_agent_control(
+    payload: dict[str, Any],
+    dedupe_key: Optional[str] = None,
+    priority: str = "normal",
+    actor_name: Optional[str] = None,
+    run_id: Optional[str] = None,
+    db_path: Optional[Any] = None,
+) -> Optional[int]:
+    """Stage one event into #agent-control outbox (HITL gate, E1 #582).
+
+    agent loop 의 verdict (PASS / NEEDS_REWORK / ABSTAIN) 를 사용자 ✅/❌ 응답
+    대상으로 publish. inbound (E4) 가 reaction 잡으면 dedupe_key 로 매칭.
+    """
+    return stage_outbox(
+        "agent_control",
+        payload,
+        priority=priority,
+        dedupe_key=dedupe_key,
+        actor_name=actor_name,
+        run_id=run_id,
+        db_path=db_path,
+    )
+
+
+def stage_agent_dev_log(
+    payload: dict[str, Any],
+    dedupe_key: Optional[str] = None,
+    priority: str = "normal",
+    actor_name: Optional[str] = None,
+    run_id: Optional[str] = None,
+    db_path: Optional[Any] = None,
+) -> Optional[int]:
+    """Stage one event into #agent-dev-log outbox (transcript, E2 #578).
+
+    Codex (Architect, spec) → Claude (Builder, patch) → Qwen (Adversarial Reviewer)
+    각 단계의 산출물을 read-only transcript 로 publish.
+    """
+    return stage_outbox(
+        "agent_dev_log",
+        payload,
+        priority=priority,
+        dedupe_key=dedupe_key,
+        actor_name=actor_name,
+        run_id=run_id,
+        db_path=db_path,
+    )
+
+
 # ─── digest layout (Codex Round 6 actionability bucket pattern) ──────────
 
 
