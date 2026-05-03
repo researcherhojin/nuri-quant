@@ -237,6 +237,9 @@ frontend/test-results/
 !.claude/agents/nuri-*.md
 !.claude/commands/
 .claude/commands/*
+!.claude/rules/
+.claude/rules/*
+!.claude/rules/*.md
 !.claude/commands/nuri-*.md
 
 # ─── OS ────────────────────────────────────────────────────────

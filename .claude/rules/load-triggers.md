@@ -1,0 +1,22 @@
+# Load Triggers (read these BEFORE editing scoped files)
+
+| Working on... | Read first |
+|---------------|-----------|
+| `nuri/core/` (db, timezone, events, freshness) | `nuri/core/CLAUDE.md` |
+| `nuri/collectors/` (data sources) | `nuri/collectors/CLAUDE.md` + `docs/STRATEGY.md §4.4` (privacy / external LLM egress) |
+| `nuri/trading/agents/` (consensus / veto) | `nuri/trading/agents/CLAUDE.md` + `docs/STRATEGY.md §3.2-§3.3, §3.9` |
+| `nuri/trading/engine/` (SIEGE) | `nuri/trading/engine/CLAUDE.md` + `docs/SIEGE_V2.md` + `docs/STRATEGY.md §6` |
+| `nuri/trading/recommend/` (BUY/SELL emitters, price targets, tracker) | `nuri/trading/recommend/CLAUDE.md` + `docs/STRATEGY.md §7.1` (recommend-only, never execute) |
+| `nuri/trading/swing/` (≤7d swing scanner / rules) | `nuri/trading/swing/CLAUDE.md` + `config/rules.yaml` swing ladder |
+| `nuri/trading/strategy/` (longshort, mean-rev, pairs, position) | `nuri/trading/strategy/CLAUDE.md` — `REGIME_ALLOCATION` lives in `longshort.py` (not config); changes require STRATEGY PR + backtest |
+| `nuri/trading/execution/` (broker adapter) | `nuri/trading/execution/CLAUDE.md` — paper-only (Alpaca paper endpoint), live execution out of scope per §7.1 |
+| `config/rules.yaml`, `config/agents.yaml`, `config/signals.yaml` | `config/CLAUDE.md` + `docs/STRATEGY.md §2.6, §3.4-§3.5` |
+| `frontend/` | `frontend/CLAUDE.md` (Next.js 16 breaking changes — read `node_modules/next/dist/docs/` first) |
+| `tests/` | `tests/CLAUDE.md` (DB isolation, mock pitfalls, privacy in fixtures) |
+| `nuri/api/` (FastAPI routes) | `docs/ARCHITECTURE.md` §"Dashboard API" + `.claude/rules/architecture.md` "API Access Pattern" + source convention from existing `nuri/api/routes/` |
+| `scripts/` (shell automation, no scoped CLAUDE.md) | source docstring; `make lint-sh` (shellcheck); `scripts/pre_push_check.sh` for safety contract |
+| DB migrations / schema changes | `nuri/core/CLAUDE.md` + `_MIGRATIONS` list in `nuri/core/db_migrations.py` (forward-only, never edit existing migration) |
+| Investment-rule / strategy / regime decisions | `docs/STRATEGY.md` §2 (principles) + §3 (decisions) |
+| Harness debugging (mock fail / phantom fix / scope creep) | `/nuri-harness-debug` skill + `docs/STRATEGY.md §5` |
+| SIEGE predictivity audit / E4-0b methodology | `/nuri-siege-audit` skill + `docs/STRATEGY.md §3.8` |
+| Pipeline backlog / next work | `docs/TODO.md` (gitignored, local-only — forward-only Tier 2/3) |

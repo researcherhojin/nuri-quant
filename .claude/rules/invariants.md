@@ -1,0 +1,15 @@
+# Always-on Invariants
+
+Mechanically enforced (hooks/CI/code). Violating any means a hook block, CI fail, or design regression. `docs/STRATEGY.md` is canonical — load it on demand for the "why" / full spec.
+
+- **DB sole importer**: `nuri/core/db.py` is the ONLY `sqlite3` importer (PreToolUse hook blocks). All other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()` with optional `db_path=` for test isolation.
+- **Timezone**: always `kst_now()` / `today_kst()` from `nuri.core.timezone` — `datetime.now()` blocked by hook.
+- **Conventional commits (English)** + **PR discipline**: 1 issue = 1 PR, ≤ 3 commits, scope = what was asked. New findings → separate issue. Format: `(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(scope)?: msg`. Korean comments in code, English variable/function names.
+- **Escalation Ladder** (STRATEGY §2.6 summary): **Surface** exposes evidence only (no action change) → **Soft penalty** deterministic downgrade/cap (config-tunable) → **Hard veto** action-block on downside (risk-of-ruin) → **Symmetric amplifier** post-veto upside sizing (multi-condition, never single-trigger). Promotion between rungs requires STRATEGY PR + evidence/backtest.
+- **Alpha vs portfolio axis** (PR A #429): `alpha_action ∈ {LONG, SHORT, FLAT}` ≠ `portfolio_action ∈ {REBALANCE, TRIM, HEDGE}`. Concentration / sector-cap → `portfolio_action=REBALANCE` only (never urgent SELL). Stop-loss breach is the **only** mechanical → `alpha_action=FLAT`. Veto fires on `alpha_action==FLAT`, not portfolio violations. See `nuri/core/axis.py`.
+- **Auto trading deferred** (STRATEGY §7.1, permanent): system emits recommendations + alerts only; user executes orders manually. `DryRun` / paper trading kept for backtest only. Reverting requires STRATEGY PR + re-approval.
+- **Privacy in commits** (STRATEGY §4.4.1, hook + CI blocked): personal financial data must never enter the public repo. `scripts/verify/check_privacy_leak.py` (canonical rule list) runs pre-push and in CI `privacy-scan`, blocking 4 categories — Korean broker names, romanized broker substrings, suspect 7+ digit monetary literals near sensitive keys (`total_invested` / `cash_balance` / etc), and ticker+signed-% combinations. Use placeholders (`Brokerage Alpha/Beta`, round-million values).
+
+## Gotcha-Test Pair (STRATEGY §5.3.1)
+
+Every fix-pattern gotcha (saved defensive code) MUST cite a regression test (`**Test:** path::TestClass::test_name`) that fails if the fix is reverted. Otherwise it's "folklore" — defensive code gets removed in 3 sessions when nobody remembers why (e.g., `df.copy()` recurrence, PR #294→#306). Plain facts/quirks (*"library X doesn't support Y, no fix"*) need no test, mark as `*(facts, no fix)*`.
