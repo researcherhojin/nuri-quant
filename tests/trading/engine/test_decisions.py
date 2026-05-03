@@ -1026,13 +1026,12 @@ class TestTrackOutcomesNeutral:
 
         90 일 경과 + entry_price 양수 + HOLD action → outcome='neutral'.
         """
-        from nuri.trading.engine.decisions import track_decision_outcomes
-
         # 100 일 전 anchor 로 90d 경과 보장
         from datetime import date as _date
         from datetime import timedelta
 
         from nuri.core.timezone import today_kst
+        from nuri.trading.engine.decisions import track_decision_outcomes
 
         anchor = _date.fromisoformat(today_kst()) - timedelta(days=100)
         anchor_str = anchor.isoformat()
