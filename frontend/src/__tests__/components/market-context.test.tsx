@@ -156,6 +156,41 @@ describe("MarketContext", () => {
     expect(container.querySelector("svg[aria-label='7d sentiment trend']")).toBeNull();
   });
 
+  // #503 Phase B — conditional pinning + regime banner
+  it("pins card with ATTENTION badge when high-conf critical event in 24h", () => {
+    const recent = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const pinEvents = [{
+      category: "geopolitical_escalation",
+      headline: "Critical event",
+      sentiment: -0.8, confidence: 0.85, published_at: recent, source: "reuters",
+    }];
+    const { container } = render(<MarketContext events={pinEvents} health={sampleHealth} />);
+    expect(screen.getByText("ATTENTION")).toBeTruthy();
+    expect(container.querySelector(".ring-amber-500\\/30")).toBeTruthy();
+  });
+
+  it("does NOT pin when critical event is > 24h old", () => {
+    const stale = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const oldEvents = [{
+      category: "geopolitical_escalation",
+      headline: "Old event",
+      sentiment: -0.8, confidence: 0.9, published_at: stale, source: "reuters",
+    }];
+    render(<MarketContext events={oldEvents} health={sampleHealth} />);
+    expect(screen.queryByText("ATTENTION")).toBeNull();
+  });
+
+  it("renders regime-shift banner when regime confidence < 60", () => {
+    const lowConf = { ...sampleHealth, regime: { regime: "recovery", trend: "sideways", confidence: 50 } };
+    render(<MarketContext events={[]} health={lowConf} />);
+    expect(screen.getByText("Regime 전환 신호")).toBeTruthy();
+  });
+
+  it("does NOT render regime-shift banner when confidence >= 60", () => {
+    render(<MarketContext events={[]} health={sampleHealth} />);
+    expect(screen.queryByText("Regime 전환 신호")).toBeNull();
+  });
+
   it("bolds high-confidence events (>= 0.8)", () => {
     const highConfEvents = [
       { ...sampleEvents[0], confidence: 0.85, published_at: "2026-04-12T17:18:00+00:00" },
