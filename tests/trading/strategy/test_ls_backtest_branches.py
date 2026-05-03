@@ -876,3 +876,107 @@ class TestPrintHelpers:
 #   - To exercise it, one would `runpy.run_module("nuri.trading.strategy.ls_backtest",
 #     run_name="__main__")`, but that re-executes the whole module and races
 #     module-level patches per tests/CLAUDE.md "runpy + mock" gotcha.
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CLI main(argv) — 32-line `__main__` block 의 unit-testable 추출.
+# pragma: no cover 를 32 → 1 (표준 raise SystemExit(main()) idiom 만) 로 축소.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestLsBacktestMainCLI:
+    """ls_backtest.main(argv) — argparse 분기 + 오케스트레이션.
+
+    Source-level patch (module-level 함수) 로 `runpy + mock` 가드 회피.
+    각 테스트 = behavioral lock (분기 진입 검증).
+    """
+
+    def _stub_orchestration(self, monkeypatch):
+        """6개 무거운 함수 stub — DataFrame regimes 1-row 더미 반환."""
+        import pandas as pd
+
+        from nuri.trading.strategy import ls_backtest as lb
+
+        regimes = pd.DataFrame({"date": ["2026-01-01"], "regime": ["bull_low_vol"]})
+
+        # Stub heavy fns — module-level patch
+        monkeypatch.setattr(lb, "classify_historical_regimes", lambda: regimes)
+        monkeypatch.setattr(lb, "stress_test", lambda r: [{"window": "covid", "ret": 0.1}])
+        monkeypatch.setattr(lb, "print_stress", lambda r: print("STRESS_PRINTED"))
+        monkeypatch.setattr(
+            lb,
+            "run_backtest_with_rules",
+            lambda r: type("R", (), {"total_return": 0.5, "sharpe": 1.2})(),
+        )
+        monkeypatch.setattr(lb, "print_rules_comparison", lambda r: print("RULES_PRINTED"))
+        monkeypatch.setattr(
+            lb,
+            "run_backtest",
+            lambda r: type("R", (), {"total_return": 0.3, "sharpe": 1.0})(),
+        )
+        monkeypatch.setattr(lb, "print_backtest", lambda r: print("BACKTEST_PRINTED"))
+        monkeypatch.setattr(lb, "analyze_per_regime", lambda r: [{"regime": "bull", "ret": 0.1}])
+        monkeypatch.setattr(lb, "print_regime_performance", lambda r: print("REGIME_PRINTED"))
+        monkeypatch.setattr(lb, "analyze_entry_timing", lambda r: {"best": "early"})
+        monkeypatch.setattr(lb, "print_timing", lambda r: print("TIMING_PRINTED"))
+        monkeypatch.setattr(lb, "monte_carlo_test", lambda r, **kw: {"runs": 1000, "median": 0.1})
+        monkeypatch.setattr(lb, "print_monte_carlo", lambda r: print("MC_PRINTED"))
+
+    def test_main_stress_branch(self, monkeypatch, capsys):
+        """--stress: stress_test + print_stress 만 호출, 다른 path 미진입."""
+        from nuri.trading.strategy import ls_backtest as lb
+
+        self._stub_orchestration(monkeypatch)
+        called: list[str] = []
+        monkeypatch.setattr(lb, "print_stress", lambda r: called.append("stress"))
+        monkeypatch.setattr(lb, "print_backtest", lambda r: called.append("backtest"))
+        monkeypatch.setattr(lb, "print_rules_comparison", lambda r: called.append("rules"))
+
+        rc = lb.main(["--stress"])
+        assert rc == 0
+        assert called == ["stress"], f"--stress 분기에서 stress 만 호출되어야 함: {called}"
+
+    def test_main_rules_branch(self, monkeypatch):
+        """--rules: run_backtest_with_rules + print_rules_comparison 만 호출."""
+        from nuri.trading.strategy import ls_backtest as lb
+
+        self._stub_orchestration(monkeypatch)
+        called: list[str] = []
+        monkeypatch.setattr(lb, "print_rules_comparison", lambda r: called.append("rules"))
+        monkeypatch.setattr(lb, "print_stress", lambda r: called.append("stress"))
+        monkeypatch.setattr(lb, "print_backtest", lambda r: called.append("backtest"))
+
+        rc = lb.main(["--rules"])
+        assert rc == 0
+        assert called == ["rules"], f"--rules 분기에서 rules 만 호출되어야 함: {called}"
+
+    def test_main_default_full_pipeline(self, monkeypatch):
+        """flag 없음: BT2/BT3/BT4/BT6/BT5 전체 5-step 호출."""
+        from nuri.trading.strategy import ls_backtest as lb
+
+        self._stub_orchestration(monkeypatch)
+        called: list[str] = []
+        monkeypatch.setattr(lb, "print_backtest", lambda r: called.append("backtest"))
+        monkeypatch.setattr(lb, "print_regime_performance", lambda r: called.append("regime"))
+        monkeypatch.setattr(lb, "print_timing", lambda r: called.append("timing"))
+        monkeypatch.setattr(lb, "print_rules_comparison", lambda r: called.append("rules"))
+        monkeypatch.setattr(lb, "print_stress", lambda r: called.append("stress"))
+        monkeypatch.setattr(lb, "print_monte_carlo", lambda r: called.append("mc"))
+
+        rc = lb.main([])
+        assert rc == 0
+        # default 경로는 6단계 순차 — 분기 lock
+        assert called == ["backtest", "regime", "timing", "rules", "stress", "mc"], (
+            f"default 분기는 6-step 순서 호출: {called}"
+        )
+
+    def test_main_empty_regimes_returns_1(self, monkeypatch, capsys):
+        """SPY 데이터 부족 (regimes.empty) → return 1 + 'SPY 데이터 부족' 출력."""
+        import pandas as pd
+
+        from nuri.trading.strategy import ls_backtest as lb
+
+        monkeypatch.setattr(lb, "classify_historical_regimes", lambda: pd.DataFrame())
+        rc = lb.main(["--stress"])
+        assert rc == 1
+        assert "SPY 데이터 부족" in capsys.readouterr().out

@@ -1035,22 +1035,24 @@ def print_rules_comparison(result: dict) -> None:
     print(f"{'═' * 70}\n")
 
 
-# 인바리언트: 모듈 진입 가드. unit test 는 함수 단위로 모든 분기를 커버하므로
-# `__main__` 블록은 라이브 DB 기반 스모크 중복일 뿐. runpy 실행은 tests/CLAUDE.md
-# "runpy + mock" 가이드대로 module-level patch 를 무효화하므로 명시적으로 제외.
-if __name__ == "__main__":  # pragma: no cover  # invariant: CLI 진입점은 unit test 범위 외
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint — argparse 추출로 unit-testable. argv=None 이면 sys.argv 사용.
+
+    runpy 우회 + module-level patch 보존 (tests/CLAUDE.md "runpy + mock" 가이드).
+    return: 0 = 정상, 1 = SPY 데이터 부족.
+    """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant L/S Strategy Backtest")
     parser.add_argument("--stress", action="store_true", help="스트레스 테스트만")
     parser.add_argument("--rules", action="store_true", help="규칙 적용 비교 백테스트")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logger.info("과거 레짐 분류 중...")
     regimes = classify_historical_regimes()
     if regimes.empty:
         print("SPY 데이터 부족")
-        exit(1)
+        return 1
     logger.info(f"{len(regimes)}일 분류 완료")
 
     if args.stress:
@@ -1086,3 +1088,8 @@ if __name__ == "__main__":  # pragma: no cover  # invariant: CLI 진입점은 un
         logger.info("Monte Carlo 시뮬레이션 (1000회)...")
         mc = monte_carlo_test(regimes)
         print_monte_carlo(mc)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover  # invariant: 표준 entry idiom — main() 이 testable
+    raise SystemExit(main())
