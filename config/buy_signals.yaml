@@ -66,5 +66,55 @@ risk:
   tp2_pct: 42.0
 
 # ─── Exclude (held tickers + ETFs not eligible) ─────────────────────
-exclude_held: true            # 보유 종목은 BUY 추천 X (Phase 2 에서 add 모드 도입)
+exclude_held: true            # 보유 종목은 BUY 추천 X (held_add_mode 가 Phase 2a 부터 별도 처리)
 exclude_etf_leverage: true    # SOXL/TQQQ 같은 leverage ETF 제외 (스윙 트레이드는 별도 path)
+
+# ─── Held add-mode (#518 Phase 2a, shadow 14d) ──────────────────────
+# 보유 종목에 대한 add 후보. 3 modes (precedence + mutual exclusion). spec
+# §4 (docs/plans/507_buy_candidate_emitter_phase2_spec.md).
+# shadow_mode_until 이전: emit → held_add_shadow 테이블 only (brief surface 없음).
+# 이후: 사용자 brief 에 surface (Phase 2a 후속 — 본 PR 미포함).
+held_add_mode:
+  enabled: true
+  shadow_mode_until: "2026-05-15"   # 14d shadow before live brief surfacing
+  earnings_blackout_days: 5         # earnings_date ± 5d 차단 (Qwen risk)
+
+  modes:
+    # precedence=1 — 최근 TRIM 후 잔여 breakout 위 add
+    tp1_residual_add:
+      trigger:
+        last_trim_age_days_min: 5         # B1 (#517) — trim_days=0 보완
+        last_trim_age_days_max: 60
+        unrealized_pnl_min_factor: 1.2    # = abs(account.tp1_pct) × 1.2
+        composite_score_min: 75
+        require_breakout_above_last_trim_price: true   # F1 add-above-breakout
+      cap_max_source: "account_strategies.<account>.max_single_position"
+      max_add_pct_of_account_cash: 4
+      cooldown_days: 14
+      precedence: 1
+
+    # precedence=2 — winner momentum add (cap headroom 활용)
+    ride_winner:
+      trigger:
+        unrealized_pnl_min_factor: 2.5    # core: tp1=+21 → trigger ≥ +52.5
+        days_held_min: 30
+        composite_score_min: 75
+        sector_momentum_min: 5
+      cap_max_source: "account_strategies.<account>.max_single_position"
+      max_add_pct_of_account_cash: 5
+      cooldown_days: 14
+      precedence: 2
+
+    # precedence=3 — pullback add (RSI 과매도 + macro veto)
+    average_down:
+      trigger:
+        unrealized_pnl_min_factor: 0.3    # = account.stop_loss × 0.3 (core: -10×0.3=-3)
+        unrealized_pnl_max_factor: 0.7    # = account.stop_loss × 0.7 (core: -10×0.7=-7)
+        composite_score_min: 80           # 가장 높은 bar
+        rsi_max: 35
+        days_held_min: 14
+        macro_veto: true                  # F2: regime ∉ {bear,crash} AND VIX < 28
+      cap_max_source: "account_strategies.<account>.max_single_position"
+      max_add_pct_of_account_cash: 3
+      cooldown_days: 21
+      precedence: 3
