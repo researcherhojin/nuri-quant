@@ -784,7 +784,10 @@
     "DALBAR",
     "QAIB",
     "Damodaran",
-    "Swensen"
+    "Swensen",
+    "overcomplication",
+    "outputjson",
+    "splitlines"
   ],
   "ignorePaths": [
     "node_modules/**",
