@@ -35,7 +35,12 @@ from pathlib import Path
 # requests 는 직접 import 하지 않음 — RequestException 은 OSError 상속이므로
 # main() 의 except 가 자동 포착.
 sys.path.insert(0, str(Path(__file__).parent))
+# nuri.* import 위해 repo root 보장 — uv run / python scripts/dev/... 양쪽 호환.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm_consult import consult_codex, consult_qwen  # noqa: E402
+
+from nuri.agents.discord.outbox import stage_agent_control, stage_agent_dev_log  # noqa: E402
+from nuri.core.timezone import kst_now  # noqa: E402
 
 DEFAULT_BUDGET_TOKENS = 100_000
 DEFAULT_BUDGET_USD = 1.00
@@ -167,10 +172,74 @@ def write_outputs(out_dir: Path, name: str, content: str) -> Path:
     return path
 
 
+def _publish_dev_log(issue_num: int, step: str, summary: str, run_id: str) -> None:
+    """agent loop 의 단계별 산출물을 #agent-dev-log 에 stage (best-effort).
+
+    file 산출물 (data/agent_loop/) 가 primary, Discord publish 는 보조 transcript.
+    DB 쓰기 / 검증 실패가 agent loop 본체를 죽이면 안 됨 — broad except 의도적.
+    stage 자체의 programmer bug 는 tests/agents/test_discord_outbox.py 에서 별도 검증.
+    """
+    try:
+        stage_agent_dev_log(
+            payload={
+                "kind": step,
+                "issue": issue_num,
+                "summary": summary[:500],
+                "title": f"Issue #{issue_num} · {step}",
+                "description": summary[:2000],
+            },
+            dedupe_key=f"agent_loop:{issue_num}:{step}",
+            actor_name="agent_loop_orchestrator",
+            run_id=run_id,
+        )
+    except Exception as e:  # noqa: BLE001 — auxiliary publish, never break the loop
+        print(f"  ⚠ stage_agent_dev_log 실패 ({step}): {type(e).__name__}: {e}", file=sys.stderr)
+
+
+def _publish_hitl_gate(issue_num: int, verdict: str, review_excerpt: str, run_id: str) -> None:
+    """Qwen verdict 가 HITL 응답 필요할 때 #agent-control 에 stage (best-effort).
+
+    PASS / NEEDS_REWORK / ABSTAIN 모두 publish — 사용자가 ✅/❌ reaction 으로
+    다음 step (PR open) gating. dedupe_key=run_id 로 같은 run 의 중복 stage 방지.
+    """
+    try:
+        stage_agent_control(
+            payload={
+                "kind": "HITL",
+                "issue": issue_num,
+                "verdict": verdict,
+                "title": f"Issue #{issue_num} · verdict={verdict}",
+                "description": (
+                    f"agent loop verdict={verdict}\n"
+                    f"react ✅ to approve PR open, ❌ to reject.\n\n"
+                    f"review excerpt:\n{review_excerpt[:1500]}"
+                ),
+            },
+            dedupe_key=f"agent_loop_hitl:{issue_num}:{run_id}",
+            priority="high",  # HITL 은 즉시 dispatcher 픽업
+            actor_name="agent_loop_orchestrator",
+            run_id=run_id,
+        )
+    except Exception as e:  # noqa: BLE001 — auxiliary publish, never break the loop
+        print(f"  ⚠ stage_agent_control 실패: {type(e).__name__}: {e}", file=sys.stderr)
+
+
+def _extract_verdict(review_text: str) -> str:
+    """Qwen review 본문에서 verdict 추출. 'PASS' / 'NEEDS_REWORK' / 'ABSTAIN' / 'UNKNOWN'."""
+    upper = review_text.upper()
+    for v in ("NEEDS_REWORK", "ABSTAIN", "PASS"):
+        if v in upper:
+            return v
+    return "UNKNOWN"
+
+
 def run_loop(issue_num: int, budget_tokens: int, budget_usd: float, out_root: Path) -> int:
     out_dir = out_root / str(issue_num)
     out_dir.mkdir(parents=True, exist_ok=True)
     cost = CostTracker(budget_tokens=budget_tokens, budget_usd=budget_usd)
+
+    # run_id — dedupe_key 의 일부 + agent_messages audit row 추적용.
+    run_id = f"agent-loop-{issue_num}-{int(kst_now().timestamp())}"
 
     # Step 0: 이슈 fetch
     title, body = fetch_issue_body(issue_num)
@@ -188,6 +257,7 @@ def run_loop(issue_num: int, budget_tokens: int, budget_usd: float, out_root: Pa
     cost.charge("step1_codex_out", estimate_tokens(spec), CODEX_OUTPUT_USD_PER_M)
     spec_path = write_outputs(out_dir, "spec.md", spec)
     print(f"  saved {spec_path} ({len(spec)} chars)")
+    _publish_dev_log(issue_num, "spec", spec, run_id)
 
     # Step 2: Claude builder = stub
     patch_diff = (
@@ -197,6 +267,7 @@ def run_loop(issue_num: int, budget_tokens: int, budget_usd: float, out_root: Pa
     )
     patch_path = write_outputs(out_dir, "patch.diff", patch_diff)
     print(f"[step 2] Claude builder (stub) → {patch_path}")
+    _publish_dev_log(issue_num, "patch", "Claude builder stub — backend 결정 후 구현 예정 (E2 follow-up)", run_id)
 
     # Step 3: Qwen review
     print("[step 3] Qwen review ...")
@@ -212,6 +283,12 @@ def run_loop(issue_num: int, budget_tokens: int, budget_usd: float, out_root: Pa
     cost.charge("step3_qwen_out", qwen_out_tokens, QWEN_USD_PER_M)
     review_path = write_outputs(out_dir, "review.md", review)
     print(f"  saved {review_path} ({len(review)} chars)")
+    _publish_dev_log(issue_num, "review", review, run_id)
+
+    # Step 4: HITL gate — verdict 추출 후 #agent-control 에 stage (사용자 ✅/❌ 응답 대상).
+    verdict = _extract_verdict(review)
+    _publish_hitl_gate(issue_num, verdict, review, run_id)
+    print(f"[step 4] HITL gate staged · verdict={verdict}")
 
     # cost.json
     cost_path = write_outputs(out_dir, "cost.json", json.dumps(cost.to_dict(), indent=2))

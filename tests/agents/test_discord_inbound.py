@@ -31,9 +31,19 @@ def sandbox(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _mock_message(channel_id: int, content: str = "hello", *, bot_author: bool = False, msg_id: int = 1):
+def _mock_message(
+    channel_id: int,
+    content: str = "hello",
+    *,
+    bot_author: bool = False,
+    msg_id: int = 1,
+    parent_id: int | None = None,
+):
     msg = MagicMock()
     msg.channel.id = channel_id
+    # parent_id=None 이면 channel 이 일반 TextChannel — 기본 MagicMock 의 parent_id
+    # 가 truthy 이라 명시 None set 필요.
+    msg.channel.parent_id = parent_id
     msg.author.bot = bot_author
     msg.author.id = 9999
     msg.author.display_name = "tester"
@@ -123,6 +133,21 @@ class TestEmitMessage:
         msg = _mock_message(555)
         path = inbound.emit_message(msg)
         assert path is not None and path.exists()
+
+    def test_thread_message_resolves_via_parent_id(self, sandbox):
+        """thread 안의 메시지도 parent channel 매핑으로 처리 (issue 별 thread 운영 대비)."""
+        # channel.id = thread ID (env 미매칭) / parent_id = #agent-dev-log channel ID (매칭).
+        msg = _mock_message(channel_id=987654, content="thread post", parent_id=222)
+        path = inbound.emit_message(msg, targets={222: "agent-dev-log"})
+        assert path is not None
+        body = json.loads(path.read_text())
+        assert body["channel_label"] == "agent-dev-log"
+        assert body["channel_id"] == "987654"  # thread ID 보존 (debug 용)
+
+    def test_thread_message_returns_none_for_off_parent(self, sandbox):
+        """parent 도 매칭 안 되면 무시 — 다른 채널의 thread 도 default-deny."""
+        msg = _mock_message(channel_id=987654, parent_id=999)
+        assert inbound.emit_message(msg, targets={222: "agent-dev-log"}) is None
 
 
 class TestEmitReaction:
