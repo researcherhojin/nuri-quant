@@ -931,3 +931,60 @@ class TestSchedulerLogRotation:
         finally:
             # Restore default for downstream tests that might assert on it.
             _logging.getLogger("yfinance").setLevel(_logging.NOTSET)
+
+
+# ═══════════════════════════════════════════════════════
+# TestSchedulerBootstrap — #575 init_db on startup
+# ═══════════════════════════════════════════════════════
+
+
+class TestSchedulerBootstrap:
+    """`main()` 진입 시 `init_db()` 가 `create_scheduler()` 보다 먼저 호출되어야 함.
+
+    배경: 신규 머신 / migration drift 누적 상태에서 scheduler 가 init_db() 없이
+    부팅하면 첫 cron job 이 미적용 schema 로 실행되어 IntegrityError. #575 의 root
+    cause 였고 직전 세션 (2026-05-02) 에 22→41 수동 catch-up 으로 워크어라운드.
+
+    Gotcha-Test Pair (STRATEGY §5.3.1) — 본 테스트는 fix revert 시 fail.
+    """
+
+    def test_main_calls_init_db_before_scheduler_start(self, monkeypatch):
+        """main() 이 scheduler.start() 이전에 init_db() 를 호출.
+
+        실제 correctness boundary 는 "start() 이전" — create_scheduler() 는 job
+        등록만 하므로 그 이전/이후는 무관. Codex review (PR #583) 후 의도적으로
+        order assertion 을 완화 (init_db.index < start.index).
+        """
+        from nuri import scheduler as sched_mod
+
+        call_order: list[str] = []
+
+        mock_init_db = MagicMock(side_effect=lambda *a, **kw: call_order.append("init_db"))
+        mock_scheduler = MagicMock()
+        mock_scheduler.start.side_effect = lambda: call_order.append("start")
+
+        monkeypatch.setattr(sched_mod, "init_db", mock_init_db)
+        monkeypatch.setattr(sched_mod, "create_scheduler", MagicMock(return_value=mock_scheduler))
+        # signal.signal 은 main 스레드 외에서 호출 시 ValueError — 우회.
+        monkeypatch.setattr(sched_mod.signal, "signal", lambda *_a, **_kw: None)
+        monkeypatch.setattr(sys, "argv", ["nuri.scheduler"])
+
+        sched_mod.main()
+
+        mock_init_db.assert_called_once()
+        assert "init_db" in call_order and "start" in call_order, call_order
+        assert call_order.index("init_db") < call_order.index("start"), (
+            f"순서 어긋남: {call_order} — init_db 가 scheduler.start() 이전이어야 함 (#575)"
+        )
+
+    def test_dry_run_does_not_call_init_db(self, monkeypatch):
+        """--dry-run 은 schedule 출력만 — DB 쓰기 회피 (CI / 검증용)."""
+        from nuri import scheduler as sched_mod
+
+        mock_init_db = MagicMock()
+        monkeypatch.setattr(sched_mod, "init_db", mock_init_db)
+        monkeypatch.setattr(sys, "argv", ["nuri.scheduler", "--dry-run"])
+
+        sched_mod.main()
+
+        mock_init_db.assert_not_called()
