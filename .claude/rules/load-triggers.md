@@ -5,7 +5,7 @@
 | `nuri/core/` (db, timezone, events, freshness) | `nuri/core/CLAUDE.md` |
 | `nuri/collectors/` (data sources) | `nuri/collectors/CLAUDE.md` + `docs/STRATEGY.md §4.4` (privacy / external LLM egress) |
 | `nuri/trading/agents/` (consensus / veto) | `nuri/trading/agents/CLAUDE.md` + `docs/STRATEGY.md §3.2-§3.3, §3.9` |
-| `nuri/trading/engine/` (SIEGE) | `nuri/trading/engine/CLAUDE.md` + `docs/SIEGE_V2.md` + `docs/STRATEGY.md §6` |
+| `nuri/trading/engine/` (SIEGE certification) | `nuri/trading/engine/CLAUDE.md` + `docs/CERTIFICATION_SPEC.md` + `docs/STRATEGY.md §6` |
 | `nuri/trading/recommend/` (BUY/SELL emitters, price targets, tracker) | `nuri/trading/recommend/CLAUDE.md` + `docs/STRATEGY.md §7.1` (recommend-only, never execute) |
 | `nuri/trading/swing/` (≤7d swing scanner / rules) | `nuri/trading/swing/CLAUDE.md` + `config/rules.yaml` swing ladder |
 | `nuri/trading/strategy/` (longshort, mean-rev, pairs, position) | `nuri/trading/strategy/CLAUDE.md` — `REGIME_ALLOCATION` lives in `longshort.py` (not config); changes require STRATEGY PR + backtest |

@@ -4,7 +4,7 @@ Implementation pointer for SIEGE v2 (3-D certification: Account × Asset Class �
 
 ## Canonical references
 
-- **Gate spec (full)** — `docs/SIEGE_V2.md` — 11~30+ variable conditions, asset-class per-expansion logic, evidence tracking.
+- **Gate spec (full)** — `docs/CERTIFICATION_SPEC.md` — 11~30+ variable conditions, asset-class per-expansion logic, evidence tracking.
 - **Canonical condition table** — `docs/STRATEGY.md §6` — base + per-asset-class conditions with grades + thresholds.
 - **Confidence scoring formula** — `docs/STRATEGY.md §3.3`. Includes Learning-Memory `drift_multiplier`, conflict penalty, regime-fit, VIX gate composition. Phase 4 (safeslice — Wilson CI + witness cliff) replacement is queued; until then the formula in §3.3 is the live one. **Do not duplicate the formula here.**
 - **Action-axis split** (`alpha_action` vs `portfolio_action`, PR A #429) — `nuri/core/axis.py` (helpers) + `docs/STRATEGY.md §3.7`. Engine emits both; concentration / sector / leverage violations route to `portfolio_action=REBALANCE` only — never urgent SELL.

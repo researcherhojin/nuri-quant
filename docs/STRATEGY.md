@@ -3,7 +3,7 @@
 이 문서는 프로젝트의 존재 이유, 핵심 설계 결정의 근거, 개발 품질 기준을 정의한다. 새로운 기능을 만들거나 기존 구조를 변경할 때 이 문서의 원칙에 부합하는지 먼저 확인한다.
 
 <!--
-Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import 되어 launch 시 전량 context 에 load 된다. Claude Code 공식 가이드 ("target under 200 lines per CLAUDE.md", "imports do not reduce context") 에 따라 본문은 canonical policy + 결정의 "왜" 만 담는다. 상세 methodology / narrative / case study 는 별도 파일 (SIEGE_V2.md, codex-reviews/, scripts/*.py docstring, git log) 에 위임한다. 이 원칙을 어기는 추가 narrative 는 stripped HTML comment 로 감싸거나 외부 파일로 뽑아내 context cost 를 0 으로 유지한다.
+Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import 되어 launch 시 전량 context 에 load 된다. Claude Code 공식 가이드 ("target under 200 lines per CLAUDE.md", "imports do not reduce context") 에 따라 본문은 canonical policy + 결정의 "왜" 만 담는다. 상세 methodology / narrative / case study 는 별도 파일 (CERTIFICATION_SPEC.md, codex-reviews/, scripts/*.py docstring, git log) 에 위임한다. 이 원칙을 어기는 추가 narrative 는 stripped HTML comment 로 감싸거나 외부 파일로 뽑아내 context cost 를 0 으로 유지한다.
 -->
 
 ---
@@ -631,7 +631,7 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 | 7 | volatility_gate | warning | `volatility_primary` + threshold (+ secondary). us_equity VIX>30, kr_equity USD/KRW 3d>3% + VIX>30, kr_index KOSPI 3d>5% + USD/KRW>3% |
 | 8 | external_data | warning | `external_min_records` + `external_min_sources`. us≥10/3, kr≥5/2, kr_index/commodity/bond≥3/1 |
 
-**예시**: us_equity 3 + kr_equity 2 포트폴리오 flatten 결과 (2026-04-16 기준) = base 8 + data_fresh 3 + volatility 3 + external_data 2 = **총 16 conditions**. 다른 포트폴리오는 다른 수치. 상세 per-class rule: `config/rules.yaml siege_gates` + `docs/SIEGE_V2.md`. 생성 로직: `nuri/trading/engine/certification.py` `_check_{freshness,volatility,external}_for_class()` → `certify()` flatten.
+**예시**: us_equity 3 + kr_equity 2 포트폴리오 flatten 결과 (2026-04-16 기준) = base 8 + data_fresh 3 + volatility 3 + external_data 2 = **총 16 conditions**. 다른 포트폴리오는 다른 수치. 상세 per-class rule: `config/rules.yaml siege_gates` + `docs/CERTIFICATION_SPEC.md`. 생성 로직: `nuri/trading/engine/certification.py` `_check_{freshness,volatility,external}_for_class()` → `certify()` flatten.
 
 ---
 
