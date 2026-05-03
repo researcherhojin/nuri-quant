@@ -58,7 +58,7 @@ const NAV_GROUPS = [
     label: "INTELLIGENCE",
     items: [
       { href: "/decisions", label: "Decisions", icon: BookOpen },
-      { href: "/engine", label: "SIEGE Engine", icon: Cog },
+      { href: "/engine", label: "Certification Engine", icon: Cog },
       { href: "/evidence", label: "Evidence", icon: FileBarChart },
       { href: "/report", label: "AI Report", icon: Bot },
     ],

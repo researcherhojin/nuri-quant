@@ -101,7 +101,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Advisor")).toBeInTheDocument();
     expect(screen.getByText("Strategy")).toBeInTheDocument();
     expect(screen.getByText("Rebalance")).toBeInTheDocument();
-    expect(screen.getByText("SIEGE Engine")).toBeInTheDocument();
+    expect(screen.getByText("Certification Engine")).toBeInTheDocument();
     expect(screen.getByText("Evidence")).toBeInTheDocument();
     expect(screen.getByText("AI Report")).toBeInTheDocument();
   });

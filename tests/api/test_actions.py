@@ -402,7 +402,7 @@ class TestPRABucketRouting:
             siege_violations=[
                 {
                     "ticker": "BAC",
-                    "detail": "SIEGE: 종목 비중 한도 — 위반: BAC(19.8%>15%)",
+                    "detail": "Certification: 종목 비중 한도 — 위반: BAC(19.8%>15%)",
                     "condition_id": "position_limit",
                 }
             ],
@@ -479,7 +479,7 @@ class TestPRABucketRouting:
             siege_violations=[
                 {
                     "ticker": "HYBRID",
-                    "detail": "SIEGE: 종목 비중 한도 — 위반: HYBRID(22%>15%)",
+                    "detail": "Certification: 종목 비중 한도 — 위반: HYBRID(22%>15%)",
                     "condition_id": "position_limit",
                 }
             ],
@@ -832,7 +832,9 @@ class TestBuildActionsLogic:
         → 따라서 SIEGE violation 단독 surfacing 은 action=HOLD 일 때만 성립."""
         result = self._run(
             [{"ticker": "TSLA", "action": "HOLD", "confidence": 46, "agreement": 20}],
-            siege=[{"ticker": "TSLA", "detail": "SIEGE: 한도 — TSLA(15.4%>15%)", "condition_id": "position_limit"}],
+            siege=[
+                {"ticker": "TSLA", "detail": "Certification: 한도 — TSLA(15.4%>15%)", "condition_id": "position_limit"}
+            ],
             portfolio={"TSLA": self._pf(349, 343, 1.6, 15.4)},
         )
         # urgent 아님 — PR A 핵심 assertion

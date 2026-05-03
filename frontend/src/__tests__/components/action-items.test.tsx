@@ -21,7 +21,7 @@ const urgentItem = {
   stop_loss: 319.35,
   target_1: 412.07,
   target_2: 480.75,
-  reasons: ["SIEGE: 종목 비중 한도 — 위반: TSLA(15.4%>15%)"],
+  reasons: ["Certification: 종목 비중 한도 — 위반: TSLA(15.4%>15%)"],
   priority: "urgent",
 };
 
@@ -166,7 +166,7 @@ describe("ActionItems", () => {
   it("shows action reasons", () => {
     render(<ActionItems urgent={[urgentItem]} check={[]} hold={[]} />);
     const body = document.body.textContent;
-    expect(body).toContain("SIEGE");
+    expect(body).toContain("Certification");
     expect(body).toContain("한도");
   });
 

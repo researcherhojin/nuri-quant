@@ -453,15 +453,19 @@ def _get_siege_violations() -> list[dict]:
                     matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", detail)
                     for ticker in matches:
                         violations.append(
-                            {"ticker": ticker, "detail": f"SIEGE: {c.description} — {detail}", "condition_id": c.id}
+                            {
+                                "ticker": ticker,
+                                "detail": f"Certification: {c.description} — {detail}",
+                                "condition_id": c.id,
+                            }
                         )
                     if not matches:
                         violations.append(
-                            {"ticker": "", "detail": f"SIEGE: {c.description} — {detail}", "condition_id": c.id}
+                            {"ticker": "", "detail": f"Certification: {c.description} — {detail}", "condition_id": c.id}
                         )
                 else:
                     violations.append(
-                        {"ticker": "", "detail": f"SIEGE: {c.description} — {detail}", "condition_id": c.id}
+                        {"ticker": "", "detail": f"Certification: {c.description} — {detail}", "condition_id": c.id}
                     )
     except Exception as e:
         logger.debug(f"SIEGE violations: {e}")
