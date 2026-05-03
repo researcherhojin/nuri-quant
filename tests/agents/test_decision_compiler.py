@@ -578,6 +578,102 @@ class TestDiscordPublish:
         assert levels["tp2"] == 140.0
         assert levels["trailing_pct"] == -15
 
+    def test_buy_emit_attaches_horizon_and_position_new(self, patched_db):
+        """#571 Phase 2 — horizon (growth/value/swing) + position (new) 도 첨부."""
+        from nuri.core.db import claim_pending_outbox
+
+        with (
+            patch(
+                "nuri.trading.recommend.price_targets.calculate_targets",
+                return_value={
+                    "ticker": "TST_Q",
+                    "entry_price": 100.0,
+                    "stop_loss": 93.0,
+                    "target_1": 120.0,
+                    "target_2": 140.0,
+                    "trailing_stop_pct": -15,
+                    "current_price": 100.0,
+                },
+            ),
+            patch(
+                "nuri.trading.recommend.price_targets.classify_stock_type",
+                return_value="growth",
+            ),
+        ):
+            DecisionCompiler().run(_compile_payload(ticker="TST_Q"))
+
+        _, rows = claim_pending_outbox("brief", db_path=patched_db)
+        assert len(rows) == 1
+        p = rows[0]["payload"]
+        assert p.get("horizon") == "growth"
+        assert p.get("position") == "new"  # 미보유
+
+    def test_buy_emit_position_held_winner(self, patched_db):
+        """taxable 보유 + 현재가 > avg×1.05 → held/winner."""
+        from nuri.core.db import claim_pending_outbox, get_db
+
+        # taxable 슬라이스 sample — 현재가 110 vs avg 100 → +10% > 5% threshold
+        with get_db(patched_db) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
+                ("brokerage_alpha", "TST_W", 10, 100.0, "USD"),
+            )
+        with (
+            patch(
+                "nuri.trading.recommend.price_targets.calculate_targets",
+                return_value={
+                    "ticker": "TST_W",
+                    "entry_price": 110.0,
+                    "stop_loss": 102.30,
+                    "target_1": 132.0,
+                    "target_2": 154.0,
+                    "trailing_stop_pct": -15,
+                    "current_price": 110.0,
+                },
+            ),
+            patch(
+                "nuri.trading.recommend.price_targets.classify_stock_type",
+                return_value="growth",
+            ),
+        ):
+            DecisionCompiler().run(_compile_payload(ticker="TST_W"))
+
+        _, rows = claim_pending_outbox("brief", db_path=patched_db)
+        p = rows[0]["payload"]
+        assert p.get("position") == "held/winner"
+
+    def test_buy_emit_position_pension_only_treated_as_new(self, patched_db):
+        """연금 계좌만 보유 → taxable 비어 있어 position='new' (월 리밸런스 별도 trigger)."""
+        from nuri.core.db import claim_pending_outbox, get_db
+
+        with get_db(patched_db) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
+                ("pension_account", "TST_P", 100, 50.0, "USD"),
+            )
+        with (
+            patch(
+                "nuri.trading.recommend.price_targets.calculate_targets",
+                return_value={
+                    "ticker": "TST_P",
+                    "entry_price": 50.0,
+                    "stop_loss": 46.50,
+                    "target_1": 60.0,
+                    "target_2": 70.0,
+                    "trailing_stop_pct": -15,
+                    "current_price": 50.0,
+                },
+            ),
+            patch(
+                "nuri.trading.recommend.price_targets.classify_stock_type",
+                return_value="growth",
+            ),
+        ):
+            DecisionCompiler().run(_compile_payload(ticker="TST_P"))
+
+        _, rows = claim_pending_outbox("brief", db_path=patched_db)
+        assert rows[0]["payload"].get("position") == "new"
+
     def test_buy_emit_omits_price_levels_when_targets_fail(self, patched_db):
         """price_targets 가 error 반환하면 payload 에 price_levels 부재 — silent omit."""
         from nuri.core.db import claim_pending_outbox

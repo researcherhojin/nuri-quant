@@ -414,6 +414,7 @@ class DecisionCompiler(Actor):
             # 사용자 룰 (recommend/CLAUDE.md "Price levels mandatory") + #571
             # missing-fields 의 #1 항목.
             if action in ("BUY", "SELL"):
+                targets: dict[str, Any] = {}
                 try:
                     from nuri.trading.recommend.price_targets import calculate_targets
 
@@ -427,6 +428,46 @@ class DecisionCompiler(Actor):
                             "trailing_pct": targets.get("trailing_stop_pct"),
                         }
                 except Exception:  # noqa: BLE001 — price targets failure must not block brief
+                    pass
+
+                # #571 Phase 2 — horizon (growth/value/swing 룰셋 다름 -7%/-10%/-5% stop)
+                try:
+                    from nuri.trading.recommend.price_targets import classify_stock_type
+
+                    payload["horizon"] = classify_stock_type(ticker)
+                except Exception:  # noqa: BLE001
+                    pass
+
+                # #571 Phase 2 — position_state. taxable account 보유 여부 + winner/loser
+                # 분기. 연금 보유는 monthly rebalance 별도 trigger 라 제외.
+                try:
+                    rows = query(
+                        "SELECT account, quantity, avg_price FROM portfolio WHERE ticker = ?",
+                        (ticker,),
+                    )
+                    taxable = [
+                        r
+                        for r in rows
+                        if r.get("quantity")
+                        and float(r["quantity"]) > 0
+                        and not any(kw in (r.get("account") or "").lower() for kw in ("연금", "pension", "irp"))
+                    ]
+                    if not taxable:
+                        payload["position"] = "new"
+                    else:
+                        slice_largest = max(
+                            taxable,
+                            key=lambda r: float(r["quantity"]) * float(r.get("avg_price") or 0),
+                        )
+                        avg = float(slice_largest.get("avg_price") or 0)
+                        cur = float(targets.get("current_price") or 0)
+                        if avg > 0 and cur > avg * 1.05:
+                            payload["position"] = "held/winner"
+                        elif avg > 0 and cur < avg * 0.95:
+                            payload["position"] = "held/loser"
+                        else:
+                            payload["position"] = "held"
+                except Exception:  # noqa: BLE001
                     pass
 
             stage_brief(
