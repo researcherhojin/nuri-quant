@@ -18,17 +18,27 @@ These are mechanically enforced (hooks/CI/code). Violating any means a hook bloc
 - **Auto trading deferred** (§7.1, permanent): system emits recommendations + alerts only; user executes orders manually. `DryRun` / paper trading kept for backtest only. Reverting requires STRATEGY PR + re-approval.
 - **Privacy in commits** (§4.4.1, hook + CI blocked): personal financial data must never enter the public repo. `scripts/check_privacy_leak.py` (canonical rule list) runs pre-push and in CI `privacy-scan`, blocking 4 categories — Korean broker names, romanized broker substrings, suspect 7+ digit monetary literals near sensitive keys (`total_invested` / `cash_balance` / etc), and ticker+signed-% combinations. Use placeholders (`Brokerage Alpha/Beta`, round-million values). When documenting the rule itself, reference the scanner — never inline the patterns it blocks.
 
-### Harness Engineering — 7 Principles (§5.8)
+### Working Style — Karpathy 4 + nuri 7 (§5.8)
 
-This project's primary developer is an LLM (Claude Code). LLMs fail systematically. These rules are how we enforce non-failure. Most are mechanically enforced (hooks/CI); a few are self-enforced.
+This project's primary developer is an LLM (Claude Code). LLMs fail systematically — these are the behavior cues that catch failure BEFORE hooks/CI fire. [Karpathy's 4 principles](https://github.com/forrestchang/andrej-karpathy-skills/blob/main/CLAUDE.md) are the parent frame; nuri's 7 mechanical sub-rules sharpen them with project specifics.
 
-1. **모르면 읽는다** — assume nothing. Grep function signatures / class definitions before calling. No hallucinating parameter names.
-2. **2번 실패하면 접근을 바꾼다** — same approach 3 times = stop. Reframe — root cause is usually the premise, not the impl detail.
-3. **사용자 워크플로로 검증한다** — mock test ≠ verification. Run `make X --flag` directly before claiming ship-ready (Mock-only ship 함정 3회 반복 후 추가, 2026-04-14).
-4. **스코프를 지킨다** — 1 issue = 1 PR, ≤ 3 commits. New finding → separate issue. Never bundled.
-5. **숫자를 grep한다** — when changing count/version/threshold, `grep -ri "old_value"` to catch all references. `make verify-doc-counts` enforces drift check on each PR.
-6. **시스템이 차단한다** — ruff / hooks / CI / SIEGE gates do mechanical work. Don't rely on documentation reminders.
-7. **외부 API는 측정한다** — yfinance 10-thread OK ≠ KRX 10-thread OK. Probe concurrency / timeout / rate-limit before parallelizing.
+**1. Think before coding** — state assumptions explicitly. If uncertain, **ask** (don't guess UI flows, function signatures, API behavior). Multiple interpretations? **Present them**, don't pick silently. Simpler approach exists? Surface it; push back when warranted.
+- *모르면 읽는다* — grep/Read function signatures + source before calling. No hallucinating parameter names.
+- *외부 API는 측정한다* — concurrency / rate-limit / timeout probe before parallelizing (yfinance 10-thread OK ≠ KRX 10-thread OK).
+
+**2. Simplicity first** — minimum code that solves the asked problem. **No** speculative features, configurability, abstractions for single-use code, or error-handling for impossible scenarios. 200 lines that should be 50 → rewrite. Senior-engineer test: "Is this overcomplicated?" → if yes, simplify.
+
+**3. Surgical changes** — touch only what the user asked. **Don't** "improve" adjacent code, comments, formatting. Match existing style even if you'd do it differently. Notice unrelated dead code → mention it, don't delete it. Every changed line traces directly to the user's request.
+- *스코프를 지킨다* — 1 issue = 1 PR, ≤ 3 commits. New finding → separate issue. Never bundled.
+- *숫자를 grep한다* — when changing count/version/threshold, `grep -ri "old_value"` first. `make verify-doc-counts` catches drift in CI.
+
+**4. Goal-driven execution** — define verifiable success criteria, loop until met. Multi-step task → state plan as `1. step → verify: check / 2. ...` BEFORE starting. "Make it work" is not a criterion.
+- *사용자 워크플로로 검증한다* — mock test ≠ verification. Run `make X --flag` directly before claiming ship-ready (Mock-only ship 함정 3회 반복 후 추가, 2026-04-14).
+- *2번 실패하면 접근을 바꾼다* — same approach 3 times = stop, reframe (root cause is usually the premise, not the impl).
+- *시스템이 차단한다* — ruff / hooks / CI / SIEGE do mechanical work; don't substitute "I checked" for those gates.
+
+**Working ✅**: clarifying questions before mistakes; fewer unnecessary lines per diff; explicit "I assume X — confirm?" before non-trivial work.
+**Working ✗**: silent assumptions on UI / API; "I'll just refactor while I'm here"; pushing recommendations without showing tradeoffs; scope creep dressed as "while we're at it".
 
 ### Gotcha-Test Pair (§5.3.1)
 
