@@ -1343,4 +1343,26 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_outbox_run ON discord_outbox(run_id);
     """,
     ),
+    (
+        43,
+        "held_add_shadow — Phase 2a held add-mode shadow emit (#518)",
+        """
+        CREATE TABLE IF NOT EXISTS held_add_shadow (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            ticker TEXT NOT NULL,
+            account TEXT NOT NULL,
+            mode TEXT NOT NULL CHECK(mode IN ('tp1_residual_add','ride_winner','average_down')),
+            score REAL,
+            current_pct REAL,
+            cap_max_pct REAL,
+            headroom_pct REAL,
+            payload_json TEXT NOT NULL,
+            run_id TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_held_add_shadow_ticker ON held_add_shadow(ticker, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_held_add_shadow_acct ON held_add_shadow(account, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_held_add_shadow_mode ON held_add_shadow(mode, timestamp);
+    """,
+    ),
 ]
