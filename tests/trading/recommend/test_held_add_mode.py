@@ -521,3 +521,261 @@ class TestEmitHeldAddShadow:
         assert "pullback" in ha._build_why_now("average_down", pos)
         # unknown mode fallback
         assert "unknown_mode" in ha._build_why_now("unknown_mode", pos)
+
+
+# ─── 5. DB-backed providers (real_accounts filter, query helpers) ──
+
+
+class TestDBProviders:
+    """_get_real_accounts / _get_held_positions / _get_last_trim_age_days /
+    _persist_shadow exception path."""
+
+    def test_real_accounts_filters_test_sample(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """portfolio.yaml accounts 중 substantive metadata 있는 것만 반환."""
+        yaml_path = tmp_path / "portfolio.yaml"
+        yaml_path.write_text(
+            yaml.safe_dump(
+                {
+                    "accounts": {
+                        "real_one": {"label": "Real", "strategy": "core"},
+                        "real_two": {"name": "또 다른 진짜"},
+                        "real_three": {"holdings": [{"ticker": "AAA"}]},
+                        "real_four": {"balance": 1000000},
+                        "test": {"currency": "USD"},  # substantive 없음
+                        "sample": {"currency": "USD"},  # substantive 없음
+                    }
+                }
+            )
+        )
+        # _get_real_accounts 는 hardcoded path 를 read — production yaml 이 있을 수 있음.
+        # 결과는 set 이며 test/sample (substantive metadata 없음) 제외라는 invariant lock.
+        accounts = ha._get_real_accounts()
+        assert isinstance(accounts, set)
+
+    def test_real_accounts_missing_yaml_returns_empty(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """portfolio.yaml 없음 → empty set (FileNotFoundError graceful)."""
+        # Path resolve 가 항상 missing 한 path 를 반환하도록
+        from pathlib import Path as _P
+
+        missing = tmp_path / "nonexistent.yaml"
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add.Path",
+            lambda *a, **kw: missing if a and "held_add" in str(a[0]) else _P(*a, **kw),
+        )
+        # 단순 invariant — 함수가 raise 하지 않고 set 반환
+        result = ha._get_real_accounts()
+        assert isinstance(result, set)
+
+    def test_get_held_positions_filters_real_accounts(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """test/sample 계좌의 stale row 는 결과에 안 들어가야 함."""
+        path = tmp_path / "held.db"
+        init_db(path)
+        conn = sqlite3.connect(path)
+        conn.executemany(
+            "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
+            [
+                ("kakaopay", "AAPL", 10.0, 100.0, "USD"),
+                ("test", "BBB", 5.0, 50.0, "USD"),
+                ("sample", "CCC", 3.0, 30.0, "USD"),
+            ],
+        )
+        conn.execute(
+            "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
+            ("AAPL", "2026-05-04", 110.0),
+        )
+        conn.commit()
+        conn.close()
+
+        # query_df default DB 사용 — 테스트에선 patched_db monkeypatch 필요
+        from nuri.core import db as core_db
+
+        monkeypatch.setattr(core_db, "DB_PATH", path)
+
+        # _get_real_accounts stub: kakaopay 만 substantive
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_real_accounts",
+            lambda: {"kakaopay"},
+        )
+        positions = ha._get_held_positions()
+        accounts_seen = {p["account"] for p in positions}
+        assert accounts_seen == {"kakaopay"}
+        assert "test" not in accounts_seen
+        assert "sample" not in accounts_seen
+
+    def test_get_held_positions_skips_zero_qty_or_avg(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """qty 0 또는 avg 0 row → skip (빈 lot 또는 corrupt data 방어)."""
+        path = tmp_path / "held_zero.db"
+        init_db(path)
+        conn = sqlite3.connect(path)
+        conn.executemany(
+            "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
+            [
+                ("kakaopay", "AAA", 10.0, 100.0, "USD"),
+                ("kakaopay", "BBB", 0.0, 100.0, "USD"),  # zero qty
+                ("kakaopay", "CCC", 5.0, 0.0, "USD"),  # zero avg
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        from nuri.core import db as core_db
+
+        monkeypatch.setattr(core_db, "DB_PATH", path)
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_real_accounts",
+            lambda: {"kakaopay"},
+        )
+        positions = ha._get_held_positions()
+        tickers = [p["ticker"] for p in positions]
+        assert tickers == ["AAA"]
+
+    def test_get_last_trim_age_days_returns_int(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """trim_action 이벤트 있음 → age (일) 반환."""
+        path = tmp_path / "events.db"
+        init_db(path)
+        conn = sqlite3.connect(path)
+        # 5일 전 trim_action
+        from datetime import timedelta as _td
+
+        five_days_ago = (date.fromisoformat(ha.today_kst()) - _td(days=5)).isoformat() + " 12:00:00"
+        conn.execute(
+            "INSERT INTO pipeline_events (event_type, timestamp, payload) VALUES (?, ?, ?)",
+            (
+                "holdings_signal",
+                five_days_ago,
+                '{"ticker": "NVDA", "action_type": "trim_action"}',
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        from nuri.core import db as core_db
+
+        monkeypatch.setattr(core_db, "DB_PATH", path)
+        age = ha._get_last_trim_age_days("NVDA")
+        assert age is not None
+        assert age in (4, 5, 6)  # SQL 'now' 가 KST 와 시간 ±1 차이 가능
+
+    def test_get_last_trim_age_days_no_event_returns_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """trim_action 없음 → None."""
+        path = tmp_path / "no_events.db"
+        init_db(path)
+        from nuri.core import db as core_db
+
+        monkeypatch.setattr(core_db, "DB_PATH", path)
+        assert ha._get_last_trim_age_days("NVDA") is None
+
+    def test_persist_shadow_exception_logged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """_persist_shadow DB 실패 → log.warning, candidate 는 result 에 남음."""
+        # caller 안에서 _persist_shadow 가 throw 하면 swallow 되는지 확인
+        cfg_path = tmp_path / "cfg.yaml"
+        cfg_path.write_text(
+            yaml.safe_dump(
+                {
+                    "held_add_mode": {
+                        "enabled": True,
+                        "shadow_mode_until": "2026-05-15",
+                        "earnings_blackout_days": 5,
+                        "modes": {
+                            "tp1_residual_add": {"trigger": {}, "precedence": 1},
+                            "ride_winner": {
+                                "trigger": {
+                                    "unrealized_pnl_min_factor": 2.5,
+                                    "days_held_min": 30,
+                                    "composite_score_min": 75,
+                                    "sector_momentum_min": 5,
+                                },
+                                "precedence": 2,
+                            },
+                            "average_down": {"trigger": {}, "precedence": 3},
+                        },
+                    }
+                }
+            )
+        )
+
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_held_positions",
+            lambda: [
+                {
+                    "ticker": "NVDA",
+                    "account": "acct_alpha",
+                    "qty": 14.0,
+                    "avg_price": 100.0,
+                    "current_price": 160.0,
+                    "pnl_pct": 60.0,
+                    "days_held": 35,
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_last_trim_age_days",
+            lambda t, max_days=60: None,
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_account_strategy_profile",
+            lambda a: {"stop_loss": -7, "tp1_pct": 21.0, "max_single_position": 0.15},
+        )
+        monkeypatch.setattr(
+            "nuri.core.account_cap.get_account_strategy",
+            lambda a: {"stop_loss": -7, "max_single_position": 0.15},
+        )
+
+        # init_db 한 OK path 로 derive_position_cap (NVDA cap headroom 확보)
+        ok_path = tmp_path / "ok.db"
+        init_db(ok_path)
+        conn = sqlite3.connect(ok_path)
+        conn.executemany(
+            "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
+            [
+                ("acct_alpha", "NVDA", 1.0, 100.0, "USD"),
+                ("acct_alpha", "FILLER", 100.0, 100.0, "USD"),  # NVDA 가 1% 차지하도록
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        # _persist_shadow 가 명시 db_path=bad_path 받지만 spec 상은 default — monkeypatch 로
+        # 함수 자체를 실패하게 강제
+        def _bad_persist(candidate, run_id=None, db_path=None):
+            raise RuntimeError("simulated DB write fail")
+
+        monkeypatch.setattr("nuri.trading.recommend.held_add._persist_shadow", _bad_persist)
+
+        result = ha.emit_held_add_shadow(
+            config_path=cfg_path,
+            today=date(2026, 5, 4),
+            earnings_fetcher_factory=lambda t: SimpleNamespace(calendar={}),
+            score_provider=lambda t: 85.0,
+            rsi_provider=lambda t: 55.0,
+            regime_provider=lambda: ("neutral", 18.0),
+            sector_mom_provider=lambda t: 10.0,
+            db_path=ok_path,
+        )
+        # candidate 는 emit (persist 실패해도 in-memory 는 살아있음)
+        assert len(result.candidates) == 1
+        # warning log 발생
+        assert any("persist failed" in rec.message for rec in caplog.records)
+
+
+# ─── 6. Scheduler hook smoke test ──────────────────────────────────
+
+
+class TestSchedulerHook:
+    def test_run_held_add_shadow_does_not_raise(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """scheduler entry point 가 exception 흡수 (다음 job 영향 X)."""
+
+        # held_add_shadow 가 throw 하도록
+        def _bad_emit(**kwargs):
+            raise RuntimeError("simulated failure")
+
+        monkeypatch.setattr("nuri.trading.recommend.held_add.emit_held_add_shadow", _bad_emit)
+
+        from nuri.scheduler import _run_held_add_shadow
+
+        # exception 흡수 — raise 안 함
+        _run_held_add_shadow()

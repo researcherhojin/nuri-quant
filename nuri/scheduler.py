@@ -258,6 +258,62 @@ def _run_channel_dispatcher(channel: str):
         logger.error(f"[dispatcher:{channel}] 실행 실패: {e}", exc_info=True)
 
 
+def _run_held_add_shadow():
+    """held_add shadow emit (#518 phase 2a) — 매일 보유 종목 add 후보 평가.
+
+    shadow_mode_until 까지: held_add_shadow 테이블에만 persist (brief surface
+    안 함). 14d 누적 후 #519 2c calibration sample.
+
+    Providers wire-up: buy_candidate_emitter helpers 재사용 — score (factor
+    composite × 100), rsi (RSI snapshot), regime (regime_transitions + VIX),
+    sector_mom (price 5d momentum proxy), breakout_above_trim (False default
+    — strict, false-positive 회피).
+    """
+    try:
+        from nuri.trading.recommend.buy_candidate_emitter import (
+            _get_factor_scores,
+            _get_price_signals,
+            _get_regime,
+            _get_rsi_snapshot,
+        )
+        from nuri.trading.recommend.held_add import emit_held_add_shadow
+
+        factors = _get_factor_scores()
+        rsi_map = _get_rsi_snapshot()
+        prices = _get_price_signals()
+        regime, vix = _get_regime()
+
+        def _score(t: str) -> float:
+            f = factors.get(t)
+            return float((f or {}).get("composite", 0.0)) * 100.0
+
+        def _rsi(t: str) -> float | None:
+            return rsi_map.get(t)
+
+        def _regime() -> tuple[str, float]:
+            return regime, vix
+
+        def _sector_mom(t: str) -> float:
+            # 5d return 을 sector momentum proxy 로 사용 — 진짜 sector index
+            # 가 없을 때 ticker 자체 momentum 으로 대체. shadow 단계에서 acceptable.
+            return float((prices.get(t) or {}).get("ret_5d", 0.0))
+
+        result = emit_held_add_shadow(
+            score_provider=_score,
+            rsi_provider=_rsi,
+            regime_provider=_regime,
+            sector_mom_provider=_sector_mom,
+        )
+        n_emit = len(result.candidates)
+        n_skip = len(result.skipped)
+        logger.info(
+            f"[held_add_shadow] {n_emit}건 emit / {n_skip}건 skip "
+            f"(shadow={result.shadow_mode}, until={result.shadow_mode_until})"
+        )
+    except Exception as e:
+        logger.error(f"[held_add_shadow] 실행 실패: {e}", exc_info=True)
+
+
 def _run_outbox_watchdog():
     """OutboxWatchdog — 직접 #ops 발송 (recursion 방지). 10분 마다."""
     try:
@@ -331,6 +387,10 @@ SCHEDULES = [
     # JKHY-class entry 단계 보호 (PR #303) 의 hold-stage 보강. REVIEW alert only,
     # auto-trade 없음 (STRATEGY §7.1 deferred). pipeline_events 로 7d dedup.
     {"name": "holdings_monitor", "func": _run_collector, "args": ("holdings_monitor",), "cron": "10 7 * * *"},
+    # held_add shadow emit (#518 phase 2a, 매일 07:15 — holdings_monitor 직후).
+    # 보유 종목에 대한 add 후보 평가 (3 modes + earnings blackout). shadow_mode_until
+    # 까지 held_add_shadow 테이블 only — brief surface 안 함. 14d 누적 후 2c calibration.
+    {"name": "held_add_shadow", "func": _run_held_add_shadow, "args": (), "cron": "15 7 * * *"},
     # Agent accuracy 스냅샷 (주 1회 일요일 08:00)
     {"name": "agent_accuracy", "func": _run_collector, "args": ("agent_accuracy",), "cron": "0 8 * * 0"},
     # 일일 리포트 (매일 08:00)
