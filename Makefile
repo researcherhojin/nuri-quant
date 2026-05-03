@@ -318,6 +318,12 @@ certify-diff:
 remediate:
 	$(PYTHON) -m nuri.trading.engine.remediation
 
+# Strategic Asset Allocation drift advisor (STRATEGY §3.10).
+# 사용법: make strategic-rebalance STRATEGY=core (default core).
+# rc=0 OK / rc=1 REBALANCE 권고 (drift > threshold).
+strategic-rebalance:
+	$(PYTHON) -m nuri.trading.strategy.strategic_allocation --strategy $(or $(STRATEGY),core)
+
 track-decisions:
 	$(PYTHON) -m nuri.trading.engine.decisions --track --snapshot
 
