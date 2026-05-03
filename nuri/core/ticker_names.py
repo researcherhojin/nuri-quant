@@ -5,6 +5,7 @@
 2차: pykrx get_market_ticker_name (주식, LRU 캐시)
 US 티커(MSFT, TSLA 등)는 이미 식별 가능하므로 None 반환.
 """
+
 import json
 import logging
 from functools import lru_cache
@@ -18,18 +19,28 @@ def get_ticker_name(ticker: str) -> str | None:
     if not ticker.endswith((".KS", ".KQ")):
         return None
 
-    # 1차: DB portfolio metadata에서 note 필드 조회
+    # 1차: DB portfolio metadata에서 name/note 필드 조회.
+    # `name` 명시값 우선. `note` 는 보통 "<canonical> — <buy thesis>" 패턴이라
+    # 첫 dash 앞부분만 canonical name 으로 본다 (그렇지 않으면 brief 가
+    # 매수 narrative 전체를 ticker 자리에 표시해 가독성이 무너짐).
     try:
         from nuri.core.db import query
+
         rows = query(
             "SELECT metadata FROM portfolio WHERE ticker = ? AND metadata IS NOT NULL LIMIT 1",
             (ticker,),
         )
         if rows:
             meta = json.loads(rows[0]["metadata"])
-            note = meta.get("note") or meta.get("name")
+            name = meta.get("name")
+            if name:
+                return str(name).strip()
+            note = meta.get("note")
             if note:
-                return note
+                for sep in (" — ", " - ", "—"):
+                    if sep in note:
+                        return note.split(sep, 1)[0].strip()
+                return note[:24].strip()
     except Exception as e:
         logger.debug("DB name lookup failed for %s: %s", ticker, e)
 
@@ -37,6 +48,7 @@ def get_ticker_name(ticker: str) -> str | None:
     code = ticker.replace(".KS", "").replace(".KQ", "")
     try:
         from pykrx import stock as krx
+
         name = krx.get_market_ticker_name(code)
         return name if name else None
     except Exception as e:

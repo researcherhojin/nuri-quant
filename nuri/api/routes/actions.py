@@ -124,6 +124,8 @@ def _build_actions() -> dict:
             "current_price": holding.get("current_price"),
             "avg_price": holding.get("avg_price"),
             "account": holding.get("account", ""),
+            # #527: multi-account 노출. 1 개 계좌면 1-element list, 2+ 면 breakdown.
+            "accounts": holding.get("accounts") or [],
             "stop_loss": target.get("stop_loss"),
             "target_1": target.get("target_1"),
             "target_2": target.get("target_2"),
@@ -485,10 +487,32 @@ def _get_targets_status() -> dict[str, dict]:
     return targets
 
 
+def _get_real_accounts() -> set[str]:
+    """portfolio.yaml accounts 중 substantive metadata (label/name/strategy/holdings/balance)
+    가 있는 키만 반환. test/sample 같은 stub 계좌의 stale DB row 가
+    portfolio aggregation 을 오염시키는 것을 차단 (#527 root cause)."""
+    from pathlib import Path
+
+    import yaml
+
+    portfolio_path = Path(__file__).parent.parent.parent.parent / "config" / "portfolio.yaml"
+    try:
+        portfolio = yaml.safe_load(portfolio_path.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    real: set[str] = set()
+    for acc, info in (portfolio.get("accounts") or {}).items():
+        info = info or {}
+        if any(info.get(k) for k in ("label", "name", "strategy", "holdings", "balance")):
+            real.add(acc)
+    return real
+
+
 def _get_portfolio_map() -> dict[str, dict]:
     """보유 종목 → 현재 상태 매핑."""
     from nuri.api.routes.dashboard import _get_account_labels
 
+    real_accounts = _get_real_accounts()
     rows = query("""
         SELECT p.account, p.ticker, p.quantity, p.avg_price, p.currency,
                pr.close as current_price
@@ -498,6 +522,10 @@ def _get_portfolio_map() -> dict[str, dict]:
             WHERE (ticker, date) IN (SELECT ticker, MAX(date) FROM prices GROUP BY ticker)
         ) pr ON p.ticker = pr.ticker
     """)
+    # #527: stale test/sample/legacy account 의 row 가 합산 비중·pnl 을 왜곡한다.
+    # portfolio.yaml 의 substantive accounts 만 본다.
+    if real_accounts:
+        rows = [r for r in rows if r["account"] in real_accounts]
 
     rate_row = query("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1")
     rate = rate_row[0]["value"] if rate_row else 1400
@@ -528,6 +556,8 @@ def _get_portfolio_map() -> dict[str, dict]:
     #   - non-pension rows 가 없으면(=pension-only ticker) pension 중 worst 로 채움
     #     — 이 경우 downstream `_build_actions` 가 pension_tickers set 으로 suppress
     #   - position_pct 는 항상 전체 합산 (실제 노출도)
+    # #527: 합산 표시만 surface 되어 multi-account 노출 사실 자체가 보이지 않던
+    # 문제 해결 — `accounts` list 로 per-account breakdown 도 함께 반환한다.
     result: dict[str, dict] = {}
     for r, val, price, is_kr in items:
         ticker = r["ticker"]
@@ -536,6 +566,15 @@ def _get_portfolio_map() -> dict[str, dict]:
         pos_pct = (val / total_value * 100) if total_value > 0 else 0
         account_label = labels.get(r["account"], r["account"])
         is_pension = _is_pension_label(account_label)
+
+        per_account = {
+            "account": account_label,
+            "quantity": r["quantity"],
+            "avg_price": avg,
+            "current_price": price,
+            "pnl_pct": pnl,
+            "position_pct": pos_pct,
+        }
 
         existing = result.get(ticker)
         if existing is None:
@@ -546,11 +585,13 @@ def _get_portfolio_map() -> dict[str, dict]:
                 "pnl_pct": pnl,
                 "position_pct": pos_pct,
                 "account": account_label,
+                "accounts": [per_account],  # #527: per-account breakdown
                 "_pension_only": is_pension,  # 내부 flag — 아래 정리에서 제거
             }
             continue
 
         existing["position_pct"] += pos_pct
+        existing["accounts"].append(per_account)
         # non-pension row 가 들어오면 이전 pension-only state 를 non-pension 으로 승격
         if not is_pension and existing["_pension_only"]:
             existing["_pension_only"] = False

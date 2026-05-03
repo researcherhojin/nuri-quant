@@ -2,8 +2,10 @@
 
 Combines integration tests (TestClient) + unit tests (mock-based).
 """
+
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -52,6 +54,7 @@ def client(tmp_path, monkeypatch):
                 ("TSLA", "SELL", 46, "recovery", json.dumps({"agreement_rate": 0.2}), "2026-04-13"),
             )
         from nuri.api.main import app
+
         yield TestClient(app)
 
 
@@ -140,6 +143,7 @@ class TestCacheHitPaths:
 
     def _clear_caches(self):
         from nuri.api.routes import actions
+
         for cache in (actions._actions_cache, actions._opportunities_cache, actions._market_context_cache):
             cache["data"] = None
             cache["timestamp"] = 0
@@ -148,6 +152,7 @@ class TestCacheHitPaths:
         import time
 
         from nuri.api.routes import actions
+
         self._clear_caches()
         fake_result = {"urgent": [{"ticker": "CACHED"}], "check": [], "hold": [], "generated_at": "test"}
         actions._actions_cache["data"] = fake_result
@@ -159,6 +164,7 @@ class TestCacheHitPaths:
         import time
 
         from nuri.api.routes import actions
+
         self._clear_caches()
         fake_result = {"opportunities": [{"ticker": "CACHED"}], "generated_at": "test"}
         actions._opportunities_cache["data"] = fake_result
@@ -170,6 +176,7 @@ class TestCacheHitPaths:
         import time
 
         from nuri.api.routes import actions
+
         self._clear_caches()
         fake_result = {"macro_events": [], "system_health": {"cached": True}, "generated_at": "test"}
         actions._market_context_cache["data"] = fake_result
@@ -181,10 +188,14 @@ class TestCacheHitPaths:
         import time
 
         from nuri.api.routes import actions
+
         self._clear_caches()
         actions._actions_cache["data"] = {"stale": True}
         actions._actions_cache["timestamp"] = time.time() - 600  # 10분 전 (TTL 5분 초과)
-        with patch("nuri.api.routes.actions._build_actions", return_value={"urgent": [], "check": [], "hold": [], "generated_at": "fresh"}):
+        with patch(
+            "nuri.api.routes.actions._build_actions",
+            return_value={"urgent": [], "check": [], "hold": [], "generated_at": "fresh"},
+        ):
             result = actions.get_actions()
             assert "stale" not in result
 
@@ -193,6 +204,7 @@ class TestEndpointExceptionFallbacks:
     def _clear_caches(self):
         """캐시 오염 방지 — 이전 테스트의 캐시가 남아있으면 exception 경로 안 탐."""
         from nuri.api.routes import actions
+
         for cache in (actions._actions_cache, actions._opportunities_cache, actions._market_context_cache):
             cache["data"] = None
             cache["timestamp"] = 0
@@ -201,6 +213,7 @@ class TestEndpointExceptionFallbacks:
         self._clear_caches()
         with patch("nuri.api.routes.actions._build_actions", side_effect=RuntimeError("boom")):
             from nuri.api.routes.actions import get_actions
+
             result = get_actions()
             # PR A: 4-bucket shape including portfolio — Frontend page.tsx fallback 과 일치
             assert result == {"urgent": [], "check": [], "hold": [], "portfolio": []}
@@ -209,6 +222,7 @@ class TestEndpointExceptionFallbacks:
         self._clear_caches()
         with patch("nuri.api.routes.actions._build_opportunities", side_effect=RuntimeError("boom")):
             from nuri.api.routes.actions import get_opportunities
+
             result = get_opportunities()
             assert result == {"opportunities": []}
 
@@ -216,20 +230,113 @@ class TestEndpointExceptionFallbacks:
         self._clear_caches()
         with patch("nuri.api.routes.actions._get_macro_events", side_effect=RuntimeError("boom")):
             from nuri.api.routes.actions import get_market_context
+
             result = get_market_context()
             assert result["macro_events"] == []
             assert result["system_health"] == {}
             assert "generated_at" in result
 
 
+class TestPortfolioMapMultiAccount:
+    """#527 lock-test — 같은 ticker 가 2 계좌에 보유될 때 합산 + per-account
+    breakdown 둘 다 surface. test/sample stub 계좌의 stale DB row 가 합산 비중을
+    왜곡하지 않아야 한다 (root cause)."""
+
+    def _seed(self, db_path: Path, rows: list[dict]) -> None:
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            for r in rows:
+                conn.execute(
+                    "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
+                    (r["account"], r["ticker"], r["qty"], r["avg"], "USD"),
+                )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("WIDGET", "2026-05-01", 200, 210, 195, 200, 1_000_000),
+            )
+
+    def test_same_ticker_two_real_accounts_aggregated(self, tmp_path, monkeypatch):
+        from nuri.core.db import init_db
+
+        db = tmp_path / "test.db"
+        init_db(db)
+        import nuri.core.db as db_mod
+
+        monkeypatch.setattr(db_mod, "DB_PATH", db)
+        monkeypatch.setenv("NURI_DB_PATH", str(db))
+
+        # 2 실 계좌 + 1 stub 계좌. stub 은 yaml 에서 substantive metadata 없음.
+        self._seed(
+            db,
+            [
+                {"account": "broker_a", "ticker": "WIDGET", "qty": 10, "avg": 100.0},
+                {"account": "broker_b", "ticker": "WIDGET", "qty": 5, "avg": 180.0},
+                {"account": "stub_x", "ticker": "WIDGET", "qty": 100, "avg": 50.0},  # pollution
+            ],
+        )
+
+        # yaml 로드 mock — broker_a/broker_b 만 substantive
+        from nuri.api.routes import actions as mod
+
+        monkeypatch.setattr(mod, "_get_real_accounts", lambda: {"broker_a", "broker_b"})
+        # _get_account_labels mock
+        from nuri.api.routes import dashboard
+
+        monkeypatch.setattr(
+            dashboard, "_get_account_labels", lambda: {"broker_a": "Brokerage Alpha", "broker_b": "Brokerage Beta"}
+        )
+
+        result = mod._get_portfolio_map()
+        widget = result.get("WIDGET")
+        assert widget is not None, "WIDGET 가 누락되면 안 됨"
+
+        # accounts breakdown 2 entries (stub 제외 검증)
+        assert len(widget["accounts"]) == 2
+        names = sorted(a["account"] for a in widget["accounts"])
+        assert names == ["Brokerage Alpha", "Brokerage Beta"]
+
+        # 합산 position_pct = sum of per-account
+        per_acct_sum = sum(a["position_pct"] for a in widget["accounts"])
+        assert abs(widget["position_pct"] - per_acct_sum) < 1e-6, (
+            f"aggregate {widget['position_pct']} != sum {per_acct_sum}"
+        )
+
+    def test_stub_only_ticker_filtered_out(self, tmp_path, monkeypatch):
+        """stub 계좌 단독 보유 ticker 는 portfolio_map 에 등장하지 않아야 한다."""
+        from nuri.core.db import init_db
+
+        db = tmp_path / "test.db"
+        init_db(db)
+        import nuri.core.db as db_mod
+
+        monkeypatch.setattr(db_mod, "DB_PATH", db)
+        monkeypatch.setenv("NURI_DB_PATH", str(db))
+
+        self._seed(
+            db,
+            [
+                {"account": "stub_x", "ticker": "WIDGET", "qty": 100, "avg": 50.0},
+            ],
+        )
+        from nuri.api.routes import actions as mod
+
+        monkeypatch.setattr(mod, "_get_real_accounts", lambda: {"broker_a"})  # stub 제외
+        from nuri.api.routes import dashboard
+
+        monkeypatch.setattr(dashboard, "_get_account_labels", lambda: {})
+
+        result = mod._get_portfolio_map()
+        assert "WIDGET" not in result, "stub-only ticker 는 누락되어야 함"
+
+
 class TestGetRecommendationsEdge:
     @patch("nuri.api.routes.actions.query")
     def test_malformed_signals_json(self, mock_query):
         """signals가 유효하지 않은 JSON이면 agreement=None."""
-        mock_query.return_value = [
-            {"ticker": "BAD", "action": "BUY", "confidence": 0.6, "signals": "not-json{{{"}
-        ]
+        mock_query.return_value = [{"ticker": "BAD", "action": "BUY", "confidence": 0.6, "signals": "not-json{{{"}]
         from nuri.api.routes.actions import _get_recommendations
+
         result = _get_recommendations()
         assert result[0]["agreement"] is None
 
@@ -239,13 +346,18 @@ class TestGetRecommendationsEdge:
         노출 — Frontend UI 에서 바둑돌 형태로 표시할 수 있게."""
         mock_query.return_value = [
             {
-                "ticker": "BAC", "action": "HOLD", "confidence": 0.62,
+                "ticker": "BAC",
+                "action": "HOLD",
+                "confidence": 0.62,
                 "signals": json.dumps({"agreement_rate": 0.9}),
-                "scoring_detail": None, "agent_verdicts": None,
-                "alpha_action": None, "portfolio_action": "REBALANCE",
+                "scoring_detail": None,
+                "agent_verdicts": None,
+                "alpha_action": None,
+                "portfolio_action": "REBALANCE",
             }
         ]
         from nuri.api.routes.actions import _get_recommendations
+
         result = _get_recommendations()
         assert result[0]["alpha_action"] is None
         assert result[0]["portfolio_action"] == "REBALANCE"
@@ -275,19 +387,35 @@ class TestPRABucketRouting:
     def test_concentration_violation_goes_to_portfolio_bucket(self):
         """SIEGE position_limit 위반 ticker 는 portfolio bucket — urgent 아님."""
         result = self._invoke_build_actions(
-            recommendations=[{
-                "ticker": "BAC", "action": "HOLD", "confidence": 62,
-                "agreement": 90, "scoring_detail": None, "agent_verdicts": None,
-                "alpha_action": None, "portfolio_action": "REBALANCE",
-            }],
-            siege_violations=[{
-                "ticker": "BAC", "detail": "SIEGE: 종목 비중 한도 — 위반: BAC(19.8%>15%)",
-                "condition_id": "position_limit",
-            }],
-            portfolio_map={"BAC": {
-                "current_price": 40.0, "avg_price": 40.0, "quantity": 100,
-                "pnl_pct": 0.0, "position_pct": 19.8, "account": "Main",
-            }},
+            recommendations=[
+                {
+                    "ticker": "BAC",
+                    "action": "HOLD",
+                    "confidence": 62,
+                    "agreement": 90,
+                    "scoring_detail": None,
+                    "agent_verdicts": None,
+                    "alpha_action": None,
+                    "portfolio_action": "REBALANCE",
+                }
+            ],
+            siege_violations=[
+                {
+                    "ticker": "BAC",
+                    "detail": "SIEGE: 종목 비중 한도 — 위반: BAC(19.8%>15%)",
+                    "condition_id": "position_limit",
+                }
+            ],
+            portfolio_map={
+                "BAC": {
+                    "current_price": 40.0,
+                    "avg_price": 40.0,
+                    "quantity": 100,
+                    "pnl_pct": 0.0,
+                    "position_pct": 19.8,
+                    "account": "Main",
+                }
+            },
         )
         # PR A 핵심 assertion — "매도" urgent 가 아닌 portfolio bucket
         assert len(result["urgent"]) == 0
@@ -301,16 +429,29 @@ class TestPRABucketRouting:
     def test_stop_loss_breach_still_urgent(self):
         """Stop-loss breach 는 alpha-driven → urgent bucket (기존 behavior 유지)."""
         result = self._invoke_build_actions(
-            recommendations=[{
-                "ticker": "CRASH", "action": "SELL", "confidence": 85,
-                "agreement": 70, "scoring_detail": None, "agent_verdicts": None,
-                "alpha_action": "FLAT", "portfolio_action": None,
-            }],
+            recommendations=[
+                {
+                    "ticker": "CRASH",
+                    "action": "SELL",
+                    "confidence": 85,
+                    "agreement": 70,
+                    "scoring_detail": None,
+                    "agent_verdicts": None,
+                    "alpha_action": "FLAT",
+                    "portfolio_action": None,
+                }
+            ],
             siege_violations=[],
-            portfolio_map={"CRASH": {
-                "current_price": 70.0, "avg_price": 100.0, "quantity": 100,
-                "pnl_pct": -30.0, "position_pct": 5.0, "account": "Main",
-            }},
+            portfolio_map={
+                "CRASH": {
+                    "current_price": 70.0,
+                    "avg_price": 100.0,
+                    "quantity": 100,
+                    "pnl_pct": -30.0,
+                    "position_pct": 5.0,
+                    "account": "Main",
+                }
+            },
         )
         assert len(result["portfolio"]) == 0
         assert len(result["urgent"]) == 1
@@ -323,19 +464,35 @@ class TestPRABucketRouting:
         portfolio_action=REBALANCE 는 scoring_detail 에 병렬 surface (사용자가 매도
         대신 리밸런스 선택지 볼 수 있게)."""
         result = self._invoke_build_actions(
-            recommendations=[{
-                "ticker": "HYBRID", "action": "SELL", "confidence": 85,
-                "agreement": 70, "scoring_detail": None, "agent_verdicts": None,
-                "alpha_action": "FLAT", "portfolio_action": "REBALANCE",
-            }],
-            siege_violations=[{
-                "ticker": "HYBRID", "detail": "SIEGE: 종목 비중 한도 — 위반: HYBRID(22%>15%)",
-                "condition_id": "position_limit",
-            }],
-            portfolio_map={"HYBRID": {
-                "current_price": 70.0, "avg_price": 100.0, "quantity": 200,
-                "pnl_pct": -30.0, "position_pct": 22.0, "account": "Main",
-            }},
+            recommendations=[
+                {
+                    "ticker": "HYBRID",
+                    "action": "SELL",
+                    "confidence": 85,
+                    "agreement": 70,
+                    "scoring_detail": None,
+                    "agent_verdicts": None,
+                    "alpha_action": "FLAT",
+                    "portfolio_action": "REBALANCE",
+                }
+            ],
+            siege_violations=[
+                {
+                    "ticker": "HYBRID",
+                    "detail": "SIEGE: 종목 비중 한도 — 위반: HYBRID(22%>15%)",
+                    "condition_id": "position_limit",
+                }
+            ],
+            portfolio_map={
+                "HYBRID": {
+                    "current_price": 70.0,
+                    "avg_price": 100.0,
+                    "quantity": 200,
+                    "pnl_pct": -30.0,
+                    "position_pct": 22.0,
+                    "account": "Main",
+                }
+            },
         )
         # stop-loss (alpha-driven, 기계적) 이 dominant → urgent
         assert len(result["urgent"]) == 1
@@ -346,7 +503,9 @@ class TestPRABucketRouting:
     def test_portfolio_bucket_exposed_in_response_shape(self):
         """빈 portfolio 도 response 에 key 존재해야 함 (Frontend fallback 보장)."""
         result = self._invoke_build_actions(
-            recommendations=[], siege_violations=[], portfolio_map={},
+            recommendations=[],
+            siege_violations=[],
+            portfolio_map={},
         )
         assert "portfolio" in result
         assert result["portfolio"] == []
@@ -368,11 +527,13 @@ class TestGetSiegeViolationsEdge:
         @dataclass
         class FakeCert:
             conditions: list[FakeCond] | None = None
+
             def __post_init__(self):
                 self.conditions = self.conditions or [FakeCond()]
 
         with patch("nuri.trading.engine.certification.certify", return_value=FakeCert()):
             from nuri.api.routes.actions import _get_siege_violations
+
             result = _get_siege_violations()
             assert len(result) == 1
             assert result[0]["ticker"] == ""
@@ -392,11 +553,13 @@ class TestGetSiegeViolationsEdge:
         @dataclass
         class FakeCert:
             conditions: list[FakeCond] | None = None
+
             def __post_init__(self):
                 self.conditions = self.conditions or [FakeCond()]
 
         with patch("nuri.trading.engine.certification.certify", return_value=FakeCert()):
             from nuri.api.routes.actions import _get_siege_violations
+
             result = _get_siege_violations()
             assert len(result) == 1
             assert "레버리지" in result[0]["detail"]
@@ -410,6 +573,7 @@ class TestGetSiegeViolationsEdge:
 class TestComputeVerdict:
     def setup_method(self):
         from nuri.api.routes.actions import _compute_verdict
+
         self._verdict = _compute_verdict
 
     def test_extreme_drop_danger(self):
@@ -452,22 +616,26 @@ class TestComputeVerdict:
 class TestSiegeViolationParsing:
     def test_single_violation(self):
         import re
+
         matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", "위반: TSLA(15.4%>15%)")
         assert matches == ["TSLA"]
 
     def test_multiple_violations(self):
         import re
+
         matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", "위반: TSLA(15.4%>15%), NBIS(16.0%>15%)")
         assert matches == ["TSLA", "NBIS"]
 
     def test_no_match(self):
         import re
+
         matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", "모든 종목 15% 이하")
         assert matches == []
 
     def test_handles_certify_exception(self):
         with patch("nuri.trading.engine.certification.certify", side_effect=Exception("DB")):
             from nuri.api.routes.actions import _get_siege_violations
+
             assert _get_siege_violations() == []
 
 
@@ -479,14 +647,25 @@ class TestSiegeViolationParsing:
 class TestGetTargetsStatus:
     @patch("nuri.trading.recommend.price_targets.calculate_portfolio_targets")
     def test_returns_target_dict(self, mock_fn):
-        mock_fn.return_value = [{"ticker": "AAPL", "stop_loss": 140, "target_1": 180, "target_2": 210, "trailing_stop_pct": 15, "analyst_target": 200}]
+        mock_fn.return_value = [
+            {
+                "ticker": "AAPL",
+                "stop_loss": 140,
+                "target_1": 180,
+                "target_2": 210,
+                "trailing_stop_pct": 15,
+                "analyst_target": 200,
+            }
+        ]
         from nuri.api.routes.actions import _get_targets_status
+
         result = _get_targets_status()
         assert result["AAPL"]["stop_loss"] == 140
 
     @patch("nuri.trading.recommend.price_targets.calculate_portfolio_targets", side_effect=Exception)
     def test_handles_exception(self, _):
         from nuri.api.routes.actions import _get_targets_status
+
         assert _get_targets_status() == {}
 
 
@@ -498,6 +677,7 @@ class TestGetImprovingSignals:
             SimpleNamespace(signal_id="bb_bounce", status="critical"),
         ]
         from nuri.api.routes.actions import _get_improving_signals
+
         result = _get_improving_signals()
         assert "rsi_oversold" in result
         assert "bb_bounce" not in result
@@ -505,6 +685,7 @@ class TestGetImprovingSignals:
     @patch("nuri.trading.engine.memory.detect_drift", side_effect=Exception)
     def test_handles_exception(self, _):
         from nuri.api.routes.actions import _get_improving_signals
+
         assert _get_improving_signals() == set()
 
 
@@ -512,19 +693,33 @@ class TestGetRecentScanResults:
     def setup_method(self):
         """각 test 전 scan cache 초기화 — test 간 상호 오염 방지."""
         import nuri.api.routes.actions as mod
+
         mod._scan_results_cache["data"] = None
         mod._scan_results_cache["timestamp"] = 0.0
 
     @patch("nuri.trading.swing.scanner.scan_market")
     def test_returns_scan_dicts(self, mock_fn):
-        mock_fn.return_value = [SimpleNamespace(ticker="MRVL", price=128, change_1d=7, change_5d=20, volume_ratio=1.7, rsi=83, signal="breakout", score=69)]
+        mock_fn.return_value = [
+            SimpleNamespace(
+                ticker="MRVL",
+                price=128,
+                change_1d=7,
+                change_5d=20,
+                volume_ratio=1.7,
+                rsi=83,
+                signal="breakout",
+                score=69,
+            )
+        ]
         from nuri.api.routes.actions import _get_recent_scan_results
+
         result = _get_recent_scan_results()
         assert result[0]["ticker"] == "MRVL"
 
     @patch("nuri.trading.swing.scanner.scan_market", side_effect=Exception)
     def test_handles_exception(self, _):
         from nuri.api.routes.actions import _get_recent_scan_results
+
         assert _get_recent_scan_results() == []
 
 
@@ -544,11 +739,23 @@ class TestGetSystemHealth:
             def __post_init__(self):
                 self.conditions = self.conditions or []
 
-        with patch("nuri.trading.engine.certification.certify", return_value=FakeCert()), \
-             patch("nuri.quant.regime.classifier.classify_regime", return_value=SimpleNamespace(regime="recovery", trend="sideways", volatility="high", confidence=0.75)), \
-             patch("nuri.quant.regime.macro_score.compute_macro_score", return_value=SimpleNamespace(total_score=56, interpretation="Neutral")), \
-             patch("nuri.core.freshness.check_all_freshness", return_value=[{"status": "PASS"}, {"status": "WARN"}, {"status": "FAIL"}]):
+        with (
+            patch("nuri.trading.engine.certification.certify", return_value=FakeCert()),
+            patch(
+                "nuri.quant.regime.classifier.classify_regime",
+                return_value=SimpleNamespace(regime="recovery", trend="sideways", volatility="high", confidence=0.75),
+            ),
+            patch(
+                "nuri.quant.regime.macro_score.compute_macro_score",
+                return_value=SimpleNamespace(total_score=56, interpretation="Neutral"),
+            ),
+            patch(
+                "nuri.core.freshness.check_all_freshness",
+                return_value=[{"status": "PASS"}, {"status": "WARN"}, {"status": "FAIL"}],
+            ),
+        ):
             from nuri.api.routes.actions import _get_system_health
+
             result = _get_system_health()
             assert result["siege"]["score"] == 54
             assert result["regime"]["regime"] == "recovery"
@@ -557,11 +764,14 @@ class TestGetSystemHealth:
 
     @patch("nuri.api.routes.actions.query", return_value=[])
     def test_handles_all_exceptions(self, _):
-        with patch("nuri.trading.engine.certification.certify", side_effect=Exception), \
-             patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception), \
-             patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception), \
-             patch("nuri.core.freshness.check_all_freshness", side_effect=Exception):
+        with (
+            patch("nuri.trading.engine.certification.certify", side_effect=Exception),
+            patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception),
+            patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception),
+            patch("nuri.core.freshness.check_all_freshness", side_effect=Exception),
+        ):
             from nuri.api.routes.actions import _get_system_health
+
             result = _get_system_health()
             assert result["siege"] == {"score": 0, "certified": False}
 
@@ -580,14 +790,17 @@ class TestBuildActionsLogic:
         # 가정. 테스트별 override 는 `divergence=(bool, pct, live_price)`.
         cat_default = catalyst if catalyst is not None else (False, "no catalyst (test default)")
         div_default = divergence if divergence is not None else (False, 0.0, None)
-        with patch("nuri.api.routes.actions._get_recommendations", return_value=recs), \
-             patch("nuri.api.routes.actions._get_siege_violations", return_value=siege or []), \
-             patch("nuri.api.routes.actions._get_targets_status", return_value=targets or {}), \
-             patch("nuri.api.routes.actions._get_portfolio_map", return_value=portfolio or {}), \
-             patch("nuri.api.routes.actions._get_short_interest", return_value=short), \
-             patch("nuri.api.routes.actions.has_recent_catalyst", return_value=cat_default), \
-             patch("nuri.api.routes.actions.check_divergence", return_value=div_default):
+        with (
+            patch("nuri.api.routes.actions._get_recommendations", return_value=recs),
+            patch("nuri.api.routes.actions._get_siege_violations", return_value=siege or []),
+            patch("nuri.api.routes.actions._get_targets_status", return_value=targets or {}),
+            patch("nuri.api.routes.actions._get_portfolio_map", return_value=portfolio or {}),
+            patch("nuri.api.routes.actions._get_short_interest", return_value=short),
+            patch("nuri.api.routes.actions.has_recent_catalyst", return_value=cat_default),
+            patch("nuri.api.routes.actions.check_divergence", return_value=div_default),
+        ):
             from nuri.api.routes.actions import _build_actions
+
             return _build_actions()
 
     def _pf(
@@ -597,7 +810,14 @@ class TestBuildActionsLogic:
         pnl: float = 5,
         pos: float = 3,
     ):
-        return {"current_price": price, "avg_price": avg, "quantity": 10, "pnl_pct": pnl, "position_pct": pos, "account": "Main"}
+        return {
+            "current_price": price,
+            "avg_price": avg,
+            "quantity": 10,
+            "pnl_pct": pnl,
+            "position_pct": pos,
+            "account": "Main",
+        }
 
     def test_siege_violation_goes_to_portfolio_bucket(self):
         """PR A (2026-04-21): SIEGE position_limit 위반은 "매도 강제" urgent 가
@@ -753,16 +973,23 @@ class TestBuildActionsLogic:
         has_recent_catalyst 가 호출조차 되지 않아야 함."""
         # 이 테스트는 _run 기본 mock 을 피하고 직접 MagicMock 으로 assert_not_called 체크
         from unittest.mock import MagicMock
+
         mock_cat = MagicMock(return_value=(False, "no catalyst"))
-        with patch("nuri.api.routes.actions._get_recommendations", return_value=[{"ticker": "DUMP", "action": "SELL", "confidence": 85, "agreement": 70}]), \
-             patch("nuri.api.routes.actions._get_siege_violations", return_value=[]), \
-             patch("nuri.api.routes.actions._get_targets_status", return_value={}), \
-             patch("nuri.api.routes.actions._get_portfolio_map", return_value={"DUMP": self._pf(90, 100, -10, 5)}), \
-             patch("nuri.api.routes.actions._get_short_interest", return_value=None), \
-             patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7), \
-             patch("nuri.api.routes.actions.has_recent_catalyst", mock_cat), \
-             patch("nuri.api.routes.actions.check_divergence", return_value=(False, 0.0, None)):
+        with (
+            patch(
+                "nuri.api.routes.actions._get_recommendations",
+                return_value=[{"ticker": "DUMP", "action": "SELL", "confidence": 85, "agreement": 70}],
+            ),
+            patch("nuri.api.routes.actions._get_siege_violations", return_value=[]),
+            patch("nuri.api.routes.actions._get_targets_status", return_value={}),
+            patch("nuri.api.routes.actions._get_portfolio_map", return_value={"DUMP": self._pf(90, 100, -10, 5)}),
+            patch("nuri.api.routes.actions._get_short_interest", return_value=None),
+            patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7),
+            patch("nuri.api.routes.actions.has_recent_catalyst", mock_cat),
+            patch("nuri.api.routes.actions.check_divergence", return_value=(False, 0.0, None)),
+        ):
             from nuri.api.routes.actions import _build_actions
+
             result = _build_actions()
         assert len(result["urgent"]) == 1
         assert "손절선 근접" in result["urgent"][0]["reasons"][1]
@@ -813,7 +1040,16 @@ class TestBuildActionsLogic:
     def test_pension_filtered_out(self):
         result = self._run(
             [{"ticker": "381170.KS", "action": "BUY", "confidence": 65, "agreement": 20}],
-            portfolio={"381170.KS": {"current_price": 29610, "avg_price": 21450, "quantity": 1, "pnl_pct": 38, "position_pct": 12, "account": "연금"}},
+            portfolio={
+                "381170.KS": {
+                    "current_price": 29610,
+                    "avg_price": 21450,
+                    "quantity": 1,
+                    "pnl_pct": 38,
+                    "position_pct": 12,
+                    "account": "연금",
+                }
+            },
         )
         assert len(result["urgent"]) == 0
         assert len(result["check"]) == 0
@@ -822,7 +1058,16 @@ class TestBuildActionsLogic:
     def test_irp_filtered_out(self):
         result = self._run(
             [{"ticker": "448300.KS", "action": "BUY", "confidence": 72, "agreement": 20}],
-            portfolio={"448300.KS": {"current_price": 19535, "avg_price": 17450, "quantity": 1, "pnl_pct": 12, "position_pct": 10, "account": "IRP"}},
+            portfolio={
+                "448300.KS": {
+                    "current_price": 19535,
+                    "avg_price": 17450,
+                    "quantity": 1,
+                    "pnl_pct": 12,
+                    "position_pct": 10,
+                    "account": "IRP",
+                }
+            },
         )
         assert len(result["hold"]) == 0
 
@@ -843,7 +1088,16 @@ class TestBuildActionsLogic:
         with patch("nuri.core.ticker_names.get_ticker_name", return_value="Samsung Electronics"):
             result = self._run(
                 [{"ticker": "005930.KS", "action": "BUY", "confidence": 62, "agreement": 20}],
-                portfolio={"005930.KS": {"current_price": 200750, "avg_price": 59700, "quantity": 1, "pnl_pct": 236, "position_pct": 0.4, "account": "Main"}},
+                portfolio={
+                    "005930.KS": {
+                        "current_price": 200750,
+                        "avg_price": 59700,
+                        "quantity": 1,
+                        "pnl_pct": 236,
+                        "position_pct": 0.4,
+                        "account": "Main",
+                    }
+                },
             )
         all_items = result["urgent"] + result["check"] + result["hold"]
         assert len(all_items) == 1
@@ -872,13 +1126,27 @@ class TestGetPortfolioMapAggregation:
                 return [{"value": rate}]
             return []
 
-        with patch("nuri.api.routes.actions.query", side_effect=_query), \
-             patch("nuri.api.routes.dashboard._get_account_labels", return_value={}):
+        # #527: _get_real_accounts 는 portfolio.yaml 을 read — 테스트 fake 계좌
+        # 이름 ('Main'/'Toss'/'연금'/'IRP' 등) 은 yaml 에 없어 filter 가 모든 row 를
+        # drop 한다. 빈 set 반환해 filter 우회.
+        with (
+            patch("nuri.api.routes.actions.query", side_effect=_query),
+            patch("nuri.api.routes.actions._get_real_accounts", return_value=set()),
+            patch("nuri.api.routes.dashboard._get_account_labels", return_value={}),
+        ):
             return _get_portfolio_map()
 
     def test_single_account_single_row_unchanged(self):
-        rows = [{"account": "Main", "ticker": "AAPL", "quantity": 10, "avg_price": 100.0,
-                 "currency": "USD", "current_price": 110.0}]
+        rows = [
+            {
+                "account": "Main",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "current_price": 110.0,
+            }
+        ]
         result = self._run(rows)
         assert result["AAPL"]["pnl_pct"] == 10.0
         assert result["AAPL"]["account"] == "Main"
@@ -886,10 +1154,22 @@ class TestGetPortfolioMapAggregation:
     def test_multi_account_aggregates_position_pct(self):
         """Main + Toss 양쪽 동일 ticker → position_pct 는 두 계좌 합산."""
         rows = [
-            {"account": "Main", "ticker": "TSLA", "quantity": 10, "avg_price": 100.0,
-             "currency": "USD", "current_price": 110.0},  # +10%
-            {"account": "Toss", "ticker": "TSLA", "quantity": 10, "avg_price": 100.0,
-             "currency": "USD", "current_price": 110.0},  # +10%
+            {
+                "account": "Main",
+                "ticker": "TSLA",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "current_price": 110.0,
+            },  # +10%
+            {
+                "account": "Toss",
+                "ticker": "TSLA",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "current_price": 110.0,
+            },  # +10%
         ]
         result = self._run(rows)
         # 2 rows each $1100 = $2200 total; sum = 100% of portfolio
@@ -899,10 +1179,22 @@ class TestGetPortfolioMapAggregation:
         """codex A-4 lock: Main 계좌에서 -25% breach, Toss 계좌는 0% → worst(-25%) 가
         pnl_pct/account 를 차지해 downstream stop-loss 가 breach 감지."""
         rows = [
-            {"account": "Toss", "ticker": "SHARED", "quantity": 20, "avg_price": 100.0,
-             "currency": "USD", "current_price": 100.0},  # 0% pnl (non-breach)
-            {"account": "Main", "ticker": "SHARED", "quantity": 10, "avg_price": 100.0,
-             "currency": "USD", "current_price": 75.0},   # -25% breach
+            {
+                "account": "Toss",
+                "ticker": "SHARED",
+                "quantity": 20,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "current_price": 100.0,
+            },  # 0% pnl (non-breach)
+            {
+                "account": "Main",
+                "ticker": "SHARED",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "current_price": 75.0,
+            },  # -25% breach
         ]
         result = self._run(rows)
         assert result["SHARED"]["pnl_pct"] == pytest.approx(-25.0)
@@ -912,8 +1204,22 @@ class TestGetPortfolioMapAggregation:
     def test_multi_account_order_independence(self):
         """SQLite row 순서에 의존 안 함 — worst-pnl 이 첫 row 든 마지막 row 든 동일 결과."""
         worst_first = [
-            {"account": "Main", "ticker": "X", "quantity": 10, "avg_price": 100, "currency": "USD", "current_price": 70},
-            {"account": "Toss", "ticker": "X", "quantity": 10, "avg_price": 100, "currency": "USD", "current_price": 100},
+            {
+                "account": "Main",
+                "ticker": "X",
+                "quantity": 10,
+                "avg_price": 100,
+                "currency": "USD",
+                "current_price": 70,
+            },
+            {
+                "account": "Toss",
+                "ticker": "X",
+                "quantity": 10,
+                "avg_price": 100,
+                "currency": "USD",
+                "current_price": 100,
+            },
         ]
         worst_last = list(reversed(worst_first))
         r1 = self._run(worst_first)
@@ -926,8 +1232,22 @@ class TestGetPortfolioMapAggregation:
         slice 가 worst-pnl 이어도 account/threshold 는 taxable 유지 →
         _build_actions 의 pension_tickers skip 이 taxable slice 를 삼키지 않음."""
         rows = [
-            {"account": "연금", "ticker": "X", "quantity": 20, "avg_price": 100, "currency": "USD", "current_price": 75},  # -25% pension
-            {"account": "Main", "ticker": "X", "quantity": 10, "avg_price": 100, "currency": "USD", "current_price": 95},  # -5% taxable
+            {
+                "account": "연금",
+                "ticker": "X",
+                "quantity": 20,
+                "avg_price": 100,
+                "currency": "USD",
+                "current_price": 75,
+            },  # -25% pension
+            {
+                "account": "Main",
+                "ticker": "X",
+                "quantity": 10,
+                "avg_price": 100,
+                "currency": "USD",
+                "current_price": 95,
+            },  # -5% taxable
         ]
         result = self._run(rows)
         assert result["X"]["account"] == "Main"
@@ -937,7 +1257,14 @@ class TestGetPortfolioMapAggregation:
         """모든 row 가 pension 이면 account 는 pension 으로 유지 — downstream
         pension skip 이 정상 작동."""
         rows = [
-            {"account": "연금", "ticker": "Y", "quantity": 10, "avg_price": 100, "currency": "USD", "current_price": 90},
+            {
+                "account": "연금",
+                "ticker": "Y",
+                "quantity": 10,
+                "avg_price": 100,
+                "currency": "USD",
+                "current_price": 90,
+            },
             {"account": "IRP", "ticker": "Y", "quantity": 5, "avg_price": 100, "currency": "USD", "current_price": 80},
         ]
         result = self._run(rows)
@@ -954,13 +1281,25 @@ class TestGetPortfolioMapAggregation:
 
 class TestBuildOpportunitiesLogic:
     def _scan(self, ticker="X", signal="momentum", score=30, change_5d=5, rsi=50, vol=1.0):
-        return {"ticker": ticker, "price": 100, "change_1d": 1, "change_5d": change_5d, "volume_ratio": vol, "rsi": rsi, "signal": signal, "score": score}
+        return {
+            "ticker": ticker,
+            "price": 100,
+            "change_1d": 1,
+            "change_5d": change_5d,
+            "volume_ratio": vol,
+            "rsi": rsi,
+            "signal": signal,
+            "score": score,
+        }
 
     def _run(self, scans, portfolio=None, improving=None):
-        with patch("nuri.api.routes.actions._get_portfolio_map", return_value=portfolio or {}), \
-             patch("nuri.api.routes.actions._get_recent_scan_results", return_value=scans), \
-             patch("nuri.api.routes.actions._get_improving_signals", return_value=improving or set()):
+        with (
+            patch("nuri.api.routes.actions._get_portfolio_map", return_value=portfolio or {}),
+            patch("nuri.api.routes.actions._get_recent_scan_results", return_value=scans),
+            patch("nuri.api.routes.actions._get_improving_signals", return_value=improving or set()),
+        ):
             from nuri.api.routes.actions import _build_opportunities
+
             return _build_opportunities()
 
     def test_excludes_portfolio(self):
@@ -1035,11 +1374,10 @@ class TestGetRecommendationsScoringDetail:
             }
         ]
         from nuri.api.routes.actions import _get_recommendations
+
         result = _get_recommendations()
         assert len(result) == 1
-        assert "scoring_detail" in result[0], (
-            "A-2b regression: /actions response 에 scoring_detail 누락"
-        )
+        assert "scoring_detail" in result[0], "A-2b regression: /actions response 에 scoring_detail 누락"
         assert result[0]["scoring_detail"]["source"] == "consensus"
         assert result[0]["scoring_detail"]["basis_action"] == "BUY"
         assert result[0]["agent_verdicts"] == verdicts
@@ -1058,6 +1396,7 @@ class TestGetRecommendationsScoringDetail:
             }
         ]
         from nuri.api.routes.actions import _get_recommendations
+
         result = _get_recommendations()
         assert result[0]["scoring_detail"] is None
         assert result[0]["agent_verdicts"] is None
@@ -1076,6 +1415,7 @@ class TestGetRecommendationsScoringDetail:
             }
         ]
         from nuri.api.routes.actions import _get_recommendations
+
         result = _get_recommendations()
         assert result[0]["scoring_detail"] is None
         assert result[0]["agent_verdicts"] is None
@@ -1113,22 +1453,23 @@ class TestBuildActionsScoringDetail:
             }
         ]
 
-        with patch("nuri.api.routes.actions._get_recommendations", return_value=recs), \
-             patch("nuri.api.routes.actions._get_siege_violations", return_value=[]), \
-             patch("nuri.api.routes.actions._get_targets_status", return_value={}), \
-             patch("nuri.api.routes.actions._get_portfolio_map", return_value={
-                 "TSLA": {"account": "Main", "pnl_pct": 5, "position_pct": 10}
-             }), \
-             patch("nuri.api.routes.actions._get_short_interest", return_value=None):
+        with (
+            patch("nuri.api.routes.actions._get_recommendations", return_value=recs),
+            patch("nuri.api.routes.actions._get_siege_violations", return_value=[]),
+            patch("nuri.api.routes.actions._get_targets_status", return_value={}),
+            patch(
+                "nuri.api.routes.actions._get_portfolio_map",
+                return_value={"TSLA": {"account": "Main", "pnl_pct": 5, "position_pct": 10}},
+            ),
+            patch("nuri.api.routes.actions._get_short_interest", return_value=None),
+        ):
             result = _build_actions()
 
         # urgent/check/hold 중 어디든 TSLA item 찾기
         all_items = result.get("urgent", []) + result.get("check", []) + result.get("hold", [])
         tsla = next((i for i in all_items if i["ticker"] == "TSLA"), None)
         assert tsla is not None, "TSLA item 이 생성돼야 함"
-        assert "scoring_detail" in tsla, (
-            "A-2b Round 1 HIGH regression: _build_actions 이 scoring_detail 을 drop"
-        )
+        assert "scoring_detail" in tsla, "A-2b Round 1 HIGH regression: _build_actions 이 scoring_detail 을 drop"
         assert tsla["scoring_detail"] == scoring
         assert tsla["agent_verdicts"] == verdicts
 
@@ -1139,6 +1480,7 @@ class TestScanResultsCache:
     def setup_method(self):
         """각 test 전 cache 초기화."""
         import nuri.api.routes.actions as mod
+
         mod._scan_results_cache["data"] = None
         mod._scan_results_cache["timestamp"] = 0.0
 
@@ -1226,7 +1568,7 @@ class TestScanResultsCache:
 
         mod._get_recent_scan_results()
         # TTL 초과 강제 — timestamp 를 과거로 밀어냄
-        mod._scan_results_cache["timestamp"] -= (mod._SCAN_CACHE_TTL + 10)
+        mod._scan_results_cache["timestamp"] -= mod._SCAN_CACHE_TTL + 10
         mod._get_recent_scan_results()
         assert call_count["n"] == 2
 
@@ -1263,6 +1605,7 @@ class TestScanResultsCache:
 
         # scan 이 1초 걸리는 것처럼 delay — 다른 thread 가 lock 대기 상태로 진입
         import time as _time
+
         scan_count = {"n": 0}
 
         def _slow_scan(**kw):
