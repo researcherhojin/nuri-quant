@@ -1,5 +1,8 @@
 # AGENTS.md
 
+<!-- DRIFT SYNC: 본 파일 (cross-tool fallback) ↔ `.claude/rules/invariants.md` (Claude Code always-on)
+     변경 시 두 곳 동시 갱신. Claude Code 는 `.claude/rules/`, codex CLI / Cursor 등은 본 파일 read. -->
+
 Cross-tool agent instructions for Nuri-Quant. Applies to AI coding agents that don't load Claude Code's `CLAUDE.md` hierarchy directly (Cursor, Copilot, Codex CLI, Gemini CLI, etc.).
 
 **Claude Code reads `CLAUDE.md` (root + scoped) — start there.** This file is a minimal cross-tool fallback so non-Claude agents have the same operating rules without parsing `@import` / scoped-doc structure.
