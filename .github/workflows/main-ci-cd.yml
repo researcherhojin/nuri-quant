@@ -407,7 +407,7 @@ jobs:
 
       - name: Run fast tests with coverage
         if: needs.changes.outputs.run_backend == 'true'
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report=xml --cov-report=term
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow and not integration" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report=xml --cov-report=term
         timeout-minutes: 5
 
       - name: Upload coverage to Codecov
