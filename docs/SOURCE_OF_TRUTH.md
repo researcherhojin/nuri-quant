@@ -54,8 +54,7 @@ If a row's "Forbidden" column lists a file you're editing, you've found duplicat
 | Mechanical Enforcement (hooks + CI rules) | `.claude/settings.json` (hooks) + `.github/workflows/main-ci-cd.yml` (CI) + `CLAUDE.md` Mechanical Enforcement table (consolidated reference) | — | restating individual rules elsewhere — point to CLAUDE.md table |
 | Test conventions (DB isolation, mocks, privacy in fixtures) | `tests/CLAUDE.md` | `CLAUDE.md` Load Triggers row (pointer) | `docs/STRATEGY.md` (link only — §4.1 quality bar lives there, conventions don't) |
 | Backlog / next work (Tier 2 / Tier 3) | `docs/TODO.md` | — | restating planned work in `CLAUDE.md` / `STRATEGY.md` |
-| Session handoff state | `NEXT_SESSION.md` (gitignored, personal) | — | committing handoff state to public docs |
-| Next-session cold-start prompt | `SESSION_PROMPT.md` (gitignored, prompt shell) | — | restating cold-start in `NEXT_SESSION.md` (충돌 시 NEXT_SESSION.md 우선) |
+| Session handoff state + cold-start checklist | `NEXT_SESSION.md` (gitignored, personal) | — | committing handoff state to public docs |
 | Plan / spec drafts (split-canonical: design lives here, policy in STRATEGY.md) | `docs/plans/*.md` (gitignored 통합 — 2026-04-30 Session 8) | `docs/STRATEGY.md` 1-line decision capture only | restating spec body in public docs (broker name / financial figure 누설 위험) |
 | BUY candidate emit baseline + tier validation ledger | `data/reports/buy_tracking/candidate_ledger.jsonl` (gitignored, append-only) + `scripts/compare_buy_candidates.py` (tracked infra) | `docs/STRATEGY.md §5.13` (mechanism + acceptance only) | restating ledger row counts elsewhere |
 | LLM consult archives (codex / Qwen review of specs) | `data/llm_consults/<date>_<slug>.md` (gitignored) | `docs/STRATEGY.md` 또는 spec 내 1-line reference + verdict (GO/REFINE/STOP) | restating consult body in spec or commit message |

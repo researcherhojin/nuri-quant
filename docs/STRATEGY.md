@@ -118,7 +118,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import
 
 **단계 실패 = 이전 단계 회귀**. Codex 부재 시 Claude self-review + 다음 PR Review 에서 회수. Trivial chore 는 Think/Plan inline 압축 가능 (Build 이상은 모든 단계 준수).
 
-**Next-session entry artifact Plan gate** (2026-04-22): `NEXT_SESSION.md` / `SESSION_PROMPT.md` 는 docs-only/gitignored 라도 Reflect 산출물. **Inline OK**: typo/format/self-note/HEAD append. **Plan consult 필수** (다음 primary PR 의 Plan consult 에 batch 포함): next primary 변경, 우선순위 재정렬, risk framing 신규, live command 교체, acceptance 변경. Re-consult trigger: (a) next primary 변경, (b) 후보 2+ 경쟁, (c) handoff stale 가능성, (d) 5 PR 누적 또는 48h burst 후 cadence reflection, (e) legal/TOS/production-risk 신규.
+**Next-session entry artifact Plan gate** (2026-04-22): `NEXT_SESSION.md` 는 docs-only/gitignored 라도 Reflect 산출물. **Inline OK**: typo/format/self-note/HEAD append. **Plan consult 필수** (다음 primary PR 의 Plan consult 에 batch 포함): next primary 변경, 우선순위 재정렬, risk framing 신규, live command 교체, acceptance 변경. Re-consult trigger: (a) next primary 변경, (b) 후보 2+ 경쟁, (c) handoff stale 가능성, (d) 5 PR 누적 또는 48h burst 후 cadence reflection, (e) legal/TOS/production-risk 신규.
 
 <!--
 Burst ship cadence (2026-04-22 실측, 48h 6 functional + 3 docs PR): 재현 조건은 독립 scope + 명확한 queue + codex Plan consult 선행. Sustainable default 아님 — codex Round 2 skip 빈발, docs PR scope-discipline 경계, reviewer fatigue, handoff drift. 48h 이상 burst 후 반드시 handoff Plan consult + 다음 cycle cadence 내림.
@@ -599,7 +599,7 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 - ADD_ride peak 대비 흐름 → ride-winner 명분 정량 검증
 - B_mid 평균 → catalyst 전이 측정
 
-**Session 8 baseline**: 11종 (A_high 3 / B_mid 3 / C_chase 2 / ADD_ride 1 / ADD_held 2). 4-29 close 기준. 다음 세션 첫 task로 검증 실행 (`SESSION_PROMPT.md` SESSION-START 의무 #2).
+**Session 8 baseline**: 11종 (A_high 3 / B_mid 3 / C_chase 2 / ADD_ride 1 / ADD_held 2). 4-29 close 기준. 다음 세션 첫 task로 검증 실행 (`NEXT_SESSION.md` cold-start 체크리스트).
 
 **부정 결과 시 액션**: A_high avg < 0 → 즉시 P0 격상 + Phase 2c threshold backtest 우선순위 격상 + score function 재교정 issue 격상.
 
