@@ -1,6 +1,6 @@
 # Mechanical Enforcement
 
-Hook config: `.claude/settings.json`. CI workflows: `.github/workflows/main-ci-cd.yml`. Pre-push: `scripts/pre_push_check.sh`.
+Hook config: `.claude/settings.json`. CI workflows: `.github/workflows/main-ci-cd.yml`. Pre-push: `scripts/verify/pre_push_check.sh`.
 
 **PreToolUse hook** blocks: `import sqlite3` outside `db.py`, `git push --force` / `reset --hard` / `clean -f`, privacy ticker+PnL inline writes (`scripts/verify/check_privacy_leak.py --message --quiet`).
 

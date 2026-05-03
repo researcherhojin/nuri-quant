@@ -2,7 +2,7 @@
 
 Mechanically enforced (hooks/CI/code). Violating any means a hook block, CI fail, or design regression. `docs/STRATEGY.md` is canonical — load it on demand for the "why" / full spec.
 
-- **DB sole importer**: `nuri/core/db.py` is the ONLY `sqlite3` importer (PreToolUse hook blocks). All other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()` with optional `db_path=` for test isolation.
+- **DB sole importer**: `nuri/core/db/` is the ONLY `sqlite3` importer (PreToolUse hook blocks). All other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()` with optional `db_path=` for test isolation.
 - **Timezone**: always `kst_now()` / `today_kst()` from `nuri.core.timezone` — `datetime.now()` blocked by hook.
 - **Conventional commits (English)** + **PR discipline**: 1 issue = 1 PR, ≤ 3 commits, scope = what was asked. New findings → separate issue. Format: `(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(scope)?: msg`. Korean comments in code, English variable/function names.
 - **Escalation Ladder** (STRATEGY §2.6 summary): **Surface** exposes evidence only (no action change) → **Soft penalty** deterministic downgrade/cap (config-tunable) → **Hard veto** action-block on downside (risk-of-ruin) → **Symmetric amplifier** post-veto upside sizing (multi-condition, never single-trigger). Promotion between rungs requires STRATEGY PR + evidence/backtest.
