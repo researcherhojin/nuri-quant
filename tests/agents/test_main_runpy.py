@@ -22,6 +22,22 @@ def db_path_mp(tmp_path, monkeypatch):
     return path
 
 
+@pytest.fixture(autouse=True)
+def _restore_actor_registry():
+    """runpy.run_module re-executes a module under `__name__ == "__main__"`,
+    which re-runs `@register` decorators and overwrites the canonical class
+    in ActorRegistry with a `__main__.SREIncidentAgent`-style copy. Snapshot
+    + restore prevents this from polluting `tests/agents/test_sre_incident_*`
+    which assert `registry.get(name) is SREIncidentAgent` on the canonical class.
+    """
+    from nuri.agents.base import REGISTRY
+
+    snapshot = dict(REGISTRY._registry)
+    yield
+    REGISTRY._registry.clear()
+    REGISTRY._registry.update(snapshot)
+
+
 def _run_module_with_argv(module_name: str, monkeypatch, argv: list[str]) -> tuple[int, str]:
     """Run module via runpy, return (exit_code, stdout). Catches SystemExit."""
     captured = io.StringIO()
