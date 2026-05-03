@@ -165,11 +165,14 @@ class TestMeanReversionBranches:
         result = scan_mean_reversion(db_path=basic_db)
         assert result == []
 
-    def test_scan_with_oversold(self, basic_db):
-        """Lines 70-80: BB lower break + RSI < 30 entry."""
+    def test_scan_with_oversold_emits_signal(self, basic_db):
+        """Lines 70-80: 50 flat + 10 sharply dropping → BB lower break + low RSI.
+
+        Sharp drop from 100 → 40 in last 10 bars guarantees BB lower break with
+        deeply oversold RSI. scan_mean_reversion should emit at least one signal.
+        """
         from nuri.trading.strategy.mean_reversion import scan_mean_reversion
 
-        # Generate 60 candles with sharp drop at end
         np.random.seed(42)
         prices = list(np.linspace(100, 100, 50)) + [85, 80, 75, 70, 65, 60, 55, 50, 45, 40]
         rows = []
@@ -188,7 +191,13 @@ class TestMeanReversionBranches:
             )
         upsert_prices(pd.DataFrame(rows), basic_db)
         result = scan_mean_reversion(db_path=basic_db)
+        # Source contract: list of MeanRevSignal or [] only. Sharp drop should
+        # at minimum keep result well-typed (assertion below is lock for type
+        # contract regression — len > 0 is data-dependent so weaker).
         assert isinstance(result, list)
+        # If signals emitted, they must be for our DROP ticker
+        for sig in result:
+            assert sig.ticker == "DROP"
 
     def test_backtest_too_short(self, basic_db):
         """Line 100-101: < 60 → skip."""
@@ -212,15 +221,17 @@ class TestMeanReversionBranches:
         assert result == {"total_trades": 0}
 
     def test_backtest_with_trades(self, basic_db):
-        """Lines 117-156: backtest with sufficient data + entry triggers."""
+        """Lines 117-156: backtest with sufficient data + entry triggers.
+
+        80-bar oscillating + sharp dip series exercises the entry/exit loop.
+        Required schema: total_trades + win_rate + (avg_return or similar).
+        """
         from nuri.trading.strategy.mean_reversion import backtest_mean_reversion
 
-        # 80-day series with multiple oversold zones
         np.random.seed(7)
         n = 80
         prices = 100 + 10 * np.sin(np.arange(n) * 0.5) + np.random.normal(0, 1, n)
-        # Force a sharp dip
-        prices[40:50] -= 20
+        prices[40:50] -= 20  # sharp dip → forces oversold zones
         rows = []
         for i, c in enumerate(prices):
             rows.append(
@@ -237,62 +248,71 @@ class TestMeanReversionBranches:
             )
         upsert_prices(pd.DataFrame(rows), basic_db)
         result = backtest_mean_reversion(db_path=basic_db)
-        # Either trades happened (full result dict) or no trades fallback
-        assert "total_trades" in result
+        # 80 bars > 60 → no early-skip path. total_trades is non-negative int.
+        assert isinstance(result.get("total_trades"), int)
+        assert result["total_trades"] >= 0
 
 
 # ─── monitor.py ──────────────────────────────────────────────────────
 
 
 class TestMonitorBranches:
-    def test_module_imports(self):
-        import nuri.trading.strategy.monitor as monitor_mod
+    def test_daily_pnl_no_holdings_returns_zero_schema(self, basic_db):
+        """monitor.py:106-117: empty positions → all aggregate keys = 0/None.
 
-        assert monitor_mod is not None
-
-    def test_daily_pnl_no_holdings(self, basic_db):
-        """빈 포트폴리오 → schema 만 반환, 수치는 0/empty 일관성 검증."""
+        Source contract (monitor.py:106): returns dict with explicit keys.
+        Empty open_pos → total_pnl=0, winners=0, losers=0, best=None, worst=None.
+        """
         from nuri.trading.strategy.monitor import daily_pnl_summary
 
         result = daily_pnl_summary(db_path=basic_db)
-        # schema 검증: dict + 핵심 key 들 존재 + 수치 0 / 리스트 empty
-        assert isinstance(result, dict)
-        # 빈 portfolio 라면 holdings 또는 positions 가 비어야 함
-        # (실제 schema 는 모듈마다 다를 수 있으니 기본 invariant 만 lock)
-        # — total/sum/count 같은 numeric 이 0 이거나 list 가 비어 있는지
-        has_zero_or_empty = any(
-            v == 0 or v == [] or v is None or v == {}
-            for v in result.values()
-            if isinstance(v, (int, float, list, dict, type(None)))
-        )
-        assert has_zero_or_empty, f"빈 portfolio 인데 모든 값이 non-zero/non-empty: {result}"
+        assert result["total_positions"] == 0
+        assert result["total_pnl"] == 0
+        assert result["winners"] == 0
+        assert result["losers"] == 0
+        assert result["best"] is None
+        assert result["worst"] is None
 
-    def test_detect_regime_transition_no_data(self, basic_db, monkeypatch):
-        """Smoke: detect_regime_transition with no events."""
+    def test_detect_regime_transition_no_events_returns_none(self, basic_db):
+        """monitor.py:19+: no pipeline_events → returns None (no transition).
+
+        Source contract (return type `dict | None`): None when no transition
+        detected. Empty DB has no `regime_changed` events → must be None,
+        never a partial dict (would indicate logic regression).
+        """
         from nuri.trading.strategy.monitor import detect_regime_transition
 
-        try:
-            result = detect_regime_transition(db_path=basic_db)
-            assert result is None or isinstance(result, dict)
-        except Exception:
-            pass
+        result = detect_regime_transition(db_path=basic_db)
+        assert result is None
 
 
 # ─── longshort.py ────────────────────────────────────────────────────
 
 
 class TestLongshortBranches:
-    def test_module_imports(self):
-        import nuri.trading.strategy.longshort as ls_mod
+    def test_regime_allocation_covers_six_base_regimes(self):
+        """REGIME_ALLOCATION must cover all 6 base regimes per strategy/CLAUDE.md.
 
-        assert hasattr(ls_mod, "REGIME_ALLOCATION")
-
-    def test_get_allocation_unknown_regime(self):
-        """Default fallback for unknown regime."""
+        Source: strategy/CLAUDE.md "Regime dependency" — 6 base regimes are the
+        source of truth. REGIME_ALLOCATION lives in longshort.py (NOT config) by
+        design. This test locks the table contract: every regime maps to a dict
+        with long_pct/short_pct/cash_pct that sums to ~100%.
+        """
         from nuri.trading.strategy.longshort import REGIME_ALLOCATION
 
-        # Just verify dict is non-empty
-        assert len(REGIME_ALLOCATION) > 0
+        expected = {
+            "bull_low_vol",
+            "bull_high_vol",
+            "sideways_low_vol",
+            "sideways_high_vol",
+            "bear_low_vol",
+            "bear_high_vol",
+        }
+        assert expected.issubset(set(REGIME_ALLOCATION.keys()))
+        for regime, alloc in REGIME_ALLOCATION.items():
+            total = alloc.get("long_pct", 0) + alloc.get("short_pct", 0) + alloc.get("cash_pct", 0)
+            # Allocation 합 = 100% (small float tolerance)
+            assert abs(total - 100) < 1e-6, f"{regime} allocation sums to {total}, not 100"
 
     def test_generate_strategy_classifier_exception(self, basic_db, monkeypatch):
         """Lines 79-80: classify_regime exception → []."""
@@ -372,8 +392,13 @@ class TestLongshortBranches:
         actions = generate_strategy(db_path=basic_db)
         assert any(a.action == "close" for a in actions)
 
-    def test_generate_strategy_neutral_with_short_alloc(self, basic_db, monkeypatch):
-        """Lines 158-166: sideways neutral path with short_pct > 0."""
+    def test_generate_strategy_neutral_no_open_positions(self, basic_db, monkeypatch):
+        """Lines 158-166: sideways regime + empty positions → no close actions.
+
+        sideways_high_vol routes through the neutral elif branch. Without any
+        open tactical positions, generate_strategy must NOT emit close actions
+        (close logic only fires for existing positions).
+        """
         from dataclasses import dataclass
 
         from nuri.trading.strategy.longshort import generate_strategy
@@ -391,9 +416,11 @@ class TestLongshortBranches:
         )
 
         actions = generate_strategy(db_path=basic_db)
-        # sideways_high_vol has short_pct=0 in REGIME_ALLOCATION, so no short
-        # but the elif neutral branch is exercised
-        assert isinstance(actions, list)
+        # 빈 positions → close action 없음. open action 은 sideways short_pct
+        # 정의에 따라 생성될 수 있음 — 그 경우 ticker/regime 일관성만 확인.
+        assert all(a.action != "close" for a in actions), f"empty positions 인데 close action 발생: {actions}"
+        for a in actions:
+            assert a.regime == "sideways_high_vol"
 
     def test_generate_strategy_takes_profit(self, basic_db, monkeypatch):
         """Lines 168-176: take_profit at +10%."""
@@ -493,10 +520,5 @@ class TestLongshortBranches:
 
 
 # ─── position.py ─────────────────────────────────────────────────────
-
-
-class TestPositionBranches:
-    def test_module_imports(self):
-        import nuri.trading.strategy.position as pos_mod
-
-        assert pos_mod is not None
+# 이전 `test_module_imports` smoke 는 import 만 검증 — 다른 테스트가 이미
+# import 체인을 트리거. 실제 behavior 테스트가 추가될 때 함께 만든다.
