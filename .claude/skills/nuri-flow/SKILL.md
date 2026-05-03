@@ -17,10 +17,10 @@ description: STRATEGY §2.7 7-phase Flow (Think→Plan→Build→Review→Test�
 
 | Phase | 우리 도구 |
 |---|---|
-| Think | 사용자 질의 / `/nuri-codex-second-opinion` (대형 결정) |
+| Think | 사용자 질의 / `/nuri-codex-review` (대형 결정) |
 | Plan | `docs/plans/<issue>_*.md` 작성 (gitignored) |
 | Build | code edit + `/nuri-verify` |
-| Review | `/nuri-codex-second-opinion` agent / `gstack /codex review` |
+| Review | `/nuri-codex-review` agent / `gstack /codex review` |
 | Test | `make test-fast` + 사용자 워크플로 1회 실행 |
 | Ship | `gh pr merge --squash --delete-branch` (수동) + `/nuri-deploy` |
 | Reflect | NEXT_SESSION.md 편집 + 신규 gotcha → `/nuri-harness-debug` cite |

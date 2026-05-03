@@ -1,11 +1,11 @@
 ---
-name: nuri-codex-second-opinion
-description: Invoke OpenAI Codex (gpt-5.4) for an independent second opinion on architecture, design, or analytical decisions. Use when (a) main session is about to ship a non-trivial design choice and wants cross-model verification, (b) Round 1 LLM consult disagreement needs Round 2 synthesis, (c) #507/#508/#509 style harness expansion decisions. Output is archived to data/llm_consults/{date}_{slug}.md (gitignored). NOT a replacement for `scripts/llm_consult.py` (dual-LLM codex+Qwen3.5) — this agent is codex-only for fast verdict.
+name: nuri-codex-review
+description: Invoke OpenAI Codex (gpt-5.4) for an independent code/design review with binary verdict (PASS / NEEDS_REWORK / SHIP / SHELVE / etc). Use when (a) main session is about to ship a non-trivial design choice and wants cross-model verification, (b) Round 1 LLM consult disagreement needs Round 2 synthesis, (c) #507/#508/#509 style harness expansion decisions. Output is archived to data/llm_consults/{date}_{slug}.md (gitignored). NOT a replacement for `scripts/llm_consult.py` (dual-LLM codex+Qwen3.5) — this agent is codex-only for fast verdict. Namespace: gstack `/codex review` 와 동등 의미, `nuri-` prefix 로 분리.
 tools: Bash, Read, Grep, Glob
 model: inherit
 ---
 
-# Codex Second-Opinion Agent
+# Codex Review Agent
 
 독립 verdict 제공 — 대화 연장 / 구현 X.
 
