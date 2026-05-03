@@ -250,7 +250,7 @@ analyze:
 # ═══════════════════════════════════════════════════════════════
 # VALIDATION (Phase C) — Gate 검증 후 실행
 # ═══════════════════════════════════════════════════════════════
-validate:
+validate: ## Full signal validation suite — gate_check + signal/superinvestor/analyst backtest + scorecard + memory snapshot
 	$(PYTHON) scripts/verify/gate_check.py validate
 	$(PYTHON) -m nuri.quant.validation.signal_backtest
 	$(PYTHON) -m nuri.quant.validation.superinvestor_backtest
@@ -262,7 +262,7 @@ validate:
 # ═══════════════════════════════════════════════════════════════
 # REGIME CLASSIFICATION (Phase D)
 # ═══════════════════════════════════════════════════════════════
-regime:
+regime: ## Macro regime classification (10 regimes) + suggested strategy mix
 	$(PYTHON) scripts/verify/gate_check.py regime
 	$(PYTHON) -m nuri.quant.regime.strategy_map
 
@@ -280,10 +280,10 @@ consensus:
 
 # Holdings post-entry technical-divergence monitor.
 # Daily 07:10 KST via APScheduler (after consensus 07:05). CLI form for ad-hoc / dry-run.
-holdings-monitor:
+holdings-monitor: ## Holdings post-entry technical-divergence monitor (live; daily 07:10 KST via APScheduler)
 	$(PYTHON) -m nuri.trading.recommend.holdings_monitor
 
-holdings-monitor-dry:
+holdings-monitor-dry: ## Holdings monitor dry-run (no DB write)
 	$(PYTHON) -m nuri.trading.recommend.holdings_monitor --dry-run
 
 # Dual-LLM consult helper — codex + Qwen3.5 in parallel, archive both verdicts
@@ -303,7 +303,7 @@ earnings-preview:
 	@test -n "$(ticker)$(watchlist)" || (echo "usage: make earnings-preview ticker=<T> | watchlist=<T1,T2,...>"; exit 1)
 	$(PYTHON) -m nuri.collectors.earnings_preview $(if $(ticker),--ticker "$(ticker)") $(if $(watchlist),--watchlist "$(watchlist)")
 
-gate:
+gate: ## Run trading gate engine (signal aggregation + 10-gate filter)
 	$(PYTHON) -m nuri.trading.engine.gate
 
 certify:
@@ -312,19 +312,16 @@ certify:
 certify-history:
 	@$(PYTHON) scripts/analysis/siege_history.py --limit $(or $(N),10)
 
-certify-diff:
+certify-diff: ## SIEGE certification last 5 runs detail diff
 	@$(PYTHON) scripts/analysis/siege_history.py --limit 5 --detail
 
 remediate:
 	$(PYTHON) -m nuri.trading.engine.remediation
 
-# Strategic Asset Allocation drift advisor (STRATEGY §3.10).
-# 사용법: make strategic-rebalance STRATEGY=core (default core).
-# rc=0 OK / rc=1 REBALANCE 권고 (drift > threshold).
-strategic-rebalance:
+strategic-rebalance: ## Strategic Asset Allocation drift advisor (STRATEGY §3.10). usage: make strategic-rebalance STRATEGY=core. rc=0 OK / rc=1 REBALANCE
 	$(PYTHON) -m nuri.trading.strategy.strategic_allocation --strategy $(or $(STRATEGY),core)
 
-track-decisions:
+track-decisions: ## Track decision outcomes + snapshot to memory (closed loop)
 	$(PYTHON) -m nuri.trading.engine.decisions --track --snapshot
 
 
@@ -337,13 +334,13 @@ scan:
 scan-extended:
 	$(PYTHON) -m nuri.trading.swing.scanner --extended
 
-scan-kr:
+scan-kr: ## Swing scan KR market (KOSPI 200)
 	$(PYTHON) -m nuri.trading.swing.scanner --market kr
 
-swing:
+swing: ## Swing rules check (entry/exit signals per config/rules.yaml ladder)
 	$(PYTHON) -m nuri.trading.swing.rules
 
-swing-check:
+swing-check: ## Swing rules quick health check (--check flag)
 	$(PYTHON) -m nuri.trading.swing.rules --check
 
 
@@ -353,10 +350,10 @@ swing-check:
 strategy:
 	$(PYTHON) -m nuri.trading.strategy.monitor
 
-strategy-execute:
+strategy-execute: ## Long/short strategy execute (paper-only per STRATEGY §7.1)
 	$(PYTHON) -m nuri.trading.strategy.longshort --execute
 
-positions:
+positions: ## Position sizing computation (Kelly + per-position risk cap)
 	$(PYTHON) -m nuri.trading.strategy.position
 
 mean-reversion:
@@ -375,10 +372,10 @@ backtest:
 backtest-ls:
 	$(PYTHON) -m nuri.trading.strategy.ls_backtest
 
-backtest-stress:
+backtest-stress: ## Long/short backtest under VIX-stressed regime
 	$(PYTHON) -m nuri.trading.strategy.ls_backtest --stress
 
-backtest-rules:
+backtest-rules: ## Long/short backtest with rule-driven exits (config/rules.yaml)
 	$(PYTHON) -m nuri.trading.strategy.ls_backtest --rules
 
 optimize:
@@ -647,10 +644,6 @@ sync-doc-counts:
 
 verify-doc-counts:
 	bash scripts/verify/verify_doc_counts.sh
-
-# Back-compat alias — forwards to sync-doc-counts. Scheduled for removal after
-# external refs (if any) migrate.
-update-counts: sync-doc-counts
 
 demo:
 	bash scripts/dev/demo.sh
