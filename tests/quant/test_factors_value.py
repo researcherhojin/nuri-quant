@@ -1,3 +1,4 @@
+# cspell:ignore vmod
 # pyright: reportArgumentType=false
 """Tests for factors_value — split from test_quant_all.py."""
 
@@ -101,6 +102,53 @@ class TestValueDbRead:
         # 최신 AAPL (PE 15) 가 MSFT (PE 30) 보다 저평가 → value_score 더 큼.
         # 만약 old row (PE 100) 를 사용했다면 MSFT (PE 30) 가 더 커진다.
         assert float(df.loc["AAPL", "value_score"]) > float(df.loc["MSFT", "value_score"])
+
+    def test_no_tickers_returns_empty(self, db_path_mp, monkeypatch):
+        """get_tickers() 가 빈 리스트 → empty (line 24)."""
+        from nuri.quant.factors import value as vmod
+
+        monkeypatch.setattr("nuri.core.db.get_tickers", lambda: [])
+        df = vmod.compute_value()
+        assert df.empty
+
+    def test_skips_rows_with_both_none(self, db_path_mp):
+        """pe/pb 둘 다 None → skip (line 48 continue)."""
+        from nuri.quant.factors.value import compute_value
+
+        self._seed_fundamentals(
+            db_path_mp,
+            [
+                ("AAPL", "2026-04-15", 15.0, 2.0),
+                ("MSFT", "2026-04-15", 30.0, 5.0),
+                ("ZZZ", "2026-04-15", None, None),
+            ],
+        )
+        df = compute_value(tickers=["AAPL", "MSFT", "ZZZ"])
+        assert "ZZZ" not in df.index
+
+    def test_single_ticker_assigns_05_for_value(self, db_path_mp):
+        """단일 ticker → valid 1 → else: 0.5 (line 71)."""
+        from nuri.quant.factors.value import compute_value
+
+        self._seed_fundamentals(db_path_mp, [("AAPL", "2026-04-15", 15.0, 2.0)])
+        df = compute_value(tickers=["AAPL"])
+        # valid 가 단일이면 0.5 fallback (line 71 else 분기)
+        assert df.loc["AAPL", "pe_ratio_norm"] == 0.5
+        assert df.loc["AAPL", "pb_ratio_norm"] == 0.5
+
+    def test_constant_column_assigns_05(self, db_path_mp):
+        """동일 PE/PB 값 2개 → col_min == col_max → 0.5 (line 69)."""
+        from nuri.quant.factors.value import compute_value
+
+        self._seed_fundamentals(
+            db_path_mp,
+            [
+                ("AAPL", "2026-04-15", 15.0, None),
+                ("MSFT", "2026-04-15", 15.0, None),
+            ],
+        )
+        df = compute_value(tickers=["AAPL", "MSFT"])
+        assert (df["pe_ratio_norm"] == 0.5).all()
 
     def test_value_source_has_no_openbb_import(self):
         """아키텍처 회귀 방어: value.py 가 OpenBB 를 다시 import 하지 않는지 확인.

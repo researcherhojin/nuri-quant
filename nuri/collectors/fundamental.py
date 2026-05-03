@@ -63,8 +63,8 @@ def _safe_num(val) -> float | None:
 # yfinance KR 한계 (#465): trailingPE / priceToBook 미제공 → KIS 공식 데이터로 보충.
 # eps/bps/lstn_stcn 은 market_cap 계산에만 사용 (별도 컬럼 없음 — scope creep 회피, codex Plan).
 KIS_FIELDS = {
-    "per": "pe_ratio",          # KIS trailing P/E
-    "pbr": "price_to_book",     # KIS P/B
+    "per": "pe_ratio",  # KIS trailing P/E
+    "pbr": "price_to_book",  # KIS P/B
 }
 
 
@@ -75,13 +75,26 @@ def _kis_record_skeleton(ticker: str, today: str) -> dict:
     None 으로 명시적 채워야 sqlite3 NamedParam binding 에러 방지.
     """
     return {
-        "ticker": ticker, "date": today,
-        "market_cap": None, "pe_ratio": None, "forward_pe": None, "price_to_book": None,
-        "peg_ratio": None, "roe": None, "roa": None, "gross_margin": None,
-        "operating_margin": None, "profit_margin": None, "revenue_growth": None,
-        "earnings_growth": None, "debt_to_equity": None, "current_ratio": None,
-        "dividend_yield": None, "beta": None,
-        "annual_dividend_usd": None, "dividend_yield_pct": None,
+        "ticker": ticker,
+        "date": today,
+        "market_cap": None,
+        "pe_ratio": None,
+        "forward_pe": None,
+        "price_to_book": None,
+        "peg_ratio": None,
+        "roe": None,
+        "roa": None,
+        "gross_margin": None,
+        "operating_margin": None,
+        "profit_margin": None,
+        "revenue_growth": None,
+        "earnings_growth": None,
+        "debt_to_equity": None,
+        "current_ratio": None,
+        "dividend_yield": None,
+        "beta": None,
+        "annual_dividend_usd": None,
+        "dividend_yield_pct": None,
     }
 
 
@@ -177,7 +190,8 @@ class FundamentalCollector(BaseCollector):
             kis_by_ticker = {r["ticker"]: r for r in kis_results}
             self.logger.info(
                 "🇰🇷 KIS 펀더멘탈: ✅ %d / %d KR ticker (yfinance loop 가 ROE/margin/growth 보충)",
-                len(kis_by_ticker), len(kr_tickers),
+                len(kis_by_ticker),
+                len(kr_tickers),
             )
 
         # ── 전체 sub-batch: yfinance 10-thread parallel ──
@@ -324,7 +338,9 @@ class FundamentalCollector(BaseCollector):
 
         self.logger.info(
             "🇰🇷 KIS inquire-price sequential (interval=%.1fs, ~%.0fs total) — %d KR ticker",
-            KIS_REQUEST_INTERVAL_PROD, KIS_REQUEST_INTERVAL_PROD * len(kr_tickers), len(kr_tickers),
+            KIS_REQUEST_INTERVAL_PROD,
+            KIS_REQUEST_INTERVAL_PROD * len(kr_tickers),
+            len(kr_tickers),
         )
 
         results: list[dict] = []
@@ -362,7 +378,7 @@ def _upsert_fundamentals(records: list[dict]) -> int:
         return len(records)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import argparse
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 펀더멘탈 수집기 (yfinance)")

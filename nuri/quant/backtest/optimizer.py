@@ -9,6 +9,7 @@
     python -m nuri.quant.backtest.optimizer
     python -m nuri.quant.backtest.optimizer --signal rsi_oversold
 """
+
 import itertools
 import logging
 from dataclasses import dataclass
@@ -74,6 +75,7 @@ def _backtest_signal_with_params(
     # 지표 계산
     try:
         import talib
+
         rsi = talib.RSI(close, timeperiod=14)
         fast = params.get("fast", 12)
         slow = params.get("slow", 26)
@@ -122,8 +124,12 @@ def _backtest_signal_with_params(
                 if close[i - 1] < bb_lower[i - 1] and close[i] >= bb_lower[i]:
                     entries.append(i)
         elif signal_id == "macd_golden":
-            if (not np.isnan(macd[i]) and not np.isnan(macd_sig[i]) and
-                    not np.isnan(macd[i - 1]) and not np.isnan(macd_sig[i - 1])):
+            if (
+                not np.isnan(macd[i])
+                and not np.isnan(macd_sig[i])
+                and not np.isnan(macd[i - 1])
+                and not np.isnan(macd_sig[i - 1])
+            ):
                 if macd[i - 1] < macd_sig[i - 1] and macd[i] >= macd_sig[i]:
                     entries.append(i)
 
@@ -215,9 +221,17 @@ def optimize_signal(
             avg_ret = np.mean([r.avg_return for r in combo_returns])
             avg_pf = np.mean([r.profit_factor for r in combo_returns])
             avg_sharpe = np.mean([r.sharpe for r in combo_returns])
-            results.append(OptResult(
-                signal_id, params, total_trades, avg_wr, avg_ret, avg_pf, avg_sharpe,
-            ))
+            results.append(
+                OptResult(
+                    signal_id,
+                    params,
+                    total_trades,
+                    avg_wr,
+                    avg_ret,
+                    avg_pf,
+                    avg_sharpe,
+                )
+            )
 
     # Profit Factor 기준 정렬
     results.sort(key=lambda r: r.profit_factor, reverse=True)
@@ -231,15 +245,17 @@ def optimize_all(db_path: Optional[Path] = None) -> pd.DataFrame:
         logger.info(f"Optimizing {signal_id}...")
         results = optimize_signal(signal_id, db_path=db_path)
         for r in results:
-            all_results.append({
-                "signal_id": r.signal_id,
-                "params": str(r.params),
-                "total_trades": r.total_trades,
-                "win_rate": round(r.win_rate, 3),
-                "avg_return": round(r.avg_return, 2),
-                "profit_factor": round(r.profit_factor, 2),
-                "sharpe": round(r.sharpe, 2),
-            })
+            all_results.append(
+                {
+                    "signal_id": r.signal_id,
+                    "params": str(r.params),
+                    "total_trades": r.total_trades,
+                    "win_rate": round(r.win_rate, 3),
+                    "avg_return": round(r.avg_return, 2),
+                    "profit_factor": round(r.profit_factor, 2),
+                    "sharpe": round(r.sharpe, 2),
+                }
+            )
 
     df = pd.DataFrame(all_results)
     if not df.empty:
@@ -247,12 +263,15 @@ def optimize_all(db_path: Optional[Path] = None) -> pd.DataFrame:
         best = df.loc[df.groupby("signal_id")["profit_factor"].idxmax()]
         print("\n=== Best Parameters per Signal ===")
         for _, row in best.iterrows():
-            print(f"  {row['signal_id']}: PF={row['profit_factor']:.2f} "
-                  f"WR={row['win_rate']:.0%} Sharpe={row['sharpe']:.2f} "
-                  f"| {row['params']}")
+            print(
+                f"  {row['signal_id']}: PF={row['profit_factor']:.2f} "
+                f"WR={row['win_rate']:.0%} Sharpe={row['sharpe']:.2f} "
+                f"| {row['params']}"
+            )
 
         # CSV 저장
         from datetime import date
+
         report_dir = REPORT_DIR / str(date.today())
         report_dir.mkdir(parents=True, exist_ok=True)
         csv_path = report_dir / "optimization_results.csv"
@@ -262,7 +281,7 @@ def optimize_all(db_path: Optional[Path] = None) -> pd.DataFrame:
     return df
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import argparse
 
     logging.basicConfig(level=logging.INFO)
@@ -273,7 +292,6 @@ if __name__ == "__main__":
     if args.signal:
         results = optimize_signal(args.signal)
         for r in results[:10]:
-            print(f"  PF={r.profit_factor:.2f} WR={r.win_rate:.0%} "
-                  f"trades={r.total_trades} | {r.params}")
+            print(f"  PF={r.profit_factor:.2f} WR={r.win_rate:.0%} trades={r.total_trades} | {r.params}")
     else:
         optimize_all()

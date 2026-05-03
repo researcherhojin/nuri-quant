@@ -9,6 +9,7 @@ Merged from two sources:
 
 Both target `nuri/api/routes/pipeline.py` + related pipeline observability modules.
 """
+
 import asyncio
 import json
 import time as _time
@@ -47,13 +48,16 @@ def db_path(tmp_path):
 def client(db_path, monkeypatch):
     """테스트용 DB로 격리된 FastAPI TestClient. Rate limiter 비활성화."""
     import nuri.core.db as db_mod
+
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
     # xdist 병렬 실행 시 rate limiter 간섭 방지 (route-level + app-level)
     import nuri.api.routes.pipeline as pipeline_mod
+
     monkeypatch.setattr(pipeline_mod._limiter, "enabled", False)
 
     from nuri.api.main import app
+
     return TestClient(app)
 
 
@@ -154,13 +158,16 @@ class TestPipelineAPI:
     @pytest.fixture()
     def _client(self, db_path, monkeypatch):
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
         from nuri.api.main import app
+
         return TestClient(app)
 
     def test_scheduler_health_no_file(self, _client, monkeypatch, tmp_path):
         """Scheduler health when no heartbeat file (lines 21-22)."""
         import nuri.api.routes.pipeline as pipeline_mod
+
         monkeypatch.setattr(pipeline_mod, "_HEARTBEAT_PATH", tmp_path / "nonexistent")
         resp = _client.get("/api/scheduler/health")
         assert resp.status_code == 200
@@ -170,8 +177,10 @@ class TestPipelineAPI:
     def test_scheduler_health_valid(self, _client, monkeypatch, tmp_path):
         """Scheduler health with valid heartbeat."""
         import nuri.api.routes.pipeline as pipeline_mod
+
         hb_path = tmp_path / ".scheduler_heartbeat"
         from nuri.core.timezone import kst_now
+
         hb_path.write_text(kst_now().replace(tzinfo=None).isoformat())
         monkeypatch.setattr(pipeline_mod, "_HEARTBEAT_PATH", hb_path)
         resp = _client.get("/api/scheduler/health")
@@ -221,6 +230,7 @@ class TestPipelineAPI:
 
     def test_run_step_classify(self, _client, monkeypatch):
         """Run classify step (lines 115)."""
+
         @dataclass
         class MockRegime:
             regime: str = "bull_low_vol"
@@ -326,6 +336,7 @@ class TestDashboardV2:
         """빈 DB에서도 에러 없이 정상 응답."""
         # 캐시 무효화 (이전 테스트 결과가 남아있을 수 있음)
         from nuri.api.routes.dashboard import _cache
+
         _cache["data"] = None
         _cache["timestamp"] = 0
         r = dashboard_fast_client.get("/api/dashboard")
@@ -344,6 +355,7 @@ class TestDashboardV2:
 
         # 캐시 무효화
         from nuri.api.routes.dashboard import _cache
+
         _cache["data"] = None
         _cache["timestamp"] = 0
 
@@ -373,6 +385,7 @@ class TestDashboardV2:
         _seed_prices_for_pipeline(db_path)
 
         from nuri.api.routes.dashboard import _cache
+
         _cache["data"] = None
         _cache["timestamp"] = 0
 
@@ -492,6 +505,7 @@ class TestPipelineRun:
 
         # emit_event로 직접 기록 후 조회 (API 경유 대신 직접 검증)
         from nuri.core.events import emit_event, get_timeline
+
         emit_event("step_started", step="collect", db_path=db_path)
         emit_event("step_completed", step="collect", db_path=db_path)
 
@@ -643,6 +657,7 @@ class TestCoreFreshness:
         import pytest as pt
 
         from nuri.core.freshness import check_freshness
+
         with pt.raises(KeyError):
             check_freshness("nonexistent_key", db_path=db_path)
 
@@ -673,6 +688,7 @@ class TestSchedulerHealth:
     def test_no_heartbeat_file(self, client, monkeypatch):
         """heartbeat 파일 없으면 unknown."""
         import nuri.api.routes.pipeline as pipe_mod
+
         monkeypatch.setattr(pipe_mod, "_HEARTBEAT_PATH", Path("/nonexistent/.hb"))
         resp = client.get("/api/scheduler/health")
         assert resp.status_code == 200
@@ -681,6 +697,7 @@ class TestSchedulerHealth:
     def test_heartbeat_fresh(self, client, tmp_path, monkeypatch):
         """최근 heartbeat → ok."""
         import nuri.api.routes.pipeline as pipe_mod
+
         hb = tmp_path / ".hb"
         hb.write_text(kst_now().strftime("%Y-%m-%dT%H:%M:%S"))
         monkeypatch.setattr(pipe_mod, "_HEARTBEAT_PATH", hb)
@@ -693,6 +710,7 @@ class TestSchedulerHealth:
     def test_heartbeat_stale(self, client, tmp_path, monkeypatch):
         """오래된 heartbeat → stale."""
         import nuri.api.routes.pipeline as pipe_mod
+
         hb = tmp_path / ".hb"
         old = (kst_now().replace(tzinfo=None) - timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M:%S")
         hb.write_text(old)
@@ -703,6 +721,7 @@ class TestSchedulerHealth:
     def test_heartbeat_corrupt(self, client, tmp_path, monkeypatch):
         """손상된 heartbeat → error."""
         import nuri.api.routes.pipeline as pipe_mod
+
         hb = tmp_path / ".hb"
         hb.write_text("not-a-date")
         monkeypatch.setattr(pipe_mod, "_HEARTBEAT_PATH", hb)
@@ -714,6 +733,24 @@ class TestWriteHeartbeat:
     def test_creates_file(self, tmp_path, monkeypatch):
         """_write_heartbeat가 파일 생성."""
         import nuri.scheduler as sched
+
         monkeypatch.setattr(sched, "HEARTBEAT_PATH", tmp_path / ".hb")
         sched._write_heartbeat()
         assert (tmp_path / ".hb").exists()
+
+
+class TestPipelineUnknownStep:
+    def test_execute_unknown_step_returns_default(self):
+        """_execute_step('unknown') → 'unknown step' (line 135)."""
+        from nuri.api.routes.pipeline import _execute_step
+
+        assert _execute_step("totally-unknown-xyz") == "unknown step"
+
+    def test_get_heartbeat_path_none_falls_back(self, monkeypatch):
+        """_HEARTBEAT_PATH=None → derive from __file__ (lines 21-22)."""
+        import nuri.api.routes.pipeline as pipe_mod
+
+        monkeypatch.setattr(pipe_mod, "_HEARTBEAT_PATH", None)
+        path = pipe_mod._get_heartbeat_path()
+        assert "data" in str(path)
+        assert ".scheduler_heartbeat" in str(path)

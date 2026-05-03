@@ -1,4 +1,5 @@
 """Tests for evidence — split from test_api_all.py."""
+
 import asyncio
 import json
 import time as _time
@@ -31,6 +32,7 @@ class TestEvidenceAPI_R2:
     def test_find_latest_report_dir(self, tmp_path, monkeypatch):
         import nuri.api.routes.evidence as ev_mod
         from nuri.api.routes.evidence import _find_latest_report_dir
+
         evidence_dir = tmp_path / "reports" / "2026-03-31" / "evidence"
         evidence_dir.mkdir(parents=True)
         monkeypatch.setattr(ev_mod, "REPORT_DIR", tmp_path / "reports")
@@ -41,6 +43,7 @@ class TestEvidenceAPI_R2:
     def test_find_no_reports(self, tmp_path, monkeypatch):
         import nuri.api.routes.evidence as ev_mod
         from nuri.api.routes.evidence import _find_latest_report_dir
+
         empty_dir = tmp_path / "empty_reports"
         empty_dir.mkdir()
         monkeypatch.setattr(ev_mod, "REPORT_DIR", empty_dir)
@@ -59,6 +62,7 @@ class TestEvidenceAPI_R2:
         monkeypatch.setattr(sync_mod, "CONFIG_PATH", tmp_path / "p.yaml")
 
         from nuri.api.main import app
+
         c = TestClient(app)
         r = c.get("/api/evidence")
         assert r.status_code == 200
@@ -76,6 +80,7 @@ class TestEvidenceAPI_R2:
         monkeypatch.setattr(sync_mod, "CONFIG_PATH", tmp_path / "p.yaml")
 
         from nuri.api.main import app
+
         c = TestClient(app)
         r = c.get("/api/evidence/regime")
         assert r.status_code == 404
@@ -85,12 +90,15 @@ class TestEvidenceAPI_R22:
     @pytest.fixture()
     def _client(self, db_path, monkeypatch):
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
         from nuri.api.main import app
+
         return TestClient(app)
 
     def test_list_evidence_no_reports(self, _client, monkeypatch):
         import nuri.api.routes.evidence as ev_mod
+
         monkeypatch.setattr(ev_mod, "REPORT_DIR", Path("/nonexistent/path"))
         resp = _client.get("/api/evidence")
         assert resp.status_code == 200
@@ -99,6 +107,7 @@ class TestEvidenceAPI_R22:
 
     def test_list_evidence_with_dir(self, _client, tmp_path, monkeypatch):
         import nuri.api.routes.evidence as ev_mod
+
         report_dir = tmp_path / "reports"
         date_dir = report_dir / "2025-03-31" / "evidence"
         date_dir.mkdir(parents=True)
@@ -117,12 +126,14 @@ class TestEvidenceAPI_R22:
 
     def test_get_evidence_chart_no_dir(self, _client, monkeypatch):
         import nuri.api.routes.evidence as ev_mod
+
         monkeypatch.setattr(ev_mod, "REPORT_DIR", Path("/nonexistent"))
         resp = _client.get("/api/evidence/regime")
         assert resp.status_code == 404
 
     def test_get_evidence_chart_found(self, _client, tmp_path, monkeypatch):
         import nuri.api.routes.evidence as ev_mod
+
         report_dir = tmp_path / "reports"
         date_dir = report_dir / "2025-03-31" / "evidence"
         date_dir.mkdir(parents=True)
@@ -134,6 +145,7 @@ class TestEvidenceAPI_R22:
 
     def test_get_evidence_chart_alternative_name(self, _client, tmp_path, monkeypatch):
         import nuri.api.routes.evidence as ev_mod
+
         report_dir = tmp_path / "reports"
         date_dir = report_dir / "2025-03-31" / "evidence"
         date_dir.mkdir(parents=True)
@@ -145,6 +157,7 @@ class TestEvidenceAPI_R22:
 
     def test_get_evidence_chart_not_generated(self, _client, tmp_path, monkeypatch):
         import nuri.api.routes.evidence as ev_mod
+
         report_dir = tmp_path / "reports"
         date_dir = report_dir / "2025-03-31" / "evidence"
         date_dir.mkdir(parents=True)
@@ -155,6 +168,7 @@ class TestEvidenceAPI_R22:
     def test_get_evidence_report_not_found(self, _client, monkeypatch):
         """evidence/report — route may be shadowed by /{chart_id} due to definition order."""
         import nuri.api.routes.evidence as ev_mod
+
         monkeypatch.setattr(ev_mod, "REPORT_DIR", Path("/nonexistent"))
         resp = _client.get("/api/evidence/report")
         assert resp.status_code in (400, 404)
@@ -162,6 +176,7 @@ class TestEvidenceAPI_R22:
     def test_get_evidence_report_found(self, _client, tmp_path, monkeypatch):
         """Test get_evidence_report directly since route may be shadowed."""
         import nuri.api.routes.evidence as ev_mod
+
         report_dir = tmp_path / "reports"
         date_dir = report_dir / "2025-03-31"
         (date_dir / "evidence").mkdir(parents=True)
@@ -175,6 +190,7 @@ class TestEvidenceReportLatest:
     def test_report_from_latest_dir(self, tmp_path, monkeypatch):
         """Test get_evidence_report falls back to latest directory."""
         import nuri.api.routes.evidence as ev_mod
+
         report_dir = tmp_path / "reports"
         date_dir = report_dir / "2025-03-30"
         evidence_dir = date_dir / "evidence"
@@ -187,6 +203,22 @@ class TestEvidenceReportLatest:
     def test_report_raises_when_none(self, tmp_path, monkeypatch):
         """get_evidence_report raises 404 when no report files exist."""
         import nuri.api.routes.evidence as ev_mod
+
         monkeypatch.setattr(ev_mod, "REPORT_DIR", tmp_path / "nonexistent")
         with pytest.raises(Exception):
             ev_mod.get_evidence_report()
+
+    def test_report_today_path_hits(self, tmp_path, monkeypatch):
+        """오늘자 디렉토리에 plan 파일 → today branch 적중 (line 93)."""
+        from datetime import date as _date
+
+        import nuri.api.routes.evidence as ev_mod
+
+        report_dir = tmp_path / "reports"
+        today = str(_date.today())
+        today_dir = report_dir / today
+        today_dir.mkdir(parents=True)
+        (today_dir / "portfolio_action_plan.md").write_text("# Today Plan")
+        monkeypatch.setattr(ev_mod, "REPORT_DIR", report_dir)
+        result = ev_mod.get_evidence_report()
+        assert "Today Plan" in result["content"]

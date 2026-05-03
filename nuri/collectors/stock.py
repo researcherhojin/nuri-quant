@@ -241,7 +241,7 @@ class StockCollector(BaseCollector):
         return upsert_prices(data)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     parser = argparse.ArgumentParser(description="Nuri-Quant 미국 주가 수집기 (OpenBB)")
     parser.add_argument("--period", default="5d", help="수집 기간 (1d/5d/1mo/3mo/1y)")
     parser.add_argument(

@@ -606,3 +606,121 @@ class TestSchedulerRegistration:
         finally:
             if getattr(scheduler, "running", False):
                 scheduler.shutdown(wait=False)
+
+
+class TestPremarketBriefExceptionFallbacks:
+    """Lock-tests for exception/branch coverage gaps."""
+
+    def test_collect_context_freshness_exception(self):
+        """get_freshness_summary raise → swallowed (lines 83-84, 92-93, 110-111)."""
+        from nuri.alerts.premarket_brief import _collect_context
+
+        with (
+            patch("nuri.core.freshness.get_freshness_summary", side_effect=Exception("freshness fail")),
+            patch("nuri.trading.recommend.buy_candidate_emitter.emit_buy_candidates", side_effect=Exception("bc")),
+            patch("nuri.quant.validation.market_signals.detect_all", side_effect=Exception("sig")),
+            patch("nuri.quant.regime.classifier.classify_regime", return_value=None),
+            patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception("macro")),
+            patch("nuri.trading.engine.certification.certify", side_effect=Exception("cert")),
+            patch(
+                "nuri.api.routes.actions._build_actions",
+                return_value={"urgent": [], "portfolio": [], "check": [], "hold": []},
+            ),
+            patch("nuri.api.routes.actions._build_opportunities", return_value=[]),
+            patch("nuri.api.routes.actions._get_macro_events", return_value=[]),
+        ):
+            ctx = _collect_context()
+        assert isinstance(ctx, dict)
+        # freshness/buy_candidates/shadow_signals 가 None or absent — 어느 쪽이든 graceful
+
+    def test_format_brief_embed_freshness_pass(self, monkeypatch):
+        """모든 freshness PASS 시 ✅ tier_emoji (line 501)."""
+        from nuri.alerts.premarket_brief import format_brief_markdown
+
+        ctx = {
+            "freshness": {
+                "pass": 5,
+                "warn": 0,
+                "fail": 0,
+                "details": [
+                    {"status": "PASS", "label": "prices", "message": "ok"},
+                ],
+            },
+        }
+        md = format_brief_markdown(ctx)
+        assert "✅" in md
+
+    def test_format_brief_buy_candidates_listed(self):
+        """bc.candidates 비어있지 않을 때 markdown에 ticker line (lines 540-551)."""
+        from dataclasses import dataclass, field
+
+        from nuri.alerts.premarket_brief import format_brief_markdown
+
+        @dataclass
+        class FakeCand:
+            ticker: str = "AAPL"
+            score: int = 80
+            deploy_pct: int = 5
+            entry: float = 200.0
+            stop: float = 190.0
+            tp1: float = 220.0
+            tp2: float = 240.0
+            why_now: str = "rsi oversold"
+            sources: dict = field(default_factory=lambda: {"a": 80.0})
+
+        @dataclass
+        class FakeBC:
+            blocked_reason: str | None = None
+            regime: str = "bull"
+            vix: float = 15.0
+            timestamp_kst: str = "2026-05-04 08:00 KST"
+            candidates: list = field(default_factory=list)
+            total_deploy_pct: int = 0
+            skipped: list = field(default_factory=list)
+
+        bc = FakeBC(candidates=[FakeCand()], total_deploy_pct=5, skipped=[1, 2])
+        md = format_brief_markdown({"buy_candidates": bc})
+        assert "AAPL" in md
+        assert "Why now" in md
+        assert "skipped" in md
+
+    def test_format_brief_embed_buy_candidates_field(self):
+        """embed 의 buy_candidates field branch (lines 400-408)."""
+        from dataclasses import dataclass, field
+
+        from nuri.alerts.premarket_brief import format_brief_embed
+
+        @dataclass
+        class FakeCand:
+            ticker: str = "AAPL"
+            score: int = 80
+            deploy_pct: int = 5
+            entry: float = 200.0
+            stop: float = 190.0
+            tp1: float = 220.0
+            tp2: float = 240.0
+            why_now: str = "rsi oversold"
+            sources: dict = field(default_factory=lambda: {"a": 80.0})
+
+        @dataclass
+        class FakeBC:
+            blocked_reason: str | None = None
+            regime: str = "bull"
+            vix: float = 15.0
+            timestamp_kst: str = "2026-05-04 08:00 KST"
+            candidates: list = field(default_factory=lambda: [FakeCand()])
+            total_deploy_pct: int = 5
+            skipped: list = field(default_factory=list)
+
+        embed = format_brief_embed({"buy_candidates": FakeBC()})
+        assert isinstance(embed, dict)
+        # Should include buy candidates field
+        names = [f.get("name", "") for f in embed.get("fields", [])]
+        assert any("BUY" in n for n in names)
+
+    def test_send_brief_exception(self):
+        """send_webhook raise → False (lines 601-603)."""
+        from nuri.alerts.premarket_brief import send_brief
+
+        with patch("nuri.alerts.discord_bot.send_webhook", side_effect=RuntimeError("net")):
+            assert send_brief({}) is False

@@ -240,3 +240,79 @@ def test_audit_dedupes_against_recent_outbox_stage(patched_db):
     assert result.output["issues_emitted"] == 0
     assert result.output["issues_dedupe_skipped"] == 1
     assert not emit.called
+
+
+class TestEmitIncidentExceptionPath:
+    """Lock-tests for _emit_incident exception (lines 256-275)."""
+
+    def test_emit_incident_success(self, patched_db):
+        """stage_incident → True (lines 256-273)."""
+        from nuri.agents.actors.brief_auditor import _emit_incident
+
+        with patch(
+            "nuri.agents.discord.outbox.stage_incident",
+            return_value=42,
+        ):
+            ok = _emit_incident(
+                issue={
+                    "type": "conflict",
+                    "issue_id": "abc",
+                    "affected": ["AAPL"],
+                    "n_decisions": 2,
+                    "evidence": [],
+                    "suggested_fix": "fix",
+                },
+                run_id="run123",
+                db_path=patched_db,
+            )
+        assert ok is True
+
+    def test_emit_incident_exception_returns_false(self, patched_db):
+        """stage_incident raise → False (line 274-275)."""
+        from nuri.agents.actors.brief_auditor import _emit_incident
+
+        with patch(
+            "nuri.agents.discord.outbox.stage_incident",
+            side_effect=RuntimeError("outbox full"),
+        ):
+            ok = _emit_incident(
+                issue={
+                    "type": "noise",
+                    "issue_id": "x",
+                    "affected": ["MSFT"],
+                    "n_decisions": 5,
+                    "evidence": [],
+                    "suggested_fix": "fix",
+                },
+                run_id="run456",
+                db_path=patched_db,
+            )
+        assert ok is False
+
+
+class TestBriefAuditorCli:
+    def test_cli_main(self, patched_db, capsys, monkeypatch):
+        """main() prints summary (lines 278-295)."""
+        from nuri.agents.actors.brief_auditor import main
+
+        class FakeRes:
+            output = {
+                "decisions_audited": 10,
+                "issues_found": 2,
+                "issues_emitted": 1,
+                "issues_dedupe_skipped": 1,
+                "issues": [
+                    {"issue_id": "id1", "type": "conflict", "affected": ["AAPL"]},
+                ],
+            }
+
+        class FakeAuditor:
+            def run(self, *a, **kw):
+                return FakeRes()
+
+        monkeypatch.setattr("nuri.agents.actors.brief_auditor.BriefAuditor", FakeAuditor)
+        rc = main(["--hours", "12"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "audited=10" in out
+        assert "id1" in out

@@ -7,6 +7,7 @@ macro_score.py의 9번째 입력으로 사용.
 사용법:
     python -m nuri.quant.regime.event_score
 """
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -33,9 +34,9 @@ CATEGORY_WEIGHT: dict[str, float] = {
     "sector_rally": 0.4,
     "sector_selloff": -0.6,
     "trade_war": -0.7,
-    "export_surge": 0.65,        # 한국/글로벌 수출 급증 → 강한 긍정 (#137)
-    "currency_shift": -0.35,     # FX 변동 → 불확실성 증가 (방향은 sentiment으로 구분)
-    "demand_growth": 0.55,       # 반도체/산업 수요 확대 → 긍정
+    "export_surge": 0.65,  # 한국/글로벌 수출 급증 → 강한 긍정 (#137)
+    "currency_shift": -0.35,  # FX 변동 → 불확실성 증가 (방향은 sentiment으로 구분)
+    "demand_growth": 0.55,  # 반도체/산업 수요 확대 → 긍정
     "neutral": 0.0,
 }
 
@@ -56,12 +57,13 @@ MIN_EVENTS_FOR_REGIME_HINT = 3
 @dataclass
 class EventScore:
     """매크로 이벤트 종합 점수."""
+
     date: str
-    score: float              # -20 ~ +20
-    event_count: int          # 분석 이벤트 수
+    score: float  # -20 ~ +20
+    event_count: int  # 분석 이벤트 수
     category_breakdown: dict  # {category: contribution}
     dominant_category: str | None  # 가장 영향력 큰 카테고리
-    regime_hint: str | None   # dominant category의 regime hint
+    regime_hint: str | None  # dominant category의 regime hint
 
 
 def _compute_recency(published_at: str | None, ref_date: str, lookback_days: int) -> float:
@@ -111,14 +113,20 @@ def compute_event_score(
 
     if not rows:
         return EventScore(
-            date=ref_date, score=0.0, event_count=0,
-            category_breakdown={}, dominant_category=None, regime_hint=None,
+            date=ref_date,
+            score=0.0,
+            event_count=0,
+            category_breakdown={},
+            dominant_category=None,
+            regime_hint=None,
         )
 
     # 저신뢰 이벤트 필터링 — regex fallback이나 분류 실패로 인한 노이즈 제거
     filtered = [r for r in rows if (r["confidence"] or 0.0) >= CONFIDENCE_FLOOR]
     if len(filtered) < len(rows):
-        logger.debug("이벤트 %d건 중 %d건 신뢰도 미달 제외 (< %.1f)", len(rows), len(rows) - len(filtered), CONFIDENCE_FLOOR)
+        logger.debug(
+            "이벤트 %d건 중 %d건 신뢰도 미달 제외 (< %.1f)", len(rows), len(rows) - len(filtered), CONFIDENCE_FLOOR
+        )
 
     # 카테고리별 기여 합산 (시간 가중 적용)
     breakdown: dict[str, float] = {}
@@ -144,7 +152,7 @@ def compute_event_score(
     # 이벤트 수가 많을수록 효과 감소 (diminishing returns)
     # √(event_count)로 정규화하여 1개 이벤트와 100개 이벤트의 차이를 줄임
     event_count = len(filtered)
-    normalized = raw_sum / (event_count ** 0.5) if event_count > 0 else 0.0
+    normalized = raw_sum / (event_count**0.5) if event_count > 0 else 0.0
 
     # 20점 스케일로 변환 (경험적 스케일링 팩터)
     score = normalized * 40.0
@@ -155,6 +163,7 @@ def compute_event_score(
     regime_hint = None
     if dominant and event_count >= MIN_EVENTS_FOR_REGIME_HINT:
         from nuri.llm.event_classifier import REGIME_HINT_BY_CATEGORY
+
         regime_hint = REGIME_HINT_BY_CATEGORY.get(dominant)
     elif dominant and event_count < MIN_EVENTS_FOR_REGIME_HINT:
         logger.debug("이벤트 %d건 < %d → regime_hint 무효화", event_count, MIN_EVENTS_FOR_REGIME_HINT)
@@ -185,7 +194,7 @@ def print_event_score(es: EventScore) -> None:
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     es = compute_event_score()
     print_event_score(es)

@@ -269,3 +269,4 @@ docs/SYSTEM.md
 
 # Tool session state (codex consult, etc.)
 .context/
+coverage.json

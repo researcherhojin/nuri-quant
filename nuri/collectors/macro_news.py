@@ -13,6 +13,7 @@ Phase B/C에서 별도 PR로 통합한다 (#142, #143).
 사용법:
     python -m nuri.collectors.macro_news
 """
+
 import logging
 import re
 import xml.etree.ElementTree as ET  # noqa: N817 — stdlib alias
@@ -192,7 +193,7 @@ def _parse_pubdate(raw: str | None) -> str:
         return kst_now().isoformat(timespec="seconds")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",

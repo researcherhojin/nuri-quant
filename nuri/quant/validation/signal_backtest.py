@@ -9,6 +9,7 @@ prices 5년 데이터 + TA-Lib으로 시그널을 감지하고,
     python -m nuri.quant.validation.signal_backtest --ticker TSLA
     python -m nuri.quant.validation.signal_backtest --signal rsi_oversold
 """
+
 import argparse
 import logging
 from dataclasses import asdict, dataclass
@@ -39,6 +40,7 @@ REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 @dataclass
 class SignalResult:
     """개별 시그널 거래 결과."""
+
     signal_id: str
     ticker: str
     entry_date: str
@@ -53,15 +55,16 @@ class SignalResult:
 @dataclass
 class SignalScorecard:
     """시그널별 집계 스코어카드."""
+
     signal_id: str
-    ticker: str | None       # None = 전체 종목 합산
+    ticker: str | None  # None = 전체 종목 합산
     total_trades: int
-    win_rate: float          # 0.0 ~ 1.0
-    avg_return: float        # %
-    median_return: float     # %
-    max_return: float        # %
-    max_loss: float          # %
-    profit_factor: float     # 총이익 / 총손실 (손실=0이면 inf)
+    win_rate: float  # 0.0 ~ 1.0
+    avg_return: float  # %
+    median_return: float  # %
+    max_return: float  # %
+    max_loss: float  # %
+    profit_factor: float  # 총이익 / 총손실 (손실=0이면 inf)
     avg_holding_days: float
 
 
@@ -76,6 +79,7 @@ ExitDetector = Callable[[pd.DataFrame, int], bool]
 
 
 # ── 진입 감지 함수 ──
+
 
 def _entry_rsi_oversold(df: pd.DataFrame, i: int) -> bool:
     threshold = get_signal_params("rsi_oversold").get("threshold", 30)
@@ -92,15 +96,13 @@ def _entry_rsi_overbought(df: pd.DataFrame, i: int) -> bool:
 def _entry_macd_golden(df: pd.DataFrame, i: int) -> bool:
     m, ms = df["macd"].iloc[i], df["macd_signal"].iloc[i]
     mp, msp = df["macd"].iloc[i - 1], df["macd_signal"].iloc[i - 1]
-    return bool(pd.notna(m) and pd.notna(ms) and pd.notna(mp) and pd.notna(msp)
-                and mp < msp and m >= ms)
+    return bool(pd.notna(m) and pd.notna(ms) and pd.notna(mp) and pd.notna(msp) and mp < msp and m >= ms)
 
 
 def _entry_macd_dead(df: pd.DataFrame, i: int) -> bool:
     m, ms = df["macd"].iloc[i], df["macd_signal"].iloc[i]
     mp, msp = df["macd"].iloc[i - 1], df["macd_signal"].iloc[i - 1]
-    return bool(pd.notna(m) and pd.notna(ms) and pd.notna(mp) and pd.notna(msp)
-                and mp > msp and m <= ms)
+    return bool(pd.notna(m) and pd.notna(ms) and pd.notna(mp) and pd.notna(msp) and mp > msp and m <= ms)
 
 
 def _entry_sma_golden(df: pd.DataFrame, i: int) -> bool:
@@ -108,8 +110,9 @@ def _entry_sma_golden(df: pd.DataFrame, i: int) -> bool:
         return False
     s50, s200 = df["sma_50"].iloc[i], df["sma_200"].iloc[i]
     s50p, s200p = df["sma_50"].iloc[i - 1], df["sma_200"].iloc[i - 1]
-    return bool(pd.notna(s50) and pd.notna(s200) and pd.notna(s50p) and pd.notna(s200p)
-                and s50p < s200p and s50 >= s200)
+    return bool(
+        pd.notna(s50) and pd.notna(s200) and pd.notna(s50p) and pd.notna(s200p) and s50p < s200p and s50 >= s200
+    )
 
 
 def _entry_sma_dead(df: pd.DataFrame, i: int) -> bool:
@@ -117,8 +120,9 @@ def _entry_sma_dead(df: pd.DataFrame, i: int) -> bool:
         return False
     s50, s200 = df["sma_50"].iloc[i], df["sma_200"].iloc[i]
     s50p, s200p = df["sma_50"].iloc[i - 1], df["sma_200"].iloc[i - 1]
-    return bool(pd.notna(s50) and pd.notna(s200) and pd.notna(s50p) and pd.notna(s200p)
-                and s50p > s200p and s50 <= s200)
+    return bool(
+        pd.notna(s50) and pd.notna(s200) and pd.notna(s50p) and pd.notna(s200p) and s50p > s200p and s50 <= s200
+    )
 
 
 def _entry_bb_bounce(df: pd.DataFrame, i: int) -> bool:
@@ -177,7 +181,7 @@ def _entry_pcr_reversal(df: pd.DataFrame, i: int) -> bool:
     pcr_now = df["macro_pcr"].iloc[i]
     if not (pd.notna(pcr_now) and bool(pcr_now <= pcr_low)):
         return False
-    window = df["macro_pcr"].iloc[max(0, i - lookback):i].dropna()
+    window = df["macro_pcr"].iloc[max(0, i - lookback) : i].dropna()
     if len(window) == 0:
         return False
     peak_val = window.max()
@@ -253,7 +257,7 @@ def _entry_bb_squeeze_breakout(df: pd.DataFrame, i: int) -> bool:
     if pd.isna(upper) or pd.isna(lower) or pd.isna(middle) or middle == 0:
         return False
     width = (upper - lower) / middle
-    widths = ((df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]).iloc[max(0, i - lookback):i]
+    widths = ((df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]).iloc[max(0, i - lookback) : i]
     avg_width = widths.mean()
     if pd.isna(avg_width) or avg_width == 0:
         return False
@@ -271,7 +275,7 @@ def _entry_near_52w_low_bounce(df: pd.DataFrame, i: int) -> bool:
     lookback = params.get("lookback_days", 252)
     if "close" not in df.columns or i < lookback:
         return False
-    window = df["close"].iloc[max(0, i - lookback):i + 1]
+    window = df["close"].iloc[max(0, i - lookback) : i + 1]
     low_window = window.min()
     close = df["close"].iloc[i]
     close_back = df["close"].iloc[i - bounce_days] if i >= bounce_days else close
@@ -291,7 +295,7 @@ def _entry_volume_profile_resistance(df: pd.DataFrame, i: int) -> bool:
     required = {"close", "volume"}
     if not required.issubset(df.columns) or i < lookback:
         return False
-    sub = df[["close", "volume"]].iloc[max(0, i - lookback):i].dropna()
+    sub = df[["close", "volume"]].iloc[max(0, i - lookback) : i].dropna()
     if sub.empty or sub["volume"].sum() == 0:
         return False
     vwap = (sub["close"] * sub["volume"]).sum() / sub["volume"].sum()
@@ -304,6 +308,7 @@ def _entry_volume_profile_resistance(df: pd.DataFrame, i: int) -> bool:
 
 
 # ── 청산 감지 함수 (hold_days=None 시그널용) ──
+
 
 def _exit_macd_golden(df: pd.DataFrame, i: int) -> bool:
     m, ms = df["macd"].iloc[i], df["macd_signal"].iloc[i]
@@ -429,6 +434,7 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     try:
         import talib
+
         df["rsi_14"] = talib.RSI(close, timeperiod=14)
         macd, signal, hist = talib.MACD(close, fastperiod=12, slowperiod=26, signalperiod=9)
         df["macd"], df["macd_signal"], df["macd_hist"] = macd, signal, hist
@@ -491,9 +497,7 @@ def _merge_asof_from_db(
         ext_df["date"] = pd.to_datetime(ext_df["date"])
         ext_df = ext_df.rename(columns={value_col: target_col})
         ext_df = ext_df.sort_values("date").drop_duplicates("date")
-        df = pd.merge_asof(
-            df.sort_values("date"), ext_df[["date", target_col]], on="date", direction="backward"
-        )
+        df = pd.merge_asof(df.sort_values("date"), ext_df[["date", target_col]], on="date", direction="backward")
     except Exception:
         df[target_col] = np.nan
     return df
@@ -514,7 +518,9 @@ def merge_macro_data(df: pd.DataFrame, db_path=None) -> pd.DataFrame:
             df,
             "SELECT date, value FROM macro WHERE indicator = ? ORDER BY date",
             (indicator,),
-            "value", col_name, db_path=db_path,
+            "value",
+            col_name,
+            db_path=db_path,
         )
         # fallback: 주 indicator 데이터 없으면 대체 indicator 시도
         if fallback and col_name in df.columns and df[col_name].isna().all():
@@ -523,7 +529,9 @@ def merge_macro_data(df: pd.DataFrame, db_path=None) -> pd.DataFrame:
                 df,
                 "SELECT date, value FROM macro WHERE indicator = ? ORDER BY date",
                 (fallback,),
-                "value", col_name, db_path=db_path,
+                "value",
+                col_name,
+                db_path=db_path,
             )
 
     # 수익률곡선 스프레드 (10Y - 3M)
@@ -544,11 +552,14 @@ def merge_data_signals(df: pd.DataFrame, ticker: str, db_path=None) -> pd.DataFr
     try:
         insider_df = query_df(
             "SELECT date, transaction_type FROM insider_trades WHERE ticker = ? ORDER BY date",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
         if not insider_df.empty:
             insider_df["date"] = pd.to_datetime(insider_df["date"])
-            buys = insider_df[insider_df["transaction_type"].str.contains("Purchase|Buy|P-Purchase", case=False, na=False)]
+            buys = insider_df[
+                insider_df["transaction_type"].str.contains("Purchase|Buy|P-Purchase", case=False, na=False)
+            ]
             buy_dates = buys["date"].tolist()
             df["insider_buy_count_10d"] = [
                 sum(1 for bd in buy_dates if pd.Timedelta(days=0) <= (d - bd) <= pd.Timedelta(days=10))
@@ -565,7 +576,9 @@ def merge_data_signals(df: pd.DataFrame, ticker: str, db_path=None) -> pd.DataFr
         "SELECT date, numeric_value FROM external_analysis "
         "WHERE ticker = ? AND data_type = 'short_interest' ORDER BY date",
         (ticker,),
-        "numeric_value", "short_interest", db_path=db_path,
+        "numeric_value",
+        "short_interest",
+        db_path=db_path,
     )
 
     return df
@@ -609,7 +622,6 @@ def compute_exit(df: pd.DataFrame, entry_idx: int, signal_id: str) -> int | None
 # ═══════════════════════════════════════════════════════
 # 하위호환 alias (기존 private import 지원)
 # ═══════════════════════════════════════════════════════
-
 
 
 # ═══════════════════════════════════════════════════════
@@ -683,17 +695,19 @@ def backtest_signals(
                     return_pct = raw_return_pct
                 holding_days = exit_idx - entry_idx
 
-                results.append(SignalResult(
-                    signal_id=sig_id,
-                    ticker=tkr,
-                    entry_date=df["date"].iloc[entry_idx].strftime("%Y-%m-%d"),
-                    entry_price=round(float(entry_price), 2),
-                    exit_date=df["date"].iloc[exit_idx].strftime("%Y-%m-%d"),
-                    exit_price=round(float(exit_price), 2),
-                    return_pct=round(float(return_pct), 2),
-                    holding_days=int(holding_days),
-                    won=bool(return_pct > 0),
-                ))
+                results.append(
+                    SignalResult(
+                        signal_id=sig_id,
+                        ticker=tkr,
+                        entry_date=df["date"].iloc[entry_idx].strftime("%Y-%m-%d"),
+                        entry_price=round(float(entry_price), 2),
+                        exit_date=df["date"].iloc[exit_idx].strftime("%Y-%m-%d"),
+                        exit_price=round(float(exit_price), 2),
+                        return_pct=round(float(return_pct), 2),
+                        holding_days=int(holding_days),
+                        won=bool(return_pct > 0),
+                    )
+                )
 
         logger.info(f"{tkr}: {len([r for r in results if r.ticker == tkr])}건 시그널")
 
@@ -758,8 +772,10 @@ def print_scorecard(scorecards: list[SignalScorecard]) -> None:
     print(f"  {'-' * 65}")
     for s in total:
         pf = f"{s.profit_factor:.2f}" if s.profit_factor < 100 else "∞"
-        print(f"  {s.signal_id:<20} {s.total_trades:>5} {s.win_rate:>6.1%} "
-              f"{s.avg_return:>+7.1f}% {pf:>6} {s.max_return:>+7.1f}% {s.max_loss:>+7.1f}%")
+        print(
+            f"  {s.signal_id:<20} {s.total_trades:>5} {s.win_rate:>6.1%} "
+            f"{s.avg_return:>+7.1f}% {pf:>6} {s.max_return:>+7.1f}% {s.max_loss:>+7.1f}%"
+        )
     print()
 
 
@@ -767,7 +783,7 @@ def print_scorecard(scorecards: list[SignalScorecard]) -> None:
 # 메인
 # ═══════════════════════════════════════════════════════
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 시그널 백테스트")
@@ -786,10 +802,6 @@ if __name__ == "__main__":
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if results:
-        pd.DataFrame([asdict(r) for r in results]).to_csv(
-            output_dir / "signal_results.csv", index=False
-        )
+        pd.DataFrame([asdict(r) for r in results]).to_csv(output_dir / "signal_results.csv", index=False)
     if scorecards:
-        pd.DataFrame([asdict(s) for s in scorecards]).to_csv(
-            output_dir / "signal_scorecard.csv", index=False
-        )
+        pd.DataFrame([asdict(s) for s in scorecards]).to_csv(output_dir / "signal_scorecard.csv", index=False)

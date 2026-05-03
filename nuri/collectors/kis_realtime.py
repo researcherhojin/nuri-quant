@@ -19,6 +19,7 @@
     python -m nuri.collectors.kis_realtime
     python -m nuri.collectors.kis_realtime --mode paper
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,7 +47,7 @@ PROD_BASE = "https://openapi.koreainvestment.com:9443"
 PAPER_BASE = "https://openapivts.koreainvestment.com:29443"
 
 TOKEN_CACHE_TTL_SEC = 23 * 3600  # 23h (실제 24h, 마진 1h)
-TOKEN_COOLDOWN_SEC = 60          # KIS 1분 cooldown
+TOKEN_COOLDOWN_SEC = 60  # KIS 1분 cooldown
 
 # KIS 자격 증명 + token cache 위치 (우선순위 순):
 #   1) config/kis/ — 프로젝트 내 gitignored, 권장
@@ -115,6 +116,7 @@ KIS_RATE_LIMIT_RETRY_DELAY_SEC = 1.5  # rate limit 후 충분히 회복
 @dataclass
 class KISCredentials:
     """KIS 자격 증명 (prod/paper)."""
+
     app_key: str
     app_secret: str
     account: str
@@ -155,6 +157,7 @@ def load_credentials(mode: str = "prod") -> KISCredentials | None:
     if KIS_YAML_PATH.exists():
         try:
             import yaml
+
             with open(KIS_YAML_PATH, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             yaml_prefix = "my_app" if mode == "prod" else "paper_app"
@@ -232,11 +235,15 @@ def get_access_token(creds: KISCredentials) -> str | None:
         token = resp_payload.get("access_token")
         if token:
             TOKEN_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(json.dumps({
-                "access_token": token,
-                "issued_at": time.time(),
-                "expires_in": resp_payload.get("expires_in", 86400),
-            }))
+            cache_file.write_text(
+                json.dumps(
+                    {
+                        "access_token": token,
+                        "issued_at": time.time(),
+                        "expires_in": resp_payload.get("expires_in", 86400),
+                    }
+                )
+            )
             return token
         logger.error("KIS 토큰 응답에 access_token 없음: %s", resp_payload)
     except Exception as e:
@@ -397,8 +404,9 @@ class KISRealtimeCollector(BaseCollector):
             self.logger.error("KIS 자격 증명 없음 (.env 또는 config/kis/kis_devlp.yaml 확인)")
             return False
         masked_key = self.creds.app_key[:8] + "..." if len(self.creds.app_key) > 8 else "***"
-        self.logger.info("KIS 자격 증명 OK [%s] app_key=%s account=%s",
-                         self.mode, masked_key, self.creds.account or "(미설정)")
+        self.logger.info(
+            "KIS 자격 증명 OK [%s] app_key=%s account=%s", self.mode, masked_key, self.creds.account or "(미설정)"
+        )
         return True
 
     def collect(self, **kwargs) -> pd.DataFrame:
@@ -434,8 +442,9 @@ class KISRealtimeCollector(BaseCollector):
         # yfinance fallback for KIS failures (transient rate limit, KIS 미지원 종목 등)
         yf_recovered = []
         if kis_failures:
-            self.logger.warning("KIS 시세 실패 %d종목, yfinance fallback 시도: %s",
-                                len(kis_failures), ", ".join(kis_failures))
+            self.logger.warning(
+                "KIS 시세 실패 %d종목, yfinance fallback 시도: %s", len(kis_failures), ", ".join(kis_failures)
+            )
             yf_recovered = self._yfinance_fallback(kis_failures)
             records.extend(yf_recovered)
 
@@ -443,7 +452,10 @@ class KISRealtimeCollector(BaseCollector):
         kis_count = total - len(yf_recovered)
         self.logger.info(
             "KIS 실시간 수집: %d/%d (KIS=%d, yfinance fallback=%d)",
-            total, len(tickers), kis_count, len(yf_recovered),
+            total,
+            len(tickers),
+            kis_count,
+            len(yf_recovered),
         )
         return pd.DataFrame(records)
 
@@ -462,16 +474,18 @@ class KISRealtimeCollector(BaseCollector):
                 if hist.empty:
                     continue
                 last = hist.iloc[-1]
-                recovered.append({
-                    "ticker": t,
-                    "date": today_kst(),
-                    "open": float(last.get("Open", 0) or 0),
-                    "high": float(last.get("High", 0) or 0),
-                    "low": float(last.get("Low", 0) or 0),
-                    "close": float(last.get("Close", 0)),
-                    "volume": int(last.get("Volume", 0) or 0),
-                    "adj_close": float(last.get("Close", 0)),
-                })
+                recovered.append(
+                    {
+                        "ticker": t,
+                        "date": today_kst(),
+                        "open": float(last.get("Open", 0) or 0),
+                        "high": float(last.get("High", 0) or 0),
+                        "low": float(last.get("Low", 0) or 0),
+                        "close": float(last.get("Close", 0)),
+                        "volume": int(last.get("Volume", 0) or 0),
+                        "adj_close": float(last.get("Close", 0)),
+                    }
+                )
             except Exception:
                 continue
         return recovered
@@ -489,8 +503,7 @@ def main():
     )
     parser = argparse.ArgumentParser(description="KIS Open API 실시간 시세")
     parser.add_argument("--mode", choices=["prod", "paper"], default="prod")
-    parser.add_argument("--check-creds", action="store_true",
-                        help="자격 증명만 확인 (API 호출 X)")
+    parser.add_argument("--check-creds", action="store_true", help="자격 증명만 확인 (API 호출 X)")
     args = parser.parse_args()
 
     collector = KISRealtimeCollector(mode=args.mode)
@@ -500,5 +513,5 @@ def main():
     collector.run()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

@@ -551,3 +551,80 @@ class TestChatTextErrorPaths:
         result = OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
         # Content returned despite audit log failure — observable contract upheld.
         assert "데이터 완성도" in result
+
+
+# ─── Coverage gap: cached SDK + ImportError + chat_json audit failures ─
+
+
+class TestEnsureSdkCacheAndImport:
+    def test_cached_sdk_returns_same_instance(self, fake_openai_success, db_path):
+        """두 번째 호출은 캐시된 _sdk_client 즉시 반환 — line 156-157 cover."""
+        from nuri.llm.openai_client import OpenAIClient
+
+        client = OpenAIClient()
+        first = client._ensure_sdk()
+        second = client._ensure_sdk()
+        assert first is second
+
+    def test_openai_import_error_raises_unavailable(self, monkeypatch, db_path):
+        """openai SDK 가 설치 안 됐으면 ImportError → ExternalLLMUnavailable."""
+        import builtins
+        import sys
+
+        from nuri.llm.openai_client import ExternalLLMUnavailable, OpenAIClient
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.delenv("NURI_DISABLE_EXTERNAL_LLM", raising=False)
+        # Remove openai from sys.modules + intercept import
+        sys.modules.pop("openai", None)
+        original_import = builtins.__import__
+
+        def _fake_import(name, *args, **kwargs):
+            if name == "openai":
+                raise ImportError("No module named 'openai'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", _fake_import)
+
+        with pytest.raises(ExternalLLMUnavailable, match="openai SDK not installed"):
+            OpenAIClient()._ensure_sdk()
+
+
+class TestChatJsonAuditFailures:
+    def test_chat_json_failure_path_audit_log_swallowed(self, monkeypatch, db_path):
+        """SDK 실패 시 audit log 작성도 실패해도 primary 에러는 raise — line 226-227."""
+        import nuri.llm.openai_client as mod
+        from nuri.llm.openai_client import ExternalLLMUnavailable, OpenAIClient
+
+        mod._singleton = None
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.delenv("NURI_DISABLE_EXTERNAL_LLM", raising=False)
+
+        fake_sdk = MagicMock()
+        fake_sdk.chat.completions.create.side_effect = ConnectionError("network")
+        fake_module = MagicMock()
+        fake_module.OpenAI = MagicMock(return_value=fake_sdk)
+        monkeypatch.setitem(__import__("sys").modules, "openai", fake_module)
+
+        # audit log 도 실패
+        def _boom(*a, **kw):
+            raise OSError("audit disk full")
+
+        monkeypatch.setattr(mod, "log_external_llm_call", _boom)
+
+        with pytest.raises(ExternalLLMUnavailable, match="ConnectionError"):
+            OpenAIClient().chat_json(system="s", user="u", db_path=db_path)
+
+    def test_chat_json_success_path_audit_failure_swallowed(self, fake_openai_success, db_path, monkeypatch):
+        """SDK 성공 후 audit log 실패 — 응답은 caller 에 도달, audit 실패는 debug 로그만."""
+        import nuri.llm.openai_client as mod
+        from nuri.llm.openai_client import OpenAIClient
+
+        def _boom(*a, **kw):
+            raise OSError("readonly fs")
+
+        monkeypatch.setattr(mod, "log_external_llm_call", _boom)
+
+        result = OpenAIClient().chat_json(system="s", user="u", db_path=db_path)
+        assert isinstance(result, dict)
+        assert result.get("category") == "fed_dovish"

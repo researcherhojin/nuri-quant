@@ -7,14 +7,20 @@ Regression lock-in:
 - SHADOW (`actionable: false`) 는 candidates 에 포함 안 됨 (구조적 격리 lock).
 - `is_actionable` helper 와 `signals.yaml` 의 `actionable: false` 설정 round-trip.
 """
+
+
 class TestYieldCurveInversion:
     def test_fires_when_short_exceeds_long(self, db_path):
         from nuri.core.db import get_db
         from nuri.quant.validation.market_signals import detect_yield_curve_inversion
 
         with get_db(db_path) as conn:
-            conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('us_3m_yield', '2026-04-22', 5.20, 'FRED')")
-            conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('us_10y_yield', '2026-04-22', 4.30, 'FRED')")
+            conn.execute(
+                "INSERT INTO macro (indicator, date, value, source) VALUES ('us_3m_yield', '2026-04-22', 5.20, 'FRED')"
+            )
+            conn.execute(
+                "INSERT INTO macro (indicator, date, value, source) VALUES ('us_10y_yield', '2026-04-22', 4.30, 'FRED')"
+            )
         s = detect_yield_curve_inversion(db_path=db_path)
         assert s.fired is True
         assert s.level is not None and s.level < 0  # spread 음수
@@ -25,8 +31,12 @@ class TestYieldCurveInversion:
         from nuri.quant.validation.market_signals import detect_yield_curve_inversion
 
         with get_db(db_path) as conn:
-            conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('us_3m_yield', '2026-04-22', 4.00, 'FRED')")
-            conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('us_10y_yield', '2026-04-22', 4.30, 'FRED')")
+            conn.execute(
+                "INSERT INTO macro (indicator, date, value, source) VALUES ('us_3m_yield', '2026-04-22', 4.00, 'FRED')"
+            )
+            conn.execute(
+                "INSERT INTO macro (indicator, date, value, source) VALUES ('us_10y_yield', '2026-04-22', 4.30, 'FRED')"
+            )
         s = detect_yield_curve_inversion(db_path=db_path)
         assert s.fired is False
         assert s.level is not None and s.level > 0
@@ -45,6 +55,7 @@ class TestYieldCurveInversion:
 class TestHyOasWidening:
     def _seed_oas_series(self, db_path, values: list[tuple[str, float]]):
         from nuri.core.db import get_db
+
         with get_db(db_path) as conn:
             for date, value in values:
                 conn.execute(
@@ -111,8 +122,7 @@ class TestHyOasWidening:
         self._seed_oas_series(db_path, rows)
         s = detect_hy_oas_widening(db_path=db_path)
         assert s.fired is False, (
-            f"partial history (10 rows) 에서 false SHADOW fire — partial guard 누락. "
-            f"detail={s.detail}"
+            f"partial history (10 rows) 에서 false SHADOW fire — partial guard 누락. detail={s.detail}"
         )
         assert "히스토리 부족" in s.detail
         # level 은 현재 값 surface (사용자 가시화용), threshold 정보 유지
@@ -122,6 +132,7 @@ class TestHyOasWidening:
 class TestDetectAll:
     def test_returns_all_registered_signals(self, db_path):
         from nuri.quant.validation.market_signals import DETECTORS, detect_all
+
         results = detect_all(db_path=db_path)
         assert len(results) == len(DETECTORS)
         assert {s.signal_id for s in results} == set(DETECTORS.keys())
@@ -132,8 +143,12 @@ class TestDetectAll:
 
         # Inversion fire + OAS 데이터 부족 (OAS 는 fire False)
         with get_db(db_path) as conn:
-            conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('us_3m_yield', '2026-04-22', 5.20, 'FRED')")
-            conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('us_10y_yield', '2026-04-22', 4.30, 'FRED')")
+            conn.execute(
+                "INSERT INTO macro (indicator, date, value, source) VALUES ('us_3m_yield', '2026-04-22', 5.20, 'FRED')"
+            )
+            conn.execute(
+                "INSERT INTO macro (indicator, date, value, source) VALUES ('us_10y_yield', '2026-04-22', 4.30, 'FRED')"
+            )
         fired = fired_shadow_signals(db_path=db_path)
         assert len(fired) == 1
         assert fired[0].signal_id == "yield_curve_inversion"
@@ -143,22 +158,26 @@ class TestActionableMeta:
     def test_is_actionable_defaults_to_true(self):
         """미정의 signal 은 actionable (back-compat)."""
         from nuri.core.signal_config import is_actionable
+
         assert is_actionable("unknown_signal_xyz") is True
 
     def test_shadow_signals_are_not_actionable(self):
         """PR C 에서 추가된 crash precursor 2개는 `actionable: false`."""
         from nuri.core.signal_config import is_actionable
+
         assert is_actionable("yield_curve_inversion") is False
         assert is_actionable("hy_oas_widening") is False
 
     def test_existing_buy_signals_remain_actionable(self):
         """기존 20 신호는 build-in `actionable: true` 기본 유지."""
         from nuri.core.signal_config import is_actionable
+
         for sig in ("rsi_oversold", "macd_golden", "sma_golden", "bb_bounce"):
             assert is_actionable(sig) is True, f"{sig} must remain actionable"
 
     def test_list_shadow_signals_includes_crash_precursors(self):
         from nuri.core.signal_config import list_shadow_signals
+
         shadow = list_shadow_signals()
         assert "yield_curve_inversion" in shadow
         assert "hy_oas_widening" in shadow
@@ -166,6 +185,7 @@ class TestActionableMeta:
     def test_list_buy_signals_does_not_include_shadow(self):
         """SHADOW 가 SELL 인 경우에만 해당 — 현재 crash precursor 는 둘 다 SELL. BUY 섹션 변화 없음."""
         from nuri.core.signal_config import list_buy_signals
+
         buy = list_buy_signals()
         assert "yield_curve_inversion" not in buy
         assert "hy_oas_widening" not in buy
@@ -188,6 +208,7 @@ class TestCandidatesExcludeShadow:
         """Market-wide SHADOW 는 entry 함수 없어 SIGNAL_DEFINITIONS 에서 자동 제외 —
         의도된 구조 (signal_backtest.py `_build_signal_definitions` warning log)."""
         from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS
+
         assert "yield_curve_inversion" not in SIGNAL_DEFINITIONS
         assert "hy_oas_widening" not in SIGNAL_DEFINITIONS
 
@@ -204,13 +225,11 @@ class TestCandidatesExcludeShadow:
 
         src = inspect.getsource(candidates_mod)
         # 핵심 guard: SIGNAL_DEFINITIONS loop 안에서 is_actionable false → continue
-        assert "is_actionable" in src, \
-            "candidates.py 에 `is_actionable` import/check 누락 — Biggest Risk regression"
+        assert "is_actionable" in src, "candidates.py 에 `is_actionable` import/check 누락 — Biggest Risk regression"
         # `if not is_actionable(signal_id): continue` 또는 동등 형태
-        assert (
-            "if not is_actionable(signal_id)" in src
-            or "not is_actionable(sig" in src
-        ), "candidates.py 의 SHADOW skip 분기 누락 — PR C regression"
+        assert "if not is_actionable(signal_id)" in src or "not is_actionable(sig" in src, (
+            "candidates.py 의 SHADOW skip 분기 누락 — PR C regression"
+        )
 
     def test_is_actionable_import_path_works_in_candidates(self):
         """Integration-level light check: candidates.py 가 실제로
@@ -223,10 +242,40 @@ class TestCandidatesExcludeShadow:
         assert is_actionable("rsi_oversold") is True
 
 
+class TestDbExceptionGracefulFallback:
+    """DB 조회 실패 시 graceful fallback (lines 62-63 yield_curve, 106-107 oas)."""
+
+    def test_yield_curve_db_error(self, monkeypatch):
+        """query 가 raise 하면 'DB 조회 실패' detail 반환, 절대 raise 금지."""
+        from nuri.quant.validation import market_signals as ms
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("simulated DB unavailable")
+
+        monkeypatch.setattr(ms, "query", boom)
+        s = ms.detect_yield_curve_inversion(db_path=None)
+        assert s.fired is False
+        assert s.level is None
+        assert "DB 조회 실패" in s.detail
+
+    def test_hy_oas_db_error(self, monkeypatch):
+        from nuri.quant.validation import market_signals as ms
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("simulated")
+
+        monkeypatch.setattr(ms, "query", boom)
+        s = ms.detect_hy_oas_widening(db_path=None)
+        assert s.fired is False
+        assert s.level is None
+        assert "DB 조회 실패" in s.detail
+
+
 class TestBriefShadowSection:
     def test_brief_context_includes_shadow_key(self, tmp_path, monkeypatch):
         """premarket_brief _collect_context 가 shadow_signals 리스트 반환."""
         from nuri.alerts import premarket_brief as pb
+
         # persist target 을 tmp 로 redirect (기존 test 패턴 재사용)
         monkeypatch.setattr(pb, "__file__", str(tmp_path / "nuri" / "alerts" / "premarket_brief.py"))
         (tmp_path / "nuri" / "alerts").mkdir(parents=True)
@@ -240,12 +289,17 @@ class TestBriefShadowSection:
     def test_brief_markdown_surfaces_shadow_section(self):
         """fired 여부와 무관하게 SHADOW 섹션 항상 렌더 — UI 에 '추적 중' 가시화."""
         from nuri.alerts.premarket_brief import format_brief_markdown
+
         ctx = {
             "shadow_signals": [
-                {"signal_id": "yield_curve_inversion", "fired": True,
-                 "level": -90, "threshold": 0.0, "detail": "3M=5.2, 10Y=4.3 역전"},
-                {"signal_id": "hy_oas_widening", "fired": False,
-                 "level": 4.5, "threshold": 5.0, "detail": "정상 구간"},
+                {
+                    "signal_id": "yield_curve_inversion",
+                    "fired": True,
+                    "level": -90,
+                    "threshold": 0.0,
+                    "detail": "3M=5.2, 10Y=4.3 역전",
+                },
+                {"signal_id": "hy_oas_widening", "fired": False, "level": 4.5, "threshold": 5.0, "detail": "정상 구간"},
             ],
         }
         md = format_brief_markdown(ctx)
@@ -256,11 +310,11 @@ class TestBriefShadowSection:
 
     def test_brief_embed_surfaces_shadow_section(self):
         from nuri.alerts.premarket_brief import format_brief_embed
+
         ctx = {
             "actions": {},
             "shadow_signals": [
-                {"signal_id": "yield_curve_inversion", "fired": True,
-                 "level": -90, "threshold": 0.0, "detail": "역전"},
+                {"signal_id": "yield_curve_inversion", "fired": True, "level": -90, "threshold": 0.0, "detail": "역전"},
             ],
         }
         embed = format_brief_embed(ctx)

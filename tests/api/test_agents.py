@@ -79,6 +79,90 @@ class TestAgentsRoute:
         assert row["divergence_flag"] is True
         assert "기술지표 반대" in row["divergence_reason"]
 
+    def test_get_consensus_with_regime(self, client, monkeypatch):
+        """classify_regime 가 truthy → regime_info dict 채워짐 (line 37)."""
+        from dataclasses import dataclass, field
+
+        @dataclass
+        class FakeRegime:
+            regime: str = "bull_low_vol"
+            trend: str = "bull"
+            details: dict = field(default_factory=lambda: {"vix": 15.0, "fear_greed": 60})
+
+        monkeypatch.setattr(
+            "nuri.trading.agents.consensus.analyze_portfolio",
+            lambda **kw: [],
+        )
+        monkeypatch.setattr(
+            "nuri.quant.regime.classifier.classify_regime",
+            lambda: FakeRegime(),
+        )
+        import nuri.api.routes.agents as agents_mod
+
+        agents_mod._cache["data"] = None
+        agents_mod._cache["ts"] = 0
+        resp = client.get("/api/consensus")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["regime"]["regime"] == "bull_low_vol"
+        assert data["regime"]["vix"] == 15.0
+
+    def test_get_consensus_regime_no_details(self, client, monkeypatch):
+        """regime.details=None → vix/fear_greed=None (line 40 ternary)."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeRegime:
+            regime: str = "bull"
+            trend: str = "bull"
+            details: dict | None = None
+
+        monkeypatch.setattr(
+            "nuri.trading.agents.consensus.analyze_portfolio",
+            lambda **kw: [],
+        )
+        monkeypatch.setattr(
+            "nuri.quant.regime.classifier.classify_regime",
+            lambda: FakeRegime(),
+        )
+        import nuri.api.routes.agents as agents_mod
+
+        agents_mod._cache["data"] = None
+        agents_mod._cache["ts"] = 0
+        resp = client.get("/api/consensus")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["regime"]["vix"] is None
+        assert data["regime"]["fear_greed"] is None
+
+    def test_stream_consensus_ticker(self, client, monkeypatch):
+        """SSE stream endpoint (lines 97-128)."""
+        import time
+        from dataclasses import dataclass
+
+        @dataclass
+        class Evt:
+            ticker: str = "AAPL"
+            text: str = "step"
+
+        def fake_stream(ticker):
+            # Sleep to force asyncio.sleep loop hit (line 112)
+            time.sleep(0.1)
+            yield ("agent_start", Evt())
+            time.sleep(0.1)
+            yield ("agent_finish", Evt(text="done"))
+
+        monkeypatch.setattr(
+            "nuri.trading.agents.consensus.stream_analyze_ticker",
+            fake_stream,
+        )
+        with client.stream("GET", "/api/consensus/AAPL/stream") as resp:
+            assert resp.status_code == 200
+            chunks = b"".join(resp.iter_bytes())
+        body = chunks.decode("utf-8")
+        assert "agent_start" in body
+        assert "done" in body
+
     def test_get_consensus_ticker_exposes_divergence_fields(self, client, monkeypatch):
         """P1 A2: /api/consensus/{ticker} 단일 엔드포인트도 divergence 필드 노출."""
         from nuri.trading.agents.consensus import ConsensusResult

@@ -350,3 +350,28 @@ class TestActorRegistry:
         assert "freshness-gatekeeper" not in missing
         assert "execution-firewall" in missing
         assert len(missing) == 14
+
+    def test_all_returns_dict_copy(self):
+        """all() 은 internal registry dict 의 copy 를 반환 (line 281)."""
+        reg = ActorRegistry()
+        reg.register(_FreshnessGatekeeperFake)
+        snapshot = reg.all()
+        assert snapshot["freshness-gatekeeper"] is _FreshnessGatekeeperFake
+        # mutation 이 internal state 에 새지 않아야 함 — copy 라면 caller 의 변경이 누설 안 됨
+        snapshot.pop("freshness-gatekeeper")
+        # 원본은 그대로 — copy 였다면
+        assert reg.get("freshness-gatekeeper") is _FreshnessGatekeeperFake
+
+    def test_invalid_layer_raises(self):
+        """Layer Enum 외 값을 layer 로 강제 주입 시 ValueError (line 105)."""
+
+        class BadLayer(Actor):
+            name = "freshness-gatekeeper"  # canonical 통과
+            # layer 를 Enum 이 아닌 raw string 으로 — typing 무시 시 발생
+            layer = "Z"  # type: ignore[assignment]
+
+            def execute(self, input_data, ctx):
+                return ActorResult(output={}, outcome=Outcome.PASS)
+
+        with pytest.raises(ValueError, match="layer must be"):
+            BadLayer()

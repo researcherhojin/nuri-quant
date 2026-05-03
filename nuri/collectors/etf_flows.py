@@ -256,7 +256,7 @@ def print_sector_rotation(df: pd.DataFrame | None) -> None:
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     collector = EtfFlowsCollector()

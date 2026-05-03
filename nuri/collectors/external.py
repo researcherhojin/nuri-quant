@@ -15,6 +15,7 @@
     python -m nuri.collectors.external --show TSLA
     python -m nuri.collectors.external --summary
 """
+
 import argparse
 import json
 import logging
@@ -42,7 +43,6 @@ SOURCES = {
     "finviz": "FINVIZ 기술적 스크리너",
     "reddit": "Reddit/WSB 센티먼트 분석",
 }
-
 
 
 def save_external(
@@ -88,8 +88,9 @@ def save_tipranks(
     save_external("tipranks", ticker, "consensus", consensus, db_path=db_path)
     save_external("tipranks", ticker, "target_price", str(target_price), target_price, db_path=db_path)
     details = json.dumps({"analyst_count": analyst_count, "upside_pct": upside_pct})
-    save_external("tipranks", ticker, "analyst_count", str(analyst_count), analyst_count,
-                  details=details, db_path=db_path)
+    save_external(
+        "tipranks", ticker, "analyst_count", str(analyst_count), analyst_count, details=details, db_path=db_path
+    )
 
 
 def save_superinvestor(
@@ -115,14 +116,16 @@ def get_external(
             """SELECT * FROM external_analysis
                WHERE ticker = ? AND source = ?
                ORDER BY date DESC, data_type""",
-            (ticker, source), db_path=db_path,
+            (ticker, source),
+            db_path=db_path,
         )
     else:
         rows = query(
             """SELECT * FROM external_analysis
                WHERE ticker = ?
                ORDER BY source, date DESC, data_type""",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
     return [dict(r) for r in rows]
 
@@ -177,14 +180,16 @@ def print_summary(db_path=None) -> None:
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="외부 데이터 관리")
-    parser.add_argument("--save-tipranks", nargs=4, metavar=("TICKER", "CONSENSUS", "TARGET", "ANALYSTS"),
-                        help="TipRanks 데이터 저장")
-    parser.add_argument("--save-superinvestor", nargs=3, metavar=("TICKER", "COUNT", "TREND"),
-                        help="Dataroma 슈퍼투자자 데이터 저장")
+    parser.add_argument(
+        "--save-tipranks", nargs=4, metavar=("TICKER", "CONSENSUS", "TARGET", "ANALYSTS"), help="TipRanks 데이터 저장"
+    )
+    parser.add_argument(
+        "--save-superinvestor", nargs=3, metavar=("TICKER", "COUNT", "TREND"), help="Dataroma 슈퍼투자자 데이터 저장"
+    )
     parser.add_argument("--show", metavar="TICKER", help="종목 외부 데이터 조회")
     parser.add_argument("--summary", action="store_true", help="전체 요약")
 

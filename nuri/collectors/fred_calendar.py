@@ -9,6 +9,7 @@ FRED_API_KEY 필요 (없으면 하드코딩 캘린더 폴백).
 사용법:
     python -m nuri.collectors.fred_calendar
 """
+
 import logging
 import os
 from datetime import timedelta
@@ -26,17 +27,17 @@ FRED_RELEASES_URL = "https://api.stlouisfed.org/fred/releases/dates"
 
 # FRED release_id → 이벤트 설명 매핑 (시장 영향이 큰 주요 릴리스)
 IMPORTANT_RELEASES = {
-    10: ("CPI", 3),               # Consumer Price Index
-    50: ("고용 보고서", 3),        # Employment Situation
-    53: ("GDP", 3),                # Gross Domestic Product
-    21: ("소매판매", 2),           # Retail Sales
-    46: ("PPI", 2),               # Producer Price Index
-    32: ("ISM 제조업", 2),        # ISM Manufacturing
-    116: ("소비자 심리지수", 2),   # U of Michigan Consumer Sentiment
-    20: ("산업생산", 1),          # Industrial Production and Capacity Utilization
-    83: ("주택착공", 1),          # Housing Starts
-    11: ("내구재 주문", 1),       # Advance Report on Durable Goods
-    22: ("무역수지", 1),          # US International Trade in Goods and Services
+    10: ("CPI", 3),  # Consumer Price Index
+    50: ("고용 보고서", 3),  # Employment Situation
+    53: ("GDP", 3),  # Gross Domestic Product
+    21: ("소매판매", 2),  # Retail Sales
+    46: ("PPI", 2),  # Producer Price Index
+    32: ("ISM 제조업", 2),  # ISM Manufacturing
+    116: ("소비자 심리지수", 2),  # U of Michigan Consumer Sentiment
+    20: ("산업생산", 1),  # Industrial Production and Capacity Utilization
+    83: ("주택착공", 1),  # Housing Starts
+    11: ("내구재 주문", 1),  # Advance Report on Durable Goods
+    22: ("무역수지", 1),  # US International Trade in Goods and Services
 }
 
 # 2026년 주요 경제 이벤트 (FRED API 없을 때 폴백)
@@ -44,22 +45,36 @@ IMPORTANT_RELEASES = {
 # 고용보고서: 매월 첫째 금요일
 _FALLBACK_2026 = [
     # CPI 발표일 (2026 예정)
-    ("2026-01-14", "CPI", 3), ("2026-02-12", "CPI", 3),
-    ("2026-03-11", "CPI", 3), ("2026-04-14", "CPI", 3),
-    ("2026-05-12", "CPI", 3), ("2026-06-10", "CPI", 3),
-    ("2026-07-14", "CPI", 3), ("2026-08-12", "CPI", 3),
-    ("2026-09-15", "CPI", 3), ("2026-10-13", "CPI", 3),
-    ("2026-11-12", "CPI", 3), ("2026-12-10", "CPI", 3),
+    ("2026-01-14", "CPI", 3),
+    ("2026-02-12", "CPI", 3),
+    ("2026-03-11", "CPI", 3),
+    ("2026-04-14", "CPI", 3),
+    ("2026-05-12", "CPI", 3),
+    ("2026-06-10", "CPI", 3),
+    ("2026-07-14", "CPI", 3),
+    ("2026-08-12", "CPI", 3),
+    ("2026-09-15", "CPI", 3),
+    ("2026-10-13", "CPI", 3),
+    ("2026-11-12", "CPI", 3),
+    ("2026-12-10", "CPI", 3),
     # 고용보고서 (매월 첫째 금요일)
-    ("2026-01-09", "고용 보고서", 3), ("2026-02-06", "고용 보고서", 3),
-    ("2026-03-06", "고용 보고서", 3), ("2026-04-03", "고용 보고서", 3),
-    ("2026-05-08", "고용 보고서", 3), ("2026-06-05", "고용 보고서", 3),
-    ("2026-07-02", "고용 보고서", 3), ("2026-08-07", "고용 보고서", 3),
-    ("2026-09-04", "고용 보고서", 3), ("2026-10-02", "고용 보고서", 3),
-    ("2026-11-06", "고용 보고서", 3), ("2026-12-04", "고용 보고서", 3),
+    ("2026-01-09", "고용 보고서", 3),
+    ("2026-02-06", "고용 보고서", 3),
+    ("2026-03-06", "고용 보고서", 3),
+    ("2026-04-03", "고용 보고서", 3),
+    ("2026-05-08", "고용 보고서", 3),
+    ("2026-06-05", "고용 보고서", 3),
+    ("2026-07-02", "고용 보고서", 3),
+    ("2026-08-07", "고용 보고서", 3),
+    ("2026-09-04", "고용 보고서", 3),
+    ("2026-10-02", "고용 보고서", 3),
+    ("2026-11-06", "고용 보고서", 3),
+    ("2026-12-04", "고용 보고서", 3),
     # GDP (분기별)
-    ("2026-01-29", "GDP", 3), ("2026-04-29", "GDP", 3),
-    ("2026-07-29", "GDP", 3), ("2026-10-29", "GDP", 3),
+    ("2026-01-29", "GDP", 3),
+    ("2026-04-29", "GDP", 3),
+    ("2026-07-29", "GDP", 3),
+    ("2026-10-29", "GDP", 3),
 ]
 
 
@@ -114,13 +129,15 @@ class FREDCalendarCollector(BaseCollector):
             desc, importance = IMPORTANT_RELEASES[release_id]
             date_str = rd.get("date", "")
 
-            records.append({
-                "date": date_str,
-                "event_type": "economic",
-                "ticker": None,
-                "description": f"FRED: {desc}",
-                "importance": importance,
-            })
+            records.append(
+                {
+                    "date": date_str,
+                    "event_type": "economic",
+                    "ticker": None,
+                    "description": f"FRED: {desc}",
+                    "importance": importance,
+                }
+            )
 
         self.logger.info("FRED 캘린더: %d개 이벤트 (향후 %d일)", len(records), days_ahead)
         return records
@@ -135,13 +152,15 @@ class FREDCalendarCollector(BaseCollector):
         records = []
         for date_str, desc, importance in _FALLBACK_2026:
             if today_str <= date_str <= end_str:
-                records.append({
-                    "date": date_str,
-                    "event_type": "economic",
-                    "ticker": None,
-                    "description": f"FRED: {desc}",
-                    "importance": importance,
-                })
+                records.append(
+                    {
+                        "date": date_str,
+                        "event_type": "economic",
+                        "ticker": None,
+                        "description": f"FRED: {desc}",
+                        "importance": importance,
+                    }
+                )
 
         self.logger.info("FRED 캘린더 (폴백): %d개 이벤트", len(records))
         return records
@@ -162,7 +181,7 @@ class FREDCalendarCollector(BaseCollector):
         return insert_events(data)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
