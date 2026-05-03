@@ -143,6 +143,9 @@ filterwarnings = [
     "ignore::DeprecationWarning:openbb_intrinio.*:",
     "ignore::pydantic.warnings.PydanticDeprecatedSince211:",
     "ignore::pydantic.warnings.PydanticDeprecatedSince212:",
+    # runpy.run_module() — 부모 패키지의 transitive import 가 target 을 재등록하면
+    # sys.modules.pop 으로도 회피 불가. 실제 source 실행에 영향 없는 cosmetic warning.
+    "ignore::RuntimeWarning:runpy",
 ]
 
 
