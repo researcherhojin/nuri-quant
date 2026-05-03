@@ -86,7 +86,7 @@ def build_bot():
     # NOTE: handler 본문은 discord.py Interaction object chain (defer / followup.send) 의존.
     # Integration test 영역 — interaction mock 자체가 테스트 가치 < 비용. 등록 + _run_make 단위 검증으로 충분.
     @tree.command(name="buy-candidates", description="현금 배포 후보 ticker emit (recommendations only)", guild=guild)
-    async def buy_candidates(interaction: "discord.Interaction") -> None:  # pragma: no cover
+    async def buy_candidates(interaction: "discord.Interaction") -> None:
         await interaction.response.defer(thinking=True)
         rc, out = await asyncio.to_thread(_run_make, "buy-candidates")
         embed_dict = build_status_embed(
@@ -100,7 +100,7 @@ def build_bot():
     # ─── /thesis ticker:<TICKER> ───
     @tree.command(name="thesis", description="ticker thesis Q&A (Codex + Qwen3.5 dual archive)", guild=guild)
     @app_commands.describe(ticker="대상 ticker (e.g. MSFT, NVDA)")
-    async def thesis(interaction: "discord.Interaction", ticker: str) -> None:  # pragma: no cover
+    async def thesis(interaction: "discord.Interaction", ticker: str) -> None:
         ticker = ticker.upper().strip()
         if not ticker.isalpha() or len(ticker) > 6:
             await interaction.response.send_message(f"❌ invalid ticker: {ticker!r}", ephemeral=True)
@@ -117,7 +117,7 @@ def build_bot():
 
     # ─── /health ───
     @tree.command(name="health", description="agent infra health check (single-writer + schema + tables)", guild=guild)
-    async def health(interaction: "discord.Interaction") -> None:  # pragma: no cover
+    async def health(interaction: "discord.Interaction") -> None:
         await interaction.response.defer(thinking=True)
 
         def _run() -> tuple[int, str]:
@@ -148,7 +148,7 @@ def build_bot():
     attach_inbound(bot)
 
     @bot.event
-    async def on_ready() -> None:  # pragma: no cover
+    async def on_ready() -> None:
         await tree.sync(guild=guild)
         logger.info("bot ready user=%s commands synced to guild=%s", bot.user, guild.id)
 

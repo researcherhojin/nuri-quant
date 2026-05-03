@@ -18,7 +18,7 @@ The **Serve** layer (FastAPI `:8001` + Next.js `:3000` + Discord/Telegram) is a 
 
 ## DB as the Sole Integration Point
 
-`nuri/core/db.py` is the **only** module that imports `sqlite3`. DB file: `data/portfolio.db` (WAL mode). All upsert functions accept optional `db_path` — tests inject `tmp_path` for isolation. Schema versioning via `schema_version` table + `_MIGRATIONS` list.
+`nuri/core/db/` is the **only** module that imports `sqlite3`. DB file: `data/portfolio.db` (WAL mode). All upsert functions accept optional `db_path` — tests inject `tmp_path` for isolation. Schema versioning via `schema_version` table + `_MIGRATIONS` list.
 
 Key DB access patterns:
 - `get_db()` — context manager, auto-commits on success, auto-rollbacks on exception
@@ -215,7 +215,7 @@ data/
 
 ## Testing
 
-5,249 backend tests across 216 files + 917 frontend vitest (82 files) + 38 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
+5,317 backend tests across 222 files + 917 frontend vitest (82 files) + 38 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate.
 
 **Slow marker**: 11 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
 
@@ -244,7 +244,7 @@ ls nuri/trading/agents/*.py | grep -vE 'base|__init__|consensus|config' | wc -l 
 .venv/bin/python -c "from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS; print(len(SIGNAL_DEFINITIONS))"
 .venv/bin/python -c "from nuri.trading.strategy.longshort import REGIME_ALLOCATION; print(len(REGIME_ALLOCATION))"
 grep -rhE "@router\.(get|post|put|delete|patch)" nuri/api/routes/ | wc -l
-grep -c "CREATE TABLE" nuri/core/db.py
+grep -c "CREATE TABLE" nuri/core/db/
 find frontend/src/app -name "page.tsx" | wc -l
 ```
 

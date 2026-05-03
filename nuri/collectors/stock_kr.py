@@ -192,7 +192,7 @@ class StockKRCollector(BaseCollector):
         return upsert_prices(data)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nuri-Quant 한국 주가 수집기 (pykrx)")
     parser.add_argument("--days", type=int, default=5, help="수집 일수 (기본 5일)")
     parser.add_argument(

@@ -1401,6 +1401,43 @@ class TestHoldingsMonitorRunMonitorDisabled:
         assert summary.alerts == []
 
 
+class TestHoldingsMonitorEvaluateTriggersNoTrigger:
+    """Line 199: _evaluate_triggers fall-through (no trigger met) → (None, diagnostics)."""
+
+    def test_no_trigger_fires_returns_none_with_diagnostics(self, fresh_db, monkeypatch):
+        """consensus result with low-conf BUY (not SELL, no divergence) → None tuple."""
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import ConsensusResult
+        from nuri.trading.recommend import holdings_monitor as hm
+
+        def fake_analyze(ticker, db_path=None):
+            return ConsensusResult(
+                ticker=ticker,
+                final_action="HOLD",
+                final_confidence=50,
+                agreement_rate=0.5,
+                verdicts=[AgentVerdict("technical", ticker, "BUY", 30, "weak")],
+                dissent=[],
+                reasoning="test",
+                divergence_flag=False,
+                divergence_reason="",
+            )
+
+        monkeypatch.setattr("nuri.trading.agents.consensus.analyze_ticker", fake_analyze)
+
+        trigger, diag = hm._evaluate_triggers(
+            ticker="AAA",
+            db_path=fresh_db,
+            technical_sell_threshold=80,
+            divergence_threshold=70,
+        )
+        # Lock: line 199 fall-through path — no SELL trigger and no divergence.
+        assert trigger is None
+        assert isinstance(diag, dict)
+        # technical_action='BUY' so trigger A (SELL ≥ 80) doesn't fire
+        assert diag.get("technical_action") == "BUY"
+
+
 class TestHoldingsMonitorMainCli:
     """Lines 388-408: main() CLI."""
 

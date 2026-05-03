@@ -356,7 +356,7 @@ def print_cross_analysis(df: pd.DataFrame) -> None:
     print()
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 레짐별 전략 추천")

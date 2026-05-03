@@ -322,7 +322,7 @@ def print_summary():
     print()
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",

@@ -132,7 +132,7 @@ Burst ship cadence (2026-04-22 실측, 48h 6 functional + 3 docs PR): 재현 조
 
 ### 3.1 DB 가 유일한 통합 지점
 
-`nuri/core/db.py` 만 `sqlite3` import. 다른 모듈은 `query()`, `query_df()`, `upsert_*()`, `get_db()` 만 사용.
+`nuri/core/db/` 만 `sqlite3` import. 다른 모듈은 `query()`, `query_df()`, `upsert_*()`, `get_db()` 만 사용.
 
 **이유**: DB 접근 패턴 단일 제어 → WAL 충돌 방지, 트랜잭션 관리, 마이그레이션 안전. 테스트에서 `db_path` 주입으로 완전 격리.
 
@@ -343,7 +343,7 @@ PR 전 확인.
 
 | 항목 | 기준 | 현재 |
 |------|------|------|
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 5,249 tests, 216 files |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 5,317 tests, 222 files |
 | Frontend tests | 목표 ≥ 90% | 917 tests, 82 files |
 | E2E | 핵심 flow | 38 Playwright (6 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
@@ -364,7 +364,7 @@ PR 전 확인.
 
 | 항목 | 기준 |
 |------|------|
-| DB 접근 | `nuri/core/db.py` 만 |
+| DB 접근 | `nuri/core/db/` 만 |
 | 스키마 변경 | `_MIGRATIONS` 리스트, 직접 ALTER 금지 |
 | 환율 | DB → OpenBB → `StaleExchangeRateError` (하드코딩 폴백 금지) |
 | 외부 데이터 | 최소 10개 외부 소스 교차 |
@@ -381,7 +381,7 @@ PR 전 확인.
 
 #### 4.4.1 개인 금융 데이터 enforcement (#138)
 
-**권위 있는 차단 기준**: `scripts/check_privacy_leak.py` 가 ground truth.
+**권위 있는 차단 기준**: `scripts/verify/check_privacy_leak.py` 가 ground truth.
 
 | 카테고리 | 차단 대상 | 허용 placeholder |
 |---|---|---|
@@ -396,17 +396,17 @@ PR 전 확인.
 **Plan / spec 노트 보호 (2026-04-30 Session 8 통합)**: `docs/plans/` 디렉토리 전체가 `.gitignore` 처리됨. 이전에는 개별 파일 (`E3_symmetric_amplifier_design.md`, `507_buy_candidate_emitter_phase1.md`)만 등록됐으나, 새 spec 추가 시 누락 위험 — 디렉토리 단위로 통합. 기존 tracked 3건 (`E3_phase2_paired_counterfactual.md`, `E3_symmetric_amplifier_design.md`, `e4_0b.md`)는 `git rm --cached` 처리. 사용자 본인 spec 노트의 broker name / financial figure 누설 방어. **새 spec 작성 시 broker name placeholder 사용** (`Brokerage Alpha Main` 등) — gitignored 라도 future commit 사고 회피.
 
 **방어 layer 3개** (defense in depth):
-1. `scripts/check_privacy_leak.py` — 핵심 scanner (stdlib only).
-2. `scripts/pre_push_check.sh` Section 4 — local pre-push gate.
+1. `scripts/verify/check_privacy_leak.py` — 핵심 scanner (stdlib only).
+2. `scripts/verify/pre_push_check.sh` Section 4 — local pre-push gate.
 3. `.github/workflows/main-ci-cd.yml` `privacy-scan` — CI gate 모든 PR (frontend-only 예외 없음).
 
-**새 broker 추가**: `scripts/check_privacy_leak.py` `BROKER_NAMES_KO`/`BROKER_NAMES_EN` 튜플 + `tests/scripts/test_check_privacy_leak.py` + 위 표 동시 갱신.
+**새 broker 추가**: `scripts/verify/check_privacy_leak.py` `BROKER_NAMES_KO`/`BROKER_NAMES_EN` 튜플 + `tests/scripts/test_check_privacy_leak.py` + 위 표 동시 갱신.
 
 <!--
 Commit message 스캔 (PR #202 방지):
 - pre_push_check.sh Section 4b: `origin/main..HEAD` 의 unpushed commit 을 `--unpushed-commits` 로 스캔 → push 차단
 - 로컬 hook 이 정답 — push 후 history 박힘 (Stage 2 필요)
-- CLI: `git log -1 --format=%B | python scripts/check_privacy_leak.py --message`
+- CLI: `git log -1 --format=%B | python scripts/verify/check_privacy_leak.py --message`
 
 History cleanup (Stage 2 — 별도 작업): main HEAD 는 깨끗하게 유지됨. 이전 commit leak 은 GitHub Support 또는 filter-repo (사용자 명시 승인 필수) 필요. §5.4 스코프 + CLAUDE.md force push 금지 동시 준수 위해 분리.
 
@@ -548,10 +548,10 @@ Deferred (필요 시점에 추가):
 
 **Frontier evidence**: AgencyBench (Li et al. 2026, 138 real-world tasks, <https://www.preprints.org/manuscript/202604.0428>) — **"agent task reliability 가 model 능력 < harness layer (infrastructure)"** 정량 입증. Same harness × different model = different success rate. HAL (Kapoor et al. 2026, 21,000+ rollouts) 도 동일 결론.
 
-**현재 상태 (nuri-quant)**: 다중 LLM consumer (`nuri/llm/openai_client.py` gpt-5.4-nano cloud + `scripts/llm_consult.py` codex+Qwen3.5 dual-LLM consult). **Model 변경 시 reliability 변동 측정 0**. Codex GPT-5.4 → GPT-4-class 강등 시 어느 phase 가 깨지는지 unknown. Qwen3.5-122B → Qwen3.5-32B 양자화 시 same.
+**현재 상태 (nuri-quant)**: 다중 LLM consumer (`nuri/llm/openai_client.py` gpt-5.4-nano cloud + `scripts/dev/llm_consult.py` codex+Qwen3.5 dual-LLM consult). **Model 변경 시 reliability 변동 측정 0**. Codex GPT-5.4 → GPT-4-class 강등 시 어느 phase 가 깨지는지 unknown. Qwen3.5-122B → Qwen3.5-32B 양자화 시 same.
 
 **Acceptance criterion**:
-- Phase 1: `data/harness_telemetry.jsonl` 신설 — 매 LLM 호출 기록 (timestamp / model / phase / outcome / token_count). `nuri/llm/openai_client.py` 와 `scripts/llm_consult.py` 양쪽에 wired.
+- Phase 1: `data/harness_telemetry.jsonl` 신설 — 매 LLM 호출 기록 (timestamp / model / phase / outcome / token_count). `nuri/llm/openai_client.py` 와 `scripts/dev/llm_consult.py` 양쪽에 wired.
 - Phase 2: weekly aggregation script — `make harness-quality-report` → model-별 success rate / failure pattern / phase breakdown. 4 주 데이터 후 model swap recommendation (gpt-5.4-nano vs gpt-5.4 cloud cost-quality tradeoff).
 - Phase 3: AgencyBench subset adaptation — nuri-specific eval suite (예: 10 fixed prompts × 5 ticker × 3 question types = 150 task) → model compare matrix.
 
