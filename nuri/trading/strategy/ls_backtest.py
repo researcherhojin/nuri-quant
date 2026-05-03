@@ -959,7 +959,11 @@ def run_backtest_with_rules(regimes_df: pd.DataFrame, db_path=None) -> dict:
             tp2_triggered = False
 
     ruled = pd.Series(ruled_returns)
-    if ruled.empty:
+    # 인바리언트: 라인 879의 df.empty 가드를 통과하면 df 는 ≥1 행이고,
+    # for-loop 의 모든 분기 (SL/trailing 의 continue 포함, 또한 if/else 모두)
+    # 가 ruled_returns.append 를 1회 수행 → ruled 는 비어있을 수 없음.
+    # 방어적 가드로 남겨두되 실제 도달 불가 → 회귀 테스트 대신 인바리언트로 lock.
+    if ruled.empty:  # pragma: no cover  # invariant: line 879 가드 + for-loop 매 iter append → 도달 불가
         return {"error": "시뮬레이션 데이터 부족"}
 
     ruled_cum = (1 + ruled).cumprod()
@@ -1031,19 +1035,24 @@ def print_rules_comparison(result: dict) -> None:
     print(f"{'═' * 70}\n")
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint — argparse 추출로 unit-testable. argv=None 이면 sys.argv 사용.
+
+    runpy 우회 + module-level patch 보존 (tests/CLAUDE.md "runpy + mock" 가이드).
+    return: 0 = 정상, 1 = SPY 데이터 부족.
+    """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant L/S Strategy Backtest")
     parser.add_argument("--stress", action="store_true", help="스트레스 테스트만")
     parser.add_argument("--rules", action="store_true", help="규칙 적용 비교 백테스트")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logger.info("과거 레짐 분류 중...")
     regimes = classify_historical_regimes()
     if regimes.empty:
         print("SPY 데이터 부족")
-        exit(1)
+        return 1
     logger.info(f"{len(regimes)}일 분류 완료")
 
     if args.stress:
@@ -1079,3 +1088,8 @@ if __name__ == "__main__":
         logger.info("Monte Carlo 시뮬레이션 (1000회)...")
         mc = monte_carlo_test(regimes)
         print_monte_carlo(mc)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover  # invariant: 표준 entry idiom — main() 이 testable
+    raise SystemExit(main())
