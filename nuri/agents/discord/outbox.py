@@ -285,7 +285,7 @@ def _format_price_levels(price_levels: Optional[dict[str, Any]]) -> Optional[str
     trailing_pct = price_levels.get("trailing_pct")
 
     def _fmt_price(v: Any) -> str:
-        if v is None:
+        if v is None:  # pragma: no cover — caller pre-filters None at L297-303
             return "—"
         try:
             f = float(v)
@@ -416,7 +416,7 @@ def bucket_brief_digest(
                 "inline": False,
             }
         )
-        if len(fields) >= _MAX_FIELDS:
+        if len(fields) >= _MAX_FIELDS:  # pragma: no cover — only 3 buckets, cap unreachable
             break
 
     color = (

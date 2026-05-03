@@ -15,7 +15,7 @@ attribute 만 사용하므로 충분.
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -190,3 +190,121 @@ class TestAttach:
         assert bot.event.call_count == 3
         registered = {call.args[0].__name__ for call in bot.event.call_args_list}
         assert registered == {"on_message", "on_raw_reaction_add", "on_raw_reaction_remove"}
+
+
+class TestInboundDirOverride:
+    def test_override_env_returns_explicit_path(self, monkeypatch, tmp_path):
+        """L52-54: NURI_DISCORD_INBOUND_DIR 가 set 이면 explicit path 반환.
+
+        Regression: override 분기 inversion 시 테스트가 production 디렉토리로 leak.
+        """
+        custom = tmp_path / "custom_outdir"
+        monkeypatch.setenv("NURI_DISCORD_INBOUND_DIR", str(custom))
+        result = inbound._inbound_dir()
+        assert result == custom
+
+    def test_unset_env_returns_repo_default(self, monkeypatch):
+        """L55: env 미설정 또는 빈 문자열 → REPO_ROOT/data/discord_inbound 반환.
+
+        Regression: 분기 inversion 시 production 데이터를 ./data/ 외부에 쓰게 된다.
+        """
+        monkeypatch.delenv("NURI_DISCORD_INBOUND_DIR", raising=False)
+        out = inbound._inbound_dir()
+        # production fallback — REPO_ROOT/data/discord_inbound 정확.
+        assert out == inbound.REPO_ROOT / "data" / "discord_inbound"
+
+    def test_blank_override_falls_through_to_default(self, monkeypatch):
+        """L52-53 false 분기: env 가 빈 문자열/공백 이면 override 미발화 → default."""
+        monkeypatch.setenv("NURI_DISCORD_INBOUND_DIR", "   ")  # whitespace only
+        out = inbound._inbound_dir()
+        assert out == inbound.REPO_ROOT / "data" / "discord_inbound"
+
+
+class TestAttachedHandlerInvocation:
+    """attach() 가 등록한 inner handlers (on_message / on_raw_reaction_add /
+    on_raw_reaction_remove) 가 실제로 호출됐을 때의 동작.
+
+    Lines 154-157 / 161-164 / 168-171 — 본 검증 누락 시 attach 가 함수 register 한
+    뒤 production 에서 호출되는 first-time 에 OSError 등으로 죽어도 노출 안 됨.
+    """
+
+    @pytest.fixture
+    def attached_bot(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("DISCORD_CHANNEL_AGENT_CONTROL_ID", "111")
+        monkeypatch.setenv("DISCORD_CHANNEL_AGENT_DEV_LOG_ID", "222")
+        monkeypatch.setenv("NURI_DISCORD_INBOUND_DIR", str(tmp_path))
+        bot = MagicMock()
+        bot.event.side_effect = lambda f: f
+        assert inbound.attach(bot) is True
+        # decorator-as-passthrough → call_args_list 의 첫 인자가 register 된 함수.
+        handlers = {c.args[0].__name__: c.args[0] for c in bot.event.call_args_list}
+        return handlers, tmp_path
+
+    @pytest.mark.anyio("asyncio")
+    async def test_on_message_emits_file_for_target(self, attached_bot):
+        """L154-156: 등록된 on_message → emit_message 호출 → 파일 생성."""
+        handlers, out_dir = attached_bot
+        msg = _mock_message(channel_id=111, content="hello")
+        await handlers["on_message"](msg)
+        files = list((out_dir / "agent-control").iterdir())
+        assert len(files) == 1
+        assert files[0].name.endswith("_message.json")
+
+    @pytest.mark.anyio("asyncio")
+    async def test_on_message_oserror_logged_not_raised(self, attached_bot, caplog):
+        """L156-157: emit_message 가 OSError 발생시 logger.exception, 외부로 raise X.
+
+        Regression: try/except 누락 시 discord.py 가 task crash → bot 끊김.
+        """
+        import logging
+
+        handlers, _ = attached_bot
+        caplog.set_level(logging.ERROR)
+        msg = _mock_message(channel_id=111)
+        with patch("nuri.agents.discord.inbound.emit_message", side_effect=OSError("disk full")):
+            # raise 로 propagate 안 되어야 함.
+            await handlers["on_message"](msg)
+        assert any("inbound message emit failed" in rec.message for rec in caplog.records)
+
+    @pytest.mark.anyio("asyncio")
+    async def test_on_raw_reaction_add_emits_reaction_file(self, attached_bot):
+        """L161-163: reaction_add handler 가 emit_reaction(payload, 'reaction_add')."""
+        handlers, out_dir = attached_bot
+        payload = _mock_reaction(222, emoji="✅")
+        await handlers["on_raw_reaction_add"](payload)
+        files = list((out_dir / "agent-dev-log").iterdir())
+        assert len(files) == 1
+        assert "_reaction_add.json" in files[0].name
+
+    @pytest.mark.anyio("asyncio")
+    async def test_on_raw_reaction_add_oserror_logged_not_raised(self, attached_bot, caplog):
+        """L163-164: emit_reaction OSError 시 logger.exception, raise X."""
+        import logging
+
+        handlers, _ = attached_bot
+        caplog.set_level(logging.ERROR)
+        payload = _mock_reaction(222)
+        with patch("nuri.agents.discord.inbound.emit_reaction", side_effect=OSError("io fail")):
+            await handlers["on_raw_reaction_add"](payload)
+        assert any("inbound reaction_add emit failed" in rec.message for rec in caplog.records)
+
+    @pytest.mark.anyio("asyncio")
+    async def test_on_raw_reaction_remove_emits_correct_kind(self, attached_bot):
+        """L167-169: reaction_remove handler 가 emit_reaction(_, 'reaction_remove')."""
+        handlers, out_dir = attached_bot
+        payload = _mock_reaction(222, emoji="❌")
+        await handlers["on_raw_reaction_remove"](payload)
+        files = list((out_dir / "agent-dev-log").iterdir())
+        assert any("_reaction_remove.json" in f.name for f in files)
+
+    @pytest.mark.anyio("asyncio")
+    async def test_on_raw_reaction_remove_oserror_logged_not_raised(self, attached_bot, caplog):
+        """L169-171: emit_reaction OSError on remove → logger.exception, raise X."""
+        import logging
+
+        handlers, _ = attached_bot
+        caplog.set_level(logging.ERROR)
+        payload = _mock_reaction(222)
+        with patch("nuri.agents.discord.inbound.emit_reaction", side_effect=OSError("io fail")):
+            await handlers["on_raw_reaction_remove"](payload)
+        assert any("inbound reaction_remove emit failed" in rec.message for rec in caplog.records)

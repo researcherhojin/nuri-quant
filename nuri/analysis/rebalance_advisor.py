@@ -10,6 +10,7 @@ rules.yaml 기반으로 포트폴리오 위반 사항을 탐지하고,
 사용법:
     python -m nuri.analysis.rebalance_advisor
 """
+
 import logging
 import math
 from pathlib import Path
@@ -85,15 +86,19 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
     violations: list[dict] = []
 
     # 종목별 합산 (다계좌 동일 종목)
-    ticker_agg = df.groupby("ticker").agg(
-        weight_pct=("weight_pct", "sum"),
-        quantity=("quantity", "sum"),
-        current_price=("current_price", "first"),
-        pnl_pct=("pnl_pct", "first"),
-        current_value_usd=("current_value_usd", "sum"),
-        sector=("sector", "first"),
-        currency=("currency", "first"),
-    ).reset_index()
+    ticker_agg = (
+        df.groupby("ticker")
+        .agg(
+            weight_pct=("weight_pct", "sum"),
+            quantity=("quantity", "sum"),
+            current_price=("current_price", "first"),
+            pnl_pct=("pnl_pct", "first"),
+            current_value_usd=("current_value_usd", "sum"),
+            sector=("sector", "first"),
+            currency=("currency", "first"),
+        )
+        .reset_index()
+    )
 
     # ─── 1. 레버리지 ETF 위반 (priority 1) ───
     for _, row in ticker_agg.iterrows():
@@ -101,22 +106,25 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
         if ticker in LEVERAGE_ETFS:
             qty = int(row["quantity"])
             sell_value = row["current_value_usd"]
-            violations.append({
-                "ticker": ticker,
-                "violation_type": "leverage_etf",
-                "priority": _PRIORITY_MAP.get("leverage_etf", 1),
-                "current_value": row["pnl_pct"],
-                "limit_value": 0,
-                "severity": "critical",
-                "action": "SELL_ALL",
-                "sell_shares": qty,
-                "sell_value_usd": round(sell_value, 2),
-                "reason": "레버리지 ETF 금지",
-            })
+            violations.append(
+                {
+                    "ticker": ticker,
+                    "violation_type": "leverage_etf",
+                    "priority": _PRIORITY_MAP.get("leverage_etf", 1),
+                    "current_value": row["pnl_pct"],
+                    "limit_value": 0,
+                    "severity": "critical",
+                    "action": "SELL_ALL",
+                    "sell_shares": qty,
+                    "sell_value_usd": round(sell_value, 2),
+                    "reason": "레버리지 ETF 금지",
+                }
+            )
 
     # ─── 2. 손절선 초과 (priority 2) — 계좌별 전략 적용 ───
     # 동일 종목이 여러 계좌에 있으면 계좌별로 분리 판단
     from nuri.core.rules import get_account_strategy
+
     stop_loss_violations = []
     for _, row in df.iterrows():
         ticker = row["ticker"]
@@ -130,18 +138,20 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
         if pnl_pct < account_stop_loss:
             qty = int(row["quantity"])
             sell_value = row.get("current_value_usd", 0)
-            stop_loss_violations.append({
-                "ticker": ticker,
-                "violation_type": "stop_loss_exceeded",
-                "priority": _PRIORITY_MAP.get("stop_loss_exceeded", 2),
-                "current_value": pnl_pct,
-                "limit_value": account_stop_loss,
-                "severity": _severity("stop_loss_exceeded", pnl_pct, account_stop_loss),
-                "action": "SELL_ALL",
-                "sell_shares": qty,
-                "sell_value_usd": round(sell_value, 2),
-                "reason": f"손절 {pnl_pct:+.1f}% 초과 (한도 {account_stop_loss}%, {account})",
-            })
+            stop_loss_violations.append(
+                {
+                    "ticker": ticker,
+                    "violation_type": "stop_loss_exceeded",
+                    "priority": _PRIORITY_MAP.get("stop_loss_exceeded", 2),
+                    "current_value": pnl_pct,
+                    "limit_value": account_stop_loss,
+                    "severity": _severity("stop_loss_exceeded", pnl_pct, account_stop_loss),
+                    "action": "SELL_ALL",
+                    "sell_shares": qty,
+                    "sell_value_usd": round(sell_value, 2),
+                    "reason": f"손절 {pnl_pct:+.1f}% 초과 (한도 {account_stop_loss}%, {account})",
+                }
+            )
     # 손실이 큰 순서로 정렬
     stop_loss_violations.sort(key=lambda v: v["current_value"])
     violations.extend(stop_loss_violations)
@@ -151,11 +161,15 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
     # 그 계좌의 전략 한도와 비교한다. 이전 로직은 max(strategies)를 사용해
     # core 계좌(15%) 위반이 active(25%)에 가려졌음.
     account_totals = df.groupby("account")["current_value_usd"].sum().to_dict()
-    account_ticker_df = df.groupby(["account", "ticker"]).agg(
-        ticker_value=("current_value_usd", "sum"),
-        quantity=("quantity", "sum"),
-        current_price=("current_price", "first"),
-    ).reset_index()
+    account_ticker_df = (
+        df.groupby(["account", "ticker"])
+        .agg(
+            ticker_value=("current_value_usd", "sum"),
+            quantity=("quantity", "sum"),
+            current_price=("current_price", "first"),
+        )
+        .reset_index()
+    )
 
     for _, row in account_ticker_df.iterrows():
         account = row["account"]
@@ -181,18 +195,20 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
         sell_value = sell_shares * current_price
         weight_pct = account_weight * 100
 
-        violations.append({
-            "ticker": ticker,
-            "violation_type": "position_limit_exceeded",
-            "priority": _PRIORITY_MAP.get("position_limit_exceeded", 4),
-            "current_value": weight_pct,
-            "limit_value": max_pos,
-            "severity": _severity("position_limit_exceeded", weight_pct, max_pos),
-            "action": "REDUCE",
-            "sell_shares": sell_shares,
-            "sell_value_usd": round(sell_value, 2),
-            "reason": f"{account} 비중 {weight_pct:.1f}% > 한도 {max_pos * 100:.0f}%",
-        })
+        violations.append(
+            {
+                "ticker": ticker,
+                "violation_type": "position_limit_exceeded",
+                "priority": _PRIORITY_MAP.get("position_limit_exceeded", 4),
+                "current_value": weight_pct,
+                "limit_value": max_pos,
+                "severity": _severity("position_limit_exceeded", weight_pct, max_pos),
+                "action": "REDUCE",
+                "sell_shares": sell_shares,
+                "sell_value_usd": round(sell_value, 2),
+                "reason": f"{account} 비중 {weight_pct:.1f}% > 한도 {max_pos * 100:.0f}%",
+            }
+        )
 
     # ─── 4. 섹터 비중 초과 (priority 5) ───
     sector_weights = ticker_agg.groupby("sector")["weight_pct"].sum()
@@ -204,9 +220,7 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
         if sector_weight / 100 > MAX_SECTOR_EXPOSURE:
             # 해당 섹터 종목 중 팩터 점수가 낮은 순서로 매도
             sector_tickers = ticker_agg[ticker_agg["sector"] == sector].copy()
-            sector_tickers["factor_score"] = sector_tickers["ticker"].map(
-                lambda t: factor_scores.get(t, 0.0)
-            )
+            sector_tickers["factor_score"] = sector_tickers["ticker"].map(lambda t: factor_scores.get(t, 0.0))
             sector_tickers = sector_tickers.sort_values("factor_score", ascending=True)
 
             excess_weight = sector_weight / 100 - MAX_SECTOR_EXPOSURE
@@ -218,10 +232,7 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
                 if ticker in LEVERAGE_ETFS:
                     continue
                 # 이미 다른 위반으로 전량 매도 대상이면 건너뜀
-                already_sell_all = any(
-                    v["ticker"] == ticker and v["action"] == "SELL_ALL"
-                    for v in violations
-                )
+                already_sell_all = any(v["ticker"] == ticker and v["action"] == "SELL_ALL" for v in violations)
                 if already_sell_all:
                     remaining_excess -= row["current_value_usd"]
                     if remaining_excess <= 0:
@@ -246,18 +257,20 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
                     action = "REDUCE"
                     remaining_excess -= sell_value
 
-                violations.append({
-                    "ticker": ticker,
-                    "violation_type": "sector_limit_exceeded",
-                    "priority": _PRIORITY_MAP.get("sector_limit_exceeded", 5),
-                    "current_value": sector_weight,
-                    "limit_value": MAX_SECTOR_EXPOSURE,
-                    "severity": _severity("sector_limit_exceeded", sector_weight, MAX_SECTOR_EXPOSURE),
-                    "action": action,
-                    "sell_shares": sell_shares,
-                    "sell_value_usd": round(sell_value, 2),
-                    "reason": f"섹터({sector}) 비중 {sector_weight:.1f}% > 한도 {MAX_SECTOR_EXPOSURE * 100:.0f}%",
-                })
+                violations.append(
+                    {
+                        "ticker": ticker,
+                        "violation_type": "sector_limit_exceeded",
+                        "priority": _PRIORITY_MAP.get("sector_limit_exceeded", 5),
+                        "current_value": sector_weight,
+                        "limit_value": MAX_SECTOR_EXPOSURE,
+                        "severity": _severity("sector_limit_exceeded", sector_weight, MAX_SECTOR_EXPOSURE),
+                        "action": action,
+                        "sell_shares": sell_shares,
+                        "sell_value_usd": round(sell_value, 2),
+                        "reason": f"섹터({sector}) 비중 {sector_weight:.1f}% > 한도 {MAX_SECTOR_EXPOSURE * 100:.0f}%",
+                    }
+                )
 
                 if remaining_excess <= 0:
                     break
@@ -284,10 +297,12 @@ def calculate_rebalance_actions(db_path: Optional[Path] = None) -> list[dict]:
 
     # SELL_PRIORITY 순서대로 정렬
     priority_order = {cat: idx for idx, cat in enumerate(SELL_PRIORITY)}
-    violations.sort(key=lambda v: (
-        priority_order.get(v["violation_type"], 99),
-        -abs(v.get("current_value", 0)),
-    ))
+    violations.sort(
+        key=lambda v: (
+            priority_order.get(v["violation_type"], 99),
+            -abs(v.get("current_value", 0)),
+        )
+    )
 
     # 누적 회수 금액 계산
     cumulative_recovery = 0.0
@@ -328,10 +343,7 @@ def print_rebalance_advisor(actions: list[dict]) -> None:
         elif action["severity"] == "high":
             severity_marker = "[!] "
 
-        print(
-            f"  {severity_marker}[{idx}] SELL {ticker} {qty_text} "
-            f"→ {reason} (회수 ~${sell_value:,.0f})"
-        )
+        print(f"  {severity_marker}[{idx}] SELL {ticker} {qty_text} → {reason} (회수 ~${sell_value:,.0f})")
 
     total_recovery = actions[-1].get("cumulative_recovery_usd", 0)
     print(f"\n  총 회수: ~${total_recovery:,.0f}")
@@ -384,7 +396,7 @@ def generate_advisor_report(db_path: Optional[Path] = None) -> dict:
     }
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     report = generate_advisor_report()

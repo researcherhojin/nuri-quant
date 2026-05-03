@@ -230,8 +230,7 @@ def gather_context(db_path=None) -> ReportContext:
             flag_str = f" [{', '.join(flags)}]" if flags else ""
             stats_str = f"승률 {c.win_rate:.0%}, PF {c.profit_factor:.1f}"
             lines.append(
-                f"  ✅ {c.direction} {c.ticker}: {c.signal_id} "
-                f"(신뢰도 {c.confidence:.0f}, {stats_str}){flag_str}"
+                f"  ✅ {c.direction} {c.ticker}: {c.signal_id} (신뢰도 {c.confidence:.0f}, {stats_str}){flag_str}"
             )
         if advisory:
             lines.append("\n  — Advisory (unscored/low-sample, 참고만): —")
@@ -723,7 +722,7 @@ def generate_llm_report_sync(db_path=None) -> dict:
     return generate_llm_report(db_path)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     result = generate_llm_report_sync()
