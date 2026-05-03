@@ -379,8 +379,19 @@ def _get_price_targets(ticker: str, entry_price: float, db_path=None) -> dict:
         return {}
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None, db_path=None) -> int:
+    """CLI entry point — track P&L, compute agent accuracy, snapshot, or summary.
+
+    Args:
+        argv: command-line arguments (None → sys.argv[1:])
+        db_path: 테스트용 DB 경로 (None → 기본 production DB)
+
+    Returns:
+        exit code (0 on success).
+    """
     import argparse
+
+    from nuri.core.db import init_db
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -389,17 +400,16 @@ if __name__ == "__main__":
     parser.add_argument("--accuracy", action="store_true", help="에이전트 적중률 계산")
     parser.add_argument("--snapshot", action="store_true", help="적중률 스냅샷 저장 (strategy_memory)")
     parser.add_argument("--summary", action="store_true", help="의사결정 요약")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    from nuri.core.db import init_db
-    init_db()
+    init_db(db_path) if db_path is not None else init_db()
 
     if args.track:
-        updated = track_decision_outcomes()
+        updated = track_decision_outcomes(db_path=db_path)
         print(f"P&L 추적 업데이트: {updated}건")
 
     if args.accuracy or args.snapshot:
-        acc = compute_agent_accuracy()
+        acc = compute_agent_accuracy(db_path=db_path)
         if acc:
             print(f"\n{'=' * 60}")
             print("  Agent Accuracy — Decision Learning Loop")
@@ -414,11 +424,17 @@ if __name__ == "__main__":
             print("완료된 decisions 없음 (outcome = success/failure 필요)")
 
         if args.snapshot and acc:
-            n = save_agent_accuracy_snapshot()
+            n = save_agent_accuracy_snapshot(db_path=db_path)
             print(f"스냅샷 {n}건 저장 (strategy_memory)")
 
     if args.summary:
-        summary = get_decision_summary()
+        summary = get_decision_summary(db_path=db_path)
         print(f"\n의사결정 요약: total={summary['total']}, "
               f"pending={summary['pending']}, success={summary['success']}, "
               f"failure={summary['failure']}, neutral={summary['neutral']}")
+
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - script entry only; main() is tested directly
+    raise SystemExit(main())
