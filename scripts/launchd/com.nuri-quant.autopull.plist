@@ -5,7 +5,7 @@
 
   목적:
     MBP에서 git push → 5분 이내에 Mac mini가 origin/main을 ff-only merge.
-    실제 동작은 scripts/autopull_receiver.sh에 위임 — 거기서 dependency/schema
+    실제 동작은 scripts/deploy/autopull_receiver.sh에 위임 — 거기서 dependency/schema
     변경 감지, 서비스 재시작 hook 등을 처리.
 
   설치 (Mac mini에서 1회):
@@ -35,7 +35,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/ehbebe/workspace/nuri-quant/scripts/autopull_receiver.sh</string>
+        <string>/Users/ehbebe/workspace/nuri-quant/scripts/deploy/autopull_receiver.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
