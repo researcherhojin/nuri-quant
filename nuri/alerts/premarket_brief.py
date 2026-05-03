@@ -325,7 +325,7 @@ def format_brief_embed(ctx: dict) -> dict:
         siege_line = f"{status} ({siege['score']:.0f}% — {siege['passed']}P/{siege['failed']}F/{siege['warnings']}W)"
         if siege["failing_errors"]:
             siege_line += "\n" + "\n".join(f"❌ {e['id']}: {e['detail']}" for e in siege["failing_errors"][:3])
-        fields.append({"name": "🛡️ SIEGE", "value": siege_line, "inline": False})
+        fields.append({"name": "🛡️ Certification", "value": siege_line, "inline": False})
 
     # Data Freshness (#513) — backend gate 결과를 사용자에게 surface.
     # PR #512 가 portfolio policy 등록 + dual-layer write/read filter 했지만
@@ -483,7 +483,7 @@ def format_brief_markdown(ctx: dict) -> str:
 
     siege = ctx.get("siege")
     if siege:
-        lines.append(f"## SIEGE: {'CERTIFIED' if siege['certified'] else 'REJECTED'} ({siege['score']:.1f}%)")
+        lines.append(f"## Certification: {'CERTIFIED' if siege['certified'] else 'REJECTED'} ({siege['score']:.1f}%)")
         lines.append(f"- {siege['passed']}P / {siege['failed']}F / {siege['warnings']}W of {siege['total']}")
         for e in siege["failing_errors"]:
             lines.append(f"- ❌ {e['id']}: {e['desc']} — {e['detail']}")

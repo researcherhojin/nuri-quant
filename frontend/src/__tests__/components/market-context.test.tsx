@@ -45,7 +45,7 @@ const sampleHealth = {
 describe("MarketContext", () => {
   it("renders 4 health cards", () => {
     render(<MarketContext events={[]} health={sampleHealth} />);
-    expect(screen.getByText("SIEGE")).toBeTruthy();
+    expect(screen.getByText("Certification")).toBeTruthy();
     expect(screen.getByText("레짐")).toBeTruthy();
     expect(screen.getByText("매크로")).toBeTruthy();
     expect(screen.getByText("데이터")).toBeTruthy();
@@ -102,7 +102,7 @@ describe("MarketContext", () => {
 
   it("health cards link to correct pages", () => {
     render(<MarketContext events={[]} health={sampleHealth} />);
-    const siegeLink = screen.getByText("SIEGE").closest("a");
+    const siegeLink = screen.getByText("Certification").closest("a");
     expect(siegeLink?.getAttribute("href")).toBe("/engine");
     const regimeLink = screen.getByText("레짐").closest("a");
     expect(regimeLink?.getAttribute("href")).toBe("/strategy");
@@ -110,7 +110,7 @@ describe("MarketContext", () => {
 
   it("handles empty health gracefully", () => {
     render(<MarketContext events={[]} health={{}} />);
-    expect(screen.getByText("SIEGE")).toBeTruthy();
+    expect(screen.getByText("Certification")).toBeTruthy();
     expect(screen.getByText("0%")).toBeTruthy();
   });
 

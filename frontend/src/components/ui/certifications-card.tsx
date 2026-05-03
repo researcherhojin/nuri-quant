@@ -67,7 +67,7 @@ export function CertificationsCard({ history, summary }: CertificationsCardProps
     return (
       <Card className="bg-card border-border">
         <CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground mb-3">SIEGE History</p>
+          <p className="text-xs text-muted-foreground mb-3">Certification History</p>
           <p className="text-xs text-muted-foreground/70 py-6 text-center">
             아직 certification 기록이 없습니다. <code className="mx-1">make certify</code> 또는 scheduler 대기.
           </p>

@@ -91,7 +91,7 @@ describe("EnginePage", () => {
     const Page = await import("@/app/engine/page");
     const element = await Page.default();
     render(element);
-    expect(screen.getByText("SIEGE Engine")).toBeInTheDocument();
+    expect(screen.getByText("Certification Engine")).toBeInTheDocument();
   });
 
   it("renders gate section with conditions", async () => {
@@ -107,7 +107,7 @@ describe("EnginePage", () => {
     // We render the full page which uses Suspense — the server components resolve inline
     const element = await mod.default();
     render(element);
-    expect(screen.getByText("SIEGE Engine")).toBeInTheDocument();
+    expect(screen.getByText("Certification Engine")).toBeInTheDocument();
   });
 
   it("renders READY badge for passing gate", async () => {
@@ -118,7 +118,7 @@ describe("EnginePage", () => {
     const mod = await import("@/app/engine/page");
     const element = await mod.default();
     render(element);
-    expect(screen.getByText("SIEGE Engine")).toBeInTheDocument();
+    expect(screen.getByText("Certification Engine")).toBeInTheDocument();
   });
 
   it("renders conflict details when conflicts exist", async () => {

@@ -117,7 +117,7 @@ class TestActionsReadPathAxisNative:
             siege=[
                 {
                     "ticker": "BAC",
-                    "detail": "SIEGE: 종목 비중 한도 — 위반: BAC(19.8%>15%)",
+                    "detail": "Certification: 종목 비중 한도 — 위반: BAC(19.8%>15%)",
                     "condition_id": "position_limit",
                 }
             ],

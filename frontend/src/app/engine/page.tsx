@@ -177,7 +177,7 @@ function Loading() {
 export default function EnginePage() {
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold">SIEGE Engine</h1>
+      <h1 className="text-2xl font-bold">Certification Engine</h1>
 
       {/* V2 — SIEGE history 관찰 loop (E4-0a persist + V1 API 소비) */}
       <Suspense fallback={<Loading />}>
