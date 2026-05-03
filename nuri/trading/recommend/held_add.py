@@ -131,11 +131,30 @@ def is_in_earnings_blackout(
         return False
 
 
+def _get_real_accounts() -> set[str]:
+    """portfolio.yaml accounts 중 substantive metadata 가진 계좌만 — #527 패턴.
+
+    test/sample/legacy stale row 가 shadow 데이터에 노이즈 안 들어가도록.
+    """
+    portfolio_path = Path(__file__).parent.parent.parent.parent / "config" / "portfolio.yaml"
+    try:
+        with open(portfolio_path, encoding="utf-8") as f:
+            portfolio = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return set()
+    real: set[str] = set()
+    for acc, info in (portfolio.get("accounts") or {}).items():
+        info = info or {}
+        if any(info.get(k) for k in ("label", "name", "strategy", "holdings", "balance")):
+            real.add(acc)
+    return real
+
+
 def _get_held_positions() -> list[dict[str, Any]]:
     """portfolio 테이블 + 최신 가격 join — (ticker, account, qty, avg_price, current_price, pnl_pct).
 
-    days_held 는 portfolio 테이블에 timestamp 필드가 없으므로 fallback 30
-    (대부분 add-mode trigger 의 days_held_min 14-30 충족).
+    real_accounts (yaml substantive) 만 surface — test/sample/legacy stale 제외.
+    days_held 는 portfolio 테이블에 timestamp 필드가 없어 fallback 30.
     """
     df = query_df(
         """SELECT p.account, p.ticker, p.quantity AS qty, p.avg_price,
@@ -150,8 +169,11 @@ def _get_held_positions() -> list[dict[str, Any]]:
     )
     if df.empty:
         return []
+    real_accounts = _get_real_accounts()
     out: list[dict[str, Any]] = []
     for _, row in df.iterrows():
+        if real_accounts and str(row["account"]) not in real_accounts:
+            continue
         avg = float(row["avg_price"] or 0)
         cur = float(row["current_price"] or 0) or avg
         if avg <= 0 or float(row["qty"] or 0) <= 0:
