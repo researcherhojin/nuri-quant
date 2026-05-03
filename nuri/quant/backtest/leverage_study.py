@@ -357,7 +357,7 @@ def print_study(results: dict) -> None:
     print()
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(description="레버리지 ETF 조건부 허용 연구")

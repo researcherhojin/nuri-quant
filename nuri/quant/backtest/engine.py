@@ -142,7 +142,7 @@ def print_backtest(result: dict) -> None:
     print()
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 백테스트 (VectorBT)")

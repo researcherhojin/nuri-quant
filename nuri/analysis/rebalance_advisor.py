@@ -396,7 +396,7 @@ def generate_advisor_report(db_path: Optional[Path] = None) -> dict:
     }
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     report = generate_advisor_report()
