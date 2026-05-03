@@ -202,7 +202,7 @@ def generate_validation_report(output_dir: Path | None = None) -> Path | None:
     return path
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     path = generate_validation_report()
     if path:

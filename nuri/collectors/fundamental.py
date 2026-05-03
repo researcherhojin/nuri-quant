@@ -378,7 +378,7 @@ def _upsert_fundamentals(records: list[dict]) -> int:
         return len(records)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 펀더멘탈 수집기 (yfinance)")

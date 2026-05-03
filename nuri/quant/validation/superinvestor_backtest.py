@@ -239,7 +239,7 @@ def print_scorecard(scorecards: list[InvestorScorecard]) -> None:
     print()
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="슈퍼투자자 추종 백테스트")

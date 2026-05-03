@@ -722,7 +722,7 @@ def generate_llm_report_sync(db_path=None) -> dict:
     return generate_llm_report(db_path)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     result = generate_llm_report_sync()

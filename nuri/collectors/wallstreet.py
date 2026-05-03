@@ -102,10 +102,13 @@ class WallStreetCollector(BaseCollector):
                 pass
 
             # 1. Analyst Ratings
-            ud = t.upgrades_downgrades
+            # yfinance Ticker.upgrades_downgrades 는 pd.DataFrame | None 반환이지만
+            # type stub 이 dict[Hashable, Any] 로 잘못 표기 — Pylance 의 .empty / .head /
+            # idx.strftime 액세스 모두 false-positive. 런타임은 DataFrame 동작 보장.
+            ud: pd.DataFrame | None = t.upgrades_downgrades  # type: ignore[assignment]
             if ud is not None and not ud.empty:
                 for idx, row in ud.head(20).iterrows():
-                    date_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
+                    date_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]  # type: ignore[union-attr]
                     local_ratings.append(
                         {
                             "ticker": ticker,
@@ -121,10 +124,10 @@ class WallStreetCollector(BaseCollector):
                     )
 
             # 2. Earnings Surprise
-            eh = t.earnings_history
+            eh: pd.DataFrame | None = t.earnings_history  # type: ignore[assignment]
             if eh is not None and not eh.empty:
                 for idx, row in eh.iterrows():
-                    quarter = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)
+                    quarter = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)  # type: ignore[union-attr]
                     local_earnings.append(
                         {
                             "ticker": ticker,
@@ -286,7 +289,7 @@ def _save_short_interest(records, db_path=None):
     return count
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Nuri-Quant Wall Street 데이터 수집기")

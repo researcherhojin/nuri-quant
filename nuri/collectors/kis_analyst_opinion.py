@@ -448,7 +448,7 @@ class KISAnalystOpinionCollector(BaseCollector):
         return _upsert_analyst_ratings(data)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import argparse
 
     logging.basicConfig(level=logging.INFO)

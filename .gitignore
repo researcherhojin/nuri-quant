@@ -137,6 +137,7 @@ ENV/
 .ruff_cache/
 .mypy_cache/
 .cache/
+.uv-cache/         # uv source dist + build cache override (re-generated on first uv sync)
 .tox/
 .coverage
 .coverage.*
@@ -157,16 +158,15 @@ data/backups/
 data/exports/
 data/reports/
 data/.bfg-reports/
-# codex review archive (scripts/codex_review.sh output) — raw codex output may
-# include code snippets we would not want in git history. Rollout JSONL at
-# ~/.codex/sessions/ is the canonical source; this is a per-PR excerpt.
-# Root-level (accessible via `ls codex-reviews/`) per user preference.
-codex-reviews/
 # scheduler.err/.log, auto-deploy log 등
 data/logs/
-# LLM dual-consult archives (scripts/llm_consult.py output) — prompts may
-# carry portfolio context, verdicts may quote it. Decision audit trail kept
-# locally, not committed. Mirror policy of codex-reviews/.
+# LLM consult archives — single + dual + codex-only PR review excerpts.
+# 2026-05-04: codex-reviews/ → data/llm_consults/codex-only/ 통합 (root-level
+# clutter 제거 + 단일 archive root). raw output may include code snippets +
+# portfolio context, decision audit trail 만 local 보존, public repo 절대 금지.
+#   - data/llm_consults/{date}_{slug}.md         (scripts/dev/llm_consult.py dual)
+#   - data/llm_consults/codex-only/{date}/...    (scripts/dev/codex_review.sh single)
+#   - data/llm_consults/codex-only/PR*.md        (per-PR review excerpts)
 data/llm_consults/
 # Agent loop transcripts (#578) — issue spec + patch + adversarial review.
 # Codex/Qwen 가 issue body 를 스니펫으로 인용할 수 있어 portfolio context 노출

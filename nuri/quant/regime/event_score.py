@@ -194,7 +194,7 @@ def print_event_score(es: EventScore) -> None:
     print()
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     es = compute_event_score()
     print_event_score(es)

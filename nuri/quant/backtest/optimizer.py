@@ -281,7 +281,7 @@ def optimize_all(db_path: Optional[Path] = None) -> pd.DataFrame:
     return df
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import argparse
 
     logging.basicConfig(level=logging.INFO)
