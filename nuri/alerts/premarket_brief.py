@@ -262,12 +262,31 @@ def _brief_color(ctx: dict) -> int:
 
 
 def _short_ticker_line(item: dict) -> str:
+    """Brief 한 줄. KR 종목은 사람이 읽을 수 있게 ticker 옆에 종목명 병기.
+    multi-account 보유는 끝에 계좌별 비중 breakdown 추가 (#527 합산-누설 fix)."""
+    from nuri.core.ticker_names import get_ticker_name
+
     t = item.get("ticker", "?")
     action = item.get("action", "?")
     conf = item.get("confidence", 0)
     pnl = item.get("pnl_pct", 0)
     pos = item.get("position_pct", 0)
-    return f"{t} ({action} conf {conf}, pnl {pnl:+.1f}%, pos {pos:.1f}%)"
+
+    name = get_ticker_name(t)
+    label = f"{name} ({t})" if name else t
+    head = f"{label} ({action} conf {conf}, pnl {pnl:+.1f}%, pos {pos:.1f}%)"
+
+    accounts = item.get("accounts") or []
+    if len(accounts) > 1:
+        # 계좌 비중 큰 순으로 정렬. 메인 라인의 `pnl` 는 worst-account 의 손익이라
+        # multi-account 종목에선 misleading — breakdown 에 계좌별 pnl 동반 표시.
+        sorted_accounts = sorted(accounts, key=lambda a: a.get("position_pct", 0), reverse=True)
+        breakdown = " · ".join(
+            f"{a.get('account', '?')} {a.get('position_pct', 0):.1f}%/{a.get('pnl_pct', 0):+.1f}%"
+            for a in sorted_accounts
+        )
+        return f"{head} [{breakdown}]"
+    return head
 
 
 def format_brief_embed(ctx: dict) -> dict:
