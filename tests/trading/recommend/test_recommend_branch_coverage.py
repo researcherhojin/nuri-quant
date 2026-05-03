@@ -375,44 +375,32 @@ class TestTrackerBranches:
         assert n == 0
 
 
-# ─── rebalance.py ────────────────────────────────────────────────────
-
-
-class TestRebalanceBranches:
-    def test_module_imports(self):
-        import nuri.trading.recommend.rebalance as r
-
-        assert r is not None
-
-
 # ─── price_targets.py ────────────────────────────────────────────────
 
 
 class TestPriceTargetsBranches:
-    def test_calculate_targets_no_price(self, fixture_db):
-        """Smoke: no price data → graceful behavior."""
+    def test_calculate_targets_no_price_returns_error_dict(self, fixture_db):
+        """price_targets.py:153-155: no price data → {ticker, error} dict.
+
+        Source contract: `_get_current_price` returns None → early return
+        `{"ticker": ticker, "error": "가격 데이터 없음"}` (no try/except needed).
+        """
         from nuri.trading.recommend.price_targets import calculate_targets
 
-        try:
-            result = calculate_targets("MISSING", db_path=fixture_db)
-            assert isinstance(result, dict)
-        except Exception:
-            pass
+        result = calculate_targets("MISSING", db_path=fixture_db)
+        assert result == {"ticker": "MISSING", "error": "가격 데이터 없음"}
 
 
 # ─── candidates.py ───────────────────────────────────────────────────
 
 
 class TestCandidatesBranches:
-    def test_screen_candidates_no_data(self, fixture_db, monkeypatch):
-        """Smoke: empty DB → empty list."""
-        import nuri.core.db as db_mod
+    def test_screen_candidates_no_tickers_returns_empty(self, fixture_db):
+        """candidates.py:207-208: get_tickers() empty → return [].
 
-        monkeypatch.setattr(db_mod, "DB_PATH", fixture_db)
+        Empty DB → `get_tickers()` returns [] → early return [].
+        """
         from nuri.trading.recommend.candidates import screen_candidates
 
-        try:
-            result = screen_candidates(lookback_days=5, db_path=fixture_db)
-            assert isinstance(result, list)
-        except Exception:
-            pass
+        result = screen_candidates(lookback_days=5, db_path=fixture_db)
+        assert result == []
