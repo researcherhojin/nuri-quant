@@ -10,6 +10,8 @@ Lock-in:
 spec: docs/plans/507_buy_candidate_emitter_phase2_spec.md §4.6.
 """
 
+# cspell:ignore kakaopay
+
 from __future__ import annotations
 
 import sqlite3
