@@ -139,6 +139,154 @@ class TestRunBacktestFallbacks:
         # Strategy should not be NaN/inf
         assert -100 < result.total_return < 1000
 
+    def test_interactive_backtest_sh_nan_actually_falls_back(self, tmp_path, monkeypatch):
+        """Line 262: run_interactive_backtest sh_return NaN → fallback to -spy_ret.
+
+        SH의 close 가 첫 N행 모두 NaN 일 때 pct_change(fill_method='pad') 도
+        forward-fill 할 prior 가 없어 sh_return 가 NaN 으로 남는다. 이때 line 261
+        의 isna 가드가 line 262 의 -spy_ret fallback 을 트리거.
+
+        기존 test_sh_nan_return_falls_back_to_spy_inverse 는 단일 NaN 만 주입해
+        pad fill 로 0 이 되어 fallback 이 실행되지 않았다 (커버리지 미달).
+        """
+        import numpy as np
+        import pandas as pd
+
+        from nuri.core.db import init_db, upsert_prices
+        from nuri.trading.strategy import ls_backtest
+
+        p = tmp_path / "ib_sh_nan.db"
+        init_db(p)
+
+        n = 10
+        dates = pd.bdate_range("2024-01-02", periods=n)
+
+        # SPY 정상 시드 (regimes_df 의 return 산출용)
+        spy_close = np.linspace(500, 480, n)
+        upsert_prices(
+            pd.DataFrame({
+                "ticker": "SPY",
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": spy_close * 0.999,
+                "high": spy_close * 1.005,
+                "low": spy_close * 0.995,
+                "close": spy_close,
+                "volume": [1_000_000] * n,
+                "adj_close": spy_close,
+            }),
+            p,
+        )
+
+        # SH: 모든 close = NaN. pct_change 의 pad fill 이 의지할 prior 가 없음.
+        sh_close = [float("nan")] * n
+        upsert_prices(
+            pd.DataFrame({
+                "ticker": "SH",
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": [40.0] * n,
+                "high": [40.5] * n,
+                "low": [39.5] * n,
+                "close": sh_close,
+                "volume": [500_000] * n,
+                "adj_close": sh_close,
+            }),
+            p,
+        )
+
+        # bear_low_vol 강제 (short=0.40, long=0.10 → line 259-262 분기 진입)
+        # spy_ret 는 음수로 만들어 fallback 이 양수로 surface 되도록.
+        spy_returns = [0.0] + [-0.005] * (n - 1)
+        regimes = _make_regimes_df(
+            ["bear_low_vol"] * n,
+            returns=spy_returns,
+            closes=list(spy_close),
+            dates=list(dates),
+        )
+
+        result = ls_backtest.run_interactive_backtest(
+            regimes,
+            stop_loss_pct=-50,
+            take_profit_pct=100,
+            db_path=p,
+        )
+
+        # 포지션이 하루라도 처리됨을 lock — fallback 이 작동하지 않으면
+        # NaN propagate 되어 result.total_return 가 NaN/0 으로 깨졌을 것.
+        assert result.total_days == n - 1
+        assert pd.notna(result.total_return)
+        # bear_low_vol short=0.40, fallback short_ret = -spy_ret = +0.005 →
+        # 양의 strat_ret 누적. SPY 자체는 음수 → strategy 가 SPY 보다 우월해야 함.
+        assert result.total_return > result.spy_total_return
+
+    def test_run_backtest_sh_nan_actually_falls_back(self, tmp_path):
+        """Line 437: run_backtest sh_return NaN → fallback to -spy_ret.
+
+        기존 test_run_backtest_sh_nan_falls_back_to_neg_spy 는 sh_close=[40, NaN, NaN, ...]
+        로 시드해 pad fill 이 NaN 을 40 으로 forward-fill → pct_change=0 (NaN 아님)
+        → line 436 isna 가드 미발동. 첫 행 부터 NaN 으로 시드해 fallback 실제 트리거.
+        """
+        import numpy as np
+        import pandas as pd
+
+        from nuri.core.db import init_db, upsert_prices
+        from nuri.trading.strategy.ls_backtest import run_backtest
+
+        p = tmp_path / "rb_sh_nan.db"
+        init_db(p)
+
+        n = 30
+        dates = pd.bdate_range("2024-01-02", periods=n)
+
+        spy_close = np.linspace(500, 400, n)
+        upsert_prices(
+            pd.DataFrame({
+                "ticker": "SPY",
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": spy_close * 0.999,
+                "high": spy_close * 1.005,
+                "low": spy_close * 0.995,
+                "close": spy_close,
+                "volume": [1_000_000] * n,
+                "adj_close": spy_close,
+            }),
+            p,
+        )
+
+        # SH: 모든 close NaN — pad fill 의 prior 부재 → sh_return 전부 NaN
+        sh_close = [float("nan")] * n
+        upsert_prices(
+            pd.DataFrame({
+                "ticker": "SH",
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": [40.0] * n,
+                "high": [40.5] * n,
+                "low": [39.5] * n,
+                "close": sh_close,
+                "volume": [500_000] * n,
+                "adj_close": sh_close,
+            }),
+            p,
+        )
+
+        spy_returns = [0.0] + [(spy_close[i] / spy_close[i - 1] - 1) for i in range(1, n)]
+        regimes = _make_regimes_df(
+            ["bear_high_vol"] * n,  # short=0.50, long=0.0
+            returns=spy_returns,
+            closes=list(spy_close),
+            dates=list(dates),
+        )
+
+        result = run_backtest(regimes, db_path=p)
+
+        # bear_high_vol long=0, short=0.50, cash=0.50.
+        # fallback short_ret = -spy_ret. SPY 하락 → -spy_ret 양수 → 전략 +.
+        # fallback 이 실패하면 short_ret 가 NaN → strat_ret NaN → total_return NaN.
+        assert result.total_days == n - 1
+        assert pd.notna(result.total_return)
+        # SPY 는 -20% 추세, 전략은 short 0.5 로 +10% 부근이어야 함 (fallback 작동 시)
+        assert result.total_return > 0
+        assert result.spy_total_return < 0
+
     def test_interactive_backtest_take_profit_branch(self, tmp_path):
         """Line 277-280 inside run_interactive_backtest: take_profit threshold hit.
 

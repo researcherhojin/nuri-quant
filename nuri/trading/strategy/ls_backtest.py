@@ -959,7 +959,11 @@ def run_backtest_with_rules(regimes_df: pd.DataFrame, db_path=None) -> dict:
             tp2_triggered = False
 
     ruled = pd.Series(ruled_returns)
-    if ruled.empty:
+    # 인바리언트: 라인 879의 df.empty 가드를 통과하면 df 는 ≥1 행이고,
+    # for-loop 의 모든 분기 (SL/trailing 의 continue 포함, 또한 if/else 모두)
+    # 가 ruled_returns.append 를 1회 수행 → ruled 는 비어있을 수 없음.
+    # 방어적 가드로 남겨두되 실제 도달 불가 → 회귀 테스트 대신 인바리언트로 lock.
+    if ruled.empty:  # pragma: no cover  # invariant: line 879 가드 + for-loop 매 iter append → 도달 불가
         return {"error": "시뮬레이션 데이터 부족"}
 
     ruled_cum = (1 + ruled).cumprod()
@@ -1031,7 +1035,10 @@ def print_rules_comparison(result: dict) -> None:
     print(f"{'═' * 70}\n")
 
 
-if __name__ == "__main__":
+# 인바리언트: 모듈 진입 가드. unit test 는 함수 단위로 모든 분기를 커버하므로
+# `__main__` 블록은 라이브 DB 기반 스모크 중복일 뿐. runpy 실행은 tests/CLAUDE.md
+# "runpy + mock" 가이드대로 module-level patch 를 무효화하므로 명시적으로 제외.
+if __name__ == "__main__":  # pragma: no cover  # invariant: CLI 진입점은 unit test 범위 외
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant L/S Strategy Backtest")
