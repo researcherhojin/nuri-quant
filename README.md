@@ -152,7 +152,7 @@ make test-slow  # backend slow tests only (LLM gather_context, scheduler integra
 
 ### Production deployment
 
-The reference operator setup runs across two Apple Silicon Macs (MBP dev → Mac mini 24/7 receiver) with `make deploy-mini` 1-command sync. Full operator runbook (topology, deploy steps, scheduler control, recovery): [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+The reference operator setup runs across two Apple Silicon Macs (MBP dev → Mac mini 24/7 receiver) with `make deploy-mini` 1-command sync.
 
 ## Investment Rules
 
@@ -188,8 +188,6 @@ Take-profit ladders (growth: +20% / +40% / -15% trailing; value: +15% / +30% / -
 - [`docs/STRATEGY.md`](docs/STRATEGY.md) — project philosophy, architectural decisions, investment rules, harness theory
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — detailed code/DB layout, schema, env vars, CI/CD
 - [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md) — 3-D certification spec (Account × Asset Class × Market)
-- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — operator runbook (2-machine setup, deploy, scheduler, recovery)
-- [`docs/SOURCE_OF_TRUTH.md`](docs/SOURCE_OF_TRUTH.md) — file-ownership map (which file owns which fact)
 - [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) — KIS (Korea Investment & Securities) Open API integration
 - [`CLAUDE.md`](CLAUDE.md) — agent guide (Claude Code) — commands, always-on invariants, load triggers
 - [`AGENTS.md`](AGENTS.md) — cross-tool agent guide (Cursor / Copilot / Codex CLI)

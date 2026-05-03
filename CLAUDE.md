@@ -120,13 +120,16 @@ For framework / test-mocking / data-source / pipeline-policy gotchas → scoped 
 ## Reference
 
 - `docs/STRATEGY.md` — canonical policy (load on demand): 8 sections + §5.10 frontier alignment
-- `docs/SOURCE_OF_TRUTH.md` — file-ownership map (consult before adding/de-duplicating any doc fact)
 - `docs/ARCHITECTURE.md` — code/DB layout (env vars, CI/CD, schema)
-- `docs/OPERATIONS.md` — operator runbook (2-machine deploy / scheduler / recovery)
-- `docs/TODO.md` (gitignored) — forward-only backlog
 - `docs/SIEGE_V2.md` — 3D certification spec
 - `docs/KIS_INTEGRATION.md` — KIS Open API integration
 - `AGENTS.md` — **cross-tool** rules (Cursor / Copilot / Codex CLI), not auto-loaded by Claude Code. `.claude/agents/` 와 별개 메커니즘 — 이름 비슷해도 혼동 금지
+
+Local-only (gitignored — internal infra / audit / map, public OSS 가치 낮음):
+- `docs/OPERATIONS.md` — operator runbook (2-machine deploy / scheduler / recovery)
+- `docs/SOURCE_OF_TRUTH.md` — file-ownership map (consult before adding/de-duplicating any doc fact)
 - `docs/HARNESS_AUDIT.md` — 하네스 감사 보고서 (매 audit overwrite, 이력은 git log)
-- `NEXT_SESSION.md` (gitignored) — handoff (read first per session)
+- `docs/TRADING_AUDIT.md` — `nuri/trading/` 모듈 internal audit (#552)
+- `docs/TODO.md` — forward-only backlog
+- `NEXT_SESSION.md` — handoff (read first per session)
 - `~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/memory/` — user-scoped auto-memory

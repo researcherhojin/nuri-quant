@@ -43,6 +43,12 @@ config/portfolio.yaml
 # Backlog + 개인 plan 노트 (broker names + ticker+PnL + 실현 손실 노출 — STRATEGY §4.4.1)
 docs/TODO.md
 docs/plans/
+# 내부 운영 / audit / 파일 맵 — public OSS 가치 낮고 인프라 fingerprint / 약점 narrative 노출.
+# 사용자 결정 (2026-05-03): 외부 노출 차단, local-only.
+docs/OPERATIONS.md
+docs/HARNESS_AUDIT.md
+docs/TRADING_AUDIT.md
+docs/SOURCE_OF_TRUTH.md
 
 # TLS/SSL 인증서 + 개인 키 (defense-in-depth)
 *.pem
