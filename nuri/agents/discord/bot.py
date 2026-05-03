@@ -70,7 +70,10 @@ def build_bot():
     import discord
     from discord import app_commands
 
+    from nuri.agents.discord.inbound import attach as attach_inbound
+
     intents = discord.Intents.default()
+    intents.message_content = True  # E1 inbound on_message — privileged intent (#582)
     bot = discord.Client(intents=intents)
     tree = app_commands.CommandTree(bot)
 
@@ -139,6 +142,10 @@ def build_bot():
             fields={"exit": str(rc), "host": socket.gethostname()},
         )
         await interaction.followup.send(embed=discord.Embed.from_dict(embed_dict))
+
+    # E1 #582 — inbound listener (#agent-control + #agent-dev-log).
+    # env (DISCORD_CHANNEL_AGENT_*_ID) 미설정 시 no-op + warn.
+    attach_inbound(bot)
 
     @bot.event
     async def on_ready() -> None:  # pragma: no cover
