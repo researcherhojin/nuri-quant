@@ -88,13 +88,17 @@ for f in .env config/portfolio.yaml NEXT_SESSION.md; do
 done
 echo "  ${SYNC_COUNT}개 파일 동기화"
 
-# ── 4. uv sync (lock 변경 시) ──
-step 4 "의존성 확인"
-if [[ -n "${CHANGED_FILES:-}" ]] && echo "${CHANGED_FILES}" | grep -qE '^(uv\.lock|pyproject\.toml)$'; then
-    ok "lock/pyproject 변경 감지 → uv sync 실행"
-    ssh "${REMOTE}" "cd ${REMOTE_PATH} && .venv/bin/python -m pip --version >/dev/null 2>&1 && uv sync --extra dev --quiet" || warn "uv sync 실패 — 수동 확인 필요"
+# ── 4. uv sync --frozen (항상 실행, #574) ──
+# 기존 로직: this-deploy 의 diff 에 uv.lock 이 있을 때만 sync — 누적 drift 미감지.
+# 예) 이전 deploy 에서 lock 변경이 `|| warn` 으로 silently fail → 다음 deploy 의
+# diff 엔 lock 없음 → 영영 미적용. hmmlearn 누락 사례 (2026-05-02).
+# 수정: 매 deploy 마다 `uv sync --frozen --extra dev` 강제. lock 일치 시 거의 no-op,
+# 불일치 시 명시 abort 해 silent drift 차단.
+step 4 "의존성 동기화 (uv sync --frozen, 항상 실행)"
+if ssh "${REMOTE}" "cd ${REMOTE_PATH} && uv sync --extra dev --frozen --quiet"; then
+    ok "uv sync --frozen 성공"
 else
-    ok "lock 변경 없음 (skip)"
+    fail "uv sync --frozen 실패 — uv.lock 과 pyproject.toml / .venv 불일치. 로컬에서 'uv lock' 후 commit/push, 또는 Mac mini 에 .venv 재생성 필요"
 fi
 
 # ── 5. scheduler reload ──
