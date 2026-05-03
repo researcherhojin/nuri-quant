@@ -275,6 +275,64 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **참조**: `nuri/trading/agents/consensus.py` (`compute_canonical_weights` / `compute_provisional_weights` / `select_weight_source` / `agent_readiness`), Migration 23 (`outcome_7/14/21d` 컬럼), `nuri/trading/recommend/tracker.py::TRACK_HORIZONS`.
 
+### 3.10 Strategic Asset Allocation (SAA) — long-term policy mix
+
+**근거 (현대 학술 + 공신력 자료, 2020+)**:
+- **Ibbotson & Kaplan** (_FAJ_ 2000, Brinson "93%" 해석 정정): 자산 배분은 **return 분산 (variance over time)** 의 ~90% 를 설명 (return **수준** 이 아님). 종목 선택 / market timing 도 cross-sectional 차이의 30-40% 설명. 자주 오용되는 통계 — "자산 배분이 100% 답" 이라는 단순 결론 X.
+- **Vardharaj & Fabozzi** (_J. Portfolio Mgmt_ 2007): modern data 재현 — 자산 배분 도미넌스 확인. Brinson 후속.
+- **Andrew Ang** (BlackRock CIO, _Asset Management_ 2014): "Factors are the new asset classes" — momentum / value / quality factor 비중도 자산 배분 차원.
+- **Antti Ilmanen** (AQR, _Investing Amid Low Expected Returns_ **2022**): 2020s 저금리·고밸류 환경 → 60/40 expected return 연 4-5% 로 하락. factor diversification + global tilt 권고.
+- **Vanguard** _Principles for Investing Success_ 4th ed (**2024**) + Capital Markets Model (**VCMM 2024**): 4 원칙 (goals/balance/costs/discipline). 향후 10년 expected return — US equity 3-5% / Intl 7-9% / US bond 4-5%/yr.
+- **Morningstar** _Mind the Gap_ (**2024**) + DALBAR QAIB (**2024**): 투자자 실현 수익 vs 펀드 수익 격차 -1.7%/yr (Morningstar). retail equity vs S&P 500 격차 누적 ~3%/yr (DALBAR, 1994-2023). **discipline (매뉴얼 rebalance) 가 alpha 보다 큰 영향**.
+- **Damodaran** (NYU, ERP 2024 update): equity risk premium implied 4.6% (mid-2024) — valuation context.
+- **CFA Curriculum** Asset Allocation reading: SAA (장기 정책 mix) 와 TAA (시장 view overlay) 를 **분리된 layer** 로 운영 권고.
+- **Bernstein** _Intelligent Asset Allocator_ (2000, 여전히 reference): equal-weight rebalance 가 mean-variance 최적해와 근사 — cov matrix instability 로 강건성 우선.
+
+**핵심 보정 (오용 방지)**:
+1. Brinson "93%" = **variance (over time)**, NOT return level. "자산 배분만 잘하면 100% 알파" 는 오독.
+2. 2020s 환경 = **low expected return** (Ilmanen 2022). 단순 비중 mix 보다 **비용 최소화 + behavior gap 억제** 가 expected return 의 큰 부분.
+3. Factor (momentum/value/quality) 도 asset class — 우리 `quant/factors/` 모듈이 이미 보유 (Ang 2014 framework 정합).
+
+**현재 상태 (2026-05-04 audit)**:
+- TAA ✅: `REGIME_ALLOCATION` (`nuri/trading/strategy/longshort.py:23`) — 10 regime × long/short/cash 비중 동적 매핑.
+- SAA ❌: 자산 클래스 (주식/채권/원자재/REIT) **장기 target 비중** 미정의. `account_strategies` 는 single-position / sector cap 만, asset class 비중 룰 부재.
+
+**채택 framework** (Vanguard 2024 + Bernstein equal-weight robustness + Ang factor):
+- Equal-weight 또는 risk-tolerance 기반 strategic 비중. mean-variance optimization 의 cov matrix instability 회피.
+- Account_strategy 별 (core / active / swing / long_term / pension) 다른 SAA target — 위험 허용도 차등 반영.
+- Lifecycle glide path (Vanguard target-date 모형): 100 - age = equity % (러프 anchor). 사용자 portfolio.yaml `target_age` 옵션 으로 적용 (Phase 2 후행).
+- Factor tilt (Ang 2014): momentum/value/quality 비중은 SAA 위에 overlay (현재 우리 `quant/factors/` 신호 가 반영).
+
+**SAA target 정의** (config/rules.yaml `strategic_allocation_targets` 신설, 사용자 검토 필요):
+
+| account_strategy | us_equity | kr_equity | bond | commodity | cash 최소 | 근거 |
+|---|---|---|---|---|---|---|
+| `core` | 50% | 20% | 20% | 5% | 5% | Vanguard 3-fund 변형 (KR 추가, US 60% 기준) |
+| `active` | 60% | 20% | 10% | 5% | 5% | 적극 — equity 비중 ↑, Ilmanen low-return 환경에서도 risk premium 추구 |
+| `swing` | 50% | 30% | 5% | 5% | 10% | 단기 회전 — 현금 buffer ↑ |
+| `long_term` | 40% | 20% | 30% | 5% | 5% | 장기 안정 — bond 비중 ↑ |
+| `pension` | 30% | 15% | 45% | 5% | 5% | 연금 — Vanguard target-date glide path (60대 기준) |
+
+**Drift threshold**: target 대비 ±5% 이상 deviate → REBALANCE 권고 emit (alpha_action=FLAT 절대 X — STRATEGY §3.7 portfolio_action axis 분리 룰).
+
+**Rebalance cadence** (Morningstar/Vanguard 2024 권고: discipline 우선):
+- 정기: 분기 1회 (3/6/9/12 월 첫 영업일).
+- 비정기: drift > 10% 또는 regime 전환 시 즉시 권고 (TAA 와 sync).
+- **behavior gap 억제**: 시장 timing 시도 X — 기계적 rebalance 가 long-run alpha (DALBAR/Morningstar 2024 데이터).
+
+**TAA × SAA 결합 규칙**:
+- SAA = 자산 클래스 비중 (장기 anchor)
+- TAA = `REGIME_ALLOCATION` long/short/cash 비중 (단기 overlay)
+- 충돌 시: regime-driven cash up 은 TAA 가 SAA 를 **일시** override (방어 우선). regime 정상화 시 SAA 로 회귀.
+- factor tilt (Ang 2014): SAA 비중 안에서 factor 신호 (`quant/factors/momentum.py` 등) 가 종목 선택을 가이드.
+
+**미적용 (의도적 deferred)**:
+- Mean-variance optimization (`Riskfolio-Lib` 의존성 존재하나 미사용) — Bernstein/Ilmanen 권고대로 cov matrix instability 회피.
+- All Weather risk parity (Dalio) — leverage 필요 (4-environment hedge), STRATEGY §7.1 자동 매매 deferred 와 호환 X.
+- Yale model (Swensen) — 비전통 자산 (PE / hedge fund) 접근 제약.
+
+**참조**: `config/rules.yaml strategic_allocation_targets` (canonical 값, Phase 1 skeleton), `nuri/analysis/rebalance_advisor.py` (drift 계산 — Phase 2 확장 예정).
+
 ---
 
 ## 4. 개발 품질 기준
