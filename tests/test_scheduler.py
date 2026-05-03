@@ -949,7 +949,12 @@ class TestSchedulerBootstrap:
     """
 
     def test_main_calls_init_db_before_scheduler_start(self, monkeypatch):
-        """main() 이 init_db() → create_scheduler().start() 순서로 동작."""
+        """main() 이 scheduler.start() 이전에 init_db() 를 호출.
+
+        실제 correctness boundary 는 "start() 이전" — create_scheduler() 는 job
+        등록만 하므로 그 이전/이후는 무관. Codex review (PR #583) 후 의도적으로
+        order assertion 을 완화 (init_db.index < start.index).
+        """
         from nuri import scheduler as sched_mod
 
         call_order: list[str] = []
@@ -957,10 +962,9 @@ class TestSchedulerBootstrap:
         mock_init_db = MagicMock(side_effect=lambda *a, **kw: call_order.append("init_db"))
         mock_scheduler = MagicMock()
         mock_scheduler.start.side_effect = lambda: call_order.append("start")
-        mock_create = MagicMock(side_effect=lambda: (call_order.append("create_scheduler"), mock_scheduler)[1])
 
         monkeypatch.setattr(sched_mod, "init_db", mock_init_db)
-        monkeypatch.setattr(sched_mod, "create_scheduler", mock_create)
+        monkeypatch.setattr(sched_mod, "create_scheduler", MagicMock(return_value=mock_scheduler))
         # signal.signal 은 main 스레드 외에서 호출 시 ValueError — 우회.
         monkeypatch.setattr(sched_mod.signal, "signal", lambda *_a, **_kw: None)
         monkeypatch.setattr(sys, "argv", ["nuri.scheduler"])
@@ -968,8 +972,9 @@ class TestSchedulerBootstrap:
         sched_mod.main()
 
         mock_init_db.assert_called_once()
-        assert call_order == ["init_db", "create_scheduler", "start"], (
-            f"순서 어긋남: {call_order} — init_db 가 create_scheduler 이전이어야 함 (#575)"
+        assert "init_db" in call_order and "start" in call_order, call_order
+        assert call_order.index("init_db") < call_order.index("start"), (
+            f"순서 어긋남: {call_order} — init_db 가 scheduler.start() 이전이어야 함 (#575)"
         )
 
     def test_dry_run_does_not_call_init_db(self, monkeypatch):

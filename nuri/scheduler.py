@@ -473,7 +473,8 @@ def main():
 
     # 부트스트랩 시 DB 스키마 / 마이그레이션 멱등 적용 — 신규 deploy 후 첫 부팅에서
     # `_MIGRATIONS` 누적 drift 가 자동 catch-up 되도록 한다 (#575).
-    # init_db() 는 멱등이라 재실행 비용은 schema_version SELECT 한 번뿐.
+    # init_db() 는 functionally idempotent: `_SCHEMA` / `_SCHEMA_VERSION_TABLE` 는
+    # `IF NOT EXISTS` 기반이라 재실행해도 결과 동일. 미적용 마이그레이션만 새로 INSERT.
     init_db()
     logger.info("DB schema initialized (idempotent)")
 
