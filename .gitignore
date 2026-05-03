@@ -166,6 +166,9 @@ data/llm_consults/
 # Codex/Qwen 가 issue body 를 스니펫으로 인용할 수 있어 portfolio context 노출
 # 가능. local audit trail 만 보존, public repo 절대 금지.
 data/agent_loop/
+# Discord inbound listener (#582) — agent-control + agent-dev-log 채널 메시지/리액션
+# raw payload. content 가 masked 라도 author_id 등 사용자 식별자 포함, public 금지.
+data/discord_inbound/
 # Thesis Q&A archive (#508) — DB context + LLM verdict 포함, portfolio holdings 노출
 data/thesis_query/
 # Portfolio recommendation backtracking archive (per-day .md) — broker holdings +
