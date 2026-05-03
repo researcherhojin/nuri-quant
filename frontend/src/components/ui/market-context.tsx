@@ -49,6 +49,34 @@ function regimeStripe(trend: string | undefined): string {
   return "border-l-zinc-700/60";
 }
 
+// #503 Phase B — pinning: 24h 내 high-conf (≥0.8) critical-category 이벤트 존재 시 attention.
+// Critical = 의사결정에 직결되는 macro/geopolitical/policy shift.
+const CRITICAL_CATEGORIES = new Set([
+  "geopolitical_escalation",
+  "geopolitical_de_escalation",
+  "fed_dovish",
+  "fed_hawkish",
+  "oil_supply_shock",
+  "trade_war",
+]);
+
+function shouldPinCard(events: MacroEvent[]): boolean {
+  const now = Date.now();
+  const cutoff = now - 24 * 60 * 60 * 1000;
+  return events.some(ev => {
+    if (!CRITICAL_CATEGORIES.has(ev.category)) return false;
+    if ((ev.confidence ?? 0) < 0.8) return false;
+    const ts = Date.parse(ev.published_at);
+    return Number.isFinite(ts) && ts >= cutoff;
+  });
+}
+
+// #503 Phase B — regime banner: regime confidence 가 60% 미만이면 전환 임박 신호.
+function isRegimeShifting(regime: Partial<SystemHealth["regime"]>): boolean {
+  const conf = regime.confidence ?? 100;
+  return conf < 60 && conf > 0;
+}
+
 // #503 Phase A — 7d aggregate-by-day sparkline path (SVG points)
 function sparklinePath(events: MacroEvent[], width: number, height: number): { path: string; latest: number } | null {
   if (events.length === 0) return null;
@@ -88,8 +116,22 @@ export function MarketContext({ events, health }: MarketContextProps) {
   const macro: Partial<SystemHealth["macro"]> = health.macro || {};
   const freshness: Partial<SystemHealth["freshness"]> = health.freshness || {};
 
+  const pinned = shouldPinCard(events);
+  const shifting = isRegimeShifting(regime);
+
   return (
     <div className="space-y-3">
+      {/* #503 Phase B — regime-shift banner (regime.confidence < 60%) */}
+      {shifting && (
+        <div className="rounded-lg bg-amber-950/40 border border-amber-700/50 px-3 py-2 flex items-center gap-2 text-xs">
+          <span className="shrink-0">⚠</span>
+          <span className="text-amber-300 font-semibold">Regime 전환 신호</span>
+          <span className="text-zinc-400">
+            현재 {regime.regime ?? "—"} · 신뢰도 {regime.confidence ?? 0}% — 다음 행동 보류 권고
+          </span>
+        </div>
+      )}
+
       {/* 시스템 건강 4-card */}
       <div className="flex gap-2">
         <HealthCard
@@ -122,11 +164,15 @@ export function MarketContext({ events, health }: MarketContextProps) {
         />
       </div>
 
-      {/* 매크로 이벤트 — #503 Phase A: regime stripe + high-conf bold + 7d sparkline */}
+      {/* 매크로 이벤트 — Phase A: stripe/bold/sparkline · Phase B: pinned attention */}
       {events.length > 0 && (
-        <div className={`rounded-lg bg-zinc-900/40 border border-zinc-800/60 border-l-4 ${regimeStripe(regime.trend)} p-2.5`}>
+        <div className={`rounded-lg bg-zinc-900/40 border ${pinned ? "border-amber-500/70 ring-1 ring-amber-500/30 shadow-amber-500/10 shadow-md" : "border-zinc-800/60"} border-l-4 ${regimeStripe(regime.trend)} p-2.5`}>
           <div className="flex items-center justify-between mb-1.5">
-            <h4 className="text-[10px] text-zinc-500 font-semibold">{CONTEXT.TITLE}</h4>
+            <h4 className="text-[10px] text-zinc-500 font-semibold flex items-center gap-1">
+              {pinned && <span className="text-amber-400" aria-label="pinned attention">📌</span>}
+              {CONTEXT.TITLE}
+              {pinned && <span className="text-[9px] text-amber-300/80 font-bold">ATTENTION</span>}
+            </h4>
             {(() => {
               const sl = sparklinePath(events, 60, 14);
               if (!sl) return null;
