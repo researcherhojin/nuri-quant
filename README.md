@@ -44,9 +44,9 @@ flowchart TB
 
 | Phase | What it does | Inputs → Outputs |
 |-------|--------------|------------------|
-| ① **Collect** | 26 collectors — US: yfinance / OpenBB · KR: pykrx · Macro: FRED · News: GoogleNews RSS · 13F: edgartools · KIS Open API | external APIs → `prices` · `fundamentals` · `macro` · `news` · `institutional_flows` |
+| ① **Collect** | 26 collectors — US: yfinance / OpenBB · KR: pykrx · Macro: FRED · News: GoogleNews RSS · 13F: edgartools · KIS Open API (`kis_realtime` 잔고/시세 + `kis_analyst_opinion` 의견) | external APIs → `prices` · `fundamentals` · `macro` · `news` · `institutional_flows` · `analyst_ratings` |
 | ② **Analyze** | 22 signals (20 actionable + 2 SHADOW crash precursors) · 10 regimes (6 base + 4 special) · 3 factor scorers + composite aggregator · 15 macro event categories | DB → `signals` · `factors` · `regime_transitions` · `macro_events` |
-| ③ **Consensus** | 10 specialist agents · weighted vote · risk-agent veto fires on `alpha_action==FLAT` only | DB → `recommendations` (incl. `agent_verdicts`, `scoring_detail` JSON columns) |
+| ③ **Consensus** | 10 specialist agents · weighted vote · risk-agent veto fires on `alpha_action==FLAT` only · `held_add` mode (#518, shadow until 2026-05-15) | DB → `recommendations` (incl. `agent_verdicts`, `scoring_detail` JSON columns) + `held_add_shadow` |
 | ④ **Certify** | SIEGE v2 — Account × Asset Class × Execution Market. 1 error-grade fail → REJECTED, no manual override | DB → `certifications` (incl. `conditions_json` evidence + `portfolio_hash`) |
 | ⑤ **Track** | 30 / 60 / 90 d outcomes vs prediction → agent accuracy snapshot → weight drift bounded ±30 % (feedback to ③) | DB → `recommendations.outcome_{30,60,90}d` columns (in-place update); `strategy_memory` rows for agent accuracy snapshots |
 
@@ -58,7 +58,7 @@ The system rests on five enduring decisions. Recent feature additions and tuning
 
 | # | Principle | What it means in practice |
 |---|-----------|---------------------------|
-| 1 | **Sole SQLite gateway** | `nuri/core/db.py` is the only `sqlite3` importer (hook-enforced — every other module uses `query()` / `upsert_*()` / `get_db()` with optional `db_path=` for test isolation). 48 tables, WAL mode. |
+| 1 | **Sole SQLite gateway** | `nuri/core/db/` (package after #566 P2 refactor) is the only `sqlite3` importer (hook-enforced — every other module uses `query()` / `upsert_*()` / `get_db()` with optional `db_path=` for test isolation). 50 tables, WAL mode, 43 forward-only migrations. |
 | 2 | **Config over code** | Stop-loss thresholds, agent weights, signal metadata, SIEGE gate policies — all in `config/*.yaml`. Changing a rule or adding a market means editing YAML, never Python. |
 | 3 | **Loose phase coupling** | Pipeline phases communicate via DB tables / CSV only. No cross-phase imports. Re-run any upstream phase and downstream consumers refresh. |
 | 4 | **3-D SIEGE certification** | Gates apply per `Account (strategy)` × `Asset Class (us_equity / kr_equity / kr_index / commodity / bond)` × `Execution Market`. 1 error-grade fail → REJECTED, no manual override. Inspired by [nutshells3/SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). |
@@ -77,7 +77,7 @@ The system rests on five enduring decisions. Recent feature additions and tuning
 |  | `nuri/trading/recommend/` | Candidates, price targets, rebalance advisor, outcome tracker (30 / 60 / 90d). |
 | **Serve** | `nuri/api/` | FastAPI REST + SSE on **:8001** (69 endpoints incl. `/actions`, `/opportunities`, `/market-context`, `/coverage`). Swagger at `/docs`. |
 |  | `frontend/` | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme). |
-| **Foundation** | `nuri/core/` | `db.py` (sole SQLite gateway) · `events.py` (journal) · `freshness.py` (SLA) · `timezone.py` (KST) · `rules.py` · `signal_config.py` · `axis.py` (alpha/portfolio helpers). |
+| **Foundation** | `nuri/core/` | `db/` (sole SQLite gateway, 8 submodules incl. agent_runtime / discord_outbox_ops / market_data / portfolio / research_ops) · `events.py` (journal) · `freshness.py` (SLA) · `timezone.py` (KST) · `rules.py` · `signal_config.py` · `axis.py` (alpha/portfolio helpers) · `account_cap.py` (#518 per-account cap derivation). |
 |  | `config/*.yaml` | `rules` · `agents` · `signals` · `universe` · `stock_types` · `portfolio` (gitignored) · `kis/` (gitignored credentials). |
 | **LLM gateway** | `nuri/llm/` | `openai_client.py` (sole external entry, audit-logged) · event classifier · LLM daily report (OpenAI primary, llama.cpp / Ollama fallback). |
 
@@ -145,7 +145,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite — 4,485 backend (187 files) + 989 frontend (81 files) + 8 Playwright e2e specs
+make test       # full suite — 5,317 backend (222 files) + 917 frontend (82 files) + 38 Playwright e2e (8 specs)
 make test-fast  # backend only, slow tests excluded (~24s, what PR CI runs)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler integration)
 ```
