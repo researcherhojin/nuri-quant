@@ -528,3 +528,35 @@ describe("buildEnrichedHoldings wide-viewport fields", () => {
     expect(result[0].positionPct).toBe(0);
   });
 });
+
+// #503 Phase C — macro-aware sector badge
+describe("HoldingRow macroAwareSectors", () => {
+  it("renders 📡 badge when sector matches impacted keyword", () => {
+    const h = holdingFixture({ sector: "Energy" });
+    const { container } = render(<HoldingRow holding={h} macroAwareSectors={new Set(["energy"])} />);
+    const sectorCell = container.querySelector("[data-testid='sector-cell']");
+    expect(sectorCell?.textContent).toContain("📡");
+    expect(sectorCell?.className).toContain("text-amber-400");
+  });
+
+  it("matches via substring (ETF/USTech contains tech)", () => {
+    const h = holdingFixture({ sector: "ETF/USTech" });
+    const { container } = render(<HoldingRow holding={h} macroAwareSectors={new Set(["tech"])} />);
+    const sectorCell = container.querySelector("[data-testid='sector-cell']");
+    expect(sectorCell?.textContent).toContain("📡");
+  });
+
+  it("does not render badge when no sector match", () => {
+    const h = holdingFixture({ sector: "Healthcare" });
+    const { container } = render(<HoldingRow holding={h} macroAwareSectors={new Set(["energy"])} />);
+    const sectorCell = container.querySelector("[data-testid='sector-cell']");
+    expect(sectorCell?.textContent).not.toContain("📡");
+  });
+
+  it("does not render badge when prop omitted", () => {
+    const h = holdingFixture({ sector: "Energy" });
+    const { container } = render(<HoldingRow holding={h} />);
+    const sectorCell = container.querySelector("[data-testid='sector-cell']");
+    expect(sectorCell?.textContent).not.toContain("📡");
+  });
+});

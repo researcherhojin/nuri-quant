@@ -14,6 +14,7 @@ import { ActionItems, type ActionItem } from "@/components/ui/action-items";
 import { OpportunityExplorer, type Opportunity } from "@/components/ui/opportunity-explorer";
 import { MarketContext, type MacroEvent, type SystemHealth } from "@/components/ui/market-context";
 import { summarizeHoldings } from "@/lib/holdings-summary";
+import { getMacroImpactedSectors } from "@/lib/macro-impact";
 import Link from "next/link";
 import { VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SECTION, STRIP, MARKET, FOOTER, COL, SPARKLINE as SPARK, COMMON, ACTION } from "@/lib/strings";
 
@@ -265,6 +266,9 @@ async function Dashboard({
     .filter((h) => !isPensionLabel(h.account))
     .sort((a, b) => (b.positionPct ?? 0) - (a.positionPct ?? 0));
   const hiddenPensionCount = allEnrichedHoldings.length - enrichedHoldings.length;
+
+  // #503 Phase C — 24h 내 high-conf macro 이벤트의 영향 sector keyword set.
+  const macroAwareSectors = getMacroImpactedSectors(marketCtx?.macro_events ?? []);
 
   // heldTickers: used by HoldingRow enrichment for action matching
   const _heldTickers = new Set(holdings.map((h: PortfolioHolding) => h.ticker));
@@ -534,7 +538,11 @@ async function Dashboard({
                   ? enrichedHoldings
                   : enrichedHoldings.slice(0, HOLDINGS_COLLAPSED_LIMIT)
                 ).map((h, i) => (
-                  <HoldingRow key={`${h.account}-${h.ticker}-${i}`} holding={h} />
+                  <HoldingRow
+                    key={`${h.account}-${h.ticker}-${i}`}
+                    holding={h}
+                    macroAwareSectors={macroAwareSectors}
+                  />
                 ))}
               </div>
             </div>
