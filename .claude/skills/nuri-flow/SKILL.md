@@ -6,7 +6,7 @@ description: STRATEGY §2.7 7-phase Flow (Think→Plan→Build→Review→Test�
 # nuri-flow — 7-phase Flow Orchestrator (Recommend-only)
 
 **Source of truth**: `docs/STRATEGY.md §2.7` (canonical 7-phase definition + gate criteria).
-**Origin**: `docs/HARNESS_AUDIT.md` (2026-04-30) §6 P1-1 — 7-phase Flow가 doc-only로 강제 메커니즘 부재. 본 skill은 인지 보조 layer.
+**Origin**: `docs/HARNESS_AUDIT.md` (2026-04-30, gitignored / local-only) §6 P1-1 — 7-phase Flow가 doc-only로 강제 메커니즘 부재. 본 skill은 인지 보조 layer.
 
 ## 운영 원칙
 
@@ -88,5 +88,5 @@ description: STRATEGY §2.7 7-phase Flow (Think→Plan→Build→Review→Test�
 
 - `docs/STRATEGY.md §2.7` — canonical 7-phase 정의
 - `docs/STRATEGY.md §5.8` — 7 Harness Principles (Build/Test/Review gate 의 근거)
-- `docs/HARNESS_AUDIT.md §6 P1-1` — 본 skill 의 origin 결정
+- `docs/HARNESS_AUDIT.md §6 P1-1` (gitignored, local-only) — 본 skill 의 origin 결정
 - `~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/memory/feedback_dev_flow.md` — 사용자 워크플로 학습 메모리

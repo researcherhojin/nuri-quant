@@ -167,7 +167,7 @@ The `recommendations` / `decisions` / `agent_decisions` triplet looks redundant 
 - `decisions` is the research-grade dataset; columns map 1:1 to features the Learning Memory layer studies.
 - `agent_decisions` is the auditable production record; `decision_id` joins to `decision_outcomes` for the #529 closed-loop validation.
 
-Cross-validation between `decisions` and `agent_decisions` is intentional (audit `docs/TRADING_AUDIT.md`). Removing either would lose research expressiveness or production audit-ability.
+Cross-validation between `decisions` and `agent_decisions` is intentional. Removing either would lose research expressiveness or production audit-ability.
 
 ## DB Migrations
 

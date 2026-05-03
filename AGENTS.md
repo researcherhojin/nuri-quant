@@ -8,7 +8,6 @@ For canonical detail:
 - Repo conventions, commands, load triggers → `CLAUDE.md`
 - Investment policy, design decisions → `docs/STRATEGY.md`
 - Architecture, DB schema, CI/CD → `docs/ARCHITECTURE.md`
-- File ownership of each fact → `docs/SOURCE_OF_TRUTH.md`
 
 ## Project
 
