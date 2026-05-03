@@ -151,6 +151,51 @@ buy_checklist:
   min_revenue_growth: 0                     # 매출 > $0 (프리레비뉴 기업 금지)
   require_factor_top50pct: true             # 멀티팩터 상위 50% 이내
 
+# ─── Strategic Asset Allocation (SAA) — long-term policy mix ─────────
+# 근거: docs/STRATEGY.md §3.10. Brinson-HBB (1986) + Ibbotson-Kaplan (2000)
+# variance 보정 + Vanguard 2024 + Ilmanen 2022 (low expected return).
+# Phase 1 skeleton — Phase 2 에서 nuri/analysis/rebalance_advisor.py 가 drift 계산에 활용.
+# account_strategy 별 자산 클래스 장기 target 비중. percent (합=100).
+# Drift threshold: ±5% deviation → REBALANCE 권고 (alpha_action=FLAT 절대 X, §3.7).
+strategic_allocation_targets:
+  core:                         # 정석 운용 (Vanguard 3-fund 변형 + KR 추가)
+    us_equity: 50
+    kr_equity: 20
+    bond:      20
+    commodity:  5
+    cash_min:   5
+  active:                       # 적극 운용 (equity ↑)
+    us_equity: 60
+    kr_equity: 20
+    bond:      10
+    commodity:  5
+    cash_min:   5
+  swing:                        # 단기 회전 (cash buffer ↑)
+    us_equity: 50
+    kr_equity: 30
+    bond:       5
+    commodity:  5
+    cash_min:  10
+  long_term:                    # 장기 안정 (bond ↑)
+    us_equity: 40
+    kr_equity: 20
+    bond:      30
+    commodity:  5
+    cash_min:   5
+  pension:                      # 연금 (Vanguard target-date glide path 60대 기준)
+    us_equity: 30
+    kr_equity: 15
+    bond:      45
+    commodity:  5
+    cash_min:   5
+
+# Rebalance cadence (Morningstar Mind the Gap 2024 / Vanguard 2024 권고: discipline 우선)
+rebalance_policy:
+  drift_threshold_pct: 5         # ±5% deviate → 정기 rebalance 권고
+  drift_emergency_pct: 10        # ±10% deviate → 비정기 즉시 권고 (regime 전환 시도 sync)
+  cadence: quarterly             # 분기 1회 (3/6/9/12 첫 영업일)
+  behavior_gap_warning: true     # 시장 timing 시도 시 경고 emit (DALBAR/Morningstar 격차 ~1-3%/yr)
+
 # ─── SIEGE Gate 정책 (v2: Asset Class 차원) ────────────────
 # 근거: docs/CERTIFICATION_SPEC.md §4. Issue #248.
 # Gate #5 (data_fresh), #7 (volatility / 구 vix_gate), #8 (external_data) 는
