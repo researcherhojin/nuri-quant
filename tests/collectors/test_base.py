@@ -194,6 +194,98 @@ class TestMaxFailureRate:
         assert MAX_FAILURE_RATE == 0.10
 
 
+class TestFailureAlertSingleWriter:
+    """`_send_failure_alert` 는 outbox.stage_ops 만 경유해야 한다.
+
+    Lock-test (Gotcha-Test Pair, invariants.md):
+    Single-writer Discord rule — 직접 `send_webhook_message` 호출 금지.
+    Refactor (PR P0-2) 회귀 시 두 테스트 모두 fail 해야 한다.
+    """
+
+    def test_routes_through_stage_ops(self, monkeypatch):
+        """retry 3회 모두 실패 → stage_ops 가 정확히 1회 호출되며,
+        payload 에 collector name + error_msg 가 박혀 있어야 한다."""
+        captured: list[dict] = []
+
+        def _fake_stage_ops(payload, **kwargs):
+            captured.append({"payload": payload, "kwargs": kwargs})
+            return 1
+
+        # source-level patch — base._send_failure_alert 는 함수 내부에서
+        # `from nuri.agents.discord.outbox import stage_ops` 동적 import 하므로
+        # 원본 attribute 를 갈아끼운다.
+        import nuri.agents.discord.outbox as outbox_mod
+
+        monkeypatch.setattr(outbox_mod, "stage_ops", _fake_stage_ops)
+
+        class AlwaysFailCollector(BaseCollector):
+            def __init__(self):
+                super().__init__("alert_routing_test")
+
+            def collect(self, **kwargs):
+                raise RuntimeError("boom-net-down")
+
+            def save(self, data):
+                return 0
+
+        c = AlwaysFailCollector()
+        with pytest.raises(RuntimeError, match="boom-net-down"):
+            c.run()
+
+        assert len(captured) == 1, f"stage_ops 는 정확히 1회 호출되어야 함 (got {len(captured)})"
+        payload = captured[0]["payload"]
+        assert payload["collector"] == "alert_routing_test"
+        assert payload["event"] == "collector_failure"
+        assert "boom-net-down" in payload["error"]
+        # 메타 인자 — dedupe_key + actor_name 도 정확히 박혀야 함
+        kwargs = captured[0]["kwargs"]
+        assert "alert_routing_test" in kwargs["dedupe_key"]
+        assert kwargs["actor_name"] == "collector.alert_routing_test"
+
+    def test_does_not_call_direct_webhook(self, monkeypatch):
+        """legacy `discord_bot.send_webhook*` 직접 호출 회귀 차단.
+
+        과거 base.py 가 `nuri.alerts.discord_bot` 의 webhook 함수를 직접 부르던
+        패턴이 되살아나면 이 테스트가 fail 한다.
+        """
+        webhook_calls: list[str] = []
+
+        import nuri.alerts.discord_bot as discord_bot_mod
+
+        # discord_bot 모듈의 직접 publish 함수 두 개 모두 spy
+        monkeypatch.setattr(
+            discord_bot_mod, "send_webhook",
+            lambda *a, **kw: webhook_calls.append("send_webhook"),
+        )
+        monkeypatch.setattr(
+            discord_bot_mod, "send_webhook_text",
+            lambda *a, **kw: webhook_calls.append("send_webhook_text"),
+        )
+
+        # stage_ops 도 mock 해서 실제 DB 접근 없이 빠져나오게 함
+        import nuri.agents.discord.outbox as outbox_mod
+
+        monkeypatch.setattr(outbox_mod, "stage_ops", lambda *a, **kw: None)
+
+        class AlwaysFailCollector(BaseCollector):
+            def __init__(self):
+                super().__init__("no_direct_webhook")
+
+            def collect(self, **kwargs):
+                raise RuntimeError("net-fail")
+
+            def save(self, data):
+                return 0
+
+        c = AlwaysFailCollector()
+        with pytest.raises(RuntimeError):
+            c.run()
+
+        assert webhook_calls == [], (
+            f"discord_bot 직접 호출됨: {webhook_calls} — Single-writer Discord 룰 위반"
+        )
+
+
 # ##############################################################################
 # Source: test_collectors.py
 # ##############################################################################
