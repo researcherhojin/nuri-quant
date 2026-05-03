@@ -103,8 +103,6 @@ class TestDerivePositionCap:
         # rules.get_account_strategy 가 yaml 을 직접 read 하므로 path 를 monkeypatch
         import nuri.core.rules as rules_mod
 
-        original = rules_mod.get_account_strategy
-
         def patched_get_account_strategy(account: str) -> dict:
             with open(yaml_path, encoding="utf-8") as f:
                 pf = yaml.safe_load(f)
