@@ -162,6 +162,10 @@ data/logs/
 # carry portfolio context, verdicts may quote it. Decision audit trail kept
 # locally, not committed. Mirror policy of codex-reviews/.
 data/llm_consults/
+# Agent loop transcripts (#578) — issue spec + patch + adversarial review.
+# Codex/Qwen 가 issue body 를 스니펫으로 인용할 수 있어 portfolio context 노출
+# 가능. local audit trail 만 보존, public repo 절대 금지.
+data/agent_loop/
 # Thesis Q&A archive (#508) — DB context + LLM verdict 포함, portfolio holdings 노출
 data/thesis_query/
 # Portfolio recommendation backtracking archive (per-day .md) — broker holdings +
