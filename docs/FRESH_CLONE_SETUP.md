@@ -1,4 +1,4 @@
-# SMOKE_RUN.md — Fresh Clone Setup Smoke Flow
+# Fresh Clone Setup — End-to-End Verification
 
 Nuri-Quant 첫 설치 / 재설치 / 신규 기여자 온보딩 용. **PR CI 가 확인하지 않는 end-to-end 시나리오**를 수동으로 검증하기 위한 절차. #272 Phase 5 (2026-04-15) 기준.
 
