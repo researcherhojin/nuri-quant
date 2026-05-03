@@ -646,3 +646,96 @@ class TestKISFundamentalBranch:
         assert len(results) == 1
         assert results[0]["ticker"] == "005930.KS"
         assert results[0]["pe_ratio"] == 33.94
+
+
+class TestFundamentalExpectedCountGuard:
+    """MAX_FAILURE_RATE 가드 활성화 lock-test (PR #588 후속).
+
+    Reason: 직전 audit 에서 _expected_count 가 25/26 collector 에 unset 인 상태로
+    base.py 의 'asymmetric data age 방지' 가드가 dead code 였음을 확인.
+    fundamental.collect() 가 _expected_count 를 ticker 수로 동적 설정하도록 변경했고,
+    이 테스트가 회귀를 차단함.
+    """
+
+    def test_collect_sets_expected_count(self, monkeypatch, db_with_portfolio):
+        """collect() 진입 시 self._expected_count 가 len(tickers) 로 설정됨."""
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        c = FundamentalCollector()
+        # initial state — 0 (불활성)
+        assert c._expected_count == 0
+
+        mock_ticker = MagicMock()
+        mock_ticker.info = {"regularMarketPrice": 100.0, "trailingPE": 20.0}
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
+        import sys
+
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["AAPL", "MSFT", "GOOGL"])
+
+        c.collect()
+        assert c._expected_count == 3, "collect() 가 ticker 수로 _expected_count 설정 안 함"
+
+    def test_run_blocks_save_when_failure_rate_exceeds_threshold(self, monkeypatch, db_with_portfolio):
+        """run() 이 70% 실패 시 CollectionFailureError 발생 + save() 미호출."""
+        from nuri.collectors.base import CollectionFailureError
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        c = FundamentalCollector()
+        # 10 ticker 중 2개만 성공 → failure_rate 80% > 10% threshold
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: [f"T{i}" for i in range(10)])
+
+        # yfinance — T0/T1 만 valid info, 나머지 8개는 빈 info (skipped)
+        def make_ticker(t):
+            mock = MagicMock()
+            if t in ("T0", "T1"):
+                mock.info = {"regularMarketPrice": 100.0, "trailingPE": 20.0}
+            else:
+                mock.info = {}
+            return mock
+
+        mock_yf = MagicMock()
+        mock_yf.Ticker.side_effect = make_ticker
+        import sys
+
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        save_called = []
+        monkeypatch.setattr(c, "save", lambda data: save_called.append(len(data)) or len(data))
+
+        with pytest.raises(CollectionFailureError, match="실패율 80%"):
+            c.run()
+
+        assert save_called == [], "실패율 초과 시 save() 호출되면 안 됨 (asymmetric save 차단)"
+
+    def test_run_allows_save_when_failure_rate_below_threshold(self, monkeypatch, db_with_portfolio):
+        """failure_rate 5% < 10% 면 save() 정상 호출."""
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        c = FundamentalCollector()
+        # 20 ticker 중 19개 성공 → failure_rate 5%
+        tickers = [f"T{i}" for i in range(20)]
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: tickers)
+
+        def make_ticker(t):
+            mock = MagicMock()
+            if t == "T0":
+                mock.info = {}
+            else:
+                mock.info = {"regularMarketPrice": 100.0, "trailingPE": 20.0}
+            return mock
+
+        mock_yf = MagicMock()
+        mock_yf.Ticker.side_effect = make_ticker
+        import sys
+
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        save_called = []
+        monkeypatch.setattr(c, "save", lambda data: save_called.append(len(data)) or len(data))
+
+        # 가드 통과 — retry 없이 첫 시도에서 save 호출
+        result = c.run()
+        assert result == 19, "save() 가 19 records 받아야 함"
+        assert save_called == [19], "save() 1회 호출"

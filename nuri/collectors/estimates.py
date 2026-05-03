@@ -50,6 +50,10 @@ class EstimatesCollector(BaseCollector):
             self.logger.warning("US 종목이 없습니다 (yfinance 컨센서스는 .KS 미지원)")
             return []
 
+        # MAX_FAILURE_RATE 가드 활성화 — yfinance consensus 1 record/ticker. KR 제외 후
+        # us_tickers 수와 결과 list 길이 직접 비교 가능 → asymmetric save 차단.
+        self._expected_count = len(us_tickers)
+
         self.logger.info(f"애널리스트 컨센서스 수집: {len(us_tickers)}종목 (source={source})")
         from nuri.core.timezone import today_kst
 

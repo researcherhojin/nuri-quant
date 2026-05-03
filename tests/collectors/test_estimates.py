@@ -5,6 +5,8 @@ Split from tests/test_collectors_all.py for module-level isolation.
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from nuri.core.db import (
     init_db,
 )
@@ -312,14 +314,20 @@ class TestEstimatesCli:
 
         fake_rows = [
             {
-                "ticker": "AAPL", "recommendation": "buy",
-                "target_mean": 250.0, "target_median": 245.0,
-                "current_price": 230.0, "num_analysts": 30,
+                "ticker": "AAPL",
+                "recommendation": "buy",
+                "target_mean": 250.0,
+                "target_median": 245.0,
+                "current_price": 230.0,
+                "num_analysts": 30,
             },
             {
-                "ticker": "X", "recommendation": None,
-                "target_mean": None, "target_median": None,
-                "current_price": None, "num_analysts": None,
+                "ticker": "X",
+                "recommendation": None,
+                "target_mean": None,
+                "target_median": None,
+                "current_price": None,
+                "num_analysts": None,
             },
         ]
         monkeypatch.setattr(mod, "EstimatesCollector", _FakeCollector)
@@ -335,9 +343,7 @@ class TestEstimatesCli:
 class TestEstimatesCoverageExtra:
     """Lines 65 / 116-117 cover — source!=portfolio 분기 + bulk log summary."""
 
-    def test_collect_universe_mode_triggers_yfinance_log_suppression(
-        self, rich_db, monkeypatch
-    ):
+    def test_collect_universe_mode_triggers_yfinance_log_suppression(self, rich_db, monkeypatch):
         """line 65 — source != 'portfolio' 분기: yfinance logger 레벨 CRITICAL 로 변경.
 
         실제 change 여부를 로거 level 로 검증 (universe 모드 종료 후 원복).
@@ -350,7 +356,8 @@ class TestEstimatesCoverageExtra:
         # 21개 ticker — len(us_tickers) >= 20 분기도 같이 커버 (line 116-117)
         tickers = [f"T{i:02d}" for i in range(21)]
         monkeypatch.setattr(
-            collector, "_get_tickers",
+            collector,
+            "_get_tickers",
             lambda market=None, source="portfolio": tickers,
         )
 
@@ -381,7 +388,8 @@ class TestEstimatesCoverageExtra:
         collector = EstimatesCollector()
         tickers = [f"F{i:02d}" for i in range(20)]
         monkeypatch.setattr(
-            collector, "_get_tickers",
+            collector,
+            "_get_tickers",
             lambda market=None, source="portfolio": tickers,
         )
 
@@ -405,3 +413,70 @@ class TestEstimatesCoverageExtra:
         assert summary, "bulk summary log 가 emit 되지 않음"
         # 20개 전부 failed + '외 N개' truncation branch 확인 (15 remaining)
         assert "외 15개" in summary[0].message
+
+
+class TestEstimatesExpectedCountGuard:
+    """MAX_FAILURE_RATE 가드 활성화 lock-test.
+
+    Reason: estimates.collect() 가 us_tickers 수로 _expected_count 동적 설정 →
+    asymmetric data age 방지 가드 활성화. 회귀 차단.
+    """
+
+    def test_collect_sets_expected_count(self, monkeypatch):
+        """collect() 가 KR 제외 후 us_tickers 수로 _expected_count 설정."""
+        from nuri.collectors.estimates import EstimatesCollector
+
+        c = EstimatesCollector()
+        assert c._expected_count == 0
+
+        mock_yf = MagicMock()
+        mock_ticker = MagicMock()
+        mock_ticker.info = {
+            "regularMarketPrice": 100.0,
+            "recommendationKey": "buy",
+            "numberOfAnalystOpinions": 30,
+            "targetMeanPrice": 120.0,
+        }
+        mock_yf.Ticker.return_value = mock_ticker
+        import sys
+
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["AAPL", "MSFT", "GOOGL", "TSLA", "005930.KS"])
+
+        c.collect()
+        assert c._expected_count == 4, "KR 제외 후 us_tickers 수로 _expected_count 설정 안 함"
+
+    def test_run_blocks_when_failure_rate_exceeds_threshold(self, monkeypatch):
+        """run() 이 us_tickers 80% 실패 시 CollectionFailureError 발생."""
+        from nuri.collectors.base import CollectionFailureError
+        from nuri.collectors.estimates import EstimatesCollector
+
+        c = EstimatesCollector()
+        # 10 us_tickers 중 2개만 valid (T0/T1) → 80% 실패
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: [f"T{i}" for i in range(10)])
+
+        def make_ticker(t):
+            mock = MagicMock()
+            if t in ("T0", "T1"):
+                mock.info = {
+                    "regularMarketPrice": 100.0,
+                    "recommendationKey": "buy",
+                    "numberOfAnalystOpinions": 30,
+                    "targetMeanPrice": 120.0,
+                }
+            else:
+                mock.info = {}
+            return mock
+
+        mock_yf = MagicMock()
+        mock_yf.Ticker.side_effect = make_ticker
+        import sys
+
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        save_called = []
+        monkeypatch.setattr(c, "save", lambda data: save_called.append(len(data)) or len(data))
+
+        with pytest.raises(CollectionFailureError, match="실패율 80%"):
+            c.run()
+        assert save_called == [], "실패율 초과 시 save() 호출되면 안 됨"
