@@ -16,10 +16,14 @@ Layout helpers:
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any, Optional
 
 from nuri.core.db import stage_outbox
 from nuri.core.timezone import kst_now, today_kst
+
+logger = logging.getLogger(__name__)
 
 # Discord embed limits — agents/discord/embeds.py 와 동일 (Single source of truth
 # 아니지만 import 순환 회피 위해 중복 정의)
@@ -158,6 +162,22 @@ def stage_agent_control(
     )
 
 
+def _privacy_gate_payload(payload: dict[str, Any]) -> list[Any]:
+    """E3 #579 — agent transcript stream gate. payload 의 모든 텍스트를 직렬화해
+    privacy 검사 4 카테고리 통과 여부 확인. caller 가 violation list 로 publish 차단."""
+    # Lazy import to avoid CLI-script dep at module import time.
+    import sys
+    from pathlib import Path
+
+    scripts_dir = Path(__file__).resolve().parent.parent.parent.parent / "scripts" / "verify"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    from check_privacy_leak import gate_text  # type: ignore[import-not-found]
+
+    text = json.dumps(payload, ensure_ascii=False, default=str)
+    return gate_text(text, source="<agent_dev_log>")
+
+
 def stage_agent_dev_log(
     payload: dict[str, Any],
     dedupe_key: Optional[str] = None,
@@ -165,12 +185,32 @@ def stage_agent_dev_log(
     actor_name: Optional[str] = None,
     run_id: Optional[str] = None,
     db_path: Optional[Any] = None,
+    skip_privacy_gate: bool = False,
 ) -> Optional[int]:
     """Stage one event into #agent-dev-log outbox (transcript, E2 #578).
 
     Codex (Architect, spec) → Claude (Builder, patch) → Qwen (Adversarial Reviewer)
     각 단계의 산출물을 read-only transcript 로 publish.
+
+    E3 #579: payload 가 broker name / ticker+PnL / monetary literal 누설을
+    포함하면 publish 차단 (return None) + WARNING log. `skip_privacy_gate=True`
+    는 테스트/내부 디버깅 한정.
     """
+    if not skip_privacy_gate:
+        try:
+            findings = _privacy_gate_payload(payload)
+        except Exception as exc:
+            # gate 실패는 fail-open 보다 fail-closed — 누설 의심 시 publish 차단.
+            logger.warning("privacy gate raised (%s); blocking publish for safety", exc)
+            return None
+        if findings:
+            logger.warning(
+                "privacy gate blocked agent_dev_log publish — %d violation(s): %s",
+                len(findings),
+                [f"{f.category}:{f.pattern}" for f in findings[:3]],
+            )
+            return None
+
     return stage_outbox(
         "agent_dev_log",
         payload,

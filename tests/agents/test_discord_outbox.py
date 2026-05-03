@@ -1,3 +1,4 @@
+# cspell:ignore kakaopay
 """Discord outbox tests — single-writer pattern (Codex Round 6, 2026-05-02).
 
 Coverage:
@@ -145,6 +146,46 @@ def test_stage_agent_dev_log_helper_routes_to_agent_dev_log_channel(db_path):
         )
     _, rows = claim_pending_outbox("agent_dev_log", db_path=db_path)
     assert {r["payload"]["step"] for r in rows} == {"spec", "patch", "review"}
+
+
+# E3 #579 — privacy gate
+def test_stage_agent_dev_log_blocks_ticker_pnl_payload(db_path, caplog):
+    """ticker+signed-% combination 이 payload 에 들어 있으면 publish 차단."""
+    import logging
+
+    caplog.set_level(logging.WARNING)
+    rc = stage_agent_dev_log(
+        {"step": "review", "summary": "User holds NVDA +57% conviction"},
+        actor_name="agent_loop_orchestrator",
+        db_path=db_path,
+    )
+    assert rc is None
+    _, rows = claim_pending_outbox("agent_dev_log", db_path=db_path)
+    assert rows == [], "violation payload 가 outbox 에 stage 되면 안 됨"
+    assert any("privacy gate blocked" in r.message for r in caplog.records)
+
+
+def test_stage_agent_dev_log_blocks_broker_name_payload(db_path):
+    """Romanized broker name (kakaopay 등) 도 차단."""
+    rc = stage_agent_dev_log(
+        {"step": "spec", "summary": "kakaopay account fix"},
+        db_path=db_path,
+    )
+    assert rc is None
+    _, rows = claim_pending_outbox("agent_dev_log", db_path=db_path)
+    assert rows == []
+
+
+def test_stage_agent_dev_log_skip_privacy_gate_bypasses(db_path):
+    """skip_privacy_gate=True 는 의도적으로 통과 (테스트/디버깅 한정)."""
+    rc = stage_agent_dev_log(
+        {"step": "review", "summary": "NVDA +57% test bypass"},
+        db_path=db_path,
+        skip_privacy_gate=True,
+    )
+    assert rc is not None
+    _, rows = claim_pending_outbox("agent_dev_log", db_path=db_path)
+    assert len(rows) == 1
 
 
 # ─── claim / priority / lease ────────────────────────────

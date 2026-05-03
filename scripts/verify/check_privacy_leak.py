@@ -305,37 +305,28 @@ def is_allowlisted(path: Path) -> bool:
     return any(rel.startswith(p.rstrip("/")) for p in ALLOWLIST_PATHS)
 
 
-def scan_file_for_brokers(path: Path) -> list[Finding]:
-    """Find any broker name occurrence in a file."""
+def scan_text_for_brokers(text: str, source: Path | str = "<input>") -> list[Finding]:
+    """Detect broker names in text. Used by both file scanner and stream mode."""
     findings: list[Finding] = []
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (UnicodeDecodeError, FileNotFoundError):
-        return findings  # binary or missing — skip
-
-    lines = text.splitlines()
-    for ln_no, line in enumerate(lines, start=1):
-        # Korean substring (case-insensitive doesn't matter for hangul)
+    src_path = source if isinstance(source, Path) else Path(str(source))
+    for ln_no, line in enumerate(text.splitlines(), start=1):
         for pat in BROKER_NAMES_KO:
             if pat in line:
                 findings.append(
                     Finding(
-                        file=path,
+                        file=src_path,
                         line=ln_no,
                         pattern=pat,
                         snippet=line.strip()[:120],
                         category="broker_name",
                     )
                 )
-        # English: case-insensitive substring (variable names like
-        # `kakaopay_main` would otherwise escape a \b regex because `_` is
-        # a word character).
         line_lower = line.lower()
         for pat in BROKER_NAMES_EN:
             if pat.lower() in line_lower:
                 findings.append(
                     Finding(
-                        file=path,
+                        file=src_path,
                         line=ln_no,
                         pattern=pat,
                         snippet=line.strip()[:120],
@@ -345,20 +336,20 @@ def scan_file_for_brokers(path: Path) -> list[Finding]:
     return findings
 
 
-def scan_file_for_numerics(path: Path) -> list[Finding]:
-    """Find large numeric literals (>= 1M) co-located with money-keys.
-
-    To minimize false positives we require the SAME line to contain both
-    a SUSPECT_NUMERIC_KEYS hit and a numeric literal >= 1_000_000.
-    """
-    findings: list[Finding] = []
+def scan_file_for_brokers(path: Path) -> list[Finding]:
+    """Find any broker name occurrence in a file."""
     try:
         text = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, FileNotFoundError):
-        return findings
+        return []  # binary or missing — skip
+    return scan_text_for_brokers(text, source=path)
 
-    numeric_pat = re.compile(r"\b(\d{7,})\b")  # >= 7 digits = >= 1,000,000
 
+def scan_text_for_numerics(text: str, source: Path | str = "<input>") -> list[Finding]:
+    """Detect large monetary literals (>= 1M) co-located with money-keys."""
+    findings: list[Finding] = []
+    src_path = source if isinstance(source, Path) else Path(str(source))
+    numeric_pat = re.compile(r"\b(\d{7,})\b")
     for ln_no, line in enumerate(text.splitlines(), start=1):
         if not any(key in line for key in SUSPECT_NUMERIC_KEYS):
             continue
@@ -366,12 +357,11 @@ def scan_file_for_numerics(path: Path) -> list[Finding]:
             value = int(match.group(1))
             if value < 1_000_000:
                 continue
-            # Allow round-number placeholders explicitly (1_000_000, 10_000_000, ...)
             if value % 1_000_000 == 0 and value <= 100_000_000:
                 continue
             findings.append(
                 Finding(
-                    file=path,
+                    file=src_path,
                     line=ln_no,
                     pattern=str(value),
                     snippet=line.strip()[:120],
@@ -379,6 +369,29 @@ def scan_file_for_numerics(path: Path) -> list[Finding]:
                 )
             )
     return findings
+
+
+def scan_file_for_numerics(path: Path) -> list[Finding]:
+    """File wrapper around scan_text_for_numerics."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, FileNotFoundError):
+        return []
+    return scan_text_for_numerics(text, source=path)
+
+
+def gate_text(text: str, source: Path | str = "<stream>") -> list[Finding]:
+    """E3 #579 — single-call privacy gate for agent transcripts.
+
+    Aggregates all 4 categories (broker_name / suspect_numeric / ticker_pnl)
+    on a text chunk before publishing to a Discord agent channel. Used by
+    both `--stream` CLI mode and `stage_agent_dev_log` runtime gate.
+    """
+    return (
+        scan_text_for_brokers(text, source)
+        + scan_text_for_numerics(text, source)
+        + scan_text_for_ticker_pnl(text, source)
+    )
 
 
 def scan_text_for_ticker_pnl(text: str, source: Path | str = "<input>") -> list[Finding]:
@@ -561,6 +574,14 @@ def main() -> int:
         help="Read text from stdin and scan it (for commit-msg / PR body hooks)",
     )
     parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Read agent transcript from stdin (line-buffered) and gate-check all 4 "
+        "categories (broker / numeric / ticker_pnl). Exit 2 on any finding "
+        "(stricter than commit-msg's exit 1) so callers can distinguish from "
+        "lint-level failures. Used by stage_agent_dev_log() before publish.",
+    )
+    parser.add_argument(
         "--unpushed-commits",
         action="store_true",
         help="Scan commit messages of unpushed commits (origin/main..HEAD)",
@@ -574,7 +595,16 @@ def main() -> int:
 
     findings: list[Finding] = []
 
-    if args.message:
+    if args.stream:
+        text = sys.stdin.read()
+        findings.extend(gate_text(text, source="<stream>"))
+        if findings:
+            print_findings(findings)
+            return 2
+        if not args.quiet:
+            print("✓ stream privacy gate clean", file=sys.stderr)
+        return 0
+    elif args.message:
         text = sys.stdin.read()
         findings.extend(scan_text_for_ticker_pnl(text, source="<stdin>"))
     elif args.unpushed_commits:
