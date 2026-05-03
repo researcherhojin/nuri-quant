@@ -36,7 +36,10 @@ Payload schema (#571 brief content extension):
         ↳ canonical source: `nuri.trading.recommend.price_targets.calculate_targets()`.
         ↳ caller 는 위 함수 그대로 호출 → 결과 키 매핑해 attach.
         ↳ 누락 / error 시 silent omit (legacy payload back-compat).
-    Optional #571 Phase 2+ (별 후속): position_state, signal_top2, invalidation.
+    #571 Phase 2 (BUY/SELL only — decision_compiler 가 자동 첨부):
+        horizon     — "growth" | "value" | "swing" (price_targets.classify_stock_type)
+        position    — "new" | "held" | "held/winner" | "held/loser" (현재가 vs 평단 ±5%)
+    Optional #571 Phase 3+ (별 후속): signal_top2, invalidation, counter-evidence.
 """
 
 from __future__ import annotations
@@ -326,7 +329,8 @@ def _format_event_line(payload: dict[str, Any]) -> str:
     parts = [str(ticker), kind]
     if "conviction" in payload:
         parts.append(f"conv {float(payload['conviction']):.2f}")
-    for opt in ("regime", "causal", "horizon", "reason", "note"):
+    # #571 Phase 2: position 도 surface (new / held / held-winner / held-loser).
+    for opt in ("regime", "causal", "horizon", "position", "reason", "note"):
         if opt in payload and payload[opt] is not None:
             parts.append(f"{opt}: {payload[opt]}")
     head = " | ".join(parts)
