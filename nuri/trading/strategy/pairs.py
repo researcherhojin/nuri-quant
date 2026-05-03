@@ -91,7 +91,7 @@ def find_pairs(
         ratio = np.log(price_df[t1] / price_df[t2])
         mean_spread = ratio.mean()
         std_spread = ratio.std()
-        if std_spread == 0:
+        if std_spread == 0:  # pragma: no cover — defensive: pandas std with ddof=1 returns ~1e-16 (not exact 0) for identical N>=30 values, so this path requires hand-built series; real DB data flow never triggers. See tests/trading/strategy/test_pairs.py::TestFindPairsZeroStdSpread.
             continue
 
         current_z = (ratio.iloc[-1] - mean_spread) / std_spread
