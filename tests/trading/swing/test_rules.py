@@ -400,6 +400,7 @@ class TestSwingRulesMainBlock:
     def test_main_check_branch_empty_db(self, tmp_path, monkeypatch, capsys):
         """--check 분기 (line 297-299): 빈 DB → check_exits 빈 list → '오픈 포지션 없음'."""
         import sys
+
         import nuri.core.db as db_mod
         from nuri.core.db import init_db as _init_db
 
@@ -422,6 +423,7 @@ class TestSwingRulesMainBlock:
         패치된 함수를 가져옴.
         """
         import sys
+
         import nuri.core.db as db_mod
         from nuri.core.db import init_db as _init_db
 
@@ -449,8 +451,10 @@ class TestSwingRulesMainBlock:
         import logging
         import sys
         from unittest.mock import MagicMock
+
         import nuri.core.db as db_mod
-        from nuri.core.db import init_db as _init_db, query
+        from nuri.core.db import init_db as _init_db
+        from nuri.core.db import query
         from nuri.trading.swing.scanner import ScanResult
 
         path = tmp_path / "swing_save.db"

@@ -108,6 +108,7 @@ class TestFindPairsZeroStdSpread:
         """완벽 비례 가격 60일치 → log-ratio std 는 0이 아닌 1e-15 미만 잔차."""
         import numpy as np
         import pandas as pd
+
         from nuri.core.db import upsert_portfolio, upsert_prices
         from nuri.trading.strategy.pairs import find_pairs
 
@@ -169,6 +170,7 @@ class TestPairsMainBlock:
         """상관 0.7+ 와 |Z|>2 가 동시에 발생하는 데이터 → pairs/signals 루프 모두 출력."""
         import numpy as np
         import pandas as pd
+
         import nuri.core.db as db_mod
         from nuri.core.db import init_db as _init_db
         from nuri.core.db import upsert_portfolio, upsert_prices
