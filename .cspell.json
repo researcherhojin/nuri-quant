@@ -769,7 +769,8 @@
     "truthies",
     "uncastable",
     "uppercases",
-    "HITL"
+    "HITL",
+    "unwritable"
   ],
   "ignorePaths": [
     "node_modules/**",

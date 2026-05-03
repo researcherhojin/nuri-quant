@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Mask placeholder — naive monetary literal redaction. tickers + PnL 복합 패턴
-# 미포함 (E3 정식 가드 도착 전 임시). 분리된 표현식으로 character-class escape 회피.
-_MONEY_RE = re.compile(r"[$₩]\s?[\d,]+(?:\.\d+)?\s?[KMBkmb]?")
+# 미포함 (E3 정식 가드 도착 전 임시). re.IGNORECASE 로 K/M/B suffix case-insensitive.
+_MONEY_RE = re.compile(r"[$₩]\s?[\d,]+(?:\.\d+)?\s?[KMB]?", re.IGNORECASE)
 
 
 def _channel_targets() -> dict[int, str]:
