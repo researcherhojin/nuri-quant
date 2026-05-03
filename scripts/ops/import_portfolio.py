@@ -23,7 +23,7 @@ from nuri.core.db import init_db, query, replace_portfolio_account
 
 _KNOWN_FIELDS = {"ticker", "qty", "avg", "sector"}
 
-CONFIG_PATH = Path(__file__).parent.parent / "config" / "portfolio.yaml"
+CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "portfolio.yaml"
 
 logger = logging.getLogger(__name__)
 
