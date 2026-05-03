@@ -1,4 +1,5 @@
 """차트 패턴 분석 (chart_analysis.py) 단위 테스트."""
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -205,16 +206,18 @@ def seed_strong_uptrend(db_path):
     rows = []
     for i in range(300):  # 300일 = 약 14개월 (52주 + 여유)
         price = base_price * (1 + 0.005 * i)  # 매일 +0.5%
-        rows.append({
-            "ticker": "TEST_UP",
-            "date": f"2025-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}",
-            "open": price * 0.99,
-            "high": price * 1.01,
-            "low": price * 0.98,
-            "close": price,
-            "volume": 1_000_000,
-            "adj_close": price,
-        })
+        rows.append(
+            {
+                "ticker": "TEST_UP",
+                "date": f"2025-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}",
+                "open": price * 0.99,
+                "high": price * 1.01,
+                "low": price * 0.98,
+                "close": price,
+                "volume": 1_000_000,
+                "adj_close": price,
+            }
+        )
     df = pd.DataFrame(rows)
     upsert_prices(df, db_path=db_path)
     return db_path
@@ -245,3 +248,239 @@ def test_analyze_chart_missing_ticker(db_path):
 def test_analyze_chart_reasons_populated(seed_strong_uptrend):
     result = analyze_chart("TEST_UP", db_path=seed_strong_uptrend)
     assert len(result.reasons) > 0  # 최소 1개 이상의 패턴 설명
+
+
+# ═══════════════════════════════════════════════════════
+# Defensive branches (NaN / zero / missing column 가드)
+# ═══════════════════════════════════════════════════════
+
+
+class TestDefensiveBranches:
+    def test_bb_position_nan_close(self):
+        """close NaN → 50.0 default."""
+        df = _make_df([float("nan")], bb=([110], [100], [90]))
+        assert bb_position(df) == 50.0
+
+    def test_bb_position_inverted_band(self):
+        """upper <= lower → 50.0 (degenerate case)."""
+        df = _make_df([100.0], bb=([90], [100], [110]))  # inverted
+        assert bb_position(df) == 50.0
+
+    def test_bb_width_missing_columns(self):
+        """bb_middle 누락 → 0.0."""
+        df = pd.DataFrame({"close": [100], "bb_upper": [110]})
+        assert bb_width_pct(df) == 0.0
+
+    def test_bb_width_nan_middle(self):
+        df = _make_df([100], bb=([110], [float("nan")], [90]))
+        assert bb_width_pct(df) == 0.0
+
+    def test_distance_52w_high_missing_close(self):
+        df = pd.DataFrame({"open": [100, 101]})
+        dist, high = distance_from_52w_high(df)
+        assert dist == 0.0 and high == 0.0
+
+    def test_distance_52w_high_zero_high(self):
+        """모든 close 가 0 → high=0 short-circuit."""
+        df = _make_df([0.0, 0.0, 0.0])
+        dist, high = distance_from_52w_high(df)
+        assert dist == 0.0 and high == 0.0
+
+    def test_distance_52w_low_missing_close(self):
+        df = pd.DataFrame({"open": [100]})
+        dist, low = distance_from_52w_low(df)
+        assert dist == 0.0 and low == 0.0
+
+    def test_distance_52w_low_zero_low(self):
+        df = _make_df([0.0, 0.0])
+        dist, low = distance_from_52w_low(df)
+        assert dist == 0.0 and low == 0.0
+
+    def test_poc_constant_prices(self):
+        """price_max == price_min → 그 값 반환 (no binning)."""
+        df = _make_df([100.0] * 5, volumes=[1000] * 5)
+        assert volume_profile_poc(df, lookback=5, bins=5) == 100.0
+
+    def test_trend_strength_nan_in_window(self):
+        closes = [100, 101, float("nan"), 103, 104, 105, 106, 107, 108]
+        df = _make_df(closes)
+        assert trend_strength_9d(df) == 0.0
+
+    def test_trend_strength_zero_avg(self):
+        """avg == 0 → 0.0 (divide-by-zero 가드)."""
+        df = _make_df([0.0] * 9)
+        assert trend_strength_9d(df) == 0.0
+
+
+@pytest.fixture
+def seed_downtrend(db_path):
+    """하락 추세 → MACD 음전환 + 52w 고점 한참 아래 + trend ≤ -30 path."""
+    rows = []
+    # 200 일 동안 단조 하락 (200 → 100, ~0.5%/day)
+    for i in range(200):
+        price = 200.0 - i * 0.5
+        rows.append(
+            {
+                "ticker": "TEST_DN",
+                "date": f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}",
+                "open": price * 0.99,
+                "high": price * 1.01,
+                "low": price * 0.98,
+                "close": price,
+                "volume": 1_000_000,
+                "adj_close": price,
+            }
+        )
+    df = pd.DataFrame(rows)
+    upsert_prices(df, db_path=db_path)
+    return db_path
+
+
+def test_analyze_chart_downtrend_bias(seed_downtrend):
+    """하락 추세 → bearish bias + reasons 다수 (52w 고점 한참 아래, 추세 약세 등)."""
+    result = analyze_chart("TEST_DN", db_path=seed_downtrend)
+    # 단조 하락이므로 trend_strength 음수
+    assert result.trend_strength < 0
+    # 52w 고점에서 -30% 이하 (한참 아래 branch hit)
+    assert result.dist_from_52w_high <= -30
+    # bias 는 bearish 또는 neutral
+    assert result.visual_bias in ("bearish", "neutral")
+
+
+@pytest.fixture
+def seed_macd_bullish_turn(db_path):
+    """MACD 음→양 전환 직전 시점 데이터 — bullish reason path hit.
+
+    급반등 패턴: 100일 하락 후 강한 반등 → ema12 가 ema26 를 상향 돌파.
+    """
+    rows = []
+    # 100 일 하락 (200 → 100), 50 일 강한 상승 (100 → 200)
+    for i in range(100):
+        price = 200.0 - i * 1.0
+        rows.append(
+            {
+                "ticker": "BULLISH_TURN",
+                "date": f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}",
+                "open": price * 0.99,
+                "high": price * 1.01,
+                "low": price * 0.98,
+                "close": price,
+                "volume": 1_000_000,
+                "adj_close": price,
+            }
+        )
+    for i in range(100, 200):
+        price = 100.0 + (i - 100) * 1.5
+        rows.append(
+            {
+                "ticker": "BULLISH_TURN",
+                "date": f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}",
+                "open": price * 0.99,
+                "high": price * 1.01,
+                "low": price * 0.98,
+                "close": price,
+                "volume": 1_000_000,
+                "adj_close": price,
+            }
+        )
+    df = pd.DataFrame(rows)
+    upsert_prices(df, db_path=db_path)
+    return db_path
+
+
+def test_analyze_chart_can_set_bullish_bias(seed_macd_bullish_turn):
+    """upward path hit (lines 271-272, 278-279, 285): trend≥30 + dist_low<10 → bullish."""
+    result = analyze_chart("BULLISH_TURN", db_path=seed_macd_bullish_turn)
+    # 강한 상승 추세
+    assert result.trend_strength > 0
+    # bias 가 bullish 또는 neutral (점수에 따라)
+    assert result.visual_bias in ("bullish", "neutral")
+
+
+def test_analyze_chart_synthetic_macd_bullish_branch(monkeypatch, db_path):
+    """MACD bullish 전환 reason 은 reasons list 에 들어가야 한다.
+
+    실제 데이터 합성 대신 macd_histogram_turn 을 monkeypatch 로 강제 — 정확한 분기 hit.
+    """
+    import nuri.quant.chart_analysis as mod
+
+    # 30 일 평탄 데이터 seed (analyze_chart 가 데이터 부족 가드를 통과하도록)
+    rows = []
+    for i in range(35):
+        rows.append(
+            {
+                "ticker": "MACD_TEST",
+                "date": f"2024-01-{i + 1:02d}" if i < 31 else f"2024-02-{i - 30:02d}",
+                "open": 100,
+                "high": 101,
+                "low": 99,
+                "close": 100,
+                "volume": 1_000_000,
+                "adj_close": 100,
+            }
+        )
+    upsert_prices(pd.DataFrame(rows), db_path=db_path)
+
+    # macd_histogram_turn 을 강제로 "bullish" 반환
+    monkeypatch.setattr(mod, "macd_histogram_turn", lambda df, **kw: "bullish")
+    result = mod.analyze_chart("MACD_TEST", db_path=db_path)
+    assert any("히스토그램 양전환" in r for r in result.reasons)
+
+
+def test_analyze_chart_synthetic_52w_low_bounce_branch(monkeypatch, db_path):
+    """52주 저점 +반등 reason path (lines 271-272): dist_low ≤ 10 AND trend > 0."""
+    import nuri.quant.chart_analysis as mod
+
+    # 52 일 데이터 — 처음 30 일 약하락 (저점 형성), 마지막 22 일 살짝 상승
+    rows = []
+    for i in range(35):
+        # close 가 거의 평탄 (저점 근처) → dist_low ≤ 10
+        # 마지막 9 일에 살짝 상승 → trend > 0
+        if i < 26:
+            price = 100.0
+        else:
+            price = 100.0 + (i - 25) * 0.5
+        rows.append(
+            {
+                "ticker": "BOUNCE",
+                "date": f"2024-01-{i + 1:02d}" if i < 31 else f"2024-02-{i - 30:02d}",
+                "open": price * 0.99,
+                "high": price * 1.01,
+                "low": price * 0.99,
+                "close": price,
+                "volume": 1_000_000,
+                "adj_close": price,
+            }
+        )
+    upsert_prices(pd.DataFrame(rows), db_path=db_path)
+
+    result = mod.analyze_chart("BOUNCE", db_path=db_path)
+    assert result.dist_from_52w_low <= 10
+    assert result.trend_strength > 0
+    # 52주 저점 반등 reason 이 있어야 함
+    assert any("52주 저점" in r and "반등 시도" in r for r in result.reasons)
+
+
+def test_analyze_chart_synthetic_macd_bearish_branch(monkeypatch, db_path):
+    """MACD bearish 전환 reason path hit (lines 255-256)."""
+    import nuri.quant.chart_analysis as mod
+
+    rows = []
+    for i in range(35):
+        rows.append(
+            {
+                "ticker": "MACD_BR",
+                "date": f"2024-01-{i + 1:02d}" if i < 31 else f"2024-02-{i - 30:02d}",
+                "open": 100,
+                "high": 101,
+                "low": 99,
+                "close": 100,
+                "volume": 1_000_000,
+                "adj_close": 100,
+            }
+        )
+    upsert_prices(pd.DataFrame(rows), db_path=db_path)
+
+    monkeypatch.setattr(mod, "macd_histogram_turn", lambda df, **kw: "bearish")
+    result = mod.analyze_chart("MACD_BR", db_path=db_path)
+    assert any("히스토그램 음전환" in r for r in result.reasons)

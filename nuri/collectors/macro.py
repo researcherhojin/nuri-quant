@@ -9,6 +9,7 @@ FRED_API_KEY가 있으면 FRED 우선, 없으면 yfinance에서 핵심 지표를
 사용법:
     python -m nuri.collectors.macro
 """
+
 import logging
 import os
 from datetime import timedelta
@@ -32,15 +33,15 @@ FRED_SERIES = {
     "unemployment": "UNRATE",
     "vix": "VIXCLS",
     # 풀 수익률 곡선 (리서치: 3M-10Y 스프레드가 2Y-10Y보다 경기침체 예측력 높음)
-    "us_3m_yield": "DGS3MO",     # 3-Month Treasury
-    "us_1y_yield": "DGS1",       # 1-Year
-    "us_2y_yield": "DGS2",       # 2-Year
-    "us_5y_yield": "DGS5",       # 5-Year
-    "us_10y_yield": "DGS10",     # 10-Year
-    "us_30y_yield": "DGS30",     # 30-Year
+    "us_3m_yield": "DGS3MO",  # 3-Month Treasury
+    "us_1y_yield": "DGS1",  # 1-Year
+    "us_2y_yield": "DGS2",  # 2-Year
+    "us_5y_yield": "DGS5",  # 5-Year
+    "us_10y_yield": "DGS10",  # 10-Year
+    "us_30y_yield": "DGS30",  # 30-Year
     # 추가 경제 지표
     "consumer_sentiment": "UMCSENT",  # 미시건대 소비자 심리
-    "ism_manufacturing": "MANEMP",    # ISM 제조업 고용
+    "ism_manufacturing": "MANEMP",  # ISM 제조업 고용
     # PR C (codex bubble-bear #3): crash precursor data.
     # BofA US High Yield Option-Adjusted Spread — 신용 스트레스 조기 신호.
     # Gilchrist-Zakrajsek 2012: HY OAS > 500bps + 63d 변화 > +150bps 경기침체 경고.
@@ -50,29 +51,29 @@ FRED_SERIES = {
 
 # yfinance fallback 심볼 매핑 (FRED 없을 때 사용)
 YFINANCE_SYMBOLS = {
-    "us_10y_yield": "^TNX",      # 10Y Treasury Yield
-    "us_2y_yield": "^IRX",       # 13-week T-Bill (2Y proxy)
-    "us_5y_yield": "^FVX",       # 5Y Treasury Yield
-    "us_30y_yield": "^TYX",      # 30Y Treasury Yield
-    "vix": "^VIX",               # CBOE VIX
-    "wti_oil": "CL=F",           # WTI Crude Oil Futures
-    "usd_krw": "KRW=X",          # USD/KRW
+    "us_10y_yield": "^TNX",  # 10Y Treasury Yield
+    "us_2y_yield": "^IRX",  # 13-week T-Bill (2Y proxy)
+    "us_5y_yield": "^FVX",  # 5Y Treasury Yield
+    "us_30y_yield": "^TYX",  # 30Y Treasury Yield
+    "vix": "^VIX",  # CBOE VIX
+    "wti_oil": "CL=F",  # WTI Crude Oil Futures
+    "usd_krw": "KRW=X",  # USD/KRW
     # btc_usd는 CoinGecko collector에서 전담 (btc_usd_cg)
-    "gold": "GC=F",              # Gold Futures (안전자산)
+    "gold": "GC=F",  # Gold Futures (안전자산)
     # 추가 지표 (#362 Part A, 2026-04-28 live probe 9/10 + DXY 대체 symbol)
     # 지수 — regime classifier + macro agent breadth 지표
-    "nasdaq_composite": "^IXIC",   # NASDAQ Composite (tech breadth)
-    "sp500": "^GSPC",              # S&P 500 (broad US market — SPY 와 별도 index 직접 추적)
-    "dow": "^DJI",                 # Dow Jones (blue-chip 30)
-    "nasdaq100_futures": "NQ=F",   # NASDAQ 100 Futures (after-hours sentiment)
-    "sox": "^SOX",                 # Philadelphia Semiconductor (KR 반도체 spillover proxy)
+    "nasdaq_composite": "^IXIC",  # NASDAQ Composite (tech breadth)
+    "sp500": "^GSPC",  # S&P 500 (broad US market — SPY 와 별도 index 직접 추적)
+    "dow": "^DJI",  # Dow Jones (blue-chip 30)
+    "nasdaq100_futures": "NQ=F",  # NASDAQ 100 Futures (after-hours sentiment)
+    "sox": "^SOX",  # Philadelphia Semiconductor (KR 반도체 spillover proxy)
     # 환율 — DX=F yfinance 미제공 (live probe), DX-Y.NYB ICE Dollar Index 채택
-    "dxy": "DX-Y.NYB",             # ICE U.S. Dollar Index (USD strength)
+    "dxy": "DX-Y.NYB",  # ICE U.S. Dollar Index (USD strength)
     # 원자재 — gold/wti 외 산업/안전자산 polish
-    "silver": "SI=F",              # Silver Futures
-    "natgas": "NG=F",              # Natural Gas Futures
-    "copper": "HG=F",              # Copper Futures (industrial demand barometer)
-    "wheat": "ZW=F",               # Wheat Futures (food inflation)
+    "silver": "SI=F",  # Silver Futures
+    "natgas": "NG=F",  # Natural Gas Futures
+    "copper": "HG=F",  # Copper Futures (industrial demand barometer)
+    "wheat": "ZW=F",  # Wheat Futures (food inflation)
 }
 
 
@@ -111,7 +112,8 @@ class MacroCollector(BaseCollector):
             yf_only_keys = sorted({r["indicator"] for r in yf_supplement})
             self.logger.info(
                 "FRED + yfinance merge — FRED 외 yfinance-only %d개 보충: %s",
-                len(yf_only_keys), yf_only_keys,
+                len(yf_only_keys),
+                yf_only_keys,
             )
         return fred_records + yf_supplement
 
@@ -127,12 +129,14 @@ class MacroCollector(BaseCollector):
             try:
                 series = fred.get_series(series_id, observation_start=start_date)
                 for date, value in series.dropna().items():
-                    records.append({
-                        "indicator": indicator,
-                        "date": date.strftime("%Y-%m-%d"),
-                        "value": float(value),
-                        "source": "FRED",
-                    })
+                    records.append(
+                        {
+                            "indicator": indicator,
+                            "date": date.strftime("%Y-%m-%d"),
+                            "value": float(value),
+                            "source": "FRED",
+                        }
+                    )
             except Exception as e:
                 self.logger.warning(f"{indicator} ({series_id}): FRED 수집 실패 — {e}")
 
@@ -143,6 +147,7 @@ class MacroCollector(BaseCollector):
         import warnings
 
         import yfinance as yf
+
         warnings.filterwarnings("ignore")
 
         start = (kst_now().replace(tzinfo=None) - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -168,12 +173,14 @@ class MacroCollector(BaseCollector):
 
                     # ^TNX는 수익률을 10배로 반환 → 보정 불필요 (이미 %)
                     # KRW=X는 1 USD = X KRW → 역수 필요 없음
-                    records.append({
-                        "indicator": indicator,
-                        "date": row["date"],
-                        "value": float(value),
-                        "source": "yfinance",
-                    })
+                    records.append(
+                        {
+                            "indicator": indicator,
+                            "date": row["date"],
+                            "value": float(value),
+                            "source": "yfinance",
+                        }
+                    )
 
                 self.logger.info(f"  {indicator} ({symbol}): {len(df)}건")
             except Exception as e:
@@ -207,5 +214,5 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

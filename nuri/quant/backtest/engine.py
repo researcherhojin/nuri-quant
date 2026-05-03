@@ -9,6 +9,7 @@ QuantStats 티어시트를 생성한다.
     python -m nuri.quant.backtest.engine
     python -m nuri.quant.backtest.engine --period 1y
 """
+
 import argparse
 import logging
 from pathlib import Path
@@ -65,7 +66,7 @@ def run_momentum_backtest(
     exits = pd.DataFrame(False, index=pivot.index, columns=pivot.columns)
 
     for i in range(lookback, len(pivot), rebalance_days):
-        if i >= len(momentum):
+        if i >= len(momentum):  # pragma: no cover — defensive: momentum shape == pivot shape, unreachable in practice
             break
         row = momentum.iloc[i]
         top_tickers = row.nlargest(top_n).index.tolist()
@@ -97,6 +98,7 @@ def run_momentum_backtest(
     # QuantStats HTML
     try:
         import quantstats as qs
+
         EXPORT_DIR.mkdir(parents=True, exist_ok=True)
         port_returns = pf.returns()
         qs.reports.html(
@@ -140,7 +142,7 @@ def print_backtest(result: dict) -> None:
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 백테스트 (VectorBT)")
@@ -150,6 +152,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     result = run_momentum_backtest(
-        period=args.period, top_n=args.top_n, rebalance_days=args.rebalance,
+        period=args.period,
+        top_n=args.top_n,
+        rebalance_days=args.rebalance,
     )
     print_backtest(result)

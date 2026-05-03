@@ -98,6 +98,17 @@ class TestCoverageEndpoint:
         assert 0.0 <= c0["actual"] <= 1.0
         assert 0.0 < c0["threshold"] <= 1.0
 
+    def test_compute_exception_swallowed(self, client, monkeypatch):
+        """compute_all_data_coverage raise → exception path (lines 55-58)."""
+
+        def boom():
+            raise RuntimeError("disk full")
+
+        monkeypatch.setattr("nuri.core.coverage.compute_all_data_coverage", boom)
+        r = client.get("/api/coverage")
+        assert r.status_code == 200
+        assert r.json() == {"error": "coverage computation failed"}
+
     def test_error_path_returns_json(self, client, tmp_path, monkeypatch):
         """Missing universe.yaml → still 200 with error key, never 500.
 

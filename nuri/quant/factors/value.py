@@ -5,6 +5,7 @@ ImportError) 로 silent 실패 → 전 종목 `value_score = 0.5` 상수. fundam
 `fundamentals` 테이블 (pe_ratio, price_to_book) 을 직접 읽도록 전환하여 아키텍처 일관성 회복
 (STRATEGY §2.3 / §3.1).
 """
+
 import logging
 
 import pandas as pd
@@ -18,6 +19,7 @@ def compute_value(tickers: list[str] | None = None, db_path=None) -> pd.DataFram
 
     if not tickers:
         from nuri.core.db import get_tickers
+
         tickers = [t for t in get_tickers() if not t.endswith(".KS")]
 
     if not tickers:
@@ -73,7 +75,7 @@ def compute_value(tickers: list[str] | None = None, db_path=None) -> pd.DataFram
     norm_cols = [c for c in df.columns if c.endswith("_norm")]
     if norm_cols:
         df["value_score"] = df[norm_cols].mean(axis=1)
-    else:
+    else:  # pragma: no cover — pe/pb 둘 다 None 인 row 는 위에서 skip 됨, dict 키 항상 양쪽 존재
         df["value_score"] = 0.5
 
     return df.round(4)

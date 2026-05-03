@@ -7,6 +7,7 @@ C-1 (시그널 백테스트) 완료 후 실행 가능. C-2/C-3은 있으면 포�
 사용법:
     python -m nuri.quant.validation.scorecard
 """
+
 import logging
 from pathlib import Path
 
@@ -56,7 +57,8 @@ def generate_validation_report(output_dir: Path | None = None) -> Path | None:
     row_heights = [h / total for h in row_heights]
 
     fig = make_subplots(
-        rows=n_rows, cols=1,
+        rows=n_rows,
+        cols=1,
         subplot_titles=subtitles,
         vertical_spacing=0.08,
         row_heights=row_heights,
@@ -72,34 +74,45 @@ def generate_validation_report(output_dir: Path | None = None) -> Path | None:
     sig_total["pf_display"] = sig_total["profit_factor"].clip(upper=10)
     colors = ["#26a69a" if pf > 1 else "#ef5350" for pf in sig_total["profit_factor"]]
 
-    fig.add_trace(go.Bar(
-        y=sig_total["signal_id"],
-        x=sig_total["pf_display"],
-        orientation="h",
-        marker_color=colors,
-        text=[f"PF={pf:.1f} | 승률={wr:.0%} | {n}건"
-              for pf, wr, n in zip(sig_total["profit_factor"], sig_total["win_rate"], sig_total["total_trades"])],
-        textposition="auto",
-        name="Profit Factor",
-        showlegend=False,
-    ), row=1, col=1)
+    fig.add_trace(
+        go.Bar(
+            y=sig_total["signal_id"],
+            x=sig_total["pf_display"],
+            orientation="h",
+            marker_color=colors,
+            text=[
+                f"PF={pf:.1f} | 승률={wr:.0%} | {n}건"
+                for pf, wr, n in zip(sig_total["profit_factor"], sig_total["win_rate"], sig_total["total_trades"])
+            ],
+            textposition="auto",
+            name="Profit Factor",
+            showlegend=False,
+        ),
+        row=1,
+        col=1,
+    )
     fig.add_vline(x=1.0, line_dash="dash", line_color="#666", row=1, col=1)
 
     # ── 섹션 2: 시그널 평균수익률 ──
     sig_total2 = sig_total.sort_values("avg_return", ascending=True)
     colors2 = ["#26a69a" if r > 0 else "#ef5350" for r in sig_total2["avg_return"]]
 
-    fig.add_trace(go.Bar(
-        y=sig_total2["signal_id"],
-        x=sig_total2["avg_return"],
-        orientation="h",
-        marker_color=colors2,
-        text=[f"{r:+.1f}% (중앙값 {m:+.1f}%)"
-              for r, m in zip(sig_total2["avg_return"], sig_total2["median_return"])],
-        textposition="auto",
-        name="평균수익률",
-        showlegend=False,
-    ), row=2, col=1)
+    fig.add_trace(
+        go.Bar(
+            y=sig_total2["signal_id"],
+            x=sig_total2["avg_return"],
+            orientation="h",
+            marker_color=colors2,
+            text=[
+                f"{r:+.1f}% (중앙값 {m:+.1f}%)" for r, m in zip(sig_total2["avg_return"], sig_total2["median_return"])
+            ],
+            textposition="auto",
+            name="평균수익률",
+            showlegend=False,
+        ),
+        row=2,
+        col=1,
+    )
     fig.add_vline(x=0, line_dash="dash", line_color="#666", row=2, col=1)
 
     current_row = 3
@@ -110,42 +123,59 @@ def generate_validation_report(output_dir: Path | None = None) -> Path | None:
         si_df = si_df.sort_values("avg_excess_return", ascending=True)
         si_colors = ["#26a69a" if r > 0 else "#ef5350" for r in si_df["avg_excess_return"]]
 
-        fig.add_trace(go.Bar(
-            y=si_df["investor"],
-            x=si_df["avg_excess_return"],
-            orientation="h",
-            marker_color=si_colors,
-            text=[f"초과수익 {e:+.1f}% | 수익 {r:+.1f}% | 승률 {w:.0%} | {n}건"
-                  for e, r, w, n in zip(si_df["avg_excess_return"], si_df["avg_return"],
-                                        si_df["win_rate"], si_df["total_follows"])],
-            textposition="auto",
-            name="초과수익률",
-            showlegend=False,
-        ), row=current_row, col=1)
+        fig.add_trace(
+            go.Bar(
+                y=si_df["investor"],
+                x=si_df["avg_excess_return"],
+                orientation="h",
+                marker_color=si_colors,
+                text=[
+                    f"초과수익 {e:+.1f}% | 수익 {r:+.1f}% | 승률 {w:.0%} | {n}건"
+                    for e, r, w, n in zip(
+                        si_df["avg_excess_return"], si_df["avg_return"], si_df["win_rate"], si_df["total_follows"]
+                    )
+                ],
+                textposition="auto",
+                name="초과수익률",
+                showlegend=False,
+            ),
+            row=current_row,
+            col=1,
+        )
         fig.add_vline(x=0, line_dash="dash", line_color="#666", row=current_row, col=1)
         current_row += 1
 
     # ── 섹션 4: 애널리스트 (선택) ──
     if has_analyst:
         an_df = pd.read_csv(analyst_csv)
-        by_rec = an_df.groupby("recommendation").agg(
-            hit_rate=("target_hit", "mean"),
-            count=("target_hit", "count"),
-            avg_return=("actual_return_pct", "mean"),
-        ).reset_index()
+        by_rec = (
+            an_df.groupby("recommendation")
+            .agg(
+                hit_rate=("target_hit", "mean"),
+                count=("target_hit", "count"),
+                avg_return=("actual_return_pct", "mean"),
+            )
+            .reset_index()
+        )
         by_rec = by_rec.sort_values("hit_rate", ascending=True)
 
-        fig.add_trace(go.Bar(
-            y=by_rec["recommendation"],
-            x=by_rec["hit_rate"] * 100,
-            orientation="h",
-            marker_color="#42a5f5",
-            text=[f"{hr:.0%} ({n}건, 수익 {r:+.1f}%)"
-                  for hr, n, r in zip(by_rec["hit_rate"], by_rec["count"], by_rec["avg_return"])],
-            textposition="auto",
-            name="적중률",
-            showlegend=False,
-        ), row=current_row, col=1)
+        fig.add_trace(
+            go.Bar(
+                y=by_rec["recommendation"],
+                x=by_rec["hit_rate"] * 100,
+                orientation="h",
+                marker_color="#42a5f5",
+                text=[
+                    f"{hr:.0%} ({n}건, 수익 {r:+.1f}%)"
+                    for hr, n, r in zip(by_rec["hit_rate"], by_rec["count"], by_rec["avg_return"])
+                ],
+                textposition="auto",
+                name="적중률",
+                showlegend=False,
+            ),
+            row=current_row,
+            col=1,
+        )
 
     # ── 레이아웃 ──
     fig.update_layout(
@@ -172,7 +202,7 @@ def generate_validation_report(output_dir: Path | None = None) -> Path | None:
     return path
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     path = generate_validation_report()
     if path:

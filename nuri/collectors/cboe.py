@@ -9,6 +9,7 @@ PCR > 1.0: 약세 심리 (풋 매수 과다), PCR < 0.7: 강세 심리 (콜 매�
 사용법:
     python -m nuri.collectors.cboe
 """
+
 import logging
 import os
 
@@ -106,14 +107,19 @@ class CBOECollector(BaseCollector):
         pcr = put_vol / call_vol
         self.logger.info(
             "yfinance SPY PCR: %.3f (만기 %s, calls=%d puts=%d)",
-            pcr, nearest, int(call_vol), int(put_vol),
+            pcr,
+            nearest,
+            int(call_vol),
+            int(put_vol),
         )
-        return [{
-            "indicator": "put_call_ratio",
-            "date": today_str(),
-            "value": round(pcr, 4),
-            "source": "yfinance_SPY",
-        }]
+        return [
+            {
+                "indicator": "put_call_ratio",
+                "date": today_str(),
+                "value": round(pcr, 4),
+                "source": "yfinance_SPY",
+            }
+        ]
 
     def _collect_db_stale(self) -> list[dict]:
         """DB의 가장 최근 PCR 값을 stale로 재사용 (오늘 데이터 없을 때만).
@@ -122,10 +128,8 @@ class CBOECollector(BaseCollector):
         통합 단일 정의 유지.
         """
         from nuri.core.db import query
-        rows = query(
-            "SELECT date, value FROM macro WHERE indicator = 'put_call_ratio' "
-            "ORDER BY date DESC LIMIT 1"
-        )
+
+        rows = query("SELECT date, value FROM macro WHERE indicator = 'put_call_ratio' ORDER BY date DESC LIMIT 1")
         if not rows:
             return []
         row = rows[0]
@@ -135,14 +139,17 @@ class CBOECollector(BaseCollector):
             return []  # 오늘 이미 있음 — fallback 불필요
         self.logger.warning(
             "CBOE: 라이브 데이터 없음, DB stale 재사용 (%s = %.3f)",
-            prev_date, prev_value,
+            prev_date,
+            prev_value,
         )
-        return [{
-            "indicator": "put_call_ratio",
-            "date": prev_date,  # 원래 날짜 유지 (freshness가 stale로 감지)
-            "value": float(prev_value),
-            "source": "DB_STALE",
-        }]
+        return [
+            {
+                "indicator": "put_call_ratio",
+                "date": prev_date,  # 원래 날짜 유지 (freshness가 stale로 감지)
+                "value": float(prev_value),
+                "source": "DB_STALE",
+            }
+        ]
 
     def _collect_daily(self) -> list[dict]:
         """CBOE daily market statistics JSON에서 PCR 추출."""
@@ -160,22 +167,26 @@ class CBOECollector(BaseCollector):
             if pcr is not None:
                 raw_date = latest.get("TRADE_DATE", latest.get("date", today))
                 date_str = parse_date(raw_date) or today
-                records.append({
-                    "indicator": "put_call_ratio",
-                    "date": date_str,
-                    "value": float(pcr),
-                    "source": "CBOE",
-                })
+                records.append(
+                    {
+                        "indicator": "put_call_ratio",
+                        "date": date_str,
+                        "value": float(pcr),
+                        "source": "CBOE",
+                    }
+                )
                 self.logger.info("CBOE Put/Call Ratio: %.3f (%s)", pcr, date_str)
         elif isinstance(data, dict):
             pcr = self._extract_pcr(data)
             if pcr is not None:
-                records.append({
-                    "indicator": "put_call_ratio",
-                    "date": today,
-                    "value": float(pcr),
-                    "source": "CBOE",
-                })
+                records.append(
+                    {
+                        "indicator": "put_call_ratio",
+                        "date": today,
+                        "value": float(pcr),
+                        "source": "CBOE",
+                    }
+                )
 
         return records
 
@@ -193,12 +204,14 @@ class CBOECollector(BaseCollector):
                 raw_date = item.get("TRADE_DATE", item.get("date", ""))
                 date_str = parse_date(raw_date)
                 if pcr is not None and date_str:
-                    records.append({
-                        "indicator": "put_call_ratio",
-                        "date": date_str,
-                        "value": float(pcr),
-                        "source": "CBOE",
-                    })
+                    records.append(
+                        {
+                            "indicator": "put_call_ratio",
+                            "date": date_str,
+                            "value": float(pcr),
+                            "source": "CBOE",
+                        }
+                    )
 
         self.logger.info("CBOE totalpc: %d건", len(records))
         return records
@@ -221,12 +234,14 @@ class CBOECollector(BaseCollector):
             val = obs.get("value", ".")
             if val == ".":
                 continue
-            records.append({
-                "indicator": "put_call_ratio",
-                "date": obs["date"],
-                "value": float(val),
-                "source": "FRED_ECPCRATIO",
-            })
+            records.append(
+                {
+                    "indicator": "put_call_ratio",
+                    "date": obs["date"],
+                    "value": float(val),
+                    "source": "FRED_ECPCRATIO",
+                }
+            )
 
         if records:
             self.logger.info("FRED PCR: %d건 (최신: %s = %.3f)", len(records), records[0]["date"], records[0]["value"])
@@ -256,7 +271,7 @@ class CBOECollector(BaseCollector):
         return upsert_macro(data)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",

@@ -1,4 +1,5 @@
 """Tests for dashboard — split from test_api_all.py."""
+
 import asyncio
 import json
 import time as _time
@@ -38,6 +39,7 @@ class TestDashboardAPI:
     def test_build_dashboard_empty(self, db_path):
         """빈 DB에서도 dashboard 생성 가능."""
         from nuri.api.routes.dashboard import _build_dashboard
+
         result = _build_dashboard()
         assert isinstance(result, dict)
         assert "regime" in result
@@ -51,6 +53,7 @@ class TestDashboardAPI:
         해결하지 못하므로 별도 필드 필요.
         """
         from nuri.api.routes.dashboard import _build_dashboard
+
         result = _build_dashboard()
         assert "account_labels" in result
         assert isinstance(result["account_labels"], dict)
@@ -58,6 +61,7 @@ class TestDashboardAPI:
     def test_dashboard_exposes_actual_allocation_and_cash(self, db_path):
         """#213: dashboard 응답이 actual_allocation + cash_summary + target_allocation을 노출."""
         from nuri.api.routes.dashboard import _build_dashboard
+
         result = _build_dashboard()
         assert "actual_allocation" in result
         assert "target_allocation" in result
@@ -75,21 +79,25 @@ class TestCashBalances:
 
     def test_compute_actual_allocation_holdings_only(self):
         from nuri.api.routes.dashboard import _compute_actual_allocation
+
         result = _compute_actual_allocation([{"value": 10000}], 0)
         assert result == {"long": 100, "short": 0, "cash": 0}
 
     def test_compute_actual_allocation_cash_only(self):
         from nuri.api.routes.dashboard import _compute_actual_allocation
+
         result = _compute_actual_allocation([], 5000)
         assert result == {"long": 0, "short": 0, "cash": 100}
 
     def test_compute_actual_allocation_empty_portfolio(self):
         from nuri.api.routes.dashboard import _compute_actual_allocation
+
         result = _compute_actual_allocation([], 0)
         assert result == {"long": 0, "short": 0, "cash": 100}
 
     def test_compute_actual_allocation_mixed(self):
         from nuri.api.routes.dashboard import _compute_actual_allocation
+
         # holdings 46, cash 54 → 46% / 54%
         result = _compute_actual_allocation([{"value": 4600}], 5400)
         assert result["long"] == 46
@@ -99,6 +107,7 @@ class TestCashBalances:
     def test_compute_actual_allocation_rounds_to_100(self):
         """반올림 오차 흡수로 long + cash = 100 보장."""
         from nuri.api.routes.dashboard import _compute_actual_allocation
+
         # 333/1000 = 33.3%, 667/1000 = 66.7% → round(33.3)=33, cash=67
         result = _compute_actual_allocation([{"value": 333}], 667)
         assert result["long"] + result["cash"] == 100
@@ -106,6 +115,7 @@ class TestCashBalances:
     def test_get_cash_balances_missing_yaml(self, tmp_path, monkeypatch):
         """portfolio.yaml 없으면 빈 cash 반환 (graceful)."""
         import nuri.api.routes.dashboard as dash_mod
+
         monkeypatch.setattr(
             dash_mod,
             "__file__",
@@ -185,6 +195,7 @@ class TestCashBalances:
     def test_cache_mechanism(self, db_path, monkeypatch):
         """캐시 동작 확인."""
         import nuri.api.routes.dashboard as dash_mod
+
         dash_mod._cache["data"] = None
         dash_mod._cache["timestamp"] = 0
 
@@ -201,44 +212,64 @@ class TestDashboardBuildExtended:
     @pytest.fixture()
     def rich_db(self, db_path):
         from nuri.core.timezone import today_kst
+
         today = today_kst()
 
         with get_db(db_path) as conn:
-            for t, q, p, s in [("AAPL", 10, 150, "Technology"), ("MSFT", 5, 300, "Software"),
-                                ("TSLA", 8, 340, "SectorA"), ("SPY", 50, 450, "Index")]:
+            for t, q, p, s in [
+                ("AAPL", 10, 150, "Technology"),
+                ("MSFT", 5, 300, "Software"),
+                ("TSLA", 8, 340, "SectorA"),
+                ("SPY", 50, 450, "Index"),
+            ]:
                 conn.execute(
                     "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
-                    "VALUES (?, ?, ?, ?, ?, ?)", ("test", t, q, p, "USD", s))
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    ("test", t, q, p, "USD", s),
+                )
 
         dates = pd.date_range(end=today, periods=300)
         for ticker, base in [("SPY", 400), ("AAPL", 140), ("MSFT", 280), ("TSLA", 300)]:
             close = np.linspace(base, base * 1.2, 300) + np.random.normal(0, 1, 300)
-            df = pd.DataFrame({
-                "ticker": ticker, "date": [d.strftime("%Y-%m-%d") for d in dates],
-                "open": close * 0.99, "high": close * 1.01,
-                "low": close * 0.98, "close": close,
-                "volume": [1000000] * 300, "adj_close": close,
-            })
+            df = pd.DataFrame(
+                {
+                    "ticker": ticker,
+                    "date": [d.strftime("%Y-%m-%d") for d in dates],
+                    "open": close * 0.99,
+                    "high": close * 1.01,
+                    "low": close * 0.98,
+                    "close": close,
+                    "volume": [1000000] * 300,
+                    "adj_close": close,
+                }
+            )
             upsert_prices(df, db_path)
 
         with get_db(db_path) as conn:
             for d in dates[-50:]:
                 ds = d.strftime("%Y-%m-%d")
-                conn.execute("INSERT OR IGNORE INTO signals (ticker, date, rsi_14, sma_20, sma_50, sma_200) "
-                             "VALUES (?, ?, ?, ?, ?, ?)", ("SPY", ds, 55.0, 480.0, 470.0, 440.0))
+                conn.execute(
+                    "INSERT OR IGNORE INTO signals (ticker, date, rsi_14, sma_20, sma_50, sma_200) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    ("SPY", ds, 55.0, 480.0, 470.0, 440.0),
+                )
 
-        upsert_macro([
-            {"indicator": "vix", "date": today, "value": 18.0, "source": "test"},
-            {"indicator": "fear_greed", "date": today, "value": 55.0, "source": "test"},
-            {"indicator": "sp500_yoy", "date": today, "value": 15.0, "source": "test"},
-            {"indicator": "gdp_growth", "date": today, "value": 2.5, "source": "test"},
-            {"indicator": "unemployment", "date": today, "value": 3.8, "source": "test"},
-        ], db_path)
+        upsert_macro(
+            [
+                {"indicator": "vix", "date": today, "value": 18.0, "source": "test"},
+                {"indicator": "fear_greed", "date": today, "value": 55.0, "source": "test"},
+                {"indicator": "sp500_yoy", "date": today, "value": 15.0, "source": "test"},
+                {"indicator": "gdp_growth", "date": today, "value": 2.5, "source": "test"},
+                {"indicator": "unemployment", "date": today, "value": 3.8, "source": "test"},
+            ],
+            db_path,
+        )
         return db_path
 
     def test_verdict_levels(self, rich_db):
         """rich_db로 dashboard 빌드 — verdict_level 확인."""
         from nuri.api.routes.dashboard import _build_dashboard
+
         result = _build_dashboard()
         assert result["verdict_level"] in ("aggressive", "neutral", "cautious", "defensive")
         assert isinstance(result["alerts"], list)
@@ -246,6 +277,7 @@ class TestDashboardBuildExtended:
 
     def test_gate_score_field(self, rich_db):
         from nuri.api.routes.dashboard import _build_dashboard
+
         result = _build_dashboard()
         assert "gate_score" in result
 
@@ -253,6 +285,7 @@ class TestDashboardBuildExtended:
 class TestDashboardInternals:
     def test_get_allocation(self):
         from nuri.api.routes.dashboard import _get_allocation
+
         result = _get_allocation("bull_low_vol")
         assert "long" in result
         assert "short" in result
@@ -260,6 +293,7 @@ class TestDashboardInternals:
 
     def test_get_allocation_unknown(self):
         from nuri.api.routes.dashboard import _get_allocation
+
         result = _get_allocation("unknown_regime")
         assert "long" in result
 
@@ -268,23 +302,57 @@ class TestDashboardDeeper:
     @pytest.fixture()
     def full_db(self, tmp_path, monkeypatch):
         import nuri.core.db as db_mod
+
         path = tmp_path / "test.db"
         init_db(path)
         monkeypatch.setattr(db_mod, "DB_PATH", path)
-        upsert_portfolio([
-            {"account": "test", "ticker": "AAPL", "quantity": 10, "avg_price": 190, "currency": "USD", "sector": "Tech"},
-            {"account": "test", "ticker": "NVDA", "quantity": 5, "avg_price": 130, "currency": "USD", "sector": "Semiconductor"},
-            {"account": "test", "ticker": "TSLA", "quantity": 8, "avg_price": 250, "currency": "USD", "sector": "SectorA"},
-        ], path)
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "AAPL",
+                    "quantity": 10,
+                    "avg_price": 190,
+                    "currency": "USD",
+                    "sector": "Tech",
+                },
+                {
+                    "account": "test",
+                    "ticker": "NVDA",
+                    "quantity": 5,
+                    "avg_price": 130,
+                    "currency": "USD",
+                    "sector": "Semiconductor",
+                },
+                {
+                    "account": "test",
+                    "ticker": "TSLA",
+                    "quantity": 8,
+                    "avg_price": 250,
+                    "currency": "USD",
+                    "sector": "SectorA",
+                },
+            ],
+            path,
+        )
         dates = pd.date_range("2024-06-01", periods=500, freq="B")
         rows = []
         for t in ["SPY", "AAPL", "NVDA", "TSLA"]:
             base = {"SPY": 450, "AAPL": 170, "NVDA": 120, "TSLA": 200}[t]
             for i, d in enumerate(dates):
                 p = base + i * 0.2 + np.sin(i / 20) * 5
-                rows.append({"ticker": t, "date": d.strftime("%Y-%m-%d"),
-                             "open": p, "high": p + 3, "low": p - 2,
-                             "close": p + 1, "volume": 50000000, "adj_close": p + 1})
+                rows.append(
+                    {
+                        "ticker": t,
+                        "date": d.strftime("%Y-%m-%d"),
+                        "open": p,
+                        "high": p + 3,
+                        "low": p - 2,
+                        "close": p + 1,
+                        "volume": 50000000,
+                        "adj_close": p + 1,
+                    }
+                )
         upsert_prices(pd.DataFrame(rows), path)
         macro = []
         for i, d in enumerate(dates):
@@ -296,9 +364,11 @@ class TestDashboardDeeper:
 
     def test_dashboard_with_portfolio(self, full_db, tmp_path, monkeypatch):
         import nuri.core.portfolio_sync as sync_mod
+
         monkeypatch.setattr(sync_mod, "CONFIG_PATH", tmp_path / "p.yaml")
 
         from nuri.api.main import app
+
         c = TestClient(app)
         r = c.get("/api/dashboard")
         assert r.status_code == 200
@@ -320,23 +390,34 @@ class TestDashboardAPI_R22:
     @pytest.fixture()
     def _client(self, db_path, monkeypatch, _seed_recommendations, _seed_positions):
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
         import nuri.api.routes.dashboard as dash_mod
+
         dash_mod._cache["data"] = None
         dash_mod._cache["timestamp"] = 0
 
         from nuri.api.main import app
+
         return TestClient(app)
 
     def test_dashboard_returns_data(self, _client, monkeypatch):
         """Dashboard endpoint returns valid JSON with expected keys."""
         import nuri.api.routes.dashboard as dash_mod
 
-        monkeypatch.setattr(dash_mod, "_get_cached_regime", lambda: {
-            "regime": "bull_low_vol", "trend": "bull", "volatility": "low",
-            "confidence": 80, "vix": 15.0, "fear_greed": 60,
-        })
+        monkeypatch.setattr(
+            dash_mod,
+            "_get_cached_regime",
+            lambda: {
+                "regime": "bull_low_vol",
+                "trend": "bull",
+                "volatility": "low",
+                "confidence": 80,
+                "vix": 15.0,
+                "fear_greed": 60,
+            },
+        )
         monkeypatch.setattr(dash_mod, "_get_macro", lambda: {"score": 65, "interpretation": "Positive"})
         monkeypatch.setattr(dash_mod, "_get_allocation", lambda r: {"long": 70, "short": 10, "cash": 20})
         monkeypatch.setattr(dash_mod, "_get_active_alerts", lambda: [])
@@ -355,9 +436,15 @@ class TestDashboardAPI_R22:
         """Second call within TTL returns cached data."""
         import nuri.api.routes.dashboard as dash_mod
 
-        monkeypatch.setattr(dash_mod, "_get_cached_regime", lambda: {
-            "regime": "sideways_high_vol", "trend": "sideways", "confidence": 50,
-        })
+        monkeypatch.setattr(
+            dash_mod,
+            "_get_cached_regime",
+            lambda: {
+                "regime": "sideways_high_vol",
+                "trend": "sideways",
+                "confidence": 50,
+            },
+        )
         monkeypatch.setattr(dash_mod, "_get_macro", lambda: {"score": 45, "interpretation": "Neutral"})
         monkeypatch.setattr(dash_mod, "_get_allocation", lambda r: {"long": 30, "short": 20, "cash": 50})
         monkeypatch.setattr(dash_mod, "_get_active_alerts", lambda: [])
@@ -373,9 +460,15 @@ class TestDashboardAPI_R22:
         """Bear regime produces defensive verdict."""
         import nuri.api.routes.dashboard as dash_mod
 
-        monkeypatch.setattr(dash_mod, "_get_cached_regime", lambda: {
-            "regime": "bear_high_vol", "trend": "bear", "confidence": 70,
-        })
+        monkeypatch.setattr(
+            dash_mod,
+            "_get_cached_regime",
+            lambda: {
+                "regime": "bear_high_vol",
+                "trend": "bear",
+                "confidence": 70,
+            },
+        )
         monkeypatch.setattr(dash_mod, "_get_macro", lambda: {"score": 25, "interpretation": "Bearish"})
         monkeypatch.setattr(dash_mod, "_get_allocation", lambda r: {"long": 10, "short": 40, "cash": 50})
         monkeypatch.setattr(dash_mod, "_get_active_alerts", lambda: [])
@@ -404,9 +497,15 @@ class TestDashboardAPI_R22:
                 ("2025-04-01", "GOOG", "SELL", 0.85, "bear_high_vol", "signal"),
             )
 
-        monkeypatch.setattr(dash_mod, "_get_cached_regime", lambda: {
-            "regime": "sideways_low_vol", "trend": "sideways", "confidence": 50,
-        })
+        monkeypatch.setattr(
+            dash_mod,
+            "_get_cached_regime",
+            lambda: {
+                "regime": "sideways_low_vol",
+                "trend": "sideways",
+                "confidence": 50,
+            },
+        )
         monkeypatch.setattr(dash_mod, "_get_macro", lambda: {"score": 55, "interpretation": "Neutral"})
         monkeypatch.setattr(dash_mod, "_get_allocation", lambda r: {"long": 40, "short": 20, "cash": 40})
         monkeypatch.setattr(dash_mod, "_get_active_alerts", lambda: [])
@@ -450,6 +549,7 @@ class TestDashboardHelpers:
     def test_get_allocation_unknown_regime(self):
         """_get_allocation returns defaults for unknown regime."""
         import nuri.api.routes.dashboard as dash_mod
+
         result = dash_mod._get_allocation("nonexistent_regime")
         assert "cash" in result
 
@@ -480,6 +580,7 @@ class TestGetLatestActions:
     def test_no_recommendations(self, db_path, monkeypatch):
         import nuri.api.routes.dashboard as dash_mod
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
         result = dash_mod._get_latest_actions()
         assert result == []
@@ -487,6 +588,7 @@ class TestGetLatestActions:
     def test_with_recommendations(self, db_path, _seed_recommendations, monkeypatch):
         import nuri.api.routes.dashboard as dash_mod
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
         result = dash_mod._get_latest_actions()
         assert isinstance(result, list)
@@ -495,6 +597,7 @@ class TestGetLatestActions:
         """Low confidence recommendations are filtered out."""
         import nuri.api.routes.dashboard as dash_mod
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
         with get_db(db_path) as conn:
@@ -510,11 +613,15 @@ class TestGetLatestActions:
 class TestGetActiveAlerts:
     def test_with_portfolio_stop(self, monkeypatch):
         import nuri.api.routes.dashboard as dash_mod
-        monkeypatch.setattr("nuri.analysis.risk.analyze_risk", lambda: {
-            "portfolio_stop_triggered": True,
-            "max_drawdown_pct": -12.0,
-            "stop_loss_alerts": [{"ticker": "TSLA", "pnl_pct": -25.0}],
-        })
+
+        monkeypatch.setattr(
+            "nuri.analysis.risk.analyze_risk",
+            lambda: {
+                "portfolio_stop_triggered": True,
+                "max_drawdown_pct": -12.0,
+                "stop_loss_alerts": [{"ticker": "TSLA", "pnl_pct": -25.0}],
+            },
+        )
         monkeypatch.setattr("nuri.trading.engine.memory.detect_drift", lambda: [])
         monkeypatch.setattr("nuri.trading.engine.conflicts.detect_conflicts", lambda: [])
 
@@ -542,6 +649,7 @@ class TestDashboard_R27:
     def test_get_allocation_unknown_regime(self):
         """_get_allocation with unknown regime returns defaults."""
         from nuri.api.routes.dashboard import _get_allocation
+
         result = _get_allocation("totally_unknown_regime")
         assert "long" in result
         assert "cash" in result
@@ -553,6 +661,7 @@ class TestDashboard_R27:
             MagicMock(side_effect=Exception("test error")),
         )
         import nuri.api.routes.dashboard as dash_mod
+
         result = dash_mod._get_cached_regime()
         assert result["regime"] == "unknown"
 
@@ -563,6 +672,7 @@ class TestDashboard_R27:
             MagicMock(return_value=[{"table": "prices", "age_hours": 5, "status": "PASS"}]),
         )
         import nuri.api.routes.dashboard as dash_mod
+
         result = dash_mod._get_freshness()
         assert "prices" in result
 
@@ -573,6 +683,7 @@ class TestDashboard_R27:
             MagicMock(side_effect=Exception("test")),
         )
         import nuri.api.routes.dashboard as dash_mod
+
         result = dash_mod._get_freshness()
         assert result == {}
 
@@ -583,12 +694,14 @@ class TestDashboard_R27:
             MagicMock(side_effect=Exception("test")),
         )
         import nuri.api.routes.dashboard as dash_mod
+
         result = dash_mod._get_pipeline_status()
         assert result == {}
 
     def test_get_latest_actions_empty(self):
         """_get_latest_actions returns empty list with no recommendation data."""
         import nuri.api.routes.dashboard as dash_mod
+
         result = dash_mod._get_latest_actions()
         assert isinstance(result, list)
 
@@ -599,12 +712,14 @@ class TestTickerAccountMap:
     def test_empty_portfolio(self, db_path):
         """Empty portfolio returns empty mapping."""
         from nuri.api.routes.dashboard import _get_ticker_account_map
+
         result = _get_ticker_account_map()
         assert result == {}
 
     def test_single_account(self, db_path, _seed_portfolio):
         """Portfolio entries in same account are mapped correctly."""
         from nuri.api.routes.dashboard import _get_ticker_account_map
+
         result = _get_ticker_account_map()
         assert result["AAPL"] == "test"
         assert result["MSFT"] == "test"
@@ -612,6 +727,7 @@ class TestTickerAccountMap:
     def test_multiple_accounts(self, db_path):
         """Tickers in different accounts get correct mapping; first account wins for dupes."""
         from nuri.api.routes.dashboard import _get_ticker_account_map
+
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
@@ -633,6 +749,7 @@ class TestTickerAccountMap:
     def test_kr_tickers_included(self, db_path):
         """Korean tickers (.KS suffix) are included in the mapping."""
         from nuri.api.routes.dashboard import _get_ticker_account_map
+
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
@@ -659,11 +776,13 @@ class TestAccountLabels:
         }
 
         import builtins
+
         original_open = builtins.open
 
         def mock_open(path, *args, **kwargs):
             if "portfolio.yaml" in str(path):
                 from io import StringIO
+
                 return StringIO(yaml.dump(mock_yaml))
             return original_open(path, *args, **kwargs)
 
@@ -686,11 +805,13 @@ class TestAccountLabels:
         }
 
         import builtins
+
         original_open = builtins.open
 
         def mock_open(path, *args, **kwargs):
             if "portfolio.yaml" in str(path):
                 from io import StringIO
+
                 return StringIO(yaml.dump(mock_yaml))
             return original_open(path, *args, **kwargs)
 
@@ -710,11 +831,13 @@ class TestAccountLabels:
         }
 
         import builtins
+
         original_open = builtins.open
 
         def mock_open(path, *args, **kwargs):
             if "portfolio.yaml" in str(path):
                 from io import StringIO
+
                 return StringIO(yaml.dump(mock_yaml))
             return original_open(path, *args, **kwargs)
 
@@ -739,11 +862,13 @@ class TestAccountLabels:
         }
 
         import builtins
+
         original_open = builtins.open
 
         def mock_open(path, *args, **kwargs):
             if "portfolio.yaml" in str(path):
                 from io import StringIO
+
                 return StringIO(yaml.dump(mock_yaml))
             return original_open(path, *args, **kwargs)
 
@@ -767,11 +892,13 @@ class TestAccountLabels:
         }
 
         import builtins
+
         original_open = builtins.open
 
         def mock_open(path, *args, **kwargs):
             if "portfolio.yaml" in str(path):
                 from io import StringIO
+
                 return StringIO(yaml.dump(mock_yaml))
             return original_open(path, *args, **kwargs)
 
@@ -791,11 +918,13 @@ class TestAccountLabels:
         }
 
         import builtins
+
         original_open = builtins.open
 
         def mock_open(path, *args, **kwargs):
             if "portfolio.yaml" in str(path):
                 from io import StringIO
+
                 return StringIO(yaml.dump(mock_yaml))
             return original_open(path, *args, **kwargs)
 
@@ -808,6 +937,7 @@ class TestAccountLabels:
         import builtins
 
         from nuri.api.routes.dashboard import _get_account_labels
+
         original_open = builtins.open
 
         def mock_open(path, *args, **kwargs):
@@ -824,11 +954,13 @@ class TestAccountLabels:
         import builtins
 
         from nuri.api.routes.dashboard import _get_account_labels
+
         original_open = builtins.open
 
         def mock_open(path, *args, **kwargs):
             if "portfolio.yaml" in str(path):
                 from io import StringIO
+
                 return StringIO("not: [valid: yaml: {{")
             return original_open(path, *args, **kwargs)
 
@@ -844,6 +976,7 @@ class TestAccountValues:
     def test_empty_portfolio(self, db_path, monkeypatch):
         """Empty portfolio returns empty list."""
         import nuri.api.routes.dashboard as dash_mod
+
         monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {})
         result = dash_mod._get_account_values(exchange_rate=1300)
         assert result == []
@@ -851,6 +984,7 @@ class TestAccountValues:
     def test_usd_tickers(self, db_path, _seed_portfolio, _seed_prices, monkeypatch):
         """USD tickers have value = close * quantity."""
         import nuri.api.routes.dashboard as dash_mod
+
         monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"test": "Main"})
         result = dash_mod._get_account_values(exchange_rate=1300)
         assert len(result) == 1
@@ -860,6 +994,7 @@ class TestAccountValues:
     def test_kr_ticker_divided_by_exchange_rate(self, db_path, monkeypatch):
         """Korean .KS tickers are divided by exchange rate to convert to USD."""
         import nuri.api.routes.dashboard as dash_mod
+
         monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"kr_acc": "Pension"})
 
         # Insert KR portfolio entry and price
@@ -881,6 +1016,7 @@ class TestAccountValues:
     def test_exchange_rate_none_uses_fallback(self, db_path, monkeypatch):
         """exchange_rate=None falls back to 1400."""
         import nuri.api.routes.dashboard as dash_mod
+
         monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"kr_acc": "Pension"})
 
         with get_db(db_path) as conn:
@@ -900,6 +1036,7 @@ class TestAccountValues:
     def test_mixed_accounts_sorted_descending(self, db_path, monkeypatch):
         """Multiple accounts are sorted by value descending."""
         import nuri.api.routes.dashboard as dash_mod
+
         monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"big": "Main", "small": "Sub"})
 
         with get_db(db_path) as conn:
@@ -928,6 +1065,7 @@ class TestAccountValues:
     def test_unlabeled_account_uses_raw_name(self, db_path, monkeypatch):
         """Account not in labels dict falls back to raw account name."""
         import nuri.api.routes.dashboard as dash_mod
+
         monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {})
 
         with get_db(db_path) as conn:
@@ -950,6 +1088,7 @@ class TestUpcomingEvents:
     def test_empty_events_table(self, db_path):
         """빈 events 테이블은 빈 리스트 반환."""
         from nuri.api.routes.dashboard import _get_upcoming_events
+
         result = _get_upcoming_events()
         assert result == []
 
@@ -1044,6 +1183,7 @@ class TestLatestActionsAccountField:
         """BUY action includes account label from portfolio mapping."""
         import nuri.api.routes.dashboard as dash_mod
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
         # Insert portfolio entry for AAPL
@@ -1067,6 +1207,7 @@ class TestLatestActionsAccountField:
         """SELL action includes account label from portfolio mapping."""
         import nuri.api.routes.dashboard as dash_mod
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
         with get_db(db_path) as conn:
@@ -1089,6 +1230,7 @@ class TestLatestActionsAccountField:
         """Ticker not in portfolio gets empty string for account."""
         import nuri.api.routes.dashboard as dash_mod
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
         with get_db(db_path) as conn:
@@ -1116,6 +1258,7 @@ class TestLatestActionsScoringDetail:
 
         import nuri.api.routes.dashboard as dash_mod
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
         scoring = {
@@ -1149,8 +1292,7 @@ class TestLatestActionsScoringDetail:
         assert buys, "BUY row 가 최소 1 개 반환"
         first = buys[0]
         assert "scoring_detail" in first, (
-            "A-2b regression: dashboard action dict 에 scoring_detail 누락 — "
-            "frontend 가 agent breakdown 조회 불가"
+            "A-2b regression: dashboard action dict 에 scoring_detail 누락 — frontend 가 agent breakdown 조회 불가"
         )
         assert first["scoring_detail"] is not None
         assert first["scoring_detail"]["source"] == "consensus"
@@ -1161,6 +1303,7 @@ class TestLatestActionsScoringDetail:
         """scoring_detail NULL (legacy row) → response 에 None 으로 graceful."""
         import nuri.api.routes.dashboard as dash_mod
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
         with get_db(db_path) as conn:
@@ -1176,3 +1319,102 @@ class TestLatestActionsScoringDetail:
         assert buys
         assert buys[0]["scoring_detail"] is None
         assert buys[0]["agent_verdicts"] is None
+
+
+class TestDashboardHelperExceptions:
+    """Lock-tests for exception fallback paths (lines 161-162, 168, 192-193, 320-322, 430-431, 458-459, 468-469)."""
+
+    def test_get_allocation_exception_fallback(self, monkeypatch):
+        """REGIME_ALLOCATION lookup 실패 → default cash=100 (lines 161-162)."""
+        import nuri.api.routes.dashboard as dash_mod
+
+        # Force REGIME_ALLOCATION import to raise. Easier: monkeypatch the
+        # module so .get() raises.
+        class BadDict:
+            def get(self, k, default=None):
+                raise RuntimeError("boom")
+
+        monkeypatch.setattr(
+            "nuri.trading.strategy.longshort.REGIME_ALLOCATION",
+            BadDict(),
+        )
+        result = dash_mod._get_allocation("bull")
+        assert result == {"long": 0, "short": 0, "cash": 100}
+
+    def test_extract_reason_empty(self):
+        """signals 빈 문자열 → ('', None) (line 168)."""
+        from nuri.api.routes.dashboard import _extract_reason
+
+        assert _extract_reason(None) == ("", None)
+        assert _extract_reason("") == ("", None)
+
+    def test_parse_json_field_invalid(self):
+        """parse 실패 → None (lines 192-193)."""
+        from nuri.api.routes.dashboard import _parse_json_field
+
+        assert _parse_json_field("not json {") is None
+        assert _parse_json_field(None) is None
+
+    def test_get_latest_actions_query_exception(self, monkeypatch):
+        """query 실패 → [] (lines 320-322)."""
+        import nuri.api.routes.dashboard as dash_mod
+
+        def boom(*a, **kw):
+            raise RuntimeError("db down")
+
+        # patch both helpers used inside _get_latest_actions
+        monkeypatch.setattr("nuri.core.db.query", boom)
+        result = dash_mod._get_latest_actions()
+        assert result == []
+
+    def test_get_gate_score_exception(self, monkeypatch):
+        """check_gate raise → 0 (lines 430-431)."""
+        import nuri.api.routes.dashboard as dash_mod
+
+        def boom():
+            raise RuntimeError("gate fail")
+
+        monkeypatch.setattr("nuri.trading.engine.gate.check_gate", boom)
+        assert dash_mod._get_gate_score() == 0
+
+    def test_get_active_alerts_drift_branch(self, monkeypatch):
+        """detect_drift critical → drift alert (lines 458-459)."""
+        from dataclasses import dataclass
+
+        import nuri.api.routes.dashboard as dash_mod
+
+        @dataclass
+        class FakeDrift:
+            signal_id: str = "sigA"
+            status: str = "critical"
+
+        monkeypatch.setattr("nuri.analysis.risk.analyze_risk", lambda: {})
+        monkeypatch.setattr(
+            "nuri.trading.engine.memory.detect_drift",
+            lambda: [FakeDrift(), FakeDrift(signal_id="sigB")],
+        )
+        monkeypatch.setattr(
+            "nuri.trading.engine.conflicts.detect_conflicts",
+            lambda: [],
+        )
+        result = dash_mod._get_active_alerts()
+        assert any("시그널 성과 급락" in a["message"] for a in result)
+
+    def test_get_active_alerts_conflicts_branch(self, monkeypatch):
+        """detect_conflicts non-empty → conflicts alert (lines 468-469)."""
+        from dataclasses import dataclass
+
+        import nuri.api.routes.dashboard as dash_mod
+
+        @dataclass
+        class FakeConflict:
+            ticker: str = "AAPL"
+
+        monkeypatch.setattr("nuri.analysis.risk.analyze_risk", lambda: {})
+        monkeypatch.setattr("nuri.trading.engine.memory.detect_drift", lambda: [])
+        monkeypatch.setattr(
+            "nuri.trading.engine.conflicts.detect_conflicts",
+            lambda: [FakeConflict()],
+        )
+        result = dash_mod._get_active_alerts()
+        assert any("BUY/SELL 충돌" in a["message"] for a in result)

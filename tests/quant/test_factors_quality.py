@@ -1,3 +1,4 @@
+# cspell:ignore qmod
 # pyright: reportArgumentType=false
 """Tests for factors_quality — split from test_quant_all.py."""
 
@@ -102,6 +103,61 @@ class TestQualityDbRead:
         # min-max 정규화 → AAPL roe=0.30 이 max → AAPL quality_score 가 더 큼.
         # 만약 old row (0.10) 를 사용했다면 MSFT (0.20) 가 더 커진다.
         assert float(df.loc["AAPL", "quality_score"]) > float(df.loc["MSFT", "quality_score"])
+
+    def test_no_tickers_returns_empty(self, db_path_mp, monkeypatch):
+        """tickers=None + get_tickers() 가 빈 리스트 → empty df (line 24)."""
+        from nuri.quant.factors import quality as qmod
+
+        monkeypatch.setattr("nuri.core.db.get_tickers", lambda: [])
+        df = qmod.compute_quality()
+        assert df.empty
+
+    def test_only_kr_tickers_returns_empty(self, db_path_mp, monkeypatch):
+        """get_tickers() 가 .KS 만 → 필터 후 비어 empty (line 24 fallthrough)."""
+        from nuri.quant.factors import quality as qmod
+
+        monkeypatch.setattr("nuri.core.db.get_tickers", lambda: ["005930.KS", "000660.KS"])
+        df = qmod.compute_quality()
+        assert df.empty
+
+    def test_skips_rows_with_both_none(self, db_path_mp):
+        """roe/margin 둘 다 None 인 row 는 skip (line 49 continue)."""
+        from nuri.quant.factors.quality import compute_quality
+
+        self._seed_fundamentals(
+            db_path_mp,
+            [
+                ("AAPL", "2026-04-15", 0.30, 0.35),
+                ("MSFT", "2026-04-15", 0.20, 0.25),
+                ("ZZZ", "2026-04-15", None, None),  # skipped
+            ],
+        )
+        df = compute_quality(tickers=["AAPL", "MSFT", "ZZZ"])
+        assert "ZZZ" not in df.index
+
+    def test_constant_column_assigns_05(self, db_path_mp):
+        """모든 ticker 의 ROE 가 같으면 col_max == col_min → norm = 0.5 (line 68)."""
+        from nuri.quant.factors.quality import compute_quality
+
+        # ROE 가 모두 동일 → col_min == col_max → 0.5 fallback
+        self._seed_fundamentals(
+            db_path_mp,
+            [
+                ("AAPL", "2026-04-15", 0.20, None),
+                ("MSFT", "2026-04-15", 0.20, None),
+            ],
+        )
+        df = compute_quality(tickers=["AAPL", "MSFT"])
+        assert (df["roe_norm"] == 0.5).all()
+
+    def test_no_norm_cols_returns_constant_05(self, db_path_mp):
+        """단일 ticker → valid<2 → norm 컬럼 없음 → quality_score = 0.5 (line 74)."""
+        from nuri.quant.factors.quality import compute_quality
+
+        # 단일 ticker (valid 1) → 정규화 미발생 → norm_cols 비어있음
+        self._seed_fundamentals(db_path_mp, [("AAPL", "2026-04-15", 0.20, 0.10)])
+        df = compute_quality(tickers=["AAPL"])
+        assert df.loc["AAPL", "quality_score"] == 0.5
 
     def test_quality_source_has_no_openbb_import(self):
         """아키텍처 회귀 방어: quality.py 가 OpenBB 를 다시 import 하지 않는지 확인.
