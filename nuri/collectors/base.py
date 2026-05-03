@@ -2,12 +2,11 @@
 """
 BaseCollector — 모든 데이터 수집기의 추상 기반 클래스.
 
-(send_webhook_message 동적 import — runtime 정상.)
-
 모든 collector는 이 클래스를 상속하고 collect()와 save()를 구현한다.
 외부에서는 항상 run()을 호출한다.
 
 수집 실패 처리: expected_count를 설정하면 실패율 >10% 시 save를 거부한다.
+실패 알림은 `nuri.agents.discord.outbox.stage_ops()` 경유 (Single-writer rule).
 """
 
 import logging
@@ -128,13 +127,28 @@ class BaseCollector(ABC):
         raise last_error  # type: ignore[misc]
 
     def _send_failure_alert(self, error_msg: str):
-        """수집기 실패 시 Discord 알림 (DISCORD_WEBHOOK_URL 설정 시)."""
-        try:
-            from nuri.alerts.discord_bot import send_webhook_message
+        """수집기 실패 → outbox.stage_ops (Single-writer Discord, invariants.md).
 
-            send_webhook_message(f"🚨 수집기 [{self.name}] 실패 (3회 재시도 후)\n```{error_msg[:200]}```")
+        직접 webhook 호출 금지 — `nuri.agents.discord.outbox.stage_*()` 만 channel
+        publish 진입점. dispatcher 가 cron 주기에 종합 발송.
+        """
+        try:
+            from nuri.agents.discord.outbox import stage_ops
+            from nuri.core.timezone import today_kst
+
+            stage_ops(
+                payload={
+                    "event": "collector_failure",
+                    "collector": self.name,
+                    "error": error_msg[:200],
+                    "kind": "alert",
+                },
+                dedupe_key=f"collector_fail_{self.name}_{today_kst()}",
+                priority="high",
+                actor_name=f"collector.{self.name}",
+            )
         except Exception:
-            self.logger.debug("Discord 알림 발송 실패 (webhook 미설정 가능)")
+            self.logger.debug("Discord outbox stage 실패 (DB 미초기화 가능)")
 
     def _get_tickers(self, market: Optional[str] = None, source: str = "portfolio") -> list[str]:
         """티커 목록 조회. source로 범위 선택, market으로 한국/미국 필터링.
