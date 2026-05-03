@@ -34,6 +34,11 @@ class TechnicalCollector(BaseCollector):
             self.logger.warning("계산할 종목 없음")
             return pd.DataFrame()
 
+        # MAX_FAILURE_RATE(10%) 가드 활성화 — prices 데이터 부족 누적 시 save 거부.
+        # technical.collect() 는 1 row/ticker 반환이라 len(df) == ticker count 매칭 가능.
+        # asymmetric data age 방지 (어제 signals 그대로 + 오늘 70% 결손 silent save 차단).
+        self._expected_count = len(tickers)
+
         from tqdm import tqdm
 
         self.logger.info(f"기술적 지표 대상: {len(tickers)}종목 (source={source})")
