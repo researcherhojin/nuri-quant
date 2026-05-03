@@ -218,7 +218,7 @@ class TestVerifyAction:
             role="replica",
             hostname="mbp-test",
             last_sync_at="2026-05-01 12:00:00",
-            last_sync_schema_version=42,
+            last_sync_schema_version=43,
             sync_lag_seconds=120,
             status="healthy",
             db_path=patched_db,
