@@ -1,4 +1,5 @@
 """Tests for stream — split from test_api_all.py."""
+
 import asyncio
 import json
 import time as _time
@@ -29,6 +30,7 @@ class TestSSEStream:
     def test_get_snapshot_caching(self):
         """Cached snapshot should return quickly."""
         import nuri.api.routes.stream as stream_mod
+
         stream_mod._cache = {"timestamp": 100.0, "regime": "test"}
         stream_mod._cache_time = _time.time()
         result = stream_mod._get_snapshot()
@@ -37,6 +39,7 @@ class TestSSEStream:
     def test_get_snapshot_fresh_with_mocked_deps(self, monkeypatch):
         """Fresh snapshot (cache expired) with all dependencies mocked."""
         import nuri.api.routes.stream as stream_mod
+
         stream_mod._cache = {}
         stream_mod._cache_time = 0
 
@@ -48,9 +51,11 @@ class TestSSEStream:
         mock_macro = MagicMock()
         mock_macro.total_score = 65.0
 
-        with patch("nuri.quant.regime.classifier.classify_regime", return_value=mock_regime), \
-             patch("nuri.quant.regime.macro_score.compute_macro_score", return_value=mock_macro), \
-             patch("nuri.core.db.query", return_value=[{"c": 3}]):
+        with (
+            patch("nuri.quant.regime.classifier.classify_regime", return_value=mock_regime),
+            patch("nuri.quant.regime.macro_score.compute_macro_score", return_value=mock_macro),
+            patch("nuri.core.db.query", return_value=[{"c": 3}]),
+        ):
             result = stream_mod._get_snapshot()
 
         assert result["regime"] == "bull_low_vol"
@@ -60,12 +65,15 @@ class TestSSEStream:
     def test_get_snapshot_handles_exceptions(self, monkeypatch):
         """All dependencies failing should not crash."""
         import nuri.api.routes.stream as stream_mod
+
         stream_mod._cache = {}
         stream_mod._cache_time = 0
 
-        with patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception("no data")), \
-             patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception("no data")), \
-             patch("nuri.core.db.query", side_effect=Exception("no db")):
+        with (
+            patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception("no data")),
+            patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception("no data")),
+            patch("nuri.core.db.query", side_effect=Exception("no db")),
+        ):
             result = stream_mod._get_snapshot()
 
         assert "timestamp" in result
@@ -73,6 +81,7 @@ class TestSSEStream:
     def test_stream_endpoint_response_type(self):
         """Test that /api/stream returns an SSE response (media type check only)."""
         import nuri.api.routes.stream as stream_mod
+
         stream_mod._cache = {"timestamp": 100.0, "regime": "test"}
         stream_mod._cache_time = _time.time()
 
@@ -89,6 +98,7 @@ class TestSSEStream:
     def test_event_generator_yields_data(self):
         """Event generator should yield SSE-formatted data."""
         import nuri.api.routes.stream as stream_mod
+
         stream_mod._cache = {"timestamp": 42.0, "regime": "test_bull"}
         stream_mod._cache_time = _time.time()
 
@@ -101,6 +111,27 @@ class TestSSEStream:
         assert result.startswith("data:")
         parsed = json.loads(result.replace("data:", "").strip())
         assert "timestamp" in parsed
+
+    def test_event_generator_sleep_branch(self):
+        """Generator hits asyncio.sleep then yields second iteration (line 73)."""
+        import nuri.api.routes.stream as stream_mod
+
+        stream_mod._cache = {"timestamp": 1.0, "regime": "x"}
+        stream_mod._cache_time = _time.time()
+
+        async def fake_sleep(_):
+            return
+
+        async def run():
+            gen = stream_mod._event_generator()
+            with patch.object(stream_mod.asyncio, "sleep", side_effect=fake_sleep):
+                first = await gen.__anext__()
+                second = await gen.__anext__()
+            return first, second
+
+        first, second = asyncio.run(run())
+        assert first.startswith("data:")
+        assert second.startswith("data:")
 
     def test_event_generator_error_handling(self):
         """Event generator should yield error JSON on exception."""

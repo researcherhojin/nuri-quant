@@ -9,6 +9,7 @@ C-1 시그널 백테스트 결과에 레짐 라벨을 붙여서
     python -m nuri.quant.regime.strategy_map
     python -m nuri.quant.regime.strategy_map --analyze   # 시그널×레짐 교차분석
 """
+
 import argparse
 import logging
 from dataclasses import dataclass
@@ -75,13 +76,14 @@ PF_AVOID_THRESHOLD = 1.0
 @dataclass
 class StrategyRecommendation:
     """레짐별 전략 추천."""
+
     regime: str
     macro_interpretation: str
     position_sizing: str
     recommended_signals: list[str]
     avoid_signals: list[str]
     sector_preference: list[str]
-    signal_regime_stats: dict       # 시그널별 레짐 내 실제 성과
+    signal_regime_stats: dict  # 시그널별 레짐 내 실제 성과
     notes: str
 
 
@@ -119,8 +121,12 @@ def analyze_signal_by_regime(db_path=None) -> pd.DataFrame:
         vix = _get_vix(date=row["date"], db_path=db_path)
         bb_w = float(row["bb_width"]) if pd.notna(row["bb_width"]) else 0
         trend, vol = _classify_single(
-            row["close"], row["sma50"], row["sma200"],
-            vix, bb_w, thresholds,
+            row["close"],
+            row["sma50"],
+            row["sma200"],
+            vix,
+            bb_w,
+            thresholds,
         )
         date_to_regime[row["date"]] = f"{trend}_{vol}_vol"
 
@@ -140,14 +146,16 @@ def analyze_signal_by_regime(db_path=None) -> pd.DataFrame:
         total_loss = abs(returns[returns < 0].sum())
         pf = total_gain / total_loss if total_loss > 0 else float("inf")
 
-        results.append({
-            "signal_id": sig,
-            "regime": regime,
-            "trades": len(group),
-            "win_rate": round(wins / len(group), 3),
-            "avg_return": round(float(returns.mean()), 2),
-            "profit_factor": round(pf, 2) if pf != float("inf") else 99.99,
-        })
+        results.append(
+            {
+                "signal_id": sig,
+                "regime": regime,
+                "trades": len(group),
+                "win_rate": round(wins / len(group), 3),
+                "avg_return": round(float(returns.mean()), 2),
+                "profit_factor": round(pf, 2) if pf != float("inf") else 99.99,
+            }
+        )
 
     return pd.DataFrame(results).sort_values(["regime", "profit_factor"], ascending=[True, False])
 
@@ -220,6 +228,7 @@ def map_regime_to_strategy(
 
     # 기본 포지션 사이징 (규칙 기반, 특수 레짐 우선)
     from nuri.quant.regime.classifier import SPECIAL_REGIME_SIZING
+
     special = regime_state.details.get("special_regime")
     if special and special in SPECIAL_REGIME_SIZING:
         position = SPECIAL_REGIME_SIZING[special]
@@ -318,8 +327,7 @@ def print_strategy(rec: StrategyRecommendation | None) -> None:
         print(f"  {'Signal':<18} {'Trades':>6} {'WR':>6} {'PF':>6} {'AvgRet':>8}")
         print(f"  {'-' * 46}")
         for sig, st in sorted(rec.signal_regime_stats.items(), key=lambda x: x[1]["pf"], reverse=True):
-            print(f"  {sig:<18} {st['trades']:>6} {st['win_rate']:>5.0%} "
-                  f"{st['pf']:>5.1f} {st['avg_return']:>+7.1f}%")
+            print(f"  {sig:<18} {st['trades']:>6} {st['win_rate']:>5.0%} {st['pf']:>5.1f} {st['avg_return']:>+7.1f}%")
 
     print()
 
@@ -341,12 +349,14 @@ def print_cross_analysis(df: pd.DataFrame) -> None:
         print(f"  {'-' * 46}")
         for _, row in rdf.iterrows():
             pf_str = f"{row['profit_factor']:.1f}" if row["profit_factor"] < 99 else "∞"
-            print(f"  {row['signal_id']:<18} {row['trades']:>6} {row['win_rate']:>5.0%} "
-                  f"{pf_str:>6} {row['avg_return']:>+7.1f}%")
+            print(
+                f"  {row['signal_id']:<18} {row['trades']:>6} {row['win_rate']:>5.0%} "
+                f"{pf_str:>6} {row['avg_return']:>+7.1f}%"
+            )
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 레짐별 전략 추천")

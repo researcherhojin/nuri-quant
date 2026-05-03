@@ -9,6 +9,7 @@ Anchor contract + fallback regression lock (codex Plan Biggest Risk):
 
 Revert detection: anchor contract 변경 (entry_price 재해석) or grid drift 시 fail.
 """
+
 import pandas as pd
 import pytest
 
@@ -17,16 +18,19 @@ class TestComputeAtr:
     def test_insufficient_rows_returns_none(self):
         """OHLC < 14 rows → None (graceful, never raise)."""
         from nuri.quant.exits.atr import compute_atr
+
         df = pd.DataFrame({"high": [10, 11, 12], "low": [9, 10, 11], "close": [9.5, 10.5, 11.5]})
         assert compute_atr(df) is None
 
     def test_missing_columns_returns_none(self):
         from nuri.quant.exits.atr import compute_atr
+
         df = pd.DataFrame({"close": list(range(20))})  # high/low 없음
         assert compute_atr(df) is None
 
     def test_none_df_returns_none(self):
         from nuri.quant.exits.atr import compute_atr
+
         assert compute_atr(None) is None  # type: ignore[arg-type]
 
     def test_sufficient_rows_returns_series(self):
@@ -34,14 +38,17 @@ class TestComputeAtr:
         import numpy as np
 
         from nuri.quant.exits.atr import compute_atr
+
         rng = np.random.default_rng(42)
         n = 30
         base = 100 + np.cumsum(rng.normal(0, 1, n))
-        df = pd.DataFrame({
-            "high": base + 1.0,
-            "low": base - 1.0,
-            "close": base,
-        })
+        df = pd.DataFrame(
+            {
+                "high": base + 1.0,
+                "low": base - 1.0,
+                "close": base,
+            }
+        )
         atr = compute_atr(df, period=14)
         assert atr is not None
         assert len(atr) == n
@@ -55,6 +62,7 @@ class TestGridAndRegimeConstants:
 
     def test_k_grid_frozen(self):
         from nuri.quant.exits.atr import K_GRID
+
         assert K_GRID == (1.5, 2.0, 2.5, 3.0), (
             f"K_GRID changed — PR F validation 결과 재생산 불가. 변경은 STRATEGY 개정 + "
             f"paired walk-forward 재실행 PR 필요. 현 {K_GRID}"
@@ -65,12 +73,14 @@ class TestGridAndRegimeConstants:
         (그쪽은 per_position_max multiplier, 여기는 stop_distance multiplier — 숫자
         는 같게 frozen 해 두 system 이 같은 regime labeling 경계를 공유.)"""
         from nuri.quant.exits.atr import REGIME_MULTIPLIER
+
         assert REGIME_MULTIPLIER["bull_low_vol"] == 0.8
         assert REGIME_MULTIPLIER["bear_high_vol"] == 1.3
         assert REGIME_MULTIPLIER.get("neutral", None) == 1.0
 
     def test_default_k_within_grid(self):
         from nuri.quant.exits.atr import DEFAULT_K, K_GRID
+
         assert DEFAULT_K in K_GRID, "DEFAULT_K must be one of K_GRID values"
 
 
@@ -80,6 +90,7 @@ class TestComputeAtrStopGracefulFallback:
 
     def test_no_price_history_returns_none_stop(self, db_path):
         from nuri.quant.exits.atr import compute_atr_stop
+
         r = compute_atr_stop("NOTFOUND", entry_price=100, current_price=95, db_path=db_path)
         assert r.stop_price is None
         assert r.atr is None
@@ -94,9 +105,8 @@ class TestComputeAtrStopGracefulFallback:
         with get_db(db_path) as conn:
             for i in range(10):
                 conn.execute(
-                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    ("SHORT", f"2026-04-{i+1:02d}", 100, 101, 99, 100, 1000),
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ("SHORT", f"2026-04-{i + 1:02d}", 100, 101, 99, 100, 1000),
                 )
         r = compute_atr_stop("SHORT", entry_price=100, current_price=100, db_path=db_path)
         assert r.stop_price is None
@@ -107,21 +117,27 @@ class TestComputeAtrStopNormalPath:
     def _seed(self, db_path, ticker: str, rows: int = 30, base: float = 100, noise: float = 2):
         """noise = high-low spread (= ATR proxy)."""
         from nuri.core.db import get_db
+
         with get_db(db_path) as conn:
             for i in range(rows):
                 conn.execute(
-                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (ticker, f"2026-03-{(i % 28) + 1:02d}" if i < 28 else f"2026-04-{i - 27:02d}",
-                     base, base + noise, base - noise, base, 100000),
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        ticker,
+                        f"2026-03-{(i % 28) + 1:02d}" if i < 28 else f"2026-04-{i - 27:02d}",
+                        base,
+                        base + noise,
+                        base - noise,
+                        base,
+                        100000,
+                    ),
                 )
 
     def test_normal_path_computes_stop(self, db_path):
         from nuri.quant.exits.atr import compute_atr_stop
 
         self._seed(db_path, "NORM", rows=20, base=100, noise=2)
-        r = compute_atr_stop("NORM", entry_price=100, current_price=98,
-                             regime="neutral", k=2.0, db_path=db_path)
+        r = compute_atr_stop("NORM", entry_price=100, current_price=98, regime="neutral", k=2.0, db_path=db_path)
         assert r.atr is not None
         assert r.stop_price is not None
         # ATR ≈ 4 (high-low=4 constant) → k=2 × 1.0 × 4 = 8 → stop ≈ 92
@@ -136,8 +152,7 @@ class TestComputeAtrStopNormalPath:
 
         self._seed(db_path, "BRCH", rows=20, base=100, noise=2)
         # stop ≈ 92, current 80 → breached
-        r = compute_atr_stop("BRCH", entry_price=100, current_price=80,
-                             regime="neutral", k=2.0, db_path=db_path)
+        r = compute_atr_stop("BRCH", entry_price=100, current_price=80, regime="neutral", k=2.0, db_path=db_path)
         assert r.stop_price is not None
         assert r.breached is True
         assert "BREACHED" in r.detail
@@ -148,10 +163,10 @@ class TestComputeAtrStopNormalPath:
         from nuri.quant.exits.atr import compute_atr_stop
 
         self._seed(db_path, "REGI", rows=20, base=100, noise=2)
-        r_neu = compute_atr_stop("REGI", entry_price=100, current_price=100,
-                                  regime="neutral", k=2.0, db_path=db_path)
-        r_bear = compute_atr_stop("REGI", entry_price=100, current_price=100,
-                                   regime="bear_high_vol", k=2.0, db_path=db_path)
+        r_neu = compute_atr_stop("REGI", entry_price=100, current_price=100, regime="neutral", k=2.0, db_path=db_path)
+        r_bear = compute_atr_stop(
+            "REGI", entry_price=100, current_price=100, regime="bear_high_vol", k=2.0, db_path=db_path
+        )
         assert r_neu.stop_price is not None and r_bear.stop_price is not None
         # bear 의 stop 은 neutral 보다 entry 에서 더 멀어짐 (더 낮은 stop_price)
         assert r_bear.stop_price < r_neu.stop_price
@@ -164,10 +179,10 @@ class TestComputeAtrStopNormalPath:
         from nuri.quant.exits.atr import compute_atr_stop
 
         self._seed(db_path, "BULL", rows=20, base=100, noise=2)
-        r_neu = compute_atr_stop("BULL", entry_price=100, current_price=100,
-                                  regime="neutral", k=2.0, db_path=db_path)
-        r_bull = compute_atr_stop("BULL", entry_price=100, current_price=100,
-                                   regime="bull_low_vol", k=2.0, db_path=db_path)
+        r_neu = compute_atr_stop("BULL", entry_price=100, current_price=100, regime="neutral", k=2.0, db_path=db_path)
+        r_bull = compute_atr_stop(
+            "BULL", entry_price=100, current_price=100, regime="bull_low_vol", k=2.0, db_path=db_path
+        )
         assert r_neu.stop_price is not None and r_bull.stop_price is not None
         # bull_low_vol multiplier 0.8 — stop 이 entry 에 더 가까움 (higher stop_price)
         assert r_bull.stop_price > r_neu.stop_price
@@ -190,9 +205,8 @@ class TestAnchorContractFrozen:
         with get_db(db_path) as conn:
             for i in range(20):
                 conn.execute(
-                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    ("ABC", f"2026-04-{i+1:02d}", 100, 102, 98, 100, 1000),
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ("ABC", f"2026-04-{i + 1:02d}", 100, 102, 98, 100, 1000),
                 )
         r = compute_atr_stop("ABC", entry_price=100, current_price=100, db_path=db_path)
         assert r.basis == "entry_atr_fixed"
@@ -204,6 +218,7 @@ class TestAnchorContractFrozen:
         import inspect
 
         from nuri.quant.exits import atr as atr_mod
+
         sig = inspect.signature(atr_mod.compute_atr_stop)
         # entry_price 는 keyword-only required (default 없음)
         assert "entry_price" in sig.parameters
@@ -216,6 +231,104 @@ class TestAnchorContractFrozen:
 @pytest.fixture
 def db_path(tmp_path):
     from nuri.core.db import init_db
+
     path = tmp_path / "test.db"
     init_db(path)
     return path
+
+
+class TestComputeAtrExceptionPaths:
+    def test_talib_exception_returns_none(self, monkeypatch):
+        """compute_atr 의 try/except (lines 124-125): talib 예외 발생 → None."""
+        import pandas as pd
+
+        from nuri.quant.exits import atr as atr_mod
+
+        n = 30
+        df = pd.DataFrame(
+            {
+                "high": [101.0] * n,
+                "low": [99.0] * n,
+                "close": [100.0] * n,
+            }
+        )
+
+        # talib.ATR 가 예외 발생하도록 patch
+        class FakeTalib:
+            @staticmethod
+            def ATR(*a, **kw):
+                raise RuntimeError("simulated talib failure")
+
+        monkeypatch.setitem(__import__("sys").modules, "talib", FakeTalib)
+        # 모듈 안에서 `import talib` 하므로 sys.modules patch 가 잡힘
+        result = atr_mod.compute_atr(df)
+        assert result is None
+
+
+class TestComputeAtrStopAdditionalBranches:
+    """Lines 171 (compute_atr None), 183 (NaN ATR latest)."""
+
+    def _seed(self, db_path, ticker, rows=20, base=100, noise=2):
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            for i in range(rows):
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        ticker,
+                        f"2026-03-{(i % 28) + 1:02d}" if i < 28 else f"2026-04-{i - 27:02d}",
+                        base,
+                        base + noise,
+                        base - noise,
+                        base,
+                        100000,
+                    ),
+                )
+
+    def test_compute_atr_returning_none_falls_through(self, monkeypatch, db_path):
+        """compute_atr 가 None 반환 시 (line 171) → stop_price=None + detail 'ATR 계산 실패'."""
+        from nuri.quant.exits import atr as atr_mod
+
+        self._seed(db_path, "ABC", rows=20)
+
+        # compute_atr 만 None 반환하도록 patch
+        monkeypatch.setattr(atr_mod, "compute_atr", lambda df, period=14: None)
+
+        r = atr_mod.compute_atr_stop("ABC", entry_price=100, current_price=100, db_path=db_path)
+        assert r.stop_price is None
+        assert r.atr is None
+        assert "ATR 계산 실패" in r.detail
+
+    def test_atr_nan_latest_returns_none_stop(self, monkeypatch, db_path):
+        """compute_atr 가 NaN-only Series 반환 시 (line 183) → stop=None + 'NaN/0' detail."""
+        import pandas as pd
+
+        from nuri.quant.exits import atr as atr_mod
+
+        self._seed(db_path, "NAN", rows=20)
+
+        monkeypatch.setattr(
+            atr_mod,
+            "compute_atr",
+            lambda df, period=14: pd.Series([float("nan")] * len(df)),
+        )
+        r = atr_mod.compute_atr_stop("NAN", entry_price=100, current_price=100, db_path=db_path)
+        assert r.stop_price is None
+        assert "NaN/0" in r.detail
+
+    def test_atr_zero_latest_returns_none_stop(self, monkeypatch, db_path):
+        """ATR latest <= 0 → 같은 NaN/0 fallback (line 183 alt)."""
+        import pandas as pd
+
+        from nuri.quant.exits import atr as atr_mod
+
+        self._seed(db_path, "ZER", rows=20)
+        monkeypatch.setattr(
+            atr_mod,
+            "compute_atr",
+            lambda df, period=14: pd.Series([0.0] * len(df)),
+        )
+        r = atr_mod.compute_atr_stop("ZER", entry_price=100, current_price=100, db_path=db_path)
+        assert r.stop_price is None
+        assert "NaN/0" in r.detail

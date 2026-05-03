@@ -8,6 +8,7 @@ C-3: 애널리스트 목표가 검증 (전향적).
     python -m nuri.quant.validation.analyst_backtest
     python -m nuri.quant.validation.analyst_backtest --min-days 60
 """
+
 import argparse
 import logging
 from dataclasses import asdict, dataclass  # noqa: F401 (asdict used in __main__)
@@ -27,16 +28,17 @@ REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 @dataclass
 class EstimateResult:
     """개별 목표가 검증 결과."""
+
     ticker: str
     estimate_date: str
     recommendation: str
     target_mean: float
-    price_at_estimate: float    # estimate_date 시점 가격
-    actual_price: float         # min_elapsed_days 후 가격
+    price_at_estimate: float  # estimate_date 시점 가격
+    actual_price: float  # min_elapsed_days 후 가격
     actual_date: str
-    target_gap_pct: float       # (target - price_at_estimate) / price_at_estimate * 100
-    actual_return_pct: float    # (actual - price_at_estimate) / price_at_estimate * 100
-    target_hit: bool            # actual >= target_mean
+    target_gap_pct: float  # (target - price_at_estimate) / price_at_estimate * 100
+    actual_return_pct: float  # (actual - price_at_estimate) / price_at_estimate * 100
+    target_hit: bool  # actual >= target_mean
 
 
 def validate_estimates(min_elapsed_days: int = 90, db_path=None) -> list[EstimateResult]:
@@ -52,17 +54,18 @@ def validate_estimates(min_elapsed_days: int = 90, db_path=None) -> list[Estimat
     # 검증 가능한 estimates 조회
     estimates = query(
         "SELECT * FROM estimates WHERE date <= ? ORDER BY date, ticker",
-        (cutoff,), db_path=db_path,
+        (cutoff,),
+        db_path=db_path,
     )
 
     if not estimates:
         # 가장 오래된 estimate 확인
-        oldest = query("SELECT MIN(date) as d, COUNT(DISTINCT date) as dates FROM estimates",
-                       db_path=db_path)
+        oldest = query("SELECT MIN(date) as d, COUNT(DISTINCT date) as dates FROM estimates", db_path=db_path)
         if oldest and oldest[0]["d"]:
             days_elapsed = (kst_now().replace(tzinfo=None) - datetime.strptime(oldest[0]["d"], "%Y-%m-%d")).days
-            available_date = (datetime.strptime(oldest[0]["d"], "%Y-%m-%d")
-                             + timedelta(days=min_elapsed_days)).strftime("%Y-%m-%d")
+            available_date = (
+                datetime.strptime(oldest[0]["d"], "%Y-%m-%d") + timedelta(days=min_elapsed_days)
+            ).strftime("%Y-%m-%d")
             logger.warning(
                 f"검증 가능한 데이터 없음: 최소 {min_elapsed_days}일 경과된 estimates가 필요합니다.\n"
                 f"  가장 오래된 estimate: {oldest[0]['d']} ({days_elapsed}일 경과)\n"
@@ -88,7 +91,8 @@ def validate_estimates(min_elapsed_days: int = 90, db_path=None) -> list[Estimat
         # estimate_date 시점의 가격 (가장 가까운 거래일)
         price_at = query(
             "SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
-            (ticker, est_date), db_path=db_path,
+            (ticker, est_date),
+            db_path=db_path,
         )
         if not price_at:
             continue
@@ -100,7 +104,8 @@ def validate_estimates(min_elapsed_days: int = 90, db_path=None) -> list[Estimat
         actual_date = (datetime.strptime(est_date, "%Y-%m-%d") + timedelta(days=min_elapsed_days)).strftime("%Y-%m-%d")
         price_after = query(
             "SELECT date, close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
-            (ticker, actual_date), db_path=db_path,
+            (ticker, actual_date),
+            db_path=db_path,
         )
         if not price_after:
             continue
@@ -112,18 +117,20 @@ def validate_estimates(min_elapsed_days: int = 90, db_path=None) -> list[Estimat
         actual_return_pct = (actual_price - price_at_estimate) / price_at_estimate * 100
         target_hit = actual_price >= target_mean
 
-        results.append(EstimateResult(
-            ticker=ticker,
-            estimate_date=est_date,
-            recommendation=rec,
-            target_mean=round(target_mean, 2),
-            price_at_estimate=round(price_at_estimate, 2),
-            actual_price=round(actual_price, 2),
-            actual_date=actual_date_real,
-            target_gap_pct=round(target_gap_pct, 2),
-            actual_return_pct=round(actual_return_pct, 2),
-            target_hit=target_hit,
-        ))
+        results.append(
+            EstimateResult(
+                ticker=ticker,
+                estimate_date=est_date,
+                recommendation=rec,
+                target_mean=round(target_mean, 2),
+                price_at_estimate=round(price_at_estimate, 2),
+                actual_price=round(actual_price, 2),
+                actual_date=actual_date_real,
+                target_gap_pct=round(target_gap_pct, 2),
+                actual_return_pct=round(actual_return_pct, 2),
+                target_hit=target_hit,
+            )
+        )
 
     return results
 
@@ -137,19 +144,21 @@ def print_results(results: list[EstimateResult]) -> None:
     print(f"  애널리스트 목표가 검증 ({len(results)}건)")
     print(f"{'=' * 70}")
     hit = sum(1 for r in results if r.target_hit)
-    print(f"  적중률: {hit}/{len(results)} ({hit/len(results)*100:.1f}%)")
-    print(f"  평균 실제수익: {sum(r.actual_return_pct for r in results)/len(results):+.1f}%")
+    print(f"  적중률: {hit}/{len(results)} ({hit / len(results) * 100:.1f}%)")
+    print(f"  평균 실제수익: {sum(r.actual_return_pct for r in results) / len(results):+.1f}%")
 
     print(f"\n  {'Ticker':<10} {'의견':<12} {'괴리율':>8} {'실제수익':>8} {'적중':>4}")
     print(f"  {'-' * 46}")
     for r in results:
         hit_mark = "O" if r.target_hit else "X"
-        print(f"  {r.ticker:<10} {r.recommendation:<12} "
-              f"{r.target_gap_pct:>+7.1f}% {r.actual_return_pct:>+7.1f}% {hit_mark:>4}")
+        print(
+            f"  {r.ticker:<10} {r.recommendation:<12} "
+            f"{r.target_gap_pct:>+7.1f}% {r.actual_return_pct:>+7.1f}% {hit_mark:>4}"
+        )
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="애널리스트 목표가 검증")
@@ -164,6 +173,4 @@ if __name__ == "__main__":
         today = today_kst()
         output_dir = REPORT_DIR / today
         output_dir.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame([asdict(r) for r in results]).to_csv(
-            output_dir / "analyst_results.csv", index=False
-        )
+        pd.DataFrame([asdict(r) for r in results]).to_csv(output_dir / "analyst_results.csv", index=False)

@@ -8,6 +8,7 @@ C-2: 슈퍼투자자 추종 백테스트.
     python -m nuri.quant.validation.superinvestor_backtest --investor "Warren Buffett"
     python -m nuri.quant.validation.superinvestor_backtest --hold-days 252
 """
+
 import argparse
 import logging
 from dataclasses import asdict, dataclass
@@ -29,22 +30,24 @@ REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 @dataclass
 class FollowResult:
     """추종 매수 개별 결과."""
+
     investor: str
     ticker: str
     filing_date: str
-    change_type: str          # NEW, INCREASED
-    entry_date: str           # 공시일 다음 거래일
+    change_type: str  # NEW, INCREASED
+    entry_date: str  # 공시일 다음 거래일
     entry_price: float
     exit_date: str
     exit_price: float
     return_pct: float
-    benchmark_return_pct: float   # VOO 동기간
+    benchmark_return_pct: float  # VOO 동기간
     excess_return_pct: float
 
 
 @dataclass
 class InvestorScorecard:
     """투자자별 추종 스코어카드."""
+
     investor: str
     hold_days: int
     total_follows: int
@@ -64,8 +67,7 @@ class InvestorScorecard:
 
 def _check_data_readiness(db_path=None) -> bool:
     """과거 다분기 13F 데이터가 있는지 확인."""
-    quarters = query("SELECT DISTINCT filing_date FROM superinvestors ORDER BY filing_date",
-                     db_path=db_path)
+    quarters = query("SELECT DISTINCT filing_date FROM superinvestors ORDER BY filing_date", db_path=db_path)
     if len(quarters) < 2:
         logger.warning(
             f"슈퍼투자자 13F가 {len(quarters)}분기만 있습니다. "
@@ -81,7 +83,8 @@ def _get_price_on_or_after(ticker: str, date: str, db_path=None) -> dict | None:
     """특정 날짜 이후 가장 가까운 거래일 가격 반환."""
     rows = query(
         "SELECT date, close FROM prices WHERE ticker = ? AND date >= ? ORDER BY date LIMIT 1",
-        (ticker, date), db_path=db_path,
+        (ticker, date),
+        db_path=db_path,
     )
     return rows[0] if rows else None
 
@@ -90,7 +93,8 @@ def _get_price_on_or_before(ticker: str, date: str, db_path=None) -> dict | None
     """특정 날짜 이전 가장 가까운 거래일 가격 반환."""
     rows = query(
         "SELECT date, close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
-        (ticker, date), db_path=db_path,
+        (ticker, date),
+        db_path=db_path,
     )
     return rows[0] if rows else None
 
@@ -138,6 +142,7 @@ def backtest_superinvestor(
 
             # hold_days 후 가격 (거래일 기준)
             from datetime import timedelta
+
             target_exit = (datetime.strptime(entry_date, "%Y-%m-%d") + timedelta(days=hold_days)).strftime("%Y-%m-%d")
             exit_data = _get_price_on_or_before(ticker, target_exit, db_path)
             if not exit_data:
@@ -159,19 +164,21 @@ def backtest_superinvestor(
             else:
                 bench_return = 0.0
 
-            results.append(FollowResult(
-                investor=inv_name,
-                ticker=ticker,
-                filing_date=filing_date,
-                change_type=row["change_type"],
-                entry_date=entry_date,
-                entry_price=round(entry_price, 2),
-                exit_date=exit_date,
-                exit_price=round(exit_price, 2),
-                return_pct=round(return_pct, 2),
-                benchmark_return_pct=round(bench_return, 2),
-                excess_return_pct=round(return_pct - bench_return, 2),
-            ))
+            results.append(
+                FollowResult(
+                    investor=inv_name,
+                    ticker=ticker,
+                    filing_date=filing_date,
+                    change_type=row["change_type"],
+                    entry_date=entry_date,
+                    entry_price=round(entry_price, 2),
+                    exit_date=exit_date,
+                    exit_price=round(exit_price, 2),
+                    return_pct=round(return_pct, 2),
+                    benchmark_return_pct=round(bench_return, 2),
+                    excess_return_pct=round(return_pct - bench_return, 2),
+                )
+            )
 
         logger.info(f"{inv_name}: {len([r for r in results if r.investor == inv_name])}건 추종")
 
@@ -196,18 +203,20 @@ def generate_scorecard(results: list[FollowResult], hold_days: int) -> list[Inve
         best = max(group, key=lambda r: r.return_pct)
         worst = min(group, key=lambda r: r.return_pct)
 
-        scorecards.append(InvestorScorecard(
-            investor=inv_name,
-            hold_days=hold_days,
-            total_follows=len(group),
-            win_rate=wins / len(group),
-            avg_return=round(sum(returns) / len(returns), 2),
-            avg_excess_return=round(sum(excess) / len(excess), 2),
-            best_ticker=best.ticker,
-            best_return=best.return_pct,
-            worst_ticker=worst.ticker,
-            worst_return=worst.return_pct,
-        ))
+        scorecards.append(
+            InvestorScorecard(
+                investor=inv_name,
+                hold_days=hold_days,
+                total_follows=len(group),
+                win_rate=wins / len(group),
+                avg_return=round(sum(returns) / len(returns), 2),
+                avg_excess_return=round(sum(excess) / len(excess), 2),
+                best_ticker=best.ticker,
+                best_return=best.return_pct,
+                worst_ticker=worst.ticker,
+                worst_return=worst.return_pct,
+            )
+        )
 
     return scorecards
 
@@ -230,7 +239,7 @@ def print_scorecard(scorecards: list[InvestorScorecard]) -> None:
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="슈퍼투자자 추종 백테스트")
@@ -248,10 +257,6 @@ if __name__ == "__main__":
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if results:
-        pd.DataFrame([asdict(r) for r in results]).to_csv(
-            output_dir / "superinvestor_results.csv", index=False
-        )
+        pd.DataFrame([asdict(r) for r in results]).to_csv(output_dir / "superinvestor_results.csv", index=False)
     if scorecards:
-        pd.DataFrame([asdict(s) for s in scorecards]).to_csv(
-            output_dir / "superinvestor_scorecard.csv", index=False
-        )
+        pd.DataFrame([asdict(s) for s in scorecards]).to_csv(output_dir / "superinvestor_scorecard.csv", index=False)

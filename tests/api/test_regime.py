@@ -1,4 +1,5 @@
 """Tests for regime — split from test_api_all.py."""
+
 import asyncio
 import json
 import time as _time
@@ -36,8 +37,10 @@ class TestRegimeAPI:
     @pytest.fixture()
     def _client(self, db_path, monkeypatch):
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
         from nuri.api.main import app
+
         return TestClient(app)
 
     def test_get_regime_none(self, _client, monkeypatch):
@@ -102,6 +105,27 @@ class TestRegimeAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert data["regime"] == "bull_low_vol"
+
+    def test_get_report_success(self, _client, monkeypatch):
+        """/report 성공 path — generate_llm_report 가 dict 반환."""
+        monkeypatch.setattr(
+            "nuri.llm.report.generate_llm_report",
+            lambda: {"summary": "test report", "ok": True},
+        )
+        resp = _client.get("/api/report")
+        assert resp.status_code == 200
+        assert resp.json()["summary"] == "test report"
+
+    def test_get_report_exception_returns_500(self, _client, monkeypatch):
+        """/report 실패 시 stack-trace 노출 없이 500."""
+
+        def boom():
+            raise RuntimeError("LLM down")
+
+        monkeypatch.setattr("nuri.llm.report.generate_llm_report", boom)
+        resp = _client.get("/api/report")
+        assert resp.status_code == 500
+        assert "LLM report" in resp.json()["detail"]
 
     def test_get_report_context(self, _client, monkeypatch):
         class FakeContext:

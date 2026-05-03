@@ -286,7 +286,7 @@ def _save_short_interest(records, db_path=None):
     return count
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import argparse
 
     parser = argparse.ArgumentParser(description="Nuri-Quant Wall Street 데이터 수집기")

@@ -1641,3 +1641,113 @@ class TestScanResultsCache:
         assert len(results) == 2
         # 두 thread 모두 동일 cache 결과 받음
         assert results[0] == results[1]
+
+
+class TestActionsEdgeFallbacks:
+    """Lock-tests for missing actions.py branches."""
+
+    def test_get_real_accounts_yaml_missing(self, monkeypatch, tmp_path):
+        """portfolio.yaml read 실패 → set() (lines 505-506)."""
+        import nuri.api.routes.actions as act_mod
+
+        monkeypatch.setattr(act_mod, "__file__", str(tmp_path / "fake_actions.py"))
+        result = act_mod._get_real_accounts()
+        assert result == set()
+
+    def test_get_short_interest_returns_value(self, monkeypatch, tmp_path):
+        """external_analysis row → numeric_value (lines 627-631)."""
+        import nuri.api.routes.actions as act_mod
+        import nuri.core.db as db_mod
+        from nuri.core.db import get_db, init_db
+
+        db = tmp_path / "actions.db"
+        init_db(db)
+        monkeypatch.setattr(db_mod, "DB_PATH", db)
+        with get_db(db) as conn:
+            conn.execute(
+                "INSERT INTO external_analysis (ticker, data_type, numeric_value, date, source) VALUES (?,?,?,?,?)",
+                ("AAPL", "short_pct_float", 12.5, "2026-05-01", "test"),
+            )
+        assert act_mod._get_short_interest("AAPL") == 12.5
+        assert act_mod._get_short_interest("UNKNOWN") is None
+
+    def test_get_macro_events_basic(self, monkeypatch):
+        """매크로 이벤트 조회 (lines 717-745)."""
+        import nuri.api.routes.actions as act_mod
+
+        rows_returned = [
+            {
+                "category": "macro",
+                "headline": "Fed cut",
+                "sentiment": -0.7,
+                "confidence": 0.8,
+                "published_at": "2026-05-01T10:00:00",
+                "source": "Reuters",
+            },
+            {
+                "category": "macro",
+                "headline": "Fed dovish",
+                "sentiment": 0.6,
+                "confidence": 0.7,
+                "published_at": "2026-05-02T10:00:00",
+                "source": "Bloomberg",
+            },
+            {
+                "category": "macro",
+                "headline": "Inflation data",
+                "sentiment": -0.5,
+                "confidence": 0.6,
+                "published_at": "2026-05-03T10:00:00",
+                "source": "WSJ",
+            },
+        ]
+        monkeypatch.setattr(
+            "nuri.api.routes.actions.query",
+            lambda *a, **kw: rows_returned,
+        )
+        result = act_mod._get_macro_events()
+        # 같은 카테고리 3개 이상 skip → 2개만
+        assert len(result) == 2
+        assert all("category_ko" in r for r in result)
+
+    def test_portfolio_map_taxable_then_pension_skipped(self, monkeypatch):
+        """taxable row 먼저 → pension row 는 skip (line 610)."""
+        from nuri.api.routes.actions import _get_portfolio_map
+
+        rows = [
+            {
+                "account": "Main",
+                "ticker": "Z",
+                "quantity": 10,
+                "avg_price": 100,
+                "currency": "USD",
+                "current_price": 90,
+            },  # -10% taxable first
+            {
+                "account": "연금",
+                "ticker": "Z",
+                "quantity": 5,
+                "avg_price": 100,
+                "currency": "USD",
+                "current_price": 50,
+            },  # -50% pension second — should be skipped (line 610)
+        ]
+
+        def _query(sql, params=None, **kw):
+            s = " ".join(sql.split())
+            if "SELECT p.account" in s:
+                return rows
+            if "indicator" in s.lower():
+                return [{"value": 1400}]
+            return []
+
+        with (
+            patch("nuri.api.routes.actions.query", side_effect=_query),
+            patch("nuri.api.routes.actions._get_real_accounts", return_value=set()),
+            patch("nuri.api.routes.dashboard._get_account_labels", return_value={}),
+        ):
+            result = _get_portfolio_map()
+
+        # taxable row 우세 — pension 의 worse pnl 은 무시됨
+        assert result["Z"]["pnl_pct"] == pytest.approx(-10.0)
+        assert result["Z"]["account"] == "Main"

@@ -14,6 +14,7 @@ SIEGE gate #6 (leverage_ban) 완화 가능성을 데이터로 평가한다.
 사용법:
     python -m nuri.quant.backtest.leverage_study
 """
+
 import argparse
 import logging
 from pathlib import Path
@@ -45,6 +46,7 @@ def _load_prices(ticker: str, db_path: Optional[Path] = None) -> pd.DataFrame:
     # yfinance 폴백 (테스트에서는 conftest가 mock)
     logger.info(f"{ticker}: DB에 가격 없음, yfinance 폴백 시도")
     import yfinance as yf
+
     raw = yf.download(ticker, period="2y", progress=False)
     if raw.empty:
         return pd.DataFrame(columns=["close"])
@@ -255,7 +257,7 @@ def scenario_max_hold(
                 in_position = False
                 cooldown = True
                 days_held = 0
-        else:
+        else:  # pragma: no cover — defensive: 다음 step cooldown 분기 처리 (in_position=False & cooldown=False) 자연 도달 불가
             positions.append(False)
 
     pos_mask = pd.Series(positions, index=lev_returns.index)
@@ -333,15 +335,19 @@ def print_study(results: dict) -> None:
         print(f"\n  --- {scenario['scenario']} ---")
         if "underlying" in scenario:
             u = scenario["underlying"]
-            print(f"  [{results['underlying_ticker']}] 수익: {u['total_return_pct']:+.2f}%  "
-                  f"MDD: {u['max_drawdown_pct']:.2f}%  Sharpe: {u['sharpe_ratio']:.2f}")
+            print(
+                f"  [{results['underlying_ticker']}] 수익: {u['total_return_pct']:+.2f}%  "
+                f"MDD: {u['max_drawdown_pct']:.2f}%  Sharpe: {u['sharpe_ratio']:.2f}"
+            )
 
         lev = scenario.get("leveraged", {})
         if lev:
-            print(f"  [{results['leveraged_ticker']}] 수익: {lev.get('total_return_pct', 0):+.2f}%  "
-                  f"MDD: {lev.get('max_drawdown_pct', 0):.2f}%  "
-                  f"Sharpe: {lev.get('sharpe_ratio', 0):.2f}  "
-                  f"Vol: {lev.get('annual_volatility_pct', 0):.1f}%")
+            print(
+                f"  [{results['leveraged_ticker']}] 수익: {lev.get('total_return_pct', 0):+.2f}%  "
+                f"MDD: {lev.get('max_drawdown_pct', 0):.2f}%  "
+                f"Sharpe: {lev.get('sharpe_ratio', 0):.2f}  "
+                f"Vol: {lev.get('annual_volatility_pct', 0):.1f}%"
+            )
 
         if "volatility_decay_pct" in scenario:
             print(f"  변동성 감쇠(decay): {scenario['volatility_decay_pct']:+.2f}%")
@@ -351,7 +357,7 @@ def print_study(results: dict) -> None:
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(description="레버리지 ETF 조건부 허용 연구")

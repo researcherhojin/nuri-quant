@@ -328,7 +328,7 @@ class UniverseSyncCollector(BaseCollector):
         return total_changes
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant Universe Sync (#272 Phase 2a)")

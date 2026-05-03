@@ -6,6 +6,7 @@ JSON API 우선, 실패 시 HTML 스크래핑 폴백.
 사용법:
     python -m nuri.collectors.fear_greed
 """
+
 import logging
 
 import requests
@@ -52,12 +53,14 @@ class FearGreedCollector(BaseCollector):
             fg = data["fear_and_greed"]
             score = fg.get("score", fg.get("value"))
             if score is not None:
-                records.append({
-                    "indicator": "fear_greed",
-                    "date": today,
-                    "value": float(score),
-                    "source": "CNN",
-                })
+                records.append(
+                    {
+                        "indicator": "fear_greed",
+                        "date": today,
+                        "value": float(score),
+                        "source": "CNN",
+                    }
+                )
                 rating = fg.get("rating", "")
                 self.logger.info(f"Fear & Greed: {score:.1f} ({rating})")
 
@@ -75,12 +78,14 @@ class FearGreedCollector(BaseCollector):
         score_elem = soup.find("text", class_="market-fng-gauge__dial-number-value")
         if score_elem:
             score = float(score_elem.text.strip())
-            return [{
-                "indicator": "fear_greed",
-                "date": today_str(),
-                "value": score,
-                "source": "CNN_scrape",
-            }]
+            return [
+                {
+                    "indicator": "fear_greed",
+                    "date": today_str(),
+                    "value": score,
+                    "source": "CNN_scrape",
+                }
+            ]
 
         self.logger.warning("HTML에서 Fear & Greed 점수를 찾지 못함")
         return []
@@ -90,7 +95,7 @@ class FearGreedCollector(BaseCollector):
         return upsert_macro(data)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",

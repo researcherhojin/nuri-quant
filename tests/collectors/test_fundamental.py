@@ -19,6 +19,7 @@ def _block_kis_live_calls(monkeypatch):
     KIS-specific test (TestKISFundamentalBranch) 는 자체 monkeypatch 로 override.
     """
     from nuri.collectors.fundamental import FundamentalCollector
+
     monkeypatch.setattr(FundamentalCollector, "_collect_kr_via_kis", lambda self, kr, today: [])
 
 
@@ -433,8 +434,11 @@ class TestKISFundamentalBranch:
                 "lstn_stcn": str(shares),
                 "per": str(per) if per is not None else "0",
                 "pbr": str(pbr) if pbr is not None else "0",
-                "stck_oprc": "220000", "stck_hgpr": "224000", "stck_lwpr": "219000",
-                "acml_vol": "12345678", "stck_sdpr": "221000",
+                "stck_oprc": "220000",
+                "stck_hgpr": "224000",
+                "stck_lwpr": "219000",
+                "acml_vol": "12345678",
+                "stck_sdpr": "221000",
             },
         }
 
@@ -448,13 +452,16 @@ class TestKISFundamentalBranch:
         def stub_get(url, headers=None, params=None, timeout=10):
             class R:
                 status_code = 200
+
                 def json(self):
                     return response_data
+
             return R()
 
         monkeypatch.setattr("requests.get", stub_get)
 
         from types import SimpleNamespace
+
         creds = SimpleNamespace(base_url="https://x", app_key="k", app_secret="s")
         record = fund_mod._fetch_kis_kr("005930.KS", creds, "TOKEN", "2026-04-29")
 
@@ -477,8 +484,10 @@ class TestKISFundamentalBranch:
         def stub_get(url, headers=None, params=None, timeout=10):
             class R:
                 status_code = 200
+
                 def json(self):
                     return response_data
+
             return R()
 
         monkeypatch.setattr("requests.get", stub_get)
@@ -500,8 +509,10 @@ class TestKISFundamentalBranch:
         def stub_get(url, headers=None, params=None, timeout=10):
             class R:
                 status_code = 500
+
                 def json(self):
                     return {}
+
             return R()
 
         monkeypatch.setattr("requests.get", stub_get)
@@ -545,11 +556,13 @@ class TestKISFundamentalBranch:
         # KIS stub — 005930.KS 에 정확한 trailing pe/pbr 제공
         def stub_kis(self, kr_tickers, today):
             from nuri.collectors.fundamental import _kis_record_skeleton
+
             r = _kis_record_skeleton("005930.KS", today)
             r["pe_ratio"] = 33.94
             r["price_to_book"] = 3.48
             r["market_cap"] = 1.3e15
             return [r]
+
         monkeypatch.setattr(FundamentalCollector, "_collect_kr_via_kis", stub_kis)
 
         # yfinance stub — KR 도 yfinance loop 거침 (forward_pe/roe/etc 채움)
@@ -561,12 +574,12 @@ class TestKISFundamentalBranch:
                 if t == "005930.KS":
                     self.info = {
                         "regularMarketPrice": 222500.0,
-                        "trailingPE": 5.27,             # yfinance forward-derived (misleading per #465)
-                        "priceToBook": None,            # yfinance KR limit
-                        "returnOnEquity": 0.108,        # 10.8% — 보존 대상
-                        "revenueGrowth": 0.238,         # 23.8% — 보존 대상
-                        "profitMargins": 0.133,         # 13.3% — 보존 대상
-                        "debtToEquity": 6.0,            # — 보존 대상
+                        "trailingPE": 5.27,  # yfinance forward-derived (misleading per #465)
+                        "priceToBook": None,  # yfinance KR limit
+                        "returnOnEquity": 0.108,  # 10.8% — 보존 대상
+                        "revenueGrowth": 0.238,  # 23.8% — 보존 대상
+                        "profitMargins": 0.133,  # 13.3% — 보존 대상
+                        "debtToEquity": 6.0,  # — 보존 대상
                     }
                 else:
                     self.info = {
@@ -578,6 +591,7 @@ class TestKISFundamentalBranch:
         mock_yf = MagicMock()
         mock_yf.Ticker = _FakeTicker
         import sys
+
         monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
 
         results = c.collect(source="universe")
@@ -595,6 +609,12 @@ class TestKISFundamentalBranch:
         assert kr_record["revenue_growth"] == pytest.approx(0.238)
         assert kr_record["profit_margin"] == pytest.approx(0.133)
 
+    def test_save_empty_returns_zero(self):
+        """save([]) → 0 (line 341)."""
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        assert FundamentalCollector().save([]) == 0
+
     def test_collect_kis_only_record_when_yfinance_fails(self, monkeypatch, db_with_portfolio):
         """KIS 가 채운 KR ticker 가 yfinance fetch 실패 시 KIS record 단독으로 results 포함."""
         from nuri.collectors.fundamental import FundamentalCollector
@@ -604,10 +624,12 @@ class TestKISFundamentalBranch:
 
         def stub_kis(self, kr_tickers, today):
             from nuri.collectors.fundamental import _kis_record_skeleton
+
             r = _kis_record_skeleton("005930.KS", today)
             r["pe_ratio"] = 33.94
             r["price_to_book"] = 3.48
             return [r]
+
         monkeypatch.setattr(FundamentalCollector, "_collect_kr_via_kis", stub_kis)
 
         # yfinance fail (info 빈 dict — skipped)
@@ -616,6 +638,7 @@ class TestKISFundamentalBranch:
         mock_yf = MagicMock()
         mock_yf.Ticker.return_value = mock_ticker
         import sys
+
         monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
 
         results = c.collect(source="universe")

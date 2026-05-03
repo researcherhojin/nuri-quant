@@ -118,7 +118,7 @@ def save_composite(df: pd.DataFrame) -> int:
     return len(rows)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO)
     df = compute_composite()
     print_composite(df)

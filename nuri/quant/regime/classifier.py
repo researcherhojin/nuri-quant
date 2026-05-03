@@ -96,7 +96,7 @@ def compute_dynamic_thresholds(db_path=None, date: str | None = None) -> dict:
             bb_std = close.rolling(20).std()
             bb_width = (4 * bb_std / sma20 * 100).dropna()
             bb_median = float(bb_width.tail(LOOKBACK_WINDOW).median()) if len(bb_width) >= 50 else 6.0
-        else:
+        else:  # pragma: no cover — defensive: 250+ 행 + sma200(199) → gap_pct 항상 ≥51, 도달 불가
             sideways_threshold = 2.0
             bb_median = 6.0
     else:
@@ -276,7 +276,7 @@ def _detect_recovery(spy_df: pd.DataFrame) -> bool:
 
     # 200일 전 시점 확인
     past_idx = len(spy_df) - 200
-    if past_idx < 0:
+    if past_idx < 0:  # pragma: no cover — defensive: line 267 가 < 250 차단, 도달 불가
         return False
     past = spy_df.iloc[past_idx]
     sma50_past = past.get("sma50")
@@ -417,7 +417,7 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
             vol_counts = Counter(recent_vols)
             trend = trend_counts.most_common(1)[0][0]
             volatility = vol_counts.most_common(1)[0][0]
-        else:
+        else:  # pragma: no cover — defensive: latest sma valid 진입 조건이 hysteresis loop iloc[-1] 포함 보장, recent_trends 항상 ≥1
             trend, volatility = _classify_single(close, sma50, sma200, vix, bb_width, thresholds)
     else:
         trend, volatility = _classify_single(close, sma50, sma200, vix, bb_width, thresholds)
@@ -630,7 +630,7 @@ def print_history(history: list[RegimeState]) -> None:
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 시장 레짐 분류기")

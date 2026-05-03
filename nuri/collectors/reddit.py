@@ -7,6 +7,7 @@ Arctic Shift는 Reddit 데이터의 무료 아카이브 API (인증 불필요).
 사용법:
     python -m nuri.collectors.reddit
 """
+
 import logging
 import re
 from collections import Counter
@@ -24,14 +25,96 @@ _HEADERS = {"User-Agent": "nuri-quant/0.1 (investment research)"}
 
 # WSB에서 노이즈로 무시할 일반 단어 (ticker와 혼동 방지)
 _TICKER_NOISE = {
-    "A", "I", "AM", "AN", "AS", "AT", "BE", "BY", "DO", "GO", "IF", "IN", "IS", "IT",
-    "ME", "MY", "NO", "OF", "ON", "OR", "PM", "SO", "TO", "UP", "US", "WE",
-    "ALL", "ARE", "CAN", "CEO", "DD", "EPS", "ETF", "FOR", "GDP", "HAS", "IMO",
-    "IPO", "IRS", "LLC", "LOL", "NOW", "OLD", "ONE", "OTC", "OUT", "PUT", "SEC",
-    "THE", "TOP", "USA", "WSB", "YOY", "ATH", "DCA", "FED", "OTM", "ITM",
-    "RIP", "TBH", "FYI", "PSA", "NOT", "BUT", "HOW", "NEW", "TWO", "WAY", "ANY",
-    "APE", "BAD", "BIG", "BUY", "DAY", "DIP", "FUD", "GAP", "HIT", "KEY", "LOW",
-    "MAX", "MOM", "OWN", "PAY", "RUN", "SAY", "SET", "TAX", "TIP", "WIN",
+    "A",
+    "I",
+    "AM",
+    "AN",
+    "AS",
+    "AT",
+    "BE",
+    "BY",
+    "DO",
+    "GO",
+    "IF",
+    "IN",
+    "IS",
+    "IT",
+    "ME",
+    "MY",
+    "NO",
+    "OF",
+    "ON",
+    "OR",
+    "PM",
+    "SO",
+    "TO",
+    "UP",
+    "US",
+    "WE",
+    "ALL",
+    "ARE",
+    "CAN",
+    "CEO",
+    "DD",
+    "EPS",
+    "ETF",
+    "FOR",
+    "GDP",
+    "HAS",
+    "IMO",
+    "IPO",
+    "IRS",
+    "LLC",
+    "LOL",
+    "NOW",
+    "OLD",
+    "ONE",
+    "OTC",
+    "OUT",
+    "PUT",
+    "SEC",
+    "THE",
+    "TOP",
+    "USA",
+    "WSB",
+    "YOY",
+    "ATH",
+    "DCA",
+    "FED",
+    "OTM",
+    "ITM",
+    "RIP",
+    "TBH",
+    "FYI",
+    "PSA",
+    "NOT",
+    "BUT",
+    "HOW",
+    "NEW",
+    "TWO",
+    "WAY",
+    "ANY",
+    "APE",
+    "BAD",
+    "BIG",
+    "BUY",
+    "DAY",
+    "DIP",
+    "FUD",
+    "GAP",
+    "HIT",
+    "KEY",
+    "LOW",
+    "MAX",
+    "MOM",
+    "OWN",
+    "PAY",
+    "RUN",
+    "SAY",
+    "SET",
+    "TAX",
+    "TIP",
+    "WIN",
 }
 
 # 티커 패턴: $ 접두사 또는 대문자 1-5자
@@ -69,46 +152,55 @@ class RedditCollector(BaseCollector):
         records = []
 
         # 전체 WSB 포스트 수 (시장 활동 지표)
-        records.append({
-            "indicator": "wsb_post_count",
-            "date": today,
-            "value": float(len(posts)),
-            "source": "Reddit_WSB",
-        })
+        records.append(
+            {
+                "indicator": "wsb_post_count",
+                "date": today,
+                "value": float(len(posts)),
+                "source": "Reddit_WSB",
+            }
+        )
 
         # 보유 종목 중 WSB 언급 종목 수
         mentioned_held = sum(1 for t in held_tickers if mention_counts.get(t, 0) > 0)
-        records.append({
-            "indicator": "wsb_held_mentions",
-            "date": today,
-            "value": float(mentioned_held),
-            "source": "Reddit_WSB",
-        })
+        records.append(
+            {
+                "indicator": "wsb_held_mentions",
+                "date": today,
+                "value": float(mentioned_held),
+                "source": "Reddit_WSB",
+            }
+        )
 
         # 상위 10 종목 언급 빈도 (보유 종목 한정)
         top_mentions = sorted(
             [(t, c) for t, c in mention_counts.items() if t in held_tickers and c > 0],
-            key=lambda x: x[1], reverse=True,
+            key=lambda x: x[1],
+            reverse=True,
         )[:10]
 
         for ticker, count in top_mentions:
-            records.append({
-                "indicator": f"wsb_mention_{ticker}",
-                "date": today,
-                "value": float(count),
-                "source": "Reddit_WSB",
-            })
+            records.append(
+                {
+                    "indicator": f"wsb_mention_{ticker}",
+                    "date": today,
+                    "value": float(count),
+                    "source": "Reddit_WSB",
+                }
+            )
             self.logger.info("WSB %s: %d mentions", ticker, count)
 
         # 전체 상위 10 (시장 관심 지표 — 티커를 indicator에 포함)
         all_top = mention_counts.most_common(10)
         for rank, (ticker, count) in enumerate(all_top, 1):
-            records.append({
-                "indicator": f"wsb_top{rank}_{ticker}",
-                "date": today,
-                "value": float(count),
-                "source": "Reddit_WSB",
-            })
+            records.append(
+                {
+                    "indicator": f"wsb_top{rank}_{ticker}",
+                    "date": today,
+                    "value": float(count),
+                    "source": "Reddit_WSB",
+                }
+            )
 
         self.logger.info("WSB 분석: %d 포스트, 보유종목 %d개 언급", len(posts), mentioned_held)
         return records
@@ -116,6 +208,7 @@ class RedditCollector(BaseCollector):
     def _fetch_posts(self, days: int = 1) -> list[dict]:
         """Arctic Shift API에서 WSB 포스트 가져오기 (페이징, 최대 500건)."""
         from nuri.core.timezone import kst_now
+
         after = kst_now().replace(tzinfo=None) - timedelta(days=days)
         after_epoch = int(after.timestamp())
 
@@ -167,7 +260,7 @@ class RedditCollector(BaseCollector):
         return upsert_macro(data)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
