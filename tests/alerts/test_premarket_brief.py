@@ -18,19 +18,46 @@ import pytest
 
 @pytest.fixture
 def empty_db_ctx():
-    """모든 subsystem helper 를 빈 결과로 mock."""
-    with (
-        patch("nuri.quant.regime.classifier.classify_regime", return_value=None),
-        patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=RuntimeError("no macro")),
-        patch("nuri.trading.engine.certification.certify", side_effect=RuntimeError("no certify")),
-        patch(
-            "nuri.api.routes.actions._build_actions",
-            return_value={"urgent": [], "portfolio": [], "check": [], "hold": []},
-        ),
-        patch("nuri.api.routes.actions._build_opportunities", return_value=[]),
-        patch("nuri.core.db.query", return_value=[]),
-    ):
-        yield
+    """모든 subsystem helper 를 빈 결과로 mock.
+
+    Pre-import lazy-imported modules BEFORE applying patches — `_collect_context`
+    가 함수 안에서 `from nuri.quant.validation.market_signals import detect_all`
+    하면, patch 활성 상태에서 market_signals 모듈이 처음 로드되며 그 안의
+    `from nuri.core.db import query` 가 MOCK query 를 캡처. patch 종료 후 db.query
+    는 복원되지만 market_signals.query 는 mock 으로 stuck → 후속 테스트의
+    market_signals 호출이 모두 빈 결과 반환 (#test isolation bug).
+    """
+    # 강제 사전 import — 모든 lazy-loaded module 의 query 바인딩을 real 로 고정
+    import nuri.api.routes.actions  # noqa: F401
+
+    # query rebound 방어 — patch 후 모듈 query 가 mock 으로 stuck 되는 케이스 복원
+    import nuri.core.db as _db_mod
+    import nuri.quant.regime.classifier  # noqa: F401
+    import nuri.quant.regime.macro_score  # noqa: F401
+    import nuri.quant.validation.market_signals  # noqa: F401
+    import nuri.trading.engine.certification  # noqa: F401
+
+    _real_query = _db_mod.query
+    _ms_orig_query = nuri.quant.validation.market_signals.query
+
+    try:
+        with (
+            patch("nuri.quant.regime.classifier.classify_regime", return_value=None),
+            patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=RuntimeError("no macro")),
+            patch("nuri.trading.engine.certification.certify", side_effect=RuntimeError("no certify")),
+            patch(
+                "nuri.api.routes.actions._build_actions",
+                return_value={"urgent": [], "portfolio": [], "check": [], "hold": []},
+            ),
+            patch("nuri.api.routes.actions._build_opportunities", return_value=[]),
+            patch("nuri.core.db.query", return_value=[]),
+        ):
+            yield
+    finally:
+        # market_signals.query 가 patch 동안 mock 으로 rebound 되었을 수 있음 — 강제 복원
+        nuri.quant.validation.market_signals.query = _ms_orig_query
+        # db_mod.query 는 patch 가 자체 복원하지만, 방어적 lock
+        _db_mod.query = _real_query
 
 
 class TestContextCollection:

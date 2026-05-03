@@ -9,6 +9,7 @@
 사용법:
     python -m nuri.analysis.evidence_charts
 """
+
 import logging
 from pathlib import Path
 
@@ -34,8 +35,7 @@ def generate_regime_chart(output_dir: Path, db_path=None) -> Path:
     """SPY 캔들스틱 + SMA50/200 + 레짐 영역 + VIX 서브플롯."""
     # SPY 가격 (1년)
     spy = query_df(
-        "SELECT date, open, high, low, close, volume FROM prices "
-        "WHERE ticker='SPY' ORDER BY date DESC LIMIT 252",
+        "SELECT date, open, high, low, close, volume FROM prices WHERE ticker='SPY' ORDER BY date DESC LIMIT 252",
         db_path=db_path,
     )
     if spy.empty:
@@ -60,34 +60,56 @@ def generate_regime_chart(output_dir: Path, db_path=None) -> Path:
     regime = classify_regime(db_path=db_path)
 
     fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True,
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
         vertical_spacing=0.08,
         row_heights=[0.7, 0.3],
         subplot_titles=["SPY 캔들스틱 + 이동평균", "VIX 변동성 지수"],
     )
 
     # 캔들스틱
-    fig.add_trace(go.Candlestick(
-        x=spy["date"], open=spy["open"], high=spy["high"],
-        low=spy["low"], close=spy["close"], name="SPY",
-        increasing=dict(line=dict(color="#26a69a"), fillcolor="#26a69a"),
-        decreasing=dict(line=dict(color="#ef5350"), fillcolor="#ef5350"),
-    ), row=1, col=1)
+    fig.add_trace(
+        go.Candlestick(
+            x=spy["date"],
+            open=spy["open"],
+            high=spy["high"],
+            low=spy["low"],
+            close=spy["close"],
+            name="SPY",
+            increasing=dict(line=dict(color="#26a69a"), fillcolor="#26a69a"),
+            decreasing=dict(line=dict(color="#ef5350"), fillcolor="#ef5350"),
+        ),
+        row=1,
+        col=1,
+    )
 
     # SMA50 / SMA200
     sma50_valid = spy.dropna(subset=["sma50"])
     if not sma50_valid.empty:
-        fig.add_trace(go.Scatter(
-            x=sma50_valid["date"], y=sma50_valid["sma50"],
-            name="SMA 50", line=dict(color="#42a5f5", width=1.5),
-        ), row=1, col=1)
+        fig.add_trace(
+            go.Scatter(
+                x=sma50_valid["date"],
+                y=sma50_valid["sma50"],
+                name="SMA 50",
+                line=dict(color="#42a5f5", width=1.5),
+            ),
+            row=1,
+            col=1,
+        )
 
     sma200_valid = spy.dropna(subset=["sma200"])
     if not sma200_valid.empty:
-        fig.add_trace(go.Scatter(
-            x=sma200_valid["date"], y=sma200_valid["sma200"],
-            name="SMA 200", line=dict(color="#ab47bc", width=2),
-        ), row=1, col=1)
+        fig.add_trace(
+            go.Scatter(
+                x=sma200_valid["date"],
+                y=sma200_valid["sma200"],
+                name="SMA 200",
+                line=dict(color="#ab47bc", width=2),
+            ),
+            row=1,
+            col=1,
+        )
 
     # 레짐 영역 음영 (SMA50 vs SMA200 관계로 구간 착색)
     _shade_regime_zones(fig, spy)
@@ -102,7 +124,8 @@ def generate_regime_chart(output_dir: Path, db_path=None) -> Path:
             f"(신뢰도 {regime.confidence:.0%})"
         )
         fig.add_annotation(
-            x=spy["date"].iloc[-1], y=spy["high"].max(),
+            x=spy["date"].iloc[-1],
+            y=spy["high"].max(),
             text=regime_text,
             showarrow=False,
             font=dict(size=14, color="#ffd54f"),
@@ -110,21 +133,27 @@ def generate_regime_chart(output_dir: Path, db_path=None) -> Path:
             bordercolor="#ffd54f",
             borderwidth=1,
             xanchor="right",
-            row=1, col=1,
+            row=1,
+            col=1,
         )
 
     # VIX 서브플롯
     if not vix.empty:
-        fig.add_trace(go.Scatter(
-            x=vix["date"], y=vix["value"],
-            name="VIX", line=dict(color="#ff7043", width=1.5),
-            fill="tozeroy", fillcolor="rgba(255,112,67,0.15)",
-        ), row=2, col=1)
+        fig.add_trace(
+            go.Scatter(
+                x=vix["date"],
+                y=vix["value"],
+                name="VIX",
+                line=dict(color="#ff7043", width=1.5),
+                fill="tozeroy",
+                fillcolor="rgba(255,112,67,0.15)",
+            ),
+            row=2,
+            col=1,
+        )
         # 경계선
-        fig.add_hline(y=20, line_dash="dot", line_color="#ffd54f",
-                      opacity=0.5, row=2, col=1)
-        fig.add_hline(y=30, line_dash="dot", line_color="#ef5350",
-                      opacity=0.5, row=2, col=1)
+        fig.add_hline(y=20, line_dash="dot", line_color="#ffd54f", opacity=0.5, row=2, col=1)
+        fig.add_hline(y=30, line_dash="dot", line_color="#ef5350", opacity=0.5, row=2, col=1)
 
     fig.update_layout(
         template="plotly_dark",
@@ -170,10 +199,13 @@ def _shade_regime_zones(fig: go.Figure, spy: pd.DataFrame) -> None:
         if zone != prev_zone:
             if prev_zone is not None and zone_start is not None:
                 fig.add_vrect(
-                    x0=zone_start, x1=row["date"],
+                    x0=zone_start,
+                    x1=row["date"],
                     fillcolor=zone_colors[prev_zone],
-                    layer="below", line_width=0,
-                    row=1, col=1,
+                    layer="below",
+                    line_width=0,
+                    row=1,
+                    col=1,
                 )
             zone_start = row["date"]
             prev_zone = zone
@@ -181,10 +213,13 @@ def _shade_regime_zones(fig: go.Figure, spy: pd.DataFrame) -> None:
     # 마지막 영역
     if prev_zone is not None and zone_start is not None:
         fig.add_vrect(
-            x0=zone_start, x1=df["date"].iloc[-1],
+            x0=zone_start,
+            x1=df["date"].iloc[-1],
             fillcolor=zone_colors[prev_zone],
-            layer="below", line_width=0,
-            row=1, col=1,
+            layer="below",
+            line_width=0,
+            row=1,
+            col=1,
         )
 
 
@@ -206,17 +241,24 @@ def generate_portfolio_heatmap(output_dir: Path, db_path=None) -> Path:
         return output_path
 
     # 종목별 합산 (다계좌 동일 종목)
-    grouped = df.groupby("ticker").agg({
-        "current_value_usd": "sum",
-        "pnl_pct": "mean",
-        "weight_pct": "sum",
-        "sector": "first",
-    }).reset_index()
+    grouped = (
+        df.groupby("ticker")
+        .agg(
+            {
+                "current_value_usd": "sum",
+                "pnl_pct": "mean",
+                "weight_pct": "sum",
+                "sector": "first",
+            }
+        )
+        .reset_index()
+    )
 
     # 위반 감지 (config/rules.yaml 기준)
     from nuri.core.rules import MAX_SINGLE_POSITION, PORTFOLIO_STOP
+
     max_single = MAX_SINGLE_POSITION  # 0.15 (15%)
-    stop_loss = PORTFOLIO_STOP        # -10
+    stop_loss = PORTFOLIO_STOP  # -10
     violations = []
     border_colors = []
 
@@ -232,9 +274,7 @@ def generate_portfolio_heatmap(output_dir: Path, db_path=None) -> Path:
 
     # 라벨
     labels = [
-        f"{row['ticker']}<br>"
-        f"손익: {row['pnl_pct']:+.1f}%<br>"
-        f"비중: {row['weight_pct']:.1f}%"
+        f"{row['ticker']}<br>손익: {row['pnl_pct']:+.1f}%<br>비중: {row['weight_pct']:.1f}%"
         for _, row in grouped.iterrows()
     ]
 
@@ -242,40 +282,41 @@ def generate_portfolio_heatmap(output_dir: Path, db_path=None) -> Path:
     pnl_values = grouped["pnl_pct"].values
     abs_max = max(abs(pnl_values.min()), abs(pnl_values.max()), 1)
 
-    fig = go.Figure(go.Treemap(
-        labels=labels,
-        parents=[""] * len(grouped),
-        values=grouped["current_value_usd"].clip(lower=1).values,
-        marker=dict(
-            colors=pnl_values,
-            colorscale=[
-                [0.0, "#d32f2f"],      # 큰 손실: 진한 빨강
-                [0.35, "#ef5350"],     # 손실: 빨강
-                [0.5, "#616161"],      # 0%: 회색
-                [0.65, "#66bb6a"],     # 이익: 초록
-                [1.0, "#2e7d32"],      # 큰 이익: 진한 초록
-            ],
-            cmid=0,
-            cmin=-abs_max,
-            cmax=abs_max,
-            colorbar=dict(title="손익 %", ticksuffix="%"),
-            line=dict(width=2),
-        ),
-        textinfo="label",
-        textfont=dict(size=12),
-        hovertemplate=(
-            "<b>%{label}</b><br>"
-            "가치: $%{value:,.0f}<extra></extra>"
-        ),
-    ))
+    fig = go.Figure(
+        go.Treemap(
+            labels=labels,
+            parents=[""] * len(grouped),
+            values=grouped["current_value_usd"].clip(lower=1).values,
+            marker=dict(
+                colors=pnl_values,
+                colorscale=[
+                    [0.0, "#d32f2f"],  # 큰 손실: 진한 빨강
+                    [0.35, "#ef5350"],  # 손실: 빨강
+                    [0.5, "#616161"],  # 0%: 회색
+                    [0.65, "#66bb6a"],  # 이익: 초록
+                    [1.0, "#2e7d32"],  # 큰 이익: 진한 초록
+                ],
+                cmid=0,
+                cmin=-abs_max,
+                cmax=abs_max,
+                colorbar=dict(title="손익 %", ticksuffix="%"),
+                line=dict(width=2),
+            ),
+            textinfo="label",
+            textfont=dict(size=12),
+            hovertemplate=("<b>%{label}</b><br>가치: $%{value:,.0f}<extra></extra>"),
+        )
+    )
 
     # 위반 종목 주석
     if violations:
         violation_text = "위반 종목: " + ", ".join(violations)
         fig.add_annotation(
             text=violation_text,
-            xref="paper", yref="paper",
-            x=0.5, y=-0.05,
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=-0.05,
             showarrow=False,
             font=dict(size=12, color="#ef5350"),
         )
@@ -324,37 +365,43 @@ def generate_signal_performance_chart(output_dir: Path, db_path=None) -> Path:
         sig_id = row["signal_id"]
         drift = drift_map.get(sig_id, {}).get("status", "stable")
         if drift == "critical":
-            colors.append("#ef5350")    # 빨강
+            colors.append("#ef5350")  # 빨강
         elif drift == "degrading":
-            colors.append("#ff9800")    # 주황
+            colors.append("#ff9800")  # 주황
         else:
-            colors.append("#42a5f5")    # 파랑 (정상)
+            colors.append("#42a5f5")  # 파랑 (정상)
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     # 승률 바 차트
-    fig.add_trace(go.Bar(
-        y=total["signal_id"],
-        x=total["win_rate"],
-        orientation="h",
-        name="승률",
-        marker_color=colors,
-        text=[f"{wr:.0%}" for wr in total["win_rate"]],
-        textposition="auto",
-        hovertemplate="시그널: %{y}<br>승률: %{x:.1%}<extra></extra>",
-    ), secondary_y=False)
+    fig.add_trace(
+        go.Bar(
+            y=total["signal_id"],
+            x=total["win_rate"],
+            orientation="h",
+            name="승률",
+            marker_color=colors,
+            text=[f"{wr:.0%}" for wr in total["win_rate"]],
+            textposition="auto",
+            hovertemplate="시그널: %{y}<br>승률: %{x:.1%}<extra></extra>",
+        ),
+        secondary_y=False,
+    )
 
     # 이익계수 라인 (보조 Y축)
     pf = total["profit_factor"].clip(upper=10)  # 극단값 제한
-    fig.add_trace(go.Scatter(
-        y=total["signal_id"],
-        x=pf,
-        mode="lines+markers",
-        name="이익계수 (PF)",
-        line=dict(color="#ffd54f", width=2),
-        marker=dict(size=8),
-        hovertemplate="시그널: %{y}<br>PF: %{x:.2f}<extra></extra>",
-    ), secondary_y=True)
+    fig.add_trace(
+        go.Scatter(
+            y=total["signal_id"],
+            x=pf,
+            mode="lines+markers",
+            name="이익계수 (PF)",
+            line=dict(color="#ffd54f", width=2),
+            marker=dict(size=8),
+            hovertemplate="시그널: %{y}<br>PF: %{x:.2f}<extra></extra>",
+        ),
+        secondary_y=True,
+    )
 
     # critical/degrading 마커
     for _, row in total.iterrows():
@@ -364,7 +411,8 @@ def generate_signal_performance_chart(output_dir: Path, db_path=None) -> Path:
             marker_color = "#ef5350" if drift == "critical" else "#ff9800"
             label = "성과 급락" if drift == "critical" else "성과 하락"
             fig.add_annotation(
-                y=sig_id, x=row["win_rate"],
+                y=sig_id,
+                x=row["win_rate"],
                 text=f" {label}",
                 showarrow=False,
                 font=dict(size=10, color=marker_color),
@@ -398,8 +446,7 @@ def generate_fear_greed_chart(output_dir: Path, db_path=None) -> Path:
     output_path = output_dir / "fear_greed.html"
 
     fg = query_df(
-        "SELECT date, value FROM macro WHERE indicator='fear_greed' "
-        "ORDER BY date DESC LIMIT 90",
+        "SELECT date, value FROM macro WHERE indicator='fear_greed' ORDER BY date DESC LIMIT 90",
         db_path=db_path,
     )
     if fg.empty:
@@ -422,7 +469,8 @@ def generate_fear_greed_chart(output_dir: Path, db_path=None) -> Path:
     ]
     for y0, y1, label, color in zones:
         fig.add_hrect(
-            y0=y0, y1=y1,
+            y0=y0,
+            y1=y1,
             fillcolor=color,
             layer="below",
             line_width=0,
@@ -432,15 +480,18 @@ def generate_fear_greed_chart(output_dir: Path, db_path=None) -> Path:
         )
 
     # 라인
-    fig.add_trace(go.Scatter(
-        x=fg["date"], y=fg["value"],
-        mode="lines",
-        name="공포·탐욕 지수",
-        line=dict(color="#ffd54f", width=2.5),
-        fill="tozeroy",
-        fillcolor="rgba(255,213,79,0.08)",
-        hovertemplate="날짜: %{x|%Y-%m-%d}<br>지수: %{y:.0f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=fg["date"],
+            y=fg["value"],
+            mode="lines",
+            name="공포·탐욕 지수",
+            line=dict(color="#ffd54f", width=2.5),
+            fill="tozeroy",
+            fillcolor="rgba(255,213,79,0.08)",
+            hovertemplate="날짜: %{x|%Y-%m-%d}<br>지수: %{y:.0f}<extra></extra>",
+        )
+    )
 
     # 현재 값 강조
     current_value = fg["value"].iloc[-1]
@@ -463,16 +514,19 @@ def generate_fear_greed_chart(output_dir: Path, db_path=None) -> Path:
         dot_color = "#42a5f5"
         status = "극단적 탐욕"
 
-    fig.add_trace(go.Scatter(
-        x=[current_date], y=[current_value],
-        mode="markers+text",
-        name="현재",
-        marker=dict(size=16, color=dot_color, line=dict(width=2, color="white")),
-        text=[f"{current_value:.0f}"],
-        textposition="top center",
-        textfont=dict(size=14, color=dot_color),
-        hovertemplate=f"현재: {current_value:.0f} ({status})<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=[current_date],
+            y=[current_value],
+            mode="markers+text",
+            name="현재",
+            marker=dict(size=16, color=dot_color, line=dict(width=2, color="white")),
+            text=[f"{current_value:.0f}"],
+            textposition="top center",
+            textfont=dict(size=14, color=dot_color),
+            hovertemplate=f"현재: {current_value:.0f} ({status})<extra></extra>",
+        )
+    )
 
     fig.update_layout(
         template="plotly_dark",
@@ -516,10 +570,7 @@ def generate_sell_evidence_chart(violations: list[dict], output_dir: Path) -> Pa
 
     # 라벨 — violation_type 또는 type 컬럼 사용
     type_col = "violation_type" if "violation_type" in df.columns else "type"
-    labels = [
-        f"{row['ticker']} ({row.get(type_col, '')})"
-        for _, row in df.iterrows()
-    ]
+    labels = [f"{row['ticker']} ({row.get(type_col, '')})" for _, row in df.iterrows()]
 
     fig = go.Figure()
 
@@ -533,30 +584,26 @@ def generate_sell_evidence_chart(violations: list[dict], output_dir: Path) -> Pa
         else:
             x_values.append(1.0)
 
-    fig.add_trace(go.Bar(
-        y=labels,
-        x=x_values,
-        orientation="h",
-        marker_color=colors,
-        text=[
-            f"{row['action']} | {row['severity']}"
-            for _, row in df.iterrows()
-        ],
-        textposition="auto",
-        textfont=dict(size=11),
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "심각도: %{x:.1f}%<br>"
-            "<extra></extra>"
-        ),
-    ))
+    fig.add_trace(
+        go.Bar(
+            y=labels,
+            x=x_values,
+            orientation="h",
+            marker_color=colors,
+            text=[f"{row['action']} | {row['severity']}" for _, row in df.iterrows()],
+            textposition="auto",
+            textfont=dict(size=11),
+            hovertemplate=("<b>%{y}</b><br>심각도: %{x:.1f}%<br><extra></extra>"),
+        )
+    )
 
     # 조치 + 회복 주석
     for i, (_, row) in enumerate(df.iterrows()):
         recovery = row.get("recovery", "")
         if recovery:
             fig.add_annotation(
-                y=i, x=df["severity"].max() * 1.05,
+                y=i,
+                x=df["severity"].max() * 1.05,
                 text=f"회복: {recovery}",
                 showarrow=False,
                 font=dict(size=10, color="#b0bec5"),
@@ -564,9 +611,14 @@ def generate_sell_evidence_chart(violations: list[dict], output_dir: Path) -> Pa
             )
 
     # 임계선
-    fig.add_vline(x=20, line_dash="dot", line_color="#ef5350",
-                  opacity=0.6, annotation_text="손절선 -20%",
-                  annotation_position="top")
+    fig.add_vline(
+        x=20,
+        line_dash="dot",
+        line_color="#ef5350",
+        opacity=0.6,
+        annotation_text="손절선 -20%",
+        annotation_position="top",
+    )
 
     fig.update_layout(
         template="plotly_dark",
@@ -626,12 +678,12 @@ def generate_all_evidence(db_path=None) -> list[Path]:
         logger.error(f"매도 근거 차트 생성 실패: {e}")
 
     # 요약
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(f"증거 차트 생성 완료: {len(paths)}개")
     print(f"저장 경로: {output_dir}")
     for p in paths:
         print(f"  - {p.name}")
-    print(f"{'='*50}\n")
+    print(f"{'=' * 50}\n")
 
     return paths
 
@@ -658,6 +710,7 @@ def _load_drift_map(db_path=None) -> dict[str, dict]:
     """Learning Memory에서 시그널별 드리프트 상태 로드."""
     try:
         from nuri.trading.engine.memory import detect_drift
+
         drifts = detect_drift(db_path=db_path)
         return {d.signal_id: {"status": d.status, "drift_pct": d.drift_pct} for d in drifts}
     except Exception:
@@ -668,6 +721,7 @@ def _detect_portfolio_violations(db_path=None) -> list[dict]:
     """포트폴리오 위반 항목 자동 감지 → 매도 근거 리스트."""
     try:
         from nuri.analysis.portfolio import analyze_portfolio
+
         df = analyze_portfolio()
     except Exception:
         return []
@@ -676,15 +730,22 @@ def _detect_portfolio_violations(db_path=None) -> list[dict]:
         return []
 
     from nuri.core.rules import MAX_SINGLE_POSITION, PORTFOLIO_STOP
+
     violations = []
-    stop_loss_threshold = PORTFOLIO_STOP       # -10%
-    max_weight = MAX_SINGLE_POSITION * 100     # 15.0%
+    stop_loss_threshold = PORTFOLIO_STOP  # -10%
+    max_weight = MAX_SINGLE_POSITION * 100  # 15.0%
 
     # 종목별 합산
-    grouped = df.groupby("ticker").agg({
-        "pnl_pct": "mean",
-        "weight_pct": "sum",
-    }).reset_index()
+    grouped = (
+        df.groupby("ticker")
+        .agg(
+            {
+                "pnl_pct": "mean",
+                "weight_pct": "sum",
+            }
+        )
+        .reset_index()
+    )
 
     for _, row in grouped.iterrows():
         ticker = row["ticker"]
@@ -693,25 +754,30 @@ def _detect_portfolio_violations(db_path=None) -> list[dict]:
 
         # 손절선 위반
         if pnl <= stop_loss_threshold:
-            violations.append({
-                "ticker": ticker,
-                "type": "stop_loss",
-                "severity": abs(pnl),
-                "action": "SELL ALL",
-                "recovery": f"손실 {abs(pnl):.1f}% → 회복에 {abs(pnl) / (100 + pnl) * 100:.0f}% 상승 필요"
-                if pnl > -100 else "회복 불가",
-            })
+            violations.append(
+                {
+                    "ticker": ticker,
+                    "type": "stop_loss",
+                    "severity": abs(pnl),
+                    "action": "SELL ALL",
+                    "recovery": f"손실 {abs(pnl):.1f}% → 회복에 {abs(pnl) / (100 + pnl) * 100:.0f}% 상승 필요"
+                    if pnl > -100
+                    else "회복 불가",
+                }
+            )
 
         # 비중 초과
         if weight > max_weight:
             excess = weight - max_weight
-            violations.append({
-                "ticker": ticker,
-                "type": "overweight",
-                "severity": excess,
-                "action": "REDUCE",
-                "recovery": f"비중 {weight:.1f}% → {max_weight:.0f}%까지 리밸런싱 필요",
-            })
+            violations.append(
+                {
+                    "ticker": ticker,
+                    "type": "overweight",
+                    "severity": excess,
+                    "action": "REDUCE",
+                    "recovery": f"비중 {weight:.1f}% → {max_weight:.0f}%까지 리밸런싱 필요",
+                }
+            )
 
     # 심각도 내림차순 정렬
     violations.sort(key=lambda v: v["severity"], reverse=True)
@@ -723,8 +789,10 @@ def _save_empty_chart(message: str, output_path: Path) -> None:
     fig = go.Figure()
     fig.add_annotation(
         text=message,
-        xref="paper", yref="paper",
-        x=0.5, y=0.5,
+        xref="paper",
+        yref="paper",
+        x=0.5,
+        y=0.5,
         showarrow=False,
         font=dict(size=18, color="#9e9e9e"),
     )
@@ -742,7 +810,7 @@ def _save_empty_chart(message: str, output_path: Path) -> None:
 # ═══════════════════════════════════════════════════════
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
