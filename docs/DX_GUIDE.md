@@ -1,91 +1,40 @@
 # Developer Experience Guide
 
-How to avoid the failure modes that waste session time.
+세션 시간 낭비 패턴을 차단하는 5개 script + PR template. ~120분 누적 낭비를 막은 도구.
 
-## TL;DR — Before every push
+## TL;DR — 매 push 전
 
 ```bash
 bash scripts/pre_push_check.sh           # full (~2 min)
 bash scripts/pre_push_check.sh --quick   # smoke (~30 s)
 ```
 
-This single command catches the 4 patterns that wasted ~120 minutes in the
-previous session:
+이 한 명령이 4 패턴을 잡는다:
 
-| Pattern | Detection | Cost when missed |
+| 패턴 | Detection | 미감지 시 비용 |
 |---|---|---|
-| Drift bug (working tree ≠ committed) | `check_drift.py --strict` | 1 CI roundtrip = ~3 min |
-| Lint stale config | `ruff check` against committed pyproject | 1 CI roundtrip = ~3 min |
-| Test isolation flake | `pytest -n auto` (CI-parity flags) | 1+ CI roundtrips |
-| Atomicity violation | `check_atomic.sh` (multi-commit branches) | reset + re-stage cycle |
+| Drift bug (working tree ≠ committed) | `check_drift.py --strict` | CI roundtrip 1회 ≈ 3 min |
+| Lint stale config | `ruff check` against committed pyproject | CI roundtrip 1회 ≈ 3 min |
+| Test isolation flake | `pytest -n auto` (CI parity) | CI roundtrip 1+ 회 |
+| Atomicity violation | `check_atomic.sh` (multi-commit) | reset + re-stage cycle |
 
-## The 4 scripts + 1 PR template
+## 5 scripts
 
-### 1. `scripts/ci_local.sh` — exact CI parity
+| Script | 역할 | Quick mode |
+|---|---|---|
+| `scripts/ci_local.sh` | CI parity (`pytest -n auto`, Linux-only flake catch) | `--quick` (~30s), `--lint` (~5s) |
+| `scripts/check_drift.py` | uncommitted vs committed 의존성 분석. 0/1-5/6-20/>20 severity band. | `--strict` (exit 1), `--silent` |
+| `scripts/pre_push_check.sh` | drift + lint + tests + commit format 일괄 | `--quick`, `--skip-tests` |
+| `scripts/check_atomic.sh` | multi-commit branch 각 commit 독립 검증 | `HEAD~3..HEAD` range |
+| `.github/pull_request_template.md` | PR 생성 시 자동 채움 — 패턴 checkbox 강제 | — |
 
-Runs the same `pytest` command CI runs, with the same flags and parallelism.
-Catches Linux-only or `-n auto` parallelism failures locally where possible.
-
-```bash
-bash scripts/ci_local.sh           # full (~2 min)
-bash scripts/ci_local.sh --quick   # smoke (~30 s)
-bash scripts/ci_local.sh --lint    # ruff only (~5 s)
-```
-
-### 2. `scripts/check_drift.py` — drift analyzer
-
-Lists uncommitted files (modified + untracked) and finds committed files that
-reference them. Warns if a committed file imports a module from an uncommitted
-file — that's the recipe for "passes locally / fails CI".
-
-```bash
-python scripts/check_drift.py            # report
-python scripts/check_drift.py --strict   # exit 1 on drift
-python scripts/check_drift.py --silent   # 1-line summary
-```
-
-**Drift severity bands**:
-- **0 files** → clean, no risk
-- **1-5 files** → low risk, normal during active development
-- **6-20 files** → moderate, consider committing related work
-- **>20 files** → **high risk**, every new commit is exposed to invisible deps
-
-### 3. `scripts/pre_push_check.sh` — orchestrator
-
-Runs drift check + lint + tests + commit message format in one command.
-Exit non-zero blocks the push (if used as a git hook).
-
-```bash
-bash scripts/pre_push_check.sh                # full (~2 min)
-bash scripts/pre_push_check.sh --quick        # smoke (~30 s)
-bash scripts/pre_push_check.sh --skip-tests   # lint + drift only (~10 s)
-```
-
-### 4. `scripts/check_atomic.sh` — multi-commit verification
-
-For multi-commit branches: checks each commit independently to catch the
-"commit 1 alone breaks the suite" pattern. Runs lint + test collection per
-commit (skips full test run for speed).
-
-```bash
-bash scripts/check_atomic.sh                # since origin/main
-bash scripts/check_atomic.sh HEAD~3..HEAD   # custom range
-```
-
-### 5. PR template (`.github/pull_request_template.md`)
-
-GitHub auto-fills this when creating a PR. Forces explicit checkboxes for
-the patterns above. If a checkbox is unchecked, the reviewer should ask why.
-
-## Optional: install as a git hook
+## Optional: git hook 설치
 
 ```bash
 # .git/hooks/pre-push
 #!/bin/bash
 bash scripts/pre_push_check.sh --quick || {
-    echo ""
-    echo "Pre-push check failed. To bypass (not recommended):"
-    echo "  git push --no-verify"
+    echo "Pre-push failed. To bypass: git push --no-verify"
     exit 1
 }
 ```
@@ -94,64 +43,15 @@ bash scripts/pre_push_check.sh --quick || {
 chmod +x .git/hooks/pre-push
 ```
 
-## Anti-patterns to avoid
+## Anti-patterns (5)
 
-### 1. Working tree drift accumulation
+1. **Working tree drift accumulation** — 20+ uncommitted across sessions → CI 가 commit 만 보고 fail. **Fix**: `python scripts/check_drift.py` 매 세션 시작.
+2. **Atomic commit violation** — commit 1 alone breaks suite (commit 2-3 가 missing piece) → bisect 깨짐. **Fix**: `bash scripts/check_atomic.sh` 최종 push 전.
+3. **CI roundtrip debugging** — push → 3min wait → fail → fix 반복. **Fix**: `bash scripts/ci_local.sh` 푸시 전.
+4. **Scope creep** — "fix X" → "fix X + refactor Y + cleanup Z". **Fix**: 1 PR = 1 issue ≤ 3 commits. 새 발견 → 새 branch.
+5. **Environment-only failures** (Linux CI vs macOS local) — **Mitigation**: `pytest -n auto` 로컬 + `tests/conftest.py` `journal_mode=MEMORY` (PR #93) + integration test 는 explicit fixture 사용.
 
-**Symptom**: 20+ uncommitted files sitting in working tree across sessions.
-
-**Cost**: every new commit is exposed to invisible dependencies. Local
-checks pass because they see the working tree. CI sees only committed state
-and fails with confusing errors.
-
-**Fix**: commit related work in categorized PRs *before* starting new work.
-Run `python scripts/check_drift.py` at the start of every session.
-
-### 2. Atomic commit violation
-
-**Symptom**: 3-commit branch where commit 1 alone breaks the test suite
-because commit 2 and 3 add the missing pieces.
-
-**Cost**: bisect doesn't work, rebase becomes painful.
-
-**Fix**: `bash scripts/check_atomic.sh` before final push. If a commit
-fails standalone, restructure (squash or reorder).
-
-### 3. CI roundtrip debugging
-
-**Symptom**: push → wait 3 min → fail → fix → push → wait 3 min → fail again.
-
-**Cost**: 5 roundtrips = 15 min lost to pure waiting.
-
-**Fix**: `bash scripts/ci_local.sh` before push. Each roundtrip caught locally
-saves ~3 min.
-
-### 4. Scope creep
-
-**Symptom**: PR starts as "fix X" and grows to "fix X + refactor Y + cleanup Z".
-
-**Cost**: PR review becomes opaque. Atomicity violations multiply. Conflicts
-with parallel PRs increase.
-
-**Fix**: 1 PR = 1 issue. Max 3 commits per PR (per session memory). New
-unrelated discoveries → new branch + new PR.
-
-### 5. Environment-only test failures
-
-**Symptom**: 3 tests fail on Linux CI but pass on macOS local.
-
-**Cost**: blind debugging without reproduction.
-
-**Mitigation**:
-- Use `pytest -n auto` locally (same parallelism as CI)
-- `tests/conftest.py` should use `journal_mode=MEMORY` (not `OFF`) for
-  cross-connection visibility on tmpfs (fixed in PR #93)
-- Prefer integration tests with explicit fixtures over relying on
-  module-level state
-
-## Time budget rationale
-
-These optimizations target ~120 min of waste observed in the previous session:
+## 이전 세션 ~120 min 낭비 매핑
 
 | Category | Wasted | Tool |
 |---|---|---|
@@ -159,5 +59,5 @@ These optimizations target ~120 min of waste observed in the previous session:
 | Linux-only test pollution | ~25 min | `ci_local.sh` (parallelism parity) |
 | CI roundtrip waiting | ~15 min | `ci_local.sh` (catches locally) |
 | Atomicity reset | ~10 min | `check_atomic.sh` |
-| Scope accumulation | ~40 min | PR template + scripts/check_drift.py |
+| Scope accumulation | ~40 min | PR template + `check_drift.py` |
 | **Total addressable** | **~120 min** | **5 scripts + 1 PR template** |
