@@ -771,7 +771,20 @@
     "uppercases",
     "HITL",
     "unwritable",
-    "Karpathy"
+    "Karpathy",
+    "Ibbotson",
+    "Kaplan",
+    "Brinson",
+    "Vardharaj",
+    "Fabozzi",
+    "Mgmt",
+    "Antti",
+    "Ilmanen",
+    "VCMM",
+    "DALBAR",
+    "QAIB",
+    "Damodaran",
+    "Swensen"
   ],
   "ignorePaths": [
     "node_modules/**",
