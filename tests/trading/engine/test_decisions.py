@@ -887,3 +887,304 @@ class TestSaveAgentAccuracySnapshot:
             db_path=db_path,
         )
         assert len(rows) == 1  # 중복 없음
+
+
+# ═══════════════════════════════════════════════════════
+# _snapshot_market_context — VIX / Fear&Greed / regime / macro_score branches
+# ═══════════════════════════════════════════════════════
+
+
+class TestSnapshotMarketContext:
+    def test_vix_value_extracted(self, db_path):
+        """Line 218: VIX row exists → context['vix'] set."""
+        from nuri.trading.engine.decisions import _snapshot_market_context
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO macro (indicator, date, value, source) VALUES (?, ?, ?, ?)",
+                ("vix", "2026-04-10", 22.5, "test"),
+            )
+        ctx = _snapshot_market_context(db_path=db_path)
+        assert ctx["vix"] == 22.5
+
+    def test_fear_greed_value_extracted(self, db_path):
+        """Line 226: fear_greed row exists → context['fear_greed'] set."""
+        from nuri.trading.engine.decisions import _snapshot_market_context
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO macro (indicator, date, value, source) VALUES (?, ?, ?, ?)",
+                ("fear_greed", "2026-04-10", 64.0, "test"),
+            )
+        ctx = _snapshot_market_context(db_path=db_path)
+        assert ctx["fear_greed"] == 64.0
+
+    def test_regime_payload_parsed(self, db_path):
+        """Lines 235-237: pipeline_events 'regime_changed' → regime extracted."""
+        from nuri.trading.engine.decisions import _snapshot_market_context
+
+        # 첫 번째 regime: payload "regime" 키
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO pipeline_events (timestamp, event_type, payload) VALUES (?, ?, ?)",
+                ("2026-04-10T10:00:00", "regime_changed", json.dumps({"regime": "risk_on"})),
+            )
+        ctx = _snapshot_market_context(db_path=db_path)
+        assert ctx["regime"] == "risk_on"
+
+    def test_regime_payload_new_regime_fallback(self, db_path):
+        """Line 237: payload "regime" missing → fallback "new_regime" key."""
+        from nuri.trading.engine.decisions import _snapshot_market_context
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO pipeline_events (timestamp, event_type, payload) VALUES (?, ?, ?)",
+                ("2026-04-10T10:00:00", "regime_changed", json.dumps({"new_regime": "risk_off"})),
+            )
+        ctx = _snapshot_market_context(db_path=db_path)
+        assert ctx["regime"] == "risk_off"
+
+    def test_regime_malformed_json_swallowed(self, db_path):
+        """Lines 238-239: invalid JSON payload → except branch, no crash, regime not set."""
+        from nuri.trading.engine.decisions import _snapshot_market_context
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO pipeline_events (timestamp, event_type, payload) VALUES (?, ?, ?)",
+                ("2026-04-10T10:00:00", "regime_changed", "not-json"),
+            )
+        ctx = _snapshot_market_context(db_path=db_path)
+        assert "regime" not in ctx  # 파싱 실패 → 미설정
+
+    def test_macro_score_exception_swallowed(self, db_path, monkeypatch):
+        """Lines 247-248: compute_macro_score raises → except, macro_score not set."""
+        from nuri.trading.engine.decisions import _snapshot_market_context
+
+        def boom(*a, **kw):
+            raise RuntimeError("synthetic")
+
+        monkeypatch.setattr(
+            "nuri.quant.regime.macro_score.compute_macro_score",
+            boom,
+        )
+        ctx = _snapshot_market_context(db_path=db_path)
+        # exception 흡수: macro_score / event_score 미설정
+        assert "macro_score" not in ctx
+        assert "event_score" not in ctx
+
+
+# ═══════════════════════════════════════════════════════
+# record_decision: regime evidence 추가 분기 (line 102)
+# ═══════════════════════════════════════════════════════
+
+
+class TestRecordDecisionRegimeEvidence:
+    def test_regime_context_appended_as_evidence(self, db_path):
+        """Lines 101-108: context['regime'] truthy → regime evidence record 추가."""
+        from nuri.trading.engine.decisions import record_decision
+
+        # Set regime via pipeline_events (truthy) so context.get('regime') returns a value
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO pipeline_events (timestamp, event_type, payload) VALUES (?, ?, ?)",
+                ("2026-04-10T10:00:00", "regime_changed", json.dumps({"regime": "risk_on"})),
+            )
+        _insert_price(db_path, "NVDA", 120.0)
+
+        result = MockConsensusResult(
+            ticker="NVDA",
+            final_action="BUY",
+            final_confidence=75.0,
+            agreement_rate=0.8,
+            verdicts=[
+                MockAgentVerdict("technical", "NVDA", "BUY", 80.0, "ok", {"rsi": 28}),
+            ],
+            dissent=[],
+            reasoning="regime evidence test",
+        )
+        dec_id = record_decision(result, db_path)
+
+        decision = get_decision_with_evidence(dec_id, db_path)
+        regime_evidence = [e for e in decision["evidence"] if e["source_type"] == "regime"]
+        assert len(regime_evidence) == 1
+        assert regime_evidence[0]["source_key"] == "current"
+        # regime 값이 detail JSON 안에 들어 있음
+        detail = json.loads(regime_evidence[0]["detail"])
+        assert detail["regime"] == "risk_on"
+        # decisions row 의 regime 컬럼 자체도 채워졌는지 확인
+        assert decision["regime"] == "risk_on"
+
+
+# ═══════════════════════════════════════════════════════
+# track_decision_outcomes: HOLD action → outcome=neutral (line 171)
+# ═══════════════════════════════════════════════════════
+
+
+class TestTrackOutcomesNeutral:
+    def test_hold_action_90d_yields_neutral(self, db_path):
+        """Lines 170-171: action 이 BUY/SELL 이 아니면 outcome='neutral'.
+
+        90 일 경과 + entry_price 양수 + HOLD action → outcome='neutral'.
+        """
+        # 100 일 전 anchor 로 90d 경과 보장
+        from datetime import date as _date
+        from datetime import timedelta
+
+        from nuri.core.timezone import today_kst
+        from nuri.trading.engine.decisions import track_decision_outcomes
+
+        anchor = _date.fromisoformat(today_kst()) - timedelta(days=100)
+        anchor_str = anchor.isoformat()
+        plus_90 = (anchor + timedelta(days=90)).isoformat()
+
+        _insert_price(db_path, "HLD", 100.0, anchor_str)
+        _insert_price(db_path, "HLD", 110.0, plus_90)
+
+        upsert_decision(
+            {
+                "date": anchor_str,
+                "ticker": "HLD",
+                "action": "HOLD",
+                "confidence": 60.0,
+                "entry_price": 100.0,
+            },
+            db_path,
+        )
+        track_decision_outcomes(db_path)
+
+        rows = get_decisions(ticker="HLD", db_path=db_path)
+        assert rows[0]["outcome"] == "neutral"
+        assert rows[0]["pnl_90d"] == 10.0
+
+
+# ═══════════════════════════════════════════════════════
+# main() CLI entry — argparse + dispatch behavior
+# ═══════════════════════════════════════════════════════
+
+
+class TestMainCLI:
+    def test_main_track_no_pending(self, db_path, capsys):
+        """`main(['--track'])` → track_decision_outcomes() 실행, 0건 메시지 출력."""
+        from nuri.trading.engine.decisions import main
+
+        rc = main(["--track"], db_path=db_path)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "P&L 추적 업데이트: 0건" in out
+
+    def test_main_track_updates_pending(self, db_path, capsys):
+        """`main(['--track'])` 가 실제로 pending decision 의 P&L 을 갱신."""
+        from datetime import date as _date
+        from datetime import timedelta
+
+        from nuri.core.timezone import today_kst
+        from nuri.trading.engine.decisions import main
+
+        anchor = _date.fromisoformat(today_kst()) - timedelta(days=14)
+        anchor_str = anchor.isoformat()
+        plus_7 = (anchor + timedelta(days=7)).isoformat()
+        _insert_price(db_path, "TRK", 100.0, anchor_str)
+        _insert_price(db_path, "TRK", 110.0, plus_7)
+        upsert_decision(
+            {
+                "date": anchor_str,
+                "ticker": "TRK",
+                "action": "BUY",
+                "confidence": 70.0,
+                "entry_price": 100.0,
+            },
+            db_path,
+        )
+
+        rc = main(["--track"], db_path=db_path)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "P&L 추적 업데이트: 1건" in out
+        rows = get_decisions(ticker="TRK", db_path=db_path)
+        assert rows[0]["pnl_7d"] == 10.0
+
+    def test_main_accuracy_empty(self, db_path, capsys):
+        """`main(['--accuracy'])` 에 완료 decision 없음 → 안내 메시지."""
+        from nuri.trading.engine.decisions import main
+
+        rc = main(["--accuracy"], db_path=db_path)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "완료된 decisions 없음" in out
+
+    def test_main_accuracy_with_data_prints_table(self, db_path, capsys):
+        """완료 decision 존재 → Agent Accuracy 표 출력 (Agent / Total / Hits / Rate / Adj)."""
+        from nuri.trading.engine.decisions import main
+
+        _insert_decision_with_outcome(
+            db_path,
+            "NVDA",
+            "BUY",
+            "success",
+            [{"agent_name": "technical", "action": "BUY", "confidence": 80}],
+        )
+
+        rc = main(["--accuracy"], db_path=db_path)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Agent Accuracy" in out
+        assert "technical" in out
+        # 100% 적중 → Rate 100.0%
+        assert "100.0%" in out
+
+    def test_main_snapshot_persists_and_prints(self, db_path, capsys):
+        """`main(['--snapshot'])` → strategy_memory 저장 + '스냅샷 N건 저장' 메시지."""
+        from nuri.trading.engine.decisions import main
+
+        _insert_decision_with_outcome(
+            db_path,
+            "NVDA",
+            "BUY",
+            "success",
+            [{"agent_name": "technical", "action": "BUY", "confidence": 80}],
+        )
+
+        rc = main(["--snapshot"], db_path=db_path)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "스냅샷 1건 저장 (strategy_memory)" in out
+        rows = query(
+            "SELECT * FROM strategy_memory WHERE signal_id = 'agent_technical_accuracy'",
+            db_path=db_path,
+        )
+        assert len(rows) == 1
+
+    def test_main_snapshot_skipped_when_no_accuracy(self, db_path, capsys):
+        """`main(['--snapshot'])` 에 완료 decision 없으면 save_agent_accuracy_snapshot 미호출.
+
+        empty acc → '완료된 decisions 없음' 만 출력, '스냅샷 N건 저장' 없음.
+        """
+        from nuri.trading.engine.decisions import main
+
+        rc = main(["--snapshot"], db_path=db_path)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "완료된 decisions 없음" in out
+        assert "스냅샷" not in out
+
+    def test_main_summary(self, db_path, capsys):
+        """`main(['--summary'])` → '의사결정 요약: total=N, pending=N, ...' 출력."""
+        from nuri.trading.engine.decisions import main
+
+        upsert_decision(
+            {"date": "2026-04-10", "ticker": "NVDA", "action": "BUY", "confidence": 75.0},
+            db_path,
+        )
+        rc = main(["--summary"], db_path=db_path)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "의사결정 요약: total=1, pending=1, success=0, failure=0, neutral=0" in out
+
+    def test_main_no_flags_returns_zero(self, db_path, capsys):
+        """플래그 없음 → init_db 만 실행하고 즉시 0 반환 (출력 없음)."""
+        from nuri.trading.engine.decisions import main
+
+        rc = main([], db_path=db_path)
+        assert rc == 0
+        # 어떤 분기도 실행되지 않으면 stdout 은 비어 있어야 함
+        assert capsys.readouterr().out == ""
