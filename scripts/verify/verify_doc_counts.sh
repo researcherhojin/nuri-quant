@@ -95,10 +95,10 @@ DBT=$(live_db_tables)
 
 # Claim checks: pattern must uniquely identify the phrase containing the target
 # number. Target is always the LAST [0-9]+ in the matched substring.
-check_claim "collectors"     "$COLL" "CLAUDE.md"                  '[0-9]+ collector modules' || true
+check_claim "collectors"     "$COLL" ".claude/rules/architecture.md" '[0-9]+ collector modules' || true
 check_claim "collectors"     "$COLL" "nuri/collectors/CLAUDE.md"  '[0-9]+ Data Collectors' || true
 check_claim "collectors"     "$COLL" "README.md"                  '[0-9]+ collectors \(BaseCollector' || true
-check_claim "endpoints"      "$EP"   "CLAUDE.md"                  '\([0-9]+ endpoints, routes/' || true
+check_claim "endpoints"      "$EP"   ".claude/rules/architecture.md" '\([0-9]+ endpoints, routes/' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '## API \([0-9]+ endpoints\)' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '— [0-9]+ REST endpoints' || true
 check_claim "test_files_be"  "$TFBE" "docs/ARCHITECTURE.md"       'backend tests across [0-9]+ files' || true
