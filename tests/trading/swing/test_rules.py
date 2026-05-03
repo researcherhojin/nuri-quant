@@ -387,3 +387,105 @@ class TestSwingScanner_R8:
         from nuri.trading.swing.rules import check_exits
         exits = check_exits(db_path=rich_db)
         assert isinstance(exits, list)
+
+
+class TestSwingRulesMainBlock:
+    """rules.py `if __name__ == "__main__":` 블록 실행 검증 (lines 288-307).
+
+    runpy.run_module 로 모듈 소스를 __main__ 으로 재실행한다.
+    DB_PATH 와 scan_market / analyze_ticker 는 소스 레벨 패치만 사용
+    (target-level patch 금지 — runpy 재실행 시 stale).
+    """
+
+    def test_main_check_branch_empty_db(self, tmp_path, monkeypatch, capsys):
+        """--check 분기 (line 297-299): 빈 DB → check_exits 빈 list → '오픈 포지션 없음'."""
+        import sys
+        import nuri.core.db as db_mod
+        from nuri.core.db import init_db as _init_db
+
+        path = tmp_path / "swing_check.db"
+        _init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        monkeypatch.setattr(sys, "argv", ["rules.py", "--check"])
+
+        import runpy
+        runpy.run_module("nuri.trading.swing.rules", run_name="__main__")
+
+        out = capsys.readouterr().out
+        # check_exits → [] → print_exits 가 "오픈 포지션 없음" 출력
+        assert "오픈 포지션 없음" in out
+
+    def test_main_default_branch_no_entries(self, tmp_path, monkeypatch, capsys):
+        """기본 분기 (line 300-302): scanner 빈 결과 → evaluate_entries [] → '진입 후보 없음'.
+
+        scan_market 을 source 모듈에서 patch — runpy 재실행 시에도 deferred import 가
+        패치된 함수를 가져옴.
+        """
+        import sys
+        import nuri.core.db as db_mod
+        from nuri.core.db import init_db as _init_db
+
+        path = tmp_path / "swing_default.db"
+        _init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        # scan_market source-level patch — 빈 결과 → evaluate_entries 빈 list
+        import nuri.trading.swing.scanner as scanner_mod
+        monkeypatch.setattr(scanner_mod, "scan_market", lambda market="us": [])
+        monkeypatch.setattr(sys, "argv", ["rules.py"])
+
+        import runpy
+        runpy.run_module("nuri.trading.swing.rules", run_name="__main__")
+
+        out = capsys.readouterr().out
+        # 빈 entries → print_entries "진입 후보 없음", save_entries 미호출 (line 305 if False)
+        assert "진입 후보 없음" in out
+
+    def test_main_default_branch_with_approved_entry(self, tmp_path, monkeypatch, capsys, caplog):
+        """기본 분기 + approved entry (line 304-307): save_entries 호출 + 로그 출력.
+
+        scan_market → 1개 ScanResult, analyze_ticker → BUY 75 conf → approved=True
+        → save_entries 1건 → logger.info 출력.
+        """
+        import logging
+        import sys
+        from unittest.mock import MagicMock
+        import nuri.core.db as db_mod
+        from nuri.core.db import init_db as _init_db, query
+        from nuri.trading.swing.scanner import ScanResult
+
+        path = tmp_path / "swing_save.db"
+        _init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+
+        # scan_market → 점수 40 짜리 1건 (MIN_SCAN_SCORE=20 통과)
+        scan_result = ScanResult(
+            "AAPL", 180.0, 2.0, 8.0, 3.0, 55.0, 0.6, "volume_spike", 40.0,
+        )
+        import nuri.trading.swing.scanner as scanner_mod
+        monkeypatch.setattr(scanner_mod, "scan_market", lambda market="us": [scan_result])
+
+        # analyze_ticker → BUY 75 (MIN_AGENT_CONFIDENCE=50 통과)
+        mock_consensus = MagicMock(
+            final_action="BUY", final_confidence=75.0, agreement_rate=0.8,
+        )
+        import nuri.trading.agents.consensus as consensus_mod
+        monkeypatch.setattr(consensus_mod, "analyze_ticker",
+                            lambda ticker, db_path=None: mock_consensus)
+        monkeypatch.setattr(sys, "argv", ["rules.py", "--market", "us"])
+        # runpy 가 모듈을 __name__="__main__" 으로 재실행 → logger 이름 도 "__main__"
+        caplog.set_level(logging.INFO, logger="__main__")
+
+        import runpy
+        runpy.run_module("nuri.trading.swing.rules", run_name="__main__")
+
+        out = capsys.readouterr().out
+        # APPROVED 섹션 출력
+        assert "APPROVED" in out
+        assert "AAPL" in out
+        # save_entries 가 swing_trades 에 1건 INSERT
+        rows = query("SELECT ticker, status FROM swing_trades", db_path=path)
+        assert len(rows) == 1
+        assert rows[0]["ticker"] == "AAPL"
+        assert rows[0]["status"] == "open"
+        # logger.info("진입 N건 저장") 호출 확인 (line 307)
+        assert any("진입 1건 저장" in rec.message for rec in caplog.records)
