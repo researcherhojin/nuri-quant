@@ -50,7 +50,7 @@ flowchart TB
 | ④ **Certify** | SIEGE v2 — Account × Asset Class × Execution Market. 1 error-grade fail → REJECTED, no manual override | DB → `certifications` (incl. `conditions_json` evidence + `portfolio_hash`) |
 | ⑤ **Track** | 30 / 60 / 90 d outcomes vs prediction → agent accuracy snapshot → weight drift bounded ±30 % (feedback to ③) | DB → `recommendations.outcome_{30,60,90}d` columns (in-place update); `strategy_memory` rows for agent accuracy snapshots |
 
-Phases never import each other — communication is via SQLite tables / CSV only. Rerun any upstream phase and downstream consumers refresh automatically. Per-phase implementation detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). SIEGE certification spec: [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md).
+Phases never import each other — communication is via SQLite tables / CSV only. Rerun any upstream phase and downstream consumers refresh automatically. Per-phase implementation detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). SIEGE certification spec: [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md).
 
 ### Architectural principles
 
@@ -187,7 +187,7 @@ Take-profit ladders (growth: +20% / +40% / -15% trailing; value: +15% / +30% / -
 
 - [`docs/STRATEGY.md`](docs/STRATEGY.md) — project philosophy, architectural decisions, investment rules, harness theory
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — detailed code/DB layout, schema, env vars, CI/CD
-- [`docs/SIEGE_V2.md`](docs/SIEGE_V2.md) — 3-D certification spec (Account × Asset Class × Market)
+- [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md) — 3-D certification spec (Account × Asset Class × Market)
 - [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) — KIS (Korea Investment & Securities) Open API integration
 - [`CLAUDE.md`](CLAUDE.md) — agent guide (Claude Code) — commands, always-on invariants, load triggers
 - [`AGENTS.md`](AGENTS.md) — cross-tool agent guide (Cursor / Copilot / Codex CLI)

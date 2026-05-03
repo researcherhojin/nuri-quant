@@ -152,7 +152,7 @@ buy_checklist:
   require_factor_top50pct: true             # 멀티팩터 상위 50% 이내
 
 # ─── SIEGE Gate 정책 (v2: Asset Class 차원) ────────────────
-# 근거: docs/SIEGE_V2.md §4. Issue #248.
+# 근거: docs/CERTIFICATION_SPEC.md §4. Issue #248.
 # Gate #5 (data_fresh), #7 (volatility / 구 vix_gate), #8 (external_data) 는
 # 포트폴리오를 asset_class 별로 group 한 뒤 각 group 에 해당 정책을 적용한다.
 # primary 실패는 현 severity 유지, secondary 는 warning only (cross-market
