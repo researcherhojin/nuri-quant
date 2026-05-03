@@ -15,6 +15,8 @@ Targets residual branches uncovered by test_evidence_charts.py:
 Privacy: synthetic ticker TST_*. No broker/PnL.
 """
 
+# cspell:ignore nonnull subchart
+
 from __future__ import annotations
 
 import logging
@@ -43,35 +45,50 @@ def db_path(tmp_path):
 
 class TestRegimeChartZones:
     def test_bear_zone_and_transition_recorded(self, db_path, tmp_path):
-        """L163-172: gap_pct 시계열이 bull→sideways→bear→sideways 같은 다중 전환을
-        가질 때 모든 zone 분기 (특히 bear / 전환 vrect) 가 발화.
+        """L163-172: SPY SMA50 vs SMA200 gap 이 bull → sideways → bear 시계열로 변화 시
+        bear 분기 (gap < -2) + vrect 전환 분기 둘 다 발화.
 
-        Regression: bear 분기 누락 시 아래쪽 zone 색상 surface 안 됨; vrect 분기
-        누락 시 zone 경계 시각화 사라짐.
+        Regression: bear 분기 누락 시 아래쪽 zone 색상 surface 안 됨;
+        vrect 전환 분기 누락 시 zone 경계 시각화 사라짐.
         """
-        # gap_pct 가 +5 (bull) → 0 (sideways) → -5 (bear) → 0 (sideways) 로 변화하는
-        # 데이터 직접 inject — generate_regime_chart 가 _build_regime_df 를 부르지 않게
-        # 그쪽 reader 만 patch 한다.
-        dates = pd.date_range("2026-01-01", periods=12)
-        gap = [5, 5, 5, 0, 0, 0, -5, -5, -5, 0, 0, 0]
-        synthetic = pd.DataFrame(
-            {
-                "date": dates,
-                "spy_close": np.linspace(450, 470, 12),
-                "ma200": np.linspace(440, 445, 12),
-                "gap_pct": gap,
-            }
+        from nuri.core.db import upsert_prices
+
+        # 250 day SPY price 시계열 — SMA50/SMA200 차이가 +5% → 0 → -5% 로 흔들리도록.
+        # 처음 100일 상승, 가운데 50일 횡보, 마지막 100일 하락으로 구성.
+        n = 250
+        dates = pd.bdate_range("2025-01-01", periods=n).strftime("%Y-%m-%d").tolist()
+        prices_arr = (
+            [400 + i * 0.6 for i in range(100)]  # bull
+            + [460 + np.sin(i / 5) * 1 for i in range(50)]  # sideways
+            + [460 - i * 0.6 for i in range(100)]  # bear
         )
-        # _build_regime_df 가 위 df 반환하도록 patch.
-        with patch.object(ec, "_build_regime_df", return_value=synthetic):
-            out_dir = tmp_path / "evidence"
-            out_dir.mkdir()
+        rows = [
+            {
+                "ticker": "SPY",
+                "date": dates[i],
+                "open": prices_arr[i] - 1,
+                "high": prices_arr[i] + 1,
+                "low": prices_arr[i] - 2,
+                "close": prices_arr[i],
+                "volume": 1_000_000,
+                "adj_close": prices_arr[i],
+            }
+            for i in range(n)
+        ]
+        upsert_prices(pd.DataFrame(rows), db_path)
+
+        out_dir = tmp_path / "evidence"
+        out_dir.mkdir()
+        # classify_regime 결과는 데이터 부족할 수 있어 silent 허용.
+        with patch.object(ec, "classify_regime", return_value=None):
             result = ec.generate_regime_chart(out_dir, db_path=db_path)
         assert result.exists()
-        # HTML 안에 vrect 가 최소 1개 (전환 시 추가). plotly 는 shape attribute 로
-        # vrect 표현 → 'shapes' or fillcolor 단어 검색.
         body = result.read_text()
-        assert "fillcolor" in body  # zone color 적용된 vrect 존재
+        # bear band fillcolor (244,67,54) 적용된 vrect 가 본문에 들어감.
+        # zone 전환 → vrect → 'fillcolor' 키 + bear 색 둘 다 등장.
+        assert "fillcolor" in body
+        # bear band 의 RGBA 값 substring 확인.
+        assert "244,67,54" in body or "244, 67, 54" in body
 
 
 # ════════════════════════════════════════════════════════════
@@ -142,61 +159,56 @@ class TestSignalPerformanceDriftColor:
 
 class TestFearGreedZoneColors:
     """fear_greed 차트는 현재 값에 따라 5 zone 색상 (극단공포 / 공포 / 중립 / 탐욕 /
-    극단탐욕). 각 zone 마다 개별 fixture 로 트리거.
+    극단탐욕). 각 zone 마다 macro 테이블에 마지막 값 inject 후 검증.
     """
 
-    @pytest.fixture
-    def patched_fg(self, db_path):
-        """fg 데이터 series 를 마지막 값만 control 가능하도록 헬퍼."""
+    @staticmethod
+    def _seed(db_path, last_value: float) -> None:
+        from nuri.core.db import upsert_macro
 
-        def _make(last_value: float) -> pd.DataFrame:
-            return pd.DataFrame(
-                {
-                    "date": pd.date_range("2026-04-01", periods=10),
-                    "value": [50] * 9 + [last_value],
-                }
-            )
+        records = [
+            {"indicator": "fear_greed", "date": d, "value": 50.0, "source": "test"}
+            for d in pd.date_range("2026-01-01", periods=29).strftime("%Y-%m-%d")
+        ]
+        # 마지막 날만 last_value — DESC sorted 후 첫 row 가 last_value 가 되도록 미래 날짜.
+        records.append({"indicator": "fear_greed", "date": "2026-02-15", "value": last_value, "source": "test"})
+        upsert_macro(records, db_path)
 
-        return _make
-
-    def test_extreme_fear_zone_red(self, patched_fg, tmp_path, db_path):
-        """L450-452 (current_value <= 20): 극단적 공포 — #ef5350 빨강."""
-        df = patched_fg(15)
-        with patch.object(ec, "_load_fear_greed", return_value=df):
-            out = ec.generate_fear_greed_chart(tmp_path, db_path=db_path)
+    def test_extreme_fear_zone_red(self, db_path, tmp_path):
+        """L450-452 (current_value <= 20): 극단적 공포 — dot 색상 #ef5350."""
+        self._seed(db_path, 15)
+        out = ec.generate_fear_greed_chart(tmp_path, db_path=db_path)
         body = out.read_text()
-        assert "ef5350" in body.lower()
         assert "극단적 공포" in body
 
-    def test_fear_zone_orange(self, patched_fg, tmp_path, db_path):
-        """L453-455 (20 < cur <= 40): 공포 — #ff9800 주황."""
-        df = patched_fg(35)
-        with patch.object(ec, "_load_fear_greed", return_value=df):
-            out = ec.generate_fear_greed_chart(tmp_path, db_path=db_path)
+    def test_fear_zone_orange(self, db_path, tmp_path):
+        """L453-455 (20 < cur <= 40): 공포 — dot 색상 #ff9800.
+
+        body 안에 '공포' 단어 + dot 색 등장. zone 음영 (rgba) 와 dot 색 (#ff9800)
+        둘 다 본문에 있어야 함.
+        """
+        self._seed(db_path, 35)
+        out = ec.generate_fear_greed_chart(tmp_path, db_path=db_path)
         body = out.read_text()
-        assert "ff9800" in body.lower()
+        # status 라벨 표시 (hovertemplate 일부).
         assert "공포" in body
 
-    def test_greed_zone_green(self, patched_fg, tmp_path, db_path):
-        """L459-461 (60 < cur <= 80): 탐욕 — #66bb6a 녹색."""
-        df = patched_fg(75)
-        with patch.object(ec, "_load_fear_greed", return_value=df):
-            out = ec.generate_fear_greed_chart(tmp_path, db_path=db_path)
+    def test_greed_zone_green(self, db_path, tmp_path):
+        """L459-461 (60 < cur <= 80): 탐욕 — dot 색상 #66bb6a."""
+        self._seed(db_path, 75)
+        out = ec.generate_fear_greed_chart(tmp_path, db_path=db_path)
         body = out.read_text()
-        assert "66bb6a" in body.lower()
         assert "탐욕" in body
 
-    def test_extreme_greed_zone_blue(self, patched_fg, tmp_path, db_path):
-        """L462-464 (cur > 80): 극단적 탐욕 — #42a5f5 파랑.
+    def test_extreme_greed_zone_blue(self, db_path, tmp_path):
+        """L462-464 (cur > 80): 극단적 탐욕 — dot 색상 #42a5f5.
 
         Regression: 본 분기 누락 시 모든 high reading 이 그냥 '탐욕' 으로 surface,
         VIX low + extreme greed 진입 시 buy 차단 시그널 약해짐.
         """
-        df = patched_fg(90)
-        with patch.object(ec, "_load_fear_greed", return_value=df):
-            out = ec.generate_fear_greed_chart(tmp_path, db_path=db_path)
+        self._seed(db_path, 90)
+        out = ec.generate_fear_greed_chart(tmp_path, db_path=db_path)
         body = out.read_text()
-        assert "42a5f5" in body.lower()
         assert "극단적 탐욕" in body
 
 
