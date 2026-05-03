@@ -196,3 +196,83 @@ class TestSaveEmpty:
         result = c.save(df)
         assert result == 1
         assert called["n"] == 1
+
+
+class TestTechnicalExpectedCountGuard:
+    """MAX_FAILURE_RATE 가드 활성화 lock-test (PR #590 후속).
+
+    Reason: 직전 audit 에서 _expected_count 가 25/26 collector 에 unset 인 상태로
+    base.py 의 'asymmetric data age 방지' 가드가 dead code 였음을 확인. PR #590 이
+    fundamental + estimates (list[dict] 반환) 활성화. technical 은 1 row/ticker 반환
+    DataFrame 이라 len(df) == ticker count 매칭 가능 — 본 PR 에서 활성화.
+    이 테스트가 회귀를 차단함.
+    """
+
+    def test_collect_sets_expected_count(self, monkeypatch):
+        """collect() 진입 시 self._expected_count 가 len(tickers) 로 설정됨."""
+        from nuri.collectors.technical import TechnicalCollector
+
+        c = TechnicalCollector()
+        # initial state — 0 (불활성)
+        assert c._expected_count == 0
+
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["AAA", "BBB", "CCC"])
+        # _compute_for_ticker 결과는 가드 trigger 와 무관 (count 만 검증)
+        monkeypatch.setattr(
+            c,
+            "_compute_for_ticker",
+            lambda t: pd.DataFrame({"ticker": [t], "date": ["2024-01-01"], "rsi_14": [50.0]}),
+        )
+
+        c.collect()
+        assert c._expected_count == 3, "collect() 가 ticker 수로 _expected_count 설정 안 함"
+
+    def test_run_blocks_save_when_failure_rate_exceeds_threshold(self, monkeypatch):
+        """run() 이 80% 실패 시 CollectionFailureError 발생 + save() 미호출."""
+        from nuri.collectors.base import CollectionFailureError
+        from nuri.collectors.technical import TechnicalCollector
+
+        c = TechnicalCollector()
+        # 10 ticker 중 2개만 성공 → failure_rate 80% > 10% threshold
+        tickers = [f"T{i}" for i in range(10)]
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: tickers)
+
+        def fake_compute(ticker):
+            # T0/T1 만 valid row, 나머지 8개는 None (데이터 부족 시뮬레이션)
+            if ticker in ("T0", "T1"):
+                return pd.DataFrame({"ticker": [ticker], "date": ["2024-01-01"], "rsi_14": [50.0]})
+            return None
+
+        monkeypatch.setattr(c, "_compute_for_ticker", fake_compute)
+
+        save_called = []
+        monkeypatch.setattr(c, "save", lambda data: save_called.append(len(data)) or len(data))
+
+        with pytest.raises(CollectionFailureError, match="실패율 80%"):
+            c.run()
+
+        assert save_called == [], "실패율 초과 시 save() 호출되면 안 됨 (asymmetric save 차단)"
+
+    def test_run_allows_save_when_failure_rate_below_threshold(self, monkeypatch):
+        """failure_rate 5% < 10% 면 save() 정상 호출."""
+        from nuri.collectors.technical import TechnicalCollector
+
+        c = TechnicalCollector()
+        # 20 ticker 중 19개 성공 → failure_rate 5%
+        tickers = [f"T{i}" for i in range(20)]
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: tickers)
+
+        def fake_compute(ticker):
+            if ticker == "T0":
+                return None  # 1개만 결손
+            return pd.DataFrame({"ticker": [ticker], "date": ["2024-01-01"], "rsi_14": [50.0]})
+
+        monkeypatch.setattr(c, "_compute_for_ticker", fake_compute)
+
+        save_called = []
+        monkeypatch.setattr(c, "save", lambda data: save_called.append(len(data)) or len(data))
+
+        # 가드 통과 — retry 없이 첫 시도에서 save 호출
+        result = c.run()
+        assert result == 19, "save() 가 19 records 받아야 함"
+        assert save_called == [19], "save() 1회 호출"
