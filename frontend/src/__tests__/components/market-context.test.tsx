@@ -133,4 +133,36 @@ describe("MarketContext", () => {
     render(<MarketContext events={[]} health={bullHealth} />);
     expect(screen.getByText("BULL_L")).toBeTruthy(); // sliced
   });
+
+  // #503 Phase A — visual saliency
+  it("applies regime stripe class to events card", () => {
+    const bullHealth = { ...sampleHealth, regime: { regime: "bull", trend: "bull", confidence: 90 } };
+    const { container } = render(<MarketContext events={sampleEvents} health={bullHealth} />);
+    const stripe = container.querySelector(".border-l-emerald-500\\/60");
+    expect(stripe).toBeTruthy();
+  });
+
+  it("renders 7d sparkline svg when ≥2 days of events", () => {
+    const { container } = render(<MarketContext events={sampleEvents} health={sampleHealth} />);
+    const svg = container.querySelector("svg[aria-label='7d sentiment trend']");
+    expect(svg).toBeTruthy();
+    const path = svg?.querySelector("path");
+    expect(path?.getAttribute("d")).toContain("M ");
+  });
+
+  it("hides sparkline when only 1 distinct day in events", () => {
+    const oneDayEvents = sampleEvents.map(ev => ({ ...ev, published_at: "2026-04-12T10:00:00+00:00" }));
+    const { container } = render(<MarketContext events={oneDayEvents} health={sampleHealth} />);
+    expect(container.querySelector("svg[aria-label='7d sentiment trend']")).toBeNull();
+  });
+
+  it("bolds high-confidence events (>= 0.8)", () => {
+    const highConfEvents = [
+      { ...sampleEvents[0], confidence: 0.85, published_at: "2026-04-12T17:18:00+00:00" },
+      { ...sampleEvents[1], confidence: 0.6, published_at: "2026-04-11T06:10:00+00:00" },
+    ];
+    const { container } = render(<MarketContext events={highConfEvents} health={sampleHealth} />);
+    const boldDates = container.querySelectorAll(".font-bold");
+    expect(boldDates.length).toBeGreaterThan(0);
+  });
 });
