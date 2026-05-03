@@ -276,6 +276,7 @@ ALLOWLIST_PATHS: tuple[str, ...] = (
     "scripts/verify/check_privacy_leak.py",  # this file (documents patterns)
     "tests/scripts/test_check_privacy_leak.py",  # tests for this file (moved from top-level in #163)
     "tests/agents/test_discord_outbox.py",  # E3 #579 — privacy gate tests need leak fixtures (NVDA +57%, kakaopay) to verify detection
+    "tests/trading/recommend/test_held_add_mode.py",  # #518 phase 2a — spec §4.6 acceptance test fixtures use NVDA/MSFT for multi-account scenarios
     "docs/STRATEGY.md",  # may codify pattern names
     "CONTRIBUTING.md",  # references placeholder names as guidance
     "SECURITY.md",  # references privacy policy
