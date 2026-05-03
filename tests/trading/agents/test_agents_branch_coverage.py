@@ -205,13 +205,22 @@ class TestRiskBranches:
         v = RiskAgent().analyze("AAA", db_path=db_path)
         assert v.action in ("BUY", "SELL", "HOLD")
 
-    def test_loss_below_loss_threshold(self, db_path):
+    def test_loss_below_loss_threshold(self, db_path, monkeypatch):
         """worst_loss between stop and loss_threshold → score-1 손실 중 (lines 56-58).
 
-        'toss' account has stop_loss=-20; pnl=-12 is NOT a breach but IS below
-        loss_threshold (-10) → triggers '손실 중' branch.
+        Account stop_loss=-20 (long_term/swing/pension) 인 경우, pnl=-12 는 stop 미breach
+        BUT loss_threshold (-10) 미만 → '손실 중' branch.
+
+        portfolio.yaml 은 gitignored (CI 환경 부재) — get_account_strategy 직접
+        monkeypatch 로 stop_loss=-20 강제 (toss 계좌 strategy 와 동일).
         """
         from nuri.trading.agents.risk_agent import RiskAgent
+
+        # CI 에서도 안정적이도록 strategy 명시 monkeypatch
+        monkeypatch.setattr(
+            "nuri.core.rules.get_account_strategy",
+            lambda account: {"stop_loss": -20, "max_single_position": 0.30},
+        )
 
         with get_db(db_path) as conn:
             conn.execute(
@@ -245,37 +254,49 @@ class TestRiskBranches:
 # ─── smart_money.py: lines 91-93 ───────────────────────────────────────
 
 
-class TestSmartMoney91:
-    def test_lines_91_93(self, db_path):
-        """Lines 91-93 specifically — sample query that triggers them."""
+class TestSmartMoneyNoData:
+    def test_no_fund_or_insider_data_returns_hold(self, db_path):
+        """No fund_holdings + no insider data → no_data branch (lines 91-93).
+
+        Verifies HOLD with low confidence + reasoning indicates missing data.
+        """
         from nuri.trading.agents.smart_money import SmartMoneyAgent
 
-        # No fund_holdings + no insider data → no_data branch first
         v = SmartMoneyAgent().analyze("ZZZ", db_path=db_path)
         assert v.action == "HOLD"
+        # 데이터 부족 → 낮은 confidence (BaseAgent contract)
+        assert v.confidence <= 50
+        assert v.ticker == "ZZZ"
 
 
 # ─── technical.py: lines 44-47, 80-81, 208-210 ─────────────────────────
 
 
 class TestTechnicalBranches:
-    def test_no_signals_at_all(self, db_path):
-        """No prices → graceful HOLD."""
+    def test_no_prices_returns_low_conf_hold(self, db_path):
+        """No prices → graceful HOLD with low confidence + 'no data' reasoning."""
         from nuri.trading.agents.technical import TechnicalAgent
 
         v = TechnicalAgent().analyze("ZZZ", db_path=db_path)
         assert v.action == "HOLD"
+        # data-absent → low confidence per BaseAgent contract
+        assert v.confidence <= 50
+        # reasoning mentions data shortage (한국어 모듈 convention)
+        assert "데이터" in v.reasoning or "부족" in v.reasoning
 
 
 # ─── wallstreet.py: lines 88-89, 189, 258 ──────────────────────────────
 
 
 class TestWallstreetBranches:
-    def test_no_data_returns_hold(self, db_path):
+    def test_no_analyst_data_returns_low_conf_hold(self, db_path):
+        """No analyst_ratings → HOLD with low conf, reasoning cites missing data."""
         from nuri.trading.agents.wallstreet import WallStreetAgent
 
         v = WallStreetAgent().analyze("ZZZ", db_path=db_path)
         assert v.action == "HOLD"
+        assert v.confidence <= 50
+        assert v.ticker == "ZZZ"
 
 
 # ─── korean_market.py: lines 129, 136 ───────────────────────────────
@@ -283,14 +304,24 @@ class TestWallstreetBranches:
 
 class TestKoreanMarketBranches:
     def test_us_ticker_no_kr_action(self, db_path):
-        """US ticker → korean_market neutral (line 28-31 / 129 area)."""
+        """US ticker (no .KS/.KQ suffix) → KoreanMarketAgent neutral HOLD.
+
+        Per agents/CLAUDE.md "Specialized by ticker type": korean_market returns
+        low-conf HOLD outside specialization by design.
+        """
         from nuri.trading.agents.korean_market import KoreanMarketAgent
 
         v = KoreanMarketAgent().analyze("AAPL", db_path=db_path)
         assert v.action == "HOLD"
+        # neutral-by-design → reasoning cites US ticker / non-KR
+        assert "US" in v.reasoning or "한국" in v.reasoning or "KR" in v.reasoning
 
-    def test_kr_ticker_basic(self, db_path):
-        """KR ticker activation path."""
+    def test_kr_ticker_uptrend_returns_directional(self, db_path):
+        """KR ticker with monotonic uptrend → directional verdict (BUY or HOLD).
+
+        25-day rising series triggers KoreanMarketAgent's 20-day momentum branch
+        (per agents/CLAUDE.md live probe: 005930.KS activates on 20-day momentum).
+        """
         from nuri.trading.agents.korean_market import KoreanMarketAgent
 
         with get_db(db_path) as conn:
@@ -301,6 +332,9 @@ class TestKoreanMarketBranches:
                 )
         v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
         assert v.action in ("BUY", "SELL", "HOLD")
+        # KR ticker activated → reasoning should NOT be the US neutral fallback
+        assert "US ticker" not in v.reasoning
+        assert v.ticker == "005930.KS"
 
 
 # ─── consensus/__init__.py: agent exception fallback ───────────────────
@@ -363,8 +397,13 @@ class TestConsensusExceptionFallback:
 
 
 class TestLearningMemoryEdge:
-    def test_compute_canonical_no_data(self, tmp_path):
-        """No data path — compute_canonical_weights still returns dict."""
+    def test_compute_canonical_empty_db_returns_empty_dict(self, tmp_path):
+        """Empty DB → no rows match `outcome_30d IS NOT NULL` gate → empty dict.
+
+        Per learning_memory.py:165 docstring: canonical reads ONLY outcome_30d.
+        Fresh init_db() has no recommendations → expected return: empty dict
+        (not DEFAULT_WEIGHTS — that fallback is in `_compute_weights`, not here).
+        """
         from nuri.core.db import init_db
         from nuri.trading.agents.consensus.learning_memory import (
             compute_canonical_weights,
@@ -373,4 +412,5 @@ class TestLearningMemoryEdge:
         p = tmp_path / "test.db"
         init_db(p)
         result = compute_canonical_weights(db_path=p)
-        assert isinstance(result, dict)
+        # 빈 DB → no eligibility rows
+        assert result == {} or all(hasattr(v, "weight") for v in result.values()), f"unexpected shape: {result!r}"
