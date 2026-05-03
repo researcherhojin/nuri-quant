@@ -1,6 +1,6 @@
 ---
 name: nuri-harness-debug
-description: LLM 에이전트 실패 패턴 디버깅 (hallucination, phantom fix, test illusion, scope creep, context bias, stale number drift). Use when user reports "test passes but doesn't cover the code", "fix applied but bug persists", "why does this keep failing the same way", "Claude is hallucinating API", or when a regression test needs a Gotcha-Test Pair citation. References docs/HARNESS.md case studies.
+description: LLM 에이전트 실패 패턴 디버깅 (hallucination, phantom fix, test illusion, scope creep, context bias, stale number drift). Use when user reports "test passes but doesn't cover the code", "fix applied but bug persists", "why does this keep failing the same way", "Claude is hallucinating API", or when a regression test needs a Gotcha-Test Pair citation. Case study narrative: git log of PR #272, #300-#307.
 ---
 
 # Harness Debug — LLM 실패 패턴 진단 프로토콜
@@ -114,13 +114,13 @@ description: LLM 에이전트 실패 패턴 디버깅 (hallucination, phantom fi
 
 관련: §5.5 (Test Illusion), §5.8 #1 (모르면 읽는다) — gotcha 는 "고쳤다" 는 이야기, 실제 고침은 코드에서 확인.
 
-## Case Studies — `docs/HARNESS.md` 참조
+## Case Studies
 
-비슷한 패턴을 디버깅할 때 구체 narrative 필요하면:
+구체 case study narrative 는 `git log` 의 PR / commit 본문에 보존:
 
-- `docs/HARNESS.md §1` — #272 세션 교훈 (2026-04-14, 12 PRs): Mock-only 테스트, API 동시성 비대칭, ThreadPool timeout, 사용자 관점 검증, multi-role flow
-- `docs/HARNESS.md §2` — JKHY 에피소드 (PR #300-#303, #306, #307): dissent overwhelmed, mechanical divergence penalty, 초기 진단 오독 정정
+- **#272 세션 교훈** (2026-04-14, 12 PRs): Mock-only 테스트, API 동시성 비대칭, ThreadPool timeout, 사용자 관점 검증, multi-role flow → `git log --grep '#272\|mock-only' --since 2026-04-13 --until 2026-04-16`
+- **JKHY 에피소드** (PR #300-#303, #306, #307): dissent overwhelmed, mechanical divergence penalty, 초기 진단 오독 정정 → `gh pr view 300/301/302/303/306/307`
 
 ## 변경 이력 (원칙 7개)
 
-2026-04-14: #3 강화 ("실행한다" → "사용자 워크플로로 검증한다"), #7 추가 (외부 API 측정). Mock-only ship 함정 3회 반복 후 (`docs/HARNESS.md §1`).
+2026-04-14: #3 강화 ("실행한다" → "사용자 워크플로로 검증한다"), #7 추가 (외부 API 측정). Mock-only ship 함정 3회 반복 후 (`#272` 세션, git log).

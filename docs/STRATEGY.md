@@ -3,7 +3,7 @@
 이 문서는 프로젝트의 존재 이유, 핵심 설계 결정의 근거, 개발 품질 기준을 정의한다. 새로운 기능을 만들거나 기존 구조를 변경할 때 이 문서의 원칙에 부합하는지 먼저 확인한다.
 
 <!--
-Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import 되어 launch 시 전량 context 에 load 된다. Claude Code 공식 가이드 ("target under 200 lines per CLAUDE.md", "imports do not reduce context") 에 따라 본문은 canonical policy + 결정의 "왜" 만 담는다. 상세 methodology / narrative / case study 는 별도 파일 (HARNESS.md, SIEGE_V2.md, codex-reviews/, scripts/*.py docstring, git log) 에 위임한다. 이 원칙을 어기는 추가 narrative 는 stripped HTML comment 로 감싸거나 외부 파일로 뽑아내 context cost 를 0 으로 유지한다.
+Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import 되어 launch 시 전량 context 에 load 된다. Claude Code 공식 가이드 ("target under 200 lines per CLAUDE.md", "imports do not reduce context") 에 따라 본문은 canonical policy + 결정의 "왜" 만 담는다. 상세 methodology / narrative / case study 는 별도 파일 (SIEGE_V2.md, codex-reviews/, scripts/*.py docstring, git log) 에 위임한다. 이 원칙을 어기는 추가 narrative 는 stripped HTML comment 로 감싸거나 외부 파일로 뽑아내 context cost 를 0 으로 유지한다.
 -->
 
 ---
@@ -403,7 +403,7 @@ Deferred (필요 시점에 추가):
 
 ## 5. LLM 에이전트 하네스 (Harness Engineering)
 
-이 프로젝트는 LLM (Claude Code) 이 주요 개발 도구. LLM 은 체계적으로 실패하는 패턴이 있다. 본 섹션은 canonical 원칙 — 실제 사례·진단 절차·Gotcha-Test Pair 프로토콜 상세는 `/nuri-harness-debug` skill (`.claude/skills/nuri-harness-debug/SKILL.md`) 이 on-demand load. Case studies 는 `docs/HARNESS.md`.
+이 프로젝트는 LLM (Claude Code) 이 주요 개발 도구. LLM 은 체계적으로 실패하는 패턴이 있다. 본 섹션은 canonical 원칙 — 실제 사례·진단 절차·Gotcha-Test Pair 프로토콜 상세는 `/nuri-harness-debug` skill (`.claude/skills/nuri-harness-debug/SKILL.md`) 이 on-demand load. Case study 본문은 `git log` (PR #272, #300-#307) 에 보존.
 
 ### 5.1–5.6 실패 패턴 (canonical 목록)
 
@@ -456,16 +456,14 @@ Deferred (필요 시점에 추가):
 7. 외부 API는 측정한다        — 동시성/timeout/rate-limit 추정 금지. yfinance 10-thread OK ≠ KRX 10-thread OK
 ```
 
-**변경 이력**: 2026-04-14 — #3 강화 ("실행" → "사용자 워크플로 검증"), #7 추가 (외부 API 측정). Mock-only ship 함정 3회 반복 후 (`docs/HARNESS.md §1`).
+**변경 이력**: 2026-04-14 — #3 강화 ("실행" → "사용자 워크플로 검증"), #7 추가 (외부 API 측정). Mock-only ship 함정 3회 반복 후 (`#272` 세션, git log).
 
 ### 5.9 Case Studies (on-demand reference)
 
-실제 실패 세션의 구체 교훈은 `/nuri-harness-debug` skill 이 canonical (2026-04-29 doc refactor PR 4 로 `docs/HARNESS.md` → pointer 화). 비슷한 패턴 디버깅 시 auto-trigger 또는 manual `/nuri-harness-debug` invoke.
+실제 실패 세션의 구체 교훈은 `/nuri-harness-debug` skill 이 canonical. 비슷한 패턴 디버깅 시 auto-trigger 또는 manual `/nuri-harness-debug` invoke.
 
-- **Case #1** — #272 세션 (2026-04-14, 12 PRs): Mock-only 테스트, API 동시성 비대칭, ThreadPool timeout, 사용자 관점 검증, multi-role flow.
-- **Case #2** — JKHY 에피소드 (PR #300-#303, #306, #307): dissent overwhelmed, mechanical divergence penalty, 초기 진단 오독 정정.
-
-Skill 미가용 시 `docs/HARNESS.md` (pointer) → `.claude/skills/nuri-harness-debug/SKILL.md` 로 fallback.
+- **Case #1** — #272 세션 (2026-04-14, 12 PRs): Mock-only 테스트, API 동시성 비대칭, ThreadPool timeout, 사용자 관점 검증, multi-role flow. 본문 → `git log --grep '#272' --since 2026-04-13 --until 2026-04-16`.
+- **Case #2** — JKHY 에피소드 (PR #300-#303, #306, #307): dissent overwhelmed, mechanical divergence penalty, 초기 진단 오독 정정. 본문 → `gh pr view 300/301/302/303/306/307`.
 
 ### 5.10 Frontier Alignment + Improvement Roadmap (2026-04-30)
 

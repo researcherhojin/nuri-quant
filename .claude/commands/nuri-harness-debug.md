@@ -8,4 +8,4 @@ description: LLM agent 실패 패턴 진단 (hallucination / phantom fix / test 
 2. 해당 섹션의 "실제 사례" + "방어" 절차 적용
 3. 발견된 fix 가 새 gotcha 라면 Gotcha-Test Pair (§5.3.1) 작성 권고 — `**Test:** path::TestClass::test_name` cite 필수
 
-세션 진단이 끝나면 변경 이력 (`docs/HARNESS.md` 추가 후보) 검토.
+세션 진단이 끝나면 변경 이력 (commit message + Reflect 단계의 NEXT_SESSION 갱신) 으로 보존.
