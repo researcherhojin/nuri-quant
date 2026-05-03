@@ -172,6 +172,10 @@ class FundamentalCollector(BaseCollector):
             self.logger.warning("수집할 종목이 없습니다")
             return []
 
+        # MAX_FAILURE_RATE(10%) 가드 활성화 — yfinance/KIS fail 누적 시 save 거부.
+        # asymmetric data age 방지 (어제 row 그대로 + 오늘 70% 결손 silent save 차단).
+        self._expected_count = len(tickers)
+
         self.logger.info(f"펀더멘탈 수집 대상: {len(tickers)}종목 (source={source})")
         from nuri.core.timezone import today_kst
 
