@@ -939,7 +939,7 @@ class TestImportScriptSync:
         import scripts.ops.import_portfolio as imp
 
         monkeypatch.setattr(imp, "CONFIG_PATH", yaml_path)
-        imp.main()
+        imp.main([])
 
         # 4. DB는 yaml과 정확히 일치 (BBB, CCC 삭제됨)
         rows = query(
@@ -995,7 +995,7 @@ class TestImportScriptSync:
         import scripts.ops.import_portfolio as imp
 
         monkeypatch.setattr(imp, "CONFIG_PATH", yaml_path)
-        imp.main()
+        imp.main([])
 
         # demo는 그대로 보존
         demo_rows = query("SELECT ticker FROM portfolio WHERE account='demo'", db_path=db_path)
@@ -1037,7 +1037,7 @@ class TestImportScriptSync:
         import scripts.ops.import_portfolio as imp
 
         monkeypatch.setattr(imp, "CONFIG_PATH", yaml_path)
-        imp.main()
+        imp.main([])
 
         rows = query("SELECT * FROM portfolio WHERE account='test'", db_path=db_path)
         assert rows == []

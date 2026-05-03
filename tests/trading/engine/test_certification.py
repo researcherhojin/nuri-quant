@@ -833,7 +833,7 @@ class TestAccountStrategyIntegration:
         assert cond.passed is True
 
     def test_position_limit_swing_violated_at_35pct(self, db_path, monkeypatch):
-        """swing 허용해도 35% 비중은 위반 (한도 30%)."""
+        """swing 허용해도 35% 비중은 위반 (한도 30%) — neutral regime 기준."""
         from nuri.trading.engine.certification import _check_position_limits
 
         mock_df = pd.DataFrame(
@@ -851,6 +851,12 @@ class TestAccountStrategyIntegration:
                 if a == "sub"
                 else {"stop_loss": -7, "max_single_position": 0.15}
             ),
+        )
+        # regime override 가 multiplier × 1.20 적용해 cap 36% 로 inflate 시키지 않도록
+        # neutral 로 고정 (테스트 의도는 base cap 30% < 35% 위반 검증).
+        monkeypatch.setattr(
+            "nuri.trading.engine.certification._current_regime",
+            lambda: "neutral",
         )
 
         cond = _check_position_limits(db_path)
