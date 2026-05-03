@@ -180,7 +180,7 @@ fi
 # 4c. scheduler load + verify PID 살아남
 step 5 "scheduler 재기동"
 if [[ "${SCHEDULER_INSTALLED}" == "no" ]]; then
-    ssh "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && cp ${REMOTE_PATH}/scripts/${PLIST_NAME} ${PLIST_REMOTE}"
+    ssh "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && cp ${REMOTE_PATH}/scripts/launchd/${PLIST_NAME} ${PLIST_REMOTE}"
     ssh "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
 else
     ssh "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
