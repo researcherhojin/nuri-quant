@@ -258,3 +258,66 @@ class TestExitCodes:
         out = capsys.readouterr().out
         assert rc == 0
         assert out == ""  # quiet on success
+
+
+# E3 #579 — agent transcript stream gate
+class TestStreamMode:
+    def test_stream_clean_passes(self, monkeypatch, capsys):
+        import io
+
+        from scripts.verify import check_privacy_leak as mod
+
+        monkeypatch.setattr("sys.stdin", io.StringIO("Codex spec — refactor strategy module"))
+        monkeypatch.setattr("sys.argv", ["check_privacy_leak.py", "--stream", "--quiet"])
+        assert mod.main() == 0
+
+    def test_stream_ticker_pnl_returns_two(self, monkeypatch, capsys):
+        import io
+
+        from scripts.verify import check_privacy_leak as mod
+
+        # 사용자 통증 시그니처: ticker + signed-% (PR #202 leak 패턴)
+        monkeypatch.setattr("sys.stdin", io.StringIO("User holds NVDA +57% conviction"))
+        monkeypatch.setattr("sys.argv", ["check_privacy_leak.py", "--stream"])
+        assert mod.main() == 2  # exit 2 — distinct from message-mode's exit 1
+
+    def test_stream_broker_name_returns_two(self, monkeypatch, capsys):
+        import io
+
+        from scripts.verify import check_privacy_leak as mod
+
+        # Romanized broker name (한국어 broker 명 우회) 도 잡힌다
+        monkeypatch.setattr("sys.stdin", io.StringIO("kakaopay account holds positions"))
+        monkeypatch.setattr("sys.argv", ["check_privacy_leak.py", "--stream"])
+        assert mod.main() == 2
+
+    def test_stream_monetary_literal_returns_two(self, monkeypatch, capsys):
+        import io
+
+        from scripts.verify import check_privacy_leak as mod
+
+        # cash_balance + 7-digit non-round → 의심 monetary literal
+        monkeypatch.setattr(
+            "sys.stdin",
+            io.StringIO("cash_balance: 12345678 KRW total_invested: 9876543 KRW"),
+        )
+        monkeypatch.setattr("sys.argv", ["check_privacy_leak.py", "--stream"])
+        assert mod.main() == 2
+
+
+class TestGateTextHelper:
+    def test_clean_text_yields_no_findings(self):
+        from scripts.verify.check_privacy_leak import gate_text
+
+        assert gate_text("legitimate transcript chunk") == []
+
+    def test_aggregates_all_three_categories(self):
+        from scripts.verify.check_privacy_leak import gate_text
+
+        text = "kakaopay account NVDA +57% cash_balance 12345678"
+        findings = gate_text(text)
+        cats = {f.category for f in findings}
+        # 3 categories all surface
+        assert "broker_name" in cats
+        assert "ticker_pnl" in cats
+        assert "suspect_numeric" in cats
