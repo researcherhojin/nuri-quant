@@ -8,7 +8,7 @@ description: Code review checklist. Use when asked to "review", "리뷰", "코�
 ## Architecture rules
 
 - [ ] No cross-phase imports — phases communicate via DB/CSV only
-- [ ] DB access via `nuri/core/db.py` only — no direct `sqlite3` import
+- [ ] DB access via `nuri/core/db/` only — no direct `sqlite3` import
 - [ ] Schema changes via `_MIGRATIONS` list in db.py — no direct ALTER TABLE
 - [ ] Time via `kst_now()` / `today_kst()` — no `datetime.now()`
 - [ ] Config in `config/*.yaml` — no hardcoded rules or thresholds
