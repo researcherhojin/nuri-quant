@@ -770,7 +770,8 @@
     "uncastable",
     "uppercases",
     "HITL",
-    "unwritable"
+    "unwritable",
+    "Karpathy"
   ],
   "ignorePaths": [
     "node_modules/**",
