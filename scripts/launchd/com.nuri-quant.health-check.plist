@@ -21,7 +21,7 @@
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>cd /Users/USER/workspace/nuri-quant &amp;&amp; bash scripts/health_check.sh</string>
+        <string>cd /Users/USER/workspace/nuri-quant &amp;&amp; bash scripts/ops/health_check.sh</string>
     </array>
 
     <key>WorkingDirectory</key>

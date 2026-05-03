@@ -30,7 +30,7 @@
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>cd /Users/USER/workspace/nuri-quant &amp;&amp; source ~/.zshrc &amp;&amp; bash scripts/state_replicator.sh primary</string>
+        <string>cd /Users/USER/workspace/nuri-quant &amp;&amp; source ~/.zshrc &amp;&amp; bash scripts/deploy/state_replicator.sh primary</string>
     </array>
 
     <key>WorkingDirectory</key>
