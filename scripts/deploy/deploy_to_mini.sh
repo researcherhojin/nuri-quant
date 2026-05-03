@@ -157,7 +157,8 @@ else
 fi
 
 # 4b. uv sync --frozen (항상 실행, 1회 retry)
-SYNC_CMD="cd ${REMOTE_PATH} && uv sync --extra dev --frozen --quiet"
+# ssh non-interactive shell 은 ~/.zprofile 미로드 → homebrew PATH 누락. 명시 prepend 필수.
+SYNC_CMD="export PATH=/opt/homebrew/bin:\$PATH && cd ${REMOTE_PATH} && uv sync --extra dev --frozen --quiet"
 if ssh "${REMOTE}" "${SYNC_CMD}" 2>&1; then
     ok "uv sync --frozen 성공"
 elif sleep 5 && ssh "${REMOTE}" "${SYNC_CMD}" 2>&1; then
