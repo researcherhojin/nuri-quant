@@ -46,7 +46,10 @@ _CHANNEL_LABELS = {
     "ops": "Ops",
     "incidents": "Incidents",
     "rollout": "Research Rollout",
+    "agent_control": "Agent Control",  # HITL gate (E1 #582)
+    "agent_dev_log": "Agent Dev Log",  # transcript (E2 #578)
 }
+_VALID_CHANNELS = tuple(_CHANNEL_LABELS.keys())
 
 
 def _last_stage_age_seconds(channel: str, db_path: Optional[Any]) -> Optional[int]:
@@ -89,8 +92,8 @@ class ChannelDispatcher(Actor):
 
     def execute(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult:
         channel = input_data.get("channel")
-        if channel not in ("brief", "ops", "incidents", "rollout"):
-            raise ValueError(f"channel must be brief/ops/incidents/rollout, got {channel!r}")
+        if channel not in _VALID_CHANNELS:
+            raise ValueError(f"channel must be one of {_VALID_CHANNELS}, got {channel!r}")
         db_path = input_data.get("db_path")
         force = bool(input_data.get("force", False))
 
@@ -189,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(prog="channel-dispatcher")
-    parser.add_argument("channel", choices=["brief", "ops", "incidents", "rollout"])
+    parser.add_argument("channel", choices=list(_VALID_CHANNELS))
     parser.add_argument("--force", action="store_true", help="bypass quiet-period gate")
     args = parser.parse_args(argv)
 

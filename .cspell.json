@@ -768,7 +768,8 @@
     "triaging",
     "truthies",
     "uncastable",
-    "uppercases"
+    "uppercases",
+    "HITL"
   ],
   "ignorePaths": [
     "node_modules/**",

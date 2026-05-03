@@ -28,7 +28,7 @@ from typing import Any, Optional
 
 from .connection import get_db
 
-_CHANNELS = ("brief", "ops", "incidents", "rollout")
+_CHANNELS = ("brief", "ops", "incidents", "rollout", "agent_control", "agent_dev_log")
 _PRIORITIES = ("high", "normal", "low")
 _STATUSES = ("pending", "claimed", "sent", "failed", "dropped")
 
