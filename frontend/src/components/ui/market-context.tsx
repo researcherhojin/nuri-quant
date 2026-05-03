@@ -41,6 +41,37 @@ function healthColor(value: number, thresholds: [number, number]): string {
   return "text-red-400";
 }
 
+// #503 Phase A — regime stripe color (events card 좌측 border)
+function regimeStripe(trend: string | undefined): string {
+  if (trend === "bull") return "border-l-emerald-500/60";
+  if (trend === "bear") return "border-l-red-500/60";
+  if (trend === "sideways") return "border-l-amber-500/60";
+  return "border-l-zinc-700/60";
+}
+
+// #503 Phase A — 7d aggregate-by-day sparkline path (SVG points)
+function sparklinePath(events: MacroEvent[], width: number, height: number): { path: string; latest: number } | null {
+  if (events.length === 0) return null;
+  const buckets: Record<string, number[]> = {};
+  for (const ev of events) {
+    const day = ev.published_at?.slice(0, 10);
+    if (!day) continue;
+    (buckets[day] ||= []).push(ev.sentiment);
+  }
+  const days = Object.keys(buckets).sort();
+  if (days.length < 2) return null;
+  const means = days.map(d => buckets[d].reduce((a, b) => a + b, 0) / buckets[d].length);
+  const min = Math.min(...means, -1);
+  const max = Math.max(...means, 1);
+  const range = max - min || 1;
+  const points = means.map((m, i) => {
+    const x = (i / (means.length - 1)) * width;
+    const y = height - ((m - min) / range) * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return { path: `M ${points.join(" L ")}`, latest: means[means.length - 1] };
+}
+
 function HealthCard({ label, value, sub, href, color }: { label: string; value: string; sub: string; href: string; color: string }) {
   return (
     <Link href={href} className="flex-1 min-w-20 rounded-lg bg-zinc-900/60 border border-zinc-800/50 p-2.5 hover:bg-zinc-800/60 transition-colors">
@@ -91,20 +122,34 @@ export function MarketContext({ events, health }: MarketContextProps) {
         />
       </div>
 
-      {/* 매크로 이벤트 */}
+      {/* 매크로 이벤트 — #503 Phase A: regime stripe + high-conf bold + 7d sparkline */}
       {events.length > 0 && (
-        <div className="rounded-lg bg-zinc-900/40 border border-zinc-800/60 p-2.5">
-          <h4 className="text-[10px] text-zinc-500 font-semibold mb-1.5">{CONTEXT.TITLE}</h4>
+        <div className={`rounded-lg bg-zinc-900/40 border border-zinc-800/60 border-l-4 ${regimeStripe(regime.trend)} p-2.5`}>
+          <div className="flex items-center justify-between mb-1.5">
+            <h4 className="text-[10px] text-zinc-500 font-semibold">{CONTEXT.TITLE}</h4>
+            {(() => {
+              const sl = sparklinePath(events, 60, 14);
+              if (!sl) return null;
+              const trendColor = sl.latest > 0.1 ? "stroke-emerald-400" : sl.latest < -0.1 ? "stroke-red-400" : "stroke-zinc-500";
+              return (
+                <svg width="60" height="14" className={trendColor} aria-label="7d sentiment trend">
+                  <path d={sl.path} fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              );
+            })()}
+          </div>
           <div className="space-y-1">
             {events.map((ev, i) => {
               const style = categoryStyles[ev.category] || { emoji: "📌", color: "text-zinc-400" };
               const date = ev.published_at?.slice(5, 10) ?? "";
+              const isHighConf = (ev.confidence ?? 0) >= 0.8;
+              const headlineCls = isHighConf ? "text-zinc-300 font-medium" : "text-zinc-500";
               return (
                 <div key={i} className="flex items-start gap-1.5 text-[10px]">
                   <span className="shrink-0">{style.emoji}</span>
-                  <span className={`shrink-0 ${style.color} font-medium`}>{date}</span>
-                  <span className={`shrink-0 ${style.color} font-semibold`}>{ev.category_ko ?? ev.category}</span>
-                  <span className="text-zinc-500 truncate flex-1" title={ev.headline}>
+                  <span className={`shrink-0 ${style.color} ${isHighConf ? "font-bold" : "font-medium"}`}>{date}</span>
+                  <span className={`shrink-0 ${style.color} ${isHighConf ? "font-bold" : "font-semibold"}`}>{ev.category_ko ?? ev.category}</span>
+                  <span className={`${headlineCls} truncate flex-1`} title={ev.headline}>
                     {ev.headline.length > 60 ? ev.headline.slice(0, 57) + "..." : ev.headline}
                   </span>
                 </div>
