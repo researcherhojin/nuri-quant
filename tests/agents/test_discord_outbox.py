@@ -274,6 +274,96 @@ def test_bucket_brief_digest_empty_returns_no_op_embed():
     assert "0 opinions" in embed["title"]
 
 
+# ─── #571 Phase 1 — price_levels surfacing ─────────────────
+
+
+def test_format_event_line_renders_price_levels_for_buy():
+    """BUY recommendation 에 price_levels 첨부 → 2번째 라인에 entry/stop/TP1/TP2."""
+    from nuri.agents.discord.outbox import _format_event_line
+
+    line = _format_event_line(
+        {
+            "kind": "BUY",
+            "ticker": "TST_A",
+            "conviction": 0.81,
+            "price_levels": {
+                "entry": 132.14,
+                "stop": 122.89,
+                "tp1": 158.57,
+                "tp2": 184.99,
+                "trailing_pct": -15,
+            },
+        }
+    )
+    head, levels = line.split("\n", 1)
+    assert "TST_A | BUY" in head
+    assert "entry $132.14" in levels
+    assert "stop $122.89" in levels
+    assert "TP1 $158.57" in levels
+    assert "TP2 $184.99" in levels
+    assert "trail -15%" in levels
+
+
+def test_format_event_line_omits_price_levels_for_hold():
+    """HOLD/INFO/BLOCK 은 price_levels 가 있어도 surface 안 함 (noise 차단)."""
+    from nuri.agents.discord.outbox import _format_event_line
+
+    line = _format_event_line(
+        {
+            "kind": "HOLD",
+            "ticker": "TST_A",
+            "conviction": 0.45,
+            "price_levels": {"entry": 100, "stop": 90, "tp1": 120, "tp2": 140},
+        }
+    )
+    assert "\n" not in line
+    assert "entry" not in line
+
+
+def test_format_event_line_no_price_levels_field_renders_single_line():
+    """price_levels 누락 시 (legacy payload) backward-compat — 1 라인."""
+    from nuri.agents.discord.outbox import _format_event_line
+
+    line = _format_event_line({"kind": "SELL", "ticker": "TST_A", "conviction": 0.77})
+    assert "\n" not in line
+    assert "TST_A | SELL" in line
+
+
+def test_format_event_line_partial_price_levels_renders_available():
+    """일부 필드만 있어도 (예: entry+stop, no TP) 가용한 것만 렌더."""
+    from nuri.agents.discord.outbox import _format_event_line
+
+    line = _format_event_line(
+        {
+            "kind": "BUY",
+            "ticker": "TST_A",
+            "conviction": 0.81,
+            "price_levels": {"entry": 100, "stop": 93},
+        }
+    )
+    head, levels = line.split("\n", 1)
+    assert "entry $100" in levels
+    assert "stop $93" in levels
+    assert "TP1" not in levels
+    assert "TP2" not in levels
+
+
+def test_bucket_brief_digest_fits_field_value_with_price_levels():
+    """price_levels 가 붙은 이벤트도 field-value 1024-char 캡 안에서 truncate."""
+    events = [
+        {
+            "kind": "BUY",
+            "ticker": f"TST_{i}",
+            "conviction": 0.8,
+            "price_levels": {"entry": 132.14, "stop": 122.89, "tp1": 158.57, "tp2": 184.99, "trailing_pct": -15},
+        }
+        for i in range(20)  # 충분히 많이 — 1024 caps
+    ]
+    embed = bucket_brief_digest(events)
+    for field in embed["fields"]:
+        assert len(field["value"]) <= 1024, f"field-value {len(field['value'])} > 1024"
+
+
 def test_bucket_generic_digest_groups_by_kind():
     events = [
         {"kind": "freshness_warn", "summary": "prices stale 25h"},

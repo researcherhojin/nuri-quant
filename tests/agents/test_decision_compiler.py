@@ -551,6 +551,47 @@ class TestDiscordPublish:
             assert result.outcome == Outcome.PASS
             assert result.output["status"] == "emitted"
 
+    def test_buy_emit_attaches_price_levels(self, patched_db):
+        """#571 Phase 1 — BUY recommendation 은 entry/stop/TP1/TP2/trailing 를 payload 에 attach."""
+        from nuri.core.db import claim_pending_outbox
+
+        with patch(
+            "nuri.trading.recommend.price_targets.calculate_targets",
+            return_value={
+                "ticker": "TST_A",
+                "entry_price": 100.0,
+                "stop_loss": 93.0,
+                "target_1": 120.0,
+                "target_2": 140.0,
+                "trailing_stop_pct": -15,
+            },
+        ):
+            DecisionCompiler().run(_compile_payload())
+
+        _, rows = claim_pending_outbox("brief", db_path=patched_db)
+        assert len(rows) == 1
+        levels = rows[0]["payload"].get("price_levels")
+        assert levels is not None
+        assert levels["entry"] == 100.0
+        assert levels["stop"] == 93.0
+        assert levels["tp1"] == 120.0
+        assert levels["tp2"] == 140.0
+        assert levels["trailing_pct"] == -15
+
+    def test_buy_emit_omits_price_levels_when_targets_fail(self, patched_db):
+        """price_targets 가 error 반환하면 payload 에 price_levels 부재 — silent omit."""
+        from nuri.core.db import claim_pending_outbox
+
+        with patch(
+            "nuri.trading.recommend.price_targets.calculate_targets",
+            return_value={"ticker": "TST_A", "error": "no price data"},
+        ):
+            DecisionCompiler().run(_compile_payload())
+
+        _, rows = claim_pending_outbox("brief", db_path=patched_db)
+        assert len(rows) == 1
+        assert "price_levels" not in rows[0]["payload"]
+
     def test_hold_emit_does_not_stage_brief(self, patched_db):
         """HOLD (low conviction) 은 BRIEF outbox stage X — 사용자 noise 방지."""
         from nuri.core.db import claim_pending_outbox

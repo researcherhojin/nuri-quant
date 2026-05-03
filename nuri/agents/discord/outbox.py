@@ -12,6 +12,31 @@ actor 가 `DiscordPublisher` 를 직접 호출하면 single-writer 깨짐 → CI
 Layout helpers:
     bucket_brief_digest(events) — Codex 권장 actionability bucket layout 으로
     여러 BUY/SELL/HOLD/BLOCK event 를 1 embed dict 로 합친다. dispatcher 가 호출.
+
+Payload schema (#571 brief content extension):
+    Required:
+        kind        — BUY | SELL | HOLD | BLOCK | CONFLICT | INFO
+        ticker      — symbol (US: AAPL / KR: 005930.KS)
+    Optional core:
+        conviction  — float [0..1] consensus confidence
+        regime      — text e.g. "top 0.72"
+        causal      — text e.g. "0.68"
+        horizon     — text e.g. "growth" | "swing" | "value"
+        reason      — short label e.g. "stop-loss" | "TP1 reached"
+        note        — free-form
+        decision_id — dedupe key
+    Optional #571 Phase 1 (BUY/SELL only — HOLD/INFO/BLOCK 은 surface 안 함):
+        price_levels: {
+            entry          — float (현재가 또는 명시 진입가)
+            stop           — float (-7%/-10%/-5% per growth/value/swing)
+            tp1            — float (1차 익절 — 50% sell trigger)
+            tp2            — float (2차 익절 — 25% / all sell trigger)
+            trailing_pct   — float ladder (e.g., -15)
+        }
+        ↳ canonical source: `nuri.trading.recommend.price_targets.calculate_targets()`.
+        ↳ caller 는 위 함수 그대로 호출 → 결과 키 매핑해 attach.
+        ↳ 누락 / error 시 silent omit (legacy payload back-compat).
+    Optional #571 Phase 2+ (별 후속): position_state, signal_top2, invalidation.
 """
 
 from __future__ import annotations
@@ -239,10 +264,62 @@ def _classify_event(payload: dict[str, Any]) -> str:
     return "Lower Priority"
 
 
-def _format_event_line(payload: dict[str, Any]) -> str:
-    """Compact one-line per event (Codex format).
+def _format_price_levels(price_levels: Optional[dict[str, Any]]) -> Optional[str]:
+    """Render price_levels dict as compact line (#571 Phase 1).
 
-    `NVDA | SELL | conv 0.81 | regime bear 0.72 | causal 0.68 | reason: stop-loss`
+    `↳ entry $132 / stop $123 / TP1 $158 / TP2 $185 · trail -15%`
+
+    None / 결측 시 None 반환 (caller 가 omit). 사용자 룰: BUY/SELL recommendation
+    은 entry/stop/target_1/target_2/trailing 명시 의무 (`nuri/trading/recommend/CLAUDE.md`
+    "Price levels mandatory").
+    """
+    if not price_levels or not isinstance(price_levels, dict):
+        return None
+    entry = price_levels.get("entry")
+    stop = price_levels.get("stop")
+    tp1 = price_levels.get("tp1")
+    tp2 = price_levels.get("tp2")
+    trailing_pct = price_levels.get("trailing_pct")
+
+    def _fmt_price(v: Any) -> str:
+        if v is None:
+            return "—"
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return "—"
+        return f"${f:,.2f}" if f < 1000 else f"${f:,.0f}"
+
+    parts = []
+    if entry is not None:
+        parts.append(f"entry {_fmt_price(entry)}")
+    if stop is not None:
+        parts.append(f"stop {_fmt_price(stop)}")
+    if tp1 is not None:
+        parts.append(f"TP1 {_fmt_price(tp1)}")
+    if tp2 is not None:
+        parts.append(f"TP2 {_fmt_price(tp2)}")
+    if not parts:
+        return None
+    main = " / ".join(parts)
+    if trailing_pct is not None:
+        try:
+            t = float(trailing_pct)
+            main += f" · trail {t:+.0f}%"
+        except (TypeError, ValueError):
+            pass
+    return f"  ↳ {main}"
+
+
+def _format_event_line(payload: dict[str, Any]) -> str:
+    """Compact event renderer (Codex format + #571 price_levels extension).
+
+    Single line:
+        `NVDA | SELL | conv 0.81 | regime bear 0.72 | causal 0.68 | reason: stop-loss`
+
+    With price_levels (BUY/SELL recommendations):
+        `NVDA | BUY | conv 0.81 | regime bull 0.72 | causal 0.68`
+        `  ↳ entry $132 / stop $123 / TP1 $158 / TP2 $185 · trail -15%`
     """
     kind = (payload.get("kind") or "?").upper()
     ticker = payload.get("ticker", "?")
@@ -252,7 +329,14 @@ def _format_event_line(payload: dict[str, Any]) -> str:
     for opt in ("regime", "causal", "horizon", "reason", "note"):
         if opt in payload and payload[opt] is not None:
             parts.append(f"{opt}: {payload[opt]}")
-    return " | ".join(parts)
+    head = " | ".join(parts)
+
+    # #571 Phase 1: BUY/SELL 만 price_levels surface — HOLD/INFO/BLOCK 은 noise.
+    if kind in ("BUY", "SELL"):
+        levels_line = _format_price_levels(payload.get("price_levels"))
+        if levels_line:
+            return f"{head}\n{levels_line}"
+    return head
 
 
 def bucket_brief_digest(
@@ -307,11 +391,14 @@ def bucket_brief_digest(
         lines = buckets[bucket_name]
         if not lines:
             continue
-        # Truncate per-line to keep value < 1024
+        # Truncate per-event to keep value < 1024.
+        # #571 Phase 1: events with price_levels are 2-line (head + ↳ levels)
+        # so per-event cap raised 200→260 to fit multi-line without cutting
+        # the levels mid-string.
         body_lines: list[str] = []
         running = 0
         for ln in lines:
-            ln_trunc = _truncate(ln, 200)
+            ln_trunc = _truncate(ln, 260)
             if running + len(ln_trunc) + 1 > _FIELD_VALUE_MAX:
                 hidden = len(lines) - len(body_lines)
                 body_lines.append(f"… (+{hidden} more)")

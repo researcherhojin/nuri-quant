@@ -401,16 +401,36 @@ class DecisionCompiler(Actor):
         try:
             from nuri.agents.discord.outbox import stage_brief
 
+            payload = {
+                "kind": action,
+                "ticker": ticker,
+                "conviction": conviction,
+                "regime": f"top {rationale.get('regime_top_prob', 0):.2f}",
+                "causal": f"{rationale.get('causal_certainty', 0):.2f}",
+                "decision_id": decision_id,
+                "margin": f"{rationale.get('top2_margin', 0):.2f}",
+            }
+            # #571 Phase 1: BUY/SELL 추천에는 entry/stop/TP1/TP2/trailing 첨부.
+            # 사용자 룰 (recommend/CLAUDE.md "Price levels mandatory") + #571
+            # missing-fields 의 #1 항목.
+            if action in ("BUY", "SELL"):
+                try:
+                    from nuri.trading.recommend.price_targets import calculate_targets
+
+                    targets = calculate_targets(ticker)
+                    if "error" not in targets:
+                        payload["price_levels"] = {
+                            "entry": targets.get("entry_price"),
+                            "stop": targets.get("stop_loss"),
+                            "tp1": targets.get("target_1"),
+                            "tp2": targets.get("target_2"),
+                            "trailing_pct": targets.get("trailing_stop_pct"),
+                        }
+                except Exception:  # noqa: BLE001 — price targets failure must not block brief
+                    pass
+
             stage_brief(
-                payload={
-                    "kind": action,
-                    "ticker": ticker,
-                    "conviction": conviction,
-                    "regime": f"top {rationale.get('regime_top_prob', 0):.2f}",
-                    "causal": f"{rationale.get('causal_certainty', 0):.2f}",
-                    "decision_id": decision_id,
-                    "margin": f"{rationale.get('top2_margin', 0):.2f}",
-                },
+                payload=payload,
                 # 같은 decision 이 retry 로 두 번 stage 되어도 1건만 — decision_id 가 dedupe key
                 dedupe_key=f"decision:{decision_id}",
                 actor_name="decision-compiler",
