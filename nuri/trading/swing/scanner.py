@@ -13,6 +13,7 @@ Universe는 config/universe.yaml에서 로드 (외부화).
     python -m nuri.trading.swing.scanner --market kr         # kr kospi200 (203종목)
     python -m nuri.trading.swing.scanner --extended          # us core + sp500 ext (543종목)
 """
+
 import argparse
 import logging
 from dataclasses import dataclass
@@ -28,21 +29,84 @@ logger = logging.getLogger(__name__)
 
 # Fallback hardcoded lists (config 파일 누락/오류 시)
 _FALLBACK_US_CORE = [
-    "AAPL", "MSFT", "GOOG", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
-    "AMD", "AVGO", "INTC", "QCOM", "ORCL", "CRM", "ADBE", "NFLX",
-    "JPM", "BAC", "GS", "V", "MA", "BRK-B",
-    "JNJ", "PFE", "LLY", "UNH", "MRK", "ABBV",
-    "XOM", "CVX", "KO", "PEP", "WMT", "PG", "HD", "COST",
-    "PLTR", "RKLB", "IONQ", "OKLO", "SOFI", "ARM", "SMCI", "MSTR",
-    "NBIS", "PL", "TEM",
-    "SPY", "QQQ", "IWM", "ARKK", "XLK", "XLF", "XLE", "XLV",
+    "AAPL",
+    "MSFT",
+    "GOOG",
+    "GOOGL",
+    "AMZN",
+    "NVDA",
+    "META",
+    "TSLA",
+    "AMD",
+    "AVGO",
+    "INTC",
+    "QCOM",
+    "ORCL",
+    "CRM",
+    "ADBE",
+    "NFLX",
+    "JPM",
+    "BAC",
+    "GS",
+    "V",
+    "MA",
+    "BRK-B",
+    "JNJ",
+    "PFE",
+    "LLY",
+    "UNH",
+    "MRK",
+    "ABBV",
+    "XOM",
+    "CVX",
+    "KO",
+    "PEP",
+    "WMT",
+    "PG",
+    "HD",
+    "COST",
+    "PLTR",
+    "RKLB",
+    "IONQ",
+    "OKLO",
+    "SOFI",
+    "ARM",
+    "SMCI",
+    "MSTR",
+    "NBIS",
+    "PL",
+    "TEM",
+    "SPY",
+    "QQQ",
+    "IWM",
+    "ARKK",
+    "XLK",
+    "XLF",
+    "XLE",
+    "XLV",
 ]
 
 _FALLBACK_KR_KOSPI200 = [
-    "005930.KS", "000660.KS", "373220.KS", "207940.KS", "005380.KS",
-    "006400.KS", "035420.KS", "000270.KS", "068270.KS", "028260.KS",
-    "105560.KS", "055550.KS", "066570.KS", "003670.KS", "034730.KS",
-    "138930.KS", "012330.KS", "096770.KS", "051910.KS", "003550.KS",
+    "005930.KS",
+    "000660.KS",
+    "373220.KS",
+    "207940.KS",
+    "005380.KS",
+    "006400.KS",
+    "035420.KS",
+    "000270.KS",
+    "068270.KS",
+    "028260.KS",
+    "105560.KS",
+    "055550.KS",
+    "066570.KS",
+    "003670.KS",
+    "034730.KS",
+    "138930.KS",
+    "012330.KS",
+    "096770.KS",
+    "051910.KS",
+    "003550.KS",
 ]
 
 
@@ -111,20 +175,22 @@ KR_UNIVERSE = _FALLBACK_KR_KOSPI200
 @dataclass
 class ScanResult:
     """스캔 결과."""
+
     ticker: str
     price: float
-    change_1d: float        # 전일 대비 수익률 (%)
-    change_5d: float        # 5일 수익률 (%)
-    volume_ratio: float     # 거래량 / 20일 평균 (배수)
+    change_1d: float  # 전일 대비 수익률 (%)
+    change_5d: float  # 5일 수익률 (%)
+    volume_ratio: float  # 거래량 / 20일 평균 (배수)
     rsi: float
-    bb_position: float      # 0=하단, 0.5=중간, 1=상단 이탈
-    signal: str             # "volume_spike", "momentum", "breakout", "bounce"
-    score: float            # 종합 점수 (높을수록 후보)
+    bb_position: float  # 0=하단, 0.5=중간, 1=상단 이탈
+    signal: str  # "volume_spike", "momentum", "breakout", "bounce"
+    score: float  # 종합 점수 (높을수록 후보)
 
 
 def _fetch_prices(tickers: list[str], days: int = 60) -> pd.DataFrame | None:
     """yfinance batch download."""
     import yfinance as yf
+
     try:
         df = yf.download(tickers, period=f"{days}d", group_by="ticker", progress=False)
         if df.empty:
@@ -260,12 +326,16 @@ def print_scan(results: list[ScanResult]) -> None:
     print(f"\n{'=' * 90}")
     print(f"  Market Scanner — {len(results)} candidates")
     print(f"{'=' * 90}")
-    print(f"  {'Ticker':<8} {'Price':>10} {'1D':>7} {'5D':>7} {'VolRatio':>8} {'RSI':>5} {'BB':>5} {'Signal':<14} {'Score':>6}")
+    print(
+        f"  {'Ticker':<8} {'Price':>10} {'1D':>7} {'5D':>7} {'VolRatio':>8} {'RSI':>5} {'BB':>5} {'Signal':<14} {'Score':>6}"
+    )
     print(f"  {'-' * 82}")
 
     for r in results:
-        print(f"  {r.ticker:<8} ${r.price:>9,.2f} {r.change_1d:>+6.1f}% {r.change_5d:>+6.1f}% "
-              f"{r.volume_ratio:>7.1f}x {r.rsi:>5.0f} {r.bb_position:>4.2f} {r.signal:<14} {r.score:>5.0f}")
+        print(
+            f"  {r.ticker:<8} ${r.price:>9,.2f} {r.change_1d:>+6.1f}% {r.change_5d:>+6.1f}% "
+            f"{r.volume_ratio:>7.1f}x {r.rsi:>5.0f} {r.bb_position:>4.2f} {r.signal:<14} {r.score:>5.0f}"
+        )
     print()
 
 
@@ -276,8 +346,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Nuri-Quant Market Scanner")
     parser.add_argument("--market", choices=["us", "kr"], default="us")
     parser.add_argument("--top", type=int, default=20)
-    parser.add_argument("--extended", action="store_true",
-                        help="us_sp500_extended 포함 (us만 적용)")
+    parser.add_argument("--extended", action="store_true", help="us_sp500_extended 포함 (us만 적용)")
     args = parser.parse_args(argv)
 
     results = scan_market(market=args.market, top_n=args.top, extended=args.extended)

@@ -8,6 +8,7 @@ Append-Only Learning Memory — SIEGE 패턴 적용.
     python -m nuri.trading.engine.memory              # 현재 상태 조회
     python -m nuri.trading.engine.memory --snapshot   # 오늘 스냅샷 저장
 """
+
 import argparse
 import logging
 from dataclasses import dataclass
@@ -27,12 +28,13 @@ REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 @dataclass
 class PerformanceDrift:
     """성과 변화 감지."""
+
     signal_id: str
     regime: str | None
     all_time_wr: float
     recent_wr: float
-    drift_pct: float        # (recent - all_time) / all_time * 100
-    status: str             # "stable", "improving", "degrading", "critical"
+    drift_pct: float  # (recent - all_time) / all_time * 100
+    status: str  # "stable", "improving", "degrading", "critical"
     detail: str
 
 
@@ -53,6 +55,7 @@ def save_snapshot(db_path=None) -> int:
     # 레짐 라벨 (있으면)
     try:
         from nuri.quant.regime.strategy_map import analyze_signal_by_regime
+
         cross_df = analyze_signal_by_regime(db_path=db_path)
     except Exception:
         cross_df = pd.DataFrame()
@@ -62,53 +65,61 @@ def save_snapshot(db_path=None) -> int:
     # 1. 전체 기간 (all_time) — 시그널별
     for sig_id, group in trades.groupby("signal_id"):
         stats = _compute_stats(group)
-        records.append({
-            "snapshot_date": today,
-            "signal_id": sig_id,
-            "regime": None,
-            "period": "all_time",
-            **stats,
-        })
+        records.append(
+            {
+                "snapshot_date": today,
+                "signal_id": sig_id,
+                "regime": None,
+                "period": "all_time",
+                **stats,
+            }
+        )
 
     # 2. 최근 90일
     cutoff_90 = (kst_now().replace(tzinfo=None) - timedelta(days=90)).strftime("%Y-%m-%d")
     recent_90 = trades[trades["entry_date"] >= cutoff_90]
     for sig_id, group in recent_90.groupby("signal_id"):
         stats = _compute_stats(group)
-        records.append({
-            "snapshot_date": today,
-            "signal_id": sig_id,
-            "regime": None,
-            "period": "recent_90d",
-            **stats,
-        })
+        records.append(
+            {
+                "snapshot_date": today,
+                "signal_id": sig_id,
+                "regime": None,
+                "period": "recent_90d",
+                **stats,
+            }
+        )
 
     # 3. 최근 30일
     cutoff_30 = (kst_now().replace(tzinfo=None) - timedelta(days=30)).strftime("%Y-%m-%d")
     recent_30 = trades[trades["entry_date"] >= cutoff_30]
     for sig_id, group in recent_30.groupby("signal_id"):
         stats = _compute_stats(group)
-        records.append({
-            "snapshot_date": today,
-            "signal_id": sig_id,
-            "regime": None,
-            "period": "recent_30d",
-            **stats,
-        })
+        records.append(
+            {
+                "snapshot_date": today,
+                "signal_id": sig_id,
+                "regime": None,
+                "period": "recent_30d",
+                **stats,
+            }
+        )
 
     # 4. 레짐별 (교차분석 결과가 있으면)
     if not cross_df.empty:
         for _, row in cross_df.iterrows():
-            records.append({
-                "snapshot_date": today,
-                "signal_id": row["signal_id"],
-                "regime": row["regime"],
-                "period": "all_time",
-                "trades": int(row["trades"]),
-                "win_rate": row["win_rate"],
-                "profit_factor": row["profit_factor"],
-                "avg_return": row["avg_return"],
-            })
+            records.append(
+                {
+                    "snapshot_date": today,
+                    "signal_id": row["signal_id"],
+                    "regime": row["regime"],
+                    "period": "all_time",
+                    "trades": int(row["trades"]),
+                    "win_rate": row["win_rate"],
+                    "profit_factor": row["profit_factor"],
+                    "avg_return": row["avg_return"],
+                }
+            )
 
     if not records:  # pragma: no cover  # invariant: trades non-empty 일 때 all_time groupby 가 반드시 1+ record 생성 — 도달 X (line 50 trades.empty check 가 선행)
         return 0
@@ -127,7 +138,8 @@ def detect_drift(db_path=None) -> list[PerformanceDrift]:
     """전체 기간 대비 최근 성과 변화를 감지."""
     # 최신 스냅샷에서 all_time vs recent_90d 비교
     latest = query(
-        "SELECT MAX(snapshot_date) as d FROM strategy_memory", db_path=db_path,
+        "SELECT MAX(snapshot_date) as d FROM strategy_memory",
+        db_path=db_path,
     )
     if not latest or not latest[0]["d"]:
         return []
@@ -137,12 +149,14 @@ def detect_drift(db_path=None) -> list[PerformanceDrift]:
     all_time = query(
         "SELECT signal_id, win_rate, profit_factor, trades FROM strategy_memory "
         "WHERE snapshot_date = ? AND period = 'all_time' AND regime IS NULL",
-        (snap_date,), db_path=db_path,
+        (snap_date,),
+        db_path=db_path,
     )
     recent = query(
         "SELECT signal_id, win_rate, profit_factor, trades FROM strategy_memory "
         "WHERE snapshot_date = ? AND period = 'recent_90d' AND regime IS NULL",
-        (snap_date,), db_path=db_path,
+        (snap_date,),
+        db_path=db_path,
     )
 
     all_map = {r["signal_id"]: r for r in all_time}
@@ -169,15 +183,17 @@ def detect_drift(db_path=None) -> list[PerformanceDrift]:
             status = "stable"
             detail = f"승률 변화 {drift_wr:+.0f}% (안정)"
 
-        drifts.append(PerformanceDrift(
-            signal_id=sig_id,
-            regime=None,
-            all_time_wr=at["win_rate"],
-            recent_wr=rc["win_rate"],
-            drift_pct=round(drift_wr, 1),
-            status=status,
-            detail=detail,
-        ))
+        drifts.append(
+            PerformanceDrift(
+                signal_id=sig_id,
+                regime=None,
+                all_time_wr=at["win_rate"],
+                recent_wr=rc["win_rate"],
+                drift_pct=round(drift_wr, 1),
+                status=status,
+                detail=detail,
+            )
+        )
 
     # critical/degrading 우선
     order = {"critical": 0, "degrading": 1, "improving": 2, "stable": 3}
@@ -222,11 +238,15 @@ def print_memory_status(drifts: list[PerformanceDrift]) -> None:
 
     for d in drifts:
         status_icon = {
-            "critical": "[!!!]", "degrading": "[!!]",
-            "improving": "[+]", "stable": "[=]",
+            "critical": "[!!!]",
+            "degrading": "[!!]",
+            "improving": "[+]",
+            "stable": "[=]",
         }
-        print(f"  {d.signal_id:<18} {status_icon.get(d.status, '')} {d.status:<8} "
-              f"{d.all_time_wr:>7.0%} {d.recent_wr:>7.0%} {d.drift_pct:>+7.1f}%")
+        print(
+            f"  {d.signal_id:<18} {status_icon.get(d.status, '')} {d.status:<8} "
+            f"{d.all_time_wr:>7.0%} {d.recent_wr:>7.0%} {d.drift_pct:>+7.1f}%"
+        )
     print()
 
     critical = [d for d in drifts if d.status in ("critical", "degrading")]
@@ -247,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.snapshot:
         from nuri.core.db import init_db
+
         init_db()
         n = save_snapshot()
         logger.info(f"스냅샷 {n}건 저장")

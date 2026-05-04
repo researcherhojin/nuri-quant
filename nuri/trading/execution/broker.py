@@ -9,6 +9,7 @@
 사용법:
     python -m nuri.trading.execution.broker --dry-run
 """
+
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -21,21 +22,23 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Order:
     """주문 결과."""
+
     broker: str
     ticker: str
-    side: str           # "buy" / "sell"
+    side: str  # "buy" / "sell"
     quantity: float
-    order_type: str     # "market" / "limit"
-    status: str         # "submitted" / "filled" / "partially_filled" / "rejected" / "dry_run"
+    order_type: str  # "market" / "limit"
+    status: str  # "submitted" / "filled" / "partially_filled" / "rejected" / "dry_run"
     filled_price: Optional[float] = None
-    filled_qty: Optional[float] = None      # 체결된 수량
-    unfilled_qty: Optional[float] = None    # 미체결 수량
+    filled_qty: Optional[float] = None  # 체결된 수량
+    unfilled_qty: Optional[float] = None  # 미체결 수량
     order_id: Optional[str] = None
     timestamp: str = ""
 
     def __post_init__(self):
         if not self.timestamp:
             from nuri.core.timezone import kst_now
+
             self.timestamp = kst_now().isoformat()
         # filled/unfilled 자동 계산
         if self.filled_qty is None and self.status == "filled":
@@ -56,6 +59,7 @@ class Order:
 @dataclass
 class Position:
     """보유 포지션."""
+
     ticker: str
     quantity: float
     avg_price: float
@@ -67,21 +71,16 @@ class BaseBroker(ABC):
     """브로커 인터페이스."""
 
     @abstractmethod
-    def submit_order(self, ticker: str, side: str, quantity: float,
-                     order_type: str = "market") -> Order:
-        ...
+    def submit_order(self, ticker: str, side: str, quantity: float, order_type: str = "market") -> Order: ...
 
     @abstractmethod
-    def get_positions(self) -> list[Position]:
-        ...
+    def get_positions(self) -> list[Position]: ...
 
     @abstractmethod
-    def get_account_value(self) -> float:
-        ...
+    def get_account_value(self) -> float: ...
 
     @abstractmethod
-    def cancel_all(self) -> int:
-        ...
+    def cancel_all(self) -> int: ...
 
 
 class DryRunBroker(BaseBroker):
@@ -92,12 +91,15 @@ class DryRunBroker(BaseBroker):
         self._orders: list[Order] = []
         self._cash = 100_000.0
 
-    def submit_order(self, ticker: str, side: str, quantity: float,
-                     order_type: str = "market") -> Order:
+    def submit_order(self, ticker: str, side: str, quantity: float, order_type: str = "market") -> Order:
         order = Order(
-            broker="dry_run", ticker=ticker, side=side,
-            quantity=quantity, order_type=order_type,
-            status="dry_run", order_id=f"DRY-{len(self._orders)+1}",
+            broker="dry_run",
+            ticker=ticker,
+            side=side,
+            quantity=quantity,
+            order_type=order_type,
+            status="dry_run",
+            order_id=f"DRY-{len(self._orders) + 1}",
         )
         self._orders.append(order)
         logger.info(f"[DRY RUN] {side.upper()} {quantity} {ticker} ({order_type})")
@@ -135,13 +137,13 @@ class AlpacaBroker(BaseBroker):
 
     def _request(self, method: str, path: str, json: dict | None = None) -> dict:
         import httpx
+
         url = f"{self.base_url}/v2{path}"
         r = httpx.request(method, url, headers=self._headers, json=json, timeout=10)
         r.raise_for_status()
         return r.json()
 
-    def submit_order(self, ticker: str, side: str, quantity: float,
-                     order_type: str = "market") -> Order:
+    def submit_order(self, ticker: str, side: str, quantity: float, order_type: str = "market") -> Order:
         data = {
             "symbol": ticker,
             "qty": str(quantity),
@@ -160,8 +162,11 @@ class AlpacaBroker(BaseBroker):
                 status = "partially_filled"
 
             order = Order(
-                broker="alpaca", ticker=ticker, side=side,
-                quantity=quantity, order_type=order_type,
+                broker="alpaca",
+                ticker=ticker,
+                side=side,
+                quantity=quantity,
+                order_type=order_type,
                 status=status,
                 filled_price=float(result["filled_avg_price"]) if result.get("filled_avg_price") else None,
                 filled_qty=filled_qty,
@@ -171,14 +176,21 @@ class AlpacaBroker(BaseBroker):
             if order.is_partial:
                 logger.warning(
                     "Partial fill: %s %s %.0f/%.0f filled @ %s",
-                    side, ticker, filled_qty, quantity, order.filled_price,
+                    side,
+                    ticker,
+                    filled_qty,
+                    quantity,
+                    order.filled_price,
                 )
             return order
         except Exception as e:
             logger.error("Alpaca order failed: %s", e)
             return Order(
-                broker="alpaca", ticker=ticker, side=side,
-                quantity=quantity, order_type=order_type,
+                broker="alpaca",
+                ticker=ticker,
+                side=side,
+                quantity=quantity,
+                order_type=order_type,
                 status="rejected",
             )
 

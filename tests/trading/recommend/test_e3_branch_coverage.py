@@ -15,6 +15,7 @@ Targets:
   218-225 (main() entrypoint).
 - broker.py: 141 (_request returns r.json()), 230-245 (main() entrypoint).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -127,13 +128,9 @@ class TestShadowSignalSkipped:
         shadow = list_shadow_signals()
         assert shadow, "SHADOW signal set must be non-empty for this lock"
         emitted_signals = {c.signal_id for c in result}
-        assert not (
-            emitted_signals & shadow
-        ), "SHADOW signals must never appear as candidates"
+        assert not (emitted_signals & shadow), "SHADOW signals must never appear as candidates"
 
-    def test_actionable_false_signal_skipped(
-        self, db_with_one_ticker, monkeypatch
-    ):
+    def test_actionable_false_signal_skipped(self, db_with_one_ticker, monkeypatch):
         """Line 238-239 lock: if a SIGNAL_DEFINITIONS entry returns
         is_actionable=False, the candidate loop must `continue` past it
         (no detect_signal_entries call, no Candidate emitted).
@@ -161,9 +158,7 @@ class TestShadowSignalSkipped:
         monkeypatch.setattr(cnd, "_load_scorecard", lambda: ({}, None))
         monkeypatch.setattr(cnd, "_get_regime_context", lambda *a, **kw: None)
         monkeypatch.setattr(cnd, "_get_drift_map", lambda *a, **kw: {})
-        monkeypatch.setattr(
-            "nuri.core.signal_config.is_actionable", fake_actionable
-        )
+        monkeypatch.setattr("nuri.core.signal_config.is_actionable", fake_actionable)
 
         result = screen_candidates(lookback_days=5, db_path=db_with_one_ticker)
 
@@ -300,9 +295,7 @@ class TestSellCatalystBranches:
     이유 우선 노출.
     """
 
-    def test_sell_with_catalyst_keeps_actionable(
-        self, db_with_one_ticker, monkeypatch
-    ):
+    def test_sell_with_catalyst_keeps_actionable(self, db_with_one_ticker, monkeypatch):
         # rsi_overbought 가 SELL_SIGNALS 에 있는지 확인하고 사용 (없으면 스킵)
         from nuri.quant.validation.signal_backtest import SELL_SIGNALS
         from nuri.trading.recommend import candidates as cnd
@@ -339,13 +332,9 @@ class TestSellCatalystBranches:
         c = sells[0]
         assert c.direction == "SELL"
         assert c.tier == "actionable"
-        assert c.scoring_detail and c.scoring_detail["catalyst_note"].startswith(
-            "catalyst:"
-        )
+        assert c.scoring_detail and c.scoring_detail["catalyst_note"].startswith("catalyst:")
 
-    def test_sell_without_catalyst_downgrades_to_advisory(
-        self, db_with_one_ticker, monkeypatch
-    ):
+    def test_sell_without_catalyst_downgrades_to_advisory(self, db_with_one_ticker, monkeypatch):
         from nuri.quant.validation.signal_backtest import SELL_SIGNALS
         from nuri.trading.recommend import candidates as cnd
         from nuri.trading.recommend.candidates import screen_candidates
@@ -393,9 +382,7 @@ class TestRegimeStatsConfidencePath:
     formula `confidence = regime_wr * 60 + pf_cap * 40`.
     """
 
-    def test_regime_specific_confidence_formula(
-        self, db_with_one_ticker, monkeypatch
-    ):
+    def test_regime_specific_confidence_formula(self, db_with_one_ticker, monkeypatch):
         from nuri.trading.recommend import candidates as cnd
         from nuri.trading.recommend.candidates import screen_candidates
 
@@ -441,9 +428,7 @@ class TestDriftMultiplierApplied:
     Line 379-380: drift_status in (critical, degrading) → notes 에 표시.
     """
 
-    def test_critical_drift_halves_confidence(
-        self, db_with_one_ticker, monkeypatch
-    ):
+    def test_critical_drift_halves_confidence(self, db_with_one_ticker, monkeypatch):
         from nuri.trading.recommend import candidates as cnd
         from nuri.trading.recommend.candidates import screen_candidates
 
@@ -520,9 +505,7 @@ class TestConflictDetectionExceptionSwallowed:
     Lock: 후보는 여전히 정상 반환되고, 로그에는 'Conflict detection 실패' 가 찍힘.
     """
 
-    def test_conflict_detect_exception_does_not_break_screen(
-        self, db_with_one_ticker, monkeypatch, caplog
-    ):
+    def test_conflict_detect_exception_does_not_break_screen(self, db_with_one_ticker, monkeypatch, caplog):
         from nuri.trading.recommend import candidates as cnd
         from nuri.trading.recommend.candidates import screen_candidates
 
@@ -567,9 +550,7 @@ class TestRebalanceSignalMapActionable:
     해당 ticker 의 signals 에 등장.
     """
 
-    def test_actionable_candidate_signal_attached(
-        self, tmp_path, monkeypatch
-    ):
+    def test_actionable_candidate_signal_attached(self, tmp_path, monkeypatch):
         from nuri.trading.recommend.candidates import (
             TIER_ACTIONABLE,
             TIER_ADVISORY,
@@ -631,9 +612,7 @@ class TestRebalanceSignalMapActionable:
             ),
         ]
 
-        monkeypatch.setattr(
-            "nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df
-        )
+        monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
         monkeypatch.setattr(
             "nuri.quant.regime.classifier.classify_regime",
             lambda **kw: MockRegime(),
@@ -655,9 +634,9 @@ class TestRebalanceSignalMapActionable:
 
         aapl = [a for a in actions if a.ticker == "AAPL"][0]
         assert "rsi_oversold(BUY)" in aapl.signals
-        assert all(
-            "bb_bounce" not in s for s in aapl.signals
-        ), "advisory tier candidate must not pollute signal_map (line 110)"
+        assert all("bb_bounce" not in s for s in aapl.signals), (
+            "advisory tier candidate must not pollute signal_map (line 110)"
+        )
 
 
 class TestRebalanceMinimalBlocksNewBuys:
@@ -693,9 +672,7 @@ class TestRebalanceMinimalBlocksNewBuys:
             }
         )
 
-        monkeypatch.setattr(
-            "nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df
-        )
+        monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
         monkeypatch.setattr(
             "nuri.quant.regime.classifier.classify_regime",
             lambda **kw: MockRegime(),
@@ -761,5 +738,3 @@ class TestRebalanceMain:
         rc = rb.main(["--method", "mvo"])
         assert rc == 0
         assert called["method"] == "mvo"
-
-
