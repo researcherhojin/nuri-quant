@@ -375,13 +375,18 @@ class TestFoundationBenchmarkBranches:
 
 class TestFreshnessGatekeeperCli:
     def test_main_warn_returns_1(self, monkeypatch):
-        """Line 164: WARN outcome → return 1."""
+        """Line 164: WARN outcome → return 1.
+
+        Patch FreshnessGatekeeper.run directly to bypass DB audit-trail dependencies
+        (which differ between local and CI environments).
+        """
         from nuri.agents.actors import freshness_gatekeeper as fg
+        from nuri.agents.base import ActorResult
 
-        def _warn_results():
-            return [{"key": "x", "status": "WARN", "age_hours": 0.0, "policy": "x"}]
+        def _warn_run(self, *_a, **_kw):
+            return ActorResult(output={"results": []}, outcome=Outcome.WARN, sample_n=0)
 
-        monkeypatch.setattr(fg, "check_all_freshness", _warn_results)
+        monkeypatch.setattr(fg.FreshnessGatekeeper, "run", _warn_run)
         rc = fg.main(["check_all"])
         assert rc == 1
 
