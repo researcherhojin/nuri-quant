@@ -171,8 +171,7 @@ class TestCertificationCountExternalForClass:
         with get_db(db_path) as conn:
             for src in ["a", "b", "c"]:
                 conn.execute(
-                    "INSERT INTO external_analysis (date, source, ticker, data_type, value) "
-                    "VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO external_analysis (date, source, ticker, data_type, value) VALUES (?, ?, ?, ?, ?)",
                     ("2025-03-25", src, "AAPL", "rating", "BUY"),
                 )
         records, sources = _count_external_for_class("us_equity", [], db_path=db_path)
@@ -340,12 +339,8 @@ class TestRemediationGateNoMapping:
         from nuri.trading.engine import remediation as rem
 
         # cert with a failed gate that has NO mapping (e.g. 'unknown_gate')
-        unknown_failed = MagicMock(
-            id="unknown_gate", passed=False, severity="error", detail="x"
-        )
-        ok_passed = MagicMock(
-            id="position_limit", passed=True, severity="error", detail="ok"
-        )
+        unknown_failed = MagicMock(id="unknown_gate", passed=False, severity="error", detail="x")
+        ok_passed = MagicMock(id="position_limit", passed=True, severity="error", detail="ok")
 
         cert_mock = MagicMock(
             certified=False,
@@ -440,6 +435,7 @@ class TestGateScorecardFound:
         fake_file.write_text("")
 
         import nuri.trading.engine.gate as gate_mod
+
         monkeypatch.setattr(gate_mod, "__file__", str(fake_file))
 
         cond = gate_mod._check_signal_scorecard(db_path=db_path)
@@ -467,13 +463,11 @@ class TestCertificationGroupHoldingsDup:
         with get_db(db_path) as conn:
             # 두 계좌에서 같은 (AAPL, Technology) 보유 — DISTINCT
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) VALUES (?, ?, ?, ?, ?)",
                 ("acct1", "AAPL", 10, 150.0, "Technology"),
             )
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) VALUES (?, ?, ?, ?, ?)",
                 ("acct2", "AAPL", 5, 160.0, "Technology"),
             )
         groups = cert_mod._group_holdings_by_asset_class(db_path=db_path)
