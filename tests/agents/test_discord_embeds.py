@@ -212,5 +212,5 @@ class TestTruncateNoneDefensive:
     def test_none_input_returns_empty_string(self):
         from nuri.agents.discord.embeds import _truncate
 
-        # Coverage: line 70 — None 입력 시 빈 문자열 반환
-        assert _truncate(None, 100) == ""
+        # Coverage: line 70 — None 입력 시 빈 문자열 반환 (defensive guard)
+        assert _truncate(None, 100) == ""  # type: ignore[arg-type]

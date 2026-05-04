@@ -155,5 +155,5 @@ class TestOnReadyEvent:
         sync_mock = AsyncMock()
         monkeypatch.setattr(tree, "sync", sync_mock)
         # Patch logger.info to silence
-        asyncio.run(on_ready())
+        asyncio.run(on_ready())  # type: ignore[arg-type]
         sync_mock.assert_awaited_once_with(guild=guild)

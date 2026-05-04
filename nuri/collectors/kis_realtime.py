@@ -334,7 +334,8 @@ def inquire_price_kr(creds: KISCredentials, token: str, ticker: str) -> dict | N
         except Exception as e:
             logger.warning("KIS 한국 시세 실패 %s: %s", ticker, e)
             return None
-    return None
+    # for attempt in range(2) 의 모든 가지가 return 으로 종료되므로
+    # 루프 후 fall-through 는 도달 불가 — 명시적 fallback 코드 제거.
 
 
 def inquire_price_us(creds: KISCredentials, token: str, ticker: str) -> dict | None:

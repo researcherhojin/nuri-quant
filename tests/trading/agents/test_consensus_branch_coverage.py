@@ -401,3 +401,59 @@ class TestConsensusInnerRunAgentExceptionPath:
         assert result.verdicts[0].action == "HOLD"
         assert result.verdicts[0].confidence == 0
         assert "에러" in result.verdicts[0].reasoning
+
+
+# ─── future.result() Exception fallback (lines 188-189, 237-238) ───────────
+
+
+class TestFutureResultExceptionFallback:
+    """`analyze_ticker` / `stream_analyze_ticker` 의 `future.result()` 가 raise 하는 경로.
+
+    내부 `_run_agent` 가 Exception 을 잡아 AgentVerdict 반환하므로 future.result() 가
+    raise 하려면 _run_agent BEFORE 에서 발생한 BaseException 또는 future.set_exception 을
+    직접 주입해야 한다. ThreadPoolExecutor.submit 을 patch 해 set_exception 된 Future 를
+    반환하면 outer try/except Exception 분기 (188-189, 237-238) 가 진입한다.
+    """
+
+    @staticmethod
+    def _broken_executor_class():
+        """submit() 이 set_exception 된 Future 를 반환하는 가짜 executor."""
+        import concurrent.futures as cf
+
+        class _Broken(cf.ThreadPoolExecutor):
+            def submit(self, fn, *a, **kw):
+                fut: cf.Future = cf.Future()
+                fut.set_exception(RuntimeError("forced future failure"))
+                return fut
+
+        return _Broken
+
+    def test_analyze_ticker_future_exception_falls_back_to_hold(self, db_path, monkeypatch):
+        """analyze_ticker: future.result() raise → outer except → HOLD 폴백 (188-189)."""
+        import concurrent.futures as cf
+
+        from nuri.trading.agents import consensus as cons_mod
+
+        monkeypatch.setattr(cf, "ThreadPoolExecutor", self._broken_executor_class())
+        result = cons_mod.analyze_ticker("AAA", db_path=db_path)
+        # 모든 verdict 가 폴백: action=HOLD, confidence=0
+        assert result.ticker == "AAA"
+        assert all(v.action == "HOLD" for v in result.verdicts)
+        assert all(v.confidence == 0 for v in result.verdicts)
+        assert all("에러:" in v.reasoning for v in result.verdicts)
+
+    def test_stream_analyze_ticker_future_exception_falls_back(self, db_path, monkeypatch):
+        """stream_analyze_ticker: future.result() raise → except → HOLD 폴백 (237-238)."""
+        import concurrent.futures as cf
+
+        from nuri.trading.agents import consensus as cons_mod
+
+        monkeypatch.setattr(cf, "ThreadPoolExecutor", self._broken_executor_class())
+        events = list(cons_mod.stream_analyze_ticker("AAA", db_path=db_path))
+        # verdict 이벤트만 골라내기
+        verdict_evs = [e for e in events if e[0] == "verdict"]
+        assert len(verdict_evs) > 0
+        for _, v in verdict_evs:
+            assert v.action == "HOLD"
+            assert v.confidence == 0
+            assert "에러:" in v.reasoning

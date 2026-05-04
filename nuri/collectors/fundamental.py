@@ -202,10 +202,8 @@ class FundamentalCollector(BaseCollector):
         # KIS 가 채운 KR 도 yfinance 한 번 더 돌려 ROE / revenue_growth / profit_margin /
         # debt_to_equity 같은 yfinance-only fields 보존 (codex Round 1 P1 fix).
         # KIS 의 pe_ratio/price_to_book/market_cap 은 merge 단계에서 우선 적용.
+        # `tickers` 는 line 171-173 에서 이미 non-empty 가 보장되므로 yf_tickers 는 항상 비어있지 않음.
         yf_tickers = list(tickers)
-        if not yf_tickers:
-            results.extend(kis_by_ticker.values())
-            return results
 
         # universe 모드: yfinance ERROR 노이즈 억제
         _yflog = _logging.getLogger("yfinance")
@@ -382,14 +380,15 @@ def _upsert_fundamentals(records: list[dict]) -> int:
         return len(records)
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI: 펀더멘탈 수집 + 결과 표 출력."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 펀더멘탈 수집기 (yfinance)")
     parser.add_argument(
         "--source", default="portfolio", choices=["portfolio", "universe", "all"], help="ticker 소스 (#272 Phase 2b)"
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.basicConfig(
         level=logging.INFO,
@@ -399,7 +398,6 @@ if __name__ == "__main__":
     collector = FundamentalCollector()
     count = collector.run(source=args.source)
 
-    # 결과 출력
     rows = query(
         "SELECT ticker, pe_ratio, forward_pe, roe, revenue_growth, debt_to_equity FROM fundamentals ORDER BY ticker"
     )
@@ -417,3 +415,8 @@ if __name__ == "__main__":
             de = f"{r['debt_to_equity']:.1f}" if r["debt_to_equity"] else "N/A"
             print(f"  {r['ticker']:<12} {pe:>8} {fpe:>8} {roe:>8} {rg:>8} {de:>8}")
         print()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -236,32 +236,40 @@ class TestSourceParam:
         assert len(info) >= 1
 
 
-class TestCallWithTimeout:
-    """`_call_with_timeout` (line 42) — Future timeout → None 반환."""
+class TestCallWithTimeoutBranch:
+    """`_call_with_timeout` (line 42) — Future timeout → None 반환.
 
-    def test_timeout_returns_none(self, monkeypatch):
-        """ThreadPoolExecutor future.result(timeout) → TimeoutError → None.
+    ThreadPoolExecutor.submit 을 patch 해 timeout 발생을 강제 → conftest.py 의
+    sleep mock 영향을 받지 않는다.
+    """
 
-        주의: tests/collectors/conftest.py 가 time.sleep 를 no-op 으로 패치하므로
-        sleep 기반 slowness 가 작동 안 함. 직접 monkeypatch 로 sleep 복원 후 사용.
-        """
-        import threading
-        import time as _real_time
-
-        # conftest.py 의 sleep mock 우회 위해 새 evt-based wait 사용
-        evt = threading.Event()
+    def test_future_timeout_returns_none(self, monkeypatch):
+        """future.result(timeout=N) → TimeoutError → None (line 42)."""
+        import concurrent.futures as cf
 
         from nuri.collectors.stock_kr import _call_with_timeout
 
-        def slow():
-            evt.wait(timeout=1.0)  # threading.Event.wait 는 sleep mock 안 받음
-            return 42
+        # Future 가 timeout 발생하도록 강제: future.result 가 항상 TimeoutError raise
+        class _TimeoutFuture:
+            def result(self, timeout=None):
+                raise cf.TimeoutError()
 
-        try:
-            result = _call_with_timeout(slow, timeout_sec=0.05)
-            assert result is None
-        finally:
-            evt.set()
+        class _StubExecutor:
+            def __init__(self, *a, **kw):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def submit(self, fn, *a, **kw):
+                return _TimeoutFuture()
+
+        monkeypatch.setattr(cf, "ThreadPoolExecutor", _StubExecutor)
+        result = _call_with_timeout(lambda: 42, timeout_sec=1)
+        assert result is None
 
 
 class TestCollectTickerTimeoutNone:
@@ -312,4 +320,5 @@ class TestCollectIndicesMultiIndexColumns:
         c = StockKRCollector()
         results = c._collect_indices(days=3)
         # MultiIndex normalize → KOSPI/KOSDAQ 각각 3 rows = 최소 1+ row 생성
+        assert results is not None
         assert len(results) > 0

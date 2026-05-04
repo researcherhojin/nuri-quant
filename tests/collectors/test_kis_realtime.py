@@ -7,6 +7,7 @@
     - 단일 종목 retry 로직
     - check_credentials 동작
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -185,8 +186,7 @@ class TestInquirePriceKR:
             "rt_cd": "0",
             "output": {"stck_prpr": "100000"},
         }
-        with patch("nuri.collectors.kis_realtime.requests.get",
-                   side_effect=[rate_limit_resp, success_resp]):
+        with patch("nuri.collectors.kis_realtime.requests.get", side_effect=[rate_limit_resp, success_resp]):
             with patch("nuri.collectors.kis_realtime.time.sleep"):  # sleep 우회
                 row = inquire_price_kr(creds, "token", "005930.KS")
         assert row is not None
@@ -199,8 +199,7 @@ class TestInquirePriceUS:
         mock_resp = MagicMock(status_code=200)
         mock_resp.json.return_value = {
             "rt_cd": "0",
-            "output": {"last": "184.02", "open": "180.50", "high": "185.00",
-                       "low": "179.00", "tvol": "100000000"},
+            "output": {"last": "184.02", "open": "180.50", "high": "185.00", "low": "179.00", "tvol": "100000000"},
         }
         with patch("nuri.collectors.kis_realtime.requests.get", return_value=mock_resp):
             with patch("nuri.collectors.kis_realtime.time.sleep"):
@@ -215,8 +214,7 @@ class TestInquirePriceUS:
         nas_empty.json.return_value = {"rt_cd": "0", "output": {"last": ""}}
         nys_success = MagicMock(status_code=200)
         nys_success.json.return_value = {"rt_cd": "0", "output": {"last": "49.07"}}
-        with patch("nuri.collectors.kis_realtime.requests.get",
-                   side_effect=[nas_empty, nys_success]):
+        with patch("nuri.collectors.kis_realtime.requests.get", side_effect=[nas_empty, nys_success]):
             with patch("nuri.collectors.kis_realtime.time.sleep"):
                 row = inquire_price_us(creds, "token", "OKLO")
         assert row is not None
@@ -310,9 +308,15 @@ class TestLoadCredentialsLogPath:
 
     @pytest.fixture
     def env_off(self, monkeypatch):
-        for k in ["KIS_PROD_APP_KEY", "KIS_PROD_APP_SECRET",
-                  "KIS_PAPER_APP_KEY", "KIS_PAPER_APP_SECRET",
-                  "KIS_PROD_ACCOUNT", "KIS_PAPER_ACCOUNT", "KIS_HTS_ID"]:
+        for k in [
+            "KIS_PROD_APP_KEY",
+            "KIS_PROD_APP_SECRET",
+            "KIS_PAPER_APP_KEY",
+            "KIS_PAPER_APP_SECRET",
+            "KIS_PROD_ACCOUNT",
+            "KIS_PAPER_ACCOUNT",
+            "KIS_HTS_ID",
+        ]:
             monkeypatch.delenv(k, raising=False)
 
     def test_log_uses_relative_path_when_inside_project(self, env_off, tmp_path, caplog):
@@ -327,15 +331,14 @@ class TestLoadCredentialsLogPath:
         kis_dir.mkdir(parents=True)
         yaml_path = kis_dir / "kis_devlp.yaml"
         yaml_path.write_text(
-            "my_app: test_key_01234567\n"
-            "my_sec: test_secret_01234567\n"
-            "my_acct_stock: '12345678'\n"
-            "my_htsid: test_hts\n"
+            "my_app: test_key_01234567\nmy_sec: test_secret_01234567\nmy_acct_stock: '12345678'\nmy_htsid: test_hts\n"
         )
 
-        with patch.object(kis_realtime, "KIS_YAML_PATH", yaml_path), \
-             patch.object(kis_realtime, "_PROJECT_ROOT", project_root), \
-             caplog.at_level(logging.INFO, logger="nuri.collectors.kis_realtime"):
+        with (
+            patch.object(kis_realtime, "KIS_YAML_PATH", yaml_path),
+            patch.object(kis_realtime, "_PROJECT_ROOT", project_root),
+            caplog.at_level(logging.INFO, logger="nuri.collectors.kis_realtime"),
+        ):
             creds = load_credentials(mode="prod")
 
         assert creds is not None
@@ -355,21 +358,52 @@ class TestLoadCredentialsLogPath:
         outside_path = tmp_path / "home" / "KIS" / "config" / "kis_devlp.yaml"
         outside_path.parent.mkdir(parents=True)
         outside_path.write_text(
-            "my_app: test_key_01234567\n"
-            "my_sec: test_secret_01234567\n"
-            "my_acct_stock: '12345678'\n"
-            "my_htsid: test_hts\n"
+            "my_app: test_key_01234567\nmy_sec: test_secret_01234567\nmy_acct_stock: '12345678'\nmy_htsid: test_hts\n"
         )
 
         # _PROJECT_ROOT는 outside_path와 관련 없는 경로로 patch
         fake_project = tmp_path / "unrelated_project"
         fake_project.mkdir()
 
-        with patch.object(kis_realtime, "KIS_YAML_PATH", outside_path), \
-             patch.object(kis_realtime, "_PROJECT_ROOT", fake_project), \
-             caplog.at_level(logging.INFO, logger="nuri.collectors.kis_realtime"):
+        with (
+            patch.object(kis_realtime, "KIS_YAML_PATH", outside_path),
+            patch.object(kis_realtime, "_PROJECT_ROOT", fake_project),
+            caplog.at_level(logging.INFO, logger="nuri.collectors.kis_realtime"),
+        ):
             creds = load_credentials(mode="prod")
 
         assert creds is not None
         # generic label 사용 (사용자 절대 경로 노출 방지)
         assert "~/KIS/config/kis_devlp.yaml" in caplog.text
+
+
+# ─── inquire_price_kr fall-through return None (line 337) ─────────────────
+
+
+class TestInquirePriceKrFallThrough:
+    """`inquire_price_kr` retry 두 번 모두 rate limit → for 루프 종료 → line 337 진입.
+
+    attempt 0: rate limit → continue (retry)
+    attempt 1: rate limit → 다시 continue 시도하지만 range(2) 끝 → 루프 탈출 → return None
+    """
+
+    def test_both_attempts_rate_limited_returns_none(self, monkeypatch):
+        from nuri.collectors.kis_realtime import KISCredentials, inquire_price_kr
+
+        # rate limit 응답 (200 + EGW00133 error_code) — `_is_rate_limit` True 분기
+        class _Resp:
+            status_code = 200
+
+            def json(self):
+                return {"error_code": "EGW00133", "error_description": "1분당 호출 한도"}
+
+        monkeypatch.setattr(
+            "nuri.collectors.kis_realtime.requests.get",
+            lambda *a, **kw: _Resp(),
+        )
+        # time.sleep 우회 — conftest 에서 이미 patched 되지만 보강
+        monkeypatch.setattr("nuri.collectors.kis_realtime.time.sleep", lambda *a, **kw: None)
+
+        creds = KISCredentials("k", "s", "0", "hts", "real")
+        result = inquire_price_kr(creds, "tok", "005930.KS")
+        assert result is None  # fall-through line 337

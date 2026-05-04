@@ -236,3 +236,184 @@ class TestValidationMainRunpy:
         assert isinstance(out, str)
 
         assert isinstance(out, str)
+
+
+# ─── Direct main(argv) tests after source extraction (#610 follow-up) ───
+# Source PR refactored `if __name__ == "__main__":` bodies into `main(argv)` so we can
+# monkeypatch + call directly (runpy reload semantics no longer matter).
+
+
+class TestMainEntrypoints:
+    def test_scorecard_main_writes_path(self, monkeypatch, capsys, tmp_path):
+        """scorecard.main: generate_validation_report → path → '통합 리포트:' line."""
+        from nuri.quant.validation import scorecard
+
+        target = tmp_path / "report.html"
+        target.write_text("dummy")
+        monkeypatch.setattr(scorecard, "generate_validation_report", lambda: target)
+        rc = scorecard.main()
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "통합 리포트:" in out
+        assert str(target) in out
+
+    def test_scorecard_main_no_path_prints_advice(self, monkeypatch, capsys):
+        """generate_validation_report None → 안내 메시지."""
+        from nuri.quant.validation import scorecard
+
+        monkeypatch.setattr(scorecard, "generate_validation_report", lambda: None)
+        rc = scorecard.main()
+        assert rc == 0
+        assert "C-1부터" in capsys.readouterr().out
+
+    def test_optimizer_main_with_signal_flag_prints_top_results(self, monkeypatch, capsys):
+        """optimizer.main --signal X: optimize_signal 결과 top 10 print (line 295)."""
+        from nuri.quant.backtest import optimizer
+
+        class _R:
+            profit_factor = 1.5
+            win_rate = 0.55
+            total_trades = 20
+            params = {"a": 1}
+
+        monkeypatch.setattr(optimizer, "optimize_signal", lambda s: [_R(), _R()])
+        rc = optimizer.main(["--signal", "rsi_oversold"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "PF=1.50" in out
+        assert "WR=55%" in out
+
+    def test_optimizer_main_default_calls_optimize_all(self, monkeypatch):
+        """optimizer.main 인자 없음 → optimize_all() 호출."""
+        from nuri.quant.backtest import optimizer
+
+        called: list[bool] = []
+        monkeypatch.setattr(optimizer, "optimize_all", lambda: called.append(True))
+        rc = optimizer.main([])
+        assert rc == 0
+        assert called == [True]
+
+    def test_analyst_backtest_main_writes_csv_when_results(self, monkeypatch, tmp_path, capsys):
+        """analyst_backtest.main: results non-empty → CSV write (lines 172-176)."""
+        from dataclasses import dataclass
+
+        from nuri.quant.validation import analyst_backtest
+
+        @dataclass
+        class _Row:
+            ticker: str = "TEST"
+            recommendation: str = "buy"
+            target: float = 100.0
+            elapsed_days: int = 95
+            hit: bool = False
+            return_pct: float = 0.05
+
+        monkeypatch.setattr(analyst_backtest, "validate_estimates", lambda **kw: [_Row()])
+        monkeypatch.setattr(analyst_backtest, "print_results", lambda r: None)
+        monkeypatch.setattr(analyst_backtest, "REPORT_DIR", tmp_path)
+        rc = analyst_backtest.main(["--min-days", "30"])
+        assert rc == 0
+        # Find the CSV under tmp_path/<today>/analyst_results.csv
+        csvs = list(tmp_path.rglob("analyst_results.csv"))
+        assert len(csvs) == 1
+
+    def test_signal_backtest_main_writes_csvs(self, monkeypatch, tmp_path):
+        """signal_backtest.main: results + scorecards non-empty → 2 CSV files (lines 805, 807)."""
+        from dataclasses import dataclass
+
+        from nuri.quant.validation import signal_backtest
+
+        @dataclass
+        class _R:
+            ticker: str = "T"
+            signal_id: str = "x"
+            entry_date: str = "2026-04-01"
+            entry_price: float = 100.0
+            exit_date: str = "2026-04-08"
+            exit_price: float = 105.0
+            return_pct: float = 5.0
+            holding_days: int = 7
+
+        @dataclass
+        class _SC:
+            signal_id: str = "x"
+            total_trades: int = 1
+            win_rate: float = 1.0
+            avg_return: float = 5.0
+            max_return: float = 5.0
+            max_loss: float = 0.0
+            profit_factor: float = 5.0
+
+        monkeypatch.setattr(signal_backtest, "backtest_signals", lambda **kw: [_R()])
+        monkeypatch.setattr(signal_backtest, "generate_scorecard", lambda r: [_SC()])
+        monkeypatch.setattr(signal_backtest, "print_scorecard", lambda s: None)
+        monkeypatch.setattr(signal_backtest, "REPORT_DIR", tmp_path)
+        rc = signal_backtest.main([])
+        assert rc == 0
+        assert len(list(tmp_path.rglob("signal_results.csv"))) == 1
+        assert len(list(tmp_path.rglob("signal_scorecard.csv"))) == 1
+
+    def test_superinvestor_backtest_main_writes_csvs(self, monkeypatch, tmp_path):
+        """superinvestor_backtest.main: results + scorecards → 2 CSV (lines 260, 262)."""
+        from dataclasses import dataclass
+
+        from nuri.quant.validation import superinvestor_backtest as sib
+
+        @dataclass
+        class _R:
+            ticker: str = "T"
+            investor: str = "x"
+            filing_date: str = "2026-01-01"
+            return_pct: float = 5.0
+            excess_return: float = 3.0
+
+        @dataclass
+        class _SC:
+            investor: str = "x"
+            total_follows: int = 1
+            win_rate: float = 1.0
+            avg_return: float = 5.0
+            avg_excess_return: float = 3.0
+            best_ticker: str = "T"
+            best_return: float = 5.0
+            worst_ticker: str = "T"
+            worst_return: float = 5.0
+
+        monkeypatch.setattr(sib, "backtest_superinvestor", lambda **kw: [_R()])
+        monkeypatch.setattr(sib, "generate_scorecard", lambda r, h: [_SC()])
+        monkeypatch.setattr(sib, "print_scorecard", lambda s: None)
+        monkeypatch.setattr(sib, "REPORT_DIR", tmp_path)
+        rc = sib.main([])
+        assert rc == 0
+        assert len(list(tmp_path.rglob("superinvestor_results.csv"))) == 1
+        assert len(list(tmp_path.rglob("superinvestor_scorecard.csv"))) == 1
+
+    def test_classifier_main_history_writes_csv(self, monkeypatch, tmp_path):
+        """classifier.main --history: history non-empty → CSV write (lines 646-652)."""
+        from nuri.quant.regime import classifier
+
+        fake_state = classifier.RegimeState(
+            date="2026-04-01",
+            trend="up",
+            volatility="low",
+            regime="bull",
+            confidence=0.8,
+            details={"spy_close": 500.0, "vix": 18.0, "fear_greed": 60},
+        )
+        monkeypatch.setattr(classifier, "classify_regime_history", lambda **kw: [fake_state])
+        monkeypatch.setattr(classifier, "print_history", lambda h: None)
+        monkeypatch.setattr(classifier, "REPORT_DIR", tmp_path)
+        rc = classifier.main(["--history", "--start", "2026-01-01"])
+        assert rc == 0
+        assert len(list(tmp_path.rglob("regime_history.csv"))) == 1
+
+    def test_classifier_main_default_calls_print_regime(self, monkeypatch):
+        """classifier.main (--history 없음) → classify_regime + print_regime path."""
+        from nuri.quant.regime import classifier
+
+        called: list[str] = []
+        monkeypatch.setattr(classifier, "classify_regime", lambda: "STATE")
+        monkeypatch.setattr(classifier, "print_regime", lambda s: called.append(s))
+        rc = classifier.main([])
+        assert rc == 0
+        assert called == ["STATE"]
