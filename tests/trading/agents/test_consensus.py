@@ -2636,3 +2636,36 @@ class TestConsensusCLIMain:
         ):
             cli.main()
             assert m_print.call_args.kwargs.get("verbose") is True
+
+    def test_main_portfolio_save_log_when_saved_positive(self, monkeypatch, caplog):
+        """portfolio path + saved>0 → "DB 저장" 로그 (line 49)."""
+        from unittest.mock import patch
+
+        from nuri.trading.agents.consensus import __main__ as cli
+
+        monkeypatch.setattr("sys.argv", ["consensus"])
+        with (
+            patch.object(cli, "analyze_portfolio", return_value=[]),
+            patch.object(cli, "save_to_recommendations", return_value=3) as m_save,
+            patch.object(cli, "print_consensus"),
+            patch("nuri.trading.engine.decisions.record_decisions", return_value=2),
+        ):
+            with caplog.at_level("INFO"):
+                cli.main()
+        m_save.assert_called_once()
+        # saved=3 → log info
+        assert any("3건 저장" in rec.message for rec in caplog.records)
+
+    def test_main_runpy_invokes_main(self, monkeypatch):
+        """`if __name__ == "__main__":` block (line 58) — runpy."""
+        import runpy
+        from unittest.mock import patch
+
+        monkeypatch.setattr("sys.argv", ["consensus"])
+        with (
+            patch("nuri.trading.agents.consensus.analyze_portfolio", return_value=[]),
+            patch("nuri.trading.agents.consensus.save_to_recommendations", return_value=0),
+            patch("nuri.trading.agents.consensus.print_consensus"),
+            patch("nuri.trading.engine.decisions.record_decisions", return_value=0),
+        ):
+            runpy.run_module("nuri.trading.agents.consensus", run_name="__main__")

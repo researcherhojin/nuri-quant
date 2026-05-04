@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -11,8 +12,10 @@ class TestNewsCollectorScenarios:
     def test_collect_success(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.news import NewsCollector
 
-        news_df = pd.DataFrame({"title": ["Apple beats"], "url": ["https://example.com/1"], "source": ["Reuters"]},
-                               index=pd.to_datetime(["2025-01-28"]))
+        news_df = pd.DataFrame(
+            {"title": ["Apple beats"], "url": ["https://example.com/1"], "source": ["Reuters"]},
+            index=pd.to_datetime(["2025-01-28"]),
+        )
         mock_obb = MagicMock()
         mock_obb.news.company.return_value = MagicMock(to_dataframe=MagicMock(return_value=news_df))
         import sys
@@ -24,8 +27,9 @@ class TestNewsCollectorScenarios:
     def test_collect_no_url(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.news import NewsCollector
 
-        news_df = pd.DataFrame({"title": ["No link"], "url": [""], "source": ["Unknown"]},
-                               index=pd.to_datetime(["2025-01-28"]))
+        news_df = pd.DataFrame(
+            {"title": ["No link"], "url": [""], "source": ["Unknown"]}, index=pd.to_datetime(["2025-01-28"])
+        )
         mock_obb = MagicMock()
         mock_obb.news.company.return_value = MagicMock(to_dataframe=MagicMock(return_value=news_df))
         import sys
@@ -36,7 +40,9 @@ class TestNewsCollectorScenarios:
     def test_collect_date_in_column(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.news import NewsCollector
 
-        news_df = pd.DataFrame({"title": ["News"], "url": ["https://example.com/1"], "source": ["Reuters"], "date": ["2025-01-28"]})
+        news_df = pd.DataFrame(
+            {"title": ["News"], "url": ["https://example.com/1"], "source": ["Reuters"], "date": ["2025-01-28"]}
+        )
         mock_obb = MagicMock()
         mock_obb.news.company.return_value = MagicMock(to_dataframe=MagicMock(return_value=news_df))
         import sys
@@ -64,7 +70,6 @@ class TestNewsCollectorScenarios:
 
         monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
         assert NewsCollector().collect() == []
-
 
 
 class TestNewsCollector_Uncovered:
@@ -129,8 +134,18 @@ class TestYfinanceFallback:
         epoch_next_day = int(datetime(2026, 4, 16, 15, 30, 0, tzinfo=timezone.utc).timestamp())
 
         flat = [
-            {"title": "Flat same-day", "link": "https://ex.com/flat/1", "publisher": "WSJ", "providerPublishTime": epoch_same_day},
-            {"title": "Flat next-day", "link": "https://ex.com/flat/2", "publisher": "WSJ", "providerPublishTime": epoch_next_day},
+            {
+                "title": "Flat same-day",
+                "link": "https://ex.com/flat/1",
+                "publisher": "WSJ",
+                "providerPublishTime": epoch_same_day,
+            },
+            {
+                "title": "Flat next-day",
+                "link": "https://ex.com/flat/2",
+                "publisher": "WSJ",
+                "providerPublishTime": epoch_next_day,
+            },
         ]
 
         mock_yf = MagicMock()
@@ -161,7 +176,14 @@ class TestYfinanceFallback:
 
         mixed = [
             # nested 정상
-            {"content": {"title": "Good", "canonicalUrl": {"url": "https://ok.com/1"}, "pubDate": "2026-04-15T00:00:00Z", "provider": {"displayName": "X"}}},
+            {
+                "content": {
+                    "title": "Good",
+                    "canonicalUrl": {"url": "https://ok.com/1"},
+                    "pubDate": "2026-04-15T00:00:00Z",
+                    "provider": {"displayName": "X"},
+                }
+            },
             # nested 에 title 없음
             {"content": {"canonicalUrl": {"url": "https://skip.com/1"}, "pubDate": "2026-04-15T00:00:00Z"}},
             # nested 에 url 없음
@@ -229,3 +251,30 @@ class TestYfinanceFallback:
         assert fn("2026-04-16T99:99:99Z") is None  # invalid hour → ValueError
         assert fn("2026-13-40T12:00:00Z") is None  # invalid month → ValueError
         assert fn("not-valid-iso-string-2026") is None  # 완전 malformed → ValueError
+
+
+class TestNewsCollectorDefaultDateFallback:
+    """`_parse_openbb_news` 의 today_kst() fallback 분기 (line 100).
+
+    row.name 가 strftime 없는 객체이고 row.index 에 'date' 도 없을 때 today_kst() 사용.
+    """
+
+    def test_falls_back_to_today_when_no_date_anywhere(self, monkeypatch, db_with_portfolio):
+        from nuri.collectors.news import NewsCollector
+
+        # index 가 정수 (no strftime) + columns 에 'date' 없음
+        df = pd.DataFrame(
+            {"title": ["No date anywhere"], "url": ["https://example.com/x"], "source": ["X"]}
+        )  # default RangeIndex (integers)
+
+        mock_obb = MagicMock()
+        mock_obb.news.company.return_value = MagicMock(to_dataframe=MagicMock(return_value=df))
+        import sys
+
+        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+
+        from nuri.core.timezone import today_kst
+
+        results = NewsCollector().collect()
+        assert len(results) >= 1
+        assert results[0]["date"] == today_kst()

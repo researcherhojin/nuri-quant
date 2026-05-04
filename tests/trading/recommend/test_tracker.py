@@ -1,4 +1,5 @@
 """Tests for tracker — split from test_trading_recommend_all.py."""
+
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -31,8 +32,7 @@ class TestTracker:
         from nuri.trading.recommend.tracker import get_tracking_report, save_recommendations
 
         candidates = [
-            Candidate("TEST1", "rsi_oversold", "2025-03-01", "BUY",
-                       75.0, 0.6, 2.0, True, 100.0, "test"),
+            Candidate("TEST1", "rsi_oversold", "2025-03-01", "BUY", 75.0, 0.6, 2.0, True, 100.0, "test"),
         ]
         n = save_recommendations(candidates, db_path=market_data)
         assert n == 1
@@ -45,8 +45,7 @@ class TestTracker:
         from nuri.trading.recommend.tracker import save_recommendations
 
         candidates = [
-            Candidate("TEST1", "rsi_oversold", "2025-03-01", "BUY",
-                       75.0, 0.6, 2.0, True, 100.0, "test"),
+            Candidate("TEST1", "rsi_oversold", "2025-03-01", "BUY", 75.0, 0.6, 2.0, True, 100.0, "test"),
         ]
         save_recommendations(candidates, db_path=market_data)
         save_recommendations(candidates, db_path=market_data)
@@ -60,8 +59,7 @@ class TestTracker:
         from nuri.trading.recommend.tracker import save_recommendations
 
         candidates = [
-            Candidate("TEST1", "macd_golden", "2025-03-01", "BUY",
-                       30.0, 0.4, 0.8, False, 100.0, "레짐 비적합"),
+            Candidate("TEST1", "macd_golden", "2025-03-01", "BUY", 30.0, 0.4, 0.8, False, 100.0, "레짐 비적합"),
         ]
         save_recommendations(candidates, db_path=market_data)
         rows = query("SELECT COUNT(*) as c FROM recommendations", db_path=market_data)
@@ -73,6 +71,7 @@ class TestTrackOutcomes:
 
     def test_no_recommendations(self, db_path_with_dbmod):
         from nuri.trading.recommend.tracker import track_outcomes
+
         updated = track_outcomes(db_path=db_path_with_dbmod)
         assert updated == 0
 
@@ -82,14 +81,24 @@ class TestTrackOutcomes:
         _seed_recommendation(db_path_with_dbmod, rec_date, "AAPL", "BUY", 150.0)
 
         target_date = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{
-            "ticker": "AAPL", "date": target_date,
-            "open": 160, "high": 165, "low": 158, "close": 162.0,
-            "volume": 1000000, "adj_close": 162.0,
-        }])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "AAPL",
+                    "date": target_date,
+                    "open": 160,
+                    "high": 165,
+                    "low": 158,
+                    "close": 162.0,
+                    "volume": 1000000,
+                    "adj_close": 162.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path_with_dbmod)
 
         from nuri.trading.recommend.tracker import track_outcomes
+
         updated = track_outcomes(db_path=db_path_with_dbmod)
         assert updated == 1
 
@@ -106,13 +115,34 @@ class TestTrackOutcomes:
         d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
         d60 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=60)).strftime("%Y-%m-%d")
 
-        prices = pd.DataFrame([
-            {"ticker": "MSFT", "date": d30, "open": 340, "high": 345, "low": 338, "close": 340.0, "volume": 1000000, "adj_close": 340.0},
-            {"ticker": "MSFT", "date": d60, "open": 330, "high": 335, "low": 325, "close": 330.0, "volume": 1000000, "adj_close": 330.0},
-        ])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "MSFT",
+                    "date": d30,
+                    "open": 340,
+                    "high": 345,
+                    "low": 338,
+                    "close": 340.0,
+                    "volume": 1000000,
+                    "adj_close": 340.0,
+                },
+                {
+                    "ticker": "MSFT",
+                    "date": d60,
+                    "open": 330,
+                    "high": 335,
+                    "low": 325,
+                    "close": 330.0,
+                    "volume": 1000000,
+                    "adj_close": 330.0,
+                },
+            ]
+        )
         upsert_prices(prices, db_path_with_dbmod)
 
         from nuri.trading.recommend.tracker import track_outcomes
+
         updated = track_outcomes(db_path=db_path_with_dbmod)
         assert updated == 1
 
@@ -122,14 +152,24 @@ class TestTrackOutcomes:
         _seed_recommendation(db_path_with_dbmod, rec_date, "BAD", "SELL", 100.0)
 
         d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{
-            "ticker": "BAD", "date": d30,
-            "open": 90, "high": 92, "low": 88, "close": 90.0,
-            "volume": 1000000, "adj_close": 90.0,
-        }])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "BAD",
+                    "date": d30,
+                    "open": 90,
+                    "high": 92,
+                    "low": 88,
+                    "close": 90.0,
+                    "volume": 1000000,
+                    "adj_close": 90.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path_with_dbmod)
 
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path_with_dbmod)
 
         rows = query("SELECT hit FROM recommendations", db_path=db_path_with_dbmod)
@@ -141,6 +181,7 @@ class TestTrackOutcomes:
         _seed_recommendation(db_path_with_dbmod, rec_date, "NEW", "BUY", 100.0)
 
         from nuri.trading.recommend.tracker import track_outcomes
+
         updated = track_outcomes(db_path=db_path_with_dbmod)
         assert updated == 0
 
@@ -150,6 +191,7 @@ class TestGetTrackingReport:
 
     def test_empty(self, db_path_with_dbmod):
         from nuri.trading.recommend.tracker import get_tracking_report
+
         report = get_tracking_report(db_path=db_path_with_dbmod)
         assert report["total_recommendations"] == 0
         assert report["hit_rate"] == 0
@@ -157,11 +199,10 @@ class TestGetTrackingReport:
     def test_with_data(self, db_path_with_dbmod):
         _seed_recommendation(db_path_with_dbmod, "2026-01-01", "AAPL", "BUY", 150.0)
         with get_db(db_path_with_dbmod) as conn:
-            conn.execute(
-                "UPDATE recommendations SET outcome_30d = 10.0, hit = 1 WHERE ticker = 'AAPL'"
-            )
+            conn.execute("UPDATE recommendations SET outcome_30d = 10.0, hit = 1 WHERE ticker = 'AAPL'")
 
         from nuri.trading.recommend.tracker import get_tracking_report
+
         report = get_tracking_report(db_path=db_path_with_dbmod)
         assert report["total_recommendations"] == 1
         assert report["tracked"] == 1
@@ -173,6 +214,7 @@ class TestPrintTrackingReport:
 
     def test_empty_report(self, db_path_with_dbmod, capsys):
         from nuri.trading.recommend.tracker import print_tracking_report
+
         print_tracking_report(db_path=db_path_with_dbmod)
         output = capsys.readouterr().out
         assert "Tracking Report" in output
@@ -180,11 +222,10 @@ class TestPrintTrackingReport:
     def test_with_tracked(self, db_path_with_dbmod, capsys):
         _seed_recommendation(db_path_with_dbmod, "2026-01-01", "AAPL", "BUY", 150.0)
         with get_db(db_path_with_dbmod) as conn:
-            conn.execute(
-                "UPDATE recommendations SET outcome_30d = 10.0, hit = 1 WHERE ticker = 'AAPL'"
-            )
+            conn.execute("UPDATE recommendations SET outcome_30d = 10.0, hit = 1 WHERE ticker = 'AAPL'")
 
         from nuri.trading.recommend.tracker import print_tracking_report
+
         print_tracking_report(db_path=db_path_with_dbmod)
         output = capsys.readouterr().out
         assert "Hit rate" in output or "AAPL" in output
@@ -195,12 +236,14 @@ class TestTrackerSaveRecommendations:
 
     def test_save_empty(self, rich_db):
         from nuri.trading.recommend.tracker import save_recommendations
+
         count = save_recommendations(candidates=None, actions=None, db_path=rich_db)
         assert count == 0
 
     def test_save_candidates_with_regime_fit(self, rich_db):
         from nuri.trading.recommend.candidates import Candidate
         from nuri.trading.recommend.tracker import save_recommendations
+
         candidates = [
             Candidate("AAPL", "rsi_oversold", "2025-03-20", "BUY", 75.0, 0.6, 2.0, True, 170.0, "test"),
             Candidate("NVDA", "bb_bounce", "2025-03-20", "BUY", 65.0, 0.55, 1.5, False, 120.0, "skip"),
@@ -211,15 +254,19 @@ class TestTrackerSaveRecommendations:
     def test_save_with_verdicts(self, rich_db):
         from nuri.trading.recommend.candidates import Candidate
         from nuri.trading.recommend.tracker import save_recommendations
+
         candidates = [
             Candidate("AAPL", "rsi_oversold", "2025-03-20", "BUY", 75.0, 0.6, 2.0, True, 170.0, "test"),
         ]
-        verdicts = {"AAPL": [{"agent_name": "technical", "action": "BUY", "confidence": 80, "reasoning": "RSI oversold"}]}
+        verdicts = {
+            "AAPL": [{"agent_name": "technical", "action": "BUY", "confidence": 80, "reasoning": "RSI oversold"}]
+        }
         count = save_recommendations(candidates=candidates, verdicts=verdicts, db_path=rich_db)
         assert count == 1
 
     def test_save_actions_with_price_lookup(self, rich_db):
         from nuri.trading.recommend.tracker import save_recommendations
+
         action = MagicMock()
         action.ticker = "AAPL"
         action.action = "BUY"
@@ -232,6 +279,7 @@ class TestTrackerSaveRecommendations:
         """When candidate and action have same ticker+action, signals should merge."""
         from nuri.trading.recommend.candidates import Candidate
         from nuri.trading.recommend.tracker import save_recommendations
+
         candidate = Candidate("AAPL", "rsi_oversold", "2025-03-20", "BUY", 75.0, 0.6, 2.0, True, 170.0, "")
         action = MagicMock()
         action.ticker = "AAPL"
@@ -253,7 +301,8 @@ class TestTrackerTrackOutcomes:
             conn.execute(
                 "INSERT INTO recommendations (date, ticker, action, confidence, regime, signals, entry_price) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (rec_date, "AAPL", "BUY", 75.0, "bull", "[]", 170.0))
+                (rec_date, "AAPL", "BUY", 75.0, "bull", "[]", 170.0),
+            )
         updated = track_outcomes(db_path=rich_db)
         assert updated >= 1
 
@@ -267,11 +316,13 @@ class TestTrackerTrackOutcomes:
             conn.execute(
                 "INSERT INTO recommendations (date, ticker, action, confidence, regime, signals, entry_price) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (rec_date, "TSLA", "SELL", 60.0, "bear", "[]", 250.0))
+                (rec_date, "TSLA", "SELL", 60.0, "bear", "[]", 250.0),
+            )
             conn.execute(
                 "INSERT OR REPLACE INTO prices (ticker, date, open, high, low, close, volume) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("TSLA", target_date, 200, 205, 195, 200, 1000000))
+                ("TSLA", target_date, 200, 205, 195, 200, 1000000),
+            )
 
         updated = track_outcomes(db_path=rich_db)
         assert updated >= 1
@@ -282,12 +333,14 @@ class TestTrackerReport:
 
     def test_report_empty(self, rich_db):
         from nuri.trading.recommend.tracker import get_tracking_report
+
         report = get_tracking_report(db_path=rich_db)
         assert report["total_recommendations"] == 0
         assert report["hit_rate"] == 0
 
     def test_print_report_no_tracked(self, rich_db, capsys):
         from nuri.trading.recommend.tracker import print_tracking_report
+
         print_tracking_report(db_path=rich_db)
         out = capsys.readouterr().out
         assert "Recommendation Tracking Report" in out
@@ -299,7 +352,8 @@ class TestTrackerReport:
             conn.execute(
                 "INSERT INTO recommendations (date, ticker, action, confidence, regime, signals, entry_price, outcome_30d, hit) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ("2025-01-01", "AAPL", "BUY", 80, "bull", "[]", 170.0, 12.5, 1))
+                ("2025-01-01", "AAPL", "BUY", 80, "bull", "[]", 170.0, 12.5, 1),
+            )
         print_tracking_report(db_path=rich_db)
         out = capsys.readouterr().out
         assert "Hit rate" in out or "hit" in out.lower()
@@ -411,9 +465,7 @@ class TestTracker_R23:
             "SELECT scoring_detail FROM recommendations WHERE ticker='EMPT'",
             db_path=db_path,
         )[0]
-        assert row["scoring_detail"] is not None, (
-            "A-2b-pre regression: 빈 dict 이 NULL 로 drop 되면 안 됨"
-        )
+        assert row["scoring_detail"] is not None, "A-2b-pre regression: 빈 dict 이 NULL 로 drop 되면 안 됨"
         assert json.loads(row["scoring_detail"]) == {}
 
     def test_print_tracking_report(self, db_path, capsys):
@@ -513,6 +565,7 @@ class TestTracker_R27:
     def test_save_recommendations_empty(self, db_path):
         """save_recommendations with no candidates/actions returns 0."""
         from nuri.trading.recommend.tracker import save_recommendations
+
         assert save_recommendations(db_path=db_path) == 0
 
     def test_save_recommendations_with_candidates(self, db_path, monkeypatch):
@@ -555,6 +608,7 @@ class TestTracker_R27:
     def test_get_tracking_report(self, db_path):
         """get_tracking_report returns report structure."""
         from nuri.trading.recommend.tracker import get_tracking_report
+
         report = get_tracking_report(db_path=db_path)
         assert "total_recommendations" in report
         assert "hit_rate" in report
@@ -562,6 +616,7 @@ class TestTracker_R27:
     def test_print_tracking_report(self, db_path, capsys):
         """print_tracking_report outputs data."""
         from nuri.trading.recommend.tracker import print_tracking_report
+
         print_tracking_report(db_path=db_path)
         captured = capsys.readouterr()
         assert "Recommendation" in captured.out
@@ -588,9 +643,23 @@ class TestHitCalculation:
         rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
         _seed_recommendation(db_path, rec_date, "GOOD", "BUY", 100.0)
         d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{"ticker": "GOOD", "date": d30, "open": 107, "high": 110, "low": 106, "close": 108.0, "volume": 1000000, "adj_close": 108.0}])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "GOOD",
+                    "date": d30,
+                    "open": 107,
+                    "high": 110,
+                    "low": 106,
+                    "close": 108.0,
+                    "volume": 1000000,
+                    "adj_close": 108.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)
         rows = query("SELECT outcome_30d, hit, hit_quality FROM recommendations", db_path=db_path)
         assert rows[0]["outcome_30d"] == 8.0
@@ -602,9 +671,23 @@ class TestHitCalculation:
         rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
         _seed_recommendation(db_path, rec_date, "MEH", "BUY", 100.0)
         d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{"ticker": "MEH", "date": d30, "open": 102, "high": 104, "low": 101, "close": 103.0, "volume": 1000000, "adj_close": 103.0}])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "MEH",
+                    "date": d30,
+                    "open": 102,
+                    "high": 104,
+                    "low": 101,
+                    "close": 103.0,
+                    "volume": 1000000,
+                    "adj_close": 103.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)
         rows = query("SELECT outcome_30d, hit, hit_quality FROM recommendations", db_path=db_path)
         assert rows[0]["outcome_30d"] == 3.0
@@ -616,9 +699,23 @@ class TestHitCalculation:
         rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
         _seed_recommendation(db_path, rec_date, "LOSS", "BUY", 100.0)
         d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{"ticker": "LOSS", "date": d30, "open": 94, "high": 96, "low": 93, "close": 95.0, "volume": 1000000, "adj_close": 95.0}])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "LOSS",
+                    "date": d30,
+                    "open": 94,
+                    "high": 96,
+                    "low": 93,
+                    "close": 95.0,
+                    "volume": 1000000,
+                    "adj_close": 95.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)
         rows = query("SELECT outcome_30d, hit, hit_quality FROM recommendations", db_path=db_path)
         assert rows[0]["outcome_30d"] == -5.0
@@ -630,9 +727,23 @@ class TestHitCalculation:
         rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
         _seed_recommendation(db_path, rec_date, "DROP", "SELL", 100.0)
         d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{"ticker": "DROP", "date": d30, "open": 96, "high": 97, "low": 94, "close": 95.0, "volume": 1000000, "adj_close": 95.0}])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "DROP",
+                    "date": d30,
+                    "open": 96,
+                    "high": 97,
+                    "low": 94,
+                    "close": 95.0,
+                    "volume": 1000000,
+                    "adj_close": 95.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)
         rows = query("SELECT outcome_30d, hit, hit_quality FROM recommendations", db_path=db_path)
         assert rows[0]["outcome_30d"] == -5.0
@@ -644,9 +755,23 @@ class TestHitCalculation:
         rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
         _seed_recommendation(db_path, rec_date, "FLAT", "SELL", 100.0)
         d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{"ticker": "FLAT", "date": d30, "open": 99.5, "high": 100, "low": 98.5, "close": 99.0, "volume": 1000000, "adj_close": 99.0}])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "FLAT",
+                    "date": d30,
+                    "open": 99.5,
+                    "high": 100,
+                    "low": 98.5,
+                    "close": 99.0,
+                    "volume": 1000000,
+                    "adj_close": 99.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)
         rows = query("SELECT outcome_30d, hit, hit_quality FROM recommendations", db_path=db_path)
         assert rows[0]["outcome_30d"] == -1.0
@@ -658,9 +783,23 @@ class TestHitCalculation:
         rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
         _seed_recommendation(db_path, rec_date, "UP", "SELL", 100.0)
         d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{"ticker": "UP", "date": d30, "open": 104, "high": 106, "low": 103, "close": 105.0, "volume": 1000000, "adj_close": 105.0}])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "UP",
+                    "date": d30,
+                    "open": 104,
+                    "high": 106,
+                    "low": 103,
+                    "close": 105.0,
+                    "volume": 1000000,
+                    "adj_close": 105.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)
         rows = query("SELECT outcome_30d, hit, hit_quality FROM recommendations", db_path=db_path)
         assert rows[0]["outcome_30d"] == 5.0
@@ -689,8 +828,7 @@ class TestAgentVerdicts:
         from nuri.trading.recommend.tracker import save_recommendations
 
         candidates = [
-            Candidate("TEST1", "rsi_oversold", "2026-03-29", "BUY",
-                       75.0, 0.6, 2.0, True, 100.0, "test"),
+            Candidate("TEST1", "rsi_oversold", "2026-03-29", "BUY", 75.0, 0.6, 2.0, True, 100.0, "test"),
         ]
         verdicts = {
             "TEST1": [
@@ -715,8 +853,7 @@ class TestAgentVerdicts:
         from nuri.trading.recommend.tracker import save_recommendations
 
         candidates = [
-            Candidate("TEST1", "macd_golden", "2026-03-29", "BUY",
-                       65.0, 0.5, 1.5, True, 90.0, "no verdicts"),
+            Candidate("TEST1", "macd_golden", "2026-03-29", "BUY", 65.0, 0.5, 1.5, True, 90.0, "no verdicts"),
         ]
         n = save_recommendations(candidates, db_path=db_path)
         assert n == 1
@@ -770,8 +907,16 @@ class TestScoringDetail:
         from nuri.trading.recommend.candidates import Candidate
 
         c = Candidate(
-            "TEST", "rsi_oversold", "2026-03-29", "BUY",
-            75.0, 0.6, 2.0, True, 100.0, "test",
+            "TEST",
+            "rsi_oversold",
+            "2026-03-29",
+            "BUY",
+            75.0,
+            0.6,
+            2.0,
+            True,
+            100.0,
+            "test",
             scoring_detail={"base_confidence": 60.0, "final_confidence": 75.0},
         )
         assert c.scoring_detail is not None
@@ -784,8 +929,16 @@ class TestScoringDetail:
 
         candidates = [
             Candidate(
-                "TEST1", "rsi_oversold", "2026-03-29", "BUY",
-                75.0, 0.6, 2.0, True, 100.0, "test",
+                "TEST1",
+                "rsi_oversold",
+                "2026-03-29",
+                "BUY",
+                75.0,
+                0.6,
+                2.0,
+                True,
+                100.0,
+                "test",
                 scoring_detail={
                     "base_confidence": 60.0,
                     "regime_win_rate": 0.65,
@@ -816,12 +969,23 @@ class TestShortHorizonTracking:
         rec_date = (datetime.now() - timedelta(days=8)).strftime("%Y-%m-%d")
         _seed_recommendation(db_path, rec_date, "AAA", "BUY", 100.0)
         d7 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=7)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{
-            "ticker": "AAA", "date": d7, "open": 102, "high": 104, "low": 101,
-            "close": 103.0, "volume": 1000000, "adj_close": 103.0
-        }])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "AAA",
+                    "date": d7,
+                    "open": 102,
+                    "high": 104,
+                    "low": 101,
+                    "close": 103.0,
+                    "volume": 1000000,
+                    "adj_close": 103.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)
         rows = query(
             "SELECT outcome_7d, outcome_14d, outcome_21d, outcome_30d FROM recommendations",
@@ -840,12 +1004,21 @@ class TestShortHorizonTracking:
         rows_to_seed = []
         for h, c in [(7, 105.0), (14, 110.0), (21, 115.0)]:
             d = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=h)).strftime("%Y-%m-%d")
-            rows_to_seed.append({
-                "ticker": "BBB", "date": d, "open": c-1, "high": c+1, "low": c-2,
-                "close": c, "volume": 1000000, "adj_close": c,
-            })
+            rows_to_seed.append(
+                {
+                    "ticker": "BBB",
+                    "date": d,
+                    "open": c - 1,
+                    "high": c + 1,
+                    "low": c - 2,
+                    "close": c,
+                    "volume": 1000000,
+                    "adj_close": c,
+                }
+            )
         upsert_prices(pd.DataFrame(rows_to_seed), db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)
         rows = query(
             "SELECT outcome_7d, outcome_14d, outcome_21d, outcome_30d FROM recommendations",
@@ -861,12 +1034,23 @@ class TestShortHorizonTracking:
         rec_date = (datetime.now() - timedelta(days=22)).strftime("%Y-%m-%d")
         _seed_recommendation(db_path, rec_date, "CCC", "BUY", 100.0)
         d21 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=21)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{
-            "ticker": "CCC", "date": d21, "open": 119, "high": 121, "low": 118,
-            "close": 120.0, "volume": 1000000, "adj_close": 120.0
-        }])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "CCC",
+                    "date": d21,
+                    "open": 119,
+                    "high": 121,
+                    "low": 118,
+                    "close": 120.0,
+                    "volume": 1000000,
+                    "adj_close": 120.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)
         rows = query(
             "SELECT outcome_21d, hit, hit_quality FROM recommendations",
@@ -886,17 +1070,26 @@ class TestOutcomeImmutability:
         _seed_recommendation(db_path, rec_date, "IMM", "BUY", 100.0)
         # 먼저 +8% outcome_30d 직접 set (예: 이전 run 결과)
         with get_db(db_path) as conn:
-            conn.execute(
-                "UPDATE recommendations SET outcome_30d = 8.0, hit = 1 WHERE ticker = 'IMM'"
-            )
+            conn.execute("UPDATE recommendations SET outcome_30d = 8.0, hit = 1 WHERE ticker = 'IMM'")
         # 그 후 prices 가 다른 값으로 수정됐다고 가정
         d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{
-            "ticker": "IMM", "date": d30, "open": 89, "high": 91, "low": 88,
-            "close": 90.0, "volume": 1000000, "adj_close": 90.0  # 가격이 -10% 로 revised
-        }])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "IMM",
+                    "date": d30,
+                    "open": 89,
+                    "high": 91,
+                    "low": 88,
+                    "close": 90.0,
+                    "volume": 1000000,
+                    "adj_close": 90.0,  # 가격이 -10% 로 revised
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)  # recompute=False (default)
         rows = query("SELECT outcome_30d, hit FROM recommendations", db_path=db_path)
         # 기존 +8% 그대로 유지 (vendor revision 으로부터 보호)
@@ -908,16 +1101,25 @@ class TestOutcomeImmutability:
         rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
         _seed_recommendation(db_path, rec_date, "RECMP", "BUY", 100.0)
         with get_db(db_path) as conn:
-            conn.execute(
-                "UPDATE recommendations SET outcome_30d = 8.0 WHERE ticker = 'RECMP'"
-            )
+            conn.execute("UPDATE recommendations SET outcome_30d = 8.0 WHERE ticker = 'RECMP'")
         d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
-        prices = pd.DataFrame([{
-            "ticker": "RECMP", "date": d30, "open": 89, "high": 91, "low": 88,
-            "close": 90.0, "volume": 1000000, "adj_close": 90.0
-        }])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "RECMP",
+                    "date": d30,
+                    "open": 89,
+                    "high": 91,
+                    "low": 88,
+                    "close": 90.0,
+                    "volume": 1000000,
+                    "adj_close": 90.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path, recompute=True)
         rows = query("SELECT outcome_30d FROM recommendations", db_path=db_path)
         # recompute 로 새 값 반영
@@ -928,21 +1130,31 @@ class TestOutcomeImmutability:
         rec_date = (datetime.now() - timedelta(days=35)).strftime("%Y-%m-%d")
         _seed_recommendation(db_path, rec_date, "PART", "BUY", 100.0)
         with get_db(db_path) as conn:
-            conn.execute(
-                "UPDATE recommendations SET outcome_7d = 2.0 WHERE ticker = 'PART'"
-            )
+            conn.execute("UPDATE recommendations SET outcome_7d = 2.0 WHERE ticker = 'PART'")
         # 7d 와 30d 모두 prices 시드
         for h, c in [(7, 99.0), (30, 110.0)]:
             d = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=h)).strftime("%Y-%m-%d")
-            upsert_prices(pd.DataFrame([{
-                "ticker": "PART", "date": d, "open": c, "high": c, "low": c,
-                "close": c, "volume": 1000000, "adj_close": c,
-            }]), db_path)
+            upsert_prices(
+                pd.DataFrame(
+                    [
+                        {
+                            "ticker": "PART",
+                            "date": d,
+                            "open": c,
+                            "high": c,
+                            "low": c,
+                            "close": c,
+                            "volume": 1000000,
+                            "adj_close": c,
+                        }
+                    ]
+                ),
+                db_path,
+            )
         from nuri.trading.recommend.tracker import track_outcomes
+
         track_outcomes(db_path=db_path)
-        rows = query(
-            "SELECT outcome_7d, outcome_30d FROM recommendations", db_path=db_path
-        )
+        rows = query("SELECT outcome_7d, outcome_30d FROM recommendations", db_path=db_path)
         assert rows[0]["outcome_7d"] == 2.0  # 보존 (immutable)
         assert rows[0]["outcome_30d"] == 10.0  # 신규
 
@@ -952,28 +1164,57 @@ class TestForwardCloseHelper:
 
     def test_returns_close_on_target_date(self, db_path):
         from nuri.trading.recommend.tracker import _forward_close_at_horizon
+
         entry = datetime(2026, 4, 1)
         target = (entry + timedelta(days=21)).strftime("%Y-%m-%d")
-        upsert_prices(pd.DataFrame([{
-            "ticker": "FWD", "date": target, "open": 100, "high": 100, "low": 100,
-            "close": 100.0, "volume": 0, "adj_close": 100.0,
-        }]), db_path)
+        upsert_prices(
+            pd.DataFrame(
+                [
+                    {
+                        "ticker": "FWD",
+                        "date": target,
+                        "open": 100,
+                        "high": 100,
+                        "low": 100,
+                        "close": 100.0,
+                        "volume": 0,
+                        "adj_close": 100.0,
+                    }
+                ]
+            ),
+            db_path,
+        )
         assert _forward_close_at_horizon("FWD", entry, 21, db_path=db_path) == 100.0
 
     def test_returns_most_recent_close_on_or_before_target(self, db_path):
         """target 일 close 가 없으면 그 이전 가장 최근 trading day."""
         from nuri.trading.recommend.tracker import _forward_close_at_horizon
+
         entry = datetime(2026, 4, 1)
         # target = 4-22, 마지막 trading day = 4-19
-        upsert_prices(pd.DataFrame([
-            {"ticker": "FWD", "date": "2026-04-19", "open": 99, "high": 99, "low": 99,
-             "close": 99.0, "volume": 0, "adj_close": 99.0},
-        ]), db_path)
+        upsert_prices(
+            pd.DataFrame(
+                [
+                    {
+                        "ticker": "FWD",
+                        "date": "2026-04-19",
+                        "open": 99,
+                        "high": 99,
+                        "low": 99,
+                        "close": 99.0,
+                        "volume": 0,
+                        "adj_close": 99.0,
+                    },
+                ]
+            ),
+            db_path,
+        )
         assert _forward_close_at_horizon("FWD", entry, 21, db_path=db_path) == 99.0
 
     def test_delisted_ticker_returns_none(self, db_path):
         """ticker 자체가 prices 에 없으면 None (graceful degrade)."""
         from nuri.trading.recommend.tracker import _forward_close_at_horizon
+
         entry = datetime(2026, 4, 1)
         assert _forward_close_at_horizon("DELISTED", entry, 30, db_path=db_path) is None
 
@@ -982,22 +1223,88 @@ class TestForwardCloseHelper:
         day-21 outcome 으로 잘못 채워지지 않아야 한다 (tolerance window lower bound).
         """
         from nuri.trading.recommend.tracker import _forward_close_at_horizon
+
         entry = datetime(2026, 4, 1)
         # entry+1 일에만 거래 (그 이후 delisting). horizon=21 (target = 4-22) 시
         # tolerance window = 4-15 ~ 4-22. day-1 close (4-2) 는 window 밖 → None.
-        upsert_prices(pd.DataFrame([
-            {"ticker": "PREDEL", "date": "2026-04-02", "open": 100, "high": 100,
-             "low": 100, "close": 100.0, "volume": 0, "adj_close": 100.0},
-        ]), db_path)
+        upsert_prices(
+            pd.DataFrame(
+                [
+                    {
+                        "ticker": "PREDEL",
+                        "date": "2026-04-02",
+                        "open": 100,
+                        "high": 100,
+                        "low": 100,
+                        "close": 100.0,
+                        "volume": 0,
+                        "adj_close": 100.0,
+                    },
+                ]
+            ),
+            db_path,
+        )
         assert _forward_close_at_horizon("PREDEL", entry, 21, db_path=db_path) is None
 
     def test_close_within_tolerance_window_accepted(self, db_path):
         """target 보다 며칠 이전이지만 tolerance window 안 → close 반환."""
         from nuri.trading.recommend.tracker import _forward_close_at_horizon
+
         entry = datetime(2026, 4, 1)
         # target = 4-22, tolerance 7일 → 4-15 ~ 4-22. 4-18 close 는 valid.
-        upsert_prices(pd.DataFrame([
-            {"ticker": "TOL", "date": "2026-04-18", "open": 100, "high": 100,
-             "low": 100, "close": 105.0, "volume": 0, "adj_close": 105.0},
-        ]), db_path)
+        upsert_prices(
+            pd.DataFrame(
+                [
+                    {
+                        "ticker": "TOL",
+                        "date": "2026-04-18",
+                        "open": 100,
+                        "high": 100,
+                        "low": 100,
+                        "close": 105.0,
+                        "volume": 0,
+                        "adj_close": 105.0,
+                    },
+                ]
+            ),
+            db_path,
+        )
         assert _forward_close_at_horizon("TOL", entry, 21, db_path=db_path) == 105.0
+
+
+# ─── tracker.track_outcomes line 259 — entry<=0 guard ─────────────────────
+
+
+class TestTrackOutcomesEntryZeroGuard:
+    """SQL `WHERE entry_price > 0` 가 일반 path 를 차단하지만 Python 측 defensive guard
+    (line 258-259) 가 살아있다 — query() 를 monkeypatch 해 entry=0 row 를 강제로
+    주입하면 `if entry <= 0: continue` 분기가 진입한다.
+    """
+
+    def test_entry_zero_row_skipped_via_python_guard(self, monkeypatch, tmp_path):
+        from nuri.core.db import init_db
+        from nuri.trading.recommend import tracker as tracker_mod
+
+        db = tmp_path / "tracker.db"
+        init_db(db)
+
+        # Bypass SQL filter: query() 가 entry=0 row 를 반환하도록 강제
+        crafted_row = {
+            "id": 1,
+            "date": "2026-04-01",
+            "ticker": "ZERO",
+            "action": "BUY",
+            "entry_price": 0.0,  # <= 0 → defensive guard 적중
+            "outcome_7d": None,
+            "outcome_14d": None,
+            "outcome_21d": None,
+            "outcome_30d": None,
+            "outcome_60d": None,
+            "outcome_90d": None,
+        }
+        monkeypatch.setattr(tracker_mod, "query", lambda *a, **kw: [crafted_row])
+        # 다른 의존도 안전하게 mocking — get_db / _forward_close 등 호출 차단
+        # entry<=0 분기에서 즉시 continue 하므로 다른 함수가 호출되지 않아야 한다.
+
+        updated = tracker_mod.track_outcomes(db_path=db)
+        assert updated == 0  # entry=0 → continue → no update

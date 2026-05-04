@@ -463,3 +463,98 @@ class TestRebalanceAdvisorSection:
         assert "$12,346" in ctx.rebalance_section
         assert "AAA" in ctx.rebalance_section
         assert "concentration over 25%" in ctx.rebalance_section
+
+
+# ─── Defensive `except Exception:` paths — exercised by injecting raises ────
+
+
+class TestExceptionFallbackPaths:
+    """모든 try/except 의 fallback 분기가 import 또는 호출 실패 시 정상 동작함을 검증.
+
+    각 dependency 가 raise 하는 시나리오 — fallback string 또는 default
+    section 값이 유지되어야 한다 (gather_context 자체가 죽지 않음).
+    """
+
+    def test_gate_exception_yields_failure_summary(self, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """check_all_gates raise → gate_summary 가 "Gate 검증 실패" 메시지 (134-137)."""
+
+        def _boom(*a, **kw):
+            raise RuntimeError("gate down")
+
+        monkeypatch.setattr("nuri.trading.engine.gate.check_all_gates", _boom)
+        ctx = gather_context(db_path=db_path)
+        assert "Gate 검증 실패" in ctx.gate_summary
+        assert "서버 로그" in ctx.gate_summary
+
+    def test_regime_populates_section_when_classifier_returns_state(
+        self, db_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """classify_regime non-None → regime_section 에 SPY/SMA/VIX 라인 출력 (146-155)."""
+        from nuri.quant.regime.classifier import RegimeState
+
+        fake_state = RegimeState(
+            date="2026-04-01",
+            trend="up",
+            volatility="low",
+            regime="bull",
+            confidence=0.82,
+            details={
+                "spy_close": 500.0,
+                "sma50": 480.0,
+                "sma200": 460.0,
+                "sma_diff_pct": 4.2,
+                "vix": 18.0,
+                "fear_greed": 60,
+                "rsi": 55.0,
+                "thresholds": {"vix_threshold": 30, "sideways_pct": 2.0, "bb_width_threshold": 0.05},
+            },
+        )
+        monkeypatch.setattr(
+            "nuri.quant.regime.classifier.classify_regime",
+            lambda **kw: fake_state,
+        )
+        ctx = gather_context(db_path=db_path)
+        assert "bull" in ctx.regime_section
+        assert "SPY: $500" in ctx.regime_section
+        assert "SMA Gap: +4.2%" in ctx.regime_section
+        assert "VIX: 18.0" in ctx.regime_section
+
+    def test_risk_exception_keeps_default_section(self, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """analyze_risk raise → risk_section 기본값 유지 (197-198)."""
+
+        def _boom(*a, **kw):
+            raise RuntimeError("risk metric failure")
+
+        monkeypatch.setattr("nuri.analysis.risk.analyze_risk", _boom)
+        ctx = gather_context(db_path=db_path)
+        assert ctx.risk_section == "리스크 데이터 없음"
+
+    def test_candidates_exception_keeps_default_section(self, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """screen_candidates raise → candidates_section 기본값 유지 (245-246)."""
+
+        def _boom(*a, **kw):
+            raise RuntimeError("candidates engine down")
+
+        monkeypatch.setattr("nuri.trading.recommend.candidates.screen_candidates", _boom)
+        ctx = gather_context(db_path=db_path)
+        assert ctx.candidates_section == "매매 후보 없음"
+
+    def test_conflicts_exception_keeps_default_section(self, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """detect_conflicts raise → conflicts_section 기본값 유지 (264-265)."""
+
+        def _boom(*a, **kw):
+            raise RuntimeError("conflicts down")
+
+        monkeypatch.setattr("nuri.trading.engine.conflicts.detect_conflicts", _boom)
+        ctx = gather_context(db_path=db_path)
+        assert ctx.conflicts_section == "충돌 없음"
+
+    def test_drift_exception_keeps_default_section(self, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """detect_drift raise → drift_section 기본값 유지 (284-285)."""
+
+        def _boom(*a, **kw):
+            raise RuntimeError("memory drift detect down")
+
+        monkeypatch.setattr("nuri.trading.engine.memory.detect_drift", _boom)
+        ctx = gather_context(db_path=db_path)
+        assert ctx.drift_section == "성과 변화 데이터 없음"

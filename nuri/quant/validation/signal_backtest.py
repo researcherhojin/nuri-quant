@@ -783,20 +783,21 @@ def print_scorecard(scorecards: list[SignalScorecard]) -> None:
 # 메인
 # ═══════════════════════════════════════════════════════
 
-if __name__ == "__main__":
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI: signal 백테스트 + CSV 저장."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 시그널 백테스트")
     parser.add_argument("--ticker", help="특정 종목")
     parser.add_argument("--signal", help="특정 시그널 (예: rsi_oversold)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     sigs = [args.signal] if args.signal else None
     results = backtest_signals(ticker=args.ticker, signals=sigs)
     scorecards = generate_scorecard(results)
     print_scorecard(scorecards)
 
-    # CSV 저장
     today = today_kst()
     output_dir = REPORT_DIR / today
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -805,3 +806,8 @@ if __name__ == "__main__":
         pd.DataFrame([asdict(r) for r in results]).to_csv(output_dir / "signal_results.csv", index=False)
     if scorecards:
         pd.DataFrame([asdict(s) for s in scorecards]).to_csv(output_dir / "signal_scorecard.csv", index=False)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

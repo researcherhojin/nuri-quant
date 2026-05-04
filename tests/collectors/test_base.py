@@ -74,6 +74,88 @@ class TestBaseCollectorRun:
         count = c.run()
         assert count == 2
 
+    def test_high_failure_logs_failed_tickers(self, caplog):
+        """failed_tickers 가 있으면 별도 로그 라인 출력 (line 105).
+
+        run() 시작 시 _failed_tickers 가 reset 되므로 collect() 내부에서 채워야 함.
+        """
+
+        class FailedTickersCollector(BaseCollector):
+            def __init__(self):
+                super().__init__("ftk")
+                self._expected_count = 100
+
+            def collect(self, **kw):
+                self._failed_tickers = ["AAA", "BBB", "CCC"]
+                return list(range(20))  # 80% 실패율 → CollectionFailureError
+
+            def save(self, data):
+                return len(data)
+
+        c = FailedTickersCollector()
+        with caplog.at_level("ERROR"):
+            with pytest.raises(CollectionFailureError):
+                c.run()
+        # 실패 종목 메시지 출력 확인
+        assert any("실패 종목" in rec.message for rec in caplog.records)
+
+
+class TestFetchJson:
+    """`fetch_json` API call helper (lines 49-51)."""
+
+    def test_returns_parsed_json(self):
+        from unittest.mock import MagicMock, patch
+
+        from nuri.collectors.base import fetch_json
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"key": "value"}
+        mock_resp.raise_for_status = MagicMock()
+        with patch("nuri.collectors.base.requests.get", return_value=mock_resp) as mock_get:
+            result = fetch_json("https://example.com/api", params={"q": 1}, headers={"X-Test": "1"})
+        assert result == {"key": "value"}
+        mock_get.assert_called_once()
+        mock_resp.raise_for_status.assert_called_once()
+
+    def test_raises_on_http_error(self):
+        from unittest.mock import MagicMock, patch
+
+        import requests
+
+        from nuri.collectors.base import fetch_json
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = requests.HTTPError("500")
+        with patch("nuri.collectors.base.requests.get", return_value=mock_resp):
+            with pytest.raises(requests.HTTPError):
+                fetch_json("https://example.com")
+
+
+class TestSendFailureAlertOutboxBroken:
+    """`_send_failure_alert` 가 outbox stage_ops raise 해도 swallow (lines 150-151)."""
+
+    def test_outbox_failure_does_not_propagate(self, monkeypatch):
+        """outbox.stage_ops 가 raise 해도 except 로 swallow → run() 본래 raise 만 발생."""
+        # outbox.stage_ops 자체가 raise → except Exception → debug log 만
+        import nuri.agents.discord.outbox as outbox_mod
+
+        monkeypatch.setattr(
+            outbox_mod, "stage_ops", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("DB 미초기화"))
+        )
+
+        class FailC(BaseCollector):
+            def __init__(self):
+                super().__init__("outbox_broken")
+
+            def collect(self, **kw):
+                raise RuntimeError("collect fail")
+
+            def save(self, data):
+                return 0
+
+        c = FailC()
+        with pytest.raises(RuntimeError, match="collect fail"):
+            c.run()
 
 
 class TestGetTickers:
@@ -124,7 +206,6 @@ class TestGetTickers:
         all_tickers = c._get_tickers()
         assert "AAPL" in all_tickers
         assert "005930.KS" in all_tickers
-
 
 
 class TestRetryLogic:
@@ -186,7 +267,6 @@ class TestRetryLogic:
         with pytest.raises(RuntimeError):
             c.run()
         assert alert_called
-
 
 
 class TestMaxFailureRate:
@@ -254,11 +334,13 @@ class TestFailureAlertSingleWriter:
 
         # discord_bot 모듈의 직접 publish 함수 두 개 모두 spy
         monkeypatch.setattr(
-            discord_bot_mod, "send_webhook",
+            discord_bot_mod,
+            "send_webhook",
             lambda *a, **kw: webhook_calls.append("send_webhook"),
         )
         monkeypatch.setattr(
-            discord_bot_mod, "send_webhook_text",
+            discord_bot_mod,
+            "send_webhook_text",
             lambda *a, **kw: webhook_calls.append("send_webhook_text"),
         )
 
@@ -281,9 +363,7 @@ class TestFailureAlertSingleWriter:
         with pytest.raises(RuntimeError):
             c.run()
 
-        assert webhook_calls == [], (
-            f"discord_bot 직접 호출됨: {webhook_calls} — Single-writer Discord 룰 위반"
-        )
+        assert webhook_calls == [], f"discord_bot 직접 호출됨: {webhook_calls} — Single-writer Discord 룰 위반"
 
 
 # ##############################################################################

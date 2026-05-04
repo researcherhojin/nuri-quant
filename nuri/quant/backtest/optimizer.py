@@ -281,13 +281,14 @@ def optimize_all(db_path: Optional[Path] = None) -> pd.DataFrame:
     return df
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI: signal 최적화 (--signal 단일 또는 전체)."""
     import argparse
 
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--signal", help="특정 시그널만 최적화")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.signal:
         results = optimize_signal(args.signal)
@@ -295,3 +296,8 @@ if __name__ == "__main__":
             print(f"  PF={r.profit_factor:.2f} WR={r.win_rate:.0%} trades={r.total_trades} | {r.params}")
     else:
         optimize_all()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

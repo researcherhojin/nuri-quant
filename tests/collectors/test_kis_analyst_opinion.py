@@ -832,3 +832,32 @@ class TestMainEntry:
         ):
             sys.modules.pop("nuri.collectors.kis_analyst_opinion", None)
             runpy.run_module("nuri.collectors.kis_analyst_opinion", run_name="__main__")
+
+
+class TestTqdmImportFallback:
+    """`from tqdm import tqdm` ImportError → iterator = tickers (lines 269-270).
+
+    sys.modules['tqdm'] = None 으로 설정하면 후속 `from tqdm import` 가 ImportError.
+    """
+
+    def test_no_tqdm_uses_plain_iterator(self, db_with_portfolio, mock_kis_creds, monkeypatch):
+        import sys
+
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        # tqdm 캐시 제거 후 None 등록 → from tqdm import tqdm → ImportError
+        monkeypatch.delitem(sys.modules, "tqdm", raising=False)
+        monkeypatch.delitem(sys.modules, "tqdm.std", raising=False)
+        monkeypatch.setitem(sys.modules, "tqdm", None)
+
+        fake = _resp(_fake_invest_opinion_response())
+        c = KISAnalystOpinionCollector()
+        with (
+            patch("nuri.collectors.kis_realtime.load_credentials", return_value=mock_kis_creds),
+            patch("nuri.collectors.kis_realtime.get_access_token", return_value="tok"),
+            patch("requests.get", return_value=fake),
+            patch("time.sleep"),
+        ):
+            # 호출만 정상 통과 — except ImportError 분기로 iterator=tickers
+            results = c.collect(tickers=["005930.KS"])
+            assert isinstance(results, list)

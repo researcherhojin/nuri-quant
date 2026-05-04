@@ -239,19 +239,19 @@ def print_scorecard(scorecards: list[InvestorScorecard]) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI: 슈퍼투자자 추종 백테스트 + CSV 저장."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="슈퍼투자자 추종 백테스트")
     parser.add_argument("--investor", help="특정 투자자")
     parser.add_argument("--hold-days", type=int, default=120, help="보유 기간 (일)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     results = backtest_superinvestor(investor=args.investor, hold_days=args.hold_days)
     scorecards = generate_scorecard(results, args.hold_days)
     print_scorecard(scorecards)
 
-    # CSV 저장
     today = today_kst()
     output_dir = REPORT_DIR / today
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -260,3 +260,8 @@ if __name__ == "__main__":
         pd.DataFrame([asdict(r) for r in results]).to_csv(output_dir / "superinvestor_results.csv", index=False)
     if scorecards:
         pd.DataFrame([asdict(s) for s in scorecards]).to_csv(output_dir / "superinvestor_scorecard.csv", index=False)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -143,6 +143,24 @@ class TestMainRuntime:
         assert rc == 0
         mock_bot.run.assert_called_once_with("fake-token")
 
+    def test_main_module_runpy_invokes_main(self, monkeypatch):
+        """__main__ block (lines 196-198): runpy + sys.exit(main()) — exit 2 on missing token.
+
+        주의: load_dotenv 가 module import 시 .env 를 읽어 DISCORD_BOT_TOKEN 을 채울 수
+        있으므로 dotenv 자체를 no-op 으로 만들어 환경을 잠근다.
+        """
+        import io
+        import runpy
+        import sys
+
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **kw: False)
+        monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+        monkeypatch.setattr(sys, "argv", ["bot"])
+        monkeypatch.setattr(sys, "stdout", io.StringIO())
+        with pytest.raises(SystemExit) as exc:
+            runpy.run_module("nuri.agents.discord.bot", run_name="__main__")
+        assert exc.value.code == 2
+
     def test_main_sync_only_runs_async_sync(self, monkeypatch, capsys):
         """--sync-only 분기: asyncio.run + tree.sync 호출 + bot.run 미호출."""
         from unittest.mock import AsyncMock, MagicMock

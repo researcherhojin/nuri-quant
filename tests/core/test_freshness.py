@@ -364,3 +364,14 @@ class TestCertificationFreshnessE4_0a:
         # datetime no-tz T separator
         dt3 = _parse_timestamp("2026-04-20T12:00:00")
         assert dt3.hour == 12 and dt3.tzinfo is not None
+
+    def test_strptime_fallback_for_non_iso_dash_format(self):
+        """fromisoformat 실패 → strptime fallback 성공 분기 (line 82).
+
+        '2026-4-1' (zero-padded 아님) 은 Python fromisoformat 거부 → strptime '%Y-%m-%d' 통과.
+        """
+        from nuri.core.freshness import _parse_timestamp
+
+        dt = _parse_timestamp("2026-4-1")
+        assert dt.year == 2026 and dt.month == 4 and dt.day == 1
+        assert dt.tzinfo is not None  # KST 부착됨

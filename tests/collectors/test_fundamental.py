@@ -739,3 +739,48 @@ class TestFundamentalExpectedCountGuard:
         result = c.run()
         assert result == 19, "save() 가 19 records 받아야 함"
         assert save_called == [19], "save() 1회 호출"
+
+
+# ─── main(argv) CLI: print loop coverage (lines 405-417) ──────────────────
+
+
+class TestFundamentalMainCli:
+    """`main(argv)` 가 fundamentals 행이 있을 때 표 print 분기 진입.
+
+    수집 자체는 외부 API 호출이라 monkeypatch 로 우회. DB 에 fundamentals row 만
+    seed 하면 main() 의 query → if rows: print 분기가 covered.
+    """
+
+    def test_main_prints_results_when_db_has_fundamentals(self, monkeypatch, tmp_path, capsys):
+        import nuri.collectors.fundamental as fund_mod
+        from nuri.core.db import init_db
+
+        db = tmp_path / "fund.db"
+        init_db(db)
+        monkeypatch.setattr("nuri.core.db.DB_PATH", db)
+
+        # Seed fundamentals row directly
+        with fund_mod.query.__globals__["get_connection"](db) as conn:
+            conn.execute(
+                """INSERT INTO fundamentals
+                       (ticker, date, market_cap, pe_ratio, forward_pe, roe,
+                        revenue_growth, debt_to_equity)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                ("TEST", "2026-04-01", 1_000_000, 25.5, 22.0, 0.18, 0.12, 1.5),
+            )
+            conn.commit()
+
+        # FundamentalCollector.run 우회 (외부 API 차단)
+        class _StubCollector:
+            def run(self, source=None):
+                return 1
+
+        monkeypatch.setattr(fund_mod, "FundamentalCollector", _StubCollector)
+
+        rc = fund_mod.main(["--source", "portfolio"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "펀더멘탈 수집 완료" in out
+        assert "TEST" in out
+        assert "25.5" in out  # pe_ratio
+        assert "18.0%" in out  # roe

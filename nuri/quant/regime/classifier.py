@@ -630,14 +630,15 @@ def print_history(history: list[RegimeState]) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI: 레짐 분류 (단일 또는 history). --history 시 CSV 저장."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 시장 레짐 분류기")
     parser.add_argument("--history", action="store_true", help="레짐 이력 출력")
     parser.add_argument("--start", help="시작일 (YYYY-MM-DD)")
     parser.add_argument("--end", help="종료일 (YYYY-MM-DD)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.history:
         history = classify_regime_history(start_date=args.start, end_date=args.end)
@@ -653,3 +654,8 @@ if __name__ == "__main__":
     else:
         state = classify_regime()
         print_regime(state)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

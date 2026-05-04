@@ -234,3 +234,91 @@ class TestSourceParam:
 
         info = [r for r in caplog.records if "source=universe" in r.message]
         assert len(info) >= 1
+
+
+class TestCallWithTimeoutBranch:
+    """`_call_with_timeout` (line 42) — Future timeout → None 반환.
+
+    ThreadPoolExecutor.submit 을 patch 해 timeout 발생을 강제 → conftest.py 의
+    sleep mock 영향을 받지 않는다.
+    """
+
+    def test_future_timeout_returns_none(self, monkeypatch):
+        """future.result(timeout=N) → TimeoutError → None (line 42)."""
+        import concurrent.futures as cf
+
+        from nuri.collectors.stock_kr import _call_with_timeout
+
+        # Future 가 timeout 발생하도록 강제: future.result 가 항상 TimeoutError raise
+        class _TimeoutFuture:
+            def result(self, timeout=None):
+                raise cf.TimeoutError()
+
+        class _StubExecutor:
+            def __init__(self, *a, **kw):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def submit(self, fn, *a, **kw):
+                return _TimeoutFuture()
+
+        monkeypatch.setattr(cf, "ThreadPoolExecutor", _StubExecutor)
+        result = _call_with_timeout(lambda: 42, timeout_sec=1)
+        assert result is None
+
+
+class TestCollectTickerTimeoutNone:
+    """`_collect_ticker` 가 _call_with_timeout 으로부터 None 받으면 (pykrx 타임아웃)
+    None 반환 + debug log (lines 123-124)."""
+
+    def test_timeout_returns_none_with_log(self, monkeypatch, caplog):
+        import logging as _logging
+
+        from nuri.collectors.stock_kr import StockKRCollector
+
+        # _call_with_timeout 이 None 반환 (pykrx hang simulation)
+        monkeypatch.setattr(
+            "nuri.collectors.stock_kr._call_with_timeout",
+            lambda *a, **kw: None,
+        )
+
+        c = StockKRCollector()
+        with caplog.at_level(_logging.DEBUG, logger="nuri.collectors.stock_kr"):
+            result = c._collect_ticker("005930.KS", "20260101", "20260115")
+        assert result is None
+        assert any("timeout" in rec.message.lower() for rec in caplog.records)
+
+
+class TestCollectIndicesMultiIndexColumns:
+    """`_collect_indices` MultiIndex 컬럼 분기 (line 166)."""
+
+    def test_yfinance_multiindex_columns_normalized(self, monkeypatch):
+        """yfinance.download 가 MultiIndex 컬럼을 반환할 때 get_level_values(0) 호출."""
+        import sys
+
+        from nuri.collectors.stock_kr import StockKRCollector
+
+        # MultiIndex 컬럼 가진 가짜 DF (yfinance multi-symbol 모드 시 발생)
+        idx = pd.MultiIndex.from_tuples(
+            [("Open", "x"), ("High", "x"), ("Low", "x"), ("Close", "x"), ("Volume", "x"), ("Adj Close", "x")]
+        )
+        df = pd.DataFrame(
+            [[100.0, 110.0, 90.0, 105.0, 1000, 105.0]] * 3,
+            columns=idx,
+            index=pd.to_datetime(["2026-04-01", "2026-04-02", "2026-04-03"]),
+        )
+
+        mock_yf = MagicMock()
+        mock_yf.download.return_value = df
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        c = StockKRCollector()
+        results = c._collect_indices(days=3)
+        # MultiIndex normalize → KOSPI/KOSDAQ 각각 3 rows = 최소 1+ row 생성
+        assert results is not None
+        assert len(results) > 0
