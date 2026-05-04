@@ -722,7 +722,12 @@ def generate_llm_report_sync(db_path=None) -> dict:
     return generate_llm_report(db_path)
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: 리포트 생성 + 콘솔 출력 + 파일 저장 (성공 시).
+
+    argv는 현재 사용하지 않으나 testability + PR #593/#595 패턴을 따라 시그니처 유지.
+    """
+    del argv  # 현재 인자 없음 — 향후 확장 위한 시그니처
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     result = generate_llm_report_sync()
@@ -748,3 +753,9 @@ if __name__ == "__main__":
         print("\n=== 검증 결과 ===")
         for w in result["validation"]["warnings"]:
             print(f"  {w}")
+
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

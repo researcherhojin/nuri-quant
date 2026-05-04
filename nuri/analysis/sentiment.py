@@ -148,7 +148,14 @@ def print_sentiment(stats: dict) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: 종목별 감성 분석 통계 출력."""
+    del argv  # 인자 없음
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     stats = analyze_sentiment()
     print_sentiment(stats)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

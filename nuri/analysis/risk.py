@@ -163,7 +163,14 @@ def print_risk(metrics: dict) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: 리스크 메트릭 출력."""
+    del argv  # 인자 없음
     logging.basicConfig(level=logging.INFO)
     metrics = analyze_risk()
     print_risk(metrics)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

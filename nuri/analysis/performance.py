@@ -132,12 +132,13 @@ def print_performance(port_returns: pd.Series, benchmark: pd.Series) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: QuantStats 기반 성과 분석 + 선택적 HTML."""
     logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 성과 분석 (QuantStats)")
     parser.add_argument("--html", action="store_true", help="HTML 티어시트 생성")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     port = get_portfolio_returns()
     bench = get_benchmark_returns()
@@ -147,3 +148,8 @@ if __name__ == "__main__":
     if args.html:
         path = generate_html_report(port, bench)
         print(f"  📄 HTML 리포트: {path}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
