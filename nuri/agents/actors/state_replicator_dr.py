@@ -347,7 +347,7 @@ class StateReplicatorDR(Actor):
                 actor_name="state-replicator-dr",
                 run_id=run_id,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  # pragma: no cover — best-effort outbox publish
             pass
 
 
@@ -393,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
     actor = StateReplicatorDR()
     try:
         result = actor.run(input_data)
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover — base.run() catches all execute() exceptions
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
         return 2
 

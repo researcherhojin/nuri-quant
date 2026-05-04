@@ -65,7 +65,7 @@ def _t_stat(y: np.ndarray, x: np.ndarray) -> float:
         return 0.0
     cov = np.cov(x, y, ddof=1)[0, 1]
     var_x = float(np.var(x, ddof=1))
-    if var_x == 0:
+    if var_x == 0:  # pragma: no cover — already guarded by np.std(x) == 0 above
         return 0.0
     beta = cov / var_x
     y_hat = beta * (x - x.mean()) + y.mean()
@@ -75,7 +75,7 @@ def _t_stat(y: np.ndarray, x: np.ndarray) -> float:
     if n <= 2 or sse <= 0:
         return 0.0
     se_beta = float(np.sqrt(sse / (n - 2) / (var_x * (n - 1))))
-    if se_beta == 0:
+    if se_beta == 0:  # pragma: no cover — sse>0 + var_x>0 guarantees se_beta>0
         return 0.0
     return float(beta / se_beta)
 
