@@ -330,6 +330,52 @@ class TestModeEvaluation:
         )
         assert mode is None
 
+    def test_average_down_macro_veto_disabled_passes_high_vix(
+        self, monkeypatch: pytest.MonkeyPatch, cfg_held_add: dict
+    ) -> None:
+        """held_add.py 320->326: macro_veto=False 면 VIX/regime 무시하고 통과 (#611)."""
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_last_trim_age_days",
+            lambda ticker, max_days=60: None,
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_account_strategy_profile",
+            lambda account: {"stop_loss": -10, "tp1_pct": 21.0},
+        )
+        cfg_no_veto = {
+            "held_add_mode": {
+                **cfg_held_add["held_add_mode"],
+                "modes": {
+                    **cfg_held_add["held_add_mode"]["modes"],
+                    "average_down": {
+                        **cfg_held_add["held_add_mode"]["modes"].get("average_down", {}),
+                        "trigger": {
+                            **cfg_held_add["held_add_mode"]["modes"].get("average_down", {}).get("trigger", {}),
+                            "macro_veto": False,  # 분기 False 트리거
+                        },
+                    },
+                },
+            }
+        }
+        pos = {
+            "ticker": "MSFT",
+            "account": "acct_alpha",
+            "pnl_pct": -5.0,
+            "days_held": 20,
+        }
+        # bear + VIX>28 인데도 macro_veto=False 면 통과 (320 분기 False → 326 return)
+        mode = ha.select_held_mode(
+            pos,
+            cfg_no_veto["held_add_mode"],
+            score=85,
+            rsi=30,
+            regime="bear",
+            vix=35,
+            breakout_above_trim=False,
+            sector_mom=0,
+        )
+        assert mode == "average_down"
+
 
 # ─── 4. emit_held_add_shadow E2E (multi-account independent caps) ──
 
@@ -409,6 +455,56 @@ class TestEmitHeldAddShadow:
         rows = query("SELECT ticker, account, mode FROM held_add_shadow", db_path=db_path)
         assert len(rows) == 2
         assert {r["account"] for r in rows} == {"acct_alpha", "acct_beta"}
+
+    def test_shadow_mode_off_skips_persist(
+        self,
+        db_path: Path,
+        cfg_yaml_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        stub_strategy: None,
+    ) -> None:
+        """held_add.py 486->436: shadow_mode 종료 후 (오늘 > shadow_mode_until)
+        candidate 는 emit 하되 held_add_shadow 테이블 persist 는 skip (#611)."""
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_held_positions",
+            lambda: [
+                {
+                    "ticker": "NVDA",
+                    "account": "acct_alpha",
+                    "qty": 14.0,
+                    "avg_price": 100.0,
+                    "current_price": 160.0,
+                    "pnl_pct": 60.0,
+                    "days_held": 35,
+                },
+            ],
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_last_trim_age_days",
+            lambda ticker, max_days=60: None,
+        )
+
+        def _fetcher_factory(t: str) -> SimpleNamespace:
+            return SimpleNamespace(calendar={})
+
+        # shadow_mode_until=2026-05-15 cfg, today=2026-06-01 → shadow=False
+        result = ha.emit_held_add_shadow(
+            config_path=cfg_yaml_path,
+            today=date(2026, 6, 1),
+            earnings_fetcher_factory=_fetcher_factory,
+            score_provider=lambda t: 85.0,
+            rsi_provider=lambda t: 55.0,
+            regime_provider=lambda: ("neutral", 18.0),
+            sector_mom_provider=lambda t: 10.0,
+            db_path=db_path,
+        )
+
+        # shadow=False 분기: candidates 는 그대로 emit
+        assert result.shadow_mode is False
+        assert len(result.candidates) == 1
+        # 하지만 held_add_shadow 테이블 persist 는 skip (486->436 분기 확인)
+        rows = query("SELECT ticker FROM held_add_shadow", db_path=db_path)
+        assert len(rows) == 0
 
     def test_earnings_blackout_blocks_emit(
         self,

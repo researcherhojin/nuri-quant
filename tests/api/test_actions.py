@@ -775,6 +775,37 @@ class TestGetSystemHealth:
             result = _get_system_health()
             assert result["siege"] == {"score": 0, "certified": False}
 
+    @patch("nuri.api.routes.actions.query", return_value=[])
+    def test_classify_regime_returns_none_skips_regime_dict(self, _):
+        """branch 774->785: classify_regime() 가 None 반환 시 health['regime'] 그대로 빈 dict (#611)."""
+        from types import SimpleNamespace
+
+        with (
+            patch(
+                "nuri.trading.engine.certification.certify",
+                return_value=SimpleNamespace(
+                    score=80,
+                    certified=True,
+                    passed=10,
+                    failed=0,
+                    warnings=1,
+                    total_conditions=11,
+                    conditions=[],
+                ),
+            ),
+            patch("nuri.quant.regime.classifier.classify_regime", return_value=None),
+            patch(
+                "nuri.quant.regime.macro_score.compute_macro_score",
+                return_value=SimpleNamespace(total_score=50, interpretation="Neutral"),
+            ),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+        ):
+            from nuri.api.routes.actions import _get_system_health
+
+            result = _get_system_health()
+            # regime 은 초기값(빈 dict) 유지 — 774 False 분기 확인
+            assert result["regime"] == {}
+
 
 # ═══════════════════════════════════════════════════
 # Unit tests — _build_actions business logic
