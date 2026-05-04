@@ -25,24 +25,24 @@ from nuri.alerts._brief_common import (
     format_holdings_table,
     load_macro_snapshot,
 )
-from nuri.core.db import query
+from nuri.core.db import query, upsert_postmortem
 from nuri.core.timezone import kst_now, today_kst
 
 logger = logging.getLogger(__name__)
 
 # 11 SPDR sector ETFs (US session)
 US_SECTOR_ETFS = (
-    "XLK",   # Technology
-    "XLF",   # Financials
-    "XLE",   # Energy
-    "XLV",   # Health Care
-    "XLP",   # Consumer Staples
-    "XLY",   # Consumer Discretionary
-    "XLB",   # Materials
-    "XLI",   # Industrials
-    "XLU",   # Utilities
+    "XLK",  # Technology
+    "XLF",  # Financials
+    "XLE",  # Energy
+    "XLV",  # Health Care
+    "XLP",  # Consumer Staples
+    "XLY",  # Consumer Discretionary
+    "XLB",  # Materials
+    "XLI",  # Industrials
+    "XLU",  # Utilities
     "XLRE",  # Real Estate
-    "XLC",   # Communication Services
+    "XLC",  # Communication Services
 )
 
 # KR session sector universe — KOSPI200 ETF 우선, sector-level ETF 부재 시 fallback.
@@ -122,7 +122,8 @@ def _filter_session_holdings(
     out: dict[str, dict[str, Any]] = {}
     for acct, data in holdings.items():
         kept = [
-            r for r in data["rows"]
+            r
+            for r in data["rows"]
             if (str(r["ticker"]).endswith(".KS") if session == "kr" else not str(r["ticker"]).endswith(".KS"))
         ]
         if kept:
@@ -151,11 +152,17 @@ def _compute_holdings_pnl(holdings: dict[str, dict[str, Any]]) -> dict[str, Any]
             close = r.get("close")
             prev = r.get("prev_close")
             if close is None or prev is None or qty == 0:
-                rows_out.append({
-                    "ticker": r["ticker"], "account": acct, "qty": qty,
-                    "close": close, "prev_close": prev,
-                    "pnl_abs": None, "pnl_pct": None,
-                })
+                rows_out.append(
+                    {
+                        "ticker": r["ticker"],
+                        "account": acct,
+                        "qty": qty,
+                        "close": close,
+                        "prev_close": prev,
+                        "pnl_abs": None,
+                        "pnl_pct": None,
+                    }
+                )
                 continue
             pnl_abs = (close - prev) * qty
             pnl_pct = (close - prev) / prev * 100 if prev else 0.0
@@ -163,11 +170,17 @@ def _compute_holdings_pnl(holdings: dict[str, dict[str, Any]]) -> dict[str, Any]
             total_abs += pnl_abs
             total_value += value
             total_pnl += pnl_abs
-            rows_out.append({
-                "ticker": r["ticker"], "account": acct, "qty": qty,
-                "close": close, "prev_close": prev,
-                "pnl_abs": pnl_abs, "pnl_pct": pnl_pct,
-            })
+            rows_out.append(
+                {
+                    "ticker": r["ticker"],
+                    "account": acct,
+                    "qty": qty,
+                    "close": close,
+                    "prev_close": prev,
+                    "pnl_abs": pnl_abs,
+                    "pnl_pct": pnl_pct,
+                }
+            )
 
     weighted_pct = (total_pnl / total_value * 100) if total_value > 0 else 0.0
     return {"total_abs": total_abs, "total_pct_weighted": weighted_pct, "rows": rows_out}
@@ -216,8 +229,11 @@ def _format_markdown(
     # Macro snapshot
     lines.append("## Macro Snapshot")
     for key, label in (
-        ("vix", "VIX"), ("fear_greed", "F&G"), ("usd_krw", "USD/KRW"),
-        ("spy", "SPY"), ("kospi200", "KOSPI200"),
+        ("vix", "VIX"),
+        ("fear_greed", "F&G"),
+        ("usd_krw", "USD/KRW"),
+        ("spy", "SPY"),
+        ("kospi200", "KOSPI200"),
     ):
         m = macro.get(key)
         if not m:
@@ -304,8 +320,7 @@ def _build_summary_payload(
         "vix_delta": vix_delta,
         "total_pnl_pct": round(pnl.get("total_pct_weighted", 0.0), 2),
         "top_sector": (
-            {"ticker": top_sector["ticker"], "delta_pct": round(top_sector["delta_pct"], 2)}
-            if top_sector else None
+            {"ticker": top_sector["ticker"], "delta_pct": round(top_sector["delta_pct"], 2)} if top_sector else None
         ),
     }
     return summary
@@ -334,13 +349,102 @@ def _publish_discord(payload: dict[str, Any]) -> Optional[int]:
     return stage_brief(payload, dedupe_key=f"postmarket-{payload['session']}-{payload['date']}")
 
 
+def _load_5d_macro_delta(indicator: str, *, db_path: Optional[Path] = None) -> Optional[float]:
+    """`macro` 테이블에서 latest - 5거래일전 delta. 데이터 부족 시 None.
+
+    Phase 2 (#596): similarity feature vector 의 `*_5d_delta` 채움 용도.
+    """
+    rows = query(
+        "SELECT value FROM macro WHERE indicator = ? ORDER BY date DESC LIMIT 6",
+        (indicator,),
+        db_path=db_path,
+    )
+    if len(rows) < 6:
+        return None
+    try:
+        latest = float(rows[0]["value"])
+        five_back = float(rows[5]["value"])
+    except (TypeError, ValueError):
+        return None
+    return latest - five_back
+
+
+def _load_5d_price_delta_pct(ticker: str, *, db_path: Optional[Path] = None) -> Optional[float]:
+    """`prices` close — latest 대비 5거래일전 close 의 % 변화. 데이터 부족 시 None."""
+    rows = query(
+        "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 6",
+        (ticker,),
+        db_path=db_path,
+    )
+    if len(rows) < 6 or rows[0]["close"] is None or rows[5]["close"] is None:
+        return None
+    latest = float(rows[0]["close"])
+    five_back = float(rows[5]["close"])
+    if five_back == 0:
+        return None
+    return (latest - five_back) / five_back * 100
+
+
+def _persist_postmortem(
+    session: Literal["kr", "us"],
+    date: str,
+    macro: dict[str, Any],
+    pnl: dict[str, Any],
+    sectors: list[dict[str, Any]],
+    *,
+    db_path: Optional[Path] = None,
+) -> None:
+    """`market_postmortem` row UPSERT — Phase 2 pattern memory (#596).
+
+    Indexed feature columns drive `find_similar_days` cosine similarity;
+    JSON blobs preserve full markdown context for downstream LLM retro.
+    """
+    from nuri.quant.regime.classifier import classify_regime
+
+    try:
+        regime_state = classify_regime(date=date, db_path=db_path)
+        regime = regime_state.regime if regime_state is not None else None
+    except Exception:  # pragma: no cover — regime DB missing in fresh test env
+        logger.warning("classify_regime 실패 — regime field 비움", exc_info=True)
+        regime = None
+
+    valid_sectors = [s for s in sectors if s.get("delta_pct") is not None]
+    top_sector = max(valid_sectors, key=lambda x: abs(x["delta_pct"])) if valid_sectors else None
+
+    vix_val = (macro.get("vix") or {}).get("value")
+    fg_val = (macro.get("fear_greed") or {}).get("value")
+
+    upsert_postmortem(
+        date=date,
+        session=session,
+        regime=regime,
+        vix=vix_val,
+        fear_greed=fg_val,
+        vix_5d_delta=_load_5d_macro_delta("vix", db_path=db_path),
+        fg_5d_delta=_load_5d_macro_delta("fear_greed", db_path=db_path),
+        spy_5d_delta=_load_5d_price_delta_pct("SPY", db_path=db_path),
+        top_sector_delta_pct=top_sector["delta_pct"] if top_sector else None,
+        holdings_total_pnl_pct=round(pnl.get("total_pct_weighted", 0.0), 4),
+        macro_summary=macro,
+        holdings_pnl={
+            "total_abs": pnl.get("total_abs"),
+            "total_pct_weighted": pnl.get("total_pct_weighted"),
+            "rows": pnl.get("rows", []),
+        },
+        sector_movers=sectors,
+        catalysts={},  # Phase 3: news + earnings join
+        retro_lessons=[],  # Phase 3: LLM synthesis
+        db_path=db_path,
+    )
+
+
 def write_brief(
     session: Literal["kr", "us"],
     date: Optional[str] = None,
     *,
     db_path: Optional[Path] = None,
 ) -> Path:
-    """KR/US 종장 후 brief markdown 생성 + Discord publish.
+    """KR/US 종장 후 brief markdown 생성 + Discord publish + DB pattern row.
 
     Returns: data/reports/postmarket/{date}-{session}.md path.
     """
@@ -356,6 +460,12 @@ def write_brief(
     path = _persist_markdown(md, session, d)
     logger.info("Post-market brief persisted: %s", path)
 
+    # Phase 2 (#596): pattern memory row — similarity-search ready
+    try:
+        _persist_postmortem(session, d, macro, pnl, sectors, db_path=db_path)
+    except Exception:
+        logger.warning("market_postmortem upsert 실패 (브리프 자체는 생성됨)", exc_info=True)
+
     # Discord publish — privacy gate 후 stage_brief
     summary = _build_summary_payload(session, macro, pnl, sectors)
     outbox_id = _publish_discord(summary)
@@ -369,6 +479,7 @@ def write_brief(
 # Cron 06:30 KST + 07:30 KST 두 시각 양쪽 등록 — 함수 내부에서 NYSE close
 # (16:00 ET) + 30min 시각인지 확인 후 분기. EST/EDT 자동 처리. 2회 fire risk
 # 는 idempotent persist (덮어쓰기) 로 mitigate.
+
 
 def _is_now_within_us_postclose_window(*, _now_kst=None) -> bool:
     """현재 시각이 NYSE close + 30min 의 ±15분 내인지 (DST 자동 처리).

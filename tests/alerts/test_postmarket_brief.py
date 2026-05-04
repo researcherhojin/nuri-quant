@@ -41,14 +41,31 @@ def seeded_db(tmp_path, monkeypatch):
 
     upsert_portfolio(
         [
-            {"account": "Main", "ticker": "AAPL", "quantity": 10, "avg_price": 180,
-             "currency": "USD", "sector": "Tech"},
-            {"account": "Main", "ticker": "NVDA", "quantity": 5, "avg_price": 130,
-             "currency": "USD", "sector": "Semi"},
-            {"account": "KR_acct", "ticker": "005930.KS", "quantity": 4, "avg_price": 60000,
-             "currency": "KRW", "sector": "Semi"},
-            {"account": "Pension_acct", "ticker": "VOO", "quantity": 2, "avg_price": 500,
-             "currency": "USD", "sector": "ETF"},
+            {
+                "account": "Main",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 180,
+                "currency": "USD",
+                "sector": "Tech",
+            },
+            {"account": "Main", "ticker": "NVDA", "quantity": 5, "avg_price": 130, "currency": "USD", "sector": "Semi"},
+            {
+                "account": "KR_acct",
+                "ticker": "005930.KS",
+                "quantity": 4,
+                "avg_price": 60000,
+                "currency": "KRW",
+                "sector": "Semi",
+            },
+            {
+                "account": "Pension_acct",
+                "ticker": "VOO",
+                "quantity": 2,
+                "avg_price": 500,
+                "currency": "USD",
+                "sector": "ETF",
+            },
         ],
         path,
     )
@@ -66,11 +83,18 @@ def seeded_db(tmp_path, monkeypatch):
     ):
         for i, d in enumerate(dates):
             close = base + i * step
-            rows.append({
-                "ticker": t, "date": d.strftime("%Y-%m-%d"),
-                "open": close - 0.5, "high": close + 1, "low": close - 1,
-                "close": close, "volume": 1000000, "adj_close": close,
-            })
+            rows.append(
+                {
+                    "ticker": t,
+                    "date": d.strftime("%Y-%m-%d"),
+                    "open": close - 0.5,
+                    "high": close + 1,
+                    "low": close - 1,
+                    "close": close,
+                    "volume": 1000000,
+                    "adj_close": close,
+                }
+            )
     upsert_prices(pd.DataFrame(rows), path)
 
     # Macro: VIX/F&G/USD-KRW 2-point latest+prev
@@ -94,13 +118,17 @@ def portfolio_yaml(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     yaml_path = config_dir / "portfolio.yaml"
-    yaml_path.write_text(yaml.dump({
-        "accounts": {
-            "Main": {"strategy": "core"},
-            "KR_acct": {"strategy": "long_term"},
-            "Pension_acct": {"strategy": "pension"},
-        }
-    }))
+    yaml_path.write_text(
+        yaml.dump(
+            {
+                "accounts": {
+                    "Main": {"strategy": "core"},
+                    "KR_acct": {"strategy": "long_term"},
+                    "Pension_acct": {"strategy": "pension"},
+                }
+            }
+        )
+    )
     # postmarket_brief._resolve_strategy_name 은 parents[2]/config/portfolio.yaml 을 읽음
     # → 모듈 __file__ 을 tmp_path 하위로 redirect
     import nuri.alerts.postmarket_brief as pmb
@@ -334,7 +362,8 @@ def test_format_markdown_skips_missing_macro(seeded_db):
 
     macro = {"vix": None, "fear_greed": None}  # all None → skip every iteration
     md = _format_markdown(
-        "us", "2026-05-04",
+        "us",
+        "2026-05-04",
         macro=macro,
         holdings={},
         pnl={"total_abs": 0, "total_pct_weighted": 0, "rows": []},
@@ -446,7 +475,8 @@ def test_format_markdown_macro_without_delta(seeded_db):
 
     macro = {"vix": {"value": 17.0, "date": "2026-05-04"}}  # delta key 없음
     md = _format_markdown(
-        "us", "2026-05-04",
+        "us",
+        "2026-05-04",
         macro=macro,
         holdings={},
         pnl={"total_abs": 0, "total_pct_weighted": 0, "rows": []},
@@ -503,3 +533,68 @@ def test_scheduler_runner_us_calls_dst_aware(monkeypatch):
     monkeypatch.setattr("nuri.alerts.postmarket_brief.run_postmarket_us_dst_aware", lambda: called.append(True))
     scheduler._run_postmarket_brief_us()
     assert called == [True]
+
+
+# ─── Phase 2 (#596): market_postmortem persistence ──────────────────────────
+
+
+def test_write_brief_persists_postmortem_row(seeded_db, portfolio_yaml):
+    """Phase 2: write_brief() 1회 실행 → market_postmortem row 1개 누적."""
+    from nuri.alerts.postmarket_brief import write_brief
+    from nuri.core.db import query
+
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+    ):
+        write_brief("us", date="2026-05-01")
+
+    rows = query(
+        "SELECT * FROM market_postmortem WHERE date = ? AND session = ?",
+        ("2026-05-01", "us"),
+        db_path=seeded_db,
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["vix"] == 16.5
+    assert row["fear_greed"] == 60.0
+    # 5d delta is None (only 2 macro rows seeded — < 6 required)
+    assert row["vix_5d_delta"] is None
+    # holdings_total_pnl_pct populated from compute step
+    assert row["holdings_total_pnl_pct"] is not None
+
+
+def test_write_brief_postmortem_idempotent(seeded_db, portfolio_yaml):
+    """같은 (date, session) 두 번 호출 → row 1개 유지 (PK UPSERT)."""
+    from nuri.alerts.postmarket_brief import write_brief
+    from nuri.core.db import query
+
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+    ):
+        write_brief("us", date="2026-05-01")
+        write_brief("us", date="2026-05-01")
+
+    rows = query(
+        "SELECT COUNT(*) AS n FROM market_postmortem",
+        db_path=seeded_db,
+    )
+    assert rows[0]["n"] == 1
+
+
+def test_write_brief_postmortem_failure_does_not_break_brief(seeded_db, portfolio_yaml, monkeypatch):
+    """upsert_postmortem 가 raise 해도 브리프 markdown 자체는 생성 (graceful)."""
+    import nuri.alerts.postmarket_brief as pmb
+    from nuri.alerts.postmarket_brief import write_brief
+
+    def _boom(*a, **kw):
+        raise RuntimeError("simulated DB failure")
+
+    monkeypatch.setattr(pmb, "_persist_postmortem", _boom)
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+    ):
+        path = write_brief("us", date="2026-05-01")
+    assert path.exists()  # markdown still written
