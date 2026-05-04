@@ -74,6 +74,10 @@ from .portfolio import (  # noqa: F401, E402
     replace_portfolio_account,
     upsert_portfolio,
 )
+from .postmortem_ops import (  # noqa: F401, E402
+    find_similar_days,
+    upsert_postmortem,
+)
 from .research_ops import (  # noqa: F401, E402
     expire_hypotheses,
     log_causal_audit,
