@@ -1365,4 +1365,33 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_held_add_shadow_mode ON held_add_shadow(mode, timestamp);
     """,
     ),
+    (
+        44,
+        "market_postmortem — daily post-market snapshot + similarity feature vector (#596 Phase 2)",
+        """
+        CREATE TABLE IF NOT EXISTS market_postmortem (
+            date TEXT NOT NULL,
+            session TEXT NOT NULL CHECK(session IN ('kr','us')),
+            regime TEXT,
+            vix REAL,
+            fear_greed REAL,
+            -- aggregated daily signals (indexed for similarity prefilter)
+            vix_5d_delta REAL,
+            fg_5d_delta REAL,
+            spy_5d_delta REAL,
+            top_sector_delta_pct REAL,
+            holdings_total_pnl_pct REAL,
+            -- denormalized JSON blobs (read alongside, not indexed)
+            macro_summary TEXT,
+            holdings_pnl TEXT,
+            sector_movers TEXT,
+            catalysts TEXT,
+            retro_lessons TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (date, session)
+        );
+        CREATE INDEX IF NOT EXISTS idx_postmortem_regime ON market_postmortem(regime, session);
+        CREATE INDEX IF NOT EXISTS idx_postmortem_vix ON market_postmortem(vix, session);
+    """,
+    ),
 ]
