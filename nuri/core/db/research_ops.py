@@ -235,7 +235,7 @@ def reject_hypothesis(
             "SELECT status FROM hypotheses WHERE hypothesis_id = ?",
             (hypothesis_id,),
         ).fetchone()
-        if not row:  # pragma: no cover — defensive: caller ensures hypothesis exists before reject
+        if not row:
             raise ValueError(f"hypothesis {hypothesis_id!r} not found")
         if row["status"] != "open":
             raise ValueError(

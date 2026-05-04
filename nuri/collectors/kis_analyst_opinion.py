@@ -266,7 +266,7 @@ class KISAnalystOpinionCollector(BaseCollector):
             from tqdm import tqdm
 
             iterator = tqdm(tickers, desc="KIS invest_opinion (KR)", unit="ticker")
-        except ImportError:  # pragma: no cover — tqdm always installed
+        except ImportError:
             iterator = tickers
 
         url = f"{creds.base_url}{KIS_INVEST_OPINION_PATH}"

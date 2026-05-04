@@ -334,7 +334,7 @@ def inquire_price_kr(creds: KISCredentials, token: str, ticker: str) -> dict | N
         except Exception as e:
             logger.warning("KIS 한국 시세 실패 %s: %s", ticker, e)
             return None
-    return None  # pragma: no cover — fallthrough after both attempts hit rate limit
+    return None
 
 
 def inquire_price_us(creds: KISCredentials, token: str, ticker: str) -> dict | None:

@@ -17,7 +17,6 @@ API 인증 모듈 — JWT 토큰 + API 키 인증.
     def write_data(user=Depends(require_write_auth)):
         ...
 """
-
 import logging
 import os
 import secrets
@@ -84,7 +83,7 @@ async def require_auth(
     if not _AUTH_ENABLED:
         return {"sub": "anonymous", "auth": "disabled"}
 
-    if credentials is None:  # pragma: no cover — FastAPI dependency injects credentials in tests
+    if credentials is None:
         raise HTTPException(status_code=401, detail="인증 필요")
 
     token = credentials.credentials

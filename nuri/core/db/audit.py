@@ -61,5 +61,5 @@ def audit_log(
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (user_id, action, table_name, ticker, details, ip_address),
             )
-    except Exception:  # pragma: no cover — audit logging defensive: never block main path
+    except Exception:
         pass  # 감사 로깅 실패가 메인 로직을 방해하면 안 됨

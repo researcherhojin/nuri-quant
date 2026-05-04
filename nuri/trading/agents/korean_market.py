@@ -6,7 +6,6 @@ KOSPI/KOSDAQ 구분, 환율 영향, 외국인/기관 수급,
 
 US 종목에는 HOLD(중립)을 반환하여 합의에 영향을 주지 않는다.
 """
-
 import logging
 
 from nuri.core.agent_config import AGENT_CONFIG
@@ -28,7 +27,6 @@ def _calibrate_fx_thresholds(db_path=None) -> tuple[float, float]:
     fx_strong_default = _CFG.get("fx_strong_default", 1250)
 
     from nuri.core.db import query_df
-
     df = query_df(
         "SELECT value FROM macro WHERE indicator='usd_krw' ORDER BY date DESC LIMIT 90",
         db_path=db_path,
@@ -42,16 +40,10 @@ def _calibrate_fx_thresholds(db_path=None) -> tuple[float, float]:
     strong = round(mean - std, 0)
     return max(weak, _CFG.get("fx_weak_floor", 1300)), min(strong, _CFG.get("fx_strong_ceil", 1350))
 
-
 # KOSPI/KOSDAQ 구분
 KOSDAQ_TICKERS = {
-    "247540.KS",
-    "068270.KS",
-    "035720.KS",
-    "035420.KS",
-    "263750.KS",
-    "293490.KS",
-    "112040.KS",
+    "247540.KS", "068270.KS", "035720.KS", "035420.KS",
+    "263750.KS", "293490.KS", "112040.KS",
 }
 
 # 수출 비중 높은 섹터
@@ -69,10 +61,8 @@ class KoreanMarketAgent(BaseAgent):
         # US 종목은 패스
         if not ticker.endswith(".KS"):
             return AgentVerdict(
-                agent_name=self.name,
-                ticker=ticker,
-                action="HOLD",
-                confidence=_CFG.get("us_confidence", 50.0),
+                agent_name=self.name, ticker=ticker,
+                action="HOLD", confidence=_CFG.get("us_confidence", 50.0),
                 reasoning="US ticker — Korean market agent neutral",
                 data_points={"is_korean": False},
             )
@@ -135,23 +125,21 @@ class KoreanMarketAgent(BaseAgent):
             score += macro_boost
             if macro_boost > 0:
                 reasons.append(f"매크로 이벤트 긍정적 (+{macro_boost})")
-            else:  # pragma: no cover — negative macro boost branch (rare event signal)
+            else:
                 reasons.append(f"매크로 이벤트 부정적 ({macro_boost})")
 
         # 판정
         score_base = _CFG.get("score_base", 50)
         if score >= _CFG.get("score_buy", 65):
             action = "BUY"
-        elif score <= _CFG.get("score_sell", 35):  # pragma: no cover — SELL branch (rare in fixture data)
+        elif score <= _CFG.get("score_sell", 35):
             action = "SELL"
         else:
             action = "HOLD"
 
         return AgentVerdict(
-            agent_name=self.name,
-            ticker=ticker,
-            action=action,
-            confidence=round(self.normalize_confidence(min(abs(score - score_base) * 2, 100)), 1),
+            agent_name=self.name, ticker=ticker,
+            action=action, confidence=round(self.normalize_confidence(min(abs(score - score_base) * 2, 100)), 1),
             reasoning="; ".join(reasons) if reasons else "Korean market neutral",
             data_points=data,
         )
@@ -168,17 +156,16 @@ class KoreanMarketAgent(BaseAgent):
         """종목 섹터 조회."""
         rows = self._safe_query(
             "SELECT sector FROM portfolio WHERE ticker=? LIMIT 1",
-            (ticker,),
-            db_path=db_path,
+            (ticker,), db_path=db_path,
         )
         return rows[0]["sector"] if rows else ""
 
     def _get_foreign_flow(self, ticker: str, db_path=None) -> float | None:
         """최근 외국인 순매수."""
         rows = self._safe_query(
-            "SELECT foreign_net FROM institutional_flows WHERE ticker=? ORDER BY date DESC LIMIT 1",
-            (ticker,),
-            db_path=db_path,
+            "SELECT foreign_net FROM institutional_flows "
+            "WHERE ticker=? ORDER BY date DESC LIMIT 1",
+            (ticker,), db_path=db_path,
         )
         return rows[0]["foreign_net"] if rows else None
 
@@ -217,8 +204,7 @@ class KoreanMarketAgent(BaseAgent):
         """20일 가격 모멘텀."""
         rows = self._safe_query(
             "SELECT close FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 21",
-            (ticker,),
-            db_path=db_path,
+            (ticker,), db_path=db_path,
         )
         if len(rows) < 21:
             return None

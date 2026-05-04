@@ -224,7 +224,7 @@ class DiscordPublisher:
                 if attempt < self.MAX_RETRIES:
                     time.sleep(0.5)
                     continue
-                break  # pragma: no cover — final-attempt exit, retry path covered
+                break
 
         log_agent_message(
             channel=channel.value,
@@ -282,7 +282,7 @@ class DiscordPublisher:
                 if attempt < self.MAX_RETRIES:
                     await asyncio.sleep(0.5)
                     continue
-                break  # pragma: no cover — final-attempt exit, retry path covered
+                break
 
         log_agent_message(
             channel=channel.value,
@@ -362,7 +362,7 @@ def main(argv: list[str] | None = None) -> int:
     return 1
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import sys
 
     sys.exit(main())

@@ -106,7 +106,7 @@ class SuperinvestorCollector(BaseCollector):
 
                     for _, row in grouped.iterrows():
                         ticker = row["Ticker"]
-                        if not ticker or pd.isna(ticker):  # pragma: no cover — defensive empty/NaN ticker guard
+                        if not ticker or pd.isna(ticker):
                             continue
 
                         pct = row["Value"] / total_value * 100
@@ -289,7 +289,7 @@ def print_summary():
                ORDER BY portfolio_pct DESC LIMIT 10""",
             (name,),
         )
-        if not rows:  # pragma: no cover — defensive: investor with no holdings (data not yet collected)
+        if not rows:
             continue
 
         filing_date = rows[0]["filing_date"]

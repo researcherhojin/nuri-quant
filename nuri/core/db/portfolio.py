@@ -14,7 +14,7 @@ from .connection import get_db
 
 def upsert_portfolio(records: list[dict], db_path: Optional[Path] = None) -> int:
     """포트폴리오 보유 종목 upsert."""
-    if not records:  # pragma: no cover — empty-records guard
+    if not records:
         return 0
     # metadata 필드 없는 레코드에 기본값 추가
     for r in records:

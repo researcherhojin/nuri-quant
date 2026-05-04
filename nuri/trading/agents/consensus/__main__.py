@@ -45,7 +45,7 @@ def main() -> None:
         results = analyze_portfolio()
         print_consensus(results, verbose=args.verbose)
         saved = save_to_recommendations(results)
-        if saved:  # pragma: no cover — info log when save succeeds
+        if saved:
             logger.info(f"recommendations 테이블에 {saved}건 저장 (frontend /decision 활성화)")
         # Decision Intelligence: 의사결정 저널 기록
         from nuri.trading.engine.decisions import record_decisions
@@ -54,5 +54,5 @@ def main() -> None:
         logger.info(f"decisions 테이블에 {dec_count}건 기록")
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     main()

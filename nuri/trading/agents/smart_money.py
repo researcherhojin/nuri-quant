@@ -1,5 +1,4 @@
 """스마트머니 에이전트 — 슈퍼투자자 + ARK + 애널리스트 컨센서스 기반 판정."""
-
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
@@ -21,9 +20,9 @@ class SmartMoneyAgent(BaseAgent):
 
         # 1. 슈퍼투자자 보유 여부
         si_rows = self._safe_query(
-            "SELECT investor, portfolio_pct FROM superinvestors WHERE ticker = ? ORDER BY portfolio_pct DESC",
-            (ticker,),
-            db_path,
+            "SELECT investor, portfolio_pct FROM superinvestors "
+            "WHERE ticker = ? ORDER BY portfolio_pct DESC",
+            (ticker,), db_path,
         )
         if si_rows:
             investors = [r["investor"] for r in si_rows[:3]]
@@ -44,8 +43,7 @@ class SmartMoneyAgent(BaseAgent):
             "  WHERE s2.investor = s1.investor AND s2.ticker = s1.ticker "
             "  AND s2.filing_date < s1.filing_date"
             ")",
-            (ticker,),
-            db_path,
+            (ticker,), db_path,
         )
         if change_rows:
             score += 1
@@ -55,8 +53,7 @@ class SmartMoneyAgent(BaseAgent):
         est_rows = self._safe_query(
             "SELECT recommendation, target_mean, current_price, num_analysts "
             "FROM estimates WHERE ticker = ? ORDER BY date DESC LIMIT 1",
-            (ticker,),
-            db_path,
+            (ticker,), db_path,
         )
         if est_rows:
             est = est_rows[0]
@@ -83,8 +80,7 @@ class SmartMoneyAgent(BaseAgent):
         # 4. ARK 최근 매매
         ark_rows = self._safe_query(
             "SELECT direction, shares FROM ark WHERE ticker = ? ORDER BY date DESC LIMIT 5",
-            (ticker,),
-            db_path,
+            (ticker,), db_path,
         )
         if ark_rows:
             buys = sum(1 for r in ark_rows if r["direction"] == "Buy")
@@ -92,7 +88,7 @@ class SmartMoneyAgent(BaseAgent):
             if buys > sells:
                 score += 1
                 reasons.append(f"ARK 최근 매수 {buys}건")
-            elif sells > buys:  # pragma: no cover — ARK net-sell branch
+            elif sells > buys:
                 score -= 1
                 reasons.append(f"ARK 최근 매도 {sells}건")
 
@@ -103,29 +99,20 @@ class SmartMoneyAgent(BaseAgent):
         score_sell = _CFG.get("score_sell", -1)
 
         if score >= score_buy:
-            action, confidence = (
-                "BUY",
-                min(
-                    _CONF.get("buy_cap", 80),
-                    _CONF.get("buy_base", 40) + score * _CONF.get("buy_multiplier", 12),
-                ),
+            action, confidence = "BUY", min(
+                _CONF.get("buy_cap", 80),
+                _CONF.get("buy_base", 40) + score * _CONF.get("buy_multiplier", 12),
             )
         elif score <= score_sell:
-            action, confidence = (
-                "SELL",
-                min(
-                    _CONF.get("sell_cap", 70),
-                    _CONF.get("sell_base", 40) + abs(score) * _CONF.get("sell_multiplier", 12),
-                ),
+            action, confidence = "SELL", min(
+                _CONF.get("sell_cap", 70),
+                _CONF.get("sell_base", 40) + abs(score) * _CONF.get("sell_multiplier", 12),
             )
         else:
             action, confidence = "HOLD", _CONF.get("hold_base", 35) + abs(score) * _CONF.get("hold_multiplier", 8)
 
         return AgentVerdict(
-            self.name,
-            ticker,
-            action,
-            round(self.normalize_confidence(confidence), 1),
+            self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons),
             {"score": score, "n_superinvestors": len(si_rows)},
         )

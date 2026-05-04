@@ -66,7 +66,7 @@ _FRESHNESS_COLORS = {
 
 def _truncate(text: str, limit: int) -> str:
     """초과분은 잘라내고 ellipsis(…) 부착."""
-    if text is None:  # pragma: no cover — None-input defensive guard
+    if text is None:
         return ""
     if len(text) <= limit:
         return text

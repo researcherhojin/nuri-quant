@@ -128,7 +128,7 @@ def _cosine(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
-    if na == 0 or nb == 0:  # pragma: no cover — zero-norm degenerate guard
+    if na == 0 or nb == 0:
         return 0.0
     return dot / (na * nb)
 
@@ -167,7 +167,7 @@ def find_similar_days(
         return []
 
     regime_universe = sorted({r["regime"] for r in rows if r["regime"]})
-    if regime and regime not in regime_universe:  # pragma: no cover — first-occurrence regime tracking
+    if regime and regime not in regime_universe:
         regime_universe.append(regime)
 
     query_row = {

@@ -102,7 +102,7 @@ def _compute_weights(db_path=None) -> dict[str, float]:
             prov_agents,
             unsaturating,
         )
-    elif canon_agents:  # pragma: no cover — debug logging for fully-canonical state
+    elif canon_agents:
         logger.debug("_compute_weights per-agent: all canonical_30d eligible (n=%d)", len(canon_agents))
 
     return weights
@@ -185,7 +185,7 @@ def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
                 agent = futures[future]
                 try:
                     verdicts.append(future.result())
-                except Exception as e:  # noqa: BLE001  # pragma: no cover — _run_agent already absorbs
+                except Exception as e:  # noqa: BLE001
                     verdicts.append(AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}"))
         except concurrent.futures.TimeoutError:
             # 전체 batch timeout — 미완료 future는 폴백 verdict로
@@ -234,7 +234,7 @@ def stream_analyze_ticker(ticker: str, db_path=None):
                 agent = futures[future]
                 try:
                     verdict = future.result()
-                except Exception as e:  # noqa: BLE001  # pragma: no cover — _run_agent already absorbs
+                except Exception as e:  # noqa: BLE001
                     verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
                 verdicts.append(verdict)
                 yield ("verdict", verdict)

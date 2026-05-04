@@ -44,9 +44,7 @@ def today_str() -> str:
     return today_kst()
 
 
-def fetch_json(
-    url: str, params: dict | None = None, headers: dict | None = None, timeout: int = 20
-) -> dict:  # pragma: no cover — network helper, exercised in prod only
+def fetch_json(url: str, params: dict | None = None, headers: dict | None = None, timeout: int = 20) -> dict:
     """JSON API 호출 헬퍼. raise_for_status() 포함."""
     resp = requests.get(url, params=params, headers=headers or DEFAULT_HEADERS, timeout=timeout)
     resp.raise_for_status()
@@ -103,9 +101,7 @@ class BaseCollector(ABC):
                             f"({actual}/{self._expected_count}건). 저장 거부 (asymmetric data age 방지)"
                         )
                         self.logger.error(msg)
-                        if (
-                            self._failed_tickers
-                        ):  # pragma: no cover — depends on ticker-level failures recorded by subclass
+                        if self._failed_tickers:
                             self.logger.error("[%s] 실패 종목: %s", self.name, ", ".join(self._failed_tickers[:10]))
                         raise CollectionFailureError(msg)
 
@@ -151,7 +147,7 @@ class BaseCollector(ABC):
                 priority="high",
                 actor_name=f"collector.{self.name}",
             )
-        except Exception:  # pragma: no cover — DB-uninitialized fallback, defensive
+        except Exception:
             self.logger.debug("Discord outbox stage 실패 (DB 미초기화 가능)")
 
     def _get_tickers(self, market: Optional[str] = None, source: str = "portfolio") -> list[str]:

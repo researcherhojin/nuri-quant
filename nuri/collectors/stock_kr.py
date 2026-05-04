@@ -38,7 +38,7 @@ def _call_with_timeout(func, timeout_sec: int, *args, **kwargs):
         future = executor.submit(func, *args, **kwargs)
         try:
             return future.result(timeout=timeout_sec)
-        except concurrent.futures.TimeoutError:  # pragma: no cover — pykrx hang fallback, prod-only
+        except concurrent.futures.TimeoutError:
             return None
         except Exception:
             raise
@@ -162,9 +162,7 @@ class StockKRCollector(BaseCollector):
                     continue
 
                 # 멀티인덱스 컬럼 처리
-                if isinstance(
-                    raw.columns, pd.MultiIndex
-                ):  # pragma: no cover — yfinance multi-index path, mocked away in tests
+                if isinstance(raw.columns, pd.MultiIndex):
                     raw.columns = raw.columns.get_level_values(0)
 
                 df = pd.DataFrame(

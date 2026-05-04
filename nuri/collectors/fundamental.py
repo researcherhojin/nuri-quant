@@ -203,7 +203,7 @@ class FundamentalCollector(BaseCollector):
         # debt_to_equity 같은 yfinance-only fields 보존 (codex Round 1 P1 fix).
         # KIS 의 pe_ratio/price_to_book/market_cap 은 merge 단계에서 우선 적용.
         yf_tickers = list(tickers)
-        if not yf_tickers:  # pragma: no cover — KIS-only path (KR universe pre-fill, yfinance bypass)
+        if not yf_tickers:
             results.extend(kis_by_ticker.values())
             return results
 
@@ -382,7 +382,7 @@ def _upsert_fundamentals(records: list[dict]) -> int:
         return len(records)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 펀더멘탈 수집기 (yfinance)")

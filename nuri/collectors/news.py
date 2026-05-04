@@ -96,7 +96,7 @@ class NewsCollector(BaseCollector):
                 date = row.name.strftime("%Y-%m-%d")
             elif "date" in row.index:
                 date = str(row["date"])[:10]
-            else:  # pragma: no cover — yfinance always provides date/index, defensive fallback
+            else:
                 date = today_kst()
 
             records.append(

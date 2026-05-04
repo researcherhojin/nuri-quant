@@ -41,16 +41,16 @@ def get_ticker_name(ticker: str) -> str | None:
                     if sep in note:
                         return note.split(sep, 1)[0].strip()
                 return note[:24].strip()
-    except Exception as e:  # pragma: no cover — DB lookup defensive fallback
+    except Exception as e:
         logger.debug("DB name lookup failed for %s: %s", ticker, e)
 
     # 2차: pykrx 주식 이름 조회 (ETF는 미지원)
     code = ticker.replace(".KS", "").replace(".KQ", "")
     try:
-        from pykrx import stock as krx  # pragma: no cover — pykrx network call, prod-only
+        from pykrx import stock as krx
 
         name = krx.get_market_ticker_name(code)
         return name if name else None
-    except Exception as e:  # pragma: no cover — pykrx fallback (network / unsupported ETF)
+    except Exception as e:
         logger.debug("pykrx name lookup failed for %s: %s", ticker, e)
         return None
