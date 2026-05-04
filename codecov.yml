@@ -35,22 +35,27 @@ coverage:
 # nuri/ 를 대상으로 하고, component_management 에서 'backend' component 로
 # 합쳐진다 (flag_regexes: backend.*).
 flags:
+  # carryforward: false (#613) — 직전 PR #612 가 per-shard unique flag 로 분리해도
+  # codecov 페이지에 nuri/ 8 files 46 false-positive misses 잔존. 가설 #2: backend-slow
+  # 가 다수 파일 (예: dashboard.py) 의 line 정보를 포함하지 않아 codecov 가 해당 flag
+  # 에 대해 carryforward 로 stale 데이터 머지 → 머지 결과에 가짜 miss 생성. carryforward
+  # 비활성화로 검증.
   backend-fast-1:
     paths:
       - nuri/
-    carryforward: true       # 미수정 파일 직전 커버리지 유지
+    carryforward: false
   backend-fast-2:
     paths:
       - nuri/
-    carryforward: true
+    carryforward: false
   backend-slow:
     paths:
       - nuri/
-    carryforward: true
+    carryforward: false
   frontend:
     paths:
       - frontend/src/
-    carryforward: true
+    carryforward: false
 
 # 커버리지 계산 제외 — 테스트 코드, 스크립트, 자동 생성
 ignore:
