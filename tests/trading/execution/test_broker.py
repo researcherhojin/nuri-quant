@@ -493,3 +493,81 @@ class TestGetBroker_Boost:
         from nuri.trading.execution.broker import get_broker
         broker = get_broker()
         assert broker.__class__.__name__ == "DryRunBroker"
+
+
+# ── Bucket E3: branch coverage gaps ─────────────────────────────────
+
+
+class TestAlpacaRequestReturnsJson:
+    """Line 137-141: `_request` → httpx.request → raise_for_status → r.json().
+
+    Lock: dict 그대로 반환. URL/headers/json/timeout 전달 wire 검증.
+    """
+
+    def test_request_returns_response_json(self, monkeypatch):
+        import httpx
+
+        from nuri.trading.execution.broker import AlpacaBroker
+
+        monkeypatch.setenv("ALPACA_API_KEY", "k")
+        monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
+        broker = AlpacaBroker()
+
+        captured: dict = {}
+
+        class FakeResponse:
+            def raise_for_status(self):
+                captured["raised"] = True
+
+            def json(self):
+                return {"ok": True, "id": "x"}
+
+        def fake_request(method, url, headers, json, timeout):
+            captured["method"] = method
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+        monkeypatch.setattr(httpx, "request", fake_request)
+        result = broker._request("POST", "/orders", json={"symbol": "AAPL"})
+
+        # Line 138-141: URL 조합 + json() 반환
+        assert result == {"ok": True, "id": "x"}
+        assert captured["method"] == "POST"
+        assert captured["url"] == "https://paper-api.alpaca.markets/v2/orders"
+        assert captured["headers"]["APCA-API-KEY-ID"] == "k"
+        assert captured["json"] == {"symbol": "AAPL"}
+        # Line 140: raise_for_status 호출됨
+        assert captured.get("raised") is True
+
+
+class TestBrokerMain:
+    """Lines 229-247: main() entrypoint — argparse + get_broker + smoke order."""
+
+    def test_main_dry_run_default(self, monkeypatch, capsys):
+        from nuri.trading.execution import broker as br
+
+        # default: --dry-run=True, --live=False → DryRunBroker
+        rc = br.main([])
+        assert rc == 0
+
+        out = capsys.readouterr().out
+        assert "DryRunBroker" in out
+        # DryRunBroker._cash = 100_000.0 → printed with comma format
+        assert "100,000.00" in out
+        # 테스트 주문 결과 인쇄 — DryRunBroker → status="dry_run"
+        assert "dry_run" in out
+
+    def test_main_live_falls_back_when_no_keys(self, monkeypatch, capsys):
+        """--live + no ALPACA keys → get_broker fallback to DryRunBroker."""
+        from nuri.trading.execution import broker as br
+
+        monkeypatch.delenv("ALPACA_API_KEY", raising=False)
+        monkeypatch.delenv("ALPACA_SECRET_KEY", raising=False)
+
+        rc = br.main(["--live"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "DryRunBroker" in out

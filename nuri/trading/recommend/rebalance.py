@@ -214,12 +214,18 @@ def print_rebalance(actions: list[RebalanceAction]) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint — regime-aware rebalance runner."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 레짐 적응 리밸런싱")
     parser.add_argument("--method", choices=["mvo", "rp"], default="rp")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     actions = regime_aware_rebalance(method=args.method)
     print_rebalance(actions)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
