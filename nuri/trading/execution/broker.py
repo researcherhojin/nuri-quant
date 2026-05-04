@@ -226,14 +226,15 @@ def get_broker(dry_run: bool = True) -> BaseBroker:
         return DryRunBroker()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint — broker dry-run smoke check."""
     import argparse
 
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", default=True)
     parser.add_argument("--live", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     broker = get_broker(dry_run=not args.live)
     print(f"Broker: {type(broker).__name__}")
@@ -243,3 +244,8 @@ if __name__ == "__main__":
     # 테스트 주문
     order = broker.submit_order("AAPL", "buy", 1)
     print(f"Order: {order.status} ({order.order_id})")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
