@@ -770,6 +770,80 @@ class TestPremarketBriefExceptionFallbacks:
         names = [f.get("name", "") for f in embed.get("fields", [])]
         assert any("BUY" in n for n in names)
 
+    def test_format_brief_embed_buy_candidates_empty_list_skips_field(self):
+        """premarket_brief.py 400->417: bc.candidates 비어있으면 elif False → Opportunities 로 진행 (#611)."""
+        from dataclasses import dataclass, field
+
+        from nuri.alerts.premarket_brief import format_brief_embed
+
+        @dataclass
+        class FakeBC:
+            blocked_reason: str | None = None  # blocked_reason 없음 → 첫 if False
+            regime: str = "bull"
+            vix: float = 15.0
+            candidates: list = field(default_factory=list)  # 빈 list → elif False (400 분기)
+            total_deploy_pct: int = 0
+            skipped: list = field(default_factory=list)
+            timestamp_kst: str = "2026-05-04 08:00 KST"
+
+        embed = format_brief_embed({"buy_candidates": FakeBC()})
+        names = [f.get("name", "") for f in embed.get("fields", [])]
+        # 빈 candidates → BUY Candidates field 미생성
+        assert not any("BUY Candidates" in n for n in names)
+
+    def test_format_brief_markdown_buy_candidates_empty_skips_section(self):
+        """premarket_brief.py 540->553: bc.candidates 비어있으면 BUY Candidates section 출력 생략 (#611)."""
+        from dataclasses import dataclass, field
+
+        from nuri.alerts.premarket_brief import format_brief_markdown
+
+        @dataclass
+        class FakeBC:
+            blocked_reason: str | None = None
+            regime: str = "bull"
+            vix: float = 15.0
+            candidates: list = field(default_factory=list)  # 빈 → elif False
+            total_deploy_pct: int = 0
+            skipped: list = field(default_factory=list)
+            timestamp_kst: str = "2026-05-04 08:00 KST"
+
+        md = format_brief_markdown({"buy_candidates": FakeBC()})
+        # BUY Candidates 헤더 없어야 함 (540 False 분기)
+        assert "## BUY Candidates" not in md
+
+    def test_format_brief_markdown_buy_candidates_no_skipped(self):
+        """premarket_brief.py 549->551: bc.skipped 비어있으면 'skipped:' 줄 출력 생략 (#611)."""
+        from dataclasses import dataclass, field
+
+        from nuri.alerts.premarket_brief import format_brief_markdown
+
+        @dataclass
+        class FakeCand:
+            ticker: str = "AAPL"
+            score: int = 80
+            deploy_pct: int = 5
+            entry: float = 200.0
+            stop: float = 190.0
+            tp1: float = 220.0
+            tp2: float = 240.0
+            why_now: str = "test"
+            sources: dict = field(default_factory=lambda: {"a": 80.0})
+
+        @dataclass
+        class FakeBC:
+            blocked_reason: str | None = None
+            regime: str = "bull"
+            vix: float = 15.0
+            candidates: list = field(default_factory=lambda: [FakeCand()])
+            total_deploy_pct: int = 5
+            skipped: list = field(default_factory=list)  # 빈 → 549 False 분기
+            timestamp_kst: str = "2026-05-04 08:00 KST"
+
+        md = format_brief_markdown({"buy_candidates": FakeBC()})
+        assert "AAPL" in md
+        # skipped 비어있어 "skipped:" 라인 미출력 (549 False 확인)
+        assert "skipped:" not in md
+
     def test_send_brief_exception(self):
         """send_webhook raise → False (lines 601-603)."""
         from nuri.alerts.premarket_brief import send_brief
