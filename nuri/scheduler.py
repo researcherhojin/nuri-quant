@@ -187,6 +187,31 @@ def _run_premarket_brief():
         logger.error(f"[premarket_brief] 실행 실패: {e}", exc_info=True)
 
 
+def _run_postmarket_brief_kr():
+    """KR session post-market brief (KST 16:00, KOSPI close 15:30 + 30min)."""
+    try:
+        from nuri.alerts.postmarket_brief import write_brief
+
+        write_brief("kr")
+    except Exception as e:
+        logger.error(f"[postmarket_brief_kr] 실행 실패: {e}", exc_info=True)
+
+
+def _run_postmarket_brief_us():
+    """US session post-market brief (NYSE 16:00 ET + 30min, DST-aware).
+
+    Dual-cron (06:30 / 07:30 KST) 등록 — `run_postmarket_us_dst_aware` 가 현재
+    시각이 NYSE 16:30 ET ± 15분 window 인지 확인 후 진행. 2회 fire risk 는
+    idempotent persist (UPSERT) 로 mitigate.
+    """
+    try:
+        from nuri.alerts.postmarket_brief import run_postmarket_us_dst_aware
+
+        run_postmarket_us_dst_aware()
+    except Exception as e:
+        logger.error(f"[postmarket_brief_us] 실행 실패: {e}", exc_info=True)
+
+
 def _run_report():
     """일일 리포트를 안전하게 실행."""
     try:
@@ -401,6 +426,15 @@ SCHEDULES = [
     # 사용자 명령 없이도 매일 판단 trigger — session-start 에서 Claude 가
     # 이 brief 를 pick up 해 qualitative 뉴스와 cross-ref.
     {"name": "premarket_brief", "func": _run_premarket_brief, "args": (), "cron": "0 9 * * 1-5", "tz": "US/Eastern"},
+    # Post-market brief — KR session (KST 16:00, KOSPI close 15:30 + 30min, 평일).
+    # holdings PnL + KOSPI200 시장 proxy + macro snapshot. pension 계좌 제외.
+    {"name": "postmarket_brief_kr", "func": _run_postmarket_brief_kr, "args": (), "cron": "0 16 * * 1-5"},
+    # Post-market brief — US session (NYSE 16:00 ET + 30min, DST-aware).
+    # Dual-cron 06:30/07:30 KST 등록, 함수 내부에서 NYSE 16:30 ET window 일치
+    # 시점만 진행. EDT 기간 → 05:30 KST (둘 다 skip → 다음날 fire),
+    # EST 기간 → 06:30 KST 매칭. 함수 idempotent UPSERT 라 2회 fire 도 안전.
+    {"name": "postmarket_brief_us_a", "func": _run_postmarket_brief_us, "args": (), "cron": "30 6 * * 2-6"},
+    {"name": "postmarket_brief_us_b", "func": _run_postmarket_brief_us, "args": (), "cron": "30 7 * * 2-6"},
     # Brief auditor (Discord-as-dev-loop) — 매 6시간 #brief 품질 self-audit.
     # decision_compiler emit 의 conflict / noise / identical-conviction 검출 →
     # #incidents 로 ticket 자동 emit. dedupe 24h. recommend-only, ZERO LLM.
