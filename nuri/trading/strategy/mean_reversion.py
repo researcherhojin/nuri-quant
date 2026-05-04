@@ -156,7 +156,8 @@ def backtest_mean_reversion(
     }
 
 
-if __name__ == "__main__":
+def main() -> int:
+    """CLI entry — Mean-Reversion 스캔 + 백테스트 출력 (testable, no argparse)."""
     logging.basicConfig(level=logging.INFO)
 
     print("=== Mean-Reversion Scan ===")
@@ -169,3 +170,8 @@ if __name__ == "__main__":
     result = backtest_mean_reversion()
     for k, v in result.items():
         print(f"  {k}: {v}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover  # invariant: 표준 entry idiom — main() 이 testable
+    raise SystemExit(main())

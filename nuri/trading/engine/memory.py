@@ -110,7 +110,7 @@ def save_snapshot(db_path=None) -> int:
                 "avg_return": row["avg_return"],
             })
 
-    if not records:
+    if not records:  # pragma: no cover  # invariant: trades non-empty 일 때 all_time groupby 가 반드시 1+ record 생성 — 도달 X (line 50 trades.empty check 가 선행)
         return 0
 
     with get_db(db_path) as conn:
@@ -237,12 +237,13 @@ def print_memory_status(drifts: list[PerformanceDrift]) -> None:
         print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry — argparse + 오케스트레이션 (testable)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant Strategy Learning Memory")
     parser.add_argument("--snapshot", action="store_true", help="오늘 스냅샷 저장")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.snapshot:
         from nuri.core.db import init_db
@@ -252,3 +253,8 @@ if __name__ == "__main__":
 
     drifts = detect_drift()
     print_memory_status(drifts)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover  # invariant: 표준 entry idiom — main() 이 testable
+    raise SystemExit(main())

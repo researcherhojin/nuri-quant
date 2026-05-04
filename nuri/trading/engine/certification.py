@@ -949,7 +949,7 @@ def print_certificate(cert: Certificate) -> None:
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover  # invariant: 3-line 표준 CLI invocation
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cert = certify(caller="cli")
     print_certificate(cert)

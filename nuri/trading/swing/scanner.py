@@ -269,7 +269,8 @@ def print_scan(results: list[ScanResult]) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry — argparse + 오케스트레이션 (testable)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant Market Scanner")
@@ -277,7 +278,12 @@ if __name__ == "__main__":
     parser.add_argument("--top", type=int, default=20)
     parser.add_argument("--extended", action="store_true",
                         help="us_sp500_extended 포함 (us만 적용)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     results = scan_market(market=args.market, top_n=args.top, extended=args.extended)
     print_scan(results)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover  # invariant: 표준 entry idiom — main() 이 testable
+    raise SystemExit(main())

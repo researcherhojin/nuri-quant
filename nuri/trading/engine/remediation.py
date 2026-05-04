@@ -189,7 +189,7 @@ def print_remediation(plan: RemediationPlan) -> None:
     print(f"{'═' * 60}\n")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover  # invariant: 3-line 표준 CLI invocation
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     plan = generate_remediation()
     print_remediation(plan)

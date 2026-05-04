@@ -171,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if result.get("action") == "OK" else 1
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover  # invariant: 표준 entry idiom — main() 이 testable
     import sys
 
     sys.exit(main())

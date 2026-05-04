@@ -269,18 +269,24 @@ def print_gate(result: GateResult) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry — argparse + 오케스트레이션 (testable)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant Pipeline Gate")
     parser.add_argument("--phase", choices=["collect", "validate", "regime", "recommend"],
                         help="특정 단계만 확인")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.phase:
         result = check_gate(args.phase)
         print_gate(result)
     else:
         gates = check_all_gates()
-        for phase, result in gates.items():
+        for _phase, result in gates.items():
             print_gate(result)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover  # invariant: 표준 entry idiom — main() 이 testable
+    raise SystemExit(main())
