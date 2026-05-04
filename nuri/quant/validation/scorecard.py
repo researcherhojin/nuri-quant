@@ -202,10 +202,16 @@ def generate_validation_report(output_dir: Path | None = None) -> Path | None:
     return path
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI: 통합 validation report 생성. argv 는 호환용 (현재 인자 없음)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     path = generate_validation_report()
     if path:
         print(f"통합 리포트: {path}")
     else:
         print("통합 리포트 생성 불가 (C-1부터 먼저 실행하세요)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

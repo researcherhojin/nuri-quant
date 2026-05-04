@@ -158,19 +158,24 @@ def print_results(results: list[EstimateResult]) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI: 애널리스트 목표가 검증 + CSV 저장."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="애널리스트 목표가 검증")
     parser.add_argument("--min-days", type=int, default=90, help="최소 경과일 (기본 90)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     results = validate_estimates(min_elapsed_days=args.min_days)
     print_results(results)
 
-    # CSV 저장
     if results:
         today = today_kst()
         output_dir = REPORT_DIR / today
         output_dir.mkdir(parents=True, exist_ok=True)
         pd.DataFrame([asdict(r) for r in results]).to_csv(output_dir / "analyst_results.csv", index=False)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
