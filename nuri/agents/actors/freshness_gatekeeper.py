@@ -153,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     actor = FreshnessGatekeeper()
     try:
         result = actor.run(input_data)
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover — base.run() catches all execute() exceptions
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
         return 2
 

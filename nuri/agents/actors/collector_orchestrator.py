@@ -466,7 +466,7 @@ class CollectorOrchestrator(Actor):
                 actor_name="collector-orchestrator",
                 run_id=run_id,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  # pragma: no cover — best-effort outbox publish
             pass
 
     @staticmethod
@@ -510,7 +510,7 @@ class CollectorOrchestrator(Actor):
                 actor_name="collector-orchestrator",
                 run_id=run_id,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  # pragma: no cover — best-effort outbox publish
             pass
 
 

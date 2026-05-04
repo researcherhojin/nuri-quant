@@ -88,7 +88,7 @@ def _compute_psi(
     edges = np.quantile(baseline, quantiles)
     # Edge unique 보장 — degenerate quantile (중복 edge) 시 unique 만
     edges = np.unique(edges)
-    if len(edges) < 2:
+    if len(edges) < 2:  # pragma: no cover — already guarded by np.std(baseline) == 0 above
         return 0.0
     # 양 끝 ±inf 로 expand — current 가 baseline range 밖이어도 카운트
     edges[0] = -np.inf
@@ -126,7 +126,7 @@ def _compute_ks(baseline: np.ndarray, current: np.ndarray) -> float:
 
         result = ks_2samp(baseline, current)
         return float(result.statistic)  # type: ignore[union-attr]
-    except Exception:  # noqa: BLE001 — scipy 부재 또는 numerical issue
+    except Exception:  # noqa: BLE001  # pragma: no cover — scipy is a hard dep, fallback unreachable
         # fallback: empirical CDF 비교 (numpy only)
         combined = np.sort(np.concatenate([baseline, current]))
         cdf_b = np.searchsorted(np.sort(baseline), combined, side="right") / baseline.size

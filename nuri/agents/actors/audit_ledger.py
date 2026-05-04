@@ -321,7 +321,7 @@ class AuditLedger(Actor):
                 actor_name="audit-ledger",
                 run_id=run_id,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  # pragma: no cover — best-effort outbox publish
             pass
 
     @staticmethod
@@ -347,7 +347,7 @@ class AuditLedger(Actor):
                 actor_name="audit-ledger",
                 run_id=run_id,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  # pragma: no cover — best-effort outbox publish
             pass
 
 

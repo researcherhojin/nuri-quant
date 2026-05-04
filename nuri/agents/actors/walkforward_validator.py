@@ -415,7 +415,7 @@ def main(argv: list[str] | None = None) -> int:
                 "model_id": args.model_id,
             }
         )
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover — base.run() catches all execute() exceptions
         print(_json.dumps({"error": str(exc)}), file=sys.stderr)
         return 2
 
