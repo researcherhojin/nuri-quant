@@ -143,6 +143,7 @@ def _classify_regime_fresh() -> str | None:
     try:
         from nuri.core.timezone import today_kst
         from nuri.quant.regime.classifier import classify_regime
+
         state = classify_regime(date=today_kst())
         return state.regime if state else None
     except Exception as e:
@@ -207,6 +208,7 @@ def _snapshot_portfolio() -> "pd.DataFrame":
         assert snap.portfolio_df is not None  # portfolio_error 없으면 df 존재
         return snap.portfolio_df
     from nuri.analysis.portfolio import analyze_portfolio
+
     return analyze_portfolio()
 
 
@@ -271,11 +273,9 @@ def _check_position_limits(db_path=None) -> CertCondition:
 
         regime_tag = f" (regime={regime}, ×{multiplier:.2f})" if multiplier != 1.0 else ""
         if not violations:
-            return CertCondition("position_limit", "종목 비중 한도", True,
-                                 f"최대 비중: {agg.max():.1f}%{regime_tag}")
+            return CertCondition("position_limit", "종목 비중 한도", True, f"최대 비중: {agg.max():.1f}%{regime_tag}")
         tickers = ", ".join(f"{t}({w:.1f}%>{limit * 100:.0f}%)" for t, (w, limit) in violations.items())
-        return CertCondition("position_limit", "종목 비중 한도", False,
-                             f"위반: {tickers}{regime_tag}", "error")
+        return CertCondition("position_limit", "종목 비중 한도", False, f"위반: {tickers}{regime_tag}", "error")
     except Exception as e:
         return CertCondition("position_limit", "종목 비중 한도", False, f"검증 실패: {e}")
 
@@ -949,7 +949,7 @@ def print_certificate(cert: Certificate) -> None:
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover  # invariant: 3-line 표준 CLI invocation
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cert = certify(caller="cli")
     print_certificate(cert)
