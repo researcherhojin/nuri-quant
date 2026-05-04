@@ -398,3 +398,68 @@ def _cleanup_singletons():
     oc._singleton = None
     yield
     oc._singleton = None
+
+
+# ─── Section 7 (Drift) — detect_drift detail rendering (274-283) ─────
+
+
+class TestDriftSectionDetail:
+    def test_drift_renders_lines_including_critical(self, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """detect_drift 가 critical 항목 포함 → drift_section 에 signal_id 행 + ⚠ critical 라인."""
+        from nuri.trading.engine.memory import PerformanceDrift
+
+        drifts = [
+            PerformanceDrift(
+                signal_id="rsi_oversold",
+                regime=None,
+                all_time_wr=0.65,
+                recent_wr=0.40,
+                drift_pct=-38.5,
+                status="critical",
+                detail="35% drop in 90d",
+            ),
+            PerformanceDrift(
+                signal_id="macd_cross",
+                regime=None,
+                all_time_wr=0.55,
+                recent_wr=0.58,
+                drift_pct=5.5,
+                status="stable",
+                detail="ok",
+            ),
+        ]
+        monkeypatch.setattr("nuri.trading.engine.memory.detect_drift", lambda **kw: drifts)
+        ctx = gather_context(db_path=db_path)
+        # 라인 274-279: signal 별 wr/drift 출력
+        assert "rsi_oversold" in ctx.drift_section
+        assert "macd_cross" in ctx.drift_section
+        # 라인 280-282: critical filter + ⚠ 경고
+        assert "성과 급락 시그널" in ctx.drift_section
+        assert "rsi_oversold" in ctx.drift_section
+
+
+# ─── Section 11 (Rebalance) — generate_advisor_report rendering (347-353) ──
+
+
+class TestRebalanceAdvisorSection:
+    def test_rebalance_violations_render(self, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """generate_advisor_report total_violations>0 → rebalance_section 에 위반/회수/액션 행 출력."""
+        fake_report = {
+            "total_violations": 3,
+            "violations_by_severity": {"critical": 2, "warning": 1},
+            "total_recovery_usd": 12345.6,
+            "actions": [
+                {"ticker": "AAA", "reason": "concentration over 25%", "sell_value_usd": 5000.0},
+                {"ticker": "BBB", "reason": "sector cap", "sell_value_usd": 3000.0},
+            ],
+        }
+        monkeypatch.setattr(
+            "nuri.analysis.rebalance_advisor.generate_advisor_report",
+            lambda *a, **kw: fake_report,
+        )
+        ctx = gather_context(db_path=db_path)
+        assert "위반 3건" in ctx.rebalance_section
+        assert "critical 2건" in ctx.rebalance_section
+        assert "$12,346" in ctx.rebalance_section
+        assert "AAA" in ctx.rebalance_section
+        assert "concentration over 25%" in ctx.rebalance_section
