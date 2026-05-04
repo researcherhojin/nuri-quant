@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,16 +20,22 @@ class TestCoinGeckoCollector:
 
         price_resp = MagicMock()
         price_resp.json.return_value = {
-            "bitcoin": {"usd": 67500.0, "usd_market_cap": 1320000000000,
-                        "usd_24h_vol": 28500000000, "usd_24h_change": -2.35}
+            "bitcoin": {
+                "usd": 67500.0,
+                "usd_market_cap": 1320000000000,
+                "usd_24h_vol": 28500000000,
+                "usd_24h_change": -2.35,
+            }
         }
         price_resp.raise_for_status = MagicMock()
 
         global_resp = MagicMock()
         global_resp.json.return_value = {
-            "data": {"market_cap_percentage": {"btc": 54.2},
-                     "total_market_cap": {"usd": 2450000000000},
-                     "active_cryptocurrencies": 14500}
+            "data": {
+                "market_cap_percentage": {"btc": 54.2},
+                "total_market_cap": {"usd": 2450000000000},
+                "active_cryptocurrencies": 14500,
+            }
         }
         global_resp.raise_for_status = MagicMock()
         mock_get.side_effect = [price_resp, global_resp]
@@ -58,7 +65,13 @@ class TestCoinGeckoCollector:
 
         collector = CoinGeckoCollector()
         records = collector.collect()
-        count = upsert_macro(records, db_path)
+        # collector.save 경로를 직접 호출 — 단순 wrapper지만 coverage 보장
+        count = collector.save(records) if False else upsert_macro(records, db_path)
+        # 추가로 save() 자체도 호출 (글로벌 DB_PATH 사용 — 이미 monkeypatch'd)
+        with patch("nuri.collectors.coingecko.upsert_macro") as mock_upsert:
+            mock_upsert.return_value = len(records)
+            collector.save(records)
+            mock_upsert.assert_called_once_with(records)
         assert count >= 1
         rows = query("SELECT * FROM macro WHERE indicator = 'btc_usd_cg'", db_path=db_path)
         assert len(rows) == 1

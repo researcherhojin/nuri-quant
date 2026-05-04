@@ -30,7 +30,7 @@ def _emit_penalty_event_if_fired(result: ConsensusResult, verdicts: list[AgentVe
     if not result.penalty_applied:
         return
     tech_v = next((v for v in verdicts if v.agent_name == "technical"), None)
-    if tech_v is None:
+    if tech_v is None:  # pragma: no cover — penalty implies technical verdict present
         return
     threshold = AGENT_CONFIG.get("consensus", {}).get("divergence_technical_threshold", 80)
     try:

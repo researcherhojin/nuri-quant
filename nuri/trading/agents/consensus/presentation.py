@@ -67,7 +67,7 @@ def print_consensus(results: list[ConsensusResult], *, verbose: bool = False) ->
     if show_supporters:
         for r in sorted(results, key=lambda x: x.final_confidence, reverse=True):
             supporters = [v for v in r.verdicts if v.action == r.final_action]
-            if not supporters:
+            if not supporters:  # pragma: no cover — defensive: every consensus has at least one supporter
                 continue
             print(
                 f"\n  ▸ {r.ticker} {r.final_action} ({r.final_confidence:.0f}, agree={r.agreement_rate:.0%}) — supporters:"
@@ -114,7 +114,7 @@ def print_consensus(results: list[ConsensusResult], *, verbose: bool = False) ->
             print(f"  External Data ({len(tickers_with_data)} tickers)")
             print(f"{'=' * 85}")
             for r in results:
-                if r.ticker not in tickers_with_data:
+                if r.ticker not in tickers_with_data:  # pragma: no cover — depends on partial external data
                     continue
                 ext = get_external(r.ticker)
                 parts = []

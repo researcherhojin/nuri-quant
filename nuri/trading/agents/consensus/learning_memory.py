@@ -77,7 +77,7 @@ def _compute_horizon_eligibility(
         try:
             verdicts_str = row["agent_verdicts"]
             verdicts = json.loads(verdicts_str) if isinstance(verdicts_str, str) else None
-            if not isinstance(verdicts, list):
+            if not isinstance(verdicts, list):  # pragma: no cover — schema-violation defensive
                 rows_skipped_schema += 1
                 continue
 

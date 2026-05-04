@@ -131,7 +131,7 @@ def build_bot():
                     check=False,
                 )
                 return proc.returncode, (proc.stdout + proc.stderr)[-1500:]
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired:  # pragma: no cover — subprocess timeout, prod-only
                 return 124, "timeout 30s"
 
         rc, out = await asyncio.to_thread(_run)
@@ -192,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import sys
 
     sys.exit(main())

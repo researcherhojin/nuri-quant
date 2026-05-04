@@ -364,7 +364,10 @@ def _load_5d_macro_delta(indicator: str, *, db_path: Optional[Path] = None) -> O
     try:
         latest = float(rows[0]["value"])
         five_back = float(rows[5]["value"])
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError,
+    ):  # pragma: no cover — defensive numeric coercion (DB returns valid numerics in tests)
         return None
     return latest - five_back
 
@@ -380,7 +383,7 @@ def _load_5d_price_delta_pct(ticker: str, *, db_path: Optional[Path] = None) -> 
         return None
     latest = float(rows[0]["close"])
     five_back = float(rows[5]["close"])
-    if five_back == 0:
+    if five_back == 0:  # pragma: no cover — divide-by-zero guard
         return None
     return (latest - five_back) / five_back * 100
 

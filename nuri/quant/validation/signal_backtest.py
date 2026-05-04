@@ -783,7 +783,7 @@ def print_scorecard(scorecards: list[SignalScorecard]) -> None:
 # 메인
 # ═══════════════════════════════════════════════════════
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 시그널 백테스트")

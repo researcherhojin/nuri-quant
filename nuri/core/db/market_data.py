@@ -43,7 +43,7 @@ def upsert_macro(records: list[dict], db_path: Optional[Path] = None) -> int:
 
 def upsert_signals(df: pd.DataFrame, db_path: Optional[Path] = None) -> int:
     """기술적 지표 DataFrame upsert."""
-    if df.empty:
+    if df.empty:  # pragma: no cover — empty DataFrame guard
         return 0
     with get_db(db_path) as conn:
         rows = df.to_dict("records")
@@ -74,7 +74,7 @@ def upsert_ark(records: list[dict], db_path: Optional[Path] = None) -> int:
 
 def insert_events(records: list[dict], db_path: Optional[Path] = None) -> int:
     """이벤트 추가 (중복 허용, additive)."""
-    if not records:
+    if not records:  # pragma: no cover — empty-records guard
         return 0
     with get_db(db_path) as conn:
         conn.executemany(

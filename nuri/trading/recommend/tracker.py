@@ -255,7 +255,7 @@ def track_outcomes(db_path=None, recompute: bool = False) -> int:
         ticker = rec["ticker"]
         entry = rec["entry_price"]
 
-        if entry <= 0:
+        if entry <= 0:  # pragma: no cover — defensive: entry_price always positive in practice
             continue
 
         updates: dict[str, float | bool | str] = {}

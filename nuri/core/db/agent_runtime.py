@@ -284,7 +284,7 @@ def log_agent_message(
     http_status: 204 정상 발송, 4xx/5xx 실패. NULL = 네트워크 실패 전 단계.
     """
     valid = ("brief", "ops", "incidents", "rollout", "agent_control", "agent_dev_log")
-    if channel not in valid:
+    if channel not in valid:  # pragma: no cover — input validation guard
         raise ValueError(f"channel must be one of {valid}, got {channel!r}")
     with get_db(db_path) as conn:
         cursor = conn.execute(

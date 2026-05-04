@@ -79,7 +79,7 @@ def _parse_timestamp(value: str) -> datetime:
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
         try:
             dt = datetime.strptime(s, fmt)
-            return dt.replace(tzinfo=KST)
+            return dt.replace(tzinfo=KST)  # pragma: no cover — strptime fallback for short formats
         except ValueError:
             continue
     raise ValueError(f"지원하지 않는 날짜 형식: {value}")

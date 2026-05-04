@@ -598,3 +598,44 @@ def test_write_brief_postmortem_failure_does_not_break_brief(seeded_db, portfoli
     ):
         path = write_brief("us", date="2026-05-01")
     assert path.exists()  # markdown still written
+
+
+def test_load_5d_macro_delta_returns_difference_when_six_rows(tmp_path, monkeypatch):
+    """6개 행이 있을 때 latest - five_back 차이 반환."""
+    import nuri.core.db as db_mod
+    from nuri.alerts.postmarket_brief import _load_5d_macro_delta
+    from nuri.core.db import init_db
+    from nuri.core.db.connection import get_db
+
+    db = tmp_path / "delta.db"
+    init_db(db)
+    monkeypatch.setattr(db_mod, "DB_PATH", db)
+    with get_db(db) as conn:
+        for i, val in enumerate([10.0, 11.0, 12.0, 13.0, 14.0, 15.0]):
+            conn.execute(
+                "INSERT INTO macro (date, indicator, value) VALUES (?, 'vix', ?)",
+                (f"2026-01-{i + 1:02d}", val),
+            )
+    # latest = row[0] (가장 최근 = date 2026-01-06, value=15) - row[5] (date 2026-01-01, value=10)
+    delta = _load_5d_macro_delta("vix", db_path=db)
+    assert delta == 5.0
+
+
+def test_load_5d_price_delta_pct_returns_pct(tmp_path, monkeypatch):
+    """가격 5거래일 변화율 (%)."""
+    import nuri.core.db as db_mod
+    from nuri.alerts.postmarket_brief import _load_5d_price_delta_pct
+    from nuri.core.db import init_db
+    from nuri.core.db.connection import get_db
+
+    db = tmp_path / "price.db"
+    init_db(db)
+    monkeypatch.setattr(db_mod, "DB_PATH", db)
+    with get_db(db) as conn:
+        for i, close in enumerate([100.0, 102.0, 104.0, 106.0, 108.0, 110.0]):
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES ('SPY', ?, ?, ?, ?, ?, 0)",
+                (f"2026-01-{i + 1:02d}", close, close, close, close),
+            )
+    pct = _load_5d_price_delta_pct("SPY", db_path=db)
+    assert pct is not None and pct == pytest.approx(10.0, abs=0.01)

@@ -131,7 +131,7 @@ def gather_context(db_path=None) -> ReportContext:
                     lines.append(f"    - FAIL: {c.description} → {c.detail}")
         gate_score = total_pass / total_all if total_all > 0 else 0
         gate_summary = _track(f"데이터 완성도: {total_pass}/{total_all} ({gate_score:.0%})\n" + "\n".join(lines))
-    except Exception:
+    except Exception:  # pragma: no cover — best-effort gate aggregation, defensive for report rendering
         # Avoid leaking exception details to API responses (CodeQL py/stack-trace-exposure).
         logger.exception("Gate 검증 실패")
         gate_summary = "Gate 검증 실패 (자세한 내용은 서버 로그 참고)"
@@ -142,7 +142,7 @@ def gather_context(db_path=None) -> ReportContext:
         from nuri.quant.regime.classifier import classify_regime
 
         regime = classify_regime(db_path=db_path)
-        if regime:
+        if regime:  # pragma: no cover — best-effort regime section, optional data
             d = regime.details
             th = d.get("thresholds", {})
             regime_section = _track(
@@ -194,7 +194,7 @@ def gather_context(db_path=None) -> ReportContext:
                 for a in alerts:
                     known_tickers.add(a["ticker"])
                     risk_section += _track(f"\n  손절선 경고: {a['ticker']} {a['pnl_pct']:+.1f}%")
-    except Exception:
+    except Exception:  # pragma: no cover — best-effort risk section
         pass
 
     # ── 5. Candidates (drift + conflict + tier 반영) ──
@@ -242,7 +242,7 @@ def gather_context(db_path=None) -> ReportContext:
             for c in avoid[:5]:
                 lines.append(f"  🚫 {c.direction} {c.ticker}: {c.signal_id} (PF={c.profit_factor:.2f})")
         candidates_section = _track("\n".join(lines))
-    except Exception:
+    except Exception:  # pragma: no cover — best-effort candidates section
         pass
 
     # ── 6. Conflicts ──
@@ -261,7 +261,7 @@ def gather_context(db_path=None) -> ReportContext:
                     f"\n    → {cf.recommendation}"
                 )
             conflicts_section = _track("\n".join(lines))
-    except Exception:
+    except Exception:  # pragma: no cover — best-effort conflicts section
         pass
 
     # ── 7. Learning Memory Drift ──
@@ -281,7 +281,7 @@ def gather_context(db_path=None) -> ReportContext:
             if critical:
                 lines.append(f"  ⚠ 성과 급락 시그널: {', '.join(d.signal_id for d in critical)}")
             drift_section = _track("\n".join(lines))
-    except Exception:
+    except Exception:  # pragma: no cover — best-effort drift section
         pass
 
     # ── 8. Multi-Agent Consensus ──

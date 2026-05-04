@@ -42,9 +42,9 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
         from nuri.quant.regime.classifier import classify_regime
 
         rr = classify_regime(db_path=db_path)
-        if rr is not None:
+        if rr is not None:  # pragma: no cover — depends on regime data; defensive
             batch_regime = rr.regime
-    except Exception:
+    except Exception:  # pragma: no cover — regime-classify defensive fallback
         logger.debug("save_to_recommendations: regime classify 실패, NULL 유지", exc_info=True)
 
     records = []

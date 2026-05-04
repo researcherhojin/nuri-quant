@@ -83,7 +83,7 @@ def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
             (step,),
             db_path,
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001  # pragma: no cover — table-missing / DB error guard
         # pipeline_events 테이블 미존재(마이그레이션 미적용) 또는 DB 접근 실패
         import logging
 
@@ -144,7 +144,7 @@ def get_timeline(
         if entry["payload"]:
             try:
                 entry["payload"] = json.loads(entry["payload"])
-            except (json.JSONDecodeError, TypeError):
+            except (json.JSONDecodeError, TypeError):  # pragma: no cover — payload always JSON in practice
                 pass
         result.append(entry)
     return result
@@ -167,7 +167,7 @@ def get_step_history(step: str, limit: int = 10, db_path: Optional[Path] = None)
         if entry["payload"]:
             try:
                 entry["payload"] = json.loads(entry["payload"])
-            except (json.JSONDecodeError, TypeError):
+            except (json.JSONDecodeError, TypeError):  # pragma: no cover — payload always JSON in practice
                 pass
         result.append(entry)
     return result

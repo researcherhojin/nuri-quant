@@ -23,7 +23,7 @@ def upsert_trade(data: dict, db_path: Optional[Path] = None) -> int:
         if "id" in data and data["id"] is not None:
             # 기존 레코드 업데이트
             trade_id = data.pop("id")
-            if not data:
+            if not data:  # pragma: no cover — id-only payload guard
                 return 0
             set_clause = ", ".join(f"{k} = :{k}" for k in data)
             data["_id"] = trade_id

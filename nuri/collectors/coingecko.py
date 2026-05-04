@@ -39,7 +39,7 @@ class CoinGeckoCollector(BaseCollector):
         try:
             price_records = self._collect_price(today)
             records.extend(price_records)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover — CoinGecko price API failure, prod-only
             self.logger.warning("CoinGecko price API 실패: %s", e)
 
         # 2. 글로벌 시장 지표 (BTC 도미넌스, 총 시가총액)
@@ -167,7 +167,7 @@ class CoinGeckoCollector(BaseCollector):
         return upsert_macro(data)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",

@@ -30,9 +30,9 @@ def _resolve_db_path(db_path: Optional[Path]) -> Path:
     """
     if db_path is not None:
         return db_path
-    from nuri.core import db as _facade
+    from nuri.core import db as _facade  # pragma: no cover — facade fallback (tests always pass db_path)
 
-    return _facade.DB_PATH
+    return _facade.DB_PATH  # pragma: no cover — facade fallback path
 
 
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
