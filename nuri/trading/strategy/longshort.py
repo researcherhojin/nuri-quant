@@ -267,13 +267,14 @@ def print_strategy(actions: list[StrategyAction]) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry — argparse + 오케스트레이션 (testable)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     init_db()
 
     parser = argparse.ArgumentParser(description="Nuri-Quant Long/Short Strategy")
     parser.add_argument("--execute", action="store_true", help="전략 실행 (포지션 오픈/클로즈)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     actions = generate_strategy()
     print_strategy(actions)
@@ -284,3 +285,8 @@ if __name__ == "__main__":
 
         from nuri.trading.strategy.position import print_positions
         print_positions()
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover  # invariant: 표준 entry idiom — main() 이 testable
+    raise SystemExit(main())
