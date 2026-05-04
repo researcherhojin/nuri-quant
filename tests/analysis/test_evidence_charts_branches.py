@@ -298,3 +298,101 @@ class TestEvidenceChartsRunpy:
         runpy.run_module("nuri.analysis.evidence_charts", run_name="__main__")
         out = capsys.readouterr().out
         assert "증거 차트 생성 완료" in out
+
+
+class TestRegimeChartSMABranches:
+    """evidence_charts.py 89->101, 102->115: SMA50/SMA200 모두 NaN 시 add_trace 우회 (#611)."""
+
+    def test_sma50_sma200_all_nan_skips_traces(self, db_path, tmp_path):
+        """SMA50/SMA200 모두 NaN → 89 False / 102 False (trace 미추가).
+
+        rolling(50).mean() 은 row 수 < 50 시 전 NaN 반환. 30 row 삽입해
+        sma50_valid.empty / sma200_valid.empty 가 둘 다 True 가 되게 한다.
+        """
+        from nuri.core.db import upsert_prices
+
+        n = 30  # < 50 → SMA50/SMA200 모두 NaN
+        dates = pd.bdate_range("2025-01-01", periods=n).strftime("%Y-%m-%d").tolist()
+        rows = [
+            {
+                "ticker": "SPY",
+                "date": dates[i],
+                "open": 400.0,
+                "high": 401.0,
+                "low": 399.0,
+                "close": 400.0 + i * 0.1,
+                "volume": 1_000_000,
+                "adj_close": 400.0 + i * 0.1,
+            }
+            for i in range(n)
+        ]
+        upsert_prices(pd.DataFrame(rows), db_path)
+
+        out_dir = tmp_path / "evidence"
+        out_dir.mkdir()
+        with patch.object(ec, "classify_regime", return_value=None):
+            result = ec.generate_regime_chart(out_dir, db_path=db_path)
+        assert result.exists()
+        body = result.read_text()
+        # SMA 50 / 200 trace 미추가 (89 False / 102 False 분기 확인)
+        assert '"name":"SMA 50"' not in body
+        assert '"name":"SMA 200"' not in body
+
+
+class TestShadeRegimeZonesEarlyExit:
+    """evidence_charts.py 214->exit: _shade_regime_zones 에 row 1 개만 입력 시
+    prev_zone 이 None 인 채 루프 종료 → 마지막 vrect 추가 분기 미진입 (#611)."""
+
+    def test_single_row_no_zone_transitions(self):
+        from plotly.subplots import make_subplots
+
+        from nuri.analysis.evidence_charts import _shade_regime_zones
+
+        fig = make_subplots(rows=1, cols=1)
+        # SMA50/SMA200 모두 NaN → zone 결정 불가, prev_zone 영원히 None
+        df = pd.DataFrame(
+            [
+                {"date": "2025-01-01", "sma50": float("nan"), "sma200": float("nan")},
+                {"date": "2025-01-02", "sma50": float("nan"), "sma200": float("nan")},
+            ]
+        )
+        # 예외 raise 없이 통과 — 214 분기 False 진입
+        _shade_regime_zones(fig, df)
+        # zone 추가 안 됨 — fig.layout.shapes 가 비어 있어야 함 (vrect 미생성)
+        shapes = list(getattr(fig.layout, "shapes", None) or [])
+        assert shapes == [], f"zone vrect 가 추가되면 안 됨: {shapes}"
+
+
+class TestPortfolioHeatmapNoViolations:
+    """evidence_charts.py 312->324: violations 빈 list → annotation 미추가 (#611)."""
+
+    def test_no_violations_skips_annotation(self, tmp_path, monkeypatch):
+        """모든 종목이 stop_loss / max_single 정상 → violations 빈 list → 312 False → 324."""
+        # analyze_portfolio 가 정상 비중·정상 pnl 데이터 반환하도록 patch
+        df = pd.DataFrame(
+            [
+                {
+                    "ticker": "AAA",
+                    "current_value_usd": 1000,
+                    "pnl_pct": 5.0,
+                    "weight_pct": 8.0,  # max_single 15% 미만
+                    "sector": "Tech",
+                },
+                {
+                    "ticker": "BBB",
+                    "current_value_usd": 1000,
+                    "pnl_pct": -2.0,  # PORTFOLIO_STOP -10 보다 큼
+                    "weight_pct": 8.0,
+                    "sector": "Health",
+                },
+            ]
+        )
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda *a, **kw: df)
+
+        out_dir = tmp_path / "evidence"
+        out_dir.mkdir()
+        result = ec.generate_portfolio_heatmap(out_dir)
+        assert result.exists()
+        body = result.read_text()
+        # violations 비어 annotation 미추가 — "위반 종목" 텍스트 없음 (312 False 분기 확인)
+        assert "위반 종목" not in body

@@ -145,7 +145,7 @@ make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite — 5,482 backend (228 files) + 917 frontend (82 files) + 38 Playwright e2e (8 specs)
+make test       # full suite — 5,684 backend (233 files) + 917 frontend (82 files) + 38 Playwright e2e (8 specs)
 make test-fast  # backend only, slow tests excluded (~24s, what PR CI runs)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler integration)
 ```

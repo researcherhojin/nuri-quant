@@ -753,3 +753,48 @@ class TestLoad5dHelpers:
         # latest=20, five_back=10 → delta = 10
         result = _load_5d_macro_delta("BAR", db_path=path)
         assert result == pytest.approx(10.0)
+
+
+class TestWriteBriefBranchCoverage:
+    """postmarket_brief.py write_brief 분기 — codecov 갭 (#611)."""
+
+    def test_publish_discord_returns_id_skips_skip_log(self, seeded_db, portfolio_yaml, caplog):
+        """postmarket_brief.py 472->475: outbox_id 가 None 이 아니면 'skip' 로그 출력 안 함."""
+        from nuri.alerts.postmarket_brief import write_brief
+
+        # _publish_discord 가 outbox_id (str) 반환 → 472 분기 False → 475 로 스킵
+        with (
+            patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+            patch("nuri.agents.discord.outbox.stage_brief", return_value="outbox-uuid-1234"),
+            caplog.at_level("INFO"),
+        ):
+            path = write_brief("us", date="2026-05-01")
+        assert path.exists()
+        # 'skip' 또는 '미발행' 메시지가 로그에 없어야 함 (472 False 분기 확인)
+        assert not any("미발행" in rec.message for rec in caplog.records)
+
+    def test_holdings_no_pnl_match_continues_outer_loop(self):
+        """postmarket_brief.py 267->265: actionable row 가 pnl rows 와 매칭 안 되면 inner for 가
+        break 없이 종료 → flat_rows 누락 (외부 루프 다음 row 로 진행, #611)."""
+        from nuri.alerts.postmarket_brief import _format_markdown
+
+        # holdings 에 AAPL 있지만 pnl rows 에는 다른 ticker → 매칭 실패 시나리오
+        macro = {"vix": None, "fear_greed": None, "regime": None}
+        holdings = {
+            "acct_x": {
+                "label": "Acct X",
+                "rows": [{"ticker": "AAPL", "account": "acct_x", "qty": 1, "avg_price": 100, "current_price": 100}],
+            }
+        }
+        # pnl["rows"] 는 ZZZ 만 → AAPL 매칭 실패, 267 inner for break 없이 종료 → 265 로 점프
+        pnl = {
+            "rows": [{"ticker": "ZZZ", "account": "other", "pnl_pct": 1.0, "pnl_abs": 0.0}],
+            "total_abs": 0.0,
+            "total_pct": 0.0,
+        }
+        sectors = []
+        md = _format_markdown("us", "2026-05-01", macro, holdings, pnl, sectors)
+        # holdings flat_rows 가 비어있어 "데이터 없음" 출력 (267->265 분기 확인)
+        assert "데이터 없음" in md
+        # AAPL holdings 행은 표 안에 없음
+        assert "## Holdings" in md
