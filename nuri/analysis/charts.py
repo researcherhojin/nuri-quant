@@ -632,7 +632,8 @@ def generate_charts(
     return generated
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: --ticker 또는 --all 로 차트 생성."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant 기술적 분석 차트")
@@ -640,15 +641,20 @@ if __name__ == "__main__":
     parser.add_argument("--all", action="store_true", help="전 보유종목")
     parser.add_argument("--png", action="store_true", help="PNG도 생성")
     parser.add_argument("--no-html", action="store_true", help="HTML 안 함")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     tickers = [args.ticker] if args.ticker else (None if args.all else None)
     if not args.ticker and not args.all:
         parser.print_help()
         print("\n--ticker 또는 --all 중 하나를 지정하세요.")
-        exit(1)
+        return 1
 
     files = generate_charts(tickers=tickers, png=args.png, html=not args.no_html)
     print(f"\n생성: {len(files)}개 차트")
     for f in files:
         print(f"  {f}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

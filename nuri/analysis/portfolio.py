@@ -199,7 +199,14 @@ def print_summary(df: pd.DataFrame) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: 포트폴리오 요약 출력."""
+    del argv  # 인자 없음
     logging.basicConfig(level=logging.INFO)
     df = analyze_portfolio()
     print_summary(df)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

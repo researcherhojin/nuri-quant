@@ -105,7 +105,14 @@ def print_sector(sector_df: pd.DataFrame, region_df: pd.DataFrame, warnings: lis
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: 섹터/지역별 비중 + 경고."""
+    del argv  # 인자 없음
     logging.basicConfig(level=logging.INFO)
     sector, region, warns = analyze_sector()
     print_sector(sector, region, warns)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
