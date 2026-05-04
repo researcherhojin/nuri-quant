@@ -7,6 +7,7 @@ certify() 결과의 실패 gate와 rebalance_advisor의 매도 액션을 매핑�
 사용법:
     python -m nuri.trading.engine.remediation
 """
+
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,32 +26,38 @@ _GATE_TO_VIOLATION: dict[str, list[str]] = {
 
 # 매매로 해결할 수 없는 gate (정보성 표시만)
 _UNRESOLVABLE_GATES: set[str] = {
-    "vix_gate", "data_fresh", "external_data", "conflict_free",
-    "drift_safe", "rules_loaded",
+    "vix_gate",
+    "data_fresh",
+    "external_data",
+    "conflict_free",
+    "drift_safe",
+    "rules_loaded",
 }
 
 
 @dataclass
 class RemediationAction:
     """단일 remediation 액션."""
+
     gate_id: str
     ticker: str
-    action: str          # "SELL_ALL" | "REDUCE"
+    action: str  # "SELL_ALL" | "REDUCE"
     sell_shares: int
     sell_value_usd: float
     reason: str
-    severity: str        # "critical" | "high" | "medium"
+    severity: str  # "critical" | "high" | "medium"
 
 
 @dataclass
 class RemediationPlan:
     """SIEGE remediation 계획."""
+
     certified: bool
     score: float
     failed_gates: list[str]
     warning_gates: list[str]
     actions: list[RemediationAction]
-    unresolvable: list[dict]     # gate_id + detail (매매로 해결 불가)
+    unresolvable: list[dict]  # gate_id + detail (매매로 해결 불가)
     post_remediation_score: float
     post_remediation_pass: bool  # 액션 실행 후 error gate 통과 예측
 
@@ -93,15 +100,17 @@ def generate_remediation(db_path: Optional[Path] = None) -> RemediationPlan:
 
         for advisor_action in report["actions"]:
             if advisor_action["violation_type"] in violation_types:
-                actions.append(RemediationAction(
-                    gate_id=gate_id,
-                    ticker=advisor_action["ticker"],
-                    action=advisor_action["action"],
-                    sell_shares=advisor_action["sell_shares"],
-                    sell_value_usd=advisor_action["sell_value_usd"],
-                    reason=advisor_action["reason"],
-                    severity=advisor_action["severity"],
-                ))
+                actions.append(
+                    RemediationAction(
+                        gate_id=gate_id,
+                        ticker=advisor_action["ticker"],
+                        action=advisor_action["action"],
+                        sell_shares=advisor_action["sell_shares"],
+                        sell_value_usd=advisor_action["sell_value_usd"],
+                        reason=advisor_action["reason"],
+                        severity=advisor_action["severity"],
+                    )
+                )
 
     # 해결 불가능한 gate (failed error 중 매핑 없는 것)
     unresolvable: list[dict] = []
@@ -164,7 +173,9 @@ def print_remediation(plan: RemediationPlan) -> None:
                 severity_marker = "[!] "
 
             qty_text = f"{a.sell_shares}주 전량" if a.action == "SELL_ALL" else f"{a.sell_shares}주 일부"
-            print(f"  {severity_marker}[{idx}] SELL {a.ticker} {qty_text} → {a.reason} (회수 ~${a.sell_value_usd:,.0f})")
+            print(
+                f"  {severity_marker}[{idx}] SELL {a.ticker} {qty_text} → {a.reason} (회수 ~${a.sell_value_usd:,.0f})"
+            )
             print(f"       gate: {a.gate_id}")
     else:
         print("\n  처방 없음 — 매매로 해결 가능한 위반 없음")

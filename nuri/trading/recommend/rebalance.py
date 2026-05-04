@@ -8,6 +8,7 @@ E-2: 레짐 적응 리밸런싱.
     python -m nuri.trading.recommend.rebalance
     python -m nuri.trading.recommend.rebalance --method rp
 """
+
 import argparse
 import logging
 from dataclasses import dataclass
@@ -21,12 +22,27 @@ REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 # portfolio.yaml의 sector 필드가 다양한 형태("Technology", "Finance", "AI/Cloud" 등)이므로
 # 키워드 포함 여부가 아닌 명시적 매핑 사용
 DEFENSIVE_SECTOR_KEYWORDS = {
-    "Staples", "Utilities", "Health", "Real Estate", "Insurance", "Bond",
-    "Defense", "Pharma",
+    "Staples",
+    "Utilities",
+    "Health",
+    "Real Estate",
+    "Insurance",
+    "Bond",
+    "Defense",
+    "Pharma",
 }
 GROWTH_SECTOR_KEYWORDS = {
-    "Technology", "Tech", "AI", "Cloud", "EV", "Semiconductor", "Software",
-    "Consumer Discretionary", "Communication", "Growth", "Innovation",
+    "Technology",
+    "Tech",
+    "AI",
+    "Cloud",
+    "EV",
+    "Semiconductor",
+    "Software",
+    "Consumer Discretionary",
+    "Communication",
+    "Growth",
+    "Innovation",
 }
 
 
@@ -56,13 +72,14 @@ CASH_TARGETS = {
 @dataclass
 class RebalanceAction:
     """레짐 적응 리밸런싱 액션."""
+
     ticker: str
     sector: str
-    action: str             # "BUY", "SELL", "HOLD", "REDUCE"
+    action: str  # "BUY", "SELL", "HOLD", "REDUCE"
     current_weight: float
     target_weight: float
     trade_value: float
-    signals: list[str]      # 근거 시그널
+    signals: list[str]  # 근거 시그널
     regime_note: str
 
 
@@ -71,13 +88,11 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
     # Gate 검증
     try:
         from nuri.trading.engine.gate import check_gate
+
         gate = check_gate("recommend", db_path)
         if not gate.ready:
             failed = [c for c in gate.conditions if not c.passed]
-            logger.warning(
-                f"[GATE BLOCKED] recommend 단계 실행 불가. "
-                f"미충족 조건: {', '.join(c.id for c in failed)}"
-            )
+            logger.warning(f"[GATE BLOCKED] recommend 단계 실행 불가. 미충족 조건: {', '.join(c.id for c in failed)}")
             # 블로킹하지 않고 경고만 (데이터 부족해도 가능한 범위에서 실행)
     except Exception:
         pass
@@ -105,16 +120,17 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
     conflict_tickers: set[str] = set()
     try:
         from nuri.trading.recommend.candidates import TIER_ACTIONABLE, screen_candidates
+
         candidates = screen_candidates(lookback_days=5, db_path=db_path)
         for c in candidates:
             if c.regime_fit and c.tier == TIER_ACTIONABLE:
                 signal_map.setdefault(c.ticker, []).append(f"{c.signal_id}({c.direction})")
 
         from nuri.trading.engine.conflicts import detect_conflicts
+
         conflicts = detect_conflicts(candidates)
         conflict_tickers = {
-            cf.ticker for cf in conflicts
-            if cf.conflict_type == "direction_conflict" and cf.severity == "high"
+            cf.ticker for cf in conflicts if cf.conflict_type == "direction_conflict" and cf.severity == "high"
         }
         if conflict_tickers:
             logger.info(f"Conflict 종목 HOLD 강제: {', '.join(conflict_tickers)}")
@@ -123,8 +139,7 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
 
     # 4. 비중 조정
     actions = []
-    total_value = sum(abs(row["trade_value_usd"]) for _, row in base_df.iterrows()
-                      if row["action"] != "HOLD") or 1
+    total_value = sum(abs(row["trade_value_usd"]) for _, row in base_df.iterrows() if row["action"] != "HOLD") or 1
 
     for _, row in base_df.iterrows():
         ticker = row["ticker"]
@@ -167,16 +182,18 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
 
         signals = signal_map.get(ticker, [])
 
-        actions.append(RebalanceAction(
-            ticker=ticker,
-            sector=sector,
-            action=action,
-            current_weight=round(cur_w * 100, 2),
-            target_weight=round(adj_w * 100, 2),
-            trade_value=round(trade_val, 0),
-            signals=signals,
-            regime_note=regime_note,
-        ))
+        actions.append(
+            RebalanceAction(
+                ticker=ticker,
+                sector=sector,
+                action=action,
+                current_weight=round(cur_w * 100, 2),
+                target_weight=round(adj_w * 100, 2),
+                trade_value=round(trade_val, 0),
+                signals=signals,
+                regime_note=regime_note,
+            )
+        )
 
     # 액션 있는 것 우선 정렬
     actions.sort(key=lambda a: (a.action == "HOLD", -abs(a.target_weight - a.current_weight)))
@@ -204,8 +221,10 @@ def print_rebalance(actions: list[RebalanceAction]) -> None:
         for a in actionable:
             sig_str = ", ".join(a.signals[:2]) if a.signals else "—"
             diff = a.target_weight - a.current_weight
-            print(f"  {a.ticker:<8} {a.action:<8} {a.current_weight:>6.1f}% {a.target_weight:>6.1f}% "
-                  f"{diff:>+6.1f}% {sig_str:<30}")
+            print(
+                f"  {a.ticker:<8} {a.action:<8} {a.current_weight:>6.1f}% {a.target_weight:>6.1f}% "
+                f"{diff:>+6.1f}% {sig_str:<30}"
+            )
 
     holds = [a for a in actions if a.action == "HOLD"]
     if holds:

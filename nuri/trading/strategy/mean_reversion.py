@@ -7,6 +7,7 @@ Mean-Reversion 전략 — 단기 과매도 종목의 평균 회귀를 노린다.
 사용법:
     python -m nuri.trading.strategy.mean_reversion
 """
+
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,7 +28,7 @@ class MeanRevSignal:
     entry_price: float
     bb_lower: float
     rsi: float
-    z_score: float          # 20일 평균 대비 표준편차
+    z_score: float  # 20일 평균 대비 표준편차
     expected_target: float  # BB 중간선 (목표가)
 
 
@@ -42,7 +43,8 @@ def scan_mean_reversion(
     for ticker in tickers:
         df = query_df(
             "SELECT date, close FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 60",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
         if len(df) < 30:
             continue
@@ -69,15 +71,17 @@ def scan_mean_reversion(
                 continue
             if close[i] < bb_lower[i] and rsi[i] < 30:
                 z_score = (close[i] - sma20[i]) / std20[i] if std20[i] > 0 else 0
-                signals.append(MeanRevSignal(
-                    ticker=ticker,
-                    date=df["date"].iloc[i],
-                    entry_price=close[i],
-                    bb_lower=bb_lower[i],
-                    rsi=rsi[i],
-                    z_score=z_score,
-                    expected_target=bb_mid[i],
-                ))
+                signals.append(
+                    MeanRevSignal(
+                        ticker=ticker,
+                        date=df["date"].iloc[i],
+                        entry_price=close[i],
+                        bb_lower=bb_lower[i],
+                        rsi=rsi[i],
+                        z_score=z_score,
+                        expected_target=bb_mid[i],
+                    )
+                )
 
     # Z-score가 큰 순 (가장 과매도)
     signals.sort(key=lambda s: s.z_score)
@@ -95,7 +99,8 @@ def backtest_mean_reversion(
     for ticker in tickers:
         df = query_df(
             "SELECT date, close FROM prices WHERE ticker=? ORDER BY date",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
         if len(df) < 60:
             continue
@@ -126,13 +131,15 @@ def backtest_mean_reversion(
                         exit_idx = j
                         break
                 ret = (close[exit_idx] - entry) / entry * 100
-                all_trades.append({
-                    "ticker": ticker,
-                    "entry_date": df["date"].iloc[i],
-                    "exit_date": df["date"].iloc[exit_idx],
-                    "return_pct": ret,
-                    "hold_days": exit_idx - i,
-                })
+                all_trades.append(
+                    {
+                        "ticker": ticker,
+                        "entry_date": df["date"].iloc[i],
+                        "exit_date": df["date"].iloc[exit_idx],
+                        "return_pct": ret,
+                        "hold_days": exit_idx - i,
+                    }
+                )
                 i = exit_idx + 1
             else:
                 i += 1
@@ -163,8 +170,9 @@ def main() -> int:
     print("=== Mean-Reversion Scan ===")
     signals = scan_mean_reversion()
     for s in signals[:10]:
-        print(f"  {s.ticker} @ {s.entry_price:.2f} | RSI={s.rsi:.0f} "
-              f"Z={s.z_score:.1f} → target {s.expected_target:.2f}")
+        print(
+            f"  {s.ticker} @ {s.entry_price:.2f} | RSI={s.rsi:.0f} Z={s.z_score:.1f} → target {s.expected_target:.2f}"
+        )
 
     print("\n=== Mean-Reversion Backtest ===")
     result = backtest_mean_reversion()

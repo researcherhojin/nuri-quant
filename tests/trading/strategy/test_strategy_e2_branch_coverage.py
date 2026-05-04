@@ -15,6 +15,7 @@ from nuri.core.db import get_db, init_db
 @pytest.fixture
 def db_path(tmp_path, monkeypatch):
     import nuri.core.db as db_mod
+
     p = tmp_path / "test.db"
     init_db(p)
     monkeypatch.setattr(db_mod, "DB_PATH", p)
@@ -62,8 +63,13 @@ class TestLongshortMainCLI:
         called = {"execute": False, "print_pos": False}
         fake_actions = [
             ls.StrategyAction(
-                action="open_long", ticker="QQQ", direction="long",
-                portfolio_type="tactical", reason="r", regime="bull_low_vol", confidence=80,
+                action="open_long",
+                ticker="QQQ",
+                direction="long",
+                portfolio_type="tactical",
+                reason="r",
+                regime="bull_low_vol",
+                confidence=80,
             )
         ]
 
@@ -148,12 +154,18 @@ class TestMeanReversionMainCLI:
         from nuri.trading.strategy import mean_reversion as mr
 
         sig = mr.MeanRevSignal(
-            ticker="AAPL", date="2025-03-25", entry_price=170.0,
-            bb_lower=168.0, rsi=25.0, z_score=-2.5, expected_target=175.0,
+            ticker="AAPL",
+            date="2025-03-25",
+            entry_price=170.0,
+            bb_lower=168.0,
+            rsi=25.0,
+            z_score=-2.5,
+            expected_target=175.0,
         )
         monkeypatch.setattr(mr, "scan_mean_reversion", lambda: [sig])
         monkeypatch.setattr(
-            mr, "backtest_mean_reversion",
+            mr,
+            "backtest_mean_reversion",
             lambda: {"strategy": "mean_reversion", "total_trades": 0},
         )
         rc = mr.main()
@@ -173,14 +185,12 @@ class TestStrategicAllocationDriftEdges:
         # quantity is a string non-convertible value
         with get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) VALUES (?, ?, ?, ?, ?)",
                 ("test", "BAD", "not_a_number", 100.0, "Technology"),
             )
             # Add one valid row so we don't hit the `total_value <= 0` branch
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) VALUES (?, ?, ?, ?, ?)",
                 ("test", "AAPL", 10, 150.0, "Technology"),
             )
         result = compute_current_allocation(db_path=db_path)
@@ -194,13 +204,11 @@ class TestStrategicAllocationDriftEdges:
         with get_db(db_path) as conn:
             # quantity 0 → value 0 → skip
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) VALUES (?, ?, ?, ?, ?)",
                 ("test", "ZERO", 0, 100.0, "Technology"),
             )
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) VALUES (?, ?, ?, ?, ?)",
                 ("test", "AAPL", 5, 200.0, "Technology"),
             )
         result = compute_current_allocation(db_path=db_path)
@@ -217,14 +225,12 @@ class TestStrategicAllocationDriftEdges:
         with get_db(db_path) as conn:
             # 텍스트 quantity → ValueError → continue
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) VALUES (?, ?, ?, ?, ?)",
                 ("test", "BAD1", "abc", 100.0, "Technology"),
             )
             # quantity = 0 → value <= 0 → continue
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) VALUES (?, ?, ?, ?, ?)",
                 ("test", "BAD2", 0, 100.0, "Technology"),
             )
         result = compute_current_allocation(db_path=db_path)
@@ -236,8 +242,7 @@ class TestStrategicAllocationDriftEdges:
 
         with get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector) VALUES (?, ?, ?, ?, ?)",
                 ("test", "AAPL", 10, 150.0, "Technology"),
             )
         # Remove asset_class_rules
