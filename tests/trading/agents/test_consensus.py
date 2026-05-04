@@ -774,6 +774,32 @@ class TestConsensus_R23:
         captured = capsys.readouterr()
         assert "합의 결과 없음" in captured.out
 
+    def test_print_consensus_no_buy_hold_skips_targets_block(self, capsys, monkeypatch):
+        """presentation.py 91->104: SELL only (BUY/HOLD 없음) → 'Price Targets' 블록 출력 생략 (#611)."""
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import ConsensusResult, print_consensus
+
+        results = [
+            ConsensusResult(
+                ticker="ZZZ",
+                final_action="SELL",  # BUY/HOLD 아님 → buy_hold 빈 리스트 → 91 False
+                final_confidence=70.0,
+                agreement_rate=0.7,
+                verdicts=[AgentVerdict("technical", "ZZZ", "SELL", 80, "sell signal")],
+                dissent=[],
+                reasoning="technical: sell",
+            )
+        ]
+        # external 호출 차단 (테스트 isolation)
+        monkeypatch.setattr(
+            "nuri.collectors.external.get_external", lambda *a: (_ for _ in ()).throw(ImportError("no module"))
+        )
+        print_consensus(results)
+        captured = capsys.readouterr()
+        assert "ZZZ" in captured.out
+        # buy_hold 비어있음 → 'Price Targets' 헤더 미출력 (91->104 분기 확인)
+        assert "Price Targets" not in captured.out
+
     def test_print_consensus_external_data(self, capsys, monkeypatch):
         """Print consensus with external data."""
         from nuri.trading.agents.base import AgentVerdict
