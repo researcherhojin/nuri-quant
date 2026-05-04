@@ -230,20 +230,23 @@ class TestExternalEdgeCases:
 class TestExternalCliRunpy:
     """`__main__` block else-branch (line 218) — runpy invocation with non-empty summary."""
 
-    def test_runpy_default_branch_with_records_invokes_print_summary(self, monkeypatch, capsys):
-        """summary["total_records"]>0 → else 분기 print_summary 호출 (line 218)."""
-        import runpy
-        import sys
-        from unittest.mock import patch
+    def test_main_default_branch_with_records_invokes_print_summary(self, monkeypatch):
+        """summary["total_records"]>0 → else 분기 print_summary 호출 (line 218).
 
-        def fake_summary(*a, **kw):
-            return {
-                "total_records": 5,
-                "sources": [{"source": "tipranks", "tickers": 2, "records": 5, "latest_date": "2026-01-01"}],
-            }
+        runpy 가 module source 를 재실행해 monkeypatch 가 무효화되는 문제를 피하기 위해
+        main(argv) 추출 후 직접 호출. (PR #595/#605/#608 패턴)
+        """
+        from nuri.collectors import external as ext_mod
 
-        monkeypatch.setattr(sys, "argv", ["external"])  # no flags → default branch
-        with patch("nuri.collectors.external.get_external_summary", side_effect=fake_summary):
-            runpy.run_module("nuri.collectors.external", run_name="__main__")
-        out = capsys.readouterr().out
-        assert "외부 데이터 요약" in out
+        called: list[bool] = []
+
+        monkeypatch.setattr(
+            ext_mod,
+            "get_external_summary",
+            lambda *a, **kw: {"total_records": 5, "sources": []},
+        )
+        monkeypatch.setattr(ext_mod, "print_summary", lambda *a, **kw: called.append(True))
+
+        rc = ext_mod.main([])
+        assert rc == 0
+        assert called == [True]

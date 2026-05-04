@@ -180,7 +180,8 @@ def print_summary(db_path=None) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI: 외부 데이터 저장 / 조회 / 요약 dispatcher."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="외부 데이터 관리")
@@ -193,7 +194,7 @@ if __name__ == "__main__":
     parser.add_argument("--show", metavar="TICKER", help="종목 외부 데이터 조회")
     parser.add_argument("--summary", action="store_true", help="전체 요약")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.save_tipranks:
         ticker, consensus, target, analysts = args.save_tipranks
@@ -208,7 +209,6 @@ if __name__ == "__main__":
     elif args.summary:
         print_summary()
     else:
-        # 기본: 요약 + 데이터 없으면 안내
         summary = get_external_summary()
         if summary["total_records"] == 0:
             print("외부 데이터 없음. 저장 예시:")
@@ -216,3 +216,8 @@ if __name__ == "__main__":
             print("  python -m nuri.collectors.external --save-superinvestor NVDA 14 'buying'")
         else:
             print_summary()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
