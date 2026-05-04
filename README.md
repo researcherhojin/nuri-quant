@@ -58,7 +58,7 @@ The system rests on five enduring decisions. Recent feature additions and tuning
 
 | # | Principle | What it means in practice |
 |---|-----------|---------------------------|
-| 1 | **Sole SQLite gateway** | `nuri/core/db/` (package after #566 P2 refactor) is the only `sqlite3` importer (hook-enforced — every other module uses `query()` / `upsert_*()` / `get_db()` with optional `db_path=` for test isolation). 50 tables, WAL mode, 43 forward-only migrations. |
+| 1 | **Sole SQLite gateway** | `nuri/core/db/` (package after #566 P2 refactor) is the only `sqlite3` importer (hook-enforced — every other module uses `query()` / `upsert_*()` / `get_db()` with optional `db_path=` for test isolation). 51 tables, WAL mode, 44 forward-only migrations. |
 | 2 | **Config over code** | Stop-loss thresholds, agent weights, signal metadata, SIEGE gate policies — all in `config/*.yaml`. Changing a rule or adding a market means editing YAML, never Python. |
 | 3 | **Loose phase coupling** | Pipeline phases communicate via DB tables / CSV only. No cross-phase imports. Re-run any upstream phase and downstream consumers refresh. |
 | 4 | **3-D SIEGE certification** | Gates apply per `Account (strategy)` × `Asset Class (us_equity / kr_equity / kr_index / commodity / bond)` × `Execution Market`. 1 error-grade fail → REJECTED, no manual override. Inspired by [nutshells3/SIEGE](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution). |
@@ -77,7 +77,7 @@ The system rests on five enduring decisions. Recent feature additions and tuning
 |  | `nuri/trading/recommend/` | Candidates, price targets, rebalance advisor, outcome tracker (30 / 60 / 90d). |
 | **Serve** | `nuri/api/` | FastAPI REST + SSE on **:8001** (69 endpoints incl. `/actions`, `/opportunities`, `/market-context`, `/coverage`). Swagger at `/docs`. |
 |  | `frontend/` | Next.js 16 + React 19 + Tailwind 4 + shadcn/ui on **:3000** (17 routes, Action-First dashboard, dark theme). |
-| **Foundation** | `nuri/core/` | `db/` (sole SQLite gateway, 8 submodules incl. agent_runtime / discord_outbox_ops / market_data / portfolio / research_ops) · `events.py` (journal) · `freshness.py` (SLA) · `timezone.py` (KST) · `rules.py` · `signal_config.py` · `axis.py` (alpha/portfolio helpers) · `account_cap.py` (#518 per-account cap derivation). |
+| **Foundation** | `nuri/core/` | `db/` (sole SQLite gateway, 11 submodules incl. agent_runtime / discord_outbox_ops / execution_ops / market_data / portfolio / postmortem_ops / research_ops / trades) · `events.py` (journal) · `freshness.py` (SLA) · `timezone.py` (KST) · `rules.py` · `signal_config.py` · `axis.py` (alpha/portfolio helpers) · `account_cap.py` (#518 per-account cap derivation). |
 |  | `config/*.yaml` | `rules` · `agents` · `signals` · `universe` · `stock_types` · `portfolio` (gitignored) · `kis/` (gitignored credentials). |
 | **LLM gateway** | `nuri/llm/` | `openai_client.py` (sole external entry, audit-logged) · event classifier · LLM daily report (OpenAI primary, llama.cpp / Ollama fallback). |
 

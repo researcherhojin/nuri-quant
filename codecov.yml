@@ -4,12 +4,18 @@
 # Codecov가 PR마다 backend/frontend 커버리지를 별도 배지로 표시
 # 정책: 자동 임계값 + 1% 허용범위 (작은 변동 무시)
 
-# Uploads per event (after slow-split):
-#   - PR:   2 backend-fast shards + 1 frontend                    = 3 uploads
-#   - push: 2 backend-fast shards + 1 backend-slow + 1 frontend   = 4 uploads
+# Uploads per event (after slow-split + #612 per-shard unique flag):
+#   - PR:   backend-fast-1 + backend-fast-2 + frontend                  = 3 uploads
+#   - push: backend-fast-1 + backend-fast-2 + backend-slow + frontend   = 4 uploads
 # `after_n_builds` removed — a static value would either hang PRs (waiting
 # for a 4th upload that never comes) or report partial push coverage. Codecov
 # now processes uploads as they arrive; status settles on the final state.
+#
+# #612: shard 별 unique flag — 이전엔 두 shard 가 같은 `backend-fast` 로 업로드,
+# codecov 가 같은 flag/commit 의 후속 upload 를 union 이 아닌 replace 로 처리해
+# shard1-only 라인이 final view 에서 missed 로 나타나는 merge bug 가 발생. 분리하면
+# component_management `backend.*` regex 가 여전히 matches 해 backend component 합산
+# 결과는 동일.
 codecov:
   notify: {}
 
@@ -25,14 +31,18 @@ coverage:
         threshold: 5%        # 리팩토링(문자열 교체 등)에서 미커버 기존 라인 허용
 
 # Backend = Python (nuri/), Frontend = TypeScript (frontend/src/)
-# backend-fast / backend-slow: workflow 의 slow-split 대응. 두 flag 모두
+# backend-fast-{1,2} / backend-slow: workflow 의 shard-split 대응. 모두
 # nuri/ 를 대상으로 하고, component_management 에서 'backend' component 로
 # 합쳐진다 (flag_regexes: backend.*).
 flags:
-  backend-fast:
+  backend-fast-1:
     paths:
       - nuri/
     carryforward: true       # 미수정 파일 직전 커버리지 유지
+  backend-fast-2:
+    paths:
+      - nuri/
+    carryforward: true
   backend-slow:
     paths:
       - nuri/
@@ -64,7 +74,7 @@ component_management:
     - component_id: backend
       name: Backend (Python)
       flag_regexes:
-        - backend.*          # backend-fast + backend-slow 모두 매치
+        - backend.*          # backend-fast-1 / -2 / backend-slow 모두 매치
     - component_id: frontend
       name: Frontend (Next.js)
       flag_regexes:
