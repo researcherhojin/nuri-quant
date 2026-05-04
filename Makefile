@@ -112,6 +112,13 @@ crons-status:    ## 설치된 cron 상태 + 로그 위치 표시
 	@echo ""
 	@echo "  로그: data/logs/"
 
+# ─── #596 Phase 1 — Post-market brief (KR / US) ──────────
+postmortem-kr:    ## Post-market brief (KR session, KST 16:00 — KOSPI close + 30min)
+	@.venv/bin/python -m nuri.alerts.postmarket_brief --session kr
+
+postmortem-us:    ## Post-market brief (US session, NYSE 16:00 ET + 30min)
+	@.venv/bin/python -m nuri.alerts.postmarket_brief --session us
+
 test-slow:
 	$(PYTHON) -m pytest tests/ -v -n auto --dist worksteal -m "slow"
 
