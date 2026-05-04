@@ -396,7 +396,9 @@ def generate_advisor_report(db_path: Optional[Path] = None) -> dict:
     }
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: 리밸런스 어드바이저 리포트 출력."""
+    del argv  # 인자 없음
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     report = generate_advisor_report()
@@ -411,3 +413,8 @@ if __name__ == "__main__":
             print("  ⚠ CRITICAL 위반 존재 — 즉시 조치 필요")
     else:
         print("\n  포트폴리오 규칙 준수 상태입니다.")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

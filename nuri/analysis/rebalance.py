@@ -154,12 +154,18 @@ def print_rebalance(df: pd.DataFrame) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: 리밸런싱 제안 (mvo / rp)."""
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--method", choices=["mvo", "rp"], default="mvo",
                         help="최적화 방법: mvo(샤프 최대화) 또는 rp(리스크 패리티)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     df = analyze_rebalance(method=args.method)
     print_rebalance(df)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
