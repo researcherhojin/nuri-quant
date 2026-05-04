@@ -228,7 +228,7 @@ PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
 <<<<<<< HEAD
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 5,422 tests, 224 files |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 5,431 tests, 225 files |
 =======
 >>>>>>> origin/main
 | Frontend tests | 목표 ≥ 90% | 917 tests, 82 files |
