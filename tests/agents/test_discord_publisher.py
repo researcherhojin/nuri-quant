@@ -230,6 +230,22 @@ class TestNetworkError:
         assert result.ok is True
         assert result.retry_count == 1
 
+    def test_connect_error_persistent_breaks_after_final_attempt(self, env_webhooks, patched_db):
+        """모든 attempt 가 HTTPError → 마지막 attempt 의 break 분기 실행 (sync, line 227)."""
+        with patch("httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.post.side_effect = [
+                httpx.ConnectError("conn refused 1"),
+                httpx.ConnectError("conn refused 2"),
+            ]
+            with patch("time.sleep"):
+                pub = DiscordPublisher()
+                result = pub.publish_text(Channel.ROLLOUT, "net-dead")
+
+        assert result.ok is False
+        assert "ConnectError" in (result.error or "")
+        # MAX_RETRIES + 1 = 2 attempts; retry_count records final attempt count
+        assert result.retry_count == DiscordPublisher.MAX_RETRIES
+
 
 class TestModulePublish:
     def test_module_publish_singleton(self, env_webhooks, patched_db):
@@ -320,6 +336,24 @@ class TestAsyncPublish:
         assert result.ok is True
         assert result.retry_count == 1
 
+    def test_async_connect_error_persistent_breaks_after_final(self, env_webhooks, patched_db):
+        """async: 모든 attempt 가 HTTPError → final break 분기 (line 285)."""
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        mock_client = self._mock_async_client(
+            httpx.ConnectError("conn 1"),
+            httpx.ConnectError("conn 2"),
+        )
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                pub = DiscordPublisher()
+                result = asyncio.run(pub.apublish_text(Channel.ROLLOUT, "async-net-dead"))
+
+        assert result.ok is False
+        assert "ConnectError" in (result.error or "")
+        assert result.retry_count == DiscordPublisher.MAX_RETRIES
+
     def test_async_missing_env_skips(self, monkeypatch, patched_db):
         import asyncio
 
@@ -348,3 +382,17 @@ class TestCli:
         monkeypatch.delenv("DISCORD_WEBHOOK_OPS", raising=False)
         rc = main(["ops", "no-env"])
         assert rc == 1
+
+    def test_publisher_runpy_main(self, monkeypatch):
+        """__main__ block (lines 366-368): runpy invocation — invalid channel → argparse exit 2."""
+        import io
+        import runpy
+        import sys
+
+        # 잘못된 채널 → argparse choices 위반 → SystemExit(2). 외부 webhook 안 건드림.
+        monkeypatch.setattr(sys, "argv", ["publisher", "not-a-channel", "smoke"])
+        monkeypatch.setattr(sys, "stdout", io.StringIO())
+        monkeypatch.setattr(sys, "stderr", io.StringIO())
+        with pytest.raises(SystemExit) as exc:
+            runpy.run_module("nuri.agents.discord.publisher", run_name="__main__")
+        assert exc.value.code == 2

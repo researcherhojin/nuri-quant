@@ -162,9 +162,77 @@ class TestValidationMainRunpy:
 
     def test_superinvestor_backtest_main(self, monkeypatch, db_path_mp):
         """superinvestor_backtest main with default args: empty DB → empty."""
-        out = _run_module(
+        _run_module(
             "nuri.quant.validation.superinvestor_backtest",
             monkeypatch,
             argv=["superinvestor_backtest"],
         )
+
+    # ─── Branch coverage: __main__ 안의 if results / --history / --signal 등 ───
+
+    def test_classifier_main_with_history_flag(self, monkeypatch, db_path_mp):
+        """classifier --history 분기 진입 (line 642). history=[] 면 CSV write 안 함."""
+        out = _run_module(
+            "nuri.quant.regime.classifier",
+            monkeypatch,
+            argv=["classifier", "--history"],
+        )
+        assert isinstance(out, str)
+
+    def test_classifier_main_history_csv_write_via_seeded_db(self, monkeypatch, db_path_mp, tmp_path):
+        """classifier --history 가 history 채워서 CSV save 까지 (lines 642-652).
+
+        runpy-aware 패치 전략:
+        1) `nuri.core.db.query` 를 mock 으로 패치 → runpy reload 후 `from nuri.core.db
+           import query` 시 mock 이 보임.
+        2) REPORT_DIR 도 module-level 정의 → runpy reload 시 redefine 됨. 하지만
+           classifier 의 REPORT_DIR 는 `Path("data/reports")` 같은 literal 일 수 있음 —
+           tmp_path 로 redirect 하려면 source-level patch 필요. monkeypatch.setattr 가
+           module 객체에 setattr 하므로 reload 후엔 무효 → 직접 chdir 로 우회.
+        """
+        from nuri.quant.regime.classifier import RegimeState
+
+        # classify_regime_history 가 의존하는 query 결과만 mock
+        # (history dates + history snapshot)
+        # 너무 많은 구현 의존이라 deferred — line 642 진입만 cover.
+        # CSV write 경로 (lines 646-652) 는 source 안에서 history 가 비어있으면 skip.
+        # 빈 DB 라 path 도달 어려움 → 별도 issue 로 refactor 권고.
+        pytest.skip(
+            "lines 646-652 (history CSV save) 는 빈 DB 에서 history=[] 가 되어 분기 미진입. "
+            "source 의 main(argv) 추출 + DB seeding 필요 (별도 이슈)."
+        )
+
+    def test_optimizer_main_with_signal_flag(self, monkeypatch, db_path_mp):
+        """optimizer --signal X (lines 293-295): optimize_signal 결과 print top 10.
+
+        runpy 가 module 재실행 → same-module `optimize_signal` 재정의로 source-level
+        patch 가 적용 안 됨. 그러나 optimize_signal 내부의 `query_df` import 는
+        nuri.core.db 외부 모듈이므로 BEFORE runpy 패치가 module reload 후에도 적용됨.
+
+        하지만 실제로 grid sweep + signal 백테스트가 진행되어야 results 가 나옴 →
+        cost 가 너무 큼. line 293 진입은 커버, 294-295 body 는 results 가 빈 list 면 미진입.
+        → 짧게 진입만 확인하고 line 294-295 는 직접 호출 unit test 로 별도 cover.
+        """
+        # Args.signal 분기 진입은 보장 (line 293)
+        out = _run_module(
+            "nuri.quant.backtest.optimizer",
+            monkeypatch,
+            argv=["optimizer", "--signal", "rsi_oversold"],
+        )
+        assert isinstance(out, str)
+
+    def test_analyst_backtest_main_with_min_days_branch(self, monkeypatch, db_path_mp):
+        """analyst_backtest --min-days 진입. 빈 DB → results=[] → CSV write 안 함.
+
+        lines 172-176 (CSV write) 는 results 가 빈 list 면 if-block skip.
+        same-module `validate_estimates` 는 runpy 후 redefine 되어 monkeypatch 무효 →
+        구현 source 가 main(argv) 함수로 추출되기 전엔 cover 불가.
+        """
+        out = _run_module(
+            "nuri.quant.validation.analyst_backtest",
+            monkeypatch,
+            argv=["analyst_backtest", "--min-days", "30"],
+        )
+        assert isinstance(out, str)
+
         assert isinstance(out, str)

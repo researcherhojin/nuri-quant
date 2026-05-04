@@ -448,3 +448,36 @@ class TestRunStep:
         result = run_step("validate", lambda: 5, db_path=db_path)
         assert result["status"] == "success"
         assert result["result"] == 5
+
+
+class TestEventsDefensivePaths:
+    """`get_step_status` query 실패 → 'unknown' (lines 86-91), `list_events` JSON
+    decode 실패 → raw payload (lines 170-171)."""
+
+    def test_get_step_status_query_failure_returns_unknown(self, db_path, monkeypatch):
+        from nuri.core.events import get_step_status
+
+        def _boom(*a, **kw):
+            raise RuntimeError("simulated DB outage")
+
+        monkeypatch.setattr("nuri.core.events.query", _boom)
+        result = get_step_status("collect", db_path=db_path)
+        assert result["status"] == "unknown"
+        assert result["timestamp"] is None
+        assert result["payload"] is None
+
+    def test_get_step_history_json_decode_failure_keeps_raw_payload(self, db_path):
+        from nuri.core.db.connection import get_db
+        from nuri.core.events import get_step_history
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                """INSERT INTO pipeline_events (event_type, step, payload)
+                   VALUES (?, ?, ?)""",
+                ("step_completed", "weird_step", "not-valid-json{"),
+            )
+
+        events = get_step_history("weird_step", limit=1, db_path=db_path)
+        assert len(events) == 1
+        # decode 실패 → payload 가 raw string 그대로
+        assert events[0]["payload"] == "not-valid-json{"

@@ -76,6 +76,31 @@ class TestContextCollection:
         assert ctx["opportunities"] == []
         assert ctx["macro_events"] == []
 
+    def test_regime_populates_ctx_when_classify_returns_state(self):
+        """classify_regime non-None → ctx["regime"] dict 채움 (line 119)."""
+        from nuri.alerts.premarket_brief import _collect_context
+        from nuri.quant.regime.classifier import RegimeState
+
+        fake = RegimeState(
+            date="2026-04-30",
+            trend="bull",
+            volatility="low",
+            regime="bull_low_vol",
+            confidence=0.75,
+            details={},
+        )
+        with (
+            patch("nuri.quant.regime.classifier.classify_regime", return_value=fake),
+            patch(
+                "nuri.api.routes.actions._build_actions",
+                return_value={"urgent": [], "portfolio": [], "check": [], "hold": []},
+            ),
+            patch("nuri.api.routes.actions._build_opportunities", return_value=[]),
+        ):
+            ctx = _collect_context()
+        assert ctx["regime"]["regime"] == "bull_low_vol"
+        assert ctx["regime"]["confidence"] == 75  # round(0.75*100, 0)
+
     def test_actions_key_has_all_4_buckets(self):
         """4-bucket shape 보존 — PR #429 가 추가한 portfolio bucket 이 brief 에도 노출."""
         from nuri.alerts.premarket_brief import _collect_context

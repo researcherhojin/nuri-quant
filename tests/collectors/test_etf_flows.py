@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -18,12 +19,18 @@ class TestEtfFlowsCollector:
         from nuri.collectors.etf_flows import EtfFlowsCollector
 
         c = EtfFlowsCollector()
-        records = [{"ticker": "SPY", "date": "2026-03-30", "name": "SPDR S&P 500",
-                     "total_assets": 500e9, "volume_avg": 80000000,
-                     "nav_price": 520.0}]
+        records = [
+            {
+                "ticker": "SPY",
+                "date": "2026-03-30",
+                "name": "SPDR S&P 500",
+                "total_assets": 500e9,
+                "volume_avg": 80000000,
+                "nav_price": 520.0,
+            }
+        ]
         count = c.save(records)
         assert count == 1
-
 
 
 class TestEtfFlowsDeep:
@@ -31,10 +38,20 @@ class TestEtfFlowsDeep:
         from nuri.collectors.etf_flows import EtfFlowsCollector
 
         c = EtfFlowsCollector()
-        with patch.object(c, "collect", return_value=[
-            {"ticker": "SPY", "date": "2026-03-30", "name": "SPDR S&P 500",
-             "total_assets": 500e9, "volume_avg": 80000000, "nav_price": 520.0},
-        ]):
+        with patch.object(
+            c,
+            "collect",
+            return_value=[
+                {
+                    "ticker": "SPY",
+                    "date": "2026-03-30",
+                    "name": "SPDR S&P 500",
+                    "total_assets": 500e9,
+                    "volume_avg": 80000000,
+                    "nav_price": 520.0,
+                },
+            ],
+        ):
             data = c.collect()
             count = c.save(data)
         assert count == 1
@@ -46,16 +63,25 @@ class TestEtfFlowsDeep:
         assert result is None or isinstance(result, pd.DataFrame)
 
 
-
 class TestEtfFlowsFull:
     def test_collect_mock(self, rich_db):
         from nuri.collectors.etf_flows import EtfFlowsCollector
 
         c = EtfFlowsCollector()
-        with patch.object(c, "collect", return_value=[
-            {"ticker": "SPY", "date": "2026-03-30", "name": "SPDR S&P 500",
-             "total_assets": 500e9, "volume_avg": 80000000, "nav_price": 520},
-        ]):
+        with patch.object(
+            c,
+            "collect",
+            return_value=[
+                {
+                    "ticker": "SPY",
+                    "date": "2026-03-30",
+                    "name": "SPDR S&P 500",
+                    "total_assets": 500e9,
+                    "volume_avg": 80000000,
+                    "nav_price": 520,
+                },
+            ],
+        ):
             result = c.collect()
             count = c.save(result)
         assert count == 1
@@ -66,13 +92,20 @@ class TestEtfFlowsFull:
 # ##############################################################################
 
 
-
 class TestEtfFlowsCollectorSectorRotation:
     def test_collect_success(self, rich_db):
         from nuri.collectors.etf_flows import _upsert_etf_flows
 
-        records = [{"ticker": "XLK", "date": "2025-03-15", "name": "Technology Select SPDR",
-                     "total_assets": 50e9, "volume_avg": 10000000.0, "nav_price": 200.0}]
+        records = [
+            {
+                "ticker": "XLK",
+                "date": "2025-03-15",
+                "name": "Technology Select SPDR",
+                "total_assets": 50e9,
+                "volume_avg": 10000000.0,
+                "nav_price": 200.0,
+            }
+        ]
         count = _upsert_etf_flows(records, db_path=rich_db)
         assert count == 1
 
@@ -94,8 +127,16 @@ class TestEtfFlowsCollectorSectorRotation:
         records = []
         for d in ["2025-03-01", "2025-03-08", "2025-03-15", "2025-03-22"]:
             for ticker, aum in [("XLK", 50e9 + int(d[-2:]) * 1e8), ("XLF", 30e9 + int(d[-2:]) * 5e7)]:
-                records.append({"ticker": ticker, "date": d, "name": f"Test {ticker}",
-                                "total_assets": aum, "volume_avg": 10000000.0, "nav_price": 200.0})
+                records.append(
+                    {
+                        "ticker": ticker,
+                        "date": d,
+                        "name": f"Test {ticker}",
+                        "total_assets": aum,
+                        "volume_avg": 10000000.0,
+                        "nav_price": 200.0,
+                    }
+                )
         _upsert_etf_flows(records, db_path=rich_db)
         df = analyze_sector_rotation(db_path=rich_db)
         assert df is not None
@@ -110,9 +151,19 @@ class TestEtfFlowsCollectorSectorRotation:
     def test_analyze_sector_rotation_single_day(self, rich_db):
         from nuri.collectors.etf_flows import _upsert_etf_flows, analyze_sector_rotation
 
-        _upsert_etf_flows([{"ticker": "XLK", "date": "2025-03-15", "name": "Technology",
-                            "total_assets": 50e9, "volume_avg": 10000000.0, "nav_price": 200.0}],
-                          db_path=rich_db)
+        _upsert_etf_flows(
+            [
+                {
+                    "ticker": "XLK",
+                    "date": "2025-03-15",
+                    "name": "Technology",
+                    "total_assets": 50e9,
+                    "volume_avg": 10000000.0,
+                    "nav_price": 200.0,
+                }
+            ],
+            db_path=rich_db,
+        )
         result = analyze_sector_rotation(db_path=rich_db)
         assert result is None
 
@@ -126,12 +177,21 @@ class TestEtfFlowsCollectorSectorRotation:
     def test_print_sector_rotation_with_data(self, capsys):
         from nuri.collectors.etf_flows import print_sector_rotation
 
-        df = pd.DataFrame([{"ticker": "XLK", "sector": "Technology", "aum_current": 50e9,
-                            "aum_prev": 48e9, "aum_change_pct": 4.17, "volume_trend_pct": 2.5}])
+        df = pd.DataFrame(
+            [
+                {
+                    "ticker": "XLK",
+                    "sector": "Technology",
+                    "aum_current": 50e9,
+                    "aum_prev": 48e9,
+                    "aum_change_pct": 4.17,
+                    "volume_trend_pct": 2.5,
+                }
+            ]
+        )
         print_sector_rotation(df)
         out = capsys.readouterr().out
         assert "XLK" in out
-
 
 
 class TestEtfFlowsCollectorErrorHandling:
@@ -185,19 +245,93 @@ class TestEtfFlowsCollectorErrorHandling:
         records = []
         for ticker in ["XLK", "XLF"]:
             for d in ["2025-01-15", "2025-01-30"]:
-                records.append({"ticker": ticker, "date": d, "name": f"{ticker} ETF",
-                                "total_assets": 50e9, "volume_avg": 20000000, "nav_price": 200.0})
+                records.append(
+                    {
+                        "ticker": ticker,
+                        "date": d,
+                        "name": f"{ticker} ETF",
+                        "total_assets": 50e9,
+                        "volume_avg": 20000000,
+                        "nav_price": 200.0,
+                    }
+                )
         _upsert_etf_flows(records, db_path=db_with_portfolio)
         assert analyze_sector_rotation(db_path=db_with_portfolio) is not None
 
     def test_analyze_sector_rotation_with_volume_trend(self, db_with_portfolio):
         from nuri.collectors.etf_flows import _upsert_etf_flows, analyze_sector_rotation
 
-        records = [{"ticker": "XLK", "date": f"2025-01-{d:02d}", "name": "Tech",
-                     "total_assets": 50e9 + d * 1e9, "volume_avg": 20000000 + d * 1000000, "nav_price": 200 + d}
-                   for d in range(1, 9)]
+        records = [
+            {
+                "ticker": "XLK",
+                "date": f"2025-01-{d:02d}",
+                "name": "Tech",
+                "total_assets": 50e9 + d * 1e9,
+                "volume_avg": 20000000 + d * 1000000,
+                "nav_price": 200 + d,
+            }
+            for d in range(1, 9)
+        ]
         _upsert_etf_flows(records, db_path=db_with_portfolio)
         assert analyze_sector_rotation(db_path=db_with_portfolio) is not None
+
+    def test_analyze_sector_rotation_aum_prev_zero_yields_zero_pct(self, db_with_portfolio):
+        """aum_prev=0 → else 분기로 aum_change_pct=0.0 (line 209)."""
+        from nuri.collectors.etf_flows import _upsert_etf_flows, analyze_sector_rotation
+
+        records = [
+            {
+                "ticker": "XLK",
+                "date": "2025-01-01",
+                "name": "Tech",
+                "total_assets": 0.0,
+                "volume_avg": 1e7,
+                "nav_price": 200.0,
+            },
+            {
+                "ticker": "XLK",
+                "date": "2025-01-15",
+                "name": "Tech",
+                "total_assets": 50e9,
+                "volume_avg": 1e7,
+                "nav_price": 210.0,
+            },
+        ]
+        _upsert_etf_flows(records, db_path=db_with_portfolio)
+        df = analyze_sector_rotation(db_path=db_with_portfolio)
+        assert df is not None
+        xlk_row = df[df["ticker"] == "XLK"].iloc[0]
+        assert xlk_row["aum_change_pct"] == 0.0
+
+    def test_analyze_sector_rotation_returns_none_when_per_ticker_short(self, db_with_portfolio):
+        """모든 ticker 가 <2 rows 인 상태 (다른 날짜 다른 ticker) → results 비어 None (line 232).
+
+        df 자체는 2+ unique dates 가 있지만, ticker 별로는 1 row 씩만 → if len(tdf)<2: continue.
+        """
+        from nuri.collectors.etf_flows import _upsert_etf_flows, analyze_sector_rotation
+
+        # 2 unique dates, 2 tickers, each ticker 1 row only
+        records = [
+            {
+                "ticker": "XLK",
+                "date": "2025-01-01",
+                "name": "Tech",
+                "total_assets": 50e9,
+                "volume_avg": 1e7,
+                "nav_price": 200.0,
+            },
+            {
+                "ticker": "XLF",
+                "date": "2025-01-15",
+                "name": "Fin",
+                "total_assets": 30e9,
+                "volume_avg": 1e7,
+                "nav_price": 100.0,
+            },
+        ]
+        _upsert_etf_flows(records, db_path=db_with_portfolio)
+        result = analyze_sector_rotation(db_path=db_with_portfolio)
+        assert result is None
 
     def test_print_sector_rotation_none(self, capsys):
         from nuri.collectors.etf_flows import print_sector_rotation
@@ -208,18 +342,29 @@ class TestEtfFlowsCollectorErrorHandling:
     def test_print_sector_rotation_with_data(self, capsys):
         from nuri.collectors.etf_flows import print_sector_rotation
 
-        df = pd.DataFrame([{"ticker": "XLK", "sector": "Technology", "aum_current": 50e9,
-                            "aum_prev": 48e9, "aum_change_pct": 4.17, "volume_trend_pct": 10.0}])
+        df = pd.DataFrame(
+            [
+                {
+                    "ticker": "XLK",
+                    "sector": "Technology",
+                    "aum_current": 50e9,
+                    "aum_prev": 48e9,
+                    "aum_change_pct": 4.17,
+                    "volume_trend_pct": 10.0,
+                }
+            ]
+        )
         print_sector_rotation(df)
         assert "XLK" in capsys.readouterr().out
-
 
 
 class TestEtfFlowsNanValues:
     def test_collect_nan_assets(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.etf_flows import EtfFlowsCollector
 
-        mock_df = pd.DataFrame([{"name": "Test ETF", "total_assets": float("nan"), "volume_avg": float("nan"), "nav_price": float("nan")}])
+        mock_df = pd.DataFrame(
+            [{"name": "Test ETF", "total_assets": float("nan"), "volume_avg": float("nan"), "nav_price": float("nan")}]
+        )
         mock_obb = MagicMock()
         mock_obb.etf.info.return_value = MagicMock(to_df=MagicMock(return_value=mock_df))
         import sys
@@ -309,10 +454,10 @@ class TestEtfFlowsYfinanceFallback:
         info = {
             "longName": "Partial ETF",
             "totalAssets": 100_000_000,
-            "averageVolume": float("nan"),        # primary NaN
-            "averageVolume10days": 5_000_000,     # secondary usable
-            "navPrice": float("nan"),             # primary NaN
-            "regularMarketPrice": 55.0,           # secondary usable
+            "averageVolume": float("nan"),  # primary NaN
+            "averageVolume10days": 5_000_000,  # secondary usable
+            "navPrice": float("nan"),  # primary NaN
+            "regularMarketPrice": 55.0,  # secondary usable
         }
         mock_yf = MagicMock()
         mock_yf.Ticker.return_value.info = info
@@ -322,6 +467,55 @@ class TestEtfFlowsYfinanceFallback:
         assert rec is not None
         assert rec["volume_avg"] == 5_000_000, "secondary averageVolume10days must be picked when primary is NaN"
         assert rec["nav_price"] == 55.0, "secondary regularMarketPrice must be picked when navPrice is NaN"
+
+    def test_collect_logs_aum_when_etf_count_under_10(self, monkeypatch, db_with_portfolio, caplog):
+        """`len(etfs_list) < 10 and total_assets` → verbose AUM 로그 (line 83).
+
+        ALL_ETFS 를 단일 ticker 로 줄여 verbose log 분기 활성화.
+        """
+        import sys
+
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        # ALL_ETFS 짧게 monkeypatch (1 < 10)
+        monkeypatch.setattr("nuri.collectors.etf_flows.ALL_ETFS", {"SPY": "S&P 500"})
+
+        # OpenBB 실패 → yfinance fallback
+        mock_obb = MagicMock()
+        mock_obb.etf.info.side_effect = ImportError("not found")
+        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+
+        # yfinance.Ticker.info 반환
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value.info = {
+            "longName": "Test SPY",
+            "totalAssets": 5e11,  # 500B
+            "averageVolume": 80_000_000,
+            "navPrice": 700.0,
+        }
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        with caplog.at_level("INFO", logger="nuri.collectors.etf_flows"):
+            results = EtfFlowsCollector().collect()
+
+        assert len(results) == 1
+        # verbose 로그에 AUM 출현
+        assert any("AUM=" in rec.message and "SPY" in rec.message for rec in caplog.records)
+
+    def test_yfinance_fallback_returns_none_when_info_empty(self, monkeypatch):
+        """yfinance .info 가 빈 dict (`{}`) → return None (line 122)."""
+        import sys
+
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        self._patch_openbb_fail(monkeypatch)
+
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value.info = {}
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        rec = EtfFlowsCollector()._fetch_etf("EMPTY", "Empty", "2026-04-17")
+        assert rec is None
 
     def test_yfinance_fallback_all_secondary_missing(self, monkeypatch):
         """primary NaN + secondary 도 missing → volume_avg/nav_price 는 None (total_assets 있으면 row 유지)."""

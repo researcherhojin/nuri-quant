@@ -234,3 +234,82 @@ class TestSourceParam:
 
         info = [r for r in caplog.records if "source=universe" in r.message]
         assert len(info) >= 1
+
+
+class TestCallWithTimeout:
+    """`_call_with_timeout` (line 42) — Future timeout → None 반환."""
+
+    def test_timeout_returns_none(self, monkeypatch):
+        """ThreadPoolExecutor future.result(timeout) → TimeoutError → None.
+
+        주의: tests/collectors/conftest.py 가 time.sleep 를 no-op 으로 패치하므로
+        sleep 기반 slowness 가 작동 안 함. 직접 monkeypatch 로 sleep 복원 후 사용.
+        """
+        import threading
+        import time as _real_time
+
+        # conftest.py 의 sleep mock 우회 위해 새 evt-based wait 사용
+        evt = threading.Event()
+
+        from nuri.collectors.stock_kr import _call_with_timeout
+
+        def slow():
+            evt.wait(timeout=1.0)  # threading.Event.wait 는 sleep mock 안 받음
+            return 42
+
+        try:
+            result = _call_with_timeout(slow, timeout_sec=0.05)
+            assert result is None
+        finally:
+            evt.set()
+
+
+class TestCollectTickerTimeoutNone:
+    """`_collect_ticker` 가 _call_with_timeout 으로부터 None 받으면 (pykrx 타임아웃)
+    None 반환 + debug log (lines 123-124)."""
+
+    def test_timeout_returns_none_with_log(self, monkeypatch, caplog):
+        import logging as _logging
+
+        from nuri.collectors.stock_kr import StockKRCollector
+
+        # _call_with_timeout 이 None 반환 (pykrx hang simulation)
+        monkeypatch.setattr(
+            "nuri.collectors.stock_kr._call_with_timeout",
+            lambda *a, **kw: None,
+        )
+
+        c = StockKRCollector()
+        with caplog.at_level(_logging.DEBUG, logger="nuri.collectors.stock_kr"):
+            result = c._collect_ticker("005930.KS", "20260101", "20260115")
+        assert result is None
+        assert any("timeout" in rec.message.lower() for rec in caplog.records)
+
+
+class TestCollectIndicesMultiIndexColumns:
+    """`_collect_indices` MultiIndex 컬럼 분기 (line 166)."""
+
+    def test_yfinance_multiindex_columns_normalized(self, monkeypatch):
+        """yfinance.download 가 MultiIndex 컬럼을 반환할 때 get_level_values(0) 호출."""
+        import sys
+
+        from nuri.collectors.stock_kr import StockKRCollector
+
+        # MultiIndex 컬럼 가진 가짜 DF (yfinance multi-symbol 모드 시 발생)
+        idx = pd.MultiIndex.from_tuples(
+            [("Open", "x"), ("High", "x"), ("Low", "x"), ("Close", "x"), ("Volume", "x"), ("Adj Close", "x")]
+        )
+        df = pd.DataFrame(
+            [[100.0, 110.0, 90.0, 105.0, 1000, 105.0]] * 3,
+            columns=idx,
+            index=pd.to_datetime(["2026-04-01", "2026-04-02", "2026-04-03"]),
+        )
+
+        mock_yf = MagicMock()
+        mock_yf.download.return_value = df
+        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+
+        c = StockKRCollector()
+        results = c._collect_indices(days=3)
+        # MultiIndex normalize → KOSPI/KOSDAQ 각각 3 rows = 최소 1+ row 생성
+        assert len(results) > 0

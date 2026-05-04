@@ -4,8 +4,6 @@ Split from tests/test_collectors_all.py for module-level isolation.
 """
 
 
-
-
 class TestExternalSave:
     def test_save_external(self, db_path):
         from nuri.collectors.external import save_external
@@ -48,7 +46,6 @@ class TestExternalSave:
 # ##############################################################################
 # Source: test_coverage_round4.py
 # ##############################################################################
-
 
 
 class TestExternalCollectorSaveAndGet:
@@ -134,7 +131,6 @@ class TestExternalCollectorSaveAndGet:
         assert "AAPL" in out
 
 
-
 class TestExternalCollectorMoreScenarios:
     def test_save_external_success(self, db_with_portfolio):
         from nuri.collectors.external import save_external
@@ -149,12 +145,18 @@ class TestExternalCollectorMoreScenarios:
     def test_save_external_with_date(self, db_with_portfolio):
         from nuri.collectors.external import save_external
 
-        assert save_external("tipranks", "AAPL", "consensus", "Buy", target_date="2025-01-15", db_path=db_with_portfolio) is True
+        assert (
+            save_external("tipranks", "AAPL", "consensus", "Buy", target_date="2025-01-15", db_path=db_with_portfolio)
+            is True
+        )
 
     def test_save_external_with_numeric(self, db_with_portfolio):
         from nuri.collectors.external import save_external
 
-        assert save_external("tipranks", "AAPL", "target_price", "250.0", numeric_value=250.0, db_path=db_with_portfolio) is True
+        assert (
+            save_external("tipranks", "AAPL", "target_price", "250.0", numeric_value=250.0, db_path=db_with_portfolio)
+            is True
+        )
 
     def test_save_tipranks(self, db_with_portfolio):
         from nuri.collectors.external import get_external, save_tipranks
@@ -210,7 +212,6 @@ class TestExternalCollectorMoreScenarios:
         assert "0건" in capsys.readouterr().out
 
 
-
 class TestExternalEdgeCases:
     def test_save_external_db_error(self, monkeypatch, db_with_portfolio):
         from contextlib import contextmanager
@@ -224,3 +225,25 @@ class TestExternalEdgeCases:
 
         monkeypatch.setattr("nuri.collectors.external.get_db", bad_db)
         assert save_external("tipranks", "AAPL", "consensus", "Buy", db_path=db_with_portfolio) is False
+
+
+class TestExternalCliRunpy:
+    """`__main__` block else-branch (line 218) — runpy invocation with non-empty summary."""
+
+    def test_runpy_default_branch_with_records_invokes_print_summary(self, monkeypatch, capsys):
+        """summary["total_records"]>0 → else 분기 print_summary 호출 (line 218)."""
+        import runpy
+        import sys
+        from unittest.mock import patch
+
+        def fake_summary(*a, **kw):
+            return {
+                "total_records": 5,
+                "sources": [{"source": "tipranks", "tickers": 2, "records": 5, "latest_date": "2026-01-01"}],
+            }
+
+        monkeypatch.setattr(sys, "argv", ["external"])  # no flags → default branch
+        with patch("nuri.collectors.external.get_external_summary", side_effect=fake_summary):
+            runpy.run_module("nuri.collectors.external", run_name="__main__")
+        out = capsys.readouterr().out
+        assert "외부 데이터 요약" in out

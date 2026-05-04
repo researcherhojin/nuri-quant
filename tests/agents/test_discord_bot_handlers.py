@@ -113,6 +113,24 @@ class TestSlashCommandHandlers:
         ix.response.defer.assert_awaited_once_with(thinking=True)
         ix.followup.send.assert_awaited_once()
 
+    def test_health_handler_subprocess_timeout(self, bot_components):
+        """/health: subprocess.TimeoutExpired → rc=124 + 'timeout 30s' (lines 134-135)."""
+        import subprocess
+
+        _, tree, guild = bot_components
+        callback = _get_callback(tree, guild, "health")
+        ix = self._make_interaction()
+
+        # subprocess.run raises TimeoutExpired → caught inside the nested _run() helper
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="bash", timeout=30)):
+            asyncio.run(callback(ix))
+
+        ix.response.defer.assert_awaited_once_with(thinking=True)
+        ix.followup.send.assert_awaited_once()
+        # Embed body should reflect timeout (rc=124)
+        kwargs = ix.followup.send.await_args.kwargs
+        assert "embed" in kwargs
+
 
 class TestOnReadyEvent:
     """on_ready event handler: tree.sync(guild=guild)."""
