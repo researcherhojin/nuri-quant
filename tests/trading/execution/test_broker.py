@@ -5,6 +5,7 @@ Source: test_new_features.py, test_coverage_round10.py, test_coverage_round12.py
 test_coverage_round13.py, test_coverage_round16.py, test_coverage_round26.py,
 test_coverage_boost.py, test_coverage_extra.py.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,6 +16,7 @@ class TestBroker:
 
     def test_dry_run(self):
         from nuri.trading.execution.broker import get_broker
+
         broker = get_broker(dry_run=True)
         assert broker.get_account_value() == 100_000.0
 
@@ -23,6 +25,7 @@ class TestBroker:
 
     def test_factory_fallback(self):
         from nuri.trading.execution.broker import get_broker
+
         broker = get_broker(dry_run=False)
         assert broker.get_account_value() >= 0
 
@@ -32,24 +35,28 @@ class TestBroker_R10:
 
     def test_dryrun_submit_order(self, rich_db):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         result = broker.submit_order("AAPL", "buy", 10)
         assert result is not None
 
     def test_dryrun_sell_order(self, rich_db):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         result = broker.submit_order("AAPL", "sell", 5)
         assert result is not None
 
     def test_dryrun_get_positions(self, rich_db):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         positions = broker.get_positions()
         assert isinstance(positions, list)
 
     def test_get_broker_dryrun(self):
         from nuri.trading.execution.broker import get_broker
+
         broker = get_broker(dry_run=True)
         assert broker is not None
 
@@ -59,6 +66,7 @@ class TestBroker_R26:
 
     def test_dry_run_broker(self):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         order = broker.submit_order("AAPL", "buy", 10)
         assert order.status == "dry_run"
@@ -69,29 +77,38 @@ class TestBroker_R26:
 
     def test_order_post_init_filled(self):
         from nuri.trading.execution.broker import Order
-        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10,
-                      order_type="market", status="filled")
+
+        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10, order_type="market", status="filled")
         assert order.filled_qty == 10
         assert order.unfilled_qty == 0.0
 
     def test_order_post_init_unfilled(self):
         from nuri.trading.execution.broker import Order
-        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10,
-                      order_type="market", status="submitted")
+
+        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10, order_type="market", status="submitted")
         assert order.filled_qty == 0.0
         assert order.unfilled_qty == 10
 
     def test_order_is_partial(self):
         from nuri.trading.execution.broker import Order
-        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10,
-                      order_type="market", status="partially_filled",
-                      filled_qty=5, unfilled_qty=5)
+
+        order = Order(
+            broker="test",
+            ticker="AAPL",
+            side="buy",
+            quantity=10,
+            order_type="market",
+            status="partially_filled",
+            filled_qty=5,
+            unfilled_qty=5,
+        )
         assert order.is_partial is True
 
     def test_alpaca_no_keys(self, monkeypatch):
         monkeypatch.delenv("ALPACA_API_KEY", raising=False)
         monkeypatch.delenv("ALPACA_SECRET_KEY", raising=False)
         from nuri.trading.execution.broker import AlpacaBroker
+
         with pytest.raises(ValueError):
             AlpacaBroker()
 
@@ -99,6 +116,7 @@ class TestBroker_R26:
         monkeypatch.setenv("ALPACA_API_KEY", "test")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "test")
         from nuri.trading.execution.broker import AlpacaBroker
+
         broker = AlpacaBroker()
         monkeypatch.setattr(broker, "_request", MagicMock(side_effect=Exception("fail")))
         order = broker.submit_order("AAPL", "buy", 10)
@@ -108,10 +126,20 @@ class TestBroker_R26:
         monkeypatch.setenv("ALPACA_API_KEY", "test")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "test")
         from nuri.trading.execution.broker import AlpacaBroker
+
         broker = AlpacaBroker()
-        monkeypatch.setattr(broker, "_request", MagicMock(return_value={
-            "status": "filled", "filled_qty": "5", "filled_avg_price": "150.0", "id": "abc123",
-        }))
+        monkeypatch.setattr(
+            broker,
+            "_request",
+            MagicMock(
+                return_value={
+                    "status": "filled",
+                    "filled_qty": "5",
+                    "filled_avg_price": "150.0",
+                    "id": "abc123",
+                }
+            ),
+        )
         order = broker.submit_order("AAPL", "buy", 10)
         assert order.status == "partially_filled"
         assert order.is_partial
@@ -120,6 +148,7 @@ class TestBroker_R26:
         monkeypatch.setenv("ALPACA_API_KEY", "test")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "test")
         from nuri.trading.execution.broker import AlpacaBroker
+
         broker = AlpacaBroker()
         monkeypatch.setattr(broker, "_request", MagicMock(side_effect=Exception("fail")))
         assert broker.get_positions() == []
@@ -128,6 +157,7 @@ class TestBroker_R26:
         monkeypatch.setenv("ALPACA_API_KEY", "test")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "test")
         from nuri.trading.execution.broker import AlpacaBroker
+
         broker = AlpacaBroker()
         monkeypatch.setattr(broker, "_request", MagicMock(side_effect=Exception("fail")))
         assert broker.get_account_value() == 0.0
@@ -136,12 +166,14 @@ class TestBroker_R26:
         monkeypatch.setenv("ALPACA_API_KEY", "test")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "test")
         from nuri.trading.execution.broker import AlpacaBroker
+
         broker = AlpacaBroker()
         monkeypatch.setattr(broker, "_request", MagicMock(side_effect=Exception("fail")))
         assert broker.cancel_all() == 0
 
     def test_get_broker_dry_run(self):
         from nuri.trading.execution.broker import DryRunBroker, get_broker
+
         b = get_broker(dry_run=True)
         assert isinstance(b, DryRunBroker)
 
@@ -149,6 +181,7 @@ class TestBroker_R26:
         monkeypatch.delenv("ALPACA_API_KEY", raising=False)
         monkeypatch.delenv("ALPACA_SECRET_KEY", raising=False)
         from nuri.trading.execution.broker import DryRunBroker, get_broker
+
         b = get_broker(dry_run=False)
         assert isinstance(b, DryRunBroker)
 
@@ -158,35 +191,51 @@ class TestBrokerOrder:
 
     def test_filled_order_auto_qty(self):
         from nuri.trading.execution.broker import Order
-        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10,
-                      order_type="market", status="filled")
+
+        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10, order_type="market", status="filled")
         assert order.filled_qty == 10
         assert order.unfilled_qty == 0.0
 
     def test_pending_order_auto_qty(self):
         from nuri.trading.execution.broker import Order
-        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10,
-                      order_type="market", status="submitted")
+
+        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10, order_type="market", status="submitted")
         assert order.filled_qty == 0.0
         assert order.unfilled_qty == 10
 
     def test_partial_fill_detection(self):
         from nuri.trading.execution.broker import Order
-        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10,
-                      order_type="market", status="partially_filled",
-                      filled_qty=5, unfilled_qty=5)
+
+        order = Order(
+            broker="test",
+            ticker="AAPL",
+            side="buy",
+            quantity=10,
+            order_type="market",
+            status="partially_filled",
+            filled_qty=5,
+            unfilled_qty=5,
+        )
         assert order.is_partial is True
 
     def test_not_partial_when_fully_filled(self):
         from nuri.trading.execution.broker import Order
-        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10,
-                      order_type="market", status="filled")
+
+        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10, order_type="market", status="filled")
         assert order.is_partial is False
 
     def test_explicit_timestamp(self):
         from nuri.trading.execution.broker import Order
-        order = Order(broker="test", ticker="AAPL", side="buy", quantity=10,
-                      order_type="market", status="dry_run", timestamp="2025-01-01T00:00:00")
+
+        order = Order(
+            broker="test",
+            ticker="AAPL",
+            side="buy",
+            quantity=10,
+            order_type="market",
+            status="dry_run",
+            timestamp="2025-01-01T00:00:00",
+        )
         assert order.timestamp == "2025-01-01T00:00:00"
 
 
@@ -195,6 +244,7 @@ class TestDryRunBroker:
 
     def test_submit_order(self):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         order = broker.submit_order("AAPL", "buy", 5, "market")
         assert order.status == "dry_run"
@@ -203,6 +253,7 @@ class TestDryRunBroker:
 
     def test_multiple_orders_increment_id(self):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         o1 = broker.submit_order("AAPL", "buy", 5)
         o2 = broker.submit_order("NVDA", "sell", 3)
@@ -211,16 +262,19 @@ class TestDryRunBroker:
 
     def test_get_positions(self):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         assert broker.get_positions() == []
 
     def test_get_account_value(self):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         assert broker.get_account_value() == 100_000.0
 
     def test_cancel_all(self):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         assert broker.cancel_all() == 0
 
@@ -230,11 +284,13 @@ class TestAlpacaBroker:
 
     def test_init_without_keys(self):
         from nuri.trading.execution.broker import AlpacaBroker
+
         with pytest.raises(ValueError, match="ALPACA_API_KEY"):
             AlpacaBroker()
 
     def test_init_with_keys(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "test-key")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "test-secret")
         broker = AlpacaBroker()
@@ -243,12 +299,15 @@ class TestAlpacaBroker:
 
     def test_submit_order_success(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "k")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
         broker = AlpacaBroker()
         mock_response = {
-            "id": "order-123", "status": "filled",
-            "filled_qty": "10", "filled_avg_price": "175.50",
+            "id": "order-123",
+            "status": "filled",
+            "filled_qty": "10",
+            "filled_avg_price": "175.50",
         }
         with patch.object(broker, "_request", return_value=mock_response):
             order = broker.submit_order("AAPL", "buy", 10)
@@ -258,12 +317,15 @@ class TestAlpacaBroker:
 
     def test_submit_order_partial_fill(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "k")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
         broker = AlpacaBroker()
         mock_response = {
-            "id": "order-456", "status": "filled",
-            "filled_qty": "5", "filled_avg_price": "175.50",
+            "id": "order-456",
+            "status": "filled",
+            "filled_qty": "5",
+            "filled_avg_price": "175.50",
         }
         with patch.object(broker, "_request", return_value=mock_response):
             order = broker.submit_order("AAPL", "buy", 10)
@@ -274,6 +336,7 @@ class TestAlpacaBroker:
 
     def test_submit_order_failure(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "k")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
         broker = AlpacaBroker()
@@ -283,12 +346,18 @@ class TestAlpacaBroker:
 
     def test_get_positions_success(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "k")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
         broker = AlpacaBroker()
         mock_data = [
-            {"symbol": "AAPL", "qty": "10", "avg_entry_price": "170",
-             "current_price": "180", "unrealized_plpc": "0.0588"},
+            {
+                "symbol": "AAPL",
+                "qty": "10",
+                "avg_entry_price": "170",
+                "current_price": "180",
+                "unrealized_plpc": "0.0588",
+            },
         ]
         with patch.object(broker, "_request", return_value=mock_data):
             positions = broker.get_positions()
@@ -298,6 +367,7 @@ class TestAlpacaBroker:
 
     def test_get_positions_failure(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "k")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
         broker = AlpacaBroker()
@@ -307,6 +377,7 @@ class TestAlpacaBroker:
 
     def test_get_account_value_success(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "k")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
         broker = AlpacaBroker()
@@ -316,6 +387,7 @@ class TestAlpacaBroker:
 
     def test_get_account_value_failure(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "k")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
         broker = AlpacaBroker()
@@ -325,6 +397,7 @@ class TestAlpacaBroker:
 
     def test_cancel_all_success(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "k")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
         broker = AlpacaBroker()
@@ -334,6 +407,7 @@ class TestAlpacaBroker:
 
     def test_cancel_all_failure(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "k")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
         broker = AlpacaBroker()
@@ -347,11 +421,13 @@ class TestGetBroker:
 
     def test_dry_run(self):
         from nuri.trading.execution.broker import DryRunBroker, get_broker
+
         broker = get_broker(dry_run=True)
         assert isinstance(broker, DryRunBroker)
 
     def test_no_alpaca_keys_fallback(self, monkeypatch):
         from nuri.trading.execution.broker import DryRunBroker, get_broker
+
         monkeypatch.delenv("ALPACA_API_KEY", raising=False)
         monkeypatch.delenv("ALPACA_SECRET_KEY", raising=False)
         broker = get_broker(dry_run=False)
@@ -359,6 +435,7 @@ class TestGetBroker:
 
     def test_with_alpaca_keys(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker, get_broker
+
         monkeypatch.setenv("ALPACA_API_KEY", "k")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
         broker = get_broker(dry_run=False)
@@ -370,11 +447,13 @@ class TestAlpacaBrokerMock:
 
     def test_alpaca_init_no_keys(self):
         from nuri.trading.execution.broker import AlpacaBroker
+
         with pytest.raises(ValueError):
             AlpacaBroker()
 
     def test_alpaca_submit_order(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "test-key")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "test-secret")
         broker = AlpacaBroker()
@@ -387,6 +466,7 @@ class TestAlpacaBrokerMock:
 
     def test_alpaca_get_positions(self, monkeypatch):
         from nuri.trading.execution.broker import AlpacaBroker
+
         monkeypatch.setenv("ALPACA_API_KEY", "test-key")
         monkeypatch.setenv("ALPACA_SECRET_KEY", "test-secret")
         broker = AlpacaBroker()
@@ -403,11 +483,13 @@ class TestAlpacaBroker_R12:
 
     def test_alpaca_broker_init_no_keys(self):
         from nuri.trading.execution.broker import get_broker
+
         broker = get_broker(dry_run=True)
         assert broker is not None
 
     def test_dryrun_submit_multiple(self, rich_db):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         r1 = broker.submit_order("AAPL", "buy", 10)
         r2 = broker.submit_order("AAPL", "sell", 5)
@@ -422,6 +504,7 @@ class TestBrokerPosition:
 
     def test_position_dataclass(self):
         from nuri.trading.execution.broker import Position
+
         p = Position("AAPL", 10, 150.0, 155.0, 3.3)
         assert p.ticker == "AAPL"
         assert p.pnl_pct == 3.3
@@ -432,6 +515,7 @@ class TestOrder:
 
     def test_create_filled(self):
         from nuri.trading.execution.broker import Order
+
         o = Order("test", "AAPL", "buy", 10, "market", "filled", 155.0)
         assert o.filled_qty == 10
         assert o.unfilled_qty == 0.0
@@ -439,17 +523,20 @@ class TestOrder:
 
     def test_create_submitted(self):
         from nuri.trading.execution.broker import Order
+
         o = Order("test", "AAPL", "buy", 10, "market", "submitted")
         assert o.filled_qty == 0.0
         assert o.unfilled_qty == 10
 
     def test_partial_fill(self):
         from nuri.trading.execution.broker import Order
+
         o = Order("test", "AAPL", "buy", 10, "market", "partially_filled", 155.0, 5, 5)
         assert o.is_partial is True
 
     def test_timestamp_auto(self):
         from nuri.trading.execution.broker import Order
+
         o = Order("test", "AAPL", "buy", 10, "market", "filled")
         assert o.timestamp != ""
 
@@ -459,6 +546,7 @@ class TestDryRunBroker_Boost:
 
     def test_submit_order(self):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         order = broker.submit_order("AAPL", "buy", 10)
         assert order.status == "dry_run"
@@ -467,6 +555,7 @@ class TestDryRunBroker_Boost:
 
     def test_sell_order(self):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         order = broker.submit_order("TSLA", "sell", 5, "limit")
         assert order.side == "sell"
@@ -474,12 +563,14 @@ class TestDryRunBroker_Boost:
 
     def test_get_positions(self):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         positions = broker.get_positions()
         assert isinstance(positions, list)
 
     def test_get_account_value(self):
         from nuri.trading.execution.broker import DryRunBroker
+
         broker = DryRunBroker()
         value = broker.get_account_value()
         assert isinstance(value, (int, float))
@@ -491,5 +582,84 @@ class TestGetBroker_Boost:
     def test_returns_dryrun_by_default(self, monkeypatch):
         monkeypatch.delenv("ALPACA_API_KEY", raising=False)
         from nuri.trading.execution.broker import get_broker
+
         broker = get_broker()
         assert broker.__class__.__name__ == "DryRunBroker"
+
+
+# ── Bucket E3: branch coverage gaps ─────────────────────────────────
+
+
+class TestAlpacaRequestReturnsJson:
+    """Line 137-141: `_request` → httpx.request → raise_for_status → r.json().
+
+    Lock: dict 그대로 반환. URL/headers/json/timeout 전달 wire 검증.
+    """
+
+    def test_request_returns_response_json(self, monkeypatch):
+        import httpx
+
+        from nuri.trading.execution.broker import AlpacaBroker
+
+        monkeypatch.setenv("ALPACA_API_KEY", "k")
+        monkeypatch.setenv("ALPACA_SECRET_KEY", "s")
+        broker = AlpacaBroker()
+
+        captured: dict = {}
+
+        class FakeResponse:
+            def raise_for_status(self):
+                captured["raised"] = True
+
+            def json(self):
+                return {"ok": True, "id": "x"}
+
+        def fake_request(method, url, headers, json, timeout):
+            captured["method"] = method
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+        monkeypatch.setattr(httpx, "request", fake_request)
+        result = broker._request("POST", "/orders", json={"symbol": "AAPL"})
+
+        # Line 138-141: URL 조합 + json() 반환
+        assert result == {"ok": True, "id": "x"}
+        assert captured["method"] == "POST"
+        assert captured["url"] == "https://paper-api.alpaca.markets/v2/orders"
+        assert captured["headers"]["APCA-API-KEY-ID"] == "k"
+        assert captured["json"] == {"symbol": "AAPL"}
+        # Line 140: raise_for_status 호출됨
+        assert captured.get("raised") is True
+
+
+class TestBrokerMain:
+    """Lines 229-247: main() entrypoint — argparse + get_broker + smoke order."""
+
+    def test_main_dry_run_default(self, monkeypatch, capsys):
+        from nuri.trading.execution import broker as br
+
+        # default: --dry-run=True, --live=False → DryRunBroker
+        rc = br.main([])
+        assert rc == 0
+
+        out = capsys.readouterr().out
+        assert "DryRunBroker" in out
+        # DryRunBroker._cash = 100_000.0 → printed with comma format
+        assert "100,000.00" in out
+        # 테스트 주문 결과 인쇄 — DryRunBroker → status="dry_run"
+        assert "dry_run" in out
+
+    def test_main_live_falls_back_when_no_keys(self, monkeypatch, capsys):
+        """--live + no ALPACA keys → get_broker fallback to DryRunBroker."""
+        from nuri.trading.execution import broker as br
+
+        monkeypatch.delenv("ALPACA_API_KEY", raising=False)
+        monkeypatch.delenv("ALPACA_SECRET_KEY", raising=False)
+
+        rc = br.main(["--live"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "DryRunBroker" in out

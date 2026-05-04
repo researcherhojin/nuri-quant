@@ -9,6 +9,7 @@ Gated Execution — SIEGE 패턴 적용.
     python -m nuri.trading.engine.gate
     python -m nuri.trading.engine.gate --phase regime
 """
+
 import argparse
 import logging
 from dataclasses import dataclass
@@ -22,27 +23,30 @@ logger = logging.getLogger(__name__)
 @dataclass
 class GateCondition:
     """게이트 개별 조건."""
+
     id: str
-    phase: str              # "collect", "validate", "regime", "recommend"
+    phase: str  # "collect", "validate", "regime", "recommend"
     description: str
     passed: bool
-    detail: str             # 통과 시 수치, 실패 시 해결 방법
+    detail: str  # 통과 시 수치, 실패 시 해결 방법
 
 
 @dataclass
 class GateResult:
     """게이트 전체 결과."""
+
     phase: str
     total: int
     passed: int
-    score: float            # 0.0 ~ 1.0
-    ready: bool             # 모든 필수 조건 통과
+    score: float  # 0.0 ~ 1.0
+    ready: bool  # 모든 필수 조건 통과
     conditions: list[GateCondition]
 
 
 # ═══════════════════════════════════════════════════════
 # 조건 정의
 # ═══════════════════════════════════════════════════════
+
 
 def _safe_count(rows, key="c", default=0):
     """rows[0][key] with guard for empty results."""
@@ -54,7 +58,8 @@ def _check_prices(db_path=None) -> GateCondition:
     count, tickers = _safe_count(rows, "c"), _safe_count(rows, "t")
     ok = count >= 1000 and tickers >= 5
     return GateCondition(
-        "prices_data", "collect",
+        "prices_data",
+        "collect",
         "가격 데이터 충분 (1000건+, 5종목+)",
         ok,
         f"{count:,}건, {tickers}종목" if ok else f"부족: {count}건, {tickers}종목. make collect 실행 필요",
@@ -66,7 +71,8 @@ def _check_spy(db_path=None) -> GateCondition:
     count = _safe_count(rows)
     ok = count >= 200
     return GateCondition(
-        "spy_data", "regime",
+        "spy_data",
+        "regime",
         "SPY 가격 200일+ (레짐 분류용)",
         ok,
         f"SPY {count}일" if ok else f"SPY {count}일 (200일 미만). SPY 수집 필요",
@@ -78,7 +84,8 @@ def _check_vix(db_path=None) -> GateCondition:
     count = _safe_count(rows)
     ok = count >= 20
     return GateCondition(
-        "vix_data", "regime",
+        "vix_data",
+        "regime",
         "VIX 데이터 20일+ (변동성 판별용)",
         ok,
         f"VIX {count}일" if ok else f"VIX {count}일. ^VIX yfinance 수집 또는 FRED 필요",
@@ -90,7 +97,8 @@ def _check_macro(db_path=None) -> GateCondition:
     count = _safe_count(rows)
     ok = count >= 3
     return GateCondition(
-        "macro_indicators", "regime",
+        "macro_indicators",
+        "regime",
         "매크로 지표 3종+",
         ok,
         f"{count}종 보유" if ok else f"{count}종만 보유. FRED_API_KEY 설정 후 make collect",
@@ -102,7 +110,8 @@ def _check_portfolio(db_path=None) -> GateCondition:
     count = _safe_count(rows)
     ok = count >= 1
     return GateCondition(
-        "portfolio_exists", "collect",
+        "portfolio_exists",
+        "collect",
         "포트폴리오 등록 (1종목+)",
         ok,
         f"{count}종목" if ok else "portfolio 비어있음. make setup 또는 import_portfolio.py",
@@ -111,6 +120,7 @@ def _check_portfolio(db_path=None) -> GateCondition:
 
 def _check_signal_scorecard(db_path=None) -> GateCondition:
     from pathlib import Path
+
     report_dir = Path(__file__).parent.parent.parent.parent / "data" / "reports"
     found = False
     if report_dir.exists():
@@ -119,7 +129,8 @@ def _check_signal_scorecard(db_path=None) -> GateCondition:
                 found = True
                 break
     return GateCondition(
-        "signal_scorecard", "validate",
+        "signal_scorecard",
+        "validate",
         "시그널 스코어카드 CSV 존재",
         found,
         "존재" if found else "없음. make validate 먼저 실행",
@@ -131,7 +142,8 @@ def _check_superinvestor_quarters(db_path=None) -> GateCondition:
     count = _safe_count(rows)
     ok = count >= 2
     return GateCondition(
-        "superinvestor_history", "validate",
+        "superinvestor_history",
+        "validate",
         "슈퍼투자자 13F 2분기+ (추종 백테스트용)",
         ok,
         f"{count}분기" if ok else f"{count}분기. python -m nuri.collectors.superinvestors 실행",
@@ -144,16 +156,23 @@ def _check_estimates_accumulation(db_path=None) -> GateCondition:
     days = _safe_count(rows, "days")
     if oldest:
         from nuri.core.timezone import kst_now
+
         elapsed = (kst_now().replace(tzinfo=None) - datetime.strptime(oldest, "%Y-%m-%d")).days
         ok = elapsed >= 90
-        detail = f"{days}일 누적, {elapsed}일 경과" if ok else f"{days}일 누적, {elapsed}일 경과 (90일 필요, {90-elapsed}일 남음)"
+        detail = (
+            f"{days}일 누적, {elapsed}일 경과"
+            if ok
+            else f"{days}일 누적, {elapsed}일 경과 (90일 필요, {90 - elapsed}일 남음)"
+        )
     else:
         ok = False
         detail = "estimates 없음. python -m nuri.collectors.estimates 실행"
     return GateCondition(
-        "estimates_90d", "validate",
+        "estimates_90d",
+        "validate",
         "애널리스트 estimates 90일+ 누적",
-        ok, detail,
+        ok,
+        detail,
     )
 
 
@@ -162,7 +181,8 @@ def _check_fear_greed(db_path=None) -> GateCondition:
     count = _safe_count(rows)
     ok = count >= 1
     return GateCondition(
-        "fear_greed", "collect",
+        "fear_greed",
+        "collect",
         "Fear & Greed 지수 수집",
         ok,
         f"{count}건" if ok else "없음. make collect 실행",
@@ -174,7 +194,8 @@ def _check_etf_flows(db_path=None) -> GateCondition:
     count = _safe_count(rows)
     ok = count >= 2
     return GateCondition(
-        "etf_flows_history", "collect",
+        "etf_flows_history",
+        "collect",
         "ETF 자금흐름 2일+ (섹터 로테이션 분석용)",
         ok,
         f"{count}일" if ok else f"{count}일. python -m nuri.collectors.etf_flows 실행 (주 1회 자동)",
@@ -228,9 +249,7 @@ def check_gate(phase: str | None = None, db_path=None) -> GateResult:
 
     # 필수 조건 확인
     required = REQUIRED_BY_PHASE.get(phase, set()) if phase else set()
-    required_all_pass = all(
-        c.passed for c in conditions if c.id in required
-    ) if required else score >= 0.5
+    required_all_pass = all(c.passed for c in conditions if c.id in required) if required else score >= 0.5
 
     return GateResult(
         phase=phase or "all",
@@ -244,10 +263,7 @@ def check_gate(phase: str | None = None, db_path=None) -> GateResult:
 
 def check_all_gates(db_path=None) -> dict[str, GateResult]:
     """모든 단계의 게이트를 개별적으로 검증."""
-    return {
-        phase: check_gate(phase, db_path)
-        for phase in ["collect", "validate", "regime", "recommend"]
-    }
+    return {phase: check_gate(phase, db_path) for phase in ["collect", "validate", "regime", "recommend"]}
 
 
 # ═══════════════════════════════════════════════════════
@@ -269,18 +285,23 @@ def print_gate(result: GateResult) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry — argparse + 오케스트레이션 (testable)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="Nuri-Quant Pipeline Gate")
-    parser.add_argument("--phase", choices=["collect", "validate", "regime", "recommend"],
-                        help="특정 단계만 확인")
-    args = parser.parse_args()
+    parser.add_argument("--phase", choices=["collect", "validate", "regime", "recommend"], help="특정 단계만 확인")
+    args = parser.parse_args(argv)
 
     if args.phase:
         result = check_gate(args.phase)
         print_gate(result)
     else:
         gates = check_all_gates()
-        for phase, result in gates.items():
+        for _phase, result in gates.items():
             print_gate(result)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover  # invariant: 표준 entry idiom — main() 이 testable
+    raise SystemExit(main())

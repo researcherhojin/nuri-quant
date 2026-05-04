@@ -7,6 +7,7 @@ Strategy Monitor — 레짐 전환 감지 + 포지션 전환 알림 + 일일 P&L
 사용법:
     python -m nuri.trading.strategy.monitor
 """
+
 import json
 import logging
 
@@ -20,6 +21,7 @@ def detect_regime_transition(db_path=None) -> dict | None:
     """레짐 전환 감지. 이전 기록과 비교."""
     try:
         from nuri.quant.regime.classifier import classify_regime
+
         current = classify_regime(db_path=db_path)
     except Exception:
         return None
@@ -48,6 +50,7 @@ def detect_regime_transition(db_path=None) -> dict | None:
     # 전환 방향 분류
     if prev_regime:
         from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+
         _dir_to_trend = {"long": "bull", "short": "bear", "neutral": "sideways"}
         prev_alloc = REGIME_ALLOCATION.get(prev_regime, {})
         prev_trend = _dir_to_trend.get(prev_alloc.get("direction"), prev_regime.split("_")[0])
@@ -72,10 +75,8 @@ def detect_regime_transition(db_path=None) -> dict | None:
     # DB에 기록
     with get_db(db_path) as conn:
         conn.execute(
-            "INSERT INTO regime_transitions (date, from_regime, to_regime, action_taken) "
-            "VALUES (?, ?, ?, ?)",
-            (transition["date"], transition["from_regime"], transition["to_regime"],
-             json.dumps(transition)),
+            "INSERT INTO regime_transitions (date, from_regime, to_regime, action_taken) VALUES (?, ?, ?, ?)",
+            (transition["date"], transition["from_regime"], transition["to_regime"], json.dumps(transition)),
         )
 
     logger.info(f"[REGIME TRANSITION] {transition['switch']}")
@@ -157,8 +158,9 @@ def print_monitor(db_path=None) -> None:
         print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover  # invariant: 4-line 표준 CLI invocation
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     from nuri.core.db import init_db
+
     init_db()
     print_monitor()

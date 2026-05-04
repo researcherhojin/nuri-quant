@@ -8,6 +8,7 @@ Position Manager — SIEGE Certification Gate 적용.
 사용법:
     python -m nuri.trading.strategy.position
 """
+
 import json
 import logging
 from dataclasses import asdict, dataclass
@@ -21,21 +22,23 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PositionCertification:
     """SIEGE 포지션 인증 게이트."""
-    regime_aligned: bool        # 레짐과 방향 일치
-    agent_consensus: bool       # 에이전트 3/5 이상 동의
-    concentration_ok: bool      # 단일 포지션 ≤ 15%
-    daily_limit_ok: bool        # 일일 신규 ≤ 5개
-    drift_safe: bool            # 시그널 drift critical 아님
-    certified: bool             # 전부 통과
+
+    regime_aligned: bool  # 레짐과 방향 일치
+    agent_consensus: bool  # 에이전트 3/5 이상 동의
+    concentration_ok: bool  # 단일 포지션 ≤ 15%
+    daily_limit_ok: bool  # 일일 신규 ≤ 5개
+    drift_safe: bool  # 시그널 drift critical 아님
+    certified: bool  # 전부 통과
     details: dict
 
 
 @dataclass
 class Position:
     """포지션."""
+
     ticker: str
-    direction: str              # "long" or "short"
-    portfolio_type: str         # "core" or "tactical"
+    direction: str  # "long" or "short"
+    portfolio_type: str  # "core" or "tactical"
     entry_price: float
     quantity: float
     regime_at_entry: str
@@ -57,6 +60,7 @@ def certify_position(
     # 이전 코드의 substring fallback과 base/special 분기는 dead code였다 (#86).
     # `long_pct > 0` / `short_pct > 0` 가 "이 방향으로 진입 허용되는가" 의 ground truth.
     from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+
     alloc = REGIME_ALLOCATION.get(regime)
     if alloc is None:
         # 미등록 레짐 — fail closed (보수적으로 차단)
@@ -73,6 +77,7 @@ def certify_position(
     agent_consensus = False
     try:
         from nuri.trading.agents.consensus import analyze_ticker
+
         result = analyze_ticker(ticker, db_path=db_path)
         expected = "BUY" if direction == "long" else "SELL"
         agree = sum(1 for v in result.verdicts if v.action == expected)
@@ -86,7 +91,8 @@ def certify_position(
     # 3. 포지션 집중도
     open_positions = query(
         "SELECT COUNT(*) as c FROM positions WHERE status='open' AND ticker=?",
-        (ticker,), db_path=db_path,
+        (ticker,),
+        db_path=db_path,
     )
     concentration_ok = open_positions[0]["c"] == 0  # 같은 종목 중복 포지션 불가
     details["duplicate_check"] = "ok" if concentration_ok else "duplicate exists"
@@ -95,7 +101,8 @@ def certify_position(
     today = today_kst()
     today_opens = query(
         "SELECT COUNT(*) as c FROM positions WHERE entry_date=? AND portfolio_type=?",
-        (today, portfolio_type), db_path=db_path,
+        (today, portfolio_type),
+        db_path=db_path,
     )
     daily_limit_ok = today_opens[0]["c"] < 5
     details["today_opens"] = today_opens[0]["c"]
@@ -104,6 +111,7 @@ def certify_position(
     drift_safe = True
     try:
         from nuri.trading.engine.memory import detect_drift
+
         drifts = detect_drift(db_path=db_path)
         critical = [d for d in drifts if d.status == "critical"]
         if critical and direction == "long":
@@ -140,6 +148,7 @@ def open_position(
     if not regime:
         try:
             from nuri.quant.regime.classifier import classify_regime
+
             r = classify_regime(db_path=db_path)
             regime = r.regime if r else "unknown"
         except Exception:
@@ -170,8 +179,7 @@ def open_position(
                (portfolio_type, ticker, direction, entry_date, entry_price, quantity,
                 regime_at_entry, certification, status)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')""",
-            (portfolio_type, ticker, direction, today, entry_price, quantity,
-             regime, json.dumps(asdict(cert))),
+            (portfolio_type, ticker, direction, today, entry_price, quantity, regime, json.dumps(asdict(cert))),
         )
 
     logger.info(f"[POSITION OPEN] {direction.upper()} {ticker} @ ${entry_price:.2f} ({portfolio_type})")
@@ -196,13 +204,13 @@ def close_position(position_id: int, exit_price: float, reason: str, db_path=Non
 
     with get_db(db_path) as conn:
         conn.execute(
-            "UPDATE positions SET status='closed', exit_date=?, exit_price=?, "
-            "exit_reason=?, return_pct=? WHERE id=?",
+            "UPDATE positions SET status='closed', exit_date=?, exit_price=?, exit_reason=?, return_pct=? WHERE id=?",
             (today, exit_price, reason, round(return_pct, 2), position_id),
         )
 
-    logger.info(f"[POSITION CLOSE] {direction.upper()} {p['ticker']} @ ${exit_price:.2f} "
-                f"→ {return_pct:+.1f}% ({reason})")
+    logger.info(
+        f"[POSITION CLOSE] {direction.upper()} {p['ticker']} @ ${exit_price:.2f} → {return_pct:+.1f}% ({reason})"
+    )
 
 
 def update_prices(db_path=None) -> None:
@@ -212,12 +220,14 @@ def update_prices(db_path=None) -> None:
         ticker = p["ticker"]
         price_row = query(
             "SELECT close FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
         if not price_row or not price_row[0]["close"]:
             # yfinance fallback
             try:
                 import yfinance as yf
+
                 df = yf.download(ticker, period="5d", progress=False)
                 if not df.empty:
                     current = float(df["Close"].squeeze().iloc[-1])
@@ -280,9 +290,11 @@ def print_positions(db_path=None) -> None:
     summary = get_positions_summary(db_path)
 
     print(f"\n{'=' * 80}")
-    print(f"  Position Monitor — {summary['open_total']} open "
-          f"(L:{summary['open_long']} S:{summary['open_short']} | "
-          f"Core:{summary['open_core']} Tac:{summary['open_tactical']})")
+    print(
+        f"  Position Monitor — {summary['open_total']} open "
+        f"(L:{summary['open_long']} S:{summary['open_short']} | "
+        f"Core:{summary['open_core']} Tac:{summary['open_tactical']})"
+    )
     print(f"{'=' * 80}")
 
     if summary["positions"]:
@@ -291,20 +303,25 @@ def print_positions(db_path=None) -> None:
         for p in summary["positions"]:
             ret = p.get("return_pct", 0) or 0
             cur = p.get("current_price", 0) or 0
-            print(f"  {p['portfolio_type']:<8} {p['direction']:<6} {p['ticker']:<8} "
-                  f"${p['entry_price']:>9,.2f} ${cur:>9,.2f} {ret:>+7.1f}% {p.get('regime_at_entry', ''):<18}")
+            print(
+                f"  {p['portfolio_type']:<8} {p['direction']:<6} {p['ticker']:<8} "
+                f"${p['entry_price']:>9,.2f} ${cur:>9,.2f} {ret:>+7.1f}% {p.get('regime_at_entry', ''):<18}"
+            )
     else:
         print("  오픈 포지션 없음")
 
     if summary["closed_total"] > 0:
-        print(f"\n  Closed: {summary['closed_total']}건, "
-              f"승률 {summary['closed_win_rate']:.0%}, "
-              f"평균 수익 {summary['closed_avg_return']:+.1f}%")
+        print(
+            f"\n  Closed: {summary['closed_total']}건, "
+            f"승률 {summary['closed_win_rate']:.0%}, "
+            f"평균 수익 {summary['closed_avg_return']:+.1f}%"
+        )
     print()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover  # invariant: 4-line 표준 CLI invocation
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     from nuri.core.db import init_db
+
     init_db()
     print_positions()
