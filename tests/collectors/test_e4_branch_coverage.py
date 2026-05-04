@@ -70,9 +70,7 @@ class TestInstitutionalEmitFailure:
         from nuri.collectors.institutional import InstitutionalCollector
         from nuri.collectors.kis_realtime import KISCredentials
 
-        creds = KISCredentials(
-            app_key="k", app_secret="s", account="1", hts_id="h", mode="prod"
-        )
+        creds = KISCredentials(app_key="k", app_secret="s", account="1", hts_id="h", mode="prod")
         with (
             patch("nuri.collectors.kis_realtime.load_credentials", return_value=creds),
             patch("nuri.collectors.kis_realtime.get_access_token", return_value=None),
@@ -96,9 +94,7 @@ class TestInstitutionalTqdmFallback:
                 raise ImportError("no tqdm")
             return original_import(name, *args, **kwargs)
 
-        creds = KISCredentials(
-            app_key="k", app_secret="s", account="1", hts_id="h", mode="prod"
-        )
+        creds = KISCredentials(app_key="k", app_secret="s", account="1", hts_id="h", mode="prod")
         fake_resp = MagicMock()
         fake_resp.status_code = 200
         fake_resp.json.return_value = {"rt_cd": "0", "output2": []}
@@ -238,15 +234,12 @@ class TestFilingsLargeBatchLog:
         tickers = [f"T{i:03d}" for i in range(25)]
         monkeypatch.setattr("nuri.collectors.filings.parse_10k", lambda t: None)
         # Disable tqdm for speed
-        monkeypatch.setattr("nuri.collectors.filings.tqdm",
-                            lambda iterable, **kw: iterable, raising=False)
+        monkeypatch.setattr("nuri.collectors.filings.tqdm", lambda iterable, **kw: iterable, raising=False)
         with caplog.at_level("INFO"):
             results = collect_filings(tickers=tickers)
         assert results == []
         # Check the summary log fired with "외 N개"
-        assert any("외" in r.message for r in caplog.records) or any(
-            "SEC 10-K" in r.message for r in caplog.records
-        )
+        assert any("외" in r.message for r in caplog.records) or any("SEC 10-K" in r.message for r in caplog.records)
 
     def test_large_batch_few_failed_no_overflow(self, monkeypatch, caplog, db_with_portfolio):
         """failed < 5 → no '외 N개' suffix."""
@@ -280,8 +273,7 @@ class TestFilingsMain:
             "revenue": 100e9,
         }
         monkeypatch.setattr(sys, "argv", ["filings", "--ticker", "AAPL"])
-        monkeypatch.setattr("nuri.collectors.filings.parse_10k",
-                            lambda t: fake_result)
+        monkeypatch.setattr("nuri.collectors.filings.parse_10k", lambda t: fake_result)
         runpy.run_module("nuri.collectors.filings", run_name="__main__")
         out = capsys.readouterr().out
         assert "AAPL" in out
@@ -291,8 +283,7 @@ class TestFilingsMain:
         import runpy
 
         monkeypatch.setattr(sys, "argv", ["filings", "--ticker", "FAKE"])
-        monkeypatch.setattr("nuri.collectors.filings.parse_10k",
-                            lambda t: None)
+        monkeypatch.setattr("nuri.collectors.filings.parse_10k", lambda t: None)
         runpy.run_module("nuri.collectors.filings", run_name="__main__")
         out = capsys.readouterr().out
         assert "10-K" in out
@@ -328,9 +319,7 @@ class TestStockFetchExceptions:
             with patch.object(
                 c,
                 "_collect_ticker",
-                side_effect=lambda t, *a, **kw: (_ for _ in ()).throw(
-                    RuntimeError("boom")
-                ),
+                side_effect=lambda t, *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")),
             ):
                 df = c.collect(period="5d", source="portfolio")
         assert df.empty
@@ -360,7 +349,19 @@ class TestStockYfinanceFallback:
         # Force OpenBB failure → fallback to yfinance direct
         c = StockCollector()
         with (
-            patch.dict(sys.modules, {"yfinance": mock_yf, "openbb": MagicMock(obb=MagicMock(equity=MagicMock(price=MagicMock(historical=MagicMock(side_effect=RuntimeError("OpenBB down"))))))}),
+            patch.dict(
+                sys.modules,
+                {
+                    "yfinance": mock_yf,
+                    "openbb": MagicMock(
+                        obb=MagicMock(
+                            equity=MagicMock(
+                                price=MagicMock(historical=MagicMock(side_effect=RuntimeError("OpenBB down")))
+                            )
+                        )
+                    ),
+                },
+            ),
         ):
             result = c._collect_ticker("AAPL", "2026-01-01", "2026-01-31")
         assert result is not None
@@ -382,11 +383,7 @@ class TestStockYfinanceFallback:
                 "yfinance": mock_yf,
                 "openbb": MagicMock(
                     obb=MagicMock(
-                        equity=MagicMock(
-                            price=MagicMock(
-                                historical=MagicMock(side_effect=RuntimeError("OpenBB"))
-                            )
-                        )
+                        equity=MagicMock(price=MagicMock(historical=MagicMock(side_effect=RuntimeError("OpenBB"))))
                     )
                 ),
             },
@@ -402,9 +399,7 @@ class TestStockStandardizeMissingColumns:
         from nuri.collectors.stock import StockCollector
 
         # DF missing 'volume', 'high'
-        df = pd.DataFrame(
-            {"date": ["2026-01-02"], "open": [100.0], "low": [99.0], "close": [101.0]}
-        )
+        df = pd.DataFrame({"date": ["2026-01-02"], "open": [100.0], "low": [99.0], "close": [101.0]})
         result = StockCollector()._standardize(df, "AAPL")
         assert "volume" in result.columns
         assert result["volume"].iloc[0] is None
@@ -586,64 +581,55 @@ class TestArkCsvNonHeldTicker:
 
 
 class TestExternalMain:
-    """L199-209, 218 — argparse subcommand dispatch."""
+    """L199-218 — main(argv) subcommand dispatch.
 
-    def test_main_save_tipranks(self, monkeypatch, capsys, db_path):
-        import runpy
+    runpy 가 module source 재실행 시 monkeypatch 가 무효화되어 CI 에서 fail 하므로
+    main(argv) 추출 후 직접 호출 (PR #595/#605/#608 패턴).
+    """
 
-        monkeypatch.setattr(
-            sys, "argv", ["external", "--save-tipranks", "AAPL", "Buy", "200.0", "30"]
-        )
-        monkeypatch.setattr(
-            "nuri.collectors.external.save_tipranks",
-            lambda ticker, consensus, target, analysts: None,
-        )
-        runpy.run_module("nuri.collectors.external", run_name="__main__")
+    def test_main_save_tipranks(self, monkeypatch, capsys):
+        from nuri.collectors import external as ext
+
+        monkeypatch.setattr(ext, "save_tipranks", lambda ticker, consensus, target, analysts: None)
+        rc = ext.main(["--save-tipranks", "AAPL", "Buy", "200.0", "30"])
+        assert rc == 0
+        assert "AAPL" in capsys.readouterr().out
+
+    def test_main_save_superinvestor(self, monkeypatch, capsys):
+        from nuri.collectors import external as ext
+
+        monkeypatch.setattr(ext, "save_superinvestor", lambda ticker, count, trend: None)
+        rc = ext.main(["--save-superinvestor", "NVDA", "5", "buying"])
+        assert rc == 0
+        assert "NVDA" in capsys.readouterr().out
+
+    def test_main_show(self, monkeypatch, capsys):
+        from nuri.collectors import external as ext
+
+        called: list[str] = []
+        monkeypatch.setattr(ext, "print_ticker_external", lambda t, **kw: called.append(t))
+        rc = ext.main(["--show", "TSLA"])
+        assert rc == 0
+        assert called == ["TSLA"]
+
+    def test_main_summary(self, monkeypatch, capsys):
+        from nuri.collectors import external as ext
+
+        called: list[bool] = []
+        monkeypatch.setattr(ext, "print_summary", lambda **kw: called.append(True))
+        rc = ext.main(["--summary"])
+        assert rc == 0
+        assert called == [True]
+
+    def test_main_default_no_data(self, monkeypatch, capsys):
+        from nuri.collectors import external as ext
+
+        monkeypatch.setattr(ext, "get_external_summary", lambda **kw: {"total_records": 0, "sources": []})
+        rc = ext.main([])
         out = capsys.readouterr().out
-        assert "AAPL" in out
-
-    def test_main_save_superinvestor(self, monkeypatch, capsys, db_path):
-        import runpy
-
-        monkeypatch.setattr(
-            sys, "argv", ["external", "--save-superinvestor", "NVDA", "5", "buying"]
-        )
-        monkeypatch.setattr(
-            "nuri.collectors.external.save_superinvestor",
-            lambda ticker, count, trend: None,
-        )
-        runpy.run_module("nuri.collectors.external", run_name="__main__")
-        out = capsys.readouterr().out
-        assert "NVDA" in out
-
-    def test_main_show(self, monkeypatch, capsys, db_path):
-        """L207: --show TICKER calls print_ticker_external."""
-        import runpy
-
-        monkeypatch.setattr(sys, "argv", ["external", "--show", "TSLA"])
-        # runpy reloads source — function patches don't apply, but path executes
-        runpy.run_module("nuri.collectors.external", run_name="__main__")
-        out = capsys.readouterr().out
-        # No data in db_path → "외부 데이터 없음" or empty msg
-        assert "TSLA" in out or "데이터" in out or "없음" in out
-
-    def test_main_summary(self, monkeypatch, capsys, db_path):
-        """L209: --summary calls print_summary."""
-        import runpy
-
-        monkeypatch.setattr(sys, "argv", ["external", "--summary"])
-        runpy.run_module("nuri.collectors.external", run_name="__main__")
-        out = capsys.readouterr().out
-        assert "외부 데이터" in out or "요약" in out or len(out) >= 0
-
-    def test_main_default_no_data(self, monkeypatch, capsys, db_path):
-        """L211-216: default (no flag) with empty DB → 안내 메시지."""
-        import runpy
-
-        monkeypatch.setattr(sys, "argv", ["external"])
-        runpy.run_module("nuri.collectors.external", run_name="__main__")
-        out = capsys.readouterr().out
-        assert "외부 데이터 없음" in out or "저장 예시" in out
+        assert rc == 0
+        assert "외부 데이터 없음" in out
+        assert "저장 예시" in out
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -660,7 +646,8 @@ class TestEventsExceptionAndLargeBatch:
         c = EventsCollector()
         monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["AAPL", "FAIL"])
         monkeypatch.setattr(
-            c, "_collect_ticker_events",
+            c,
+            "_collect_ticker_events",
             lambda t: (_ for _ in ()).throw(RuntimeError(f"{t} bust")),
         )
         # Also stub _collect_fomc to keep records list small
@@ -828,7 +815,7 @@ class TestUniverseSyncSaveKrApply:
             "us_sp500_extended": {"tickers": [], "description": ""},
             "kr_kospi200": {"tickers": ["005930.KS", "000660.KS"], "description": ""},
         }
-        save_capture = {"called": False}
+        save_capture: dict[str, object] = {"called": False}
 
         def fake_save(data):
             save_capture["called"] = True
@@ -850,7 +837,9 @@ class TestUniverseSyncSaveKrApply:
         assert result == 2
         assert save_capture["called"]
         # 005930 removed, 000660 + 111111 remain
-        out = save_capture["data"]["kr_kospi200"]["tickers"]
+        captured_data = save_capture["data"]
+        assert isinstance(captured_data, dict)
+        out = captured_data["kr_kospi200"]["tickers"]
         assert "005930.KS" not in out
         assert "111111.KS" in out
 

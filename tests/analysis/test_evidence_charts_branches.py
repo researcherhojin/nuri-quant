@@ -265,3 +265,36 @@ class TestLoadDriftMapSwallow:
         ):
             out = ec._load_drift_map(db_path=db_path)
         assert out == {}
+
+
+class TestEvidenceChartsRunpy:
+    """`__main__` block (lines 813-818): logging.basicConfig + generate_all_evidence."""
+
+    def test_main_invokes_generate_all_evidence(self, monkeypatch, capsys):
+        """runpy → __main__ block 실행 → generate_all_evidence 의 summary print 확인.
+
+        runpy 가 모듈 소스를 재실행하므로 함수 monkeypatch 무효 (test illusion).
+        대신 chart-emitter 들을 raise 시켜 빠르게 통과 + 출력 print 검증.
+        """
+        import runpy
+        import sys
+
+        # 모든 chart-emitter raise 시켜도 generate_all_evidence 는 try/except 로 graceful;
+        # 마지막 print 가 stdout 에 떠야 한다. _emit_* 함수들을 source-level 로 패치.
+        def _boom(*a, **kw):
+            raise RuntimeError("skip")
+
+        for name in (
+            "generate_regime_chart",
+            "generate_portfolio_heatmap",
+            "generate_signal_performance_chart",
+            "generate_fear_greed_chart",
+            "_detect_portfolio_violations",
+            "generate_sell_evidence_chart",
+        ):
+            monkeypatch.setattr(f"nuri.analysis.evidence_charts.{name}", _boom)
+
+        monkeypatch.setattr(sys, "argv", ["evidence_charts"])
+        runpy.run_module("nuri.analysis.evidence_charts", run_name="__main__")
+        out = capsys.readouterr().out
+        assert "증거 차트 생성 완료" in out

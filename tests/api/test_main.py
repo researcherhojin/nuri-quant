@@ -1,4 +1,5 @@
 """Tests for main — split from test_api_all.py."""
+
 import asyncio
 import json
 import time as _time
@@ -61,11 +62,13 @@ class TestAPIMain_R27:
     def _disable_rate_limiter(self, monkeypatch):
         """Disable rate limiter for all API main tests."""
         from nuri.api import main as main_mod
+
         monkeypatch.setattr(main_mod.limiter, "enabled", False)
 
     def test_health_endpoint(self):
         """Health endpoint returns ok."""
         from nuri.api.main import app
+
         c = TestClient(app)
         response = c.get("/api/health")
         assert response.status_code == 200
@@ -74,6 +77,7 @@ class TestAPIMain_R27:
     def test_root_redirect(self):
         """Root redirects to docs."""
         from nuri.api.main import app
+
         c = TestClient(app)
         response = c.get("/", follow_redirects=False)
         assert response.status_code in (301, 302, 307)
@@ -81,6 +85,7 @@ class TestAPIMain_R27:
     def test_security_headers(self):
         """Security headers are present on responses."""
         from nuri.api.main import app
+
         c = TestClient(app)
         response = c.get("/api/health")
         assert response.headers.get("X-Content-Type-Options") == "nosniff"
@@ -89,6 +94,7 @@ class TestAPIMain_R27:
     def test_auth_no_password_set(self, monkeypatch):
         """Auth endpoint when no DASHBOARD_PASSWORD set."""
         from nuri.api.main import app
+
         monkeypatch.setenv("DASHBOARD_PASSWORD", "")
         c = TestClient(app)
         response = c.post("/api/auth/token", json={"password": "test"})
@@ -97,6 +103,7 @@ class TestAPIMain_R27:
     def test_auth_wrong_password(self, monkeypatch):
         """Auth endpoint with wrong password."""
         from nuri.api.main import app
+
         monkeypatch.setenv("DASHBOARD_PASSWORD", "correct_password")
         c = TestClient(app)
         response = c.post("/api/auth/token", json={"password": "wrong"})
@@ -105,9 +112,31 @@ class TestAPIMain_R27:
     def test_auth_correct_password(self, monkeypatch):
         """Auth endpoint with correct password."""
         from nuri.api.main import app
+
         monkeypatch.setenv("DASHBOARD_PASSWORD", "test123")
         monkeypatch.setenv("API_SECRET_KEY", "test-secret-key-for-jwt")
         c = TestClient(app)
         response = c.post("/api/auth/token", json={"password": "test123"})
         assert response.status_code == 200
         assert "access_token" in response.json()
+
+
+class TestApiMainRunpy:
+    """`__main__` block (lines 166-171): runpy invocation with uvicorn.run mocked."""
+
+    def test_main_module_starts_uvicorn(self, monkeypatch):
+        import runpy
+        import sys
+
+        monkeypatch.setenv("API_PORT", "9999")
+        # uvicorn 모듈 자체를 mock 으로 sys.modules 주입 → import uvicorn / uvicorn.run 호출 캡처
+        fake_uvicorn = MagicMock()
+        monkeypatch.setitem(sys.modules, "uvicorn", fake_uvicorn)
+        monkeypatch.setattr(sys, "argv", ["main"])
+
+        runpy.run_module("nuri.api.main", run_name="__main__")
+
+        fake_uvicorn.run.assert_called_once()
+        kwargs = fake_uvicorn.run.call_args.kwargs
+        assert kwargs.get("port") == 9999
+        assert kwargs.get("host") == "0.0.0.0"

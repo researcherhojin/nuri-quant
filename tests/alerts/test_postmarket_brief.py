@@ -598,3 +598,158 @@ def test_write_brief_postmortem_failure_does_not_break_brief(seeded_db, portfoli
     ):
         path = write_brief("us", date="2026-05-01")
     assert path.exists()  # markdown still written
+
+
+# ─── _load_5d helpers — empty / coerce-error / zero-divisor branches ─────
+
+
+class TestLoad5dHelpers:
+    """`_load_5d_macro_delta` (lines 362-369) + `_load_5d_price_delta_pct` (379-385)."""
+
+    def test_macro_delta_returns_none_when_under_6_rows(self, tmp_path, monkeypatch):
+        import nuri.core.db as db_mod
+        from nuri.alerts.postmarket_brief import _load_5d_macro_delta
+
+        path = tmp_path / "macro.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+
+        # 3 rows only
+        records = [
+            {"date": "2026-04-25", "indicator": "VIX", "value": 18.0, "source": "test"},
+            {"date": "2026-04-26", "indicator": "VIX", "value": 19.0, "source": "test"},
+            {"date": "2026-04-27", "indicator": "VIX", "value": 20.0, "source": "test"},
+        ]
+        upsert_macro(records, path)
+
+        assert _load_5d_macro_delta("VIX", db_path=path) is None
+
+    def test_macro_delta_handles_non_numeric_value(self, tmp_path, monkeypatch):
+        """value 컬럼이 non-numeric → TypeError/ValueError fallback (lines 367-368)."""
+        import nuri.core.db as db_mod
+        from nuri.alerts.postmarket_brief import _load_5d_macro_delta
+        from nuri.core.db import get_db
+
+        path = tmp_path / "macro_bad.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+
+        # 6 rows, but value 일부가 non-coercible 문자열
+        with get_db(path) as conn:
+            cur = conn.cursor()
+            for i, val in enumerate(["abc", 1.0, 2.0, 3.0, 4.0, 5.0]):
+                cur.execute(
+                    "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, ?)",
+                    (f"2026-04-{20 + i:02d}", "FOO", val, "test"),
+                )
+            conn.commit()
+
+        # latest = 'abc' → ValueError → None
+        assert _load_5d_macro_delta("FOO", db_path=path) is None
+
+    def test_price_delta_returns_none_when_five_back_zero(self, tmp_path, monkeypatch):
+        """five_back == 0 → ZeroDivision 회피 None (line 384)."""
+        import pandas as pd
+
+        import nuri.core.db as db_mod
+        from nuri.alerts.postmarket_brief import _load_5d_price_delta_pct
+
+        path = tmp_path / "price_zero.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+
+        # ORDER BY date DESC LIMIT 6 → oldest = "2026-04-20" → close=0 (five_back)
+        rows = []
+        for i, close in enumerate([0.0, 100.0, 101.0, 102.0, 103.0, 104.0]):
+            rows.append(
+                {
+                    "date": f"2026-04-{20 + i:02d}",
+                    "ticker": "ZERO",
+                    "open": close,
+                    "high": close,
+                    "low": close,
+                    "close": close,
+                    "volume": 100,
+                    "adj_close": close,
+                }
+            )
+        upsert_prices(pd.DataFrame(rows), path)
+
+        assert _load_5d_price_delta_pct("ZERO", db_path=path) is None
+
+    def test_price_delta_returns_none_when_under_6_rows(self, tmp_path, monkeypatch):
+        import pandas as pd
+
+        import nuri.core.db as db_mod
+        from nuri.alerts.postmarket_brief import _load_5d_price_delta_pct
+
+        path = tmp_path / "price_short.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+
+        rows = []
+        for i, close in enumerate([100.0, 101.0, 102.0]):
+            rows.append(
+                {
+                    "date": f"2026-04-{20 + i:02d}",
+                    "ticker": "SHORT",
+                    "open": close,
+                    "high": close,
+                    "low": close,
+                    "close": close,
+                    "volume": 100,
+                    "adj_close": close,
+                }
+            )
+        upsert_prices(pd.DataFrame(rows), path)
+
+        assert _load_5d_price_delta_pct("SHORT", db_path=path) is None
+
+    def test_price_delta_returns_normal_pct_when_data_ok(self, tmp_path, monkeypatch):
+        """6 rows + non-zero five_back → 정상 % return."""
+        import pandas as pd
+
+        import nuri.core.db as db_mod
+        from nuri.alerts.postmarket_brief import _load_5d_price_delta_pct
+
+        path = tmp_path / "price_ok.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+
+        rows = []
+        for i, close in enumerate([100.0, 100.0, 100.0, 100.0, 100.0, 110.0]):
+            rows.append(
+                {
+                    "date": f"2026-04-{20 + i:02d}",
+                    "ticker": "OK",
+                    "open": close,
+                    "high": close,
+                    "low": close,
+                    "close": close,
+                    "volume": 100,
+                    "adj_close": close,
+                }
+            )
+        upsert_prices(pd.DataFrame(rows), path)
+
+        # rows ORDER BY date DESC LIMIT 6 → latest=110 (i=5), five_back=100 (i=0)
+        result = _load_5d_price_delta_pct("OK", db_path=path)
+        assert result == pytest.approx(10.0)
+
+    def test_macro_delta_returns_normal_when_data_ok(self, tmp_path, monkeypatch):
+        import nuri.core.db as db_mod
+        from nuri.alerts.postmarket_brief import _load_5d_macro_delta
+
+        path = tmp_path / "macro_ok.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+
+        records = [
+            {"date": f"2026-04-{20 + i:02d}", "indicator": "BAR", "value": v, "source": "test"}
+            for i, v in enumerate([10.0, 11.0, 12.0, 13.0, 14.0, 20.0])
+        ]
+        upsert_macro(records, path)
+
+        # latest=20, five_back=10 → delta = 10
+        result = _load_5d_macro_delta("BAR", db_path=path)
+        assert result == pytest.approx(10.0)

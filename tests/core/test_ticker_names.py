@@ -52,3 +52,27 @@ class TestGetTickerName:
             patch("pykrx.stock.get_market_ticker_name", return_value=""),
         ):
             assert ticker_names.get_ticker_name("999999.KS") is None
+
+    def test_db_lookup_exception_falls_through_to_pykrx(self) -> None:
+        """1차 DB query 가 raise → except 분기 후 pykrx 시도 (lines 44-45)."""
+
+        def _boom_query(*a, **kw):
+            raise RuntimeError("DB outage")
+
+        with (
+            patch("nuri.core.db.query", side_effect=_boom_query),
+            patch("pykrx.stock.get_market_ticker_name", return_value="삼성전자"),
+        ):
+            assert ticker_names.get_ticker_name("100100.KS") == "삼성전자"
+
+    def test_pykrx_exception_returns_none(self) -> None:
+        """2차 pykrx 호출이 raise → except 분기 → None (lines 54-56)."""
+
+        def _boom_pykrx(*a, **kw):
+            raise RuntimeError("pykrx down")
+
+        with (
+            patch("nuri.core.db.query", return_value=[]),
+            patch("pykrx.stock.get_market_ticker_name", side_effect=_boom_pykrx),
+        ):
+            assert ticker_names.get_ticker_name("100200.KS") is None
