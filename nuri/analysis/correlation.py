@@ -102,9 +102,16 @@ def print_correlation(corr_matrix: pd.DataFrame, warnings: list[dict]) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: 상관관계 분석 + 히트맵 저장."""
+    del argv  # 인자 없음
     logging.basicConfig(level=logging.INFO)
     corr, warns = analyze_correlation()
     print_correlation(corr, warns)
     if not corr.empty:
         save_heatmap(corr)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

@@ -113,7 +113,13 @@ def print_report(embed: dict) -> None:
     print(f"{'=' * 60}\n")
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: 일일 리포트 → Discord 전송, 실패 시 stdout."""
+    del argv  # 인자 없음
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
     logger.info("일일 리포트 생성 시작")
     embed = generate_report()
 
@@ -122,11 +128,8 @@ def main():
         print_report(embed)
 
     logger.info("일일 리포트 완료")
+    return 0
 
 
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    )
-    main()
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

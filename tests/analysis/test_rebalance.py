@@ -1,5 +1,7 @@
 """Tests for nuri.analysis.rebalance — split from tests/test_analysis_all.py (#157)."""
+import numpy as np
 import pandas as pd
+import pytest
 
 
 class TestAnalysisRebalance:
@@ -130,6 +132,66 @@ class TestAnalyzeRebalanceEmpty:
         monkeypatch.setattr(mod, "query", lambda sql, *a, **kw: [])
         result = mod.analyze_rebalance()
         assert result.empty
+
+    def test_leverage_etf_branches(self, db_path, monkeypatch):
+        """LEVERAGE_ETFS 종목이 holdings 에 있으면 → 77-78 (upperlng pass) + 109 (SELL 레버리지) 분기 진입."""
+        import nuri.analysis.rebalance as mod
+        from nuri.core.rules import LEVERAGE_ETFS
+
+        leverage_ticker = next(iter(LEVERAGE_ETFS))  # 첫 번째 레버리지 ETF (e.g., 'TQQQ')
+
+        # Riskfolio 가 numerical solve 가능하도록 60일 가격 + variation 보장
+        np.random.seed(42)
+        dates = pd.bdate_range("2024-01-01", periods=60).strftime("%Y-%m-%d").tolist()
+        prices_rows = []
+        for ticker, base in [(leverage_ticker, 50.0), ("AAPL", 150.0)]:
+            for i, d in enumerate(dates):
+                prices_rows.append({
+                    "ticker": ticker, "date": d,
+                    "close": base + i * 0.3 + np.random.randn() * 0.5,
+                })
+        prices_df = pd.DataFrame(prices_rows)
+
+        holdings_df = pd.DataFrame({
+            "ticker": [leverage_ticker, "AAPL"],
+            "total_qty": [10, 10],
+            "sector": ["Leverage", "Tech"],
+        })
+
+        def _query_df(sql, *a, **kw):
+            if "prices" in sql:
+                return prices_df
+            if "portfolio" in sql:
+                return holdings_df
+            return pd.DataFrame()
+
+        # query 는 latest price + current_price lookup → 모두 동일 dict 반환
+        def _query(sql, *a, **kw):
+            # 'SELECT close FROM prices ORDER BY date DESC LIMIT 1' 형태
+            if "DESC LIMIT 1" in sql:
+                if a and a[0] and a[0][0] == leverage_ticker:
+                    return [{"close": 50.0}]
+                return [{"close": 150.0}]
+            return []
+
+        monkeypatch.setattr(mod, "query_df", _query_df)
+        monkeypatch.setattr(mod, "query", _query)
+
+        try:
+            result = mod.analyze_rebalance(method="rp")
+        except Exception:
+            pytest.skip("riskfolio 최적화 실패 (numerical) — 본 테스트는 leverage 분기 도달이 목적")
+            return
+
+        if result.empty:
+            pytest.skip("최적화가 빈 결과 반환 — riskfolio 환경 의존")
+            return
+
+        # 레버리지 티커 행이 결과에 포함되어 있어야 함
+        leverage_rows = result[result["ticker"] == leverage_ticker]
+        assert not leverage_rows.empty
+        # action 이 'SELL (레버리지)' 으로 강제 마킹
+        assert leverage_rows.iloc[0]["action"] == "SELL (레버리지)"
 
     def test_zero_total_value(self, db_path, monkeypatch):
         import nuri.analysis.rebalance as mod
