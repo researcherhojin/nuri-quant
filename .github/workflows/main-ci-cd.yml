@@ -416,7 +416,11 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
-          flags: backend-fast
+          # Per-shard unique flag (#612). 직전엔 두 shard 가 동일 `backend-fast` 로 업로드 →
+          # codecov 가 같은 flag/commit 의 후속 upload 를 union 이 아닌 replace 로 처리해
+          # shard1-only 라인이 final view 에서 missed 로 나타나는 merge bug 발생. shard 별
+          # 별도 flag 로 분리 + component_management `backend.*` 정규식이 여전히 matches.
+          flags: backend-fast-${{ matrix.shard }}
           disable_search: true
           fail_ci_if_error: false
 
