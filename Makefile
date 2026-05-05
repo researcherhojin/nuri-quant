@@ -8,7 +8,7 @@
 PYTHON = .venv/bin/python
 
 .PHONY: help \
-        setup test test-fast test-slow lint lint-fix verify-quick verify-all verify verify-fast \
+        setup test test-fast test-slow ci-cov ci-cov-detail lint lint-fix verify-quick verify-all verify verify-fast \
         collect collect-kis collect-kis-check wallstreet filings \
         analyze report report-llm \
         validate regime recommend gate consensus certify remediate track-decisions \
@@ -84,6 +84,32 @@ test:
 
 test-fast:
 	$(PYTHON) -m pytest tests/ -v --cov=nuri -n auto --dist worksteal -m "not slow"
+
+# ─── CI artifact ground-truth coverage (Issue #616 verification protocol) ───
+# 직전 main CI run 의 6 shards (.coverage artifacts) 다운로드 + combine →
+# Codecov 와 동일한 측정값 산출. local pytest --cov 는 dev 환경 path 의존
+# (config/portfolio.yaml 등) 으로 결과 다를 수 있어 ground truth 아님.
+ci-cov:    ## Latest main CI artifact 6 shards combine → coverage report
+	@LATEST=$$(gh run list --branch main --workflow main-ci-cd.yml --limit 1 --json databaseId | jq -r '.[0].databaseId'); \
+	if [ -z "$$LATEST" ] || [ "$$LATEST" = "null" ]; then echo "❌ no recent main CI run"; exit 1; fi; \
+	echo "📥 Downloading shards from run $$LATEST"; \
+	rm -rf /tmp/ci-cov-shards && mkdir -p /tmp/ci-cov-shards; \
+	cd /tmp/ci-cov-shards && for s in fast-1 fast-2 fast-3 fast-4 slow-1 slow-2; do \
+	    gh run download "$$LATEST" --name "coverage-$$s" --dir ./$$s -R researcherhojin/nuri-quant 2>&1 | tail -1; \
+	done; \
+	cd $(CURDIR); \
+	rm -f .coverage.ci .coverage.ci.shard.*; \
+	for d in fast-1 fast-2 fast-3 fast-4 slow-1 slow-2; do \
+	    [ -f /tmp/ci-cov-shards/$$d/.coverage ] && cp /tmp/ci-cov-shards/$$d/.coverage .coverage.ci.shard.$$d; \
+	done; \
+	$(PYTHON) -m coverage combine --data-file=.coverage.ci .coverage.ci.shard.* 2>&1 | tail -3; \
+	echo ""; echo "═══ CI ground-truth coverage ═══"; \
+	$(PYTHON) -m coverage report --data-file=.coverage.ci --skip-covered; \
+	rm -f .coverage.ci.shard.*
+
+ci-cov-detail:    ## ci-cov + show-missing for files with gaps
+	@$(MAKE) --no-print-directory ci-cov 2>&1 | head -1
+	@$(PYTHON) -m coverage report --data-file=.coverage.ci --show-missing --skip-covered
 
 # ─── #529 Phase 2 production verification ────────────────
 phase2-chain:    ## Phase 2 4-actor chain end-to-end on real macro + ticker (default NVDA)
