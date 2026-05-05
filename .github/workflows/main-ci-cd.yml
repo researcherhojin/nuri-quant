@@ -22,6 +22,28 @@ env:
   NODE_VERSION: "22"
 
 jobs:
+  # ─── Quick checks (5MB file gate) — moved from pr-checks.yml ───
+  # Single-purpose, always-run, 빠름. PR 에 5MB+ 파일 들어오는 것 차단.
+  quick-checks:
+    name: Quick Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+      - name: Reject files over 5MB
+        run: |
+          LARGE=$(find . -type f \
+            -not -path './.git/*' \
+            -not -path './frontend/node_modules/*' \
+            -not -path './.venv/*' \
+            -not -path './data/*' \
+            -size +5M 2>/dev/null)
+          if [ -n "$LARGE" ]; then
+            echo "::error::Files over 5MB found:"
+            echo "$LARGE"
+            exit 1
+          fi
+
   # ─── Change detection ───
   # All 5 required jobs (Backend Tests, Backend Lint, Frontend Tests, Frontend Build,
   # Security Scan) ALWAYS run so their check names report to branch protection. But
