@@ -1,6 +1,7 @@
 {
   "include": ["nuri", "tests"],
   "exclude": [
+    "**/.*",
     "**/__pycache__",
     "**/.venv",
     "**/.pytest_cache",
