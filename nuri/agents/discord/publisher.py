@@ -198,7 +198,9 @@ class DiscordPublisher:
 
         last_status: Optional[int] = None
         last_err: Optional[str] = None
-        for attempt in range(self.MAX_RETRIES + 1):
+        attempt = 0
+        # while True — 자연 종료 branch 제거 (coverage partial 회피, return/break 만 exit).
+        while True:
             try:
                 with httpx.Client(timeout=self.timeout) as client:
                     resp = client.post(url, json=self._enrich_embed_payload(payload, actor_name))
@@ -216,6 +218,7 @@ class DiscordPublisher:
                     return PublishResult(channel, True, resp.status_code, attempt)
                 if resp.status_code in (429, 500, 502, 503, 504) and attempt < self.MAX_RETRIES:
                     time.sleep(0.5)
+                    attempt += 1
                     continue
                 last_err = f"HTTP {resp.status_code}: {resp.text[:200]}"
                 break
@@ -223,6 +226,7 @@ class DiscordPublisher:
                 last_err = f"{type(exc).__name__}: {exc}"
                 if attempt < self.MAX_RETRIES:
                     time.sleep(0.5)
+                    attempt += 1
                     continue
                 break
 
@@ -256,7 +260,9 @@ class DiscordPublisher:
 
         last_status: Optional[int] = None
         last_err: Optional[str] = None
-        for attempt in range(self.MAX_RETRIES + 1):
+        attempt = 0
+        # while True — 자연 종료 branch 제거 (coverage partial 회피, return/break 만 exit).
+        while True:
             try:
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
                     resp = await client.post(url, json=self._enrich_embed_payload(payload, actor_name))
@@ -274,6 +280,7 @@ class DiscordPublisher:
                     return PublishResult(channel, True, resp.status_code, attempt)
                 if resp.status_code in (429, 500, 502, 503, 504) and attempt < self.MAX_RETRIES:
                     await asyncio.sleep(0.5)
+                    attempt += 1
                     continue
                 last_err = f"HTTP {resp.status_code}: {resp.text[:200]}"
                 break
@@ -281,6 +288,7 @@ class DiscordPublisher:
                 last_err = f"{type(exc).__name__}: {exc}"
                 if attempt < self.MAX_RETRIES:
                     await asyncio.sleep(0.5)
+                    attempt += 1
                     continue
                 break
 
