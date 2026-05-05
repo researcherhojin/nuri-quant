@@ -1,3 +1,4 @@
+# cspell:ignore noact LOWTR SELLT SELLOK nondir lowsev
 """screen_candidates main flow — Issue #616 Phase 3-B3.
 
 candidates.py 의 main loop / drift / catalyst / conflict / scorecard-stale 분기 닫음.
@@ -198,7 +199,9 @@ class TestScreenCandidatesNotesAndScoring:
         rsi_cands = [c for c in result if c.signal_id == "rsi_oversold"]
         assert rsi_cands
         c = rsi_cands[0]
-        assert c.scoring_detail["drift_multiplier"] == 0.3
+        sd = c.scoring_detail
+        assert sd is not None
+        assert sd["drift_multiplier"] == 0.3
         assert "critical" in c.notes
 
     def test_scorecard_stale_appends_warning(self, tmp_path):
@@ -241,13 +244,15 @@ class TestSellCatalystDowngrade:
         """277-283, 368: SELL ACTIONABLE + no catalyst → tier=ADVISORY, note '근거 없음'."""
         import pytest
 
-        from nuri.quant.validation.signal_backtest import SELL_SIGNALS
+        from nuri.quant.validation.signal_backtest import SELL_SIGNALS, SIGNAL_DEFINITIONS
         from nuri.trading.recommend.candidates import screen_candidates
 
-        if not SELL_SIGNALS:
-            pytest.skip("SELL_SIGNALS 비어있음")
+        # SHADOW signal 제외 — SIGNAL_DEFINITIONS (active) ∩ SELL_SIGNALS, 정렬해서 결정적.
+        active_sells = sorted(set(SELL_SIGNALS) & set(SIGNAL_DEFINITIONS.keys()))
+        if not active_sells:
+            pytest.skip("active SELL signal 없음")
 
-        sell_sig = next(iter(SELL_SIGNALS))
+        sell_sig = active_sells[0]
 
         p = tmp_path / "sell.db"
         init_db(p)
@@ -291,13 +296,14 @@ class TestSellCatalystDowngrade:
         """282-283: SELL ACTIONABLE + catalyst 있음 → tier 유지, catalyst_note 기록."""
         import pytest
 
-        from nuri.quant.validation.signal_backtest import SELL_SIGNALS
+        from nuri.quant.validation.signal_backtest import SELL_SIGNALS, SIGNAL_DEFINITIONS
         from nuri.trading.recommend.candidates import screen_candidates
 
-        if not SELL_SIGNALS:
-            pytest.skip("SELL_SIGNALS 비어있음")
+        active_sells = sorted(set(SELL_SIGNALS) & set(SIGNAL_DEFINITIONS.keys()))
+        if not active_sells:
+            pytest.skip("active SELL signal 없음")
 
-        sell_sig = next(iter(SELL_SIGNALS))
+        sell_sig = active_sells[0]
 
         p = tmp_path / "sell_cat.db"
         init_db(p)
@@ -333,7 +339,9 @@ class TestSellCatalystDowngrade:
         c = sell_cands[0]
         # ACTIONABLE 유지 (catalyst 존재) + scoring_detail catalyst_note 기록
         assert c.tier == "actionable"
-        assert c.scoring_detail["catalyst_note"].startswith("catalyst:")
+        sd = c.scoring_detail
+        assert sd is not None
+        assert sd["catalyst_note"].startswith("catalyst:")
 
 
 # ═══════════════════════════════════════════════════════
@@ -416,7 +424,9 @@ class TestConflictDetectionBranches:
         # high 할인 없음 → notes 에 충돌 텍스트 없음.
         assert "충돌" not in c.notes
         # 418 False → 419-422 skip. conflict_penalty 는 1.0 으로 기록 (424 block 은 항상 실행).
-        assert c.scoring_detail["conflict_penalty"] == 1.0
+        sd = c.scoring_detail
+        assert sd is not None
+        assert sd["conflict_penalty"] == 1.0
 
     def test_detect_conflicts_exception_is_swallowed(self, tmp_path):
         """427-428: detect_conflicts raise → except 흡수 → 후보 정상 반환."""

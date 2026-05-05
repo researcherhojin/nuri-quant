@@ -66,7 +66,8 @@ class TestLoadScorecardMissingBranches:
         if not SELL_SIGNALS:
             pytest.skip("SELL_SIGNALS 비어있음 — 회귀 시 skip")
 
-        sell_sig = next(iter(SELL_SIGNALS))
+        # 결정적 선택 (PYTHONHASHSEED 영향 회피).
+        sell_sig = sorted(SELL_SIGNALS)[0]
         report_dir = tmp_path / "reports_stale_sell"
         day_dir = report_dir / "2026-04-30"
         day_dir.mkdir(parents=True)
