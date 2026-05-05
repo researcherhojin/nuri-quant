@@ -415,7 +415,7 @@ jobs:
 
       - name: Upload .coverage artifact
         if: needs.changes.outputs.run_backend == 'true' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-fast-${{ matrix.shard }}
           path: .coverage
@@ -459,7 +459,7 @@ jobs:
 
       - name: Upload .coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-slow-${{ matrix.shard }}
           path: .coverage
@@ -490,7 +490,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Download all coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: coverage-*
           path: cov-artifacts
