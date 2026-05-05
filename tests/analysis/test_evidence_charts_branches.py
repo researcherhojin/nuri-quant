@@ -396,3 +396,27 @@ class TestPortfolioHeatmapNoViolations:
         body = result.read_text()
         # violations 비어 annotation 미추가 — "위반 종목" 텍스트 없음 (312 False 분기 확인)
         assert "위반 종목" not in body
+
+
+# ─── Phase 4 #616 statement coverage ──────────────────────────────────
+
+
+class TestLoadLatestScorecardFound:
+    """L705: scorecard CSV 발견 → pd.read_csv 반환."""
+
+    def test_load_latest_scorecard_returns_df(self, tmp_path, monkeypatch):
+        import pandas as pd
+
+        from nuri.analysis import evidence_charts
+
+        # report dir 에 scorecard 파일 만들기
+        report_root = tmp_path / "reports"
+        day_dir = report_root / "2026-05-06"
+        day_dir.mkdir(parents=True)
+        scorecard = pd.DataFrame([{"signal_id": "rsi_oversold", "win_rate": 0.6, "profit_factor": 1.8}])
+        scorecard.to_csv(day_dir / "signal_scorecard.csv", index=False)
+
+        monkeypatch.setattr(evidence_charts, "REPORT_DIR", report_root)
+        result = evidence_charts._load_latest_scorecard()
+        assert result is not None
+        assert "signal_id" in result.columns

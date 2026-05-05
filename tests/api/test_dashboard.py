@@ -1418,3 +1418,43 @@ class TestDashboardHelperExceptions:
         )
         result = dash_mod._get_active_alerts()
         assert any("BUY/SELL 충돌" in a["message"] for a in result)
+
+
+# ─── Phase 4 #616 statement coverage ──────────────────────────────────
+
+
+class TestGetCashBalancesAppend:
+    """dashboard.py L394: cash_usd 또는 cash_krw 가 있는 account → accounts_out append."""
+
+    def test_cash_account_appended(self, tmp_path, monkeypatch):
+        from pathlib import Path
+
+        from nuri.api.routes import dashboard as dash_mod
+
+        portfolio_yaml = tmp_path / "portfolio.yaml"
+        portfolio_yaml.write_text(
+            "accounts:\n"
+            "  main:\n"
+            "    strategy: core\n"
+            "    cash_usd: 1000.0\n"
+            "  toss:\n"
+            "    strategy: swing\n"
+            "    cash_krw: 1300000.0\n"
+            "  empty:\n"
+            "    strategy: pension\n",  # cash 0 → skip
+            encoding="utf-8",
+        )
+        # _get_cash_balances 가 portfolio.yaml 경로 직접 사용 — Path 처리 필요
+        # 함수 내부 hard-coded path 우회 어려움 → builtins.open redirect
+        real_open = open
+
+        def _opener(path, *a, **kw):
+            if str(path).endswith("portfolio.yaml"):
+                return real_open(portfolio_yaml, *a, **kw)
+            return real_open(path, *a, **kw)
+
+        monkeypatch.setattr("builtins.open", _opener)
+        result = dash_mod._get_cash_balances(exchange_rate=1300.0)
+        # main + toss 모두 append (cash > 0), empty 는 제외
+        assert len(result["accounts"]) == 2
+        assert result["total_cash_usd"] > 1000

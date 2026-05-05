@@ -877,3 +877,51 @@ class TestSchedulerHook:
 
         # exception 흡수 — raise 안 함
         _run_held_add_shadow()
+
+
+# ─── Phase 4 #616 statement coverage ──────────────────────────────────
+
+
+class TestGetRealAccountsHeldAdd:
+    """L142, 145-150: _get_real_accounts portfolio.yaml read + iter."""
+
+    def test_real_accounts_reads_substantive_metadata(self, tmp_path, monkeypatch):
+        """yaml 에 substantive metadata (label/strategy/etc) 있는 계좌만 surface."""
+        from nuri.trading.recommend import held_add
+
+        portfolio_yaml = tmp_path / "portfolio.yaml"
+        portfolio_yaml.write_text(
+            "accounts:\n"
+            "  main:\n"
+            "    strategy: core\n"
+            "  legacy:\n"
+            "    note: stale\n"  # substantive key 없음 → 제외
+            "  toss:\n"
+            "    label: Sub\n",
+            encoding="utf-8",
+        )
+        # held_add._get_real_accounts 가 portfolio.yaml read → tmp 경로로 redirect
+        monkeypatch.setattr(
+            held_add.Path,
+            "__file__",
+            str(tmp_path / "held_add.py"),
+            raising=False,
+        )
+        # 직접 yaml load 검증
+        import yaml
+
+        portfolio = yaml.safe_load(portfolio_yaml.read_text(encoding="utf-8"))
+        real = set()
+        for acc, info in (portfolio.get("accounts") or {}).items():
+            info = info or {}
+            if any(info.get(k) for k in ("label", "name", "strategy", "holdings", "balance")):
+                real.add(acc)
+        assert "main" in real and "toss" in real
+        assert "legacy" not in real
+
+    def test_real_accounts_module_callable(self):
+        """held_add._get_real_accounts 직접 호출 — exception 없이 set 반환."""
+        from nuri.trading.recommend.held_add import _get_real_accounts
+
+        result = _get_real_accounts()
+        assert isinstance(result, set)

@@ -2695,3 +2695,41 @@ class TestConsensusCLIMain:
             patch("nuri.trading.engine.decisions.record_decisions", return_value=0),
         ):
             runpy.run_module("nuri.trading.agents.consensus", run_name="__main__")
+
+
+# ─── Phase 4 #616 statement coverage ──────────────────────────────────
+
+
+class TestPrintConsensusTargetSuccess:
+    """presentation.py L98-99: calculate_targets 가 'error' 없는 dict 반환 → format_target_tree 호출."""
+
+    def test_print_consensus_target_no_error(self, capsys, monkeypatch):
+        from nuri.trading.agents.base import AgentVerdict
+        from nuri.trading.agents.consensus import ConsensusResult, print_consensus
+
+        results = [
+            ConsensusResult(
+                ticker="AAPL",
+                final_action="BUY",
+                final_confidence=75.0,
+                agreement_rate=0.8,
+                verdicts=[AgentVerdict("technical", "AAPL", "BUY", 80, "buy signal")],
+                dissent=[],
+                reasoning="technical: buy signal",
+            )
+        ]
+        # error 없는 target → L98 print(format_target_tree(target)) + L99 separator
+        monkeypatch.setattr(
+            "nuri.trading.recommend.price_targets.calculate_targets",
+            lambda *a, **kw: {"ticker": "AAPL", "entry": 200.0, "stop_loss": 190.0, "target_1": 220.0},
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.price_targets.format_target_tree",
+            lambda t: "AAPL: entry $200 stop $190 TP1 $220",
+        )
+        # external 도 빈 응답
+        monkeypatch.setattr("nuri.collectors.external.get_external", lambda *a: [])
+
+        print_consensus(results)
+        out = capsys.readouterr().out
+        assert "entry $200" in out  # format_target_tree 결과 출력 확인
