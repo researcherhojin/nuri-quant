@@ -1,4 +1,5 @@
 """리스크 관리 에이전트 — VaR, 손절선, 포지션 집중도 기반 판정."""
+
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.rules import MAX_SINGLE_POSITION, get_stop_loss_for_account
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
@@ -25,11 +26,13 @@ class RiskAgent(BaseAgent):
         # 계좌가 breach 해도 첫 row 만 확인하는 masking 버그.)
         holding = self._safe_query(
             "SELECT account, avg_price, quantity FROM portfolio WHERE ticker = ?",
-            (ticker,), db_path,
+            (ticker,),
+            db_path,
         )
         price_row = self._safe_query(
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
-            (ticker,), db_path,
+            (ticker,),
+            db_path,
         )
 
         if holding and price_row and price_row[0]["close"]:
@@ -65,9 +68,11 @@ class RiskAgent(BaseAgent):
         vol_low = _CFG.get("volatility_low", 2)
 
         from nuri.core.db import query_df
+
         recent = query_df(
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 30",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
         if len(recent) >= 10:
             vol = recent["close"].pct_change().std() * 100
@@ -84,18 +89,15 @@ class RiskAgent(BaseAgent):
         # REBALANCE` 만 emit. § STRATEGY 2.6 Soft-penalty, not Hard veto.
         # A-4 codex Round 2 P2: 여러 계좌 합산은 유지 (undercount 방지).
         total_rows = self._safe_query(
-            "SELECT SUM(quantity * avg_price) as total FROM portfolio", db_path=db_path,
+            "SELECT SUM(quantity * avg_price) as total FROM portfolio",
+            db_path=db_path,
         )
         if holding and total_rows and total_rows[0]["total"]:
-            ticker_exposure = sum(
-                (row["quantity"] or 0) * (row["avg_price"] or 0) for row in holding
-            )
+            ticker_exposure = sum((row["quantity"] or 0) * (row["avg_price"] or 0) for row in holding)
             weight = ticker_exposure / total_rows[0]["total"]
             if weight > MAX_SINGLE_POSITION:
                 concentration_breach = True
-                reasons.append(
-                    f"비중 초과 ({weight*100:.1f}% > {MAX_SINGLE_POSITION*100:.0f}%) — 리밸런스 권고"
-                )
+                reasons.append(f"비중 초과 ({weight * 100:.1f}% > {MAX_SINGLE_POSITION * 100:.0f}%) — 리밸런스 권고")
 
         # 판정 — legacy action 은 alpha score 만으로 derive. concentration 은
         # 여기 영향 주지 않음 (SELL 경로 분리).
@@ -103,12 +105,11 @@ class RiskAgent(BaseAgent):
         score_buy = _CFG.get("score_buy", 2)
 
         if score <= score_sell:
-            action, confidence = "SELL", min(
-                _CONF.get("sell_cap", 85),
-                _CONF.get("sell_base", 50) + abs(score) * _CONF.get("sell_multiplier", 15),
-            )
-            if stop_loss_fired:
-                confidence = _CONF.get("stop_loss_override", 90)
+            # score ≤ -2 는 stop_loss(-3) breach 만 trigger — concentration 은 portfolio
+            # 전용으로 분리됐고 vol_high(-1) 단독으로 -2 도달 불가 (PR A 이후). 따라서
+            # 이 분기 진입 시 stop_loss_fired 항상 True → override confidence 직접 사용.
+            action = "SELL"
+            confidence = _CONF.get("stop_loss_override", 90)
         elif score >= score_buy:
             action, confidence = "BUY", _CONF.get("buy_base", 50) + score * _CONF.get("buy_multiplier", 10)
         else:
@@ -129,7 +130,10 @@ class RiskAgent(BaseAgent):
         portfolio_action: str | None = "REBALANCE" if concentration_breach else None
 
         return AgentVerdict(
-            self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
+            self.name,
+            ticker,
+            action,
+            round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons) or "리스크 정상",
             {"score": score, "concentration_breach": concentration_breach},
             alpha_action=alpha_action,
