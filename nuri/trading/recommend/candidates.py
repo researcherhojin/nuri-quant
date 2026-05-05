@@ -8,6 +8,7 @@ E-1: 시그널 기반 후보 스크리너.
     python -m nuri.trading.recommend.candidates
     python -m nuri.trading.recommend.candidates --days 3
 """
+
 import argparse
 import logging
 from dataclasses import dataclass
@@ -33,35 +34,36 @@ REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 
 # Evidence tier thresholds — B-2-ext per codex mid-review (2026-04-17)
 # 증거 품질로 3분류해서 scoring 이 약한 근거를 legitimize 하지 못하도록 차단.
-MIN_TRADES_FOR_VALIDATION = 30   # 30+ trades = statistically validated sample
+MIN_TRADES_FOR_VALIDATION = 30  # 30+ trades = statistically validated sample
 NEGATIVE_EDGE_PF_THRESHOLD = 1.0  # PF < 1.0 = losses > gains = avoid
 
 TIER_ACTIONABLE = "actionable"  # validated + adequate sample + positive edge
-TIER_ADVISORY = "advisory"      # unscored OR low-sample (disclosure only)
-TIER_AVOID = "avoid"            # validated negative edge (do NOT act on signal alone)
+TIER_ADVISORY = "advisory"  # unscored OR low-sample (disclosure only)
+TIER_AVOID = "avoid"  # validated negative edge (do NOT act on signal alone)
 
 
 @dataclass
 class Candidate:
     """매매 후보."""
+
     ticker: str
     signal_id: str
     signal_date: str
-    direction: str          # "BUY" or "SELL"
-    confidence: float       # 0~100
+    direction: str  # "BUY" or "SELL"
+    confidence: float  # 0~100
     win_rate: float
     profit_factor: float
     regime_fit: bool
     price: float
     notes: str
-    drift_status: str = ""          # "stable", "degrading", "critical" (from Learning Memory)
-    conflict: str = ""              # "" or "direction_conflict" (from Conflict Detection)
+    drift_status: str = ""  # "stable", "degrading", "critical" (from Learning Memory)
+    conflict: str = ""  # "" or "direction_conflict" (from Conflict Detection)
     scoring_detail: dict | None = None  # confidence 계산 요인 기록
-    unscored: bool = False          # True = signal 이 scorecard 에 없음 → 통계 미검증
-                                    # (이전 폴백 win_rate=0.5/pf=1.0 제거, B-2 honesty fix)
-    tier: str = TIER_ACTIONABLE     # "actionable" | "advisory" | "avoid"
-                                    # codex B-2-ext: 증거 품질 bucket split. advisory/avoid
-                                    # 는 normal recommendation 에 섞이지 않음 (개별 섹션).
+    unscored: bool = False  # True = signal 이 scorecard 에 없음 → 통계 미검증
+    # (이전 폴백 win_rate=0.5/pf=1.0 제거, B-2 honesty fix)
+    tier: str = TIER_ACTIONABLE  # "actionable" | "advisory" | "avoid"
+    # codex B-2-ext: 증거 품질 bucket split. advisory/avoid
+    # 는 normal recommendation 에 섞이지 않음 (개별 섹션).
 
 
 def _load_scorecard() -> tuple[dict[str, dict], int | None]:
@@ -85,6 +87,7 @@ def _load_scorecard() -> tuple[dict[str, dict], int | None]:
                 age_days = None
                 try:
                     from nuri.core.timezone import kst_now
+
                     dir_date = datetime.strptime(d.name, "%Y-%m-%d")
                     age_days = (kst_now().replace(tzinfo=None) - dir_date).days
                 except ValueError:
@@ -106,8 +109,7 @@ def _load_scorecard() -> tuple[dict[str, dict], int | None]:
                 }
                 # Pre-B-1 cache detection: post-fix SELL 는 전부 PF<1 여야 함.
                 # SELL 중 PF>1 가 있으면 옛 측정 → 해당 시그널만 drop (unscored 로 fallback).
-                stale_sells = [sid for sid in _SELL_SIGNALS
-                               if sid in data and data[sid]["profit_factor"] > 1.0]
+                stale_sells = [sid for sid in _SELL_SIGNALS if sid in data and data[sid]["profit_factor"] > 1.0]
                 if stale_sells:
                     logger.warning(
                         "scorecard pre-B-1 (buy-perspective SELL) 데이터 감지: %s. "
@@ -124,6 +126,7 @@ def _get_drift_map(db_path=None) -> dict[str, dict]:
     """Learning Memory에서 시그널별 성과 변화(drift) 로드."""
     try:
         from nuri.trading.engine.memory import detect_drift
+
         drifts = detect_drift(db_path=db_path)
         return {d.signal_id: {"status": d.status, "drift_pct": d.drift_pct} for d in drifts}
     except Exception:
@@ -132,9 +135,9 @@ def _get_drift_map(db_path=None) -> dict[str, dict]:
 
 # drift 상태별 confidence 배수
 DRIFT_MULTIPLIERS = {
-    "critical": 0.3,    # 성과 급락 → 70% 할인
-    "degrading": 0.6,   # 성과 하락 → 40% 할인
-    "improving": 1.1,   # 성과 개선 → 10% 가점
+    "critical": 0.3,  # 성과 급락 → 70% 할인
+    "degrading": 0.6,  # 성과 하락 → 40% 할인
+    "improving": 1.1,  # 성과 개선 → 10% 가점
     "stable": 1.0,
 }
 
@@ -144,6 +147,7 @@ def _get_regime_context(db_path=None) -> dict | None:
     try:
         from nuri.quant.regime.classifier import classify_regime
         from nuri.quant.regime.strategy_map import map_regime_to_strategy
+
         regime = classify_regime(db_path=db_path)
         if regime is None:
             return None
@@ -212,7 +216,8 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
     for ticker in tickers:
         df = query_df(
             "SELECT date, open, high, low, close, volume FROM prices WHERE ticker = ? ORDER BY date",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
         if df.empty or len(df) < 50:
             continue
@@ -235,6 +240,7 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
             # 섞어 confidence/tier 에 간접 반영하지 않도록 분리". surface 는 별도
             # market_signals.detect_all() 로 UI 노출.
             from nuri.core.signal_config import is_actionable
+
             if not is_actionable(signal_id):
                 continue
 
@@ -275,6 +281,7 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                 catalyst_note = ""
                 if direction == "SELL" and tier == TIER_ACTIONABLE:
                     from nuri.core.catalyst import has_recent_catalyst
+
                     has_catalyst, catalyst_reason = has_recent_catalyst(ticker, db_path=db_path)
                     if not has_catalyst:
                         tier = TIER_ADVISORY
@@ -333,7 +340,7 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                     # 전체 승률 기반 (레짐 무관). win_rate/pf 는 scorecard 실측.
                     pf_normalized = min(pf / 5.0, 1.0)
                     regime_bonus = 1.0 if regime_fit else 0.3
-                    confidence = (win_rate * 40 + pf_normalized * 30 + regime_bonus * 30)
+                    confidence = win_rate * 40 + pf_normalized * 30 + regime_bonus * 30
                     scoring["base_confidence"] = round(confidence, 2)
 
                 # 레짐 비적합 시 할인
@@ -382,26 +389,29 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                 # 최종 confidence 기록
                 scoring["final_confidence"] = round(confidence, 2)
 
-                candidates.append(Candidate(
-                    ticker=ticker,
-                    signal_id=signal_id,
-                    signal_date=df["date"].iloc[entry_idx].strftime("%Y-%m-%d"),
-                    direction=direction,
-                    confidence=round(confidence, 1),
-                    win_rate=round(win_rate, 3),
-                    profit_factor=round(pf, 2),
-                    regime_fit=regime_fit,
-                    price=round(float(df["close"].iloc[entry_idx]), 2),
-                    notes="; ".join(notes_parts),
-                    drift_status=drift_status,
-                    scoring_detail=scoring,
-                    unscored=unscored,
-                    tier=tier,
-                ))
+                candidates.append(
+                    Candidate(
+                        ticker=ticker,
+                        signal_id=signal_id,
+                        signal_date=df["date"].iloc[entry_idx].strftime("%Y-%m-%d"),
+                        direction=direction,
+                        confidence=round(confidence, 1),
+                        win_rate=round(win_rate, 3),
+                        profit_factor=round(pf, 2),
+                        regime_fit=regime_fit,
+                        price=round(float(df["close"].iloc[entry_idx]), 2),
+                        notes="; ".join(notes_parts),
+                        drift_status=drift_status,
+                        scoring_detail=scoring,
+                        unscored=unscored,
+                        tier=tier,
+                    )
+                )
 
     # ── Conflict Detection: 방향 충돌 감지 + annotate ──
     try:
         from nuri.trading.engine.conflicts import detect_conflicts
+
         conflicts = detect_conflicts(candidates)
         # 충돌 종목 세트
         conflict_tickers = {}
@@ -410,6 +420,8 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                 conflict_tickers[cf.ticker] = cf.severity
 
         # 충돌 종목의 후보에 표시 + high severity면 confidence 할인
+        # screen_candidates 가 생성한 candidate 는 항상 fresh (notes 에 "충돌" 사전 부재)
+        # 하고 scoring_detail dict 가 항상 set 되므로 None 가드 불필요.
         for c in candidates:
             if c.ticker in conflict_tickers:
                 c.conflict = "direction_conflict"
@@ -418,12 +430,9 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
                 if sev == "high":
                     conflict_penalty = 0.5
                     c.confidence *= conflict_penalty
-                    if "충돌" not in c.notes:
-                        c.notes += "; BUY/SELL 충돌(관망 권장)" if c.notes else "BUY/SELL 충돌(관망 권장)"
-                # scoring_detail에 충돌 페널티 기록
-                if c.scoring_detail is not None:
-                    c.scoring_detail["conflict_penalty"] = conflict_penalty
-                    c.scoring_detail["final_confidence"] = round(c.confidence, 2)
+                    c.notes += "; BUY/SELL 충돌(관망 권장)" if c.notes else "BUY/SELL 충돌(관망 권장)"
+                c.scoring_detail["conflict_penalty"] = conflict_penalty
+                c.scoring_detail["final_confidence"] = round(c.confidence, 2)
     except Exception as e:
         logger.debug(f"Conflict detection 실패: {e}")
 
@@ -431,22 +440,21 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
     # A-2b-pre: scoring_detail["final_confidence"] 도 함께 업데이트해야 A-2b
     # audit trail 이 stale 하지 않음 (codex A-2b-pre review Medium finding).
     # `vix_penalty` 필드 기록해 어느 경로로 discount 됐는지 surface.
+    # screen_candidates 가 생성한 candidate 는 항상 scoring_detail dict 보유 → None 가드 불필요.
     if vix_gate["gate"] == "blocked":
         for c in candidates:
             if c.direction == "BUY":
                 c.confidence = 0  # VIX > 30: BUY 후보 전부 차단
                 c.notes = (c.notes + "; " if c.notes else "") + vix_gate["msg"]
-                if c.scoring_detail is not None:
-                    c.scoring_detail["vix_penalty"] = 0.0
-                    c.scoring_detail["final_confidence"] = 0.0
+                c.scoring_detail["vix_penalty"] = 0.0
+                c.scoring_detail["final_confidence"] = 0.0
     elif vix_gate["gate"] == "caution":
         for c in candidates:
             if c.direction == "BUY":
                 c.confidence *= 0.5  # VIX 25~30: 절반 포지션
                 c.notes = (c.notes + "; " if c.notes else "") + vix_gate["msg"]
-                if c.scoring_detail is not None:
-                    c.scoring_detail["vix_penalty"] = 0.5
-                    c.scoring_detail["final_confidence"] = round(c.confidence, 2)
+                c.scoring_detail["vix_penalty"] = 0.5
+                c.scoring_detail["final_confidence"] = round(c.confidence, 2)
 
     # confidence 내림차순
     candidates.sort(key=lambda c: c.confidence, reverse=True)
@@ -475,16 +483,20 @@ def print_candidates(candidates: list[Candidate]) -> None:
         print(f"  ⚠ {vix_gate['msg']}")
     elif vix_gate["gate"] == "caution":
         print(f"  ⚠ {vix_gate['msg']}")
-    print(f"  Signal-Based Candidates — tier split ({len(actionable)} actionable / "
-          f"{len(advisory)} advisory / {len(avoid)} avoid, 충돌 "
-          f"{len(set(c.ticker for c in conflicted))}종목)")
+    print(
+        f"  Signal-Based Candidates — tier split ({len(actionable)} actionable / "
+        f"{len(advisory)} advisory / {len(avoid)} avoid, 충돌 "
+        f"{len(set(c.ticker for c in conflicted))}종목)"
+    )
     print(f"{'=' * 85}")
 
     def _print_table(title, items, limit=15):
         if not items:
             return
         print(f"\n  {title} ({len(items)}건)")
-        print(f"  {'Ticker':<8} {'Signal':<18} {'Date':<12} {'Conf':>5} {'WR':>6} {'PF':>6} {'Price':>10} {'Flags':<12}")
+        print(
+            f"  {'Ticker':<8} {'Signal':<18} {'Date':<12} {'Conf':>5} {'WR':>6} {'PF':>6} {'Price':>10} {'Flags':<12}"
+        )
         print(f"  {'-' * 80}")
         for c in items[:limit]:
             flags = []
@@ -502,8 +514,10 @@ def print_candidates(candidates: list[Candidate]) -> None:
             else:
                 wr_str = f"{c.win_rate:>5.0%}"
                 pf_str = f"{c.profit_factor:>5.1f}"
-            print(f"  {c.ticker:<8} {c.signal_id:<18} {c.signal_date:<12} "
-                  f"{c.confidence:>4.0f} {wr_str:>6} {pf_str:>6} ${c.price:>9,.2f} {flag_str:<12}")
+            print(
+                f"  {c.ticker:<8} {c.signal_id:<18} {c.signal_date:<12} "
+                f"{c.confidence:>4.0f} {wr_str:>6} {pf_str:>6} ${c.price:>9,.2f} {flag_str:<12}"
+            )
 
     # B-2-ext: tier 분리 표시 — actionable → advisory → avoid
     _print_table("✅ Actionable BUY", buys)
