@@ -735,7 +735,7 @@ class TestCertification_R27:
         assert isinstance(cert.score, float)
         print_certificate(cert)
         captured = capsys.readouterr()
-        assert "SIEGE Certificate" in captured.out
+        assert "Certification" in captured.out
 
     def test_certificate_post_init_empty_timestamp(self):
         from nuri.trading.engine.certification import Certificate

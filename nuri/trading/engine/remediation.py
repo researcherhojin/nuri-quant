@@ -146,7 +146,7 @@ def print_remediation(plan: RemediationPlan) -> None:
     """Remediation 계획 CLI 출력."""
     print(f"\n{'═' * 60}")
     status = "CERTIFIED" if plan.certified else "REJECTED"
-    print(f"  SIEGE Remediation — {status} ({plan.score:.0f}%)")
+    print(f"  Certification Remediation — {status} ({plan.score:.0f}%)")
     print(f"{'═' * 60}")
 
     if plan.certified:

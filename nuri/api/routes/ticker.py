@@ -1,4 +1,5 @@
 """종목 상세 API — 모든 데이터를 한 번에."""
+
 from dataclasses import asdict
 
 from fastapi import APIRouter, Query
@@ -35,15 +36,15 @@ def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
     for t in all_tickers:
         if term in t.upper() and t not in seen:
             seen.add(t)
-            price_row = query(
-                "SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (t,)
+            price_row = query("SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (t,))
+            results.append(
+                {
+                    "ticker": t,
+                    "name": get_ticker_name(t),
+                    "price": price_row[0]["close"] if price_row else None,
+                    "date": price_row[0]["date"] if price_row else None,
+                }
             )
-            results.append({
-                "ticker": t,
-                "name": get_ticker_name(t),
-                "price": price_row[0]["close"] if price_row else None,
-                "date": price_row[0]["date"] if price_row else None,
-            })
         if len(results) >= 8:
             break
 
@@ -57,15 +58,15 @@ def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
                 name = get_ticker_name(t)
                 if name and term_lower in name.lower():
                     seen.add(t)
-                    price_row = query(
-                        "SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (t,)
+                    price_row = query("SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (t,))
+                    results.append(
+                        {
+                            "ticker": t,
+                            "name": name,
+                            "price": price_row[0]["close"] if price_row else None,
+                            "date": price_row[0]["date"] if price_row else None,
+                        }
                     )
-                    results.append({
-                        "ticker": t,
-                        "name": name,
-                        "price": price_row[0]["close"] if price_row else None,
-                        "date": price_row[0]["date"] if price_row else None,
-                    })
             if len(results) >= 8:
                 break
 
@@ -81,6 +82,7 @@ def get_market_context():
     # Macro score
     try:
         from nuri.quant.regime.macro_score import compute_macro_score
+
         macro = compute_macro_score()
         macro_score = macro.get("total_score") if isinstance(macro, dict) else None
     except Exception:
@@ -90,6 +92,7 @@ def get_market_context():
     trend = None
     try:
         from nuri.quant.regime.classifier import classify_regime
+
         regime = classify_regime()
         if regime:
             trend = regime.trend
@@ -133,6 +136,7 @@ def get_latest_prices(tickers: str = Query(..., description="Comma-separated tic
 def get_ticker_detail(symbol: str):
     """단일 종목의 모든 분석 데이터."""
     from nuri.core.ticker_names import get_ticker_name
+
     ticker = symbol.upper()
     result = {"ticker": ticker, "name": get_ticker_name(ticker)}
 
@@ -150,9 +154,10 @@ def get_ticker_detail(symbol: str):
     fund = query("SELECT * FROM fundamentals WHERE ticker=? ORDER BY date DESC LIMIT 1", (ticker,))
     result["fundamentals"] = dict(fund[0]) if fund else None
 
-    # 3. 6 에이전트 합의
+    # 3. 10 에이전트 합의
     try:
         from nuri.trading.agents.consensus import analyze_ticker
+
         consensus = analyze_ticker(ticker)
         result["consensus"] = {
             "final_action": consensus.final_action,
@@ -203,6 +208,7 @@ def get_ticker_detail(symbol: str):
     # 9. 최근 시그널
     try:
         from nuri.trading.recommend.candidates import screen_candidates
+
         candidates = screen_candidates(lookback_days=10)
         ticker_signals = [asdict(c) for c in candidates if c.ticker == ticker]
         result["signals"] = ticker_signals
@@ -217,8 +223,7 @@ def get_ticker_prices(symbol: str, days: int = Query(180, ge=30, le=1825)):
     """종목 가격 히스토리 (차트용)."""
     ticker = symbol.upper()
     rows = query(
-        "SELECT date, open, high, low, close, volume FROM prices "
-        "WHERE ticker=? ORDER BY date DESC LIMIT ?",
+        "SELECT date, open, high, low, close, volume FROM prices WHERE ticker=? ORDER BY date DESC LIMIT ?",
         (ticker, days),
     )
     # 오래된 순으로 정렬
