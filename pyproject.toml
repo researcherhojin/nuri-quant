@@ -150,6 +150,22 @@ filterwarnings = [
 
 
 # ═══════════════════════════════════════════════════════════════
+# coverage.py
+# ═══════════════════════════════════════════════════════════════
+# `relative_files = true` 은 .coverage 에 절대 경로 대신 cwd 기준 상대 경로를
+# 저장한다. CI 의 multi-job `coverage combine` 워크플로우 (각 shard `.coverage`
+# artifact 다운로드 → 합산 → coverage xml) 에서 다음 효과:
+#   - 모든 shard 가 동일 상대 경로로 저장 → combine 이 같은 file 식별자로 union
+#   - `coverage xml` 이 source path 를 상대로 출력 → codecov 가 path 필터
+#     (`flags.backend.paths: [nuri/]`) 매칭 가능 (절대 경로면 매칭 실패)
+# 절대 경로 파일을 codecov 에 업로드하면 flag.backend coverage=0% 가 되며 PR
+# #614 가 정확히 그 증상이었음 (job log 는 통과처럼 보였음 — 82k XML 송신했지만
+# codecov 측에서 nuri/ 파일을 0개로 처리).
+[tool.coverage.run]
+relative_files = true
+
+
+# ═══════════════════════════════════════════════════════════════
 # ruff (lint + isort)
 # ═══════════════════════════════════════════════════════════════
 [tool.ruff]
