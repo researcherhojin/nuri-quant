@@ -407,22 +407,22 @@ jobs:
 
       - name: Run fast tests with coverage
         if: needs.changes.outputs.run_backend == 'true'
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow and not integration" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report=xml --cov-report=term
+        # `--cov-report=` (empty) suppresses XML — backend-coverage-merge 가 모든
+        # shard 의 `.coverage` 를 모아 단일 XML 을 만들고 codecov 에 한 번 업로드.
+        # 이전엔 shard 별 XML 을 각각 codecov 에 업로드해 multi-session merge 시
+        # phantom miss (8 files / 46) 가 잔존했음 (#611-#613 history).
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow and not integration" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report= --cov-report=term
         timeout-minutes: 5
 
-      - name: Upload coverage to Codecov
+      - name: Upload .coverage artifact
         if: needs.changes.outputs.run_backend == 'true' && always()
-        uses: codecov/codecov-action@v6
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.xml
-          # Per-shard unique flag (#612). 직전엔 두 shard 가 동일 `backend-fast` 로 업로드 →
-          # codecov 가 같은 flag/commit 의 후속 upload 를 union 이 아닌 replace 로 처리해
-          # shard1-only 라인이 final view 에서 missed 로 나타나는 merge bug 발생. shard 별
-          # 별도 flag 로 분리 + component_management `backend.*` 정규식이 여전히 matches.
-          flags: backend-fast-${{ matrix.shard }}
-          disable_search: true
-          fail_ci_if_error: false
+          name: coverage-fast-${{ matrix.shard }}
+          path: .coverage
+          if-no-files-found: ignore
+          retention-days: 1
+          include-hidden-files: true
 
   # ── Backend Tests (slow) — isolated, push-only ──
   # Runs the 23 @pytest.mark.slow tests (mostly LLM/scheduler) in a single
@@ -448,16 +448,83 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Run slow tests with coverage
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow" --cov=nuri --cov-report=xml --cov-report=term
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow" --cov=nuri --cov-report= --cov-report=term
         timeout-minutes: 5
 
-      - name: Upload coverage to Codecov
+      - name: Upload .coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-slow
+          path: .coverage
+          if-no-files-found: ignore
+          retention-days: 1
+          include-hidden-files: true
+
+  # ── Backend Coverage merge ──
+  # Single source of truth for codecov: 모든 backend test job 의 `.coverage`
+  # artifact 를 다운로드 → `coverage combine` 으로 union → 단일 coverage.xml
+  # 을 codecov 에 한 번만 업로드 (flag=backend). 이전엔 shard/slow 가 각각
+  # 별도 flag 로 업로드 → codecov multi-session merge 가 phantom miss 생성
+  # (#611~#613 history). PR 에선 slow artifact 가 없어 fast 만 합산되며,
+  # push 에선 fast+slow 모두 합산.
+
+  backend-coverage-merge:
+    name: Backend Coverage Merge
+    needs: [changes, backend-tests-shard, backend-tests-slow]
+    if: ${{ !cancelled() && needs.changes.outputs.run_backend == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup backend env (uv + TA-Lib + venv)
+        uses: ./.github/actions/setup-backend-env
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          path: cov-artifacts
+
+      - name: Combine coverage data
+        run: |
+          set -e
+          mkdir -p cov-merge
+          # 각 artifact 디렉토리의 `.coverage` 파일을 unique suffix 로 복사
+          # (coverage combine 은 `.coverage.<suffix>` 형태를 union).
+          shopt -s nullglob
+          found=0
+          for d in cov-artifacts/coverage-*/; do
+            name=$(basename "$d")
+            suffix=${name#coverage-}
+            if [ -f "${d}.coverage" ]; then
+              cp "${d}.coverage" "cov-merge/.coverage.${suffix}"
+              found=$((found + 1))
+              echo "✓ ${name} → cov-merge/.coverage.${suffix}"
+            else
+              echo "⚠ ${name}: .coverage missing — skipped"
+            fi
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::no .coverage artifacts found"
+            exit 1
+          fi
+          # combine 은 positional arg 로 받은 디렉토리의 `.coverage*` 를 union 한 뒤
+          # cwd 의 `.coverage` 파일에 결과를 기록한다 (없으면 새로 생성).
+          .venv/bin/python -m coverage combine cov-merge
+          .venv/bin/python -m coverage xml -o coverage.xml
+          .venv/bin/python -m coverage report --skip-empty | tail -5
+
+      - name: Upload merged coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
-          flags: backend-slow
+          flags: backend
           disable_search: true
           fail_ci_if_error: false
 
