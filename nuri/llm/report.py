@@ -473,10 +473,8 @@ def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
         "CVaR",
         "VaR",
     }
-    suspicious = mentioned_tickers - ctx.known_tickers - common_words
-    for t in suspicious:
-        if len(t) <= 5 and t.isalpha():
-            hallucinated.append(t)
+    # mentioned_tickers 는 regex `[A-Z]{2,5}` 매칭이라 len ≤ 5 + isalpha 보장 → 추가 guard 불필요.
+    hallucinated.extend(mentioned_tickers - ctx.known_tickers - common_words)
     if hallucinated:
         warnings.append(f"입력 데이터에 없는 티커 언급: {', '.join(hallucinated)}. LLM 환각 가능성.")
 
