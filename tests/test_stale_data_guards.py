@@ -1,4 +1,4 @@
-"""Lock-tests for P0 stale-data audit fixes (#507 audit 2026-04-30).
+"""Lock-tests for stale-data audit fixes (#507 audit 2026-04-30).
 
 가드 — sell-bias 감사 결과 발견된 3개의 stale broker state 누설 경로:
 1. tracker.save_recommendations: SELL on 0-qty ticker 차단
