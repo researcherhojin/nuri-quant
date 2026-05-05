@@ -192,6 +192,24 @@ class TestInquirePriceKR:
         assert row is not None
         assert row["close"] == 100000.0
 
+    def test_http_500_returns_none(self):
+        """status_code != 200 → 재시도 없이 None (rate-limit 검증 후 status 분기)."""
+        creds = KISCredentials("k", "s", "", "", "prod")
+        err_resp = MagicMock(status_code=500)
+        err_resp.json.return_value = {}
+        with patch("nuri.collectors.kis_realtime.requests.get", return_value=err_resp):
+            with patch("nuri.collectors.kis_realtime.time.sleep"):
+                row = inquire_price_kr(creds, "token", "005930.KS")
+        assert row is None
+
+    def test_request_exception_returns_none(self):
+        """requests.get 예외 → helper 가 (None, {}) 반환 → caller None."""
+        creds = KISCredentials("k", "s", "", "", "prod")
+        with patch("nuri.collectors.kis_realtime.requests.get", side_effect=ConnectionError("boom")):
+            with patch("nuri.collectors.kis_realtime.time.sleep"):
+                row = inquire_price_kr(creds, "token", "005930.KS")
+        assert row is None
+
 
 class TestInquirePriceUS:
     def test_nas_first_success(self):
@@ -228,6 +246,33 @@ class TestInquirePriceUS:
             with patch("nuri.collectors.kis_realtime.time.sleep"):
                 row = inquire_price_us(creds, "token", "FAKE")
         assert row is None
+
+    def test_excd_http_error_skips_to_next(self):
+        """NAS HTTP 500 → continue 다음 EXCD (NYS) → 성공."""
+        creds = KISCredentials("k", "s", "", "", "prod")
+        nas_err = MagicMock(status_code=500)
+        nas_err.json.return_value = {}
+        nys_success = MagicMock(status_code=200)
+        nys_success.json.return_value = {"rt_cd": "0", "output": {"last": "100.0"}}
+        with patch("nuri.collectors.kis_realtime.requests.get", side_effect=[nas_err, nys_success]):
+            with patch("nuri.collectors.kis_realtime.time.sleep"):
+                row = inquire_price_us(creds, "token", "AAPL")
+        assert row is not None
+        assert row["close"] == 100.0
+
+    def test_excd_exception_skips_to_next(self):
+        """NAS 예외 → helper 가 (None, {}) → continue → NYS 시도."""
+        creds = KISCredentials("k", "s", "", "", "prod")
+        nys_success = MagicMock(status_code=200)
+        nys_success.json.return_value = {"rt_cd": "0", "output": {"last": "200.0"}}
+        with patch(
+            "nuri.collectors.kis_realtime.requests.get",
+            side_effect=[ConnectionError("nas down"), nys_success],
+        ):
+            with patch("nuri.collectors.kis_realtime.time.sleep"):
+                row = inquire_price_us(creds, "token", "AAPL")
+        assert row is not None
+        assert row["close"] == 200.0
 
 
 # ═══════════════════════════════════════════════════════
