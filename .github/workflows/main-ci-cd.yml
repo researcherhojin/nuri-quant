@@ -381,6 +381,12 @@ jobs:
     name: Backend Tests · Fast ${{ matrix.shard }}
     needs: changes
     runs-on: ubuntu-latest
+    # Phase 2 (#621): pre-built image (Python 3.12 + TA-Lib + uv + warm
+    # UV_CACHE_DIR). 컨테이너 시작 자체에 ~5-10s pull 이 들지만 GHA 가 같은
+    # workflow 내 후속 shard 는 layer cache → ~1-2s. setup-backend-env 의
+    # uv install + TA-Lib build/restore + venv cache (~30-60s) 를 제거.
+    container:
+      image: ghcr.io/researcherhojin/nuri-quant-ci:latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -394,11 +400,14 @@ jobs:
       - uses: actions/checkout@v6
         if: needs.changes.outputs.run_backend == 'true'
 
-      - name: Setup backend env (uv + TA-Lib + venv)
+      # 이미지의 /workspace/.venv 는 image build 시점 nuri/ 를 가리키는
+      # editable install. checkout 으로 새 코드가 /__w/repo/repo 에 mount 되므로
+      # cwd 에서 재 sync → 새 .venv (editable .pth → 실제 PR 코드).
+      # UV_CACHE_DIR=/root/.cache/uv (이미지 ENV) 의 wheel cache 가 hot 하므로
+      # 다운로드 skip → 보통 ~5-15s.
+      - name: Sync deps (warm cache from image)
         if: needs.changes.outputs.run_backend == 'true'
-        uses: ./.github/actions/setup-backend-env
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+        run: uv sync --frozen --extra dev
 
       # pytest-split (timing-aware) — `pytest-shard` (hash-based) 가 #320 처럼
       # 테스트 런타임 분포가 치우치면 한 shard 가 전체 wall 을 결정. pytest-split
@@ -437,6 +446,8 @@ jobs:
     # PR deliberately skips slow (matches pre-split behavior, STRATEGY §4.1).
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/researcherhojin/nuri-quant-ci:latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -445,10 +456,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup backend env (uv + TA-Lib + venv)
-        uses: ./.github/actions/setup-backend-env
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Sync deps (warm cache from image)
+        run: uv sync --frozen --extra dev
 
       - name: Run slow tests with coverage
         # 23 slow tests (LLM/scheduler) → 2 shards × xdist 4 workers. 단일 shard
@@ -480,14 +489,14 @@ jobs:
     needs: [changes, backend-tests-shard, backend-tests-slow]
     if: ${{ !cancelled() && needs.changes.outputs.run_backend == 'true' }}
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/researcherhojin/nuri-quant-ci:latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup backend env (uv + TA-Lib + venv)
-        uses: ./.github/actions/setup-backend-env
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Sync deps (warm cache from image)
+        run: uv sync --frozen --extra dev
 
       - name: Download all coverage artifacts
         uses: actions/download-artifact@v5
