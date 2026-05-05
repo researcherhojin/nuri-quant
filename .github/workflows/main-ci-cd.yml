@@ -431,13 +431,17 @@ jobs:
   # fast shards' flag `backend-fast` for full-suite coverage on main.
 
   backend-tests-slow:
-    name: Backend Slow Tests
+    name: Backend Slow Tests Shard ${{ matrix.shard }}
     needs: changes
     # Push-only (strict). workflow_dispatch and schedule won't run slow.
     # PR deliberately skips slow (matches pre-split behavior, STRATEGY §4.1).
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v6
 
@@ -447,14 +451,17 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Run slow tests with coverage
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow" --cov=nuri --cov-report= --cov-report=term
+        # 23 slow tests (LLM/scheduler) → 2 shards × xdist 4 workers. 단일 shard
+        # 2:16 wall 의 critical path 를 절반 ~1:00-1:15 로 단축 — fast lane (shard
+        # 4 분할 후 ~2:11 wall) 과 같은 critical path 안에 들어옴.
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow" --splits 2 --group ${{ matrix.shard }} --cov=nuri --cov-report= --cov-report=term
         timeout-minutes: 5
 
       - name: Upload .coverage artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-slow
+          name: coverage-slow-${{ matrix.shard }}
           path: .coverage
           if-no-files-found: ignore
           retention-days: 1
