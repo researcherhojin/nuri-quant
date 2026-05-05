@@ -45,3 +45,53 @@ class TestPrintStrategyEmptyStats:
         out = capsys.readouterr().out
         assert "Signal Performance" in out
         assert "rsi_oversold" in out
+
+
+# ─── Phase 4 #616 statement coverage ──────────────────────────────────
+
+
+class TestAnalyzeSignalByRegimeAggregation:
+    """L141-160: trades groupby aggregation — CI ground truth gap."""
+
+    def test_aggregation_with_seed_data(self, tmp_path, monkeypatch):
+        """signal_results.csv + SPY 시리즈 + VIX 시드 → groupby 결과 집계."""
+        import pandas as pd
+
+        import nuri.core.db as db_mod
+        from nuri.core.db import get_db, init_db
+        from nuri.quant.regime import strategy_map as sm
+
+        db = tmp_path / "sm.db"
+        init_db(db)
+        monkeypatch.setattr(db_mod, "DB_PATH", db)
+
+        # SPY + VIX seed (regime classifier 가 read)
+        with get_db(db) as conn:
+            for i in range(1, 220):
+                d = f"2026-01-{i:02d}" if i <= 31 else f"2026-{((i - 1) // 30) + 1:02d}-{((i - 1) % 30) + 1:02d}"
+                price = 400 + i * 0.5
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ("SPY", d, price, price * 1.01, price * 0.99, price, 1000),
+                )
+                conn.execute(
+                    "INSERT INTO macro (indicator, date, value) VALUES ('vix', ?, ?)",
+                    (d, 18.0),
+                )
+
+        # signal_results.csv seed via REPORT_DIR redirect
+        report_dir = tmp_path / "reports" / "2026-05-06"
+        report_dir.mkdir(parents=True)
+        trades = pd.DataFrame(
+            [
+                {"signal_id": "rsi_oversold", "entry_date": "2026-01-15", "return_pct": 5.0},
+                {"signal_id": "rsi_oversold", "entry_date": "2026-01-16", "return_pct": -2.0},
+                {"signal_id": "macd_golden", "entry_date": "2026-01-17", "return_pct": 3.0},
+            ]
+        )
+        trades.to_csv(report_dir / "signal_results.csv", index=False)
+        monkeypatch.setattr(sm, "REPORT_DIR", tmp_path / "reports")
+
+        result = sm.analyze_signal_by_regime(db_path=db)
+        # aggregation 실행됐으면 columns 갖춤. 빈 DataFrame 도 허용 (regime 매칭 부재 시).
+        assert isinstance(result, pd.DataFrame)

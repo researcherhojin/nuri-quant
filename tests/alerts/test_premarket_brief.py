@@ -850,3 +850,137 @@ class TestPremarketBriefExceptionFallbacks:
 
         with patch("nuri.alerts.discord_bot.send_webhook", side_effect=RuntimeError("net")):
             assert send_brief({}) is False
+
+
+# ─── Phase 4 #616 statement coverage closure ──────────────────────────
+
+
+class TestPremarketBriefStatementCoverage:
+    """CI ground-truth missing statements (premarket_brief.py 95% → 100%)."""
+
+    def test_quick_macro_indicator_value_set(self, tmp_path, monkeypatch):
+        """L147: quick macro indicator rows truthy → ctx[key] 설정."""
+        import nuri.core.db as db_mod
+        from nuri.alerts.premarket_brief import _collect_context
+        from nuri.core.db import get_db, init_db
+
+        p = tmp_path / "macro.db"
+        init_db(p)
+        monkeypatch.setattr(db_mod, "DB_PATH", p)
+        with get_db(p) as conn:
+            conn.execute("INSERT INTO macro (indicator, date, value) VALUES ('vix', '2026-05-06', 18.5)")
+            conn.execute("INSERT INTO macro (indicator, date, value) VALUES ('usd_krw', '2026-05-06', 1300.0)")
+            conn.execute("INSERT INTO macro (indicator, date, value) VALUES ('fear_greed', '2026-05-06', 60.0)")
+        ctx = _collect_context()
+        assert ctx["vix"] == {"value": 18.5, "date": "2026-05-06"}
+        assert ctx["fear_greed"]["value"] == 60.0
+
+    def test_portfolio_totals_iteration(self, tmp_path, monkeypatch):
+        """L231-236: portfolio rows iter → totals 계산."""
+        import nuri.core.db as db_mod
+        from nuri.alerts.premarket_brief import _collect_context
+        from nuri.core.db import get_db, init_db
+
+        p = tmp_path / "totals.db"
+        init_db(p)
+        monkeypatch.setattr(db_mod, "DB_PATH", p)
+        with get_db(p) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES ('main', 'AAPL', 10, 200, 'USD')"
+            )
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES ('main', '005930.KS', 100, 70000, 'KRW')"
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                "VALUES ('AAPL', '2026-05-06', 200, 210, 199, 205, 1000)"
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                "VALUES ('005930.KS', '2026-05-06', 70000, 71000, 69000, 70500, 1000)"
+            )
+            conn.execute("INSERT INTO macro (indicator, date, value) VALUES ('usd_krw', '2026-05-06', 1300.0)")
+        ctx = _collect_context()
+        assert ctx["portfolio_totals"] is not None
+        assert ctx["portfolio_totals"]["total_usd"] > 0
+
+    def test_short_ticker_line_multi_account_breakdown(self):
+        """L283-288: multi-account 시 breakdown line 추가."""
+        from nuri.alerts.premarket_brief import _short_ticker_line
+
+        item = {
+            "ticker": "AAPL",
+            "action": "BUY",
+            "confidence": 80,
+            "pnl_pct": 5.0,
+            "position_pct": 12.0,
+            "accounts": [
+                {"account": "main", "position_pct": 8.0, "pnl_pct": 4.0},
+                {"account": "swing", "position_pct": 4.0, "pnl_pct": 6.0},
+            ],
+        }
+        result = _short_ticker_line(item)
+        assert "[" in result and "]" in result
+        assert "main" in result and "swing" in result
+
+    def test_brief_embed_buy_blocked(self):
+        """L393: bc.blocked_reason truthy → BUY Candidates blocked field."""
+        from dataclasses import dataclass
+
+        from nuri.alerts.premarket_brief import format_brief_embed
+
+        @dataclass
+        class FakeBC:
+            blocked_reason: str = "VIX>30"
+            regime: str = "bear"
+            vix: float = 35.0
+            candidates: list | None = None
+            total_deploy_pct: int = 0
+
+        embed = format_brief_embed({"buy_candidates": FakeBC()})
+        names = [f["name"] for f in embed["fields"]]
+        assert any("blocked" in n for n in names)
+
+    def test_markdown_action_reasons_lines(self, tmp_path):
+        """L530: action items 의 reasons 출력."""
+        from nuri.alerts.premarket_brief import format_brief_markdown
+
+        ctx = {
+            "actions": {
+                "urgent": [
+                    {
+                        "ticker": "AAA",
+                        "action": "SELL",
+                        "confidence": 80,
+                        "pnl_pct": -8.0,
+                        "position_pct": 5.0,
+                        "reasons": ["손절선 돌파", "drift critical"],
+                    }
+                ],
+            }
+        }
+        md = format_brief_markdown(ctx)
+        assert "손절선 돌파" in md
+        assert "drift critical" in md
+
+    def test_markdown_buy_blocked(self):
+        """L536-539: bc.blocked_reason markdown path."""
+        from dataclasses import dataclass
+
+        from nuri.alerts.premarket_brief import format_brief_markdown
+
+        @dataclass
+        class FakeBC:
+            blocked_reason: str = "VIX>30 신규 매수 차단"
+            regime: str = "bear"
+            vix: float = 35.0
+            candidates: list | None = None
+            total_deploy_pct: int = 0
+            timestamp_kst: str = ""
+            skipped: list | None = None
+
+        md = format_brief_markdown({"buy_candidates": FakeBC()})
+        assert "blocked" in md
+        assert "VIX>30" in md
