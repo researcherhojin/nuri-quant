@@ -378,7 +378,7 @@ jobs:
   # Only the aggregator name "Backend Tests" is protected.
 
   backend-tests-shard:
-    name: Backend Tests Shard ${{ matrix.shard }}
+    name: Backend Tests · Fast ${{ matrix.shard }}
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -431,7 +431,7 @@ jobs:
   # fast shards' flag `backend-fast` for full-suite coverage on main.
 
   backend-tests-slow:
-    name: Backend Slow Tests Shard ${{ matrix.shard }}
+    name: Backend Tests · Slow ${{ matrix.shard }}
     needs: changes
     # Push-only (strict). workflow_dispatch and schedule won't run slow.
     # PR deliberately skips slow (matches pre-split behavior, STRATEGY §4.1).
@@ -476,7 +476,7 @@ jobs:
   # push 에선 fast+slow 모두 합산.
 
   backend-coverage-merge:
-    name: Backend Coverage Aggregate
+    name: Backend Tests · Coverage Aggregate
     needs: [changes, backend-tests-shard, backend-tests-slow]
     if: ${{ !cancelled() && needs.changes.outputs.run_backend == 'true' }}
     runs-on: ubuntu-latest
