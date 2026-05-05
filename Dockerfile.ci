@@ -47,7 +47,11 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.8 /uv /uvx /usr/local/bin/
 
 # ── Python deps (project sync) ────────────────────────────────
 WORKDIR /workspace
-COPY pyproject.toml uv.lock ./
+# pyproject.toml 의 `readme = "README.md"` 를 hatchling build_editable 이
+# 검증 → README.md 누락 시 OSError. editable install 모드라 nuri/ 패키지
+# 코드도 필요 (단, CI 사용 시 mount 로 덮여 무관).
+COPY pyproject.toml uv.lock README.md ./
+COPY nuri/ ./nuri/
 # UV_CACHE_DIR persistent so subsequent uv sync (in CI) reuses wheels.
 ENV UV_CACHE_DIR=/root/.cache/uv
 RUN uv sync --frozen --extra dev
