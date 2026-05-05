@@ -210,17 +210,17 @@ def _shade_regime_zones(fig: go.Figure, spy: pd.DataFrame) -> None:
             zone_start = row["date"]
             prev_zone = zone
 
-    # 마지막 영역
-    if prev_zone is not None and zone_start is not None:
-        fig.add_vrect(
-            x0=zone_start,
-            x1=df["date"].iloc[-1],
-            fillcolor=zone_colors[prev_zone],
-            layer="below",
-            line_width=0,
-            row=1,
-            col=1,
-        )
+    # 마지막 영역 — `if df.empty: return` (L176) 가드 후 loop 가 ≥ 1 회 실행되어
+    # prev_zone / zone_start 항상 set. 추가 None 체크 불필요 (#638 dead-by-design).
+    fig.add_vrect(
+        x0=zone_start,
+        x1=df["date"].iloc[-1],
+        fillcolor=zone_colors[prev_zone],
+        layer="below",
+        line_width=0,
+        row=1,
+        col=1,
+    )
 
 
 # ═══════════════════════════════════════════════════════
