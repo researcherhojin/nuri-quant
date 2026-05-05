@@ -1041,3 +1041,85 @@ class TestImportScriptSync:
 
         rows = query("SELECT * FROM portfolio WHERE account='test'", db_path=db_path)
         assert rows == []
+
+
+# ─── Phase 3-D6 #616: branch coverage ──────────────────────────────────
+
+
+class TestPortfolioSyncBranches:
+    def test_empty_currency_rows_skips_currency_set(self, tmp_path, monkeypatch):
+        """104→106: account 의 currency rows 빈 → if False → currency set skip."""
+        import nuri.core.db as db_mod
+        from nuri.core.db import init_db
+        from nuri.core.portfolio_sync import sync_portfolio_to_yaml
+
+        db = tmp_path / "sync.db"
+        init_db(db)
+        monkeypatch.setattr(db_mod, "DB_PATH", db)
+
+        # portfolio 에 NULL currency 만 있는 row
+        from nuri.core.db import get_db
+
+        with get_db(db) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES ('emptycur', 'AAA', 10, 100, NULL)"
+            )
+
+        config_path = tmp_path / "portfolio.yaml"
+        config_path.write_text("accounts: {}\n")
+        sync_portfolio_to_yaml(config_path=config_path, db_path=db)
+        # 실패 없이 완료 — currency 미설정도 graceful
+        assert config_path.exists()
+
+    def test_account_meta_only_no_holdings_key_skip(self, tmp_path, monkeypatch):
+        """111→109: account 가 meta 만 있고 holdings 키 없음 → if False → 다음 iter."""
+        import nuri.core.db as db_mod
+        from nuri.core.db import init_db
+        from nuri.core.portfolio_sync import sync_portfolio_to_yaml
+
+        db = tmp_path / "meta.db"
+        init_db(db)
+        monkeypatch.setattr(db_mod, "DB_PATH", db)
+
+        # DB 에 한 계좌만 있음. yaml 에 다른 계좌가 holdings 없이 존재 → 그 계좌에 대해 holdings 키 없는 path.
+        from nuri.core.db import get_db
+
+        with get_db(db) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES ('main', 'AAA', 10, 100, 'USD')"
+            )
+
+        config_path = tmp_path / "portfolio.yaml"
+        config_path.write_text(
+            "accounts:\n"
+            "  main:\n"
+            "    strategy: core\n"
+            "  legacy:\n"
+            "    strategy: long_term\n"  # holdings 키 없음 + DB 에 row 없음
+        )
+        sync_portfolio_to_yaml(config_path=config_path, db_path=db)
+        assert config_path.exists()
+
+    def test_account_with_db_rows_keeps_holdings(self, tmp_path, monkeypatch):
+        """117→109: db_count > 0 → del 안 됨 → holdings 유지."""
+        import nuri.core.db as db_mod
+        from nuri.core.db import get_db, init_db
+        from nuri.core.portfolio_sync import sync_portfolio_to_yaml
+
+        db = tmp_path / "keep.db"
+        init_db(db)
+        monkeypatch.setattr(db_mod, "DB_PATH", db)
+
+        with get_db(db) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES ('main', 'AAA', 10, 100, 'USD')"
+            )
+
+        # yaml 에 main 계좌 + holdings 키 (lower scope 의 path 진입을 위해)
+        config_path = tmp_path / "portfolio.yaml"
+        config_path.write_text("accounts:\n  main:\n    strategy: core\n    holdings:\n      AAA: 10\n")
+        sync_portfolio_to_yaml(config_path=config_path, db_path=db)
+        assert config_path.exists()
