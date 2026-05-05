@@ -378,7 +378,7 @@ jobs:
   # Only the aggregator name "Backend Tests" is protected.
 
   backend-tests-shard:
-    name: Backend Tests Shard ${{ matrix.shard }}
+    name: Backend Tests · Fast ${{ matrix.shard }}
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -415,7 +415,7 @@ jobs:
 
       - name: Upload .coverage artifact
         if: needs.changes.outputs.run_backend == 'true' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-fast-${{ matrix.shard }}
           path: .coverage
@@ -431,13 +431,17 @@ jobs:
   # fast shards' flag `backend-fast` for full-suite coverage on main.
 
   backend-tests-slow:
-    name: Backend Slow Tests
+    name: Backend Tests · Slow ${{ matrix.shard }}
     needs: changes
     # Push-only (strict). workflow_dispatch and schedule won't run slow.
     # PR deliberately skips slow (matches pre-split behavior, STRATEGY §4.1).
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v6
 
@@ -447,14 +451,17 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Run slow tests with coverage
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow" --cov=nuri --cov-report= --cov-report=term
+        # 23 slow tests (LLM/scheduler) → 2 shards × xdist 4 workers. 단일 shard
+        # 2:16 wall 의 critical path 를 절반 ~1:00-1:15 로 단축 — fast lane (shard
+        # 4 분할 후 ~2:11 wall) 과 같은 critical path 안에 들어옴.
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow" --splits 2 --group ${{ matrix.shard }} --cov=nuri --cov-report= --cov-report=term
         timeout-minutes: 5
 
       - name: Upload .coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
-          name: coverage-slow
+          name: coverage-slow-${{ matrix.shard }}
           path: .coverage
           if-no-files-found: ignore
           retention-days: 1
@@ -469,7 +476,7 @@ jobs:
   # push 에선 fast+slow 모두 합산.
 
   backend-coverage-merge:
-    name: Backend Coverage Aggregate
+    name: Backend Tests · Coverage Aggregate
     needs: [changes, backend-tests-shard, backend-tests-slow]
     if: ${{ !cancelled() && needs.changes.outputs.run_backend == 'true' }}
     runs-on: ubuntu-latest
@@ -483,7 +490,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Download all coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: coverage-*
           path: cov-artifacts
