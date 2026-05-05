@@ -1,36 +1,20 @@
 {
-  "venvPath": ".",
-  "venv": ".venv",
-  "pythonVersion": "3.12",
-  "include": ["nuri", "tests", "scripts"],
+  "include": ["nuri", "tests"],
   "exclude": [
     "**/__pycache__",
-    "**/node_modules",
-    "**/.*",
-    ".venv",
-    "data",
-    "frontend",
-    "scripts/_archive",
-    "scripts/episodes"
+    "**/.venv",
+    "**/.pytest_cache",
+    "**/node_modules"
   ],
-  "reportMissingImports": "warning",
-  "reportMissingTypeStubs": "none",
-  "reportPrivateImportUsage": "none",
-  "reportGeneralTypeIssues": "warning",
-  "reportOptionalMemberAccess": "warning",
-  "reportOptionalOperand": "warning",
-  "reportArgumentType": "warning",
-  "reportAttributeAccessIssue": "warning",
-  "reportAssignmentType": "warning",
-  "reportOperatorIssue": "warning",
-
-  "//": "Below: pandas-stubs over-strict overloads (sort_values/round/to_dict/get/read_sql_query) on runtime-correct code — noise > value.",
-  "reportCallIssue": "warning",
-  "reportReturnType": "warning",
-
-  "//1": "Test mock subclasses simplify analyze() / _send_failure_alert() signatures intentionally — LSP via mock is the standard pattern.",
-  "reportIncompatibleMethodOverride": "none",
-
-  "//2": "Tests poke at __wrapped__ for decorator introspection.",
-  "reportFunctionMemberAccess": "none"
+  "pythonVersion": "3.12",
+  "executionEnvironments": [
+    {
+      "root": "tests",
+      "reportOperatorIssue": "none",
+      "reportArgumentType": "none",
+      "reportCallIssue": "none",
+      "reportOptionalSubscript": "none",
+      "reportOptionalMemberAccess": "none"
+    }
+  ]
 }
