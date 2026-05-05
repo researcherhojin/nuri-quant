@@ -385,7 +385,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - name: Skip notice (no backend changes)
         if: needs.changes.outputs.run_backend != 'true'
@@ -400,18 +400,17 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # pytest-shard splits non-slow tests by hash(test_id) into 2 buckets.
-      # shard-id is 0-indexed but the matrix exposes 1-indexed values.
-      # Slow tests (23, LLM/scheduler) are ALWAYS excluded here and run
-      # separately in backend-tests-slow on push only.
+      # pytest-split (timing-aware) — `pytest-shard` (hash-based) 가 #320 처럼
+      # 테스트 런타임 분포가 치우치면 한 shard 가 전체 wall 을 결정. pytest-split
+      # 은 `.test-durations` (repo 동봉) 의 historical 시간을 읽어 4 shard 를
+      # 균등 분배. 파일 부재 시 test-count balance 로 graceful degrade.
+      # Slow tests (23, LLM/scheduler) 는 backend-tests-slow 에서 별도 push-only.
 
       - name: Run fast tests with coverage
         if: needs.changes.outputs.run_backend == 'true'
         # `--cov-report=` (empty) suppresses XML — backend-coverage-merge 가 모든
         # shard 의 `.coverage` 를 모아 단일 XML 을 만들고 codecov 에 한 번 업로드.
-        # 이전엔 shard 별 XML 을 각각 codecov 에 업로드해 multi-session merge 시
-        # phantom miss (8 files / 46) 가 잔존했음 (#611-#613 history).
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow and not integration" --shard-id=$((${{ matrix.shard }} - 1)) --num-shards=2 --cov=nuri --cov-report= --cov-report=term
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow and not integration" --splits 4 --group ${{ matrix.shard }} --cov=nuri --cov-report= --cov-report=term
         timeout-minutes: 5
 
       - name: Upload .coverage artifact

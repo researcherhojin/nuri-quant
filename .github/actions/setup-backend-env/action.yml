@@ -14,7 +14,27 @@ runs:
       uses: astral-sh/setup-uv@v7
       with:
         python-version: ${{ inputs.python-version }}
+        # setup-uv 의 auto-cache 비활성. 이유: setup-uv 의 cache key 가
+        # uv.lock 으로 묶여 있어 lockfile 1 줄 변경 시 venv + uv 캐시 모두 miss
+        # → 4 shards 각각 PyPI 에서 221 packages 재다운로드 (cold ~3min).
+        # 아래 별도 actions/cache 가 broad restore-keys 로 lockfile churn 에도
+        # uv 캐시 hit 보장 (codex consult uv-cache-pattern-2026-05-05 §codex).
         enable-cache: false
+
+    # uv tool 캐시 (wheel 다운로드 저장소). venv cache miss 시 uv sync 가
+    # 이 디렉토리에서 wheel 을 link → PyPI 다운로드 skip → 2:50 → ~30s.
+    # restore-keys 가 broad 매칭이라 lockfile 변경에도 가장 가까운 캐시 reuse.
+    - name: Cache uv tool dir
+      uses: actions/cache@v5
+      with:
+        path: ${{ runner.temp }}/uv-cache
+        key: uv-tool-${{ runner.os }}-py${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
+        restore-keys: |
+          uv-tool-${{ runner.os }}-py${{ inputs.python-version }}-
+
+    - name: Set UV_CACHE_DIR
+      shell: bash
+      run: echo "UV_CACHE_DIR=${{ runner.temp }}/uv-cache" >> "$GITHUB_ENV"
 
     - name: Cache TA-Lib
       id: cache-talib
@@ -54,8 +74,15 @@ runs:
       with:
         path: .venv
         key: venv-${{ runner.os }}-py${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
+        # uv.lock 이 살짝 바뀌어도 (예: pytest-shard → pytest-split, 1줄 diff)
+        # venv cache 가 완전 miss → 221 패키지 재설치를 막기 위한 fallback.
+        # 부분 hit 면 uv sync 가 변경된 패키지만 install (~수초).
+        restore-keys: |
+          venv-${{ runner.os }}-py${{ inputs.python-version }}-
 
     - name: Install deps
       if: steps.cache-venv.outputs.cache-hit != 'true'
       shell: bash
+      # restore-keys 로 일부 복원되었거나 빈 .venv 라면 uv sync 가 ① uv 캐시
+      # (~/.cache/uv) 에서 wheel 즉시 link → 다운로드 skip, ② 변경된 deps 만 추가.
       run: uv sync --frozen --extra dev
