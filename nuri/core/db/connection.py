@@ -12,7 +12,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 from nuri.core.db_migrations import _MIGRATIONS, _SCHEMA, _SCHEMA_VERSION_TABLE
 
@@ -48,12 +48,17 @@ def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
 
 
 @contextmanager
-def get_db(db_path: Optional[Path] = None):
+def get_db(db_path: Optional[Path] = None) -> Iterator[sqlite3.Connection]:
     """DB 컨텍스트 매니저. 성공 시 자동 commit, 실패 시 rollback.
 
     Resolves `get_connection` via the facade module so test conftest
     `monkeypatch.setattr(db_mod, "get_connection", ...)` (e.g. tmpfs MEMORY
     journal patch in tests/conftest.py) is honored post-Stage-2 split.
+
+    Return annotation `Iterator[Connection]` is the canonical pyright pattern
+    for `@contextmanager` — Pylance / pyright otherwise infer
+    `Generator[Connection, Any, None]` and reject `with get_db()` usage with
+    `__enter__/__exit__ unknown`. Caller can keep `with get_db() as conn:` as-is.
     """
     from nuri.core import db as _facade
 
