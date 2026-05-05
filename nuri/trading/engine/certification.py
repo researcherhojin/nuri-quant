@@ -925,7 +925,7 @@ def print_certificate(cert: Certificate) -> None:
     """인증서 CLI 출력."""
     status = "CERTIFIED" if cert.certified else "REJECTED"
     print(f"\n{'═' * 60}")
-    print(f"  SIEGE Certificate — {status} ({cert.score:.0f}%)")
+    print(f"  Certification — {status} ({cert.score:.0f}%)")
     print(f"  {cert.timestamp}")
     print(f"{'═' * 60}")
     print(f"  Passed: {cert.passed}/{cert.total_conditions} | Failed: {cert.failed} | Warnings: {cert.warnings}")
