@@ -1142,3 +1142,351 @@ class TestMacroNewsBranches:
         )
         items = _parse_rss_items(rss)
         assert items == [], "공백 only headline 은 drop 되어야 함"
+
+
+# ═══════════════════════════════════════════════════════
+# cboe.py — Put/Call Ratio fallback chain + extract paths
+# ═══════════════════════════════════════════════════════
+
+
+class TestCBOEPartials:
+    """8 partial branches in cboe.py — fallback chain + dict/list dispatch + FRED skip."""
+
+    def test_collect_daily_returns_empty_falls_through_to_totalpc(self, monkeypatch):
+        """Branch 51->57: `_collect_daily` returns []; if records: False → totalpc 시도."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        monkeypatch.setattr(c, "_collect_daily", lambda: [])
+        monkeypatch.setattr(c, "_collect_totalpc", lambda: [])
+        c.fred_key = ""
+        monkeypatch.setattr(c, "_collect_yfinance_spy_pcr", lambda: [])
+        monkeypatch.setattr(c, "_collect_db_stale", lambda: [])
+        assert c.collect() == []
+
+    def test_fred_returns_empty_falls_through_to_yfinance(self, monkeypatch):
+        """Branch 60->66: fred_key 유효 + _collect_fred_pcr=[] → if records False → yfinance 진입."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        c.fred_key = "test_key"
+        monkeypatch.setattr(c, "_collect_daily", lambda: [])
+        monkeypatch.setattr(c, "_collect_totalpc", lambda: [])
+        monkeypatch.setattr(c, "_collect_fred_pcr", lambda: [])
+        monkeypatch.setattr(c, "_collect_yfinance_spy_pcr", lambda: [])
+        monkeypatch.setattr(c, "_collect_db_stale", lambda: [])
+        assert c.collect() == []
+
+    def test_collect_yfinance_returns_empty_falls_through_to_db_stale(self, monkeypatch):
+        """Branch 76->81: yfinance=[] → if records False → db_stale 진입."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        monkeypatch.setattr(c, "_collect_daily", lambda: [])
+        monkeypatch.setattr(c, "_collect_totalpc", lambda: [])
+        c.fred_key = ""
+        monkeypatch.setattr(c, "_collect_yfinance_spy_pcr", lambda: [])
+        monkeypatch.setattr(c, "_collect_db_stale", lambda: [])
+        assert c.collect() == []
+
+    def test_daily_extract_pcr_returns_none_skips_record(self, monkeypatch):
+        """Branch 167->191: items list 의 latest 가 PCR 키 없음 → if pcr is not None: False."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"data": [{"TRADE_DATE": "20260101", "no_pcr": True}]}
+        mock_resp.raise_for_status = MagicMock()
+        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
+        assert c._collect_daily() == []
+
+    def test_daily_empty_list_response_falls_through_to_return(self, monkeypatch):
+        """Branch 179->191: data 가 list 인데 비어있음 → 두 분기 모두 False → 191 (return records)."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = []
+        mock_resp.raise_for_status = MagicMock()
+        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
+        assert c._collect_daily() == []
+
+    def test_daily_dict_no_pcr_keys_falls_to_return(self, monkeypatch):
+        """Branch 181->191: data dict 에 PCR 키 없음 → elif True → _extract_pcr=None
+        → if pcr is not None: False → 191 (records 비어있음)."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"no_data_key": True, "ratio_unrelated": "x"}
+        mock_resp.raise_for_status = MagicMock()
+        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
+        assert c._collect_daily() == []
+
+    def test_daily_dict_with_pcr_creates_record(self, monkeypatch):
+        """Branch 181 True: data dict + PCR 추출 성공 → record append."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"PUT_CALL_RATIO": 1.5}
+        mock_resp.raise_for_status = MagicMock()
+        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
+        records = c._collect_daily()
+        assert len(records) == 1
+        assert records[0]["value"] == 1.5
+
+    def test_totalpc_invalid_date_skips(self, monkeypatch):
+        """Branch 206->202: parse_date None → if pcr and date_str: False → continue."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"data": [{"PUT_CALL_RATIO": 1.2, "TRADE_DATE": "invalid-date-format"}]}
+        mock_resp.raise_for_status = MagicMock()
+        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
+        assert c._collect_totalpc() == []
+
+    def test_fred_all_values_dot_returns_empty(self, monkeypatch):
+        """Branch 246->248: 모든 observations value='.' → records=[] → if records False → 248."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        c.fred_key = "test_key"
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "observations": [
+                {"date": "2026-01-01", "value": "."},
+                {"date": "2026-01-02", "value": "."},
+            ]
+        }
+        mock_resp.raise_for_status = MagicMock()
+        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
+        assert c._collect_fred_pcr() == []
+
+    def test_fred_value_dot_partial_skip(self, monkeypatch):
+        """Sanity: 1 valid + 1 skip → records=[1] → 246 True 분기 (info log)."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        c.fred_key = "test_key"
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "observations": [
+                {"date": "2026-01-01", "value": "."},
+                {"date": "2026-01-02", "value": "0.85"},
+            ]
+        }
+        mock_resp.raise_for_status = MagicMock()
+        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
+        records = c._collect_fred_pcr()
+        assert len(records) == 1
+        assert records[0]["value"] == 0.85
+
+
+# ═══════════════════════════════════════════════════════
+# filings.py — 10-K parser num_cols branches
+# ═══════════════════════════════════════════════════════
+
+
+class TestFilingsPartials:
+    """4 partial branches in filings.py.
+
+    공통 패턴: dimension/is_breakdown=False 인 행을 갖되 컬럼명에 digit prefix
+    가 없게 만들어 num_cols=[] → if num_cols: False 분기.
+    """
+
+    @staticmethod
+    def _build_obj(income_concepts, balance_concepts):
+        def make_df(concepts):
+            if not concepts:
+                return pd.DataFrame()
+            return pd.DataFrame(
+                {
+                    "concept": concepts,
+                    "dimension": [False] * len(concepts),
+                    "is_breakdown": [False] * len(concepts),
+                    "label_only_no_digit": ["x"] * len(concepts),
+                }
+            )
+
+        inc = MagicMock()
+        inc.to_dataframe = lambda: make_df(income_concepts)
+        bs = MagicMock()
+        bs.to_dataframe = lambda: make_df(balance_concepts)
+
+        obj = MagicMock()
+        obj.income_statement = inc if income_concepts is not None else None
+        obj.balance_sheet = bs if balance_concepts is not None else None
+        return obj
+
+    @staticmethod
+    def _patch_edgar(monkeypatch, obj):
+        mock_company_cls = MagicMock()
+        company_inst = MagicMock()
+        filings = MagicMock()
+        filing = MagicMock()
+        filing.obj = lambda: obj
+        filing.filing_date = "2026-01-01"
+        filings.__len__ = lambda self: 1
+        filings.__bool__ = lambda self: True
+        filings.__getitem__ = lambda self, i: filing
+        company_inst.get_filings = lambda **k: filings
+        mock_company_cls.return_value = company_inst
+        monkeypatch.setitem(
+            sys.modules,
+            "edgar",
+            MagicMock(Company=mock_company_cls, set_identity=lambda x: None),
+        )
+
+    def test_revenue_no_digit_columns_skips(self, monkeypatch):
+        """Branch 62->66: Revenue 행 있으나 digit column 없음 → 다음 metric 으로."""
+        from nuri.collectors.filings import parse_10k
+
+        obj = self._build_obj(income_concepts=["Revenue"], balance_concepts=None)
+        self._patch_edgar(monkeypatch, obj)
+        assert parse_10k("AAPL") is None
+
+    def test_net_income_no_digit_columns_skips(self, monkeypatch):
+        """Branch 69->73: NetIncome 행 있으나 digit column 없음 → OperatingIncome 으로."""
+        from nuri.collectors.filings import parse_10k
+
+        obj = self._build_obj(income_concepts=["NetIncome"], balance_concepts=None)
+        self._patch_edgar(monkeypatch, obj)
+        assert parse_10k("AAPL") is None
+
+    def test_operating_income_no_digit_columns_skips(self, monkeypatch):
+        """Branch 76->82: OperatingIncome 행 있으나 digit column 없음 → 외곽 try 종료."""
+        from nuri.collectors.filings import parse_10k
+
+        obj = self._build_obj(income_concepts=["OperatingIncome"], balance_concepts=None)
+        self._patch_edgar(monkeypatch, obj)
+        assert parse_10k("AAPL") is None
+
+    def test_balance_sheet_no_digit_columns_continues(self, monkeypatch):
+        """Branch 96->88: balance sheet 의 row 에 digit column 없으면 for loop continue."""
+        from nuri.collectors.filings import parse_10k
+
+        obj = self._build_obj(
+            income_concepts=None,
+            balance_concepts=["Assets", "Liabilities", "CashAndCashEquivalents"],
+        )
+        self._patch_edgar(monkeypatch, obj)
+        assert parse_10k("AAPL") is None
+
+
+# ═══════════════════════════════════════════════════════
+# institutional.py — finnhub + KIS row parse + main runpy
+# ═══════════════════════════════════════════════════════
+
+
+class TestInstitutionalPartials:
+    """4 partial branches in institutional.py."""
+
+    def test_finnhub_key_set_but_no_us_tickers_skips(self, monkeypatch, db_path):
+        """Branch 57->63: FINNHUB_API_KEY 있지만 us_tickers=[] → finnhub 분기 skip."""
+        from nuri.collectors.institutional import InstitutionalCollector
+
+        c = InstitutionalCollector()
+        monkeypatch.setenv("FINNHUB_API_KEY", "test_key_dummy")
+        monkeypatch.setattr(c, "_get_tickers", lambda market=None: [])
+        assert c.collect() == []
+
+    def test_kis_collect_kr_skips_invalid_row(self, monkeypatch):
+        """Branch 169->167: `_collect_kr_kis` 의 out2 loop 안에서 _parse_kis_row=None
+        반환되면 if record: False → 다음 iteration."""
+        from nuri.collectors.institutional import InstitutionalCollector
+
+        c = InstitutionalCollector()
+
+        mock_creds = MagicMock()
+        mock_creds.is_valid.return_value = True
+        mock_creds.base_url = "https://test"
+        mock_creds.app_key = "k"
+        mock_creds.app_secret = "s"
+        monkeypatch.setattr("nuri.collectors.kis_realtime.load_credentials", lambda env: mock_creds)
+        monkeypatch.setattr("nuri.collectors.kis_realtime.get_access_token", lambda creds: "tok")
+        monkeypatch.setattr("nuri.collectors.kis_realtime._is_rate_limit", lambda body: False)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "rt_cd": "0",
+            "output2": [
+                {"stck_bsop_date": "invalid"},
+                {
+                    "stck_bsop_date": "20260101",
+                    "orgn_ntby_qty": "100",
+                    "frgn_ntby_qty": "200",
+                    "prsn_ntby_qty": "300",
+                },
+            ],
+        }
+        # `requests` 가 함수 안에서 import → module-level patch 불가. requests 자체 patch.
+        import requests as _requests
+
+        monkeypatch.setattr(_requests, "get", lambda *a, **k: mock_resp)
+
+        result = c._collect_kr_kis(["005930.KS"])
+        assert len(result) == 1
+        assert result[0]["ticker"] == "005930.KS"
+
+    def test_kis_row_invalid_date_returns_none_unit(self):
+        """Sanity unit: _parse_kis_row 자체 — invalid date / valid date 동작."""
+        from nuri.collectors.institutional import _parse_kis_row
+
+        assert _parse_kis_row({"stck_bsop_date": "20260"}, "005930.KS") is None
+        rec = _parse_kis_row(
+            {
+                "stck_bsop_date": "20260101",
+                "orgn_ntby_qty": "100",
+                "frgn_ntby_qty": "200",
+                "prsn_ntby_qty": "300",
+            },
+            "005930.KS",
+        )
+        assert rec is not None
+        assert rec["institution_net"] == 100
+
+    def test_us_finnhub_data_missing_ownership_key_skips(self, monkeypatch):
+        """Branch 200->197: client.ownership 결과 None / dict no key / empty list → skip."""
+        from nuri.collectors.institutional import InstitutionalCollector
+
+        c = InstitutionalCollector()
+        results_seq = [None, {}, {"ownership": []}, {"ownership": [{"x": 1}]}]
+        call_idx = [0]
+
+        def ownership_side_effect(*args, **kwargs):
+            r = results_seq[call_idx[0]]
+            call_idx[0] += 1
+            return r
+
+        mock_client = MagicMock()
+        mock_client.ownership.side_effect = ownership_side_effect
+        mock_finnhub_module = MagicMock()
+        mock_finnhub_module.Client = MagicMock(return_value=mock_client)
+        monkeypatch.setitem(sys.modules, "finnhub", mock_finnhub_module)
+
+        result = c._collect_us(["A", "B", "C", "D"], "test_key")
+        assert len(result) == 1
+        assert result[0]["ticker"] == "D"
+
+    def test_main_runpy_count_nonzero_skips_diagnostic(self, monkeypatch):
+        """Branch 292->-1: __main__ 에서 count != 0 → if count == 0: False → diagnostic skip."""
+        import runpy
+
+        from nuri.collectors.base import BaseCollector
+
+        monkeypatch.setattr(BaseCollector, "run", lambda self: 5)
+        runpy.run_module("nuri.collectors.institutional", run_name="__main__", alter_sys=True)
+
+    def test_main_runpy_count_zero_prints_diagnostic(self, monkeypatch, capsys):
+        """count == 0 분기 — 진단 메시지 출력."""
+        import runpy
+
+        from nuri.collectors.base import BaseCollector
+
+        monkeypatch.setattr(BaseCollector, "run", lambda self: 0)
+        runpy.run_module("nuri.collectors.institutional", run_name="__main__", alter_sys=True)
+        out = capsys.readouterr().out
+        assert "KIS Open API" in out
