@@ -255,3 +255,45 @@ class TestDiscordOutboxValidations:
         from nuri.core.db.discord_outbox_ops import mark_outbox_failed
 
         assert mark_outbox_failed([], "any-token", "err", db_path=db_path) == 0
+
+
+# ─── Phase 4 #616 statement coverage ──────────────────────────────────
+
+
+class TestUpsertSignalsNonEmpty:
+    """market_data.py L48-59: upsert_signals() non-empty df path."""
+
+    def test_upsert_signals_inserts_rows(self, db_path):
+        import pandas as pd
+
+        from nuri.core.db.market_data import upsert_signals
+
+        df = pd.DataFrame(
+            [
+                {
+                    "ticker": "AAPL",
+                    "date": "2026-05-06",
+                    "rsi_14": 55.0,
+                    "macd": 0.5,
+                    "macd_signal": 0.4,
+                    "macd_hist": 0.1,
+                    "bb_upper": 210,
+                    "bb_middle": 200,
+                    "bb_lower": 190,
+                    "sma_20": 200,
+                    "sma_50": 195,
+                    "sma_200": 180,
+                    "ema_12": 202,
+                    "ema_26": 198,
+                },
+            ]
+        )
+        result = upsert_signals(df, db_path=db_path)
+        assert result == 1
+
+    def test_upsert_signals_empty_df_returns_zero(self, db_path):
+        import pandas as pd
+
+        from nuri.core.db.market_data import upsert_signals
+
+        assert upsert_signals(pd.DataFrame(), db_path=db_path) == 0
