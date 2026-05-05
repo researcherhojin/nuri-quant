@@ -4,18 +4,11 @@
 # Codecov가 PR마다 backend/frontend 커버리지를 별도 배지로 표시
 # 정책: 자동 임계값 + 1% 허용범위 (작은 변동 무시)
 
-# Uploads per event (after slow-split + #612 per-shard unique flag):
-#   - PR:   backend-fast-1 + backend-fast-2 + frontend                  = 3 uploads
-#   - push: backend-fast-1 + backend-fast-2 + backend-slow + frontend   = 4 uploads
-# `after_n_builds` removed — a static value would either hang PRs (waiting
-# for a 4th upload that never comes) or report partial push coverage. Codecov
-# now processes uploads as they arrive; status settles on the final state.
-#
-# #612: shard 별 unique flag — 이전엔 두 shard 가 같은 `backend-fast` 로 업로드,
-# codecov 가 같은 flag/commit 의 후속 upload 를 union 이 아닌 replace 로 처리해
-# shard1-only 라인이 final view 에서 missed 로 나타나는 merge bug 가 발생. 분리하면
-# component_management `backend.*` regex 가 여전히 matches 해 backend component 합산
-# 결과는 동일.
+# Single backend upload (workflow `backend-coverage-merge` job 이 fast shard +
+# slow `.coverage` 를 `coverage combine` 으로 union 한 뒤 단일 XML 을 codecov 에
+# 업로드). 이전엔 shard 별 / slow 별 multi-session upload + component_management
+# `backend.*` regex 머지가 phantom miss (8 files / 46) 를 만들어내는 merge bug
+# (#611~#613) 가 있었음. Pre-upload combine 으로 multi-session merge 자체를 제거.
 codecov:
   notify: {}
 
@@ -31,30 +24,30 @@ coverage:
         threshold: 5%        # 리팩토링(문자열 교체 등)에서 미커버 기존 라인 허용
 
 # Backend = Python (nuri/), Frontend = TypeScript (frontend/src/)
-# backend-fast-{1,2} / backend-slow: workflow 의 shard-split 대응. 모두
-# nuri/ 를 대상으로 하고, component_management 에서 'backend' component 로
-# 합쳐진다 (flag_regexes: backend.*).
+# 두 flag 모두 단일 upload — workflow 가 이미 합산 후 한 번만 업로드한다.
+#
+# 옛 flag (backend-fast / backend-fast-1 / backend-fast-2 / backend-slow) 는
+# 더 이상 워크플로우에서 업로드되지 않지만 codecov 측 stored 데이터에 남아 있다.
+# 명시적으로 `carryforward: false` 를 지정하지 않으면 codecov 가 default
+# carryforward=true 로 옛 commit 데이터를 새 commit 까지 끌고 와 stale 결과 (PR
+# #614 머지 전 main HEAD 의 8 files / 46 misses 가 PR 까지 따라옴) 를 보여준다.
 flags:
-  # carryforward: false (#613) — 직전 PR #612 가 per-shard unique flag 로 분리해도
-  # codecov 페이지에 nuri/ 8 files 46 false-positive misses 잔존. 가설 #2: backend-slow
-  # 가 다수 파일 (예: dashboard.py) 의 line 정보를 포함하지 않아 codecov 가 해당 flag
-  # 에 대해 carryforward 로 stale 데이터 머지 → 머지 결과에 가짜 miss 생성. carryforward
-  # 비활성화로 검증.
-  backend-fast-1:
-    paths:
-      - nuri/
-    carryforward: false
-  backend-fast-2:
-    paths:
-      - nuri/
-    carryforward: false
-  backend-slow:
+  backend:
     paths:
       - nuri/
     carryforward: false
   frontend:
     paths:
       - frontend/src/
+    carryforward: false
+  # ── deprecated: explicit carryforward off so stale data does not bleed in ──
+  backend-fast:
+    carryforward: false
+  backend-fast-1:
+    carryforward: false
+  backend-fast-2:
+    carryforward: false
+  backend-slow:
     carryforward: false
 
 # 커버리지 계산 제외 — 테스트 코드, 스크립트, 자동 생성
@@ -65,22 +58,6 @@ ignore:
 
 # PR comment 설정 — 변경 파일 + flag별 커버리지 표시
 comment:
-  layout: "diff, flags, components"
+  layout: "diff, flags"
   behavior: default               # 기존 comment 업데이트 (새 comment 생성 X)
   require_changes: true           # 커버리지 변동 없으면 comment 생략
-
-# Component 별 PR 배지
-component_management:
-  default_rules:
-    statuses:
-      - type: project
-        target: auto
-  individual_components:
-    - component_id: backend
-      name: Backend (Python)
-      flag_regexes:
-        - backend.*          # backend-fast-1 / -2 / backend-slow 모두 매치
-    - component_id: frontend
-      name: Frontend (Next.js)
-      flag_regexes:
-        - frontend
