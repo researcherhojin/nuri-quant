@@ -379,3 +379,57 @@ class TestFreshnessSource:
         src = inspect.getsource(stock_mod)
         # choices 리스트에 'freshness' 포함 확인
         assert "'freshness'" in src or '"freshness"' in src
+
+
+# ─── Phase 3-D6 #616: branch coverage ──────────────────────────────────
+
+
+class TestStockBranches:
+    def test_freshness_tickers_skips_empty_secondary(self, monkeypatch):
+        """51→50: secondary list 빈 dict → for 자연 종료 → primary 만 추가."""
+        from nuri.collectors import stock as stock_mod
+
+        fake_rules = {
+            "siege_gates": {
+                "asset_classes": {
+                    "us": {"freshness_primary": "SPY", "freshness_secondary": []},
+                    "kr": {"freshness_primary": "TLT"},  # secondary 없음 (None)
+                }
+            }
+        }
+        monkeypatch.setattr("nuri.core.rules.RULES", fake_rules)
+        result = stock_mod._load_freshness_tickers()
+        assert "SPY" in result and "TLT" in result
+
+    def test_standardize_single_index_df(self):
+        """179→181: df.columns 가 MultiIndex 아님 → MultiIndex 변환 분기 skip."""
+        import pandas as pd
+
+        from nuri.collectors.stock import StockCollector
+
+        df = pd.DataFrame(
+            {
+                "date": ["2026-05-06"],
+                "open": [100],
+                "high": [101],
+                "low": [99],
+                "close": [100.5],
+                "volume": [1000],
+                "adj_close": [100.5],
+            }
+        )
+        result = StockCollector()._standardize(df, "AAPL")
+        assert "ticker" in result.columns
+
+    def test_standardize_no_date_column(self):
+        """203→206: 'date' 컬럼 없음 → datetime 변환 skip."""
+        import pandas as pd
+
+        from nuri.collectors.stock import StockCollector
+
+        # date 없이 다른 칼럼만
+        df = pd.DataFrame(
+            {"open": [100.0], "high": [101.0], "low": [99.0], "close": [100.5], "volume": [1000], "adj_close": [100.5]}
+        )
+        result = StockCollector()._standardize(df, "AAPL")
+        assert "ticker" in result.columns
