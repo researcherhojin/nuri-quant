@@ -5,8 +5,6 @@
 [![CI/CD](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml/badge.svg)](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml)
 [![codecov](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](LICENSE)
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org)
-[![Coverage 100%](https://img.shields.io/badge/backend%20coverage-100%25-brightgreen.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 
 **Quant platform that proves the evidence behind every investment decision.**
 
@@ -122,12 +120,38 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 
 ## Tech Stack
 
-| Layer | Stack |
-|-------|-------|
-| **Backend** | Python 3.12 · FastAPI · SQLite (WAL) · uv |
-| **Frontend** | Next.js 16 · React 19 · Tailwind 4 · shadcn/ui |
-| **Quant** | pandas · TA-Lib · VectorBT · OpenBB · Riskfolio-Lib · yfinance |
-| **CI/CD** | GitHub Actions · pytest (xdist + shard) · Vitest · Playwright · Ruff · Codecov · Trivy |
+**Backend**
+
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
+![uv](https://img.shields.io/badge/uv-package_manager-DE5FE9)
+
+**Frontend**
+
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)
+![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-000000?logo=shadcnui&logoColor=white)
+
+**Quant**
+
+![pandas](https://img.shields.io/badge/pandas-150458?logo=pandas&logoColor=white)
+![TA-Lib](https://img.shields.io/badge/TA--Lib-indicators-2C3E50)
+![VectorBT](https://img.shields.io/badge/VectorBT-backtest-orange)
+![OpenBB](https://img.shields.io/badge/OpenBB-data-FFD23F)
+![Riskfolio-Lib](https://img.shields.io/badge/Riskfolio--Lib-optimization-lightgrey)
+![yfinance](https://img.shields.io/badge/yfinance-market_data-purple)
+
+**CI/CD**
+
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=githubactions&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-xdist-0A9EDC?logo=pytest&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-2EAD33?logo=playwright&logoColor=white)
+![Ruff](https://img.shields.io/badge/Ruff-D7FF64?logo=ruff&logoColor=black)
+![Codecov](https://img.shields.io/badge/Codecov-F01F7A?logo=codecov&logoColor=white)
+![Trivy](https://img.shields.io/badge/Trivy-1904DA?logo=trivy&logoColor=white)
 
 ## Project Stats
 
@@ -193,4 +217,4 @@ Academic foundations: O'Neil _CAN SLIM_, Minervini _SEPA_, Shefrin & Statman 198
 
 ## License
 
-[AGPL-3.0](LICENSE) — copyleft. Network-deployed derivatives must share source.
+[AGPL-3.0](LICENSE)
