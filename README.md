@@ -145,10 +145,12 @@ make scan-extended  # Weekly scan (us_core + S&P 500, 543 tickers)
 ### Test commands
 
 ```bash
-make test       # full suite — 5,684 backend (233 files) + 917 frontend (82 files) + 38 Playwright e2e (8 specs)
+make test       # full suite — 5,865 backend (255 files, 100% statement coverage) + 917 frontend (82 files) + 38 Playwright e2e (8 specs)
 make test-fast  # backend only, slow tests excluded (~24s, what PR CI runs)
 make test-slow  # backend slow tests only (LLM gather_context, scheduler integration)
 ```
+
+Backend statement coverage **100% verified** (2026-05-06, CI artifact combine of 6 shards). Branch coverage tracked locally via `pytest --cov-branch`; CI workflow currently measures statements only.
 
 ### Production deployment
 
