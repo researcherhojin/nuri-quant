@@ -263,3 +263,49 @@ def test_recovery_evaluate_no_repair_today_skips_persist(db_path):
     result = evaluate_recovery(dates[-1], db_path=db_path)
     assert result.repair_day is False
     assert result.recovery_confirmed is False
+
+
+# ═══════════════════════════════════════════════════════
+# Phase 3-C4 — short SPY dates (215→226 partial)
+# ═══════════════════════════════════════════════════════
+
+
+class TestEvaluateRecoveryShortSPYDates:
+    def test_consecutive_check_with_short_spy_dates(self, tmp_path):
+        """215→226: spy_dates < REPAIR_PERSIST_DAYS (=3) → prior repair lookback skip,
+        consecutive 가 1 (오늘만) 로 남아 recovery_confirmed False."""
+        from unittest.mock import patch
+
+        import pandas as pd
+
+        from nuri.core.db import init_db
+        from nuri.quant.regime import recovery_detector as rd
+
+        p = tmp_path / "rd_short.db"
+        init_db(p)
+
+        short_dates = pd.DataFrame(
+            {
+                "date": ["2026-04-01", "2026-04-02"],
+                "close": [400.0, 410.0],
+            }
+        )
+        with patch(
+            "nuri.quant.regime.recovery_detector.detect_prior_stress",
+            return_value=(True, ["mock_stress"]),
+        ):
+            with patch(
+                "nuri.quant.regime.recovery_detector.evaluate_repair_day",
+                return_value=(True, {}),
+            ):
+                with patch(
+                    "nuri.quant.regime.recovery_detector._fetch_spy_series",
+                    return_value=short_dates,
+                ):
+                    with patch(
+                        "nuri.quant.regime.recovery_detector._fetch_macro_series",
+                        return_value=pd.DataFrame({"date": [], "value": []}),
+                    ):
+                        state = rd.evaluate_recovery("2026-04-02", db_path=p)
+        assert state.recovery_confirmed is False
+        assert state.consecutive_repair_days == 1
