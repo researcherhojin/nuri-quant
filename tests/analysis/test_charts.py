@@ -510,3 +510,242 @@ class TestChartsCoverageGaps:
         assert called["png"] == 1
         assert called["html"] == 1
         assert len(result) == 2
+
+
+# ═══════════════════════════════════════════════════════
+# Branch-coverage lock tests for #616 (16 partial branches)
+# ═══════════════════════════════════════════════════════
+
+
+def _minimal_ohlcv(n: int = 60) -> pd.DataFrame:
+    """generate_plotly_chart 가 직접 참조하는 컬럼 (rsi_14 / macd 등) 까지 포함한
+    flat 더미 DataFrame. 모든 지표는 NaN — 분기 False 트리거용."""
+    idx = pd.bdate_range("2024-01-01", periods=n)
+    return pd.DataFrame(
+        {
+            "open": [100.0] * n,
+            "high": [101.0] * n,
+            "low": [99.0] * n,
+            "close": [100.0] * n,
+            "volume": [1_000_000] * n,
+            "rsi_14": [float("nan")] * n,
+            "macd": [float("nan")] * n,
+            "macd_signal": [float("nan")] * n,
+            "macd_hist": [float("nan")] * n,
+        },
+        index=idx,
+    )
+
+
+class TestChartsBranches616:
+    """Lock-tests for 16 partial branches in nuri/analysis/charts.py (#616)."""
+
+    def test_detect_signals_volume_sma_already_set(self, monkeypatch):
+        """Branch 90->94: `volume_sma_20 not in df.columns` False (이미 존재) → 재계산 skip.
+
+        SIGNAL_DEFINITIONS 를 빈 dict 로 덮어 detector 호출은 skip — 분기 도달만 확인.
+        """
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        df["volume_sma_20"] = 500_000.0  # 이미 set
+        # detector dispatch 우회 (detector 가 rsi/macd 등 NaN 컬럼 액세스 → 예외)
+        monkeypatch.setattr(
+            "nuri.quant.validation.signal_backtest.SIGNAL_DEFINITIONS",
+            {},
+        )
+        result = charts_mod._detect_signals(df)
+        assert isinstance(result, pd.DataFrame)
+        # volume_sma_20 은 원래 값 유지 (재계산 skip 됨)
+        assert df["volume_sma_20"].iloc[0] == 500_000.0
+
+    def test_plotly_no_bb_upper_column(self, tmp_path, monkeypatch):
+        """Branch 212->241: `if "bb_upper" in df.columns:` False."""
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        # _detect_signals / _get_info_panel 모두 우회 — DB 의존성 차단
+        monkeypatch.setattr(charts_mod, "_detect_signals", lambda d: pd.DataFrame())
+        monkeypatch.setattr(charts_mod, "_get_info_panel", lambda t: {"ticker": t})
+        out = charts_mod.generate_plotly_chart("XYZ", df, tmp_path)
+        assert out.exists()
+
+    def test_plotly_bb_upper_all_nan(self, tmp_path, monkeypatch):
+        """Branch 214->241: bb_upper 컬럼 존재하나 dropna 후 empty."""
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        df["bb_upper"] = float("nan")
+        df["bb_lower"] = float("nan")
+        monkeypatch.setattr(charts_mod, "_detect_signals", lambda d: pd.DataFrame())
+        monkeypatch.setattr(charts_mod, "_get_info_panel", lambda t: {"ticker": t})
+        out = charts_mod.generate_plotly_chart("XYZ", df, tmp_path)
+        assert out.exists()
+
+    def test_plotly_sma_loop_missing_and_empty(self, tmp_path, monkeypatch):
+        """Branches 247->246, 249->246: SMA 루프 — 컬럼 없음 / 컬럼은 있으나 all NaN."""
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        # sma_20 은 all-NaN (249->246), sma_50 / sma_200 은 missing (247->246)
+        df["sma_20"] = float("nan")
+        monkeypatch.setattr(charts_mod, "_detect_signals", lambda d: pd.DataFrame())
+        monkeypatch.setattr(charts_mod, "_get_info_panel", lambda t: {"ticker": t})
+        out = charts_mod.generate_plotly_chart("XYZ", df, tmp_path)
+        assert out.exists()
+
+    def test_plotly_signals_empty(self, tmp_path, monkeypatch):
+        """Branch 285->320: sig_df.empty True → signal 마커 skip."""
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        monkeypatch.setattr(charts_mod, "_detect_signals", lambda d: pd.DataFrame())
+        monkeypatch.setattr(charts_mod, "_get_info_panel", lambda t: {"ticker": t})
+        out = charts_mod.generate_plotly_chart("XYZ", df, tmp_path)
+        assert out.exists()
+
+    def test_plotly_signals_only_sells(self, tmp_path, monkeypatch):
+        """Branch 289->304: buys.empty True (sells 만 존재)."""
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        sig = pd.DataFrame(
+            [
+                {"date": df.index[5], "price": 100.0, "type": "sell", "reason": "macd_dead"},
+            ]
+        )
+        monkeypatch.setattr(charts_mod, "_detect_signals", lambda d: sig)
+        monkeypatch.setattr(charts_mod, "_get_info_panel", lambda t: {"ticker": t})
+        out = charts_mod.generate_plotly_chart("XYZ", df, tmp_path)
+        assert out.exists()
+
+    def test_plotly_signals_only_buys(self, tmp_path, monkeypatch):
+        """Branch 304->320: sells.empty True (buys 만 존재)."""
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        sig = pd.DataFrame(
+            [
+                {"date": df.index[5], "price": 100.0, "type": "buy", "reason": "rsi_oversold"},
+            ]
+        )
+        monkeypatch.setattr(charts_mod, "_detect_signals", lambda d: sig)
+        monkeypatch.setattr(charts_mod, "_get_info_panel", lambda t: {"ticker": t})
+        out = charts_mod.generate_plotly_chart("XYZ", df, tmp_path)
+        assert out.exists()
+
+    def test_plotly_rsi_all_nan(self, tmp_path, monkeypatch):
+        """Branch 349->372: rsi.empty True → RSI 패널 skip."""
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        df["rsi_14"] = float("nan")
+        monkeypatch.setattr(charts_mod, "_detect_signals", lambda d: pd.DataFrame())
+        monkeypatch.setattr(charts_mod, "_get_info_panel", lambda t: {"ticker": t})
+        out = charts_mod.generate_plotly_chart("XYZ", df, tmp_path)
+        assert out.exists()
+
+    def test_plotly_macd_all_nan(self, tmp_path, monkeypatch):
+        """Branch 373->426: macd_data.empty True → MACD 패널 skip."""
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        df["macd"] = float("nan")
+        df["macd_signal"] = float("nan")
+        df["macd_hist"] = float("nan")
+        monkeypatch.setattr(charts_mod, "_detect_signals", lambda d: pd.DataFrame())
+        monkeypatch.setattr(charts_mod, "_get_info_panel", lambda t: {"ticker": t})
+        out = charts_mod.generate_plotly_chart("XYZ", df, tmp_path)
+        assert out.exists()
+
+    def test_plotly_alert_box_sig_empty(self, tmp_path, monkeypatch):
+        """Branch 476->502: 알림 박스 skip (sig_df.empty True).
+
+        주의: branch 285->320 과 동일 조건이지만 별도 테스트 — 라인 위치만 다름.
+        한 테스트로 둘 다 커버되나, 명시적 lock-test 분리.
+        """
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        monkeypatch.setattr(charts_mod, "_detect_signals", lambda d: pd.DataFrame())
+        monkeypatch.setattr(charts_mod, "_get_info_panel", lambda t: {"ticker": t})
+        out = charts_mod.generate_plotly_chart("XYZ", df, tmp_path)
+        assert out.exists()
+
+    def test_png_no_optional_columns(self, tmp_path, monkeypatch):
+        """Branches 571->574, 574->576, 576->578, 578->582: PNG 보조 plot 4개 모두 skip.
+
+        df 에 OHLCV 만 있고 bb_upper / sma_50 / rsi_14 / macd 모두 missing.
+        """
+        import nuri.analysis.charts as charts_mod
+
+        # 순수 OHLCV — 지표 컬럼 일체 없음
+        idx = pd.bdate_range("2024-01-01", periods=30)
+        df = pd.DataFrame(
+            {
+                "open": [100.0] * 30,
+                "high": [101.0] * 30,
+                "low": [99.0] * 30,
+                "close": [100.0] * 30,
+                "volume": [1_000_000] * 30,
+            },
+            index=idx,
+        )
+        # mpf.plot 호출 (PNG 작성) 자체가 무거우니 mock — 분기 진입만 검증
+        captured: dict = {}
+
+        class _MockMpf:
+            @staticmethod
+            def make_addplot(*a, **kw):
+                return ("addplot", a, kw)
+
+            @staticmethod
+            def plot(ohlcv, **kw):
+                captured["addplot"] = kw.get("addplot")
+                # savefig 인자대로 빈 파일 생성
+                import pathlib
+
+                p = pathlib.Path(kw["savefig"])
+                p.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        # mplfinance 모듈 자체를 sys.modules 에 주입
+        import sys
+
+        monkeypatch.setitem(sys.modules, "mplfinance", _MockMpf)
+        out = charts_mod.generate_png_chart("XYZ", df, tmp_path)
+        assert out.exists()
+        # addplot 4 개 분기 모두 skip → addplots 빈 리스트 → None 전달
+        assert captured["addplot"] is None
+
+    def test_generate_charts_html_false_png_true(self, tmp_path, monkeypatch):
+        """Branch 622->626: html=False → plotly skip, png=True 만 호출."""
+        import nuri.analysis.charts as charts_mod
+
+        df = _minimal_ohlcv()
+        monkeypatch.setattr(charts_mod, "_load_chart_data", lambda t: df)
+
+        called = {"html": 0, "png": 0}
+
+        def fake_html(t, df_, out):
+            called["html"] += 1
+            return out / f"{t}.html"
+
+        def fake_png(t, df_, out):
+            out.mkdir(parents=True, exist_ok=True)
+            p = out / f"{t}.png"
+            p.write_bytes(b"\x89PNG\r\n\x1a\n")
+            called["png"] += 1
+            return p
+
+        monkeypatch.setattr(charts_mod, "generate_plotly_chart", fake_html)
+        monkeypatch.setattr(charts_mod, "generate_png_chart", fake_png)
+
+        result = charts_mod.generate_charts(
+            tickers=["XYZ"],
+            output_dir=tmp_path / "out",
+            html=False,
+            png=True,
+        )
+        assert called["html"] == 0
+        assert called["png"] == 1
+        assert len(result) == 1
