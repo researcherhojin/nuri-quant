@@ -25,6 +25,12 @@ coverage:
 
 # Backend = Python (nuri/), Frontend = TypeScript (frontend/src/)
 # 두 flag 모두 단일 upload — workflow 가 이미 합산 후 한 번만 업로드한다.
+#
+# 옛 flag (backend-fast / backend-fast-1 / backend-fast-2 / backend-slow) 는
+# 더 이상 워크플로우에서 업로드되지 않지만 codecov 측 stored 데이터에 남아 있다.
+# 명시적으로 `carryforward: false` 를 지정하지 않으면 codecov 가 default
+# carryforward=true 로 옛 commit 데이터를 새 commit 까지 끌고 와 stale 결과 (PR
+# #614 머지 전 main HEAD 의 8 files / 46 misses 가 PR 까지 따라옴) 를 보여준다.
 flags:
   backend:
     paths:
@@ -33,6 +39,15 @@ flags:
   frontend:
     paths:
       - frontend/src/
+    carryforward: false
+  # ── deprecated: explicit carryforward off so stale data does not bleed in ──
+  backend-fast:
+    carryforward: false
+  backend-fast-1:
+    carryforward: false
+  backend-fast-2:
+    carryforward: false
+  backend-slow:
     carryforward: false
 
 # 커버리지 계산 제외 — 테스트 코드, 스크립트, 자동 생성
