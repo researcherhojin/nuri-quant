@@ -92,7 +92,11 @@ dependencies = [
 dev = [
     "pytest>=9.0.3",  # security: CVE-2025-71176 tmpdir handling (Dependabot #16)
     "pytest-cov>=7.1.0",
-    "pytest-shard>=0.1.2",
+    # pytest-split: timing-aware test partitioning for CI 4-shard split.
+    # Replaces pytest-shard (hash-based) which produced unbalanced buckets when
+    # test runtimes varied — see #320 history. pytest-split reads `.test-durations`
+    # to balance shards by historical duration.
+    "pytest-split>=0.10.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.8.0",
 ]
