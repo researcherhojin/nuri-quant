@@ -95,3 +95,127 @@ class TestAnalyzeSignalByRegimeAggregation:
         result = sm.analyze_signal_by_regime(db_path=db)
         # aggregation 실행됐으면 columns 갖춤. 빈 DataFrame 도 허용 (regime 매칭 부재 시).
         assert isinstance(result, pd.DataFrame)
+
+
+# ─── Phase 4 #616 — close 9 stmts (analyze_signal_by_regime aggregation) ──
+
+
+class TestAnalyzeSignalByRegimeFullPath:
+    """L141-160: groupby aggregation + DataFrame construction.
+
+    Previous test 가 _load_spy_series / _find_latest_csv 의 실제 path 의존 →
+    CI 환경에서 fail. helper 들을 직접 mock.
+    """
+
+    def test_aggregation_produces_dataframe(self, tmp_path, monkeypatch):
+        import pandas as pd
+
+        from nuri.quant.regime import strategy_map as sm
+
+        # Fake CSV (signal_results)
+        csv_path = tmp_path / "signal_results.csv"
+        trades_df = pd.DataFrame(
+            [
+                {"signal_id": "rsi_oversold", "entry_date": "2026-04-01", "return_pct": 5.0},
+                {"signal_id": "rsi_oversold", "entry_date": "2026-04-02", "return_pct": -2.0},
+                {"signal_id": "macd_golden", "entry_date": "2026-04-01", "return_pct": 3.0},
+                {"signal_id": "macd_golden", "entry_date": "2026-04-03", "return_pct": -4.0},
+            ]
+        )
+        trades_df.to_csv(csv_path, index=False)
+
+        # Fake SPY series with sma50/sma200/bb_width
+        spy_df = pd.DataFrame(
+            [
+                {"date": "2026-04-01", "close": 500.0, "sma50": 495, "sma200": 480, "bb_width": 0.05},
+                {"date": "2026-04-02", "close": 501.0, "sma50": 496, "sma200": 481, "bb_width": 0.05},
+                {"date": "2026-04-03", "close": 502.0, "sma50": 497, "sma200": 482, "bb_width": 0.05},
+            ]
+        )
+
+        monkeypatch.setattr(sm, "_find_latest_csv", lambda name: csv_path)
+        monkeypatch.setattr(sm, "_load_spy_series", lambda db_path=None: spy_df)
+        monkeypatch.setattr(sm, "compute_dynamic_thresholds", lambda db_path: {})
+        monkeypatch.setattr(sm, "_get_vix", lambda date=None, db_path=None: 18.0)
+        monkeypatch.setattr(sm, "_classify_single", lambda *a, **kw: ("bull", "low"))
+
+        result = sm.analyze_signal_by_regime(db_path=tmp_path / "fake.db")
+
+        assert not result.empty
+        assert "signal_id" in result.columns
+        assert "profit_factor" in result.columns
+        # 2 signals × 1 regime = 2 rows
+        assert len(result) == 2
+
+
+# ─── Phase 4 #616 — close strategy_map.py 22 stmts batch ──────────────
+
+
+class TestGetRealAccountsHeldAddCI:
+    """held_add.py L142, 145-150: read portfolio.yaml + iter accounts.
+
+    이전 test 가 hardcoded path 사용 → CI 에서 file 없으면 except 흡수,
+    real path 우회 필요. monkeypatch builtins.open 으로 fake yaml content.
+    """
+
+    def test_real_accounts_with_yaml_open_patched(self, monkeypatch):
+        import io
+
+        yaml_text = (
+            "accounts:\n"
+            "  main:\n"
+            "    strategy: core\n"
+            "  legacy:\n"
+            "    note: empty\n"  # substantive key 없음
+            "  toss:\n"
+            "    label: Sub\n"
+        )
+
+        real_open = open
+
+        def _opener(path, *args, **kwargs):
+            if str(path).endswith("portfolio.yaml"):
+                return io.StringIO(yaml_text)
+            return real_open(path, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.open", _opener)
+
+        from nuri.trading.recommend.held_add import _get_real_accounts
+
+        result = _get_real_accounts()
+        assert "main" in result
+        assert "toss" in result
+        assert "legacy" not in result
+
+
+class TestGetRealAccountsActionsCI:
+    """actions.py L507-512: yaml load + iter (uses Path.read_text)."""
+
+    def test_real_accounts_via_read_text_patch(self, monkeypatch):
+        from pathlib import Path
+
+        yaml_text = (
+            "accounts:\n"
+            "  main:\n"
+            "    strategy: core\n"
+            "  shell:\n"
+            "    note: empty\n"
+            "  long_term:\n"
+            "    holdings:\n"
+            "      AAA: 10\n"
+        )
+        original_read_text = Path.read_text
+
+        def _mock_read_text(self, *args, **kwargs):
+            if str(self).endswith("portfolio.yaml"):
+                return yaml_text
+            return original_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr("pathlib.Path.read_text", _mock_read_text)
+
+        from nuri.api.routes.actions import _get_real_accounts
+
+        result = _get_real_accounts()
+        assert "main" in result
+        assert "long_term" in result
+        assert "shell" not in result
