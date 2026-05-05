@@ -311,3 +311,108 @@ class TestAlreadySellAll:
             v for v in violations if v["ticker"] == "TST_SL" and v["violation_type"] == "sector_limit_exceeded"
         ]
         assert sl_sector == []
+
+
+# ═══════════════════════════════════════════════════════
+# print_rebalance_advisor + main() — Issue #616 Phase 3-C3 부분 (343→346, 401-416, 412→416)
+# ═══════════════════════════════════════════════════════
+
+from unittest.mock import patch  # noqa: E402
+
+
+class TestPrintAdvisorMediumSeverity:
+    def test_medium_severity_skips_marker(self, capsys):
+        """343→346: severity='medium' → critical/high 둘 다 False → marker 빈 문자열."""
+        from nuri.analysis.rebalance_advisor import print_rebalance_advisor
+
+        actions = [
+            {
+                "ticker": "AAA",
+                "sell_shares": 5,
+                "sell_value_usd": 1_000.0,
+                "reason": "rule violation",
+                "action": "SELL_PARTIAL",
+                "severity": "medium",
+                "violation_type": "concentration",
+                "cumulative_recovery_usd": 1_000,
+            }
+        ]
+        print_rebalance_advisor(actions)
+        out = capsys.readouterr().out
+        assert "[!!]" not in out
+        assert "[!]" not in out
+        assert "AAA" in out
+
+
+class TestRebalanceAdvisorMain:
+    def test_main_with_critical_actions(self, capsys):
+        """main() actions + has_critical=True path."""
+        from nuri.analysis import rebalance_advisor as ra
+
+        fake = {
+            "actions": [
+                {
+                    "ticker": "BBB",
+                    "sell_shares": 2,
+                    "sell_value_usd": 500.0,
+                    "reason": "rule",
+                    "action": "SELL_PARTIAL",
+                    "severity": "critical",
+                    "violation_type": "concentration",
+                    "cumulative_recovery_usd": 500,
+                }
+            ],
+            "total_violations": 1,
+            "total_recovery_usd": 500.0,
+            "violations_by_type": {"concentration": 1},
+            "violations_by_severity": {"critical": 1},
+            "has_critical": True,
+        }
+        with patch("nuri.analysis.rebalance_advisor.generate_advisor_report", return_value=fake):
+            assert ra.main([]) == 0
+        assert "CRITICAL" in capsys.readouterr().out
+
+    def test_main_actions_no_critical_skips_warning(self, capsys):
+        """412→416: has_critical=False → '⚠ CRITICAL' skip."""
+        from nuri.analysis import rebalance_advisor as ra
+
+        fake = {
+            "actions": [
+                {
+                    "ticker": "CCC",
+                    "sell_shares": 1,
+                    "sell_value_usd": 100.0,
+                    "reason": "rule",
+                    "action": "SELL_PARTIAL",
+                    "severity": "high",
+                    "violation_type": "concentration",
+                    "cumulative_recovery_usd": 100,
+                }
+            ],
+            "total_violations": 1,
+            "total_recovery_usd": 100.0,
+            "violations_by_type": {"concentration": 1},
+            "violations_by_severity": {"high": 1},
+            "has_critical": False,
+        }
+        with patch("nuri.analysis.rebalance_advisor.generate_advisor_report", return_value=fake):
+            assert ra.main([]) == 0
+        out = capsys.readouterr().out
+        assert "위반 건수" in out
+        assert "CRITICAL" not in out
+
+    def test_main_no_actions_prints_compliance(self, capsys):
+        """actions=[] → '준수 상태' 출력."""
+        from nuri.analysis import rebalance_advisor as ra
+
+        fake = {
+            "actions": [],
+            "total_violations": 0,
+            "total_recovery_usd": 0.0,
+            "violations_by_type": {},
+            "violations_by_severity": {},
+            "has_critical": False,
+        }
+        with patch("nuri.analysis.rebalance_advisor.generate_advisor_report", return_value=fake):
+            assert ra.main([]) == 0
+        assert "준수 상태" in capsys.readouterr().out
