@@ -31,7 +31,7 @@ jobs:
   # Push to main always runs everything (no PR context to filter on).
 
   changes:
-    name: Detect changes
+    name: Detect Changes
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
@@ -424,7 +424,7 @@ jobs:
           retention-days: 1
           include-hidden-files: true
 
-  # ── Backend Tests (slow) — isolated, push-only ──
+  # ── Backend Slow Tests — isolated, push-only ──
   # Runs the 23 @pytest.mark.slow tests (mostly LLM/scheduler) in a single
   # unsharded job. Push-only: PRs deliberately skip slow tests, matching
   # pre-split behavior (see STRATEGY §4.1 — slow excluded from PR CI).
@@ -432,7 +432,7 @@ jobs:
   # fast shards' flag `backend-fast` for full-suite coverage on main.
 
   backend-tests-slow:
-    name: Backend Tests (slow)
+    name: Backend Slow Tests
     needs: changes
     # Push-only (strict). workflow_dispatch and schedule won't run slow.
     # PR deliberately skips slow (matches pre-split behavior, STRATEGY §4.1).
@@ -470,7 +470,7 @@ jobs:
   # push 에선 fast+slow 모두 합산.
 
   backend-coverage-merge:
-    name: Backend Coverage Merge
+    name: Backend Coverage Aggregate
     needs: [changes, backend-tests-shard, backend-tests-slow]
     if: ${{ !cancelled() && needs.changes.outputs.run_backend == 'true' }}
     runs-on: ubuntu-latest
