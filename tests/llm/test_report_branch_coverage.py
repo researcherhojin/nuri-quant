@@ -558,3 +558,105 @@ class TestExceptionFallbackPaths:
         monkeypatch.setattr("nuri.trading.engine.memory.detect_drift", _boom)
         ctx = gather_context(db_path=db_path)
         assert ctx.drift_section == "성과 변화 데이터 없음"
+
+
+# ─── Phase 3-D #616: remaining 5 partials ─────────────────────────────
+
+
+class TestDriftAllStable:
+    def test_drift_no_critical_skips_warning_line(self, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """281→283: drifts 존재하지만 status=stable 만 → if critical False → 경고 라인 skip."""
+        drifts = [
+            MagicMock(
+                signal_id="rsi_oversold",
+                all_time_wr=0.65,
+                recent_wr=0.62,
+                drift_pct=-3.0,
+                status="stable",
+            ),
+            MagicMock(
+                signal_id="macd_cross",
+                all_time_wr=0.55,
+                recent_wr=0.58,
+                drift_pct=5.5,
+                status="improving",
+            ),
+        ]
+        monkeypatch.setattr("nuri.trading.engine.memory.detect_drift", lambda **kw: drifts)
+        ctx = gather_context(db_path=db_path)
+        assert "rsi_oversold" in ctx.drift_section
+        # critical 없음 → ⚠ 라인 미렌더
+        assert "성과 급락 시그널" not in ctx.drift_section
+
+
+class TestConsensusNoDissent:
+    def test_consensus_dissent_empty_skips_inner_lines(self, db_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """302→295: r.dissent=[] False → inner for skip → 다음 result iter."""
+        verdict = MagicMock(agent_name="agent1", action="HOLD")
+        result = MagicMock(
+            ticker="BBB",
+            final_action="HOLD",
+            final_confidence=70,
+            agreement_rate=1.0,
+            verdicts=[verdict],
+            dissent=[],  # 빈 list → if False
+        )
+        monkeypatch.setattr("nuri.trading.agents.consensus.analyze_portfolio", lambda **kw: [result])
+        ctx = gather_context(db_path=db_path)
+        assert "BBB" in ctx.known_tickers
+        # dissent 라인 미렌더
+        assert "반대:" not in ctx.consensus_section
+
+
+class TestOllamaNoMarker:
+    def test_response_without_marker_returns_as_is(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """615→620: response 에 '## 1.' / '# 1. ' 마커 없음 → for 자연 종료 → re.sub 진행."""
+        fake_resp = MagicMock(status_code=200)
+        fake_resp.json.return_value = {"response": "직접 분석 결과만 텍스트"}
+        fake_resp.raise_for_status = lambda: None
+
+        import sys
+
+        mock_requests = MagicMock()
+        mock_requests.post.return_value = fake_resp
+        mock_requests.ConnectionError = ConnectionError
+        monkeypatch.setitem(sys.modules, "requests", mock_requests)
+        monkeypatch.setattr(report_mod, "OLLAMA_HOST", "http://fake-ollama")
+
+        result = _generate_ollama("test prompt")
+        # 마커 없음 → response 가 그대로 (re.sub 적용된 형태) 반환
+        assert "직접 분석 결과만 텍스트" in result
+
+    def test_thinking_path_when_response_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """622→632 inverse: response='' but thinking 존재 → elif True → thinking 처리."""
+        fake_resp = MagicMock(status_code=200)
+        fake_resp.json.return_value = {"response": "", "thinking": "## 1. thinking content"}
+        fake_resp.raise_for_status = lambda: None
+
+        import sys
+
+        mock_requests = MagicMock()
+        mock_requests.post.return_value = fake_resp
+        mock_requests.ConnectionError = ConnectionError
+        monkeypatch.setitem(sys.modules, "requests", mock_requests)
+        monkeypatch.setattr(report_mod, "OLLAMA_HOST", "http://fake-ollama")
+
+        result = _generate_ollama("test prompt")
+        assert "thinking content" in result
+
+    def test_response_empty_no_thinking_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """622→632: response='' AND data.thinking 부재 → elif False → return '' (response 그대로)."""
+        fake_resp = MagicMock(status_code=200)
+        fake_resp.json.return_value = {"response": ""}  # thinking 없음
+        fake_resp.raise_for_status = lambda: None
+
+        import sys
+
+        mock_requests = MagicMock()
+        mock_requests.post.return_value = fake_resp
+        mock_requests.ConnectionError = ConnectionError
+        monkeypatch.setitem(sys.modules, "requests", mock_requests)
+        monkeypatch.setattr(report_mod, "OLLAMA_HOST", "http://fake-ollama")
+
+        result = _generate_ollama("test prompt")
+        assert result == ""
