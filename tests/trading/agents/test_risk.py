@@ -1,4 +1,5 @@
 """Tests for risk agent — split from test_trading_agents_all.py."""
+
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -19,18 +20,24 @@ class TestRiskAgent:
 
         with get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
                 ("test", "CRASH", 100, 100.0, "USD"),
             )
 
         dates = pd.bdate_range("2025-01-01", periods=30)
         close = np.linspace(100, 70, 30)
-        df = pd.DataFrame({
-            "ticker": "CRASH", "date": [d.strftime("%Y-%m-%d") for d in dates],
-            "open": close, "high": close, "low": close, "close": close,
-            "volume": [100] * 30, "adj_close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "ticker": "CRASH",
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": close,
+                "high": close,
+                "low": close,
+                "close": close,
+                "volume": [100] * 30,
+                "adj_close": close,
+            }
+        )
         upsert_prices(df, db_path)
 
         v = RiskAgent().analyze("CRASH", db_path=db_path)
@@ -42,6 +49,7 @@ class TestRiskAgent:
 class TestRiskAgent_R26:
     def test_no_data(self, db_path):
         from nuri.trading.agents.risk_agent import RiskAgent
+
         result = RiskAgent().analyze("AAPL", db_path=db_path)
         assert result.action in ("HOLD", "BUY")
 
@@ -50,6 +58,7 @@ class TestRiskAgent_R26:
         with get_db(db_path) as conn:
             conn.execute("UPDATE portfolio SET avg_price = 100 WHERE ticker = 'AAPL'")
         from nuri.trading.agents.risk_agent import RiskAgent
+
         result = RiskAgent().analyze("AAPL", db_path=db_path)
         assert result.action == "SELL"
         assert "손절선" in result.reasoning
@@ -60,6 +69,7 @@ class TestRiskAgent_R26:
         with get_db(db_path) as conn:
             conn.execute("UPDATE portfolio SET avg_price = 100 WHERE ticker = 'AAPL'")
         from nuri.trading.agents.risk_agent import RiskAgent
+
         result = RiskAgent().analyze("AAPL", db_path=db_path)
         assert "수익" in result.reasoning
 
@@ -89,17 +99,24 @@ class TestRiskAgentA3PerAccountThreshold:
         """Portfolio + 30-day price series 가 current_price 로 끝나게 seed."""
         dates = pd.bdate_range("2026-01-01", periods=30)
         close = np.linspace(avg_price, current_price, 30)
-        df = pd.DataFrame({
-            "ticker": ticker, "date": [d.strftime("%Y-%m-%d") for d in dates],
-            "open": close, "high": close, "low": close, "close": close,
-            "volume": [100] * 30, "adj_close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "ticker": ticker,
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": close,
+                "high": close,
+                "low": close,
+                "close": close,
+                "volume": [100] * 30,
+                "adj_close": close,
+            }
+        )
         from nuri.core.db import get_db as _get_db
         from nuri.core.db import upsert_prices as _upsert_prices
+
         with _get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
                 (account, ticker, 10, avg_price, "USD"),
             )
         _upsert_prices(df, db_path)
@@ -169,31 +186,42 @@ class TestRiskAgentA3PerAccountThreshold:
         # -25% (breach). 첫 row 가 Main 이더라도 Toss 의 breach 가 감지돼야 함.
         dates = pd.bdate_range("2026-01-01", periods=30)
         close = np.linspace(100, 75, 30)  # 마지막 75 → Main(avg=100)=-25%, Toss(avg=75)=0%
-        df = pd.DataFrame({
-            "ticker": "SHARED", "date": [d.strftime("%Y-%m-%d") for d in dates],
-            "open": close, "high": close, "low": close, "close": close,
-            "volume": [100] * 30, "adj_close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "ticker": "SHARED",
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": close,
+                "high": close,
+                "low": close,
+                "close": close,
+                "volume": [100] * 30,
+                "adj_close": close,
+            }
+        )
         _upsert_prices(df, db_path)
 
         with _get_db(db_path) as conn:
             # 순서 바꿔 insert: Toss(long_term -20, 0% pnl, no breach) 먼저
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
                 ("Toss", "SHARED", 5, 75.0, "USD"),
             )
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
                 ("Main", "SHARED", 10, 100.0, "USD"),  # -25% breach on -7 core
             )
 
         portfolio_yaml = tmp_path / "portfolio.yaml"
-        portfolio_yaml.write_text(_yaml.dump({"accounts": {
-            "Toss": {"strategy": "long_term"},
-            "Main": {"strategy": "core"},
-        }}))
+        portfolio_yaml.write_text(
+            _yaml.dump(
+                {
+                    "accounts": {
+                        "Toss": {"strategy": "long_term"},
+                        "Main": {"strategy": "core"},
+                    }
+                }
+            )
+        )
         real_open = open
 
         def _opener(path, **kwargs):
@@ -225,15 +253,21 @@ class TestRiskAgentA3PerAccountThreshold:
         with _get_db(db_path) as conn:
             # 추가 계좌에 같은 ticker — exposure 2배
             conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
                 ("Toss", "CONC", 10, 100.0, "USD"),
             )
 
         portfolio_yaml = tmp_path / "portfolio.yaml"
-        portfolio_yaml.write_text(_yaml.dump({"accounts": {
-            "Main": {"strategy": "core"}, "Toss": {"strategy": "long_term"},
-        }}))
+        portfolio_yaml.write_text(
+            _yaml.dump(
+                {
+                    "accounts": {
+                        "Main": {"strategy": "core"},
+                        "Toss": {"strategy": "long_term"},
+                    }
+                }
+            )
+        )
         real_open = open
 
         def _opener(path, **kwargs):
@@ -249,3 +283,81 @@ class TestRiskAgentA3PerAccountThreshold:
         assert "비중 초과" in v.reasoning
         # 합산 비중이 리포트에 반영됐는지 숫자 확인 (100.0% expected, 50.0% 아님)
         assert "100.0%" in v.reasoning
+
+
+# ─── Phase 3-D #616: branch coverage ──────────────────────────────────
+
+
+class TestRiskAgentBranches:
+    def test_volatility_normal_range_skips_vol_branch(self, db_path):
+        """77→86: vol 이 low~high 사이 → elif/elif False → concentration 블록으로."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.risk_agent import RiskAgent
+
+        # ±2.5% 변동 (vol≈3%, low=2 ~ high=5 사이)
+        with get_db(db_path) as conn:
+            price = 100.0
+            for i in range(1, 31):
+                price *= 1.025 if i % 2 == 0 else 0.975
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ("VRNG", f"2026-04-{i:02d}", price, price * 1.01, price * 0.99, price, 1000),
+                )
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES ('test', 'VRNG', 10, 100, 'USD', 'Tech')"
+            )
+        v = RiskAgent().analyze("VRNG", db_path=db_path)
+        # vol 메시지 둘 다 제외 (정상 범위)
+        assert "고변동성" not in v.reasoning
+        assert "저변동성" not in v.reasoning
+
+    def test_sell_without_stop_loss_smoke(self, db_path):
+        """110→120 smoke: SELL 진입은 코드 상 어렵지만 stop_loss 미발화 path 가 정상 동작 검증."""
+        from nuri.core.db import get_db
+        from nuri.trading.agents.risk_agent import RiskAgent
+
+        # 손익 양호 (avg=100, current=105) → stop_loss 미발화
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES ('test', 'SAFE', 10, 100, 'USD', 'Tech')"
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                "VALUES ('SAFE', '2026-05-06', 105, 106, 104, 105, 1000)"
+            )
+        v = RiskAgent().analyze("SAFE", db_path=db_path)
+        assert "손절선" not in v.reasoning  # stop_loss 미발화 확인
+
+    def test_multi_holding_second_row_not_worse(self, db_path):
+        """46→39: 다계좌 보유 — 첫 row 큰 손실 (worst_breach 설정), 두번째 row 작은 손실 (worst 유지).
+
+        if worst_breach is None or row_pnl < worst_breach[0]:  # 두번째 row 에서 False path
+        """
+        from nuri.core.db import get_db
+        from nuri.trading.agents.risk_agent import RiskAgent
+
+        # current=85, avg1=100 (loss=-15%, breach), avg2=90 (loss=-5.5%, no breach)
+        # → 첫 row -15% breach 됨, 두번째 row 의 -5.5% 는 breach 아니라
+        #   if worst_breach[0]=-15.0 의 False path 필요 → 첫 row 큰 breach + 두번째 row
+        #   더 작은 breach 만들어야 if 가 False 됨.
+        # current=80, avg1=100 (loss=-20%, breach), avg2=90 (loss=-11%, breach but less negative)
+        # → -11 < -20 False → if False 진입.
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES ('Main', 'MULTI', 10, 100.0, 'USD')"
+            )
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES ('Toss', 'MULTI', 5, 90.0, 'USD')"
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                "VALUES ('MULTI', '2026-05-06', 80, 82, 78, 80, 1000)"
+            )
+        v = RiskAgent().analyze("MULTI", db_path=db_path)
+        # 첫 row 손실 -20% 가 worst_breach 로 보고됨 (두번째 -11% 가 덮어쓰지 않음)
+        assert "손절선 돌파" in v.reasoning
+        assert "-20.0%" in v.reasoning  # 첫 row 손실

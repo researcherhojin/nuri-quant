@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from unittest.mock import MagicMock, patch
 
 
@@ -22,11 +23,9 @@ class TestFINVIZCollector:
         from nuri.collectors.finviz import FINVIZCollector
 
         c = FINVIZCollector()
-        records = [{"date": "2026-03-30", "ticker": "AAPL",
-                     "signal": "new_high", "source": "FINVIZ"}]
+        records = [{"date": "2026-03-30", "ticker": "AAPL", "signal": "new_high", "source": "FINVIZ"}]
         count = c.save(records, db_path=db_path)
         assert count == 1
-
 
 
 class TestFINVIZCollector_Phase2:
@@ -47,7 +46,12 @@ class TestFINVIZCollector_Phase2:
 
         mock_tickers.return_value = ["TSLA", "NVDA", "AAPL"]
         mock_fetch.side_effect = [
-            {"TSLA", "MSFT", "GME"}, set(), {"NVDA"}, set(), set(), {"TSLA", "AAPL"},
+            {"TSLA", "MSFT", "GME"},
+            set(),
+            {"NVDA"},
+            set(),
+            set(),
+            {"TSLA", "AAPL"},
         ]
         collector = FINVIZCollector()
         records = collector.collect()
@@ -73,7 +77,6 @@ class TestFINVIZCollector_Phase2:
         mock_tickers.return_value = []
         collector = FINVIZCollector()
         assert collector.collect() == []
-
 
 
 class TestFINVIZCollectorMockedScreener:
@@ -112,8 +115,14 @@ class TestFINVIZCollectorMockedScreener:
         with patch("nuri.collectors.finviz.Ticker", mock_ticker_cls, create=True):
             mock_mod = MagicMock()
             mock_mod.screener.ticker.Ticker = mock_ticker_cls
-            with patch.dict("sys.modules", {"finvizfinance": mock_mod, "finvizfinance.screener": mock_mod.screener,
-                                            "finvizfinance.screener.ticker": mock_mod.screener.ticker}):
+            with patch.dict(
+                "sys.modules",
+                {
+                    "finvizfinance": mock_mod,
+                    "finvizfinance.screener": mock_mod.screener,
+                    "finvizfinance.screener.ticker": mock_mod.screener.ticker,
+                },
+            ):
                 result = collector._fetch_signal_tickers("Oversold")
                 assert isinstance(result, set)
 
@@ -125,9 +134,12 @@ class TestFINVIZCollectorMockedScreener:
     def test_save_records(self, rich_db):
         from nuri.collectors.finviz import FINVIZCollector
 
-        count = FINVIZCollector().save([
-            {"date": "2025-01-01", "ticker": "AAPL", "signal": "oversold_rsi", "source": "FINVIZ"},
-        ], db_path=rich_db)
+        count = FINVIZCollector().save(
+            [
+                {"date": "2025-01-01", "ticker": "AAPL", "signal": "oversold_rsi", "source": "FINVIZ"},
+            ],
+            db_path=rich_db,
+        )
         assert count == 1
 
     def test_scrape_signal_fallback_mocked(self, monkeypatch):
@@ -151,3 +163,68 @@ class TestFINVIZCollectorMockedScreener:
 # ##############################################################################
 # Source: test_coverage_round24.py -- comprehensive collector tests
 # ##############################################################################
+
+
+# ─── Phase 3-D #616: branch coverage ──────────────────────────────────
+
+
+class TestFinvizFallbackBranches:
+    def test_finvizfinance_empty_list_falls_to_scrape(self, monkeypatch):
+        """94→100: finvizfinance result 빈 list → if False → 직접 스크래핑 호출."""
+        from nuri.collectors.finviz import FINVIZCollector
+
+        # finvizfinance Ticker 가 빈 list 반환 (signal 없음 케이스)
+        class _FakeTicker:
+            def set_filter(self, signal):
+                pass
+
+            def screener_view(self, **kw):
+                return []  # 빈 list → if 블록 skip
+
+        import sys
+
+        fake_mod = type(sys)("finvizfinance.screener.ticker")
+        fake_mod.Ticker = _FakeTicker
+        # finvizfinance 모듈 트리 stub
+        monkeypatch.setitem(sys.modules, "finvizfinance.screener.ticker", fake_mod)
+
+        c = FINVIZCollector()
+        scrape_called = []
+        monkeypatch.setattr(c, "_scrape_signal_fallback", lambda s: scrape_called.append(s) or set())
+        result = c._fetch_signal_tickers("Oversold")
+        assert scrape_called == ["Oversold"]
+        assert result == set()
+
+    def test_scrape_skips_non_quote_links(self, monkeypatch):
+        """133→131: href 에 quote.ashx 미포함 → 다음 link iter."""
+        import requests
+
+        from nuri.collectors.finviz import FINVIZCollector
+
+        # quote.ashx 없는 링크만 있는 HTML
+        fake_html = '<a href="/news.ashx">News</a><a href="/about">About</a>'
+        fake_resp = type("R", (), {"text": fake_html, "raise_for_status": lambda self: None, "status_code": 200})()
+        monkeypatch.setattr(requests, "get", lambda *a, **kw: fake_resp)
+
+        c = FINVIZCollector()
+        result = c._scrape_signal_fallback("Oversold")
+        assert result == set()
+
+    def test_scrape_skips_invalid_ticker_text(self, monkeypatch):
+        """135→131: ticker 가 non-alpha or len>5 → 다음 iter."""
+        import requests
+
+        from nuri.collectors.finviz import FINVIZCollector
+
+        # quote.ashx 링크는 있지만 텍스트가 invalid (숫자 / 너무 김)
+        fake_html = (
+            '<a href="/quote.ashx?t=AAA">123</a>'  # non-alpha
+            '<a href="/quote.ashx?t=BBB">VERYLONGTICKER</a>'  # len > 5
+            '<a href="/quote.ashx?t=CCC"></a>'  # 빈 텍스트
+        )
+        fake_resp = type("R", (), {"text": fake_html, "raise_for_status": lambda self: None, "status_code": 200})()
+        monkeypatch.setattr(requests, "get", lambda *a, **kw: fake_resp)
+
+        c = FINVIZCollector()
+        result = c._scrape_signal_fallback("Oversold")
+        assert result == set()  # 모두 invalid → empty
