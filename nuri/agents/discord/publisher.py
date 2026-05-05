@@ -339,8 +339,8 @@ def publish(
     global _singleton
     if _singleton is None:
         _singleton = DiscordPublisher()
-    if isinstance(channel, str):
-        channel = Channel(channel)
+    # Channel(str, Enum) — str 도 받아 Enum 반환 (재호출도 안전).
+    channel = Channel(channel)
     return _singleton.publish_text(channel, content, actor_name, run_id, decision_id)
 
 
