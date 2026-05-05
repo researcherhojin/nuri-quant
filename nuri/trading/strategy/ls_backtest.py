@@ -9,6 +9,7 @@ Long/Short Strategy Backtest — 과거 5년 검증.
     python -m nuri.trading.strategy.ls_backtest
     python -m nuri.trading.strategy.ls_backtest --stress    # 위기 구간 분석
 """
+
 import argparse
 import logging
 from dataclasses import dataclass
@@ -25,26 +26,27 @@ REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
 
 # 레짐 → 배분 (longshort.py와 동일)
 REGIME_ALLOCATION = {
-    "bull_low_vol":     {"long": 0.90, "short": 0.00, "cash": 0.10},
-    "bull_high_vol":    {"long": 0.70, "short": 0.00, "cash": 0.30},
+    "bull_low_vol": {"long": 0.90, "short": 0.00, "cash": 0.10},
+    "bull_high_vol": {"long": 0.70, "short": 0.00, "cash": 0.30},
     "sideways_low_vol": {"long": 0.50, "short": 0.00, "cash": 0.50},
-    "sideways_high_vol":{"long": 0.25, "short": 0.15, "cash": 0.60},
-    "bear_low_vol":     {"long": 0.10, "short": 0.40, "cash": 0.50},
-    "bear_high_vol":    {"long": 0.00, "short": 0.50, "cash": 0.50},
+    "sideways_high_vol": {"long": 0.25, "short": 0.15, "cash": 0.60},
+    "bear_low_vol": {"long": 0.10, "short": 0.40, "cash": 0.50},
+    "bear_high_vol": {"long": 0.00, "short": 0.50, "cash": 0.50},
 }
 
 TRANSACTION_COST = 0.001  # 편도 0.1%
-SLIPPAGE = 0.0005         # 편도 0.05% 슬리피지
+SLIPPAGE = 0.0005  # 편도 0.05% 슬리피지
 
 
 @dataclass
 class BacktestResult:
     """백테스트 결과."""
+
     total_return: float
     annual_return: float
     sharpe: float
     max_drawdown: float
-    win_rate: float             # 양수 수익 일수 비율
+    win_rate: float  # 양수 수익 일수 비율
     total_days: int
     regime_changes: int
     transaction_costs: float
@@ -61,19 +63,21 @@ class BacktestResult:
 @dataclass
 class RegimePerformance:
     """레짐별 성과."""
+
     regime: str
     days: int
     pct_of_total: float
     avg_daily_return: float
     total_return: float
     win_rate: float
-    avg_duration: float         # 평균 지속 일수
-    transitions_to: dict        # 다음 레짐 확률
+    avg_duration: float  # 평균 지속 일수
+    transitions_to: dict  # 다음 레짐 확률
 
 
 @dataclass
 class TimingAnalysis:
     """현재 레짐에서의 향후 수익률 분석."""
+
     current_regime: str
     occurrences: int
     avg_forward_30d: float
@@ -131,7 +135,6 @@ def classify_historical_regimes(db_path=None, sma_period: int = 50) -> pd.DataFr
     # 레짐 분류
     regimes = []
     for idx, row in spy.iterrows():
-
         close = row["close"]
         sma_fast = row["sma_fast"]
         sma200 = row["sma200"]
@@ -439,10 +442,7 @@ def run_backtest(regimes_df: pd.DataFrame, db_path=None) -> BacktestResult:
             short_ret = -spy_ret  # SH 데이터 없으면 이론값
 
         # 전략 수익률
-        strat_ret = (alloc["long"] * spy_ret
-                     + alloc["short"] * short_ret
-                     + alloc["cash"] * 0
-                     - cost)
+        strat_ret = alloc["long"] * spy_ret + alloc["short"] * short_ret + alloc["cash"] * 0 - cost
 
         strategy_returns.append(strat_ret)
         spy_returns.append(spy_ret)
@@ -536,22 +536,24 @@ def analyze_per_regime(regimes_df: pd.DataFrame) -> list[RegimePerformance]:
         # 다음 레짐 전환 확률
         transitions = {}
         for i in range(len(df) - 1):
-            if df.iloc[i]["regime"] == regime and df.iloc[i+1]["regime"] != regime:
-                next_r = df.iloc[i+1]["regime"]
+            if df.iloc[i]["regime"] == regime and df.iloc[i + 1]["regime"] != regime:
+                next_r = df.iloc[i + 1]["regime"]
                 transitions[next_r] = transitions.get(next_r, 0) + 1
         total_trans = sum(transitions.values()) or 1
-        transitions = {k: round(v/total_trans, 2) for k, v in transitions.items()}
+        transitions = {k: round(v / total_trans, 2) for k, v in transitions.items()}
 
-        results.append(RegimePerformance(
-            regime=regime,
-            days=days,
-            pct_of_total=round(days / total_days * 100, 1),
-            avg_daily_return=round(float(strat_rets.mean()) * 100, 4),
-            total_return=round(float((1 + strat_rets).prod() - 1) * 100, 2),
-            win_rate=round(float((strat_rets > 0).mean()), 3),
-            avg_duration=round(np.mean(durations), 1) if durations else 0,
-            transitions_to=transitions,
-        ))
+        results.append(
+            RegimePerformance(
+                regime=regime,
+                days=days,
+                pct_of_total=round(days / total_days * 100, 1),
+                avg_daily_return=round(float(strat_rets.mean()) * 100, 4),
+                total_return=round(float((1 + strat_rets).prod() - 1) * 100, 2),
+                win_rate=round(float((strat_rets > 0).mean()), 3),
+                avg_duration=round(np.mean(durations), 1) if durations else 0,
+                transitions_to=transitions,
+            )
+        )
 
     return sorted(results, key=lambda r: r.total_return, reverse=True)
 
@@ -566,6 +568,7 @@ def analyze_entry_timing(regimes_df: pd.DataFrame, current_regime: str = None) -
     if current_regime is None:
         try:
             from nuri.quant.regime.classifier import classify_regime
+
             r = classify_regime()
             current_regime = r.regime if r else None
         except Exception:
@@ -579,7 +582,7 @@ def analyze_entry_timing(regimes_df: pd.DataFrame, current_regime: str = None) -
     # 현재 레짐이 시작된 모든 시점 찾기
     entries = []
     for i in range(1, len(df)):
-        if df.iloc[i]["regime"] == current_regime and df.iloc[i-1]["regime"] != current_regime:
+        if df.iloc[i]["regime"] == current_regime and df.iloc[i - 1]["regime"] != current_regime:
             entries.append(df.iloc[i]["date"])
 
     if not entries:
@@ -599,19 +602,19 @@ def analyze_entry_timing(regimes_df: pd.DataFrame, current_regime: str = None) -
                 ret = (spy_close.iloc[future_idx] - entry_price) / entry_price * 100
                 lst.append(ret)
 
-        # 30일 후 레짐
+        # 30일 후 레짐 — `min` cap 으로 future_idx <= len(df)-1 < len(df) 항상 성립.
         future_idx = min(entry_idx + 30, len(df) - 1)
-        if future_idx < len(df):
-            future_regime = df.iloc[future_idx]["regime"]
-            from nuri.trading.strategy.longshort import REGIME_ALLOCATION
-            alloc = REGIME_ALLOCATION.get(future_regime, {})
-            future_dir = alloc.get("direction", "")
-            if future_dir == "long":
-                to_bull += 1
-            elif future_dir == "short":
-                to_bear += 1
-            else:
-                stay += 1
+        future_regime = df.iloc[future_idx]["regime"]
+        from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+
+        alloc = REGIME_ALLOCATION.get(future_regime, {})
+        future_dir = alloc.get("direction", "")
+        if future_dir == "long":
+            to_bull += 1
+        elif future_dir == "short":
+            to_bear += 1
+        else:
+            stay += 1
 
     total = to_bull + to_bear + stay or 1
 
@@ -672,16 +675,18 @@ def stress_test(regimes_df: pd.DataFrame) -> list[dict]:
         # 감지된 레짐
         regime_counts = period["regime"].value_counts().to_dict()
 
-        results.append({
-            "name": crisis["name"],
-            "period": f"{crisis['start']} ~ {crisis['end']}",
-            "days": len(period),
-            "spy_return": round(spy_ret, 2),
-            "strategy_return": round(strat_total, 2),
-            "excess": round(strat_total - spy_ret, 2),
-            "regimes": regime_counts,
-            "protected": strat_total > spy_ret,
-        })
+        results.append(
+            {
+                "name": crisis["name"],
+                "period": f"{crisis['start']} ~ {crisis['end']}",
+                "days": len(period),
+                "spy_return": round(spy_ret, 2),
+                "strategy_return": round(strat_total, 2),
+                "excess": round(strat_total - spy_ret, 2),
+                "regimes": regime_counts,
+                "protected": strat_total > spy_ret,
+            }
+        )
 
     return results
 
@@ -795,7 +800,9 @@ def print_backtest(result: BacktestResult) -> None:
     print(f"{'=' * 65}")
     print(f"  {'':>25} {'Strategy':>12} {'SPY B&H':>12} {'Excess':>10}")
     print(f"  {'-' * 52}")
-    print(f"  {'Total Return':>25} {result.total_return:>+11.1f}% {result.spy_total_return:>+11.1f}% {result.excess_return:>+9.1f}%")
+    print(
+        f"  {'Total Return':>25} {result.total_return:>+11.1f}% {result.spy_total_return:>+11.1f}% {result.excess_return:>+9.1f}%"
+    )
     print(f"  {'Annual Return':>25} {result.annual_return:>+11.1f}% {result.spy_annual_return:>+11.1f}%")
     print(f"  {'Sharpe Ratio':>25} {result.sharpe:>12.2f} {result.spy_sharpe:>12.2f}")
     print(f"  {'Max Drawdown':>25} {result.max_drawdown:>11.1f}% {result.spy_max_drawdown:>11.1f}%")
@@ -812,8 +819,10 @@ def print_regime_performance(perfs: list[RegimePerformance]) -> None:
     print(f"  {'Regime':<22} {'Days':>6} {'%Time':>6} {'Return':>8} {'Daily':>8} {'WR':>6} {'AvgDur':>6}")
     print(f"  {'-' * 66}")
     for p in perfs:
-        print(f"  {p.regime:<22} {p.days:>6} {p.pct_of_total:>5.1f}% {p.total_return:>+7.1f}% "
-              f"{p.avg_daily_return:>+7.3f}% {p.win_rate:>5.0%} {p.avg_duration:>5.0f}d")
+        print(
+            f"  {p.regime:<22} {p.days:>6} {p.pct_of_total:>5.1f}% {p.total_return:>+7.1f}% "
+            f"{p.avg_daily_return:>+7.3f}% {p.win_rate:>5.0%} {p.avg_duration:>5.0f}d"
+        )
     print()
 
 
@@ -822,7 +831,7 @@ def print_timing(timing: TimingAnalysis | None) -> None:
         print("  투입 적기 분석 불가")
         return
     print(f"\n{'=' * 60}")
-    print(f"  Entry Timing — \"{timing.current_regime}\" 진입 후 향후 수익률")
+    print(f'  Entry Timing — "{timing.current_regime}" 진입 후 향후 수익률')
     print(f"{'=' * 60}")
     print(f"  과거 발생: {timing.occurrences}회")
     print(f"  30일 후 평균: {timing.avg_forward_30d:+.1f}%")
@@ -840,8 +849,10 @@ def print_stress(results: list[dict]) -> None:
     print(f"  {'-' * 66}")
     for r in results:
         prot = "YES" if r["protected"] else "NO"
-        print(f"  {r['name']:<25} {r['days']:>5} {r['spy_return']:>+7.1f}% "
-              f"{r['strategy_return']:>+7.1f}% {r['excess']:>+7.1f}% {prot:>9}")
+        print(
+            f"  {r['name']:<25} {r['days']:>5} {r['spy_return']:>+7.1f}% "
+            f"{r['strategy_return']:>+7.1f}% {r['excess']:>+7.1f}% {prot:>9}"
+        )
     print()
 
 
@@ -867,7 +878,7 @@ def run_backtest_with_rules(regimes_df: pd.DataFrame, db_path=None) -> dict:
         TRAILING_STOP_GROWTH,
     )
 
-    stop_pct = STOCK_STOP_LOSS / 100          # -0.07
+    stop_pct = STOCK_STOP_LOSS / 100  # -0.07
     tp1_pct = TAKE_PROFIT_GROWTH["target_1"] / 100  # 0.20
     tp2_pct = TAKE_PROFIT_GROWTH["target_2"] / 100  # 0.40
     trailing_pct = TRAILING_STOP_GROWTH / 100  # -0.15
@@ -886,7 +897,7 @@ def run_backtest_with_rules(regimes_df: pd.DataFrame, db_path=None) -> dict:
     # 시뮬레이션: 롱 포지션에 손절/익절/트레일링 적용
     cum_return = 0.0
     high_water = 0.0
-    position_size = 1.0      # 1.0 = 100%
+    position_size = 1.0  # 1.0 = 100%
     tp1_triggered = False
     tp2_triggered = False
     ruled_returns = []
@@ -946,9 +957,9 @@ def run_backtest_with_rules(regimes_df: pd.DataFrame, db_path=None) -> dict:
                 continue
 
             # 일반 수익률
-            ruled_returns.append(daily_ret * long_pct * position_size
-                                + alloc["short"] * (-daily_ret)
-                                + alloc["cash"] * 0)
+            ruled_returns.append(
+                daily_ret * long_pct * position_size + alloc["short"] * (-daily_ret) + alloc["cash"] * 0
+            )
         else:
             # 포지션 없거나 long=0
             ruled_returns.append(alloc["short"] * (-daily_ret) if alloc["short"] > 0 else 0)
@@ -1018,15 +1029,21 @@ def print_rules_comparison(result: dict) -> None:
     print(f"\n{'═' * 70}")
     print("  Rules-Applied Backtest Comparison")
     print(f"{'═' * 70}")
-    print(f"  Rules: SL {config['stop_loss']} | TP1 {config['target_1']} | "
-          f"TP2 {config['target_2']} | Trail {config['trailing_stop']}")
+    print(
+        f"  Rules: SL {config['stop_loss']} | TP1 {config['target_1']} | "
+        f"TP2 {config['target_2']} | Trail {config['trailing_stop']}"
+    )
     print(f"{'─' * 70}")
     print(f"  {'Metric':<20} {'Base':>12} {'With Rules':>12} {'Diff':>10}")
     print(f"  {'─' * 54}")
-    print(f"  {'Total Return':<20} {base['total_return']:>+11.1f}% {ruled['total_return']:>+11.1f}% {impact['return_diff']:>+9.1f}%")
+    print(
+        f"  {'Total Return':<20} {base['total_return']:>+11.1f}% {ruled['total_return']:>+11.1f}% {impact['return_diff']:>+9.1f}%"
+    )
     print(f"  {'Annual Return':<20} {base['annual_return']:>+11.1f}% {ruled['annual_return']:>+11.1f}%")
     print(f"  {'Sharpe Ratio':<20} {base['sharpe']:>12.2f} {ruled['sharpe']:>12.2f} {impact['sharpe_diff']:>+9.2f}")
-    print(f"  {'Max Drawdown':<20} {base['max_drawdown']:>+11.1f}% {ruled['max_drawdown']:>+11.1f}% {impact['mdd_diff']:>+9.1f}%")
+    print(
+        f"  {'Max Drawdown':<20} {base['max_drawdown']:>+11.1f}% {ruled['max_drawdown']:>+11.1f}% {impact['mdd_diff']:>+9.1f}%"
+    )
     print(f"{'─' * 70}")
     print(f"  Stop losses hit:     {impact['stops_hit']}")
     print(f"  Take profit 1 (+20%): {impact['tp1_count']}")
