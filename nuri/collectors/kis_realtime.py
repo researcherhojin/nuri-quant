@@ -291,6 +291,26 @@ def _is_token_cooldown(payload: dict, status_code: int) -> bool:
     return "1분당" in err_desc or err_code == "EGW00133"
 
 
+def _request_with_rate_limit_retry(url: str, headers: dict, params: dict, label: str) -> tuple[int | None, dict]:
+    """KIS API 요청 — rate limit 시 1회 재시도. 명시적 2-call (loop natural-exit 회피).
+
+    Returns:
+        (status_code, payload) — 정상 / non-200 / 두 번째 시도도 rate-limited 인 경우
+        (None, {}) — requests 예외 발생 시
+    """
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        payload = resp.json() if resp.status_code == 200 else {}
+        if _is_rate_limit(payload):
+            time.sleep(KIS_RATE_LIMIT_RETRY_DELAY_SEC)
+            resp = requests.get(url, headers=headers, params=params, timeout=10)
+            payload = resp.json() if resp.status_code == 200 else {}
+        return resp.status_code, payload
+    except Exception as e:
+        logger.warning("KIS %s 요청 실패: %s", label, e)
+        return None, {}
+
+
 def inquire_price_kr(creds: KISCredentials, token: str, ticker: str) -> dict | None:
     """한국 종목 현재가 조회 (FHKST01010100).
 
@@ -307,35 +327,27 @@ def inquire_price_kr(creds: KISCredentials, token: str, ticker: str) -> dict | N
         "tr_id": "FHKST01010100",
     }
     params = {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code}
-    for attempt in range(2):
-        try:
-            resp = requests.get(url, headers=headers, params=params, timeout=10)
-            payload = resp.json() if resp.status_code == 200 else {}
-            if _is_rate_limit(payload) and attempt == 0:
-                time.sleep(KIS_RATE_LIMIT_RETRY_DELAY_SEC)
-                continue
-            if resp.status_code != 200:
-                logger.warning("KIS 한국 %s HTTP %d", ticker, resp.status_code)
-                return None
-            data = payload.get("output", {})
-            if not data or not data.get("stck_prpr"):
-                logger.debug("KIS 한국 %s 빈 응답: rt_cd=%s msg=%s", ticker, payload.get("rt_cd"), payload.get("msg1"))
-                return None
-            return {
-                "ticker": ticker,
-                "date": today_kst(),
-                "open": float(data.get("stck_oprc", 0) or 0),
-                "high": float(data.get("stck_hgpr", 0) or 0),
-                "low": float(data.get("stck_lwpr", 0) or 0),
-                "close": float(data.get("stck_prpr", 0)),
-                "volume": int(data.get("acml_vol", 0) or 0),
-                "adj_close": float(data.get("stck_prpr", 0)),
-            }
-        except Exception as e:
-            logger.warning("KIS 한국 시세 실패 %s: %s", ticker, e)
-            return None
-    # for attempt in range(2) 의 모든 가지가 return 으로 종료되므로
-    # 루프 후 fall-through 는 도달 불가 — 명시적 fallback 코드 제거.
+
+    status, payload = _request_with_rate_limit_retry(url, headers, params, f"한국 {ticker}")
+    if status is None:
+        return None
+    if status != 200:
+        logger.warning("KIS 한국 %s HTTP %d", ticker, status)
+        return None
+    data = payload.get("output", {})
+    if not data or not data.get("stck_prpr"):
+        logger.debug("KIS 한국 %s 빈 응답: rt_cd=%s msg=%s", ticker, payload.get("rt_cd"), payload.get("msg1"))
+        return None
+    return {
+        "ticker": ticker,
+        "date": today_kst(),
+        "open": float(data.get("stck_oprc", 0) or 0),
+        "high": float(data.get("stck_hgpr", 0) or 0),
+        "low": float(data.get("stck_lwpr", 0) or 0),
+        "close": float(data.get("stck_prpr", 0)),
+        "volume": int(data.get("acml_vol", 0) or 0),
+        "adj_close": float(data.get("stck_prpr", 0)),
+    }
 
 
 def inquire_price_us(creds: KISCredentials, token: str, ticker: str) -> dict | None:
@@ -356,31 +368,24 @@ def inquire_price_us(creds: KISCredentials, token: str, ticker: str) -> dict | N
         if excd_idx > 0:
             time.sleep(KIS_EXCD_RETRY_INTERVAL_SEC)  # EXCD 폴백 사이 rate limit 회피
         params = {"AUTH": "", "EXCD": excd, "SYMB": ticker}
-        for attempt in range(2):
-            try:
-                resp = requests.get(url, headers=headers, params=params, timeout=10)
-                if resp.status_code != 200:
-                    break
-                payload = resp.json()
-                if _is_rate_limit(payload) and attempt == 0:
-                    time.sleep(KIS_RATE_LIMIT_RETRY_DELAY_SEC)
-                    continue
-                data = payload.get("output", {})
-                last = data.get("last", "")
-                if last and float(last) > 0:
-                    return {
-                        "ticker": ticker,
-                        "date": today_kst(),
-                        "open": float(data.get("open", 0) or 0),
-                        "high": float(data.get("high", 0) or 0),
-                        "low": float(data.get("low", 0) or 0),
-                        "close": float(last),
-                        "volume": int(data.get("tvol", 0) or 0),
-                        "adj_close": float(last),
-                    }
-                break  # 빈 응답 → 다음 EXCD
-            except Exception:
-                break
+
+        status, payload = _request_with_rate_limit_retry(url, headers, params, f"해외 {ticker} {excd}")
+        if status is None or status != 200:
+            continue  # 예외 / non-200 → 다음 EXCD
+        data = payload.get("output", {})
+        last = data.get("last", "")
+        if last and float(last) > 0:
+            return {
+                "ticker": ticker,
+                "date": today_kst(),
+                "open": float(data.get("open", 0) or 0),
+                "high": float(data.get("high", 0) or 0),
+                "low": float(data.get("low", 0) or 0),
+                "close": float(last),
+                "volume": int(data.get("tvol", 0) or 0),
+                "adj_close": float(last),
+            }
+        # 빈 응답 → 다음 EXCD
     return None
 
 
