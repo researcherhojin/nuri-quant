@@ -25,9 +25,9 @@ description: LLM 에이전트 실패 패턴 디버깅 — 코드/툴 레벨 (§5
 | **5.14.1 Data→Recommendation Slide** | 데이터 수집/분석 결과 공유 요청에 대해 silent 하게 종목/액션 권고로 변환 (user 명시 요청 없이 자의적 advice) | user 가 명시적 권고 요청 ("X 어떻게 생각해", "deploy 어디에", "추천해") 했는지 확인 후만 권고. data presentation 은 ranking / 사실 / freshness 까지만. 권고 시작 전 1 step pause: "user 가 결정 권고 요청했는가?" *(facts, no fix)* |
 | **5.14.2 Cross-context Inconsistency** | 같은 정량 filter / rule 을 시장 / 도메인 별로 다르게 적용 (예: KR universe blow-off 보류 → US universe blow-off 진입 권고) | Filter 기준 (60d return cap, vol threshold, blow-off 제외) 을 **명시 선언** 후 모든 시장에 동일 적용. 권고 전 self-check: "내가 컨텍스트 A 에서 적용한 rule 을 B 에 동일 적용하면 통과?" *(facts, no fix)* |
 
-**Case study 2026-05-27 세션**:
-- §5.14.1: user "동일하게 미국장 데이터 수집해봅시다" → universe top 보고 자의적으로 "CRWD/STX 진입 가치" 권고 → user "갑자기 추천한 이유가 궁금합니다" + "당황스럽지 않을까요" 정정
-- §5.14.2: KR 두산로보틱스 +155% / SK하이닉스 +9.3% 1d 는 "blow-off 보류" / US STX +123% / NBIS +128% 는 "진입 가치" → user 일관성 위반 지적
+**Case study 2026-05-27 세션** (구체 수치는 git log + NEXT_SESSION.md, gitignored):
+- §5.14.1: user 가 "데이터 수집" 요청 → universe top 보고 자의적으로 종목 진입 권고 슬라이드 → user 가 "갑자기 추천한 이유" + "당황스럽지 않을까요" 정정
+- §5.14.2: KR universe blow-off threshold (60d return cap) 적용 후 보류 권고, US universe 동일 threshold 적용 안 하고 "진입 가치" 권고 → user 일관성 위반 지적. Filter 기준은 시장 무관 동일 적용 원칙
 
 **Enforcement layer**: 1차 = user memory (`feedback_data_recommendation_boundary.md`, `feedback_ranking_consistency.md`). 2차 = 본 skill (`§5.14.1` / `§5.14.2` 진단). 3차 (미구현) = hook 으로 mechanical 강제 어려움 (LLM 응답 layer, structured 검출 metric 없음).
 
