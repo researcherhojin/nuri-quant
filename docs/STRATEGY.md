@@ -441,6 +441,15 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 - B_mid 평균 → catalyst 전이 측정
 **Session 8 baseline**: 11종 (A_high 3 / B_mid 3 / C_chase 2 / ADD_ride 1 / ADD_held 2). 4-29 close 기준. 다음 세션 첫 task로 검증 실행 (`NEXT_SESSION.md` cold-start 체크리스트).
 **부정 결과 시 액션**: A_high avg < 0 → 즉시 P0 격상 + Phase 2c threshold backtest 우선순위 격상 + score function 재교정 issue 격상.
+### 5.14 Conversational / Reasoning Failure Patterns (observational, 2026-05-27 신설)
+§5.1-5.6 = **코드/툴 레벨** mechanical failure patterns. §5.14 = **대화/추론 레벨** behavioral patterns (사용자와의 응답 흐름에서 발생). 별도 numbering 이유: 다른 class, 다른 방어 메커니즘 (gate 강제 어려움, 1차 = 인간 규율 + memory cross-session 보존).
+| 패턴 | 증상 | 방어 |
+|---|---|---|
+| **5.14.1 Data→Recommendation Slide** | 데이터 수집/분석 결과 공유 요청에 대해 silent 하게 종목/액션 권고로 변환 (user 명시 요청 없이 자의적 advice) | user 가 명시적 권고 요청 ("X 어떻게 생각해", "deploy 어디에", "추천해") 했는지 확인 후만 권고. data presentation 은 ranking / 사실 / freshness 까지만. 권고 시작 전 1 step pause: "user 가 결정 권고 요청했는가? 아니면 정보만 요청했는가?" |
+| **5.14.2 Cross-context Inconsistency** | 같은 정량 filter / rule 을 시장 / 도메인 별로 다르게 적용 (예: KR universe blow-off 보류 → US universe blow-off 진입 권고) | Filter 기준 (60d return cap, vol threshold, blow-off 제외) 을 **명시 선언** 후 모든 시장에 동일 적용. 권고 전 self-check: "내가 컨텍스트 A 에서 적용한 rule 을 B 에 동일 적용하면 통과?" |
+**Case studies**: `.claude/skills/nuri-harness-debug/SKILL.md` Part B (canonical narrative — session 2026-05-27 정정 사례 + git log reference). 본 절은 pattern definition 만 보유.
+**Enforcement layer**: 1차 = user-level memory (cross-session reinforcement). 2차 = `/nuri-harness-debug` skill 진단. 3차 (미구현) = hook 으로 mechanical 강제 어려움 (LLM 응답 layer, structured 검출 metric 없음).
+**Gotcha-Test Pair**: N/A — behavioral pattern, 코드 fix 아님. `*(facts, no fix)*` 마킹.
 ## 6. SIEGE Gate 명세 (v2)
 모든 추천은 아래 조건군을 통과해야 CERTIFIED. 1 개라도 **error** 실패 시 REJECTED. Warning 은 누적만.
 **v2 (PR #312, #248)**: 조건 개수 **가변**. `certify()` 가 asset class (us_equity / kr_equity / kr_index / commodity / bond) 별 5/7/8 조건을 per-class expansion 후 flatten. 고정 "11-gate" 명칭 deprecated.
