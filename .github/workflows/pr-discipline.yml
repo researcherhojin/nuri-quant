@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin "$BASE_SHA" --depth=50 --quiet || true
-          COUNT=$(git rev-list --count "$BASE_SHA..$HEAD_SHA")
+          COUNT=$(git rev-list --count --no-merges "$BASE_SHA..$HEAD_SHA")
           echo "PR has $COUNT commit(s) since base"
           if [ "$COUNT" -gt 3 ]; then
             echo "::error::PR has $COUNT commits (limit: 3 per STRATEGY §5.8 #4 / PR Discipline)."
