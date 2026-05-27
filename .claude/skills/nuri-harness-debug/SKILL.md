@@ -1,13 +1,13 @@
 ---
 name: nuri-harness-debug
-description: LLM 에이전트 실패 패턴 디버깅 (hallucination, phantom fix, test illusion, scope creep, context bias, stale number drift). Use when user reports "test passes but doesn't cover the code", "fix applied but bug persists", "why does this keep failing the same way", "Claude is hallucinating API", or when a regression test needs a Gotcha-Test Pair citation. Case study narrative: git log of PR #272, #300-#307.
+description: LLM 에이전트 실패 패턴 디버깅 — 코드/툴 레벨 (§5.1-5.6: hallucination, phantom fix, test illusion, scope creep, context bias, stale number drift) + 대화/추론 레벨 (§5.14.1-2: data→recommendation slide, cross-context inconsistency). Use when user reports "test passes but doesn't cover the code", "fix applied but bug persists", "why does this keep failing the same way", "Claude is hallucinating API", "갑자기 추천한 이유가 뭔가요", "왜 KR/US 다르게 적용했나요", or when a regression test needs a Gotcha-Test Pair citation. Case study narrative: git log of PR #272, #300-#307, session 2026-05-27.
 ---
 
-# Harness Debug — 6 실패 패턴 + Gotcha-Test Pair
+# Harness Debug — 실패 패턴 + Gotcha-Test Pair
 
-**Source**: `docs/STRATEGY.md §5` canonical (7-rule + 패턴 정의). 이 skill 은 진단 flow + 방어. Case study 본문 = git log.
+**Source**: `docs/STRATEGY.md §5.1-5.6` (code/tool patterns, canonical) + `§5.14` (conversational/reasoning patterns, 2026-05-27 신설). 이 skill 은 진단 flow + 방어. Case study 본문 = git log + NEXT_SESSION 학습.
 
-## 6 실패 패턴 진단
+## A. 코드/툴 레벨 (§5.1-5.6, mechanical patterns)
 
 | 패턴 | 증상 | 방어 |
 |---|---|---|
@@ -17,6 +17,19 @@ description: LLM 에이전트 실패 패턴 디버깅 (hallucination, phantom fi
 | **5.4 Scope Creep** | 요청 이상의 "개선" 시도 | 1 issue = 1 PR ≤ 3 commits. "이것도 같이" 금지 — 별 issue 분리 |
 | **5.5 Test Illusion** | 테스트 통과하지만 실제 타겟 미실행 | coverage 라인 번호 검증. 조건부 (`if exists`) 안에 핵심 assertion 금지. `runpy` mock 무효 주의 (source-level patch 사용) |
 | **5.6 Stale Number Drift** | 한 곳 숫자 변경 후 다른 ref 미업데이트 | `grep -ri "old_value"`. `make verify-doc-counts` 자동 감지 |
+
+## B. 대화/추론 레벨 (§5.14, behavioral patterns, observational)
+
+| 패턴 | 증상 | 방어 |
+|---|---|---|
+| **5.14.1 Data→Recommendation Slide** | 데이터 수집/분석 결과 공유 요청에 대해 silent 하게 종목/액션 권고로 변환 (user 명시 요청 없이 자의적 advice) | user 가 명시적 권고 요청 ("X 어떻게 생각해", "deploy 어디에", "추천해") 했는지 확인 후만 권고. data presentation 은 ranking / 사실 / freshness 까지만. 권고 시작 전 1 step pause: "user 가 결정 권고 요청했는가?" *(facts, no fix)* |
+| **5.14.2 Cross-context Inconsistency** | 같은 정량 filter / rule 을 시장 / 도메인 별로 다르게 적용 (예: KR universe blow-off 보류 → US universe blow-off 진입 권고) | Filter 기준 (60d return cap, vol threshold, blow-off 제외) 을 **명시 선언** 후 모든 시장에 동일 적용. 권고 전 self-check: "내가 컨텍스트 A 에서 적용한 rule 을 B 에 동일 적용하면 통과?" *(facts, no fix)* |
+
+**Case study 2026-05-27 세션**:
+- §5.14.1: user "동일하게 미국장 데이터 수집해봅시다" → universe top 보고 자의적으로 "CRWD/STX 진입 가치" 권고 → user "갑자기 추천한 이유가 궁금합니다" + "당황스럽지 않을까요" 정정
+- §5.14.2: KR 두산로보틱스 +155% / SK하이닉스 +9.3% 1d 는 "blow-off 보류" / US STX +123% / NBIS +128% 는 "진입 가치" → user 일관성 위반 지적
+
+**Enforcement layer**: 1차 = user memory (`feedback_data_recommendation_boundary.md`, `feedback_ranking_consistency.md`). 2차 = 본 skill (`§5.14.1` / `§5.14.2` 진단). 3차 (미구현) = hook 으로 mechanical 강제 어려움 (LLM 응답 layer, structured 검출 metric 없음).
 
 ## Gotcha-Test Pair 프로토콜 (STRATEGY §5.3.1, PR #307)
 
