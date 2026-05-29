@@ -58,12 +58,14 @@ allocation:
   per_candidate_method: score_weighted    # score 비중에 따라 분할 (vs equal_split)
 
 # ─── Risk per candidate (entry/stop/TP from rules.yaml) ─────────────
-# Stop -7% / TP1 +21% (3:1 R/R, growth ladder rules.yaml 와 align)
+# Stop -7% / TP1 +20% / TP2 +40% — canonical O'Neil growth ladder.
+# rules.yaml take_profit.growth (20/40) 와 단일 출처 일치 (SSoT).
+# 변경 시 rules.yaml 와 함께. test_buy_emitter_tp_ladder_matches_canonical_growth 가 lock.
 # Phase 1 = growth ladder 만 적용. Phase 2: ticker 별 growth/value 분기.
 risk:
   stop_pct: -7.0
-  tp1_pct: 21.0
-  tp2_pct: 42.0
+  tp1_pct: 20.0
+  tp2_pct: 40.0
 
 # ─── Exclude (held tickers + ETFs not eligible) ─────────────────────
 exclude_held: true            # 보유 종목은 BUY 추천 X (held_add_mode 가 Phase 2a 부터 별도 처리)
@@ -96,7 +98,7 @@ held_add_mode:
     # precedence=2 — winner momentum add (cap headroom 활용)
     ride_winner:
       trigger:
-        unrealized_pnl_min_factor: 2.5    # core: tp1=+21 → trigger ≥ +52.5
+        unrealized_pnl_min_factor: 2.5    # core: tp1=+20 → trigger ≥ +50 (canonical growth TP1)
         days_held_min: 30
         composite_score_min: 75
         sector_momentum_min: 5
