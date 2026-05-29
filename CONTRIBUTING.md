@@ -22,15 +22,15 @@ make verify-quick              # ~10s smoke test (no network)
 
 ## The hard rules
 
-These are enforced by `scripts/pre_push_check.sh` and CI. Violating
+These are enforced by `scripts/verify/pre_push_check.sh` and CI. Violating
 them gets your push rejected:
 
 | Rule | Where it's enforced |
 |------|---------------------|
-| `ruff check nuri/ tests/ scripts/` clean | `pre_push_check.sh` Section 2 + CI Backend Lint |
-| All tests pass | `pre_push_check.sh` Section 3 + CI Backend Tests |
-| No personal financial data leaks (broker names, suspect monetary literals) | `pre_push_check.sh` Section 4 + CI `privacy-scan` |
-| Conventional commit format | `pre_push_check.sh` Section 5 + CI PR Checks |
+| `ruff check nuri/ tests/ scripts/` clean | `scripts/verify/pre_push_check.sh` Section 2 + CI Backend Lint |
+| All tests pass | `scripts/verify/pre_push_check.sh` Section 3 + CI Backend Tests |
+| No personal financial data leaks (broker names, suspect monetary literals) | `scripts/verify/pre_push_check.sh` Section 4 + CI `privacy-scan` |
+| Conventional commit format | `scripts/verify/pre_push_check.sh` Section 5 + CI PR Checks |
 | No `datetime.now()` — use `kst_now()` / `today_kst()` | Project hook + reviewers |
 | Force push to `main` | Blocked by branch protection (no exceptions) |
 
@@ -43,11 +43,13 @@ LLM failure mode):
 2. **Branch from `main`**: `git checkout -b feat/N-short-name` (or `fix/`, `chore/`, `docs/`).
 3. **Keep the PR to ≤3 commits.** If you discover an unrelated bug while
    working, open a separate issue and PR for it. Do not bundle.
-4. **Run `bash scripts/pre_push_check.sh`** before pushing.
+4. **Run `bash scripts/verify/pre_push_check.sh`** before pushing.
 5. **Open the PR with a "Closes #N" footer** and a Test Plan section.
 6. **Wait for CI green** before requesting merge. Branch protection
-   requires all 6 required checks (Backend Lint, Backend Tests,
-   Frontend Tests, Frontend Build, Security Scan, Privacy Leak Scan).
+   requires all 10 required checks (Backend Tests, Backend Lint,
+   Frontend Tests, Frontend Lint, Frontend Build, Security Scan,
+   Universe Coverage Validation, Shell Lint, Doc Count Drift Check,
+   Privacy Leak Scan).
 7. **Squash-merge** is the default. Maintain a clean linear history.
 
 ## Commit message format
@@ -85,8 +87,8 @@ with `+`: e.g. `feat+test(macro): ...`.
 | You're adding... | Put it here |
 |------------------|-------------|
 | A new data source | `nuri/collectors/` (subclass `BaseCollector`) |
-| A new SQL table | New `_MIGRATIONS` entry in `nuri/core/db.py` — never edit existing migrations |
-| A new agent | `nuri/trading/agents/` + register in `consensus.py` `ALL_AGENTS` + add weight in `config/agents.yaml` |
+| A new SQL table | New `_MIGRATIONS` entry in `nuri/core/db_migrations.py` — never edit existing migrations |
+| A new agent | `nuri/trading/agents/` + register via `build_all_agents()` in `nuri/trading/agents/consensus/registry.py` + add weight in `config/agents.yaml` |
 | A new investment rule | `config/rules.yaml` — never hardcode |
 | A new API endpoint | `nuri/api/routes/` |
 | A new dashboard page | `frontend/src/app/<route>/page.tsx` |
@@ -114,7 +116,7 @@ fixture, a code comment, or a CI log:
 Use the placeholders defined in
 [`docs/STRATEGY.md` §4.4.1](docs/STRATEGY.md): `Brokerage Alpha`,
 `Brokerage Beta`, round-million numbers like `1_000_000`. The
-`scripts/check_privacy_leak.py` scanner enforces this on every push
+`scripts/verify/check_privacy_leak.py` scanner enforces this on every push
 and every PR.
 
 ## When in doubt
