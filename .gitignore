@@ -270,3 +270,8 @@ docs/SYSTEM.md
 # Tool session state (codex consult, etc.)
 .context/
 coverage.json
+
+# Ad-hoc local analysis scratch — scripts here may read portfolio.yaml /
+# emit holdings-derived output (privacy risk, STRATEGY §4.4.1). Keep local;
+# promote validated tooling to a tracked, reviewed location before committing.
+scripts/analysis/
