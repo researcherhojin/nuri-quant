@@ -36,11 +36,14 @@ from typing import Any
 
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
 from nuri.core.db import log_execution_block, query
-from nuri.core.rules import RULES
+from nuri.core.rules import RULES, VIX_BLOCK_ABOVE, VIX_CAUTION_ABOVE
 
 # ─── 룰 임계값 (config/rules.yaml override 가능) ─────────────
-VIX_HARD_BLOCK = float(RULES.get("buy_checklist", {}).get("vix_gate", {}).get("block_above", 30))
-VIX_SOFT_CAUTION = float(RULES.get("buy_checklist", {}).get("vix_gate", {}).get("caution_above", 25))
+# VIX 게이트는 canonical entry_rules.vix_gate (nuri.core.rules 로더) 단일 출처를 import.
+# (과거: buy_checklist.vix_gate 를 읽었으나 그 키는 rules.yaml 에 부재 → 항상 dead literal
+#  fallback 이라 운영자의 VIX 게이트 config 편집이 firewall 에서 무시됐음.)
+VIX_HARD_BLOCK = float(VIX_BLOCK_ABOVE)
+VIX_SOFT_CAUTION = float(VIX_CAUTION_ABOVE)
 MAX_SINGLE_POSITION = float(RULES["position_limits"]["max_single_position"])
 MAX_SECTOR_EXPOSURE = float(RULES["position_limits"]["max_sector_exposure"])
 MIN_CASH_RESERVE = float(RULES.get("position_limits", {}).get("min_cash_reserve", 0.20))
