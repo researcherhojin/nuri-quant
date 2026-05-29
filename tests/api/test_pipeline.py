@@ -409,24 +409,30 @@ class TestPipelineStatus:
 
         assert "steps" in data
         assert "freshness" in data
-        # 6 steps 모두 존재
+        # steps 는 프론트 PipelineStep[] 계약: 배열, 각 원소에 step/label/status 등.
+        # (과거 dict 반환 → 프론트가 array 로 소비 못해 DAG 가 하드코딩 fallback 했던 버그의 회귀 가드.)
         steps = data["steps"]
+        assert isinstance(steps, list)
+        by_step = {s["step"]: s for s in steps}
         for step in ("collect", "validate", "classify", "diagnose", "recommend", "track"):
-            assert step in steps
-            assert "status" in steps[step]
+            assert step in by_step
+            s = by_step[step]
+            assert s["status"] in ("idle", "running", "done", "error")  # 프론트 enum
+            assert "label" in s and "description" in s and "record_count" in s
 
     def test_pipeline_status_with_events(self, client, db_path):
-        """이벤트 데이터 있을 때 상태 반영 확인."""
+        """이벤트 데이터 있을 때 상태가 프론트 enum 으로 매핑되어 반영되는지 확인."""
         _seed_pipeline_events_for_pipeline(db_path)
 
         r = client.get("/api/pipeline/status")
         assert r.status_code == 200
         data = r.json()
 
-        steps = data["steps"]
-        # events.py의 get_step_status()가 event_type을 status로 매핑
-        assert steps["collect"]["status"] in ("success", "step_success", "completed")
-        assert steps["diagnose"]["status"] in ("failed", "step_failed")
+        by_step = {s["step"]: s for s in data["steps"]}
+        # step_success(collect) -> done, step_failed(diagnose) -> error
+        assert by_step["collect"]["status"] == "done"
+        assert by_step["collect"]["record_count"] == 1500  # seed record_count 컬럼 반영
+        assert by_step["diagnose"]["status"] == "error"
 
 
 class TestPipelineTimeline:

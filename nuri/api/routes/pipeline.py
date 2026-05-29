@@ -1,4 +1,5 @@
 """Pipeline API — 파이프라인 상태 조회 + 스텝 실행."""
+
 import logging
 import time
 
@@ -12,6 +13,42 @@ _limiter = Limiter(key_func=get_remote_address)
 
 VALID_STEPS = ("collect", "validate", "classify", "diagnose", "recommend", "track")
 
+# Frontend PipelineStep presentation (frontend/src/app/pipeline/page.tsx expects this shape).
+_STEP_LABELS = {
+    "collect": "Collect",
+    "validate": "Validate",
+    "classify": "Classify",
+    "diagnose": "Diagnose",
+    "recommend": "Recommend",
+    "track": "Track",
+}
+_STEP_DESCRIPTIONS = {
+    "collect": "26 collectors + external sites",
+    "validate": "Signal backtest + scorecard",
+    "classify": "6-regime classifier",
+    "diagnose": "10 agents consensus",
+    "recommend": "Buy/sell + price targets",
+    "track": "30/60/90d outcomes",
+}
+# core event status -> frontend PipelineStep.status enum (idle|running|done|error).
+# Robust to both vocabularies: canonical EVENT_TYPES (step_completed/...) and the
+# legacy "step_success" emitted by run_pipeline_step + seeds (event-schema drift,
+# normalized at the emit site separately).
+_UI_STATUS = {
+    "step_started": "running",
+    "running": "running",
+    "step_completed": "done",
+    "completed": "done",
+    "step_success": "done",
+    "success": "done",
+    "step_failed": "error",
+    "failed": "error",
+    "step_blocked": "error",
+    "blocked": "error",
+    "unknown": "idle",
+    "idle": "idle",
+}
+
 _HEARTBEAT_PATH = None  # 테스트에서 monkeypatch 가능
 
 
@@ -19,6 +56,7 @@ def _get_heartbeat_path():
     if _HEARTBEAT_PATH:
         return _HEARTBEAT_PATH
     from pathlib import Path
+
     return Path(__file__).parent.parent.parent.parent / "data" / ".scheduler_heartbeat"
 
 
@@ -32,6 +70,7 @@ def get_scheduler_health():
     from datetime import datetime
 
     from nuri.core.timezone import kst_now
+
     try:
         last = datetime.fromisoformat(heartbeat_path.read_text().strip())
         age_seconds = (kst_now().replace(tzinfo=None) - last).total_seconds()
@@ -49,13 +88,33 @@ def get_scheduler_health():
 
 @router.get("/pipeline/status")
 def get_pipeline_status():
-    """6단계 파이프라인 최신 상태 + 신선도."""
-    from nuri.core.events import get_pipeline_status
+    """6단계 파이프라인 최신 상태 + 신선도.
+
+    `steps` 는 PIPELINE_STEPS 순서의 **배열** (프론트 PipelineStep[] 계약).
+    과거엔 dict {step: {...}} 를 반환 → 프론트가 array(`for...of`/`.length`)로
+    소비 못해 항상 하드코딩 DEFAULT_NODES 로 fallback → DAG 가 가짜 데이터였음.
+    """
+    from nuri.core.events import get_pipeline_status as _step_status_map
     from nuri.core.freshness import get_freshness_summary
 
-    steps = get_pipeline_status()
-    freshness = get_freshness_summary()
-    return {"steps": steps, "freshness": freshness}
+    status_map = _step_status_map()  # {step: {step, status, timestamp, payload, record_count}}
+    steps = []
+    for name, st in status_map.items():
+        raw = st.get("status", "unknown")
+        payload = st.get("payload")
+        steps.append(
+            {
+                "step": name,
+                "label": _STEP_LABELS.get(name, name.title()),
+                "description": _STEP_DESCRIPTIONS.get(name, ""),
+                "record_count": st.get("record_count", 0) or 0,
+                "last_updated": st.get("timestamp"),
+                "status": _UI_STATUS.get(raw, "idle"),
+                "started_at": st.get("timestamp") if raw == "running" else None,
+                "error": payload.get("error") if isinstance(payload, dict) else None,
+            }
+        )
+    return {"steps": steps, "freshness": get_freshness_summary()}
 
 
 @router.get("/pipeline/timeline")
@@ -103,6 +162,7 @@ def run_pipeline_step(step: str, request: Request):
 def get_freshness():
     """전체 데이터 신선도 조회."""
     from nuri.core.freshness import get_freshness_summary
+
     return get_freshness_summary()
 
 
@@ -112,24 +172,29 @@ def _execute_step(step: str) -> str:
         return "not_implemented: collect requires individual collector runs"
     elif step == "validate":
         from nuri.quant.validation.signal_backtest import backtest_signals
+
         result = backtest_signals()
         return f"signal_backtest: {len(result) if result else 0} signals"
     elif step == "classify":
         from nuri.quant.regime.classifier import classify_regime
+
         r = classify_regime()
         if r:
             return f"regime={r.regime}, trend={r.trend}, confidence={r.confidence:.0%}"
         return "regime=unknown (데이터 부족)"
     elif step == "diagnose":
         from nuri.trading.agents.consensus import analyze_portfolio
+
         results = analyze_portfolio()
         return f"consensus: {len(results)} tickers analyzed"
     elif step == "recommend":
         from nuri.trading.recommend.candidates import screen_candidates
+
         candidates = screen_candidates()
         return f"candidates: {len(candidates)} found"
     elif step == "track":
         from nuri.trading.recommend.tracker import track_outcomes
+
         tracked = track_outcomes()
         return f"tracked: {tracked} recommendations updated"
     return "unknown step"
