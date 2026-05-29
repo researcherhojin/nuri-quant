@@ -216,6 +216,48 @@ class TestModeEvaluation:
         )
         assert mode == "ride_winner"
 
+    def test_ride_winner_default_tp1_uses_canonical_growth_not_phantom(
+        self, monkeypatch: pytest.MonkeyPatch, cfg_held_add: dict
+    ) -> None:
+        """SSoT lock: account_strategies 에 tp1_pct 가 없을 때(실제 모든 계좌)
+        held_add 는 canonical growth TP1 (rules.yaml take_profit.growth = 20) 을
+        default 로 써야 한다. 과거엔 phantom 21.0 하드코딩이라 ride_winner 임계가
+        21×2.5=52.5 였다. 이제 20×2.5=50.
+
+        변별 입력 pnl_pct=51.0 (gap [50, 52.5)): 20-기준이면 trigger, 21-기준이면 skip.
+        phantom 21 회귀 시 mode != 'ride_winner' 로 실패한다.
+        """
+        from nuri.core.rules import TAKE_PROFIT_GROWTH
+
+        assert TAKE_PROFIT_GROWTH["target_1"] == 20  # canonical premise
+
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_last_trim_age_days",
+            lambda ticker, max_days=60: None,  # trim 없음 → tp1_residual skip
+        )
+        # 실제 account_strategies 모양: tp1_pct 키 없음 → canonical default 경로
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_account_strategy_profile",
+            lambda account: {"stop_loss": -7, "max_single_position": 0.15},
+        )
+        pos = {
+            "ticker": "NVDA",
+            "account": "acct_alpha",
+            "pnl_pct": 51.0,  # 20×2.5=50 충족, 21×2.5=52.5 미충족 (변별)
+            "days_held": 35,
+        }
+        mode = ha.select_held_mode(
+            pos,
+            cfg_held_add["held_add_mode"],
+            score=80,
+            rsi=55,
+            regime="neutral",
+            vix=18,
+            breakout_above_trim=False,
+            sector_mom=8,
+        )
+        assert mode == "ride_winner"
+
     def test_tp1_residual_takes_precedence_over_ride_winner(
         self, monkeypatch: pytest.MonkeyPatch, cfg_held_add: dict
     ) -> None:

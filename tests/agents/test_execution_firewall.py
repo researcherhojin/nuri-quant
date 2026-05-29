@@ -631,3 +631,38 @@ class TestCli:
 
         rc = main(["list_blocks", "--severity", "hard"])
         assert rc == 0
+
+
+def test_firewall_constants_track_canonical_config():
+    """SSoT lock for the firewall wrong-key bug.
+
+    firewall 은 과거 buy_checklist.vix_gate (rules.yaml 에 부재한 키) 를 읽어
+    항상 dead literal 30/25 로 fallback → 운영자의 entry_rules.vix_gate config
+    편집이 무시됐다. leverage.max_leverage 도 부재해 항상 1.5 fallback. 이 테스트는
+    rules.yaml 을 직접 로드해 firewall 이 canonical 키를 읽는지 lock 한다.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    from nuri.agents.actors.execution_firewall import (
+        MAX_LEVERAGE,
+        VIX_HARD_BLOCK,
+        VIX_SOFT_CAUTION,
+    )
+    from nuri.core.rules import VIX_BLOCK_ABOVE, VIX_CAUTION_ABOVE
+
+    rules = yaml.safe_load((Path(__file__).parents[2] / "config" / "rules.yaml").read_text(encoding="utf-8"))
+
+    # 구조적 사실: buy_checklist 에는 vix_gate 가 없다 (옛 버그의 dead path).
+    # canonical 은 entry_rules.vix_gate. 이 단언이 깨지면 wrong-key 재도입 신호.
+    assert "vix_gate" not in rules.get("buy_checklist", {})
+    assert "vix_gate" in rules["entry_rules"]
+
+    # firewall 상수 == canonical 로더(rules.py) == rules.yaml entry_rules.
+    assert VIX_HARD_BLOCK == float(VIX_BLOCK_ABOVE) == float(rules["entry_rules"]["vix_gate"]["block_above"])
+    assert VIX_SOFT_CAUTION == float(VIX_CAUTION_ABOVE) == float(rules["entry_rules"]["vix_gate"]["caution_above"])
+
+    # leverage cap 은 config 에 존재해야 함 (없으면 firewall 이 dead literal 1.5 fallback).
+    assert "max_leverage" in rules["leverage"], "rules.yaml leverage.max_leverage 누락 — firewall dead-literal fallback"
+    assert MAX_LEVERAGE == float(rules["leverage"]["max_leverage"])

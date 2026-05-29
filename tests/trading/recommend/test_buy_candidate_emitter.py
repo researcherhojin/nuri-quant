@@ -57,6 +57,9 @@ def cfg_path(tmp_path):
         "allocation": {
             "total_pct_by_regime": {"neutral": 0.30, "bull": 0.50},
         },
+        # 의도적 non-canonical (21/42): emitter 가 config 를 읽음(하드코딩 아님)을 증명.
+        # 실제 출하 config 의 canonical(20/40) 정합은
+        # test_buy_emitter_tp_ladder_matches_canonical_growth 가 별도로 lock.
         "risk": {"stop_pct": -7.0, "tp1_pct": 21.0, "tp2_pct": 42.0},
     }
     p = tmp_path / "buy_signals.yaml"
@@ -377,6 +380,40 @@ def test_render_with_candidates():
     assert "Multi-factor 상위" in md
 
 
+def test_render_markdown_tp_label_derived_from_price():
+    """라벨의 %는 가격에서 파생되어야 한다 (하드코딩 literal 금지).
+
+    과거 render_markdown 이 (-7%)/(+21%)/(+42%) 를 하드코딩해, 값을 20/40 으로
+    바꾼 뒤에도 brief 라벨은 +21/+42 로 표시되는 모순이 있었다 (codex P2).
+    entry=100, stop=93, tp1=120, tp2=140 → 라벨 -7% / +20% / +40%.
+    """
+    r = EmitResult(
+        candidates=[
+            BuyCandidate(
+                ticker="ZZZ",
+                score=80,
+                deploy_pct=10.0,
+                entry=100.0,
+                stop=93.0,
+                tp1=120.0,
+                tp2=140.0,
+                why_now="x",
+                sources={"factor": 90},
+            )
+        ],
+        regime="neutral",
+        vix=20.0,
+        total_deploy_pct=10.0,
+        timestamp_kst="2026-04-30 02:00:00 KST",
+    )
+    md = render_markdown(r)
+    assert "(-7%)" in md
+    assert "(+20%)" in md
+    assert "(+40%)" in md
+    # 옛 하드코딩 회귀 방지
+    assert "(+21%)" not in md and "(+42%)" not in md
+
+
 # --- Config load -----------------------------------------------------------
 
 
@@ -419,3 +456,24 @@ def test_brief_surfaces_buy_candidates(db, cfg_path):
     assert bc is not None, "buy_candidates ctx key missing — brief integration broken"
     # 1 emitted (STRONG only) — others non-existent in fresh DB
     assert any(c.ticker == "STRONG" for c in bc.candidates) or bc.blocked_reason
+
+
+def test_buy_emitter_tp_ladder_matches_canonical_growth():
+    """SSoT lock: BUY emitter 출하 config 의 TP 사다리는 rules.yaml
+    take_profit.growth (canonical 20/40) 와 일치해야 한다.
+
+    buy_signals.yaml 가 canonical 에서 다시 fork (예: 21/42) 하면 실패한다.
+    근거: brief(+21%) vs /targets(+20%) 운영자-facing 모순 회귀 방지
+    (recommend/CLAUDE.md "price_targets.py canonical — caller 재유도 금지").
+    """
+    from nuri.core.rules import TAKE_PROFIT_GROWTH
+
+    risk = _load_config().get("risk", {})  # 실제 config/buy_signals.yaml 로드
+    assert risk["tp1_pct"] == TAKE_PROFIT_GROWTH["target_1"], (
+        f"buy_signals tp1_pct={risk.get('tp1_pct')} != canonical "
+        f"{TAKE_PROFIT_GROWTH['target_1']} (rules.yaml take_profit.growth)"
+    )
+    assert risk["tp2_pct"] == TAKE_PROFIT_GROWTH["target_2"], (
+        f"buy_signals tp2_pct={risk.get('tp2_pct')} != canonical "
+        f"{TAKE_PROFIT_GROWTH['target_2']} (rules.yaml take_profit.growth)"
+    )
