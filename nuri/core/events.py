@@ -75,7 +75,7 @@ def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
     """특정 스텝의 최신 이벤트 조회 → {status, timestamp, payload}."""
     try:
         rows = query(
-            """SELECT event_type, timestamp, payload
+            """SELECT event_type, timestamp, payload, record_count
                FROM pipeline_events
                WHERE step = ?
                ORDER BY timestamp DESC, id DESC
@@ -88,9 +88,9 @@ def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
         import logging
 
         logging.getLogger(__name__).debug("pipeline_events 조회 실패: %s", e)
-        return {"step": step, "status": "unknown", "timestamp": None, "payload": None}
+        return {"step": step, "status": "unknown", "timestamp": None, "payload": None, "record_count": 0}
     if not rows:
-        return {"step": step, "status": "unknown", "timestamp": None, "payload": None}
+        return {"step": step, "status": "unknown", "timestamp": None, "payload": None, "record_count": 0}
 
     row = rows[0]
     # event_type → status 매핑
@@ -102,7 +102,13 @@ def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
     }
     status = status_map.get(row["event_type"], row["event_type"])
     payload = json.loads(row["payload"]) if row["payload"] else None
-    return {"step": step, "status": status, "timestamp": row["timestamp"], "payload": payload}
+    return {
+        "step": step,
+        "status": status,
+        "timestamp": row["timestamp"],
+        "payload": payload,
+        "record_count": row["record_count"] if row["record_count"] is not None else 0,
+    }
 
 
 def get_pipeline_status(db_path: Optional[Path] = None) -> dict:
