@@ -18,11 +18,11 @@ Nuri-Quant — open-source quant investment platform. Python 3.12, `uv`, SQLite 
 
 ## Hard Rules (mechanically enforced — do not violate)
 
-1. **DB**: `nuri/core/db.py` is the only `sqlite3` importer. Other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()`.
+1. **DB**: `nuri/core/db/` is the only `sqlite3` importer (importer module: `nuri/core/db/connection.py`). Other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()`.
 2. **Time**: always `kst_now()` / `today_kst()` from `nuri.core.timezone`. Never `datetime.now()`.
 3. **Config over code**: rules in `config/rules.yaml`, agents in `config/agents.yaml`, signals in `config/signals.yaml`. Hardcoding is rejected.
 4. **Cross-phase isolation**: pipeline phases communicate via DB tables / CSV only, not direct imports. Same-phase imports OK.
-5. **Privacy**: never commit personal financial data (real broker names, holdings, prices, account ids, ticker+PnL). Use placeholders. Pre-push hook + CI privacy-scan blocks. Source: `scripts/check_privacy_leak.py`.
+5. **Privacy**: never commit personal financial data (real broker names, holdings, prices, account ids, ticker+PnL). Use placeholders. Pre-push hook + CI privacy-scan blocks. Source: `scripts/verify/check_privacy_leak.py`.
 6. **Conventional commits (English)**: `(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(scope)?: msg`. Korean comments in code, English identifiers.
 7. **PR scope**: 1 issue = 1 PR, ≤ 3 commits. New findings → separate issue.
 8. **7-phase Flow**: Think → Plan → Build → Review → Test → Ship → Reflect. No phase skipping. Failed gate → regress prior phase. Trivial chores may inline Think+Plan.
@@ -34,8 +34,8 @@ Nuri-Quant — open-source quant investment platform. Python 3.12, `uv`, SQLite 
 | Adding... | Put it in |
 |-----------|-----------|
 | New data source | `nuri/collectors/` — subclass `BaseCollector`, implement `collect()` + `save()` |
-| SQL table / column | `_MIGRATIONS` list in `nuri/core/db.py` — never edit existing migrations |
-| New agent | `nuri/trading/agents/` + register in `consensus.py` `ALL_AGENTS` + weight in `config/agents.yaml` |
+| SQL table / column | `_MIGRATIONS` list in `nuri/core/db_migrations.py` — never edit existing migrations |
+| New agent | `nuri/trading/agents/` + register via `build_all_agents()` in `nuri/trading/agents/consensus/registry.py` + weight in `config/agents.yaml` |
 | Investment rule / threshold | `config/rules.yaml` (or `config/agents.yaml` for agent-specific) — never hardcode |
 | Actionable signal | `config/signals.yaml` with `actionable: true` — consumed by `signal_backtest.py` |
 | SHADOW signal (surface-only) | `config/signals.yaml` with `actionable: false` + `scope: market_wide` — detector in `nuri/quant/validation/market_signals.py`, excluded from candidates by `is_actionable` guard |
