@@ -7,6 +7,7 @@ rules.yaml 기반 손절/익절/트레일링 스톱 가격을 계산한다.
 사용법:
     python -m nuri.trading.recommend.price_targets
 """
+
 import logging
 from pathlib import Path
 from typing import Optional
@@ -16,6 +17,7 @@ from nuri.core.rules import (
     STOCK_STOP_LOSS,
     STOCK_STOP_LOSS_VALUE,
     TAKE_PROFIT_GROWTH,
+    TAKE_PROFIT_LEADER,
     TAKE_PROFIT_SWING,
     TAKE_PROFIT_VALUE,
     TRAILING_STOP_GROWTH,
@@ -27,8 +29,18 @@ logger = logging.getLogger(__name__)
 
 # ─── 성장주 판별 섹터 (자동 분류 폴백용) ──────────────────────
 GROWTH_SECTORS = {
-    "EV", "AI", "Semiconductor", "Quantum", "Energy", "Fintech",
-    "전기차", "반도체", "양자컴퓨터", "원자력", "핀테크", "인공지능",
+    "EV",
+    "AI",
+    "Semiconductor",
+    "Quantum",
+    "Energy",
+    "Fintech",
+    "전기차",
+    "반도체",
+    "양자컴퓨터",
+    "원자력",
+    "핀테크",
+    "인공지능",
 }
 
 # 성장주 판별 PE 임계값 (자동 분류 폴백용)
@@ -131,6 +143,34 @@ def _get_analyst_target(
     return None
 
 
+def _get_sma(ticker: str, period: int, db_path: Optional[Path] = None) -> Optional[float]:
+    """최근 `period` 일 종가의 단순이동평균(SMA). 데이터 부족 시 None."""
+    rows = query(
+        "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT ?",
+        (ticker, period),
+        db_path=db_path,
+    )
+    closes = [float(r["close"]) for r in rows if r["close"] is not None]
+    if len(closes) < period:
+        return None
+    return sum(closes) / len(closes)
+
+
+def is_leader(ticker: str, db_path: Optional[Path] = None) -> bool:
+    """리더 = 성장주(classify_stock_type==growth) + 50일선 계산 가능.
+
+    리더는 고정 익절(+20/+40) 대상에서 제외되고 `check_leader_trail_signals`
+    (trail_ma 이동평균 이탈)로 관리된다 — 승자 run. value/swing 은 고정 ladder.
+    `config/rules.yaml take_profit.leader` 가 source of truth (백테스트는 성장주 universe 검증).
+    50일선 미계산(< trail_ma 종가) 시엔 트레일 불가하므로 리더 아님 (고정 ladder 유지).
+    """
+    if not TAKE_PROFIT_LEADER.get("enabled", False):
+        return False
+    if _get_sma(ticker, int(TAKE_PROFIT_LEADER.get("trail_ma", 50)), db_path=db_path) is None:
+        return False
+    return classify_stock_type(ticker, db_path=db_path) == "growth"
+
+
 def calculate_targets(
     ticker: str,
     entry_price: Optional[float] = None,
@@ -164,17 +204,17 @@ def calculate_targets(
 
     # 유형별 규칙 적용
     if stock_type == "growth":
-        stop_loss_pct = STOCK_STOP_LOSS          # -7%
+        stop_loss_pct = STOCK_STOP_LOSS  # -7%
         tp_config = TAKE_PROFIT_GROWTH
         trailing_stop_pct = TRAILING_STOP_GROWTH  # -15%
     elif stock_type == "swing":
-        stop_loss_pct = STOCK_STOP_LOSS          # -7%
+        stop_loss_pct = STOCK_STOP_LOSS  # -7%
         tp_config = TAKE_PROFIT_SWING
-        trailing_stop_pct = TRAILING_STOP_VOLATILE      # -20% (스윙은 변동성 높음)
+        trailing_stop_pct = TRAILING_STOP_VOLATILE  # -20% (스윙은 변동성 높음)
     else:  # value
-        stop_loss_pct = STOCK_STOP_LOSS_VALUE    # -10%
+        stop_loss_pct = STOCK_STOP_LOSS_VALUE  # -10%
         tp_config = TAKE_PROFIT_VALUE
-        trailing_stop_pct = TRAILING_STOP_VALUE   # -15%
+        trailing_stop_pct = TRAILING_STOP_VALUE  # -15%
 
     target_1_pct = tp_config["target_1"]
     target_2_pct = tp_config["target_2"]
@@ -189,6 +229,13 @@ def calculate_targets(
     analyst_upside_pct = None
     if analyst_target is not None and entry_price > 0:
         analyst_upside_pct = round((analyst_target / entry_price - 1) * 100, 1)
+
+    # 리더(성장주) 판별. 리더는 고정 익절 폐기 → target_1/2 = None (canonical source:
+    # actions/decision_compiler 등 target_1/2 비교 caller 가 일괄 자동 skip — codex R4/R7-P2).
+    # 50일선 트레일(check_leader_trail_signals)이 유일한 exit. MA 미계산 시엔 ladder 유지.
+    leader = is_leader(ticker, db_path=db_path)
+    leader_ma_period = int(TAKE_PROFIT_LEADER.get("trail_ma", 50))
+    leader_ma = _get_sma(ticker, leader_ma_period, db_path=db_path) if leader else None
 
     return {
         "ticker": ticker,
@@ -206,6 +253,9 @@ def calculate_targets(
         "trailing_stop_pct": trailing_stop_pct,
         "analyst_target": analyst_target,
         "analyst_upside_pct": analyst_upside_pct,
+        "is_leader": leader,
+        "leader_ma": round(leader_ma, 2) if leader_ma is not None else None,
+        "leader_ma_period": leader_ma_period,
     }
 
 
@@ -291,16 +341,29 @@ def format_target_tree(target: dict) -> str:
         f"현재가: {fp(target['current_price'])}",
         f"├── 매수가 (진입): {fp(target['entry_price'])}",
         f"├── 손절가: {fp(target['stop_loss'])} ({target['stop_loss_pct']:+.1f}%)",
-        f"├── 1차 익절: {fp(target['target_1'])} (+{target['target_1_pct']:.1f}%) → {target['target_1_sell_pct']}% 매도",
-        f"├── 2차 익절: {fp(target['target_2'])} (+{target['target_2_pct']:.1f}%) → {target['target_2_sell_pct']}% 매도",
-        f"├── 트레일링 스톱: 고점 대비 {target['trailing_stop_pct']:+.1f}% (나머지 {100 - target['target_1_sell_pct'] - target['target_2_sell_pct']}%)",
     ]
+    # 비-리더만 고정 익절 ladder 표시 (리더는 target_1/2 = None → 50일선 트레일로 청산)
+    if target.get("target_1") is not None:
+        lines.append(
+            f"├── 1차 익절: {fp(target['target_1'])} (+{target['target_1_pct']:.1f}%) → {target['target_1_sell_pct']}% 매도"
+        )
+        lines.append(
+            f"├── 2차 익절: {fp(target['target_2'])} (+{target['target_2_pct']:.1f}%) → {target['target_2_sell_pct']}% 매도"
+        )
+        lines.append(
+            f"├── 트레일링 스톱: 고점 대비 {target['trailing_stop_pct']:+.1f}% (나머지 {100 - target['target_1_sell_pct'] - target['target_2_sell_pct']}%)"
+        )
+
+    # 리더(성장주): 고정 익절 미적용 — 50일선 이탈로만 청산 (위 TP는 참고용)
+    if target.get("is_leader") and target.get("leader_ma") is not None:
+        lines.append(
+            f"├── ⭐ 리더 (성장주): 고정 익절 미적용 — {target['leader_ma_period']}일선 "
+            f"{fp(target['leader_ma'])} 종가 이탈 시 청산"
+        )
 
     # 애널리스트 목표가 (있을 때만)
     if target["analyst_target"] is not None:
-        lines.append(
-            f"└── 애널리스트 목표가: {fp(target['analyst_target'])} ({target['analyst_upside_pct']:+.1f}%)"
-        )
+        lines.append(f"└── 애널리스트 목표가: {fp(target['analyst_target'])} ({target['analyst_upside_pct']:+.1f}%)")
     else:
         # 마지막 줄 교체: ├ → └
         lines[-1] = lines[-1].replace("├──", "└──")
@@ -363,6 +426,10 @@ def check_take_profit_signals(db_path: Optional[Path] = None) -> list[dict]:
             logger.debug("No price data for %s, skipping take-profit check", ticker)
             continue
 
+        # 리더(성장주)는 고정 익절 미적용 — 50일선 트레일(check_leader_trail_signals)로 관리
+        if is_leader(ticker, db_path=db_path):
+            continue
+
         stock_type = classify_stock_type(ticker, db_path=db_path)
         targets = calculate_targets(ticker, entry_price, stock_type, db_path=db_path)
         if "error" in targets:
@@ -372,28 +439,102 @@ def check_take_profit_signals(db_path: Optional[Path] = None) -> list[dict]:
 
         # 2차 익절 도달 (우선)
         if current_price >= targets["target_2"]:
-            sell_pct = TAKE_PROFIT_GROWTH.get("target_2_sell_pct", 25) if stock_type == "growth" else \
-                       TAKE_PROFIT_SWING.get("target_2_sell_pct", 100) if stock_type == "swing" else \
-                       TAKE_PROFIT_VALUE.get("target_2_sell_pct", 25)
-            signals.append({
-                "ticker": ticker, "stock_type": stock_type,
-                "entry_price": entry_price, "current_price": current_price,
-                "return_pct": round(return_pct, 1),
-                "level": "target_2", "target_price": targets["target_2"],
-                "sell_pct": sell_pct, "quantity": row["quantity"],
-            })
+            sell_pct = (
+                TAKE_PROFIT_GROWTH.get("target_2_sell_pct", 25)
+                if stock_type == "growth"
+                else TAKE_PROFIT_SWING.get("target_2_sell_pct", 100)
+                if stock_type == "swing"
+                else TAKE_PROFIT_VALUE.get("target_2_sell_pct", 25)
+            )
+            signals.append(
+                {
+                    "ticker": ticker,
+                    "stock_type": stock_type,
+                    "entry_price": entry_price,
+                    "current_price": current_price,
+                    "return_pct": round(return_pct, 1),
+                    "level": "target_2",
+                    "target_price": targets["target_2"],
+                    "sell_pct": sell_pct,
+                    "quantity": row["quantity"],
+                }
+            )
         # 1차 익절 도달
         elif current_price >= targets["target_1"]:
-            sell_pct = TAKE_PROFIT_GROWTH.get("target_1_sell_pct", 50) if stock_type == "growth" else \
-                       TAKE_PROFIT_SWING.get("target_1_sell_pct", 50) if stock_type == "swing" else \
-                       TAKE_PROFIT_VALUE.get("target_1_sell_pct", 50)
-            signals.append({
-                "ticker": ticker, "stock_type": stock_type,
-                "entry_price": entry_price, "current_price": current_price,
-                "return_pct": round(return_pct, 1),
-                "level": "target_1", "target_price": targets["target_1"],
-                "sell_pct": sell_pct, "quantity": row["quantity"],
-            })
+            sell_pct = (
+                TAKE_PROFIT_GROWTH.get("target_1_sell_pct", 50)
+                if stock_type == "growth"
+                else TAKE_PROFIT_SWING.get("target_1_sell_pct", 50)
+                if stock_type == "swing"
+                else TAKE_PROFIT_VALUE.get("target_1_sell_pct", 50)
+            )
+            signals.append(
+                {
+                    "ticker": ticker,
+                    "stock_type": stock_type,
+                    "entry_price": entry_price,
+                    "current_price": current_price,
+                    "return_pct": round(return_pct, 1),
+                    "level": "target_1",
+                    "target_price": targets["target_1"],
+                    "sell_pct": sell_pct,
+                    "quantity": row["quantity"],
+                }
+            )
+
+    return sorted(signals, key=lambda s: s["return_pct"], reverse=True)
+
+
+# ═══════════════════════════════════════════════════════
+# 리더 트레일 (50일선 이탈) 감지 — 8주 룰 운영화
+# ═══════════════════════════════════════════════════════
+
+
+def check_leader_trail_signals(db_path: Optional[Path] = None) -> list[dict]:
+    """리더(성장주) 종목이 trail_ma 이동평균 종가를 이탈하면 청산 시그널.
+
+    고정 익절을 폐기한 리더의 유일한 익절 트리거 — 추세(이동평균)가 깨질 때만
+    매도하여 승자를 끝까지 run. `config/rules.yaml take_profit.leader` source of truth.
+    """
+    if not TAKE_PROFIT_LEADER.get("enabled", False):
+        return []
+
+    df = query_df(
+        "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
+        db_path=db_path,
+    )
+    if df.empty:
+        return []
+
+    ma_period = int(TAKE_PROFIT_LEADER.get("trail_ma", 50))
+    signals = []
+    for _, row in df.iterrows():
+        ticker = row["ticker"]
+        entry_price = row["avg_price"]
+        if not entry_price or entry_price <= 0:
+            continue
+        if not is_leader(ticker, db_path=db_path):
+            continue
+
+        current_price = _get_current_price(ticker, db_path=db_path)
+        ma = _get_sma(ticker, ma_period, db_path=db_path)
+        if current_price is None or ma is None:
+            continue
+
+        # 리더인데 종가가 이동평균 아래 → 추세 break, 청산
+        if current_price < ma:
+            signals.append(
+                {
+                    "ticker": ticker,
+                    "entry_price": entry_price,
+                    "current_price": current_price,
+                    "ma": round(ma, 2),
+                    "ma_period": ma_period,
+                    "return_pct": round((current_price / entry_price - 1) * 100, 1),
+                    "status": "TREND_BREAK",
+                    "quantity": row["quantity"],
+                }
+            )
 
     return sorted(signals, key=lambda s: s["return_pct"], reverse=True)
 
@@ -434,7 +575,8 @@ def check_trailing_stop_signals(db_path: Optional[Path] = None) -> list[dict]:
         # 고점(HWM) 계산: prices 테이블에서 진입 이후 최고가
         hwm_rows = query(
             "SELECT MAX(high) as max_high FROM prices WHERE ticker = ?",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
         hwm = hwm_rows[0]["max_high"] if hwm_rows and hwm_rows[0]["max_high"] else None
         if hwm is None or hwm <= 0:
@@ -448,22 +590,29 @@ def check_trailing_stop_signals(db_path: Optional[Path] = None) -> list[dict]:
         if stock_type == "swing":
             threshold = TRAILING_STOP_VOLATILE  # -20%
         elif stock_type == "growth":
-            threshold = TRAILING_STOP_GROWTH    # -15%
+            threshold = TRAILING_STOP_GROWTH  # -15%
         else:
-            threshold = TRAILING_STOP_VALUE     # -15%
+            threshold = TRAILING_STOP_VALUE  # -15%
 
         # 하락률 계산
         drop_pct = (current_price / hwm - 1) * 100
         stop_price = round(hwm * (1 + threshold / 100), 2)
 
         if drop_pct <= threshold:
-            signals.append({
-                "ticker": ticker, "stock_type": stock_type,
-                "entry_price": entry_price, "current_price": current_price,
-                "high_water_mark": hwm, "stop_price": stop_price,
-                "drop_pct": round(drop_pct, 1), "threshold": threshold,
-                "status": "TRIGGERED", "quantity": row["quantity"],
-            })
+            signals.append(
+                {
+                    "ticker": ticker,
+                    "stock_type": stock_type,
+                    "entry_price": entry_price,
+                    "current_price": current_price,
+                    "high_water_mark": hwm,
+                    "stop_price": stop_price,
+                    "drop_pct": round(drop_pct, 1),
+                    "threshold": threshold,
+                    "status": "TRIGGERED",
+                    "quantity": row["quantity"],
+                }
+            )
 
     return sorted(signals, key=lambda s: s["drop_pct"])
 
@@ -484,6 +633,7 @@ def check_portfolio_mdd(db_path: Optional[Path] = None) -> dict | None:
     # 환율 조회 (KRW → USD 변환용)
     from nuri.core.db import query as _q
     from nuri.core.rules import PORTFOLIO_STOP
+
     usd_krw = 1400.0  # 폴백
     try:
         fx_rows = _q("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1", db_path=db_path)

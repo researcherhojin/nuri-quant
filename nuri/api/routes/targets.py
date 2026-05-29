@@ -10,13 +10,14 @@ def get_portfolio_targets():
     """전 종목 매수가/손절가/익절가 + 익절/트레일링 시그널."""
     from nuri.trading.recommend.price_targets import (
         calculate_portfolio_targets,
+        check_leader_trail_signals,
         check_take_profit_signals,
         check_trailing_stop_signals,
     )
 
     targets = calculate_portfolio_targets()
 
-    # 익절/트레일링 도달 종목 태깅
+    # 익절/트레일링/리더-트레일 도달 종목 태깅
     try:
         tp_signals = {s["ticker"]: s for s in check_take_profit_signals()}
     except Exception:
@@ -25,12 +26,19 @@ def get_portfolio_targets():
         ts_signals = {s["ticker"]: s for s in check_trailing_stop_signals()}
     except Exception:
         ts_signals = {}
+    try:
+        lt_signals = {s["ticker"]: s for s in check_leader_trail_signals()}
+    except Exception:
+        lt_signals = {}
     for t in targets:
         tp = tp_signals.get(t["ticker"])
         ts = ts_signals.get(t["ticker"])
+        lt = lt_signals.get(t["ticker"])
         t["take_profit_triggered"] = tp["level"] if tp else None
         t["take_profit_sell_pct"] = tp["sell_pct"] if tp else None
         t["trailing_stop_triggered"] = ts is not None
+        t["leader_trail_triggered"] = lt is not None
+        t["leader_trail_ma"] = lt["ma"] if lt else None
 
     return {"targets": targets, "count": len(targets)}
 
@@ -71,7 +79,7 @@ def get_certification():
     from nuri.trading.engine.certification import certify
 
     # API path — persist 실패가 HTTP 500 으로 전파되면 안 됨. swallow=True (E4-0a
-     # codex R1 P1). Engine/CLI/remediation 은 default loud 유지.
+    # codex R1 P1). Engine/CLI/remediation 은 default loud 유지.
     cert = certify(caller="api:targets", swallow_persist_errors=True)
     result = {
         "certified": cert.certified,

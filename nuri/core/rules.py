@@ -4,11 +4,13 @@
     from nuri.core.rules import RULES
     max_pos = RULES["position_limits"]["max_single_position"]
 """
+
 from pathlib import Path
 
 import yaml
 
 _RULES_PATH = Path(__file__).parent.parent.parent / "config" / "rules.yaml"
+
 
 def _load_rules() -> dict:
     if _RULES_PATH.exists():
@@ -20,6 +22,7 @@ def _load_rules() -> dict:
         "stop_loss": {"per_stock": -20, "portfolio": -10},
         "leverage": {"banned_etfs": ["TSLL", "TQQQ", "SQQQ", "UPRO", "SPXU"]},
     }
+
 
 RULES = _load_rules()
 
@@ -42,6 +45,9 @@ SWING_STOP_LOSS = TAKE_PROFIT_SWING.get("stop_loss", -5)
 SWING_MAX_HOLD_DAYS = TAKE_PROFIT_SWING.get("max_hold_days", 7)
 SWING_MIN_SCAN_SCORE = TAKE_PROFIT_SWING.get("min_scan_score", 20)
 SWING_MIN_AGENT_CONFIDENCE = TAKE_PROFIT_SWING.get("min_agent_confidence", 50)
+# Leader exception (8주 룰 운영화): 성장주는 고정 익절 대신 trail_ma 이동평균 이탈로 청산
+# (승자 run). value/swing 은 위 ladder 유지. config/rules.yaml take_profit.leader.
+TAKE_PROFIT_LEADER = _tp.get("leader", {"enabled": False, "trail_ma": 50})
 
 # ─── 트레일링 스톱 ───
 _ts = RULES.get("trailing_stop", {})
@@ -53,10 +59,16 @@ TRAILING_STOP_VOLATILE = _ts.get("volatile", -20)
 _entry = RULES.get("entry_rules", {})
 VIX_BLOCK_ABOVE = _entry.get("vix_gate", {}).get("block_above", 30)
 VIX_CAUTION_ABOVE = _entry.get("vix_gate", {}).get("caution_above", 25)
-REGIME_CASH = _entry.get("regime_cash", {
-    "extreme_fear": 0.60, "fear": 0.40, "neutral": 0.25,
-    "greed": 0.20, "extreme_greed": 0.40,
-})
+REGIME_CASH = _entry.get(
+    "regime_cash",
+    {
+        "extreme_fear": 0.60,
+        "fear": 0.40,
+        "neutral": 0.25,
+        "greed": 0.20,
+        "extreme_greed": 0.40,
+    },
+)
 MAX_TRANCHES = _entry.get("scaling_in", {}).get("max_tranches", 3)
 TRANCHE_INTERVAL_DAYS = _entry.get("scaling_in", {}).get("tranche_interval_days", 5)
 
@@ -69,25 +81,37 @@ MIN_REVENUE_GROWTH = _chk.get("min_revenue_growth", 0)
 REQUIRE_FACTOR_TOP50 = _chk.get("require_factor_top50pct", True)
 
 # ─── 매도 우선순위 ───
-SELL_PRIORITY = RULES.get("sell_priority", [
-    "leverage_etf", "stop_loss_exceeded", "no_superinvestor",
-    "position_limit_exceeded", "sector_limit_exceeded",
-])
+SELL_PRIORITY = RULES.get(
+    "sell_priority",
+    [
+        "leverage_etf",
+        "stop_loss_exceeded",
+        "no_superinvestor",
+        "position_limit_exceeded",
+        "sector_limit_exceeded",
+    ],
+)
 
 # ─── 레버리지 제한 ───
 LEVERAGE_ETFS = set(RULES["leverage"]["banned_etfs"])
 LEVERAGE_MAX_DAYS = RULES.get("leverage", {}).get("max_holding_days", 5)
 
 # ─── 계좌별 전략 프로파일 ───
-ACCOUNT_STRATEGIES = RULES.get("account_strategies", {
-    "core": {"stop_loss": -7, "max_single_position": 0.15, "max_sector_exposure": 0.35},
-})
-_DEFAULT_STRATEGY = ACCOUNT_STRATEGIES.get("core", {"stop_loss": -7, "max_single_position": 0.15, "max_sector_exposure": 0.35})
+ACCOUNT_STRATEGIES = RULES.get(
+    "account_strategies",
+    {
+        "core": {"stop_loss": -7, "max_single_position": 0.15, "max_sector_exposure": 0.35},
+    },
+)
+_DEFAULT_STRATEGY = ACCOUNT_STRATEGIES.get(
+    "core", {"stop_loss": -7, "max_single_position": 0.15, "max_sector_exposure": 0.35}
+)
 
 
 def get_account_strategy(account: str) -> dict:
     """계좌명 → 전략 프로파일 반환. portfolio.yaml의 strategy 필드 기준."""
     import yaml
+
     _portfolio_path = Path(__file__).parent.parent.parent / "config" / "portfolio.yaml"
     try:
         with open(_portfolio_path, encoding="utf-8") as f:
