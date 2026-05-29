@@ -82,6 +82,16 @@ take_profit:
     min_agent_confidence: 50    # 최소 에이전트 합의 신뢰도
   # O'Neil 8주 규칙: 매수 후 3주 이내에 +20% 돌파 시 최소 8주 보유
   eight_week_hold: true
+  # ─── Leader exception (8주 룰 운영화) ───────────────────────
+  # 성장주(classify_stock_type==growth) 보유는 고정 +20/+40 익절 미적용, trail_ma 이동평균
+  # 종가 이탈 시 청산 (승자 run). value/swing 은 위 ladder 유지. -7% 하드손절 공통.
+  # 백테스트(17 성장주 2021~26, 비중첩·트레일동일·비용·연율화, skeptic 검증): 무TP+MA50
+  # 트레일이 고정TP ladder 대비 CAGR 12.8% → 19.5%, 낙폭 더 얕음 (위험조정 0.30→0.53).
+  # 성장주 판정은 nuri/trading/recommend/price_targets.classify_stock_type (stock_types.yaml
+  # 수동 override > PE>30 > 성장 섹터). 50일선 미계산(< 50 종가) 시 고정 ladder 유지.
+  leader:
+    enabled: true
+    trail_ma: 50                  # 50일 이동평균 종가 이탈 시 청산 (고정 익절 대체)
 
 # ─── 트레일링 스톱 ──────────────────────────────────────
 # 근거: 11년 백테스트에서 15-20% 트레일링 스톱이 최적 수익 (73.9% 누적)
