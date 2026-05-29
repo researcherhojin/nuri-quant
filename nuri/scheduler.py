@@ -140,11 +140,25 @@ def _run_collector(name: str, **kwargs):
 
             n = save_snapshot()
             logger.info(f"[memory_snapshot] {n}건 저장")
-        elif name == "decision_outcomes":
+        elif name == "decision_pnl":
+            # decisions 테이블의 7/30/60/90d raw P&L 갱신.
+            # NOTE: decision_outcomes(alpha) 테이블이 아님 — alpha 는 아래 alpha_tracking job.
             from nuri.trading.engine.decisions import track_decision_outcomes
 
             n = track_decision_outcomes()
-            logger.info(f"[decision_outcomes] {n}건 업데이트")
+            logger.info(f"[decision_pnl] {n}건 업데이트")
+        elif name == "alpha_tracking":
+            # ForwardOutcomeTracker: emit 된 추천 vs SPY benchmark → realized alpha 를
+            # decision_outcomes 테이블에 기록 (recommendations → agent_decisions 백필 포함).
+            # canonical scheduler 경로 — 과거 launchd track-forward.plist 를 흡수(이제 redundant).
+            from nuri.agents.actors.forward_outcome_tracker import ForwardOutcomeTracker
+
+            res = ForwardOutcomeTracker().run({"action": "scan", "max_decisions": 2000})
+            out = res.output if isinstance(res.output, dict) else {}
+            logger.info(
+                f"[alpha_tracking] synced={out.get('synced_from_recommendations', 0)} "
+                f"measured={out.get('n_measurements', 0)}"
+            )
         elif name == "agent_accuracy":
             from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
 
@@ -402,8 +416,11 @@ SCHEDULES = [
     {"name": "wallstreet", "func": _run_collector, "args": ("wallstreet",), "cron": "30 3 * * 0"},
     # Learning Memory 스냅샷 (주 1회 일요일 04:00)
     {"name": "memory_snapshot", "func": _run_collector, "args": ("memory_snapshot",), "cron": "0 4 * * 0"},
-    # Decision outcome 추적 (매일 07:00 — 시장 개장 전)
-    {"name": "decision_outcomes", "func": _run_collector, "args": ("decision_outcomes",), "cron": "0 7 * * *"},
+    # decisions 테이블 raw P&L 갱신 (매일 07:00 — 시장 개장 전). NOT alpha (아래 alpha_tracking).
+    {"name": "decision_pnl", "func": _run_collector, "args": ("decision_pnl",), "cron": "0 7 * * *"},
+    # 실현 alpha 추적 (매일 17:00 — 한국장 마감 후). ForwardOutcomeTracker scan →
+    # decision_outcomes (realized vs SPY benchmark). 과거 launchd track-forward.plist 를 scheduler 로 흡수.
+    {"name": "alpha_tracking", "func": _run_collector, "args": ("alpha_tracking",), "cron": "0 17 * * *"},
     # 10-agent consensus (매일 07:05 — technical 07:00 완료 후, daily_report 08:00 전).
     # agent_verdicts 를 recommendations 테이블에 쌓아 Learning Memory 가 30 일 후 학습.
     # Phase 2 A-1a (PR #361) 의 read path fix 를 활용하려면 input 이 꾸준히 쌓여야 함.
