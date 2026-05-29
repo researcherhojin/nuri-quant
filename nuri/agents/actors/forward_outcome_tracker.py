@@ -33,6 +33,7 @@ from typing import Any, Optional
 
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
 from nuri.core.db import (
+    log_decision,
     log_decision_outcome,
     query,
     reject_hypothesis,
@@ -48,6 +49,56 @@ WINDOW_THRESHOLDS: dict[int, tuple[float, float]] = {
 }
 SUPPORTED_WINDOWS: tuple[int, ...] = (7, 14, 30)
 DEFAULT_BENCHMARK_TICKER = "SPY"  # 시장 베타 — alpha 산출 baseline
+
+
+def backfill_agent_decisions_from_recommendations() -> int:
+    """Bridge emitted BUY/SELL recommendations into the agent_decisions ledger.
+
+    `decision_outcomes` has FK(decision_id) -> agent_decisions, and this tracker
+    measures rows from agent_decisions. Production recommendations land in the
+    `recommendations` table (not agent_decisions — the DecisionCompiler actor that
+    would fill it is unwired), so the tracker had nothing to measure and
+    decision_outcomes stayed empty. Mirror each BUY/SELL rec into agent_decisions
+    (decision_id='rec_{id}', provenance marked in inputs_json) so the FK + tracker
+    work as designed.
+
+    Idempotent: skips recs already mirrored; log_decision upserts on conflict.
+    Returns the count of newly mirrored decisions.
+    """
+    recs = query("SELECT id, date, ticker, action, confidence FROM recommendations WHERE action IN ('BUY', 'SELL')")
+    if not recs:
+        return 0
+    existing = {
+        dict(r)["decision_id"] for r in query("SELECT decision_id FROM agent_decisions WHERE decision_id LIKE 'rec_%'")
+    }
+    n = 0
+    for row in recs:
+        r = dict(row)
+        decision_id = f"rec_{r['id']}"
+        if decision_id in existing:
+            continue
+        conf = r.get("confidence")
+        conviction = max(0.0, min(1.0, (conf if conf is not None else 50.0) / 100.0))
+        log_decision(
+            decision_id=decision_id,
+            ticker=r["ticker"],
+            as_of_date=r["date"],
+            action=r["action"],
+            conviction=conviction,
+            inputs={
+                # 실제 출처는 recommendations 파이프라인 (DecisionCompiler actor 아님).
+                # audit-traceability 키는 enforcement 충족용 placeholder + 출처 명시.
+                "regime_run_id": "n/a-recommendation",
+                "hypothesis_id": "n/a-recommendation",
+                "causal_audit_id": "n/a-recommendation",
+                "source": "recommendations-backfill",
+                "rec_id": r["id"],
+            },
+            rationale={"source": "recommendations table mirror for alpha tracking"},
+            status="emitted",
+        )
+        n += 1
+    return n
 
 
 @REGISTRY.register
@@ -104,6 +155,9 @@ class ForwardOutcomeTracker(Actor):
                 )
         max_decisions = int(input_data.get("max_decisions", 100))
 
+        # recommendations -> agent_decisions ledger 동기화 (FK 충족 + 측정 대상 확보).
+        synced = backfill_agent_decisions_from_recommendations()
+
         rows = query(
             """SELECT decision_id, ticker, as_of_date, action, inputs_json
                FROM agent_decisions
@@ -133,6 +187,7 @@ class ForwardOutcomeTracker(Actor):
 
         return ActorResult(
             output={
+                "synced_from_recommendations": synced,
                 "scanned": len(rows),
                 "windows": windows,
                 "n_measurements": len(results),

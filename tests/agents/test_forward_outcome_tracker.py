@@ -78,6 +78,10 @@ def patched_db(db_path):
             "nuri.agents.actors.forward_outcome_tracker.reject_hypothesis",
             side_effect=make_redirect(db_module.reject_hypothesis),
         ),
+        patch(
+            "nuri.agents.actors.forward_outcome_tracker.log_decision",
+            side_effect=make_redirect(db_module.log_decision),
+        ),
     ]
     for p in patches:
         p.start()
@@ -156,6 +160,97 @@ class TestActorRegistration:
         from nuri.agents.base import REGISTRY
 
         assert REGISTRY.get("forward-outcome-tracker") is ForwardOutcomeTracker
+
+
+# ═══════════════════════════════════════════════════════
+# recommendations -> agent_decisions backfill (keystone: alpha 측정 켜기)
+# ═══════════════════════════════════════════════════════
+
+
+def _seed_recommendation(db_path, *, ticker, action="BUY", date="2026-04-20", confidence=80.0):
+    from nuri.core.db import get_db
+
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO recommendations (date, ticker, action, confidence, entry_price) VALUES (?, ?, ?, ?, ?)",
+            (date, ticker, action, confidence, 100.0),
+        )
+        return conn.execute("SELECT id FROM recommendations WHERE ticker = ? AND date = ?", (ticker, date)).fetchone()[
+            0
+        ]
+
+
+class TestRecommendationBackfill:
+    """Root-cause 가드: decision_outcomes 가 영구 0행이던 이유 = tracker 가 빈
+    agent_decisions 를 읽음. 실제 추천(recommendations)을 ledger 로 백필해 측정.
+    이 클래스가 깨지면 alpha 측정 파이프라인이 다시 죽은 것."""
+
+    def test_scan_backfills_and_measures_recommendation_alpha(self, patched_db):
+        rec_id = _seed_recommendation(patched_db, ticker="TESTBB", action="BUY")
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTBB", "2026-04-20", 100.0),
+                ("TESTBB", "2026-04-27", 110.0),  # +10%
+                ("SPY", "2026-04-20", 500.0),
+                ("SPY", "2026-04-27", 510.0),  # +2%
+            ],
+        )
+        result = ForwardOutcomeTracker().run({"action": "scan", "windows": [7]})
+        assert result.outcome == Outcome.PASS
+        assert result.output["synced_from_recommendations"] >= 1
+
+        # canonical ledger 에 백필됨 (FK 충족)
+        ad = query(f"SELECT * FROM agent_decisions WHERE decision_id = 'rec_{rec_id}'", db_path=patched_db)
+        assert len(ad) == 1 and ad[0]["status"] == "emitted"
+
+        # decision_outcomes 에 benchmark-relative alpha row 생성
+        out = query(
+            f"SELECT * FROM decision_outcomes WHERE decision_id = 'rec_{rec_id}' AND observation_window = 7",
+            db_path=patched_db,
+        )
+        assert len(out) == 1
+        assert out[0]["realized_return"] == pytest.approx(0.10, abs=1e-6)
+        assert out[0]["benchmark_return"] == pytest.approx(0.02, abs=1e-6)
+        assert out[0]["alpha"] == pytest.approx(0.08, abs=1e-6)  # 10% - 2%
+
+    def test_sell_recommendation_alpha_sign_flips(self, patched_db):
+        """SELL 추천: 종목이 오르면 realized/alpha 는 음수 (short proxy)."""
+        rec_id = _seed_recommendation(patched_db, ticker="TESTSS", action="SELL")
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTSS", "2026-04-20", 100.0),
+                ("TESTSS", "2026-04-27", 110.0),  # 종목 +10% → SELL 관점 -10%
+                ("SPY", "2026-04-20", 500.0),
+                ("SPY", "2026-04-27", 510.0),  # +2% → SELL 관점 -2%
+            ],
+        )
+        ForwardOutcomeTracker().run({"action": "scan", "windows": [7]})
+        out = query(
+            f"SELECT * FROM decision_outcomes WHERE decision_id = 'rec_{rec_id}' AND observation_window = 7",
+            db_path=patched_db,
+        )
+        assert len(out) == 1
+        assert out[0]["realized_return"] == pytest.approx(-0.10, abs=1e-6)
+        assert out[0]["alpha"] == pytest.approx(-0.08, abs=1e-6)
+
+    def test_scan_backfill_is_idempotent(self, patched_db):
+        """scan 2회 → agent_decisions rec row 중복 없음."""
+        _seed_recommendation(patched_db, ticker="TESTCC", action="BUY")
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTCC", "2026-04-20", 100.0),
+                ("TESTCC", "2026-04-27", 105.0),
+                ("SPY", "2026-04-20", 500.0),
+                ("SPY", "2026-04-27", 505.0),
+            ],
+        )
+        ForwardOutcomeTracker().run({"action": "scan", "windows": [7]})
+        ForwardOutcomeTracker().run({"action": "scan", "windows": [7]})
+        cnt = query("SELECT COUNT(*) AS c FROM agent_decisions WHERE ticker = 'TESTCC'", db_path=patched_db)
+        assert cnt[0]["c"] == 1
 
 
 # ═══════════════════════════════════════════════════════
