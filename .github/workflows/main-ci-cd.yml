@@ -511,7 +511,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Download all coverage artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: coverage-*
           path: cov-artifacts
