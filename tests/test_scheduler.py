@@ -642,12 +642,13 @@ class TestWriteHeartbeat_PipelineApi:
 class TestSchedulerDecisions:
     """Tests for decision_outcomes and agent_accuracy schedule entries."""
 
-    def test_decision_outcomes_in_schedules(self):
-        """SCHEDULES에 decision_outcomes 엔트리 존재."""
+    def test_decision_pnl_and_alpha_in_schedules(self):
+        """SCHEDULES에 decision_pnl(raw P&L) + alpha_tracking(realized alpha) 엔트리 존재."""
         from nuri.scheduler import SCHEDULES
 
         names = [s["name"] for s in SCHEDULES]
-        assert "decision_outcomes" in names
+        assert "decision_pnl" in names
+        assert "alpha_tracking" in names  # ForwardOutcomeTracker → decision_outcomes 테이블
 
     def test_agent_accuracy_in_schedules(self):
         """SCHEDULES에 agent_accuracy 엔트리 존재."""
@@ -656,12 +657,19 @@ class TestSchedulerDecisions:
         names = [s["name"] for s in SCHEDULES]
         assert "agent_accuracy" in names
 
-    def test_decision_outcomes_cron(self):
-        """decision_outcomes: 매일 07:00 KST."""
+    def test_decision_pnl_cron(self):
+        """decision_pnl: 매일 07:00 KST."""
         from nuri.scheduler import SCHEDULES
 
-        entry = next(s for s in SCHEDULES if s["name"] == "decision_outcomes")
+        entry = next(s for s in SCHEDULES if s["name"] == "decision_pnl")
         assert entry["cron"] == "0 7 * * *"
+
+    def test_alpha_tracking_cron(self):
+        """alpha_tracking: 매일 17:00 KST (한국장 마감 후, 흡수된 launchd track-forward timing)."""
+        from nuri.scheduler import SCHEDULES
+
+        entry = next(s for s in SCHEDULES if s["name"] == "alpha_tracking")
+        assert entry["cron"] == "0 17 * * *"
 
     def test_agent_accuracy_cron(self):
         """agent_accuracy: 일요일 08:00 KST."""
@@ -670,13 +678,28 @@ class TestSchedulerDecisions:
         entry = next(s for s in SCHEDULES if s["name"] == "agent_accuracy")
         assert entry["cron"] == "0 8 * * 0"
 
-    def test_run_collector_decision_outcomes(self):
-        """_run_collector dispatches to track_decision_outcomes."""
+    def test_run_collector_decision_pnl(self):
+        """_run_collector('decision_pnl') dispatches to track_decision_outcomes (raw P&L)."""
         from nuri.scheduler import _run_collector
 
         with patch("nuri.trading.engine.decisions.track_decision_outcomes", return_value=3) as mock_fn:
-            _run_collector("decision_outcomes")
+            _run_collector("decision_pnl")
         mock_fn.assert_called_once()
+
+    def test_run_collector_alpha_tracking(self):
+        """_run_collector('alpha_tracking') dispatches to ForwardOutcomeTracker.scan (realized alpha)."""
+        from unittest.mock import MagicMock
+
+        from nuri.scheduler import _run_collector
+
+        with patch("nuri.agents.actors.forward_outcome_tracker.ForwardOutcomeTracker") as mock_cls:
+            mock_cls.return_value.run.return_value = MagicMock(
+                output={"synced_from_recommendations": 2, "n_measurements": 6}
+            )
+            _run_collector("alpha_tracking")
+        mock_cls.return_value.run.assert_called_once()
+        # scan action 으로 호출됐는지
+        assert mock_cls.return_value.run.call_args[0][0]["action"] == "scan"
 
     def test_run_collector_agent_accuracy(self):
         """_run_collector dispatches to save_agent_accuracy_snapshot."""
