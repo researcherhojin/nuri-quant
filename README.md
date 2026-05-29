@@ -159,7 +159,7 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 |--------|-------|
 | **Backend tests** | 5,865 (255 files) — **100% statement coverage** |
 | **Frontend tests** | 1,014 (82 files) |
-| **E2E tests** | 38 (Playwright, 8 specs) |
+| **E2E tests** | 57 (Playwright, 8 specs) |
 | **Pipeline phases** | 5 (collect / analyze / consensus / certify / track) |
 | **Data collectors** | 26 collectors (BaseCollector pattern) |
 | **Specialist agents** | 10 |

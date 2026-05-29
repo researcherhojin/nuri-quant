@@ -65,8 +65,8 @@ The repository runs the following on every PR and every push to `main`:
 | Control | Where | Gates merge? |
 |---------|-------|--------------|
 | **Trivy CRITICAL vulnerability scan** | `.github/workflows/main-ci-cd.yml` `security-scan` job | Yes (CRITICAL → block) |
-| **CodeQL** (Python + JavaScript/TypeScript + GitHub Actions) | `.github/workflows/codeql.yml` | Yes (alerts must be addressed) |
-| **Privacy leak scanner** ([#138](https://github.com/researcherhojin/nuri-quant/issues/138)) | `.github/workflows/main-ci-cd.yml` `privacy-scan` job + `scripts/check_privacy_leak.py` + `scripts/pre_push_check.sh` | Yes (broker name / suspect monetary literal → block) |
+| **CodeQL** (Python + JavaScript/TypeScript + GitHub Actions) | GitHub default setup (code scanning) | Yes (alerts must be addressed) |
+| **Privacy leak scanner** ([#138](https://github.com/researcherhojin/nuri-quant/issues/138)) | `.github/workflows/main-ci-cd.yml` `privacy-scan` job + `scripts/verify/check_privacy_leak.py` + `scripts/verify/pre_push_check.sh` | Yes (broker name / suspect monetary literal / ticker+signed-% → block) |
 | **Dependabot** | `.github/dependabot.yml` | Auto-creates PRs on new advisories |
 | **Branch protection on `main`** | GitHub repository settings | All required checks must pass; force-push blocked |
 
@@ -77,7 +77,7 @@ documentation must **never** contain real broker names, real account
 identifiers, real holdings, real quantities, real prices, or real
 balances. The full policy is in
 [`docs/STRATEGY.md` §4.4 + §4.4.1](docs/STRATEGY.md), enforced by
-`scripts/check_privacy_leak.py`.
+`scripts/verify/check_privacy_leak.py`.
 
 If you discover a leak in `main` history, report it via the security
 advisory channel above so the maintainer can request GitHub Support
@@ -118,5 +118,7 @@ The following are intentionally not part of the threat model:
   live broker integration is gated behind explicit credentials in
   `.env`, not committed.
 - **Mobile clients** — no first-party mobile app.
-- **DDoS / rate-limit attacks** on the local FastAPI server — bind
-  to `localhost` only by default.
+- **DDoS / rate-limit attacks** on the FastAPI server — it binds to
+  `0.0.0.0` (all interfaces) by default to support the 2-machine
+  dev/receiver setup; restrict exposure at the LAN / firewall /
+  reverse-proxy layer rather than relying on the app.
