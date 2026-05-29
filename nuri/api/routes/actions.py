@@ -197,13 +197,31 @@ def _build_actions() -> dict:
 
         promoted = False
 
-        # 2차 익절 도달
-        if target.get("target_2") and item["current_price"] and item["current_price"] >= target["target_2"]:
+        # 리더(성장주) 이동평균선 이탈 → 추세 break (고정 익절 폐기된 리더의 유일한 익절 트리거)
+        if target.get("leader_trail_triggered"):
+            from nuri.core.rules import TAKE_PROFIT_LEADER
+
+            _ma_p = int(TAKE_PROFIT_LEADER.get("trail_ma", 50))
+            item["reasons"].append(f"⭐ 리더 {_ma_p}일선 이탈 (+{pnl_pct:.0f}%) — 추세 break, 청산 검토")
+            promoted = True
+
+        # 2차 익절 도달 (리더는 고정 익절 미적용 → skip)
+        elif (
+            not target.get("is_leader")
+            and target.get("target_2")
+            and item["current_price"]
+            and item["current_price"] >= target["target_2"]
+        ):
             item["reasons"].append("2차 익절 도달 — 트레일링 전환 권장")
             promoted = True
 
-        # 1차 익절 도달
-        elif target.get("target_1") and item["current_price"] and item["current_price"] >= target["target_1"]:
+        # 1차 익절 도달 (리더 skip)
+        elif (
+            not target.get("is_leader")
+            and target.get("target_1")
+            and item["current_price"]
+            and item["current_price"] >= target["target_1"]
+        ):
             item["reasons"].append(f"1차 익절 도달 (+{pnl_pct:.0f}%) — 50% 매도 고려")
             promoted = True
 
@@ -476,8 +494,15 @@ def _get_targets_status() -> dict[str, dict]:
     """포트폴리오 가격 타겟 조회."""
     targets = {}
     try:
-        from nuri.trading.recommend.price_targets import calculate_portfolio_targets
+        from nuri.trading.recommend.price_targets import (
+            calculate_portfolio_targets,
+            check_leader_trail_signals,
+        )
 
+        try:
+            _leader_trail = {x["ticker"] for x in check_leader_trail_signals()}
+        except Exception:
+            _leader_trail = set()
         for t in calculate_portfolio_targets():
             targets[t["ticker"]] = {
                 "stop_loss": t.get("stop_loss"),
@@ -485,6 +510,9 @@ def _get_targets_status() -> dict[str, dict]:
                 "target_2": t.get("target_2"),
                 "trailing_stop_pct": t.get("trailing_stop_pct"),
                 "analyst_target": t.get("analyst_target"),
+                "is_leader": t.get("is_leader"),
+                "leader_ma": t.get("leader_ma"),
+                "leader_trail_triggered": t["ticker"] in _leader_trail,
             }
     except Exception as e:
         logger.debug(f"Targets: {e}")
