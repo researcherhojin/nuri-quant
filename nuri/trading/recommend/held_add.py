@@ -29,6 +29,7 @@ import yaml
 
 from nuri.core.account_cap import derive_position_cap
 from nuri.core.db import get_db, query_df
+from nuri.core.rules import TAKE_PROFIT_GROWTH
 from nuri.core.timezone import kst_now, today_kst
 
 logger = logging.getLogger(__name__)
@@ -246,7 +247,7 @@ def _evaluate_tp1_residual_add(
         return None
 
     profile = _get_account_strategy_profile(pos["account"])
-    tp1_pct = abs(float(profile.get("tp1_pct", 21.0)))
+    tp1_pct = abs(float(profile.get("tp1_pct", TAKE_PROFIT_GROWTH["target_1"])))
     pnl_threshold = tp1_pct * float(trig.get("unrealized_pnl_min_factor", 1.2))
     if pos["pnl_pct"] < pnl_threshold:
         return None
@@ -267,7 +268,7 @@ def _evaluate_ride_winner(pos: dict[str, Any], cfg: dict, score: float, sector_m
         return None
 
     profile = _get_account_strategy_profile(pos["account"])
-    tp1_pct = abs(float(profile.get("tp1_pct", 21.0)))
+    tp1_pct = abs(float(profile.get("tp1_pct", TAKE_PROFIT_GROWTH["target_1"])))
     pnl_threshold = tp1_pct * float(trig.get("unrealized_pnl_min_factor", 2.5))
     if pos["pnl_pct"] < pnl_threshold:
         return None

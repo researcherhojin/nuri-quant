@@ -446,8 +446,8 @@ def emit_buy_candidates(
                 deploy_pct=round(per_pct * 100.0, 2),
                 entry=round(entry, 2),
                 stop=round(entry * (1 + risk.get("stop_pct", -7.0) / 100.0), 2),
-                tp1=round(entry * (1 + risk.get("tp1_pct", 21.0) / 100.0), 2),
-                tp2=round(entry * (1 + risk.get("tp2_pct", 42.0) / 100.0), 2),
+                tp1=round(entry * (1 + risk.get("tp1_pct", 20.0) / 100.0), 2),
+                tp2=round(entry * (1 + risk.get("tp2_pct", 40.0) / 100.0), 2),
                 why_now=_build_why_now(sources, price, _rsi),
                 sources=sources,
             )
@@ -474,7 +474,11 @@ def render_markdown(result: EmitResult) -> str:
         lines.append("")
         lines.append(f"{i}. **{c.ticker}** — score {c.score}/100, deploy {c.deploy_pct}%")
         lines.append(f"   - Why now: {c.why_now}")
-        lines.append(f"   - Entry ${c.entry} / Stop ${c.stop} (-7%) / TP1 ${c.tp1} (+21%) / TP2 ${c.tp2} (+42%)")
+        lines.append(
+            f"   - Entry ${c.entry} / Stop ${c.stop} ({(c.stop / c.entry - 1) * 100:+.0f}%) / "
+            f"TP1 ${c.tp1} ({(c.tp1 / c.entry - 1) * 100:+.0f}%) / "
+            f"TP2 ${c.tp2} ({(c.tp2 / c.entry - 1) * 100:+.0f}%)"
+        )
         src = " · ".join(f"{k}={v:.0f}" for k, v in c.sources.items())
         lines.append(f"   - Sources: {src}")
 
