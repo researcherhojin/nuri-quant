@@ -51,7 +51,7 @@ interface Drift {
 }
 
 // === Gate Section ===
-async function GateSection() {
+export async function GateSection() {
   const gates = await fetchAPI<Record<string, GateResult>>("/api/gate");
 
   return (
@@ -100,7 +100,7 @@ async function GateSection() {
 }
 
 // === Conflicts Section ===
-async function ConflictsSection() {
+export async function ConflictsSection() {
   const data = await fetchAPI<{ conflicts: Conflict[]; count: number; high: number }>("/api/conflicts");
 
   return (
@@ -137,7 +137,7 @@ async function ConflictsSection() {
 
 // === Certifications History Section (V2 — E4-0a observation loop) ===
 // server-side fetch 만 담당; 실제 렌더는 CertificationsCard (unit-testable pure).
-async function CertificationsSection() {
+export async function CertificationsSection() {
   const [history, summary] = await Promise.all([
     fetchAPI<CertificationsListResponse>("/api/certifications?limit=30"),
     fetchAPI<CertificationsSummary>("/api/certifications/summary?days=30"),
@@ -146,7 +146,7 @@ async function CertificationsSection() {
 }
 
 // === Memory Drift Section ===
-async function MemorySection() {
+export async function MemorySection() {
   const data = await fetchAPI<{ drifts: Drift[]; critical: number; degrading: number }>("/api/memory");
 
 

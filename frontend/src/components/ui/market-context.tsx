@@ -60,7 +60,7 @@ const CRITICAL_CATEGORIES = new Set([
   "trade_war",
 ]);
 
-function shouldPinCard(events: MacroEvent[]): boolean {
+export function shouldPinCard(events: MacroEvent[]): boolean {
   const now = Date.now();
   const cutoff = now - 24 * 60 * 60 * 1000;
   return events.some(ev => {
@@ -78,7 +78,8 @@ function isRegimeShifting(regime: Partial<SystemHealth["regime"]>): boolean {
 }
 
 // #503 Phase A — 7d aggregate-by-day sparkline path (SVG points)
-function sparklinePath(events: MacroEvent[], width: number, height: number): { path: string; latest: number } | null {
+// export: 빈 events 방어 가드는 컴포넌트 경로(events.length>0)에서 도달 불가 → 직접 단위 테스트용 export (behavior 불변)
+export function sparklinePath(events: MacroEvent[], width: number, height: number): { path: string; latest: number } | null {
   if (events.length === 0) return null;
   const buckets: Record<string, number[]> = {};
   for (const ev of events) {

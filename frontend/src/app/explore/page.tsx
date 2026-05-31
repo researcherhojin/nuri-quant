@@ -24,7 +24,8 @@ interface BatchPriceData {
 }
 
 // ── Quick-link card (pure component — receives pre-fetched data) ──
-function QuickLinkCard({ ticker, name, price, prev }: {
+// exported for direct unit testing (async parent RSC children don't resolve in jsdom)
+export function QuickLinkCard({ ticker, name, price, prev }: {
   ticker: string; name: string; price: number | null; prev: number | null;
 }) {
   const isKr = ticker.endsWith(".KS") || ticker.endsWith(".KQ");
