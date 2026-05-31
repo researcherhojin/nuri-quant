@@ -109,7 +109,8 @@ async function MarketContext() {
 }
 
 // ── Recent Signals ──
-async function RecentSignals() {
+// exported for direct unit testing (async parent RSC children don't resolve in jsdom)
+export async function RecentSignals() {
   const data = await fetchAPI<{ candidates: Candidate[] }>("/api/candidates?days=5").catch(() => null);
   const candidates = data?.candidates ?? [];
 
