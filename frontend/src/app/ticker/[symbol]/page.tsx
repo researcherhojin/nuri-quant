@@ -101,7 +101,7 @@ interface ExternalData {
   data?: ExternalRow[];
 }
 
-async function TickerDetail({ symbol }: { symbol: string }) {
+export async function TickerDetail({ symbol }: { symbol: string }) {
   const [data, priceData, targets, external] = await Promise.all([
     fetchAPI<TickerData>(`/api/ticker/${symbol}`),
     fetchAPI<PriceData>(`/api/ticker/${symbol}/prices?days=365`),

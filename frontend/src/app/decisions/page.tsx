@@ -183,7 +183,7 @@ function DecisionTable({ decisions }: { decisions: Decision[] }) {
 }
 
 // === Main ===
-async function DecisionsSection() {
+export async function DecisionsSection() {
   let data: DecisionResponse;
   try {
     data = await fetchAPI<DecisionResponse>("/api/decisions?limit=100");

@@ -7,7 +7,7 @@ import { ConsensusTable, type ConsensusRow } from "@/components/ui/consensus-tab
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CONSENSUS as CS } from "@/lib/strings";
 
-function VixBanner({ vix }: { vix: number | null }) {
+export function VixBanner({ vix }: { vix: number | null }) {
   if (!vix || vix < 25) return null;
 
   const isBlocked = vix >= 30;
@@ -31,7 +31,7 @@ interface ConsensusRegime {
   [key: string]: unknown;
 }
 
-async function ConsensusSection() {
+export async function ConsensusSection() {
   const data = await fetchAPI<{ regime: ConsensusRegime; results: ConsensusRow[]; count: number }>("/api/consensus");
   const sorted = [...data.results].sort((a, b) => b.final_confidence - a.final_confidence);
 
@@ -50,7 +50,7 @@ async function ConsensusSection() {
   );
 }
 
-async function DissentSection() {
+export async function DissentSection() {
   const data = await fetchAPI<{ results: ConsensusRow[] }>("/api/consensus");
   const withDissent = data.results.filter((r) => r.dissent.length > 0).slice(0, 6);
   if (!withDissent.length) return null;

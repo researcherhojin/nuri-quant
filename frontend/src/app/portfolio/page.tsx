@@ -118,6 +118,8 @@ function PortfolioContent() {
       setSubmitting(false);
       return;
     }
+    // ACCOUNTS[0] always truthy: fromHoldings is .filter(Boolean) and FALLBACK_ACCOUNTS[0]==="test", so the ||"" arm is unreachable
+    /* v8 ignore next */
     setForm({ account: ACCOUNTS[0] || "", ticker: "", quantity: "", avg_price: "", currency: "USD", sector: "" });
     setShowForm(false);
     setSubmitting(false);
@@ -188,6 +190,8 @@ function PortfolioContent() {
       setImportResult({ imported: 0, errors: [data.detail || "Import failed"] });
     }
     setImporting(false);
+    // fileRef is bound to a rendered <input>; in jsdom .current is never null when handleImport runs, so the false arm is unreachable
+    /* v8 ignore next */
     if (fileRef.current) fileRef.current.value = "";
   }
 

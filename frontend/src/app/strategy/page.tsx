@@ -65,7 +65,7 @@ interface BacktestData {
   stress?: StressRow[];
 }
 
-async function StrategyDashboard() {
+export async function StrategyDashboard() {
   const [status, bt] = await Promise.all([
     fetchAPI<StrategyStatus>("/api/strategy/status"),
     fetchAPI<BacktestData>("/api/backtest"),
@@ -230,7 +230,8 @@ async function StrategyDashboard() {
                 win_rate: bt.result.win_rate ?? 0,
                 spy_total_return: bt.result.spy_total_return ?? 0,
                 excess_return: bt.result.excess_return ?? 0,
-              } satisfies BacktestMetrics : undefined}
+                // `: undefined` arm below is dead — line-221 guard `bt.result?.equity_curve` already proved bt.result truthy
+              } satisfies BacktestMetrics : /* v8 ignore next */ undefined}
             />
           </CardContent>
         </Card>

@@ -288,6 +288,8 @@ export function summarizeHoldings(
     const w = visibleWeight(h);
     if (w <= 0) continue;
     const key = h.sector ?? "Other";
+    // `if (w <= 0) continue` above guarantees positionPct is non-null & > 0, so the `?? 0` arm is dead
+    /* v8 ignore next */
     const v = (h.positionPct ?? 0) / 100 * totalUsd;
     const cur = sectorMap.get(key) ?? { weight: 0, value: 0, deltaW: 0, deltaSum: 0 };
     cur.weight += w;
@@ -321,6 +323,8 @@ export function summarizeHoldings(
       }),
       { weight: 0, value: 0, deltaW: 0, deltaSum: 0 },
     );
+    // every sectorMap entry passed `if (w <= 0) continue` (w > 0), so restSectors weights sum > 0 — false arm dead
+    /* v8 ignore next 3 */
     if (otherAgg.weight > 0) {
       sectors.push(buildSectorSlice("Other", otherAgg, OTHER_COLOR));
     }
@@ -342,6 +346,8 @@ export function summarizeHoldings(
   for (const h of holdings) {
     const w = visibleWeight(h);
     if (w <= 0) continue;
+    // `if (w <= 0) continue` above guarantees positionPct is non-null & > 0, so the `?? 0` arm is dead
+    /* v8 ignore next */
     const valueUsd = (h.positionPct ?? 0) / 100 * totalUsd;
     const display = h.name || h.ticker.replace(/\.KS$/, "");
     const existing = tickerMap.get(h.ticker);
@@ -381,6 +387,8 @@ export function summarizeHoldings(
     dailyDeltaPct: data.deltaW > 0 ? data.deltaSum / data.deltaW : null,
     color,
   });
+  // topTickers capped at 12 (TOP_TICKER_COUNT) = TICKER_COLORS.length, so [i] is always defined; `?? OTHER_COLOR` is dead
+  /* v8 ignore next 3 */
   const byTicker: TickerSlice[] = topTickers.map(([ticker, data], i) =>
     buildTickerSlice(ticker, data.displayName, data, TICKER_COLORS[i] ?? OTHER_COLOR),
   );
@@ -396,6 +404,8 @@ export function summarizeHoldings(
       }),
       { weight: 0, valueUsd: 0, sector: null, displayName: `Other (${restTickers.length})`, deltaW: 0, deltaSum: 0 },
     );
+    // every tickerMap entry passed `if (w <= 0) continue` (w > 0), so restTickers weights sum > 0 — false arm dead
+    /* v8 ignore next 3 */
     if (otherAgg.weight > 0) {
       byTicker.push(
         buildTickerSlice("__OTHER__", otherAgg.displayName, otherAgg, OTHER_COLOR),

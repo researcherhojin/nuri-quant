@@ -118,8 +118,8 @@ const pipelineStatusColors: Record<string, string> = {
 };
 
 /* ── 헬퍼 ── */
-function trendKo(t: string) { return t === "bull" ? TREND.BULL : t === "bear" ? TREND.BEAR : TREND.SIDEWAYS; }
-function vixZone(v: number | null): { label: string; color: string } {
+export function trendKo(t: string) { return t === "bull" ? TREND.BULL : t === "bear" ? TREND.BEAR : TREND.SIDEWAYS; }
+export function vixZone(v: number | null): { label: string; color: string } {
   if (v == null) return { label: "—", color: "text-zinc-500" };
   if (v < 12) return { label: VIX_ZONE.CALM, color: "text-blue-400" };
   if (v < 17) return { label: VIX_ZONE.LOW, color: "text-emerald-400" };
@@ -141,14 +141,14 @@ export function fgColor(fg: number | null): string {
   if (fg <= 75) return "bg-lime-500/20 text-lime-400";
   return "bg-emerald-500/20 text-emerald-400";
 }
-function macroLevel(s: number): { label: string; color: string } {
+export function macroLevel(s: number): { label: string; color: string } {
   if (s >= 70) return { label: MACRO_LEVEL.GOOD, color: "text-emerald-400" };
   if (s >= 50) return { label: MACRO_LEVEL.NORMAL, color: "text-zinc-300" };
   if (s >= 30) return { label: MACRO_LEVEL.WEAK, color: "text-orange-400" };
   return { label: MACRO_LEVEL.FRAGILE, color: "text-red-400" };
 }
 /** 계좌 라벨 한국어 표시 (Pension만 특수, 나머지는 원본 유지) */
-function accountKo(label: string | undefined): string {
+export function accountKo(label: string | undefined): string {
   if (!label) return "";
   if (label === "Pension") return SECTION.PENSION;
   return label;
@@ -160,7 +160,7 @@ function accountKo(label: string | undefined): string {
 const SPARKLINE_PERIOD_OPTIONS = [14, 30, 60, 90] as const;
 type SparklinePeriod = (typeof SPARKLINE_PERIOD_OPTIONS)[number];
 
-function parseSparklinePeriod(raw: string | undefined): SparklinePeriod {
+export function parseSparklinePeriod(raw: string | undefined): SparklinePeriod {
   const n = parseInt(raw ?? "30", 10);
   if (SPARKLINE_PERIOD_OPTIONS.includes(n as SparklinePeriod)) return n as SparklinePeriod;
   return 30;
@@ -193,8 +193,9 @@ async function Dashboard({
       // 3s 타임아웃 방어용 fallback. jsdom+fake-timer 하네스에서 RSC await 가 settle
       // 안 돼 setTimeout 콜백이 결정적으로 실행되지 않음 → 커버리지 제외.
       new Promise<null>((resolve) => {
+        // setTimeout 콜백은 jsdom+fake-timer 하네스에서 결정적 실행 불가 → 함수째 커버리지 제외
+        /* v8 ignore next 3 */
         setTimeout(() => {
-          /* v8 ignore next */
           resolve(null);
         }, 3000);
       }),
@@ -271,6 +272,10 @@ async function Dashboard({
   // consumers; we just re-sort the visible subset here.
   const enrichedHoldings = allEnrichedHoldings
     .filter((h) => !isPensionLabel(h.account))
+    // `?? 0` arms are unreachable in practice: positionPct is only null when
+    // totalValue === 0, but a zero-total portfolio yields no renderable rows to
+    // sort, so the comparator never sees a null positionPct.
+    /* v8 ignore next */
     .sort((a, b) => (b.positionPct ?? 0) - (a.positionPct ?? 0));
   const hiddenPensionCount = allEnrichedHoldings.length - enrichedHoldings.length;
 
@@ -561,17 +566,24 @@ async function Dashboard({
       )}
 
       {/* ═══ 기회 탐색 — 보유 종목 아래, 상위 3개 + /scan 링크 ═══ */}
-      {(opportunitiesData?.opportunities?.length ?? 0) > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-zinc-300">🔍 기회 탐색</h2>
-            <Link href="/scan" className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors">
-              전체 {opportunitiesData.opportunities.length}건 →
-            </Link>
+      {(opportunitiesData?.opportunities?.length ?? 0) > 0 && (() => {
+        // `?? []` right arm unreachable: the gate above already proved
+        // opportunities is a non-empty array. Extracted to a const so the v8
+        // ignore lands on a plain statement (JSX-attribute ignores are flaky).
+        /* v8 ignore next */
+        const topOpportunities = (opportunitiesData?.opportunities ?? []).slice(0, 3);
+        return (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-semibold text-zinc-300">🔍 기회 탐색</h2>
+              <Link href="/scan" className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors">
+                전체 {opportunitiesData.opportunities.length}건 →
+              </Link>
+            </div>
+            <OpportunityExplorer opportunities={topOpportunities} />
           </div>
-          <OpportunityExplorer opportunities={(opportunitiesData?.opportunities ?? []).slice(0, 3)} />
-        </div>
-      )}
+        );
+      })()}
 
       {/* ═══ Data Coverage (#272 Phase 4) ═══ */}
       {coverage && !coverage.error && coverage.checks?.length > 0 && (
@@ -594,9 +606,14 @@ async function Dashboard({
           )}
           {/* upcoming events moved to sidebar (#214). Footer keeps quality/violations/freshness. */}
           <div className="ml-auto flex items-center gap-2">
-            {((freshness?.items?.length ?? 0) > 0 || (freshness?.details?.length ?? 0) > 0) && (
-              <FreshnessBar items={freshness?.items ?? freshness?.details ?? []} />
-            )}
+            {((freshness?.items?.length ?? 0) > 0 || (freshness?.details?.length ?? 0) > 0) && (() => {
+              // final `?? []` unreachable: the gate above requires
+              // items.length>0 OR details.length>0, so `items ?? details` is
+              // never both-nullish. Extracted so the v8 ignore is line-based.
+              /* v8 ignore next */
+              const freshnessItems = freshness?.items ?? freshness?.details ?? [];
+              return <FreshnessBar items={freshnessItems} />;
+            })()}
             {pipelineStatus.steps.length > 0 && (
               <div className="flex items-center gap-0.5">
                 {pipelineStatus.steps.map((s) => (

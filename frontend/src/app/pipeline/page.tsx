@@ -138,7 +138,7 @@ function formatTimestamp(iso: string): string {
 }
 
 // === Custom Node Component ===
-const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
+export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
   const status = data.status || "ok";
 
   return (
