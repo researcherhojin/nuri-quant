@@ -130,7 +130,8 @@ export function buildEnrichedHoldings(
   const todayMs = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate()).getTime();
 
   const enriched = holdings
-    .filter((h) => h.latest_price != null && h.avg_price != null && (h.avg_price ?? 0) > 0)
+    // h.avg_price != null 가드 뒤이므로 (h.avg_price ?? 0) 의 redundant nullish 제거 — TS 가 number 로 narrow
+    .filter((h) => h.latest_price != null && h.avg_price != null && h.avg_price > 0)
     .map((h): EnrichedHolding => {
       const latest = h.latest_price as number;
       const avg = h.avg_price as number;
@@ -222,8 +223,9 @@ export function buildEnrichedHoldings(
         pnlPct,
         dailyDeltaPct,
         sparkline,
-        latestPrice: h.latest_price ?? null,
-        avgPrice: h.avg_price ?? null,
+        // filter 가 non-null 보장 → 위에서 narrow 한 latest/avg 직접 사용 (dead `?? null` 제거)
+        latestPrice: latest,
+        avgPrice: avg,
         status,
         stopLoss: stopLossPrice,
         target1: target?.target_1 ?? null,

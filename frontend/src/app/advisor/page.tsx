@@ -37,7 +37,8 @@ function Loading() {
 }
 
 // === Main ===
-async function AdvisorSection() {
+// export: 테스트에서 async Server Component 를 직접 await/render 하기 위함 (jsdom 은 중첩 Suspense child 를 commit 안 함)
+export async function AdvisorSection() {
   let data: AdvisorReport;
   try {
     data = await fetchAPI<AdvisorReport>("/api/rebalance-advisor");
