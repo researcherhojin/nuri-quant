@@ -19,7 +19,7 @@ vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => fetchAPIMock(...args),
 }));
 
-import ExplorePage from "./page";
+import ExplorePage, { QuickLinkCard } from "./page";
 
 // 엔드포인트별 응답 라우터. reject 시 page.tsx 의 .catch() 분기를 실행.
 function routeFetch(
@@ -171,5 +171,47 @@ describe("ExplorePage (server component tree)", () => {
       expect(fetchAPIMock).toHaveBeenCalledWith("/api/tickers/market-context");
       expect(fetchAPIMock).toHaveBeenCalledWith("/api/candidates?days=5");
     });
+  });
+});
+
+// ── QuickLinkCard (module-private 컴포넌트 직접 렌더) ──
+// async 부모 RSC (QuickLinksGrid) 의 children 이 jsdom 에서 resolve 안 되므로
+// export 한 컴포넌트를 직접 렌더해 isKr/hasPrice/priceStr/delta/deltaColor 분기 커버.
+// NOTE: 이 파일의 next/link mock 은 href/children 만 forward (data-testid/className strip).
+// 따라서 카드 본문이 렌더한 inner span (가격/delta) 으로 검증 — 컴포넌트 실행 자체가 커버리지 핵심.
+describe("QuickLinkCard", () => {
+  it("KR ticker (.KS) with price + positive delta → ₩ price, emerald delta", () => {
+    const { container } = render(
+      <QuickLinkCard ticker="005930.KS" name="삼성전자" price={71000} prev={70000} />,
+    );
+    // isKr TRUE → formatPrice ₩ 분기
+    expect(container).toHaveTextContent("₩71,000");
+    // delta >= 0 → emerald deltaColor arm
+    const delta = container.querySelector(".text-emerald-400");
+    expect(delta).not.toBeNull();
+    expect(delta).toHaveTextContent("+1.4%");
+  });
+
+  it("US ticker with price + negative delta → $ price, red delta", () => {
+    const { container } = render(
+      <QuickLinkCard ticker="AAPL" name="Apple" price={180} prev={200} />,
+    );
+    // isKr FALSE → formatPrice $ 분기
+    expect(container).toHaveTextContent("$180");
+    // delta < 0 → red deltaColor arm
+    const delta = container.querySelector(".text-red-400");
+    expect(delta).not.toBeNull();
+    expect(delta).toHaveTextContent("-10.0%");
+  });
+
+  it("US ticker with null price → no-price placeholder, no delta span", () => {
+    const { container } = render(
+      <QuickLinkCard ticker="MSFT" name="Microsoft" price={null} prev={null} />,
+    );
+    // hasPrice FALSE → priceStr = EXPLORE.NO_PRICE placeholder
+    expect(container).toHaveTextContent("미수집");
+    // delta null → deltaStr empty → 색상 span 미렌더
+    expect(container.querySelector(".text-emerald-400")).toBeNull();
+    expect(container.querySelector(".text-red-400")).toBeNull();
   });
 });

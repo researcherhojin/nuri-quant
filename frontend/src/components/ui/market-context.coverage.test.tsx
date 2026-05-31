@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MarketContext, type MacroEvent, type SystemHealth } from "@/components/ui/market-context";
+import { MarketContext, shouldPinCard, sparklinePath, type MacroEvent, type SystemHealth } from "@/components/ui/market-context";
 
 // next/link → 단순 anchor 로 렌더 (네트워크/라우터 불필요)
 vi.mock("next/link", () => ({
@@ -165,5 +165,27 @@ describe("MarketContext — statement coverage", () => {
     render(<MarketContext events={[]} health={health} />);
 
     expect(screen.getByText("Regime 전환 신호")).toBeInTheDocument();
+  });
+
+  // L68: shouldPinCard 의 confidence 가드 — critical category 통과 후 confidence < 0.8 → return false.
+  // export 한 함수를 직접 호출해 해당 statement 를 결정론적으로 실행한다.
+  it("shouldPinCard: critical category 라도 confidence < 0.8 면 false (low-conf branch)", () => {
+    const events: MacroEvent[] = [
+      {
+        category: "fed_hawkish",
+        headline: "Hawkish remarks with low confidence",
+        sentiment: -0.4,
+        confidence: 0.5,
+        published_at: recentIso(30),
+        source: "wire",
+      },
+    ];
+    expect(shouldPinCard(events)).toBe(false);
+  });
+
+  // L82: sparklinePath 의 empty-events 방어 가드 (return null). 컴포넌트 호출처는
+  // events.length>0 가드 안이라 도달 불가 → export 한 함수를 직접 호출해 검증한다.
+  it("sparklinePath: 빈 events 배열은 null 반환 (empty-guard)", () => {
+    expect(sparklinePath([], 60, 14)).toBeNull();
   });
 });

@@ -127,13 +127,13 @@ function vixZone(v: number | null): { label: string; color: string } {
   if (v < 33) return { label: VIX_ZONE.CAUTION, color: "text-orange-400" };
   return { label: VIX_ZONE.DANGER, color: "text-red-400" };
 }
-function fgLabel(fg: number | null): string {
+export function fgLabel(fg: number | null): string {
   if (fg == null) return "—";
   if (fg < 25) return FEAR_GREED.EXTREME_FEAR; if (fg < 45) return FEAR_GREED.FEAR;
   if (fg <= 55) return FEAR_GREED.NEUTRAL; if (fg <= 75) return FEAR_GREED.GREED;
   return FEAR_GREED.EXTREME_GREED;
 }
-function fgColor(fg: number | null): string {
+export function fgColor(fg: number | null): string {
   if (fg == null) return "bg-zinc-700 text-zinc-400";
   if (fg < 25) return "bg-red-500/20 text-red-400";
   if (fg < 45) return "bg-orange-500/20 text-orange-400";
@@ -190,7 +190,14 @@ async function Dashboard({
     fetchAPI<PortfolioData>("/api/portfolio").catch(() => null),
     Promise.race([
       fetchAPI<CertifyData>("/api/certify"),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+      // 3s 타임아웃 방어용 fallback. jsdom+fake-timer 하네스에서 RSC await 가 settle
+      // 안 돼 setTimeout 콜백이 결정적으로 실행되지 않음 → 커버리지 제외.
+      new Promise<null>((resolve) => {
+        setTimeout(() => {
+          /* v8 ignore next */
+          resolve(null);
+        }, 3000);
+      }),
     ]).catch(() => null),
     fetchAPI<AdvisorData>("/api/rebalance-advisor").catch(() => null),
     fetchAPI<{ targets: RawTarget[] }>("/api/targets").catch(() => ({ targets: [] as RawTarget[] })),
