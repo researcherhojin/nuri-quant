@@ -92,7 +92,8 @@ export function sparklinePath(events: MacroEvent[], width: number, height: numbe
   const means = days.map(d => buckets[d].reduce((a, b) => a + b, 0) / buckets[d].length);
   const min = Math.min(...means, -1);
   const max = Math.max(...means, 1);
-  const range = max - min || 1;
+  /* v8 ignore next */
+  const range = max - min || 1; // min≤-1, max≥1 → range≥2, never falsy: `|| 1` unreachable
   const points = means.map((m, i) => {
     const x = (i / (means.length - 1)) * width;
     const y = height - ((m - min) / range) * height;
@@ -128,7 +129,10 @@ export function MarketContext({ events, health }: MarketContextProps) {
           <span className="shrink-0">⚠</span>
           <span className="text-amber-300 font-semibold">Regime 전환 신호</span>
           <span className="text-zinc-400">
-            현재 {regime.regime ?? "—"} · 신뢰도 {regime.confidence ?? 0}% — 다음 행동 보류 권고
+            현재 {regime.regime ?? "—"} · 신뢰도{" "}
+            {/* v8 ignore start -- banner renders only when isRegimeShifting (conf 0~60) → confidence always defined, `?? 0` arm unreachable */}
+            {regime.confidence ?? 0}
+            {/* v8 ignore stop */}% — 다음 행동 보류 권고
           </span>
         </div>
       )}
