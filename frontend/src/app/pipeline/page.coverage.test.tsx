@@ -56,7 +56,9 @@ vi.mock("@xyflow/react", () => ({
 // 잘못된 날짜 "문자열" 은 Invalid Date 가 될 뿐 throw 안 하므로 catch 못 들어간다.
 // BigInt 는 new Date(bigint) 에서 TypeError 를 던져 catch 분기를 강제하고,
 // catch 가 그대로 반환해도 React 가 텍스트("11")로 렌더 가능 (객체였다면 렌더 거부됨).
-const throwingDate = 11n as unknown as string;
+// BigInt 리터럴(`11n`) 대신 BigInt() 생성자 — tsconfig target=ES2017 에서 리터럴은
+// tsc(noEmit) 가 TS2737 로 막지만(vitest esbuild 는 통과해 CI 에서만 실패), 생성자는 OK.
+const throwingDate = BigInt(11) as unknown as string;
 
 describe("Pipeline page — helper catch branches", () => {
   let fetchMock: Mock;
