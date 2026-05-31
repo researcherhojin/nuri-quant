@@ -20,8 +20,8 @@ coverage:
         threshold: 1%        # ±1% 이내 변동은 통과
     patch:
       default:
-        target: auto         # 신규 코드 기준
-        threshold: 5%        # 리팩토링(문자열 교체 등)에서 미커버 기존 라인 허용
+        target: 100%         # 신규 코드는 전량 테스트 (엄밀 enforce — 미커버 diff 라인 0 허용)
+        threshold: 0%        # 허용범위 없음. 진짜 방어용(트리거 불가) 라인만 `# pragma: no cover`
 
 # Backend = Python (nuri/), Frontend = TypeScript (frontend/src/)
 # 두 flag 모두 단일 upload — workflow 가 이미 합산 후 한 번만 업로드한다.
