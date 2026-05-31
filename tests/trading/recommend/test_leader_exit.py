@@ -16,6 +16,7 @@ from nuri.trading.recommend.price_targets import (
     calculate_targets,
     check_leader_trail_signals,
     check_take_profit_signals,
+    format_target_tree,
     is_leader,
 )
 
@@ -99,6 +100,27 @@ class TestLeaderTrail:
         _seed(db_path, "VLO", 100.0, closes, sector="Financials")
         assert "VLO" not in {s["ticker"] for s in check_leader_trail_signals(db_path=db_path)}
 
+    def test_disabled_returns_empty(self, db_path, monkeypatch):
+        """take_profit.leader.enabled=False → 리더-트레일 비활성 (빈 리스트)."""
+        import nuri.trading.recommend.price_targets as pt
+
+        monkeypatch.setattr(pt, "TAKE_PROFIT_LEADER", {"enabled": False, "trail_ma": 50})
+        _seed(db_path, "GRW", 100.0, [140.0] * 49 + [125.0], sector="AI")
+        assert check_leader_trail_signals(db_path=db_path) == []
+
+    def test_skips_zero_entry_price(self, db_path):
+        """avg_price=0 보유는 손익 계산 불가 → skip (크래시 없음)."""
+        _seed(db_path, "ZERO", 0.0, [140.0] * 49 + [125.0], sector="AI")
+        assert "ZERO" not in {s["ticker"] for s in check_leader_trail_signals(db_path=db_path)}
+
+    def test_skips_when_current_price_missing(self, db_path, monkeypatch):
+        """리더여도 현재가 조회 실패 시 시그널 침묵 (방어)."""
+        import nuri.trading.recommend.price_targets as pt
+
+        _seed(db_path, "GRW", 100.0, [140.0] * 49 + [125.0], sector="AI")
+        monkeypatch.setattr(pt, "_get_current_price", lambda *a, **k: None)
+        assert "GRW" not in {s["ticker"] for s in check_leader_trail_signals(db_path=db_path)}
+
 
 class TestLeaderTargets:
     def test_leader_targets_numeric_kept_with_flag(self, db_path):
@@ -108,3 +130,11 @@ class TestLeaderTargets:
         assert t["is_leader"] is True
         assert t["target_1"] is not None and t["target_2"] is not None  # price-level 의무 유지 (참고용)
         assert t["leader_ma"] is not None
+
+    def test_format_target_tree_shows_leader_line(self, db_path):
+        """리더 target 트리는 '⭐ 리더 (성장주) … N일선 … 이탈 시 청산' 줄을 포함."""
+        _seed(db_path, "GRW", 100.0, [130.0] * 50, sector="AI")
+        t = calculate_targets("GRW", entry_price=100.0, db_path=db_path)
+        tree = format_target_tree(t)
+        assert "리더" in tree
+        assert "일선" in tree
