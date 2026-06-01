@@ -18,7 +18,7 @@ Every BUY / SELL recommendation runs through a 5-phase pipeline — **collect �
 - 🔁 **Self-correcting** — agent weights adjust based on actual prediction accuracy, not hand-tuning.
 - 🛡️ **3-D certification** — gates apply per `Account × Asset Class × Market`. One error-grade fail → REJECTED, no manual override.
 - 🔓 **Open data flow** — phases coupled only via SQLite tables. Re-run any phase, downstream consumers refresh automatically.
-- ✅ **Tested rigorously** — 5,865 backend tests, **100% statement coverage** (CI verified, 2026-05-06).
+- ✅ **Tested rigorously** — 5,892 backend tests, **100% statement coverage** (CI verified, 2026-05-06).
 
 ## Quick Start
 
@@ -157,8 +157,8 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 
 | Metric | Value |
 |--------|-------|
-| **Backend tests** | 5,865 (255 files) — **100% statement coverage** |
-| **Frontend tests** | 1,014 (82 files) |
+| **Backend tests** | 5,892 (258 files) — **100% statement coverage** |
+| **Frontend tests** | 1,372 (124 files) |
 | **E2E tests** | 57 (Playwright, 8 specs) |
 | **Pipeline phases** | 5 (collect / analyze / consensus / certify / track) |
 | **Data collectors** | 26 collectors (BaseCollector pattern) |
