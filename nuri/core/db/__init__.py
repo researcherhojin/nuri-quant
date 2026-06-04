@@ -86,6 +86,7 @@ from .research_ops import (  # noqa: F401, E402
     log_walkforward_run,
     register_hypothesis,
     reject_hypothesis,
+    save_backtest,
     validate_hypothesis,
 )
 from .trades import upsert_trade  # noqa: F401, E402

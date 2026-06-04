@@ -290,3 +290,61 @@ class TestCornerCases:
         with patch.object(engine, "query_df", return_value=prices):
             with pytest.raises(ZeroDivisionError):
                 engine.run_momentum_backtest(top_n=0)
+
+
+# ──────────────────────────────────────────────────────────────
+# persist=True → backtests 테이블 영속화 (P1a wiring)
+# ──────────────────────────────────────────────────────────────
+
+
+class TestPersist:
+    def test_persist_true_writes_one_backtest_row(self, db_path_mp, stubbed_quantstats):
+        """persist=True → backtests 1행 (실측 구간 + 메트릭). 결과 dict 와 일치."""
+        from nuri.core.db import query
+        from nuri.quant.backtest import engine
+
+        prices = _make_prices_df(n_days=60)  # 2025-01-01 시작, 5개 US 종목
+        pf = _make_stub_portfolio()
+        with (
+            patch.object(engine, "query_df", return_value=prices),
+            patch.object(engine.vbt.Portfolio, "from_signals", return_value=pf),
+        ):
+            result = engine.run_momentum_backtest(top_n=3, rebalance_days=20, persist=True)
+
+        rows = query("SELECT * FROM backtests", db_path=db_path_mp)
+        assert len(rows) == 1
+        r = rows[0]
+        assert r["strategy_id"] == "Momentum Top-3"
+        assert r["total_return"] == 12.5  # stub Total Return [%]
+        assert r["sharpe"] == 1.4
+        assert r["max_drawdown"] == -8.2
+        assert r["win_rate"] == 62.0
+        # 실측 가격 구간 (period 문자열이 아닌 실제 날짜)
+        assert r["start_date"] == "2025-01-01"
+        assert r["start_date"] == result["start_date"]
+        assert r["end_date"] == result["end_date"]
+
+    def test_default_call_writes_nothing(self, db_path_mp, stubbed_quantstats):
+        """persist 인자 없이 호출(verify.py:203 스타일) → DB 미기록.
+
+        default 가 False 임을 시그니처+동작 양쪽에서 잠근다 — production data/portfolio.db
+        오염 방지. default 가 True 로 뒤집히거나 persist 분기가 제거되면 이 테스트가 깨진다.
+        """
+        import inspect
+
+        from nuri.core.db import query
+        from nuri.quant.backtest import engine
+
+        # 시그니처 레벨 잠금: default 자체가 False (read-only 호출 보호 계약)
+        sig = inspect.signature(engine.run_momentum_backtest)
+        assert sig.parameters["persist"].default is False
+
+        prices = _make_prices_df(n_days=60)
+        pf = _make_stub_portfolio()
+        with (
+            patch.object(engine, "query_df", return_value=prices),
+            patch.object(engine.vbt.Portfolio, "from_signals", return_value=pf),
+        ):
+            engine.run_momentum_backtest(top_n=3)  # persist 인자 없음 → default 적용
+
+        assert query("SELECT * FROM backtests", db_path=db_path_mp) == []

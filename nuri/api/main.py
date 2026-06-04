@@ -40,6 +40,7 @@ from nuri.api.routes import (
     portfolio,
     rebalance,
     regime,
+    research,
     signals,
     stream,
     swing,
@@ -126,6 +127,7 @@ app.include_router(targets.router, prefix="/api")
 app.include_router(trades.router, prefix="/api")
 app.include_router(decisions.router, prefix="/api")
 app.include_router(alpha.router, prefix="/api")
+app.include_router(research.router, prefix="/api")
 app.include_router(learning_memory.router, prefix="/api")
 
 

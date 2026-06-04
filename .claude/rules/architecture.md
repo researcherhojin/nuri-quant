@@ -2,7 +2,7 @@
 
 ## Code layout
 
-`nuri/core` (sole sqlite3 importer) / `nuri/collectors` (26 collector modules) / `analysis` / `quant` / `trading` (agents · engine · strategy · recommend · swing · execution) / `api` (70 endpoints, routes/) / `alerts` / `llm`. Plus `tests/` mirror + `scripts/` automation + `frontend/` (Next.js). Detailed map (DB schema, migrations, env vars, CI/CD): `docs/ARCHITECTURE.md`.
+`nuri/core` (sole sqlite3 importer) / `nuri/collectors` (26 collector modules) / `analysis` / `quant` / `trading` (agents · engine · strategy · recommend · swing · execution) / `api` (72 endpoints, routes/) / `alerts` / `llm`. Plus `tests/` mirror + `scripts/` automation + `frontend/` (Next.js). Detailed map (DB schema, migrations, env vars, CI/CD): `docs/ARCHITECTURE.md`.
 
 ## Commands
 
