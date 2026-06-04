@@ -82,11 +82,11 @@ def _portfolio_usd_returns(
             row = mom.iloc[i].dropna()
             new = row.nlargest(min(top_n, len(row))).index.tolist()
             prev = set(held)
-            newset = set(new)
+            new_set = set(new)
             if not prev:
-                turnover.iloc[i] = 1.0 if newset else 0.0
+                turnover.iloc[i] = 1.0 if new_set else 0.0
             else:
-                turnover.iloc[i] = len(prev.symmetric_difference(newset)) / (2 * top_n)
+                turnover.iloc[i] = len(prev.symmetric_difference(new_set)) / (2 * top_n)
             held = new
     return daily, turnover
 
@@ -177,7 +177,7 @@ def run_strategy_walkforward(
     split = n - holdout_n  # walk-forward 는 [0, split), holdout 은 [split, n)
 
     # validator data (non-holdout 만)
-    data = pd.DataFrame({"date": dates.strftime("%Y-%m-%d")})
+    data = pd.DataFrame({"date": pd.DatetimeIndex(dates).strftime("%Y-%m-%d")})
     for L in grid:
         data[f"r_lb{L}"] = aligned[L].to_numpy()
     data_wf = data.iloc[:split].reset_index(drop=True)
@@ -210,7 +210,7 @@ def run_strategy_walkforward(
     best_l_full = max(grid, key=lambda L: _sharpe_from_returns(aligned[L].iloc[:split].to_numpy()))
     holdout_ret = aligned[best_l_full].iloc[split:].to_numpy()
     holdout_sharpe = _sharpe_from_returns(holdout_ret)
-    holdout_maxdd = _max_drawdown(holdout_ret)
+    holdout_drawdown = _max_drawdown(holdout_ret)
 
     passed = (
         oos_sharpe is not None and oos_sharpe >= gate["min_oos_sharpe"] and holdout_sharpe >= gate["min_holdout_sharpe"]
@@ -220,10 +220,11 @@ def run_strategy_walkforward(
         "model_id": "momentum-topN-walkforward",
         "walkforward_run_id": result.output.get("run_id"),
         "n_folds": result.output.get("n_folds"),
-        "outcome": result.outcome.name,
+        # outcome 은 Optional[Outcome] 타입이나 action=run 은 항상 PASS/WARN 설정
+        "outcome": result.outcome.name if result.outcome is not None else "UNKNOWN",
         "oos_sharpe_mean": oos_sharpe,
         "holdout_sharpe": holdout_sharpe,
-        "holdout_max_drawdown": holdout_maxdd,
+        "holdout_max_drawdown": holdout_drawdown,
         "selected_lookback_holdout": best_l_full,
         "walkforward_n": split,  # walk-forward 가 본 row 수 (holdout 제외)
         "holdout_n": holdout_n,  # FROZEN holdout row 수 (봉인)

@@ -20,6 +20,7 @@ from nuri.agents.actors.walkforward_validator import _sharpe_from_returns
 from nuri.quant.validation.strategy_walkforward import (
     _build_us_panel,
     _max_drawdown,
+    _portfolio_usd_returns,
     _strategy_net_returns,
     run_strategy_walkforward,
 )
@@ -195,36 +196,47 @@ class TestIntegration:
         assert result["holdout_max_drawdown"] <= 0.0
 
 
-# ── PIT 누설 회귀 (null-edge gate) ─────────────────────────────
+# ── same-bar lookahead 회귀 (결정론적 micro-case) ──────────────
 
 
-class TestNullEdge:
-    """same-bar lookahead 회귀 lock-test — zero-edge random walk 는 gate 통과 금지.
+class TestNoSameBarLookahead:
+    """리밸런싱일 점프가 그날 수익으로 적립되면 안 된다 (§5.3.1 Gotcha-Test Pair).
 
-    선택일(day i) 수익률을 그날 보유분에 적립하면 (momentum 신호가 그날 수익률을 포함)
-    순수 noise 도 +0.7 Sharpe 로 부풀어 gate(0.5)를 통과한다 (codex 실측). 누설이
-    되살아나면 이 테스트가 깨진다 (§5.3.1 Gotcha-Test Pair).
+    SPIKE 이 리밸런싱일 i=4 에 +100% 점프 → 그날 모멘텀 1위로 '선택'되지만, day-4 수익은
+    *이전* 보유분(STEADY)으로 번다. 누설(선택일 수익을 그날 보유분에 적립)이 되살아나면
+    daily[4]=1.0(점프) 가 되어 이 테스트가 깨진다. 확률적 Sharpe 경계와 달리 seed-drift
+    에 면역인 결정론적 메커니즘 lock (codex 권고).
     """
 
-    def test_random_walk_does_not_clear_gate(self, db_path_mp):
-        rng = np.random.default_rng(7)
-        n, ntick = 500, 20
-        dates = pd.date_range("2020-01-01", periods=n, freq="B")
+    def test_rebalance_day_spike_not_credited_same_bar(self):
+        idx = pd.date_range("2024-01-01", periods=8, freq="B")
         prices = pd.DataFrame(
-            {f"T{j}": 100 * np.exp(np.cumsum(rng.normal(0.0, 0.02, n))) for j in range(ntick)},
-            index=dates,
+            {
+                "STEADY": [100, 101, 102, 103, 104, 105, 106, 107],
+                "SPIKE": [100, 100, 100, 100, 200, 200, 200, 200],  # i=4 에 +100% 점프
+            },
+            index=idx,
+            dtype=float,
         )
-        cfg = {
-            "strategy": {"lookback_grid": [20, 60], "top_n": 5, "rebalance_days": 20},
-            "fold": {"kind": "rolling", "train_size": 120, "test_size": 20, "step": 20},
-            "holdout": {"frac": 0.2},
-            "costs": {"survivorship_haircut_bps_annual": 0},
-            "gate": {"min_oos_sharpe": 0.5, "min_holdout_sharpe": 0.0},
-        }
-        r = run_strategy_walkforward(cost_bps=0.0, fx_series=pd.Series(1300.0, index=dates), prices=prices, config=cfg)
-        # zero-edge → Sharpe ~0, gate 통과 금지. 누설 있으면 +0.7 로 통과 → 실패.
-        assert abs(r["oos_sharpe_mean"]) < 0.5
-        assert r["gate"]["passed"] is False
+        daily, _turnover = _portfolio_usd_returns(prices, lookback=2, top_n=1, rebalance_days=2)
+        # i=2 첫 리밸런싱: mom(STEADY)=0.02 > mom(SPIKE)=0 → STEADY 보유
+        # i=4 리밸런싱: SPIKE 가 모멘텀 1위로 선택되지만, day-4 수익은 STEADY(104/103-1)로 번다.
+        assert daily.iloc[4] == pytest.approx(104 / 103 - 1, rel=1e-9)
+        assert daily.iloc[4] < 0.02  # 점프(1.0) 미반영 — 누설이면 1.0 → 실패
+        # i=5: 이제 SPIKE 보유 → 그 다음 수익(200/200-1=0) 반영
+        assert daily.iloc[5] == pytest.approx(0.0)
+
+    def test_first_return_not_dropped(self):
+        # 첫 리밸런싱(i=lookback) 다음 bar 부터 정상 적립 (off-by-one 반대 방향 점검)
+        idx = pd.date_range("2024-01-01", periods=6, freq="B")
+        prices = pd.DataFrame(
+            {"A": [100, 110, 121, 133.1, 146.41, 161.051]},  # 매일 +10%
+            index=idx,
+            dtype=float,
+        )
+        daily, _ = _portfolio_usd_returns(prices, lookback=2, top_n=1, rebalance_days=2)
+        assert daily.iloc[2] == pytest.approx(0.0)  # 첫 선택일 = 보유 전 → 0
+        assert daily.iloc[3] == pytest.approx(0.1, rel=1e-9)  # 다음 bar 부터 +10% 적립
 
 
 # ── frozen survivor universe ──────────────────────────────────
