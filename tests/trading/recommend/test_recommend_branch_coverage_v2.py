@@ -262,6 +262,7 @@ class TestBuyCandidateEmitterCooldownBranches:
         monkeypatch.setattr(bce, "_get_factor_scores", lambda: {})
         monkeypatch.setattr(bce, "_get_price_signals", lambda: {})
         monkeypatch.setattr(bce, "_get_rsi_snapshot", lambda: {})
+        monkeypatch.setattr(bce, "leadership_snapshot", lambda *a, **k: {})  # P2 shadow (prices 미시드)
         monkeypatch.setattr(bce, "_get_regime", lambda: ("neutral", 18.0))
 
         result = bce.emit_buy_candidates(config_path=cfg_path)
@@ -301,6 +302,7 @@ class TestBuyCandidateEmitterCooldownBranches:
         monkeypatch.setattr(bce, "_get_factor_scores", lambda: {"NOPRICE": {"composite": 0.9}})
         monkeypatch.setattr(bce, "_get_price_signals", lambda: {})  # NOPRICE missing
         monkeypatch.setattr(bce, "_get_rsi_snapshot", lambda: {})
+        monkeypatch.setattr(bce, "leadership_snapshot", lambda *a, **k: {})  # P2 shadow (prices 미시드)
         monkeypatch.setattr(bce, "_get_regime", lambda: ("neutral", 18.0))
 
         result = bce.emit_buy_candidates(config_path=cfg_path)
