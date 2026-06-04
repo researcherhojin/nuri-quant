@@ -931,6 +931,41 @@ class TestPriceTargets_R27:
         signals = check_trailing_stop_signals(db_path=db_path)
         assert len(signals) >= 1
 
+    def test_trailing_stop_hwm_since_entry_not_all_time(self, db_path, monkeypatch):
+        """Gotcha-Test: 트레일링 HWM 은 진입 이후(first_buy_date) 최고가만 집계해야 한다.
+
+        진입 전 역대 최고가가 HWM 으로 잡히면 트레일링 스톱이 거짓 발동한다.
+        price_targets.py HWM 쿼리에서 `date >= entry_anchor` 필터를 제거(revert)하면
+        HWM=300(진입 전 꼭지) → -38% → 거짓 발동 → 이 테스트가 실패한다.
+        """
+        import nuri.trading.recommend.price_targets as pt_mod
+        from nuri.trading.recommend.price_targets import check_trailing_stop_signals
+
+        monkeypatch.setattr(pt_mod, "_stock_types_cache", {"ZETA": "growth"})
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector, currency, first_buy_date) "
+                "VALUES (?,?,?,?,?,?,?)",
+                ("test", "ZETA", 10, 190.0, "Technology", "USD", "2025-03-01"),
+            )
+            # 진입 전(2025-03-01 이전) 역대 최고가 = 300 (트랩: 날짜 필터 없으면 HWM 으로 잡힘)
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)",
+                ("ZETA", "2025-01-01", 290, 300, 285, 295, 500000),
+            )
+            # 진입 이후 실제 고점 = 200
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)",
+                ("ZETA", "2025-03-05", 195, 200, 192, 198, 500000),
+            )
+            # 현재가 184 → 진입후 HWM(200) 대비 -8% → 트레일 -15% 미달, 발동 안 함
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)",
+                ("ZETA", "2025-03-28", 186, 188, 183, 184, 500000),
+            )
+        signals = check_trailing_stop_signals(db_path=db_path)
+        assert signals == []
+
     def test_check_portfolio_mdd_no_violation(self, db_path):
         from nuri.trading.recommend.price_targets import check_portfolio_mdd
 

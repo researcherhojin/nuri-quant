@@ -554,7 +554,7 @@ def check_trailing_stop_signals(db_path: Optional[Path] = None) -> list[dict]:
         list[dict]: 트레일링 스톱 시그널 리스트
     """
     df = query_df(
-        "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
+        "SELECT ticker, avg_price, quantity, DATE(first_buy_date) AS entry_anchor FROM portfolio WHERE quantity > 0",
         db_path=db_path,
     )
     if df.empty:
@@ -572,12 +572,27 @@ def check_trailing_stop_signals(db_path: Optional[Path] = None) -> list[dict]:
             logger.debug("No price data for %s, skipping trailing stop check", ticker)
             continue
 
-        # 고점(HWM) 계산: prices 테이블에서 진입 이후 최고가
-        hwm_rows = query(
-            "SELECT MAX(high) as max_high FROM prices WHERE ticker = ?",
-            (ticker,),
-            db_path=db_path,
-        )
+        # 고점(HWM) 계산: 진입 이후 최고가만 집계한다. 앵커는 first_buy_date(SELECT 에서 DATE 정규화).
+        # 날짜 필터 없이 MAX(high) 를 쓰면 진입 전 수년 전 꼭지가 HWM 으로 잡혀
+        # 트레일링 스톱(-15%)이 진입 후 고점 대비로 작동하지 못한다 (drawdown 방어 무력화).
+        # first_buy_date 미기록(NULL) 시에는 전체 이력 폴백 — over-trigger(노이즈)이나
+        # under-trigger(미발동)보다 drawdown-first 에 안전. updated_at 은 upsert 마다 now() 로
+        # 리셋되어(portfolio.py) 앵커로 부적합하므로 폴백에서 제외한다.
+        # NOTE: 현 write-path(upsert_portfolio/replace_portfolio_account)는 first_buy_date 를
+        # 채우지 않는다 → 실제 진입일 앵커는 후속(포지션 sync) 에서 채워야 본 필터가 활성화된다.
+        entry_anchor = row["entry_anchor"]
+        if isinstance(entry_anchor, str) and entry_anchor:
+            hwm_rows = query(
+                "SELECT MAX(high) as max_high FROM prices WHERE ticker = ? AND date >= ?",
+                (ticker, entry_anchor),
+                db_path=db_path,
+            )
+        else:
+            hwm_rows = query(
+                "SELECT MAX(high) as max_high FROM prices WHERE ticker = ?",
+                (ticker,),
+                db_path=db_path,
+            )
         hwm = hwm_rows[0]["max_high"] if hwm_rows and hwm_rows[0]["max_high"] else None
         if hwm is None or hwm <= 0:
             continue
