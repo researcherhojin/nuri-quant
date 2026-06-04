@@ -72,6 +72,12 @@ def _portfolio_usd_returns(
     for i in range(len(idx)):
         if i < lookback:
             continue
+        # ① day-i 수익률은 *day-i 이전*에 결정된 보유분으로만 번다 (same-bar lookahead 차단).
+        #    momentum 선택(mom.iloc[i], price[i] 포함)과 그날 수익률(price[i]/price[i-1])을
+        #    같은 날 보유분에 동시 적용하면 이미 본 움직임으로 보상받는 누설이 된다.
+        if held:
+            daily.iloc[i] = rets.iloc[i][held].mean()
+        # ② 리밸런싱은 day-i 종가 신호로 결정 → day i+1 부터 유효 (거래비용은 거래일 i 에 부과).
         if (i - lookback) % rebalance_days == 0:
             row = mom.iloc[i].dropna()
             new = row.nlargest(min(top_n, len(row))).index.tolist()
@@ -82,8 +88,6 @@ def _portfolio_usd_returns(
             else:
                 turnover.iloc[i] = len(prev.symmetric_difference(newset)) / (2 * top_n)
             held = new
-        if held:
-            daily.iloc[i] = rets.iloc[i][held].mean()
     return daily, turnover
 
 

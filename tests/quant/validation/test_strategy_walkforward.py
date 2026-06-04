@@ -195,6 +195,38 @@ class TestIntegration:
         assert result["holdout_max_drawdown"] <= 0.0
 
 
+# ── PIT 누설 회귀 (null-edge gate) ─────────────────────────────
+
+
+class TestNullEdge:
+    """same-bar lookahead 회귀 lock-test — zero-edge random walk 는 gate 통과 금지.
+
+    선택일(day i) 수익률을 그날 보유분에 적립하면 (momentum 신호가 그날 수익률을 포함)
+    순수 noise 도 +0.7 Sharpe 로 부풀어 gate(0.5)를 통과한다 (codex 실측). 누설이
+    되살아나면 이 테스트가 깨진다 (§5.3.1 Gotcha-Test Pair).
+    """
+
+    def test_random_walk_does_not_clear_gate(self, db_path_mp):
+        rng = np.random.default_rng(7)
+        n, ntick = 500, 20
+        dates = pd.date_range("2020-01-01", periods=n, freq="B")
+        prices = pd.DataFrame(
+            {f"T{j}": 100 * np.exp(np.cumsum(rng.normal(0.0, 0.02, n))) for j in range(ntick)},
+            index=dates,
+        )
+        cfg = {
+            "strategy": {"lookback_grid": [20, 60], "top_n": 5, "rebalance_days": 20},
+            "fold": {"kind": "rolling", "train_size": 120, "test_size": 20, "step": 20},
+            "holdout": {"frac": 0.2},
+            "costs": {"survivorship_haircut_bps_annual": 0},
+            "gate": {"min_oos_sharpe": 0.5, "min_holdout_sharpe": 0.0},
+        }
+        r = run_strategy_walkforward(cost_bps=0.0, fx_series=pd.Series(1300.0, index=dates), prices=prices, config=cfg)
+        # zero-edge → Sharpe ~0, gate 통과 금지. 누설 있으면 +0.7 로 통과 → 실패.
+        assert abs(r["oos_sharpe_mean"]) < 0.5
+        assert r["gate"]["passed"] is False
+
+
 # ── frozen survivor universe ──────────────────────────────────
 
 
