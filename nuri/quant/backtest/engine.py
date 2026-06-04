@@ -17,7 +17,7 @@ from pathlib import Path
 import pandas as pd
 import vectorbt as vbt
 
-from nuri.core.db import query_df
+from nuri.core.db import query_df, save_backtest
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ def run_momentum_backtest(
     period: str = "3mo",
     top_n: int = 5,
     rebalance_days: int = 20,
+    persist: bool = False,
 ) -> dict:
     """모멘텀 기반 Top-N 전략 백테스트.
 
@@ -35,9 +36,10 @@ def run_momentum_backtest(
         period: 가격 데이터 기간
         top_n: 상위 N 종목에 투자
         rebalance_days: 리밸런싱 주기 (영업일)
+        persist: True 면 결과를 backtests 테이블에 1행 기록 (실측 구간 + 메트릭)
 
     Returns:
-        백테스트 결과 딕셔너리
+        백테스트 결과 딕셔너리 (데이터 부족 시 빈 dict)
     """
     # 가격 데이터 로드
     prices_df = query_df("SELECT ticker, date, close FROM prices ORDER BY date")
@@ -113,6 +115,9 @@ def run_momentum_backtest(
     result = {
         "strategy": f"Momentum Top-{top_n}",
         "period": period,
+        # 실제 백테스트된 가격 구간 (period 문자열이 아닌 실측 날짜)
+        "start_date": pivot.index.min().strftime("%Y-%m-%d"),
+        "end_date": pivot.index.max().strftime("%Y-%m-%d"),
         "rebalance_days": rebalance_days,
         "total_return_pct": round(total_return, 2),
         "sharpe_ratio": round(sharpe, 2),
@@ -120,6 +125,23 @@ def run_momentum_backtest(
         "win_rate_pct": round(win_rate, 1),
         "total_trades": int(stats.get("Total Trades", 0)),
     }
+
+    if persist:
+        save_backtest(
+            strategy_id=result["strategy"],
+            start_date=result["start_date"],
+            end_date=result["end_date"],
+            total_return=result["total_return_pct"],
+            sharpe=result["sharpe_ratio"],
+            max_drawdown=result["max_drawdown_pct"],
+            win_rate=result["win_rate_pct"],
+            params={
+                "period": period,
+                "top_n": top_n,
+                "rebalance_days": rebalance_days,
+                "total_trades": result["total_trades"],
+            },
+        )
 
     return result
 
@@ -155,5 +177,6 @@ if __name__ == "__main__":
         period=args.period,
         top_n=args.top_n,
         rebalance_days=args.rebalance,
+        persist=True,
     )
     print_backtest(result)
