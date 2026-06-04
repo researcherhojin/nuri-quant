@@ -83,11 +83,11 @@ describe("DecisionsPage", () => {
     expect(screen.getByText("-8.5%")).toBeInTheDocument();
   });
 
-  it("renders ticker links to detail page", async () => {
+  it("renders ticker links to the frozen decision provenance page", async () => {
     const { default: DecisionsPage } = await import("@/app/decisions/page");
     await act(async () => { render(await DecisionsPage()); });
     const link = screen.getByRole("link", { name: "AAA" });
-    expect(link).toHaveAttribute("href", "/ticker/AAA");
+    expect(link).toHaveAttribute("href", "/decisions/1");
   });
 
   it("renders action badges", async () => {

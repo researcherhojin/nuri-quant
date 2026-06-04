@@ -149,7 +149,7 @@ function DecisionTable({ decisions }: { decisions: Decision[] }) {
                 <td className="px-3 py-2 text-xs text-muted-foreground font-mono">{d.date}</td>
                 <td className="px-3 py-2">
                   <Link
-                    href={`/ticker/${d.ticker}`}
+                    href={`/decisions/${d.id}`}
                     className="text-emerald-400 hover:underline font-medium"
                   >
                     {d.ticker}
