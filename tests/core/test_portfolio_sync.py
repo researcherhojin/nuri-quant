@@ -1063,7 +1063,7 @@ class TestPortfolioSyncBranches:
         with get_db(db) as conn:
             conn.execute(
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
-                "VALUES ('emptycur', 'AAA', 10, 100, NULL)"
+                "VALUES ('demo', 'AAA', 10, 100, NULL)"
             )
 
         config_path = tmp_path / "portfolio.yaml"
@@ -1123,3 +1123,189 @@ class TestPortfolioSyncBranches:
         config_path.write_text("accounts:\n  main:\n    strategy: core\n    holdings:\n      AAA: 10\n")
         sync_portfolio_to_yaml(config_path=config_path, db_path=db)
         assert config_path.exists()
+
+
+class TestFirstBuyDate:
+    """first_buy_date first-seen 기록 + 보존 (트레일링 스톱 HWM 진입 앵커, #694 후속)."""
+
+    def _db(self, tmp_path, name="test.db"):
+        from nuri.core.db import init_db
+
+        db = tmp_path / name
+        init_db(db)
+        return db
+
+    def test_upsert_sets_first_buy_date_today(self, tmp_path):
+        """신규 종목 upsert → first_buy_date = today_kst() (first-seen)."""
+        from nuri.core.db import query, upsert_portfolio
+        from nuri.core.timezone import today_kst
+
+        db = self._db(tmp_path)
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "TSLA",
+                    "quantity": 10,
+                    "avg_price": 300.0,
+                    "currency": "USD",
+                    "sector": "EV",
+                }
+            ],
+            db_path=db,
+        )
+        rows = query("SELECT first_buy_date FROM portfolio WHERE ticker='TSLA'", db_path=db)
+        assert rows[0]["first_buy_date"] == today_kst()
+
+    def test_upsert_preserves_first_buy_date(self, tmp_path):
+        """재upsert(수량 변경) 시 기존 first_buy_date 보존."""
+        from nuri.core.db import get_db, query, upsert_portfolio
+
+        db = self._db(tmp_path)
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "TSLA",
+                    "quantity": 10,
+                    "avg_price": 300.0,
+                    "currency": "USD",
+                    "sector": "EV",
+                }
+            ],
+            db_path=db,
+        )
+        # 진입일을 과거로 강제 (이전 진입 시뮬레이션)
+        with get_db(db) as conn:
+            conn.execute("UPDATE portfolio SET first_buy_date='2026-01-02' WHERE ticker='TSLA'")
+        # 수량 변경 재upsert
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "TSLA",
+                    "quantity": 25,
+                    "avg_price": 310.0,
+                    "currency": "USD",
+                    "sector": "EV",
+                }
+            ],
+            db_path=db,
+        )
+        rows = query("SELECT quantity, first_buy_date FROM portfolio WHERE ticker='TSLA'", db_path=db)
+        assert rows[0]["quantity"] == 25  # 갱신됨
+        assert rows[0]["first_buy_date"] == "2026-01-02"  # 보존됨
+
+    def test_replace_account_preserves_existing_and_seeds_new(self, tmp_path):
+        """yaml→DB sync(DELETE+INSERT): 유지 종목은 진입일 보존, 신규는 today."""
+        from nuri.core.db import get_db, query, replace_portfolio_account
+        from nuri.core.timezone import today_kst
+
+        db = self._db(tmp_path)
+        replace_portfolio_account(
+            "test",
+            [
+                {
+                    "account": "test",
+                    "ticker": "TSLA",
+                    "quantity": 10,
+                    "avg_price": 300.0,
+                    "currency": "USD",
+                    "sector": "EV",
+                }
+            ],
+            db_path=db,
+        )
+        with get_db(db) as conn:
+            conn.execute("UPDATE portfolio SET first_buy_date='2026-01-02' WHERE ticker='TSLA'")
+        # 재sync: TSLA 유지(수량 변경) + NVDA 신규
+        replace_portfolio_account(
+            "test",
+            [
+                {
+                    "account": "test",
+                    "ticker": "TSLA",
+                    "quantity": 33,
+                    "avg_price": 320.0,
+                    "currency": "USD",
+                    "sector": "EV",
+                },
+                {
+                    "account": "test",
+                    "ticker": "NVDA",
+                    "quantity": 5,
+                    "avg_price": 130.0,
+                    "currency": "USD",
+                    "sector": "Semiconductor",
+                },
+            ],
+            db_path=db,
+        )
+        rows = {
+            r["ticker"]: r["first_buy_date"]
+            for r in query("SELECT ticker, first_buy_date FROM portfolio WHERE account='test'", db_path=db)
+        }
+        assert rows["TSLA"] == "2026-01-02"  # DELETE+INSERT 거쳐도 보존
+        assert rows["NVDA"] == today_kst()  # 신규 = first-seen today
+
+    def test_upsert_backfills_legacy_null(self, tmp_path):
+        """레거시 NULL first_buy_date 행을 재upsert 시 COALESCE 로 backfill (codex P1)."""
+        from nuri.core.db import get_db, query, upsert_portfolio
+        from nuri.core.timezone import today_kst
+
+        db = self._db(tmp_path)
+        # 컬럼 추가 전 만들어진 행 시뮬레이션 (first_buy_date NULL)
+        with get_db(db) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
+                "VALUES ('test', 'TSLA', 10, 300, 'USD')"
+            )
+        # 정상 upsert → NULL 이 today 로 backfill (전체 보유 활성화)
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "TSLA",
+                    "quantity": 12,
+                    "avg_price": 305.0,
+                    "currency": "USD",
+                    "sector": "EV",
+                }
+            ],
+            db_path=db,
+        )
+        rows = query("SELECT first_buy_date FROM portfolio WHERE ticker='TSLA'", db_path=db)
+        assert rows[0]["first_buy_date"] == today_kst()
+
+    def test_upsert_does_not_mutate_caller_dict(self, tmp_path):
+        """upsert 가 호출자 record dict 에 first_buy_date 를 박지 않음 (codex P2 — 모듈전역 재사용)."""
+        from nuri.core.db import upsert_portfolio
+
+        db = self._db(tmp_path)
+        record = {
+            "account": "test",
+            "ticker": "TSLA",
+            "quantity": 10,
+            "avg_price": 300.0,
+            "currency": "USD",
+            "sector": "EV",
+        }
+        upsert_portfolio([record], db_path=db)
+        assert "first_buy_date" not in record  # 호출자 객체 불변
+
+    def test_replace_account_does_not_mutate_caller_dict(self, tmp_path):
+        """replace_portfolio_account 가 호출자 record dict 를 변형하지 않음 (codex round2 cleanup)."""
+        from nuri.core.db import replace_portfolio_account
+
+        db = self._db(tmp_path)
+        record = {
+            "account": "test",
+            "ticker": "TSLA",
+            "quantity": 10,
+            "avg_price": 300.0,
+            "currency": "USD",
+            "sector": "EV",
+        }
+        replace_portfolio_account("test", [record], db_path=db)
+        assert "first_buy_date" not in record  # 진입일 미주입
+        assert "metadata" not in record  # metadata 도 호출자 dict 에 안 박힘
