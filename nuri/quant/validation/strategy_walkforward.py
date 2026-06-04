@@ -16,7 +16,12 @@ KRW→USD FX + 생존자 haircut 차감 후**의 KRW home-currency net return �
   보정 (제거 불가 — 실측 사실로 명시).
 - model 'fit' = train fold 에서 OOS net Sharpe 를 최대화하는 lookback 선택. 단순 plumbing
   이 아니라 in-sample 파라미터 선택 → strictly-OOS 평가 (López de Prado walk-forward 규율).
-- 승격(weight>0)은 이 결과 + max-drawdown 통과 후 **별도 STRATEGY PR**. 이 모듈은 측정만 한다.
+- **null-safe gate (#701)**: 독립 자산의 주기적 리밸런싱은 noise 에서도 양의 Sharpe(변동성
+  하베스팅)를 만들고 lookback argmax 는 선택 편향을 더한다. 따라서 절대 Sharpe 임계만으론
+  random-walk 도 통과한다. 대신 **순열 검정** — 수익률을 시간셔플해 동일 파이프라인을 N회
+  돌린 null 분포를 만들고, pooled OOS Sharpe 가 그 분포를 p<alpha 로 이겨야 통과한다.
+  리밸런싱 artifact + 선택 편향 모두 null 에 포함 → 깨끗한 비교 (Monte-Carlo permutation test).
+- 승격(weight>0)은 이 gate 통과 + max-drawdown 후 **별도 STRATEGY PR**. 이 모듈은 측정만 한다.
 
 WalkForwardValidator 가 결과를 walkforward_runs 에 기록하므로 /api/research/walkforward
 (P1a) 로 자동 surface 된다.
@@ -33,7 +38,12 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from nuri.agents.actors.walkforward_validator import WalkForwardValidator, _sharpe_from_returns
+from nuri.agents.actors.walkforward_validator import (
+    FoldSpec,
+    WalkForwardValidator,
+    _generate_folds,
+    _sharpe_from_returns,
+)
 from nuri.core.db import query_df
 
 _CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config" / "walkforward.yaml"
@@ -128,6 +138,55 @@ def _build_us_panel(db_path: Optional[Path] = None) -> pd.DataFrame:
     return pivot.dropna(axis=1, how="all").ffill()
 
 
+def _aligned_net_returns(
+    prices: pd.DataFrame,
+    fx_ret: pd.Series,
+    grid: list[int],
+    top_n: int,
+    rebalance_days: int,
+    cost_bps: float,
+    haircut_daily: float,
+    warmup: int,
+) -> dict[int, np.ndarray]:
+    """lookback 별 net return 시계열(warmup 이후, 동일 시작) → {L: np.ndarray}."""
+    return {
+        L: _strategy_net_returns(prices, fx_ret, L, top_n, rebalance_days, cost_bps, haircut_daily)
+        .iloc[warmup:]
+        .reset_index(drop=True)
+        .to_numpy()
+        for L in grid
+    }
+
+
+def _pooled_oos_sharpe(aligned: dict[int, np.ndarray], grid: list[int], fold_spec: dict, split: int) -> float:
+    """모든 OOS test-fold 수익률을 모아 단일 Sharpe (per-fold 평균보다 저분산).
+
+    각 fold: train 에서 lookback 선택 → 해당 test 수익률을 pool 에 누적. pool 전체로 Sharpe.
+    """
+    pooled: list[float] = []
+    for tr, te in _generate_folds(split, FoldSpec(**fold_spec)):
+        best_l = max(grid, key=lambda L: _sharpe_from_returns(aligned[L][tr]))
+        pooled.extend(aligned[best_l][te].tolist())
+    return _sharpe_from_returns(np.asarray(pooled)) if len(pooled) > 1 else 0.0
+
+
+def _permute_prices(prices: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
+    """각 종목 일별 수익률을 시간축 셔플 → 시계열 예측성(모멘텀) 파괴, 수익률 분포·t0 가격 보존.
+
+    permutation null 의 핵심: 동일 파이프라인을 '예측성 없는' 데이터에 적용해 리밸런싱
+    artifact + lookback 선택 편향을 null 분포로 포착한다.
+    """
+    rets = prices.pct_change()
+    out: dict[str, np.ndarray] = {}
+    for t in prices.columns:
+        r = rets[t].to_numpy()
+        idx = np.where(~np.isnan(r))[0]
+        shuffled = r.copy()
+        shuffled[idx] = r[rng.permutation(idx)]
+        out[str(t)] = prices[t].to_numpy()[0] * np.cumprod(1.0 + np.nan_to_num(shuffled))
+    return pd.DataFrame(out, index=prices.index)
+
+
 def run_strategy_walkforward(
     *,
     cost_bps: float,
@@ -206,15 +265,37 @@ def run_strategy_walkforward(
     )
     oos_sharpe = result.output.get("metrics", {}).get("aggregate", {}).get("sharpe_mean")
 
-    # FROZEN holdout: non-holdout 전체에서 고른 lookback 으로 holdout 1회 평가
+    # ── null-safe gate (#701): pooled OOS Sharpe + permutation null ──
+    # per-fold Sharpe 평균은 분산이 커 절대 임계만으론 noise 도 통과. pooled(전 OOS 수익률
+    # 단일 Sharpe) + 시간셔플 순열 null 로 리밸런싱 artifact + lookback 선택 편향을 동시 차감.
+    aligned_arr = {L: aligned[L].to_numpy() for L in grid}
+    real_pooled = _pooled_oos_sharpe(aligned_arr, grid, cfg["fold"], split)
+
+    perm_cfg = gate.get("permutation", {})
+    n_perm = int(perm_cfg.get("n", 200))
+    alpha = float(perm_cfg.get("alpha", 0.05))
+    rng = np.random.default_rng(int(perm_cfg.get("seed", 0)))
+    null_pooled = np.empty(n_perm)
+    for i in range(n_perm):
+        pa = _aligned_net_returns(
+            _permute_prices(prices, rng), fx_ret, grid, top_n, reb, cost_bps, haircut_daily, warmup
+        )
+        null_pooled[i] = _pooled_oos_sharpe(pa, grid, cfg["fold"], split)
+    # 무편향 Monte-Carlo p-value (+1 smoothing → p>0). real 이 null 분포를 이길수록 작다.
+    p_value = float((np.sum(null_pooled >= real_pooled) + 1) / (n_perm + 1)) if n_perm else 1.0
+    null_p95 = float(np.percentile(null_pooled, 95)) if n_perm else float("nan")
+
+    # FROZEN holdout: non-holdout 전체에서 고른 lookback 으로 holdout 1회 평가.
+    # 비대칭 의도: 순열 검정(통계 유의)은 walk-forward leg 가 binding gate 이고, holdout 은
+    # 절대 floor(>= min_holdout_sharpe)만 적용하는 sanity 확인. (holdout 순열은 단일 window
+    # 라 고분산 → 별도 STRATEGY PR 에서 필요 시 추가.)
     best_l_full = max(grid, key=lambda L: _sharpe_from_returns(aligned[L].iloc[:split].to_numpy()))
     holdout_ret = aligned[best_l_full].iloc[split:].to_numpy()
     holdout_sharpe = _sharpe_from_returns(holdout_ret)
     holdout_drawdown = _max_drawdown(holdout_ret)
 
-    passed = (
-        oos_sharpe is not None and oos_sharpe >= gate["min_oos_sharpe"] and holdout_sharpe >= gate["min_holdout_sharpe"]
-    )
+    # 통과 = 통계 유의(noise 초과) + 경제적 유의(최소 Sharpe) + holdout 비음수. 셋 다 (defense in depth).
+    passed = p_value < alpha and real_pooled >= gate["min_oos_sharpe"] and holdout_sharpe >= gate["min_holdout_sharpe"]
 
     return {
         "model_id": "momentum-topN-walkforward",
@@ -222,7 +303,8 @@ def run_strategy_walkforward(
         "n_folds": result.output.get("n_folds"),
         # outcome 은 Optional[Outcome] 타입이나 action=run 은 항상 PASS/WARN 설정
         "outcome": result.outcome.name if result.outcome is not None else "UNKNOWN",
-        "oos_sharpe_mean": oos_sharpe,
+        "oos_sharpe_mean": oos_sharpe,  # validator per-fold 평균 (audit 연속성)
+        "oos_sharpe_pooled": real_pooled,  # gate 입력 (저분산)
         "holdout_sharpe": holdout_sharpe,
         "holdout_max_drawdown": holdout_drawdown,
         "selected_lookback_holdout": best_l_full,
@@ -232,9 +314,13 @@ def run_strategy_walkforward(
         "cost_bps": cost_bps,
         "survivorship_haircut_bps_annual": cfg["costs"]["survivorship_haircut_bps_annual"],
         "holdout_frac": cfg["holdout"]["frac"],
+        # 순열 검정: real pooled OOS Sharpe 가 시간셔플 null 분포를 p<alpha 로 이겨야 통과
+        "permutation": {"n": n_perm, "p_value": p_value, "null_p95": null_p95},
         "gate": {
             "passed": bool(passed),
             "min_oos_sharpe": gate["min_oos_sharpe"],
             "min_holdout_sharpe": gate["min_holdout_sharpe"],
+            "alpha": alpha,
+            "p_value": p_value,
         },
     }
