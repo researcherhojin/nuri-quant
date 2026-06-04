@@ -44,7 +44,7 @@ from nuri.agents.actors.walkforward_validator import (
     _generate_folds,
     _sharpe_from_returns,
 )
-from nuri.core.db import query_df
+from nuri.core.db import query_df, save_backtest
 
 _CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config" / "walkforward.yaml"
 
@@ -73,8 +73,8 @@ def _portfolio_usd_returns(
 
     turnover ∈ [0,1]: 첫 진입 = 1.0(전량 배치), 이후 = 교체 비중(symmetric diff / 2N).
     """
-    rets = prices.pct_change()
-    mom = prices.pct_change(lookback)
+    rets = prices.pct_change(fill_method=None)
+    mom = prices.pct_change(lookback, fill_method=None)
     idx = prices.index
     daily = pd.Series(0.0, index=idx)
     turnover = pd.Series(0.0, index=idx)
@@ -176,7 +176,7 @@ def _permute_prices(prices: pd.DataFrame, rng: np.random.Generator) -> pd.DataFr
     permutation null 의 핵심: 동일 파이프라인을 '예측성 없는' 데이터에 적용해 리밸런싱
     artifact + lookback 선택 편향을 null 분포로 포착한다.
     """
-    rets = prices.pct_change()
+    rets = prices.pct_change(fill_method=None)
     out: dict[str, np.ndarray] = {}
     for t in prices.columns:
         r = rets[t].to_numpy()
@@ -194,6 +194,7 @@ def run_strategy_walkforward(
     prices: Optional[pd.DataFrame] = None,
     db_path: Optional[Path] = None,
     config: Optional[dict] = None,
+    persist: bool = False,
 ) -> dict[str, Any]:
     """전략 walk-forward 실행 → OOS net Sharpe + FROZEN holdout Sharpe/maxDD.
 
@@ -221,7 +222,7 @@ def run_strategy_walkforward(
     gate = cfg["gate"]
 
     frozen = list(prices.columns)
-    fx_ret = fx_series.pct_change().reindex(prices.index).fillna(0.0)
+    fx_ret = fx_series.pct_change(fill_method=None).reindex(prices.index).fillna(0.0)
 
     # lookback 별 net return 시계열 → 공통 warmup(=max lookback) 이후만 사용 (warmup 편향 제거)
     series = {L: _strategy_net_returns(prices, fx_ret, L, top_n, reb, cost_bps, haircut_daily) for L in grid}
@@ -297,6 +298,31 @@ def run_strategy_walkforward(
     # 통과 = 통계 유의(noise 초과) + 경제적 유의(최소 Sharpe) + holdout 비음수. 셋 다 (defense in depth).
     passed = p_value < alpha and real_pooled >= gate["min_oos_sharpe"] and holdout_sharpe >= gate["min_holdout_sharpe"]
 
+    if persist:
+        # 검증된 walk-forward 요약을 backtests 테이블에 1행 기록 (단일 소스 → /api/research/backtests).
+        # total_return/win_rate 은 walk-forward 가 산출 안 함 → NULL. 상세는 walkforward_runs.
+        save_backtest(
+            strategy_id="momentum-topN-walkforward",
+            start_date=pd.Timestamp(dates[0]).strftime("%Y-%m-%d"),
+            end_date=pd.Timestamp(dates[-1]).strftime("%Y-%m-%d"),
+            total_return=None,
+            sharpe=real_pooled,
+            max_drawdown=holdout_drawdown,
+            win_rate=None,
+            params={
+                "gate_passed": bool(passed),
+                "p_value": p_value,
+                "alpha": alpha,
+                "oos_sharpe_pooled": real_pooled,
+                "holdout_sharpe": holdout_sharpe,
+                "selected_lookback": best_l_full,
+                "n_folds": result.output.get("n_folds"),
+                "frozen_universe_n": len(frozen),
+                "cost_bps": cost_bps,
+            },
+            db_path=db_path,
+        )
+
     return {
         "model_id": "momentum-topN-walkforward",
         "walkforward_run_id": result.output.get("run_id"),
@@ -324,3 +350,63 @@ def run_strategy_walkforward(
             "p_value": p_value,
         },
     }
+
+
+def _load_fx_series(db_path: Optional[Path] = None) -> pd.Series:
+    """macro 의 usd_krw 일별 시계열 (KRW/USD). FX 필수 입력 — 없으면 ValueError."""
+    df = query_df("SELECT date, value FROM macro WHERE indicator='usd_krw' ORDER BY date", db_path=db_path)
+    if df.empty:
+        raise ValueError("usd_krw not in macro — FX 필수 (make collect 후 재시도)")
+    return pd.Series(df["value"].to_numpy(), index=pd.to_datetime(df["date"]))
+
+
+def run_strategy_validation(
+    cost_bps: float = 10.0,
+    db_path: Optional[Path] = None,
+    config: Optional[dict] = None,
+    persist: bool = True,
+) -> dict[str, Any]:
+    """CLI/verify 진입점: prices(DB) + usd_krw(macro) 로드 → walk-forward → (persist 시) backtests 기록.
+
+    엔진(run_momentum_backtest)의 0-trade 깨진 백테스트를 대체하는 단일 검증 경로. cost_bps
+    기본 10bps. fx 는 macro 에서 로드(필수). persist=True(make backtest) 면 backtests +
+    walkforward_runs 양쪽 기록, persist=False(verify check) 면 backtests 미기록.
+    """
+    fx = _load_fx_series(db_path)
+    return run_strategy_walkforward(cost_bps=cost_bps, fx_series=fx, db_path=db_path, config=config, persist=persist)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI: python -m nuri.quant.validation.strategy_walkforward [--cost-bps 10]"""
+    import argparse
+    import json as _json
+    import logging
+    import sys
+
+    logging.basicConfig(level=logging.INFO)
+    parser = argparse.ArgumentParser(prog="strategy-walkforward")
+    parser.add_argument("--cost-bps", type=float, default=10.0, help="거래비용 (bps, 필수 가정)")
+    args = parser.parse_args(argv)
+
+    try:
+        r = run_strategy_validation(cost_bps=args.cost_bps)
+    except ValueError as exc:
+        print(_json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        return 2
+
+    print(f"\n{'=' * 52}")
+    print("  Strategy Walk-Forward 검증 (momentum top-N)")
+    print(f"{'=' * 52}")
+    print(f"  Universe:           {r['frozen_universe_n']} US tickers | folds {r['n_folds']}")
+    print(f"  OOS pooled Sharpe:  {r['oos_sharpe_pooled']:>+8.3f}")
+    print(f"  순열 p-value:        {r['permutation']['p_value']:>8.3f}  (null p95 {r['permutation']['null_p95']:+.2f})")
+    print(f"  Holdout Sharpe:     {r['holdout_sharpe']:>+8.3f}  (maxDD {r['holdout_max_drawdown']:+.2f})")
+    print(f"  >>> GATE PASSED:    {r['gate']['passed']}")
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())

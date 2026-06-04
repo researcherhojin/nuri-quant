@@ -400,7 +400,7 @@ pairs:
 # BACKTEST
 # ═══════════════════════════════════════════════════════════════
 backtest:
-	$(PYTHON) -m nuri.quant.backtest.engine
+	$(PYTHON) -m nuri.quant.validation.strategy_walkforward
 
 backtest-ls:
 	$(PYTHON) -m nuri.trading.strategy.ls_backtest
