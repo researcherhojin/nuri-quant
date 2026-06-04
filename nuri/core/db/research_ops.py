@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from ..timezone import kst_now
 from .connection import get_db
 
 _HYPOTHESIS_STATUSES = ("open", "validated", "rejected", "expired")
@@ -370,6 +371,49 @@ def log_foundation_benchmark(
                 walkforward_run_id,
                 notes,
                 actor_run_id,
+            ),
+        )
+        return cursor.lastrowid or 0
+
+
+def save_backtest(
+    strategy_id: str,
+    start_date: str,
+    end_date: str,
+    total_return: float,
+    sharpe: float,
+    max_drawdown: float,
+    win_rate: float,
+    params: Optional[dict] = None,
+    created_at: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """백테스트 결과 1행 기록 (backtests 테이블 — 그동안 writer 부재, Phase 3 placeholder 활성화).
+
+    엔진(run_momentum_backtest)이 반환한 메트릭을 영속화한다. start_date/end_date 는
+    실제 백테스트된 가격 구간(영업일 window)이며, period 문자열이 아닌 실측 날짜다.
+    params 는 재현용 설정 dict(JSON 저장). created_at None → kst_now() (KST invariant,
+    backtests 테이블엔 created_at DEFAULT 가 없어 명시 기록).
+
+    Returns: lastrowid (backtest id).
+    """
+    stamp = created_at or kst_now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO backtests
+               (strategy_id, start_date, end_date, total_return, sharpe,
+                max_drawdown, win_rate, params, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                strategy_id,
+                start_date,
+                end_date,
+                float(total_return),
+                float(sharpe),
+                float(max_drawdown),
+                float(win_rate),
+                json.dumps(params or {}, default=str),
+                stamp,
             ),
         )
         return cursor.lastrowid or 0
