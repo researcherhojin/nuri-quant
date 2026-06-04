@@ -115,3 +115,11 @@ class TestSaveBacktest:
         assert r["sharpe"] is None
         assert r["max_drawdown"] is None
         assert r["win_rate"] is None
+
+    def test_none_metrics_stored_as_null(self, db_path):
+        # walk-forward 는 total_return/win_rate 미산출 → None 전달 시 NULL 저장 (inf 와 구분)
+        _save_minimal(db_path, total_return=None, sharpe=0.5, max_drawdown=-0.1, win_rate=None)
+        r = query("SELECT * FROM backtests", db_path=db_path)[0]
+        assert r["total_return"] is None
+        assert r["win_rate"] is None
+        assert r["sharpe"] == 0.5

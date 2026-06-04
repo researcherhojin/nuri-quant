@@ -19,6 +19,7 @@ Nuri-Quant 기능 검증 스크립트 — 모든 분석을 실행하고 결과�
     python scripts/verify.py
     python scripts/verify.py --skip-backtest   # 백테스트 제외 (빠르게)
 """
+
 import argparse
 import json
 import logging
@@ -40,6 +41,7 @@ logger = logging.getLogger("verify")
 def create_report_dir() -> Path:
     """오늘 날짜 리포트 디렉토리 생성 (KST)."""
     from nuri.core.timezone import today_kst
+
     report_dir = ROOT / "data" / "reports" / today_kst()
     report_dir.mkdir(parents=True, exist_ok=True)
     return report_dir
@@ -133,15 +135,22 @@ def verify_correlation(report_dir: Path, summary: list[str]) -> None:
     # 히트맵을 리포트 디렉토리에 저장
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import seaborn as sns
 
         fig, ax = plt.subplots(figsize=(12, 10))
         sns.heatmap(
-            corr, annot=True, fmt=".2f",
-            cmap="RdYlGn_r", center=0, vmin=-1, vmax=1,
-            ax=ax, square=True,
+            corr,
+            annot=True,
+            fmt=".2f",
+            cmap="RdYlGn_r",
+            center=0,
+            vmin=-1,
+            vmax=1,
+            ax=ax,
+            square=True,
         )
         ax.set_title("Nuri-Quant Portfolio Correlation Matrix")
         fig.tight_layout()
@@ -196,28 +205,24 @@ def verify_factors(report_dir: Path, summary: list[str]) -> None:
 
 
 def verify_backtest(report_dir: Path, summary: list[str]) -> None:
-    """백테스트 검증."""
-    logger.info("─── 백테스트 (VectorBT) ───")
-    from nuri.quant.backtest.engine import print_backtest, run_momentum_backtest
+    """전략 검증 (walk-forward null-safe gate — #701/#702 단일 경로)."""
+    logger.info("─── Strategy Walk-Forward 검증 ───")
+    from nuri.quant.validation.strategy_walkforward import run_strategy_validation
 
-    result = run_momentum_backtest(top_n=5, rebalance_days=20)
-    if not result:
-        summary.append("[SKIP] 백테스트: 데이터 부족")
+    try:
+        result = run_strategy_validation(cost_bps=10.0, persist=False)  # check-only (DB 미기록)
+    except ValueError as exc:
+        summary.append(f"[SKIP] walk-forward: {exc}")
         return
 
-    with open(report_dir / "backtest.json", "w") as f:
+    with open(report_dir / "walkforward.json", "w") as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
-    print_backtest(result)
 
-    # tearsheet도 리포트 디렉토리로 복사
-    tearsheet_src = ROOT / "data" / "exports" / "backtest_tearsheet.html"
-    if tearsheet_src.exists():
-        import shutil
-        shutil.copy2(tearsheet_src, report_dir / "tearsheet.html")
-
-    ret = result.get("total_return_pct", 0)
-    sharpe = result.get("sharpe_ratio", 0)
-    summary.append(f"[OK] 백테스트: 수익률 {ret:+.1f}%, Sharpe {sharpe:.2f}")
+    gate = result["gate"]
+    verdict = "PASS" if gate["passed"] else "FAIL"
+    summary.append(
+        f"[OK] walk-forward: OOS Sharpe {result['oos_sharpe_pooled']:+.2f}, p={gate['p_value']:.3f}, gate {verdict}"
+    )
 
 
 def verify_performance(report_dir: Path, summary: list[str]) -> None:
@@ -241,6 +246,7 @@ def verify_performance(report_dir: Path, summary: list[str]) -> None:
     # HTML 티어시트를 리포트 디렉토리에도 생성
     try:
         import quantstats as qs
+
         qs.reports.html(
             port,
             benchmark=bench if not bench.empty else None,
@@ -432,10 +438,10 @@ def main():
 
     # 요약 저장 (KST timestamp)
     from nuri.core.timezone import kst_now
+
     summary_text = "\n".join(summary)
     (report_dir / "summary.txt").write_text(
-        f"Nuri-Quant 검증 결과 — {kst_now().strftime('%Y-%m-%d %H:%M')}\n"
-        f"{'=' * 50}\n{summary_text}\n",
+        f"Nuri-Quant 검증 결과 — {kst_now().strftime('%Y-%m-%d %H:%M')}\n{'=' * 50}\n{summary_text}\n",
         encoding="utf-8",
     )
 

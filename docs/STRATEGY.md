@@ -227,7 +227,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 5,892 tests, 264 files (statement coverage **100%**, 2026-05-06) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 5,892 tests, 263 files (statement coverage **100%**, 2026-05-06) |
 | Frontend tests | 목표 ≥ 90% | 1380 tests, 125 files |
 | E2E | 핵심 flow | 57 Playwright (8 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
@@ -495,7 +495,7 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA | `nuri/core/freshness.py` |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 | `nuri/trading/agents/` |
 | [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | Risk Parity | `nuri/analysis/rebalance.py` |
-| [VectorBT](https://vectorbt.dev/) | 벡터 백테스트 | `nuri/quant/backtest/engine.py` |
+| [López de Prado](https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086) | Walk-forward · 순열 검정 null-safe gate (#701/#702) | `nuri/quant/validation/strategy_walkforward.py` |
 ### UX
 | 출처 | 참고 |
 | [Ghostfolio](https://github.com/ghostfolio/ghostfolio) | 미니멀 대시보드, progressive disclosure |

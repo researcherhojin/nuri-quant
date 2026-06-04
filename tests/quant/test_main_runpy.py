@@ -106,13 +106,14 @@ class TestFactorsCompositeMainRunpy:
 
 
 class TestBacktestMainRunpy:
-    def test_engine_main(self, monkeypatch, db_path_mp):
-        """engine main: run_momentum_backtest with empty data → degraded result."""
-        # Empty DB → empty pivot → backtest returns zero/null result
-        out = _run_module("nuri.quant.backtest.engine", monkeypatch, argv=["engine", "--period", "5d"])
-        # Either prints backtest summary OR fails gracefully — tolerate either via stdout content
-        # Verify SystemExit code 0 (already enforced by _run_module)
-        assert isinstance(out, str)
+    def test_strategy_walkforward_main(self, monkeypatch, db_path_mp):
+        """strategy_walkforward main: 빈 DB → usd_krw 부재 → graceful error(exit 2). __main__ guard 커버."""
+        monkeypatch.setattr(sys, "argv", ["strategy_walkforward"])
+        monkeypatch.setattr(sys, "stdout", io.StringIO())
+        monkeypatch.setattr(sys, "stderr", io.StringIO())
+        with pytest.raises(SystemExit) as exc:
+            runpy.run_module("nuri.quant.validation.strategy_walkforward", run_name="__main__")
+        assert exc.value.code == 2  # FX 부재 graceful error
 
     def test_optimizer_main(self, monkeypatch, db_path_mp):
         """optimizer main without --signal: optimize_all branch."""

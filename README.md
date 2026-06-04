@@ -138,7 +138,7 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 
 ![pandas](https://img.shields.io/badge/pandas-150458?logo=pandas&logoColor=white)
 ![TA-Lib](https://img.shields.io/badge/TA--Lib-indicators-2C3E50)
-![VectorBT](https://img.shields.io/badge/VectorBT-backtest-orange)
+![walk-forward](https://img.shields.io/badge/walk--forward-null--safe_gate-orange)
 ![OpenBB](https://img.shields.io/badge/OpenBB-data-FFD23F)
 ![Riskfolio-Lib](https://img.shields.io/badge/Riskfolio--Lib-optimization-lightgrey)
 ![yfinance](https://img.shields.io/badge/yfinance-market_data-purple)
@@ -211,7 +211,7 @@ The reference operator setup runs across two Apple Silicon Macs (MBP dev → Mac
 | [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Decision Intelligence pattern |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA (PASS/WARN/FAIL) |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Multi-agent consensus pattern |
-| [VectorBT](https://vectorbt.dev/) · [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) · [OpenBB](https://docs.openbb.co/) | Backtest · optimization · data |
+| [López de Prado](https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086) · [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) · [OpenBB](https://docs.openbb.co/) | Walk-forward null-safe gate · optimization · data |
 
 Academic foundations: O'Neil _CAN SLIM_, Minervini _SEPA_, Shefrin & Statman 1985 (disposition effect), Markowitz, Damodaran, Bernstein.
 
