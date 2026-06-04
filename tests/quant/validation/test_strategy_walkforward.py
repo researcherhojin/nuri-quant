@@ -19,6 +19,7 @@ import pytest
 from nuri.agents.actors.walkforward_validator import _sharpe_from_returns
 from nuri.quant.validation.strategy_walkforward import (
     _build_us_panel,
+    _load_wf_config,
     _max_drawdown,
     _portfolio_usd_returns,
     _strategy_net_returns,
@@ -33,7 +34,11 @@ SMALL_CFG = {
     "fold": {"kind": "rolling", "train_size": 10, "test_size": 5, "step": 5},
     "holdout": {"frac": 0.2},
     "costs": {"survivorship_haircut_bps_annual": 200},
-    "gate": {"min_oos_sharpe": 0.5, "min_holdout_sharpe": 0.0},
+    "gate": {
+        "min_oos_sharpe": 0.5,
+        "min_holdout_sharpe": 0.0,
+        "permutation": {"n": 10, "alpha": 0.05, "seed": 0},  # 테스트는 소표본 (속도)
+    },
 }
 
 
@@ -162,6 +167,29 @@ class TestIntegration:
         assert len(rows) == 1
         assert rows[0]["model_id"] == "momentum-topN-walkforward"
 
+    def test_loads_real_config(self):
+        # config=None 경로의 _load_wf_config (fast unit — 전체 파이프라인 불필요)
+        cfg = _load_wf_config()
+        assert "strategy" in cfg and "fold" in cfg
+        assert "permutation" in cfg["gate"]  # #701 순열 블록 존재
+
+    def test_run_builds_panel_from_db(self, db_path_mp):
+        # prices=None → _build_us_panel(DB) 경로 (fast — SMALL_CFG, 소표본 순열)
+        from nuri.core.db import get_db
+
+        p = _panel(n=30)
+        with get_db(db_path_mp) as conn:
+            conn.executemany(
+                "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
+                [(t, d.strftime("%Y-%m-%d"), float(p.loc[d, t])) for t in p.columns for d in p.index],
+            )
+        r = run_strategy_walkforward(
+            cost_bps=10.0, fx_series=_flat_fx(p.index), config=SMALL_CFG
+        )  # prices 미지정 → DB 패널
+        assert r["frozen_universe_n"] == 4
+        assert "oos_sharpe_pooled" in r
+
+    @pytest.mark.slow  # 실제 config = 200 순열 × 520-row 패널 (heavy integration smoke)
     def test_end_to_end_from_db_with_real_config(self, db_path_mp):
         # config/prices 모두 미지정 → 실제 config/walkforward.yaml 로드 + _build_us_panel(DB) 경로.
         # 실제 config 는 train 252 + holdout 0.2 → warmup 120 후 충분한 row 시드 (520).
@@ -237,6 +265,72 @@ class TestNoSameBarLookahead:
         daily, _ = _portfolio_usd_returns(prices, lookback=2, top_n=1, rebalance_days=2)
         assert daily.iloc[2] == pytest.approx(0.0)  # 첫 선택일 = 보유 전 → 0
         assert daily.iloc[3] == pytest.approx(0.1, rel=1e-9)  # 다음 bar 부터 +10% 적립
+
+
+# ── #701 null-safe gate (permutation 검정) ────────────────────
+
+
+class TestNullSafeGate:
+    """#701: 순열 검정으로 noise 가 gate 를 통과하지 못한다.
+
+    독립 random-walk 의 주기적 리밸런싱은 양의 Sharpe(변동성 하베스팅) + lookback 선택
+    편향을 만들지만, 동일 파이프라인을 시간셔플 null 에도 적용하므로 real ≈ null → p≥alpha
+    → 통과 실패. 기존 절대-Sharpe gate(min 0.5)는 noise 를 ~27% 통과시켰다.
+    """
+
+    CFG = {
+        "strategy": {"lookback_grid": [10, 20], "top_n": 3, "rebalance_days": 10},
+        "fold": {"kind": "rolling", "train_size": 60, "test_size": 20, "step": 20},
+        "holdout": {"frac": 0.2},
+        "costs": {"survivorship_haircut_bps_annual": 0},
+        "gate": {
+            "min_oos_sharpe": 0.5,
+            "min_holdout_sharpe": 0.0,
+            "permutation": {"n": 30, "alpha": 0.05, "seed": 0},
+        },
+    }
+
+    @staticmethod
+    def _rw(seed, n=260, n_tick=12):
+        rng = np.random.default_rng(seed)
+        dates = pd.date_range("2020-01-01", periods=n, freq="B")
+        prices = pd.DataFrame(
+            {f"T{j}": 100 * np.exp(np.cumsum(rng.normal(0.0, 0.02, n))) for j in range(n_tick)},
+            index=dates,
+        )
+        return prices, dates
+
+    def _run(self, seed):
+        prices, dates = self._rw(seed)
+        return run_strategy_walkforward(
+            cost_bps=0.0, fx_series=pd.Series(1300.0, index=dates), prices=prices, config=self.CFG
+        )
+
+    def test_random_walk_does_not_pass_gate(self, db_path_mp):
+        r = self._run(7)  # 결정론적 — noise → p≈0.84
+        assert r["permutation"]["p_value"] >= self.CFG["gate"]["permutation"]["alpha"]
+        assert r["gate"]["passed"] is False
+
+    def test_high_noise_sharpe_still_rejected(self, db_path_mp):
+        # seed 11: pooled OOS = +2.84 (구 절대-gate min 0.5 통과했을 값) 이지만 동일 절차가
+        # noise 에서도 그만큼 만들어내므로 p≈0.10 → 통과 실패. 이게 #701 핵심.
+        r = self._run(11)
+        assert r["oos_sharpe_pooled"] > 0.5  # 구 절대 floor 는 통과
+        assert r["gate"]["passed"] is False  # 순열 gate 는 거부
+        assert r["permutation"]["p_value"] >= self.CFG["gate"]["permutation"]["alpha"]
+
+    def test_p_value_deterministic(self, db_path_mp):
+        a = self._run(7)["permutation"]["p_value"]
+        b = self._run(7)["permutation"]["p_value"]
+        assert a == b  # seed 고정 → 재현 (gate 판정 안정)
+
+    def test_result_reports_pooled_and_p_value(self, db_path_mp):
+        r = self._run(1)
+        assert "oos_sharpe_pooled" in r
+        assert 0.0 < r["permutation"]["p_value"] <= 1.0
+        assert "null_p95" in r["permutation"]
+        assert r["gate"]["alpha"] == 0.05
+        assert r["gate"]["p_value"] == r["permutation"]["p_value"]
 
 
 # ── frozen survivor universe ──────────────────────────────────
