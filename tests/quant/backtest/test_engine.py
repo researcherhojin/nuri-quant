@@ -324,10 +324,20 @@ class TestPersist:
         assert r["start_date"] == result["start_date"]
         assert r["end_date"] == result["end_date"]
 
-    def test_persist_false_writes_nothing(self, db_path_mp, stubbed_quantstats):
-        """기본값 persist=False → DB 미기록 (verify.py 등 read-only 호출 보호)."""
+    def test_default_call_writes_nothing(self, db_path_mp, stubbed_quantstats):
+        """persist 인자 없이 호출(verify.py:203 스타일) → DB 미기록.
+
+        default 가 False 임을 시그니처+동작 양쪽에서 잠근다 — production data/portfolio.db
+        오염 방지. default 가 True 로 뒤집히거나 persist 분기가 제거되면 이 테스트가 깨진다.
+        """
+        import inspect
+
         from nuri.core.db import query
         from nuri.quant.backtest import engine
+
+        # 시그니처 레벨 잠금: default 자체가 False (read-only 호출 보호 계약)
+        sig = inspect.signature(engine.run_momentum_backtest)
+        assert sig.parameters["persist"].default is False
 
         prices = _make_prices_df(n_days=60)
         pf = _make_stub_portfolio()
@@ -335,6 +345,6 @@ class TestPersist:
             patch.object(engine, "query_df", return_value=prices),
             patch.object(engine.vbt.Portfolio, "from_signals", return_value=pf),
         ):
-            engine.run_momentum_backtest(top_n=3, persist=False)
+            engine.run_momentum_backtest(top_n=3)  # persist 인자 없음 → default 적용
 
         assert query("SELECT * FROM backtests", db_path=db_path_mp) == []
