@@ -28,6 +28,7 @@ from slowapi.util import get_remote_address
 from nuri.api.routes import (
     actions,
     agents,
+    alpha,
     coverage,
     dashboard,
     decisions,
@@ -124,6 +125,7 @@ app.include_router(external.router, prefix="/api")
 app.include_router(targets.router, prefix="/api")
 app.include_router(trades.router, prefix="/api")
 app.include_router(decisions.router, prefix="/api")
+app.include_router(alpha.router, prefix="/api")
 app.include_router(learning_memory.router, prefix="/api")
 
 
