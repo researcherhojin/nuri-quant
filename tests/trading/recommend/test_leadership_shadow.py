@@ -6,7 +6,7 @@
 
 import pytest
 
-from nuri.trading.recommend.buy_candidate_emitter import _score_ticker
+from nuri.trading.recommend.buy_candidate_emitter import _build_why_now, _score_ticker
 
 FACTOR = {"composite": 0.7}
 PRICE = {"ret_5d": 2.0, "breakout_pct": 1.0, "close": 100.0}
@@ -16,15 +16,29 @@ SHADOW_W = {**LEGACY_W, "rs_rank": 0.0, "dollar_volume": 0.0}
 
 class TestLeadershipShadow:
     def test_adding_shadow_weights_keeps_legacy_score(self):
-        # config 에 rs_rank/dollar_volume(=0) 추가 + 값 전달해도 점수는 legacy 와 동일
+        # config 에 rs_rank/dollar_volume(=0) 추가 + 값 전달해도 점수는 legacy 와 IEEE-exact 동일
         legacy, _ = _score_ticker("X", FACTOR, PRICE, 50.0, LEGACY_W)
         shadow, _ = _score_ticker("X", FACTOR, PRICE, 50.0, SHADOW_W, rs_rank=95.0, dollar_volume=2.0)
-        assert legacy == pytest.approx(shadow)
+        assert legacy == shadow  # x + 0.0*finite == x (strict)
 
     def test_weight_zero_invariant_to_leadership_values(self):
         none_lead, _ = _score_ticker("X", FACTOR, PRICE, 50.0, SHADOW_W)
         strong_lead, _ = _score_ticker("X", FACTOR, PRICE, 50.0, SHADOW_W, rs_rank=99.0, dollar_volume=2.4)
-        assert none_lead == pytest.approx(strong_lead)  # weight=0 → 값 무관
+        assert none_lead == strong_lead  # weight=0 → 값 무관 (strict)
+
+    def test_why_now_ignores_shadow_channels(self):
+        # rs_rank/dollar_volume 이 sources 최댓값이어도 why_now 는 라이브 채널만 본다 (진짜 shadow)
+        sources = {
+            "factor": 60.0,
+            "momentum": 55.0,
+            "rsi": 50.0,
+            "breakout": 50.0,
+            "rs_rank": 99.0,  # shadow 최댓값
+            "dollar_volume": 90.0,
+        }
+        why = _build_why_now(sources, {"ret_5d": 1.0, "breakout_pct": 0.0}, 50.0)
+        assert "Multi-factor" in why  # factor(60) 가 라이브 최댓값 → factor 텍스트
+        assert "Multi-source" not in why  # shadow argmax fallthrough 아님
 
     def test_sources_expose_shadow_channels(self):
         _, sources = _score_ticker("X", FACTOR, PRICE, 50.0, SHADOW_W, rs_rank=95.0, dollar_volume=2.0)

@@ -345,9 +345,16 @@ def _score_ticker(
 
 
 def _build_why_now(sources: dict[str, float], price: dict[str, float], rsi: float | None) -> str:
-    """Single-sentence catalyst from strongest source."""
-    top = max(sources.items(), key=lambda kv: kv[1])
-    name, val = top
+    """Single-sentence catalyst from strongest source.
+
+    P2 leadership shadow 채널(rs_rank/dollar_volume)은 weight=0 이므로 why_now 후보에서
+    제외한다 — 점수뿐 아니라 brief 텍스트도 라이브 무변경 (진짜 shadow). 승격(weight>0) 시
+    별도 STRATEGY PR 에서 leadership 분기를 추가한다.
+    """
+    live = {k: v for k, v in sources.items() if k in ("factor", "momentum", "rsi", "breakout")}
+    if not live:
+        return "Multi-source 강세"  # 라이브 채널 부재 (정상 경로엔 4채널 항상 존재 — 방어)
+    name, val = max(live.items(), key=lambda kv: kv[1])
     if name == "factor":
         return f"Multi-factor 상위 (composite {val:.0f}/100)"
     if name == "momentum":
@@ -356,12 +363,11 @@ def _build_why_now(sources: dict[str, float], price: dict[str, float], rsi: floa
         if rsi is not None and rsi <= 35:
             return f"RSI {rsi:.0f} 과매도 반등 setup"
         return f"RSI {rsi:.0f} 정상 구간 (overbought 페널티 없음)" if rsi else "RSI 정상"
-    if name == "breakout":
-        bo = price.get("breakout_pct", 0)
-        if bo >= 0:
-            return f"30d 고가 돌파 +{bo:.1f}%"
-        return f"30d 고가 -{abs(bo):.1f}% 근접 (pullback)"
-    return "Multi-source 강세"
+    # name == "breakout" (live 의 유일 잔여 키)
+    bo = price.get("breakout_pct", 0)
+    if bo >= 0:
+        return f"30d 고가 돌파 +{bo:.1f}%"
+    return f"30d 고가 -{abs(bo):.1f}% 근접 (pullback)"
 
 
 def emit_buy_candidates(
