@@ -53,7 +53,7 @@ def alpha_summary() -> dict:
 
     for r in rows:
         w = r["w"]
-        if w not in buckets:
+        if w not in buckets:  # pragma: no cover — SQL 이 IN (7,14,30) 으로 이미 필터, 방어용
             continue
         rr = r["rr"]
         if rr is None:
