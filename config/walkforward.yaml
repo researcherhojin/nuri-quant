@@ -1,0 +1,32 @@
+# 전략 walk-forward 검증 — pre-registered 파라미터 (P1b 검증 창고)
+#
+# 모든 값은 *결과를 보기 전에* commit 된다 (사후 선택 편향 방지).
+# 변경은 STRATEGY PR + 근거 필요 (config-driven invariant — 코드 하드코딩 금지).
+# 거래비용(cost_bps)·FX(fx_series)는 여기 두지 않는다 — 매 run 의 필수 입력으로
+# 호출자가 명시해야 한다 (gross/통화-naive 검증 차단 gate).
+
+strategy:
+  lookback_grid: [20, 60, 120]   # 각 train fold 에서 선택할 모멘텀 lookback 후보 (영업일)
+  top_n: 5                       # 상위 N 종목 동일가중
+  rebalance_days: 20             # 리밸런싱 주기 (영업일)
+
+fold:
+  kind: rolling                  # rolling | expanding
+  train_size: 252                # ~1년 in-sample (lookback 선택)
+  test_size: 63                  # ~1분기 OOS 평가
+  step: 63                       # 다음 fold 이동 (= test_size, non-overlapping)
+
+holdout:
+  frac: 0.2                      # 최근 20% = FROZEN holdout. walk-forward 가 보지 않고
+                                 # 선택된 lookback 으로 1회 최종 평가 (P2-P6 미열람)
+
+costs:
+  survivorship_haircut_bps_annual: 200   # 생존자-only universe 상승편향 보정 (연 2%, 일할 차감)
+
+gate:
+  min_oos_sharpe: 0.5            # 승격 전제 최소 walk-forward OOS net Sharpe (pre-registered PASS)
+  min_holdout_sharpe: 0.0        # FROZEN holdout 최소 net Sharpe (음수면 FAIL)
+  # ⚠️ 알려진 한계: lookback_grid 위 argmax-Sharpe 선택은 noise 에서도 약한 양의 Sharpe 를
+  # 만든다(다중비교 편향). same-bar lookahead 는 제거됐으나 이 gate 만으로 null-edge 를
+  # 완전히 차단하지 못한다. 승격 STRATEGY PR 은 nested-CV/벤치마크 대비를 추가로 요구할 것.
+  # (별도 이슈 — 본 P1b 스코프 아님)
