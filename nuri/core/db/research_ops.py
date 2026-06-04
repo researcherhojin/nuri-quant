@@ -377,8 +377,10 @@ def log_foundation_benchmark(
         return cursor.lastrowid or 0
 
 
-def _finite_or_none(x: float) -> float | None:
-    """비유한값(inf/-inf/nan) → None. 유한 float 만 그대로 반환."""
+def _finite_or_none(x: Optional[float]) -> Optional[float]:
+    """None/비유한값(inf/-inf/nan) → None. 유한 float 만 그대로 반환."""
+    if x is None:
+        return None
     f = float(x)
     return f if math.isfinite(f) else None
 
@@ -387,20 +389,20 @@ def save_backtest(
     strategy_id: str,
     start_date: str,
     end_date: str,
-    total_return: float,
-    sharpe: float,
-    max_drawdown: float,
-    win_rate: float,
+    total_return: Optional[float],
+    sharpe: Optional[float],
+    max_drawdown: Optional[float],
+    win_rate: Optional[float],
     params: Optional[dict] = None,
     created_at: Optional[str] = None,
     db_path: Optional[Path] = None,
 ) -> int:
-    """백테스트 결과 1행 기록 (backtests 테이블 — 그동안 writer 부재, Phase 3 placeholder 활성화).
+    """백테스트/walk-forward 요약 1행 기록 (backtests 테이블).
 
-    엔진(run_momentum_backtest)이 반환한 메트릭을 영속화한다. start_date/end_date 는
-    실제 백테스트된 가격 구간(영업일 window)이며, period 문자열이 아닌 실측 날짜다.
-    params 는 재현용 설정 dict(JSON 저장). created_at None → kst_now() (KST invariant,
-    backtests 테이블엔 created_at DEFAULT 가 없어 명시 기록).
+    검증된 walk-forward(strategy_walkforward) 요약을 영속화한다. start_date/end_date 는
+    실측 가격 구간이다. metric(total_return/sharpe/...)은 산출 안 된 항목이면 None → NULL.
+    params 는 gate 판정·p-value 등 요약 dict(JSON 저장). created_at None → kst_now()
+    (KST invariant, backtests 테이블엔 created_at DEFAULT 가 없어 명시 기록).
 
     비유한 메트릭(inf/nan)은 NULL 로 저장한다. thin-data 백테스트(0 trades → inf Sharpe /
     nan MDD)가 창고에 garbage 를 남기지 않도록 writer 경계에서 차단 — JSON Infinity/NaN
