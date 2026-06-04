@@ -57,6 +57,22 @@ class TestBacktestsEndpoint:
     def test_limit_clamped_low(self, client):
         assert client.get("/api/research/backtests?limit=0").status_code == 422
 
+    def test_null_params_degrades_to_empty(self, client):
+        # save_backtest 는 항상 "{}" 를 쓰지만, 향후/수동 writer 가 params=NULL 행을
+        # 남길 수 있다. 엔드포인트는 NULL → {} 로 방어 (_loads `if not raw` 경로).
+        from nuri.core.db import get_db
+
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO backtests
+                   (strategy_id, start_date, end_date, total_return, sharpe,
+                    max_drawdown, win_rate, params, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                ("S", "2026-01-01", "2026-02-01", 1.0, 0.5, -2.0, 50.0, None, "2026-06-05 00:00:00"),
+            )
+        bt = client.get("/api/research/backtests").json()["backtests"][0]
+        assert bt["params"] == {}
+
 
 class TestWalkforwardEndpoint:
     def test_empty(self, client):
