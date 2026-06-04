@@ -12,6 +12,15 @@ weights:
   momentum_5d: 0.25           # 단기 추세 — 5d % return
   technical_rsi: 0.15         # RSI < 70 정상, > 80 과열 페널티
   breakout_30d: 0.20          # 30d high 돌파 = 강한 신호
+  # P2 leadership shadow — weight=0 (라이브 점수 무변경, sources 노출만).
+  # 승격(weight>0)은 P1 walk-forward + max-drawdown 통과 후 별도 STRATEGY PR.
+  rs_rank: 0.0                # cross-sectional RS percentile (리더 순위)
+  dollar_volume: 0.0          # 거래대금 surge (crowding 가드 — 과열 추격 페널티)
+
+# ─── Leadership 팩터 파라미터 (P2 shadow, relative_strength.compute_leadership) ──
+leadership:
+  lookback: 120               # RS 수익률 + 거래대금 baseline (영업일). 120d 히스토리 floor 겸용.
+  surge_window: 20            # 최근 거래대금 평균 구간 (영업일)
 
 # ─── Quality bar (final score 0-100, when to emit) ──────────────────
 quality_bar:
