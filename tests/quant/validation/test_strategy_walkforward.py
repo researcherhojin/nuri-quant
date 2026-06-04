@@ -353,3 +353,89 @@ class TestFrozenUniverse:
 
     def test_build_panel_empty_db(self, db_path):
         assert _build_us_panel(db_path=db_path).empty
+
+
+# ── persist + CLI (단일 검증 경로 — #702 엔진 폐기 대체) ────────
+
+
+class TestPersistAndValidation:
+    def test_persist_writes_backtest_summary(self, db_path_mp):
+        import json as _json
+
+        from nuri.core.db import query
+
+        p = _panel(n=30)
+        run_strategy_walkforward(cost_bps=10.0, fx_series=_flat_fx(p.index), prices=p, config=SMALL_CFG, persist=True)
+        rows = query("SELECT strategy_id, sharpe, total_return, win_rate, params FROM backtests", db_path=db_path_mp)
+        assert len(rows) == 1
+        assert rows[0]["strategy_id"] == "momentum-topN-walkforward"
+        # walk-forward 는 total_return/win_rate 미산출 → NULL (Sharpe/gate 기반)
+        assert rows[0]["total_return"] is None
+        assert rows[0]["win_rate"] is None
+        assert "gate_passed" in _json.loads(rows[0]["params"])
+
+    def test_load_fx_series(self, db_path):
+        from nuri.core.db import get_db
+        from nuri.quant.validation.strategy_walkforward import _load_fx_series
+
+        with get_db(db_path) as conn:
+            for i, d in enumerate(pd.date_range("2024-01-01", periods=5, freq="B")):
+                conn.execute(
+                    "INSERT INTO macro (indicator, date, value) VALUES (?, ?, ?)",
+                    ("usd_krw", d.strftime("%Y-%m-%d"), 1300.0 + i),
+                )
+        fx = _load_fx_series(db_path=db_path)
+        assert len(fx) == 5
+        assert fx.iloc[0] == 1300.0
+
+    def test_load_fx_series_missing_raises(self, db_path):
+        from nuri.quant.validation.strategy_walkforward import _load_fx_series
+
+        with pytest.raises(ValueError, match="usd_krw"):
+            _load_fx_series(db_path=db_path)
+
+    def test_run_strategy_validation_end_to_end(self, db_path_mp):
+        from nuri.core.db import get_db, query
+        from nuri.quant.validation.strategy_walkforward import run_strategy_validation
+
+        p = _panel(n=30)
+        with get_db(db_path_mp) as conn:
+            conn.executemany(
+                "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
+                [(t, d.strftime("%Y-%m-%d"), float(p.loc[d, t])) for t in p.columns for d in p.index],
+            )
+            for d in p.index:
+                conn.execute(
+                    "INSERT INTO macro (indicator, date, value) VALUES (?, ?, ?)",
+                    ("usd_krw", d.strftime("%Y-%m-%d"), 1300.0),
+                )
+        r = run_strategy_validation(cost_bps=10.0, config=SMALL_CFG)  # db_path=None → DB_PATH(monkeypatched)
+        assert r["frozen_universe_n"] == 4
+        assert len(query("SELECT id FROM backtests", db_path=db_path_mp)) == 1  # persist 됨
+
+
+class TestCLI:
+    def test_main_success_prints_summary(self, monkeypatch, capsys):
+        import nuri.quant.validation.strategy_walkforward as S
+
+        fake = {
+            "frozen_universe_n": 100,
+            "n_folds": 5,
+            "oos_sharpe_pooled": 0.3,
+            "permutation": {"p_value": 0.4, "null_p95": 0.8},
+            "holdout_sharpe": 0.5,
+            "holdout_max_drawdown": -0.1,
+            "gate": {"passed": False},
+        }
+        monkeypatch.setattr(S, "run_strategy_validation", lambda **k: fake)
+        assert S.main([]) == 0
+        assert "GATE PASSED" in capsys.readouterr().out
+
+    def test_main_fx_error_returns_2(self, monkeypatch):
+        import nuri.quant.validation.strategy_walkforward as S
+
+        def boom(**k):
+            raise ValueError("usd_krw not in macro")
+
+        monkeypatch.setattr(S, "run_strategy_validation", boom)
+        assert S.main([]) == 2
