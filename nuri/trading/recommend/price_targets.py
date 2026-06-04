@@ -578,8 +578,8 @@ def check_trailing_stop_signals(db_path: Optional[Path] = None) -> list[dict]:
         # first_buy_date 미기록(NULL) 시에는 전체 이력 폴백 — over-trigger(노이즈)이나
         # under-trigger(미발동)보다 drawdown-first 에 안전. updated_at 은 upsert 마다 now() 로
         # 리셋되어(portfolio.py) 앵커로 부적합하므로 폴백에서 제외한다.
-        # NOTE: 현 write-path(upsert_portfolio/replace_portfolio_account)는 first_buy_date 를
-        # 채우지 않는다 → 실제 진입일 앵커는 후속(포지션 sync) 에서 채워야 본 필터가 활성화된다.
+        # NOTE: write-path(upsert_portfolio/replace_portfolio_account)가 first_buy_date 를
+        # first-seen(최초 sync 일)으로 채운다. 실제 매입일 단위 앵커는 후속(브로커 포지션 sync)에서.
         entry_anchor = row["entry_anchor"]
         if isinstance(entry_anchor, str) and entry_anchor:
             hwm_rows = query(
