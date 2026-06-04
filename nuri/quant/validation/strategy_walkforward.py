@@ -3,7 +3,7 @@
 미국 모멘텀 top-N 전략을 walk-forward 로 검증한다. 각 train fold 에서 lookback 을
 선택(= model 'fit')하고 다음 test fold 에서 OOS 평가한다. 수익률은 **거래비용 +
 KRW→USD FX + 생존자 haircut 차감 후**의 KRW home-currency net return 이다
-(KakaoPay 계좌 통화 = KRW; US 보유분의 실현 P&L 은 FX drift 를 포함).
+(원화 계좌 기준; US 보유분의 실현 P&L 은 FX drift 를 포함).
 
 설계 (user 선택 = '전략 수익률', Option A):
 - WalkForwardValidator(28-test, Codex Round 5 hardened) 는 **무수정** — 일반 eval
