@@ -26,7 +26,8 @@ costs:
 gate:
   min_oos_sharpe: 0.5            # 승격 전제 최소 walk-forward OOS net Sharpe (pre-registered PASS)
   min_holdout_sharpe: 0.0        # FROZEN holdout 최소 net Sharpe (음수면 FAIL)
-  # ⚠️ 알려진 한계: lookback_grid 위 argmax-Sharpe 선택은 noise 에서도 약한 양의 Sharpe 를
-  # 만든다(다중비교 편향). same-bar lookahead 는 제거됐으나 이 gate 만으로 null-edge 를
-  # 완전히 차단하지 못한다. 승격 STRATEGY PR 은 nested-CV/벤치마크 대비를 추가로 요구할 것.
-  # (별도 이슈 — 본 P1b 스코프 아님)
+  # 통과 = 순열 p<alpha (noise 초과) AND pooled OOS ≥ min_oos_sharpe AND holdout ≥ min (셋 다).
+  permutation:                   # #701 null-safe gate — Monte-Carlo 순열 검정
+    n: 200                       # 순열 표본 수 (클수록 p-value 정밀, 비용 ↑)
+    alpha: 0.05                  # 유의수준 — pooled OOS Sharpe 가 null 분포를 p<alpha 로 이겨야 통과
+    seed: 0                      # 재현성 (동일 입력 → 동일 gate 판정)
