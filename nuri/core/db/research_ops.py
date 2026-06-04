@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -376,6 +377,12 @@ def log_foundation_benchmark(
         return cursor.lastrowid or 0
 
 
+def _finite_or_none(x: float) -> float | None:
+    """비유한값(inf/-inf/nan) → None. 유한 float 만 그대로 반환."""
+    f = float(x)
+    return f if math.isfinite(f) else None
+
+
 def save_backtest(
     strategy_id: str,
     start_date: str,
@@ -395,6 +402,10 @@ def save_backtest(
     params 는 재현용 설정 dict(JSON 저장). created_at None → kst_now() (KST invariant,
     backtests 테이블엔 created_at DEFAULT 가 없어 명시 기록).
 
+    비유한 메트릭(inf/nan)은 NULL 로 저장한다. thin-data 백테스트(0 trades → inf Sharpe /
+    nan MDD)가 창고에 garbage 를 남기지 않도록 writer 경계에서 차단 — JSON Infinity/NaN
+    토큰은 invalid 라 읽기 엔드포인트를 깨뜨린다. SQLite NaN→NULL 묵시 변환에 의존하지 않고 명시.
+
     Returns: lastrowid (backtest id).
     """
     stamp = created_at or kst_now().strftime("%Y-%m-%d %H:%M:%S")
@@ -408,10 +419,10 @@ def save_backtest(
                 strategy_id,
                 start_date,
                 end_date,
-                float(total_return),
-                float(sharpe),
-                float(max_drawdown),
-                float(win_rate),
+                _finite_or_none(total_return),
+                _finite_or_none(sharpe),
+                _finite_or_none(max_drawdown),
+                _finite_or_none(win_rate),
                 json.dumps(params or {}, default=str),
                 stamp,
             ),

@@ -96,3 +96,22 @@ class TestSaveBacktest:
         r = query("SELECT * FROM backtests", db_path=db_path)[0]
         assert r["total_return"] == 10.0
         assert isinstance(r["total_return"], float)
+
+    def test_non_finite_metrics_coerced_to_null(self, db_path):
+        """thin-data 백테스트(0 trades) → inf Sharpe / nan MDD. 창고엔 NULL 로 저장.
+
+        비유한값을 그대로 두면 JSON 직렬화가 Infinity/NaN(invalid) 토큰을 내보내 읽기
+        엔드포인트를 깨뜨린다. writer 경계에서 NULL 로 차단 (SQLite NaN→NULL 묵시 변환 비의존).
+        """
+        _save_minimal(
+            db_path,
+            total_return=1.5,  # 유한값은 보존
+            sharpe=float("inf"),
+            max_drawdown=float("nan"),
+            win_rate=float("-inf"),
+        )
+        r = query("SELECT * FROM backtests", db_path=db_path)[0]
+        assert r["total_return"] == 1.5
+        assert r["sharpe"] is None
+        assert r["max_drawdown"] is None
+        assert r["win_rate"] is None
