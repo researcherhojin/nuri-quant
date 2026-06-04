@@ -34,6 +34,7 @@ import yaml
 
 from nuri.core.db import query_df
 from nuri.core.timezone import kst_now
+from nuri.quant.factors.relative_strength import leadership_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -272,11 +273,16 @@ def _score_ticker(
     price: dict[str, float],
     rsi: float | None,
     weights: dict[str, float],
+    rs_rank: float | None = None,
+    dollar_volume: float | None = None,
 ) -> tuple[float, dict[str, float]]:
     """Fuse sources to single 0-100 score. Returns (final_score, source_breakdown).
 
     Each source normalized to 0-100 then weighted-summed.
     Missing source = 50 (neutral) so partial data doesn't block.
+
+    rs_rank / dollar_volume 은 P2 leadership shadow 채널 — config weight=0 이면 점수에
+    기여하지 않고 sources 로만 노출된다. 승격(weight>0)은 P1 walk-forward 후 STRATEGY PR.
     """
     # factor composite already 0-1, scale to 0-100
     factor_pct = (factor.get("composite", 0.5)) * 100.0
@@ -306,11 +312,26 @@ def _score_ticker(
     else:
         breakout_pct = max(0.0, 70.0 + bo * 4.0)
 
+    # RS percentile (cross-sectional leadership): 0-100 직접 사용. 없으면 중립.
+    rs_pct = 50.0 if rs_rank is None else max(0.0, min(100.0, rs_rank))
+
+    # 거래대금 surge: 완만한 확장은 보상(1.0→50 … 2.5→90), 과열(parabolic) 추격은
+    # 페널티 (crowding 가드 — 급등주 추격 금지). surge 는 배수(ratio).
+    if dollar_volume is None:
+        dv_pct = 50.0
+    elif dollar_volume <= 2.5:
+        dv_pct = max(0.0, min(90.0, 50.0 + (dollar_volume - 1.0) * 26.667))
+    else:
+        dv_pct = max(20.0, 90.0 - (dollar_volume - 2.5) * 20.0)
+
     final = (
         weights.get("factor_composite", 0.4) * factor_pct
         + weights.get("momentum_5d", 0.25) * momentum_pct
         + weights.get("technical_rsi", 0.15) * rsi_pct
         + weights.get("breakout_30d", 0.2) * breakout_pct
+        # P2 leadership shadow — weight=0 이면 기여 0 (라이브 점수 무변경)
+        + weights.get("rs_rank", 0.0) * rs_pct
+        + weights.get("dollar_volume", 0.0) * dv_pct
     )
 
     return final, {
@@ -318,6 +339,8 @@ def _score_ticker(
         "momentum": round(momentum_pct, 1),
         "rsi": round(rsi_pct, 1),
         "breakout": round(breakout_pct, 1),
+        "rs_rank": round(rs_pct, 1),
+        "dollar_volume": round(dv_pct, 1),
     }
 
 
@@ -391,6 +414,9 @@ def emit_buy_candidates(
     factors = _get_factor_scores()
     prices = _get_price_signals()
     rsi_map = _get_rsi_snapshot()
+    # P2 leadership shadow 스냅샷 (weight=0 — sources 노출만, 라이브 점수 무변경)
+    lead_cfg = cfg.get("leadership", {})
+    leadership = leadership_snapshot(lead_cfg.get("lookback", 120), lead_cfg.get("surge_window", 20))
 
     if not factors:
         result.blocked_reason = "factors 테이블 비어있음 (composite_score 데이터 부재)"
@@ -412,7 +438,10 @@ def emit_buy_candidates(
         if not price:
             continue  # silent skip if no price — too many to surface
         rsi = rsi_map.get(ticker)
-        score, sources = _score_ticker(ticker, factor, price, rsi, weights)
+        lead = leadership.get(ticker)
+        rs_rank = lead[0] if lead else None
+        dollar_volume = lead[1] if lead else None
+        score, sources = _score_ticker(ticker, factor, price, rsi, weights, rs_rank, dollar_volume)
         scored.append((ticker, score, sources, price, rsi))
 
     # Filter by quality bar, sort, top-N
