@@ -8,6 +8,8 @@
     "**/node_modules"
   ],
   "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "extraPaths": ["."],
   "executionEnvironments": [
     {
       "root": "tests",
