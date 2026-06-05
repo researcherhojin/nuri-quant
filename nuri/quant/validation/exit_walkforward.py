@@ -259,6 +259,10 @@ def run_exit_search(
     bases = [r for r in rules if r.get("baseline")]
     if len(bases) != 1:
         raise ValueError("exactly one baseline rule (E0) required")
+    # MA 룰은 진입 시점에 MA 가 계산 가능해야 사전등록 룰 그대로 평가됨 (codex R2 guardrail)
+    for r in rules:
+        if "trail_ma" in r and int(cfg["entries"]["warmup"]) < int(r["trail_ma"]):
+            raise ValueError(f"{r['name']}: entries.warmup must be >= trail_ma ({r['trail_ma']})")
     base_rule = bases[0]
     n_test = len(rules) - 1
     alpha = float(cfg["gate"]["permutation"]["alpha"])

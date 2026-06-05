@@ -237,6 +237,19 @@ class TestRunner:
         with pytest.raises(ValueError, match="fx_series"):
             run_exit_search(cost_bps=10.0, fx_series=None, close=p, config=SMALL_CFG)
 
+    def test_warmup_must_cover_trail_ma(self):
+        # warmup < trail_ma 면 진입 시 MA 미계산 → 사전등록과 다른 룰 평가 → 거부 (codex R2)
+        p = _panel()
+        cfg = {
+            **SMALL_CFG,
+            "rules": [
+                {"name": "e0", "baseline": True, "theory": "c", "stop_pct": -7},
+                {"name": "e1", "theory": "t", "trail_ma": 50},  # warmup 3 < 50
+            ],
+        }
+        with pytest.raises(ValueError, match="warmup must be >= trail_ma"):
+            run_exit_search(cost_bps=10.0, fx_series=_flat_fx(p.index), close=p, config=cfg)
+
     def test_requires_exactly_one_baseline(self):
         p = _panel()
         cfg = {**SMALL_CFG, "rules": [{"name": "a", "theory": "t", "stop_pct": -7}]}
