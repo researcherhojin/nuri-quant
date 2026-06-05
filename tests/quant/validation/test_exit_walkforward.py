@@ -183,6 +183,35 @@ class TestEntries:
         with pytest.raises(ValueError, match="panel too short"):
             _sample_entries(p, {"n": 5, "seed": 0, "warmup": 3, "max_horizon": 10})
 
+    def test_per_ticker_warmup_history_required(self):
+        # codex P2: late-start ticker 는 자기 시작 후 warmup 일이 지나야 진입 가능
+        # (아니면 E1 의 MA 미계산 → stop-only 로 퇴화한 다른 룰을 평가)
+        idx = pd.date_range("2024-01-01", periods=30, freq="B")
+        late = np.full(30, np.nan)
+        late[20:] = 100.0  # index 20 부터 상장
+        p = pd.DataFrame({"OK": np.linspace(100, 110, 30), "LATE": late}, index=idx)
+        entries = _sample_entries(p, {"n": 100, "seed": 0, "warmup": 5, "max_horizon": 5})
+        arr = p.to_numpy()
+        for j, t0 in entries:
+            assert not np.isnan(arr[t0 - 5, j])  # t0-warmup 시점에도 히스토리 존재
+        late_j = list(p.columns).index("LATE")
+        assert all(t0 >= 25 for j, t0 in entries if j == late_j)  # 20+5 이후만
+
+    def test_exposure_mask_windows_sharpe(self):
+        # codex P1: 평가 창 밖(예: holdout 의 0-수익 꼬리)이 Δ/Sharpe 에 안 섞인다 —
+        # 동일 진입·동일 활동인데 패널 뒤에 무활동 구간을 늘려도 Δ 불변
+        from nuri.quant.validation.exit_walkforward import _delta_sharpe
+
+        short = _panel(n=40)
+        long = _panel(n=120)  # 동일 생성식 — 앞 40일 가격 동일, 뒤는 무진입 구간
+        entries = [(0, 5), (1, 10), (2, 15)]  # 활동 전부 index<30
+        fx_s, fx_l = np.zeros(40), np.zeros(120)
+        rule, base = {"stop_pct": -7}, {"trailing_pct": -15}
+        d_short, s_short, _ = _delta_sharpe(short, entries, rule, base, fx_s, 10.0, 0.0, 10)
+        d_long, s_long, _ = _delta_sharpe(long, entries, rule, base, fx_l, 10.0, 0.0, 10)
+        assert d_long == pytest.approx(d_short, rel=1e-12)
+        assert s_long == pytest.approx(s_short, rel=1e-12)
+
     def test_sparse_panel_skips_nan_and_warns(self, caplog):
         # 유효 진입 구간이 전부 NaN → NaN 진입 스킵 + 목표 미달 warning
         import logging as _logging

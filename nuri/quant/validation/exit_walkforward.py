@@ -61,13 +61,15 @@ def _sample_entries(close: pd.DataFrame, ecfg: dict) -> list[tuple[int, int]]:
         raise ValueError(f"panel too short for entries: warmup={lo}, days={n_days}")
     out: list[tuple[int, int]] = []
     target = int(ecfg["n"])
-    # 유효 진입(종가 존재)만 수집 — 무한루프 방지 상한
+    # 유효 진입만 수집 — 진입 종가 + **per-ticker warmup 히스토리**(t0-warmup 시점 비NaN)
+    # 둘 다 요구 (codex P2: 히스토리 없으면 E1 의 MA 가 미계산이라 stop-only 로 퇴화 —
+    # pre-registered 룰과 다른 룰을 평가하게 됨). ffill 패널이라 t0-warmup 비NaN ⇒ 구간 연속.
     for _ in range(target * 10):
         if len(out) >= target:
             break
         j = int(rng.integers(0, n_cols))
         t0 = int(rng.integers(lo, hi + 1))
-        if not np.isnan(arr[t0, j]):
+        if not np.isnan(arr[t0, j]) and not np.isnan(arr[t0 - lo, j]):
             out.append((j, t0))
     if len(out) < target:
         logger.warning("entries: %d/%d sampled (sparse panel)", len(out), target)
@@ -191,6 +193,19 @@ def _partition_entries(
 # ── 룰 1개 평가 (paired ΔSharpe + 순열 gate) ──────────────────
 
 
+def _exposure_mask(entries: list[tuple[int, int]], n_days: int, max_horizon: int) -> np.ndarray:
+    """진입 subset 의 잠재 보유일 합집합 mask (룰-무관 — 진입에만 의존).
+
+    codex P1: Sharpe 를 전체 캘린더(반대 구간의 0-수익 stretch 포함)로 계산하면 Sharpe
+    비선형성 때문에 공동 0-구간이 Δ 에 비중립적으로 작용. 평가 창을 이 mask 로 한정하면
+    discovery/holdout 교차 오염이 사라지고, mask 가 룰과 무관하므로 paired 공정성 유지.
+    """
+    mask = np.zeros(n_days, dtype=bool)
+    for _, t0 in entries:
+        mask[t0 + 1 : min(t0 + max_horizon, n_days - 1) + 1] = True
+    return mask
+
+
 def _delta_sharpe(
     close: pd.DataFrame,
     entries: list[tuple[int, int]],
@@ -201,13 +216,18 @@ def _delta_sharpe(
     haircut_daily: float,
     max_horizon: int,
 ) -> tuple[float, float, np.ndarray]:
-    """ΔSharpe(rule − base) + rule Sharpe + rule 일별 KRW 시계열."""
+    """ΔSharpe(rule − base) + rule Sharpe + rule 일별 KRW 시계열 (노출 mask 한정).
+
+    Sharpe 는 진입 subset 의 잠재 노출일에서만 계산 — discovery 평가에 holdout 구간의
+    0-수익 꼬리가 (또는 그 반대가) 섞이지 않는다 (codex P1).
+    """
     s_r, c_r = _simulate_rule(close, entries, rule, cost_bps, max_horizon)
     s_b, c_b = _simulate_rule(close, entries, base_rule, cost_bps, max_horizon)
     kr = _rule_daily_krw(s_r, c_r, fx_ret, haircut_daily)
     kb = _rule_daily_krw(s_b, c_b, fx_ret, haircut_daily)
-    sr, sb = _sharpe_from_returns(kr), _sharpe_from_returns(kb)
-    return sr - sb, sr, kr
+    mask = _exposure_mask(entries, len(kr), max_horizon)
+    sr, sb = _sharpe_from_returns(kr[mask]), _sharpe_from_returns(kb[mask])
+    return sr - sb, sr, kr[mask]
 
 
 def run_exit_search(
