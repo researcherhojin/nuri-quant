@@ -441,6 +441,11 @@ def _log_walkforward_runs(
     """변형별 WalkForwardValidator run (per-fold 메트릭 → walkforward_runs 기록).
 
     _evaluate_variant 와 동일한 global_warmup 슬라이스 사용 (캘린더 창 일치).
+
+    주의: WalkForwardValidator 는 db_path 를 받지 않아 기본 DB 에만 기록한다
+    (baseline strategy_walkforward 와 동일한 기존 속성 — 무수정 원칙). 명시적
+    db_path 호출자는 backtests 와 walkforward_runs 가 다른 DB 로 갈 수 있음.
+    테스트는 db_path_mp(기본 DB monkeypatch)로 우회. 해소는 별도 이슈.
     """
     actor = WalkForwardValidator()
     run_ids: dict[str, Optional[str]] = {}
