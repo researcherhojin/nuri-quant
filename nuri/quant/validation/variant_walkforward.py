@@ -143,9 +143,13 @@ def _build_panels(cfg: dict, db_path: Optional[Path] = None) -> tuple[pd.DataFra
     df = df[~df["ticker"].str.endswith(".KS") & ~df["ticker"].isin(excl)]
     close = df.pivot_table(index="date", columns="ticker", values="close")
     close.index = pd.to_datetime(close.index)
-    # min_history: 종목별 충분한 실데이터 (ffill 전 기준)
-    counts = close.notna().sum()
-    keep = [t for t in close.columns if counts[t] >= pc["min_history"]]
+    vol_raw = df.pivot_table(index="date", columns="ticker", values="volume")
+    vol_raw.index = pd.to_datetime(vol_raw.index)
+    # min_history: close + volume 양쪽 모두 충분한 실데이터 (ffill 전 기준) —
+    # close 만 검사하면 V3(거래대금)가 ffill 된 합성 volume 으로 거래한다 (codex P2)
+    c_counts = close.notna().sum()
+    v_counts = vol_raw.reindex(columns=close.columns).notna().sum()
+    keep = [t for t in close.columns if c_counts[t] >= pc["min_history"] and v_counts[t] >= pc["min_history"]]
     if not keep:
         return pd.DataFrame(), pd.DataFrame()
     close = close[keep]
@@ -155,9 +159,7 @@ def _build_panels(cfg: dict, db_path: Optional[Path] = None) -> tuple[pd.DataFra
     if ok.empty:
         return pd.DataFrame(), pd.DataFrame()
     close = close.loc[ok.index[0] :]
-    vol = df.pivot_table(index="date", columns="ticker", values="volume")
-    vol.index = pd.to_datetime(vol.index)
-    vol = vol.reindex(index=close.index, columns=close.columns)
+    vol = vol_raw.reindex(index=close.index, columns=close.columns)
     return close.ffill(), vol.ffill()
 
 
@@ -257,16 +259,22 @@ def _evaluate_variant(
     cfg: dict,
     cost_bps: float,
     alpha_eff: float,
+    global_warmup: int,
 ) -> dict[str, Any]:
-    """단일 변형: pooled OOS Sharpe + 순열 p + FROZEN holdout (baseline 과 동일 절차)."""
+    """단일 변형: pooled OOS Sharpe + 순열 p + FROZEN holdout (baseline 과 동일 절차).
+
+    codex P1 반영 2가지:
+    - **global_warmup**: 모든 변형이 동일한 캘린더 discovery/holdout 슬라이스를 공유
+      (변형별 warmup 을 쓰면 장기-메모리 변형이 불리한 초기 구간을 떨어내고 다른
+      holdout 기간을 받는 gate-gaming 경로가 생긴다).
+    - **holdout 봉인**: discovery(Bonferroni) 통과 시에만 holdout 을 평가·노출.
+      실패 변형의 holdout 값이 보이면 사후 변형 재설계에 누설된다 (수치로 안 써도).
+    """
     gate = cfg["gate"]
     keys = list(range(len(variant["params"])))
-    warmup = max(_param_warmup(variant, p) for p in variant["params"])
-    if len(close) <= warmup + 2:
-        raise ValueError(f"{variant['name']}: need > {warmup + 2} rows after warmup={warmup}, got {len(close)}")
 
-    aligned = _aligned_variant_returns(close, vol, fx_ret, variant, cfg, cost_bps, warmup)
-    n = len(close.index) - warmup
+    aligned = _aligned_variant_returns(close, vol, fx_ret, variant, cfg, cost_bps, global_warmup)
+    n = len(close.index) - global_warmup
     holdout_n = int(n * cfg["holdout"]["frac"])
     split = n - holdout_n
 
@@ -275,22 +283,30 @@ def _evaluate_variant(
 
     # permutation null: close 만 셔플 (#707 first-valid anchor), volume 은 원본 유지 —
     # 가격 예측성만 파괴해 "거래대금이 (셔플된) 미래 수익을 맞추는가" 를 검정.
+    # seed 는 변형마다 리셋 → 순열 j 가 변형 간 공유 (공정 비교).
     perm = gate["permutation"]
     rng = np.random.default_rng(int(perm["seed"]))
     n_perm = int(perm["n"])
     null_pooled = np.empty(n_perm)
     for j in range(n_perm):
-        pa = _aligned_variant_returns(_permute_prices(close, rng), vol, fx_ret, variant, cfg, cost_bps, warmup)
+        pa = _aligned_variant_returns(_permute_prices(close, rng), vol, fx_ret, variant, cfg, cost_bps, global_warmup)
         null_pooled[j] = _pooled_oos_sharpe(pa, keys, cfg["fold"], split)
     p_value = float((np.sum(null_pooled >= real_pooled) + 1) / (n_perm + 1)) if n_perm else 1.0
 
-    # FROZEN holdout: non-holdout 전체에서 고른 param 으로 1회 평가 (발견단계 통과 시만 의미)
+    # param 선택은 discovery 구간([:split])만 사용 — holdout 미접촉
     best_k = max(keys, key=lambda k: _sharpe_from_returns(aligned[k][:split]))
-    holdout_ret = aligned[best_k][split:]
-    holdout_sharpe = _sharpe_from_returns(holdout_ret)
-
     discovery = p_value < alpha_eff and real_pooled >= gate["min_oos_sharpe"]
-    holdout_ok = holdout_sharpe >= gate["min_holdout_sharpe"]
+
+    # FROZEN holdout: discovery 통과 변형만 1회 개봉. 실패 변형은 봉인 유지 (None).
+    holdout_sharpe: Optional[float] = None
+    holdout_drawdown: Optional[float] = None
+    holdout_ok = False
+    if discovery:
+        holdout_ret = aligned[best_k][split:]
+        holdout_sharpe = _sharpe_from_returns(holdout_ret)
+        holdout_drawdown = _max_drawdown(holdout_ret)
+        holdout_ok = holdout_sharpe >= gate["min_holdout_sharpe"]
+
     return {
         "name": variant["name"],
         "baseline": bool(variant.get("baseline", False)),
@@ -301,8 +317,8 @@ def _evaluate_variant(
         "alpha_effective": alpha_eff,
         "n_folds": n_folds,
         "selected_param": variant["params"][best_k],
-        "holdout_sharpe": holdout_sharpe,
-        "holdout_max_drawdown": _max_drawdown(holdout_ret),
+        "holdout_sharpe": holdout_sharpe,  # None = 봉인 (discovery 미통과)
+        "holdout_max_drawdown": holdout_drawdown,
         "discovery_passed": bool(discovery),
         "holdout_passed": bool(holdout_ok),
         # 승격 자격 = Bonferroni 발견 AND holdout 재확인 (baseline 은 대조군 — 항상 False)
@@ -354,11 +370,17 @@ def run_variant_search(
     alpha = float(cfg["gate"]["permutation"]["alpha"])
     alpha_eff = alpha / max(n_test, 1)
 
+    # 전역 warmup (codex P1): 모든 변형의 max — 변형 전부가 동일한 캘린더
+    # discovery/holdout 슬라이스를 공유해야 다중비교 gate 가 공정하다.
+    global_warmup = max(_param_warmup(v, p) for v in variants for p in v["params"])
+    if len(close) <= global_warmup + 2:
+        raise ValueError(f"need > {global_warmup + 2} rows after global warmup={global_warmup}, got {len(close)}")
+
     fx_ret = fx_series.pct_change(fill_method=None).reindex(close.index).fillna(0.0)
     results = []
     for v in variants:
         logger.info("evaluating variant %s ...", v["name"])
-        r = _evaluate_variant(close, vol, fx_ret, v, cfg, cost_bps, alpha_eff)
+        r = _evaluate_variant(close, vol, fx_ret, v, cfg, cost_bps, alpha_eff, global_warmup)
         results.append(r)
         if persist:
             save_backtest(
@@ -389,7 +411,7 @@ def run_variant_search(
             )
 
     # WalkForwardValidator 로 변형별 per-fold 기록 (walkforward_runs → /api/research/walkforward)
-    run_ids = _log_walkforward_runs(close, vol, fx_ret, variants, cfg, cost_bps) if persist else {}
+    run_ids = _log_walkforward_runs(close, vol, fx_ret, variants, cfg, cost_bps, global_warmup) if persist else {}
     for r in results:
         r["walkforward_run_id"] = run_ids.get(r["name"])
 
@@ -414,15 +436,18 @@ def _log_walkforward_runs(
     variants: list[dict],
     cfg: dict,
     cost_bps: float,
+    global_warmup: int,
 ) -> dict[str, Optional[str]]:
-    """변형별 WalkForwardValidator run (per-fold 메트릭 → walkforward_runs 기록)."""
+    """변형별 WalkForwardValidator run (per-fold 메트릭 → walkforward_runs 기록).
+
+    _evaluate_variant 와 동일한 global_warmup 슬라이스 사용 (캘린더 창 일치).
+    """
     actor = WalkForwardValidator()
     run_ids: dict[str, Optional[str]] = {}
     for v in variants:
         keys = list(range(len(v["params"])))
-        warmup = max(_param_warmup(v, p) for p in v["params"])
-        aligned = _aligned_variant_returns(close, vol, fx_ret, v, cfg, cost_bps, warmup)
-        n = len(close.index) - warmup
+        aligned = _aligned_variant_returns(close, vol, fx_ret, v, cfg, cost_bps, global_warmup)
+        n = len(close.index) - global_warmup
         split = n - int(n * cfg["holdout"]["frac"])
         data = pd.DataFrame({f"r_k{k}": aligned[k] for k in keys}).iloc[:split].reset_index(drop=True)
 
@@ -484,9 +509,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  {'variant':<22}{'pooled':>8}{'p':>8}{'null95':>8}{'holdout':>9}{'maxDD':>8}  verdict")
     for v in r["variants"]:
         verdict = "PROMOTE-ELIGIBLE" if v["promotion_eligible"] else ("baseline" if v["baseline"] else "FAIL")
+        # holdout 은 discovery 통과 시에만 개봉 — 봉인 상태는 'sealed' 로 표기
+        hs = f"{v['holdout_sharpe']:>+9.3f}" if v["holdout_sharpe"] is not None else f"{'sealed':>9}"
+        dd = f"{v['holdout_max_drawdown']:>+8.2f}" if v["holdout_max_drawdown"] is not None else f"{'—':>8}"
         print(
-            f"  {v['name']:<22}{v['oos_sharpe_pooled']:>+8.3f}{v['p_value']:>8.3f}{v['null_p95']:>+8.2f}"
-            f"{v['holdout_sharpe']:>+9.3f}{v['holdout_max_drawdown']:>+8.2f}  {verdict}"
+            f"  {v['name']:<22}{v['oos_sharpe_pooled']:>+8.3f}{v['p_value']:>8.3f}{v['null_p95']:>+8.2f}{hs}{dd}  {verdict}"
         )
     print(f"\n  >>> promotion-eligible: {r['promotion_eligible'] or 'NONE — 노이즈 초과 엣지 없음'}")
     print()

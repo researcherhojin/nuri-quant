@@ -206,6 +206,22 @@ class TestPanelFilter:
         close, vol = _build_panels(SMALL_CFG, db_path=db_path)
         assert close.empty and vol.empty
 
+    def test_min_history_applies_to_volume_too(self, db_path):
+        # codex P2: close 만 충분하고 volume 이 희박한 ticker 는 제외
+        # (아니면 V3 가 ffill 된 합성 거래대금으로 거래)
+        rows = []
+        dates = pd.date_range("2024-01-01", periods=10, freq="B")
+        for i, d in enumerate(dates):
+            ds = d.strftime("%Y-%m-%d")
+            rows.append(("FULL", ds, 100.0 + i, 1e6))
+            rows.append(("FULL2", ds, 100.0 + i, 1e6))
+            # NOVOL: close 는 전부, volume 은 2일치만 (< min_history 5)
+            rows.append(("NOVOL", ds, 100.0 + i, 1e6 if i >= 8 else None))
+        self._seed(db_path, rows)
+        close, _ = _build_panels(SMALL_CFG, db_path=db_path)
+        assert "NOVOL" not in close.columns
+        assert {"FULL", "FULL2"} <= set(close.columns)
+
     def test_all_filtered_returns_empty(self, db_path):
         # min_history 미달만 존재 → 빈 패널
         rows = [("X", "2024-01-02", 100.0, 1e6)]
@@ -260,8 +276,39 @@ class TestRunner:
         for v in r["variants"]:
             assert 0.0 < v["p_value"] <= 1.0
             assert isinstance(v["promotion_eligible"], bool)
-            assert v["holdout_max_drawdown"] <= 0.0
+            # holdout 은 discovery 통과 시에만 개봉 (codex P1 봉인) — 봉인이면 None
+            if v["discovery_passed"]:
+                assert v["holdout_max_drawdown"] <= 0.0
+            else:
+                assert v["holdout_sharpe"] is None
+                assert v["holdout_max_drawdown"] is None
         assert r["universe_n"] == 4
+
+    def test_all_variants_share_calendar_window(self):
+        # codex P1: 변형별 warmup 이 달라도 동일한 캘린더 discovery/holdout 슬라이스 공유
+        idx = pd.date_range("2024-01-01", periods=60, freq="B")
+        spy = pd.Series(100 * np.cumprod(1.0 + np.full(60, 0.002)), index=idx)
+        p = _panel(n=60)
+        p["SPY"] = spy
+        cfg = {
+            **SMALL_CFG,
+            "variants": [
+                {"name": "v0", "select": "momentum", "baseline": True, "theory": "c", "params": [{"lookback": 2}]},
+                {
+                    "name": "v4",
+                    "select": "regime_momentum",
+                    "theory": "t",
+                    "regime": {"ticker": "SPY", "ma": 20},  # warmup 20 ≫ v0 의 2
+                    "params": [{"lookback": 2}],
+                },
+            ],
+        }
+        r = run_variant_search(cost_bps=10.0, fx_series=_flat_fx(p.index), close=p, vol=_vol_panel(p), config=cfg)
+        v0, v4 = r["variants"]
+        # 전역 warmup = 20 → 두 변형의 창이 완전히 일치해야 함
+        assert v0["walkforward_n"] == v4["walkforward_n"]
+        assert v0["holdout_n"] == v4["holdout_n"]
+        assert v0["walkforward_n"] + v0["holdout_n"] == 60 - 20
 
     def test_baseline_never_promotion_eligible(self):
         p = _panel()
@@ -362,22 +409,38 @@ class TestRunner:
 
 
 class TestEvaluateVariant:
-    def test_holdout_reserved_and_reported(self):
+    def test_holdout_window_reserved(self):
         p = _panel()
         fx_ret = _flat_fx(p.index).pct_change().reindex(p.index).fillna(0.0)
         v = SMALL_CFG["variants"][0]
-        r = _evaluate_variant(p, _vol_panel(p), fx_ret, v, SMALL_CFG, cost_bps=10.0, alpha_eff=0.05)
-        warmup = 2
-        assert r["walkforward_n"] + r["holdout_n"] == len(p) - warmup
+        r = _evaluate_variant(p, _vol_panel(p), fx_ret, v, SMALL_CFG, cost_bps=10.0, alpha_eff=0.05, global_warmup=3)
+        assert r["walkforward_n"] + r["holdout_n"] == len(p) - 3  # 전역 warmup 기준 봉인 분할
         assert r["holdout_n"] > 0
         assert r["selected_param"] in v["params"]
 
-    def test_too_short_panel_raises(self):
-        p = _panel(n=4)
+    def test_holdout_sealed_when_discovery_fails(self):
+        # codex P1: discovery 미통과 변형의 holdout 은 봉인 (계산·노출 금지)
+        p = _panel()
         fx_ret = _flat_fx(p.index).pct_change().reindex(p.index).fillna(0.0)
         v = SMALL_CFG["variants"][0]
-        with pytest.raises(ValueError, match="need >"):
-            _evaluate_variant(p, _vol_panel(p), fx_ret, v, SMALL_CFG, cost_bps=10.0, alpha_eff=0.05)
+        # alpha_eff=0 → p < 0 불가능 → discovery 항상 실패 (결정론적)
+        r = _evaluate_variant(p, _vol_panel(p), fx_ret, v, SMALL_CFG, cost_bps=10.0, alpha_eff=0.0, global_warmup=3)
+        assert r["discovery_passed"] is False
+        assert r["holdout_sharpe"] is None
+        assert r["holdout_max_drawdown"] is None
+        assert r["holdout_passed"] is False
+        assert r["promotion_eligible"] is False
+
+    def test_holdout_opened_when_discovery_passes(self):
+        # discovery 강제 통과 (alpha_eff>1 → p<alpha 항상, min_oos_sharpe 바닥) → holdout 1회 개봉
+        p = _panel()
+        fx_ret = _flat_fx(p.index).pct_change().reindex(p.index).fillna(0.0)
+        cfg = {**SMALL_CFG, "gate": {**SMALL_CFG["gate"], "min_oos_sharpe": -100.0}}
+        v = SMALL_CFG["variants"][0]
+        r = _evaluate_variant(p, _vol_panel(p), fx_ret, v, cfg, cost_bps=10.0, alpha_eff=1.01, global_warmup=3)
+        assert r["discovery_passed"] is True
+        assert isinstance(r["holdout_sharpe"], float)
+        assert r["holdout_max_drawdown"] <= 0.0
 
 
 # ── CLI ────────────────────────────────────────────────────────
@@ -407,13 +470,24 @@ class TestCLI:
                     "holdout_sharpe": 0.1,
                     "holdout_max_drawdown": -0.2,
                     "promotion_eligible": False,
-                }
+                },
+                {
+                    "name": "v1_skip_momentum",
+                    "baseline": False,
+                    "oos_sharpe_pooled": 0.4,
+                    "p_value": 0.3,
+                    "null_p95": 1.1,
+                    "holdout_sharpe": None,  # discovery 미통과 → 봉인
+                    "holdout_max_drawdown": None,
+                    "promotion_eligible": False,
+                },
             ],
         }
         monkeypatch.setattr(V, "run_variant_validation", lambda **k: fake)
         assert V.main([]) == 0
         out = capsys.readouterr().out
         assert "Bonferroni" in out
+        assert "sealed" in out  # 봉인된 holdout 표기
         assert "노이즈 초과 엣지 없음" in out
 
     def test_main_error_returns_2(self, monkeypatch):
