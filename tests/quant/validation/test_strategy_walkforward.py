@@ -368,22 +368,31 @@ class TestPermutationStaggeredStart:
         assert null["LATE"].iloc[:8].isna().all()
         assert null["LATE"].iloc[8] == pytest.approx(prices["LATE"].iloc[8])  # first-valid anchor 보존
 
-    def test_clean_panel_anchor_unchanged(self):
+    def test_clean_panel_identical_to_legacy_formula(self):
         from nuri.quant.validation.strategy_walkforward import _permute_prices
 
-        # leading NaN 없는 클린 패널: 첫 행 가격 보존 (기존 동작과 동일 — 하위호환 lock)
+        # leading NaN 없는 클린 패널: 구 공식(px[0]*cumprod, 셔플 동일 rng 재현)과
+        # **전 행 동일** lock (codex P2 — 첫 행만 비교하면 후행 회귀를 못 잡음)
         p = _panel(n=15)
         null = _permute_prices(p, np.random.default_rng(1))
+        rng2 = np.random.default_rng(1)  # 동일 seed → 동일 셔플 재현 (컬럼 순서대로 1 call/col)
+        rets = p.pct_change(fill_method=None)
         for t in p.columns:
-            assert null[t].iloc[0] == pytest.approx(p[t].iloc[0])
-        assert null.notna().all().all()
+            r = rets[t].to_numpy()
+            idx = np.where(~np.isnan(r))[0]
+            shuffled = r.copy()
+            shuffled[idx] = r[rng2.permutation(idx)]
+            legacy = p[t].to_numpy()[0] * np.cumprod(1.0 + np.nan_to_num(shuffled))
+            np.testing.assert_allclose(null[t].to_numpy(), legacy, rtol=1e-12)
 
     def test_shuffle_destroys_order_not_distribution(self):
         prices, null = self._staggered()
-        # 수익률 multiset 보존 (분포 동일, 순서만 파괴) — EARLY 기준
-        real_r = np.sort(prices["EARLY"].pct_change().dropna().to_numpy())
-        null_r = np.sort(null["EARLY"].pct_change().dropna().to_numpy())
-        np.testing.assert_allclose(real_r, null_r, rtol=1e-9)
+        # 수익률 multiset 보존 (분포 동일, 순서만 파괴) — f==0(EARLY) 와 f>0(LATE,
+        # 이 PR 이 고친 staggered 경로) 둘 다 (codex P2)
+        for t in ("EARLY", "LATE"):
+            real_r = np.sort(prices[t].pct_change().dropna().to_numpy())
+            null_r = np.sort(null[t].pct_change().dropna().to_numpy())
+            np.testing.assert_allclose(real_r, null_r, rtol=1e-9)
 
 
 # ── frozen survivor universe ──────────────────────────────────
