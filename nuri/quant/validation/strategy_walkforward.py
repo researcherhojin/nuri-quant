@@ -171,19 +171,32 @@ def _pooled_oos_sharpe(aligned: dict[int, np.ndarray], grid: list[int], fold_spe
 
 
 def _permute_prices(prices: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
-    """각 종목 일별 수익률을 시간축 셔플 → 시계열 예측성(모멘텀) 파괴, 수익률 분포·t0 가격 보존.
+    """각 종목 일별 수익률을 시간축 셔플 → 시계열 예측성(모멘텀) 파괴, 수익률 분포·기준가 보존.
 
     permutation null 의 핵심: 동일 파이프라인을 '예측성 없는' 데이터에 적용해 리밸런싱
     artifact + lookback 선택 편향을 null 분포로 포착한다.
+
+    anchor = **first valid price** (#707): 패널 첫 행이 아니라 종목별 첫 유효 가격을 기준으로
+    재구성한다. 첫 행 가격(to_numpy()[0])을 쓰면 패널 시작일에 없던 ticker(leading NaN)가
+    base=NaN 으로 null 패널에서 전부 탈락 — 실측 557종목 중 1종목만 남아 null 이 단일자산
+    포트폴리오로 퇴화했다. leading NaN 은 보존 (real 패널과 동일한 universe 진입 시점).
     """
     rets = prices.pct_change(fill_method=None)
     out: dict[str, np.ndarray] = {}
     for t in prices.columns:
+        px = prices[t].to_numpy()
         r = rets[t].to_numpy()
         idx = np.where(~np.isnan(r))[0]
         shuffled = r.copy()
         shuffled[idx] = r[rng.permutation(idx)]
-        out[str(t)] = prices[t].to_numpy()[0] * np.cumprod(1.0 + np.nan_to_num(shuffled))
+        col = np.full(px.shape, np.nan)
+        valid = np.where(~np.isnan(px))[0]
+        if valid.size:
+            f = valid[0]
+            col[f] = px[f]
+            if f + 1 < len(px):
+                col[f + 1 :] = px[f] * np.cumprod(1.0 + np.nan_to_num(shuffled[f + 1 :]))
+        out[str(t)] = col
     return pd.DataFrame(out, index=prices.index)
 
 

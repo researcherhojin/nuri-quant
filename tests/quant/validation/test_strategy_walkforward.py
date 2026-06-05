@@ -333,6 +333,90 @@ class TestNullSafeGate:
         assert r["gate"]["p_value"] == r["permutation"]["p_value"]
 
 
+# ── #707 permutation null: staggered-start 패널 보존 ───────────
+
+
+class TestPermutationStaggeredStart:
+    """#707: leading-NaN ticker 가 null 패널에서 탈락하면 안 된다 (§5.3.1 Gotcha-Test Pair).
+
+    구버전은 base 가격을 패널 첫 행(to_numpy()[0])에서 읽어, 패널 시작일에 없던 ticker
+    (base=NaN)가 null 에서 전부 NaN 탈락 → 실측 557종목 중 1종목(KOSDAQ)만 남아 null 이
+    단일자산으로 퇴화, #701 p-value 무효. fix = first-valid-price anchor. 이 테스트는
+    staggered-start 패널에서 per-ticker non-NaN 개수가 real == null 임을 lock 한다.
+    """
+
+    @staticmethod
+    def _staggered():
+        from nuri.quant.validation.strategy_walkforward import _permute_prices
+
+        idx = pd.date_range("2024-01-01", periods=20, freq="B")
+        early = 100.0 * np.cumprod(1.0 + 0.01 * np.sin(np.arange(20)))
+        late = np.full(20, np.nan)
+        late[8:] = 50.0 * np.cumprod(1.0 + 0.02 * np.cos(np.arange(12)))
+        prices = pd.DataFrame({"EARLY": early, "LATE": late}, index=idx)
+        return prices, _permute_prices(prices, np.random.default_rng(0))
+
+    def test_late_start_ticker_survives_in_null(self):
+        prices, null = self._staggered()
+        # 회귀 핵심: LATE 가 전부 NaN 으로 탈락하면 null 이 단일자산으로 퇴화 (#701 무효 원인)
+        assert null["LATE"].notna().sum() == prices["LATE"].notna().sum()
+        assert null["EARLY"].notna().sum() == prices["EARLY"].notna().sum()
+
+    def test_leading_nan_preserved(self):
+        prices, null = self._staggered()
+        # universe 진입 시점은 real 과 동일해야 (셔플은 수익률만, 진입 시점은 구조)
+        assert null["LATE"].iloc[:8].isna().all()
+        assert null["LATE"].iloc[8] == pytest.approx(prices["LATE"].iloc[8])  # first-valid anchor 보존
+
+    def test_clean_panel_identical_to_legacy_formula(self):
+        from nuri.quant.validation.strategy_walkforward import _permute_prices
+
+        # leading NaN 없는 클린 패널: 구 공식(px[0]*cumprod, 셔플 동일 rng 재현)과
+        # **전 행 동일** lock (codex P2 — 첫 행만 비교하면 후행 회귀를 못 잡음)
+        p = _panel(n=15)
+        null = _permute_prices(p, np.random.default_rng(1))
+        rng2 = np.random.default_rng(1)  # 동일 seed → 동일 셔플 재현 (컬럼 순서대로 1 call/col)
+        rets = p.pct_change(fill_method=None)
+        for t in p.columns:
+            r = rets[t].to_numpy()
+            idx = np.where(~np.isnan(r))[0]
+            shuffled = r.copy()
+            shuffled[idx] = r[rng2.permutation(idx)]
+            legacy = p[t].to_numpy()[0] * np.cumprod(1.0 + np.nan_to_num(shuffled))
+            np.testing.assert_allclose(null[t].to_numpy(), legacy, rtol=1e-12)
+
+    def test_all_nan_column_stays_all_nan(self):
+        from nuri.quant.validation.strategy_walkforward import _permute_prices
+
+        # 전체 NaN 컬럼(유효 가격 0개): anchor 불가 → null 도 전체 NaN (valid.size==0 분기)
+        idx = pd.date_range("2024-01-01", periods=10, freq="B")
+        prices = pd.DataFrame({"OK": np.linspace(100, 110, 10), "EMPTY": np.full(10, np.nan)}, index=idx)
+        null = _permute_prices(prices, np.random.default_rng(0))
+        assert null["EMPTY"].isna().all()
+        assert null["OK"].notna().all()
+
+    def test_first_valid_on_last_row(self):
+        from nuri.quant.validation.strategy_walkforward import _permute_prices
+
+        # 첫 유효 가격이 마지막 행: anchor 만 보존, 재구성 구간 없음 (f+1==len 분기)
+        idx = pd.date_range("2024-01-01", periods=5, freq="B")
+        late = np.full(5, np.nan)
+        late[4] = 70.0
+        prices = pd.DataFrame({"OK": np.linspace(100, 104, 5), "LAST": late}, index=idx)
+        null = _permute_prices(prices, np.random.default_rng(0))
+        assert null["LAST"].iloc[4] == pytest.approx(70.0)
+        assert null["LAST"].iloc[:4].isna().all()
+
+    def test_shuffle_destroys_order_not_distribution(self):
+        prices, null = self._staggered()
+        # 수익률 multiset 보존 (분포 동일, 순서만 파괴) — f==0(EARLY) 와 f>0(LATE,
+        # 이 PR 이 고친 staggered 경로) 둘 다 (codex P2)
+        for t in ("EARLY", "LATE"):
+            real_r = np.sort(prices[t].pct_change().dropna().to_numpy())
+            null_r = np.sort(null[t].pct_change().dropna().to_numpy())
+            np.testing.assert_allclose(real_r, null_r, rtol=1e-9)
+
+
 # ── frozen survivor universe ──────────────────────────────────
 
 
