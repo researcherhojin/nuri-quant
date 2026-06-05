@@ -1,0 +1,63 @@
+# P4 exit-룰 사후검증 (#713) — 결과를 보기 전에 동결된 pre-registered 파라미터.
+#
+# 규율 (#706 과 동일):
+# - 룰은 이론 동기가 있는 5개만 (E0 대조 + E1-E4 검정). 결과 보고 추가/수정 금지.
+# - 다중비교 = Bonferroni: 발견단계 통과 = 순열 p < alpha / n_test_rules AND ΔSharpe > 0.
+# - 발견단계 통과 룰만 FROZEN holdout(패널 마지막 frac 진입분) 1회 개봉.
+# - E0/E1 파라미터는 config/rules.yaml 현행 값의 동결 복사 (실험 가설은 production
+#   loader 와 분리 — rules.yaml 변경은 통과 후 별도 STRATEGY PR).
+# - 거래비용(cost_bps)·FX(fx_series)는 매 run 필수 입력.
+
+panel:                           # #706 과 동일한 품질 필터 (walkforward_variants.yaml 복사)
+  exclude_tickers: [KOSDAQ, KOSPI, GC=F, TESTAA]
+  min_history: 504
+  min_breadth: 40
+
+entries:                         # 랜덤 진입 Monte Carlo — exit 기여를 진입 신호와 분리
+  n: 2000                        # (ticker, 진입일) 무작위 쌍 수
+  seed: 0                        # 재현성 (진입 set 은 모든 룰이 공유 — paired 비교)
+  max_horizon: 250               # 최대 보유 영업일 (룰 미발화 시 강제 청산)
+  warmup: 60                     # 진입일 하한 (MA50 등 룰 지표 계산 가능 구간 확보)
+
+holdout:
+  frac: 0.2                      # 패널 마지막 20% 에 진입하는 포지션 = FROZEN (봉인)
+
+costs:
+  survivorship_haircut_bps_annual: 200
+
+gate:
+  permutation:
+    n: 200                       # 시간셔플 null 표본 수 (#707 first-valid anchor 재사용)
+    alpha: 0.05                  # 가족 유의수준 — 발견단계는 alpha / n_test_rules
+    seed: 0
+  multiple_comparison: bonferroni
+  min_delta_sharpe: 0.0          # ΔSharpe(룰 − E0) > 0 필수 (개선이어야 의미)
+  min_holdout_delta: 0.0         # holdout 재확인 floor
+
+# exit 룰 registry — kind: exit_walkforward.py 의 시뮬레이터가 해석.
+# 모든 % 는 진입가 대비 (trailing 은 고점 대비). E0 가 paired 비교의 기준점.
+rules:
+  - name: e0_ladder
+    baseline: true
+    theory: "대조군 — O'Neil CAN SLIM 현행 production ladder (rules.yaml 동결 복사)"
+    stop_pct: -7
+    tp1: {pct: 20, sell: 0.5}
+    tp2: {pct: 40, sell: 0.25}
+    trailing_pct: -15            # 잔여 25% 는 고점 대비 트레일링
+
+  - name: e1_leader_ma
+    theory: "#679 leader-exit 사후검증 — Minervini 추세추종: 고정 TP 없이 50MA 종가 이탈 청산"
+    stop_pct: -7
+    trail_ma: 50
+
+  - name: e2_trail25
+    theory: "2026-05-29 약식 백테스트 raw 1위 — 무TP + 고점 대비 -25% 고정 트레일 엄밀 재검"
+    stop_pct: -7
+    trailing_pct: -25
+
+  - name: e3_buy_hold
+    theory: "바닥 대조 — exit 룰이 아예 가치를 더하는가 (max_horizon 까지 무조건 보유)"
+
+  - name: e4_stop_only
+    theory: "처분효과 회피의 최소형 — -7% 손절만, 승자는 절대 자르지 않음"
+    stop_pct: -7
