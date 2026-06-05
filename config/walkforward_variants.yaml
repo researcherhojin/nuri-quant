@@ -1,0 +1,82 @@
+# Pre-registered 변형 edge search (#706) — 결과를 보기 전에 동결된 파라미터.
+#
+# p-hacking 차단 규율:
+# - 변형은 이론 동기가 있는 5개만 (grid search 금지). 각 param grid ≤ 3.
+# - 다중비교 보정 = Bonferroni: 발견단계 통과 = 순열 p < alpha / n_test_variants.
+# - 발견단계 통과분만 FROZEN holdout 에서 1회 재확인 (둘 다 통과해야 승격 자격).
+# - 이 파일 변경은 STRATEGY PR + 근거 필요. select_fn 로직은
+#   nuri/quant/validation/variant_walkforward.py 의 registry (이름으로 매핑).
+# - 거래비용(cost_bps)·FX(fx_series)는 baseline 과 동일하게 매 run 필수 입력.
+
+panel:
+  # 비-주식 pseudo ticker 제거 (KRW 지수/선물/테스트 — US USD 패널 통화 오염 방지).
+  # 실측: KOSDAQ 가 .KS 필터를 빠져나가 2018-2020 단일종목 degenerate fold 의 정체였음.
+  exclude_tickers: [KOSDAQ, KOSPI, GC=F, TESTAA]
+  min_history: 504               # 종목별 최소 non-NaN close 일수 (~2년) — 얕은 신규 backfill 제외
+  min_breadth: 40                # cross-section 폭 < 40 인 선두 날짜 trim (degenerate fold 제거)
+
+portfolio:                       # 모든 변형 공통 (신호만 다르게 — 공정 비교)
+  top_n: 5
+  rebalance_days: 20
+
+fold:
+  kind: rolling
+  train_size: 252                # ~1년 in-sample (param 선택)
+  test_size: 63                  # ~1분기 OOS
+  step: 63
+
+holdout:
+  frac: 0.2                      # 최근 20% FROZEN — 발견단계 통과 변형만 1회 재확인
+
+costs:
+  survivorship_haircut_bps_annual: 200
+
+gate:
+  min_oos_sharpe: 0.5            # pooled OOS net Sharpe 절대 floor (경제적 유의)
+  min_holdout_sharpe: 0.0        # holdout 재확인 floor (음수면 FAIL)
+  permutation:
+    n: 200                       # 시간셔플 Monte-Carlo null 표본 수 (#701 재사용)
+    alpha: 0.05                  # 가족 유의수준 — 발견단계는 alpha / n_test_variants (Bonferroni)
+    seed: 0                      # 재현성
+  multiple_comparison: bonferroni
+
+# 변형 registry — select: variant_walkforward.py 의 select_fn 이름.
+# baseline(V0)은 대조군이라 Bonferroni 분모(n_test_variants)에서 제외.
+variants:
+  - name: v0_momentum
+    select: momentum
+    baseline: true
+    theory: "대조군 — 현재 trailing-return top-N (#701 gate FAIL p=0.169 known)"
+    params:
+      - {lookback: 20}
+      - {lookback: 60}
+      - {lookback: 120}
+
+  - name: v1_skip_momentum
+    select: skip_momentum
+    theory: "Jegadeesh-Titman 1993 정통 12-1 모멘텀 — 최근 1개월은 반전이라 제외해야 persistence 포착"
+    params:
+      - {lookback: 126, skip: 21}
+      - {lookback: 252, skip: 21}
+
+  - name: v2_vol_scaled
+    select: vol_scaled
+    theory: "Blitz-Huij-Martens 2011 residual momentum — 순수 수익률 랭킹의 고변동 노이즈 과대선택을 vol 스케일로 보정"
+    params:
+      - {lookback: 60}
+      - {lookback: 120}
+
+  - name: v3_volume_confirmed
+    select: volume_confirmed
+    theory: "Lee-Swaminathan 2000 + '돈 몰리는 리더' — 모멘텀 top-2N 중 거래대금 surge 상위 N (기관 매집 확인)"
+    params:
+      - {lookback: 60, surge_window: 20}
+      - {lookback: 120, surge_window: 20}
+
+  - name: v4_regime_momentum
+    select: regime_momentum
+    theory: "Daniel-Moskowitz 2016 Momentum Crashes — SPY<200MA 약세장은 cash (좌측꼬리 제거, MA 고정·비튜닝)"
+    regime: {ticker: SPY, ma: 200}
+    params:
+      - {lookback: 60}
+      - {lookback: 120}

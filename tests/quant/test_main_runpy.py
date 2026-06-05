@@ -115,6 +115,15 @@ class TestBacktestMainRunpy:
             runpy.run_module("nuri.quant.validation.strategy_walkforward", run_name="__main__")
         assert exc.value.code == 2  # FX 부재 graceful error
 
+    def test_variant_walkforward_main(self, monkeypatch, db_path_mp):
+        """variant_walkforward main: 빈 DB → usd_krw 부재 → graceful error(exit 2). __main__ guard 커버."""
+        monkeypatch.setattr(sys, "argv", ["variant_walkforward"])
+        monkeypatch.setattr(sys, "stdout", io.StringIO())
+        monkeypatch.setattr(sys, "stderr", io.StringIO())
+        with pytest.raises(SystemExit) as exc:
+            runpy.run_module("nuri.quant.validation.variant_walkforward", run_name="__main__")
+        assert exc.value.code == 2  # FX 부재 graceful error
+
     def test_optimizer_main(self, monkeypatch, db_path_mp):
         """optimizer main without --signal: optimize_all branch."""
         # Patch optimize_all to a no-op (it iterates many signals)
