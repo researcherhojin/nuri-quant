@@ -1,0 +1,58 @@
+# #715 leader-exit growth-conditional 표적 검증 — 결과를 보기 전에 동결된 pre-registered 파라미터.
+#
+# 동기: #713(P4)에서 e1_leader_ma(50MA 이탈 청산)는 랜덤 진입 일반 testbed 에서
+#   ΔSharpe −0.68 vs E0 ladder (FAIL). 그러나 #679 leader-exit 는 growth-type 보유
+#   한정 조건부 룰이라 일반 testbed 결과가 직접 반증은 아니다. 본 검증은 진입 universe 를
+#   growth-classified(classify_stock_type==growth) 종목으로 한정해 표적 paired 측정한다.
+#
+# 규율 (#713 과 동일):
+# - 단일 검정(e1 vs E0)이므로 Bonferroni 불필요(n_test=1). 발견단계 통과 = 순열 p < alpha
+#   AND ΔSharpe > 0. 통과 룰만 FROZEN holdout 1회 개봉.
+# - E0/E1 파라미터는 config/rules.yaml 현행 값의 동결 복사. rules.yaml 변경은 통과 후 별도 STRATEGY PR.
+# - 거래비용(cost_bps)·FX(fx_series)는 매 run 필수 입력. panel/gate/holdout 은 #713 와 동일.
+#
+# 알려진 caveat: classify_stock_type 은 최신 fundamentals(pe_ratio>30) + 섹터로 분류하므로
+#   역사적 진입에 *현재* growth 멤버십을 적용한다(point-in-time 분류 불가 — 테이블에 최신만).
+#   단, 프로덕션 #679 룰도 결정 시점의 현재 데이터로 분류하므로 동일 속성이다.
+
+panel:                           # #713 동일 품질 필터 (US-only, .KS 제외)
+  exclude_tickers: [KOSDAQ, KOSPI, GC=F, TESTAA]
+  min_history: 504
+  min_breadth: 40
+
+entries:                         # 랜덤 진입 Monte Carlo — exit 기여를 진입 신호와 분리
+  universe: growth               # ★ #715: growth-classified 종목 컬럼만 진입 샘플 대상
+  n: 2000                        # (ticker, 진입일) 무작위 쌍 수
+  seed: 0                        # 재현성 (진입 set 은 두 룰이 공유 — paired 비교)
+  max_horizon: 250               # 최대 보유 영업일 (룰 미발화 시 강제 청산)
+  warmup: 60                     # 진입일 하한 (MA50 계산 가능 구간 확보)
+
+holdout:
+  frac: 0.2                      # 패널 마지막 20% 에 진입하는 포지션 = FROZEN (봉인)
+
+costs:
+  survivorship_haircut_bps_annual: 200
+
+gate:
+  permutation:
+    n: 200                       # 시간셔플 null 표본 수 (#707 first-valid anchor 재사용)
+    alpha: 0.05                  # 단일 검정 — alpha / n_test_rules = 0.05/1 = 0.05
+    seed: 0
+  multiple_comparison: bonferroni  # n_test=1 이라 실질 무효 (0.05/1)
+  min_delta_sharpe: 0.0          # ΔSharpe(e1 − E0) > 0 필수 (개선이어야 의미)
+  min_holdout_delta: 0.0         # holdout 재확인 floor
+
+# exit 룰 registry — #713 의 e0/e1 동결 복사 (단일 표적 검정).
+rules:
+  - name: e0_ladder
+    baseline: true
+    theory: "대조군 — O'Neil CAN SLIM 현행 production ladder (rules.yaml 동결 복사)"
+    stop_pct: -7
+    tp1: {pct: 20, sell: 0.5}
+    tp2: {pct: 40, sell: 0.25}
+    trailing_pct: -15            # 잔여 25% 는 고점 대비 트레일링
+
+  - name: e1_leader_ma
+    theory: "#679 leader-exit growth-한정 표적 검증 — Minervini 추세추종: 고정 TP 없이 50MA 종가 이탈 청산"
+    stop_pct: -7
+    trail_ma: 50

@@ -426,3 +426,60 @@ class TestCLI:
         r = run_exit_validation(cost_bps=10.0, config=SMALL_CFG, persist=False)
         assert r["universe_n"] == 4
         assert "promotion_eligible" in r
+
+
+class TestGrowthFilter:
+    """#715 growth-conditional 표적 검증 — 진입 universe 를 growth 종목으로 한정.
+
+    - _filter_growth_columns: classify_stock_type==growth 컬럼만 잔존
+    - 보류 가드: growth 컬럼 < min_breadth → ValueError (이슈 '표본 부족하면 보류')
+    - 충분 시: universe=growth 가 정상 실행되고 universe_n = growth 종목 수
+    """
+
+    @staticmethod
+    def _seed_fundamentals(db_path):
+        # GRW* = pe>30 (growth), VAL* = pe<30 (value). 섹터/portfolio 없음 → PE 만으로 분류.
+        from nuri.core.db import get_db
+
+        rows = [("GRW1", 50.0), ("GRW2", 45.0), ("VAL1", 10.0), ("VAL2", 8.0)]
+        with get_db(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO fundamentals (ticker, date, pe_ratio) VALUES (?, '2026-01-01', ?)",
+                rows,
+            )
+
+    def test_filter_keeps_only_growth(self, db_path_mp):
+        from nuri.quant.validation.exit_walkforward import _filter_growth_columns
+
+        self._seed_fundamentals(db_path_mp)
+        p = _panel(tickers=("GRW1", "GRW2", "VAL1", "VAL2"))
+        g = _filter_growth_columns(p, db_path=db_path_mp)
+        assert set(g.columns) == {"GRW1", "GRW2"}
+
+    def test_growth_universe_too_narrow_defers(self, db_path_mp):
+        self._seed_fundamentals(db_path_mp)
+        p = _panel(tickers=("GRW1", "GRW2", "VAL1", "VAL2"))  # growth=2
+        cfg = {
+            **SMALL_CFG,
+            "panel": {**SMALL_CFG["panel"], "min_breadth": 3},  # 2 growth < 3 → 보류
+            "entries": {**SMALL_CFG["entries"], "universe": "growth"},
+        }
+        with pytest.raises(ValueError, match="too narrow"):
+            run_exit_search(cost_bps=10.0, fx_series=_flat_fx(p.index), close=p, db_path=db_path_mp, config=cfg)
+
+    def test_growth_universe_runs_when_sufficient(self, db_path_mp):
+        self._seed_fundamentals(db_path_mp)
+        p = _panel(tickers=("GRW1", "GRW2", "VAL1", "VAL2"))  # growth=2
+        cfg = {
+            **SMALL_CFG,
+            "panel": {**SMALL_CFG["panel"], "min_breadth": 2},  # 2 growth == 2 → 통과
+            "entries": {**SMALL_CFG["entries"], "universe": "growth"},
+        }
+        r = run_exit_search(cost_bps=10.0, fx_series=_flat_fx(p.index), close=p, db_path=db_path_mp, config=cfg)
+        assert r["universe_n"] == 2  # growth 종목만 (VAL* 제외)
+
+    def test_cli_growth_flag_loads_config(self, db_path_mp):
+        # --growth 는 walkforward_exits_growth.yaml 을 로드 — 데이터 부족 시 defer(exit 2).
+        from nuri.quant.validation import exit_walkforward as E
+
+        assert E.main(["--growth", "--no-persist"]) == 2

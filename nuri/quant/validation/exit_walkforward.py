@@ -39,10 +39,27 @@ logger = logging.getLogger(__name__)
 _CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config" / "walkforward_exits.yaml"
 
 
+_GROWTH_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config" / "walkforward_exits_growth.yaml"
+
+
 def _load_exits_config(path: Optional[Path] = None) -> dict:
     """config/walkforward_exits.yaml 로드 (pre-registered 파라미터)."""
     with open(path or _CONFIG_PATH, encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def _filter_growth_columns(close: pd.DataFrame, db_path: Optional[Path] = None) -> pd.DataFrame:
+    """패널 컬럼을 growth-classified(classify_stock_type==growth) 종목으로 한정 (#715).
+
+    #679 leader-exit 은 growth-type 보유 한정 룰이므로 표적 검증은 진입 universe 를
+    growth 종목으로 좁힌다. classify_stock_type 은 최신 fundamentals(pe_ratio>30) +
+    섹터 기반 — 프로덕션 룰과 동일한 분류기를 재사용한다(caveat: point-in-time 아님).
+    """
+    from nuri.trading.recommend.price_targets import classify_stock_type
+
+    keep = [t for t in close.columns if classify_stock_type(str(t), db_path=db_path) == "growth"]
+    logger.info("growth filter: %d/%d columns retained", len(keep), close.shape[1])
+    return close[keep]
 
 
 # ── 진입 샘플링 (모든 룰 공유 — paired) ────────────────────────
@@ -252,6 +269,15 @@ def run_exit_search(
     cfg = config or _load_exits_config()
     if close is None:
         close, _vol = _build_panels(cfg, db_path=db_path)
+    # #715: growth-한정 표적 검증 — 패널 빌드 후 growth 컬럼만 1회 필터링.
+    # 진입 샘플·순열 null 전부 축소 패널에서 도출되므로 paired 비교는 유지된다.
+    if cfg["entries"].get("universe") == "growth" and not close.empty:
+        close = _filter_growth_columns(close, db_path=db_path)
+        if close.shape[1] < int(cfg["panel"]["min_breadth"]):
+            raise ValueError(
+                f"growth universe too narrow: {close.shape[1]} < min_breadth "
+                f"{cfg['panel']['min_breadth']} (표본 부족 — #715 보류)"
+            )
     if close.empty or len(close) < 2:
         raise ValueError("insufficient price history after panel quality filter")
 
@@ -397,16 +423,27 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="exit-walkforward")
     parser.add_argument("--cost-bps", type=float, default=10.0, help="거래비용 (bps, 필수 가정)")
     parser.add_argument("--no-persist", action="store_true", help="backtests 기록 생략")
+    parser.add_argument(
+        "--growth",
+        action="store_true",
+        help="#715 growth-한정 표적 검증 (walkforward_exits_growth.yaml 사전등록 config 로드)",
+    )
     args = parser.parse_args(argv)
 
+    growth_cfg = _load_exits_config(_GROWTH_CONFIG_PATH) if args.growth else None
     try:
-        r = run_exit_validation(cost_bps=args.cost_bps, persist=not args.no_persist)
+        r = run_exit_validation(cost_bps=args.cost_bps, config=growth_cfg, persist=not args.no_persist)
     except ValueError as exc:
         print(_json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2
 
     print(f"\n{'=' * 80}")
-    print("  P4 Exit-Rule Walk-Forward (#713) — paired vs e0_ladder")
+    _title = (
+        "  #715 Leader-Exit Growth-Conditional Walk-Forward — paired vs e0_ladder"
+        if args.growth
+        else "  P4 Exit-Rule Walk-Forward (#713) — paired vs e0_ladder"
+    )
+    print(_title)
     print(
         f"  Universe {r['universe_n']} | {r['panel_start']}..{r['panel_end']} | cost {r['cost_bps']}bps"
         f" | entries {r['n_discovery']}d/{r['n_holdout']}h | Bonferroni {r['alpha']}/{r['n_test_rules']}"
