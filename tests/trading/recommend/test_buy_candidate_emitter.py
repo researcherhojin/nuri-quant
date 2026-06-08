@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from nuri.core.db import get_db, init_db, upsert_portfolio, upsert_prices
+from nuri.core.timezone import today_kst
 from nuri.trading.recommend.buy_candidate_emitter import (
     LEVERAGE_ETFS,
     BuyCandidate,
@@ -78,8 +79,13 @@ def _seed_factor(db_path, ticker: str, composite: float):
 
 
 def _seed_prices(db_path, ticker: str, closes: list[float]):
-    """Backfill ~45 trading days ending today."""
-    dates = pd.bdate_range(end="2026-04-30", periods=len(closes))
+    """Backfill ~45 trading days ending today.
+
+    end 를 today 로 고정(상대일)해야 emitter 의 ``date('now', '-45 days')``
+    윈도우 안에 들어온다. 고정 절대일로 두면 시간이 흐를수록 윈도우 밖으로
+    밀려 ``len(grp) < 6`` 으로 skip → scored=0 회귀 (time-bomb).
+    """
+    dates = pd.bdate_range(end=today_kst(), periods=len(closes))
     df = pd.DataFrame(
         {
             "ticker": ticker,
