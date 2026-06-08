@@ -65,12 +65,13 @@ dependencies = [
     "discord.py>=2.7.1",
 
     # ─── API server ───────────────────────────────────────────
-    # openbb-core>=1.6.3 requires fastapi>=0.128.0,<0.129.0 — lower bound
-    # pinned to that range until openbb relaxes its fastapi constraint (#277).
-    # uv.lock resolves to fastapi 0.128.8 which carries all current security
-    # fixes we need. Dependabot will keep proposing newer versions; ignore
-    # the PR until openbb unblocks.
-    "fastapi>=0.128.0,<0.129.0",
+    # openbb-core(최신 1.6.10까지) 가 fastapi>=0.128.0,<0.129.0 로 하드 핀하나,
+    # 그 핀은 openbb 자체 REST 서버 서브기능용 — nuri 는 openbb 를 라이브러리
+    # (obb.*) 로만 쓰고 openbb 의 fastapi 서버를 호출하지 않는다(grep 확인).
+    # 따라서 [tool.uv] override 로 fastapi/starlette 를 핀 너머로 강제한다
+    # (#277 → starlette ≤1.0.0 Host-header bypass 패치는 starlette≥1.0.1 = fastapi≥0.133
+    # 에서만 가능). 런타임 호환 실측: API 545 + 전체 5992 테스트 green.
+    "fastapi>=0.128.0",
     "httpx>=0.27.0",
     "uvicorn>=0.32.0",
 
@@ -122,6 +123,13 @@ override-dependencies = [
     # aiohttp-client-cache) 전부 aiohttp 제약 (any) 라 floor 만 강제.
     # 3.13.4 → 3.14.0 minor bump (실측: test suite green).
     "aiohttp>=3.14.0",
+    # dependabot #63 (starlette ≤1.0.0 Host header bypass → path 보안 우회) —
+    # 패치는 starlette≥1.0.1 에만 존재, fastapi 는 0.133.0 부터 starlette 1.x
+    # 허용. openbb-core(최신 1.6.10)까지 fastapi<0.129 하드 핀이나, nuri 는
+    # openbb 의 fastapi 서버를 안 쓰므로(라이브러리 전용) override 로 강제.
+    # 실측: openbb_core/obb import OK + API 545 + 전체 5992 테스트 green.
+    "fastapi>=0.133.0",
+    "starlette>=1.0.1",
 ]
 
 
