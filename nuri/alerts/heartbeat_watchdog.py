@@ -17,12 +17,28 @@ Usage:
     python -m nuri.alerts.heartbeat_watchdog
 """
 
+import os
 import sys
 import time
 from pathlib import Path
 
 from nuri.alerts.discord_bot import send_webhook_text
 from nuri.core.timezone import kst_now
+
+# 시스템 알림 컨벤션: per-channel webhook (DiscordPublisher Channel enum).
+# heartbeat stale = 운영 incident → INCIDENTS 채널 우선. 빈 값이면 OPS → 범용 URL 순.
+# generic DISCORD_WEBHOOK_URL 은 빈 값으로 두고 채널별 webhook 을 쓰는 배포가 정상.
+_WEBHOOK_ENV_PRIORITY = ("DISCORD_WEBHOOK_INCIDENTS", "DISCORD_WEBHOOK_OPS", "DISCORD_WEBHOOK_URL")
+
+
+def _resolve_webhook_url() -> str | None:
+    """설정된(non-empty) per-channel webhook 을 우선순위대로 탐색."""
+    for key in _WEBHOOK_ENV_PRIORITY:
+        val = os.getenv(key, "").strip()
+        if val:
+            return val
+    return None
+
 
 # repo_root/data/.scheduler_heartbeat — heartbeat 는 1분 간격 기록 (nuri/scheduler.py).
 HEARTBEAT_PATH = Path(__file__).resolve().parents[2] / "data" / ".scheduler_heartbeat"
@@ -56,8 +72,9 @@ def main() -> int:
         f"확인: `launchctl kickstart -k gui/$(id -u)/com.nuri-quant.scheduler`\n"
         f"[{kst_now().strftime('%Y-%m-%d %H:%M KST')}]"
     )
+    webhook_url = _resolve_webhook_url()
     try:
-        sent = send_webhook_text(msg)
+        sent = send_webhook_text(msg, webhook_url=webhook_url)
     except Exception as e:  # 네트워크/webhook 실패도 outage 신호 — 삼키지 말고 surface
         print(f"STALE detected ({age:.1f}분) but webhook FAILED: {e}", file=sys.stderr)
         return 2

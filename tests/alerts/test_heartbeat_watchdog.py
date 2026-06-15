@@ -30,6 +30,25 @@ class TestHeartbeatAge:
         assert 39.0 < age < 41.0
 
 
+class TestWebhookResolution:
+    def test_prefers_incidents_channel(self, monkeypatch):
+        monkeypatch.setenv("DISCORD_WEBHOOK_INCIDENTS", "https://x/incidents")
+        monkeypatch.setenv("DISCORD_WEBHOOK_OPS", "https://x/ops")
+        assert hw._resolve_webhook_url() == "https://x/incidents"
+
+    def test_falls_back_past_empty_url(self, monkeypatch):
+        # generic URL 빈 값 + OPS 만 설정 → OPS 선택 (실제 mini 배포 형태).
+        monkeypatch.setenv("DISCORD_WEBHOOK_INCIDENTS", "")
+        monkeypatch.setenv("DISCORD_WEBHOOK_OPS", "https://x/ops")
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+        assert hw._resolve_webhook_url() == "https://x/ops"
+
+    def test_none_when_all_empty(self, monkeypatch):
+        for k in ("DISCORD_WEBHOOK_INCIDENTS", "DISCORD_WEBHOOK_OPS", "DISCORD_WEBHOOK_URL"):
+            monkeypatch.setenv(k, "")
+        assert hw._resolve_webhook_url() is None
+
+
 class TestMain:
     def test_fresh_heartbeat_no_alert(self, tmp_path, monkeypatch):
         p = tmp_path / "hb"
