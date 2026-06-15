@@ -49,6 +49,13 @@ NOISE_THRESHOLD = 3  # 같은 ticker > 3 emit / 24h
 IDENTICAL_CONV_TOLERANCE = 1e-3  # conviction 차이 < 0.001 → identical
 IDENTICAL_CONV_MIN_SAMPLES = 5  # 최소 5 emit 이상에서만 검출
 
+# Issue type → 사람이 읽는 한 줄 의미 (digest summary 에 surface — cryptic 코드 대신)
+_ISSUE_MEANING = {
+    "conflict": "같은 종목에 BUY+SELL 24h 내 동시 emit (자기모순)",
+    "noise": "같은 종목 24h 내 3회 초과 emit (중복 스팸)",
+    "identical_conv": "conviction 점수가 전부 동일 (scoring 결함)",
+}
+
 # Issue type → suggested fix path (보고서에 surface)
 _SUGGESTED_FIX = {
     "conflict": "nuri/agents/discord/brief_card.py — same-ticker BUY+SELL 합쳐서 CONFLICT card 1건만 emit",
@@ -251,19 +258,21 @@ def _make_issue_id(issue_type: str, affected: list[str]) -> str:
 
 
 def _emit_incident(issue: dict[str, Any], run_id: str, db_path: Optional[Any]) -> bool:
-    """Stage incident to #incidents outbox (PR3 Codex Round 6).
+    """Stage self-audit issue to #ops outbox (시스템 자가점검 — 매매 신호 아님).
 
-    Dispatcher 가 6h cron 마다 종합. dedupe_key 로 24h 내 중복 방지 (outbox 자체).
-    Legacy round-trip dedupe (agent_messages 의 `[issue=...]` prefix) 는 outbox
-    dedupe_key 로 대체.
+    #incidents(사용자 조치용)와 분리해 #ops(운영 상태)로 보낸다. dispatcher 가
+    6h cron 마다 종합. dedupe_key 로 24h 내 중복 방지 (outbox 자체).
     """
     try:
-        from nuri.agents.discord.outbox import stage_incident
+        from nuri.agents.discord.outbox import stage_ops
 
-        stage_incident(
+        affected = ", ".join(issue["affected"][:3]) + ("…" if len(issue["affected"]) > 3 else "")
+        meaning = _ISSUE_MEANING.get(issue["type"], issue["type"])
+        stage_ops(
             payload={
                 "kind": f"brief_quality_{issue['type']}",
-                "summary": (f"{issue['type'].upper()} on {','.join(issue['affected'][:3])}: n={issue['n_decisions']}"),
+                # cryptic "CONFLICT on TSLA: n=19" 대신 사람이 읽는 한 줄.
+                "summary": f"{affected} ({issue['n_decisions']}회) — {meaning}",
                 "issue_id": issue["issue_id"],
                 "affected": issue["affected"],
                 "evidence": issue["evidence"],

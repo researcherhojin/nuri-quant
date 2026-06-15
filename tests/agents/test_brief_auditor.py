@@ -247,13 +247,13 @@ class TestEmitIncidentExceptionPath:
     """Lock-tests for _emit_incident exception (lines 256-275)."""
 
     def test_emit_incident_success(self, patched_db):
-        """stage_incident → True (lines 256-273)."""
+        """stage_ops → True (자가점검은 #ops 로 라우팅)."""
         from nuri.agents.actors.brief_auditor import _emit_incident
 
         with patch(
-            "nuri.agents.discord.outbox.stage_incident",
+            "nuri.agents.discord.outbox.stage_ops",
             return_value=42,
-        ):
+        ) as staged:
             ok = _emit_incident(
                 issue={
                     "type": "conflict",
@@ -267,13 +267,19 @@ class TestEmitIncidentExceptionPath:
                 db_path=patched_db,
             )
         assert ok is True
+        # 라우팅: #ops 로 stage (사용자 #incidents 와 분리)
+        staged.assert_called_once()
+        payload = staged.call_args.kwargs["payload"]
+        # cryptic "CONFLICT on AAPL: n=2" 대신 사람이 읽는 summary
+        assert "CONFLICT on" not in payload["summary"]
+        assert "AAPL" in payload["summary"] and "자기모순" in payload["summary"]
 
     def test_emit_incident_exception_returns_false(self, patched_db):
-        """stage_incident raise → False (line 274-275)."""
+        """stage_ops raise → False (stage 실패가 audit 을 깨면 안 됨)."""
         from nuri.agents.actors.brief_auditor import _emit_incident
 
         with patch(
-            "nuri.agents.discord.outbox.stage_incident",
+            "nuri.agents.discord.outbox.stage_ops",
             side_effect=RuntimeError("outbox full"),
         ):
             ok = _emit_incident(

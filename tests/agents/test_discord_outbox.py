@@ -376,6 +376,29 @@ def test_bucket_generic_digest_groups_by_kind():
     assert any("rate_limit (1)" in n for n in field_names)
 
 
+def test_bucket_generic_digest_renders_quality_kind_human_readable():
+    """brief_quality_* 는 친화적 라벨 + 의미 + 조치 + '매매 신호 아님' 으로 렌더."""
+    events = [
+        {"kind": "brief_quality_conflict", "summary": "TSLA (19회) — 같은 종목 BUY+SELL"},
+        {"kind": "brief_quality_conflict", "summary": "AMD (6회) — 같은 종목 BUY+SELL"},
+    ]
+    embed = bucket_generic_digest(events, channel_label="Ops")
+    # 친화적 그룹 라벨 (raw kind 아님)
+    assert any("자기모순" in f["name"] for f in embed["fields"])
+    assert not any("brief_quality_conflict" in f["name"] for f in embed["fields"])
+    value = embed["fields"][0]["value"]
+    assert "ℹ️" in value  # 무엇인지 한 줄
+    assert "조치(개발)" in value  # 코드 조치
+    # 매매 신호 아님을 명시
+    assert "매매 신호 아님" in embed["description"]
+
+
+def test_bucket_generic_digest_non_quality_keeps_aggregated_desc():
+    """일반 kind 는 기존 description 유지 (backward compat)."""
+    embed = bucket_generic_digest([{"kind": "rate_limit", "summary": "x"}], channel_label="Ops")
+    assert embed["description"] == "1 aggregated events"
+
+
 # ─── dispatcher ──────────────────────────────────────────
 
 
