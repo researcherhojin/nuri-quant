@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.nuri-quant.heartbeat-watchdog
+
+  스케줄러 heartbeat staleness 독립 감시. 15분 간격으로
+  nuri.alerts.heartbeat_watchdog 실행 — data/.scheduler_heartbeat mtime 이
+  30분 이상 stale 이면 Discord webhook 으로 직접 알림.
+
+  SRE incident agent 와 달리 DB·scheduler 에 의존하지 않으므로 (파일 mtime +
+  webhook 만), DB 장애나 scheduler 데몬 사망 같은 outage 자체를 잡는다.
+  (2026-06-09 6일 silent outage 재발 방지.)
+
+  설치: bash scripts/launchd/install_crons.sh (USER → $HOME 자동 치환).
+-->
+<dict>
+    <key>Label</key>
+    <string>com.nuri-quant.heartbeat-watchdog</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd /Users/USER/workspace/nuri-quant &amp;&amp; .venv/bin/python -m nuri.alerts.heartbeat_watchdog</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USER/workspace/nuri-quant</string>
+
+    <!-- 15분 간격. heartbeat 는 1분마다 기록되므로 30분 임계면 최대 ~45분 내 탐지. -->
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/heartbeat_watchdog.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/heartbeat_watchdog.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
