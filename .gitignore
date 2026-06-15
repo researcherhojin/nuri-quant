@@ -275,3 +275,6 @@ coverage.json
 # emit holdings-derived output (privacy risk, STRATEGY §4.4.1). Keep local;
 # promote validated tooling to a tracked, reviewed location before committing.
 scripts/analysis/
+
+# KOSPI200 종목명 맵 — 로컬 생성 (privacy 스캐너가 증권사 회사명 차단). get_ticker_name 가 graceful fallback
+config/kr_ticker_names.json
