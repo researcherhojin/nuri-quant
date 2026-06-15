@@ -76,3 +76,31 @@ class TestGetTickerName:
             patch("pykrx.stock.get_market_ticker_name", side_effect=_boom_pykrx),
         ):
             assert ticker_names.get_ticker_name("100200.KS") is None
+
+    def test_kr_local_map_resolves_network_free(self) -> None:
+        """DB 미스 → 로컬 KOSPI200 맵에서 해석, pykrx 미호출 (#712 prod fix 핵심).
+
+        맵 tier 가 제거되면 /tickers/search 가 요청당 수백 pykrx 호출로 회귀 →
+        이 테스트가 FAIL. pykrx 를 raise 로 막아도 맵으로 이름이 나와야 network-free.
+        """
+        ticker_names._load_kr_name_map.cache_clear()
+
+        def _boom_pykrx(*a, **kw):
+            raise RuntimeError("network blocked")
+
+        with (
+            patch("nuri.core.db.query", return_value=[]),
+            patch.object(ticker_names, "_load_kr_name_map", return_value={"005930.KS": "삼성전자"}),
+            patch("pykrx.stock.get_market_ticker_name", side_effect=_boom_pykrx),
+        ):
+            assert ticker_names.get_ticker_name("005930.KS") == "삼성전자"
+
+    def test_kr_not_in_map_falls_to_pykrx(self) -> None:
+        """맵에 없는 종목은 pykrx fallback (맵외 ETF 등 — graceful)."""
+        ticker_names._load_kr_name_map.cache_clear()
+        with (
+            patch("nuri.core.db.query", return_value=[]),
+            patch.object(ticker_names, "_load_kr_name_map", return_value={}),
+            patch("pykrx.stock.get_market_ticker_name", return_value="맵외종목"),
+        ):
+            assert ticker_names.get_ticker_name("999000.KS") == "맵외종목"
