@@ -616,9 +616,23 @@ def _count_external_for_class(asset_class: str, tickers: list[str], db_path=None
 
 def _check_external_for_class(asset_class: str, tickers: list[str], policy: dict, db_path=None) -> CertCondition:
     """Asset class 별 external data gate."""
+    cid = f"external_data_{asset_class}"
+
+    # 애널리스트 컨센서스/슈퍼투자자 13F 가 구조적으로 비적용인 자산군
+    # (commodity/bond/kr_index — config external_applicable:false). 영구 미충족
+    # warning 대신 N/A 로 vacuous pass — 데이터를 위조하지 않으면서 오해 소지 제거.
+    # (kr_equity 는 적용 유지: 커버리지 존재하나 KR external collector 미구현 → warning)
+    if policy.get("external_applicable", True) is False:
+        return CertCondition(
+            cid,
+            f"[{asset_class}] external 근거 비적용 (N/A)",
+            True,
+            "애널리스트 컨센서스/13F 비적용 자산군 — 외부근거 요구 없음",
+            "info",
+        )
+
     min_rec = policy.get("external_min_records", 10)
     min_src = policy.get("external_min_sources", 3)
-    cid = f"external_data_{asset_class}"
     desc = f"[{asset_class}] external >= {min_rec}건 / {min_src}소스"
     try:
         records, sources = _count_external_for_class(asset_class, tickers, db_path=db_path)
