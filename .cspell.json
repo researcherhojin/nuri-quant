@@ -2,6 +2,15 @@
   "version": "0.2",
   "language": "en",
   "description": "Nuri-Quant project dictionary — domain vocabulary + lib names so cSpell stops warning on legitimate terms.",
+  "dictionaryDefinitions": [
+    {
+      "name": "tickers",
+      "path": ".cspell/tickers.txt",
+      "description": "universe.yaml 티커 정적 allowlist (US alpha 심볼 + KS/KQ 접미사). KR 코드는 숫자라 cspell 미검사. universe 확장 시 갱신.",
+      "addWords": false
+    }
+  ],
+  "dictionaries": ["tickers"],
   "words": [
     "ABNB",
     "ACGL",
