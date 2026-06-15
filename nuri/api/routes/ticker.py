@@ -1,5 +1,7 @@
 """종목 상세 API — 모든 데이터를 한 번에."""
 
+import json
+import time
 from dataclasses import asdict
 
 from fastapi import APIRouter, Query
@@ -7,6 +9,109 @@ from fastapi import APIRouter, Query
 from nuri.core.db import query
 
 router = APIRouter(tags=["ticker"])
+
+# screen_candidates 는 universe 전체를 스캔(O(종목수×지표계산)) → 종목 상세 GET 마다
+# 재실행하면 수초 지연. 다른 라우트와 동일한 5분 TTL 모듈 캐시로 1회 스캔 결과 공유.
+_CANDIDATES_CACHE_TTL = 300  # 5분
+_candidates_cache: dict = {"data": None, "timestamp": 0.0}
+
+# 스케줄러가 매일 consensus 를 저장하므로 정상 운영 시 최신 행은 오늘/어제.
+# 주말·공휴일 갭(최대 ~3일)은 허용하되, 그보다 오래되면(스케줄러 정지 등) live
+# 재계산으로 폴백 — stale consensus 를 권위 있는 값으로 serve 하지 않기 위함.
+_CONSENSUS_MAX_AGE_DAYS = 7
+
+
+def _read_consensus_from_db(ticker: str) -> dict | None:
+    """recommendations 테이블의 최근 consensus 1건을 복원. 없거나 stale 하면 None.
+
+    스케줄러가 매 consensus run 마다 save_to_recommendations 로 전 종목을 저장하므로
+    상세 GET 에서 analyze_ticker(10-agent, 네트워크+연산)를 재실행할 필요가 없다.
+    dissent 는 recommendations.signals 에 count 만 있어 agent_verdicts 에서 재구성한다
+    (final_action 기준 — divergence/veto penalty 가 적용된 행은 canonical scoring.py 의
+    pre-penalty 기준과 미세하게 다를 수 있으나, 표시용 설명 필드라 허용).
+    """
+    from datetime import timedelta
+
+    from nuri.core.timezone import kst_now
+
+    rows = query(
+        "SELECT action, confidence, signals, agent_verdicts, date "
+        "FROM recommendations WHERE ticker = ? ORDER BY date DESC LIMIT 1",
+        (ticker,),
+    )
+    if not rows:
+        return None
+
+    row = rows[0]
+    # freshness 가드: 너무 오래된 행이면 None → 호출자가 live 재계산
+    cutoff = (kst_now().date() - timedelta(days=_CONSENSUS_MAX_AGE_DAYS)).isoformat()
+    if not row["date"] or row["date"] < cutoff:
+        return None
+
+    try:
+        verdicts = json.loads(row["agent_verdicts"]) if row["agent_verdicts"] else []
+    except (json.JSONDecodeError, TypeError):
+        verdicts = []
+    if not isinstance(verdicts, list):
+        verdicts = []
+    try:
+        sig = json.loads(row["signals"]) if row["signals"] else {}
+    except (json.JSONDecodeError, TypeError):
+        sig = {}
+
+    final_action = row["action"]
+    dissent = [
+        f"{v.get('agent_name', '?')}({v.get('action', '?')}, {float(v.get('confidence') or 0):.0f}): {v.get('reasoning', '')}"
+        for v in verdicts
+        if isinstance(v, dict) and v.get("action") != final_action
+    ]
+    return {
+        "final_action": final_action,
+        "final_confidence": row["confidence"],
+        "agreement_rate": sig.get("agreement_rate") if isinstance(sig, dict) else None,
+        "verdicts": verdicts,
+        "dissent": dissent,
+        "as_of": row["date"],  # 캐시된 결정의 기준일 — staleness 투명성
+    }
+
+
+def _get_consensus(ticker: str) -> dict:
+    """DB(recommendations) 우선 read, 미스(포트폴리오 외 종목 등) 시에만 live 분석."""
+    cached = _read_consensus_from_db(ticker)
+    if cached is not None:
+        return cached
+
+    try:
+        from nuri.core.timezone import today_kst
+        from nuri.trading.agents.consensus import analyze_ticker
+
+        consensus = analyze_ticker(ticker)
+        return {
+            "final_action": consensus.final_action,
+            "final_confidence": consensus.final_confidence,
+            "agreement_rate": consensus.agreement_rate,
+            "verdicts": [asdict(v) for v in consensus.verdicts],
+            "dissent": consensus.dissent,
+            "as_of": today_kst(),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _get_signals(ticker: str) -> list:
+    """캐시된 universe 스캔 결과에서 해당 종목 시그널만 필터. 5분 TTL."""
+    now = time.time()
+    if _candidates_cache["data"] is None or (now - _candidates_cache["timestamp"]) >= _CANDIDATES_CACHE_TTL:
+        try:
+            from nuri.trading.recommend.candidates import screen_candidates
+
+            data = screen_candidates(lookback_days=10)
+        except Exception:
+            # 스캔 실패 시 캐시를 빈 결과로 고정하지 않음 — 다음 요청이 재시도
+            return []
+        _candidates_cache["data"] = data
+        _candidates_cache["timestamp"] = now
+    return [asdict(c) for c in _candidates_cache["data"] if c.ticker == ticker]
 
 
 @router.get("/tickers/search")
@@ -154,20 +259,9 @@ def get_ticker_detail(symbol: str):
     fund = query("SELECT * FROM fundamentals WHERE ticker=? ORDER BY date DESC LIMIT 1", (ticker,))
     result["fundamentals"] = dict(fund[0]) if fund else None
 
-    # 3. 10 에이전트 합의
-    try:
-        from nuri.trading.agents.consensus import analyze_ticker
-
-        consensus = analyze_ticker(ticker)
-        result["consensus"] = {
-            "final_action": consensus.final_action,
-            "final_confidence": consensus.final_confidence,
-            "agreement_rate": consensus.agreement_rate,
-            "verdicts": [asdict(v) for v in consensus.verdicts],
-            "dissent": consensus.dissent,
-        }
-    except Exception as e:
-        result["consensus"] = {"error": str(e)}
+    # 3. 10 에이전트 합의 — recommendations DB read 우선 (스케줄러 일일 저장),
+    #    미스 시에만 live analyze_ticker. 매 GET 10-agent 재실행 제거.
+    result["consensus"] = _get_consensus(ticker)
 
     # 4. Wall Street — 애널리스트 등급 (최근 10건)
     ratings = query(
@@ -205,15 +299,8 @@ def get_ticker_detail(symbol: str):
     )
     result["superinvestors"] = [dict(s) for s in si]
 
-    # 9. 최근 시그널
-    try:
-        from nuri.trading.recommend.candidates import screen_candidates
-
-        candidates = screen_candidates(lookback_days=10)
-        ticker_signals = [asdict(c) for c in candidates if c.ticker == ticker]
-        result["signals"] = ticker_signals
-    except Exception:
-        result["signals"] = []
+    # 9. 최근 시그널 — universe 스캔 결과 5분 캐시에서 필터 (매 GET 재스캔 제거)
+    result["signals"] = _get_signals(ticker)
 
     return result
 
