@@ -191,6 +191,10 @@ universe-sync-kr:    ## Dry-run KR KOSPI 200 sync only (requires: uv pip install
 
 universe-sync-apply: ## Apply universe.yaml updates (additions only — manual ETFs preserved)
 	$(PYTHON) -m nuri.collectors.universe_sync --apply
+	-$(PYTHON) scripts/ops/gen_kr_names.py  # best-effort: sync 성공 후 KR 종목명 캐시 갱신 (FDR 장애 시 무시)
+
+kr-names:            ## Regenerate config/kr_ticker_names.json (KR 종목명 network-free 캐시)
+	$(PYTHON) scripts/ops/gen_kr_names.py
 
 validate-universe:   ## Universe + agent coverage 검증 (#272 Phase 2c)
 	$(PYTHON) scripts/doc/validate_universe.py
