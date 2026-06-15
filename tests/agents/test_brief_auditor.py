@@ -225,8 +225,9 @@ def test_audit_dedupes_against_recent_outbox_stage(patched_db):
     _seed_decision(patched_db, decision_id="dc-2", ticker="TST_A", action="SELL", conviction=0.82)
 
     issue_id = _make_issue_id("conflict", ["TST_A"])
+    # 자가점검은 #ops 로 stage → dedupe 도 #ops 를 조회해야 매칭 (채널 일치 lock).
     stage_outbox(
-        channel="incidents",
+        channel="ops",
         payload={"summary": "prior brief_quality issue"},
         dedupe_key=f"brief_quality:{issue_id}",
         actor_name="brief-auditor",
