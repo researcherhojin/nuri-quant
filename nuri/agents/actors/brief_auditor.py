@@ -40,6 +40,10 @@ from typing import Any, Optional
 from nuri.agents.base import Actor, ActorResult, Layer, Outcome, RunContext
 from nuri.core.db import query
 
+# 자가점검 emit/dedupe 채널 — _emit_incident(stage_ops) 와 _dedupe_recent 가
+# 반드시 일치해야 함 (불일치 시 dedupe 미스 → 6h 마다 재emit 스팸).
+_AUDIT_CHANNEL = "ops"
+
 DEFAULT_AUDIT_HOURS = 24
 NOISE_THRESHOLD = 3  # 같은 ticker > 3 emit / 24h
 IDENTICAL_CONV_TOLERANCE = 1e-3  # conviction 차이 < 0.001 → identical
@@ -146,10 +150,10 @@ def _dedupe_recent(
         return []
     rows = query(
         """SELECT dedupe_key FROM discord_outbox
-            WHERE channel = 'incidents'
+            WHERE channel = ?
               AND dedupe_key IS NOT NULL
               AND created_at > datetime('now', ?)""",
-        (f"-{hours} hours",),
+        (_AUDIT_CHANNEL, f"-{hours} hours"),
         db_path=db_path,
     )
     seen_keys = {r["dedupe_key"] for r in rows if r["dedupe_key"]}
