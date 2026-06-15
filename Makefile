@@ -678,6 +678,9 @@ sync-doc-counts:
 verify-doc-counts:
 	bash scripts/verify/verify_doc_counts.sh
 
+cspell-tickers: ## Regenerate .cspell/tickers.txt from universe.yaml (run after universe-sync)
+	$(PYTHON) scripts/doc/gen_cspell_tickers.py
+
 demo:
 	bash scripts/dev/demo.sh
 

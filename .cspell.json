@@ -2,6 +2,15 @@
   "version": "0.2",
   "language": "en",
   "description": "Nuri-Quant project dictionary — domain vocabulary + lib names so cSpell stops warning on legitimate terms.",
+  "dictionaryDefinitions": [
+    {
+      "name": "tickers",
+      "path": ".cspell/tickers.txt",
+      "description": "universe.yaml 자동생성 (make cspell-tickers) — 수동 추가 금지",
+      "addWords": false
+    }
+  ],
+  "dictionaries": ["tickers"],
   "words": [
     "ABNB",
     "ACGL",
