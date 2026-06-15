@@ -111,6 +111,17 @@ describe("DecisionProvenance", () => {
     expect(screen.queryByText(/에이전트 판정/)).not.toBeInTheDocument();
   });
 
+  it("falls back to [] when evidence is null (page.tsx:96 ?? branch)", async () => {
+    // 기존 테스트는 항상 evidence 배열을 줘서 `d.evidence ?? []` 의 left 분기만 탐.
+    // evidence=null → right(`[]`) fallback 분기 커버 (codecov partial 해소).
+    mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, evidence: null });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.getByText("증거 없음")).toBeInTheDocument();
+  });
+
   it("falls back to empty verdicts on malformed JSON + renders evidence with null fields", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue({
       ...mockDetail,
