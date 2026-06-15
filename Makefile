@@ -33,6 +33,7 @@ help:
 	@echo "  Verify:       make verify-help    (verify-quick → verify-all → verify-fast → verify, fastest first)"
 	@echo "  Data:         make collect, make collect-kis, make wallstreet, make filings"
 	@echo "  Universe:     make universe-sync[-us/-kr/-apply], make collect-universe[-1y], make validate-universe"
+	@echo "  Universe gen: make kr-names (KR 종목명 캐시), make cspell-tickers (cSpell 사전) — sync-apply 가 자동 체이닝"
 	@echo "  Analysis:     make analyze, make consensus, make scan, make backtest"
 	@echo "  Pipeline:     make full-scan, make quick-scan"
 	@echo "  Trading:      make targets, make rebalance, make recommend, make certify, make remediate"
