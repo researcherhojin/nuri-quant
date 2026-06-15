@@ -982,6 +982,42 @@ class TestAssetClassGates:
         # 6건 ≥ 5, 2소스 ≥ 2 — PASS
         assert kr_cond.passed is True, f"KR 완화 기준 통과 기대: {kr_cond.detail}"
 
+    def test_external_not_applicable_class_returns_na_pass(self, db_path):
+        """external_applicable:false 자산군(commodity/bond/kr_index) 은 영구 warning 대신 N/A vacuous pass."""
+        from nuri.trading.engine.certification import _check_external_for_class
+
+        cond = _check_external_for_class("commodity", ["GC=F"], {"external_applicable": False}, db_path=db_path)
+        assert cond.id == "external_data_commodity"
+        assert cond.passed is True
+        assert cond.severity == "info"
+        assert "비적용" in cond.description and "비적용" in cond.detail
+
+    def test_external_applicable_default_still_gates(self, db_path):
+        """external_applicable 미지정(default True) + 데이터 0 → 기존대로 warning (회귀 가드)."""
+        from nuri.trading.engine.certification import _check_external_for_class
+
+        cond = _check_external_for_class(
+            "us_equity", ["AAPL"], {"external_min_records": 10, "external_min_sources": 3}, db_path=db_path
+        )
+        assert cond.passed is False
+        assert cond.severity == "warning"
+
+    def test_commodity_holding_external_na_in_full_check(self, db_path):
+        """commodity 보유 시 _check_external_data 가 external_data_commodity 를 N/A pass 로 발행 (config 경로)."""
+        from nuri.trading.engine.certification import _check_external_data
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("test", "GC=F", 1, 2000.0, "USD", "ETF/Commodity"),
+            )
+
+        ext = _check_external_data(db_path=db_path)
+        commodity_cond = next((c for c in ext if c.id == "external_data_commodity"), None)
+        assert commodity_cond is not None, "commodity 보유 시 external_data_commodity 조건 발행 기대"
+        assert commodity_cond.passed is True
+        assert commodity_cond.severity == "info"
+
     def test_usd_krw_volatility_primary_fires_when_high(self, db_path):
         """USD/KRW 3일 변동 > 3% → kr_equity volatility primary warning."""
         from nuri.trading.engine.certification import _check_volatility_gates
