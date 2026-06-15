@@ -240,7 +240,9 @@ siege_gates:
       asset_class: us_equity
 
   # Asset class 별 gate 정책. 현 PR: kr_equity + us_equity primary path.
-  # 기타 class (commodity/bond/kr_index) 는 정책만 선언 — 데이터 없으면 graceful skip.
+  # commodity/bond/kr_index 는 external_applicable:false — 애널리스트 컨센서스/13F 가
+  # 구조적으로 비적용인 자산군이라 external 게이트를 N/A(vacuous pass)로 처리.
+  # (kr_equity 는 적용 유지 — 커버리지는 존재하나 KR external collector 미구현 → warning 정직)
   asset_classes:
     us_equity:
       freshness_primary: SPY
@@ -270,8 +272,7 @@ siege_gates:
       volatility_primary_threshold: 5.0
       volatility_secondary: [usd_krw_3d_change]
       volatility_secondary_threshold: 3.0
-      external_min_records: 3
-      external_min_sources: 1
+      external_applicable: false           # 지수 ETF — 종목별 애널리스트 컨센서스 N/A
     commodity:
       freshness_primary: "GC=F"            # gold futures
       freshness_secondary: []
@@ -279,8 +280,7 @@ siege_gates:
       volatility_primary: gold_3d_change
       volatility_primary_threshold: 5.0
       volatility_secondary: []
-      external_min_records: 3
-      external_min_sources: 1
+      external_applicable: false           # 원자재 — 애널리스트 컨센서스/슈퍼투자자 13F N/A
     bond:
       freshness_primary: TLT
       freshness_secondary: []
@@ -288,8 +288,7 @@ siege_gates:
       volatility_primary: yield_3d_change
       volatility_primary_threshold: 0.3
       volatility_secondary: []
-      external_min_records: 3
-      external_min_sources: 1
+      external_applicable: false           # 채권 ETF — 애널리스트 컨센서스 N/A
 
   # E3-3c (PR TBD) — regime-adaptive position cap multipliers.
   # STRATEGY §3.6 Stage 2 PASS verdict (#402, paired counterfactual N=254,
