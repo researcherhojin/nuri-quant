@@ -436,6 +436,27 @@ def bucket_brief_digest(
     }
 
 
+# BriefAuditor 자가점검 kind → 사람이 이해하는 그룹 메타 (cryptic 코드 대신).
+# label=친화적 제목, what=한 줄 의미, action=개발 조치. 없는 kind 는 raw 그대로.
+_QUALITY_KIND_META: dict[str, dict[str, str]] = {
+    "brief_quality_conflict": {
+        "label": "⚠️ 자기모순 신호",
+        "what": "같은 종목에 BUY+SELL 을 24h 내 동시 emit (추천 신뢰도 결함)",
+        "action": "조치(개발): brief_card.py — BUY+SELL 을 CONFLICT 카드 1건으로 통합",
+    },
+    "brief_quality_noise": {
+        "label": "🔁 중복 스팸",
+        "what": "같은 종목을 24h 내 3회 초과 emit (시그널이 묻힘)",
+        "action": "조치(개발): decision_compiler.py — 종목별 6h repeat-emit 쿨다운",
+    },
+    "brief_quality_identical_conv": {
+        "label": "📊 scoring 결함",
+        "what": "conviction 점수가 전부 동일 (가중치 산출 검증 필요)",
+        "action": "조치(개발): decision_compiler.py — conviction 입력 변동성 점검",
+    },
+}
+
+
 def bucket_generic_digest(
     events: list[dict[str, Any]],
     channel_label: str,
@@ -468,19 +489,27 @@ def bucket_generic_digest(
 
     fields = []
     for group, lines in by_group.items():
+        meta = _QUALITY_KIND_META.get(group)
+        group_name = f"{meta['label']} ({len(lines)})" if meta else f"{group} ({len(lines)})"
         body_lines: list[str] = []
-        running = 0
+        # 자가점검 kind 는 그룹 맨 위에 "무엇인지" 한 줄을 먼저 박는다.
+        if meta:
+            body_lines.append(f"ℹ️ {meta['what']}")
+        running = sum(len(b) + 1 for b in body_lines)
         for ln in lines:
             ln_trunc = _truncate(ln, 200)
             if running + len(ln_trunc) + 1 > _FIELD_VALUE_MAX:
-                hidden = len(lines) - len(body_lines)
+                hidden = len(lines) - (len(body_lines) - (1 if meta else 0))
                 body_lines.append(f"… (+{hidden} more)")
                 break
             body_lines.append(ln_trunc)
             running += len(ln_trunc) + 1
+        # 자가점검 kind 는 맨 아래 "조치" 를 붙인다 (사용자가 할 일이 아니라 코드 개선).
+        if meta and running + len(meta["action"]) + 1 <= _FIELD_VALUE_MAX:
+            body_lines.append(f"→ {meta['action']}")
         fields.append(
             {
-                "name": _truncate(f"{group} ({len(lines)})", _FIELD_NAME_MAX),
+                "name": _truncate(group_name, _FIELD_NAME_MAX),
                 "value": _truncate("\n".join(body_lines), _FIELD_VALUE_MAX),
                 "inline": False,
             }
@@ -488,9 +517,17 @@ def bucket_generic_digest(
         if len(fields) >= _MAX_FIELDS:
             break
 
+    # 자가점검 kind 가 하나라도 있으면 "매매 신호 아님" 을 description 에 명시.
+    has_quality = any(g in _QUALITY_KIND_META for g in by_group)
+    description = (
+        f"※ 매매 신호 아님 — 시스템 자가점검 결과 ({n}건). 아래 '조치'는 코드 개선 백로그입니다."
+        if has_quality
+        else f"{n} aggregated events"
+    )
+
     return {
         "title": _truncate(title, _TITLE_MAX),
-        "description": _truncate(f"{n} aggregated events", _DESC_MAX),
+        "description": _truncate(description, _DESC_MAX),
         "color": color,
         "fields": fields,
         "footer": {"text": "auto digest"},
