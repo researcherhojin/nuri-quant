@@ -18,7 +18,7 @@ Every BUY / SELL recommendation runs through a 5-phase pipeline — **collect �
 - 🔁 **Self-correcting** — agent weights adjust based on actual prediction accuracy, not hand-tuning.
 - 🛡️ **3-D certification** — gates apply per `Account × Asset Class × Market`. One error-grade fail → REJECTED, no manual override.
 - 🔓 **Open data flow** — phases coupled only via SQLite tables. Re-run any phase, downstream consumers refresh automatically.
-- ✅ **Tested rigorously** — 5,892 backend tests, **100% statement coverage** (CI verified, 2026-05-06).
+- ✅ **Tested rigorously** — 6,046 backend tests, **100% statement coverage** (CI verified, 2026-05-06).
 
 ## Quick Start
 
@@ -89,7 +89,7 @@ The dashboard at `:3000/` answers **"what should I do today?"** — Action-First
 | **Holdings table** | Sorted by `positionPct` desc · top 8 + expand |
 | **Opportunity Explorer** | Top 3 non-portfolio tickers · pros / cons / verdict |
 
-Korean tickers display as names (삼성전자) instead of codes (005930.KS). 17 routes total.
+Korean tickers display as names (삼성전자) instead of codes (005930.KS). 18 routes total.
 
 ## Investment Rules
 
@@ -157,16 +157,16 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 
 | Metric | Value |
 |--------|-------|
-| **Backend tests** | 5,892 (258 files) — **100% statement coverage** |
-| **Frontend tests** | 1,372 (124 files) |
+| **Backend tests** | 6,046 (266 files) — **100% statement coverage** |
+| **Frontend tests** | 1,383 (126 files) |
 | **E2E tests** | 57 (Playwright, 8 specs) |
 | **Pipeline phases** | 5 (collect / analyze / consensus / certify / track) |
 | **Data collectors** | 26 collectors (BaseCollector pattern) |
 | **Specialist agents** | 10 |
 | **Strategy regimes** | 10 (6 base + 4 special) |
 | **Trading signals** | 22 (20 actionable + 2 shadow) |
-| **API endpoints** | 69 (FastAPI on `:8001`) |
-| **Frontend routes** | 17 (Next.js on `:3000`) |
+| **API endpoints** | 72 (FastAPI on `:8001`) |
+| **Frontend routes** | 18 (Next.js on `:3000`) |
 | **DB tables** | 51 (44 forward-only migrations) |
 | **DB submodules** | 11 (sole `sqlite3` importer in `nuri/core/db/`) |
 
