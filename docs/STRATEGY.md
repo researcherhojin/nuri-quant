@@ -468,7 +468,7 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 | # | 조건 | 등급 | 출처 |
 | 5 | data_fresh | warning | `freshness_primary` + `freshness_secondary[]` + `freshness_max_hours` |
 | 7 | volatility_gate | warning | `volatility_primary` + threshold (+ secondary). us_equity VIX>30, kr_equity USD/KRW 3d>3% + VIX>30, kr_index KOSPI 3d>5% + USD/KRW>3% |
-| 8 | external_data | warning | `external_min_records` + `external_min_sources`. us≥10/3, kr≥5/2, kr_index/commodity/bond≥3/1 |
+| 8 | external_data | warning | `external_min_records` + `external_min_sources`. us≥10/3, kr≥5/2. **kr_index/commodity/bond = `external_applicable:false` → N/A vacuous pass** (애널리스트 컨센서스/13F 가 구조적으로 비적용인 자산군이라 영구 미충족 warning 대신 N/A 처리; kr_equity 는 적용 유지 — 커버리지 존재하나 KR external collector 미구현이라 warning 이 정직) |
 **예시**: us_equity 3 + kr_equity 2 포트폴리오 flatten 결과 (2026-04-16 기준) = base 8 + data_fresh 3 + volatility 3 + external_data 2 = **총 16 conditions**. 다른 포트폴리오는 다른 수치. 상세 per-class rule: `config/rules.yaml siege_gates` + `docs/CERTIFICATION_SPEC.md`. 생성 로직: `nuri/trading/engine/certification.py` `_check_{freshness,volatility,external}_for_class()` → `certify()` flatten.
 ## 7. 작업 정책
 운영 backlog (Tier 1/2/3) 는 `docs/TODO.md`. STRATEGY 는 **변하지 않는 정책** 만. 새 세션 시작 시 `NEXT_SESSION.md` → `docs/TODO.md`.

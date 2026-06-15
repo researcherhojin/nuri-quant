@@ -60,7 +60,7 @@ Dimension 3: Execution Market (실행 시장)
 - `asset_classes.<class>` — primary + secondary 지표 (cross-market spillover)
   - `freshness_primary` / `freshness_secondary` / `freshness_max_hours`
   - `volatility_primary` + threshold / `volatility_secondary` + threshold
-  - `external_min_records` / `external_min_sources`
+  - external 게이트: `external_applicable:false` 면 N/A vacuous pass(애널리스트 컨센서스/13F 비적용 자산군 commodity/bond/kr_index — 해당 class 는 `external_min_*` 미지정). 적용 class(us_equity/kr_equity)는 `external_min_records` / `external_min_sources` 로 평가
 
 **Phase 2 backlog** — `config/rules.yaml` 미배선 (spec only):
 - `hedge_status` (per-ticker) — currency_shift 분기용
