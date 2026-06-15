@@ -16,7 +16,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
-      <body className="min-h-screen flex bg-background text-foreground">
+      {/* suppressHydrationWarning: 브라우저 확장(ColorZilla 등)이 <body>에 cz-shortcut-listen 같은 속성을 주입해 SSR↔CSR 불일치 경고가 뜸 — 무해하므로 억제 */}
+      <body className="min-h-screen flex bg-background text-foreground" suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           <Sidebar />
 
