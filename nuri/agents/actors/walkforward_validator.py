@@ -346,6 +346,9 @@ class WalkForwardValidator(Actor):
             n_train_obs=n_train_total,
             n_test_obs=n_test_total,
             finished_at=kst_now().isoformat(),
+            # explicit-db caller (strategy/variant walk-forward) 는 backtests 와 동일
+            # DB 로 기록해야 split-write 회피 (#711). None 이면 기본 DB.
+            db_path=input_data.get("db_path"),
         )
 
         outcome = Outcome.WARN if any_failed else Outcome.PASS
