@@ -275,6 +275,7 @@ def run_strategy_walkforward(
             "target_col": f"r_lb{grid[0]}",
             "metric_kind": "regression",
             "model_id": "momentum-topN-walkforward",
+            "db_path": db_path,  # walkforward_runs 를 backtests 와 동일 DB 로 (#711)
         }
     )
     oos_sharpe = result.output.get("metrics", {}).get("aggregate", {}).get("sharpe_mean")
