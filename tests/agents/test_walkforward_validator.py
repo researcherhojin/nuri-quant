@@ -46,7 +46,10 @@ def patched_db(db_path):
 
     def make_redirect(fn):
         def wrapped(*args, **kwargs):
-            kwargs.setdefault("db_path", db_path)
+            # actor 가 db_path=None 을 명시 전달(#711)해도 tmp DB 로 라우팅되도록
+            # setdefault 대신 None 도 덮어쓴다.
+            if kwargs.get("db_path") is None:
+                kwargs["db_path"] = db_path
             return fn(*args, **kwargs)
 
         return wrapped
@@ -411,6 +414,38 @@ class TestActionRun:
         assert len(rows) == 1
         assert rows[0]["model_id"] == "persist_test"
         assert rows[0]["finished_at"] is not None
+
+    def test_db_path_routes_walkforward_run_to_caller_db(self, tmp_path, monkeypatch, synthetic_data):
+        """#711 lock-test: input_data['db_path'] 가 walkforward_runs 를 caller DB 로 보내고
+        기본 DB 는 건드리지 않는다. db_path passthrough 를 되돌리면(기본 DB 기록) FAIL —
+        explicit-db caller 의 backtests/walkforward_runs split-write 회귀를 잡는다."""
+        from nuri.core import db as db_module
+
+        default_db = tmp_path / "default.db"
+        caller_db = tmp_path / "caller.db"
+        init_db(default_db)
+        init_db(caller_db)
+        # 기본 DB resolution(=db_path None) 을 tmp default 로 가둬 실제 DB 오염 방지.
+        monkeypatch.setattr(db_module, "DB_PATH", default_db)
+
+        actor = WalkForwardValidator()
+        result = actor.run(
+            {
+                "action": "run",
+                "data": synthetic_data,
+                "fold_spec": {"kind": "rolling", "train_size": 50, "test_size": 10, "step": 10},
+                "model_id": "db_path_route",
+                "model_fn": _dummy_classifier,
+                "target_col": "target",
+                "metric_kind": "classification",
+                "db_path": caller_db,
+            }
+        )
+        run_id = result.output["run_id"]
+        caller_rows = query("SELECT 1 FROM walkforward_runs WHERE run_id = ?", (run_id,), db_path=caller_db)
+        default_rows = query("SELECT 1 FROM walkforward_runs WHERE run_id = ?", (run_id,), db_path=default_db)
+        assert len(caller_rows) == 1, "walkforward_run 이 caller DB 에 기록돼야 함"
+        assert len(default_rows) == 0, "walkforward_run 이 기본 DB 로 새면 안 됨 (split-write)"
 
     def test_failed_fold_returns_warn(self, patched_db, synthetic_data):
         """일부 fold 의 model_fn 이 raise 하면 outcome=WARN (전체 panic 아님)."""

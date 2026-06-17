@@ -411,7 +411,11 @@ def run_variant_search(
             )
 
     # WalkForwardValidator 로 변형별 per-fold 기록 (walkforward_runs → /api/research/walkforward)
-    run_ids = _log_walkforward_runs(close, vol, fx_ret, variants, cfg, cost_bps, global_warmup) if persist else {}
+    run_ids = (
+        _log_walkforward_runs(close, vol, fx_ret, variants, cfg, cost_bps, global_warmup, db_path=db_path)
+        if persist
+        else {}
+    )
     for r in results:
         r["walkforward_run_id"] = run_ids.get(r["name"])
 
@@ -437,15 +441,14 @@ def _log_walkforward_runs(
     cfg: dict,
     cost_bps: float,
     global_warmup: int,
+    db_path: Optional[Path] = None,
 ) -> dict[str, Optional[str]]:
     """변형별 WalkForwardValidator run (per-fold 메트릭 → walkforward_runs 기록).
 
     _evaluate_variant 와 동일한 global_warmup 슬라이스 사용 (캘린더 창 일치).
 
-    주의: WalkForwardValidator 는 db_path 를 받지 않아 기본 DB 에만 기록한다
-    (baseline strategy_walkforward 와 동일한 기존 속성 — 무수정 원칙). 명시적
-    db_path 호출자는 backtests 와 walkforward_runs 가 다른 DB 로 갈 수 있음.
-    테스트는 db_path_mp(기본 DB monkeypatch)로 우회. 해소는 별도 이슈.
+    db_path 는 actor input 으로 전달돼 walkforward_runs 가 backtests 와 동일 DB 로
+    기록된다 (#711, split-write 회피). None 이면 기본 DB.
     """
     actor = WalkForwardValidator()
     run_ids: dict[str, Optional[str]] = {}
@@ -469,6 +472,7 @@ def _log_walkforward_runs(
                 "target_col": f"r_k{keys[0]}",  # 형식 요건 — 평가는 predict 수익률만 소비
                 "metric_kind": "regression",
                 "model_id": f"wf-variant:{v['name']}",
+                "db_path": db_path,  # walkforward_runs 를 backtests 와 동일 DB 로 (#711)
             }
         )
         run_ids[v["name"]] = result.output.get("run_id")
