@@ -1,4 +1,5 @@
 """Tests for nuri.analysis.rebalance — split from tests/test_analysis_all.py (#157)."""
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -6,61 +7,77 @@ import pytest
 
 class TestAnalysisRebalance:
     """From test_coverage_push.py."""
+
     def test_empty_db(self, db_path):
         from nuri.analysis.rebalance import analyze_rebalance
+
         result = analyze_rebalance(method="rp")
         assert isinstance(result, pd.DataFrame)
 
     def test_with_data(self, price_db):
         from nuri.analysis.rebalance import analyze_rebalance
+
         result = analyze_rebalance(method="rp")
         assert isinstance(result, pd.DataFrame)
 
     def test_mvo_method(self, price_db):
         from nuri.analysis.rebalance import analyze_rebalance
+
         result = analyze_rebalance(method="mvo")
         assert isinstance(result, pd.DataFrame)
 
 
 class TestRebalanceModule:
     """From test_coverage_round3.py."""
+
     def test_analyze_rebalance_returns_df(self, db_path):
         from nuri.analysis.rebalance import analyze_rebalance
+
         result = analyze_rebalance()
         assert isinstance(result, pd.DataFrame)
 
 
 class TestAnalysisRebalance_Final:
     """From test_coverage_final.py."""
+
     def test_import(self):
         from nuri.analysis.rebalance import analyze_rebalance
+
         assert callable(analyze_rebalance)
 
     def test_empty_db(self, db_path):
         from nuri.analysis.rebalance import analyze_rebalance
+
         result = analyze_rebalance(method="rp")
         assert isinstance(result, pd.DataFrame)
 
 
 class TestPrintRebalance:
     """From test_coverage_round22.py."""
+
     def test_empty(self, capsys):
         from nuri.analysis.rebalance import print_rebalance
+
         print_rebalance(pd.DataFrame())
         assert "데이터가 없습니다" in capsys.readouterr().out
 
     def test_no_actionable(self, capsys):
         from nuri.analysis.rebalance import print_rebalance
-        df = pd.DataFrame([{
-            "ticker": "AAPL",
-            "sector": "Tech",
-            "current_weight": 10.0,
-            "optimal_weight": 10.0,
-            "drift": 0.0,
-            "trade_value_usd": 0,
-            "trade_shares": 0,
-            "action": "HOLD",
-        }])
+
+        df = pd.DataFrame(
+            [
+                {
+                    "ticker": "AAPL",
+                    "sector": "Tech",
+                    "current_weight": 10.0,
+                    "optimal_weight": 10.0,
+                    "drift": 0.0,
+                    "trade_value_usd": 0,
+                    "trade_shares": 0,
+                    "action": "HOLD",
+                }
+            ]
+        )
         df.attrs["method"] = "Mean-Variance (Max Sharpe)"
         print_rebalance(df)
         out = capsys.readouterr().out
@@ -68,28 +85,31 @@ class TestPrintRebalance:
 
     def test_with_actions(self, capsys):
         from nuri.analysis.rebalance import print_rebalance
-        df = pd.DataFrame([
-            {
-                "ticker": "AAPL",
-                "sector": "Tech",
-                "current_weight": 25.0,
-                "optimal_weight": 10.0,
-                "drift": 15.0,
-                "trade_value_usd": -5000,
-                "trade_shares": -30,
-                "action": "SELL",
-            },
-            {
-                "ticker": "MSFT",
-                "sector": "Tech",
-                "current_weight": 5.0,
-                "optimal_weight": 15.0,
-                "drift": -10.0,
-                "trade_value_usd": 3000,
-                "trade_shares": 10,
-                "action": "BUY",
-            },
-        ])
+
+        df = pd.DataFrame(
+            [
+                {
+                    "ticker": "AAPL",
+                    "sector": "Tech",
+                    "current_weight": 25.0,
+                    "optimal_weight": 10.0,
+                    "drift": 15.0,
+                    "trade_value_usd": -5000,
+                    "trade_shares": -30,
+                    "action": "SELL",
+                },
+                {
+                    "ticker": "MSFT",
+                    "sector": "Tech",
+                    "current_weight": 5.0,
+                    "optimal_weight": 15.0,
+                    "drift": -10.0,
+                    "trade_value_usd": 3000,
+                    "trade_shares": 10,
+                    "action": "BUY",
+                },
+            ]
+        )
         df.attrs["method"] = "Risk Parity"
         print_rebalance(df)
         out = capsys.readouterr().out
@@ -100,18 +120,24 @@ class TestPrintRebalance:
 
 class TestAnalyzeRebalanceEmpty:
     """From test_coverage_round22.py."""
+
     def test_empty_portfolio(self, db_path, monkeypatch):
         import nuri.analysis.rebalance as mod
+
         call_count = [0]
+
         def mock_query_df(sql, *a, **kw):
             call_count[0] += 1
             if call_count[0] == 1:
-                return pd.DataFrame({
-                    "ticker": ["AAPL"] * 15,
-                    "date": [f"2025-01-{i:02d}" for i in range(1, 16)],
-                    "close": [150 + i for i in range(15)],
-                })
+                return pd.DataFrame(
+                    {
+                        "ticker": ["AAPL"] * 15,
+                        "date": [f"2025-01-{i:02d}" for i in range(1, 16)],
+                        "close": [150 + i for i in range(15)],
+                    }
+                )
             return pd.DataFrame()
+
         monkeypatch.setattr(mod, "query", lambda sql, *a, **kw: [])
         monkeypatch.setattr(mod, "query_df", mock_query_df)
         result = mod.analyze_rebalance()
@@ -119,22 +145,30 @@ class TestAnalyzeRebalanceEmpty:
 
     def test_insufficient_returns(self, db_path, monkeypatch):
         import nuri.analysis.rebalance as mod
-        prices_df = pd.DataFrame({
-            "ticker": ["AAPL", "AAPL", "AAPL"],
-            "date": ["2025-01-01", "2025-01-02", "2025-01-03"],
-            "close": [150, 151, 152],
-        })
+
+        prices_df = pd.DataFrame(
+            {
+                "ticker": ["AAPL", "AAPL", "AAPL"],
+                "date": ["2025-01-01", "2025-01-02", "2025-01-03"],
+                "close": [150, 151, 152],
+            }
+        )
+
         def mock_query_df(sql, *a, **kw):
             if "prices" in sql:
                 return prices_df
             return pd.DataFrame()
+
         monkeypatch.setattr(mod, "query_df", mock_query_df)
         monkeypatch.setattr(mod, "query", lambda sql, *a, **kw: [])
         result = mod.analyze_rebalance()
         assert result.empty
 
     def test_leverage_etf_branches(self, db_path, monkeypatch):
-        """LEVERAGE_ETFS 종목이 holdings 에 있으면 → 77-78 (upperlng pass) + 109 (SELL 레버리지) 분기 진입."""
+        """LEVERAGE_ETFS 종목이 holdings 에 있으면 → 'SELL (레버리지)' 액션 분기 진입.
+
+        목표 비중 0% 검증은 test_leverage_etf_target_weight_zero 가 담당 (#758).
+        """
         import nuri.analysis.rebalance as mod
         from nuri.core.rules import LEVERAGE_ETFS
 
@@ -146,17 +180,22 @@ class TestAnalyzeRebalanceEmpty:
         prices_rows = []
         for ticker, base in [(leverage_ticker, 50.0), ("AAPL", 150.0)]:
             for i, d in enumerate(dates):
-                prices_rows.append({
-                    "ticker": ticker, "date": d,
-                    "close": base + i * 0.3 + np.random.randn() * 0.5,
-                })
+                prices_rows.append(
+                    {
+                        "ticker": ticker,
+                        "date": d,
+                        "close": base + i * 0.3 + np.random.randn() * 0.5,
+                    }
+                )
         prices_df = pd.DataFrame(prices_rows)
 
-        holdings_df = pd.DataFrame({
-            "ticker": [leverage_ticker, "AAPL"],
-            "total_qty": [10, 10],
-            "sector": ["Leverage", "Tech"],
-        })
+        holdings_df = pd.DataFrame(
+            {
+                "ticker": [leverage_ticker, "AAPL"],
+                "total_qty": [10, 10],
+                "sector": ["Leverage", "Tech"],
+            }
+        )
 
         def _query_df(sql, *a, **kw):
             if "prices" in sql:
@@ -193,20 +232,89 @@ class TestAnalyzeRebalanceEmpty:
         # action 이 'SELL (레버리지)' 으로 강제 마킹
         assert leverage_rows.iloc[0]["action"] == "SELL (레버리지)"
 
+    def test_leverage_etf_target_weight_zero(self, db_path, monkeypatch):
+        """#758 회귀: 레버리지 ETF 는 최적화 유니버스에서 제외 → optimal_weight=0.
+
+        레버리지 ETF 에 고Sharpe(완만한 강세) 프로파일을 부여한다. 과거 코드는
+        no-op 루프로 제약을 강제하지 않아 MVO 가 레버리지 ETF 에 비중(상한 15%)을
+        할당 → optimal_weight > 0 → FAIL. 수정 후엔 유니버스 제외로 항상 0.
+        upperlng=0.15 가 feasible 하도록 일반 종목 8개 + 레버리지 1개 구성.
+        """
+        import numpy as np
+
+        import nuri.analysis.rebalance as mod
+        from nuri.core.rules import LEVERAGE_ETFS
+
+        lev = next(iter(LEVERAGE_ETFS))
+        normals = ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH"]
+        dates = pd.bdate_range("2024-01-01", periods=60).strftime("%Y-%m-%d").tolist()
+
+        np.random.seed(7)
+        rows = []
+        # 레버리지 ETF: 완만한 강세 + 저변동 → 높은 Sharpe (MVO 가 선호)
+        for i, d in enumerate(dates):
+            rows.append({"ticker": lev, "date": d, "close": 50.0 + i * 0.5 + np.random.randn() * 0.05})
+        # 일반 종목: noisy → 낮은 Sharpe
+        for ticker in normals:
+            base = 100.0 + 10 * normals.index(ticker)
+            for i, d in enumerate(dates):
+                rows.append({"ticker": ticker, "date": d, "close": base + i * 0.1 + np.random.randn() * 1.5})
+        prices_df = pd.DataFrame(rows)
+
+        holdings_df = pd.DataFrame(
+            {
+                "ticker": [lev, *normals],
+                "total_qty": [10] * (len(normals) + 1),
+                "sector": ["Leverage", *(["Tech"] * len(normals))],
+            }
+        )
+
+        def _query_df(sql, *a, **kw):
+            if "prices" in sql:
+                return prices_df
+            if "portfolio" in sql:
+                return holdings_df
+            return pd.DataFrame()
+
+        def _query(sql, *a, **kw):
+            if "DESC LIMIT 1" in sql:
+                tk = a[0][0] if a and a[0] else None
+                return [{"close": 50.0 if tk == lev else 150.0}]
+            return []
+
+        monkeypatch.setattr(mod, "query_df", _query_df)
+        monkeypatch.setattr(mod, "query", _query)
+
+        result = mod.analyze_rebalance(method="mvo")
+        if result.empty:
+            pytest.skip("riskfolio 최적화 빈 결과 — 환경 의존")
+            return
+
+        lev_rows = result[result["ticker"] == lev]
+        assert not lev_rows.empty, "보유 레버리지 ETF 는 결과에 표시되어야 함"
+        assert lev_rows.iloc[0]["optimal_weight"] == 0.0, "레버리지 ETF 목표 비중은 0% 여야 함"
+        assert lev_rows.iloc[0]["action"] == "SELL (레버리지)"
+
     def test_zero_total_value(self, db_path, monkeypatch):
         import nuri.analysis.rebalance as mod
+
         dates = pd.bdate_range("2024-01-01", periods=20).strftime("%Y-%m-%d").tolist()
-        prices_df = pd.DataFrame({
-            "ticker": ["AAPL"] * 20,
-            "date": dates,
-            "close": [150 + i * 0.5 for i in range(20)],
-        })
-        holdings_df = pd.DataFrame({
-            "ticker": ["AAPL"],
-            "total_qty": [10],
-            "sector": ["Tech"],
-        })
+        prices_df = pd.DataFrame(
+            {
+                "ticker": ["AAPL"] * 20,
+                "date": dates,
+                "close": [150 + i * 0.5 for i in range(20)],
+            }
+        )
+        holdings_df = pd.DataFrame(
+            {
+                "ticker": ["AAPL"],
+                "total_qty": [10],
+                "sector": ["Tech"],
+            }
+        )
         call_count = [0]
+
         def mock_query_df(sql, *a, **kw):
             call_count[0] += 1
             if "prices" in sql:
@@ -214,6 +322,7 @@ class TestAnalyzeRebalanceEmpty:
             if "portfolio" in sql:
                 return holdings_df
             return pd.DataFrame()
+
         monkeypatch.setattr(mod, "query_df", mock_query_df)
         monkeypatch.setattr(mod, "query", lambda sql, *a, **kw: [])
         result = mod.analyze_rebalance()
