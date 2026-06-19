@@ -14,7 +14,6 @@ import yaml
 from nuri.core.db import get_db, init_db, upsert_portfolio, upsert_prices
 from nuri.core.timezone import today_kst
 from nuri.trading.recommend.buy_candidate_emitter import (
-    LEVERAGE_ETFS,
     BuyCandidate,
     EmitResult,
     _build_why_now,
@@ -55,6 +54,7 @@ def cfg_path(tmp_path):
             "per_regime": {"neutral": 0, "bull": -5, "sideways_high_vol": 999},
         },
         "gates": {"vix_block_above": 30, "vix_caution_above": 25, "cooldown_days": 5},
+        "exclude_etfs": ["SOXL", "SQQQ", "TQQQ", "TSLL", "LABU"],
         "allocation": {
             "total_pct_by_regime": {"neutral": 0.30, "bull": 0.50},
         },
@@ -291,9 +291,20 @@ def test_cooldown_ticker_skipped(db, cfg_path):
     assert "cooldown" in res.skipped["MSFT"].lower()
 
 
+def test_shipped_exclude_etfs_omits_nonleveraged_soxx():
+    """#761: 출하 config exclude_etfs 는 레버리지/인버스만 — 비레버리지 SOXX 는 제외 X (BUY 가능)."""
+    import yaml
+
+    from nuri.trading.recommend.buy_candidate_emitter import CONFIG_PATH
+
+    etfs = set(yaml.safe_load(CONFIG_PATH.read_text())["exclude_etfs"])
+    assert "SOXX" not in etfs  # 비레버리지 반도체 ETF — 과거 하드코딩 버그로 오제외됨
+    assert {"SOXL", "TQQQ", "TSLL", "LABU"} <= etfs  # 레버리지/인버스는 제외 유지
+
+
 @pytest.mark.parametrize("etf", ["SOXL", "TQQQ", "TSLL", "LABU"])
 def test_leverage_etf_skipped(db, cfg_path, etf):
-    assert etf in LEVERAGE_ETFS
+    # exclude_etfs (config) 에 등재된 레버리지 ETF 는 BUY 후보에서 제외 (#761)
     _seed_factor(db, etf, 0.95)
     _seed_prices(db, etf, [100.0] * 30 + [200.0])
     _seed_rsi(db, etf, 55)
