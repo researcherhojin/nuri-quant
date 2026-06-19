@@ -35,8 +35,8 @@ quality_bar:
 
 # ─── Hard gates (multiplicative — fail = 0 score) ───────────────────
 gates:
-  vix_block_above: 30         # VIX > 30 → 모든 candidate 0 (rules.yaml entry_rules.vix_gate.block_above 와 동일)
-  vix_caution_above: 25       # VIX 25-30 → 사이즈 절반
+  # VIX 게이트 임계(block 30 / caution 25)는 rules.yaml entry_rules.vix_gate 가 SSoT.
+  # emitter 는 nuri.core.rules 의 VIX_BLOCK_ABOVE / VIX_CAUTION_ABOVE 를 직접 읽는다 (#760).
 
   # #517 Phase 2b — Cooldown SELL-type split (codex+Qwen consult B3 REFINE: hard_sell 14→21d).
   # event taxonomy unified: payload.action_type ∈ {hard_sell, trim_action, position_reduce, divergence_alert}.
