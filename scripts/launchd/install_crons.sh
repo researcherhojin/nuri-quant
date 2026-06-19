@@ -7,7 +7,7 @@
 # 사용:
 #   bash scripts/launchd/install_crons.sh                    # 전부 설치
 #   bash scripts/launchd/install_crons.sh --dry              # dry-run
-#   bash scripts/launchd/install_crons.sh --only sre-scan track-forward
+#   bash scripts/launchd/install_crons.sh --only sre-scan
 #   bash scripts/launchd/install_crons.sh --exclude discord-bot
 #
 # Uninstall:
