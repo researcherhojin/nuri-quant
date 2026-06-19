@@ -159,6 +159,15 @@ class TestQualityDbRead:
         for t in us:
             assert float(df_all.loc[t, "quality_score"]) == pytest.approx(float(df_us_only.loc[t, "quality_score"]))
 
+    def test_normalize_quality_columns_skips_absent_column(self):
+        """_normalize_quality_columns: df 에 없는 컬럼은 건너뛴다 (col in df.columns False 분기)."""
+        from nuri.quant.factors.quality import _normalize_quality_columns
+
+        df = pd.DataFrame({"roe": [0.30, 0.10]}, index=["A", "B"])  # operating_margin 없음
+        out = _normalize_quality_columns(df)
+        assert "roe_norm" in out.columns
+        assert "operating_margin_norm" not in out.columns
+
     def test_skips_rows_with_both_none(self, db_path_mp):
         """roe/margin 둘 다 None 인 row 는 skip (line 49 continue)."""
         from nuri.quant.factors.quality import compute_quality

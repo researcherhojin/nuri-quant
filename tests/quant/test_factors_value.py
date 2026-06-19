@@ -119,6 +119,15 @@ class TestValueDbRead:
         for t in us:
             assert float(df_all.loc[t, "value_score"]) == pytest.approx(float(df_us_only.loc[t, "value_score"]))
 
+    def test_normalize_value_columns_skips_absent_column(self):
+        """_normalize_value_columns: df 에 없는 컬럼은 건너뛴다 (col in df.columns False 분기)."""
+        from nuri.quant.factors.value import _normalize_value_columns
+
+        df = pd.DataFrame({"pe_ratio": [15.0, 30.0]}, index=["A", "B"])  # pb_ratio 없음
+        out = _normalize_value_columns(df)
+        assert "pe_ratio_norm" in out.columns
+        assert "pb_ratio_norm" not in out.columns
+
     def test_value_reads_latest_date_per_ticker(self, db_path_mp):
         """동일 ticker 여러 날짜 → 가장 최신 row 만 사용."""
         from nuri.quant.factors.value import compute_value
