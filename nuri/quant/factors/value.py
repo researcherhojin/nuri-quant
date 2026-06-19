@@ -13,6 +13,23 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def _normalize_value_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """단일 시장 내 PE/PB 역수 min-max 정규화 (낮은 PE/PB = 높은 가치 스코어)."""
+    for col in ["pe_ratio", "pb_ratio"]:
+        if col in df.columns:
+            valid = df[col].dropna()
+            if len(valid) > 1:
+                inverted = 1 / valid.clip(lower=0.01)
+                col_min, col_max = inverted.min(), inverted.max()
+                if col_max > col_min:
+                    df[col + "_norm"] = (inverted - col_min) / (col_max - col_min)
+                else:
+                    df[col + "_norm"] = 0.5
+            else:
+                df[col + "_norm"] = 0.5
+    return df
+
+
 def compute_value(tickers: list[str] | None = None, db_path=None) -> pd.DataFrame:
     """종목별 가치 스코어 — fundamentals 테이블 기반. 낮은 PE/PB 가 높은 가치 스코어."""
     from nuri.core.db import query
@@ -20,7 +37,9 @@ def compute_value(tickers: list[str] | None = None, db_path=None) -> pd.DataFram
     if not tickers:
         from nuri.core.db import get_tickers
 
-        tickers = [t for t in get_tickers() if not t.endswith(".KS")]
+        # KR(.KS) 포함 — 정규화는 시장별로 분리한다 (#757). 과거엔 KR 을 제외해
+        # composite 의 value(25%) 가 KR 종목에서 flat 0.5 상수였다.
+        tickers = get_tickers()
 
     if not tickers:
         return pd.DataFrame()
@@ -58,19 +77,11 @@ def compute_value(tickers: list[str] | None = None, db_path=None) -> pd.DataFram
 
     df = pd.DataFrame(scores).T
 
-    # 역수 정규화: 낮은 PE/PB = 높은 가치 스코어
-    for col in ["pe_ratio", "pb_ratio"]:
-        if col in df.columns:
-            valid = df[col].dropna()
-            if len(valid) > 1:
-                inverted = 1 / valid.clip(lower=0.01)
-                col_min, col_max = inverted.min(), inverted.max()
-                if col_max > col_min:
-                    df[col + "_norm"] = (inverted - col_min) / (col_max - col_min)
-                else:
-                    df[col + "_norm"] = 0.5
-            else:
-                df[col + "_norm"] = 0.5
+    # 시장별(.KS=KR vs US) 정규화 — PE/PB baseline 이 시장마다 달라 cross-market min-max 는
+    # 저PE 시장(KR)을 구조적 고가치로 왜곡한다. 각 시장 안에서만 정규화 (#757).
+    is_kr = df.index.to_series().str.endswith(".KS")
+    parts = [_normalize_value_columns(sub.copy()) for sub in (df[is_kr], df[~is_kr]) if not sub.empty]
+    df = pd.concat(parts)
 
     norm_cols = [c for c in df.columns if c.endswith("_norm")]
     if norm_cols:

@@ -5,11 +5,26 @@ ImportError) 로 silent 실패 → 전 종목 `quality_score = 0.5` 상수. fund
 `fundamentals` 테이블 (roe, operating_margin) 을 직접 읽도록 전환하여 아키텍처 일관성 회복
 (STRATEGY §2.3 / §3.1).
 """
+
 import logging
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_quality_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """단일 시장 내 ROE/영업이익률 min-max 정규화 (높을수록 높은 퀄리티)."""
+    for col in ["roe", "operating_margin"]:
+        if col in df.columns:
+            valid = df[col].dropna()
+            if len(valid) > 1:
+                col_min, col_max = valid.min(), valid.max()
+                if col_max > col_min:
+                    df[col + "_norm"] = (valid - col_min) / (col_max - col_min)
+                else:
+                    df[col + "_norm"] = 0.5
+    return df
 
 
 def compute_quality(tickers: list[str] | None = None, db_path=None) -> pd.DataFrame:
@@ -18,7 +33,10 @@ def compute_quality(tickers: list[str] | None = None, db_path=None) -> pd.DataFr
 
     if not tickers:
         from nuri.core.db import get_tickers
-        tickers = [t for t in get_tickers() if not t.endswith(".KS")]
+
+        # KR(.KS) 포함 — 정규화는 시장별로 분리한다 (#757). 과거엔 KR 을 제외해
+        # composite 의 quality(25%) 가 KR 종목에서 flat 0.5 상수였다.
+        tickers = get_tickers()
 
     if not tickers:
         return pd.DataFrame()
@@ -57,15 +75,11 @@ def compute_quality(tickers: list[str] | None = None, db_path=None) -> pd.DataFr
 
     df = pd.DataFrame(scores).T
 
-    for col in ["roe", "operating_margin"]:
-        if col in df.columns:
-            valid = df[col].dropna()
-            if len(valid) > 1:
-                col_min, col_max = valid.min(), valid.max()
-                if col_max > col_min:
-                    df[col + "_norm"] = (valid - col_min) / (col_max - col_min)
-                else:
-                    df[col + "_norm"] = 0.5
+    # 시장별(.KS=KR vs US) 정규화 — ROE/영업이익률 baseline 이 시장마다 달라 cross-market
+    # min-max 가 KR 종목을 왜곡한다. 각 시장 안에서만 정규화 (#757).
+    is_kr = df.index.to_series().str.endswith(".KS")
+    parts = [_normalize_quality_columns(sub.copy()) for sub in (df[is_kr], df[~is_kr]) if not sub.empty]
+    df = pd.concat(parts)
 
     norm_cols = [c for c in df.columns if c.endswith("_norm")]
     if norm_cols:
