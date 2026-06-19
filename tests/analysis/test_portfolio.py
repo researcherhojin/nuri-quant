@@ -131,6 +131,35 @@ class TestPortfolioCoverageGaps:
         df = port_mod.analyze_portfolio()
         assert any("TSLL" in w and "레버리지" in w for w in df.attrs.get("warnings", []))
 
+    def test_analyze_portfolio_kosdaq_kq_converted_as_krw(self, db_path, monkeypatch):
+        """#764: .KQ(KOSDAQ) 홀딩은 KRW 로 FX 변환 (suffix 판정).
+
+        currency 를 USD 로 둬 .KQ suffix 경로만 검증한다. 과거엔 .KS 만 KR 로 봐
+        .KQ 가 USD 로 오변환됐다 (70000 USD vs 정상 50 USD).
+        """
+        import pytest
+
+        import nuri.analysis.portfolio as port_mod
+        import nuri.core.db as db_mod
+        from nuri.core.db import get_db
+
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("test", "035720.KQ", 1, 70000.0, "USD", "Tech"),
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) VALUES (?,?,?,?,?,?,?,?)",
+                ("035720.KQ", "2026-05-01", 70000, 71000, 69000, 70000, 1000, 70000),
+            )
+
+        monkeypatch.setattr(port_mod, "get_exchange_rate", lambda: 1400.0)
+        df = port_mod.analyze_portfolio()
+        row = df[df["ticker"] == "035720.KQ"].iloc[0]
+        # 70000 KRW / 1400 = 50 USD. suffix 무시 시 70000 USD 로 오변환.
+        assert row["current_value_usd"] == pytest.approx(50.0, abs=0.5)
+
     def test_print_summary_empty_df(self, capsys):
         """빈 df → 'no data' 메시지 (lines 162-163)."""
         import nuri.analysis.portfolio as port_mod
