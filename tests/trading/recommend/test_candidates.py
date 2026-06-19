@@ -1,4 +1,5 @@
 """Tests for candidates — split from test_trading_recommend_all.py."""
+
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -28,11 +29,13 @@ class TestCandidates:
 
     def test_screen_returns_list(self, market_data):
         from nuri.trading.recommend.candidates import screen_candidates
+
         candidates = screen_candidates(lookback_days=10, db_path=market_data)
         assert isinstance(candidates, list)
 
     def test_candidates_have_confidence(self, market_data):
         from nuri.trading.recommend.candidates import screen_candidates
+
         candidates = screen_candidates(lookback_days=30, db_path=market_data)
         for c in candidates:
             assert 0 <= c.confidence <= 100
@@ -41,6 +44,7 @@ class TestCandidates:
     def test_candidates_sorted_by_confidence(self, market_data):
         """confidence 내림차순 정렬 확인."""
         from nuri.trading.recommend.candidates import screen_candidates
+
         candidates = screen_candidates(lookback_days=30, db_path=market_data)
         if len(candidates) >= 2:
             for i in range(len(candidates) - 1):
@@ -48,6 +52,7 @@ class TestCandidates:
 
     def test_empty_db_returns_empty(self, db_path):
         from nuri.trading.recommend.candidates import screen_candidates
+
         candidates = screen_candidates(db_path=db_path)
         assert candidates == []
 
@@ -57,17 +62,20 @@ class TestCandidatesDeep:
 
     def test_screen_with_signals(self, full_db):
         from nuri.trading.recommend.candidates import screen_candidates
+
         candidates = screen_candidates(lookback_days=30, db_path=full_db)
         assert isinstance(candidates, list)
 
     def test_confidence_range(self, full_db):
         from nuri.trading.recommend.candidates import screen_candidates
+
         candidates = screen_candidates(lookback_days=30, db_path=full_db)
         for c in candidates:
             assert 0 <= c.confidence <= 100
 
     def test_print_candidates(self, full_db, capsys):
         from nuri.trading.recommend.candidates import Candidate, print_candidates
+
         candidates = [
             Candidate("AAPL", "rsi_oversold", "2026-03-28", "BUY", 75.0, 0.65, 2.1, True, 155.0, "test"),
             Candidate("TSLA", "macd_golden", "2026-03-28", "BUY", 60.0, 0.55, 1.5, True, 350.0, "test"),
@@ -82,11 +90,13 @@ class TestCandidates_R10:
 
     def test_screen_candidates(self, rich_db):
         from nuri.trading.recommend.candidates import screen_candidates
+
         result = screen_candidates()
         assert isinstance(result, list)
 
     def test_tracker_save(self, rich_db):
         from nuri.trading.recommend.tracker import save_recommendations
+
         count = save_recommendations([])
         assert count == 0
 
@@ -96,6 +106,7 @@ class TestCandidatesExtended:
 
     def test_candidate_dataclass(self):
         from nuri.trading.recommend.candidates import Candidate
+
         c = Candidate("AAPL", "rsi_oversold", "2026-03-28", "BUY", 75.0, 0.65, 2.1, True, 155.0, "test")
         assert c.ticker == "AAPL"
         assert c.direction == "BUY"
@@ -103,6 +114,7 @@ class TestCandidatesExtended:
 
     def test_screen_with_data(self, full_db):
         from nuri.trading.recommend.candidates import screen_candidates
+
         candidates = screen_candidates(lookback_days=10, db_path=full_db)
         assert isinstance(candidates, list)
 
@@ -112,55 +124,98 @@ class TestCandidatesVixGate:
 
     def test_vix_blocked(self, tmp_path, monkeypatch):
         import nuri.core.db as db_mod
+
         path = tmp_path / "vix.db"
         init_db(path)
         monkeypatch.setattr(db_mod, "DB_PATH", path)
 
-        upsert_macro([
-            {"indicator": "vix", "date": "2026-03-31", "value": 35.0, "source": "test"},
-        ], path)
+        upsert_macro(
+            [
+                {"indicator": "vix", "date": "2026-03-31", "value": 35.0, "source": "test"},
+            ],
+            path,
+        )
 
         from nuri.trading.recommend.candidates import _check_vix_gate
+
         result = _check_vix_gate(path)
         assert result["gate"] == "blocked"
         assert result["vix"] == 35.0
 
     def test_vix_caution(self, tmp_path, monkeypatch):
         import nuri.core.db as db_mod
+
         path = tmp_path / "vix.db"
         init_db(path)
         monkeypatch.setattr(db_mod, "DB_PATH", path)
 
-        upsert_macro([
-            {"indicator": "vix", "date": "2026-03-31", "value": 27.0, "source": "test"},
-        ], path)
+        upsert_macro(
+            [
+                {"indicator": "vix", "date": "2026-03-31", "value": 27.0, "source": "test"},
+            ],
+            path,
+        )
 
         from nuri.trading.recommend.candidates import _check_vix_gate
+
+        result = _check_vix_gate(path)
+        assert result["gate"] == "caution"
+
+    def test_vix_exactly_30_is_caution_not_blocked(self, tmp_path, monkeypatch):
+        """#760 경계: vix==block_above(30) 은 차단이 아니라 caution.
+
+        사용자 룰 'VIX > 30 차단, 25-30 절반' → 30 은 절반(caution) 구간.
+        과거 >= 비교는 30 에서 blocked → 룰 위반. strict > 로 수정.
+        """
+        import nuri.core.db as db_mod
+
+        path = tmp_path / "vix.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+
+        upsert_macro(
+            [
+                {"indicator": "vix", "date": "2026-03-31", "value": 30.0, "source": "test"},
+            ],
+            path,
+        )
+
+        from nuri.core.rules import VIX_BLOCK_ABOVE
+        from nuri.trading.recommend.candidates import _check_vix_gate
+
+        assert VIX_BLOCK_ABOVE == 30  # 가드: 룰 임계가 30 이어야 본 경계 테스트가 유효
         result = _check_vix_gate(path)
         assert result["gate"] == "caution"
 
     def test_vix_normal(self, tmp_path, monkeypatch):
         import nuri.core.db as db_mod
+
         path = tmp_path / "vix.db"
         init_db(path)
         monkeypatch.setattr(db_mod, "DB_PATH", path)
 
-        upsert_macro([
-            {"indicator": "vix", "date": "2026-03-31", "value": 15.0, "source": "test"},
-        ], path)
+        upsert_macro(
+            [
+                {"indicator": "vix", "date": "2026-03-31", "value": 15.0, "source": "test"},
+            ],
+            path,
+        )
 
         from nuri.trading.recommend.candidates import _check_vix_gate
+
         result = _check_vix_gate(path)
         assert result["gate"] == "normal"
 
     def test_vix_no_data(self, tmp_path, monkeypatch):
         """No VIX data => value 0 => normal."""
         import nuri.core.db as db_mod
+
         path = tmp_path / "vix.db"
         init_db(path)
         monkeypatch.setattr(db_mod, "DB_PATH", path)
 
         from nuri.trading.recommend.candidates import _check_vix_gate
+
         result = _check_vix_gate(path)
         assert result["gate"] == "normal"
         assert result["vix"] == 0.0
@@ -204,9 +259,19 @@ class TestScreenCandidates:
         regime_ctx = {
             "regime": "bear_high_vol",
             "recommended": [],
-            "avoid": ["rsi_oversold", "macd_golden", "sma_golden", "bb_bounce",
-                       "volume_spike", "gap_up", "vix_reversal", "pcr_reversal",
-                       "yield_curve_recovery", "insider_cluster", "short_squeeze"],
+            "avoid": [
+                "rsi_oversold",
+                "macd_golden",
+                "sma_golden",
+                "bb_bounce",
+                "volume_spike",
+                "gap_up",
+                "vix_reversal",
+                "pcr_reversal",
+                "yield_curve_recovery",
+                "insider_cluster",
+                "short_squeeze",
+            ],
             "position": "minimal",
             "regime_stats": {},
         }
@@ -432,27 +497,55 @@ class TestPrintCandidates:
 
         candidates = [
             Candidate(
-                ticker="AAPL", signal_id="rsi_oversold", signal_date="2026-03-30",
-                direction="BUY", confidence=75.0, win_rate=0.65, profit_factor=2.0,
-                regime_fit=True, price=180.0, notes="과거 20건",
-                drift_status="", conflict="", scoring_detail=None,
+                ticker="AAPL",
+                signal_id="rsi_oversold",
+                signal_date="2026-03-30",
+                direction="BUY",
+                confidence=75.0,
+                win_rate=0.65,
+                profit_factor=2.0,
+                regime_fit=True,
+                price=180.0,
+                notes="과거 20건",
+                drift_status="",
+                conflict="",
+                scoring_detail=None,
             ),
             Candidate(
-                ticker="NVDA", signal_id="macd_dead", signal_date="2026-03-30",
-                direction="SELL", confidence=60.0, win_rate=0.55, profit_factor=1.5,
-                regime_fit=True, price=900.0, notes="",
-                drift_status="degrading", conflict="", scoring_detail=None,
+                ticker="NVDA",
+                signal_id="macd_dead",
+                signal_date="2026-03-30",
+                direction="SELL",
+                confidence=60.0,
+                win_rate=0.55,
+                profit_factor=1.5,
+                regime_fit=True,
+                price=900.0,
+                notes="",
+                drift_status="degrading",
+                conflict="",
+                scoring_detail=None,
             ),
             Candidate(
-                ticker="AAPL", signal_id="rsi_overbought", signal_date="2026-03-30",
-                direction="SELL", confidence=30.0, win_rate=0.45, profit_factor=0.8,
-                regime_fit=False, price=180.0, notes="레짐에서 비추천",
-                drift_status="critical", conflict="direction_conflict", scoring_detail=None,
+                ticker="AAPL",
+                signal_id="rsi_overbought",
+                signal_date="2026-03-30",
+                direction="SELL",
+                confidence=30.0,
+                win_rate=0.45,
+                profit_factor=0.8,
+                regime_fit=False,
+                price=180.0,
+                notes="레짐에서 비추천",
+                drift_status="critical",
+                conflict="direction_conflict",
+                scoring_detail=None,
             ),
         ]
 
-        with patch("nuri.trading.recommend.candidates._check_vix_gate",
-                   return_value={"vix": 15, "gate": "normal", "msg": ""}):
+        with patch(
+            "nuri.trading.recommend.candidates._check_vix_gate", return_value={"vix": 15, "gate": "normal", "msg": ""}
+        ):
             print_candidates(candidates)
 
         out = capsys.readouterr().out
@@ -464,15 +557,26 @@ class TestPrintCandidates:
 
         candidates = [
             Candidate(
-                ticker="AAPL", signal_id="rsi_oversold", signal_date="2026-03-30",
-                direction="BUY", confidence=0.0, win_rate=0.65, profit_factor=2.0,
-                regime_fit=True, price=180.0, notes="VIX > 30",
-                drift_status="", conflict="", scoring_detail=None,
+                ticker="AAPL",
+                signal_id="rsi_oversold",
+                signal_date="2026-03-30",
+                direction="BUY",
+                confidence=0.0,
+                win_rate=0.65,
+                profit_factor=2.0,
+                regime_fit=True,
+                price=180.0,
+                notes="VIX > 30",
+                drift_status="",
+                conflict="",
+                scoring_detail=None,
             ),
         ]
 
-        with patch("nuri.trading.recommend.candidates._check_vix_gate",
-                   return_value={"vix": 35, "gate": "blocked", "msg": "VIX 35.0 > 30 -> block"}):
+        with patch(
+            "nuri.trading.recommend.candidates._check_vix_gate",
+            return_value={"vix": 35, "gate": "blocked", "msg": "VIX 35.0 > 30 -> block"},
+        ):
             print_candidates(candidates)
 
         out = capsys.readouterr().out
@@ -549,6 +653,7 @@ class TestCandidates_R27:
         """_load_scorecard with no report directory."""
         import nuri.trading.recommend.candidates as cand_mod
         from nuri.trading.recommend.candidates import _load_scorecard
+
         monkeypatch.setattr(cand_mod, "REPORT_DIR", Path("/nonexistent/path"))
         data, age = _load_scorecard()
         assert data == {}
@@ -557,43 +662,45 @@ class TestCandidates_R27:
     def test_get_drift_map_exception(self, monkeypatch):
         """_get_drift_map handles exception."""
         from nuri.trading.recommend.candidates import _get_drift_map
-        monkeypatch.setattr("nuri.trading.engine.memory.detect_drift",
-                            MagicMock(side_effect=Exception("no data")))
+
+        monkeypatch.setattr("nuri.trading.engine.memory.detect_drift", MagicMock(side_effect=Exception("no data")))
         result = _get_drift_map()
         assert result == {}
 
     def test_check_vix_gate_normal(self, db_path):
         """VIX gate normal when VIX is low."""
         from nuri.trading.recommend.candidates import _check_vix_gate
+
         with get_db(db_path) as conn:
-            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)",
-                         ("vix", "2025-03-28", 18.5))
+            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)", ("vix", "2025-03-28", 18.5))
         result = _check_vix_gate(db_path=db_path)
         assert result["gate"] == "normal"
 
     def test_check_vix_gate_blocked(self, db_path):
         """VIX gate blocked when VIX > 30."""
         from nuri.trading.recommend.candidates import _check_vix_gate
+
         with get_db(db_path) as conn:
-            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)",
-                         ("vix", "2025-03-28", 35.0))
+            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)", ("vix", "2025-03-28", 35.0))
         result = _check_vix_gate(db_path=db_path)
         assert result["gate"] == "blocked"
 
     def test_check_vix_gate_caution(self, db_path):
         """VIX gate caution when VIX 25-30."""
         from nuri.trading.recommend.candidates import _check_vix_gate
+
         with get_db(db_path) as conn:
-            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)",
-                         ("vix", "2025-03-28", 27.0))
+            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)", ("vix", "2025-03-28", 27.0))
         result = _check_vix_gate(db_path=db_path)
         assert result["gate"] == "caution"
 
     def test_print_candidates_empty(self, capsys, monkeypatch):
         """print_candidates with no candidates."""
         from nuri.trading.recommend.candidates import print_candidates
-        monkeypatch.setattr("nuri.trading.recommend.candidates._check_vix_gate",
-                            lambda **kw: {"vix": 18, "gate": "normal", "msg": ""})
+
+        monkeypatch.setattr(
+            "nuri.trading.recommend.candidates._check_vix_gate", lambda **kw: {"vix": 18, "gate": "normal", "msg": ""}
+        )
         print_candidates([])
         captured = capsys.readouterr()
         assert "매매 후보 없음" in captured.out
@@ -608,17 +715,20 @@ class TestScorecardStaleness:
         report_dir = tmp_path / "reports" / stale_date
         report_dir.mkdir(parents=True)
 
-        scorecard_df = pd.DataFrame({
-            "ticker": [None, None],
-            "signal_id": ["rsi_oversold", "macd_golden"],
-            "win_rate": [0.6, 0.55],
-            "profit_factor": [2.0, 1.5],
-            "avg_return": [0.05, 0.03],
-            "total_trades": [100, 80],
-        })
+        scorecard_df = pd.DataFrame(
+            {
+                "ticker": [None, None],
+                "signal_id": ["rsi_oversold", "macd_golden"],
+                "win_rate": [0.6, 0.55],
+                "profit_factor": [2.0, 1.5],
+                "avg_return": [0.05, 0.03],
+                "total_trades": [100, 80],
+            }
+        )
         scorecard_df.to_csv(report_dir / "signal_scorecard.csv", index=False)
 
         from nuri.trading.recommend import candidates as cand_module
+
         original_report_dir = cand_module.REPORT_DIR
 
         try:
@@ -636,17 +746,20 @@ class TestScorecardStaleness:
         report_dir = tmp_path / "reports" / today
         report_dir.mkdir(parents=True)
 
-        scorecard_df = pd.DataFrame({
-            "ticker": [None],
-            "signal_id": ["rsi_oversold"],
-            "win_rate": [0.6],
-            "profit_factor": [2.0],
-            "avg_return": [0.05],
-            "total_trades": [100],
-        })
+        scorecard_df = pd.DataFrame(
+            {
+                "ticker": [None],
+                "signal_id": ["rsi_oversold"],
+                "win_rate": [0.6],
+                "profit_factor": [2.0],
+                "avg_return": [0.05],
+                "total_trades": [100],
+            }
+        )
         scorecard_df.to_csv(report_dir / "signal_scorecard.csv", index=False)
 
         from nuri.trading.recommend import candidates as cand_module
+
         original_report_dir = cand_module.REPORT_DIR
 
         try:
@@ -660,6 +773,7 @@ class TestScorecardStaleness:
     def test_no_scorecard_returns_none_age(self, tmp_path):
         """스코어카드 파일 없으면 age_days=None."""
         from nuri.trading.recommend import candidates as cand_module
+
         original_report_dir = cand_module.REPORT_DIR
 
         try:
