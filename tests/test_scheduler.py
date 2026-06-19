@@ -671,6 +671,24 @@ class TestSchedulerDecisions:
         entry = next(s for s in SCHEDULES if s["name"] == "alpha_tracking")
         assert entry["cron"] == "0 17 * * *"
 
+    def test_no_launchd_plist_duplicates_alpha_tracking(self):
+        """#762: ForwardOutcomeTracker 17:00 scan 은 scheduler(alpha_tracking)가 canonical.
+
+        어떤 launchd plist 도 이를 중복 스케줄하면 안 된다 — 과거 track-forward.plist 가
+        install_crons 자동발견으로 기본 설치되어 scheduler job 과 17:00 이중 발화했다.
+        """
+        from pathlib import Path
+
+        plist_dir = Path(__file__).resolve().parent.parent / "scripts" / "launchd"
+        for p in plist_dir.glob("com.nuri-quant.*.plist"):
+            assert "forward_outcome_tracker" not in p.read_text(), (
+                f"{p.name} 가 forward_outcome_tracker scan 을 중복 스케줄 (scheduler alpha_tracking 와 17:00 충돌)"
+            )
+
+        from nuri.scheduler import SCHEDULES
+
+        assert any(s["name"] == "alpha_tracking" for s in SCHEDULES), "scheduler canonical alpha_tracking job 부재"
+
     def test_agent_accuracy_cron(self):
         """agent_accuracy: 일요일 08:00 KST."""
         from nuri.scheduler import SCHEDULES

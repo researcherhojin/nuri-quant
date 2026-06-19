@@ -119,7 +119,6 @@ PR/이슈 단위로 한 번 실행한 backfill / counterfactual / amplifier repl
 | `com.nuri-quant.health-check.plist` | hourly | health_check.sh |
 | `com.nuri-quant.state-replicator.plist` | daily | state_replicator.sh |
 | `com.nuri-quant.sre-scan.plist` | hourly | SREIncidentAgent.scan |
-| `com.nuri-quant.track-forward.plist` | daily 17:00 KST | ForwardOutcomeTracker.scan |
 
 Install: `bash scripts/launchd/install_crons.sh [--only X] [--exclude Y] [--dry]`
 Uninstall: `bash scripts/launchd/uninstall_crons.sh [--only X]`
