@@ -17,6 +17,7 @@ import logging
 import pandas as pd
 
 from nuri.core.db import query, query_df
+from nuri.core.rules import LEVERAGE_ETFS, MAX_SINGLE_POSITION
 from nuri.core.ticker_names import is_kr_ticker
 
 logger = logging.getLogger(__name__)
@@ -141,15 +142,16 @@ def analyze_portfolio() -> pd.DataFrame:
     # 종목별 합산 비중 (다계좌 동일 종목)
     ticker_weights = df.groupby("ticker")["weight_pct"].sum()
 
-    # ⚠️ 투자규칙 경고
+    # ⚠️ 투자규칙 경고 — 임계는 config/rules.yaml SSoT (#759)
+    max_pos_pct = MAX_SINGLE_POSITION * 100
     warnings = []
     for ticker, weight in ticker_weights.items():
-        if weight > 15.0:
-            warnings.append(f"⚠️ {ticker}: 비중 {weight:.1f}% > 15% 한도 초과!")
+        if weight > max_pos_pct:
+            warnings.append(f"⚠️ {ticker}: 비중 {weight:.1f}% > {max_pos_pct:.0f}% 한도 초과!")
 
-    # TSLL 레버리지 ETF 경고
-    if "TSLL" in df["ticker"].values:
-        warnings.append("⚠️ TSLL: 레버리지 ETF 장기 보유 금지! 매도 권장")
+    # 레버리지 ETF 경고 (rules.yaml banned_etfs — TSLL/TQQQ/SQQQ/UPRO/SPXU)
+    for ticker in sorted({t for t in df["ticker"].values if t in LEVERAGE_ETFS}):
+        warnings.append(f"⚠️ {ticker}: 레버리지 ETF 장기 보유 금지! 매도 권장")
 
     df.attrs["warnings"] = warnings
     df.attrs["total_value_usd"] = round(total_value, 2)

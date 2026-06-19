@@ -131,6 +131,33 @@ class TestPortfolioCoverageGaps:
         df = port_mod.analyze_portfolio()
         assert any("TSLL" in w and "레버리지" in w for w in df.attrs.get("warnings", []))
 
+    def test_analyze_portfolio_non_tsll_leverage_warning(self, db_path, monkeypatch):
+        """#759: TSLL 외 banned ETF(TQQQ)도 레버리지 경고.
+
+        과거엔 'TSLL' 만 하드코딩 체크 → TQQQ/SQQQ/UPRO/SPXU 미경고. 이제
+        rules.yaml banned_etfs(LEVERAGE_ETFS) 멤버십으로 전부 경고.
+        """
+        import nuri.analysis.portfolio as port_mod
+        import nuri.core.db as db_mod
+        from nuri.core.db import get_db
+        from nuri.core.rules import LEVERAGE_ETFS
+
+        assert "TQQQ" in LEVERAGE_ETFS  # 가드: 임계 종목이 banned 목록에 있어야 본 테스트 유효
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("test", "TQQQ", 5, 10.0, "USD", "Leveraged"),
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) VALUES (?,?,?,?,?,?,?,?)",
+                ("TQQQ", "2026-05-01", 9.0, 11.0, 8.5, 10.5, 1000, 10.5),
+            )
+
+        monkeypatch.setattr(port_mod, "get_exchange_rate", lambda: 1400.0)
+        df = port_mod.analyze_portfolio()
+        assert any("TQQQ" in w and "레버리지" in w for w in df.attrs.get("warnings", []))
+
     def test_analyze_portfolio_kosdaq_kq_converted_as_krw(self, db_path, monkeypatch):
         """#764: .KQ(KOSDAQ) 홀딩은 KRW 로 FX 변환 (suffix 판정).
 
