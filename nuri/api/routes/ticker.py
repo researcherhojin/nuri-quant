@@ -188,8 +188,9 @@ def get_market_context():
     try:
         from nuri.quant.regime.macro_score import compute_macro_score
 
+        # compute_macro_score 는 MacroScore dataclass 를 반환한다 (dict 아님 — #754).
         macro = compute_macro_score()
-        macro_score = macro.get("total_score") if isinstance(macro, dict) else None
+        macro_score = macro.total_score
     except Exception:
         macro_score = None
 
