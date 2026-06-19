@@ -6,6 +6,7 @@ v2: DB 조회 전용 (<500ms). analyze_portfolio() 인라인 호출 제거.
     - Gate: 기존 유지 (query-only)
     - 신선도/파이프라인: 새 모듈에서 조회
 """
+
 import logging
 import time
 
@@ -100,10 +101,10 @@ def _build_dashboard() -> dict:
         "verdict_level": verdict_level,
         "regime": regime_data,
         "macro": macro_data,
-        "allocation": allocation,                   # target (regime 권장) — legacy 이름, backward compat
-        "target_allocation": allocation,            # explicit 이름 — regime 권장 비율
-        "actual_allocation": actual_allocation,     # 현재 portfolio 실제 비율 (holdings + cash)
-        "cash_summary": cash_summary,               # 계좌별 cash + 총 cash USD
+        "allocation": allocation,  # target (regime 권장) — legacy 이름, backward compat
+        "target_allocation": allocation,  # explicit 이름 — regime 권장 비율
+        "actual_allocation": actual_allocation,  # 현재 portfolio 실제 비율 (holdings + cash)
+        "cash_summary": cash_summary,  # 계좌별 cash + 총 cash USD
         "actions": actions,
         "alerts": alerts,
         "gate_score": gate_score,
@@ -122,6 +123,7 @@ def _get_cached_regime() -> dict:
     """레짐 분류 — classify_regime()은 빠름 (3-5s)."""
     try:
         from nuri.quant.regime.classifier import classify_regime
+
         r = classify_regime()
         if r:
             return {
@@ -141,6 +143,7 @@ def _get_macro() -> dict:
     """매크로 스코어 — compute_macro_score()은 빠름 (1-2s)."""
     try:
         from nuri.quant.regime.macro_score import compute_macro_score
+
         m = compute_macro_score()
         return {"score": round(m.total_score), "interpretation": m.interpretation}
     except Exception as e:
@@ -152,6 +155,7 @@ def _get_allocation(regime: str) -> dict:
     """레짐별 자산 배분 비율."""
     try:
         from nuri.trading.strategy.longshort import REGIME_ALLOCATION
+
         alloc = REGIME_ALLOCATION.get(regime, {})
         return {
             "long": alloc.get("long_pct", 0),
@@ -167,6 +171,7 @@ def _extract_reason(signals_raw: str | None) -> tuple[str, float | None]:
     if not signals_raw:
         return "", None
     import json
+
     try:
         data = json.loads(signals_raw)
         reasoning = data.get("reasoning", "")
@@ -187,6 +192,7 @@ def _parse_json_field(raw: str | None) -> dict | list | None:
     if not raw:
         return None
     import json
+
     try:
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
@@ -196,6 +202,7 @@ def _parse_json_field(raw: str | None) -> dict | list | None:
 def _get_ticker_account_map() -> dict[str, str]:
     """ticker → account 매핑 (첫 번째 계좌 기준)."""
     from nuri.core.db import query
+
     rows = query("SELECT ticker, account FROM portfolio ORDER BY account")
     mapping: dict[str, str] = {}
     for r in rows:
@@ -256,6 +263,7 @@ def _get_latest_actions() -> list[dict]:
     from nuri.core.axis import is_alpha_flat_sell, is_alpha_long_buy
     from nuri.core.db import query
     from nuri.core.ticker_names import get_ticker_name
+
     try:
         rows = query("""
             SELECT ticker, action, confidence, regime, signals, date,
@@ -275,7 +283,11 @@ def _get_latest_actions() -> list[dict]:
             action = row["action"]
             alpha_action = row.get("alpha_action")
             portfolio_action = row.get("portfolio_action")
-            confidence = round(row["confidence"] * 100) if row["confidence"] and row["confidence"] <= 1 else round(row["confidence"] or 0)
+            confidence = (
+                round(row["confidence"] * 100)
+                if row["confidence"] and row["confidence"] <= 1
+                else round(row["confidence"] or 0)
+            )
             reason, agreement_rate = _extract_reason(row.get("signals"))
             raw_account = ticker_account.get(row["ticker"], "")
             account_label = account_labels.get(raw_account, raw_account)
@@ -285,33 +297,37 @@ def _get_latest_actions() -> list[dict]:
             agent_verdicts = _parse_json_field(row.get("agent_verdicts"))
 
             if is_alpha_long_buy(alpha_action, action) and confidence >= 50:
-                actions.append({
-                    "action": "BUY",
-                    "alpha_action": alpha_action,
-                    "portfolio_action": portfolio_action,
-                    "ticker": row["ticker"],
-                    "name": get_ticker_name(row["ticker"]),
-                    "confidence": confidence,
-                    "reason": reason,
-                    "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
-                    "account": account_label,
-                    "scoring_detail": scoring_detail,
-                    "agent_verdicts": agent_verdicts,
-                })
+                actions.append(
+                    {
+                        "action": "BUY",
+                        "alpha_action": alpha_action,
+                        "portfolio_action": portfolio_action,
+                        "ticker": row["ticker"],
+                        "name": get_ticker_name(row["ticker"]),
+                        "confidence": confidence,
+                        "reason": reason,
+                        "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
+                        "account": account_label,
+                        "scoring_detail": scoring_detail,
+                        "agent_verdicts": agent_verdicts,
+                    }
+                )
             elif is_alpha_flat_sell(alpha_action, action) and confidence >= 70:
-                actions.append({
-                    "action": "SELL",
-                    "alpha_action": alpha_action,
-                    "portfolio_action": portfolio_action,
-                    "ticker": row["ticker"],
-                    "name": get_ticker_name(row["ticker"]),
-                    "confidence": confidence,
-                    "reason": reason,
-                    "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
-                    "account": account_label,
-                    "scoring_detail": scoring_detail,
-                    "agent_verdicts": agent_verdicts,
-                })
+                actions.append(
+                    {
+                        "action": "SELL",
+                        "alpha_action": alpha_action,
+                        "portfolio_action": portfolio_action,
+                        "ticker": row["ticker"],
+                        "name": get_ticker_name(row["ticker"]),
+                        "confidence": confidence,
+                        "reason": reason,
+                        "agreement": round(agreement_rate * 100) if agreement_rate is not None else None,
+                        "account": account_label,
+                        "scoring_detail": scoring_detail,
+                        "agent_verdicts": agent_verdicts,
+                    }
+                )
 
         # 상위 5개만
         buys = [a for a in actions if a["action"] == "BUY"][:3]
@@ -325,6 +341,7 @@ def _get_latest_actions() -> list[dict]:
 def _get_account_values(exchange_rate: float | None) -> list[dict]:
     """계좌별 평가액 계산."""
     from nuri.core.db import query
+
     rate = exchange_rate or 1400
     rows = query("""
         SELECT p.account, p.ticker, p.quantity,
@@ -335,12 +352,14 @@ def _get_account_values(exchange_rate: float | None) -> list[dict]:
             WHERE (ticker, date) IN (SELECT ticker, MAX(date) FROM prices GROUP BY ticker)
         ) pr ON p.ticker = pr.ticker
     """)
+    from nuri.core.ticker_names import is_kr_ticker
+
     totals: dict[str, float] = {}
     for r in rows:
         acc = r["account"]
         price = r["latest_price"] or 0
         qty = r["quantity"] or 0
-        is_kr = r["ticker"].endswith(".KS")
+        is_kr = is_kr_ticker(r["ticker"])
         val = price * qty / rate if is_kr else price * qty
         totals[acc] = totals.get(acc, 0) + val
 
@@ -392,12 +411,14 @@ def _get_cash_balances(exchange_rate: float | None = None) -> dict:
         acc_total = cash_usd + (cash_krw / rate if rate > 0 else 0)
         if acc_total <= 0:
             continue
-        accounts_out.append({
-            "account": labels.get(raw_acc, raw_acc),
-            "cash_usd": round(cash_usd, 2),
-            "cash_krw": round(cash_krw, 2),
-            "total_usd": round(acc_total, 2),
-        })
+        accounts_out.append(
+            {
+                "account": labels.get(raw_acc, raw_acc),
+                "cash_usd": round(cash_usd, 2),
+                "cash_krw": round(cash_krw, 2),
+                "total_usd": round(acc_total, 2),
+            }
+        )
         total_usd += acc_total
 
     return {"accounts": accounts_out, "total_cash_usd": round(total_usd, 2)}
@@ -425,6 +446,7 @@ def _get_gate_score() -> int:
     """Gate 상태 — check_gate()은 빠름 (query-only)."""
     try:
         from nuri.trading.engine.gate import check_gate
+
         g = check_gate()
         return round(g.score * 100)
     except Exception:
@@ -438,12 +460,15 @@ def _get_active_alerts() -> list[dict]:
     # 리스크 분석
     try:
         from nuri.analysis.risk import analyze_risk
+
         risk = analyze_risk()
         if risk.get("portfolio_stop_triggered"):
-            alerts.append({
-                "level": "critical",
-                "message": f"포트폴리오 손절선 돌파 (MDD {risk['max_drawdown_pct']:.1f}%)",
-            })
+            alerts.append(
+                {
+                    "level": "critical",
+                    "message": f"포트폴리오 손절선 돌파 (MDD {risk['max_drawdown_pct']:.1f}%)",
+                }
+            )
         for a in risk.get("stop_loss_alerts", [])[:3]:
             alerts.append({"level": "warning", "message": f"{a['ticker']} 손절선 ({a['pnl_pct']:+.1f}%)"})
     except Exception:
@@ -452,6 +477,7 @@ def _get_active_alerts() -> list[dict]:
     # drift 경고
     try:
         from nuri.trading.engine.memory import detect_drift
+
         drifts = detect_drift()
         critical = [d for d in drifts if d.status == "critical"]
         if critical:
@@ -463,6 +489,7 @@ def _get_active_alerts() -> list[dict]:
     # 충돌
     try:
         from nuri.trading.engine.conflicts import detect_conflicts
+
         conflicts = detect_conflicts()
         if conflicts:
             tickers = ", ".join(set(c.ticker for c in conflicts[:5]))
@@ -499,6 +526,7 @@ def _get_freshness() -> dict:
     """데이터 신선도 요약."""
     try:
         from nuri.core.freshness import check_all_freshness
+
         details = check_all_freshness()
         return {d["table"]: {"age_hours": d["age_hours"], "status": d["status"]} for d in details}
     except Exception as e:
@@ -510,6 +538,7 @@ def _get_pipeline_status() -> dict:
     """파이프라인 6단계 최신 실행 상태."""
     try:
         from nuri.core.events import get_pipeline_status
+
         return get_pipeline_status()
     except Exception as e:
         logger.debug(f"Pipeline status: {e}")

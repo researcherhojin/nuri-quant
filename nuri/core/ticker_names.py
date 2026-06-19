@@ -32,6 +32,15 @@ def _load_kr_name_map() -> dict[str, str]:
         return {}
 
 
+def is_kr_ticker(ticker: str) -> bool:
+    """KR(한국) 종목 여부 — KOSPI(.KS) + KOSDAQ(.KQ). 통화/지역 게이트용 (#764).
+
+    .KS 만 검사하면 .KQ(KOSDAQ) 홀딩이 fundamentals 는 KR, 통화/PnL 은 USD 로
+    split-brain 오변환된다. 통화/지역 분기는 모두 이 helper 를 경유한다.
+    """
+    return str(ticker).endswith((".KS", ".KQ"))
+
+
 @lru_cache(maxsize=500)
 def get_ticker_name(ticker: str) -> str | None:
     """한국 종목 이름 반환. US 티커는 None."""

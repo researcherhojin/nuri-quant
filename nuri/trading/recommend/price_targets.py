@@ -24,6 +24,7 @@ from nuri.core.rules import (
     TRAILING_STOP_VALUE,
     TRAILING_STOP_VOLATILE,
 )
+from nuri.core.ticker_names import is_kr_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -311,7 +312,7 @@ def _type_label(stock_type: str) -> str:
 
 def _format_price(price: float, ticker: str = "") -> str:
     """가격 포맷팅 — KRW 또는 USD."""
-    if ticker.endswith(".KS"):
+    if is_kr_ticker(ticker):
         return f"₩{price:,.0f}"
     return f"${price:,.2f}"
 
@@ -670,7 +671,7 @@ def check_portfolio_mdd(db_path: Optional[Path] = None) -> dict | None:
         ticker = row["ticker"]
         avg_price = row["avg_price"] or 0
         qty = row["quantity"] or 0
-        is_krw = ticker.endswith(".KS")
+        is_krw = is_kr_ticker(ticker)
 
         cost = avg_price * qty
         current = _get_current_price(ticker, db_path=db_path)

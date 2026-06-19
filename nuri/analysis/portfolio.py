@@ -18,6 +18,7 @@ import pandas as pd
 
 from nuri.core.db import query, query_df
 from nuri.core.rules import LEVERAGE_ETFS, MAX_SINGLE_POSITION
+from nuri.core.ticker_names import is_kr_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -101,8 +102,8 @@ def analyze_portfolio() -> pd.DataFrame:
         currency = row["currency"]
 
         # 현재가치 (USD 기준으로 통일)
-        # .KS 종목은 계좌 통화와 무관하게 KRW로 처리
-        is_krw = currency == "KRW" or ticker.endswith(".KS")
+        # KR(.KS/.KQ) 종목은 계좌 통화와 무관하게 KRW로 처리 (#764)
+        is_krw = currency == "KRW" or is_kr_ticker(ticker)
         if is_krw:
             current_value_usd = (current_price * qty) / usd_krw
             cost_basis_usd = (avg_price * qty) / usd_krw
