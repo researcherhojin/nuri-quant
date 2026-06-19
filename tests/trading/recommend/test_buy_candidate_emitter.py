@@ -110,12 +110,11 @@ def _seed_rsi(db_path, ticker: str, rsi: float):
 
 
 def _seed_vix(db_path, value: float):
-    """Seed VIX into prices (emitter reads ticker='VIX' from prices)."""
+    """Seed VIX into macro (emitter reads indicator='vix' from macro — #753)."""
     with get_db(db_path) as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO prices (ticker, date, open, high, low, close, volume, adj_close) "
-            "VALUES ('VIX', '2026-04-30', ?, ?, ?, ?, 0, ?)",
-            (value, value, value, value, value),
+            "INSERT INTO macro (indicator, date, value, source) VALUES ('vix', '2026-04-30', ?, 'test')",
+            (value,),
         )
 
 
@@ -183,6 +182,28 @@ def test_vix_block_above_30(db, cfg_path):
     assert res.candidates == []
     assert res.blocked_reason is not None
     assert "VIX" in res.blocked_reason
+
+
+def test_vix_gate_reads_macro_not_prices(db, cfg_path):
+    """#753 회귀: VIX 는 macro 테이블에서 읽어야 한다 (prices.VIX 는 미수집).
+
+    macro(indicator='vix') 에만 block 임계 초과 VIX 를 seed 하고 prices.VIX 는
+    의도적으로 비운다. emitter 가 prices 경로(버그)로 되돌아가면 macro VIX 를
+    무시해 vix=20.0 fallback → 차단 미발화 → FAIL.
+    """
+    _seed_factor(db, "AAPL", 0.9)
+    _seed_prices(db, "AAPL", [100.0] * 30 + [120.0])
+    _seed_regime(db, "neutral")
+    with get_db(db) as conn:
+        conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('vix', '2026-04-30', 35.0, 'test')")
+        # prices.VIX 행이 없음을 명시 (버그 mask 방지 가드)
+        assert conn.execute("SELECT COUNT(*) FROM prices WHERE ticker='VIX'").fetchone()[0] == 0
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.candidates == []
+    assert res.blocked_reason is not None
+    assert "VIX" in res.blocked_reason
+    assert res.vix == pytest.approx(35.0)
 
 
 def test_vix_caution_halves_allocation(db, cfg_path):
