@@ -14,6 +14,7 @@
     python -m nuri.analysis.rebalance
     python -m nuri.analysis.rebalance --method rp   # Risk Parity
 """
+
 import argparse
 import logging
 
@@ -65,17 +66,15 @@ def analyze_rebalance(method: str = "mvo") -> pd.DataFrame:
 
     # Riskfolio 포트폴리오
     common_tickers = sorted(set(returns.columns) & set(current_weights.keys()))
-    port = rp.Portfolio(returns=returns[common_tickers])
+    # 레버리지 ETF 는 스윙 전용 — 장기 리밸런스 최적화 유니버스에서 제외해 목표 비중을
+    # 0% 로 강제한다 (#758). 보유 중인 레버리지 ETF 는 아래 결과 루프에서 w.index 에
+    # 없으므로 optimal_weight=0 + 'SELL (레버리지)' 로 표시된다.
+    opt_tickers = [t for t in common_tickers if t not in LEVERAGE_ETFS]
+    port = rp.Portfolio(returns=returns[opt_tickers])
     port.assets_stats(method_mu="hist", method_cov="hist")
 
     # 제약조건: 단일 종목 ≤ 15%
     port.upperlng = MAX_SINGLE_POSITION
-
-    # 레버리지 ETF 비중 0으로 강제
-    for i, ticker in enumerate(common_tickers):
-        if ticker in LEVERAGE_ETFS:
-            if port.upperlng is not None:
-                pass  # upperlng이 이미 글로벌 상한
 
     # 최적화 실행
     if method == "rp":
@@ -112,16 +111,18 @@ def analyze_rebalance(method: str = "mvo") -> pd.DataFrame:
         elif trade_value > 100:
             action = "BUY"
 
-        results.append({
-            "ticker": ticker,
-            "sector": sectors.get(ticker, ""),
-            "current_weight": round(cur_weight * 100, 2),
-            "optimal_weight": round(opt_weight * 100, 2),
-            "drift": round(drift * 100, 2),
-            "trade_value_usd": round(trade_value, 0),
-            "trade_shares": round(trade_value / current_price, 1),
-            "action": action,
-        })
+        results.append(
+            {
+                "ticker": ticker,
+                "sector": sectors.get(ticker, ""),
+                "current_weight": round(cur_weight * 100, 2),
+                "optimal_weight": round(opt_weight * 100, 2),
+                "drift": round(drift * 100, 2),
+                "trade_value_usd": round(trade_value, 0),
+                "trade_shares": round(trade_value / current_price, 1),
+                "action": action,
+            }
+        )
 
     df = pd.DataFrame(results).sort_values("drift", key=abs, ascending=False)
     df.attrs["method"] = "Risk Parity" if method == "rp" else "Mean-Variance (Max Sharpe)"
@@ -139,7 +140,7 @@ def print_rebalance(df: pd.DataFrame) -> None:
 
     print(f"\n{'=' * 65}")
     print(f"  리밸런싱 제안 — {method} (Riskfolio-Lib)")
-    print(f"  제약: 단일종목 ≤{MAX_SINGLE_POSITION*100:.0f}%, 섹터 ≤{MAX_SECTOR_EXPOSURE*100:.0f}%")
+    print(f"  제약: 단일종목 ≤{MAX_SINGLE_POSITION * 100:.0f}%, 섹터 ≤{MAX_SECTOR_EXPOSURE * 100:.0f}%")
     print(f"{'=' * 65}")
 
     if actionable.empty:
@@ -148,9 +149,11 @@ def print_rebalance(df: pd.DataFrame) -> None:
         print(f"\n  {'Ticker':<12} {'현재%':>8} {'최적%':>8} {'차이%':>8} {'제안':>12}")
         print(f"  {'-' * 52}")
         for _, row in actionable.iterrows():
-            print(f"  {row['ticker']:<12} {row['current_weight']:>7.1f}% "
-                  f"{row['optimal_weight']:>7.1f}% {row['drift']:>+7.1f}% "
-                  f"{row['action']:>12}")
+            print(
+                f"  {row['ticker']:<12} {row['current_weight']:>7.1f}% "
+                f"{row['optimal_weight']:>7.1f}% {row['drift']:>+7.1f}% "
+                f"{row['action']:>12}"
+            )
     print()
 
 
@@ -158,8 +161,9 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint: 리밸런싱 제안 (mvo / rp)."""
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
-    parser.add_argument("--method", choices=["mvo", "rp"], default="mvo",
-                        help="최적화 방법: mvo(샤프 최대화) 또는 rp(리스크 패리티)")
+    parser.add_argument(
+        "--method", choices=["mvo", "rp"], default="mvo", help="최적화 방법: mvo(샤프 최대화) 또는 rp(리스크 패리티)"
+    )
     args = parser.parse_args(argv)
 
     df = analyze_rebalance(method=args.method)
