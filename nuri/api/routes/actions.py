@@ -19,6 +19,7 @@ from nuri.core.catalyst import has_recent_catalyst
 from nuri.core.db import query
 from nuri.core.live_price import DEFAULT_DIVERGENCE_THRESHOLD_PCT, check_divergence
 from nuri.core.rules import get_stop_loss_for_account
+from nuri.core.ticker_names import is_kr_ticker
 from nuri.core.timezone import kst_now
 
 logger = logging.getLogger(__name__)
@@ -568,7 +569,7 @@ def _get_portfolio_map() -> dict[str, dict]:
     for r in rows:
         price = r["current_price"] or r["avg_price"] or 0
         qty = r["quantity"] or 0
-        is_kr = r["ticker"].endswith(".KS")
+        is_kr = is_kr_ticker(r["ticker"])
         val = price * qty / rate if is_kr else price * qty
         total_value += val
         items.append((r, val, price, is_kr))
