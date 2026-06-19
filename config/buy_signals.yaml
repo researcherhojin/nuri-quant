@@ -78,7 +78,25 @@ risk:
 
 # ─── Exclude (held tickers + ETFs not eligible) ─────────────────────
 exclude_held: true            # 보유 종목은 BUY 추천 X (held_add_mode 가 Phase 2a 부터 별도 처리)
-exclude_etf_leverage: true    # SOXL/TQQQ 같은 leverage ETF 제외 (스윙 트레이드는 별도 path)
+exclude_etf_leverage: true    # 아래 exclude_etfs 적용 on/off
+# 레버리지/인버스 ETF — 스윙 전용이라 factor 기반 BUY 후보에서 제외 (#761).
+# rules.yaml banned_etfs(SIEGE hard-ban 5종)와 목적이 다름(BUY 제외 ≠ 인증 차단).
+# 모두 2x~3x 레버리지/인버스. 비레버리지(SOXX 등)는 포함하지 않는다.
+exclude_etfs:
+  - SOXL
+  - SOXS
+  - TQQQ
+  - SQQQ
+  - TSLL
+  - TSLQ
+  - UPRO
+  - SPXU
+  - TNA
+  - TZA
+  - FAS
+  - FAZ
+  - LABU
+  - LABD
 
 # ─── Held add-mode (#518 Phase 2a, shadow 14d) ──────────────────────
 # 보유 종목에 대한 add 후보. 3 modes (precedence + mutual exclusion). spec
