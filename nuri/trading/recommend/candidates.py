@@ -180,7 +180,8 @@ def _check_vix_gate(db_path=None) -> dict:
     )
     vix = float(vix_rows.iloc[0]["value"]) if not vix_rows.empty else 0.0
 
-    if vix >= VIX_BLOCK_ABOVE:
+    # 차단은 strict > (rules.yaml 주석/사용자 룰: "VIX > 30 금지", "25-30 절반") — vix==30 은 caution (#760).
+    if vix > VIX_BLOCK_ABOVE:
         return {"vix": vix, "gate": "blocked", "msg": f"VIX {vix:.1f} > {VIX_BLOCK_ABOVE} → 신규 매수 금지"}
     elif vix >= VIX_CAUTION_ABOVE:
         return {"vix": vix, "gate": "caution", "msg": f"VIX {vix:.1f} > {VIX_CAUTION_ABOVE} → 절반 포지션만"}
