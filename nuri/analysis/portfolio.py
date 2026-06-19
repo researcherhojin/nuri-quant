@@ -11,11 +11,13 @@
 사용법:
     python -m nuri.analysis.portfolio
 """
+
 import logging
 
 import pandas as pd
 
 from nuri.core.db import query, query_df
+from nuri.core.rules import LEVERAGE_ETFS, MAX_SINGLE_POSITION
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +28,7 @@ class StaleExchangeRateError(Exception):
 
 def get_exchange_rate() -> float:
     """USD/KRW 환율 조회. 7일 이상 오래되면 WARNING, DB에 없으면 에러."""
-    rows = query(
-        "SELECT value, date FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1"
-    )
+    rows = query("SELECT value, date FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1")
     if rows:
         rate = rows[0]["value"]
         rate_date = rows[0]["date"]
@@ -42,9 +42,10 @@ def get_exchange_rate() -> float:
         age_days = (kst_now().replace(tzinfo=None) - latest).days
         if age_days > 7:
             logger.warning(
-                "USD/KRW 환율 %d일 경과 (날짜: %s, 값: %.1f). "
-                "'make collect'으로 갱신 권장",
-                age_days, rate_date, rate,
+                "USD/KRW 환율 %d일 경과 (날짜: %s, 값: %.1f). 'make collect'으로 갱신 권장",
+                age_days,
+                rate_date,
+                rate,
             )
         return rate
 
@@ -60,8 +61,7 @@ def get_exchange_rate() -> float:
         pass
 
     raise StaleExchangeRateError(
-        "USD/KRW 환율을 찾을 수 없습니다. "
-        "'python -m nuri.collectors.macro'로 환율 데이터를 수집하세요."
+        "USD/KRW 환율을 찾을 수 없습니다. 'python -m nuri.collectors.macro'로 환율 데이터를 수집하세요."
     )
 
 
@@ -113,20 +113,22 @@ def analyze_portfolio() -> pd.DataFrame:
         pnl = current_value_usd - cost_basis_usd
         pnl_pct = (pnl / cost_basis_usd * 100) if cost_basis_usd != 0 else 0.0
 
-        results.append({
-            "account": row["account"],
-            "ticker": ticker,
-            "sector": row["sector"],
-            "quantity": qty,
-            "avg_price": avg_price,
-            "current_price": current_price,
-            "currency": currency,
-            "current_value_usd": round(current_value_usd, 2),
-            "cost_basis_usd": round(cost_basis_usd, 2),
-            "pnl_usd": round(pnl, 2),
-            "pnl_pct": round(pnl_pct, 2),
-            "price_date": price_date,
-        })
+        results.append(
+            {
+                "account": row["account"],
+                "ticker": ticker,
+                "sector": row["sector"],
+                "quantity": qty,
+                "avg_price": avg_price,
+                "current_price": current_price,
+                "currency": currency,
+                "current_value_usd": round(current_value_usd, 2),
+                "cost_basis_usd": round(cost_basis_usd, 2),
+                "pnl_usd": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2),
+                "price_date": price_date,
+            }
+        )
 
     df = pd.DataFrame(results)
     if df.empty:
@@ -139,15 +141,16 @@ def analyze_portfolio() -> pd.DataFrame:
     # 종목별 합산 비중 (다계좌 동일 종목)
     ticker_weights = df.groupby("ticker")["weight_pct"].sum()
 
-    # ⚠️ 투자규칙 경고
+    # ⚠️ 투자규칙 경고 — 임계는 config/rules.yaml SSoT (#759)
+    max_pos_pct = MAX_SINGLE_POSITION * 100
     warnings = []
     for ticker, weight in ticker_weights.items():
-        if weight > 15.0:
-            warnings.append(f"⚠️ {ticker}: 비중 {weight:.1f}% > 15% 한도 초과!")
+        if weight > max_pos_pct:
+            warnings.append(f"⚠️ {ticker}: 비중 {weight:.1f}% > {max_pos_pct:.0f}% 한도 초과!")
 
-    # TSLL 레버리지 ETF 경고
-    if "TSLL" in df["ticker"].values:
-        warnings.append("⚠️ TSLL: 레버리지 ETF 장기 보유 금지! 매도 권장")
+    # 레버리지 ETF 경고 (rules.yaml banned_etfs — TSLL/TQQQ/SQQQ/UPRO/SPXU)
+    for ticker in sorted({t for t in df["ticker"].values if t in LEVERAGE_ETFS}):
+        warnings.append(f"⚠️ {ticker}: 레버리지 ETF 장기 보유 금지! 매도 권장")
 
     df.attrs["warnings"] = warnings
     df.attrs["total_value_usd"] = round(total_value, 2)
@@ -178,14 +181,15 @@ def print_summary(df: pd.DataFrame) -> None:
         acct_pnl = acct_df["pnl_usd"].sum()
         print(f"\n📊 {account} (${acct_total:,.0f}, P&L: ${acct_pnl:+,.0f})")
         print("-" * 70)
-        print(f"  {'Ticker':<12} {'비중%':>6} {'현재가':>10} {'평단':>10} "
-              f"{'손익%':>8} {'평가액$':>10}")
+        print(f"  {'Ticker':<12} {'비중%':>6} {'현재가':>10} {'평단':>10} {'손익%':>8} {'평가액$':>10}")
         print("-" * 70)
 
         for _, row in acct_df.sort_values("current_value_usd", ascending=False).iterrows():
-            print(f"  {row['ticker']:<12} {row['weight_pct']:>5.1f}% "
-                  f"{row['current_price']:>10,.2f} {row['avg_price']:>10,.2f} "
-                  f"{row['pnl_pct']:>+7.1f}% {row['current_value_usd']:>10,.0f}")
+            print(
+                f"  {row['ticker']:<12} {row['weight_pct']:>5.1f}% "
+                f"{row['current_price']:>10,.2f} {row['avg_price']:>10,.2f} "
+                f"{row['pnl_pct']:>+7.1f}% {row['current_value_usd']:>10,.0f}"
+            )
 
     # 경고
     warnings = df.attrs.get("warnings", [])
