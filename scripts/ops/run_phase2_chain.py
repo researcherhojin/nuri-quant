@@ -10,8 +10,8 @@ DecisionCompiler → ExecutionFirewall 1 ticker production run.
 - 첫 emit 또는 어떤 actor 가 stop 했는지 보고
 
 사용:
-    .venv/bin/python scripts/run_phase2_chain.py --ticker NVDA
-    .venv/bin/python scripts/run_phase2_chain.py --ticker NVDA --dry-run  # log_decision 호출 X
+    .venv/bin/python scripts/ops/run_phase2_chain.py --ticker NVDA
+    .venv/bin/python scripts/ops/run_phase2_chain.py --ticker NVDA --dry-run  # log_decision 호출 X
 """
 
 from __future__ import annotations
