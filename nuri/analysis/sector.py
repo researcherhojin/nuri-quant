@@ -6,6 +6,7 @@
 사용법:
     python -m nuri.analysis.sector
 """
+
 import logging
 from pathlib import Path
 
@@ -13,6 +14,7 @@ import pandas as pd
 
 from nuri.analysis.portfolio import get_exchange_rate
 from nuri.core.db import query, query_df
+from nuri.core.ticker_names import is_kr_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +49,18 @@ def analyze_sector() -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
 
         price = latest[0]["close"]
         qty = row["total_qty"]
-        is_krw = row["currency"] == "KRW" or row["ticker"].endswith(".KS")
+        is_krw = row["currency"] == "KRW" or is_kr_ticker(row["ticker"])
         current_value = (price * qty / usd_krw) if is_krw else (price * qty)
-        region = "KR" if row["ticker"].endswith(".KS") else "US"
+        region = "KR" if is_kr_ticker(row["ticker"]) else "US"
 
-        results.append({
-            "ticker": row["ticker"],
-            "sector": row["sector"] or "Unknown",
-            "region": region,
-            "current_value": current_value,
-        })
+        results.append(
+            {
+                "ticker": row["ticker"],
+                "sector": row["sector"] or "Unknown",
+                "region": region,
+                "current_value": current_value,
+            }
+        )
 
     df = pd.DataFrame(results)
     if df.empty:
@@ -77,9 +81,7 @@ def analyze_sector() -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
     warnings = []
     for _, row in sector_df.iterrows():
         if row["weight_pct"] > MAX_SECTOR_EXPOSURE:
-            warnings.append(
-                f"⚠️ {row['sector']}: {row['weight_pct']:.1f}% > {MAX_SECTOR_EXPOSURE}% 한도 초과!"
-            )
+            warnings.append(f"⚠️ {row['sector']}: {row['weight_pct']:.1f}% > {MAX_SECTOR_EXPOSURE}% 한도 초과!")
 
     return sector_df, region_df, warnings
 

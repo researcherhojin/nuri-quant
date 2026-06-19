@@ -12,6 +12,19 @@ def _mock_meta(meta: dict) -> list[dict]:
     return [{"metadata": json.dumps(meta)}]
 
 
+class TestIsKrTicker:
+    """#764: 통화/지역 게이트는 KOSPI(.KS) + KOSDAQ(.KQ) 둘 다 KR 로 본다."""
+
+    def test_kospi_ks_is_kr(self) -> None:
+        assert ticker_names.is_kr_ticker("005930.KS") is True
+
+    def test_kosdaq_kq_is_kr(self) -> None:
+        assert ticker_names.is_kr_ticker("035720.KQ") is True
+
+    def test_us_ticker_is_not_kr(self) -> None:
+        assert ticker_names.is_kr_ticker("NVDA") is False
+
+
 class TestGetTickerName:
     def setup_method(self) -> None:
         ticker_names.get_ticker_name.cache_clear()

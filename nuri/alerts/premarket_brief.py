@@ -225,12 +225,14 @@ def _collect_context() -> dict:
         )
         rate_row = query("SELECT value FROM macro WHERE indicator='usd_krw' ORDER BY date DESC LIMIT 1")
         rate = float(rate_row[0]["value"]) if rate_row else 1400.0
+        from nuri.core.ticker_names import is_kr_ticker
+
         by_acct: dict[str, float] = {}
         total_usd = 0.0
         for r in rows:
             px = r["close"] or r["avg_price"] or 0
             qty = r["quantity"] or 0
-            is_kr = str(r["ticker"]).endswith(".KS")
+            is_kr = is_kr_ticker(r["ticker"])
             val_usd = px * qty / rate if is_kr else px * qty
             by_acct[r["account"]] = by_acct.get(r["account"], 0.0) + val_usd
             total_usd += val_usd
