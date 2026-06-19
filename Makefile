@@ -114,12 +114,12 @@ ci-cov-detail:    ## ci-cov + show-missing for files with gaps
 
 # ─── #529 Phase 2 production verification ────────────────
 phase2-chain:    ## Phase 2 4-actor chain end-to-end on real macro + ticker (default NVDA)
-	$(PYTHON) scripts/run_phase2_chain.py --ticker $(or $(ticker),NVDA) \
+	$(PYTHON) scripts/ops/run_phase2_chain.py --ticker $(or $(ticker),NVDA) \
 	    --proposed-action $(or $(action),BUY) \
 	    --proposed-value $(or $(value),3000)
 
 phase2-chain-dry:    ## Phase 2 chain dry-run (no DB write, validation only)
-	$(PYTHON) scripts/run_phase2_chain.py --ticker $(or $(ticker),NVDA) --dry-run
+	$(PYTHON) scripts/ops/run_phase2_chain.py --ticker $(or $(ticker),NVDA) --dry-run
 
 # ─── #529 Phase 2 운영 cron (O2 + O3) ────────────────────
 track-forward:    ## ForwardOutcomeTracker scan — emit decision outcome 측정 (closed loop)
