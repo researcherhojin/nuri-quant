@@ -41,26 +41,9 @@ logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config" / "buy_signals.yaml"
 
-# 레버리지 ETF (스윙 전용, Phase 1 BUY 후보에서 제외)
-LEVERAGE_ETFS = frozenset(
-    {
-        "SOXL",
-        "SOXS",
-        "TQQQ",
-        "SQQQ",
-        "TSLL",
-        "TSLQ",
-        "UPRO",
-        "SPXU",
-        "SOXX",
-        "TNA",
-        "TZA",
-        "FAS",
-        "FAZ",
-        "LABU",
-        "LABD",
-    }
-)
+# 레버리지/인버스 ETF (스윙 전용 — BUY 후보에서 제외)는 config/buy_signals.yaml 의
+# exclude_etfs 가 source of truth (#761). SIEGE hard-ban(rules.yaml banned_etfs)과는
+# 목적이 다르다(BUY 제외 ≠ 인증 차단).
 
 
 @dataclass
@@ -387,6 +370,7 @@ def emit_buy_candidates(
     gates = cfg.get("gates", {})
     risk = cfg.get("risk", {})
     alloc = cfg.get("allocation", {})
+    exclude_etfs = set(cfg.get("exclude_etfs", []))  # 레버리지/인버스 ETF — BUY 제외 (#761)
 
     regime, vix = _get_regime()
     result = EmitResult(
@@ -440,7 +424,7 @@ def emit_buy_candidates(
         if ticker in cooldown:
             result.skipped[ticker] = f"cooldown {gates.get('cooldown_days', 5)}d (최근 SELL/trim 신호)"
             continue
-        if cfg.get("exclude_etf_leverage", True) and ticker in LEVERAGE_ETFS:
+        if cfg.get("exclude_etf_leverage", True) and ticker in exclude_etfs:
             result.skipped[ticker] = "leverage ETF (스윙 전용 — BUY 후보 제외)"
             continue
         price = prices.get(ticker)
