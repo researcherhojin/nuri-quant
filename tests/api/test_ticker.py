@@ -44,6 +44,24 @@ class TestTicker:
         assert r.status_code == 200
         assert r.json()["macro_score"] is None
 
+    def test_market_context_macro_score_present(self, client, monkeypatch):
+        """#754 회귀: compute_macro_score 는 MacroScore dataclass 를 반환한다.
+
+        과거 코드는 ``isinstance(macro, dict)`` 체크로 dataclass 를 항상 None
+        처리해 macro_score 가 영구 null 이었다. dataclass 속성 접근으로 노출.
+        """
+
+        class FakeMacro:
+            total_score = 62.5
+
+        monkeypatch.setattr(
+            "nuri.quant.regime.macro_score.compute_macro_score",
+            lambda: FakeMacro(),
+        )
+        r = client.get("/api/tickers/market-context")
+        assert r.status_code == 200
+        assert r.json()["macro_score"] == 62.5
+
     def test_market_context_classify_returns_regime(self, client, monkeypatch):
         """classify_regime returns truthy → trend set (line 95)."""
 
