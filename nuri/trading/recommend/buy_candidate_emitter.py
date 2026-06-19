@@ -258,11 +258,13 @@ def _get_regime() -> tuple[str, float]:
     except Exception:
         regime = "neutral"
     try:
+        # VIX 는 macro 테이블(indicator='vix')에만 수집된다. prices.VIX 는 미수집이라
+        # 과거 prices 경로는 항상 fallback 20.0 으로 떨어져 VIX 게이트가 무력화됐다 (#753).
         df_vix = query_df(
-            """SELECT close FROM prices WHERE ticker = 'VIX'
+            """SELECT value FROM macro WHERE indicator = 'vix'
                ORDER BY date DESC LIMIT 1"""
         )
-        vix = float(df_vix["close"].iloc[0]) if not df_vix.empty else 20.0
+        vix = float(df_vix["value"].iloc[0]) if not df_vix.empty else 20.0
     except Exception:
         vix = 20.0
     return regime, vix
