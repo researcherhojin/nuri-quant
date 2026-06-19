@@ -428,7 +428,10 @@ def test_load_config_defaults():
     assert "weights" in cfg
     assert "gates" in cfg
     assert "risk" in cfg
-    assert cfg["gates"]["vix_block_above"] == 30
+    # VIX 임계는 buy_signals.yaml 이 아닌 rules.yaml(core.rules)이 canonical (#760).
+    from nuri.core.rules import VIX_BLOCK_ABOVE
+
+    assert VIX_BLOCK_ABOVE == 30
 
 
 def test_emit_result_dataclass_defaults():

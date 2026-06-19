@@ -33,6 +33,7 @@ from typing import Any
 import yaml
 
 from nuri.core.db import query_df
+from nuri.core.rules import VIX_BLOCK_ABOVE, VIX_CAUTION_ABOVE
 from nuri.core.timezone import kst_now
 from nuri.quant.factors.relative_strength import leadership_snapshot
 
@@ -392,9 +393,9 @@ def emit_buy_candidates(
         timestamp_kst=kst_now().strftime("%Y-%m-%d %H:%M:%S KST"),
     )
 
-    # Hard gate: VIX block
-    if vix > gates.get("vix_block_above", 30):
-        result.blocked_reason = f"VIX {vix:.1f} > {gates['vix_block_above']} (신규 매수 차단)"
+    # Hard gate: VIX block — 임계는 rules.yaml(core.rules) canonical 사용 (#760). 차단은 strict >.
+    if vix > VIX_BLOCK_ABOVE:
+        result.blocked_reason = f"VIX {vix:.1f} > {VIX_BLOCK_ABOVE} (신규 매수 차단)"
         return result
 
     # Hard gate: regime
@@ -466,7 +467,7 @@ def emit_buy_candidates(
 
     # Allocation
     total_pct = alloc.get("total_pct_by_regime", {}).get(regime, 0.30)
-    if vix >= gates.get("vix_caution_above", 25):
+    if vix >= VIX_CAUTION_ABOVE:
         total_pct = total_pct / 2.0  # half-position rule
 
     sum_score = sum(s[1] for s in top)
