@@ -86,6 +86,39 @@ class TestValueDbRead:
         assert float(df.loc["AAPL", "value_score"]) > float(df.loc["MSFT", "value_score"])
         assert float(df.loc["MSFT", "value_score"]) > float(df.loc["NVDA", "value_score"])
 
+    def test_kr_included_and_normalized_per_market(self, db_path_mp):
+        """#757: KR(.KS) 도 value_score 를 받되 정규화는 시장별로 분리.
+
+        - KR 종목이 차별화된 score 를 받는다 (과거: composite 에서 flat 0.5).
+        - US score 는 KR 추가와 무관하게 불변 (시장별 정규화 → cross-market 왜곡 없음).
+        - 각 시장 안에서 저PE/PB = 고가치.
+        """
+        from nuri.quant.factors.value import compute_value
+
+        self._seed_fundamentals(
+            db_path_mp,
+            [
+                ("AAPL", "2026-04-15", 15.0, 2.0),
+                ("MSFT", "2026-04-15", 30.0, 5.0),
+                ("NVDA", "2026-04-15", 60.0, 10.0),
+                ("1111.KS", "2026-04-15", 8.0, 0.8),  # 저PE KR
+                ("2222.KS", "2026-04-15", 12.0, 1.2),
+                ("3333.KS", "2026-04-15", 20.0, 2.5),  # 고PE KR
+            ],
+        )
+        us = ["AAPL", "MSFT", "NVDA"]
+        kr = ["1111.KS", "2222.KS", "3333.KS"]
+        df_all = compute_value(tickers=us + kr)
+        df_us_only = compute_value(tickers=us)
+
+        # KR 차별화 + 시장 내 저PE=고가치
+        assert df_all.loc[kr, "value_score"].nunique() > 1
+        assert float(df_all.loc["1111.KS", "value_score"]) > float(df_all.loc["3333.KS", "value_score"])
+
+        # US 불변: KR 을 섞어도 US score 가 그대로 (시장별 정규화 보장)
+        for t in us:
+            assert float(df_all.loc[t, "value_score"]) == pytest.approx(float(df_us_only.loc[t, "value_score"]))
+
     def test_value_reads_latest_date_per_ticker(self, db_path_mp):
         """동일 ticker 여러 날짜 → 가장 최신 row 만 사용."""
         from nuri.quant.factors.value import compute_value

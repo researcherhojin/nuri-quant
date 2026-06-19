@@ -112,13 +112,52 @@ class TestQualityDbRead:
         df = qmod.compute_quality()
         assert df.empty
 
-    def test_only_kr_tickers_returns_empty(self, db_path_mp, monkeypatch):
-        """get_tickers() 가 .KS 만 → 필터 후 비어 empty (line 24 fallthrough)."""
+    def test_kr_tickers_included_per_market(self, db_path_mp, monkeypatch):
+        """#757: KR(.KS) 종목이 fundamentals 가 있으면 quality_score 를 받는다.
+
+        과거엔 default ticker 목록에서 .KS 를 제외해 KR 이 composite 에서 flat 0.5.
+        이제 KR 포함 + 시장별 정규화. (get_tickers() default 경로 검증.)
+        """
         from nuri.quant.factors import quality as qmod
 
+        self._seed_fundamentals(
+            db_path_mp,
+            [
+                ("005930.KS", "2026-04-15", 0.18, 0.22),
+                ("000660.KS", "2026-04-15", 0.09, 0.11),
+            ],
+        )
         monkeypatch.setattr("nuri.core.db.get_tickers", lambda: ["005930.KS", "000660.KS"])
         df = qmod.compute_quality()
-        assert df.empty
+        assert not df.empty
+        assert set(df.index) == {"005930.KS", "000660.KS"}
+        # 시장 내 정규화 → 고ROE/고마진(005930.KS)이 더 높은 quality
+        assert float(df.loc["005930.KS", "quality_score"]) > float(df.loc["000660.KS", "quality_score"])
+
+    def test_kr_included_and_normalized_per_market(self, db_path_mp):
+        """#757: KR 추가가 US quality_score 를 바꾸지 않는다 (시장별 정규화)."""
+        from nuri.quant.factors.quality import compute_quality
+
+        self._seed_fundamentals(
+            db_path_mp,
+            [
+                ("AAPL", "2026-04-15", 0.30, 0.35),
+                ("MSFT", "2026-04-15", 0.20, 0.25),
+                ("NVDA", "2026-04-15", 0.45, 0.50),
+                ("1111.KS", "2026-04-15", 0.12, 0.10),
+                ("2222.KS", "2026-04-15", 0.25, 0.20),
+                ("3333.KS", "2026-04-15", 0.40, 0.38),
+            ],
+        )
+        us = ["AAPL", "MSFT", "NVDA"]
+        kr = ["1111.KS", "2222.KS", "3333.KS"]
+        df_all = compute_quality(tickers=us + kr)
+        df_us_only = compute_quality(tickers=us)
+
+        assert df_all.loc[kr, "quality_score"].nunique() > 1
+        assert float(df_all.loc["3333.KS", "quality_score"]) > float(df_all.loc["1111.KS", "quality_score"])
+        for t in us:
+            assert float(df_all.loc[t, "quality_score"]) == pytest.approx(float(df_us_only.loc[t, "quality_score"]))
 
     def test_skips_rows_with_both_none(self, db_path_mp):
         """roe/margin 둘 다 None 인 row 는 skip (line 49 continue)."""
