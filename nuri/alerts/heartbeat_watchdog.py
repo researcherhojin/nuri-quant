@@ -18,6 +18,7 @@ Usage:
 """
 
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -46,6 +47,34 @@ HEARTBEAT_PATH = Path(__file__).resolve().parents[2] / "data" / ".scheduler_hear
 # 30분 이상 stale 이면 alert. sre_incident_agent.SCHEDULER_WARN_MIN 과 동일값 유지.
 STALE_THRESHOLD_MIN = 30.0
 
+# 자동 재시작 대상 launchd label. fd 누수(파일 디스크립터 고갈)로 데몬이 살아있되
+# heartbeat 만 멈추는 경우 KeepAlive 는 무력(크래시 아님) — kickstart -k 만 fd 를 회수.
+SCHEDULER_LABEL = "com.nuri-quant.scheduler"
+
+
+def _kickstart_scheduler() -> bool:
+    """scheduler 데몬을 강제 재시작(kickstart -k). 성공 시 True.
+
+    stale 의 주원인은 fd 고갈로 인한 hung heartbeat 이므로, 알림과 함께
+    데몬을 재시작해 자동 복구한다(외근 중 수동 개입 불가 대비). 재시작 후
+    heartbeat 는 ~45초 내 갱신되므로 15분 간격 watchdog 에서 restart-loop 없음.
+    """
+    target = f"gui/{os.getuid()}/{SCHEDULER_LABEL}"
+    try:
+        proc = subprocess.run(
+            ["launchctl", "kickstart", "-k", target],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except Exception as e:  # launchctl 부재(비배포 환경)/타임아웃 — 알림은 계속 진행
+        print(f"auto-restart 호출 실패: {e}", file=sys.stderr)
+        return False
+    if proc.returncode == 0:
+        return True
+    print(f"auto-restart launchctl rc={proc.returncode}: {proc.stderr.strip()}", file=sys.stderr)
+    return False
+
 
 def heartbeat_age_minutes(path: Path | None = None, now_epoch: float | None = None) -> float | None:
     """heartbeat 파일 mtime 의 age(분) 반환. 파일 미존재 시 None (미배포 환경 → skip)."""
@@ -66,10 +95,17 @@ def main() -> int:
         print(f"heartbeat OK ({age:.1f}분, 임계 {STALE_THRESHOLD_MIN:.0f}분)")
         return 0
 
+    # stale 감지 → 데몬 자동 재시작 후 결과를 알림에 포함.
+    restarted = _kickstart_scheduler()
+    restart_note = (
+        "🔄 자동 재시작 완료 (`launchctl kickstart -k`) — heartbeat 곧 갱신."
+        if restarted
+        else "⚠️ 자동 재시작 실패 — 수동 확인: `launchctl kickstart -k gui/$(id -u)/com.nuri-quant.scheduler`"
+    )
     msg = (
         f"🔴 **스케줄러 heartbeat STALE** — {age:.0f}분째 갱신 없음 "
         f"(임계 {STALE_THRESHOLD_MIN:.0f}분). 데이터 수집 중단 의심.\n"
-        f"확인: `launchctl kickstart -k gui/$(id -u)/com.nuri-quant.scheduler`\n"
+        f"{restart_note}\n"
         f"[{kst_now().strftime('%Y-%m-%d %H:%M KST')}]"
     )
     webhook_url = _resolve_webhook_url()
