@@ -8,6 +8,7 @@
 사용법:
     python -m nuri.analysis.correlation
 """
+
 import logging
 from pathlib import Path
 
@@ -39,7 +40,7 @@ def analyze_correlation(min_days: int = 60) -> tuple[pd.DataFrame, list[dict]]:
     pivot = pivot[valid_tickers]
 
     # 일간 수익률 → 상관행렬
-    returns = pivot.ffill().pct_change().dropna()
+    returns = pivot.ffill().pct_change(fill_method=None).dropna()
     corr_matrix = returns.corr()
 
     # 고상관 경고 (|r| > 0.80)
@@ -49,11 +50,13 @@ def analyze_correlation(min_days: int = 60) -> tuple[pd.DataFrame, list[dict]]:
         for j in range(i + 1, n):
             r = corr_matrix.iloc[i, j]
             if abs(r) > 0.80:
-                warnings.append({
-                    "ticker_a": valid_tickers[i],
-                    "ticker_b": valid_tickers[j],
-                    "correlation": round(r, 3),
-                })
+                warnings.append(
+                    {
+                        "ticker_a": valid_tickers[i],
+                        "ticker_b": valid_tickers[j],
+                        "correlation": round(r, 3),
+                    }
+                )
 
     return corr_matrix, warnings
 
@@ -62,6 +65,7 @@ def save_heatmap(corr_matrix: pd.DataFrame) -> None:
     """상관관계 히트맵 저장."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import seaborn as sns
@@ -70,9 +74,15 @@ def save_heatmap(corr_matrix: pd.DataFrame) -> None:
 
         fig, ax = plt.subplots(figsize=(12, 10))
         sns.heatmap(
-            corr_matrix, annot=True, fmt=".2f",
-            cmap="RdYlGn_r", center=0, vmin=-1, vmax=1,
-            ax=ax, square=True,
+            corr_matrix,
+            annot=True,
+            fmt=".2f",
+            cmap="RdYlGn_r",
+            center=0,
+            vmin=-1,
+            vmax=1,
+            ax=ax,
+            square=True,
         )
         ax.set_title("Nuri-Quant Portfolio Correlation Matrix")
         fig.tight_layout()

@@ -84,7 +84,7 @@ def fetch_ticker_returns(ticker: str, start_date: str = "2025-01-01") -> pd.Data
         "SELECT date, close FROM prices WHERE ticker = ? AND date >= ? ORDER BY date",
         (ticker, start_date),
     )
-    df["return_1d"] = df["close"].pct_change()
+    df["return_1d"] = df["close"].pct_change(fill_method=None)
     return df.dropna()
 
 

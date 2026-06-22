@@ -10,6 +10,7 @@ VaR, CVaR, Sharpe, Sortino, Max Drawdown 등을 Riskfolio-Lib으로 계산.
 사용법:
     python -m nuri.analysis.risk
 """
+
 import logging
 
 import numpy as np
@@ -51,7 +52,7 @@ def _get_portfolio_returns() -> tuple[pd.DataFrame, dict]:
     # 일간 수익률
     prices = query_df("SELECT ticker, date, close FROM prices ORDER BY date")
     pivot = prices.pivot_table(index="date", columns="ticker", values="close")
-    returns = pivot.ffill().pct_change().dropna()
+    returns = pivot.ffill().pct_change(fill_method=None).dropna()
 
     return returns, weights
 
@@ -70,9 +71,7 @@ def analyze_risk() -> dict:
     port_returns = (returns[common] * w).sum(axis=1)
 
     # 리스크프리 레이트
-    rf_rows = query(
-        "SELECT value FROM macro WHERE indicator = 'fed_funds_rate' ORDER BY date DESC LIMIT 1"
-    )
+    rf_rows = query("SELECT value FROM macro WHERE indicator = 'fed_funds_rate' ORDER BY date DESC LIMIT 1")
     rf_annual = rf_rows[0]["value"] / 100 if rf_rows else 0.05
 
     # 연환산 수익률/변동성

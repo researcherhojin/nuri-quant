@@ -172,7 +172,7 @@ def classify_historical_regimes(db_path=None, sma_period: int = 50) -> pd.DataFr
     # 백테스트는 히스테리시스 미적용 (과거 데이터는 확정된 종가이므로 노이즈 없음)
 
     # SPY 일간 수익률
-    spy["return"] = spy["close"].pct_change()
+    spy["return"] = spy["close"].pct_change(fill_method=None)
 
     return spy.reset_index()
 
@@ -200,7 +200,7 @@ def run_interactive_backtest(
     if not sh.empty:
         sh["date"] = pd.to_datetime(sh["date"])
         sh = sh.set_index("date")
-        sh["sh_return"] = sh["close"].pct_change()
+        sh["sh_return"] = sh["close"].pct_change(fill_method=None)
     else:
         sh = pd.DataFrame()
 
@@ -371,7 +371,7 @@ def run_backtest(regimes_df: pd.DataFrame, db_path=None) -> BacktestResult:
     if not sh.empty:
         sh["date"] = pd.to_datetime(sh["date"])
         sh = sh.set_index("date")
-        sh["sh_return"] = sh["close"].pct_change()
+        sh["sh_return"] = sh["close"].pct_change(fill_method=None)
         sh["sh_open_return"] = sh["close"] / sh["open"] - 1  # 시가→종가
     else:
         sh = pd.DataFrame()

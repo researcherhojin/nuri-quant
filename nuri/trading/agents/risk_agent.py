@@ -75,7 +75,7 @@ class RiskAgent(BaseAgent):
             db_path=db_path,
         )
         if len(recent) >= 10:
-            vol = recent["close"].pct_change().std() * 100
+            vol = recent["close"].pct_change(fill_method=None).std() * 100
             if vol > vol_high:
                 score -= 1
                 reasons.append(f"고변동성 (일간σ {vol:.1f}%)")
