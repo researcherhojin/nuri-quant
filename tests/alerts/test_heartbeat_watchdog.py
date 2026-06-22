@@ -70,7 +70,10 @@ class TestMain:
         p = tmp_path / "hb"
         _write_heartbeat(p, age_minutes=hw.STALE_THRESHOLD_MIN + 15.0)
         monkeypatch.setattr(hw, "HEARTBEAT_PATH", p)
-        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send:
+        with (
+            patch("nuri.alerts.heartbeat_watchdog._kickstart_scheduler", return_value=True),
+            patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send,
+        ):
             rc = hw.main()
         assert rc == 2
         send.assert_called_once()
@@ -81,9 +84,62 @@ class TestMain:
         p = tmp_path / "hb"
         _write_heartbeat(p, age_minutes=hw.STALE_THRESHOLD_MIN + 15.0)
         monkeypatch.setattr(hw, "HEARTBEAT_PATH", p)
-        with patch(
-            "nuri.alerts.heartbeat_watchdog.send_webhook_text",
-            side_effect=RuntimeError("network down"),
+        with (
+            patch("nuri.alerts.heartbeat_watchdog._kickstart_scheduler", return_value=False),
+            patch(
+                "nuri.alerts.heartbeat_watchdog.send_webhook_text",
+                side_effect=RuntimeError("network down"),
+            ),
         ):
             rc = hw.main()
         assert rc == 2  # webhook 실패도 stale 신호로 surface (exit 2)
+
+    def test_stale_triggers_auto_restart_and_reports_success(self, tmp_path, monkeypatch):
+        # stale → 데몬 자동 재시작 시도 + 성공 문구 알림 (#734 silent-outage 후속).
+        p = tmp_path / "hb"
+        _write_heartbeat(p, age_minutes=hw.STALE_THRESHOLD_MIN + 15.0)
+        monkeypatch.setattr(hw, "HEARTBEAT_PATH", p)
+        with (
+            patch("nuri.alerts.heartbeat_watchdog._kickstart_scheduler", return_value=True) as restart,
+            patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send,
+        ):
+            rc = hw.main()
+        assert rc == 2
+        restart.assert_called_once()
+        assert "자동 재시작 완료" in send.call_args.args[0]
+
+    def test_auto_restart_failure_reports_manual_step(self, tmp_path, monkeypatch):
+        p = tmp_path / "hb"
+        _write_heartbeat(p, age_minutes=hw.STALE_THRESHOLD_MIN + 15.0)
+        monkeypatch.setattr(hw, "HEARTBEAT_PATH", p)
+        with (
+            patch("nuri.alerts.heartbeat_watchdog._kickstart_scheduler", return_value=False),
+            patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send,
+        ):
+            rc = hw.main()
+        assert rc == 2
+        assert "자동 재시작 실패" in send.call_args.args[0]
+
+
+class TestKickstart:
+    def test_returns_false_when_launchctl_missing(self, monkeypatch):
+        # 비배포 환경(launchctl 부재) — 예외 삼키고 False, 알림 흐름은 계속.
+        monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()))
+        assert hw._kickstart_scheduler() is False
+
+    def test_returns_true_on_zero_returncode(self, monkeypatch):
+        class _Proc:
+            returncode = 0
+            stderr = ""
+
+        monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: _Proc())
+        assert hw._kickstart_scheduler() is True
+
+    def test_returns_false_on_nonzero_returncode(self, monkeypatch):
+        # launchctl 실행은 됐으나 실패 반환 — False + stderr surface.
+        class _Proc:
+            returncode = 1
+            stderr = "Could not find service"
+
+        monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: _Proc())
+        assert hw._kickstart_scheduler() is False
