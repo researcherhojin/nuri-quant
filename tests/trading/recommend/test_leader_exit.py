@@ -4,12 +4,16 @@ Source of truth: `config/rules.yaml take_profit.leader` -> `nuri.core.rules.TAKE
 리더 = 성장주(classify_stock_type==growth) + 50일선 계산가능. 고정 익절 대신 50일선 트레일.
 Reverting is_leader / TP skip / check_leader_trail_signals / actions wiring fails these.
 
-근거: 백테스트(17 성장주 2021~26, 비중첩·트레일동일·비용·연율화, skeptic 검증) —
-무TP+MA50 트레일이 고정TP ladder 대비 CAGR 12.8% → 19.5%, 낙폭 더 얕음.
-설계(codex 4-round review): growth-type 기준 (gain-threshold stickiness 문제 회피).
+**#715 (2026-06-22): config 기본값 enabled=false 로 DISABLED.** growth 197종목 walk-forward
+(random entries·permutation null·holdout) 에서 leader-exit 가 ladder 대비 열위(Δ−0.318,
+p=0.55) → 라이브 정당화 실패, O'Neil ladder 복원. **코드는 보존**(validated leader-entry
+조건부 재검증 대비). 따라서 이 파일의 behavior lock-test 는 `_enable_leader` autouse
+fixture 로 enabled=true 를 명시 주입해 동작 자체를 잠근다 (config 정책값과 분리).
 """
 
 from datetime import date, timedelta
+
+import pytest
 
 from nuri.core.db import get_db
 from nuri.trading.recommend.price_targets import (
@@ -19,6 +23,15 @@ from nuri.trading.recommend.price_targets import (
     format_target_tree,
     is_leader,
 )
+
+
+@pytest.fixture(autouse=True)
+def _enable_leader(monkeypatch):
+    """leader-exit 는 #715 로 config 기본값 disabled — behavior lock-test 는 enabled=true
+    를 명시 주입해 코드 경로를 잠근다. `test_disabled*` 는 본문에서 다시 false 로 override."""
+    import nuri.trading.recommend.price_targets as pt
+
+    monkeypatch.setattr(pt, "TAKE_PROFIT_LEADER", {"enabled": True, "trail_ma": 50})
 
 
 def _seed(db_path, ticker, avg_price, closes, sector="AI"):
@@ -138,3 +151,22 @@ class TestLeaderTargets:
         tree = format_target_tree(t)
         assert "리더" in tree
         assert "일선" in tree
+
+
+class TestConfigDefaultDisabled715:
+    """#715 정책 결정 lock — config 기본값이 disabled 임을 고정.
+
+    leader-exit 가 growth walk-forward(#715)에서 ladder 대비 열위(Δ−0.318, p=0.55)로
+    FAIL → enabled=false 가 데이터 기반 디폴트. 무근거 재활성(true 복귀)이 이 테스트를
+    깬다 — 재활성은 STRATEGY PR + 재검증 PASS 가 선결. (autouse _enable_leader 는 모듈
+    상수만 패치하므로 YAML 직접 read 는 영향 없음.)
+    """
+
+    def test_rules_yaml_leader_disabled(self):
+        from pathlib import Path
+
+        import yaml
+
+        cfg = yaml.safe_load((Path(__file__).resolve().parents[3] / "config" / "rules.yaml").read_text())
+        leader = cfg["take_profit"]["leader"]
+        assert leader["enabled"] is False, "leader-exit 재활성은 #715 재검증 PASS 선결 (STRATEGY PR)"
