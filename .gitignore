@@ -30,6 +30,9 @@ config/kis_*.yml
 #    .gitkeep만 tracking해서 디렉토리 자체는 repo에 보존
 config/kis/*
 !config/kis/.gitkeep
+# 3-b) config/toss/ 디렉토리 내부 전체 (Toss creds + OAuth token cache)
+config/toss/*
+!config/toss/.gitkeep
 # 4) 레거시 ~/KIS 참조 (프로젝트 외부지만 안전장치)
 .kis/
 
