@@ -82,16 +82,18 @@ take_profit:
     min_agent_confidence: 50    # 최소 에이전트 합의 신뢰도
   # O'Neil 8주 규칙: 매수 후 3주 이내에 +20% 돌파 시 최소 8주 보유
   eight_week_hold: true
-  # ─── Leader exception (8주 룰 운영화) ───────────────────────
-  # 성장주(classify_stock_type==growth) 보유는 고정 +20/+40 익절 미적용, trail_ma 이동평균
-  # 종가 이탈 시 청산 (승자 run). value/swing 은 위 ladder 유지. -7% 하드손절 공통.
-  # 백테스트(17 성장주 2021~26, 비중첩·트레일동일·비용·연율화, skeptic 검증): 무TP+MA50
-  # 트레일이 고정TP ladder 대비 CAGR 12.8% → 19.5%, 낙폭 더 얕음 (위험조정 0.30→0.53).
-  # 성장주 판정은 nuri/trading/recommend/price_targets.classify_stock_type (stock_types.yaml
-  # 수동 override > PE>30 > 성장 섹터). 50일선 미계산(< 50 종가) 시 고정 ladder 유지.
+  # ─── Leader exception (8주 룰 운영화) — DISABLED by #715 ─────
+  # 의도: 성장주 보유는 고정 +20/+40 익절 대신 trail_ma 종가 이탈 청산 (승자 run).
+  # 도입 근거(#679)는 17 성장주 약식 백테스트(무TP+MA50 위험조정 0.30→0.53)뿐이었다.
+  # #715 엄밀 검증(2026-06-22): growth 197종목·random entries 2000·permutation null 200·
+  # holdout 20%·비용·survivorship haircut walk-forward → e1_leader_ma Sharpe +0.226 vs
+  # e0_ladder +0.543 (Δ−0.318, p=0.552 노이즈, maxDD −0.29 vs −0.23). promotion-eligible
+  # NONE. 17종목 근거를 강한 표본이 반증 → 라이브 정당화 실패. enabled=false 로 검증된
+  # O'Neil ladder 복원이 데이터 기반 디폴트 (사전등록 프로토콜). 코드는 보존 — validated
+  # leader-entry 조건부 재검증 시 재활성(follow-up). 성장주 판정/50일선 로직 불변.
   leader:
-    enabled: true
-    trail_ma: 50                  # 50일 이동평균 종가 이탈 시 청산 (고정 익절 대체)
+    enabled: false                # #715 FAIL → ladder 복원. 재활성은 STRATEGY PR + 재검증 PASS
+    trail_ma: 50                  # 50일 이동평균 종가 이탈 시 청산 (재활성 시 사용)
 
 # ─── 트레일링 스톱 ──────────────────────────────────────
 # 근거: 11년 백테스트에서 15-20% 트레일링 스톱이 최적 수익 (73.9% 누적)
