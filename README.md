@@ -67,7 +67,7 @@ flowchart TB
 
 | Phase | What it does | Key outputs |
 |-------|--------------|-------------|
-| ① **Collect** | 26 collectors — yfinance / OpenBB · pykrx (KR) · FRED · GoogleNews · KIS Open API | `prices` · `fundamentals` · `macro` · `news` |
+| ① **Collect** | 27 collectors — yfinance / OpenBB · pykrx (KR) · FRED · GoogleNews · KIS / Toss Open API | `prices` · `fundamentals` · `macro` · `news` |
 | ② **Analyze** | 22 signals (20 actionable + 2 shadow) · 10 regimes (6 base + 4 special) · 3 factor scorers | `signals` · `factors` · `regime_transitions` |
 | ③ **Consensus** | 10 specialist agents · weighted vote · risk-veto on `alpha_action==FLAT` | `recommendations` (with `agent_verdicts` JSON) |
 | ④ **Certify** | Certification — `Account × Asset Class × Market` · 1 error-grade fail → REJECTED | `certifications` (with evidence trail) |
@@ -161,7 +161,7 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 | **Frontend tests** | 1,383 (126 files) |
 | **E2E tests** | 57 (Playwright, 8 specs) |
 | **Pipeline phases** | 5 (collect / analyze / consensus / certify / track) |
-| **Data collectors** | 26 collectors (BaseCollector pattern) |
+| **Data collectors** | 27 collectors (BaseCollector pattern) |
 | **Specialist agents** | 10 |
 | **Strategy regimes** | 10 (6 base + 4 special) |
 | **Trading signals** | 22 (20 actionable + 2 shadow) |
