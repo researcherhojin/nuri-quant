@@ -263,6 +263,24 @@ class TestScheduler:
         _write_heartbeat()
         assert hb_path.exists()
 
+    def test_self_restart_kickstarts_scheduler(self):
+        """_self_restart() launchctl kickstart -k 로 자가 재시작 요청 (#780)."""
+        from nuri.scheduler import _self_restart
+
+        with patch("subprocess.run") as mock_run:
+            _self_restart()
+        mock_run.assert_called_once()
+        cmd = mock_run.call_args.args[0]
+        assert cmd[:3] == ["launchctl", "kickstart", "-k"]
+        assert cmd[3].endswith("com.nuri-quant.scheduler")
+
+    def test_self_restart_handles_missing_launchctl(self):
+        """launchctl 부재(비배포) — 예외 삼키고 데몬 계속 (#780)."""
+        from nuri.scheduler import _self_restart
+
+        with patch("subprocess.run", side_effect=FileNotFoundError("launchctl")):
+            _self_restart()  # 예외 전파 없이 graceful skip
+
 
 # ═══════════════════════════════════════════════════════
 # TestScheduler_R2 — from test_coverage_round2.py
