@@ -587,9 +587,30 @@ def _generate_llamacpp(prompt: str) -> str:
         return ""
 
 
+def _host_is_local(host: str | None) -> bool:
+    """`host` URL 의 hostname 이 localhost 계열인지 (STRATEGY §4.4.3).
+
+    포트폴리오 분석 데이터의 외부 egress 방어 — 빈 값/비-localhost 면 False.
+    pure predicate (env 미read) — caller 가 host 출처를 결정.
+    """
+    from urllib.parse import urlparse
+
+    if not host:
+        return False
+    return urlparse(host).hostname in ("localhost", "127.0.0.1", "::1")
+
+
 def _generate_ollama(prompt: str) -> str:
     """Ollama HTTP API로 생성. Qwen3.5 thinking 모델 호환."""
     if not OLLAMA_HOST:
+        return ""
+    # STRATEGY §4.4.3 — Ollama 는 local-only. 비-localhost host (오설정/변조) 면
+    # 포트폴리오 분석 prompt 의 외부 egress 를 차단하고 graceful degrade.
+    if not _host_is_local(OLLAMA_HOST):
+        logger.warning(
+            "OLLAMA_HOST '%s' 가 localhost 아님 — STRATEGY §4.4.3 local-only 위반, Ollama 비활성.",
+            OLLAMA_HOST,
+        )
         return ""
     import requests as _requests
 

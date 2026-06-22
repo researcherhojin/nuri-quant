@@ -331,6 +331,27 @@ class TestGenerateOllamaNoHost:
         assert _generate_ollama("prompt") == ""
 
 
+class TestOllamaLocalOnlyGuard:
+    """STRATEGY §4.4.3 — 비-localhost OLLAMA_HOST 는 egress 차단 (#797)."""
+
+    def test_host_is_local_predicate(self) -> None:
+        from nuri.llm.report import _host_is_local
+
+        assert _host_is_local("http://localhost:11434") is True
+        assert _host_is_local("http://127.0.0.1:11434") is True
+        assert _host_is_local("http://[::1]:11434") is True
+        assert _host_is_local("http://remote.example.com:11434") is False
+        assert _host_is_local("") is False
+        assert _host_is_local(None) is False
+
+    def test_nonlocal_host_blocks_post(self, monkeypatch) -> None:
+        # 비-localhost host → requests.post 호출 자체가 안 일어남 (egress 차단).
+        monkeypatch.setattr(report_mod, "OLLAMA_HOST", "http://attacker.example.com:11434")
+        with patch("requests.post") as post:
+            assert _generate_ollama("portfolio prompt") == ""
+        post.assert_not_called()
+
+
 # ─── 227 / 229 standalone branch fillers ─────────────────────────────
 
 
@@ -621,7 +642,7 @@ class TestOllamaNoMarker:
         mock_requests.post.return_value = fake_resp
         mock_requests.ConnectionError = ConnectionError
         monkeypatch.setitem(sys.modules, "requests", mock_requests)
-        monkeypatch.setattr(report_mod, "OLLAMA_HOST", "http://fake-ollama")
+        monkeypatch.setattr(report_mod, "OLLAMA_HOST", "http://localhost:11434")
 
         result = _generate_ollama("test prompt")
         # 마커 없음 → response 가 그대로 (re.sub 적용된 형태) 반환
@@ -639,7 +660,7 @@ class TestOllamaNoMarker:
         mock_requests.post.return_value = fake_resp
         mock_requests.ConnectionError = ConnectionError
         monkeypatch.setitem(sys.modules, "requests", mock_requests)
-        monkeypatch.setattr(report_mod, "OLLAMA_HOST", "http://fake-ollama")
+        monkeypatch.setattr(report_mod, "OLLAMA_HOST", "http://localhost:11434")
 
         result = _generate_ollama("test prompt")
         assert "thinking content" in result
@@ -656,7 +677,7 @@ class TestOllamaNoMarker:
         mock_requests.post.return_value = fake_resp
         mock_requests.ConnectionError = ConnectionError
         monkeypatch.setitem(sys.modules, "requests", mock_requests)
-        monkeypatch.setattr(report_mod, "OLLAMA_HOST", "http://fake-ollama")
+        monkeypatch.setattr(report_mod, "OLLAMA_HOST", "http://localhost:11434")
 
         result = _generate_ollama("test prompt")
         assert result == ""
