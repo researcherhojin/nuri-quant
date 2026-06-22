@@ -135,6 +135,51 @@ def get_exchange_rate(base: str = "USD", quote: str = "KRW") -> dict[str, Any]:
     return data.get("result", data)
 
 
+def _unwrap_list(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    """result 언랩 후 list 정규화 — list / {result:[...]} / {result:{key:[...]}} 모두 처리."""
+    if isinstance(data, list):
+        return data
+    r = data.get("result", data)
+    if isinstance(r, list):
+        return r
+    if isinstance(r, dict):
+        if isinstance(r.get(key), list):
+            return r[key]
+        return next((v for v in r.values() if isinstance(v, list)), [])
+    return []
+
+
+def get_accounts() -> list[dict[str, Any]]:
+    """GET /api/v1/accounts — 보유 계좌 목록 (read-only, account 헤더 불필요).
+
+    Returns: [{accountNo, accountSeq, accountType}, ...].
+    """
+    return _unwrap_list(_authed_get("/api/v1/accounts", {}), "accounts")
+
+
+def _resolve_account_seq(account_seq: Optional[str] = None) -> str:
+    """account_seq 결정: 인자 > TOSS_ACCOUNT_SEQ env > accounts 첫 계좌 자동 발견."""
+    import os
+
+    seq = (account_seq or os.getenv("TOSS_ACCOUNT_SEQ") or "").strip()
+    if seq:
+        return seq
+    accounts = get_accounts()
+    if not accounts:
+        raise TossCredentialsError("계좌 목록이 비어있음 — accountSeq 자동 발견 실패.")
+    return str(accounts[0]["accountSeq"])
+
+
+def get_holdings(account_seq: Optional[str] = None) -> list[dict[str, Any]]:
+    """GET /api/v1/holdings — 보유 종목 (read-only, X-Tossinvest-Account 필요).
+
+    account_seq 미지정 시 _resolve_account_seq 로 자동 발견.
+    Returns: [{symbol, quantity, averagePurchasePrice, marketCountry, currency, ...}, ...].
+    """
+    seq = _resolve_account_seq(account_seq)
+    return _unwrap_list(_authed_get("/api/v1/holdings", {}, account_seq=seq), "holdings")
+
+
 def verify() -> int:
     """credential 검증 — 토큰 발급 + 환율 smoke test. secret/token 미출력.
 
