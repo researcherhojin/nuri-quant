@@ -233,3 +233,19 @@ class TestAccountsHoldings:
             h = toss.get_holdings(account_seq="seq9")
         assert h[0]["symbol"] == "005930"
         assert get.call_args.kwargs["headers"]["X-Tossinvest-Account"] == "seq9"
+
+
+class TestCoverageGaps:
+    def test_get_access_token_no_cache_fetches(self, monkeypatch):
+        # force=False + 캐시 부재 → _read_cached_token None(L73) → fetch 경로(95->98)
+        monkeypatch.setenv("TOSS_API_KEY", "c")
+        monkeypatch.setenv("TOSS_SECRET_KEY", "s")
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = {"access_token": "fetched", "expires_in": 86400}
+        with patch("requests.post", return_value=resp):
+            assert toss.get_access_token(force=False) == "fetched"
+
+    def test_unwrap_list_non_dict_result_returns_empty(self):
+        # result 가 list/dict 아님 → return [] (L149)
+        assert toss._unwrap_list({"result": "notalist"}, "k") == []
+        assert toss._unwrap_list({"result": None}, "k") == []

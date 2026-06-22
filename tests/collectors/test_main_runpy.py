@@ -224,3 +224,11 @@ def monkeypatch_uvs(monkeypatch):
 
     monkeypatch.setattr(UniverseSyncCollector, "run", _fake_run)
     return state
+
+
+class TestTossRunpy:
+    """toss.py __main__ — 비 BaseCollector. no-args → print_help → exit 0 (creds/network 불필요)."""
+
+    def test_main_no_args_prints_help(self, monkeypatch):
+        out = _run_module_capture("nuri.collectors.toss", monkeypatch, argv=["toss"])
+        assert "verify" in out.lower()
