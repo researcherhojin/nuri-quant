@@ -399,6 +399,22 @@ def test_bucket_generic_digest_non_quality_keeps_aggregated_desc():
     assert embed["description"] == "1 aggregated events"
 
 
+def test_bucket_generic_digest_renders_sre_kind_human_readable():
+    """sre_* 인프라 인시던트는 친화 라벨+의미+조치로 렌더 (실제 사고 → disclaimer 없음)."""
+    events = [
+        {"kind": "sre_scheduler_heartbeat", "summary": "scheduler — 42분째 갱신 없음 (임계 30분)"},
+    ]
+    embed = bucket_generic_digest(events, channel_label="Incidents")
+    assert any("스케줄러 정지" in f["name"] for f in embed["fields"])
+    assert not any("sre_scheduler_heartbeat" in f["name"] for f in embed["fields"])
+    value = embed["fields"][0]["value"]
+    assert "ℹ️" in value  # 의미 한 줄
+    assert "42분째" in value  # producer 가 만든 영향 수치 보존
+    assert "조치" in value  # 운영 조치
+    # 실제 사고라 "매매 신호 아님" disclaimer 안 붙음
+    assert "매매 신호 아님" not in embed["description"]
+
+
 # ─── dispatcher ──────────────────────────────────────────
 
 
