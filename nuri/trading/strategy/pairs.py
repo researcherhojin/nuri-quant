@@ -10,6 +10,7 @@ Pairs Trading 전략 — 상관관계 높은 종목 쌍의 스프레드 수렴�
 사용법:
     python -m nuri.trading.strategy.pairs
 """
+
 import logging
 from dataclasses import dataclass
 from itertools import combinations
@@ -31,11 +32,11 @@ LOOKBACK = 60  # 상관관계/스프레드 계산 기간
 
 @dataclass
 class PairSignal:
-    ticker_long: str    # 매수 (underperformer)
-    ticker_short: str   # 매도 (outperformer)
+    ticker_long: str  # 매수 (underperformer)
+    ticker_short: str  # 매도 (outperformer)
     correlation: float
     z_score: float
-    spread_pct: float   # 현재 스프레드 %
+    spread_pct: float  # 현재 스프레드 %
     date: str
 
 
@@ -66,7 +67,8 @@ def find_pairs(
     for ticker in us_tickers:
         df = query_df(
             "SELECT date, close FROM prices WHERE ticker=? ORDER BY date DESC LIMIT ?",
-            (ticker, LOOKBACK), db_path=db_path,
+            (ticker, LOOKBACK),
+            db_path=db_path,
         )
         if len(df) >= LOOKBACK // 2:
             prices[ticker] = df.set_index("date")["close"]
@@ -79,7 +81,7 @@ def find_pairs(
     if len(price_df) < 30:
         return []
 
-    returns_df = price_df.pct_change().dropna()
+    returns_df = price_df.pct_change(fill_method=None).dropna()
     pairs = []
 
     for t1, t2 in combinations(returns_df.columns, 2):
@@ -91,18 +93,23 @@ def find_pairs(
         ratio = np.log(price_df[t1] / price_df[t2])
         mean_spread = ratio.mean()
         std_spread = ratio.std()
-        if std_spread == 0:  # pragma: no cover — defensive: pandas std with ddof=1 returns ~1e-16 (not exact 0) for identical N>=30 values, so this path requires hand-built series; real DB data flow never triggers. See tests/trading/strategy/test_pairs.py::TestFindPairsZeroStdSpread.
+        if (
+            std_spread == 0
+        ):  # pragma: no cover — defensive: pandas std with ddof=1 returns ~1e-16 (not exact 0) for identical N>=30 values, so this path requires hand-built series; real DB data flow never triggers. See tests/trading/strategy/test_pairs.py::TestFindPairsZeroStdSpread.
             continue
 
         current_z = (ratio.iloc[-1] - mean_spread) / std_spread
 
-        pairs.append(PairStats(
-            ticker_a=t1, ticker_b=t2,
-            correlation=round(corr, 3),
-            mean_spread=round(mean_spread, 4),
-            std_spread=round(std_spread, 4),
-            current_z=round(current_z, 2),
-        ))
+        pairs.append(
+            PairStats(
+                ticker_a=t1,
+                ticker_b=t2,
+                correlation=round(corr, 3),
+                mean_spread=round(mean_spread, 4),
+                std_spread=round(std_spread, 4),
+                current_z=round(current_z, 2),
+            )
+        )
 
     pairs.sort(key=lambda p: abs(p.current_z), reverse=True)
     return pairs
@@ -127,14 +134,16 @@ def scan_pair_signals(
             long_ticker = p.ticker_a
             short_ticker = p.ticker_b
 
-        signals.append(PairSignal(
-            ticker_long=long_ticker,
-            ticker_short=short_ticker,
-            correlation=p.correlation,
-            z_score=p.current_z,
-            spread_pct=p.std_spread * abs(p.current_z) * 100,
-            date="latest",
-        ))
+        signals.append(
+            PairSignal(
+                ticker_long=long_ticker,
+                ticker_short=short_ticker,
+                correlation=p.correlation,
+                z_score=p.current_z,
+                spread_pct=p.std_spread * abs(p.current_z) * 100,
+                date="latest",
+            )
+        )
 
     return signals
 
@@ -155,11 +164,13 @@ def backtest_pairs(
     for pair in eligible[:10]:  # 상위 10개 쌍만
         price_a = query_df(
             "SELECT date, close FROM prices WHERE ticker=? ORDER BY date",
-            (pair.ticker_a,), db_path=db_path,
+            (pair.ticker_a,),
+            db_path=db_path,
         )
         price_b = query_df(
             "SELECT date, close FROM prices WHERE ticker=? ORDER BY date",
-            (pair.ticker_b,), db_path=db_path,
+            (pair.ticker_b,),
+            db_path=db_path,
         )
 
         if price_a.empty or price_b.empty:
@@ -173,7 +184,7 @@ def backtest_pairs(
 
         i = LOOKBACK
         while i < len(merged) - 1:
-            window = ratio[i - LOOKBACK:i]
+            window = ratio[i - LOOKBACK : i]
             mean_r = window.mean()
             std_r = window.std()
             if std_r == 0:
@@ -196,11 +207,13 @@ def backtest_pairs(
                 spread_ret = (ratio[entry_i] - ratio[j]) if z > 0 else (ratio[j] - ratio[entry_i])
                 pct_ret = spread_ret * 100
 
-                all_trades.append({
-                    "pair": f"{pair.ticker_a}/{pair.ticker_b}",
-                    "return_pct": pct_ret,
-                    "hold_days": j - entry_i,
-                })
+                all_trades.append(
+                    {
+                        "pair": f"{pair.ticker_a}/{pair.ticker_b}",
+                        "return_pct": pct_ret,
+                        "hold_days": j - entry_i,
+                    }
+                )
                 i = j + 1
             else:
                 i += 1
@@ -234,8 +247,7 @@ if __name__ == "__main__":
     print("\n=== Pair Signals (Z > 2.0) ===")
     signals = scan_pair_signals()
     for s in signals:
-        print(f"  Long {s.ticker_long} / Short {s.ticker_short}: "
-              f"corr={s.correlation} Z={s.z_score}")
+        print(f"  Long {s.ticker_long} / Short {s.ticker_short}: corr={s.correlation} Z={s.z_score}")
 
     print("\n=== Pairs Backtest ===")
     result = backtest_pairs()
