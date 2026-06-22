@@ -15,7 +15,7 @@ npx playwright test    # E2E (57 tests, 8 specs)
 
 See [`CLAUDE.md`](CLAUDE.md) for full details. Key points:
 
-- **17 routes** — Server Components with `force-dynamic`
+- **18 routes** — Server Components with `force-dynamic`
 - **Action-First dashboard** — SystemHealth, ActionItems, OpportunityExplorer, MarketContext
 - **API proxy** — Next.js rewrites `/api/*` to FastAPI `:8001`
 - **i18n** — `src/lib/strings.ts` (Korean UI constants, not next-intl)
