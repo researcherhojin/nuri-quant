@@ -2,7 +2,7 @@
 
 Most gotchas live in scoped CLAUDE.md or in code lock-tests (Gotcha-Test Pair, see `.claude/rules/invariants.md`). Cross-scope ones:
 
-- **fastapi < 0.129 pinned** (`openbb-core 1.6.7` constraint, dependabot.yml ignores 0.129+)
+- **fastapi/starlette override** — `openbb-core` 가 fastapi<0.129 로 하드 핀하나 nuri 는 openbb 의 fastapi 서버를 안 쓰므로(라이브러리 전용) `[tool.uv] override-dependencies` 로 **fastapi≥0.133·starlette≥1.3.1 강제**(현재 lock: fastapi 0.136.3 / starlette 1.3.1, 보안 패치 #790). `dependabot.yml` 은 fastapi 0.129+ 자동 PR 만 ignore(override 가 버전 관리)
 - **Korean stock tickers**: `.KS` suffix (e.g., `005930.KS`). yfinance returns most fundamentals but **`trailingPE` is missing for KR individuals** — use `forward_pe`. ETFs return empty `info`. Full quirks: `nuri/collectors/CLAUDE.md` "Korean Ticker `.KS` Suffix Convention".
 - **Concurrency asymmetry**: yfinance 10-thread OK; pykrx/KRX **must be sequential** + `time.sleep(0.1)`. New external APIs require concurrency measurement before integration.
 
