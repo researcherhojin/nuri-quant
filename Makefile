@@ -273,6 +273,9 @@ collect-kis-check:
 collect-kis-analyst: ## #418 — KR 애널리스트 투자의견 수집 (KIS invest-opinion REST endpoint)
 	$(PYTHON) -m nuri.collectors.kis_analyst_opinion
 
+reconcile-toss: ## Toss 보유 → portfolio diff (dry-run). 반영은 `--apply` 직접 실행
+	$(PYTHON) scripts/ops/reconcile_toss.py
+
 wallstreet:
 	$(PYTHON) -m nuri.collectors.wallstreet
 
