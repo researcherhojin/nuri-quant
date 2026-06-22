@@ -256,6 +256,7 @@
     "gensalt",
     "getattr",
     "gethostname",
+    "getuid",
     "gguf",
     "GGUF",
     "Ghostfolio",

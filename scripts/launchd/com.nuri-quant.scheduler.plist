@@ -26,6 +26,15 @@
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <!-- fd 한계 상향(기본 256). yfinance 내부 SQLite 캐시(tkr-tz.db/cookies.db)+
+         HTTP 세션 fd 누수가 장수 데몬에서 256 천장을 쳐 sqlite3 'unable to open
+         database file' + heartbeat 멈춤을 유발(2026-06-22). 헤드룸 확보용 완화책 —
+         누수 자체는 watchdog 자동 재시작으로 회수. -->
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>4096</integer>
+    </dict>
     <key>StandardOutPath</key>
     <string>/Users/ehbebe/workspace/nuri-quant/data/logs/scheduler.log</string>
     <key>StandardErrorPath</key>
