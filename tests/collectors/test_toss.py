@@ -178,3 +178,58 @@ class TestBranches:
             rc = toss.verify()
         assert rc == 2
         assert "환율 조회 실패" in capsys.readouterr().out
+
+
+def _seed_token(monkeypatch=None):
+    """캐시 토큰 심기 — get_accounts/get_holdings 가 네트워크 토큰발급 안 하게."""
+    from nuri.core.timezone import kst_now
+
+    toss._TOKEN_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    toss._TOKEN_CACHE.write_text(json.dumps({"access_token": "t", "expires_at": kst_now().timestamp() + 99999}))
+
+
+class TestAccountsHoldings:
+    def test_unwrap_list_variants(self):
+        assert toss._unwrap_list({"result": [{"a": 1}]}, "x") == [{"a": 1}]
+        assert toss._unwrap_list({"result": {"holdings": [{"a": 1}]}}, "holdings") == [{"a": 1}]
+        assert toss._unwrap_list([{"a": 1}], "x") == [{"a": 1}]
+        assert toss._unwrap_list({"result": {}}, "x") == []
+
+    def test_get_accounts(self):
+        _seed_token()
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"result": [{"accountSeq": "seq1", "accountType": "DOMESTIC"}]}
+        with patch("requests.get", return_value=resp) as get:
+            accts = toss.get_accounts()
+        assert accts[0]["accountSeq"] == "seq1"
+        assert get.call_args.kwargs["params"] == {}
+
+    def test_resolve_account_seq_from_env(self, monkeypatch):
+        monkeypatch.setenv("TOSS_ACCOUNT_SEQ", "envseq")
+        assert toss._resolve_account_seq() == "envseq"
+
+    def test_resolve_account_seq_explicit_arg_wins(self, monkeypatch):
+        monkeypatch.setenv("TOSS_ACCOUNT_SEQ", "envseq")
+        assert toss._resolve_account_seq("argseq") == "argseq"
+
+    def test_resolve_account_seq_autodiscover(self, monkeypatch):
+        monkeypatch.delenv("TOSS_ACCOUNT_SEQ", raising=False)
+        with patch.object(toss, "get_accounts", return_value=[{"accountSeq": "auto1"}]):
+            assert toss._resolve_account_seq() == "auto1"
+
+    def test_resolve_account_seq_no_accounts_raises(self, monkeypatch):
+        monkeypatch.delenv("TOSS_ACCOUNT_SEQ", raising=False)
+        with patch.object(toss, "get_accounts", return_value=[]):
+            with pytest.raises(toss.TossCredentialsError):
+                toss._resolve_account_seq()
+
+    def test_get_holdings_sends_account_header(self):
+        _seed_token()
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"result": [{"symbol": "005930", "quantity": 10}]}
+        with patch("requests.get", return_value=resp) as get:
+            h = toss.get_holdings(account_seq="seq9")
+        assert h[0]["symbol"] == "005930"
+        assert get.call_args.kwargs["headers"]["X-Tossinvest-Account"] == "seq9"
