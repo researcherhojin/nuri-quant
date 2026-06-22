@@ -101,11 +101,14 @@ exclude_etfs:
 # ─── Held add-mode (#518 Phase 2a, shadow 14d) ──────────────────────
 # 보유 종목에 대한 add 후보. 3 modes (precedence + mutual exclusion). spec
 # §4 (docs/plans/507_buy_candidate_emitter_phase2_spec.md).
-# shadow_mode_until 이전: emit → held_add_shadow 테이블 only (brief surface 없음).
-# 이후: 사용자 brief 에 surface (Phase 2a 후속 — 본 PR 미포함).
+# shadow_mode_until 까지: emit → held_add_shadow 테이블 only (brief surface 없음).
+# 경과 시 caller 가 brief surface 해야 하나 그 배선이 미구현(#788) — graduation 이
+# 날짜로 자동 발생하면 persist(if shadow) 도 멈춰 candidate 가 buffer 없이 버려진다
+# (2026-05-15~06-22 silent loss 실측). #788 calibration+surface 완료 전까지 연장해
+# calibration sample 축적을 유지한다.
 held_add_mode:
   enabled: true
-  shadow_mode_until: "2026-05-15"   # 14d shadow before live brief surfacing
+  shadow_mode_until: "2026-12-31"   # #788 까지 연장 (축적 유지; live surface 는 #519 calibration 선결)
   earnings_blackout_days: 5         # earnings_date ± 5d 차단 (Qwen risk)
 
   modes:
