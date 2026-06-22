@@ -450,18 +450,16 @@ def _forward_spy_return(date: str, *, days: int = 7, db_path: Optional[Path] = N
 
 
 def _ollama_host_is_local() -> bool:
-    """OLLAMA_HOST 가 localhost 인지 검증 (STRATEGY §4.4.3 — 포트폴리오 데이터 local-only).
+    """OLLAMA_HOST(runtime) 가 localhost 인지 — LLM egress 전 pre-check (STRATEGY §4.4.3).
 
-    빈 값(미설정) 또는 비-localhost 면 False → caller 가 LLM egress 를 막는다.
-    오설정/변조(OLLAMA_HOST=http://remote:11434)로 인한 외부 유출 방어.
+    예측 차단(비-localhost 면 prompt 구성 자체 skip). 최종 가드는 `_generate_ollama`
+    내부에도 있음(이중 방어). predicate 는 report._host_is_local 공유.
     """
     import os
-    from urllib.parse import urlparse
 
-    host = os.getenv("OLLAMA_HOST", "").strip()
-    if not host:
-        return False
-    return urlparse(host).hostname in ("localhost", "127.0.0.1", "::1")
+    from nuri.llm.report import _host_is_local
+
+    return _host_is_local(os.getenv("OLLAMA_HOST"))
 
 
 def _synthesize_retro_llm(
@@ -548,7 +546,7 @@ def _generate_retro_lessons(
             f"다음 7거래일 SPY 중앙값 {med:+.1f}% "
             f"(범위 {min(outcomes):+.1f}~{max(outcomes):+.1f}%)"
         )
-    public_features = {k: features.get(k) for k in ("vix", "fear_greed", "regime")}
+    public_features = {key: features.get(key) for key in ("vix", "fear_greed", "regime")}
     lessons.extend(_synthesize_retro_llm(public_features, enriched))
     return lessons
 
