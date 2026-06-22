@@ -11,6 +11,7 @@ HTML 리포트를 생성한다.
     python -m nuri.analysis.performance
     python -m nuri.analysis.performance --html   # HTML 티어시트 생성
 """
+
 import argparse
 import logging
 from pathlib import Path
@@ -53,7 +54,7 @@ def get_portfolio_returns(days: int = 90) -> pd.Series:
     # 일간 수익률
     prices = query_df("SELECT ticker, date, close FROM prices ORDER BY date")
     pivot = prices.pivot_table(index="date", columns="ticker", values="close")
-    returns = pivot.ffill().pct_change().dropna()
+    returns = pivot.ffill().pct_change(fill_method=None).dropna()
 
     # 포트폴리오 수익률
     w = pd.Series(weights)
@@ -70,15 +71,13 @@ def get_portfolio_returns(days: int = 90) -> pd.Series:
 
 def get_benchmark_returns() -> pd.Series:
     """VOO 벤치마크 수익률."""
-    prices = query_df(
-        "SELECT date, close FROM prices WHERE ticker = 'VOO' ORDER BY date"
-    )
+    prices = query_df("SELECT date, close FROM prices WHERE ticker = 'VOO' ORDER BY date")
     if prices.empty:
         return pd.Series(dtype=float)
 
     prices["date"] = pd.to_datetime(prices["date"])
     prices = prices.set_index("date")
-    returns = prices["close"].pct_change().dropna()
+    returns = prices["close"].pct_change(fill_method=None).dropna()
     returns.name = "VOO"
     return returns
 

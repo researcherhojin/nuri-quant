@@ -141,8 +141,8 @@ def scenario_buy_and_hold(
     """시나리오 A: Buy-and-hold TSLL vs TSLA 비교."""
     result = {"scenario": "A_buy_and_hold"}
 
-    lev_returns = leveraged_prices["close"].pct_change().dropna()
-    und_returns = underlying_prices["close"].pct_change().dropna()
+    lev_returns = leveraged_prices["close"].pct_change(fill_method=None).dropna()
+    und_returns = underlying_prices["close"].pct_change(fill_method=None).dropna()
 
     result["leveraged"] = _calc_metrics(lev_returns)
     result["underlying"] = _calc_metrics(und_returns)
@@ -160,7 +160,7 @@ def scenario_vix_filter(
     """시나리오 B: VIX < entry_below일 때만 TSLL 보유, VIX >= exit_above 시 퇴장."""
     result = {"scenario": "B_vix_filter", "entry_below": entry_below, "exit_above": exit_above}
 
-    lev_returns = leveraged_prices["close"].pct_change().dropna()
+    lev_returns = leveraged_prices["close"].pct_change(fill_method=None).dropna()
 
     if vix.empty:
         result["leveraged"] = _calc_metrics(pd.Series(dtype=float))
@@ -213,7 +213,7 @@ def scenario_trend_follow(
     # SMA 교차 기반 포지션
     trend_up = sma_s > sma_l
 
-    lev_returns = close.pct_change().dropna()
+    lev_returns = close.pct_change(fill_method=None).dropna()
     trend_aligned = trend_up.reindex(lev_returns.index).fillna(False)
     filtered_returns = lev_returns.where(trend_aligned, 0.0)
 
@@ -228,7 +228,7 @@ def scenario_max_hold(
     """시나리오 D: 최대 max_days일 보유 후 강제 청산, 1일 쿨다운 후 재진입."""
     result = {"scenario": "D_max_hold", "max_days": max_days}
 
-    lev_returns = leveraged_prices["close"].pct_change().dropna()
+    lev_returns = leveraged_prices["close"].pct_change(fill_method=None).dropna()
     if lev_returns.empty:
         result["leveraged"] = _calc_metrics(pd.Series(dtype=float))
         result["trade_count"] = 0
