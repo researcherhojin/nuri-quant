@@ -150,7 +150,9 @@ def find_similar_days(
 ) -> list[dict[str, Any]]:
     """Return the top-k most similar prior postmortems to the supplied query vector.
 
-    Each result dict carries the original row fields plus `similarity` (cosine).
+    Each result dict carries the **indexed feature columns** (date/session/regime/
+    vix/fear_greed/5d-deltas/top_sector/holdings_pnl_pct) plus `similarity` (cosine)
+    — personal JSON blobs are intentionally NOT returned (egress safety, #797).
     Sorted descending by similarity. Caller can join with `decision_outcomes`
     on date to recover N+7d outcome (Phase 3 wiring).
     """
