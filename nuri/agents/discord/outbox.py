@@ -456,6 +456,42 @@ _QUALITY_KIND_META: dict[str, dict[str, str]] = {
     },
 }
 
+# SREIncidentAgent 인프라 인시던트 kind → 사람이 이해하는 메타 (#incidents).
+# brief_quality(자가점검)와 달리 **실제 운영 사고**라 "매매 신호 아님" disclaimer 안 붙는다.
+# 영향 수치(42분째 등)는 producer 가 만든 summary 한 줄이 담고, 여기선 의미+조치를 제공.
+_SRE_KIND_META: dict[str, dict[str, str]] = {
+    "sre_scheduler_heartbeat": {
+        "label": "🔴 스케줄러 정지",
+        "what": "스케줄러 heartbeat 갱신 중단 — 데이터 수집이 멈춤",
+        "action": "조치: watchdog 자동 재시작 동작 / 수동 `launchctl kickstart -k gui/$(id -u)/com.nuri-quant.scheduler`",
+    },
+    "sre_disk_full": {
+        "label": "💾 디스크 부족",
+        "what": "디스크 사용률이 임계 초과 — 수집/백업 실패 위험",
+        "action": "조치: data/backups·오래된 로그/export 정리",
+    },
+    "sre_db_lock": {
+        "label": "🔒 DB 접근 장애",
+        "what": "DB SELECT 실패 — 락 또는 파일 접근 불가",
+        "action": "조치: 동시 쓰기 확인 후 필요시 스케줄러 재시작",
+    },
+    "sre_orphan_run": {
+        "label": "👻 멈춘 작업",
+        "what": "agent run 이 정상 종료 없이 장시간 미완료(orphan)",
+        "action": "조치: 해당 actor 로그 확인 후 재실행 / 데몬 재시작",
+    },
+    "sre_actor_failure_streak": {
+        "label": "🔁 작업 연속 실패",
+        "what": "특정 actor 가 연속 실패 중 — 수집/분석 중단",
+        "action": "조치: scheduler.err 로그 확인 후 원인 수정",
+    },
+    "sre_data_freshness_critical": {
+        "label": "📉 데이터 신선도 위험",
+        "what": "복수 데이터 소스가 stale — 판단 근거 신뢰도 저하",
+        "action": "조치: 해당 collector 수동 실행 / 수집 스케줄 점검",
+    },
+}
+
 
 def bucket_generic_digest(
     events: list[dict[str, Any]],
@@ -489,7 +525,7 @@ def bucket_generic_digest(
 
     fields = []
     for group, lines in by_group.items():
-        meta = _QUALITY_KIND_META.get(group)
+        meta = _QUALITY_KIND_META.get(group) or _SRE_KIND_META.get(group)
         group_name = f"{meta['label']} ({len(lines)})" if meta else f"{group} ({len(lines)})"
         body_lines: list[str] = []
         # 자가점검 kind 는 그룹 맨 위에 "무엇인지" 한 줄을 먼저 박는다.

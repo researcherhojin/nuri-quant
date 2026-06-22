@@ -30,6 +30,7 @@ from nuri.agents.actors.sre_incident_agent import (
     ORPHAN_CRIT_HOURS,
     ORPHAN_WARN_HOURS,
     SREIncidentAgent,
+    _human_incident_summary,
     main,
 )
 from nuri.agents.base import Layer, Outcome
@@ -834,3 +835,26 @@ class TestCli:
     def test_cli_resolve_unknown_returns_2(self, patched_db, capsys):
         rc = main(["resolve", "--incident-id", "999999"])
         assert rc == 2
+
+
+class TestHumanIncidentSummary:
+    """#incidents 디지스트가 cryptic 코드 대신 영향 수치 한 줄을 보이는지 (alert readability)."""
+
+    def test_scheduler_heartbeat_shows_age_and_threshold(self):
+        s = _human_incident_summary("scheduler_heartbeat", "scheduler", {"age_minutes": 42.0, "warn_threshold_min": 30})
+        assert "42분째" in s and "임계 30분" in s
+        assert "incident_id" not in s  # 의미없는 식별자 헤드라인에서 제거
+
+    def test_disk_full_shows_percent_and_free(self):
+        s = _human_incident_summary("disk_full", "disk", {"percent_used": 96.0, "free_gb": 50.0})
+        assert "96%" in s and "50GB" in s
+
+    def test_data_freshness_lists_failed_keys(self):
+        s = _human_incident_summary(
+            "data_freshness_critical", "freshness", {"fail_count": 3, "fail_keys": ["stock", "macro", "news"]}
+        )
+        assert "3개" in s and "stock" in s
+
+    def test_unknown_type_falls_back_gracefully(self):
+        s = _human_incident_summary("brand_new_type", "x", {})
+        assert "brand_new_type" in s and "x" in s

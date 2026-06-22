@@ -477,7 +477,8 @@ class SREIncidentAgent(Actor):
             stage_fn(
                 payload={
                     "kind": f"sre_{incident_type}",
-                    "summary": (f"{incident_type} {severity} on {target} (incident_id={incident_id})"),
+                    # cryptic "type severity on target (incident_id=...)" 대신 영향 수치 한 줄.
+                    "summary": _human_incident_summary(incident_type, target, evidence),
                     "incident_id": incident_id,
                     "incident_type": incident_type,
                     "severity": severity,
@@ -491,6 +492,30 @@ class SREIncidentAgent(Actor):
             )
         except Exception:  # noqa: BLE001
             pass
+
+
+def _human_incident_summary(incident_type: str, target: str, evidence: dict[str, Any]) -> str:
+    """인시던트 영향을 담은 사람이 읽는 한 줄 (evidence 수치 활용).
+
+    #incidents 디지스트가 cryptic "type severity on target" 대신 "무엇이/얼마나"
+    를 보이게 한다 ([[feedback_alert_readability]] 의미+영향). 의미/조치는 outbox
+    _SRE_KIND_META 가 그룹 단위로 붙인다.
+    """
+    e = evidence
+    if incident_type == "scheduler_heartbeat":
+        return f"{target} — {e.get('age_minutes', 0):.0f}분째 갱신 없음 (임계 {e.get('warn_threshold_min', 30):.0f}분)"
+    if incident_type == "disk_full":
+        return f"{target} — 사용률 {e.get('percent_used', 0):.0f}% (여유 {e.get('free_gb', 0):.0f}GB)"
+    if incident_type == "db_lock":
+        return f"{target} — DB 접근 실패: {e.get('error', '?')}"
+    if incident_type == "orphan_run":
+        return f"{target} 작업 — {e.get('age_hours', 0):.1f}h 미완료(orphan)"
+    if incident_type == "actor_failure_streak":
+        return f"{target} — {e.get('consecutive_failures', 0)}회 연속 실패"
+    if incident_type == "data_freshness_critical":
+        keys = ", ".join((e.get("fail_keys") or [])[:3])
+        return f"데이터 소스 {e.get('fail_count', 0)}개 stale: {keys}"
+    return f"{incident_type} on {target}"
 
 
 def _short_json(payload: dict[str, Any], max_len: int = 800) -> str:
