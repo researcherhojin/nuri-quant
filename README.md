@@ -18,7 +18,7 @@ Every BUY / SELL recommendation runs through a 5-phase pipeline — **collect �
 - 🔁 **Self-correcting** — agent weights adjust based on actual prediction accuracy, not hand-tuning.
 - 🛡️ **3-D certification** — gates apply per `Account × Asset Class × Market`. One error-grade fail → REJECTED, no manual override.
 - 🔓 **Open data flow** — phases coupled only via SQLite tables. Re-run any phase, downstream consumers refresh automatically.
-- ✅ **Tested rigorously** — 6,046 backend tests, **100% statement coverage** (CI verified, 2026-05-06).
+- ✅ **Tested rigorously** — 6,164 backend tests, **100% statement coverage** (CI verified, 2026-05-06).
 
 ## Quick Start
 
@@ -45,7 +45,7 @@ flowchart TB
 
     subgraph Pipeline["5-phase decision pipeline (DB-only coupling)"]
         direction TB
-        A(["① Collect<br/>26 data collectors"]):::pipe
+        A(["① Collect<br/>27 data collectors"]):::pipe
         B(["② Analyze<br/>22 signals · 10 regimes · factors"]):::pipe
         C(["③ Consensus<br/>10-agent weighted vote"]):::pipe
         D(["④ Certify<br/>Certification (3-D gates)"]):::pipe
@@ -157,7 +157,7 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 
 | Metric | Value |
 |--------|-------|
-| **Backend tests** | 6,046 (266 files) — **100% statement coverage** |
+| **Backend tests** | 6,164 (271 files) — **100% statement coverage** |
 | **Frontend tests** | 1,383 (126 files) |
 | **E2E tests** | 57 (Playwright, 8 specs) |
 | **Pipeline phases** | 5 (collect / analyze / consensus / certify / track) |
