@@ -372,6 +372,27 @@ def _run_outbox_watchdog():
 # 스케줄 정의
 # ═══════════════════════════════════════════════════════
 
+
+def _self_restart():
+    """fd 누수 누적 차단용 일일 자가 재시작 (#780).
+
+    yfinance 내부 SQLite 캐시(tkr-tz.db/cookies.db)와 curl-cffi 소켓 fd 가 장수
+    데몬에서 단조 증가한다 (#778: 6일째 536 fd → 256 천장 → sqlite unable-to-open).
+    누수는 yfinance 내부라 직접 못 닫으므로, 하루 1회 fresh 프로세스로 교체해 fd 를
+    회수한다. `launchctl kickstart -k` → SIGTERM (graceful shutdown handler) → launchd
+    재기동. 재시작 후 heartbeat 는 ~45초 내 갱신되어 watchdog 30분 임계 미달 → false
+    STALE 없음. launchctl 부재(비배포 dev) 시 graceful skip.
+    """
+    import subprocess
+
+    target = f"gui/{os.getuid()}/com.nuri-quant.scheduler"
+    logger.info("일일 자가 재시작 — fd 회수 (#780)")
+    try:
+        subprocess.run(["launchctl", "kickstart", "-k", target], timeout=30, check=False)
+    except Exception as e:  # launchctl 부재(비배포)/타임아웃 — 데몬은 계속 구동
+        logger.warning(f"self-restart skip (비배포 환경?): {e}")
+
+
 SCHEDULES = [
     # 미국장 주가 (KST 23:30~06:00, 5분)
     {"name": "stock_us_night", "func": _run_collector, "args": ("stock",), "cron": "*/5 23 * * 1-5"},
@@ -490,6 +511,9 @@ SCHEDULES = [
         "kwargs": {"days": 365, "source": "all"},
         "cron": "30 5 * * 0",
     },
+    # 일일 자가 재시작 (#780) — KST 08:40, 모닝 배치(07-08) 종료 후·KR 개장(09:00) 전 idle
+    # window. yfinance fd 누수를 fresh 프로세스 교체로 회수 (plist 4096 천장도 결국 고갈).
+    {"name": "self_restart", "func": _self_restart, "args": (), "cron": "40 8 * * *"},
 ]
 
 
