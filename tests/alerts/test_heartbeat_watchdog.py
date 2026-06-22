@@ -134,3 +134,12 @@ class TestKickstart:
 
         monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: _Proc())
         assert hw._kickstart_scheduler() is True
+
+    def test_returns_false_on_nonzero_returncode(self, monkeypatch):
+        # launchctl 실행은 됐으나 실패 반환 — False + stderr surface.
+        class _Proc:
+            returncode = 1
+            stderr = "Could not find service"
+
+        monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: _Proc())
+        assert hw._kickstart_scheduler() is False
