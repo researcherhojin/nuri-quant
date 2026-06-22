@@ -221,6 +221,7 @@ def _format_markdown(
     holdings: dict[str, dict[str, Any]],
     pnl: dict[str, Any],
     sectors: list[dict[str, Any]],
+    retro_lessons: Optional[list[str]] = None,
 ) -> str:
     """Local persist artifact — Claude 가 다음 session 에서 읽을 수 있게 markdown."""
     title = "Post-market Brief — {} ({})".format(date, "KR session" if session == "kr" else "US session")
@@ -281,6 +282,13 @@ def _format_markdown(
         lines.append("")
         lines.append(f"**Actionable PnL**: {a_pnl:+,.0f} ({a_pct:+.2f}%)")
     lines.append("")
+
+    # Retro — 비슷했던 과거 + 그때 결과 (#596 Phase 3). 유사일 누적 전엔 빈 list → 섹션 생략.
+    if retro_lessons:
+        lines.append("## 📚 Retro — 비슷했던 과거")
+        for lesson in retro_lessons:
+            lines.append(f"- {lesson}")
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -385,7 +393,7 @@ def _load_5d_price_delta_pct(ticker: str, *, db_path: Optional[Path] = None) -> 
     return (latest - five_back) / five_back * 100
 
 
-def _persist_postmortem(
+def _build_query_features(
     session: Literal["kr", "us"],
     date: str,
     macro: dict[str, Any],
@@ -393,11 +401,10 @@ def _persist_postmortem(
     sectors: list[dict[str, Any]],
     *,
     db_path: Optional[Path] = None,
-) -> None:
-    """`market_postmortem` row UPSERT — Phase 2 pattern memory (#596).
+) -> dict[str, Any]:
+    """오늘 스냅샷의 similarity feature vector — `find_similar_days` + upsert 공용.
 
-    Indexed feature columns drive `find_similar_days` cosine similarity;
-    JSON blobs preserve full markdown context for downstream LLM retro.
+    regime classify 가 가장 비싸므로 1회만 계산해 retro + persist 가 공유한다.
     """
     from nuri.quant.regime.classifier import classify_regime
 
@@ -411,20 +418,164 @@ def _persist_postmortem(
     valid_sectors = [s for s in sectors if s.get("delta_pct") is not None]
     top_sector = max(valid_sectors, key=lambda x: abs(x["delta_pct"])) if valid_sectors else None
 
-    vix_val = (macro.get("vix") or {}).get("value")
-    fg_val = (macro.get("fear_greed") or {}).get("value")
+    return {
+        "regime": regime,
+        "vix": (macro.get("vix") or {}).get("value"),
+        "fear_greed": (macro.get("fear_greed") or {}).get("value"),
+        "vix_5d_delta": _load_5d_macro_delta("vix", db_path=db_path),
+        "fg_5d_delta": _load_5d_macro_delta("fear_greed", db_path=db_path),
+        "spy_5d_delta": _load_5d_price_delta_pct("SPY", db_path=db_path),
+        "top_sector_delta_pct": top_sector["delta_pct"] if top_sector else None,
+        "holdings_total_pnl_pct": round(pnl.get("total_pct_weighted", 0.0), 4),
+    }
+
+
+def _forward_spy_return(date: str, *, days: int = 7, db_path: Optional[Path] = None) -> Optional[float]:
+    """`date` 이후 SPY 의 ~days 거래일 전방 수익률(%). 데이터 부족 시 None.
+
+    "오늘과 비슷했던 과거, 그때 그 후 어떻게 됐나" 의 outcome 측정 (#596 Phase 3).
+    """
+    rows = query(
+        "SELECT close FROM prices WHERE ticker = 'SPY' AND date >= ? ORDER BY date ASC LIMIT ?",
+        (date, days + 1),
+        db_path=db_path,
+    )
+    if len(rows) < days + 1:
+        return None
+    base = float(rows[0]["close"])
+    fwd = float(rows[days]["close"])
+    if base == 0:
+        return None
+    return (fwd - base) / base * 100
+
+
+def _ollama_host_is_local() -> bool:
+    """OLLAMA_HOST 가 localhost 인지 검증 (STRATEGY §4.4.3 — 포트폴리오 데이터 local-only).
+
+    빈 값(미설정) 또는 비-localhost 면 False → caller 가 LLM egress 를 막는다.
+    오설정/변조(OLLAMA_HOST=http://remote:11434)로 인한 외부 유출 방어.
+    """
+    import os
+    from urllib.parse import urlparse
+
+    host = os.getenv("OLLAMA_HOST", "").strip()
+    if not host:
+        return False
+    return urlparse(host).hostname in ("localhost", "127.0.0.1", "::1")
+
+
+def _synthesize_retro_llm(
+    public_features: dict[str, Any],
+    enriched: list[tuple[dict[str, Any], Optional[float]]],
+) -> list[str]:
+    """Ollama(local-only by design, STRATEGY §4.4.3) 로 유사-과거 패턴에서 정성 교훈 합성.
+
+    OLLAMA_HOST 미설정/비-localhost/실패 시 [] — LLM 의존 없이 caller 가 graceful degrade.
+    `public_features` 와 `enriched` 는 caller 가 **시장지표(VIX/F&G/regime/SPY)만** 담아
+    전달한다. 개인 보유/PnL/account 는 절대 포함 금지 (egress 경계).
+    """
+    if not _ollama_host_is_local():
+        return []
+    # EGRESS BOUNDARY — prompt 에는 시장-레벨 지표만. enriched/public_features 는
+    # caller 가 이미 public 필드로 projection 한 dict (개인 보유/PnL 미포함).
+    lines = [
+        f"- {s.get('date')}: VIX {s.get('vix')}, F&G {s.get('fear_greed')}, regime {s.get('regime')} → 다음주 SPY {fwd:+.1f}%"
+        for s, fwd in enriched
+        if fwd is not None
+    ]
+    if not lines:
+        return []
+    prompt = (
+        "다음은 오늘 시장과 비슷했던 과거 거래일과 그 다음주 SPY 결과다.\n"
+        f"오늘: VIX {public_features.get('vix')}, F&G {public_features.get('fear_greed')}, "
+        f"regime {public_features.get('regime')}.\n"
+        "유사 과거:\n" + "\n".join(lines) + "\n\n"
+        "위 데이터 패턴에서 다음에 비슷한 상황이 오면 참고할 교훈 2-3개를 한 줄씩 한국어로. 일반론 금지, 이 데이터 기반으로만."
+    )
+    try:
+        from nuri.llm.report import _generate_ollama
+
+        raw = _generate_ollama(prompt)
+    except Exception:  # noqa: BLE001 — LLM 실패는 retro 를 막지 않음
+        logger.warning("retro LLM 합성 실패", exc_info=True)
+        return []
+    if not raw or not raw.strip():
+        return []
+    parsed = [ln.strip(" -*•").strip() for ln in raw.splitlines() if ln.strip()]
+    return [f"💡 {ln}" for ln in parsed[:3] if len(ln) > 5]
+
+
+def _generate_retro_lessons(
+    session: Literal["kr", "us"],
+    date: str,
+    features: dict[str, Any],
+    *,
+    k: int = 5,
+    db_path: Optional[Path] = None,
+) -> list[str]:
+    """#596 Phase 3 — 오늘과 유사했던 과거 + 그때 전방 결과 → 교훈.
+
+    find_similar_days(cosine) 로 유사일 k개 → 각 SPY 7d 전방 수익률 enrich →
+    결정론적 요약(항상 가능) + Ollama 정성 합성(선택). 유사일 0건이면 [].
+    """
+    from nuri.core.db import find_similar_days
+
+    try:
+        similar = find_similar_days(session=session, k=k, exclude_date=date, db_path=db_path, **features)
+    except Exception:  # noqa: BLE001 — pattern memory 실패는 브리프를 막지 않음
+        logger.warning("find_similar_days 실패", exc_info=True)
+        return []
+    if not similar:
+        return []
+
+    # 유사 row 를 public 시장 필드로만 projection — find_similar_days(SELECT *)가 싣는
+    # holdings_pnl/macro_summary 등 개인 JSON blob 을 retro/LLM 데이터 흐름에서 제거.
+    pub = [
+        {"date": s["date"], "vix": s.get("vix"), "fear_greed": s.get("fear_greed"), "regime": s.get("regime")}
+        for s in similar
+    ]
+    enriched = [(p, _forward_spy_return(p["date"], db_path=db_path)) for p in pub]
+    outcomes = [fwd for _, fwd in enriched if fwd is not None]
+
+    lessons: list[str] = []
+    if outcomes:
+        import statistics
+
+        med = statistics.median(outcomes)
+        # headline 과 n= 모두 "전방결과 측정된 일수(outcomes)" 기준 — 카운트 일관.
+        lessons.append(
+            f"유사 {len(outcomes)}건 (regime {features.get('regime') or 'n/a'}): "
+            f"다음 7거래일 SPY 중앙값 {med:+.1f}% "
+            f"(범위 {min(outcomes):+.1f}~{max(outcomes):+.1f}%)"
+        )
+    public_features = {k: features.get(k) for k in ("vix", "fear_greed", "regime")}
+    lessons.extend(_synthesize_retro_llm(public_features, enriched))
+    return lessons
+
+
+def _persist_postmortem(
+    session: Literal["kr", "us"],
+    date: str,
+    macro: dict[str, Any],
+    pnl: dict[str, Any],
+    sectors: list[dict[str, Any]],
+    *,
+    features: Optional[dict[str, Any]] = None,
+    retro_lessons: Optional[list[str]] = None,
+    db_path: Optional[Path] = None,
+) -> None:
+    """`market_postmortem` row UPSERT — Phase 2 pattern memory + Phase 3 retro (#596).
+
+    Indexed feature columns drive `find_similar_days` cosine similarity;
+    JSON blobs preserve full markdown context. `retro_lessons` 는 Phase 3 합성 결과.
+    """
+    feats = (
+        features if features is not None else _build_query_features(session, date, macro, pnl, sectors, db_path=db_path)
+    )
 
     upsert_postmortem(
         date=date,
         session=session,
-        regime=regime,
-        vix=vix_val,
-        fear_greed=fg_val,
-        vix_5d_delta=_load_5d_macro_delta("vix", db_path=db_path),
-        fg_5d_delta=_load_5d_macro_delta("fear_greed", db_path=db_path),
-        spy_5d_delta=_load_5d_price_delta_pct("SPY", db_path=db_path),
-        top_sector_delta_pct=top_sector["delta_pct"] if top_sector else None,
-        holdings_total_pnl_pct=round(pnl.get("total_pct_weighted", 0.0), 4),
         macro_summary=macro,
         holdings_pnl={
             "total_abs": pnl.get("total_abs"),
@@ -432,9 +583,10 @@ def _persist_postmortem(
             "rows": pnl.get("rows", []),
         },
         sector_movers=sectors,
-        catalysts={},  # Phase 3: news + earnings join
-        retro_lessons=[],  # Phase 3: LLM synthesis
+        catalysts={},  # Phase 3: news + earnings join (별 후속)
+        retro_lessons=retro_lessons or [],
         db_path=db_path,
+        **feats,
     )
 
 
@@ -456,13 +608,23 @@ def write_brief(
     pnl = _compute_holdings_pnl(_filter_actionable_accounts(holdings))
     sectors = _load_sector_movers(session, db_path=db_path)
 
-    md = _format_markdown(session, d, macro, holdings, pnl, sectors)
+    # Phase 3 (#596): retro lessons — 유사 과거 + 전방 결과 + LLM 합성 (markdown/persist 공용 feature)
+    features = _build_query_features(session, d, macro, pnl, sectors, db_path=db_path)
+    retro_lessons: list[str] = []
+    try:
+        retro_lessons = _generate_retro_lessons(session, d, features, db_path=db_path)
+    except Exception:
+        logger.warning("retro lessons 생성 실패 (브리프 자체는 생성됨)", exc_info=True)
+
+    md = _format_markdown(session, d, macro, holdings, pnl, sectors, retro_lessons)
     path = _persist_markdown(md, session, d)
     logger.info("Post-market brief persisted: %s", path)
 
-    # Phase 2 (#596): pattern memory row — similarity-search ready
+    # Phase 2+3 (#596): pattern memory row — similarity-search ready + retro lessons
     try:
-        _persist_postmortem(session, d, macro, pnl, sectors, db_path=db_path)
+        _persist_postmortem(
+            session, d, macro, pnl, sectors, features=features, retro_lessons=retro_lessons, db_path=db_path
+        )
     except Exception:
         logger.warning("market_postmortem upsert 실패 (브리프 자체는 생성됨)", exc_info=True)
 

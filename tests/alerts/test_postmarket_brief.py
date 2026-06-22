@@ -798,3 +798,281 @@ class TestWriteBriefBranchCoverage:
         assert "데이터 없음" in md
         # AAPL holdings 행은 표 안에 없음
         assert "## Holdings" in md
+
+
+# ─── #596 Phase 3 — retro lessons (similar days + forward outcome + LLM) ──────
+
+
+class TestRetroLessons:
+    """Pattern memory retro: 유사 과거 + 전방 결과 + LLM 합성 (disabled-safe)."""
+
+    def _seed_spy(self, path, start="2026-01-02", n=30, base=500.0, step=1.0):
+        import pandas as pd
+
+        from nuri.core.db import upsert_prices
+
+        dates = pd.date_range(start, periods=n, freq="B")
+        rows = [
+            {
+                "ticker": "SPY",
+                "date": d.strftime("%Y-%m-%d"),
+                "open": base + i * step,
+                "high": base + i * step + 1,
+                "low": base + i * step - 1,
+                "close": base + i * step,
+                "volume": 1_000_000,
+                "adj_close": base + i * step,
+            }
+            for i, d in enumerate(dates)
+        ]
+        upsert_prices(pd.DataFrame(rows), path)
+
+    def test_forward_spy_return_computes_pct(self, tmp_path, monkeypatch):
+        import nuri.core.db as db_mod
+        from nuri.alerts import postmarket_brief as pmb
+        from nuri.core.db import init_db
+
+        path = tmp_path / "r.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        self._seed_spy(path, start="2026-01-02", n=10, base=500.0, step=1.0)
+        # 1/02 close=500, +2 거래일 close=502 → +0.4%
+        r = pmb._forward_spy_return("2026-01-02", days=2, db_path=path)
+        assert r is not None and abs(r - 0.4) < 0.01
+
+    def test_forward_spy_return_none_when_insufficient(self, tmp_path, monkeypatch):
+        import nuri.core.db as db_mod
+        from nuri.alerts import postmarket_brief as pmb
+        from nuri.core.db import init_db
+
+        path = tmp_path / "r.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        self._seed_spy(path, start="2026-01-02", n=3, base=500.0)
+        assert pmb._forward_spy_return("2026-01-02", days=7, db_path=path) is None
+
+    def test_retro_empty_when_no_similar_days(self, tmp_path, monkeypatch):
+        import nuri.core.db as db_mod
+        from nuri.alerts import postmarket_brief as pmb
+        from nuri.core.db import init_db
+
+        path = tmp_path / "r.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        feats = {"regime": "bull_low_vol", "vix": 16.0, "fear_greed": 60.0}
+        assert pmb._generate_retro_lessons("us", "2026-06-01", feats, db_path=path) == []
+
+    def test_retro_deterministic_summary_with_outcomes(self, tmp_path, monkeypatch):
+        import nuri.core.db as db_mod
+        from nuri.alerts import postmarket_brief as pmb
+        from nuri.core.db import init_db, upsert_postmortem
+
+        path = tmp_path / "r.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        self._seed_spy(path, start="2026-01-02", n=30, base=500.0, step=1.0)
+        # 유사 과거 2건 — 같은 session/regime, 전방 SPY 데이터 충분한 초반 날짜
+        for d in ("2026-01-05", "2026-01-06"):
+            upsert_postmortem(
+                date=d,
+                session="us",
+                regime="bull_low_vol",
+                vix=16.0,
+                fear_greed=60.0,
+                vix_5d_delta=-1.0,
+                fg_5d_delta=5.0,
+                spy_5d_delta=1.0,
+                top_sector_delta_pct=1.5,
+                holdings_total_pnl_pct=2.0,
+                db_path=path,
+            )
+        feats = {
+            "regime": "bull_low_vol",
+            "vix": 16.0,
+            "fear_greed": 60.0,
+            "vix_5d_delta": -1.0,
+            "fg_5d_delta": 5.0,
+            "spy_5d_delta": 1.0,
+            "top_sector_delta_pct": 1.5,
+            "holdings_total_pnl_pct": 2.0,
+        }
+        with patch.dict("os.environ", {"OLLAMA_HOST": ""}):  # LLM off → deterministic only
+            lessons = pmb._generate_retro_lessons("us", "2026-06-01", feats, db_path=path)
+        assert lessons and "유사 2건" in lessons[0] and "SPY 중앙값" in lessons[0]
+
+    def test_synthesize_retro_llm_disabled_safe(self, monkeypatch):
+        from nuri.alerts import postmarket_brief as pmb
+
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+        out = pmb._synthesize_retro_llm({"vix": 16}, [({"date": "2026-01-05", "vix": 16}, 1.2)])
+        assert out == []
+
+    def test_synthesize_retro_llm_parses_ollama(self, monkeypatch):
+        from nuri.alerts import postmarket_brief as pmb
+
+        monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
+        enriched = [({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)]
+        with patch("nuri.llm.report._generate_ollama", return_value="- 변동성 낮을 때 추격 자제\n- 눌림목 분할 진입"):
+            out = pmb._synthesize_retro_llm({"vix": 16, "fear_greed": 60, "regime": "bull"}, enriched)
+        assert len(out) == 2 and out[0].startswith("💡") and "추격 자제" in out[0]
+
+    def test_retro_surfaces_in_markdown_and_persists(self, tmp_path, monkeypatch):
+        import nuri.core.db as db_mod
+        from nuri.alerts import postmarket_brief as pmb
+        from nuri.core.db import init_db, query, upsert_macro, upsert_postmortem, upsert_prices
+
+        path = tmp_path / "r.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        monkeypatch.setattr(pmb, "__file__", str(tmp_path / "nuri" / "alerts" / "postmarket_brief.py"))
+        self._seed_spy(path, start="2026-01-02", n=40, base=500.0, step=1.0)
+        upsert_macro([{"indicator": "vix", "date": "2026-02-02", "value": 16.0, "source": "t"}], path)
+        for d in ("2026-01-05", "2026-01-06"):
+            upsert_postmortem(
+                date=d,
+                session="us",
+                regime=None,
+                vix=16.0,
+                fear_greed=None,
+                spy_5d_delta=1.0,
+                holdings_total_pnl_pct=0.0,
+                db_path=path,
+            )
+        with (
+            patch.dict("os.environ", {"OLLAMA_HOST": ""}),
+            patch("nuri.alerts.postmarket_brief._publish_discord", return_value=None),
+        ):
+            out_path = pmb.write_brief("us", date="2026-02-02", db_path=path)
+        md = out_path.read_text()
+        assert "📚 Retro" in md
+        row = query("SELECT retro_lessons FROM market_postmortem WHERE date='2026-02-02'", db_path=path)
+        assert row and row[0]["retro_lessons"] and "SPY 중앙값" in row[0]["retro_lessons"]
+
+    def test_synthesize_retro_llm_empty_response_safe(self, monkeypatch):
+        from nuri.alerts import postmarket_brief as pmb
+
+        monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
+        enriched = [({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)]
+        with patch("nuri.llm.report._generate_ollama", return_value="   "):
+            assert pmb._synthesize_retro_llm({"vix": 16}, enriched) == []
+
+    def test_synthesize_retro_llm_no_outcomes_safe(self, monkeypatch):
+        from nuri.alerts import postmarket_brief as pmb
+
+        monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
+        # 전방 결과(fwd) 전부 None → 보낼 라인 없음 → []
+        assert pmb._synthesize_retro_llm({"vix": 16}, [({"date": "2026-01-05"}, None)]) == []
+
+    def test_synthesize_retro_llm_exception_safe(self, monkeypatch):
+        from nuri.alerts import postmarket_brief as pmb
+
+        monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
+        enriched = [({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)]
+        with patch("nuri.llm.report._generate_ollama", side_effect=RuntimeError("ollama down")):
+            assert pmb._synthesize_retro_llm({"vix": 16}, enriched) == []
+
+    def test_retro_find_similar_exception_safe(self, tmp_path, monkeypatch):
+        from nuri.alerts import postmarket_brief as pmb
+
+        with patch("nuri.core.db.find_similar_days", side_effect=RuntimeError("db gone")):
+            assert pmb._generate_retro_lessons("us", "2026-06-01", {"vix": 16}, db_path=tmp_path / "x.db") == []
+
+    def test_forward_spy_return_none_on_zero_base(self, tmp_path, monkeypatch):
+        import pandas as pd
+
+        import nuri.core.db as db_mod
+        from nuri.alerts import postmarket_brief as pmb
+        from nuri.core.db import init_db, upsert_prices
+
+        path = tmp_path / "z.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        dates = pd.date_range("2026-01-02", periods=5, freq="B")
+        rows = [
+            {
+                "ticker": "SPY",
+                "date": d.strftime("%Y-%m-%d"),
+                "open": 0,
+                "high": 0,
+                "low": 0,
+                "close": 0.0,
+                "volume": 1,
+                "adj_close": 0.0,
+            }
+            for d in dates
+        ]
+        upsert_prices(pd.DataFrame(rows), path)
+        assert pmb._forward_spy_return("2026-01-02", days=2, db_path=path) is None
+
+    def test_write_brief_survives_retro_failure(self, seeded_db, portfolio_yaml, tmp_path, monkeypatch):
+        from nuri.alerts import postmarket_brief as pmb
+
+        monkeypatch.setattr(pmb, "__file__", str(tmp_path / "nuri" / "alerts" / "postmarket_brief.py"))
+        with (
+            patch("nuri.alerts.postmarket_brief._generate_retro_lessons", side_effect=RuntimeError("boom")),
+            patch("nuri.alerts.postmarket_brief._publish_discord", return_value=None),
+        ):
+            out_path = pmb.write_brief("us", date="2026-05-01", db_path=seeded_db)
+        assert out_path.exists()  # 브리프 자체는 생성 (retro 실패 무관)
+
+    def test_ollama_host_local_guard(self, monkeypatch):
+        """STRATEGY §4.4.3 — 비-localhost OLLAMA_HOST 는 거부 (egress 방어)."""
+        from nuri.alerts import postmarket_brief as pmb
+
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+        assert pmb._ollama_host_is_local() is False
+        monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
+        assert pmb._ollama_host_is_local() is True
+        monkeypatch.setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+        assert pmb._ollama_host_is_local() is True
+        # 비-localhost → 거부 (외부 유출 방어)
+        monkeypatch.setenv("OLLAMA_HOST", "http://remote-host.example.com:11434")
+        assert pmb._ollama_host_is_local() is False
+
+    def test_synthesize_retro_llm_blocks_nonlocal_host(self, monkeypatch):
+        """비-localhost host 면 _generate_ollama 호출 자체가 안 일어남 (egress 차단)."""
+        from nuri.alerts import postmarket_brief as pmb
+
+        monkeypatch.setenv("OLLAMA_HOST", "http://attacker.example.com:11434")
+        enriched = [({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)]
+        with patch("nuri.llm.report._generate_ollama") as gen:
+            out = pmb._synthesize_retro_llm({"vix": 16}, enriched)
+        assert out == []
+        gen.assert_not_called()
+
+    def test_retro_strips_sensitive_fields_before_llm(self, tmp_path, monkeypatch):
+        """find_similar_days(SELECT *) 의 holdings_pnl blob 이 LLM 데이터 흐름에 안 들어감."""
+        import nuri.core.db as db_mod
+        from nuri.alerts import postmarket_brief as pmb
+        from nuri.core.db import init_db, upsert_postmortem
+
+        path = tmp_path / "r.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        self._seed_spy(path, start="2026-01-02", n=30, base=500.0, step=1.0)
+        upsert_postmortem(
+            date="2026-01-05",
+            session="us",
+            regime="bull",
+            vix=16.0,
+            fear_greed=60.0,
+            holdings_pnl={"rows": [{"ticker": "SECRET_TICKER", "account": "SECRET_ACCT", "pnl_abs": 99999}]},
+            spy_5d_delta=1.0,
+            holdings_total_pnl_pct=12.3,
+            db_path=path,
+        )
+        captured = {}
+        monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
+
+        def _fake(prompt):
+            captured["prompt"] = prompt
+            return "- 교훈1"
+
+        feats = {"regime": "bull", "vix": 16.0, "fear_greed": 60.0, "spy_5d_delta": 1.0, "holdings_total_pnl_pct": 12.3}
+        with patch("nuri.llm.report._generate_ollama", side_effect=_fake):
+            pmb._generate_retro_lessons("us", "2026-06-01", feats, db_path=path)
+        # 개인 보유/account/PnL 이 prompt 에 절대 미포함
+        assert "SECRET_TICKER" not in captured.get("prompt", "")
+        assert "SECRET_ACCT" not in captured.get("prompt", "")
+        assert "99999" not in captured.get("prompt", "")
+        assert "12.3" not in captured.get("prompt", "")
