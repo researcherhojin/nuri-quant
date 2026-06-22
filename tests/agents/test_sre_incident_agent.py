@@ -855,6 +855,18 @@ class TestHumanIncidentSummary:
         )
         assert "3개" in s and "stock" in s
 
+    def test_db_lock_shows_error(self):
+        s = _human_incident_summary("db_lock", "db", {"error": "database is locked"})
+        assert "db" in s and "database is locked" in s
+
+    def test_orphan_run_shows_age_hours(self):
+        s = _human_incident_summary("orphan_run", "stock-collector", {"age_hours": 3.5})
+        assert "stock-collector" in s and "3.5h" in s and "orphan" in s
+
+    def test_actor_failure_streak_shows_count(self):
+        s = _human_incident_summary("actor_failure_streak", "consensus", {"consecutive_failures": 5})
+        assert "consensus" in s and "5회 연속 실패" in s
+
     def test_unknown_type_falls_back_gracefully(self):
         s = _human_incident_summary("brand_new_type", "x", {})
         assert "brand_new_type" in s and "x" in s
