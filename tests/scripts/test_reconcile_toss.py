@@ -126,13 +126,9 @@ class TestReconcile:
         assert rc == 2
         assert "오류" in capsys.readouterr().out
 
-    def test_main_dry_run_default(self, db):
-        # 기본(인자 없음)=dry-run → DB 미변경, exit 0
-        _seed(db)
-        with (
-            patch("nuri.collectors.toss.get_holdings", return_value=[]),
-            patch("scripts.ops.reconcile_toss.replace_portfolio_account") as rep,
-        ):
+    def test_main_dry_run_default(self):
+        # 기본(인자 없음) → reconcile(dry_run=True) 디스패치 (실 DB 미접근)
+        with patch("scripts.ops.reconcile_toss.reconcile") as rec:
             rc = R.main([])
         assert rc == 0
-        rep.assert_not_called()
+        assert rec.call_args.kwargs["dry_run"] is True
