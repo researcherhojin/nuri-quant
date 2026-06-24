@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -30,7 +31,6 @@ class TestMacroCollector:
         ]
         count = c.save(records)
         assert count == 2
-
 
 
 class TestMacroCollectorFREDAndYFinance:
@@ -65,10 +65,16 @@ class TestMacroCollectorFREDAndYFinance:
 
         from nuri.collectors.macro import MacroCollector
 
-        mock_df = pd.DataFrame({
-            "Date": pd.to_datetime(["2025-01-15"]),
-            "Close": [4.5], "Open": [4.4], "High": [4.6], "Low": [4.3], "Volume": [0],
-        })
+        mock_df = pd.DataFrame(
+            {
+                "Date": pd.to_datetime(["2025-01-15"]),
+                "Close": [4.5],
+                "Open": [4.4],
+                "High": [4.6],
+                "Low": [4.3],
+                "Volume": [0],
+            }
+        )
         monkeypatch.setattr(yf, "download", lambda *a, **kw: mock_df)
         collector = MacroCollector()
         collector.api_key = ""
@@ -140,7 +146,6 @@ class TestMacroCollectorFREDAndYFinance:
         assert MacroCollector().save([{"indicator": "vix", "date": "2025-01-30", "value": 18.5, "source": "test"}]) == 1
 
 
-
 class TestMacroCollectorEdgeCases:
     def test_collect_uses_yfinance_when_no_fred_key(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.macro import MacroCollector
@@ -176,6 +181,91 @@ class TestMacroCollectorEdgeCases:
         assert isinstance(collector.collect(days=30), list)
 
 
+class TestMacroCollectorTossFX:
+    """Toss 라이브 USD/KRW → macro usd_krw 배선 (#805 후속).
+
+    Toss `get_exchange_rate` 는 1분 단위 라이브 환율을 주지만 IP allowlist 라
+    dev/CI 에선 인증/IP 실패 → graceful skip. production(Mac mini) 에서만 채워짐.
+    """
+
+    def test_collect_toss_fx_returns_usd_krw_record(self, monkeypatch):
+        from nuri.collectors.macro import MacroCollector
+        from nuri.core.timezone import today_kst
+
+        monkeypatch.setattr(
+            "nuri.collectors.toss.get_exchange_rate",
+            lambda base="USD", quote="KRW": {"rate": 1540.86, "validFrom": "2026-06-24"},
+        )
+        records = MacroCollector()._collect_toss_fx()
+        assert records == [{"indicator": "usd_krw", "date": today_kst(), "value": 1540.86, "source": "toss"}]
+
+    def test_collect_toss_fx_uses_midrate_when_rate_missing(self, monkeypatch):
+        from nuri.collectors.macro import MacroCollector
+
+        monkeypatch.setattr(
+            "nuri.collectors.toss.get_exchange_rate",
+            lambda base="USD", quote="KRW": {"midRate": 1535.0},
+        )
+        records = MacroCollector()._collect_toss_fx()
+        assert records[0]["value"] == 1535.0
+
+    def test_collect_toss_fx_graceful_on_creds_error(self, monkeypatch):
+        """creds/IP 미설정(dev/CI) → [] 반환, 예외 전파 안 함."""
+        from nuri.collectors.macro import MacroCollector
+        from nuri.collectors.toss import TossCredentialsError
+
+        def _raise(base="USD", quote="KRW"):
+            raise TossCredentialsError("IP address not allowed")
+
+        monkeypatch.setattr("nuri.collectors.toss.get_exchange_rate", _raise)
+        assert MacroCollector()._collect_toss_fx() == []
+
+    def test_collect_toss_fx_graceful_on_generic_error(self, monkeypatch):
+        from nuri.collectors.macro import MacroCollector
+
+        def _raise(base="USD", quote="KRW"):
+            raise RuntimeError("network down")
+
+        monkeypatch.setattr("nuri.collectors.toss.get_exchange_rate", _raise)
+        assert MacroCollector()._collect_toss_fx() == []
+
+    def test_collect_toss_fx_skips_when_no_rate(self, monkeypatch):
+        """rate/midRate 모두 없거나 0 → []."""
+        from nuri.collectors.macro import MacroCollector
+
+        monkeypatch.setattr("nuri.collectors.toss.get_exchange_rate", lambda base="USD", quote="KRW": {})
+        assert MacroCollector()._collect_toss_fx() == []
+
+    def test_collect_appends_toss_fx_overriding_usd_krw(self, monkeypatch, db_with_portfolio):
+        """collect() 가 toss usd_krw 를 마지막에 붙여 upsert 시 오늘자 환율을 override."""
+        import sys
+
+        import pandas as pd
+
+        from nuri.collectors.macro import MacroCollector
+        from nuri.core.timezone import today_kst
+
+        # FRED stub — usd_krw 를 옛 값(어제)으로 채움
+        mock_series = pd.Series([1500.0], index=pd.to_datetime(["2026-06-23"]))
+        mock_fred = MagicMock()
+        mock_fred.get_series.return_value = mock_series
+        monkeypatch.setitem(sys.modules, "fredapi", MagicMock(Fred=MagicMock(return_value=mock_fred)))
+        monkeypatch.setattr(MacroCollector, "_collect_yfinance", lambda self, days: [])
+        monkeypatch.setattr(
+            "nuri.collectors.toss.get_exchange_rate",
+            lambda base="USD", quote="KRW": {"rate": 1540.86},
+        )
+
+        collector = MacroCollector()
+        collector.api_key = "real_key"
+        results = collector.collect(days=30)
+
+        toss_rows = [r for r in results if r["indicator"] == "usd_krw" and r["source"] == "toss"]
+        assert toss_rows == [{"indicator": "usd_krw", "date": today_kst(), "value": 1540.86, "source": "toss"}]
+        # toss 레코드가 마지막 (upsert OR REPLACE 가 오늘자 usd_krw 를 toss 로 확정)
+        assert results[-1] == toss_rows[0]
+
+
 class TestPartAIndicatorRegistry:
     """Issue #362 Part A — 10 신규 yfinance 지표 등록 lock-in."""
 
@@ -184,8 +274,16 @@ class TestPartAIndicatorRegistry:
         from nuri.collectors.macro import YFINANCE_SYMBOLS
 
         expected = {
-            "nasdaq_composite", "sp500", "dow", "nasdaq100_futures", "sox",
-            "dxy", "silver", "natgas", "copper", "wheat",
+            "nasdaq_composite",
+            "sp500",
+            "dow",
+            "nasdaq100_futures",
+            "sox",
+            "dxy",
+            "silver",
+            "natgas",
+            "copper",
+            "wheat",
         }
         missing = expected - set(YFINANCE_SYMBOLS.keys())
         assert not missing, (
@@ -220,8 +318,7 @@ class TestPartAIndicatorRegistry:
         """기존 vix/gold/wti_oil/us_*_yield/usd_krw 가 그대로 남아있음 — 회귀 방지."""
         from nuri.collectors.macro import YFINANCE_SYMBOLS
 
-        legacy = {"us_10y_yield", "us_2y_yield", "us_5y_yield", "us_30y_yield",
-                  "vix", "wti_oil", "usd_krw", "gold"}
+        legacy = {"us_10y_yield", "us_2y_yield", "us_5y_yield", "us_30y_yield", "vix", "wti_oil", "usd_krw", "gold"}
         missing = legacy - set(YFINANCE_SYMBOLS.keys())
         assert not missing, f"기존 지표 회귀 — {missing} 사라짐"
 
@@ -252,10 +349,11 @@ class TestPartAIndicatorRegistry:
         # 따라서 _collect_yfinance 자체를 monkeypatch.
         def stub_yf(self, days):
             return [
-                {"indicator": "vix",   "date": "2025-01-15", "value": 19.0, "source": "yfinance"},  # FRED dup
+                {"indicator": "vix", "date": "2025-01-15", "value": 19.0, "source": "yfinance"},  # FRED dup
                 {"indicator": "sp500", "date": "2025-01-15", "value": 7000.0, "source": "yfinance"},  # yf-only
-                {"indicator": "dxy",   "date": "2025-01-15", "value": 98.5, "source": "yfinance"},  # yf-only
+                {"indicator": "dxy", "date": "2025-01-15", "value": 98.5, "source": "yfinance"},  # yf-only
             ]
+
         monkeypatch.setattr(MacroCollector, "_collect_yfinance", stub_yf)
 
         collector = MacroCollector()
