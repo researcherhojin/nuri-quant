@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import upsert_macro
-from nuri.core.timezone import kst_now
+from nuri.core.timezone import kst_now, today_kst
 
 load_dotenv()
 
@@ -99,10 +99,15 @@ class MacroCollector(BaseCollector):
         if self.api_key and self.api_key != "your_fred_api_key_here":
             fred_records = self._collect_fred(days)
 
+        # Toss 라이브 USD/KRW (1분 단위) — 마지막에 append 해 오늘자 usd_krw 를
+        # override (upsert OR REPLACE 가 indicator+date PK 로 toss 를 확정).
+        # FRED(DEXKOUS 일별·지연)/yfinance 대비 신선. creds/IP 없으면 [] (graceful).
+        toss_fx = self._collect_toss_fx()
+
         # FRED 가 비었으면 legacy 경로 — yfinance only.
         if not fred_records:
             self.logger.info("FRED 미사용 → yfinance fallback으로 매크로 수집")
-            return self._collect_yfinance(days)
+            return self._collect_yfinance(days) + toss_fx
 
         # FRED + yfinance merge — yfinance-only indicator 보충.
         yf_records = self._collect_yfinance(days)
@@ -115,7 +120,28 @@ class MacroCollector(BaseCollector):
                 len(yf_only_keys),
                 yf_only_keys,
             )
-        return fred_records + yf_supplement
+        return fred_records + yf_supplement + toss_fx
+
+    def _collect_toss_fx(self) -> list[dict]:
+        """Toss Open API 라이브 USD/KRW → 오늘자 usd_krw 레코드 1건.
+
+        Toss `get_exchange_rate` 는 1분 단위 라이브 환율을 주지만 IP allowlist 라
+        dev/CI(비등록 IP)에선 인증/IP 실패 → []. production(Mac mini) 에서만 채워짐.
+        rate(라이브 거래환율) 우선, midRate 폴백.
+        """
+        from nuri.collectors import toss
+
+        try:
+            fx = toss.get_exchange_rate("USD", "KRW")
+        except Exception as e:  # noqa: BLE001 — creds/IP/네트워크 실패 시 FRED/yf 로 폴백
+            self.logger.info("Toss FX 미수집 (FRED/yfinance usd_krw 사용) — %s", e)
+            return []
+
+        rate = fx.get("rate") or fx.get("midRate")
+        if not rate:
+            self.logger.info("Toss FX 응답에 rate/midRate 없음 — usd_krw 스킵")
+            return []
+        return [{"indicator": "usd_krw", "date": today_kst(), "value": float(rate), "source": "toss"}]
 
     def _collect_fred(self, days: int) -> list[dict]:
         """FRED API에서 매크로 지표 수집."""
