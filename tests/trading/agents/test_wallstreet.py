@@ -277,14 +277,17 @@ class TestWallStreetAgent_R23:
 
     def test_analyze_upgrades_and_downgrades(self, db_path, monkeypatch):
         """Downgrades exceed upgrades."""
+        from nuri.core.timezone import kst_now
         from nuri.trading.agents.wallstreet import WallStreetAgent
         agent = WallStreetAgent()
         monkeypatch.setattr(agent, "_check_cached", lambda *a, **kw: None)
+        # wallstreet 는 90일 윈도우로 필터 — 고정일 대신 kst_now() 앵커링 (time-bomb 회피)
+        recent = kst_now().replace(tzinfo=None) - timedelta(days=3)
         ud_data = pd.DataFrame({
             "Action": ["down", "down", "down", "down", "init"],
             "priceTargetAction": ["lowers", "lowers", "", "", "raises"],
             "currentPriceTarget": [100.0, 95.0, None, None, 110.0],
-        }, index=pd.to_datetime(["2026-03-28"] * 5))
+        }, index=pd.to_datetime([recent] * 5))
 
         class MockTicker:
             upgrades_downgrades = ud_data
@@ -479,14 +482,17 @@ class TestWallStreetAgent_R23:
 
     def test_analyze_sell_verdict(self, db_path, monkeypatch):
         """Enough negative score → SELL verdict."""
+        from nuri.core.timezone import kst_now
         from nuri.trading.agents.wallstreet import WallStreetAgent
         agent = WallStreetAgent()
         monkeypatch.setattr(agent, "_check_cached", lambda *a, **kw: None)
+        # 90일 윈도우 — 고정일 대신 kst_now() 앵커링 (time-bomb 회피)
+        recent = kst_now().replace(tzinfo=None) - timedelta(days=3)
         ud_data = pd.DataFrame({
             "Action": ["down", "down", "down", "down"],
             "priceTargetAction": ["lowers", "lowers", "lowers", ""],
             "currentPriceTarget": [100.0, 95.0, 90.0, None],
-        }, index=pd.to_datetime(["2026-03-28"] * 4))
+        }, index=pd.to_datetime([recent] * 4))
         eh_data = pd.DataFrame({
             "surprisePercent": [-0.15], "epsActual": [2.0], "epsEstimate": [3.0],
         })
