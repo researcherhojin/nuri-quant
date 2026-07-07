@@ -956,6 +956,42 @@ class TestSchedulerLogRotation:
                     h.close()
                     logging.getLogger().removeHandler(h)
 
+    def test_console_handler_warning_only_file_gets_info(self, tmp_path, monkeypatch):
+        """Gotcha-Test Pair (#859): console(stderr)=WARNING+, file=INFO.
+
+        basicConfig(INFO) 가 모든 INFO 를 stderr 로 보내 launchd scheduler.err 가
+        로테이션 없이 무한 성장했음(189MB 실측). console 을 WARNING+ 로 되돌리면
+        (또는 file 을 stderr 로 바꾸면) 이 테스트가 FAIL.
+        """
+        import importlib
+        import logging as _logging
+        import logging.handlers
+
+        monkeypatch.setenv("NURI_SCHEDULER_LOG_DIR", str(tmp_path))
+        monkeypatch.delenv("NURI_SCHEDULER_LOG_DISABLE_FILE", raising=False)
+        import nuri.scheduler
+
+        importlib.reload(nuri.scheduler)
+        try:
+            handlers = _logging.getLogger().handlers
+            # console = StreamHandler 이지만 FileHandler(=RotatingFileHandler 부모) 아님
+            console = [h for h in handlers if type(h) is _logging.StreamHandler]
+            assert console, "console(stderr) handler 존재해야"
+            assert all(h.level >= _logging.WARNING for h in console), (
+                "console 은 WARNING+ 만 — INFO stderr 홍수 차단 (#859)"
+            )
+            rotating = [
+                h
+                for h in handlers
+                if isinstance(h, logging.handlers.RotatingFileHandler) and str(tmp_path) in str(h.baseFilename)
+            ]
+            assert rotating and rotating[-1].level == _logging.INFO, "전체 INFO 스트림은 로테이션 파일로"
+        finally:
+            for h in list(_logging.getLogger().handlers):
+                if isinstance(h, logging.handlers.RotatingFileHandler):
+                    h.close()
+                    _logging.getLogger().removeHandler(h)
+
     def test_disable_env_var_skips_file_handler(self, tmp_path, monkeypatch):
         """`NURI_SCHEDULER_LOG_DISABLE_FILE=1` opt-out for CI / read-only FS."""
         import logging.handlers

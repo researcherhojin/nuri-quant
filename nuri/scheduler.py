@@ -24,21 +24,38 @@ from nuri.core.db import init_db
 
 
 def _configure_logging() -> None:
-    """Set up scheduler logging with optional file rotation.
+    """Set up scheduler logging: INFO → rotating file, WARNING+ → console.
 
-    Mac mini 24/7 receiver runs the scheduler indefinitely; without rotation
-    `data/logs/scheduler.log` grows unbounded. Activate via env var
-    `NURI_SCHEDULER_LOG_DIR=<path>` (default: `data/logs/` under repo root)
-    or `NURI_SCHEDULER_LOG_DISABLE_FILE=1` to opt out (e.g. CI / tests).
+    Mac mini 24/7 receiver runs the scheduler indefinitely. Rotation covers the
+    file (`scheduler.log`), but the console (stderr) is captured by launchd's
+    `StandardErrorPath=scheduler.err` which has **no rotation** — the previous
+    `basicConfig(INFO)` sent every INFO line (apscheduler 'job executed' etc) to
+    stderr, growing scheduler.err unbounded (189MB, 2026-07-08, #859).
 
-    Format and console behavior unchanged — only adds a rotating sibling.
+    Fix: console(stderr) handler is WARNING+ only (real warnings/errors/tracebacks
+    that an operator should see in scheduler.err), while the full INFO stream goes
+    to the rotating file. Env vars: `NURI_SCHEDULER_LOG_DIR=<path>` (default
+    `data/logs/`), `NURI_SCHEDULER_LOG_DISABLE_FILE=1` to opt out of the file
+    (CI / tests → console-only).
     """
     fmt = "%(asctime)s %(name)s %(levelname)s %(message)s"
-    logging.basicConfig(level=logging.INFO, format=fmt)
+    formatter = logging.Formatter(fmt)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    # 중복 설치 방지 (importlib 재로드 / 재호출) — 기존 nuri 핸들러 제거 후 재구성.
+    for h in list(root.handlers):
+        root.removeHandler(h)
+
+    # console(stderr) — launchd scheduler.err 무한성장 방지 위해 WARNING+ 만 (#859).
+    console = logging.StreamHandler()
+    console.setLevel(logging.WARNING)
+    console.setFormatter(formatter)
+    root.addHandler(console)
 
     # yfinance internal logger emits 401 Crumb / 404 ETF-calendar noise at INFO/ERROR
     # for routine cases (ETFs without earnings calendar, transient cookie refresh).
-    # Each line is per-ticker and floods scheduler.log on universe runs (746 tickers).
+    # Each line is per-ticker and floods logs on universe runs (746 tickers).
     # Raise to WARNING — we still see real auth/network failures, but the routine
     # 4xx-on-missing-data noise stops. fundamental.py already does this per-source
     # (CRITICAL on universe); this is the global belt-and-suspenders.
@@ -63,9 +80,9 @@ def _configure_logging() -> None:
         backupCount=3,  # keep 3 rotated archives → 20 MB total cap
         encoding="utf-8",
     )
-    handler.setFormatter(logging.Formatter(fmt))
-    handler.setLevel(logging.INFO)
-    logging.getLogger().addHandler(handler)
+    handler.setFormatter(formatter)
+    handler.setLevel(logging.INFO)  # 전체 INFO 스트림은 로테이션 파일로만
+    root.addHandler(handler)
 
 
 _configure_logging()
