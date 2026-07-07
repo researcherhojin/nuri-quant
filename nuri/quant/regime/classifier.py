@@ -227,6 +227,16 @@ SPECIAL_REGIMES: tuple[str, ...] = tuple(SPECIAL_REGIME_SIZING.keys())
 ALL_REGIMES: tuple[str, ...] = BASE_REGIMES + SPECIAL_REGIMES  # 6 + 4 = 10
 
 
+def canonical_regime_or_none(value: str | None) -> str | None:
+    """ALL_REGIMES 원소만 통과, 그 외(빈문자열·free-text)는 None (#832).
+
+    recommendations.regime 컬럼은 canonical 10-regime 값 또는 NULL 만 허용 —
+    "" / "[recovery] 비중 축소" 같은 free-text 유입이 라벨 커버리지 3% 의 원인이었음.
+    진단 전용 라벨 (STRATEGY §3.11 이 regime 을 판정 축에서 제외).
+    """
+    return value if value in ALL_REGIMES else None
+
+
 def _detect_euphoria(vix: float | None, fear_greed: float | None) -> bool:
     """VIX < 12 AND Fear&Greed > 80 → 시장 과열."""
     if vix is None or fear_greed is None:

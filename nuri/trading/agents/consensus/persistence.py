@@ -35,15 +35,15 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
     today = today_kst()
 
     # PR A: regime 을 한 번 classify 해 배치 전체에 공유 (codex Q3 권고 — per-ticker
-    # classify 는 ~30ms × N 추가 latency). 실패 시 None 으로 폴백 (legacy 동작
-    # 유지), tracker.py 가 이후 backfill.
+    # classify 는 ~30ms × N 추가 latency). 실패 시 None 으로 폴백 (legacy 동작 유지).
+    # #832: canonical ALL_REGIMES 값만 저장 — free-text 유입 시 NULL 로 정규화.
     batch_regime: str | None = None
     try:
-        from nuri.quant.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import canonical_regime_or_none, classify_regime
 
         rr = classify_regime(db_path=db_path)
         if rr is not None:
-            batch_regime = rr.regime
+            batch_regime = canonical_regime_or_none(rr.regime)
     except Exception:
         logger.debug("save_to_recommendations: regime classify 실패, NULL 유지", exc_info=True)
 
