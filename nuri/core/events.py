@@ -39,6 +39,12 @@ EVENT_TYPES = {
     "holdings_monitor_run",
     "holdings_monitor_technical_sell",
     "holdings_monitor_divergence",
+    # Signal-evaluation heartbeat (#825) — signals 테이블은 발화(계산) 행만 저장하므로
+    # 무기록이 '조건 미충족(정상)'인지 '평가 미실행(고장)'인지 구분 불가 (#734 계열).
+    # technical collector 가 평가 실행마다 1행 기록 (record_count=fired_count, 0 포함).
+    # emitter: nuri/collectors/technical.py save() /
+    # consumer: SREIncidentAgent._detect_signal_evaluation_stale.
+    "signal_evaluation_run",
 }
 
 # 6-step 파이프라인
