@@ -29,6 +29,7 @@ class TestHeartbeatAge:
         p = tmp_path / "hb"
         _write_heartbeat(p, age_minutes=40.0)
         age = hw.heartbeat_age_minutes(path=p, now_epoch=time.time())
+        assert age is not None  # float | None 타입 좁히기 (파일 존재 → non-None)
         assert 39.0 < age < 41.0
 
 
