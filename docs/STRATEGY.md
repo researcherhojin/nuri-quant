@@ -50,7 +50,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import
 | 선택 | 이유 |
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드 동시 읽기. `tmp_path` 테스트 격리. |
-| **Hybrid LLM stack** | 공개 RSS 분류 / 일간 리포트 → OpenAI `gpt-5.4-nano` (Tier 0 / Tier 2 ZDR). 사용자 narrative (Tier 1) 미허용. 상세 §4.4.3. |
+| **Hybrid LLM stack** | 공개 RSS 분류 / 일간 리포트 → OpenAI `gpt-5.4-nano` (Tier 0 / Tier 2 ZDR). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama/Qwen) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 ZERO-LLM 이라 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
 | OpenBB + yfinance | 무료 데이터. OpenBB provider 교체 용이, yfinance 폴백. |
 | GitHub Actions | 오픈소스 무료. lint + test + coverage + security 자동화. |
 ### 2.6 Escalation Ladder (근거 기반 → 기계적 개입의 4단계)
@@ -308,7 +308,7 @@ History cleanup (Stage 2 — 별도 작업): main HEAD 는 깨끗하게 유지�
 1. ZDR 승인 완료 후 첫 호출. 미승인 시 `OPENAI_ZDR_APPROVED=1` 미설정으로 wrapper raise.
 2. `NURI_DISABLE_EXTERNAL_LLM=1` 즉시 opt-out.
 3. 프롬프트 로그 금지 — token·latency·error_type 만, **content 금지**.
-4. local LLM 전환 계획 (Ollama/llama.cpp 확정 시 Tier 2 제거 PR).
+4. ~~local LLM 전환 계획~~ — **dropped (2026-07-08, #854)**: 로컬 LLM 상시 가동 폐지 결정으로 Tier 2 는 cloud ZDR 유지.
 **필수 운영 룰**:
 1. 모든 외부 LLM 은 wrapper (`openai_client.get_client()`). 직접 `import openai` 금지.
 2. Per-call audit log — `external_llm_calls` 테이블: `timestamp, provider, model, endpoint, prompt_tokens, completion_tokens, latency_ms, success, error_type`. content 금지.
@@ -318,7 +318,7 @@ History cleanup (Stage 2 — 별도 작업): main HEAD 는 깨끗하게 유지�
 Deferred (필요 시점에 추가):
 - Narrative input UI (Tier 1 정책 결정 후)
 - 외부 LLM 비용 모니터링 대시보드 (`external_llm_calls` 테이블 기반)
-- Tier 2 → local LLM 전환 시점 (Ollama/llama.cpp 인프라 확정 후)
+- ~~Tier 2 → local LLM 전환~~ — dropped (2026-07-08, #854 — on-demand only 결정)
 모니터링 트리거: #152 머지 시점 발효. 2026-04-14 Tier 2 추가 후 1주일 동안 비용 예상치 (~$0.02/주) 대비 10× 초과 시 사용자 알림 + `NURI_DISABLE_EXTERNAL_LLM=1` 복귀.
 ## 5. LLM 에이전트 하네스 (Harness Engineering)
 이 프로젝트는 LLM (Claude Code) 이 주요 개발 도구. LLM 은 체계적으로 실패하는 패턴이 있다. 본 섹션은 canonical 원칙 — 실제 사례·진단 절차·Gotcha-Test Pair 프로토콜 상세는 `/nuri-harness-debug` skill (`.claude/skills/nuri-harness-debug/SKILL.md`) 이 on-demand load. Case study 본문은 `git log` (PR #272, #300-#307) 에 보존.
