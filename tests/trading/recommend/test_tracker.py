@@ -1308,3 +1308,69 @@ class TestTrackOutcomesEntryZeroGuard:
 
         updated = tracker_mod.track_outcomes(db_path=db)
         assert updated == 0  # entry=0 → continue → no update
+
+
+class TestRegimeLabelEmit:
+    """#832 Gotcha-Test Pair: save_recommendations 의 regime 라벨 저장 회귀 방지.
+
+    기존 E-1 경로는 `"regime": ""`, E-2 경로는 free-text `regime_note` 를 그대로
+    persist 해 라벨 커버리지 3% 의 원인이었음. batch classify + canonical guard 로
+    되돌아가면 (regime="" / regime=regime_note 복원) 이 테스트가 fail.
+    진단 전용 라벨 — STRATEGY §3.11 이 regime 을 판정 축에서 제외.
+    """
+
+    @staticmethod
+    def _regime_state(regime: str):
+        from nuri.quant.regime.classifier import RegimeState
+
+        return RegimeState(date="2026-01-02", trend="bull", volatility="low", regime=regime, confidence=0.8, details={})
+
+    def test_e1_candidate_saves_canonical_regime(self, rich_db):
+        """E-1 후보 저장 시 batch classify 라벨이 regime 컬럼에 기록 ("" 회귀 방지)."""
+        from nuri.trading.recommend.candidates import Candidate
+        from nuri.trading.recommend.tracker import save_recommendations
+
+        with patch(
+            "nuri.quant.regime.classifier.classify_regime",
+            return_value=self._regime_state("bull_low_vol"),
+        ):
+            candidates = [
+                Candidate("AAPL", "rsi_oversold", "2026-01-02", "BUY", 75.0, 0.6, 2.0, True, 170.0, "test"),
+            ]
+            assert save_recommendations(candidates=candidates, db_path=rich_db) == 1
+
+        row = query("SELECT regime FROM recommendations WHERE ticker='AAPL'", db_path=rich_db)[0]
+        assert row["regime"] == "bull_low_vol"
+
+    def test_e2_action_never_saves_freetext_regime_note(self, rich_db):
+        """E-2 액션의 free-text regime_note 가 regime 컬럼에 유입되지 않음."""
+        from nuri.trading.recommend.tracker import save_recommendations
+
+        action = MagicMock()
+        action.ticker = "AAPL"
+        action.action = "BUY"
+        action.signals = ["rebalance"]
+        action.regime_note = "[recovery] 비중 축소"
+
+        with patch(
+            "nuri.quant.regime.classifier.classify_regime",
+            return_value=self._regime_state("recovery"),
+        ):
+            assert save_recommendations(actions=[action], db_path=rich_db) == 1
+
+        row = query("SELECT regime FROM recommendations WHERE ticker='AAPL'", db_path=rich_db)[0]
+        assert row["regime"] == "recovery"
+
+    def test_classify_failure_keeps_null_not_empty_string(self, rich_db):
+        """classify 실패(None) 시 regime 은 NULL — "" 나 'unknown' 금지."""
+        from nuri.trading.recommend.candidates import Candidate
+        from nuri.trading.recommend.tracker import save_recommendations
+
+        with patch("nuri.quant.regime.classifier.classify_regime", return_value=None):
+            candidates = [
+                Candidate("AAPL", "rsi_oversold", "2026-01-02", "BUY", 75.0, 0.6, 2.0, True, 170.0, "test"),
+            ]
+            assert save_recommendations(candidates=candidates, db_path=rich_db) == 1
+
+        row = query("SELECT regime FROM recommendations WHERE ticker='AAPL'", db_path=rich_db)[0]
+        assert row["regime"] is None
