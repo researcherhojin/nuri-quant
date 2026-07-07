@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
+# health check 스크립트 경로 — #557 scripts/ 7-subdir 리팩터로 이동 (#846 경로 drift fix).
+# 상수 노출 → tests/test_script_path_lock.py sweep 이 실존 검증.
+HEALTH_CHECK_SCRIPT = "scripts/ops/health_check.sh"
+
 # .env auto-load — `python -m` / launchd 양쪽 다 동일하게 작동.
 load_dotenv(REPO_ROOT / ".env")
 
@@ -123,7 +127,7 @@ def build_bot():
         def _run() -> tuple[int, str]:
             try:
                 proc = subprocess.run(
-                    ["bash", "scripts/health_check.sh"],
+                    ["bash", HEALTH_CHECK_SCRIPT],
                     cwd=REPO_ROOT,
                     capture_output=True,
                     text=True,
