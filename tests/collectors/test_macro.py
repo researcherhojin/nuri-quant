@@ -114,6 +114,9 @@ class TestMacroCollectorFREDAndYFinance:
         monkeypatch.setitem(sys.modules, "fredapi", MagicMock(Fred=MagicMock(return_value=mock_fred)))
         # yfinance 분기 차단 — _collect_yfinance 에서 yfinance.download mock 안 하면
         # 실제 네트워크 호출 됨. conftest.py 의 yfinance.download stub (빈 df) 활용.
+        # toss FX 는 conftest 전역 mock 대상 아님 (실 HTTP) — 명시 차단 (#829).
+        # toss 성공 시 usd_krw source='toss' 는 의도된 override (TossFX 클래스에서 검증).
+        monkeypatch.setattr(MacroCollector, "_collect_toss_fx", lambda self: [])
         collector = MacroCollector()
         collector.api_key = "real_key"
         results = collector.collect(days=30)
@@ -158,6 +161,8 @@ class TestMacroCollectorEdgeCases:
         import sys
 
         monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        # toss FX 실 HTTP 차단 (#829)
+        monkeypatch.setattr(MacroCollector, "_collect_toss_fx", lambda self: [])
         collector = MacroCollector()
         collector.api_key = ""
         assert isinstance(collector.collect(days=30), list)
@@ -176,6 +181,8 @@ class TestMacroCollectorEdgeCases:
         mock_obb = MagicMock()
         mock_obb.equity.price.historical.return_value = mock_result
         monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        # toss FX 실 HTTP 차단 (#829)
+        monkeypatch.setattr(MacroCollector, "_collect_toss_fx", lambda self: [])
         collector = MacroCollector()
         collector.api_key = "real_key"
         assert isinstance(collector.collect(days=30), list)
@@ -264,6 +271,51 @@ class TestMacroCollectorTossFX:
         assert toss_rows == [{"indicator": "usd_krw", "date": today_kst(), "value": 1540.86, "source": "toss"}]
         # toss 레코드가 마지막 (upsert OR REPLACE 가 오늘자 usd_krw 를 toss 로 확정)
         assert results[-1] == toss_rows[0]
+
+    def test_collect_toss_overrides_fred_usd_krw_in_db(self, monkeypatch, db_with_portfolio):
+        """Gotcha-Test Pair (#829): FRED 가 오늘자 usd_krw 를 emit + toss 성공 시나리오.
+
+        기존 flaky 원인: test_collect_prefers_fred 가 toss 미mock 상태로 네트워크
+        성공 시 usd_krw source='toss' 를 만나 'FRED 여야 함' assertion 실패.
+        여기서는 그 시나리오를 mock 으로 결정론 재현 — usd_krw 는 toss 가 FRED 를
+        override 하는 게 의도된 우선순위 (macro.py collect() 주석, UNIQUE(indicator,
+        date) + INSERT OR REPLACE). save() 후 DB 최종 상태까지 lock.
+        """
+        import sys
+
+        import pandas as pd
+
+        from nuri.collectors.macro import MacroCollector
+        from nuri.core.db import query
+        from nuri.core.timezone import today_kst
+
+        # FRED stub — 모든 시리즈(usd_krw 포함)를 오늘자 값으로 emit → PK 충돌 유도
+        mock_series = pd.Series([1500.0], index=pd.to_datetime([today_kst()]))
+        mock_fred = MagicMock()
+        mock_fred.get_series.return_value = mock_series
+        monkeypatch.setitem(sys.modules, "fredapi", MagicMock(Fred=MagicMock(return_value=mock_fred)))
+        monkeypatch.setattr(MacroCollector, "_collect_yfinance", lambda self, days: [])
+        monkeypatch.setattr(
+            "nuri.collectors.toss.get_exchange_rate",
+            lambda base="USD", quote="KRW": {"rate": 1540.86},
+        )
+
+        collector = MacroCollector()
+        collector.api_key = "real_key"
+        results = collector.collect(days=30)
+
+        # 오늘자 usd_krw 가 FRED·toss 양쪽에서 emit — toss 가 뒤 (override 순서)
+        usd_sources = [r["source"] for r in results if r["indicator"] == "usd_krw"]
+        assert usd_sources == ["FRED", "toss"]
+
+        # DB 최종 상태: INSERT OR REPLACE 로 오늘자 usd_krw 는 toss 값이 확정
+        collector.save(results)
+        rows = query(
+            "SELECT source, value FROM macro WHERE indicator='usd_krw' AND date=?",
+            (today_kst(),),
+            db_path=db_with_portfolio,
+        )
+        assert rows == [{"source": "toss", "value": 1540.86}]
 
 
 class TestPartAIndicatorRegistry:
@@ -355,6 +407,8 @@ class TestPartAIndicatorRegistry:
             ]
 
         monkeypatch.setattr(MacroCollector, "_collect_yfinance", stub_yf)
+        # toss FX 실 HTTP 차단 (#829)
+        monkeypatch.setattr(MacroCollector, "_collect_toss_fx", lambda self: [])
 
         collector = MacroCollector()
         collector.api_key = "real_key"
