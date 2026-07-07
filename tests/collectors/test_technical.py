@@ -171,17 +171,29 @@ class TestComputeForTicker:
         assert "rsi_14" in result.columns
 
 
-class TestSaveEmpty:
-    """save(empty) → 0 (line 112)."""
+@pytest.fixture
+def isolated_db(tmp_path, monkeypatch):
+    """save() 가 default DB 를 쓰므로 (upsert_signals + emit_event) tmp 로 redirect."""
+    import nuri.core.db as db_mod
+    from nuri.core.db import init_db
 
-    def test_empty_returns_zero(self):
+    path = tmp_path / "test.db"
+    init_db(path)
+    monkeypatch.setattr(db_mod, "DB_PATH", path)
+    return path
+
+
+class TestSaveEmpty:
+    """save(empty) → 0 (heartbeat 는 별도 — TestSignalEvaluationHeartbeat)."""
+
+    def test_empty_returns_zero(self, isolated_db):
         from nuri.collectors.technical import TechnicalCollector
 
         c = TechnicalCollector()
         assert c.save(pd.DataFrame()) == 0
 
-    def test_non_empty_calls_upsert(self, monkeypatch):
-        """non-empty → upsert_signals 호출 (line 113)."""
+    def test_non_empty_calls_upsert(self, isolated_db, monkeypatch):
+        """non-empty → upsert_signals 호출."""
         from nuri.collectors import technical as tech_mod
 
         called = {"n": 0}
@@ -196,6 +208,66 @@ class TestSaveEmpty:
         result = c.save(df)
         assert result == 1
         assert called["n"] == 1
+
+
+class TestSignalEvaluationHeartbeat:
+    """#825 Gotcha-Test Pair — 평가 실행마다 pipeline_events heartbeat 1행.
+
+    signals 테이블은 발화(계산) 행만 저장 → 발화 0건이어도 'evaluated,
+    fired_count=0' 기록이 남아야 '조건 미충족(정상)' vs '평가 미실행(고장)'
+    구분 가능 (#734 silent outage 계열).
+    """
+
+    @staticmethod
+    def _heartbeats(path):
+        from nuri.core.db import query
+
+        return query(
+            "SELECT record_count FROM pipeline_events WHERE event_type = 'signal_evaluation_run'",
+            db_path=path,
+        )
+
+    def test_save_empty_still_emits_heartbeat(self, isolated_db):
+        """발화 0건인 날에도 heartbeat 1행 — emit 을 empty 분기 뒤로 되돌리면 FAIL."""
+        from nuri.collectors.technical import TechnicalCollector
+
+        c = TechnicalCollector()
+        assert c.save(pd.DataFrame()) == 0
+        rows = self._heartbeats(isolated_db)
+        assert len(rows) == 1
+        assert rows[0]["record_count"] == 0
+
+    def test_save_rows_emits_heartbeat_with_fired_count(self, isolated_db):
+        """발화 N건 → heartbeat record_count=N."""
+        from nuri.collectors.technical import TechnicalCollector
+
+        row = {
+            "ticker": "AAA",
+            "date": "2024-01-31",
+            "rsi_14": 50.0,
+            "macd": 0.1,
+            "macd_signal": 0.1,
+            "macd_hist": 0.0,
+            "bb_upper": 101.0,
+            "bb_middle": 100.0,
+            "bb_lower": 99.0,
+            "sma_20": 100.0,
+            "sma_50": 100.0,
+            "sma_200": None,
+            "ema_12": 100.0,
+            "ema_26": 100.0,
+        }
+        c = TechnicalCollector()
+        assert c.save(pd.DataFrame([row])) == 1
+        rows = self._heartbeats(isolated_db)
+        assert len(rows) == 1
+        assert rows[0]["record_count"] == 1
+
+    def test_event_type_registered(self):
+        """EVENT_TYPES whitelist 등록 lock — 제거 시 관측성 계약 위반."""
+        from nuri.core.events import EVENT_TYPES
+
+        assert "signal_evaluation_run" in EVENT_TYPES
 
 
 class TestTechnicalExpectedCountGuard:
