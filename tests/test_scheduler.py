@@ -209,6 +209,22 @@ class TestScheduler:
             _run_backup()
         mock_run.assert_called_once()
 
+    def test_backup_script_path_exists(self):
+        """Gotcha-Test Pair (#836): scheduler 가 참조하는 백업 스크립트 경로 실존 lock.
+
+        #557 리팩터가 scripts/backup.sh → scripts/db/backup.sh 로 옮기면서
+        scheduler 호출 경로가 2개월간 silent 404 (rc=127, logger.error 만) —
+        mock-only 테스트 (위 test_run_backup) 로는 경로 drift 를 못 잡는다.
+        스크립트를 다시 옮기면 본 테스트가 즉시 FAIL.
+        """
+        from pathlib import Path
+
+        from nuri.scheduler import BACKUP_SCRIPT
+
+        repo_root = Path(__file__).resolve().parents[1]
+        script = repo_root / BACKUP_SCRIPT
+        assert script.is_file(), f"백업 스크립트 경로 drift: {script} 없음 (#836)"
+
     def test_run_backup_exception(self):
         """_run_backup catches exceptions."""
         from nuri.scheduler import _run_backup
