@@ -28,7 +28,7 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 
 # ─── 1. Drift check ─────────────────────────────────
 echo -e "${YELLOW}━━━ 1. Drift Check ━━━${NC}"
-if $PYTHON scripts/check_drift.py --strict; then
+if $PYTHON scripts/verify/check_drift.py --strict; then
     echo -e "${GREEN}✓ No drift risk${NC}\n"
 else
     echo -e "${RED}✗ Drift risk detected — see analysis above${NC}"
@@ -101,7 +101,7 @@ fi
 
 # ─── 4. Privacy leak scan (#138) ─────────────────────────────────
 echo -e "${YELLOW}━━━ 4. Privacy Leak Scan (files) ━━━${NC}"
-if $PYTHON scripts/check_privacy_leak.py --quiet; then
+if $PYTHON scripts/verify/check_privacy_leak.py --quiet; then
     echo -e "${GREEN}✓ No personal financial data leaks in tracked files${NC}\n"
 else
     echo -e "${RED}✗ Personal financial data leak detected — see above${NC}"
@@ -111,7 +111,7 @@ fi
 
 # ─── 4b. Unpushed commit messages (ticker+PnL, PR #202 class) ──────
 echo -e "${YELLOW}━━━ 4b. Commit Message Privacy Scan ━━━${NC}"
-if $PYTHON scripts/check_privacy_leak.py --unpushed-commits --quiet; then
+if $PYTHON scripts/verify/check_privacy_leak.py --unpushed-commits --quiet; then
     echo -e "${GREEN}✓ No ticker+PnL leaks in unpushed commit messages${NC}\n"
 else
     echo -e "${RED}✗ Ticker + PnL disclosure detected in a commit message${NC}"

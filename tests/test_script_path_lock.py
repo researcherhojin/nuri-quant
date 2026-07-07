@@ -1,11 +1,12 @@
-"""스크립트 경로 drift 클래스 킬러 (#846, Gotcha-Test Pair).
+"""스크립트 경로 drift 클래스 킬러 (#846/#852, Gotcha-Test Pair).
 
-#557 scripts/ 7-subdir 리팩터가 만든 silent 고장 3건 중 2건이 실증됨:
+#557 scripts/ 7-subdir 리팩터가 만든 silent 고장 — 실증 3건:
 - scheduler backup (scripts/backup.sh → db/) — 2개월 무백업 (#836)
 - discord /health (scripts/health_check.sh → ops/) — rc=127 (#846)
+- pre_push_check.sh 의 flat 경로 호출 — 로컬 pre-push 게이트 일부 무력화 (#852)
 
-개별 상수 lock 대신, nuri/ 소스의 "scripts/…" 리터럴을 전수 수집해 실존을
-검증한다 — 다음 리팩터가 어떤 스크립트를 옮겨도 이 테스트가 즉시 FAIL.
+개별 상수 lock 대신, nuri/ 전체 .py + scripts/ 전체 .sh 의 "scripts/…" 리터럴을
+전수 수집해 실존을 검증한다 — 다음 리팩터가 어떤 스크립트를 옮겨도 즉시 FAIL.
 mock-only 테스트 (subprocess patch) 로는 경로 drift 를 못 잡는다 (§5.3).
 """
 
@@ -19,12 +20,13 @@ _SCRIPT_LITERAL = re.compile(r"""["'](scripts/[A-Za-z0-9_\-./]+\.(?:sh|py))["']"
 
 
 def _collect_script_literals() -> list[tuple[str, str]]:
-    """(참조 위치, 스크립트 경로) 목록 — nuri/ 전체 .py 스캔."""
+    """(참조 위치, 스크립트 경로) 목록 — nuri/ .py + scripts/ .sh 스캔 (#852 확장)."""
     found: list[tuple[str, str]] = []
-    for py in sorted((REPO_ROOT / "nuri").rglob("*.py")):
-        text = py.read_text(encoding="utf-8")
+    sources = sorted((REPO_ROOT / "nuri").rglob("*.py")) + sorted((REPO_ROOT / "scripts").rglob("*.sh"))
+    for src in sources:
+        text = src.read_text(encoding="utf-8")
         for m in _SCRIPT_LITERAL.finditer(text):
-            found.append((str(py.relative_to(REPO_ROOT)), m.group(1)))
+            found.append((str(src.relative_to(REPO_ROOT)), m.group(1)))
     return found
 
 
