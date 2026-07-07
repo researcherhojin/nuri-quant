@@ -226,7 +226,8 @@ measurement_mode:
   permutation_n: 1000            # null 표본 수
   robustness_split: median_split_halves  # median decision date 등분 — 반기 n 균형 (VIX 게이트 accrual 비대칭 대비)
   missing_outcome_max_pct: 15    # 추적 결측 비율 상한 — 초과 시 판정 무효 (결측 편향)
-  sleeve_max_equity_pct:         # account_strategy 별 실험 슬리브 상한 (us_equity+kr_equity 합산 대비 %, 사용자 확정 필요)
+  sleeve_max_equity_pct:         # account_strategy 별 실험 슬리브 상한 (us_equity+kr_equity 합산 대비 %)
+                                 # 확정 2026-07-08 (#848) — 이후 상향은 판정 통과 + STRATEGY PR (lock test 동시 개정)
     core: 10
     active: 20
     swing: 100                   # swing 프로파일 계좌 = 실험 전용 슬리브
