@@ -52,11 +52,20 @@ STALE_THRESHOLD_MIN = 30.0
 SCHEDULER_LABEL = "com.nuri-quant.scheduler"
 
 # 표출 계층 포트 감시 대상 (#826) — launchd 에 로드된 머신(production)에서만 검사.
-# KeepAlive 는 크래시만 복구; 살아있되 hung/포트 미바인딩 상태는 kickstart -k 로 회수.
+# api/dashboard 는 KeepAlive=true → launchd 가 크래시 자동복구. watchdog 은 kickstart
+# 하지 않고 알림만 한다 (#857): kickstart -k 는 부팅 중 정상 프로세스까지 죽였고
+# (2026-07-08 02:39 오탐), crash-loop 는 kickstart 로도 해결 안 되며, uvicorn/next 에
+# 실질적 hung(포트 미바인딩 좀비)은 발생하지 않는다. scheduler 는 heartbeat 경로라
+# fd 누수 hung 대비 kickstart 유지(별도).
 SERVICE_PORTS: dict[str, int] = {
     "com.nuri-quant.api": int(os.getenv("API_PORT", "8001")),
     "com.nuri-quant.dashboard": int(os.getenv("FRONTEND_PORT", "3000")),
 }
+
+# 포트 down 판정 전 재확인 간격 (초) — 부팅/일시 미바인딩 흡수 (#857).
+# 최초 launchd 설치 직후 uvicorn 부팅(SPY freshness 체크 등)이 수십초 걸려
+# 단발 체크가 DOWN 오판하던 문제. 15분 주기 watchdog 에 재확인 sleep 은 무해.
+SERVICE_RECHECK_DELAY_S = 15.0
 
 
 def _kickstart(label: str) -> bool:
@@ -113,22 +122,35 @@ def _port_open(port: int, timeout_s: float = 3.0) -> bool:
         return False
 
 
-def check_services() -> list[str]:
-    """로드돼 있는데 포트가 닫힌 표출 서비스 → kickstart + 알림 라인 반환 (#826).
+def check_services(recheck_delay_s: float = SERVICE_RECHECK_DELAY_S) -> list[str]:
+    """로드된 표출 서비스의 포트가 재확인에도 닫혀 있으면 알림 라인 반환 (#826/#857).
 
     heartbeat 감시와 동일 철학: launchctl + socket 만 사용 (DB 무의존).
     launchd 미설치 머신(dev MBP)은 label 미로드로 자동 skip — 환경 분기 불필요.
+
+    KeepAlive 서비스이므로 kickstart 하지 않는다 (launchd 가 크래시 복구 담당).
+    부팅/일시 미바인딩 오탐 방지 위해 `recheck_delay_s` 후 재확인 — 그 사이 포트가
+    열리면(부팅 중이었음) 알림 없음. 재확인에도 닫혀 있으면 launchd 도 못 살리는
+    상태(crash-loop 등)이므로 수동 확인을 안내한다.
     """
+    down = [(label, port) for label, port in SERVICE_PORTS.items() if _label_loaded(label) and not _port_open(port)]
+    if not down:
+        return []
+
+    # 부팅/일시 미바인딩 흡수 — 재확인 전 대기 (테스트는 0 주입).
+    if recheck_delay_s > 0:
+        time.sleep(recheck_delay_s)
+
     problems: list[str] = []
-    for label, port in SERVICE_PORTS.items():
-        if not _label_loaded(label):
-            continue
+    for label, port in down:
         if _port_open(port):
-            continue
-        restarted = _kickstart(label)
+            continue  # 재확인 시 복구 = 부팅 중이었음 (오탐 아님)
         short = label.removeprefix("com.nuri-quant.")
-        note = "🔄 자동 재시작 시도 완료 — 포트 곧 복구." if restarted else "⚠️ 자동 재시작 실패 — 수동 확인 필요."
-        problems.append(f"🔴 **{short} DOWN** — 127.0.0.1:{port} 응답 없음 (launchd 로드 상태). {note}")
+        problems.append(
+            f"🔴 **{short} DOWN** — 127.0.0.1:{port} {recheck_delay_s:.0f}s 재확인에도 무응답 "
+            f"(launchd 로드 상태, KeepAlive 자동복구 실패 의심). "
+            f"수동 확인: `launchctl kickstart -k gui/$(id -u)/{label}`"
+        )
     return problems
 
 

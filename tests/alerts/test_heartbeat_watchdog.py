@@ -129,25 +129,52 @@ class TestMain:
 
 
 class TestServiceCheck:
-    """#826 표출 계층 포트 감시 — 로드+포트닫힘 → kickstart+알림, 미설치 → skip.
+    """#826/#857 표출 계층 포트 감시 — 재확인 후에도 닫히면 알림만 (kickstart X).
 
-    Gotcha-Test Pair: 2026-07-07 실측 — mini 의 API/dashboard 가 launchd 밖에서
-    (`make start` nohup) 돌다 죽은 채 기간 불명 방치. KeepAlive 만으로는 hung/
-    미바인딩 상태 복구 불가 → 포트 감시 계약을 고정.
+    Gotcha-Test Pair: 2026-07-08 02:39 오탐 — launchd api 최초 설치 직후 부팅 중
+    포트 미개방을 DOWN 오판하고 KeepAlive 서비스에 kickstart -k → 부팅 중 정상
+    프로세스 kill + 30s timeout. 계약 고정: (1) 재확인으로 부팅/일시 미바인딩 흡수
+    (2) KeepAlive 서비스는 kickstart 미호출 (launchd 가 크래시 복구 담당).
     """
 
-    def test_loaded_and_port_closed_kickstarts_and_alerts(self, monkeypatch):
+    def test_transient_down_recovers_on_recheck_no_alert(self, monkeypatch):
+        # 첫 체크 down → 재확인 시 open = 부팅 중이었음 → 알림 없음 (오탐 방지 핵심).
+        monkeypatch.setattr(hw, "SERVICE_PORTS", {"com.nuri-quant.api": 18001})
+        calls = iter([False, True])  # 1차 closed, 재확인 open
+        with (
+            patch.object(hw, "_label_loaded", return_value=True),
+            patch.object(hw, "_port_open", side_effect=lambda *a, **k: next(calls)),
+            patch.object(hw, "_kickstart") as kick,
+        ):
+            problems = hw.check_services(recheck_delay_s=0)
+        assert problems == []
+        kick.assert_not_called()  # KeepAlive 서비스는 절대 kickstart 안 함
+
+    def test_persistent_down_alerts_without_kickstart(self, monkeypatch):
+        # 재확인에도 down → 알림 (kickstart 미호출, 수동 안내).
         monkeypatch.setattr(hw, "SERVICE_PORTS", {"com.nuri-quant.api": 18001})
         with (
             patch.object(hw, "_label_loaded", return_value=True),
             patch.object(hw, "_port_open", return_value=False),
-            patch.object(hw, "_kickstart", return_value=True) as kick,
+            patch.object(hw, "_kickstart") as kick,
         ):
-            problems = hw.check_services()
-        kick.assert_called_once_with("com.nuri-quant.api")
+            problems = hw.check_services(recheck_delay_s=0)
         assert len(problems) == 1
         assert "api DOWN" in problems[0]
-        assert "자동 재시작 시도 완료" in problems[0]
+        assert "KeepAlive 자동복구 실패" in problems[0]
+        assert "launchctl kickstart" in problems[0]  # 수동 안내
+        kick.assert_not_called()
+
+    def test_recheck_delay_sleeps_when_positive(self, monkeypatch):
+        # recheck_delay_s > 0 이면 재확인 전 sleep (부팅 흡수). 기본 15s 경로 커버.
+        monkeypatch.setattr(hw, "SERVICE_PORTS", {"com.nuri-quant.api": 18001})
+        with (
+            patch.object(hw, "_label_loaded", return_value=True),
+            patch.object(hw, "_port_open", return_value=False),
+            patch.object(hw.time, "sleep") as slept,
+        ):
+            hw.check_services(recheck_delay_s=15.0)
+        slept.assert_called_once_with(15.0)
 
     def test_not_loaded_skips_silently(self, monkeypatch):
         # dev 머신 (launchd 미설치) — 검사·재시작 모두 없음.
@@ -156,7 +183,7 @@ class TestServiceCheck:
             patch.object(hw, "_label_loaded", return_value=False),
             patch.object(hw, "_kickstart") as kick,
         ):
-            problems = hw.check_services()
+            problems = hw.check_services(recheck_delay_s=0)
         kick.assert_not_called()
         assert problems == []
 
@@ -167,19 +194,9 @@ class TestServiceCheck:
             patch.object(hw, "_port_open", return_value=True),
             patch.object(hw, "_kickstart") as kick,
         ):
-            problems = hw.check_services()
+            problems = hw.check_services(recheck_delay_s=0)
         kick.assert_not_called()
         assert problems == []
-
-    def test_kickstart_failure_reports_manual_step(self, monkeypatch):
-        monkeypatch.setattr(hw, "SERVICE_PORTS", {"com.nuri-quant.dashboard": 13000})
-        with (
-            patch.object(hw, "_label_loaded", return_value=True),
-            patch.object(hw, "_port_open", return_value=False),
-            patch.object(hw, "_kickstart", return_value=False),
-        ):
-            problems = hw.check_services()
-        assert "자동 재시작 실패" in problems[0]
 
     def test_main_combines_service_alert_with_fresh_heartbeat(self, tmp_path, monkeypatch):
         # heartbeat 정상이어도 서비스 down 이면 rc=2 + 알림 발송.
