@@ -236,12 +236,17 @@ def _run_report():
         logger.error(f"[daily_report] 실행 실패: {e}", exc_info=True)
 
 
+# 백업 스크립트 경로 — #557 scripts/ 7-subdir 리팩터로 이동 (#836 경로 drift 회귀 fix).
+# 상수로 노출해 lock test 가 실존을 검증한다 (mock-only 테스트로는 경로 drift 미탐).
+BACKUP_SCRIPT = "scripts/db/backup.sh"
+
+
 def _run_backup():
     """DB 백업을 안전하게 실행."""
     import subprocess
 
     try:
-        subprocess.run(["bash", "scripts/backup.sh"], check=True)
+        subprocess.run(["bash", BACKUP_SCRIPT], check=True)
     except Exception as e:
         logger.error(f"[backup] 실행 실패: {e}", exc_info=True)
 
