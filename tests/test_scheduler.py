@@ -313,6 +313,30 @@ class TestScheduler_R2:
             assert "func" in s
             assert "cron" in s
 
+    def test_spy_benchmark_wired_to_daily_freshness(self):
+        """Gotcha-Test Pair (#860): §3.11 벤치마크(SPY) 일일 수집 배선 lock.
+
+        stock_us_night/dawn 은 source=portfolio(held)만 → SPY(universe-only 벤치마크)가
+        주간 backfill 에만 의존해 최대 1주 stale → forward_outcome_tracker(매일) alpha
+        부정확 + 레짐 분류 차단. daily freshness job 을 제거/변경하면 즉시 FAIL.
+        """
+        from nuri.collectors.stock import _load_freshness_tickers
+        from nuri.core.rules import RULES
+        from nuri.scheduler import SCHEDULES
+
+        # (a) scheduler 에 매일(요일 2-6) source=freshness 수집 job 이 있어야 함
+        fresh_jobs = [
+            s for s in SCHEDULES if s.get("kwargs", {}).get("source") == "freshness" and s["args"] == ("stock",)
+        ]
+        assert fresh_jobs, "source=freshness daily job 미배선 (#860 회귀)"
+        assert any("* * 2-6" in s["cron"] or "* * 1-5" in s["cron"] for s in fresh_jobs), (
+            "freshness job 이 주중 일일 cron 이 아님"
+        )
+
+        # (b) 측정 모드 벤치마크가 freshness 수집 대상에 실제로 포함되는지
+        benchmark = RULES["measurement_mode"]["benchmark"]
+        assert benchmark in _load_freshness_tickers(), f"{benchmark} 이 freshness 티커에 없음"
+
     def test_run_collector_unknown(self):
         """존재하지 않는 collector → 에러 로그만, 예외 없음."""
         from nuri.scheduler import _run_collector

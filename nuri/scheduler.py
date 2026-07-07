@@ -533,6 +533,18 @@ SCHEDULES = [
         "kwargs": {"days": 365, "source": "all"},
         "cron": "30 5 * * 0",
     },
+    # 측정 모드 벤치마크(SPY) + SIEGE freshness 티커 일일 수집 (#457 도구 배선 — #860 fix).
+    # stock_us_night/dawn 은 source="portfolio"(held) 만 → SPY/TLT/GC=F(universe-only,
+    # 미보유 벤치마크)가 주간 backfill 에만 의존해 최대 1주 stale 이었음. §3.11 alpha 측정
+    # (forward_outcome_tracker, 매일 17:00) + 레짐 분류가 매일 SPY 를 필요로 한다.
+    # KST 화~토 06:10/06:40 — 미국 정규장 마감(서머 05:00 / 표준 06:00) 후 데이터 확정 창.
+    {
+        "name": "stock_us_freshness",
+        "func": _run_collector,
+        "args": ("stock",),
+        "kwargs": {"period": "5d", "source": "freshness"},
+        "cron": "10,40 6 * * 2-6",
+    },
     # 일일 자가 재시작 (#780) — KST 08:40, 모닝 배치(07-08) 종료 후·KR 개장(09:00) 전 idle
     # window. yfinance fd 누수를 fresh 프로세스 교체로 회수 (plist 4096 천장도 결국 고갈).
     {"name": "self_restart", "func": _self_restart, "args": (), "cron": "40 8 * * *"},
