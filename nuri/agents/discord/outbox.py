@@ -490,6 +490,11 @@ _SRE_KIND_META: dict[str, dict[str, str]] = {
         "what": "복수 데이터 소스가 stale — 판단 근거 신뢰도 저하",
         "action": "조치: 해당 collector 수동 실행 / 수집 스케줄 점검",
     },
+    "sre_signal_evaluation_stale": {
+        "label": "🫀 시그널 평가 중단",
+        "what": "시그널 평가 heartbeat 공백 — 발화 0건(정상)과 평가 미실행(고장) 구분 불가 상태",
+        "action": "조치: `python -m nuri.collectors.technical` 수동 실행 / 스케줄러 점검",
+    },
 }
 
 
