@@ -2,8 +2,9 @@
 # Nuri-Quant DB 백업 — 30일 롤링
 set -euo pipefail
 
+# scripts/db/ 로 이동 (#557) 후 repo root 는 두 단계 위 (#836 경로 drift fix)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 BACKUP_DIR="$PROJECT_DIR/data/backups"
 DB_FILE="$PROJECT_DIR/data/portfolio.db"
