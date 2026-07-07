@@ -82,7 +82,7 @@ Configured in `.env` (see `.env.example`):
 - `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET` — KIS Open API live (optional; falls back to `config/kis/kis_devlp.yaml`, gitignored)
 - `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET` — KIS Open API paper (optional)
 ## DB Schema (SQLite, WAL mode)
-51 tables total (44 migrations as of 2026-05-05). Key tables:
+51 tables total (45 migrations as of 2026-07-08). Key tables:
 | Table | Purpose |
 |-------|---------|
 | `prices` | OHLCV 5Y daily bars per ticker |

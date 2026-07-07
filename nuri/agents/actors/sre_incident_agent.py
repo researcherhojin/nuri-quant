@@ -5,10 +5,10 @@
 Layer A 설계 (Codex Round 5):
 - 100% rule-based — threshold 비교 (LLM 추론 X)
 - ZERO LLM
-- 6 detector 모두 결정적 (DB query + filesystem stat)
+- 7 detector 모두 결정적 (DB query + filesystem stat)
 - 모든 incident → audit_ledger + incidents 테이블 영구 기록
 
-6 Detector:
+7 Detector:
     1. orphan_run         — agent_run_ledger started + finished_at IS NULL + >1h
                             warning (1h+) / critical (3h+)
     2. disk_full          — shutil.disk_usage() percent_used > 80 (warn) / > 90 (crit)
@@ -19,6 +19,8 @@ Layer A 설계 (Codex Round 5):
                             3회 (warn) / 5회 (crit)
     6. data_freshness_critical — check_all_freshness() FAIL 개수:
                             ≥1 (warn) / ≥3 (crit)
+    7. signal_evaluation_stale — pipeline_events 'signal_evaluation_run'
+                            heartbeat 공백 영업일 (#825): ≥2 (warn) / ≥4 (crit)
 
 Idempotent semantics:
 - 동일 (incident_type, target) 의 open incident 는 단일 row → log_incident() 가
@@ -35,6 +37,7 @@ Discord routing:
 from __future__ import annotations
 
 import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +52,7 @@ from nuri.core.db import (
 from nuri.core.db import (
     resolve_incident as db_resolve_incident,
 )
+from nuri.core.timezone import kst_now, to_kst
 
 # ─── 임계값 (config 가능 — 추후 rules.yaml 이관) ──────────
 ORPHAN_WARN_HOURS = 1.0
@@ -61,6 +65,13 @@ FAILURE_STREAK_WARN = 3
 FAILURE_STREAK_CRIT = 5
 FRESHNESS_FAIL_WARN = 1
 FRESHNESS_FAIL_CRIT = 3
+# 시그널 평가 heartbeat 공백 (#825) — 영업일 단위 (KST 화~토, technical cron '0 7 * * 2-6')
+SIGNAL_EVAL_WARN_DAYS = 2
+SIGNAL_EVAL_CRIT_DAYS = 4
+# 당일은 이 시각(KST) 이후부터 미실행으로 계상 — 07:00 cron 전 새벽 scan false positive 방지
+SIGNAL_EVAL_GRACE_HOUR = 12
+# 평가 예정 요일 (Mon=0 기준 화~토 — 미국 거래일 마감 다음 날 아침 KST)
+SIGNAL_EVAL_WEEKDAYS = (1, 2, 3, 4, 5)
 
 HEARTBEAT_PATH = Path(__file__).resolve().parents[3] / "data" / ".scheduler_heartbeat"
 
@@ -70,7 +81,7 @@ class SREIncidentAgent(Actor):
     """Operational incident detection + lifecycle management — Layer A.
 
     Actions (input_data['action']):
-        scan        — 6 detector 모두 실행 → log_incident + Discord publish.
+        scan        — 7 detector 모두 실행 → log_incident + Discord publish.
         acknowledge — incident_id 사용자 확인 (audit-only).
         resolve     — incident_id 종료 (status='resolved').
         list_open   — open incident 목록 (severity 필터 optional).
@@ -110,7 +121,7 @@ class SREIncidentAgent(Actor):
     # ─── scan ────────────────────────────────────────────────
 
     def _scan(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult:
-        """6 detector 실행 → 발견된 incident 목록 반환."""
+        """7 detector 실행 → 발견된 incident 목록 반환."""
         detected: list[dict[str, Any]] = []
 
         for detector in (
@@ -120,6 +131,7 @@ class SREIncidentAgent(Actor):
             self._detect_scheduler_heartbeat,
             self._detect_actor_failure_streak,
             self._detect_data_freshness_critical,
+            self._detect_signal_evaluation_stale,
         ):
             try:
                 detected.extend(detector(ctx))
@@ -331,6 +343,43 @@ class SREIncidentAgent(Actor):
             )
         ]
 
+    def _detect_signal_evaluation_stale(self, ctx: RunContext) -> list[dict[str, Any]]:
+        """pipeline_events 'signal_evaluation_run' heartbeat 공백 검사 (#825).
+
+        signals 테이블은 발화(계산) 행만 저장 → 무기록이 '조건 미충족(정상)'인지
+        '평가 미실행(고장)'인지 구분 불가 (#734 silent outage 계열). technical
+        collector 가 평가마다 heartbeat 1행 (fired_count=0 포함) 을 남기고,
+        여기서 공백 영업일(KST 화~토) 수를 센다.
+
+        heartbeat 행이 전무하면 skip (미배포/신규 DB — scheduler_heartbeat 와 동일).
+        """
+        rows = query(
+            """SELECT MAX(timestamp) AS last_run FROM pipeline_events
+               WHERE event_type = 'signal_evaluation_run'"""
+        )
+        last_run = rows[0]["last_run"] if rows else None
+        if not last_run:
+            return []
+        missed = _missed_eval_days(str(last_run), kst_now())
+        if missed < SIGNAL_EVAL_WARN_DAYS:
+            return []
+        severity = "critical" if missed >= SIGNAL_EVAL_CRIT_DAYS else "warning"
+        evidence = {
+            "last_evaluated_at_utc": str(last_run),
+            "missed_eval_days": missed,
+            "warn_threshold_days": SIGNAL_EVAL_WARN_DAYS,
+            "critical_threshold_days": SIGNAL_EVAL_CRIT_DAYS,
+        }
+        return [
+            self._record_incident(
+                incident_type="signal_evaluation_stale",
+                severity=severity,
+                target="signals",
+                evidence=evidence,
+                ctx=ctx,
+            )
+        ]
+
     # ─── helpers ─────────────────────────────────────────────
 
     def _record_incident(
@@ -494,6 +543,32 @@ class SREIncidentAgent(Actor):
             pass
 
 
+def _missed_eval_days(last_run_utc: str, now: datetime) -> int:
+    """마지막 heartbeat 이후 놓친 평가 예정일(KST 화~토) 수 (#825).
+
+    pipeline_events.timestamp 는 sqlite DEFAULT datetime('now') = **UTC** —
+    KST 변환 없이 날짜를 자르면 07:00 KST 실행분이 전날로 밀려 1일 과대 계상
+    (07:00 KST = 전날 22:00 UTC).
+    **Test:** tests/agents/test_sre_incident_agent.py::TestMissedEvalDays
+    ::test_utc_timestamp_converted_to_kst — to_kst 변환을 제거하면 FAIL.
+
+    당일은 SIGNAL_EVAL_GRACE_HOUR(KST) 이후에만 미실행으로 계상 —
+    07:00 cron 이 아직 안 돈 새벽 scan 의 false positive 방지.
+    """
+    last_utc = datetime.strptime(last_run_utc[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+    last_date = to_kst(last_utc).date()  # to_kst 는 naive 를 UTC 로 간주
+    today = now.date()
+    missed = 0
+    day = last_date + timedelta(days=1)
+    while day <= today:
+        if day == today and now.hour < SIGNAL_EVAL_GRACE_HOUR:
+            break
+        if day.weekday() in SIGNAL_EVAL_WEEKDAYS:
+            missed += 1
+        day += timedelta(days=1)
+    return missed
+
+
 def _human_incident_summary(incident_type: str, target: str, evidence: dict[str, Any]) -> str:
     """인시던트 영향을 담은 사람이 읽는 한 줄 (evidence 수치 활용).
 
@@ -515,6 +590,11 @@ def _human_incident_summary(incident_type: str, target: str, evidence: dict[str,
     if incident_type == "data_freshness_critical":
         keys = ", ".join((e.get("fail_keys") or [])[:3])
         return f"데이터 소스 {e.get('fail_count', 0)}개 stale: {keys}"
+    if incident_type == "signal_evaluation_stale":
+        return (
+            f"{target} — {e.get('missed_eval_days', 0)}영업일째 시그널 평가 미실행 "
+            f"(마지막 {e.get('last_evaluated_at_utc', '?')} UTC)"
+        )
     return f"{incident_type} on {target}"
 
 

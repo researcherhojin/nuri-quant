@@ -1394,4 +1394,40 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_postmortem_vix ON market_postmortem(vix, session);
     """,
     ),
+    (
+        45,
+        "incidents incident_type enum 확장 — signal_evaluation_stale (#825)",
+        # signals 테이블은 발화 행만 저장 → 평가 heartbeat (pipeline_events
+        # 'signal_evaluation_run') 공백이 N영업일 이상이면 SRE incident 로 surface.
+        # SQLite 는 CHECK 제약 변경 미지원 → 신 테이블 + INSERT SELECT + DROP +
+        # RENAME 패턴 (migration 42 와 동일). 기존 row 100% 보존.
+        """
+        CREATE TABLE incidents_new (
+            incident_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_type TEXT NOT NULL CHECK(incident_type IN (
+                'orphan_run','disk_full','db_lock','scheduler_heartbeat',
+                'actor_failure_streak','data_freshness_critical','signal_evaluation_stale'
+            )),
+            severity TEXT NOT NULL CHECK(severity IN ('critical','warning','info')),
+            target TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('open','acknowledged','resolved')),
+            first_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT,
+            evidence_json TEXT NOT NULL,
+            run_id TEXT,
+            UNIQUE(incident_type, target, status)
+        );
+        INSERT INTO incidents_new
+            (incident_id, incident_type, severity, target, status,
+             first_detected_at, last_detected_at, resolved_at, evidence_json, run_id)
+            SELECT incident_id, incident_type, severity, target, status,
+                   first_detected_at, last_detected_at, resolved_at, evidence_json, run_id
+              FROM incidents;
+        DROP TABLE incidents;
+        ALTER TABLE incidents_new RENAME TO incidents;
+        CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status, severity);
+        CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
+    """,
+    ),
 ]

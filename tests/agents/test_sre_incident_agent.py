@@ -3,8 +3,8 @@
 검증 (Codex Round 5 Layer A):
 - Layer A enforcement (outcome 필수, ZERO LLM)
 - 4 actions: scan / acknowledge / resolve / list_open
-- 6 detector 각각 (orphan_run / disk_full / db_lock / scheduler_heartbeat /
-  actor_failure_streak / data_freshness_critical)
+- 7 detector 각각 (orphan_run / disk_full / db_lock / scheduler_heartbeat /
+  actor_failure_streak / data_freshness_critical / signal_evaluation_stale)
 - Idempotent UNIQUE(incident_type,target,status='open') — 재detection 시 신규 row X
 - resolve 후 재발 시 신규 incident_id (status 가 UNIQUE 의 일부)
 - Discord publish — critical=INCIDENTS, warning=OPS, 재detection 시 publish 차단
@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,8 +30,11 @@ from nuri.agents.actors.sre_incident_agent import (
     FRESHNESS_FAIL_WARN,
     ORPHAN_CRIT_HOURS,
     ORPHAN_WARN_HOURS,
+    SIGNAL_EVAL_CRIT_DAYS,
+    SIGNAL_EVAL_WARN_DAYS,
     SREIncidentAgent,
     _human_incident_summary,
+    _missed_eval_days,
     main,
 )
 from nuri.agents.base import Layer, Outcome
@@ -43,6 +47,7 @@ from nuri.core.db import (
     resolve_incident,
     start_agent_run,
 )
+from nuri.core.timezone import KST
 
 # ═══════════════════════════════════════════════════════
 # Fixtures
@@ -496,6 +501,101 @@ class TestDataFreshnessCriticalDetector:
         assert len(fr) == 1
         assert fr[0]["severity"] == "critical"
         assert fr[0]["evidence"]["fail_count"] >= FRESHNESS_FAIL_CRIT
+
+
+# ═══════════════════════════════════════════════════════
+# Detector: signal_evaluation_stale (#825)
+# ═══════════════════════════════════════════════════════
+
+# 고정 now (KST 2026-07-08 수요일 13:00, grace hour 이후) — kst_now 를 patch 하므로
+# wall-clock 무관 (time-bomb seed 아님, tests/CLAUDE.md 참고). seed timestamp 는
+# pipeline_events.timestamp 컨벤션(UTC, DEFAULT datetime('now')) 그대로 사용.
+_EVAL_FIXED_NOW = datetime(2026, 7, 8, 13, 0, tzinfo=KST)  # 수요일
+
+
+def _seed_signal_eval(db_path, ts_utc: str):
+    """pipeline_events 에 signal_evaluation_run heartbeat 1행 삽입 (timestamp 명시)."""
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO pipeline_events (event_type, timestamp, record_count) VALUES ('signal_evaluation_run', ?, 0)",
+            (ts_utc,),
+        )
+
+
+class TestSignalEvaluationStaleDetector:
+    """#825 Gotcha-Test Pair — 'N영업일째 평가 미실행' 시나리오.
+
+    heartbeat (signal_evaluation_run) 공백 영업일(KST 화~토) ≥ 2 → warning,
+    ≥ 4 → critical. heartbeat 전무 → skip (미배포/신규 DB).
+    """
+
+    def _scan_stale(self, now=_EVAL_FIXED_NOW):
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=now),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+        ):
+            result = actor.run({"action": "scan"})
+        return [i for i in result.output["incidents"] if i["incident_type"] == "signal_evaluation_stale"]
+
+    def test_no_alert_when_no_heartbeat_rows(self, patched_db, no_publish):
+        """heartbeat 행 전무 → skip (미배포/신규 DB false positive 방지)."""
+        assert self._scan_stale() == []
+
+    def test_no_alert_when_evaluated_today(self, patched_db, no_publish):
+        """당일 07:00 KST 평가 (= UTC 전날 22:00) → 공백 0 → alert 없음."""
+        _seed_signal_eval(patched_db, "2026-07-07 22:00:00")
+        assert self._scan_stale() == []
+
+    def test_warning_at_2_missed_eval_days(self, patched_db, no_publish):
+        """마지막 평가 토 07:00 KST → 화+수 2영업일 미실행 → warning (주말 미계상)."""
+        _seed_signal_eval(patched_db, "2026-07-03 22:00:00")  # 토 2026-07-04 07:00 KST
+        out = self._scan_stale()
+        assert len(out) == 1
+        assert out[0]["severity"] == "warning"
+        assert out[0]["target"] == "signals"
+        # UTC→KST 변환 lock: KST 오독 시 토요일까지 계상돼 3이 된다.
+        assert out[0]["evidence"]["missed_eval_days"] == SIGNAL_EVAL_WARN_DAYS
+
+    def test_critical_at_4plus_missed_eval_days(self, patched_db, no_publish):
+        """마지막 평가 수 07:00 KST (1주 전) → 목금토화수 5영업일 미실행 → critical."""
+        _seed_signal_eval(patched_db, "2026-06-30 22:00:00")  # 수 2026-07-01 07:00 KST
+        out = self._scan_stale()
+        assert len(out) == 1
+        assert out[0]["severity"] == "critical"
+        assert out[0]["evidence"]["missed_eval_days"] >= SIGNAL_EVAL_CRIT_DAYS
+
+    def test_latest_heartbeat_wins(self, patched_db, no_publish):
+        """오래된 heartbeat 가 있어도 최신 행 기준으로 판정."""
+        _seed_signal_eval(patched_db, "2026-06-30 22:00:00")
+        _seed_signal_eval(patched_db, "2026-07-07 22:00:00")
+        assert self._scan_stale() == []
+
+
+class TestMissedEvalDays:
+    """_missed_eval_days 헬퍼 단위 검증 (pure function)."""
+
+    def test_utc_timestamp_converted_to_kst(self):
+        """UTC 전날 22:00 = 당일 07:00 KST → 공백 0. to_kst 변환 제거 시 1로 FAIL."""
+        assert _missed_eval_days("2026-07-07 22:00:00", _EVAL_FIXED_NOW) == 0
+
+    def test_grace_hour_excludes_today_before_noon(self):
+        """오전 scan 은 당일을 미계상 — 07:00 cron 전 false positive 방지."""
+        morning = datetime(2026, 7, 8, 9, 0, tzinfo=KST)  # 수 09:00 < grace 12:00
+        assert _missed_eval_days("2026-07-03 22:00:00", morning) == 1  # 화요일만
+
+    def test_weekend_not_counted(self):
+        """일·월요일(평가 예정일 아님)은 공백으로 계상하지 않는다."""
+        monday = datetime(2026, 7, 6, 15, 0, tzinfo=KST)  # 월 15:00
+        assert _missed_eval_days("2026-07-03 22:00:00", monday) == 0
+
+    def test_weekday_streak_counted(self):
+        """평일 연속 공백은 하루 1씩 계상."""
+        assert _missed_eval_days("2026-06-30 22:00:00", _EVAL_FIXED_NOW) == 5
 
 
 # ═══════════════════════════════════════════════════════

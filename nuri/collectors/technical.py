@@ -19,6 +19,7 @@ import talib
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import query_df, upsert_signals
+from nuri.core.events import emit_event
 
 
 class TechnicalCollector(BaseCollector):
@@ -112,10 +113,16 @@ class TechnicalCollector(BaseCollector):
         }
 
     def save(self, data: pd.DataFrame) -> int:
-        """기술적 지표를 DB에 저장."""
-        if data.empty:
-            return 0
-        return upsert_signals(data)
+        """기술적 지표를 DB에 저장 + 평가 heartbeat 1행 기록 (#825).
+
+        발화(계산) 0건이어도 heartbeat 는 남긴다 — signals 무기록이
+        '조건 미충족(정상)'인지 '평가 미실행(고장)'인지 pipeline_events 로 구분.
+        **Test:** tests/collectors/test_technical.py::TestSignalEvaluationHeartbeat
+        ::test_save_empty_still_emits_heartbeat — emit 을 empty 분기 안으로 되돌리면 FAIL.
+        """
+        fired_count = 0 if data.empty else upsert_signals(data)
+        emit_event("signal_evaluation_run", record_count=fired_count)
+        return fired_count
 
 
 if __name__ == "__main__":
