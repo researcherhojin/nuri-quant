@@ -239,7 +239,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 | regime 축 | 내부 10-regime 분류는 진단 Surface 전용, 판정 비사용 — 원장 라벨 커버리지 3% (12/383, #828 코멘트 쿼리), 2026-04 이후 transition 1회 (판정 교착 위험), 자기 분류기 순환성 | 실측 2026-07-07 (production 원장) |
 | 오염 방지 | `decision_id` 없는 ad-hoc 체결은 표본 제외 (#715 사전등록 원칙의 자본 버전). missing outcome (추적 실패/가격 결측) 은 제외하되 비율을 판정 리포트에 공시 — **15% 초과 시 판정 무효 (측정 연장)** | Shefrin & Statman (1985) — ad-hoc 개입이 처분효과 재유입 경로. 결측 편향 (탈락은 나쁜 outcome 과 상관 가능) |
 **판정 결과 처리**: 3조건 통과 → **US 집행분 슬리브에 한해** 상한 상향 STRATEGY PR (새 상한도 본 표 개정으로 사전 고정). 미달 → 슬리브 유지/축소 + 측정 연장 또는 §3.10 passive 로 수렴 — "조금만 더" 없이 본 표가 답이다. 사전등록 대상은 판정 **기준**이지 상한 초기값이 아니다 — 슬리브 초기값은 판정 표본에 영향이 없으므로 최초 사용자 확정 PR 까지 placeholder 로 두며 일반 PR 로 정정 가능. 확정 이후부터 상향-sticky 발효.
-**미구축 (판정 전 선결, follow-up issue)**: ① regime 라벨 백필 (진단용) ② 순열 판정 도구 — #842 구현 완료 (`nuri/quant/validation/decision_alpha.py`, 설계는 본 표에 사전 고정; 기존 `nuri/quant/validation/` 3종은 포트폴리오 Sharpe 전용) ③ 3조건 통합 판정 쿼리 (`/api/alpha` 는 착륙 전 NOT_MEASURABLE 유지) ④ KR benchmark 분리 ⑤ 슬리브 상한 소비 배선 (rebalance_advisor / ExecutionFirewall) ⑥ 원장 스냅샷/백업 정책.
+**미구축 (판정 전 선결, follow-up issue)**: ① regime 라벨 백필 — #832 구현 완료 (`scripts/ops/backfill_regime_labels.py` + emit 경로 canonical-or-NULL, 진단용) ② 순열 판정 도구 — #842 구현 완료 (`nuri/quant/validation/decision_alpha.py`, 설계는 본 표에 사전 고정; 기존 `nuri/quant/validation/` 3종은 포트폴리오 Sharpe 전용) ③ 3조건 통합 판정 쿼리 (`/api/alpha` 는 착륙 전 NOT_MEASURABLE 유지) ④ KR benchmark 분리 (#833) ⑤ 슬리브 상한 소비 배선 (rebalance_advisor / ExecutionFirewall, #834) ⑥ 원장 스냅샷/백업 정책 (#835). 월간 알파 진행 리포트 표출 = #856.
 **참조**: `config/rules.yaml measurement_mode` (canonical 값), `nuri/agents/actors/forward_outcome_tracker.py` (측정 파이프라인, 매일 17:00 KST), `docs/SOURCE_OF_TRUTH.md` (원장 매핑, local-only).
 ## 4. 개발 품질 기준
 PR 전 확인.

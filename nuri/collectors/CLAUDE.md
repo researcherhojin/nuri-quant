@@ -77,7 +77,7 @@ ThreadPoolExecutor caveat: `.result(timeout=)` cancels FUTURE only — underlyin
 
 SIEGE freshness gate (`certification.py::_check_freshness_for_class`) reads **`prices` only**. `--source freshness` (#457) feeds SPY/TLT/GC=F into `prices` daily. Two known redundancies:
 
-- **`gold` lives in two tables**: `macro.indicator='gold'` (~5Y backfill, 304 rows as of 2026-07-08 — grows daily) AND `prices."GC=F"` (1mo, ~20 rows after each daily refresh). Same yfinance source, separate writers (`macro.py` vs `stock.py --source freshness`). No current historical consumer of `prices."GC=F"` beyond the gate, so single-source-of-truth not enforced — accept as debt.
-- **TLT shallow history**: `prices.TLT` is 1mo only (freshness pass period). If a future backtest/analysis needs TLT 5Y, add TLT to `universe.yaml` (don't promote freshness gate to dual-source — drift risk per #454 codex consult 2026-04-28).
+- **`gold` lives in two tables**: `macro.indicator='gold'` (~5Y backfill, 304 rows as of 2026-07-08 — grows daily) AND `prices."GC=F"` (`period=5d` freshness pass, accumulates daily via upsert). Same yfinance source, separate writers (`macro.py` vs `stock.py --source freshness`, wired daily as `stock_us_freshness` in `scheduler.py` #860). No current historical consumer of `prices."GC=F"` beyond the gate, so single-source-of-truth not enforced — accept as debt.
+- **TLT shallow history**: `prices.TLT` comes only from the `period=5d` freshness pass. If a future backtest/analysis needs TLT 5Y, add TLT to `universe.yaml` (don't promote freshness gate to dual-source — drift risk per #454 codex consult 2026-04-28).
 
 **Why not dual-source the gate** (option A in #454, rejected): if gate accepts `macro.gold` 37h-fresh while a downstream consumer reads stale `prices."GC=F"`, gate PASS but downstream gets stale data → silent split-brain. Single-source gate = single truth.
