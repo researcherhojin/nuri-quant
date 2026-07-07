@@ -15,7 +15,7 @@ This directory exists for backtesting + paper-trading dry runs only. Live `submi
 ## Invariants
 
 - **Paper-only**. Never point `ALPACA_BASE_URL` at the live endpoint. CI / hooks do not enforce this — it's a discipline rule. If you need live execution for a backtest replay, document the rationale in the calling script.
-- **Order persistence**: `Order` is an in-memory dataclass. If you need durable order history, add a migration to `nuri/core/db.py _MIGRATIONS` (forward-only) — do not write a parallel SQLite from this directory.
+- **Order persistence**: `Order` is an in-memory dataclass. If you need durable order history, add a migration to `_MIGRATIONS` in `nuri/core/db_migrations.py` (forward-only) — do not write a parallel SQLite from this directory.
 - **`kst_now()` only** for `Order.timestamp` (hook-enforced, but worth restating since this module formats timestamps for downstream display).
 
 ## When to expand this directory

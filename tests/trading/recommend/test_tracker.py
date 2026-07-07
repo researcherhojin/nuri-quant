@@ -1323,9 +1323,7 @@ class TestRegimeLabelEmit:
     def _regime_state(regime: str):
         from nuri.quant.regime.classifier import RegimeState
 
-        return RegimeState(
-            date="2026-01-02", trend="bull", volatility="low", regime=regime, confidence=0.8, details={}
-        )
+        return RegimeState(date="2026-01-02", trend="bull", volatility="low", regime=regime, confidence=0.8, details={})
 
     def test_e1_candidate_saves_canonical_regime(self, rich_db):
         """E-1 후보 저장 시 batch classify 라벨이 regime 컬럼에 기록 ("" 회귀 방지)."""

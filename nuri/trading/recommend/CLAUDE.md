@@ -8,8 +8,9 @@ The user-facing output layer: BUY candidates, SELL alerts on holdings, price tar
 
 | File | Purpose | Trigger | Issue |
 |---|---|---|---|
-| `buy_candidate_emitter.py` | Daily 0–5 BUY candidates from factor + momentum + RSI + breakout fusion. Closes the sell-bias gap (7+ sell loops, 0 buy loops). | `make buy-candidates` / scheduler | #507 |
+| `buy_candidate_emitter.py` | Daily 0–5 BUY candidates from factor + momentum + RSI + breakout fusion. Closes the sell-bias gap (7+ sell loops, 0 buy loops). | `python -m nuri.trading.recommend.buy_candidate_emitter` / scheduler premarket brief (`nuri/alerts/premarket_brief.py`) | #507 |
 | `holdings_monitor.py` | Post-entry technical-divergence alert (JKHY-class falling-knife defense). REVIEW CTA, never SELL. | scheduler 07:10 KST | PR #303 follow-up |
+| `held_add.py` | Held-add shadow emitter — add-candidate evaluation on existing holdings (buy_signals.yaml loader). | scheduler 07:15 KST | #518 Phase 2a |
 | `candidates.py` | E-1 signal-based candidate screener (today's signals × historically validated). | `python -m ...candidates` | E-1 |
 | `price_targets.py` | entry / stop / TP1 / TP2 / trailing per holding, pulling from `config/rules.yaml` ladders (growth / value / swing). | upstream of every BUY/SELL alert | core |
 | `rebalance.py` | E-2 regime-adapted MVO/RP rebalance (defensive vs offensive sector tilt by regime). | `python -m ...rebalance` | E-2 |
@@ -40,7 +41,7 @@ The user-facing output layer: BUY candidates, SELL alerts on holdings, price tar
 2. Output format: dataclass list + markdown renderer; the dataclass goes to `recommendations` via `tracker.save()`.
 3. Tests under `tests/trading/recommend/` with `tmp_path` DB isolation (see `tests/CLAUDE.md`).
 4. Discord alert path: route through `nuri/alerts/` — do not write Discord SDK calls here.
-5. Confirm `make buy-candidates` (or equivalent) finishes < 60s on a cold cache; longer means cache the upstream computation.
+5. Confirm `python -m nuri.trading.recommend.buy_candidate_emitter` (or equivalent) finishes < 60s on a cold cache; longer means cache the upstream computation.
 
 ## References
 

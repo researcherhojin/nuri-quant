@@ -23,10 +23,10 @@ All tests run **network-free**. Override per-test if needed, but never remove gl
 
 ## Slow Marker
 
-11 LLM/heavy tests marked `@pytest.mark.slow`. PR CI excludes via `-m "not slow"`.
-- `make test-fast` — excludes slow (~24s)
+24 LLM/heavy tests marked `@pytest.mark.slow` (collected count — marker sites expand via class-level marks / parametrize). PR CI excludes via `-m "not slow"`.
+- `make test-fast` — excludes slow (~98s, M5 Max 2026-07-08)
 - `make test-slow` — slow only
-- `make test` — full suite (~50s)
+- `make test` — full suite (test-fast + slow 24)
 
 ## Gotchas
 

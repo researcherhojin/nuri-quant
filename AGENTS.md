@@ -28,6 +28,9 @@ Nuri-Quant — open-source quant investment platform. Python 3.12, `uv`, SQLite 
 8. **7-phase Flow**: Think → Plan → Build → Review → Test → Ship → Reflect. No phase skipping. Failed gate → regress prior phase. Trivial chores may inline Think+Plan.
 9. **External LLM gateway**: `nuri/llm/openai_client.py` is the ONLY external LLM entry point. Direct `import openai` forbidden. ZDR + audit-log enforced. Policy: `docs/STRATEGY.md §4.4.3`.
 10. **Auto trading deferred (permanent)**: system emits recommendations + alerts only. User executes orders manually. Reverting requires STRATEGY PR + re-approval.
+11. **Measurement mode** (STRATEGY §3.11): the ledger of record for adjudication metrics (`decision_outcomes` etc.) is the production (Mac mini) DB only — dev DB is a read-replica; verdicts/reports cite ledger queries only. Adjudication criteria are pre-registered (2026-07-08, locked — no post-hoc amendment before the evaluation date). Sleeve cap canonical location: `config/rules.yaml measurement_mode.sleeve_max_equity_pct`; raising it requires the pre-registered verdict + STRATEGY PR (lowering/freezing always allowed).
+12. **Escalation Ladder** (STRATEGY §2.6): **Surface** exposes evidence only (no action change) → **Soft penalty** deterministic downgrade/cap (config-tunable) → **Hard veto** action-block on downside (risk-of-ruin) → **Symmetric amplifier** post-veto upside sizing (multi-condition, never single-trigger). Promotion between rungs requires STRATEGY PR + evidence/backtest.
+13. **Gotcha-Test Pair** (STRATEGY §5.3.1): every fix-pattern gotcha (saved defensive code) MUST cite a regression test (`**Test:** path::TestClass::test_name`) that fails if the fix is reverted. Plain facts/quirks need no test — mark as `*(facts, no fix)*`.
 
 ## Code Placement
 

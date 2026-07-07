@@ -1,6 +1,6 @@
 ---
 name: nuri-thesis-batch
-description: Run thesis_query (Issue #508) on multiple tickers in parallel — useful for portfolio-wide review, watchlist analysis, or post-earnings reaction sweep. Each ticker gets its own DB context fetch + LLM synthesis. Output: data/thesis_query/{date}_{ticker}_*.md per ticker. Use when user asks "analyze my watchlist", "thesis on M7", "post-earnings sweep". Do NOT use for single ticker (call `make thesis ticker=X` directly).
+description: Run thesis_query (Issue #508) on multiple tickers in parallel — useful for portfolio-wide review, watchlist analysis, or post-earnings reaction sweep. Each ticker gets its own DB context fetch + LLM synthesis. Output: data/thesis_query/{date}_{ticker}_*.md per ticker. Use when user asks "analyze my watchlist", "thesis on M7", "post-earnings sweep". Do NOT use for single ticker (call `.venv/bin/python -m nuri.llm.thesis_query --ticker X` directly).
 tools: Bash, Read, Glob
 model: inherit
 ---
@@ -12,7 +12,7 @@ model: inherit
 ## 발화 / 미발화
 
 - **발화**: "전체 portfolio 분석" / "M7 sweep" / "post-earnings 분석" / "watchlist 갱신"
-- **미발화 (직접 CLI)**: 단일 ticker → `make thesis ticker=INTC` (overhead 없음). DB 데이터 부재 ticker → context 비어 hallucinate.
+- **미발화 (직접 CLI)**: 단일 ticker → `.venv/bin/python -m nuri.llm.thesis_query --ticker INTC` (overhead 없음). DB 데이터 부재 ticker → context 비어 hallucinate.
 
 ## 운영 절차
 
@@ -25,5 +25,5 @@ model: inherit
 ## Reference
 
 - `nuri/llm/thesis_query.py` — 본체
-- `make thesis ticker=X question="..."` — 단일 ticker CLI
+- `.venv/bin/python -m nuri.llm.thesis_query --ticker X --question "..."` — 단일 ticker CLI
 - `docs/STRATEGY.md §5.10` — frontier alignment

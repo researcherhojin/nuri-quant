@@ -5,7 +5,7 @@ Detailed reference for Nuri-Quant internals. This file is NOT auto-loaded — ag
 README shows the high-level flow. Per-phase orientation table — each row points at the canonical detail section below (or peer doc).
 | # | Phase | Inputs | Outputs | Key modules | Detail |
 |---|-------|--------|---------|-------------|--------|
-| 1 | **Collect** | External APIs (yfinance · OpenBB · pykrx · KIS · FRED · Wikipedia · GoogleNews RSS · FINVIZ · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (26 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
+| 1 | **Collect** | External APIs (yfinance · OpenBB · pykrx · KIS · Toss · FRED · Wikipedia · GoogleNews RSS · FINVIZ · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (27 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
 | 2 | **Analyze** | Phase 1 tables | `signal_results.csv` + `signal_scorecard.csv` + `regime_transitions` + `factors` tables | `nuri/quant/regime/` · `nuri/quant/validation/` · `nuri/quant/factors/` · `nuri/llm/event_classifier.py` | "Signal System" + "Regime Classifier" below |
 | 3 | **Consensus** | Phase 2 outputs + `portfolio` + `macro_events` | `recommendations` table rows with per-agent verdicts + weighted final action | `nuri/trading/agents/` (10 specialists + consensus engine, risk veto) | `nuri/trading/agents/CLAUDE.md` |
 | 4 | **Certify** | Phase 3 recommendations + `config/rules.yaml siege_gates` | `Certificate` → CERTIFIED / REJECTED + evidence trace via `pipeline_events` | `nuri/trading/engine/certification.py` | "SIEGE Engine" below + [CERTIFICATION_SPEC.md](CERTIFICATION_SPEC.md) |
@@ -19,7 +19,7 @@ Key DB access patterns:
 - `query_df(sql, params)` → pandas DataFrame
 - `upsert_*()` functions for each table (prices, portfolio, fundamentals, etc.)
 - `replace_portfolio_account(account, records)` — DELETE+INSERT in one tx for yaml→DB sync
-## Signal System (22 signals, YAML-driven registry)
+## Signal System (20 signals, YAML-driven registry)
 `signal_backtest.py` uses a **detector registry** — Python detector functions separated from metadata (thresholds/classification/hold_days). Metadata externalized to `config/signals.yaml` (`nuri/core/signal_config.py` loads). 4 categories:
 - **Price-based** (10): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
 - **Macro-based** (3): vix_reversal, pcr_reversal, yield_curve_recovery — `merge_macro_data()` required
@@ -58,7 +58,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 ## Dashboard API (Projection-based, <5s)
 `/api/dashboard` reads pre-computed results from DB instead of running analysis inline. Consensus from `recommendations` table (populated by `make consensus`). Response includes `freshness` and `pipeline_status` for data age display.
 ## API (72 endpoints)
-`nuri/api/routes/` — 72 REST endpoints on port **8001** (`@router.get/post/put/delete/patch` decorators counted across 18 route modules; excludes FastAPI's `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`). Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
+`nuri/api/routes/` — 72 REST endpoints on port **8001** (`@router.get/post/put/delete/patch` decorators counted across 21 route modules; excludes FastAPI's `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`). Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
 ### Action-First Dashboard APIs (PR #264-#266)
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
@@ -81,6 +81,7 @@ Configured in `.env` (see `.env.example`):
 - `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — Paper trading (optional; DryRun fallback)
 - `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET` — KIS Open API live (optional; falls back to `config/kis/kis_devlp.yaml`, gitignored)
 - `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET` — KIS Open API paper (optional)
+- `TOSS_API_KEY` / `TOSS_SECRET_KEY` / `TOSS_ACCOUNT_SEQ` — Toss Open API (optional; IP allowlist — dev machines get 403 and gracefully skip)
 ## DB Schema (SQLite, WAL mode)
 51 tables total (45 migrations as of 2026-07-08). Key tables:
 | Table | Purpose |
@@ -135,17 +136,18 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
 - `rules.yaml` — Investment rules. Loaded via `nuri/core/rules.py`.
 - `signals.yaml` — Signal metadata (thresholds, categories, hold_days)
 ## Scripts (`scripts/`)
-- `setup.sh` — `.venv` via `uv`, installs deps
-- `migrate.py` — DB schema creation + migration runner
-- `import_portfolio.py` — Syncs `config/portfolio.yaml` → DB
-- `verify.py` — Master verification orchestrator → `data/reports/YYYY-MM-DD/`
-- `gate_check.py` — Pipeline gate verifier (exits 1 if BLOCKED)
-- `deploy_remote.sh` — rsync dev → Mac Mini production
-- `sync_dev.sh` — dev↔dev state sync (gitignored files + ~/.claude Tier 3)
-- `autopull_receiver.sh` — Mac mini receiver (launchd 5min auto-pull)
-- `backup.sh` — 30-day rolling DB backup
-- `check_privacy_leak.py` — Privacy scanner (broker names, monetary literals)
-- `pre_push_check.sh` — Pre-push gate (drift + lint + tests + privacy + commits)
+Category sub-directories since #557 — full per-script index: `scripts/README.md`.
+- `dev/setup.sh` — `.venv` via `uv`, installs deps
+- `db/migrate.py` — DB schema creation + migration runner (`db/backup.sh` — 30-day rolling DB backup)
+- `ops/import_portfolio.py` — Syncs `config/portfolio.yaml` → DB
+- `verify/verify.py` — Master verification orchestrator → `data/reports/YYYY-MM-DD/`
+- `verify/gate_check.py` — Pipeline gate verifier (exits 1 if BLOCKED)
+- `verify/check_privacy_leak.py` — Privacy scanner (broker names, monetary literals)
+- `verify/pre_push_check.sh` — Pre-push gate (drift + lint + tests + privacy + commits)
+- `deploy/deploy_remote.sh` — rsync dev → Mac Mini production
+- `deploy/sync_dev.sh` — dev↔dev state sync (gitignored files + ~/.claude Tier 3)
+- `deploy/autopull_receiver.sh` — Mac mini receiver (launchd 5min auto-pull)
+- `launchd/` — 9 plists (incl. `com.nuri-quant.api` / `com.nuri-quant.dashboard` KeepAlive #838) + install/uninstall scripts
 ## Data Directory
 data/
 ├── portfolio.db      # Main SQLite DB (WAL mode)
@@ -154,8 +156,12 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-6,173 backend tests across 275 files + 1383 frontend vitest (126 files) + 57 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 100% (2026-05-06)** — full closure verified via CI artifact combine of all 6 shards (4 fast + 2 slow).
+<<<<<<< HEAD
+6,228 backend tests across 275 files + 1383 frontend vitest (126 files) + 57 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 100% (2026-05-06)** — full closure verified via CI artifact combine of all 6 shards (4 fast + 2 slow).
+**Slow marker**: 24 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
+=======
 **Slow marker**: 11 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
+>>>>>>> origin/main
 @pytest.fixture
 def db_path(tmp_path):
     path = tmp_path / "test.db"
@@ -168,20 +174,20 @@ Pass `db_path` to all DB functions. `conftest.py` (autouse) mocks `yfinance.down
 .venv/bin/python -m pytest tests/ --collect-only -q | tail -1   # backend
 find tests -name "test_*.py" -type f | wc -l                     # backend files
 cd frontend && npx vitest run | tail -5                          # frontend
-grep -rhE "^\s*test\(" frontend/e2e/ | wc -l                     # Playwright E2E
+cd frontend && npx playwright test --list | tail -1              # Playwright E2E (loop-generated tests included)
 # Architecture
 ls nuri/collectors/*.py | grep -vE 'base|__init__' | wc -l       # collectors
 ls nuri/trading/agents/*.py | grep -vE 'base|__init__|consensus|config' | wc -l  # agents
 .venv/bin/python -c "from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS; print(len(SIGNAL_DEFINITIONS))"
 .venv/bin/python -c "from nuri.trading.strategy.longshort import REGIME_ALLOCATION; print(len(REGIME_ALLOCATION))"
 grep -rhE "@router\.(get|post|put|delete|patch)" nuri/api/routes/ | wc -l
-grep -c "CREATE TABLE" nuri/core/db/
+make verify-doc-counts   # DB tables — live init_db count (DDL lives in nuri/core/db_migrations.py)
 find frontend/src/app -name "page.tsx" | wc -l
 If counts disagree with docs, **fix the doc** — precise numbers are load-bearing for trust.
 ## CI/CD Pipeline (`main-ci-cd.yml`)
 On push/PR to `main`:
 1. **Lint** — `ruff check nuri/ tests/ scripts/`
-2. **Test** — pytest with xdist parallel (sharded into 2). TA-Lib cached. Deps via `uv sync --frozen`.
+2. **Test** — pytest with xdist parallel (6 shards: 4 fast + 2 slow push-only). TA-Lib cached. Deps via `uv sync --frozen`.
 3. **Frontend** — `tsc --noEmit` + vitest with coverage
 4. **Privacy** — `check_privacy_leak.py` on all files
 5. **Security** — Trivy CRITICAL vulnerability scan
