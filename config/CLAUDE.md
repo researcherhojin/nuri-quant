@@ -13,8 +13,8 @@
 | `alerts.yaml` | 24 | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
 | `stock_types.yaml` | 49 | Manual growth/value ticker override (bypasses auto-classification from PE + sector) | Direct YAML load |
 | `universe.yaml` | 755 | 746 tickers: `us_core` (85) + `us_sp500_extended` (458) + `kr_kospi200` (203). Auto-maintained by `make universe-sync`; manual entries preserved | `nuri/collectors/universe_sync.py` |
-| `portfolio.example.yaml` | 39 | Example template showing account + holdings shape | `scripts/import_portfolio.py` (via `cp` to `portfolio.yaml`) |
-| `portfolio.yaml` | user | Real portfolio — **gitignored** (account labels, holdings, avg price). Shape matches `portfolio.example.yaml` | `scripts/import_portfolio.py` |
+| `portfolio.example.yaml` | 39 | Example template showing account + holdings shape | `scripts/ops/import_portfolio.py` (via `cp` to `portfolio.yaml`) |
+| `portfolio.yaml` | user | Real portfolio — **gitignored** (account labels, holdings, avg price). Shape matches `portfolio.example.yaml` | `scripts/ops/import_portfolio.py` |
 | `kis/` | — | KIS Open API credentials directory — **gitignored** (`kis_devlp.yaml`, token cache). `.gitkeep` only is tracked. Legacy `~/KIS/` also supported for backward compat | `nuri/collectors/kis_*.py` |
 
 ## Change procedure

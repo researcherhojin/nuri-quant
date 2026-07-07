@@ -13,10 +13,10 @@ allowed-tools: Bash(ssh *) Bash(.venv/bin/python *)
 
 ```bash
 # Mac mini (production DB, 60-month 권장)
-ssh $DEV2_HOST 'cd ~/workspace/nuri-quant && .venv/bin/python scripts/siege_predictivity_audit.py --months 60 --save'
+ssh $DEV2_HOST 'cd ~/workspace/nuri-quant && .venv/bin/python scripts/analysis/siege_predictivity_audit.py --months 60 --save'
 
 # MBP (pilot rerun, 36-month)
-.venv/bin/python scripts/siege_predictivity_audit.py --months 36 --save
+.venv/bin/python scripts/analysis/siege_predictivity_audit.py --months 36 --save
 ```
 
 Artifact: `data/reports/YYYY-MM-DD/e4_0b_siege_predictivity.md` (gitignored). 다른 머신/run 과 diverge 시 STRATEGY §3.8 본문 숫자가 reference.
