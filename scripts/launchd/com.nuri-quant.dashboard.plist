@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.nuri-quant.dashboard — Next.js 대시보드 (:3000) launchd 상시 서비스 (#826).
+
+  전제: frontend/.next production build 존재 (`npm run build`) — `npm run start`
+  는 production 서버. 배포 시 build 를 먼저 갱신할 것.
+
+  ⚠️ PATH 에 /opt/homebrew/bin 필수 — production 머신의 node/npm 은 fnm 이
+  아니라 homebrew 설치 (2026-07-07 실측: 비대화형 셸에서 npm not found).
+
+  설치 (production 머신):
+    1) 기존 수동 인스턴스 정리 — 포트 점유 시 KeepAlive crash-loop:
+       lsof -ti :3000 | xargs kill 2>/dev/null
+    2) bash scripts/launchd/install_crons.sh - -only dashboard
+       (USER → $HOME 자동 치환. plist 수정 후엔 mini 에서 재설치 필요 — #778)
+-->
+<dict>
+    <key>Label</key>
+    <string>com.nuri-quant.dashboard</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd /Users/USER/workspace/nuri-quant/frontend &amp;&amp; exec npm run start</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USER/workspace/nuri-quant/frontend</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- crash-loop 완화 — build 부재 등 즉사 케이스에서 재시작 최소 간격 30초 -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/dashboard.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/dashboard.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
