@@ -69,7 +69,7 @@ Dimension 3: Execution Market (실행 시장)
 
 ## 5. certify() 흐름 (Phase 1 — 실제 구현)
 
-`nuri/trading/engine/certification.py:553-601` — `ALL_CERT_CHECKS` def + `certify()` flatten.
+`nuri/trading/engine/certification.py:739` (`ALL_CERT_CHECKS` def) + `:861` (`certify()` flatten).
 
 11 base check 함수: position_limits / sector_limits / stop_loss_compliance / **data_freshness** (per-class list) / leverage_ban / **volatility_gates** (per-class list) / **external_data** (per-class list) / conflicts / drift_safety / macro_event_alignment / rules_loaded.
 
@@ -80,7 +80,7 @@ Dimension 3: Execution Market (실행 시장)
 
 ## 6. 매크로 이벤트 × asset class 매트릭스 (Phase 2 backlog)
 
-현재 `_check_macro_event_alignment` (certification.py:502) 는 `|event_score| ≥ 10` 단순 threshold. asset_class 별 가중치는 미배선 — Phase 2 작업 시 `config/macro_impacts.yaml` 외부화 + per-class 체크 확장.
+현재 `_check_macro_event_alignment` (certification.py:688) 는 `|event_score| ≥ 10` 단순 threshold. asset_class 별 가중치는 미배선 — Phase 2 작업 시 `config/macro_impacts.yaml` 외부화 + per-class 체크 확장.
 
 설계 의도 매트릭스 (이벤트 × class 가중치, ±range):
 
@@ -107,6 +107,6 @@ Dimension 3: Execution Market (실행 시장)
 - `nuri/trading/engine/certification.py`: `_classify_asset_class`, `_group_holdings_by_asset_class`, per-class gate 5/7/8
 - Cross-market spillover (primary + secondary 구조)
 - Legacy fallback (빈 portfolio / 설정 부재)
-- Tests: `TestAssetClassification` (4) + `TestAssetClassGates` (7)
+- Tests: `TestAssetClassification` (4) + `TestAssetClassGates` (10)
 
 Phase 2-5 spec 상세 sketch 가 필요한 시점에 본 문서 확장 OR 별 issue 본문에 작성. 현재 본문은 backlog 만 명시 — 미배선 spec 의 stale risk 차단.

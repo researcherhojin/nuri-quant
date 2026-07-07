@@ -18,7 +18,7 @@ Every BUY / SELL recommendation runs through a 5-phase pipeline — **collect �
 - 🔁 **Self-correcting** — agent weights adjust based on actual prediction accuracy, not hand-tuning.
 - 🛡️ **3-D certification** — gates apply per `Account × Asset Class × Market`. One error-grade fail → REJECTED, no manual override.
 - 🔓 **Open data flow** — phases coupled only via SQLite tables. Re-run any phase, downstream consumers refresh automatically.
-- ✅ **Tested rigorously** — 6,173 backend tests, **100% statement coverage** (CI verified, 2026-05-06).
+- ✅ **Tested rigorously** — 6,210 backend tests, **100% statement coverage** (CI verified, 2026-05-06).
 
 ## Quick Start
 
@@ -99,7 +99,7 @@ Rules live in [`config/rules.yaml`](config/rules.yaml) (loaded via `nuri/core/ru
 |----------|-----------|---------|
 | `core` | -7% | Default — strict O'Neil discipline |
 | `active` | -10% | Cut losses early, trailing-stop arms at +15% |
-| `swing` | -15% | Short-term 5–20d rotations |
+| `swing` | -15% | Short-term rotations (≤ 7 trading days) |
 | `long_term` | -20% | Buy-and-hold ETFs |
 | `pension` | -30% | Long-horizon retirement allocations |
 
@@ -157,7 +157,7 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 
 | Metric | Value |
 |--------|-------|
-| **Backend tests** | 6,173 (271 files) — **100% statement coverage** |
+| **Backend tests** | 6,210 (272 files) — **100% statement coverage** |
 | **Frontend tests** | 1,383 (126 files) |
 | **E2E tests** | 57 (Playwright, 8 specs) |
 | **Pipeline phases** | 5 (collect / analyze / consensus / certify / track) |
