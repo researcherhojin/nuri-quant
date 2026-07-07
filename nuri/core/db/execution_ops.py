@@ -38,6 +38,7 @@ _INCIDENT_TYPES = (
     "scheduler_heartbeat",
     "actor_failure_streak",
     "data_freshness_critical",
+    "signal_evaluation_stale",
 )
 _INCIDENT_SEVERITIES = ("critical", "warning", "info")
 _INCIDENT_STATUSES = ("open", "acknowledged", "resolved")
