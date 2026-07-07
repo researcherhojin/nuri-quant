@@ -980,6 +980,67 @@ class TestSchedulerLogRotation:
                     h.close()
                     logging.getLogger().removeHandler(h)
 
+    def test_console_handler_warning_only_file_gets_info(self, tmp_path, monkeypatch):
+        """Gotcha-Test Pair (#859): console(stderr)=WARNING+, file=INFO.
+
+        basicConfig(INFO) 가 모든 INFO 를 stderr 로 보내 launchd scheduler.err 가
+        로테이션 없이 무한 성장했음(189MB 실측). console 을 WARNING+ 로 되돌리면
+        (또는 file 을 stderr 로 바꾸면) 이 테스트가 FAIL.
+        """
+        import importlib
+        import logging as _logging
+        import logging.handlers
+
+        monkeypatch.setenv("NURI_SCHEDULER_LOG_DIR", str(tmp_path))
+        monkeypatch.delenv("NURI_SCHEDULER_LOG_DISABLE_FILE", raising=False)
+        import nuri.scheduler
+
+        importlib.reload(nuri.scheduler)
+        try:
+            handlers = _logging.getLogger().handlers
+            # console = StreamHandler 이지만 FileHandler(=RotatingFileHandler 부모) 아님
+            console = [h for h in handlers if type(h) is _logging.StreamHandler]
+            assert console, "console(stderr) handler 존재해야"
+            assert all(h.level >= _logging.WARNING for h in console), (
+                "console 은 WARNING+ 만 — INFO stderr 홍수 차단 (#859)"
+            )
+            rotating = [
+                h
+                for h in handlers
+                if isinstance(h, logging.handlers.RotatingFileHandler) and str(tmp_path) in str(h.baseFilename)
+            ]
+            assert rotating and rotating[-1].level == _logging.INFO, "전체 INFO 스트림은 로테이션 파일로"
+        finally:
+            for h in list(_logging.getLogger().handlers):
+                if isinstance(h, logging.handlers.RotatingFileHandler):
+                    h.close()
+                    _logging.getLogger().removeHandler(h)
+
+    def test_reload_preserves_foreign_handlers(self, tmp_path, monkeypatch):
+        """#859 회귀 lock: _configure_logging 재실행이 외부(pytest caplog 등) 핸들러를
+        죽이지 않는다. root.handlers 전체 clear 시 caplog 가 shard 순서로 깨져
+        CI Fast-1 이 실패했음 (test_postmarket_brief caplog 미포착, 2026-07-08).
+        본 함수가 붙인 (_nuri_scheduler 마커) 핸들러만 교체해야 한다.
+        """
+        import importlib
+        import logging as _logging
+
+        monkeypatch.setenv("NURI_SCHEDULER_LOG_DIR", str(tmp_path))
+        monkeypatch.delenv("NURI_SCHEDULER_LOG_DISABLE_FILE", raising=False)
+        foreign = _logging.StreamHandler()  # caplog 모사 (마커 없음)
+        _logging.getLogger().addHandler(foreign)
+        try:
+            import nuri.scheduler
+
+            importlib.reload(nuri.scheduler)  # _configure_logging 재실행
+            assert foreign in _logging.getLogger().handlers, "외부 handler 가 제거됨 (#859 회귀)"
+        finally:
+            _logging.getLogger().removeHandler(foreign)
+            for h in list(_logging.getLogger().handlers):
+                if getattr(h, "_nuri_scheduler", False):
+                    h.close()
+                    _logging.getLogger().removeHandler(h)
+
     def test_disable_env_var_skips_file_handler(self, tmp_path, monkeypatch):
         """`NURI_SCHEDULER_LOG_DISABLE_FILE=1` opt-out for CI / read-only FS."""
         import logging.handlers
