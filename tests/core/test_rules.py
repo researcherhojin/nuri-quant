@@ -1,4 +1,5 @@
 """nuri.core.rules 모듈 테스트 — YAML 로딩, 상수 노출, 계좌별 전략 프로파일."""
+
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,36 +24,42 @@ def db_path(tmp_path):
 class TestRulesLoading:
     def test_rules_dict_loaded(self):
         from nuri.core.rules import RULES
+
         assert isinstance(RULES, dict)
         assert "position_limits" in RULES
         assert "stop_loss" in RULES
 
     def test_position_limit_constants(self):
         from nuri.core.rules import MAX_SECTOR_EXPOSURE, MAX_SINGLE_POSITION, MIN_CASH_RESERVE
+
         assert 0 < MAX_SINGLE_POSITION <= 1.0
         assert 0 < MAX_SECTOR_EXPOSURE <= 1.0
         assert 0 < MIN_CASH_RESERVE <= 1.0
 
     def test_stop_loss_constants(self):
         from nuri.core.rules import PORTFOLIO_STOP, STOCK_STOP_LOSS, STOCK_STOP_LOSS_VALUE
+
         assert STOCK_STOP_LOSS < 0
         assert STOCK_STOP_LOSS_VALUE < 0
         assert PORTFOLIO_STOP < 0
 
     def test_take_profit_constants(self):
         from nuri.core.rules import TAKE_PROFIT_GROWTH, TAKE_PROFIT_SWING, TAKE_PROFIT_VALUE
+
         assert TAKE_PROFIT_GROWTH["target_1"] > 0
         assert TAKE_PROFIT_VALUE["target_1"] > 0
         assert TAKE_PROFIT_SWING["target_1"] > 0
 
     def test_trailing_stop_constants(self):
         from nuri.core.rules import TRAILING_STOP_GROWTH, TRAILING_STOP_VALUE, TRAILING_STOP_VOLATILE
+
         assert TRAILING_STOP_GROWTH < 0
         assert TRAILING_STOP_VALUE < 0
         assert TRAILING_STOP_VOLATILE < 0
 
     def test_leverage_etfs(self):
         from nuri.core.rules import LEVERAGE_ETFS
+
         assert isinstance(LEVERAGE_ETFS, set)
         assert "TQQQ" in LEVERAGE_ETFS
         assert "TSLL" in LEVERAGE_ETFS
@@ -61,6 +68,7 @@ class TestRulesLoading:
 class TestAccountStrategies:
     def test_account_strategies_loaded(self):
         from nuri.core.rules import ACCOUNT_STRATEGIES
+
         assert "core" in ACCOUNT_STRATEGIES
         assert "active" in ACCOUNT_STRATEGIES
         assert "swing" in ACCOUNT_STRATEGIES
@@ -69,6 +77,7 @@ class TestAccountStrategies:
 
     def test_core_strategy_values(self):
         from nuri.core.rules import ACCOUNT_STRATEGIES
+
         core = ACCOUNT_STRATEGIES["core"]
         assert core["stop_loss"] == -7
         assert core["max_single_position"] == 0.15
@@ -76,6 +85,7 @@ class TestAccountStrategies:
     def test_active_strategy_between_core_and_swing(self):
         """active 전략은 core와 swing 사이의 중간값."""
         from nuri.core.rules import ACCOUNT_STRATEGIES
+
         core = ACCOUNT_STRATEGIES["core"]
         active = ACCOUNT_STRATEGIES["active"]
         swing = ACCOUNT_STRATEGIES["swing"]
@@ -90,6 +100,7 @@ class TestAccountStrategies:
 
     def test_swing_strategy_more_permissive(self):
         from nuri.core.rules import ACCOUNT_STRATEGIES
+
         core = ACCOUNT_STRATEGIES["core"]
         swing = ACCOUNT_STRATEGIES["swing"]
         assert swing["stop_loss"] < core["stop_loss"]  # -15 < -7 (더 넓은 허용)
@@ -100,11 +111,15 @@ class TestAccountStrategies:
         from nuri.core.rules import get_account_strategy
 
         portfolio_yaml = tmp_path / "portfolio.yaml"
-        portfolio_yaml.write_text(yaml.dump({
-            "accounts": {
-                "test_acct": {"strategy": "swing", "tickers": {}},
-            }
-        }))
+        portfolio_yaml.write_text(
+            yaml.dump(
+                {
+                    "accounts": {
+                        "test_acct": {"strategy": "swing", "tickers": {}},
+                    }
+                }
+            )
+        )
 
         real_open = open
 
@@ -132,15 +147,69 @@ class TestAccountStrategies:
         from nuri.core.rules import get_account_strategy
 
         portfolio_yaml = tmp_path / "portfolio.yaml"
-        portfolio_yaml.write_text(yaml.dump({
-            "accounts": {
-                "test_acct": {"tickers": {}},
-            }
-        }))
+        portfolio_yaml.write_text(
+            yaml.dump(
+                {
+                    "accounts": {
+                        "test_acct": {"tickers": {}},
+                    }
+                }
+            )
+        )
 
         with patch("builtins.open", side_effect=lambda p, **kw: open(portfolio_yaml, **kw)):
             result = get_account_strategy("test_acct")
             assert result["stop_loss"] == -7  # core default
+
+
+# ═══════════════════════════════════════════════════════
+# §3.11 측정 모드 — 사전 고정 판정 기준 lock
+# ═══════════════════════════════════════════════════════
+
+
+class TestMeasurementMode:
+    """STRATEGY §3.11 (#824/#828) — 판정 기준은 사전 고정. 이 lock 을 깨는 변경은
+    STRATEGY PR (본 테스트 + §3.11 표 동시 개정) 을 강제해 silent amend 를 차단한다."""
+
+    def test_adjudication_params_locked(self):
+        from nuri.core.rules import RULES
+
+        mm = RULES["measurement_mode"]
+        assert mm["enabled"] is True
+        assert mm["declared_date"] == "2026-07-08"
+        assert mm["evaluation_date"] == "2027-06-30"
+        assert mm["emit_cutoff_date"] == "2027-05-15"
+        assert mm["primary_window_days"] == 30
+        # 키 이름이 모집단 정의 (US-only, BUY-only) 까지 잠근다 — rename = silent amend 불가
+        assert mm["min_n_us_buy_decisions"] == 200
+        assert mm["permutation_p_max"] == 0.05
+        assert mm["permutation_scheme"] == "ticker_block_placebo"
+        assert mm["permutation_n"] == 1000
+        assert mm["robustness_split"] == "median_split_halves"
+        assert mm["missing_outcome_max_pct"] == 15
+
+    def test_benchmark_matches_tracker_constant(self):
+        """rules.yaml benchmark 와 tracker 코드 상수의 silent 분기 방지 (SSoT lock)."""
+        from nuri.agents.actors.forward_outcome_tracker import DEFAULT_BENCHMARK_TICKER
+        from nuri.core.rules import RULES
+
+        assert RULES["measurement_mode"]["benchmark"] == DEFAULT_BENCHMARK_TICKER
+
+    def test_primary_window_supported_by_tracker(self):
+        """판정 창은 tracker 가 실제 측정하는 window 여야 함."""
+        from nuri.agents.actors.forward_outcome_tracker import SUPPORTED_WINDOWS
+        from nuri.core.rules import RULES
+
+        assert RULES["measurement_mode"]["primary_window_days"] in SUPPORTED_WINDOWS
+
+    def test_sleeve_caps_cover_all_strategies(self):
+        """슬리브 상한은 account_strategies 5개 프로파일과 1:1 (누락/고아 키 방지)."""
+        from nuri.core.rules import ACCOUNT_STRATEGIES, RULES
+
+        sleeve = RULES["measurement_mode"]["sleeve_max_equity_pct"]
+        assert set(sleeve.keys()) == set(ACCOUNT_STRATEGIES.keys())
+        for name, pct in sleeve.items():
+            assert 0 <= pct <= 100, f"{name}: equity 내부 % 범위 위반"
 
 
 # ═══════════════════════════════════════════════════════

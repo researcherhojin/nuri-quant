@@ -209,6 +209,30 @@ rebalance_policy:
   cadence: quarterly             # 분기 1회 (3/6/9/12 첫 영업일)
   behavior_gap_warning: true     # 시장 timing 시도 시 경고 emit (DALBAR/Morningstar 격차 ~1-3%/yr)
 
+# ─── 측정 모드 (Measurement mode) ── docs/STRATEGY.md §3.11 (#824/#828) ──
+# 시스템 알파 입증 전까지 추천 집행 자본을 실험 슬리브로 한정.
+# 판정 기준은 사전 고정 — evaluation_date 이전 amend 금지 (§3.6 선례).
+# 슬리브는 SAA equity bucket 내부 sub-cap (자산 클래스 아님, drift 계산 포함).
+measurement_mode:
+  enabled: true
+  declared_date: "2026-07-08"    # 사전등록 기준일 — 이후 emit 된 결정만 판정 표본
+  evaluation_date: "2027-06-30"  # 판정일. 조기 승격 금지, 하향은 상시 (prudential)
+  emit_cutoff_date: "2027-05-15" # 표본 emit 마감 — 판정일까지 30d 창 완결 보장
+  benchmark: SPY                 # forward_outcome_tracker DEFAULT_BENCHMARK_TICKER 와 일치 (#675)
+  primary_window_days: 30        # 판정 창 (7/14d 는 진단용, §3.11 표 — 파일럿 기반 선택 경위 명시)
+  min_n_us_buy_decisions: 200    # US BUY 결정만 (KR/SELL 은 진단 전용 — §3.11 표본 규약), distinct decision_id
+  permutation_p_max: 0.05        # one-sided. scheme 은 아래 사전 고정 (구현만 follow-up — §3.11 미구축 ②)
+  permutation_scheme: ticker_block_placebo  # ticker→emit일 구조 유지, 동일 시장 universe 치환 (의존성 상속)
+  permutation_n: 1000            # null 표본 수
+  robustness_split: median_split_halves  # median decision date 등분 — 반기 n 균형 (VIX 게이트 accrual 비대칭 대비)
+  missing_outcome_max_pct: 15    # 추적 결측 비율 상한 — 초과 시 판정 무효 (결측 편향)
+  sleeve_max_equity_pct:         # account_strategy 별 실험 슬리브 상한 (us_equity+kr_equity 합산 대비 %, 사용자 확정 필요)
+    core: 10
+    active: 20
+    swing: 100                   # swing 프로파일 계좌 = 실험 전용 슬리브
+    long_term: 0
+    pension: 0
+
 # ─── SIEGE Gate 정책 (v2: Asset Class 차원) ────────────────
 # 근거: docs/CERTIFICATION_SPEC.md §4. Issue #248.
 # Gate #5 (data_fresh), #7 (volatility / 구 vix_gate), #8 (external_data) 는
