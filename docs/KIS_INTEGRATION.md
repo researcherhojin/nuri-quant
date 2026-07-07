@@ -192,7 +192,7 @@ KIS는 미국 종목을 거래소별로 분리:
 | 테스트 | 결과 |
 |---|---|
 | **23개 보유 종목 수집** | 100% (KIS 21 + yfinance fallback 2) |
-| **단위 테스트** | 31 PASS (`tests/collectors/test_kis_realtime.py`) |
+| **단위 테스트** | 36 PASS (`tests/collectors/test_kis_realtime.py`) |
 | **검증 함수** | `_is_rate_limit`, `_is_token_cooldown`, `load_credentials`, `inquire_price_kr/us` |
 
 ## 알려진 한계
@@ -280,7 +280,7 @@ tr_id: FHPTJ04160001
 
 `KIS_REQUEST_INTERVAL_PROD = 0.4s` (2.5 req/sec 안전 마진) + rate limit 감지 시 1.5s 대기 후 1회 재시도.
 
-universe 201 KR tickers × 0.4s = ~80초/run.
+universe 203 KR tickers × 0.4s = ~81초/run.
 
 ### 실패 모드 (STRATEGY §2.6 Surface rung)
 

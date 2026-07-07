@@ -26,14 +26,14 @@ scripts/
 | Script | Purpose | Use |
 |---|---|---|
 | `verify_all.sh` | full verification (lint+test+gate) | `make verify-all` |
-| `verify.py` | quick smoke (regime classify) | `make verify-quick` |
+| `verify.py` | full functional verification (analysis run + `data/reports/` save) | `make verify-fast` (`--skip-backtest`) / `make verify` (full) |
 | `verify_doc_counts.sh` | doc count drift check (CI-enforced) | `make verify-doc-counts` |
-| `check_drift.py` | universe / strategy drift detect | `make check-drift` |
+| `check_drift.py` | universe / strategy drift detect | `.venv/bin/python scripts/verify/check_drift.py` (pre-push gate Section 1) |
 | `check_atomic.sh` | commit atomicity (1 logical change/commit) | `bash scripts/verify/check_atomic.sh` |
 | `check_privacy_leak.py` | block personal financial data leak | pre-push hook + CI privacy-scan |
-| `check_universe_coverage.py` | universe.yaml coverage validate | `bash scripts/verify/check_universe_coverage.py` |
+| `check_universe_coverage.py` | universe.yaml coverage validate | `.venv/bin/python scripts/verify/check_universe_coverage.py` |
 | `pre_push_check.sh` | pre-push gate (privacy + lint + test) | git pre-push hook |
-| `gate_check.py` | SIEGE 10-gate certification | `make gate-check` |
+| `gate_check.py` | pre-stage gate validation (Makefile 단계 실행 전 호출) | `make validate` / `make regime` / `make recommend` 내부 |
 
 ## deploy/ — deploy + sync between machines
 
@@ -51,7 +51,7 @@ scripts/
 
 | Script | Purpose | Use |
 |---|---|---|
-| `migrate.py` | schema migration runner | `make migrate-db` |
+| `migrate.py` | schema migration runner | `make setup` 내부 (`$(PYTHON) scripts/db/migrate.py`) |
 | `maintenance.py` | VACUUM + ANALYZE periodic | apscheduler daily |
 | `backup.sh` | SQLite backup → `data/backups/` | `make backup` |
 | `restore.sh` | restore from backup | `bash scripts/db/restore.sh <snapshot>` |
@@ -61,11 +61,14 @@ scripts/
 | Script | Purpose | Use |
 |---|---|---|
 | `health_check.sh` | schema version + table existence | hourly launchd cron |
-| `import_portfolio.py` | YAML → DB portfolio import | `make import-portfolio` |
-| `notify_scan_result.py` | Discord scan result publish | `make notify-scan` |
+| `import_portfolio.py` | YAML → DB portfolio import | `make setup` 내부 (`$(PYTHON) scripts/ops/import_portfolio.py`) |
+| `notify_scan_result.py` | Discord scan result publish | `make full-scan` 마지막 단계 |
 | `ports.sh` | check + kill running services | `bash scripts/ops/ports.sh [kill]` |
 | `run_phase2_chain.py` | #529 Phase 2 4-actor chain end-to-end | `make phase2-chain ticker=X` |
 | `discord_embed_smoke.py` | Discord embed format smoke test | dev only |
+| `gen_cspell_tickers.py` | `.cspell/tickers.txt` 생성 (universe.yaml 기반) | `make cspell-tickers` |
+| `gen_kr_names.py` | `config/kr_ticker_names.json` KR 종목명 캐시 생성 | `make kr-names` |
+| `reconcile_toss.py` | Toss 보유 → portfolio diff (dry-run) | `make reconcile-toss` |
 
 ## analysis/ — one-off analysis
 
@@ -85,8 +88,9 @@ scripts/
 | `demo.sh` | demo workflow run | `bash scripts/dev/demo.sh` |
 | `ci_local.sh` | local CI parity (~30s smoke / full) | `bash scripts/dev/ci_local.sh [--lint\|--quick]` |
 | `codex_review.sh` | Codex CLI review wrapper | `bash scripts/dev/codex_review.sh` |
-| `install_hooks.sh` | git hooks install | `make install-hooks` |
+| `install_hooks.sh` | git hooks install | `make setup-hooks` |
 | `llm_consult.py` | codex + Qwen3.5 dual-archive consult | `make llm-consult slug=X prompt=path` |
+| `agent_loop.py` | agent loop orchestrator skeleton (#577/#578, file-based transcript) | dev only |
 
 ## doc/ — documentation maintenance
 
@@ -115,8 +119,11 @@ PR/이슈 단위로 한 번 실행한 backfill / counterfactual / amplifier repl
 |---|---|---|
 | `com.nuri-quant.autopull.plist` | 5min | Mac mini autopull receiver |
 | `com.nuri-quant.scheduler.plist` | continuous | apscheduler daemon |
+| `com.nuri-quant.api.plist` | continuous (KeepAlive) | FastAPI :8001 (#838) |
+| `com.nuri-quant.dashboard.plist` | continuous (KeepAlive) | Next.js dashboard :3000 (#838) |
 | `com.nuri-quant.discord-bot.plist` | continuous | Discord bot daemon |
 | `com.nuri-quant.health-check.plist` | hourly | health_check.sh |
+| `com.nuri-quant.heartbeat-watchdog.plist` | 15min | scheduler heartbeat watchdog + 자동 재시작 (#778/#779) |
 | `com.nuri-quant.state-replicator.plist` | daily | state_replicator.sh |
 | `com.nuri-quant.sre-scan.plist` | hourly | SREIncidentAgent.scan |
 
@@ -127,7 +134,7 @@ Uninstall: `bash scripts/launchd/uninstall_crons.sh [--only X]`
 
 | Hook | Action |
 |---|---|
-| `pre-commit` | privacy scan + ruff lint |
+| `pre-commit` | advisory lint auto-fix (ruff `--fix`, 비차단) — privacy scan 은 pre-push (`pre_push_check.sh` Section 4) 소관 |
 
 Install via `bash scripts/dev/install_hooks.sh`.
 

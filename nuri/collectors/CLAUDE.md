@@ -5,7 +5,7 @@
 All collectors inherit `BaseCollector` (`base.py`):
 
 1. Implement `collect(**kwargs) -> Any` — fetch data from external source
-2. Implement `save(data) -> int` — persist to DB via `nuri/core/db.py` functions
+2. Implement `save(data) -> int` — persist to DB via `nuri/core/db/` package functions
 3. External code calls `run()` which does `collect()` → `save()` with logging and timing
 
 ## Korean Ticker `.KS` Suffix Convention (canonical)
@@ -13,7 +13,7 @@ All collectors inherit `BaseCollector` (`base.py`):
 Korean equities are addressed by KRX 6-digit code suffixed with `.KS` (e.g., `005930.KS` for 삼성전자). yfinance accepts the suffix and returns:
 
 - ✅ Price history (`Ticker.history`), volume, dividend events
-- ✅ Fundamentals (`Ticker.info`) for individual stocks: PE, ROE, margins, growth, debt — **but `trailingPE` is NOT provided for KR individuals** (yfinance provider limit). Use `forward_pe` instead (currently 182/201 KR coverage).
+- ✅ Fundamentals (`Ticker.info`) for individual stocks: PE, ROE, margins, growth, debt — **but `trailingPE` is NOT provided for KR individuals** (yfinance provider limit). Use `forward_pe` instead (182/209 KR coverage as of 2026-07-08 dev DB — live number, re-probe before citing).
 - ❌ Fundamentals for ETFs return empty (expected — ETF wrapper, no underlying P&L).
 
 KIS Open API is NOT needed for KR fundamentals (was previously believed required — corrected during #418 KIS Open API integration audit).
@@ -77,7 +77,7 @@ ThreadPoolExecutor caveat: `.result(timeout=)` cancels FUTURE only — underlyin
 
 SIEGE freshness gate (`certification.py::_check_freshness_for_class`) reads **`prices` only**. `--source freshness` (#457) feeds SPY/TLT/GC=F into `prices` daily. Two known redundancies:
 
-- **`gold` lives in two tables**: `macro.indicator='gold'` (~5Y backfill, 264 rows) AND `prices."GC=F"` (1mo, ~20 rows after each daily refresh). Same yfinance source, separate writers (`macro.py` vs `stock.py --source freshness`). No current historical consumer of `prices."GC=F"` beyond the gate, so single-source-of-truth not enforced — accept as debt.
+- **`gold` lives in two tables**: `macro.indicator='gold'` (~5Y backfill, 304 rows as of 2026-07-08 — grows daily) AND `prices."GC=F"` (1mo, ~20 rows after each daily refresh). Same yfinance source, separate writers (`macro.py` vs `stock.py --source freshness`). No current historical consumer of `prices."GC=F"` beyond the gate, so single-source-of-truth not enforced — accept as debt.
 - **TLT shallow history**: `prices.TLT` is 1mo only (freshness pass period). If a future backtest/analysis needs TLT 5Y, add TLT to `universe.yaml` (don't promote freshness gate to dual-source — drift risk per #454 codex consult 2026-04-28).
 
 **Why not dual-source the gate** (option A in #454, rejected): if gate accepts `macro.gold` 37h-fresh while a downstream consumer reads stale `prices."GC=F"`, gate PASS but downstream gets stale data → silent split-brain. Single-source gate = single truth.

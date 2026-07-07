@@ -2,7 +2,7 @@
 
 ## Architecture
 
-10 specialist agents with weighted voting. Config in `config/agents.yaml`, loaded via `nuri/core/agent_config.py`. Weights live in `consensus.py:DEFAULT_WEIGHTS` (sum = 1.0).
+10 specialist agents with weighted voting. Config in `config/agents.yaml`, loaded via `nuri/core/agent_config.py`. Weights live in `consensus/registry.py:DEFAULT_WEIGHTS` (sum = 1.0).
 
 ## BaseAgent Contract
 
@@ -26,12 +26,12 @@ Live probe (2026-04-17):
 ## Veto + Divergence
 
 - **Risk agent** (19% weight) has **veto power**: SELL + confidence ≥ 80 overrides all others.
-- **Technical divergence penalty** (JKHY defense, PR #303): if TechnicalAgent SELL with conf ≥ 80 disagrees with a consensus BUY, downgrade to HOLD. See STRATEGY §5.10.
+- **Technical divergence penalty** (JKHY defense, PR #303): if TechnicalAgent SELL with conf ≥ 80 disagrees with a consensus BUY, downgrade to HOLD. See STRATEGY §2.6 (Soft penalty rung, PR #303 `divergence_technical_threshold`) + §5.9 Case #2 (JKHY).
 
 ## Adding a New Agent
 
 1. Create `nuri/trading/agents/new_agent.py` inheriting `BaseAgent`.
-2. Register in `consensus.py` `ALL_AGENTS` list.
+2. Register via `build_all_agents()` in `consensus/registry.py` (`ALL_AGENTS` binding lives in `consensus/__init__.py` for monkeypatch).
 3. Add weight to `DEFAULT_WEIGHTS` and thresholds in `config/agents.yaml`.
 4. Tests in `tests/trading/agents/`.
 5. If the agent has a limited effective scope (like korean_market / crypto), document it in the Specialization table above so the "10-agent" framing stays honest.
@@ -45,11 +45,11 @@ Read/write path both live:
 
 Current state (probed 2026-04-17): `recommendations.agent_verdicts` = **144 rows**, `strategy_memory.agent_*_accuracy` = **0 rows**. Snapshot job populates only when `compute_agent_accuracy` has `outcome_30d` data — first recommendations date ~2026-04-17, so first real weight drift expected **~2026-05-17** (TODO.md Tier 1 row 20). Until then, `_compute_weights()` returns `DEFAULT_WEIGHTS` because `min_agent_records` threshold not met. Re-probe before citing these counts — they move daily.
 
-Weight drift is capped at ±30% per `adjustment_range` in `config/agents.yaml` (formula at `consensus.py:216`: `adjustment = (rate - 0.5) * 1.5`, clamped to `[-0.30, +0.30]`).
+Weight drift is capped at ±30% per `adjustment_range` in `config/agents.yaml` (formula at `consensus/learning_memory.py:122`: `adjustment = (rate - 0.5) * 1.5`, clamped to `[-0.30, +0.30]`).
 
 ## References
 
-- Consensus logic: `nuri/trading/agents/consensus.py`
-- Weights config: `consensus.py:DEFAULT_WEIGHTS` + `config/agents.yaml`
+- Consensus logic: `nuri/trading/agents/consensus/` package (`registry` / `scoring` / `learning_memory` / `persistence` / `presentation` / `events`)
+- Weights config: `consensus/registry.py:DEFAULT_WEIGHTS` + `config/agents.yaml`
 - Per-agent source: one file per agent in this directory
 - B-3 audit script (ad-hoc): `analyze_ticker("TICKER")` from the consensus module

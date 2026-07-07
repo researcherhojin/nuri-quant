@@ -1,11 +1,11 @@
 # nuri/core/ — Foundation Layer
 
-## db.py — Sole sqlite3 Importer
+## db/ — Sole sqlite3 Importer
 
-This is the **ONLY** module in the entire codebase that imports `sqlite3`. Enforced by PreToolUse hook (exit 2 block). All other modules use these functions (all accept optional `db_path` for test isolation):
+The `nuri/core/db/` package is the **ONLY** `sqlite3` importer (the import lives in `db/connection.py`; PR #566 stage 2 packaging). Enforced by PreToolUse hook (exit 2 block). All other modules use these functions (all accept optional `db_path` for test isolation):
 
 - `get_db(db_path=)` — context manager, auto-commit/rollback
-- `query(sql, params, db_path=)` → `list[sqlite3.Row]`
+- `query(sql, params, db_path=)` → `list[dict]` (rows converted via `dict(row)`)
 - `query_df(sql, params, db_path=)` → `pandas.DataFrame`
 - `upsert_*(data, db_path=)` — per-table upsert functions
 - `replace_portfolio_account(account, records, db_path=)` — DELETE+INSERT in one tx

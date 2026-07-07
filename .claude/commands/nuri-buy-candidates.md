@@ -5,7 +5,7 @@ description: Emit BUY candidates from current snapshot (Issue #507 Phase 1). VIX
 당신은 Issue #507 BUY signal emitter 의 invoker 입니다.
 
 처리 절차:
-1. Bash 실행: `make buy-candidates` (또는 `python -m nuri.trading.recommend.buy_candidate_emitter`).
+1. Bash 실행: `.venv/bin/python -m nuri.trading.recommend.buy_candidate_emitter` (signal-screener 경로는 `make recommend` — gate_check + candidates + tracker).
 2. 출력 markdown 받아 사용자에게 surface — 전체 출력 (block + skipped 일부 + summary).
 3. 사용자가 specific candidate 에 추가 분석 원하면 `/nuri-thesis <TICKER>` 권유.
 
