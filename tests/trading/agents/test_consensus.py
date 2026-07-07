@@ -1617,6 +1617,35 @@ class TestSaveToRecommendations:
         assert rows[0]["confidence"] == 50.0
         assert rows[0]["id"] == first_id, "ON CONFLICT DO UPDATE 는 id 보존 — FK 안전"
 
+    def test_regime_label_canonical_only(self, db_path):
+        """#832 Gotcha-Test Pair: regime 컬럼은 canonical ALL_REGIMES 값 또는 NULL 만.
+
+        canonical guard (`canonical_regime_or_none`) 를 제거하면 free-text 케이스가
+        그대로 persist 되어 이 테스트가 fail. 진단 전용 라벨 (STRATEGY §3.11).
+        """
+        from unittest.mock import patch
+
+        from nuri.core.db import query
+        from nuri.quant.regime.classifier import RegimeState
+        from nuri.trading.agents.consensus import save_to_recommendations
+
+        def _state(regime):
+            return RegimeState(
+                date="2026-01-02", trend="bull", volatility="low", regime=regime, confidence=0.8, details={}
+            )
+
+        # canonical 값 → 그대로 저장
+        with patch("nuri.quant.regime.classifier.classify_regime", return_value=_state("bull_low_vol")):
+            save_to_recommendations([self._result(ticker="CANON")], db_path=db_path)
+        row = query("SELECT regime FROM recommendations WHERE ticker='CANON'", db_path=db_path)[0]
+        assert row["regime"] == "bull_low_vol"
+
+        # free-text → NULL 로 정규화 (오염 차단)
+        with patch("nuri.quant.regime.classifier.classify_regime", return_value=_state("[recovery] 비중 축소")):
+            save_to_recommendations([self._result(ticker="FREET")], db_path=db_path)
+        row = query("SELECT regime FROM recommendations WHERE ticker='FREET'", db_path=db_path)[0]
+        assert row["regime"] is None
+
 
 class TestScoringDetailPersist:
     """Phase 2 A-2a — scoring_detail JSON persist + shape 검증.

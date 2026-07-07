@@ -67,6 +67,19 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
     today = today_kst()
     records = []
 
+    # #832: regime 라벨 batch 1회 classify (consensus persistence.py 와 동일 패턴).
+    # 기존 E-1 "" / E-2 free-text(regime_note) 유입이 라벨 커버리지 3% 의 원인.
+    # canonical ALL_REGIMES 값만 저장, 분류 실패 시 NULL 유지 ('unknown' 금지).
+    batch_regime: str | None = None
+    try:
+        from nuri.quant.regime.classifier import canonical_regime_or_none, classify_regime
+
+        rr = classify_regime(db_path=db_path)
+        if rr is not None:
+            batch_regime = canonical_regime_or_none(rr.regime)
+    except Exception:
+        logger.debug("save_recommendations: regime classify 실패, NULL 유지", exc_info=True)
+
     # held set 한 번만 fetch — SELL/TRIM filter 용. set 검사 O(1).
     held_rows = query(
         "SELECT DISTINCT ticker FROM portfolio WHERE quantity > 0",
@@ -96,7 +109,7 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
                 "alpha_action": derive_alpha_action(c.direction),
                 "portfolio_action": None,  # E-1 signal-driven — portfolio rule 아님
                 "confidence": c.confidence,
-                "regime": "",
+                "regime": batch_regime,  # #832: "" 대신 canonical 라벨 (분류 실패 시 NULL)
                 "signals": json.dumps([c.signal_id]),
                 "entry_price": c.price,
             }
@@ -141,7 +154,9 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
                 "alpha_action": derive_alpha_action(a.action),
                 "portfolio_action": None,  # E-2 rebalance 는 legacy 경로. PR C 에서 재분류.
                 "confidence": 50.0,  # 리밸런싱 기반은 기본 50
-                "regime": a.regime_note,
+                # #832: regime_note 는 free-text ("[recovery] 비중 축소" 등) 라 regime
+                # 컬럼 오염 원인 — canonical batch 라벨로 대체 (note 는 컬럼 미persist).
+                "regime": batch_regime,
                 "signals": json.dumps(a.signals),
                 "entry_price": price,
             }
