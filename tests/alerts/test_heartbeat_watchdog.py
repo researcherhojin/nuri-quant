@@ -195,6 +195,25 @@ class TestServiceCheck:
         send.assert_called_once()
         assert "api DOWN" in send.call_args.args[0]
 
+    def test_label_loaded_true_on_zero_rc(self, monkeypatch):
+        class _Proc:
+            returncode = 0
+
+        monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: _Proc())
+        assert hw._label_loaded("com.nuri-quant.api") is True
+
+    def test_label_loaded_false_on_nonzero_rc(self, monkeypatch):
+        class _Proc:
+            returncode = 113  # launchctl list: 미로드 label
+
+        monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: _Proc())
+        assert hw._label_loaded("com.nuri-quant.api") is False
+
+    def test_label_loaded_false_when_launchctl_missing(self, monkeypatch):
+        # CI/linux — launchctl 부재는 미배포 취급 (skip)
+        monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()))
+        assert hw._label_loaded("com.nuri-quant.api") is False
+
     def test_port_open_real_socket(self):
         # 실소켓 왕복 1회 — mock 없는 실측 (loopback listener).
         import socket
