@@ -43,14 +43,17 @@ def _configure_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.INFO)
 
-    # 중복 설치 방지 (importlib 재로드 / 재호출) — 기존 nuri 핸들러 제거 후 재구성.
-    for h in list(root.handlers):
+    # 중복 설치 방지 (importlib 재로드 / 재호출) — **본 함수가 붙인 핸들러만** 제거.
+    # root.handlers 전체를 clear 하면 pytest caplog 핸들러까지 죽어 테스트 간
+    # 로그 캡처가 shard 순서에 따라 깨진다 (CI Fast-1 실패, 2026-07-08).
+    for h in [h for h in root.handlers if getattr(h, "_nuri_scheduler", False)]:
         root.removeHandler(h)
 
     # console(stderr) — launchd scheduler.err 무한성장 방지 위해 WARNING+ 만 (#859).
     console = logging.StreamHandler()
     console.setLevel(logging.WARNING)
     console.setFormatter(formatter)
+    console._nuri_scheduler = True  # type: ignore[attr-defined]  # 재구성 시 식별 마커
     root.addHandler(console)
 
     # yfinance internal logger emits 401 Crumb / 404 ETF-calendar noise at INFO/ERROR
@@ -82,6 +85,7 @@ def _configure_logging() -> None:
     )
     handler.setFormatter(formatter)
     handler.setLevel(logging.INFO)  # 전체 INFO 스트림은 로테이션 파일로만
+    handler._nuri_scheduler = True  # type: ignore[attr-defined]  # 재구성 시 식별 마커
     root.addHandler(handler)
 
 

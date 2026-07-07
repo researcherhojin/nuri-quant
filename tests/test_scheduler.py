@@ -1016,6 +1016,31 @@ class TestSchedulerLogRotation:
                     h.close()
                     _logging.getLogger().removeHandler(h)
 
+    def test_reload_preserves_foreign_handlers(self, tmp_path, monkeypatch):
+        """#859 회귀 lock: _configure_logging 재실행이 외부(pytest caplog 등) 핸들러를
+        죽이지 않는다. root.handlers 전체 clear 시 caplog 가 shard 순서로 깨져
+        CI Fast-1 이 실패했음 (test_postmarket_brief caplog 미포착, 2026-07-08).
+        본 함수가 붙인 (_nuri_scheduler 마커) 핸들러만 교체해야 한다.
+        """
+        import importlib
+        import logging as _logging
+
+        monkeypatch.setenv("NURI_SCHEDULER_LOG_DIR", str(tmp_path))
+        monkeypatch.delenv("NURI_SCHEDULER_LOG_DISABLE_FILE", raising=False)
+        foreign = _logging.StreamHandler()  # caplog 모사 (마커 없음)
+        _logging.getLogger().addHandler(foreign)
+        try:
+            import nuri.scheduler
+
+            importlib.reload(nuri.scheduler)  # _configure_logging 재실행
+            assert foreign in _logging.getLogger().handlers, "외부 handler 가 제거됨 (#859 회귀)"
+        finally:
+            _logging.getLogger().removeHandler(foreign)
+            for h in list(_logging.getLogger().handlers):
+                if getattr(h, "_nuri_scheduler", False):
+                    h.close()
+                    _logging.getLogger().removeHandler(h)
+
     def test_disable_env_var_skips_file_handler(self, tmp_path, monkeypatch):
         """`NURI_SCHEDULER_LOG_DISABLE_FILE=1` opt-out for CI / read-only FS."""
         import logging.handlers
