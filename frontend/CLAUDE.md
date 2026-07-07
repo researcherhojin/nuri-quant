@@ -53,4 +53,4 @@ Data flows through `summarizeHoldings()` in `src/lib/holdings-summary.ts`. Actio
 - **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control.
 - Dashboard tests mock recharts at file level to avoid jsdom suspense on `CompositionDonut`.
 - Mock `@/lib/api` + `next/navigation` in all page tests.
-- Test files: `__tests__/{components,lib,pages,coverage}/` subdirs.
+- Test files: 89 in `src/__tests__/` (`components/lib/pages/coverage` subdirs + root `api-auth`/`middleware` tests) + 37 co-located next to sources (`src/app/**`, `src/components/ui/**`, `src/lib/**` — `*.coverage.test.tsx` / `*.branchcov.test.tsx`).

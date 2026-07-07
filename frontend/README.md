@@ -19,4 +19,4 @@ See [`CLAUDE.md`](CLAUDE.md) for full details. Key points:
 - **Action-First dashboard** — SystemHealth, ActionItems, OpportunityExplorer, MarketContext
 - **API proxy** — Next.js rewrites `/api/*` to FastAPI `:8001`
 - **i18n** — `src/lib/strings.ts` (Korean UI constants, not next-intl)
-- **Tests** — `src/__tests__/{components,lib,pages}/` + `e2e/`
+- **Tests** — `src/__tests__/{components,lib,pages,coverage}/` (89 files) + 37 co-located (`src/app` / `src/components/ui` / `src/lib`) + `e2e/`

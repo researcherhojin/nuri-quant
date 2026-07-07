@@ -9,7 +9,7 @@ description: Code review checklist. Use when asked to "review", "리뷰", "코�
 
 - [ ] No cross-phase imports — phases communicate via DB/CSV only
 - [ ] DB access via `nuri/core/db/` only — no direct `sqlite3` import
-- [ ] Schema changes via `_MIGRATIONS` list in db.py — no direct ALTER TABLE
+- [ ] Schema changes via `_MIGRATIONS` list in `nuri/core/db_migrations.py` — no direct ALTER TABLE
 - [ ] Time via `kst_now()` / `today_kst()` — no `datetime.now()`
 - [ ] Config in `config/*.yaml` — no hardcoded rules or thresholds
 

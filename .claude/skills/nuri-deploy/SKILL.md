@@ -17,7 +17,7 @@ Both must pass before deploying. If either fails, fix the issue first.
 ## Deploy
 
 ```bash
-make deploy            # rsync to Mac Mini (M2 Pro, 24/7 production)
+make deploy-mini       # MBP → Mac mini 6-step sync (git pull ff-only + config scp + scheduler reload)
 ```
 
 ## Post-deploy verification

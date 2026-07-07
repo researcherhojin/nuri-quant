@@ -50,8 +50,8 @@ make collect-universe            # US + KR prices/fundamentals/wallstreet/estima
 make collect-universe-1y         # 1년치 가격 히스토리 backfill (~10-15분)
 
 # 4. 검증
-.venv/bin/python scripts/validate_universe.py             # 5-check coverage gate
-.venv/bin/python scripts/validate_universe.py --no-fetch  # CI 용 (네트워크 skip)
+.venv/bin/python scripts/doc/validate_universe.py         # 5-check coverage gate
+.venv/bin/python scripts/doc/validate_universe.py --no-fetch  # CI 용 (네트워크 skip)
 make validate-portfolio                                   # portfolio.yaml 각 ticker DB 검증
 
 # 5. 서버 기동 (시각 확인)
@@ -67,7 +67,7 @@ make start                       # API :8001 + Dashboard :3000
 
 | 스텝 | 성공 신호 | 실패 신호 |
 |------|----------|----------|
-| `make setup` | `=== Sync complete: -N +M ===` (`scripts/import_portfolio.py` 종료 메시지) | ModuleNotFoundError / sqlite 에러 |
+| `make setup` | `=== Sync complete: -N +M ===` (`scripts/ops/import_portfolio.py` 종료 메시지) | ModuleNotFoundError / sqlite 에러 |
 | `make universe-sync-us` | `fetched 500+ tickers from Wikipedia` + diff summary | Wikipedia 403 / HTTP error |
 | `make universe-sync-kr` | `fetched 200 tickers` 또는 `KR sync skipped (FDR missing)` | 비정상 traceback |
 | `make collect-universe` | `prices [universe]: 100%\|` tqdm 완료 + `수집 결과: ... 성공 / ... 실패` summary | silent hang > 5분 / ERROR 500줄 |
@@ -96,7 +96,7 @@ make start                       # API :8001 + Dashboard :3000
 | Dashboard 500 error | API 서버 미기동 | `make api` 독립 기동 + 로그 확인 |
 | `make collect-universe-1y` 중 OOM | parallel worker 과다 | 현재 10-thread 기본 — stock.py `max_workers=10` 조정 가능 |
 
-**디버그 시**: `data/reports/YYYY-MM-DD/` 의 최신 리포트 확인. `scripts/validate_universe.py --format=markdown` 상세 테이블 출력 (지원 플래그는 `--no-fetch`, `--format`).
+**디버그 시**: `data/reports/YYYY-MM-DD/` 의 최신 리포트 확인. `scripts/doc/validate_universe.py` 상세 테이블 출력 (지원 플래그는 `--no-fetch`, `--format {table,json}` — 기본 table).
 
 ---
 

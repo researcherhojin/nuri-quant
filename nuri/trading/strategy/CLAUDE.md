@@ -14,17 +14,18 @@ Strategy-level decision modules. Each file is a self-contained strategy that con
 | `pairs.py` | Correlation-pair Z-score divergence (ρ ≥ 0.7, Z > 2.0 → long underperformer / short outperformer). | pair signals |
 | `position.py` | SIEGE certification gate enforcement at position-entry time + P&L tracking. | `PositionCertification` dataclass |
 | `monitor.py` | Regime transition detection + position-switch alert + daily P&L surface. | dict / Discord alert payload |
+| `strategic_allocation.py` | SAA long-term policy mix per account strategy (STRATEGY §3.10). | target weights from `config/rules.yaml strategic_allocation_targets` |
 
 ## Invariants
 
-- **REGIME_ALLOCATION lives in `longshort.py`**, not config. Reason: the table encodes a research result (O'Neil + Minervini + 6-site review on 2026-03-28), not a tunable threshold. Changes require a STRATEGY PR with backtest evidence (§5.10 Phase 4 promotion criteria).
+- **REGIME_ALLOCATION lives in `longshort.py`**, not config. Reason: the table encodes a research result (O'Neil + Minervini + 6-site review on 2026-03-28), not a tunable threshold. Changes require a STRATEGY PR with backtest evidence (STRATEGY §6 promotion gate).
 - **Strategies do not write to `recommendations`**. They emit dataclass signals consumed by `nuri/trading/recommend/` modules, which decide what reaches the user.
 - **`position.py` SIEGE gate ≠ `nuri/trading/engine/` SIEGE certification**. This file's gate is a thin enforcement helper at the strategy layer (regime-aligned, agent-consensus, factor-rank, drawdown, sector-cap). The full 11–30+ condition certification lives in `engine/`. Do not duplicate logic — call into engine when full certification is needed.
 - **Mean-reversion + pairs are research-grade**, not production daily emitters. They run on demand; promotion to scheduler requires win-rate evidence per STRATEGY §6.
 
 ## Regime dependency
 
-All strategies in this directory depend on `nuri.quant.regime.classifier.classify_regime()`. The 6 base regimes (`bull_low_vol`, `bull_high_vol`, `sideways_low_vol`, `sideways_high_vol`, `bear_low_vol`, `bear_high_vol`) are the source of truth. Adding a regime requires updating `REGIME_ALLOCATION` in `longshort.py` and re-running `ls_backtest.py --stress`.
+All strategies in this directory depend on `nuri.quant.regime.classifier.classify_regime()`. Regime keys total 10 = `BASE_REGIMES` 6 (`{bull,bear,sideways}_{low,high}_vol`) + `SPECIAL_REGIMES` 4 (`recovery`, `euphoria`, `stagflation`, `sector_rotation`) — `ALL_REGIMES` in `classifier.py` is the source of truth, and `REGIME_ALLOCATION` carries all 10 keys. Adding a regime requires updating `REGIME_ALLOCATION` in `longshort.py` and re-running `ls_backtest.py --stress`.
 
 ## Pyright disabled per file
 
@@ -39,7 +40,7 @@ Several files lead with `# pyright: ...=false` directives. These suppress pandas
 
 ## References
 
-- Regime classifier: `nuri/quant/regime/classifier.py` (6 base regimes, source of all regime keys)
+- Regime classifier: `nuri/quant/regime/classifier.py` (`ALL_REGIMES` = 6 base + 4 special, source of all regime keys)
 - SIEGE engine (full certification): `nuri/trading/engine/CLAUDE.md`
 - O'Neil / Minervini investment rules: user-level CLAUDE.md "Investment Rules"
-- Strategy promotion criteria: `docs/STRATEGY.md §6` + `§5.10` Phase 4 (safeslice replacement queued)
+- Strategy promotion criteria: `docs/STRATEGY.md §6`. safeslice replacement backlog: `docs/CERTIFICATION_SPEC.md` Phase 4 (drift_multiplier → Wilson CI + witness cliff)

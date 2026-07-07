@@ -239,13 +239,13 @@ base = regime_win_rate × 60% + profit_factor × 40%
 | regime 축 | 내부 10-regime 분류는 진단 Surface 전용, 판정 비사용 — 원장 라벨 커버리지 3% (12/383, #828 코멘트 쿼리), 2026-04 이후 transition 1회 (판정 교착 위험), 자기 분류기 순환성 | 실측 2026-07-07 (production 원장) |
 | 오염 방지 | `decision_id` 없는 ad-hoc 체결은 표본 제외 (#715 사전등록 원칙의 자본 버전). missing outcome (추적 실패/가격 결측) 은 제외하되 비율을 판정 리포트에 공시 — **15% 초과 시 판정 무효 (측정 연장)** | Shefrin & Statman (1985) — ad-hoc 개입이 처분효과 재유입 경로. 결측 편향 (탈락은 나쁜 outcome 과 상관 가능) |
 **판정 결과 처리**: 3조건 통과 → **US 집행분 슬리브에 한해** 상한 상향 STRATEGY PR (새 상한도 본 표 개정으로 사전 고정). 미달 → 슬리브 유지/축소 + 측정 연장 또는 §3.10 passive 로 수렴 — "조금만 더" 없이 본 표가 답이다. 사전등록 대상은 판정 **기준**이지 상한 초기값이 아니다 — 슬리브 초기값은 판정 표본에 영향이 없으므로 최초 사용자 확정 PR 까지 placeholder 로 두며 일반 PR 로 정정 가능. 확정 이후부터 상향-sticky 발효.
-**미구축 (판정 전 선결, follow-up issue)**: ① regime 라벨 백필 (진단용) ② 순열 도구 구현 (설계는 본 표에 사전 고정 — 구현만 follow-up; 기존 `nuri/quant/validation/` 3종은 포트폴리오 Sharpe 전용) ③ 3조건 통합 판정 쿼리 (`/api/alpha` 는 착륙 전 NOT_MEASURABLE 유지) ④ KR benchmark 분리 ⑤ 슬리브 상한 소비 배선 (rebalance_advisor / ExecutionFirewall) ⑥ 원장 스냅샷/백업 정책.
+**미구축 (판정 전 선결, follow-up issue)**: ① regime 라벨 백필 (진단용) ② 순열 판정 도구 — #842 구현 완료 (`nuri/quant/validation/decision_alpha.py`, 설계는 본 표에 사전 고정; 기존 `nuri/quant/validation/` 3종은 포트폴리오 Sharpe 전용) ③ 3조건 통합 판정 쿼리 (`/api/alpha` 는 착륙 전 NOT_MEASURABLE 유지) ④ KR benchmark 분리 ⑤ 슬리브 상한 소비 배선 (rebalance_advisor / ExecutionFirewall) ⑥ 원장 스냅샷/백업 정책.
 **참조**: `config/rules.yaml measurement_mode` (canonical 값), `nuri/agents/actors/forward_outcome_tracker.py` (측정 파이프라인, 매일 17:00 KST), `docs/SOURCE_OF_TRUTH.md` (원장 매핑, local-only).
 ## 4. 개발 품질 기준
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,173 tests, 275 files (statement coverage **100%**, 2026-05-06) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,228 tests, 275 files (statement coverage **100%**, 2026-05-06) |
 | Frontend tests | 목표 ≥ 90% | 1383 tests, 126 files |
 | E2E | 핵심 flow | 57 Playwright (8 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
@@ -272,7 +272,7 @@ PR 전 확인.
 #### 4.4.1 개인 금융 데이터 enforcement (#138)
 **권위 있는 차단 기준**: `scripts/verify/check_privacy_leak.py` 가 ground truth.
 | 카테고리 | 차단 대상 | 허용 placeholder |
-| Korean broker name | Brokerage Alpha/Beta, 키움증권, 삼성증권, NH투자증권, 토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권, 대신증권, 이베스트투자증권, 흥국증권, IBK투자증권 | `Brokerage Alpha/Beta` 등 |
+| Korean broker name | 카카오페이, 미래에셋, 키움증권, 삼성증권, NH투자증권, 토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권, 대신증권, 이베스트투자증권, 흥국증권, IBK투자증권 | `Brokerage Alpha/Beta` 등 |
 <!-- cspell:disable-next-line -->
 | Romanized broker | kakaopay, mirae, kiwoom, samsung_securities, nh_invest, toss_securities, shinhan_invest, hana_securities, meritz_securities (case-insensitive substring) | `brokerage_alpha` 등 |
 | Suspect monetary literal | 7자리 이상 정수 + `total_invested`/`cash_balance`/`deposit`/`withdraw`/`principal`/`net_worth`/`buying_power` 키 | round million (`1_000_000`...`100_000_000`) 자동 허용 |
@@ -333,13 +333,13 @@ Deferred (필요 시점에 추가):
 | 5.5 | **테스트 환각** | 테스트 통과하지만 타겟 코드 미실행 — coverage 리포트로 라인 실제 커버 확인 |
 | 5.6 | **숫자 전파 오류** | 한 곳 변경 후 다른 참조 미업데이트 — `grep -ri "이전값"` 전수 + `make verify-doc-counts` |
 #### 5.3.1 Gotcha-Test Pair 원칙 (PR #307)
-**모든 fix-pattern gotcha 는 fix 가 사라졌을 때 fail 하는 test 를 명명해서 cite 해야 한다.** 단순 facts/quirks 는 Test: 불필요 (PR body "no fix, just facts" 명시). Folklore 만 남으면 다음 리뷰어가 defensive 코드를 "불필요" 로 제거해도 막을 수 없음 (`df.copy()` 재발 교훈). 프로토콜 상세·enforcement 단계 (1차 리뷰 checklist, 2차 Tier 3 `scripts/audit_phantom_fixes.py`) 는 `/nuri-harness-debug` skill.
+**모든 fix-pattern gotcha 는 fix 가 사라졌을 때 fail 하는 test 를 명명해서 cite 해야 한다.** 단순 facts/quirks 는 Test: 불필요 (PR body "no fix, just facts" 명시). Folklore 만 남으면 다음 리뷰어가 defensive 코드를 "불필요" 로 제거해도 막을 수 없음 (`df.copy()` 재발 교훈). 프로토콜 상세·enforcement 단계 (1차 리뷰 checklist, 2차 Tier 3 `scripts/audit_phantom_fixes.py` — planned, 미구현) 는 `/nuri-harness-debug` skill.
 ### 5.7 하네스 구성 요소
 | 레이어 | 역할 | 구현 |
 |--------|------|------|
-| **Context Files** | 프로젝트 규칙 | `CLAUDE.md` 루트 + 7 scoped + `AGENTS.md` + `docs/STRATEGY.md` |
+| **Context Files** | 프로젝트 규칙 | `CLAUDE.md` 루트 + 11 scoped + `AGENTS.md` + `docs/STRATEGY.md` |
 | **MCP Servers** | 외부 도구 연결 | `.mcp.json` → SQLite DB. 필요 최소. |
-| **Skill Files** | 반복 작업 | `scripts/deploy_remote.sh`, `scripts/verify.py`, `scripts/migrate.py` |
+| **Skill Files** | 반복 작업 | `scripts/deploy/deploy_remote.sh`, `scripts/verify/verify.py`, `scripts/db/migrate.py` |
 | **Mechanical Enforcement** | 시스템 강제 | ruff · main-ci-cd.yml · pr-checks.yml · `make verify-*` · SIEGE `gate_check.py` |
 **엔트로피 GC**:
 | 유형 | 감지 | 방어 |
@@ -349,7 +349,7 @@ Deferred (필요 시점에 추가):
 | Schema drift | `schema_version` + `_MIGRATIONS` | `init_db()` 자동 |
 | Config drift | `config/*.yaml` 중앙 | 하드코딩 금지 |
 | Number drift | `grep -ri` 전수 | 커밋 메시지 숫자 명시 |
-**Context Files 설계**: 거대 단일 파일 ✕ → 디렉토리별 scoped ✓ (루트 + 7개). 코드에서 유추 가능한 정보 ✕ → 결정의 "왜" 만. `STRATEGY.md` 는 작업 전 읽도록 `CLAUDE.md` 에 지시.
+**Context Files 설계**: 거대 단일 파일 ✕ → 디렉토리별 scoped ✓ (루트 + 11개). 코드에서 유추 가능한 정보 ✕ → 결정의 "왜" 만. `STRATEGY.md` 는 작업 전 읽도록 `CLAUDE.md` 에 지시.
 ### 5.8 하네스 원칙 요약 (2026-04-14 #272 반영, 7개)
 1. 모르면 읽는다              — 가정하지 않는다
 2. 2번 실패하면 접근을 바꾼다  — 같은 시도 3회 금지. 같은 fix 3회 부분 해결 시 root cause 의심
@@ -438,13 +438,13 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 | # | 발견 | 우선순위 |
 | **#513** | `premarket_brief.py`가 `FRESHNESS_POLICIES["portfolio"]` 결과를 brief 본문에 surface 안 함 (backend 작동, 사용자 가시성 0) | P1 |
 | **#514** | `recommendations.action='HOLD'` 행이 portfolio JOIN filter 미적용 → 0주 ticker (TSM 등) HOLD noise surface | P2 |
-| **#515** | 신규 매수 후 `make consensus` 수동 호출 운영 burden — `scripts/import_portfolio.py` 에 newly-added ticker detection + auto-trigger 필요 | P1 |
+| **#515** | 신규 매수 후 `make consensus` 수동 호출 운영 burden — `scripts/ops/import_portfolio.py` 에 newly-added ticker detection + auto-trigger 필요 | P1 |
 | **#516** | Pension 4-18 매도 종목 3개 (테크TOP10/나스닥100/KRX300) 4-30 재진입 — 한화증권 자동매수 설정 의도 검증 필요 | P3 |
 ### 5.13 BUY candidate backtracking ledger (Session 8 신설)
 **Goal**: Phase 1 emitter score 신뢰도 검증 + Phase 2c threshold backtest 표본 자동 적립.
 **Mechanism**:
 - 매 세션 emit한 BUY 후보를 `data/reports/buy_tracking/candidate_ledger.jsonl` (gitignored, append-only)에 baseline 기록.
-- 다음 세션 진입 시 `scripts/compare_buy_candidates.py --session N` (tracked infra) 실행 → baseline vs current close + tier별 평균 return.
+- 다음 세션 진입 시 `scripts/analysis/compare_buy_candidates.py --session N` (tracked infra) 실행 → baseline vs current close + tier별 평균 return.
 - 4주간 누적 → 13 weekly samples → Phase 2c threshold backtest 입력 보강.
 **Tier 정의**:
 - `A_high`: 고확신 (AI capex 직결, fundamentals 강함)
