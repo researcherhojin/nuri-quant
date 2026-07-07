@@ -211,6 +211,22 @@ class TestMeasurementMode:
         for name, pct in sleeve.items():
             assert 0 <= pct <= 100, f"{name}: equity 내부 % 범위 위반"
 
+    def test_sleeve_cap_values_locked(self):
+        """확정 초기값 lock (#848, 2026-07-08) — §3.11 상향-sticky 발효.
+
+        상향은 판정 통과 + STRATEGY PR (본 테스트 동시 개정) 로만. 하향은
+        prudential 상시 허용이나, silent 변경 방지 위해 값 자체를 고정한다
+        — 하향도 의도라면 이 테스트를 함께 고치는 가시적 diff 를 남길 것."""
+        from nuri.core.rules import RULES
+
+        assert RULES["measurement_mode"]["sleeve_max_equity_pct"] == {
+            "core": 10,
+            "active": 20,
+            "swing": 100,
+            "long_term": 0,
+            "pension": 0,
+        }
+
 
 # ═══════════════════════════════════════════════════════
 # 폴백 테스트
