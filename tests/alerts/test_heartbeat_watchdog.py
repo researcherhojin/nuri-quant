@@ -9,6 +9,8 @@ import os
 import time
 from unittest.mock import patch
 
+import pytest
+
 from nuri.alerts import heartbeat_watchdog as hw
 
 
@@ -50,6 +52,11 @@ class TestWebhookResolution:
 
 
 class TestMain:
+    @pytest.fixture(autouse=True)
+    def _no_services(self, monkeypatch):
+        """heartbeat 계약만 격리 검증 — 포트 감시는 TestServiceCheck 에서 별도."""
+        monkeypatch.setattr(hw, "SERVICE_PORTS", {})
+
     def test_fresh_heartbeat_no_alert(self, tmp_path, monkeypatch):
         p = tmp_path / "hb"
         _write_heartbeat(p, age_minutes=1.0)
@@ -119,6 +126,107 @@ class TestMain:
             rc = hw.main()
         assert rc == 2
         assert "자동 재시작 실패" in send.call_args.args[0]
+
+
+class TestServiceCheck:
+    """#826 표출 계층 포트 감시 — 로드+포트닫힘 → kickstart+알림, 미설치 → skip.
+
+    Gotcha-Test Pair: 2026-07-07 실측 — mini 의 API/dashboard 가 launchd 밖에서
+    (`make start` nohup) 돌다 죽은 채 기간 불명 방치. KeepAlive 만으로는 hung/
+    미바인딩 상태 복구 불가 → 포트 감시 계약을 고정.
+    """
+
+    def test_loaded_and_port_closed_kickstarts_and_alerts(self, monkeypatch):
+        monkeypatch.setattr(hw, "SERVICE_PORTS", {"com.nuri-quant.api": 18001})
+        with (
+            patch.object(hw, "_label_loaded", return_value=True),
+            patch.object(hw, "_port_open", return_value=False),
+            patch.object(hw, "_kickstart", return_value=True) as kick,
+        ):
+            problems = hw.check_services()
+        kick.assert_called_once_with("com.nuri-quant.api")
+        assert len(problems) == 1
+        assert "api DOWN" in problems[0]
+        assert "자동 재시작 시도 완료" in problems[0]
+
+    def test_not_loaded_skips_silently(self, monkeypatch):
+        # dev 머신 (launchd 미설치) — 검사·재시작 모두 없음.
+        monkeypatch.setattr(hw, "SERVICE_PORTS", {"com.nuri-quant.api": 18001})
+        with (
+            patch.object(hw, "_label_loaded", return_value=False),
+            patch.object(hw, "_kickstart") as kick,
+        ):
+            problems = hw.check_services()
+        kick.assert_not_called()
+        assert problems == []
+
+    def test_loaded_and_port_open_is_healthy(self, monkeypatch):
+        monkeypatch.setattr(hw, "SERVICE_PORTS", {"com.nuri-quant.dashboard": 13000})
+        with (
+            patch.object(hw, "_label_loaded", return_value=True),
+            patch.object(hw, "_port_open", return_value=True),
+            patch.object(hw, "_kickstart") as kick,
+        ):
+            problems = hw.check_services()
+        kick.assert_not_called()
+        assert problems == []
+
+    def test_kickstart_failure_reports_manual_step(self, monkeypatch):
+        monkeypatch.setattr(hw, "SERVICE_PORTS", {"com.nuri-quant.dashboard": 13000})
+        with (
+            patch.object(hw, "_label_loaded", return_value=True),
+            patch.object(hw, "_port_open", return_value=False),
+            patch.object(hw, "_kickstart", return_value=False),
+        ):
+            problems = hw.check_services()
+        assert "자동 재시작 실패" in problems[0]
+
+    def test_main_combines_service_alert_with_fresh_heartbeat(self, tmp_path, monkeypatch):
+        # heartbeat 정상이어도 서비스 down 이면 rc=2 + 알림 발송.
+        p = tmp_path / "hb"
+        _write_heartbeat(p, age_minutes=1.0)
+        monkeypatch.setattr(hw, "HEARTBEAT_PATH", p)
+        with (
+            patch.object(hw, "check_services", return_value=["🔴 **api DOWN** — test"]),
+            patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send,
+        ):
+            rc = hw.main()
+        assert rc == 2
+        send.assert_called_once()
+        assert "api DOWN" in send.call_args.args[0]
+
+    def test_label_loaded_true_on_zero_rc(self, monkeypatch):
+        class _Proc:
+            returncode = 0
+
+        monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: _Proc())
+        assert hw._label_loaded("com.nuri-quant.api") is True
+
+    def test_label_loaded_false_on_nonzero_rc(self, monkeypatch):
+        class _Proc:
+            returncode = 113  # launchctl list: 미로드 label
+
+        monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: _Proc())
+        assert hw._label_loaded("com.nuri-quant.api") is False
+
+    def test_label_loaded_false_when_launchctl_missing(self, monkeypatch):
+        # CI/linux — launchctl 부재는 미배포 취급 (skip)
+        monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()))
+        assert hw._label_loaded("com.nuri-quant.api") is False
+
+    def test_port_open_real_socket(self):
+        # 실소켓 왕복 1회 — mock 없는 실측 (loopback listener).
+        import socket
+
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        port = srv.getsockname()[1]
+        try:
+            assert hw._port_open(port) is True
+        finally:
+            srv.close()
+        assert hw._port_open(port) is False  # 닫힌 뒤엔 False
 
 
 class TestKickstart:
