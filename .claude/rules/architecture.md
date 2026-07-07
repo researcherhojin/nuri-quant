@@ -2,14 +2,14 @@
 
 ## Code layout
 
-`nuri/core` (sole sqlite3 importer) / `nuri/collectors` (27 collector modules) / `analysis` / `quant` / `trading` (agents · engine · strategy · recommend · swing · execution) / `api` (72 endpoints, routes/) / `alerts` / `llm`. Plus `tests/` mirror + `scripts/` automation + `frontend/` (Next.js). Detailed map (DB schema, migrations, env vars, CI/CD): `docs/ARCHITECTURE.md`.
+`nuri/core` (sole sqlite3 importer) / `nuri/collectors` (27 collector modules) / `analysis` / `quant` / `trading` (agents · engine · strategy · recommend · swing · execution) / `api` (72 endpoints, routes/) / `alerts` / `llm` / `agents` (top-level actor fleet: 18 `actors/` — SRE incident · drift sentinel · forward outcome tracker · walkforward validator · execution firewall · … — plus `discord/` bot layer, wired by `nuri/scheduler.py`). Plus `tests/` mirror + `scripts/` automation + `frontend/` (Next.js). Detailed map (DB schema, migrations, env vars, CI/CD): `docs/ARCHITECTURE.md`.
 
 ## Commands
 
 `make help` for full target inventory. Daily essentials:
 - Setup: `make setup` (1회) — venv + deps + DB init + portfolio import
 - Daily: `make quick-scan` (~2분 4-step) / `make full-scan` (8-phase + SIEGE) / `make consensus`
-- Reactive: `make buy-candidates` / `make thesis ticker=<T>` / `make earnings-preview ticker=<T>`
+- Reactive: `make recommend` (BUY candidates + tracker) / `/nuri-thesis <T>` skill (`nuri/llm/thesis_query.py`) / `make earnings-preview ticker=<T>`
 - LLM consult dual-archive: `make llm-consult slug=<kebab> prompt=<file>`
 - Lint+Test: `make lint` / `make test-fast` / `.venv/bin/python -m pytest <path>::<test> -v`
 - Deploy: `make start` (API :8001 + Dashboard :3000) / `make deploy-mini` (MBP → Mac mini 6단계 동기화)
