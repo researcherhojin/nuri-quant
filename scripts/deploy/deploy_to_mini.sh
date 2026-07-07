@@ -31,6 +31,9 @@ REMOTE="${DEV2_HOST:-}"
 REMOTE_PATH="${DEV2_PATH:-~/workspace/nuri-quant}"
 PLIST_NAME="com.nuri-quant.scheduler.plist"
 
+# bare ssh 대신 공용 helper (#827) — ssh -4 강제 + .local 해석 실패 시 dscacheutil IPv4 fallback
+SSH="${SCRIPT_DIR}/ssh_dev2.sh"
+
 # ── 색상 ──
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -52,7 +55,7 @@ echo "  local HEAD: $(git log -1 --oneline)"
 
 # ── 1. SSH 연결 ──
 step 1 "SSH 연결 확인"
-if ssh -o BatchMode=yes -o ConnectTimeout=5 "${REMOTE}" "echo ok" >/dev/null 2>&1; then
+if "${SSH}" -o BatchMode=yes -o ConnectTimeout=5 "${REMOTE}" "echo ok" >/dev/null 2>&1; then
     ok "연결 성공"
 else
     fail "SSH 연결 실패. 네트워크/키 확인 필요"
@@ -60,15 +63,15 @@ fi
 
 # ── 2. 원격 git pull ──
 step 2 "원격 git pull (ff-only)"
-REMOTE_BEFORE=$(ssh "${REMOTE}" "cd ${REMOTE_PATH} && git rev-parse --short HEAD")
-ssh "${REMOTE}" "cd ${REMOTE_PATH} && git fetch origin main --quiet && git merge --ff-only origin/main --quiet" 2>&1 || true
-REMOTE_AFTER=$(ssh "${REMOTE}" "cd ${REMOTE_PATH} && git rev-parse --short HEAD")
+REMOTE_BEFORE=$("${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && git rev-parse --short HEAD")
+"${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && git fetch origin main --quiet && git merge --ff-only origin/main --quiet" 2>&1 || true
+REMOTE_AFTER=$("${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && git rev-parse --short HEAD")
 
 if [[ "${REMOTE_BEFORE}" == "${REMOTE_AFTER}" ]]; then
     ok "이미 최신 (${REMOTE_AFTER})"
 else
     ok "${REMOTE_BEFORE} → ${REMOTE_AFTER}"
-    CHANGED_FILES=$(ssh "${REMOTE}" "cd ${REMOTE_PATH} && git diff --name-only ${REMOTE_BEFORE}..${REMOTE_AFTER}")
+    CHANGED_FILES=$("${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && git diff --name-only ${REMOTE_BEFORE}..${REMOTE_AFTER}")
     echo "  변경 파일: $(echo "${CHANGED_FILES}" | wc -l | tr -d ' ')개"
 fi
 
@@ -79,8 +82,8 @@ for f in .env config/portfolio.yaml NEXT_SESSION.md; do
     if [[ -f "${PROJECT_ROOT}/${f}" ]]; then
         # 원격 디렉토리 보장
         REMOTE_DIR=$(dirname "${REMOTE_PATH}/${f}")
-        ssh "${REMOTE}" "mkdir -p ${REMOTE_DIR}" 2>/dev/null || true
-        scp -q "${PROJECT_ROOT}/${f}" "${REMOTE}:${REMOTE_PATH}/${f}"
+        "${SSH}" "${REMOTE}" "mkdir -p ${REMOTE_DIR}" 2>/dev/null || true
+        scp -q -S "${SSH}" "${PROJECT_ROOT}/${f}" "${REMOTE}:${REMOTE_PATH}/${f}"
         ok "${f}"
         SYNC_COUNT=$((SYNC_COUNT + 1))
     else
@@ -107,11 +110,11 @@ echo "  ${SYNC_COUNT}개 파일 동기화"
 #   에 실행, (c) misfire_grace_time=300 가 부분 흡수. acceptable.
 PLIST_REMOTE="\$HOME/Library/LaunchAgents/${PLIST_NAME}"
 SCHEDULER_LABEL="${PLIST_NAME%.plist}"
-SCHEDULER_INSTALLED=$(ssh "${REMOTE}" "[ -f ${PLIST_REMOTE} ] && echo yes || echo no")
+SCHEDULER_INSTALLED=$("${SSH}" "${REMOTE}" "[ -f ${PLIST_REMOTE} ] && echo yes || echo no")
 
 # launchctl PID 조회 — running 시 숫자, 미실행/미등록 시 빈 문자열
 get_scheduler_pid() {
-    ssh "${REMOTE}" "launchctl list 2>/dev/null | awk -v label='${SCHEDULER_LABEL}' '\$3==label && \$1 ~ /^[0-9]+\$/ { print \$1; exit }'" || true
+    "${SSH}" "${REMOTE}" "launchctl list 2>/dev/null | awk -v label='${SCHEDULER_LABEL}' '\$3==label && \$1 ~ /^[0-9]+\$/ { print \$1; exit }'" || true
 }
 
 # polling: 20초 동안 0.5초 간격으로 condition (gone|alive) 체크.
@@ -147,7 +150,7 @@ step 4 "scheduler bounce + 의존성 동기화"
 
 # 4a. scheduler unload + verify PID 사라짐
 if [[ "${SCHEDULER_INSTALLED}" == "yes" ]]; then
-    ssh "${REMOTE}" "launchctl unload ${PLIST_REMOTE} 2>/dev/null" || true
+    "${SSH}" "${REMOTE}" "launchctl unload ${PLIST_REMOTE} 2>/dev/null" || true
     if wait_scheduler gone >/dev/null; then
         ok "scheduler unloaded (PID 사라짐 verified)"
     else
@@ -160,15 +163,15 @@ fi
 # 4b. uv sync --frozen (항상 실행, 1회 retry)
 # ssh non-interactive shell 은 ~/.zprofile 미로드 → homebrew PATH 누락. 명시 prepend 필수.
 SYNC_CMD="export PATH=/opt/homebrew/bin:\$PATH && cd ${REMOTE_PATH} && uv sync --extra dev --frozen --quiet"
-if ssh "${REMOTE}" "${SYNC_CMD}" 2>&1; then
+if "${SSH}" "${REMOTE}" "${SYNC_CMD}" 2>&1; then
     ok "uv sync --frozen 성공"
-elif sleep 5 && ssh "${REMOTE}" "${SYNC_CMD}" 2>&1; then
+elif sleep 5 && "${SSH}" "${REMOTE}" "${SYNC_CMD}" 2>&1; then
     ok "uv sync --frozen 성공 (retry 1회 후)"
 else
     # sync 실패 시 scheduler 재가동 시도 (이전 .venv 상태로라도 복구) 후 abort.
     # load + stable check — partial .venv 로 인한 crash-loop 도 감지.
     if [[ "${SCHEDULER_INSTALLED}" == "yes" ]]; then
-        ssh "${REMOTE}" "launchctl load ${PLIST_REMOTE} 2>/dev/null" || true
+        "${SSH}" "${REMOTE}" "launchctl load ${PLIST_REMOTE} 2>/dev/null" || true
         if RECOVERY_PID=$(wait_scheduler alive) && verify_stable_pid "${RECOVERY_PID}"; then
             warn "sync 실패 — 이전 .venv 상태로 scheduler 재가동 성공 (PID ${RECOVERY_PID} stable)"
         else
@@ -181,10 +184,10 @@ fi
 # 4c. scheduler load + verify PID 살아남
 step 5 "scheduler 재기동"
 if [[ "${SCHEDULER_INSTALLED}" == "no" ]]; then
-    ssh "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && cp ${REMOTE_PATH}/scripts/launchd/${PLIST_NAME} ${PLIST_REMOTE}"
-    ssh "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
+    "${SSH}" "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && cp ${REMOTE_PATH}/scripts/launchd/${PLIST_NAME} ${PLIST_REMOTE}"
+    "${SSH}" "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
 else
-    ssh "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
+    "${SSH}" "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
 fi
 
 if NEW_PID=$(wait_scheduler alive) && verify_stable_pid "${NEW_PID}"; then
@@ -196,7 +199,7 @@ fi
 # ── 6. 최종 검증 ──
 step 6 "최종 검증"
 
-REMOTE_HEAD=$(ssh "${REMOTE}" "cd ${REMOTE_PATH} && git log -1 --oneline")
+REMOTE_HEAD=$("${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && git log -1 --oneline")
 LOCAL_HEAD=$(git log -1 --oneline)
 if [[ "${REMOTE_HEAD}" == "${LOCAL_HEAD}" ]]; then
     ok "git HEAD 일치: ${LOCAL_HEAD}"
@@ -204,14 +207,14 @@ else
     warn "git HEAD 불일치 — local: ${LOCAL_HEAD} / remote: ${REMOTE_HEAD}"
 fi
 
-SCHEDULER_PID=$(ssh "${REMOTE}" "launchctl list | grep ${PLIST_NAME%.plist} | awk '{print \$1}'" 2>/dev/null || echo "-")
+SCHEDULER_PID=$("${SSH}" "${REMOTE}" "launchctl list | grep ${PLIST_NAME%.plist} | awk '{print \$1}'" 2>/dev/null || echo "-")
 if [[ "${SCHEDULER_PID}" != "-" && "${SCHEDULER_PID}" != "" ]]; then
     ok "scheduler running (PID ${SCHEDULER_PID})"
 else
     warn "scheduler 미실행 상태 — 수동 확인 필요"
 fi
 
-AUTOPULL_STATUS=$(ssh "${REMOTE}" "launchctl list | grep autopull | awk '{print \$1}'" 2>/dev/null || echo "-")
+AUTOPULL_STATUS=$("${SSH}" "${REMOTE}" "launchctl list | grep autopull | awk '{print \$1}'" 2>/dev/null || echo "-")
 ok "autopull: ${AUTOPULL_STATUS:-active}"
 
 echo ""
