@@ -670,7 +670,7 @@ sync-status:
 scheduler-reload-remote: ## Reload scheduler on Mac mini (nuri/scheduler.py 변경 반영)
 	@test -n "$$DEV2_HOST" || { echo "❌ DEV2_HOST 미설정. ~/.zshrc 에 export DEV2_HOST=ehbebe@Ehbebeui-Macmini.local 추가 필요"; exit 1; }
 	@echo "→ Mac mini scheduler reload..."
-	@ssh "$$DEV2_HOST" '\
+	@bash scripts/deploy/ssh_dev2.sh "$$DEV2_HOST" '\
 		launchctl unload ~/Library/LaunchAgents/com.nuri-quant.scheduler.plist 2>/dev/null; \
 		sleep 2; \
 		launchctl load ~/Library/LaunchAgents/com.nuri-quant.scheduler.plist && \
