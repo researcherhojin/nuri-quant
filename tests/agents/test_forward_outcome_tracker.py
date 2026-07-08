@@ -450,6 +450,23 @@ class TestStatusMachineLockTest:
         )
         assert dict(rows[0])["status"] == "rejected"  # 변동 X
 
+    def test_non_pass_reject_validation_is_noop(self, patched_db):
+        """468->exit 방어 분기: validation ∉ {pass, reject} (예: insufficient_data) 면
+        if/elif 둘 다 미매치 → fall-through, open hypothesis 미변경.
+
+        공개 경로(_trigger_forward_validation L380 guard)는 pass/reject 만 이 메서드에
+        넘기므로 도달 불가한 방어 분기 — staticmethod 직접 호출로 커버.
+        Regression: 예상 밖 validation 값에 else 를 잘못 달면 open hypothesis 를 오변경.
+        """
+        _seed_hypothesis(patched_db, "h-insuf", "claim-insuf")
+        ForwardOutcomeTracker._trigger_hypothesis_update("h-insuf", "insufficient_data", 7, 0.01, None, "run-insuf")
+        rows = query(
+            "SELECT status FROM hypotheses WHERE hypothesis_id=?",
+            ("h-insuf",),
+            db_path=patched_db,
+        )
+        assert dict(rows[0])["status"] == "open"  # pass/reject 아님 → 변동 없음
+
 
 class TestHoldSkipLockTest:
     """LOCK-TEST: HOLD action → tracking skip (의미 없음)."""
