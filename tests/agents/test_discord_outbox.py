@@ -268,6 +268,21 @@ def test_bucket_brief_digest_groups_by_actionability():
     assert "BLOCK 1" in embed["description"]
 
 
+def test_bucket_brief_digest_counts_rebalance():
+    """Tier 1b — REBALANCE 는 Lower Priority 버킷 + 헤더 요약에 집계 (undercount 방지)."""
+    events = [
+        {"kind": "BUY", "ticker": "TST_A", "conviction": 0.81},
+        {"kind": "REBALANCE", "ticker": "TST_B", "reason": "비중 24.4% > 한도 15%"},
+        {"kind": "REBALANCE", "ticker": "TST_C", "reason": "비중 40.0% > 한도 35%"},
+    ]
+    embed = bucket_brief_digest(events)
+    assert "REBALANCE 2" in embed["description"]  # 헤더 집계
+    assert "3 opinions" in embed["title"]
+    # REBALANCE 는 Lower Priority 필드에 렌더 (Action Now 아님)
+    lower = next(f for f in embed["fields"] if "Lower Priority" in f["name"])
+    assert "TST_B" in lower["value"] and "TST_C" in lower["value"]
+
+
 def test_bucket_brief_digest_empty_returns_no_op_embed():
     embed = bucket_brief_digest([])
     assert embed["fields"] == []
