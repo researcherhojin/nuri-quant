@@ -122,6 +122,26 @@ def get_account_strategy(account: str) -> dict:
         return _DEFAULT_STRATEGY
 
 
+def get_account_strategy_name(account: str | None) -> str:
+    """계좌명 → 전략 이름 반환 ('core'|'swing'|'pension'|...). 매칭 실패 → 'core'.
+
+    `get_account_strategy()` 는 rules dict(stop_loss/max_position/...)만 반환해
+    이름이 소실된다 — pension 판별(daily action 제외)엔 이름이 authoritative 하므로
+    yaml 의 strategy 필드를 직접 노출.
+    """
+    if not account:
+        return "core"
+    import yaml
+
+    _portfolio_path = Path(__file__).parent.parent.parent / "config" / "portfolio.yaml"
+    try:
+        with open(_portfolio_path, encoding="utf-8") as f:
+            portfolio = yaml.safe_load(f) or {}
+        return portfolio.get("accounts", {}).get(account, {}).get("strategy", "core")
+    except Exception:
+        return "core"
+
+
 def get_stop_loss_for_account(account: str | None) -> int:
     """계좌명 → stop_loss threshold (정수 %). 계좌 미지정/매칭 실패 → global fallback.
 
