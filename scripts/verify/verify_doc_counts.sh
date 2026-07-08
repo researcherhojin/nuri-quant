@@ -53,6 +53,13 @@ print(sqlite3.connect(_p).execute(\"SELECT COUNT(*) FROM sqlite_master WHERE typ
 " 2>/dev/null || echo ""
 }
 
+# 2026-07-08: migrations / scheduler jobs / rules.yaml lines — previously
+# manual-tracked (silent drift; migration 44→45 slipped through #863). grep/wc
+# based (no Python) so they HARD-GATE in CI, unlike regimes/db_tables above.
+live_migrations()     { grep -cE '^        [0-9]+,$' nuri/core/db_migrations.py || true; }
+live_scheduler_jobs() { grep -cE '"cron":' nuri/scheduler.py || true; }
+live_rules_lines()    { wc -l < config/rules.yaml | tr -d ' '; }
+
 # Extract the target integer from a file.
 # Strategy: match the claim's context substring (must be unique in the file),
 # then take the LAST [0-9]+ in that substring. Target numbers are consistently
@@ -92,6 +99,9 @@ TFFE=$(live_test_files_fe)
 E2E=$(live_e2e_specs)
 REGIMES=$(live_regimes)
 DBT=$(live_db_tables)
+MIG=$(live_migrations)
+JOBS=$(live_scheduler_jobs)
+RULES=$(live_rules_lines)
 
 # Claim checks: pattern must uniquely identify the phrase containing the target
 # number. Target is always the LAST [0-9]+ in the matched substring.
@@ -117,11 +127,26 @@ if [ -n "$DBT" ]; then
 else
     info "db_tables: skipped (no .venv/bin/python)"
 fi
+# grep/wc-based (no Python) — always run, including CI
+check_claim "migrations"       "$MIG"   "README.md"            '[0-9]+ forward-only migrations' || true
+check_claim "scheduler_jobs"   "$JOBS"  "docs/ARCHITECTURE.md" '[0-9]+ cron jobs in' || true
+check_claim "rules_yaml_lines" "$RULES" "config/CLAUDE.md"     '\| [0-9]+ \| Investment rules' || true
 
 # Note: agent count + pytest collect count intentionally excluded from hard
 # verify. Agent count has no single stable grep pattern across docs (multiple
 # phrasings "10-agent", "10 agents", "10개"), and pytest collect takes 30+s
 # which would slow PR CI. Those are covered by sync_doc_counts.sh best-effort.
+
+# 2026-07-08: doc integrity guard. Merge conflict markers were committed into
+# docs/ARCHITECTURE.md and sat undetected — the count greps above still matched
+# inside the conflict block, so this check stayed green. Hard-fail if any tracked
+# .md carries a git conflict marker. (git grep = tracked files only; no git → skip.)
+CONFLICTS=$(git grep -lE '^(<<<<<<<|>>>>>>>)' -- '*.md' 2>/dev/null || true)
+if [ -n "$CONFLICTS" ]; then
+    fail "merge conflict markers in tracked .md: $(echo "$CONFLICTS" | tr '\n' ' ')"
+else
+    pass "no merge conflict markers in tracked .md"
+fi
 
 summary
 if [ "$FAIL" -gt 0 ]; then
