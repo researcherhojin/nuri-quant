@@ -339,6 +339,41 @@ class TestPositionState:
 
 
 # ════════════════════════════════════════════════════════════
+# L416 (416->473 false branch) — non-BUY/SELL action skips price levels
+# ════════════════════════════════════════════════════════════
+
+
+class TestBriefNonDirectionalAction:
+    def test_non_buy_sell_action_stages_brief_without_price_levels(self, patched_db):
+        """L416 false branch (416->473): action ∉ {BUY,SELL} → price/horizon/position
+        블록 전체 skip 후 곧장 stage_brief.
+
+        `.run()` 경로는 proposed_action 을 VALID_ACTIONS_INPUT=("BUY","SELL") 로 강제하므로
+        이 분기는 non-directional action (예: HOLD) 으로 직접 호출해야만 도달.
+        Regression: 분기 inversion 시 HOLD brief 에 무의미한 price_levels 가 붙는다.
+        """
+        from nuri.core.db import claim_pending_outbox
+
+        DecisionCompiler._publish_brief(
+            decision_id="dec-hold-1",
+            ticker="TST_A",
+            action="HOLD",
+            conviction=0.55,
+            rationale={"regime_top_prob": 0.80, "causal_certainty": 0.90, "top2_margin": 0.50},
+            run_id="run-hold-1",
+        )
+
+        _, rows = claim_pending_outbox("brief", db_path=patched_db)
+        assert len(rows) == 1
+        p = rows[0]["payload"]
+        assert p["kind"] == "HOLD"
+        # price-level 블록 전체 skip.
+        assert "price_levels" not in p
+        assert "horizon" not in p
+        assert "position" not in p
+
+
+# ════════════════════════════════════════════════════════════
 # L501-502 — _publish_block exception swallow
 # ════════════════════════════════════════════════════════════
 

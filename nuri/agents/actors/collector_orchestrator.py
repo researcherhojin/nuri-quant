@@ -145,7 +145,9 @@ class CollectorOrchestrator(Actor):
         last_error: Optional[str] = None
         rows_collected = 0
         # attempt 0 + retry 회수 = max_retries+1 회 시도.
-        for attempt_idx in range(max_retries + 1):
+        # 마지막 시도는 성공→return(174)/실패→break(212)로만 종료하므로 for 자연 소진 arc(148->218)은
+        # max_retries>=0(L136) 불변식상 도달 불가 → pragma: no branch 로 partial-branch 제외.
+        for attempt_idx in range(max_retries + 1):  # pragma: no branch
             start_ms = time.monotonic()
             try:
                 result_value = collector_fn()

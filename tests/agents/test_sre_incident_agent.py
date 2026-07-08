@@ -967,6 +967,14 @@ class TestHumanIncidentSummary:
         s = _human_incident_summary("actor_failure_streak", "consensus", {"consecutive_failures": 5})
         assert "consensus" in s and "5회 연속 실패" in s
 
+    def test_signal_evaluation_stale_shows_missed_days_and_last_utc(self):
+        s = _human_incident_summary(
+            "signal_evaluation_stale",
+            "signal-eval",
+            {"missed_eval_days": 3, "last_evaluated_at_utc": "2026-07-04 22:00:00"},
+        )
+        assert "signal-eval" in s and "3영업일째" in s and "2026-07-04 22:00:00" in s
+
     def test_unknown_type_falls_back_gracefully(self):
         s = _human_incident_summary("brand_new_type", "x", {})
         assert "brand_new_type" in s and "x" in s
