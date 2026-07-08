@@ -316,9 +316,9 @@ class ForwardOutcomeTracker(Actor):
             }
 
         # ─── 가격 조회 ───
-        entry = self._fetch_close(ticker, as_of_date)
+        entry = self._fetch_close_on_or_before(ticker, as_of_date)
         exit_p = self._fetch_close_on_or_after(ticker, target_date)
-        bench_entry = self._fetch_close(DEFAULT_BENCHMARK_TICKER, as_of_date)
+        bench_entry = self._fetch_close_on_or_before(DEFAULT_BENCHMARK_TICKER, as_of_date)
         bench_exit = self._fetch_close_on_or_after(DEFAULT_BENCHMARK_TICKER, target_date)
 
         if entry is None or exit_p is None:
@@ -408,9 +408,15 @@ class ForwardOutcomeTracker(Actor):
         return start + timedelta(days=n)
 
     @staticmethod
-    def _fetch_close(ticker: str, date_str: str) -> Optional[float]:
+    def _fetch_close_on_or_before(ticker: str, date_str: str) -> Optional[float]:
+        """as_of_date 이전(포함) 마지막 거래일의 close — 주말/휴장 진입일 흡수.
+
+        PIT: `date <= as_of` 만 조회하므로 미래 정보 미사용 (lookahead 아님).
+        exit 의 `_fetch_close_on_or_after` 와 대칭 — 진입은 직전 거래일, 청산은 직후 거래일.
+        (기존 exact-date 조회는 주말/휴장 as_of 에서 None → insufficient_data 대량 발생 버그.)
+        """
         rows = query(
-            "SELECT close FROM prices WHERE ticker = ? AND date = ? LIMIT 1",
+            "SELECT close FROM prices WHERE ticker = ? AND date <= ? AND close IS NOT NULL ORDER BY date DESC LIMIT 1",
             (ticker, date_str),
         )
         if not rows:
@@ -420,9 +426,12 @@ class ForwardOutcomeTracker(Actor):
 
     @staticmethod
     def _fetch_close_on_or_after(ticker: str, date_str: str) -> Optional[float]:
-        """target_date 이후 첫 거래일의 close (주말/휴장 자동 흡수)."""
+        """target_date 이후 첫 거래일의 close (주말/휴장 자동 흡수).
+
+        `close IS NOT NULL` 로 stale NULL 행이 유효 close 를 가리는 것 방지 (entry 헬퍼와 대칭).
+        """
         rows = query(
-            "SELECT close FROM prices WHERE ticker = ? AND date >= ? ORDER BY date LIMIT 1",
+            "SELECT close FROM prices WHERE ticker = ? AND date >= ? AND close IS NOT NULL ORDER BY date LIMIT 1",
             (ticker, date_str),
         )
         if not rows:
