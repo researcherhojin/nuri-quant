@@ -161,6 +161,35 @@ class TestAccountStrategies:
             result = get_account_strategy("test_acct")
             assert result["stop_loss"] == -7  # core default
 
+    def test_get_account_strategy_name_reads_yaml_name(self, tmp_path):
+        """이름(dict 아닌 name string) 반환 — pension 판별용."""
+        from nuri.core.rules import get_account_strategy_name
+
+        portfolio_yaml = tmp_path / "portfolio.yaml"
+        portfolio_yaml.write_text(yaml.dump({"accounts": {"P_acct": {"strategy": "pension"}}}))
+
+        real_open = open
+
+        def mock_open(path, **kwargs):
+            if str(path).endswith("portfolio.yaml"):
+                return real_open(portfolio_yaml, **kwargs)
+            return real_open(path, **kwargs)
+
+        with patch("builtins.open", side_effect=mock_open):
+            assert get_account_strategy_name("P_acct") == "pension"
+            assert get_account_strategy_name("unknown_acct") == "core"  # 매칭 실패 → core
+
+    def test_get_account_strategy_name_none_returns_core(self):
+        from nuri.core.rules import get_account_strategy_name
+
+        assert get_account_strategy_name(None) == "core"
+
+    def test_get_account_strategy_name_exception_returns_core(self):
+        from nuri.core.rules import get_account_strategy_name
+
+        with patch("builtins.open", side_effect=FileNotFoundError):
+            assert get_account_strategy_name("any") == "core"
+
 
 # ═══════════════════════════════════════════════════════
 # §3.11 측정 모드 — 사전 고정 판정 기준 lock
