@@ -1,0 +1,386 @@
+"""Tier 1a — stop-loss breach → #brief (`nuri/alerts/risk_signals.py`).
+
+합성 티커 TST_* 만 사용(privacy: 사용자 실보유/실티커 금지). breach 판정은
+가격에서 유도(소스에 signed-% 리터럴 미포함).
+"""
+
+from __future__ import annotations
+
+import json
+from unittest.mock import patch
+
+import pandas as pd
+import pytest
+import yaml
+
+from nuri.alerts import risk_signals
+from nuri.core.db import init_db, query, upsert_portfolio, upsert_prices
+
+
+def _seed_price(path, ticker, close):
+    upsert_prices(
+        pd.DataFrame(
+            [
+                {
+                    "ticker": ticker,
+                    "date": "2026-07-08",
+                    "open": close,
+                    "high": close,
+                    "low": close,
+                    "close": close,
+                    "volume": 1_000_000,
+                    "adj_close": close,
+                }
+            ]
+        ),
+        path,
+    )
+
+
+@pytest.fixture
+def db_path(tmp_path):
+    path = tmp_path / "risk.db"
+    init_db(path)
+    return path
+
+
+def _seed(path, *, ticker, account, avg, current):
+    upsert_portfolio(
+        [{"account": account, "ticker": ticker, "quantity": 10, "avg_price": avg, "currency": "USD", "sector": "Tech"}],
+        path,
+    )
+    upsert_prices(
+        pd.DataFrame(
+            [
+                {
+                    "ticker": ticker,
+                    "date": "2026-07-08",
+                    "open": current,
+                    "high": current,
+                    "low": current,
+                    "close": current,
+                    "volume": 1_000_000,
+                    "adj_close": current,
+                }
+            ]
+        ),
+        path,
+    )
+
+
+# ─── scan_stop_breaches ──────────────────────────────────────────────────────
+
+
+def test_breach_detected_when_below_threshold(db_path, monkeypatch):
+    # core stop_loss = -7% → avg 100, current 90 = -10% → breach
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)
+
+    breaches = risk_signals.scan_stop_breaches(db_path=db_path)
+
+    assert len(breaches) == 1
+    b = breaches[0]
+    assert b["ticker"] == "TST_A"
+    assert b["threshold"] == -7
+    assert b["pnl_pct"] == pytest.approx(-10.0)
+
+
+def test_no_breach_when_above_threshold(db_path, monkeypatch):
+    # avg 100, current 95 = -5% > -7% → no breach
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=95.0)
+
+    assert risk_signals.scan_stop_breaches(db_path=db_path) == []
+
+
+def test_pension_account_excluded(db_path, monkeypatch):
+    # 깊은 손실이라도 pension 은 daily action 대상 아님 → 제외
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "pension")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -30)
+    _seed(db_path, ticker="TST_A", account="Pension Gamma", avg=100.0, current=50.0)
+
+    assert risk_signals.scan_stop_breaches(db_path=db_path) == []
+
+
+def test_session_filter_kr_vs_us(db_path, monkeypatch):
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=88.0)
+    _seed(db_path, ticker="005930.KS", account="Brokerage Alpha", avg=100.0, current=88.0)
+
+    us = risk_signals.scan_stop_breaches(session="us", db_path=db_path)
+    kr = risk_signals.scan_stop_breaches(session="kr", db_path=db_path)
+    all_ = risk_signals.scan_stop_breaches(db_path=db_path)
+
+    assert [b["ticker"] for b in us] == ["TST_A"]
+    assert [b["ticker"] for b in kr] == ["005930.KS"]
+    assert len(all_) == 2
+
+
+def test_missing_price_skipped(db_path, monkeypatch):
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    # 보유만 있고 prices 없음 → current None → skip (KeyError/crash 없이)
+    upsert_portfolio(
+        [
+            {
+                "account": "Brokerage Alpha",
+                "ticker": "TST_A",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "sector": "Tech",
+            }
+        ],
+        db_path,
+    )
+    assert risk_signals.scan_stop_breaches(db_path=db_path) == []
+
+
+def test_zero_price_skipped_no_false_breach(db_path, monkeypatch):
+    """P1 regression — current==0 (상장폐지/거래정지/불량 price) 은 -100% false
+    SELL 을 내면 안 됨. risk_agent 와 동일한 truthiness 가드.
+    """
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=0.0)
+
+    assert risk_signals.scan_stop_breaches(db_path=db_path) == []  # -100% false breach 없음
+
+
+def test_breaches_sorted_worst_first(db_path, monkeypatch):
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)  # -10%
+    _seed(db_path, ticker="TST_B", account="Brokerage Alpha", avg=100.0, current=80.0)  # -20%
+
+    breaches = risk_signals.scan_stop_breaches(db_path=db_path)
+    assert [b["ticker"] for b in breaches] == ["TST_B", "TST_A"]  # 깊은 손실 우선
+
+
+# ─── _build_breach_payload ───────────────────────────────────────────────────
+
+
+def test_payload_shape_is_actionable_sell():
+    breach = {
+        "ticker": "TST_A",
+        "account": "Brokerage Alpha",
+        "avg": 100.0,
+        "current": 90.0,
+        "pnl_pct": -10.0,
+        "threshold": -7,
+    }
+    payload = risk_signals._build_breach_payload(breach, "2026-07-08")
+
+    assert payload["kind"] == "SELL"  # → priority 0 "Action Now" + price_levels 노출
+    assert payload["ticker"] == "TST_A"
+    assert payload["note"] == "Brokerage Alpha"  # 다계좌 구분
+    assert "손절선 돌파" in payload["reason"]
+    assert payload["price_levels"]["entry"] == 100.0
+    assert payload["price_levels"]["stop"] == 93.0  # 100 × (1 + -7/100)
+
+
+def test_payload_renders_actionable_line():
+    # 렌더러 계약: "TST_A | SELL | reason: ...\n  ↳ entry $.. / stop $.."
+    from nuri.agents.discord.outbox import _format_event_line
+
+    breach = {
+        "ticker": "TST_A",
+        "account": "Brokerage Alpha",
+        "avg": 100.0,
+        "current": 90.0,
+        "pnl_pct": -10.0,
+        "threshold": -7,
+    }
+    line = _format_event_line(risk_signals._build_breach_payload(breach, "2026-07-08"))
+
+    assert line.startswith("TST_A | SELL")
+    assert "손절선 돌파" in line
+    assert "entry $100" in line and "stop $93" in line
+
+
+# ─── stage_stop_breach_briefs ────────────────────────────────────────────────
+
+
+def test_staging_writes_sell_events_to_brief_outbox(db_path, monkeypatch):
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)
+
+    staged = risk_signals.stage_stop_breach_briefs(date="2026-07-08", db_path=db_path)
+    assert staged == 1
+
+    rows = query(
+        "SELECT channel, priority, dedupe_key, payload_json FROM discord_outbox WHERE channel='brief'",
+        db_path=db_path,
+    )
+    assert len(rows) == 1
+    assert rows[0]["priority"] == "high"
+    assert rows[0]["dedupe_key"] == "stop-breach:TST_A:Brokerage Alpha:2026-07-08"
+    payload = json.loads(rows[0]["payload_json"])
+    assert payload["kind"] == "SELL" and payload["ticker"] == "TST_A"
+
+
+def test_staging_dedupes_same_ticker_same_day(db_path, monkeypatch):
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)
+
+    risk_signals.stage_stop_breach_briefs(date="2026-07-08", db_path=db_path)
+    risk_signals.stage_stop_breach_briefs(date="2026-07-08", db_path=db_path)  # 재실행
+
+    rows = query("SELECT COUNT(*) c FROM discord_outbox WHERE channel='brief'", db_path=db_path)
+    assert rows[0]["c"] == 1  # dedupe_key 로 1건만
+
+
+def test_multi_account_same_ticker_distinct_briefs(db_path, monkeypatch):
+    """P2-B — 같은 티커가 두 계좌에서 이탈하면 각각 별개 brief (dedupe 로 collapse
+    안 됨). 계좌별 avg 가 달라 entry/stop 도 다르므로 하나로 합치면 안 됨.
+    """
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    upsert_portfolio(
+        [
+            {
+                "account": "Brokerage Alpha",
+                "ticker": "TST_A",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "sector": "Tech",
+            },
+            {
+                "account": "Brokerage Beta",
+                "ticker": "TST_A",
+                "quantity": 5,
+                "avg_price": 120.0,
+                "currency": "USD",
+                "sector": "Tech",
+            },
+        ],
+        db_path,
+    )
+    _seed_price(db_path, "TST_A", 90.0)  # Alpha -10%, Beta -25% — 둘 다 이탈
+
+    assert len(risk_signals.scan_stop_breaches(db_path=db_path)) == 2
+
+    staged = risk_signals.stage_stop_breach_briefs(date="2026-07-08", db_path=db_path)
+    assert staged == 2  # collapse 안 됨 + non-None 카운트 정확
+
+    rows = query("SELECT dedupe_key FROM discord_outbox WHERE channel='brief'", db_path=db_path)
+    assert {r["dedupe_key"] for r in rows} == {
+        "stop-breach:TST_A:Brokerage Alpha:2026-07-08",
+        "stop-breach:TST_A:Brokerage Beta:2026-07-08",
+    }
+
+
+def test_e2e_pension_excluded_via_real_helper(db_path):
+    """P2-D — mock 없이 실제 get_account_strategy_name(portfolio.yaml 읽기) 경로로
+    pension 제외를 검증. helper 를 monkeypatch 하는 다른 테스트가 못 잡는 통합 갭.
+    """
+    portfolio_yaml = db_path.parent / "portfolio.yaml"
+    portfolio_yaml.write_text(
+        yaml.dump(
+            {
+                "accounts": {
+                    "Pension Gamma": {"strategy": "pension"},
+                    "Brokerage Alpha": {"strategy": "core"},
+                }
+            }
+        )
+    )
+    real_open = open
+
+    def mock_open(path, **kwargs):
+        if str(path).endswith("portfolio.yaml"):
+            return real_open(portfolio_yaml, **kwargs)
+        return real_open(path, **kwargs)
+
+    upsert_portfolio(
+        [
+            {
+                "account": "Pension Gamma",
+                "ticker": "TST_P",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "sector": "ETF",
+            },
+            {
+                "account": "Brokerage Alpha",
+                "ticker": "TST_A",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "sector": "Tech",
+            },
+        ],
+        db_path,
+    )
+    _seed_price(db_path, "TST_P", 50.0)  # -50% (pension stop -30 이탈이지만 제외)
+    _seed_price(db_path, "TST_A", 90.0)  # -10% (core stop -7 이탈)
+
+    with patch("builtins.open", side_effect=mock_open):
+        breaches = risk_signals.scan_stop_breaches(db_path=db_path)
+
+    assert [b["ticker"] for b in breaches] == ["TST_A"]  # pension 제외, core 만
+
+
+def test_no_breach_stages_nothing(db_path, monkeypatch):
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=99.0)
+
+    assert risk_signals.stage_stop_breach_briefs(date="2026-07-08", db_path=db_path) == 0
+
+
+# ─── main() CLI ──────────────────────────────────────────────────────────────
+
+
+def test_cli_dry_run_scans_without_staging(db_path, monkeypatch, capsys):
+    import nuri.core.db as db_mod
+
+    monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)
+
+    rc = risk_signals.main(["--dry-run"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "TST_A" in out and "dry-run" in out
+    rows = query("SELECT COUNT(*) c FROM discord_outbox WHERE channel='brief'", db_path=db_path)
+    assert rows[0]["c"] == 0  # dry-run → stage 안 함
+
+
+def test_cli_stages_when_breach_and_not_dry_run(db_path, monkeypatch, capsys):
+    import nuri.core.db as db_mod
+
+    monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)
+
+    rc = risk_signals.main([])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "staged 1" in out
+    rows = query("SELECT COUNT(*) c FROM discord_outbox WHERE channel='brief'", db_path=db_path)
+    assert rows[0]["c"] == 1
+
+
+def test_cli_no_breach_reports_clean(db_path, monkeypatch, capsys):
+    import nuri.core.db as db_mod
+
+    monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=99.0)
+
+    rc = risk_signals.main([])
+    assert rc == 0
+    assert "없음" in capsys.readouterr().out

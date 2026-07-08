@@ -176,6 +176,30 @@ def test_pension_excluded_from_postmarket(seeded_db, portfolio_yaml, tmp_path):
     assert "NVDA" in md
 
 
+def test_write_brief_stages_stop_breach(seeded_db, portfolio_yaml):
+    """Tier 1a wiring lock — write_brief 가 손절 이탈 종목을 SELL 로 stage.
+
+    배선을 되돌리면(write_brief 의 stage_stop_breach_briefs 호출 제거) FAIL.
+    """
+    from unittest.mock import MagicMock
+
+    from nuri.alerts.postmarket_brief import write_brief
+
+    spy = MagicMock(return_value=1)
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+        patch("nuri.alerts.risk_signals.stage_stop_breach_briefs", spy),
+    ):
+        write_brief("us", date="2026-05-01")
+
+    # write_brief 가 세션/날짜/db_path 를 그대로 전달해 호출
+    spy.assert_called_once()
+    args, kwargs = spy.call_args
+    assert args[0] == "us"  # session
+    assert args[1] == "2026-05-01"  # date
+
+
 def test_us_session_dst_aware_cron_dispatch():
     """NYSE 16:30 ET window — EDT (KST 05:30) / EST (KST 06:30) 양쪽 검증.
 
