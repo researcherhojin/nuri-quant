@@ -641,10 +641,12 @@ def write_brief(
     except Exception:
         logger.warning("stop-breach brief staging 실패 (브리프 자체는 생성됨)", exc_info=True)
 
-    # Tier 1b — 집중도 드리프트를 digest 에 REBALANCE 로 표면화 (portfolio 축, #429).
-    # 집중도는 portfolio-wide → US 세션에서만 stage (US-heavy 포트폴리오 · US 종장
-    # 직후 타이밍). kr/us 양 세션 호출 시 dispatcher 가 US 행을 sent 처리 후 KR 이
-    # 재삽입(dedupe 는 pending 만 매칭)해 하루 2건 나던 것을 단일 세션으로 차단.
+    # Tier 1b/1c — 포트폴리오 드리프트(집중도·섹터)를 digest 에 REBALANCE 로 표면화
+    # (portfolio 축, #429). 둘 다 portfolio-wide → US 세션에서만 stage (US-heavy
+    # 포트폴리오 · US 종장 직후 타이밍). kr/us 양 세션 호출 시 dispatcher 가 US 행을
+    # sent 처리 후 KR 이 재삽입(dedupe 는 pending 만 매칭)해 하루 2건 나던 것을 단일
+    # 세션으로 차단. 집중도·섹터는 독립 신호라 각각 별도 best-effort (한쪽 실패가
+    # 다른 쪽 stage 를 막지 않게 — Tier 1a stop-breach 와 동일 per-concern 패턴).
     if session == "us":
         try:
             from nuri.alerts.portfolio_signals import stage_concentration_briefs
@@ -652,6 +654,12 @@ def write_brief(
             stage_concentration_briefs(d, db_path=db_path)
         except Exception:
             logger.warning("concentration REBALANCE brief staging 실패 (브리프 자체는 생성됨)", exc_info=True)
+        try:
+            from nuri.alerts.portfolio_signals import stage_sector_briefs
+
+            stage_sector_briefs(d, db_path=db_path)
+        except Exception:
+            logger.warning("sector REBALANCE brief staging 실패 (브리프 자체는 생성됨)", exc_info=True)
 
     return path
 

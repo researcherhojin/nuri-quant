@@ -203,6 +203,97 @@ def test_integration_real_detect_violations_finds_concentration(db_path):
     assert drifts[0]["account"] == "Brokerage Alpha"
 
 
+# ─── Tier 1c: scan_sector_drift ──────────────────────────────────────────────
+
+
+def _sector_violation(ticker, sector, weight, limit=0.35):
+    return {
+        "ticker": ticker,
+        "sector": sector,
+        "violation_type": "sector_limit_exceeded",
+        "current_value": weight,
+        "limit_value": limit,
+        "reason": f"섹터({sector}) 비중 {weight:.1f}% > 한도 {limit * 100:.0f}%",
+    }
+
+
+def test_scan_sector_filters_and_dedups_by_sector(db_path):
+    """sector_limit_exceeded 만 + 섹터당 1건 (종목당 나오는 것 collapse)."""
+    fake = [
+        _violation("TST_A", "Brokerage Alpha", 24.4),  # position — 제외
+        _sector_violation("TST_B", "Semiconductor", 45.0),
+        _sector_violation("TST_C", "Semiconductor", 45.0),  # 같은 섹터 → dedup
+        _sector_violation("TST_D", "Energy", 40.0),
+    ]
+    with patch("nuri.analysis.rebalance_advisor.detect_violations", return_value=fake):
+        out = portfolio_signals.scan_sector_drift(db_path=db_path)
+    assert [v["sector"] for v in out] == ["Semiconductor", "Energy"]  # 섹터당 1건
+
+
+def test_sector_payload_is_rebalance_ticker_is_sector(db_path):
+    p = portfolio_signals._build_sector_rebalance_payload(
+        _sector_violation("TST_B", "Semiconductor", 45.0), "2026-07-08"
+    )
+    assert p["kind"] == "REBALANCE"
+    assert p["ticker"] == "Semiconductor"  # ticker 슬롯 = 섹터명
+    assert "price_levels" not in p
+    for verb in ("매도", "SELL", "청산"):
+        assert verb not in p["reason"]
+    assert "섹터 비중 45.0% > 한도 35%" in p["reason"]
+
+
+def test_sector_staging_and_dedupe(db_path):
+    with patch(
+        "nuri.analysis.rebalance_advisor.detect_violations",
+        return_value=[_sector_violation("TST_B", "Semiconductor", 45.0)],
+    ):
+        s1 = portfolio_signals.stage_sector_briefs(date="2026-07-08", db_path=db_path)
+        s2 = portfolio_signals.stage_sector_briefs(date="2026-07-08", db_path=db_path)  # 재실행
+    assert s1 == 1 and s2 == 0  # dedupe
+    rows = query("SELECT dedupe_key, priority FROM discord_outbox WHERE channel='brief'", db_path=db_path)
+    assert len(rows) == 1
+    assert rows[0]["dedupe_key"] == "rebalance:sector:Semiconductor:2026-07-08"
+    assert rows[0]["priority"] == "normal"
+
+
+def test_integration_real_detect_violations_sector(db_path):
+    """실 detect_violations 로 섹터 초과 검출 + 신규 sector 필드 노출."""
+    # 한 계좌에 같은 섹터 3종목 = 섹터 100% > 35% (계좌 집중은 각 <15% 로 회피)
+    upsert_portfolio(
+        [
+            {
+                "account": "Brokerage Alpha",
+                "ticker": f"TST_{i}",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "sector": "Semiconductor",
+            }
+            for i in range(8)
+        ],
+        db_path,
+    )
+    rows = [
+        {
+            "ticker": f"TST_{i}",
+            "date": today_kst(),
+            "open": 100,
+            "high": 100,
+            "low": 100,
+            "close": 100,
+            "volume": 1_000_000,
+            "adj_close": 100,
+        }
+        for i in range(8)
+    ]
+    upsert_prices(pd.DataFrame(rows), db_path)
+    upsert_macro([{"indicator": "usd_krw", "date": today_kst(), "value": 1380.0, "source": "test"}], db_path)
+
+    drifts = portfolio_signals.scan_sector_drift(db_path=db_path)
+    assert any(v["sector"] == "Semiconductor" for v in drifts)  # 100% > 35%
+    assert drifts[0]["sector"] == "Semiconductor"  # 신규 필드 노출
+
+
 # ─── main() CLI ──────────────────────────────────────────────────────────────
 
 
@@ -231,3 +322,19 @@ def test_cli_no_breach(db_path, capsys):
     with patch("nuri.analysis.rebalance_advisor.detect_violations", return_value=[]):
         rc = portfolio_signals.main([])
     assert rc == 0 and "없음" in capsys.readouterr().out
+
+
+def test_cli_shows_concentration_and_sector(db_path, capsys):
+    """main() 이 집중도 + 섹터 둘 다 표시 + stage."""
+    with patch(
+        "nuri.analysis.rebalance_advisor.detect_violations",
+        return_value=[
+            _violation("TST_A", "Brokerage Alpha", 24.4),
+            _sector_violation("TST_B", "Semiconductor", 45.0),
+        ],
+    ):
+        rc = portfolio_signals.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[집중도] TST_A" in out and "[섹터] Semiconductor" in out
+    assert "staged 2" in out  # 집중도 1 + 섹터 1

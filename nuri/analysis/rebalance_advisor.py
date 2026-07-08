@@ -261,6 +261,7 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
                 violations.append(
                     {
                         "ticker": ticker,
+                        "sector": sector,
                         "violation_type": "sector_limit_exceeded",
                         "priority": _PRIORITY_MAP.get("sector_limit_exceeded", 5),
                         "current_value": sector_weight,
