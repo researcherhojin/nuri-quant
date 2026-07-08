@@ -330,6 +330,41 @@ class TestTrackOnePass:
         assert result.output["realized_return"] == pytest.approx(0.08)
 
 
+class TestWeekendEntryLockTest:
+    """LOCK-TEST: 주말/휴장 as_of_date 진입은 직전 거래일 close 로 흡수 (on_or_before).
+
+    시스템이 매일(주말 포함) 스캔하며 BUY 를 재발행하므로 as_of 가 토/일인 결정이
+    다수 생긴다. entry 를 exact-date 로 조회하면 그날 시세가 없어 insufficient_data →
+    prod 원장에서 성숙 US BUY 결정의 34% 결측(전부 주말) 발생 → §3.11 결측 게이트(15%)
+    초과로 판정 무효 위험. Regression: entry 가 exact-date 로 되돌아가면 이 테스트 FAIL.
+    """
+
+    def test_weekend_entry_uses_prior_trading_close(self, patched_db):
+        _seed_hypothesis(patched_db, "h-wk", "claim-wk")
+        # as_of = 2026-05-09(토). 당일 시세 없음(주말) — 직전 금(05-08)만 seed.
+        _seed_decision(patched_db, decision_id="dc-wk", ticker="TESTWK", as_of_date="2026-05-09", hypothesis_id="h-wk")
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTWK", "2026-05-08", 100.0),  # 금 — entry on_or_before 흡수
+                ("TESTWK", "2026-05-18", 108.0),  # 월 — target(05-16) 이후 첫 거래일, exit on_or_after
+                ("SPY", "2026-05-08", 500.0),
+                ("SPY", "2026-05-18", 505.0),
+            ],
+        )
+        result = ForwardOutcomeTracker().run({"action": "track_one", "decision_id": "dc-wk", "observation_window": 7})
+        # insufficient 아님 — entry=100(금 close), exit=108 → +8%
+        assert result.output["validation"] == "pass"
+        assert result.output["realized_return"] == pytest.approx(0.08)
+        out = query(
+            "SELECT realized_return, benchmark_return FROM decision_outcomes "
+            "WHERE decision_id='dc-wk' AND observation_window=7",
+            db_path=patched_db,
+        )
+        assert out[0]["realized_return"] is not None
+        assert out[0]["benchmark_return"] is not None
+
+
 # ═══════════════════════════════════════════════════════
 # Anti-pattern lock-tests
 # ═══════════════════════════════════════════════════════
