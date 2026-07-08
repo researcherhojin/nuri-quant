@@ -200,6 +200,20 @@ def test_write_brief_stages_concentration_rebalance_us_only(seeded_db, portfolio
     assert args[0] == "2026-05-01"  # date 전달
 
 
+def test_write_brief_survives_concentration_staging_error(seeded_db, portfolio_yaml):
+    """집중도 staging 이 raise 해도 write_brief 는 브리프 생성 후 정상 반환 (best-effort)."""
+    from nuri.alerts.postmarket_brief import write_brief
+
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+        patch("nuri.alerts.portfolio_signals.stage_concentration_briefs", side_effect=RuntimeError("boom")),
+    ):
+        path = write_brief("us", date="2026-05-01")  # 예외 전파 안 함
+
+    assert path.exists()  # 브리프 자체는 생성됨
+
+
 def test_us_session_dst_aware_cron_dispatch():
     """NYSE 16:30 ET window — EDT (KST 05:30) / EST (KST 06:30) 양쪽 검증.
 
