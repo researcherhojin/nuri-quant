@@ -368,7 +368,7 @@ def bucket_brief_digest(
             "footer": {"text": "manual execute only"},
         }
 
-    counts = {"BUY": 0, "SELL": 0, "BLOCK": 0, "CONFLICT": 0, "HOLD": 0, "INFO": 0}
+    counts = {"BUY": 0, "SELL": 0, "BLOCK": 0, "CONFLICT": 0, "HOLD": 0, "INFO": 0, "REBALANCE": 0}
     buckets: dict[str, list[str]] = {
         "Action Now": [],
         "Blocked / Conflict": [],
@@ -385,7 +385,7 @@ def bucket_brief_digest(
     title = f"{title_prefix} | {today_kst()} {kst_now().strftime('%H:%M')} KST | {n} opinions"
 
     desc_parts = []
-    for kind in ("BUY", "SELL", "BLOCK", "CONFLICT", "HOLD"):
+    for kind in ("BUY", "SELL", "BLOCK", "CONFLICT", "HOLD", "REBALANCE"):
         if counts[kind]:
             desc_parts.append(f"{kind} {counts[kind]}")
     desc = " | ".join(desc_parts) + " | manual execute only" if desc_parts else "manual execute only"

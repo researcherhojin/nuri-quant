@@ -176,6 +176,30 @@ def test_pension_excluded_from_postmarket(seeded_db, portfolio_yaml, tmp_path):
     assert "NVDA" in md
 
 
+def test_write_brief_stages_concentration_rebalance_us_only(seeded_db, portfolio_yaml):
+    """Tier 1b wiring lock — write_brief('us') 만 집중도 REBALANCE 를 stage.
+
+    배선 제거 시 FAIL. US-only 게이트(P2-2): kr/us 양 세션 호출 시 dispatcher 가
+    US 행 sent 처리 후 KR 재삽입해 하루 2건 나던 것을 단일 세션으로 차단.
+    """
+    from unittest.mock import MagicMock
+
+    from nuri.alerts.postmarket_brief import write_brief
+
+    spy = MagicMock(return_value=0)
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+        patch("nuri.alerts.portfolio_signals.stage_concentration_briefs", spy),
+    ):
+        write_brief("us", date="2026-05-01")
+        write_brief("kr", date="2026-05-01")
+
+    spy.assert_called_once()  # US 만 — KR 은 호출 안 함
+    args, _ = spy.call_args
+    assert args[0] == "2026-05-01"  # date 전달
+
+
 def test_us_session_dst_aware_cron_dispatch():
     """NYSE 16:30 ET window — EDT (KST 05:30) / EST (KST 06:30) 양쪽 검증.
 
