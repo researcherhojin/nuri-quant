@@ -289,7 +289,7 @@ class TestForwardOutcomeTrackerBranches:
 
         monkeypatch.setattr(
             fot.ForwardOutcomeTracker,
-            "_fetch_close",
+            "_fetch_close_on_or_before",
             lambda self, t, d: prices.get(t, {}).get(d),
         )
         monkeypatch.setattr(
