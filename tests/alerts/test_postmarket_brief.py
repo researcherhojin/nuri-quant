@@ -247,6 +247,23 @@ def test_write_brief_survives_portfolio_drift_staging_error(seeded_db, portfolio
     sect_spy.assert_called_once()  # 집중도 실패해도 섹터는 시도됨
 
 
+def test_write_brief_survives_sector_staging_error(seeded_db, portfolio_yaml):
+    """섹터 staging 이 raise 해도 write_brief 는 정상 반환 (섹터 독립 except)."""
+    from unittest.mock import MagicMock
+
+    from nuri.alerts.postmarket_brief import write_brief
+
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+        patch("nuri.alerts.portfolio_signals.stage_concentration_briefs", MagicMock(return_value=0)),
+        patch("nuri.alerts.portfolio_signals.stage_sector_briefs", side_effect=RuntimeError("boom")),
+    ):
+        path = write_brief("us", date="2026-05-01")  # 예외 전파 안 함
+
+    assert path.exists()
+
+
 def test_us_session_dst_aware_cron_dispatch():
     """NYSE 16:30 ET window — EDT (KST 05:30) / EST (KST 06:30) 양쪽 검증.
 
