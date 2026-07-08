@@ -632,6 +632,15 @@ def write_brief(
     if outbox_id is None:
         logger.info("Post-market brief Discord publish 미발행 (gate 차단 또는 outbox 미작동)")
 
+    # Tier 1a — 손절선 이탈 종목을 같은 digest 에 SELL 로 표면화 (mechanical rule
+    # signal, 예측 아님). aggregate summary 만 보였던 통증(행동 가능 신호 부재) 해소.
+    try:
+        from nuri.alerts.risk_signals import stage_stop_breach_briefs
+
+        stage_stop_breach_briefs(session, d, db_path=db_path)
+    except Exception:
+        logger.warning("stop-breach brief staging 실패 (브리프 자체는 생성됨)", exc_info=True)
+
     return path
 
 
