@@ -1,8 +1,9 @@
-"""Mechanical portfolio-axis signals → #brief (Tier 1b: 집중도 드리프트 → REBALANCE).
+"""Mechanical portfolio-axis signals → #brief (Tier 1b: 집중도 · 1c: 섹터 드리프트 → REBALANCE).
 
 Tier 1a(risk_signals) 가 alpha 축(손절선 이탈 → urgent SELL) 을 표면화했다면,
-여기는 **portfolio 축**(#429): 종목 비중이 계좌별 `max_single_position` 한도를
-넘으면 REBALANCE 로 surface. 결정론적 룰(예측 아님).
+여기는 **portfolio 축**(#429): (1b) 종목 비중이 계좌별 `max_single_position` 한도,
+(1c) 섹터 합산 비중이 `max_sector_exposure` 한도를 넘으면 REBALANCE 로 surface.
+결정론적 룰(예측 아님).
 
 #429 축 분리 (엄밀): 집중도/드리프트는 `portfolio_action=REBALANCE` — **절대
 urgent SELL 아님**(alpha_action=FLAT 은 손절선만). 따라서 여기 payload 는
@@ -107,23 +108,103 @@ def stage_concentration_briefs(date: Optional[str] = None, db_path: Optional[Pat
     return staged
 
 
+def scan_sector_drift(db_path: Optional[Path] = None) -> list[dict[str, Any]]:
+    """섹터 합산 비중 한도(`max_sector_exposure`) 초과 목록 — 섹터당 1건.
+
+    `detect_violations()` 중 `sector_limit_exceeded` 만 필터. 섹터 위반은 트림
+    대상 종목당 1건씩 나오므로 `sector` 필드로 dedup 해 섹터당 1건으로 collapse
+    (detect_violations 는 Unknown/빈 섹터를 이미 제외).
+
+    **의도적 설계 — 섹터는 pension 포함 total 위험 (1b 집중도와 스코프 다름)**:
+    섹터 캡은 코드베이스 전체가 **global** 로 강제한다 — detect_violations 와
+    certification 모두 계좌별이 아니라 portfolio-wide 합에 flat `MAX_SECTOR_EXPOSURE`
+    (0.35) 를 적용(per-account 섹터 캡은 config 에 있으나 미구현·deferred). 따라서
+    섹터 비중은 pension 을 포함한 **총 섹터 노출**이며 이는 룰 정의와 일치한다.
+    1b 집중도가 pension 을 제외하는 건 그게 **per-account** 룰이라서고(pension 은
+    자체 높은 캡), 섹터는 global 룰이라 total 로 보는 게 정합. drawback: 드물게
+    섹터 초과가 pension-주도면 daily-actionable sleeve 에서 트림할 게 적을 수 있으나,
+    총위험 가시성이 목적이므로 수용(사용자는 non-pension 종목 트림으로 총 노출 감축).
+    """
+    from nuri.analysis.rebalance_advisor import detect_violations
+
+    violations = detect_violations(db_path=db_path)
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for v in violations:
+        if v.get("violation_type") != "sector_limit_exceeded":
+            continue
+        sector = v.get("sector")
+        if not sector or sector in seen:
+            continue
+        seen.add(sector)
+        out.append(v)
+    return out
+
+
+def _build_sector_rebalance_payload(violation: dict[str, Any], date: str) -> dict[str, Any]:
+    """섹터 위반 1건 → #brief REBALANCE payload. ticker 슬롯에 섹터명 표시.
+
+    집중도(1b)와 동일 #429 규칙: kind="REBALANCE"(Lower Priority), price_levels
+    없음, 매도 동사 없음. 섹터명은 public 라벨(broker name 아님)이라 노출 OK.
+    """
+    return {
+        "kind": "REBALANCE",
+        "ticker": violation["sector"],
+        "reason": (
+            f"섹터 비중 {violation['current_value']:.1f}% > 한도 {violation['limit_value'] * 100:.0f}%"
+            " — 비중 조절 권고 (수단·타이밍 사용자 판단)"
+        ),
+        "date": date,
+    }
+
+
+def stage_sector_briefs(date: Optional[str] = None, db_path: Optional[Path] = None) -> int:
+    """섹터 드리프트를 #brief outbox 에 REBALANCE 로 stage. staged 건수 반환.
+
+    dedupe_key=`rebalance:sector:{sector}:{date}` — 섹터 × 하루 1건.
+    priority="normal". non-None 만 카운트.
+    """
+    from nuri.agents.discord.outbox import stage_brief
+
+    d = date or today_kst()
+    drifts = scan_sector_drift(db_path=db_path)
+    staged = 0
+    for v in drifts:
+        payload = _build_sector_rebalance_payload(v, d)
+        outbox_id = stage_brief(
+            payload=payload,
+            dedupe_key=f"rebalance:sector:{v['sector']}:{d}",
+            priority="normal",
+            actor_name="portfolio-signals",
+            db_path=db_path,
+        )
+        if outbox_id is not None:
+            staged += 1
+    if staged:
+        logger.info("sector REBALANCE briefs staged: %d", staged)
+    return staged
+
+
 def main(argv: Optional[list[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="집중도 드리프트 → #brief REBALANCE (Tier 1b)")
+    parser = argparse.ArgumentParser(description="포트폴리오 드리프트(집중도·섹터) → #brief REBALANCE (Tier 1b/1c)")
     parser.add_argument("--dry-run", action="store_true", help="stage 없이 위반 목록만 출력")
     args = parser.parse_args(argv)
 
-    drifts = scan_concentration_drift()
-    if not drifts:
-        print("집중도 한도 초과 없음")
+    conc = scan_concentration_drift()
+    sect = scan_sector_drift()
+    if not conc and not sect:
+        print("포트폴리오 드리프트 없음 (집중도·섹터)")
         return 0
-    for v in drifts:
+    for v in conc:
         print(
-            f"  {v['ticker']} [{v.get('account', '?')}] {v['current_value']:.1f}% > 한도 {v['limit_value'] * 100:.0f}%"
+            f"  [집중도] {v['ticker']} [{v.get('account', '?')}] {v['current_value']:.1f}% > 한도 {v['limit_value'] * 100:.0f}%"
         )
+    for v in sect:
+        print(f"  [섹터] {v['sector']} {v['current_value']:.1f}% > 한도 {v['limit_value'] * 100:.0f}%")
     if args.dry_run:
-        print(f"[dry-run] {len(drifts)}건 — stage 안 함")
+        print(f"[dry-run] 집중도 {len(conc)}건 · 섹터 {len(sect)}건 — stage 안 함")
         return 0
-    staged = stage_concentration_briefs()
+    staged = stage_concentration_briefs() + stage_sector_briefs()
     print(f"staged {staged}건 → #brief (REBALANCE)")
     return 0
 
