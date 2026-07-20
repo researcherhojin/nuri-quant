@@ -127,7 +127,7 @@ jobs:
         if: needs.changes.outputs.run_frontend != 'true'
         run: echo "✓ No frontend changes — fast-pass to satisfy required check"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: needs.changes.outputs.run_frontend == 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -194,7 +194,7 @@ jobs:
         if: needs.changes.outputs.run_frontend != 'true'
         run: echo "✓ No frontend changes — fast-pass to satisfy required check"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: needs.changes.outputs.run_frontend == 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -235,7 +235,7 @@ jobs:
         if: needs.changes.outputs.run_frontend != 'true'
         run: echo "✓ No frontend changes — fast-pass to satisfy required check"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: needs.changes.outputs.run_frontend == 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
