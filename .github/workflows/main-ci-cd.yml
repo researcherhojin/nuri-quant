@@ -275,7 +275,7 @@ jobs:
       - uses: actions/checkout@v7
         if: needs.changes.outputs.run_backend == 'true'
 
-      - uses: astral-sh/ruff-action@v4.0.0
+      - uses: astral-sh/ruff-action@v4.1.0
         if: needs.changes.outputs.run_backend == 'true'
         with:
           args: "check nuri/ tests/ scripts/"
