@@ -70,6 +70,13 @@ updates:
       - "frontend"
     commit-message:
       prefix: "chore(deps)"
+    # typescript 7 (Go 네이티브 재작성) 은 아직 툴체인 미지원 (#878):
+    # next build 가 typescript 패키지를 인식 못 하고, typescript-eslint 는
+    # `Cannot read properties of undefined (reading 'Cjs')` 로 죽는다.
+    # Next.js / typescript-eslint 가 TS7 을 지원하면 이 ignore 를 제거할 것.
+    ignore:
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
     groups:
       # Bundle React family FIRST (peer-dependency couple — prevent ERESOLVE
       # like #665 where react-dom 19.2.6 was bumped alone, leaving react at
