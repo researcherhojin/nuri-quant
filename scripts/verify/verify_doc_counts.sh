@@ -111,6 +111,7 @@ check_claim "collectors"     "$COLL" "README.md"                  '[0-9]+ collec
 check_claim "endpoints"      "$EP"   ".claude/rules/architecture.md" '\([0-9]+ endpoints, routes/' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '## API \([0-9]+ endpoints\)' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '— [0-9]+ REST endpoints' || true
+check_claim "endpoints"      "$EP"   "nuri/api/CLAUDE.md"         'read surface \([0-9]+ endpoints\)' || true
 check_claim "test_files_be"  "$TFBE" "docs/ARCHITECTURE.md"       'backend tests across [0-9]+ files' || true
 check_claim "test_files_be"  "$TFBE" "docs/STRATEGY.md"           'Backend tests.*tests, [0-9]+ files' || true
 check_claim "test_files_fe"  "$TFFE" "docs/ARCHITECTURE.md"       'frontend vitest \([0-9]+ files\)' || true
