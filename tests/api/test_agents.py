@@ -163,6 +163,43 @@ class TestAgentsRoute:
         assert "agent_start" in body
         assert "done" in body
 
+    def test_stream_consensus_keepalive_while_agents_are_slow(self, client, monkeypatch):
+        """느린 에이전트 대기 중에도 소켓을 살려두는 keepalive 가 나가야 한다.
+
+        Gotcha-Test Pair — `use-trace-stream.ts` 가 상대 경로로 바뀌며 이 SSE 가
+        Next 프록시를 타게 됐다. 프록시는 30초 무통신이면 소켓을 abort 하고
+        (`proxyTimeout || 30000`), 훅은 onerror 에서 es.close() 를 부르므로
+        복구되지 않는다. 큐 대기 루프에서 keepalive 를 빼면 이 테스트가 FAIL 한다.
+
+        폴링 간격을 크게 잡아 실시간 대기 없이 KEEPALIVE_INTERVAL 을 넘긴다.
+        """
+        import nuri.api.routes.agents as agents_mod
+
+        monkeypatch.setattr(agents_mod, "_POLL_INTERVAL", 0.01)
+        monkeypatch.setattr(agents_mod, "KEEPALIVE_INTERVAL", 0.02)
+
+        @dataclass
+        class Evt:
+            ticker: str = "AAPL"
+            text: str = "step"
+
+        def slow_stream(ticker):
+            # 첫 이벤트까지 폴링 몇 바퀴를 돌게 해 큐가 비어 있는 구간을 만든다.
+            _time.sleep(0.3)
+            yield ("agent_finish", Evt(text="done"))
+
+        monkeypatch.setattr(
+            "nuri.trading.agents.consensus.stream_analyze_ticker",
+            slow_stream,
+        )
+        with client.stream("GET", "/api/consensus/AAPL/stream") as resp:
+            assert resp.status_code == 200
+            body = b"".join(resp.iter_bytes()).decode("utf-8")
+
+        assert ": keepalive" in body, "큐 대기 중 keepalive 가 나가지 않았다"
+        # keepalive 는 SSE 주석이라 EventSource 의 onmessage 를 깨우지 않는다.
+        assert "done" in body
+
     def test_get_consensus_ticker_exposes_divergence_fields(self, client, monkeypatch):
         """P1 A2: /api/consensus/{ticker} 단일 엔드포인트도 divergence 필드 노출."""
         from nuri.trading.agents.consensus import ConsensusResult

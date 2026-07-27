@@ -113,7 +113,7 @@ class TestSSEStream:
         assert "timestamp" in parsed
 
     def test_event_generator_sleep_branch(self):
-        """Generator hits asyncio.sleep then yields second iteration (line 73)."""
+        """Generator hits asyncio.sleep then keeps the socket warm between data events."""
         import nuri.api.routes.stream as stream_mod
 
         stream_mod._cache = {"timestamp": 1.0, "regime": "x"}
@@ -125,13 +125,49 @@ class TestSSEStream:
         async def run():
             gen = stream_mod._event_generator()
             with patch.object(stream_mod.asyncio, "sleep", side_effect=fake_sleep):
-                first = await gen.__anext__()
-                second = await gen.__anext__()
-            return first, second
+                return [await gen.__anext__() for _ in range(2)]
 
         first, second = asyncio.run(run())
         assert first.startswith("data:")
-        assert second.startswith("data:")
+        # INTERVAL 대기는 이제 keepalive 주석으로 쪼개진다.
+        assert second == ": keepalive\n\n"
+
+    def test_no_silent_gap_exceeds_proxy_timeout(self):
+        """Next rewrite 프록시의 30초 무통신 abort 를 넘는 침묵 구간이 없어야 한다.
+
+        Gotcha-Test Pair — `use-stream.ts` 가 상대 경로로 바뀌며 SSE 가 Next
+        프록시를 타게 됐다. 프록시는 `proxyTimeout || 30000` (기본 30초) 로
+        소켓을 끊는데, INTERVAL 이 정확히 30 이라 keepalive 없이는 매 주기
+        끊긴다. 되돌리면(단일 `await asyncio.sleep(INTERVAL)`) 이 테스트가
+        30 >= 30 에서 즉시 FAIL 한다.
+        """
+        import nuri.api.routes.stream as stream_mod
+
+        stream_mod._cache = {"timestamp": 1.0, "regime": "x"}
+        stream_mod._cache_time = _time.time()
+
+        naps: list[float] = []
+
+        async def record_sleep(sec):
+            naps.append(sec)
+
+        async def run():
+            gen = stream_mod._event_generator()
+            with patch.object(stream_mod.asyncio, "sleep", side_effect=record_sleep):
+                # 한 사이클(data → 대기 → 다음 data) 을 전부 소비.
+                chunks = [await gen.__anext__()]
+                while not chunks[-1].startswith("data:") or len(chunks) == 1:
+                    chunks.append(await gen.__anext__())
+            return chunks
+
+        chunks = asyncio.run(run())
+
+        assert naps, "생성기가 대기하지 않았다"
+        assert max(naps) < 30, f"침묵 구간 {max(naps)}s — 프록시 abort 임계값 이상"
+        assert chunks[0].startswith("data:")
+        assert chunks[-1].startswith("data:")
+        assert any(c == ": keepalive\n\n" for c in chunks[1:-1]), "keepalive 미발신"
+        assert sum(naps) == stream_mod.INTERVAL, "총 대기 시간이 INTERVAL 과 달라졌다"
 
     def test_event_generator_error_handling(self):
         """Event generator should yield error JSON on exception."""

@@ -1,4 +1,5 @@
 """SSE 스트림 — 대시보드 실시간 업데이트. 60초 메모리 캐시."""
+
 import asyncio
 import json
 import logging
@@ -12,6 +13,15 @@ router = APIRouter(tags=["stream"])
 
 # 업데이트 간격 (초)
 INTERVAL = 30
+
+# Next 의 /api/* rewrite 프록시는 30초 동안 바이트가 없으면 소켓을 abort 한다
+# (next/dist/server/lib/router-utils/proxy-request.js — `proxyTimeout || 30000`,
+# next.config 에 experimental.proxyTimeout 미설정이라 기본값 적용). INTERVAL 이
+# 정확히 30 이라 데이터 간격이 임계값과 같아 매 주기 끊긴다.
+# 그보다 짧은 주기로 SSE 주석을 흘려 소켓을 살려둔다 — EventSource 는 ':' 로
+# 시작하는 줄을 무시하므로 클라이언트 변경이 필요 없다.
+# 참고: 응답의 `X-Accel-Buffering: no` 는 nginx 지시어라 Node 프록시엔 무효.
+KEEPALIVE_INTERVAL = 10
 
 # 메모리 캐시 (DB 직접 조회 대신 60초 갱신)
 _CACHE_TTL = 60
@@ -30,6 +40,7 @@ def _get_snapshot() -> dict:
 
     try:
         from nuri.quant.regime.classifier import classify_regime
+
         r = classify_regime()
         if r:
             result["regime"] = r.regime
@@ -41,6 +52,7 @@ def _get_snapshot() -> dict:
 
     try:
         from nuri.quant.regime.macro_score import compute_macro_score
+
         m = compute_macro_score()
         result["macro_score"] = round(m.total_score)
     except Exception:
@@ -48,6 +60,7 @@ def _get_snapshot() -> dict:
 
     try:
         from nuri.core.db import query
+
         positions = query("SELECT COUNT(*) as c FROM positions WHERE status='open'")
         result["open_positions"] = positions[0]["c"] if positions else 0
     except Exception:
@@ -70,7 +83,15 @@ async def _event_generator():
             # the client (CodeQL py/stack-trace-exposure).
             logger.exception("SSE snapshot error")
             yield f"data: {json.dumps({'error': 'snapshot unavailable'})}\n\n"
-        await asyncio.sleep(INTERVAL)
+
+        # INTERVAL 을 KEEPALIVE_INTERVAL 조각으로 쪼개 대기하며 주석을 흘린다.
+        remaining = INTERVAL
+        while remaining > 0:
+            nap = min(KEEPALIVE_INTERVAL, remaining)
+            await asyncio.sleep(nap)
+            remaining -= nap
+            if remaining > 0:
+                yield ": keepalive\n\n"
 
 
 @router.get("/stream")

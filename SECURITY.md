@@ -118,7 +118,12 @@ The following are intentionally not part of the threat model:
   live broker integration is gated behind explicit credentials in
   `.env`, not committed.
 - **Mobile clients** — no first-party mobile app.
-- **DDoS / rate-limit attacks** on the FastAPI server — it binds to
-  `0.0.0.0` (all interfaces) by default to support the 2-machine
-  dev/receiver setup; restrict exposure at the LAN / firewall /
+- **DDoS / rate-limit attacks** on the FastAPI server — in production it
+  binds `127.0.0.1` (`scripts/launchd/com.nuri-quant.api.plist`), so it is
+  not on the LAN at all; browsers reach it only through the Next.js
+  `/api/*` rewrite proxy on `:3000`, which is gated by
+  `DASHBOARD_PASSWORD`. Developer entrypoints (`make api`, `make start`,
+  `.vscode/launch.json`, the Playwright harness) still bind `0.0.0.0` for
+  convenience — do not use them on the production host. App-level rate
+  limiting is best-effort; restrict exposure at the LAN / firewall /
   reverse-proxy layer rather than relying on the app.

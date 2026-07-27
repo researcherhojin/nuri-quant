@@ -7,7 +7,6 @@
  * 유한 스트림: 10 verdicts → 1 consensus → done → 자동 종료.
  */
 import { useCallback, useRef, useState } from "react";
-import { API_BASE } from "./api";
 
 interface AgentVerdict {
   agent_name: string;
@@ -48,8 +47,10 @@ export function useTraceStream() {
     esRef.current?.close();
     setState({ verdicts: [], consensus: null, isStreaming: true, error: null });
 
+    // 상대 경로 필수 — use-stream.ts 의 주석과 같은 이유 (브라우저가 빌드 시점
+    // 인라인된 서버 기준 주소를 그대로 때리면 연결이 죽는다).
     const es = new EventSource(
-      `${API_BASE}/api/consensus/${encodeURIComponent(ticker)}/stream`
+      `/api/consensus/${encodeURIComponent(ticker)}/stream`
     );
     esRef.current = es;
 
