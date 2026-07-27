@@ -24,8 +24,12 @@
         <string>-m</string>
         <string>uvicorn</string>
         <string>nuri.api.main:app</string>
+        <!-- 127.0.0.1 고정 (#892 후속): API 는 LAN 에 노출하지 않는다. 브라우저는
+             Next.js(:3000, DASHBOARD_PASSWORD 게이트) 의 /api/* rewrite 프록시를
+             거쳐서만 도달한다. 0.0.0.0 이면 같은 네트워크의 누구나 인증 없이
+             포트폴리오 읽기 + require_write_auth 쓰기까지 직접 호출할 수 있다. -->
         <string>--host</string>
-        <string>0.0.0.0</string>
+        <string>127.0.0.1</string>
         <string>--port</string>
         <string>8001</string>
     </array>
