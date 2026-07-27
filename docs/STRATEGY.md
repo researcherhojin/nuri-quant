@@ -337,7 +337,7 @@ Deferred (필요 시점에 추가):
 ### 5.7 하네스 구성 요소
 | 레이어 | 역할 | 구현 |
 |--------|------|------|
-| **Context Files** | 프로젝트 규칙 | `CLAUDE.md` 루트 + 11 scoped + `AGENTS.md` + `docs/STRATEGY.md` |
+| **Context Files** | 프로젝트 규칙 | `CLAUDE.md` 루트 + 13 scoped + `AGENTS.md` + `docs/STRATEGY.md` |
 | **MCP Servers** | 외부 도구 연결 | `.mcp.json` → SQLite DB. 필요 최소. |
 | **Skill Files** | 반복 작업 | `scripts/deploy/deploy_remote.sh`, `scripts/verify/verify.py`, `scripts/db/migrate.py` |
 | **Mechanical Enforcement** | 시스템 강제 | ruff · main-ci-cd.yml · pr-checks.yml · `make verify-*` · SIEGE `gate_check.py` |
@@ -349,7 +349,7 @@ Deferred (필요 시점에 추가):
 | Schema drift | `schema_version` + `_MIGRATIONS` | `init_db()` 자동 |
 | Config drift | `config/*.yaml` 중앙 | 하드코딩 금지 |
 | Number drift | `grep -ri` 전수 | 커밋 메시지 숫자 명시 |
-**Context Files 설계**: 거대 단일 파일 ✕ → 디렉토리별 scoped ✓ (루트 + 11개). 코드에서 유추 가능한 정보 ✕ → 결정의 "왜" 만. `STRATEGY.md` 는 작업 전 읽도록 `CLAUDE.md` 에 지시.
+**Context Files 설계**: 거대 단일 파일 ✕ → 디렉토리별 scoped ✓ (루트 + 13개). 코드에서 유추 가능한 정보 ✕ → 결정의 "왜" 만. `STRATEGY.md` 는 작업 전 읽도록 `CLAUDE.md` 에 지시.
 ### 5.8 하네스 원칙 요약 (2026-04-14 #272 반영, 7개)
 1. 모르면 읽는다              — 가정하지 않는다
 2. 2번 실패하면 접근을 바꾼다  — 같은 시도 3회 금지. 같은 fix 3회 부분 해결 시 root cause 의심

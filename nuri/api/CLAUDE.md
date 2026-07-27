@@ -1,0 +1,57 @@
+# nuri/api/ — FastAPI Read Layer
+
+## Scope
+
+The dashboard's read surface (72 endpoints). This layer **queries and renders — it never computes strategy**. Anything that decides, scores, or certifies lives in `nuri/trading/` · `nuri/quant/` · `nuri/analysis/` and is imported *lazily inside the handler body* (keeps startup fast; top-level heavy imports are the one convention every file follows).
+
+Backend `:8001`, Next.js `:3000` proxies `/api/*` — see `.claude/rules/architecture.md` "API Access Pattern" before touching frontend call sites.
+
+## App composition (`main.py` — sole app factory)
+
+- **`/api` prefix lives only in `main.py`.** Route files declare `APIRouter(tags=[...])` with **no prefix** and spell the full sub-path in the decorator (`@router.get("/pipeline/status")`). Sole exception: `routes/learning_memory.py` declares `prefix="/learning-memory"`.
+- `routes/__init__.py` is **empty by design** — no registry. A new router needs two edits in `main.py`: the import block and an `app.include_router(mod.router, prefix="/api")` line. Miss the second and the endpoint 404s while router-level tests still pass — `tests/api/test_routes.py` smoke tests assert the router object exists, not that it is mounted.
+- No lifespan / startup hooks. Only registered exception handler is slowapi's `RateLimitExceeded`.
+- Global limit `60/minute`; `pipeline.py` declares its **own** `Limiter` (`2/minute`) because its endpoints run real work.
+- `X-Frame-Options: SAMEORIGIN` (not DENY) is deliberate — `/evidence` iframes Plotly HTML. Changing it breaks charts (2026-04-20 Playwright audit).
+
+## Conventions for a new route
+
+| Concern | Convention |
+|---|---|
+| Response model | **None.** Zero `response_model=` in the directory. Return plain `dict`; serialize dataclasses with `dataclasses.asdict()`. |
+| Request body | Pydantic **only for writes** (`portfolio.py`, `trades.py`, `external.py`), with `field_validator` normalizers (`ticker.upper()`, regex, range). |
+| DB access | Direct `from nuri.core.db import query` + inline SQL. No service layer. Mutations use `upsert_*()` / `get_db()`. `query_df` is unused here — keep it that way (DataFrames leak numpy into JSON). |
+| `def` vs `async def` | **Sync.** Work is blocking SQLite + pandas; FastAPI threadpools it. `async` only for SSE (`stream.py`, `agents.py` consensus stream). |
+| Writes | `user=Depends(require_write_auth)` + `audit_log(OP, table, key, detail, user_id=user.get("sub","unknown"))`. Reads are deliberately unauthenticated (public dashboard read). |
+| Filtering | `limit: int = Query(N, ge=1, le=M)`; enum-ish params use `pattern=` (`Query("us", pattern="^(us\|kr)$")`). Build WHERE from a `where: list[str]` / `params: list` pair. No cursor pagination anywhere. |
+| List responses | Always carry a sibling `"count": len(...)`. |
+
+## Error handling — pick by intent
+
+- **Soft** (`return {"error": "<generic>"}`, HTTP 200) when the frontend should degrade gracefully. Always `logger.exception(...)` first and keep the client message **generic** — never interpolate the exception (CodeQL `py/stack-trace-exposure`).
+- **Hard** (`raise HTTPException`) — 404 for a missing single resource, 400 for invalid enum-ish input.
+- **Shape-preserving fallback**: an endpoint whose response is destructured by the frontend must return its full empty shape on failure, not `{}` (`actions.py` returns `{"urgent":[],"check":[],"hold":[],"portfolio":[]}`). A collapsed shape makes UI buckets silently vanish.
+
+## Gotchas
+
+- **`GET /api/evidence/report` is unreachable** — `/evidence/{chart_id}` is declared first, so FastAPI binds `chart_id="report"` → 400. Definition order is load-bearing; declare literal paths before parameterized ones.
+  **Test:** `tests/api/test_evidence.py::test_get_evidence_report_not_found`
+- **`/api/pipeline/status` `steps` must stay an array.** It was once a dict — the frontend couldn't iterate it and silently fell back to hardcoded `DEFAULT_NODES`, so the DAG rendered fake data with no error.
+- **Module-level in-memory caches (5 min TTL) are process-local and write-blind** — `actions.py`, `dashboard.py`, `agents.py`, `targets.py`, `ticker.py`, `learning_memory.py`, `swing.py`, `stream.py` (60 s). A POST that mutates portfolio state will **not** refresh `/api/dashboard` or `/api/actions` for up to 5 minutes. Budget for this when QA-ing a write flow.
+- **numpy leaks into JSON.** Handlers returning pandas/numpy-derived values must JSON-round-trip with a `default=` coercer (`swing.py`, `portfolio.py`); `signals.py` additionally maps `inf`/`NaN` → `None`.
+- **Auth is off by default** (`API_AUTH_ENABLED=false`) — `require_auth` returns an anonymous principal, so every write endpoint is open in dev. Unset `API_SECRET_KEY` regenerates a random key each boot (JWTs die on restart).
+- **Legitimately empty responses**: `/api/research/*` (no writer yet), `/api/signals/*` (needs `make validate`), `/api/evidence` (needs `make evidence`). Empty ≠ broken — check the upstream producer before debugging the route.
+- **`/api/alpha` always returns `edge_status: "NOT_MEASURABLE"`** with a `caveat` string. This is a deliberate honesty guard per STRATEGY §3.11 — do not "fix" it into a positive verdict.
+- **CORS `allow_methods` must track the route surface.** The frontend reaches the API same-origin through the Next rewrite, so preflight never fires in normal use — a missing method fails **only** on cross-origin calls, and never in tests that use `TestClient`. Adding a route with a new HTTP verb means updating `main.py`.
+  **Test:** `tests/api/test_main.py::TestApiMain::test_cors_allows_every_mutating_method`
+- **Heavy endpoints run in-process**: `POST /api/pipeline/{step}/run` (backtest / regime / 10-agent consensus), `GET /api/certify`, `GET /api/backtest`.
+
+## Tests
+
+`tests/api/` — one module per route file. `fastapi.testclient.TestClient`, fixtures in `tests/api/conftest.py`. **DB isolation = monkeypatching `nuri.core.db.DB_PATH` to a `tmp_path` DB**, not transaction rollback; the `client` fixture imports `nuri.api.main.app` lazily *inside* the fixture so the patch lands first. Helpers in `tests/api/_helpers.py` must be imported explicitly (conftest only auto-loads fixtures). See `tests/CLAUDE.md`.
+
+## References
+
+- `docs/ARCHITECTURE.md` §"Dashboard API" — endpoint-by-endpoint table
+- `.claude/rules/architecture.md` — Server vs Client Component access pattern
+- `frontend/next.config.ts` — `/api/*` rewrite + CSP `connect-src` / `frame-src` allowlist
