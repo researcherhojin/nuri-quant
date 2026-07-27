@@ -1,0 +1,92 @@
+# nuri/agents/ — Actor Fleet + Discord Layer
+
+## Scope
+
+The autonomous operating layer: long-lived actors that observe the system, record verdicts to an audit ledger, and surface findings to Discord. Distinct from `nuri/trading/agents/` (the 10-agent *consensus* pipeline that scores tickers) — an actor here is an **operational unit with a run ledger**, not a signal contributor.
+
+`actors/` holds **18 files: 15 registered actors + 3 unregistered infra helpers** (`brief_auditor`, `channel_dispatcher`, `outbox_watchdog` — deliberately outside the canonical roster).
+
+## The actor contract (`base.py`)
+
+`Actor(ABC)`. Subclass declares three class attributes and implements one method:
+
+```python
+name: str = ""          # DB key — must be in ActorRegistry.CANONICAL_15
+version: str = "0.0.0"  # semver, recorded in every audit row
+layer: Layer = Layer.B
+
+def execute(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult: ...
+```
+
+**Callers invoke `run()`, never `execute()`.** `run()` is the lifecycle wrapper: `start_agent_run` → `execute` → `finish_agent_run` → `log_agent_audit`. Calling `execute()` directly produces an unaudited run — the ledger is the point of this layer.
+
+| Layer | Meaning | Hard constraint |
+|---|---|---|
+| **A** | Enforcement — pure rule | **Zero LLM** (`_uses_llm=True` → `RuntimeError` at `__init__`) and **must return an `outcome`** (`None` → run marked failed + `ValueError`). Both enforced at runtime in `base.py`, not by convention. |
+| **B** | Computation — statistical / deterministic | — |
+| **C** | Interpretation — LLM essential | Async enrichment only; never in the decision path. |
+
+`ActorResult(output, outcome=None, sample_n=None, input_summary=None, llm_narrative=None)`; `Outcome ∈ {PASS, BLOCK, WARN, ERROR}`.
+
+**`execute()` may raise** — `run()` records the failure (`status="failed"` + an `ERROR` audit row) and then **re-raises**. Failure isolation is the *caller's* responsibility: every `_run_*` wrapper in `nuri/scheduler.py` try/excepts, which is why one actor dying doesn't take the fleet down.
+
+**`ActorRegistry.CANONICAL_15` is a closed roster.** `@REGISTRY.register` raises if `name` isn't in that tuple — adding a 16th actor means editing the tuple deliberately, not incidentally. Registration is idempotent for the same `module:qualname` so the `python -m` double-import (`__main__` reload) doesn't blow up.
+
+## Invariants
+
+- **Single-writer Discord.** Actors stage to the outbox — they never publish. Only `channel_dispatcher.py` (the writer) and `outbox_watchdog.py` (recursion break: if the dispatcher is dead, staging its own alarm would never be delivered) may touch `DiscordPublisher`. Everything else calls `nuri.agents.discord.outbox.stage_*` lazily inside the method. Breaking this breaks digest bucketing, the quiet-period gate, and dedupe at once.
+- **No DB connections here.** Zero `sqlite3` in this directory. Reads go through `query()`; writes go through the named helpers (`log_decision`, `log_incident`, `register_hypothesis`, `stage_outbox`, …) — `query()` is read-only by contract.
+- **Actors do not use `nuri/alerts/`.** That package is a separate scheduler-driven briefing path. The two never call each other; don't bridge them.
+- **Mac mini is the sole writer; MBP is a read replica** (`nuri/agents/__init__.py`). An actor that writes must be safe to run in exactly one place.
+- **Every actor module ships a `main(argv)` CLI** — `python -m nuri.agents.actors.<module> <action> ...`. Universal across all 18.
+- Most actors dispatch on `input_data["action"]` against a class-level `VALID_ACTIONS` and return `ActorResult({"error": ...})` for an unknown action rather than raising.
+
+## Scheduling
+
+There is **no schedule declaration on the actor**. Cron lives entirely in `nuri/scheduler.py`'s module-level `SCHEDULES` list; jobs run **in-process** under APScheduler `BlockingScheduler` with `misfire_grace_time=300`.
+
+Only 4 actors are reached from `SCHEDULES` today, and **only one of them is a registered actor**:
+
+| Wrapper | Actor | Registered? |
+|---|---|---|
+| `_run_collector("alpha_tracking")` | `ForwardOutcomeTracker` | ✅ (of the 15) |
+| `_run_brief_audit` | `BriefAuditor` | — helper |
+| `_run_channel_dispatcher` | `ChannelDispatcher` | — helper |
+| `_run_outbox_watchdog` | `OutboxWatchdog` | — helper |
+
+So **14 of the 15 registered actors have no cron** — they run from their `main()` CLI or another caller. **Do not assume an actor is running just because it exists and is registered.** Check `SCHEDULES` before claiming anything about live behaviour.
+
+⚠️ **APScheduler weekday ≠ crontab weekday.** `day_of_week` is Mon=0…Sun=6, so a crontab literal `1-5` fires **Tue–Sat**. Use explicit `mon-fri`.
+
+## Adding an actor
+
+1. `nuri/agents/actors/<snake>.py`; subclass `Actor`, set `name` / `version` / `layer`.
+2. Add `name` to `ActorRegistry.CANONICAL_15`, then decorate with `@REGISTRY.register`. (Order matters — registration validates against the tuple.)
+3. Implement `execute()`. Layer A must always set `outcome`.
+4. Add a module-level `main(argv)` CLI.
+5. Export from `actors/__init__.py`.
+6. To schedule: add a `_run_<x>()` wrapper in `scheduler.py` that try/excepts + logs `exc_info=True`, then append to `SCHEDULES`.
+7. Discord output: `stage_*` only. Never import `DiscordPublisher`.
+
+## Gotchas
+
+- **Dedupe channel must match emit channel.** `brief_auditor.py` sets `_AUDIT_CHANNEL = "ops"` and uses it for *both* `stage_ops()` and `_dedupe_recent()`. If the two drift apart, the dedupe lookup queries the wrong channel, finds nothing, and re-emits the same incident every 6 hours.
+- **Quiet period is `#brief`-only** (`QUIET_PERIOD_SECONDS = 60`). `#ops` / `#incidents` / `#rollout` bypass the gate — don't "fix" their apparent lack of throttling.
+- **`outbox_watchdog` exists because silent failure is the default.** Scheduler wrappers swallow exceptions, so a dead dispatcher looks identical to an idle one. The watchdog measures outbox backlog (`>30 min` oldest pending, `>100` pending) and alerts `#ops` **directly via webhook**. Any new "quiet by design" component needs an equivalent liveness probe.
+- **`forward_outcome_tracker` accepts only `SUPPORTED_WINDOWS = (7, 14, 30)`** — other horizons return an error result, not an exception.
+
+## Tests
+
+`tests/agents/` — no `conftest.py`; fixtures are duplicated per file (canonical form in `test_base.py`, `test_freshness_gatekeeper.py`):
+
+1. `db_path(tmp_path)` → `init_db(path)`.
+2. `patched_db(db_path)` → patch **`nuri.agents.base.log_agent_audit` / `start_agent_run` / `finish_agent_run`** with `side_effect` wrappers that `kwargs.setdefault("db_path", db_path)`.
+
+**Patch the `nuri.agents.base` namespace, not `nuri.core.db`** — `base.py` imports those names directly, so patching the source module misses. Discord side effects: patch `nuri.agents.discord.outbox.stage_*` at its source module. See `tests/CLAUDE.md`.
+
+## References
+
+- `nuri/scheduler.py` — `SCHEDULES` wiring, heartbeat, launchd self-restart
+- `nuri/agents/discord/outbox.py` — payload schema + single-writer invariant statement
+- `docs/STRATEGY.md §3.11` — measurement mode (what these actors adjudicate)
+- `nuri/trading/agents/CLAUDE.md` — the *other* agents (consensus pipeline), not this fleet

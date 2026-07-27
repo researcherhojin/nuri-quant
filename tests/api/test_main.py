@@ -33,6 +33,24 @@ class TestApiMain:
         assert resp.headers.get("X-Content-Type-Options") == "nosniff"
         assert resp.headers.get("X-Frame-Options") == "SAMEORIGIN"  # A2 fix: /evidence iframe
 
+    @pytest.mark.parametrize("method", ["GET", "POST", "PUT", "DELETE"])
+    def test_cors_allows_every_mutating_method(self, client, method):
+        """CORS allow_methods 는 실제 라우트가 쓰는 메서드를 전부 덮어야 한다.
+
+        PUT 이 빠져 있으면 cross-origin preflight 가 400 (Disallowed CORS method).
+        프론트는 Next rewrite 로 same-origin 이라 preflight 가 안 떠서 이 결함이
+        브라우저 cross-origin 에서만 드러남 — TestClient 로 직접 잠근다.
+        """
+        resp = client.options(
+            "/api/portfolio/main/AAPL",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": method,
+            },
+        )
+        assert resp.status_code == 200, f"{method} preflight rejected"
+        assert method in resp.headers.get("access-control-allow-methods", "")
+
     def test_login_no_password_env(self, client, monkeypatch):
         monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
         resp = client.post("/api/auth/token", json={"password": "test"})
