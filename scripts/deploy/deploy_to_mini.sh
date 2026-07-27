@@ -9,9 +9,10 @@
 #   1. SSH 연결 확인
 #   2. 원격 git pull (ff-only)
 #   3. config 동기화 (.env, portfolio.yaml, NEXT_SESSION.md — DB 제외)
-#   4. scheduler unload → uv sync --frozen (항상) → (5에서 load)
-#   5. scheduler load (fresh importlib — 신규 패키지 + 코드 변경 모두 반영)
-#   6. 최종 검증 (git HEAD, launchctl, scheduler --dry-run)
+#   4. frontend 재빌드 (.next 가 frontend/ 최신 커밋보다 오래됐을 때만) + dashboard 재기동
+#   5. scheduler unload → uv sync --frozen (항상) → (6에서 load)
+#   6. scheduler load (fresh importlib — 신규 패키지 + 코드 변경 모두 반영)
+#   7. 최종 검증 (git HEAD, launchctl, scheduler --dry-run)
 #
 # 전제:
 #   - DEV2_HOST 가 ~/.zshrc 에 설정 (e.g. ehbebe@Ehbebeui-Macmini.local)
@@ -41,7 +42,7 @@ YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-step() { echo -e "\n${CYAN}[$1/6]${NC} $2"; }
+step() { echo -e "\n${CYAN}[$1/7]${NC} $2"; }
 ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
 warn() { echo -e "  ${YELLOW}⚠${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; exit 1; }
@@ -92,7 +93,53 @@ for f in .env config/portfolio.yaml NEXT_SESSION.md; do
 done
 echo "  ${SYNC_COUNT}개 파일 동기화"
 
-# ── 4. scheduler bounce + uv sync --frozen (#574 + #576) ──
+# ── 4. frontend 재빌드 ──
+# Why: 2026-07-27 실측 — mini 의 `.next` 가 2026-04-13 빌드였고 그 사이 frontend/
+# 커밋 108 개가 미반영이었다. 배포 스크립트에 빌드 단계가 아예 없어 3.5 개월간
+# 아무도 몰랐다. 증상은 조용하다 — 서버 컴포넌트는 빌드 시점에 인라인된
+# NEXT_PUBLIC_API_URL 로 계속 동작하지만, next.config `rewrites()` 는 빌드 산출물
+# (routes-manifest.json) 에 구워지므로 rewrite 도입 이전 빌드에서는 /api/* 가 전부
+# 404. 즉 읽기 화면만 살고 클라이언트 쓰기·SSE 는 전멸한다.
+# 판정: frontend/ 최신 커밋 시각 > .next mtime 이면 재빌드. HEAD 가 안 움직인
+# 경우에도 (오늘처럼) 밀린 빌드를 self-heal 한다.
+step 4 "frontend 빌드 확인"
+
+DASHBOARD_PLIST_NAME="com.nuri-quant.dashboard.plist"
+DASHBOARD_LABEL="${DASHBOARD_PLIST_NAME%.plist}"
+
+BUILD_NEEDED=$("${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && LAST=\$(git log -1 --format=%ct -- frontend/ 2>/dev/null || echo 0); BUILT=\$(stat -f %m frontend/.next 2>/dev/null || echo 0); [ \"\${LAST:-0}\" -gt \"\${BUILT:-0}\" ] && echo yes || echo no")
+
+if [[ "${BUILD_NEEDED}" == "yes" ]]; then
+    warn "frontend 빌드가 코드보다 오래됨 → 재빌드 (수 분 소요)"
+    # package-lock 이 빌드보다 새로우면 의존성부터 재설치.
+    LOCK_NEWER=$("${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && LOCK=\$(git log -1 --format=%ct -- frontend/package-lock.json 2>/dev/null || echo 0); BUILT=\$(stat -f %m frontend/.next 2>/dev/null || echo 0); [ \"\${LOCK:-0}\" -gt \"\${BUILT:-0}\" ] && echo yes || echo no")
+    if [[ "${LOCK_NEWER}" == "yes" ]]; then
+        "${SSH}" "${REMOTE}" "export PATH=/opt/homebrew/bin:\$PATH && cd ${REMOTE_PATH}/frontend && npm ci --no-audit --no-fund" \
+            || fail "npm ci 실패 — 'ssh ${REMOTE} \"cd ${REMOTE_PATH}/frontend && npm ci\"' 수동 확인"
+        ok "npm ci 완료"
+    fi
+    "${SSH}" "${REMOTE}" "export PATH=/opt/homebrew/bin:\$PATH && cd ${REMOTE_PATH}/frontend && npm run build" \
+        || fail "next build 실패 — 이전 .next 가 그대로 서비스 중이다 (dashboard 는 살아있음). 로그 확인 후 재시도"
+    ok "next build 완료"
+
+    "${SSH}" "${REMOTE}" "launchctl kickstart -k gui/\$(id -u)/${DASHBOARD_LABEL}" 2>/dev/null || true
+    DASH_OK="no"
+    for _ in $(seq 1 40); do
+        if "${SSH}" "${REMOTE}" "curl -sf -o /dev/null -m 3 http://127.0.0.1:3000/login" 2>/dev/null; then
+            DASH_OK="yes"; break
+        fi
+        sleep 1
+    done
+    if [[ "${DASH_OK}" == "yes" ]]; then
+        ok "dashboard 재기동 + /login 응답 확인"
+    else
+        fail "dashboard 재기동 후 :3000 무응답 — 'ssh ${REMOTE} tail data/logs/dashboard.err' 확인"
+    fi
+else
+    ok "frontend 빌드 최신 (재빌드 불필요)"
+fi
+
+# ── 5. scheduler bounce + uv sync --frozen (#574 + #576) ──
 # 순서: scheduler stop → uv sync → scheduler start.
 # Why bounce around sync:
 #   1) launchd race (#576): sync 가 .venv 를 mutate 하는 동안 scheduler 가 import
@@ -146,9 +193,9 @@ verify_stable_pid() {
     [[ "${now_pid}" == "${first_pid}" ]]
 }
 
-step 4 "scheduler bounce + 의존성 동기화"
+step 5 "scheduler bounce + 의존성 동기화"
 
-# 4a. scheduler unload + verify PID 사라짐
+# 5a. scheduler unload + verify PID 사라짐
 if [[ "${SCHEDULER_INSTALLED}" == "yes" ]]; then
     "${SSH}" "${REMOTE}" "launchctl unload ${PLIST_REMOTE} 2>/dev/null" || true
     if wait_scheduler gone >/dev/null; then
@@ -160,7 +207,7 @@ else
     warn "scheduler plist 미설치 → 4c 에서 초기 설치"
 fi
 
-# 4b. uv sync --frozen (항상 실행, 1회 retry)
+# 5b. uv sync --frozen (항상 실행, 1회 retry)
 # ssh non-interactive shell 은 ~/.zprofile 미로드 → homebrew PATH 누락. 명시 prepend 필수.
 SYNC_CMD="export PATH=/opt/homebrew/bin:\$PATH && cd ${REMOTE_PATH} && uv sync --extra dev --frozen --quiet"
 if "${SSH}" "${REMOTE}" "${SYNC_CMD}" 2>&1; then
@@ -181,8 +228,8 @@ else
     fail "uv sync --frozen 실패 (1 retry 후) — uv.lock divergence 또는 transient 인프라 (네트워크/디스크). 로컬에서 'uv lock' 재생성 후 commit/push, 또는 Mac mini 에서 'rm -rf .venv && uv sync' 수동 복구"
 fi
 
-# 4c. scheduler load + verify PID 살아남
-step 5 "scheduler 재기동"
+# 6a. scheduler load + verify PID 살아남
+step 6 "scheduler 재기동"
 if [[ "${SCHEDULER_INSTALLED}" == "no" ]]; then
     "${SSH}" "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && cp ${REMOTE_PATH}/scripts/launchd/${PLIST_NAME} ${PLIST_REMOTE}"
     "${SSH}" "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
@@ -197,7 +244,7 @@ else
 fi
 
 # ── 6. 최종 검증 ──
-step 6 "최종 검증"
+step 7 "최종 검증"
 
 REMOTE_HEAD=$("${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && git log -1 --oneline")
 LOCAL_HEAD=$(git log -1 --oneline)

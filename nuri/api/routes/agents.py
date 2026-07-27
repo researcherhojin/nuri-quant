@@ -12,6 +12,11 @@ from fastapi.responses import StreamingResponse
 
 router = APIRouter(tags=["agents"])
 
+# 큐 폴링 간격 / SSE 주석 keepalive 주기 (초). 근거는 stream.py 상단 주석 참조 —
+# Next rewrite 프록시의 30초 무통신 abort 를 피하기 위한 값이다.
+_POLL_INTERVAL = 0.05
+KEEPALIVE_INTERVAL = 10
+
 _cache = {"data": None, "ts": 0}
 CACHE_TTL = 300  # 5분
 
@@ -108,8 +113,18 @@ async def stream_consensus_ticker(ticker: str):
         thread.start()
 
         while True:
+            # 큐가 빌 동안은 바이트가 전혀 안 나간다. 에이전트 1개 LLM 호출이
+            # 30초를 넘기면 Next rewrite 프록시가 소켓을 abort 하고
+            # (proxy-request.js `proxyTimeout || 30000`), use-trace-stream 은
+            # onerror 에서 es.close() 를 부르므로 복구되지 않는다.
+            # stream.py 와 같은 이유로 주석 keepalive 를 흘린다.
+            waited = 0.0
             while q.empty():
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(_POLL_INTERVAL)
+                waited += _POLL_INTERVAL
+                if waited >= KEEPALIVE_INTERVAL:
+                    waited = 0.0
+                    yield ": keepalive\n\n"
             item = q.get()
             if item is None:
                 break
