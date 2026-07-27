@@ -9,9 +9,9 @@ description: STRATEGY §2.7 7-phase Flow (Think→Plan→Build→Review→Test�
 
 ## 운영 원칙
 
-- **자동 chain 절대 금지** — 사용자 명시 지시 없이 다음 phase 자동 진행 X. STRATEGY §7.1 Auto trading deferred 정신.
+- **자동 chain 절대 금지** — 사용자 명시 지시 없이 다음 phase 자동 진행 X (`gh pr merge` 자동 호출 포함). STRATEGY §7.1 Auto trading deferred 정신.
 - **추천만, 실행 X** — 다음 phase 적합 skill / Make target 권고만. invoke 는 사용자 또는 다른 skill 이.
-- **Trivial chore = inline 압축 OK** (typo, README 배지, gitignored 파일) — Build 이상은 모든 단계 준수.
+- **추정 틀려도 강제 회귀 X** — phase 추정은 권고일 뿐.
 
 ## 도구 매핑 (STRATEGY §2.7 phase 별)
 
@@ -45,13 +45,7 @@ description: STRATEGY §2.7 7-phase Flow (Think→Plan→Build→Review→Test�
 
 PR merged + NEXT_SESSION.md 마지막 편집 < PR merge 시각 → **Reflect 필요**. 갱신 항목 권고: 산출물 1줄 / 신규 gotcha / 다음 P0.
 
-## Anti-patterns
-
-자동 `gh pr merge` 호출 X. 사용자 의도 없이 다음 phase 자동 진입 X. Phase 추정 틀려도 강제 회귀 X — 추정은 권고일 뿐.
-
 ## Reference
 
-- `.claude/rules/flow.md` — 7-phase Gate 표 (always-on)
-- `docs/STRATEGY.md §2.7` — canonical 정의
 - `docs/STRATEGY.md §5.8` — 7 Harness Principles (gate 근거)
 - `~/.claude/projects/-Users-ehbebe-workspace-nuri-quant/memory/feedback_dev_flow.md`

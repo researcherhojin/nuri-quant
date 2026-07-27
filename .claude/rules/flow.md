@@ -1,6 +1,6 @@
 # 7-phase Flow
 
-`docs/STRATEGY.md §2.7` is canonical. 7 phases, no skipping. Failed gate → regress prior phase. Trivial chores may inline Think+Plan; Build onward is mandatory. Codex unavailable → self-review + recover in next PR.
+`docs/STRATEGY.md §2.7` is canonical. 7 phases, no skipping. Failed gate → regress prior phase. Trivial chores may inline Think+Plan; Build onward is mandatory.
 
 | # | Phase | Output gate (must answer YES to advance) |
 |---|-------|-----------------------------------------|
