@@ -282,6 +282,25 @@ def _run_db_maintenance():
         logger.error(f"[db_maintenance] 실행 실패: {e}", exc_info=True)
 
 
+def _run_alpha_report():
+    """월간 alpha 진행 리포트 → #brief (§3.11 측정 모드 표출, #856).
+
+    매월 1일 KST. `decision_alpha.adjudicate()` 를 돌려 n / mean / p / halves /
+    결측률 / 판정일까지 D-day 를 한 줄로 stage. verdict 는 판정일 이전엔
+    `PROGRESS_REPORT` 로 고정 — 조기 승격 금지(§3.11 원안 4번).
+
+    stage 는 `NURI_ROLE=production` 에서만 (원장 단일). dev 스케줄러가 돌아도
+    replica 숫자가 brief 로 새지 않는다. 실행 실패는 흡수 (다른 _run_* 와 동일).
+    """
+    try:
+        from nuri.alerts.alpha_report import stage_alpha_progress_brief
+
+        outbox_id = stage_alpha_progress_brief()
+        logger.info(f"[alpha_report] staged={outbox_id is not None} (id={outbox_id})")
+    except Exception as e:
+        logger.error(f"[alpha_report] 실행 실패: {e}", exc_info=True)
+
+
 def _run_brief_audit():
     """BriefAuditor — Discord-as-dev-loop self-quality check.
 
@@ -503,6 +522,14 @@ SCHEDULES = [
     # decision_compiler emit 의 conflict / noise / identical-conviction 검출 →
     # #incidents 로 ticket 자동 emit. dedupe 24h. recommend-only, ZERO LLM.
     {"name": "brief_audit", "func": _run_brief_audit, "args": (), "cron": "0 */6 * * *"},
+    # 월간 alpha 진행 리포트 (§3.11 측정 모드 표출, #856) — 09:00 KST 매일 확인.
+    # 왜 매일인가: `0 9 1 * *` 로 두면 그 5분(misfire_grace_time)에 mini 가 재시작
+    # 중이거나 절전이면 그 달 리포트가 조용히 사라진다. 월 1회 보장은 cron 이 아니라
+    # `already_emitted()` 가 한다(pending/claimed/sent 전부 확인) — 이미 나갔으면
+    # adjudicate() 순열 1,000회를 돌리기 전에 빠져나오므로 매일 실행이 싸다.
+    # 결과적으로 1일에 놓쳐도 2일에 따라잡는다.
+    # 09:00 = 미장 마감(06:00) 후 alpha_tracking 이 전일분을 확정한 뒤.
+    {"name": "alpha_report", "func": _run_alpha_report, "args": (), "cron": "0 9 * * *"},
     # Discord channel dispatcher (Codex Round 6, 2026-05-02) — single-writer outbox flush.
     # PR1 shadow mode: outbox 는 비어있으므로 발송 없음. 실제 사용자 화면 변화는 PR2/PR3 channel-migration 시.
     # #brief: 1분 polling + quiet-period gate (60s no-new-event)
