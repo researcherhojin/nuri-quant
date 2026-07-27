@@ -35,6 +35,17 @@
         <key>NumberOfFiles</key>
         <integer>4096</integer>
     </dict>
+    <!-- §3.11 원장 단일 (#856): adjudication 원장은 이 머신(Mac mini) DB 뿐이고
+         MBP 는 read replica 다. `NURI_ROLE=production` 일 때만 월간 alpha 진행
+         리포트가 #brief 로 stage 된다.
+         왜 `.env` 가 아니라 여기인가: deploy_to_mini.sh 3단계가 MBP 의 `.env` 를
+         mini 로 SCP 하므로, mini `.env` 에만 넣으면 다음 배포에 조용히 지워진다.
+         plist 는 동기화 대상이 아니고 프로덕션 실행 컨텍스트 그 자체다. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>NURI_ROLE</key>
+        <string>production</string>
+    </dict>
     <key>StandardOutPath</key>
     <string>/Users/ehbebe/workspace/nuri-quant/data/logs/scheduler.log</string>
     <key>StandardErrorPath</key>
