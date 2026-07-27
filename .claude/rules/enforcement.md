@@ -10,4 +10,4 @@ Hook config: `.claude/settings.json`. CI workflows: `.github/workflows/main-ci-c
 
 ## .claude/ 4-Layer Architecture (STRATEGY §5.10)
 
-L1 CLAUDE.md (11 scoped + global) → L2 Skills (`.claude/skills/nuri-*/`, 6) → L3 Hooks (`.claude/settings.json` PreToolUse + PostToolUse) → L4 Agents (`.claude/agents/nuri-*.md`, 2). Slash commands: `.claude/commands/nuri-*.md` (8). Path-scoped + always-on rules: `.claude/rules/*.md`. `nuri-` prefix 만 git tracked — 머신별 개인 설치는 `.gitignore` 로 자동 ignored.
+L1 CLAUDE.md (13 scoped + global) → L2 Skills (`.claude/skills/nuri-*/`, 6) → L3 Hooks (`.claude/settings.json` PreToolUse + PostToolUse) → L4 Agents (`.claude/agents/nuri-*.md`, 2). Slash commands: `.claude/commands/nuri-*.md` (8). Path-scoped + always-on rules: `.claude/rules/*.md`. `nuri-` prefix 만 git tracked — 머신별 개인 설치는 `.gitignore` 로 자동 ignored.

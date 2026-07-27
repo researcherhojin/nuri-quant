@@ -81,7 +81,9 @@ _cors_origins = [o.strip() for o in _cors_origins_str.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_methods=["GET", "POST", "DELETE"],
+    # PUT 포함 필수 — portfolio/trades 수정 엔드포인트가 PUT. 목록은 3/27 작성,
+    # PUT 엔드포인트는 #60 (3/31) 추가되며 미갱신 → cross-origin preflight 400.
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
     allow_credentials=True,
 )

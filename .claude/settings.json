@@ -2,7 +2,6 @@
   "permissions": {
     "allow": [
       "Read(**)",
-      "Glob(**)",
       "Grep(**)",
       "Bash(make *)",
       "Bash(.venv/bin/* *)",
@@ -22,18 +21,7 @@
       "Bash(curl -s http://127.0.0.1*)",
       "Bash(uv sync*)",
       "Bash(uv run*)",
-      "Edit(**)",
-      "Write(**/*.md)",
-      "Write(**/*.py)",
-      "Write(**/*.yaml)",
-      "Write(**/*.yml)",
-      "Write(**/*.json)",
-      "Write(**/*.toml)",
-      "Write(**/*.ts)",
-      "Write(**/*.tsx)",
-      "Write(**/*.sh)",
-      "Write(/tmp/**)",
-      "Write(/private/tmp/**)"
+      "Edit(**)"
     ],
     "deny": [
       "Bash(git push --force *)",
@@ -58,9 +46,9 @@
       "Read(**/id_rsa*)",
       "Read(**/id_ed25519*)",
       "Read(config/kis/*)",
-      "Write(**/.env)",
-      "Write(**/credentials*)",
-      "Write(**/secrets*)"
+      "Edit(**/.env)",
+      "Edit(**/credentials*)",
+      "Edit(**/secrets*)"
     ]
   },
   "hooks": {
