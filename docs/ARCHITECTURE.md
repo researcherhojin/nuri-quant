@@ -82,6 +82,7 @@ Configured in `.env` (see `.env.example`):
 - `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET` — KIS Open API live (optional; falls back to `config/kis/kis_devlp.yaml`, gitignored)
 - `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET` — KIS Open API paper (optional)
 - `TOSS_API_KEY` / `TOSS_SECRET_KEY` / `TOSS_ACCOUNT_SEQ` — Toss Open API (optional; IP allowlist — dev machines get 403 and gracefully skip)
+- `API_SECRET_KEY` — JWT signing key (**required in production**, optional in dev). Unset, `nuri/api/auth.py` mints a fresh `secrets.token_hex(32)` each boot, so every outstanding JWT dies on restart (dashboard re-login). Generate: `python3 -c "import secrets; print(secrets.token_hex(32))"`. `make deploy-mini` SCPs the local `.env` onto the Mac mini's, so the same value must exist in **both** `.env` files or a deploy reverts production to random-per-boot.
 ## DB Schema (SQLite, WAL mode)
 51 tables total (45 migrations as of 2026-07-08). Key tables:
 | Table | Purpose |
