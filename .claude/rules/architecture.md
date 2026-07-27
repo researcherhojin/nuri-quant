@@ -2,6 +2,8 @@
 
 ## Code layout
 
+**Pipeline** (5 phases, DB-coupled only — see Cross-phase isolation in `invariants.md`): `collect → analyze → consensus → certify → track`.
+
 `nuri/core` (sole sqlite3 importer) / `nuri/collectors` (27 collector modules) / `analysis` / `quant` / `trading` (agents · engine · strategy · recommend · swing · execution) / `api` (72 endpoints, routes/) / `alerts` / `llm` / `agents` (top-level actor fleet: 18 `actors/` — SRE incident · drift sentinel · forward outcome tracker · walkforward validator · execution firewall · … — plus `discord/` bot layer, wired by `nuri/scheduler.py`). Plus `tests/` mirror + `scripts/` automation + `frontend/` (Next.js). Detailed map (DB schema, migrations, env vars, CI/CD): `docs/ARCHITECTURE.md`.
 
 ## Commands
@@ -12,6 +14,7 @@
 - Reactive: `make recommend` (BUY candidates + tracker) / `/nuri-thesis <T>` skill (`nuri/llm/thesis_query.py`) / `make earnings-preview ticker=<T>`
 - LLM consult dual-archive: `make llm-consult slug=<kebab> prompt=<file>`
 - Lint+Test: `make lint` / `make test-fast` / `.venv/bin/python -m pytest <path>::<test> -v`
+- Gates: `make verify-quick` (~10s pre-commit smoke) / `make verify-all` (~30s pre-push: tests + lint + frontend)
 - Deploy: `make start` (API :8001 + Dashboard :3000) / `make deploy-mini` (MBP → Mac mini 6단계 동기화)
 
 Frontend-only commands → `frontend/CLAUDE.md`.
