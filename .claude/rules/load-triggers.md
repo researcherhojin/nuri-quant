@@ -13,8 +13,8 @@
 | `config/rules.yaml`, `config/agents.yaml`, `config/signals.yaml` | `config/CLAUDE.md` + `docs/STRATEGY.md §2.6, §3.4-§3.5` |
 | `frontend/` | `frontend/CLAUDE.md` (Next.js 16 breaking changes — read `node_modules/next/dist/docs/` first) |
 | `tests/` | `tests/CLAUDE.md` (DB isolation, mock pitfalls, privacy in fixtures) |
-| `nuri/agents/` (actor fleet + discord bot) | `nuri/agents/base.py` (actor contract) + `nuri/scheduler.py` (wiring) — no scoped CLAUDE.md yet |
-| `nuri/api/` (FastAPI routes) | `docs/ARCHITECTURE.md` §"Dashboard API" + `.claude/rules/architecture.md` "API Access Pattern" + source convention from existing `nuri/api/routes/` |
+| `nuri/agents/` (actor fleet + discord bot) | `nuri/agents/CLAUDE.md` — actor contract (Layer A/B/C), `CANONICAL_15` roster, single-writer Discord invariant, `SCHEDULES` wiring |
+| `nuri/api/` (FastAPI routes) | `nuri/api/CLAUDE.md` — router registration, no-`response_model` convention, error-handling split, cache TTL gotchas |
 | `scripts/` (shell automation, no scoped CLAUDE.md) | source docstring; `make lint-sh` (shellcheck); `scripts/verify/pre_push_check.sh` for safety contract |
 | DB migrations / schema changes | `nuri/core/CLAUDE.md` + `_MIGRATIONS` list in `nuri/core/db_migrations.py` (forward-only, never edit existing migration) |
 | Investment-rule / strategy / regime decisions | `docs/STRATEGY.md` §2 (principles) + §3 (decisions) |
