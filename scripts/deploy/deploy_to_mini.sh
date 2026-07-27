@@ -230,12 +230,12 @@ fi
 
 # 6a. scheduler load + verify PID 살아남
 step 6 "scheduler 재기동"
-if [[ "${SCHEDULER_INSTALLED}" == "no" ]]; then
-    "${SSH}" "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && cp ${REMOTE_PATH}/scripts/launchd/${PLIST_NAME} ${PLIST_REMOTE}"
-    "${SSH}" "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
-else
-    "${SSH}" "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
-fi
+# plist 는 **매번** 재설치한다. 이전에는 미설치일 때만 cp 해서, 이미 설치된
+# mini 에는 repo 의 plist 수정이 영영 도달하지 않았다 (#856 에서 발각: 스케줄러
+# plist 에 넣은 NURI_ROLE 이 배포돼도 반영 안 됨 → 기능이 조용히 죽은 채 시작).
+# unload(5a) 와 load 사이라 cp 안전. kickstart 로는 못 고치는 문제 (#778 참조).
+"${SSH}" "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && cp ${REMOTE_PATH}/scripts/launchd/${PLIST_NAME} ${PLIST_REMOTE}"
+"${SSH}" "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
 
 if NEW_PID=$(wait_scheduler alive) && verify_stable_pid "${NEW_PID}"; then
     ok "scheduler reloaded (fresh importlib, PID ${NEW_PID} stable for 3s)"
