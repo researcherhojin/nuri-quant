@@ -47,6 +47,11 @@ HEARTBEAT_PATH = Path(__file__).resolve().parents[2] / "data" / ".scheduler_hear
 # 30분 이상 stale 이면 alert. sre_incident_agent.SCHEDULER_WARN_MIN 과 동일값 유지.
 STALE_THRESHOLD_MIN = 30.0
 
+#: 원장 백업 디렉터리 + 경고 임계. 백업은 일 1회(cron `0 0 * * *`)라 48h 는
+#: "하루 걸러도 봐주되 이틀은 아니다" 선 (#835 acceptance).
+BACKUP_DIR = Path(__file__).resolve().parents[2] / "data" / "backups"
+BACKUP_STALE_THRESHOLD_H = 48.0
+
 # 자동 재시작 대상 launchd label. fd 누수(파일 디스크립터 고갈)로 데몬이 살아있되
 # heartbeat 만 멈추는 경우 KeepAlive 는 무력(크래시 아님) — kickstart -k 만 fd 를 회수.
 SCHEDULER_LABEL = "com.nuri-quant.scheduler"
@@ -154,6 +159,25 @@ def check_services(recheck_delay_s: float = SERVICE_RECHECK_DELAY_S) -> list[str
     return problems
 
 
+def backup_age_hours(backup_dir: Path | None = None, now_epoch: float | None = None) -> float | None:
+    """최신 원장 백업의 age(시간). 디렉터리/백업 미존재 시 None (미배포 환경 → skip).
+
+    §3.11 원장은 Mac mini 단일본이라 백업이 유일한 안전망이다. 백업 job 은
+    scheduler 안에서 돌기 때문에 scheduler 가 죽으면 heartbeat 와 **함께** 멈춘다
+    — 즉 heartbeat 감시만으로는 "백업이 며칠째 안 돌았다" 를 따로 못 잡는다
+    (2026-04-30 ~ 07-08, #557 경로 drift 로 백업이 두 달 넘게 조용히 실패한 전력).
+    """
+    d = backup_dir or BACKUP_DIR
+    if not d.is_dir():
+        return None
+    snapshots = list(d.glob("portfolio_*.db"))
+    if not snapshots:
+        return None
+    newest = max(s.stat().st_mtime for s in snapshots)
+    now = now_epoch if now_epoch is not None else time.time()
+    return (now - newest) / 3600.0
+
+
 def heartbeat_age_minutes(path: Path | None = None, now_epoch: float | None = None) -> float | None:
     """heartbeat 파일 mtime 의 age(분) 반환. 파일 미존재 시 None (미배포 환경 → skip)."""
     p = path or HEARTBEAT_PATH
@@ -183,6 +207,22 @@ def main() -> int:
         alerts.append(
             f"🔴 **스케줄러 heartbeat STALE** — {age:.0f}분째 갱신 없음 "
             f"(임계 {STALE_THRESHOLD_MIN:.0f}분). 데이터 수집 중단 의심.\n{restart_note}"
+        )
+
+    # 원장 백업 나이 감시 (#835). scheduler 와 독립적으로 파일 mtime 만 보므로
+    # scheduler 가 죽어도, 백업 job 만 조용히 실패해도 둘 다 여기서 잡힌다.
+    b_age = backup_age_hours()
+    if b_age is None:
+        print(f"백업 없음 ({BACKUP_DIR}) — skip (미배포 환경)")
+    elif b_age <= BACKUP_STALE_THRESHOLD_H:
+        print(f"backup OK ({b_age:.1f}시간, 임계 {BACKUP_STALE_THRESHOLD_H:.0f}시간)")
+    else:
+        alerts.append(
+            f"🔴 **원장 백업 STALE** — 최신 스냅샷이 {b_age:.0f}시간 전 "
+            f"(임계 {BACKUP_STALE_THRESHOLD_H:.0f}시간). §3.11 판정 원장은 이 머신 단일본이라 "
+            f"백업이 유일한 안전망이다.\n"
+            f"확인: `tail -20 data/logs/scheduler.log | grep backup` · "
+            f"수동 실행: `bash scripts/db/backup.sh`"
         )
 
     # 표출 계층 (API/dashboard) 포트 감시 — 미설치 머신은 내부에서 skip (#826).
