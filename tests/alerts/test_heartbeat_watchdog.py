@@ -52,11 +52,84 @@ class TestWebhookResolution:
         assert hw._resolve_webhook_url() is None
 
 
+class TestBackupAge:
+    """원장 백업 나이 (#835) — scheduler 와 독립적으로 파일 mtime 만 본다."""
+
+    def test_none_when_dir_missing(self, tmp_path):
+        assert hw.backup_age_hours(backup_dir=tmp_path / "nope") is None
+
+    def test_none_when_dir_has_no_snapshot(self, tmp_path):
+        (tmp_path / "README.txt").write_text("no snapshots here")
+        assert hw.backup_age_hours(backup_dir=tmp_path) is None
+
+    def test_uses_the_newest_snapshot(self, tmp_path):
+        """오래된 백업이 남아 있어도 '최신' 기준이어야 한다."""
+        now = time.time()
+        for name, age_h in (("portfolio_old.db", 200.0), ("portfolio_new.db", 3.0)):
+            p = tmp_path / name
+            p.write_bytes(b"x")
+            os.utime(p, (now - age_h * 3600, now - age_h * 3600))
+        age = hw.backup_age_hours(backup_dir=tmp_path, now_epoch=now)
+        assert age == pytest.approx(3.0, abs=0.1)
+
+    def test_ignores_checksum_sidecars(self, tmp_path):
+        """`.sha256` 는 스냅샷이 아니다 — 그것만 있으면 백업 없음으로 봐야 한다."""
+        (tmp_path / "portfolio_20260101_000000.db.sha256").write_text("deadbeef")
+        assert hw.backup_age_hours(backup_dir=tmp_path) is None
+
+
 class TestMain:
     @pytest.fixture(autouse=True)
     def _no_services(self, monkeypatch):
         """heartbeat 계약만 격리 검증 — 포트 감시는 TestServiceCheck 에서 별도."""
         monkeypatch.setattr(hw, "SERVICE_PORTS", {})
+
+    @pytest.fixture(autouse=True)
+    def _isolated_backup_dir(self, tmp_path, monkeypatch):
+        """실 `data/backups/` 를 보지 않게 격리.
+
+        이게 없으면 개발 머신의 백업 유무에 따라 결과가 갈린다 (tests/CLAUDE.md
+        의 DB 격리와 같은 취지 — 테스트가 머신 상태에 의존하면 안 된다).
+        기본은 '백업 없음' → skip 이라 기존 heartbeat 테스트에 영향 없음.
+        """
+        monkeypatch.setattr(hw, "BACKUP_DIR", tmp_path / "no-backups")
+
+    def _seed_backup(self, tmp_path, age_hours):
+        d = tmp_path / "backups"
+        d.mkdir(exist_ok=True)
+        p = d / "portfolio_20260101_000000.db"
+        p.write_bytes(b"x")
+        t = time.time() - age_hours * 3600
+        os.utime(p, (t, t))
+        return d
+
+    def test_fresh_backup_no_alert(self, tmp_path, monkeypatch):
+        hb = tmp_path / "hb"
+        _write_heartbeat(hb, age_minutes=1.0)
+        monkeypatch.setattr(hw, "HEARTBEAT_PATH", hb)
+        monkeypatch.setattr(hw, "BACKUP_DIR", self._seed_backup(tmp_path, 5.0))
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text") as send:
+            rc = hw.main()
+        assert rc == 0
+        send.assert_not_called()
+
+    def test_stale_backup_alerts_even_when_heartbeat_is_fresh(self, tmp_path, monkeypatch):
+        """#835 acceptance — 백업만 멈춘 상태를 heartbeat 가 못 잡는다.
+
+        Gotcha-Test Pair: 백업 job 은 scheduler 안에서 돈다. scheduler 가 살아
+        heartbeat 는 갱신되는데 백업 job 만 조용히 실패하면(#557 경로 drift 로
+        2026-04-30~07-08 두 달 넘게 실제로 그랬다) 아무도 모른다.
+        """
+        hb = tmp_path / "hb"
+        _write_heartbeat(hb, age_minutes=1.0)  # heartbeat 는 정상
+        monkeypatch.setattr(hw, "HEARTBEAT_PATH", hb)
+        monkeypatch.setattr(hw, "BACKUP_DIR", self._seed_backup(tmp_path, hw.BACKUP_STALE_THRESHOLD_H + 10))
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send:
+            rc = hw.main()
+        assert rc == 2
+        msg = send.call_args.args[0]
+        assert "백업 STALE" in msg
+        assert "heartbeat STALE" not in msg, "heartbeat 는 정상인데 그것까지 경고하면 오탐"
 
     def test_fresh_heartbeat_no_alert(self, tmp_path, monkeypatch):
         p = tmp_path / "hb"
