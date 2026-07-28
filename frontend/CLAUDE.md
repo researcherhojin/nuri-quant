@@ -22,7 +22,7 @@ npx vitest run -t "renders verdict"                    # single test by name
 
 All pages are **Server Components** with `force-dynamic`. Data fetched server-side via `fetchAPI()` (`src/lib/api.ts`).
 
-Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), `<CompositionDonut>` (Recharts pie), `<ActionItems>` (expand/collapse), `<OpportunityExplorer>` (10-Agent fetch), `<PriceChart>` (period selector).
+Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), `/portfolio` (holdings editor), `/login` (auth form), `<CompositionDonut>` (Recharts pie), `<ActionItems>` (expand/collapse), `<OpportunityExplorer>` (10-Agent fetch), `<PriceChart>` (period selector).
 
 **RSC boundary — never import a server util through a `"use client"` module.** next 16.2.9+ throws at *request time* (not build/vitest) when a Server Component calls a function re-exported from a `"use client"` module. `composition-section-lazy.tsx` is `"use client"` and re-exports the pure `parseCompositionTab`; importing it there from `page.tsx` made the whole dashboard render the error boundary. Import pure utils from their **source server module** (`composition-section`), take only the lazy wrapper component from the `-lazy` file. **Test:** `src/__tests__/pages/page-rsc-import-guard.test.tsx::page.tsx RSC import boundary` (asserts the import source — the runtime error is invisible to `next build` and jsdom render). (#731)
 
