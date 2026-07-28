@@ -168,6 +168,20 @@ def _run_collector(name: str, **kwargs):
 
             n = track_decision_outcomes()
             logger.info(f"[decision_pnl] {n}건 업데이트")
+        elif name == "recommendation_outcomes":
+            # recommendations 테이블의 7/14/21/30/60/90d forward return 갱신.
+            # NOTE: decisions 테이블이 아님 — 그쪽은 바로 위 decision_pnl.
+            #
+            # 이 호출은 `make recommend` CLI(tracker.main) 에만 있었다. 스케줄러에는
+            # 없어서 프로덕션 `recommendations.outcome_*` 1,170행이 **전부 NULL** 이었고
+            # (창이 닫힌 550행 포함), learning_memory 의 canonical(outcome_30d) /
+            # provisional(outcome_21d) 가중치가 표본 0 으로 DEFAULT_WEIGHTS 에 영구
+            # 고정돼 있었다. dev 에서는 사람이 `make recommend` 를 돌려 채워지므로
+            # 학습이 도는 것처럼 보였다 — 그게 3.5개월 안 들킨 이유다 (#899).
+            from nuri.trading.recommend.tracker import track_outcomes
+
+            n = track_outcomes()
+            logger.info(f"[recommendation_outcomes] {n}건 업데이트")
         elif name == "alpha_tracking":
             # ForwardOutcomeTracker: emit 된 추천 vs SPY benchmark → realized alpha 를
             # decision_outcomes 테이블에 기록 (recommendations → agent_decisions 백필 포함).
@@ -531,6 +545,16 @@ SCHEDULES = [
     {"name": "memory_snapshot", "func": _run_collector, "args": ("memory_snapshot",), "cron": "0 4 * * 0"},
     # decisions 테이블 raw P&L 갱신 (매일 07:00 — 시장 개장 전). NOT alpha (아래 alpha_tracking).
     {"name": "decision_pnl", "func": _run_collector, "args": ("decision_pnl",), "cron": "0 7 * * *"},
+    # recommendations forward return 갱신 (매일 07:02 — decision_pnl 직후, consensus 07:05 **전**).
+    # 순서가 계약이다: consensus 의 learning_memory 가 같은 날 갱신된 outcome 으로 가중치를
+    # 계산해야 한다. 07:00 대인 이유는 stock_us_dawn(00~06:59, 5분 간격)이 미국 종가를
+    # 이미 넣어둔 시각이기 때문 — decision_pnl 이 같은 근거로 07:00 이다 (#899).
+    {
+        "name": "recommendation_outcomes",
+        "func": _run_collector,
+        "args": ("recommendation_outcomes",),
+        "cron": "2 7 * * *",
+    },
     # 실현 alpha 추적 (매일 17:00 — 한국장 마감 후). ForwardOutcomeTracker scan →
     # decision_outcomes (realized vs SPY benchmark). 과거 launchd track-forward.plist 를 scheduler 로 흡수.
     {"name": "alpha_tracking", "func": _run_collector, "args": ("alpha_tracking",), "cron": "0 17 * * *"},
