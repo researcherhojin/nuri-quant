@@ -56,7 +56,8 @@ Only 4 actors are reached from `SCHEDULES` today, and **only one of them is a re
 
 So **14 of the 15 registered actors have no cron** — they run from their `main()` CLI or another caller. **Do not assume an actor is running just because it exists and is registered.** Check `SCHEDULES` before claiming anything about live behaviour.
 
-⚠️ **APScheduler weekday ≠ crontab weekday.** `day_of_week` is Mon=0…Sun=6, so a crontab literal `1-5` fires **Tue–Sat**. Use explicit `mon-fri`.
+⚠️ **APScheduler weekday ≠ crontab weekday**, but `SCHEDULES` entries are written in **crontab** semantics (0=Sun) and `scheduler._make_trigger()` converts. Write `1-5` for Mon–Fri and `0` for Sunday, as you would in a crontab — do NOT pre-convert to `mon-fri`, and do NOT call `CronTrigger.from_crontab()` directly (it skips the conversion, which is how every non-`tz` job ran a day late until #929 — `stock_us_freshness` missed Tuesdays, leaving the §3.11 benchmark SPY stale each Mon/Tue).
+**Test:** `tests/test_scheduler_weekday.py::TestEverySchedulesJobFiresOnIntendedDays::test_all_jobs_match_crontab_semantics` — asks the registered triggers which weekdays they actually fire on and compares against a hand-written crontab table.
 
 ## Adding an actor
 
