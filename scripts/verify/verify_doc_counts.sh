@@ -60,32 +60,45 @@ live_migrations()     { grep -cE '^        [0-9]+,$' nuri/core/db_migrations.py 
 live_scheduler_jobs() { grep -cE '"cron":' nuri/scheduler.py || true; }
 live_rules_lines()    { wc -l < config/rules.yaml | tr -d ' '; }
 
-# Extract the target integer from a file.
-# Strategy: match the claim's context substring (must be unique in the file),
-# then take the LAST [0-9]+ in that substring. Target numbers are consistently
-# the rightmost digit run in each claim's phrasing (e.g., "Playwright E2E
-# (6 spec files)" — the '2' in 'E2E' is ignored because 6 is last).
-# Usage: extract_num <file> <ctx_pattern>
-extract_num() {
+# Extract the target integer from EVERY occurrence of a claim in a file.
+# Strategy: match the claim's context substring, then take the LAST [0-9]+ in
+# each match. Target numbers are consistently the rightmost digit run in each
+# claim's phrasing (e.g., "Playwright E2E (6 spec files)" — the '2' in 'E2E' is
+# ignored because 6 is last). One number per line of output.
+#
+# All occurrences, not just the first: a README states the same count in more
+# than one place (mermaid node + stats table), and `head -1` verified only the
+# first, leaving every later copy free to drift silently — a gate that reads as
+# green while half the numbers it names are unchecked.
+# Usage: extract_nums <file> <ctx_pattern>
+extract_nums() {
     local file="$1" pattern="$2"
-    [ ! -f "$file" ] && { echo ""; return; }
-    grep -oE "$pattern" "$file" | head -1 | grep -oE '[0-9]+' | tail -1
+    [ ! -f "$file" ] && return
+    grep -oE "$pattern" "$file" | while IFS= read -r m; do
+        echo "$m" | grep -oE '[0-9]+' | tail -1
+    done
 }
 
-# Check a single claim. Returns 0 if match, 1 if drift.
+# Check a claim at every site it appears. Returns 0 only if all agree.
 check_claim() {
     local label="$1" expected="$2" file="$3" pattern="$4"
-    local actual
-    actual=$(extract_num "$file" "$pattern")
-    if [ -z "$actual" ]; then
+    local nums count bad
+    nums=$(extract_nums "$file" "$pattern")
+    if [ -z "$nums" ]; then
         warn "$label: pattern not found in $file — $pattern"
         return 1
     fi
-    if [ "$actual" = "$expected" ]; then
-        pass "$label ($file): $actual"
+    count=$(echo "$nums" | wc -l | tr -d ' ')
+    bad=$(echo "$nums" | grep -vxF "$expected" | sort -u | paste -sd, - || true)
+    if [ -z "$bad" ]; then
+        if [ "$count" -gt 1 ]; then
+            pass "$label ($file): $expected (${count} sites)"
+        else
+            pass "$label ($file): $expected"
+        fi
         return 0
     else
-        fail "$label ($file): doc=$actual, live=$expected — DRIFT"
+        fail "$label ($file): doc=$bad, live=$expected — DRIFT (${count} sites checked)"
         return 1
     fi
 }
