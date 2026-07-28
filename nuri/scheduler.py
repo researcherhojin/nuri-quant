@@ -152,6 +152,14 @@ def _run_collector(name: str, **kwargs):
             from nuri.collectors.fred_calendar import FREDCalendarCollector
 
             FREDCalendarCollector().run()
+        elif name == "institutional":
+            from nuri.collectors.institutional import InstitutionalCollector
+
+            InstitutionalCollector().run()
+        elif name == "finviz":
+            from nuri.collectors.finviz import FINVIZCollector
+
+            FINVIZCollector().run()
         elif name == "kis_analyst_opinion":
             from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
 
@@ -544,6 +552,16 @@ SCHEDULES = [
     {"name": "coingecko", "func": _run_collector, "args": ("coingecko",), "cron": "25 6 * * *"},
     {"name": "reddit", "func": _run_collector, "args": ("reddit",), "cron": "35 6 * * *"},
     {"name": "fred_calendar", "func": _run_collector, "args": ("fred_calendar",), "cron": "45 6 * * *"},
+    # 기관/외국인 수급 — `korean_market` 에이전트가 `institutional_flows.foreign_net` 을 읽는다
+    # (`korean_market.py:166`). collector 는 스케줄러에도 `make collect` 에도 없어서 2026-04-14
+    # 이후 갱신이 끊겼고, 10-agent 중 하나가 4 개월 묵은 수급으로 표를 던지고 있었다.
+    # KIS rate limit 0.4s/종목, portfolio KR 11 종목 = 실측 6.1 초. consensus(07:05) 전.
+    {"name": "institutional", "func": _run_collector, "args": ("institutional",), "cron": "50 6 * * *"},
+    # FINVIZ 스크리너 보조 시그널 — `technical` 에이전트(가중치 최대)가 읽는다
+    # (`technical.py:143` → `external_analysis` source='FINVIZ'). `make collect` 에만 있어
+    # 2026-04-14 이후 3 행에서 멈춰 있었고, config/agents.yaml 의 buy_boost/sell_boost 가
+    # 사실상 무효였다. consensus(07:05) 전.
+    {"name": "finviz", "func": _run_collector, "args": ("finviz",), "cron": "55 6 * * *"},
     # 뉴스 (1시간 — SaveTicker 대체)
     {"name": "news", "func": _run_collector, "args": ("news",), "cron": "0 * * * *"},
     # 매크로 뉴스 (KST 08:00, 14:00, 20:00 — 시장 영향 큰 이벤트만)

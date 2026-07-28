@@ -67,7 +67,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 | `/api/market-context` | GET | 시스템 건강 (SIEGE/regime/macro/freshness) + 매크로 이벤트 (한국어 카테고리) |
 | `/api/backtest/equity` | GET | Equity curve + drawdown + metrics (Recharts frontend용 경량 데이터) |
 ## Scheduler
-`nuri/scheduler.py` — 46 cron jobs in `SCHEDULES` list (+ a 1-minute `heartbeat` interval job). All times KST. Lazy imports inside `_run_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors; a daily `stock_us_freshness` job (06:10/06:40 KST) keeps the SPY measurement benchmark + SIEGE freshness tickers current (§3.11).
+`nuri/scheduler.py` — 48 cron jobs in `SCHEDULES` list (+ a 1-minute `heartbeat` interval job). All times KST. Lazy imports inside `_run_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors; a daily `stock_us_freshness` job (06:10/06:40 KST) keeps the SPY measurement benchmark + SIEGE freshness tickers current (§3.11).
 ## Environment Variables
 Configured in `.env` (see `.env.example`):
 - `FRED_API_KEY` — FRED macro data (optional; yfinance fallback)
