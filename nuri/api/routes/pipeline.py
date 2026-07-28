@@ -14,20 +14,19 @@ _limiter = Limiter(key_func=get_remote_address)
 VALID_STEPS = ("collect", "validate", "classify", "diagnose", "recommend", "track")
 
 # Frontend PipelineStep presentation (frontend/src/app/pipeline/page.tsx expects this shape).
+# `nuri/core/events.PIPELINE_STEPS` 와 같은 5 stage 어휘 (#921).
 _STEP_LABELS = {
     "collect": "Collect",
-    "validate": "Validate",
-    "classify": "Classify",
-    "diagnose": "Diagnose",
-    "recommend": "Recommend",
+    "analyze": "Analyze",
+    "consensus": "Consensus",
+    "certify": "Certify",
     "track": "Track",
 }
 _STEP_DESCRIPTIONS = {
-    "collect": "26 collectors + external sites",
-    "validate": "Signal backtest + scorecard",
-    "classify": "6-regime classifier",
-    "diagnose": "10 agents consensus",
-    "recommend": "Buy/sell + price targets",
+    "collect": "27 collectors + external sites",
+    "analyze": "Signals, regimes, factor composite",
+    "consensus": "10 agents weighted vote",
+    "certify": "3-D gates + decision record",
     "track": "30/60/90d outcomes",
 }
 # core event status -> frontend PipelineStep.status enum (idle|running|done|error).
@@ -88,7 +87,7 @@ def get_scheduler_health():
 
 @router.get("/pipeline/status")
 def get_pipeline_status():
-    """6단계 파이프라인 최신 상태 + 신선도.
+    """5-stage 파이프라인 최신 상태 + 신선도.
 
     `steps` 는 PIPELINE_STEPS 순서의 **배열** (프론트 PipelineStep[] 계약).
     과거엔 dict {step: {...}} 를 반환 → 프론트가 array(`for...of`/`.length`)로

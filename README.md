@@ -272,7 +272,7 @@ Measured against `main` on 2026-07-28. Counts marked ✅ are verified on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 6,433 collected across 286 files | |
+| **Backend tests** | 6,446 collected across 287 files | |
 | **Backend statement coverage** | 99.88% — 28 of 22,539 statements uncovered, across 9 files (Codecov `backend` flag) | |
 | **Frontend tests** | 1,449 across 127 files — 100% statement coverage | |
 | **E2E tests** | 57 across 8 Playwright specs | |
