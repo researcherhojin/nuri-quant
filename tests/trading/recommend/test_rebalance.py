@@ -1,4 +1,5 @@
 """Tests for rebalance — split from test_trading_recommend_all.py."""
+
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -27,69 +28,77 @@ class TestSectorClassify:
     """From test_recommend.py."""
 
     def test_growth_sectors(self):
-        from nuri.trading.recommend.rebalance import _classify_sector
-        assert _classify_sector("Technology") == "growth"
-        assert _classify_sector("EV") == "growth"
-        assert _classify_sector("Semiconductor") == "growth"
+        from nuri.core.sectors import classify_sector
+
+        assert classify_sector("Technology") == "growth"
+        assert classify_sector("EV") == "growth"
+        assert classify_sector("Semiconductor") == "growth"
 
     def test_defensive_sectors(self):
-        from nuri.trading.recommend.rebalance import _classify_sector
-        assert _classify_sector("Health Care") == "defensive"
-        assert _classify_sector("Utilities") == "defensive"
-        assert _classify_sector("Consumer Staples") == "defensive"
+        from nuri.core.sectors import classify_sector
+
+        assert classify_sector("Health Care") == "defensive"
+        assert classify_sector("Utilities") == "defensive"
+        assert classify_sector("Consumer Staples") == "defensive"
 
     def test_neutral_sectors(self):
-        from nuri.trading.recommend.rebalance import _classify_sector
-        assert _classify_sector("Finance") == "neutral"
-        assert _classify_sector("") == "neutral"
-        assert _classify_sector("Unknown") == "neutral"
+        from nuri.core.sectors import classify_sector
+
+        assert classify_sector("Finance") == "neutral"
+        assert classify_sector("") == "neutral"
+        assert classify_sector("Unknown") == "neutral"
 
 
 class TestClassifySector:
     """From test_rebalance_regime.py."""
 
     def test_defensive_keywords(self):
-        from nuri.trading.recommend.rebalance import _classify_sector
-        assert _classify_sector("Health Care") == "defensive"
-        assert _classify_sector("Utilities") == "defensive"
-        assert _classify_sector("Real Estate") == "defensive"
-        assert _classify_sector("Pharma") == "defensive"
-        assert _classify_sector("Defense") == "defensive"
+        from nuri.core.sectors import classify_sector
+
+        assert classify_sector("Health Care") == "defensive"
+        assert classify_sector("Utilities") == "defensive"
+        assert classify_sector("Real Estate") == "defensive"
+        assert classify_sector("Pharma") == "defensive"
+        assert classify_sector("Defense") == "defensive"
 
     def test_growth_keywords(self):
-        from nuri.trading.recommend.rebalance import _classify_sector
-        assert _classify_sector("Technology") == "growth"
-        assert _classify_sector("AI/Cloud") == "growth"
-        assert _classify_sector("Semiconductor") == "growth"
-        assert _classify_sector("EV") == "growth"
-        assert _classify_sector("Software") == "growth"
+        from nuri.core.sectors import classify_sector
+
+        assert classify_sector("Technology") == "growth"
+        assert classify_sector("AI/Cloud") == "growth"
+        assert classify_sector("Semiconductor") == "growth"
+        assert classify_sector("EV") == "growth"
+        assert classify_sector("Software") == "growth"
 
     def test_neutral(self):
-        from nuri.trading.recommend.rebalance import _classify_sector
-        assert _classify_sector("Finance") == "neutral"
-        assert _classify_sector("") == "neutral"
-        assert _classify_sector("Unknown") == "neutral"
+        from nuri.core.sectors import classify_sector
+
+        assert classify_sector("Finance") == "neutral"
+        assert classify_sector("") == "neutral"
+        assert classify_sector("Unknown") == "neutral"
 
     def test_case_insensitive(self):
-        from nuri.trading.recommend.rebalance import _classify_sector
-        assert _classify_sector("TECHNOLOGY") == "growth"
-        assert _classify_sector("health care") == "defensive"
+        from nuri.core.sectors import classify_sector
+
+        assert classify_sector("TECHNOLOGY") == "growth"
+        assert classify_sector("health care") == "defensive"
 
 
 class TestSectorClassification:
     """From test_regime.py."""
 
-    def test_classify_sector(self):
-        from nuri.trading.recommend.rebalance import _classify_sector
-        assert _classify_sector("Technology") == "growth"
-        assert _classify_sector("EV") == "growth"
-        assert _classify_sector("AI/Cloud") == "growth"
-        assert _classify_sector("Consumer Staples") == "defensive"
-        assert _classify_sector("Health Care") == "defensive"
-        assert _classify_sector("Utilities") == "defensive"
-        assert _classify_sector("Finance") == "neutral"
-        assert _classify_sector("") == "neutral"
-        assert _classify_sector("Semiconductor") == "growth"
+    def testclassify_sector(self):
+        from nuri.core.sectors import classify_sector
+
+        assert classify_sector("Technology") == "growth"
+        assert classify_sector("EV") == "growth"
+        assert classify_sector("AI/Cloud") == "growth"
+        assert classify_sector("Consumer Staples") == "defensive"
+        assert classify_sector("Health Care") == "defensive"
+        assert classify_sector("Utilities") == "defensive"
+        assert classify_sector("Finance") == "neutral"
+        assert classify_sector("") == "neutral"
+        assert classify_sector("Semiconductor") == "growth"
 
 
 class TestRebalanceAction:
@@ -97,20 +106,32 @@ class TestRebalanceAction:
 
     def test_create(self):
         from nuri.trading.recommend.rebalance import RebalanceAction
+
         a = RebalanceAction(
-            ticker="AAPL", sector="Technology", action="BUY",
-            current_weight=5.0, target_weight=10.0, trade_value=5000,
-            signals=["rsi_oversold(BUY)"], regime_note="[bull_strong]",
+            ticker="AAPL",
+            sector="Technology",
+            action="BUY",
+            current_weight=5.0,
+            target_weight=10.0,
+            trade_value=5000,
+            signals=["rsi_oversold(BUY)"],
+            regime_note="[bull_strong]",
         )
         assert a.action == "BUY"
         assert a.trade_value == 5000
 
     def test_hold_action(self):
         from nuri.trading.recommend.rebalance import RebalanceAction
+
         a = RebalanceAction(
-            ticker="MSFT", sector="Software", action="HOLD",
-            current_weight=10.0, target_weight=10.0, trade_value=0,
-            signals=[], regime_note="[bull_strong]",
+            ticker="MSFT",
+            sector="Software",
+            action="HOLD",
+            current_weight=10.0,
+            target_weight=10.0,
+            trade_value=0,
+            signals=[],
+            regime_note="[bull_strong]",
         )
         assert a.action == "HOLD"
 
@@ -120,6 +141,7 @@ class TestCashTargets:
 
     def test_values(self):
         from nuri.trading.recommend.rebalance import CASH_TARGETS
+
         assert CASH_TARGETS["aggressive"] == 0.0
         assert CASH_TARGETS["minimal"] == 0.40
         assert CASH_TARGETS["defensive"] == 0.20
@@ -131,12 +153,14 @@ class TestPrintRebalance:
 
     def test_empty(self, capsys):
         from nuri.trading.recommend.rebalance import print_rebalance
+
         print_rebalance([])
         output = capsys.readouterr().out
         assert "없음" in output
 
     def test_with_actions(self, capsys):
         from nuri.trading.recommend.rebalance import RebalanceAction, print_rebalance
+
         actions = [
             RebalanceAction("AAPL", "Technology", "BUY", 5.0, 10.0, 5000, ["rsi(BUY)"], "[bull_strong]"),
             RebalanceAction("MSFT", "Software", "HOLD", 10.0, 10.0, 0, [], "[bull_strong]"),
@@ -148,6 +172,7 @@ class TestPrintRebalance:
 
     def test_all_hold(self, capsys):
         from nuri.trading.recommend.rebalance import RebalanceAction, print_rebalance
+
         actions = [
             RebalanceAction("AAPL", "Technology", "HOLD", 10.0, 10.0, 0, [], "[bull]"),
         ]
@@ -161,6 +186,7 @@ class TestRebalanceDeep:
 
     def test_regime_aware_rebalance(self, rich_db):
         from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
         result = regime_aware_rebalance()
         assert isinstance(result, list)
 
@@ -170,6 +196,7 @@ class TestRebalanceRegimeAware:
 
     def test_with_gate_open(self, rich_db):
         from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
         with patch("nuri.trading.engine.gate.check_gate") as mock_gate:
             mock_gate.return_value = {"status": "OPEN"}
             result = regime_aware_rebalance()
@@ -180,19 +207,19 @@ class TestRebalance_R23:
     """From test_coverage_round23.py."""
 
     def test_classify_sector_defensive(self):
-        from nuri.trading.recommend.rebalance import _classify_sector
+        from nuri.core.sectors import classify_sector
 
-        assert _classify_sector("Health Care") == "defensive"
-        assert _classify_sector("Utilities") == "defensive"
-        assert _classify_sector("") == "neutral"
-        assert _classify_sector("Finance") == "neutral"
+        assert classify_sector("Health Care") == "defensive"
+        assert classify_sector("Utilities") == "defensive"
+        assert classify_sector("") == "neutral"
+        assert classify_sector("Finance") == "neutral"
 
     def test_classify_sector_growth(self):
-        from nuri.trading.recommend.rebalance import _classify_sector
+        from nuri.core.sectors import classify_sector
 
-        assert _classify_sector("Technology") == "growth"
-        assert _classify_sector("AI/Cloud") == "growth"
-        assert _classify_sector("Semiconductor") == "growth"
+        assert classify_sector("Technology") == "growth"
+        assert classify_sector("AI/Cloud") == "growth"
+        assert classify_sector("Semiconductor") == "growth"
 
     def test_regime_aware_rebalance_with_mocks(self, db_path, monkeypatch):
         """Full rebalance flow with mocked dependencies."""
@@ -220,17 +247,21 @@ class TestRebalance_R23:
         class MockStrategy:
             position_sizing: str = "minimal"
 
-        base_df = pd.DataFrame({
-            "ticker": ["AAPL", "MSFT", "JNJ"],
-            "sector": ["Technology", "Technology", "Health"],
-            "current_weight": [30.0, 25.0, 15.0],
-            "optimal_weight": [20.0, 18.0, 22.0],
-            "trade_value_usd": [-5000, -3500, 3500],
-            "action": ["SELL", "REDUCE", "BUY"],
-        })
+        base_df = pd.DataFrame(
+            {
+                "ticker": ["AAPL", "MSFT", "JNJ"],
+                "sector": ["Technology", "Technology", "Health"],
+                "current_weight": [30.0, 25.0, 15.0],
+                "optimal_weight": [20.0, 18.0, 22.0],
+                "trade_value_usd": [-5000, -3500, 3500],
+                "action": ["SELL", "REDUCE", "BUY"],
+            }
+        )
 
-        monkeypatch.setattr("nuri.trading.engine.gate.check_gate",
-                            lambda *a, **kw: MockGateResult(ready=False, conditions=[MockGateCond(id="prices_data", passed=False)]))
+        monkeypatch.setattr(
+            "nuri.trading.engine.gate.check_gate",
+            lambda *a, **kw: MockGateResult(ready=False, conditions=[MockGateCond(id="prices_data", passed=False)]),
+        )
         monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
         monkeypatch.setattr("nuri.quant.regime.classifier.classify_regime", lambda **kw: MockRegime())
         monkeypatch.setattr("nuri.quant.regime.strategy_map.map_regime_to_strategy", lambda *a, **kw: MockStrategy())
@@ -254,14 +285,16 @@ class TestRebalance_R23:
         class MockStrategy:
             position_sizing: str = "normal"
 
-        base_df = pd.DataFrame({
-            "ticker": ["AAPL"],
-            "sector": ["Technology"],
-            "current_weight": [10.0],
-            "optimal_weight": [20.0],
-            "trade_value_usd": [5000],
-            "action": ["BUY"],
-        })
+        base_df = pd.DataFrame(
+            {
+                "ticker": ["AAPL"],
+                "sector": ["Technology"],
+                "current_weight": [10.0],
+                "optimal_weight": [20.0],
+                "trade_value_usd": [5000],
+                "action": ["BUY"],
+            }
+        )
 
         @dataclass
         class MockConflict:
@@ -322,14 +355,16 @@ class TestRebalance_R23:
         class MockStrategy:
             position_sizing: str = "defensive"
 
-        base_df = pd.DataFrame({
-            "ticker": ["JNJ", "NVDA"],
-            "sector": ["Health Care", "Semiconductor"],
-            "current_weight": [10.0, 10.0],
-            "optimal_weight": [10.0, 10.0],
-            "trade_value_usd": [0, 0],
-            "action": ["HOLD", "HOLD"],
-        })
+        base_df = pd.DataFrame(
+            {
+                "ticker": ["JNJ", "NVDA"],
+                "sector": ["Health Care", "Semiconductor"],
+                "current_weight": [10.0, 10.0],
+                "optimal_weight": [10.0, 10.0],
+                "trade_value_usd": [0, 0],
+                "action": ["HOLD", "HOLD"],
+            }
+        )
 
         monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
         monkeypatch.setattr("nuri.quant.regime.classifier.classify_regime", lambda **kw: MockRegime())
@@ -352,14 +387,16 @@ class TestRebalance_R23:
         class MockStrategy:
             position_sizing: str = "normal"
 
-        base_df = pd.DataFrame({
-            "ticker": ["AAPL"],
-            "sector": ["Technology"],
-            "current_weight": [15.0],
-            "optimal_weight": [15.5],
-            "trade_value_usd": [200],
-            "action": ["BUY"],
-        })
+        base_df = pd.DataFrame(
+            {
+                "ticker": ["AAPL"],
+                "sector": ["Technology"],
+                "current_weight": [15.0],
+                "optimal_weight": [15.5],
+                "trade_value_usd": [200],
+                "action": ["BUY"],
+            }
+        )
 
         monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
         monkeypatch.setattr("nuri.quant.regime.classifier.classify_regime", lambda **kw: MockRegime())
@@ -382,20 +419,24 @@ class TestRebalance_R23:
         class MockStrategy:
             position_sizing: str = "normal"
 
-        base_df = pd.DataFrame({
-            "ticker": ["AAPL"],
-            "sector": ["Technology"],
-            "current_weight": [10.0],
-            "optimal_weight": [20.0],
-            "trade_value_usd": [5000],
-            "action": ["BUY"],
-        })
+        base_df = pd.DataFrame(
+            {
+                "ticker": ["AAPL"],
+                "sector": ["Technology"],
+                "current_weight": [10.0],
+                "optimal_weight": [20.0],
+                "trade_value_usd": [5000],
+                "action": ["BUY"],
+            }
+        )
 
         monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
         monkeypatch.setattr("nuri.quant.regime.classifier.classify_regime", lambda **kw: MockRegime())
         monkeypatch.setattr("nuri.quant.regime.strategy_map.map_regime_to_strategy", lambda *a, **kw: MockStrategy())
-        monkeypatch.setattr("nuri.trading.recommend.candidates.screen_candidates",
-                            lambda **kw: (_ for _ in ()).throw(RuntimeError("fail")))
+        monkeypatch.setattr(
+            "nuri.trading.recommend.candidates.screen_candidates",
+            lambda **kw: (_ for _ in ()).throw(RuntimeError("fail")),
+        )
 
         actions = regime_aware_rebalance(db_path=db_path)
         assert len(actions) == 1

@@ -4,6 +4,7 @@ Extracted from tests/test_trading_engine_all.py (refactor #157).
 Source: test_engine.py, test_coverage_round10.py, test_coverage_round16.py,
 test_coverage_round26.py.
 """
+
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
@@ -39,6 +40,7 @@ class TestConflicts:
 
     def test_empty_candidates(self):
         from nuri.trading.engine.conflicts import detect_conflicts
+
         assert detect_conflicts([]) == []
 
 
@@ -47,6 +49,7 @@ class TestConflicts_R10:
 
     def test_detect_conflicts(self, rich_db):
         from nuri.trading.engine.conflicts import detect_conflicts
+
         result = detect_conflicts()
         assert isinstance(result, list)
 
@@ -56,6 +59,7 @@ class TestConflicts_R26:
 
     def test_no_candidates(self, db_path):
         from nuri.trading.engine.conflicts import detect_conflicts
+
         result = detect_conflicts(candidates=[], db_path=db_path)
         assert result == []
 
@@ -74,6 +78,12 @@ class TestConflicts_R26:
             conflict: str = ""
             scoring_detail: dict | None = None
             tier: str = "actionable"
+
+            @property
+            def is_actionable(self) -> bool:
+                # 실물 Candidate 와 같은 계약 — detect_conflicts 는 tier 상수를
+                # import 하지 않고 이 속성을 읽는다 (#920).
+                return self.tier == "actionable"
 
         candidates = [
             MockCand("AAPL", "BUY", "rsi_oversold", True, 2.0),
@@ -99,6 +109,12 @@ class TestConflicts_R26:
             scoring_detail: dict | None = None
             tier: str = "actionable"
 
+            @property
+            def is_actionable(self) -> bool:
+                # 실물 Candidate 와 같은 계약 — detect_conflicts 는 tier 상수를
+                # import 하지 않고 이 속성을 읽는다 (#920).
+                return self.tier == "actionable"
+
         candidates = [
             MockCand("AAPL", "BUY", "rsi_oversold", True, 5.0),
             MockCand("AAPL", "BUY", "volume_spike", True, 1.0),
@@ -109,6 +125,7 @@ class TestConflicts_R26:
 
     def test_print_conflicts(self, capsys):
         from nuri.trading.engine.conflicts import SignalConflict, print_conflicts
+
         conflicts = [
             SignalConflict("AAPL", "direction_conflict", "high", ["rsi"], ["macd"], "detail", "rec"),
         ]
@@ -118,6 +135,7 @@ class TestConflicts_R26:
 
     def test_print_conflicts_empty(self, capsys):
         from nuri.trading.engine.conflicts import print_conflicts
+
         print_conflicts([])
         out = capsys.readouterr().out
         assert "없음" in out
@@ -129,6 +147,7 @@ class TestConflictsStrengthMismatch:
     def test_strength_mismatch_detected(self):
         from nuri.trading.engine.conflicts import detect_conflicts
         from nuri.trading.recommend.candidates import Candidate
+
         candidates = [
             Candidate("AAPL", "rsi_oversold", "2025-03-25", "BUY", 70, 0.60, 5.0, True, 170, ""),
             Candidate("AAPL", "gap_up", "2025-03-25", "BUY", 40, 0.40, 1.2, False, 170, ""),
@@ -141,6 +160,7 @@ class TestConflictsStrengthMismatch:
     def test_no_strength_mismatch_when_similar(self):
         from nuri.trading.engine.conflicts import detect_conflicts
         from nuri.trading.recommend.candidates import Candidate
+
         candidates = [
             Candidate("AAPL", "rsi_oversold", "2025-03-25", "BUY", 70, 0.60, 2.0, True, 170, ""),
             Candidate("AAPL", "bb_bounce", "2025-03-25", "BUY", 65, 0.55, 1.8, True, 170, ""),
@@ -156,6 +176,7 @@ class TestConflictsRegimeContradiction:
     def test_buy_in_bear_market(self):
         from nuri.trading.engine.conflicts import detect_conflicts
         from nuri.trading.recommend.candidates import Candidate
+
         candidates = [
             Candidate("TSLA", "bb_bounce", "2025-03-25", "BUY", 55, 0.50, 1.5, False, 200, ""),
         ]
@@ -170,6 +191,7 @@ class TestConflictsRegimeContradiction:
     def test_sell_in_bull_market(self):
         from nuri.trading.engine.conflicts import detect_conflicts
         from nuri.trading.recommend.candidates import Candidate
+
         candidates = [
             Candidate("TSLA", "macd_dead", "2025-03-25", "SELL", 55, 0.50, 1.5, False, 200, ""),
         ]
@@ -184,6 +206,7 @@ class TestConflictsRegimeContradiction:
     def test_regime_fit_buy_in_bear_skipped(self):
         from nuri.trading.engine.conflicts import detect_conflicts
         from nuri.trading.recommend.candidates import Candidate
+
         candidates = [
             Candidate("TSLA", "bb_bounce", "2025-03-25", "BUY", 55, 0.50, 1.5, True, 200, ""),
         ]
@@ -197,6 +220,7 @@ class TestConflictsRegimeContradiction:
     def test_classify_regime_exception_no_crash(self):
         from nuri.trading.engine.conflicts import detect_conflicts
         from nuri.trading.recommend.candidates import Candidate
+
         candidates = [
             Candidate("TSLA", "bb_bounce", "2025-03-25", "BUY", 55, 0.50, 1.5, False, 200, ""),
         ]
@@ -212,6 +236,7 @@ class TestConflictsMediumSeverity:
     def test_medium_severity_direction_conflict(self):
         from nuri.trading.engine.conflicts import detect_conflicts
         from nuri.trading.recommend.candidates import Candidate
+
         candidates = [
             Candidate("NVDA", "rsi_oversold", "2025-03-25", "BUY", 60, 0.55, 2.0, True, 100, ""),
             Candidate("NVDA", "macd_dead", "2025-03-24", "SELL", 50, 0.45, 1.3, False, 100, ""),
@@ -228,21 +253,33 @@ class TestConflictsPrint:
 
     def test_no_conflicts(self, capsys):
         from nuri.trading.engine.conflicts import print_conflicts
+
         print_conflicts([])
         out = capsys.readouterr().out
         assert "시그널 충돌 없음" in out
 
     def test_with_conflicts(self, capsys):
         from nuri.trading.engine.conflicts import SignalConflict, print_conflicts
+
         conflicts = [
             SignalConflict(
-                ticker="TSLA", conflict_type="direction_conflict", severity="high",
-                buy_signals=["bb_bounce"], sell_signals=["macd_dead"],
-                detail="BUY와 SELL 동시 발생", recommendation="관망 권장"),
+                ticker="TSLA",
+                conflict_type="direction_conflict",
+                severity="high",
+                buy_signals=["bb_bounce"],
+                sell_signals=["macd_dead"],
+                detail="BUY와 SELL 동시 발생",
+                recommendation="관망 권장",
+            ),
             SignalConflict(
-                ticker="AAPL", conflict_type="strength_mismatch", severity="low",
-                buy_signals=["rsi_oversold"], sell_signals=[],
-                detail="강한/약한 시그널 공존", recommendation="강한 시그널 우선"),
+                ticker="AAPL",
+                conflict_type="strength_mismatch",
+                severity="low",
+                buy_signals=["rsi_oversold"],
+                sell_signals=[],
+                detail="강한/약한 시그널 공존",
+                recommendation="강한 시그널 우선",
+            ),
         ]
         print_conflicts(conflicts)
         out = capsys.readouterr().out
