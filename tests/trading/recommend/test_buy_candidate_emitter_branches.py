@@ -65,3 +65,40 @@ class TestCooldownTickerAccumulation:
         result = _get_cooldown_tickers_by_type(cfg)
         assert "AAA" in result  # type-aware path (line 154)
         assert "BBB" in result  # legacy fallback path (line 174)
+
+
+class TestRegimeAndVixDegradation:
+    """`_get_regime` 는 조회가 죽어도 값을 돌려줘야 한다 — 부르는 쪽이 게이트다."""
+
+    def test_vix_query_failure_falls_back_to_neutral_reading(self, monkeypatch):
+        """라인 251-252: VIX 조회 실패 → 20.0.
+
+        VIX 는 신규 매수 차단(>30) / 반포지션(25-30) 게이트의 입력이다. 조회가
+        실패했을 때 예외가 새면 후보 산출 전체가 멈추고, 반대로 30 같은 값으로
+        떨어지면 조회 실패가 조용히 '공포장' 으로 둔갑해 매수가 전면 차단된다.
+        20.0 은 어느 게이트도 건드리지 않는 중립값이라 '모름' 을 가장 정직하게
+        표현한다.
+
+        Gotcha-Test Pair: fallback 값을 25 이상으로 바꾸면 두 번째 assert 가 FAIL.
+        """
+        from nuri.core.rules import VIX_BLOCK_ABOVE, VIX_CAUTION_ABOVE
+        from nuri.trading.recommend import buy_candidate_emitter as bce
+
+        calls = []
+
+        def _selective_boom(sql, *a, **kw):
+            calls.append(sql)
+            if "macro" in sql:
+                raise RuntimeError("simulated DB failure")
+            import pandas as pd
+
+            return pd.DataFrame()
+
+        monkeypatch.setattr(bce, "query_df", _selective_boom)
+
+        regime, vix = bce._get_regime()
+
+        assert vix == 20.0
+        assert vix < VIX_CAUTION_ABOVE < VIX_BLOCK_ABOVE, "조회 실패가 공포장으로 둔갑하면 안 된다"
+        assert regime == "neutral"
+        assert any("macro" in s for s in calls), "VIX 조회 자체가 일어나지 않았다"

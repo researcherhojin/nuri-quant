@@ -151,6 +151,39 @@ class TestTickerSearch:
         data = resp.json()
         assert data["count"] <= 8
 
+    def test_korean_name_search_stops_at_eight(self, client, monkeypatch):
+        """라인 182-183: **한글 이름** 매칭 루프의 8건 상한.
+
+        위 `q=0` 은 ticker **코드** 매칭 루프(160-161)의 상한을 친다. 한글 루프는
+        별도 상한이고, 그쪽이 안 끊기면 KOSPI200 전체를 순회하며 종목당 가격
+        쿼리를 한 번씩 날린다 — 검색 한 번이 수백 쿼리가 된다.
+
+        기존에는 개발 머신의 `config/kr_ticker_names.json` (gitignored) 덕에
+        로컬에서만 이 분기가 밟혔고 CI 에서는 한 번도 실행되지 않았다. 이름을
+        직접 주입해 환경 의존을 없앤다.
+
+        Gotcha-Test Pair: 183 의 `break` 를 지우면 count 가 8 을 넘어 FAIL.
+        """
+        # `search_tickers` 는 함수 본문에서 import 하므로 **원 모듈**을 패치해야 한다.
+        # conftest 의 autouse fixture 가 teardown 에서 `cache_clear()` 를 부르므로
+        # 스텁도 lru_cache 로 감싼다 (맨 lambda 면 teardown 이 AttributeError).
+        from functools import lru_cache
+
+        import nuri.core.ticker_names as tn
+
+        monkeypatch.setattr(
+            tn,
+            "get_ticker_name",
+            lru_cache(maxsize=None)(lambda t: "테스트종목" if t.endswith((".KS", ".KQ")) else None),
+        )
+        # "테스트" 는 어떤 ticker 코드에도 없다 → 코드 매칭 루프는 0건 → 한글 루프가 8건을 채운다.
+        resp = client.get("/api/tickers/search?q=테스트")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["count"] == 8, f"한글 매칭 루프가 상한에서 안 끊겼다 (count={data['count']})"
+        assert all(r["ticker"].endswith((".KS", ".KQ")) for r in data["results"])
+
     def test_search_empty_query_rejected(self, client):
         """빈 쿼리는 422 에러."""
         resp = client.get("/api/tickers/search?q=")

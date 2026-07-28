@@ -326,6 +326,32 @@ class TestSchedulerWiring:
         assert payload["role_ok"] is False
         assert payload["staged"] is False
 
+    def test_heartbeat_write_failure_does_not_kill_the_job(self, caplog):
+        """heartbeat **기록** 이 실패해도 job 은 조용히 끝나야 한다.
+
+        읽기만 조심하면 되는 게 아니다 — 관측용 write 도 본 작업과 같은 위험이다.
+        여기서 예외가 새면 스케줄러 래퍼가 이미 stage 를 마친 뒤인데도 job 이
+        실패로 기록되고, 다음 잡까지 영향을 준다
+        ([[feedback_observability_must_not_gate]]).
+
+        Gotcha-Test Pair: heartbeat 의 try/except 를 지우면 예외가 새어 FAIL.
+        """
+        import logging
+
+        from nuri import scheduler
+
+        with (
+            caplog.at_level(logging.ERROR),
+            patch("nuri.alerts.alpha_report.stage_alpha_progress_brief", return_value=11) as staged,
+            patch("nuri.alerts.alpha_report.already_emitted", return_value=False),
+            patch("nuri.core.events.emit_event", side_effect=RuntimeError("no such table: pipeline_events")),
+        ):
+            scheduler._run_alpha_report()  # 예외가 새어나오면 실패
+
+        staged.assert_called_once_with()  # 본 작업이 heartbeat 실패에 말려들면 안 된다
+        assert "heartbeat" in caplog.text, "조용히 넘어가면 heartbeat 부재 원인을 못 찾는다"
+        assert "no such table" in caplog.text
+
     def test_wrapper_absorbs_failure(self, caplog):
         """한 job 실패가 스케줄러를 죽이면 안 된다 (다른 _run_* 와 동일 계약)."""
         import logging

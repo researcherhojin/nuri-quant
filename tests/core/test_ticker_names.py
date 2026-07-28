@@ -117,3 +117,45 @@ class TestGetTickerName:
             patch("pykrx.stock.get_market_ticker_name", return_value="맵외종목"),
         ):
             assert ticker_names.get_ticker_name("999000.KS") == "맵외종목"
+
+
+class TestKrNameMapLoad:
+    """`_load_kr_name_map` — 정적 맵 파일이 없거나 깨져도 이름 해석이 멈추면 안 된다."""
+
+    def setup_method(self) -> None:
+        ticker_names._load_kr_name_map.cache_clear()
+
+    def teardown_method(self) -> None:
+        # lru_cache(maxsize=1) 라 여기서 안 비우면 빈 dict 가 다른 테스트로 샌다.
+        ticker_names._load_kr_name_map.cache_clear()
+
+    def test_map_loads_when_the_file_exists(self, tmp_path) -> None:
+        """정상 경로 — 이 assert 가 깨지면 아래 실패 경로 테스트가 공허해진다.
+
+        실제 `config/kr_ticker_names.json` 을 읽지 않는다: 그 파일은 gitignored
+        (로컬 생성물)이라 CI 와 새 클론에는 아예 없다. 즉 **부재가 프로덕션의
+        기본 상태**이고, 그래서 아래 degradation 테스트가 이 모듈의 실질 경로다.
+        """
+        good = tmp_path / "kr_ticker_names.json"
+        good.write_text(json.dumps({"005930.KS": "TestCo"}), encoding="utf-8")
+        with patch.object(ticker_names, "_KR_NAMES_PATH", good):
+            assert ticker_names._load_kr_name_map() == {"005930.KS": "TestCo"}
+
+    def test_missing_file_degrades_to_empty_map(self, tmp_path) -> None:
+        """라인 30-32: 파일 부재 → 빈 dict.
+
+        이 맵은 pykrx 를 안 부르기 위한 캐시일 뿐이다. 없다고 예외를 내면
+        `get_ticker_name` 을 부르는 모든 경로(검색 API·브리프·리포트)가 같이
+        죽는다 — 성능 최적화의 부재가 기능 정지가 되면 안 된다.
+
+        Gotcha-Test Pair: except 를 지우면 FileNotFoundError 가 새어 FAIL.
+        """
+        with patch.object(ticker_names, "_KR_NAMES_PATH", tmp_path / "does_not_exist.json"):
+            assert ticker_names._load_kr_name_map() == {}
+
+    def test_corrupt_file_degrades_to_empty_map(self, tmp_path) -> None:
+        """깨진 JSON 도 같은 취급 — 파싱 실패가 조회 경로를 막지 않는다."""
+        bad = tmp_path / "kr_ticker_names.json"
+        bad.write_text("{not json", encoding="utf-8")
+        with patch.object(ticker_names, "_KR_NAMES_PATH", bad):
+            assert ticker_names._load_kr_name_map() == {}

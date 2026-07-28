@@ -438,7 +438,12 @@ class SREIncidentAgent(Actor):
                 reason = "already_emitted"
             else:
                 reason = "staged"
-        except (json.JSONDecodeError, TypeError, KeyError):
+        # pragma 이유(#927): 이 except 는 도달 불가하다. 위 집계 쿼리가 같은 payload 에
+        # `json_extract` 를 걸므로 깨진 JSON 은 SQLite 단계에서 먼저 죽고, 객체가 아닌
+        # 유효 JSON('null'/'[]'/'"x"')은 `.get` 에서 AttributeError 라 이 튜플에 안 걸린다.
+        # payload 컬럼은 TEXT affinity 라 TypeError 도 안 난다. 즉 실제 두 고장 모드는
+        # 여기를 통과해 버린다 — 교정은 #927 (동작 변경이라 별도 PR).
+        except (json.JSONDecodeError, TypeError, KeyError):  # pragma: no cover
             payload = {}
 
         evidence = {

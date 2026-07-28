@@ -121,6 +121,15 @@ class TestLeaderTrail:
         _seed(db_path, "GRW", 100.0, [140.0] * 49 + [125.0], sector="AI")
         assert check_leader_trail_signals(db_path=db_path) == []
 
+    def test_empty_portfolio_returns_empty(self, db_path):
+        """라인 507-508: 보유가 없으면 조회할 대상도 없다 — 빈 리스트.
+
+        `enabled=True` 인데 portfolio 가 비어 있는 조합은 신규 배포/빈 DB 에서
+        그대로 나온다. 아래 루프가 빈 DataFrame 을 만나면 iterrows 는 무해하지만,
+        이 early return 이 사라져도 아무도 모르므로 계약으로 고정한다.
+        """
+        assert check_leader_trail_signals(db_path=db_path) == []
+
     def test_skips_zero_entry_price(self, db_path):
         """avg_price=0 보유는 손익 계산 불가 → skip (크래시 없음)."""
         _seed(db_path, "ZERO", 0.0, [140.0] * 49 + [125.0], sector="AI")

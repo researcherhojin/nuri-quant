@@ -70,6 +70,41 @@ class TestBuyCandidateEmitterPriceSignalsEmpty:
         assert isinstance(result, dict)
 
 
+class TestBuyCandidateEmitterShortSeries:
+    """Line 202-203: `if len(grp) < 6: continue` — 45일 창 안에 6행 미만인 종목 skip.
+
+    `ret_5d` 가 `closes[-6]` 을 읽으므로 6행 미만이면 IndexError 다. 이 skip 이
+    사라지면 신규 상장·수집 재개 직후 종목 하나가 후보 산출 전체를 크래시시킨다.
+
+    이 분기는 **CI 에서만 미커버였다** — 개발 머신 DB 에는 짧은 시계열 종목이
+    우연히 있어서 로컬 실측이 100% 로 보였다. 필요한 데이터를 테스트가 직접
+    시드해야 어느 환경에서든 실행된다.
+    """
+
+    def test_ticker_with_fewer_than_six_rows_is_skipped(self, fresh_db, monkeypatch):
+        import nuri.core.db as db_mod
+
+        monkeypatch.setattr(db_mod, "DB_PATH", fresh_db)
+        from nuri.core.timezone import today_kst
+        from nuri.trading.recommend.buy_candidate_emitter import _get_price_signals
+
+        # 창(45일) 안에 들도록 today 기준 앵커링 — 고정 리터럴 날짜는 시한폭탄 (#721).
+        end = date.fromisoformat(today_kst())
+        with get_db(fresh_db) as conn:
+            for i in range(10):  # 충분한 종목 — 정상 처리
+                d = (end - timedelta(days=i)).isoformat()
+                conn.execute("INSERT INTO prices (ticker, date, close) VALUES ('TESTLONG', ?, ?)", (d, 100.0 + i))
+            for i in range(3):  # 6행 미만 — skip 대상
+                d = (end - timedelta(days=i)).isoformat()
+                conn.execute("INSERT INTO prices (ticker, date, close) VALUES ('TESTSHORT', ?, ?)", (d, 50.0 + i))
+            conn.commit()
+
+        out = _get_price_signals()
+
+        assert "TESTLONG" in out, "정상 종목까지 사라졌다 — 시드 자체가 창 밖일 수 있음"
+        assert "TESTSHORT" not in out, "6행 미만 종목이 skip 되지 않았다 (closes[-6] IndexError 위험)"
+
+
 class TestBuyCandidateEmitterRegimeFallbacks:
     """Lines 256-257, 264-265: regime/VIX query exceptions → defaults 'neutral'/20.0."""
 

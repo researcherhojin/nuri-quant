@@ -197,3 +197,134 @@ class TestAdjudicate:
         assert rc == 0
         out = capsys.readouterr().out
         assert '"verdict"' in out
+
+
+# ═══════════════════════════════════════════════════════
+# 열화 경로 — 설정 부재 / 가격 결측 / 치환 불가
+# ═══════════════════════════════════════════════════════
+
+
+class TestCriteriaSource:
+    def test_missing_measurement_mode_raises_instead_of_defaulting(self):
+        """판정 파라미터가 없으면 **멈춘다** — 기본값으로 조용히 판정하지 않는다.
+
+        §3.11 의 요체는 기준이 사전 고정돼 있다는 것이다. 설정이 사라졌는데
+        코드 기본값으로 리포트를 내면 그 리포트는 무엇을 기준으로 한 판정인지
+        아무도 모른다. 여기서 raise 하는 게 유일하게 정직한 동작이다.
+        """
+        from unittest.mock import patch
+
+        with patch.dict(da.RULES, {}, clear=True), pytest.raises(RuntimeError, match="measurement_mode"):
+            da._criteria()
+
+
+class TestPriceBookMisses:
+    """가격 조회는 없을 때 None 을 돌려줘야 한다 — 예외도, 이웃 값도 아니다."""
+
+    def test_exact_date_miss_returns_none(self, seeded):
+        book = da.PriceBook(db_path=seeded)
+        assert book.close("AAA", "2020-01-01") is None, "시계열 시작 전인데 값이 나왔다"
+        assert book.close("AAA", "2099-01-01") is None, "시계열 끝 이후인데 값이 나왔다"
+
+    def test_on_or_after_past_the_end_returns_none(self, seeded):
+        """창 끝이 시계열 밖 — 미래 창은 '아직 모른다' 이지 0 이 아니다."""
+        book = da.PriceBook(db_path=seeded)
+        assert book.close_on_or_after("AAA", "2099-01-01") is None
+
+    def test_unknown_ticker_is_empty_not_an_error(self, seeded):
+        book = da.PriceBook(db_path=seeded)
+        assert book.close("NOPRICE", EMIT_1) is None
+        assert book.close_on_or_after("NOPRICE", EMIT_1) is None
+
+
+class TestPlaceboAlphaGuards:
+    def test_missing_price_yields_none(self, seeded):
+        """가격이 없으면 placebo alpha 는 None — 이게 치환 후보 필터의 근거다."""
+        book = da.PriceBook(db_path=seeded)
+        assert da._placebo_alpha(book, "NOPRICE", EMIT_1, 30, "SPY") is None
+
+    def test_zero_entry_price_yields_none(self, seeded):
+        """entry=0 은 수익률 정의 불가 — ZeroDivisionError 대신 None."""
+        with get_db(seeded) as conn:
+            for d in _business_dates(EMIT_1, 40):
+                conn.execute("INSERT OR REPLACE INTO prices (ticker, date, close) VALUES ('ZEROP', ?, 0.0)", (d,))
+            conn.commit()
+        book = da.PriceBook(db_path=seeded)
+        assert da._placebo_alpha(book, "ZEROP", EMIT_1, 30, "SPY") is None
+
+
+class TestSkippedBlocks:
+    def test_block_without_substitutes_keeps_observed_alpha(self, db_path):
+        """라인 250-257: 치환 후보가 없는 블록은 null 에서도 실측 alpha 를 그대로 쓴다.
+
+        치환할 종목이 없다고 그 블록을 표본에서 빼면 null 이 실측보다 유리해져
+        p 가 anti-conservative 해진다. 실측을 그대로 넣으면 null 이 실측 쪽으로
+        끌려가 p 가 **보수적** 으로 나온다 — 틀리더라도 엣지를 과대평가하지 않는
+        방향으로 틀린다. 그리고 그 사실은 `skipped_blocks` 로 공시된다.
+
+        Gotcha-Test Pair: `continue` 대신 블록을 건너뛰면 count 가 0 이 되어
+        ZeroDivisionError, 실측 유지를 빼면 p 가 1.0 미만이 되어 FAIL.
+        """
+        _seed_prices(db_path, "SPY", "2026-07-01", 60, 100.0, 0.001)
+        _seed_prices(db_path, "ONLY", "2026-07-01", 60, 50.0, 0.002)
+        _seed_decision(db_path, 1, "ONLY", EMIT_1, alpha=0.05)
+        _seed_decision(db_path, 2, "ONLY", EMIT_2, alpha=0.07)
+
+        s = da.fetch_sample(db_path=db_path, as_of=AS_OF)
+        r = da.ticker_block_placebo(s, n_perm=20, seed=828, db_path=db_path)
+
+        assert r.skipped_blocks == ["ONLY"], "치환 불가 사실이 공시되지 않음"
+        assert r.null_means == [pytest.approx(r.observed_mean)] * 20
+        assert r.p_value == 1.0, "치환 불가 블록이 p 를 보수적으로 만들지 않았다"
+
+
+class TestVerdictBranches:
+    """라인 352-359: 판정 우선순위 — 결측 무효 > 표본 미달 > 3조건.
+
+    n≥200 은 판정일(2027-06-30)에나 도달할 표본이라, 이 두 분기는 그때까지 한
+    번도 실행되지 않는다. 판정 당일에 처음 돌아가는 코드를 남겨두지 않기 위해
+    `min_n_us_buy_decisions` 만 낮춰 분기 자체를 미리 실행한다 — 낮추는 건 이
+    테스트 안에서만이고, 실제 사전등록값은 `tests/core/test_rules.py` 의
+    `test_adjudication_params_locked` 가 그대로 잠근다.
+    """
+
+    def _adjudicate_with_small_n(self, db_path, **kw):
+        from unittest.mock import patch
+
+        with patch.dict(da.RULES["measurement_mode"], {"min_n_us_buy_decisions": 2}):
+            return da.adjudicate(db_path=db_path, n_perm=20, as_of=AS_OF, **kw)
+
+    def test_criteria_not_met_when_permutation_is_insignificant(self, seeded):
+        """평균 alpha 는 양수이고 반기 분할도 통과하지만 p 가 못 미친다.
+
+        가장 흔할 결과이며 §3.11 이 경고한 함정이다 — "평균이 +니까 엣지가 있다"
+        는 결론을 순열이 막는다.
+        """
+        report = self._adjudicate_with_small_n(seeded)
+
+        assert report["criteria_verdict_if_final"] == "CRITERIA_NOT_MET"
+        assert report["conditions"]["mean_alpha_positive"] is True
+        assert report["conditions"]["both_halves_positive"] is True
+        assert report["conditions"]["permutation_significant"] is False
+        assert report["verdict"] == "PROGRESS_REPORT", "판정일 전인데 최종 판정이 표출됐다"
+
+    def test_criteria_met_requires_all_three(self, db_path):
+        """3조건 동시 충족 → CRITERIA_MET. 승격 경로가 실제로 존재하는지 확인.
+
+        실측 alpha 를 모든 placebo 보다 크게 두어 p = 1/(20+1) = 0.0476 < 0.05.
+        이 분기가 죽어 있으면 판정일에 '통과인데 통과가 안 나오는' 상태가 된다.
+        """
+        _seed_prices(db_path, "SPY", "2026-07-01", 60, 100.0, 0.001)
+        for t, base, drift in (("AAA", 50.0, 0.002), ("BBB", 80.0, 0.0), ("TSLA", 200.0, 0.004)):
+            _seed_prices(db_path, t, "2026-07-01", 60, base, drift)
+        for rec_id, emit in ((1, EMIT_1), (2, EMIT_2), (3, EMIT_3)):
+            _seed_decision(db_path, rec_id, "TSLA", emit, alpha=0.5)
+        _seed_decision(db_path, 4, "AAA", EMIT_1, alpha=0.5)
+
+        report = self._adjudicate_with_small_n(db_path)
+
+        assert report["criteria_verdict_if_final"] == "CRITERIA_MET"
+        assert all(report["conditions"].values())
+        assert report["p_value"] < report["p_max"]
+        # 통과해도 판정일 전이면 표출은 진행 리포트 — 조기 승격 금지 (§3.11 원안 4번)
+        assert report["verdict"] == "PROGRESS_REPORT"
