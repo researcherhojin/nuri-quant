@@ -58,7 +58,6 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      universe: ${{ steps.filter.outputs.universe }}
       # ── Policy outputs (Stage 2c) ──
       # Collapse the repeated `X == 'true' || !pull_request` pattern into
       # single booleans. Skip-notice steps use the inverse (`run_X != 'true'`),
@@ -88,10 +87,6 @@ jobs:
               - 'frontend/**'
               - '.github/workflows/**'
               - '.github/actions/**'
-            universe:
-              - 'config/universe.yaml'
-              - 'scripts/validate_universe.py'
-              - '.github/workflows/main-ci-cd.yml'
 
   # ─── Frontend ───
 
@@ -332,7 +327,7 @@ jobs:
   # Validates universe.yaml ↔ upstream sync. CI 에서는 universe.yaml 의 ticker
   # count sanity check 만 수행 (DB 부재). 5-table coverage 검증 (prices /
   # fundamentals / analyst / insider / superinvestors) 은 로컬 또는 Mac mini
-  # scheduler 가 수행하며 `scripts/validate_universe.py --no-fetch` 로 5/5 PASS
+  # scheduler 가 수행하며 `scripts/doc/validate_universe.py --no-fetch` 로 5/5 PASS
   # 가 유지되어야 함 (2026-04-16 마지막 실측 99/99/97/97/97%).
   #
   # **Required gate** — TODO.md Tier 2 P2 #7 에 따라 promotion 됨. universe.yaml
