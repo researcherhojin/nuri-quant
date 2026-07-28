@@ -68,11 +68,11 @@ fi
 # live code (collectors/endpoints/test files/e2e specs) before push. Fast
 # (<1s, find + grep only).
 echo -e "${YELLOW}━━━ 2c. Doc Count Drift ━━━${NC}"
-if bash scripts/verify_doc_counts.sh > /dev/null 2>&1; then
+if bash scripts/verify/verify_doc_counts.sh > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Doc counts match live code${NC}\n"
 else
     echo -e "${RED}✗ Doc drift detected — run \`make sync-doc-counts\` then amend commit${NC}"
-    bash scripts/verify_doc_counts.sh 2>&1 | grep -E "✗|DRIFT" | head -5
+    bash scripts/verify/verify_doc_counts.sh 2>&1 | grep -E "✗|DRIFT" | head -5
     echo ""
     fail=1
 fi
@@ -82,7 +82,7 @@ if [ "$mode" != "--skip-tests" ]; then
     echo -e "${YELLOW}━━━ 3. Tests (CI parity) ━━━${NC}"
     if [ "$mode" == "--quick" ]; then
         echo -e "  ${YELLOW}Mode: quick (smoke only)${NC}"
-        if bash scripts/ci_local.sh --quick; then
+        if bash scripts/dev/ci_local.sh --quick; then
             echo -e "${GREEN}✓ Smoke tests pass${NC}\n"
         else
             echo -e "${RED}✗ Smoke tests failed${NC}\n"
@@ -90,7 +90,7 @@ if [ "$mode" != "--skip-tests" ]; then
         fi
     else
         echo -e "  ${YELLOW}Mode: full (~2 min, exact CI command)${NC}"
-        if bash scripts/ci_local.sh; then
+        if bash scripts/dev/ci_local.sh; then
             echo -e "${GREEN}✓ Full test parity passed${NC}\n"
         else
             echo -e "${RED}✗ Tests failed — fix before pushing${NC}\n"

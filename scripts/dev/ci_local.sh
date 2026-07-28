@@ -57,7 +57,7 @@ case "$mode" in
 
     *)
         echo -e "${RED}Unknown mode: $mode${NC}"
-        echo "Usage: bash scripts/ci_local.sh [--lint | --quick | full]"
+        echo "Usage: bash scripts/dev/ci_local.sh [--lint | --quick | full]"
         exit 1
         ;;
 esac
