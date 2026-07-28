@@ -12,7 +12,36 @@
 
 Every BUY / SELL recommendation runs through a 5-phase pipeline — **collect → analyze → consensus → certify → track**. Each decision records its market context and per-agent reasoning, then scores itself against the realized outcome at 30 / 60 / 90 days. Agent weights adjust from the 30-day hit rate, bounded to ±30% of their configured base.
 
-## What this system claims — and what it does not
+## Table of Contents
+
+- [Security](#security)
+- [Background](#background)
+- [Install](#install)
+- [Usage](#usage)
+- [Investment Rules](#investment-rules)
+- [LLM Integration](#llm-integration)
+- [Deployment](#deployment)
+- [Tech Stack](#tech-stack)
+- [Project Stats](#project-stats)
+- [Documentation](#documentation)
+- [Maintainers](#maintainers)
+- [Acknowledgements](#acknowledgements)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Security
+
+The repository is public and the platform reads a real portfolio. Two controls follow — one mechanical, one not, and the difference matters.
+
+**Personal financial data cannot reach the repo — mechanically.** `scripts/verify/check_privacy_leak.py` runs as a pre-push hook and as the required `Privacy Leak Scan` CI job. It blocks Korean broker names and their romanized variants, monetary literals of 7 digits or more sitting near keys like `total_invested` or `cash_balance`, and ticker-with-signed-percentage combinations. `config/portfolio.yaml` is gitignored and never scanned; fixtures use placeholders (`Brokerage Alpha`, round-million values).
+
+**Portfolio data reaching an external model is blocked by convention, not by a hook.** `nuri/llm/openai_client.py` is the single external-LLM entry point, and everything enforced there is real: each call is logged to `external_llm_calls` (timestamp / model / tokens, never content), portfolio-bearing prompts require `OPENAI_ZDR_APPROVED=1`, and `NURI_DISABLE_EXTERNAL_LLM=1` raises before any request leaves the process. But nothing stops a new module from importing `openai` directly — unlike the `sqlite3` sole-importer rule, which an AST sweep in CI enforces, a stray `import openai` passes CI silently and is caught only in review.
+
+In production the API binds `127.0.0.1`, not `0.0.0.0`. The Next.js proxy is the only reachable surface and sits behind a password gate. Reporting, accepted risks, and the full control list: [`SECURITY.md`](SECURITY.md).
+
+## Background
+
+### What this system claims — and what it does not
 
 The point of the project is that a recommendation is auditable, not that it is right. Two constraints follow, and both are enforced rather than aspirational:
 
@@ -21,26 +50,7 @@ The point of the project is that a recommendation is auditable, not that it is r
 
 If you are looking for a backtested strategy with a published Sharpe ratio, this is not that. It is the measurement apparatus you would need before you could honestly publish one.
 
-## Quick Start
-
-```bash
-# Prerequisites: Python 3.12, uv, ta-lib, Node 22
-brew install uv ta-lib fnm && fnm install 22
-
-git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
-make setup                                              # backend deps + DB init + git hooks
-cd frontend && npm ci && cd ..                          # frontend
-cp .env.example .env                                    # API keys (all optional)
-cp config/portfolio.example.yaml config/portfolio.yaml  # your holdings (gitignored)
-
-make start          # API on :8001 + Dashboard on :3000
-```
-
-Visit **`:3000`** for the Action-First dashboard or **`:8001/docs`** for OpenAPI.
-
-Every API key is optional. Collectors whose credentials are absent skip themselves and log the skip; the pipeline completes without them.
-
-## How It Works
+### How it works
 
 ```mermaid
 flowchart TB
@@ -86,7 +96,7 @@ Two signal registries exist and are deliberately not merged. The 22 in `config/s
 
 Detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Certification spec: [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md).
 
-## Two decision axes, never conflated
+### Two decision axes, never conflated
 
 A rule that fires because a position is too large is not the same as a rule that fires because a thesis broke. Mixing them is what produces a panicked sale of a good position, so the distinction is structural (`nuri/core/axis.py`):
 
@@ -97,7 +107,46 @@ A rule that fires because a position is too large is not the same as a rule that
 
 The risk veto triggers on `alpha_action == FLAT`. A portfolio-axis violation cannot trigger it.
 
-## Dashboard
+## Install
+
+```bash
+# Prerequisites: Python 3.12, uv, ta-lib, Node 22
+brew install uv ta-lib fnm && fnm install 22
+
+git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
+make setup                                              # backend deps + DB init + git hooks
+cd frontend && npm ci && cd ..                          # frontend
+cp .env.example .env                                    # API keys (all optional)
+cp config/portfolio.example.yaml config/portfolio.yaml  # your holdings (gitignored)
+
+make start          # API on :8001 + Dashboard on :3000
+```
+
+Visit **`:3000`** for the Action-First dashboard or **`:8001/docs`** for OpenAPI.
+
+Every API key is optional. Collectors whose credentials are absent skip themselves and log the skip; the pipeline completes without them.
+
+## Usage
+
+### Daily commands
+
+```bash
+make full-scan      # 5-phase pipeline end-to-end
+make consensus      # 10-agent analysis + decision recording
+make certify        # Certification (3-D gates)
+make scan           # Daily swing scan (us_core, 85 tickers)
+make scan-extended  # Weekly swing scan (us_core + S&P 500 extension, 543 tickers)
+
+make test-fast      # backend, slow tests excluded — 111s on an 18-core M5 Max
+make test           # full backend suite (adds 24 slow-marked tests)
+make ci-cov         # combine CI shard artifacts — ground-truth coverage
+
+make verify-quick   # pre-commit smoke gate
+make verify-all     # pre-push gate: tests + lint + frontend
+make help           # full target list with categories
+```
+
+### Dashboard
 
 The dashboard at `:3000/` answers **"what should I do today?"** — Action-First design that surfaces actionable intelligence ahead of raw data. Pension / IRP holdings are filtered out, since a monthly rebalance is not a daily decision.
 
@@ -129,7 +178,7 @@ Take-profit ladders sit on top: growth takes +20% / +40% then trails at -15%; va
 
 Rule changes follow an escalation ladder rather than landing at full strength: **surface** evidence → **soft penalty** (deterministic downgrade) → **hard veto** (action block on downside risk) → **symmetric amplifier**. Promotion between rungs requires a STRATEGY PR with backtest evidence, and a rung has been walked back before — a 50-day-MA leader exit was disabled in #800 after a 197-ticker walk-forward failed to reproduce the 17-ticker result it was built on.
 
-## LLM Integration (optional, off by default)
+## LLM Integration
 
 LLM integrations are **wired but inactive** unless you set the corresponding env var. The system runs without any LLM and falls back to regex / rule-based logic. Egress policy: [`docs/STRATEGY.md §4.4.3`](docs/STRATEGY.md).
 
@@ -141,6 +190,12 @@ LLM integrations are **wired but inactive** unless you set the corresponding env
 | **Ollama** (local) | Daily LLM report fallback | `OLLAMA_HOST` | Tier 2 — local only |
 
 `nuri/llm/openai_client.py` is the only module permitted to import `openai`. Every external call is logged to the `external_llm_calls` table (timestamp / model / tokens — **never content**), portfolio-bearing prompts require the explicit ZDR flag, and `NURI_DISABLE_EXTERNAL_LLM=1` raises before any request leaves the process.
+
+## Deployment
+
+The reference operator setup is two Apple Silicon Macs — a MacBook Pro for development, a Mac mini as a 24/7 receiver — synced by `make deploy-mini` in one command. The receiver is the sole writer; the development machine treats its database as a read replica, so adjudication records have exactly one ledger of record.
+
+Production binds the API to `127.0.0.1`. The dashboard proxy is the only public surface and sits behind a password gate.
 
 ## Tech Stack
 
@@ -183,7 +238,7 @@ Measured against `main` on 2026-07-28. Counts marked ✅ are verified on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 6,424 collected across 285 files | |
+| **Backend tests** | 6,433 collected across 286 files | |
 | **Backend statement coverage** | 99.88% — 28 of 22,539 statements uncovered, across 9 files (Codecov `backend` flag) | |
 | **Frontend tests** | 1,449 across 127 files — 100% statement coverage | |
 | **E2E tests** | 57 across 8 Playwright specs | |
@@ -199,30 +254,6 @@ Measured against `main` on 2026-07-28. Counts marked ✅ are verified on every P
 | **DB tables** | SQLite WAL · 51 tables (47 forward-only migrations) | ✅ |
 | **DB submodules** | 11 — `nuri/core/db/` is the sole `sqlite3` importer, enforced by an AST sweep in CI | |
 
-## Common Commands
-
-```bash
-make full-scan      # 5-phase pipeline end-to-end
-make consensus      # 10-agent analysis + decision recording
-make certify        # Certification (3-D gates)
-make scan           # Daily swing scan (us_core, 85 tickers)
-make scan-extended  # Weekly swing scan (us_core + S&P 500 extension, 543 tickers)
-
-make test-fast      # backend, slow tests excluded — 111s on an 18-core M5 Max
-make test           # full backend suite (adds 24 slow-marked tests)
-make ci-cov         # combine CI shard artifacts — ground-truth coverage
-
-make verify-quick   # pre-commit smoke gate
-make verify-all     # pre-push gate: tests + lint + frontend
-make help           # full target list with categories
-```
-
-## Deployment
-
-The reference operator setup is two Apple Silicon Macs — a MacBook Pro for development, a Mac mini as a 24/7 receiver — synced by `make deploy-mini` in one command. The receiver is the sole writer; the development machine treats its database as a read replica, so adjudication records have exactly one ledger of record.
-
-Production binds the API to `127.0.0.1`. The dashboard proxy is the only public surface and sits behind a password gate.
-
 ## Documentation
 
 - [`docs/STRATEGY.md`](docs/STRATEGY.md) — project philosophy, architectural decisions, investment rules. Canonical when documents disagree.
@@ -233,7 +264,11 @@ Production binds the API to `127.0.0.1`. The dashboard proxy is the only public 
 - [`SECURITY.md`](SECURITY.md) — security policy, LLM egress rules
 - [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) — agent guides (Claude Code / Cursor / Copilot)
 
-## References
+## Maintainers
+
+[@researcherhojin](https://github.com/researcherhojin) — sole maintainer. This is a personal investment platform; the contribution rules exist mainly because coding agents work in this repo and need mechanical guardrails.
+
+## Acknowledgements
 
 | Source | Usage |
 |--------|-------|
@@ -247,6 +282,14 @@ Production binds the API to `127.0.0.1`. The dashboard proxy is the only public 
 | [López de Prado](https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086) · [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) · [OpenBB](https://docs.openbb.co/) | Walk-forward null-safe gate · optimization · data |
 
 Academic foundations: O'Neil _CAN SLIM_, Minervini _SEPA_, Shefrin & Statman 1985 (disposition effect), Markowitz, Damodaran, Bernstein.
+
+## Contributing
+
+Open an issue before writing code so scope can be agreed first — read [`docs/STRATEGY.md`](docs/STRATEGY.md) before proposing any non-trivial change, since it is canonical when documents disagree. PRs are accepted.
+
+CI gates every PR on `Commit count gate (≤ 3)`, `Privacy Leak Scan`, `Doc Count Drift Check`, `codecov/patch`, CodeQL, and Trivy. One issue per PR and English Conventional Commit subjects are conventions the review enforces, not jobs — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full workflow.
+
+Changing an investment rule, or promoting an escalation-ladder rung, additionally requires a `docs/STRATEGY.md` amendment with backtest evidence. A code change alone is not sufficient, and rungs have been walked back on evidence before.
 
 ## License
 
