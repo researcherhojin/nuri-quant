@@ -16,6 +16,7 @@ import os
 import signal
 import sys
 from pathlib import Path
+from typing import Any, Optional
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -766,45 +767,104 @@ def _write_heartbeat():
         pass
 
 
+def _make_trigger(cron: str, tz: Optional[str] = None) -> CronTrigger:
+    """crontab 문자열 → CronTrigger. 요일은 crontab 규약으로 해석한다.
+
+    `CronTrigger.from_crontab()` 은 요일 필드를 **변환 없이** APScheduler 의
+    `day_of_week`(Mon=0…Sun=6)로 넘긴다. crontab 은 0=Sun 이므로 그대로 쓰면 모든
+    job 이 하루씩 밀린다 — `1-5`(월–금)가 화–토로, `0`(일)이 월요일로 fire 된다.
+
+    이 함정은 #432 리뷰에서 이미 지적돼 주석으로 남아 있었지만 변환은 `tz` 있는
+    job 에만 걸려 있었다. 나머지 22 개는 밀린 채였고, 그 결과 `stock_us_freshness`
+    가 화요일에 안 돌아 §3.11 벤치마크(SPY)가 매주 월·화 stale 이었다 (#929).
+    `period=5d` 가 뒤늦게 메꿔 영구 결손이 아니었던 탓에 조용히 지나갔다.
+
+    변환을 한 곳에 두어 `tz` 유무와 무관하게 같은 의미가 되게 한다.
+    """
+    parts = cron.split()
+    if len(parts) != 5:
+        raise ValueError(f"cron 필드가 5개가 아님: {cron!r}")
+    minute, hour, day, month, dow = parts
+    kwargs: dict[str, Any] = {
+        "minute": minute,
+        "hour": hour,
+        "day": day,
+        "month": month,
+        "day_of_week": _crontab_dow(dow),
+    }
+    if tz:
+        import pytz
+
+        kwargs["timezone"] = pytz.timezone(tz)
+    return CronTrigger(**kwargs)
+
+
+# crontab 요일 숫자(0=일) → 이름. crontab 은 0 과 7 을 모두 일요일로 본다.
+_CRONTAB_DOW_NAMES = ("sun", "mon", "tue", "wed", "thu", "fri", "sat", "sun")
+_NAME_TO_CRONTAB_DOW = {n: i for i, n in enumerate(_CRONTAB_DOW_NAMES[:7])}
+
+
+def _crontab_dow(field: str) -> str:
+    """crontab 요일 필드 → APScheduler `day_of_week` 문자열.
+
+    치환이 아니라 **열거**한다. `mon-fri` 로 문자열만 바꾸면 `*/2` 같은 step 형식이
+    조용히 다른 요일 집합이 된다 — crontab `*/2` 는 0 부터라 일·화·목·토, APScheduler
+    `*/2` 는 월부터라 월·수·금·일이다. 이 이슈 자체가 그런 조용한 불일치였으므로
+    같은 함정을 함수 안에 남기지 않는다.
+    """
+    if field.strip() == "*":
+        return "*"
+    days = sorted(_parse_crontab_dow(field))  # crontab 번호 (0=일)
+    # APScheduler 는 이름을 Mon=0…Sun=6 로 읽으므로 월요일부터 정렬해 내보낸다.
+    ordered = sorted(days, key=lambda d: (d - 1) % 7)
+    return ",".join(_CRONTAB_DOW_NAMES[d] for d in ordered)
+
+
+def _parse_crontab_dow(field: str) -> set[int]:
+    """crontab 요일 필드 → {0..6} (0=일). 7 은 0 으로 정규화."""
+    out: set[int] = set()
+    for part in field.split(","):
+        part = part.strip()
+        step = 1
+        if "/" in part:
+            part, _, step_raw = part.partition("/")
+            step = int(step_raw)
+            if step < 1:
+                raise ValueError(f"crontab 요일 step 이 1 미만: {field!r}")
+        if part == "*":
+            lo, hi = 0, 6
+        elif "-" in part:
+            lo_raw, _, hi_raw = part.partition("-")
+            lo, hi = _dow_num(lo_raw), _dow_num(hi_raw)
+        else:
+            lo = hi = _dow_num(part)
+        # crontab 은 lo > hi 인 wrap 범위(fri-mon 등)를 표준으로 지원하지 않는다.
+        if lo > hi:
+            raise ValueError(f"crontab 요일 범위가 역순: {field!r}")
+        out.update(range(lo, hi + 1, step))
+    return out
+
+
+def _dow_num(token: str) -> int:
+    """요일 토큰 → crontab 번호(0=일). 숫자와 이름 모두 허용."""
+    token = token.strip().lower()
+    if token.isdigit():
+        n = int(token)
+        if not 0 <= n <= 7:
+            raise ValueError(f"crontab 요일 범위 밖: {token!r}")
+        return n % 7
+    if token not in _NAME_TO_CRONTAB_DOW:
+        raise ValueError(f"알 수 없는 요일 토큰: {token!r}")
+    return _NAME_TO_CRONTAB_DOW[token]
+
+
 def create_scheduler() -> BlockingScheduler:
     """스케줄러 생성 및 작업 등록."""
     scheduler = BlockingScheduler()
 
     for job in SCHEDULES:
-        # tz kwarg optional — CronTrigger.from_crontab 은 tz 를 직접 지원 안 함.
-        # tz 지정 job 은 CronTrigger() 직접 호출 (codex Plan: DST-aware).
-        # ⚠️ WEEKDAY SEMANTICS — APScheduler CronTrigger 는 `day_of_week="0-6"`
-        # 를 **Mon=0, Sun=6** 로 해석 (crontab standard 0=Sun 아님). 따라서
-        # crontab literal `1-5` 를 그대로 넘기면 Tue-Sat 로 fire 됨 (codex
-        # #432 Review). 안전하게 `mon-fri` 같은 명시적 literal 사용.
-        if "tz" in job:
-            import pytz
-
-            parts = job["cron"].split()
-            dow_raw = parts[4]
-            dow_map = {
-                "0": "sun",
-                "1": "mon",
-                "2": "tue",
-                "3": "wed",
-                "4": "thu",
-                "5": "fri",
-                "6": "sat",
-                "1-5": "mon-fri",
-                "0-6": "mon-sun",
-                "*": "*",
-            }
-            dow = dow_map.get(dow_raw, dow_raw)
-            trigger = CronTrigger(
-                minute=parts[0],
-                hour=parts[1],
-                day=parts[2],
-                month=parts[3],
-                day_of_week=dow,
-                timezone=pytz.timezone(job["tz"]),
-            )
-        else:
-            trigger = CronTrigger.from_crontab(job["cron"])
+        # 요일 규약 변환은 `_make_trigger` 안에 있다 (#929) — tz 유무로 갈리지 않는다.
+        trigger = _make_trigger(job["cron"], job.get("tz"))
         scheduler.add_job(
             job["func"],
             trigger=trigger,
