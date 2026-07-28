@@ -16,6 +16,11 @@ EVENT_TYPES = {
     "step_completed",
     "step_failed",
     "step_blocked",
+    # warn_only 모드에서 의존성 미충족을 알리되 실행은 막지 않을 때 (#921).
+    "step_dependency_warning",
+    # nuri/api/routes/pipeline.py 의 수동 실행 엔드포인트가 쓰는 레거시 철자.
+    # step_completed 와 같은 뜻 — 등재해 스키마를 정직하게 둔다 (#921).
+    "step_success",
     "gate_evaluated",
     "regime_changed",
     "certification_result",
@@ -47,8 +52,27 @@ EVENT_TYPES = {
     "signal_evaluation_run",
 }
 
-# 6-step 파이프라인
-PIPELINE_STEPS = {"collect", "validate", "classify", "diagnose", "recommend", "track"}
+# 파이프라인 스테이지 — README 의 5 stage 와 같은 어휘.
+# 예전 6-step(collect/validate/classify/diagnose/recommend/track)은 2026-04-09 수동
+# 실행 때 두 행씩 남기고 이후 아무도 쓰지 않았다. 이름이 실제 시스템과 달라서
+# 스케줄러가 step 이벤트를 남길 수도, 대시보드가 진짜 상태를 보여줄 수도 없었다 (#921).
+PIPELINE_STEPS = ("collect", "analyze", "consensus", "certify", "track")
+
+# `step` 컬럼은 lifecycle 이벤트(step_*)와 임의 도메인 이벤트가 공유한다 —
+# 예: holdings_monitor 가 step="track" 으로 holdings_monitor_run 을 남긴다.
+# 스테이지 "상태"는 lifecycle 이벤트로만 판정해야 한다. 그렇지 않으면
+# get_step_status("track") 이 "holdings_monitor_run" 을 status 로 돌려주고,
+# 의존성 체크와 대시보드가 그걸 completed 가 아닌 값으로 읽는다.
+# `step_success` 는 `nuri/api/routes/pipeline.py` 의 수동 실행 엔드포인트가 남기는
+# 레거시 이름이다(같은 뜻, 다른 철자). 빼면 대시보드에서 수동 실행한 스테이지가
+# idle 로 보인다 — 프로덕션에 실제로 6행 있다.
+_LIFECYCLE_EVENT_TYPES = (
+    "step_started",
+    "step_completed",
+    "step_success",
+    "step_failed",
+    "step_blocked",
+)
 
 
 def emit_event(
@@ -78,15 +102,21 @@ def emit_event(
 
 
 def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
-    """특정 스텝의 최신 이벤트 조회 → {status, timestamp, payload}."""
+    """스테이지의 최신 **lifecycle** 상태 → {status, timestamp, payload, record_count}.
+
+    도메인 이벤트(holdings_monitor_run 등)는 같은 `step` 값을 쓰더라도 상태로
+    치지 않는다 — 그것들이 섞이면 `status` 가 completed/running/failed 가 아닌
+    임의 문자열이 되고, 의존성 체크가 영영 ready 를 못 본다 (#921).
+    """
+    placeholders = ",".join("?" for _ in _LIFECYCLE_EVENT_TYPES)
     try:
         rows = query(
-            """SELECT event_type, timestamp, payload, record_count
+            f"""SELECT event_type, timestamp, payload, record_count
                FROM pipeline_events
-               WHERE step = ?
+               WHERE step = ? AND event_type IN ({placeholders})
                ORDER BY timestamp DESC, id DESC
                LIMIT 1""",
-            (step,),
+            (step, *_LIFECYCLE_EVENT_TYPES),
             db_path,
         )
     except Exception as e:  # noqa: BLE001
@@ -103,6 +133,7 @@ def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
     status_map = {
         "step_started": "running",
         "step_completed": "completed",
+        "step_success": "completed",  # API 수동 실행의 레거시 철자
         "step_failed": "failed",
         "step_blocked": "blocked",
     }

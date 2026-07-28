@@ -124,8 +124,8 @@ def _seed_pipeline_events_for_pipeline(db_path):
 
     events = [
         ("step_success", "collect", json.dumps({"detail": "11 collectors"}), 5000, 1500, None),
-        ("step_success", "classify", json.dumps({"detail": "regime=bull_low_vol"}), 3200, 1, None),
-        ("step_failed", "diagnose", json.dumps({"error": "timeout"}), 60000, 0, None),
+        ("step_success", "consensus", json.dumps({"detail": "regime=bull_low_vol"}), 3200, 1, None),
+        ("step_failed", "certify", json.dumps({"error": "timeout"}), 60000, 0, None),
     ]
     with _get_db(db_path) as conn:
         conn.executemany(
@@ -414,7 +414,7 @@ class TestPipelineStatus:
         steps = data["steps"]
         assert isinstance(steps, list)
         by_step = {s["step"]: s for s in steps}
-        for step in ("collect", "validate", "classify", "diagnose", "recommend", "track"):
+        for step in ("collect", "analyze", "consensus", "certify", "track"):
             assert step in by_step
             s = by_step[step]
             assert s["status"] in ("idle", "running", "done", "error")  # 프론트 enum
@@ -429,10 +429,10 @@ class TestPipelineStatus:
         data = r.json()
 
         by_step = {s["step"]: s for s in data["steps"]}
-        # step_success(collect) -> done, step_failed(diagnose) -> error
+        # step_success(collect) -> done, step_failed(certify) -> error
         assert by_step["collect"]["status"] == "done"
         assert by_step["collect"]["record_count"] == 1500  # seed record_count 컬럼 반영
-        assert by_step["diagnose"]["status"] == "error"
+        assert by_step["certify"]["status"] == "error"
 
 
 class TestPipelineTimeline:
@@ -595,13 +595,13 @@ class TestCoreEvents:
         from nuri.core.events import emit_event, get_pipeline_status
 
         emit_event("step_success", step="collect", duration_ms=5000, db_path=db_path)
-        emit_event("step_failed", step="diagnose", duration_ms=60000, db_path=db_path)
+        emit_event("step_failed", step="certify", duration_ms=60000, db_path=db_path)
 
         status = get_pipeline_status(db_path=db_path)
-        # events.py의 status 매핑에 따라 step_ prefix가 있거나 없을 수 있음
-        assert status["collect"]["status"] in ("success", "step_success", "completed")
-        assert status["diagnose"]["status"] in ("failed", "step_failed")
-        assert status["validate"]["status"] in ("never_run", "unknown")
+        # step_success 는 API 수동 실행의 레거시 철자 — completed 로 매핑된다 (#921)
+        assert status["collect"]["status"] == "completed"
+        assert status["certify"]["status"] == "failed"
+        assert status["analyze"]["status"] == "unknown"
 
     def test_get_timeline_filter(self, db_path):
         """스텝별 필터링."""
