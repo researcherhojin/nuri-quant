@@ -338,3 +338,88 @@ def test_cli_shows_concentration_and_sector(db_path, capsys):
     assert rc == 0
     assert "[집중도] TST_A" in out and "[섹터] Semiconductor" in out
     assert "staged 2" in out  # 집중도 1 + 섹터 1
+
+
+# ═══════════════════════════════════════════════════════
+# Tier 1d — §3.11 실험 슬리브 상한 (#834)
+# ═══════════════════════════════════════════════════════
+
+
+def _sleeve_row(strategy="core", used=25.0, cap=10.0, account="Brokerage Alpha"):
+    return {
+        "account": account,
+        "strategy": strategy,
+        "cap_pct": cap,
+        "sleeve_usd": 2500.0,
+        "equity_usd": 10_000.0,
+        "used_pct": used,
+        "over": used > cap,
+    }
+
+
+def test_sleeve_scan_keeps_only_over_cap(db_path):
+    rows = [_sleeve_row(used=25.0), _sleeve_row(strategy="active", used=5.0, cap=20.0, account="Brokerage Beta")]
+    with patch("nuri.analysis.sleeve.sleeve_utilization", return_value=rows):
+        got = portfolio_signals.scan_sleeve_breach(db_path=db_path)
+    assert [r["strategy"] for r in got] == ["core"]
+
+
+def test_sleeve_scan_does_not_exclude_pension(db_path):
+    """1b/1c 와 달리 pension 을 감추지 않는다 — 상한 0 위반은 사전등록 위반이다.
+
+    Gotcha-Test Pair: `_is_pension_account` 필터를 1b/1c 처럼 복사해 넣으면 FAIL.
+    """
+    rows = [_sleeve_row(strategy="pension", used=3.0, cap=0.0, account="연금저축")]
+    with patch("nuri.analysis.sleeve.sleeve_utilization", return_value=rows):
+        got = portfolio_signals.scan_sleeve_breach(db_path=db_path)
+    assert len(got) == 1, "pension 슬리브 침범이 조용히 사라짐"
+
+
+def test_sleeve_payload_is_rebalance_without_sell_verb_or_price_levels():
+    """#429 축 — 슬리브 초과는 REBALANCE 만. 매도 동사·price_levels 금지.
+
+    Gotcha-Test Pair: kind 를 SELL 로 바꾸거나 price_levels 를 붙이면 FAIL.
+    """
+    payload = portfolio_signals._build_sleeve_rebalance_payload(_sleeve_row(), "2026-07-08")
+    assert payload["kind"] == "REBALANCE"
+    assert "price_levels" not in payload
+    for verb in ("매도", "청산", "손절", "SELL"):
+        assert verb not in payload["reason"], f"REBALANCE payload 에 매도 동사({verb})"
+
+
+def test_sleeve_payload_hides_account_name(db_path):
+    """계좌 키(broker name)는 사용자 노출 텍스트에 들어가면 안 된다 — 전략 라벨만.
+
+    Gotcha-Test Pair: ticker 슬롯에 row['account'] 를 쓰면 FAIL.
+    """
+    row = _sleeve_row(account="Brokerage Alpha")
+    payload = portfolio_signals._build_sleeve_rebalance_payload(row, "2026-07-08")
+    assert "Brokerage Alpha" not in json.dumps(payload, ensure_ascii=False)
+    assert "core" in payload["ticker"]
+
+
+def test_sleeve_staging_writes_normal_priority_and_dedupes(db_path):
+    with patch("nuri.analysis.sleeve.sleeve_utilization", return_value=[_sleeve_row()]):
+        s1 = portfolio_signals.stage_sleeve_briefs(date="2026-07-08", db_path=db_path)
+        s2 = portfolio_signals.stage_sleeve_briefs(date="2026-07-08", db_path=db_path)  # 재실행
+    assert (s1, s2) == (1, 0)
+    rows = query("SELECT priority, dedupe_key FROM discord_outbox WHERE channel='brief'", db_path=db_path)
+    assert len(rows) == 1
+    assert rows[0]["priority"] == "normal"
+    assert rows[0]["dedupe_key"] == "rebalance:sleeve:Brokerage Alpha:2026-07-08"
+
+
+def test_sleeve_within_cap_stages_nothing(db_path):
+    with patch("nuri.analysis.sleeve.sleeve_utilization", return_value=[_sleeve_row(used=5.0)]):
+        assert portfolio_signals.stage_sleeve_briefs(date="2026-07-08", db_path=db_path) == 0
+
+
+def test_cli_shows_sleeve_breach(db_path, capsys):
+    with (
+        patch("nuri.analysis.rebalance_advisor.detect_violations", return_value=[]),
+        patch("nuri.analysis.sleeve.sleeve_utilization", return_value=[_sleeve_row()]),
+    ):
+        rc = portfolio_signals.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[슬리브] core" in out and "staged 1" in out

@@ -28,6 +28,41 @@ WINDOWS = (7, 14, 30)
 SUSPECT_ABS_RETURN = 0.5
 
 
+def _sleeve_block() -> dict:
+    """§3.11 실험 슬리브 사용률 — 계좌별 상한 대비 (#834).
+
+    이 엔드포인트의 alpha 숫자가 **어떤 자본으로** 만들어졌는지가 슬리브다. 사용률
+    없이 alpha 만 보이면 "상한 안에서 난 결과"인지 판단할 수 없어서 같은 응답에 둔다.
+
+    실패해도 alpha 헤드라인을 죽이지 않는다(soft error) — 슬리브는 부가 맥락이고,
+    이 엔드포인트의 본 계약은 tracking-completeness 다.
+    """
+    try:
+        from nuri.analysis.sleeve import sleeve_utilization
+
+        rows = sleeve_utilization()
+    except Exception:
+        logger.exception("sleeve utilization 계산 실패")
+        return {"accounts": [], "count": 0, "error": "sleeve utilization unavailable"}
+
+    # account 는 broker name 이라 응답에 넣지 않는다 (전략 라벨만 노출).
+    accounts = [
+        {
+            "strategy": r["strategy"],
+            "cap_pct": r["cap_pct"],
+            "used_pct": r["used_pct"],
+            "over": r["over"],
+        }
+        for r in rows
+    ]
+    return {
+        "accounts": accounts,
+        "count": len(accounts),
+        "any_over": any(a["over"] for a in accounts),
+        "note": "실험 슬리브 = 사전등록일 이후 시스템 BUY 추천을 실행해 새로 연 포지션. 초과는 REBALANCE 권고이며 매도 신호가 아니다 (§3.11 · #429).",
+    }
+
+
 def _median(values: list[float]) -> float | None:
     n = len(values)
     if n == 0:
@@ -95,6 +130,8 @@ def alpha_summary() -> dict:
         "windows": windows_out,
         # clean alpha 의 distinct 결정 수 — median 의 실제 표본 크기 (coverage 아님).
         "effective_bets": len(clean_decisions),
+        # 이 alpha 가 어떤 자본으로 만들어졌는지 (§3.11 슬리브 사용률).
+        "sleeve": _sleeve_block(),
         "data_quality": {
             "suspect_rows": suspect,
             "suspect_threshold_pct": int(SUSPECT_ABS_RETURN * 100),

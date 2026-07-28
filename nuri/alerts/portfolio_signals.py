@@ -1,9 +1,9 @@
-"""Mechanical portfolio-axis signals → #brief (Tier 1b: 집중도 · 1c: 섹터 드리프트 → REBALANCE).
+"""Mechanical portfolio-axis signals → #brief (Tier 1b 집중도 · 1c 섹터 · 1d 슬리브 → REBALANCE).
 
 Tier 1a(risk_signals) 가 alpha 축(손절선 이탈 → urgent SELL) 을 표면화했다면,
 여기는 **portfolio 축**(#429): (1b) 종목 비중이 계좌별 `max_single_position` 한도,
-(1c) 섹터 합산 비중이 `max_sector_exposure` 한도를 넘으면 REBALANCE 로 surface.
-결정론적 룰(예측 아님).
+(1c) 섹터 합산 비중이 `max_sector_exposure` 한도, (1d) §3.11 실험 슬리브가 계좌
+전략별 `sleeve_max_equity_pct` 상한을 넘으면 REBALANCE 로 surface. 결정론적 룰(예측 아님).
 
 #429 축 분리 (엄밀): 집중도/드리프트는 `portfolio_action=REBALANCE` — **절대
 urgent SELL 아님**(alpha_action=FLAT 은 손절선만). 따라서 여기 payload 는
@@ -185,15 +185,79 @@ def stage_sector_briefs(date: Optional[str] = None, db_path: Optional[Path] = No
     return staged
 
 
+def scan_sleeve_breach(db_path: Optional[Path] = None) -> list[dict[str, Any]]:
+    """§3.11 실험 슬리브 상한 초과 계좌 목록 (Tier 1d).
+
+    `sleeve_utilization()` 이 canonical 계산이고 여기는 필터만 한다 — 상한은
+    `rules.yaml measurement_mode.sleeve_max_equity_pct` 단일 출처.
+
+    1b/1c 와 달리 **pension 을 제외하지 않는다**: pension/long_term 의 상한은 0 이라
+    "시스템 추천 자본이 한 푼도 들어가면 안 되는 계좌"라는 뜻이고, 그 위반은 daily
+    action 대상이 아니라 사전등록 위반이다. 조용히 감추면 판정일에 표본이 오염된
+    채로 발견된다.
+    """
+    from nuri.analysis.sleeve import sleeve_utilization
+
+    return [row for row in sleeve_utilization(db_path=db_path) if row["over"]]
+
+
+def _build_sleeve_rebalance_payload(row: dict[str, Any], date: str) -> dict[str, Any]:
+    """슬리브 초과 1건 → #brief REBALANCE payload.
+
+    1b/1c 와 동일 #429 규칙: kind="REBALANCE", price_levels 없음, 매도 동사 없음.
+    §3.11 은 "cap-breach resolution surfaces as portfolio_action=REBALANCE only" 로
+    이 축을 명시 고정한다 — 슬리브 초과를 청산 신호로 승격하면 사전등록 위반이다.
+
+    Privacy: ticker 슬롯에 계좌 키(로마자 broker name) 대신 **전략 라벨**(core/active/
+    swing)을 넣는다. 전략명은 config public 라벨이고 계좌는 dedupe_key 에만 남는다.
+    """
+    return {
+        "kind": "REBALANCE",
+        "ticker": f"실험슬리브({row['strategy']})",
+        "reason": (
+            f"슬리브 {row['used_pct']:.1f}% > 상한 {row['cap_pct']:.0f}%"
+            " — 비중 조절 권고 (수단·타이밍 사용자 판단). 여력 회복까지 신규 시스템 추천 집행 보류"
+        ),
+        "date": date,
+    }
+
+
+def stage_sleeve_briefs(date: Optional[str] = None, db_path: Optional[Path] = None) -> int:
+    """슬리브 상한 초과를 #brief outbox 에 REBALANCE 로 stage. staged 건수 반환.
+
+    dedupe_key=`rebalance:sleeve:{account}:{date}` — 계좌 × 하루 1건. priority="normal".
+    """
+    from nuri.agents.discord.outbox import stage_brief
+
+    d = date or today_kst()
+    staged = 0
+    for row in scan_sleeve_breach(db_path=db_path):
+        outbox_id = stage_brief(
+            payload=_build_sleeve_rebalance_payload(row, d),
+            dedupe_key=f"rebalance:sleeve:{row['account']}:{d}",
+            priority="normal",
+            actor_name="portfolio-signals",
+            db_path=db_path,
+        )
+        if outbox_id is not None:
+            staged += 1
+    if staged:
+        logger.info("sleeve REBALANCE briefs staged: %d", staged)
+    return staged
+
+
 def main(argv: Optional[list[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="포트폴리오 드리프트(집중도·섹터) → #brief REBALANCE (Tier 1b/1c)")
+    parser = argparse.ArgumentParser(
+        description="포트폴리오 드리프트(집중도·섹터·슬리브) → #brief REBALANCE (Tier 1b/1c/1d)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="stage 없이 위반 목록만 출력")
     args = parser.parse_args(argv)
 
     conc = scan_concentration_drift()
     sect = scan_sector_drift()
-    if not conc and not sect:
-        print("포트폴리오 드리프트 없음 (집중도·섹터)")
+    sleeve = scan_sleeve_breach()
+    if not conc and not sect and not sleeve:
+        print("포트폴리오 드리프트 없음 (집중도·섹터·슬리브)")
         return 0
     for v in conc:
         print(
@@ -201,10 +265,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
     for v in sect:
         print(f"  [섹터] {v['sector']} {v['current_value']:.1f}% > 한도 {v['limit_value'] * 100:.0f}%")
+    for v in sleeve:
+        print(f"  [슬리브] {v['strategy']} {v['used_pct']:.1f}% > 상한 {v['cap_pct']:.0f}%")
     if args.dry_run:
-        print(f"[dry-run] 집중도 {len(conc)}건 · 섹터 {len(sect)}건 — stage 안 함")
+        print(f"[dry-run] 집중도 {len(conc)}건 · 섹터 {len(sect)}건 · 슬리브 {len(sleeve)}건 — stage 안 함")
         return 0
-    staged = stage_concentration_briefs() + stage_sector_briefs()
+    staged = stage_concentration_briefs() + stage_sector_briefs() + stage_sleeve_briefs()
     print(f"staged {staged}건 → #brief (REBALANCE)")
     return 0
 
