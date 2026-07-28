@@ -5,10 +5,10 @@
 Layer A 설계 (Codex Round 5):
 - 100% rule-based — threshold 비교 (LLM 추론 X)
 - ZERO LLM
-- 7 detector 모두 결정적 (DB query + filesystem stat)
+- 8 detector 모두 결정적 (DB query + filesystem stat)
 - 모든 incident → audit_ledger + incidents 테이블 영구 기록
 
-7 Detector:
+8 Detector:
     1. orphan_run         — agent_run_ledger started + finished_at IS NULL + >1h
                             warning (1h+) / critical (3h+)
     2. disk_full          — shutil.disk_usage() percent_used > 80 (warn) / > 90 (crit)
@@ -21,6 +21,10 @@ Layer A 설계 (Codex Round 5):
                             ≥1 (warn) / ≥3 (crit)
     7. signal_evaluation_stale — pipeline_events 'signal_evaluation_run'
                             heartbeat 공백 영업일 (#825): ≥2 (warn) / ≥4 (crit)
+    8. alpha_report_stale — pipeline_events 'alpha_report_run' 의 **마지막 성공
+                            stage** 공백 (#894): ≥35일 (warn). heartbeat 공백이
+                            아니라 성공 공백 — cron 이 매일이라 role 누락 상태도
+                            heartbeat 는 계속 찍힌다.
 
 Idempotent semantics:
 - 동일 (incident_type, target) 의 open incident 는 단일 row → log_incident() 가
@@ -36,6 +40,7 @@ Discord routing:
 
 from __future__ import annotations
 
+import json
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -72,6 +77,10 @@ SIGNAL_EVAL_CRIT_DAYS = 4
 SIGNAL_EVAL_GRACE_HOUR = 12
 # 평가 예정 요일 (Mon=0 기준 화~토 — 미국 거래일 마감 다음 날 아침 KST)
 SIGNAL_EVAL_WEEKDAYS = (1, 2, 3, 4, 5)
+# §3.11 월간 alpha 리포트 미발화 임계 (#894). 월 1회 발화라 한 달(31일)로는
+# 정상 주기와 구분이 안 된다 — 한 주기를 통째로 놓친 게 확실해지는 35일.
+# pipeline_events 보존 90일(scripts/db/maintenance.py)이라 이 창은 안전하다.
+ALPHA_REPORT_STALE_DAYS = 35
 
 HEARTBEAT_PATH = Path(__file__).resolve().parents[3] / "data" / ".scheduler_heartbeat"
 
@@ -81,7 +90,7 @@ class SREIncidentAgent(Actor):
     """Operational incident detection + lifecycle management — Layer A.
 
     Actions (input_data['action']):
-        scan        — 7 detector 모두 실행 → log_incident + Discord publish.
+        scan        — 8 detector 모두 실행 → log_incident + Discord publish.
         acknowledge — incident_id 사용자 확인 (audit-only).
         resolve     — incident_id 종료 (status='resolved').
         list_open   — open incident 목록 (severity 필터 optional).
@@ -121,7 +130,7 @@ class SREIncidentAgent(Actor):
     # ─── scan ────────────────────────────────────────────────
 
     def _scan(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult:
-        """7 detector 실행 → 발견된 incident 목록 반환."""
+        """8 detector 실행 → 발견된 incident 목록 반환."""
         detected: list[dict[str, Any]] = []
 
         for detector in (
@@ -132,6 +141,7 @@ class SREIncidentAgent(Actor):
             self._detect_actor_failure_streak,
             self._detect_data_freshness_critical,
             self._detect_signal_evaluation_stale,
+            self._detect_alpha_report_stale,
         ):
             try:
                 detected.extend(detector(ctx))
@@ -167,7 +177,7 @@ class SREIncidentAgent(Actor):
             ),
         )
 
-    # ─── 6 detectors ─────────────────────────────────────────
+    # ─── 8 detectors ─────────────────────────────────────────
 
     def _detect_orphan_runs(self, ctx: RunContext) -> list[dict[str, Any]]:
         """agent_run_ledger 에서 started + finished_at NULL + age 검사."""
@@ -375,6 +385,76 @@ class SREIncidentAgent(Actor):
                 incident_type="signal_evaluation_stale",
                 severity=severity,
                 target="signals",
+                evidence=evidence,
+                ctx=ctx,
+            )
+        ]
+
+    def _detect_alpha_report_stale(self, ctx: RunContext) -> list[dict[str, Any]]:
+        """pipeline_events 'alpha_report_run' 의 **마지막 성공 stage** 공백 검사 (#894).
+
+        heartbeat 공백이 아니라 *성공* 공백을 재는 게 핵심이다. cron 이 매일
+        ('0 9 * * *') 이라 `NURI_ROLE` 이 비어 있어도 heartbeat 는 매일 찍힌다 —
+        공백만 보면 설정 오류를 영영 못 잡는데, 그게 #894 가 잡으라는 바로 그
+        케이스다 (리포트가 판정일까지 한 번도 안 나가는 상태).
+
+        한 번도 stage 된 적 없으면 최초 heartbeat 를 기준으로 잰다 — 신규 배포에서
+        role 이 처음부터 누락된 경우가 정확히 여기 걸린다. heartbeat 가 전무하면
+        skip (미배포 / 신규 DB — scheduler_heartbeat 와 동일한 취급).
+        """
+        rows = query(
+            """SELECT MIN(timestamp) AS first_run,
+                      MAX(timestamp) AS last_run,
+                      MAX(CASE WHEN json_extract(payload, '$.staged') = 1
+                               THEN timestamp END) AS last_staged
+               FROM pipeline_events
+               WHERE event_type = 'alpha_report_run'"""
+        )
+        if not rows or not rows[0]["first_run"]:
+            return []
+        row = rows[0]
+        last_staged = row["last_staged"]
+        # 성공분이 없으면 '언제부터 성공 없이 돌고 있나' = 최초 heartbeat 이후 경과.
+        anchor = last_staged or row["first_run"]
+        anchor_dt = datetime.strptime(str(anchor)[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+        days = (kst_now().date() - to_kst(anchor_dt).date()).days
+        if days < ALPHA_REPORT_STALE_DAYS:
+            return []
+
+        # 마지막 실행의 skip 사유를 붙여 조치가 바로 나오게 한다 (역할 누락인지 예외인지).
+        last_rows = query(
+            """SELECT payload FROM pipeline_events
+               WHERE event_type = 'alpha_report_run'
+               ORDER BY timestamp DESC LIMIT 1"""
+        )
+        reason = "unknown"
+        try:
+            payload = json.loads(last_rows[0]["payload"]) if last_rows and last_rows[0]["payload"] else {}
+            if payload.get("error"):
+                reason = "error"
+            elif not payload.get("role_ok"):
+                reason = "role_missing"
+            elif payload.get("already_emitted"):
+                reason = "already_emitted"
+            else:
+                reason = "staged"
+        except (json.JSONDecodeError, TypeError, KeyError):
+            payload = {}
+
+        evidence = {
+            "last_staged_at_utc": str(last_staged) if last_staged else None,
+            "never_staged": last_staged is None,
+            "days_since_staged": days,
+            "threshold_days": ALPHA_REPORT_STALE_DAYS,
+            "last_run_at_utc": str(row["last_run"]),
+            "last_skip_reason": reason,
+            "last_error": payload.get("error"),
+        }
+        return [
+            self._record_incident(
+                incident_type="alpha_report_stale",
+                severity="warning",
+                target="alpha_report",
                 evidence=evidence,
                 ctx=ctx,
             )
@@ -595,6 +675,14 @@ def _human_incident_summary(incident_type: str, target: str, evidence: dict[str,
             f"{target} — {e.get('missed_eval_days', 0)}영업일째 시그널 평가 미실행 "
             f"(마지막 {e.get('last_evaluated_at_utc', '?')} UTC)"
         )
+    if incident_type == "alpha_report_stale":
+        cause = {
+            "role_missing": "NURI_ROLE 미설정 — scheduler plist EnvironmentVariables 확인",
+            "error": f"실행 예외: {e.get('last_error') or '?'}",
+            "already_emitted": "중복 판정이 계속 True — dedupe 로직 점검",
+        }.get(str(e.get("last_skip_reason")), "원인 미상")
+        when = "한 번도 발화 없음" if e.get("never_staged") else f"마지막 {e.get('last_staged_at_utc', '?')} UTC"
+        return f"§3.11 월간 alpha 리포트 — {e.get('days_since_staged', 0)}일째 미발화 ({when}). {cause}"
     return f"{incident_type} on {target}"
 
 

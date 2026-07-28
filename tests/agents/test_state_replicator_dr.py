@@ -24,7 +24,7 @@ from nuri.agents.actors.state_replicator_dr import (
     main,
 )
 from nuri.agents.base import Layer, Outcome
-from nuri.core.db import init_db, query, upsert_dr_replica
+from nuri.core.db import get_schema_version, init_db, query, upsert_dr_replica
 
 
 @pytest.fixture
@@ -218,7 +218,10 @@ class TestVerifyAction:
             role="replica",
             hostname="mbp-test",
             last_sync_at="2026-05-01 12:00:00",
-            last_sync_schema_version=45,  # 현행 schema version (#825 migration 45)
+            # 이 테스트의 관심사는 'replica 가 동기 상태인가' 지 특정 버전이 아니다.
+            # 리터럴로 두면 migration 이 추가될 때마다 무관한 이 테스트가 깨진다 (#894 에서 실제로 깨짐).
+            # 버전 자체의 lock 은 tests/core/test_agent_infra.py::test_schema_version_at_46 담당.
+            last_sync_schema_version=get_schema_version(patched_db),
             sync_lag_seconds=120,
             status="healthy",
             db_path=patched_db,

@@ -39,6 +39,7 @@ _INCIDENT_TYPES = (
     "actor_failure_streak",
     "data_freshness_critical",
     "signal_evaluation_stale",
+    "alpha_report_stale",
 )
 _INCIDENT_SEVERITIES = ("critical", "warning", "info")
 _INCIDENT_STATUSES = ("open", "acknowledged", "resolved")

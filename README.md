@@ -167,7 +167,7 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 | **Trading signals** | 22 (20 actionable + 2 shadow) |
 | **API endpoints** | 72 (FastAPI on `:8001`) |
 | **Frontend routes** | 18 (Next.js on `:3000`) |
-| **DB tables** | 51 (45 forward-only migrations) |
+| **DB tables** | 51 (46 forward-only migrations) |
 | **DB submodules** | 11 (sole `sqlite3` importer in `nuri/core/db/`) |
 
 ## Common Commands

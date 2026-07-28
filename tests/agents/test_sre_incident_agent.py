@@ -3,8 +3,9 @@
 검증 (Codex Round 5 Layer A):
 - Layer A enforcement (outcome 필수, ZERO LLM)
 - 4 actions: scan / acknowledge / resolve / list_open
-- 7 detector 각각 (orphan_run / disk_full / db_lock / scheduler_heartbeat /
-  actor_failure_streak / data_freshness_critical / signal_evaluation_stale)
+- 8 detector 각각 (orphan_run / disk_full / db_lock / scheduler_heartbeat /
+  actor_failure_streak / data_freshness_critical / signal_evaluation_stale /
+  alpha_report_stale)
 - Idempotent UNIQUE(incident_type,target,status='open') — 재detection 시 신규 row X
 - resolve 후 재발 시 신규 incident_id (status 가 UNIQUE 의 일부)
 - Discord publish — critical=INCIDENTS, warning=OPS, 재detection 시 publish 차단
@@ -15,13 +16,15 @@
 
 from __future__ import annotations
 
+import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from nuri.agents.actors.sre_incident_agent import (
+    ALPHA_REPORT_STALE_DAYS,
     DISK_CRIT_PCT,
     DISK_WARN_PCT,
     FAILURE_STREAK_CRIT,
@@ -596,6 +599,119 @@ class TestMissedEvalDays:
     def test_weekday_streak_counted(self):
         """평일 연속 공백은 하루 1씩 계상."""
         assert _missed_eval_days("2026-06-30 22:00:00", _EVAL_FIXED_NOW) == 5
+
+
+# ═══════════════════════════════════════════════════════
+# Detector: alpha_report_stale (#894)
+# ═══════════════════════════════════════════════════════
+
+
+def _seed_alpha_run(db_path, ts_utc: str, *, staged: bool, role_ok: bool = True, error: str | None = None):
+    """pipeline_events 에 alpha_report_run heartbeat 1행 (payload 는 scheduler 와 동일 스키마)."""
+    payload = json.dumps(
+        {
+            "month": ts_utc[:7],
+            "role_ok": role_ok,
+            "already_emitted": False,
+            "staged": staged,
+            "error": error,
+        },
+        ensure_ascii=False,
+    )
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO pipeline_events (event_type, timestamp, payload) VALUES ('alpha_report_run', ?, ?)",
+            (ts_utc, payload),
+        )
+
+
+class TestAlphaReportStaleDetector:
+    """#894 Gotcha-Test Pair — '월간 alpha 리포트가 안 나가는데 아무도 모른다'.
+
+    핵심은 heartbeat 공백이 **아니라** 마지막 *성공 stage* 공백을 잰다는 것.
+    cron 이 매일이라 `NURI_ROLE` 누락 상태에서도 heartbeat 는 매일 찍히므로,
+    공백만 재는 구현으로 되돌리면 `test_role_missing_alerts_even_though_heartbeats_are_daily`
+    가 FAIL 한다 — 그게 이슈가 잡으라고 한 바로 그 시나리오다.
+    """
+
+    def _scan(self, now=_EVAL_FIXED_NOW):
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=now),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+        ):
+            result = actor.run({"action": "scan"})
+        return [i for i in result.output["incidents"] if i["incident_type"] == "alpha_report_stale"]
+
+    def test_no_alert_when_no_heartbeat_rows(self, patched_db, no_publish):
+        """heartbeat 전무 → skip (미배포/신규 DB false positive 방지)."""
+        assert self._scan() == []
+
+    def test_no_alert_on_healthy_monthly_cadence(self, patched_db, no_publish):
+        """정상 운영: 매일 heartbeat + 이번 달 1일 성공 stage → 오탐 0.
+
+        acceptance '정상 월간 발화는 알림 없음'.
+        """
+        _seed_alpha_run(patched_db, "2026-07-01 00:00:00", staged=True)
+        for day in range(2, 9):  # 이후 매일 heartbeat (이미 발화 → staged=False)
+            _seed_alpha_run(patched_db, f"2026-07-{day:02d} 00:00:00", staged=False)
+        assert self._scan() == []
+
+    def test_role_missing_alerts_even_though_heartbeats_are_daily(self, patched_db, no_publish):
+        """`NURI_ROLE` 누락 — heartbeat 는 매일 찍히지만 성공 stage 가 한 번도 없다.
+
+        acceptance 'role 누락 상태를 35일 안에 #incidents 가 잡는다'. heartbeat
+        공백 기준 구현으로 되돌리면 공백이 0 이라 영영 안 잡히고 이 테스트가 FAIL.
+        """
+        for offset in range(40):  # 2026-05-30 부터 40일치 daily heartbeat, 전부 미발화
+            day = datetime(2026, 5, 30) + timedelta(days=offset)
+            _seed_alpha_run(patched_db, day.strftime("%Y-%m-%d 00:00:00"), staged=False, role_ok=False)
+        out = self._scan()
+        assert len(out) == 1
+        assert out[0]["severity"] == "warning"
+        assert out[0]["target"] == "alpha_report"
+        e = out[0]["evidence"]
+        assert e["never_staged"] is True
+        assert e["days_since_staged"] >= ALPHA_REPORT_STALE_DAYS
+        assert e["last_skip_reason"] == "role_missing"
+
+    def test_stale_since_last_successful_stage(self, patched_db, no_publish):
+        """예전에 성공한 적은 있으나 그 뒤 35일 넘게 미발화 → 알림."""
+        _seed_alpha_run(patched_db, "2026-05-01 00:00:00", staged=True)
+        _seed_alpha_run(patched_db, "2026-07-08 00:00:00", staged=False, role_ok=False)
+        out = self._scan()
+        assert len(out) == 1
+        assert out[0]["evidence"]["never_staged"] is False
+        assert out[0]["evidence"]["last_staged_at_utc"].startswith("2026-05-01")
+
+    def test_recent_success_suppresses_alert_despite_old_failures(self, patched_db, no_publish):
+        """오래된 미발화가 남아 있어도 최근 성공이 있으면 알림 없음."""
+        _seed_alpha_run(patched_db, "2026-05-01 00:00:00", staged=False, role_ok=False)
+        _seed_alpha_run(patched_db, "2026-07-01 00:00:00", staged=True)
+        assert self._scan() == []
+
+    def test_error_skip_reason_surfaces_the_exception(self, patched_db, no_publish):
+        """예외로 못 나간 경우 evidence 가 role 누락과 구분된다 (조치가 다르다)."""
+        for offset in range(40):
+            day = datetime(2026, 5, 30) + timedelta(days=offset)
+            _seed_alpha_run(patched_db, day.strftime("%Y-%m-%d 00:00:00"), staged=False, error="boom")
+        out = self._scan()
+        assert out[0]["evidence"]["last_skip_reason"] == "error"
+        assert out[0]["evidence"]["last_error"] == "boom"
+
+    def test_summary_names_the_cause_not_just_the_type(self):
+        """알림 한 줄이 cryptic 코드가 아니라 원인+조치를 담는다 (알림 가독성)."""
+        line = _human_incident_summary(
+            "alpha_report_stale",
+            "alpha_report",
+            {"days_since_staged": 41, "never_staged": True, "last_skip_reason": "role_missing"},
+        )
+        assert "41일째 미발화" in line
+        assert "NURI_ROLE" in line
 
 
 # ═══════════════════════════════════════════════════════

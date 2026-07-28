@@ -259,6 +259,73 @@ class TestSchedulerWiring:
             scheduler._run_alpha_report()
         staged.assert_called_once_with()
 
+    def test_heartbeat_written_on_every_path(self, caplog):
+        """발화/미발화/예외 **모두** `alpha_report_run` heartbeat 1행을 남긴다 (#894).
+
+        Gotcha-Test Pair: heartbeat 가 없으면 '이번 달 이미 발화(정상)' 와
+        'NURI_ROLE 누락(고장, 판정일까지 영영 안 나감)' 이 관측상 동일해진다.
+        `emit_event` 호출을 지우면 세 케이스 모두 FAIL.
+        """
+        from nuri import scheduler
+
+        cases = {
+            "staged": (11, None),
+            "skipped": (None, None),
+            "raised": (None, RuntimeError("boom")),
+        }
+        for label, (ret, exc) in cases.items():
+            kw = {"side_effect": exc} if exc else {"return_value": ret}
+            with (
+                patch("nuri.alerts.alpha_report.stage_alpha_progress_brief", **kw),
+                patch("nuri.alerts.alpha_report.already_emitted", return_value=False),
+                patch("nuri.core.events.emit_event") as emitted,
+            ):
+                scheduler._run_alpha_report()
+            assert emitted.call_count == 1, f"{label}: heartbeat 누락"
+            assert emitted.call_args.args[0] == "alpha_report_run"
+            payload = emitted.call_args.kwargs["payload"]
+            assert payload["staged"] is (ret is not None), label
+            assert (payload["error"] is not None) is (exc is not None), label
+
+    def test_observability_probe_failure_does_not_block_staging(self):
+        """heartbeat 용 `already_emitted` 조회가 죽어도 stage 는 그대로 시도된다.
+
+        Gotcha-Test Pair: #894 최초 구현이 `already_emitted` 를 stage 와 **같은 try
+        앞자리**에 뒀다. 그 조회가 실패하면(테이블 없음/DB 잠금) except 로 빠져
+        stage 를 아예 안 부른다 — 관측을 붙이려다 관측 대상을 죽인 것. 로컬은 dev DB
+        가 있어 통과했고 CI(빈 DB)에서만 터졌으므로, DB 상태와 무관하게 결정적으로
+        재현되도록 예외를 직접 주입해 잠근다.
+        """
+        from nuri import scheduler
+
+        with (
+            patch("nuri.alerts.alpha_report.already_emitted", side_effect=RuntimeError("db locked")),
+            patch("nuri.alerts.alpha_report.stage_alpha_progress_brief", return_value=7) as staged,
+            patch("nuri.core.events.emit_event") as emitted,
+        ):
+            scheduler._run_alpha_report()
+
+        staged.assert_called_once_with()
+        payload = emitted.call_args.kwargs["payload"]
+        assert payload["staged"] is True
+        assert payload["already_emitted"] is None, "관측 실패는 None 으로 남아야 (False 로 위장 금지)"
+        assert payload["error"] is None, "본 작업은 성공했으므로 error 가 없어야"
+
+    def test_heartbeat_records_role_state_for_the_detector(self):
+        """`role_ok` 가 payload 에 들어가야 detector 가 설정 오류를 지목할 수 있다."""
+        from nuri import scheduler
+
+        with (
+            patch("nuri.alerts.alpha_report.is_production", return_value=False),
+            patch("nuri.alerts.alpha_report.stage_alpha_progress_brief", return_value=None),
+            patch("nuri.alerts.alpha_report.already_emitted", return_value=False),
+            patch("nuri.core.events.emit_event") as emitted,
+        ):
+            scheduler._run_alpha_report()
+        payload = emitted.call_args.kwargs["payload"]
+        assert payload["role_ok"] is False
+        assert payload["staged"] is False
+
     def test_wrapper_absorbs_failure(self, caplog):
         """한 job 실패가 스케줄러를 죽이면 안 된다 (다른 _run_* 와 동일 계약)."""
         import logging
