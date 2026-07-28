@@ -219,6 +219,13 @@ measurement_mode:
   evaluation_date: "2027-06-30"  # 판정일. 조기 승격 금지, 하향은 상시 (prudential)
   emit_cutoff_date: "2027-05-15" # 표본 emit 마감 — 판정일까지 30d 창 완결 보장
   benchmark: SPY                 # forward_outcome_tracker DEFAULT_BENCHMARK_TICKER 와 일치 (#675)
+                                 # ⚠️ 이 값은 **US 판정 기준**이며 2026-07-08 사전등록으로 잠겼다.
+                                 # 아래 map 을 늘리는 것과 달리 이 줄을 바꾸는 건 사전등록 개정이다.
+  benchmark_by_market:           # 기록용 시장별 벤치마크 (#833). 판정 기준이 아니라 측정 인프라.
+                                 # KR 결정을 SPY 로 재던 FX/스타일 불일치를 제거한다. KR 판정 자체는
+                                 # 별도 사전등록 대상 (§3.11 벤치마크 행) — 여기서 승격하지 않는다.
+    us: SPY                      # us 값은 위 benchmark 와 항상 같아야 한다 (lock test)
+    kr: KOSPI                    # siege_gates.kr_equity.freshness_primary 와 동일 — 이미 매일 수집됨
   primary_window_days: 30        # 판정 창 (7/14d 는 진단용, §3.11 표 — 파일럿 기반 선택 경위 명시)
   min_n_us_buy_decisions: 200    # US BUY 결정만 (KR/SELL 은 진단 전용 — §3.11 표본 규약), distinct decision_id
   permutation_p_max: 0.05        # one-sided. scheme 은 아래 사전 고정 (구현만 follow-up — §3.11 미구축 ②)

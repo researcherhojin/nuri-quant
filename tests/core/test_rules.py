@@ -224,6 +224,47 @@ class TestMeasurementMode:
 
         assert RULES["measurement_mode"]["benchmark"] == DEFAULT_BENCHMARK_TICKER
 
+    def test_benchmark_by_market_us_equals_the_locked_criterion(self):
+        """시장별 map 의 us 항목은 사전등록된 판정 기준과 **같은 값**이어야 한다 (#833).
+
+        map 은 기록용 측정 인프라이고 `benchmark` 는 §3.11 판정 기준이다. 둘이
+        갈라지면 US 표본이 판정 기준과 다른 벤치마크로 측정되면서 아무 게이트도
+        울리지 않는다 — 사전등록의 조용한 개정.
+
+        Gotcha-Test Pair: `benchmark_by_market.us` 를 SPY 아닌 값으로 바꾸면 FAIL.
+        """
+        from nuri.agents.actors.forward_outcome_tracker import DEFAULT_BENCHMARK_TICKER
+        from nuri.core.rules import RULES
+
+        mm = RULES["measurement_mode"]
+        assert mm["benchmark_by_market"]["us"] == mm["benchmark"] == DEFAULT_BENCHMARK_TICKER
+
+    def test_benchmark_by_market_covers_every_market_the_classifier_emits(self):
+        """`benchmark_for` 는 모든 티커를 us/kr 둘 중 하나로 보낸다 — map 도 딱 그 둘.
+
+        키가 빠지면 폴백이 US 벤치마크를 조용히 쓰고, 남는 키는 아무도 안 읽는
+        죽은 설정이 된다.
+        """
+        from nuri.core.rules import RULES
+
+        assert set(RULES["measurement_mode"]["benchmark_by_market"]) == {"us", "kr"}
+
+    def test_every_market_benchmark_is_actually_collected(self):
+        """벤치마크가 수집 배선에 없으면 alpha 가 영구 NULL 이 된다 (#860 과 같은 고장).
+
+        `069500.KS`(KODEX 200) 는 prices 에 단 한 행도 없어 KR 벤치마크로 쓰면
+        모든 KR alpha 가 NULL 이 된다. 실제 수집되는 식별자만 등재되어야 한다.
+
+        Gotcha-Test Pair: 수집 배선에 없는 티커를 map 에 넣으면 FAIL.
+        """
+        from nuri.collectors.stock import _load_freshness_tickers
+        from nuri.collectors.stock_kr import StockKRCollector
+        from nuri.core.rules import RULES
+
+        collected = set(_load_freshness_tickers()) | set(StockKRCollector.INDEX_TICKERS.values())
+        for market, ticker in RULES["measurement_mode"]["benchmark_by_market"].items():
+            assert ticker in collected, f"{market} 벤치마크 {ticker} 가 일일 수집 대상에 없음"
+
     def test_primary_window_supported_by_tracker(self):
         """판정 창은 tracker 가 실제 측정하는 window 여야 함."""
         from nuri.agents.actors.forward_outcome_tracker import SUPPORTED_WINDOWS

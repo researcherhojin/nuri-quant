@@ -39,6 +39,8 @@ from nuri.core.db import (
     reject_hypothesis,
     validate_hypothesis,
 )
+from nuri.core.rules import RULES
+from nuri.core.ticker_names import is_kr_ticker
 from nuri.core.timezone import today_kst
 
 # ─── window 별 validation 임계값 (Codex consult 합의) ─────────
@@ -48,7 +50,24 @@ WINDOW_THRESHOLDS: dict[int, tuple[float, float]] = {
     30: (0.10, -0.10),  # ±10% within 30 days
 }
 SUPPORTED_WINDOWS: tuple[int, ...] = (7, 14, 30)
-DEFAULT_BENCHMARK_TICKER = "SPY"  # 시장 베타 — alpha 산출 baseline
+DEFAULT_BENCHMARK_TICKER = "SPY"  # 시장 베타 — alpha 산출 baseline (US, §3.11 사전등록 판정 기준)
+
+
+def benchmark_for(ticker: str) -> str:
+    """티커가 속한 시장의 벤치마크 (#833).
+
+    KR 결정을 SPY 로 재면 alpha 에 환율 + 시장 스타일 차이가 통째로 섞인다 —
+    KOSPI 가 -3%, SPY 가 +1% 인 날 KR 종목의 -2% 는 SPY 기준 -3% alpha 지만
+    실제로는 시장 대비 +1% 다. 부호까지 뒤집히므로 KR 표본은 SPY 기준으로는
+    해석 불가다.
+
+    `benchmark_by_market` 이 없거나 시장이 미등재면 US 기준으로 폴백한다 —
+    조용히 틀린 값을 쓰는 게 아니라, 어느 쪽을 썼는지는 매 outcome row 의
+    `benchmark_ticker` 컬럼에 그대로 기록되므로 사후 판별이 된다.
+    """
+    by_market = (RULES.get("measurement_mode") or {}).get("benchmark_by_market") or {}
+    market = "kr" if is_kr_ticker(ticker) else "us"
+    return str(by_market.get(market) or DEFAULT_BENCHMARK_TICKER)
 
 
 def backfill_agent_decisions_from_recommendations() -> int:
@@ -318,8 +337,9 @@ class ForwardOutcomeTracker(Actor):
         # ─── 가격 조회 ───
         entry = self._fetch_close_on_or_before(ticker, as_of_date)
         exit_p = self._fetch_close_on_or_after(ticker, target_date)
-        bench_entry = self._fetch_close_on_or_before(DEFAULT_BENCHMARK_TICKER, as_of_date)
-        bench_exit = self._fetch_close_on_or_after(DEFAULT_BENCHMARK_TICKER, target_date)
+        benchmark = benchmark_for(ticker)
+        bench_entry = self._fetch_close_on_or_before(benchmark, as_of_date)
+        bench_exit = self._fetch_close_on_or_after(benchmark, target_date)
 
         if entry is None or exit_p is None:
             log_decision_outcome(
@@ -368,6 +388,7 @@ class ForwardOutcomeTracker(Actor):
             exit_price=exit_p,
             realized_return=realized,
             benchmark_return=bench_return,
+            benchmark_ticker=benchmark,
             alpha=alpha,
             hit_threshold=hit_threshold,
             hypothesis_validation=validation,
