@@ -1,7 +1,9 @@
 # pyright: reportArgumentType=false, reportCallIssue=false, reportAttributeAccessIssue=false, reportOperatorIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportOptionalOperand=false
 """매크로 분석 에이전트 — 시장 레짐 + 매크로 스코어 + 개별 종목 모멘텀 기반 판정."""
+
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.db import query_df
+from nuri.core.sectors import classify_sector
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
 _CFG = AGENT_CONFIG.get("macro", {})
@@ -56,13 +58,15 @@ class MacroAgent(BaseAgent):
 
         df = query_df(
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 20",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
         # prices에 없으면 yfinance에서 직접 가져오기 (스캐너 종목 대응)
         if df.empty or len(df) < 5:
             try:
                 import pandas as pd
                 import yfinance as yf
+
                 _df = yf.download(ticker, period="30d", progress=False)
                 if not _df.empty:
                     close_col = _df["Close"].squeeze() if hasattr(_df["Close"], "squeeze") else _df["Close"]
@@ -111,18 +115,22 @@ class MacroAgent(BaseAgent):
 
         # ── 3. 섹터 조정 ──
         sector_rows = self._safe_query(
-            "SELECT sector FROM portfolio WHERE ticker = ?", (ticker,), db_path,
+            "SELECT sector FROM portfolio WHERE ticker = ?",
+            (ticker,),
+            db_path,
         )
         sector = sector_rows[0]["sector"] if sector_rows else ""
         if trend == "bear" and sector:
-            from nuri.trading.recommend.rebalance import _classify_sector
-            if _classify_sector(sector) == "defensive":
+            if classify_sector(sector) == "defensive":
                 if action == "SELL":
                     action = "HOLD"
                     reason += "; 방어 섹터 → 매도 유보"
 
         return AgentVerdict(
-            self.name, ticker, action, round(self.normalize_confidence(confidence), 1), reason,
-            {"regime": regime.regime, "macro_score": macro_score,
-             "confidence_pct": regime.confidence},
+            self.name,
+            ticker,
+            action,
+            round(self.normalize_confidence(confidence), 1),
+            reason,
+            {"regime": regime.regime, "macro_score": macro_score, "confidence_pct": regime.confidence},
         )
