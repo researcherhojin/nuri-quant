@@ -14,51 +14,11 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from nuri.core.sectors import classify_sector
+
 logger = logging.getLogger(__name__)
 
 REPORT_DIR = Path(__file__).parent.parent.parent.parent / "data" / "reports"
-
-# 포트폴리오 sector 값 → 방어/공격 분류
-# portfolio.yaml의 sector 필드가 다양한 형태("Technology", "Finance", "AI/Cloud" 등)이므로
-# 키워드 포함 여부가 아닌 명시적 매핑 사용
-DEFENSIVE_SECTOR_KEYWORDS = {
-    "Staples",
-    "Utilities",
-    "Health",
-    "Real Estate",
-    "Insurance",
-    "Bond",
-    "Defense",
-    "Pharma",
-}
-GROWTH_SECTOR_KEYWORDS = {
-    "Technology",
-    "Tech",
-    "AI",
-    "Cloud",
-    "EV",
-    "Semiconductor",
-    "Software",
-    "Consumer Discretionary",
-    "Communication",
-    "Growth",
-    "Innovation",
-}
-
-
-def _classify_sector(sector: str) -> str:
-    """포트폴리오 sector 문자열을 defensive/growth/neutral로 분류."""
-    if not sector:
-        return "neutral"
-    upper = sector.upper()
-    for kw in DEFENSIVE_SECTOR_KEYWORDS:
-        if kw.upper() in upper:
-            return "defensive"
-    for kw in GROWTH_SECTOR_KEYWORDS:
-        if kw.upper() in upper:
-            return "growth"
-    return "neutral"
-
 
 # 레짐별 현금 비중
 CASH_TARGETS = {
@@ -152,7 +112,7 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
 
         # 섹터 틸트: 명시적 분류 기반 가점/감점
         if sector and position in ("defensive", "minimal"):
-            sector_type = _classify_sector(sector)
+            sector_type = classify_sector(sector)
             if sector_type == "defensive":
                 adj_w *= 1.1  # 방어 섹터 10% 가점
             elif sector_type == "growth":
