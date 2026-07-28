@@ -264,6 +264,49 @@ def test_write_brief_survives_sector_staging_error(seeded_db, portfolio_yaml):
     assert path.exists()
 
 
+def test_write_brief_stages_sleeve_breach_us_only(seeded_db, portfolio_yaml):
+    """Tier 1d wiring lock — §3.11 슬리브 초과도 US 세션에서만 stage (#834).
+
+    배선 제거 시 FAIL. `nuri/analysis/sleeve.py` 가 존재해도 여기 호출이 없으면
+    사용자는 상한 초과를 영영 못 본다 — 오늘 하루 반복해서 나온 "wired ≠ live" 패턴.
+    """
+    from unittest.mock import MagicMock
+
+    from nuri.alerts.postmarket_brief import write_brief
+
+    sleeve_spy = MagicMock(return_value=0)
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+        patch("nuri.alerts.portfolio_signals.stage_concentration_briefs", MagicMock(return_value=0)),
+        patch("nuri.alerts.portfolio_signals.stage_sector_briefs", MagicMock(return_value=0)),
+        patch("nuri.alerts.portfolio_signals.stage_sleeve_briefs", sleeve_spy),
+    ):
+        write_brief("us", date="2026-05-01")
+        write_brief("kr", date="2026-05-01")
+
+    sleeve_spy.assert_called_once()
+    assert sleeve_spy.call_args[0][0] == "2026-05-01"
+
+
+def test_write_brief_survives_sleeve_staging_error(seeded_db, portfolio_yaml):
+    """슬리브 staging 이 raise 해도 write_brief 는 정상 반환 (독립 best-effort)."""
+    from unittest.mock import MagicMock
+
+    from nuri.alerts.postmarket_brief import write_brief
+
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+        patch("nuri.alerts.portfolio_signals.stage_concentration_briefs", MagicMock(return_value=0)),
+        patch("nuri.alerts.portfolio_signals.stage_sector_briefs", MagicMock(return_value=0)),
+        patch("nuri.alerts.portfolio_signals.stage_sleeve_briefs", side_effect=RuntimeError("boom")),
+    ):
+        path = write_brief("us", date="2026-05-01")  # 예외 전파 안 함
+
+    assert path.exists()
+
+
 def test_us_session_dst_aware_cron_dispatch():
     """NYSE 16:30 ET window — EDT (KST 05:30) / EST (KST 06:30) 양쪽 검증.
 

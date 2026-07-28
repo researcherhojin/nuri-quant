@@ -1467,4 +1467,41 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
     """,
     ),
+    (
+        47,
+        "execution_blocks block_type enum 확장 — sleeve_cap (#834)",
+        # §3.11 실험 슬리브 상한(rules.yaml measurement_mode.sleeve_max_equity_pct)이
+        # ExecutionFirewall 의 hard block 으로 승격된다. block_type CHECK 에 없으면
+        # log_execution_block 이 IntegrityError 로 죽어 firewall 자체가 무너지므로
+        # 게이트 코드보다 이 migration 이 먼저다. migration 45/46 과 동일 재생성 패턴.
+        """
+        CREATE TABLE execution_blocks_new (
+            block_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            decision_id TEXT NOT NULL,
+            block_type TEXT NOT NULL CHECK(block_type IN (
+                'vix_too_high','banned_leverage_etf','position_cap',
+                'sector_concentration','cash_reserve','leverage_cap','max_daily_loss',
+                'sleeve_cap'
+            )),
+            severity TEXT NOT NULL CHECK(severity IN ('hard','soft')),
+            block_reason TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            run_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (decision_id) REFERENCES agent_decisions(decision_id)
+        );
+        INSERT INTO execution_blocks_new
+            (block_id, decision_id, block_type, severity, block_reason,
+             evidence_json, run_id, created_at)
+            SELECT block_id, decision_id, block_type, severity, block_reason,
+                   evidence_json, run_id, created_at
+              FROM execution_blocks;
+        DROP TABLE execution_blocks;
+        ALTER TABLE execution_blocks_new RENAME TO execution_blocks;
+        CREATE INDEX IF NOT EXISTS idx_blocks_decision ON execution_blocks(decision_id);
+        CREATE INDEX IF NOT EXISTS idx_blocks_type ON execution_blocks(block_type, created_at);
+        CREATE INDEX IF NOT EXISTS idx_blocks_severity ON execution_blocks(severity, created_at);
+        CREATE INDEX IF NOT EXISTS idx_blocks_run ON execution_blocks(run_id);
+    """,
+    ),
 ]
