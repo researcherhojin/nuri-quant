@@ -32,6 +32,8 @@ from .audit import (  # noqa: F401, E402
 )
 from .connection import (  # noqa: F401 — facade re-exports for back-compat
     DB_PATH,
+    DatabaseError,
+    OperationalError,
     _apply_migrations,
     get_connection,
     get_db,

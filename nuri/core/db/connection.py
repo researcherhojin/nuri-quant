@@ -19,6 +19,14 @@ from nuri.core.db_migrations import _MIGRATIONS, _SCHEMA, _SCHEMA_VERSION_TABLE
 # Repo root: nuri/core/db/connection.py → parents[3] = repo root
 DB_PATH = Path(__file__).parent.parent.parent.parent / "data" / "portfolio.db"
 
+# DB 예외 타입 re-export — 호출자가 `import sqlite3` 없이 DB 오류를 잡게 한다.
+# 이게 없으면 "DB 잠김/스키마 없음만 좁게 잡고 싶다"는 정당한 요구가 곧바로
+# sole-importer 규칙 위반으로 이어진다 (certification.py 가 실제로 그랬다 — 연결은
+# 안 열고 `except sqlite3.OperationalError` 하나 때문에 sqlite3 를 import 하고 있었다).
+# 대안이 `except Exception` 이면 진짜 버그까지 삼키므로 더 나쁘다.
+OperationalError = sqlite3.OperationalError
+DatabaseError = sqlite3.DatabaseError
+
 
 def _resolve_db_path(db_path: Optional[Path]) -> Path:
     """Lookup default DB_PATH from facade (nuri.core.db) so test monkeypatch
