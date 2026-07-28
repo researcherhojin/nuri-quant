@@ -259,6 +259,49 @@ class TestSchedulerWiring:
             scheduler._run_alpha_report()
         staged.assert_called_once_with()
 
+    def test_heartbeat_written_on_every_path(self, caplog):
+        """발화/미발화/예외 **모두** `alpha_report_run` heartbeat 1행을 남긴다 (#894).
+
+        Gotcha-Test Pair: heartbeat 가 없으면 '이번 달 이미 발화(정상)' 와
+        'NURI_ROLE 누락(고장, 판정일까지 영영 안 나감)' 이 관측상 동일해진다.
+        `emit_event` 호출을 지우면 세 케이스 모두 FAIL.
+        """
+        from nuri import scheduler
+
+        cases = {
+            "staged": (11, None),
+            "skipped": (None, None),
+            "raised": (None, RuntimeError("boom")),
+        }
+        for label, (ret, exc) in cases.items():
+            kw = {"side_effect": exc} if exc else {"return_value": ret}
+            with (
+                patch("nuri.alerts.alpha_report.stage_alpha_progress_brief", **kw),
+                patch("nuri.alerts.alpha_report.already_emitted", return_value=False),
+                patch("nuri.core.events.emit_event") as emitted,
+            ):
+                scheduler._run_alpha_report()
+            assert emitted.call_count == 1, f"{label}: heartbeat 누락"
+            assert emitted.call_args.args[0] == "alpha_report_run"
+            payload = emitted.call_args.kwargs["payload"]
+            assert payload["staged"] is (ret is not None), label
+            assert (payload["error"] is not None) is (exc is not None), label
+
+    def test_heartbeat_records_role_state_for_the_detector(self):
+        """`role_ok` 가 payload 에 들어가야 detector 가 설정 오류를 지목할 수 있다."""
+        from nuri import scheduler
+
+        with (
+            patch("nuri.alerts.alpha_report.is_production", return_value=False),
+            patch("nuri.alerts.alpha_report.stage_alpha_progress_brief", return_value=None),
+            patch("nuri.alerts.alpha_report.already_emitted", return_value=False),
+            patch("nuri.core.events.emit_event") as emitted,
+        ):
+            scheduler._run_alpha_report()
+        payload = emitted.call_args.kwargs["payload"]
+        assert payload["role_ok"] is False
+        assert payload["staged"] is False
+
     def test_wrapper_absorbs_failure(self, caplog):
         """한 job 실패가 스케줄러를 죽이면 안 된다 (다른 _run_* 와 동일 계약)."""
         import logging
