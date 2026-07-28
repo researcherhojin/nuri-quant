@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -20,8 +21,23 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "verify" / "check_orphan_imports.py"
 
-sys.path.insert(0, str(SCRIPT.parent))
-import check_orphan_imports as coi  # noqa: E402
+
+def _load_script_module():
+    """`scripts/verify/` 는 패키지가 아니라 일반 import 로 못 가져온다.
+
+    `sys.path.insert` + 평범한 import 로도 pytest 에선 동작하지만, 정적 분석기가
+    경로 조작을 따라가지 못해 unresolved-import 로 표시한다(Pylance
+    reportMissingImports). spec 로 명시 로드하면 런타임 동작은 같고 그 오탐이 사라진다.
+    """
+    spec = importlib.util.spec_from_file_location("check_orphan_imports", SCRIPT)
+    assert spec and spec.loader, f"로드 실패: {SCRIPT}"
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+coi = _load_script_module()
 
 
 class TestResolution:
