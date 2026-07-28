@@ -316,7 +316,13 @@ def _run_alpha_report():
 
         role_ok = is_production()
         # stage **이전** 상태를 찍어야 skip 사유가 구분된다 (stage 후엔 항상 True).
-        already = already_emitted(month)
+        # ⚠️ 자체 try — 이건 관측용 부가 정보다. 여기서 실패했다고 본 작업(stage)까지
+        # 막으면 observability 가 관측 대상을 죽인다. DB 가 없는 CI 에서 실제로 그랬고,
+        # 프로덕션에서도 일시적 DB 잠금이 리포트를 통째로 건너뛰게 만들 수 있었다.
+        try:
+            already = already_emitted(month)
+        except Exception:  # noqa: BLE001 — 관측 실패는 본 작업과 무관
+            already = None
         outbox_id = stage_alpha_progress_brief()
         logger.info(f"[alpha_report] staged={outbox_id is not None} (id={outbox_id})")
     except Exception as e:
