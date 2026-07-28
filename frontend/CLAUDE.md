@@ -59,6 +59,27 @@ This shipped: production ran an Apr-13 build for 3.5 months (108 `frontend/` com
 
 **Never build absolute request URLs in `"use client"` code.** `API_BASE` is the build-time-inlined `NEXT_PUBLIC_API_URL` — a *server-side* address. A Server Component resolves it on the API host and it works; a browser resolves it on the *visitor's* machine and it dies. Client code uses relative paths so the `rewrites()` proxy forwards server-side. `next build` and jsdom both miss this (valid template string; jsdom stubs `EventSource`). **Test:** `src/__tests__/lib/client-absolute-url-guard.test.ts::"use client" modules never build request URLs from API_BASE` (scans every `"use client"` module's source text).
 
+## `overrides` are load-bearing — `npm audit fix` will break lint
+
+`package.json` has no comment syntax, so the reasoning lives here.
+
+`overrides.eslint = { "minimatch": ">=10.2.5" }` is **not** cosmetic. The blanket
+`overrides["brace-expansion"] = ">=5.0.8"` (GHSA-mh99-v99m-4gvg) is incompatible with
+the `minimatch@3` that eslint 9 ships — v5 changed the export shape, so eslint dies at
+startup with `TypeError: expand is not a function` and lints **zero** files. The advisory
+range (`<=5.0.7`) covers the entire 1.x line by semver, so there is no v1 pin that both
+satisfies the advisory and keeps eslint alive. Forcing minimatch ≥10 into eslint's subtree
+is what makes both true at once.
+
+Two things that do **not** work, already tried (#913):
+- scoping `brace-expansion` to `>=1.1.16 <2` under eslint — lint runs, but the alert stays open forever
+- upgrading to eslint 10 — `eslint-config-next`'s plugins cap their peer range at `^9`, and lint fails there too
+
+Symptom if someone drops it: eslint prints `Oops! Something went wrong!` with a
+`brace-expansion` stack trace and lints **nothing**. `npm run lint` is silent on success, so
+confirm by file count rather than by absence of output — `npx eslint --format json | jq length`
+should be **212**.
+
 ## Testing Gotchas
 
 - **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control.
