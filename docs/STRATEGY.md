@@ -245,7 +245,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,424 tests, 285 files (statement coverage **99.88%** — 28/22,539 미커버, 2026-07-28) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,433 tests, 286 files (statement coverage **99.88%** — 28/22,539 미커버, 2026-07-28) |
 | Frontend tests | 목표 ≥ 90% | 1449 tests, 127 files |
 | E2E | 핵심 flow | 57 Playwright (8 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
