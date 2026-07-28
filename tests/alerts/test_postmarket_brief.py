@@ -731,6 +731,30 @@ def test_write_brief_postmortem_failure_does_not_break_brief(seeded_db, portfoli
     assert path.exists()  # markdown still written
 
 
+def test_write_brief_survives_stop_breach_staging_failure(seeded_db, portfolio_yaml, monkeypatch):
+    """손절 신호 staging 이 죽어도 브리프 자체는 나가야 한다.
+
+    Tier 1a 는 브리프에 얹는 **부가** 신호다. 여기서 예외가 새면 손절 신호 하나
+    때문에 그날 브리프가 통째로 사라진다 — 신호를 잃는 것과 브리프를 잃는 것은
+    피해 규모가 다르다.
+
+    Gotcha-Test Pair: 이 try/except 를 지우면 예외가 새어 FAIL.
+    """
+    import nuri.alerts.risk_signals as rs
+    from nuri.alerts.postmarket_brief import write_brief
+
+    def _boom(*a, **kw):
+        raise RuntimeError("simulated staging failure")
+
+    monkeypatch.setattr(rs, "stage_stop_breach_briefs", _boom)
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+    ):
+        path = write_brief("us", date="2026-05-01")
+    assert path.exists(), "부가 신호 실패가 브리프를 통째로 죽였다"
+
+
 # ─── _load_5d helpers — empty / coerce-error / zero-divisor branches ─────
 
 

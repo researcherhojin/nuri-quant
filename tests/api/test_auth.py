@@ -166,3 +166,48 @@ class TestAuth:
 
         assert _constant_time_compare("abc", "abc")
         assert not _constant_time_compare("abc", "def")
+
+
+class TestSecretKeyStartupWarning:
+    """`API_SECRET_KEY` 부재는 import 시점에 경고로 표면화된다 (`nuri/api/main.py`).
+
+    이 키는 JWT 서명 키다. 없으면 재시작마다 발급된 토큰이 전부 무효화되는데,
+    증상은 "가끔 로그아웃됨" 이라 원인까지 도달하기 어렵다. 경고 한 줄이 그
+    거리를 없앤다 — 그러니 그 한 줄이 실제로 나오는지 확인한다.
+    """
+
+    def _exec_main_fresh(self, env: dict, caplog):
+        """`nuri/api/main.py` 를 **다른 모듈 이름으로** 새로 실행한다.
+
+        `importlib.reload` 를 쓰면 `sys.modules["nuri.api.main"]` 의 app 객체가
+        교체돼 같은 워커의 다른 테스트가 옛 app 을 들고 있게 된다. 별칭으로 로드하면
+        모듈 본문(=검사 대상)은 그대로 실행되면서 캐시는 건드리지 않는다.
+        `load_dotenv` 는 no-op 으로 막는다 — 안 그러면 개발 머신의 `.env` 가 방금
+        지운 키를 되살려 로컬에서만 통과한다.
+        """
+        import importlib.util
+        import logging
+
+        import dotenv
+
+        path = Path(__file__).resolve().parents[2] / "nuri" / "api" / "main.py"
+        spec = importlib.util.spec_from_file_location("nuri_api_main_probe", path)
+        module = importlib.util.module_from_spec(spec)
+        with (
+            patch.dict("os.environ", env, clear=False),
+            patch.object(dotenv, "load_dotenv", lambda *a, **kw: False),
+            caplog.at_level(logging.WARNING, logger="nuri.api"),
+        ):
+            spec.loader.exec_module(module)
+        assert hasattr(module, "app"), "모듈 본문이 끝까지 실행되지 않음 — 아래 assert 가 공허해진다"
+        return caplog.text
+
+    def test_warns_when_secret_key_is_absent(self, caplog, monkeypatch):
+        monkeypatch.delenv("API_SECRET_KEY", raising=False)
+        text = self._exec_main_fresh({}, caplog)
+        assert "API_SECRET_KEY" in text
+        assert "JWT" in text
+
+    def test_silent_when_secret_key_is_set(self, caplog):
+        text = self._exec_main_fresh({"API_SECRET_KEY": "x" * 32}, caplog)
+        assert "API_SECRET_KEY 미설정" not in text
