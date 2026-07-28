@@ -785,6 +785,44 @@ class TestSchedulerDecisions:
             _run_collector("agent_accuracy")
         mock_fn.assert_called_once()
 
+    def test_run_collector_recommendation_outcomes(self):
+        """_run_collector dispatches to tracker.track_outcomes (#899)."""
+        from nuri.scheduler import _run_collector
+
+        with patch("nuri.trading.recommend.tracker.track_outcomes", return_value=12) as mock_fn:
+            _run_collector("recommendation_outcomes")
+        mock_fn.assert_called_once_with()
+
+    def test_recommendation_outcomes_runs_before_consensus(self):
+        """`recommendation_outcomes` 는 반드시 `consensus` **보다 먼저** 돈다.
+
+        Gotcha-Test Pair: consensus 의 learning_memory 가 `recommendations.outcome_30d`
+        (canonical) / `outcome_21d` (provisional) 를 읽어 에이전트 가중치를 만든다.
+        순서가 뒤집히면 매일 하루 묵은 outcome 으로 가중치를 계산하게 되는데, 값이
+        그럴듯해서 **틀린 걸 알아차릴 방법이 없다**. 순서 자체가 계약이라 잠근다.
+
+        원 결함(#899)은 이 job 이 `make recommend` CLI 에만 있고 SCHEDULES 에는 아예
+        없어서, 프로덕션 outcome_* 1,170행이 전부 NULL → 가중치가 DEFAULT 로 영구
+        고정된 것이었다. dev 는 사람이 CLI 를 돌려 채워지므로 정상으로 보였다.
+        """
+        from nuri.scheduler import SCHEDULES
+
+        jobs = {j["name"]: j for j in SCHEDULES}
+        assert "recommendation_outcomes" in jobs, "SCHEDULES 에 recommendation_outcomes 미등록"
+
+        def _minute_of_day(cron: str) -> int:
+            minute, hour = cron.split()[0], cron.split()[1]
+            return int(hour) * 60 + int(minute)
+
+        outcomes_at = _minute_of_day(jobs["recommendation_outcomes"]["cron"])
+        consensus_at = _minute_of_day(jobs["consensus"]["cron"])
+        assert outcomes_at < consensus_at, (
+            f"recommendation_outcomes({jobs['recommendation_outcomes']['cron']}) 가 "
+            f"consensus({jobs['consensus']['cron']}) 보다 먼저 돌아야 한다"
+        )
+        # 미국 종가가 들어온 뒤여야 한다 — stock_us_dawn 은 06:59 에 끝난다.
+        assert outcomes_at >= 7 * 60, "미국 종가 수집(00~06:59) 완료 후여야 함"
+
     def test_run_collector_consensus(self):
         """_run_collector dispatches to analyze_portfolio + save_to_recommendations + record_decisions.
 
