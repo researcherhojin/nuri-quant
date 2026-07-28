@@ -786,7 +786,7 @@ class TestSchedulerDecisions:
         mock_fn.assert_called_once()
 
     def test_run_collector_consensus(self):
-        """_run_collector dispatches to analyze_portfolio + save_to_recommendations.
+        """_run_collector dispatches to analyze_portfolio + save_to_recommendations + record_decisions.
 
         Phase 2 A-1a 의 read path fix 가 의미 있으려면 input 이 꾸준히 쌓여야 함 —
         이 job 이 매일 07:05 에 agent_verdicts 를 recommendations 테이블에 저장.
@@ -794,13 +794,86 @@ class TestSchedulerDecisions:
         """
         from nuri.scheduler import _run_collector
 
+        # 비어있지 않은 sentinel — `return_value=[]` 로 두면 `record_decisions([])`,
+        # `record_decisions(saved)` 같은 인자 변이가 전부 green 으로 통과한다.
+        # `saved` 는 바로 윗줄 변수라 실제로 있을 법한 오타이고, 그 경우 production
+        # 에서 `for r in 0` → TypeError 를 blanket except 가 삼켜 #897 과 **같은
+        # 방식**으로 다시 동결된다. 그래서 호출 여부가 아니라 payload 를 잠근다.
+        results = [object()]
         with (
-            patch("nuri.trading.agents.consensus.analyze_portfolio", return_value=[]) as m_analyze,
+            patch("nuri.trading.agents.consensus.analyze_portfolio", return_value=results) as m_analyze,
             patch("nuri.trading.agents.consensus.save_to_recommendations", return_value=0) as m_save,
+            patch("nuri.trading.engine.decisions.record_decisions", return_value=0) as m_record,
         ):
             _run_collector("consensus")
         m_analyze.assert_called_once()
-        m_save.assert_called_once()
+        m_save.assert_called_once_with(results)
+        m_record.assert_called_once_with(results)
+
+    def test_scheduler_and_cli_persist_to_the_same_tables(self):
+        """자동(scheduler) 경로와 수동(CLI) 경로가 **같은 테이블 집합**에 쓴다.
+
+        Gotcha-Test Pair (§5.3.1): PR #363 이 consensus 를 스케줄러로 자동화하면서
+        CLI 에만 있던 `record_decisions()` 를 빠뜨렸다. 마지막 수동 실행(2026-04-14)
+        이후 3.5 개월간 `decisions` 가 80 행에 동결됐고 /decisions 대시보드는 계속
+        4 월 데이터를 서빙했다 — 헬스 지표는 전부 초록 (#897).
+
+        위 `test_run_collector_consensus` 는 당시 두 함수만 단언해서 **불완전한
+        동작을 lock-in** 했다. 그래서 개별 호출이 아니라 두 경로의 **동등성**을
+        잠근다. 어느 한쪽에서 persistence 를 빼면 집합이 갈라지며 fail.
+
+        기록하는 값은 호출 여부가 아니라 **전달된 payload** 다 — 호출 여부만 보면
+        `record_decisions(saved)` 같은 인자 변이가 통과해버린다 (production 에서는
+        TypeError 가 blanket except 에 삼켜져 같은 동결로 되돌아간다).
+        """
+        from nuri.scheduler import _run_collector
+        from nuri.trading.agents.consensus import __main__ as cli
+
+        results = [object()]
+
+        # CLI 는 `from . import analyze_portfolio` 로 이름을 미리 바인딩하므로
+        # 패키지 속성 patch 가 안 먹는다 → 모듈 속성을 직접 patch (tests/CLAUDE.md mock 함정).
+        def _scheduler_path() -> dict[str, object]:
+            seen: dict[str, object] = {}
+            with (
+                patch("nuri.trading.agents.consensus.analyze_portfolio", return_value=results),
+                patch(
+                    "nuri.trading.agents.consensus.save_to_recommendations",
+                    side_effect=lambda r, *a, **k: seen.__setitem__("recommendations", r) or 0,
+                ),
+                patch(
+                    "nuri.trading.engine.decisions.record_decisions",
+                    side_effect=lambda r, *a, **k: seen.__setitem__("decisions", r) or 0,
+                ),
+            ):
+                _run_collector("consensus")
+            return seen
+
+        def _cli_path() -> dict[str, object]:
+            seen: dict[str, object] = {}
+            with (
+                patch.object(cli, "analyze_portfolio", return_value=results),
+                patch.object(cli, "print_consensus"),
+                patch.object(
+                    cli,
+                    "save_to_recommendations",
+                    side_effect=lambda r, *a, **k: seen.__setitem__("recommendations", r) or 0,
+                ),
+                patch(
+                    "nuri.trading.engine.decisions.record_decisions",
+                    side_effect=lambda r, *a, **k: seen.__setitem__("decisions", r) or 0,
+                ),
+                patch("sys.argv", ["consensus"]),
+            ):
+                cli.main()
+            return seen
+
+        scheduler_writes, cli_writes = _scheduler_path(), _cli_path()
+        assert scheduler_writes == cli_writes, (
+            f"자동/수동 경로 persistence 불일치 — scheduler={sorted(scheduler_writes)} cli={sorted(cli_writes)}"
+        )
+        # 두 경로 모두 두 테이블에 **consensus 결과 그 자체**를 전달해야 한다.
+        assert scheduler_writes == {"recommendations": results, "decisions": results}
 
     def test_schedules_include_consensus_job(self):
         """SCHEDULES 리스트에 consensus job entry 존재 — cron 스펙 lock-in."""
