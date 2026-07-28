@@ -84,11 +84,11 @@ class TestGetTimeline:
         """타임라인이 최신순으로 정렬."""
         emit_event("step_started", "collect", db_path=db_path)
         emit_event("step_completed", "collect", db_path=db_path)
-        emit_event("step_started", "validate", db_path=db_path)
+        emit_event("step_started", "analyze", db_path=db_path)
         timeline = get_timeline(db_path=db_path)
         assert len(timeline) == 3
         # ID 기준 내림차순 (최신이 먼저)
-        assert timeline[0]["step"] == "validate"
+        assert timeline[0]["step"] == "analyze"
         assert timeline[1]["step"] == "collect"
         assert timeline[1]["event_type"] == "step_completed"
 
@@ -102,7 +102,7 @@ class TestGetTimeline:
     def test_timeline_filter_by_step(self, db_path):
         """step 필터링 작동."""
         emit_event("step_started", "collect", db_path=db_path)
-        emit_event("step_started", "validate", db_path=db_path)
+        emit_event("step_started", "analyze", db_path=db_path)
         emit_event("step_completed", "collect", db_path=db_path)
         timeline = get_timeline(step="collect", db_path=db_path)
         assert len(timeline) == 2
@@ -155,21 +155,21 @@ class TestGetStepStatus:
 
 
 class TestGetPipelineStatus:
-    def test_all_six_steps(self, db_path):
-        """6개 스텝 전체 상태 반환."""
+    def test_all_five_stages(self, db_path):
+        """5개 스테이지 전체 상태 반환 (#921 — 예전 6-step 어휘 폐기)."""
         status = get_pipeline_status(db_path)
-        assert len(status) == 6
-        expected_steps = {"collect", "validate", "classify", "diagnose", "recommend", "track"}
+        assert len(status) == 5
+        expected_steps = {"collect", "analyze", "consensus", "certify", "track"}
         assert set(status.keys()) == expected_steps
 
     def test_mixed_states(self, db_path):
         """각 스텝별 상태가 독립적."""
         emit_event("step_completed", "collect", db_path=db_path)
-        emit_event("step_failed", "validate", db_path=db_path)
+        emit_event("step_failed", "analyze", db_path=db_path)
         status = get_pipeline_status(db_path)
         assert status["collect"]["status"] == "completed"
-        assert status["validate"]["status"] == "failed"
-        assert status["classify"]["status"] == "unknown"
+        assert status["analyze"]["status"] == "failed"
+        assert status["consensus"]["status"] == "unknown"
 
 
 # ═══════════════════════════════════════════════════════
@@ -313,45 +313,43 @@ class TestCheckDependencies:
         assert result["ready"] is True
         assert result["missing"] == []
 
-    def test_validate_needs_collect(self, db_path):
-        """validate는 collect 완료 필요."""
-        result = check_dependencies("validate", db_path)
+    def test_analyze_needs_collect(self, db_path):
+        """analyze 는 collect 완료 필요."""
+        result = check_dependencies("analyze", db_path)
         assert result["ready"] is False
-        assert "collect" in result["missing"]
+        assert result["missing"] == ["collect"]
 
-    def test_validate_ready_after_collect(self, db_path):
-        """collect 완료 후 validate가 ready."""
+    def test_analyze_ready_after_collect(self, db_path):
+        """collect 완료 후 analyze 가 ready."""
         emit_event("step_completed", "collect", db_path=db_path)
-        result = check_dependencies("validate", db_path)
+        result = check_dependencies("analyze", db_path)
         assert result["ready"] is True
         assert result["missing"] == []
 
-    def test_diagnose_needs_three(self, db_path):
-        """diagnose는 collect + validate + classify 필요."""
-        result = check_dependencies("diagnose", db_path)
+    def test_certify_needs_consensus(self, db_path):
+        """certify 는 consensus 완료 필요 — 결정 기록은 합의 결과를 받는다."""
+        result = check_dependencies("certify", db_path)
         assert result["ready"] is False
-        assert set(result["missing"]) == {"collect", "validate", "classify"}
+        assert result["missing"] == ["consensus"]
 
-    def test_diagnose_partially_ready(self, db_path):
-        """일부 의존성만 충족 → 여전히 blocked."""
+    def test_track_needs_consensus(self, db_path):
+        """track 은 consensus 완료 필요 — 추적 대상이 추천이다."""
         emit_event("step_completed", "collect", db_path=db_path)
-        emit_event("step_completed", "validate", db_path=db_path)
-        result = check_dependencies("diagnose", db_path)
+        result = check_dependencies("track", db_path)
         assert result["ready"] is False
-        assert result["missing"] == ["classify"]
+        assert result["missing"] == ["consensus"]
 
-    def test_diagnose_fully_ready(self, db_path):
-        """모든 의존성 충족 → ready."""
-        emit_event("step_completed", "collect", db_path=db_path)
-        emit_event("step_completed", "validate", db_path=db_path)
-        emit_event("step_completed", "classify", db_path=db_path)
-        result = check_dependencies("diagnose", db_path)
+    def test_certify_fully_ready(self, db_path):
+        """consensus 완료 후 certify 가 ready."""
+        emit_event("step_completed", "consensus", db_path=db_path)
+        result = check_dependencies("certify", db_path)
         assert result["ready"] is True
+        assert result["missing"] == []
 
     def test_failed_dep_not_ready(self, db_path):
         """의존성이 failed면 ready 아님."""
         emit_event("step_failed", "collect", db_path=db_path)
-        result = check_dependencies("validate", db_path)
+        result = check_dependencies("analyze", db_path)
         assert result["ready"] is False
         assert "collect" in result["missing"]
 
@@ -411,7 +409,7 @@ class TestRunStep:
         def my_func():
             return "should not run"
 
-        result = run_step("validate", my_func, db_path=db_path)
+        result = run_step("analyze", my_func, db_path=db_path)
         assert result["status"] == "blocked"
         assert "collect" in result["missing"]
 

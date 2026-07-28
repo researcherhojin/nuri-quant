@@ -158,7 +158,7 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-6,439 backend tests across 287 files + 1449 frontend vitest (127 files) + 57 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99.88% (2026-07-28)** — 28 of 22,539 statements uncovered across 9 files, per the Codecov `backend` flag. Full closure held on 2026-05-06 and regressed after; `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth, not a local run.
+6,454 backend tests across 288 files + 1449 frontend vitest (127 files) + 57 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99.88% (2026-07-28)** — 28 of 22,539 statements uncovered across 9 files, per the Codecov `backend` flag. Full closure held on 2026-05-06 and regressed after; `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth, not a local run.
 **Slow marker**: 24 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
 @pytest.fixture
 def db_path(tmp_path):

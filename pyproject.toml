@@ -1,7 +1,7 @@
 [project]
 name = "nuri-quant"
 version = "0.2.0"
-description = "Open-source quant investment platform — Collect, Validate, Classify, Diagnose, Recommend, Track"
+description = "Open-source quant investment platform — Collect, Analyze, Consensus, Certify, Track"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12"

@@ -93,161 +93,213 @@ _configure_logging()
 logger = logging.getLogger("nuri.scheduler")
 
 
+# 잡 이름 → 파이프라인 스테이지 (#921).
+# 여기 없는 잡은 스테이지에 속하지 않으며 lifecycle 이벤트를 남기지 않는다 —
+# 브리프·디스패처·백업 같은 운영 잡이 그렇다.
+_STAGE_OF_JOB = {
+    # collect — 25개 수집 잡이 전부 이 스테이지다
+    "stock": "collect",
+    "stock_kr": "collect",
+    "macro": "collect",
+    "technical": "collect",
+    "fear_greed": "collect",
+    "ark": "collect",
+    "events": "collect",
+    "cboe": "collect",
+    "coingecko": "collect",
+    "reddit": "collect",
+    "fred_calendar": "collect",
+    "institutional": "collect",
+    "finviz": "collect",
+    "news": "collect",
+    "macro_news": "collect",
+    "fundamental": "collect",
+    "kis_analyst_opinion": "collect",
+    "superinvestors": "collect",
+    "estimates": "collect",
+    "etf_flows": "collect",
+    "wallstreet": "collect",
+    # consensus — 하나뿐이며, 그 안에서 certify(record_decisions)까지 in-memory 로 이어진다
+    "consensus": "consensus",
+    # track
+    "decision_pnl": "track",
+    "recommendation_outcomes": "track",
+    "alpha_tracking": "track",
+    "agent_accuracy": "track",
+}
+
+
+def _dispatch_collector(name: str, **kwargs):
+    """잡 이름 → 실제 실행. 예외를 잡지 않는다 (호출자가 처리)."""
+    if name == "stock":
+        from nuri.collectors.stock import StockCollector
+
+        StockCollector().run(**kwargs)
+    elif name == "stock_kr":
+        from nuri.collectors.stock_kr import StockKRCollector
+
+        StockKRCollector().run(**kwargs)
+    elif name == "macro":
+        from nuri.collectors.macro import MacroCollector
+
+        MacroCollector().run()
+    elif name == "technical":
+        from nuri.collectors.technical import TechnicalCollector
+
+        TechnicalCollector().run()
+    elif name == "fear_greed":
+        from nuri.collectors.fear_greed import FearGreedCollector
+
+        FearGreedCollector().run()
+    elif name == "ark":
+        from nuri.collectors.ark import ARKCollector
+
+        ARKCollector().run()
+    elif name == "events":
+        from nuri.collectors.events import EventsCollector
+
+        EventsCollector().run()
+    elif name == "news":
+        from nuri.collectors.news import NewsCollector
+
+        NewsCollector().run()
+    elif name == "macro_news":
+        from nuri.collectors.macro_news import MacroNewsCollector
+
+        MacroNewsCollector().run()
+    elif name == "fundamental":
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        FundamentalCollector().run()
+    elif name == "cboe":
+        from nuri.collectors.cboe import CBOECollector
+
+        CBOECollector().run()
+    elif name == "coingecko":
+        from nuri.collectors.coingecko import CoinGeckoCollector
+
+        CoinGeckoCollector().run()
+    elif name == "reddit":
+        from nuri.collectors.reddit import RedditCollector
+
+        RedditCollector().run()
+    elif name == "fred_calendar":
+        from nuri.collectors.fred_calendar import FREDCalendarCollector
+
+        FREDCalendarCollector().run()
+    elif name == "institutional":
+        from nuri.collectors.institutional import InstitutionalCollector
+
+        InstitutionalCollector().run()
+    elif name == "finviz":
+        from nuri.collectors.finviz import FINVIZCollector
+
+        FINVIZCollector().run()
+    elif name == "kis_analyst_opinion":
+        from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
+
+        KISAnalystOpinionCollector().run()
+    elif name == "superinvestors":
+        from nuri.collectors.superinvestors import SuperinvestorCollector
+
+        SuperinvestorCollector().run()
+    elif name == "estimates":
+        from nuri.collectors.estimates import EstimatesCollector
+
+        EstimatesCollector().run(**kwargs)
+    elif name == "etf_flows":
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        EtfFlowsCollector().run()
+    elif name == "wallstreet":
+        from nuri.collectors.wallstreet import WallStreetCollector
+
+        WallStreetCollector().run()
+    elif name == "memory_snapshot":
+        from nuri.trading.engine.memory import save_snapshot
+
+        n = save_snapshot()
+        logger.info(f"[memory_snapshot] {n}건 저장")
+    elif name == "decision_pnl":
+        # decisions 테이블의 7/30/60/90d raw P&L 갱신.
+        # NOTE: decision_outcomes(alpha) 테이블이 아님 — alpha 는 아래 alpha_tracking job.
+        from nuri.trading.engine.decisions import track_decision_outcomes
+
+        n = track_decision_outcomes()
+        logger.info(f"[decision_pnl] {n}건 업데이트")
+    elif name == "recommendation_outcomes":
+        # recommendations 테이블의 7/14/21/30/60/90d forward return 갱신.
+        # NOTE: decisions 테이블이 아님 — 그쪽은 바로 위 decision_pnl.
+        #
+        # 이 호출은 `make recommend` CLI(tracker.main) 에만 있었다. 스케줄러에는
+        # 없어서 프로덕션 `recommendations.outcome_*` 1,170행이 **전부 NULL** 이었고
+        # (창이 닫힌 550행 포함), learning_memory 의 canonical(outcome_30d) /
+        # provisional(outcome_21d) 가중치가 표본 0 으로 DEFAULT_WEIGHTS 에 영구
+        # 고정돼 있었다. dev 에서는 사람이 `make recommend` 를 돌려 채워지므로
+        # 학습이 도는 것처럼 보였다 — 그게 3.5개월 안 들킨 이유다 (#899).
+        from nuri.trading.recommend.tracker import track_outcomes
+
+        n = track_outcomes()
+        logger.info(f"[recommendation_outcomes] {n}건 업데이트")
+    elif name == "alpha_tracking":
+        # ForwardOutcomeTracker: emit 된 추천 vs SPY benchmark → realized alpha 를
+        # decision_outcomes 테이블에 기록 (recommendations → agent_decisions 백필 포함).
+        # canonical scheduler 경로 — 과거 launchd track-forward.plist 를 흡수(이제 redundant).
+        from nuri.agents.actors.forward_outcome_tracker import ForwardOutcomeTracker
+
+        res = ForwardOutcomeTracker().run({"action": "scan", "max_decisions": 2000})
+        out = res.output if isinstance(res.output, dict) else {}
+        logger.info(
+            f"[alpha_tracking] synced={out.get('synced_from_recommendations', 0)} "
+            f"measured={out.get('n_measurements', 0)}"
+        )
+    elif name == "agent_accuracy":
+        from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
+
+        n = save_agent_accuracy_snapshot()
+        logger.info(f"[agent_accuracy] {n}건 저장")
+    elif name == "consensus":
+        # 10-agent 합의 결과를 recommendations 에 저장 → Learning Memory 자동 학습 input.
+        # decision_outcomes 가 30 일 후 outcome_30d 채우면 _compute_weights 가 가중치 조정.
+        from nuri.trading.agents.consensus import analyze_portfolio, save_to_recommendations
+        from nuri.trading.engine.decisions import record_decisions
+
+        results = analyze_portfolio()
+        saved = save_to_recommendations(results)
+        # decisions 기록은 CLI(`python -m nuri.trading.agents.consensus`) 에만 있었다.
+        # 자동화(#363, 2026-04-17)가 수동 실행을 대체하면서 이 호출이 빠져 decisions 가
+        # 2026-04-14 이후 3.5 개월 동결됐다 — /decisions 대시보드가 4월 데이터를 서빙
+        # 했는데 헬스 지표는 전부 초록이었다 (#897).
+        recorded = record_decisions(results)
+        logger.info(f"[consensus] {len(results)}건 분석, recommendations {saved}건, decisions {recorded}건")
+    elif name == "holdings_monitor":
+        # Holdings post-entry technical-divergence monitor (07:10 KST, after consensus 07:05).
+        # JKHY-class entry-stage defenses (PR #303) cover before-buy; this covers after-buy
+        # falling-knife. REVIEW CTA only — auto-trade deferred (STRATEGY §7.1).
+        from nuri.trading.recommend.holdings_monitor import run_monitor, send_alerts
+
+        summary = run_monitor()
+        sent = send_alerts(summary)
+        logger.info(f"[holdings_monitor] {summary.n_holdings}건 분석, {summary.n_alerted}건 alert, {sent}건 surface")
+
+
 def _run_collector(name: str, **kwargs):
-    """Collector를 안전하게 실행."""
+    """Collector를 안전하게 실행.
+
+    스테이지에 속한 잡은 `run_step` 으로 감싸 lifecycle 이벤트(step_started /
+    step_completed / step_failed)를 남긴다. `warn_only=True` 이므로 의존성이
+    안 맞아도 **실행을 막지 않고** 경고 이벤트만 남긴다 — 관측이 본 작업을
+    게이트하면 DB 하나로 파이프라인이 조용히 선다 (#894). `reraise=True` 라
+    실패 로깅은 아래 except 가 그대로 담당한다 (#921).
+    """
+    stage = _STAGE_OF_JOB.get(name)
     try:
-        if name == "stock":
-            from nuri.collectors.stock import StockCollector
+        if stage:
+            from nuri.core.pipeline import run_step
 
-            StockCollector().run(**kwargs)
-        elif name == "stock_kr":
-            from nuri.collectors.stock_kr import StockKRCollector
-
-            StockKRCollector().run(**kwargs)
-        elif name == "macro":
-            from nuri.collectors.macro import MacroCollector
-
-            MacroCollector().run()
-        elif name == "technical":
-            from nuri.collectors.technical import TechnicalCollector
-
-            TechnicalCollector().run()
-        elif name == "fear_greed":
-            from nuri.collectors.fear_greed import FearGreedCollector
-
-            FearGreedCollector().run()
-        elif name == "ark":
-            from nuri.collectors.ark import ARKCollector
-
-            ARKCollector().run()
-        elif name == "events":
-            from nuri.collectors.events import EventsCollector
-
-            EventsCollector().run()
-        elif name == "news":
-            from nuri.collectors.news import NewsCollector
-
-            NewsCollector().run()
-        elif name == "macro_news":
-            from nuri.collectors.macro_news import MacroNewsCollector
-
-            MacroNewsCollector().run()
-        elif name == "fundamental":
-            from nuri.collectors.fundamental import FundamentalCollector
-
-            FundamentalCollector().run()
-        elif name == "cboe":
-            from nuri.collectors.cboe import CBOECollector
-
-            CBOECollector().run()
-        elif name == "coingecko":
-            from nuri.collectors.coingecko import CoinGeckoCollector
-
-            CoinGeckoCollector().run()
-        elif name == "reddit":
-            from nuri.collectors.reddit import RedditCollector
-
-            RedditCollector().run()
-        elif name == "fred_calendar":
-            from nuri.collectors.fred_calendar import FREDCalendarCollector
-
-            FREDCalendarCollector().run()
-        elif name == "institutional":
-            from nuri.collectors.institutional import InstitutionalCollector
-
-            InstitutionalCollector().run()
-        elif name == "finviz":
-            from nuri.collectors.finviz import FINVIZCollector
-
-            FINVIZCollector().run()
-        elif name == "kis_analyst_opinion":
-            from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
-
-            KISAnalystOpinionCollector().run()
-        elif name == "superinvestors":
-            from nuri.collectors.superinvestors import SuperinvestorCollector
-
-            SuperinvestorCollector().run()
-        elif name == "estimates":
-            from nuri.collectors.estimates import EstimatesCollector
-
-            EstimatesCollector().run(**kwargs)
-        elif name == "etf_flows":
-            from nuri.collectors.etf_flows import EtfFlowsCollector
-
-            EtfFlowsCollector().run()
-        elif name == "wallstreet":
-            from nuri.collectors.wallstreet import WallStreetCollector
-
-            WallStreetCollector().run()
-        elif name == "memory_snapshot":
-            from nuri.trading.engine.memory import save_snapshot
-
-            n = save_snapshot()
-            logger.info(f"[memory_snapshot] {n}건 저장")
-        elif name == "decision_pnl":
-            # decisions 테이블의 7/30/60/90d raw P&L 갱신.
-            # NOTE: decision_outcomes(alpha) 테이블이 아님 — alpha 는 아래 alpha_tracking job.
-            from nuri.trading.engine.decisions import track_decision_outcomes
-
-            n = track_decision_outcomes()
-            logger.info(f"[decision_pnl] {n}건 업데이트")
-        elif name == "recommendation_outcomes":
-            # recommendations 테이블의 7/14/21/30/60/90d forward return 갱신.
-            # NOTE: decisions 테이블이 아님 — 그쪽은 바로 위 decision_pnl.
-            #
-            # 이 호출은 `make recommend` CLI(tracker.main) 에만 있었다. 스케줄러에는
-            # 없어서 프로덕션 `recommendations.outcome_*` 1,170행이 **전부 NULL** 이었고
-            # (창이 닫힌 550행 포함), learning_memory 의 canonical(outcome_30d) /
-            # provisional(outcome_21d) 가중치가 표본 0 으로 DEFAULT_WEIGHTS 에 영구
-            # 고정돼 있었다. dev 에서는 사람이 `make recommend` 를 돌려 채워지므로
-            # 학습이 도는 것처럼 보였다 — 그게 3.5개월 안 들킨 이유다 (#899).
-            from nuri.trading.recommend.tracker import track_outcomes
-
-            n = track_outcomes()
-            logger.info(f"[recommendation_outcomes] {n}건 업데이트")
-        elif name == "alpha_tracking":
-            # ForwardOutcomeTracker: emit 된 추천 vs SPY benchmark → realized alpha 를
-            # decision_outcomes 테이블에 기록 (recommendations → agent_decisions 백필 포함).
-            # canonical scheduler 경로 — 과거 launchd track-forward.plist 를 흡수(이제 redundant).
-            from nuri.agents.actors.forward_outcome_tracker import ForwardOutcomeTracker
-
-            res = ForwardOutcomeTracker().run({"action": "scan", "max_decisions": 2000})
-            out = res.output if isinstance(res.output, dict) else {}
-            logger.info(
-                f"[alpha_tracking] synced={out.get('synced_from_recommendations', 0)} "
-                f"measured={out.get('n_measurements', 0)}"
-            )
-        elif name == "agent_accuracy":
-            from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
-
-            n = save_agent_accuracy_snapshot()
-            logger.info(f"[agent_accuracy] {n}건 저장")
-        elif name == "consensus":
-            # 10-agent 합의 결과를 recommendations 에 저장 → Learning Memory 자동 학습 input.
-            # decision_outcomes 가 30 일 후 outcome_30d 채우면 _compute_weights 가 가중치 조정.
-            from nuri.trading.agents.consensus import analyze_portfolio, save_to_recommendations
-            from nuri.trading.engine.decisions import record_decisions
-
-            results = analyze_portfolio()
-            saved = save_to_recommendations(results)
-            # decisions 기록은 CLI(`python -m nuri.trading.agents.consensus`) 에만 있었다.
-            # 자동화(#363, 2026-04-17)가 수동 실행을 대체하면서 이 호출이 빠져 decisions 가
-            # 2026-04-14 이후 3.5 개월 동결됐다 — /decisions 대시보드가 4월 데이터를 서빙
-            # 했는데 헬스 지표는 전부 초록이었다 (#897).
-            recorded = record_decisions(results)
-            logger.info(f"[consensus] {len(results)}건 분석, recommendations {saved}건, decisions {recorded}건")
-        elif name == "holdings_monitor":
-            # Holdings post-entry technical-divergence monitor (07:10 KST, after consensus 07:05).
-            # JKHY-class entry-stage defenses (PR #303) cover before-buy; this covers after-buy
-            # falling-knife. REVIEW CTA only — auto-trade deferred (STRATEGY §7.1).
-            from nuri.trading.recommend.holdings_monitor import run_monitor, send_alerts
-
-            summary = run_monitor()
-            sent = send_alerts(summary)
-            logger.info(
-                f"[holdings_monitor] {summary.n_holdings}건 분석, {summary.n_alerted}건 alert, {sent}건 surface"
-            )
+            run_step(stage, _dispatch_collector, warn_only=True, reraise=True, name=name, **kwargs)
+        else:
+            _dispatch_collector(name, **kwargs)
     except Exception as e:
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
 
