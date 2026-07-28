@@ -1,12 +1,15 @@
 """종목 상세 API — 모든 데이터를 한 번에."""
 
 import json
+import logging
 import time
 from dataclasses import asdict
 
 from fastapi import APIRouter, Query
 
 from nuri.core.db import query
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["ticker"])
 
@@ -94,8 +97,12 @@ def _get_consensus(ticker: str) -> dict:
             "dissent": consensus.dissent,
             "as_of": today_kst(),
         }
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception:
+        # 예외 문자열을 응답에 실으면 스택 트레이스·내부 경로가 외부로 나간다
+        # (CodeQL py/stack-trace-exposure). 진단은 로그, 클라이언트에는 generic 메시지
+        # — `nuri/api/CLAUDE.md` "Error handling" 의 soft 패턴.
+        logger.exception("live consensus 계산 실패: %s", ticker)
+        return {"error": "consensus unavailable"}
 
 
 def _get_signals(ticker: str) -> list:
