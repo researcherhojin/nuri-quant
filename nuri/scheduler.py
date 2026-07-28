@@ -297,14 +297,55 @@ def _run_alpha_report():
 
     stage 는 `NURI_ROLE=production` 에서만 (원장 단일). dev 스케줄러가 돌아도
     replica 숫자가 brief 로 새지 않는다. 실행 실패는 흡수 (다른 _run_* 와 동일).
-    """
-    try:
-        from nuri.alerts.alpha_report import stage_alpha_progress_brief
 
+    실행할 때마다 `pipeline_events` 에 `alpha_report_run` heartbeat 를 **반드시**
+    한 행 남긴다 (#894). 없으면 "안 나감(정상: 이번 달 이미 발화)" 과 "안 나감
+    (고장: role 누락 / 예외 / mini 다운)" 이 관측상 완전히 동일하다 — NURI_ROLE 이
+    비어 있으면 판정일까지 한 번도 안 나가는데 아무 신호가 없다.
+    `SREIncidentAgent._detect_alpha_report_stale` 가 이 heartbeat 를 읽는다.
+    """
+    from nuri.core.timezone import today_kst
+
+    month = str(today_kst())[:7]
+    role_ok = False
+    already: bool | None = None
+    outbox_id = None
+    error = None
+    try:
+        from nuri.alerts.alpha_report import already_emitted, is_production, stage_alpha_progress_brief
+
+        role_ok = is_production()
+        # stage **이전** 상태를 찍어야 skip 사유가 구분된다 (stage 후엔 항상 True).
+        # ⚠️ 자체 try — 이건 관측용 부가 정보다. 여기서 실패했다고 본 작업(stage)까지
+        # 막으면 observability 가 관측 대상을 죽인다. DB 가 없는 CI 에서 실제로 그랬고,
+        # 프로덕션에서도 일시적 DB 잠금이 리포트를 통째로 건너뛰게 만들 수 있었다.
+        try:
+            already = already_emitted(month)
+        except Exception:  # noqa: BLE001 — 관측 실패는 본 작업과 무관
+            already = None
         outbox_id = stage_alpha_progress_brief()
         logger.info(f"[alpha_report] staged={outbox_id is not None} (id={outbox_id})")
     except Exception as e:
+        error = str(e)[:200]
         logger.error(f"[alpha_report] 실행 실패: {e}", exc_info=True)
+
+    # heartbeat 는 위 성공/실패와 무관하게 남긴다 — 무기록 = 'job 자체가 안 돌았다'.
+    try:
+        from nuri.core.events import emit_event
+
+        emit_event(
+            "alpha_report_run",
+            step="alpha_report",
+            payload={
+                "month": month,
+                "role_ok": role_ok,
+                "already_emitted": already,
+                "staged": outbox_id is not None,
+                "error": error,
+            },
+        )
+    except Exception as e:
+        logger.error(f"[alpha_report] heartbeat 기록 실패: {e}", exc_info=True)
 
 
 def _run_brief_audit():
