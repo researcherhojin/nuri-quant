@@ -38,7 +38,7 @@ fi
 
 usage() {
     cat <<EOF
-사용법: bash scripts/dev_sync.sh {start|end|status} [options]
+사용법: bash scripts/deploy/dev_sync.sh {start|end|status} [options]
 
   start   다른 머신 → 이 머신 (작업 시작 시)
   end     이 머신 → 다른 머신 (작업 종료 시)

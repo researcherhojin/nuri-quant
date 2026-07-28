@@ -93,9 +93,9 @@ if echo "$CHANGED" | grep -qE "^frontend/package(-lock)?\.json$"; then
     log "  cd $REPO/frontend && npm ci"
 fi
 
-if echo "$CHANGED" | grep -qE "^(nuri/core/db\.py|scripts/migrate_db\.py)$"; then
+if echo "$CHANGED" | grep -qE "^(nuri/core/db/.*\.py|nuri/core/db_migrations\.py|scripts/db/migrate\.py)$"; then
     log "WARN: DB schema may have changed. Run manually:"
-    log "  cd $REPO && .venv/bin/python scripts/migrate.py"
+    log "  cd $REPO && .venv/bin/python scripts/db/migrate.py"
 fi
 
 if echo "$CHANGED" | grep -qE "^config/"; then
