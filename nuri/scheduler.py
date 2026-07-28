@@ -136,6 +136,22 @@ def _run_collector(name: str, **kwargs):
             from nuri.collectors.fundamental import FundamentalCollector
 
             FundamentalCollector().run()
+        elif name == "cboe":
+            from nuri.collectors.cboe import CBOECollector
+
+            CBOECollector().run()
+        elif name == "coingecko":
+            from nuri.collectors.coingecko import CoinGeckoCollector
+
+            CoinGeckoCollector().run()
+        elif name == "reddit":
+            from nuri.collectors.reddit import RedditCollector
+
+            RedditCollector().run()
+        elif name == "fred_calendar":
+            from nuri.collectors.fred_calendar import FREDCalendarCollector
+
+            FREDCalendarCollector().run()
         elif name == "kis_analyst_opinion":
             from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
 
@@ -515,6 +531,19 @@ SCHEDULES = [
     {"name": "ark", "func": _run_collector, "args": ("ark",), "cron": "30 7 * * 2-6"},
     # 이벤트 캘린더 (매일 07:00)
     {"name": "events", "func": _run_collector, "args": ("events",), "cron": "0 7 * * *"},
+    # ── `make collect` 에는 있었으나 SCHEDULES 에 없던 4종 (#900) ──────────────
+    # 2026-04-14 이후 한 행도 안 쌓였다 — 그날이 마지막 수동 `make collect` 이고,
+    # 자동화가 이 넷을 안 가져갔다. consensus(07:05) **전**에 배치해 같은 날 데이터로
+    # 투표하게 한다. 특히 reddit 은 retail_agent 의 유일한 입력이라, 없으면 10-agent
+    # 중 하나가 3.5 개월 묵은 값으로 표를 던진다.
+    #   cboe          → macro.put_call_ratio  (공포/과열)
+    #   coingecko     → macro.btc_dominance
+    #   reddit        → macro.wsb_post_count / wsb_mention_<ticker>  → retail_agent
+    #   fred_calendar → events (경제지표 발표 일정 — 실적/FOMC 는 위 events collector 담당, 상보적)
+    {"name": "cboe", "func": _run_collector, "args": ("cboe",), "cron": "20 6 * * *"},
+    {"name": "coingecko", "func": _run_collector, "args": ("coingecko",), "cron": "25 6 * * *"},
+    {"name": "reddit", "func": _run_collector, "args": ("reddit",), "cron": "35 6 * * *"},
+    {"name": "fred_calendar", "func": _run_collector, "args": ("fred_calendar",), "cron": "45 6 * * *"},
     # 뉴스 (1시간 — SaveTicker 대체)
     {"name": "news", "func": _run_collector, "args": ("news",), "cron": "0 * * * *"},
     # 매크로 뉴스 (KST 08:00, 14:00, 20:00 — 시장 영향 큰 이벤트만)

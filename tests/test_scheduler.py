@@ -1259,3 +1259,64 @@ class TestSchedulerBootstrap:
         sched_mod.main()
 
         mock_init_db.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════════
+# TestOrphanCollectorsWired — #900
+# ═══════════════════════════════════════════════════════
+
+
+class TestOrphanCollectorsWired:
+    """`make collect` 에만 있고 SCHEDULES 에 없던 collector 4종 (#900).
+
+    2026-04-14 이후 프로덕션에 한 행도 안 쌓였다 — 그날이 마지막 수동 `make collect`
+    이고 자동화가 이 넷을 안 가져갔다. `decisions` 동결(#897)·outcome 미기록(#899)과
+    같은 날짜, 같은 drift 클래스.
+    """
+
+    ORPHANS = {
+        "cboe": "nuri.collectors.cboe.CBOECollector",
+        "coingecko": "nuri.collectors.coingecko.CoinGeckoCollector",
+        "reddit": "nuri.collectors.reddit.RedditCollector",
+        "fred_calendar": "nuri.collectors.fred_calendar.FREDCalendarCollector",
+    }
+
+    @pytest.mark.parametrize("job_name", sorted(ORPHANS))
+    def test_dispatch_reaches_the_collector(self, job_name):
+        """`_run_collector(name)` 이 해당 Collector.run() 을 부른다."""
+        from nuri.scheduler import _run_collector
+
+        mock = MagicMock()
+        with patch(self.ORPHANS[job_name], return_value=mock):
+            _run_collector(job_name)
+        mock.run.assert_called_once()
+
+    @pytest.mark.parametrize("job_name", sorted(ORPHANS))
+    def test_registered_in_schedules(self, job_name):
+        from nuri.scheduler import SCHEDULES
+
+        jobs = [j for j in SCHEDULES if j["name"] == job_name]
+        assert len(jobs) == 1, f"{job_name} job 이 정확히 1개여야 함"
+        assert jobs[0]["args"] == (job_name,)
+
+    def test_all_run_before_consensus(self):
+        """네 job 모두 consensus(07:05) **보다 먼저** 돈다.
+
+        Gotcha-Test Pair: reddit 은 `retail_agent` 의 유일한 입력이다
+        (`retail_agent.py` 가 `macro.wsb_mention_<ticker>` / `wsb_post_count` 를 읽는다).
+        consensus 뒤로 밀리면 10-agent 중 하나가 매일 하루 묵은 값으로 표를 던지는데,
+        값이 그럴듯해서 틀린 걸 알아차릴 방법이 없다. 나머지 셋도 같은 이유로 선행.
+        """
+        from nuri.scheduler import SCHEDULES
+
+        jobs = {j["name"]: j["cron"] for j in SCHEDULES}
+
+        def _minute_of_day(cron: str) -> int:
+            minute, hour = cron.split()[0], cron.split()[1]
+            return int(hour) * 60 + int(minute)
+
+        consensus_at = _minute_of_day(jobs["consensus"])
+        for name in self.ORPHANS:
+            assert _minute_of_day(jobs[name]) < consensus_at, (
+                f"{name}({jobs[name]}) 가 consensus({jobs['consensus']}) 보다 늦다"
+            )
