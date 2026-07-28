@@ -88,16 +88,25 @@ class TestTicker:
         assert r.json()["trend"] is None
 
     def test_ticker_consensus_db_miss_falls_back_to_live(self, client, monkeypatch):
-        """recommendations 행 없음 → live analyze_ticker fallback, raise 시 error 필드."""
+        """recommendations 행 없음 → live analyze_ticker fallback, raise 시 error 필드.
+
+        error 메시지는 **generic** 이어야 한다 — 예외 문자열을 그대로 실으면 스택
+        트레이스·내부 경로가 외부로 나간다 (CodeQL py/stack-trace-exposure, alert #28).
+        읽기 엔드포인트는 인증이 없어 이 응답은 대시보드에 닿는 누구에게나 보인다.
+
+        Gotcha-Test Pair: `return {"error": str(e)}` 로 되돌리면 FAIL.
+        """
 
         def boom(t):
-            raise RuntimeError("consensus down")
+            raise RuntimeError("secret-internal-detail /Users/someone/nuri/x.py")
 
         monkeypatch.setattr("nuri.trading.agents.consensus.analyze_ticker", boom)
         r = client.get("/api/ticker/AAPL")
         assert r.status_code == 200
         data = r.json()
         assert "error" in data["consensus"]
+        assert "secret-internal-detail" not in r.text, "예외 문자열이 응답으로 새어 나감"
+        assert "/Users/" not in r.text, "내부 경로가 응답으로 새어 나감"
 
     def test_ticker_consensus_read_from_db_no_live_call(self, client, tmp_path, monkeypatch):
         """recommendations 행 존재(fresh) → DB read 로 복원, analyze_ticker 미호출.
