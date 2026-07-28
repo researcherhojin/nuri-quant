@@ -234,18 +234,18 @@ base = regime_win_rate × 60% + profit_factor × 40%
 |---|---|---|
 | 판정일 | 2027-06-30. 조기 승격 금지 (하향은 상시). 표본 emit cutoff = 2027-05-15 (30d 창 완결 보장) | pre-registration — Harvey, Liu & Zhu (2016) multiple testing / p-hacking |
 | 표본 규약 | `declared_date` (2026-07-08) ~ emit cutoff 에 emit 된 **US BUY** 결정만 (distinct `decision_id`). 30d window 단일 판정 창 — 7/14d 는 진단용 (30d 는 파일럿 #675 탐색 결과 기반 선택, 판정 표본은 declared_date 이후 disjoint). n ≥ 200. SELL 은 진단 전용 (원장 alpha 는 방향 보정 저장 — tracker 부호 반전) | 원장 실측 σ≈25.0%p (US BUY 30d, n=62, #828 코멘트 쿼리): n=200 의 검출 하한 ≈ +4.4%p/30d (one-sided α=0.05, 80% power), accrual 실측 ~43건/월 → 판정 시점 기대 n≈400 → ≈ +3.1%p. **미검출 ≠ 엣지 부재** (power 한계 명시). §2.1 30-trade 는 per-signal tier, 본 n 은 system-level (별개 축) |
-| 벤치마크 | SPY (`forward_outcome_tracker.py` `DEFAULT_BENCHMARK_TICKER`). **본 판정은 US-only 로 고정** — KR 결정은 KR benchmark (#675 명시 follow-up, 미구축 ④) 착륙 후 **별도 사전등록** 을 거쳐야 판정 대상, 그 전까지 진단 전용 | #675 caveat: SPY 는 growth 대비 과대평가 |
+| 벤치마크 | SPY (`forward_outcome_tracker.py` `DEFAULT_BENCHMARK_TICKER` = `measurement_mode.benchmark`). **본 판정은 US-only 로 고정.** #833 착륙 후 KR 결정의 **기록 기준**은 KOSPI (`measurement_mode.benchmark_by_market`, 매 outcome 행의 `benchmark_ticker` 에 자기기술) — 기록 기준이 바뀌었을 뿐 **판정 대상 여부는 그대로**이며, KR 은 **별도 사전등록** 전까지 진단 전용 | #675 caveat: SPY 는 growth 대비 과대평가. KR 을 SPY 로 재면 FX + 시장 스타일이 alpha 에 섞여 부호까지 뒤집힘 |
 | 승격 조건 (3개 동시) | mean 30d alpha > 0 · 순열 p < 0.05 (**ticker-block placebo**: 실 표본의 ticker→emit일 구조 유지, 동일 시장 eligible universe 에서 ticker 치환, N=1000, 통계량 = mean 30d alpha, one-sided — 중첩 창·동일일 배치·반복 종목 의존성을 null 이 상속) · **median-decision-date 등분 2분할** 모두 mean alpha > 0 (반기 n 균형 보장) | López de Prado (2018) PBO/deflated-Sharpe 정신 — 단일 통계 아닌 강건성 요구. naive iid 순열은 클러스터링으로 anti-conservative |
 | regime 축 | 내부 10-regime 분류는 진단 Surface 전용, 판정 비사용 — 원장 라벨 커버리지 3% (12/383, #828 코멘트 쿼리), 2026-04 이후 transition 1회 (판정 교착 위험), 자기 분류기 순환성 | 실측 2026-07-07 (production 원장) |
 | 오염 방지 | `decision_id` 없는 ad-hoc 체결은 표본 제외 (#715 사전등록 원칙의 자본 버전). missing outcome (추적 실패/가격 결측) 은 제외하되 비율을 판정 리포트에 공시 — **15% 초과 시 판정 무효 (측정 연장)** | Shefrin & Statman (1985) — ad-hoc 개입이 처분효과 재유입 경로. 결측 편향 (탈락은 나쁜 outcome 과 상관 가능) |
 **판정 결과 처리**: 3조건 통과 → **US 집행분 슬리브에 한해** 상한 상향 STRATEGY PR (새 상한도 본 표 개정으로 사전 고정). 미달 → 슬리브 유지/축소 + 측정 연장 또는 §3.10 passive 로 수렴 — "조금만 더" 없이 본 표가 답이다. 사전등록 대상은 판정 **기준**이지 상한 초기값이 아니다 — 슬리브 초기값은 판정 표본에 영향이 없으므로 최초 사용자 확정 PR 까지 placeholder 로 두며 일반 PR 로 정정 가능. 확정 이후부터 상향-sticky 발효.
-**미구축 (판정 전 선결, follow-up issue)**: ① regime 라벨 백필 — #832 구현 완료 (`scripts/ops/backfill_regime_labels.py` + emit 경로 canonical-or-NULL, 진단용) ② 순열 판정 도구 — #842 구현 완료 (`nuri/quant/validation/decision_alpha.py`, 설계는 본 표에 사전 고정; 기존 `nuri/quant/validation/` 3종은 포트폴리오 Sharpe 전용) ③ 3조건 통합 판정 쿼리 (`/api/alpha` 는 착륙 전 NOT_MEASURABLE 유지) ④ KR benchmark 분리 (#833) ⑤ 슬리브 상한 소비 배선 (rebalance_advisor / ExecutionFirewall, #834) ⑥ 원장 스냅샷/백업 정책 (#835). 월간 알파 진행 리포트 표출 = #856.
+**미구축 (판정 전 선결, follow-up issue)**: ① regime 라벨 백필 — #832 구현 완료 (`scripts/ops/backfill_regime_labels.py` + emit 경로 canonical-or-NULL, 진단용) ② 순열 판정 도구 — #842 구현 완료 (`nuri/quant/validation/decision_alpha.py`, 설계는 본 표에 사전 고정; 기존 `nuri/quant/validation/` 3종은 포트폴리오 Sharpe 전용) ③ 3조건 통합 판정 쿼리 (`/api/alpha` 는 착륙 전 NOT_MEASURABLE 유지) ④ KR benchmark 분리 — #833 구현 완료 (`benchmark_by_market` + `decision_outcomes.benchmark_ticker`, 기록 기준만; KR 판정 사전등록은 미착수) ⑤ 슬리브 상한 소비 배선 (rebalance_advisor / ExecutionFirewall, #834) ⑥ 원장 스냅샷/백업 정책 (#835). 월간 알파 진행 리포트 표출 = #856.
 **참조**: `config/rules.yaml measurement_mode` (canonical 값), `nuri/agents/actors/forward_outcome_tracker.py` (측정 파이프라인, 매일 17:00 KST), `docs/SOURCE_OF_TRUTH.md` (원장 매핑, local-only).
 ## 4. 개발 품질 기준
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,454 tests, 288 files (statement coverage **99.88%** — 28/22,539 미커버, 2026-07-28) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,461 tests, 288 files (statement coverage **99.88%** — 28/22,539 미커버, 2026-07-28) |
 | Frontend tests | 목표 ≥ 90% | 1449 tests, 127 files |
 | E2E | 핵심 flow | 57 Playwright (8 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |

@@ -129,6 +129,7 @@ def log_decision_outcome(
     exit_price: Optional[float] = None,
     realized_return: Optional[float] = None,
     benchmark_return: Optional[float] = None,
+    benchmark_ticker: Optional[str] = None,
     alpha: Optional[float] = None,
     hit_threshold: bool = False,
     notes: Optional[str] = None,
@@ -151,15 +152,16 @@ def log_decision_outcome(
         conn.execute(
             """INSERT INTO decision_outcomes
                (decision_id, observation_window, tracked_as_of_date,
-                entry_price, exit_price, realized_return, benchmark_return, alpha,
+                entry_price, exit_price, realized_return, benchmark_return, benchmark_ticker, alpha,
                 hit_threshold, hypothesis_validation, notes, run_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(decision_id, observation_window) DO UPDATE SET
                  tracked_as_of_date = excluded.tracked_as_of_date,
                  entry_price = excluded.entry_price,
                  exit_price = excluded.exit_price,
                  realized_return = excluded.realized_return,
                  benchmark_return = excluded.benchmark_return,
+                 benchmark_ticker = excluded.benchmark_ticker,
                  alpha = excluded.alpha,
                  hit_threshold = excluded.hit_threshold,
                  hypothesis_validation = excluded.hypothesis_validation,
@@ -173,6 +175,7 @@ def log_decision_outcome(
                 exit_price,
                 realized_return,
                 benchmark_return,
+                benchmark_ticker,
                 alpha,
                 int(hit_threshold),
                 hypothesis_validation,

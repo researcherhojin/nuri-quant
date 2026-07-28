@@ -258,6 +258,78 @@ class TestRecommendationBackfill:
 # ═══════════════════════════════════════════════════════
 
 
+class TestPerMarketBenchmark:
+    """KR 결정은 KOSPI, US 결정은 SPY 로 잰다 (#833).
+
+    KR 종목을 SPY 로 재면 alpha 에 환율과 시장 스타일 차이가 통째로 섞여 부호까지
+    뒤집힌다. 아래 첫 테스트가 그 상황을 그대로 만든다 — 두 벤치마크가 반대로
+    움직여서, 잘못된 쪽을 쓰면 alpha 가 +0.02 가 아니라 +0.13 이 된다.
+    """
+
+    def _outcome_row(self, db_path, decision_id):
+        rows = query(
+            "SELECT alpha, benchmark_return, benchmark_ticker FROM decision_outcomes WHERE decision_id=?",
+            (decision_id,),
+            db_path=db_path,
+        )
+        return dict(rows[0])
+
+    def test_kr_decision_is_measured_against_kospi(self, patched_db):
+        """Gotcha-Test Pair: `benchmark_for(ticker)` 를 상수로 되돌리면 alpha 가
+        0.13 이 되어 FAIL."""
+        _seed_decision(patched_db, decision_id="dc-kr", ticker="TESTKR.KS", hypothesis_id=None)
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTKR.KS", "2026-04-20", 100.0),
+                ("TESTKR.KS", "2026-04-27", 108.0),  # +8%
+                ("KOSPI", "2026-04-20", 2500.0),
+                ("KOSPI", "2026-04-27", 2650.0),  # +6%
+                ("SPY", "2026-04-20", 500.0),
+                ("SPY", "2026-04-27", 475.0),  # -5% — 반대 방향
+            ],
+        )
+        result = ForwardOutcomeTracker().run({"action": "track_one", "decision_id": "dc-kr", "observation_window": 7})
+
+        assert result.output["alpha"] == pytest.approx(0.02, abs=1e-6), "KR alpha 가 SPY 기준으로 계산됨"
+        row = self._outcome_row(patched_db, "dc-kr")
+        assert row["benchmark_ticker"] == "KOSPI"
+        assert row["benchmark_return"] == pytest.approx(0.06, abs=1e-6)
+
+    def test_us_decision_still_uses_spy(self, patched_db):
+        """회귀 방지 — US 경로는 §3.11 사전등록 기준 그대로여야 한다."""
+        _seed_decision(patched_db, decision_id="dc-us", ticker="TESTAA", hypothesis_id=None)
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTAA", "2026-04-20", 100.0),
+                ("TESTAA", "2026-04-27", 108.0),
+                ("KOSPI", "2026-04-20", 2500.0),
+                ("KOSPI", "2026-04-27", 2650.0),
+                ("SPY", "2026-04-20", 500.0),
+                ("SPY", "2026-04-27", 505.0),  # +1%
+            ],
+        )
+        result = ForwardOutcomeTracker().run({"action": "track_one", "decision_id": "dc-us", "observation_window": 7})
+
+        assert result.output["alpha"] == pytest.approx(0.07, abs=1e-6)
+        assert self._outcome_row(patched_db, "dc-us")["benchmark_ticker"] == "SPY"
+
+    def test_kosdaq_routes_to_the_kr_benchmark(self):
+        """`.KQ` 도 KR — `.KS` 만 보면 KOSDAQ 종목이 US 벤치마크로 새어나간다 (#764)."""
+        from nuri.agents.actors.forward_outcome_tracker import benchmark_for
+
+        assert benchmark_for("TESTKR.KQ") == benchmark_for("TESTKR.KS") == "KOSPI"
+        assert benchmark_for("TESTAA") == "SPY"
+
+    def test_unmapped_market_falls_back_to_the_us_benchmark(self):
+        """map 이 비어도 죽지 않고 US 기준으로 폴백한다 — 단 그 사실이 행에 남는다."""
+        from nuri.agents.actors import forward_outcome_tracker as fot
+
+        with patch.dict(fot.RULES["measurement_mode"], {"benchmark_by_market": {}}):
+            assert fot.benchmark_for("TESTKR.KS") == fot.DEFAULT_BENCHMARK_TICKER
+
+
 class TestTrackOnePass:
     def test_pass_validation_8pct_return(self, patched_db):
         """7d window, +8% realized → pass + hypothesis auto-validated."""
