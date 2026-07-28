@@ -10,7 +10,7 @@
 
 </div>
 
-Every BUY / SELL recommendation runs through a 5-phase pipeline — **collect → analyze → consensus → certify → track**. Each decision records its market context and per-agent reasoning, then scores itself against the realized outcome at 30 / 60 / 90 days. Agent weights adjust from the 30-day hit rate, bounded to ±30% of their configured base.
+Every BUY / SELL recommendation moves through five stages — **collect → analyze → consensus → certify → track** — coupled through SQLite tables rather than chained by an orchestrator. Each decision records its market context and per-agent reasoning, then scores itself against the realized outcome at 30 / 60 / 90 days. Agent weights adjust from the 30-day hit rate, bounded to ±30% of their configured base.
 
 ## Table of Contents
 
@@ -54,39 +54,73 @@ If you are looking for a backtested strategy with a published Sharpe ratio, this
 
 ```mermaid
 flowchart TB
+    SCHED["APScheduler · 48 cron jobs · in-process<br/>Mac mini is the sole writer"]:::driver
     CFG[/"config/*.yaml<br/>policies"/]:::source
 
-    subgraph Pipeline["5-phase decision pipeline (DB-only coupling)"]
-        direction TB
-        A(["① Collect<br/>27 data collectors"]):::pipe
-        B(["② Analyze<br/>22 signals · 10 regimes · factors"]):::pipe
-        C(["③ Consensus<br/>10-agent weighted vote"]):::pipe
-        D(["④ Certify<br/>Certification (3-D gates)"]):::pipe
-        E(["⑤ Track<br/>30 / 60 / 90 d outcomes"]):::pipe
-
-        A --> B --> C --> D --> E
-        E -. "agent weight drift (±30%)" .-> C
+    subgraph Collect["Collect — 25 jobs"]
+        COL(["27 data collectors"]):::pipe
+    end
+    subgraph Decide["Decide — 1 job, 07:05 KST"]
+        CON(["Consensus<br/>10-agent weighted vote"]):::pipe
+        CER(["Record decision<br/>3-D certification gates"]):::pipe
+        CON ==>|in-memory hand-off| CER
+    end
+    subgraph Track["Track — 4 jobs, 07:00-17:00"]
+        TRK(["30 / 60 / 90 d outcomes<br/>agent accuracy"]):::pipe
+    end
+    subgraph Analyze["Analyze — no scheduled job, computed on read"]
+        ANA(["22 signals · 10 regimes · 4-factor composite"]):::lazy
     end
 
     DB[("SQLite WAL · 51 tables<br/>audit · evidence · pipeline events")]:::sink
 
-    CFG -. policies .-> Pipeline
-    Pipeline -. persist .-> DB
+    SCHED --> Collect
+    SCHED --> Decide
+    SCHED --> Track
+    CFG -. thresholds .-> Decide
 
+    COL --> DB
+    DB --> CON
+    CER --> DB
+    DB --> TRK
+    TRK --> DB
+    DB -. "outcome_30d re-reads weights each call (±30%)" .-> CON
+
+    DB --> ANA
+    ANA --> READ
+    DB --> BRIEF
+
+    BRIEF["Discord outbox → single dispatcher<br/>#brief · #ops · #incidents"]:::out
+    READ["FastAPI 127.0.0.1:8001 → Next.js :3000<br/>read-only, password-gated"]:::out
+    USER(["Operator places every order by hand"]):::user
+
+    BRIEF --> USER
+    READ --> USER
+
+    classDef driver fill:#3f2d56,stroke:#a78bfa,color:#ede9fe
     classDef source fill:#1e293b,stroke:#64748b,color:#e2e8f0
     classDef pipe   fill:#0f3057,stroke:#3b82f6,color:#dbeafe
+    classDef lazy   fill:#1e293b,stroke:#3b82f6,color:#dbeafe,stroke-dasharray: 4 3
     classDef sink   fill:#0f172a,stroke:#334155,color:#cbd5e1
+    classDef out    fill:#134e4a,stroke:#2dd4bf,color:#ccfbf1
+    classDef user   fill:#422006,stroke:#f59e0b,color:#fef3c7
 ```
 
-| Phase | What it does | Key outputs |
-|-------|--------------|-------------|
-| ① **Collect** | 27 collectors — yfinance / OpenBB · pykrx (KR) · FRED · GoogleNews · KIS / Toss Open API | `prices` · `fundamentals` · `macro` · `news` |
-| ② **Analyze** | 22 per-ticker signals · 10 regimes (6 base + 4 special) · 4-factor composite | `signals` · `factors` · `regime_transitions` |
-| ③ **Consensus** | 10 specialist agents · weighted vote · risk-veto on `alpha_action==FLAT` | `recommendations` (with `agent_verdicts` JSON) |
-| ④ **Certify** | Certification — `Account × Asset Class × Market` · 1 error-grade fail → REJECTED | `certifications` (with evidence trail) |
-| ⑤ **Track** | 30 / 60 / 90 d outcome scoring · agent accuracy snapshot · weight adjustment | `outcome_{30,60,90}d` · `strategy_memory` |
+**Nothing chains the stages.** There is no orchestrator: `nuri/scheduler.py` registers 48 independent APScheduler jobs, and a stage becomes runnable when its inputs happen to be in the database. That is what makes any stage re-runnable in isolation, and it is also why the cron order does not match the reading order — outcome tracking runs at 07:02, three minutes *before* the consensus job at 07:05 that consumes what it wrote the previous day.
 
-Phases never import each other — they communicate through SQLite tables and CSV only, so any phase can be re-run in isolation and its consumers pick up the new rows on their next pass.
+| Stage | Scheduled as | Reads | Writes |
+|-------|--------------|-------|--------|
+| **Collect** | 25 jobs, `*/5` during market hours down to weekly | external APIs | `prices` · `fundamentals` · `macro` · `news` |
+| **Analyze** | **no job** — 22 per-ticker signals · 10 regimes (6 base + 4 special) · 4-factor composite are computed when a report or an endpoint asks | `prices` · `macro` | nothing (`news.sentiment` aside) |
+| **Consensus** | `consensus`, `5 7 * * *` | `recommendations.outcome_30d` (for weights) · collector tables | `recommendations` with `agent_verdicts` JSON |
+| **Certify** | **no job of its own** — `record_decisions` runs inside the consensus job; the `certifications` table is written by `premarket_brief` (`0 9 * * 1-5`) | consensus result **in memory** | `decisions` · `agent_decisions` · `certifications` |
+| **Track** | 4 jobs — `decision_pnl` `0 7`, `recommendation_outcomes` `2 7`, `alpha_tracking` `0 17`, `agent_accuracy` weekly | `recommendations` · `prices` | `outcome_{30,60,90}d` · `decision_outcomes` · `strategy_memory` |
+
+Two things in that table are worth stating plainly rather than burying.
+
+**Consensus hands off to certification in memory, not through the database.** The scheduler calls `analyze_portfolio()` and passes the resulting objects straight into `record_decisions(results)` (`nuri/scheduler.py`). Every other stage boundary is DB-mediated; this one is not, and it is the reason `decisions` sat frozen for three and a half months when automation replaced the CLI path and dropped that one call (#897).
+
+**Cross-stage isolation is a convention, and the code does not fully honour it.** Mapping the stages to `nuri/collectors`, `nuri/analysis`, `nuri/trading/agents`, `nuri/trading/engine` and `nuri/trading/recommend` — the invariant names five stages but no document says which directories they are, which is its own problem — an AST sweep finds 19 imports crossing those boundaries in 10 directed pairs. All 19 are deferred function-body imports and none is module-level, which is the only sense in which the rule holds: there is no load-time coupling, but each one is a live call path. `certify` and `track` are mutually dependent (`engine/conflicts.py` calls `recommend/candidates.screen_candidates`, which calls `engine/conflicts.detect_conflicts` back), and `recommend/holdings_monitor.py` states in its own docstring that the local import exists "to avoid a circular import at module load time". Nothing enforces any of this — unlike the `sqlite3` sole-importer rule, which an AST sweep in CI does enforce, there is no gate.
 
 The factor composite (`nuri/quant/factors/composite.py`) blends four terms — momentum 0.30, value 0.25, quality 0.25, sentiment 0.20. The first three are per-ticker scorers; sentiment is a single market-wide Fear & Greed value applied to every ticker alike, so it moves the score's level rather than its ranking.
 
@@ -131,7 +165,7 @@ Every API key is optional. Collectors whose credentials are absent skip themselv
 ### Daily commands
 
 ```bash
-make full-scan      # 5-phase pipeline end-to-end
+make full-scan      # every stage in order, 9 labelled steps (A-H)
 make consensus      # 10-agent analysis + decision recording
 make certify        # Certification (3-D gates)
 make scan           # Daily swing scan (us_core, 85 tickers)
@@ -242,7 +276,7 @@ Measured against `main` on 2026-07-28. Counts marked ✅ are verified on every P
 | **Backend statement coverage** | 99.88% — 28 of 22,539 statements uncovered, across 9 files (Codecov `backend` flag) | |
 | **Frontend tests** | 1,449 across 127 files — 100% statement coverage | |
 | **E2E tests** | 57 across 8 Playwright specs | |
-| **Pipeline phases** | 5 (collect / analyze / consensus / certify / track) | |
+| **Pipeline stages** | 5 as a data model; 2 of them (analyze, certify) have no scheduler job of their own | |
 | **Data collectors** | 27 collectors (BaseCollector pattern) | ✅ |
 | **Specialist agents** | 10 (consensus vote, weights sum to 1.0) | |
 | **Actor fleet** | 15 registered actors + 3 infrastructure helpers | |
