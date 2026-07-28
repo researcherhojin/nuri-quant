@@ -606,13 +606,25 @@ class TestMissedEvalDays:
 # ═══════════════════════════════════════════════════════
 
 
-def _seed_alpha_run(db_path, ts_utc: str, *, staged: bool, role_ok: bool = True, error: str | None = None):
-    """pipeline_events 에 alpha_report_run heartbeat 1행 (payload 는 scheduler 와 동일 스키마)."""
-    payload = json.dumps(
+def _seed_alpha_run(
+    db_path,
+    ts_utc: str,
+    *,
+    staged: bool,
+    role_ok: bool = True,
+    error: str | None = None,
+    already_emitted: bool = False,
+    raw_payload: str | None = None,
+):
+    """pipeline_events 에 alpha_report_run heartbeat 1행 (payload 는 scheduler 와 동일 스키마).
+
+    `raw_payload` 는 스키마를 벗어난 payload 를 그대로 넣기 위한 탈출구 (파싱 실패 경로 검증용).
+    """
+    payload = raw_payload or json.dumps(
         {
             "month": ts_utc[:7],
             "role_ok": role_ok,
-            "already_emitted": False,
+            "already_emitted": already_emitted,
             "staged": staged,
             "error": error,
         },
@@ -702,6 +714,32 @@ class TestAlphaReportStaleDetector:
         out = self._scan()
         assert out[0]["evidence"]["last_skip_reason"] == "error"
         assert out[0]["evidence"]["last_error"] == "boom"
+
+    def test_already_emitted_skip_reason_is_distinguished(self, patched_db, no_publish):
+        """이번 달 리포트가 '이미 나갔다' 고 주장하는데 35일째 성공 stage 가 없다.
+
+        role 누락이나 예외와 조치가 다르다 — 중복 방지 키가 잘못 잡혀 매번 스스로를
+        skip 하는 상태이므로, evidence 가 이걸 뭉뚱그리면 엉뚱한 곳을 보게 된다.
+        """
+        for offset in range(40):
+            day = datetime(2026, 5, 30) + timedelta(days=offset)
+            _seed_alpha_run(patched_db, day.strftime("%Y-%m-%d 00:00:00"), staged=False, already_emitted=True)
+        out = self._scan()
+        assert out[0]["evidence"]["last_skip_reason"] == "already_emitted"
+        assert out[0]["evidence"]["last_error"] is None
+
+    def test_claims_staged_but_nothing_landed(self, patched_db, no_publish):
+        """heartbeat 가 '역할 정상·예외 없음·중복 아님' 이라 말하는데 stage 는 0건.
+
+        가장 위험한 조합이다 — 모든 지표가 초록인데 리포트만 안 나간다 (outbox 가
+        None 을 돌려주는 경우). reason 이 'staged' 로 남아야 heartbeat 를 믿지 말고
+        outbox 를 보라는 뜻이 전달된다.
+        """
+        for offset in range(40):
+            day = datetime(2026, 5, 30) + timedelta(days=offset)
+            _seed_alpha_run(patched_db, day.strftime("%Y-%m-%d 00:00:00"), staged=False)
+        out = self._scan()
+        assert out[0]["evidence"]["last_skip_reason"] == "staged"
 
     def test_summary_names_the_cause_not_just_the_type(self):
         """알림 한 줄이 cryptic 코드가 아니라 원인+조치를 담는다 (알림 가독성)."""
