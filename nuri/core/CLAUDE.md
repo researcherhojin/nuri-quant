@@ -2,13 +2,14 @@
 
 ## db/ — Sole sqlite3 Importer
 
-The `nuri/core/db/` package is the **ONLY** `sqlite3` importer (the import lives in `db/connection.py`; PR #566 stage 2 packaging). Enforced by PreToolUse hook (exit 2 block). All other modules use these functions (all accept optional `db_path` for test isolation):
+The `nuri/core/db/` package is the **ONLY** `sqlite3` importer (the import lives in `db/connection.py`; PR #566 stage 2 packaging). Enforced by a PreToolUse hook (exit 2 block) **and** by `tests/core/test_sqlite3_sole_importer.py` — the hook only fires when a file is edited through it, so the test is what catches an importer that arrived any other way. All other modules use these functions (all accept optional `db_path` for test isolation):
 
 - `get_db(db_path=)` — context manager, auto-commit/rollback
 - `query(sql, params, db_path=)` → `list[dict]` (rows converted via `dict(row)`)
 - `query_df(sql, params, db_path=)` → `pandas.DataFrame`
 - `upsert_*(data, db_path=)` — per-table upsert functions
 - `replace_portfolio_account(account, records, db_path=)` — DELETE+INSERT in one tx
+- `OperationalError` / `DatabaseError` — sqlite3 exception types re-exported so callers can catch DB failures narrowly without importing `sqlite3` (widening to `except Exception` swallows real bugs)
 
 Schema changes: add to `_MIGRATIONS` list only. Never edit existing migrations. `init_db()` auto-applies.
 

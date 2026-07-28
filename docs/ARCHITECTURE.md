@@ -85,7 +85,7 @@ Configured in `.env` (see `.env.example`):
 - `NURI_ROLE` — `production` gates §3.11 ledger-backed surfacing (the monthly alpha progress report only stages to `#brief` when set). Adjudication runs off the Mac mini DB; the MBP is a read replica, so dev numbers must never reach the brief. Lives in `scripts/launchd/com.nuri-quant.scheduler.plist` `EnvironmentVariables`, **not** `.env` — `make deploy-mini` SCPs the MBP `.env` over the mini's, so an `.env`-resident value is wiped by the next deploy (same trap as `DEV2_HOST`).
 - `API_SECRET_KEY` — JWT signing key (**required in production**, optional in dev). Unset, `nuri/api/auth.py` mints a fresh `secrets.token_hex(32)` each boot, so every outstanding JWT dies on restart (dashboard re-login). Generate: `python3 -c "import secrets; print(secrets.token_hex(32))"`. `make deploy-mini` SCPs the local `.env` onto the Mac mini's, so the same value must exist in **both** `.env` files or a deploy reverts production to random-per-boot.
 ## DB Schema (SQLite, WAL mode)
-51 tables total (45 migrations as of 2026-07-08). Key tables:
+51 tables total (46 migrations as of 2026-07-28). Key tables:
 | Table | Purpose |
 |-------|---------|
 | `prices` | OHLCV 5Y daily bars per ticker |
@@ -158,7 +158,7 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-6,334 backend tests across 279 files + 1449 frontend vitest (127 files) + 57 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 100% (2026-05-06)** — full closure verified via CI artifact combine of all 6 shards (4 fast + 2 slow).
+6,350 backend tests across 280 files + 1449 frontend vitest (127 files) + 57 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 100% (2026-05-06)** — full closure verified via CI artifact combine of all 6 shards (4 fast + 2 slow).
 **Slow marker**: 24 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
 @pytest.fixture
 def db_path(tmp_path):
@@ -189,7 +189,7 @@ On push/PR to `main`:
 3. **Frontend** — `tsc --noEmit` + vitest with coverage
 4. **Privacy** — `check_privacy_leak.py` on all files
 5. **Security** — Trivy CRITICAL vulnerability scan
-PR-specific (`pr-checks.yml`): merge conflict detection, conventional commit validation, 5MB file limit, auto PR summary.
+PR-specific (`pr-discipline.yml`): merge conflict detection, conventional commit validation, 5MB file limit, auto PR summary.
 ## Investment Rules
 All investment rules (stop-loss, take-profit, account strategy profiles, VIX gate, execution priority, buy checklist) live in `config/rules.yaml` and are documented canonically in [`docs/STRATEGY.md` §3.4 / §3.5](STRATEGY.md). Source code executes the YAML via `nuri/core/rules.py` (§2.2 mechanical execution — no hardcoded thresholds).
 ## OpenBB Provider Limitations

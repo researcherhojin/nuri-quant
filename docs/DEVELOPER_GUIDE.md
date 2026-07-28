@@ -18,7 +18,7 @@ bash scripts/verify/pre_push_check.sh --quick   # smoke (~30 s)
 | Test isolation flake | `pytest -n auto` (CI parity) | CI roundtrip 1+ 회 |
 | Atomicity violation | `check_atomic.sh` (multi-commit) | reset + re-stage cycle |
 
-## 5 scripts
+## 4 scripts + 1 PR template
 
 | Script | 역할 | Quick mode |
 |---|---|---|
@@ -60,4 +60,4 @@ chmod +x .git/hooks/pre-push
 | CI roundtrip waiting | ~15 min | `ci_local.sh` (catches locally) |
 | Atomicity reset | ~10 min | `check_atomic.sh` |
 | Scope accumulation | ~40 min | PR template + `check_drift.py` |
-| **Total addressable** | **~120 min** | **5 scripts + 1 PR template** |
+| **Total addressable** | **~120 min** | **4 scripts + 1 PR template** |

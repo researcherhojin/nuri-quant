@@ -35,13 +35,12 @@ portfolio 의 asset_class 조합에 따라 11~30+ 범위. `certified` 판정은 
 import hashlib
 import json
 import logging
-import sqlite3
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Optional
 
-from nuri.core.db import insert_certification, query
+from nuri.core.db import OperationalError, insert_certification, query
 from nuri.core.rules import (
     LEVERAGE_ETFS,
     MAX_SECTOR_EXPOSURE,
@@ -184,7 +183,7 @@ def _read_portfolio_raw(db_path=None) -> list[dict]:
             "WHERE ticker != '' ORDER BY account, ticker",
             db_path=db_path,
         )
-    except sqlite3.OperationalError as e:
+    except OperationalError as e:
         logger.warning(f"portfolio_raw DB read 실패 (sqlite OperationalError): {e}")
         return []
     return [dict(r) for r in rows]
