@@ -15,7 +15,7 @@
 - LLM consult dual-archive: `make llm-consult slug=<kebab> prompt=<file>`
 - Lint+Test: `make lint` / `make test-fast` / `.venv/bin/python -m pytest <path>::<test> -v`
 - Gates: `make verify-quick` (~10s pre-commit smoke) / `make verify-all` (~30s pre-push: tests + lint + frontend)
-- Deploy: `make start` (API :8001 + Dashboard :3000) / `make deploy-mini` (MBP → Mac mini 6단계 동기화)
+- Deploy: `make start` (API :8001 + Dashboard :3000) / `make deploy-mini` (MBP → Mac mini 7단계 동기화)
 
 Frontend-only commands → `frontend/CLAUDE.md`.
 

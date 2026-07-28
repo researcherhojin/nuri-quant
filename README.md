@@ -18,7 +18,7 @@ Every BUY / SELL recommendation runs through a 5-phase pipeline — **collect �
 - 🔁 **Self-correcting** — agent weights adjust based on actual prediction accuracy, not hand-tuning.
 - 🛡️ **3-D certification** — gates apply per `Account × Asset Class × Market`. One error-grade fail → REJECTED, no manual override.
 - 🔓 **Open data flow** — phases coupled only via SQLite tables. Re-run any phase, downstream consumers refresh automatically.
-- ✅ **Tested rigorously** — 6,228 backend tests, **100% statement coverage** (CI verified, 2026-05-06).
+- ✅ **Tested rigorously** — 6,347 backend tests, **100% statement coverage** (CI verified, 2026-05-06).
 
 ## Quick Start
 
@@ -129,9 +129,9 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 
 **Frontend**
 
-![Next.js](https://img.shields.io/badge/Next.js-16.2.9-000000?logo=nextdotjs&logoColor=white)
-![React](https://img.shields.io/badge/React-19.2.7-61DAFB?logo=react&logoColor=black)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.3.1-06B6D4?logo=tailwindcss&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16.2.10-000000?logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-19.2.8-61DAFB?logo=react&logoColor=black)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.3.3-06B6D4?logo=tailwindcss&logoColor=white)
 ![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-000000?logo=shadcnui&logoColor=white)
 
 **Quant**
@@ -157,8 +157,8 @@ The egress policy is enforced by `nuri/llm/openai_client.py`: a single wrapper l
 
 | Metric | Value |
 |--------|-------|
-| **Backend tests** | 6,228 (275 files) — **100% statement coverage** |
-| **Frontend tests** | 1,383 (126 files) |
+| **Backend tests** | 6,347 (279 files) — **100% statement coverage** |
+| **Frontend tests** | 1,449 (127 files) |
 | **E2E tests** | 57 (Playwright, 8 specs) |
 | **Pipeline phases** | 5 (collect / analyze / consensus / certify / track) |
 | **Data collectors** | 27 collectors (BaseCollector pattern) |

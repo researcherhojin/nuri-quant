@@ -245,7 +245,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,334 tests, 279 files (statement coverage **100%**, 2026-05-06) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,347 tests, 279 files (statement coverage **100%**, 2026-05-06) |
 | Frontend tests | 목표 ≥ 90% | 1449 tests, 127 files |
 | E2E | 핵심 flow | 57 Playwright (8 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
@@ -340,7 +340,7 @@ Deferred (필요 시점에 추가):
 | **Context Files** | 프로젝트 규칙 | `CLAUDE.md` 루트 + 13 scoped + `AGENTS.md` + `docs/STRATEGY.md` |
 | **MCP Servers** | 외부 도구 연결 | `.mcp.json` → SQLite DB. 필요 최소. |
 | **Skill Files** | 반복 작업 | `scripts/deploy/deploy_remote.sh`, `scripts/verify/verify.py`, `scripts/db/migrate.py` |
-| **Mechanical Enforcement** | 시스템 강제 | ruff · main-ci-cd.yml · pr-checks.yml · `make verify-*` · SIEGE `gate_check.py` |
+| **Mechanical Enforcement** | 시스템 강제 | ruff · main-ci-cd.yml · pr-discipline.yml · `make verify-*` · SIEGE `gate_check.py` |
 **엔트로피 GC**:
 | 유형 | 감지 | 방어 |
 | Dead code | `ruff` (F401/F841) | CI 차단 |
