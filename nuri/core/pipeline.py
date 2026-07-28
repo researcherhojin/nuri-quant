@@ -4,12 +4,15 @@
 각 스텝은 의존성 충족 시에만 실행 가능.
 """
 
+import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
 from nuri.core.events import emit_event, get_step_status
+
+logger = logging.getLogger(__name__)
 
 # 스테이지 의존성 — `nuri/core/events.PIPELINE_STEPS` 와 같은 어휘.
 # 이 DAG 는 **차단하지 않는다**: 스케줄러는 warn_only=True 로 호출해, 의존성이
@@ -22,6 +25,23 @@ STEP_DEPENDENCIES: dict[str, list[str]] = {
     "certify": ["consensus"],
     "track": ["consensus"],
 }
+
+
+def _safe_emit(*args, **kwargs) -> int | None:
+    """이벤트 기록 실패가 본 작업을 죽이지 않게 한다.
+
+    CI 가 실제로 이걸 잡았다: `pipeline_events` 테이블이 없는 환경에서
+    `emit_event` 가 OperationalError 를 던졌고, 그게 `run_step` 밖으로 나가
+    **감싼 함수가 아예 실행되지 않았다**. warn_only 로 "차단하지 않는다" 를
+    만들어 놓고, 텔레메트리 자체가 게이트가 된 셈이다.
+
+    관측은 실패해도 조용히 실패해야 한다 ([[feedback_observability_must_not_gate]]).
+    """
+    try:
+        return emit_event(*args, **kwargs)
+    except Exception:  # noqa: BLE001 — 관측 실패는 본 작업과 무관
+        logger.debug("pipeline 이벤트 기록 실패 (무시): %s", args[0] if args else "?", exc_info=True)
+        return None
 
 
 def check_dependencies(step: str, db_path: Optional[Path] = None) -> dict:
@@ -65,13 +85,13 @@ def run_step(
     warning = None
     if not deps["ready"]:
         if not warn_only:
-            emit_event("step_blocked", step, {"blocked_by": deps["missing"]}, db_path=db_path)
+            _safe_emit("step_blocked", step, {"blocked_by": deps["missing"]}, db_path=db_path)
             return {"status": "blocked", "missing": deps["missing"]}
         warning = deps["missing"]
-        emit_event("step_dependency_warning", step, {"missing": warning}, db_path=db_path)
+        _safe_emit("step_dependency_warning", step, {"missing": warning}, db_path=db_path)
 
     # 2. 시작 이벤트
-    start_id = emit_event("step_started", step, db_path=db_path)
+    start_id = _safe_emit("step_started", step, db_path=db_path)
     start_time = time.time()
 
     # 3. 실행
@@ -79,7 +99,7 @@ def run_step(
         result = func(**kwargs)
         duration = int((time.time() - start_time) * 1000)
         record_count = result if isinstance(result, int) else None
-        emit_event(
+        _safe_emit(
             "step_completed",
             step,
             payload={"summary": str(result)[:500] if result else None},
@@ -91,7 +111,7 @@ def run_step(
         return {"status": "success", "duration_ms": duration, "result": result, "dependency_warning": warning}
     except Exception as e:
         duration = int((time.time() - start_time) * 1000)
-        emit_event(
+        _safe_emit(
             "step_failed",
             step,
             payload={"error": str(e)[:500]},

@@ -169,3 +169,39 @@ class TestSchedulerWiring:
         scheduled = {j["args"][0] for j in sch.SCHEDULES if j.get("func") is sch._run_collector and j.get("args")}
         orphan = sorted(set(sch._STAGE_OF_JOB) - scheduled)
         assert not orphan, f"_STAGE_OF_JOB 에 있으나 SCHEDULES 에 없는 잡: {orphan}"
+
+
+class TestTelemetryFailureDoesNotGate:
+    """이벤트 기록이 실패해도 감싼 함수는 실행된다.
+
+    CI 가 실제로 이 구멍을 잡았다 (#921 첫 커밋): `pipeline_events` 테이블이 없는
+    환경에서 `emit_event` 가 OperationalError 를 던졌고, 그게 `run_step` 밖으로
+    나가 **collector 가 아예 호출되지 않았다** — mock 이 0회 호출로 FAIL.
+    warn_only 로 "차단하지 않는다" 를 만들어 놓고 텔레메트리 자체를 게이트로
+    만든 셈이다. 로컬은 DB 에 테이블이 있어서 통과했다.
+    """
+
+    def test_wrapped_function_runs_even_if_every_emit_fails(self, db_path):
+        """Gotcha-Test Pair: `_safe_emit` 을 `emit_event` 로 되돌리면 FAIL."""
+        from nuri.core.db import OperationalError
+
+        ran = []
+        with patch(
+            "nuri.core.pipeline.emit_event",
+            side_effect=OperationalError("no such table: pipeline_events"),
+        ):
+            result = run_step("analyze", lambda: ran.append(1), db_path=db_path, warn_only=True)
+
+        assert ran == [1], "이벤트 기록 실패가 본 작업을 막았다"
+        assert result["status"] == "success"
+
+    def test_reraise_still_works_when_emit_fails(self, db_path):
+        """텔레메트리가 죽어도 진짜 실패는 여전히 호출자에게 전달된다."""
+        from nuri.core.db import OperationalError
+
+        def boom():
+            raise ValueError("진짜 실패")
+
+        with patch("nuri.core.pipeline.emit_event", side_effect=OperationalError("no such table")):
+            with pytest.raises(ValueError, match="진짜 실패"):
+                run_step("collect", boom, db_path=db_path, warn_only=True, reraise=True)
