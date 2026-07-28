@@ -56,7 +56,10 @@ dependencies = [
     # ─── Visualization ────────────────────────────────────────
     "matplotlib>=3.8.0",
     "mplfinance>=0.12.0",
-    "pillow>=12.2.0",  # security: CVE-2026-40192 FITS GZIP decompression bomb (Dependabot #15)
+    # security floor — 하한을 올려야 `uv lock` 재해석이 취약 버전으로 되돌아가지 않는다.
+    # 12.3.0: 13 CVE (heap OOB write in RankFilter/paste/crop/ImageCmsTransform, PDF·JPEG2000
+    # decompression bomb, 폰트 로더 bomb-check 우회 5건). 12.2.0 은 CVE-2026-40192 (FITS GZIP).
+    "pillow>=12.3.0",
     "plotly>=5.18.0",
     "seaborn>=0.13.2",
 

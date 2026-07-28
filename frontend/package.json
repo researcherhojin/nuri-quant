@@ -17,7 +17,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.25.0",
-    "next": "16.2.10",
+    "next": "16.2.12",
     "next-themes": "^0.4.6",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -45,8 +45,16 @@
     "vitest": "^4.1.2"
   },
   "overrides": {
-    "hono": ">=4.12.14",
-    "postcss": ">=8.5.10",
-    "ip-address": ">=10.1.1"
+    "hono": ">=4.12.27",
+    "postcss": ">=8.5.18",
+    "ip-address": ">=10.1.1",
+    "sharp": ">=0.35.0",
+    "fast-uri": ">=3.1.4",
+    "brace-expansion": ">=5.0.8",
+    "body-parser": ">=2.3.0",
+    "@hono/node-server": ">=2.0.5",
+    "eslint": {
+      "minimatch": ">=10.2.5"
+    }
   }
 }
