@@ -65,6 +65,17 @@ class Candidate:
     # codex B-2-ext: 증거 품질 bucket split. advisory/avoid
     # 는 normal recommendation 에 섞이지 않음 (개별 섹션).
 
+    @property
+    def is_actionable(self) -> bool:
+        """증거 품질이 actionable tier 인가.
+
+        소비자가 `TIER_ACTIONABLE` 을 import 해 비교하는 대신 이 속성을 쓰면
+        tier 어휘가 이 모듈 밖으로 새지 않는다 — `engine/conflicts.py` 가
+        상수 하나 때문에 이 모듈을 import 하면서 `conflicts ⇄ candidates`
+        상호 의존이 생겼고, deferred import 로만 버티고 있었다 (#920).
+        """
+        return self.tier == TIER_ACTIONABLE
+
 
 def _load_scorecard() -> tuple[dict[str, dict], int | None]:
     """최신 signal_scorecard.csv에서 시그널별 통계 로드.
