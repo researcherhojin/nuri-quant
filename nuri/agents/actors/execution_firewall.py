@@ -18,6 +18,7 @@ Hard rules (모두 우회 불가):
 - post-trade cash < 20% → cash_reserve
 - total long exposure / cash > 1.5x → leverage_cap
 - 일일 portfolio loss > -10% → max_daily_loss
+- post-trade 실험 슬리브 > 계좌 전략 상한 → sleeve_cap (§3.11, `account` 제공 시)
 
 Soft rule:
 - VIX 25-30 + BUY → 'caution' warn (emit 허용 + 사용자에게 경고)
@@ -65,6 +66,7 @@ class ExecutionFirewall(Actor):
         ticker: str
         trade_action: 'BUY' | 'SELL' | 'HOLD'  — 매매 방향 (key 충돌 회피)
         proposed_position_value: float — emit 시 매매 금액 (USD or KRW)
+        account: str (optional) — §3.11 슬리브 게이트용 계좌 키. 없으면 슬리브 미검사
         portfolio_state: dict — 현재 포트폴리오
             {
               total_value, cash, positions: {ticker: {value, sector}},
@@ -284,6 +286,35 @@ class ExecutionFirewall(Actor):
                                 "cash": cash,
                                 "ratio": leverage_ratio,
                                 "cap": MAX_LEVERAGE,
+                            },
+                        }
+                    )
+
+            # 7) §3.11 실험 슬리브 상한 — 이 매수가 계좌의 슬리브 여력을 넘는가
+            #
+            # `account` 가 없으면 검사하지 않는다. 다른 게이트(vix / sector / daily_pnl)와
+            # 같은 "입력 있으면 검사" 규약이고, 슬리브는 **계좌별** 룰이라 계좌 없이는
+            # 판정 자체가 불가능하다 (portfolio_state 는 계좌 구분을 담지 않는다).
+            #
+            # headroom 계산이 터지면 잡지 않는다 — 고장난 게이트가 통과한 게이트처럼
+            # 보이면 안 된다. run() 이 실패로 기록하고 caller 가 처리한다. 빈 포트폴리오는
+            # headroom=None 이라 예외가 아니라 "상한 없음"으로 조용히 통과한다 (CI 안전).
+            account = input_data.get("account")
+            if account:
+                from nuri.analysis.sleeve import sleeve_headroom
+
+                headroom = sleeve_headroom(str(account))
+                if headroom is not None and proposed_value > headroom:
+                    hard_blocks.append(
+                        {
+                            "type": "sleeve_cap",
+                            "reason": (
+                                f"§3.11 실험 슬리브 여력 {headroom:,.0f} < 신규 매수 {proposed_value:,.0f}"
+                                " — 사전등록 상한 초과 (상한 인상은 판정 통과 + STRATEGY PR 필요)"
+                            ),
+                            "evidence": {
+                                "headroom": headroom,
+                                "proposed_value": proposed_value,
                             },
                         }
                     )

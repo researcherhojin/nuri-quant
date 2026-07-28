@@ -415,6 +415,89 @@ class TestMaxDailyLossLockTest:
         assert all(b["type"] != "max_daily_loss" for b in result.output["blocks"])
 
 
+class TestSleeveCapLockTest:
+    """LOCK-TEST: §3.11 실험 슬리브 여력 초과 + BUY → BLOCK (#834).
+
+    게이트는 **opt-in** 이다 — `account` 없이는 계좌별 상한을 판정할 수 없고
+    (portfolio_state 는 계좌 구분을 담지 않는다), 조용히 아무 계좌나 골라 판정하면
+    엉뚱한 매수를 막는다. 그래서 account 부재 = 미검사가 정답이다.
+    """
+
+    def test_no_account_means_no_sleeve_lookup_at_all(self, patched_db):
+        """account 없으면 headroom 계산 자체를 하지 않는다.
+
+        Gotcha-Test Pair: `if account:` 가드를 없애면 호출이 일어나 FAIL.
+        """
+        _seed_decision(patched_db, "dc-sleeve-noacct")
+        with patch("nuri.analysis.sleeve.sleeve_headroom") as mock_headroom:
+            result = ExecutionFirewall().run(_check_payload("dc-sleeve-noacct", "NVDA"))
+        mock_headroom.assert_not_called()
+        assert all(b["type"] != "sleeve_cap" for b in result.output["blocks"])
+
+    def test_buy_exceeding_headroom_blocks(self, patched_db):
+        _seed_decision(patched_db, "dc-sleeve-over")
+        with patch("nuri.analysis.sleeve.sleeve_headroom", return_value=500.0):
+            result = ExecutionFirewall().run(
+                _check_payload("dc-sleeve-over", "NVDA", account="Brokerage Alpha", proposed_position_value=3000.0)
+            )
+        assert result.outcome == Outcome.BLOCK
+        assert any(b["type"] == "sleeve_cap" for b in result.output["blocks"])
+
+    def test_buy_within_headroom_passes(self, patched_db):
+        _seed_decision(patched_db, "dc-sleeve-ok")
+        with patch("nuri.analysis.sleeve.sleeve_headroom", return_value=5000.0):
+            result = ExecutionFirewall().run(
+                _check_payload("dc-sleeve-ok", "NVDA", account="Brokerage Alpha", proposed_position_value=3000.0)
+            )
+        assert all(b["type"] != "sleeve_cap" for b in result.output["blocks"])
+
+    def test_undefined_cap_means_no_limit(self, patched_db):
+        """상한이 정의되지 않은 전략(headroom=None)은 슬리브 판정 대상이 아니다."""
+        _seed_decision(patched_db, "dc-sleeve-none")
+        with patch("nuri.analysis.sleeve.sleeve_headroom", return_value=None):
+            result = ExecutionFirewall().run(
+                _check_payload("dc-sleeve-none", "NVDA", account="Brokerage Alpha", proposed_position_value=99_000.0)
+            )
+        assert all(b["type"] != "sleeve_cap" for b in result.output["blocks"])
+
+    def test_sell_is_not_sleeve_gated(self, patched_db):
+        """슬리브는 신규 투입 자본 상한 — 회수(SELL)를 막으면 상한 복구가 불가능해진다."""
+        _seed_decision(patched_db, "dc-sleeve-sell", action="SELL")
+        with patch("nuri.analysis.sleeve.sleeve_headroom", return_value=0.0) as mock_headroom:
+            result = ExecutionFirewall().run(
+                _check_payload(
+                    "dc-sleeve-sell",
+                    "NVDA",
+                    trade_action="SELL",
+                    account="Brokerage Alpha",
+                    proposed_position_value=3000.0,
+                )
+            )
+        mock_headroom.assert_not_called()
+        assert all(b["type"] != "sleeve_cap" for b in result.output["blocks"])
+
+    def test_block_persists_and_evidence_carries_no_account_name(self, patched_db):
+        """block_type='sleeve_cap' 가 CHECK 를 통과해 기록된다 + evidence 에 broker name 없음.
+
+        Gotcha-Test Pair: migration 47 (또는 `_BLOCK_TYPES` 의 'sleeve_cap') 을 되돌리면
+        log_execution_block 이 죽어 FAIL — 게이트만 넣고 스키마를 빼먹는 조합을 잠근다.
+        """
+        _seed_decision(patched_db, "dc-sleeve-audit")
+        with patch("nuri.analysis.sleeve.sleeve_headroom", return_value=0.0):
+            ExecutionFirewall().run(
+                _check_payload("dc-sleeve-audit", "NVDA", account="Brokerage Alpha", proposed_position_value=1000.0)
+            )
+        rows = query(
+            "SELECT block_type, severity, evidence_json FROM execution_blocks WHERE decision_id=?",
+            ("dc-sleeve-audit",),
+            db_path=patched_db,
+        )
+        sleeve_rows = [dict(r) for r in rows if dict(r)["block_type"] == "sleeve_cap"]
+        assert len(sleeve_rows) == 1
+        assert sleeve_rows[0]["severity"] == "hard"
+        assert "Brokerage Alpha" not in sleeve_rows[0]["evidence_json"]
+
+
 # ═══════════════════════════════════════════════════════
 # Persistence
 # ═══════════════════════════════════════════════════════

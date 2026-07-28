@@ -29,6 +29,7 @@ _BLOCK_TYPES = (
     "cash_reserve",
     "leverage_cap",
     "max_daily_loss",
+    "sleeve_cap",  # §3.11 실험 슬리브 상한 (#834) — migration 47 의 CHECK 와 짝
 )
 _BLOCK_SEVERITIES = ("hard", "soft")
 _INCIDENT_TYPES = (

@@ -29,12 +29,36 @@ def db_path(tmp_path):
 class TestSchemaMigrations:
     """16 신규 migration (#25 audit / #26 flags / #27 runs / #28 messages / #29 walkforward_runs / #30 regime_posteriors / #31 hypotheses / #32 causal_audits / #33 agent_decisions / #34 decision_outcomes / #35 execution_blocks / #36 incidents / #37 dr_replicas / #38 collector_runs / #39 drift_alerts / #40 foundation_benchmarks) 적용 확인."""
 
-    def test_schema_version_at_46(self, db_path):
+    def test_schema_version_at_47(self, db_path):
         """Phase 1+2 + discord_outbox + agent_control/agent_dev_log channel CHECK 확장 (#582) +
         held_add_shadow (#518) + market_postmortem (#596 Phase 2) +
         incidents signal_evaluation_stale enum 확장 (#825) +
-        incidents alpha_report_stale enum 확장 (#894) → 46."""
-        assert get_schema_version(db_path) == 46
+        incidents alpha_report_stale enum 확장 (#894) +
+        execution_blocks sleeve_cap enum 확장 (#834) → 47."""
+        assert get_schema_version(db_path) == 47
+
+    def test_block_type_allowlist_matches_sql_check(self, db_path):
+        """`_BLOCK_TYPES`(파이썬 검증) 와 execution_blocks CHECK(스키마) 는 같아야 한다.
+
+        #834 에서 실제로 갈렸다 — CHECK 에 'sleeve_cap' 을 넣고 `_BLOCK_TYPES` 를
+        빼먹으면 `log_execution_block` 이 ValueError 로 죽는다. 반대 방향(파이썬만
+        확장)은 IntegrityError 로 죽는다. 둘 다 firewall 이 통째로 멈추는 고장이라
+        한쪽만 고치는 조합을 여기서 잠근다.
+
+        Gotcha-Test Pair: 어느 한쪽에만 block_type 을 추가하면 FAIL.
+        """
+        import re
+
+        from nuri.core.db.execution_ops import _BLOCK_TYPES
+
+        sql = query(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='execution_blocks'",
+            db_path=db_path,
+        )[0]["sql"]
+        check_body = re.search(r"block_type TEXT NOT NULL CHECK\(block_type IN \((.*?)\)\)", sql, re.S)
+        assert check_body, "execution_blocks CHECK 파싱 실패 — 스키마 형태가 바뀜"
+        in_sql = set(re.findall(r"'([a-z_]+)'", check_body.group(1)))
+        assert in_sql == set(_BLOCK_TYPES), f"SQL CHECK {sorted(in_sql)} != _BLOCK_TYPES {sorted(_BLOCK_TYPES)}"
 
     def test_audit_ledger_table_exists(self, db_path):
         """agent_audit_ledger 테이블이 생성되었는지 확인."""

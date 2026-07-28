@@ -71,3 +71,69 @@ def test_alpha_empty(client):
     assert data["effective_bets"] == 0
     assert data["edge_status"] == "NOT_MEASURABLE"
     assert all(w["n_completed"] == 0 and w["n_pending"] == 0 for w in data["windows"])
+
+
+# ─── §3.11 실험 슬리브 사용률 (#834) ──────────────────────────────────────────
+
+
+def test_alpha_exposes_sleeve_utilization(client):
+    """alpha 헤드라인 옆에 "어떤 자본으로 낸 결과인가"가 같이 나온다.
+
+    Gotcha-Test Pair: 응답에서 `sleeve` 를 빼면 FAIL — 백엔드에 계산이 있어도
+    노출 지점이 없으면 사용자는 상한 초과를 못 본다.
+    """
+    from unittest.mock import patch
+
+    rows = [
+        {
+            "account": "Brokerage Alpha",
+            "strategy": "core",
+            "cap_pct": 10.0,
+            "sleeve_usd": 2500.0,
+            "equity_usd": 10_000.0,
+            "used_pct": 25.0,
+            "over": True,
+        }
+    ]
+    with patch("nuri.analysis.sleeve.sleeve_utilization", return_value=rows):
+        r = client.get("/api/alpha")
+    assert r.status_code == 200
+    sleeve = r.json()["sleeve"]
+    assert sleeve["count"] == 1
+    assert sleeve["any_over"] is True
+    assert sleeve["accounts"][0]["used_pct"] == 25.0
+
+
+def test_alpha_sleeve_never_leaks_account_name(client):
+    """계좌 키(broker name)는 응답에 들어가면 안 된다 — 전략 라벨만 (public repo/dashboard).
+
+    Gotcha-Test Pair: row 를 통째로 응답에 실으면 FAIL.
+    """
+    from unittest.mock import patch
+
+    rows = [
+        {
+            "account": "Brokerage Alpha",
+            "strategy": "core",
+            "cap_pct": 10.0,
+            "sleeve_usd": 2500.0,
+            "equity_usd": 10_000.0,
+            "used_pct": 25.0,
+            "over": True,
+        }
+    ]
+    with patch("nuri.analysis.sleeve.sleeve_utilization", return_value=rows):
+        r = client.get("/api/alpha")
+    assert "Brokerage Alpha" not in r.text
+
+
+def test_alpha_survives_sleeve_failure(client):
+    """슬리브 계산이 터져도 alpha 헤드라인은 살아야 한다 (soft error, shape 유지)."""
+    from unittest.mock import patch
+
+    with patch("nuri.analysis.sleeve.sleeve_utilization", side_effect=RuntimeError("boom")):
+        r = client.get("/api/alpha")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["edge_status"] == "NOT_MEASURABLE"  # 본 계약 유지
+    assert data["sleeve"]["accounts"] == [] and "error" in data["sleeve"]
