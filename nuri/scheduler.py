@@ -189,10 +189,16 @@ def _run_collector(name: str, **kwargs):
             # 10-agent 합의 결과를 recommendations 에 저장 → Learning Memory 자동 학습 input.
             # decision_outcomes 가 30 일 후 outcome_30d 채우면 _compute_weights 가 가중치 조정.
             from nuri.trading.agents.consensus import analyze_portfolio, save_to_recommendations
+            from nuri.trading.engine.decisions import record_decisions
 
             results = analyze_portfolio()
             saved = save_to_recommendations(results)
-            logger.info(f"[consensus] {len(results)}건 분석, {saved}건 저장")
+            # decisions 기록은 CLI(`python -m nuri.trading.agents.consensus`) 에만 있었다.
+            # 자동화(#363, 2026-04-17)가 수동 실행을 대체하면서 이 호출이 빠져 decisions 가
+            # 2026-04-14 이후 3.5 개월 동결됐다 — /decisions 대시보드가 4월 데이터를 서빙
+            # 했는데 헬스 지표는 전부 초록이었다 (#897).
+            recorded = record_decisions(results)
+            logger.info(f"[consensus] {len(results)}건 분석, recommendations {saved}건, decisions {recorded}건")
         elif name == "holdings_monitor":
             # Holdings post-entry technical-divergence monitor (07:10 KST, after consensus 07:05).
             # JKHY-class entry-stage defenses (PR #303) cover before-buy; this covers after-buy
