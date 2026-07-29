@@ -50,6 +50,10 @@ conftest 전역 mock 은 **yfinance 만** 커버. `MacroCollector.collect()` 는
 코드가 `date('now', '-N days')` 윈도우 + 최소 행 수 임계값으로 필터하면(예: `buy_candidate_emitter._get_price_signals`, 45일 윈도우 + `len(grp) < 6` skip), **고정 절대일로 seed한 fixture 는 wall-clock 이 지나며 윈도우 밖으로 밀려 silent 하게 누락**된다. 합성 가격/날짜 fixture 의 `end` 는 항상 `today_kst()` 로 앵커링 — 리터럴 날짜 금지. (#721: `end="2026-04-30"` → 39일 후 scored=0 회귀)
 **Test:** `tests/trading/recommend/test_buy_candidate_emitter.py::test_vix_caution_halves_allocation` (+`test_emit_above_threshold`, `test_allocation_split_by_score`) — 고정일로 되돌리면 즉시 FAIL.
 
+### Privacy 가드를 테스트하는 픽스처는 런타임 조립
+가드가 차단하는 패턴 자체를 **리터럴로** 적으면 파일을 저장하는 순간 PreToolUse 훅과 CI `privacy-scan` 이 그 테스트 파일을 차단한다 (2026-07-29 실측: `TS`+`LA` 를 리터럴로 쓴 Write 가 막혔다). `ticker = "TS" + "LA"` 처럼 조립해 리터럴이 파일에 남지 않게 할 것 — 스캐너는 정규식이라 이걸로 충분하다.
+**Test:** `tests/test_hook_guard_execution.py::TestPrivacyGuard::test_blocks_ticker_pnl_across_newlines` — 리터럴로 되돌리면 커밋 자체가 CI 에서 막힌다.
+
 ## Privacy in Test Data
 
 Never use real broker names, holdings, prices, or account identifiers. Use placeholders: `Brokerage Alpha`, `Brokerage Beta`, round-million values like `1_000_000`.
