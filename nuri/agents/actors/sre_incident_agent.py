@@ -405,7 +405,8 @@ class SREIncidentAgent(Actor):
         rows = query(
             """SELECT MIN(timestamp) AS first_run,
                       MAX(timestamp) AS last_run,
-                      MAX(CASE WHEN json_extract(payload, '$.staged') = 1
+                      MAX(CASE WHEN json_valid(payload)
+                                AND json_extract(payload, '$.staged') = 1
                                THEN timestamp END) AS last_staged
                FROM pipeline_events
                WHERE event_type = 'alpha_report_run'"""
@@ -427,10 +428,19 @@ class SREIncidentAgent(Actor):
                WHERE event_type = 'alpha_report_run'
                ORDER BY timestamp DESC LIMIT 1"""
         )
+        # payload 는 인시던트에 *사유* 를 붙이려고 읽는다. 인시던트를 낼지 말지는 이미
+        # 위에서 정해졌으므로, 여기서 무슨 일이 나든 발화를 막아선 안 된다 (#927).
+        # 깨진 payload 로 detector 가 죽으면 "리포트가 안 나간다" 는 사실까지 같이 사라진다.
+        # `except Exception` 이 넓은 건 의도다 — 비-dict JSON('null'/'[]'/'"x"'/'5')이
+        # `.get` 에서 내는 AttributeError 가 좁은 튜플에 안 걸려서 실제로 전파됐다.
         reason = "unknown"
+        payload: dict[str, Any] = {}
         try:
-            payload = json.loads(last_rows[0]["payload"]) if last_rows and last_rows[0]["payload"] else {}
-            if payload.get("error"):
+            raw = json.loads(last_rows[0]["payload"]) if last_rows and last_rows[0]["payload"] else {}
+            payload = raw if isinstance(raw, dict) else {}
+            if not isinstance(raw, dict):
+                reason = "unparseable"
+            elif payload.get("error"):
                 reason = "error"
             elif not payload.get("role_ok"):
                 reason = "role_missing"
@@ -438,12 +448,8 @@ class SREIncidentAgent(Actor):
                 reason = "already_emitted"
             else:
                 reason = "staged"
-        # pragma 이유(#927): 이 except 는 도달 불가하다. 위 집계 쿼리가 같은 payload 에
-        # `json_extract` 를 걸므로 깨진 JSON 은 SQLite 단계에서 먼저 죽고, 객체가 아닌
-        # 유효 JSON('null'/'[]'/'"x"')은 `.get` 에서 AttributeError 라 이 튜플에 안 걸린다.
-        # payload 컬럼은 TEXT affinity 라 TypeError 도 안 난다. 즉 실제 두 고장 모드는
-        # 여기를 통과해 버린다 — 교정은 #927 (동작 변경이라 별도 PR).
-        except (json.JSONDecodeError, TypeError, KeyError):  # pragma: no cover
+        except Exception:  # noqa: BLE001 — 사유 추출 실패가 인시던트 발화를 막으면 안 된다
+            reason = "unparseable"
             payload = {}
 
         evidence = {
