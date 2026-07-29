@@ -44,6 +44,7 @@ import numpy as np
 
 from nuri.core.db import query
 from nuri.core.rules import RULES
+from nuri.core.ticker_names import is_kr_ticker
 from nuri.core.timezone import today_kst
 
 # 순열 null 오염 방지 — 지수/선물 pseudo-ticker 는 universe 에서 제외.
@@ -136,7 +137,6 @@ def fetch_sample(db_path: Optional[Path] = None, as_of: Optional[str] = None) ->
         LEFT JOIN decision_outcomes o
                ON o.decision_id = 'rec_' || r.id AND o.observation_window = ?
         WHERE ad.action = 'BUY'
-          AND r.ticker NOT LIKE '%.KS'
           AND r.date >= ? AND r.date <= ?
         ORDER BY r.date, r.id
         """,
@@ -147,6 +147,10 @@ def fetch_sample(db_path: Optional[Path] = None, as_of: Optional[str] = None) ->
     sample = Sample()
     for raw in rows:
         r = dict(raw)
+        # §3.11 판정은 US-only 고정 — KR(.KS + .KQ) 은 별도 사전등록 전까지 진단 전용.
+        # SQL `NOT LIKE '%.KS'` 는 .KQ 를 통과시켰다 (#925). 판별은 canonical helper 로만.
+        if is_kr_ticker(r["ticker"]):
+            continue
         if r["alpha"] is not None:
             sample.decisions.append(
                 {
@@ -194,11 +198,12 @@ def _eligible_substitutes(
     """블록별 치환 후보 — 해당 블록의 모든 emit 일자에서 placebo alpha 계산 가능한
     US ticker (원 ticker·benchmark·pseudo 제외). 결정론 보장 위해 정렬 유지."""
     rows = query(
-        "SELECT DISTINCT ticker FROM prices WHERE ticker NOT LIKE '%.KS' ORDER BY ticker",
+        "SELECT DISTINCT ticker FROM prices ORDER BY ticker",
         db_path=db_path,
     )
     universe = [dict(r)["ticker"] for r in rows]
-    universe = [t for t in universe if t not in PSEUDO_TICKERS and t != benchmark]
+    # 치환 universe 도 표본과 같은 시장이어야 null 이 유효 — KR(.KS + .KQ) 제외 (#925).
+    universe = [t for t in universe if not is_kr_ticker(t) and t not in PSEUDO_TICKERS and t != benchmark]
 
     eligible: dict[str, list[str]] = {}
     for ticker, dates in blocks.items():
