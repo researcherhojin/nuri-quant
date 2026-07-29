@@ -13,6 +13,7 @@ from datetime import date, timedelta
 import pytest
 
 from nuri.core.db import get_db, init_db
+from nuri.core.ticker_names import is_kr_ticker
 from nuri.quant.validation import decision_alpha as da
 
 # ─── 합성 원장 픽스처 ───────────────────────────────────
@@ -113,6 +114,31 @@ class TestFetchSample:
         assert s.n == 4
         assert all(not d["ticker"].endswith(".KS") for d in s.decisions)
 
+    def test_kosdaq_excluded_from_us_sample(self, seeded):
+        """`.KQ`(KOSDAQ) 도 US 표본에서 빠진다 (#925).
+
+        Gotcha lock: `.KS` 만 배제하던 SQL LIKE 필터는 `.KQ` 를 통과시켰다.
+        #833 착륙 후 `.KQ` 결정의 원장 alpha 는 **KOSPI 기준**으로 기록되므로,
+        통과하면 벤치마크가 다른 행이 SPY 기준 mean alpha 와 순열 null 에 섞인다.
+        판별은 canonical `is_kr_ticker` 로만 — 접미사를 다시 손으로 적으면 재발한다.
+        """
+        _seed_decision(seeded, 30, "247540.KQ", EMIT_1, alpha=0.5)
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        assert s.n == 4
+        assert not any(is_kr_ticker(d["ticker"]) for d in s.decisions)
+
+    def test_kr_not_counted_as_missing(self, seeded):
+        """KR 배제는 결측 분모보다 **앞**이다 (#925).
+
+        결측률은 15% 초과 시 판정을 무효화하는 사전등록 기준이다 (§3.11). KR 이
+        결측으로 세어지면 US 판정이 KR 추적 실패로 무효화될 수 있다.
+        """
+        _seed_decision(seeded, 31, "247540.KQ", EMIT_1, alpha=None)
+        _seed_decision(seeded, 32, "005930.KS", EMIT_2, alpha=None)
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        assert s.n_missing_closed == 0
+        assert s.missing_rate_pct == 0.0
+
     def test_missing_only_when_window_closed(self, seeded):
         # 창 닫힘 + alpha 없음 → 결측 / 창 미도래 → 결측 아님 (lookahead)
         _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)  # closed, missing
@@ -145,6 +171,20 @@ class TestTickerBlockPlacebo:
         assert "TSLA" not in eligible["TSLA"]
         assert "SPY" not in eligible["TSLA"]
         assert set(eligible["TSLA"]) <= {"AAA", "BBB", "CCC", "NVDA"}
+
+    def test_placebo_universe_excludes_kr(self, seeded):
+        """치환 universe 에서도 KR 이 빠진다 (#925).
+
+        Gotcha lock: universe 쿼리도 `.KS` 만 배제했다. KR 종목이 US 표본의 치환
+        후보가 되면 null 분포에 FX·시장 스타일이 섞여 p 자체가 무의미해진다
+        (§3.11: "동일 시장 eligible universe 에서 ticker 치환").
+        """
+        _seed_prices(seeded, "247540.KQ", "2026-07-01", 60, 40.0, 0.001)
+        _seed_prices(seeded, "005930.KS", "2026-07-01", 60, 70.0, 0.001)
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        book = da.PriceBook(db_path=seeded)
+        eligible = da._eligible_substitutes(book, da._blocks(s.decisions), 30, "SPY", db_path=seeded)
+        assert not any(is_kr_ticker(t) for cands in eligible.values() for t in cands)
 
     def test_deterministic_p_with_same_seed(self, seeded):
         s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
