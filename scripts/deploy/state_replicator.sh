@@ -31,6 +31,13 @@ HOSTNAME=$(hostname -s)
 HOSTNAME_LC=$(echo "$HOSTNAME" | tr '[:upper:]' '[:lower:]')
 DB_PATH="${NURI_DB_PATH:-data/portfolio.db}"
 REPLICAS_DIR="data/replicas"
+
+# 원격 수신 경로 (#947). `host:relative/path` 는 **수신 측 홈** 기준으로 풀린다 —
+# 보내는 쪽 cwd 와 무관하다. 그래서 예전 `$DEV2_HOST:$REPLICAS_DIR/...` 은 레포가 아니라
+# `~/data/replicas/` 로 떨어졌다. 홈 기준 상대경로로 정규화해 레포 안에 착지시킨다.
+REMOTE_REPO="${DEV2_PATH:-~/workspace/nuri-quant}"
+REMOTE_REPO="${REMOTE_REPO#\~/}"  # 패턴의 ~ 를 escape — 안 하면 bash 가 홈으로 확장해 매칭 실패
+REMOTE_REPLICAS="${REMOTE_REPO}/${REPLICAS_DIR}"
 SNAPSHOTS_DIR="data/backups"
 TS=$(date +%Y%m%d_%H%M%S)
 
@@ -98,7 +105,13 @@ c.close()
         DIGEST=$(db_digest "$SNAP")
         echo "[primary] digest: $DIGEST"
         echo "[primary] pushing to $DEV2_HOST"
-        rsync -avz --partial "$SNAP" "$DEV2_HOST:$REPLICAS_DIR/portfolio_${HOSTNAME}.db" || {
+        # 수신 측 디렉터리를 먼저 만든다 — macOS openrsync 는 목적지 디렉터리를
+        # 자동 생성하지 않는다. 없으면 `open: No such file or directory` 로 죽는다 (#947).
+        ssh -o BatchMode=yes "$DEV2_HOST" "mkdir -p '$REMOTE_REPLICAS'" || {
+            echo " ❌ 원격 $REMOTE_REPLICAS 생성 실패 — SSH/권한 확인"
+            exit 2
+        }
+        rsync -avz --partial "$SNAP" "$DEV2_HOST:$REMOTE_REPLICAS/portfolio_${HOSTNAME}.db" || {
             echo " ❌ rsync push failed"
             exit 2
         }
