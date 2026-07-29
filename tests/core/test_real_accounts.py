@@ -29,7 +29,7 @@ from scripts.ops.import_portfolio import load_holdings_by_account
 _YAML = textwrap.dedent(
     """
     accounts:
-      kakaopay:
+      brokerage_alpha:
         name: 실계좌 (Main)
         broker: Brokerage Alpha
         currency: USD
@@ -78,7 +78,7 @@ def yaml_path(tmp_path: Path, monkeypatch) -> Path:
 class TestGetRealAccounts:
     def test_fixture_accounts_are_excluded(self, yaml_path):
         """`holdings` 만 있는 stub 은 실계좌가 아니다 — 이게 뚫려 있어서 사고가 났다."""
-        assert rules_mod.get_real_accounts() == {"kakaopay", "pension"}
+        assert rules_mod.get_real_accounts() == {"brokerage_alpha", "pension"}
 
     def test_holdings_alone_is_not_enough(self, yaml_path):
         """옛 기준(`holdings` 포함)으로 되돌리면 픽스처가 통과한다."""
@@ -100,7 +100,7 @@ class TestImportSkipsFixtureAccounts:
     def test_only_real_accounts_are_synced(self, yaml_path):
         """import 가 픽스처를 DB 로 넘기지 않는다 (#515 auto-consensus 도 안 탄다)."""
         by_account = load_holdings_by_account(yaml_path)
-        assert set(by_account) == {"kakaopay", "pension"}
+        assert set(by_account) == {"brokerage_alpha", "pension"}
 
     def test_fake_tickers_never_reach_the_record_set(self, yaml_path):
         """`BBB` / `VOO` / `AAPL` 은 실제로 프로덕션에 들어갔던 티커다."""
