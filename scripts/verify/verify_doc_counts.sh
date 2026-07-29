@@ -144,6 +144,8 @@ else
 fi
 # grep/wc-based (no Python) — always run, including CI
 check_claim "migrations"       "$MIG"   "README.md"            '[0-9]+ forward-only migrations' || true
+# ARCHITECTURE 도 같은 수치를 적는데 게이트가 없어 조용히 갈렸다 (2026-07-30 실측 46 vs 49).
+check_claim "migrations"       "$MIG"   "docs/ARCHITECTURE.md" '\([0-9]+ migrations as of' || true
 check_claim "scheduler_jobs"   "$JOBS"  "docs/ARCHITECTURE.md" '[0-9]+ cron jobs in' || true
 check_claim "rules_yaml_lines" "$RULES" "config/CLAUDE.md"     '\| [0-9]+ \| Investment rules' || true
 

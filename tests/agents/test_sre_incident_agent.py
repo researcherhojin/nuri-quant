@@ -1295,3 +1295,75 @@ class TestIncidentAutoResolve:
 
         assert not [r for r in resolved if r["target"] == "stuck-actor"]
         assert [r for r in _open_rows(patched_db) if r["target"] == "stuck-actor"]
+
+
+# ═══════════════════════════════════════════════════════
+# health_check.sh 흡수 detector 3종 (#939)
+# ═══════════════════════════════════════════════════════
+
+
+class TestAbsorbedHealthChecks:
+    """`health_check.sh` 의 고유 검사를 알림 경로가 있는 detector 로 이식 (#939).
+
+    그 스크립트는 `echo` 만 하고 DB/Discord 쓰기가 0건이라, 시간마다 로그만 쌓였다.
+    게다가 plist 주석은 "SRE-Incident-Agent 가 이 로그를 watch 한다" 고 적어뒀는데
+    그런 코드는 없었다 — 광고된 배선이 허구였다. 여기 옮겨야 `log_incident` +
+    Discord publish 를 탄다.
+    """
+
+    def _detect(self, name: str, **patches):
+        actor = SREIncidentAgent()
+        ctx = MagicMock(run_id="test-run")
+        with patch.object(SREIncidentAgent, "_publish_alert"):
+            return getattr(actor, name)(ctx)
+
+    def test_schema_drift_expected_version_comes_from_code(self, patched_db, no_publish):
+        """기대값은 `_MIGRATIONS` 에서 도출 — 상수를 박으면 이후 마이그레이션을 못 잡는다.
+
+        `health_check.sh` 는 `>= 40` 하드코딩이라 41~49 누락을 통과시켰다.
+        """
+        from nuri.core.db_migrations import _MIGRATIONS
+
+        expected = max(v for v, _, _ in _MIGRATIONS)
+        # schema_version 테이블을 실제로 되돌려 detector 가 읽는 경로 그대로 검증한다.
+        with get_db(patched_db) as conn:
+            conn.execute("DELETE FROM schema_version WHERE version > ?", (expected - 3,))
+        out = self._detect("_detect_schema_version_drift")
+        assert len(out) == 1
+        e = out[0]["evidence"]
+        assert e["expected_version"] == expected and e["missing_migrations"] == 3
+        assert out[0]["severity"] == "critical"
+
+    def test_schema_drift_silent_when_current(self, patched_db, no_publish):
+        assert self._detect("_detect_schema_version_drift") == []
+
+    def test_missing_table_is_reported(self, patched_db, no_publish):
+        with patch(
+            "nuri.agents.actors.sre_incident_agent.REQUIRED_TABLES",
+            ("incidents", "definitely_not_a_table"),
+        ):
+            out = self._detect("_detect_required_tables_missing")
+        assert len(out) == 1
+        assert out[0]["evidence"]["missing"] == ["definitely_not_a_table"]
+        assert out[0]["severity"] == "critical"
+
+    def test_all_required_tables_present_is_silent(self, patched_db, no_publish):
+        """init_db() 가 만든 스키마는 필수 테이블을 전부 갖춰야 한다."""
+        assert self._detect("_detect_required_tables_missing") == []
+
+    @pytest.mark.parametrize(
+        ("hostname", "expect_incident", "role"),
+        [
+            ("Ehbebeui-Macmini", False, "primary"),
+            ("Ehbebeui-MacBookPro", True, "replica"),
+            ("some-random-host", True, "unknown"),
+        ],
+    )
+    def test_writer_role(self, patched_db, no_publish, hostname, expect_incident, role):
+        """writer actor 가 primary 밖에서 돌면 원장이 갈라진다 (§3.11 단일 원장)."""
+        with patch("nuri.agents.actors.sre_incident_agent.socket.gethostname", return_value=hostname):
+            out = self._detect("_detect_writer_role")
+        assert bool(out) is expect_incident
+        if expect_incident:
+            assert out[0]["evidence"]["role"] == role
+            assert out[0]["severity"] == "warning"
