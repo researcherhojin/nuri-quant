@@ -14,7 +14,7 @@ macOS `/bin/sh` 는 `xpg_echo` 가 켜진 bash 3.2 다 — `echo` 가 **JSON 안
 `printf '%s'` 는 이스케이프를 해석하지 않는다. 그게 유일한 수정이고, 그래서
 누군가 "`echo` 랑 같잖아" 하며 되돌리기 쉽다. 이 테스트가 그걸 막는다.
 
-훅을 **문자열로 grep 하지 않고 `sh` 로 실행**한다 — grep 은 `printf` 존재만 보고
+훅을 **문자열로 grep 하지 않고 셸로 실행**한다 — grep 은 `printf` 존재만 보고
 "통과"라 말하지만, 파이프라인이 다른 이유로 깨져도 똑같이 통과한다 (#910 의 rc=127
 = 실패와 구분 불가 교훈). 여기서 유일하게 믿는 신호는 **exit code** 다.
 
@@ -52,9 +52,20 @@ def _hook_command(status_message: str) -> str:
 
 
 def _run(command: str, payload: dict) -> int:
-    """훅을 Claude Code 와 동일하게 `sh -c` + stdin JSON 으로 실행."""
+    """훅을 **macOS `/bin/sh` 등가 셸** + stdin JSON 으로 실행.
+
+    셸 선택이 이 테스트의 전부다. 세 후보 중 하나만 맞다:
+
+    - `/bin/sh` — macOS 에선 정확하지만 **Linux 에선 dash** 라 훅의 `[[ ]]` 가
+      죽어 조건절이 통째로 건너뛰어진다. CI 에서 rc=0 이 나와 "가드 무력"으로
+      오판한다 (2026-07-29 PR #954 에서 실제로 밟았다).
+    - `bash` — `[[` 는 되지만 `echo` 가 이스케이프를 **안** 펼친다. 그래서
+      `printf`→`echo` 회귀가 **통과해버린다** — mutation 검출력이 0 이 된다.
+    - `bash -O xpg_echo` — 둘 다 만족. macOS `/bin/sh` 는 xpg_echo 가 켜진
+      bash 이므로 이게 등가이고, 플랫폼과 무관하게 결정론적이다.
+    """
     proc = subprocess.run(
-        ["/bin/sh", "-c", command],
+        ["/bin/bash", "-O", "xpg_echo", "-c", command],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
