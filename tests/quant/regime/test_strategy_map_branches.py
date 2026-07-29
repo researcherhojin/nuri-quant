@@ -192,8 +192,6 @@ class TestGetRealAccountsActionsCI:
     """actions.py L507-512: yaml load + iter (uses Path.read_text)."""
 
     def test_real_accounts_via_read_text_patch(self, monkeypatch):
-        from pathlib import Path
-
         yaml_text = (
             "accounts:\n"
             "  main:\n"
@@ -204,18 +202,24 @@ class TestGetRealAccountsActionsCI:
             "    holdings:\n"
             "      AAA: 10\n"
         )
-        original_read_text = Path.read_text
+        import io
 
-        def _mock_read_text(self, *args, **kwargs):
-            if str(self).endswith("portfolio.yaml"):
-                return yaml_text
-            return original_read_text(self, *args, **kwargs)
+        real_open = open
 
-        monkeypatch.setattr("pathlib.Path.read_text", _mock_read_text)
+        def _opener(path, *args, **kwargs):
+            if str(path).endswith("portfolio.yaml"):
+                return io.StringIO(yaml_text)
+            return real_open(path, *args, **kwargs)
+
+        # 판별이 core 로 위임되며 read_text → open 으로 바뀌었다.
+        monkeypatch.setattr("builtins.open", _opener)
 
         from nuri.api.routes.actions import _get_real_accounts
 
         result = _get_real_accounts()
         assert "main" in result
-        assert "long_term" in result
+        # `holdings` 만 있는 계좌는 실계좌가 아니다. 이전에는 real 로 판정돼
+        # 픽스처(test/sample)가 그대로 통과했고, 2026-07-29 프로덕션 오염의 원인이었다.
+        assert "long_term" not in result
+        assert "shell" not in result
         assert "shell" not in result

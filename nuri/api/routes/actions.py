@@ -521,24 +521,10 @@ def _get_targets_status() -> dict[str, dict]:
 
 
 def _get_real_accounts() -> set[str]:
-    """portfolio.yaml accounts 중 substantive metadata (label/name/strategy/holdings/balance)
-    가 있는 키만 반환. test/sample 같은 stub 계좌의 stale DB row 가
-    portfolio aggregation 을 오염시키는 것을 차단 (#527 root cause)."""
-    from pathlib import Path
+    """실계좌 집합 — 판별은 `nuri.core.rules.get_real_accounts()` 가 canonical."""
+    from nuri.core.rules import get_real_accounts
 
-    import yaml
-
-    portfolio_path = Path(__file__).parent.parent.parent.parent / "config" / "portfolio.yaml"
-    try:
-        portfolio = yaml.safe_load(portfolio_path.read_text(encoding="utf-8"))
-    except Exception:
-        return set()
-    real: set[str] = set()
-    for acc, info in (portfolio.get("accounts") or {}).items():
-        info = info or {}
-        if any(info.get(k) for k in ("label", "name", "strategy", "holdings", "balance")):
-            real.add(acc)
-    return real
+    return get_real_accounts()
 
 
 def _get_portfolio_map() -> dict[str, dict]:

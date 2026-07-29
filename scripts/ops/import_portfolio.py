@@ -20,6 +20,7 @@ from pathlib import Path
 import yaml
 
 from nuri.core.db import init_db, query, replace_portfolio_account
+from nuri.core.rules import is_real_account
 
 _KNOWN_FIELDS = {"ticker", "qty", "avg", "sector"}
 
@@ -48,6 +49,12 @@ def load_holdings_by_account(
     for account_id, account_info in accounts.items():
         # holdings 키가 없는 계좌는 sync 대상이 아님 (DB 보존)
         if "holdings" not in account_info:
+            continue
+        # 픽스처/stub 계좌는 DB 로 넘기지 않는다. 2026-07-29 실측: 필터가 없어
+        # `test`/`sample`/`main` 9행이 프로덕션 portfolio 에 들어갔고, 가짜 티커(BBB)로
+        # #515 auto-consensus 까지 돌아 추천 3건이 생성됐다. 판정은 **지금 읽은 data**
+        # 기준 — 기본 경로를 재독하면 config_path 를 넘긴 호출자가 엉뚱한 파일로 판정된다.
+        if not is_real_account(account_info):
             continue
 
         currency = account_info.get("currency", "USD")
