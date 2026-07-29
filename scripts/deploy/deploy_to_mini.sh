@@ -229,7 +229,7 @@ else
 fi
 
 # 6a. scheduler load + verify PID 살아남
-step 6 "scheduler 재기동"
+step 6 "scheduler + 상주 python 서비스 재기동"
 # plist 는 **매번** 재설치한다. 이전에는 미설치일 때만 cp 해서, 이미 설치된
 # mini 에는 repo 의 plist 수정이 영영 도달하지 않았다 (#856 에서 발각: 스케줄러
 # plist 에 넣은 NURI_ROLE 이 배포돼도 반영 안 됨 → 기능이 조용히 죽은 채 시작).
@@ -242,6 +242,33 @@ if NEW_PID=$(wait_scheduler alive) && verify_stable_pid "${NEW_PID}"; then
 else
     fail "scheduler load 실패 또는 crash-loop — 20초 안에 stable PID 못 찾음. import error 가능성. 'ssh ${REMOTE} tail data/logs/scheduler.err' 확인 + 'launchctl load ${PLIST_REMOTE}' 수동 실행"
 fi
+
+# 6b. scheduler 외 **상주 python 서비스**도 bounce (#940).
+# 이것들은 레포의 python 을 상주 실행하므로 배포마다 stale 이 된다. 2026-07-29 실측:
+# deploy 정상 완료 직후에도 api 가 06:03 기동분으로 남아 방금 배포한 #936 emit_event 를
+# 못 들고 있었다 (`nuri/api/routes/pipeline.py` 가 emit_event 를 import). OPERATIONS.md
+# 복구표에 이미 적혀 있던 함정인데 문서로는 못 막았다 — 그래서 스크립트가 직접 한다.
+# dashboard 는 여기 없다: npm 빌드 산출물을 서빙하므로 4단계에서 **빌드가 바뀔 때만** 바운스가 맞다.
+# periodic(StartInterval) 서비스도 없다 — 매 실행이 새 프로세스라 자동으로 새 코드다.
+# scheduler 는 여기 없다 — plist 재설치가 필요해 위에서 unload/load 경로를 쓴다 (#778/#856).
+# 이 배열은 tests/scripts/test_deploy_bounces_resident_services.py 가 plist 실측과 대조한다.
+RESIDENT_SERVICES=(com.nuri-quant.api com.nuri-quant.discord-bot)
+
+for RESIDENT in "${RESIDENT_SERVICES[@]}"; do
+    # 미설치는 정상 상태일 수 있다 (#939) — skip 하되 침묵하지 않는다.
+    if ! "${SSH}" "${REMOTE}" "launchctl list 2>/dev/null | grep -q '${RESIDENT}\$'"; then
+        warn "${RESIDENT}: 미설치 — skip"
+        continue
+    fi
+    "${SSH}" "${REMOTE}" "launchctl kickstart -k gui/\$(id -u)/${RESIDENT}" >/dev/null 2>&1 \
+        || warn "${RESIDENT}: kickstart 실패 — 구코드로 계속 돌 수 있다. 수동 확인 필요"
+    RESIDENT_PID=$("${SSH}" "${REMOTE}" "launchctl list 2>/dev/null | awk -v l='${RESIDENT}' '\$3==l && \$1 ~ /^[0-9]+\$/ { print \$1; exit }'" 2>/dev/null || echo "")
+    if [[ -n "${RESIDENT_PID}" ]]; then
+        ok "${RESIDENT} bounced (PID ${RESIDENT_PID})"
+    else
+        warn "${RESIDENT}: 재기동 후 PID 없음 — crash 가능성"
+    fi
+done
 
 # ── 6. 최종 검증 ──
 step 7 "최종 검증"
@@ -263,6 +290,14 @@ fi
 
 AUTOPULL_STATUS=$("${SSH}" "${REMOTE}" "launchctl list | grep autopull | awk '{print \$1}'" 2>/dev/null || echo "-")
 ok "autopull: ${AUTOPULL_STATUS:-active}"
+
+# API 는 PID 존재가 아니라 **실제 응답**으로 확인한다 (#940). PID 만 보면 구코드로 돌고 있는
+# 프로세스도 초록으로 통과한다 — 배포 검증은 사용자 실경로로.
+if "${SSH}" "${REMOTE}" "curl -sf -o /dev/null -m 5 http://127.0.0.1:8001/api/health" 2>/dev/null; then
+    ok "API 응답 정상 (127.0.0.1:8001/api/health)"
+else
+    warn "API 무응답 — 미설치이거나 재기동 실패. 'ssh ${REMOTE} tail data/logs/api.err' 확인"
+fi
 
 echo ""
 echo -e "${GREEN}═══ deploy 완료 ═══${NC}"
