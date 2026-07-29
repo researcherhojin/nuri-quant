@@ -13,7 +13,8 @@
 # Exit codes: 0 OK / 1 WARN / 2 FAIL.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# scripts/ops/ 에 있으므로 두 단계 (#946).
+cd "$(dirname "$0")/../.."
 
 DB="${NURI_DB_PATH:-data/portfolio.db}"
 HOSTNAME=$(hostname -s 2>/dev/null || hostname)

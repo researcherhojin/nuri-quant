@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/state_replicator.sh — State-Replicator-DR actor (#529 Phase 1).
+# scripts/deploy/state_replicator.sh — State-Replicator-DR actor (#529 Phase 1).
 #
 # Codex Round 5 mandatory #1: Mac mini = single writer (PRIMARY).
 # MBP = read-only replica.
@@ -23,7 +23,8 @@
 
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# scripts/deploy/ 에 있으므로 두 단계 올라가야 repo root (#946 — #557 이동 때 안 고쳐졌다).
+cd "$(dirname "$0")/../.."
 
 MODE="${1:-verify}"
 HOSTNAME=$(hostname -s)

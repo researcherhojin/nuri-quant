@@ -25,7 +25,9 @@
 
 set -u   # set -e 사용 안 함 — 한 단계 실패가 launchd 전체를 멈추게 하면 안 됨
 
-REPO="${NURI_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
+# NURI_REPO 미설정 시 폴백 — scripts/deploy/ 이므로 두 단계 (#946).
+# git 은 하위 디렉터리에서도 워크트리 전체에 작동해 여태 운으로 동작했다.
+REPO="${NURI_REPO:-$(cd "$(dirname "$0")/../.." && pwd)}"
 LOG="$HOME/Library/Logs/nuri-quant-autopull.log"
 
 mkdir -p "$(dirname "$LOG")"
