@@ -746,6 +746,8 @@ class TestMetadata:
         yaml_content = {
             "accounts": {
                 "test": {
+                    # 실계좌 메타데이터 — 없으면 import 필터가 픽스처로 보고 건너뛴다.
+                    "name": "Metadata fixture",
                     "currency": "USD",
                     "holdings": [
                         {"ticker": "BBB", "qty": 96, "avg": 20.0, "sector": "SectorB", "flag": "SELL"},

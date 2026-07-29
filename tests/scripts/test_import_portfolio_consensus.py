@@ -205,6 +205,7 @@ def test_main_no_consensus_flag_skips_trigger(db, tmp_path, monkeypatch):
         """
 accounts:
   main:
+    name: 실계좌 픽스처   # 없으면 import 필터가 stub 으로 보고 건너뛴다
     currency: USD
     holdings:
       - { ticker: NEWCO, qty: 1, avg: 100 }
@@ -232,6 +233,7 @@ def test_main_default_calls_trigger_for_new_tickers(db, tmp_path, monkeypatch):
         """
 accounts:
   main:
+    name: 실계좌 픽스처   # 없으면 import 필터가 stub 으로 보고 건너뛴다
     currency: USD
     holdings:
       - { ticker: NEWCO, qty: 1, avg: 100 }
@@ -263,6 +265,7 @@ def test_main_no_new_tickers_skips_trigger(db, tmp_path, monkeypatch):
         """
 accounts:
   main:
+    name: 실계좌 픽스처   # 없으면 import 필터가 stub 으로 보고 건너뛴다
     currency: USD
     holdings:
       - { ticker: AAPL, qty: 1, avg: 100 }

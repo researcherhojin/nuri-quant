@@ -133,22 +133,10 @@ def is_in_earnings_blackout(
 
 
 def _get_real_accounts() -> set[str]:
-    """portfolio.yaml accounts 중 substantive metadata 가진 계좌만 — #527 패턴.
+    """실계좌 집합 — 판별은 `nuri.core.rules.get_real_accounts()` 가 canonical."""
+    from nuri.core.rules import get_real_accounts
 
-    test/sample/legacy stale row 가 shadow 데이터에 노이즈 안 들어가도록.
-    """
-    portfolio_path = Path(__file__).parent.parent.parent.parent / "config" / "portfolio.yaml"
-    try:
-        with open(portfolio_path, encoding="utf-8") as f:
-            portfolio = yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        return set()
-    real: set[str] = set()
-    for acc, info in (portfolio.get("accounts") or {}).items():
-        info = info or {}
-        if any(info.get(k) for k in ("label", "name", "strategy", "holdings", "balance")):
-            real.add(acc)
-    return real
+    return get_real_accounts()
 
 
 def _get_held_positions() -> list[dict[str, Any]]:

@@ -142,6 +142,47 @@ def get_account_strategy_name(account: str | None) -> str:
         return "core"
 
 
+_REAL_ACCOUNT_KEYS = ("broker", "name", "label", "strategy", "balance")
+
+
+def is_real_account(info: dict | None) -> bool:
+    """계좌 블록 하나가 실계좌인지 — **이미 파싱된 dict 로** 판정한다.
+
+    `get_real_accounts()` 와 달리 파일을 다시 읽지 않는다. 다른 yaml 을 로드한
+    호출자(`import_portfolio.load_holdings_by_account(config_path=...)`)가 기본 경로를
+    재독해 **엉뚱한 파일 기준으로 판정하는 사고**를 막는다.
+    """
+    return any((info or {}).get(k) for k in _REAL_ACCOUNT_KEYS)
+
+
+def get_real_accounts() -> set[str]:
+    """실제 증권계좌만 — `portfolio.yaml` 의 픽스처/stub 계좌를 배제한다.
+
+    판별은 **계좌를 설명하는 메타데이터**(`broker`/`name`/`label`/`strategy`/`balance`)
+    선언 여부다. 픽스처(`test`/`sample`/`main`)는 `currency` + `holdings` 뿐이다.
+
+    이전 기준은 여기에 **`holdings` 가 포함돼 있었고, 그래서 픽스처도 전부 통과했다** —
+    "test/sample stub 차단" 이라 적힌 방어선이 실제로는 열려 있었다 (#527 의도 무산).
+    2026-07-29 실측: 8개 계좌 전부가 real 로 판정됐고, import 가 픽스처 9행을
+    프로덕션에 넣었다.
+
+    ⚠️ 기준을 더 좁히지 말 것 (예: `broker` 만). `strategy` 만 선언한 실계좌를 조용히
+    누락시키면 **보유가 통째로 사라진다** — 픽스처가 섞이는 것보다 나쁜 실패다.
+    지운 건 `holdings` 하나뿐이고, 그 하나가 구멍이었다.
+
+    호출자는 DB row 를 이 집합으로 걸러 stale 픽스처 행이 집계를 오염시키지 않게 한다.
+    """
+    import yaml
+
+    _portfolio_path = Path(__file__).parent.parent.parent / "config" / "portfolio.yaml"
+    try:
+        with open(_portfolio_path, encoding="utf-8") as f:
+            portfolio = yaml.safe_load(f) or {}
+    except Exception:
+        return set()
+    return {acc for acc, info in (portfolio.get("accounts") or {}).items() if is_real_account(info)}
+
+
 def get_stop_loss_for_account(account: str | None) -> int:
     """계좌명 → stop_loss threshold (정수 %). 계좌 미지정/매칭 실패 → global fallback.
 

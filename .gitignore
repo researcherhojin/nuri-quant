@@ -158,6 +158,8 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 data/backups/
+# state_replicator 가 push 하는 prod DB 사본 — #947 이후 실제로 생성된다
+data/replicas/
 data/exports/
 data/reports/
 data/.bfg-reports/
