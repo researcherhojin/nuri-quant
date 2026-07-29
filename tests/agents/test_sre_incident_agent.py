@@ -1186,3 +1186,112 @@ class TestHumanIncidentSummary:
     def test_unknown_type_falls_back_gracefully(self):
         s = _human_incident_summary("brand_new_type", "x", {})
         assert "brand_new_type" in s and "x" in s
+
+
+# ═══════════════════════════════════════════════════════
+# 자동 해소 (#944)
+# ═══════════════════════════════════════════════════════
+
+
+def _seed_open_incident(db_path, incident_type: str, target: str, *, hours_ago: float):
+    """open incident 1건 + last_detected_at 백데이트."""
+    log_incident(
+        incident_type=incident_type,
+        severity="warning",
+        target=target,
+        evidence={"seeded": True},
+        db_path=db_path,
+    )
+    with get_db(db_path) as conn:
+        conn.execute(
+            """UPDATE incidents SET last_detected_at = datetime('now', ?)
+                WHERE incident_type = ? AND target = ? AND status = 'open'""",
+            (f"-{int(hours_ago * 60)} minutes", incident_type, target),
+        )
+
+
+def _open_rows(db_path):
+    return [
+        dict(r)
+        for r in query("SELECT incident_type, target, status FROM incidents WHERE status='open'", db_path=db_path)
+    ]
+
+
+class TestIncidentAutoResolve:
+    """열기만 하고 닫지 않으면 dedupe 가 재발 알림을 영원히 흡수한다 (#944)."""
+
+    def _scan_all(self, now=_EVAL_FIXED_NOW):
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=now),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+        ):
+            return actor.run({"action": "scan"}).output
+
+    def test_undetected_incident_past_grace_is_resolved(self, patched_db, no_publish):
+        """조건이 사라졌고 grace 도 지났으면 닫힌다."""
+        _seed_open_incident(patched_db, "orphan_run", "ghost-actor", hours_ago=48)
+        out = self._scan_all()
+        assert any(r["target"] == "ghost-actor" for r in out["auto_resolved"])
+        assert not [r for r in _open_rows(patched_db) if r["target"] == "ghost-actor"]
+
+    def test_within_grace_is_kept(self, patched_db, no_publish):
+        """Gotcha lock: grace 안이면 안 닫는다 — 간헐 조건의 열고-닫기 폭풍 방지."""
+        _seed_open_incident(patched_db, "orphan_run", "flappy-actor", hours_ago=0.5)
+        out = self._scan_all()
+        assert not out["auto_resolved"]
+        assert [r for r in _open_rows(patched_db) if r["target"] == "flappy-actor"]
+
+    def test_dead_detector_does_not_resolve_its_types(self, patched_db, no_publish):
+        """Gotcha lock: **안 보이는 것과 사라진 것은 다르다.**
+
+        detector 가 죽어 조용해진 걸 '해소됨' 으로 읽으면, 고장난 감시자가 진짜
+        incident 를 닫아버린다 — 감시 자체가 거짓말이 되는 경로다.
+        """
+        _seed_open_incident(patched_db, "orphan_run", "ghost-actor", hours_ago=48)
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=_EVAL_FIXED_NOW),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+            patch.object(
+                SREIncidentAgent, "_detect_orphan_runs", autospec=True, side_effect=RuntimeError("detector down")
+            ),
+        ):
+            out = actor.run({"action": "scan"}).output
+
+        assert not [r for r in out["auto_resolved"] if r["incident_type"] == "orphan_run"]
+        assert [r for r in _open_rows(patched_db) if r["target"] == "ghost-actor"]
+
+    def test_every_detector_is_mapped(self):
+        """map 누락 = 그 타입이 detector 사망 중에도 닫힌다 — 조용한 구멍."""
+        from nuri.agents.actors.sre_incident_agent import _DETECTOR_INCIDENT_TYPES
+
+        detectors = {n for n in dir(SREIncidentAgent) if n.startswith("_detect_")}
+        assert detectors, "detector 스윕이 아무것도 못 찾았다 — 캐너리"
+        assert detectors == set(_DETECTOR_INCIDENT_TYPES), (
+            f"매핑 누락/잉여: {detectors ^ set(_DETECTOR_INCIDENT_TYPES)}"
+        )
+
+    def test_still_detected_incident_is_not_resolved(self, patched_db, no_publish):
+        """Gotcha lock: 이번 스캔에서 감지된 인시던트는 오래됐어도 닫지 않는다.
+
+        통상 경로에서는 `_record_incident` 가 재감지 시 `last_detected_at` 을 갱신해
+        grace 쿼리가 먼저 걸러낸다. 그래서 `_auto_resolve` 를 직접 불러 계약을 검증한다
+        — 갱신 경로가 바뀌어도(로그 실패, 쿼리 변경) **발화 중인 장애가 조용히 resolved
+        로 사라지지 않아야** 한다.
+        """
+        _seed_open_incident(patched_db, "orphan_run", "stuck-actor", hours_ago=48)
+        detected = [{"incident_type": "orphan_run", "target": "stuck-actor"}]
+
+        resolved = SREIncidentAgent()._auto_resolve(detected, failed_detectors=set())
+
+        assert not [r for r in resolved if r["target"] == "stuck-actor"]
+        assert [r for r in _open_rows(patched_db) if r["target"] == "stuck-actor"]

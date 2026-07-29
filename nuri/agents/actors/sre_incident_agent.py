@@ -73,6 +73,24 @@ FRESHNESS_FAIL_CRIT = 3
 # 시그널 평가 heartbeat 공백 (#825) — 영업일 단위 (KST 화~토, technical cron '0 7 * * 2-6')
 SIGNAL_EVAL_WARN_DAYS = 2
 SIGNAL_EVAL_CRIT_DAYS = 4
+
+# 자동 해소 grace (#944) — 마지막 감지가 이보다 최근이면 닫지 않는다. 스캔 주기가
+# 1시간(launchd StartInterval 3600)이므로 3h = 연속 3회 미감지에 해당한다.
+AUTO_RESOLVE_GRACE_HOURS = 3.0
+
+# detector → 그 detector 가 낼 수 있는 incident_type. 자동 해소가 **죽은 detector 의
+# 침묵을 '해소됨' 으로 오독하지 않도록** 쓰인다. 새 detector 를 추가하면 여기도 등록할 것
+# — 누락 시 그 타입은 detector 가 죽어도 닫혀버린다.
+_DETECTOR_INCIDENT_TYPES: dict[str, tuple[str, ...]] = {
+    "_detect_orphan_runs": ("orphan_run",),
+    "_detect_disk_full": ("disk_full",),
+    "_detect_db_lock": ("db_lock",),
+    "_detect_scheduler_heartbeat": ("scheduler_heartbeat",),
+    "_detect_actor_failure_streak": ("actor_failure_streak",),
+    "_detect_data_freshness_critical": ("data_freshness_critical",),
+    "_detect_signal_evaluation_stale": ("signal_evaluation_stale",),
+    "_detect_alpha_report_stale": ("alpha_report_stale",),
+}
 # 당일은 이 시각(KST) 이후부터 미실행으로 계상 — 07:00 cron 전 새벽 scan false positive 방지
 SIGNAL_EVAL_GRACE_HOUR = 12
 # 평가 예정 요일 (Mon=0 기준 화~토 — 미국 거래일 마감 다음 날 아침 KST)
@@ -133,6 +151,8 @@ class SREIncidentAgent(Actor):
         """8 detector 실행 → 발견된 incident 목록 반환."""
         detected: list[dict[str, Any]] = []
 
+        failed_detectors: set[str] = set()
+
         for detector in (
             self._detect_orphan_runs,
             self._detect_disk_full,
@@ -146,6 +166,7 @@ class SREIncidentAgent(Actor):
             try:
                 detected.extend(detector(ctx))
             except Exception as exc:  # noqa: BLE001 — detector 실패는 다른 detector 진행
+                failed_detectors.add(detector.__name__)
                 detected.append(
                     {
                         "incident_type": "db_lock",  # detector 실패 = infra 의심
@@ -156,6 +177,8 @@ class SREIncidentAgent(Actor):
                     }
                 )
 
+        auto_resolved = self._auto_resolve(detected, failed_detectors)
+
         # 요약 (severity 분포)
         severity_counts = {"critical": 0, "warning": 0, "info": 0}
         for inc in detected:
@@ -164,8 +187,10 @@ class SREIncidentAgent(Actor):
         return ActorResult(
             output={
                 "incidents": detected,
+                "auto_resolved": auto_resolved,
                 "summary": {
                     "total": len(detected),
+                    "auto_resolved": len(auto_resolved),
                     **severity_counts,
                 },
             },
@@ -173,9 +198,57 @@ class SREIncidentAgent(Actor):
             sample_n=len(detected),
             input_summary=(
                 f"scan → {len(detected)} incidents "
-                f"(crit={severity_counts['critical']}, warn={severity_counts['warning']})"
+                f"(crit={severity_counts['critical']}, warn={severity_counts['warning']}, "
+                f"auto-resolved={len(auto_resolved)})"
             ),
         )
+
+    # ─── auto-resolve ────────────────────────────────────────
+
+    def _auto_resolve(self, detected: list[dict[str, Any]], failed_detectors: set[str]) -> list[dict[str, Any]]:
+        """이번 스캔에서 감지되지 않은 open incident 를 닫는다 (#944).
+
+        열기만 하고 닫지 않으면 두 가지가 망가진다. open 목록이 단조 증가해
+        "지금 무엇이 고장인가" 를 답하지 못하게 되고, 더 나쁘게는 dedupe 가
+        `UNIQUE(incident_type, target, status='open')` 이라 **닫히지 않은 incident 가
+        같은 target 의 재발화를 계속 흡수해** 재발 알림이 영영 안 나간다.
+
+        안전 장치 둘:
+          1. **detector 가 죽었으면 그 타입은 건드리지 않는다.** 안 보이는 것과
+             사라진 것은 다르다 — 고장난 detector 가 진짜 incident 를 닫아버리면
+             감시 자체가 거짓말이 된다.
+          2. **grace 기간** — 마지막 감지가 `AUTO_RESOLVE_GRACE_HOURS` 보다 최근이면
+             닫지 않는다. 간헐 조건이 매 스캔 열고 닫으며 알림 폭풍을 내는 걸 막는다.
+             (`last_detected_at` 은 재감지마다 갱신되므로 별도 상태가 필요 없다.)
+        """
+        blocked_types = {t for name in failed_detectors for t in _DETECTOR_INCIDENT_TYPES.get(name, ())}
+        still_open = {(d["incident_type"], d["target"]) for d in detected}
+
+        rows = query(
+            """SELECT incident_id, incident_type, target, last_detected_at
+                 FROM incidents
+                WHERE status IN ('open', 'acknowledged')
+                  AND datetime(last_detected_at) < datetime('now', ?)""",
+            (f"-{int(AUTO_RESOLVE_GRACE_HOURS * 60)} minutes",),
+        )
+
+        resolved: list[dict[str, Any]] = []
+        for raw in rows:
+            r = dict(raw)
+            if (r["incident_type"], r["target"]) in still_open:
+                continue
+            if r["incident_type"] in blocked_types:
+                continue  # detector 가 죽어서 안 보이는 것일 수 있다
+            if db_resolve_incident(r["incident_id"]):
+                resolved.append(
+                    {
+                        "incident_id": r["incident_id"],
+                        "incident_type": r["incident_type"],
+                        "target": r["target"],
+                        "last_detected_at": r["last_detected_at"],
+                    }
+                )
+        return resolved
 
     # ─── 8 detectors ─────────────────────────────────────────
 
