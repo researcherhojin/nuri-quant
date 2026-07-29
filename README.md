@@ -272,7 +272,7 @@ Measured against `main` on 2026-07-29. Counts marked ✅ are verified on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 6,582 collected across 294 files | |
+| **Backend tests** | 6,591 collected across 294 files | |
 | **Backend statement coverage** | 100% — 0 of 22,560 statements uncovered (full local suite, 2026-07-29; `make ci-cov` / Codecov `backend` flag is the CI ground truth) | |
 | **Frontend tests** | 1,449 across 127 files — 100% statement coverage | |
 | **E2E tests** | 57 across 8 Playwright specs | |
@@ -285,7 +285,7 @@ Measured against `main` on 2026-07-29. Counts marked ✅ are verified on every P
 | **Trading signals** | 22 per-ticker (actionable) + 2 market-wide (shadow) | |
 | **API endpoints** | 72 (FastAPI on `:8001`) | |
 | **Frontend routes** | 18 (Next.js on `:3000`) | |
-| **DB tables** | SQLite WAL · 51 tables (48 forward-only migrations) | ✅ |
+| **DB tables** | SQLite WAL · 51 tables (49 forward-only migrations) | ✅ |
 | **DB submodules** | 11 — `nuri/core/db/` is the sole `sqlite3` importer, enforced by an AST sweep in CI | |
 
 ## Documentation
