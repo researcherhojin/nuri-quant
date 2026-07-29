@@ -69,13 +69,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "INPUT=$(cat); FILE=$(echo \"$INPUT\" | jq -r '.tool_input.file_path // \"\"'); if [[ \"$FILE\" == */nuri/*.py && \"$FILE\" != */core/db.py && \"$FILE\" != */core/db/connection.py ]]; then CONTENT=$(echo \"$INPUT\" | jq -r '.tool_input.new_string // .tool_input.content // \"\"'); if echo \"$CONTENT\" | grep -q 'import sqlite3'; then echo '{\"decision\":\"block\",\"reason\":\"sqlite3는 nuri/core/db/connection.py만 import 가능 (PR #566 stage 2). query()/query_df()/upsert_*() 사용.\"}'; exit 2; fi; fi",
+            "command": "INPUT=$(cat); FILE=$(printf '%s' \"$INPUT\" | jq -r '.tool_input.file_path // \"\"'); if [[ \"$FILE\" == */nuri/*.py && \"$FILE\" != */core/db.py && \"$FILE\" != */core/db/connection.py ]]; then CONTENT=$(printf '%s' \"$INPUT\" | jq -r '.tool_input.new_string // .tool_input.content // \"\"'); if echo \"$CONTENT\" | grep -q 'import sqlite3'; then echo '{\"decision\":\"block\",\"reason\":\"sqlite3는 nuri/core/db/connection.py만 import 가능 (PR #566 stage 2). query()/query_df()/upsert_*() 사용.\"}'; exit 2; fi; fi",
             "timeout": 5,
             "statusMessage": "sqlite3 import guard..."
           },
           {
             "type": "command",
-            "command": "INPUT=$(cat); [ -x .venv/bin/python ] && [ -f scripts/verify/check_privacy_leak.py ] || exit 0; CONTENT=$(echo \"$INPUT\" | jq -r '.tool_input.new_string // .tool_input.content // \"\"'); [ -z \"$CONTENT\" ] && exit 0; OUT=$(echo \"$CONTENT\" | .venv/bin/python scripts/verify/check_privacy_leak.py --message --quiet 2>&1); if [ $? -ne 0 ]; then printf '{\"decision\":\"block\",\"reason\":\"Privacy ticker+PnL leak detected (PR #202 signature). Findings: %s. See scripts/verify/check_privacy_leak.py + STRATEGY §4.4.1. Use placeholders or round values.\"}' \"$(echo \"$OUT\" | head -3 | tr '\\n' ' ' | sed 's/\"/\\\\\"/g')\"; exit 2; fi",
+            "command": "INPUT=$(cat); [ -x .venv/bin/python ] && [ -f scripts/verify/check_privacy_leak.py ] || exit 0; CONTENT=$(printf '%s' \"$INPUT\" | jq -r '.tool_input.new_string // .tool_input.content // \"\"'); [ -z \"$CONTENT\" ] && exit 0; OUT=$(echo \"$CONTENT\" | .venv/bin/python scripts/verify/check_privacy_leak.py --message --quiet 2>&1); if [ $? -ne 0 ]; then printf '{\"decision\":\"block\",\"reason\":\"Privacy ticker+PnL leak detected (PR #202 signature). Findings: %s. See scripts/verify/check_privacy_leak.py + STRATEGY §4.4.1. Use placeholders or round values.\"}' \"$(echo \"$OUT\" | head -3 | tr '\\n' ' ' | sed 's/\"/\\\\\"/g')\"; exit 2; fi",
             "timeout": 5,
             "statusMessage": "privacy ticker+pnl check..."
           }
