@@ -72,7 +72,8 @@ if [[ "$DIRECTION" != "push" && "$DIRECTION" != "pull" ]]; then
     exit 1
 fi
 
-LOCAL_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# scripts/deploy/ 에 있으므로 두 단계 (#946).
+LOCAL_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 echo "=== Sync ($DIRECTION) — ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH} ==="
 
