@@ -85,7 +85,7 @@ Configured in `.env` (see `.env.example`):
 - `NURI_ROLE` — `production` gates §3.11 ledger-backed surfacing (the monthly alpha progress report only stages to `#brief` when set). Adjudication runs off the Mac mini DB; the MBP is a read replica, so dev numbers must never reach the brief. Lives in `scripts/launchd/com.nuri-quant.scheduler.plist` `EnvironmentVariables`, **not** `.env` — `make deploy-mini` SCPs the MBP `.env` over the mini's, so an `.env`-resident value is wiped by the next deploy (same trap as `DEV2_HOST`).
 - `API_SECRET_KEY` — JWT signing key (**required in production**, optional in dev). Unset, `nuri/api/auth.py` mints a fresh `secrets.token_hex(32)` each boot, so every outstanding JWT dies on restart (dashboard re-login). Generate: `python3 -c "import secrets; print(secrets.token_hex(32))"`. `make deploy-mini` SCPs the local `.env` onto the Mac mini's, so the same value must exist in **both** `.env` files or a deploy reverts production to random-per-boot.
 ## DB Schema (SQLite, WAL mode)
-51 tables total (46 migrations as of 2026-07-28). Key tables:
+51 tables total (49 migrations as of 2026-07-30). Key tables:
 | Table | Purpose |
 |-------|---------|
 | `prices` | OHLCV 5Y daily bars per ticker |

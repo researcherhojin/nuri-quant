@@ -148,6 +148,8 @@ update_claim live_db_tables      README.md                     'SQLite WAL · [0
 # grep/wc 기반 — verify 가 하드 게이트하는데 sync 에는 없어서, 이 셋이 drift 하면
 # 게이트가 빨간불인 채 고칠 방법이 없었다 (#916).
 update_claim live_migrations     README.md                     '[0-9]+ forward-only migrations'
+# ARCHITECTURE 도 같은 수치를 적는데 등록이 안 돼 있었다 — 2026-07-30 실측 46 vs 실제 49.
+update_claim live_migrations     docs/ARCHITECTURE.md          '\([0-9]+ migrations as of'
 update_claim live_scheduler_jobs docs/ARCHITECTURE.md          '[0-9]+ cron jobs in'
 update_claim live_rules_lines    config/CLAUDE.md              '\| [0-9]+ \| Investment rules'
 
