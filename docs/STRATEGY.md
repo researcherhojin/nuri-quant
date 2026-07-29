@@ -35,10 +35,13 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import
 - **execution_priority** (PR #200): 손절 → 익절 → 트레일링 설정 → 신규매수. 출혈 차단이 수익 확정보다 선행. 손절 내 손실률 큰 것부터, 익절 내 타겟 초과율 큰 것부터.
 - 규칙 변경은 YAML 수정 + 백테스트 검증. 코드에 예외 분기 금지.
 ### 2.3 느슨한 결합 (Loose coupling via data)
-파이프라인 8개 페이즈는 서로 import 하지 않는다. DB/CSV 를 통해서만 통신.
-- **이유**: Phase C 재실행 시 D/E 가 자동으로 새 데이터 사용. 직접 import 하면 실행 순서/상태 관리 복잡.
-- **원칙**: 새 모듈은 다른 페이즈 함수를 직접 호출하지 않는다. DB 테이블/CSV 로 데이터 전달.
-- **예외**: 같은 페이즈 내부 import 허용 (`candidates.py` ↔ `tracker.py`).
+파이프라인 5개 스테이지는 **가능한 한** DB/CSV 로 통신한다. 원칙은 유지하되, 여기 적힌 것은 실측이다 (#920/#922 — 이전 문구 "8개 페이즈는 서로 import 하지 않는다"는 거짓이었고, 스테이지→디렉터리 매핑이 없어 검증조차 불가능했다).
+- **이유**: 앞 스테이지 재실행 시 뒤 스테이지가 자동으로 새 데이터 사용. 직접 import 하면 실행 순서/상태 관리 복잡.
+- **스테이지 매핑** (검증 가능성의 전제): `collect`=`nuri/collectors` · `analyze`=`nuri/analysis` · `consensus`=`nuri/trading/agents` · `certify`=`nuri/trading/engine` · `track`=`nuri/trading/recommend`. `nuri/quant`·`nuri/core` 는 공용 라이브러리이지 스테이지가 아니다.
+- **원칙**: 새 모듈은 다른 스테이지 함수를 직접 호출하지 않는다. DB 테이블/CSV 로 전달.
+- **실제로 강제되는 것**: 교차 import 는 **함수 본문 안(deferred)에만** 허용 — module-level 금지 — 이고 사유와 함께 allowlist 에 등재해야 한다. 실측 **17건 / 15 pair / module-level 0**. `engine/conflicts.py` ↔ `recommend/candidates.py` 상호 의존은 deferral 덕분에만 로드되며, 하나라도 hoist 하면 import 가 깨진다.
+- **예외 2건**: 같은 스테이지 내부 import 허용. consensus→certify 핸드오프는 `scheduler.py` 가 객체를 **메모리로** 넘긴다 (DB 경유 아님).
+- **Test**: `tests/core/test_cross_stage_imports.py` — 신규 교차 의존과 사라진 allowlist 항목 **양방향** 모두 FAIL.
 ### 2.4 관찰 가능성 (Observability)
 모든 상태 변화는 추적 가능해야 한다.
 - `pipeline_events` 테이블: append-only event journal. `causation_id` 로 이벤트 체인 추적.
@@ -73,7 +76,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import
 |---|------|------|------|-------|-----------|
 | 1 | **Think** | 이슈/관찰/페인포인트 | 문제 framing, root-cause, literature 확인 (§2.1) | 이슈 본문 또는 `docs/plans/*.md` problem + evidence + constraint | "왜 지금" 을 1 문장으로 답 가능? |
 | 2 | **Plan** | Think 산출물 | scope, touched files, acceptance, Escalation Ladder (§2.6) 레벨 | PR description 초안 / `/plan` 출력 | 스코프 팽창 없는가? 이슈 1 = PR 1? 커밋 ≤ 3? |
-| 3 | **Build** | Plan | 최소 구현. `config/*.yaml` 우선 (§2.2), DB-only phase 통신 (§2.3), `kst_now()` 강제 | feature 브랜치 커밋 | hardcode 없는가? hook/lint 통과? `git branch --show-current` 확인? |
+| 3 | **Build** | Plan | 최소 구현. `config/*.yaml` 우선 (§2.2), 교차 스테이지 import 는 deferred + allowlist (§2.3), `kst_now()` 강제 | feature 브랜치 커밋 | hardcode 없는가? hook/lint 통과? `git branch --show-current` 확인? |
 | 4 | **Review** | feature diff | Codex `/codex review` + Claude self-review. P1 해결 필수 | Review log, GATE verdict | P1 전부 해결? disagreement 이유 명시? |
 | 5 | **Test** | reviewed 브랜치 | `make test-fast` + 사용자 워크플로 live 실행 (§5.9.1). UI 면 browser QA | green CI + manual QA 로그 | 사용자 명령 1 회 이상 직접 실행? |
 | 6 | **Ship** | tested 브랜치 | `gh pr merge --squash --delete-branch`. 이슈 close. branch 정리. TODO.md Tier 1 업데이트 | MERGED PR, CLOSED 이슈, Tier 1 entry | Tier 1 추가? 브랜치 정리? |
