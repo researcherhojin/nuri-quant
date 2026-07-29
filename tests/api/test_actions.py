@@ -1678,10 +1678,15 @@ class TestActionsEdgeFallbacks:
     """Lock-tests for missing actions.py branches."""
 
     def test_get_real_accounts_yaml_missing(self, monkeypatch, tmp_path):
-        """portfolio.yaml read 실패 → set() (lines 505-506)."""
-        import nuri.api.routes.actions as act_mod
+        """portfolio.yaml read 실패 → set().
 
-        monkeypatch.setattr(act_mod, "__file__", str(tmp_path / "fake_actions.py"))
+        판별은 `nuri.core.rules.get_real_accounts()` 로 위임됐으므로 경로를 푸는
+        모듈도 그쪽이다 — actions.__file__ 를 패치해도 더는 영향이 없다.
+        """
+        import nuri.api.routes.actions as act_mod
+        import nuri.core.rules as rules_mod
+
+        monkeypatch.setattr(rules_mod, "__file__", str(tmp_path / "fake_rules.py"))
         result = act_mod._get_real_accounts()
         assert result == set()
 

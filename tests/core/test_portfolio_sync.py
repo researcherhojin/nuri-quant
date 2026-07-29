@@ -668,6 +668,7 @@ class TestMetadata:
         yaml_content = {
             "accounts": {
                 "test": {
+                    "name": "Account fixture",  # 실계좌 메타데이터 — 없으면 import 필터가 stub 으로 본다
                     "currency": "USD",
                     "holdings": [
                         {"ticker": "BBB", "qty": 96, "avg": 20.0, "sector": "SectorB", "flag": "SELL"},
@@ -786,6 +787,7 @@ class TestImportScriptSync:
             {
                 "accounts": {
                     "test": {
+                        "name": "Account fixture",  # 실계좌 메타데이터 — 없으면 import 필터가 stub 으로 본다
                         "currency": "USD",
                         "holdings": [
                             {"ticker": "TSLA", "qty": 10, "avg": 300.0, "sector": "SectorA"},
@@ -793,6 +795,7 @@ class TestImportScriptSync:
                         ],
                     },
                     "sample": {
+                        "name": "Account fixture",  # 실계좌 메타데이터 — 없으면 import 필터가 stub 으로 본다
                         "currency": "KRW",
                         "holdings": [
                             {"ticker": "005930.KS", "qty": 1, "avg": 55000.0, "sector": "Semi"},
@@ -819,6 +822,7 @@ class TestImportScriptSync:
                     "irp": {"currency": "KRW", "balance": 1000000},  # holdings 키 없음
                     "demo": {"currency": "USD"},  # holdings 키 없음
                     "test": {
+                        "name": "Account fixture",  # 실계좌 메타데이터 — 없으면 import 필터가 stub 으로 본다
                         "currency": "USD",
                         "holdings": [{"ticker": "AAA", "qty": 10, "avg": 100.0}],
                     },
@@ -838,7 +842,7 @@ class TestImportScriptSync:
             yaml_path,
             {
                 "accounts": {
-                    "test": {"currency": "USD", "holdings": []},
+                    "test": {"name": "Account fixture", "currency": "USD", "holdings": []},
                 },
             },
         )
@@ -856,12 +860,14 @@ class TestImportScriptSync:
             {
                 "accounts": {
                     "test": {
+                        "name": "Account fixture",  # 실계좌 메타데이터 — 없으면 import 필터가 stub 으로 본다
                         "currency": "USD",
                         "holdings": [
                             {"ticker": "TSLA", "qty": 10, "avg": 300.0, "sector": "SectorA"},
                         ],
                     },
                     "sample": {
+                        "name": "Account fixture",  # 실계좌 메타데이터 — 없으면 import 필터가 stub 으로 본다
                         "currency": "KRW",
                         "holdings": [
                             {"ticker": "005930.KS", "qty": 1, "avg": 55000.0, "sector": "Semi"},
@@ -926,6 +932,7 @@ class TestImportScriptSync:
             {
                 "accounts": {
                     "test": {
+                        "name": "Account fixture",  # 실계좌 메타데이터 — 없으면 import 필터가 stub 으로 본다
                         "currency": "USD",
                         "holdings": [
                             {"ticker": "TSLA", "qty": 33, "avg": 200.0, "sector": "SectorA"},
@@ -982,6 +989,7 @@ class TestImportScriptSync:
             {
                 "accounts": {
                     "test": {
+                        "name": "Account fixture",  # 실계좌 메타데이터 — 없으면 import 필터가 stub 으로 본다
                         "currency": "USD",
                         "holdings": [
                             {"ticker": "TSLA", "qty": 33, "avg": 200.0, "sector": "SectorA"},
@@ -1030,7 +1038,7 @@ class TestImportScriptSync:
         self._write_yaml(
             yaml_path,
             {
-                "accounts": {"test": {"currency": "USD", "holdings": []}},
+                "accounts": {"test": {"name": "Account fixture", "currency": "USD", "holdings": []}},
             },
         )
 
