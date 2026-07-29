@@ -2,7 +2,7 @@
 
 ## Code layout
 
-**Pipeline** (5 phases, DB-coupled only — see Cross-phase isolation in `invariants.md`): `collect → analyze → consensus → certify → track`.
+**Pipeline** (5 stages; crossing imports deferred-only and allowlist-frozen — see Cross-stage imports in `invariants.md`): `collect → analyze → consensus → certify → track`.
 
 `nuri/core` (sole sqlite3 importer) / `nuri/collectors` (27 collector modules) / `analysis` / `quant` / `trading` (agents · engine · strategy · recommend · swing · execution) / `api` (72 endpoints, routes/) / `alerts` / `llm` / `agents` (top-level actor fleet: 18 `actors/` — SRE incident · drift sentinel · forward outcome tracker · walkforward validator · execution firewall · … — plus `discord/` bot layer, wired by `nuri/scheduler.py`). Plus `tests/` mirror + `scripts/` automation + `frontend/` (Next.js). Detailed map (DB schema, migrations, env vars, CI/CD): `docs/ARCHITECTURE.md`.
 

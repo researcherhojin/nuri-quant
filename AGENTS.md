@@ -14,14 +14,14 @@ For canonical detail:
 
 ## Project
 
-Nuri-Quant — open-source quant investment platform. Python 3.12, `uv`, SQLite (WAL), Next.js 16. Pipeline (5 phases, DB-coupling only): `collect → analyze → consensus → certify → track`.
+Nuri-Quant — open-source quant investment platform. Python 3.12, `uv`, SQLite (WAL), Next.js 16. Pipeline (5 stages): `collect → analyze → consensus → certify → track`.
 
 ## Hard Rules (mechanically enforced — do not violate)
 
 1. **DB**: `nuri/core/db/` is the only `sqlite3` importer (importer module: `nuri/core/db/connection.py`). Other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()`.
 2. **Time**: always `kst_now()` / `today_kst()` from `nuri.core.timezone`. Never `datetime.now()`.
 3. **Config over code**: rules in `config/rules.yaml`, agents in `config/agents.yaml`, signals in `config/signals.yaml`. Hardcoding is rejected.
-4. **Cross-phase isolation**: pipeline phases communicate via DB tables / CSV only, not direct imports. Same-phase imports OK.
+4. **Cross-stage imports: deferred only, and frozen**: stages map to `collect`=`nuri/collectors` · `analyze`=`nuri/analysis` · `consensus`=`nuri/trading/agents` · `certify`=`nuri/trading/engine` · `track`=`nuri/trading/recommend` (`nuri/quant` and `nuri/core` are shared libraries, not stages). A crossing import MUST be deferred inside a function body — never at module level — and must be listed with a reason in the allowlist. Measured: 17 crossing statements over 15 pairs, 0 module-level. Same-stage imports OK. The old "DB tables / CSV only" wording was false and is retired (#920). Source: `tests/core/test_cross_stage_imports.py` (fails on new entries and stale ones alike).
 5. **Privacy**: never commit personal financial data (real broker names, holdings, prices, account ids, ticker+PnL). Use placeholders. Pre-push hook + CI privacy-scan blocks. Source: `scripts/verify/check_privacy_leak.py`.
 6. **Conventional commits (English)**: `(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(scope)?: msg`. Korean comments in code, English identifiers.
 7. **PR scope**: 1 issue = 1 PR, ≤ 3 commits. New findings → separate issue.
