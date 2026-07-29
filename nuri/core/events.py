@@ -90,7 +90,13 @@ def emit_event(
     """
     payload_str = None
     if payload is not None:
-        payload_str = json.dumps(payload, ensure_ascii=False) if isinstance(payload, dict) else str(payload)
+        # payload 는 항상 **유효 JSON** 이어야 한다 (#935). 이 테이블을 읽는 쿼리 12곳이
+        # `json_extract()` 를 쓰는데, 그 쿼리들은 행을 거르는 게 아니라 테이블을 스캔하므로
+        # malformed 행 하나가 무관한 조회까지 전부 `OperationalError` 로 죽인다.
+        # 이전 구현은 비-dict 를 `str()` 로 썼다 — 시그니처가 `str` 을 허용하니
+        # `emit_event(..., payload="skipped")` 한 번이면 테이블이 영구 오염됐다.
+        # `default=str`: 직렬화 불가 객체 때문에 writer 가 죽어 **본 작업을 막으면 안 된다**.
+        payload_str = json.dumps(payload, ensure_ascii=False, default=str)
 
     with get_db(db_path) as conn:
         cursor = conn.execute(

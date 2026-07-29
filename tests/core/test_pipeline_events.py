@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 
-from nuri.core.db import get_db, init_db
+from nuri.core.db import get_db, init_db, query
 from nuri.core.events import (
     emit_event,
     get_pipeline_status,
@@ -479,3 +479,92 @@ class TestEventsDefensivePaths:
         assert len(events) == 1
         # decode 실패 → payload 가 raw string 그대로
         assert events[0]["payload"] == "not-valid-json{"
+
+
+# ═══════════════════════════════════════════════════════
+# payload 는 항상 유효 JSON (#935)
+# ═══════════════════════════════════════════════════════
+
+
+class TestEmitEventAlwaysWritesValidJson:
+    """`pipeline_events.payload` 오염 방지 — writer 단일 진입점에서 보장한다.
+
+    Gotcha lock: 이 테이블을 읽는 쿼리 12곳이 `json_extract()` 를 쓰고, 그 쿼리들은
+    행을 거르는 게 아니라 **테이블을 스캔**한다. malformed 행 하나가 무관한 조회까지
+    전부 `OperationalError: malformed JSON` 으로 죽인다 (SQLite 실측). 이전 구현은
+    비-dict payload 를 `str()` 로 썼고 시그니처가 `str` 을 허용했으므로,
+    `emit_event(..., payload="skipped")` 한 번이면 테이블이 영구 오염됐다.
+    """
+
+    @pytest.mark.parametrize(
+        ("payload", "label"),
+        [
+            ("skipped", "bare str — 옛 구현이 그대로 써서 malformed 를 만들던 입력"),
+            (["a", "b"], "list — str() 이면 파이썬 repr 이라 JSON 아님"),
+            (5, "int"),
+            (True, "bool — str() 이면 'True' 로 JSON 아님"),
+            ({"ok": 1}, "dict — 기존 정상 경로"),
+            ({"when": kst_now()}, "직렬화 불가 값 — writer 가 죽으면 안 된다"),
+        ],
+    )
+    def test_stored_payload_is_valid_json(self, db_path, payload, label):
+        emit_event("payload_shape_probe", payload=payload, db_path=db_path)
+        rows = query(
+            "SELECT payload, json_valid(payload) AS ok FROM pipeline_events WHERE event_type = ?",
+            ("payload_shape_probe",),
+            db_path=db_path,
+        )
+        assert len(rows) == 1
+        assert rows[0]["ok"] == 1, f"{label} → malformed: {rows[0]['payload']!r}"
+
+    def test_json_extract_scan_survives_every_payload_shape(self, db_path):
+        """진짜 계약 — 어떤 payload 가 섞여도 소비자 쿼리가 예외 없이 돈다.
+
+        `json_valid` 단건 검사만으로는 부족하다. 실제 고장은 *다른* 이벤트를 찾는
+        쿼리가 오염된 행을 스치면서 죽는 것이므로, 스캔 쿼리 자체를 돌려본다.
+        """
+        for i, payload in enumerate(["skipped", ["a"], 7, None, {"ticker": "AAA"}]):
+            emit_event(f"mixed_{i}", payload=payload, db_path=db_path)
+
+        rows = query(
+            """SELECT COUNT(*) AS c FROM pipeline_events
+               WHERE json_extract(payload, '$.ticker') = ?""",
+            ("AAA",),
+            db_path=db_path,
+        )
+        assert rows[0]["c"] == 1
+
+
+class TestPipelineEventsSingleWriter:
+    """`emit_event` 의 보장은 '유일한 writer' 라는 전제 위에 서 있다 (#935).
+
+    전제가 깨지면 보장도 같이 깨지는데, 지금까지 아무도 그 전제를 검사하지 않았다.
+    """
+
+    @staticmethod
+    def _writers() -> set[str]:
+        """`nuri/` 안에서 pipeline_events 에 INSERT 하는 파일 (AST — 주석/문자열 경계 무시)."""
+        import ast
+        import re
+        from pathlib import Path
+
+        pattern = re.compile(r"insert\s+(or\s+\w+\s+)?into\s+pipeline_events", re.IGNORECASE)
+        found: set[str] = set()
+        for path in Path("nuri").rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) and pattern.search(node.value):
+                    found.add(str(path))
+        return found
+
+    def test_only_events_module_inserts(self):
+        assert self._writers() == {"nuri/core/events.py"}
+
+    def test_sweep_is_not_blind(self):
+        """캐너리 — 스윕이 아무것도 못 찾는데 통과하는 상태를 배제한다.
+
+        정규식 스윕은 따옴표/주석 경계에서 조용히 눈이 머는 일이 있다 (#910/#911:
+        rc=127 이 '검사 실패' 와 구분 불가였던 것과 같은 계열). 빈 집합이면 위
+        테스트는 `== {...}` 라 FAIL 하지만, 향후 허용목록으로 바뀌면 조용히 통과한다.
+        """
+        assert self._writers(), "AST 스윕이 known writer 조차 못 찾았다 — 스윕이 고장난 것"
