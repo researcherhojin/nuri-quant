@@ -155,7 +155,7 @@ def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
 
 
 def get_pipeline_status(db_path: Optional[Path] = None) -> dict:
-    """전체 6-step 파이프라인 상태 조회."""
+    """전체 5-stage 파이프라인 상태 조회 (#921 — 예전 6-step 어휘 폐기)."""
     result = {}
     for step in PIPELINE_STEPS:
         result[step] = get_step_status(step, db_path)

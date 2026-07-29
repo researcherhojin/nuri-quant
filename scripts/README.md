@@ -40,7 +40,7 @@ scripts/
 | Script | Purpose | Use |
 |---|---|---|
 | `deploy_remote.sh` | generic SSH push (rsync) | `make deploy` |
-| `deploy_to_mini.sh` | MBP → Mac mini 1-command (6 steps) | `make deploy-mini` |
+| `deploy_to_mini.sh` | MBP → Mac mini 1-command (7 steps) | `make deploy-mini` |
 | `autopull_receiver.sh` | Mac mini receiver (5min cron, NOT push) | launchd `com.nuri-quant.autopull` |
 | `pre_deploy_check.sh` | safety check before deploy | `make pre-deploy` |
 | `sync_dev.sh` | low-level rsync state (push/pull) | `bash scripts/deploy/sync_dev.sh push` |

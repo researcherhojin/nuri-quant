@@ -43,11 +43,11 @@ Special regimes (priority order, override base `regime` field): euphoria, stagfl
 `nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit.
 Full certification architecture + 3-dimensional certification specification: **[`docs/CERTIFICATION_SPEC.md`](CERTIFICATION_SPEC.md)** (canonical). Confidence scoring formula: [`docs/STRATEGY.md` §3.3](STRATEGY.md). Gate policy: [`docs/STRATEGY.md` §6](STRATEGY.md).
 ## Pipeline Observability
-`nuri/core/events.py` — Append-only event journal. `emit_event()` records state transitions. `get_pipeline_status()` returns 6-step status. `get_timeline()` returns history with `causation_id` for chain tracing.
+`nuri/core/events.py` — Append-only event journal. `emit_event()` records state transitions and always writes **valid JSON** to `payload` (#935). `get_pipeline_status()` returns 5-stage status. `get_timeline()` returns history with `causation_id` for chain tracing.
 `nuri/core/freshness.py` — Data freshness SLA. `FRESHNESS_POLICIES` defines warn/fail thresholds. `check_freshness(key)` returns PASS/WARN/FAIL. Sources: prices (48h/120h), VIX (24h/72h), F&G (24h/48h), consensus (24h/48h), certification (24h/48h).
-`nuri/core/pipeline.py` — Pipeline orchestration. `STEP_DEPENDENCIES` defines 6-step DAG. `run_step()` enforces dependency completion + records events.
+`nuri/core/pipeline.py` — Pipeline orchestration. `STEP_DEPENDENCIES` defines the 5-stage DAG (`collect → analyze → consensus → certify → track`). `run_step()` enforces dependency completion + records events.
 Pipeline control API (`nuri/api/routes/pipeline.py`):
-- `GET /api/pipeline/status` — 6-step status + record counts
+- `GET /api/pipeline/status` — 5-stage status + record counts
 - `POST /api/pipeline/{step}/run` — Execute step (background)
 - `GET /api/pipeline/timeline` — Event log
 - `GET /api/freshness` — Data freshness report

@@ -27,13 +27,20 @@ DB stores dates as `YYYY-MM-DD` strings.
 
 Append-only. `emit_event()` records state transitions (step_started/completed/failed/blocked). `causation_id` for chain tracing. Never delete events.
 
+Two guarantees hold here, and both are load-bearing for readers elsewhere:
+
+- **`payload` is always valid JSON.** Twelve queries read that column through `json_extract()`, and SQLite raises `OperationalError: malformed JSON` instead of skipping the row — and those queries *scan* the table rather than filtering to their own rows, so one poisoned row kills every unrelated lookup (holdings dedupe, trim age, eight BUY-candidate predicates). All sit under scheduler wrappers that catch and log, so it surfaces as a quiet no-op. `emit_event` therefore `json.dumps()` **every** payload shape, with `default=str` so a non-serializable value cannot raise inside the writer and abort the caller's real work (#935/#894).
+- **`emit_event()` is the only writer.** The guarantee above rests on it. Never `INSERT INTO pipeline_events` directly from `nuri/`.
+
+**Test:** `tests/core/test_pipeline_events.py::TestEmitEventAlwaysWritesValidJson::test_json_extract_scan_survives_every_payload_shape` (the per-row `json_valid` check is not enough — the real failure is a query looking for *something else* dying as it passes a poisoned row) and `::TestPipelineEventsSingleWriter::test_only_events_module_inserts` (AST sweep + a canary, since a sweep that silently matches nothing passes as happily as one that matches everything).
+
 ## freshness.py — Data Freshness SLA
 
 `FRESHNESS_POLICIES` per data source (prices 48h/120h, VIX 24h/72h, etc.). `check_freshness(key)` returns PASS/WARN/FAIL.
 
 ## pipeline.py — Orchestration
 
-`STEP_DEPENDENCIES` defines the 6-step DAG. `run_step()` enforces dependency completion.
+`STEP_DEPENDENCIES` defines the 5-stage DAG (`collect → analyze → consensus → certify → track`). `run_step()` enforces dependency completion.
 
 ## rules.py / signal_config.py / agent_config.py
 
