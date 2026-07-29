@@ -741,6 +741,60 @@ class TestAlphaReportStaleDetector:
         out = self._scan()
         assert out[0]["evidence"]["last_skip_reason"] == "staged"
 
+    def _scan_all(self, now=_EVAL_FIXED_NOW):
+        """전체 인시던트 — detector 자체가 죽었는지 보려면 db_lock 까지 봐야 한다."""
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=now),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+        ):
+            return actor.run({"action": "scan"}).output["incidents"]
+
+    def test_broken_text_payload_does_not_kill_the_detector(self, patched_db, no_publish):
+        """깨진 텍스트 payload 가 섞여도 인시던트는 정상 발화한다 (#927).
+
+        Gotcha lock: 집계 쿼리의 `json_extract` 는 malformed JSON 에 SQLite 단계에서
+        `OperationalError` 를 낸다. 가드가 없으면 detector 가 통째로 죽고, scan 루프가
+        그걸 `db_lock` 로 바꿔 담는다 — 즉 **'리포트가 안 나간다' 는 사실 자체가 사라진다.**
+        감시자를 감시 대상이 죽이는 구조라 `json_valid()` 가드가 있어야 한다.
+        """
+        for offset in range(40):
+            day = datetime(2026, 5, 30) + timedelta(days=offset)
+            _seed_alpha_run(patched_db, day.strftime("%Y-%m-%d 00:00:00"), staged=False, role_ok=False)
+        _seed_alpha_run(patched_db, "2026-07-09 00:00:00", staged=False, raw_payload="{not json")
+
+        incidents = self._scan_all()
+        stale = [i for i in incidents if i["incident_type"] == "alpha_report_stale"]
+        assert len(stale) == 1
+        assert stale[0]["evidence"]["last_skip_reason"] == "unparseable"
+        assert stale[0]["evidence"]["last_error"] is None
+        # detector 가 살아 있었다는 증거 — 죽었으면 scan 루프가 db_lock 으로 감싼다
+        assert not [
+            i for i in incidents if i["incident_type"] == "db_lock" and i["target"] == "_detect_alpha_report_stale"
+        ]
+
+    @pytest.mark.parametrize("raw", ["null", "[]", '"x"', "5"])
+    def test_non_object_json_payload_still_alerts(self, patched_db, no_publish, raw):
+        """객체가 아닌 유효 JSON 도 발화를 막지 못한다 (#927).
+
+        Gotcha lock: 이쪽은 SQLite 를 통과해서 `json.loads` 도 성공하고, `.get` 에서
+        비로소 AttributeError 가 난다. 좁은 `except (JSONDecodeError, TypeError, KeyError)`
+        는 이걸 못 잡아 그대로 전파됐다 — 사유 추출 실패가 인시던트를 삼키면 안 된다.
+        """
+        for offset in range(40):
+            day = datetime(2026, 5, 30) + timedelta(days=offset)
+            _seed_alpha_run(patched_db, day.strftime("%Y-%m-%d 00:00:00"), staged=False, role_ok=False)
+        _seed_alpha_run(patched_db, "2026-07-09 00:00:00", staged=False, raw_payload=raw)
+
+        out = self._scan()
+        assert len(out) == 1
+        assert out[0]["evidence"]["last_skip_reason"] == "unparseable"
+        assert out[0]["evidence"]["last_error"] is None
+
     def test_summary_names_the_cause_not_just_the_type(self):
         """알림 한 줄이 cryptic 코드가 아니라 원인+조치를 담는다 (알림 가독성)."""
         line = _human_incident_summary(
