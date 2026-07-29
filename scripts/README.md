@@ -60,7 +60,7 @@ scripts/
 
 | Script | Purpose | Use |
 |---|---|---|
-| `health_check.sh` | schema version + table existence | hourly launchd cron |
+| `health_check.sh` | schema version + table existence | Discord `/health` on-demand (cron 미설치 — #939) |
 | `import_portfolio.py` | YAML → DB portfolio import | `make setup` 내부 (`$(PYTHON) scripts/ops/import_portfolio.py`) |
 | `notify_scan_result.py` | Discord scan result publish | `make full-scan` 마지막 단계 |
 | `ports.sh` | check + kill running services | `bash scripts/ops/ports.sh [kill]` |
@@ -122,7 +122,7 @@ PR/이슈 단위로 한 번 실행한 backfill / counterfactual / amplifier repl
 | `com.nuri-quant.api.plist` | continuous (KeepAlive) | FastAPI :8001 (#838) |
 | `com.nuri-quant.dashboard.plist` | continuous (KeepAlive) | Next.js dashboard :3000 (#838) |
 | `com.nuri-quant.discord-bot.plist` | continuous | Discord bot daemon |
-| `com.nuri-quant.health-check.plist` | hourly | health_check.sh |
+| `com.nuri-quant.health-check.plist` | hourly | health_check.sh — **prod 미설치** (#939: 고유 검사는 SRE detector 로 이식) |
 | `com.nuri-quant.heartbeat-watchdog.plist` | 15min | scheduler heartbeat watchdog + 자동 재시작 (#778/#779) |
 | `com.nuri-quant.state-replicator.plist` | daily | state_replicator.sh |
 | `com.nuri-quant.sre-scan.plist` | hourly | SREIncidentAgent.scan |

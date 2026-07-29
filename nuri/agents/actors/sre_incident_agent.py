@@ -5,10 +5,10 @@
 Layer A 설계 (Codex Round 5):
 - 100% rule-based — threshold 비교 (LLM 추론 X)
 - ZERO LLM
-- 8 detector 모두 결정적 (DB query + filesystem stat)
+- 11 detector 모두 결정적 (DB query + filesystem stat)
 - 모든 incident → audit_ledger + incidents 테이블 영구 기록
 
-8 Detector:
+11 Detector:
     1. orphan_run         — agent_run_ledger started + finished_at IS NULL + >1h
                             warning (1h+) / critical (3h+)
     2. disk_full          — shutil.disk_usage() percent_used > 80 (warn) / > 90 (crit)
@@ -21,6 +21,9 @@ Layer A 설계 (Codex Round 5):
                             ≥1 (warn) / ≥3 (crit)
     7. signal_evaluation_stale — pipeline_events 'signal_evaluation_run'
                             heartbeat 공백 영업일 (#825): ≥2 (warn) / ≥4 (crit)
+    9. schema_version_drift — DB schema_version < 코드 _MIGRATIONS 최신본 (#939)
+   10. required_table_missing — #529 Phase 1+2 필수 테이블 누락 (#939)
+   11. writer_role       — writer actor 가 primary(Mac mini) 밖에서 실행 (#939)
     8. alpha_report_stale — pipeline_events 'alpha_report_run' 의 **마지막 성공
                             stage** 공백 (#894): ≥35일 (warn). heartbeat 공백이
                             아니라 성공 공백 — cron 이 매일이라 role 누락 상태도
@@ -42,6 +45,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import socket
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -78,10 +82,45 @@ SIGNAL_EVAL_CRIT_DAYS = 4
 # 1시간(launchd StartInterval 3600)이므로 3h = 연속 3회 미감지에 해당한다.
 AUTO_RESOLVE_GRACE_HOURS = 3.0
 
+# #529 Phase 1+2 이후 반드시 존재해야 하는 테이블. `health_check.sh` 에서 이식했다 (#939) —
+# 그쪽은 알림 경로가 없어 로그로만 남았고, 그 로그를 읽는 코드는 없었다.
+REQUIRED_TABLES: tuple[str, ...] = (
+    "agent_audit_ledger",
+    "feature_flags",
+    "agent_run_ledger",
+    "agent_messages",
+    "walkforward_runs",
+    "regime_posteriors",
+    "hypotheses",
+    "causal_audits",
+    "agent_decisions",
+    "decision_outcomes",
+    "execution_blocks",
+    "incidents",
+    "dr_replicas",
+    "collector_runs",
+    "drift_alerts",
+    "foundation_benchmarks",
+)
+
+
+def _machine_role() -> str:
+    """hostname → 'primary' | 'replica' | 'unknown' (단일 writer 불변식 판정)."""
+    host = socket.gethostname().split(".")[0].lower()
+    if "macmini" in host:
+        return "primary"
+    if "macbook" in host or "mbp" in host:
+        return "replica"
+    return "unknown"
+
+
 # detector → 그 detector 가 낼 수 있는 incident_type. 자동 해소가 **죽은 detector 의
 # 침묵을 '해소됨' 으로 오독하지 않도록** 쓰인다. 새 detector 를 추가하면 여기도 등록할 것
-# — 누락 시 그 타입은 detector 가 죽어도 닫혀버린다.
+# — 누락 시 그 타입은 detector 가 죽어도 닫혀버린다 (test_every_detector_is_mapped 가 강제).
 _DETECTOR_INCIDENT_TYPES: dict[str, tuple[str, ...]] = {
+    "_detect_schema_version_drift": ("schema_version_drift",),
+    "_detect_required_tables_missing": ("required_table_missing",),
+    "_detect_writer_role": ("writer_role",),
     "_detect_orphan_runs": ("orphan_run",),
     "_detect_disk_full": ("disk_full",),
     "_detect_db_lock": ("db_lock",),
@@ -108,7 +147,7 @@ class SREIncidentAgent(Actor):
     """Operational incident detection + lifecycle management — Layer A.
 
     Actions (input_data['action']):
-        scan        — 8 detector 모두 실행 → log_incident + Discord publish.
+        scan        — 11 detector 모두 실행 → log_incident + Discord publish.
         acknowledge — incident_id 사용자 확인 (audit-only).
         resolve     — incident_id 종료 (status='resolved').
         list_open   — open incident 목록 (severity 필터 optional).
@@ -148,12 +187,15 @@ class SREIncidentAgent(Actor):
     # ─── scan ────────────────────────────────────────────────
 
     def _scan(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult:
-        """8 detector 실행 → 발견된 incident 목록 반환."""
+        """11 detector 실행 → 발견된 incident 목록 반환 + 조건 해소분 자동 종료."""
         detected: list[dict[str, Any]] = []
 
         failed_detectors: set[str] = set()
 
         for detector in (
+            self._detect_schema_version_drift,
+            self._detect_required_tables_missing,
+            self._detect_writer_role,
             self._detect_orphan_runs,
             self._detect_disk_full,
             self._detect_db_lock,
@@ -251,6 +293,78 @@ class SREIncidentAgent(Actor):
         return resolved
 
     # ─── 8 detectors ─────────────────────────────────────────
+
+    def _detect_schema_version_drift(self, ctx: RunContext) -> list[dict[str, Any]]:
+        """DB schema_version 이 코드의 마이그레이션 최신본보다 낮은가 (#939).
+
+        기대값을 상수로 박지 않고 `_MIGRATIONS` 에서 도출한다 — 코드는 배포됐는데
+        마이그레이션이 안 돈 상태를 잡는 게 목적이라, 기대값은 **코드가 정의**해야 한다.
+        (`health_check.sh` 는 `>= 40` 하드코딩이라 41~49 누락을 못 잡았다.)
+        """
+        from nuri.core.db_migrations import _MIGRATIONS
+
+        expected = max(v for v, _, _ in _MIGRATIONS)
+        # `get_schema_version()` 대신 `query()` — 다른 detector 와 같은 경로를 타야
+        # db_path 주입(테스트 격리)이 먹는다. 직접 호출하면 기본 DB 를 읽어버린다.
+        rows = query("SELECT MAX(version) AS v FROM schema_version")
+        actual = int(dict(rows[0])["v"] or 0) if rows else 0
+        if actual >= expected:
+            return []
+        return [
+            self._record_incident(
+                incident_type="schema_version_drift",
+                severity="critical",
+                target="db_schema",
+                evidence={
+                    "actual_version": actual,
+                    "expected_version": expected,
+                    "missing_migrations": expected - actual,
+                    "hint": "배포는 됐으나 마이그레이션 미적용 — init_db() 또는 배포 절차 확인",
+                },
+                ctx=ctx,
+            )
+        ]
+
+    def _detect_required_tables_missing(self, ctx: RunContext) -> list[dict[str, Any]]:
+        """#529 Phase 1+2 필수 테이블 존재 확인 (#939)."""
+        rows = query("SELECT name FROM sqlite_master WHERE type = 'table'")
+        present = {dict(r)["name"] for r in rows}
+        missing = [t for t in REQUIRED_TABLES if t not in present]
+        if not missing:
+            return []
+        return [
+            self._record_incident(
+                incident_type="required_table_missing",
+                severity="critical",
+                target="db_schema",
+                evidence={"missing": missing, "required_count": len(REQUIRED_TABLES)},
+                ctx=ctx,
+            )
+        ]
+
+    def _detect_writer_role(self, ctx: RunContext) -> list[dict[str, Any]]:
+        """단일 writer 불변식 — 이 액터는 쓰기를 하므로 primary 에서만 돌아야 한다 (#939).
+
+        Mac mini = sole writer, MBP = read replica (`nuri/agents/__init__.py`).
+        replica/unknown 에서 도는 걸 알아채지 못하면 두 원장이 갈라지고, §3.11 은
+        "원장은 production DB 단일" 위에 서 있다.
+        """
+        role = _machine_role()
+        if role == "primary":
+            return []
+        return [
+            self._record_incident(
+                incident_type="writer_role",
+                severity="warning",
+                target=f"machine:{role}",
+                evidence={
+                    "role": role,
+                    "hostname_matched": role != "unknown",
+                    "hint": "writer actor 는 Mac mini(primary)에서만 실행 — 원장 분기 위험",
+                },
+                ctx=ctx,
+            )
+        ]
 
     def _detect_orphan_runs(self, ctx: RunContext) -> list[dict[str, Any]]:
         """agent_run_ledger 에서 started + finished_at NULL + age 검사."""

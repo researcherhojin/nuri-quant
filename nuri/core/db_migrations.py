@@ -1521,4 +1521,43 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         UPDATE decision_outcomes SET benchmark_ticker = 'SPY' WHERE benchmark_return IS NOT NULL;
     """,
     ),
+    (
+        49,
+        "incidents incident_type enum 확장 — health_check.sh 흡수 3종 (#939)",
+        # `scripts/ops/health_check.sh` 의 고유 검사 3종(schema version / 필수 테이블 /
+        # 단일 writer role)을 SRE detector 로 이식한다. 그 스크립트는 echo 만 하고
+        # 알림 경로가 없어 시간마다 로그만 쌓였고, plist 주석이 "SRE-Incident-Agent 가
+        # 이 로그를 watch 한다" 고 적어뒀으나 그런 코드는 없었다 — 광고된 배선이 허구.
+        # SQLite 는 CHECK 제약 변경 미지원 → migration 45/46 과 동일한 재생성 패턴.
+        """
+        CREATE TABLE incidents_new (
+            incident_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_type TEXT NOT NULL CHECK(incident_type IN (
+                'orphan_run','disk_full','db_lock','scheduler_heartbeat',
+                'actor_failure_streak','data_freshness_critical','signal_evaluation_stale',
+                'alpha_report_stale','schema_version_drift','required_table_missing',
+                'writer_role'
+            )),
+            severity TEXT NOT NULL CHECK(severity IN ('critical','warning','info')),
+            target TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('open','acknowledged','resolved')),
+            first_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT,
+            evidence_json TEXT NOT NULL,
+            run_id TEXT,
+            UNIQUE(incident_type, target, status)
+        );
+        INSERT INTO incidents_new
+            (incident_id, incident_type, severity, target, status,
+             first_detected_at, last_detected_at, resolved_at, evidence_json, run_id)
+            SELECT incident_id, incident_type, severity, target, status,
+                   first_detected_at, last_detected_at, resolved_at, evidence_json, run_id
+              FROM incidents;
+        DROP TABLE incidents;
+        ALTER TABLE incidents_new RENAME TO incidents;
+        CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status, severity);
+        CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
+    """,
+    ),
 ]

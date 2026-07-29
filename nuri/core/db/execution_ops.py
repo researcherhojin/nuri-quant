@@ -41,6 +41,10 @@ _INCIDENT_TYPES = (
     "data_freshness_critical",
     "signal_evaluation_stale",
     "alpha_report_stale",
+    # health_check.sh 에서 이식 (#939) — 그쪽은 알림 경로가 없어 로그로만 남았다.
+    "schema_version_drift",
+    "required_table_missing",
+    "writer_role",
 )
 _INCIDENT_SEVERITIES = ("critical", "warning", "info")
 _INCIDENT_STATUSES = ("open", "acknowledged", "resolved")

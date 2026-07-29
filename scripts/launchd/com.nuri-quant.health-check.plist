@@ -5,7 +5,12 @@
   com.nuri-quant.health-check (#529 Phase 1, SRE-Incident-Agent precursor)
 
   매시간 health_check.sh 실행. exit code 1/2 시 stderr 로그가
-  data/logs/health_check.err 에 남음. SRE-Incident-Agent (Phase 6) 가 이 로그 watch.
+  data/logs/health_check.err 에 남음.
+  ⚠️ 이 plist 는 **설치하지 않는다** (#939). 고유 검사 3종(schema version / 필수 테이블 /
+  writer role)은 SREIncidentAgent detector 로 이식됐고 그쪽이 log_incident + Discord
+  publish 경로를 탄다. 예전 주석은 'SRE-Incident-Agent 가 이 로그를 watch' 라고 적었으나
+  그런 코드는 존재한 적이 없다 — 광고된 배선이 허구였다. 스크립트 자체는 Discord /health
+  슬래시 명령의 on-demand 실행 경로로 남는다.
 
   설치:
     cp scripts/launchd/com.nuri-quant.health-check.plist ~/Library/LaunchAgents/
