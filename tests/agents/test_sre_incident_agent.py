@@ -1279,3 +1279,19 @@ class TestIncidentAutoResolve:
         assert detectors == set(_DETECTOR_INCIDENT_TYPES), (
             f"매핑 누락/잉여: {detectors ^ set(_DETECTOR_INCIDENT_TYPES)}"
         )
+
+    def test_still_detected_incident_is_not_resolved(self, patched_db, no_publish):
+        """Gotcha lock: 이번 스캔에서 감지된 인시던트는 오래됐어도 닫지 않는다.
+
+        통상 경로에서는 `_record_incident` 가 재감지 시 `last_detected_at` 을 갱신해
+        grace 쿼리가 먼저 걸러낸다. 그래서 `_auto_resolve` 를 직접 불러 계약을 검증한다
+        — 갱신 경로가 바뀌어도(로그 실패, 쿼리 변경) **발화 중인 장애가 조용히 resolved
+        로 사라지지 않아야** 한다.
+        """
+        _seed_open_incident(patched_db, "orphan_run", "stuck-actor", hours_ago=48)
+        detected = [{"incident_type": "orphan_run", "target": "stuck-actor"}]
+
+        resolved = SREIncidentAgent()._auto_resolve(detected, failed_detectors=set())
+
+        assert not [r for r in resolved if r["target"] == "stuck-actor"]
+        assert [r for r in _open_rows(patched_db) if r["target"] == "stuck-actor"]
