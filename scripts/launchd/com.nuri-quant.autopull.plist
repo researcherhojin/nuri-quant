@@ -58,7 +58,7 @@
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
         <key>HOME</key>
-        <string>/Users/user</string>
+        <string>/Users/USER</string>
         <key>GIT_TERMINAL_PROMPT</key>
         <string>0</string>
     </dict>
