@@ -90,6 +90,19 @@ def patched_db(db_path):
         p.stop()
 
 
+def _future_date(days: int = 90) -> str:
+    """오늘 기준 미래 날짜 — 리터럴 만료일 금지 (tests/CLAUDE.md "Time-bomb seed dates").
+
+    `expiry_date="2026-08-01"` 리터럴이 2026-08-02 에 만료되면서 `test_expire_no_stale_
+    returns_zero`(0건이어야 할 만료가 1건) 와 `test_open_blocks`(차단 사유가 validated
+    가 아니라 expiry 로 바뀜) 가 **main 에서** 깨졌다. 벽시계가 지나가면 조용히 터지는
+    쪽이라 회귀가 아니라 시한폭탄으로 보인다.
+    """
+    from nuri.core.timezone import today_kst
+
+    return (date.fromisoformat(today_kst()) + timedelta(days=days)).isoformat()
+
+
 def _register_payload(**overrides):
     """기본 register payload — 테스트마다 부분 override."""
     payload = {
@@ -100,7 +113,7 @@ def _register_payload(**overrides):
         "producer_actor": "regime-posterior",
         "claim_text": "posterior bull > 0.7",
         "evidence": {"posterior": [0.8, 0.15, 0.05]},
-        "expiry_date": "2026-08-01",
+        "expiry_date": _future_date(),
     }
     payload.update(overrides)
     return payload
@@ -274,7 +287,7 @@ class TestActionReject:
 class TestActionExpire:
     def test_expire_no_stale_returns_zero(self, patched_db):
         actor = HypothesisRegistry()
-        actor.run(_register_payload())  # expiry 2026-08-01 미래
+        actor.run(_register_payload())  # expiry 는 today+90d (리터럴 금지)
         result = actor.run({"action": "expire"})
         assert result.outcome == Outcome.PASS
         assert result.output["expired_count"] == 0
@@ -456,7 +469,7 @@ class TestHelperLockTests:
             producer_actor="test",
             claim_text="claim",
             evidence={},
-            expiry_date="2026-12-31",
+            expiry_date=_future_date(150),
             db_path=db_path,
         )
         with pytest.raises(ValueError, match="validation_metrics dict required"):
@@ -470,7 +483,7 @@ class TestHelperLockTests:
             producer_actor="test",
             claim_text="claim",
             evidence={},
-            expiry_date="2026-12-31",
+            expiry_date=_future_date(150),
             db_path=db_path,
         )
         with pytest.raises(ValueError, match="rejection_reason required"):
@@ -484,7 +497,7 @@ class TestHelperLockTests:
             producer_actor="P",
             claim_text="same claim",
             evidence={},
-            expiry_date="2026-12-31",
+            expiry_date=_future_date(150),
             db_path=db_path,
         )
         h2, new2 = register_hypothesis(
@@ -494,7 +507,7 @@ class TestHelperLockTests:
             producer_actor="P",
             claim_text="same claim",
             evidence={},
-            expiry_date="2026-12-31",
+            expiry_date=_future_date(150),
             db_path=db_path,
         )
         assert (h1, new1) == ("z1", True)
@@ -509,7 +522,7 @@ class TestHelperLockTests:
                 producer_actor="P",
                 claim_text="x",
                 evidence={},
-                expiry_date="2026-12-31",
+                expiry_date=_future_date(150),
                 canary_scope="beta",
                 db_path=db_path,
             )
