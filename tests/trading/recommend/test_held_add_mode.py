@@ -10,7 +10,7 @@ Lock-in:
 spec: docs/plans/507_buy_candidate_emitter_phase2_spec.md §4.6.
 """
 
-# cspell:ignore kakaopay
+# cspell:ignore acct_alpha
 
 from __future__ import annotations
 
@@ -714,7 +714,7 @@ class TestDBProviders:
         conn.executemany(
             "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
             [
-                ("kakaopay", "AAPL", 10.0, 100.0, "USD"),
+                ("acct_alpha", "AAPL", 10.0, 100.0, "USD"),
                 ("test", "BBB", 5.0, 50.0, "USD"),
                 ("sample", "CCC", 3.0, 30.0, "USD"),
             ],
@@ -731,14 +731,14 @@ class TestDBProviders:
 
         monkeypatch.setattr(core_db, "DB_PATH", path)
 
-        # _get_real_accounts stub: kakaopay 만 substantive
+        # _get_real_accounts stub: acct_alpha 만 substantive
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_real_accounts",
-            lambda: {"kakaopay"},
+            lambda: {"acct_alpha"},
         )
         positions = ha._get_held_positions()
         accounts_seen = {p["account"] for p in positions}
-        assert accounts_seen == {"kakaopay"}
+        assert accounts_seen == {"acct_alpha"}
         assert "test" not in accounts_seen
         assert "sample" not in accounts_seen
 
@@ -750,9 +750,9 @@ class TestDBProviders:
         conn.executemany(
             "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
             [
-                ("kakaopay", "AAA", 10.0, 100.0, "USD"),
-                ("kakaopay", "BBB", 0.0, 100.0, "USD"),  # zero qty
-                ("kakaopay", "CCC", 5.0, 0.0, "USD"),  # zero avg
+                ("acct_alpha", "AAA", 10.0, 100.0, "USD"),
+                ("acct_alpha", "BBB", 0.0, 100.0, "USD"),  # zero qty
+                ("acct_alpha", "CCC", 5.0, 0.0, "USD"),  # zero avg
             ],
         )
         conn.commit()
@@ -763,7 +763,7 @@ class TestDBProviders:
         monkeypatch.setattr(core_db, "DB_PATH", path)
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_real_accounts",
-            lambda: {"kakaopay"},
+            lambda: {"acct_alpha"},
         )
         positions = ha._get_held_positions()
         tickers = [p["ticker"] for p in positions]

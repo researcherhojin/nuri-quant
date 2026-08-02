@@ -448,7 +448,7 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 | **#513** | `premarket_brief.py`가 `FRESHNESS_POLICIES["portfolio"]` 결과를 brief 본문에 surface 안 함 (backend 작동, 사용자 가시성 0) | P1 |
 | **#514** | `recommendations.action='HOLD'` 행이 portfolio JOIN filter 미적용 → 0주 ticker (TSM 등) HOLD noise surface | P2 |
 | **#515** | 신규 매수 후 `make consensus` 수동 호출 운영 burden — `scripts/ops/import_portfolio.py` 에 newly-added ticker detection + auto-trigger 필요 | P1 |
-| **#516** | Pension 4-18 매도 종목 3개 (테크TOP10/나스닥100/KRX300) 4-30 재진입 — 한화증권 자동매수 설정 의도 검증 필요 | P3 |
+| **#516** | Pension 계좌 4월 매도 3종목 재진입 — 증권사 자동매수 설정 의도 검증 필요 | P3 |
 ### 5.13 BUY candidate backtracking ledger (Session 8 신설)
 **Goal**: Phase 1 emitter score 신뢰도 검증 + Phase 2c threshold backtest 표본 자동 적립.
 **Mechanism**:

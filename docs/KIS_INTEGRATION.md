@@ -24,7 +24,7 @@ nuri/collectors/
 
 ```bash
 # 실전 (Production)
-KIS_PROD_APP_KEY=PSO510...
+KIS_PROD_APP_KEY=PSxxxxxx...
 KIS_PROD_APP_SECRET=...
 KIS_PROD_ACCOUNT=1000000  # 8자리 종합계좌 (시세만 조회 시 비워둬도 OK)
 
@@ -74,7 +74,7 @@ ln -sf "$(pwd)/config/kis/cache" ~/KIS/cache
 
 ```bash
 make collect-kis-check
-# → KIS 자격 증명 OK [prod] app_key=PSO510ne... account=(미설정)
+# → KIS 자격 증명 OK [prod] app_key=PSxxxxxx... account=(미설정)
 ```
 
 ### 2. 실시간 시세 수집

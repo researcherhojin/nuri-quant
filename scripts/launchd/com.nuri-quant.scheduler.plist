@@ -16,12 +16,12 @@
     <string>com.nuri-quant.scheduler</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/ehbebe/workspace/nuri-quant/.venv/bin/python</string>
+        <string>/Users/USER/workspace/nuri-quant/.venv/bin/python</string>
         <string>-m</string>
         <string>nuri.scheduler</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/ehbebe/workspace/nuri-quant</string>
+    <string>/Users/USER/workspace/nuri-quant</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -47,8 +47,8 @@
         <string>production</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/ehbebe/workspace/nuri-quant/data/logs/scheduler.log</string>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/scheduler.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/ehbebe/workspace/nuri-quant/data/logs/scheduler.err</string>
+    <string>/Users/USER/workspace/nuri-quant/data/logs/scheduler.err</string>
 </dict>
 </plist>

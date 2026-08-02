@@ -54,7 +54,7 @@ If you are looking for a backtested strategy with a published Sharpe ratio, this
 
 ```mermaid
 flowchart TB
-    SCHED["APScheduler · 48 cron jobs · in-process<br/>Mac mini is the sole writer"]:::driver
+    SCHED["APScheduler · 49 cron jobs · in-process<br/>the receiver is the sole writer"]:::driver
     CFG[/"config/*.yaml<br/>policies"/]:::source
 
     subgraph Collect["Collect — 25 jobs"]
@@ -171,7 +171,7 @@ make certify        # Certification (3-D gates)
 make scan           # Daily swing scan (us_core, 85 tickers)
 make scan-extended  # Weekly swing scan (us_core + S&P 500 extension, 543 tickers)
 
-make test-fast      # backend, slow tests excluded — 111s on an 18-core M5 Max
+make test-fast      # backend, slow tests excluded
 make test           # full backend suite (adds 24 slow-marked tests)
 make ci-cov         # combine CI shard artifacts — ground-truth coverage
 
@@ -227,7 +227,7 @@ LLM integrations are **wired but inactive** unless you set the corresponding env
 
 ## Deployment
 
-The reference operator setup is two Apple Silicon Macs — a MacBook Pro for development, a Mac mini as a 24/7 receiver — synced by `make deploy-mini` in one command. The receiver is the sole writer; the development machine treats its database as a read replica, so adjudication records have exactly one ledger of record.
+The reference setup is two machines by role: a development host, and an always-on receiver that runs the scheduler. `make deploy-mini` syncs them in one command. The receiver is the sole writer; the development host treats its database as a read replica, so adjudication records have exactly one ledger of record.
 
 Production binds the API to `127.0.0.1`. The dashboard proxy is the only public surface and sits behind a password gate.
 

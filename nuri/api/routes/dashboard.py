@@ -215,7 +215,7 @@ def _get_account_labels() -> dict[str, str]:
     """계좌명 → 표시 라벨 매핑.
 
     Resolution order (#214 polish):
-      1. `label` field in portfolio.yaml (user custom, e.g. "Toss" or "hojin kakao")
+      1. `label` field in portfolio.yaml (user custom, e.g. "Brokerage Alpha" or "Brokerage Beta")
       2. strategy-based default ("core" → "Main", "swing" → "Sub", ...)
       3. strategy name title-cased if unknown
 

@@ -147,6 +147,9 @@ check_claim "migrations"       "$MIG"   "README.md"            '[0-9]+ forward-o
 # ARCHITECTURE 도 같은 수치를 적는데 게이트가 없어 조용히 갈렸다 (2026-07-30 실측 46 vs 49).
 check_claim "migrations"       "$MIG"   "docs/ARCHITECTURE.md" '\([0-9]+ migrations as of' || true
 check_claim "scheduler_jobs"   "$JOBS"  "docs/ARCHITECTURE.md" '[0-9]+ cron jobs in' || true
+# README 아키텍처 다이어그램도 같은 수치를 적는데 등록이 안 돼 있어 48 로 굳어 있었다
+# (2026-08-03 실측, 실제 49). ARCHITECTURE 만 보던 migrations 누락과 같은 패턴.
+check_claim "scheduler_jobs"   "$JOBS"  "README.md"            '[0-9]+ cron jobs · in-process' || true
 check_claim "rules_yaml_lines" "$RULES" "config/CLAUDE.md"     '\| [0-9]+ \| Investment rules' || true
 
 # Note: agent count + pytest collect count intentionally excluded from hard
