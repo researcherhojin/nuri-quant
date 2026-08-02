@@ -409,7 +409,8 @@ def check_take_profit_signals(db_path: Optional[Path] = None) -> list[dict]:
             - sell_pct (매도 비율: 50% or 25%)
     """
     df = query_df(
-        "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
+        # account 포함 — 계좌별 평단이 달라 신호도 다르다 (트레일링과 동일 수정).
+        "SELECT account, ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
         db_path=db_path,
     )
     if df.empty:
@@ -450,6 +451,7 @@ def check_take_profit_signals(db_path: Optional[Path] = None) -> list[dict]:
             signals.append(
                 {
                     "ticker": ticker,
+                    "account": row["account"],
                     "stock_type": stock_type,
                     "entry_price": entry_price,
                     "current_price": current_price,
@@ -472,6 +474,7 @@ def check_take_profit_signals(db_path: Optional[Path] = None) -> list[dict]:
             signals.append(
                 {
                     "ticker": ticker,
+                    "account": row["account"],
                     "stock_type": stock_type,
                     "entry_price": entry_price,
                     "current_price": current_price,
