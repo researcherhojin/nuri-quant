@@ -26,6 +26,9 @@ KIS Open API is NOT needed for KR fundamentals (was previously believed required
 
 CLI: `--source` flag is the standard way to switch (stock, stock_kr, fundamental, wallstreet, estimates, technical, events, news).
 
+**KR reference tickers bypass `source` entirely.** `stock_kr.collect()` unions `_reference_tickers()` (derived from `rules.yaml brief.benchmark.kr`) into every run. The KR benchmark is not a holding, so `portfolio` misses it, and `universe.yaml` is auto-synced from KRX constituents so a hand-added ETF is wiped by the next `make universe-sync` — it was collected by neither path and sat at **0 rows in production** while four consumers read it (brief benchmark, sector-mover fallback, events, risk_signals). Derived from config, not a second hardcoded list, so changing the benchmark moves collection with it.
+**Test:** `tests/collectors/test_stock_kr.py::TestStockKRCollectorScenarios::test_collect_without_kr_holdings_still_gets_reference` — dropping the union returns an empty frame again.
+
 ## Parallelism Pattern (yfinance vs KRX) ⚠️
 
 **yfinance**: 10 concurrent threads OK. Use `ThreadPoolExecutor(max_workers=10)`.
