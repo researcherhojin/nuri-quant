@@ -579,3 +579,38 @@ def test_weight_computed_for_single_currency_account(db_path, monkeypatch):
 
     assert len(b) == 1 and b[0]["ticker"] == "TST_A"
     assert b[0]["weight_pct"] == pytest.approx(40.0)
+
+
+def test_price_context_returns_empty_without_history(db_path):
+    """가격 이력이 없으면 추세도 이탈 경과도 만들 수 없다 — 빈 dict 로 빠져야 한다.
+
+    (이 쿼리는 `date('now')` 윈도우가 없어 고정 날짜 시드가 안전하다.)
+    """
+    assert risk_signals._price_context("NO_SUCH", avg=100.0, threshold=-7, db_path=db_path) == {}
+
+
+def test_price_context_computes_5d_and_20d_returns(db_path):
+    """추세 줄의 근거 — 5일/20일 수익률과 52주고 낙폭.
+
+    25봉을 100,101,…,124 로 심으면 최신 124, 5봉 전 119, 20봉 전 104 다.
+    """
+    rows = [
+        {
+            "ticker": "TST_T",
+            "date": f"2026-06-{i + 1:02d}",
+            "open": 100.0 + i,
+            "high": 100.0 + i,
+            "low": 100.0 + i,
+            "close": 100.0 + i,
+            "volume": 1_000_000,
+            "adj_close": 100.0 + i,
+        }
+        for i in range(25)
+    ]
+    upsert_prices(pd.DataFrame(rows), db_path)
+
+    ctx = risk_signals._price_context("TST_T", avg=200.0, threshold=-7, db_path=db_path)
+
+    assert ctx["ret_5d"] == pytest.approx((124 - 119) / 119 * 100)
+    assert ctx["ret_20d"] == pytest.approx((124 - 104) / 104 * 100)
+    assert ctx["drawdown_52w"] == pytest.approx(0.0)  # 최신가가 곧 고점
