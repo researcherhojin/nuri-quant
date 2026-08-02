@@ -17,23 +17,30 @@ def get_portfolio_targets():
 
     targets = calculate_portfolio_targets()
 
-    # 익절/트레일링/리더-트레일 도달 종목 태깅
+    # 익절/트레일링/리더-트레일 도달 종목 태깅.
+    # 키는 **(ticker, account)** 다 — 티커만으로 잡으면 같은 종목을 두 계좌에
+    # 보유할 때 dict 조립에서 마지막 계좌 것만 남고(앞 계좌 신호 소실), 남은 하나가
+    # 두 행 모두에 붙는다. 계좌마다 평단이 다르면 손절/익절선도 다르므로 한쪽은
+    # 반드시 틀린 신호를 받는다 (#974).
+    def _key(row: dict) -> tuple:
+        return (row.get("ticker"), row.get("account"))
+
     try:
-        tp_signals = {s["ticker"]: s for s in check_take_profit_signals()}
+        tp_signals = {_key(s): s for s in check_take_profit_signals()}
     except Exception:
         tp_signals = {}
     try:
-        ts_signals = {s["ticker"]: s for s in check_trailing_stop_signals()}
+        ts_signals = {_key(s): s for s in check_trailing_stop_signals()}
     except Exception:
         ts_signals = {}
     try:
-        lt_signals = {s["ticker"]: s for s in check_leader_trail_signals()}
+        lt_signals = {_key(s): s for s in check_leader_trail_signals()}
     except Exception:
         lt_signals = {}
     for t in targets:
-        tp = tp_signals.get(t["ticker"])
-        ts = ts_signals.get(t["ticker"])
-        lt = lt_signals.get(t["ticker"])
+        tp = tp_signals.get(_key(t))
+        ts = ts_signals.get(_key(t))
+        lt = lt_signals.get(_key(t))
         t["take_profit_triggered"] = tp["level"] if tp else None
         t["take_profit_sell_pct"] = tp["sell_pct"] if tp else None
         t["trailing_stop_triggered"] = ts is not None

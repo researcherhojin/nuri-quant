@@ -265,11 +265,15 @@ def calculate_portfolio_targets(
 ) -> list[dict]:
     """포트폴리오 전체 보유 종목의 가격 목표 계산.
 
+    같은 티커를 여러 계좌에 보유하면 **행이 계좌마다 하나씩** 나온다 — 평단이
+    다르면 손절/익절/트레일링 가격도 달라지므로 합칠 수 없다. 소비자는 티커가
+    아니라 `(ticker, account)` 로 식별해야 한다 (#974).
+
     Returns:
-        list[dict]: 종목별 가격 목표 리스트
+        list[dict]: (종목, 계좌)별 가격 목표 리스트
     """
     df = query_df(
-        "SELECT ticker, quantity, avg_price, sector FROM portfolio",
+        "SELECT account, ticker, quantity, avg_price, sector FROM portfolio",
         db_path=db_path,
     )
     if df.empty:
@@ -291,12 +295,13 @@ def calculate_portfolio_targets(
             continue
 
         # 포트폴리오 추가 정보
+        result["account"] = row["account"]
         result["quantity"] = row["quantity"]
         result["avg_price"] = avg_price
         targets.append(result)
 
-    # 종목명 기준 정렬
-    targets.sort(key=lambda t: t["ticker"])
+    # (종목, 계좌) 기준 정렬 — 같은 티커의 계좌별 행이 인접하게
+    targets.sort(key=lambda t: (t["ticker"], t.get("account") or ""))
     return targets
 
 
@@ -504,7 +509,7 @@ def check_leader_trail_signals(db_path: Optional[Path] = None) -> list[dict]:
         return []
 
     df = query_df(
-        "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
+        "SELECT account, ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
         db_path=db_path,
     )
     if df.empty:
@@ -530,6 +535,7 @@ def check_leader_trail_signals(db_path: Optional[Path] = None) -> list[dict]:
             signals.append(
                 {
                     "ticker": ticker,
+                    "account": row["account"],
                     "entry_price": entry_price,
                     "current_price": current_price,
                     "ma": round(ma, 2),
