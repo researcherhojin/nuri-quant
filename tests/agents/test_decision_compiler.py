@@ -525,6 +525,27 @@ class TestDiscordPublish:
         assert payload["ticker"]
         assert "decision_id" in payload
 
+    def test_staged_payload_carries_a_rendered_card_not_raw_scores(self, patched_db):
+        """배선 잠금 (#571) — `_publish_brief` 가 `summary` 를 실제로 붙이는지.
+
+        `_brief_summary()` 를 테스트에서 직접 호출해 검증하면 **함수만** 잠기고
+        호출 지점을 지워도 통과한다(test illusion, STRATEGY §5.1). 그래서 여기서는
+        actor 를 끝까지 돌려 outbox 에 적재된 payload 를 본다. 카드가 없으면 사용자는
+        다시 `conv 0.81 | regime: top 0.72` 를 받는다.
+        """
+        from nuri.agents.discord.outbox import _format_event_line
+        from nuri.core.db import claim_pending_outbox
+
+        DecisionCompiler().run(_compile_payload())
+        _, rows = claim_pending_outbox("brief", db_path=patched_db)
+        payload = rows[0]["payload"]
+
+        assert payload.get("summary"), "staged payload 에 카드가 없다 — 배선이 끊겼다"
+        rendered = _format_event_line(payload)
+        assert rendered == payload["summary"]
+        assert payload["ticker"] in rendered
+        assert "합의" in rendered  # 내부 점수 이름이 아니라 사람 말
+
     def test_blocked_stages_to_ops(self, patched_db):
         """Block path → outbox stage_ops (PR3 Codex Round 6)."""
         with patch("nuri.agents.discord.outbox.stage_ops") as mock_stage:
