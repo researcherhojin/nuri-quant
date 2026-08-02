@@ -669,6 +669,16 @@ def write_brief(
     except Exception:
         logger.warning("trailing give-back brief staging 실패 (브리프 자체는 생성됨)", exc_info=True)
 
+    # Tier 1e — 익절 도달(TP1/TP2). 트레일링과 같은 배달 공백이었다: 계산은
+    # `check_take_profit_signals()` 가 하고 있었지만 소비자가 `/targets` 하나뿐이라
+    # 대시보드를 열어야만 보였다. 트레일링과 별도 try — 한쪽 실패가 다른 쪽을 막지 않게.
+    try:
+        from nuri.alerts.profit_signals import stage_take_profit_briefs
+
+        stage_take_profit_briefs(session, d, db_path=db_path)
+    except Exception:
+        logger.warning("take-profit brief staging 실패 (브리프 자체는 생성됨)", exc_info=True)
+
     # Tier 1b/1c/1d — 포트폴리오 드리프트(집중도·섹터·슬리브)를 digest 에 REBALANCE 로 표면화
     # (portfolio 축, #429). 둘 다 portfolio-wide → US 세션에서만 stage (US-heavy
     # 포트폴리오 · US 종장 직후 타이밍). kr/us 양 세션 호출 시 dispatcher 가 US 행을
