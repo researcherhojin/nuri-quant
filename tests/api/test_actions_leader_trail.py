@@ -51,7 +51,7 @@ class TestLeaderTrailWiring:
                 }
             },
             targets_status={
-                "GRW": {
+                ("GRW", "Main"): {
                     "is_leader": True,
                     "leader_trail_triggered": True,
                     "target_1": None,

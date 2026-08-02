@@ -103,7 +103,9 @@ def _build_actions() -> dict:
         holding = portfolio_holdings.get(ticker, {})
         pnl_pct = holding.get("pnl_pct", 0)
         position_pct = holding.get("position_pct", 0)
-        target = targets_status.get(ticker, {})
+        # 보유 행이 고른 계좌(worst-PnL)와 **같은 계좌**의 타겟을 본다 — 티커로만
+        # 조회하면 둘이 갈라져 서로 다른 원가 기준이 한 줄에 섞인다 (#982).
+        target = targets_status.get((ticker, holding.get("account")), {})
 
         # A-5: 시장 시간이면 live price fetch + divergence 체크. stored price 는
         # T-1 이라 장중 >3% 차이가 날 수 있음 (NFLX 사례). 지금은 flag 만 — 실제
@@ -491,9 +493,19 @@ def _get_siege_violations() -> list[dict]:
     return violations
 
 
-def _get_targets_status() -> dict[str, dict]:
-    """포트폴리오 가격 타겟 조회."""
-    targets = {}
+def _get_targets_status() -> dict[tuple[str, str], dict]:
+    """포트폴리오 가격 타겟 조회 — **(ticker, 계좌라벨)** 로 키잉.
+
+    같은 티커를 두 계좌에 보유하면 평단이 달라 손절/익절선도 다르다. 티커로만
+    키잉하면 한 계좌 것만 남고, 그게 `_get_portfolio_map()` 이 고른 계좌와
+    일치한다는 보장이 없다 — 그러면 UI 에서 **보유 정보와 손절선이 서로 다른
+    계좌 기준**으로 나란히 붙는다. 여기서 계좌까지 키에 넣고, 소비자가
+    `_get_portfolio_map()` 이 고른 계좌로 조회해 둘을 일치시킨다 (#982).
+    """
+    from nuri.api.routes.dashboard import _get_account_labels
+
+    labels = _get_account_labels()
+    targets: dict[tuple[str, str], dict] = {}
     try:
         from nuri.trading.recommend.price_targets import (
             calculate_portfolio_targets,
@@ -501,11 +513,14 @@ def _get_targets_status() -> dict[str, dict]:
         )
 
         try:
-            _leader_trail = {x["ticker"] for x in check_leader_trail_signals()}
+            _leader_trail = {
+                (x["ticker"], labels.get(x.get("account"), x.get("account"))) for x in check_leader_trail_signals()
+            }
         except Exception:
             _leader_trail = set()
         for t in calculate_portfolio_targets():
-            targets[t["ticker"]] = {
+            key = (t["ticker"], labels.get(t.get("account"), t.get("account")))
+            targets[key] = {
                 "stop_loss": t.get("stop_loss"),
                 "target_1": t.get("target_1"),
                 "target_2": t.get("target_2"),
@@ -513,7 +528,7 @@ def _get_targets_status() -> dict[str, dict]:
                 "analyst_target": t.get("analyst_target"),
                 "is_leader": t.get("is_leader"),
                 "leader_ma": t.get("leader_ma"),
-                "leader_trail_triggered": t["ticker"] in _leader_trail,
+                "leader_trail_triggered": key in _leader_trail,
             }
     except Exception as e:
         logger.debug(f"Targets: {e}")
