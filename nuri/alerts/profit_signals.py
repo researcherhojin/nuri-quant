@@ -86,6 +86,102 @@ def scan_trailing_giveback(
     return out
 
 
+def scan_take_profit(
+    session: Optional[Session] = None,
+    db_path: Optional[Path] = None,
+) -> list[dict[str, Any]]:
+    """익절 목표(TP1/TP2)에 닿은 보유 — 트레일링과 같은 배달 공백이었다.
+
+    계산은 canonical `check_take_profit_signals()` 를 그대로 쓴다(리더는 그쪽에서
+    이미 제외 — 고정 익절 폐기, 추세 트레일로 관리). 여기서는 session 과 pension
+    만 거른다.
+    """
+    from nuri.trading.recommend.price_targets import check_take_profit_signals
+
+    out: list[dict[str, Any]] = []
+    for sig in check_take_profit_signals(db_path=db_path):
+        ticker = str(sig["ticker"])
+        if session == "kr" and not is_kr_ticker(ticker):
+            continue
+        if session == "us" and is_kr_ticker(ticker):
+            continue
+        if get_account_strategy_name(sig.get("account")) == "pension":
+            continue
+        out.append(sig)
+    out.sort(key=lambda s: s["return_pct"], reverse=True)  # 많이 오른 순
+    return out
+
+
+def _build_tp_payload(sig: dict[str, Any], date: str) -> dict[str, Any]:
+    """익절 도달 1건 → #brief payload.
+
+    손절(🔴)·트레일링(🟡)과 시각적으로 가른다(🟢) — 셋 다 오늘 볼 것이지만
+    이건 유일하게 **좋은 소식**이고, 요구하는 행동도 다르다(부분 매도).
+    카드는 룰이 뭐라 하는지 말할 뿐 매도를 지시하지 않는다(§7.1).
+    """
+    from nuri.agents.discord.outbox import format_money
+
+    ticker = str(sig["ticker"])
+    name = get_ticker_name(ticker)
+    label = f"{ticker} {name}" if name else ticker
+    tier = "1차" if sig["level"] == "target_1" else "2차"
+
+    head = f"🟢 {label} · {tier} 익절 도달 · {sig.get('account', '')}".rstrip(" ·")
+    now_line = (
+        f"　현재 {format_money(sig['current_price'], ticker)}"
+        f" / 진입 {format_money(sig['entry_price'], ticker)} ({sig['return_pct']:+.1f}%)"
+        f" · 목표 {format_money(sig['target_price'], ticker)}"
+    )
+    rule = f"　룰 {sig['stock_type']} {tier} 익절 → {sig['sell_pct']:.0f}% 매도 구간"
+
+    return {
+        "kind": "SELL",
+        "ticker": ticker,
+        "summary": "\n".join([head, now_line, rule]),
+        "note": sig.get("account"),
+        "reason": f"{tier} 익절 도달 ({sig['return_pct']:+.1f}%)",
+        "date": date,
+        "current": sig["current_price"],
+        "return_pct": sig["return_pct"],
+        "level": sig["level"],
+    }
+
+
+def stage_take_profit_briefs(
+    session: Optional[Session] = None,
+    date: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """익절 도달을 #brief outbox 에 stage. staged 건수 반환.
+
+    트레일링으로 이미 표면화된 (ticker, account) 는 건너뛴다 — 고점에서 되돌리는
+    중인 포지션에 "익절 도달" 카드를 함께 보내면 서로 다른 방향을 가리킨다.
+    되돌림이 더 급한 신호이므로 그쪽을 남긴다.
+    """
+    from nuri.agents.discord.outbox import stage_brief
+
+    d = date or today_kst()
+    trailing = {(s["ticker"], s.get("account")) for s in scan_trailing_giveback(session, db_path=db_path)}
+
+    staged = 0
+    for sig in scan_take_profit(session, db_path=db_path):
+        if (sig["ticker"], sig.get("account")) in trailing:
+            logger.debug("take-profit skip %s — 트레일링으로 이미 표면화", sig["ticker"])
+            continue
+        outbox_id = stage_brief(
+            payload=_build_tp_payload(sig, d),
+            dedupe_key=f"take-profit:{sig['ticker']}:{sig.get('account', '')}:{sig['level']}:{d}",
+            priority="normal",
+            actor_name="profit-signals",
+            db_path=db_path,
+        )
+        if outbox_id is not None:
+            staged += 1
+    if staged:
+        logger.info("take-profit briefs staged: %d (session=%s)", staged, session or "all")
+    return staged
+
+
 def _build_giveback_payload(sig: dict[str, Any], date: str) -> dict[str, Any]:
     """트레일링 도달 1건 → #brief SELL payload.
 

@@ -266,3 +266,121 @@ def test_signal_without_prices_is_skipped(monkeypatch):
         lambda **k: [{"ticker": "TST_X", "account": "A", "entry_price": None, "high_water_mark": 10.0}],
     )
     assert ps.scan_trailing_giveback() == []
+
+
+# ─── 익절(TP1/TP2) 배달 — 트레일링과 같은 공백이었다 ─────────────────────────
+
+
+def _seed_winner(path, *, ticker, account, avg, current, qty=10):
+    """진입 avg → 현재 current (상승). 고점은 현재가 = 트레일링 미발동."""
+    upsert_portfolio(
+        [
+            {
+                "account": account,
+                "ticker": ticker,
+                "quantity": qty,
+                "avg_price": avg,
+                "currency": "USD",
+                "sector": "Tech",
+                "first_buy_date": "2026-01-02",
+            }
+        ],
+        path,
+    )
+    upsert_prices(
+        pd.DataFrame(
+            [
+                {
+                    "ticker": ticker,
+                    "date": "2026-07-31",
+                    "open": current,
+                    "high": current,
+                    "low": current,
+                    "close": current,
+                    "volume": 1_000_000,
+                    "adj_close": current,
+                }
+            ]
+        ),
+        path,
+    )
+
+
+def test_take_profit_reached_is_surfaced(db_path, monkeypatch):
+    """익절 도달이 디스코드로 나간다 — 이제껏 대시보드 전용이었다."""
+    monkeypatch.setattr(ps, "get_account_strategy_name", lambda a: "core")
+    _seed_winner(db_path, ticker="TST_TP", account="Brokerage Alpha", avg=100.0, current=125.0)
+
+    sigs = ps.scan_take_profit(db_path=db_path)
+
+    assert [s["ticker"] for s in sigs] == ["TST_TP"]
+    assert sigs[0]["level"] in ("target_1", "target_2")
+    card = ps._build_tp_payload(sigs[0], "2026-08-02")["summary"]
+    assert card.startswith("🟢"), "익절은 손절(🔴)·트레일링(🟡)과 시각적으로 갈라야 한다"
+    assert "익절 도달" in card and "매도 구간" in card
+
+
+def test_take_profit_pension_excluded(db_path, monkeypatch):
+    monkeypatch.setattr(ps, "get_account_strategy_name", lambda a: "pension")
+    _seed_winner(db_path, ticker="TST_TP", account="Pension Gamma", avg=100.0, current=125.0)
+
+    assert ps.scan_take_profit(db_path=db_path) == []
+
+
+def test_trailing_wins_over_take_profit_no_conflicting_cards(db_path, monkeypatch):
+    """되돌리는 중인 포지션에 '익절 도달' 을 함께 보내면 서로 다른 방향을 가리킨다."""
+    _core(monkeypatch)
+    # 진입 100 → 고점 200 → 현재 130: TP 도달 상태이면서 고점 대비 -35% (트레일링)
+    _seed(db_path, ticker="TST_BOTH2", account="Brokerage Alpha", avg=100.0, peak=200.0, current=130.0)
+
+    assert ps.scan_trailing_giveback(db_path=db_path), "트레일링 발동(전제)"
+    assert ps.scan_take_profit(db_path=db_path), "익절도 도달(전제)"
+
+    staged = ps.stage_take_profit_briefs(date="2026-08-02", db_path=db_path)
+
+    assert staged == 0, "트레일링이 이미 알린 포지션은 익절로 또 올리지 않는다"
+
+
+def test_write_brief_stages_take_profit(db_path):
+    """배선 잠금 — write_brief 가 익절 stage 를 실제로 호출한다."""
+    from unittest.mock import MagicMock, patch
+
+    spy = MagicMock(return_value=1)
+    with patch("nuri.alerts.profit_signals.stage_take_profit_briefs", spy):
+        from nuri.alerts import postmarket_brief as pmb
+
+        with (
+            patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+            patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+            patch("nuri.alerts.risk_signals.stage_stop_breach_briefs", MagicMock()),
+            patch("nuri.alerts.profit_signals.stage_trailing_briefs", MagicMock()),
+        ):
+            pmb.write_brief("us", date="2026-08-02", db_path=db_path)
+
+    spy.assert_called_once()
+    assert spy.call_args[0][0] == "us"
+
+
+def test_take_profit_session_filter(db_path, monkeypatch):
+    monkeypatch.setattr(ps, "get_account_strategy_name", lambda a: "core")
+    _seed_winner(db_path, ticker="TST_TPUS", account="Brokerage Alpha", avg=100.0, current=125.0)
+    _seed_winner(db_path, ticker="900003.KQ", account="Brokerage Alpha", avg=100.0, current=125.0)
+
+    kr = [s["ticker"] for s in ps.scan_take_profit("kr", db_path=db_path)]
+    us = [s["ticker"] for s in ps.scan_take_profit("us", db_path=db_path)]
+
+    assert kr == ["900003.KQ"] and us == ["TST_TPUS"]
+
+
+def test_take_profit_staging_writes_and_dedupes(db_path, monkeypatch):
+    monkeypatch.setattr(ps, "get_account_strategy_name", lambda a: "core")
+    _seed_winner(db_path, ticker="TST_TP", account="Brokerage Alpha", avg=100.0, current=125.0)
+
+    first = ps.stage_take_profit_briefs(date="2026-08-02", db_path=db_path)
+    second = ps.stage_take_profit_briefs(date="2026-08-02", db_path=db_path)
+
+    from nuri.core.db import claim_pending_outbox
+
+    _, rows = claim_pending_outbox("brief", db_path=db_path)
+    assert (first, second) == (1, 0), "같은 날 두 번째는 dedupe"
+    assert "익절 도달" in rows[0]["payload"]["summary"]
