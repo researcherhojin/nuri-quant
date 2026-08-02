@@ -552,6 +552,21 @@ def _run_held_add_shadow():
         logger.error(f"[held_add_shadow] 실행 실패: {e}", exc_info=True)
 
 
+def _run_data_sanity():
+    """수집 데이터 타당성 점검 → #ops. 인증 게이트가 아니라 표면화다.
+
+    freshness 는 최신성만 본다 — 값이 말이 되는지는 아무도 안 물었다. 여기서 묻되,
+    막지는 않는다 (§2.6 Surface 등급).
+    """
+    try:
+        from nuri.alerts.data_sanity import stage_findings
+
+        n = stage_findings()
+        logger.info(f"[data_sanity] {n}건 표면화" if n else "[data_sanity] 이상 없음")
+    except Exception as e:
+        logger.error(f"[data_sanity] 실행 실패: {e}", exc_info=True)
+
+
 def _run_outbox_watchdog():
     """OutboxWatchdog — 직접 #ops 발송 (recursion 방지). 10분 마다."""
     try:
@@ -686,6 +701,8 @@ SCHEDULES = [
     # 보유 종목에 대한 add 후보 평가 (3 modes + earnings blackout). shadow_mode_until
     # 까지 held_add_shadow 테이블 only — brief surface 안 함. 14d 누적 후 2c calibration.
     {"name": "held_add_shadow", "func": _run_held_add_shadow, "args": (), "cron": "15 7 * * *"},
+    # 수집 데이터 타당성 점검 (07:20 — US 종가·KR 전일 수집이 모두 끝난 뒤).
+    {"name": "data_sanity", "func": _run_data_sanity, "args": (), "cron": "20 7 * * *"},
     # Agent accuracy 스냅샷 (주 1회 일요일 08:00)
     {"name": "agent_accuracy", "func": _run_collector, "args": ("agent_accuracy",), "cron": "0 8 * * 0"},
     # 일일 리포트 (매일 08:00)
