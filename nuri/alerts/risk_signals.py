@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 from nuri.core.db import query
-from nuri.core.rules import get_account_strategy_name, get_stop_loss_for_account
+from nuri.core.rules import BRIEF_SEVERITY_GAP_PCT, get_account_strategy_name, get_stop_loss_for_account
 from nuri.core.ticker_names import get_ticker_name, is_kr_ticker
 from nuri.core.timezone import today_kst
 
@@ -48,7 +48,7 @@ def scan_stop_breaches(
     """
     rows = query(
         """
-        SELECT p.account, p.ticker, p.avg_price, p.quantity, pr.close AS current
+        SELECT p.account, p.ticker, p.avg_price, p.quantity, p.currency, pr.close AS current
         FROM portfolio p
         LEFT JOIN (
             SELECT ticker, close FROM prices
@@ -58,6 +58,7 @@ def scan_stop_breaches(
         """,
         db_path=db_path,
     )
+    account_totals = _single_currency_account_totals(rows)
 
     breaches: list[dict[str, Any]] = []
     for r in rows:
@@ -95,7 +96,15 @@ def scan_stop_breaches(
                     # 통화는 티커 기준(KR=KRW / 그 외=USD), 렌더러가 기호를 붙인다.
                     "qty": float(qty),
                     "loss_amount": (float(current) - float(avg)) * float(qty),
-                    **_breach_age(ticker, float(avg), threshold, db_path=db_path),
+                    # 계좌 내 비중 — 같은 -20% 라도 8% 포지션과 1% 포지션은 다른 결정.
+                    # 통화가 섞인 계좌는 환율 없이 합산하면 틀린 수가 나오므로 None
+                    # (틀린 숫자보다 없는 게 낫다).
+                    "weight_pct": (
+                        float(current) * float(qty) / account_totals[r["account"]] * 100
+                        if account_totals.get(r["account"])
+                        else None
+                    ),
+                    **_price_context(ticker, float(avg), threshold, db_path=db_path),
                 }
             )
 
@@ -103,22 +112,44 @@ def scan_stop_breaches(
     return breaches
 
 
-def _breach_age(
+def _single_currency_account_totals(rows: list[dict[str, Any]]) -> dict[str, float]:
+    """계좌 → 평가금액 합. **단일 통화 계좌만** 반환한다.
+
+    비중은 같은 통화끼리 더해야 의미가 있다. 한 계좌에 KRW 종목과 USD 종목이
+    섞여 있으면 환율 없이 합산한 수는 틀린다 — 그런 계좌는 아예 빼서 카드가
+    비중을 생략하게 한다(틀린 숫자를 보여주는 것보다 낫다). KR 판정은 `.KS`
+    뿐 아니라 `.KQ` 도 포함해야 한다(#764).
+    """
+    by_account: dict[str, float] = {}
+    currencies: dict[str, set[str]] = {}
+    for r in rows:
+        acct, close, qty = r["account"], r["current"], r["quantity"]
+        cur = "KRW" if (r.get("currency") == "KRW" or is_kr_ticker(str(r["ticker"]))) else "USD"
+        currencies.setdefault(acct, set()).add(cur)
+        if close and qty:
+            by_account[acct] = by_account.get(acct, 0.0) + float(close) * float(qty)
+    return {a: v for a, v in by_account.items() if v > 0 and len(currencies.get(a, ())) == 1}
+
+
+def _price_context(
     ticker: str,
     avg: float,
     threshold: float,
     db_path: Optional[Path] = None,
-    lookback: int = 180,
+    lookback: int = 260,
 ) -> dict[str, Any]:
-    """가장 최근 **연속** 이탈 구간의 길이·시작일·시작 시점 손익률.
+    """가격 이력 1회 조회로 이탈 경과 + 추세 + 52주고 낙폭을 함께 계산.
 
-    "며칠째인가"가 없으면 8일 연속 같은 줄이 8번 오고 사용자는 새 신호와 구별하지
-    못한다(처분효과 방어가 알림 피로로 뒤집히는 지점). outbox 발송 이력이 아니라
-    **가격 이력**으로 센다 — outbox 는 보존기간에 따라 지워지지만 가격은 남고,
-    같은 입력이면 같은 답이 나온다.
+    **이탈 경과**: 최신 bar 부터 과거로 훑다가 손절가 위로 올라온 첫 bar 에서
+    멈춘다(중간에 회복 후 재이탈이면 재이탈 구간만). "며칠째인가"가 없으면 같은
+    줄이 8일 연속 와도 새 신호와 구별되지 않는다 — 처분효과 방어가 알림 피로로
+    뒤집히는 지점이다. outbox 발송 이력이 아니라 가격으로 세는 이유는 outbox 는
+    보존기간에 따라 지워지지만 가격은 남고, 같은 입력이면 같은 답이 나오기 때문.
 
-    최신 bar 부터 과거로 훑다가 손절가 위로 올라온 첫 bar 에서 멈춘다(중간에
-    회복했다가 재이탈했으면 재이탈 구간만 센다). 가격 이력이 없으면 빈 dict.
+    **추세**(5일·20일 수익률)와 **52주고 대비 낙폭**: 같은 -20% 라도 반등 중인
+    포지션과 계속 흘러내리는 포지션은 다른 결정이다. lookback 260 = 약 52주.
+
+    가격 이력이 없으면 빈 dict (호출자가 omit).
     """
     stop_level = avg * (1 + threshold / 100)
     rows = query(
@@ -126,6 +157,11 @@ def _breach_age(
         (ticker, lookback),
         db_path=db_path,
     )
+    closes = [float(r["close"]) for r in rows if r["close"]]
+    if not closes:
+        return {}
+
+    out: dict[str, Any] = {}
     first_date: Optional[str] = None
     first_pnl: Optional[float] = None
     days = 0
@@ -136,9 +172,17 @@ def _breach_age(
         days += 1
         first_date = str(row["date"])
         first_pnl = (close - avg) / avg * 100
-    if not days:
-        return {}
-    return {"breach_days": days, "first_breach_date": first_date, "first_breach_pnl_pct": first_pnl}
+    if days:
+        out.update({"breach_days": days, "first_breach_date": first_date, "first_breach_pnl_pct": first_pnl})
+
+    latest = closes[0]
+    for label, span in (("ret_5d", 5), ("ret_20d", 20)):
+        if len(closes) > span:
+            out[label] = (latest - closes[span]) / closes[span] * 100
+    high = max(closes)
+    if high:
+        out["drawdown_52w"] = (latest - high) / high * 100
+    return out
 
 
 def _build_breach_payload(breach: dict[str, Any], date: str) -> dict[str, Any]:
@@ -168,25 +212,49 @@ def _build_breach_payload(breach: dict[str, Any], date: str) -> dict[str, Any]:
     pnl = breach["pnl_pct"]
     days = breach.get("breach_days")
     age = f"{days}일째" if days else "오늘 이탈"
+    gap = pnl - threshold
+    first_pnl = breach.get("first_breach_pnl_pct")
+    # 이탈 후 더 내려갔나 — 같은 이탈폭이라도 흘러내리는 쪽이 급하다.
+    worsening = first_pnl is not None and pnl < first_pnl
+    severe = gap <= BRIEF_SEVERITY_GAP_PCT or worsening
 
     # 계좌를 카드에 남긴다 — 같은 티커를 여러 계좌에 보유하면(계좌별 평단이 달라
     # dedupe_key 도 계좌를 포함한다) "어느 계좌에서 파는가"가 곧 실행 정보다.
-    head = f"🔴 {label} · 손절선 이탈 {age} · {breach['account']}"
+    head = f"{'🔴' if severe else '🟠'} {label} · 손절선 이탈 {age} · {breach['account']}"
+    if breach.get("weight_pct") is not None:
+        head += f" · 계좌비중 {breach['weight_pct']:.1f}%"
+
     money = (
         f"　현재 {format_money(breach['current'], ticker)} / 평단 {format_money(breach['avg'], ticker)} ({pnl:+.1f}%)"
     )
     if breach.get("loss_amount"):
         money += f" · 평가손실 {format_money(breach['loss_amount'], ticker)}"
 
-    rule = f"　룰 {threshold}% 손절선 · 이탈폭 {pnl - threshold:+.1f}%p"
-    first_pnl = breach.get("first_breach_pnl_pct")
+    # 추세 — "지금 어느 방향인가". 반등 중인 -8% 와 흘러내리는 -48% 를 가른다.
+    trend_bits = []
+    for label_txt, key in (("5일", "ret_5d"), ("20일", "ret_20d")):
+        if breach.get(key) is not None:
+            trend_bits.append(f"{label_txt} {breach[key]:+.1f}%")
+    if breach.get("drawdown_52w") is not None:
+        trend_bits.append(f"52주고 대비 {breach['drawdown_52w']:.0f}%")
     if breach.get("first_breach_date") and first_pnl is not None:
-        rule += f" · 최초 이탈 {breach['first_breach_date'][5:]} 이후 {pnl - first_pnl:+.1f}%p"
+        trend_bits.append(
+            f"최초 이탈 {breach['first_breach_date'][5:]} 이후 {pnl - first_pnl:+.1f}%p"
+            f"{' (회복 중)' if not worsening else ''}"
+        )
+    trend = "　추세 " + " · ".join(trend_bits) if trend_bits else None
+
+    # 룰 귀결 — 지시가 아니라 룰이 이 상태를 뭐라 부르는지. 집행은 사용자다(§7.1).
+    # 이탈폭이 크지 않은데 "얕다"고 단정하면 틀린다(폭은 큰데 반등 중인 경우가 있다).
+    # 방향은 추세 줄이 이미 말하므로, 여기서는 악화 중일 때만 덧붙인다.
+    rule = f"　룰 {threshold}% 손절 → 청산 구간 · 이탈폭 {gap:+.1f}%p"
+    if worsening:
+        rule += " (이탈 후에도 계속 하락)"
 
     return {
         "kind": "SELL",
         "ticker": ticker,
-        "summary": "\n".join([head, money, rule]),
+        "summary": "\n".join([x for x in (head, money, trend, rule) if x]),
         # note → 같은 티커가 여러 계좌에 있을 때 어느 계좌인지 구분 (계좌별 avg 다름).
         "note": breach["account"],
         "reason": f"손절선 돌파 ({pnl:+.1f}% < {threshold}%)",
