@@ -21,7 +21,8 @@ KIS Open API is NOT needed for KR fundamentals (was previously believed required
 ## Ticker Filtering + Source
 
 `_get_tickers(market=, source=)` (#272 Phase 2b):
-- `market`: `"us"` (excludes `.KS`) | `"kr"` (only `.KS`) | `None` (전체)
+- `market`: `"us"` (excludes KR) | `"kr"` (KR only) | `None` (전체). KR 판정은 canonical `is_kr_ticker()` — `.KS` **및** `.KQ` (#764). `.KS` 로만 필터하면 KOSDAQ 이 kr 에서 누락되고 동시에 `not .KS` 인 us 로 새어 미국장 시간대(KOSDAQ 휴장)에 수집된다.
+  **Test:** `tests/collectors/test_base.py::TestGetTickers::test_kosdaq_routes_to_kr_not_us` — 양방향 잠금(한쪽만 보면 반대 회귀가 통과한다).
 - `source`: `"portfolio"` (default, 보유종목 — `SELECT FROM portfolio`) | `"universe"` (`config/universe.yaml` 전체 ~746) | `"all"` (union)
 
 CLI: `--source` flag is the standard way to switch (stock, stock_kr, fundamental, wallstreet, estimates, technical, events, news).

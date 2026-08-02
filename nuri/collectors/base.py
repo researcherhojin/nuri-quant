@@ -158,7 +158,7 @@ class BaseCollector(ABC):
         """티커 목록 조회. source로 범위 선택, market으로 한국/미국 필터링.
 
         Args:
-            market: 'us' | 'kr' | None (전체)
+            market: 'us' | 'kr' | None (전체). KR 판정은 `is_kr_ticker()` 경유 — `.KS`+`.KQ` (#764)
             source: 'portfolio' (default, 보유 종목만)
                   | 'universe'  (config/universe.yaml 전체, us_core + us_sp500_extended + kr_kospi200)
                   | 'all'       (portfolio ∪ universe)
@@ -168,6 +168,7 @@ class BaseCollector(ABC):
         Default는 'portfolio' 유지 — backwards compat.
         """
         from nuri.core.db import get_tickers
+        from nuri.core.ticker_names import is_kr_ticker
 
         portfolio_tickers = get_tickers()
 
@@ -180,10 +181,13 @@ class BaseCollector(ABC):
         else:
             raise ValueError(f"Unknown source: {source!r}. Must be 'portfolio' | 'universe' | 'all'")
 
+        # canonical KR 게이트 (#764) — `.KS` 만 보면 KOSDAQ(`.KQ`) 이 **양쪽에서 틀린다**:
+        # kr 에서 누락돼 pykrx 순차 경로가 영영 못 보고, 여집합인 us 에는 포함돼
+        # 미국장 시간대(KST 23:30~06:00, KOSDAQ 휴장)에 수집된다.
         if market == "kr":
-            return [t for t in tickers if t.endswith(".KS")]
+            return [t for t in tickers if is_kr_ticker(t)]
         elif market == "us":
-            return [t for t in tickers if not t.endswith(".KS")]
+            return [t for t in tickers if not is_kr_ticker(t)]
         return tickers
 
 
