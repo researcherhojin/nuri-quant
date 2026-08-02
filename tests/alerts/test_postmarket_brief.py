@@ -1231,3 +1231,51 @@ class TestRetroLessons:
         assert "SECRET_ACCT" not in captured.get("prompt", "")
         assert "99999" not in captured.get("prompt", "")
         assert "12.3" not in captured.get("prompt", "")
+
+
+# ─── #571 장마감 요약 카드 (구 렌더러가 `? | INFO` 로 버리던 자리) ──────────────
+
+
+def _summary_payload(session="kr", vix_delta=1.3, pnl_pct=-2.1, sector=("XLK", 0.8)):
+    from nuri.alerts import postmarket_brief as pmb
+
+    macro = {"vix": {"delta": vix_delta}} if vix_delta is not None else {}
+    sectors = [{"ticker": sector[0], "delta_pct": sector[1]}] if sector else []
+    return pmb._build_summary_payload(session, macro, {"total_pct_weighted": pnl_pct}, sectors)
+
+
+def test_market_close_summary_no_longer_renders_as_question_mark():
+    """회귀 잠금 — 장마감 요약이 `? | INFO` 한 줄로 유실되던 버그 (#571).
+
+    payload 키(session/vix_delta/total_pnl_pct/top_sector)가 전부 렌더러
+    화이트리스트 밖이라 내용이 통째로 버려졌다. `summary` 를 지우면 다시 FAIL.
+    """
+    from nuri.agents.discord.outbox import _format_event_line
+
+    line = _format_event_line(_summary_payload())
+
+    assert not line.startswith("?")
+    assert "장마감" in line
+    assert "PnL" in line
+    assert "VIX" in line
+    assert "XLK" in line
+
+
+def test_market_close_summary_passes_its_own_privacy_gate():
+    """summary 문자열이 privacy gate 를 통과해야 한다 — 아니면 발행이 조용히 멈춘다.
+
+    `_publish_discord` 는 gate 위반 시 publish 를 abort 하고 경고 로그만 남긴다
+    (fail-closed). 티커 바로 뒤에 부호 붙은 %를 쓰면 장마감 브리프 전체가 증발한다.
+    """
+    from nuri.agents.discord.outbox import _privacy_gate_payload
+
+    for sector_delta in (0.8, -1.2):
+        payload = _summary_payload(sector=("XLK", sector_delta))
+        assert _privacy_gate_payload(payload) == []
+
+
+def test_market_close_summary_omits_missing_parts_without_crashing():
+    line = _summary_payload(vix_delta=None, sector=None)["summary"]
+
+    assert "VIX" not in line and "섹터" not in line
+    assert "PnL" in line

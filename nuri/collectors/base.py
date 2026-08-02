@@ -138,6 +138,10 @@ class BaseCollector(ABC):
 
             stage_ops(
                 payload={
+                    # `summary` 가 렌더 계약이다 (#571) — 없으면 digest 가 화이트리스트
+                    # 폴백으로 떨어져 `? | ALERT` 에 가까운 줄이 된다. 27개 collector
+                    # 전부가 이 한 경로로 실패를 알리므로 여기서 문장을 만들어 보낸다.
+                    "summary": f"⚠️ {self.name} 수집 실패 — {error_msg[:160]}",
                     "event": "collector_failure",
                     "collector": self.name,
                     "error": error_msg[:200],

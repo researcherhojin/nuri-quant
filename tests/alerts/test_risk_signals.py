@@ -174,16 +174,20 @@ def test_payload_shape_is_actionable_sell():
     }
     payload = risk_signals._build_breach_payload(breach, "2026-07-08")
 
-    assert payload["kind"] == "SELL"  # → priority 0 "Action Now" + price_levels 노출
+    assert payload["kind"] == "SELL"  # → priority 0 "Action Now"
     assert payload["ticker"] == "TST_A"
     assert payload["note"] == "Brokerage Alpha"  # 다계좌 구분
     assert "손절선 돌파" in payload["reason"]
-    assert payload["price_levels"]["entry"] == 100.0
-    assert payload["price_levels"]["stop"] == 93.0  # 100 × (1 + -7/100)
+    # #571: 이미 손절선을 뚫은 포지션에 "entry"(=평단) 를 보여주는 건 방향이 거꾸로다.
+    # 지금 필요한 건 진입가가 아니라 현재가와 손실 규모 — price_levels 대신 구조화 필드.
+    assert "price_levels" not in payload
+    assert payload["current"] == 90.0
+    assert payload["avg"] == 100.0
 
 
 def test_payload_renders_actionable_line():
-    # 렌더러 계약: "TST_A | SELL | reason: ...\n  ↳ entry $.. / stop $.."
+    # #571 렌더러 계약: producer 가 만든 `summary` 카드가 그대로 나간다.
+    # 1줄 종목·경과일 / 2줄 현재가·평단·손실 / 3줄 룰 근거.
     from nuri.agents.discord.outbox import _format_event_line
 
     breach = {
@@ -193,12 +197,98 @@ def test_payload_renders_actionable_line():
         "current": 90.0,
         "pnl_pct": -10.0,
         "threshold": -7,
+        "qty": 10.0,
+        "loss_amount": -100.0,
+        "breach_days": 3,
+        "first_breach_date": "2026-07-06",
+        "first_breach_pnl_pct": -8.0,
     }
     line = _format_event_line(risk_signals._build_breach_payload(breach, "2026-07-08"))
+    lines = line.split("\n")
 
-    assert line.startswith("TST_A | SELL")
-    assert "손절선 돌파" in line
-    assert "entry $100" in line and "stop $93" in line
+    assert "TST_A" in lines[0] and "3일째" in lines[0]
+    assert "$90" in lines[1] and "$100" in lines[1]  # 현재가와 평단이 모두 보인다
+    assert "평가손실" in lines[1]
+    assert "-7% 손절선" in lines[2]
+    assert "07-06" in lines[2]  # 최초 이탈일 이후 추가 하락 맥락
+
+
+def test_breach_card_carries_the_numbers_a_decision_needs():
+    """8일 연속 같은 줄만 오던 회귀 잠금 — 경과일·평가손실이 빠지면 FAIL.
+
+    사용자 판정: "이것만 보고는 무슨 말을 하고 싶은 것인지 모르겠습니다".
+    구 카드에는 현재가·손실액·경과일이 전부 없었다.
+    """
+    from nuri.agents.discord.outbox import _format_event_line
+
+    breach = {
+        "ticker": "TST_A",
+        "account": "Brokerage Alpha",
+        "avg": 100.0,
+        "current": 50.0,
+        "pnl_pct": -50.0,
+        "threshold": -20,
+        "qty": 10.0,
+        "loss_amount": -500.0,
+        "breach_days": 7,
+        "first_breach_date": "2026-07-01",
+        "first_breach_pnl_pct": -25.0,
+    }
+    card = _format_event_line(risk_signals._build_breach_payload(breach, "2026-07-08"))
+
+    assert "7일째" in card  # 며칠째인지
+    assert "-$500" in card  # 얼마를 잃고 있는지 (부호는 통화기호 앞)
+    assert "-30.0%p" in card  # 이탈폭 (-50 - -20)
+    assert "-25.0%p" in card  # 최초 이탈 이후 추가 하락 (-50 - -25)
+
+
+def test_kosdaq_holding_is_scanned_in_kr_session(db_path, monkeypatch):
+    """`.KQ`(KOSDAQ) 가 KR 세션 손절 스캔에서 누락되던 버그 잠금 (#764 split-brain).
+
+    `.KS` 만 필터하면 KOSDAQ 보유분이 KR 세션에서 통째로 빠지고 US 세션에 섞인다.
+    """
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="900001.KQ", account="Brokerage Alpha", avg=100.0, current=80.0)
+
+    kr = risk_signals.scan_stop_breaches("kr", db_path=db_path)
+    us = risk_signals.scan_stop_breaches("us", db_path=db_path)
+
+    assert [b["ticker"] for b in kr] == ["900001.KQ"]  # KR 세션이 잡는다
+    assert us == []  # US 세션에 섞이지 않는다
+
+
+def test_breach_age_counts_only_the_latest_consecutive_run(db_path):
+    """중간에 손절선 위로 회복했으면 그 이전은 세지 않는다."""
+    for date, close in [
+        ("2026-07-04", 80.0),  # 이탈 (구간 A)
+        ("2026-07-05", 95.0),  # 회복 — 여기서 끊긴다
+        ("2026-07-06", 85.0),  # 재이탈 (구간 B)
+        ("2026-07-07", 84.0),
+        ("2026-07-08", 83.0),
+    ]:
+        upsert_prices(
+            pd.DataFrame(
+                [
+                    {
+                        "ticker": "TST_A",
+                        "date": date,
+                        "open": close,
+                        "high": close,
+                        "low": close,
+                        "close": close,
+                        "volume": 1_000_000,
+                        "adj_close": close,
+                    }
+                ]
+            ),
+            db_path,
+        )
+
+    age = risk_signals._breach_age("TST_A", avg=100.0, threshold=-10, db_path=db_path)
+
+    assert age["breach_days"] == 3  # 07-06 ~ 07-08 만
+    assert age["first_breach_date"] == "2026-07-06"
 
 
 # ─── stage_stop_breach_briefs ────────────────────────────────────────────────

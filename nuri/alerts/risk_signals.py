@@ -24,6 +24,7 @@ from typing import Any, Literal, Optional
 
 from nuri.core.db import query
 from nuri.core.rules import get_account_strategy_name, get_stop_loss_for_account
+from nuri.core.ticker_names import get_ticker_name, is_kr_ticker
 from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
@@ -61,9 +62,11 @@ def scan_stop_breaches(
     breaches: list[dict[str, Any]] = []
     for r in rows:
         ticker = str(r["ticker"])
-        if session == "kr" and not ticker.endswith(".KS"):
+        # KR 판정은 `is_kr_ticker()` 경유 — `.KS` 만 보면 `.KQ`(KOSDAQ) 홀딩이
+        # KR 세션 스캔에서 통째로 빠지고 US 세션에 섞인다(#764 split-brain 재발).
+        if session == "kr" and not is_kr_ticker(ticker):
             continue
-        if session == "us" and ticker.endswith(".KS"):
+        if session == "us" and is_kr_ticker(ticker):
             continue
         if get_account_strategy_name(r["account"]) == "pension":
             continue
@@ -79,6 +82,7 @@ def scan_stop_breaches(
         pnl_pct = (current - avg) / avg * 100
         threshold = get_stop_loss_for_account(r["account"])
         if pnl_pct < threshold:
+            qty = r["quantity"] or 0
             breaches.append(
                 {
                     "ticker": ticker,
@@ -87,6 +91,11 @@ def scan_stop_breaches(
                     "current": float(current),
                     "pnl_pct": pnl_pct,
                     "threshold": threshold,
+                    # 평가손실 금액 — 같은 -20% 라도 100만원과 5천만원은 다른 결정이다.
+                    # 통화는 티커 기준(KR=KRW / 그 외=USD), 렌더러가 기호를 붙인다.
+                    "qty": float(qty),
+                    "loss_amount": (float(current) - float(avg)) * float(qty),
+                    **_breach_age(ticker, float(avg), threshold, db_path=db_path),
                 }
             )
 
@@ -94,24 +103,98 @@ def scan_stop_breaches(
     return breaches
 
 
+def _breach_age(
+    ticker: str,
+    avg: float,
+    threshold: float,
+    db_path: Optional[Path] = None,
+    lookback: int = 180,
+) -> dict[str, Any]:
+    """가장 최근 **연속** 이탈 구간의 길이·시작일·시작 시점 손익률.
+
+    "며칠째인가"가 없으면 8일 연속 같은 줄이 8번 오고 사용자는 새 신호와 구별하지
+    못한다(처분효과 방어가 알림 피로로 뒤집히는 지점). outbox 발송 이력이 아니라
+    **가격 이력**으로 센다 — outbox 는 보존기간에 따라 지워지지만 가격은 남고,
+    같은 입력이면 같은 답이 나온다.
+
+    최신 bar 부터 과거로 훑다가 손절가 위로 올라온 첫 bar 에서 멈춘다(중간에
+    회복했다가 재이탈했으면 재이탈 구간만 센다). 가격 이력이 없으면 빈 dict.
+    """
+    stop_level = avg * (1 + threshold / 100)
+    rows = query(
+        "SELECT date, close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT ?",
+        (ticker, lookback),
+        db_path=db_path,
+    )
+    first_date: Optional[str] = None
+    first_pnl: Optional[float] = None
+    days = 0
+    for row in rows:
+        close = row["close"]
+        if not close or close >= stop_level:
+            break
+        days += 1
+        first_date = str(row["date"])
+        first_pnl = (close - avg) / avg * 100
+    if not days:
+        return {}
+    return {"breach_days": days, "first_breach_date": first_date, "first_breach_pnl_pct": first_pnl}
+
+
 def _build_breach_payload(breach: dict[str, Any], date: str) -> dict[str, Any]:
     """손절 이탈 1건 → #brief SELL payload (DecisionCompiler `_publish_brief` 형식).
 
-    price_levels: entry=평단, stop=이탈한 손절가(평단×(1+threshold%)). TP 는
-    cut 신호엔 무의미하므로 생략(렌더러가 present 키만 표시).
+    `summary` 가 렌더 계약이다(#571) — 의미를 아는 쪽은 producer 다. 3줄 카드:
+
+        1줄 종목·행동·**경과일**   2줄 현재가·평단·손실률·**평가손실 금액**
+        3줄 룰 임계·이탈폭·최초 이탈일 대비 추가 하락
+
+    이전 payload 는 `price_levels{entry=평단, stop}` 만 실어 보냈다. 이미 손절선을
+    40% 아래로 뚫은 포지션에 "entry" 를 보여주는 건 방향이 거꾸로다 — 지금 필요한
+    건 진입가가 아니라 **현재 얼마이고 얼마를 잃고 있는지**다. 그래서 price_levels
+    대신 구조화 필드로 싣는다.
+
+    어조: 매도를 지시하지 않는다. 시스템은 권고만 하고 집행은 사용자다(§7.1) —
+    digest footer 가 이미 "manual execute only" 를 달고 있어 카드마다 반복하지 않는다.
     """
-    avg = breach["avg"]
+    # outbox 는 이 모듈에서 항상 함수 안에서 import 한다(`stage_brief` 와 동일 패턴).
+    from nuri.agents.discord.outbox import format_money
+
     threshold = breach["threshold"]
-    stop_level = avg * (1 + threshold / 100)
+    ticker = breach["ticker"]
+    name = get_ticker_name(ticker)
+    label = f"{ticker} {name}" if name else str(ticker)
+
+    pnl = breach["pnl_pct"]
+    days = breach.get("breach_days")
+    age = f"{days}일째" if days else "오늘 이탈"
+
+    # 계좌를 카드에 남긴다 — 같은 티커를 여러 계좌에 보유하면(계좌별 평단이 달라
+    # dedupe_key 도 계좌를 포함한다) "어느 계좌에서 파는가"가 곧 실행 정보다.
+    head = f"🔴 {label} · 손절선 이탈 {age} · {breach['account']}"
+    money = (
+        f"　현재 {format_money(breach['current'], ticker)} / 평단 {format_money(breach['avg'], ticker)} ({pnl:+.1f}%)"
+    )
+    if breach.get("loss_amount"):
+        money += f" · 평가손실 {format_money(breach['loss_amount'], ticker)}"
+
+    rule = f"　룰 {threshold}% 손절선 · 이탈폭 {pnl - threshold:+.1f}%p"
+    first_pnl = breach.get("first_breach_pnl_pct")
+    if breach.get("first_breach_date") and first_pnl is not None:
+        rule += f" · 최초 이탈 {breach['first_breach_date'][5:]} 이후 {pnl - first_pnl:+.1f}%p"
+
     return {
         "kind": "SELL",
-        "ticker": breach["ticker"],
-        # note → 렌더러가 표시. 같은 티커가 여러 계좌에 있을 때 어느 계좌인지 구분
-        # (계좌별 avg 가 달라 entry/stop 도 다름).
+        "ticker": ticker,
+        "summary": "\n".join([head, money, rule]),
+        # note → 같은 티커가 여러 계좌에 있을 때 어느 계좌인지 구분 (계좌별 avg 다름).
         "note": breach["account"],
-        "reason": f"손절선 돌파 ({breach['pnl_pct']:+.1f}% < {threshold}%)",
+        "reason": f"손절선 돌파 ({pnl:+.1f}% < {threshold}%)",
         "date": date,
-        "price_levels": {"entry": round(avg, 2), "stop": round(stop_level, 2)},
+        "current": breach["current"],
+        "avg": breach["avg"],
+        "loss_amount": breach.get("loss_amount"),
+        "breach_days": days,
     }
 
 
