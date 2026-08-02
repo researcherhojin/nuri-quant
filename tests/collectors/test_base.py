@@ -369,3 +369,36 @@ class TestFailureAlertSingleWriter:
 # ##############################################################################
 # Source: test_collectors.py
 # ##############################################################################
+
+
+class TestFailureAlertIsReadable:
+    """#571 — 수집 실패 알림이 #ops 에서 읽히는 문장으로 나가야 한다."""
+
+    def test_alert_payload_renders_as_a_sentence_not_key_dump(self, monkeypatch):
+        """`summary` 를 빼면 digest 가 화이트리스트 폴백으로 떨어져 키 나열이 된다.
+
+        27개 collector 가 전부 이 한 경로로 실패를 알린다 — 여기서 문장이 안 만들어지면
+        운영자는 `ALERT | event: ... | collector: ...` 를 읽어야 한다.
+        """
+        import nuri.agents.discord.outbox as outbox_mod
+
+        captured = {}
+        monkeypatch.setattr(outbox_mod, "stage_ops", lambda payload, **kw: captured.update(payload))
+
+        class FailC(BaseCollector):
+            def __init__(self):
+                super().__init__("yfinance_prices")
+
+            def collect(self, **kw):
+                raise RuntimeError("x")
+
+            def save(self, data):
+                return 0
+
+        FailC()._send_failure_alert("HTTPError 429 Too Many Requests")
+
+        rendered = outbox_mod.bucket_generic_digest([captured], "Ops")["fields"][0]["value"]
+        assert rendered == captured["summary"]
+        assert "yfinance_prices" in rendered
+        assert "429" in rendered
+        assert "event:" not in rendered  # 내부 키 이름이 사용자에게 보이면 안 된다
