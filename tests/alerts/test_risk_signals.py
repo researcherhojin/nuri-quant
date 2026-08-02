@@ -666,3 +666,73 @@ def test_market_context_skips_stale_benchmark(db_path):
     ctx = risk_signals._market_context("TST_A", ret_20d=-25.0, date="2026-08-02", db_path=db_path)
 
     assert "benchmark" not in ctx, "stale 벤치마크로 비교하면 안 된다"
+
+
+# ─── #966 시장 대비 · 실적 D-day 성공 경로 ────────────────────────────────────
+
+
+def test_market_context_computes_excess_vs_benchmark(db_path):
+    """시장 대비가 실제로 계산되는 경로 — #966 이 이 성공 경로 없이 머지됐다.
+
+    거부 경로(성긴 데이터·stale 벤치마크)만 잠겨 있었고, 정작 숫자를 만드는 쪽은
+    한 번도 실행되지 않았다. 형제 기능에서 같은 자리에 공식 오류가 있었다.
+    """
+    _seed_series(db_path, "SPY", n=25, day_step=1, base=100.0, step=1.0)  # 20봉 전 104 → 124
+
+    ctx = risk_signals._market_context("TST_A", ret_20d=-30.0, date="2026-01-29", db_path=db_path)
+
+    expected_bench = (124 - 104) / 104 * 100
+    assert ctx["benchmark"] == "SPY"
+    assert ctx["benchmark_ret_20d"] == pytest.approx(expected_bench)
+    assert ctx["excess_20d"] == pytest.approx(-30.0 - expected_bench)
+
+
+def test_market_context_attaches_earnings_inside_window(db_path):
+    from nuri.core.db import get_db
+
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO events (date, event_type, ticker, description, importance) VALUES (?,?,?,?,?)",
+            ("2026-08-05", "earnings", "TST_E", "실적발표", 2),
+        )
+
+    ctx = risk_signals._market_context("TST_E", ret_20d=None, date="2026-08-02", db_path=db_path)
+
+    assert ctx["earnings_in_days"] == 3
+
+
+def test_market_context_ignores_earnings_outside_window(db_path):
+    """창 밖의 실적은 지금 결정과 무관하므로 붙이지 않는다."""
+    from nuri.core.db import get_db
+
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO events (date, event_type, ticker, description, importance) VALUES (?,?,?,?,?)",
+            ("2026-09-30", "earnings", "TST_E", "실적발표", 2),
+        )
+
+    ctx = risk_signals._market_context("TST_E", ret_20d=None, date="2026-08-02", db_path=db_path)
+
+    assert "earnings_in_days" not in ctx
+
+
+def test_card_renders_market_line_and_earnings():
+    """카드에 시장 대비 줄과 실적 D-day 가 실제로 찍히는지."""
+    from nuri.agents.discord.outbox import _format_event_line
+
+    payload = risk_signals._build_breach_payload(
+        _breach(
+            pnl_pct=-30.0,
+            ret_20d=-30.0,
+            benchmark="SPY",
+            benchmark_ret_20d=-1.8,
+            excess_20d=-28.2,
+            earnings_in_days=3,
+        ),
+        "2026-08-02",
+    )
+    card = _format_event_line(payload)
+
+    assert "시장(SPY) -1.8%" in card
+    assert "종목 요인 -28.2%p" in card
+    assert "실적 D-3" in card
