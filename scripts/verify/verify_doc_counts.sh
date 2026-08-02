@@ -147,6 +147,11 @@ check_claim "migrations"       "$MIG"   "README.md"            '[0-9]+ forward-o
 # ARCHITECTURE 도 같은 수치를 적는데 게이트가 없어 조용히 갈렸다 (2026-07-30 실측 46 vs 49).
 check_claim "migrations"       "$MIG"   "docs/ARCHITECTURE.md" '\([0-9]+ migrations as of' || true
 check_claim "scheduler_jobs"   "$JOBS"  "docs/ARCHITECTURE.md" '[0-9]+ cron jobs in' || true
+# README 는 같은 수치를 **세 군데** 적는데 (다이어그램 노드 · 산문 · Project Stats 표)
+# 전부 미등록이라 셋 다 48 로 굳어 있었다 (2026-08-03 실측, 실제 49). ARCHITECTURE 만
+# 보던 migrations 누락(#864)과 같은 패턴 — 한 사이트만 등록하면 나머지가 조용히 드리프트한다.
+check_claim "scheduler_jobs"   "$JOBS"  "README.md" \
+    '[0-9]+ (cron jobs · in-process|independent APScheduler jobs|cron entries)' || true
 check_claim "rules_yaml_lines" "$RULES" "config/CLAUDE.md"     '\| [0-9]+ \| Investment rules' || true
 
 # Note: agent count + pytest collect count intentionally excluded from hard
