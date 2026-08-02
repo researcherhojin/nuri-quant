@@ -16,6 +16,8 @@ For canonical detail:
 
 Nuri-Quant — open-source quant investment platform. Python 3.12, `uv`, SQLite (WAL), Next.js 16. Pipeline (5 stages): `collect → analyze → consensus → certify → track`.
 
+⚠️ 화살표는 **읽는 순서지 실행 순서가 아니다**. 스테이지를 이어 붙이는 주체가 없다 — `scheduler.py` 는 독립 cron job 만 등록하고, 스테이지 job 을 감싸는 `run_step` 은 항상 `warn_only=True` 라 의존성 미충족을 경고 이벤트로만 남기고 그대로 실행한다(#894). `analyze`·`certify` 는 자기 cron job 이 없고, cron 시각도 읽는 순서와 다르다(outcome tracking 07:02 가 consensus 07:05 앞 — 전날 것을 읽는다).
+
 ## Hard Rules (mechanically enforced — do not violate)
 
 1. **DB**: `nuri/core/db/` is the only `sqlite3` importer (importer module: `nuri/core/db/connection.py`). Other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()`.
