@@ -687,8 +687,15 @@ SCHEDULES = [
     # Dual-cron 06:30/07:30 KST 등록, 함수 내부에서 NYSE 16:30 ET window 일치
     # 시점만 진행. EDT 기간 → 05:30 KST (둘 다 skip → 다음날 fire),
     # EST 기간 → 06:30 KST 매칭. 함수 idempotent UPSERT 라 2회 fire 도 안전.
-    {"name": "postmarket_brief_us_a", "func": _run_postmarket_brief_us, "args": (), "cron": "30 6 * * 2-6"},
-    {"name": "postmarket_brief_us_b", "func": _run_postmarket_brief_us, "args": (), "cron": "30 7 * * 2-6"},
+    # NYSE 16:30 ET(종가+30분)에 해당하는 KST 시각은 DST 에 따라 갈린다:
+    #   EDT(3월중~11월초) = 05:30 KST · EST(11월초~3월중) = 06:30 KST
+    # `run_postmarket_us_dst_aware` 가 ±15분 window 로 맞는 쪽만 통과시키므로 두 시각을
+    # 모두 등록해야 한다. 이전 등록은 06:30·07:30 이었고 **07:30 은 두 시기 모두 window
+    # 밖**(EST 17:30 ET / EDT 18:30 ET)이라 발화 불가였다. 그 결과 EDT 8개월 동안
+    # US 브리프가 통째로 안 돌았다 — 손절 SELL·장마감 요약뿐 아니라 `session == "us"`
+    # 안에 있는 집중도·섹터·슬리브 REBALANCE(Tier 1b/1c/1d)까지 함께 침묵했다.
+    {"name": "postmarket_brief_us_a", "func": _run_postmarket_brief_us, "args": (), "cron": "30 5 * * 2-6"},
+    {"name": "postmarket_brief_us_b", "func": _run_postmarket_brief_us, "args": (), "cron": "30 6 * * 2-6"},
     # Brief auditor (Discord-as-dev-loop) — 매 6시간 #brief 품질 self-audit.
     # decision_compiler emit 의 conflict / noise / identical-conviction 검출 →
     # #incidents 로 ticket 자동 emit. dedupe 24h. recommend-only, ZERO LLM.
