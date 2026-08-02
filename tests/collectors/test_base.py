@@ -191,6 +191,27 @@ class TestGetTickers:
         assert "005930.KS" in kr
         assert "AAPL" not in kr
 
+    def test_kosdaq_routes_to_kr_not_us(self, db_path):
+        """`.KQ` 는 KR 이다 — 양방향으로 잠근다 (#764 · #973).
+
+        `.KS` 로만 필터하면 KOSDAQ 이 **두 번 틀린다**: kr 에서 빠져 pykrx 순차 경로가
+        영영 못 보고, `not .KS` 인 us 에 포함돼 미국장 시간대(KOSDAQ 휴장)에 수집된다.
+        한쪽만 assert 하면 반대 방향 회귀가 조용히 통과하므로 둘 다 본다.
+        """
+        with get_db(db_path) as conn:
+            for t, cur in (("AAPL", "USD"), ("005930.KS", "KRW"), ("900002.KQ", "KRW")):
+                conn.execute(
+                    "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
+                    ("t", t, 1, 100, cur),
+                )
+
+        c = GoodCollector()
+        kr, us = c._get_tickers(market="kr"), c._get_tickers(market="us")
+
+        assert "900002.KQ" in kr, "KOSDAQ 이 KR 수집 경로에 있어야 한다"
+        assert "900002.KQ" not in us, "KOSDAQ 이 US 수집 경로로 새면 안 된다"
+        assert "005930.KS" in kr and "AAPL" in us, "기존 동작 유지(전제)"
+
     def test_filter_all(self, db_path):
         with get_db(db_path) as conn:
             conn.execute(
