@@ -320,13 +320,31 @@ def _build_summary_payload(
     valid = [s for s in sectors if s.get("delta_pct") is not None]
     top_sector = max(valid, key=lambda x: x["delta_pct"]) if valid else None
 
+    total_pnl_pct = round(pnl.get("total_pct_weighted", 0.0), 2)
+
+    # #571: `summary` 없이 내보내면 렌더러가 `? | INFO` 한 줄만 찍는다 — 아래
+    # 키들이 전부 `_format_event_line` 화이트리스트 밖이라 장마감 요약이 매일
+    # 통째로 유실됐다. 의미를 아는 producer 가 문장을 만든다.
+    #
+    # ⚠️ 섹터 등락은 **방향어(상승/하락) + 부호 없는 %** 로 쓴다. 티커 바로 뒤에
+    # 부호가 붙은 퍼센트가 오면 `_publish_discord` 의 privacy gate(ticker_pnl 패턴)
+    # 에 걸려 **장마감 브리프 발행 자체가 조용히 중단**된다(gate 는 fail-closed 라
+    # 경고 로그 한 줄만 남는다). 괄호로 피해 가는 꼼수는 정규식이 바뀌면 또 깨진다.
+    parts = [f"📊 {session.upper()} 장마감 · 보유 PnL {total_pnl_pct:+.1f}%"]
+    if vix_delta is not None:
+        parts.append(f"VIX Δ{vix_delta:+.1f}")
+    if top_sector:
+        delta = round(top_sector["delta_pct"], 2)
+        parts.append(f"섹터 상위 {top_sector['ticker']} {'상승' if delta >= 0 else '하락'} {abs(delta):.1f}%")
+
     summary = {
         "kind": "INFO",
+        "summary": " · ".join(parts),
         "session": session,
         "date": today_kst(),
         "regime_note": f"{session.upper()} close",
         "vix_delta": vix_delta,
-        "total_pnl_pct": round(pnl.get("total_pct_weighted", 0.0), 2),
+        "total_pnl_pct": total_pnl_pct,
         "top_sector": (
             {"ticker": top_sector["ticker"], "delta_pct": round(top_sector["delta_pct"], 2)} if top_sector else None
         ),

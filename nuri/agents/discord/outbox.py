@@ -49,6 +49,7 @@ import logging
 from typing import Any, Optional
 
 from nuri.core.db import stage_outbox
+from nuri.core.ticker_names import is_kr_ticker
 from nuri.core.timezone import kst_now, today_kst
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,10 @@ _DESC_MAX = 4000
 _FIELD_NAME_MAX = 256
 _FIELD_VALUE_MAX = 1024
 _MAX_FIELDS = 25
+# event 1건(카드) 최대 길이. #571 이전엔 1줄 200 → price_levels 2줄 260 이었고,
+# 지금은 4줄 카드(종목·행동·경과일 / 현재가·손실 / 룰 근거 / 집행 안내)를 담는다.
+# 1024 field 안에 카드 3장이 들어가는 값으로 잡았다 — 그 이상은 overflow marker.
+_EVENT_CARD_MAX = 330
 
 _PRIORITY_BY_ACTION = {
     "BUY": 0,
@@ -84,6 +89,23 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 1)] + "…"
+
+
+def _truncate_card(card: str, limit: int) -> str:
+    """여러 줄 카드를 **줄 단위**로 줄인다 (#571).
+
+    문자 단위 절단은 마지막 줄을 반토막 내 숫자를 오독하게 만든다("평가손실 -₩4,8"
+    같은 꼴). producer 는 중요한 순서대로 줄을 쌓으므로(첫 줄 = 종목·행동·경과일)
+    뒤에서부터 버리는 게 의미 보존에 맞는다. 첫 줄은 남기고, 그것마저 넘치면
+    그때만 문자 절단.
+    """
+    if len(card) <= limit:
+        return card
+    lines = card.split("\n")
+    while len(lines) > 1 and len("\n".join(lines)) > limit:
+        lines.pop()
+    kept = "\n".join(lines)
+    return kept if len(kept) <= limit else _truncate(kept, limit)
 
 
 def stage_brief(
@@ -267,7 +289,29 @@ def _classify_event(payload: dict[str, Any]) -> str:
     return "Lower Priority"
 
 
-def _format_price_levels(price_levels: Optional[dict[str, Any]]) -> Optional[str]:
+def format_money(value: Any, ticker: str = "") -> str:
+    """통화 인지 금액 렌더 — KR(.KS/.KQ) 은 ₩ 정수, 그 외 $ (#571).
+
+    통화 분기는 `is_kr_ticker()` 를 경유한다 — `.KS` 만 보면 `.KQ`(KOSDAQ) 홀딩이
+    원화 금액을 달러로 표기하는 split-brain 이 된다(#764 와 같은 결함). KRW 는
+    보조단위가 없어 소수점을 붙이지 않는다.
+    """
+    if value is None:
+        return "—"
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    # 부호는 통화기호 **앞**에 — `$-500` 은 금액을 순간 오독하게 만든다. 평가손실을
+    # 싣기 시작하면서 음수가 처음 들어왔다(#571).
+    sign = "-" if f < 0 else ""
+    a = abs(f)
+    if is_kr_ticker(ticker):
+        return f"{sign}₩{a:,.0f}"
+    return f"{sign}${a:,.2f}" if a < 1000 else f"{sign}${a:,.0f}"
+
+
+def _format_price_levels(price_levels: Optional[dict[str, Any]], ticker: str = "") -> Optional[str]:
     """Render price_levels dict as compact line (#571 Phase 1).
 
     `↳ entry $132 / stop $123 / TP1 $158 / TP2 $185 · trail -15%`
@@ -285,13 +329,7 @@ def _format_price_levels(price_levels: Optional[dict[str, Any]]) -> Optional[str
     trailing_pct = price_levels.get("trailing_pct")
 
     def _fmt_price(v: Any) -> str:
-        if v is None:  # pragma: no cover — caller pre-filters None at L297-303
-            return "—"
-        try:
-            f = float(v)
-        except (TypeError, ValueError):
-            return "—"
-        return f"${f:,.2f}" if f < 1000 else f"${f:,.0f}"
+        return format_money(v, ticker)
 
     parts = []
     if entry is not None:
@@ -324,6 +362,14 @@ def _format_event_line(payload: dict[str, Any]) -> str:
         `NVDA | BUY | conv 0.81 | regime bull 0.72 | causal 0.68`
         `  ↳ entry $132 / stop $123 / TP1 $158 / TP2 $185 · trail -15%`
     """
+    # #571: `summary` 가 계약이다. 의미를 아는 쪽은 producer 이고 렌더러가 아니다.
+    # 키 화이트리스트 방식은 producer 가 다른 키를 쓰는 순간 내용을 통째로 버렸다 —
+    # postmarket 장마감 요약(session/vix_delta/total_pnl_pct/top_sector)이 매일
+    # `? | INFO` 로만 나간 게 그 결과다. summary 를 주면 그 줄이 그대로 카드가 된다.
+    summary = payload.get("summary")
+    if summary:
+        return str(summary)
+
     kind = (payload.get("kind") or "?").upper()
     ticker = payload.get("ticker", "?")
     parts = [str(ticker), kind]
@@ -333,11 +379,23 @@ def _format_event_line(payload: dict[str, Any]) -> str:
     for opt in ("regime", "causal", "horizon", "position", "reason", "note"):
         if opt in payload and payload[opt] is not None:
             parts.append(f"{opt}: {payload[opt]}")
+
+    # summary 도 없고 화이트리스트도 전부 빗나간 payload 는 여기서 내용이 0 이 된다.
+    # 그 상태로 내보내면 사용자는 `? | INFO` 한 줄을 받는다 — 조용한 유실 대신
+    # 남은 스칼라 키라도 실어 보낸다(최후 보루이지 계약이 아니다. 계약은 summary).
+    if len(parts) == 2 and str(ticker) == "?":
+        leftovers = [
+            f"{k}: {v}"
+            for k, v in payload.items()
+            if k not in ("kind", "ticker", "summary", "date", "decision_id") and isinstance(v, (str, int, float, bool))
+        ]
+        if leftovers:
+            parts = [kind, *leftovers]
     head = " | ".join(parts)
 
     # #571 Phase 1: BUY/SELL 만 price_levels surface — HOLD/INFO/BLOCK 은 noise.
     if kind in ("BUY", "SELL"):
-        levels_line = _format_price_levels(payload.get("price_levels"))
+        levels_line = _format_price_levels(payload.get("price_levels"), str(ticker))
         if levels_line:
             return f"{head}\n{levels_line}"
     return head
@@ -396,13 +454,13 @@ def bucket_brief_digest(
         if not lines:
             continue
         # Truncate per-event to keep value < 1024.
-        # #571 Phase 1: events with price_levels are 2-line (head + ↳ levels)
-        # so per-event cap raised 200→260 to fit multi-line without cutting
-        # the levels mid-string.
+        # #571: 카드가 여러 줄이므로 문자 단위로 자르면 마지막 줄이 반토막 난다.
+        # `_truncate_card` 는 줄 단위로 뒤에서부터 버린다 — producer 가 중요한
+        # 순서대로 줄을 쌓았다는 계약(첫 줄 = 종목·행동·경과일)에 기댄다.
         body_lines: list[str] = []
         running = 0
         for ln in lines:
-            ln_trunc = _truncate(ln, 260)
+            ln_trunc = _truncate_card(ln, _EVENT_CARD_MAX)
             if running + len(ln_trunc) + 1 > _FIELD_VALUE_MAX:
                 hidden = len(lines) - len(body_lines)
                 body_lines.append(f"… (+{hidden} more)")

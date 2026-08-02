@@ -548,3 +548,59 @@ def test_outbox_health_shows_per_channel_counts(db_path):
     assert h["by_channel"]["brief"]["pending"] == 2
     assert h["by_channel"]["ops"]["pending"] == 1
     assert h["oldest_pending_age_seconds"] is not None
+
+
+# ─── #571 통화 인지 렌더 + 줄 단위 절단 ─────────────────────────────────────
+
+
+def test_money_uses_won_for_kr_tickers_including_kosdaq():
+    """KR 금액을 `$` 로 찍던 버그 잠금 — `.KQ` 까지 포함해야 한다 (#764 split-brain).
+
+    `.KS` 만 검사하도록 되돌리면 KOSDAQ 줄이 다시 달러로 나온다.
+    """
+    from nuri.agents.discord.outbox import format_money
+
+    assert format_money(676000, "005380.KS") == "₩676,000"
+    assert format_money(676000, "900001.KQ") == "₩676,000"  # KOSDAQ 도 원화
+    assert format_money(132.5, "NVDA") == "$132.50"
+    assert format_money(1500, "NVDA") == "$1,500"
+
+
+def test_money_puts_sign_before_the_currency_symbol():
+    """평가손실(음수)이 `$-500` 으로 나오면 금액을 오독한다."""
+    from nuri.agents.discord.outbox import format_money
+
+    assert format_money(-500, "NVDA") == "-$500.00"
+    assert format_money(-1_240_000, "005930.KS") == "-₩1,240,000"
+
+
+def test_card_truncation_drops_whole_lines_not_half_numbers():
+    """문자 절단은 마지막 줄 숫자를 반토막 낸다 — 줄 단위로 버려야 한다."""
+    from nuri.agents.discord.outbox import _truncate_card
+
+    card = "머리줄\n" + "가" * 40 + "\n" + "나" * 40
+
+    kept = _truncate_card(card, 50)
+
+    assert kept.startswith("머리줄")
+    assert "나" * 40 not in kept  # 꼬리 줄이 통째로 빠진다
+    assert len(kept) <= 50
+
+
+def test_summary_wins_over_the_key_whitelist():
+    """producer 가 준 `summary` 가 렌더 계약 — 화이트리스트보다 우선한다."""
+    from nuri.agents.discord.outbox import _format_event_line
+
+    line = _format_event_line({"kind": "SELL", "ticker": "TST_A", "summary": "완성된 카드", "reason": "무시됨"})
+
+    assert line == "완성된 카드"
+
+
+def test_payload_without_summary_or_ticker_still_carries_content():
+    """최후 보루 — summary 도 없고 화이트리스트도 다 빗나가도 `?` 한 줄로 끝내지 않는다."""
+    from nuri.agents.discord.outbox import _format_event_line
+
+    line = _format_event_line({"kind": "INFO", "vix_delta": 1.3, "total_pnl_pct": -2.1})
+
+    assert not line.startswith("?")
+    assert "1.3" in line and "-2.1" in line
