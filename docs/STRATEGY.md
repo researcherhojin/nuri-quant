@@ -112,8 +112,8 @@ base = regime_win_rate × 60% + profit_factor × 40%
 | VIX > 30 매수 차단 | 공포 구간 승률 붕괴 검증 | 자체 시그널 백테스트 |
 | 슈퍼투자자 ≥ 3명 | 13F 보유 종목 초과수익 | SEC EDGAR 분석 |
 | 처분효과 경고 | 수익 조기 매도 편향 | Shefrin & Statman, 1985 |
-| **execution_priority** | 하락 모멘텀 1h 지연 = 추가 손실 확정 | 자체 재무 논리 (PR #200) |
-| **trailing_stop_arm +15%** | 수익 give-back 방지 | PR #202 |
+| **execution_priority** | 하락 모멘텀 1h 지연 = 추가 손실 확정 | 자체 재무 논리 (PR #200) — ⚠️ **미배선**: config 를 읽는 코드 없음 (§3.5 주석) |
+| **trailing_stop_arm +15%** | 수익 give-back 방지 | PR #202 — ⚠️ **미배선**: 트레일링은 무장 조건 없이 HWM 기준 동작 (§3.5 주석) |
 | **decisions 결과 추적** | 에이전트별 적중률로 가중치 동적 조정 | PR #181, #183 |
 | **Kelly f\* = (bp−q)/b** | edge·승률·payoff 반영 position size. Fractional Kelly (full 은 estimation error·DD 로 부적합). E3 실배선. | Kelly (1956); MacLean/Thorp/Ziemba (2011) |
 | **Mean-variance frontier** | sector cap 의도. `max_sector_exposure: 35%` 는 frontier 도출 아닌 prudential default. regime 재평가 E3 후보. | Markowitz (1952) |
@@ -128,6 +128,12 @@ base = regime_win_rate × 60% + profit_factor × 40%
 | **long_term** | -20% | 25% | 50% | — | 장기 보유 |
 | **pension** | -30% | 40% | 60% | — | 연금 ETF 초장기 |
 **선택**: Core 보수, Active 적극 컷+위너보호, Swing 진짜 단기, Long_term/Pension 장기 ETF. 규칙 변경은 YAML + 백테스트 + PR.
+
+> ⚠️ **위 표 중 실제로 강제되는 건 손절과 단일종목 한도뿐이다 (2026-08-02 감사).**
+> - **섹터 열은 장식이다.** `account_strategies.*.max_sector_exposure` 를 읽는 코드가 없고, 섹터 검사(certification · rebalance_advisor · execution_firewall)는 전부 전역 `position_limits.max_sector_exposure`(35%)를 쓴다. 즉 pension 계좌를 60%로 적어둬도 35%에서 걸린다.
+> - **`trailing_stop_arm: 15` 도 읽는 코드가 없다.** 트레일링은 존재하되 계좌별도 아니고 무장 조건도 없다 — `check_trailing_stop_signals()` 가 보유 전 종목에 대해 진입 후 고점(HWM) 대비 하락으로 판정한다(-15% growth/value, -20% volatile/swing). "+15%에 도달해야 켜진다"는 서술은 사실이 아니었다.
+>
+> 배선하는 건 매매 동작 변경이라 별도 STRATEGY PR 대상이다. 지금 이 문단은 **문서를 코드에 맞춘 것**이지 규칙을 약화시킨 게 아니다.
 ### 3.6 Regime-adaptive framework (E3)
 **상태 (2026-04-29)**: Phase 1 shadow shipped (#479). **Phase 2 paired counterfactual: FAIL by binary rule** — 30d horizon CI_lower=-1.06% ≤ 0. 60d/90d horizons는 robust PASS (CI_lower=+1.95% / +2.60%). 자세히 아래 "Phase 2 verdict" 참조. **Phase 3 영구 보류 (2026-04-29 3-LLM consensus)** — Codex(gpt-5.4) Round 1 B → Round 2 A, Qwen3.5-122B Round 1 D → Round 2 A, Claude A 일관. Phase 1 shadow telemetry 영구 유지 (`enabled: false`, 무기한). Reopen trigger: §7.1 auto-trade reversal only. 자세한 Round 1/2 verdicts: `data/llm_consults/2026-04-29_e3-phase2-shelve-decision.md` + `..._round2-three-way.md` (gitignored, 사용자 머신 local).
 **Phase 2 verdict (2026-04-29, branch `feat/e3-phase2-paired-counterfactual`)**:

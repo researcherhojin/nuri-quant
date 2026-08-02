@@ -30,6 +30,12 @@ stop_loss:
 
 # ─── 계좌별 전략 프로파일 ──────────────────────────────
 # portfolio.yaml의 strategy 필드와 매칭. 기본값 = core.
+# ⚠️ 미배선 항목 (2026-08-02 감사): 아래에서 실제로 강제되는 건 `stop_loss` 와
+# `max_single_position` 뿐이다.
+#   · `max_sector_exposure` (계좌별) — 읽는 코드 없음. 섹터 검사는 certification ·
+#     rebalance_advisor · execution_firewall 전부 전역 position_limits 값(35%)을 쓴다.
+#   · `trailing_stop_arm` — 읽는 코드 없음. 트레일링은 계좌 무관하게 진입 후 고점(HWM)
+#     대비 하락으로 동작하며 무장 임계가 없다 (price_targets.check_trailing_stop_signals).
 account_strategies:
   core:
     stop_loss: -7
@@ -105,7 +111,11 @@ trailing_stop:
 # ─── 매수 진입 조건 ─────────────────────────────────────
 # 레짐 기반 포지션 사이징
 entry_rules:
-  # VIX + Fear&Greed 기반 현금 비중
+  # ⚠️ 미배선 (2026-08-02 감사) — 아래 값을 고쳐도 동작이 바뀌지 않는다.
+  # 살아있는 건 vix_gate.block_above / caution_above 둘뿐이다. regime_cash ·
+  # scaling_in · vix_gate.normal_below 는 읽는 코드가 없다(상수는 로드되지만
+  # 어디서도 import 하지 않음). 배선은 사이징 변경이라 STRATEGY PR 대상.
+  # VIX + Fear&Greed 기반 현금 비중 — # ⚠️ 미배선 (2026-08-02 감사) — 아래 값을 고쳐도 동작이 바뀌지 않는다.
   regime_cash:
     extreme_fear: 0.60          # F&G < 20: 현금 60% (방어적)
     fear: 0.40                  # F&G 20-40: 현금 40%
@@ -116,8 +126,8 @@ entry_rules:
   vix_gate:
     block_above: 30             # VIX > 30: 신규 매수 금지
     caution_above: 25           # VIX 25-30: 절반 포지션만
-    normal_below: 20            # VIX < 20: 정상 포지션
-  # 분할 매수 규칙
+    normal_below: 20            # VIX < 20: 정상 포지션 — ⚠️ 미배선 (로드조차 안 됨)
+  # 분할 매수 규칙 — ⚠️ 미배선
   scaling_in:
     max_tranches: 3             # 최대 3회 분할 매수
     tranche_interval_days: 5    # 분할 간격 최소 5일
@@ -139,6 +149,7 @@ leverage:
     - SQQQ
     - UPRO
     - SPXU
+  # ⚠️ 미배선 — LEVERAGE_MAX_DAYS 를 import 하는 코드 없음 (보유일 제한 미집행)
   max_holding_days: 5           # 레버리지 ETF 최대 보유일 (스윙만 허용)
   max_leverage: 1.5             # long_exposure / cash 최대 배수 (ExecutionFirewall leverage_cap)
 
@@ -146,6 +157,10 @@ leverage:
 # 근거: 하락 모멘텀 종목의 1시간 지연 = 추가 손실 확정.
 #       상승 모멘텀 종목의 1시간 지연 = 추가 수익 가능.
 #       "출혈 차단이 수익 확정보다 선행" — 감정이 아닌 재무 논리.
+# ⚠️ 미배선 (2026-08-02 감사) — 아래 값을 고쳐도 동작이 바뀌지 않는다.
+# 이 순서를 읽는 모듈이 없다 (order / stop_loss_sort / take_profit_sort 소비처 0).
+# `nuri/trading/engine/CLAUDE.md` 가 "Codified in config" 라 적어 배선된 것처럼
+# 읽혀 왔으나 사실이 아니다. 설계 의도로만 남긴다.
 execution_priority:
   order:
     - stop_loss            # 1순위: 손절 (손실률 절대값 큰 것부터)
@@ -157,6 +172,10 @@ execution_priority:
 
 # ─── 매수 체크리스트 ────────────────────────────────────
 # 매수 전 최소 확인 항목 (자동화 대상)
+# ⚠️ 미배선 (2026-08-02 감사) — 아래 값을 고쳐도 동작이 바뀌지 않는다.
+# 다섯 항목 전부 `nuri/core/rules.py` 가 상수로 만들지만 **아무도 import 하지 않는다**.
+# 실제 BUY 후보는 `config/buy_signals.yaml` 의 팩터 점수 + VIX/레짐 게이트로만 걸러진다.
+# 즉 "TipRanks ≥ Moderate Buy · 슈퍼투자자 ≥ 3 · PE < 100" 은 현재 강제되지 않는다.
 buy_checklist:
   min_tipranks_consensus: "moderate_buy"   # TipRanks 최소 Moderate Buy
   min_superinvestors: 3                     # 슈퍼투자자 최소 3명 보유
