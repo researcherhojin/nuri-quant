@@ -91,6 +91,23 @@ class TestStockKRCollectorScenarios:
 
         assert set(df["ticker"]) == set(_reference_tickers()), "기준 티커만 — 보유 KR 은 없다"
 
+    def test_config_without_kr_benchmark_falls_back_to_empty(self, monkeypatch, tmp_path):
+        """`brief.benchmark.kr` 이 사라지면 기준 티커도 없다 — 그때만 빈 결과다.
+
+        기준 티커 union 이후 "수집할 한국 종목이 없습니다" 경로는 config 에서 KR
+        벤치마크가 빠졌을 때만 도달한다. 그 상태는 옛 버그(0행)로의 조용한 복귀라
+        동작을 명시적으로 잠가둔다.
+        """
+        import nuri.core.db as db_mod
+        from nuri.collectors.stock_kr import StockKRCollector
+
+        path = tmp_path / "empty.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        monkeypatch.setattr("nuri.core.rules.BRIEF_BENCHMARK", {"us": "SPY"})
+
+        assert StockKRCollector().collect(days=5).empty
+
     def test_reference_tickers_come_from_config_not_a_second_list(self):
         """기준 티커는 config 선언에서 뽑는다 — 목록을 또 하드코딩하면 갈라진다."""
         from nuri.collectors.stock_kr import _reference_tickers
