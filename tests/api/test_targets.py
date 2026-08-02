@@ -53,6 +53,35 @@ class TestTargetsCoverageGaps:
         assert m["AAPL"]["take_profit_sell_pct"] == 0.5
         assert m["MSFT"]["trailing_stop_triggered"] is True
 
+    def test_same_ticker_two_accounts_keeps_signals_apart(self, client, monkeypatch):
+        """같은 티커를 두 계좌에 보유해도 신호가 섞이지 않는다 (#974).
+
+        회귀 잠금: 티커로만 키를 잡으면 dict 조립에서 **마지막 계좌 것만 남고**(앞
+        계좌 신호 소실), 남은 하나가 두 행 모두에 붙는다. 계좌마다 평단이 달라
+        손절/익절선이 다르므로 한쪽은 반드시 틀린 신호를 받는다.
+
+        한쪽 계좌만 익절에 닿은 케이스를 쓴다 — 양쪽 다 발화하면 충돌이 안 드러난다.
+        """
+        monkeypatch.setattr(
+            "nuri.trading.recommend.price_targets.calculate_portfolio_targets",
+            lambda: [
+                {"ticker": "AAPL", "account": "Brokerage Alpha"},
+                {"ticker": "AAPL", "account": "Brokerage Beta"},
+            ],
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.price_targets.check_take_profit_signals",
+            lambda: [{"ticker": "AAPL", "account": "Brokerage Beta", "level": "TP1", "sell_pct": 0.5}],
+        )
+        monkeypatch.setattr("nuri.trading.recommend.price_targets.check_trailing_stop_signals", lambda: [])
+        monkeypatch.setattr("nuri.trading.recommend.price_targets.check_leader_trail_signals", lambda: [])
+
+        data = client.get("/api/targets").json()
+        by_account = {t["account"]: t for t in data["targets"]}
+
+        assert by_account["Brokerage Beta"]["take_profit_triggered"] == "TP1", "닿은 계좌에는 붙어야 한다"
+        assert by_account["Brokerage Alpha"]["take_profit_triggered"] is None, "안 닿은 계좌에 새면 안 된다"
+
     def test_targets_signal_failures_swallowed(self, client, monkeypatch):
         """tp/ts signal exceptions don't block response (lines 22-23, 26-27)."""
         monkeypatch.setattr(
