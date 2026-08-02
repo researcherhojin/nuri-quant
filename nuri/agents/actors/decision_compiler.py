@@ -385,6 +385,73 @@ class DecisionCompiler(Actor):
     # ─── Discord publish (best-effort) ───────────────────────
 
     @staticmethod
+    def _brief_summary(payload: dict, rationale: dict) -> str:
+        """추천 1건 → 사람이 읽는 카드 (#571).
+
+        구 렌더는 `conv 0.81 | regime: top 0.72 | causal: 0.68` 이었다 — 전부
+        내부 점수 이름이라 "그래서 얼마에 사고 어디서 끊나"에 답하지 않는다(#571
+        본문의 첫 지적). 게다가 `margin` 은 계산해서 payload 에 넣어놓고 렌더러
+        화이트리스트 밖이라 **화면에 한 번도 안 나왔다**.
+
+        가격은 절대값과 함께 **진입가 대비 %**를 같이 준다 — 손절 -7% / 1차 +20%
+        같은 거리감이 있어야 룰과 대조가 된다.
+        """
+        from nuri.agents.discord.outbox import format_money
+
+        ticker = payload.get("ticker", "")
+        action = (payload.get("kind") or "").upper()
+        mark = {"BUY": "🟢", "SELL": "🔴"}.get(action, "")
+
+        head_bits = [f"{mark} {ticker} · {action}".strip()]
+        if payload.get("position"):
+            head_bits.append(
+                {"new": "신규", "held": "보유", "held/winner": "보유·수익", "held/loser": "보유·손실"}.get(
+                    payload["position"], payload["position"]
+                )
+            )
+        if payload.get("horizon"):
+            head_bits.append(str(payload["horizon"]))
+        lines = [" · ".join(head_bits)]
+
+        levels = payload.get("price_levels") or {}
+        entry = levels.get("entry")
+        if entry:
+
+            def _leg(label: str, value) -> str | None:
+                if not value:
+                    return None
+                gap = (float(value) - float(entry)) / float(entry) * 100
+                return f"{label} {format_money(value, ticker)} ({gap:+.1f}%)"
+
+            legs = [f"진입 {format_money(entry, ticker)}"]
+            legs += [
+                x
+                for x in (
+                    _leg("손절", levels.get("stop")),
+                    _leg("1차", levels.get("tp1")),
+                    _leg("2차", levels.get("tp2")),
+                )
+                if x
+            ]
+            if levels.get("trailing_pct") is not None:
+                legs.append(f"트레일링 {float(levels['trailing_pct']):+.0f}%")
+            lines.append("　" + " · ".join(legs))
+
+        # 합의 근거 — 이름을 한국어로 풀고, 그동안 유실되던 2위 격차까지 싣는다.
+        why = []
+        if payload.get("conviction") is not None:
+            why.append(f"합의 {float(payload['conviction']):.2f}")
+        if rationale.get("regime_top_prob") is not None:
+            why.append(f"국면 상위확률 {float(rationale['regime_top_prob']):.2f}")
+        if rationale.get("top2_margin") is not None:
+            why.append(f"2위와 격차 {float(rationale['top2_margin']):.2f}")
+        if rationale.get("causal_certainty") is not None:
+            why.append(f"인과 확신 {float(rationale['causal_certainty']):.2f}")
+        if why:
+            lines.append("　" + " · ".join(why))
+        return "\n".join(lines)
+
+    @staticmethod
     def _publish_brief(
         decision_id: str,
         ticker: str,
@@ -469,6 +536,8 @@ class DecisionCompiler(Actor):
                             payload["position"] = "held"
                 except Exception:  # noqa: BLE001
                     pass
+
+            payload["summary"] = DecisionCompiler._brief_summary(payload, rationale)
 
             stage_brief(
                 payload=payload,

@@ -169,7 +169,9 @@ def _build_breach_payload(breach: dict[str, Any], date: str) -> dict[str, Any]:
     days = breach.get("breach_days")
     age = f"{days}일째" if days else "오늘 이탈"
 
-    head = f"🔴 {label} · 손절선 이탈 {age}"
+    # 계좌를 카드에 남긴다 — 같은 티커를 여러 계좌에 보유하면(계좌별 평단이 달라
+    # dedupe_key 도 계좌를 포함한다) "어느 계좌에서 파는가"가 곧 실행 정보다.
+    head = f"🔴 {label} · 손절선 이탈 {age} · {breach['account']}"
     money = (
         f"　현재 {format_money(breach['current'], ticker)} / 평단 {format_money(breach['avg'], ticker)} ({pnl:+.1f}%)"
     )

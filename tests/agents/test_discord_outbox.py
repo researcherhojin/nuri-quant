@@ -604,3 +604,149 @@ def test_payload_without_summary_or_ticker_still_carries_content():
 
     assert not line.startswith("?")
     assert "1.3" in line and "-2.1" in line
+
+
+# ─── #571 렌더 계약 전수 검사 (producer 가 늘어나도 유실 0) ──────────────────
+
+
+def _all_brief_payloads():
+    """#brief 로 payload 를 stage 하는 **모든** producer 의 대표 payload.
+
+    새 producer 를 추가하면 여기에도 넣는다. 넣지 않으면 이 파일이 못 잡지만,
+    넣는 순간 아래 두 계약(내용 유실 0 / `?` 금지)이 자동 적용된다.
+    """
+    from nuri.agents.actors.decision_compiler import DecisionCompiler
+    from nuri.alerts import alpha_report, portfolio_signals, postmarket_brief, risk_signals
+
+    breach = {
+        "ticker": "TST_A",
+        "account": "Brokerage Alpha",
+        "avg": 100.0,
+        "current": 80.0,
+        "pnl_pct": -20.0,
+        "threshold": -7,
+        "qty": 10.0,
+        "loss_amount": -200.0,
+        "breach_days": 3,
+        "first_breach_date": "2026-07-30",
+        "first_breach_pnl_pct": -12.0,
+    }
+    buy = {
+        "kind": "BUY",
+        "ticker": "TST_B",
+        "conviction": 0.81,
+        "regime": "top 0.72",
+        "causal": "0.68",
+        "decision_id": "d-1",
+        "margin": "0.15",
+        "horizon": "growth",
+        "position": "new",
+        "price_levels": {"entry": 132.0, "stop": 123.0, "tp1": 158.0, "tp2": 185.0, "trailing_pct": -15},
+    }
+    rationale = {"regime_top_prob": 0.72, "causal_certainty": 0.68, "top2_margin": 0.15}
+    buy["summary"] = DecisionCompiler._brief_summary(buy, rationale)
+
+    return {
+        "risk_signals.SELL": risk_signals._build_breach_payload(breach, "2026-08-02"),
+        "decision_compiler.BUY": buy,
+        "postmarket_brief.INFO": postmarket_brief._build_summary_payload(
+            "kr", {"vix": {"delta": 1.3}}, {"total_pct_weighted": -2.1}, [{"ticker": "XLK", "delta_pct": 0.8}]
+        ),
+        "alpha_report.INFO": alpha_report._build_payload(
+            {
+                "verdict": "NO_SAMPLE",
+                "pre_evaluation": True,
+                "window_days": 30,
+                "benchmark": "SPY",
+                "as_of": "2026-08-02",
+                "n": 0,
+                "n_required": 200,
+            }
+        ),
+        "portfolio_signals.concentration": portfolio_signals._build_rebalance_payload(
+            {"ticker": "TST_C", "current_value": 28.4, "limit_value": 0.2}, "2026-08-02"
+        ),
+        "portfolio_signals.sector": portfolio_signals._build_sector_rebalance_payload(
+            {"sector": "Technology", "current_value": 41.0, "limit_value": 0.35}, "2026-08-02"
+        ),
+        "portfolio_signals.sleeve": portfolio_signals._build_sleeve_rebalance_payload(
+            {"strategy": "core", "used_pct": 12.0, "cap_pct": 10.0}, "2026-08-02"
+        ),
+    }
+
+
+# 화이트리스트 렌더(legacy 경로)에서 안 나와도 되는 키 — 내부 식별자/구조체.
+# 여기 없는 키가 화면에서 사라지면 그건 사용자가 못 보는 정보다. 조용히 추가 금지.
+_NON_RENDERED_KEYS = {"kind", "ticker", "summary", "date", "decision_id", "price_levels", "session", "verdict"}
+
+
+def test_whitelist_producers_render_every_field_they_set():
+    """`summary` 없이 화이트리스트 렌더에 기대는 producer 는 전 필드가 보여야 한다.
+
+    `? | INFO` 가 이 계약이 없어서 났다: postmarket 요약의 키가 전부 화이트리스트
+    밖이라 내용이 통째로 버려졌고 몇 달간 아무도 몰랐다. `summary` 를 주는
+    producer 는 카드가 곧 계약이라 아래 `_carries_its_numbers` 계열이 담당한다.
+    """
+    from nuri.agents.discord.outbox import _format_event_line
+
+    checked = 0
+    for name, payload in _all_brief_payloads().items():
+        if payload.get("summary"):
+            continue
+        rendered = _format_event_line(payload)
+        for key, value in payload.items():
+            if key in _NON_RENDERED_KEYS or value is None or isinstance(value, (dict, list)):
+                continue
+            assert str(value) in rendered, f"{name}: '{key}' 값이 화면에서 유실됐다 — {rendered!r}"
+        checked += 1
+    assert checked, "화이트리스트 producer 가 하나도 안 잡혔다 — 카나리아 실패(검사가 공회전)"
+
+
+def test_summary_producers_put_their_numbers_on_the_card():
+    """`summary` producer 는 카드가 계약 — 계산해놓고 안 보여주면 FAIL.
+
+    `decision_compiler` 의 `margin`(2위와의 격차)이 payload 에는 있는데 렌더러
+    화이트리스트 밖이라 **한 번도 화면에 안 나왔다**. 같은 유실을 카드에서 막는다.
+    """
+    from nuri.agents.discord.outbox import _format_event_line
+
+    payloads = _all_brief_payloads()
+
+    buy = _format_event_line(payloads["decision_compiler.BUY"])
+    assert "0.15" in buy, f"2위와의 격차(margin)가 카드에 없다 — {buy!r}"
+    assert "$132" in buy and "$123" in buy and "$158" in buy  # 진입·손절·1차
+    assert "+19.7%" in buy  # 진입가 대비 거리 — 룰(+20%)과 대조 가능해야 한다
+
+    sell = _format_event_line(payloads["risk_signals.SELL"])
+    assert "3일째" in sell and "-$200" in sell and "Brokerage Alpha" in sell
+
+
+def test_no_brief_producer_renders_as_a_bare_question_mark():
+    """`? | INFO` 재발 금지 — 티커 자리에 `?` 만 찍히는 카드가 하나도 없어야 한다."""
+    from nuri.agents.discord.outbox import _format_event_line
+
+    for name, payload in _all_brief_payloads().items():
+        rendered = _format_event_line(payload)
+        assert rendered.strip(), f"{name}: 빈 렌더"
+        assert not rendered.lstrip().startswith("?"), f"{name}: `?` 로 시작 — {rendered!r}"
+        assert len(rendered) > 12, f"{name}: 내용이 사실상 없음 — {rendered!r}"
+
+
+def test_generic_digest_stays_under_the_discord_total_limit():
+    """회귀 잠금 — embed 총합이 6000 을 넘으면 Discord 가 400 으로 거부해 다이제스트가 통째로 사라진다.
+
+    per-field 1024 만 지키면 25 field × 1024 = 25,600 자가 나온다(실측 24,588).
+    #incidents 에서 이건 "스케줄러가 죽었다"는 사실이 그걸 알리는 메시지와 함께
+    증발한다는 뜻이다. 총합 가드를 빼면 이 테스트가 FAIL 한다.
+    """
+    from nuri.agents.discord.outbox import bucket_generic_digest
+
+    events = [{"kind": f"incident_{i}", "summary": "가" * 190} for i in range(25) for _ in range(8)]
+
+    embed = bucket_generic_digest(events, "Incidents")
+
+    total = (
+        sum(len(f["name"]) + len(f["value"]) for f in embed["fields"]) + len(embed["title"]) + len(embed["description"])
+    )
+    assert total <= 6000, f"embed 총합 {total} — Discord 상한 초과"
+    assert any("groups" in f["name"] for f in embed["fields"]), "생략된 그룹을 알리지 않고 조용히 버렸다"

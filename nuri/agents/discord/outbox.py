@@ -65,6 +65,8 @@ _MAX_FIELDS = 25
 # 지금은 4줄 카드(종목·행동·경과일 / 현재가·손실 / 룰 근거 / 집행 안내)를 담는다.
 # 1024 field 안에 카드 3장이 들어가는 값으로 잡았다 — 그 이상은 overflow marker.
 _EVENT_CARD_MAX = 330
+# Discord embed 총합 상한은 6000. title/description/footer 여유를 빼고 field 에 쓸 예산.
+_EMBED_TOTAL_BUDGET = 5500
 
 _PRIORITY_BY_ACTION = {
     "BUY": 0,
@@ -587,6 +589,7 @@ def bucket_generic_digest(
         by_group.setdefault(group, []).append(str(line))
 
     fields = []
+    used = len(title) + len(f"{n} aggregated events")
     for group, lines in by_group.items():
         meta = _QUALITY_KIND_META.get(group) or _SRE_KIND_META.get(group)
         group_name = f"{meta['label']} ({len(lines)})" if meta else f"{group} ({len(lines)})"
@@ -606,13 +609,22 @@ def bucket_generic_digest(
         # 자가점검 kind 는 맨 아래 "조치" 를 붙인다 (사용자가 할 일이 아니라 코드 개선).
         if meta and running + len(meta["action"]) + 1 <= _FIELD_VALUE_MAX:
             body_lines.append(f"→ {meta['action']}")
-        fields.append(
-            {
-                "name": _truncate(group_name, _FIELD_NAME_MAX),
-                "value": _truncate("\n".join(body_lines), _FIELD_VALUE_MAX),
-                "inline": False,
-            }
-        )
+        field = {
+            "name": _truncate(group_name, _FIELD_NAME_MAX),
+            "value": _truncate("\n".join(body_lines), _FIELD_VALUE_MAX),
+            "inline": False,
+        }
+        # embed **총합** 예산 — per-field 1024 만 지키면 25 field × 1024 = 25,600 자가
+        # 나온다. Discord 는 총 6000 자를 넘기면 400 으로 거부하고, 그러면 다이제스트가
+        # 통째로 사라진다. #incidents 에서 이건 "스케줄러가 죽었다"는 사실이 그걸 알리는
+        # 메시지와 함께 증발한다는 뜻이다(#927·#894 와 같은 계열). 넘치면 조용히 버리지
+        # 말고 몇 그룹이 빠졌는지 남긴다.
+        if used + len(field["name"]) + len(field["value"]) > _EMBED_TOTAL_BUDGET:
+            dropped = len(by_group) - len(fields)
+            fields.append({"name": f"… (+{dropped} groups)", "value": "총 길이 상한으로 생략", "inline": False})
+            break
+        used += len(field["name"]) + len(field["value"])
+        fields.append(field)
         if len(fields) >= _MAX_FIELDS:
             break
 
