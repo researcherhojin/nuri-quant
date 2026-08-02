@@ -308,11 +308,11 @@ def test_write_brief_survives_sleeve_staging_error(seeded_db, portfolio_yaml):
 
 
 def test_us_session_dst_aware_cron_dispatch():
-    """NYSE 16:30 ET window — EDT (KST 05:30) / EST (KST 06:30) 양쪽 검증.
+    """NYSE 16:30 ET window 함수 자체 — EDT (KST 05:30) / EST (KST 06:30).
 
-    cron 06:30 + 07:30 KST 등록이라 EDT 기간엔 cron 06:30 fire 시 NYSE 17:30
-    ET (60분 늦음) → window 미달 → skip. EST 기간엔 cron 06:30 fire = NYSE
-    16:30 ET (정확) → window 진입 → run.
+    ⚠️ 이 테스트는 window **함수만** 본다. 실제 cron 이 그 시각에 등록돼 있는지는
+    `test_registered_us_crons_actually_hit_the_window_in_both_dst_regimes` 가 본다 —
+    둘을 나눠두지 않아 EDT 8개월 공백을 이 파일이 통과시켰다.
     """
     from nuri.alerts.postmarket_brief import _is_now_within_us_postclose_window
 
@@ -430,6 +430,36 @@ def test_postmarket_jobs_registered_in_scheduler():
 
     kr = next(j for j in SCHEDULES if j["name"] == "postmarket_brief_kr")
     assert kr["cron"] == "0 16 * * 1-5", "KR session must fire at KST 16:00 weekdays"
+
+
+def test_registered_us_crons_actually_hit_the_window_in_both_dst_regimes():
+    """등록된 cron 중 최소 하나가 각 DST 시기의 window 에 들어가야 한다.
+
+    회귀 잠금 — 이전 등록(06:30·07:30 KST)은 **EDT 8개월간 어느 것도 window 에
+    못 들어갔다**(06:30→NYSE 17:30 ET, 07:30→18:30 ET). 그래서 US 브리프가 한 번도
+    생성되지 않았고, 프로덕션 `data/reports/postmarket/` 에 `*-us.md` 는 0개인 채
+    `*-kr.md` 만 50개 쌓였다. 손절 SELL 과 Tier 1b/1c/1d REBALANCE 가 동시에 침묵했다.
+
+    기존 `test_us_session_dst_aware_cron_dispatch` 는 window **함수만** 검증해
+    이 결함을 못 봤다 — 함수는 05:30 을 옳게 True 로 답했고, 아무도 05:30 에
+    cron 이 없다는 걸 묻지 않았다. 여기서는 SCHEDULES 의 실제 등록 시각을 읽는다.
+    """
+    from nuri.alerts.postmarket_brief import _is_now_within_us_postclose_window
+    from nuri.scheduler import SCHEDULES
+
+    us_crons = [j["cron"] for j in SCHEDULES if j["name"].startswith("postmarket_brief_us")]
+    assert us_crons, "US postmarket job 이 등록돼 있어야 한다"
+
+    for label, day in (("EDT", "2026-07-15"), ("EST", "2026-01-15")):
+        hits = []
+        for cron in us_crons:
+            minute, hour = cron.split()[0], cron.split()[1]
+            now = datetime.fromisoformat(f"{day}T{int(hour):02d}:{int(minute):02d}:00").replace(
+                tzinfo=ZoneInfo("Asia/Seoul")
+            )
+            if _is_now_within_us_postclose_window(_now_kst=now):
+                hits.append(cron)
+        assert hits, f"{label} 기간에 window 에 드는 cron 이 없다 — US 브리프가 그 기간 내내 안 돈다 (등록: {us_crons})"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

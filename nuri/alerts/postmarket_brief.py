@@ -699,10 +699,15 @@ def _is_now_within_us_postclose_window(*, _now_kst=None) -> bool:
 
     NYSE close: 16:00 America/New_York. close + 30min = 16:30 ET.
     EST (Nov 첫 일요일 ~ Mar 둘째 일요일): KST 06:30
-    EDT (Mar 둘째 일요일 ~ Nov 첫 일요일): KST 05:30 — but cron 06:30 / 07:30
-    KST 양쪽 등록이라 EDT 기간엔 06:30 (=NYSE 17:30 ET, late-fire) skip.
+    EDT (Mar 둘째 일요일 ~ Nov 첫 일요일): KST 05:30
 
-    실제 trigger 는 dual-cron 중 NYSE 16:30 ET 와 매칭되는 한쪽만 진행.
+    scheduler 는 이 두 시각을 dual-cron 으로 등록하고, 여기서 맞는 쪽만 통과시킨다.
+    ⚠️ 등록 시각과 이 window 는 **같이** 바뀌어야 한다 — 예전에 cron 이 06:30·07:30
+    으로 잡혀 있어 EDT 기간엔 어느 쪽도 window 에 못 들어갔고, US 브리프가 8개월간
+    한 번도 안 돌았다(그동안 `*-us.md` 0개). 이 함수만 보면 05:30 을 옳게 True 로
+    답하므로 함수 단위 테스트로는 안 잡힌다.
+    **Test:** `tests/alerts/test_postmarket_brief.py::test_registered_us_crons_actually_hit_the_window_in_both_dst_regimes`
+    — SCHEDULES 의 실제 등록 시각을 읽어 두 DST 시기 각각에 적중 cron 이 있는지 본다.
     """
     now_kst = _now_kst or kst_now()
     nyse_now = now_kst.astimezone(ZoneInfo("America/New_York"))
