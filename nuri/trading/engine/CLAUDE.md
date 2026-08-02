@@ -25,4 +25,5 @@ These are operational details unique to this directory; the canonical sources ab
 Mechanical ordering when emitting actions: `stop_loss → take_profit → trailing_stop_set → new_buy`.
 - Within `stop_loss`: sort by `loss%` descending (biggest loss first — bleeding stops first).
 - Within `take_profit`: sort by `excess%` descending (biggest winner first — lock in gains).
-- Rationale: declining momentum loses more per hour delayed; rising momentum is more forgiving. Codified in `config/rules.yaml execution_priority` (order + sort keys).
+- Rationale: declining momentum loses more per hour delayed; rising momentum is more forgiving.
+- ⚠️ **이 순서는 코드에 없다 (2026-08-02 감사).** `config/rules.yaml execution_priority` 는 어느 모듈도 읽지 않고(`order` / `stop_loss_sort` / `take_profit_sort` 전부 소비처 0), 이 문서가 "Codified in config" 라고 적어둔 탓에 배선된 것으로 읽혀 왔다. 위 서술은 **설계 의도**이지 현재 동작이 아니다. 실제로 순서를 강제하려면 소비자를 만들어야 하고 그건 매매 동작 변경이라 STRATEGY PR 대상.
