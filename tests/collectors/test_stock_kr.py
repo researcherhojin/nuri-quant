@@ -52,9 +52,18 @@ class TestStockKRCollectorScenarios:
         )
         assert StockKRCollector().collect(days=5).empty
 
-    def test_collect_no_kr_tickers(self, monkeypatch, tmp_path):
+    def test_collect_without_kr_holdings_still_gets_reference(self, monkeypatch, tmp_path):
+        """KR 보유가 0이어도 기준 티커는 수집한다.
+
+        브리프의 KR 벤치마크는 보유 종목이 아니라 `source=portfolio` 에 안 잡히고,
+        `universe.yaml` 은 KRX 구성종목 자동 동기화라 ETF 를 넣어도 지워진다. 그래서
+        어느 경로로도 안 잡혀 프로덕션 `prices` 에 0행이었다 (2026-08-02 실측).
+
+        회귀 잠금: 기준 티커 union 을 지우면 다시 빈 DataFrame 이 되고, KR 벤치마크·
+        섹터 무버 fallback 이 조용히 죽는다.
+        """
         import nuri.core.db as db_mod
-        from nuri.collectors.stock_kr import StockKRCollector
+        from nuri.collectors.stock_kr import StockKRCollector, _reference_tickers
 
         path = tmp_path / "empty.db"
         init_db(path)
@@ -72,7 +81,40 @@ class TestStockKRCollectorScenarios:
             ],
             path,
         )
+        mock_ohlcv = pd.DataFrame(
+            {"시가": [40000], "고가": [41000], "저가": [39000], "종가": [40500], "거래량": [1000000]},
+            index=pd.to_datetime(["2026-07-31"]),
+        )
+        monkeypatch.setattr("nuri.collectors.stock_kr.krx.get_market_ohlcv", MagicMock(return_value=mock_ohlcv))
+
+        df = StockKRCollector().collect(days=5)
+
+        assert set(df["ticker"]) == set(_reference_tickers()), "기준 티커만 — 보유 KR 은 없다"
+
+    def test_config_without_kr_benchmark_falls_back_to_empty(self, monkeypatch, tmp_path):
+        """`brief.benchmark.kr` 이 사라지면 기준 티커도 없다 — 그때만 빈 결과다.
+
+        기준 티커 union 이후 "수집할 한국 종목이 없습니다" 경로는 config 에서 KR
+        벤치마크가 빠졌을 때만 도달한다. 그 상태는 옛 버그(0행)로의 조용한 복귀라
+        동작을 명시적으로 잠가둔다.
+        """
+        import nuri.core.db as db_mod
+        from nuri.collectors.stock_kr import StockKRCollector
+
+        path = tmp_path / "empty.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        monkeypatch.setattr("nuri.core.rules.BRIEF_BENCHMARK", {"us": "SPY"})
+
         assert StockKRCollector().collect(days=5).empty
+
+    def test_reference_tickers_come_from_config_not_a_second_list(self):
+        """기준 티커는 config 선언에서 뽑는다 — 목록을 또 하드코딩하면 갈라진다."""
+        from nuri.collectors.stock_kr import _reference_tickers
+        from nuri.core.rules import BRIEF_BENCHMARK
+
+        assert _reference_tickers() == [BRIEF_BENCHMARK["kr"]]
+        assert BRIEF_BENCHMARK["us"] not in _reference_tickers(), "US 벤치마크는 KR 수집기 소관이 아니다"
 
     def test_collect_includes_indices(self, monkeypatch, db_with_portfolio):
         """KOSPI/KOSDAQ 지수가 같이 수집되는지 확인 (#247)."""
