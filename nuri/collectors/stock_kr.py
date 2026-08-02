@@ -44,6 +44,25 @@ def _call_with_timeout(func, timeout_sec: int, *args, **kwargs):
             raise
 
 
+def _reference_tickers() -> list[str]:
+    """시스템이 **이미 의존한다고 선언한** KR 기준 티커.
+
+    브리프의 KR 벤치마크(`069500.KS`)는 보유 종목이 아니라 `source=portfolio` 에
+    안 잡히고, `universe.yaml` 은 KRX 구성종목 자동 동기화(`make universe-sync`)라
+    ETF 를 손으로 넣어도 다음 sync 에 지워진다. 그래서 어느 경로로도 수집되지
+    않았고 — 프로덕션 `prices` 에 **0행**이다(2026-08-02 실측). 소비자는 넷인데
+    (브리프 벤치마크 · 섹터 무버 fallback · 이벤트 수집 · risk_signals) 공급자가
+    없었다.
+
+    목록을 새로 하드코딩하지 않고 config 선언에서 뽑는다 — 벤치마크를 바꾸면
+    수집 대상이 따라 움직여야지, 두 곳을 손으로 맞추면 또 갈라진다.
+    """
+    from nuri.core.rules import BRIEF_BENCHMARK
+    from nuri.core.ticker_names import is_kr_ticker
+
+    return sorted({str(t) for t in BRIEF_BENCHMARK.values() if t and is_kr_ticker(str(t))})
+
+
 class StockKRCollector(BaseCollector):
     """pykrx로 한국 주가 수집 (KOSPI/KOSDAQ) + 지수 수집 (yfinance)."""
 
@@ -60,12 +79,15 @@ class StockKRCollector(BaseCollector):
             source: 'portfolio' (default, 보유) | 'universe' (KOSPI 200 전체) | 'all'
                     #272 Phase 2c bug fix — collect-universe에서 KR 사일로 잔존 해결.
         """
-        tickers = self._get_tickers(market="kr", source=source)
+        # 기준 티커는 source 와 무관하게 항상 붙인다 — 보유도 universe 도 아니지만
+        # 브리프·타당성 검사가 매일 읽는다.
+        reference = _reference_tickers()
+        tickers = sorted(set(self._get_tickers(market="kr", source=source)) | set(reference))
         if not tickers:
             self.logger.warning("수집할 한국 종목이 없습니다")
             return pd.DataFrame()
 
-        self.logger.info(f"수집 대상: {len(tickers)} 한국 종목 ({days}일, source={source})")
+        self.logger.info(f"수집 대상: {len(tickers)} 한국 종목 ({days}일, source={source}, 기준 {len(reference)}종)")
 
         # KST 기준 날짜 (KRX는 한국 영업일 기준)
         from nuri.core.timezone import kst_now
