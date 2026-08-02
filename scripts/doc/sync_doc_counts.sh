@@ -151,9 +151,11 @@ update_claim live_migrations     README.md                     '[0-9]+ forward-o
 # ARCHITECTURE 도 같은 수치를 적는데 등록이 안 돼 있었다 — 2026-07-30 실측 46 vs 실제 49.
 update_claim live_migrations     docs/ARCHITECTURE.md          '\([0-9]+ migrations as of'
 update_claim live_scheduler_jobs docs/ARCHITECTURE.md          '[0-9]+ cron jobs in'
-# README 아키텍처 다이어그램도 같은 수치를 적는데 등록이 안 돼 있었다 — 2026-08-03 실측
-# 48 vs 실제 49 (data_sanity 추가분). ARCHITECTURE 만 보던 것과 같은 누락 패턴.
+# README 는 같은 수치를 세 군데 적는데 (다이어그램 · 산문 · Project Stats) 전부 미등록이라
+# 셋 다 48 로 굳어 있었다 — 2026-08-03 실측, 실제 49. verify 쪽과 패턴을 맞춰 둘 것.
 update_claim live_scheduler_jobs README.md                     '[0-9]+ cron jobs · in-process'
+update_claim live_scheduler_jobs README.md                     '[0-9]+ independent APScheduler jobs'
+update_claim live_scheduler_jobs README.md                     '[0-9]+ cron entries'
 update_claim live_rules_lines    config/CLAUDE.md              '\| [0-9]+ \| Investment rules'
 
 # Pytest collect count — runs pytest which is slow; do last so failures above

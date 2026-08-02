@@ -57,7 +57,7 @@ flowchart TB
     SCHED["APScheduler · 49 cron jobs · in-process<br/>the receiver is the sole writer"]:::driver
     CFG[/"config/*.yaml<br/>policies"/]:::source
 
-    subgraph Collect["Collect — 25 jobs"]
+    subgraph Collect["Collect — 26 jobs"]
         COL(["27 data collectors"]):::pipe
     end
     subgraph Decide["Decide — 1 job, 07:05 KST"]
@@ -106,11 +106,11 @@ flowchart TB
     classDef user   fill:#422006,stroke:#f59e0b,color:#fef3c7
 ```
 
-**Nothing chains the stages.** There is no orchestrator: `nuri/scheduler.py` registers 48 independent APScheduler jobs, and a stage becomes runnable when its inputs happen to be in the database. That is what makes any stage re-runnable in isolation, and it is also why the cron order does not match the reading order — outcome tracking runs at 07:02, three minutes *before* the consensus job at 07:05 that consumes what it wrote the previous day.
+**Nothing chains the stages.** There is no orchestrator: `nuri/scheduler.py` registers 49 independent APScheduler jobs, and a stage becomes runnable when its inputs happen to be in the database. That is what makes any stage re-runnable in isolation, and it is also why the cron order does not match the reading order — outcome tracking runs at 07:02, three minutes *before* the consensus job at 07:05 that consumes what it wrote the previous day.
 
 | Stage | Scheduled as | Reads | Writes |
 |-------|--------------|-------|--------|
-| **Collect** | 25 jobs, `*/5` during market hours down to weekly | external APIs | `prices` · `fundamentals` · `macro` · `news` |
+| **Collect** | 26 jobs, `*/5` during market hours down to weekly | external APIs | `prices` · `fundamentals` · `macro` · `news` |
 | **Analyze** | **no job** — 22 per-ticker signals · 10 regimes (6 base + 4 special) · 4-factor composite are computed when a report or an endpoint asks | `prices` · `macro` | nothing (`news.sentiment` aside) |
 | **Consensus** | `consensus`, `5 7 * * *` | `recommendations.outcome_30d` (for weights) · collector tables | `recommendations` with `agent_verdicts` JSON |
 | **Certify** | **no job of its own** — `record_decisions` runs inside the consensus job; the `certifications` table is written by `premarket_brief` (`0 9 * * 1-5`) | consensus result **in memory** | `decisions` · `agent_decisions` · `certifications` |
@@ -280,7 +280,7 @@ Measured against `main` on 2026-07-29. Counts marked ✅ are verified on every P
 | **Data collectors** | 27 collectors (BaseCollector pattern) | ✅ |
 | **Specialist agents** | 10 (consensus vote, weights sum to 1.0) | |
 | **Actor fleet** | 15 registered actors + 3 infrastructure helpers | |
-| **Scheduler jobs** | 48 cron entries (APScheduler, in-process) | |
+| **Scheduler jobs** | 49 cron entries (APScheduler, in-process) | |
 | **Strategy regimes** | 10 regimes (6 base + 4 special) | ✅ |
 | **Trading signals** | 22 per-ticker (actionable) + 2 market-wide (shadow) | |
 | **API endpoints** | 72 (FastAPI on `:8001`) | |
