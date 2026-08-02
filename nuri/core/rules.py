@@ -33,6 +33,8 @@ MIN_CASH_RESERVE = RULES.get("position_limits", {}).get("min_cash_reserve", 0.20
 
 # ─── 손절 ───
 STOCK_STOP_LOSS = RULES["stop_loss"]["per_stock"]
+# ─── Brief 표시 임계 (#571) — 매매 룰 아님, 카드 심각도 표기용 ───
+BRIEF_SEVERITY_GAP_PCT = RULES.get("brief", {}).get("severity_gap_pct", -10)
 STOCK_STOP_LOSS_VALUE = RULES.get("stop_loss", {}).get("per_stock_value", -10)
 PORTFOLIO_STOP = RULES["stop_loss"]["portfolio"]
 

@@ -209,8 +209,8 @@ def test_payload_renders_actionable_line():
     assert "TST_A" in lines[0] and "3일째" in lines[0]
     assert "$90" in lines[1] and "$100" in lines[1]  # 현재가와 평단이 모두 보인다
     assert "평가손실" in lines[1]
-    assert "-7% 손절선" in lines[2]
-    assert "07-06" in lines[2]  # 최초 이탈일 이후 추가 하락 맥락
+    assert "-7% 손절" in lines[-1]
+    assert any("07-06" in x for x in lines)  # 최초 이탈일 이후 추가 하락 맥락
 
 
 def test_breach_card_carries_the_numbers_a_decision_needs():
@@ -285,7 +285,7 @@ def test_breach_age_counts_only_the_latest_consecutive_run(db_path):
             db_path,
         )
 
-    age = risk_signals._breach_age("TST_A", avg=100.0, threshold=-10, db_path=db_path)
+    age = risk_signals._price_context("TST_A", avg=100.0, threshold=-10, db_path=db_path)
 
     assert age["breach_days"] == 3  # 07-06 ~ 07-08 만
     assert age["first_breach_date"] == "2026-07-06"
@@ -474,3 +474,108 @@ def test_cli_no_breach_reports_clean(db_path, monkeypatch, capsys):
     rc = risk_signals.main([])
     assert rc == 0
     assert "없음" in capsys.readouterr().out
+
+
+# ─── #571 심각도 · 비중 · 추세 ────────────────────────────────────────────────
+
+
+def _breach(**over):
+    b = {
+        "ticker": "TST_A",
+        "account": "Brokerage Alpha",
+        "avg": 100.0,
+        "current": 80.0,
+        "pnl_pct": -20.0,
+        "threshold": -7,
+        "qty": 10.0,
+        "loss_amount": -200.0,
+        "breach_days": 5,
+        "first_breach_date": "2026-07-28",
+        "first_breach_pnl_pct": -10.0,
+    }
+    b.update(over)
+    return b
+
+
+def test_severity_marker_separates_deep_from_shallow():
+    """카드가 전부 같은 색이면 -1%p 이탈과 -40%p 이탈이 구분되지 않는다.
+
+    사용자 판정: "보고 판단하기 애매하다". 🔴 = 이탈폭이 임계 이하 **또는** 악화 중.
+    """
+    deep = risk_signals._build_breach_payload(_breach(pnl_pct=-48.0, first_breach_pnl_pct=-40.0), "2026-08-02")
+    assert deep["summary"].startswith("🔴")
+
+    # 얕게 이탈(-1.3%p) + 최초 이탈보다 회복 → 경계
+    shallow = risk_signals._build_breach_payload(
+        _breach(pnl_pct=-8.3, threshold=-7, first_breach_pnl_pct=-8.7), "2026-08-02"
+    )
+    assert shallow["summary"].startswith("🟠")
+    assert "회복 중" in shallow["summary"]
+
+
+def test_deep_breach_is_severe_even_when_not_worsening():
+    """이탈폭이 크면 반등 중이어도 심각으로 본다 — 폭과 방향은 별개 축."""
+    p = risk_signals._build_breach_payload(_breach(pnl_pct=-40.0, first_breach_pnl_pct=-45.0), "2026-08-02")
+    assert p["summary"].startswith("🔴")
+    assert "얕은" not in p["summary"]  # 폭이 큰데 얕다고 말하면 안 된다
+
+
+def test_card_shows_account_weight_and_trend():
+    p = risk_signals._build_breach_payload(
+        _breach(weight_pct=8.2, ret_5d=-6.1, ret_20d=-14.3, drawdown_52w=-61.0), "2026-08-02"
+    )
+    s = p["summary"]
+    assert "계좌비중 8.2%" in s
+    assert "5일 -6.1%" in s and "20일 -14.3%" in s
+    assert "52주고 대비 -61%" in s
+
+
+def test_weight_omitted_for_mixed_currency_account(db_path, monkeypatch):
+    """통화가 섞인 계좌는 환율 없이 합산하면 틀린다 — 비중을 아예 빼야 한다."""
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Mixed", avg=100.0, current=80.0)  # USD
+    upsert_portfolio(
+        [
+            {
+                "account": "Mixed",
+                "ticker": "005930.KS",
+                "quantity": 3,
+                "avg_price": 1000.0,
+                "currency": "KRW",
+                "sector": "Tech",
+            }
+        ],
+        db_path,
+    )
+    _seed_price(db_path, "005930.KS", 900.0)
+
+    b = risk_signals.scan_stop_breaches(db_path=db_path)
+
+    assert b, "이탈은 잡혀야 한다"
+    assert all(x["weight_pct"] is None for x in b), "혼합 통화 계좌는 비중을 계산하면 안 된다"
+
+
+def test_weight_computed_for_single_currency_account(db_path, monkeypatch):
+    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    _seed(db_path, ticker="TST_A", account="Solo", avg=100.0, current=80.0)  # 10주 × 80 = 800
+    upsert_portfolio(
+        [
+            {
+                "account": "Solo",
+                "ticker": "TST_B",
+                "quantity": 10,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "sector": "Tech",
+            }
+        ],
+        db_path,
+    )
+    _seed_price(db_path, "TST_B", 120.0)  # 10주 × 120 = 1200 → 총 2000, TST_A 비중 40%
+
+    b = risk_signals.scan_stop_breaches(db_path=db_path)
+
+    assert len(b) == 1 and b[0]["ticker"] == "TST_A"
+    assert b[0]["weight_pct"] == pytest.approx(40.0)
