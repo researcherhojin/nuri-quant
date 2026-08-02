@@ -15,7 +15,7 @@ jobs:
     steps:
       # @v6 major tag 가 stale SHA (634933e…) 에 fixed 되어 CI 가 tarball 404 를
       # 반복 (4400 error). @v6.0.1 explicit 로 pin → tag 재resolution 강제.
-      - uses: actions/labeler@v6.2.0
+      - uses: actions/labeler@v7.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           configuration-path: .github/labeler.yml
