@@ -650,6 +650,7 @@ class TestGetTargetsStatus:
         mock_fn.return_value = [
             {
                 "ticker": "AAPL",
+                "account": "Brokerage Alpha",
                 "stop_loss": 140,
                 "target_1": 180,
                 "target_2": 210,
@@ -660,7 +661,26 @@ class TestGetTargetsStatus:
         from nuri.api.routes.actions import _get_targets_status
 
         result = _get_targets_status()
-        assert result["AAPL"]["stop_loss"] == 140
+        assert result[("AAPL", "Brokerage Alpha")]["stop_loss"] == 140
+
+    @patch("nuri.trading.recommend.price_targets.calculate_portfolio_targets")
+    def test_two_accounts_keep_separate_targets(self, mock_fn):
+        """같은 티커의 계좌별 타겟이 서로를 덮어쓰지 않는다 (#982).
+
+        회귀 잠금: 티커로만 키잉하면 한 계좌 것만 남고, 그게 `_get_portfolio_map()`
+        이 고른 계좌(worst-PnL)와 일치한다는 보장이 없다 → UI 에서 보유 정보와
+        손절선이 서로 다른 원가 기준으로 한 줄에 붙는다.
+        """
+        mock_fn.return_value = [
+            {"ticker": "AAPL", "account": "Brokerage Alpha", "stop_loss": 140},
+            {"ticker": "AAPL", "account": "Brokerage Beta", "stop_loss": 90},
+        ]
+        from nuri.api.routes.actions import _get_targets_status
+
+        result = _get_targets_status()
+
+        assert result[("AAPL", "Brokerage Alpha")]["stop_loss"] == 140
+        assert result[("AAPL", "Brokerage Beta")]["stop_loss"] == 90, "뒤 행이 앞 행을 덮어쓰면 안 된다"
 
     @patch("nuri.trading.recommend.price_targets.calculate_portfolio_targets", side_effect=Exception)
     def test_handles_exception(self, _):
@@ -1040,7 +1060,7 @@ class TestBuildActionsLogic:
     def test_target_1_hit_check(self):
         result = self._run(
             [{"ticker": "WIN", "action": "BUY", "confidence": 70, "agreement": 40}],
-            targets={"WIN": {"stop_loss": 90, "target_1": 120, "target_2": 140}},
+            targets={("WIN", "Main"): {"stop_loss": 90, "target_1": 120, "target_2": 140}},
             portfolio={"WIN": self._pf(125, 100, 25, 5)},
         )
         assert len(result["check"]) == 1
@@ -1049,7 +1069,7 @@ class TestBuildActionsLogic:
     def test_target_2_hit_check(self):
         result = self._run(
             [{"ticker": "BIG", "action": "BUY", "confidence": 80, "agreement": 60}],
-            targets={"BIG": {"stop_loss": 90, "target_1": 120, "target_2": 140}},
+            targets={("BIG", "Main"): {"stop_loss": 90, "target_1": 120, "target_2": 140}},
             portfolio={"BIG": self._pf(145, 100, 45, 8)},
         )
         assert "2차 익절" in result["check"][0]["reasons"][0]
