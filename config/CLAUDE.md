@@ -6,7 +6,7 @@
 
 | File | Lines | Purpose | Loader |
 |------|-------|---------|--------|
-| `rules.yaml` | 527 | Investment rules (stop-loss, take-profit, position limits, VIX gate, `account_strategies`, `measurement_mode` (§3.11 사전 고정 판정 기준 — amend 는 STRATEGY PR 필수), `siege_gates` incl. `regime_overrides` + per-class `external_applicable`) | `nuri/core/rules.py` |
+| `rules.yaml` | 533 | Investment rules (stop-loss, take-profit, position limits, VIX gate, `account_strategies`, `measurement_mode` (§3.11 사전 고정 판정 기준 — amend 는 STRATEGY PR 필수), `siege_gates` incl. `regime_overrides` + per-class `external_applicable`) | `nuri/core/rules.py` |
 | `agents.yaml` | 235 | Per-agent thresholds + confidence scale normalization + 10-agent consensus params | `nuri/core/agent_config.py` |
 | `signals.yaml` | 221 | 22 signal definitions (20 actionable + 2 shadow; type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
 | `buy_signals.yaml` | 152 | Buy-candidate scoring (`weights`, `quality_bar`, `gates`, `allocation`) + per-candidate `risk` (stop/TP) + `held_add_mode` | `nuri/trading/recommend/buy_candidate_emitter.py` (`CONFIG_PATH`) + `held_add.py` (held_add_mode block) |

@@ -38,6 +38,7 @@ _brief = RULES.get("brief", {})
 BRIEF_SEVERITY_GAP_PCT = _brief.get("severity_gap_pct", -10)
 BRIEF_BENCHMARK = _brief.get("benchmark", {"us": "SPY", "kr": "069500.KS"})
 BRIEF_EARNINGS_WINDOW_DAYS = _brief.get("earnings_window_days", 14)
+BRIEF_TRAILING_MIN_PEAK_GAIN_PCT = _brief.get("trailing_min_peak_gain_pct", 10)
 STOCK_STOP_LOSS_VALUE = RULES.get("stop_loss", {}).get("per_stock_value", -10)
 PORTFOLIO_STOP = RULES["stop_loss"]["portfolio"]
 

@@ -555,7 +555,10 @@ def check_trailing_stop_signals(db_path: Optional[Path] = None) -> list[dict]:
         list[dict]: 트레일링 스톱 시그널 리스트
     """
     df = query_df(
-        "SELECT ticker, avg_price, quantity, DATE(first_buy_date) AS entry_anchor FROM portfolio WHERE quantity > 0",
+        # account 를 함께 싣는다 — 같은 티커를 두 계좌에 보유하면 평단이 달라 신호도
+        # 달라지는데, 이제껏 반환값에 계좌가 없어 소비자가 구분할 수 없었다.
+        "SELECT account, ticker, avg_price, quantity, DATE(first_buy_date) AS entry_anchor "
+        "FROM portfolio WHERE quantity > 0",
         db_path=db_path,
     )
     if df.empty:
@@ -621,6 +624,7 @@ def check_trailing_stop_signals(db_path: Optional[Path] = None) -> list[dict]:
                     "stock_type": stock_type,
                     "entry_price": entry_price,
                     "current_price": current_price,
+                    "account": row["account"],
                     "high_water_mark": hwm,
                     "stop_price": stop_price,
                     "drop_pct": round(drop_pct, 1),

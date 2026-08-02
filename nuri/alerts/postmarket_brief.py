@@ -657,7 +657,17 @@ def write_brief(
 
         stage_stop_breach_briefs(session, d, db_path=db_path)
     except Exception:
-        logger.warning("stop-breach brief staging 실패 (브리프 자체는 생성됨)", exc_info=True)
+        logger.warning("stop-breach SELL brief staging 실패 (브리프 자체는 생성됨)", exc_info=True)
+
+    # Tier 1e — 트레일링 give-back (이익 보호). 손절과 **반대 방향**의 결정론 신호로,
+    # 이제껏 대시보드에만 있고 디스코드로는 한 번도 안 나갔다. 손절 staging 과 별도
+    # try 로 둔다 — 한쪽 실패가 다른 쪽을 막으면 안 된다(1b/1c/1d 와 동일 패턴).
+    try:
+        from nuri.alerts.profit_signals import stage_trailing_briefs
+
+        stage_trailing_briefs(session, d, db_path=db_path)
+    except Exception:
+        logger.warning("trailing give-back brief staging 실패 (브리프 자체는 생성됨)", exc_info=True)
 
     # Tier 1b/1c/1d — 포트폴리오 드리프트(집중도·섹터·슬리브)를 digest 에 REBALANCE 로 표면화
     # (portfolio 축, #429). 둘 다 portfolio-wide → US 세션에서만 stage (US-heavy
