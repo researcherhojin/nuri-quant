@@ -341,7 +341,10 @@ class TestRunHeldAddShadow:
             captured["sector_mom"] = sector_mom_provider("AAA")
             return SimpleNamespace(
                 candidates=["AAA", "BBB"],  # 2 emit
-                skipped=["CCC"],  # 1 skip
+                # 실제 반환은 dict["ticker@account" → reason] 이다. list 로 두면
+                # 사유 집계 코드가 mock 에서만 죽고(테스트는 통과) 프로덕션 형상과
+                # 어긋난 채 남는다 — mock 형상은 실제와 같아야 한다.
+                skipped={"CCC@acct": "no mode triggered"},  # 1 skip
                 shadow_mode=True,
                 shadow_mode_until="2026-12-31",
             )
@@ -630,3 +633,67 @@ class TestMainGuard:
         out = buf.getvalue()
         # Banner emitted by print_schedule (line 517) — confirms main() was invoked.
         assert "Nuri-Quant Scheduler" in out, "__main__ guard must invoke main() which prints the banner"
+
+
+class TestHeldAddShadowSkipReasons:
+    """#788/#519 — skip 건수만으로는 '후보 없음(정상)'과 '필터 고장'이 구분 안 된다."""
+
+    def test_skip_reason_histogram_is_logged(self, caplog):
+        """프로덕션에서 6주 연속 `0건 emit / 19건 skip` 이 성공으로 기록됐고 그동안
+        calibration 표본은 0건이었다. 사유는 `result.skipped` 에 이미 있었고 버려졌다.
+        """
+        import logging
+
+        from nuri.scheduler import _run_held_add_shadow
+
+        def fake_emit(**kwargs):
+            return SimpleNamespace(
+                candidates=[],
+                skipped={
+                    "AAA@a": "no mode triggered",
+                    "BBB@a": "no mode triggered",
+                    "CCC@a": "earnings blackout ±7d",
+                },
+                shadow_mode=True,
+                shadow_mode_until="2026-12-31",
+            )
+
+        with (
+            patch("nuri.trading.recommend.buy_candidate_emitter._get_factor_scores", return_value={}),
+            patch("nuri.trading.recommend.buy_candidate_emitter._get_rsi_snapshot", return_value={}),
+            patch("nuri.trading.recommend.buy_candidate_emitter._get_price_signals", return_value={}),
+            patch("nuri.trading.recommend.buy_candidate_emitter._get_regime", return_value=("BULL", 18.5)),
+            patch("nuri.trading.recommend.held_add.emit_held_add_shadow", side_effect=fake_emit),
+            caplog.at_level(logging.INFO, logger="nuri.scheduler"),
+        ):
+            _run_held_add_shadow()
+
+        text = caplog.text
+        assert "skip 사유" in text
+        assert "no mode triggered 2건" in text
+        assert "earnings blackout ±7d 1건" in text
+        assert "AAA" not in text  # 티커는 로그에 남기지 않는다 (dict 키는 집계 대상 아님)
+
+    def test_broken_skipped_shape_does_not_kill_the_job(self, caplog):
+        """진단 집계 실패가 job 을 죽이면 안 된다 (#894 관측 비게이트)."""
+        import logging
+
+        from nuri.scheduler import _run_held_add_shadow
+
+        def fake_emit(**kwargs):
+            return SimpleNamespace(
+                candidates=[], skipped=["not-a-dict"], shadow_mode=True, shadow_mode_until="2026-12-31"
+            )
+
+        with (
+            patch("nuri.trading.recommend.buy_candidate_emitter._get_factor_scores", return_value={}),
+            patch("nuri.trading.recommend.buy_candidate_emitter._get_rsi_snapshot", return_value={}),
+            patch("nuri.trading.recommend.buy_candidate_emitter._get_price_signals", return_value={}),
+            patch("nuri.trading.recommend.buy_candidate_emitter._get_regime", return_value=("BULL", 18.5)),
+            patch("nuri.trading.recommend.held_add.emit_held_add_shadow", side_effect=fake_emit),
+            caplog.at_level(logging.INFO, logger="nuri.scheduler"),
+        ):
+            _run_held_add_shadow()
+
+        assert "0건 emit / 1건 skip" in caplog.text  # 본 작업 로그는 살아남는다
+        assert "실행 실패" not in caplog.text
