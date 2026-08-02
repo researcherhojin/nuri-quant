@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/stale@v10
+      - uses: actions/stale@v11
         with:
           # Less aggressive timing — long-running discussions deserve patience.
           # Issues: 90 days stale + 30 days close (was 60+14, too aggressive)
