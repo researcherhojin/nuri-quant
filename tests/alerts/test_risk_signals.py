@@ -614,3 +614,55 @@ def test_price_context_computes_5d_and_20d_returns(db_path):
     assert ctx["ret_5d"] == pytest.approx((124 - 119) / 119 * 100)
     assert ctx["ret_20d"] == pytest.approx((124 - 104) / 104 * 100)
     assert ctx["drawdown_52w"] == pytest.approx(0.0)  # 최신가가 곧 고점
+
+
+def _seed_series(path, ticker, *, n, day_step, base=100.0, step=1.0):
+    """n 봉을 day_step 일 간격으로 심는다 — 봉 간격(밀도)을 테스트에서 제어."""
+    from datetime import date, timedelta
+
+    start = date(2026, 1, 5)
+    rows = [
+        {
+            "ticker": ticker,
+            "date": (start + timedelta(days=i * day_step)).isoformat(),
+            "open": base + i * step,
+            "high": base + i * step,
+            "low": base + i * step,
+            "close": base + i * step,
+            "volume": 1_000_000,
+            "adj_close": base + i * step,
+        }
+        for i in range(n)
+    ]
+    upsert_prices(pd.DataFrame(rows), path)
+
+
+def test_sparse_history_does_not_fake_a_20day_return(db_path):
+    """봉 간격이 성기면 '20일 수익률' 을 만들지 않는다.
+
+    회귀 잠금 — `prices` 밀도는 티커마다 다르다(프로덕션 21봉/29일, dev replica 는
+    같은 21봉이 41~60일). 봉 수만 세면 종목과 시장이 **다른 기간**을 비교하게 되고,
+    실제로 벤치마크가 20일에 +38% 오른 것처럼 보이는 값이 나왔다.
+    """
+    _seed_series(db_path, "TST_DENSE", n=25, day_step=1)
+    _seed_series(db_path, "TST_SPARSE", n=25, day_step=4)  # 20봉이 80일을 덮음
+
+    dense = risk_signals._price_context("TST_DENSE", avg=999.0, threshold=-7, db_path=db_path)
+    sparse = risk_signals._price_context("TST_SPARSE", avg=999.0, threshold=-7, db_path=db_path)
+
+    assert dense["ret_20d"] is not None  # 일별이면 계산한다
+    assert "ret_20d" not in sparse, "성긴 데이터로 20일 수익률을 만들면 안 된다"
+    assert "ret_5d" not in sparse
+
+
+def test_market_context_skips_stale_benchmark(db_path):
+    """벤치마크가 stale 하면 서로 다른 끝점을 비교하게 되므로 아예 생략한다.
+
+    프로덕션에는 `069500.KS` 가 0행이고 dev 는 두 달 stale 이었다 — 그 상태로
+    비교하면 '시장 +38%' 같은 값이 카드에 박힌다.
+    """
+    _seed_series(db_path, "SPY", n=25, day_step=1)  # 2026-01-05 부터 → 오늘 기준 stale
+
+    ctx = risk_signals._market_context("TST_A", ret_20d=-25.0, date="2026-08-02", db_path=db_path)
+
+    assert "benchmark" not in ctx, "stale 벤치마크로 비교하면 안 된다"

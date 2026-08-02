@@ -19,11 +19,18 @@ from __future__ import annotations
 
 import argparse
 import logging
+from datetime import date as dt_date
 from pathlib import Path
 from typing import Any, Literal, Optional
 
 from nuri.core.db import query
-from nuri.core.rules import BRIEF_SEVERITY_GAP_PCT, get_account_strategy_name, get_stop_loss_for_account
+from nuri.core.rules import (
+    BRIEF_BENCHMARK,
+    BRIEF_EARNINGS_WINDOW_DAYS,
+    BRIEF_SEVERITY_GAP_PCT,
+    get_account_strategy_name,
+    get_stop_loss_for_account,
+)
 from nuri.core.ticker_names import get_ticker_name, is_kr_ticker
 from nuri.core.timezone import today_kst
 
@@ -107,6 +114,7 @@ def scan_stop_breaches(
                     **_price_context(ticker, float(avg), threshold, db_path=db_path),
                 }
             )
+            breaches[-1].update(_market_context(ticker, breaches[-1].get("ret_20d"), today_kst(), db_path=db_path))
 
     breaches.sort(key=lambda b: b["pnl_pct"])  # 가장 깊은 손실 우선
     return breaches
@@ -176,12 +184,85 @@ def _price_context(
         out.update({"breach_days": days, "first_breach_date": first_date, "first_breach_pnl_pct": first_pnl})
 
     latest = closes[0]
+    dates = [str(r["date"]) for r in rows if r["close"]]
     for label, span in (("ret_5d", 5), ("ret_20d", 20)):
-        if len(closes) > span:
-            out[label] = (latest - closes[span]) / closes[span] * 100
+        r = _span_return(closes, dates, span)
+        if r is not None:
+            out[label] = r
     high = max(closes)
     if high:
         out["drawdown_52w"] = (latest - high) / high * 100
+    return out
+
+
+def _span_return(closes: list[float], dates: list[str], bars: int) -> Optional[float]:
+    """N **거래일** 수익률 — 봉 간격이 실제로 일별일 때만 계산한다.
+
+    `prices` 는 티커마다 밀도가 다르다. 프로덕션은 21행이 29일을 덮어 정상이지만
+    dev replica 는 같은 21행이 41~60일을 덮고, 티커마다 그 폭이 다르다. 그 상태로
+    "20봉 전" 을 "20일 전" 이라 부르면 종목과 시장이 서로 **다른 기간**을 비교하게
+    되고, 실제로 KODEX 200 이 20일에 +38% 오른 것처럼 보이는 값이 나왔다.
+
+    그래서 봉 수가 아니라 그 봉이 실제로 며칠을 덮는지 보고, 일별 간격에서 나올 수
+    있는 범위(거래일 N → 달력 최대 2N일)를 벗어나면 **숫자를 만들지 않는다**.
+    틀린 기간의 수익률은 없는 것만 못하다.
+    """
+    if len(closes) <= bars or not closes[bars]:
+        return None
+    try:
+        span_days = (dt_date.fromisoformat(dates[0]) - dt_date.fromisoformat(dates[bars])).days
+    except (ValueError, IndexError):  # pragma: no cover — date 컬럼은 항상 ISO
+        return None
+    if span_days > bars * 2:
+        return None
+    return (closes[0] - closes[bars]) / closes[bars] * 100
+
+
+def _market_context(
+    ticker: str,
+    ret_20d: Optional[float],
+    date: str,
+    db_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    """시장 대비 상대 성과 + 임박한 실적 — 손절 판단을 가르는 두 가지.
+
+    **시장 대비**: 같은 -25% 라도 시장이 함께 빠진 것과 종목 혼자 빠진 것은 다른
+    결정이다. 벤치마크는 새로 정하지 않고 이미 고정된 것을 쓴다 — US 는 §3.11 의
+    SPY, KR 은 postmarket 이 쓰는 KODEX 200(`config/rules.yaml brief.benchmark`).
+
+    **실적 D-day**: 창(기본 14일) 안의 실적만. 그 밖의 실적은 지금 결정과 무관하다.
+    보유가 ETF 중심이면 대부분 비어 있다(ETF 는 실적 이벤트가 없다) — 그래서 이건
+    상대 성과의 대체가 아니라 개별주에만 붙는 보조 정보다.
+
+    계산 불가한 항목은 키를 만들지 않는다(카드가 알아서 생략).
+    """
+    out: dict[str, Any] = {}
+
+    bench = BRIEF_BENCHMARK.get("kr" if is_kr_ticker(ticker) else "us")
+    if bench and ret_20d is not None:
+        rows = query(
+            "SELECT date, close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 21",
+            (bench,),
+            db_path=db_path,
+        )
+        closes = [float(r["close"]) for r in rows if r["close"]]
+        dates = [str(r["date"]) for r in rows if r["close"]]
+        bench_ret = _span_return(closes, dates, 20)
+        # 벤치마크 최신일이 종목과 크게 어긋나면 서로 다른 끝점을 비교하게 된다.
+        # (예: 프로덕션에 `069500.KS` 는 아예 없고, dev 는 두 달 stale 이다.)
+        aligned = bool(dates) and abs((dt_date.fromisoformat(dates[0]) - dt_date.fromisoformat(date)).days) <= 5
+        if bench_ret is not None and aligned:
+            out.update({"benchmark": bench, "benchmark_ret_20d": bench_ret, "excess_20d": ret_20d - bench_ret})
+
+    rows = query(
+        "SELECT date FROM events WHERE ticker = ? AND event_type = 'earnings' AND date >= ? ORDER BY date LIMIT 1",
+        (ticker, date),
+        db_path=db_path,
+    )
+    if rows:
+        days = (dt_date.fromisoformat(str(rows[0]["date"])) - dt_date.fromisoformat(date)).days
+        if 0 <= days <= BRIEF_EARNINGS_WINDOW_DAYS:
+            out["earnings_in_days"] = days
     return out
 
 
@@ -244,6 +325,18 @@ def _build_breach_payload(breach: dict[str, Any], date: str) -> dict[str, Any]:
         )
     trend = "　추세 " + " · ".join(trend_bits) if trend_bits else None
 
+    # 시장 대비 — "시장이 빠진 건가, 이 종목이 빠진 건가". 손절 판단이 여기서 갈린다.
+    # 실적 D-day 는 개별주에만 붙는다(ETF 는 실적 이벤트가 없어 대부분 비어 있다).
+    market_bits = []
+    if breach.get("benchmark") and breach.get("excess_20d") is not None:
+        market_bits.append(
+            f"20일 시장({breach['benchmark']}) {breach['benchmark_ret_20d']:+.1f}%"
+            f" · 종목 {breach['ret_20d']:+.1f}% → 종목 요인 {breach['excess_20d']:+.1f}%p"
+        )
+    if breach.get("earnings_in_days") is not None:
+        market_bits.append(f"실적 D-{breach['earnings_in_days']}")
+    market = "　" + " · ".join(market_bits) if market_bits else None
+
     # 룰 귀결 — 지시가 아니라 룰이 이 상태를 뭐라 부르는지. 집행은 사용자다(§7.1).
     # 이탈폭이 크지 않은데 "얕다"고 단정하면 틀린다(폭은 큰데 반등 중인 경우가 있다).
     # 방향은 추세 줄이 이미 말하므로, 여기서는 악화 중일 때만 덧붙인다.
@@ -254,7 +347,7 @@ def _build_breach_payload(breach: dict[str, Any], date: str) -> dict[str, Any]:
     return {
         "kind": "SELL",
         "ticker": ticker,
-        "summary": "\n".join([x for x in (head, money, trend, rule) if x]),
+        "summary": "\n".join([x for x in (head, money, trend, market, rule) if x]),
         # note → 같은 티커가 여러 계좌에 있을 때 어느 계좌인지 구분 (계좌별 avg 다름).
         "note": breach["account"],
         "reason": f"손절선 돌파 ({pnl:+.1f}% < {threshold}%)",
