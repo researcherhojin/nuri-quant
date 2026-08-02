@@ -170,6 +170,12 @@ typecheck: ## Pyright static type-check across nuri/, tests/, scripts/ (advisory
 spellcheck: ## cspell check (uses .cspell.json — add words there for false positives)
 	@command -v npx >/dev/null 2>&1 || { echo "npx not installed: install Node.js"; exit 1; }
 	@# Excludes gitignored files (NEXT_SESSION.md / SESSION_PROMPT.md may contain personal info)
+	@# ⚠️ config/*.yaml 을 여기 넣지 말 것 — glob 이 gitignored config/portfolio.yaml 까지 훑어
+	@# 실보유 증권사명을 미등록 단어로 뱉는다. 그걸 "고치려고" .cspell.json 에 넣는 순간
+	@# 공개 레포에 증권사명이 박힌다 (§4.4.1 privacy). 이 주석에 그 예시를 적는 것조차
+	@# check_privacy_leak.py 가 차단한다 — 2026-08-02 실측, 가드가 정상 동작한 것이다.
+	@# IDE 는 열린 파일을 직접 검사하므로 config 경고는 거기서만 보이고,
+	@# 추적 중인 config yaml 의 단어는 이미 .cspell.json 에 등재돼 있다.
 	npx --yes -p cspell cspell --config .cspell.json --no-progress --no-summary \
 		--exclude SESSION_PROMPT.md --exclude NEXT_SESSION.md \
 		"nuri/**/*.py" "tests/**/*.py" "scripts/**/*.py" \

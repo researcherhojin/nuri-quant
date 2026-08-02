@@ -10,6 +10,8 @@
   "pythonVersion": "3.12",
   "typeCheckingMode": "basic",
   "extraPaths": ["."],
+  "venvPath": ".",
+  "venv": ".venv",
   "executionEnvironments": [
     {
       "root": "tests",
