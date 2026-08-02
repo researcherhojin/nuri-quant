@@ -525,3 +525,9 @@ brief:
 
   # 실적 D-day 를 카드에 붙이는 창(일). 이 밖의 실적은 지금 결정과 무관해 생략.
   earnings_window_days: 14
+
+  # 트레일링을 "이익 반납" 이라 부르려면 되돌릴 이익이 실제로 있었어야 한다.
+  # `check_trailing_stop_signals()` 는 HWM 을 max(고점, 진입가) 로 바닥 처리하므로
+  # 오른 적 없는 종목도 -15% 손실이 트레일링으로 잡힌다 — 그건 손절 소관이다.
+  # 최고점이 진입가 대비 이 값 이상 올랐던 포지션만 give-back 알림 대상.
+  trailing_min_peak_gain_pct: 10
