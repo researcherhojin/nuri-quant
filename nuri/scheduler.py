@@ -532,6 +532,22 @@ def _run_held_add_shadow():
             f"[held_add_shadow] {n_emit}건 emit / {n_skip}건 skip "
             f"(shadow={result.shadow_mode}, until={result.shadow_mode_until})"
         )
+        # skip 사유 히스토그램 — 건수만 남기면 "후보가 정말 없다"(정상)와 "필터가
+        # 잘못 걸린다"(고장)가 구분되지 않는다. 실제로 이 job 은 6주 연속 `0건 emit
+        # / 19건 skip` 을 성공으로 기록했고, 그 사이 #519 calibration 표본은 한 건도
+        # 안 쌓였다. 사유는 `result.skipped` 에 이미 계산돼 있었고 버려지고 있었다.
+        # ticker 는 dict **키**라 값만 집계하면 로그에 티커가 남지 않는다.
+        # 관측은 본 작업을 게이트하지 않는다 (#894) — 자체 try 로 soft-fail.
+        try:
+            if result.skipped:
+                from collections import Counter
+
+                hist = ", ".join(
+                    f"{reason} {count}건" for reason, count in Counter(result.skipped.values()).most_common()
+                )
+                logger.info(f"[held_add_shadow] skip 사유: {hist}")
+        except Exception:  # noqa: BLE001 — 진단 로그 실패가 job 을 죽이면 안 된다
+            logger.debug("[held_add_shadow] skip 사유 집계 실패", exc_info=True)
     except Exception as e:
         logger.error(f"[held_add_shadow] 실행 실패: {e}", exc_info=True)
 
