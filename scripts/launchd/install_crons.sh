@@ -94,8 +94,15 @@ for plist in "${SELECTED[@]}"; do
         launchctl unload "$dst" 2>/dev/null || true
     fi
 
-    cp "$src" "$dst"
-    sed -i '' "s|/Users/USER|$HOME|g" "$dst"
+    # 치환한 결과를 temp 에 쓰고 mv 로 원자 교체한다 (#992). 이전에는 `cp` 로 목적지에
+    # 플레이스홀더를 먼저 깐 뒤 in-place sed 로 고쳤는데, 그 사이(그리고 sed 가 실패하면
+    # 영구히) 목적지가 `/Users/USER` 를 담는다. 바로 위에서 unload 를 이미 했으므로 그
+    # 상태로 load 하면 launchd 가 exit 78 로 죽는다 — #988 로 실제 겪은 고장이다.
+    if ! sed "s|/Users/USER|$HOME|g" "$src" > "$dst.tmp" || ! mv "$dst.tmp" "$dst"; then
+        rm -f "$dst.tmp"
+        echo " ❌ 치환 실패: $plist (기존 plist 유지, load 하지 않음)"
+        continue
+    fi
     launchctl load "$dst"
     echo " ✅ installed: $plist"
 done
