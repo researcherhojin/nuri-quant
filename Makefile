@@ -526,7 +526,7 @@ deploy:
 	bash scripts/deploy/pre_deploy_check.sh
 	bash scripts/deploy/deploy_remote.sh
 
-deploy-mini: ## MBP → Mac mini 전체 동기화 (git pull + config + scheduler reload)
+deploy-mini: ## MBP → Mac mini 7단계 동기화 (git pull + config + frontend 재빌드 + scheduler plist 재설치/reload + 상주 서비스 bounce + 검증)
 	bash scripts/deploy/deploy_to_mini.sh
 
 backup:
@@ -602,9 +602,10 @@ agent-launchd-install: ## Install launchd plists (state-replicator + health-chec
 	@USER_NAME=$$(whoami); \
 	  for plist in scripts/launchd/com.nuri-quant.state-replicator.plist scripts/launchd/com.nuri-quant.health-check.plist; do \
 	    NAME=$$(basename "$$plist"); \
-	    sed "s|/Users/USER/|$$HOME/|g" "$$plist" > "$$HOME/Library/LaunchAgents/$$NAME"; \
-	    launchctl unload "$$HOME/Library/LaunchAgents/$$NAME" 2>/dev/null || true; \
-	    launchctl load "$$HOME/Library/LaunchAgents/$$NAME"; \
+	    DST="$$HOME/Library/LaunchAgents/$$NAME"; \
+	    sed "s|/Users/USER/|$$HOME/|g" "$$plist" > "$$DST.tmp" && mv "$$DST.tmp" "$$DST" || { echo "  ❌ install failed: $$NAME (기존 plist 유지)"; exit 1; }; \
+	    launchctl unload "$$DST" 2>/dev/null || true; \
+	    launchctl load "$$DST"; \
 	    echo "  ✅ installed: $$NAME"; \
 	  done
 
@@ -635,9 +636,10 @@ discord-sync-commands: ## Register slash commands to guild (no long-running). Re
 
 discord-bot-install: ## (Mac mini) Install discord-bot launchd plist (long-running gateway).
 	@NAME=com.nuri-quant.discord-bot.plist; \
-	  sed "s|/Users/USER/|$$HOME/|g" "scripts/launchd/$$NAME" > "$$HOME/Library/LaunchAgents/$$NAME"; \
-	  launchctl unload "$$HOME/Library/LaunchAgents/$$NAME" 2>/dev/null || true; \
-	  launchctl load "$$HOME/Library/LaunchAgents/$$NAME"; \
+	  DST="$$HOME/Library/LaunchAgents/$$NAME"; \
+	  sed "s|/Users/USER/|$$HOME/|g" "scripts/launchd/$$NAME" > "$$DST.tmp" && mv "$$DST.tmp" "$$DST" || { echo "  ❌ install failed: $$NAME (기존 plist 유지)"; exit 1; }; \
+	  launchctl unload "$$DST" 2>/dev/null || true; \
+	  launchctl load "$$DST"; \
 	  echo "  ✅ installed: $$NAME — tail data/logs/discord_bot.log"
 
 discord-bot-uninstall: ## (Mac mini) Uninstall discord-bot launchd plist.
