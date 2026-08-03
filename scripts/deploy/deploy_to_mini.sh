@@ -240,7 +240,15 @@ step 6 "scheduler + 상주 python 서비스 재기동"
 # 아무것도 안 남긴다 — 게다가 실행 중인 job 은 캐시된 정의로 계속 돌아서, unload/load
 # 가 도는 **다음 배포**까지 잠복한다 (2026-08-03 실측: scheduler 다운). 다른 설치
 # 경로(Makefile agent-launchd-install / discord-bot-install)는 원래 이 치환을 한다.
-"${SSH}" "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && sed \"s|/Users/USER/|\$HOME/|g\" ${REMOTE_PATH}/scripts/launchd/${PLIST_NAME} > ${PLIST_REMOTE}"
+#
+# **temp + mv 로 원자 교체**한다 (#990). `> ${PLIST_REMOTE}` 는 sed 가 돌기 전에 셸이
+# 목적지를 truncate 한다 — sed 가 실패하거나 SSH 가 끊기면 빈/부분 plist 가 남는다.
+# 하필 여기가 unload(5a) 와 load(바로 아래) **사이**라 scheduler 가 내려가 있는 창이고,
+# 깨진 파일이 그대로 load 대상이 된다. #988 로 실제 겪은 실패 모드와 같은 창이다.
+# `&&` 로 묶어 sed 실패 시 mv 가 안 돌고 **기존 plist 가 그대로 남는다** (같은 디렉터리
+# 안 rename 이라 원자적). 이 위험은 #989 가 만든 게 아니다 — 이전 `cp` 도 목적지를
+# truncate 했다.
+"${SSH}" "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && sed \"s|/Users/USER/|\$HOME/|g\" ${REMOTE_PATH}/scripts/launchd/${PLIST_NAME} > ${PLIST_REMOTE}.tmp && mv ${PLIST_REMOTE}.tmp ${PLIST_REMOTE}"
 "${SSH}" "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
 
 if NEW_PID=$(wait_scheduler alive) && verify_stable_pid "${NEW_PID}"; then
