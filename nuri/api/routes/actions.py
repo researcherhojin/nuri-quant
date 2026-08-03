@@ -92,6 +92,14 @@ def _build_actions() -> dict:
         # 중복 ticker skip (복수 계좌 동일 종목)
         if ticker in seen_tickers:
             continue
+        # 미보유 종목 skip (#998). `recommendations` 는 보유 테이블이 아니라 스캔
+        # 유니버스(AMD·AMZN·INTC…)를 함께 담는다. 걸러내지 않으면 미보유 종목이
+        # `pnl=0 / 비중=0 / 계좌=''` 인 채 "✅ 유지" 로 들어가, **매도한 종목이 아직
+        # 보유 중인 것처럼** 읽힌다 (2026-08-03 실측: hold 6건 중 4건이 미보유,
+        # 그중 하나는 당일 매도한 KB금융). 이 모듈 docstring 이 이미 정한 계약대로
+        # 비보유 종목의 자리는 "🔍 기회 탐색"(`/api/opportunities`) 이다.
+        if ticker not in portfolio_holdings:
+            continue
         seen_tickers.add(ticker)
 
         action = rec["action"]
