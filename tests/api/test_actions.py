@@ -900,7 +900,11 @@ class TestBuildActionsLogic:
             portfolio={"BAD": self._pf(90, 100, -10, 5)},
         )
         assert len(result["urgent"]) == 1
-        assert "손절선 근접" in result["urgent"][0]["reasons"][1]
+        assert "손절선" in result["urgent"][0]["reasons"][1]
+        # "근접" 이 아니라 "돌파" 여야 한다 (#994) — 이 분기는 관찰이 아니라
+        # 기계적 청산이고, 문구가 행동을 바꾼다 (처분효과).
+        assert "돌파" in result["urgent"][0]["reasons"][1]
+        assert "근접" not in result["urgent"][0]["reasons"][1]
 
     def test_a3_long_term_account_minus_10_not_urgent(self):
         """A-3: long_term 계좌(-20) 의 -10% 손실은 urgent 아님.
@@ -925,7 +929,11 @@ class TestBuildActionsLogic:
                 portfolio={"LTMX": self._pf(78, 100, -22, 5)},
             )
         assert len(result["urgent"]) == 1
-        assert "손절선 근접" in result["urgent"][0]["reasons"][1]
+        assert "손절선" in result["urgent"][0]["reasons"][1]
+        # "근접" 이 아니라 "돌파" 여야 한다 (#994) — 이 분기는 관찰이 아니라
+        # 기계적 청산이고, 문구가 행동을 바꾼다 (처분효과).
+        assert "돌파" in result["urgent"][0]["reasons"][1]
+        assert "근접" not in result["urgent"][0]["reasons"][1]
         assert "-20%" in result["urgent"][0]["reasons"][1]
 
     def test_a3_core_account_minus_10_still_urgent(self):
@@ -936,7 +944,11 @@ class TestBuildActionsLogic:
                 portfolio={"BAD": self._pf(90, 100, -10, 5)},
             )
         assert len(result["urgent"]) == 1
-        assert "손절선 근접" in result["urgent"][0]["reasons"][1]
+        assert "손절선" in result["urgent"][0]["reasons"][1]
+        # "근접" 이 아니라 "돌파" 여야 한다 (#994) — 이 분기는 관찰이 아니라
+        # 기계적 청산이고, 문구가 행동을 바꾼다 (처분효과).
+        assert "돌파" in result["urgent"][0]["reasons"][1]
+        assert "근접" not in result["urgent"][0]["reasons"][1]
 
     def test_a3_boundary_equality_not_urgent(self):
         """A-3 operator consistency: pnl == threshold 는 urgent 아님 (< 통일,
@@ -1045,7 +1057,11 @@ class TestBuildActionsLogic:
 
             result = _build_actions()
         assert len(result["urgent"]) == 1
-        assert "손절선 근접" in result["urgent"][0]["reasons"][1]
+        assert "손절선" in result["urgent"][0]["reasons"][1]
+        # "근접" 이 아니라 "돌파" 여야 한다 (#994) — 이 분기는 관찰이 아니라
+        # 기계적 청산이고, 문구가 행동을 바꾼다 (처분효과).
+        assert "돌파" in result["urgent"][0]["reasons"][1]
+        assert "근접" not in result["urgent"][0]["reasons"][1]
         # catalyst 함수 호출 자체가 없어야 함 (breach path 가 먼저 continue)
         mock_cat.assert_not_called()
 
