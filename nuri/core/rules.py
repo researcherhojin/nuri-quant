@@ -114,18 +114,52 @@ _DEFAULT_STRATEGY = ACCOUNT_STRATEGIES.get(
 )
 
 
-def get_account_strategy(account: str) -> dict:
-    """계좌명 → 전략 프로파일 반환. portfolio.yaml의 strategy 필드 기준."""
+PORTFOLIO_PATH = Path(__file__).parent.parent.parent / "config" / "portfolio.yaml"
+
+
+def _resolve_account_key(accounts: dict, account: str | None) -> str | None:
+    """계좌 **id · label · name** 중 무엇이 와도 yaml 의 계좌 키로 정규화한다 (#994).
+
+    yaml 은 id 로 키잉하는데(`toss`), DB/API 는 label 을 들고 다닌다(`Toss`). 매칭
+    실패가 예외가 아니라 조용한 폴백(`core`, stop_loss -7)이라 **전 계좌가 -7 로
+    평가**됐고, `actions.py` 의 "하드코딩 -7 제거" 주석과 정반대로 동작했다.
+    2026-08-03 실측: Toss(long_term, -20) 보유가 -19.6% 에서 urgent SELL 로 떴다.
+    """
+    if not account:
+        return None
+    if account in accounts:
+        return account
+    needle = str(account).strip().casefold()
+    for key, info in accounts.items():
+        if not isinstance(info, dict):
+            continue
+        for cand in (key, info.get("label"), info.get("name")):
+            if cand and str(cand).strip().casefold() == needle:
+                return key
+    return None
+
+
+def _load_accounts() -> dict:
     import yaml
 
-    _portfolio_path = Path(__file__).parent.parent.parent / "config" / "portfolio.yaml"
     try:
-        with open(_portfolio_path, encoding="utf-8") as f:
-            portfolio = yaml.safe_load(f)
-        strategy_name = portfolio.get("accounts", {}).get(account, {}).get("strategy", "core")
-        return ACCOUNT_STRATEGIES.get(strategy_name, _DEFAULT_STRATEGY)
+        with open(PORTFOLIO_PATH, encoding="utf-8") as f:
+            return (yaml.safe_load(f) or {}).get("accounts", {}) or {}
     except Exception:
+        return {}
+
+
+def get_account_strategy(account: str) -> dict:
+    """계좌명 → 전략 프로파일 반환. portfolio.yaml의 strategy 필드 기준.
+
+    id 뿐 아니라 label / name 으로도 조회된다 (#994).
+    """
+    accounts = _load_accounts()
+    key = _resolve_account_key(accounts, account)
+    if key is None:
         return _DEFAULT_STRATEGY
+    strategy_name = (accounts.get(key) or {}).get("strategy") or "core"
+    return ACCOUNT_STRATEGIES.get(strategy_name, _DEFAULT_STRATEGY)
 
 
 def get_account_strategy_name(account: str | None) -> str:
@@ -134,18 +168,17 @@ def get_account_strategy_name(account: str | None) -> str:
     `get_account_strategy()` 는 rules dict(stop_loss/max_position/...)만 반환해
     이름이 소실된다 — pension 판별(daily action 제외)엔 이름이 authoritative 하므로
     yaml 의 strategy 필드를 직접 노출.
+
+    `get_account_strategy()` 와 동일하게 id / label / name 을 모두 받는다 (#994).
+    label 로 조회하면 'core' 가 나오던 탓에, 연금 제외가 label 경로에서 무력했다.
     """
     if not account:
         return "core"
-    import yaml
-
-    _portfolio_path = Path(__file__).parent.parent.parent / "config" / "portfolio.yaml"
-    try:
-        with open(_portfolio_path, encoding="utf-8") as f:
-            portfolio = yaml.safe_load(f) or {}
-        return portfolio.get("accounts", {}).get(account, {}).get("strategy", "core")
-    except Exception:
+    accounts = _load_accounts()
+    key = _resolve_account_key(accounts, account)
+    if key is None:
         return "core"
+    return (accounts.get(key) or {}).get("strategy") or "core"
 
 
 _REAL_ACCOUNT_KEYS = ("broker", "name", "label", "strategy", "balance")
