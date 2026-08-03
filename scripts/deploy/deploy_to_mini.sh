@@ -233,8 +233,14 @@ step 6 "scheduler + 상주 python 서비스 재기동"
 # plist 는 **매번** 재설치한다. 이전에는 미설치일 때만 cp 해서, 이미 설치된
 # mini 에는 repo 의 plist 수정이 영영 도달하지 않았다 (#856 에서 발각: 스케줄러
 # plist 에 넣은 NURI_ROLE 이 배포돼도 반영 안 됨 → 기능이 조용히 죽은 채 시작).
-# unload(5a) 와 load 사이라 cp 안전. kickstart 로는 못 고치는 문제 (#778 참조).
-"${SSH}" "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && cp ${REMOTE_PATH}/scripts/launchd/${PLIST_NAME} ${PLIST_REMOTE}"
+# unload(5a) 와 load 사이라 재설치 안전. kickstart 로는 못 고치는 문제 (#778 참조).
+# `cp` 가 아니라 **sed 치환**이다: #980(privacy)이 repo plist 의 실제 홈 경로를
+# `/Users/USER/` 플레이스홀더로 바꿨는데 여기만 평범한 cp 라서, 배포가 존재하지 않는
+# 경로를 가리키는 plist 를 설치했다. launchd 는 exit 78(EX_CONFIG)로 죽고 stderr 에
+# 아무것도 안 남긴다 — 게다가 실행 중인 job 은 캐시된 정의로 계속 돌아서, unload/load
+# 가 도는 **다음 배포**까지 잠복한다 (2026-08-03 실측: scheduler 다운). 다른 설치
+# 경로(Makefile agent-launchd-install / discord-bot-install)는 원래 이 치환을 한다.
+"${SSH}" "${REMOTE}" "mkdir -p ${REMOTE_PATH}/data/logs && sed \"s|/Users/USER/|\$HOME/|g\" ${REMOTE_PATH}/scripts/launchd/${PLIST_NAME} > ${PLIST_REMOTE}"
 "${SSH}" "${REMOTE}" "launchctl load ${PLIST_REMOTE}"
 
 if NEW_PID=$(wait_scheduler alive) && verify_stable_pid "${NEW_PID}"; then
