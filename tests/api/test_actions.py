@@ -870,6 +870,35 @@ class TestBuildActionsLogic:
             "account": "Main",
         }
 
+    def test_non_held_ticker_never_enters_any_bucket(self):
+        """미보유 종목은 어느 버킷에도 안 들어간다 (#998).
+
+        `recommendations` 는 보유 테이블이 아니라 스캔 유니버스를 함께 담는다. 걸러내지
+        않으면 미보유 종목이 `pnl=0 / 비중=0 / 계좌=''` 인 채 "✅ 유지" 로 들어가,
+        **매도한 종목이 아직 보유 중인 것처럼** 읽힌다. 2026-08-03 실측: hold 6건 중
+        4건이 미보유였고 그중 하나는 당일 매도한 종목이었다.
+
+        회귀 시나리오: 보유 필터를 지우면 SOLD 가 hold 에 나타난다.
+        """
+        result = self._run(
+            [
+                {"ticker": "HELD", "action": "HOLD", "confidence": 60, "agreement": 50},
+                {"ticker": "SOLD", "action": "BUY", "confidence": 44, "agreement": 40},
+            ],
+            portfolio={"HELD": self._pf()},  # SOLD 는 보유 맵에 없다
+        )
+        every = [i["ticker"] for b in ("urgent", "check", "hold", "portfolio") for i in result[b]]
+        assert "SOLD" not in every, f"미보유 종목이 버킷에 들어갔다: {every}"
+        assert "HELD" in every, "보유 종목까지 걸러내면 안 된다"
+
+    def test_empty_portfolio_yields_no_actions(self):
+        """보유가 하나도 없으면 액션도 없어야 한다 — 필터의 경계 조건."""
+        result = self._run(
+            [{"ticker": "ANY", "action": "SELL", "confidence": 90, "agreement": 80}],
+            portfolio={},
+        )
+        assert all(not result[b] for b in ("urgent", "check", "hold")), result
+
     def test_siege_violation_goes_to_portfolio_bucket(self):
         """PR A (2026-04-21): SIEGE position_limit 위반은 "매도 강제" urgent 가
         아닌 "리밸런스 권고" portfolio bucket. 이전 동작 (urgent) → 사용자 -₩7M
