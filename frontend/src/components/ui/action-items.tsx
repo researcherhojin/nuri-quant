@@ -55,7 +55,7 @@ function ActionCard({ item }: { item: ActionItem }) {
             <Link href={`/ticker/${item.ticker}`} className="text-sm font-semibold text-zinc-100 hover:text-white transition-colors">
               {item.name || item.ticker}
             </Link>
-            {item.name && <span className="text-[10px] text-zinc-600">{item.ticker}</span>}
+            {item.name && <span className="text-[11px] text-zinc-400">{item.ticker}</span>}
             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
               item.action === "SELL" ? "bg-red-500/20 text-red-400" :
               item.action === "BUY" ? "bg-emerald-500/20 text-emerald-400" :
@@ -63,7 +63,7 @@ function ActionCard({ item }: { item: ActionItem }) {
             }`}>
               {item.action}
             </span>
-            {item.account && <span className="text-[10px] text-zinc-600">{item.account}</span>}
+            {item.account && <span className="text-[11px] text-zinc-400">{item.account}</span>}
           </div>
           <div className="mt-1 space-y-0.5">
             {item.reasons.map((r, i) => (
@@ -75,14 +75,14 @@ function ActionCard({ item }: { item: ActionItem }) {
           <p className={`text-sm font-semibold tabular-nums ${item.pnl_pct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
             {item.pnl_pct >= 0 ? "+" : ""}{item.pnl_pct.toFixed(1)}%
           </p>
-          <p className="text-[10px] text-zinc-500 tabular-nums">{ACTION.WEIGHT} {item.position_pct.toFixed(1)}%</p>
-          <p className="text-[10px] text-zinc-600 tabular-nums">{ACTION.CONF} {item.confidence}</p>
+          <p className="text-[11px] text-zinc-400 tabular-nums">{ACTION.WEIGHT} {item.position_pct.toFixed(1)}%</p>
+          <p className="text-[11px] text-zinc-400 tabular-nums">{ACTION.CONF} {item.confidence}</p>
         </div>
       </div>
 
       {/* 확장 상세 */}
       {expanded && (
-        <div className="mt-2 pt-2 border-t border-zinc-800/50 grid grid-cols-3 gap-2 text-[10px]">
+        <div className="mt-2 pt-2 border-t border-zinc-800/50 grid grid-cols-3 gap-2 text-[11px]">
           <div><span className="text-zinc-600">현재가</span> <span className="text-zinc-300 tabular-nums">{fmt(item.current_price)}</span></div>
           <div><span className="text-zinc-600">손절</span> <span className="text-red-400 tabular-nums">{fmt(item.stop_loss)}</span></div>
           <div><span className="text-zinc-600">1차익절</span> <span className="text-emerald-400 tabular-nums">{fmt(item.target_1)}</span></div>
@@ -121,7 +121,7 @@ export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItems
             <span className="w-2 h-2 rounded-full bg-red-500" />
             {ACTION.URGENT} ({urgent.length})
           </h3>
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2 items-start">
             {urgent.map((item) => <ActionCard key={`${item.ticker}-${item.account}`} item={item} />)}
           </div>
         </div>
@@ -134,7 +134,7 @@ export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItems
             <span className="w-2 h-2 rounded-full bg-sky-500" />
             {ACTION.PORTFOLIO} ({portfolio.length})
           </h3>
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2 items-start">
             {portfolio.map((item) => <ActionCard key={`${item.ticker}-${item.account}`} item={item} />)}
           </div>
         </div>
@@ -147,7 +147,7 @@ export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItems
             <span className="w-2 h-2 rounded-full bg-amber-500" />
             {ACTION.CHECK} ({check.length})
           </h3>
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2 items-start">
             {check.map((item) => <ActionCard key={`${item.ticker}-${item.account}`} item={item} />)}
           </div>
         </div>
