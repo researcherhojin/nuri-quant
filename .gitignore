@@ -41,7 +41,14 @@ config/toss/*
 **/.tokens/
 
 # Personal portfolio (보유 종목 정보)
-config/portfolio.yaml
+# 접두사 glob 로 **파생 파일까지** 막는다. `config/portfolio.yaml` 만 적혀 있던 탓에
+# `portfolio.yaml.bak-20260803_163959` (편집 전 백업) 가 무시되지 않아 `git status` 에
+# untracked 로 떴다 — `git add -A` 한 번이면 실보유 종목·수량·평단이 public repo 로
+# 들어간다. `*.bak` 은 이미 아래에서 막히지만 `*.bak-<timestamp>` 는 그 패턴에 안 걸린다.
+# (2026-08-03 실측. 커밋된 적은 없어 히스토리는 깨끗했다.)
+# `portfolio.example.yaml` 은 접두사가 달라 영향 없고, 혹시 몰라 아래에서 명시적으로 되살린다.
+config/portfolio*
+!config/portfolio.example.yaml
 
 # Backlog + 개인 plan 노트 (broker names + ticker+PnL + 실현 손실 노출 — STRATEGY §4.4.1)
 docs/TODO.md
