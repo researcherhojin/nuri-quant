@@ -9,8 +9,16 @@
     변경 감지, 서비스 재시작 hook 등을 처리.
 
   설치 (Mac mini에서 1회):
-    cp scripts/com.nuri-quant.autopull.plist ~/Library/LaunchAgents/
-    launchctl load ~/Library/LaunchAgents/com.nuri-quant.autopull.plist
+    설치 (권장): make crons-install   # 치환 + 원자 교체를 대신 해준다
+
+    손수 할 때. bare cp 금지 — #980 이후 repo plist 는 `/Users/USER/` 플레이스홀더를
+    담아서, 그대로 복사하면 launchd 가 exit 78 (EX_CONFIG) 로 죽는다 (#988). 게다가
+    stderr 에 아무것도 안 남고, 돌던 job 은 캐시된 정의로 살아남아 다음 재시작까지
+    잠복한다. `&&` 로 묶어 치환 실패가 load 로 이어지지 않게 한다.
+      N=com.nuri-quant.autopull.plist
+      sed "s|/Users/USER/|$HOME/|g" scripts/launchd/$N > ~/Library/LaunchAgents/$N.tmp \
+        && mv ~/Library/LaunchAgents/$N.tmp ~/Library/LaunchAgents/$N \
+        && launchctl load ~/Library/LaunchAgents/$N
     # 즉시 검증 (RunAtLoad=true이므로 load 직후 한 번 실행됨)
     sleep 5 && tail -20 ~/Library/Logs/nuri-quant-autopull.log
 

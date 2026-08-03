@@ -15,9 +15,16 @@
 # 수동 테스트:
 #   bash scripts/autopull_receiver.sh
 #
-# 설치:
-#   cp scripts/launchd/com.nuri-quant.autopull.plist ~/Library/LaunchAgents/
-#   launchctl load ~/Library/LaunchAgents/com.nuri-quant.autopull.plist
+# 설치 (권장): make crons-install   — 치환 + 원자 교체를 대신 해준다
+#
+# 손수 할 때. bare cp 금지 — #980 이후 repo plist 는 `/Users/USER/` 플레이스홀더를
+# 담아서, 그대로 복사하면 launchd 가 exit 78 (EX_CONFIG) 로 죽는다 (#988).
+#   N=com.nuri-quant.autopull.plist
+#   sed "s|/Users/USER/|$HOME/|g" scripts/launchd/$N > ~/Library/LaunchAgents/$N.tmp \
+#     && mv ~/Library/LaunchAgents/$N.tmp ~/Library/LaunchAgents/$N \
+#     && launchctl load ~/Library/LaunchAgents/$N
+#
+# ⚠️ make deploy-mini 는 이 plist 를 설치하지 않는다 — 상태를 읽기만 한다 (7단계).
 #
 # 상태 확인:
 #   launchctl list | grep autopull
