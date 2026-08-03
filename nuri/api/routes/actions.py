@@ -169,7 +169,13 @@ def _build_actions() -> dict:
             stop_loss_threshold = get_stop_loss_for_account(holding.get("account"))
             if pnl_pct < stop_loss_threshold:
                 # stop-loss breach — 기계적 실행 (§2.2). catalyst 무관.
-                item["reasons"].append(f"손실 {pnl_pct:+.1f}% — 손절선 근접 ({stop_loss_threshold}%)")
+                # "근접" 이 아니라 **돌파**다 (#994). 이 분기 자체가 `pnl_pct <
+                # threshold` — 관찰이 아니라 기계적 청산 신호이고, 초과폭을 같이
+                # 적어야 사용자가 -7% 근처인지 35%p 초과인지 구분한다.
+                over = stop_loss_threshold - pnl_pct  # 임계 대비 초과폭 (%p)
+                item["reasons"].append(
+                    f"손실 {pnl_pct:+.1f}% — 손절선 {stop_loss_threshold}% 돌파 ({over:.1f}%p 초과)",
+                )
                 item["priority"] = "urgent"
                 urgent.append(item)
                 continue
