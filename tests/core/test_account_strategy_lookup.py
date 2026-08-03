@@ -92,6 +92,36 @@ def test_pension_is_identifiable_by_label(portfolio_yaml):
     assert rules.get_account_strategy_name("retirement") == "pension"
 
 
+def test_empty_account_falls_back_without_touching_yaml(portfolio_yaml):
+    """계좌명이 비면 조회 자체를 하지 않는다 — `_resolve_account_key` 의 early return."""
+    assert rules.get_account_strategy("") == rules._DEFAULT_STRATEGY
+    assert rules.get_account_strategy(None) == rules._DEFAULT_STRATEGY
+
+
+def test_malformed_account_entry_is_skipped_not_crashed(tmp_path, monkeypatch):
+    """yaml 의 계좌 엔트리가 dict 가 아니어도 죽지 않고 건너뛴다.
+
+    portfolio.yaml 은 손으로 편집하는 파일이라 `account:` 뒤가 비어 null 이 되는 실수가
+    난다. 그 한 줄이 손절 조회 전체를 죽이면 안 된다.
+    """
+    path = tmp_path / "portfolio.yaml"
+    path.write_text(
+        textwrap.dedent(
+            """
+            accounts:
+              broken:
+              brokerage_beta:
+                label: Beta Long
+                strategy: long_term
+            """
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(rules, "PORTFOLIO_PATH", path)
+    assert rules.get_account_strategy_name("Beta Long") == "long_term"
+    assert rules.get_account_strategy_name("broken") == "core"
+
+
 def test_unknown_account_falls_back_to_core(portfolio_yaml):
     assert rules.get_account_strategy_name("Nonexistent") == "core"
     assert rules.get_stop_loss_for_account("Nonexistent") == rules.ACCOUNT_STRATEGIES["core"]["stop_loss"]
