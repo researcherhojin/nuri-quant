@@ -1,4 +1,3 @@
-# pyright: reportMissingImports=false
 """KR analyst-opinion collector via KIS Open API `invest_opinion` endpoint.
 
 NOT a research-report scraper (the original Playwright skeleton was deleted in

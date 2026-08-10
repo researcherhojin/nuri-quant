@@ -1,4 +1,3 @@
-# pyright: reportArgumentType=false
 """
 기술적 지표 수집기 — prices 테이블 데이터 기반으로 지표 계산.
 

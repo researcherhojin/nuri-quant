@@ -1,4 +1,3 @@
-# pyright: reportAttributeAccessIssue=false
 """
 BaseCollector — 모든 데이터 수집기의 추상 기반 클래스.
 
