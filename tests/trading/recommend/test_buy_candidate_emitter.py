@@ -7,11 +7,13 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
 import pytest
 import yaml
 
 from nuri.core.db import get_db, init_db, upsert_portfolio, upsert_prices
+from nuri.core.rules import VIX_MAX_AGE_BUSINESS_DAYS
 from nuri.core.timezone import today_kst
 from nuri.trading.recommend.buy_candidate_emitter import (
     BuyCandidate,
@@ -109,12 +111,27 @@ def _seed_rsi(db_path, ticker: str, rsi: float):
         )
 
 
-def _seed_vix(db_path, value: float):
-    """Seed VIX into macro (emitter reads indicator='vix' from macro — #753)."""
+def _business_days_ago(n: int) -> str:
+    """n **영업일** 전 날짜. 판정이 영업일 기준이라 시드도 그래야 한다 —
+    달력일로 빼면 요일에 따라 영업일 수가 달라져 테스트가 요일 의존으로 flaky 해진다.
+    """
+    if n == 0:
+        return today_kst()
+    return str(np.busday_offset(today_kst(), -n, roll="backward"))
+
+
+def _seed_vix(db_path, value: float, *, days_old: int = 0):
+    """Seed VIX into macro (emitter reads indicator='vix' from macro — #753).
+
+    날짜는 `today_kst()` 앵커 — 리터럴을 쓰면 `vix_gate.max_age_days` 를 넘기는 순간
+    전부 '미상' 으로 떨어져 게이트 테스트가 조용히 뜻을 잃는다. 실제로 `'2026-04-30'`
+    리터럴이 박혀 있었고, 신선도 검사를 넣자 3건이 한꺼번에 깨졌다
+    (tests/CLAUDE.md "Time-bomb seed dates" 3차 발생).
+    """
     with get_db(db_path) as conn:
         conn.execute(
-            "INSERT INTO macro (indicator, date, value, source) VALUES ('vix', '2026-04-30', ?, 'test')",
-            (value,),
+            "INSERT INTO macro (indicator, date, value, source) VALUES ('vix', ?, ?, 'test')",
+            (_business_days_ago(days_old), value),
         )
 
 
@@ -195,7 +212,10 @@ def test_vix_gate_reads_macro_not_prices(db, cfg_path):
     _seed_prices(db, "AAPL", [100.0] * 30 + [120.0])
     _seed_regime(db, "neutral")
     with get_db(db) as conn:
-        conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('vix', '2026-04-30', 35.0, 'test')")
+        conn.execute(
+            "INSERT INTO macro (indicator, date, value, source) VALUES ('vix', ?, 35.0, 'test')",
+            (str(today_kst()),),
+        )
         # prices.VIX 행이 없음을 명시 (버그 mask 방지 가드)
         assert conn.execute("SELECT COUNT(*) FROM prices WHERE ticker='VIX'").fetchone()[0] == 0
 
@@ -217,6 +237,102 @@ def test_vix_caution_halves_allocation(db, cfg_path):
     assert res.candidates, f"expected candidate, blocked_reason={res.blocked_reason}"
     # neutral=30%, halved to 15%
     assert res.total_deploy_pct == pytest.approx(15.0, abs=0.5)
+
+
+# --- Gate: VIX 미상 / 노후 (STRATEGY §2.6 Soft penalty) --------------------
+
+
+def _seed_calm_setup(db):
+    """caution 임계 아래(=평시) 조건 — VIX 만 바꿔가며 대조한다."""
+    _seed_factor(db, "AAPL", 0.95)
+    _seed_prices(db, "AAPL", [100.0] * 25 + [120.0, 121.0, 122.0, 123.0, 124.0, 125.0])
+    _seed_rsi(db, "AAPL", 55)
+    _seed_regime(db, "neutral")
+
+
+def test_fresh_calm_vix_gets_full_allocation(db, cfg_path):
+    """대조군 — 신선하고 낮은 VIX 는 전액. 이게 없으면 아래 두 테스트가 공허하다."""
+    _seed_calm_setup(db)
+    _seed_vix(db, 15.0)
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.candidates, f"blocked_reason={res.blocked_reason}"
+    assert res.total_deploy_pct == pytest.approx(30.0, abs=0.5)
+    assert res.vix == pytest.approx(15.0)
+
+
+def test_missing_vix_halves_allocation_instead_of_passing_as_calm(db, cfg_path):
+    """VIX 행이 아예 없으면 절반 포지션 — 통과가 아니다.
+
+    2026-08-10 이전에는 `20.0` 을 지어내 **전액**이 나갔다. 20.0 이 caution(25)·
+    block(30) 임계 아래라 어느 게이트도 안 걸렸기 때문이다.
+
+    Gotcha-Test Pair: `_get_regime` 이 부재 시 숫자를 돌려주도록 되돌리거나, 호출부의
+    `vix is None or vix >= VIX_CAUTION_ABOVE` 에서 None 분기를 빼면 30.0 이 나와 FAIL.
+    """
+    _seed_calm_setup(db)
+    # VIX seed 없음
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.candidates, f"blocked_reason={res.blocked_reason}"
+    assert res.vix is None, "없는 VIX 를 숫자로 지어냈다"
+    assert res.total_deploy_pct == pytest.approx(15.0, abs=0.5)
+
+
+def test_stale_vix_is_treated_as_unknown(db, cfg_path):
+    """`max_age_days` 를 넘긴 VIX 는 '현재값' 이 아니다 — 미상 취급.
+
+    수집기가 죽어도 `ORDER BY date DESC LIMIT 1` 은 몇 주 전 값을 계속 돌려준다.
+    신선도 검사가 없으면 그 값이 무기한 현재 VIX 행세를 한다.
+
+    Gotcha-Test Pair: `_get_regime` 의 age 검사를 지우면 stale 27.0 이 그대로 읽혀
+    `res.vix == 27.0` 이 되어 FAIL.
+    """
+    _seed_calm_setup(db)
+    _seed_vix(db, 27.0, days_old=VIX_MAX_AGE_BUSINESS_DAYS + 1)
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.vix is None, "노후 VIX 를 현재값으로 읽었다"
+    assert res.total_deploy_pct == pytest.approx(15.0, abs=0.5)
+
+
+def test_vix_within_max_age_is_still_used(db, cfg_path):
+    """경계 — 임계 이내면 여전히 유효. 노후 판정이 과하면 상시 반포지션이 된다."""
+    _seed_calm_setup(db)
+    _seed_vix(db, 15.0, days_old=VIX_MAX_AGE_BUSINESS_DAYS)
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.vix == pytest.approx(15.0)
+    assert res.total_deploy_pct == pytest.approx(30.0, abs=0.5)
+
+
+def test_malformed_vix_row_degrades_instead_of_killing_the_emitter(db, cfg_path):
+    """깨진 `macro.date` 는 상류 **데이터 결함** — emitter 전체를 죽이면 안 된다.
+
+    조회 예외를 `(OperationalError, DatabaseError)` 로 좁히면서 파싱 경로가 무방비가
+    됐다 (Codex 리뷰 P2). 결함 행 하나로 후보 산출이 통째로 멈추는 건 과잉이다.
+
+    Gotcha-Test Pair: `vix_gate.latest_vix` 의 `except (ValueError, KeyError, IndexError)`
+    를 지우면 ValueError 가 새어 이 테스트가 FAIL.
+    """
+    _seed_calm_setup(db)
+    with get_db(db) as conn:
+        conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('vix', 'not-a-date', 15.0, 'test')")
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.vix is None, "깨진 행을 값으로 읽었다"
+    assert res.candidates, "데이터 결함 하나로 emitter 가 멈췄다"
+    assert res.total_deploy_pct == pytest.approx(15.0, abs=0.5)
+
+
+def test_unknown_vix_is_not_printed_as_a_number(db, cfg_path):
+    """브리핑 표기 — 미상을 `VIX=20.0` 처럼 찍으면 사용자가 측정값으로 읽는다."""
+    _seed_calm_setup(db)
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    md = render_markdown(res)
+    assert "VIX=미상" in md, md[:300]
+    assert "VIX=20.0" not in md
 
 
 # --- Gate: regime ----------------------------------------------------------

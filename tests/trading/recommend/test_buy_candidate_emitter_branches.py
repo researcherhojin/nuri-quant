@@ -68,37 +68,69 @@ class TestCooldownTickerAccumulation:
 
 
 class TestRegimeAndVixDegradation:
-    """`_get_regime` 는 조회가 죽어도 값을 돌려줘야 한다 — 부르는 쪽이 게이트다."""
+    """`_get_regime` 는 조회가 죽어도 값을 돌려준다 — 다만 **VIX 는 지어내지 않는다.**
 
-    def test_vix_query_failure_falls_back_to_neutral_reading(self, monkeypatch):
-        """라인 251-252: VIX 조회 실패 → 20.0.
+    2026-08-10 이전에는 부재·실패·노후를 전부 `20.0` 으로 메웠고, 이 클래스의 옛 주석은
+    *"20.0 은 어느 게이트도 건드리지 않는 중립값이라 '모름' 을 가장 정직하게 표현한다"*
+    고 적고 있었다. 그 전제가 틀렸다 — 어느 게이트도 건드리지 않는다는 건 **측정 불가가
+    조용히 통과권을 얻는다**는 뜻이고, 브리핑에는 `VIX=20.0` 이 측정값처럼 찍혔다.
+    이제 `None` 이고, 부르는 쪽이 caution 과 동일하게 절반 포지션으로 처리한다
+    (STRATEGY §2.6 Soft penalty).
+    """
 
-        VIX 는 신규 매수 차단(>30) / 반포지션(25-30) 게이트의 입력이다. 조회가
-        실패했을 때 예외가 새면 후보 산출 전체가 멈추고, 반대로 30 같은 값으로
-        떨어지면 조회 실패가 조용히 '공포장' 으로 둔갑해 매수가 전면 차단된다.
-        20.0 은 어느 게이트도 건드리지 않는 중립값이라 '모름' 을 가장 정직하게
-        표현한다.
+    def test_vix_query_failure_yields_unknown_not_a_fabricated_number(self, monkeypatch):
+        """VIX 조회 실패 → `None`. 20.0 으로 되돌리면 FAIL.
 
-        Gotcha-Test Pair: fallback 값을 25 이상으로 바꾸면 두 번째 assert 가 FAIL.
+        Gotcha-Test Pair: `_get_regime` 의 VIX 실패 경로가 숫자를 돌려주면 두 번째
+        assert 가 FAIL — 그게 '측정 불가를 평온으로 둔갑' 시키던 회귀다.
         """
-        from nuri.core.rules import VIX_BLOCK_ABOVE, VIX_CAUTION_ABOVE
+        from nuri.core.db import OperationalError
         from nuri.trading.recommend import buy_candidate_emitter as bce
+        from nuri.trading.recommend import vix_gate as vg
 
         calls = []
 
         def _selective_boom(sql, *a, **kw):
             calls.append(sql)
             if "macro" in sql:
-                raise RuntimeError("simulated DB failure")
+                raise OperationalError("simulated DB failure")
             import pandas as pd
 
             return pd.DataFrame()
 
         monkeypatch.setattr(bce, "query_df", _selective_boom)
+        monkeypatch.setattr(vg, "query_df", _selective_boom)
 
         regime, vix = bce._get_regime()
 
-        assert vix == 20.0
-        assert vix < VIX_CAUTION_ABOVE < VIX_BLOCK_ABOVE, "조회 실패가 공포장으로 둔갑하면 안 된다"
+        assert vix is None, "조회 실패인데 숫자를 지어냈다"
         assert regime == "neutral"
         assert any("macro" in s for s in calls), "VIX 조회 자체가 일어나지 않았다"
+
+    def test_a_coding_error_is_not_disguised_as_unknown_vix(self, monkeypatch):
+        """DB 오류가 아닌 예외는 삼키지 않는다.
+
+        넓은 `except Exception` 이면 이 블록의 **코딩 오류**가 "VIX 미상" 으로 위장해
+        영구 반포지션이 된다. 실제로 초안에서 `today_kst()`(str)에 timedelta 를 빼다
+        TypeError 가 났고 넓은 except 가 그걸 삼켰다.
+
+        Gotcha-Test Pair: `except (OperationalError, DatabaseError)` 를
+        `except Exception` 으로 넓히면 이 테스트가 FAIL.
+        """
+        import pytest as _pytest
+
+        from nuri.trading.recommend import buy_candidate_emitter as bce
+        from nuri.trading.recommend import vix_gate as vg
+
+        def _type_error(sql, *a, **kw):
+            if "macro" in sql:
+                raise TypeError("simulated coding error")
+            import pandas as pd
+
+            return pd.DataFrame()
+
+        monkeypatch.setattr(bce, "query_df", _type_error)
+        monkeypatch.setattr(vg, "query_df", _type_error)
+
+        with _pytest.raises(TypeError):
+            bce._get_regime()

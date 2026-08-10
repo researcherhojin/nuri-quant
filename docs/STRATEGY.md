@@ -70,6 +70,12 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import
 3. 등급 상향은 쉽고 하향은 어렵다 (mechanical → informational 시 과거 case 해석 모호).
 4. **Amplifier 평가 순서**: 항상 veto/penalty 이후. Hard veto 차단 candidate 는 amplifier 대상 아님 — 보상 증폭이 손실 회피 우회하는 경로 구조적 불가능. 발동 전 Surface 단계에서 측정 (§3.6 minimum sample/positive-outcome).
 **Anti-pattern**: Surface 과용 → "performative 경고" (JKHY ⚠ 배지 행동 무변화). Hard veto 과용 → 기회 손실 + 판단권 박탈. Amplifier 를 Soft penalty 대칭 mirror 로 단일 조건 발동 → noise pumping. **변경 절차**: 단계 이동은 config/docs PR 로. 코드 매직넘버 금지.
+
+**게이트 입력이 없을 때 (2026-08-10 채택)** — 사다리는 시그널이 *있을 때* 무엇을 하느냐만 규정했고, 입력이 **없을 때**는 침묵했다. 그 공백을 `buy_candidate_emitter._get_regime` 이 `vix = 20.0` 으로 메우고 있었다. 20.0 은 차단(>30)·caution(≥25) 임계 **아래**라 측정 불가가 조용히 통과권을 얻었고, 브리핑에는 `VIX=20.0` 이 측정값처럼 찍혔다. #753 이 같은 계열(미수집 `prices.VIX` 를 읽어 항상 폴백)로 이미 한 번 게이트를 무력화한 기록이다.
+
+원칙: **위험 게이트의 입력 부재는 그 게이트의 가장 보수적 관측치와 같은 등급으로 처리한다.** VIX 미상·노후(`entry_rules.vix_gate.max_age_days`, 기본 3일)는 caution 구간과 동일한 **Soft penalty**(절반 포지션)다. Hard veto 로 올리지 않은 이유는 수집 하루 장애로 강세장 진입 기회를 통째로 잃는 비용이 실측되지 않았기 때문이고, Surface 로 낮추지 않은 이유는 근거 없이 전액이 나가는 것이 §2.6 이 막으려는 바로 그 형태이기 때문이다. 표기는 숫자가 아니라 `미상` — 없는 측정을 있는 것처럼 적지 않는다.
+
+이 조항에 백테스트를 붙이지 않는다. 발동 조건이 시장 시그널이 아니라 **데이터 장애**라, "VIX 가 없었다면" 을 과거 시장에 되돌려 세우는 것은 의미 있는 증거가 아니다. 등급을 올리거나 내리려면 실제 장애 발생 빈도와 그때의 시장 분포를 먼저 측정할 것.
 ### 2.7 개발 Flow (gstack 7-phase, 2026-04-16 채택)
 모든 작업은 **Think → Plan → Build → Review → Test → Ship → Reflect** 7 단계. 단계 건너뛰지 않음. Gate 통과 못 하면 다음 단계 못 감.
 | # | 단계 | 입력 | 행동 | 산출물 | 통과 gate |
@@ -254,7 +260,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,745 tests, 305 files (statement coverage **100%** — 0/22,560 미커버, partial branch 57, 2026-07-29) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,754 tests, 305 files (statement coverage **100%** — 0/22,560 미커버, partial branch 57, 2026-07-29) |
 | Frontend tests | 목표 ≥ 90% | 1449 tests, 127 files |
 | E2E | 핵심 flow | 57 Playwright (8 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |

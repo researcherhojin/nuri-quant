@@ -111,6 +111,7 @@ class TestBuyCandidateEmitterRegimeFallbacks:
     def test_regime_query_exception_falls_back_to_neutral(self, monkeypatch):
         """Line 256-257: query_df for regime_transitions raises → 'neutral'."""
         from nuri.trading.recommend import buy_candidate_emitter as bce
+        from nuri.trading.recommend import vix_gate as vg
 
         # First query (regime) raises, second query (VIX) returns empty df
         call_count = {"n": 0}
@@ -118,35 +119,43 @@ class TestBuyCandidateEmitterRegimeFallbacks:
         def fake_query_df(sql, *a, **kw):
             call_count["n"] += 1
             if "regime_transitions" in sql:
-                raise RuntimeError("synthetic regime fail")
+                # DB 오류만 삼킨다 — RuntimeError 로 두면 코딩 오류까지 위장되므로
+                # `except (OperationalError, DatabaseError)` 로 좁혔다.
+                from nuri.core.db import OperationalError
+
+                raise OperationalError("synthetic regime fail")
             return pd.DataFrame()  # empty VIX
 
         monkeypatch.setattr(bce, "query_df", fake_query_df)
+        monkeypatch.setattr(vg, "query_df", fake_query_df)
         regime, vix = bce._get_regime()
 
         # Behavioral lock: exception path must fall back to literal "neutral"
         # (not "" or None) so downstream gate logic (regime in {"bear", ...}) is safe.
         assert regime == "neutral"
-        # Empty VIX df → 20.0 default (line 263)
-        assert vix == 20.0
+        # 빈 VIX df → 지어내지 않고 None (2026-08-10 이전엔 20.0 이었다)
+        assert vix is None
 
-    def test_vix_query_exception_falls_back_to_20(self, monkeypatch):
-        """Line 264-265: VIX query raises → fall back to 20.0 (neutral default)."""
+    def test_vix_query_exception_yields_none(self, monkeypatch):
+        """VIX 조회가 DB 오류로 죽으면 `None` — 숫자를 지어내지 않는다."""
         from nuri.trading.recommend import buy_candidate_emitter as bce
+        from nuri.trading.recommend import vix_gate as vg
 
         def fake_query_df(sql, *a, **kw):
             if "regime_transitions" in sql:
                 return pd.DataFrame()  # empty → "neutral"
-            if "VIX" in sql:
-                raise RuntimeError("synthetic vix fail")
+            if "vix" in sql:
+                from nuri.core.db import OperationalError
+
+                raise OperationalError("synthetic vix fail")
             return pd.DataFrame()
 
         monkeypatch.setattr(bce, "query_df", fake_query_df)
+        monkeypatch.setattr(vg, "query_df", fake_query_df)
         regime, vix = bce._get_regime()
 
         assert regime == "neutral"
-        # 20.0 = explicit fallback in except branch (line 265)
-        assert vix == 20.0
+        assert vix is None
 
 
 class TestBuyCandidateEmitterRsi65To75Branch:
@@ -264,6 +273,7 @@ class TestBuyCandidateEmitterCooldownBranches:
         path must be taken (NOT the legacy single-window path).
         """
         from nuri.trading.recommend import buy_candidate_emitter as bce
+        from nuri.trading.recommend import vix_gate as vg
 
         # Minimal config with cooldown dict (triggers type-aware branch)
         cfg_path = tmp_path / "cfg.yaml"
@@ -317,6 +327,7 @@ class TestBuyCandidateEmitterCooldownBranches:
         a NoneType into _score_ticker and crash.
         """
         from nuri.trading.recommend import buy_candidate_emitter as bce
+        from nuri.trading.recommend import vix_gate as vg
 
         cfg_path = tmp_path / "cfg.yaml"
         cfg_path.write_text(
@@ -415,6 +426,7 @@ class TestBuyCandidateEmitterMain:
         Locks: the Summary line uses the exact emoji-free format with 4 fields.
         """
         from nuri.trading.recommend import buy_candidate_emitter as bce
+        from nuri.trading.recommend import vix_gate as vg
         from nuri.trading.recommend.buy_candidate_emitter import EmitResult
 
         fake_result = EmitResult(
