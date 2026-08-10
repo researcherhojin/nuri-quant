@@ -143,6 +143,12 @@ entry_rules:
 # 랭킹은 안 바뀌고 절대 점수 수준만 움직이므로 `quality_bar` 통과 **개수**에 작용한다.
 # 값이 없거나 노후하면 0.5 로 메우지 않고 **성분을 빼고 나머지 3팩터를 재정규화**한다
 # (STRATEGY §2.6 — 없는 관측을 지어내지 않는다). 비중 자체는 `composite.py WEIGHTS`.
+# 매크로 종합 점수 (nuri/quant/regime/macro_score.py)
+macro:
+  # 측정된 성분의 가중치 합이 이 아래면 interpretation 을 'Insufficient' 로 낮춘다.
+  # 얇은 표본이 'Favorable' 같은 확신 라벨로 읽히는 걸 막는다 (#1026).
+  min_coverage: 0.6
+
 factors:
   # Fear & Greed 는 시장 지수라 주말·휴장에 갱신 안 됨 → 영업일 기준
   sentiment_max_age_business_days: 2

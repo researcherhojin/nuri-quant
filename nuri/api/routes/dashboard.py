@@ -145,10 +145,14 @@ def _get_macro() -> dict:
         from nuri.quant.regime.macro_score import compute_macro_score
 
         m = compute_macro_score()
-        return {"score": round(m.total_score), "interpretation": m.interpretation}
+        # coverage 를 같이 내보낸다 — 68% 짜리 점수가 100% 인 척 보이면 안 된다 (#1026).
+        return {"score": round(m.total_score), "interpretation": m.interpretation, "coverage": m.coverage}
     except Exception as e:
-        logger.debug(f"Macro: {e}")
-    return {"score": 50, "interpretation": "Neutral"}
+        logger.warning(f"Macro score 계산 실패 — 미측정으로 표기: {e}")
+    # ⚠️ 여기 `score: 50` 은 **측정값이 아니라 스키마 자리표시자**다. 프론트가 숫자 필드를
+    # 요구해서 남겨 둘 뿐이고, 판별은 `coverage == 0` / `interpretation` 으로 한다.
+    # 예전엔 "Neutral" 이라 적어 실패가 정상 판독으로 둔갑했다.
+    return {"score": 50, "interpretation": "Unavailable", "coverage": 0.0}
 
 
 def _get_allocation(regime: str) -> dict:

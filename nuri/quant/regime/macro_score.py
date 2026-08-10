@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from nuri.core.db import query
+from nuri.core.rules import MACRO_MIN_COVERAGE
 from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,9 @@ class MacroScore:
     interpretation: str  # "Favorable", "Neutral", "Cautious", "Adverse"
     details: dict  # 원본 지표 값
     warnings: list[str] | None = None  # 누락된 지표 경고 목록
+    # 실제로 측정된 성분의 가중치 합 (1.0 = 전부 측정). 결측 성분은 50 을 채우는 대신
+    # 빼고 재정규화하므로, 소비처는 total_score 를 이 값과 **함께** 읽어야 한다 (#1026).
+    coverage: float = 1.0
 
 
 def _get_latest_macro(indicator: str, date: str | None = None, db_path=None) -> float | None:
@@ -336,26 +340,50 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
         ("inflation", inf_score, inf_detail, ["cpi_yoy"]),
         ("monetary", mon_score, mon_detail, ["fed_funds"]),
     ]
+    unavailable: set[str] = set()
     for name, score, detail, keys in _MISSING_CHECKS:
         if score == 50.0 and any(detail.get(k) is None for k in keys):
             missing_keys = [k for k in keys if detail.get(k) is None]
-            msg = f"{name}: 데이터 누락 ({', '.join(missing_keys)}) → 중립 50점 사용"
+            unavailable.add(name)
+            msg = f"{name}: 데이터 누락 ({', '.join(missing_keys)}) → 가중치에서 제외"
             warnings.append(msg)
-            logger.debug("매크로 지표 누락 — %s", msg)
+            logger.warning("매크로 지표 누락 — %s", msg)
 
-    total = (
-        yc_score * WEIGHTS["yield_curve"]
-        + ys3m10y_score * WEIGHTS["yield_spread_3m10y"]
-        + vix_score * WEIGHTS["vix"]
-        + pcr_score * WEIGHTS["put_call_ratio"]
-        + sent_score * WEIGHTS["sentiment"]
-        + emp_score * WEIGHTS["employment"]
-        + inf_score * WEIGHTS["inflation"]
-        + mon_score * WEIGHTS["monetary"]
-        + evt_score_normalized * WEIGHTS["event"]
-    )
+    # ── 결측 성분은 **빼고 나머지를 비례 재정규화**한다 (STRATEGY §2.6, #1019 선례) ──
+    # 예전엔 결측 성분에 50.0 을 채워 그대로 가중합했다. 50 은 중립이라 무해해 보이지만
+    # **총점을 가운데로 끌어당기는 방향성 있는 힘**이다. 2026-08-11 프로덕션 실측:
+    # 9개 중 3개(3M-10Y · 실업 · CPI, FRED_API_KEY 미설정으로 0행)가 결측이라 가중치
+    # 0.324 만큼 50 이 들어갔고, 총점 64.4 "Neutral" 이 나왔다. 재정규화하면 71.3
+    # "Favorable" — **해석 경계를 넘는다.** 지어낸 중립이 우호적 판독을 눌러 온 것이다.
+    #
+    # 코드는 이미 결측을 감지해 `warnings` 에 담고 있었는데, 읽는 소비처가 0개였고
+    # 로그도 debug 레벨이라 아무도 몰랐다. 그래서 여기서 **점수 자체를 고치고**
+    # coverage 를 함께 내보낸다 — 68% 짜리 점수를 100% 인 척 보이게 두지 않는다.
+    parts = [
+        ("yield_curve", yc_score),
+        ("yield_spread_3m10y", ys3m10y_score),
+        ("vix", vix_score),
+        ("put_call_ratio", pcr_score),
+        ("sentiment", sent_score),
+        ("employment", emp_score),
+        ("inflation", inf_score),
+        ("monetary", mon_score),
+        ("event", evt_score_normalized),  # event 는 항상 계산된다 (결측 개념 없음)
+    ]
+    live = [(n, s) for n, s in parts if n not in unavailable]
+    coverage = sum(WEIGHTS[n] for n, _ in live)
 
-    if total >= 70:
+    if coverage <= 0:
+        # 전 성분 결측 — 점수를 지어내지 않는다. 소비처가 interpretation 으로 판별한다.
+        logger.error("매크로 성분이 전부 결측 — 점수 산출 불가")
+        total = 0.0
+    else:
+        total = sum(s * WEIGHTS[n] for n, s in live) / coverage
+
+    if coverage < MACRO_MIN_COVERAGE:
+        # 얇은 표본이 확신에 찬 라벨로 읽히면 안 된다. 숫자는 그대로 두되 라벨로 막는다.
+        interpretation = "Insufficient"
+    elif total >= 70:
         interpretation = "Favorable"
     elif total >= 50:
         interpretation = "Neutral"
@@ -377,6 +405,7 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
         monetary_score=round(mon_score, 1),
         event_score=round(evt_score_normalized, 1),
         interpretation=interpretation,
+        coverage=round(coverage, 3),
         details={
             **yc_detail,
             **ys3m10y_detail,
@@ -389,6 +418,7 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
             "event_raw": es.score,
             "event_count": es.event_count,
             "event_dominant": es.dominant_category,
+            "coverage": round(coverage, 3),
         },
         warnings=warnings if warnings else None,
     )
@@ -397,7 +427,8 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
 def print_macro_score(score: MacroScore) -> None:
     """매크로 스코어 CLI 출력."""
     print(f"\n{'=' * 55}")
-    print(f"  Macro Score: {score.total_score:.0f}/100 — {score.interpretation}")
+    cov = f"  [측정 {score.coverage:.0%}]" if score.coverage < 1.0 else ""
+    print(f"  Macro Score: {score.total_score:.0f}/100 — {score.interpretation}{cov}")
     print(f"{'=' * 55}")
     print(f"  Date:             {score.date}")
     print(f"  Yield Curve:      {score.yield_curve_score:5.1f}  (2Y-10Y: {score.details.get('spread', '—')})")
