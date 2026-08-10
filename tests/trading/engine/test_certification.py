@@ -118,7 +118,7 @@ class TestVixGate:
         assert result.severity == "warning"
 
     def test_no_vix_data(self, db_path):
-        """VIX 미상은 PASS 가 아니다 (#1020) — 같은 파일 freshness 게이트와 동일 semantics."""
+        """VIX 미상은 PASS 가 아니다 (#1022) — 같은 파일 freshness 게이트와 동일 semantics."""
         from nuri.trading.engine.certification import _check_volatility_gates
 
         result = _check_volatility_gates(db_path=db_path)[0]
@@ -682,7 +682,7 @@ class TestCertification_R27:
         assert result.passed is False
 
     def test_check_vix_gate_no_data(self, db_path):
-        """#1020 — 미상 → FAIL(warning). 바로 아래 freshness 짝 테스트와 같은 답."""
+        """#1022 — 미상 → FAIL(warning). 바로 아래 freshness 짝 테스트와 같은 답."""
         from nuri.trading.engine.certification import _check_volatility_gates
 
         result = _check_volatility_gates(db_path=db_path)[0]

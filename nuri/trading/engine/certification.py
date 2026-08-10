@@ -399,7 +399,7 @@ def _check_volatility_for_class(asset_class: str, policy: dict, db_path=None) ->
     **Primary 지표가 없으면 FAIL(warning)** — 예전엔 PASS 였다. 설정에 게이트를
     선언해 놓고 입력이 없으면 "평가 못 했다"이지 "정상"이 아니다. 바로 위
     `_check_freshness_for_class` 는 처음부터 `age is None → passed=False` 였고,
-    같은 파일 두 게이트가 같은 상황에 반대로 답하고 있었다 (#1020).
+    같은 파일 두 게이트가 같은 상황에 반대로 답하고 있었다 (#1022).
 
     ⚠️ 값은 `_get_indicator_value` → **`macro` 테이블에서만** 온다. `prices` 에
     있는 시계열은 여기서 안 보인다 — `kospi_3d_change` 가 그 경우다
@@ -449,7 +449,7 @@ def _check_volatility_gates(db_path=None) -> list[CertCondition]:
     if not asset_classes or not groups:
         val = _read_indicator("vix", db_path=db_path)
         if val is None:
-            # 미상은 '정상' 이 아니다 (#1020). warning 이라 certified 는 안 막지만
+            # 미상은 '정상' 이 아니다 (#1022). warning 이라 certified 는 안 막지만
             # 인증서에 '평가 불가' 로 남아 score 에 반영된다.
             return [
                 CertCondition(

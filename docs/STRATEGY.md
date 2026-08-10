@@ -77,7 +77,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import
 
 **점수 성분에는 다른 규칙이 적용된다 (2026-08-10)** — 위 조항은 *게이트*(통과/차단) 이야기다. `factors/composite` 의 센티먼트처럼 **점수 성분**이 없을 때는 "가장 보수적 관측치" 라는 게 정의되지 않는다. 그때는 값을 지어내지 말고 **성분을 빼고 나머지 비중을 비례 재정규화**한다(합계 1.0 유지). 과거엔 Fear & Greed 부재 시 `0.5` 를 채웠는데, 0.5 는 중립이라 무해해 보여도 실측 0.637 대비 0-100 스케일에서 2.74점이고 `quality_bar.base_threshold: 70` 앞에서 통과 **개수**를 움직였다. 재정규화는 "모른다" 가 점수를 위로도 아래로도 밀지 않게 한다. 랭킹은 어차피 불변이다 — 시장 전체 값이라 모든 티커에 같은 양이 들어간다.
 
-**SIEGE 게이트에도 같은 원칙이 적용된다 (2026-08-10, #1020)** — §6 gate 7 `volatility_gate` 는 지표가 없으면 `passed=True, "데이터 없음 — 스킵"` 을 냈다. 이 게이트의 가장 보수적 관측치는 **자기 자신의 실패 상태**(warning)이므로, 입력 부재는 `passed=False, severity=warning` 으로 낸다. 30줄 위 `data_fresh` 는 처음부터 그렇게 동작했다 — 같은 파일 두 게이트가 같은 상황에 반대로 답하고 있었다. warning 이라 `certified` 는 안 막는다(Surface rung, 행동 무변화). 실측 여파: `kr_index` · `bond` 의 primary 지표(`kospi` / `yield`)는 프로덕션 `macro` 에 n=0 이라, 두 게이트는 도입(#248) 이래 한 번도 평가되지 않은 채 매 인증서에 초록으로 찍혀 있었다. **미수집이 아니라 배관 문제다** — `prices.KOSPI` 는 419행 있고 같은 인증서의 freshness 게이트가 이미 그걸 읽는다. 변동성 게이트만 `macro` 전용 경로라 못 볼 뿐이다. 그래서 이 PR 은 semantics 만 고치고(거짓말 제거), 입력 경로 연결과 bond threshold 재도출은 분리한다 — 후자는 `_compute_3d_change` 가 pct 를 돌려주는데 threshold 0.3 은 bp 의미로 쓰여 있어 포인터만 바꾸면 죽은 게이트가 상시 발화 게이트로 바뀐다.
+**SIEGE 게이트에도 같은 원칙이 적용된다 (2026-08-10, #1022)** — §6 gate 7 `volatility_gate` 는 지표가 없으면 `passed=True, "데이터 없음 — 스킵"` 을 냈다. 이 게이트의 가장 보수적 관측치는 **자기 자신의 실패 상태**(warning)이므로, 입력 부재는 `passed=False, severity=warning` 으로 낸다. 30줄 위 `data_fresh` 는 처음부터 그렇게 동작했다 — 같은 파일 두 게이트가 같은 상황에 반대로 답하고 있었다. warning 이라 `certified` 는 안 막는다 — **매매 행동은 안 바뀐다**(Surface rung). 다만 "무변화" 는 아니다: `score = passed/total` 이라 인증서 점수가 내려가고, 그 값은 `certifications` 테이블에 적재돼 `/api/engine` 이 rolling 평균을 낸다. 즉 **이 커밋 앞뒤의 score 시계열은 정의가 달라 직접 비교하면 안 된다** (실측 63 → 56). 이전 구간이 높았던 건 개선이 아니라 평가되지 않은 게이트를 통과로 세었기 때문이다. E4-0b predictivity 감사가 이 경계를 넘는 구간을 쓸 때 반드시 분리할 것. 실측 여파: `kr_index` · `bond` 의 primary 지표(`kospi` / `yield`)는 프로덕션 `macro` 에 n=0 이라, 두 게이트는 도입(#248) 이래 한 번도 평가되지 않은 채 매 인증서에 초록으로 찍혀 있었다. **미수집이 아니라 배관 문제다** — `prices.KOSPI` 는 419행 있고 같은 인증서의 freshness 게이트가 이미 그걸 읽는다. 변동성 게이트만 `macro` 전용 경로라 못 볼 뿐이다. 그래서 이 PR 은 semantics 만 고치고(거짓말 제거), 입력 경로 연결과 bond threshold 재도출은 분리한다 — 후자는 `_compute_3d_change` 가 pct 를 돌려주는데 threshold 0.3 은 bp 의미로 쓰여 있어 포인터만 바꾸면 죽은 게이트가 상시 발화 게이트로 바뀐다.
 
 이 조항에 백테스트를 붙이지 않는다. 발동 조건이 시장 시그널이 아니라 **데이터 장애**라, "VIX 가 없었다면" 을 과거 시장에 되돌려 세우는 것은 의미 있는 증거가 아니다. 등급을 올리거나 내리려면 실제 장애 발생 빈도와 그때의 시장 분포를 먼저 측정할 것.
 ### 2.7 개발 Flow (gstack 7-phase, 2026-04-16 채택)
@@ -264,7 +264,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,766 tests, 306 files (statement coverage **100%** — 0/22,560 미커버, partial branch 57, 2026-07-29) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,768 tests, 306 files (statement coverage **100%** — 0/22,560 미커버, partial branch 57, 2026-07-29) |
 | Frontend tests | 목표 ≥ 90% | 1449 tests, 127 files |
 | E2E | 핵심 flow | 57 Playwright (8 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
