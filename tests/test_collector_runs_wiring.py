@@ -84,6 +84,17 @@ class TestCollectorRunIsRecorded:
         sched._run_collector("macro")
         assert wired.calls == ["macro"], "기록이 실패했다고 수집을 건너뛰었다 — 관측이 본 작업을 막았다"
 
+    @pytest.mark.parametrize(
+        ("returns", "expected_rows"),
+        [(7, 7), ([1, 2, 3], 3), (None, 0), ("ok", 2)],
+    )
+    def test_row_count_is_derived_from_whatever_the_collector_returns(self, wired, monkeypatch, returns, expected_rows):
+        """collector 마다 반환형이 제각각이다 — int / 시퀀스 / None 전부 받아야 한다."""
+        monkeypatch.setattr(wired.sched, "_dispatch_collector", lambda name, **kw: returns)
+        wired.sched._run_collector("macro")
+        rows = query("SELECT rows_collected FROM collector_runs", db_path=wired.db)
+        assert rows[0]["rows_collected"] == expected_rows
+
     def test_stage_wrapped_collectors_are_recorded_too(self, wired, monkeypatch):
         """스테이지 잡은 `run_step` 경로를 타는데, 그쪽도 기록돼야 한다."""
         monkeypatch.setattr(wired.sched, "_STAGE_OF_JOB", {"macro": "collect"}, raising=False)
@@ -101,6 +112,41 @@ class TestHealthScanIsScheduled:
         assert "collector_health" in names, (
             "함수를 정의해 놓고 SCHEDULES 에 안 넣으면 #975 와 같은 상태가 된다 (코드는 있는데 한 번도 안 돎)"
         )
+
+    @pytest.mark.parametrize(
+        ("out", "expect"),
+        [
+            ({"collector_count": 0, "unhealthy_count": 0}, "행이 없다"),
+            ({"collector_count": 5, "unhealthy_count": 2}, "unhealthy"),
+            ({"collector_count": 5, "unhealthy_count": 0}, "정상"),
+        ],
+    )
+    def test_each_health_verdict_is_logged(self, monkeypatch, caplog, out, expect):
+        """세 갈래(무행/이상/정상)가 서로 다른 말을 해야 한다 — 특히 '행이 없다' 는
+        배선이 끊긴 상태라 '정상' 과 절대 같이 보이면 안 된다."""
+        import nuri.agents.actors.collector_orchestrator as mod
+        from nuri.scheduler import _run_collector_health
+
+        monkeypatch.setattr(
+            mod,
+            "CollectorOrchestrator",
+            lambda: type("A", (), {"run": lambda self, p: type("R", (), {"output": out})()})(),
+        )
+        with caplog.at_level("INFO"):
+            _run_collector_health()
+        assert expect in caplog.text, f"기대 문구 '{expect}' 가 없다: {caplog.text}"
+
+    def test_health_scan_failure_does_not_escape(self, monkeypatch, caplog):
+        """요약 잡이 죽어도 스케줄러가 멈추면 안 된다."""
+        import nuri.agents.actors.collector_orchestrator as mod
+        from nuri.scheduler import _run_collector_health
+
+        def boom():
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(mod, "CollectorOrchestrator", boom)
+        _run_collector_health()  # 예외가 새어 나오면 여기서 실패
+        assert "실행 실패" in caplog.text
 
     def test_the_registered_callable_actually_scans(self, wired):
         """등록된 func 가 진짜 scan_health 를 부르는지 — 이름만 맞는 껍데기 배제."""
