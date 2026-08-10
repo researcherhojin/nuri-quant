@@ -98,8 +98,9 @@ dev = [
     "pytest-cov>=7.1.0",
     # pytest-split: timing-aware test partitioning for CI 4-shard split.
     # Replaces pytest-shard (hash-based) which produced unbalanced buckets when
-    # test runtimes varied — see #320 history. pytest-split reads `.test-durations`
-    # to balance shards by historical duration.
+    # test runtimes varied — see #320 history. pytest-split reads `.test_durations`
+    # (언더스코어 — 플러그인 기본값. 하이픈으로 적어두면 그 파일은 영영 안 읽힌다)
+    # to balance shards by historical duration. 갱신: `make sync-test-durations`.
     "pytest-split>=0.10.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.8.0",
