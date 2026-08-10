@@ -58,7 +58,7 @@ Risk-agent veto fires on `alpha_action=="FLAT"` only. `/api/actions` 4 buckets: 
 ## Recommendation Boundary (never improvise a trade)
 
 - **No ad-hoc buy/sell calls.** Never invent order sizes, entry prices, or portfolio allocations — not even when asked "what's your stance?", "should I sell TSLA?", or "be rigorous about it". Surface only what the user's own system produced: SIEGE gate violations, `config/rules.yaml` ladder hits, `buy_candidate_emitter` counts, external facts (VIX, earnings dates, macro), and if-then scenarios.
-- **Price levels are a format, not a licence.** The entry / stop / TP1 / TP2 / trailing format applies to system-generated recommendations. It does not authorize an LLM-guessed number.
+- **Price levels are a format, not a license.** The entry / stop / TP1 / TP2 / trailing format applies to system-generated recommendations. It does not authorize an LLM-guessed number.
 - **Data ≠ recommendation.** Never let a data-collection or analysis task slide into a stock recommendation. The user must ask for the call explicitly.
 - **"Are you sure?" is the stop signal.** Withdraw the recommendation immediately and leave only the facts.
 

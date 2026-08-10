@@ -32,10 +32,11 @@ from typing import Any
 
 import yaml
 
-from nuri.core.db import query_df
+from nuri.core.db import DatabaseError, OperationalError, query_df
 from nuri.core.rules import VIX_BLOCK_ABOVE, VIX_CAUTION_ABOVE
 from nuri.core.timezone import kst_now
 from nuri.quant.factors.relative_strength import leadership_snapshot
+from nuri.trading.recommend.vix_gate import latest_vix
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +70,21 @@ class EmitResult:
     candidates: list[BuyCandidate] = field(default_factory=list)
     skipped: dict[str, str] = field(default_factory=dict)  # ticker → reason
     regime: str = ""
-    vix: float = 0.0
+    # None = VIX 미상(부재·조회실패·노후). 0.0 을 기본값으로 두면
+    # '측정된 VIX 0' 과 구분되지 않는다.
+    vix: float | None = None
     total_deploy_pct: float = 0.0
     blocked_reason: str | None = None  # if 0 candidates, why?
     timestamp_kst: str = ""
+
+
+def format_vix(vix: float | None) -> str:
+    """VIX 표기 — 미상은 숫자로 찍지 않는다.
+
+    과거엔 부재를 `20.0` 으로 메워 브리핑에 측정값처럼 찍혔다. 사용자가 "VIX 20" 을
+    읽고 평온하다고 판단할 수 있었으므로 표기 자체가 결함이었다.
+    """
+    return "미상" if vix is None else f"{vix:.1f}"
 
 
 def _load_config(path: Path | None = None) -> dict[str, Any]:
@@ -230,27 +242,27 @@ def _get_rsi_snapshot() -> dict[str, float]:
     return {row["ticker"]: row["rsi_14"] for _, row in df.iterrows() if row["rsi_14"] is not None}
 
 
-def _get_regime() -> tuple[str, float]:
-    """Current regime + VIX. Phase 1: read from regime_transitions or default."""
+def _get_regime() -> tuple[str, float | None]:
+    """Current regime + VIX. VIX 가 없거나 노후하면 **None** — 지어내지 않는다.
+
+    과거엔 부재·조회실패·노후를 전부 `20.0` 으로 메웠다. 20.0 은 차단(>30)과
+    caution(>=25) 임계 **아래**라, 측정 불가가 조용히 '평온'으로 둔갑해 게이트를 열었고
+    브리핑에는 `VIX=20.0` 이 측정값처럼 찍혔다. #753 이 같은 계열(수집 안 되는
+    `prices.VIX` 를 읽어 항상 폴백)로 이미 한 번 게이트를 무력화한 기록이다.
+
+    이제 `None` 을 돌려주고 부르는 쪽이 caution 과 동일하게(절반 포지션) 처리한다 —
+    STRATEGY §2.6 Soft penalty. 노후 임계는 `entry_rules.vix_gate.max_age_days`.
+    """
     try:
         df = query_df(
             """SELECT to_regime FROM regime_transitions
                ORDER BY date DESC LIMIT 1"""
         )
         regime = df["to_regime"].iloc[0] if not df.empty else "neutral"
-    except Exception:
+    except (OperationalError, DatabaseError):
+        logger.warning("regime 조회 실패 — neutral 처리", exc_info=True)
         regime = "neutral"
-    try:
-        # VIX 는 macro 테이블(indicator='vix')에만 수집된다. prices.VIX 는 미수집이라
-        # 과거 prices 경로는 항상 fallback 20.0 으로 떨어져 VIX 게이트가 무력화됐다 (#753).
-        df_vix = query_df(
-            """SELECT value FROM macro WHERE indicator = 'vix'
-               ORDER BY date DESC LIMIT 1"""
-        )
-        vix = float(df_vix["value"].iloc[0]) if not df_vix.empty else 20.0
-    except Exception:
-        vix = 20.0
-    return regime, vix
+    return regime, latest_vix()
 
 
 def _score_ticker(
@@ -380,7 +392,7 @@ def emit_buy_candidates(
     )
 
     # Hard gate: VIX block — 임계는 rules.yaml(core.rules) canonical 사용 (#760). 차단은 strict >.
-    if vix > VIX_BLOCK_ABOVE:
+    if vix is not None and vix > VIX_BLOCK_ABOVE:
         result.blocked_reason = f"VIX {vix:.1f} > {VIX_BLOCK_ABOVE} (신규 매수 차단)"
         return result
 
@@ -453,7 +465,9 @@ def emit_buy_candidates(
 
     # Allocation
     total_pct = alloc.get("total_pct_by_regime", {}).get(regime, 0.30)
-    if vix >= VIX_CAUTION_ABOVE:
+    # VIX 미상(None)도 caution 과 동일 취급 — 절반 포지션. STRATEGY §2.6 Soft penalty.
+    # 측정 불가를 '평온'으로 읽지 않는다는 뜻이고, 차단(hard veto)까지는 가지 않는다.
+    if vix is None or vix >= VIX_CAUTION_ABOVE:
         total_pct = total_pct / 2.0  # half-position rule
 
     sum_score = sum(s[1] for s in top)
@@ -486,12 +500,12 @@ def render_markdown(result: EmitResult) -> str:
     if result.blocked_reason:
         lines.append("## BUY Candidates (0 — blocked)")
         lines.append(f"> **{result.blocked_reason}**")
-        lines.append(f"> regime={result.regime} · VIX={result.vix:.1f}")
+        lines.append(f"> regime={result.regime} · VIX={format_vix(result.vix)}")
         return "\n".join(lines)
 
     n = len(result.candidates)
     lines.append(f"## BUY Candidates ({n} — total deploy {result.total_deploy_pct}% of cash)")
-    lines.append(f"> regime={result.regime} · VIX={result.vix:.1f} · {result.timestamp_kst}")
+    lines.append(f"> regime={result.regime} · VIX={format_vix(result.vix)} · {result.timestamp_kst}")
     for i, c in enumerate(result.candidates, 1):
         lines.append("")
         lines.append(f"{i}. **{c.ticker}** — score {c.score}/100, deploy {c.deploy_pct}%")
@@ -523,7 +537,7 @@ def main() -> int:
     print()
     print(
         f"Summary: {len(result.candidates)} candidates, "
-        f"{len(result.skipped)} skipped, regime={result.regime}, VIX={result.vix:.1f}"
+        f"{len(result.skipped)} skipped, regime={result.regime}, VIX={format_vix(result.vix)}"
     )
     return 0
 

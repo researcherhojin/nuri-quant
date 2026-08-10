@@ -65,6 +65,9 @@ TRAILING_STOP_VOLATILE = _ts.get("volatile", -20)
 _entry = RULES.get("entry_rules", {})
 VIX_BLOCK_ABOVE = _entry.get("vix_gate", {}).get("block_above", 30)
 VIX_CAUTION_ABOVE = _entry.get("vix_gate", {}).get("caution_above", 25)
+# 이보다 오래된 VIX 는 '미상'으로 본다 — 미상은 caution 과 동일 취급(절반 포지션).
+# **영업일** 기준 (휴장일 오탐 방지 — `nuri/trading/recommend/vix_gate.py` 참조).
+VIX_MAX_AGE_BUSINESS_DAYS = _entry.get("vix_gate", {}).get("max_age_business_days", 2)
 REGIME_CASH = _entry.get(
     "regime_cash",
     {

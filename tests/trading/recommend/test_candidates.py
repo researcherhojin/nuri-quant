@@ -131,7 +131,7 @@ class TestCandidatesVixGate:
 
         upsert_macro(
             [
-                {"indicator": "vix", "date": "2026-03-31", "value": 35.0, "source": "test"},
+                {"indicator": "vix", "date": today_kst(), "value": 35.0, "source": "test"},
             ],
             path,
         )
@@ -151,7 +151,7 @@ class TestCandidatesVixGate:
 
         upsert_macro(
             [
-                {"indicator": "vix", "date": "2026-03-31", "value": 27.0, "source": "test"},
+                {"indicator": "vix", "date": today_kst(), "value": 27.0, "source": "test"},
             ],
             path,
         )
@@ -175,7 +175,7 @@ class TestCandidatesVixGate:
 
         upsert_macro(
             [
-                {"indicator": "vix", "date": "2026-03-31", "value": 30.0, "source": "test"},
+                {"indicator": "vix", "date": today_kst(), "value": 30.0, "source": "test"},
             ],
             path,
         )
@@ -196,7 +196,7 @@ class TestCandidatesVixGate:
 
         upsert_macro(
             [
-                {"indicator": "vix", "date": "2026-03-31", "value": 15.0, "source": "test"},
+                {"indicator": "vix", "date": today_kst(), "value": 15.0, "source": "test"},
             ],
             path,
         )
@@ -207,7 +207,13 @@ class TestCandidatesVixGate:
         assert result["gate"] == "normal"
 
     def test_vix_no_data(self, tmp_path, monkeypatch):
-        """No VIX data => value 0 => normal."""
+        """VIX 행이 없으면 **caution** — 과거엔 `0.0` 으로 메워 'normal' 이었다.
+
+        `0.0` 은 차단(>30)·caution(>=25) 임계 아래라 측정 불가가 곧 통과였다. 이 게이트는
+        API 4개 라우트 · LLM 리포트 · 리밸런스가 소비한다 (STRATEGY §2.6 Soft penalty).
+
+        Gotcha-Test Pair: `_check_vix_gate` 의 `if vix is None` 분기를 지우면 FAIL.
+        """
         import nuri.core.db as db_mod
 
         path = tmp_path / "vix.db"
@@ -217,8 +223,8 @@ class TestCandidatesVixGate:
         from nuri.trading.recommend.candidates import _check_vix_gate
 
         result = _check_vix_gate(path)
-        assert result["gate"] == "normal"
-        assert result["vix"] == 0.0
+        assert result["gate"] == "caution", "측정 불가가 'normal' 로 통과했다"
+        assert result["vix"] is None, "없는 VIX 를 숫자로 지어냈다"
 
 
 class TestCandidatesDriftMultipliers:
@@ -672,7 +678,7 @@ class TestCandidates_R27:
         from nuri.trading.recommend.candidates import _check_vix_gate
 
         with get_db(db_path) as conn:
-            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)", ("vix", "2025-03-28", 18.5))
+            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)", ("vix", today_kst(), 18.5))
         result = _check_vix_gate(db_path=db_path)
         assert result["gate"] == "normal"
 
@@ -681,7 +687,7 @@ class TestCandidates_R27:
         from nuri.trading.recommend.candidates import _check_vix_gate
 
         with get_db(db_path) as conn:
-            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)", ("vix", "2025-03-28", 35.0))
+            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)", ("vix", today_kst(), 35.0))
         result = _check_vix_gate(db_path=db_path)
         assert result["gate"] == "blocked"
 
@@ -690,7 +696,7 @@ class TestCandidates_R27:
         from nuri.trading.recommend.candidates import _check_vix_gate
 
         with get_db(db_path) as conn:
-            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)", ("vix", "2025-03-28", 27.0))
+            conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?,?,?)", ("vix", today_kst(), 27.0))
         result = _check_vix_gate(db_path=db_path)
         assert result["gate"] == "caution"
 

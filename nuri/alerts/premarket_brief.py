@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Optional
 
 from nuri.core.timezone import kst_now, today_kst
+from nuri.trading.recommend.buy_candidate_emitter import format_vix
 
 logger = logging.getLogger(__name__)
 
@@ -395,7 +396,7 @@ def format_brief_embed(ctx: dict) -> dict:
             fields.append(
                 {
                     "name": "🛒 BUY Candidates — 0 (blocked)",
-                    "value": f"{bc.blocked_reason}\nregime={bc.regime} · VIX={bc.vix:.1f}",
+                    "value": f"{bc.blocked_reason}\nregime={bc.regime} · VIX={format_vix(bc.vix)}",
                     "inline": False,
                 }
             )
@@ -537,11 +538,11 @@ def format_brief_markdown(ctx: dict) -> str:
         if bc.blocked_reason:
             lines.append("## BUY Candidates (0 — blocked)")
             lines.append(f"- **{bc.blocked_reason}**")
-            lines.append(f"- regime={bc.regime} · VIX={bc.vix:.1f}")
+            lines.append(f"- regime={bc.regime} · VIX={format_vix(bc.vix)}")
             lines.append("")
         elif bc.candidates:
             lines.append(f"## BUY Candidates ({len(bc.candidates)} — total deploy {bc.total_deploy_pct}% of cash)")
-            lines.append(f"- regime={bc.regime} · VIX={bc.vix:.1f} · {bc.timestamp_kst}")
+            lines.append(f"- regime={bc.regime} · VIX={format_vix(bc.vix)} · {bc.timestamp_kst}")
             for i, c in enumerate(bc.candidates, 1):
                 lines.append(f"{i}. **{c.ticker}** score={c.score}/100 deploy={c.deploy_pct}%")
                 lines.append(f"   - Why now: {c.why_now}")
