@@ -92,9 +92,9 @@ log "updated to ${AFTER:0:7}"
 # ── 변경 분석: 수동 조치가 필요한 변경이면 경고만 로그 ──────────────────
 CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null)
 
+DEPS_CHANGED=0
 if echo "$CHANGED" | grep -qE "^(pyproject\.toml|uv\.lock)$"; then
-    log "WARN: Python deps changed. Run manually:"
-    log "  cd $REPO && uv sync --extra dev"
+    DEPS_CHANGED=1
 fi
 
 if echo "$CHANGED" | grep -qE "^frontend/package(-lock)?\.json$"; then
@@ -111,15 +111,59 @@ if echo "$CHANGED" | grep -qE "^config/"; then
     log "INFO: config/ files changed. Verify rules/agents/portfolio still valid."
 fi
 
-# ── (B1) 서비스 재시작 hook ─────────────────────────────────────────────
-# 현재는 24/7 서비스가 등록되어 있지 않아 no-op.
-# API/dashboard/scheduler를 launchd로 띄우게 되면 아래에 추가:
+# ── 상주 서비스 재기동 ──────────────────────────────────────────────────
+# 여기는 오래 "24/7 서비스가 등록되어 있지 않아 no-op" 이라는 주석만 있는 placeholder
+# 였다. 그 문장은 서비스가 7개 등록된 뒤로 거짓이었고, **자동 경로만** 데몬을 안 재웠다
+# — 수동 경로(`deploy_to_mini.sh`)는 #940 이후 제대로 bounce 하고 테스트로 잠겨 있다.
 #
-#   launchctl kickstart -k "gui/$(id -u)/com.nuri-quant.api" 2>>"$LOG"
-#   launchctl kickstart -k "gui/$(id -u)/com.nuri-quant.scheduler" 2>>"$LOG"
+# 안 재우면 **디스크의 새 코드 + 메모리의 낡은 모듈** 조합이 된다. 2026-08-10 실측:
+# #1017 이 `nuri/core/rules.py` 에 심볼을 추가한 날 밤 22:00 `premarket_brief` 가 새
+# `vix_gate` 를 lazy import 하다 캐시된 옛 `rules` 에서 `VIX_MAX_AGE_BUSINESS_DAYS` 를
+# 못 찾아 ImportError 로 죽었고 — certifications · decisions · 브리핑 md **3개 산출물이
+# 통째로 안 만들어졌다**. APScheduler 는 바로 다음 줄에 `executed successfully` 를 찍어
+# 아무 신호도 없었다. 같은 계열이 #576 에 이미 기록돼 있었다.
 #
-# 또는 nohup으로 띄우는 패턴이면:
-#   pkill -f "uvicorn nuri.api" && nohup .venv/bin/python -m uvicorn nuri.api.main:app --port 8001 >>"$LOG" 2>&1 &
+# **재기동은 어느 경우에도 안 하는 것보다 낫다**: 안 재운 프로세스는 이미 하이브리드
+# (메모리는 옛 모듈, lazy import 는 새 파일)라 일관성이 없다. 재기동하면 최소한 전부
+# 새 코드가 된다. 스키마 변경도 마찬가지 — 그건 위 WARN 이 사람에게 알린다.
 #
-# 지금은 코드 변경만 반영하고 종료.
-log "deploy hook: no services configured to restart (skipped)"
+# 트레이드오프: 머지가 긴 잡(22:00 브리핑 ~5분) 도중에 떨어지면 그 잡이 죽는다. 그러나
+# 대안은 **확정적** ImportError 라, 드문 충돌 쪽을 택한다. 죽은 잡은 다음 cron 에 다시 돈다.
+CODE_CHANGED=0
+if echo "$CHANGED" | grep -qE "^nuri/.*\.py$"; then
+    CODE_CHANGED=1
+fi
+
+if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
+    # 순서가 중요하다: sync 를 재기동 **앞**에 둔다. 뒤에 두면 새 프로세스가 옛 venv 로
+    # 뜬 뒤 패키지만 바뀌어, 재기동을 한 번 더 해야 한다 (2026-08-10 수동 조치 때 밟음).
+    if [ "$DEPS_CHANGED" = "1" ]; then
+        # launchd 는 로그인 셸 PATH 를 안 물려준다 — `uv` 를 이름으로 부르면
+        # `command not found` 로 조용히 건너뛴다 (2026-08-10 실측).
+        UV_BIN=$(command -v uv 2>/dev/null || echo "/opt/homebrew/bin/uv")
+        if [ -x "$UV_BIN" ]; then
+            log "deps changed → $UV_BIN sync --extra dev"
+            "$UV_BIN" sync --extra dev >>"$LOG" 2>&1 || log "ERROR: uv sync 실패 — 구 venv 로 재기동된다"
+        else
+            log "ERROR: uv 를 못 찾음 ($UV_BIN) — deps 미동기화 상태로 재기동한다"
+        fi
+    fi
+
+    # 상주 python 서비스. plist 판정 기준(StartInterval 없음 + .venv/bin/python)과
+    # 일치해야 하며 `tests/scripts/test_deploy_bounces_resident_services.py` 가 대조한다.
+    # dashboard 는 빌드 산출물을 서빙하므로 제외 — 프론트 변경은 위 WARN 이 담당.
+    RESIDENT_SERVICES=(com.nuri-quant.scheduler com.nuri-quant.api com.nuri-quant.discord-bot)
+    for RESIDENT in "${RESIDENT_SERVICES[@]}"; do
+        if ! launchctl list 2>/dev/null | grep -q "${RESIDENT}\$"; then
+            log "skip restart: ${RESIDENT} 미설치"
+            continue
+        fi
+        if launchctl kickstart -k "gui/$(id -u)/${RESIDENT}" >>"$LOG" 2>&1; then
+            log "restarted ${RESIDENT}"
+        else
+            log "ERROR: ${RESIDENT} kickstart 실패 — 구코드로 계속 돈다. 수동 확인 필요"
+        fi
+    done
+else
+    log "no python code/dep changes — services left running"
+fi
