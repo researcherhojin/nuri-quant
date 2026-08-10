@@ -157,7 +157,7 @@ lint-fix:
 
 lint-sh: ## Shell script lint via shellcheck (brew install shellcheck)
 	@command -v shellcheck >/dev/null 2>&1 || { echo "shellcheck not installed: brew install shellcheck"; exit 1; }
-	shellcheck --source-path=SCRIPTDIR --external-sources scripts/*.sh
+	find scripts -name '*.sh' -exec shellcheck --source-path=SCRIPTDIR --external-sources {} +
 
 typecheck: ## Pyright static type-check across nuri/, tests/, scripts/ (advisory; severity 8 only)
 	@command -v npx >/dev/null 2>&1 || { echo "npx not installed: install Node.js"; exit 1; }

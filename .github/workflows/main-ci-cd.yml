@@ -289,7 +289,7 @@ jobs:
         run: python3 scripts/verify/check_privacy_leak.py
 
   # ── Shell script lint ──
-  # shellcheck로 scripts/*.sh 린트. Graduated from warning-only 2026-04-15 —
+  # shellcheck로 scripts/ 하위 **전체** .sh 린트. Graduated from warning-only 2026-04-15 —
   # passed cleanly across multiple consecutive runs (docs/TODO.md Tier 1 #7
   # shipped 16 files clean). Failures now block the job, but the check
   # is still not in required_status_checks (branch protection update is a
@@ -302,7 +302,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Run shellcheck
-        run: shellcheck --source-path=SCRIPTDIR --external-sources scripts/*.sh
+        # `scripts/*.sh` 는 7개 하위 디렉터리로 옮긴 뒤 27개 중 1개(_common.sh)만
+        # 잡았다 — required check 가 사실상 비어 있었다. find 로 재귀 수집한다.
+        run: find scripts -name '*.sh' -exec shellcheck --source-path=SCRIPTDIR --external-sources {} +
 
   # ── Doc count drift gate ──
   # verify_doc_counts.sh checks that numeric claims in CLAUDE.md / README.md /
