@@ -125,7 +125,10 @@ override-dependencies = [
     # cross-origin redirect 쿠키 유출) — 부모(openbb-core/discord-py/
     # aiohttp-client-cache) 전부 aiohttp 제약 (any) 라 floor 만 강제.
     # 3.13.4 → 3.14.0 minor bump (실측: test suite green).
-    "aiohttp>=3.14.0",
+    # 2026-08-10: floor 를 3.14.3 으로 올림. 3.14.1 이 미해결 권고 3건에
+    # 걸려 있었다 (high ≤3.14.2 / medium ≤3.14.1 ×2). floor 만 올리면
+    # 되는 이유는 위와 같다 — 부모들이 여전히 any 제약이다.
+    "aiohttp>=3.14.3",
     # dependabot #63 (starlette ≤1.0.0 Host header bypass) + #79/#80 (<1.3.1) —
     # 패치는 starlette≥1.3.1 에 존재, fastapi 는 0.133.0 부터 starlette 1.x
     # 허용. openbb-core(최신 1.6.10)까지 fastapi<0.129 하드 핀이나, nuri 는
