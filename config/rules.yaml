@@ -127,6 +127,12 @@ entry_rules:
     block_above: 30             # VIX > 30: 신규 매수 금지
     caution_above: 25           # VIX 25-30: 절반 포지션만
     normal_below: 20            # VIX < 20: 정상 포지션 — ⚠️ 미배선 (로드조차 안 됨)
+    # VIX 부재/노후 시 caution 과 동일 취급 (절반 포지션). STRATEGY §2.6 Soft penalty.
+    # 과거엔 값이 없으면 20.0 을 지어내 게이트를 통과시켰다 — 측정 불가가 '평온'으로
+    # 둔갑했고, 브리핑에는 `VIX=20.0` 이 측정값처럼 찍혔다.
+    # 영업일 기준 — 달력일로 재면 월요일 휴장 뒤 화요일에 금요일 VIX 가 4일치가 되어
+    # 정상 데이터인데 '미상'으로 떨어진다. 2 면 주말 + 단일 휴장까지 흡수한다.
+    max_age_business_days: 2    # 최신 VIX 가 이보다 오래되면 '미상' 취급
   # 분할 매수 규칙 — ⚠️ 미배선
   scaling_in:
     max_tranches: 3             # 최대 3회 분할 매수

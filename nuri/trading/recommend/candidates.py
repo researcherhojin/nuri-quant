@@ -184,12 +184,15 @@ def _get_regime_context(db_path=None) -> dict | None:
 def _check_vix_gate(db_path=None) -> dict:
     """VIX 기반 매수 게이트 체크. rules.yaml의 vix_gate 규칙 적용."""
     from nuri.core.rules import VIX_BLOCK_ABOVE, VIX_CAUTION_ABOVE
+    from nuri.trading.recommend.vix_gate import latest_vix
 
-    vix_rows = query_df(
-        "SELECT value FROM macro WHERE indicator = 'vix' ORDER BY date DESC LIMIT 1",
-        db_path=db_path,
-    )
-    vix = float(vix_rows.iloc[0]["value"]) if not vix_rows.empty else 0.0
+    vix = latest_vix(db_path=db_path)
+
+    # VIX 미상(부재·조회실패·노후)은 caution 과 동일 취급 — STRATEGY §2.6 Soft penalty.
+    # 과거엔 `0.0` 으로 메워 **모든 임계 아래**로 떨어졌고, 측정 불가가 곧 'normal' 이었다.
+    # 이 게이트는 API 4개 라우트 · LLM 리포트 · 리밸런스가 소비한다 (Codex 리뷰 2026-08-10).
+    if vix is None:
+        return {"vix": None, "gate": "caution", "msg": "VIX 미상 → 절반 포지션만 (측정 불가)"}
 
     # 차단은 strict > (rules.yaml 주석/사용자 룰: "VIX > 30 금지", "25-30 절반") — vix==30 은 caution (#760).
     if vix > VIX_BLOCK_ABOVE:
