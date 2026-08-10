@@ -1,5 +1,4 @@
 # cspell:ignore vmod
-# pyright: reportArgumentType=false
 """Tests for factors_value — split from test_quant_all.py."""
 
 from datetime import timedelta
