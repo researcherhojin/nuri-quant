@@ -198,3 +198,49 @@ class TestUnknownIndicatorFailsTheGate:
         )
         assert conds[0].passed is False
         assert conds[0].severity == "warning"
+
+    def test_missing_secondary_emits_nothing_rather_than_a_warning(self, db_path):
+        """**의도된 비대칭** — primary 와 다르다 (Codex R2 P1).
+
+        secondary 는 값이 없으면 condition 자체를 안 만든다. primary 결함은
+        `passed=True` 로 **거짓말** 하고 score 를 부풀린 것이었고, 이쪽은 침묵이라
+        둘의 해악이 다르다. 없는 참고 지표마다 경고를 띄우면 §2.6 이 경계하는
+        performative 경고가 된다. 이 선택을 우연이 아니라 **결정**으로 못박는다 —
+        누군가 primary 와 맞춘답시고 warning 을 추가하면 여기서 걸린다.
+        """
+        from nuri.core.db import upsert_macro
+        from nuri.core.timezone import today_kst
+
+        upsert_macro([{"indicator": "vix", "date": today_kst(), "value": 15.0, "source": "test"}], db_path)
+        conds = _check_volatility_for_class(
+            "kr_equity",
+            {
+                "volatility_primary": "vix",
+                "volatility_primary_threshold": 30,
+                "volatility_secondary": ["definitely_not_collected"],
+            },
+            db_path=db_path,
+        )
+        assert [c.id for c in conds] == ["volatility_gate_kr_equity"], (
+            "값 없는 secondary 는 condition 을 만들지 않는다 — 만들면 매 인증서에 "
+            "해소 불가 경고가 쌓인다. 영구 미수집은 계약 테스트가 PR 에서 잡는다."
+        )
+
+    def test_present_secondary_still_reports(self, db_path):
+        """비대칭이 secondary 를 통째로 죽인 게 아님을 확인 (위 테스트의 짝)."""
+        from nuri.core.db import upsert_macro
+        from nuri.core.timezone import today_kst
+
+        upsert_macro([{"indicator": "vix", "date": today_kst(), "value": 15.0, "source": "test"}], db_path)
+        conds = _check_volatility_for_class(
+            "kr_index",
+            {
+                "volatility_primary": "vix",
+                "volatility_primary_threshold": 30,
+                "volatility_secondary": ["vix"],
+                "volatility_secondary_threshold": 10,
+            },
+            db_path=db_path,
+        )
+        sec = next(c for c in conds if c.id == "volatility_gate_kr_index_vix")
+        assert sec.passed is False and sec.severity == "warning"  # 15.0 > 10
