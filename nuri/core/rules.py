@@ -81,6 +81,9 @@ REGIME_CASH = _entry.get(
 MAX_TRANCHES = _entry.get("scaling_in", {}).get("max_tranches", 3)
 TRANCHE_INTERVAL_DAYS = _entry.get("scaling_in", {}).get("tranche_interval_days", 5)
 
+# ─── 매크로 종합 점수 ───
+MACRO_MIN_COVERAGE = RULES.get("macro", {}).get("min_coverage", 0.6)
+
 # ─── 멀티팩터 합성 ───
 FACTOR_RULES = RULES.get("factors", {})
 
