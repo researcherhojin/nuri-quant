@@ -394,7 +394,16 @@ def _get_indicator_value(name: str, db_path=None) -> float | None:
 def _check_volatility_for_class(asset_class: str, policy: dict, db_path=None) -> list[CertCondition]:
     """Asset class 별 변동성 gate. primary + secondary 각각 condition 발행.
 
-    Returns: [primary_condition, *secondary_conditions]. 데이터 없으면 PASS.
+    Returns: [primary_condition, *secondary_conditions].
+
+    **Primary 지표가 없으면 FAIL(warning)** — 예전엔 PASS 였다. 설정에 게이트를
+    선언해 놓고 입력이 없으면 "평가 못 했다"이지 "정상"이 아니다. 바로 위
+    `_check_freshness_for_class` 는 처음부터 `age is None → passed=False` 였고,
+    같은 파일 두 게이트가 같은 상황에 반대로 답하고 있었다 (#1020).
+
+    ⚠️ 값은 `_get_indicator_value` → **`macro` 테이블에서만** 온다. `prices` 에
+    있는 시계열은 여기서 안 보인다 — `kospi_3d_change` 가 그 경우다
+    (`prices.KOSPI` 는 419행 있는데 `macro.kospi` 는 0행).
     """
     out: list[CertCondition] = []
     prim_name = policy.get("volatility_primary")
@@ -404,7 +413,7 @@ def _check_volatility_for_class(asset_class: str, policy: dict, db_path=None) ->
         cid = f"volatility_gate_{asset_class}"
         desc = f"[{asset_class}] {prim_name} <= {prim_thr}"
         if val is None:
-            out.append(CertCondition(cid, desc, True, f"{prim_name} 데이터 없음 — 스킵"))
+            out.append(CertCondition(cid, desc, False, f"{prim_name} 값 없음 — 평가 불가", "warning"))
         elif val <= prim_thr:
             out.append(CertCondition(cid, desc, True, f"{prim_name} {val:.2f} (정상)"))
         else:
@@ -440,7 +449,13 @@ def _check_volatility_gates(db_path=None) -> list[CertCondition]:
     if not asset_classes or not groups:
         val = _read_indicator("vix", db_path=db_path)
         if val is None:
-            return [CertCondition("vix_gate", f"VIX > {VIX_BLOCK_ABOVE} 매수 차단", True, "VIX 데이터 없음")]
+            # 미상은 '정상' 이 아니다 (#1020). warning 이라 certified 는 안 막지만
+            # 인증서에 '평가 불가' 로 남아 score 에 반영된다.
+            return [
+                CertCondition(
+                    "vix_gate", f"VIX > {VIX_BLOCK_ABOVE} 매수 차단", False, "VIX 데이터 없음 — 평가 불가", "warning"
+                )
+            ]
         ok = val <= VIX_BLOCK_ABOVE
         return [
             CertCondition(
