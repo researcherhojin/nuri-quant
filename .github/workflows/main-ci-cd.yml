@@ -448,7 +448,11 @@ jobs:
         # `--cov-report=` (empty) suppresses XML — backend-coverage-merge 가 모든
         # shard 의 `.coverage` 를 모아 단일 XML 을 만들고 codecov 에 한 번 업로드.
         run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow and not integration" --splits 4 --group ${{ matrix.shard }} --cov=nuri --cov-branch --cov-report= --cov-report=term
-        timeout-minutes: 5
+        # 5분은 **관측된 최악값과 같았다** — 그래서 통과/실패가 동전던지기였다.
+        # shard 4 실측 4회: 139s · 302s(timeout) · pass · timeout(82% 에서 절단, #1028).
+        # timeout 은 예상 최악값 위에 여유를 둬야 하고, 그러면서도 진짜 hang 은
+        # 여전히 잡아야 한다 — 정상 최대(~140s)의 3배가 그 절충이다 (#1029).
+        timeout-minutes: 8
 
       - name: Upload .coverage artifact
         if: needs.changes.outputs.run_backend == 'true' && always()
