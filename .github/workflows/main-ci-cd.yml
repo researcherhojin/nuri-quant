@@ -343,9 +343,23 @@ jobs:
     # this check as "skipping", which blocks merge under the new required-check
     # policy. The job is fast (~15s, no network), so always-on cost is trivial
     # vs the merge-block cost.
+    #
+    # `!cancelled()` + the guard step below are what make "always run" true.
+    # Without them `needs: changes` means a FAILED `changes` job skips this one,
+    # and GitHub counts a skipped required check as satisfied — the gate would
+    # fail open exactly when the thing that decides what to test is broken.
+    # Every other `needs: changes` job here already carries both; this was the
+    # only one that did not.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Guard — require changes to succeed
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: |
+          echo "::error::changes job did not succeed (result=${{ needs.changes.result }}) — cannot verify gates"
+          exit 1
       - uses: actions/checkout@v7
       - name: Setup Python
         uses: actions/setup-python@v7
