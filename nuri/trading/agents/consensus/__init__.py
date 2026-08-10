@@ -170,7 +170,7 @@ def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
         try:
             return agent.analyze(ticker, db_path)
         except Exception as e:  # noqa: BLE001 — 에이전트 예외를 verdict로 흡수
-            return AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
+            return AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}", degraded=True)
 
     # `with` 대신 명시적 shutdown — 미완료 future를 cancel하고 즉시 반환.
     # `with` 블록은 __exit__에서 wait=True로 모든 future 완료를 기다리므로
@@ -186,12 +186,12 @@ def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
                 try:
                     verdicts.append(future.result())
                 except Exception as e:  # noqa: BLE001
-                    verdicts.append(AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}"))
+                    verdicts.append(AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}", degraded=True))
         except concurrent.futures.TimeoutError:
             # 전체 batch timeout — 미완료 future는 폴백 verdict로
             for future, agent in futures.items():
                 if future not in completed:
-                    verdicts.append(AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃"))
+                    verdicts.append(AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃", degraded=True))
     finally:
         # cancel_futures: 큐에 대기중인(아직 시작 안 한) future 취소
         # wait=False: 실행 중인 future가 끝날 때까지 기다리지 않음
@@ -222,7 +222,7 @@ def stream_analyze_ticker(ticker: str, db_path=None):
         try:
             return agent.analyze(ticker, db_path)
         except Exception as e:  # noqa: BLE001
-            return AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
+            return AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}", degraded=True)
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(ALL_AGENTS))
     try:
@@ -235,13 +235,13 @@ def stream_analyze_ticker(ticker: str, db_path=None):
                 try:
                     verdict = future.result()
                 except Exception as e:  # noqa: BLE001
-                    verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}")
+                    verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, f"에러: {e}", degraded=True)
                 verdicts.append(verdict)
                 yield ("verdict", verdict)
         except concurrent.futures.TimeoutError:
             for future, agent in futures.items():
                 if future not in completed:
-                    verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃")
+                    verdict = AgentVerdict(agent.name, ticker, "HOLD", 0, "타임아웃", degraded=True)
                     verdicts.append(verdict)
                     yield ("verdict", verdict)
     finally:

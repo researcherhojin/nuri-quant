@@ -4,6 +4,7 @@
 각 에이전트는 독립적으로 종목을 분석하여 verdict(판정)을 내린다.
 Consensus engine이 가중 투표로 최종 결론을 도출한다.
 """
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
@@ -21,19 +22,25 @@ class AgentVerdict:
       consumer (tracker.py, /decisions UI, Learning Memory hit 판정) 가 계속
       사용. axis 가 None 이면 agent 별 기존 logic 유지.
     """
+
     agent_name: str
     ticker: str
-    action: str             # "BUY", "SELL", "HOLD"
-    confidence: float       # 0~100 (정규화 후)
-    reasoning: str          # 판정 근거 (1~2문장)
+    action: str  # "BUY", "SELL", "HOLD"
+    confidence: float  # 0~100 (정규화 후)
+    reasoning: str  # 판정 근거 (1~2문장)
     data_points: dict = field(default_factory=dict)  # 사용한 데이터
-    alpha_action: str | None = None          # "LONG" | "SHORT" | "FLAT" | None
-    portfolio_action: str | None = None      # "REBALANCE" | "TRIM" | "HEDGE" | "NONE" | None
+    alpha_action: str | None = None  # "LONG" | "SHORT" | "FLAT" | None
+    portfolio_action: str | None = None  # "REBALANCE" | "TRIM" | "HEDGE" | "NONE" | None
+    # 에이전트가 예외/타임아웃으로 **판단을 못 한** 경우 True (#1028). 그때도 패널이
+    # 무너지지 않게 HOLD/0 verdict 를 채우는데(#130), 그 대체물이 진짜 HOLD 와
+    # 구분되지 않으면 거부권 무력화·동의율 부풀림이 조용히 일어난다.
+    degraded: bool = False
 
 
 def _load_norm_config() -> dict:
     """confidence_normalization 설정 로드 (import cycle 방지를 위해 lazy)."""
     from nuri.core.agent_config import AGENT_CONFIG
+
     return AGENT_CONFIG.get("confidence_normalization", {})
 
 
@@ -71,6 +78,7 @@ class BaseAgent(ABC):
     def _safe_query(self, sql, params=(), db_path=None):
         """DB 쿼리 안전 래퍼."""
         from nuri.core.db import query
+
         try:
             return query(sql, params, db_path=db_path)
         except Exception:
