@@ -88,12 +88,6 @@ def _macro_writer_indicators() -> set[str]:
 # 이 테스트가 아니라 **매일 나가는 인증서**가 만든다. 이 테스트가 강제하는 건
 # "이유와 추적 이슈가 붙어 있을 것" 까지다.
 KNOWN_MISSING_FROM_MACRO = {
-    "kospi": (
-        "#1020 — 시계열 자체는 있다: `prices.KOSPI` 419행 (freshness 게이트가 이미 쓴다). "
-        "`_get_indicator_value` 가 macro 만 읽어서 못 볼 뿐. prices 폴백을 붙이면 "
-        "해소되지만 게이트 입력 경로 변경이라 별도 PR. threshold 5.0 은 "
-        "pct-change 의미로 이미 정합이라 재도출 불필요."
-    ),
     "yield": (
         "#1021 — bond 클래스 primary. `macro.us_10y_yield`(335행) / `prices.TLT`(46행) 둘 다 "
         "후보지만 threshold 0.3 이 `_compute_3d_change` 의 pct 의미와 안 맞는다 "
@@ -105,7 +99,10 @@ _ISSUE_REF = re.compile(r"#\d{2,}")
 
 
 def _collected_indicators() -> set[str]:
-    return _macro_writer_indicators()
+    # prices 로 내려가는 항목도 '읽을 수 있는 입력' 이다 (#1020). 소스에서 유도한다.
+    from nuri.trading.engine.certification import _PRICES_BACKED
+
+    return _macro_writer_indicators() | set(_PRICES_BACKED)
 
 
 def _declared_indicators() -> dict[str, list[str]]:
@@ -244,3 +241,67 @@ class TestUnknownIndicatorFailsTheGate:
         )
         sec = next(c for c in conds if c.id == "volatility_gate_kr_index_vix")
         assert sec.passed is False and sec.severity == "warning"  # 15.0 > 10
+
+
+class TestKospiResolvesThroughPrices:
+    """`macro.kospi` 는 0행인데 `prices.KOSPI` 는 있다 (#1020).
+
+    같은 인증서의 freshness 게이트가 이미 `prices.KOSPI` 를 읽는데 변동성 경로만
+    macro 전용이라 못 봤고, 그래서 `volatility_gate_kr_index` 가 #248 이래 한 번도
+    평가되지 않았다. 폴백은 **명시 매핑**이다 — 이름 대문자화 같은 블랭킷 규칙은
+    엉뚱한 티커로 조용히 해석될 수 있고, 그건 지금 고치는 결함보다 나쁘다.
+    """
+
+    def _seed_kospi(self, db_path, closes):
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            for i, c in enumerate(closes):
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
+                    ("KOSPI", f"2026-08-{10 - i:02d}", c),
+                )
+
+    def test_gate_evaluates_from_prices_when_macro_is_empty(self, db_path):
+        from nuri.trading.engine.certification import _check_volatility_for_class
+
+        self._seed_kospi(db_path, [2600.0, 2590.0, 2580.0, 2570.0])  # 3d ≈ +1.17%
+        conds = _check_volatility_for_class(
+            "kr_index",
+            {"volatility_primary": "kospi_3d_change", "volatility_primary_threshold": 5.0},
+            db_path=db_path,
+        )
+        assert conds[0].passed is True, f"prices 폴백이 안 걸렸다: {conds[0].detail}"
+        assert "평가 불가" not in conds[0].detail
+
+    def test_a_real_breach_still_fails(self, db_path):
+        """폴백이 무조건 통과시키는 게 아님을 확인 (짝 테스트)."""
+        from nuri.trading.engine.certification import _check_volatility_for_class
+
+        self._seed_kospi(db_path, [2300.0, 2500.0, 2550.0, 2600.0])  # 3d ≈ 11.5% > 5.0
+        conds = _check_volatility_for_class(
+            "kr_index",
+            {"volatility_primary": "kospi_3d_change", "volatility_primary_threshold": 5.0},
+            db_path=db_path,
+        )
+        assert conds[0].passed is False and conds[0].severity == "warning"
+
+    def test_macro_still_wins_when_present(self, db_path):
+        """폴백은 macro 가 없을 때만 — 있으면 macro 가 우선이어야 한다."""
+        from nuri.core.db import upsert_macro
+        from nuri.trading.engine.certification import _read_indicator
+
+        self._seed_kospi(db_path, [9999.0])
+        upsert_macro([{"indicator": "kospi", "date": "2026-08-10", "value": 1111.0, "source": "t"}], db_path)
+        assert _read_indicator("kospi", db_path=db_path) == 1111.0
+
+    def test_fallback_is_not_a_blanket_rule(self, db_path):
+        """매핑에 없는 이름은 prices 로 안 내려간다 — 우연한 티커 해석 차단."""
+        from nuri.core.db import get_db
+        from nuri.trading.engine.certification import _read_indicator
+
+        with get_db(db_path) as conn:
+            conn.execute("INSERT INTO prices (ticker, date, close) VALUES (?,?,?)", ("GOLD", "2026-08-10", 42.0))
+        assert _read_indicator("gold", db_path=db_path) is None, (
+            "매핑에 없는 지표가 prices 로 해석됐다 — 게이트가 엉뚱한 시계열로 통과할 수 있다"
+        )

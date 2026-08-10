@@ -355,16 +355,42 @@ def _group_holdings_by_asset_class(db_path=None) -> dict[str, list[dict]]:
     return groups
 
 
+# ── macro 에 없고 prices 에 있는 지표 (#1020) ──────────────────────────────
+# `macro.kospi` 는 0행인데 `prices.KOSPI` 는 419행이고, **같은 인증서의 freshness
+# 게이트가 이미 그걸 읽는다** (`freshness_primary: KOSPI`). 변동성 경로만 macro 전용이라
+# 못 봤고, 그 탓에 `volatility_gate_kr_index` 가 #248 이래 한 번도 평가되지 않았다.
+#
+# 블랭킷 폴백(이름 대문자화 등)을 쓰지 않는 이유: 우연히 다른 티커로 해석될 수 있고,
+# 그러면 게이트가 **엉뚱한 시계열**로 조용히 통과한다 — 지금 고치는 결함보다 나쁘다.
+# 여기 적힌 것만 prices 로 내려간다. 새 항목은 계약 테스트가 대조한다.
+_PRICES_BACKED: dict[str, str] = {"kospi": "KOSPI"}
+
+
+def _read_price_closes(ticker: str, limit: int, db_path=None) -> list[float]:
+    """prices 테이블 최신 종가 N개 (최신 우선). macro fallback 전용."""
+    rows = query(
+        "SELECT close FROM prices WHERE ticker=? AND close IS NOT NULL ORDER BY date DESC LIMIT ?",
+        (ticker, limit),
+        db_path=db_path,
+    )
+    return [float(r["close"]) for r in rows]
+
+
 def _read_indicator(name: str, db_path=None) -> float | None:
-    """macro 테이블에서 최신 지표 값. 없으면 None."""
+    """최신 지표 값. macro 우선, `_PRICES_BACKED` 항목은 prices 로 폴백. 없으면 None."""
     rows = query(
         "SELECT value FROM macro WHERE indicator=? ORDER BY date DESC LIMIT 1",
         (name,),
         db_path=db_path,
     )
-    if not rows or rows[0]["value"] is None:
-        return None
-    return float(rows[0]["value"])
+    if rows and rows[0]["value"] is not None:
+        return float(rows[0]["value"])
+    ticker = _PRICES_BACKED.get(name)
+    if ticker:
+        closes = _read_price_closes(ticker, 1, db_path=db_path)
+        if closes:
+            return closes[0]
+    return None
 
 
 def _compute_3d_change(indicator: str, db_path=None) -> float | None:
@@ -374,10 +400,14 @@ def _compute_3d_change(indicator: str, db_path=None) -> float | None:
         (indicator,),
         db_path=db_path,
     )
-    if len(rows) < 4 or rows[0]["value"] is None or rows[-1]["value"] is None:
-        return None
-    latest = float(rows[0]["value"])
-    past = float(rows[-1]["value"])
+    values = [r["value"] for r in rows]
+    if len(values) < 4 or values[0] is None or values[-1] is None:
+        ticker = _PRICES_BACKED.get(indicator)
+        values = _read_price_closes(ticker, 4, db_path=db_path) if ticker else []
+        if len(values) < 4:
+            return None
+    latest = float(values[0])
+    past = float(values[-1])
     if past == 0:
         return None
     return abs((latest - past) / past * 100)
