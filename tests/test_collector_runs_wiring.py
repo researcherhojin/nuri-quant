@@ -67,6 +67,23 @@ class TestCollectorRunIsRecorded:
         rows = query("SELECT collector_name, status FROM collector_runs", db_path=wired.db)
         assert len(rows) == 1 and rows[0]["status"] != "finished", f"실패가 기록되지 않았다: {[dict(r) for r in rows]}"
 
+    def test_recording_failure_never_blocks_collection(self, wired, monkeypatch):
+        """관측이 본 작업을 게이트하면 안 된다 (#894).
+
+        최초 구현은 `CollectorOrchestrator.orchestrate` 를 탔는데, `Actor.run()` 이
+        실행 **전에** `agent_run_ledger` 에 쓰는 바람에 그 쓰기가 실패하면 collector 가
+        아예 안 돌았다 (CI 가 `no such table: agent_run_ledger` 로 잡음). 나는 그걸
+        "로그만 틀린다" 고 적어 뒀었고, 틀렸다.
+        """
+        import nuri.scheduler as sched
+
+        def dead_log(**kw):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr("nuri.core.db.log_collector_run", dead_log)
+        sched._run_collector("macro")
+        assert wired.calls == ["macro"], "기록이 실패했다고 수집을 건너뛰었다 — 관측이 본 작업을 막았다"
+
     def test_stage_wrapped_collectors_are_recorded_too(self, wired, monkeypatch):
         """스테이지 잡은 `run_step` 경로를 타는데, 그쪽도 기록돼야 한다."""
         monkeypatch.setattr(wired.sched, "_STAGE_OF_JOB", {"macro": "collect"}, raising=False)

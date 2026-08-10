@@ -302,40 +302,53 @@ def _run_collector(name: str, **kwargs):
             return run_step(stage, _dispatch_collector, warn_only=True, reraise=True, name=name, **kwargs)
         return _dispatch_collector(name, **kwargs)
 
+    import time as _time
+
+    started = _time.monotonic()
     try:
-        _orchestrated(name, _invoke)
+        result = _invoke()
     except Exception as e:
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
+        _record_collector_run(name, "failed", started, error=str(e))
+        return
+    _record_collector_run(name, "finished", started, result=result)
 
 
-def _orchestrated(name: str, invoke):
-    """collector 실행을 `CollectorOrchestrator` 로 감싸 `collector_runs` 에 한 행 남긴다 (#975).
+def _record_collector_run(name: str, status: str, started_monotonic: float, *, result=None, error=None):
+    """`collector_runs` 에 한 행 남긴다 (#975). **절대 본 작업을 막지 않는다.**
 
-    **왜**: `collector_runs` 는 도입 이래 프로덕션에 **0행**이었다 — 유일한 writer 인
+    **왜**: 이 테이블은 도입 이래 프로덕션에 **0행**이었다 — 유일한 writer 인
     `CollectorOrchestrator` 가 `actors/__init__.py` 에 import 만 되고 `SCHEDULES` 어디에도
-    없어 한 번도 안 돌았기 때문이다. 그 결과 collector health 관측이 통째로 없었고,
-    2026-08-11 에 발견한 데이터 구멍 셋(#1025 FRED 8지표 0행 · #1020 kospi/yield 0행)을
-    전부 손으로 DB 를 뒤져 찾아야 했다. 이 테이블이 차 있었다면 몇 달 전에 보였다.
+    없어 한 번도 안 돌았기 때문이다. collector health 관측이 통째로 없었고, 2026-08-11 에
+    발견한 데이터 구멍 셋(#1025 FRED 8지표 0행 · #1020 kospi/yield 0행)을 전부 손으로 DB
+    를 뒤져 찾았다. 이 테이블이 차 있었다면 몇 달 전에 보였다.
 
-    **행동은 바꾸지 않는다**: `max_retries=0` 이라 시도 횟수는 지금과 같은 1회다.
-    재시도를 켜는 건 수집 동작 변경이라 별도 판단 — 여기서 딸려 들어가면 안 된다.
+    ⚠️ **왜 `CollectorOrchestrator.orchestrate` 를 안 쓰는가** — 처음엔 그렇게 짰다가 CI 가
+    잡았다. `Actor.run()` 은 실행 **전에** `agent_run_ledger` 에 쓰는데, 그 쓰기가 실패하면
+    (`no such table`) collector 가 **아예 실행되지 않는다.** 관측이 본 작업을 게이트하는
+    바로 그 형태다(#894) — "로그만 틀린다" 고 적어 뒀던 내 판단이 틀렸고, 실제로는 수집이
+    통째로 사라졌다. 그래서 수집을 먼저 하고, 기록은 **자체 try 로 soft-fail** 시킨다.
+    기록 실패는 경고 한 줄이지 수집 실패가 아니다.
 
-    ⚠️ 한계를 정직하게: 오케스트레이터는 `collector_fn()` **성공 뒤** `log_collector_run`
-    을 부른다. 그 DB 쓰기가 실패하면 예외가 위로 올라가 호출부가 "실행 실패" 로 찍는다 —
-    수집 자체는 이미 끝난 뒤라 **데이터 손실은 없고 로그만 틀린다**. 관측이 본 작업을
-    막지는 않지만(#894) 오탐은 낼 수 있다는 뜻이다. 오케스트레이터 내부를 고치는 건
-    이 PR 범위 밖이라 여기 적어 둔다.
+    액터는 읽기 전용 경로(`scan_health`)에서만 쓴다 — 거긴 게이트할 본 작업이 없다.
     """
-    from nuri.agents.actors.collector_orchestrator import CollectorOrchestrator
+    import time as _time
 
-    result = CollectorOrchestrator().run(
-        {"action": "orchestrate", "collector_name": name, "collector_fn": invoke, "max_retries": 0}
-    )
-    out = result.output or {}
-    if out.get("error"):
-        # 오케스트레이터가 입력을 거부한 경우 — 수집이 아예 안 돌았다. 조용히 넘기면
-        # 배선이 끊긴 걸 아무도 모른다.
-        raise RuntimeError(f"collector-orchestrator rejected {name}: {out['error']}")
+    try:
+        from nuri.core.db import log_collector_run
+        from nuri.core.timezone import kst_now
+
+        rows = result if isinstance(result, int) else (len(result) if hasattr(result, "__len__") else 0)
+        log_collector_run(
+            collector_name=name,
+            status=status,
+            rows_collected=rows,
+            duration_ms=int((_time.monotonic() - started_monotonic) * 1000),
+            error_message=error,
+            finished_at=kst_now().isoformat(),
+        )
+    except Exception as e:  # noqa: BLE001 — 관측 실패가 수집 실패로 번지면 안 된다
+        logger.warning(f"[{name}] collector_runs 기록 실패 (수집 자체는 영향 없음): {e}")
 
 
 def _run_premarket_brief():
