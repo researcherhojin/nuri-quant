@@ -52,7 +52,7 @@ fi
 # feedback_ci_check_reading.md).
 if command -v shellcheck > /dev/null 2>&1; then
     echo -e "${YELLOW}━━━ 2b. Shell Lint (shellcheck) ━━━${NC}"
-    if shellcheck --source-path=SCRIPTDIR --external-sources scripts/*.sh; then
+    if find scripts -name '*.sh' -exec shellcheck --source-path=SCRIPTDIR --external-sources {} +; then
         echo -e "${GREEN}✓ Shell lint clean${NC}\n"
     else
         echo -e "${RED}✗ Shellcheck failed — mirrors CI job 'Shell Lint'${NC}\n"
