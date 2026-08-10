@@ -119,13 +119,13 @@ update_claim() {
 
 banner "Doc Count Sync"
 
-# Collectors (3 sites) — CLAUDE.md 가 .claude/rules/ 로 분할되며 이사함 (#916)
-update_claim live_collectors     .claude/rules/architecture.md '[0-9]+ collector modules'
+# Collectors (2 sites) — CLAUDE.md 가 .claude/rules/ 로 분할되며 이사함 (#916).
+# .claude/rules/architecture.md 는 사이트에서 제외됨 — always-loaded 파일에서
+# 인벤토리/카운트를 걷어냈다. verify_doc_counts.sh 의 같은 주석 참조.
 update_claim live_collectors     nuri/collectors/CLAUDE.md     '[0-9]+ Data Collectors'
 update_claim live_collectors     README.md                     '[0-9]+ collectors \(BaseCollector'
 
-# Endpoints (4 sites)
-update_claim live_endpoints      .claude/rules/architecture.md '\([0-9]+ endpoints, routes/'
+# Endpoints (3 sites)
 update_claim live_endpoints      docs/ARCHITECTURE.md          '## API \([0-9]+ endpoints\)'
 update_claim live_endpoints      docs/ARCHITECTURE.md          '— [0-9]+ REST endpoints'
 update_claim live_endpoints      nuri/api/CLAUDE.md            'read surface \([0-9]+ endpoints\)'
