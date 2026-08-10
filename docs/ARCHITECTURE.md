@@ -67,7 +67,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 | `/api/market-context` | GET | 시스템 건강 (SIEGE/regime/macro/freshness) + 매크로 이벤트 (한국어 카테고리) |
 | `/api/backtest/equity` | GET | Equity curve + drawdown + metrics (Recharts frontend용 경량 데이터) |
 ## Scheduler
-`nuri/scheduler.py` — 49 cron jobs in `SCHEDULES` list (+ a 1-minute `heartbeat` interval job). All times KST. Lazy imports inside `_run_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors; a daily `stock_us_freshness` job (06:10/06:40 KST) keeps the SPY measurement benchmark + SIEGE freshness tickers current (§3.11).
+`nuri/scheduler.py` — 50 cron jobs in `SCHEDULES` list (+ a 1-minute `heartbeat` interval job). All times KST. Lazy imports inside `_run_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors; a daily `stock_us_freshness` job (06:10/06:40 KST) keeps the SPY measurement benchmark + SIEGE freshness tickers current (§3.11).
 ## Environment Variables
 Configured in `.env` (see `.env.example`):
 - `FRED_API_KEY` — FRED macro data (optional; yfinance fallback)
@@ -158,7 +158,7 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-6,792 backend tests across 309 files + 1449 frontend vitest (127 files) + 57 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 100% (2026-07-29)** — 0 of 22,560 statements uncovered (#926). 57 partial branches remain. Full closure held on 2026-05-06 and regressed after; `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth, not a local run.
+6,807 backend tests across 310 files + 1449 frontend vitest (127 files) + 57 Playwright E2E (8 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 100% (2026-07-29)** — 0 of 22,560 statements uncovered (#926). 57 partial branches remain. Full closure held on 2026-05-06 and regressed after; `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth, not a local run.
 **Slow marker**: 24 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally.
 @pytest.fixture
 def db_path(tmp_path):

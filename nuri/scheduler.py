@@ -294,15 +294,61 @@ def _run_collector(name: str, **kwargs):
     실패 로깅은 아래 except 가 그대로 담당한다 (#921).
     """
     stage = _STAGE_OF_JOB.get(name)
-    try:
+
+    def _invoke():
         if stage:
             from nuri.core.pipeline import run_step
 
-            run_step(stage, _dispatch_collector, warn_only=True, reraise=True, name=name, **kwargs)
-        else:
-            _dispatch_collector(name, **kwargs)
+            return run_step(stage, _dispatch_collector, warn_only=True, reraise=True, name=name, **kwargs)
+        return _dispatch_collector(name, **kwargs)
+
+    import time as _time
+
+    started = _time.monotonic()
+    try:
+        result = _invoke()
     except Exception as e:
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
+        _record_collector_run(name, "failed", started, error=str(e))
+        return
+    _record_collector_run(name, "finished", started, result=result)
+
+
+def _record_collector_run(name: str, status: str, started_monotonic: float, *, result=None, error=None):
+    """`collector_runs` 에 한 행 남긴다 (#975). **절대 본 작업을 막지 않는다.**
+
+    **왜**: 이 테이블은 도입 이래 프로덕션에 **0행**이었다 — 유일한 writer 인
+    `CollectorOrchestrator` 가 `actors/__init__.py` 에 import 만 되고 `SCHEDULES` 어디에도
+    없어 한 번도 안 돌았기 때문이다. collector health 관측이 통째로 없었고, 2026-08-11 에
+    발견한 데이터 구멍 셋(#1025 FRED 8지표 0행 · #1020 kospi/yield 0행)을 전부 손으로 DB
+    를 뒤져 찾았다. 이 테이블이 차 있었다면 몇 달 전에 보였다.
+
+    ⚠️ **왜 `CollectorOrchestrator.orchestrate` 를 안 쓰는가** — 처음엔 그렇게 짰다가 CI 가
+    잡았다. `Actor.run()` 은 실행 **전에** `agent_run_ledger` 에 쓰는데, 그 쓰기가 실패하면
+    (`no such table`) collector 가 **아예 실행되지 않는다.** 관측이 본 작업을 게이트하는
+    바로 그 형태다(#894) — "로그만 틀린다" 고 적어 뒀던 내 판단이 틀렸고, 실제로는 수집이
+    통째로 사라졌다. 그래서 수집을 먼저 하고, 기록은 **자체 try 로 soft-fail** 시킨다.
+    기록 실패는 경고 한 줄이지 수집 실패가 아니다.
+
+    액터는 읽기 전용 경로(`scan_health`)에서만 쓴다 — 거긴 게이트할 본 작업이 없다.
+    """
+    import time as _time
+
+    try:
+        from nuri.core.db import log_collector_run
+        from nuri.core.timezone import kst_now
+
+        rows = result if isinstance(result, int) else (len(result) if hasattr(result, "__len__") else 0)
+        log_collector_run(
+            collector_name=name,
+            status=status,
+            rows_collected=rows,
+            duration_ms=int((_time.monotonic() - started_monotonic) * 1000),
+            error_message=error,
+            finished_at=kst_now().isoformat(),
+        )
+    except Exception as e:  # noqa: BLE001 — 관측 실패가 수집 실패로 번지면 안 된다
+        logger.warning(f"[{name}] collector_runs 기록 실패 (수집 자체는 영향 없음): {e}")
 
 
 def _run_premarket_brief():
@@ -567,6 +613,31 @@ def _run_data_sanity():
         logger.error(f"[data_sanity] 실행 실패: {e}", exc_info=True)
 
 
+def _run_collector_health():
+    """CollectorOrchestrator.scan_health — 24시간 collector health 요약 (#975).
+
+    `_orchestrated` 가 채우는 `collector_runs` 를 읽어 collector 별 실패율을 낸다.
+    unhealthy 가 있으면 액터가 알림까지 직접 발행하므로(`_publish_health_alert`)
+    여기서는 로깅만 한다.
+
+    ⚠️ 이 잡 **혼자서는 아무것도 못 본다** — `_orchestrated` 가 행을 안 쓰면 요약할
+    게 없어 조용히 PASS 한다. 둘은 같이 살아 있어야 의미가 있다.
+    """
+    try:
+        from nuri.agents.actors.collector_orchestrator import CollectorOrchestrator
+
+        out = CollectorOrchestrator().run({"action": "scan_health", "hours": 24}).output or {}
+        n_bad, n_all = out.get("unhealthy_count", 0), out.get("collector_count", 0)
+        if n_all == 0:
+            logger.warning("[collector_health] 24시간 내 collector_runs 행이 없다 — 배선 확인 필요")
+        elif n_bad:
+            logger.warning(f"[collector_health] {n_bad}/{n_all} collector unhealthy")
+        else:
+            logger.info(f"[collector_health] {n_all} collector 정상")
+    except Exception as e:
+        logger.error(f"[collector_health] 실행 실패: {e}", exc_info=True)
+
+
 def _run_outbox_watchdog():
     """OutboxWatchdog — 직접 #ops 발송 (recursion 방지). 10분 마다."""
     try:
@@ -751,6 +822,8 @@ SCHEDULES = [
     {"name": "dispatcher_rollout", "func": _run_channel_dispatcher, "args": ("rollout",), "cron": "0 6 * * 0"},
     # Watchdog — outbox backlog / oldest-pending-age threshold breach 시 #ops 직접 발송 (recursion 방지).
     {"name": "outbox_watchdog", "func": _run_outbox_watchdog, "args": (), "cron": "*/10 * * * *"},
+    # collector health 요약 — 아침 수집 물결(06:20~08:00) 이 끝난 뒤 24시간 창을 본다 (#975).
+    {"name": "collector_health", "func": _run_collector_health, "args": (), "cron": "10 8 * * *"},
     # DB 백업 (매일 자정)
     {"name": "backup", "func": _run_backup, "args": (), "cron": "0 0 * * *"},
     # DB 유지보수 (일요일 새벽 3시)
