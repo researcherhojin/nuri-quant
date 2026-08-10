@@ -692,6 +692,11 @@ ports:
 ports-kill:
 	bash scripts/ops/ports.sh kill
 
+sync-test-durations: ## Regenerate .test_durations for CI shard balancing (~10min, serial)
+	@echo "CI 의 fast-test 선택과 동일하게 직렬 실행 — xdist 는 경합으로 시간을 왜곡한다"
+	$(PYTHON) -m pytest tests/ -q --tb=line -m "not slow and not integration" \
+		--store-durations --durations-path=.test_durations
+
 sync-doc-counts:
 	bash scripts/doc/sync_doc_counts.sh
 
