@@ -118,10 +118,14 @@ RULES=$(live_rules_lines)
 
 # Claim checks: pattern must uniquely identify the phrase containing the target
 # number. Target is always the LAST [0-9]+ in the matched substring.
-check_claim "collectors"     "$COLL" ".claude/rules/architecture.md" '[0-9]+ collector modules' || true
+# .claude/rules/architecture.md 는 의도적으로 사이트가 아니다 — always-loaded 파일에서
+# 인벤토리/카운트를 걷어냈다. 사이트를 되살리는 건 그 파일에 카운트를 다시 넣는다는
+# 뜻이니, 되살리기 전에 그 결정부터 뒤집을 것.
+# ⚠️ 사이트 목록과 문서는 같이 고친다: 문서에서 카운트만 지우고 여기를 안 고치면
+# check_claim 이 fail 이 아니라 warn 을 부르고 스크립트는 exit 0 으로 통과한다
+# (실측: 뮤테이션 시 "19 passed, 1 warnings", EXIT 0). 감시가 초록불인 채 죽는다.
 check_claim "collectors"     "$COLL" "nuri/collectors/CLAUDE.md"  '[0-9]+ Data Collectors' || true
 check_claim "collectors"     "$COLL" "README.md"                  '[0-9]+ collectors \(BaseCollector' || true
-check_claim "endpoints"      "$EP"   ".claude/rules/architecture.md" '\([0-9]+ endpoints, routes/' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '## API \([0-9]+ endpoints\)' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '— [0-9]+ REST endpoints' || true
 check_claim "endpoints"      "$EP"   "nuri/api/CLAUDE.md"         'read surface \([0-9]+ endpoints\)' || true
