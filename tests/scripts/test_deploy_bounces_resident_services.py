@@ -24,6 +24,7 @@ import pytest
 
 LAUNCHD_DIR = Path("scripts/launchd")
 DEPLOY_SCRIPT = Path("scripts/deploy/deploy_to_mini.sh")
+AUTOPULL_SCRIPT = Path("scripts/deploy/autopull_receiver.sh")
 
 # dashboard 는 상주지만 npm 빌드 산출물을 서빙한다 — 빌드가 바뀔 때만 바운스하는 게 맞고,
 # 그 조건부 처리는 4단계에 이미 있다. python 판정에서 자연히 빠지지만 의도를 명시해 둔다.
@@ -51,11 +52,38 @@ def resident_python_labels() -> list[str]:
     return [label for label, spec in _plists() if _is_resident(spec) and _runs_repo_python(spec)]
 
 
-def _declared_resident_services() -> set[str]:
-    """`deploy_to_mini.sh` 가 선언한 bounce 대상 (`RESIDENT_SERVICES=(...)`)."""
-    script = DEPLOY_SCRIPT.read_text(encoding="utf-8")
+def _declared_resident_services(path: Path = DEPLOY_SCRIPT) -> set[str]:
+    """스크립트가 선언한 bounce 대상 (`RESIDENT_SERVICES=(...)`)."""
+    script = path.read_text(encoding="utf-8")
     m = re.search(r"RESIDENT_SERVICES=\(([^)]*)\)", script)
     return set(m.group(1).split()) if m else set()
+
+
+class TestAutopullDeclaresTheSameServices:
+    """자동 경로도 같은 목록을 재기동해야 한다 (#1023).
+
+    #940 은 **수동** 경로(`deploy_to_mini.sh`)만 고쳤고, 그 사이 `autopull_receiver.sh`
+    는 "서비스가 등록되어 있지 않아 no-op" 이라는 낡은 주석과 함께 재기동을 아예 안
+    했다. 사용자는 머지마다 수동 배포를 돌리지 않으므로 **실제로 코드를 나르는 건
+    자동 경로**다 — 2026-08-10 에 데몬이 7일간 구코드로 돌다 야간 잡이 죽었다.
+    실행 레벨 검증은 `test_autopull_restarts_daemons.py` 가 한다.
+    """
+
+    def test_autopull_covers_every_resident_python_service(self):
+        declared = _declared_resident_services(AUTOPULL_SCRIPT)
+        missing = sorted(set(resident_python_labels()) - declared)
+        assert not missing, (
+            f"autopull 이 재기동하지 않는 상주 python 서비스: {missing}\n"
+            "자동으로 당겨온 코드를 데몬이 안 들고 있게 된다 (디스크 새 코드 + 메모리 옛 모듈)."
+        )
+
+    def test_both_paths_agree(self):
+        """두 경로가 갈라지면 어느 쪽으로 배포했느냐에 따라 결과가 달라진다."""
+        auto = _declared_resident_services(AUTOPULL_SCRIPT)
+        manual = _declared_resident_services(DEPLOY_SCRIPT) | {"com.nuri-quant.scheduler"}
+        assert auto == manual, (
+            f"자동/수동 배포 경로의 재기동 목록 불일치\n  autopull={sorted(auto)}\n  deploy  ={sorted(manual)}"
+        )
 
 
 class TestDeployBouncesEveryResidentPythonService:
