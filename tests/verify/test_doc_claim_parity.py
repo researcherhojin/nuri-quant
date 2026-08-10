@@ -40,18 +40,23 @@ def _verify_targets() -> set[tuple[str, str]]:
 
 
 class TestSyncRuns:
-    def test_sync_does_more_than_print_its_banner(self):
+    def test_sync_does_more_than_print_its_banner(self, repo_copy):
         """#916 의 고장 모드 그대로 — 배너만 찍고 종료하면 FAIL.
 
         Gotcha-Test Pair: `current=$(grep ... || true)` 의 `|| true` 를 지우면
         set -e 가 첫 클레임에서 스크립트를 죽여 이 테스트가 FAIL.
+
+        `repo_copy` 필수 — sync 는 in-place fixer 다. 이 테스트만 `cwd=REPO_ROOT`
+        로 돌아서 **백엔드 테스트를 돌릴 때마다 실제 README/ARCHITECTURE/STRATEGY 가
+        조용히 재작성**됐다. 통과하면서 쓰기 때문에 아무 신호가 없었다.
+        `conftest.py` 의 `_repo_docs_stay_untouched` 가 되돌림을 잡는다.
         """
-        r = subprocess.run(["bash", str(SYNC)], cwd=REPO_ROOT, capture_output=True, text=True, timeout=300, check=False)
+        r = _run(SYNC, repo_copy)
         processed = [ln for ln in r.stdout.splitlines() if "already in sync" in ln or "→" in ln]
         assert len(processed) >= 15, (
             f"클레임을 {len(processed)}건만 처리했다 — 중간에 죽었을 가능성:\n{r.stdout}{r.stderr}"
         )
-        assert r.returncode == 0, f"clean tree 인데 exit {r.returncode}:\n{r.stdout}{r.stderr}"
+        assert r.returncode == 0, f"manifest 가 온전한 사본인데 exit {r.returncode}:\n{r.stdout}{r.stderr}"
 
 
 class TestStaleTargetIsSurvivable:
@@ -82,6 +87,29 @@ class TestStaleTargetIsSurvivable:
         assert len(processed) >= 10, f"stale 대상 하나에 스크립트가 멈췄다 ({len(processed)}건 처리):\n{r.stdout}"
         assert "pattern not found" in r.stdout, f"누락을 알리지 않음:\n{r.stdout}"
         assert r.returncode != 0, "manifest 가 깨졌는데 exit 0 — 조용히 넘어감"
+
+
+class TestFixerGuard:
+    """`conftest.py` 의 fixer 가드가 **무장돼 있는지** 실제로 위반을 시도해 확인한다.
+
+    가드는 `subprocess.Popen` 을 감싸므로 argv 를 변수에 담든 `check_call` 을 쓰든
+    헬퍼로 감싸든 전부 같은 관문을 지난다 — 소스 문자열이 아니라 **실행 시도**를 본다.
+    """
+
+    def test_launching_the_fixer_at_the_real_repo_is_blocked(self):
+        """Gotcha-Test Pair: `_run(SYNC, repo_copy)` 를 `cwd=REPO_ROOT` 직접 실행으로
+        되돌리면 그 테스트가 여기서 막혀 FAIL. 문서의 sync 상태와 무관하게 결정론적이다.
+        """
+        with pytest.raises(AssertionError, match="실제 리포에 겨눴다"):
+            subprocess.run(["bash", str(SYNC)], cwd=REPO_ROOT, capture_output=True, check=False)
+
+    def test_a_copy_override_is_accepted(self, fixer_guard, repo_copy):
+        """정상 경로까지 막으면 사본 실행이 불가능해진다 — 과잉 차단 방지."""
+        assert fixer_guard(["bash", str(SYNC)], {"REPO_ROOT": str(repo_copy)}) is None
+
+    def test_read_only_checkers_are_not_blocked(self, fixer_guard):
+        """`scripts/verify/` 의 검사기는 레포에서 돌아도 무해하다 — 대상 아님."""
+        assert fixer_guard(["bash", str(VERIFY)], None) is None
 
 
 class TestClaimListParity:
