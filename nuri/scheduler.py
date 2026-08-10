@@ -294,15 +294,48 @@ def _run_collector(name: str, **kwargs):
     실패 로깅은 아래 except 가 그대로 담당한다 (#921).
     """
     stage = _STAGE_OF_JOB.get(name)
-    try:
+
+    def _invoke():
         if stage:
             from nuri.core.pipeline import run_step
 
-            run_step(stage, _dispatch_collector, warn_only=True, reraise=True, name=name, **kwargs)
-        else:
-            _dispatch_collector(name, **kwargs)
+            return run_step(stage, _dispatch_collector, warn_only=True, reraise=True, name=name, **kwargs)
+        return _dispatch_collector(name, **kwargs)
+
+    try:
+        _orchestrated(name, _invoke)
     except Exception as e:
         logger.error(f"[{name}] 실행 실패: {e}", exc_info=True)
+
+
+def _orchestrated(name: str, invoke):
+    """collector 실행을 `CollectorOrchestrator` 로 감싸 `collector_runs` 에 한 행 남긴다 (#975).
+
+    **왜**: `collector_runs` 는 도입 이래 프로덕션에 **0행**이었다 — 유일한 writer 인
+    `CollectorOrchestrator` 가 `actors/__init__.py` 에 import 만 되고 `SCHEDULES` 어디에도
+    없어 한 번도 안 돌았기 때문이다. 그 결과 collector health 관측이 통째로 없었고,
+    2026-08-11 에 발견한 데이터 구멍 셋(#1025 FRED 8지표 0행 · #1020 kospi/yield 0행)을
+    전부 손으로 DB 를 뒤져 찾아야 했다. 이 테이블이 차 있었다면 몇 달 전에 보였다.
+
+    **행동은 바꾸지 않는다**: `max_retries=0` 이라 시도 횟수는 지금과 같은 1회다.
+    재시도를 켜는 건 수집 동작 변경이라 별도 판단 — 여기서 딸려 들어가면 안 된다.
+
+    ⚠️ 한계를 정직하게: 오케스트레이터는 `collector_fn()` **성공 뒤** `log_collector_run`
+    을 부른다. 그 DB 쓰기가 실패하면 예외가 위로 올라가 호출부가 "실행 실패" 로 찍는다 —
+    수집 자체는 이미 끝난 뒤라 **데이터 손실은 없고 로그만 틀린다**. 관측이 본 작업을
+    막지는 않지만(#894) 오탐은 낼 수 있다는 뜻이다. 오케스트레이터 내부를 고치는 건
+    이 PR 범위 밖이라 여기 적어 둔다.
+    """
+    from nuri.agents.actors.collector_orchestrator import CollectorOrchestrator
+
+    result = CollectorOrchestrator().run(
+        {"action": "orchestrate", "collector_name": name, "collector_fn": invoke, "max_retries": 0}
+    )
+    out = result.output or {}
+    if out.get("error"):
+        # 오케스트레이터가 입력을 거부한 경우 — 수집이 아예 안 돌았다. 조용히 넘기면
+        # 배선이 끊긴 걸 아무도 모른다.
+        raise RuntimeError(f"collector-orchestrator rejected {name}: {out['error']}")
 
 
 def _run_premarket_brief():
@@ -567,6 +600,31 @@ def _run_data_sanity():
         logger.error(f"[data_sanity] 실행 실패: {e}", exc_info=True)
 
 
+def _run_collector_health():
+    """CollectorOrchestrator.scan_health — 24시간 collector health 요약 (#975).
+
+    `_orchestrated` 가 채우는 `collector_runs` 를 읽어 collector 별 실패율을 낸다.
+    unhealthy 가 있으면 액터가 알림까지 직접 발행하므로(`_publish_health_alert`)
+    여기서는 로깅만 한다.
+
+    ⚠️ 이 잡 **혼자서는 아무것도 못 본다** — `_orchestrated` 가 행을 안 쓰면 요약할
+    게 없어 조용히 PASS 한다. 둘은 같이 살아 있어야 의미가 있다.
+    """
+    try:
+        from nuri.agents.actors.collector_orchestrator import CollectorOrchestrator
+
+        out = CollectorOrchestrator().run({"action": "scan_health", "hours": 24}).output or {}
+        n_bad, n_all = out.get("unhealthy_count", 0), out.get("collector_count", 0)
+        if n_all == 0:
+            logger.warning("[collector_health] 24시간 내 collector_runs 행이 없다 — 배선 확인 필요")
+        elif n_bad:
+            logger.warning(f"[collector_health] {n_bad}/{n_all} collector unhealthy")
+        else:
+            logger.info(f"[collector_health] {n_all} collector 정상")
+    except Exception as e:
+        logger.error(f"[collector_health] 실행 실패: {e}", exc_info=True)
+
+
 def _run_outbox_watchdog():
     """OutboxWatchdog — 직접 #ops 발송 (recursion 방지). 10분 마다."""
     try:
@@ -751,6 +809,8 @@ SCHEDULES = [
     {"name": "dispatcher_rollout", "func": _run_channel_dispatcher, "args": ("rollout",), "cron": "0 6 * * 0"},
     # Watchdog — outbox backlog / oldest-pending-age threshold breach 시 #ops 직접 발송 (recursion 방지).
     {"name": "outbox_watchdog", "func": _run_outbox_watchdog, "args": (), "cron": "*/10 * * * *"},
+    # collector health 요약 — 아침 수집 물결(06:20~08:00) 이 끝난 뒤 24시간 창을 본다 (#975).
+    {"name": "collector_health", "func": _run_collector_health, "args": (), "cron": "10 8 * * *"},
     # DB 백업 (매일 자정)
     {"name": "backup", "func": _run_backup, "args": (), "cron": "0 0 * * *"},
     # DB 유지보수 (일요일 새벽 3시)
