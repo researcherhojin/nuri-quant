@@ -696,6 +696,8 @@ sync-test-durations: ## Regenerate .test_durations for CI shard balancing (~10mi
 	@echo "CI 의 fast-test 선택과 동일하게 직렬 실행 — xdist 는 경합으로 시간을 왜곡한다"
 	$(PYTHON) -m pytest tests/ -q --tb=line -m "not slow and not integration" \
 		--store-durations --durations-path=.test_durations
+	@# full-precision float 은 privacy 스캐너의 `\b\d{7,}\b` 에 걸린다 (스크립트 docstring 참조)
+	$(PYTHON) scripts/doc/round_test_durations.py .test_durations
 
 sync-doc-counts:
 	bash scripts/doc/sync_doc_counts.sh

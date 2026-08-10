@@ -14,6 +14,7 @@ graceful 하지 않다 — 2026-08-10 실측으로 shard 최대/최소가 3.75�
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -37,6 +38,35 @@ class TestDurationsFile:
         assert len(data) >= _MIN_ENTRIES, (
             f"durations 항목이 {len(data)}개뿐 (하한 {_MIN_ENTRIES}) — 잘렸거나 오래됐다.\n"
             "`make sync-test-durations` 로 재생성할 것."
+        )
+
+
+class TestPrecisionStaysBounded:
+    """Gotcha-Test Pair: full-precision float 로 되돌리면 FAIL.
+
+    pytest-split 원본은 `0.0016861240146681666` 같은 값을 쓴다. privacy 스캐너는 민감 키가
+    있는 줄에서 `\\b\\d{7,}\\b` 를 찾는데 소수점이 word boundary 라 그 19자리가 통째로 잡힌다 —
+    `cash_balance` 가 이름에 든 테스트 3개 때문에 CI 가 막혔다 (2026-08-10).
+    `make sync-test-durations` 가 `scripts/doc/round_test_durations.py` 를 이어 돌려 막는데,
+    그 단계를 빼면 다음 재생성이 같은 실패를 되살린다. 그걸 여기서 잡는다.
+    """
+
+    def test_no_value_exceeds_four_decimals(self):
+        data = json.loads(DURATIONS.read_text())
+        # 원본 텍스트에서 봐야 한다 — 파싱된 float 은 자릿수 정보를 잃는다.
+        long_runs = re.findall(r"\d+\.\d{5,}", DURATIONS.read_text())
+        assert not long_runs, (
+            f"소수 5자리 이상 값 {len(long_runs)}건 (예: {long_runs[:3]}) — "
+            "privacy 스캐너에 걸린다. `scripts/doc/round_test_durations.py` 를 돌릴 것."
+        )
+        assert data, "durations 가 비었다"
+
+    def test_the_regeneration_path_rounds(self):
+        """카나리아 — Makefile 이 반올림 단계를 빠뜨리면 다음 재생성이 회귀한다."""
+        makefile = (REPO_ROOT / "Makefile").read_text()
+        target = makefile.split("sync-test-durations:", 1)[1].split("\n\n", 1)[0]
+        assert "round_test_durations.py" in target, (
+            "`sync-test-durations` 타깃이 반올림 단계를 안 부른다 — 재생성 시 CI 가 다시 막힌다"
         )
 
 
