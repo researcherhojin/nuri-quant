@@ -20,11 +20,3 @@
 - Deploy: `make start` (API :8001 + Dashboard :3000) / `make deploy-mini` (MBP → Mac mini 7단계 동기화)
 
 Frontend-only commands → `frontend/CLAUDE.md`.
-
-## API Access Pattern (frontend)
-
-- **Server Components**: `fetchAPI("/api/...")` from `@/lib/api` (absolute, server-to-server)
-- **Client Components**: `fetch("/api/...")` (relative, proxied by Next.js `rewrites` in `next.config.ts`)
-- **Never** `${API_BASE}/api/...` in Client Components — breaks on network access (CORS/CSP)
-
-Backend: FastAPI on `:8001`. Frontend: Next.js on `:3000`. Next.js proxies `/api/*` to backend.
