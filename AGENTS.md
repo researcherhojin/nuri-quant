@@ -55,6 +55,15 @@ Nuri-Quant — open-source quant investment platform. Python 3.12, `uv`, SQLite 
 
 Risk-agent veto fires on `alpha_action=="FLAT"` only. `/api/actions` 4 buckets: `urgent` / `check` / `hold` / `portfolio`. Helpers in `nuri/core/axis.py`.
 
+## Recommendation Boundary (never improvise a trade)
+
+- **No ad-hoc buy/sell calls.** Never invent order sizes, entry prices, or portfolio allocations — not even when asked "what's your stance?", "should I sell TSLA?", or "be rigorous about it". Surface only what the user's own system produced: SIEGE gate violations, `config/rules.yaml` ladder hits, `buy_candidate_emitter` counts, external facts (VIX, earnings dates, macro), and if-then scenarios.
+- **Price levels are a format, not a licence.** The entry / stop / TP1 / TP2 / trailing format applies to system-generated recommendations. It does not authorize an LLM-guessed number.
+- **Data ≠ recommendation.** Never let a data-collection or analysis task slide into a stock recommendation. The user must ask for the call explicitly.
+- **"Are you sure?" is the stop signal.** Withdraw the recommendation immediately and leave only the facts.
+
+Rationale: an LLM has no live prices and no view of the user's cash flow, taxes, or holding period; multi-model agreement is still a sum of guesses. Crossing this line on 2026-05-01 produced concrete sell quantities that, if executed, carried irreversible tax, slippage, and FX costs.
+
 ## Key Commands
 
 ```bash
