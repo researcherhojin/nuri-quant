@@ -81,6 +81,9 @@ REGIME_CASH = _entry.get(
 MAX_TRANCHES = _entry.get("scaling_in", {}).get("max_tranches", 3)
 TRANCHE_INTERVAL_DAYS = _entry.get("scaling_in", {}).get("tranche_interval_days", 5)
 
+# ─── 멀티팩터 합성 ───
+FACTOR_RULES = RULES.get("factors", {})
+
 # ─── 매수 체크리스트 ───
 _chk = RULES.get("buy_checklist", {})
 MIN_TIPRANKS_CONSENSUS = _chk.get("min_tipranks_consensus", "moderate_buy")

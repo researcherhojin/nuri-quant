@@ -75,6 +75,8 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import
 
 원칙: **위험 게이트의 입력 부재는 그 게이트의 가장 보수적 관측치와 같은 등급으로 처리한다.** VIX 미상·노후(`entry_rules.vix_gate.max_age_days`, 기본 3일)는 caution 구간과 동일한 **Soft penalty**(절반 포지션)다. Hard veto 로 올리지 않은 이유는 수집 하루 장애로 강세장 진입 기회를 통째로 잃는 비용이 실측되지 않았기 때문이고, Surface 로 낮추지 않은 이유는 근거 없이 전액이 나가는 것이 §2.6 이 막으려는 바로 그 형태이기 때문이다. 표기는 숫자가 아니라 `미상` — 없는 측정을 있는 것처럼 적지 않는다.
 
+**점수 성분에는 다른 규칙이 적용된다 (2026-08-10)** — 위 조항은 *게이트*(통과/차단) 이야기다. `factors/composite` 의 센티먼트처럼 **점수 성분**이 없을 때는 "가장 보수적 관측치" 라는 게 정의되지 않는다. 그때는 값을 지어내지 말고 **성분을 빼고 나머지 비중을 비례 재정규화**한다(합계 1.0 유지). 과거엔 Fear & Greed 부재 시 `0.5` 를 채웠는데, 0.5 는 중립이라 무해해 보여도 실측 0.637 대비 0-100 스케일에서 2.74점이고 `quality_bar.base_threshold: 70` 앞에서 통과 **개수**를 움직였다. 재정규화는 "모른다" 가 점수를 위로도 아래로도 밀지 않게 한다. 랭킹은 어차피 불변이다 — 시장 전체 값이라 모든 티커에 같은 양이 들어간다.
+
 이 조항에 백테스트를 붙이지 않는다. 발동 조건이 시장 시그널이 아니라 **데이터 장애**라, "VIX 가 없었다면" 을 과거 시장에 되돌려 세우는 것은 의미 있는 증거가 아니다. 등급을 올리거나 내리려면 실제 장애 발생 빈도와 그때의 시장 분포를 먼저 측정할 것.
 ### 2.7 개발 Flow (gstack 7-phase, 2026-04-16 채택)
 모든 작업은 **Think → Plan → Build → Review → Test → Ship → Reflect** 7 단계. 단계 건너뛰지 않음. Gate 통과 못 하면 다음 단계 못 감.
@@ -260,7 +262,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,754 tests, 305 files (statement coverage **100%** — 0/22,560 미커버, partial branch 57, 2026-07-29) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 6,760 tests, 305 files (statement coverage **100%** — 0/22,560 미커버, partial branch 57, 2026-07-29) |
 | Frontend tests | 목표 ≥ 90% | 1449 tests, 127 files |
 | E2E | 핵심 flow | 57 Playwright (8 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
