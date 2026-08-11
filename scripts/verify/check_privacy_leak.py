@@ -99,6 +99,29 @@ BROKER_NAMES_KO: tuple[str, ...] = (
     "이베스트투자증권",
     "흥국증권",
     "IBK투자증권",
+    # KOFIA 회원사 보강 (#981) — #980 스윕에서 잡힌 증권사가 목록에 **없었다**.
+    # 즉 파일 면제(구멍 1)를 막아도 이 목록이 얇아서 그대로 통과했을 것이다.
+    # 회사명 자체는 공개 정보라 스캐너에 적는 건 안전하다.
+    "신영증권",
+    "교보증권",
+    "현대차증권",
+    "SK증권",
+    "DB금융투자",
+    "LS증권",
+    "다올투자증권",
+    "iM증권",
+    "부국증권",
+    "유진투자증권",
+    "한양증권",
+    "케이프투자증권",
+    "상상인증권",
+    "BNK투자증권",
+    "하이투자증권",
+    "한화투자증권",
+    # ⚠️ `한국투자증권`(KIS) 은 여기 넣지 않는다 — 위 docstring 의 의도적 제외 결정.
+    # Open API 통합 대상이라 `nuri/collectors/kis_*` 에 정당하게 등장하고, 자격증명은
+    # 이름이 아니라 파일 패턴(`config/kis/*`)으로 막는다. 이번에 한 번 넣었다가
+    # `kis_realtime.py` docstring 이 걸려서 되돌렸다.
 )
 
 # Romanized aliases — case-insensitive substring match.
@@ -271,22 +294,56 @@ TICKER_FALSE_POSITIVES: frozenset[str] = frozenset(
     }
 )
 
-# Allow-list: paths the scanner should NEVER block on.
-ALLOWLIST_PATHS: tuple[str, ...] = (
-    "scripts/verify/check_privacy_leak.py",  # this file (documents patterns)
-    "tests/scripts/test_check_privacy_leak.py",  # tests for this file (moved from top-level in #163)
-    "tests/agents/test_discord_outbox.py",  # E3 #579 — privacy gate tests need leak fixtures (NVDA +57%, kakaopay) to verify detection
-    "tests/trading/recommend/test_held_add_mode.py",  # #518 phase 2a — spec §4.6 acceptance test fixtures use NVDA/MSFT for multi-account scenarios
-    "tests/alerts/test_postmarket_brief.py",  # #596 Phase 1 — privacy gate lock-test fixture uses ticker+PnL combo to verify gate blocks publish
-    "docs/STRATEGY.md",  # may codify pattern names
-    "CONTRIBUTING.md",  # references placeholder names as guidance
-    "SECURITY.md",  # references privacy policy
-    ".claude/projects/",  # private memory dir (git-ignored anyway)
-    "node_modules/",
-    ".git/",
-    ".venv/",
-    "frontend/package-lock.json",  # npm hash collisions look like words
-)
+# Allow-list — **파일 전체가 아니라 카테고리 단위** (#981).
+#
+# 예전엔 경로 하나가 그 파일의 **모든** 규칙을 껐다. 그래서 `docs/STRATEGY.md` 가
+# "패턴 이름을 적을 수도 있어서" 라는 사유로 500줄 통째로 빠졌고, 실제로는 451행의
+# 증권사명 + 연금 보유 3종이 거기 숨어 있었다. `test_held_add_mode.py` 도 사유는
+# "다계좌 NVDA/MSFT 시나리오" 인데 정작 가려진 건 픽스처 9곳의 증권사명이었다 —
+# **적어둔 사유와 실제로 면제된 것이 달랐다.**
+#
+# 이제 값은 그 경로에서 끌 규칙의 집합이다. `ALL` 은 스캐너 자신처럼 세 카테고리를
+# 전부 문서화하는 파일에만 쓴다. 사유에 적은 카테고리만 끄면, 사유 밖의 유출은
+# 계속 걸린다.
+ALL_CATEGORIES: frozenset[str] = frozenset({"broker_name", "suspect_numeric", "ticker_pnl"})
+
+ALLOWLIST: dict[str, frozenset[str]] = {
+    # 스캐너 본체와 그 테스트 — 세 카테고리의 패턴을 전부 적어 둔다.
+    "scripts/verify/check_privacy_leak.py": ALL_CATEGORIES,
+    "tests/scripts/test_check_privacy_leak.py": ALL_CATEGORIES,
+    # E3 #579 — privacy gate 테스트가 탐지를 검증하려면 leak 픽스처가 필요하다.
+    "tests/agents/test_discord_outbox.py": frozenset({"ticker_pnl", "broker_name"}),
+    # #518 phase 2a — 다계좌 시나리오라 ticker+PnL 조합만. 증권사명은 **면제 아님**
+    # (예전에 여기로 9곳이 새 나갔다).
+    "tests/trading/recommend/test_held_add_mode.py": frozenset({"ticker_pnl"}),
+    # #596 Phase 1 — gate lock-test 가 ticker+PnL 조합을 쓴다.
+    "tests/alerts/test_postmarket_brief.py": frozenset({"ticker_pnl"}),
+    # 정책 문서 — 플레이스홀더 이름을 가이드로 인용한다. 숫자·티커는 계속 검사.
+    "CONTRIBUTING.md": frozenset({"broker_name"}),
+    "SECURITY.md": frozenset({"broker_name"}),
+    # 스캔 대상이 아닌 경로.
+    ".claude/projects/": ALL_CATEGORIES,
+    "node_modules/": ALL_CATEGORIES,
+    ".git/": ALL_CATEGORIES,
+    ".venv/": ALL_CATEGORIES,
+    "frontend/package-lock.json": ALL_CATEGORIES,
+}
+
+# 줄 단위 탈출구 — 파일을 통째로 끄지 않고 그 줄만 면제한다.
+#   `<something>  # privacy-allow: broker_name`  또는  `# privacy-allow`(전 카테고리)
+# 파일 면제를 좁히면서 정당한 예외를 남길 수단이 필요했다 (#981).
+_INLINE_ALLOW = re.compile(r"privacy-allow(?::\s*([a-z_,\s]+))?")
+
+
+def line_allows(line: str, category: str) -> bool:
+    """그 줄에 면제 마커가 있고 이 카테고리를 덮는가."""
+    m = _INLINE_ALLOW.search(line)
+    if not m:
+        return False
+    cats = m.group(1)
+    if not cats:
+        return True
+    return category in {c.strip() for c in cats.split(",")}
 
 
 @dataclass
@@ -298,14 +355,24 @@ class Finding:
     category: str  # "broker_name" | "suspect_numeric" | "ticker_pnl"
 
 
-def is_allowlisted(path: Path) -> bool:
-    """True if path matches any allowlisted prefix."""
+def is_allowlisted(path: Path, category: str | None = None) -> bool:
+    """이 경로에서 `category` 가 면제되는가. category=None 이면 '전 카테고리 면제' 인지.
+
+    예전 시그니처는 경로만 받아 **파일 전체**를 껐다 (#981). 호출부가 카테고리를
+    넘기지 않으면 ALL 면제인 경로에서만 True — 좁아진 쪽으로 기본값을 둔다.
+    """
     try:
         rel = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
     except ValueError:
         # Path is outside the repo (e.g., /tmp/* in tests) — never allowlisted.
         return False
-    return any(rel.startswith(p.rstrip("/")) for p in ALLOWLIST_PATHS)
+    for prefix, cats in ALLOWLIST.items():
+        if rel.startswith(prefix.rstrip("/")):
+            if category is None:
+                return cats == ALL_CATEGORIES
+            if category in cats:
+                return True
+    return False
 
 
 def scan_text_for_brokers(text: str, source: Path | str = "<input>") -> list[Finding]:
@@ -449,13 +516,31 @@ def scan_file_for_ticker_pnl(path: Path) -> list[Finding]:
 
 def scan_path(path: Path) -> list[Finding]:
     """Scan one file for all categories. Skips allowlisted/binary."""
-    if is_allowlisted(path):
+    if is_allowlisted(path):  # 전 카테고리 면제인 경로만 통째로 건너뛴다
         return []
     if not path.is_file():
         return []
     if path.suffix in {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".pyc", ".woff", ".woff2", ".ttf", ".eot", ".ico"}:
         return []
-    return scan_file_for_brokers(path) + scan_file_for_numerics(path) + scan_file_for_ticker_pnl(path)
+    # 카테고리별로 따로 묻는다 (#981). 한 파일이 한 규칙만 면제받을 수 있어야
+    # "사유에 적은 것" 과 "실제로 가려지는 것" 이 어긋나지 않는다.
+    out: list[Finding] = []
+    if not is_allowlisted(path, "broker_name"):
+        out += scan_file_for_brokers(path)
+    if not is_allowlisted(path, "suspect_numeric"):
+        out += scan_file_for_numerics(path)
+    if not is_allowlisted(path, "ticker_pnl"):
+        out += scan_file_for_ticker_pnl(path)
+    # 줄 단위 면제 마커 적용 — 파일 면제를 좁힌 대신 남긴 정당한 탈출구.
+    lines = _read_lines(path)
+    return [f for f in out if not (0 < f.line <= len(lines) and line_allows(lines[f.line - 1], f.category))]
+
+
+def _read_lines(path: Path) -> list[str]:
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return []
 
 
 def iter_repo_files() -> list[Path]:
