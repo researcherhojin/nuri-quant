@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+from nuri.core.timezone import kst_now
+
 from .connection import get_db
 
 # DR enums (codex Round 5 single-writer — primary/replica)
@@ -231,6 +233,7 @@ def log_collector_run(
     rate_limit_hits: int = 0,
     actor_run_id: Optional[str] = None,
     finished_at: Optional[str] = None,
+    started_at: Optional[str] = None,
     db_path: Optional[Path] = None,
 ) -> int:
     """Single INSERT — 매 collector run 의 결과 영구 기록. lastrowid 반환.
@@ -248,8 +251,8 @@ def log_collector_run(
             """INSERT INTO collector_runs
                (collector_name, status, rows_collected, rows_expected,
                 duration_ms, error_message, retry_count, rate_limit_hits,
-                actor_run_id, finished_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                actor_run_id, finished_at, started_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 collector_name,
                 status,
@@ -261,6 +264,11 @@ def log_collector_run(
                 rate_limit_hits,
                 actor_run_id,
                 finished_at,
+                # 스키마 기본값은 `datetime('now')` = **UTC** 인데 `finished_at` 은
+                # 호출자가 `kst_now()` 로 넣어, 한 행 안에 9시간 어긋난 두 표현이
+                # 섞여 있었다 (#1031). 레포 불변식은 `kst_now()` 강제 —
+                # **항상 명시적으로 채워** 기본값이 발화하지 않게 한다.
+                started_at or kst_now().isoformat(),
             ),
         )
         return int(cursor.lastrowid or 0)
