@@ -12,7 +12,7 @@ Why this exists (2026-04-30 user escalation):
 
 Phase 1 (이 PR):
   - DB context (factors / signals / prices / fundamentals / portfolio overlap)
-  - LLM synthesis via `scripts/llm_consult.py` (codex + Qwen3.5)
+  - LLM synthesis via `scripts/dev/llm_consult.py` (codex + Qwen3.5)
   - structured markdown output → `data/thesis_query/{date}_{ticker}_{slug}.md`
   - CLI: `make thesis ticker=INTC question="..."`
 
@@ -258,7 +258,7 @@ def thesis_query(
     slug = _slugify(question)
     out_path = out / f"{today_kst()}_{ticker.lower()}_{slug}.md"
 
-    # Pipe to scripts/llm_consult.py via stdin (it accepts --slug + stdin)
+    # Pipe to scripts/dev/llm_consult.py via stdin (it accepts --slug + stdin)
     cmd = [
         sys.executable,
         str(LLM_CONSULT_SCRIPT),
