@@ -283,6 +283,16 @@ class TestPriceLevelsCanonical:
         # 옛 문구가 되살아나면 FAIL
         assert "concrete prices" not in prompt
 
+    def test_prompt_has_no_hardcoded_ladder(self) -> None:
+        """ladder 수치를 프롬프트에 박으면 leader/unavailable 케이스에서 모델이
+        현재가에 그 %를 곱해 가격을 재생성할 수 있다 (codex review [P2]).
+        수치는 `config/rules.yaml` → `calculate_targets` 경로로만 들어온다.
+        """
+        prompt = tq._build_prompt("AAA", "?", {"price_levels": "(unavailable — 가격 데이터 없음)"})
+        for literal in ("-7%", "+20%", "+40%"):
+            assert literal not in prompt, f"hardcoded ladder value {literal} leaked into prompt"
+        assert "config/rules.yaml" in prompt
+
 
 # ─── thesis_query (subprocess + filename rename) ───────────────────
 

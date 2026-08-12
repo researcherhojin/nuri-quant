@@ -259,7 +259,10 @@ def _build_prompt(ticker: str, question: str, ctx: dict[str, str]) -> str:
         "- Price levels above are computed by `price_targets.calculate_targets` from "
         "`config/rules.yaml`. They are the only valid levels. Do NOT compute, round, "
         "adjust, or invent entry / stop / TP values of your own.",
-        "- 3:1 reward-to-risk, growth ladder: stop -7% / TP1 +20% / TP2 +40%.",
+        "- 3:1 reward-to-risk. The ladder percentages live in `config/rules.yaml` and are "
+        "already applied in the 'Price levels' section above. Do not restate them from "
+        "memory or re-apply them to the current price — if that section gives no levels "
+        "(leader trail, or unavailable), there are no TP levels to report.",
         "- VIX gate: > 30 block buys, 25-30 half size.",
         "- Position cap: max 15% per ticker (core), 25% (active).",
         "- Korean retail investor — risk-averse after 4월 손실 cascade.",
