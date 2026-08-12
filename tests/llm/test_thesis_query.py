@@ -204,6 +204,96 @@ class TestBuildPrompt:
         assert "(no calls)" in prompt
 
 
+# ─── price levels: canonical source only ───────────────────────────
+
+
+class TestPriceLevelsCanonical:
+    """가격 레벨은 `price_targets.calculate_targets` 만이 만든다.
+
+    `.claude/rules/invariants.md` "No ad-hoc buy/sell calls" + `nuri/trading/
+    recommend/CLAUDE.md` "price_targets.py is the canonical source — do not
+    re-derive in callers". 이전에는 프롬프트가 LLM 에게 `Entry / Stop / TP
+    (concrete prices)` 를 **직접 만들라**고 요구했다 — 실시간 가격도 ladder 도
+    모르는 쪽이 숫자를 지어내는 경로였다.
+    """
+
+    _TARGETS = {
+        "ticker": "AAA",
+        "stock_type": "value",
+        "current_price": 100.0,
+        "entry_price": 100.0,
+        "stop_loss": 90.0,
+        "stop_loss_pct": -10,
+        "target_1": 115.0,
+        "target_1_pct": 15,
+        "target_1_sell_pct": 50,
+        "target_2": 130.0,
+        "target_2_pct": 30,
+        "target_2_sell_pct": 25,
+        "trailing_stop_pct": -15,
+        "is_leader": False,
+    }
+
+    def test_levels_come_from_calculate_targets(self, mock_query_df) -> None:
+        with patch("nuri.trading.recommend.price_targets.calculate_targets", return_value=self._TARGETS):
+            ctx = tq._fetch_db_context("AAA")
+        assert "$90.00" in ctx["price_levels"]
+        assert "$115.00" in ctx["price_levels"]
+        assert "$130.00" in ctx["price_levels"]
+        assert "sell 50%" in ctx["price_levels"]
+
+    def test_leader_has_no_fixed_targets(self, mock_query_df) -> None:
+        """리더는 고정 익절 폐기 → target_1/2 = None. 그 None 을 렌더하면 안 된다."""
+        leader = {
+            **self._TARGETS,
+            "stock_type": "growth",
+            "is_leader": True,
+            "target_1": None,
+            "target_2": None,
+            "leader_ma": 95.0,
+            "leader_ma_period": 50,
+        }
+        with patch("nuri.trading.recommend.price_targets.calculate_targets", return_value=leader):
+            ctx = tq._fetch_db_context("AAA")
+        assert "leader" in ctx["price_levels"]
+        assert "50일선 트레일 $95.00" in ctx["price_levels"]
+        assert "target_1" not in ctx["price_levels"]
+        assert "None" not in ctx["price_levels"]
+
+    def test_missing_price_data_reports_unavailable(self, mock_query_df) -> None:
+        with patch(
+            "nuri.trading.recommend.price_targets.calculate_targets",
+            return_value={"ticker": "AAA", "error": "가격 데이터 없음"},
+        ):
+            ctx = tq._fetch_db_context("AAA")
+        assert "unavailable" in ctx["price_levels"]
+
+    def test_calculate_targets_exception_is_absorbed(self, mock_query_df) -> None:
+        with patch("nuri.trading.recommend.price_targets.calculate_targets", side_effect=RuntimeError("boom")):
+            ctx = tq._fetch_db_context("AAA")
+        assert ctx["price_levels"].startswith("(error:")
+
+    def test_prompt_forbids_llm_derived_levels(self) -> None:
+        """회귀 잠금 — 프롬프트가 LLM 에게 가격을 만들라고 되돌아가면 FAIL."""
+        prompt = tq._build_prompt("AAA", "?", {"price_levels": "  - stop_loss: $90.00"})
+        assert "$90.00" in prompt
+        assert "DO NOT derive your own" in prompt
+        assert "Do NOT compute, round, adjust, or invent" in prompt
+        assert "restate the system-computed levels" in prompt
+        # 옛 문구가 되살아나면 FAIL
+        assert "concrete prices" not in prompt
+
+    def test_prompt_has_no_hardcoded_ladder(self) -> None:
+        """ladder 수치를 프롬프트에 박으면 leader/unavailable 케이스에서 모델이
+        현재가에 그 %를 곱해 가격을 재생성할 수 있다 (codex review [P2]).
+        수치는 `config/rules.yaml` → `calculate_targets` 경로로만 들어온다.
+        """
+        prompt = tq._build_prompt("AAA", "?", {"price_levels": "(unavailable — 가격 데이터 없음)"})
+        for literal in ("-7%", "+20%", "+40%"):
+            assert literal not in prompt, f"hardcoded ladder value {literal} leaked into prompt"
+        assert "config/rules.yaml" in prompt
+
+
 # ─── thesis_query (subprocess + filename rename) ───────────────────
 
 

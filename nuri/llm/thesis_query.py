@@ -191,6 +191,42 @@ def _fetch_db_context(ticker: str) -> dict[str, str]:
     except Exception as e:
         sections["recent_calls"] = f"(error: {e})"
 
+    # 7. Price levels — canonical, config-driven. LLM 이 직접 유도하면 안 된다
+    #    (invariants.md "No ad-hoc buy/sell calls" + recommend/CLAUDE.md
+    #    "price_targets.py is the canonical source — do not re-derive in callers").
+    #    deferred import: nuri/llm 은 stage 가 아니라 cross-stage 규칙 대상은 아니나,
+    #    price_targets 는 config/DB 를 끌어오므로 import 비용을 호출 시점으로 미룬다.
+    try:
+        from nuri.trading.recommend.price_targets import calculate_targets
+
+        t = calculate_targets(ticker)
+        if t.get("error"):
+            sections["price_levels"] = f"(unavailable — {t['error']})"
+        elif t.get("is_leader"):
+            # 리더(성장주)는 고정 익절 폐기 → target_1/2 = None, 50일선 트레일이 유일한 exit
+            sections["price_levels"] = "\n".join(
+                [
+                    f"  - stock_type: {t['stock_type']} (**leader** — 고정 익절 없음)",
+                    f"  - entry: ${t['entry_price']:.2f} (current ${t['current_price']:.2f})",
+                    f"  - stop_loss: ${t['stop_loss']:.2f} ({t['stop_loss_pct']}%)",
+                    f"  - exit: {t['leader_ma_period']}일선 트레일 ${t['leader_ma']:.2f} 이탈",
+                    f"  - trailing_stop: {t['trailing_stop_pct']}%",
+                ]
+            )
+        else:
+            sections["price_levels"] = "\n".join(
+                [
+                    f"  - stock_type: {t['stock_type']}",
+                    f"  - entry: ${t['entry_price']:.2f} (current ${t['current_price']:.2f})",
+                    f"  - stop_loss: ${t['stop_loss']:.2f} ({t['stop_loss_pct']}%)",
+                    f"  - target_1: ${t['target_1']:.2f} (+{t['target_1_pct']}%, sell {t['target_1_sell_pct']}%)",
+                    f"  - target_2: ${t['target_2']:.2f} (+{t['target_2_pct']}%, sell {t['target_2_sell_pct']}%)",
+                    f"  - trailing_stop: {t['trailing_stop_pct']}%",
+                ]
+            )
+    except Exception as e:
+        sections["price_levels"] = f"(error: {e})"
+
     return sections
 
 
@@ -213,10 +249,20 @@ def _build_prompt(ticker: str, question: str, ctx: dict[str, str]) -> str:
         "",
         ctx.get("recent_calls", "(no calls)"),
         "",
+        "## Price levels (system-computed — DO NOT derive your own)",
+        "",
+        ctx.get("price_levels", "(unavailable)"),
+        "",
         "## Constraints",
         "",
         "- STRATEGY §7.1: recommendation only, no auto-trade.",
-        "- 3:1 reward-to-risk, growth ladder: stop -7% / TP1 +20% / TP2 +40%.",
+        "- Price levels above are computed by `price_targets.calculate_targets` from "
+        "`config/rules.yaml`. They are the only valid levels. Do NOT compute, round, "
+        "adjust, or invent entry / stop / TP values of your own.",
+        "- 3:1 reward-to-risk. The ladder percentages live in `config/rules.yaml` and are "
+        "already applied in the 'Price levels' section above. Do not restate them from "
+        "memory or re-apply them to the current price — if that section gives no levels "
+        "(leader trail, or unavailable), there are no TP levels to report.",
         "- VIX gate: > 30 block buys, 25-30 half size.",
         "- Position cap: max 15% per ticker (core), 25% (active).",
         "- Korean retail investor — risk-averse after 4월 손실 cascade.",
@@ -227,7 +273,9 @@ def _build_prompt(ticker: str, question: str, ctx: dict[str, str]) -> str:
         "2. **Thesis** (3-5 sentences — what is the company's actual position in the value chain?)",
         "3. **Beneficiary analysis** (if relevant — who benefits from what trend? rank 5+)",
         "4. **Risk** (top 2 specific risks with quantified probability if possible)",
-        "5. **Entry / Stop / TP** (if BUY/STRONG BUY — concrete prices)",
+        "5. **Price levels** (if BUY/STRONG BUY — restate the system-computed levels "
+        "from the 'Price levels' section verbatim. If that section says unavailable, "
+        "say so and omit — never substitute your own numbers)",
         "6. **Portfolio implications** (given user's actual holdings + cash situation)",
         "7. **Confidence** (0-100, honest calibration)",
         "",
