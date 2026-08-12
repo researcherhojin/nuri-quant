@@ -16,12 +16,18 @@ module. Direct `import openai` elsewhere in `nuri/` is forbidden so that:
 4. Provider/model substitution — when a future PR adds another provider
    (Anthropic, Gemini, local Ollama as secondary, ...) it slots in here.
 
-The current §4.4.3 whitelist permits **public RSS headline classification
-only** (Tier 0 data). Sending Tier 1 (user narrative) or Tier 2 (portfolio)
-data through this wrapper is a STRATEGY violation that requires a separate
-PR to enable. The wrapper does not enforce that distinction at runtime —
-that's the caller's responsibility — but the wrapper docstrings and the
-STRATEGY.md table are the single source of truth.
+The current §4.4.3 whitelist permits **two** entries, both `gpt-5.4-nano`:
+
+1. **Tier 0** — public RSS headline classification (`event_classifier`). ZDR 권장.
+2. **Tier 2** — 일간 포트폴리오 리포트 (`report.py`), 2026-04-14 사용자 승인.
+   ZDR **필수**: `OPENAI_ZDR_APPROVED=1` 미설정 시 `chat_text(data_tier="tier2")`
+   가 `ExternalLLMPolicyViolation` 을 raise 한다 (fail loud).
+
+**Tier 1** (user narrative) 은 여전히 금지 — 활성화하려면 별도 STRATEGY PR.
+
+Tier 판별은 caller 가 `data_tier=` 로 선언하고 이 wrapper 가 ZDR attestation
+만 강제한다. 어떤 데이터가 어느 Tier 인지는 `docs/STRATEGY.md` §4.4.3 표가
+source of truth — 이 docstring 은 그 사본이므로 표가 바뀌면 같이 고칠 것.
 
 Usage:
 

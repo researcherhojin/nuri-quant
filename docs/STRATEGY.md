@@ -329,7 +329,7 @@ History cleanup (Stage 2 — 별도 작업): main HEAD 는 깨끗하게 유지�
 1. ZDR 승인 완료 후 첫 호출. 미승인 시 `OPENAI_ZDR_APPROVED=1` 미설정으로 wrapper raise.
 2. `NURI_DISABLE_EXTERNAL_LLM=1` 즉시 opt-out.
 3. 프롬프트 로그 금지 — token·latency·error_type 만, **content 금지**.
-4. ~~local LLM 전환 계획~~ — **dropped (2026-07-08, #854)**: 로컬 LLM 상시 가동 폐지 결정으로 Tier 2 는 cloud ZDR 유지.
+4. ~~local LLM 전환 계획~~ — **dropped (2026-07-08, #854)**: 로컬 LLM 상시 가동 폐지 결정으로 Tier 2 **primary** 는 cloud ZDR 유지. 단 `nuri/llm/report.py` 의 **opt-in local fallback 경로는 제거되지 않았다** — OpenAI 실패 또는 `NURI_DISABLE_EXTERNAL_LLM=1` 시 `LLAMA_MODEL_PATH` → `OLLAMA_HOST` 순으로 시도한다 (둘 다 미설정이면 error note). 즉 "cloud 전용"이 아니라 **"cloud primary + local 상시-미가동 fallback"** 이다. 폐지된 것은 상시 가동과 primary 전환이지 fallback 코드가 아니다.
 **필수 운영 룰**:
 1. 모든 외부 LLM 은 wrapper (`openai_client.get_client()`). 직접 `import openai` 금지.
 2. Per-call audit log — `external_llm_calls` 테이블: `timestamp, provider, model, endpoint, prompt_tokens, completion_tokens, latency_ms, success, error_type`. content 금지.
