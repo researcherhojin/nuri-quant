@@ -14,9 +14,9 @@ env vars `NURI_LLM_QWEN_URL` / `NURI_LLM_QWEN_MODEL` to point elsewhere
 (e.g. llama.cpp at :8081 — historical default until 2026-04-29).
 
 Usage:
-    .venv/bin/python scripts/llm_consult.py --slug <slug> --prompt-file <path>
-    .venv/bin/python scripts/llm_consult.py --slug <slug> < prompt.md
-    .venv/bin/python scripts/llm_consult.py --slug <slug> --codex-only --prompt-file <path>
+    .venv/bin/python scripts/dev/llm_consult.py --slug <slug> --prompt-file <path>
+    .venv/bin/python scripts/dev/llm_consult.py --slug <slug> < prompt.md
+    .venv/bin/python scripts/dev/llm_consult.py --slug <slug> --codex-only --prompt-file <path>
 
 The slug becomes the filename suffix; keep it kebab-case + descriptive
 (e.g. `e3-phase2-shelve-decision`).
