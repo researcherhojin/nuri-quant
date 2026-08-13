@@ -28,6 +28,7 @@ Discord publish:
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
@@ -35,6 +36,8 @@ from nuri.core.db import (
     log_foundation_benchmark,
     query,
 )
+
+logger = logging.getLogger(__name__)
 
 # higher_is_better 방향 — caller 가 명시 안 하면 metric_name 으로 기본값 산출.
 _DEFAULT_HIGHER_IS_BETTER: dict[str, bool] = {
@@ -399,7 +402,8 @@ class FoundationBenchmark(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_rollout")
 
 
 def main(argv: Optional[list[str]] = None) -> int:

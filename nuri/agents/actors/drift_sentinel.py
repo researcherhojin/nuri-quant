@@ -30,12 +30,15 @@ Anti-pattern 방지:
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 import numpy as np
 
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
 from nuri.core.db import log_drift_alert, query
+
+logger = logging.getLogger(__name__)
 
 # ─── PSI 임계값 (산업 표준) ─────────────────────────────────
 PSI_MINOR = 0.10
@@ -522,7 +525,8 @@ class DriftSentinel(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001 — best-effort
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_fn")
 
 
 def main(argv: list[str] | None = None) -> int:

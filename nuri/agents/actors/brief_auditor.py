@@ -34,11 +34,14 @@ Output gate:
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections import Counter, defaultdict
 from typing import Any, Optional
 
 from nuri.agents.base import Actor, ActorResult, Layer, Outcome, RunContext
 from nuri.core.db import query
+
+logger = logging.getLogger(__name__)
 
 # 자가점검 emit/dedupe 채널 — _emit_incident(stage_ops) 와 _dedupe_recent 가
 # 반드시 일치해야 함 (불일치 시 dedupe 미스 → 6h 마다 재emit 스팸).
@@ -285,6 +288,9 @@ def _emit_incident(issue: dict[str, Any], run_id: str, db_path: Optional[Any]) -
         )
         return True
     except Exception:  # noqa: BLE001 — stage must not break audit
+        # 호출자에게 False 로 알리되 **원인은 남긴다** — 반환값만으로는
+        # 왜 실패했는지 알 수 없어 며칠째 발행이 안 돼도 진단이 안 된다.
+        logger.exception("outbox staging 실패: stage_ops")
         return False
 
 
