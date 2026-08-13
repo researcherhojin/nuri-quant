@@ -89,8 +89,11 @@ scripts/
 | `ci_local.sh` | local CI parity (~30s smoke / full) | `bash scripts/dev/ci_local.sh [--lint\|--quick]` |
 | `codex_review.sh` | Codex CLI review wrapper | `bash scripts/dev/codex_review.sh` |
 | `install_hooks.sh` | git hooks install | `make setup-hooks` |
-| `llm_consult.py` | codex + Qwen3.5 dual-archive consult | `make llm-consult slug=X prompt=path` |
+| `llm_consult.py` | codex + local-LLM dual-archive consult | `make llm-consult slug=X prompt=path` |
 | `agent_loop.py` | agent loop orchestrator skeleton (#577/#578, file-based transcript) | dev only |
+| `llm_ab_eval.py` | 로컬 모델 A/B — 동결 프롬프트 50개, 결정론적 채점 (LLM judge 없음) | `python scripts/dev/llm_ab_eval.py --model-a X --model-b Y` |
+| `llm_ab_stats.py` | A/B 판정 — Clopper-Pearson exact CI + McNemar exact (stdlib only) | `llm_ab_eval.py` 가 import |
+| `llm_ab_rescore.py` | 저장된 출력 재채점 (모델 호출 없음) — 채점기 수정의 영향 확인용 | `python scripts/dev/llm_ab_rescore.py --show-failures` |
 
 ## doc/ — documentation maintenance
 
