@@ -61,6 +61,24 @@ TRAILING_STOP_GROWTH = _ts.get("growth", -15)
 TRAILING_STOP_VALUE = _ts.get("value", -15)
 TRAILING_STOP_VOLATILE = _ts.get("volatile", -20)
 
+# ─── DecisionCompiler 의사결정 임계값 (#529, carry-over audit N1) ───
+# emit/HOLD 를 가르는 게이트라 투자 룰이다 — 코드 하드코딩 금지 조항 대상.
+_dc = RULES.get("decision_compiler", {})
+CONVICTION_EMIT_CUTOFF = _dc.get("conviction_emit_cutoff", 0.70)
+CONVICTION_HOLD_CUTOFF = _dc.get("conviction_hold_cutoff", 0.50)
+REGIME_FAVOR_PROB = _dc.get("regime_favor_prob", 0.60)
+
+# ─── Forward outcome tracking 임계값 (#529, carry-over audit N2) ───
+# PyYAML 은 bare `7:` 를 int 로 파싱하지만 `"7":` 로 인용하면 str 이 된다. 키 타입이
+# 갈리면 `WINDOW_THRESHOLDS[window]`(window 는 int)가 KeyError 를 내고 actor 가 죽는다.
+# 정규화는 여기 한 곳에 둔다 — 소비자마다 방어하게 만들지 않는다.
+# 값도 list → tuple 로 굳힌다. 어노테이션이 tuple 이고, 원소 단위 변형을 막는다.
+_ot = RULES.get("outcome_tracking", {})
+OUTCOME_WINDOW_THRESHOLDS: dict[int, tuple[float, float]] = {
+    int(w): (float(p[0]), float(p[1]))
+    for w, p in (_ot.get("window_thresholds") or {7: [0.05, -0.05], 14: [0.07, -0.07], 30: [0.10, -0.10]}).items()
+}
+
 # ─── 매수 진입 조건 ───
 _entry = RULES.get("entry_rules", {})
 VIX_BLOCK_ABOVE = _entry.get("vix_gate", {}).get("block_above", 30)

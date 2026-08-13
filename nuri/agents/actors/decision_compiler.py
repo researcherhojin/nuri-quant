@@ -13,9 +13,10 @@ Layer B 설계 (Codex Round 5):
 - HypothesisRegistry.check_emit BLOCK → HOLD (Layer A enforcement 우회 금지)
 - CausalFactorAuditor.last_audit verdict=MIRAGE → HOLD (factor mirage 차단)
 - CausalFactorAuditor.last_audit verdict=INSUFFICIENT → HOLD
-- conviction < CONVICTION_HOLD_CUTOFF (0.5) → HOLD (low-confidence emit 차단)
-- conviction < CONVICTION_EMIT_CUTOFF (0.7) → HOLD (작은 신호 무시)
-- All gates PASS + conviction >= 0.7 + regime favorable → BUY/SELL emit
+- conviction < CONVICTION_HOLD_CUTOFF → HOLD (low-confidence emit 차단)
+- conviction < CONVICTION_EMIT_CUTOFF → HOLD (작은 신호 무시)
+- All gates PASS + conviction >= CONVICTION_EMIT_CUTOFF + regime favorable → BUY/SELL emit
+  (세 임계값은 `config/rules.yaml decision_compiler` — 여기 숫자를 적으면 드리프트가 된다)
 
 Anti-pattern 방지 (lock-test):
 - HypothesisRegistry BLOCK 결과를 무시하고 emit 시도 → 무조건 HOLD + blocked
@@ -31,12 +32,8 @@ from typing import Any
 
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
 from nuri.core.db import log_decision, query
+from nuri.core.rules import CONVICTION_EMIT_CUTOFF, CONVICTION_HOLD_CUTOFF, REGIME_FAVOR_PROB
 from nuri.core.timezone import today_kst
-
-# ─── 의사결정 임계값 ─────────────────────────────────────
-CONVICTION_EMIT_CUTOFF = 0.70  # emit 최소 conviction
-CONVICTION_HOLD_CUTOFF = 0.50  # 이 미만은 무조건 HOLD (low-signal)
-REGIME_FAVOR_PROB = 0.60  # regime posterior top1 prob >= 이 값 → favorable
 
 VALID_ACTIONS_INPUT: tuple[str, ...] = ("BUY", "SELL")  # caller 가 제안하는 방향
 

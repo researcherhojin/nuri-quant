@@ -39,16 +39,18 @@ from nuri.core.db import (
     reject_hypothesis,
     validate_hypothesis,
 )
-from nuri.core.rules import RULES
+from nuri.core.rules import OUTCOME_WINDOW_THRESHOLDS, RULES
 from nuri.core.ticker_names import is_kr_ticker
 from nuri.core.timezone import today_kst
 
-# ─── window 별 validation 임계값 (Codex consult 합의) ─────────
-WINDOW_THRESHOLDS: dict[int, tuple[float, float]] = {
-    7: (0.05, -0.05),  # ±5% within 7 days
-    14: (0.07, -0.07),  # ±7% within 14 days
-    30: (0.10, -0.10),  # ±10% within 30 days
-}
+# ─── window 별 validation 임계값 — `config/rules.yaml outcome_tracking` ─────────
+# 이름을 유지해 기존 import/테스트가 그대로 돈다. **복사본**을 들고 있는다 —
+# 별칭으로 두면 테스트의 `patch.dict` 가 `nuri.core.rules` 의 원본을 제자리에서
+# 바꿔 다른 모듈까지 오염된다.
+WINDOW_THRESHOLDS: dict[int, tuple[float, float]] = dict(OUTCOME_WINDOW_THRESHOLDS)
+# ⚠️ config 로 옮기지 말 것. 이 튜플이 window 키 집합을 `decision_outcomes` CHECK
+# 제약(7/14/30)에 붙들어 매는 유일한 장치다 — config 로 가면 YAML 한 줄로
+# §3.11 사전등록 window 30 을 조용히 끌 수 있게 된다.
 SUPPORTED_WINDOWS: tuple[int, ...] = (7, 14, 30)
 DEFAULT_BENCHMARK_TICKER = "SPY"  # 시장 베타 — alpha 산출 baseline (US, §3.11 사전등록 판정 기준)
 
