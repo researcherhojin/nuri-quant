@@ -189,6 +189,8 @@ data/agent_loop/
 data/discord_inbound/
 # Thesis Q&A archive (#508) — DB context + LLM verdict 포함, portfolio holdings 노출
 data/thesis_query/
+# scripts/dev/llm_ab_eval.py — 모델 A/B 결과. 출력 본문을 통째로 담는다.
+data/llm_eval/
 # Portfolio recommendation backtracking archive (per-day .md) — broker holdings +
 # rebalance proposals 노출, public repo 절대 금지. STRATEGY §4.4.1 privacy.
 data/portfolio_recommendations/
