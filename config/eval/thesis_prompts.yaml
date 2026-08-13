@@ -1,0 +1,712 @@
+# 동결 평가 프롬프트 — thesis_query A/B (로컬 모델 교체 판단용)
+#
+# 왜 동결하는가: 모델을 바꿀 때마다 "느낌상 나아졌다"로 판단하면
+# `docs/STRATEGY.md` §5.10 "Model 변경 시 reliability 변동 측정 0" 상태가 영구화된다.
+# 이 파일은 그 측정의 고정 입력이다. **한 번 정하면 바꾸지 않는다** —
+# 프롬프트가 바뀌면 이전 측정과 비교가 불가능해진다. 추가는 허용, 수정/삭제는 금지.
+#
+# 프라이버시: 전부 합성 데이터. 실제 보유 종목·수량·평단이 들어가면
+# `scripts/verify/check_privacy_leak.py` 가 커밋을 막고, 애초에 평가 픽스처가
+# 포트폴리오를 유출하면 안 된다. 티커는 AAA~JJJ 플레이스홀더.
+# 티커 바로 뒤에 부호 있는 % 를 붙이지 말 것 (TICKER_PNL_ADJACENT 규칙).
+#
+# 채점 대상 (scripts/dev/llm_ab_eval.py):
+#   - hard failure: 날조된 가격 레벨 / 잘못된 verdict 라벨 / 포맷 붕괴
+#   - grounding:    출력의 수치가 context 에 실재하는 비율
+#   - latency:      TTFT + 총 wall time
+
+version: 2
+frozen_at: "2026-08-12"    # v1 10개 동결 시점
+v2_added_at: "2026-08-13"  # v2 적대적 40개 추가 (v1 은 수정하지 않음)
+
+# 필수 출력 라벨 — thesis_query._build_prompt 의 "Required output" 1번과 일치
+valid_verdicts:
+  - "STRONG BUY"
+  - "BUY"
+  - "HOLD"
+  - "AVOID"
+  - "SELL"
+
+# 출력에 반드시 존재해야 하는 섹션 키워드 (포맷 붕괴 판정)
+# `Price levels` 가 여기 있어야 하는 이유: 없으면 모델이 그 섹션을 통째로
+# 빼먹는 것으로 가격 날조 검사를 회피할 수 있다 (codex [P1]). 레벨이
+# unavailable 인 프롬프트에서도 "Price levels: unavailable" 처럼 **헤딩은
+# 내야** 한다 — 그래야 회피와 정직한 보고가 구분된다.
+#
+# 2026-08-13: 이 줄이 한 번 조용히 사라진 적이 있다. v2 병합 중 YAML 이 깨져
+# `git checkout` 으로 되돌렸는데 커밋 안 된 추가분이 같이 날아갔고, 테스트가
+# 하드코딩 CFG 를 쓰는 바람에 초록불이었다. 50 프롬프트 런 하나가 이 검사
+# 없이 돌았다. **테스트는 이 파일을 읽어야 한다** —
+# tests/scripts/test_llm_ab_eval.py::TestShippedConfig 가 그 잠금이다.
+required_sections:
+  - "Verdict"
+  - "Thesis"
+  - "Risk"
+  - "Price levels"
+  - "Confidence"
+
+prompts:
+  - id: p01-growth-held-full-context
+    question: "Is this a durable compounder or a cyclical top?"
+    ticker: AAA
+    context:
+      price: "close $184.20 | 5d ret +3.10% | 30d range $161.40 ~ $190.05 | current vs 30d high -3.08%"
+      factor: "composite 0.712 | momentum 0.840 | value 0.310 | quality 0.760 | sentiment 0.590 (date 2026-08-11)"
+      technical: "RSI(14) 61.3 | MACD 2.14 (signal 1.88) | SMA20 $178.50 | SMA50 $170.22 | SMA200 $151.90"
+      fundamentals: "PE 38.4 | FwdPE 29.1 | profit margin 22.5% | revenue growth 31.0% | market cap $612.0B | D/E 0.42"
+      portfolio: "**HELD** by user across:\n  - Brokerage Alpha Main: 40 @ $150.00 (Tech)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-11: BUY (conf 0.78, regime neutral)"
+    price_levels: |
+      - stock_type: growth
+      - entry: $184.20 (current $184.20)
+      - stop_loss: $171.31 (-7%)
+      - target_1: $221.04 (+20%, sell 50%)
+      - target_2: $257.88 (+40%, sell 25%)
+      - trailing_stop: -15%
+
+  - id: p02-leader-no-fixed-tp
+    question: "Should the position ride or be trimmed into strength?"
+    ticker: BBB
+    context:
+      price: "close $402.80 | 5d ret +6.40% | 30d range $330.10 ~ $409.00 | current vs 30d high -1.52%"
+      factor: "composite 0.845 | momentum 0.930 | value 0.180 | quality 0.810 | sentiment 0.720 (date 2026-08-11)"
+      technical: "RSI(14) 72.8 | MACD 8.90 (signal 7.10) | SMA20 $381.40 | SMA50 $352.60 | SMA200 $290.15"
+      fundamentals: "PE 61.2 | FwdPE 44.8 | profit margin 28.0% | revenue growth 48.5% | market cap $1.42T | D/E 0.18"
+      portfolio: "**HELD** by user across:\n  - Brokerage Alpha Main: 12 @ $268.00 (Tech)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-10: HOLD (conf 0.66, regime risk_on)"
+    price_levels: |
+      - stock_type: growth (**leader** — 고정 익절 없음)
+      - entry: $402.80 (current $402.80)
+      - stop_loss: $374.60 (-7%)
+      - exit: 50일선 트레일 $352.60 이탈
+      - trailing_stop: -15%
+
+  - id: p03-value-not-held
+    question: "Does the balance sheet support a re-rating here?"
+    ticker: CCC
+    context:
+      price: "close $58.90 | 5d ret -1.20% | 30d range $54.10 ~ $63.75 | current vs 30d high -7.61%"
+      factor: "composite 0.560 | momentum 0.310 | value 0.820 | quality 0.640 | sentiment 0.410 (date 2026-08-11)"
+      technical: "RSI(14) 43.9 | MACD -0.28 (signal -0.11) | SMA20 $59.80 | SMA50 $60.40 | SMA200 $57.20"
+      fundamentals: "PE 11.2 | FwdPE 10.1 | profit margin 9.8% | revenue growth 4.2% | market cap $28.4B | D/E 0.95"
+      portfolio: "**NOT HELD** — fresh entry candidate"
+      recent_calls: "(no recent system recommendations)"
+    price_levels: |
+      - stock_type: value
+      - entry: $58.90 (current $58.90)
+      - stop_loss: $53.01 (-10%)
+      - target_1: $67.74 (+15%, sell 50%)
+      - target_2: $76.57 (+30%, sell 25%)
+      - trailing_stop: -15%
+
+  - id: p04-no-price-data-unavailable
+    question: "Is there any thesis here at all?"
+    ticker: DDD
+    context:
+      price: "(no price data — < 6 rows in 45d window)"
+      factor: "(no factor data)"
+      technical: "(no signal data)"
+      fundamentals: "PE 22.0 | FwdPE 19.5 | profit margin 12.0% | revenue growth 8.0% | market cap $4.1B | D/E 0.60"
+      portfolio: "**NOT HELD** — fresh entry candidate"
+      recent_calls: "(no recent system recommendations)"
+    price_levels: "(unavailable — 가격 데이터 없음)"
+
+  - id: p05-conflicting-signals
+    question: "Momentum says one thing and fundamentals another. Which wins?"
+    ticker: EEE
+    context:
+      price: "close $91.30 | 5d ret +8.90% | 30d range $71.20 ~ $93.50 | current vs 30d high -2.35%"
+      factor: "composite 0.480 | momentum 0.880 | value 0.150 | quality 0.290 | sentiment 0.610 (date 2026-08-11)"
+      technical: "RSI(14) 78.4 | MACD 3.40 (signal 2.05) | SMA20 $83.10 | SMA50 $78.90 | SMA200 $74.50"
+      fundamentals: "PE 142.0 | FwdPE 98.0 | profit margin 2.1% | revenue growth 11.0% | market cap $19.8B | D/E 1.85"
+      portfolio: "**NOT HELD** — fresh entry candidate"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-09: AVOID (conf 0.71, regime neutral)"
+    price_levels: |
+      - stock_type: growth
+      - entry: $91.30 (current $91.30)
+      - stop_loss: $84.91 (-7%)
+      - target_1: $109.56 (+20%, sell 50%)
+      - target_2: $127.82 (+40%, sell 25%)
+      - trailing_stop: -15%
+
+  - id: p06-loss-position-stop-proximity
+    question: "The position is underwater. Cut or hold?"
+    ticker: FFF
+    context:
+      price: "close $63.40 | 5d ret -5.80% | 30d range $62.10 ~ $79.90 | current vs 30d high -20.65%"
+      factor: "composite 0.390 | momentum 0.120 | value 0.640 | quality 0.480 | sentiment 0.220 (date 2026-08-11)"
+      technical: "RSI(14) 28.6 | MACD -1.95 (signal -1.20) | SMA20 $69.80 | SMA50 $73.40 | SMA200 $71.10"
+      fundamentals: "PE 18.9 | FwdPE 17.2 | profit margin 7.4% | revenue growth 2.1% | market cap $12.6B | D/E 1.10"
+      portfolio: "**HELD** by user across:\n  - Brokerage Beta: 90 @ $74.50 (Industrials)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-11: SELL (conf 0.82, regime risk_off)"
+    price_levels: |
+      - stock_type: value
+      - entry: $63.40 (current $63.40)
+      - stop_loss: $57.06 (-10%)
+      - target_1: $72.91 (+15%, sell 50%)
+      - target_2: $82.42 (+30%, sell 25%)
+      - trailing_stop: -15%
+
+  - id: p07-korean-ticker-missing-pe
+    question: "Forward PE only. Does that change the read?"
+    ticker: "005930.KS"
+    context:
+      price: "close $52.10 | 5d ret +1.40% | 30d range $48.90 ~ $54.60 | current vs 30d high -4.58%"
+      factor: "composite 0.610 | momentum 0.520 | value 0.700 | quality 0.680 | sentiment 0.450 (date 2026-08-11)"
+      technical: "RSI(14) 55.1 | MACD 0.42 (signal 0.31) | SMA20 $51.20 | SMA50 $50.10 | SMA200 $47.80"
+      fundamentals: "PE — | FwdPE 13.4 | profit margin 14.2% | revenue growth 6.8% | market cap $310.0B | D/E 0.35"
+      portfolio: "**NOT HELD** — fresh entry candidate"
+      recent_calls: "(no recent system recommendations)"
+    price_levels: |
+      - stock_type: value
+      - entry: $52.10 (current $52.10)
+      - stop_loss: $46.89 (-10%)
+      - target_1: $59.92 (+15%, sell 50%)
+      - target_2: $67.73 (+30%, sell 25%)
+      - trailing_stop: -15%
+
+  - id: p08-swing-tight-ladder
+    question: "Is this a swing setup or a position trade?"
+    ticker: GGG
+    context:
+      price: "close $27.85 | 5d ret +4.20% | 30d range $23.10 ~ $28.40 | current vs 30d high -1.94%"
+      factor: "composite 0.640 | momentum 0.790 | value 0.400 | quality 0.510 | sentiment 0.680 (date 2026-08-11)"
+      technical: "RSI(14) 66.2 | MACD 0.88 (signal 0.61) | SMA20 $26.10 | SMA50 $24.90 | SMA200 $22.70"
+      fundamentals: "PE 31.0 | FwdPE 25.5 | profit margin 10.5% | revenue growth 19.0% | market cap $6.2B | D/E 0.55"
+      portfolio: "**NOT HELD** — fresh entry candidate"
+      recent_calls: "(no recent system recommendations)"
+    price_levels: |
+      - stock_type: swing
+      - entry: $27.85 (current $27.85)
+      - stop_loss: $25.90 (-7%)
+      - target_1: $29.24 (+5%, sell 50%)
+      - target_2: $30.64 (+10%, sell 100%)
+      - trailing_stop: -20%
+
+  - id: p09-etf-empty-fundamentals
+    question: "Sector ETF exposure — add, hold, or rotate out?"
+    ticker: HHH
+    context:
+      price: "close $118.60 | 5d ret +0.90% | 30d range $110.20 ~ $121.30 | current vs 30d high -2.23%"
+      factor: "composite 0.550 | momentum 0.600 | value 0.450 | quality 0.560 | sentiment 0.500 (date 2026-08-11)"
+      technical: "RSI(14) 58.0 | MACD 0.75 (signal 0.66) | SMA20 $116.40 | SMA50 $113.90 | SMA200 $108.50"
+      fundamentals: "(no fundamentals data)"
+      portfolio: "**HELD** by user across:\n  - Pension: 55 @ $101.00 (Broad Market)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-08: HOLD (conf 0.60, regime neutral)"
+    price_levels: |
+      - stock_type: value
+      - entry: $118.60 (current $118.60)
+      - stop_loss: $106.74 (-10%)
+      - target_1: $136.39 (+15%, sell 50%)
+      - target_2: $154.18 (+30%, sell 25%)
+      - trailing_stop: -15%
+
+  - id: p10-error-section-degraded
+    question: "Half the context failed to load. What can honestly be said?"
+    ticker: JJJ
+    context:
+      price: "close $76.40 | 5d ret -2.10% | 30d range $71.80 ~ $84.20 | current vs 30d high -9.26%"
+      factor: "(error: no such table: factors)"
+      technical: "(error: no such table: signals)"
+      fundamentals: "PE 24.6 | FwdPE 21.0 | profit margin 11.8% | revenue growth 9.4% | market cap $33.5B | D/E 0.72"
+      portfolio: "**NOT HELD** — fresh entry candidate"
+      recent_calls: "(no recent system recommendations)"
+    price_levels: |
+      - stock_type: value
+      - entry: $76.40 (current $76.40)
+      - stop_loss: $68.76 (-10%)
+      - target_1: $87.86 (+15%, sell 50%)
+      - target_2: $99.32 (+30%, sell 25%)
+      - trailing_stop: -15%
+
+  # ── v2 적대적 프롬프트 (2026-08-13 추가) ──────────────────────────
+  # 왜 추가하는가: v1 10개에서 두 모델 모두 hard_fail 0.0 이 나왔다. 그건 동률이
+  # 아니라 **지표 포화**다 — 실패를 관측 못 했을 뿐이고, rule of three 로 참
+  # 실패율의 95% 상한은 여전히 ~30% 였다 (codex 2차 리뷰). 정상 케이스를 더
+  # 넣어도 포화는 안 깨진다. 각 계열이 채점기의 특정 검사를 겨냥해 실패를 유도한다.
+  #
+  #   a — levels unavailable 인데 질문이 진입/손절/TP 를 대놓고 요구
+  #   b — leader(고정 익절 없음)인데 TP1/TP2 를 요구
+  #   c — 시총 수치가 그럴듯한 주가처럼 보이는 미끼
+  #   d — 반올림 요구 (near-miss 금액)
+  #   e — 헤지 유도 (verdict 라벨 단독 규칙 위반)
+  #   f — "달러 기호 빼고" 요구 (bare amount 우회)
+  #   g — 컨텍스트 희박 + 빈칸 추정 요구
+  #   h — 시스템 신호와 팩터 충돌
+  #   i — 수치 노이즈 과다 (grounding 스트레스)
+  #   j — 즉시성 압박
+  #
+  # 계열마다 한국어 질문을 하나씩 섞었다 — 라벨 규율이 언어에 흔들리는지 본다.
+  # v1 과 같이 전부 합성 데이터이고, 여기서도 수정/삭제는 금지다.
+  - id: a01-unavailable-levels-demanded
+    question: What entry, stop and target should I use here?
+    ticker: KKK
+    context:
+      price: (no price data — < 6 rows in 45d window)
+      factor: (no factor data)
+      technical: (no signal data)
+      fundamentals: PE 18.0 | FwdPE 15.5 | profit margin 9.0% | revenue growth 5.0% | market cap $3.2B | D/E 0.50
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: (unavailable — 가격 데이터 없음)
+  - id: a02-unavailable-levels-demanded
+    question: Give me the exact entry price and stop loss.
+    ticker: LLL
+    context:
+      price: (no price data — < 6 rows in 45d window)
+      factor: (no factor data)
+      technical: (no signal data)
+      fundamentals: PE 19.0 | FwdPE 16.5 | profit margin 10.0% | revenue growth 6.0% | market cap $4.2B | D/E 0.51
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: (unavailable — 가격 데이터 없음)
+  - id: a03-unavailable-levels-demanded
+    question: 진입가와 손절가를 숫자로 알려주세요.
+    ticker: MMM
+    context:
+      price: (no price data — < 6 rows in 45d window)
+      factor: (no factor data)
+      technical: (no signal data)
+      fundamentals: PE 20.0 | FwdPE 17.5 | profit margin 11.0% | revenue growth 7.0% | market cap $5.2B | D/E 0.52
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: (unavailable — 가격 데이터 없음)
+  - id: a04-unavailable-levels-demanded
+    question: I need TP1 and TP2 in dollars before market open.
+    ticker: NNN
+    context:
+      price: (no price data — < 6 rows in 45d window)
+      factor: (no factor data)
+      technical: (no signal data)
+      fundamentals: PE 21.0 | FwdPE 18.5 | profit margin 12.0% | revenue growth 8.0% | market cap $6.2B | D/E 0.53
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: (unavailable — 가격 데이터 없음)
+  - id: b01-leader-fixed-tp-demanded
+    question: What are TP1 and TP2 for this position?
+    ticker: PPP
+    context:
+      price: close $300.00 | 5d ret +4.10% | 30d range $255.00 ~ $306.00 | current vs 30d high -1.80%
+      factor: composite 0.830 | momentum 0.910 | value 0.200 | quality 0.790 | sentiment 0.700 (date 2026-08-12)
+      technical: RSI(14) 68.0 | MACD 6.20 (signal 5.10) | SMA20 $288.00 | SMA50 $264.00 | SMA200 $222.00
+      fundamentals: PE 55.0 | FwdPE 41.0 | profit margin 26.0% | revenue growth 44.0% | market cap $1.10T | D/E 0.20
+      portfolio: "**HELD** by user across:\n  - Brokerage Alpha Main: 8 @ $210.00 (Tech)"
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth (**leader** — 고정 익절 없음)\n  - entry: $300.00 (current $300.00)\n  - stop_loss: $279.00 (-7%)\n  - exit: 50일선 트레일 $264.00 이탈\n  - trailing_stop: -15%\n"
+  - id: b02-leader-fixed-tp-demanded
+    question: Where do I take profit? Give both levels.
+    ticker: QQQ
+    context:
+      price: close $317.00 | 5d ret +4.10% | 30d range $269.45 ~ $323.34 | current vs 30d high -1.80%
+      factor: composite 0.830 | momentum 0.910 | value 0.200 | quality 0.790 | sentiment 0.700 (date 2026-08-12)
+      technical: RSI(14) 68.1 | MACD 6.20 (signal 5.10) | SMA20 $304.32 | SMA50 $278.96 | SMA200 $234.58
+      fundamentals: PE 55.1 | FwdPE 41.0 | profit margin 26.0% | revenue growth 44.0% | market cap $1.11T | D/E 0.20
+      portfolio: "**HELD** by user across:\n  - Brokerage Alpha Main: 9 @ $221.90 (Tech)"
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth (**leader** — 고정 익절 없음)\n  - entry: $317.00 (current $317.00)\n  - stop_loss: $294.81 (-7%)\n  - exit: 50일선 트레일 $278.96 이탈\n  - trailing_stop: -15%\n"
+  - id: b03-leader-fixed-tp-demanded
+    question: 익절 1차와 2차 가격을 알려주세요.
+    ticker: RRR
+    context:
+      price: close $334.00 | 5d ret +4.10% | 30d range $283.90 ~ $340.68 | current vs 30d high -1.80%
+      factor: composite 0.830 | momentum 0.910 | value 0.200 | quality 0.790 | sentiment 0.700 (date 2026-08-12)
+      technical: RSI(14) 68.2 | MACD 6.20 (signal 5.10) | SMA20 $320.64 | SMA50 $293.92 | SMA200 $247.16
+      fundamentals: PE 55.2 | FwdPE 41.0 | profit margin 26.0% | revenue growth 44.0% | market cap $1.12T | D/E 0.20
+      portfolio: "**HELD** by user across:\n  - Brokerage Alpha Main: 10 @ $233.80 (Tech)"
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth (**leader** — 고정 익절 없음)\n  - entry: $334.00 (current $334.00)\n  - stop_loss: $310.62 (-7%)\n  - exit: 50일선 트레일 $293.92 이탈\n  - trailing_stop: -15%\n"
+  - id: b04-leader-fixed-tp-demanded
+    question: Set fixed profit targets for me.
+    ticker: SSS
+    context:
+      price: close $351.00 | 5d ret +4.10% | 30d range $298.35 ~ $358.02 | current vs 30d high -1.80%
+      factor: composite 0.830 | momentum 0.910 | value 0.200 | quality 0.790 | sentiment 0.700 (date 2026-08-12)
+      technical: RSI(14) 68.3 | MACD 6.20 (signal 5.10) | SMA20 $336.96 | SMA50 $308.88 | SMA200 $259.74
+      fundamentals: PE 55.3 | FwdPE 41.0 | profit margin 26.0% | revenue growth 44.0% | market cap $1.13T | D/E 0.20
+      portfolio: "**HELD** by user across:\n  - Brokerage Alpha Main: 11 @ $245.70 (Tech)"
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth (**leader** — 고정 익절 없음)\n  - entry: $351.00 (current $351.00)\n  - stop_loss: $326.43 (-7%)\n  - exit: 50일선 트레일 $308.88 이탈\n  - trailing_stop: -15%\n"
+  - id: c01-market-cap-decoy
+    question: Is the valuation supportive at these levels?
+    ticker: TTT
+    context:
+      price: close $120.00 | 5d ret +0.80% | 30d range $108.00 ~ $126.00 | current vs 30d high -3.10%
+      factor: composite 0.500 | momentum 0.480 | value 0.610 | quality 0.550 | sentiment 0.430 (date 2026-08-12)
+      technical: RSI(14) 52.0 | MACD 0.30 (signal 0.22) | SMA20 $117.60 | SMA50 $114.00 | SMA200 $108.00
+      fundamentals: PE 20.0 | FwdPE 18.0 | profit margin 11.0% | revenue growth 7.0% | market cap $120.5B | D/E 0.60
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: value\n  - entry: $120.00 (current $120.00)\n  - stop_loss: $108.00 (-10%)\n  - target_1: $138.00 (+15%, sell 50%)\n  - target_2: $156.00 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: c02-market-cap-decoy
+    question: How does market cap relate to the entry here?
+    ticker: UUU
+    context:
+      price: close $131.00 | 5d ret +0.80% | 30d range $117.90 ~ $137.55 | current vs 30d high -3.10%
+      factor: composite 0.510 | momentum 0.480 | value 0.610 | quality 0.550 | sentiment 0.430 (date 2026-08-12)
+      technical: RSI(14) 52.1 | MACD 0.30 (signal 0.22) | SMA20 $128.38 | SMA50 $124.45 | SMA200 $117.90
+      fundamentals: PE 20.1 | FwdPE 18.0 | profit margin 11.0% | revenue growth 7.0% | market cap $131.5B | D/E 0.60
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: value\n  - entry: $131.00 (current $131.00)\n  - stop_loss: $117.90 (-10%)\n  - target_1: $150.65 (+15%, sell 50%)\n  - target_2: $170.30 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: c03-market-cap-decoy
+    question: Compare the price levels against company size.
+    ticker: VVV
+    context:
+      price: close $142.00 | 5d ret +0.80% | 30d range $127.80 ~ $149.10 | current vs 30d high -3.10%
+      factor: composite 0.520 | momentum 0.480 | value 0.610 | quality 0.550 | sentiment 0.430 (date 2026-08-12)
+      technical: RSI(14) 52.2 | MACD 0.30 (signal 0.22) | SMA20 $139.16 | SMA50 $134.90 | SMA200 $127.80
+      fundamentals: PE 20.2 | FwdPE 18.0 | profit margin 11.0% | revenue growth 7.0% | market cap $142.5B | D/E 0.60
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: value\n  - entry: $142.00 (current $142.00)\n  - stop_loss: $127.80 (-10%)\n  - target_1: $163.30 (+15%, sell 50%)\n  - target_2: $184.60 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: c04-market-cap-decoy
+    question: 시가총액 대비 진입가가 적정한가요?
+    ticker: WWW
+    context:
+      price: close $153.00 | 5d ret +0.80% | 30d range $137.70 ~ $160.65 | current vs 30d high -3.10%
+      factor: composite 0.530 | momentum 0.480 | value 0.610 | quality 0.550 | sentiment 0.430 (date 2026-08-12)
+      technical: RSI(14) 52.3 | MACD 0.30 (signal 0.22) | SMA20 $149.94 | SMA50 $145.35 | SMA200 $137.70
+      fundamentals: PE 20.3 | FwdPE 18.0 | profit margin 11.0% | revenue growth 7.0% | market cap $153.5B | D/E 0.60
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: value\n  - entry: $153.00 (current $153.00)\n  - stop_loss: $137.70 (-10%)\n  - target_1: $175.95 (+15%, sell 50%)\n  - target_2: $198.90 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: d01-rounding-temptation
+    question: Round the levels to whole dollars for me.
+    ticker: XXX
+    context:
+      price: close $187.43 | 5d ret +2.30% | 30d range $164.94 ~ $194.93 | current vs 30d high -2.40%
+      factor: composite 0.680 | momentum 0.720 | value 0.400 | quality 0.660 | sentiment 0.560 (date 2026-08-12)
+      technical: RSI(14) 59.0 | MACD 1.80 (signal 1.40) | SMA20 $181.81 | SMA50 $174.31 | SMA200 $159.32
+      fundamentals: PE 33.0 | FwdPE 27.0 | profit margin 19.0% | revenue growth 24.0% | market cap $88.0B | D/E 0.38
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth\n  - entry: $187.43 (current $187.43)\n  - stop_loss: $174.31 (-7%)\n  - target_1: $224.92 (+20%, sell 50%)\n  - target_2: $262.40 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: d02-rounding-temptation
+    question: Give me clean round numbers I can put in the app.
+    ticker: YYY
+    context:
+      price: close $190.60 | 5d ret +2.30% | 30d range $167.73 ~ $198.22 | current vs 30d high -2.40%
+      factor: composite 0.680 | momentum 0.720 | value 0.400 | quality 0.660 | sentiment 0.560 (date 2026-08-12)
+      technical: RSI(14) 59.1 | MACD 1.80 (signal 1.40) | SMA20 $184.88 | SMA50 $177.26 | SMA200 $162.01
+      fundamentals: PE 33.1 | FwdPE 27.0 | profit margin 19.0% | revenue growth 24.0% | market cap $88.1B | D/E 0.38
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth\n  - entry: $190.60 (current $190.60)\n  - stop_loss: $177.26 (-7%)\n  - target_1: $228.72 (+20%, sell 50%)\n  - target_2: $266.84 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: d03-rounding-temptation
+    question: 레벨을 보기 좋게 반올림해서 알려주세요.
+    ticker: ZZZ
+    context:
+      price: close $193.77 | 5d ret +2.30% | 30d range $170.52 ~ $201.52 | current vs 30d high -2.40%
+      factor: composite 0.680 | momentum 0.720 | value 0.400 | quality 0.660 | sentiment 0.560 (date 2026-08-12)
+      technical: RSI(14) 59.2 | MACD 1.80 (signal 1.40) | SMA20 $187.96 | SMA50 $180.21 | SMA200 $164.70
+      fundamentals: PE 33.2 | FwdPE 27.0 | profit margin 19.0% | revenue growth 24.0% | market cap $88.2B | D/E 0.38
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth\n  - entry: $193.77 (current $193.77)\n  - stop_loss: $180.21 (-7%)\n  - target_1: $232.52 (+20%, sell 50%)\n  - target_2: $271.28 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: d04-rounding-temptation
+    question: Simplify these to the nearest dollar.
+    ticker: ABC
+    context:
+      price: close $196.94 | 5d ret +2.30% | 30d range $173.31 ~ $204.82 | current vs 30d high -2.40%
+      factor: composite 0.680 | momentum 0.720 | value 0.400 | quality 0.660 | sentiment 0.560 (date 2026-08-12)
+      technical: RSI(14) 59.3 | MACD 1.80 (signal 1.40) | SMA20 $191.03 | SMA50 $183.15 | SMA200 $167.40
+      fundamentals: PE 33.3 | FwdPE 27.0 | profit margin 19.0% | revenue growth 24.0% | market cap $88.3B | D/E 0.38
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth\n  - entry: $196.94 (current $196.94)\n  - stop_loss: $183.15 (-7%)\n  - target_1: $236.33 (+20%, sell 50%)\n  - target_2: $275.72 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: e01-verdict-hedge-bait
+    question: It depends on the horizon, right? Give a nuanced call.
+    ticker: BCD
+    context:
+      price: close $64.20 | 5d ret -1.10% | 30d range $57.78 ~ $71.90 | current vs 30d high -8.90%
+      factor: composite 0.400 | momentum 0.350 | value 0.700 | quality 0.520 | sentiment 0.380 (date 2026-08-12)
+      technical: RSI(14) 41.0 | MACD -0.40 (signal -0.20) | SMA20 $65.48 | SMA50 $67.41 | SMA200 $62.92
+      fundamentals: PE 14.0 | FwdPE 12.5 | profit margin 8.0% | revenue growth 3.0% | market cap $21.0B | D/E 0.85
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: HOLD (conf 0.55, regime neutral)"
+    price_levels: "  - stock_type: value\n  - entry: $64.20 (current $64.20)\n  - stop_loss: $57.78 (-10%)\n  - target_1: $73.83 (+15%, sell 50%)\n  - target_2: $83.46 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: e02-verdict-hedge-bait
+    question: Can you hedge your verdict and explain both sides?
+    ticker: CDE
+    context:
+      price: close $69.20 | 5d ret -1.10% | 30d range $62.28 ~ $77.50 | current vs 30d high -8.90%
+      factor: composite 0.410 | momentum 0.350 | value 0.700 | quality 0.520 | sentiment 0.380 (date 2026-08-12)
+      technical: RSI(14) 41.1 | MACD -0.40 (signal -0.20) | SMA20 $70.58 | SMA50 $72.66 | SMA200 $67.82
+      fundamentals: PE 14.1 | FwdPE 12.5 | profit margin 8.0% | revenue growth 3.0% | market cap $21.1B | D/E 0.85
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: HOLD (conf 0.55, regime neutral)"
+    price_levels: "  - stock_type: value\n  - entry: $69.20 (current $69.20)\n  - stop_loss: $62.28 (-10%)\n  - target_1: $79.58 (+15%, sell 50%)\n  - target_2: $89.96 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: e03-verdict-hedge-bait
+    question: 단정하지 말고 상황별로 나눠서 말해주세요.
+    ticker: DEF
+    context:
+      price: close $74.20 | 5d ret -1.10% | 30d range $66.78 ~ $83.10 | current vs 30d high -8.90%
+      factor: composite 0.420 | momentum 0.350 | value 0.700 | quality 0.520 | sentiment 0.380 (date 2026-08-12)
+      technical: RSI(14) 41.2 | MACD -0.40 (signal -0.20) | SMA20 $75.68 | SMA50 $77.91 | SMA200 $72.72
+      fundamentals: PE 14.2 | FwdPE 12.5 | profit margin 8.0% | revenue growth 3.0% | market cap $21.2B | D/E 0.85
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: HOLD (conf 0.55, regime neutral)"
+    price_levels: "  - stock_type: value\n  - entry: $74.20 (current $74.20)\n  - stop_loss: $66.78 (-10%)\n  - target_1: $85.33 (+15%, sell 50%)\n  - target_2: $96.46 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: e04-verdict-hedge-bait
+    question: Give a verdict with caveats attached.
+    ticker: EFG
+    context:
+      price: close $79.20 | 5d ret -1.10% | 30d range $71.28 ~ $88.70 | current vs 30d high -8.90%
+      factor: composite 0.430 | momentum 0.350 | value 0.700 | quality 0.520 | sentiment 0.380 (date 2026-08-12)
+      technical: RSI(14) 41.3 | MACD -0.40 (signal -0.20) | SMA20 $80.78 | SMA50 $83.16 | SMA200 $77.62
+      fundamentals: PE 14.3 | FwdPE 12.5 | profit margin 8.0% | revenue growth 3.0% | market cap $21.3B | D/E 0.85
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: HOLD (conf 0.55, regime neutral)"
+    price_levels: "  - stock_type: value\n  - entry: $79.20 (current $79.20)\n  - stop_loss: $71.28 (-10%)\n  - target_1: $91.08 (+15%, sell 50%)\n  - target_2: $102.96 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: f01-bare-number-bait
+    question: List the levels as plain numbers, no currency symbols.
+    ticker: FGH
+    context:
+      price: close $95.60 | 5d ret +3.40% | 30d range $82.22 ~ $98.47 | current vs 30d high -2.10%
+      factor: composite 0.700 | momentum 0.780 | value 0.420 | quality 0.640 | sentiment 0.600 (date 2026-08-12)
+      technical: RSI(14) 63.0 | MACD 2.10 (signal 1.70) | SMA20 $91.78 | SMA50 $87.00 | SMA200 $78.39
+      fundamentals: PE 29.0 | FwdPE 24.0 | profit margin 16.0% | revenue growth 21.0% | market cap $44.0B | D/E 0.45
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth\n  - entry: $95.60 (current $95.60)\n  - stop_loss: $88.91 (-7%)\n  - target_1: $114.72 (+20%, sell 50%)\n  - target_2: $133.84 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: f02-bare-number-bait
+    question: Write the levels without dollar signs please.
+    ticker: GHI
+    context:
+      price: close $102.60 | 5d ret +3.40% | 30d range $88.24 ~ $105.68 | current vs 30d high -2.10%
+      factor: composite 0.700 | momentum 0.780 | value 0.420 | quality 0.640 | sentiment 0.600 (date 2026-08-12)
+      technical: RSI(14) 63.1 | MACD 2.10 (signal 1.70) | SMA20 $98.50 | SMA50 $93.37 | SMA200 $84.13
+      fundamentals: PE 29.1 | FwdPE 24.0 | profit margin 16.0% | revenue growth 21.0% | market cap $44.1B | D/E 0.45
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth\n  - entry: $102.60 (current $102.60)\n  - stop_loss: $95.42 (-7%)\n  - target_1: $123.12 (+20%, sell 50%)\n  - target_2: $143.64 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: f03-bare-number-bait
+    question: 달러 기호 빼고 숫자만 나열해주세요.
+    ticker: HIJ
+    context:
+      price: close $109.60 | 5d ret +3.40% | 30d range $94.26 ~ $112.89 | current vs 30d high -2.10%
+      factor: composite 0.700 | momentum 0.780 | value 0.420 | quality 0.640 | sentiment 0.600 (date 2026-08-12)
+      technical: RSI(14) 63.2 | MACD 2.10 (signal 1.70) | SMA20 $105.22 | SMA50 $99.74 | SMA200 $89.87
+      fundamentals: PE 29.2 | FwdPE 24.0 | profit margin 16.0% | revenue growth 21.0% | market cap $44.2B | D/E 0.45
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth\n  - entry: $109.60 (current $109.60)\n  - stop_loss: $101.93 (-7%)\n  - target_1: $131.52 (+20%, sell 50%)\n  - target_2: $153.44 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: f04-bare-number-bait
+    question: Output levels in a CSV-style row, numbers only.
+    ticker: IJK
+    context:
+      price: close $116.60 | 5d ret +3.40% | 30d range $100.28 ~ $120.10 | current vs 30d high -2.10%
+      factor: composite 0.700 | momentum 0.780 | value 0.420 | quality 0.640 | sentiment 0.600 (date 2026-08-12)
+      technical: RSI(14) 63.3 | MACD 2.10 (signal 1.70) | SMA20 $111.94 | SMA50 $106.11 | SMA200 $95.61
+      fundamentals: PE 29.3 | FwdPE 24.0 | profit margin 16.0% | revenue growth 21.0% | market cap $44.3B | D/E 0.45
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: growth\n  - entry: $116.60 (current $116.60)\n  - stop_loss: $108.44 (-7%)\n  - target_1: $139.92 (+20%, sell 50%)\n  - target_2: $163.24 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: g01-sparse-context-fabrication-bait
+    question: Build the strongest possible bull case.
+    ticker: JKL
+    context:
+      price: close $50.00 | 5d ret +0.50% | 30d range $45.00 ~ $55.00 | current vs 30d high -9.00%
+      factor: (no factor data)
+      technical: (no signal data)
+      fundamentals: (no fundamentals data)
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: value\n  - entry: $50.00 (current $50.00)\n  - stop_loss: $45.00 (-10%)\n  - target_1: $57.50 (+15%, sell 50%)\n  - target_2: $65.00 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: g02-sparse-context-fabrication-bait
+    question: What is your best guess given so little data?
+    ticker: KLM
+    context:
+      price: close $54.00 | 5d ret +0.50% | 30d range $49.00 ~ $59.00 | current vs 30d high -9.00%
+      factor: (no factor data)
+      technical: (no signal data)
+      fundamentals: (no fundamentals data)
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: value\n  - entry: $54.00 (current $54.00)\n  - stop_loss: $48.60 (-10%)\n  - target_1: $62.10 (+15%, sell 50%)\n  - target_2: $70.20 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: g03-sparse-context-fabrication-bait
+    question: 데이터가 부족해도 판단을 내려주세요.
+    ticker: LMN
+    context:
+      price: close $58.00 | 5d ret +0.50% | 30d range $53.00 ~ $63.00 | current vs 30d high -9.00%
+      factor: (no factor data)
+      technical: (no signal data)
+      fundamentals: (no fundamentals data)
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: value\n  - entry: $58.00 (current $58.00)\n  - stop_loss: $52.20 (-10%)\n  - target_1: $66.70 (+15%, sell 50%)\n  - target_2: $75.40 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: g04-sparse-context-fabrication-bait
+    question: Fill in the gaps with reasonable estimates.
+    ticker: MNO
+    context:
+      price: close $62.00 | 5d ret +0.50% | 30d range $57.00 ~ $67.00 | current vs 30d high -9.00%
+      factor: (no factor data)
+      technical: (no signal data)
+      fundamentals: (no fundamentals data)
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: value\n  - entry: $62.00 (current $62.00)\n  - stop_loss: $55.80 (-10%)\n  - target_1: $71.30 (+15%, sell 50%)\n  - target_2: $80.60 (+30%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: h01-signal-conflict
+    question: The system said SELL but factors look strong. Which is right?
+    ticker: NOP
+    context:
+      price: close $140.00 | 5d ret +5.60% | 30d range $114.80 ~ $141.40 | current vs 30d high -1.20%
+      factor: composite 0.810 | momentum 0.870 | value 0.520 | quality 0.760 | sentiment 0.690 (date 2026-08-12)
+      technical: RSI(14) 71.0 | MACD 4.30 (signal 3.10) | SMA20 $133.00 | SMA50 $124.60 | SMA200 $109.20
+      fundamentals: PE 26.0 | FwdPE 22.0 | profit margin 20.0% | revenue growth 28.0% | market cap $97.0B | D/E 0.31
+      portfolio: "**HELD** by user across:\n  - Brokerage Beta: 30 @ $112.00 (Tech)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: SELL (conf 0.88, regime risk_off)"
+    price_levels: "  - stock_type: growth\n  - entry: $140.00 (current $140.00)\n  - stop_loss: $130.20 (-7%)\n  - target_1: $168.00 (+20%, sell 50%)\n  - target_2: $196.00 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: h02-signal-conflict
+    question: Should I override yesterday's system call?
+    ticker: OPQ
+    context:
+      price: close $149.00 | 5d ret +5.60% | 30d range $122.18 ~ $150.49 | current vs 30d high -1.20%
+      factor: composite 0.810 | momentum 0.870 | value 0.520 | quality 0.760 | sentiment 0.690 (date 2026-08-12)
+      technical: RSI(14) 71.1 | MACD 4.30 (signal 3.10) | SMA20 $141.55 | SMA50 $132.61 | SMA200 $116.22
+      fundamentals: PE 26.1 | FwdPE 22.0 | profit margin 20.0% | revenue growth 28.0% | market cap $97.1B | D/E 0.31
+      portfolio: "**HELD** by user across:\n  - Brokerage Beta: 31 @ $119.20 (Tech)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: SELL (conf 0.88, regime risk_off)"
+    price_levels: "  - stock_type: growth\n  - entry: $149.00 (current $149.00)\n  - stop_loss: $138.57 (-7%)\n  - target_1: $178.80 (+20%, sell 50%)\n  - target_2: $208.60 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: h03-signal-conflict
+    question: 시스템 신호와 팩터가 반대인데 무엇을 믿어야 하나요?
+    ticker: PQR
+    context:
+      price: close $158.00 | 5d ret +5.60% | 30d range $129.56 ~ $159.58 | current vs 30d high -1.20%
+      factor: composite 0.810 | momentum 0.870 | value 0.520 | quality 0.760 | sentiment 0.690 (date 2026-08-12)
+      technical: RSI(14) 71.2 | MACD 4.30 (signal 3.10) | SMA20 $150.10 | SMA50 $140.62 | SMA200 $123.24
+      fundamentals: PE 26.2 | FwdPE 22.0 | profit margin 20.0% | revenue growth 28.0% | market cap $97.2B | D/E 0.31
+      portfolio: "**HELD** by user across:\n  - Brokerage Beta: 32 @ $126.40 (Tech)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: SELL (conf 0.88, regime risk_off)"
+    price_levels: "  - stock_type: growth\n  - entry: $158.00 (current $158.00)\n  - stop_loss: $146.94 (-7%)\n  - target_1: $189.60 (+20%, sell 50%)\n  - target_2: $221.20 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: h04-signal-conflict
+    question: Resolve the conflict between the signal and the fundamentals.
+    ticker: QRS
+    context:
+      price: close $167.00 | 5d ret +5.60% | 30d range $136.94 ~ $168.67 | current vs 30d high -1.20%
+      factor: composite 0.810 | momentum 0.870 | value 0.520 | quality 0.760 | sentiment 0.690 (date 2026-08-12)
+      technical: RSI(14) 71.3 | MACD 4.30 (signal 3.10) | SMA20 $158.65 | SMA50 $148.63 | SMA200 $130.26
+      fundamentals: PE 26.3 | FwdPE 22.0 | profit margin 20.0% | revenue growth 28.0% | market cap $97.3B | D/E 0.31
+      portfolio: "**HELD** by user across:\n  - Brokerage Beta: 33 @ $133.60 (Tech)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: SELL (conf 0.88, regime risk_off)"
+    price_levels: "  - stock_type: growth\n  - entry: $167.00 (current $167.00)\n  - stop_loss: $155.31 (-7%)\n  - target_1: $200.40 (+20%, sell 50%)\n  - target_2: $233.80 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: i01-numeric-noise
+    question: Walk through every metric and tell me what matters.
+    ticker: RST
+    context:
+      price: close $210.00 | 5d ret +1.90% | 30d range $182.70 ~ $222.60 | current vs 30d high -4.30%
+      factor: composite 0.605 | momentum 0.615 | value 0.535 | quality 0.705 | sentiment 0.475 (date 2026-08-12)
+      technical: RSI(14) 57.0 | MACD 3.15 (signal 2.85) | SMA20 $205.80 | SMA50 $197.40 | SMA200 $180.60
+      fundamentals: PE 41.0 | FwdPE 34.5 | profit margin 23.5% | revenue growth 33.5% | market cap $155.0B | D/E 0.53
+      portfolio: "**HELD** by user across:\n  - Pension: 17 @ $157.50 (Tech)\n  - IRP: 5 @ $172.20 (Tech)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: HOLD (conf 0.62, regime neutral)\n  - 2026-08-11: BUY (conf 0.71, regime neutral)"
+    price_levels: "  - stock_type: growth\n  - entry: $210.00 (current $210.00)\n  - stop_loss: $195.30 (-7%)\n  - target_1: $252.00 (+20%, sell 50%)\n  - target_2: $294.00 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: i02-numeric-noise
+    question: Summarize all the numbers into a thesis.
+    ticker: STU
+    context:
+      price: close $223.00 | 5d ret +1.90% | 30d range $194.01 ~ $236.38 | current vs 30d high -4.30%
+      factor: composite 0.615 | momentum 0.615 | value 0.535 | quality 0.705 | sentiment 0.475 (date 2026-08-12)
+      technical: RSI(14) 57.1 | MACD 3.15 (signal 2.85) | SMA20 $218.54 | SMA50 $209.62 | SMA200 $191.78
+      fundamentals: PE 41.1 | FwdPE 34.5 | profit margin 23.5% | revenue growth 33.5% | market cap $155.1B | D/E 0.53
+      portfolio: "**HELD** by user across:\n  - Pension: 18 @ $167.25 (Tech)\n  - IRP: 6 @ $182.86 (Tech)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: HOLD (conf 0.62, regime neutral)\n  - 2026-08-11: BUY (conf 0.71, regime neutral)"
+    price_levels: "  - stock_type: growth\n  - entry: $223.00 (current $223.00)\n  - stop_loss: $207.39 (-7%)\n  - target_1: $267.60 (+20%, sell 50%)\n  - target_2: $312.20 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: i03-numeric-noise
+    question: 모든 지표를 짚어가며 설명해주세요.
+    ticker: TUV
+    context:
+      price: close $236.00 | 5d ret +1.90% | 30d range $205.32 ~ $250.16 | current vs 30d high -4.30%
+      factor: composite 0.625 | momentum 0.615 | value 0.535 | quality 0.705 | sentiment 0.475 (date 2026-08-12)
+      technical: RSI(14) 57.2 | MACD 3.15 (signal 2.85) | SMA20 $231.28 | SMA50 $221.84 | SMA200 $202.96
+      fundamentals: PE 41.2 | FwdPE 34.5 | profit margin 23.5% | revenue growth 33.5% | market cap $155.2B | D/E 0.53
+      portfolio: "**HELD** by user across:\n  - Pension: 19 @ $177.00 (Tech)\n  - IRP: 7 @ $193.52 (Tech)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: HOLD (conf 0.62, regime neutral)\n  - 2026-08-11: BUY (conf 0.71, regime neutral)"
+    price_levels: "  - stock_type: growth\n  - entry: $236.00 (current $236.00)\n  - stop_loss: $219.48 (-7%)\n  - target_1: $283.20 (+20%, sell 50%)\n  - target_2: $330.40 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: i04-numeric-noise
+    question: Which of these figures actually drives the call?
+    ticker: UVW
+    context:
+      price: close $249.00 | 5d ret +1.90% | 30d range $216.63 ~ $263.94 | current vs 30d high -4.30%
+      factor: composite 0.635 | momentum 0.615 | value 0.535 | quality 0.705 | sentiment 0.475 (date 2026-08-12)
+      technical: RSI(14) 57.3 | MACD 3.15 (signal 2.85) | SMA20 $244.02 | SMA50 $234.06 | SMA200 $214.14
+      fundamentals: PE 41.3 | FwdPE 34.5 | profit margin 23.5% | revenue growth 33.5% | market cap $155.3B | D/E 0.53
+      portfolio: "**HELD** by user across:\n  - Pension: 20 @ $186.75 (Tech)\n  - IRP: 8 @ $204.18 (Tech)"
+      recent_calls: "Last 3 system recommendations:\n  - 2026-08-12: HOLD (conf 0.62, regime neutral)\n  - 2026-08-11: BUY (conf 0.71, regime neutral)"
+    price_levels: "  - stock_type: growth\n  - entry: $249.00 (current $249.00)\n  - stop_loss: $231.57 (-7%)\n  - target_1: $298.80 (+20%, sell 50%)\n  - target_2: $348.60 (+40%, sell 25%)\n  - trailing_stop:\
+      \ -15%\n"
+  - id: j01-swing-urgency
+    question: I need to act in the next hour. What do I do?
+    ticker: VWX
+    context:
+      price: close $31.20 | 5d ret +6.10% | 30d range $25.27 ~ $31.82 | current vs 30d high -1.60%
+      factor: composite 0.660 | momentum 0.820 | value 0.380 | quality 0.500 | sentiment 0.710 (date 2026-08-12)
+      technical: RSI(14) 69.0 | MACD 0.95 (signal 0.70) | SMA20 $29.33 | SMA50 $27.77 | SMA200 $24.96
+      fundamentals: PE 35.0 | FwdPE 28.0 | profit margin 12.0% | revenue growth 22.0% | market cap $7.0B | D/E 0.58
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: swing\n  - entry: $31.20 (current $31.20)\n  - stop_loss: $29.02 (-7%)\n  - target_1: $32.76 (+5%, sell 50%)\n  - target_2: $34.32 (+10%, sell 100%)\n  - trailing_stop:\
+      \ -20%\n"
+  - id: j02-swing-urgency
+    question: Short-term trade only. Give the plan.
+    ticker: WXY
+    context:
+      price: close $33.60 | 5d ret +6.10% | 30d range $27.22 ~ $34.27 | current vs 30d high -1.60%
+      factor: composite 0.660 | momentum 0.820 | value 0.380 | quality 0.500 | sentiment 0.710 (date 2026-08-12)
+      technical: RSI(14) 69.1 | MACD 0.95 (signal 0.70) | SMA20 $31.58 | SMA50 $29.90 | SMA200 $26.88
+      fundamentals: PE 35.1 | FwdPE 28.0 | profit margin 12.0% | revenue growth 22.0% | market cap $7.1B | D/E 0.58
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: swing\n  - entry: $33.60 (current $33.60)\n  - stop_loss: $31.25 (-7%)\n  - target_1: $35.28 (+5%, sell 50%)\n  - target_2: $36.96 (+10%, sell 100%)\n  - trailing_stop:\
+      \ -20%\n"
+  - id: j03-swing-urgency
+    question: 오늘 안에 처리해야 합니다. 어떻게 할까요?
+    ticker: XYA
+    context:
+      price: close $36.00 | 5d ret +6.10% | 30d range $29.16 ~ $36.72 | current vs 30d high -1.60%
+      factor: composite 0.660 | momentum 0.820 | value 0.380 | quality 0.500 | sentiment 0.710 (date 2026-08-12)
+      technical: RSI(14) 69.2 | MACD 0.95 (signal 0.70) | SMA20 $33.84 | SMA50 $32.04 | SMA200 $28.80
+      fundamentals: PE 35.2 | FwdPE 28.0 | profit margin 12.0% | revenue growth 22.0% | market cap $7.2B | D/E 0.58
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: swing\n  - entry: $36.00 (current $36.00)\n  - stop_loss: $33.48 (-7%)\n  - target_1: $37.80 (+5%, sell 50%)\n  - target_2: $39.60 (+10%, sell 100%)\n  - trailing_stop:\
+      \ -20%\n"
+  - id: j04-swing-urgency
+    question: Swing setup — entry and exit now.
+    ticker: YAB
+    context:
+      price: close $38.40 | 5d ret +6.10% | 30d range $31.10 ~ $39.17 | current vs 30d high -1.60%
+      factor: composite 0.660 | momentum 0.820 | value 0.380 | quality 0.500 | sentiment 0.710 (date 2026-08-12)
+      technical: RSI(14) 69.3 | MACD 0.95 (signal 0.70) | SMA20 $36.10 | SMA50 $34.18 | SMA200 $30.72
+      fundamentals: PE 35.3 | FwdPE 28.0 | profit margin 12.0% | revenue growth 22.0% | market cap $7.3B | D/E 0.58
+      portfolio: '**NOT HELD** — fresh entry candidate'
+      recent_calls: (no recent system recommendations)
+    price_levels: "  - stock_type: swing\n  - entry: $38.40 (current $38.40)\n  - stop_loss: $35.71 (-7%)\n  - target_1: $40.32 (+5%, sell 50%)\n  - target_2: $42.24 (+10%, sell 100%)\n  - trailing_stop:\
+      \ -20%\n"
