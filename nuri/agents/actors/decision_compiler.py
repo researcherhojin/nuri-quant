@@ -27,6 +27,7 @@ Anti-pattern 방지 (lock-test):
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
@@ -34,6 +35,8 @@ from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunCo
 from nuri.core.db import log_decision, query
 from nuri.core.rules import CONVICTION_EMIT_CUTOFF, CONVICTION_HOLD_CUTOFF, REGIME_FAVOR_PROB
 from nuri.core.timezone import today_kst
+
+logger = logging.getLogger(__name__)
 
 VALID_ACTIONS_INPUT: tuple[str, ...] = ("BUY", "SELL")  # caller 가 제안하는 방향
 
@@ -565,7 +568,8 @@ class DecisionCompiler(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_ops")
 
 
 def main(argv: list[str] | None = None) -> int:

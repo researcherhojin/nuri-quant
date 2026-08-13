@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 from dataclasses import dataclass, field
 from typing import Any
@@ -35,6 +36,8 @@ from hmmlearn.hmm import GaussianHMM
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
 from nuri.core.db import log_regime_posterior, query
 from nuri.core.timezone import today_kst
+
+logger = logging.getLogger(__name__)
 
 # ─── Sticky-HMM 기본 파라미터 (Codex consult 합의) ─────────────
 DEFAULT_N_STATES = 3  # bull / bear / sideways 매핑 가능 (해석은 Layer C)
@@ -463,7 +466,8 @@ class RegimePosterior(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001 — best-effort, never block actor
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_rollout")
 
 
 def main(argv: list[str] | None = None) -> int:

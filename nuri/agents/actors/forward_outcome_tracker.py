@@ -29,6 +29,7 @@ Discord publish:
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Optional
 
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
@@ -42,6 +43,8 @@ from nuri.core.db import (
 from nuri.core.rules import OUTCOME_WINDOW_THRESHOLDS, RULES
 from nuri.core.ticker_names import is_kr_ticker
 from nuri.core.timezone import today_kst
+
+logger = logging.getLogger(__name__)
 
 # ─── window 별 validation 임계값 — `config/rules.yaml outcome_tracking` ─────────
 # 이름을 유지해 기존 import/테스트가 그대로 돈다. **복사본**을 들고 있는다 —
@@ -535,7 +538,8 @@ class ForwardOutcomeTracker(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_rollout")
 
 
 def main(argv: list[str] | None = None) -> int:

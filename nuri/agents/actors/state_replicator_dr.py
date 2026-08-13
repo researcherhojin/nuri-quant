@@ -22,6 +22,7 @@ Docker 이전 까지는 *기록 + 룰 검증* 만, 실제 file copy 는 다음 p
 
 from __future__ import annotations
 
+import logging
 import socket
 from pathlib import Path
 from typing import Any, Optional
@@ -33,6 +34,8 @@ from nuri.core.db import (
     upsert_dr_replica,
 )
 from nuri.core.timezone import kst_now
+
+logger = logging.getLogger(__name__)
 
 # launchd autopull heartbeat 파일 — Mac mini 가 5분 간격 git fetch 성공 시 mtime 갱신.
 # Docker 이전 까지는 placeholder (없으면 unreachable 로 표시).
@@ -348,7 +351,8 @@ class StateReplicatorDR(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001  # pragma: no cover — best-effort outbox publish
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_incident")
 
 
 def main(argv: list[str] | None = None) -> int:

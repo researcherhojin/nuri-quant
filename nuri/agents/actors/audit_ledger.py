@@ -22,10 +22,13 @@ Discord publish:
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
 from nuri.core.db import query
+
+logger = logging.getLogger(__name__)
 
 # ─── retention 임계값 (config 화 Phase 3+ 예정) ───────────────
 DEFAULT_MAX_ROWS = 1_000_000
@@ -322,7 +325,8 @@ class AuditLedger(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001  # pragma: no cover — best-effort outbox publish
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_incident")
 
     @staticmethod
     def _publish_ops(output: dict[str, Any], run_id: str) -> None:
@@ -348,7 +352,8 @@ class AuditLedger(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001  # pragma: no cover — best-effort outbox publish
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_ops")
 
 
 def main(argv: Optional[list[str]] = None) -> int:

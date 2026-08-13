@@ -27,12 +27,15 @@ Anti-pattern 방지:
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Callable, Optional
 
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
 from nuri.core.db import log_collector_run, query
 from nuri.core.timezone import kst_now
+
+logger = logging.getLogger(__name__)
 
 # 외부 API transient error 패턴 — retry 가능한 케이스만 식별.
 # (rate-limit / timeout 은 별도 분류, 그 외 generic exception 은 'failed'.)
@@ -469,7 +472,8 @@ class CollectorOrchestrator(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001  # pragma: no cover — best-effort outbox publish
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_ops")
 
     @staticmethod
     def _publish_health_alert(
@@ -513,7 +517,8 @@ class CollectorOrchestrator(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001  # pragma: no cover — best-effort outbox publish
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_fn")
 
 
 # ─── helpers ───────────────────────────────────────────────
