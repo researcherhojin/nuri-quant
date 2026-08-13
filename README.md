@@ -272,7 +272,7 @@ Measured against `main` on 2026-07-29. Counts marked ✅ are verified on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 6,826 collected across 312 files | |
+| **Backend tests** | 6,969 collected across 314 files | |
 | **Backend statement coverage** | 100% — 0 of 22,560 statements uncovered (full local suite, 2026-07-29; `make ci-cov` / Codecov `backend` flag is the CI ground truth) | |
 | **Frontend tests** | 1,449 across 127 files — 100% statement coverage | |
 | **E2E tests** | 57 across 8 Playwright specs | |
