@@ -1,6 +1,6 @@
 ---
 name: nuri-codex-review
-description: Invoke OpenAI Codex (gpt-5.4) for an independent code/design review with binary verdict (PASS / NEEDS_REWORK / SHIP / SHELVE / etc). Use when (a) main session is about to ship a non-trivial design choice and wants cross-model verification, (b) Round 1 LLM consult disagreement needs Round 2 synthesis, (c) #507/#508/#509 style harness expansion decisions. Output is archived to data/llm_consults/{date}_{slug}.md (gitignored). NOT a replacement for `scripts/dev/llm_consult.py` (dual-LLM codex+Qwen3.5) — this agent is codex-only for fast verdict. Namespace: gstack `/codex review` 와 동등 의미, `nuri-` prefix 로 분리.
+description: Invoke OpenAI Codex (gpt-5.4) for an independent code/design review with binary verdict (PASS / NEEDS_REWORK / SHIP / SHELVE / etc). Use when (a) main session is about to ship a non-trivial design choice and wants cross-model verification, (b) Round 1 LLM consult disagreement needs Round 2 synthesis, (c) #507/#508/#509 style harness expansion decisions. Output is archived to data/llm_consults/{date}_{slug}.md (gitignored). NOT a replacement for `scripts/dev/llm_consult.py` (dual-LLM codex + local model) — this agent is codex-only for fast verdict. Namespace: gstack `/codex review` 와 동등 의미, `nuri-` prefix 로 분리.
 tools: Bash, Read, Grep, Glob
 model: inherit
 ---
@@ -30,6 +30,6 @@ paraphrase 를 verdict 라 칭하지 X / 새 옵션 제안 X / nested codex 호�
 
 ## Reference
 
-- `scripts/dev/llm_consult.py` — dual codex+Qwen3.5 canonical
+- `scripts/dev/llm_consult.py` — dual codex + local-LLM canonical
 - `data/llm_consults/2026-04-29_e3-phase2-shelve-decision.md` — Round 1→2 패턴
 - `docs/STRATEGY.md §5.8` (7 harness principles), `§5.10` (frontier alignment)

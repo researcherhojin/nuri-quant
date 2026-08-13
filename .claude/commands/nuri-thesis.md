@@ -1,5 +1,5 @@
 ---
-description: Thesis Q&A on a ticker (DB context + LLM synthesis via codex + Qwen3.5). Usage \`/nuri-thesis INTC\` or \`/nuri-thesis MSFT what is the AI moat\`. nuri-quant 전용 — gstack 충돌 회피 위해 nuri- prefix.
+description: Thesis Q&A on a ticker (DB context + LLM synthesis via codex + local model). Usage \`/nuri-thesis INTC\` or \`/nuri-thesis MSFT what is the AI moat\`. nuri-quant 전용 — gstack 충돌 회피 위해 nuri- prefix.
 ---
 
 당신은 Issue #508 thesis Q&A engine 의 invoker 입니다.
