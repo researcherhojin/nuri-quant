@@ -766,3 +766,80 @@ class TestFrozenPromptsFile:
     @pytest.mark.parametrize("field", ["valid_verdicts", "required_sections"])
     def test_scoring_config_present(self, field: str) -> None:
         assert ab.load_prompts()[field]
+
+
+def _row(pid: str, *, hard_fail: bool = False, unsafe: bool = False, **extra) -> dict:
+    return {
+        "id": pid,
+        "hard_fail": hard_fail,
+        "unsafe_price_level": unsafe,
+        "numeric_overlap": 1.0,
+        "ttft_s": 1.0,
+        "total_s": 2.0,
+        "failures": [],
+        **extra,
+    }
+
+
+class TestRepeatAggregation:
+    """반복 실행의 집계 규칙은 **사전 선언**이다 — 결과를 보고 고르면 안 된다.
+
+    2026-08-13 스왑에서 프롬프트당 1회만 돌렸고, `temperature=0.0` 인데도 같은
+    프롬프트가 두 실행에서 다른 답을 냈다. 그 상태로는 모델 차이와 표집 잡음을
+    구분할 수 없다.
+    """
+
+    def test_safety_uses_any_not_majority(self) -> None:
+        """3회 중 1회 날조도 날조다. 다수결로 접으면 그 1회가 사용자 자금에 닿는다."""
+        assert ab._agg_unsafe([False, True, False]) is True
+        assert ab._agg_unsafe([False, False, False]) is False
+
+    def test_quality_uses_majority_with_ties_failing(self) -> None:
+        assert ab._agg_hard_fail([True, False, False]) is False
+        assert ab._agg_hard_fail([True, True, False]) is True
+        assert ab._agg_hard_fail([True, False]) is True, "동률은 실패 쪽 — 안전한 방향"
+
+    def test_the_two_rules_disagree_on_the_same_input(self) -> None:
+        """규칙이 갈리는 게 설계다. 하나로 합치면 둘 중 하나가 틀린 방향이 된다."""
+        flags = [True, False, False]
+        assert ab._agg_unsafe(flags) != ab._agg_hard_fail(flags)
+
+    def test_collapse_groups_by_prompt_id(self) -> None:
+        rows = [_row("p1", hard_fail=True), _row("p1"), _row("p2")]
+        agg, counts = ab.collapse_repeats(rows, "hard_fail", ab._agg_hard_fail)
+        assert agg == {"p1": True, "p2": False}  # p1: 1/2 동률 → 실패
+        assert counts == {"p1": 2, "p2": 1}
+
+    def test_instability_counts_only_repeated_prompts(self) -> None:
+        """1회만 돈 프롬프트는 갈릴 수가 없다 — 분모에 넣으면 잡음이 희석된다."""
+        rows = [_row("p1", hard_fail=True), _row("p1"), _row("p2"), _row("p2")]
+        assert ab.instability(rows, "hard_fail") == (1, 2)
+        assert ab.instability([_row("solo")], "hard_fail") == (0, 0)
+
+
+class TestReproducibilityReport:
+    def test_single_run_declares_the_noise_floor_unmeasured(self) -> None:
+        """침묵하면 '잡음이 없다'로 읽힌다 — 그게 2026-08-13 의 실제 실수였다."""
+        a = ab._summarize_model("A", [_row(f"p{i}") for i in range(10)], 1)
+        b = ab._summarize_model("B", [_row(f"p{i}") for i in range(10)], 1)
+        out = ab.verdict([a, b], min_scored=3)
+        assert "미측정" in out
+        assert "--repeats" in out
+
+    def test_repeated_run_reports_the_flip_rate(self) -> None:
+        rows_a = [_row(f"p{i}", hard_fail=(i == 0 and rep == 0)) for i in range(5) for rep in range(3)]
+        rows_b = [_row(f"p{i}") for i in range(5) for _ in range(3)]
+        out = ab.verdict(
+            [ab._summarize_model("A", rows_a, 3), ab._summarize_model("B", rows_b, 3)],
+            min_scored=3,
+        )
+        assert "미측정" not in out
+        assert "판정이 갈린 프롬프트" in out
+        assert "hard_fail 1/5" in out
+
+    def test_aggregation_rules_are_printed_with_the_verdict(self) -> None:
+        """규칙을 결과와 같이 노출해야 사후 변경이 눈에 띈다."""
+        rows = [_row(f"p{i}") for i in range(5) for _ in range(2)]
+        out = ab.verdict([ab._summarize_model("A", rows, 2), ab._summarize_model("B", rows, 2)], min_scored=3)
+        assert ab.UNSAFE_AGGREGATION in out
+        assert ab.HARD_FAIL_AGGREGATION in out

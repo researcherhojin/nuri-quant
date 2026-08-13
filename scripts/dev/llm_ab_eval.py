@@ -629,66 +629,101 @@ def run_model(
     max_tokens: int,
     timeout: int,
     out_dir: Path = OUT_DIR,
+    repeats: int = 1,
 ) -> dict:
     rows = []
     print(f"\n── {model} ──", flush=True)
+    # 반복은 **프롬프트 안쪽**에서 돈다. 바깥에서 전체를 k 바퀴 돌리면 모델이
+    # 중간에 언로드/재로드되며 KV 캐시 상태가 달라져, 재현성 측정이 아니라
+    # 서버 상태 측정이 된다.
     for spec in prompts:
         prompt = build_prompt(spec, cfg)
-        res = call_model(url, model, prompt, max_tokens, timeout)
-        # 연결 거부는 대개 서버 재기동 중이다. 한 번은 기다렸다 재시도한다 —
-        # 안 그러면 크래시 하나가 남은 프롬프트 전부를 인프라 실패로 날린다.
-        if not res["ok"] and res.get("error") and "refused" in str(res["error"]).lower():
-            print("  [retry] 서버 연결 거부 — 재기동 대기 중...", flush=True)
-            if wait_for_server(url):
-                res = call_model(url, model, prompt, max_tokens, timeout)
-        if not res["ok"]:
-            # no_answer 는 call 실패와 구분한다 — 모델이 답을 못 낸 것도 실패지만
-            # 원인(토큰 부족 vs 네트워크)이 다르고, 전자는 max_tokens 를 올려야 한다.
-            # `no_answer` 는 인프라 장애가 아니라 **모델이 고정 예산 안에서 답을
-            # 못 낸 것**이다. 인프라로 분류해 분모에서 빼면 그 모델의 완주
-            # 실패율이 통째로 사라진다 (codex 3차 [P1]: "Those are not infra.
-            # They are model-system reliability failures").
-            kind = "no_answer" if res["text"] == "" and res["error"] and "no_answer" in res["error"] else "call_failed"
-            rows.append(
-                {
-                    "id": spec["id"],
-                    "error": res["error"],
-                    "hard_fail": True,
-                    "failures": [kind],
-                    "finish_reason": res.get("finish_reason"),
-                    "raw_len": len(res.get("raw", "")),
-                    # 실패 원문도 남긴다 — no_answer 진단은 원문을 봐야 한다
-                    # (사고 블록만인지, 다른 형태로 깨졌는지 구분 불가능해진다).
-                    "raw": res.get("raw", ""),
-                }
-            )
-            print(
-                f"  {spec['id']:<34} {kind.upper()} — finish={res.get('finish_reason')} raw={len(res.get('raw', ''))}ch",
-                flush=True,
-            )
-            _checkpoint(out_dir, model, rows)
-            continue
-        sc = score(spec, cfg, res["text"], truncated=res.get("finish_reason") == "length")
-        row = {
-            "id": spec["id"],
-            "ttft_s": round(res["ttft_s"], 2) if res["ttft_s"] else None,
-            "total_s": round(res["total_s"], 2),
-            "finish_reason": res.get("finish_reason"),
-            "completion_tokens": res.get("completion_tokens"),
-            "raw_chars": res.get("raw_chars"),
-            "answer_chars": res.get("answer_chars"),
-            "output": res["text"],
-            **sc,
-        }
-        rows.append(row)
-        mark = "FAIL" if sc["hard_fail"] else "ok  "
+        for rep in range(repeats):
+            _run_one(rows, spec, prompt, model, cfg, url, max_tokens, timeout, out_dir, rep, repeats)
+    return _summarize_model(model, rows, repeats)
+
+
+def _run_one(
+    rows: list[dict],
+    spec: dict,
+    prompt: str,
+    model: str,
+    cfg: dict,
+    url: str,
+    max_tokens: int,
+    timeout: int,
+    out_dir: Path,
+    rep: int,
+    repeats: int,
+) -> None:
+    """1회 호출 + 채점 + 체크포인트. 행 하나를 `rows` 에 덧붙인다.
+
+    행은 **호출 단위**로 남긴다(집계 단위가 아니라). 원문이 1차 자료이므로
+    반복분도 전부 보존해야 하고, `llm_ab_rescore.py` 가 행마다 재채점하는
+    구조를 그대로 쓸 수 있다.
+    """
+    tag = f"{spec['id']}#{rep + 1}" if repeats > 1 else spec["id"]
+    res = call_model(url, model, prompt, max_tokens, timeout)
+    # 연결 거부는 대개 서버 재기동 중이다. 한 번은 기다렸다 재시도한다 —
+    # 안 그러면 크래시 하나가 남은 프롬프트 전부를 인프라 실패로 날린다.
+    if not res["ok"] and res.get("error") and "refused" in str(res["error"]).lower():
+        print("  [retry] 서버 연결 거부 — 재기동 대기 중...", flush=True)
+        if wait_for_server(url):
+            res = call_model(url, model, prompt, max_tokens, timeout)
+    if not res["ok"]:
+        # no_answer 는 call 실패와 구분한다 — 모델이 답을 못 낸 것도 실패지만
+        # 원인(토큰 부족 vs 네트워크)이 다르고, 전자는 max_tokens 를 올려야 한다.
+        # `no_answer` 는 인프라 장애가 아니라 **모델이 고정 예산 안에서 답을
+        # 못 낸 것**이다. 인프라로 분류해 분모에서 빼면 그 모델의 완주
+        # 실패율이 통째로 사라진다 (codex 3차 [P1]: "Those are not infra.
+        # They are model-system reliability failures").
+        kind = "no_answer" if res["text"] == "" and res["error"] and "no_answer" in res["error"] else "call_failed"
+        rows.append(
+            {
+                "id": spec["id"],
+                "repeat": rep,
+                "error": res["error"],
+                "hard_fail": True,
+                "failures": [kind],
+                "finish_reason": res.get("finish_reason"),
+                "raw_len": len(res.get("raw", "")),
+                # 실패 원문도 남긴다 — no_answer 진단은 원문을 봐야 한다
+                # (사고 블록만인지, 다른 형태로 깨졌는지 구분 불가능해진다).
+                "raw": res.get("raw", ""),
+            }
+        )
         print(
-            f"  {spec['id']:<34} {mark} overlap={sc['numeric_overlap']:.2f} "
-            f"ttft={row['ttft_s']}s total={row['total_s']}s "
-            f"{' '.join(sc['failures'])}",
+            f"  {tag:<34} {kind.upper()} — finish={res.get('finish_reason')} raw={len(res.get('raw', ''))}ch",
             flush=True,
         )
         _checkpoint(out_dir, model, rows)
+        return
+    sc = score(spec, cfg, res["text"], truncated=res.get("finish_reason") == "length")
+    row = {
+        "id": spec["id"],
+        "repeat": rep,
+        "ttft_s": round(res["ttft_s"], 2) if res["ttft_s"] else None,
+        "total_s": round(res["total_s"], 2),
+        "finish_reason": res.get("finish_reason"),
+        "completion_tokens": res.get("completion_tokens"),
+        "raw_chars": res.get("raw_chars"),
+        "answer_chars": res.get("answer_chars"),
+        "output": res["text"],
+        **sc,
+    }
+    rows.append(row)
+    mark = "FAIL" if sc["hard_fail"] else "ok  "
+    print(
+        f"  {tag:<34} {mark} overlap={sc['numeric_overlap']:.2f} "
+        f"ttft={row['ttft_s']}s total={row['total_s']}s "
+        f"{' '.join(sc['failures'])}",
+        flush=True,
+    )
+    _checkpoint(out_dir, model, rows)
+
+
+def _summarize_model(model: str, rows: list[dict], repeats: int = 1) -> dict:
+    """모델 단위 요약. 행은 호출 단위이므로 반복이 있으면 분모도 호출 수다."""
     ok_rows = [r for r in rows if "error" not in r]
     n = len(rows)
     # 인프라 장애(서버 다운/네트워크)와 모델 실패를 분리한다.
@@ -699,9 +734,18 @@ def run_model(
     n_infra = sum(1 for r in rows if "call_failed" in r.get("failures", []))
     n_model = n - n_infra
     model_fails = sum(r["hard_fail"] for r in rows if "call_failed" not in r.get("failures", []))
+    n_prompts = len({r["id"] for r in rows})
+    flipped, n_repeated = instability(rows, "hard_fail")
+    flipped_unsafe, _ = instability(rows, "unsafe_price_level")
     return {
         "model": model,
         "n": n,
+        "repeats": repeats,
+        "n_prompts": n_prompts,
+        # 잡음 바닥의 직접 측정. 여기가 0 이 아니면 단일 표본 결론은 그만큼 못 믿는다.
+        "unstable_hard_fail": flipped,
+        "unstable_unsafe": flipped_unsafe,
+        "n_repeated_prompts": n_repeated,
         "n_infra_failures": n_infra,
         "n_scored": n_model,
         # 인프라 실패는 분모에서 뺀다. 채점된 표본이 없으면 None (판정 불가).
@@ -728,6 +772,85 @@ def _fmt(v: Any) -> str:
 # 표본이 이보다 적으면 "판정 불가" 다 — 인프라 장애를 품질 결론으로
 # 바꾸지 않기 위한 유일한 방어선이다.
 MIN_SCORED = 8
+
+# ── 반복 실행 집계 규칙 (사전 선언 — 결과를 보고 고르면 안 된다) ──────────
+#
+# 왜 반복이 필요한가: 2026-08-13 스왑 판단 때 `temperature=0.0` 인데도 같은
+# 프롬프트(d04)가 두 실행에서 다른 답을 냈다. 프롬프트당 1회만 돌리면 짝지은
+# 검정의 전제("각 프롬프트의 성패는 그 모델의 안정적 속성")가 깨지고, 모델
+# 차이와 표집 잡음을 구분할 수 없다.
+#
+# 집계는 지표마다 다르게 한다. 방향이 다르기 때문이다:
+#   - 안전 지표: k회 중 **한 번이라도** 가격을 날조하면 날조다. 평균을 내면
+#     "5번 중 1번만 지어냈으니 통과"가 되는데, 그 1번이 사용자 자금에 닿는다.
+#   - 품질 지표: 다수결. 동률(k 가 짝수)은 실패 쪽으로 — 안전한 방향.
+UNSAFE_AGGREGATION = "any"
+HARD_FAIL_AGGREGATION = "majority (동률은 실패)"
+
+
+def _agg_unsafe(flags: list[bool]) -> bool:
+    """안전 지표: 한 번이라도 위반이면 위반."""
+    return any(flags)
+
+
+def _agg_hard_fail(flags: list[bool]) -> bool:
+    """품질 지표: 다수결, 동률은 실패."""
+    return sum(flags) * 2 >= len(flags) if flags else False
+
+
+def collapse_repeats(rows: list[dict], field: str, agg) -> tuple[dict[str, bool], dict[str, int]]:
+    """프롬프트 id 로 묶어 집계한다. (집계결과, id별 반복수) 반환.
+
+    인프라 실패 행은 이 함수에 들어오기 전에 걸러진다 — 여기서 빼면 반복
+    횟수가 프롬프트마다 달라져 집계 규칙의 의미가 흔들린다.
+    """
+    grouped: dict[str, list[bool]] = {}
+    for r in rows:
+        grouped.setdefault(r["id"], []).append(bool(r.get(field)))
+    return {pid: agg(flags) for pid, flags in grouped.items()}, {pid: len(f) for pid, f in grouped.items()}
+
+
+def instability(rows: list[dict], field: str) -> tuple[int, int]:
+    """(판정이 갈린 프롬프트 수, 2회 이상 돈 프롬프트 수).
+
+    **이것이 잡음 바닥의 직접 측정치다.** 여기가 0 이 아니면 단일 표본 런의
+    결론은 그만큼 못 믿는다. 1회만 돈 프롬프트는 갈릴 수가 없으므로 분모에서 뺀다.
+    """
+    grouped: dict[str, list[bool]] = {}
+    for r in rows:
+        grouped.setdefault(r["id"], []).append(bool(r.get(field)))
+    repeated = {p: f for p, f in grouped.items() if len(f) > 1}
+    return sum(1 for f in repeated.values() if len(set(f)) > 1), len(repeated)
+
+
+def _instability_report(*models: dict) -> list[str]:
+    """잡음 바닥 보고. 반복이 없으면 **미측정임을 명시**한다.
+
+    침묵하면 "잡음이 없다"로 읽힌다. 이 하네스가 2026-08-13 스왑에서 실제로
+    저지른 실수가 그거다 — 프롬프트당 1회만 돌려놓고 차이를 모델 탓으로 읽었다.
+    """
+    if all(m.get("repeats", 1) <= 1 for m in models):
+        return [
+            "── 재현성 ──",
+            "  **미측정** — 프롬프트당 1회만 실행했다. 관측된 차이 중 얼마가 모델 차이이고",
+            "  얼마가 표집 잡음인지 구분할 수 없다. `--repeats 3` 이상으로 재실행할 것.",
+            "",
+        ]
+    out = ["── 재현성 (잡음 바닥 직접 측정) ──"]
+    for m in models:
+        rep, n_rep = m.get("repeats", 1), m.get("n_repeated_prompts", 0)
+        hf, us = m.get("unstable_hard_fail", 0), m.get("unstable_unsafe", 0)
+        rate = f"{hf / n_rep * 100:.1f}%" if n_rep else "—"
+        out.append(
+            f"  {m['model'][:34]:<34} repeats={rep}  판정이 갈린 프롬프트: "
+            f"hard_fail {hf}/{n_rep} ({rate}) · unsafe {us}/{n_rep}"
+        )
+    out += [
+        f"  집계 규칙(사전 선언): unsafe={UNSAFE_AGGREGATION} · hard_fail={HARD_FAIL_AGGREGATION}",
+        "  갈린 프롬프트가 많을수록 아래 판정의 신뢰도가 떨어진다 — 그만큼은 모델 차이가 아니다.",
+        "",
+    ]
+    return out
 
 
 def verdict(results: list[dict], min_scored: int = MIN_SCORED) -> str:
@@ -769,18 +892,22 @@ def verdict(results: list[dict], min_scored: int = MIN_SCORED) -> str:
         return "call_failed" in (row.get("failures") or [])
 
     def _scored(rows: list[dict]) -> dict[str, bool]:
-        return {r["id"]: bool(r.get("hard_fail")) for r in rows if not _infra(r)}
+        # 반복 실행이면 프롬프트당 여러 행이 있다. 짝지은 검정은 프롬프트당
+        # 하나의 이진 결과를 요구하므로 **사전 선언된 규칙**으로 접는다.
+        agg, _ = collapse_repeats([r for r in rows if not _infra(r)], "hard_fail", _agg_hard_fail)
+        return agg
 
     a_fail = _scored(a["rows"])
     b_fail = _scored(b["rows"])
     v = paired_verdict(a_fail, b_fail)
     lines = [render(v, a["model"], b["model"]), ""]
+    lines.extend(_instability_report(a, b))
 
     # 1차 안전 지표는 따로 보고한다 — 이게 이 하네스의 존재 이유다.
     def _unsafe(rows: list[dict]) -> dict[str, bool]:
-        return {
-            r["id"]: bool(r.get("unsafe_price_level")) for r in rows if "call_failed" not in r.get("failures", []) or []
-        }
+        # 안전 지표는 `any` 로 접는다 — k회 중 한 번의 날조도 날조다.
+        agg, _ = collapse_repeats([r for r in rows if not _infra(r)], "unsafe_price_level", _agg_unsafe)
+        return agg
 
     a_unsafe = _unsafe(a["rows"])
     b_unsafe = _unsafe(b["rows"])
@@ -802,6 +929,13 @@ def main() -> int:
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--out-dir", type=Path, default=OUT_DIR)
     ap.add_argument(
+        "--repeats",
+        type=int,
+        default=1,
+        help="프롬프트당 반복 횟수. 2 이상이어야 잡음 바닥이 측정된다 (기본 1 = 미측정). "
+        "런 시간이 배수로 늘어난다 — 50 프롬프트 x 2 모델 x 3회 = 300 콜.",
+    )
+    ap.add_argument(
         "--min-scored",
         type=int,
         default=MIN_SCORED,
@@ -816,12 +950,16 @@ def main() -> int:
     prompts = cfg["prompts"]
     print(f"frozen prompts: {len(prompts)} (version {cfg['version']}, frozen_at {cfg['frozen_at']})")
 
-    results = [run_model(args.model_a, prompts, cfg, args.url, args.max_tokens, args.timeout, args.out_dir)]
+    results = [
+        run_model(args.model_a, prompts, cfg, args.url, args.max_tokens, args.timeout, args.out_dir, args.repeats)
+    ]
     if args.model_b:
         # A 를 내려놓고 B 를 올린다. 안 그러면 두 모델이 동시에 상주해
         # (실측 69.62GB + 19.44GB + KV 캐시) 메모리를 넘겨 LM Studio 가 죽는다.
         unload_model(args.model_a)
-        results.append(run_model(args.model_b, prompts, cfg, args.url, args.max_tokens, args.timeout, args.out_dir))
+        results.append(
+            run_model(args.model_b, prompts, cfg, args.url, args.max_tokens, args.timeout, args.out_dir, args.repeats)
+        )
 
     print(
         f"\n{'model':<28} {'scored':>7} {'infra_fail':>11} {'hard_fail':>10} {'overlap':>9} {'ttft_s':>8} {'total_s':>8}"
@@ -853,6 +991,7 @@ def main() -> int:
                     "timeout": args.timeout,
                     "url": args.url,
                     "required_sections": cfg["required_sections"],
+                    "repeats": args.repeats,
                 },
                 "results": results,
             },
