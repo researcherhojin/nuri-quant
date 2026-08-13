@@ -272,8 +272,13 @@ class TestDbExceptionGracefulFallback:
 
 
 class TestBriefShadowSection:
-    def test_brief_context_includes_shadow_key(self, tmp_path, monkeypatch):
-        """premarket_brief _collect_context 가 shadow_signals 리스트 반환."""
+    def test_brief_context_includes_shadow_key(self, tmp_path, db_path_mp, monkeypatch):
+        """premarket_brief _collect_context 가 shadow_signals 리스트 반환.
+
+        `db_path_mp` 로 DB 를 격리한다 — `_collect_context()` 는 db_path 인자가
+        없어 전역 `DB_PATH` 를 읽고, 격리 없이는 프로덕션 DB 를 커넥션 251회
+        여닫는다 (2026-08-14 실측).
+        """
         from nuri.alerts import premarket_brief as pb
 
         # persist target 을 tmp 로 redirect (기존 test 패턴 재사용)
