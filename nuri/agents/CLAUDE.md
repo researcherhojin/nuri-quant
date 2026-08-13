@@ -28,6 +28,9 @@ def execute(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult: .
 
 `ActorResult(output, outcome=None, sample_n=None, input_summary=None, llm_narrative=None)`; `Outcome ∈ {PASS, BLOCK, WARN, ERROR}`.
 
+**`WARN` 은 "작업은 됐지만 그대로 두면 안 되는 상태"다** — 실패가 아니라서 호출자가 계속 가도 되지만, 기록으로 남아야 한다. `CollectorOrchestrator` 가 rate limit 을 맞고 재시도로 살아난 런을 `PASS` 가 아니라 `WARN` 으로 돌리는 이유가 이것이다: 재시도가 성공을 만들어 주는 동안 IP ban 은 가까워지는데, `PASS` 로 적으면 그 카운트다운이 보이지 않는다.
+**Test:** `tests/agents/test_collector_orchestrator.py::TestOrchestrateRetry::test_rate_limited_then_finished_is_warn_not_pass`
+
 **`execute()` may raise** — `run()` records the failure (`status="failed"` + an `ERROR` audit row) and then **re-raises**. Failure isolation is the *caller's* responsibility: every `_run_*` wrapper in `nuri/scheduler.py` try/excepts, which is why one actor dying doesn't take the fleet down.
 
 **`ActorRegistry.CANONICAL_15` is a closed roster.** `@REGISTRY.register` raises if `name` isn't in that tuple — adding a 16th actor means editing the tuple deliberately, not incidentally. Registration is idempotent for the same `module:qualname` so the `python -m` double-import (`__main__` reload) doesn't blow up.

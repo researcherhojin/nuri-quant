@@ -254,7 +254,13 @@ class TestOrchestrateWarn:
 
 
 class TestOrchestrateRetry:
-    def test_rate_limited_then_finished(self, patched_db):
+    def test_rate_limited_then_finished_is_warn_not_pass(self, patched_db):
+        """재시도로 살아났어도 rate limit 을 맞았으면 **WARN** 이다.
+
+        PASS 로 적으면 IP ban 직전까지 아무 신호가 없다 — 재시도가 벌어준 시간이
+        그대로 사라진다. `rate_limit_hits` 는 예전에도 세어서 DB 에 넣고 있었고,
+        빠져 있던 건 그걸 Outcome 에 드러내는 것뿐이었다 (carry-over audit N4).
+        """
         call_count = {"n": 0}
 
         def flaky():
@@ -272,7 +278,7 @@ class TestOrchestrateRetry:
                 "max_retries": 3,
             }
         )
-        assert result.outcome == Outcome.PASS
+        assert result.outcome == Outcome.WARN, "rate limit 을 맞은 런이 PASS 로 기록되면 안 된다"
         assert call_count["n"] == 3
         assert result.output["rate_limit_hits"] == 2
         # 2 rate_limited attempts + 1 finished
@@ -694,3 +700,50 @@ class TestExtractRowCount:
             }
         )
         assert result.output["rows_collected"] == 0
+
+
+class TestRateLimitIsSurfacedNotSwallowed:
+    """rate limit 신호가 Outcome 까지 올라오는지 (carry-over audit N4).
+
+    DB 에는 예전부터 `rate_limit_hits` 가 들어가고 있었다. 빠져 있던 건 그걸
+    **읽는 쪽**이다 — Outcome 이 PASS 면 아무도 안 본다.
+    """
+
+    def test_clean_run_stays_pass(self, patched_db):
+        """rate limit 이 없으면 WARN 으로 올리지 않는다 — 경보 피로 방지."""
+        actor = CollectorOrchestrator()
+        result = actor.run({"action": "orchestrate", "collector_name": "yfinance", "collector_fn": lambda: [1, 2, 3]})
+        assert result.outcome == Outcome.PASS
+        assert result.output["rate_limit_hits"] == 0
+
+    def test_single_rate_limit_hit_is_enough_to_warn(self, patched_db):
+        """한 번만 맞아도 신호다. 임계값을 두면 그 값이 또 하나의 매직넘버가 된다."""
+        calls = {"n": 0}
+
+        def flaky():
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise RuntimeError("HTTP 429")
+            return [1]
+
+        result = CollectorOrchestrator().run(
+            {"action": "orchestrate", "collector_name": "yfinance", "collector_fn": flaky, "max_retries": 3}
+        )
+        assert result.outcome == Outcome.WARN
+        assert result.output["rate_limit_hits"] == 1
+
+    def test_non_rate_limit_retry_stays_pass(self, patched_db):
+        """일시적 timeout 은 rate limit 이 아니다 — 여기까지 WARN 으로 올리면 노이즈다."""
+        calls = {"n": 0}
+
+        def flaky():
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise TimeoutError("slow")
+            return [1]
+
+        result = CollectorOrchestrator().run(
+            {"action": "orchestrate", "collector_name": "yfinance", "collector_fn": flaky, "max_retries": 3}
+        )
+        assert result.outcome == Outcome.PASS
+        assert result.output["rate_limit_hits"] == 0
