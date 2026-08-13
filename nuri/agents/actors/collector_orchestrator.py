@@ -11,7 +11,8 @@ Layer B 설계 (Codex Round 5):
 - 100% deterministic — 통계 + retry, ZERO LLM.
 - Outcome 매핑 (Round 5 Layer B):
     PASS  — orchestrate 성공 + scan_health 모두 healthy
-    WARN  — orchestrate under-fetch (rows < expected) / scan_health 1+ unhealthy
+    WARN  — orchestrate under-fetch (rows < expected) / **rate limit 을 맞고 재시도로
+            살아난 런** / scan_health 1+ unhealthy
     BLOCK — orchestrate retry 소진 / scan_health 모두 catastrophic / invalid input
 
 Design rationale:
@@ -249,9 +250,14 @@ class CollectorOrchestrator(Actor):
         timeout_s: float,
         ctx: RunContext,
     ) -> ActorResult:
-        """orchestrate finished 케이스 — under-fetch 판정 + Outcome 결정."""
+        """orchestrate finished 케이스 — under-fetch / rate-limit 판정 + Outcome 결정."""
         # under-fetch: expected_rows 가 주어지면 90% threshold.
         warn_under_fetch = expected_rows is not None and expected_rows > 0 and rows_collected < expected_rows * 0.9
+        # rate limit 을 맞고 재시도로 살아난 런은 **성공이 아니라 경고**다.
+        # PASS 로 기록하면 IP ban 직전까지 아무 신호가 없다 — 재시도가 벌어준
+        # 시간이 그대로 사라진다. rate_limit_hits 는 이미 세어서 DB 에 넣고
+        # 있었고, 빠져 있던 건 그걸 **Outcome 에 드러내는 것**뿐이다.
+        warn_rate_limit = rate_limit_hits > 0
         if warn_under_fetch:
             outcome = Outcome.WARN
             self._publish_orchestrate_failure(
@@ -260,6 +266,11 @@ class CollectorOrchestrator(Actor):
                 attempts=len(attempts),
                 run_id=ctx.run_id,
             )
+        elif warn_rate_limit:
+            # 발행은 하지 않는다. under-fetch 와 dedupe_key 가 같아
+            # (`collector_failure:{name}`, strategy='skip') 먼저 온 쪽이 이기고,
+            # rate limit 은 매일 흔해 #ops 를 채운다. Outcome 과 DB 행이면 족하다.
+            outcome = Outcome.WARN
         else:
             outcome = Outcome.PASS
 
