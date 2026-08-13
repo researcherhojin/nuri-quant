@@ -34,6 +34,7 @@ class CoinGeckoCollector(BaseCollector):
         """BTC 가격 + 글로벌 암호화폐 지표 수집."""
         records = []
         today = today_str()
+        errors: list[Exception] = []
 
         # 1. BTC 현재가 + 시가총액 + 24h 거래량
         try:
@@ -41,6 +42,7 @@ class CoinGeckoCollector(BaseCollector):
             records.extend(price_records)
         except Exception as e:
             self.logger.warning("CoinGecko price API 실패: %s", e)
+            errors.append(e)
 
         # 2. 글로벌 시장 지표 (BTC 도미넌스, 총 시가총액)
         try:
@@ -48,6 +50,26 @@ class CoinGeckoCollector(BaseCollector):
             records.extend(global_records)
         except Exception as e:
             self.logger.warning("CoinGecko global API 실패: %s", e)
+            errors.append(e)
+
+        # 한 건도 못 건졌는데 예외가 있었다 = **수집 실패**다. `[]` 로 돌려주면
+        # "오늘 값이 없다"(NO_DATA) 와 구분이 사라진다. 이 수집기는 그 구분을
+        # 잃을 여유가 없다 — `collector_runs.rows_collected` 는 `run_step` 이
+        # 돌려주는 4-키 dict 의 길이라 **항상 4** 이므로, `status` 가 유일한
+        # 판별 채널이다. 지금은 총체적 장애일에도 `finished` 가 박힌다.
+        #
+        # raise 하면 이미 있는 기계가 전부 살아난다 — base.py 의 재시도 3회,
+        # `_send_failure_alert()` 의 #ops 알림, scheduler 의 `status="failed"`,
+        # `collector_health` 의 경고. 새로 만드는 장치는 하나도 없다.
+        #
+        # `errors and not records` 인 이유: 한쪽이 예외이고 다른 쪽이 빈 응답인
+        # 경우도 실패다. 반대로 **둘 다 200 인데 내용이 비면** 예외가 없으므로
+        # `[]` 가 그대로 나간다 — 그게 NO_DATA 의 정의다.
+        # `errors[0]`: 마지막이 아니라 **첫** 원인을 올린다. 둘 다 실패하면
+        # 마지막은 항상 global 이라, price 의 429 가 알림 문구에서 사라지고
+        # 운영자가 엉뚱한 원인을 좇게 된다.
+        if errors and not records:
+            raise errors[0]
 
         return records
 
