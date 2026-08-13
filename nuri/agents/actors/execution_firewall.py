@@ -33,11 +33,14 @@ Discord publish: hard block 시 → INCIDENTS 채널 (operator urgent)
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
 from nuri.core.db import log_execution_block, query
 from nuri.core.rules import RULES, VIX_BLOCK_ABOVE, VIX_CAUTION_ABOVE
+
+logger = logging.getLogger(__name__)
 
 # ─── 룰 임계값 (config/rules.yaml override 가능) ─────────────
 # VIX 게이트는 canonical entry_rules.vix_gate (nuri.core.rules 로더) 단일 출처를 import.
@@ -457,7 +460,8 @@ class ExecutionFirewall(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_incident")
 
 
 def main(argv: list[str] | None = None) -> int:

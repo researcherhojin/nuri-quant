@@ -44,6 +44,7 @@ Discord routing:
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import socket
 from datetime import datetime, timedelta
@@ -62,6 +63,8 @@ from nuri.core.db import (
     resolve_incident as db_resolve_incident,
 )
 from nuri.core.timezone import kst_now, to_kst
+
+logger = logging.getLogger(__name__)
 
 # ─── 임계값 (config 가능 — 추후 rules.yaml 이관) ──────────
 ORPHAN_WARN_HOURS = 1.0
@@ -818,7 +821,8 @@ class SREIncidentAgent(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_fn")
 
 
 def _missed_eval_days(last_run_utc: str, now: datetime) -> int:

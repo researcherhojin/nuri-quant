@@ -26,6 +26,7 @@ Discord publish:
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from typing import Any
 
@@ -38,6 +39,8 @@ from nuri.core.db import (
     validate_hypothesis,
 )
 from nuri.core.timezone import today_kst
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_EXPIRY_DAYS = 90  # Codex: hypothesis 가 90 일 내 검증 못 받으면 stale
 
@@ -310,7 +313,8 @@ class HypothesisRegistry(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001 — best-effort
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.exception("outbox staging 실패: stage_rollout")
 
 
 def main(argv: list[str] | None = None) -> int:
