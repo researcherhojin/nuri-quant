@@ -53,7 +53,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import
 | 선택 | 이유 |
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드 동시 읽기. `tmp_path` 테스트 격리. |
-| **Hybrid LLM stack** | 공개 RSS 분류 / 일간 리포트 → OpenAI `gpt-5.4-nano` (Tier 0 / Tier 2 ZDR). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama/Qwen) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 ZERO-LLM 이라 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
+| **Hybrid LLM stack** | 공개 RSS 분류 / 일간 리포트 → OpenAI `gpt-5.4-nano` (Tier 0 / Tier 2 ZDR). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama / LM Studio 로컬 모델) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 ZERO-LLM 이라 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
 | OpenBB + yfinance | 무료 데이터. OpenBB provider 교체 용이, yfinance 폴백. |
 | GitHub Actions | 오픈소스 무료. lint + test + coverage + security 자동화. |
 ### 2.6 Escalation Ladder (근거 기반 → 기계적 개입의 4단계)
@@ -399,12 +399,13 @@ Deferred (필요 시점에 추가):
 **Priority**: Tier 3 research. 우선순위 낮음. **사용자 review 가 ₩2-4M 손실 회피 가치 (#507 격상 사례) — autonomy 확장 EV 낮음**.
 #### Gap B. Harness-model coupling 측정 (AgencyBench-style)
 **Frontier evidence**: AgencyBench (Li et al. 2026, 138 real-world tasks, <https://www.preprints.org/manuscript/202604.0428>) — **"agent task reliability 가 model 능력 < harness layer (infrastructure)"** 정량 입증. Same harness × different model = different success rate. HAL (Kapoor et al. 2026, 21,000+ rollouts) 도 동일 결론.
-**현재 상태 (nuri-quant)**: 다중 LLM consumer (`nuri/llm/openai_client.py` gpt-5.4-nano cloud + `scripts/dev/llm_consult.py` codex+Qwen3.5 dual-LLM consult). **Model 변경 시 reliability 변동 측정 0**. Codex GPT-5.4 → GPT-4-class 강등 시 어느 phase 가 깨지는지 unknown. Qwen3.5-122B → Qwen3.5-32B 양자화 시 same.
+**현재 상태 (2026-08-13 갱신)**: 다중 LLM consumer (`nuri/llm/openai_client.py` gpt-5.4-nano cloud + `scripts/dev/llm_consult.py` codex + local-LLM dual consult). **로컬 모델 축은 측정된다** — `scripts/dev/llm_ab_eval.py` 가 동결 프롬프트 50개로 두 모델을 짝지어 돌리고, `scripts/dev/llm_ab_stats.py` 가 Clopper-Pearson exact CI + McNemar exact 로 판정한다. 첫 적용(2026-08-13)이 `qwen3.5-122b-a10b` → `muse-glimmer-30b` 교체 근거였다 (#1038). **클라우드 축은 여전히 측정 0** — Codex GPT-5.4 → GPT-4-class 강등 시 어느 phase 가 깨지는지 unknown 이고, `openai_client.py` 경로에는 대응 하네스가 없다.
 **Acceptance criterion**:
 - Phase 1: `data/harness_telemetry.jsonl` 신설 — 매 LLM 호출 기록 (timestamp / model / phase / outcome / token_count). `nuri/llm/openai_client.py` 와 `scripts/dev/llm_consult.py` 양쪽에 wired.
 - Phase 2: weekly aggregation script — `make harness-quality-report` → model-별 success rate / failure pattern / phase breakdown. 4 주 데이터 후 model swap recommendation (gpt-5.4-nano vs gpt-5.4 cloud cost-quality tradeoff).
-- Phase 3: AgencyBench subset adaptation — nuri-specific eval suite (예: 10 fixed prompts × 5 ticker × 3 question types = 150 task) → model compare matrix.
-**Priority**: **Tier 2 P2** (1-2 세션 build + 4 주 데이터 수집). 측정 가능, ship 후 의사결정 즉시 활용. Issue 격상 후보.
+- ✅ Phase 3 (2026-08-13, #1038): nuri-specific eval suite — `config/eval/thesis_prompts.yaml` 동결 프롬프트 **50개**(v1 10 + 적대적 40, 계열 a-j), `thesis_query` 경로 한정. 1차 지표는 `unsafe_price_level`(가격 레벨 날조/유령), 2차는 IFEval 계열 지시준수. LLM judge 를 쓰지 않는다 — 판정자가 흔들리면 A/B 가 무의미하다.
+  - **한계 (과잉 인용 금지)**: 프롬프트가 합성·자작이라 외적 타당성이 없고, 투자 판단의 옳고 그름을 재지 않는다(정답 레이블 없음). 프롬프트당 1회만 돌리므로 잡음 바닥이 미측정이다 — `temperature=0.0` 인데도 같은 프롬프트가 런마다 다른 답을 낸 사례가 있다. 다음 스왑 전에 k회 반복을 붙일 것.
+**Priority**: Phase 1-2(telemetry) **Tier 2 P2** 로 잔존 — 하네스는 로컬 모델 **교체 판단**만 덮고, 매 LLM 호출의 상시 관측은 아니다.
 #### Gap C. HAL evaluation framework 도입 검토
 **Frontier evidence**: HAL (Holistic Agent Leaderboard, Kapoor et al. 2026, 21,000+ agent rollouts) — 산업 표준 평가 protocol. SWE-bench (Jimenez et al. ICLR 2024) + AgencyBench 과 함께 frontier benchmark trio.
 **현재 상태**: nuri-quant 는 domain-specific (quant 투자) repo. HAL benchmark task (e.g. SWE-bench code editing tasks) 가 직접 적용되지 않음.
@@ -424,7 +425,7 @@ Deferred (필요 시점에 추가):
 | Layered architecture | ✅ `nuri/core/` → `collectors/` → `quant/` → `trading/` → `api/` | 0 |
 | Pre-commit deterministic hooks | ✅ `.claude/settings.json` PreToolUse/PostToolUse | 0 |
 | Conventional commits + scope discipline | ✅ ≤3 commits/PR, 1 issue = 1 PR | 0 |
-| Subagents (parallel, context isolation) | ✅ codex consult + Qwen3.5 dual-LLM | 0 |
+| Subagents (parallel, context isolation) | ✅ codex consult + local-LLM dual | 0 |
 | Skills (reusable templates) | ✅ `make` targets + `nuri-*` skills | 0 |
 | **Agent autonomy (OpenAI 1M LOC)** | ⚠ 인간 review 필수 (의도된 conservative) | **Gap A** |
 | **Harness-model coupling 측정** | ❌ telemetry 없음 | **Gap B** (Tier 2 P2) |
