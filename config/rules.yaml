@@ -552,3 +552,37 @@ brief:
   # 오른 적 없는 종목도 -15% 손실이 트레일링으로 잡힌다 — 그건 손절 소관이다.
   # 최고점이 진입가 대비 이 값 이상 올랐던 포지션만 give-back 알림 대상.
   trailing_min_peak_gain_pct: 10
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DecisionCompiler 의사결정 임계값 (#529 Phase 2 capstone, carry-over audit N1).
+# BUY/SELL emit 여부를 가르는 게이트다 → 투자 룰이다. 값 변경은 STRATEGY PR + 백테스트.
+# 코드(`nuri/agents/actors/decision_compiler.py`)는 import 만 한다.
+#
+# ⚠️ conviction 자체의 가중치(0.50/0.30/0.20, decision_compiler.py:188)는 여기 없다.
+# 그건 **지표의 정의**이고 아래는 그 지표를 재는 **문턱**이다 — 성격이 달라 분리한다.
+# ─────────────────────────────────────────────────────────────────────────────
+decision_compiler:
+  # conviction = 0.50*causal_certainty + 0.30*regime_top_prob + 0.20*top2_margin
+  conviction_emit_cutoff: 0.70   # 이 미만은 HOLD 로 emit (약한 신호를 행동으로 옮기지 않는다)
+  conviction_hold_cutoff: 0.50   # 이 미만은 blocked HOLD (low-signal 자체를 차단)
+  regime_favor_prob: 0.60        # regime posterior top1 prob >= 이 값 → favorable
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Forward outcome tracking 임계값 (#529 Phase 2 closed-loop, carry-over audit N2).
+# HypothesisRegistry validate/reject 문턱이다.
+#
+# ⚠️ **§3.11 사전등록 판정 기준이 아니다.** 판정 경로(`decision_alpha.fetch_sample`)는
+# `decision_outcomes.alpha` 만 읽고 이 값은 보지 않는다. 사전등록 기준은
+# `measurement_mode` 블록에 있고, 그건 STRATEGY PR 없이 못 고친다.
+#
+# ⚠️ window 키 집합은 `decision_outcomes` CHECK 제약(7/14/30)과 같아야 한다.
+# 여기서 키를 지우면 `forward_outcome_tracker` 가 그 window 에서 KeyError 를 내고,
+# 늘리면 `execution_ops.log_decision_outcome` 이 ValueError 를 던진다.
+# 그 대칭을 지키는 건 코드에 남은 `SUPPORTED_WINDOWS` 다 — config 로 옮기지 말 것
+# (옮기면 YAML 한 줄로 사전등록 window 30 을 조용히 끌 수 있게 된다).
+# ─────────────────────────────────────────────────────────────────────────────
+outcome_tracking:
+  window_thresholds:           # window(일): [validate 이상, reject 이하]
+    7: [0.05, -0.05]
+    14: [0.07, -0.07]
+    30: [0.10, -0.10]
