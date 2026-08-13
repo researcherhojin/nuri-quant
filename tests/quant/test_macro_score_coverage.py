@@ -93,12 +93,18 @@ class TestMissingComponentsAreDroppedNotInvented:
 
 
 class TestDashboardSurfacesCoverage:
-    def test_macro_payload_carries_coverage(self, db_path, monkeypatch):
-        """대시보드가 점수만 보내고 커버리지를 숨기면 68% 가 100% 처럼 읽힌다."""
+    def test_macro_payload_carries_coverage(self, db_path_mp, monkeypatch):
+        """대시보드가 점수만 보내고 커버리지를 숨기면 68% 가 100% 처럼 읽힌다.
+
+        `db_path` 가 아니라 `db_path_mp` 다. `_get_macro()` 는 db_path 인자를 받지
+        않아 전역 `DB_PATH` 를 읽는다 — `db_path` 로는 tmp DB 에 seed 만 하고
+        정작 **프로덕션 DB 를 보고 통과**했다 (2026-08-14 실측: 커넥션 18회가
+        전부 data/portfolio.db).
+        """
         import nuri.api.routes.dashboard as dash
 
         monkeypatch.setattr(dash, "compute_macro_score", None, raising=False)
-        _seed(db_path, vix=15.0)
+        _seed(db_path_mp, vix=15.0)
         payload = dash._get_macro()
         assert "coverage" in payload, "macro payload 에 coverage 가 없다"
 

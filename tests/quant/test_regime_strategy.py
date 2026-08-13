@@ -387,7 +387,25 @@ class TestBuildDataDrivenStrategyReliable:
 
 class TestMapStrategySpecialAndFallback:
     """special_regime sizing (line 225) + rule-based fallback (lines 242-251) +
-    high vol (lines 256-261) + macro adjust (273-279)."""
+    high vol (lines 256-261) + macro adjust (273-279).
+
+    ⚠️ 이 클래스의 테스트는 `map_regime_to_strategy()` 를 `db_path` 없이 부른다.
+    그러면 내부의 `analyze_signal_by_regime(None)` 이 **실제 `data/portfolio.db`**
+    로 들어가고, `_get_vix()` 가 SPY 행마다 호출되면서 커넥션을 **1,118회** 연다
+    (2026-08-14 실측, 테스트당 2.25초). 그 자체로 느린 것도 문제지만, 진짜 문제는
+    다른 테스트가 같은 파일에 **쓴다**는 것이다 (`tests/CLAUDE.md` 참조) —
+    `-n auto` 로 워커가 붙으면 읽는 쪽이 간헐적으로 깨진다. 실제로
+    `test_high_vol_no_stats_truncates` 가 전체 실행 5회 중 1회 실패했고,
+    단독 실행은 항상 통과했다.
+
+    `db_path_mp` 가 `nuri.core.db.DB_PATH` 를 tmp DB 로 돌린다 → 커넥션 1회,
+    실 DB 무접근. 단언은 그대로 성립한다(실측) — 이 테스트들이 보는 것은
+    포지션 사이징·폴백·절삭 **분기**이지 교차분석 데이터가 아니기 때문이다.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolate_db(self, db_path_mp):
+        """클래스 전체에 DB 격리 강제. 새 테스트가 이 함정을 다시 밟지 않게."""
 
     def test_special_regime_sizing(self):
         from nuri.quant.regime.classifier import RegimeState

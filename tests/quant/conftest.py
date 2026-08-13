@@ -1,8 +1,13 @@
 """Shared fixtures for tests/quant/.
 
 Auto-loaded by pytest. Helpers live in _helpers.py to be importable.
+
+⚠️ 이 디렉터리의 테스트는 **프로덕션 DB 를 열 수 없다** — `_forbid_production_db`
+autouse 가드가 강제한다. 왜 필요한지는 그 픽스처의 docstring 참조.
 """
+
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -20,6 +25,56 @@ from tests.quant._helpers import (  # noqa: F401
     _seed_spy_data,
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 프로덕션 DB 접근 금지 가드
+# ─────────────────────────────────────────────────────────────────────────────
+_REAL_DB = Path(__file__).resolve().parents[2] / "data" / "portfolio.db"
+
+
+@pytest.fixture(autouse=True)
+def _forbid_production_db(monkeypatch):
+    """실 `data/portfolio.db` 를 여는 순간 그 테스트를 **즉시** 실패시킨다.
+
+    왜 관측이 아니라 차단인가
+    -------------------------
+    프로덕션 DB 를 읽는 테스트는 조용히 통과한다. 초록이라 아무도 안 본다.
+    실제로 일어난 일 (2026-08-14 실측):
+
+    - `TestMapStrategySpecialAndFallback` 7개가 `map_regime_to_strategy()` 를
+      `db_path` 없이 불러 `analyze_signal_by_regime(None)` → `_get_vix()` 가
+      SPY 행마다 도는 바람에 **테스트당 커넥션 1,118회 / 2.25초**를 썼다.
+      그리고 다른 테스트가 같은 파일에 **쓴다** (`tests/CLAUDE.md`) — `-n auto`
+      로 워커가 붙으면 읽는 쪽이 깨진다. `test_high_vol_no_stats_truncates` 가
+      전체 실행 5회 중 1회 실패했고 단독 실행은 늘 통과했다. 원인을 찾는 데
+      든 시간이 고치는 데 든 시간보다 훨씬 길었다.
+    - `test_macro_payload_carries_coverage` 는 tmp DB 에 seed 해놓고 정작
+      **프로덕션 데이터를 보고 통과**하고 있었다. 통과가 거짓이었다.
+
+    가드를 걷어내면 tests/quant 실행 시간이 41s → 105s 로 돌아간다.
+
+    쓰기가 아니라 **여는 순간** 터뜨린다 — 읽기만 해도 위 두 문제가 다 생기고,
+    쓰기까지 기다리면 이미 느려진 뒤다. (`tests/verify/conftest.py` 의 문서
+    fixer 가드와 같은 설계: 피해가 난 뒤가 아니라 겨눈 순간.)
+
+    빠져나갈 구멍: 정말 프로덕션 DB 가 필요하면 이 픽스처를 override 할 것.
+    조용히 우회하지 말고 이유를 그 자리에 적어야 한다.
+    """
+    import nuri.core.db.connection as conn_mod
+
+    real = str(_REAL_DB)
+    original = conn_mod.sqlite3.connect
+
+    def guarded(path, *args, **kwargs):
+        if str(path) == real:
+            raise AssertionError(
+                f"테스트가 프로덕션 DB 를 열었다: {path}\n"
+                "tmp DB 를 쓸 것 — 대상 함수가 db_path 인자를 받으면 `db_path` 픽스처를,\n"
+                "전역 DB_PATH 를 읽으면 `db_path_mp` 픽스처를 쓴다."
+            )
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(conn_mod.sqlite3, "connect", guarded)
+
 
 @pytest.fixture
 def db_path(tmp_path):
@@ -32,6 +87,7 @@ def db_path(tmp_path):
 def db_path_mp(tmp_path, monkeypatch):
     """db_path with DB_PATH monkeypatched (for modules that use the global)."""
     import nuri.core.db as db_mod
+
     path = tmp_path / "test.db"
     init_db(path)
     monkeypatch.setattr(db_mod, "DB_PATH", path)
@@ -42,18 +98,26 @@ def db_path_mp(tmp_path, monkeypatch):
 def bull_market(db_path):
     dates = pd.date_range(end=today_kst(), periods=300)
     close = np.linspace(100, 200, 300) + np.random.normal(0, 1, 300)
-    df = pd.DataFrame({
-        "ticker": "SPY",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.99, "high": close * 1.01,
-        "low": close * 0.98, "close": close,
-        "volume": [50000000] * 300, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "SPY",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.99,
+            "high": close * 1.01,
+            "low": close * 0.98,
+            "close": close,
+            "volume": [50000000] * 300,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
-    upsert_macro([
-        {"indicator": "vix", "date": dates[-1].strftime("%Y-%m-%d"), "value": 15.0, "source": "test"},
-        {"indicator": "fear_greed", "date": dates[-1].strftime("%Y-%m-%d"), "value": 65.0, "source": "test"},
-    ], db_path)
+    upsert_macro(
+        [
+            {"indicator": "vix", "date": dates[-1].strftime("%Y-%m-%d"), "value": 15.0, "source": "test"},
+            {"indicator": "fear_greed", "date": dates[-1].strftime("%Y-%m-%d"), "value": 65.0, "source": "test"},
+        ],
+        db_path,
+    )
     return db_path
 
 
@@ -63,18 +127,26 @@ def bear_market(db_path):
     up = np.linspace(150, 200, 200)
     down = np.linspace(200, 130, 100)
     close = np.concatenate([up, down]) + np.random.normal(0, 0.5, 300)
-    df = pd.DataFrame({
-        "ticker": "SPY",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.99, "high": close * 1.01,
-        "low": close * 0.98, "close": close,
-        "volume": [50000000] * 300, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "SPY",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.99,
+            "high": close * 1.01,
+            "low": close * 0.98,
+            "close": close,
+            "volume": [50000000] * 300,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
-    upsert_macro([
-        {"indicator": "vix", "date": dates[-1].strftime("%Y-%m-%d"), "value": 32.0, "source": "test"},
-        {"indicator": "fear_greed", "date": dates[-1].strftime("%Y-%m-%d"), "value": 20.0, "source": "test"},
-    ], db_path)
+    upsert_macro(
+        [
+            {"indicator": "vix", "date": dates[-1].strftime("%Y-%m-%d"), "value": 32.0, "source": "test"},
+            {"indicator": "fear_greed", "date": dates[-1].strftime("%Y-%m-%d"), "value": 20.0, "source": "test"},
+        ],
+        db_path,
+    )
     return db_path
 
 
@@ -82,10 +154,13 @@ def bear_market(db_path):
 def euphoria_market(db_path):
     close = np.linspace(100, 200, 300) + np.random.normal(0, 0.5, 300)
     dates = _insert_spy_data(db_path, close)
-    upsert_macro([
-        {"indicator": "vix", "date": dates[-1].strftime("%Y-%m-%d"), "value": 10.0, "source": "test"},
-        {"indicator": "fear_greed", "date": dates[-1].strftime("%Y-%m-%d"), "value": 85.0, "source": "test"},
-    ], db_path)
+    upsert_macro(
+        [
+            {"indicator": "vix", "date": dates[-1].strftime("%Y-%m-%d"), "value": 10.0, "source": "test"},
+            {"indicator": "fear_greed", "date": dates[-1].strftime("%Y-%m-%d"), "value": 85.0, "source": "test"},
+        ],
+        db_path,
+    )
     return db_path
 
 
@@ -96,10 +171,13 @@ def recovery_market(db_path):
     phase3 = np.linspace(130, 190, 100) + np.random.normal(0, 0.3, 100)
     close = np.concatenate([phase1, phase2, phase3])
     dates = _insert_spy_data(db_path, close)
-    upsert_macro([
-        {"indicator": "vix", "date": dates[-1].strftime("%Y-%m-%d"), "value": 18.0, "source": "test"},
-        {"indicator": "fear_greed", "date": dates[-1].strftime("%Y-%m-%d"), "value": 55.0, "source": "test"},
-    ], db_path)
+    upsert_macro(
+        [
+            {"indicator": "vix", "date": dates[-1].strftime("%Y-%m-%d"), "value": 18.0, "source": "test"},
+            {"indicator": "fear_greed", "date": dates[-1].strftime("%Y-%m-%d"), "value": 55.0, "source": "test"},
+        ],
+        db_path,
+    )
     return db_path
 
 
@@ -109,23 +187,36 @@ def factor_data(db_path_mp):
     dates = pd.bdate_range("2024-01-01", periods=60)
     for ticker, base in [("AAPL", 150), ("MSFT", 300), ("GOOG", 140)]:
         close = np.linspace(base, base * 1.2, 60) + np.random.normal(0, 1, 60)
-        df = pd.DataFrame({
-            "ticker": ticker,
-            "date": [d.strftime("%Y-%m-%d") for d in dates],
-            "open": close * 0.99, "high": close * 1.02,
-            "low": close * 0.97, "close": close,
-            "volume": [1000000] * 60, "adj_close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "ticker": ticker,
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": close * 0.99,
+                "high": close * 1.02,
+                "low": close * 0.97,
+                "close": close,
+                "volume": [1000000] * 60,
+                "adj_close": close,
+            }
+        )
         upsert_prices(df, db_path_mp)
     with get_db(db_path_mp) as conn:
         for ticker in ["AAPL", "MSFT", "GOOG"]:
-            conn.execute("INSERT INTO signals (ticker, date, rsi_14) VALUES (?, ?, ?)",
-                         (ticker, dates[-1].strftime("%Y-%m-%d"), 55.0))
-    upsert_macro([{
-        "indicator": "fear_greed",
-        "date": dates[-1].strftime("%Y-%m-%d"),
-        "value": 60.0, "source": "test",
-    }], db_path_mp)
+            conn.execute(
+                "INSERT INTO signals (ticker, date, rsi_14) VALUES (?, ?, ?)",
+                (ticker, dates[-1].strftime("%Y-%m-%d"), 55.0),
+            )
+    upsert_macro(
+        [
+            {
+                "indicator": "fear_greed",
+                "date": dates[-1].strftime("%Y-%m-%d"),
+                "value": 60.0,
+                "source": "test",
+            }
+        ],
+        db_path_mp,
+    )
     with get_db(db_path_mp) as conn:
         for ticker in ["AAPL", "MSFT", "GOOG"]:
             conn.execute(
@@ -143,13 +234,18 @@ def sample_prices(db_path):
     prices_down = np.linspace(100, 70, 30)
     prices_up = np.linspace(70, 110, 30)
     close = np.concatenate([prices_down, prices_up])
-    df = pd.DataFrame({
-        "ticker": "TEST",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.99, "high": close * 1.02,
-        "low": close * 0.98, "close": close,
-        "volume": [1000000] * 60, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "TEST",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.99,
+            "high": close * 1.02,
+            "low": close * 0.98,
+            "close": close,
+            "volume": [1000000] * 60,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
     return db_path
 
@@ -162,13 +258,18 @@ def long_prices(db_path):
     phase2 = np.linspace(180, 120, 80)
     phase3 = np.linspace(120, 160, 70)
     close = np.concatenate([phase1, phase2, phase3]) + np.random.normal(0, 0.5, 300)
-    df = pd.DataFrame({
-        "ticker": "LONG",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.99, "high": close * 1.01,
-        "low": close * 0.98, "close": close,
-        "volume": [1000000] * 300, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "LONG",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.99,
+            "high": close * 1.01,
+            "low": close * 0.98,
+            "close": close,
+            "volume": [1000000] * 300,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
     return db_path
 
@@ -178,11 +279,12 @@ def full_db(db_path_mp):
     """Rich DB with prices + signals + macro (from test_sixty_percent)."""
     today = today_kst()
     with get_db(db_path_mp) as conn:
-        for t, q, p, s in [("AAPL", 10, 150, "Technology"), ("MSFT", 5, 300, "Software"),
-                            ("TSLA", 8, 340, "SectorA")]:
+        for t, q, p, s in [("AAPL", 10, 150, "Technology"), ("MSFT", 5, 300, "Software"), ("TSLA", 8, 340, "SectorA")]:
             conn.execute(
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
-                "VALUES (?, ?, ?, ?, ?, ?)", ("test", t, q, p, "USD", s))
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("test", t, q, p, "USD", s),
+            )
     dates = pd.date_range(end=today, periods=400)
     for ticker, base in [("SPY", 400), ("AAPL", 140), ("MSFT", 280), ("TSLA", 300)]:
         np.random.seed(42)
@@ -192,11 +294,18 @@ def full_db(db_path_mp):
         high = close * 1.01
         low = close * 0.99
         volume = np.random.randint(500000, 2000000, 400)
-        df = pd.DataFrame({
-            "ticker": ticker, "date": [d.strftime("%Y-%m-%d") for d in dates],
-            "open": close * 0.998, "high": high, "low": low,
-            "close": close, "volume": volume, "adj_close": close,
-        })
+        df = pd.DataFrame(
+            {
+                "ticker": ticker,
+                "date": [d.strftime("%Y-%m-%d") for d in dates],
+                "open": close * 0.998,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+                "adj_close": close,
+            }
+        )
         upsert_prices(df, db_path_mp)
     with get_db(db_path_mp) as conn:
         for i, d in enumerate(dates[-100:]):
@@ -215,15 +324,17 @@ def full_db(db_path_mp):
                     "(ticker, date, rsi_14, sma_20, sma_50, sma_200, "
                     "bb_upper, bb_lower, bb_middle, macd, macd_signal) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (ticker, ds, rsi, sma20, sma50, sma200,
-                     bb_upper, bb_lower, sma20, macd, macd_signal),
+                    (ticker, ds, rsi, sma20, sma50, sma200, bb_upper, bb_lower, sma20, macd, macd_signal),
                 )
-    upsert_macro([
-        {"indicator": "vix", "date": today, "value": 18.0, "source": "test"},
-        {"indicator": "fear_greed", "date": today, "value": 55.0, "source": "test"},
-        {"indicator": "sp500_yoy", "date": today, "value": 15.0, "source": "test"},
-        {"indicator": "usd_krw", "date": today, "value": 1380.0, "source": "test"},
-    ], db_path_mp)
+    upsert_macro(
+        [
+            {"indicator": "vix", "date": today, "value": 18.0, "source": "test"},
+            {"indicator": "fear_greed", "date": today, "value": 55.0, "source": "test"},
+            {"indicator": "sp500_yoy", "date": today, "value": 15.0, "source": "test"},
+            {"indicator": "usd_krw", "date": today, "value": 1380.0, "source": "test"},
+        ],
+        db_path_mp,
+    )
     return db_path_mp
 
 
@@ -231,28 +342,73 @@ def full_db(db_path_mp):
 def rich_db(tmp_path, monkeypatch):
     """Rich DB: portfolio + 500 day prices + macro (from test_coverage_round19)."""
     import nuri.core.db as db_mod
+
     path = tmp_path / "test.db"
     init_db(path)
     monkeypatch.setattr(db_mod, "DB_PATH", path)
-    upsert_portfolio([
-        {"account": "test", "ticker": "AAPL", "quantity": 10,
-         "avg_price": 190, "currency": "USD", "sector": "Tech"},
-        {"account": "test", "ticker": "NVDA", "quantity": 5,
-         "avg_price": 130, "currency": "USD", "sector": "Semiconductor"},
-        {"account": "test", "ticker": "005930.KS", "quantity": 4,
-         "avg_price": 60000, "currency": "KRW", "sector": "Semiconductor"},
-    ], path)
+    upsert_portfolio(
+        [
+            {
+                "account": "test",
+                "ticker": "AAPL",
+                "quantity": 10,
+                "avg_price": 190,
+                "currency": "USD",
+                "sector": "Tech",
+            },
+            {
+                "account": "test",
+                "ticker": "NVDA",
+                "quantity": 5,
+                "avg_price": 130,
+                "currency": "USD",
+                "sector": "Semiconductor",
+            },
+            {
+                "account": "test",
+                "ticker": "005930.KS",
+                "quantity": 4,
+                "avg_price": 60000,
+                "currency": "KRW",
+                "sector": "Semiconductor",
+            },
+        ],
+        path,
+    )
     dates = pd.date_range("2024-01-02", periods=500, freq="B")
     rows = []
-    for t in ["SPY", "AAPL", "NVDA", "005930.KS", "VOO",
-              "XLK", "XLF", "XLE", "XLV", "XLI", "XLP", "XLU", "XLY", "XLC", "XLRE"]:
-        base = {"SPY": 450, "AAPL": 170, "NVDA": 120, "005930.KS": 58000,
-                "VOO": 440}.get(t, 100)
+    for t in [
+        "SPY",
+        "AAPL",
+        "NVDA",
+        "005930.KS",
+        "VOO",
+        "XLK",
+        "XLF",
+        "XLE",
+        "XLV",
+        "XLI",
+        "XLP",
+        "XLU",
+        "XLY",
+        "XLC",
+        "XLRE",
+    ]:
+        base = {"SPY": 450, "AAPL": 170, "NVDA": 120, "005930.KS": 58000, "VOO": 440}.get(t, 100)
         for i, d in enumerate(dates):
             p = base + i * 0.2 + np.sin(i / 20) * 3
-            rows.append({"ticker": t, "date": d.strftime("%Y-%m-%d"),
-                         "open": p - 0.5, "high": p + 3, "low": p - 2,
-                         "close": p + 1, "volume": 50_000_000, "adj_close": p + 1})
+            rows.append(
+                {
+                    "ticker": t,
+                    "date": d.strftime("%Y-%m-%d"),
+                    "open": p - 0.5,
+                    "high": p + 3,
+                    "low": p - 2,
+                    "close": p + 1,
+                    "volume": 50_000_000,
+                    "adj_close": p + 1,
+                }
+            )
     upsert_prices(pd.DataFrame(rows), path)
     macros = []
     for i, d in enumerate(dates):
@@ -261,7 +417,9 @@ def rich_db(tmp_path, monkeypatch):
         macros.append({"indicator": "fear_greed", "date": ds, "value": 50 + np.sin(i / 25) * 30, "source": "test"})
         macros.append({"indicator": "us_10y_yield", "date": ds, "value": 4.2 + np.sin(i / 40) * 0.5, "source": "test"})
         macros.append({"indicator": "us_3m_yield", "date": ds, "value": 5.0 - np.sin(i / 40) * 0.3, "source": "test"})
-        macros.append({"indicator": "put_call_ratio", "date": ds, "value": 0.8 + np.sin(i / 15) * 0.4, "source": "test"})
+        macros.append(
+            {"indicator": "put_call_ratio", "date": ds, "value": 0.8 + np.sin(i / 15) * 0.4, "source": "test"}
+        )
     macros.append({"indicator": "cpi_yoy", "date": dates[-1].strftime("%Y-%m-%d"), "value": 3.0, "source": "test"})
     macros.append({"indicator": "gdp_growth", "date": dates[-1].strftime("%Y-%m-%d"), "value": 2.5, "source": "test"})
     upsert_macro(macros, path)
@@ -274,13 +432,18 @@ def volume_spike_prices(db_path):
     close = np.linspace(100, 120, 60) + np.random.normal(0, 0.3, 60)
     volume = np.full(60, 1_000_000, dtype=float)
     volume[40] = 4_000_000
-    df = pd.DataFrame({
-        "ticker": "VSPK",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.999, "high": close * 1.01,
-        "low": close * 0.99, "close": close,
-        "volume": volume, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "VSPK",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.999,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": volume,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
     return db_path
 
@@ -294,15 +457,18 @@ def gap_prices(db_path):
     close[30] = close[29] * 1.04
     open_prices[45] = close[44] * 0.95
     close[45] = close[44] * 0.96
-    df = pd.DataFrame({
-        "ticker": "GAPTEST",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": open_prices,
-        "high": np.maximum(close, open_prices) * 1.01,
-        "low": np.minimum(close, open_prices) * 0.99,
-        "close": close,
-        "volume": [1_000_000] * 80, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "GAPTEST",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": open_prices,
+            "high": np.maximum(close, open_prices) * 1.01,
+            "low": np.minimum(close, open_prices) * 0.99,
+            "close": close,
+            "volume": [1_000_000] * 80,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
     return db_path
 
@@ -311,13 +477,18 @@ def gap_prices(db_path):
 def vix_reversal_data(db_path):
     dates = pd.date_range("2025-01-01", periods=60)
     close = np.linspace(100, 120, 60)
-    df = pd.DataFrame({
-        "ticker": "SPY",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.999, "high": close * 1.01,
-        "low": close * 0.99, "close": close,
-        "volume": [1_000_000] * 60, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "SPY",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.999,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": [1_000_000] * 60,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
     macro_records = []
     for i, d in enumerate(dates):
@@ -336,13 +507,18 @@ def vix_reversal_data(db_path):
 def pcr_reversal_data(db_path):
     dates = pd.date_range("2025-01-01", periods=60)
     close = np.linspace(100, 115, 60)
-    df = pd.DataFrame({
-        "ticker": "SPY",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.999, "high": close * 1.01,
-        "low": close * 0.99, "close": close,
-        "volume": [1_000_000] * 60, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "SPY",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.999,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": [1_000_000] * 60,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
     macro_records = []
     for i, d in enumerate(dates):
@@ -354,7 +530,9 @@ def pcr_reversal_data(db_path):
             pcr = 0.9
         else:
             pcr = 0.9 - (i - 30) * 0.02
-        macro_records.append({"indicator": "put_call_ratio", "date": d.strftime("%Y-%m-%d"), "value": pcr, "source": "test"})
+        macro_records.append(
+            {"indicator": "put_call_ratio", "date": d.strftime("%Y-%m-%d"), "value": pcr, "source": "test"}
+        )
     upsert_macro(macro_records, db_path)
     return db_path
 
@@ -363,13 +541,18 @@ def pcr_reversal_data(db_path):
 def yield_curve_data(db_path):
     dates = pd.date_range("2025-01-01", periods=60)
     close = np.linspace(100, 115, 60)
-    df = pd.DataFrame({
-        "ticker": "SPY",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.999, "high": close * 1.01,
-        "low": close * 0.99, "close": close,
-        "volume": [1_000_000] * 60, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "SPY",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.999,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": [1_000_000] * 60,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
     macro_records = []
     for i, d in enumerate(dates):
@@ -390,20 +573,33 @@ def yield_curve_data(db_path):
 def insider_cluster_data(db_path):
     dates = pd.date_range("2025-01-01", periods=60)
     close = np.linspace(100, 115, 60)
-    df = pd.DataFrame({
-        "ticker": "INSD",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.999, "high": close * 1.01,
-        "low": close * 0.99, "close": close,
-        "volume": [1_000_000] * 60, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "INSD",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.999,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": [1_000_000] * 60,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
     with get_db(db_path) as conn:
         for day_offset in [30, 32, 33, 35]:
             conn.execute(
                 "INSERT OR REPLACE INTO insider_trades (ticker, date, insider_name, position, transaction_type, shares, value) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("INSD", dates[day_offset].strftime("%Y-%m-%d"), f"Insider{day_offset}", "CEO", "P-Purchase", 1000, 100000),
+                (
+                    "INSD",
+                    dates[day_offset].strftime("%Y-%m-%d"),
+                    f"Insider{day_offset}",
+                    "CEO",
+                    "P-Purchase",
+                    1000,
+                    100000,
+                ),
             )
     return db_path
 
@@ -412,13 +608,18 @@ def insider_cluster_data(db_path):
 def short_squeeze_data(db_path):
     dates = pd.date_range("2025-01-01", periods=60)
     close = np.concatenate([np.linspace(100, 95, 30), np.linspace(95, 110, 30)])
-    df = pd.DataFrame({
-        "ticker": "SQZZ",
-        "date": [d.strftime("%Y-%m-%d") for d in dates],
-        "open": close * 0.999, "high": close * 1.01,
-        "low": close * 0.99, "close": close,
-        "volume": [1_000_000] * 60, "adj_close": close,
-    })
+    df = pd.DataFrame(
+        {
+            "ticker": "SQZZ",
+            "date": [d.strftime("%Y-%m-%d") for d in dates],
+            "open": close * 0.999,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": [1_000_000] * 60,
+            "adj_close": close,
+        }
+    )
     upsert_prices(df, db_path)
     with get_db(db_path) as conn:
         for i, d in enumerate(dates):
