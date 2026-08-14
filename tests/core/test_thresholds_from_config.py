@@ -55,53 +55,50 @@ def _module_level_assignments(tree: ast.Module) -> set[str]:
     return {n for n, _ in _module_scope_assignments(tree)}
 
 
-def _module_scope_statements(tree: ast.Module):
-    """모듈 스코프에서 **실행되는** 모든 문. 함수/클래스 본문은 안 들어간다.
+def _bound_names(tree: ast.Module):
+    """(이름, 대입식) — 파일 **어디서든** 그 이름에 값을 묶는 모든 자리.
 
-    `tree.body` 만 보면 안 된다 — `if` / `try` / `for` / `with` 안의 대입도
-    import 시점에 실행되므로 모듈 스코프다. 최상위만 훑던 첫 판은
-    `if True: CONVICTION_EMIT_CUTOFF = 0.70` 을 놓쳤다 (2026-08-14 실측).
-    실제로 사람이 쓸 법한 형태는 `try: from ... import X / except ImportError: X = 0.70` 이고,
-    그게 통과하면 하드코딩이 조용히 돌아온다.
+    스코프를 구분하지 않는다. 첫 판은 모듈 스코프만 봤는데, 적대적 감사가
+    **함수 지역 shadow** 가 가장 현실적인 되돌림이라고 지적했다 (2026-08-14):
+    `_compile()` 첫 줄에 `CONVICTION_EMIT_CUTOFF = 0.70` 한 줄이면 config 가
+    무력해지고, 모듈 스코프만 보는 스윕은 초록이다. 액터가 이 이름들을 다시
+    묶을 정당한 이유가 없으므로 스코프를 나눌 이유도 없다.
+
+    `ctx=Store` 인 `Name` 만 센다. 이걸 안 보면 `labels[CONVICTION_EMIT_CUTOFF] = x`
+    처럼 **읽기로 쓰는 자리**까지 거부하는 오탐이 난다(같은 감사에서 확인).
+    Store 로 좁히면 `for X in ...` / `with ... as X` / walrus / AugAssign 도 함께
+    잡힌다 — 전부 바인딩이기 때문이다.
     """
-    stack = list(tree.body)
-    while stack:
-        node = stack.pop()
-        yield node
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            continue  # 다른 스코프 — 여기 대입은 모듈 전역을 안 바꾼다
-        for field in ("body", "orelse", "finalbody"):
-            stack.extend(getattr(node, field, []) or [])
-        for handler in getattr(node, "handlers", []) or []:
-            stack.extend(handler.body)
+    for node in ast.walk(tree):
+        value = getattr(node, "value", None)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            yield node.id, None
+        elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+            yield node.target.id, value
+        # `globals()["X"] = ...` / `vars()["X"] = ...` — 이름을 문자열 뒤에 숨기는 우회
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                if (
+                    isinstance(t, ast.Subscript)
+                    and isinstance(t.value, ast.Call)
+                    and getattr(t.value.func, "id", "") in ("globals", "vars")
+                    and isinstance(t.slice, ast.Constant)
+                    and isinstance(t.slice.value, str)
+                ):
+                    yield t.slice.value, node.value
 
 
 def _module_scope_assignments(tree: ast.Module):
-    """(이름, 대입식) 쌍. 튜플 언패킹과 `globals()[...] = ...` 도 잡는다."""
-    for node in _module_scope_statements(tree):
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            yield node.target.id, node.value
-        elif isinstance(node, ast.Assign):
-            for t in node.targets:
-                for sub in ast.walk(t):  # 튜플/리스트 언패킹 전개
-                    if isinstance(sub, ast.Name):
-                        yield sub.id, node.value
-                    # `globals()["X"] = ...` — 이름을 문자열 뒤에 숨기는 우회
-                    elif (
-                        isinstance(sub, ast.Subscript)
-                        and isinstance(sub.value, ast.Call)
-                        and getattr(sub.value.func, "id", "") == "globals"
-                        and isinstance(sub.slice, ast.Constant)
-                        and isinstance(sub.slice.value, str)
-                    ):
-                        yield sub.slice.value, node.value
+    return _bound_names(tree)
 
 
 def _module_level_value(tree: ast.Module, name: str) -> ast.expr | None:
-    """모듈 스코프에서 `name` 에 대입된 **식**. 없으면 None."""
-    for n, value in _module_scope_assignments(tree):
-        if n == name:
-            return value
+    """`name` 에 대입된 식. AnnAssign/Assign 만 — 값이 필요한 검사용."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
+            return node.value
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return node.value
     return None
 
 
@@ -229,3 +226,45 @@ class TestTrackerHoldsACopyNotAnAlias:
 
         assert fot.WINDOW_THRESHOLDS is not rules.OUTCOME_WINDOW_THRESHOLDS
         assert fot.WINDOW_THRESHOLDS == rules.OUTCOME_WINDOW_THRESHOLDS
+
+
+class TestLoaderReadsTheKeysThatExist:
+    """로더가 **실제로 있는 키**를 읽는지. 없는 키는 조용히 기본값이 된다.
+
+    스윕은 액터 두 파일만 본다. 로더(`nuri/core/rules.py`)에 하드코딩을 넣거나
+    키 이름을 틀리면 스윕은 초록인 채로 config 가 무력해진다 (2026-08-14 적대적
+    감사 지적). 특히 **키 오타는 사고로 일어난다** — YAML 키를 이름만 바꾸고
+    로더를 안 고치면 `.get("없는키", 0.70)` 이 기본값을 돌려주고 아무도 모른다.
+    """
+
+    _LOADER = REPO_ROOT / "nuri" / "core" / "rules.py"
+
+    def _get_calls(self, receiver: str) -> set[str]:
+        """`_dc.get("x", ...)` 형태에서 읽는 키 이름들."""
+        tree = ast.parse(self._LOADER.read_text(encoding="utf-8"), filename=str(self._LOADER))
+        keys = set()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == receiver
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                keys.add(node.args[0].value)
+        return keys
+
+    def test_decision_compiler_keys_exist_in_yaml(self) -> None:
+        read = self._get_calls("_dc")
+        assert read, "로더가 _dc 에서 아무 키도 안 읽는다 — 변수명이 바뀌었는지 확인"
+        missing = read - set(RULES.get("decision_compiler") or {})
+        assert not missing, f"로더가 YAML 에 없는 키를 읽는다(조용히 기본값): {sorted(missing)}"
+
+    def test_outcome_tracking_keys_exist_in_yaml(self) -> None:
+        read = self._get_calls("_ot")
+        assert read, "로더가 _ot 에서 아무 키도 안 읽는다"
+        missing = read - set(RULES.get("outcome_tracking") or {})
+        assert not missing, f"로더가 YAML 에 없는 키를 읽는다(조용히 기본값): {sorted(missing)}"
