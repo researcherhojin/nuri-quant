@@ -52,7 +52,7 @@ COLOR_RED = 0xFF0000
 COLOR_BLUE = 0x3498DB
 
 
-def _collect_context() -> dict:
+def _collect_context(db_path=None) -> dict:
     """Brief 에 필요한 모든 context 를 DB 에서 수집.
 
     Fault-tolerant: 각 subsystem 실패는 dict key None 으로 degrade, brief 자체
@@ -115,7 +115,7 @@ def _collect_context() -> dict:
     try:
         from nuri.quant.regime.classifier import classify_regime
 
-        r = classify_regime()
+        r = classify_regime(db_path=db_path)
         if r:
             ctx["regime"] = {
                 "regime": r.regime,
@@ -130,7 +130,7 @@ def _collect_context() -> dict:
     try:
         from nuri.quant.regime.macro_score import compute_macro_score
 
-        m = compute_macro_score()
+        m = compute_macro_score(db_path=db_path)
         ctx["macro"] = {"score": round(m.total_score, 1), "interpretation": m.interpretation}
     except Exception:
         logger.warning("macro score 실패", exc_info=True)
@@ -143,6 +143,7 @@ def _collect_context() -> dict:
             rows = query(
                 "SELECT value, date FROM macro WHERE indicator = ? ORDER BY date DESC LIMIT 1",
                 (ind,),
+                db_path=db_path,
             )
             if rows:
                 ctx[key] = {"value": float(rows[0]["value"]), "date": rows[0]["date"]}
@@ -153,7 +154,7 @@ def _collect_context() -> dict:
     try:
         from nuri.trading.engine.certification import certify
 
-        cert = certify(caller="cli:premarket_brief", swallow_persist_errors=True)
+        cert = certify(caller="cli:premarket_brief", swallow_persist_errors=True, db_path=db_path)
         ctx["siege"] = {
             "certified": cert.certified,
             "score": round(cert.score, 1),
@@ -205,6 +206,7 @@ def _collect_context() -> dict:
               AND ABS(sentiment) >= 0.5
             ORDER BY ABS(sentiment) DESC LIMIT 5
             """,
+            db_path=db_path,
         )
         ctx["macro_events"] = [dict(r) for r in rows]
     except Exception:
@@ -222,9 +224,13 @@ def _collect_context() -> dict:
                 SELECT ticker, close FROM prices
                 WHERE (ticker, date) IN (SELECT ticker, MAX(date) FROM prices GROUP BY ticker)
             ) pr ON p.ticker = pr.ticker
-            """
+            """,
+            db_path=db_path,
         )
-        rate_row = query("SELECT value FROM macro WHERE indicator='usd_krw' ORDER BY date DESC LIMIT 1")
+        rate_row = query(
+            "SELECT value FROM macro WHERE indicator='usd_krw' ORDER BY date DESC LIMIT 1",
+            db_path=db_path,
+        )
         rate = float(rate_row[0]["value"]) if rate_row else 1400.0
         from nuri.core.ticker_names import is_kr_ticker
 
@@ -606,9 +612,14 @@ def send_brief(embed: dict) -> bool:
         return False
 
 
-def generate_brief() -> dict:
-    """Entry point for scheduler / CLI. Context 수집 + embed + markdown + persist."""
-    ctx = _collect_context()
+def generate_brief(db_path=None) -> dict:
+    """Entry point for scheduler / CLI. Context 수집 + embed + markdown + persist.
+
+    `db_path` 는 선택이다 — 스케줄러와 CLI 는 인자 없이 부르고 기본 DB 를 쓴다.
+    받는 이유는 테스트가 이 경로를 명시적으로 격리할 수 있게 하기 위해서다
+    (#1051). 전엔 db_path 배선이 전혀 없어 테스트가 조심해도 새로 들어갔다.
+    """
+    ctx = _collect_context(db_path=db_path)
     embed = format_brief_embed(ctx)
     markdown = format_brief_markdown(ctx)
     path = persist_brief(markdown)

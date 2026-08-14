@@ -24,12 +24,15 @@ TRADING_DAYS = 252
 from nuri.core.rules import PORTFOLIO_STOP, STOCK_STOP_LOSS
 
 
-def _get_portfolio_returns() -> tuple[pd.DataFrame, dict]:
+def _get_portfolio_returns(db_path=None) -> tuple[pd.DataFrame, dict]:
     """포트폴리오 수익률 데이터 + 비중 계산."""
-    holdings = query_df("""
+    holdings = query_df(
+        """
         SELECT ticker, SUM(quantity) as total_qty
         FROM portfolio GROUP BY ticker
-    """)
+    """,
+        db_path=db_path,
+    )
     if holdings.empty:
         return pd.DataFrame(), {}
 
@@ -39,6 +42,7 @@ def _get_portfolio_returns() -> tuple[pd.DataFrame, dict]:
         latest = query(
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
             (row["ticker"],),
+            db_path=db_path,
         )
         if latest and latest[0]["close"]:
             values[row["ticker"]] = latest[0]["close"] * row["total_qty"]
@@ -50,16 +54,22 @@ def _get_portfolio_returns() -> tuple[pd.DataFrame, dict]:
     weights = {t: v / total for t, v in values.items()}
 
     # 일간 수익률
-    prices = query_df("SELECT ticker, date, close FROM prices ORDER BY date")
+    prices = query_df("SELECT ticker, date, close FROM prices ORDER BY date", db_path=db_path)
     pivot = prices.pivot_table(index="date", columns="ticker", values="close")
     returns = pivot.ffill().pct_change(fill_method=None).dropna()
 
     return returns, weights
 
 
-def analyze_risk() -> dict:
-    """Riskfolio-Lib 기반 포트폴리오 리스크 분석."""
-    returns, weights = _get_portfolio_returns()
+def analyze_risk(db_path=None) -> dict:
+    """Riskfolio-Lib 기반 포트폴리오 리스크 분석.
+
+    `db_path` 는 선택이다 — 기존 호출자 5곳은 인자 없이 부른다. 받아야 하는
+    이유는 `nuri/llm/report.py::gather_context` 다: 거기서 다른 10개 섹션에는
+    db_path 를 제대로 넘기면서 이 한 줄만 빠져, 테스트가 격리해도 이 경로만
+    기본 DB 로 샜다 (#1051).
+    """
+    returns, weights = _get_portfolio_returns(db_path=db_path)
     if returns.empty or not weights:
         return {}
 
@@ -71,7 +81,10 @@ def analyze_risk() -> dict:
     port_returns = (returns[common] * w).sum(axis=1)
 
     # 리스크프리 레이트
-    rf_rows = query("SELECT value FROM macro WHERE indicator = 'fed_funds_rate' ORDER BY date DESC LIMIT 1")
+    rf_rows = query(
+        "SELECT value FROM macro WHERE indicator = 'fed_funds_rate' ORDER BY date DESC LIMIT 1",
+        db_path=db_path,
+    )
     rf_annual = rf_rows[0]["value"] / 100 if rf_rows else 0.05
 
     # 연환산 수익률/변동성
@@ -104,12 +117,13 @@ def analyze_risk() -> dict:
 
     # 종목별 손절선 체크
     stop_loss_alerts = []
-    holdings = query_df("SELECT ticker, avg_price FROM portfolio")
+    holdings = query_df("SELECT ticker, avg_price FROM portfolio", db_path=db_path)
     for _, row in holdings.iterrows():
         ticker = row["ticker"]
         latest = query(
             "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
             (ticker,),
+            db_path=db_path,
         )
         if latest and latest[0]["close"] and row["avg_price"]:
             pnl_pct = (latest[0]["close"] - row["avg_price"]) / row["avg_price"] * 100

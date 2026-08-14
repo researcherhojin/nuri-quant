@@ -182,7 +182,7 @@ def gather_context(db_path=None) -> ReportContext:
     try:
         from nuri.analysis.risk import analyze_risk
 
-        metrics = analyze_risk()
+        metrics = analyze_risk(db_path=db_path)
         if metrics:
             sharpe = metrics.get("sharpe_ratio", "N/A")
             mdd = metrics.get("max_drawdown_pct", "N/A")
