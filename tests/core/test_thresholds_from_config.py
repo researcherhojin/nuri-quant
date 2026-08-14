@@ -52,22 +52,56 @@ def _tree(rel: str) -> ast.Module:
 
 def _module_level_assignments(tree: ast.Module) -> set[str]:
     """모듈 최상위에서 대입되는 이름. 함수/클래스 안쪽은 보지 않는다."""
-    names: set[str] = set()
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names.add(node.target.id)
-    return names
+    return {n for n, _ in _module_scope_assignments(tree)}
+
+
+def _module_scope_statements(tree: ast.Module):
+    """모듈 스코프에서 **실행되는** 모든 문. 함수/클래스 본문은 안 들어간다.
+
+    `tree.body` 만 보면 안 된다 — `if` / `try` / `for` / `with` 안의 대입도
+    import 시점에 실행되므로 모듈 스코프다. 최상위만 훑던 첫 판은
+    `if True: CONVICTION_EMIT_CUTOFF = 0.70` 을 놓쳤다 (2026-08-14 실측).
+    실제로 사람이 쓸 법한 형태는 `try: from ... import X / except ImportError: X = 0.70` 이고,
+    그게 통과하면 하드코딩이 조용히 돌아온다.
+    """
+    stack = list(tree.body)
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue  # 다른 스코프 — 여기 대입은 모듈 전역을 안 바꾼다
+        for field in ("body", "orelse", "finalbody"):
+            stack.extend(getattr(node, field, []) or [])
+        for handler in getattr(node, "handlers", []) or []:
+            stack.extend(handler.body)
+
+
+def _module_scope_assignments(tree: ast.Module):
+    """(이름, 대입식) 쌍. 튜플 언패킹과 `globals()[...] = ...` 도 잡는다."""
+    for node in _module_scope_statements(tree):
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            yield node.target.id, node.value
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                for sub in ast.walk(t):  # 튜플/리스트 언패킹 전개
+                    if isinstance(sub, ast.Name):
+                        yield sub.id, node.value
+                    # `globals()["X"] = ...` — 이름을 문자열 뒤에 숨기는 우회
+                    elif (
+                        isinstance(sub, ast.Subscript)
+                        and isinstance(sub.value, ast.Call)
+                        and getattr(sub.value.func, "id", "") == "globals"
+                        and isinstance(sub.slice, ast.Constant)
+                        and isinstance(sub.slice.value, str)
+                    ):
+                        yield sub.slice.value, node.value
 
 
 def _module_level_value(tree: ast.Module, name: str) -> ast.expr | None:
-    """모듈 최상위에서 `name` 에 대입된 **식**. 없으면 None."""
-    for node in tree.body:
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
-            return node.value
-        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
-            return node.value
+    """모듈 스코프에서 `name` 에 대입된 **식**. 없으면 None."""
+    for n, value in _module_scope_assignments(tree):
+        if n == name:
+            return value
     return None
 
 
@@ -112,7 +146,14 @@ class TestThresholdsComeFromConfig:
 
 
 class TestConfigBlocksExist:
-    """로더 기본값이 YAML 부재를 가려주므로, 블록 자체의 존재를 따로 잠근다."""
+    """로더 기본값이 YAML 부재를 가려주므로, 블록 자체의 존재를 따로 잠근다.
+
+    `nuri/core/rules.py` 의 `.get(..., 0.70)` 기본값은 **옮기기 전 리터럴과 같은
+    값**이다. 그래서 YAML 블록을 지우면 런타임은 아무 소리 없이 예전 동작으로
+    돌아간다 (2026-08-14 실측). 기본값을 없애면 config 파일 하나가 깨졌을 때
+    import 자체가 죽으므로, 기본값은 두되 **블록의 존재를 테스트로 강제**하는 쪽을
+    택했다. 이 클래스가 그 역할이고, 지우면 위 트레이드오프가 무너진다.
+    """
 
     def test_decision_compiler_block_is_present_and_complete(self) -> None:
         dc = RULES.get("decision_compiler")
