@@ -232,7 +232,7 @@ def generate_portfolio_heatmap(output_dir: Path, db_path=None) -> Path:
     """포트폴리오 트리맵: 크기=포지션 가치, 색상=손익%."""
     from nuri.analysis.portfolio import analyze_portfolio
 
-    df = analyze_portfolio()
+    df = analyze_portfolio(db_path=db_path)
     output_path = output_dir / "portfolio_heatmap.html"
 
     if df.empty:
@@ -722,7 +722,7 @@ def _detect_portfolio_violations(db_path=None) -> list[dict]:
     try:
         from nuri.analysis.portfolio import analyze_portfolio
 
-        df = analyze_portfolio()
+        df = analyze_portfolio(db_path=db_path)
     except Exception:
         return []
 

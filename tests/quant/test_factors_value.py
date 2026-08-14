@@ -148,7 +148,7 @@ class TestValueDbRead:
         """get_tickers() 가 빈 리스트 → empty (line 24)."""
         from nuri.quant.factors import value as vmod
 
-        monkeypatch.setattr("nuri.core.db.get_tickers", lambda: [])
+        monkeypatch.setattr("nuri.core.db.get_tickers", lambda **kw: [])
         df = vmod.compute_value()
         assert df.empty
 

@@ -88,7 +88,7 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
 
         from nuri.trading.engine.conflicts import detect_conflicts
 
-        conflicts = detect_conflicts(candidates)
+        conflicts = detect_conflicts(candidates, db_path=db_path)
         conflict_tickers = {
             cf.ticker for cf in conflicts if cf.conflict_type == "direction_conflict" and cf.severity == "high"
         }

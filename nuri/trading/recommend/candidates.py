@@ -427,7 +427,7 @@ def screen_candidates(lookback_days: int = 5, db_path=None) -> list[Candidate]:
     try:
         from nuri.trading.engine.conflicts import detect_conflicts
 
-        conflicts = detect_conflicts(candidates)
+        conflicts = detect_conflicts(candidates, db_path=db_path)
         # 충돌 종목 세트
         conflict_tickers = {}
         for cf in conflicts:

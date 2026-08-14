@@ -107,7 +107,7 @@ class TestQualityDbRead:
         """tickers=None + get_tickers() 가 빈 리스트 → empty df (line 24)."""
         from nuri.quant.factors import quality as qmod
 
-        monkeypatch.setattr("nuri.core.db.get_tickers", lambda: [])
+        monkeypatch.setattr("nuri.core.db.get_tickers", lambda **kw: [])
         df = qmod.compute_quality()
         assert df.empty
 
@@ -126,7 +126,7 @@ class TestQualityDbRead:
                 ("000660.KS", "2026-04-15", 0.09, 0.11),
             ],
         )
-        monkeypatch.setattr("nuri.core.db.get_tickers", lambda: ["005930.KS", "000660.KS"])
+        monkeypatch.setattr("nuri.core.db.get_tickers", lambda **kw: ["005930.KS", "000660.KS"])
         df = qmod.compute_quality()
         assert not df.empty
         assert set(df.index) == {"005930.KS", "000660.KS"}

@@ -150,17 +150,20 @@ def _classify_regime_fresh(db_path=None) -> str | None:
         return None
 
 
-def _current_regime() -> str | None:
+def _current_regime(db_path=None) -> str | None:
     """현재 regime label. certify() scope 내에서 호출되면 snapshot regime, 아니면 fresh.
 
     **Rigor invariant (R2 P2 full fix)**: certify() 실행 중 모든 `_current_regime()`
     호출 (gate eval + _persist_certification) 은 **같은 값** 반환 → audit row regime
     과 gate eval 에서 사용된 regime 이 identically 일치.
+
+    snapshot 이 없는 경로(게이트를 직접 호출하는 테스트/감사 헬퍼)에서는 `db_path`
+    가 실제로 쓰인다 — 없으면 호출자가 격리 DB 를 넘겨도 기본 DB 로 샜다 (#1052).
     """
     snap = _CERT_SNAPSHOT.get()
     if snap is not None:
         return snap.regime
-    return _classify_regime_fresh()
+    return _classify_regime_fresh(db_path=db_path)
 
 
 def _snapshot_portfolio_raw(db_path=None) -> list[dict]:
@@ -189,7 +192,7 @@ def _read_portfolio_raw(db_path=None) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def _snapshot_portfolio() -> "pd.DataFrame":
+def _snapshot_portfolio(db_path=None) -> "pd.DataFrame":
     """Certify() scope 내에서 호출되면 snapshot portfolio_df, 아니면 fresh analyze_portfolio().
 
     **Rigor invariant (R2 P2 full fix)**: certify() 실행 중 모든 gate 가 호출하는
@@ -197,6 +200,9 @@ def _snapshot_portfolio() -> "pd.DataFrame":
     → snapshot_hash 와 gate eval portfolio 가 identically 일치.
 
     Empty portfolio 는 빈 DataFrame 으로 정상 반환 (analyze_portfolio 와 shape 일치).
+
+    형제인 `_snapshot_portfolio_raw` 는 처음부터 `db_path` 를 받았다. 이쪽만 빠져
+    있어서, snapshot 이 없는 경로에서 게이트를 직접 부르면 기본 DB 로 샜다 (#1052).
     """
     snap = _CERT_SNAPSHOT.get()
     if snap is not None:
@@ -208,7 +214,7 @@ def _snapshot_portfolio() -> "pd.DataFrame":
         return snap.portfolio_df
     from nuri.analysis.portfolio import analyze_portfolio
 
-    return analyze_portfolio()
+    return analyze_portfolio(db_path=db_path)
 
 
 def _get_position_multiplier(regime: str | None) -> float:
@@ -249,11 +255,11 @@ def _check_position_limits(db_path=None) -> CertCondition:
     try:
         from nuri.core.rules import get_account_strategy
 
-        df = _snapshot_portfolio()
+        df = _snapshot_portfolio(db_path=db_path)
         if df.empty:
             return CertCondition("position_limit", "종목 비중 한도", True, "포트폴리오 비어있음")
 
-        regime = _current_regime()
+        regime = _current_regime(db_path=db_path)
         multiplier = _get_position_multiplier(regime)
 
         # 종목별 합산 비중 + 해당 종목이 속한 계좌들의 가장 관대한 한도
@@ -282,7 +288,7 @@ def _check_position_limits(db_path=None) -> CertCondition:
 def _check_sector_limits(db_path=None) -> CertCondition:
     """2. 섹터 비중 <= 35%. Portfolio snapshot 참조 (R2 P2 rigor)."""
     try:
-        df = _snapshot_portfolio()
+        df = _snapshot_portfolio(db_path=db_path)
         if df.empty:
             return CertCondition("sector_limit", "섹터 비중 <= 35%", True, "포트폴리오 비어있음")
 
@@ -518,7 +524,7 @@ def _check_stop_loss_compliance(db_path=None) -> CertCondition:
     try:
         from nuri.core.rules import get_account_strategy
 
-        df = _snapshot_portfolio()
+        df = _snapshot_portfolio(db_path=db_path)
         if df.empty:
             return CertCondition("stop_loss", "손절선 준수", True, "포트폴리오 비어있음")
 

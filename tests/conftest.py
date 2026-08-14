@@ -190,46 +190,7 @@ def mock_yfinance(monkeypatch):
         pass
 
 
-def test_the_guard_actually_bites(tmp_path, monkeypatch):
-    """가드가 **실제로 예외를 던지는지** — 등록만 되고 안 무는 걸 막는다.
-
-    이 레포는 훅 2개가 3.5개월간 조용히 무력했던 전례가 있다
-    (`.claude/rules/enforcement.md`). autouse 픽스처도 같은 방식으로 죽을 수
-    있으므로, 가드가 켜진 상태에서 실 DB 경로를 열어 보고 터지는지 확인한다.
-
-    ⚠️ 이 파일에 테스트를 두는 건 예외적이다. 가드가 conftest 에 있고 그
-    autouse 효과 자체를 검증해야 해서, 같은 스코프 안이어야 의미가 있다.
-    """
-    import sqlite3
-
-    with pytest.raises(_ProductionDBTouched, match="프로덕션 DB"):
-        sqlite3.connect(str(_REAL_DB))
-
-
-def test_the_guard_leaves_other_paths_alone(tmp_path):
-    """tmp DB 는 막지 않는다 — 막으면 전 스위트가 죽는다."""
-    import sqlite3
-
-    p = tmp_path / "ok.db"
-    sqlite3.connect(str(p)).close()
-    assert p.exists()
-
-
-def test_the_guard_survives_a_broad_except(tmp_path):
-    """광범위 `except Exception` 이 가드를 삼키면 안 된다.
-
-    프로덕션 코드는 섹션마다 `except Exception` 으로 감싸는 곳이 많다
-    (`nuri/llm/report.py::gather_context`). 가드가 `AssertionError` 였을 때
-    실제로 삼켜져서, 격리를 꺼도 테스트가 초록이었다 (2026-08-14 실측).
-    """
-    import sqlite3
-
-    swallowed = False
-    try:
-        try:
-            sqlite3.connect(str(_REAL_DB))
-        except Exception:  # noqa: BLE001 — 프로덕션 코드의 실제 패턴을 재현
-            swallowed = True
-    except _ProductionDBTouched:
-        pass
-    assert not swallowed, "가드가 `except Exception` 에 삼켜졌다 — 백스톱이 아니다"
+# ⚠️ 이 가드의 회귀 테스트는 `tests/test_production_db_guard.py` 에 있다.
+# 여기 두면 **수집되지 않는다** — pytest 의 `python_files` 기본값이 `test_*.py` 라
+# conftest.py 는 플러그인으로 import 될 뿐 테스트 모듈이 아니다. 파일을 인자로
+# 명시하면 수집돼서 "돌려서 확인했다"는 착각을 만든다 (2026-08-14 실측).
