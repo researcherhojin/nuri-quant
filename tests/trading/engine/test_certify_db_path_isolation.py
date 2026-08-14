@@ -107,3 +107,72 @@ class TestCertifyReadsOnlyTheGivenDb:
 
         assert "db_path" in inspect.signature(analyze_portfolio).parameters
         assert "db_path" in inspect.signature(get_exchange_rate).parameters
+
+
+class TestGatesReadOnlyTheGivenDbOutsideCertify:
+    """게이트를 `certify()` **밖에서** 직접 부를 때도 `db_path` 만 읽어야 한다.
+
+    위 클래스는 `_capture_snapshot()` 경로를 덮는다. 그 경로에서는 `CertSnapshot`
+    ContextVar 가 세팅돼 있어서 `_snapshot_portfolio()` / `_current_regime()` 이
+    DB 를 아예 안 읽고 스냅샷을 반환한다 — 그래서 그 둘의 `db_path` 배선이
+    빠져 있어도 위 테스트가 전부 통과했다 (2026-08-14 실측: 배선 6곳을 되돌려도
+    `tests/trading/engine/` + `tests/llm/` 611개가 초록이었다).
+
+    스냅샷이 없는 경로 — 테스트·감사 헬퍼가 게이트를 직접 부르는 형태 — 만이
+    그 배선을 실제로 실행한다. AST 스윕(`tests/core/test_db_path_forwarding.py`)
+    은 구조만 보므로, 동작으로 잠그는 건 여기다.
+    """
+
+    @staticmethod
+    def _seed_violating_position(db_path) -> None:
+        """단일 종목이 포트폴리오의 100% — position_limit 를 확실히 위반시킨다."""
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("test", "AAA", 100, 100.0, "USD", "Technology"),
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("AAA", "2026-08-14", 100.0, 101.0, 99.0, 100.0, 1000),
+            )
+            conn.execute(
+                "INSERT INTO macro (indicator, date, value, source) VALUES (?, ?, ?, ?)",
+                ("usd_krw", "2026-08-14", 1400.0, "test"),
+            )
+
+    @pytest.mark.parametrize(
+        "gate_name",
+        ["_check_position_limits", "_check_sector_limits", "_check_stop_loss_compliance"],
+    )
+    def test_gate_touches_no_other_database(self, gate_name: str, db_path, monkeypatch):
+        import nuri.core.db.connection as conn_mod
+        from nuri.trading.engine import certification as cert
+
+        self._seed_violating_position(db_path)
+
+        opened: list[str] = []
+        original = conn_mod.sqlite3.connect
+
+        def spy(path, *args, **kwargs):
+            opened.append(str(path))
+            return original(path, *args, **kwargs)
+
+        monkeypatch.setattr(conn_mod.sqlite3, "connect", spy)
+        getattr(cert, gate_name)(db_path=db_path)
+
+        others = {p for p in opened if p != str(db_path)}
+        assert not others, f"{gate_name} 이 db_path 외의 DB 를 열었다: {sorted(others)}"
+        assert opened, f"{gate_name} 이 아무 DB 도 안 열었다 — 경로를 안 탄 것"
+
+    def test_position_limit_sees_the_seeded_violation(self, db_path):
+        """경로가 실제로 데이터를 읽는지 — 열기만 하고 안 읽으면 위 테스트가 공허하다."""
+        from nuri.trading.engine import certification as cert
+
+        self._seed_violating_position(db_path)
+        cond = cert._check_position_limits(db_path=db_path)
+
+        assert cond.passed is False, f"단일 종목 100% 인데 통과했다: {cond.detail}"
+        assert "AAA" in cond.detail

@@ -80,7 +80,7 @@ def _collect_context(db_path=None) -> dict:
     try:
         from nuri.core.freshness import get_freshness_summary
 
-        ctx["freshness"] = get_freshness_summary()
+        ctx["freshness"] = get_freshness_summary(db_path)
     except Exception:
         logger.warning("freshness summary 실패", exc_info=True)
 
@@ -106,7 +106,7 @@ def _collect_context(db_path=None) -> dict:
                 "threshold": s.threshold,
                 "detail": s.detail,
             }
-            for s in detect_all()
+            for s in detect_all(db_path=db_path)
         ]
     except Exception:
         logger.warning("shadow signals detect 실패", exc_info=True)
