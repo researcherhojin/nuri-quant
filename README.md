@@ -172,7 +172,7 @@ make scan           # Daily swing scan (us_core, 85 tickers)
 make scan-extended  # Weekly swing scan (us_core + S&P 500 extension, 543 tickers)
 
 make test-fast      # backend, slow tests excluded
-make test           # full backend suite (adds 24 slow-marked tests)
+make test           # full backend suite (adds 27 slow-marked tests)
 make ci-cov         # combine CI shard artifacts — ground-truth coverage
 
 make verify-quick   # pre-commit smoke gate

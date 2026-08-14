@@ -7,8 +7,8 @@
 #
 # Usage:
 #   bash scripts/ci_local.sh           # full backend test parity
-#   bash scripts/ci_local.sh --lint    # lint only (10s)
-#   bash scripts/ci_local.sh --quick   # smoke test (~30s)
+#   bash scripts/ci_local.sh --lint    # lint only (0.05s)
+#   bash scripts/ci_local.sh --quick   # smoke test (6.4s)
 
 set -euo pipefail
 
