@@ -27,9 +27,12 @@ class StaleExchangeRateError(Exception):
     """환율 데이터가 DB에 없을 때 발생하는 에러."""
 
 
-def get_exchange_rate() -> float:
+def get_exchange_rate(db_path=None) -> float:
     """USD/KRW 환율 조회. 7일 이상 오래되면 WARNING, DB에 없으면 에러."""
-    rows = query("SELECT value, date FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1")
+    rows = query(
+        "SELECT value, date FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1",
+        db_path=db_path,
+    )
     if rows:
         rate = rows[0]["value"]
         rate_date = rows[0]["date"]
@@ -66,20 +69,29 @@ def get_exchange_rate() -> float:
     )
 
 
-def analyze_portfolio() -> pd.DataFrame:
-    """포트폴리오 전체 현황 분석."""
+def analyze_portfolio(db_path=None) -> pd.DataFrame:
+    """포트폴리오 전체 현황 분석.
+
+    `db_path` 는 선택이다 — 기존 호출자 10곳은 인자 없이 부르고 기본 DB 를 쓴다.
+    받아야 하는 이유는 `certification._capture_snapshot()` 이다: 그쪽이 감사
+    스냅샷을 뜨면서 이 함수만 db_path 를 못 넘겨, 스냅샷이 절반은 지정 DB
+    절반은 기본 DB 에서 오는 상태였다 (#1050).
+    """
     # 보유 종목 조회
-    holdings = query_df("""
+    holdings = query_df(
+        """
         SELECT p.account, p.ticker, p.quantity, p.avg_price, p.currency, p.sector
         FROM portfolio p
         ORDER BY p.account, p.ticker
-    """)
+    """,
+        db_path=db_path,
+    )
 
     if holdings.empty:
         logger.warning("보유 종목이 없습니다")
         return pd.DataFrame()
 
-    usd_krw = get_exchange_rate()
+    usd_krw = get_exchange_rate(db_path=db_path)
 
     # 종목별 최신 가격 조회
     results = []
@@ -88,6 +100,7 @@ def analyze_portfolio() -> pd.DataFrame:
         latest = query(
             "SELECT close, date FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
             (ticker,),
+            db_path=db_path,
         )
 
         if not latest:
