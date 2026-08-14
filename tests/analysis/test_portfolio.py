@@ -106,7 +106,7 @@ class TestPortfolioCoverageGaps:
                 ("test", "ZZZNOPRICE", 10, 100.0, "USD", "Tech"),
             )
 
-        monkeypatch.setattr(port_mod, "get_exchange_rate", lambda: 1400.0)
+        monkeypatch.setattr(port_mod, "get_exchange_rate", lambda db_path=None: 1400.0)
         result = port_mod.analyze_portfolio()
         assert result.empty
 
@@ -127,7 +127,7 @@ class TestPortfolioCoverageGaps:
                 ("TSLL", "2026-05-01", 9.0, 11.0, 8.5, 10.5, 1000, 10.5),
             )
 
-        monkeypatch.setattr(port_mod, "get_exchange_rate", lambda: 1400.0)
+        monkeypatch.setattr(port_mod, "get_exchange_rate", lambda db_path=None: 1400.0)
         df = port_mod.analyze_portfolio()
         assert any("TSLL" in w and "레버리지" in w for w in df.attrs.get("warnings", []))
 
@@ -154,7 +154,7 @@ class TestPortfolioCoverageGaps:
                 ("TQQQ", "2026-05-01", 9.0, 11.0, 8.5, 10.5, 1000, 10.5),
             )
 
-        monkeypatch.setattr(port_mod, "get_exchange_rate", lambda: 1400.0)
+        monkeypatch.setattr(port_mod, "get_exchange_rate", lambda db_path=None: 1400.0)
         df = port_mod.analyze_portfolio()
         assert any("TQQQ" in w and "레버리지" in w for w in df.attrs.get("warnings", []))
 
@@ -181,7 +181,7 @@ class TestPortfolioCoverageGaps:
                 ("035720.KQ", "2026-05-01", 70000, 71000, 69000, 70000, 1000, 70000),
             )
 
-        monkeypatch.setattr(port_mod, "get_exchange_rate", lambda: 1400.0)
+        monkeypatch.setattr(port_mod, "get_exchange_rate", lambda db_path=None: 1400.0)
         df = port_mod.analyze_portfolio()
         row = df[df["ticker"] == "035720.KQ"].iloc[0]
         # 70000 KRW / 1400 = 50 USD. suffix 무시 시 70000 USD 로 오변환.
