@@ -86,7 +86,7 @@ scripts/
 | `setup.sh` | venv + deps + DB init | `make setup` |
 | `start.sh` | API + Dashboard start | `make start` |
 | `demo.sh` | demo workflow run | `bash scripts/dev/demo.sh` |
-| `ci_local.sh` | local CI parity (~30s smoke / full) | `bash scripts/dev/ci_local.sh [--lint\|--quick]` |
+| `ci_local.sh` | local CI parity (6.4s smoke / full) | `bash scripts/dev/ci_local.sh [--lint\|--quick]` |
 | `codex_review.sh` | Codex CLI review wrapper | `bash scripts/dev/codex_review.sh` |
 | `install_hooks.sh` | git hooks install | `make setup-hooks` |
 | `llm_consult.py` | codex + local-LLM dual-archive consult | `make llm-consult slug=X prompt=path` |

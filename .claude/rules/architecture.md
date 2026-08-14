@@ -16,7 +16,7 @@
 - Reactive: `make recommend` (BUY candidates + tracker) / `/nuri-thesis <T>` skill (`nuri/llm/thesis_query.py`) / `make earnings-preview ticker=<T>`
 - LLM consult dual-archive: `make llm-consult slug=<kebab> prompt=<file>`
 - Lint+Test: `make lint` / `make test-fast` / `.venv/bin/python -m pytest <path>::<test> -v`
-- Gates: `make verify-quick` (~10s pre-commit smoke) / `make verify-all` (~30s pre-push: tests + lint + frontend)
+- Gates: `make verify-quick` (pre-commit smoke, 84.9s) / `make verify-all` (pre-push: tests + lint + frontend, 320.8s) — M5 Max 2026-08-14. 어떤 게이트도 이 숫자를 검사하지 않으므로 조용히 낡는다(직전 값 `~10s`/`~30s` 는 실측의 1/8·1/10 이었다)
 - Deploy: `make start` (API :8001 + Dashboard :3000) / `make deploy-mini` (MBP → Mac mini 7단계 동기화)
 
 Frontend-only commands → `frontend/CLAUDE.md`.

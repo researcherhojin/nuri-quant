@@ -5,8 +5,8 @@
 ## TL;DR — 매 push 전
 
 ```bash
-bash scripts/verify/pre_push_check.sh           # full (~2 min)
-bash scripts/verify/pre_push_check.sh --quick   # smoke (~30 s)
+bash scripts/verify/pre_push_check.sh           # full (106s)
+bash scripts/verify/pre_push_check.sh --quick   # smoke (6s)
 ```
 
 이 한 명령이 4 패턴을 잡는다:
@@ -22,7 +22,7 @@ bash scripts/verify/pre_push_check.sh --quick   # smoke (~30 s)
 
 | Script | 역할 | Quick mode |
 |---|---|---|
-| `scripts/dev/ci_local.sh` | CI parity (`pytest -n auto`, Linux-only flake catch) | `--quick` (~30s), `--lint` (~5s) |
+| `scripts/dev/ci_local.sh` | CI parity (`pytest -n auto`, Linux-only flake catch) | `--quick` (6.4s), `--lint` (0.05s — ruff is that fast) |
 | `scripts/verify/check_drift.py` | uncommitted vs committed 의존성 분석. 0/1-5/6-20/>20 severity band. | `--strict` (exit 1), `--silent` |
 | `scripts/verify/pre_push_check.sh` | drift + lint + tests + commit format 일괄 | `--quick`, `--skip-tests` |
 | `scripts/verify/check_atomic.sh` | multi-commit branch 각 commit 독립 검증 | `HEAD~3..HEAD` range |

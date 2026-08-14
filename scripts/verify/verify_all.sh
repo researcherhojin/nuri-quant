@@ -37,7 +37,8 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 banner "Nuri-Quant System Verification"
 
-# 1. Tests (yfinance mocked via conftest.py → ~5s)
+# 1. Tests (yfinance mocked via conftest.py — 네트워크 없음. 287s, M5 Max 2026-08-14:
+#    이 단계는 xdist 없이 단일 프로세스라 `make test-fast`(81.2s)보다 느리다)
 echo ""; echo "━━━ 1/5. Unit Tests ━━━"
 tests_log="$tmpdir/unit_tests.log"
 if $PYTHON -m pytest tests/ -q --tb=line >"$tests_log" 2>&1; then
