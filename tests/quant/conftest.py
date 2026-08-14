@@ -2,12 +2,11 @@
 
 Auto-loaded by pytest. Helpers live in _helpers.py to be importable.
 
-⚠️ 이 디렉터리의 테스트는 **프로덕션 DB 를 열 수 없다** — `_forbid_production_db`
-autouse 가드가 강제한다. 왜 필요한지는 그 픽스처의 docstring 참조.
+프로덕션 DB 격리와 접근 금지 가드는 **`tests/conftest.py`** 에 있다 — 이 디렉터리만이
+아니라 전 스위트에 적용된다.
 """
 
 from datetime import timedelta
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -24,56 +23,6 @@ from tests.quant._helpers import (  # noqa: F401
     _seed_prices,
     _seed_spy_data,
 )
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 프로덕션 DB 접근 금지 가드
-# ─────────────────────────────────────────────────────────────────────────────
-_REAL_DB = Path(__file__).resolve().parents[2] / "data" / "portfolio.db"
-
-
-@pytest.fixture(autouse=True)
-def _forbid_production_db(monkeypatch):
-    """실 `data/portfolio.db` 를 여는 순간 그 테스트를 **즉시** 실패시킨다.
-
-    왜 관측이 아니라 차단인가
-    -------------------------
-    프로덕션 DB 를 읽는 테스트는 조용히 통과한다. 초록이라 아무도 안 본다.
-    실제로 일어난 일 (2026-08-14 실측):
-
-    - `TestMapStrategySpecialAndFallback` 7개가 `map_regime_to_strategy()` 를
-      `db_path` 없이 불러 `analyze_signal_by_regime(None)` → `_get_vix()` 가
-      SPY 행마다 도는 바람에 **테스트당 커넥션 1,118회 / 2.25초**를 썼다.
-      그리고 다른 테스트가 같은 파일에 **쓴다** (`tests/CLAUDE.md`) — `-n auto`
-      로 워커가 붙으면 읽는 쪽이 깨진다. `test_high_vol_no_stats_truncates` 가
-      전체 실행 5회 중 1회 실패했고 단독 실행은 늘 통과했다. 원인을 찾는 데
-      든 시간이 고치는 데 든 시간보다 훨씬 길었다.
-    - `test_macro_payload_carries_coverage` 는 tmp DB 에 seed 해놓고 정작
-      **프로덕션 데이터를 보고 통과**하고 있었다. 통과가 거짓이었다.
-
-    가드를 걷어내면 tests/quant 실행 시간이 41s → 105s 로 돌아간다.
-
-    쓰기가 아니라 **여는 순간** 터뜨린다 — 읽기만 해도 위 두 문제가 다 생기고,
-    쓰기까지 기다리면 이미 느려진 뒤다. (`tests/verify/conftest.py` 의 문서
-    fixer 가드와 같은 설계: 피해가 난 뒤가 아니라 겨눈 순간.)
-
-    빠져나갈 구멍: 정말 프로덕션 DB 가 필요하면 이 픽스처를 override 할 것.
-    조용히 우회하지 말고 이유를 그 자리에 적어야 한다.
-    """
-    import nuri.core.db.connection as conn_mod
-
-    real = str(_REAL_DB)
-    original = conn_mod.sqlite3.connect
-
-    def guarded(path, *args, **kwargs):
-        if str(path) == real:
-            raise AssertionError(
-                f"테스트가 프로덕션 DB 를 열었다: {path}\n"
-                "tmp DB 를 쓸 것 — 대상 함수가 db_path 인자를 받으면 `db_path` 픽스처를,\n"
-                "전역 DB_PATH 를 읽으면 `db_path_mp` 픽스처를 쓴다."
-            )
-        return original(path, *args, **kwargs)
-
-    monkeypatch.setattr(conn_mod.sqlite3, "connect", guarded)
 
 
 @pytest.fixture
@@ -629,28 +578,3 @@ def short_squeeze_data(db_path):
                 (d.strftime("%Y-%m-%d"), "shortinterest", "SQZZ", "short_interest", "15%", 15.0, "2025-01-01"),
             )
     return db_path
-
-
-def test_the_guard_actually_bites(tmp_path, monkeypatch):
-    """가드가 **실제로 예외를 던지는지** — 등록만 되고 안 무는 걸 막는다.
-
-    이 레포는 훅 2개가 3.5개월간 조용히 무력했던 전례가 있다
-    (`.claude/rules/enforcement.md`). autouse 픽스처도 같은 방식으로 죽을 수
-    있으므로, 가드가 켜진 상태에서 실 DB 경로를 열어 보고 터지는지 확인한다.
-
-    ⚠️ 이 파일에 테스트를 두는 건 예외적이다. 가드가 conftest 에 있고 그
-    autouse 효과 자체를 검증해야 해서, 같은 스코프 안이어야 의미가 있다.
-    """
-    import sqlite3
-
-    with pytest.raises(AssertionError, match="프로덕션 DB"):
-        sqlite3.connect(str(_REAL_DB))
-
-
-def test_the_guard_leaves_other_paths_alone(tmp_path):
-    """tmp DB 는 막지 않는다 — 막으면 전 스위트가 죽는다."""
-    import sqlite3
-
-    p = tmp_path / "ok.db"
-    sqlite3.connect(str(p)).close()
-    assert p.exists()
