@@ -69,10 +69,14 @@ Rationale: an LLM has no live prices and no view of the user's cash flow, taxes,
 ```bash
 make setup                   # venv + deps + DB init
 make test                    # full pytest (xdist parallel)
-make test-fast               # exclude slow LLM tests (~24s, PR CI)
-make verify-quick            # ~10s pre-commit smoke
-make verify-all              # ~30s pre-push (tests + lint + frontend)
+make test-fast               # exclude the 27 slow-marked tests (81.2s, PR CI)
+make verify-quick            # pre-commit smoke (84.9s)
+make verify-all              # pre-push: tests + lint + frontend (320.8s)
 make start                   # API(:8001) + Dashboard(:3000)
 ```
+
+Timings: M5 Max, 2026-08-14. Nothing gates these numbers — `make verify-doc-counts`
+checks the backend test **file** count but not durations, the slow-marker count, or
+coverage, so they drift silently (all three above were stale until re-measured).
 
 Full make-target catalog: `CLAUDE.md`.

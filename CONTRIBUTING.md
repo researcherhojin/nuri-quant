@@ -17,7 +17,7 @@ before proposing any non-trivial change.
 brew install ta-lib
 make setup                     # creates .venv, installs deps, initializes DB
 cd frontend && npm ci          # frontend deps
-make verify-quick              # ~10s smoke test (no network)
+make verify-quick              # smoke test, no network (84.9s on an M5 Max, 2026-08-14)
 ```
 
 ## The hard rules

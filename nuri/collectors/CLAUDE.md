@@ -73,6 +73,33 @@ ThreadPoolExecutor caveat: `.result(timeout=)` cancels FUTURE only — underlyin
 | `obb.equity.estimates.price_target` | No | `benzinga` / `fmp` |
 | `obb.equity.ownership.*` | No | `fmp` |
 
+## 전면 실패는 빈 수집과 다르다 (#1043)
+
+수집기가 **모든 엔드포인트에서 실패**했는데 `[]` 를 반환하면, 보고할 게 없던 날과
+DB 기록이 **완전히 같아진다** — 둘 다 warning 만 남기고 `collector_runs.status` 는
+`finished` 다. coingecko 는 `rows_collected` 가 `run_step` 이 돌려주는 4-key dict 의
+길이라 **항상 4**여서, status 가 유일한 판별자인데 그게 성공이라고 말하고 있었다.
+
+전면 실패 시 **raise 한다.** 새 장치를 만드는 게 아니라 이미 있으면서 우회되던 것들을
+되살리는 것이다 — `base.py` 의 3회 재시도, `_send_failure_alert()` 의 `#ops` 알림,
+scheduler 의 `status="failed"` + `error_message`, `step_failed` 파이프라인 이벤트,
+`collector_health` 의 실패 집계.
+
+두 가지가 미묘하다:
+- 조건은 `len(errors) == 2` 가 아니라 **`errors and not records`** — 한쪽이 예외이고
+  다른 쪽이 빈 응답인 경우도 실패다. 반대로 **둘 다 200 인데 본문이 비면** 예외가
+  없어 `[]` 가 그대로 나간다. 그게 NO_DATA 의 정의다.
+- `errors[-1]` 이 아니라 **`errors[0]`** 을 올린다. 둘 다 실패하면 마지막은 항상
+  global 이라, price 의 429 가 알림 문구에서 사라지고 운영자가 엉뚱한 원인을 좇는다.
+
+**Test:** `tests/collectors/test_coingecko.py::TestCoinGeckoFailedVsNoData` —
+`test_total_api_failure_raises_instead_of_returning_empty` (raise 제거 시 FAIL) ·
+`test_empty_payload_is_not_a_failure` (조건을 `errors` 로 넓히면 FAIL) ·
+`test_first_error_is_raised_not_the_last` (`errors[0]`→`errors[-1]` 이면 FAIL).
+
+⚠️ **형제 결함 미해결 — #1042**: `cboe.py:81` 과 `fear_greed.py:39` 가 같은 모양이다.
+새 수집기를 쓰거나 기존 것을 고칠 때 이 구분이 서 있는지 먼저 볼 것.
+
 ## Macro Data Quirk
 
 `us_3m_yield` (FRED) is absent in yfinance fallback — `^IRX` (13-week T-Bill) is stored as `us_2y_yield`. `merge_macro_data()` queries `us_2y_yield` when `us_3m_yield` is empty.

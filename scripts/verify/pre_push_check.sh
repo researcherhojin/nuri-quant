@@ -8,8 +8,8 @@
 # 4. Massive uncommitted file count (>20 = high drift risk)
 #
 # Usage:
-#   bash scripts/pre_push_check.sh           # full check (~2 min)
-#   bash scripts/pre_push_check.sh --quick   # skip full test run (~30s)
+#   bash scripts/pre_push_check.sh           # full check (106s)
+#   bash scripts/pre_push_check.sh --quick   # skip full test run (6s)
 #   bash scripts/pre_push_check.sh --skip-tests   # lint + drift only
 
 set -euo pipefail
@@ -89,7 +89,7 @@ if [ "$mode" != "--skip-tests" ]; then
             fail=1
         fi
     else
-        echo -e "  ${YELLOW}Mode: full (~2 min, exact CI command)${NC}"
+        echo -e "  ${YELLOW}Mode: full (106s, exact CI command)${NC}"
         if bash scripts/dev/ci_local.sh; then
             echo -e "${GREEN}✓ Full test parity passed${NC}\n"
         else
