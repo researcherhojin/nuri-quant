@@ -137,13 +137,13 @@ class CertSnapshot:
 _CERT_SNAPSHOT: ContextVar[CertSnapshot | None] = ContextVar("cert_snapshot", default=None)
 
 
-def _classify_regime_fresh() -> str | None:
+def _classify_regime_fresh(db_path=None) -> str | None:
     """DB fresh read. certify snapshot 과 무관하게 항상 재조회 (snapshot capture 용)."""
     try:
         from nuri.core.timezone import today_kst
         from nuri.quant.regime.classifier import classify_regime
 
-        state = classify_regime(date=today_kst())
+        state = classify_regime(date=today_kst(), db_path=db_path)
         return state.regime if state else None
     except Exception as e:
         logger.warning(f"regime 조회 실패 — neutral fallback: {e}")
@@ -890,11 +890,11 @@ def _capture_snapshot(db_path=None) -> CertSnapshot:
     """
     from nuri.analysis.portfolio import analyze_portfolio
 
-    regime = _classify_regime_fresh()
+    regime = _classify_regime_fresh(db_path=db_path)
     portfolio_raw = _read_portfolio_raw(db_path=db_path)
     portfolio_hash = _compute_portfolio_hash(rows=portfolio_raw)  # same source
     try:
-        portfolio_df = analyze_portfolio()
+        portfolio_df = analyze_portfolio(db_path=db_path)
         portfolio_error: Exception | None = None
     except Exception as e:
         portfolio_df = None
