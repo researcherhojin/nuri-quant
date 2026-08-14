@@ -93,9 +93,7 @@ def sleeve_utilization(db_path: Optional[Path] = None) -> list[dict[str, Any]]:
     from nuri.analysis.portfolio import analyze_portfolio
     from nuri.core.rules import get_account_strategy_name
 
-    # analyze_portfolio() 는 db_path 를 받지 않는다 (기본 DB 고정). 테스트는
-    # 이 함수를 patch 하거나 sleeve_members/caps 를 직접 검증한다.
-    df = analyze_portfolio()
+    df = analyze_portfolio(db_path=db_path)
     if df.empty:
         return []
 

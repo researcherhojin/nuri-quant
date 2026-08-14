@@ -440,7 +440,7 @@ class TestCertification_R23:
                 "account": ["test", "test"],
             }
         )
-        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda **kw: mock_df)
         cond = _check_position_limits(db_path)
         assert cond.passed is True
         assert "최대 비중" in cond.detail
@@ -455,7 +455,7 @@ class TestCertification_R23:
                 "account": ["test", "test"],
             }
         )
-        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda **kw: mock_df)
         cond = _check_position_limits(db_path)
         assert cond.passed is False
         assert "위반" in cond.detail
@@ -464,7 +464,7 @@ class TestCertification_R23:
         from nuri.trading.engine.certification import _check_position_limits
 
         monkeypatch.setattr(
-            "nuri.analysis.portfolio.analyze_portfolio", lambda: (_ for _ in ()).throw(RuntimeError("fail"))
+            "nuri.analysis.portfolio.analyze_portfolio", lambda **kw: (_ for _ in ()).throw(RuntimeError("fail"))
         )
         cond = _check_position_limits(db_path)
         assert cond.passed is False
@@ -480,7 +480,7 @@ class TestCertification_R23:
                 "weight_pct": [20.0, 15.0],
             }
         )
-        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda **kw: mock_df)
         cond = _check_sector_limits(db_path)
         assert cond.passed is True
 
@@ -488,7 +488,7 @@ class TestCertification_R23:
         from nuri.trading.engine.certification import _check_sector_limits
 
         monkeypatch.setattr(
-            "nuri.analysis.portfolio.analyze_portfolio", lambda: (_ for _ in ()).throw(RuntimeError("fail"))
+            "nuri.analysis.portfolio.analyze_portfolio", lambda **kw: (_ for _ in ()).throw(RuntimeError("fail"))
         )
         cond = _check_sector_limits(db_path)
         assert cond.passed is True
@@ -503,7 +503,7 @@ class TestCertification_R23:
                 "pnl_pct": [-25.0, 5.0],
             }
         )
-        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda **kw: mock_df)
         cond = _check_stop_loss_compliance(db_path)
         assert cond.passed is False
         assert "위반" in cond.detail
@@ -511,7 +511,9 @@ class TestCertification_R23:
     def test_check_stop_loss_exception(self, db_path, monkeypatch):
         from nuri.trading.engine.certification import _check_stop_loss_compliance
 
-        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: (_ for _ in ()).throw(RuntimeError()))
+        monkeypatch.setattr(
+            "nuri.analysis.portfolio.analyze_portfolio", lambda **kw: (_ for _ in ()).throw(RuntimeError())
+        )
         cond = _check_stop_loss_compliance(db_path)
         assert cond.passed is True
         assert "스킵" in cond.detail
@@ -764,7 +766,7 @@ class TestAccountStrategyIntegration:
                 "account": ["sub_account"],
             }
         )
-        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda **kw: mock_df)
         # swing 전략: stop_loss -15%
         monkeypatch.setattr(
             "nuri.core.rules.get_account_strategy", lambda a: {"stop_loss": -15, "max_single_position": 0.30}
@@ -784,7 +786,7 @@ class TestAccountStrategyIntegration:
                 "account": ["sub_account"],
             }
         )
-        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda **kw: mock_df)
         monkeypatch.setattr(
             "nuri.core.rules.get_account_strategy", lambda a: {"stop_loss": -15, "max_single_position": 0.30}
         )
@@ -804,7 +806,7 @@ class TestAccountStrategyIntegration:
                 "account": ["main_account"],
             }
         )
-        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda **kw: mock_df)
         monkeypatch.setattr(
             "nuri.core.rules.get_account_strategy", lambda a: {"stop_loss": -7, "max_single_position": 0.15}
         )
@@ -823,7 +825,7 @@ class TestAccountStrategyIntegration:
                 "account": ["main", "sub"],
             }
         )
-        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda **kw: mock_df)
         monkeypatch.setattr(
             "nuri.core.rules.get_account_strategy",
             lambda a: (
@@ -847,7 +849,7 @@ class TestAccountStrategyIntegration:
                 "account": ["main", "sub"],
             }
         )
-        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr("nuri.analysis.portfolio.analyze_portfolio", lambda **kw: mock_df)
         monkeypatch.setattr(
             "nuri.core.rules.get_account_strategy",
             lambda a: (
@@ -860,7 +862,7 @@ class TestAccountStrategyIntegration:
         # neutral 로 고정 (테스트 의도는 base cap 30% < 35% 위반 검증).
         monkeypatch.setattr(
             "nuri.trading.engine.certification._current_regime",
-            lambda: "neutral",
+            lambda **kw: "neutral",
         )
 
         cond = _check_position_limits(db_path)

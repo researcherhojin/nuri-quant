@@ -39,7 +39,7 @@ def compute_value(tickers: list[str] | None = None, db_path=None) -> pd.DataFram
 
         # KR(.KS) 포함 — 정규화는 시장별로 분리한다 (#757). 과거엔 KR 을 제외해
         # composite 의 value(25%) 가 KR 종목에서 flat 0.5 상수였다.
-        tickers = get_tickers()
+        tickers = get_tickers(db_path=db_path)
 
     if not tickers:
         return pd.DataFrame()

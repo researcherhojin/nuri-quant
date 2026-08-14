@@ -77,7 +77,7 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
     Returns:
         위반 사항 리스트 (priority 순 정렬). 위반 없으면 빈 리스트.
     """
-    df = analyze_portfolio()
+    df = analyze_portfolio(db_path=db_path)
     if df.empty:
         logger.info("포트폴리오가 비어 있습니다")
         return []
