@@ -2,7 +2,9 @@
 
 ## DB Isolation Pattern
 
-Every test gets its own SQLite DB via `tmp_path` fixture:
+두 층이다 — **테스트가 명시적으로 넘기는 `db_path`** 와, 그 아래 **전역 격리**.
+
+명시 경로: 대상 함수가 `db_path=` 를 받으면 그걸 쓴다.
 
 ```python
 @pytest.fixture
@@ -12,23 +14,60 @@ def db_path(tmp_path):
     return path
 ```
 
-Pass `db_path` to ALL DB functions. Never use the real `data/portfolio.db`.
+전역 격리 (#1049): `tests/conftest.py` 의 autouse 픽스처가 매 테스트마다
+`nuri.core.db.DB_PATH` 를 **세션 스키마 템플릿의 복사본**으로 갈아끼운다. 그래서
+`db_path` 를 안 받는 함수도 프로덕션 DB 에 닿지 않는다. 왜 복사냐면 매번
+`init_db()` 를 부르면 70.8ms × 약 7,000 = 8분이고 파일 복사는 0.5ms 이기 때문
+(실측 오버헤드 0.34s / 1,666 테스트).
+
+⚠️ **`db_path` 를 받는 것만으로는 아무것도 보장되지 않는다.** 함수가 인자를
+선언해 놓고 내부에서 `analyze_portfolio()` 를 인자 없이 부르면 그 한 줄만
+기본 DB 로 샌다. 서명도 맞고 타입 체커도 통과하고 테스트도 초록이다 — 이렇게
+샌 지점이 #1050/#1051 에서 8곳, 그 뒤 #1052 에서 13곳 더 나왔다.
+**Test:** `tests/core/test_db_path_forwarding.py::TestDbPathIsForwarded::test_every_db_path_aware_call_receives_it`
+— `db_path=db_path` 를 하나 지우면 FAIL. 호출 형태 3종(`f()` · `mod.f()` · 별칭
+import)을 보고, `**kwargs` unpack 은 forward 로 인정하지 않는다.
 
 ## Global Mocks (conftest.py, autouse)
 
-- `yfinance.download` → empty DataFrame
-- `yfinance.Ticker` → stub with None attributes
+4개 전부 autouse — 순서대로 `_isolate_from_production_db` · `_forbid_production_db` ·
+`_force_no_wal` · `mock_yfinance`.
+
+| 픽스처 | 하는 일 |
+|---|---|
+| `_isolate_from_production_db` | `DB_PATH` → 세션 스키마 템플릿의 per-test 복사본 |
+| `_forbid_production_db` | 실 `data/portfolio.db` 를 **여는 순간** 예외 (아래 참조) |
+| `_force_no_wal` | `journal_mode=MEMORY` — CI tmpfs 의 WAL/visibility 문제 회피 |
+| `mock_yfinance` | `download` → 빈 DataFrame, `Ticker` → None 속성 스텁 |
 
 All tests run **network-free**. Override per-test if needed, but never remove global mocks.
 
+`_forbid_production_db` 의 예외는 **`BaseException` 을 직접 상속한다 — 일부러.**
+`AssertionError` 로 던졌더니 `nuri/llm/report.py::gather_context` 의 광범위
+`except Exception` 이 삼켜서, **테스트 5개가 프로덕션 DB 를 읽으며 초록**이었다
+(2026-08-14 실측). 삼켜지는 백스톱은 백스톱이 아니다.
+**Test:** `tests/test_production_db_guard.py::TestProductionDBGuard` — `Exception`
+으로 되돌리면 2개 FAIL, 가드를 무력화하면 1개 FAIL.
+
 ## Slow Marker
 
-24 LLM/heavy tests marked `@pytest.mark.slow` (collected count — marker sites expand via class-level marks / parametrize). PR CI excludes via `-m "not slow"`.
-- `make test-fast` — excludes slow (~98s, M5 Max 2026-07-08)
+27 LLM/heavy tests marked `@pytest.mark.slow` (collected count — marker sites expand via class-level marks / parametrize). PR CI excludes via `-m "not slow"`.
+- `make test-fast` — excludes slow (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14)
 - `make test-slow` — slow only
-- `make test` — full suite (test-fast + slow 24)
+- `make test` — full suite (test-fast + slow 27)
 
 ## Gotchas
+
+### conftest.py 안의 `test_*` 함수는 수집되지 않는다
+pytest 의 `python_files` 기본값이 `test_*.py` 라 `conftest.py` 는 **플러그인으로
+import 될 뿐 테스트 모듈이 아니다.** 그런데 파일을 인자로 명시하면
+(`pytest tests/conftest.py`) 수집돼서 통과한다 — 즉 **"돌려서 확인했다"가
+착각일 수 있다.** 프로덕션 DB 가드의 회귀 테스트 3개가 이 상태로 `make test-fast`
+와 CI 에서 **한 번도 실행되지 않았다** (2026-08-14, `pytest tests/ --collect-only`
+로 0건 실측). conftest 에 사는 픽스처를 검증하려면 테스트는 **수집되는 파일**에
+두고, 픽스처 내부 심볼을 import 하는 대신 **성질을 직접 단언**할 것
+(`tests/` 는 패키지가 아니라 import 경로가 실행 방식에 따라 달라진다).
+**Test:** `tests/test_production_db_guard.py` — 파일 자체가 이 규칙의 산물이다.
 
 ### runpy + mock
 `runpy.run_module()` re-executes module source, **invalidating all mocks**. Use `patch("source.module.function")` for source-level patching, not `patch("target.module.function")`.

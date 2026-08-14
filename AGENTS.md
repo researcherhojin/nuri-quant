@@ -20,7 +20,7 @@ Nuri-Quant — open-source quant investment platform. Python 3.12, `uv`, SQLite 
 
 ## Hard Rules (mechanically enforced — do not violate)
 
-1. **DB**: `nuri/core/db/` is the only `sqlite3` importer (importer module: `nuri/core/db/connection.py`). Other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()`.
+1. **DB**: `nuri/core/db/` is the only `sqlite3` importer (importer module: `nuri/core/db/connection.py`). Other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()`. **A function that takes `db_path=` MUST forward it** to every DB reader it calls — declaring the parameter without using it leaks that one call to the default DB while the signature, type check, and tests all stay green (8 such sites in #1050/#1051, 13 more in #1052). Source: `tests/core/test_db_path_forwarding.py`.
 2. **Time**: always `kst_now()` / `today_kst()` from `nuri.core.timezone`. Never `datetime.now()`.
 3. **Config over code**: rules in `config/rules.yaml`, agents in `config/agents.yaml`, signals in `config/signals.yaml`. Hardcoding is rejected.
 4. **Cross-stage imports: deferred only, and frozen**: stages map to `collect`=`nuri/collectors` · `analyze`=`nuri/analysis` · `consensus`=`nuri/trading/agents` · `certify`=`nuri/trading/engine` · `track`=`nuri/trading/recommend` (`nuri/quant` and `nuri/core` are shared libraries, not stages). A crossing import MUST be deferred inside a function body — never at module level — and must be listed with a reason in the allowlist. Measured: 17 crossing statements over 15 pairs, 0 module-level. Same-stage imports OK. The old "DB tables / CSV only" wording was false and is retired (#920). Source: `tests/core/test_cross_stage_imports.py` (fails on new entries and stale ones alike).
