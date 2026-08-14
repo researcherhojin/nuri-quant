@@ -21,6 +21,8 @@ These are operational details unique to this directory; the canonical sources ab
   **Test:** `tests/trading/engine/test_volatility_gate_contract.py::TestUnknownIndicatorFailsTheGate::test_missing_primary_fails_as_warning` (semantics) + `::TestVolatilityGateContract::test_every_declared_indicator_is_collected_or_allowlisted` (계약) — 뮤테이션 4종(per-class PASS 복귀 · legacy VIX PASS 복귀 · 새 dangling 포인터 · stale allowlist) 전부 FAIL 실측.
 - **Evidence record per gate** — every condition produces `(source, value, threshold, policy_ref)` for OAE traceability and persistence into the `certifications` table (E4-0a, PR #410).
 - **Snapshot invariant**: `CertSnapshot` ContextVar threads `(regime, portfolio_df, portfolio_raw, portfolio_hash, portfolio_error)` through all gate internals — single DB read derives the hash that all downstream consumers see. Any new gate must read from the snapshot, not re-fetch.
+  ⚠️ **스냅샷 접근자의 fallback 도 `db_path` 를 받아야 한다.** `_snapshot_portfolio()` / `_current_regime()` / `_snapshot_portfolio_raw()` 는 스냅샷이 없으면 fresh DB read 로 떨어지는데, 앞의 둘만 `db_path` 를 안 받아서 `_check_position_limits(db_path=X)` 같은 직접 호출이 기본 DB 를 읽었다(#1052). **이 결함은 기존 테스트로 보이지 않는다** — `certify()` 안에서는 ContextVar 가 DB 읽기를 통째로 건너뛰어 그 배선이 dead code 이기 때문에, 배선 6곳을 되돌려도 `tests/trading/engine` + `tests/llm` 611개가 초록이었다(2026-08-14 실측). 게이트를 **스냅샷 밖에서** 직접 부르는 테스트만 이걸 잡는다.
+  **Test:** `tests/trading/engine/test_certify_db_path_isolation.py::TestGatesReadOnlyTheGivenDbOutsideCertify` — 배선을 되돌리면 8개 중 4개 FAIL. 구조 쪽 짝은 `tests/core/test_db_path_forwarding.py`.
 
 ## Execution Priority
 

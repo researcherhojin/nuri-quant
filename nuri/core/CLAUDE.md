@@ -11,6 +11,15 @@ The `nuri/core/db/` package is the **ONLY** `sqlite3` importer (the import lives
 - `replace_portfolio_account(account, records, db_path=)` — DELETE+INSERT in one tx
 - `OperationalError` / `DatabaseError` — sqlite3 exception types re-exported so callers can catch DB failures narrowly without importing `sqlite3` (widening to `except Exception` swallows real bugs)
 
+⚠️ **`db_path` 를 받는 함수는 자기가 부르는 리더에도 넘겨야 한다.** 파라미터만
+선언하고 안 쓰면 그 한 줄만 기본 DB 로 새는데, 서명·타입 체크·테스트가 전부
+통과해서 눈으로는 반복해서 놓친다 (#1050/#1051 에서 8곳, 그 뒤 #1052 에서 13곳).
+`_resolve_db_path` 가 커넥션마다 `nuri.core.db.DB_PATH` 를 다시 읽는 구조라
+테스트의 monkeypatch 가 전역으로 먹지만, **그건 배선 누락을 가려줄 뿐 고치지
+않는다** — 격리 DB 대신 다른 DB 를 보게 되는 건 그대로다.
+**Test:** `tests/core/test_db_path_forwarding.py::TestDbPathIsForwarded::test_every_db_path_aware_call_receives_it`
+— `db_path=db_path` 를 하나 지우면 FAIL.
+
 Schema changes: add to `_MIGRATIONS` list only. Never edit existing migrations. `init_db()` auto-applies.
 
 ## timezone.py — All Time is KST
