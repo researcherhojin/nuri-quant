@@ -629,3 +629,28 @@ def short_squeeze_data(db_path):
                 (d.strftime("%Y-%m-%d"), "shortinterest", "SQZZ", "short_interest", "15%", 15.0, "2025-01-01"),
             )
     return db_path
+
+
+def test_the_guard_actually_bites(tmp_path, monkeypatch):
+    """가드가 **실제로 예외를 던지는지** — 등록만 되고 안 무는 걸 막는다.
+
+    이 레포는 훅 2개가 3.5개월간 조용히 무력했던 전례가 있다
+    (`.claude/rules/enforcement.md`). autouse 픽스처도 같은 방식으로 죽을 수
+    있으므로, 가드가 켜진 상태에서 실 DB 경로를 열어 보고 터지는지 확인한다.
+
+    ⚠️ 이 파일에 테스트를 두는 건 예외적이다. 가드가 conftest 에 있고 그
+    autouse 효과 자체를 검증해야 해서, 같은 스코프 안이어야 의미가 있다.
+    """
+    import sqlite3
+
+    with pytest.raises(AssertionError, match="프로덕션 DB"):
+        sqlite3.connect(str(_REAL_DB))
+
+
+def test_the_guard_leaves_other_paths_alone(tmp_path):
+    """tmp DB 는 막지 않는다 — 막으면 전 스위트가 죽는다."""
+    import sqlite3
+
+    p = tmp_path / "ok.db"
+    sqlite3.connect(str(p)).close()
+    assert p.exists()

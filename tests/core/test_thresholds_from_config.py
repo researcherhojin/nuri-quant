@@ -52,18 +52,49 @@ def _tree(rel: str) -> ast.Module:
 
 def _module_level_assignments(tree: ast.Module) -> set[str]:
     """모듈 최상위에서 대입되는 이름. 함수/클래스 안쪽은 보지 않는다."""
-    names: set[str] = set()
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names.add(node.target.id)
-    return names
+    return {n for n, _ in _module_scope_assignments(tree)}
+
+
+def _bound_names(tree: ast.Module):
+    """(이름, 대입식) — 파일 **어디서든** 그 이름에 값을 묶는 모든 자리.
+
+    스코프를 구분하지 않는다. 첫 판은 모듈 스코프만 봤는데, 적대적 감사가
+    **함수 지역 shadow** 가 가장 현실적인 되돌림이라고 지적했다 (2026-08-14):
+    `_compile()` 첫 줄에 `CONVICTION_EMIT_CUTOFF = 0.70` 한 줄이면 config 가
+    무력해지고, 모듈 스코프만 보는 스윕은 초록이다. 액터가 이 이름들을 다시
+    묶을 정당한 이유가 없으므로 스코프를 나눌 이유도 없다.
+
+    `ctx=Store` 인 `Name` 만 센다. 이걸 안 보면 `labels[CONVICTION_EMIT_CUTOFF] = x`
+    처럼 **읽기로 쓰는 자리**까지 거부하는 오탐이 난다(같은 감사에서 확인).
+    Store 로 좁히면 `for X in ...` / `with ... as X` / walrus / AugAssign 도 함께
+    잡힌다 — 전부 바인딩이기 때문이다.
+    """
+    for node in ast.walk(tree):
+        value = getattr(node, "value", None)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            yield node.id, None
+        elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+            yield node.target.id, value
+        # `globals()["X"] = ...` / `vars()["X"] = ...` — 이름을 문자열 뒤에 숨기는 우회
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                if (
+                    isinstance(t, ast.Subscript)
+                    and isinstance(t.value, ast.Call)
+                    and getattr(t.value.func, "id", "") in ("globals", "vars")
+                    and isinstance(t.slice, ast.Constant)
+                    and isinstance(t.slice.value, str)
+                ):
+                    yield t.slice.value, node.value
+
+
+def _module_scope_assignments(tree: ast.Module):
+    return _bound_names(tree)
 
 
 def _module_level_value(tree: ast.Module, name: str) -> ast.expr | None:
-    """모듈 최상위에서 `name` 에 대입된 **식**. 없으면 None."""
-    for node in tree.body:
+    """`name` 에 대입된 식. AnnAssign/Assign 만 — 값이 필요한 검사용."""
+    for node in ast.walk(tree):
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
             return node.value
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
@@ -112,7 +143,14 @@ class TestThresholdsComeFromConfig:
 
 
 class TestConfigBlocksExist:
-    """로더 기본값이 YAML 부재를 가려주므로, 블록 자체의 존재를 따로 잠근다."""
+    """로더 기본값이 YAML 부재를 가려주므로, 블록 자체의 존재를 따로 잠근다.
+
+    `nuri/core/rules.py` 의 `.get(..., 0.70)` 기본값은 **옮기기 전 리터럴과 같은
+    값**이다. 그래서 YAML 블록을 지우면 런타임은 아무 소리 없이 예전 동작으로
+    돌아간다 (2026-08-14 실측). 기본값을 없애면 config 파일 하나가 깨졌을 때
+    import 자체가 죽으므로, 기본값은 두되 **블록의 존재를 테스트로 강제**하는 쪽을
+    택했다. 이 클래스가 그 역할이고, 지우면 위 트레이드오프가 무너진다.
+    """
 
     def test_decision_compiler_block_is_present_and_complete(self) -> None:
         dc = RULES.get("decision_compiler")
@@ -188,3 +226,45 @@ class TestTrackerHoldsACopyNotAnAlias:
 
         assert fot.WINDOW_THRESHOLDS is not rules.OUTCOME_WINDOW_THRESHOLDS
         assert fot.WINDOW_THRESHOLDS == rules.OUTCOME_WINDOW_THRESHOLDS
+
+
+class TestLoaderReadsTheKeysThatExist:
+    """로더가 **실제로 있는 키**를 읽는지. 없는 키는 조용히 기본값이 된다.
+
+    스윕은 액터 두 파일만 본다. 로더(`nuri/core/rules.py`)에 하드코딩을 넣거나
+    키 이름을 틀리면 스윕은 초록인 채로 config 가 무력해진다 (2026-08-14 적대적
+    감사 지적). 특히 **키 오타는 사고로 일어난다** — YAML 키를 이름만 바꾸고
+    로더를 안 고치면 `.get("없는키", 0.70)` 이 기본값을 돌려주고 아무도 모른다.
+    """
+
+    _LOADER = REPO_ROOT / "nuri" / "core" / "rules.py"
+
+    def _get_calls(self, receiver: str) -> set[str]:
+        """`_dc.get("x", ...)` 형태에서 읽는 키 이름들."""
+        tree = ast.parse(self._LOADER.read_text(encoding="utf-8"), filename=str(self._LOADER))
+        keys = set()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == receiver
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                keys.add(node.args[0].value)
+        return keys
+
+    def test_decision_compiler_keys_exist_in_yaml(self) -> None:
+        read = self._get_calls("_dc")
+        assert read, "로더가 _dc 에서 아무 키도 안 읽는다 — 변수명이 바뀌었는지 확인"
+        missing = read - set(RULES.get("decision_compiler") or {})
+        assert not missing, f"로더가 YAML 에 없는 키를 읽는다(조용히 기본값): {sorted(missing)}"
+
+    def test_outcome_tracking_keys_exist_in_yaml(self) -> None:
+        read = self._get_calls("_ot")
+        assert read, "로더가 _ot 에서 아무 키도 안 읽는다"
+        missing = read - set(RULES.get("outcome_tracking") or {})
+        assert not missing, f"로더가 YAML 에 없는 키를 읽는다(조용히 기본값): {sorted(missing)}"
