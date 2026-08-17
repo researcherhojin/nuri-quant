@@ -201,8 +201,12 @@ class TestCheckFreshness:
         assert result["status"] == "FAIL"
         assert result["label"] == "멀티팩터 스코어"
 
-    def test_same_day_factors_pass(self, db_path):
-        """정상 갱신(당일)은 통과 — 가드가 상시 FAIL 이면 아무도 안 본다."""
+    def test_recent_factors_pass(self, db_path):
+        """정상 갱신은 통과 — 가드가 상시 FAIL 이면 아무도 안 본다.
+
+        `prices` 와 같은 48h/120h 를 쓴다: `factors.date` 가 시장 데이터 날짜라서
+        주말이면 금요일에 머무는 게 정상이기 때문이다.
+        """
         from nuri.core.db import get_db
         from nuri.core.freshness import check_freshness
         from nuri.core.timezone import kst_now
@@ -214,6 +218,18 @@ class TestCheckFreshness:
             )
 
         assert check_freshness("factors", db_path=db_path)["status"] == "PASS"
+
+    def test_thresholds_match_prices_because_the_date_is_a_market_date(self):
+        """`factors` 와 `prices` 임계가 같아야 한다 (#1071 Codex P1).
+
+        `factors.date` 는 쓴 날이 아니라 **시장 데이터 날짜**다. 그래서 주말이면 금요일에
+        머무는 게 정상이고, `prices` 와 같은 주말 여유가 필요하다. 24h/72h 로 좁히면
+        월요일 아침마다(금→월 = 72h) 상시 발화한다.
+        """
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
+        assert FRESHNESS_POLICIES["factors"]["warn_hours"] == FRESHNESS_POLICIES["prices"]["warn_hours"]
+        assert FRESHNESS_POLICIES["factors"]["fail_hours"] == FRESHNESS_POLICIES["prices"]["fail_hours"]
 
     def test_fail_on_query_exception(self, db_path):
         """쿼리 실행 실패 → FAIL."""
