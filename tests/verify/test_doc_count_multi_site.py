@@ -43,6 +43,21 @@ def _db_tables_line(cwd: Path) -> str:
     return lines[0]
 
 
+def _table_marker(repo: Path) -> str:
+    """README 가 지금 말하는 `<N> tables` 문구를 읽어온다.
+
+    예전에는 `"51 tables"` 를 리터럴로 박아 뒀는데, 마이그레이션이 테이블을 추가하면
+    marker 가 문서에서 사라져 `replace` 가 아무것도 못 바꾸고 **변조 없는 실행**이 된다.
+    그러면 이 테스트는 "drift 를 못 잡았다" 고 실패하지만 원인은 게이트가 아니라
+    fixture 다 — 진짜 회귀와 구분이 안 된다 (#1083 에서 51→53 이 되며 실제로 겪음).
+    """
+    import re
+
+    m = re.search(r"\b(\d+) tables\b", (repo / "README.md").read_text(encoding="utf-8"))
+    assert m, "README 에 `<N> tables` 문구가 없다 — 이 테스트의 대조 대상이 사라졌다"
+    return m.group(0)
+
+
 @pytest.fixture
 def repo_copy(tmp_path):
     """README + 검사에 필요한 파일만 복사한 얕은 레포 사본.
@@ -97,7 +112,7 @@ class TestMultiSiteVerification:
         """
         readme = repo_copy / "README.md"
         text = readme.read_text()
-        marker = "51 tables"
+        marker = _table_marker(repo_copy)
         assert text.count(marker) >= 2, "README 가 이 수치를 한 번만 말하면 다중 site 계약이 사라진 것"
 
         head, sep, tail = text.partition(marker)  # 첫 번째는 그대로 두고
@@ -110,5 +125,5 @@ class TestMultiSiteVerification:
     def test_drift_at_the_first_site_is_caught(self, repo_copy):
         """첫 번째 위치 검사는 회귀하지 않았는지 (기존 동작 보존)."""
         readme = repo_copy / "README.md"
-        readme.write_text(readme.read_text().replace("51 tables", "99 tables", 1))
+        readme.write_text(readme.read_text().replace(_table_marker(repo_copy), "99 tables", 1))
         assert "DRIFT" in _db_tables_line(repo_copy)

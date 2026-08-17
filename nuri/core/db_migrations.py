@@ -1568,4 +1568,52 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_recommendations_source ON recommendations(source, date);
     """,
     ),
+    (
+        51,
+        "theses / thesis_evidence — 상승·하락 논지 원장 (#1083)",
+        # `decisions` 에 컬럼을 붙이지 않는 이유 셋: (1) `decisions.action` 은 합의 엔진이
+        # 주인이라 "시스템은 BUY, 나는 안 삼" 을 표현할 수 없다, (2) `UNIQUE(date, ticker)`
+        # 는 논지의 결이 아니다 — 결정은 매일 재작성되지만 논지는 몇 달 간다, (3)
+        # `decision_evidence.decision_id` 를 nullable 로 바꾸려면 3,330행 체인을 테이블
+        # 재생성해야 한다.
+        #
+        # `effective_date` 는 `created_at` 의 중복이 **아니다**. `datetime('now')` 는 UTC 라
+        # KST 오전에 쓴 논지의 created_at 이 `'2026-08-18 03:00:00'` 이 되고, 그러면
+        # `created_at <= '2026-08-18'` 비교가 날짜 문자열과 섞여 어긋난다. PIT 조인은
+        # KST 날짜인 `effective_date` 로만 한다.
+        """
+        CREATE TABLE IF NOT EXISTS theses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            supersedes_id INTEGER REFERENCES theses(id),
+            author TEXT NOT NULL,
+            stance TEXT NOT NULL CHECK (stance IN ('bullish', 'bearish', 'neutral')),
+            bull_case TEXT NOT NULL,
+            bear_case TEXT NOT NULL,
+            effective_date TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'draft'
+                CHECK (status IN ('draft', 'active', 'superseded', 'retired')),
+            verdict TEXT CHECK (verdict IN ('broken', 'held', 'abandoned', 'unevaluable')),
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(ticker, version)
+        );
+        CREATE INDEX IF NOT EXISTS idx_theses_pit ON theses(ticker, status, effective_date);
+
+        CREATE TABLE IF NOT EXISTS thesis_evidence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            thesis_id INTEGER NOT NULL REFERENCES theses(id) ON DELETE CASCADE,
+            side TEXT NOT NULL CHECK (side IN ('bull', 'bear')),
+            claim TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            source_key TEXT,
+            source_url TEXT,
+            as_of TEXT,
+            quote TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_thesis_evidence_thesis ON thesis_evidence(thesis_id, side);
+    """,
+    ),
 ]
