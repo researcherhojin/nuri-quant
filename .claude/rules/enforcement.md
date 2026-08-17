@@ -1,6 +1,6 @@
 # Mechanical Enforcement
 
-Hook config: `.claude/settings.json`. CI workflows: `.github/workflows/main-ci-cd.yml`. Pre-push: `scripts/verify/pre_push_check.sh`.
+Hook config: `.claude/settings.json`. CI workflows: `.github/workflows/main-ci-cd.yml`. Pre-push: `scripts/hooks/pre-push` (installed by `make setup-hooks`) → `scripts/verify/pre_push_check.sh --skip-tests` (0.9s; 테스트는 CI 4-shard 가 미러하고 full 로컬 실행은 320.8s 라 훅에서는 뺀다 — 느린 훅은 우회당한 훅이다). 이 문장은 #1070 까지 **거짓**이었다: 게이트 스크립트는 있었지만 `scripts/hooks/` 에 `pre-push` 소스가 없어 `make setup-hooks` 가 정상 동작하면서 아무것도 설치하지 않았다. **Test:** `tests/test_pre_push_hook.py` — 훅을 grep 하지 않고 임시 레포에서 **실행**해 exit code 를 본다(게이트 rc 0/1 양방향 + 게이트 부재 + 인터프리터 부재).
 
 **PreToolUse hook** blocks: `import sqlite3` outside `nuri/core/db/connection.py`, `git push --force` / `reset --hard` / `clean -f`, privacy ticker+PnL inline writes (`scripts/verify/check_privacy_leak.py --message --quiet`).
 
