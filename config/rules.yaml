@@ -359,8 +359,15 @@ siege_gates:
       freshness_primary: TLT
       freshness_secondary: []
       freshness_max_hours: 120             # 채권 데이터 주말/이벤트 갭 허용
-      volatility_primary: yield_3d_change
-      volatility_primary_threshold: 0.3
+      # `yield_3d_change` 는 macro 에 `yield` 라는 지표가 없어 도입(#248) 이래 한 번도
+      # 평가되지 않았다. 포인터를 `us_10y_yield` 로 옮기는 것만으로는 부족했다 —
+      # `_3d_change` 는 **상대 %** 라 금리 레짐에 따라 임계값 의미가 변한다. 그래서
+      # 절대 변화(bp) 형태를 쓴다. 근거는 `_compute_3d_bp` docstring (#1020).
+      #
+      # 20bp: 프로덕션 실측 연도별 발화 1/32/22/12/6/1 회 (2021~2026, 전체 5.9%) —
+      # 형제 게이트 대역(equity_us 5.1% · commodity 2.3% · fx 1.1%)과 정합.
+      volatility_primary: us_10y_yield_3d_bp
+      volatility_primary_threshold: 20     # 10Y 3일 변동 > 20bp → 매수 warning
       volatility_secondary: []
       external_applicable: false           # 채권 ETF — 애널리스트 컨센서스 N/A
 
