@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -1476,6 +1477,29 @@ class TestSaveBuyCandidates:
         row = query("SELECT ticker, regime FROM recommendations", db_path=db_path)[0]
         assert row["ticker"] == "AAA"
         assert row["regime"] is None
+
+    @pytest.mark.parametrize(
+        ("classified", "expected"),
+        [
+            ("bull_low_vol", "bull_low_vol"),  # canonical → 그대로 행에 박힌다
+            ("[recovery] 비중 축소", None),  # free-text → NULL (#832)
+        ],
+    )
+    def test_regime_label_is_canonical_or_null(self, db_path, monkeypatch, classified, expected):
+        """분류가 성공하면 라벨이 행에 남되, canonical 10종이 아니면 NULL 이다.
+
+        실패 경로만 잠그면 `canonical_regime_or_none` 을 벗겨도(=`rr.regime` 을 그대로
+        대입해도) 초록이다. free-text 유입이 라벨 커버리지를 3% 로 만든 게 #832 였다.
+        """
+        import nuri.quant.regime.classifier as clf
+
+        monkeypatch.setattr(clf, "classify_regime", lambda **k: SimpleNamespace(regime=classified))
+
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        assert save_buy_candidates(self._result("AAA"), db_path=db_path) == 1
+        row = query("SELECT regime FROM recommendations", db_path=db_path)[0]
+        assert row["regime"] == expected
 
     def test_portfolio_action_stays_null(self, db_path):
         """축 분리 (#429) — 이건 alpha 축 신호지 포트폴리오 룰이 아니다."""
