@@ -22,6 +22,19 @@ source "$(dirname "$0")/../_common.sh"
 mode="${1:-full}"
 fail=0
 
+# `$PYTHON` 은 존재 확인 없는 경로다 (`_common.sh`). 인터프리터가 없으면 아래 python
+# 단계들이 rc=127 로 죽는데, 각 단계의 `if` 는 그걸 그 단계의 **발견**으로 보고한다 —
+# `.venv` 없는 clone 에서 "Personal financial data leak detected" 가 찍히지만 실제로는
+# 스캐너가 한 번도 돈 적이 없다. 실패와 미실행이 구분 안 되는 형태(#910/#911)이고,
+# 훅으로 돌면 이 거짓말이 곧 `--no-verify` 습관이 된다.
+if ! "$PYTHON" -c '' > /dev/null 2>&1; then
+    echo -e "${RED}✗ python 인터프리터 없음: ${PYTHON}${NC}" >&2
+    echo -e "${RED}  검사를 하나도 실행하지 못했다 — '깨끗함' 이 아니라 '미확인' 이다.${NC}" >&2
+    echo -e "${RED}  'make setup' 으로 venv 를 만들거나 PYTHON=... 로 지정할 것.${NC}" >&2
+    echo -e "${RED}  우회: git push --no-verify${NC}" >&2
+    exit 1
+fi
+
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${CYAN}  Pre-Push Check (mode: ${mode})${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
