@@ -42,11 +42,32 @@ FRED_SERIES = {
     # 추가 경제 지표
     "consumer_sentiment": "UMCSENT",  # 미시건대 소비자 심리
     "ism_manufacturing": "MANEMP",  # ISM 제조업 고용
+    # 실질 GDP 성장률 (전기 대비, 연율 환산). 분기 시리즈라 5년 창에 20개 남짓.
+    # `classifier._detect_stagflation` 의 유일한 GDP 입력 — 이게 없으면 그 함수가
+    # `gdp_growth` 미수집으로 조기 return 해 **스태그플레이션 판정 자체가 도달 불가**
+    # 였다 (#1025). 원본이 이미 "Percent Change from Preceding Period, SAAR" 라
+    # FRED_UNITS 오버라이드가 필요 없다.
+    "gdp_growth": "A191RL1Q225SBEA",
     # PR C (codex bubble-bear #3): crash precursor data.
     # BofA US High Yield Option-Adjusted Spread — 신용 스트레스 조기 신호.
     # Gilchrist-Zakrajsek 2012: HY OAS > 500bps + 63d 변화 > +150bps 경기침체 경고.
     # 1997 년부터 daily 공개, FRED_API_KEY 필수 (yfinance fallback 없음).
     "hy_oas": "BAMLH0A0HYM2",
+}
+
+# FRED 단위 오버라이드 — 시리즈 원본 단위가 지표 **이름이 약속하는 단위와 다를 때**만.
+#
+# `CPIAUCSL` 은 "Index 1982-1984=100" 이라 원본을 그대로 담으면 `cpi_yoy` 에 332.8 이
+# 들어간다. 이름은 YoY 인데 값은 인덱스 — 소비처는 이름을 믿는다. `_score_inflation`
+# 은 `abs(332.8 - 2.0)` 을 편차로 계산해 **0 점에 영구 고정**됐고(가중치 0.117),
+# `_detect_stagflation` 의 `cpi > 4` 는 **항상 참**이었다 (#1065).
+#
+# 하필 FRED 키가 없을 때보다 나빴다: 결측이면 #1026 의 coverage 재정규화가 성분을
+# 제외해 정직한데, 값이 있으면 0 점이 만점 가중치로 들어가 총점을 끌어내린다.
+#
+# `pc1` = Percent Change from Year Ago. FRED 가 서버에서 계산해 준다.
+FRED_UNITS = {
+    "cpi_yoy": "pc1",
 }
 
 # yfinance fallback 심볼 매핑 (FRED 없을 때 사용)
@@ -153,7 +174,10 @@ class MacroCollector(BaseCollector):
         records = []
         for indicator, series_id in FRED_SERIES.items():
             try:
-                series = fred.get_series(series_id, observation_start=start_date)
+                # units 는 FRED_UNITS 에 등재된 지표만 붙인다 — 나머지는 원본 단위가
+                # 이름과 일치하므로 기본값(`lin`)이 맞다.
+                extra = {"units": FRED_UNITS[indicator]} if indicator in FRED_UNITS else {}
+                series = fred.get_series(series_id, observation_start=start_date, **extra)
                 for date, value in series.dropna().items():
                     records.append(
                         {
