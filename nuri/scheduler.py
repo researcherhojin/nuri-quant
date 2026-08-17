@@ -308,7 +308,12 @@ def _run_collector(name: str, **kwargs):
         if stage:
             from nuri.core.pipeline import run_step
 
-            return run_step(stage, _dispatch_collector, warn_only=True, reraise=True, name=name, **kwargs)
+            # `run_step` 은 **봉투**(`{"status", "result", ...}`)를 돌려준다. 그대로
+            # `_record_collector_run` 에 넘기면 `len(dict)` 이 잡혀 스테이지 잡은 전부
+            # `rows_collected=4` 로 기록된다 — 수집량이 아니라 봉투의 키 개수다.
+            # 프로덕션 실측: factors 가 762행을 저장하고 4 로 남았다 (#1074).
+            outcome = run_step(stage, _dispatch_collector, warn_only=True, reraise=True, name=name, **kwargs)
+            return outcome.get("result") if isinstance(outcome, dict) else outcome
         return _dispatch_collector(name, **kwargs)
 
     import time as _time
