@@ -1617,6 +1617,54 @@ class TestSaveToRecommendations:
         assert rows[0]["confidence"] == 50.0
         assert rows[0]["id"] == first_id, "ON CONFLICT DO UPDATE 는 id 보존 — FK 안전"
 
+    def test_upsert_over_an_emitter_row_reclaims_the_source_column(self, db_path):
+        """emitter 가 먼저 쓴 `(date, ticker)` 를 합의가 덮으면 `source` 도 같이 지워야 한다.
+
+        `ON CONFLICT DO UPDATE` 가 나머지 컬럼을 전부 덮으면서 `source` 만 건드리지 않으면
+        행은 **내용상 합의 산출물인데 라벨은 emitter** 로 남는다. #1078 이후 합의 읽기
+        경로가 전부 `source IS NULL` 이므로 그 행은 `/actions` · `/dashboard` · `/ticker`
+        에서 사라지고, 더 나쁘게는 §3.11 사전등록 판정 표본에서도 빠진다 — 표본이 조용히
+        줄어드는 건 측정 모드에서 가장 피해야 할 형태다 (Codex 리뷰 P1, 2026-08-18).
+
+        순서는 실제로 발생 가능하다: `buy_candidate_emitter --persist` 수동 실행이나
+        브리핑 재실행이 합의 07:05 보다 앞서면 emitter 행이 먼저 앉는다.
+        """
+        from nuri.core.db import query
+        from nuri.trading.agents.consensus import save_to_recommendations
+        from nuri.trading.recommend.buy_candidate_emitter import BuyCandidate, EmitResult
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        emitted = EmitResult(
+            candidates=[
+                BuyCandidate(
+                    ticker="TEST",
+                    score=85.0,
+                    deploy_pct=6.0,
+                    entry=100.0,
+                    stop=93.0,
+                    tp1=120.0,
+                    tp2=140.0,
+                    why_now="breakout",
+                    sources={"factor": 0.8},
+                )
+            ],
+            regime="bull_low_vol",
+        )
+        assert save_buy_candidates(emitted, db_path=db_path) == 1
+
+        assert save_to_recommendations([self._result(action="SELL", conf=61)], db_path=db_path) == 1
+
+        rows = query("SELECT action, confidence, source FROM recommendations WHERE ticker='TEST'", db_path=db_path)
+        assert len(rows) == 1
+        assert rows[0]["action"] == "SELL", "합의가 내용을 덮었는지 먼저 확인 (전제)"
+        assert rows[0]["source"] is None, "합의가 덮었으면 라벨도 합의 것이어야 한다"
+
+        visible = query(
+            "SELECT COUNT(*) c FROM recommendations WHERE ticker='TEST' AND source IS NULL",
+            db_path=db_path,
+        )[0]["c"]
+        assert visible == 1, "합의 읽기 경로(§3.11 표본 포함)에서 사라지면 안 된다"
+
     def test_regime_label_canonical_only(self, db_path):
         """#832 Gotcha-Test Pair: regime 컬럼은 canonical ALL_REGIMES 값 또는 NULL 만.
 

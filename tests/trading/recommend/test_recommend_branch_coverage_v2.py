@@ -298,17 +298,17 @@ class TestBuyCandidateEmitterCooldownBranches:
         # Stub providers so the function flows through cooldown call
         type_aware_called = {"n": 0}
 
-        def fake_type_aware(cooldown_cfg):
+        def fake_type_aware(cooldown_cfg, **_kw):
             type_aware_called["n"] += 1
             return set()
 
         monkeypatch.setattr(bce, "_get_cooldown_tickers_by_type", fake_type_aware)
-        monkeypatch.setattr(bce, "_get_held_tickers", lambda: set())
-        monkeypatch.setattr(bce, "_get_factor_scores", lambda: {})
-        monkeypatch.setattr(bce, "_get_price_signals", lambda: {})
-        monkeypatch.setattr(bce, "_get_rsi_snapshot", lambda: {})
+        monkeypatch.setattr(bce, "_get_held_tickers", lambda **_kw: set())
+        monkeypatch.setattr(bce, "_get_factor_scores", lambda **_kw: {})
+        monkeypatch.setattr(bce, "_get_price_signals", lambda **_kw: {})
+        monkeypatch.setattr(bce, "_get_rsi_snapshot", lambda **_kw: {})
         monkeypatch.setattr(bce, "leadership_snapshot", lambda *a, **k: {})  # P2 shadow (prices 미시드)
-        monkeypatch.setattr(bce, "_get_regime", lambda: ("neutral", 18.0))
+        monkeypatch.setattr(bce, "_get_regime", lambda **_kw: ("neutral", 18.0))
 
         result = bce.emit_buy_candidates(config_path=cfg_path)
         # Lock-in: the type-aware path was taken exactly once
@@ -343,13 +343,13 @@ class TestBuyCandidateEmitterCooldownBranches:
                 }
             )
         )
-        monkeypatch.setattr(bce, "_get_held_tickers", lambda: set())
-        monkeypatch.setattr(bce, "_get_cooldown_tickers", lambda days: set())
-        monkeypatch.setattr(bce, "_get_factor_scores", lambda: {"NOPRICE": {"composite": 0.9}})
-        monkeypatch.setattr(bce, "_get_price_signals", lambda: {})  # NOPRICE missing
-        monkeypatch.setattr(bce, "_get_rsi_snapshot", lambda: {})
+        monkeypatch.setattr(bce, "_get_held_tickers", lambda **_kw: set())
+        monkeypatch.setattr(bce, "_get_cooldown_tickers", lambda days, **_kw: set())
+        monkeypatch.setattr(bce, "_get_factor_scores", lambda **_kw: {"NOPRICE": {"composite": 0.9}})
+        monkeypatch.setattr(bce, "_get_price_signals", lambda **_kw: {})  # NOPRICE missing
+        monkeypatch.setattr(bce, "_get_rsi_snapshot", lambda **_kw: {})
         monkeypatch.setattr(bce, "leadership_snapshot", lambda *a, **k: {})  # P2 shadow (prices 미시드)
-        monkeypatch.setattr(bce, "_get_regime", lambda: ("neutral", 18.0))
+        monkeypatch.setattr(bce, "_get_regime", lambda **_kw: ("neutral", 18.0))
 
         result = bce.emit_buy_candidates(config_path=cfg_path)
 
@@ -440,13 +440,51 @@ class TestBuyCandidateEmitterMain:
         )
         monkeypatch.setattr(bce, "emit_buy_candidates", lambda: fake_result)
 
-        rc = bce.main()
+        # `main()` 이 CLI 인자를 파싱하므로 argv 를 명시한다 (#1078 `--persist` 도입).
+        # 생략하면 argparse 가 **pytest 의 sys.argv** 를 읽어 unrecognized arguments 로
+        # 죽는다 — xdist 워커에서는 argv 가 달라 통과해 버려서 조용히 가려진다.
+        rc = bce.main([])
         assert rc == 0
         out = capsys.readouterr().out
         # Lock summary format
         assert "Summary: 0 candidates, 0 skipped, regime=bull, VIX=15.0" in out
         # Markdown also printed (blocked path)
         assert "BUY Candidates" in out
+
+    def test_main_does_not_persist_by_default(self, monkeypatch, capsys):
+        """CLI 기본은 **조회만** — 후보를 눈으로 보려고 돌리는 게 원장을 오염시키면 안 된다.
+
+        Mutation lock: `--persist` 게이트를 없애고 항상 저장하면 FAIL.
+        """
+        from nuri.trading.recommend import buy_candidate_emitter as bce
+        from nuri.trading.recommend import tracker as tr
+        from nuri.trading.recommend.buy_candidate_emitter import EmitResult
+
+        calls: list = []
+        monkeypatch.setattr(bce, "emit_buy_candidates", lambda: EmitResult(regime="bull"))
+        monkeypatch.setattr(tr, "save_buy_candidates", lambda *a, **k: calls.append(a) or 0)
+
+        assert bce.main([]) == 0
+        assert calls == [], "조회만 했는데 원장에 썼다"
+        assert "원장 기록" not in capsys.readouterr().out
+
+    def test_main_persists_when_asked(self, monkeypatch, capsys):
+        """`--persist` 면 기록하고 건수를 찍는다.
+
+        Mutation lock: 저장 호출을 지우면 FAIL.
+        """
+        from nuri.trading.recommend import buy_candidate_emitter as bce
+        from nuri.trading.recommend import tracker as tr
+        from nuri.trading.recommend.buy_candidate_emitter import EmitResult
+
+        emitted = EmitResult(regime="bull")
+        calls: list = []
+        monkeypatch.setattr(bce, "emit_buy_candidates", lambda: emitted)
+        monkeypatch.setattr(tr, "save_buy_candidates", lambda r: calls.append(r) or 3)
+
+        assert bce.main(["--persist"]) == 0
+        assert calls == [emitted]
+        assert "원장 기록: 3건" in capsys.readouterr().out
 
     def test_module_main_invocation_via_runpy(self, monkeypatch):
         """Line 506: `if __name__ == '__main__': raise SystemExit(main())`.
@@ -455,11 +493,16 @@ class TestBuyCandidateEmitterMain:
         re-executed main() picks up our stub. SystemExit(0) is the expected outcome.
         """
         import runpy
+        import sys
         import tempfile
         from pathlib import Path as _P
 
         import nuri.core.db as _db_mod
         from nuri.core.db import init_db
+
+        # `__main__` 실행은 `main()` 을 인자 없이 부르고, argparse 는 그때 **pytest 의
+        # sys.argv** 를 읽는다 (#1078 `--persist` 도입 이후). 실제 CLI 호출 모양으로 고정한다.
+        monkeypatch.setattr(sys, "argv", ["buy_candidate_emitter"])
 
         _tmp = _P(tempfile.mkdtemp()) / "rp.db"
         init_db(_tmp)
