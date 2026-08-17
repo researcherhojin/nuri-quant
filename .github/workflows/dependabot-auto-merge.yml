@@ -43,7 +43,17 @@ jobs:
               .map((name) => name.trim())
               .filter(Boolean);
 
-            const supportedEcosystems = new Set(["pip", "npm", "github-actions", "github_actions"]);
+            // ⚠️ 여기 들어가는 문자열은 `.github/dependabot.yml` 의 `package-ecosystem` 값이
+            // 아니라 fetch-metadata 가 내보내는 **dependabot 내부 이름**이다. npm 은
+            // `npm_and_yarn`, github-actions 는 `github_actions` 로 나온다.
+            // 잠금: tests/scripts/test_dependabot_automerge_policy.py
+            const supportedEcosystems = new Set([
+              "pip",
+              "npm",
+              "npm_and_yarn",
+              "github-actions",
+              "github_actions",
+            ]);
             const isGrouped = Boolean(dependencyGroup) || dependencyNames.length > 1;
 
             let shouldMerge = false;
