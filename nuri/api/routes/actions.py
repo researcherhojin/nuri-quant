@@ -422,7 +422,11 @@ def _get_recommendations() -> list[dict]:
                r.scoring_detail, r.agent_verdicts,
                r.alpha_action, r.portfolio_action
         FROM recommendations r
-        WHERE r.date = (SELECT MAX(date) FROM recommendations)
+        -- `source IS NULL` = 합의 파이프라인 산출물. `buy_candidate_emitter` 행이
+        -- 같은 테이블에 들어오면서(#1078) 필터 없이는 emitter 후보가 합의 결과처럼
+        -- 액션 카드에 섞인다. 이 화면의 계약은 '합의가 오늘 낸 결론' 이다.
+        WHERE r.source IS NULL
+          AND r.date = (SELECT MAX(date) FROM recommendations WHERE source IS NULL)
           AND (
               r.action NOT IN ('SELL', 'TRIM', 'REDUCE', 'HOLD')
               OR r.ticker IN (SELECT ticker FROM portfolio WHERE quantity > 0)

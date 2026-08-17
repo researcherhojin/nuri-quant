@@ -1560,4 +1560,12 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
     """,
     ),
+    (
+        50,
+        "recommendations.source — emit 경로 구분",
+        """
+        ALTER TABLE recommendations ADD COLUMN source TEXT;
+        CREATE INDEX IF NOT EXISTS idx_recommendations_source ON recommendations(source, date);
+    """,
+    ),
 ]

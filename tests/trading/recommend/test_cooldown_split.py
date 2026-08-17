@@ -34,7 +34,10 @@ def isolated_db(tmp_path, monkeypatch):
     db = tmp_path / "test_cooldown.db"
     init_db(db)
     monkeypatch.setattr(
-        "nuri.trading.recommend.buy_candidate_emitter.query_df", lambda sql, params=None: _run_query_df(db, sql, params)
+        "nuri.trading.recommend.buy_candidate_emitter.query_df",
+        # `db_path=` 를 받아 무시한다 — 이 스텁은 이미 tmp DB 로 고정돼 있고,
+        # 시그니처만 맞추면 된다 (#1078 에서 emitter 가 db_path 를 forward 하기 시작).
+        lambda sql, params=None, db_path=None: _run_query_df(db, sql, params),
     )
     yield db
 

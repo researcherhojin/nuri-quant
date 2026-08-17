@@ -137,7 +137,11 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
                    agent_verdicts = excluded.agent_verdicts,
                    scoring_detail = excluded.scoring_detail,
                    alpha_action = excluded.alpha_action,
-                   portfolio_action = excluded.portfolio_action""",
+                   portfolio_action = excluded.portfolio_action,
+                   -- 내용을 합의가 덮었으면 라벨도 합의 것이다. emitter 가 먼저 앉은
+                   -- `(date, ticker)` 를 덮을 때 `source` 만 남겨두면 그 행이 `source IS
+                   -- NULL` 읽기 경로 전체에서 사라진다 — §3.11 판정 표본 포함 (#1078).
+                   source = NULL""",
             records,
         )
         return len(records)

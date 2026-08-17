@@ -1890,3 +1890,96 @@ class TestGetRealAccountsActions:
 
         result = _get_real_accounts()
         assert isinstance(result, set)
+
+
+class TestEmitterRowsDoNotPoseAsConsensus:
+    """`buy_candidate_emitter` 행이 합의 결과 행세를 하면 안 된다 (#1078, Codex P1).
+
+    emitter 산출물이 `recommendations` 에 들어오면서 같은 테이블을 두 writer 가 쓴다.
+    "최신 합의" 를 뜻하는 읽기 경로들이 `source` 를 안 보면, 날짜만 최신이라는 이유로
+    emitter 후보가 액션 카드·티커 합의로 표출된다. 사용자에게 보이는 변화라 잠근다.
+    """
+
+    @staticmethod
+    def _seed(db, today):
+        from nuri.core.db import get_db
+
+        with get_db(db) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, source) "
+                "VALUES (?, 'CONS', 'BUY', 70.0, NULL)",
+                (today,),
+            )
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, source) "
+                "VALUES (?, 'EMIT', 'BUY', 95.0, 'buy_candidate_emitter')",
+                (today,),
+            )
+            conn.commit()
+
+    def test_latest_actions_excludes_emitter_rows(self, tmp_path, monkeypatch):
+        """Mutation lock: actions.py 필터를 지우면 EMIT 이 섞여 FAIL."""
+        import nuri.core.db as dbm
+        from nuri.api.routes.actions import _get_recommendations
+        from nuri.core.db import init_db
+        from nuri.core.timezone import today_kst
+
+        db = tmp_path / "a.db"
+        init_db(db)
+        monkeypatch.setattr(dbm, "DB_PATH", db)
+        self._seed(db, today_kst())
+
+        tickers = {r["ticker"] for r in _get_recommendations()}
+        assert "CONS" in tickers
+        assert "EMIT" not in tickers, "emitter 후보가 합의 액션으로 표출됐다"
+
+    def test_dashboard_latest_actions_excludes_emitter_rows(self, tmp_path, monkeypatch):
+        """Mutation lock: dashboard.py 필터를 지우면 EMIT 이 섞여 FAIL."""
+        import nuri.core.db as dbm
+        from nuri.api.routes.dashboard import _get_latest_actions
+        from nuri.core.db import init_db
+        from nuri.core.timezone import today_kst
+
+        db = tmp_path / "d.db"
+        init_db(db)
+        monkeypatch.setattr(dbm, "DB_PATH", db)
+        self._seed(db, today_kst())
+
+        tickers = {r["ticker"] for r in _get_latest_actions()}
+        assert "CONS" in tickers
+        assert "EMIT" not in tickers
+
+    def test_ticker_consensus_ignores_a_newer_emitter_row(self, tmp_path, monkeypatch):
+        """같은 ticker 에 emitter 행이 더 최신이어도 합의 행을 돌려준다.
+
+        Mutation lock: ticker.py 필터를 지우면 emitter 행(conf 95)을 합의로 읽어 FAIL.
+        """
+        from datetime import timedelta
+
+        import nuri.core.db as dbm
+        from nuri.api.routes.ticker import _read_consensus_from_db
+        from nuri.core.db import get_db, init_db
+        from nuri.core.timezone import kst_now
+
+        db = tmp_path / "t.db"
+        init_db(db)
+        monkeypatch.setattr(dbm, "DB_PATH", db)
+        # 리터럴 날짜 금지 — `_read_consensus_from_db` 에 staleness 컷오프가 있어
+        # 고정일로 심으면 시간이 지나며 조용히 None 이 된다 (tests/CLAUDE.md time-bomb).
+        today = kst_now().date()
+        with get_db(db) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, source) "
+                "VALUES (?, 'AAA', 'HOLD', 60.0, NULL)",
+                ((today - timedelta(days=1)).isoformat(),),
+            )
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, source) "
+                "VALUES (?, 'AAA', 'BUY', 95.0, 'buy_candidate_emitter')",
+                (today.isoformat(),),
+            )
+            conn.commit()
+
+        got = _read_consensus_from_db("AAA")
+        assert got is not None
+        assert got["final_action"] == "HOLD", "emitter 행을 최신 합의로 읽었다"

@@ -984,3 +984,70 @@ class TestPremarketBriefStatementCoverage:
         md = format_brief_markdown({"buy_candidates": FakeBC()})
         assert "blocked" in md
         assert "VIX>30" in md
+
+
+class TestBuyCandidatesArePersisted:
+    """브리핑이 후보를 발행하면 원장에 남는다 (#1078).
+
+    발행 지점이 기록 지점이다. `emit_buy_candidates` 안에서 쓰면 CLI 조회만으로도 원장이
+    오염되고, 안 쓰면 이 경로의 실행에 아무 흔적이 없다 — 후자가 넉 달간의 상태였다.
+    """
+
+    def test_emitted_candidates_reach_the_ledger(self, tmp_path, monkeypatch):
+        """Mutation lock: `save_buy_candidates` 호출을 지우면 행이 0 이라 FAIL."""
+        from nuri.alerts import premarket_brief as pb
+        from nuri.core.db import init_db, query
+        from nuri.trading.recommend.buy_candidate_emitter import BuyCandidate, EmitResult
+
+        db = tmp_path / "brief.db"
+        init_db(db)
+
+        emitted = EmitResult(
+            candidates=[
+                BuyCandidate(
+                    ticker="AAA",
+                    score=88.0,
+                    deploy_pct=6.0,
+                    entry=50.0,
+                    stop=46.5,
+                    tp1=60.0,
+                    tp2=70.0,
+                    why_now="breakout",
+                    sources={"factor": 0.9},
+                )
+            ],
+            regime="bull_low_vol",
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.buy_candidate_emitter.emit_buy_candidates",
+            lambda *a, **k: emitted,
+        )
+
+        pb._collect_context(db_path=db)
+
+        rows = query("SELECT ticker, action, source FROM recommendations", db_path=db)
+        assert [r["ticker"] for r in rows] == ["AAA"]
+        assert rows[0]["source"] == "buy_candidate_emitter"
+
+    def test_a_persistence_failure_does_not_break_the_brief(self, tmp_path, monkeypatch):
+        """관측이 본 작업을 게이트하면 안 된다 (#894) — 기록이 터져도 브리핑은 나간다."""
+        from nuri.alerts import premarket_brief as pb
+        from nuri.core.db import init_db
+        from nuri.trading.recommend.buy_candidate_emitter import EmitResult
+
+        db = tmp_path / "brief.db"
+        init_db(db)
+
+        emitted = EmitResult(regime="bull_low_vol", blocked_reason="threshold")
+        monkeypatch.setattr(
+            "nuri.trading.recommend.buy_candidate_emitter.emit_buy_candidates",
+            lambda *a, **k: emitted,
+        )
+
+        def boom(*a, **k):
+            raise RuntimeError("ledger down")
+
+        monkeypatch.setattr("nuri.trading.recommend.tracker.save_buy_candidates", boom)
+
+        ctx = pb._collect_context(db_path=db)
+        assert ctx["buy_candidates"] is emitted, "기록 실패가 후보 표출까지 날렸다"

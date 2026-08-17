@@ -44,7 +44,10 @@ FRESHNESS_POLICIES = {
         # `recommendations.date` (consensus 결과 persist) 를 source of truth 로 변경.
         # save_to_recommendations 가 매 consensus run 마다 today date row 갱신.
         # date 는 'YYYY-MM-DD' string — datetime 비교 위해 datetime() 캐스트.
-        "query": "SELECT datetime(MAX(date)) FROM recommendations",
+        # `source IS NULL` = 합의 산출물. #1078 이후 `buy_candidate_emitter` 도 같은
+        # 테이블에 쓰므로, 필터가 없으면 합의 job 이 죽은 날에도 브리핑이 낸 후보 행
+        # 하나가 "합의 신선함" 으로 읽힌다 — 관측이 거짓말하는 형태다.
+        "query": "SELECT datetime(MAX(date)) FROM recommendations WHERE source IS NULL",
         "warn_hours": 24,
         "fail_hours": 48,
         "label": "에이전트 합의",

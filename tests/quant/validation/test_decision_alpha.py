@@ -437,6 +437,65 @@ class TestDenominatorDoesNotDependOnTheMirror:
                 conn.commit()
 
 
+class TestEmitterRowsAreOutsideTheAdjudicationSample:
+    """`buy_candidate_emitter` 산출물은 §3.11 표본에서 제외한다 (#1078).
+
+    그 경로가 영속화되기 시작한 건 declared_date(2026-07-08) 한참 뒤다. 넣으면 사전등록된
+    모집단이 측정 도중 205건에서 배 가까이 불어난다 — 제외는 모집단을 사전등록 시점 그대로
+    유지하는 선택이고 사용자 결정(2026-08-18)이다.
+
+    포함으로 바꾸는 건 `fetch_sample` 필터 한 줄과 STRATEGY 기록이 같이 필요한 사전등록
+    개정이므로, 그 경계를 여기서 잠근다.
+    """
+
+    @staticmethod
+    def _seed_emitter_row(db_path, rec_id: int, ticker: str, emit: str, alpha=None):
+        from nuri.trading.recommend.tracker import BUY_CANDIDATE_SOURCE
+
+        _seed_decision(db_path, rec_id, ticker, emit, alpha=alpha)
+        with get_db(db_path) as conn:
+            conn.execute("UPDATE recommendations SET source = ? WHERE id = ?", (BUY_CANDIDATE_SOURCE, rec_id))
+            conn.commit()
+
+    def test_emitter_rows_do_not_enter_the_numerator(self, seeded):
+        """Mutation lock: `source` 필터를 지우면 n 이 늘어 FAIL."""
+        self._seed_emitter_row(seeded, 40, "AAA", EMIT_2, alpha=0.10)
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        assert s.n == 4
+        assert not any(d["decision_id"] == "rec_40" for d in s.decisions)
+
+    def test_emitter_rows_do_not_enter_the_missing_denominator(self, seeded):
+        """분모에서도 빠져야 한다 — 한쪽만 빼면 결측률이 왜곡된다."""
+        self._seed_emitter_row(seeded, 41, "AAA", EMIT_1, alpha=None)
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        assert s.n_missing_closed == 0
+
+    def test_an_unknown_future_source_is_also_excluded(self, seeded):
+        """모집단은 **긍정 조건**(`source IS NULL`)이다 — 새 writer 가 라벨만 다르면
+        들어오는 일이 없어야 한다 (Codex P1).
+
+        `source != 'buy_candidate_emitter'` 로 쓰면 앞으로 추가되는 모든 writer 가
+        사전등록된 모집단을 **코드 변경 없이** 넓힌다. 표본에 넣으려면 여기를 명시적으로
+        고쳐야 하고 그건 STRATEGY 기록이 따르는 사전등록 개정이다.
+
+        Mutation lock: 필터를 부정 조건으로 되돌리면 n 이 늘어 FAIL.
+        """
+        _seed_decision(seeded, 42, "BBB", EMIT_3, alpha=0.07)
+        with get_db(seeded) as conn:
+            conn.execute("UPDATE recommendations SET source = ? WHERE id = ?", ("some_future_writer", 42))
+            conn.commit()
+        assert da.fetch_sample(db_path=seeded, as_of=AS_OF).n == 4
+
+    def test_consensus_rows_have_null_source_and_stay_in(self, seeded):
+        """기존 행은 `source IS NULL` 이라 전부 표본에 남는다 — 필터가 과잉이면 안 된다."""
+        rows = da.query(
+            "SELECT COUNT(*) c FROM recommendations WHERE source IS NULL AND action = 'BUY'",
+            db_path=seeded,
+        )
+        assert dict(rows[0])["c"] == 4
+        assert da.fetch_sample(db_path=seeded, as_of=AS_OF).n == 4
+
+
 class TestEmptySampleHasNoMissingRate:
     """측정 대상이 0 건이면 결측률은 `None` — `0.0` 이 아니다 (#1068).
 

@@ -40,6 +40,103 @@ def _serialize_verdicts(consensus_results) -> dict[str, list[dict]]:
     return verdicts_map
 
 
+#: `recommendations.source` 에 찍는 emit 경로 라벨. NULL 은 합의 파이프라인(기존 행 전부).
+#: §3.11 판정 표본은 사전등록된 모집단을 유지해야 하므로 `decision_alpha.fetch_sample`
+#: 이 이 값을 **제외**한다 — 사용자 결정 2026-08-18. 포함으로 바꾸려면 그쪽 필터 한 줄과
+#: STRATEGY 기록이 같이 필요하다.
+BUY_CANDIDATE_SOURCE = "buy_candidate_emitter"
+
+
+def save_buy_candidates(result, db_path=None) -> int:
+    """`buy_candidate_emitter` 의 EmitResult 를 `recommendations` 에 영속화 (#1078).
+
+    **왜**: 이 emitter 의 실행에는 지금까지 아무것도 남지 않았다. 후보를 발행하고 브리핑에
+    렌더한 뒤 `EmitResult` 를 통째로 버렸다. 그래서 tracker 백필 · `decision_outcomes` ·
+    `/api/alpha` 까지 이어지는 체인이 이 경로에 대해서만 통째로 비어 있었다.
+
+    행 하나당 `source=BUY_CANDIDATE_SOURCE` 를 찍는다. 합의 파이프라인이 같은 테이블을
+    쓰기 때문에 출처가 구분되지 않으면 §3.11 표본을 어느 쪽으로도 정의할 수 없다.
+
+    ⚠️ `recommendations` 는 `UNIQUE(date, ticker)` + `INSERT OR IGNORE` 다. 합의가 07:05 에
+    쓴 ticker 를 emitter 가 같은 날(브리핑은 09:00 ET) 다시 내면 **조용히 드롭**된다.
+    실제 삽입 수를 `rowcount` 로 재서 드롭을 로그로 남긴다 — 안 그러면 "저장했다" 와
+    "저장된 척했다" 가 구분되지 않는다 (`market_data.py:92` 가 같은 이유로 rowcount 를 쓴다).
+
+    Returns: 실제 삽입된 행 수 (드롭 제외).
+    """
+    from nuri.core.axis import derive_alpha_action
+    from nuri.core.timezone import today_kst
+
+    candidates = getattr(result, "candidates", None) or []
+    if not candidates:
+        return 0
+
+    today = today_kst()
+    batch_regime: str | None = None
+    try:
+        from nuri.quant.regime.classifier import canonical_regime_or_none, classify_regime
+
+        rr = classify_regime(db_path=db_path)
+        if rr is not None:
+            batch_regime = canonical_regime_or_none(rr.regime)
+    except Exception:
+        logger.debug("save_buy_candidates: regime classify 실패, NULL 유지", exc_info=True)
+
+    records = []
+    for c in candidates:
+        records.append(
+            {
+                "date": today,
+                "ticker": c.ticker,
+                "action": "BUY",
+                "alpha_action": derive_alpha_action("BUY"),
+                # portfolio_action 은 NULL — 이건 alpha 축 신호지 포트폴리오 룰이 아니다
+                # (#429 축 분리). 집중도/섹터는 REBALANCE 경로에서만 나온다.
+                "portfolio_action": None,
+                "confidence": c.score,
+                "regime": batch_regime,
+                "signals": json.dumps(c.sources, ensure_ascii=False),
+                "entry_price": c.entry,
+                "source": BUY_CANDIDATE_SOURCE,
+                # 가격 레벨은 recommendations 에 컬럼이 없다 — 사용자 CLAUDE.md 가 요구하는
+                # entry/stop/TP 는 브리핑이 렌더하고, 여기엔 사후 재구성을 위해 남긴다.
+                "scoring_detail": json.dumps(
+                    {
+                        "deploy_pct": c.deploy_pct,
+                        "stop": c.stop,
+                        "tp1": c.tp1,
+                        "tp2": c.tp2,
+                        "why_now": c.why_now,
+                    },
+                    ensure_ascii=False,
+                ),
+            }
+        )
+
+    with get_db(db_path) as conn:
+        cur = conn.executemany(
+            """INSERT OR IGNORE INTO recommendations
+               (date, ticker, action, alpha_action, portfolio_action,
+                confidence, regime, signals, entry_price, source, scoring_detail)
+               VALUES (:date, :ticker, :action, :alpha_action, :portfolio_action,
+                       :confidence, :regime, :signals, :entry_price, :source, :scoring_detail)""",
+            records,
+        )
+        inserted = cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else 0
+
+    dropped = len(records) - inserted
+    if dropped > 0:
+        logger.warning(
+            "buy candidates %d건 중 %d건이 UNIQUE(date,ticker) 로 드롭됐다 "
+            "— 같은 날 합의 파이프라인이 먼저 쓴 ticker 다 (%s)",
+            len(records),
+            dropped,
+            today,
+        )
+    logger.info("buy candidates %d건 저장 (드롭 %d)", inserted, dropped)
+    return inserted
+
+
 def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=None) -> int:
     """E-1 후보 + E-2 액션을 recommendations 테이블에 저장.
 

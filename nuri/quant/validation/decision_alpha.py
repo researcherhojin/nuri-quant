@@ -173,6 +173,17 @@ def fetch_sample(db_path: Optional[Path] = None, as_of: Optional[str] = None) ->
     (`db_migrations.py`). 즉 INNER JOIN 이 숨길 수 있었던 행은 전부 결측이었다.
     미러의 `action` 은 `recommendations.action` 의 복사본이고 프로덕션 실측(2026-08-18)
     상 미러된 525건 전부 일치했으나, 그건 현재 백필 구현의 성질이지 스키마 제약이 아니다.
+
+    **모집단은 `source IS NULL` — 합의 파이프라인 산출물만이다** (#1078). 사전등록 시점에
+    `recommendations` 를 쓰는 주체는 합의 하나뿐이었고 그 행들은 전부 NULL 이다.
+    `buy_candidate_emitter` 는 declared_date(2026-07-08) 한참 뒤에야 영속화를 시작했고,
+    넣으면 사전등록된 모집단이 측정 도중 205건에서 배 가까이 불어난다. 제외는 모집단을
+    사전등록 시점 그대로 유지하는 선택이며 사용자 결정(2026-08-18)이다.
+
+    ⚠️ **긍정 조건(`IS NULL`)이지 부정 조건(`!= 'emitter'`)이 아니다.** 후자로 쓰면 앞으로
+    추가되는 **모든** 새 writer 가 라벨만 다르면 표본에 조용히 들어온다 — 사전등록된
+    모집단이 코드 변경 없이 넓어지는 경로다 (Codex P1). 새 writer 를 표본에 넣으려면
+    여기를 명시적으로 고쳐야 하고, 그건 STRATEGY 기록이 따르는 사전등록 개정이다.
     """
     mm = _criteria()
     window = int(mm["primary_window_days"])
@@ -186,6 +197,7 @@ def fetch_sample(db_path: Optional[Path] = None, as_of: Optional[str] = None) ->
         LEFT JOIN decision_outcomes o
                ON o.decision_id = 'rec_' || r.id AND o.observation_window = ?
         WHERE r.action = 'BUY'
+          AND r.source IS NULL
           AND r.date >= ? AND r.date <= ?
         ORDER BY r.date, r.id
         """,

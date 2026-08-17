@@ -219,6 +219,34 @@ class TestCheckFreshness:
 
         assert check_freshness("factors", db_path=db_path)["status"] == "PASS"
 
+    def test_emitter_rows_do_not_make_consensus_look_fresh(self, db_path):
+        """오늘 emitter 행이 있어도 합의가 낡았으면 FAIL 이어야 한다 (#1078 Codex P2).
+
+        `buy_candidate_emitter` 가 같은 `recommendations` 테이블에 쓰기 시작한 뒤로는
+        `MAX(date)` 만 보면 합의 job 이 죽은 날에도 브리핑이 낸 후보 한 줄이 "합의 신선함"
+        으로 읽힌다. 관측이 거짓말하면 고장을 아무도 못 본다.
+
+        Mutation lock: `WHERE source IS NULL` 을 빼면 PASS 로 뒤집혀 FAIL.
+        """
+        from nuri.core.db import get_db
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now
+
+        stale = (kst_now() - timedelta(days=5)).strftime("%Y-%m-%d")
+        today = kst_now().strftime("%Y-%m-%d")
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, source) VALUES (?, ?, 'BUY', NULL)",
+                (stale, "AAA"),
+            )
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, source) "
+                "VALUES (?, ?, 'BUY', 'buy_candidate_emitter')",
+                (today, "BBB"),
+            )
+
+        assert check_freshness("consensus", db_path=db_path)["status"] == "FAIL"
+
     def test_thresholds_match_prices_because_the_date_is_a_market_date(self):
         """`factors` 와 `prices` 임계가 같아야 한다 (#1071 Codex P1).
 

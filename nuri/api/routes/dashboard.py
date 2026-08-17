@@ -273,7 +273,9 @@ def _get_latest_actions() -> list[dict]:
             SELECT ticker, action, confidence, regime, signals, date,
                    scoring_detail, agent_verdicts, alpha_action, portfolio_action
             FROM recommendations
-            WHERE date = (SELECT MAX(date) FROM recommendations)
+            -- emitter 행 제외 — 이 카드는 합의 결과다 (#1078).
+            WHERE source IS NULL
+              AND date = (SELECT MAX(date) FROM recommendations WHERE source IS NULL)
             ORDER BY confidence DESC
         """)
         if not rows:
