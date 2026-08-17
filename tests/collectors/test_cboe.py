@@ -326,6 +326,7 @@ class TestCBOEExtractPCR:
         assert len(result) == 1
 
     def test_collect_all_fail(self, monkeypatch):
+        """전면 실패는 `[]` 가 아니라 raise (#1042). 이전엔 `== []` 를 단언해 결함을 잠그고 있었다."""
         from nuri.collectors.cboe import CBOECollector
 
         c = CBOECollector()
@@ -334,8 +335,8 @@ class TestCBOEExtractPCR:
             with patch.object(c, "_collect_totalpc", side_effect=RuntimeError("fail")):
                 with patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("fail")):
                     with patch.object(c, "_collect_db_stale", side_effect=RuntimeError("fail")):
-                        result = c.collect()
-        assert result == []
+                        with pytest.raises(RuntimeError, match="fail"):
+                            c.collect()
 
     def test_collect_daily_returns_empty(self, monkeypatch):
         from nuri.collectors.cboe import CBOECollector
@@ -357,3 +358,83 @@ class TestCBOEExtractPCR:
         c = CBOECollector()
         records = [{"indicator": "put_call_ratio", "date": "2025-03-15", "value": 0.85, "source": "CBOE"}]
         assert c.save(records) == 1
+
+
+class TestCBOEFailedVsNoData:
+    """전면 실패와 "오늘 값 없음"의 구분을 잠근다 (#1042 — coingecko #1043 과 같은 규약).
+
+    구분이 사라지면 `collector_runs.status` 에 둘 다 `finished` 가 박힌다.
+    `rows_collected` 는 `run_step` 이 돌려주는 4-키 dict 의 길이라 **항상 4** 이므로
+    status 가 유일한 판별 채널인데, 그게 성공이라고 말하고 있었다.
+
+    raise 하면 이미 있으면서 우회되던 것들이 되살아난다 — `base.py` 의 재시도 3회,
+    `_send_failure_alert()` 의 `#ops` 알림, scheduler 의 `status="failed"`,
+    `collector_health` 의 실패 집계.
+    """
+
+    def _collector(self):
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        c.fred_key = ""  # FRED 티어 비활성 — 키 유무에 따라 결과가 갈리지 않게
+        return c
+
+    def test_total_failure_raises_instead_of_returning_empty(self):
+        """raise 를 걷어내면 FAIL."""
+        c = self._collector()
+        with (
+            patch.object(c, "_collect_daily", side_effect=RuntimeError("daily down")),
+            patch.object(c, "_collect_totalpc", side_effect=RuntimeError("totalpc down")),
+            patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("yf down")),
+            patch.object(c, "_collect_db_stale", side_effect=RuntimeError("db down")),
+        ):
+            with pytest.raises(RuntimeError):
+                c.collect()
+
+    def test_every_tier_empty_without_error_is_not_a_failure(self):
+        """조건을 `if errors` 대신 `if not records` 로 넓히면 FAIL.
+
+        전 티어가 200 인데 내용이 비었을 뿐이면 예외가 없다 — 그게 NO_DATA 의 정의고,
+        그대로 `[]` 가 나가야 한다.
+        """
+        c = self._collector()
+        with (
+            patch.object(c, "_collect_daily", return_value=[]),
+            patch.object(c, "_collect_totalpc", return_value=[]),
+            patch.object(c, "_collect_yfinance_spy_pcr", return_value=[]),
+            patch.object(c, "_collect_db_stale", return_value=[]),
+        ):
+            assert c.collect() == []
+
+    def test_first_error_is_raised_not_the_last(self):
+        """`errors[0]` → `errors[-1]` 로 바꾸면 FAIL.
+
+        마지막 티어는 항상 DB stale(로컬 DB)이라, 그걸 올리면 알림이 네트워크 원인을
+        가리고 운영자가 DB 를 뒤지게 된다.
+        """
+        c = self._collector()
+        with (
+            patch.object(c, "_collect_daily", side_effect=RuntimeError("FIRST cboe daily 429")),
+            patch.object(c, "_collect_totalpc", side_effect=RuntimeError("totalpc down")),
+            patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("yf down")),
+            patch.object(c, "_collect_db_stale", side_effect=RuntimeError("LAST db locked")),
+        ):
+            with pytest.raises(RuntimeError, match="FIRST cboe daily 429"):
+                c.collect()
+
+    def test_db_stale_still_counts_as_success(self):
+        """의도된 한계를 명시적으로 잠근다 — DB_STALE 재사용은 여전히 성공이다.
+
+        이 PR 은 "총체적 장애가 성공으로 기록되는" 축만 고친다. stale 재사용이 영원히
+        성공으로 집계되는 축은 별건(`put_call_ratio` 가 `FRESHNESS_POLICIES` 에 없음)이며,
+        여기서 조용히 바꾸면 라이브 소스가 흔들릴 때마다 수집기가 죽는다.
+        """
+        c = self._collector()
+        stale = [{"indicator": "put_call_ratio", "date": "2026-05-12", "value": 0.9, "source": "DB_STALE"}]
+        with (
+            patch.object(c, "_collect_daily", side_effect=RuntimeError("down")),
+            patch.object(c, "_collect_totalpc", side_effect=RuntimeError("down")),
+            patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("down")),
+            patch.object(c, "_collect_db_stale", return_value=stale),
+        ):
+            assert c.collect() == stale
