@@ -27,6 +27,31 @@ interface AgentVerdict {
   [key: string]: unknown;
 }
 
+interface ThesisEvidence {
+  id: number;
+  side: "bull" | "bear";
+  claim: string;
+  source_type: string;
+  source_key: string | null;
+  source_url: string | null;
+  as_of: string | null;
+  quote: string | null;
+}
+
+interface Thesis {
+  id: number;
+  ticker: string;
+  version: number;
+  author: string;
+  stance: string;
+  bull_case: string;
+  bear_case: string;
+  effective_date: string;
+  status: string;
+  verdict: string | null;
+  evidence: ThesisEvidence[];
+}
+
 interface DecisionDetail {
   id: number;
   date: string;
@@ -50,6 +75,9 @@ interface DecisionDetail {
   outcome: string;
   reasoning: string | null;
   evidence: Evidence[];
+  // 결정 시점(`date`)에 유효했던 논지 — point-in-time 조인이라 논지를 나중에 써도
+  // 그 이전 결정들에 소급해 붙는다. 논지가 없으면 null.
+  thesis: Thesis | null;
 }
 
 // agent_verdicts 는 JSON 문자열로 저장됨 — 안전 파싱 + per-item 검증.
@@ -148,6 +176,70 @@ export async function DecisionProvenance({ id }: { id: string }) {
             <Metric label="60d" value={fmt(d.pnl_60d, "%")} color={pnlColor(d.pnl_60d)} />
             <Metric label="90d" value={fmt(d.pnl_90d, "%")} color={pnlColor(d.pnl_90d)} />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Thesis — 상승/하락 논리 병기 (#1083). 없으면 카드 자체를 숨기지 않고
+          "아직 없음" 을 보여준다: 논지가 비어 있다는 사실이 곧 판단 근거의 부재라
+          화면에서 사라지면 안 된다. */}
+      <Card className="bg-card border-border">
+        <CardContent className="pt-4 pb-3">
+          <div className="flex items-baseline gap-2 mb-3">
+            <p className="text-[10px] text-muted-foreground">투자 논지</p>
+            {d.thesis && (
+              <span className="text-[10px] text-muted-foreground/70">
+                v{d.thesis.version} · {d.thesis.effective_date} · {d.thesis.author} · {d.thesis.status}
+                {d.thesis.verdict ? ` · ${d.thesis.verdict}` : ""}
+              </span>
+            )}
+          </div>
+          {!d.thesis ? (
+            <p className="text-xs text-muted-foreground">
+              이 시점에 기록된 논지 없음 — 무엇이 맞으면 이 판단이 옳고 무엇이 틀리면 그른지가 남아 있지 않다.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded bg-muted/40 px-2.5 py-2">
+                  <p className="text-[10px] text-emerald-500 mb-1">상승 논리</p>
+                  <p className="text-xs text-foreground/90 whitespace-pre-wrap">{d.thesis.bull_case}</p>
+                </div>
+                <div className="rounded bg-muted/40 px-2.5 py-2">
+                  <p className="text-[10px] text-rose-500 mb-1">하락 논리</p>
+                  <p className="text-xs text-foreground/90 whitespace-pre-wrap">{d.thesis.bear_case}</p>
+                </div>
+              </div>
+              {d.thesis.evidence.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-muted-foreground">논지 근거 ({d.thesis.evidence.length})</p>
+                  {d.thesis.evidence.map((e) => (
+                    <div key={e.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded px-2.5 py-1.5">
+                      <span
+                        className={`w-10 shrink-0 ${e.side === "bull" ? "text-emerald-500" : "text-rose-500"}`}
+                      >
+                        {e.side === "bull" ? "상승" : "하락"}
+                      </span>
+                      <span className="text-foreground/90">{e.claim}</span>
+                      <span className="ml-auto shrink-0 text-[10px] text-muted-foreground font-mono">
+                        {e.source_url ? (
+                          <a href={e.source_url} className="underline" rel="noopener noreferrer" target="_blank">
+                            {e.source_type}
+                            {e.source_key ? `/${e.source_key}` : ""}
+                          </a>
+                        ) : (
+                          <>
+                            {e.source_type}
+                            {e.source_key ? `/${e.source_key}` : ""}
+                          </>
+                        )}
+                        {e.as_of ? ` · ${e.as_of}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

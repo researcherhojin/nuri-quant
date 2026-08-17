@@ -171,6 +171,121 @@ describe("DecisionProvenance", () => {
     expect(screen.getByText("macro")).toBeInTheDocument();
   });
 
+  it("renders bull and bear cases side by side with sourced evidence", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      thesis: {
+        id: 7,
+        ticker: "AAA",
+        version: 2,
+        author: "user",
+        stance: "bullish",
+        bull_case: "가속기 수요가 공급을 앞선다",
+        bear_case: "고객사 자체 칩 전환이 점유율을 깎는다",
+        effective_date: "2026-04-01",
+        status: "active",
+        verdict: null,
+        evidence: [
+          {
+            id: 11,
+            side: "bull",
+            claim: "데이터센터 매출 4분기 연속 증가",
+            source_type: "filing",
+            source_key: "10-Q",
+            source_url: "https://example.invalid/q",
+            as_of: "2026-03-31",
+            quote: null,
+          },
+          {
+            id: 12,
+            side: "bear",
+            claim: "상위 고객 2곳이 자체 칩을 발표",
+            source_type: "analyst",
+            source_key: null,
+            source_url: null,
+            as_of: null,
+            quote: null,
+          },
+        ],
+      },
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.getByText("상승 논리")).toBeInTheDocument();
+    expect(screen.getByText("하락 논리")).toBeInTheDocument();
+    expect(screen.getByText("가속기 수요가 공급을 앞선다")).toBeInTheDocument();
+    expect(screen.getByText("고객사 자체 칩 전환이 점유율을 깎는다")).toBeInTheDocument();
+    expect(screen.getByText("논지 근거 (2)")).toBeInTheDocument();
+    // 출처 역추적 — url 이 있으면 링크, 없으면 평문
+    expect(screen.getByRole("link", { name: /filing\/10-Q/ })).toHaveAttribute(
+      "href",
+      "https://example.invalid/q",
+    );
+    expect(screen.getByText("analyst")).toBeInTheDocument();
+    expect(screen.getByText(/v2 · 2026-04-01 · user · active/)).toBeInTheDocument();
+  });
+
+  it("shows a settled verdict and sources that lack a key", async () => {
+    // 앞 테스트의 반대편 조합 — verdict 존재, 링크에 source_key 없음, 평문에 source_key 있음.
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      thesis: {
+        id: 8,
+        ticker: "AAA",
+        version: 1,
+        author: "user",
+        stance: "bearish",
+        bull_case: "재고 사이클 저점 통과",
+        bear_case: "가격 경쟁이 마진을 깎는다",
+        effective_date: "2026-04-01",
+        status: "superseded",
+        verdict: "held",
+        evidence: [
+          {
+            id: 21,
+            side: "bull",
+            claim: "재고 회전일수 개선",
+            source_type: "filing",
+            source_key: null,
+            source_url: "https://example.invalid/k",
+            as_of: null,
+            quote: null,
+          },
+          {
+            id: 22,
+            side: "bear",
+            claim: "ASP 하락",
+            source_type: "analyst",
+            source_key: "note-4",
+            source_url: null,
+            as_of: "2026-03-20",
+            quote: null,
+          },
+        ],
+      },
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.getByText(/v1 · 2026-04-01 · user · superseded · held/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^filing$/ })).toHaveAttribute("href", "https://example.invalid/k");
+    expect(screen.getByText(/analyst\/note-4/)).toBeInTheDocument();
+  });
+
+  it("says the thesis is missing instead of hiding the card", async () => {
+    // 논지가 비어 있다는 사실이 곧 판단 근거의 부재다 — 카드가 사라지면 그 부재가 안 보인다.
+    mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, thesis: null });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.getByText("투자 논지")).toBeInTheDocument();
+    expect(screen.getByText(/이 시점에 기록된 논지 없음/)).toBeInTheDocument();
+  });
+
   it("default export awaits params; Loading skeleton shows while child suspends", async () => {
     mockFetchAPI = vi.fn(() => new Promise(() => {})); // never resolve → child suspends → fallback
     const mod = await import("@/app/decisions/[id]/page");
