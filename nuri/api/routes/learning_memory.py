@@ -7,6 +7,7 @@
 
 Read-only. No mutation. 5-min in-memory cache (consensus 패턴 일관).
 """
+
 import time
 
 from fastapi import APIRouter

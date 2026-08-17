@@ -12,6 +12,7 @@ scorecard/UI 가 "insufficient data" 로 graceful degrade.
 
 STRATEGY §2.6 Surface 단계. 승격은 human judgment (별도 PR).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,11 +31,12 @@ class MarketSignalState:
 
     Shadow 신호는 single point-in-time 판정. backtest 는 `_history` 함수로 별도.
     """
+
     signal_id: str
     fired: bool
-    level: float | None        # 현재 값 (inversion=spread bps, oas=percent)
-    threshold: float | None    # 임계 (fired 판정용 1차 threshold)
-    detail: str                # 인간 가독 설명 ("3M=5.52 > 10Y=4.28, 역전")
+    level: float | None  # 현재 값 (inversion=spread bps, oas=percent)
+    threshold: float | None  # 임계 (fired 판정용 1차 threshold)
+    detail: str  # 인간 가독 설명 ("3M=5.52 > 10Y=4.28, 역전")
 
 
 def detect_yield_curve_inversion(db_path=None) -> MarketSignalState:
@@ -62,13 +64,17 @@ def detect_yield_curve_inversion(db_path=None) -> MarketSignalState:
     except Exception:
         return MarketSignalState(
             signal_id="yield_curve_inversion",
-            fired=False, level=None, threshold=0.0,
+            fired=False,
+            level=None,
+            threshold=0.0,
             detail=f"DB 조회 실패 ({short_indicator} / {long_indicator}) — macro 테이블 확인",
         )
     if not row or row[0]["short_v"] is None or row[0]["long_v"] is None:
         return MarketSignalState(
             signal_id="yield_curve_inversion",
-            fired=False, level=None, threshold=0.0,
+            fired=False,
+            level=None,
+            threshold=0.0,
             detail=f"데이터 부족 ({short_indicator} 또는 {long_indicator})",
         )
 
@@ -82,7 +88,10 @@ def detect_yield_curve_inversion(db_path=None) -> MarketSignalState:
     )
     return MarketSignalState(
         signal_id="yield_curve_inversion",
-        fired=fired, level=spread_bps, threshold=0.0, detail=detail,
+        fired=fired,
+        level=spread_bps,
+        threshold=0.0,
+        detail=detail,
     )
 
 
@@ -98,21 +107,24 @@ def detect_hy_oas_widening(db_path=None) -> MarketSignalState:
 
     try:
         rows = query(
-            "SELECT date, value FROM macro WHERE indicator = 'hy_oas' "
-            "ORDER BY date DESC LIMIT :limit",
+            "SELECT date, value FROM macro WHERE indicator = 'hy_oas' ORDER BY date DESC LIMIT :limit",
             {"limit": lookback + 1},  # type: ignore[arg-type]
             db_path=db_path,
         )
     except Exception:
         return MarketSignalState(
             signal_id="hy_oas_widening",
-            fired=False, level=None, threshold=level_pct,
+            fired=False,
+            level=None,
+            threshold=level_pct,
             detail="DB 조회 실패 (macro 테이블) — 환경 확인",
         )
     if not rows:
         return MarketSignalState(
             signal_id="hy_oas_widening",
-            fired=False, level=None, threshold=level_pct,
+            fired=False,
+            level=None,
+            threshold=level_pct,
             detail="데이터 부족 (hy_oas) — FRED_API_KEY 확인 필요 (BAMLH0A0HYM2)",
         )
     # codex PR #436 Review CONCERN: partial history (< lookback+1 rows) 시 rows[-1]
@@ -122,7 +134,9 @@ def detect_hy_oas_widening(db_path=None) -> MarketSignalState:
         current = float(rows[0]["value"])
         return MarketSignalState(
             signal_id="hy_oas_widening",
-            fired=False, level=current, threshold=level_pct,
+            fired=False,
+            level=current,
+            threshold=level_pct,
             detail=(
                 f"HY OAS 현재 {current:.2f}% — 히스토리 부족 ({len(rows)} rows "
                 f"< 필요 {lookback + 1}). {lookback}d 변화 측정 불가."
@@ -142,7 +156,10 @@ def detect_hy_oas_widening(db_path=None) -> MarketSignalState:
     )
     return MarketSignalState(
         signal_id="hy_oas_widening",
-        fired=fired, level=current, threshold=level_pct, detail=detail,
+        fired=fired,
+        level=current,
+        threshold=level_pct,
+        detail=detail,
     )
 
 

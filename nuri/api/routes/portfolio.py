@@ -1,4 +1,5 @@
 """포트폴리오 + 리스크 API."""
+
 import csv
 import io
 import json
@@ -88,6 +89,7 @@ class HoldingInput(BaseModel):
 
 class HoldingUpdate(BaseModel):
     """보유 종목 수정용 모델. 모든 필드 optional — 전달된 필드만 업데이트."""
+
     quantity: Optional[float] = None
     avg_price: Optional[float] = None
     currency: Optional[CurrencyEnum] = None
@@ -176,6 +178,7 @@ def get_portfolio():
     """종목별 보유 현황 + 계좌별 cash 잔액 (#213) + 일변/sparkline (#214)."""
     from nuri.api.routes.dashboard import _get_cash_balances
     from nuri.core.ticker_names import get_ticker_name
+
     rows = query("""
         SELECT p.ticker, p.account, p.quantity, p.avg_price, p.currency, p.sector,
                p.first_buy_date,
@@ -210,9 +213,13 @@ def add_holding(holding: HoldingInput, user=Depends(require_write_auth)):
     if record.get("metadata") is not None:
         record["metadata"] = json.dumps(record["metadata"], ensure_ascii=False)
     upsert_portfolio([record])
-    audit_log("INSERT", "portfolio", record["ticker"],
-              f"account={record['account']} qty={record['quantity']} avg={record['avg_price']}",
-              user_id=user.get("sub", "unknown"))
+    audit_log(
+        "INSERT",
+        "portfolio",
+        record["ticker"],
+        f"account={record['account']} qty={record['quantity']} avg={record['avg_price']}",
+        user_id=user.get("sub", "unknown"),
+    )
     _try_sync_yaml()
     return {"ok": True, "ticker": record["ticker"]}
 
@@ -237,8 +244,7 @@ def delete_holding(account: str, ticker: str, user=Depends(require_write_auth)):
         )
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail="종목 미발견")
-    audit_log("DELETE", "portfolio", ticker,
-              f"account={account}", user_id=user.get("sub", "unknown"))
+    audit_log("DELETE", "portfolio", ticker, f"account={account}", user_id=user.get("sub", "unknown"))
     _try_sync_yaml()
     return {"ok": True, "deleted": ticker}
 
@@ -283,9 +289,7 @@ def update_holding(account: str, ticker: str, update: HoldingUpdate, user=Depend
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail="종목 미발견")
 
-    audit_log("UPDATE", "portfolio", ticker,
-              f"account={account} changes={changes}",
-              user_id=user.get("sub", "unknown"))
+    audit_log("UPDATE", "portfolio", ticker, f"account={account} changes={changes}", user_id=user.get("sub", "unknown"))
     _try_sync_yaml()
     return {"ok": True, "ticker": ticker, "updated": changes}
 
@@ -358,21 +362,22 @@ def import_portfolio(file: UploadFile, user=Depends(require_write_auth)):
             errors.append(f"행 {i}: quantity/avg_price는 0보다 커야 합니다")
             continue
 
-        records.append({
-            "account": account,
-            "ticker": ticker,
-            "quantity": qty,
-            "avg_price": avg,
-            "currency": row.get("currency", "USD").upper() or "USD",
-            "sector": row.get("sector", ""),
-        })
+        records.append(
+            {
+                "account": account,
+                "ticker": ticker,
+                "quantity": qty,
+                "avg_price": avg,
+                "currency": row.get("currency", "USD").upper() or "USD",
+                "sector": row.get("sector", ""),
+            }
+        )
 
     if not records and errors:
         raise HTTPException(status_code=400, detail=f"유효한 행 없음: {'; '.join(errors[:5])}")
 
     count = upsert_portfolio(records)
-    audit_log("IMPORT", "portfolio", f"{count} records",
-              f"file={file.filename}", user_id=user.get("sub", "unknown"))
+    audit_log("IMPORT", "portfolio", f"{count} records", f"file={file.filename}", user_id=user.get("sub", "unknown"))
     _try_sync_yaml()
     return {"ok": True, "imported": count, "errors": errors}
 
@@ -381,8 +386,7 @@ def import_portfolio(file: UploadFile, user=Depends(require_write_auth)):
 def export_portfolio(format: str = "csv"):
     """포트폴리오 CSV/YAML 다운로드."""
     rows = query(
-        "SELECT account, ticker, quantity, avg_price, currency, sector "
-        "FROM portfolio ORDER BY account, ticker"
+        "SELECT account, ticker, quantity, avg_price, currency, sector FROM portfolio ORDER BY account, ticker"
     )
 
     if format == "yaml":
@@ -392,16 +396,22 @@ def export_portfolio(format: str = "csv"):
             acct = r["account"]
             if acct not in accounts:
                 accounts[acct] = {"currency": r["currency"], "holdings": []}
-            accounts[acct]["holdings"].append({
-                "ticker": r["ticker"],
-                "qty": r["quantity"],
-                "avg": r["avg_price"],
-                **({"sector": r["sector"]} if r["sector"] else {}),
-            })
+            accounts[acct]["holdings"].append(
+                {
+                    "ticker": r["ticker"],
+                    "qty": r["quantity"],
+                    "avg": r["avg_price"],
+                    **({"sector": r["sector"]} if r["sector"] else {}),
+                }
+            )
         from nuri.core.portfolio_sync import _HoldingFlowDumper
+
         content = yaml.dump(
-            {"accounts": accounts}, Dumper=_HoldingFlowDumper,
-            allow_unicode=True, default_flow_style=False, sort_keys=False,
+            {"accounts": accounts},
+            Dumper=_HoldingFlowDumper,
+            allow_unicode=True,
+            default_flow_style=False,
+            sort_keys=False,
         )
         return StreamingResponse(
             io.BytesIO(content.encode("utf-8")),
@@ -416,14 +426,16 @@ def export_portfolio(format: str = "csv"):
     writer = csv.DictWriter(output, fieldnames=["account", "ticker", "quantity", "avg_price", "currency", "sector"])
     writer.writeheader()
     for r in rows:
-        writer.writerow({
-            "account": r["account"],
-            "ticker": r["ticker"],
-            "quantity": r["quantity"],
-            "avg_price": r["avg_price"],
-            "currency": r["currency"],
-            "sector": r["sector"] or "",
-        })
+        writer.writerow(
+            {
+                "account": r["account"],
+                "ticker": r["ticker"],
+                "quantity": r["quantity"],
+                "avg_price": r["avg_price"],
+                "currency": r["currency"],
+                "sector": r["sector"] or "",
+            }
+        )
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode("utf-8")),
         media_type="text/csv",
@@ -435,7 +447,14 @@ def export_portfolio(format: str = "csv"):
 
 _SAMPLE_PORTFOLIO = [
     {"account": "sample", "ticker": "AAPL", "quantity": 10, "avg_price": 190.0, "currency": "USD", "sector": "BigTech"},
-    {"account": "sample", "ticker": "NVDA", "quantity": 5, "avg_price": 130.0, "currency": "USD", "sector": "Semiconductor"},
+    {
+        "account": "sample",
+        "ticker": "NVDA",
+        "quantity": 5,
+        "avg_price": 130.0,
+        "currency": "USD",
+        "sector": "Semiconductor",
+    },
     {"account": "sample", "ticker": "GOOGL", "quantity": 3, "avg_price": 170.0, "currency": "USD", "sector": "BigTech"},
     {"account": "sample", "ticker": "TSLA", "quantity": 8, "avg_price": 250.0, "currency": "USD", "sector": "EV"},
     {"account": "sample", "ticker": "VOO", "quantity": 2, "avg_price": 500.0, "currency": "USD", "sector": "ETF"},
@@ -452,8 +471,7 @@ def load_sample_portfolio(user=Depends(require_write_auth)):
         conn.execute("DELETE FROM portfolio WHERE account='sample'")
 
     count = upsert_portfolio(_SAMPLE_PORTFOLIO)
-    audit_log("SAMPLE", "portfolio", f"{count} records",
-              "loaded sample portfolio", user_id=user.get("sub", "unknown"))
+    audit_log("SAMPLE", "portfolio", f"{count} records", "loaded sample portfolio", user_id=user.get("sub", "unknown"))
     _try_sync_yaml()
     return {"ok": True, "loaded": count}
 
@@ -463,6 +481,7 @@ def get_risk():
     """리스크 지표."""
     try:
         from nuri.analysis.risk import analyze_risk
+
         metrics = analyze_risk()
         # numpy → Python 변환
         result = {}

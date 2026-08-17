@@ -1,4 +1,5 @@
 """리밸런싱 API."""
+
 import logging
 from dataclasses import asdict
 
@@ -13,6 +14,7 @@ def get_rebalance(method: str = Query("rp", pattern="^(mvo|rp)$")):
     """레짐 적응 리밸런싱 제안."""
     try:
         from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
         actions = regime_aware_rebalance(method=method)
         return {
             "actions": [asdict(a) for a in actions],
@@ -29,4 +31,5 @@ def get_rebalance(method: str = Query("rp", pattern="^(mvo|rp)$")):
 def get_tracking():
     """추천 추적 리포트."""
     from nuri.trading.recommend.tracker import get_tracking_report
+
     return get_tracking_report()

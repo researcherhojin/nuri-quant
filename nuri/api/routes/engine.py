@@ -1,4 +1,5 @@
 """SIEGE-inspired engine API: gate, conflicts, memory, certifications."""
+
 import json
 from dataclasses import asdict
 from typing import Optional
@@ -15,16 +16,16 @@ router = APIRouter(tags=["engine"])
 def get_gate():
     """파이프라인 게이트 상태 (전 단계)."""
     from nuri.trading.engine.gate import check_all_gates
+
     gates = check_all_gates()
-    return {
-        phase: asdict(result) for phase, result in gates.items()
-    }
+    return {phase: asdict(result) for phase, result in gates.items()}
 
 
 @router.get("/gate/{phase}")
 def get_gate_phase(phase: str):
     """특정 단계 게이트 상태."""
     from nuri.trading.engine.gate import check_gate
+
     result = check_gate(phase)
     return asdict(result)
 
@@ -33,6 +34,7 @@ def get_gate_phase(phase: str):
 def get_conflicts():
     """시그널 충돌 감지."""
     from nuri.trading.engine.conflicts import detect_conflicts
+
     conflicts = detect_conflicts()
     return {
         "conflicts": [asdict(c) for c in conflicts],
@@ -45,6 +47,7 @@ def get_conflicts():
 def get_memory():
     """전략 학습 메모리 — 성과 변화 감지."""
     from nuri.trading.engine.memory import detect_drift
+
     drifts = detect_drift()
     return {
         "drifts": [asdict(d) for d in drifts],
@@ -57,6 +60,7 @@ def get_memory():
 def post_memory_snapshot(user=Depends(require_write_auth)):
     """전략 성과 스냅샷 저장 (인증 필요)."""
     from nuri.trading.engine.memory import save_snapshot
+
     n = save_snapshot()
     return {"saved": n}
 
@@ -150,8 +154,7 @@ def get_certifications_summary(days: int = Query(30, ge=1, le=365)):
     """
     from nuri.core.timezone import kst_now
 
-    cutoff = (kst_now().replace(tzinfo=None) -
-              __import__("datetime").timedelta(days=days)).isoformat()
+    cutoff = (kst_now().replace(tzinfo=None) - __import__("datetime").timedelta(days=days)).isoformat()
 
     rows = query(
         """SELECT certified, score, regime, caller, timestamp FROM certifications

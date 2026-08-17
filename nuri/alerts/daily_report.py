@@ -6,6 +6,7 @@ Discord 전송 또는 stdout 출력.
 사용법:
     python -m nuri.alerts.daily_report
 """
+
 import logging
 import os
 from datetime import timedelta
@@ -35,9 +36,7 @@ def generate_report() -> dict:
     risk_metrics = analyze_risk()
 
     # Fear & Greed
-    fg_rows = query(
-        "SELECT value FROM macro WHERE indicator = 'fear_greed' ORDER BY date DESC LIMIT 1"
-    )
+    fg_rows = query("SELECT value FROM macro WHERE indicator = 'fear_greed' ORDER BY date DESC LIMIT 1")
     fear_greed = fg_rows[0]["value"] if fg_rows else None
 
     # 내일 이벤트
@@ -51,6 +50,7 @@ def generate_report() -> dict:
     rebalance_info = None
     try:
         from nuri.analysis.rebalance_advisor import generate_advisor_report
+
         rebalance_info = generate_advisor_report()
     except Exception as e:
         logger.debug("리밸런스 어드바이저 실패: %s", e)
@@ -68,16 +68,20 @@ def generate_report() -> dict:
                 f"→ {a['reason']} (회수 ~${a['sell_value_usd']:,.0f})"
                 for a in critical
             ]
-            embed["fields"].append({
-                "name": f"🚨 규칙 위반 {rebalance_info['total_violations']}건 (즉시 조치)",
-                "value": "\n".join(lines),
-                "inline": False,
-            })
-            embed["fields"].append({
-                "name": "💵 총 회수 가능",
-                "value": f"~${rebalance_info['total_recovery_usd']:,.0f}",
-                "inline": True,
-            })
+            embed["fields"].append(
+                {
+                    "name": f"🚨 규칙 위반 {rebalance_info['total_violations']}건 (즉시 조치)",
+                    "value": "\n".join(lines),
+                    "inline": False,
+                }
+            )
+            embed["fields"].append(
+                {
+                    "name": "💵 총 회수 가능",
+                    "value": f"~${rebalance_info['total_recovery_usd']:,.0f}",
+                    "inline": True,
+                }
+            )
             embed["color"] = 0xE74C3C  # 빨강
 
     return embed
@@ -91,6 +95,7 @@ def send_discord(embed: dict) -> bool:
         return False
 
     import requests
+
     resp = requests.post(
         webhook_url,
         json={"embeds": [embed]},

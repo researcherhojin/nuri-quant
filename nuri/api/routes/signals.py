@@ -1,4 +1,5 @@
 """시그널 후보 + 스코어카드 API."""
+
 from dataclasses import asdict
 
 from fastapi import APIRouter, Query
@@ -10,6 +11,7 @@ router = APIRouter(tags=["signals"])
 def get_candidates(days: int = Query(5, ge=1, le=30)):
     """시그널 기반 매매 후보. buy/sell 카운트는 actionable tier 만 (B-2-ext)."""
     from nuri.trading.recommend.candidates import TIER_ACTIONABLE, screen_candidates
+
     candidates = screen_candidates(lookback_days=days)
     actionable = [c for c in candidates if c.tier == TIER_ACTIONABLE and c.regime_fit]
     return {
@@ -51,6 +53,7 @@ def get_scorecard():
 def get_cross_analysis():
     """시그널 × 레짐 교차분석."""
     from nuri.quant.regime.strategy_map import analyze_signal_by_regime
+
     df = analyze_signal_by_regime()
     if df.empty:
         return {"error": "교차분석 데이터 없음"}

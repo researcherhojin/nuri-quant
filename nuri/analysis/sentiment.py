@@ -7,6 +7,7 @@ sentiment 컬럼을 업데이트한다. (-1.0 ~ +1.0)
 사용법:
     python -m nuri.analysis.sentiment
 """
+
 import logging
 import re
 
@@ -16,34 +17,133 @@ logger = logging.getLogger(__name__)
 
 # 긍정 키워드 (영어)
 POSITIVE = {
-    "surge", "surges", "surging", "soar", "soars", "soaring",
-    "rally", "rallies", "rallying", "jump", "jumps", "jumping",
-    "beat", "beats", "beating", "exceed", "exceeds", "exceeded",
-    "upgrade", "upgrades", "upgraded", "bullish",
-    "record", "high", "growth", "grow", "grows", "growing",
-    "gain", "gains", "gaining", "profit", "profitable",
-    "strong", "stronger", "strength", "boom", "booming",
-    "outperform", "outperforms", "buy", "positive",
-    "optimistic", "optimism", "recovery", "recover",
-    "breakout", "breakthrough", "innovation", "innovative",
-    "best", "top", "upside", "up", "rise", "rises", "rising",
+    "surge",
+    "surges",
+    "surging",
+    "soar",
+    "soars",
+    "soaring",
+    "rally",
+    "rallies",
+    "rallying",
+    "jump",
+    "jumps",
+    "jumping",
+    "beat",
+    "beats",
+    "beating",
+    "exceed",
+    "exceeds",
+    "exceeded",
+    "upgrade",
+    "upgrades",
+    "upgraded",
+    "bullish",
+    "record",
+    "high",
+    "growth",
+    "grow",
+    "grows",
+    "growing",
+    "gain",
+    "gains",
+    "gaining",
+    "profit",
+    "profitable",
+    "strong",
+    "stronger",
+    "strength",
+    "boom",
+    "booming",
+    "outperform",
+    "outperforms",
+    "buy",
+    "positive",
+    "optimistic",
+    "optimism",
+    "recovery",
+    "recover",
+    "breakout",
+    "breakthrough",
+    "innovation",
+    "innovative",
+    "best",
+    "top",
+    "upside",
+    "up",
+    "rise",
+    "rises",
+    "rising",
 }
 
 # 부정 키워드 (영어)
 NEGATIVE = {
-    "crash", "crashes", "crashing", "plunge", "plunges", "plunging",
-    "drop", "drops", "dropping", "fall", "falls", "falling",
-    "miss", "misses", "missed", "decline", "declines", "declining",
-    "downgrade", "downgrades", "downgraded", "bearish",
-    "loss", "losses", "losing", "lose", "deficit",
-    "weak", "weaker", "weakness", "slump", "slumps", "slumping",
-    "underperform", "underperforms", "sell", "negative",
-    "pessimistic", "pessimism", "recession", "recessionary",
-    "bankruptcy", "bankrupt", "default", "defaults",
-    "worst", "bottom", "downside", "down", "risk", "risky",
-    "cut", "cuts", "cutting", "layoff", "layoffs",
-    "warning", "warns", "warned", "concern", "concerns",
-    "fear", "fears", "investigation", "lawsuit", "fraud",
+    "crash",
+    "crashes",
+    "crashing",
+    "plunge",
+    "plunges",
+    "plunging",
+    "drop",
+    "drops",
+    "dropping",
+    "fall",
+    "falls",
+    "falling",
+    "miss",
+    "misses",
+    "missed",
+    "decline",
+    "declines",
+    "declining",
+    "downgrade",
+    "downgrades",
+    "downgraded",
+    "bearish",
+    "loss",
+    "losses",
+    "losing",
+    "lose",
+    "deficit",
+    "weak",
+    "weaker",
+    "weakness",
+    "slump",
+    "slumps",
+    "slumping",
+    "underperform",
+    "underperforms",
+    "sell",
+    "negative",
+    "pessimistic",
+    "pessimism",
+    "recession",
+    "recessionary",
+    "bankruptcy",
+    "bankrupt",
+    "default",
+    "defaults",
+    "worst",
+    "bottom",
+    "downside",
+    "down",
+    "risk",
+    "risky",
+    "cut",
+    "cuts",
+    "cutting",
+    "layoff",
+    "layoffs",
+    "warning",
+    "warns",
+    "warned",
+    "concern",
+    "concerns",
+    "fear",
+    "fears",
+    "investigation",
+    "lawsuit",
+    "fraud",
 }
 
 
@@ -52,7 +152,7 @@ def compute_sentiment(title: str) -> float:
     if not title:
         return 0.0
 
-    words = set(re.findall(r'[a-zA-Z]+', title.lower()))
+    words = set(re.findall(r"[a-zA-Z]+", title.lower()))
     pos = len(words & POSITIVE)
     neg = len(words & NEGATIVE)
     total = pos + neg
@@ -126,9 +226,9 @@ def print_sentiment(stats: dict) -> None:
     print(f"{'=' * 50}")
     print(f"  전체 뉴스:  {total}건")
     print(f"  평균 점수:  {avg:+.3f} ({label})")
-    print(f"  긍정:       {pos}건 ({pos/total*100:.1f}%)")
-    print(f"  부정:       {neg}건 ({neg/total*100:.1f}%)")
-    print(f"  중립:       {neu}건 ({neu/total*100:.1f}%)")
+    print(f"  긍정:       {pos}건 ({pos / total * 100:.1f}%)")
+    print(f"  부정:       {neg}건 ({neg / total * 100:.1f}%)")
+    print(f"  중립:       {neu}건 ({neu / total * 100:.1f}%)")
 
     # 종목별 센티먼트
     by_ticker = query("""

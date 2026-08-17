@@ -163,11 +163,16 @@ def fetch_sample(db_path: Optional[Path] = None, as_of: Optional[str] = None) ->
     alpha 가 원장에 없는 결정 (추적 실패/가격 결측). 정산 = 벤치마크가 만기일 이후의
     종가를 갖고 있는 상태 — `_benchmark_settled_through` 참조.
 
-    표본 모집단은 `recommendations` 다. 예전에는 `agent_decisions` 와 INNER JOIN 해
-    미러된 추천만 셌는데, 그 미러를 쓰는 주체가 측정 대상인 tracker 자신이라
-    **미러가 밀리면 보고 결측률이 내려가고 실제는 올라간다** (게이트가 감시 대상과
-    반대로 움직인다). 프로덕션 실측(2026-08-18)상 두 테이블의 action 은 미러된 525건
-    전부 일치하므로 표본 구성은 그대로이고, 의존성만 끊는다.
+    표본 모집단은 `recommendations` 다 — emit 기록 자체가 원장이기 때문이다. 예전에는
+    `agent_decisions` 와 INNER JOIN 해 미러된 추천만 셌는데, 그 미러를 쓰는 주체가 측정
+    대상인 tracker 자신이라 **미러가 밀리면 보고 결측률이 내려가고 실제는 올라간다**
+    (게이트가 감시 대상과 반대로 움직인다).
+
+    분자(n)는 이 변경에 영향받지 않는다 — `decision_outcomes.decision_id` 가
+    `agent_decisions` 를 FK 로 참조하므로 미러 없는 결정은 alpha 행을 가질 수 없다
+    (`db_migrations.py`). 즉 INNER JOIN 이 숨길 수 있었던 행은 전부 결측이었다.
+    미러의 `action` 은 `recommendations.action` 의 복사본이고 프로덕션 실측(2026-08-18)
+    상 미러된 525건 전부 일치했으나, 그건 현재 백필 구현의 성질이지 스키마 제약이 아니다.
     """
     mm = _criteria()
     window = int(mm["primary_window_days"])
@@ -373,10 +378,37 @@ def adjudicate(
         # 조용히 낮아진다. 판정을 바꾸진 않지만 그 상태를 리포트에서 볼 수 있어야 한다.
         "settled_through": sample.settled_through,
         "settlement_lag_days": sample.settlement_lag_days,
+        "max_settlement_lag_days": int(mm["max_settlement_lag_days"]),
         "missing_max_pct": int(mm["missing_outcome_max_pct"]),
         "pre_evaluation": today < str(mm["evaluation_date"]),
         "evaluation_date": mm["evaluation_date"],
     }
+
+    # 정산 정지는 **표본 유무보다 앞**이다. 뒤에 두면 벤치마크가 얼어 확정 alpha 가 하나도
+    # 없을 때 `NO_SAMPLE` 로 빠져나가는데, 그건 "아직 쌓이는 중"으로 읽힌다 — 실제로는
+    # 측정이 멈춘 것이다. 프로덕션이 지금 대부분의 시간을 보내는 상태가 정확히 n=0 이라
+    # (2026-07-28 · 08-01 브리핑) 이 순서가 뒤집혀 있으면 피드가 죽어도 아무도 모른다.
+    lag = sample.settlement_lag_days
+    max_lag = int(mm["max_settlement_lag_days"])
+    stale_benchmark = lag is None or lag > max_lag
+    if stale_benchmark:
+        report.update(
+            {
+                "verdict": "INVALID_STALE_BENCHMARK",
+                "criteria_verdict_if_final": "INVALID_STALE_BENCHMARK",
+                # `None` 을 문자열에 그대로 흘리면 브리핑에 "프런티어 None" 이 찍힌다.
+                # 종가가 아예 없는 상태와 뒤처진 상태는 문장 자체를 나눈다.
+                "reason": (
+                    f"벤치마크({mm['benchmark']}) 종가가 원장에 없다 — 측정 불가"
+                    if lag is None
+                    else (
+                        f"벤치마크 정산 프런티어 {sample.settled_through} — "
+                        f"기준일 {today} 대비 {lag}일 뒤처짐 (한도 {max_lag}일). 측정 중단."
+                    )
+                ),
+            }
+        )
+        return report
 
     if sample.n == 0:
         report.update({"verdict": "NO_SAMPLE", "reason": "표본 0건 (declared_date 이후 확정 alpha 없음)"})
@@ -411,7 +443,11 @@ def adjudicate(
         }
     )
 
-    # 판정 우선순위: 결측 무효 > 표본 미달 > 3조건
+    # 판정 우선순위: (정산 정지 무효 — 위에서 이미 return) > 결측 무효 > 표본 미달 > 3조건
+    #
+    # 정산 정지가 여기 없는 이유: 결측률은 **정산된 창만** 세므로 벤치마크 수집이 멈추면
+    # 미해소 결정이 결측에서 빠져나가 결측률이 조용히 **내려간다** — 측정이 망가질수록
+    # 결측 게이트가 깨끗해 보인다. 그래서 그 검사는 표본 유무보다도 앞에 둔다.
     # `None` = 측정 대상 0 건 → 무효화할 판정이 없다 (위 NO_SAMPLE 조기 return 이
     # 이미 걸러내므로 여기선 항상 실수지만, 비교 전에 의미를 명시한다).
     if missing_pct is not None and missing_pct > float(mm["missing_outcome_max_pct"]):

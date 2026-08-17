@@ -5,6 +5,7 @@ PCR 높음(≥1.2) = 극도 공포 → 역발상 매수 신호.
 PCR 낮음(≤0.7) = 과도한 낙관 → 경계 신호.
 데이터 없으면 graceful HOLD 반환.
 """
+
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
@@ -19,9 +20,9 @@ class OptionsAgent(BaseAgent):
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         lookback = _CFG.get("lookback_days", 5)
         rows = self._safe_query(
-            "SELECT value FROM macro WHERE indicator='put_call_ratio' "
-            "ORDER BY date DESC LIMIT ?",
-            (lookback,), db_path,
+            "SELECT value FROM macro WHERE indicator='put_call_ratio' ORDER BY date DESC LIMIT ?",
+            (lookback,),
+            db_path,
         )
         if not rows:
             return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 데이터 없음")
@@ -72,21 +73,33 @@ class OptionsAgent(BaseAgent):
         score_sell = _CFG.get("score_sell", -2)
 
         if score >= score_buy:
-            action, confidence = "BUY", min(
-                _CONF.get("cap", 80),
-                _CONF.get("buy_base", 45) + score * _CONF.get("buy_multiplier", 12),
+            action, confidence = (
+                "BUY",
+                min(
+                    _CONF.get("cap", 80),
+                    _CONF.get("buy_base", 45) + score * _CONF.get("buy_multiplier", 12),
+                ),
             )
         elif score <= score_sell:
-            action, confidence = "SELL", min(
-                _CONF.get("cap", 80),
-                _CONF.get("sell_base", 45) + abs(score) * _CONF.get("sell_multiplier", 12),
+            action, confidence = (
+                "SELL",
+                min(
+                    _CONF.get("cap", 80),
+                    _CONF.get("sell_base", 45) + abs(score) * _CONF.get("sell_multiplier", 12),
+                ),
             )
         else:
             action, confidence = "HOLD", _CONF.get("hold_base", 35) + abs(score) * _CONF.get("hold_multiplier", 8)
 
         return AgentVerdict(
-            self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
+            self.name,
+            ticker,
+            action,
+            round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons),
-            {"pcr_avg": round(pcr, 3), "pcr_latest": round(values[0], 3) if values else None,
-             "lookback_count": len(values)},
+            {
+                "pcr_avg": round(pcr, 3),
+                "pcr_latest": round(values[0], 3) if values else None,
+                "lookback_count": len(values),
+            },
         )

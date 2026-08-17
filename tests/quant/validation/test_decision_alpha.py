@@ -84,6 +84,13 @@ def _seed_decision(db_path, rec_id: int, ticker: str, emit: str, action: str = "
         conn.commit()
 
 
+def _truncate_benchmark(db_path, last_date: str) -> None:
+    """벤치마크(SPY) 시계열을 `last_date` 까지로 자른다 — 수집 정지 재현."""
+    with get_db(db_path) as conn:
+        conn.execute("DELETE FROM prices WHERE ticker = 'SPY' AND date > ?", (last_date,))
+        conn.commit()
+
+
 @pytest.fixture
 def seeded(db_path):
     """SPY + 치환 universe 3종 + 실표본 2 ticker 4 decision."""
@@ -163,12 +170,6 @@ class TestMissingIsSettlementNotCalendar:
     미도착인 상태였다 (SPY 마지막 bar 2026-08-14, 오늘 2026-08-18).
     """
 
-    @staticmethod
-    def _truncate_benchmark(db_path, last_date: str) -> None:
-        with get_db(db_path) as conn:
-            conn.execute("DELETE FROM prices WHERE ticker = 'SPY' AND date > ?", (last_date,))
-            conn.commit()
-
     def test_unsettled_window_is_not_missing(self, seeded):
         """만기일은 지났지만 벤치마크 bar 가 아직 없으면 결측 아님.
 
@@ -176,7 +177,7 @@ class TestMissingIsSettlementNotCalendar:
         결측 1건으로 세어져 FAIL.
         """
         _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)  # target = 2026-08-09
-        self._truncate_benchmark(seeded, "2026-08-05")  # 만기 이후 bar 미도착
+        _truncate_benchmark(seeded, "2026-08-05")  # 만기 이후 bar 미도착
         s = da.fetch_sample(db_path=seeded, as_of=AS_OF)  # as_of 9/1 — 달력상은 닫힘
         assert s.n_missing_closed == 0
         assert s.missing_rate_pct == 0.0
@@ -205,7 +206,7 @@ class TestMissingIsSettlementNotCalendar:
         Mutation lock: `settled_through` / `settlement_lag_days` 를 리포트에서 빼면 FAIL.
         """
         _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)  # target = 2026-08-09
-        self._truncate_benchmark(seeded, "2026-07-20")  # 수집 정지
+        _truncate_benchmark(seeded, "2026-07-20")  # 수집 정지
         s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
         assert s.n_missing_closed == 0  # 조용해진다 — 그래서 아래가 필요하다
         assert s.settled_through == "2026-07-20"
@@ -214,6 +215,8 @@ class TestMissingIsSettlementNotCalendar:
         report = da.adjudicate(db_path=seeded, n_perm=1, as_of=AS_OF)
         assert report["settled_through"] == "2026-07-20"
         assert report["settlement_lag_days"] == 43
+        # 보이기만 해서는 부족하다 — 판정 자체가 막혀야 한다 (아래 클래스가 잠근다).
+        assert report["criteria_verdict_if_final"] == "INVALID_STALE_BENCHMARK"
 
     def test_settlement_frontier_without_benchmark_is_none(self, db_path):
         """벤치마크 종가가 아예 없으면 프런티어는 None — 0 이나 오늘로 위장하지 않는다."""
@@ -227,9 +230,165 @@ class TestMissingIsSettlementNotCalendar:
         위 두 테스트가 "안 센다"만 잠그면 결측 계상을 통째로 없애도 통과한다.
         """
         _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)  # target = 2026-08-09
-        self._truncate_benchmark(seeded, "2026-08-14")  # 만기 이후 bar 도착
+        _truncate_benchmark(seeded, "2026-08-14")  # 만기 이후 bar 도착
         s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
         assert s.n_missing_closed == 1
+
+
+class TestStaleBenchmarkBlocksTheVerdict:
+    """정산 기준이 반대 방향으로 거짓말하는 경로를 판정으로 막는다 (#1068, Codex P1).
+
+    결측률은 정산된 창만 세므로, 벤치마크 수집이 멈추면 미해소 결정이 결측에서 빠져나가
+    결측률이 **내려간다** — 측정이 망가질수록 게이트가 통과처럼 보인다. 프런티어를
+    리포트에 싣는 것은 사람이 봐야 발화하므로 게이트가 아니다.
+
+    이 조건은 판정을 **더 어렵게만** 만든다 (§3.11 "하향/동결은 상시 허용" — prudential
+    방향이라 사전등록 개정 대상이 아니다). 임계는 `measurement_mode.max_settlement_lag_days`.
+    """
+
+    def test_stale_benchmark_invalidates_before_missing_rate(self, seeded):
+        """Mutation lock: 정산 정지 분기를 지우면 낮아진 결측률로 통과해 FAIL."""
+        _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)
+        with get_db(seeded) as conn:
+            conn.execute("DELETE FROM prices WHERE ticker = 'SPY' AND date > ?", ("2026-07-20",))
+            conn.commit()
+        report = da.adjudicate(db_path=seeded, n_perm=1, as_of=AS_OF)
+        assert report["criteria_verdict_if_final"] == "INVALID_STALE_BENCHMARK"
+        # 결측률은 오히려 깨끗해 보인다 — 그게 이 게이트가 필요한 이유다.
+        assert report["missing_rate_pct"] == 0.0
+
+    def test_stale_benchmark_beats_the_empty_sample_short_circuit(self, seeded):
+        """확정 alpha 가 0 건이어도 "표본 0건"이 아니라 "측정 중단"으로 보고한다.
+
+        Codex 2차 리뷰가 짚은 제어흐름 결함: 게이트를 `NO_SAMPLE` 조기 return **뒤**에
+        두면, 벤치마크가 얼어 alpha 가 하나도 안 쌓인 상태가 정상 accrual 로 읽힌다.
+        프로덕션이 지금 대부분의 시간을 보내는 상태가 정확히 n=0 이라(2026-07-28 ·
+        08-01 브리핑 둘 다 `표본 0건`) 이 순서가 뒤집혀 있으면 피드가 죽어도 모른다.
+
+        Mutation lock: 정산 검사를 `if sample.n == 0` 아래로 내리면 `NO_SAMPLE` 이 나와 FAIL.
+        """
+        with get_db(seeded) as conn:
+            conn.execute("DELETE FROM decision_outcomes")  # 확정 alpha 0 건
+            conn.commit()
+        _truncate_benchmark(seeded, "2026-07-20")
+        report = da.adjudicate(db_path=seeded, n_perm=1, as_of=AS_OF)
+        assert report["n"] == 0
+        assert report["verdict"] == "INVALID_STALE_BENCHMARK"
+        assert "측정 중단" in report["reason"]
+
+    def test_empty_sample_with_fresh_benchmark_is_still_no_sample(self, seeded):
+        """정산이 정상이면 표본 0 건은 그대로 `NO_SAMPLE` — 가드가 정상 상태를 덮지 않는다."""
+        with get_db(seeded) as conn:
+            conn.execute("DELETE FROM decision_outcomes")
+            conn.commit()
+        report = da.adjudicate(db_path=seeded, n_perm=1, as_of=AS_OF)
+        assert report["n"] == 0
+        assert report["verdict"] == "NO_SAMPLE"
+
+    def test_stale_benchmark_wins_over_a_high_missing_rate(self, seeded):
+        """둘 다 성립할 때 보고되는 사유는 "측정이 멈췄다" 여야 한다.
+
+        결측률이 높은 **이유**가 벤치마크 정지일 수 있는데 `INVALID_MISSING` 으로 적으면
+        추적 실패를 쫓게 된다. 둘 다 무효라도 사유가 틀리면 다음 행동이 틀린다.
+
+        Mutation lock: 두 분기의 순서를 바꾸면 `INVALID_MISSING` 이 나와 FAIL.
+        """
+        _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)  # target 2026-08-09 — 정산됨
+        _truncate_benchmark(seeded, "2026-08-20")  # lag 12d > 7d 임계
+        report = da.adjudicate(db_path=seeded, n_perm=1, as_of=AS_OF)
+        assert report["missing_rate_pct"] == 20.0  # 15% 초과 — 결측 게이트도 성립
+        assert report["settlement_lag_days"] == 12
+        assert report["criteria_verdict_if_final"] == "INVALID_STALE_BENCHMARK"
+
+    def test_no_benchmark_at_all_is_invalid_not_passable(self, seeded):
+        """벤치마크 종가가 아예 없으면 무효다 — "지연 없음"으로 통과시키지 않는다.
+
+        Mutation lock: `lag is None or ...` 을 `lag is not None and ...` 로 바꾸면
+        표본이 그대로 판정에 흘러 FAIL.
+        """
+        with get_db(seeded) as conn:
+            conn.execute("DELETE FROM prices WHERE ticker = 'SPY'")
+            conn.commit()
+        report = da.adjudicate(db_path=seeded, n_perm=1, as_of=AS_OF)
+        assert report["settled_through"] is None
+        assert report["settlement_lag_days"] is None
+        assert report["criteria_verdict_if_final"] == "INVALID_STALE_BENCHMARK"
+
+    def test_threshold_change_changes_behavior(self, seeded, monkeypatch):
+        """임계를 늘리면 같은 지연이 통과한다 — 값이 코드에 박혀 있으면 안 된다.
+
+        Mutation lock: `max_lag = 7` 로 하드코딩하면 config 를 늘려도 계속 발화해 FAIL.
+        (`test_threshold_comes_from_config` 는 리포트 필드만 봐서 이걸 못 잡는다.)
+        """
+        _truncate_benchmark(seeded, "2026-08-20")  # lag 12d
+        loosened = {**da.RULES, "measurement_mode": {**da.RULES["measurement_mode"], "max_settlement_lag_days": 30}}
+        monkeypatch.setattr(da, "RULES", loosened)
+        report = da.adjudicate(db_path=seeded, n_perm=1, as_of=AS_OF)
+        assert report["max_settlement_lag_days"] == 30
+        assert report["criteria_verdict_if_final"] != "INVALID_STALE_BENCHMARK"
+
+    def test_fresh_benchmark_does_not_trip_the_gate(self, seeded):
+        """정상 지연(주말 등)은 발화하지 않는다 — 가드가 상시 무효를 만들면 무용지물."""
+        report = da.adjudicate(db_path=seeded, n_perm=1, as_of=AS_OF)
+        assert report["settlement_lag_days"] <= report["max_settlement_lag_days"]
+        assert report["criteria_verdict_if_final"] != "INVALID_STALE_BENCHMARK"
+
+    def test_threshold_comes_from_config(self, seeded):
+        """하드코딩 금지 — 임계는 `config/rules.yaml measurement_mode` 에서 온다."""
+        import yaml
+
+        mm = yaml.safe_load(open("config/rules.yaml", encoding="utf-8"))["measurement_mode"]
+        report = da.adjudicate(db_path=seeded, n_perm=1, as_of=AS_OF)
+        assert report["max_settlement_lag_days"] == int(mm["max_settlement_lag_days"])
+
+
+class TestJudgmentDateRulesAgree:
+    """판정일에는 정산 기준과 달력 기준이 **같은 답**을 준다 (#1068, Codex P1 반박 근거).
+
+    §3.11 이 emit cutoff 를 판정일 46일 전으로 잡은 이유가 "30d 창 완결 보장"이다. 창이
+    전부 정산된 상태에서는 두 규칙이 일치하므로, 이 변경은 **사전 등록된 판정의 결과를
+    바꾸지 않는다** — 바뀌는 것은 측정 도중 매달 나가는 진행 리포트뿐이다.
+
+    이 성질이 깨지면 그때는 진짜 사전등록 개정이므로, 여기서 잠근다.
+    """
+
+    def test_settled_sample_matches_the_calendar_rule(self, seeded):
+        _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)  # 정산된 결측
+        _seed_decision(seeded, 21, "BBB", EMIT_2, alpha=None)  # 정산된 결측
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+
+        # 달력 기준 재현 — 같은 표본에 옛 규칙을 그대로 적용
+        window = 30
+        calendar_missing = 0
+        for rec_id, emit in ((20, EMIT_1), (21, EMIT_2)):
+            target = (date.fromisoformat(emit) + timedelta(days=window)).isoformat()
+            if target <= AS_OF:
+                calendar_missing += 1
+
+        assert s.settled_through is not None and s.settled_through >= "2026-08-27"
+        assert s.n_missing_closed == calendar_missing == 2
+
+    def test_config_guarantees_the_equivalence_at_judgment(self):
+        """동등성은 희망이 아니라 설정 산술의 결과다 — 그 산술을 여기서 잠근다.
+
+        마지막 표본의 창은 `emit_cutoff_date + primary_window_days` 에 닫히고, 정산
+        게이트가 프런티어를 `max_settlement_lag_days` 이내로 강제하므로, 판정일에는
+        그 창이 반드시 정산돼 있다:
+
+            emit_cutoff + window + max_lag <= evaluation_date
+
+        이 부등식이 깨지면 판정일에 미정산 창이 남아 두 기준이 갈라진다 — 그때부터는
+        진짜 사전등록 개정이므로, cutoff·window·임계 중 무엇을 건드려도 여기서 FAIL 한다.
+        """
+        mm = da._criteria()
+        last_window_closes = date.fromisoformat(str(mm["emit_cutoff_date"])) + timedelta(
+            days=int(mm["primary_window_days"])
+        )
+        settled_by = last_window_closes + timedelta(days=int(mm["max_settlement_lag_days"]))
+        assert settled_by <= date.fromisoformat(str(mm["evaluation_date"])), (
+            f"판정일 {mm['evaluation_date']} 에 마지막 창이 정산 보장되지 않는다 "
+            f"(창 종료 {last_window_closes}, 정산 보장 {settled_by})"
+        )
 
 
 class TestDenominatorDoesNotDependOnTheMirror:
@@ -293,6 +452,8 @@ class TestEmptySampleHasNoMissingRate:
         assert s.missing_rate_pct is None
 
     def test_adjudicate_reports_none_not_zero(self, db_path):
+        # 벤치마크는 정상이어야 한다 — 없으면 정산 게이트가 먼저 걸려 NO_SAMPLE 에 못 간다.
+        _seed_prices(db_path, "SPY", "2026-07-01", 60, 100.0, 0.001)
         report = da.adjudicate(db_path=db_path, n_perm=1, as_of=AS_OF)
         assert report["verdict"] == "NO_SAMPLE"
         assert report["missing_rate_pct"] is None
@@ -394,6 +555,9 @@ class TestAdjudicate:
         assert report["criteria_verdict_if_final"] == "INVALID_MISSING"
 
     def test_no_sample(self, db_path):
+        # 벤치마크가 살아 있는데 결정이 없는 상태 — 이게 진짜 "표본 0건" 이다.
+        # (벤치마크마저 없으면 그건 accrual 이 아니라 측정 중단이라 다른 verdict 다.)
+        _seed_prices(db_path, "SPY", "2026-07-01", 60, 100.0, 0.001)
         report = da.adjudicate(db_path=db_path, n_perm=20, as_of=AS_OF)
         assert report["verdict"] == "NO_SAMPLE"
 
