@@ -9,6 +9,7 @@ Telegram 봇 알림 — 레짐 전환, 규칙 위반, 매매 시그널 알림.
     from nuri.alerts.telegram import send_telegram
     send_telegram("레짐 전환: bull → sideways_high_vol")
 """
+
 import logging
 import os
 
@@ -36,11 +37,15 @@ def send_telegram(message: str, parse_mode: str = "HTML") -> bool:
 
     url = f"https://api.telegram.org/bot{_BOT_TOKEN}/sendMessage"
     try:
-        resp = requests.post(url, json={
-            "chat_id": _CHAT_ID,
-            "text": message,
-            "parse_mode": parse_mode,
-        }, timeout=10)
+        resp = requests.post(
+            url,
+            json={
+                "chat_id": _CHAT_ID,
+                "text": message,
+                "parse_mode": parse_mode,
+            },
+            timeout=10,
+        )
         resp.raise_for_status()
         logger.info("Telegram 알림 전송 완료")
         return True
@@ -51,11 +56,7 @@ def send_telegram(message: str, parse_mode: str = "HTML") -> bool:
 
 def format_regime_alert(from_regime: str, to_regime: str, confidence: float) -> str:
     """레짐 전환 Telegram 메시지."""
-    return (
-        f"🔄 <b>레짐 전환</b>\n"
-        f"{from_regime} → <b>{to_regime}</b>\n"
-        f"신뢰도: {confidence:.0f}%"
-    )
+    return f"🔄 <b>레짐 전환</b>\n{from_regime} → <b>{to_regime}</b>\n신뢰도: {confidence:.0f}%"
 
 
 def format_violation_alert(violations: list[dict]) -> str:
@@ -72,7 +73,4 @@ def format_violation_alert(violations: list[dict]) -> str:
 def format_signal_alert(ticker: str, action: str, confidence: float, price: float) -> str:
     """매매 시그널 Telegram 메시지."""
     emoji = "🟢" if action == "BUY" else "🔴" if action == "SELL" else "⚪"
-    return (
-        f"{emoji} <b>{ticker}</b> {action}\n"
-        f"신뢰도: {confidence:.0f} | 가격: ${price:,.2f}"
-    )
+    return f"{emoji} <b>{ticker}</b> {action}\n신뢰도: {confidence:.0f} | 가격: ${price:,.2f}"

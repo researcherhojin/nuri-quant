@@ -6,6 +6,7 @@
     rsi_oversold = cfg["rsi_oversold"]   # 30
     conf_cap = cfg["confidence"]["cap"]  # 90
 """
+
 from pathlib import Path
 
 import yaml

@@ -21,6 +21,7 @@
     52주 고저     ⇄ distance_from_52w_*() ⇄ near_52w_low_bounce 시그널
     매물대        ⇄ volume_profile_poc()   ⇄ volume_profile_resistance 시그널
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,37 +33,38 @@ from nuri.core.db import query_df
 
 # ── 상수 ──
 
-LOOKBACK_52W = 252      # 거래일 기준 52주
-POC_LOOKBACK = 120      # 매물대 계산 기본 lookback (약 6개월)
-POC_BINS = 50           # 매물대 가격 구간 수
-TREND_WINDOW = 9        # 추세선 (KIS 앱과 동일한 9일)
+LOOKBACK_52W = 252  # 거래일 기준 52주
+POC_LOOKBACK = 120  # 매물대 계산 기본 lookback (약 6개월)
+POC_BINS = 50  # 매물대 가격 구간 수
+TREND_WINDOW = 9  # 추세선 (KIS 앱과 동일한 9일)
 MIN_DATA_POINTS = 30
 
 
 @dataclass
 class ChartAnalysis:
     """단일 종목 차트 패턴 종합."""
+
     ticker: str
     price: float
     # MACD 히스토그램 전환
-    macd_turn: str | None              # "bullish" | "bearish" | None
-    macd_hist: float                   # 현재 histogram 값
+    macd_turn: str | None  # "bullish" | "bearish" | None
+    macd_hist: float  # 현재 histogram 값
     # Bollinger Band 위치
-    bb_position: float                 # 0(lower) ~ 100(upper)
-    bb_width_pct: float                # band width / middle (squeeze 감지)
+    bb_position: float  # 0(lower) ~ 100(upper)
+    bb_width_pct: float  # band width / middle (squeeze 감지)
     # 52주 고저
-    dist_from_52w_high: float          # 음수 percent (-15.0 = 고점 대비 -15%)
-    dist_from_52w_low: float           # 양수 percent
+    dist_from_52w_high: float  # 음수 percent (-15.0 = 고점 대비 -15%)
+    dist_from_52w_low: float  # 양수 percent
     high_52w: float
     low_52w: float
     # 매물대 (Volume Profile Point of Control)
-    poc_price: float                   # 가장 거래 활발했던 가격대
-    dist_from_poc: float               # percent (현재가 vs POC)
+    poc_price: float  # 가장 거래 활발했던 가격대
+    dist_from_poc: float  # percent (현재가 vs POC)
     # 추세선
-    trend_strength: float              # -100 ~ +100
+    trend_strength: float  # -100 ~ +100
     # 종합 시각 점수
-    visual_bias: str                   # "bullish" | "bearish" | "neutral"
-    reasons: list[str]                 # 시각 패턴 사람이 읽기 쉬운 설명
+    visual_bias: str  # "bullish" | "bearish" | "neutral"
+    reasons: list[str]  # 시각 패턴 사람이 읽기 쉬운 설명
 
 
 # ═══════════════════════════════════════════════════════
@@ -220,12 +222,20 @@ def analyze_chart(ticker: str, db_path=None, lookback_days: int = 365) -> ChartA
 
     if df.empty or len(df) < MIN_DATA_POINTS:
         return ChartAnalysis(
-            ticker=ticker, price=0.0,
-            macd_turn=None, macd_hist=0.0,
-            bb_position=50.0, bb_width_pct=0.0,
-            dist_from_52w_high=0.0, dist_from_52w_low=0.0, high_52w=0.0, low_52w=0.0,
-            poc_price=0.0, dist_from_poc=0.0,
-            trend_strength=0.0, visual_bias="neutral",
+            ticker=ticker,
+            price=0.0,
+            macd_turn=None,
+            macd_hist=0.0,
+            bb_position=50.0,
+            bb_width_pct=0.0,
+            dist_from_52w_high=0.0,
+            dist_from_52w_low=0.0,
+            high_52w=0.0,
+            low_52w=0.0,
+            poc_price=0.0,
+            dist_from_poc=0.0,
+            trend_strength=0.0,
+            visual_bias="neutral",
             reasons=["데이터 부족"],
         )
 
@@ -289,15 +299,21 @@ def analyze_chart(ticker: str, db_path=None, lookback_days: int = 365) -> ChartA
         bias = "neutral"
 
     return ChartAnalysis(
-        ticker=ticker, price=price,
-        macd_turn=turn, macd_hist=hist,
-        bb_position=round(bbpos, 1), bb_width_pct=round(bbw, 2),
+        ticker=ticker,
+        price=price,
+        macd_turn=turn,
+        macd_hist=hist,
+        bb_position=round(bbpos, 1),
+        bb_width_pct=round(bbw, 2),
         dist_from_52w_high=round(dist_high, 2),
         dist_from_52w_low=round(dist_low, 2),
-        high_52w=round(high, 2), low_52w=round(low, 2),
-        poc_price=round(poc, 2), dist_from_poc=round(dist_poc, 2),
+        high_52w=round(high, 2),
+        low_52w=round(low, 2),
+        poc_price=round(poc, 2),
+        dist_from_poc=round(dist_poc, 2),
         trend_strength=round(trend, 1),
-        visual_bias=bias, reasons=reasons,
+        visual_bias=bias,
+        reasons=reasons,
     )
 
 

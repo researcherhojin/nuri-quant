@@ -16,6 +16,7 @@ Semantic (codex Plan Q1-B dual-accept):
   사용해야 한다 (codex Plan Scope 검증). 중복 구현 피하려면 shared helper 가 필수.
 - Strict mode 전환 시 한 곳만 수정하면 모든 consumer 가 자동 반영.
 """
+
 from __future__ import annotations
 
 

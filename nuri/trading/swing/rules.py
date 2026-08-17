@@ -16,6 +16,7 @@
     python -m nuri.trading.swing.rules
     python -m nuri.trading.swing.rules --check   # 보유 포지션 청산 체크
 """
+
 import argparse
 import logging
 from dataclasses import dataclass
@@ -43,6 +44,7 @@ MIN_AGENT_CONFIDENCE = int(SWING_MIN_AGENT_CONFIDENCE)
 @dataclass
 class SwingEntry:
     """스윙 진입 판정."""
+
     ticker: str
     price: float
     scan_signal: str
@@ -57,12 +59,13 @@ class SwingEntry:
 @dataclass
 class SwingExit:
     """스윙 청산 판정."""
+
     ticker: str
     entry_price: float
     current_price: float
     return_pct: float
     hold_days: int
-    exit_reason: str        # "take_profit", "stop_loss", "max_hold", "agent_sell", "hold"
+    exit_reason: str  # "take_profit", "stop_loss", "max_hold", "agent_sell", "hold"
     should_exit: bool
 
 
@@ -70,6 +73,7 @@ def evaluate_entries(scan_results=None, market: str = "us", db_path=None) -> lis
     """스캐너 결과 → 멀티 에이전트 분석 → 진입 판정."""
     if scan_results is None:
         from nuri.trading.swing.scanner import scan_market
+
         scan_results = scan_market(market=market)
 
     if not scan_results:
@@ -85,7 +89,8 @@ def evaluate_entries(scan_results=None, market: str = "us", db_path=None) -> lis
         # 이미 오픈 포지션이 있는지 확인
         existing = query(
             "SELECT id FROM swing_trades WHERE ticker = ? AND status = 'open'",
-            (sr.ticker,), db_path=db_path,
+            (sr.ticker,),
+            db_path=db_path,
         )
         if existing:
             continue
@@ -100,24 +105,28 @@ def evaluate_entries(scan_results=None, market: str = "us", db_path=None) -> lis
         )
 
         reason_parts = [f"scan: {sr.signal}(score={sr.score:.0f})"]
-        reason_parts.append(f"agents: {consensus.final_action}(conf={consensus.final_confidence:.0f}, agree={consensus.agreement_rate:.0%})")
+        reason_parts.append(
+            f"agents: {consensus.final_action}(conf={consensus.final_confidence:.0f}, agree={consensus.agreement_rate:.0%})"
+        )
         if not approved:
             if consensus.final_action != "BUY":
                 reason_parts.append(f"거부: 에이전트 {consensus.final_action}")
             if consensus.final_confidence < MIN_AGENT_CONFIDENCE:
                 reason_parts.append(f"거부: 신뢰도 {consensus.final_confidence:.0f} < {MIN_AGENT_CONFIDENCE}")
 
-        entries.append(SwingEntry(
-            ticker=sr.ticker,
-            price=sr.price,
-            scan_signal=sr.signal,
-            scan_score=sr.score,
-            agent_action=consensus.final_action,
-            agent_confidence=consensus.final_confidence,
-            agent_agreement=consensus.agreement_rate,
-            approved=approved,
-            reason="; ".join(reason_parts),
-        ))
+        entries.append(
+            SwingEntry(
+                ticker=sr.ticker,
+                price=sr.price,
+                scan_signal=sr.signal,
+                scan_score=sr.score,
+                agent_action=consensus.final_action,
+                agent_confidence=consensus.final_confidence,
+                agent_agreement=consensus.agreement_rate,
+                approved=approved,
+                reason="; ".join(reason_parts),
+            )
+        )
 
     return entries
 
@@ -129,15 +138,18 @@ def save_entries(entries: list[SwingEntry], db_path=None) -> int:
         return 0
 
     today = today_kst()
-    records = [{
-        "ticker": e.ticker,
-        "entry_date": today,
-        "entry_price": e.price,
-        "entry_signal": e.scan_signal,
-        "agent_action": e.agent_action,
-        "agent_confidence": e.agent_confidence,
-        "agent_agreement": e.agent_agreement,
-    } for e in approved]
+    records = [
+        {
+            "ticker": e.ticker,
+            "entry_date": today,
+            "entry_price": e.price,
+            "entry_signal": e.scan_signal,
+            "agent_action": e.agent_action,
+            "agent_confidence": e.agent_confidence,
+            "agent_agreement": e.agent_agreement,
+        }
+        for e in approved
+    ]
 
     with get_db(db_path) as conn:
         conn.executemany(
@@ -161,6 +173,7 @@ def check_exits(db_path=None) -> list[SwingExit]:
         return []
 
     from nuri.trading.agents.consensus import analyze_ticker
+
     today = kst_now().replace(tzinfo=None)
     exits = []
 
@@ -173,13 +186,15 @@ def check_exits(db_path=None) -> list[SwingExit]:
         # 현재 가격
         price_row = query(
             "SELECT close, date FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
 
         # prices에 없으면 yfinance에서 직접 가져오기
         if not price_row or not price_row[0]["close"]:
             try:
                 import yfinance as yf
+
                 data = yf.download(ticker, period="5d", progress=False)
                 if not data.empty:
                     current_price = float(data["Close"].squeeze().iloc[-1])
@@ -215,15 +230,17 @@ def check_exits(db_path=None) -> list[SwingExit]:
             except Exception:
                 pass
 
-        exits.append(SwingExit(
-            ticker=ticker,
-            entry_price=entry_price,
-            current_price=round(current_price, 2),
-            return_pct=round(return_pct, 2),
-            hold_days=hold_days,
-            exit_reason=exit_reason,
-            should_exit=should_exit,
-        ))
+        exits.append(
+            SwingExit(
+                ticker=ticker,
+                entry_price=entry_price,
+                current_price=round(current_price, 2),
+                return_pct=round(return_pct, 2),
+                hold_days=hold_days,
+                exit_reason=exit_reason,
+                should_exit=should_exit,
+            )
+        )
 
         # 청산 실행
         if should_exit:
@@ -231,8 +248,7 @@ def check_exits(db_path=None) -> list[SwingExit]:
                 conn.execute(
                     "UPDATE swing_trades SET status='closed', exit_date=?, exit_price=?, "
                     "exit_reason=?, return_pct=? WHERE id=?",
-                    (today.strftime("%Y-%m-%d"), current_price, exit_reason, round(return_pct, 2),
-                     trade["id"]),
+                    (today.strftime("%Y-%m-%d"), current_price, exit_reason, round(return_pct, 2), trade["id"]),
                 )
 
     return exits
@@ -255,8 +271,10 @@ def print_entries(entries: list[SwingEntry]) -> None:
         print(f"  {'Ticker':<8} {'Price':>10} {'Signal':<14} {'Score':>6} {'Agent':>6} {'Conf':>5} {'Agree':>6}")
         print(f"  {'-' * 58}")
         for e in approved:
-            print(f"  {e.ticker:<8} ${e.price:>9,.2f} {e.scan_signal:<14} {e.scan_score:>5.0f} "
-                  f"{e.agent_action:>6} {e.agent_confidence:>4.0f} {e.agent_agreement:>5.0%}")
+            print(
+                f"  {e.ticker:<8} ${e.price:>9,.2f} {e.scan_signal:<14} {e.scan_score:>5.0f} "
+                f"{e.agent_action:>6} {e.agent_confidence:>4.0f} {e.agent_agreement:>5.0%}"
+            )
 
     if rejected:
         print(f"\n  REJECTED ({len(rejected)}):")
@@ -279,8 +297,10 @@ def print_exits(exits: list[SwingExit]) -> None:
     for e in exits:
         action = e.exit_reason.upper() if e.should_exit else "HOLD"
         color_prefix = "+" if e.return_pct > 0 else ""
-        print(f"  {e.ticker:<8} ${e.entry_price:>9,.2f} ${e.current_price:>9,.2f} "
-              f"{color_prefix}{e.return_pct:.1f}% {e.hold_days:>5} {action:<12}")
+        print(
+            f"  {e.ticker:<8} ${e.entry_price:>9,.2f} ${e.current_price:>9,.2f} "
+            f"{color_prefix}{e.return_pct:.1f}% {e.hold_days:>5} {action:<12}"
+        )
     print()
 
 

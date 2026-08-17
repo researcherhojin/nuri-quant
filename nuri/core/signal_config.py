@@ -14,6 +14,7 @@
     - detector 함수 자체는 코드 (실행 가능 로직)
     - signal_backtest.py의 SIGNAL_DEFINITIONS는 YAML + detectors로 빌드
 """
+
 from pathlib import Path
 
 import yaml
@@ -52,7 +53,8 @@ def is_enabled(signal_id: str) -> bool:
 def list_buy_signals() -> set[str]:
     """type=BUY로 분류된 모든 시그널 ID."""
     return {
-        sid for sid, meta in SIGNAL_CONFIG.get("signals", {}).items()
+        sid
+        for sid, meta in SIGNAL_CONFIG.get("signals", {}).items()
         if meta.get("type") == "BUY" and meta.get("enabled", True)
     }
 
@@ -60,7 +62,8 @@ def list_buy_signals() -> set[str]:
 def list_sell_signals() -> set[str]:
     """type=SELL로 분류된 모든 시그널 ID."""
     return {
-        sid for sid, meta in SIGNAL_CONFIG.get("signals", {}).items()
+        sid
+        for sid, meta in SIGNAL_CONFIG.get("signals", {}).items()
         if meta.get("type") == "SELL" and meta.get("enabled", True)
     }
 
@@ -85,6 +88,7 @@ def list_shadow_signals() -> set[str]:
     용으로만 사용, candidates/confidence 에 영향 없음. scorecard 집계는 계속.
     """
     return {
-        sid for sid, meta in SIGNAL_CONFIG.get("signals", {}).items()
+        sid
+        for sid, meta in SIGNAL_CONFIG.get("signals", {}).items()
         if meta.get("enabled", True) and meta.get("actionable", True) is False
     }

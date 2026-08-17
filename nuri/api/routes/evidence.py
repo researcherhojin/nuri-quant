@@ -1,4 +1,5 @@
 """증거 차트 API — Plotly HTML 차트 서빙 + 메타데이터."""
+
 import logging
 from datetime import date
 from pathlib import Path
@@ -46,12 +47,14 @@ def list_evidence():
             evidence_dir / f"{chart_id}_evidence.html",
         ]
         exists = any(p.exists() for p in candidates)
-        available.append({
-            "id": chart_id,
-            "description": description,
-            "available": exists,
-            "date": evidence_dir.parent.name,
-        })
+        available.append(
+            {
+                "id": chart_id,
+                "description": description,
+                "available": exists,
+                "date": evidence_dir.parent.name,
+            }
+        )
 
     return {"charts": available, "date": evidence_dir.parent.name}
 

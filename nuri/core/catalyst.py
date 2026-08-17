@@ -13,6 +13,7 @@ Non-emergency SELL 추천은 이유(catalyst)가 있어야 한다. stop-loss bre
     if not ok:
         # downgrade SELL to advisory
 """
+
 from __future__ import annotations
 
 from nuri.core.db import query

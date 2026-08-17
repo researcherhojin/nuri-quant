@@ -402,6 +402,33 @@ class TestConfigDriven:
         assert "n=42/999" in line
         assert "결측 3.5%/42%" in line
 
+    def test_unmeasured_missing_rate_renders_as_na(self):
+        """결측률이 `None` (측정 대상 0 건) 이면 `n/a` — 숫자로도, 생략으로도 안 된다 (#1068).
+
+        `0.0` 으로 찍으면 사전 등록된 무효화 기준(15%)이 통과처럼 읽히고, 필드를
+        생략하면 "결측 없음"과 구분되지 않는다. 프로덕션 #brief 가 2026-07-28 ·
+        08-01 두 번 `결측 0.0%/15%` 를 내보냈고 그때 n 은 0 이었다.
+
+        Mutation lock: `missing_rate_pct` 를 `0.0` 으로 되돌리거나 `if missing is
+        not None` 생략 분기로 되돌리면 FAIL.
+        """
+        line = alpha_report.format_progress_reason(_report(missing_rate_pct=None, missing_max_pct=15))
+        assert "결측 n/a (한도 15%)" in line
+        assert "결측 0" not in line
+
+    def test_settlement_frontier_is_rendered(self):
+        """결측률 옆에 정산 프런티어가 같이 나온다 (#1068).
+
+        결측률은 정산된 창만 세므로, 벤치마크 수집이 멈추면 결측률이 조용히 내려간다.
+        프런티어가 안 보이면 "결측 낮음"과 "측정 멈춤"이 화면에서 구분되지 않는다.
+        """
+        line = alpha_report.format_progress_reason(_report(settled_through="2026-07-20", settlement_lag_days=43))
+        assert "정산 2026-07-20 (지연 43d)" in line
+
+    def test_missing_benchmark_frontier_renders_na(self):
+        line = alpha_report.format_progress_reason(_report(settled_through=None, settlement_lag_days=None))
+        assert "정산 n/a (벤치마크 종가 없음)" in line
+
 
 class TestRendererPath:
     """payload 가 실제 #brief 렌더러를 통과했을 때 무엇이 보이는가.

@@ -1,4 +1,5 @@
 """레짐 + 매크로 + LLM 리포트 API."""
+
 import logging
 from dataclasses import asdict
 
@@ -12,6 +13,7 @@ router = APIRouter(tags=["regime"])
 def get_regime():
     """현재 시장 레짐."""
     from nuri.quant.regime.classifier import classify_regime
+
     state = classify_regime()
     if state is None:
         return {"error": "SPY 데이터 부족"}
@@ -22,6 +24,7 @@ def get_regime():
 def get_macro():
     """매크로 스코어."""
     from nuri.quant.regime.macro_score import compute_macro_score
+
     score = compute_macro_score()
     return asdict(score)
 
@@ -30,6 +33,7 @@ def get_macro():
 def get_report():
     """LLM 리포트 (Gate → Context → Generate → Validate)."""
     from nuri.llm.report import generate_llm_report
+
     try:
         return generate_llm_report()
     except Exception:
@@ -42,6 +46,7 @@ def get_report():
 def get_report_context():
     """LLM 리포트 컨텍스트 (프롬프트 입력 데이터)."""
     from nuri.llm.report import format_prompt, gather_context
+
     ctx = gather_context()
     return {
         "prompt": format_prompt(ctx),
@@ -54,6 +59,7 @@ def get_report_context():
 def get_strategy():
     """레짐별 전략 추천."""
     from nuri.quant.regime.strategy_map import map_regime_to_strategy
+
     rec = map_regime_to_strategy()
     if rec is None:
         return {"error": "데이터 부족"}
