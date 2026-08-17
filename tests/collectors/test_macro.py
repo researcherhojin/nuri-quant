@@ -422,3 +422,73 @@ class TestPartAIndicatorRegistry:
         assert "dxy" in indicators, "yfinance-only indicator 보충 안 됨 — P1 회귀"
         assert indicators["sp500"] == "yfinance"
         assert indicators["dxy"] == "yfinance"
+
+
+class TestFredUnitsMatchIndicatorNames:
+    """지표 **이름이 약속하는 단위**와 FRED 원본 단위가 어긋나지 않는지 잠근다 (#1065).
+
+    `cpi_yoy` 는 `CPIAUCSL` 에 매핑돼 있는데 그건 "Index 1982-1984=100" 이다. 원본을
+    그대로 담으면 332.8 이 들어가고, 이름을 믿는 소비처 둘이 조용히 망가진다:
+
+    - `_score_inflation` 은 `abs(332.8 - 2.0)` 을 편차로 써서 **0 점 고정** (가중치 0.117)
+    - `_detect_stagflation` 의 `cpi > 4` 는 **항상 참**
+
+    특히 첫 번째는 FRED 키가 **없을 때보다 나쁘다** — 결측이면 #1026 재정규화가 성분을
+    제외해 정직한데, 값이 있으면 0 점이 만점 가중치로 총점을 끌어내린다. 즉 이 계열은
+    "데이터가 생기면 좋아진다"는 직관이 뒤집히는 자리라, 이름-단위 정합을 기계로 잠근다.
+    """
+
+    def test_cpi_yoy_is_requested_as_percent_change_from_year_ago(self):
+        """Gotcha-Test Pair: `FRED_UNITS` 에서 `cpi_yoy` 를 빼면 FAIL."""
+        from nuri.collectors.macro import FRED_UNITS
+
+        assert FRED_UNITS.get("cpi_yoy") == "pc1", (
+            "cpi_yoy 는 `units='pc1'` (Percent Change from Year Ago) 로 받아야 한다. "
+            "빼면 CPIAUCSL 원본인 인덱스 레벨(약 332)이 들어가 inflation 점수가 0 에 고정된다."
+        )
+
+    def test_every_yoy_indicator_declares_a_percent_change_unit(self):
+        """카나리아 — 새 `*_yoy` 지표를 추가하고 단위를 안 붙이면 FAIL.
+
+        이름에 `_yoy` 를 달아놓고 원본 단위로 받으면 같은 사고가 반복된다.
+        """
+        from nuri.collectors.macro import FRED_SERIES, FRED_UNITS
+
+        yoy = [k for k in FRED_SERIES if k.endswith("_yoy")]
+        assert yoy, "`_yoy` 지표가 하나도 없다 — 이 테스트가 공허하게 통과한다"
+        missing = [k for k in yoy if FRED_UNITS.get(k) not in ("pc1", "pch")]
+        assert not missing, (
+            f"`_yoy` 인데 percent-change 단위가 없는 지표: {missing}\n"
+            "FRED 원본이 이미 YoY 인 시리즈라면 FRED_UNITS 에 이유와 함께 예외를 적을 것."
+        )
+
+    def test_units_reach_the_fred_call(self, monkeypatch, db_with_portfolio):
+        """구조가 아니라 **동작** 잠금 — `_collect_fred` 가 units 를 실제로 넘기는지.
+
+        `FRED_UNITS` 만 채우고 `get_series` 호출부에서 안 쓰면 딕셔너리는 장식이 된다.
+        """
+        import sys
+
+        from nuri.collectors.macro import MacroCollector
+
+        calls = []
+
+        def fake_get_series(series_id, **kwargs):
+            calls.append((series_id, kwargs.get("units")))
+            return pd.Series([3.3], index=pd.to_datetime(["2026-07-01"]))
+
+        mock_fred = MagicMock()
+        mock_fred.get_series.side_effect = fake_get_series
+        monkeypatch.setitem(sys.modules, "fredapi", MagicMock(Fred=MagicMock(return_value=mock_fred)))
+
+        collector = MacroCollector()
+        collector.api_key = "real_key"
+        collector._collect_fred(days=30)
+
+        by_series = dict(calls)
+        assert by_series.get("CPIAUCSL") == "pc1", (
+            f"CPIAUCSL 이 units 없이 호출됐다 (units={by_series.get('CPIAUCSL')!r}) — "
+            "FRED_UNITS 가 호출부에 닿지 않는다"
+        )
+        # 오버라이드가 없는 지표에는 units 를 붙이면 안 된다 (원본 단위가 맞다).
+        assert by_series.get("UNRATE") is None, "UNRATE 는 이미 퍼센트라 units 를 붙이면 안 된다"

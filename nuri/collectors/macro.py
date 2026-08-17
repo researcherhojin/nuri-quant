@@ -49,6 +49,21 @@ FRED_SERIES = {
     "hy_oas": "BAMLH0A0HYM2",
 }
 
+# FRED 단위 오버라이드 — 시리즈 원본 단위가 지표 **이름이 약속하는 단위와 다를 때**만.
+#
+# `CPIAUCSL` 은 "Index 1982-1984=100" 이라 원본을 그대로 담으면 `cpi_yoy` 에 332.8 이
+# 들어간다. 이름은 YoY 인데 값은 인덱스 — 소비처는 이름을 믿는다. `_score_inflation`
+# 은 `abs(332.8 - 2.0)` 을 편차로 계산해 **0 점에 영구 고정**됐고(가중치 0.117),
+# `_detect_stagflation` 의 `cpi > 4` 는 **항상 참**이었다 (#1065).
+#
+# 하필 FRED 키가 없을 때보다 나빴다: 결측이면 #1026 의 coverage 재정규화가 성분을
+# 제외해 정직한데, 값이 있으면 0 점이 만점 가중치로 들어가 총점을 끌어내린다.
+#
+# `pc1` = Percent Change from Year Ago. FRED 가 서버에서 계산해 준다.
+FRED_UNITS = {
+    "cpi_yoy": "pc1",
+}
+
 # yfinance fallback 심볼 매핑 (FRED 없을 때 사용)
 YFINANCE_SYMBOLS = {
     "us_10y_yield": "^TNX",  # 10Y Treasury Yield
@@ -153,7 +168,10 @@ class MacroCollector(BaseCollector):
         records = []
         for indicator, series_id in FRED_SERIES.items():
             try:
-                series = fred.get_series(series_id, observation_start=start_date)
+                # units 는 FRED_UNITS 에 등재된 지표만 붙인다 — 나머지는 원본 단위가
+                # 이름과 일치하므로 기본값(`lin`)이 맞다.
+                extra = {"units": FRED_UNITS[indicator]} if indicator in FRED_UNITS else {}
+                series = fred.get_series(series_id, observation_start=start_date, **extra)
                 for date, value in series.dropna().items():
                     records.append(
                         {
