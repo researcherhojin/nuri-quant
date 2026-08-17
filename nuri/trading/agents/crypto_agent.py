@@ -4,6 +4,7 @@ BTC는 위험자산 선행지표. BTC 급등 = 리스크온, BTC 급락 = 리스
 BTC 지배력(dominance) 하락 = 알트코인 강세 = 투기 심리 과열.
 데이터 없으면 graceful HOLD 반환.
 """
+
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
@@ -18,20 +19,17 @@ class CryptoAgent(BaseAgent):
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         # BTC 24h 변화율
         change_rows = self._safe_query(
-            "SELECT value FROM macro WHERE indicator='btc_24h_change_pct' "
-            "ORDER BY date DESC LIMIT 1",
+            "SELECT value FROM macro WHERE indicator='btc_24h_change_pct' ORDER BY date DESC LIMIT 1",
             db_path=db_path,
         )
         # BTC 지배력
         dom_rows = self._safe_query(
-            "SELECT value FROM macro WHERE indicator='btc_dominance' "
-            "ORDER BY date DESC LIMIT 1",
+            "SELECT value FROM macro WHERE indicator='btc_dominance' ORDER BY date DESC LIMIT 1",
             db_path=db_path,
         )
         # BTC 가격
         btc_rows = self._safe_query(
-            "SELECT value FROM macro WHERE indicator='btc_usd_cg' "
-            "ORDER BY date DESC LIMIT 1",
+            "SELECT value FROM macro WHERE indicator='btc_usd_cg' ORDER BY date DESC LIMIT 1",
             db_path=db_path,
         )
 
@@ -91,20 +89,29 @@ class CryptoAgent(BaseAgent):
         score_sell = _CFG.get("score_sell", -2)
 
         if score >= score_buy:
-            action, confidence = "BUY", min(
-                _CONF.get("cap", 80),
-                _CONF.get("buy_base", 40) + score * _CONF.get("buy_multiplier", 10),
+            action, confidence = (
+                "BUY",
+                min(
+                    _CONF.get("cap", 80),
+                    _CONF.get("buy_base", 40) + score * _CONF.get("buy_multiplier", 10),
+                ),
             )
         elif score <= score_sell:
-            action, confidence = "SELL", min(
-                _CONF.get("cap", 80),
-                _CONF.get("sell_base", 40) + abs(score) * _CONF.get("sell_multiplier", 10),
+            action, confidence = (
+                "SELL",
+                min(
+                    _CONF.get("cap", 80),
+                    _CONF.get("sell_base", 40) + abs(score) * _CONF.get("sell_multiplier", 10),
+                ),
             )
         else:
             action, confidence = "HOLD", _CONF.get("hold_base", 30) + abs(score) * _CONF.get("hold_multiplier", 8)
 
         return AgentVerdict(
-            self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
+            self.name,
+            ticker,
+            action,
+            round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons),
             data,
         )

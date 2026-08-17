@@ -1,4 +1,5 @@
 """펀더멘탈 분석 에이전트 — PE, ROE, 성장률, 부채 기반 판정."""
+
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.trading.agents.base import AgentVerdict, BaseAgent
 
@@ -13,7 +14,8 @@ class FundamentalAgent(BaseAgent):
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         rows = self._safe_query(
             "SELECT * FROM fundamentals WHERE ticker = ? ORDER BY date DESC LIMIT 1",
-            (ticker,), db_path,
+            (ticker,),
+            db_path,
         )
         if not rows:
             return AgentVerdict(self.name, ticker, "HOLD", 0, "펀더멘탈 데이터 없음")
@@ -51,13 +53,13 @@ class FundamentalAgent(BaseAgent):
         if roe:
             if roe > roe_excellent:
                 score += 2
-                reasons.append(f"ROE {roe*100:.0f}% (우수)")
+                reasons.append(f"ROE {roe * 100:.0f}% (우수)")
             elif roe > roe_good:
                 score += 1
-                reasons.append(f"ROE {roe*100:.0f}%")
+                reasons.append(f"ROE {roe * 100:.0f}%")
             elif roe < 0:
                 score -= 1
-                reasons.append(f"ROE {roe*100:.0f}% (적자)")
+                reasons.append(f"ROE {roe * 100:.0f}% (적자)")
 
         # 성장률
         growth_strong = _CFG.get("growth_strong", 0.20)
@@ -65,10 +67,10 @@ class FundamentalAgent(BaseAgent):
         if growth:
             if growth > growth_strong:
                 score += 1
-                reasons.append(f"매출성장 {growth*100:.0f}%")
+                reasons.append(f"매출성장 {growth * 100:.0f}%")
             elif growth < growth_decline:
                 score -= 1
-                reasons.append(f"매출감소 {growth*100:.0f}%")
+                reasons.append(f"매출감소 {growth * 100:.0f}%")
 
         # 부채
         if debt and debt > _CFG.get("debt_high", 2.0):
@@ -93,7 +95,10 @@ class FundamentalAgent(BaseAgent):
             action, confidence = "HOLD", hold_base + abs(score) * hold_mult
 
         return AgentVerdict(
-            self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
+            self.name,
+            ticker,
+            action,
+            round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons) or "데이터 제한적",
             {"pe": pe, "roe": roe, "growth": growth, "debt": debt},
         )

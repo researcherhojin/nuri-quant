@@ -10,6 +10,7 @@ yfinance에서 직접 데이터를 가져오며 별도 API 키 불필요.
 3. Insider 매매 패턴 (순매수 vs 순매도)
 4. 애널리스트 컨센서스 분포 (strongBuy~strongSell)
 """
+
 import logging
 from datetime import timedelta
 
@@ -25,10 +26,33 @@ _CONF = _CFG.get("confidence", {})
 
 # yfinance에서 데이터가 없는 종목 (ETF, 한국주, 레버리지) — 스킵하여 속도 개선
 SKIP_TICKERS = {
-    "VOO", "SH", "SDS", "PSQ", "IWM", "EFA", "EEM", "ARKK",  # ETFs
-    "TSLL", "TQQQ", "SQQQ", "UPRO", "SPXU", "BULL",           # Leveraged
-    "SPY", "QQQ",                                                # Index ETFs
-    "XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC",  # Sector ETFs
+    "VOO",
+    "SH",
+    "SDS",
+    "PSQ",
+    "IWM",
+    "EFA",
+    "EEM",
+    "ARKK",  # ETFs
+    "TSLL",
+    "TQQQ",
+    "SQQQ",
+    "UPRO",
+    "SPXU",
+    "BULL",  # Leveraged
+    "SPY",
+    "QQQ",  # Index ETFs
+    "XLK",
+    "XLF",
+    "XLV",
+    "XLE",
+    "XLI",
+    "XLY",
+    "XLP",
+    "XLU",
+    "XLB",
+    "XLRE",
+    "XLC",  # Sector ETFs
 }
 
 
@@ -48,6 +72,7 @@ class WallStreetAgent(BaseAgent):
 
         try:
             import yfinance as yf
+
             t = yf.Ticker(ticker)
         except Exception:
             return AgentVerdict(self.name, ticker, "HOLD", 0, "yfinance 로드 실패")
@@ -61,7 +86,7 @@ class WallStreetAgent(BaseAgent):
             ud = t.upgrades_downgrades
             if ud is not None and not ud.empty:
                 cutoff = kst_now().replace(tzinfo=None) - timedelta(days=90)
-                recent = ud[ud.index >= cutoff] if hasattr(ud.index[0], 'year') else ud.tail(10)
+                recent = ud[ud.index >= cutoff] if hasattr(ud.index[0], "year") else ud.tail(10)
 
                 upgrades = 0
                 downgrades = 0
@@ -109,12 +134,12 @@ class WallStreetAgent(BaseAgent):
                 earn_th = _CFG.get("earnings_surprise", 0.05)
                 if surprise > earn_th:
                     score += 2
-                    reasons.append(f"실적 서프라이즈 +{surprise*100:.0f}%")
+                    reasons.append(f"실적 서프라이즈 +{surprise * 100:.0f}%")
                 elif surprise < -earn_th:
                     score -= 2
-                    reasons.append(f"실적 미스 {surprise*100:.0f}%")
+                    reasons.append(f"실적 미스 {surprise * 100:.0f}%")
                 elif abs(surprise) <= earn_th:
-                    reasons.append(f"실적 부합 ({surprise*100:+.1f}%)")
+                    reasons.append(f"실적 부합 ({surprise * 100:+.1f}%)")
 
                 data_points["earnings_surprise"] = round(float(surprise), 4)
                 data_points["eps_actual"] = float(latest.get("epsActual", 0) or 0)
@@ -167,16 +192,19 @@ class WallStreetAgent(BaseAgent):
 
                     if bull_pct > _CFG.get("consensus_bull", 0.60):
                         score += 1
-                        reasons.append(f"컨센서스 매수 {bull_pct:.0%}({strong_buy+buy}/{total}명)")
+                        reasons.append(f"컨센서스 매수 {bull_pct:.0%}({strong_buy + buy}/{total}명)")
                     elif bear_pct > _CFG.get("consensus_bear", 0.30):
                         score -= 1
-                        reasons.append(f"컨센서스 매도 {bear_pct:.0%}({sell+strong_sell}/{total}명)")
+                        reasons.append(f"컨센서스 매도 {bear_pct:.0%}({sell + strong_sell}/{total}명)")
                     else:
-                        reasons.append(f"컨센서스 중립({strong_buy+buy}B/{hold}H/{sell+strong_sell}S)")
+                        reasons.append(f"컨센서스 중립({strong_buy + buy}B/{hold}H/{sell + strong_sell}S)")
 
                     data_points["consensus"] = {
-                        "strong_buy": strong_buy, "buy": buy, "hold": hold,
-                        "sell": sell, "strong_sell": strong_sell,
+                        "strong_buy": strong_buy,
+                        "buy": buy,
+                        "hold": hold,
+                        "sell": sell,
+                        "strong_sell": strong_sell,
                     }
         except Exception:
             pass
@@ -186,20 +214,29 @@ class WallStreetAgent(BaseAgent):
 
         # 판정
         if score >= _CFG.get("score_buy", 3):
-            action, confidence = "BUY", min(
-                _CONF.get("buy_cap", 85),
-                _CONF.get("buy_base", 45) + score * _CONF.get("buy_multiplier", 10),
+            action, confidence = (
+                "BUY",
+                min(
+                    _CONF.get("buy_cap", 85),
+                    _CONF.get("buy_base", 45) + score * _CONF.get("buy_multiplier", 10),
+                ),
             )
         elif score <= _CFG.get("score_sell", -2):
-            action, confidence = "SELL", min(
-                _CONF.get("sell_cap", 80),
-                _CONF.get("sell_base", 45) + abs(score) * _CONF.get("sell_multiplier", 10),
+            action, confidence = (
+                "SELL",
+                min(
+                    _CONF.get("sell_cap", 80),
+                    _CONF.get("sell_base", 45) + abs(score) * _CONF.get("sell_multiplier", 10),
+                ),
             )
         else:
             action, confidence = "HOLD", _CONF.get("hold_base", 35) + abs(score) * _CONF.get("hold_multiplier", 8)
 
         return AgentVerdict(
-            self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
+            self.name,
+            ticker,
+            action,
+            round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons),
             data_points,
         )
@@ -208,15 +245,18 @@ class WallStreetAgent(BaseAgent):
         """DB에 캐시된 Wall Street 데이터로 판정 (yfinance 호출 없이)."""
         ratings = self._safe_query(
             "SELECT action, target_price FROM analyst_ratings WHERE ticker=? ORDER BY date DESC LIMIT 10",
-            (ticker,), db_path,
+            (ticker,),
+            db_path,
         )
         earnings = self._safe_query(
             "SELECT surprise_pct FROM earnings_surprises WHERE ticker=? ORDER BY quarter DESC LIMIT 1",
-            (ticker,), db_path,
+            (ticker,),
+            db_path,
         )
         insiders = self._safe_query(
             "SELECT transaction_type FROM insider_trades WHERE ticker=? ORDER BY date DESC LIMIT 10",
-            (ticker,), db_path,
+            (ticker,),
+            db_path,
         )
 
         if not ratings and not earnings and not insiders:
@@ -229,8 +269,16 @@ class WallStreetAgent(BaseAgent):
         ins_sell_margin = _CFG.get("insider_sell_margin", 3)
 
         if ratings:
-            ups = sum(1 for r in ratings if r.get("action") in ("up", "upgrade") or "raise" in str(r.get("action", "")).lower())
-            downs = sum(1 for r in ratings if r.get("action") in ("down", "downgrade") or "lower" in str(r.get("action", "")).lower())
+            ups = sum(
+                1
+                for r in ratings
+                if r.get("action") in ("up", "upgrade") or "raise" in str(r.get("action", "")).lower()
+            )
+            downs = sum(
+                1
+                for r in ratings
+                if r.get("action") in ("down", "downgrade") or "lower" in str(r.get("action", "")).lower()
+            )
             if ups > downs + 1:
                 score += 1
                 reasons.append(f"등급↑({ups}↑/{downs}↓, cached)")
@@ -242,10 +290,10 @@ class WallStreetAgent(BaseAgent):
             sp = earnings[0].get("surprise_pct")
             if sp and sp > earn_th:
                 score += 1
-                reasons.append(f"실적+{sp*100:.0f}%(cached)")
+                reasons.append(f"실적+{sp * 100:.0f}%(cached)")
             elif sp and sp < -earn_th:
                 score -= 1
-                reasons.append(f"실적{sp*100:.0f}%(cached)")
+                reasons.append(f"실적{sp * 100:.0f}%(cached)")
 
         if insiders:
             sells = sum(1 for i in insiders if i.get("transaction_type") == "sale")
@@ -264,5 +312,6 @@ class WallStreetAgent(BaseAgent):
         else:
             action, conf = "HOLD", _CONF.get("cached_hold", 40)
 
-        return AgentVerdict(self.name, ticker, action, round(self.normalize_confidence(conf), 1),
-                           "; ".join(reasons), {"cached": True})
+        return AgentVerdict(
+            self.name, ticker, action, round(self.normalize_confidence(conf), 1), "; ".join(reasons), {"cached": True}
+        )

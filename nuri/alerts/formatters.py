@@ -34,58 +34,68 @@ def format_daily_report(
     ]
 
     if risk_metrics:
-        fields.extend([
-            {
-                "name": "📊 Sharpe Ratio",
-                "value": f"{risk_metrics.get('sharpe_ratio', 0):.2f}",
-                "inline": True,
-            },
-            {
-                "name": "📉 Max Drawdown",
-                "value": f"{risk_metrics.get('max_drawdown_pct', 0):+.1f}%",
-                "inline": True,
-            },
-            {
-                "name": "⚡ VaR 95%",
-                "value": f"{risk_metrics.get('var_95_daily_pct', 0):+.2f}%",
-                "inline": True,
-            },
-        ])
+        fields.extend(
+            [
+                {
+                    "name": "📊 Sharpe Ratio",
+                    "value": f"{risk_metrics.get('sharpe_ratio', 0):.2f}",
+                    "inline": True,
+                },
+                {
+                    "name": "📉 Max Drawdown",
+                    "value": f"{risk_metrics.get('max_drawdown_pct', 0):+.1f}%",
+                    "inline": True,
+                },
+                {
+                    "name": "⚡ VaR 95%",
+                    "value": f"{risk_metrics.get('var_95_daily_pct', 0):+.2f}%",
+                    "inline": True,
+                },
+            ]
+        )
 
     if fear_greed is not None:
         fg_label = _fear_greed_label(fear_greed)
-        fields.append({
-            "name": "😱 Fear & Greed",
-            "value": f"{fear_greed:.0f} ({fg_label})",
-            "inline": True,
-        })
+        fields.append(
+            {
+                "name": "😱 Fear & Greed",
+                "value": f"{fear_greed:.0f} ({fg_label})",
+                "inline": True,
+            }
+        )
 
     # 경고
     if warnings:
-        fields.append({
-            "name": "⚠️ 투자규칙 경고",
-            "value": "\n".join(warnings[:5]),
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": "⚠️ 투자규칙 경고",
+                "value": "\n".join(warnings[:5]),
+                "inline": False,
+            }
+        )
 
     # 손절선 경고
     stop_alerts = risk_metrics.get("stop_loss_alerts", [])
     if stop_alerts:
         alert_text = "\n".join(f"{a['ticker']}: {a['pnl_pct']:+.1f}%" for a in stop_alerts[:5])
-        fields.append({
-            "name": "🚨 손절선 도달",
-            "value": alert_text,
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": "🚨 손절선 도달",
+                "value": alert_text,
+                "inline": False,
+            }
+        )
 
     # 이벤트
     if events:
         event_text = "\n".join(f"{e['date']} {e['description']}" for e in events[:5])
-        fields.append({
-            "name": "📅 예정 이벤트",
-            "value": event_text,
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": "📅 예정 이벤트",
+                "value": event_text,
+                "inline": False,
+            }
+        )
 
     color = COLOR_RED if warnings or stop_alerts else COLOR_GREEN
 

@@ -1,4 +1,5 @@
 """Decision Intelligence API — 의사결정 저널 조회 + lineage."""
+
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query

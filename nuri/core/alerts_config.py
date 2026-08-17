@@ -4,6 +4,7 @@
     from nuri.core.alerts_config import ALERTS_CONFIG
     fg_low = ALERTS_CONFIG["alerts"]["fear_greed_low"]   # 20
 """
+
 from pathlib import Path
 
 import yaml

@@ -1,4 +1,5 @@
 """외부 분석 데이터 API — TipRanks, Dataroma, Macrotrends 등 저장/조회."""
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
@@ -20,6 +21,7 @@ class ExternalInput(BaseModel):
 def get_external_summary():
     """외부 데이터 전체 요약."""
     from nuri.collectors.external import get_external_summary
+
     return get_external_summary()
 
 
@@ -27,6 +29,7 @@ def get_external_summary():
 def get_ticker_external(ticker: str):
     """종목별 외부 데이터 조회."""
     from nuri.collectors.external import get_external
+
     data = get_external(ticker.upper())
     return {"ticker": ticker.upper(), "data": data, "count": len(data)}
 
@@ -46,9 +49,13 @@ def save_external_data(item: ExternalInput, user=Depends(require_write_auth)):
         details=item.details,
     )
     if ok:
-        audit_log("INSERT", "external_analysis", item.ticker.upper(),
-                  f"{item.source}/{item.data_type}={item.value}",
-                  user_id=user.get("sub", "unknown"))
+        audit_log(
+            "INSERT",
+            "external_analysis",
+            item.ticker.upper(),
+            f"{item.source}/{item.data_type}={item.value}",
+            user_id=user.get("sub", "unknown"),
+        )
     return {"ok": ok}
 
 

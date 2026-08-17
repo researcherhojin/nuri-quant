@@ -5,6 +5,7 @@ YAML에만 존재하는 메타데이터(name, broker, total_invested, cash_*, au
 holdings dict는 flow style로 출력하여 원본 포맷과 일치시킨다.
 metadata JSON 컬럼의 추가 필드(flag 등)도 YAML에 복원.
 """
+
 import json
 import logging
 from pathlib import Path
@@ -29,6 +30,7 @@ _YAML_HEADER = """\
 
 class _HoldingFlowDumper(yaml.Dumper):
     """holdings 항목(ticker 키가 있는 dict)만 flow style로 출력."""
+
     pass
 
 
@@ -121,8 +123,7 @@ def sync_portfolio_to_yaml(config_path: Path | None = None, db_path=None) -> int
 
     with open(config_path, "w", encoding="utf-8") as f:
         f.write(_YAML_HEADER)
-        yaml.dump(existing, f, Dumper=_HoldingFlowDumper,
-                  allow_unicode=True, default_flow_style=False, sort_keys=False)
+        yaml.dump(existing, f, Dumper=_HoldingFlowDumper, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
     total = sum(len(h) for h in db_holdings.values())
     logger.info("portfolio.yaml 동기화 완료: %d 종목", total)

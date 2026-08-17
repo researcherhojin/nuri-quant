@@ -3,6 +3,7 @@
 
 FINVIZ 스크리너 데이터를 보조 시그널로 활용 (external_analysis 테이블).
 """
+
 import logging
 
 import pandas as pd
@@ -33,12 +34,14 @@ class TechnicalAgent(BaseAgent):
         min_dp = _CFG.get("min_data_points", 50)
         df = query_df(
             "SELECT date, close FROM prices WHERE ticker = ? ORDER BY date",
-            (ticker,), db_path=db_path,
+            (ticker,),
+            db_path=db_path,
         )
         # prices에 없으면 yfinance fallback (스캐너 종목 대응)
         if (df.empty or len(df) < min_dp) and db_path is None:
             try:
                 import yfinance as yf
+
                 _df = yf.download(ticker, period="6mo", progress=False)
                 if not _df.empty and len(_df) >= min_dp:
                     close_col = _df["Close"].squeeze() if hasattr(_df["Close"], "squeeze") else _df["Close"]
@@ -166,24 +169,32 @@ class TechnicalAgent(BaseAgent):
             confidence = conf_hold
 
         data_points = {
-            "rsi": round(rsi, 1), "sma50": round(sma50, 2), "sma200": round(sma200, 2),
-            "macd": round(macd, 4), "price": round(latest, 2),
+            "rsi": round(rsi, 1),
+            "sma50": round(sma50, 2),
+            "sma200": round(sma200, 2),
+            "macd": round(macd, 4),
+            "price": round(latest, 2),
         }
         if chart is not None and chart.price > 0:
-            data_points.update({
-                "bb_pos": chart.bb_position,
-                "macd_turn": chart.macd_turn,
-                "dist_high_52w": chart.dist_from_52w_high,
-                "dist_low_52w": chart.dist_from_52w_low,
-                "poc": chart.poc_price,
-                "trend": chart.trend_strength,
-                "visual_bias": chart.visual_bias,
-            })
+            data_points.update(
+                {
+                    "bb_pos": chart.bb_position,
+                    "macd_turn": chart.macd_turn,
+                    "dist_high_52w": chart.dist_from_52w_high,
+                    "dist_low_52w": chart.dist_from_52w_low,
+                    "poc": chart.poc_price,
+                    "trend": chart.trend_strength,
+                    "visual_bias": chart.visual_bias,
+                }
+            )
         if finviz_signals:
             data_points["finviz_signals"] = sorted(finviz_signals)
 
         return AgentVerdict(
-            self.name, ticker, action, round(self.normalize_confidence(confidence), 1),
+            self.name,
+            ticker,
+            action,
+            round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons) or "혼조",
             data_points,
         )
@@ -194,6 +205,7 @@ class TechnicalAgent(BaseAgent):
         max_age_days 이내의 데이터만 사용. 데이터 없으면 빈 리스트 (graceful fallback).
         """
         from datetime import timedelta
+
         max_age = _FINVIZ_CFG.get("max_age_days", 3)
         cutoff = (kst_now() - timedelta(days=max_age)).strftime("%Y-%m-%d")
         try:

@@ -1,4 +1,5 @@
 """모멘텀 팩터 — 12개월 수익률, RSI, 52주 고점 근접도."""
+
 import pandas as pd
 
 from nuri.core.db import query_df
@@ -52,10 +53,6 @@ def compute_momentum(tickers: list[str] | None = None) -> pd.DataFrame:
         else:
             df[col + "_norm"] = 0.5
 
-    df["momentum_score"] = (
-        df["period_return_norm"] * 0.4 +
-        df["rsi_14_norm"] * 0.3 +
-        df["high_proximity_norm"] * 0.3
-    )
+    df["momentum_score"] = df["period_return_norm"] * 0.4 + df["rsi_14_norm"] * 0.3 + df["high_proximity_norm"] * 0.3
 
     return df[["period_return", "rsi_14", "high_proximity", "momentum_score"]].round(4)

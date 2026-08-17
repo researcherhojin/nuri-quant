@@ -17,6 +17,7 @@ API 인증 모듈 — JWT 토큰 + API 키 인증.
     def write_data(user=Depends(require_write_auth)):
         ...
 """
+
 import logging
 import os
 import secrets

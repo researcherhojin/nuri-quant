@@ -8,6 +8,7 @@
 사용:
     from nuri.trading.engine.decisions import record_decision, track_decision_outcomes
 """
+
 import json
 import logging
 from datetime import datetime, timedelta
@@ -37,7 +38,8 @@ def record_decision(consensus_result, db_path=None) -> int:
     # 현재가 조회
     price_row = query(
         "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
-        (ticker,), db_path,
+        (ticker,),
+        db_path,
     )
     entry_price = price_row[0]["close"] if price_row else 0.0
 
@@ -99,18 +101,22 @@ def record_decision(consensus_result, db_path=None) -> int:
 
     # 시장 컨텍스트도 evidence로 기록
     if context.get("regime"):
-        evidence_records.append({
-            "source_type": "regime",
-            "source_key": "current",
-            "action": None,
-            "confidence": None,
-            "detail": json.dumps(context, ensure_ascii=False),
-        })
+        evidence_records.append(
+            {
+                "source_type": "regime",
+                "source_key": "current",
+                "action": None,
+                "confidence": None,
+                "detail": json.dumps(context, ensure_ascii=False),
+            }
+        )
 
     upsert_decision_evidence(decision_id, evidence_records, db_path)
 
-    logger.info(f"Decision recorded: {ticker} {consensus_result.final_action} "
-                f"(conf={consensus_result.final_confidence:.0f}, id={decision_id})")
+    logger.info(
+        f"Decision recorded: {ticker} {consensus_result.final_action} "
+        f"(conf={consensus_result.final_confidence:.0f}, id={decision_id})"
+    )
     return decision_id
 
 
@@ -153,7 +159,8 @@ def track_decision_outcomes(db_path=None) -> int:
                 target_date = (dec_date + timedelta(days=days)).strftime("%Y-%m-%d")
                 price = query(
                     "SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
-                    (ticker, target_date), db_path,
+                    (ticker, target_date),
+                    db_path,
                 )
                 if price and entry > 0:
                     ret = (price[0]["close"] - entry) / entry * 100
@@ -227,8 +234,7 @@ def _snapshot_market_context(db_path=None) -> dict:
 
     # Regime — pipeline_events에서 최신 regime_changed 이벤트
     regime_row = query(
-        "SELECT payload FROM pipeline_events WHERE event_type = 'regime_changed' "
-        "ORDER BY timestamp DESC LIMIT 1",
+        "SELECT payload FROM pipeline_events WHERE event_type = 'regime_changed' ORDER BY timestamp DESC LIMIT 1",
         db_path=db_path,
     )
     if regime_row:
@@ -241,6 +247,7 @@ def _snapshot_market_context(db_path=None) -> dict:
     # Macro score — event_score 포함
     try:
         from nuri.quant.regime.macro_score import compute_macro_score
+
         ms = compute_macro_score(db_path=db_path)
         context["macro_score"] = ms.total_score
         context["event_score"] = ms.event_score
@@ -270,8 +277,7 @@ def compute_agent_accuracy(db_path=None) -> dict:
     from nuri.core.db import query
 
     rows = query(
-        "SELECT agent_verdicts, outcome FROM decisions "
-        "WHERE outcome IN ('success', 'failure')",
+        "SELECT agent_verdicts, outcome FROM decisions WHERE outcome IN ('success', 'failure')",
         db_path=db_path,
     )
 
@@ -304,8 +310,7 @@ def compute_agent_accuracy(db_path=None) -> dict:
             agent_stats[agent_name]["total"] += 1
 
             # BUY + success = hit, SELL + failure = hit
-            if (action == "BUY" and outcome == "success") or \
-               (action == "SELL" and outcome == "failure"):
+            if (action == "BUY" and outcome == "success") or (action == "SELL" and outcome == "failure"):
                 agent_stats[agent_name]["hits"] += 1
 
     # 적중률 + weight_adjustment 계산
@@ -345,16 +350,18 @@ def save_agent_accuracy_snapshot(db_path=None) -> int:
     today = today_kst()
     records = []
     for name, stats in accuracy.items():
-        records.append({
-            "snapshot_date": today,
-            "signal_id": f"agent_{name}_accuracy",
-            "regime": "all",
-            "period": "all_time",
-            "trades": stats["total"],
-            "win_rate": stats["hit_rate"],
-            "profit_factor": stats["weight_adjustment"],  # weight_adjustment 저장
-            "avg_return": 0.0,
-        })
+        records.append(
+            {
+                "snapshot_date": today,
+                "signal_id": f"agent_{name}_accuracy",
+                "regime": "all",
+                "period": "all_time",
+                "trades": stats["total"],
+                "win_rate": stats["hit_rate"],
+                "profit_factor": stats["weight_adjustment"],  # weight_adjustment 저장
+                "avg_return": 0.0,
+            }
+        )
 
     with get_db(db_path) as conn:
         conn.executemany(
@@ -374,6 +381,7 @@ def _get_price_targets(ticker: str, entry_price: float, db_path=None) -> dict:
         return {}
     try:
         from nuri.trading.recommend.price_targets import calculate_targets
+
         return calculate_targets(ticker, entry_price=entry_price, db_path=db_path)
     except Exception:
         return {}
@@ -417,8 +425,10 @@ def main(argv: list[str] | None = None, db_path=None) -> int:
             print(f"  {'Agent':<18} {'Total':>6} {'Hits':>6} {'Rate':>8} {'Adj':>8}")
             print(f"  {'-' * 50}")
             for name, stats in sorted(acc.items(), key=lambda x: x[1]["hit_rate"], reverse=True):
-                print(f"  {name:<18} {stats['total']:>6} {stats['hits']:>6} "
-                      f"{stats['hit_rate']:>7.1%} {stats['weight_adjustment']:>+7.2f}")
+                print(
+                    f"  {name:<18} {stats['total']:>6} {stats['hits']:>6} "
+                    f"{stats['hit_rate']:>7.1%} {stats['weight_adjustment']:>+7.2f}"
+                )
             print()
         else:
             print("완료된 decisions 없음 (outcome = success/failure 필요)")
@@ -429,9 +439,11 @@ def main(argv: list[str] | None = None, db_path=None) -> int:
 
     if args.summary:
         summary = get_decision_summary(db_path=db_path)
-        print(f"\n의사결정 요약: total={summary['total']}, "
-              f"pending={summary['pending']}, success={summary['success']}, "
-              f"failure={summary['failure']}, neutral={summary['neutral']}")
+        print(
+            f"\n의사결정 요약: total={summary['total']}, "
+            f"pending={summary['pending']}, success={summary['success']}, "
+            f"failure={summary['failure']}, neutral={summary['neutral']}"
+        )
 
     return 0
 

@@ -96,8 +96,4 @@ def _filter_actionable_accounts(holdings: dict[str, Any]) -> dict[str, Any]:
     pension 은 장기 연금성 buy-and-hold — daily action 대상이 아니므로
     postmarket brief 출력에서 제외.
     """
-    return {
-        acct: data
-        for acct, data in holdings.items()
-        if (data.get("strategy") or "core") != "pension"
-    }
+    return {acct: data for acct, data in holdings.items() if (data.get("strategy") or "core") != "pension"}

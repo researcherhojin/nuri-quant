@@ -273,6 +273,12 @@ measurement_mode:
   permutation_n: 1000            # null 표본 수
   robustness_split: median_split_halves  # median decision date 등분 — 반기 n 균형 (VIX 게이트 accrual 비대칭 대비)
   missing_outcome_max_pct: 15    # 추적 결측 비율 상한 — 초과 시 판정 무효 (결측 편향)
+  max_settlement_lag_days: 7     # 벤치마크 종가 프런티어가 기준일보다 이만큼 뒤처지면 판정 무효 (#1068).
+                                 # 결측은 **정산된 창만** 세므로 벤치마크 수집이 멈추면 미해소 행이 결측에서
+                                 # 빠져나가 결측률이 조용히 내려간다. 이 조건은 판정을 **더 어렵게만** 만들며
+                                 # (§3.11 "하향/동결은 상시 허용" — prudential 방향), 통과를 쉽게 하지 않는다.
+                                 # 7 인 이유: 주말+공휴일 정상 지연 실측 4일(2026-08-18, 금요일 bar → 화요일)
+                                 # 위 여유. 이보다 길면 수집 장애지 달력이 아니다.
   sleeve_max_equity_pct:         # account_strategy 별 실험 슬리브 상한 (us_equity+kr_equity 합산 대비 %)
                                  # 확정 2026-07-08 (#848) — 이후 상향은 판정 통과 + STRATEGY PR (lock test 동시 개정)
     core: 10

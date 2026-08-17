@@ -1,4 +1,5 @@
 """스윙 트레이드 API."""
+
 from dataclasses import asdict
 from time import monotonic
 
@@ -14,6 +15,7 @@ _interactive_backtest_cache: dict[tuple[int, str, int, int], tuple[float, dict]]
 def get_scan(market: str = Query("us", pattern="^(us|kr)$"), top: int = Query(20, ge=1, le=50)):
     """시장 스캔."""
     from nuri.trading.swing.scanner import scan_market
+
     results = scan_market(market=market, top_n=top)
     return {"results": [asdict(r) for r in results], "count": len(results)}
 
@@ -24,10 +26,15 @@ def get_swing_entries(market: str = Query("us", pattern="^(us|kr)$")):
     import json
 
     from nuri.trading.swing.rules import evaluate_entries
+
     entries = evaluate_entries(market=market)
     # numpy 타입 → Python 네이티브 변환
     raw = [asdict(e) for e in entries]
-    cleaned = json.loads(json.dumps(raw, default=lambda x: x.item() if hasattr(x, 'item') else bool(x) if isinstance(x, type(True)) else str(x)))
+    cleaned = json.loads(
+        json.dumps(
+            raw, default=lambda x: x.item() if hasattr(x, "item") else bool(x) if isinstance(x, type(True)) else str(x)
+        )
+    )
     return {
         "entries": cleaned,
         "approved": len([e for e in entries if e.approved]),
@@ -39,6 +46,7 @@ def get_swing_entries(market: str = Query("us", pattern="^(us|kr)$")):
 def get_swing_positions():
     """오픈 포지션 청산 체크."""
     from nuri.trading.swing.rules import check_exits
+
     exits = check_exits()
     return {"positions": [asdict(e) for e in exits], "count": len(exits)}
 
@@ -53,6 +61,7 @@ def get_backtest():
         run_backtest,
         stress_test,
     )
+
     regimes = classify_historical_regimes()
     if regimes.empty:
         return {"error": "SPY data insufficient"}
@@ -62,15 +71,26 @@ def get_backtest():
     stress = stress_test(regimes)
     import json
     from dataclasses import asdict
+
     # numpy 타입 → Python 네이티브 변환
     def _clean(obj):
-        return json.loads(json.dumps(obj, default=lambda x: x.item() if hasattr(x, 'item') else (bool(x) if isinstance(x, (type(True),)) else str(x))))
-    return _clean({
-        "result": asdict(result),
-        "regimes": [asdict(p) for p in perfs],
-        "timing": asdict(timing) if timing else None,
-        "stress": stress,
-    })
+        return json.loads(
+            json.dumps(
+                obj,
+                default=lambda x: (
+                    x.item() if hasattr(x, "item") else (bool(x) if isinstance(x, (type(True),)) else str(x))
+                ),
+            )
+        )
+
+    return _clean(
+        {
+            "result": asdict(result),
+            "regimes": [asdict(p) for p in perfs],
+            "timing": asdict(timing) if timing else None,
+            "stress": stress,
+        }
+    )
 
 
 @router.get("/backtest/equity")
@@ -127,21 +147,23 @@ def get_backtest_equity(
         dd_pct = ((val - peak) / peak * 100) if peak > 0 else 0
         drawdown.append({"date": pt.get("date"), "drawdown": round(dd_pct, 2)})
 
-    response = _clean({
-        "equity": equity,
-        "drawdown": drawdown,
-        "metrics": {
-            "total_return": result.total_return,
-            "annual_return": result.annual_return,
-            "sharpe": result.sharpe,
-            "max_drawdown": result.max_drawdown,
-            "win_rate": result.win_rate,
-            "spy_total_return": result.spy_total_return,
-            "spy_sharpe": result.spy_sharpe,
-            "spy_max_drawdown": result.spy_max_drawdown,
-            "excess_return": result.excess_return,
-        },
-    })
+    response = _clean(
+        {
+            "equity": equity,
+            "drawdown": drawdown,
+            "metrics": {
+                "total_return": result.total_return,
+                "annual_return": result.annual_return,
+                "sharpe": result.sharpe,
+                "max_drawdown": result.max_drawdown,
+                "win_rate": result.win_rate,
+                "spy_total_return": result.spy_total_return,
+                "spy_sharpe": result.spy_sharpe,
+                "spy_max_drawdown": result.spy_max_drawdown,
+                "excess_return": result.excess_return,
+            },
+        }
+    )
     _interactive_backtest_cache[cache_key] = (now, response)
     return response
 

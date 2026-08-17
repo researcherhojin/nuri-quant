@@ -217,6 +217,19 @@ class TestMeasurementMode:
         assert mm["robustness_split"] == "median_split_halves"
         assert mm["missing_outcome_max_pct"] == 15
 
+    def test_settlement_lag_guard_is_locked_but_is_not_a_preregistered_criterion(self):
+        """정산 정지 가드 임계 (#1068). §3.11 **prudential invalidator** 의 첫 사례다 —
+        판정을 보류만 시키고 승격은 못 시키므로 사후 추가가 허용된 종류다 (§3.11 명문 정책).
+
+        그래도 잠그는 이유: 결측률은 정산된 창만 세므로, 이 값을 조용히 늘리면 벤치마크
+        수집이 멈춘 채로도 판정이 흘러간다 (측정이 망가질수록 결측 게이트는 깨끗해 보인다).
+        완화는 위 `test_adjudication_params_locked` 와 달리 STRATEGY PR 까지는 아니지만,
+        이 줄을 같이 고치도록 강제해 우발적 완화를 막는다.
+        """
+        from nuri.core.rules import RULES
+
+        assert RULES["measurement_mode"]["max_settlement_lag_days"] == 7
+
     def test_benchmark_matches_tracker_constant(self):
         """rules.yaml benchmark 와 tracker 코드 상수의 silent 분기 방지 (SSoT lock)."""
         from nuri.agents.actors.forward_outcome_tracker import DEFAULT_BENCHMARK_TICKER

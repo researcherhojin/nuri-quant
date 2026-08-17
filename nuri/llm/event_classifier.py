@@ -22,6 +22,7 @@ OpenAI gpt-5.4-nano로 교체. regex는 per-headline graceful degradation으로 
     result = classify_event("Iran and Israel agree to ceasefire after 2 weeks of strikes")
     # → {'category': 'geopolitical_de_escalation', 'sentiment': 0.5, ...}
 """
+
 import logging
 import re
 
@@ -34,21 +35,21 @@ logger = logging.getLogger(__name__)
 
 # 카테고리 — 새 카테고리 추가 시 REGIME_HINT 매핑도 반드시 함께 추가.
 CATEGORIES: tuple[str, ...] = (
-    "geopolitical_escalation",     # war, sanctions, missile strike, invasion
+    "geopolitical_escalation",  # war, sanctions, missile strike, invasion
     "geopolitical_de_escalation",  # ceasefire, treaty, peace talks
-    "fed_dovish",                  # rate cut, dovish, pause, easing
-    "fed_hawkish",                 # rate hike, hawkish, tightening
-    "oil_supply_shock",            # opec cut, sanctions on oil, refinery shutdown
-    "oil_demand_drop",             # oil oversupply, recession-driven demand fall
-    "earnings_beat",               # beat estimates, raised guidance
-    "earnings_miss",               # missed, cut guidance, profit warning
-    "sector_rally",                # broad sector surge / rotation
-    "sector_selloff",              # sector plunge / crash
-    "trade_war",                   # tariff, retaliation, trade deal collapse
-    "export_surge",                # Korea/global export boom, trade surplus, shipment growth
-    "currency_shift",              # FX major move (USD/KRW, yen carry unwind, DXY)
-    "demand_growth",               # semiconductor demand, chip shortage, AI capex, global PMI up
-    "neutral",                     # default — no actionable signal
+    "fed_dovish",  # rate cut, dovish, pause, easing
+    "fed_hawkish",  # rate hike, hawkish, tightening
+    "oil_supply_shock",  # opec cut, sanctions on oil, refinery shutdown
+    "oil_demand_drop",  # oil oversupply, recession-driven demand fall
+    "earnings_beat",  # beat estimates, raised guidance
+    "earnings_miss",  # missed, cut guidance, profit warning
+    "sector_rally",  # broad sector surge / rotation
+    "sector_selloff",  # sector plunge / crash
+    "trade_war",  # tariff, retaliation, trade deal collapse
+    "export_surge",  # Korea/global export boom, trade surplus, shipment growth
+    "currency_shift",  # FX major move (USD/KRW, yen carry unwind, DXY)
+    "demand_growth",  # semiconductor demand, chip shortage, AI capex, global PMI up
+    "neutral",  # default — no actionable signal
 )
 
 # 카테고리 → 레짐 힌트 (Phase B에서 special_regime promotion 후보로 사용 예정).
@@ -75,42 +76,33 @@ REGIME_HINT_BY_CATEGORY: dict[str, str | None] = {
 # (regex_pattern, category, sentiment_default)
 # 패턴은 case-insensitive, 학습이 아닌 키워드 매칭 — false positive 있을 수 있음.
 _KEYWORD_PATTERNS: list[tuple[str, str, float]] = [
-    (r"\b(ceasefire|truce|peace deal|treaty signed|de[- ]?escalat\w*|talks resume)\b",
-     "geopolitical_de_escalation", 0.5),
-    (r"\b(missile strike|invasion|attack|escalat\w*|sanctions imposed|retaliat\w*|airstrike|war)\b",
-     "geopolitical_escalation", -0.6),
-    (r"\b(rate cut|dovish|fed pause|easing cycle|cut rates)\b",
-     "fed_dovish", 0.4),
-    (r"\b(rate hike|hawkish|tightening|raise rates|hike rates)\b",
-     "fed_hawkish", -0.3),
-    (r"\b(opec[+]? cut|oil supply|refinery shut|crude shortage)\b",
-     "oil_supply_shock", -0.4),
-    (r"\b(oil price drop|crude plunge|oil oversupply|wti tumbl)\b",
-     "oil_demand_drop", 0.2),
-    (r"\b(beat estimates|earnings beat|raised guidance|crushed estimates|tops forecast)\b",
-     "earnings_beat", 0.5),
-    (r"\b(earnings miss|missed estimates|cut guidance|profit warn|guidance lower)\b",
-     "earnings_miss", -0.5),
+    (
+        r"\b(ceasefire|truce|peace deal|treaty signed|de[- ]?escalat\w*|talks resume)\b",
+        "geopolitical_de_escalation",
+        0.5,
+    ),
+    (
+        r"\b(missile strike|invasion|attack|escalat\w*|sanctions imposed|retaliat\w*|airstrike|war)\b",
+        "geopolitical_escalation",
+        -0.6,
+    ),
+    (r"\b(rate cut|dovish|fed pause|easing cycle|cut rates)\b", "fed_dovish", 0.4),
+    (r"\b(rate hike|hawkish|tightening|raise rates|hike rates)\b", "fed_hawkish", -0.3),
+    (r"\b(opec[+]? cut|oil supply|refinery shut|crude shortage)\b", "oil_supply_shock", -0.4),
+    (r"\b(oil price drop|crude plunge|oil oversupply|wti tumbl)\b", "oil_demand_drop", 0.2),
+    (r"\b(beat estimates|earnings beat|raised guidance|crushed estimates|tops forecast)\b", "earnings_beat", 0.5),
+    (r"\b(earnings miss|missed estimates|cut guidance|profit warn|guidance lower)\b", "earnings_miss", -0.5),
     # 한국/글로벌 수출 + 반도체 수요 (#137) — sector_rally보다 먼저 매칭되어야 함 (구체적 패턴 우선)
-    (r"(export[s ].*surge|export[s ].*boom|export[s ].*jump|trade surplus|shipment.*grow)",
-     "export_surge", 0.6),
-    (r"(Korea.*export|Korean.*export|KR.*export|KOSPI.*export)",
-     "export_surge", 0.5),
-    (r"(semiconductor.*demand|chip.*demand|AI.*capex|chip.*shortage|fab.*expansion|HBM.*demand)",
-     "demand_growth", 0.5),
-    (r"(TSMC.*revenue|TSMC.*record|chip.*boom|foundry.*demand)",
-     "demand_growth", 0.5),
-    (r"\b(won.*weak|dollar.*strong|USD.*KRW.*rise|yen.*carry|DXY.*surge|currency.*depreciat)",
-     "currency_shift", -0.3),
-    (r"\b(won.*strong|dollar.*weak|USD.*KRW.*fall|DXY.*drop|currency.*appreciat)",
-     "currency_shift", 0.3),
+    (r"(export[s ].*surge|export[s ].*boom|export[s ].*jump|trade surplus|shipment.*grow)", "export_surge", 0.6),
+    (r"(Korea.*export|Korean.*export|KR.*export|KOSPI.*export)", "export_surge", 0.5),
+    (r"(semiconductor.*demand|chip.*demand|AI.*capex|chip.*shortage|fab.*expansion|HBM.*demand)", "demand_growth", 0.5),
+    (r"(TSMC.*revenue|TSMC.*record|chip.*boom|foundry.*demand)", "demand_growth", 0.5),
+    (r"\b(won.*weak|dollar.*strong|USD.*KRW.*rise|yen.*carry|DXY.*surge|currency.*depreciat)", "currency_shift", -0.3),
+    (r"\b(won.*strong|dollar.*weak|USD.*KRW.*fall|DXY.*drop|currency.*appreciat)", "currency_shift", 0.3),
     # 일반 섹터 랠리/셀오프 — 위의 구체적 패턴에 안 걸린 경우만
-    (r"\b(rall(y|ies|ied)|surges?|jumps?|soars?|rebounds?|sector rotation)\b",
-     "sector_rally", 0.3),
-    (r"\b(plunges?|sell[- ]?off|crash(es)?|tumbles?|sinks?|rout)\b",
-     "sector_selloff", -0.4),
-    (r"\b(tariff|trade war|trade deal|retaliatory)\b",
-     "trade_war", -0.3),
+    (r"\b(rall(y|ies|ied)|surges?|jumps?|soars?|rebounds?|sector rotation)\b", "sector_rally", 0.3),
+    (r"\b(plunges?|sell[- ]?off|crash(es)?|tumbles?|sinks?|rout)\b", "sector_selloff", -0.4),
+    (r"\b(tariff|trade war|trade deal|retaliatory)\b", "trade_war", -0.3),
 ]
 
 

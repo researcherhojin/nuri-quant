@@ -1,4 +1,5 @@
 """매매 실행 추적 API — 추천에 대한 실제 매매 기록."""
+
 from datetime import datetime
 from typing import Optional
 
@@ -13,6 +14,7 @@ router = APIRouter(tags=["trades"])
 
 class TradeInput(BaseModel):
     """매매 실행 기록 입력."""
+
     recommendation_id: Optional[int] = None
     ticker: str
     action: str
@@ -55,6 +57,7 @@ class TradeInput(BaseModel):
 
 class TradeUpdateInput(BaseModel):
     """매매 종료 정보 업데이트."""
+
     exit_price: Optional[float] = None
     exit_date: Optional[str] = None
     exit_reason: Optional[str] = None
@@ -66,9 +69,13 @@ def create_trade(trade: TradeInput, user=Depends(require_write_auth)):
     """매매 실행 기록 저장."""
     data = trade.model_dump(exclude_none=True)
     trade_id = upsert_trade(data)
-    audit_log("INSERT", "trades", trade.ticker,
-              f"action={trade.action} shares={trade.shares}",
-              user_id=user.get("sub", "unknown"))
+    audit_log(
+        "INSERT",
+        "trades",
+        trade.ticker,
+        f"action={trade.action} shares={trade.shares}",
+        user_id=user.get("sub", "unknown"),
+    )
     return {"ok": True, "trade_id": trade_id}
 
 
@@ -87,6 +94,5 @@ def update_trade(trade_id: int, update: TradeUpdateInput, user=Depends(require_w
         raise HTTPException(status_code=400, detail="업데이트할 필드 없음")
     data["id"] = trade_id
     upsert_trade(data)
-    audit_log("UPDATE", "trades", "",
-              f"trade_id={trade_id}", user_id=user.get("sub", "unknown"))
+    audit_log("UPDATE", "trades", "", f"trade_id={trade_id}", user_id=user.get("sub", "unknown"))
     return {"ok": True, "trade_id": trade_id}

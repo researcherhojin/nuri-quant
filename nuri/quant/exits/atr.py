@@ -42,6 +42,7 @@ bucket / certification / risk_agent semantic 변경 없음.
 - Volume-low ticker: ATR 계산은 되지만 noise 높음 — PR F2 에서 `atr_valid`
   flag 추가 (e.g. ATR/close < 0.5% → invalidate).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -67,9 +68,9 @@ REGIME_MULTIPLIER = {
     "stagflation": 1.3,
 }
 
-DEFAULT_K = 2.0         # validation 전 default — validation 통과 후 변경
-DEFAULT_PERIOD = 14     # ATR period (talib standard)
-MIN_ROWS_FOR_ATR = 14   # OHLC row 최소 개수 — 미달 시 None
+DEFAULT_K = 2.0  # validation 전 default — validation 통과 후 변경
+DEFAULT_PERIOD = 14  # ATR period (talib standard)
+MIN_ROWS_FOR_ATR = 14  # OHLC row 최소 개수 — 미달 시 None
 
 
 @dataclass
@@ -85,6 +86,7 @@ class AtrStopResult:
         - breached: current_price <= stop_price (live 실측).
         - basis: "entry_atr_fixed" (이 PR) — 승격 시 "trailing_atr_dynamic" 추가 예정.
     """
+
     ticker: str
     account: str | None
     entry_price: float
@@ -115,6 +117,7 @@ def compute_atr(df: pd.DataFrame, period: int = DEFAULT_PERIOD) -> Optional[pd.S
         return None
 
     import talib
+
     try:
         high = df["high"].astype(float).values
         low = df["low"].astype(float).values
@@ -147,8 +150,7 @@ def compute_atr_stop(
     from nuri.core.db import query_df
 
     df = query_df(
-        "SELECT date, high, low, close FROM prices WHERE ticker = ? "
-        "ORDER BY date DESC LIMIT ?",
+        "SELECT date, high, low, close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT ?",
         (ticker, period * 3),  # 3x 로 padding — talib 초기 NaN 고려
         db_path=db_path,
     )
@@ -156,12 +158,18 @@ def compute_atr_stop(
     if df is None or df.empty or len(df) < MIN_ROWS_FOR_ATR:
         rows = 0 if df is None else len(df)
         return AtrStopResult(
-            ticker=ticker, account=account,
-            entry_price=entry_price, current_price=current_price,
-            atr=None, atr_pct_of_price=None,
-            k=k, regime=regime,
+            ticker=ticker,
+            account=account,
+            entry_price=entry_price,
+            current_price=current_price,
+            atr=None,
+            atr_pct_of_price=None,
+            k=k,
+            regime=regime,
             regime_multiplier=REGIME_MULTIPLIER.get(regime, 1.0),
-            stop_price=None, stop_pct=None, breached=False,
+            stop_price=None,
+            stop_pct=None,
+            breached=False,
             detail=f"OHLC 부족 ({rows} rows < 필요 {MIN_ROWS_FOR_ATR}) — legacy percent stop fallback 권장",
         )
 
@@ -169,24 +177,36 @@ def compute_atr_stop(
     atr_series = compute_atr(df, period=period)
     if atr_series is None:
         return AtrStopResult(
-            ticker=ticker, account=account,
-            entry_price=entry_price, current_price=current_price,
-            atr=None, atr_pct_of_price=None,
-            k=k, regime=regime,
+            ticker=ticker,
+            account=account,
+            entry_price=entry_price,
+            current_price=current_price,
+            atr=None,
+            atr_pct_of_price=None,
+            k=k,
+            regime=regime,
             regime_multiplier=REGIME_MULTIPLIER.get(regime, 1.0),
-            stop_price=None, stop_pct=None, breached=False,
+            stop_price=None,
+            stop_pct=None,
+            breached=False,
             detail="ATR 계산 실패 — talib 에러 또는 insufficient NaN 제거",
         )
 
     atr_latest = atr_series.iloc[-1]
     if pd.isna(atr_latest) or atr_latest <= 0:
         return AtrStopResult(
-            ticker=ticker, account=account,
-            entry_price=entry_price, current_price=current_price,
-            atr=None, atr_pct_of_price=None,
-            k=k, regime=regime,
+            ticker=ticker,
+            account=account,
+            entry_price=entry_price,
+            current_price=current_price,
+            atr=None,
+            atr_pct_of_price=None,
+            k=k,
+            regime=regime,
             regime_multiplier=REGIME_MULTIPLIER.get(regime, 1.0),
-            stop_price=None, stop_pct=None, breached=False,
+            stop_price=None,
+            stop_pct=None,
+            breached=False,
             detail="ATR NaN/0 — 데이터 품질 점검 필요",
         )
 
@@ -200,11 +220,18 @@ def compute_atr_stop(
     atr_pct = atr_val / entry_price * 100 if entry_price > 0 else 0.0
 
     return AtrStopResult(
-        ticker=ticker, account=account,
-        entry_price=entry_price, current_price=current_price,
-        atr=atr_val, atr_pct_of_price=atr_pct,
-        k=k, regime=regime, regime_multiplier=regime_mult,
-        stop_price=stop_price, stop_pct=stop_pct, breached=breached,
+        ticker=ticker,
+        account=account,
+        entry_price=entry_price,
+        current_price=current_price,
+        atr=atr_val,
+        atr_pct_of_price=atr_pct,
+        k=k,
+        regime=regime,
+        regime_multiplier=regime_mult,
+        stop_price=stop_price,
+        stop_pct=stop_pct,
+        breached=breached,
         detail=(
             f"entry={entry_price:.2f}, ATR{period}={atr_val:.2f} ({atr_pct:.1f}%), "
             f"k={k}×{regime_mult} ({regime}), stop={stop_price:.2f} ({stop_pct:+.1f}%)"

@@ -22,6 +22,7 @@ Usage:
         log.warning("TSLA diverged %+.2f%% — stored=%.2f live=%.2f",
                     pct, stored_price, live_val)
 """
+
 from __future__ import annotations
 
 import logging
@@ -52,6 +53,7 @@ def is_market_open_us(now=None) -> bool:
       (codex Round 1 P2 수정: 이전엔 오늘 기준으로만 평일 check → 일→월 새벽 오판)
     """
     from datetime import timedelta
+
     now = now or kst_now()
     t = now.time()
     if t >= _US_OPEN_KST:
@@ -94,6 +96,7 @@ def fetch_live_price(ticker: str) -> float | None:
 
     try:
         import yfinance as yf
+
         info = yf.Ticker(ticker).fast_info
         price = info.last_price
         if price is None or price <= 0:
