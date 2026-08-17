@@ -36,7 +36,21 @@ class CBOECollector(BaseCollector):
         self.fred_key = os.getenv("FRED_API_KEY", "")
 
     def collect(self, **kwargs) -> list[dict]:
-        """CBOE에서 Put/Call Ratio 수집."""
+        """CBOE에서 Put/Call Ratio 수집.
+
+        전면 실패는 `[]` 가 아니라 **raise** 다 (#1042, coingecko #1043 과 동일 규약).
+        `[]` 로 돌려주면 보고할 게 없던 날과 DB 기록이 같아진다 — 둘 다
+        `collector_runs.status='finished'` 가 박히고 `#ops` 알림도 안 뜬다.
+
+        ⚠️ 이 수집기에서 그 raise 는 **좀처럼 안 터진다.** 5차 `_collect_db_stale` 이
+        DB 에 이전 값이 하나라도 있으면 성공으로 돌려주기 때문에, 라이브 소스 4개가
+        전부 죽어도 여기까지 안 온다. 즉 여기서 고치는 건 "총체적 장애가 성공으로
+        기록되는" 축이고, **"DB_STALE 재사용이 영원히 성공으로 집계되는" 축은 그대로
+        남아 있다** — `put_call_ratio` 는 `freshness.py FRESHNESS_POLICIES` 에 항목이
+        없어서 아무도 그 stale 을 감시하지 않는다. 그건 별건이라 이 PR 밖이다.
+        """
+        errors: list[Exception] = []
+
         # 1차: CBOE daily.json
         try:
             records = self._collect_daily()
@@ -44,6 +58,7 @@ class CBOECollector(BaseCollector):
                 return records
         except Exception as e:
             self.logger.warning("CBOE daily API 실패: %s", e)
+            errors.append(e)
 
         # 2차: CBOE totalpc.json
         try:
@@ -52,6 +67,7 @@ class CBOECollector(BaseCollector):
                 return records
         except Exception as e:
             self.logger.warning("CBOE totalpc 폴백도 실패: %s", e)
+            errors.append(e)
 
         # 3차: FRED ECPCRATIO (CBOE Equity Put/Call Ratio)
         if self.fred_key and self.fred_key != "your_fred_api_key_here":
@@ -61,6 +77,7 @@ class CBOECollector(BaseCollector):
                     return records
             except Exception as e:
                 self.logger.warning("FRED PCR 폴백 실패: %s", e)
+                errors.append(e)
 
         # 4차: yfinance SPY 옵션 체인으로 PCR 직접 계산
         try:
@@ -69,6 +86,7 @@ class CBOECollector(BaseCollector):
                 return records
         except Exception as e:
             self.logger.warning("yfinance SPY PCR 폴백 실패: %s", e)
+            errors.append(e)
 
         # 5차: DB stale 재사용 (graceful degrade)
         try:
@@ -77,8 +95,23 @@ class CBOECollector(BaseCollector):
                 return stale
         except Exception as e:
             self.logger.warning("DB stale fallback 실패: %s", e)
+            errors.append(e)
 
-        self.logger.error("CBOE 모든 소스 실패 (FRED_API_KEY 설정 시 FRED 폴백 가능)")
+        # coingecko 는 `errors and not records` 를 쓰지만 여기는 `errors` 만 본다.
+        # 각 티어가 값을 건지면 즉시 return 하므로, 이 줄에 닿았다는 것 자체가 이미
+        # "한 건도 못 건졌다" 는 뜻이다 — `not records` 를 덧붙이면 records 가 비지
+        # 않을 수도 있다는 잘못된 인상만 준다.
+        if errors:
+            self.logger.error(
+                "CBOE 모든 소스 실패 (%d건) — 첫 원인을 올린다 (FRED_API_KEY 설정 시 FRED 폴백 가능)",
+                len(errors),
+            )
+            # `errors[-1]` 이 아니라 `errors[0]`: 마지막은 항상 DB stale(로컬 DB) 이라
+            # 알림에 올리면 운영자가 네트워크 원인 대신 DB 를 뒤지게 된다.
+            raise errors[0]
+
+        # 예외는 없었는데 전부 빈 응답 = NO_DATA. 그 구분을 지키는 게 이 변경의 요점이다.
+        self.logger.warning("CBOE: 모든 소스가 빈 응답 — NO_DATA (예외 없음)")
         return []
 
     def _collect_yfinance_spy_pcr(self) -> list[dict]:

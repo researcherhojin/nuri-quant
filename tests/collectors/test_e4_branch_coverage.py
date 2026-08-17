@@ -453,8 +453,10 @@ class TestCboeFallbackChain:
             patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("yf")),
             patch.object(c, "_collect_db_stale", side_effect=RuntimeError("stale")),
         ):
-            result = c.collect()
-        assert result == []
+            # 전면 실패는 `[]` 가 아니라 raise (#1042). FRED 티어까지 켠 5-tier 경로로,
+            # 올라오는 것은 마지막("stale")이 아니라 첫 원인("daily") 이어야 한다.
+            with pytest.raises(RuntimeError, match="daily"):
+                c.collect()
 
 
 class TestCboeFallbackSuccess:
