@@ -169,3 +169,34 @@ class TestHealthScanIsScheduled:
         finally:
             mod.CollectorOrchestrator = orig
         assert seen.get("action") == "scan_health", f"scan_health 를 부르지 않았다: {seen}"
+
+
+class TestStagedJobRecordsTheRealRowCount:
+    """스테이지 잡의 `rows_collected` 는 봉투가 아니라 수집량이어야 한다 (#1074).
+
+    `_run_collector` 는 스테이지 잡을 `run_step()` 으로 감싸는데, 그건 봉투
+    (`{"status", "result", ...}`)를 돌려준다. 그대로 기록하면 `_record_collector_run` 의
+    `len(result)` 이 잡혀 **모든 스테이지 잡이 상수 4** 를 남긴다.
+
+    프로덕션 실측 2026-08-18: `factors` 가 762행을 저장하고 `rows_collected=4` 로 남았다.
+    `collector_runs` 는 #975 에서 "collector health 관측이 통째로 없었다" 며 되살린
+    테이블이라, 행은 생기는데 안의 수치가 상수면 정확히 그 이슈가 막으려던 상태다.
+    """
+
+    def test_row_count_survives_the_run_step_envelope(self, wired, monkeypatch):
+        """Mutation lock: 봉투를 안 벗기면 4 가 기록돼 FAIL."""
+        monkeypatch.setattr(wired.sched, "_STAGE_OF_JOB", {"factors": "analyze"}, raising=False)
+        monkeypatch.setattr(wired.sched, "_dispatch_collector", lambda name, **kw: 762)
+
+        wired.sched._run_collector("factors")
+
+        rows = query("SELECT rows_collected FROM collector_runs", db_path=wired.db)
+        assert rows[0]["rows_collected"] == 762, (
+            f"봉투가 기록됐다 (dict 키 개수) — 실제 수집량이 아니라 {rows[0]['rows_collected']}"
+        )
+
+    def test_unstaged_job_is_unchanged(self, wired):
+        """스테이지 없는 잡은 기존 경로 그대로 — 봉투가 없으니 반환값이 곧 수집량이다."""
+        wired.sched._run_collector("macro")
+        rows = query("SELECT rows_collected FROM collector_runs", db_path=wired.db)
+        assert rows[0]["rows_collected"] == 7  # 픽스처 스텁의 반환값
