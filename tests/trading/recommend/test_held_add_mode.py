@@ -967,3 +967,79 @@ class TestGetRealAccountsHeldAdd:
 
         result = _get_real_accounts()
         assert isinstance(result, set)
+
+
+class TestUnmeasuredVixIsAVeto:
+    """VIX 미측정(`None`)은 통과가 아니라 **veto** 다 (#1076).
+
+    `_get_regime()` 은 부재·조회실패·노후를 `20.0` 으로 메우지 않고 `None` 을 돌려준다
+    (#753 — 20.0 은 차단(>30)·caution(>=25) 임계 아래라 측정 불가가 '평온'으로 둔갑해
+    게이트를 열었다). 그런데 `held_add` 는 `vix: float` 로 받아 `None >= 28` 에서
+    **TypeError** 를 냈고, 스케줄러가 그걸 삼켜 VIX 수집이 끊긴 날 잡이 조용히 아무것도
+    안 했다 — 관측상 정상, 실제로는 정지.
+
+    `macro_veto` 의 의미는 "거시가 무서우면 물타기 금지"이고, 미측정은 거시가 평온하다는
+    **확인이 안 된** 상태다. 이 레포가 반복해서 도달한 결론과 같다
+    (`_check_volatility_for_class` · `_market_sentiment` · `_get_regime` 자신).
+    """
+
+    @staticmethod
+    def _pos() -> dict:
+        # average_down 윈도우: stop_loss(-7) × 0.3 ~ × 0.7 = -2.1 ~ -4.9
+        return {"ticker": "NVDA", "account": "acct_alpha", "pnl_pct": -3.0, "days_held": 30}
+
+    @staticmethod
+    def _patch(monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_last_trim_age_days",
+            lambda ticker, max_days=60: None,
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_account_strategy_profile",
+            lambda account: {"stop_loss": -7, "tp1_pct": 21.0},
+        )
+
+    def test_none_vix_vetoes_instead_of_raising(self, monkeypatch: pytest.MonkeyPatch, cfg_held_add: dict) -> None:
+        """Mutation lock: `vix is None or` 를 빼면 TypeError 로 FAIL."""
+        self._patch(monkeypatch)
+        mode = ha.select_held_mode(
+            self._pos(),
+            cfg_held_add["held_add_mode"],
+            score=90,
+            rsi=20,
+            regime="neutral",
+            vix=None,
+            breakout_above_trim=False,
+            sector_mom=0,
+        )
+        assert mode is None, "VIX 미측정인데 물타기를 허용했다"
+
+    def test_measured_calm_vix_still_triggers(self, monkeypatch: pytest.MonkeyPatch, cfg_held_add: dict) -> None:
+        """veto 가 상시 발화하면 모드 자체가 죽는다 — 정상 VIX 는 그대로 통과해야 한다."""
+        self._patch(monkeypatch)
+        mode = ha.select_held_mode(
+            self._pos(),
+            cfg_held_add["held_add_mode"],
+            score=90,
+            rsi=20,
+            regime="neutral",
+            vix=15.0,
+            breakout_above_trim=False,
+            sector_mom=0,
+        )
+        assert mode == "average_down"
+
+    def test_high_vix_still_vetoes(self, monkeypatch: pytest.MonkeyPatch, cfg_held_add: dict) -> None:
+        """기존 계약 보존 — 28 이상은 종전대로 veto."""
+        self._patch(monkeypatch)
+        mode = ha.select_held_mode(
+            self._pos(),
+            cfg_held_add["held_add_mode"],
+            score=90,
+            rsi=20,
+            regime="neutral",
+            vix=30.0,
+            breakout_above_trim=False,
+            sector_mom=0,
+        )
+        assert mode is None

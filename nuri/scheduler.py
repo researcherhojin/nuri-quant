@@ -349,10 +349,19 @@ def _record_collector_run(name: str, status: str, started_monotonic: float, *, r
     import time as _time
 
     try:
+        from collections.abc import Sized
+
         from nuri.core.db import log_collector_run
         from nuri.core.timezone import kst_now
 
-        rows = result if isinstance(result, int) else (len(result) if hasattr(result, "__len__") else 0)
+        # `hasattr(x, "__len__")` 은 타입을 좁히지 못해 `len()` 이 `None` 을 받을 수 있는
+        # 것처럼 읽힌다. `Sized` isinstance 는 런타임 동작이 같으면서 좁혀진다.
+        if isinstance(result, int):
+            rows = result
+        elif isinstance(result, Sized):
+            rows = len(result)
+        else:
+            rows = 0
         log_collector_run(
             collector_name=name,
             status=status,
@@ -572,7 +581,11 @@ def _run_held_add_shadow():
         def _rsi(t: str) -> float | None:
             return rsi_map.get(t)
 
-        def _regime() -> tuple[str, float]:
+        def _regime() -> tuple[str, float | None]:
+            # `_get_regime()` 은 VIX 미측정 시 **None** 을 돌려준다 (#753 — 20.0 으로
+            # 메우면 측정 불가가 '평온'으로 둔갑해 게이트가 열린다). 여기 반환 타입을
+            # `float` 로 적어 둔 탓에 소비자가 None 을 예상하지 않았고, `held_add` 가
+            # `None >= 28` 로 TypeError 를 냈다 (#1076). 선언이 실제와 맞아야 한다.
             return regime, vix
 
         def _sector_mom(t: str) -> float:
