@@ -89,7 +89,18 @@ def _collect_context(db_path=None) -> dict:
     try:
         from nuri.trading.recommend.buy_candidate_emitter import emit_buy_candidates
 
-        ctx["buy_candidates"] = emit_buy_candidates()
+        emitted = emit_buy_candidates(db_path=db_path)
+        ctx["buy_candidates"] = emitted
+        # 발행한 후보를 원장에 남긴다 (#1078). 여기서 부르는 이유: `emit_buy_candidates`
+        # 자체는 CLI 로도 돌려 보는 함수라 호출만으로 기록하면 조회가 원장을 오염시킨다.
+        # **발행하는 지점이 기록하는 지점**이다. 기록 실패가 브리핑을 막지 않도록 자체
+        # try 로 감싼다 — 관측이 본 작업을 게이트하면 안 된다 (#894).
+        try:
+            from nuri.trading.recommend.tracker import save_buy_candidates
+
+            save_buy_candidates(emitted, db_path=db_path)
+        except Exception:
+            logger.warning("buy candidates 영속화 실패 (브리핑은 계속)", exc_info=True)
     except Exception:
         logger.warning("buy candidates emit 실패", exc_info=True)
 

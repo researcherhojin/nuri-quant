@@ -2,6 +2,7 @@
 
 Imported explicitly by test files (conftest.py only auto-loads fixtures).
 """
+
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -20,17 +21,18 @@ def _seed_recommendation(db_path, date, ticker, action, entry_price, confidence=
     """추천 레코드 삽입."""
     with get_db(db_path) as conn:
         conn.execute(
-            "INSERT INTO recommendations (date, ticker, action, confidence, entry_price) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO recommendations (date, ticker, action, confidence, entry_price) VALUES (?, ?, ?, ?, ?)",
             (date, ticker, action, confidence, entry_price),
         )
 
 
 def _seed_portfolio_r23(db_path, tickers=None):
     """Insert sample portfolio rows (from test_coverage_round23)."""
-    tickers = tickers or [("test", "AAPL", 10, 150.0, "USD", "Technology"),
-                          ("test", "MSFT", 5, 300.0, "USD", "Technology"),
-                          ("test", "JNJ", 20, 160.0, "USD", "Health")]
+    tickers = tickers or [
+        ("test", "AAPL", 10, 150.0, "USD", "Technology"),
+        ("test", "MSFT", 5, 300.0, "USD", "Technology"),
+        ("test", "JNJ", 20, 160.0, "USD", "Health"),
+    ]
     with get_db(db_path) as conn:
         for account, ticker, qty, avg_price, currency, sector in tickers:
             conn.execute(
@@ -93,8 +95,7 @@ def _seed_prices_nm(db_path, prices=None):
         ]
     with get_db(db_path) as conn:
         conn.executemany(
-            "INSERT OR REPLACE INTO prices (date, ticker, open, high, low, close, volume) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO prices (date, ticker, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
             prices,
         )
 

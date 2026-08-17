@@ -94,13 +94,13 @@ def _load_config(path: Path | None = None) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def _get_held_tickers() -> set[str]:
+def _get_held_tickers(db_path=None) -> set[str]:
     """Tickers currently in `portfolio` table — exclude from BUY emit."""
-    df = query_df("SELECT DISTINCT ticker FROM portfolio")
+    df = query_df("SELECT DISTINCT ticker FROM portfolio", db_path=db_path)
     return {str(t) for t in df["ticker"].tolist()} if not df.empty else set()
 
 
-def _get_cooldown_tickers(days: int) -> set[str]:
+def _get_cooldown_tickers(days: int, db_path=None) -> set[str]:
     """DEPRECATED — Phase 1 single-window cooldown. Use _get_cooldown_tickers_by_type (#517 Phase 2b).
 
     유지 이유: 호환성 (외부 caller / 테스트 fixture). 다음 세션에 제거 예정.
@@ -111,12 +111,13 @@ def _get_cooldown_tickers(days: int) -> set[str]:
             FROM pipeline_events
             WHERE event_type IN ('holdings_monitor_alert', 'take_profit_trigger', 'trim_recommendation')
               AND timestamp >= datetime('now', '-{days} days')
-              AND json_extract(payload, '$.ticker') IS NOT NULL"""
+              AND json_extract(payload, '$.ticker') IS NOT NULL""",
+        db_path=db_path,
     )
     return {str(t) for t in df["ticker"].dropna().tolist()} if not df.empty else set()
 
 
-def _get_cooldown_tickers_by_type(cooldown_cfg: dict) -> set[str]:
+def _get_cooldown_tickers_by_type(cooldown_cfg: dict, db_path=None) -> set[str]:
     """#517 Phase 2b — Type-aware cooldown.
 
     payload.action_type ∈ {hard_sell, trim_action, position_reduce, divergence_alert}
@@ -146,6 +147,7 @@ def _get_cooldown_tickers_by_type(cooldown_cfg: dict) -> set[str]:
                     AND timestamp >= datetime('now', '-{days} days')
                     AND json_extract(payload, '$.ticker') IS NOT NULL""",
             params=(action_type,),
+            db_path=db_path,
         )
         if not df.empty:
             suppressed.update(str(t) for t in df["ticker"].dropna().tolist())
@@ -165,7 +167,8 @@ def _get_cooldown_tickers_by_type(cooldown_cfg: dict) -> set[str]:
                         'trim_recommendation'
                     )
                     AND timestamp >= datetime('now', '-{fallback} days')
-                    AND json_extract(payload, '$.ticker') IS NOT NULL"""
+                    AND json_extract(payload, '$.ticker') IS NOT NULL""",
+            db_path=db_path,
         )
         if not df_legacy.empty:
             suppressed.update(str(t) for t in df_legacy["ticker"].dropna().tolist())
@@ -173,13 +176,14 @@ def _get_cooldown_tickers_by_type(cooldown_cfg: dict) -> set[str]:
     return suppressed
 
 
-def _get_factor_scores() -> dict[str, dict[str, float]]:
+def _get_factor_scores(db_path=None) -> dict[str, dict[str, float]]:
     """Latest factor snapshot per ticker (date = MAX). Returns ticker → {composite_score, momentum, value, quality, sentiment}."""
     df = query_df(
         """SELECT ticker, momentum_score, value_score, quality_score,
                   sentiment_score, composite_score
            FROM factors
-           WHERE date = (SELECT MAX(date) FROM factors)"""
+           WHERE date = (SELECT MAX(date) FROM factors)""",
+        db_path=db_path,
     )
     if df.empty:
         return {}
@@ -195,7 +199,7 @@ def _get_factor_scores() -> dict[str, dict[str, float]]:
     }
 
 
-def _get_price_signals() -> dict[str, dict[str, float]]:
+def _get_price_signals(db_path=None) -> dict[str, dict[str, float]]:
     """Compute 5d return + 30d high/low + current close from prices table.
 
     Returns ticker → {close, ret_5d, high_30d, low_30d, breakout_pct}.
@@ -204,7 +208,8 @@ def _get_price_signals() -> dict[str, dict[str, float]]:
         """SELECT ticker, date, close
            FROM prices
            WHERE date >= date('now', '-45 days')
-           ORDER BY ticker, date"""
+           ORDER BY ticker, date""",
+        db_path=db_path,
     )
     if df.empty:
         return {}
@@ -231,18 +236,19 @@ def _get_price_signals() -> dict[str, dict[str, float]]:
     return out
 
 
-def _get_rsi_snapshot() -> dict[str, float]:
+def _get_rsi_snapshot(db_path=None) -> dict[str, float]:
     """Latest RSI(14) per ticker."""
     df = query_df(
         """SELECT ticker, rsi_14 FROM signals
-           WHERE date = (SELECT MAX(date) FROM signals)"""
+           WHERE date = (SELECT MAX(date) FROM signals)""",
+        db_path=db_path,
     )
     if df.empty:
         return {}
     return {row["ticker"]: row["rsi_14"] for _, row in df.iterrows() if row["rsi_14"] is not None}
 
 
-def _get_regime() -> tuple[str, float | None]:
+def _get_regime(db_path=None) -> tuple[str, float | None]:
     """Current regime + VIX. VIX 가 없거나 노후하면 **None** — 지어내지 않는다.
 
     과거엔 부재·조회실패·노후를 전부 `20.0` 으로 메웠다. 20.0 은 차단(>30)과
@@ -256,13 +262,14 @@ def _get_regime() -> tuple[str, float | None]:
     try:
         df = query_df(
             """SELECT to_regime FROM regime_transitions
-               ORDER BY date DESC LIMIT 1"""
+               ORDER BY date DESC LIMIT 1""",
+            db_path=db_path,
         )
         regime = df["to_regime"].iloc[0] if not df.empty else "neutral"
     except (OperationalError, DatabaseError):
         logger.warning("regime 조회 실패 — neutral 처리", exc_info=True)
         regime = "neutral"
-    return regime, latest_vix()
+    return regime, latest_vix(db_path=db_path)
 
 
 def _score_ticker(
@@ -371,6 +378,7 @@ def _build_why_now(sources: dict[str, float], price: dict[str, float], rsi: floa
 def emit_buy_candidates(
     config_path: Path | None = None,
     limit: int | None = None,
+    db_path: Path | None = None,
 ) -> EmitResult:
     """Main entry: emit BUY candidates for current snapshot.
 
@@ -384,7 +392,7 @@ def emit_buy_candidates(
     alloc = cfg.get("allocation", {})
     exclude_etfs = set(cfg.get("exclude_etfs", []))  # 레버리지/인버스 ETF — BUY 제외 (#761)
 
-    regime, vix = _get_regime()
+    regime, vix = _get_regime(db_path=db_path)
     result = EmitResult(
         regime=regime,
         vix=vix,
@@ -408,20 +416,20 @@ def emit_buy_candidates(
         result.blocked_reason = f"regime={regime} threshold={threshold} (사실상 차단)"
         return result
 
-    held = _get_held_tickers() if cfg.get("exclude_held", True) else set()
+    held = _get_held_tickers(db_path=db_path) if cfg.get("exclude_held", True) else set()
     # #517 Phase 2b — type-aware cooldown 우선. legacy gates.cooldown_days 는 fallback 용.
     cooldown_cfg = gates.get("cooldown")
     if cooldown_cfg:
-        cooldown = _get_cooldown_tickers_by_type(cooldown_cfg)
+        cooldown = _get_cooldown_tickers_by_type(cooldown_cfg, db_path=db_path)
     else:
         # 호환성: gates.cooldown 미정의 시 legacy single-window
-        cooldown = _get_cooldown_tickers(gates.get("cooldown_days", 5))
-    factors = _get_factor_scores()
-    prices = _get_price_signals()
-    rsi_map = _get_rsi_snapshot()
+        cooldown = _get_cooldown_tickers(gates.get("cooldown_days", 5), db_path=db_path)
+    factors = _get_factor_scores(db_path=db_path)
+    prices = _get_price_signals(db_path=db_path)
+    rsi_map = _get_rsi_snapshot(db_path=db_path)
     # P2 leadership shadow 스냅샷 (weight=0 — sources 노출만, 라이브 점수 무변경)
     lead_cfg = cfg.get("leadership", {})
-    leadership = leadership_snapshot(lead_cfg.get("lookback", 120), lead_cfg.get("surge_window", 20))
+    leadership = leadership_snapshot(lead_cfg.get("lookback", 120), lead_cfg.get("surge_window", 20), db_path=db_path)
 
     if not factors:
         result.blocked_reason = "factors 테이블 비어있음 (composite_score 데이터 부재)"
@@ -529,8 +537,27 @@ def render_markdown(result: EmitResult) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
-    """CLI entry: print markdown + summary."""
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry: print markdown + summary.
+
+    기본은 **조회만** 한다. 원장 기록은 `--persist` 를 줄 때만 — 그래서 후보를 눈으로
+    보려고 돌리는 것이 `recommendations` 를 오염시키지 않는다.
+
+    ⚠️ 즉 "발행한 후보는 전부 원장에 남는다" 가 아니라 **"예약 발행(premarket brief)과
+    명시 `--persist` 만 남는다"** 이다. Discord `/buy-candidates` 는 이 CLI 를 그대로
+    타므로 기록되지 않는다 — 같은 날 브리핑이 이미 같은 계산을 기록했고
+    `UNIQUE(date, ticker)` 로 중복도 막히지만, 규칙을 정확히 적어 둔다 (#1078 Codex P1).
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description="BUY 후보 emit (#507)")
+    parser.add_argument(
+        "--persist",
+        action="store_true",
+        help="후보를 recommendations 원장에 기록 (기본: 조회만)",
+    )
+    args = parser.parse_args(argv)
+
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     result = emit_buy_candidates()
     print(render_markdown(result))
@@ -539,6 +566,11 @@ def main() -> int:
         f"Summary: {len(result.candidates)} candidates, "
         f"{len(result.skipped)} skipped, regime={result.regime}, VIX={format_vix(result.vix)}"
     )
+    if args.persist:
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        n = save_buy_candidates(result)
+        print(f"원장 기록: {n}건")
     return 0
 
 

@@ -38,8 +38,10 @@ def _read_consensus_from_db(ticker: str) -> dict | None:
     from nuri.core.timezone import kst_now
 
     rows = query(
+        # emitter 행 제외 — 이 함수는 "최신 **합의**" 를 돌려준다 (#1078). 필터가 없으면
+        # 같은 ticker 의 emitter 후보가 날짜만 최신이라는 이유로 합의 행세를 한다.
         "SELECT action, confidence, signals, agent_verdicts, date "
-        "FROM recommendations WHERE ticker = ? ORDER BY date DESC LIMIT 1",
+        "FROM recommendations WHERE ticker = ? AND source IS NULL ORDER BY date DESC LIMIT 1",
         (ticker,),
     )
     if not rows:
