@@ -16,8 +16,9 @@ Nuri-Quant 기능 검증 스크립트 — 모든 분석을 실행하고 결과�
   └── summary.txt                  # 전체 요약
 
 사용법:
-    python scripts/verify.py
-    python scripts/verify.py --skip-backtest   # 백테스트 제외 (빠르게)
+    python scripts/verify/verify.py
+    python scripts/verify/verify.py --skip-backtest   # 백테스트 제외 (빠르게)
+    make verify / make verify-fast
 """
 
 import argparse
@@ -27,8 +28,13 @@ import sys
 import traceback
 from pathlib import Path
 
-# 프로젝트 루트를 path에 추가
-ROOT = Path(__file__).parent.parent
+# 프로젝트 루트를 path에 추가.
+# `parents[2]` 인 이유: 이 파일은 `<root>/scripts/verify/verify.py` 라 두 단계로는
+# `scripts/` 에서 멈춘다. 예전 위치가 `scripts/verify.py` 였고 옮길 때 이 줄이 같이
+# 안 따라왔다. 그래서 리포트가 `scripts/data/reports/` 로 나갔는데, `data/reports/`
+# 와 달리 거기는 gitignore 가 안 걸려 실보유 종목·수량·손익이 담긴 CSV 가 untracked
+# 로 노출됐다 (#1062).
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 logging.basicConfig(
