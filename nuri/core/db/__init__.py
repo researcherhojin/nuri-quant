@@ -91,6 +91,12 @@ from .research_ops import (  # noqa: F401, E402
     save_backtest,
     validate_hypothesis,
 )
+from .thesis_ops import (  # noqa: F401, E402
+    ThesisValidationError,
+    get_active_thesis,
+    get_thesis_history,
+    upsert_thesis,
+)
 from .trades import upsert_trade  # noqa: F401, E402
 
 
@@ -191,6 +197,9 @@ def get_decision_with_evidence(decision_id: int, db_path: Optional[Path] = None)
         db_path,
     )
     decision["evidence"] = [dict(e) for e in evidence]
+    # PIT 조인 — `decisions.thesis_id` 컬럼이 아니다. 컬럼이면 기존 행이 영원히 NULL 이지만,
+    # 조인이면 그 티커의 첫 논지를 쓰는 순간 **기존 결정 전부**가 논지를 갖는다 (#1083).
+    decision["thesis"] = get_active_thesis(decision["ticker"], as_of=decision["date"], db_path=db_path)
     return decision
 
 

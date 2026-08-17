@@ -189,13 +189,27 @@ def _run(script: Path, repo: Path) -> subprocess.CompletedProcess:
     )
 
 
+def _live_marker(text: str, pattern: str) -> str:
+    """문서가 **지금** 말하는 문구를 뽑는다.
+
+    수치를 리터럴로 박으면 마이그레이션·테스트 추가로 문서가 움직이는 순간 marker 가
+    사라지고, 변조 `replace`/`re.sub` 가 아무것도 바꾸지 않아 **손상 없는 실행**이 된다.
+    그러면 테스트는 통과하거나(공짜 초록) 게이트 회귀와 구분 안 되는 이유로 실패한다.
+    실제로 `284 files` 가 낡아 이 파일의 이웃-숫자 테스트가 무증상으로 비어 있었다 (#1083).
+    """
+    m = re.search(pattern, text)
+    assert m, f"문서에서 {pattern!r} 를 못 찾았다 — 이 테스트의 대조 대상이 사라졌다"
+    return m.group(0)
+
+
 class TestRoundTrip:
     def test_corrupted_count_is_repaired_and_then_verifies(self, repo_copy):
         """망가뜨림 → sync → verify 통과. 게이트와 fixer 가 같은 걸 본다는 증명."""
         readme = repo_copy / "README.md"
         original = readme.read_text()
-        assert "SQLite WAL · 51 tables" in original
-        readme.write_text(original.replace("SQLite WAL · 51 tables", "SQLite WAL · 88 tables"))
+        marker = _live_marker(original, r"SQLite WAL · \d+ tables")
+        readme.write_text(original.replace(marker, "SQLite WAL · 88 tables"))
+        assert "88 tables" in readme.read_text(), "손상이 안 걸렸다 — 아래 검증이 공짜로 통과한다"
 
         before = _run(VERIFY, repo_copy)
         assert "DRIFT" in before.stdout, f"손상시켰는데 verify 가 통과함:\n{before.stdout}"
@@ -205,32 +219,44 @@ class TestRoundTrip:
 
         after = _run(VERIFY, repo_copy)
         assert "DRIFT" not in after.stdout, f"sync 후에도 drift 잔존:\n{after.stdout}"
-        assert "SQLite WAL · 51 tables" in readme.read_text()
+        assert marker in readme.read_text()
 
     def test_sync_leaves_neighbouring_numbers_alone(self, repo_copy):
-        """Backend 행 동기화가 같은 표의 다른 숫자를 건드리지 않는다.
+        """Backend **파일 수** 동기화가 같은 표의 다른 숫자를 건드리지 않는다.
 
-        Gotcha-Test Pair: STRATEGY 패턴을 'Backend tests.*[0-9,]+ tests' 로 넓히면
-        첫 숫자 런인 "Codecov 1%" 가 파괴되고, 옛 패턴 '[0-9,]+ tests, [0-9]+ files \\|'
-        로 되돌리면 바로 아래 Frontend 행이 백엔드 수치로 덮어써진다 — 둘 다 FAIL.
+        ⚠️ 여기 적혀 있던 Gotcha-Test Pair 주장(‘STRATEGY 패턴을 넓히면 Codecov 1% 가
+        파괴되고, 옛 패턴으로 되돌리면 Frontend 행이 덮어써진다 — 둘 다 FAIL’)은
+        **거짓이었다.** 2026-08-18 실측: 두 뮤테이션 다 이 테스트를 통과한다.
+
+        이유는 `sync_doc_counts.sh` 의 **테스트 수** 블록 전체가
+        `TESTS_BE=$(live_tests_be || echo "")` + `if [ -n "$TESTS_BE" ]` 로 감싸여
+        있고, 얕은 사본은 `tests/` 가 비어 있어 그 값이 빈 문자열이 되기 때문이다.
+        즉 `update_comma_number` 계열은 이 fixture 에서 **한 줄도 실행되지 않는다** —
+        그 규칙을 겨눈 뮤테이션이 무력한 게 당연하다.
+
+        그래서 이 테스트가 실제로 잠그는 것은 `update_claim live_test_files_be` 하나다:
+        Backend 행의 파일 수를 고치면서 같은 줄의 ‘Codecov 1%’ 와 아래 Frontend 행의
+        테스트 수를 건드리지 않는가. 테스트-수 규칙까지 덮으려면 fixture 가 실제 테스트
+        파일을 심어야 한다 → #1084.
         """
         strategy = repo_copy / "docs" / "STRATEGY.md"
-        strategy.write_text(
-            re.sub(
-                r"[0-9,]+ tests, 284 files \(statement",
-                "9,999 tests, 284 files (statement",
-                strategy.read_text(),
-                count=1,
-            )
-        )
+        before = strategy.read_text()
+        frontend_row = _live_marker(before, r"Frontend tests \|[^|]*\| [0-9,]+ tests,")
+
+        # Backend 행의 **파일 수**를 손상시킨다. 얕은 사본은 `tests/` 가 비어 있어 fixer 가
+        # 실제로 다시 쓰는 값이 파일 수뿐이고, 테스트 수를 망가뜨리면 복구가 일어나지 않아
+        # 복구 단언이 성립하지 않는다. 옛 버전은 낡은 `284 files` 를 겨눠 **손상 자체가 안
+        # 걸린 채** 통과했다 — 게이트를 검사하는 테스트가 무증상으로 비어 있던 것이다.
+        strategy.write_text(re.sub(r"([0-9,]+ tests, )\d+( files \(statement)", r"\g<1>777\g<2>", before, count=1))
+        assert "777 files (statement" in strategy.read_text(), "손상이 안 걸렸다 — 아래 검증이 공짜로 통과한다"
 
         sync = _run(SYNC, repo_copy)
         assert sync.returncode == 0, sync.stdout + sync.stderr
 
         after = strategy.read_text()
         assert "Codecov 1% relative" in after, "Backend 행의 1% 가 파괴됨"
-        # 사본의 tests/ 는 비어 있어 **파일 수**는 0 으로 동기화된다(fixture 아티팩트).
-        # 이 테스트가 지키는 건 그게 아니라 "이웃 숫자를 건드리지 않는가" 이므로
-        # Frontend 행의 **테스트 수**(1449)만 본다 — 옛 패턴이 덮어썼던 바로 그 값.
-        assert re.search(r"Frontend tests \|[^|]*\| 1449 tests,", after), "Frontend 테스트 수가 덮어써짐"
-        assert "9,999" not in after, "손상된 값이 복구되지 않음"
+        # 이 테스트가 지키는 건 "이웃 숫자를 건드리지 않는가" 다 — Frontend 행의 **테스트
+        # 수**가 옛 패턴이 백엔드 값으로 덮어쓰던 바로 그 자리다 (파일 수는 fixture 아티팩트로
+        # 0 이 되므로 행 전체가 아니라 테스트 수까지만 본다).
+        assert frontend_row in after, "Frontend 테스트 수가 덮어써짐"
+        assert "777 files" not in after, "손상된 값이 복구되지 않음"
