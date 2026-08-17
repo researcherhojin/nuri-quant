@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Pre-push gate — layer 2 of the STRATEGY §4.4.1 privacy defense.
+#
+# Installed by `make setup-hooks` (symlink .git/hooks/pre-push → here). Until
+# #1070 this file simply did not exist, so the installer worked perfectly and
+# installed nothing: an *absent* gate, quieter than the dead gates of #910/#911
+# (rc=127) and #953/#954 (exit 0) because non-execution leaves no exit code at
+# all. `.claude/rules/enforcement.md` meanwhile claimed the gate was running.
+#
+# Why layer 2 cannot be replaced by CI: `privacy-scan` runs *after* the push.
+# A ticker+PnL disclosure in a commit **message** is already in remote history
+# by then — that is exactly what PR #202 cost, and the lesson that created this
+# gate. Only a local hook stops it.
+#
+# Why `--skip-tests`: the test sections are mirrored by CI's 4 shards, while a
+# local full run is 320.8s. A slow hook is a bypassed hook, and a bypassed hook
+# is an absent gate again. Everything CI cannot replace still runs here — drift,
+# lint, doc counts, tracked-file privacy, and the commit-message scan — in 0.9s.
+# Full parity remains `bash scripts/verify/pre_push_check.sh`.
+#
+# Bypass: git push --no-verify   (leaves CI as the only remaining net)
+
+set -uo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "pre-push: not inside a git repository — refusing to push unchecked." >&2
+    exit 1
+}
+cd "$REPO_ROOT" || exit 1
+
+GATE="scripts/verify/pre_push_check.sh"
+if [ ! -f "$GATE" ]; then
+    # Missing checker is "unverified", not "clean". Exiting 0 here would recreate
+    # the very failure this hook exists to close.
+    echo "pre-push: $GATE missing — refusing to push unchecked." >&2
+    echo "          override with: git push --no-verify" >&2
+    exit 1
+fi
+
+# stdin carries git's ref list; nothing downstream reads it, and leaving it
+# attached lets a stray `read` in a sub-script swallow the push description.
+exec bash "$GATE" --skip-tests < /dev/null
