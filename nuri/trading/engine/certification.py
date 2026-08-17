@@ -419,11 +419,47 @@ def _compute_3d_change(indicator: str, db_path=None) -> float | None:
     return abs((latest - past) / past * 100)
 
 
+def _compute_3d_bp(indicator: str, db_path=None) -> float | None:
+    """indicator 의 최근 4개 값에서 3일 **절대** 변화를 bp 로. 데이터 부족 시 None.
+
+    `_compute_3d_change` 의 상대 % 와 나란히 두는 이유: **금리에는 상대 % 가 맞지 않는다.**
+    같은 14bp 이동이 금리 1% 에서는 14%, 4.7% 에서는 3% 로 읽혀 임계값의 의미가 레짐에
+    따라 통째로 바뀐다. 프로덕션 `us_10y_yield` 실측(2021~2026, n=1,246)이 그대로 보여준다 —
+    3일 변화 p95 가 상대로는 10.53% → 3.11% 로 무너지는데(평균 금리 1.48% → 4.38%),
+    절대로는 15 → 13bp 로 안정적이다. 상대 % 로 5년 pooled p95(6.9%)를 잡으면 2021 년
+    16 회 · 2022 년 35 회 발화하다 **2026 년 0 회** — 금리 정상화와 함께 조용히 죽는다 (#1020).
+
+    가격 계열(KOSPI · gold · USD/KRW)은 그대로 `_3d_change` 를 쓴다. 거기서는 상대 % 가
+    자연 단위고, 레벨이 수십 배 변하지도 않는다.
+    """
+    rows = query(
+        "SELECT value FROM macro WHERE indicator=? ORDER BY date DESC LIMIT 4",
+        (indicator,),
+        db_path=db_path,
+    )
+    values = [r["value"] for r in rows]
+    if len(values) < 4 or values[0] is None or values[-1] is None:
+        ticker = _PRICES_BACKED.get(indicator)
+        values = _read_price_closes(ticker, 4, db_path=db_path) if ticker else []
+        if len(values) < 4:
+            return None
+    return abs(float(values[0]) - float(values[-1])) * 100
+
+
+# computed 지표 접미사 → 계산 함수. `rules.yaml` 이 선언한 이름을 base 지표로 환원할 때도
+# 쓰이므로 (`test_volatility_gate_contract`) **여기가 단일 출처**다. 테스트에 같은 목록을
+# 손으로 복사하면 새 접미사를 추가했을 때 계약이 그걸 dangling 으로 오탐한다.
+# 긴 접미사가 먼저 와야 한다 — 짧은 쪽이 접두로 겹치면 먼저 걸려버린다.
+_COMPUTED_SUFFIXES: tuple[str, ...] = ("_3d_change", "_3d_bp")
+
+
 def _get_indicator_value(name: str, db_path=None) -> float | None:
-    """volatility indicator 값 조회. computed 지표 (*_3d_change) 는 자동 계산."""
-    if name.endswith("_3d_change"):
-        base = name.replace("_3d_change", "")
-        return _compute_3d_change(base, db_path=db_path)
+    """volatility indicator 값 조회. computed 지표 (`*_3d_change` / `*_3d_bp`) 는 자동 계산."""
+    for suffix in _COMPUTED_SUFFIXES:
+        if name.endswith(suffix):
+            base = name[: -len(suffix)]
+            fn = _compute_3d_bp if suffix == "_3d_bp" else _compute_3d_change
+            return fn(base, db_path=db_path)
     return _read_indicator(name, db_path=db_path)
 
 
