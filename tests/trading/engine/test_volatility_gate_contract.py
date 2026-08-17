@@ -24,12 +24,19 @@ allowlist 는 양방향으로 잠근다 (`test_cross_stage_imports.py` 와 같�
 
 레지스트리는 손으로 적지 않고 **소스에서 유도**한다 (#1015 fixer 가드와 같은 방식) —
 손 목록을 두면 그 목록이 다음 드리프트 지점이 된다는 게 Codex P1 지적이었다.
+
+**후속 (#1020, 2026-08-18)**: 두 dangling 이 모두 해소돼 `KNOWN_MISSING_FROM_MACRO` 는
+비었다. `kospi` 는 `_PRICES_BACKED` 폴백으로, `yield` 는 `us_10y_yield_3d_bp` 재지정으로.
+후자는 포인터만 옮겨서는 안 됐다 — 기존 `_3d_change` 는 **상대 %** 라 금리 레짐에 따라
+임계값 의미가 변한다. 그래서 절대 bp 형태를 새로 두고 임계값을 재도출했다. 아래
+`TestBondGateUsesAbsoluteBasisPoints` 가 그 단위 선택을 잠근다.
 """
 
 import ast
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 from nuri.trading.engine.certification import _check_volatility_for_class
@@ -87,14 +94,10 @@ def _macro_writer_indicators() -> set[str]:
 # 해당 게이트는 매 인증서에 `평가 불가` warning 으로 찍히고 score 를 깎는다. 압력은
 # 이 테스트가 아니라 **매일 나가는 인증서**가 만든다. 이 테스트가 강제하는 건
 # "이유와 추적 이슈가 붙어 있을 것" 까지다.
-KNOWN_MISSING_FROM_MACRO = {
-    "yield": (
-        "#1021 — bond 클래스 primary. `macro.us_10y_yield`(335행) / `prices.TLT`(46행) 둘 다 "
-        "후보지만 threshold 0.3 이 `_compute_3d_change` 의 pct 의미와 안 맞는다 "
-        "(0.3% ≈ 1.3bp → 상시 발화). 포인터만 바꾸면 죽은 게이트가 시끄러운 게이트로 "
-        "바뀔 뿐 — threshold 재도출은 매매 룰 변경이라 STRATEGY PR 대상."
-    ),
-}
+# 현재 비어 있다. `yield` 는 #1020 에서 해소됐다 — `us_10y_yield_3d_bp` 로 재지정하고
+# 임계값을 bp 로 재도출(20bp)했다. 상대 % 를 그대로 두면 금리 레짐에 따라 임계값 의미가
+# 변해 조용히 죽는다는 것이 프로덕션 실측으로 확인됐다 (`_compute_3d_bp` docstring).
+KNOWN_MISSING_FROM_MACRO: dict[str, str] = {}
 _ISSUE_REF = re.compile(r"#\d{2,}")
 
 
@@ -111,6 +114,8 @@ def _declared_indicators() -> dict[str, list[str]]:
     `setdefault` 로 첫 선언만 남기면 같은 dangling 입력에 여러 asset class 가
     물려 있는 걸 숨긴다 (Codex P2).
     """
+    from nuri.trading.engine.certification import _COMPUTED_SUFFIXES
+
     rules = yaml.safe_load((REPO_ROOT / "config" / "rules.yaml").read_text(encoding="utf-8"))
     out: dict[str, list[str]] = {}
     for cls, policy in (rules.get("siege_gates", {}).get("asset_classes", {}) or {}).items():
@@ -118,7 +123,14 @@ def _declared_indicators() -> dict[str, list[str]]:
         for name in names:
             if not name:
                 continue
-            base = name[: -len("_3d_change")] if name.endswith("_3d_change") else name
+            # 접미사 목록은 `certification` 에서 가져온다 — 손으로 복사하면 새 computed
+            # 형태를 추가했을 때 이 계약이 그걸 dangling 으로 오탐한다 (#1020 에서 실제로
+            # `_3d_bp` 를 넣자마자 그렇게 걸렸다).
+            base = name
+            for suffix in _COMPUTED_SUFFIXES:
+                if name.endswith(suffix):
+                    base = name[: -len(suffix)]
+                    break
             out.setdefault(base, []).append(f"{cls}.{name}")
     return out
 
@@ -304,4 +316,89 @@ class TestKospiResolvesThroughPrices:
             conn.execute("INSERT INTO prices (ticker, date, close) VALUES (?,?,?)", ("GOLD", "2026-08-10", 42.0))
         assert _read_indicator("gold", db_path=db_path) is None, (
             "매핑에 없는 지표가 prices 로 해석됐다 — 게이트가 엉뚱한 시계열로 통과할 수 있다"
+        )
+
+
+class TestBondGateUsesAbsoluteBasisPoints:
+    """금리 게이트가 **절대 bp** 로 재는지 잠근다 (#1020).
+
+    상대 % 로 재면 같은 이동이 금리 레벨에 따라 다르게 읽힌다 — 14bp 가 금리 1% 에서는
+    14%, 4.7% 에서는 3% 다. 프로덕션 `us_10y_yield` 실측(2021~2026, n=1,246)에서 3일
+    변화 p95 는 상대로 10.53% → 3.11% 로 무너지는데(평균 금리 1.48% → 4.38%) 절대로는
+    15 → 13bp 로 안정적이었다. 상대 % 로 5년 pooled p95(6.9%)를 잡았다면 2021 년 16 회 ·
+    2022 년 35 회 발화하다 **2026 년 0 회** — 금리가 정상화되면서 조용히 죽는 게이트다.
+
+    그래서 여기서 잠그는 것은 임계값 숫자가 아니라 **단위 선택**이다. 숫자는 config 라
+    STRATEGY 판단으로 움직일 수 있지만, 상대 % 로 되돌아가면 같은 사고가 재발한다.
+    """
+
+    def _seed(self, db_path, values, indicator="us_10y_yield"):
+        from nuri.core.db import upsert_macro
+
+        upsert_macro(
+            [
+                {"indicator": indicator, "date": f"2026-08-{10 + i:02d}", "value": v, "source": "test"}
+                for i, v in enumerate(values)
+            ],
+            db_path,
+        )
+
+    def test_bp_is_absolute_not_relative(self, db_path):
+        """Gotcha-Test Pair: `_compute_3d_bp` 를 상대 % 로 되돌리면 FAIL.
+
+        같은 20bp 이동을 저금리(1.00→1.20)와 고금리(4.50→4.70)에서 각각 준다.
+        절대 bp 면 둘 다 20 이고, 상대 % 면 20.0 vs 4.4 로 갈린다.
+        """
+        from nuri.trading.engine.certification import _compute_3d_bp
+
+        self._seed(db_path, [1.00, 1.05, 1.10, 1.20], indicator="low_rate")
+        self._seed(db_path, [4.50, 4.55, 4.60, 4.70], indicator="high_rate")
+
+        low = _compute_3d_bp("low_rate", db_path=db_path)
+        high = _compute_3d_bp("high_rate", db_path=db_path)
+
+        assert low == pytest.approx(20.0, abs=0.01), f"저금리 20bp 가 {low} 로 나왔다"
+        assert high == pytest.approx(20.0, abs=0.01), f"고금리 20bp 가 {high} 로 나왔다"
+        assert low == pytest.approx(high, abs=0.01), (
+            "같은 bp 이동이 금리 레벨에 따라 다르게 나온다 — 상대 % 로 재고 있다"
+        )
+
+    def test_relative_change_would_have_diverged(self, db_path):
+        """카나리아 — 위 테스트가 의미를 가지려면 상대 % 는 실제로 갈려야 한다.
+
+        둘이 어차피 같다면 단위 선택이 무의미하고 위 단언은 공허하다.
+        """
+        from nuri.trading.engine.certification import _compute_3d_change
+
+        self._seed(db_path, [1.00, 1.05, 1.10, 1.20], indicator="low_rate")
+        self._seed(db_path, [4.50, 4.55, 4.60, 4.70], indicator="high_rate")
+
+        low = _compute_3d_change("low_rate", db_path=db_path)
+        high = _compute_3d_change("high_rate", db_path=db_path)
+        assert low > high * 3, (
+            f"상대 % 가 레짐에 따라 갈리지 않는다 (low={low}, high={high}) — 이 픽스처로는 단위 차이를 증명할 수 없다"
+        )
+
+    def test_gate_resolves_the_bond_indicator_end_to_end(self, db_path):
+        """config 가 선언한 이름이 실제로 값으로 해소되는지 — 계약이 증명 못 하던 층."""
+        from nuri.trading.engine.certification import _check_volatility_for_class, _get_indicator_value
+
+        self._seed(db_path, [4.50, 4.55, 4.60, 4.70])
+        assert _get_indicator_value("us_10y_yield_3d_bp", db_path=db_path) == pytest.approx(20.0, abs=0.01)
+
+        conds = _check_volatility_for_class(
+            "bond",
+            {"volatility_primary": "us_10y_yield_3d_bp", "volatility_primary_threshold": 20},
+            db_path=db_path,
+        )
+        assert len(conds) == 1
+        assert conds[0].passed is False, "20bp 는 임계 20 을 넘지 않지만 '평가 불가' 도 아니어야 한다"
+        assert "평가 불가" not in conds[0].detail, "값이 있는데 '평가 불가' 로 찍혔다 — 해소 실패"
+
+    def test_config_declares_bp_not_relative(self):
+        """config 가 상대 % 로 되돌아가면 FAIL — 단위 회귀 차단."""
+        rules = yaml.safe_load((REPO_ROOT / "config" / "rules.yaml").read_text(encoding="utf-8"))
+        bond = rules["siege_gates"]["asset_classes"]["bond"]
+        assert bond["volatility_primary"].endswith("_3d_bp"), (
+            f"bond primary 가 `{bond['volatility_primary']}` — 금리는 절대 bp 로 재야 한다"
         )
