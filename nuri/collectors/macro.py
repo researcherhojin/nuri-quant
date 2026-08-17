@@ -42,6 +42,12 @@ FRED_SERIES = {
     # 추가 경제 지표
     "consumer_sentiment": "UMCSENT",  # 미시건대 소비자 심리
     "ism_manufacturing": "MANEMP",  # ISM 제조업 고용
+    # 실질 GDP 성장률 (전기 대비, 연율 환산). 분기 시리즈라 5년 창에 20개 남짓.
+    # `classifier._detect_stagflation` 의 유일한 GDP 입력 — 이게 없으면 그 함수가
+    # `gdp_growth` 미수집으로 조기 return 해 **스태그플레이션 판정 자체가 도달 불가**
+    # 였다 (#1025). 원본이 이미 "Percent Change from Preceding Period, SAAR" 라
+    # FRED_UNITS 오버라이드가 필요 없다.
+    "gdp_growth": "A191RL1Q225SBEA",
     # PR C (codex bubble-bear #3): crash precursor data.
     # BofA US High Yield Option-Adjusted Spread — 신용 스트레스 조기 신호.
     # Gilchrist-Zakrajsek 2012: HY OAS > 500bps + 63d 변화 > +150bps 경기침체 경고.
