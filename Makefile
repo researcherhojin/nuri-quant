@@ -30,7 +30,7 @@ help:
 	@echo ""
 	@echo "  Setup:        make setup"
 	@echo "  Test/Lint:    make test, make test-fast, make lint, make lint-fix, make lint-sh"
-	@echo "  Verify:       make verify-help    (verify-quick → verify-all → verify-fast → verify, fastest first)"
+	@echo "  Verify:       make verify-help    (4 tiers — 사다리가 아니라 서로 다른 것을 본다. 목적으로 고를 것)"
 	@echo "  Data:         make collect, make collect-kis, make wallstreet, make filings"
 	@echo "  Universe:     make universe-sync[-us/-kr/-apply], make collect-universe[-1y], make validate-universe"
 	@echo "  Universe gen: make kr-names (KR 종목명 캐시), make cspell-tickers (cSpell 사전) — sync-apply 가 자동 체이닝"
@@ -47,14 +47,15 @@ help:
 
 verify-help:
 	@printf '\n'
-	@printf '  \033[1;36mNuri-Quant verify tiers\033[0m — pick the cheapest one that satisfies your need\n'
+	@printf '  \033[1;36mNuri-Quant verify tiers\033[0m — 네 티어는 서로 다른 것을 본다. 목적으로 고를 것\n'
 	@printf '\n'
 	@printf '  \033[1m%-14s %-9s %s\033[0m\n' 'TIER' 'RUNTIME' 'WHAT IT DOES'
 	@printf '  \033[2m%s\033[0m\n' '──────────────────────────────────────────────────────────────────'
-	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-quick' '~10s'  'pytest + regime classifier (no network)'
-	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-all'   '~30s'  'tests + backend + frontend + file integrity'
-	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-fast'  '~2min' 'scripts/verify/verify.py --skip-backtest'
-	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify'       '~5min' 'scripts/verify/verify.py (full backtest run)'
+	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-quick' '84.9s' 'pytest + regime classifier (no network)'
+	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-fast'  '127s'  'scripts/verify/verify.py --skip-backtest'
+	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify'       '213s'  'scripts/verify/verify.py (full backtest run)'
+	@printf '  \033[36m%-14s\033[0m \033[33m%-9s\033[0m %s\n' 'verify-all'   '320.8s' 'tests + backend + frontend + file integrity'
+	@printf '  \033[2m%s\033[0m\n' 'M5 Max 실측 — quick/all 2026-08-14, fast/verify 2026-08-17. 각 1회'
 	@printf '\n'
 	@printf '  \033[1mWhen to use:\033[0m\n'
 	@printf '    Pre-commit   →  \033[36mmake verify-quick\033[0m\n'
@@ -238,17 +239,17 @@ verify-universe-sync: ## Smoke test universe-sync targets — catches real API b
 
 # Verify tiers — fastest to slowest. See `make verify-help` for the full table.
 
-verify-quick:    ## ~10s pre-commit smoke test (pytest + regime, no network)
+verify-quick:    ## pre-commit smoke test — pytest + regime, no network (84.9s)
 	$(PYTHON) -m pytest tests/ -q --tb=line -n auto --dist worksteal
 	$(PYTHON) -c "from nuri.core.db import query; from nuri.quant.regime.classifier import classify_regime; r=classify_regime(); print(f'Quick: tests + Regime {r.regime if r else \"N/A\"}')"
 
-verify-all:      ## ~30s pre-push (tests + backend + frontend + file integrity)
+verify-all:      ## pre-push — tests + backend + frontend + file integrity (320.8s, 네 티어 중 가장 느리다)
 	bash scripts/verify/verify_all.sh
 
-verify-fast:     ## ~2min pre-deploy (verify.py without backtest)
+verify-fast:     ## pre-deploy — verify.py without backtest (127s)
 	$(PYTHON) scripts/verify/verify.py --skip-backtest
 
-verify:          ## ~5min pre-release (verify.py full, includes backtest)
+verify:          ## pre-release — verify.py full, includes backtest (213s)
 	$(PYTHON) scripts/verify/verify.py
 
 
