@@ -62,6 +62,11 @@ def _write(db_path, **over):
 class TestWriterValidation:
     """NOT NULL 은 규율이 아니다 — `agent_decisions.rationale_json` 851/851 이 그 증거."""
 
+    def test_empty_bull_case_is_rejected(self, db_path):
+        """상승 논리도 필수다 — bear 만 검사하면 한쪽만 빈 논지가 통과한다."""
+        with pytest.raises(ThesisValidationError, match="bull_case"):
+            _write(db_path, bull_case="")
+
     def test_empty_bear_case_is_rejected(self, db_path):
         """하락 논리 없는 논지는 기록이 아니라 응원가다."""
         with pytest.raises(ThesisValidationError, match="bear_case"):

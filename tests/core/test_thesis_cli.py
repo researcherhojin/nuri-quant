@@ -88,6 +88,25 @@ class TestWrite:
         assert rc == 2
 
 
+class TestModuleEntryPoint:
+    """`python -m nuri.core.thesis_cli` 가 실제로 도는지 — `pragma: no cover` 대신 runpy.
+
+    이 레포는 진입 가드에 pragma 를 붙이는 것을 coverage gaming 으로 본다
+    (`tests/quant/test_main_runpy.py` docstring). 실행해서 확인한다.
+    """
+
+    def test_running_as_a_module_works(self, monkeypatch, capsys):
+        import io
+        import runpy
+        import sys
+
+        monkeypatch.setattr(sys, "argv", ["thesis_cli", "show", "ZZZZ"])
+        monkeypatch.setattr(sys, "stdout", io.StringIO())
+        with pytest.raises(SystemExit) as exc:
+            runpy.run_module("nuri.core.thesis_cli", run_name="__main__")
+        assert exc.value.code == 0
+
+
 class TestShow:
     def test_reports_absence_rather_than_crashing(self, db_path, capsys):
         assert main(["--db-path", str(db_path), "show", "zzzz"]) == 0
