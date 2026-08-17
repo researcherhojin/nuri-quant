@@ -20,6 +20,19 @@ FRESHNESS_POLICIES = {
         "fail_hours": 72,
         "label": "VIX",
     },
+    "factors": {
+        # BUY 후보 점수의 최대 입력(`buy_signals.yaml` 가중치 0.40)인데 정책이 없어서
+        # 2026-04-14 → 2026-08-18 넉 달간 낡은 채로도 어떤 화면에도 안 떴다 (#1071).
+        # `factors.date` 는 쓴 날이 아니라 **시장 데이터 날짜**다 (`_market_as_of`) — 그래서
+        # 이 검사는 잡의 생존과 입력의 신선도를 **동시에** 본다. 잡이 멈추면 날짜가 얼고,
+        # 가격이 멈춰도 날짜가 얼기 때문이다. `today_kst()` 로 찍던 시절엔 주말·휴장에도
+        # 당일 행이 생겨 이 정책이 낡음을 잡는 게 아니라 세탁했다 (#1071 Codex P1).
+        # 그래서 임계도 `prices` 와 같다 — 재료가 같으니 주말/공휴일 여유도 같아야 한다.
+        "query": "SELECT MAX(date) FROM factors",
+        "warn_hours": 48,
+        "fail_hours": 120,
+        "label": "멀티팩터 스코어",
+    },
     "macro_fear_greed": {
         "query": "SELECT MAX(date) FROM macro WHERE indicator = 'fear_greed'",
         "warn_hours": 24,

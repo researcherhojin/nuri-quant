@@ -33,6 +33,47 @@ def db_path(tmp_path):
     return path
 
 
+def _dispatch_branch_names(source: str | None = None) -> set[str]:
+    """`_dispatch_collector` 가 분기하는 잡 이름 (AST 추출).
+
+    별도 함수인 이유: 스윕 로직 자체를 합성 소스로 테스트할 수 있어야 한다. 프로덕션
+    코드가 현재 `==` 만 쓰므로, `in` / `match` 처리 분기는 프로덕션 대조만으로는
+    **한 번도 실행되지 않은 채** 들어간다 (#1071 뮤테이션 실측: 그 분기를 꺼도 통과했다).
+    """
+    import ast
+    from pathlib import Path
+
+    if source is None:
+        import nuri.scheduler as sch
+
+        source = Path(sch.__file__).read_text(encoding="utf-8")
+
+    names: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.FunctionDef) and node.name == "_dispatch_collector"):
+            continue
+        for sub in ast.walk(node):
+            # `name == "x"` 와 `name in ("x", "y")` 둘 다.
+            if isinstance(sub, ast.Compare) and isinstance(sub.left, ast.Name) and sub.left.id == "name":
+                for c in sub.comparators:
+                    if isinstance(c, ast.Constant) and isinstance(c.value, str):
+                        names.add(c.value)
+                    elif isinstance(c, (ast.Tuple, ast.List, ast.Set)):
+                        names |= {e.value for e in c.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+            # `match name: case "x":`
+            elif isinstance(sub, ast.match_case) and isinstance(sub.pattern, ast.MatchValue):
+                v = sub.pattern.value
+                if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                    names.add(v.value)
+    return names
+
+
+def _scheduled_collector_names() -> set[str]:
+    import nuri.scheduler as sch
+
+    return {j["args"][0] for j in sch.SCHEDULES if j.get("func") is sch._run_collector and j.get("args")}
+
+
 class TestVocabularyIsShared:
     def test_dag_and_event_steps_use_the_same_names(self):
         """두 어휘가 갈라지면 스케줄러가 남긴 이벤트를 DAG 가 못 읽는다.
@@ -169,6 +210,93 @@ class TestSchedulerWiring:
         scheduled = {j["args"][0] for j in sch.SCHEDULES if j.get("func") is sch._run_collector and j.get("args")}
         orphan = sorted(set(sch._STAGE_OF_JOB) - scheduled)
         assert not orphan, f"_STAGE_OF_JOB 에 있으나 SCHEDULES 에 없는 잡: {orphan}"
+
+    def test_no_dispatch_branch_lacks_a_cron(self):
+        """`_dispatch_collector` 가 아는 잡은 전부 cron 이 있어야 한다 (#1071).
+
+        위 테스트는 "매핑 → SCHEDULES" 만 본다. **코드는 있는데 잡이 없는** 반대 구멍은
+        아무 신호도 내지 않는다: `factors` 는 `save_composite()` 가 멀쩡히 있고 `python -m`
+        으로 돌리면 동작했는데 cron 이 없어 프로덕션에서 **넉 달간 갱신이 끊겼고**
+        (2026-04-14 → 08-18) 그동안 BUY 후보 점수의 가중치 0.40 짜리 입력이 4월 값이었다.
+        #900(reddit/finviz/institutional 미스케줄) · #975(collector_runs) 와 같은 계열이다.
+
+        비교는 AST 로 한다 — `_dispatch_collector` 를 실행하면 실제 수집이 돈다.
+        """
+        import nuri.scheduler as sch
+
+        orphan = sorted(_dispatch_branch_names() - _scheduled_collector_names())
+        assert not orphan, f"cron 이 없는 dispatch 분기: {orphan} — 프로덕션에서 영영 안 도는 코드다"
+        assert sch  # import 가 실제로 쓰였음을 명시 (헬퍼가 내부에서 다시 import 한다)
+
+    def test_the_sweep_sees_every_scheduled_job(self):
+        """반대 방향 — 스케줄된 잡은 전부 스윕에 잡혀야 한다.
+
+        이게 위 테스트의 **자체 카나리아**다. 개수 임계(`>= 25`)로는 스윕이 새 분기 문법을
+        못 읽어도 옛 분기가 그대로면 통과한다. 이 방향은 스윕이 눈이 머는 순간 즉시 FAIL 한다.
+        (Codex P3 — 원래 한 assert 로 묶여 있었는데, 묶여 있으면 한쪽을 지워도 다른 쪽이
+        안 잡아준다. 별개 테스트로 쪼개야 서로를 지킨다.)
+        """
+        blind = sorted(_scheduled_collector_names() - _dispatch_branch_names())
+        assert not blind, f"스케줄됐는데 스윕이 못 본 잡: {blind} — 분기 문법을 스윕이 모른다"
+
+
+class TestDispatchSweepReadsEveryBranchShape:
+    """스윕 자체를 합성 소스로 검증한다 (#1071 Codex P3).
+
+    프로덕션 `_dispatch_collector` 는 현재 `==` 만 쓴다. 그래서 `in` / `match` 처리
+    분기는 프로덕션 대조만으로는 **한 번도 실행되지 않는다** — 뮤테이션 실측에서 그
+    분기를 통째로 꺼도 전체 스위트가 통과했다. 나중에 누가 분기를 묶어 쓰거나 `match`
+    로 바꾸는 순간 스윕이 조용히 눈이 멀고, 그러면 "cron 없는 잡" 가드가 무력해진다.
+    """
+
+    def test_reads_equality_branches(self):
+        src = """
+def _dispatch_collector(name):
+    if name == "alpha":
+        pass
+    elif name == "beta":
+        pass
+"""
+        assert _dispatch_branch_names(src) == {"alpha", "beta"}
+
+    def test_reads_in_branches(self):
+        """Mutation lock: Tuple/List/Set 처리 분기를 꺼면 FAIL."""
+        src = """
+def _dispatch_collector(name):
+    if name in ("alpha", "beta"):
+        pass
+    elif name in ["gamma"]:
+        pass
+    elif name in {"delta"}:
+        pass
+"""
+        assert _dispatch_branch_names(src) == {"alpha", "beta", "gamma", "delta"}
+
+    def test_reads_match_branches(self):
+        """Mutation lock: match_case 처리 분기를 꺼면 FAIL."""
+        src = """
+def _dispatch_collector(name):
+    match name:
+        case "alpha":
+            pass
+        case "beta":
+            pass
+"""
+        assert _dispatch_branch_names(src) == {"alpha", "beta"}
+
+    def test_ignores_other_functions(self):
+        """다른 함수의 `name ==` 비교를 주워오면 가드가 오탐한다."""
+        src = """
+def _dispatch_collector(name):
+    if name == "alpha":
+        pass
+
+
+def something_else(name):
+    if name == "not_a_job":
+        pass
+"""
+        assert _dispatch_branch_names(src) == {"alpha"}
 
 
 class TestTelemetryFailureDoesNotGate:

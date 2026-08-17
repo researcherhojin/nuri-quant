@@ -120,6 +120,9 @@ _STAGE_OF_JOB = {
     "estimates": "collect",
     "etf_flows": "collect",
     "wallstreet": "collect",
+    # analyze — `factors` 하나뿐. 이게 붙기 전까지 `pipeline_events.step` 에 analyze 가
+    # **0건**이었다: 5스테이지 중 하나가 관측상 존재하지 않았다는 뜻이다 (#1071).
+    "factors": "analyze",
     # consensus — 하나뿐이며, 그 안에서 certify(record_decisions)까지 in-memory 로 이어진다
     "consensus": "consensus",
     # track
@@ -172,6 +175,12 @@ def _dispatch_collector(name: str, **kwargs):
         from nuri.collectors.fundamental import FundamentalCollector
 
         FundamentalCollector().run()
+    elif name == "factors":
+        # 수집이 아니라 **분석** 단계다 (`_STAGE_OF_JOB` 에서 analyze). `_run_collector` 를
+        # 재사용하는 건 그쪽이 예외 격리 · 실행 기록 · 스테이지 이벤트를 이미 갖고 있어서다.
+        from nuri.quant.factors.composite import compute_composite, save_composite
+
+        return save_composite(compute_composite())
     elif name == "cboe":
         from nuri.collectors.cboe import CBOECollector
 
@@ -690,6 +699,13 @@ SCHEDULES = [
     {"name": "technical", "func": _run_collector, "args": ("technical",), "cron": "0 7 * * 2-6"},
     # Fear & Greed (매일 08:00)
     {"name": "fear_greed", "func": _run_collector, "args": ("fear_greed",), "cron": "0 8 * * *"},
+    # 멀티팩터 합성 스코어 (매일 08:10) — `buy_signals.yaml` 에서 가중치 0.40 인 최대 입력인데
+    # 2026-04-14 이후 갱신이 끊겨 있었다. 잡이 없어서지 버그가 아니었다 (#1071).
+    # 08:10 인 이유: 입력 셋이 모두 그 앞에 끝난다 — prices(`stock_us_dawn` ~06:00) ·
+    # signals(`technical` 07:00) · `macro.fear_greed`(08:00, 바로 위 줄). 소비자는
+    # `buy_candidate_emitter` 하나이고 `premarket_brief`(09:00 ET ≈ 22시 KST)에서 불리므로
+    # 14시간 여유. 실측 1.1초 / 773종목이라 슬롯 압박은 없다.
+    {"name": "factors", "func": _run_collector, "args": ("factors",), "cron": "10 8 * * *"},
     # ARK 매매 (미장 마감 후 07:30)
     {"name": "ark", "func": _run_collector, "args": ("ark",), "cron": "30 7 * * 2-6"},
     # 이벤트 캘린더 (매일 07:00)

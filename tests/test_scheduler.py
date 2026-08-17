@@ -1325,3 +1325,67 @@ class TestOrphanCollectorsWired:
             assert _minute_of_day(jobs[name]) < consensus_at, (
                 f"{name}({jobs[name]}) 가 consensus({jobs['consensus']}) 보다 늦다"
             )
+
+
+class TestFactorCompositeWired:
+    """멀티팩터 합성에 cron 이 없어 넉 달간 갱신이 끊겼다 (#1071).
+
+    `save_composite()` 는 멀쩡히 있었고 `python -m nuri.quant.factors.composite` 로
+    돌리면 동작했다. 없던 건 잡뿐이라 프로덕션 `factors` 는 2026-04-14 에 멈춰 있었고
+    (31행 / 31종목 — `compute_composite()` 실측 773종목의 일부), 그 사이 발행된 모든
+    BUY 후보가 `buy_signals.yaml` 가중치 **0.40** 짜리 4월 팩터로 점수를 받았다.
+    위 `TestOrphanCollectorsWired`(#900) 와 같은 drift 클래스, 같은 정지 날짜.
+    """
+
+    def test_dispatch_computes_and_saves(self):
+        """`_dispatch_collector("factors")` 가 compute → save 를 잇는다.
+
+        compute 만 부르고 save 를 빠뜨리면 잡은 초록인데 테이블은 그대로다 —
+        `scripts/verify/verify.py:200` 이 정확히 그 형태(compute 만)라 선례가 있다.
+        """
+        from nuri.scheduler import _dispatch_collector
+
+        sentinel = object()
+        with (
+            patch("nuri.quant.factors.composite.compute_composite", return_value=sentinel) as comp,
+            patch("nuri.quant.factors.composite.save_composite", return_value=773) as save,
+        ):
+            _dispatch_collector("factors")
+
+        comp.assert_called_once()
+        save.assert_called_once_with(sentinel)
+
+    def test_registered_in_schedules(self):
+        from nuri.scheduler import SCHEDULES
+
+        jobs = [j for j in SCHEDULES if j["name"] == "factors"]
+        assert len(jobs) == 1, "factors job 이 정확히 1개여야 함"
+        assert jobs[0]["args"] == ("factors",)
+
+    def test_stage_is_analyze(self):
+        """`analyze` 스테이지의 유일한 잡 — 이게 빠지면 5스테이지 중 하나가 관측상 사라진다.
+
+        프로덕션 `pipeline_events.step` 에 analyze 가 **0건**이었던 이유가 이것이다.
+        """
+        from nuri.scheduler import _STAGE_OF_JOB
+
+        assert _STAGE_OF_JOB["factors"] == "analyze"
+
+    def test_runs_after_its_sentiment_input(self):
+        """fear_greed(08:00) **뒤**에 돈다 — 앞서면 센티먼트가 하루 묵은 값이 된다.
+
+        `composite._market_sentiment()` 는 없으면 성분을 빼고 비중을 재배분하므로
+        조용히 죽지는 않지만, 같은 날 값을 두고 전날 값을 쓸 이유가 없다.
+        """
+        from nuri.scheduler import SCHEDULES
+
+        crons = {j["name"]: j["cron"] for j in SCHEDULES if j["name"] in ("factors", "fear_greed")}
+
+        def _minute_of_day(cron: str) -> int:
+            minute, hour = cron.split()[:2]
+            return int(hour) * 60 + int(minute)
+
+        assert _minute_of_day(crons["factors"]) > _minute_of_day(crons["fear_greed"]), (
+            f"factors({crons['factors']}) 가 fear_greed({crons['fear_greed']}) 보다 이르다"
+        )
+        assert crons["factors"].split()[2:] == ["*", "*", "*"], "매일 돌아야 한다 (소비자는 매 거래일 발행)"

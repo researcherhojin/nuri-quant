@@ -191,3 +191,88 @@ class TestSentimentIsNotFabricated:
         monkeypatch.setattr(db_mod, "DB_PATH", path)
         upsert_macro([{"indicator": "fear_greed", "date": "not-a-date", "value": 50.0, "source": "test"}], path)
         assert comp._market_sentiment() is None
+
+
+class TestFactorDateIsAMarketDate:
+    """`factors.date` 는 쓴 날이 아니라 **시장 데이터 날짜**다 (#1071, Codex P1).
+
+    잡은 매일 08:10 KST 에 돈다. `today_kst()` 로 찍으면 주말·휴장에도 금요일 종가로
+    계산한 행이 "당일" 라벨을 달고 들어가고, 소비자(`buy_candidate_emitter`)는
+    `WHERE date = (SELECT MAX(date) FROM factors)` 로 무조건 그걸 집는다. 그러면
+    신선도 정책이 낡음을 잡는 게 아니라 **세탁한다** — 가격 수집이 멈춰도 파생 테이블은
+    매일 갱신돼 PASS 로 보이고, 그 사이 가중치 0.40 짜리 입력이 옛 가격으로 점수를 만든다.
+
+    시장일로 찍으면 주말 실행은 같은 행을 덮어쓰기만 하므로(date+ticker UNIQUE) 가짜
+    신선도가 안 생기고, `MAX(date)` 는 그대로 최신을 집는다.
+    """
+
+    @staticmethod
+    def _df():
+        df = pd.DataFrame(
+            [
+                {
+                    "momentum_score": 0.7,
+                    "value_score": 0.5,
+                    "quality_score": 0.6,
+                    "sentiment_score": 0.5,
+                    "composite_score": 0.58,
+                }
+            ],
+            index=["AAA"],
+        )
+        df.index.name = "ticker"
+        return df
+
+    def test_uses_the_latest_price_date_not_today(self, db_path_mp):
+        """Mutation lock: `_market_as_of()` 를 `today_kst()` 로 되돌리면 FAIL."""
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.quant.factors.composite import save_composite
+
+        with get_db(db_path_mp) as conn:
+            conn.execute("INSERT INTO prices (ticker, date, close) VALUES ('SPY', '2026-08-14', 100)")
+
+        save_composite(self._df())
+
+        with get_db(db_path_mp) as conn:
+            dates = [r[0] for r in conn.execute("SELECT DISTINCT date FROM factors").fetchall()]
+        assert dates == ["2026-08-14"]
+        assert today_kst() not in dates, "쓴 날짜로 찍혔다 — 주말이면 가짜 신선도가 된다"
+
+    def test_repeat_runs_on_the_same_market_date_are_idempotent(self, db_path_mp):
+        """주말 이틀 연속 실행이 행을 늘리지 않는다 — 같은 시장일이면 덮어쓴다."""
+        from nuri.core.db import get_db
+        from nuri.quant.factors.composite import save_composite
+
+        with get_db(db_path_mp) as conn:
+            conn.execute("INSERT INTO prices (ticker, date, close) VALUES ('SPY', '2026-08-14', 100)")
+
+        save_composite(self._df())
+        save_composite(self._df())
+
+        with get_db(db_path_mp) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM factors").fetchone()[0] == 1
+
+    def test_explicit_as_of_wins(self, db_path_mp):
+        """호출자가 명시하면 그걸 쓴다 (백필 경로)."""
+        from nuri.core.db import get_db
+        from nuri.quant.factors.composite import save_composite
+
+        with get_db(db_path_mp) as conn:
+            conn.execute("INSERT INTO prices (ticker, date, close) VALUES ('SPY', '2026-08-14', 100)")
+
+        save_composite(self._df(), as_of="2026-01-02")
+
+        with get_db(db_path_mp) as conn:
+            assert [r[0] for r in conn.execute("SELECT DISTINCT date FROM factors").fetchall()] == ["2026-01-02"]
+
+    def test_falls_back_to_today_when_no_prices(self, db_path_mp):
+        """가격이 하나도 없으면 오늘로 떨어진다 — 계산이 비어 여기 도달하지 않지만 방어."""
+        from nuri.core.db import get_db
+        from nuri.core.timezone import today_kst
+        from nuri.quant.factors.composite import save_composite
+
+        save_composite(self._df())
+
+        with get_db(db_path_mp) as conn:
+            assert [r[0] for r in conn.execute("SELECT DISTINCT date FROM factors").fetchall()] == [today_kst()]

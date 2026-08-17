@@ -279,24 +279,36 @@ class TestCheckFreshness:
 
 class TestCheckAllFreshness:
     def test_returns_all_policies(self, db_path):
-        """모든 정책 결과 반환."""
+        """정책 하나당 결과 하나 — 개수는 `FRESHNESS_POLICIES` 에서 파생한다.
+
+        여기 상수 `6` 을 박아 두면 정책을 추가할 때마다 이 파일이 같이 깨진다 (#1071 에서
+        `factors` 추가로 3건 FAIL). 어떤 키가 있어야 하는지의 **lock 은
+        `tests/core/test_freshness.py::TestFreshnessPolicies::test_expected_policy_keys`** 가
+        따로 갖고 있으므로, 여기서 중복으로 잠글 이유가 없다. 이 테스트의 계약은 개수가
+        아니라 "빠짐없이 하나씩 돌려준다" 이다.
+        """
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
         results = check_all_freshness(db_path)
-        assert len(results) == 6
-        keys = {r["key"] for r in results}
-        assert keys == {"prices", "macro_vix", "macro_fear_greed", "consensus", "certification", "portfolio"}
+        assert {r["key"] for r in results} == set(FRESHNESS_POLICIES)
 
 
 class TestGetFreshnessSummary:
     def test_summary_counts(self, db_path):
-        """pass/warn/fail 카운트 합계."""
+        """pass/warn/fail 카운트 합계 = 정책 수 (어느 정책도 집계에서 새지 않는다)."""
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
+        n = len(FRESHNESS_POLICIES)
         summary = get_freshness_summary(db_path)
-        assert summary["pass"] + summary["warn"] + summary["fail"] == 6
-        assert len(summary["details"]) == 6
+        assert summary["pass"] + summary["warn"] + summary["fail"] == n
+        assert len(summary["details"]) == n
 
     def test_all_fail_when_empty(self, db_path):
-        """빈 DB → 전부 FAIL."""
+        """빈 DB → 전부 FAIL (입력이 없을 때 PASS 로 새는 정책이 하나도 없어야 한다)."""
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
         summary = get_freshness_summary(db_path)
-        assert summary["fail"] == 6
+        assert summary["fail"] == len(FRESHNESS_POLICIES)
         assert summary["pass"] == 0
         assert summary["warn"] == 0
 

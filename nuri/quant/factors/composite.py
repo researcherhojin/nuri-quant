@@ -143,11 +143,31 @@ def print_composite(df: pd.DataFrame) -> None:
     print()
 
 
-def save_composite(df: pd.DataFrame) -> int:
-    """팩터 스코어를 factors 테이블에 멱등 저장 (date+ticker UNIQUE)."""
+def _market_as_of() -> str | None:
+    """이 스냅샷이 근거한 **시장 데이터 날짜** (없으면 None).
+
+    `factors.date` 는 쓴 날이 아니라 **재료의 날짜**여야 한다. 잡이 매일 08:10 에 도는데
+    `today_kst()` 를 찍으면 주말·휴장에도 금요일 종가로 계산한 행이 "당일" 라벨을 달고
+    들어간다. 그러면 신선도 정책이 낡음을 잡는 게 아니라 **세탁한다** — 가격 수집이
+    멈춰도 파생 테이블은 매일 갱신돼 PASS 로 보이고, 그 사이 가중치 0.40 짜리 입력이
+    옛 가격으로 BUY 점수를 만든다 (#1071 Codex P1).
+
+    시장일로 찍으면 주말 실행은 금요일 행을 **덮어쓰기만** 하므로(멱등, date+ticker
+    UNIQUE) 가짜 신선도가 생기지 않고, 소비자의 `MAX(date)` 는 그대로 최신을 집는다.
+    """
+    rows = query("SELECT MAX(date) AS d FROM prices")
+    return dict(rows[0])["d"] if rows else None
+
+
+def save_composite(df: pd.DataFrame, as_of: str | None = None) -> int:
+    """팩터 스코어를 factors 테이블에 멱등 저장 (date+ticker UNIQUE).
+
+    `as_of` 미지정 시 시장 데이터 날짜(`_market_as_of`)를 쓴다. 가격이 한 행도 없으면
+    계산 자체가 비어 있어 여기 도달하지 않지만, 방어적으로 `today_kst()` 로 떨어진다.
+    """
     if df.empty:
         return 0
-    date = today_kst()
+    date = as_of or _market_as_of() or today_kst()
     rows = [
         {
             "ticker": ticker,
