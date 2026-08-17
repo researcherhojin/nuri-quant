@@ -1374,3 +1374,114 @@ class TestRegimeLabelEmit:
 
         row = query("SELECT regime FROM recommendations WHERE ticker='AAPL'", db_path=rich_db)[0]
         assert row["regime"] is None
+
+
+class TestSaveBuyCandidates:
+    """`buy_candidate_emitter` 산출물 영속화 (#1078).
+
+    이 emitter 의 실행에는 지금까지 **아무것도 남지 않았다** — 후보를 발행하고 브리핑에
+    렌더한 뒤 `EmitResult` 를 통째로 버렸다. 그래서 tracker 백필 · `decision_outcomes` ·
+    `/api/alpha` 로 이어지는 체인이 이 경로에 대해서만 비어 있었다.
+    """
+
+    @staticmethod
+    def _result(*tickers):
+        from nuri.trading.recommend.buy_candidate_emitter import BuyCandidate, EmitResult
+
+        return EmitResult(
+            candidates=[
+                BuyCandidate(
+                    ticker=t,
+                    score=85.0,
+                    deploy_pct=6.0,
+                    entry=100.0,
+                    stop=93.0,
+                    tp1=120.0,
+                    tp2=140.0,
+                    why_now="breakout",
+                    sources={"factor": 0.8},
+                )
+                for t in tickers
+            ],
+            regime="bull_low_vol",
+        )
+
+    def test_writes_rows_tagged_with_the_emit_source(self, db_path):
+        """Mutation lock: `source` 를 안 찍으면 §3.11 표본에서 걸러낼 수가 없어 FAIL."""
+        from nuri.trading.recommend.tracker import BUY_CANDIDATE_SOURCE, save_buy_candidates
+
+        n = save_buy_candidates(self._result("AAA", "BBB"), db_path=db_path)
+        assert n == 2
+
+        rows = query("SELECT ticker, action, source, entry_price FROM recommendations", db_path=db_path)
+        assert {r["ticker"] for r in rows} == {"AAA", "BBB"}
+        assert all(r["action"] == "BUY" for r in rows)
+        assert all(r["source"] == BUY_CANDIDATE_SOURCE for r in rows)
+        assert all(r["entry_price"] == 100.0 for r in rows)
+
+    def test_price_levels_survive_in_scoring_detail(self, db_path):
+        """stop/TP 는 `recommendations` 에 컬럼이 없다 — 사후 재구성이 가능해야 한다."""
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        save_buy_candidates(self._result("AAA"), db_path=db_path)
+        detail = json.loads(query("SELECT scoring_detail FROM recommendations", db_path=db_path)[0]["scoring_detail"])
+        assert detail["stop"] == 93.0
+        assert detail["tp1"] == 120.0
+        assert detail["tp2"] == 140.0
+
+    def test_unique_collision_is_reported_not_silently_counted(self, db_path):
+        """같은 날 합의가 먼저 쓴 ticker 는 조용히 드롭된다 — 반환값이 그걸 반영해야 한다.
+
+        `recommendations` 는 `UNIQUE(date, ticker)` + `INSERT OR IGNORE` 다. `len(records)`
+        를 그대로 돌려주면 "저장했다" 와 "저장된 척했다" 가 구분되지 않는다.
+
+        Mutation lock: `rowcount` 대신 `len(records)` 를 돌려주면 FAIL.
+        """
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence) VALUES (?, ?, 'BUY', 60.0)",
+                (today_kst(), "AAA"),
+            )
+
+        n = save_buy_candidates(self._result("AAA", "BBB"), db_path=db_path)
+        assert n == 1, "드롭된 행까지 저장했다고 셌다"
+        assert query("SELECT COUNT(*) c FROM recommendations", db_path=db_path)[0]["c"] == 2
+
+    def test_empty_result_writes_nothing(self, db_path):
+        from nuri.trading.recommend.buy_candidate_emitter import EmitResult
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        assert save_buy_candidates(EmitResult(blocked_reason="VIX 35 > 30"), db_path=db_path) == 0
+        assert query("SELECT COUNT(*) c FROM recommendations", db_path=db_path)[0]["c"] == 0
+
+    def test_regime_classify_failure_does_not_block_persistence(self, db_path, monkeypatch):
+        """레짐 분류가 터져도 후보는 저장된다 — regime 만 NULL 로 남는다.
+
+        관측(레짐 라벨)이 본 작업(원장 기록)을 게이트하면 안 된다 (#894). 이 emitter 의
+        기록이 없어서 체인 전체가 비어 있었던 게 #1078 의 출발점인데, 라벨 하나 때문에
+        다시 비면 같은 자리로 돌아간다.
+        """
+        import nuri.quant.regime.classifier as clf
+
+        def boom(*a, **k):
+            raise RuntimeError("regime down")
+
+        monkeypatch.setattr(clf, "classify_regime", boom)
+
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        assert save_buy_candidates(self._result("AAA"), db_path=db_path) == 1
+        row = query("SELECT ticker, regime FROM recommendations", db_path=db_path)[0]
+        assert row["ticker"] == "AAA"
+        assert row["regime"] is None
+
+    def test_portfolio_action_stays_null(self, db_path):
+        """축 분리 (#429) — 이건 alpha 축 신호지 포트폴리오 룰이 아니다."""
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        save_buy_candidates(self._result("AAA"), db_path=db_path)
+        row = query("SELECT alpha_action, portfolio_action FROM recommendations", db_path=db_path)[0]
+        assert row["alpha_action"] == "LONG"
+        assert row["portfolio_action"] is None
