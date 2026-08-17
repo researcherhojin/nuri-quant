@@ -279,7 +279,7 @@ def _evaluate_average_down(
     score: float,
     rsi: Optional[float],
     regime: str,
-    vix: float,
+    vix: Optional[float],
 ) -> Optional[str]:
     """precedence=3. pullback add (RSI 과매도 + macro veto)."""
     trig = cfg.get("modes", {}).get("average_down", {}).get("trigger", {})
@@ -309,7 +309,13 @@ def _evaluate_average_down(
     if trig.get("macro_veto", True):
         if regime in {"bear", "crash"}:
             return None
-        if vix >= 28:
+        # VIX 미측정(None)은 **veto** 다. `_get_regime()` 이 부재·조회실패·노후를
+        # 20.0 으로 메우지 않고 None 을 돌려주기 때문에(#753) 여기로 들어온다.
+        # macro_veto 의 의미는 "거시가 무서우면 물타기 금지"이고, 미측정은 거시가
+        # 평온하다는 **확인이 안 된** 상태다 — 통과시키면 측정 실패가 조용히 매수
+        # 조건을 여는 그 형태가 된다. 예전엔 `None >= 28` 로 TypeError 를 냈고,
+        # 스케줄러가 그걸 삼켜 VIX 수집이 끊긴 날 잡이 조용히 아무것도 안 했다 (#1076).
+        if vix is None or vix >= 28:
             return None
 
     return "average_down"
@@ -321,7 +327,7 @@ def select_held_mode(
     score: float,
     rsi: Optional[float],
     regime: str,
-    vix: float,
+    vix: Optional[float],
     breakout_above_trim: bool = False,
     sector_mom: float = 0.0,
 ) -> Optional[str]:
