@@ -107,36 +107,80 @@ class Sample:
     """판정 표본 (US BUY, primary window, alpha 확정분) + 결측 집계."""
 
     decisions: list[dict] = field(default_factory=list)  # {decision_id, ticker, emit_date, alpha}
-    n_missing_closed: int = 0  # 창이 닫혔는데 alpha 미기록 (결측 편향 공시 대상)
+    n_missing_closed: int = 0  # 창이 정산됐는데 alpha 미기록 (결측 편향 공시 대상)
+    settled_through: Optional[str] = None  # 벤치마크 마지막 종가일 = 측정 프런티어
+    as_of: Optional[str] = None  # 표본을 뜬 기준일 (프런티어 지연 계산용)
 
     @property
     def n(self) -> int:
         return len(self.decisions)
 
     @property
-    def missing_rate_pct(self) -> float:
+    def settlement_lag_days(self) -> Optional[int]:
+        """기준일과 정산 프런티어의 격차 (일). 둘 중 하나라도 없으면 None.
+
+        정산 기준은 미도착 bar 를 결측으로 세지 않는 대신 **반대 방향으로 거짓말할 수
+        있다** — 벤치마크 수집이 통째로 멈추면 프런티어가 얼어붙고, 그 뒤 만기가 온
+        결정은 영원히 "아직 미정산"이 되어 결측률이 조용히 낮아진다. 그래서 프런티어
+        자체를 리포트에 싣는다 (Surface — 판정을 바꾸지 않고 보이게만 한다).
+        """
+        if self.settled_through is None or self.as_of is None:
+            return None
+        return (date.fromisoformat(self.as_of) - date.fromisoformat(self.settled_through)).days
+
+    @property
+    def missing_rate_pct(self) -> Optional[float]:
+        """결측 비율. **측정 대상이 0 건이면 `None`** — `0.0` 이 아니다.
+
+        `0.0` 은 "결측 없음"으로 읽히는데 실제 상태는 "아직 아무것도 측정되지
+        않음"이다. 프로덕션 #brief 가 2026-07-28 · 08-01 두 번 `결측 0.0%/15%` 를
+        내보냈고, 그때 n 은 0 이었다 — 사전 등록된 무효화 기준이 통과처럼 보였다.
+        """
         total = self.n + self.n_missing_closed
-        return (self.n_missing_closed / total * 100.0) if total else 0.0
+        return (self.n_missing_closed / total * 100.0) if total else None
+
+
+def _benchmark_settled_through(benchmark: str, as_of: str, db_path: Optional[Path] = None) -> Optional[str]:
+    """`as_of` 시점에 원장이 갖고 있는 벤치마크 마지막 종가 날짜 (없으면 None).
+
+    "창이 닫혔다"와 "창이 정산됐다"는 다르다. 만기일이 달력상 지나도 그날의 종가가
+    아직 수집되지 않았으면 alpha 는 **계산될 수 없다** — 추적 실패가 아니라 미도착이다.
+    `date <= as_of` 로 자르는 이유는 `as_of` 를 과거로 주고 리포트를 재현할 때
+    미래 bar 가 정산 판정에 새어 들어가지 않게 하기 위함 (PIT).
+    """
+    rows = query(
+        "SELECT MAX(date) AS d FROM prices WHERE ticker = ? AND close IS NOT NULL AND date <= ?",
+        (benchmark, as_of),
+        db_path=db_path,
+    )
+    return dict(rows[0])["d"] if rows else None
 
 
 def fetch_sample(db_path: Optional[Path] = None, as_of: Optional[str] = None) -> Sample:
     """§3.11 표본 규약 구현 — declared_date~emit_cutoff 의 US BUY, distinct decision.
 
-    결측 정의: 창 (emit + window calendar days) 이 as_of 이전에 닫혔는데
-    primary window 의 alpha 가 원장에 없는 결정 (추적 실패/가격 결측).
+    결측 정의: 창 (emit + window calendar days) 이 **정산**됐는데 primary window 의
+    alpha 가 원장에 없는 결정 (추적 실패/가격 결측). 정산 = 벤치마크가 만기일 이후의
+    종가를 갖고 있는 상태 — `_benchmark_settled_through` 참조.
+
+    표본 모집단은 `recommendations` 다. 예전에는 `agent_decisions` 와 INNER JOIN 해
+    미러된 추천만 셌는데, 그 미러를 쓰는 주체가 측정 대상인 tracker 자신이라
+    **미러가 밀리면 보고 결측률이 내려가고 실제는 올라간다** (게이트가 감시 대상과
+    반대로 움직인다). 프로덕션 실측(2026-08-18)상 두 테이블의 action 은 미러된 525건
+    전부 일치하므로 표본 구성은 그대로이고, 의존성만 끊는다.
     """
     mm = _criteria()
     window = int(mm["primary_window_days"])
     today = as_of or today_kst()
+    settled_through = _benchmark_settled_through(str(mm["benchmark"]), today, db_path=db_path)
 
     rows = query(
         """
         SELECT r.id AS rec_id, r.ticker AS ticker, r.date AS emit_date, o.alpha AS alpha
         FROM recommendations r
-        JOIN agent_decisions ad ON ad.decision_id = 'rec_' || r.id
         LEFT JOIN decision_outcomes o
                ON o.decision_id = 'rec_' || r.id AND o.observation_window = ?
-        WHERE ad.action = 'BUY'
+        WHERE r.action = 'BUY'
           AND r.date >= ? AND r.date <= ?
         ORDER BY r.date, r.id
         """,
@@ -144,7 +188,7 @@ def fetch_sample(db_path: Optional[Path] = None, as_of: Optional[str] = None) ->
         db_path=db_path,
     )
 
-    sample = Sample()
+    sample = Sample(settled_through=settled_through, as_of=today)
     for raw in rows:
         r = dict(raw)
         # §3.11 판정은 US-only 고정 — KR(.KS + .KQ) 은 별도 사전등록 전까지 진단 전용.
@@ -161,9 +205,9 @@ def fetch_sample(db_path: Optional[Path] = None, as_of: Optional[str] = None) ->
                 }
             )
             continue
-        # 창이 닫혔는데 미기록 → 결측 (lookahead 미도래분은 결측 아님)
+        # 창이 정산됐는데 미기록 → 결측 (미도래분·미정산분은 결측 아님)
         target = (date.fromisoformat(r["emit_date"]) + timedelta(days=window)).isoformat()
-        if target <= today:
+        if settled_through is not None and target <= settled_through:
             sample.n_missing_closed += 1
     return sample
 
@@ -183,7 +227,11 @@ def _placebo_alpha(book: PriceBook, ticker: str, emit_date: str, window: int, be
     exit_p = book.close_on_or_after(ticker, target)
     b_entry = book.close(benchmark, emit_date)
     b_exit = book.close_on_or_after(benchmark, target)
-    if None in (entry, exit_p, b_entry, b_exit) or entry <= 0 or b_entry <= 0:
+    # `None in (...)` 는 타입을 좁히지 못한다 — 아래 산술이 `float | None` 으로 남아
+    # 미래의 실수를 타입 체커가 못 잡는다. 명시 비교로 좁힌다 (동작 동일).
+    if entry is None or exit_p is None or b_entry is None or b_exit is None:
+        return None
+    if entry <= 0 or b_entry <= 0:
         return None
     return (exit_p - entry) / entry - (b_exit - b_entry) / b_entry
 
@@ -263,7 +311,12 @@ def ticker_block_placebo(
             sub = cands[int(rng.integers(len(cands)))]
             for dt in dates:
                 a = _placebo_alpha(book, sub, dt, window, benchmark)
-                total += a  # eligible 검증으로 None 불가
+                if a is None:
+                    # `_eligible_substitutes` 가 블록의 **모든** 날짜에서 해소되는
+                    # ticker 만 남기므로 도달 불가. 건너뛰면 count 만 줄어 null 평균이
+                    # 조용히 편향되므로, 계약이 깨지면 조용히 가지 말고 터뜨린다.
+                    raise RuntimeError(f"placebo alpha 미해소: {sub} @ {dt} — eligible 계약 위반")
+                total += a
                 count += 1
         null_means.append(total / count)
 
@@ -307,6 +360,7 @@ def adjudicate(
     n_perm = int(n_perm if n_perm is not None else mm["permutation_n"])
 
     sample = fetch_sample(db_path=db_path, as_of=today)
+    missing_pct = sample.missing_rate_pct
     report: dict = {
         "as_of": today,
         "criteria_source": "config/rules.yaml measurement_mode (§3.11 사전 고정)",
@@ -314,7 +368,11 @@ def adjudicate(
         "benchmark": mm["benchmark"],
         "n": sample.n,
         "min_n_required": int(mm["min_n_us_buy_decisions"]),
-        "missing_rate_pct": round(sample.missing_rate_pct, 1),
+        "missing_rate_pct": None if missing_pct is None else round(missing_pct, 1),
+        # 측정 프런티어 — 결측률이 "정산된 것만" 세므로, 프런티어가 멈추면 결측률이
+        # 조용히 낮아진다. 판정을 바꾸진 않지만 그 상태를 리포트에서 볼 수 있어야 한다.
+        "settled_through": sample.settled_through,
+        "settlement_lag_days": sample.settlement_lag_days,
         "missing_max_pct": int(mm["missing_outcome_max_pct"]),
         "pre_evaluation": today < str(mm["evaluation_date"]),
         "evaluation_date": mm["evaluation_date"],
@@ -354,7 +412,9 @@ def adjudicate(
     )
 
     # 판정 우선순위: 결측 무효 > 표본 미달 > 3조건
-    if sample.missing_rate_pct > float(mm["missing_outcome_max_pct"]):
+    # `None` = 측정 대상 0 건 → 무효화할 판정이 없다 (위 NO_SAMPLE 조기 return 이
+    # 이미 걸러내므로 여기선 항상 실수지만, 비교 전에 의미를 명시한다).
+    if missing_pct is not None and missing_pct > float(mm["missing_outcome_max_pct"]):
         verdict = "INVALID_MISSING"  # 판정 무효 — 측정 연장 (§3.11 오염 방지 행)
     elif sample.n < int(mm["min_n_us_buy_decisions"]):
         verdict = "INSUFFICIENT_N"

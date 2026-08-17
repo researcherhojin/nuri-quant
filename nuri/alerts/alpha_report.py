@@ -47,8 +47,12 @@ def is_production() -> bool:
     return os.getenv("NURI_ROLE", "").strip().lower() == PRODUCTION_ROLE
 
 
-def _days_until(target: str, today: str) -> Optional[int]:
-    """`today` → `target` 남은 일수. 파싱 실패 시 None (표시 생략)."""
+def _days_until(target: Optional[str], today: str) -> Optional[int]:
+    """`today` → `target` 남은 일수. 파싱 실패·`None` 이면 None (표시 생략).
+
+    호출부가 `report.get("evaluation_date")` 를 그대로 넘기므로 `None` 은 정상 입력이다
+    (아래 `except` 가 이미 처리한다). 시그니처를 `str` 로 두면 그 사실이 거짓이 된다.
+    """
     try:
         return (date.fromisoformat(str(target)) - date.fromisoformat(str(today))).days
     except (ValueError, TypeError):
@@ -95,8 +99,21 @@ def format_progress_reason(report: dict[str, Any]) -> str:
     else:
         parts.append(report.get("reason", "표본 부족 — 순열 미실행"))
 
-    if missing is not None:
-        parts.append(f"결측 {missing}%/{missing_max}%")
+    # 결측률이 `None` = 측정 대상 0 건. 필드를 통째로 생략하면 "결측 없음"과
+    # 구분이 안 되고, `0.0` 으로 찍으면 사전 등록된 무효화 기준이 통과처럼 읽힌다
+    # (2026-07-28 · 08-01 프로덕션 #brief 가 실제로 `결측 0.0%/15%` 를 내보냈다).
+    if "missing_rate_pct" in report:
+        parts.append(f"결측 {missing}%/{missing_max}%" if missing is not None else f"결측 n/a (한도 {missing_max}%)")
+
+    # 결측률은 **정산된 창만** 세므로, 벤치마크 수집이 멈추면 결측률이 조용히 내려간다.
+    # 프런티어를 같이 찍어야 "결측 낮음"과 "측정 멈춤"이 구분된다 (판정은 안 바꾼다).
+    if "settled_through" in report:
+        frontier = report["settled_through"]
+        lag = report.get("settlement_lag_days")
+        if frontier is None:
+            parts.append("정산 n/a (벤치마크 종가 없음)")
+        else:
+            parts.append(f"정산 {frontier}" + (f" (지연 {lag}d)" if lag is not None else ""))
 
     d = _days_until(report.get("evaluation_date"), report.get("as_of") or today_kst())
     if d is not None:

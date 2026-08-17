@@ -4,15 +4,18 @@ Gotcha-Test Pair:
 - ticker-block placebo 의 핵심 계약 = "같은 ticker 의 반복 emit 은 null 에서도
   같은 치환 ticker 를 공유" (의존 구조 상속). 이 계약이 깨지면 (iid 화) null
   분산이 과소평가돼 anti-conservative p — §3.11 이 지정한 P1 결함의 재유입.
-- 결측 정의 = "창이 닫혔는데 alpha 미기록" — lookahead 미도래분을 결측으로
-  세면 측정 기간 내내 INVALID_MISSING 오탐.
+- 결측 정의 = "창이 **정산**됐는데 alpha 미기록" — 미도래분(lookahead)이나
+  미정산분(벤치마크 bar 미도착)을 결측으로 세면 측정 기간 내내 INVALID_MISSING
+  오탐. 프로덕션 실측 2026-08-18 에 달력 기준 50.0% vs 정산 기준 9.1% (#1068).
+- 결측률 분모 = emit 된 BUY 전부. `agent_decisions` 미러에 의존하면 그 미러를
+  쓰는 주체가 측정 대상이라 게이트가 감시 대상과 반대로 움직인다 (#1068).
 """
 
 from datetime import date, timedelta
 
 import pytest
 
-from nuri.core.db import get_db, init_db
+from nuri.core.db import DatabaseError, get_db, init_db
 from nuri.core.ticker_names import is_kr_ticker
 from nuri.quant.validation import decision_alpha as da
 
@@ -148,12 +151,174 @@ class TestFetchSample:
         assert round(s.missing_rate_pct, 1) == round(1 / 5 * 100, 1)
 
 
+class TestMissingIsSettlementNotCalendar:
+    """결측은 **정산** 기준이다 — 만기일이 달력상 지난 것만으로는 결측이 아니다 (#1068).
+
+    벤치마크 종가가 아직 안 들어왔으면 alpha 는 계산될 수 없다. 그건 추적 실패가
+    아니라 미도착인데, 달력일로만 세면 사전 등록된 무효화 기준(결측 15% 초과 →
+    판정 무효, §3.11)이 가격 수집 지연 하루 때문에 상시 발화한다.
+
+    프로덕션 실측 2026-08-18: 달력 기준 50.0% → 정산 기준 9.1%. 결측 10건 중 9건이
+    `notes: price missing — entry=<값>, exit=None` 로, entry 는 해소되고 exit 만
+    미도착인 상태였다 (SPY 마지막 bar 2026-08-14, 오늘 2026-08-18).
+    """
+
+    @staticmethod
+    def _truncate_benchmark(db_path, last_date: str) -> None:
+        with get_db(db_path) as conn:
+            conn.execute("DELETE FROM prices WHERE ticker = 'SPY' AND date > ?", (last_date,))
+            conn.commit()
+
+    def test_unsettled_window_is_not_missing(self, seeded):
+        """만기일은 지났지만 벤치마크 bar 가 아직 없으면 결측 아님.
+
+        Mutation lock: `target <= settled_through` 를 `target <= today` 로 되돌리면
+        결측 1건으로 세어져 FAIL.
+        """
+        _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)  # target = 2026-08-09
+        self._truncate_benchmark(seeded, "2026-08-05")  # 만기 이후 bar 미도착
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)  # as_of 9/1 — 달력상은 닫힘
+        assert s.n_missing_closed == 0
+        assert s.missing_rate_pct == 0.0
+
+    def test_settlement_is_point_in_time(self, seeded):
+        """`as_of` 이후의 bar 는 정산 판정에 쓰이지 않는다.
+
+        `as_of` 를 과거로 주고 리포트를 재현할 때 미래 bar 가 새어 들어오면, 그 시점엔
+        아직 닫히지도 않은 창이 결측으로 계상된다.
+
+        Mutation lock: `_benchmark_settled_through` 의 `AND date <= ?` 를 지우면
+        결측 1건으로 세어져 FAIL.
+        """
+        _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)  # target = 2026-08-09
+        # SPY 는 9월까지 있으나 as_of 는 만기 이전 → 그 시점 기준 미정산
+        s = da.fetch_sample(db_path=seeded, as_of="2026-08-05")
+        assert s.n_missing_closed == 0
+
+    def test_frozen_benchmark_is_visible_not_just_quiet(self, seeded):
+        """벤치마크 수집이 멈추면 결측률이 내려가는데, 그 사실이 리포트에 남아야 한다.
+
+        정산 기준은 미도착 bar 를 결측으로 안 세는 대신 **반대 방향으로 거짓말할 수
+        있다** — 프런티어가 얼면 이후 만기분이 영원히 "미정산"이 되어 결측률이 조용히
+        낮아진다. 판정을 바꾸지 않고(Surface) 프런티어를 같이 싣는 이유가 이것이다.
+
+        Mutation lock: `settled_through` / `settlement_lag_days` 를 리포트에서 빼면 FAIL.
+        """
+        _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)  # target = 2026-08-09
+        self._truncate_benchmark(seeded, "2026-07-20")  # 수집 정지
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        assert s.n_missing_closed == 0  # 조용해진다 — 그래서 아래가 필요하다
+        assert s.settled_through == "2026-07-20"
+        assert s.settlement_lag_days == 43  # 2026-07-20 → 2026-09-01
+
+        report = da.adjudicate(db_path=seeded, n_perm=1, as_of=AS_OF)
+        assert report["settled_through"] == "2026-07-20"
+        assert report["settlement_lag_days"] == 43
+
+    def test_settlement_frontier_without_benchmark_is_none(self, db_path):
+        """벤치마크 종가가 아예 없으면 프런티어는 None — 0 이나 오늘로 위장하지 않는다."""
+        s = da.fetch_sample(db_path=db_path, as_of=AS_OF)
+        assert s.settled_through is None
+        assert s.settlement_lag_days is None
+
+    def test_settled_window_without_alpha_is_missing(self, seeded):
+        """정산까지 끝났는데 alpha 가 없으면 그건 진짜 결측이다 (가드가 과잉이 아님).
+
+        위 두 테스트가 "안 센다"만 잠그면 결측 계상을 통째로 없애도 통과한다.
+        """
+        _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)  # target = 2026-08-09
+        self._truncate_benchmark(seeded, "2026-08-14")  # 만기 이후 bar 도착
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        assert s.n_missing_closed == 1
+
+
+class TestDenominatorDoesNotDependOnTheMirror:
+    """결측률 분모는 emit 된 BUY 전부다 — `agent_decisions` 미러 여부와 무관 (#1068).
+
+    예전 구현은 `agent_decisions` 와 INNER JOIN 했다. 그 미러를 쓰는 주체가 측정
+    대상인 tracker 자신이라, 미러가 밀리면 누락분이 분자·분모에서 동시에 빠져
+    **보고 결측률이 내려가고 실제는 올라간다** — 무효화 게이트가 감시 대상과 반대로
+    움직인다. 프로덕션 실측(2026-08-18)상 미러된 525건의 action 은 전부 일치하므로
+    표본 구성은 그대로이고, 의존성만 끊긴다.
+    """
+
+    @staticmethod
+    def _unmirror(db_path, rec_id: int) -> None:
+        with get_db(db_path) as conn:
+            conn.execute("DELETE FROM agent_decisions WHERE decision_id = ?", (f"rec_{rec_id}",))
+            conn.commit()
+
+    def test_unmirrored_buy_still_counts_as_missing(self, seeded):
+        """Mutation lock: INNER JOIN 으로 되돌리면 결측이 0 으로 보여 FAIL."""
+        _seed_decision(seeded, 20, "AAA", EMIT_1, alpha=None)
+        self._unmirror(seeded, 20)
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        assert s.n_missing_closed == 1
+        rate = s.missing_rate_pct
+        assert rate is not None and rate > 0
+
+    def test_outcome_cannot_exist_without_a_mirror(self, seeded):
+        """`decision_outcomes` → `agent_decisions` FK 때문에 미러 없는 결정은 alpha 를
+        가질 수 없다 (`db_migrations.py` 의 세 정의 모두 동일 FK).
+
+        그래서 INNER JOIN 이 숨길 수 있었던 행은 **전부 결측**이었다 — 분자는 영향이
+        없고 분모만 줄었다는 뜻이고, 그게 게이트가 감시 대상과 반대로 움직인 이유다.
+        이 사실이 깨지면 위 수정의 전제도 깨지므로 여기서 잠근다.
+        """
+        _seed_decision(seeded, 22, "CCC", EMIT_2, alpha=None)
+        self._unmirror(seeded, 22)
+        with pytest.raises(DatabaseError):
+            with get_db(seeded) as conn:
+                conn.execute(
+                    """INSERT INTO decision_outcomes
+                       (decision_id, observation_window, tracked_as_of_date, alpha)
+                       VALUES ('rec_22', 30, ?, 0.02)""",
+                    (AS_OF,),
+                )
+                conn.commit()
+
+
+class TestEmptySampleHasNoMissingRate:
+    """측정 대상이 0 건이면 결측률은 `None` — `0.0` 이 아니다 (#1068).
+
+    `0.0` 은 "결측 없음"으로 읽힌다. 프로덕션 #brief 가 2026-07-28 · 08-01 두 번
+    `결측 0.0%/15%` 를 내보냈고 그때 n 은 0 이었다 — 사전 등록된 무효화 기준이
+    통과처럼 보였다.
+    """
+
+    def test_no_decisions_yields_none(self, db_path):
+        """Mutation lock: `else 0.0` 으로 되돌리면 FAIL."""
+        s = da.fetch_sample(db_path=db_path, as_of=AS_OF)
+        assert s.n == 0
+        assert s.missing_rate_pct is None
+
+    def test_adjudicate_reports_none_not_zero(self, db_path):
+        report = da.adjudicate(db_path=db_path, n_perm=1, as_of=AS_OF)
+        assert report["verdict"] == "NO_SAMPLE"
+        assert report["missing_rate_pct"] is None
+
+
 # ═══════════════════════════════════════════════════════
 # 순열 — ticker-block placebo 계약
 # ═══════════════════════════════════════════════════════
 
 
 class TestTickerBlockPlacebo:
+    def test_broken_eligibility_contract_raises_instead_of_skipping(self, seeded, monkeypatch):
+        """치환 후보가 실제로는 해소 안 되면 조용히 건너뛰지 않고 터진다.
+
+        건너뛰면 `count` 만 줄어 null 평균이 조용히 편향되고, 그 편향은 p 값을 통해
+        판정에 그대로 실린다. `_eligible_substitutes` 가 보장하는 계약이라 정상 경로에선
+        도달하지 않지만, 계약이 깨졌을 때 침묵하는 것이 이 레포에서 반복된 실패 형태다.
+        """
+        sample = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        # 가격이 전혀 없는 ticker 를 eligible 로 위장 → _placebo_alpha 가 None
+        monkeypatch.setattr(
+            da, "_eligible_substitutes", lambda *a, **k: {t: ["ZZZ"] for t in {d["ticker"] for d in sample.decisions}}
+        )
+        with pytest.raises(RuntimeError, match="eligible"):
+            da.ticker_block_placebo(sample, n_perm=1, seed=1, db_path=seeded)
+
     def test_block_shares_single_substitute(self, seeded):
         """Gotcha lock: 한 블록(반복 ticker)의 모든 emit 이 같은 치환 ticker 를 쓴다.
 
