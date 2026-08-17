@@ -28,20 +28,18 @@ bash scripts/verify/pre_push_check.sh --quick   # smoke (6s)
 | `scripts/verify/check_atomic.sh` | multi-commit branch 각 commit 독립 검증 | `HEAD~3..HEAD` range |
 | `.github/pull_request_template.md` | PR 생성 시 자동 채움 — 패턴 checkbox 강제 | — |
 
-## Optional: git hook 설치
+## git hook 설치
 
 ```bash
-# .git/hooks/pre-push
-#!/bin/bash
-bash scripts/verify/pre_push_check.sh --quick || {
-    echo "Pre-push failed. To bypass: git push --no-verify"
-    exit 1
-}
+make setup-hooks     # `make setup` 에 포함 — pre-commit + pre-push 심볼릭 링크
 ```
 
-```bash
-chmod +x .git/hooks/pre-push
-```
+`scripts/hooks/*` 를 `.git/hooks/` 로 심는다. 훅 본문이 레포에 있으므로 갱신이 `git pull`
+로 따라온다. 우회는 `git push --no-verify`.
+
+여기 원래 적혀 있던 것은 `.git/hooks/pre-push` 를 **손으로** 만들라는 안내였고, 그게
+#1070 의 원인이다 — 손 설치는 새 clone 에 따라오지 않고 잊히며, 실제로 pre-push 는
+설치된 적이 없는 채 `.claude/rules/enforcement.md` 만 게이트가 도는 것처럼 적혀 있었다.
 
 ## Anti-patterns (5)
 
