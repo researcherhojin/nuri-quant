@@ -1,0 +1,6 @@
+{
+  "errors": 172,
+  "measured_on": "2026-08-18",
+  "measured_at": "main 17e7228, M5 Max, `npx -p pyright pyright nuri/ tests/ scripts/`",
+  "note": "소음 바닥이지 목표치가 아니다. 대부분 pandas/numpy 타이핑(Scalar*float, ArrayLike vs ndarray, Series|bool 조건절)이라 cast() 를 흩뿌려야 줄고, 그건 가독성 대비 안전성 이득이 없다. 줄이는 PR 은 환영하고, 줄면 이 숫자도 같이 내린다. 올리는 것은 게이트가 막는다."
+}

@@ -90,6 +90,39 @@ else
     fail=1
 fi
 
+# ─── 2d. Spellcheck + pyright ratchet (#1086) ─────────────────────────────
+# `make diagnostics` 는 이미 존재했지만 **어떤 게이트도 부르지 않아** 이 진단은
+# 에디터에만 떴다. 2026-08-18 에 사용자가 Pylance/cSpell 경고를 직접 붙여넣어야 했고,
+# 그중 하나는 그 직전 머지가 만든 새 경고였다. 사용자가 할 일이 아니라 게이트가 할 일이다.
+#
+# 성격이 달라 게이트도 다르게 건다:
+#   - cspell  : 결정론적이고 잔여 0건 → **하드 게이트**
+#   - pyright : 172건 소음 바닥 → **래칫** (늘리면 차단, 줄면 통과+갱신 안내)
+# 실측 1.5s + 9.3s. 훅 전체가 ~12s 로 올라간다 — 느린 훅은 우회당한 훅이므로
+# 여기가 상한이라고 보고, 더 붙일 것은 CI 로 보낼 것.
+if command -v npx > /dev/null 2>&1; then
+    echo -e "${YELLOW}━━━ 2d. Spellcheck ━━━${NC}"
+    if $PYTHON -c '' > /dev/null 2>&1 && make spellcheck 2>&1 | grep -q "Unknown word"; then
+        echo -e "${RED}✗ 미등록 단어 — 도메인 용어면 .cspell.json 에 추가, 오타면 고칠 것${NC}"
+        make spellcheck 2>&1 | grep "Unknown word" | head -5
+        echo ""
+        fail=1
+    else
+        echo -e "${GREEN}✓ Spellcheck clean${NC}\n"
+    fi
+
+    echo -e "${YELLOW}━━━ 2e. Pyright Ratchet ━━━${NC}"
+    if $PYTHON scripts/verify/check_pyright_ratchet.py; then
+        echo ""
+    else
+        echo ""
+        fail=1
+    fi
+else
+    echo -e "${YELLOW}━━━ 2d/2e. Diagnostics ━━━${NC}"
+    echo -e "${YELLOW}⚠ npx 없음 — cspell/pyright 를 못 돌렸다 (‘깨끗함’ 아님). Node.js 설치 권장.${NC}\n"
+fi
+
 # ─── 3. Tests (skipped in --skip-tests) ─────────────────────────────────
 if [ "$mode" != "--skip-tests" ]; then
     echo -e "${YELLOW}━━━ 3. Tests (CI parity) ━━━${NC}"
