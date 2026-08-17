@@ -97,8 +97,31 @@ scheduler 의 `status="failed"` + `error_message`, `step_failed` 파이프라인
 `test_empty_payload_is_not_a_failure` (조건을 `errors` 로 넓히면 FAIL) ·
 `test_first_error_is_raised_not_the_last` (`errors[0]`→`errors[-1]` 이면 FAIL).
 
-⚠️ **형제 결함 미해결 — #1042**: `cboe.py:81` 과 `fear_greed.py:39` 가 같은 모양이다.
-새 수집기를 쓰거나 기존 것을 고칠 때 이 구분이 서 있는지 먼저 볼 것.
+**형제 둘도 같은 규약으로 정렬됨 (#1042)** — `fear_greed.py` 와 `cboe.py`. 새 수집기를
+쓰거나 기존 것을 고칠 때 이 구분이 서 있는지 먼저 볼 것.
+
+`fear_greed` 는 coingecko 와 같은 `errors and not records` 를 쓴다. API 가 200 인데
+`fear_and_greed` 키가 없으면 예외가 없으니 `[]` 가 그대로 나가고 폴백도 안 탄다(NO_DATA).
+API 가 죽은 뒤 스크래핑이 **예외 없이 점수를 못 찾은** 경우는 실패로 친다 — 앞에서 이미
+예외가 났기 때문이다.
+**Test:** `tests/collectors/test_fear_greed.py::TestFearGreedFailedVsNoData` —
+`test_total_failure_raises_instead_of_returning_empty`(raise 제거 시 FAIL) ·
+`test_empty_payload_is_not_a_failure`(조건을 `not records` 로 넓히면 FAIL) ·
+`test_first_error_is_raised_not_the_last`(`errors[0]`→`errors[-1]` 이면 FAIL) ·
+`test_scrape_fallback_still_rescues_a_dead_api`(과잉 차단 방지).
+
+`cboe` 는 조건이 `errors` 뿐이다 — 5개 티어가 값을 건지면 즉시 return 하므로 마지막 줄에
+닿았다는 것 자체가 이미 "한 건도 못 건졌다" 는 뜻이고, `not records` 를 덧붙이면 records
+가 비지 않을 수도 있다는 잘못된 인상만 준다.
+
+⚠️ **cboe 에서 이 raise 는 좀처럼 안 터진다 — 그리고 그건 의도다.** 5차
+`_collect_db_stale` 이 DB 에 이전 값이 하나라도 있으면 성공으로 돌려주므로, 라이브 소스 4개가
+전부 죽어도 마지막 줄까지 안 온다. 즉 **"DB_STALE 재사용이 영원히 성공으로 집계되는" 축은
+그대로 남아 있다** — `put_call_ratio` 는 `nuri/core/freshness.py FRESHNESS_POLICIES` 에
+항목이 없어 아무도 그 stale 을 감시하지 않고, 실제로 프로덕션에 6주 구멍
+(2026-06-22→2026-08-03)이 무발화로 지나갔다. 별건이며 #1042 밖이다.
+**Test:** `tests/collectors/test_cboe.py::TestCBOEFailedVsNoData::test_db_stale_still_counts_as_success`
+— 이 한계를 명시적으로 잠근다(조용히 바꾸면 라이브 소스가 흔들릴 때마다 수집기가 죽는다).
 
 ## Macro Data Quirk
 
