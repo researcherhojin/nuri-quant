@@ -20,6 +20,15 @@ FRESHNESS_POLICIES = {
         "fail_hours": 72,
         "label": "VIX",
     },
+    "factors": {
+        # BUY 후보 점수의 최대 입력(`buy_signals.yaml` 가중치 0.40)인데 정책이 없어서
+        # 2026-04-14 → 2026-08-18 넉 달간 낡은 채로도 어떤 화면에도 안 떴다 (#1071).
+        # 잡은 매일 08:10 이라 24h 이면 한 번 거른 것, 72h 면 사흘 연속 실패다.
+        "query": "SELECT MAX(date) FROM factors",
+        "warn_hours": 24,
+        "fail_hours": 72,
+        "label": "멀티팩터 스코어",
+    },
     "macro_fear_greed": {
         "query": "SELECT MAX(date) FROM macro WHERE indicator = 'fear_greed'",
         "warn_hours": 24,

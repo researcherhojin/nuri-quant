@@ -170,6 +170,39 @@ class TestSchedulerWiring:
         orphan = sorted(set(sch._STAGE_OF_JOB) - scheduled)
         assert not orphan, f"_STAGE_OF_JOB 에 있으나 SCHEDULES 에 없는 잡: {orphan}"
 
+    def test_every_dispatch_branch_is_scheduled(self):
+        """반대 방향 — `_dispatch_collector` 가 아는 잡은 전부 cron 이 있어야 한다 (#1071).
+
+        위 테스트는 "매핑 → SCHEDULES" 만 본다. **코드는 있는데 잡이 없는** 반대 구멍은
+        아무 신호도 내지 않는다: `factors` 는 `save_composite()` 가 멀쩡히 있고 `python -m`
+        으로 돌리면 동작했는데 cron 이 없어 프로덕션에서 **넉 달간 갱신이 끊겼고**
+        (2026-04-14 → 08-18) 그동안 BUY 후보 점수의 가중치 0.40 짜리 입력이 4월 값이었다.
+        #900(reddit/finviz/institutional 미스케줄) · #975(collector_runs) 와 같은 계열이다.
+
+        비교는 AST 로 한다 — `_dispatch_collector` 를 실행하면 실제 수집이 돈다.
+        """
+        import ast
+        from pathlib import Path
+
+        import nuri.scheduler as sch
+
+        source = Path(sch.__file__).read_text(encoding="utf-8")
+        branches: set[str] = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.FunctionDef) and node.name == "_dispatch_collector":
+                for cmp in ast.walk(node):
+                    if isinstance(cmp, ast.Compare) and isinstance(cmp.left, ast.Name) and cmp.left.id == "name":
+                        branches |= {c.value for c in cmp.comparators if isinstance(c, ast.Constant)}
+
+        # 카나리아: 스윕이 눈이 멀면(파싱 실패·함수 rename) 빈 집합이라 조용히 통과한다.
+        assert len(branches) >= 25, f"_dispatch_collector 분기를 {len(branches)}개밖에 못 찾았다 — 스윕이 깨졌다"
+
+        scheduled = {j["args"][0] for j in sch.SCHEDULES if j.get("func") is sch._run_collector and j.get("args")}
+        orphan = sorted(branches - scheduled)
+        assert not orphan, (
+            f"_dispatch_collector 에 있으나 cron 이 없는 잡: {orphan} — 코드만 있고 프로덕션에서는 영영 안 도는 상태다"
+        )
+
 
 class TestTelemetryFailureDoesNotGate:
     """이벤트 기록이 실패해도 감싼 함수는 실행된다.
