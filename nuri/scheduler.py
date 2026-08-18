@@ -931,6 +931,27 @@ SCHEDULES = [
         "kwargs": {"period": "5d", "source": "freshness"},
         "cron": "10,40 6 * * 2-6",
     },
+    # 일일 universe 가격 refresh (#1101 Codex P1). 주간 backfill 만으로는 universe-only
+    # 727종목의 prices 가 주중 1~6일 stale 로 남는다 (2026-08-18 실측: 727/732 가
+    # 일요일 backfill 이 남긴 금요일 날짜에 정지). 그 위에서 계산한 RSI/SMA 는 날짜가
+    # 어긋나 `_get_rsi_snapshot` 스냅샷에도 못 들어간다 — technical 을 universe 로
+    # 넓혀도(아래 07:00) 이 잡이 없으면 emitter 는 여전히 보유분만 읽는다.
+    # US: 06:20 화~토 (미장 마감 후, technical 07:00 전). 5d/10-thread ≈ 1분.
+    # KR: 15:40 월~금 (KR 마감 15:30 직후). pykrx sequential ≈ 2~4분.
+    {
+        "name": "stock_us_universe_daily",
+        "func": _run_collector,
+        "args": ("stock",),
+        "kwargs": {"period": "5d", "source": "all"},
+        "cron": "20 6 * * 2-6",
+    },
+    {
+        "name": "stock_kr_universe_daily",
+        "func": _run_collector,
+        "args": ("stock_kr",),
+        "kwargs": {"days": 5, "source": "all"},
+        "cron": "40 15 * * 1-5",
+    },
     # 일일 자가 재시작 (#780) — KST 08:40, 모닝 배치(07-08) 종료 후·KR 개장(09:00) 전 idle
     # window. yfinance fd 누수를 fresh 프로세스 교체로 회수 (plist 4096 천장도 결국 고갈).
     {"name": "self_restart", "func": _self_restart, "args": (), "cron": "40 8 * * *"},

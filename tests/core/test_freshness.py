@@ -205,6 +205,15 @@ class TestCheckFreshness:
         assert result["status"] == "FAIL"
         assert result["label"] == "멀티팩터 스코어"
 
+    def _seed_signals(self, db_path, date: str, n: int):
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO signals (ticker, date, rsi_14) VALUES (?, ?, 55.0)",
+                [(f"T{i:04d}", date) for i in range(n)],
+            )
+
     def test_stale_signals_surface_instead_of_going_unnoticed(self, db_path):
         """낡은 기술 지표가 FAIL 로 뜬다 (#1101).
 
@@ -214,20 +223,42 @@ class TestCheckFreshness:
 
         Mutation lock: `FRESHNESS_POLICIES` 에서 `signals` 를 빼면 KeyError 로 FAIL.
         """
-        from nuri.core.db import get_db
         from nuri.core.freshness import check_freshness
         from nuri.core.timezone import kst_now
 
         old = (kst_now() - timedelta(days=40)).strftime("%Y-%m-%d")
-        with get_db(db_path) as conn:
-            conn.execute(
-                "INSERT INTO signals (ticker, date, rsi_14) VALUES (?, ?, 55.0)",
-                ("AAA", old),
-            )
+        self._seed_signals(db_path, old, 450)
 
         result = check_freshness("signals", db_path=db_path)
         assert result["status"] == "FAIL"
         assert result["label"] == "기술 지표"
+
+    def test_partial_coverage_cannot_keep_signals_green(self, db_path):
+        """보유 18종목만 갱신된 날은 신선한 것으로 안 친다 (#1101 Codex P2).
+
+        맨 `MAX(date)` 였다면 이 18행이 날짜를 끌어올려 초록이 됐다 — 이 정책이 잡으려는
+        부분 커버리지 퇴행(40종목으로 넉 달)을 정확히 못 보는 형태다. 커버리지 400 미만
+        날짜는 없는 것으로 취급한다.
+
+        Mutation lock: 쿼리에서 HAVING 절을 빼면 이 테스트가 FAIL 한다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        self._seed_signals(db_path, today_kst(), 18)
+
+        result = check_freshness("signals", db_path=db_path)
+        assert result["status"] == "FAIL", "부분 커버리지가 신선함으로 통했다"
+
+    def test_full_coverage_today_passes(self, db_path):
+        """정상 갱신은 통과 — 가드가 상시 FAIL 이면 아무도 안 본다."""
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        self._seed_signals(db_path, today_kst(), 550)
+
+        result = check_freshness("signals", db_path=db_path)
+        assert result["status"] == "PASS"
 
     def test_recent_factors_pass(self, db_path):
         """정상 갱신은 통과 — 가드가 상시 FAIL 이면 아무도 안 본다.

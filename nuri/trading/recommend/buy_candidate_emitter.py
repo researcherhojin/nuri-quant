@@ -249,10 +249,19 @@ def _get_price_signals(db_path=None) -> dict[str, dict[str, float]]:
 
 
 def _get_rsi_snapshot(db_path=None) -> dict[str, float]:
-    """Latest RSI(14) per ticker."""
+    """Latest RSI(14) per ticker — 티커별 최신, 7일 컷오프.
+
+    전역 `MAX(date)` 하루치만 읽으면 **시장이 섞이는 순간 한쪽이 통째로 빠진다**:
+    KR 은 KST 당일, US 는 전일 날짜로 signals 가 갈라지므로 최신 날짜 하나를 고르면
+    다른 시장 전부가 스냅샷에서 사라진다 (#1101 — universe 확장 직후엔 backfill 날짜
+    간극 때문에 751행을 쓰고도 보유분만 읽히는 형태로 재현됐다). 그래서 티커별 최신
+    행을 잡되, 7일보다 낡은 값은 버린다 — 낡은 RSI 를 쓰는 것과 없는 값을 중립 50 으로
+    치는 것 사이의 절충이고, 컷오프가 없으면 상장폐지 종목의 마지막 RSI 가 영원히 남는다.
+    """
     df = query_df(
-        """SELECT ticker, rsi_14 FROM signals
-           WHERE date = (SELECT MAX(date) FROM signals)""",
+        """SELECT ticker, rsi_14, MAX(date) AS date FROM signals
+           WHERE date >= date('now', '-7 days') AND rsi_14 IS NOT NULL
+           GROUP BY ticker""",
         db_path=db_path,
     )
     if df.empty:

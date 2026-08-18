@@ -36,10 +36,15 @@ FRESHNESS_POLICIES = {
     "signals": {
         # BUY 점수의 0.15 가중치(RSI)와 SIEGE 게이트 일부가 읽는 테이블인데 정책이 없어서
         # 커버리지가 40종목(가격 753 대비)으로 넉 달을 갔고, 오늘 run 이 무엇을 남기든
-        # 어떤 화면에도 안 떴다 (#1101). `factors` 와 같은 이유로 `MAX(date)` 는 잡 생존과
-        # 입력 신선도를 동시에 본다 — technical 은 prices 를 재료로 하는 순수 계산이라
-        # prices 가 멈춰도, 잡이 멈춰도 날짜가 언다. 임계도 재료(prices)와 동일.
-        "query": "SELECT MAX(date) FROM signals",
+        # 어떤 화면에도 안 떴다 (#1101).
+        #
+        # 맨 `MAX(date)` 로는 부족하다 (#1101 Codex P2): 잡이 보유 18종목만 갱신해도
+        # 그 몇 행이 날짜를 끌어올려 초록이 된다 — 이 정책이 잡으려는 부분 커버리지
+        # 퇴행을 정확히 못 보는 형태다. 그래서 **행 수 400 이상인 날짜 중 최신**만 센다.
+        # 400 은 US 단독 날짜(~550)와 보유 단독(~18) 사이다 — KR/US 는 서로 다른 날짜로
+        # 갈라지므로 한 날짜가 750 전부를 갖지 않는다. universe 를 400 미만으로 줄이면
+        # 이 정책은 영구 FAIL 로 시끄럽게 죽는다(조용히 초록보다 낫다) — 그때 임계를 같이.
+        "query": "SELECT MAX(date) FROM (SELECT date FROM signals GROUP BY date HAVING COUNT(*) >= 400)",
         "warn_hours": 48,
         "fail_hours": 120,
         "label": "기술 지표",

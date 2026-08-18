@@ -1410,6 +1410,31 @@ class TestTechnicalCoversTheScoringUniverse:
 
         mock_collector.run.assert_called_once_with(source="all")
 
+    def test_daily_universe_price_jobs_are_registered(self):
+        """universe 가격을 **매일** 미는 잡이 있다 (#1101 Codex P1).
+
+        주간 backfill 만으로는 universe-only 727종목의 prices 가 주중 1~6일 stale 로
+        남는다 (2026-08-18 실측: 727/732 가 금요일 날짜에 정지). 그 위에서 계산한
+        signals 는 날짜가 어긋나 RSI 스냅샷에도 못 들어간다 — technical 확장이
+        이 잡 없이는 소비 지점에서 무효다.
+        """
+        from nuri.scheduler import SCHEDULES
+
+        us = [j for j in SCHEDULES if j["name"] == "stock_us_universe_daily"]
+        kr = [j for j in SCHEDULES if j["name"] == "stock_kr_universe_daily"]
+        assert len(us) == 1 and us[0]["kwargs"] == {"period": "5d", "source": "all"}
+        assert len(kr) == 1 and kr[0]["kwargs"] == {"days": 5, "source": "all"}
+
+    def test_us_universe_prices_land_before_technical_runs(self):
+        """US 일일 universe 가격(06:20)이 technical(07:00)보다 앞이다 — 순서가 뒤면
+        아침 지표가 하루 묵은 가격으로 계산된다."""
+        from nuri.scheduler import SCHEDULES
+
+        by_name = {j["name"]: j["cron"] for j in SCHEDULES}
+        us_min, us_hour = by_name["stock_us_universe_daily"].split()[:2]
+        tech_min, tech_hour = by_name["technical"].split()[:2]
+        assert (int(us_hour), int(us_min)) < (int(tech_hour), int(tech_min))
+
     def test_dispatch_returns_the_saved_count(self):
         """반환이 없으면 `collector_runs.rows_collected` 가 0 으로 남는다.
 
