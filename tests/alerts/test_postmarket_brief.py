@@ -227,6 +227,53 @@ def test_write_brief_stages_portfolio_drift_us_only(seeded_db, portfolio_yaml):
     assert sect_spy.call_args[0][0] == "2026-05-01"
 
 
+def test_write_brief_stages_stale_input_cards(seeded_db, portfolio_yaml):
+    """Tier 1e 배선 (#1090) — 낡은 입력 카드가 브리프에서 stage 되는가.
+
+    배선을 지우면 FAIL. 이게 없던 동안 포트폴리오가 15일 낡은 채로 지나갔고, 카드
+    스트림에는 한 줄도 안 떴다 (freshness 는 임베드 색으로만 표현됐다).
+    """
+    from unittest.mock import MagicMock
+
+    from nuri.alerts.postmarket_brief import write_brief
+
+    stale_spy = MagicMock(return_value=0)
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+        patch("nuri.alerts.portfolio_signals.stage_stale_input_briefs", stale_spy),
+    ):
+        write_brief("us", date="2026-05-01")
+        write_brief("kr", date="2026-05-01")
+
+    stale_spy.assert_called_once()  # US 만
+    assert stale_spy.call_args[0][0] == "2026-05-01"
+
+
+def test_write_brief_survives_stale_input_staging_error(seeded_db, portfolio_yaml):
+    """Tier 1e staging 이 raise 해도 (1) write_brief 는 정상 반환 + (2) 뒤따르는
+    집중도 stage 는 여전히 시도된다.
+
+    관측(입력 신선도)이 본 작업(브리프 생성)을 죽이면 안 된다 — #894 와 같은 형태다.
+    per-concern best-effort 패턴을 Tier 1e 에도 적용했는지 잠근다.
+    """
+    from unittest.mock import MagicMock
+
+    from nuri.alerts.postmarket_brief import write_brief
+
+    conc_spy = MagicMock(return_value=0)
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+        patch("nuri.alerts.portfolio_signals.stage_stale_input_briefs", side_effect=RuntimeError("boom")),
+        patch("nuri.alerts.portfolio_signals.stage_concentration_briefs", conc_spy),
+    ):
+        path = write_brief("us", date="2026-05-01")
+
+    assert path is not None, "관측 실패가 브리프 생성을 죽였다"
+    conc_spy.assert_called_once(), "앞 tier 실패가 뒤 tier 를 막았다"
+
+
 def test_write_brief_survives_portfolio_drift_staging_error(seeded_db, portfolio_yaml):
     """집중도 staging 이 raise 해도 (1) write_brief 는 정상 반환 + (2) 섹터는 여전히
     시도됨 (독립 best-effort — 한쪽 실패가 다른 쪽을 막지 않음)."""

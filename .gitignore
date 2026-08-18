@@ -59,6 +59,9 @@ docs/OPERATIONS.md
 docs/HARNESS_AUDIT.md
 docs/TRADING_AUDIT.md
 docs/SOURCE_OF_TRUTH.md
+# 의사결정 시스템 로드맵 — 사용자 목표·계좌 전략·미배선 약점 서술이라 public 가치 없고
+# 취약점 지도에 가깝다. 사용자 결정 (2026-08-18): local-only.
+docs/DECISION_SYSTEM_ROADMAP.md
 
 # TLS/SSL 인증서 + 개인 키 (defense-in-depth)
 *.pem

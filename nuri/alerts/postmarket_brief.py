@@ -687,6 +687,14 @@ def write_brief(
     # 다른 쪽 stage 를 막지 않게 — Tier 1a stop-breach 와 동일 per-concern 패턴).
     if session == "us":
         try:
+            # 먼저 stage 한다 — 낡은 입력은 뒤따르는 카드 전부의 신뢰도를 깎으므로
+            # 그것들보다 위에서 읽혀야 한다 (priority="high").
+            from nuri.alerts.portfolio_signals import stage_stale_input_briefs
+
+            stage_stale_input_briefs(d, db_path=db_path)
+        except Exception:
+            logger.warning("stale input brief staging 실패 (브리프 자체는 생성됨)", exc_info=True)
+        try:
             from nuri.alerts.portfolio_signals import stage_concentration_briefs
 
             stage_concentration_briefs(d, db_path=db_path)

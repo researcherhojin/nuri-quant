@@ -15,6 +15,11 @@ stop/target price_levels 금지**(REBALANCE 는 alpha exit 가 아님). 문구�
 재사용(per-account, 통화정확, 팩터정렬). 손절/레버리지 위반은 여기서 제외
 (손절 = Tier 1a alpha 축, 중복 방지).
 
+Tier 1e (`INPUT_STALE`, #1090) 는 이 셋과 성격이 다르다 — **포지션 신호가 아니라 관측
+신뢰도 경고**다. 그래서 축(`alpha_action`/`portfolio_action`)을 만들지 않는다. 포트폴리오가
+15일(360.5h) 낡은 채로 지나간 적이 있는데, `get_freshness_summary` 는 정상 동작했지만 결과가
+프리마켓 임베드 **색**으로만 표현돼 사용자가 매일 읽는 카드 스트림에 안 떴다.
+
 Privacy: Discord private 채널이므로 ticker+비중 노출 OK. 테스트는 합성 티커만.
 """
 
@@ -246,6 +251,98 @@ def stage_sleeve_briefs(date: Optional[str] = None, db_path: Optional[Path] = No
     return staged
 
 
+#: 낡아도 카드를 내지 않는 소스. 여기 있는 것은 "낡음이 판단을 왜곡하지 않는다" 는
+#: 주장이므로 추가할 때는 왜 그런지 같이 적을 것. 지금은 비어 있다 — 7개 정책 전부
+#: 판단 입력이다.
+FRESHNESS_CARD_EXEMPT: tuple[str, ...] = ()
+
+
+def scan_stale_inputs(db_path: Optional[Path] = None) -> list[dict[str, Any]]:
+    """신선도 FAIL 인 데이터 소스 목록 (Tier 1e, #1090).
+
+    **매매 신호가 아니라 관측 신뢰도 경고다.** 포트폴리오·가격·팩터는 방어 규칙 전부의
+    입력이라, 낡은 입력 위에서 계산된 비중·섹터·손절 판단은 정밀한 헛소리가 된다.
+
+    WARN 은 카드로 내지 않는다 — 주가/팩터가 주말이면 정상적으로 WARN 에 머무르므로
+    매주 발화하는 소음이 되고, 소음이 된 알림은 읽히지 않는다. FAIL 만 낸다.
+    """
+    from nuri.core.freshness import check_all_freshness
+
+    return [d for d in check_all_freshness(db_path) if d["status"] == "FAIL" and d["key"] not in FRESHNESS_CARD_EXEMPT]
+
+
+#: 소스별 조치. 카드에 **틀린 조치**를 적으면 없느니만 못하다 — 가격이 낡은데
+#: "portfolio.yaml 을 갱신하라" 고 하면 사용자가 엉뚱한 곳을 보고 진짜 원인은 남는다.
+#: 미등재 키는 일반 문구로 떨어진다(새 정책이 추가돼도 죽지 않는다).
+_REMEDY: dict[str, str] = {
+    "portfolio": "config/portfolio.yaml 을 실제 잔고로 갱신 후 재동기화 (수동 원장 — 자동 import 는 낡은 값을 최신으로 재기록할 뿐)",
+    "prices": "가격 수집 잡 상태 확인 (scheduler collect)",
+    "factors": "팩터 합성 잡 상태 확인 — BUY 점수의 최대 입력이다",
+    "macro_vix": "VIX 수집 확인 — VIX 게이트가 이 값으로 신규 매수를 막는다",
+    "macro_fear_greed": "Fear & Greed 수집 확인",
+    "consensus": "합의 잡(07:05) 실행 여부 확인",
+    "certification": "SIEGE 인증 실행 여부 확인",
+}
+
+
+def _remedy(key: str) -> str:
+    return _REMEDY.get(key, "해당 수집 경로 점검")
+
+
+def _build_stale_input_payload(entry: dict[str, Any], date: str) -> dict[str, Any]:
+    """신선도 FAIL 1건 → #brief INPUT_STALE payload.
+
+    **축을 만들지 않는다.** `alpha_action`/`portfolio_action` 둘 다 없다 — 이건 종목에
+    대한 판단이 아니라 "지금 나오는 판단을 믿지 말라" 는 메타 경고다. 축을 붙이면
+    렌더러와 소비자가 이것을 매매 신호로 읽고, 관측이 본 작업을 게이트하게 된다 (#894).
+
+    Privacy: `label` 은 config 의 공개 라벨(`주가 데이터` / `포트폴리오 sync`)이고
+    age 는 시간 수치라 계좌·보유·금액이 섞이지 않는다.
+    """
+    age = entry.get("age_hours")
+    if not isinstance(age, (int, float)):
+        # `age_hours=None` 은 "낡음" 이 아니라 **행이 하나도 없음**(또는 날짜 파싱 실패)이다.
+        # 둘을 같은 문구로 내면 "며칠 지났나" 를 찾다가 실제 상태(수집 자체가 안 됨)를
+        # 놓친다. 여기서 죽던 것을 스모크 테스트가 잡았다 — 빈 소스가 흔한 FAIL 이다.
+        state = "데이터 없음"
+    else:
+        state = f"{age / 24:.0f}일 낡음" if age >= 48 else f"{age:.0f}시간 낡음"
+    return {
+        "kind": "INPUT_STALE",
+        "ticker": f"입력({entry['label']})",
+        "reason": f"{state} — 이 입력에 기대는 판단을 그대로 믿지 말 것. {_remedy(entry['key'])}",
+        "date": date,
+    }
+
+
+def stage_stale_input_briefs(date: Optional[str] = None, db_path: Optional[Path] = None) -> int:
+    """신선도 FAIL 을 #brief outbox 에 INPUT_STALE 로 stage. staged 건수 반환.
+
+    dedupe_key=`input-stale:{key}:{date}` — 소스 × 하루 1건. priority="high": 낡은 입력은
+    그날 나온 **모든** 다른 카드의 신뢰도를 깎으므로 개별 REBALANCE 보다 먼저 읽혀야 한다.
+
+    이 카드가 없던 동안 포트폴리오가 15일(360.5h) 낡은 채로 지나갔다 — `get_freshness_summary`
+    는 정상 동작했지만 결과가 프리마켓 임베드 **색**으로만 표현돼 카드 스트림에 안 떴다.
+    """
+    from nuri.agents.discord.outbox import stage_brief
+
+    d = date or today_kst()
+    staged = 0
+    for entry in scan_stale_inputs(db_path=db_path):
+        outbox_id = stage_brief(
+            payload=_build_stale_input_payload(entry, d),
+            dedupe_key=f"input-stale:{entry['key']}:{d}",
+            priority="high",
+            actor_name="portfolio-signals",
+            db_path=db_path,
+        )
+        if outbox_id is not None:
+            staged += 1
+    if staged:
+        logger.info("stale input briefs staged: %d", staged)
+    return staged
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="포트폴리오 드리프트(집중도·섹터·슬리브) → #brief REBALANCE (Tier 1b/1c/1d)"
@@ -256,9 +353,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     conc = scan_concentration_drift()
     sect = scan_sector_drift()
     sleeve = scan_sleeve_breach()
-    if not conc and not sect and not sleeve:
-        print("포트폴리오 드리프트 없음 (집중도·섹터·슬리브)")
+    stale = scan_stale_inputs()
+    if not conc and not sect and not sleeve and not stale:
+        print("포트폴리오 드리프트 없음 (집중도·섹터·슬리브) · 낡은 입력 없음")
         return 0
+    for e in stale:
+        print(f"  [입력낡음] {e['label']} {e['message']}")
     for v in conc:
         print(
             f"  [집중도] {v['ticker']} [{v.get('account', '?')}] {v['current_value']:.1f}% > 한도 {v['limit_value'] * 100:.0f}%"
@@ -268,10 +368,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     for v in sleeve:
         print(f"  [슬리브] {v['strategy']} {v['used_pct']:.1f}% > 상한 {v['cap_pct']:.0f}%")
     if args.dry_run:
-        print(f"[dry-run] 집중도 {len(conc)}건 · 섹터 {len(sect)}건 · 슬리브 {len(sleeve)}건 — stage 안 함")
+        print(
+            f"[dry-run] 집중도 {len(conc)}건 · 섹터 {len(sect)}건 · 슬리브 {len(sleeve)}건 "
+            f"· 낡은 입력 {len(stale)}건 — stage 안 함"
+        )
         return 0
-    staged = stage_concentration_briefs() + stage_sector_briefs() + stage_sleeve_briefs()
-    print(f"staged {staged}건 → #brief (REBALANCE)")
+    staged = stage_stale_input_briefs() + stage_concentration_briefs() + stage_sector_briefs() + stage_sleeve_briefs()
+    print(f"staged {staged}건 → #brief (INPUT_STALE + REBALANCE)")
     return 0
 
 
