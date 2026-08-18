@@ -198,6 +198,14 @@ class TestInProgressStaysBlank:
 
         assert _verdict(db_path, "IIII") is None
 
+    def test_zero_criteria_is_not_a_vacuous_pass(self):
+        """`all([])` 은 True 다 — 기준 0건이 만점으로 읽히는 공허참을 직접 잠근다.
+
+        쿼리가 INNER JOIN 이라 지금은 도달하지 않는 경로지만, 방어가 **우연**이면
+        다음 리팩터가 걷어간다. 그래서 판정 함수 자체를 직접 부른다.
+        """
+        assert tc._verdict_for("active", [], {}, AFTER) is None
+
     def test_thesis_without_criteria_is_never_scored(self, db_path):
         """#1092 이전 유물 — 반증 기준 없는 논지를 `held` 로 적으면 서사가 채점을 통과한다."""
         upsert_thesis(

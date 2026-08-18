@@ -230,6 +230,11 @@ _ABANDONED_STATUS = ("superseded", "retired")
 
 def _verdict_for(status: str, criteria: list[dict], stats: dict[int, dict], as_of: str) -> Optional[str]:
     """논지 1건의 verdict. `None` 이면 진행 중 — **기존 verdict 를 지우지 않는다.**"""
+    # 기준 0건은 채점 대상이 아니다. 이 줄이 없으면 아래 `all([])` 이 **공허참**으로
+    # `held` 를 돌려준다 — 반증 기준 없는 논지가 만점을 받는 셈이다. 지금은 쿼리가
+    # INNER JOIN 이라 도달하지 않지만, 방어가 우연이면 다음 리팩터가 걷어간다.
+    if not criteria:
+        return None
     if any(stats.get(c["id"], {}).get("breached") for c in criteria):
         return "broken"
     if status in _ABANDONED_STATUS:
