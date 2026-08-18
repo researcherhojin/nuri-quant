@@ -151,7 +151,7 @@ def _dispatch_collector(name: str, **kwargs):
     elif name == "macro":
         from nuri.collectors.macro import MacroCollector
 
-        MacroCollector().run()
+        return MacroCollector().run()
     elif name == "technical":
         # `source="all"` (portfolio ∪ universe) — 기본값(portfolio)이면 signals 가 보유
         # 18종목에 갇혀 BUY 점수의 0.15 가중치(RSI)가 736 채점 대상 중 99.1% 에서 중립
@@ -168,27 +168,27 @@ def _dispatch_collector(name: str, **kwargs):
     elif name == "fear_greed":
         from nuri.collectors.fear_greed import FearGreedCollector
 
-        FearGreedCollector().run()
+        return FearGreedCollector().run()
     elif name == "ark":
         from nuri.collectors.ark import ARKCollector
 
-        ARKCollector().run()
+        return ARKCollector().run()
     elif name == "events":
         from nuri.collectors.events import EventsCollector
 
-        EventsCollector().run()
+        return EventsCollector().run()
     elif name == "news":
         from nuri.collectors.news import NewsCollector
 
-        NewsCollector().run()
+        return NewsCollector().run()
     elif name == "macro_news":
         from nuri.collectors.macro_news import MacroNewsCollector
 
-        MacroNewsCollector().run()
+        return MacroNewsCollector().run()
     elif name == "fundamental":
         from nuri.collectors.fundamental import FundamentalCollector
 
-        FundamentalCollector().run()
+        return FundamentalCollector().run()
     elif name == "factors":
         # 수집이 아니라 **분석** 단계다 (`_STAGE_OF_JOB` 에서 analyze). `_run_collector` 를
         # 재사용하는 건 그쪽이 예외 격리 · 실행 기록 · 스테이지 이벤트를 이미 갖고 있어서다.
@@ -213,59 +213,60 @@ def _dispatch_collector(name: str, **kwargs):
     elif name == "cboe":
         from nuri.collectors.cboe import CBOECollector
 
-        CBOECollector().run()
+        return CBOECollector().run()
     elif name == "coingecko":
         from nuri.collectors.coingecko import CoinGeckoCollector
 
-        CoinGeckoCollector().run()
+        return CoinGeckoCollector().run()
     elif name == "reddit":
         from nuri.collectors.reddit import RedditCollector
 
-        RedditCollector().run()
+        return RedditCollector().run()
     elif name == "fred_calendar":
         from nuri.collectors.fred_calendar import FREDCalendarCollector
 
-        FREDCalendarCollector().run()
+        return FREDCalendarCollector().run()
     elif name == "institutional":
         from nuri.collectors.institutional import InstitutionalCollector
 
-        InstitutionalCollector().run()
+        return InstitutionalCollector().run()
     elif name == "finviz":
         from nuri.collectors.finviz import FINVIZCollector
 
-        FINVIZCollector().run()
+        return FINVIZCollector().run()
     elif name == "kis_analyst_opinion":
         from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
 
-        KISAnalystOpinionCollector().run()
+        return KISAnalystOpinionCollector().run()
     elif name == "superinvestors":
         from nuri.collectors.superinvestors import SuperinvestorCollector
 
-        SuperinvestorCollector().run()
+        return SuperinvestorCollector().run()
     elif name == "bank_13f":
         # 대형 은행 4곳 13F (#1098). 확신 투자자와 **같은 테이블 다른 class** 라
         # 잡을 나눠 둔다 — 은행 쪽 EDGAR 실패가 확신 13F 수집을 같이 죽이면 안 된다.
         # 분기 공시라 주 1회면 충분하고, 확신 수집(01:00) 뒤에 둬 EDGAR 부하를 겹치지 않는다.
         from nuri.collectors.superinvestors import Bank13FCollector
 
-        Bank13FCollector().run(quarters=4)
+        return Bank13FCollector().run(quarters=4)
     elif name == "estimates":
         from nuri.collectors.estimates import EstimatesCollector
 
-        EstimatesCollector().run(**kwargs)
+        return EstimatesCollector().run(**kwargs)
     elif name == "etf_flows":
         from nuri.collectors.etf_flows import EtfFlowsCollector
 
-        EtfFlowsCollector().run()
+        return EtfFlowsCollector().run()
     elif name == "wallstreet":
         from nuri.collectors.wallstreet import WallStreetCollector
 
-        WallStreetCollector().run()
+        return WallStreetCollector().run()
     elif name == "memory_snapshot":
         from nuri.trading.engine.memory import save_snapshot
 
         n = save_snapshot()
         logger.info(f"[memory_snapshot] {n}건 저장")
+        return n
     elif name == "decision_pnl":
         # decisions 테이블의 7/30/60/90d raw P&L 갱신.
         # NOTE: decision_outcomes(alpha) 테이블이 아님 — alpha 는 아래 alpha_tracking job.
@@ -273,6 +274,7 @@ def _dispatch_collector(name: str, **kwargs):
 
         n = track_decision_outcomes()
         logger.info(f"[decision_pnl] {n}건 업데이트")
+        return n
     elif name == "recommendation_outcomes":
         # recommendations 테이블의 7/14/21/30/60/90d forward return 갱신.
         # NOTE: decisions 테이블이 아님 — 그쪽은 바로 위 decision_pnl.
@@ -287,6 +289,7 @@ def _dispatch_collector(name: str, **kwargs):
 
         n = track_outcomes()
         logger.info(f"[recommendation_outcomes] {n}건 업데이트")
+        return n
     elif name == "alpha_tracking":
         # ForwardOutcomeTracker: emit 된 추천 vs SPY benchmark → realized alpha 를
         # decision_outcomes 테이블에 기록 (recommendations → agent_decisions 백필 포함).
@@ -299,11 +302,17 @@ def _dispatch_collector(name: str, **kwargs):
             f"[alpha_tracking] synced={out.get('synced_from_recommendations', 0)} "
             f"measured={out.get('n_measurements', 0)}"
         )
+        # 이 잡은 **두 가지 일**을 한다: 추천을 `agent_decisions` 로 미러(sync)한 뒤,
+        # 창이 닫힌 것만 측정(measure). 부트스트랩·백필 구간에서는 sync 가 수백 건이어도
+        # 아직 30일이 안 지나 measure 가 0 이다 — 측정만 세면 그 구간 전체가
+        # `rows_collected=0` 인 no-op 으로 기록돼, 이 PR 이 없애려는 상태 그대로다.
+        return int(out.get("synced_from_recommendations", 0)) + int(out.get("n_measurements", 0))
     elif name == "agent_accuracy":
         from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
 
         n = save_agent_accuracy_snapshot()
         logger.info(f"[agent_accuracy] {n}건 저장")
+        return n
     elif name == "consensus":
         # 10-agent 합의 결과를 recommendations 에 저장 → Learning Memory 자동 학습 input.
         # decision_outcomes 가 30 일 후 outcome_30d 채우면 _compute_weights 가 가중치 조정.
@@ -318,6 +327,9 @@ def _dispatch_collector(name: str, **kwargs):
         # 했는데 헬스 지표는 전부 초록이었다 (#897).
         recorded = record_decisions(results)
         logger.info(f"[consensus] {len(results)}건 분석, recommendations {saved}건, decisions {recorded}건")
+        # `saved` 를 돌려준다 — 이 잡의 1차 산출물이 recommendations 행이다.
+        # `saved + recorded` 는 두 테이블 수를 더한 값이라 어느 쪽이 비었는지 못 읽는다.
+        return saved
     elif name == "holdings_monitor":
         # Holdings post-entry technical-divergence monitor (07:10 KST, after consensus 07:05).
         # JKHY-class entry-stage defenses (PR #303) cover before-buy; this covers after-buy
@@ -327,6 +339,11 @@ def _dispatch_collector(name: str, **kwargs):
         summary = run_monitor()
         sent = send_alerts(summary)
         logger.info(f"[holdings_monitor] {summary.n_holdings}건 분석, {summary.n_alerted}건 alert, {sent}건 surface")
+        # `sent` 가 아니라 `n_alerted` 를 돌려준다. `send_alerts` 는 best-effort 라
+        # Discord 가 죽으면 alert 를 찾아 놓고도 0 을 반환한다 — 그러면 이 잡의 산출량이
+        # **선택적 표면 채널의 가용성**에 묶여, 감시가 정상 동작한 날이 no-op 으로 기록된다.
+        # 하필 Discord outage 때 그렇게 되므로 정확히 관측이 가장 필요한 순간에 눈이 먼다.
+        return summary.n_alerted
 
 
 def _run_collector(name: str, **kwargs):
