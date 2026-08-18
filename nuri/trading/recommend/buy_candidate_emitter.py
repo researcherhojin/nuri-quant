@@ -258,10 +258,19 @@ def _get_rsi_snapshot(db_path=None) -> dict[str, float]:
     행을 잡되, 7일보다 낡은 값은 버린다 — 낡은 RSI 를 쓰는 것과 없는 값을 중립 50 으로
     치는 것 사이의 절충이고, 컷오프가 없으면 상장폐지 종목의 마지막 RSI 가 영원히 남는다.
     """
+    from datetime import timedelta
+
+    from nuri.core.timezone import kst_now
+
+    # 컷오프는 KST 로 계산해 파라미터로 넘긴다 — SQLite 의 `date('now')` 는 UTC 라
+    # 09:00 KST 이전(아침 배치 시간대 전부)에는 어제 날짜가 되어 컷오프가 하루
+    # 느슨해진다. 레포 불변식은 KST 단일 시간대다 (Codex 리뷰 3차).
+    cutoff = (kst_now() - timedelta(days=7)).strftime("%Y-%m-%d")
     df = query_df(
         """SELECT ticker, rsi_14, MAX(date) AS date FROM signals
-           WHERE date >= date('now', '-7 days') AND rsi_14 IS NOT NULL
+           WHERE date >= ? AND rsi_14 IS NOT NULL
            GROUP BY ticker""",
+        (cutoff,),
         db_path=db_path,
     )
     if df.empty:

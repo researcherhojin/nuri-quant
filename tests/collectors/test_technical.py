@@ -270,6 +270,34 @@ class TestSignalEvaluationHeartbeat:
         assert "signal_evaluation_run" in EVENT_TYPES
 
 
+def _seed_eligible(tickers, rows=20):
+    """티커별 rows 개의 price 행 시드 — expected_count 적격(≥14) 판정용."""
+    import pandas as pd
+
+    from nuri.core.db import upsert_prices
+    from nuri.core.timezone import today_kst
+
+    dates = pd.bdate_range(end=today_kst(), periods=rows).strftime("%Y-%m-%d")
+    upsert_prices(
+        pd.DataFrame(
+            [
+                {
+                    "ticker": t,
+                    "date": d,
+                    "open": 10.0,
+                    "high": 10.0,
+                    "low": 10.0,
+                    "close": 10.0,
+                    "volume": 100,
+                    "adj_close": 10.0,
+                }
+                for t in tickers
+                for d in dates
+            ]
+        )
+    )
+
+
 class TestTechnicalExpectedCountGuard:
     """MAX_FAILURE_RATE 가드 활성화 lock-test (PR #590 후속).
 
@@ -281,14 +309,20 @@ class TestTechnicalExpectedCountGuard:
     """
 
     def test_collect_sets_expected_count(self, monkeypatch):
-        """collect() 진입 시 self._expected_count 가 len(tickers) 로 설정됨."""
+        """collect() 의 기대치는 **데이터가 충분한 종목 수**다 (#1101 Codex 5차).
+
+        `len(tickers)` 로 두면 universe 배치 추가 직후·콜드 스타트처럼 데이터 없는
+        종목이 10% 를 넘는 순간 전체 저장이 거부돼 보유 종목 signals 까지 전멸한다.
+        데이터 부족은 예상된 결손이지 수집 실패가 아니다.
+        """
         from nuri.collectors.technical import TechnicalCollector
 
         c = TechnicalCollector()
         # initial state — 0 (불활성)
         assert c._expected_count == 0
 
-        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["AAA", "BBB", "CCC"])
+        _seed_eligible(["AAA", "BBB", "CCC"])  # 적격 3
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: ["AAA", "BBB", "CCC", "NEW1", "NEW2"])
         # _compute_for_ticker 결과는 가드 trigger 와 무관 (count 만 검증)
         monkeypatch.setattr(
             c,
@@ -297,7 +331,35 @@ class TestTechnicalExpectedCountGuard:
         )
 
         c.collect()
-        assert c._expected_count == 3, "collect() 가 ticker 수로 _expected_count 설정 안 함"
+        assert c._expected_count == 3, "기대치가 적격(가격 ≥14일) 종목 수가 아니다"
+
+    def test_cold_start_saves_the_computable_slice_instead_of_refusing(self, monkeypatch):
+        """데이터 없는 종목이 10% 를 넘어도 계산된 종목은 저장된다 (#1101 Codex 5차).
+
+        기대치를 `len(tickers)` 로 되돌리면 이 시나리오(20종목 중 적격 5)가
+        failure_rate 75% 로 읽혀 CollectionFailureError — 멀쩡한 5종목 signals 까지
+        전멸한다. universe 확장 직후가 정확히 이 모양이다.
+        """
+        from nuri.collectors.technical import TechnicalCollector
+
+        c = TechnicalCollector()
+        eligible = [f"E{i}" for i in range(5)]
+        cold = [f"N{i}" for i in range(15)]
+        _seed_eligible(eligible)
+        monkeypatch.setattr(c, "_get_tickers", lambda **kw: eligible + cold)
+
+        def fake_compute(ticker):
+            if ticker in eligible:
+                return pd.DataFrame({"ticker": [ticker], "date": ["2024-01-01"], "rsi_14": [50.0]})
+            return None  # 콜드 스타트 — 가격 데이터 없음
+
+        monkeypatch.setattr(c, "_compute_for_ticker", fake_compute)
+        saved = []
+        monkeypatch.setattr(c, "save", lambda data: saved.append(len(data)) or len(data))
+
+        c.run()
+
+        assert saved == [5], "적격 종목의 signals 가 저장되지 않았다 — 가드가 결손을 실패로 셌다"
 
     def test_run_blocks_save_when_failure_rate_exceeds_threshold(self, monkeypatch):
         """run() 이 80% 실패 시 CollectionFailureError 발생 + save() 미호출."""
@@ -305,8 +367,10 @@ class TestTechnicalExpectedCountGuard:
         from nuri.collectors.technical import TechnicalCollector
 
         c = TechnicalCollector()
-        # 10 ticker 중 2개만 성공 → failure_rate 80% > 10% threshold
+        # 10 ticker **전부 적격**인데 2개만 성공 → failure_rate 80% > 10% threshold.
+        # 적격 시드가 없으면 기대치가 0 이 되어 가드가 아예 안 잰다 (#1101 이후 의미론).
         tickers = [f"T{i}" for i in range(10)]
+        _seed_eligible(tickers)
         monkeypatch.setattr(c, "_get_tickers", lambda **kw: tickers)
 
         def fake_compute(ticker):
@@ -330,8 +394,9 @@ class TestTechnicalExpectedCountGuard:
         from nuri.collectors.technical import TechnicalCollector
 
         c = TechnicalCollector()
-        # 20 ticker 중 19개 성공 → failure_rate 5%
+        # 20 ticker 전부 적격, 19개 성공 → failure_rate 5%
         tickers = [f"T{i}" for i in range(20)]
+        _seed_eligible(tickers)
         monkeypatch.setattr(c, "_get_tickers", lambda **kw: tickers)
 
         def fake_compute(ticker):

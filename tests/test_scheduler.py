@@ -1410,6 +1410,23 @@ class TestTechnicalCoversTheScoringUniverse:
 
         mock_collector.run.assert_called_once_with(source="all")
 
+    def test_stock_dispatches_return_the_saved_count(self):
+        """일일 universe refresh 잡의 살아있음 증명이 `collector_runs.rows_collected` 다.
+
+        stock/stock_kr 분기가 반환을 삼키면 이 잡들이 매일 no-op 처럼 기록된다 —
+        technical 이 17건을 저장하고 0 으로 남았던 것과 같은 축 (#1105 는 나머지 분기).
+        """
+        from nuri.scheduler import _dispatch_collector
+
+        for branch, path in (
+            ("stock", "nuri.collectors.stock.StockCollector"),
+            ("stock_kr", "nuri.collectors.stock_kr.StockKRCollector"),
+        ):
+            mock_collector = MagicMock()
+            mock_collector.run.return_value = 543
+            with patch(path, return_value=mock_collector):
+                assert _dispatch_collector(branch) == 543, f"{branch} 분기가 수집량을 삼켰다"
+
     def test_daily_universe_price_jobs_are_registered(self):
         """universe 가격을 **매일** 미는 잡이 있다 (#1101 Codex P1).
 
@@ -1434,6 +1451,70 @@ class TestTechnicalCoversTheScoringUniverse:
         us_min, us_hour = by_name["stock_us_universe_daily"].split()[:2]
         tech_min, tech_hour = by_name["technical"].split()[:2]
         assert (int(us_hour), int(us_min)) < (int(tech_hour), int(tech_min))
+
+    @staticmethod
+    def _expand(field: str, lo: int, hi: int) -> set[int]:
+        """cron 필드 1개 → 값 집합. SCHEDULES 가 실제로 쓰는 문법만 지원한다."""
+        out: set[int] = set()
+        for part in field.split(","):
+            if part.startswith("*/"):
+                out |= set(range(lo, hi + 1, int(part[2:])))
+            elif part == "*":
+                out |= set(range(lo, hi + 1))
+            elif "-" in part:
+                a, b = part.split("-")
+                out |= set(range(int(a), int(b) + 1))
+            else:
+                out.add(int(part))
+        return out
+
+    def test_no_two_kr_price_jobs_share_a_firing_minute(self):
+        """KRX 는 sequential 강제다 — 같은 분에 pykrx 두 개가 뜨면 그 불변식이 깨진다.
+
+        1차 배치는 KR 일일 refresh 를 15:40 에 뒀는데 `stock_kr`(*/5, 9-15시)이 정확히
+        같은 분에 돌고 있었다 (Codex 4차). 겹침은 분 단위 전수 대조로 잠근다 — 눈으로
+        cron 표를 읽는 방식은 이미 한 번 놓쳤다.
+        """
+        from itertools import combinations
+
+        from nuri.scheduler import SCHEDULES
+
+        kr_jobs = [j for j in SCHEDULES if j.get("args") == ("stock_kr",)]
+        assert len(kr_jobs) >= 3, "stock_kr 잡이 줄었다 — 이 잠금의 전제를 확인할 것"
+
+        def firing_minutes(cron: str) -> set[tuple[int, int, int]]:
+            m, h, _dom, _mon, dow = cron.split()
+            return {
+                (d, hh, mm)
+                for d in self._expand(dow, 0, 6)
+                for hh in self._expand(h, 0, 23)
+                for mm in self._expand(m, 0, 59)
+            }
+
+        for a, b in combinations(kr_jobs, 2):
+            overlap = firing_minutes(a["cron"]) & firing_minutes(b["cron"])
+            assert not overlap, (
+                f"{a['name']} 와 {b['name']} 가 같은 분에 발화한다: {sorted(overlap)[:3]} — "
+                "pykrx 동시 2회는 KRX sequential 불변식 위반"
+            )
+
+    def test_technical_recomputes_after_the_kr_close(self):
+        """KR 종가 반영 지표가 같은 날 나온다 (#1101 Codex P2 2차).
+
+        15:40 KR 가격 refresh 는 prices 만 갱신한다 — technical 이 07:00 하루 한 번이면
+        KR 종가 RSI/SMA 는 다음날 아침까지 안 나온다. 가격은 갔는데 소비 지점(signals)에
+        안 닿는, 이 PR 이 두 번 밟을 뻔한 모양이다.
+        """
+        from nuri.scheduler import SCHEDULES
+
+        jobs = {j["name"]: j for j in SCHEDULES}
+        close_run = jobs["technical_close_kr"]
+        assert close_run["args"] == ("technical",)
+
+        # KR 가격(15:40) → technical 재계산(16:10) 순서. 뒤집히면 낡은 가격으로 계산한다.
+        kr_min, kr_hour = jobs["stock_kr_universe_daily"]["cron"].split()[:2]
+        t_min, t_hour = close_run["cron"].split()[:2]
+        assert (int(kr_hour), int(kr_min)) < (int(t_hour), int(t_min))
 
     def test_dispatch_returns_the_saved_count(self):
         """반환이 없으면 `collector_runs.rows_collected` 가 0 으로 남는다.

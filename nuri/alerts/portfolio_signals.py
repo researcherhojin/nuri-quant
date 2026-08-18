@@ -280,7 +280,10 @@ _REMEDY: dict[str, str] = {
     "factors": "팩터 합성 잡 상태 확인 — BUY 점수의 최대 입력이다",
     "macro_vix": "VIX 수집 확인 — VIX 게이트가 이 값으로 신규 매수를 막는다",
     "macro_fear_greed": "Fear & Greed 수집 확인",
-    "signals": "technical 잡(07:00) 확인 — RSI/SMA 가 BUY 점수와 SIEGE 게이트에 들어간다",
+    # 잡 이름만 적고 시각은 적지 않는다 — cron 은 옮겨 다니고(4차 리뷰에서 실제로 옮겼다),
+    # 낡은 시각은 운영자를 엉뚱한 로그 창으로 보낸다 (Codex 5차 P3).
+    "signals": "technical 잡 확인 — RSI/SMA 가 BUY 점수와 SIEGE 게이트에 들어간다",
+    "signals_kr": "technical_close_kr 잡과 KR 가격 수집(stock_kr_universe_daily) 확인",
     "consensus": "합의 잡(07:05) 실행 여부 확인",
     "certification": "SIEGE 인증 실행 여부 확인",
 }

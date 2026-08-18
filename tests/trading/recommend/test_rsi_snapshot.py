@@ -66,6 +66,32 @@ class TestPerTickerLatest:
 
         assert set(_get_rsi_snapshot(db_path=db_path)) == {"LIVE"}
 
+    def test_the_cutoff_follows_kst_now_not_the_db_clock(self, db_path, monkeypatch):
+        """컷오프의 기준 시계는 `kst_now()` 다 — SQLite 의 시계가 아니라 (Codex 3차).
+
+        `date('now')` 는 UTC 라 09:00 KST 이전 — 아침 배치(07:00 technical · 07:05
+        consensus) 시간대 전부 — 에는 어제로 계산돼 8일 낡은 RSI 가 하루 더 살아남는다.
+        UTC/KST divergence 자체는 실행 시각에 따라 달라 결정론으로 잡을 수 없으므로,
+        같은 축을 다르게 잠근다: 파이썬 시계를 미래로 옮기고 컷오프가 **그 시계를**
+        따라오는지 본다. `date('now')` 로 되돌리면 SQLite 의 실제 벽시계가 쓰여 8일 낡은
+        행이 살아남아 FAIL 한다. 앵커는 `kst_now()` 상대값 — 리터럴 날짜는 이 레포에서
+        두 번 터진 시한폭탄이다 (tests/CLAUDE.md).
+        """
+        from datetime import timedelta
+
+        import nuri.core.timezone as tz
+
+        fixed = tz.kst_now() + timedelta(days=365)
+        monkeypatch.setattr(tz, "kst_now", lambda: fixed)
+
+        d8 = (fixed - timedelta(days=8)).strftime("%Y-%m-%d")
+        d6 = (fixed - timedelta(days=6)).strftime("%Y-%m-%d")
+        with get_db(db_path) as conn:
+            conn.execute("INSERT INTO signals (ticker, date, rsi_14) VALUES ('OLD8', ?, 55.0)", (d8,))
+            conn.execute("INSERT INTO signals (ticker, date, rsi_14) VALUES ('OK6', ?, 55.0)", (d6,))
+
+        assert set(_get_rsi_snapshot(db_path=db_path)) == {"OK6"}
+
     def test_null_rsi_rows_do_not_shadow_older_values(self, db_path):
         """최신 행의 rsi 가 NULL 이면 그 티커의 직전 non-null 값을 쓴다.
 
