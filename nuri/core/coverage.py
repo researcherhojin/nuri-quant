@@ -91,9 +91,18 @@ def _load_universe(path: Optional[Path] = None) -> dict[str, set[str]]:
     return {"us": us, "kr": kr}
 
 
+#: 테이블별 추가 필터. 커버리지는 **우리가 판단에 쓰는 행**만 세야 한다.
+#: `superinvestors` 에는 은행 13F(`dealer`)가 섞이는데(#1098), 은행은 사실상 유니버스
+#: 전체를 들고 있어 이걸 포함하면 커버리지가 0.80 임계를 자동 통과한다 — 확신 13F 수집이
+#: 죽어도 초록인 계기판이 된다.
+_COVERAGE_FILTERS: dict[str, str] = {"superinvestors": "investor_class = 'conviction'"}
+
+
 def _table_tickers(table: str, db_path: Optional[Path] = None) -> set[str]:
     """DB에서 해당 table의 unique ticker set 조회."""
-    rows = query(f"SELECT DISTINCT ticker FROM {table}", db_path=db_path)
+    where = _COVERAGE_FILTERS.get(table)
+    sql = f"SELECT DISTINCT ticker FROM {table}" + (f" WHERE {where}" if where else "")
+    rows = query(sql, db_path=db_path)
     return {r["ticker"] for r in rows if r["ticker"]}
 
 

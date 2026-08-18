@@ -123,6 +123,36 @@ API 가 죽은 뒤 스크래핑이 **예외 없이 점수를 못 찾은** 경우
 **Test:** `tests/collectors/test_cboe.py::TestCBOEFailedVsNoData::test_db_stale_still_counts_as_success`
 — 이 한계를 명시적으로 잠근다(조용히 바꾸면 라이브 소스가 흔들릴 때마다 수집기가 죽는다).
 
+## 13F: 확신 보유 vs 딜러 보유 (`superinvestors.py`, #1098)
+
+한 테이블(`superinvestors`)에 두 종류가 산다. `investor_class` 로 갈린다:
+
+| | `conviction` (기본) | `dealer` |
+|---|---|---|
+| 누구 | 버핏·달리오·애크먼·국민연금 등 8곳 | JPM·BAC·GS·Citi 4곳 (`BANK_13F`) |
+| 수집기 | `SuperinvestorCollector` | `Bank13FCollector` (같은 코드, 클래스 속성만 교체) |
+| 의미 | 판단 | 마켓메이킹·수탁·인덱스 혼재 + **45일 지연** |
+| 저장 범위 | 전량 | `config/universe.yaml` us 로 제한 |
+
+⚠️ **은행을 확신 신호에 섞으면 틀린 값이 아니라 "변별력 0인 값"이 나온다.** 그래서 화면이
+멀쩡해 보인다. `smart_money.py` 는 `score += min(2, 보유 투자자 수)` 인데 은행 4곳은 사실상
+미국 유니버스 전체를 들고 있어(실측 2026-08-18: JPM 34,064 · BAC 18,318 · GS 14,070 ·
+Citi 11,343 포지션 / 이 테이블 **전체**는 8명 × 10분기 15,600 행) 그 항이 거의 모든 티커에서
+상수 2가 된다. `config/rules.yaml min_superinvestors` 도 같이 죽는다. 커버리지 임계(0.80)도
+딜러 행이 대신 밟아 확신 13F 수집이 죽어도 초록이 된다.
+
+⚠️ **`INSERT OR REPLACE` 는 컬럼을 빼면 기본값으로 되돌린다.** 재수집마다 `dealer` 행이
+조용히 `conviction` 으로 승격됐을 자리다 — upsert 는 `investor_class` 를 반드시 함께 쓴다.
+
+⚠️ **universe 필터는 `portfolio_pct` 계산 뒤**에 건다. 먼저 걸면 분모가 우리 유니버스 합이
+되어 비중이 부풀고 "JPM 포트폴리오의 12%" 같은 거짓이 화면에 실린다.
+
+**Test:** `tests/core/test_superinvestor_class_isolation.py` — 동작(딜러 행을 심어도
+점수·커버리지 불변)과 구조(`superinvestors` 를 읽는 모든 SQL 리터럴이 `investor_class` 를
+걸거나 사유와 함께 allowlist, 양방향)를 같이 잠근다. 뮤테이션 8종 전부 FAIL 실측.
+스윕의 한계는 명시돼 있다 — 테이블명이 f-string 변수인 쿼리(`coverage.py::_table_tickers`)는
+리터럴에 이름이 없어 안 보이므로 `_COVERAGE_FILTERS` 로 따로 처리했다.
+
 ## Macro Data Quirk
 
 `us_3m_yield` (FRED) is absent in yfinance fallback — `^IRX` (13-week T-Bill) is stored as `us_2y_yield`. `merge_macro_data()` queries `us_2y_yield` when `us_3m_yield` is empty.

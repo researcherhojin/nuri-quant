@@ -117,6 +117,7 @@ _STAGE_OF_JOB = {
     "fundamental": "collect",
     "kis_analyst_opinion": "collect",
     "superinvestors": "collect",
+    "bank_13f": "collect",
     "estimates": "collect",
     "etf_flows": "collect",
     "wallstreet": "collect",
@@ -230,6 +231,13 @@ def _dispatch_collector(name: str, **kwargs):
         from nuri.collectors.superinvestors import SuperinvestorCollector
 
         SuperinvestorCollector().run()
+    elif name == "bank_13f":
+        # 대형 은행 4곳 13F (#1098). 확신 투자자와 **같은 테이블 다른 class** 라
+        # 잡을 나눠 둔다 — 은행 쪽 EDGAR 실패가 확신 13F 수집을 같이 죽이면 안 된다.
+        # 분기 공시라 주 1회면 충분하고, 확신 수집(01:00) 뒤에 둬 EDGAR 부하를 겹치지 않는다.
+        from nuri.collectors.superinvestors import Bank13FCollector
+
+        Bank13FCollector().run(quarters=4)
     elif name == "estimates":
         from nuri.collectors.estimates import EstimatesCollector
 
@@ -780,6 +788,7 @@ SCHEDULES = [
     {"name": "kis_analyst_opinion", "func": _run_collector, "args": ("kis_analyst_opinion",), "cron": "30 0 * * 0"},
     # 슈퍼투자자 13F (주 1회 일요일 01:00)
     {"name": "superinvestors", "func": _run_collector, "args": ("superinvestors",), "cron": "0 1 * * 0"},
+    {"name": "bank_13f", "func": _run_collector, "args": ("bank_13f",), "cron": "0 2 * * 0"},
     # 애널리스트 컨센서스 (주 1회 일요일 02:00) — universe 전체 (#420).
     # universe 543 US tickers ~27s elapsed (2026-04-28 live probe 96.7% OK / 0 rate-limit).
     # universe ⊃ portfolio 이므로 별도 portfolio entry 없어도 보유종목 자동 갱신.

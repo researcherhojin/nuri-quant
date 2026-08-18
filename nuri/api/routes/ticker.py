@@ -304,7 +304,7 @@ def get_ticker_detail(symbol: str):
     # 8. 슈퍼투자자 보유
     si = query(
         "SELECT investor, portfolio_pct, filing_date FROM superinvestors "
-        "WHERE ticker=? ORDER BY portfolio_pct DESC LIMIT 5",
+        "WHERE ticker=? AND investor_class = 'conviction' ORDER BY portfolio_pct DESC LIMIT 5",
         (ticker,),
     )
     result["superinvestors"] = [dict(s) for s in si]

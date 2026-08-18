@@ -161,7 +161,9 @@ def _get_info_panel(ticker: str) -> dict:
 
     # 슈퍼투자자
     si = query(
-        "SELECT investor, portfolio_pct FROM superinvestors WHERE ticker = ? ORDER BY portfolio_pct DESC", (ticker,)
+        "SELECT investor, portfolio_pct FROM superinvestors "
+        "WHERE ticker = ? AND investor_class = 'conviction' ORDER BY portfolio_pct DESC",
+        (ticker,),
     )
     if si:
         info["superinvestors"] = [(r["investor"], r["portfolio_pct"]) for r in si[:3]]

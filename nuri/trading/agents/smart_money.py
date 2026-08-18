@@ -21,7 +21,8 @@ class SmartMoneyAgent(BaseAgent):
 
         # 1. 슈퍼투자자 보유 여부
         si_rows = self._safe_query(
-            "SELECT investor, portfolio_pct FROM superinvestors WHERE ticker = ? ORDER BY portfolio_pct DESC",
+            "SELECT investor, portfolio_pct FROM superinvestors "
+            "WHERE ticker = ? AND investor_class = 'conviction' ORDER BY portfolio_pct DESC",
             (ticker,),
             db_path,
         )
@@ -37,7 +38,7 @@ class SmartMoneyAgent(BaseAgent):
         # 2. 슈퍼투자자 포지션 변화 (NEW/INCREASED)
         change_rows = self._safe_query(
             "SELECT DISTINCT investor FROM superinvestors s1 "
-            "WHERE ticker = ? AND filing_date = ("
+            "WHERE ticker = ? AND investor_class = 'conviction' AND filing_date = ("
             "  SELECT MAX(filing_date) FROM superinvestors WHERE investor = s1.investor"
             ") AND NOT EXISTS ("
             "  SELECT 1 FROM superinvestors s2 "

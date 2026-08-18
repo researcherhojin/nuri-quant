@@ -67,7 +67,10 @@ class InvestorScorecard:
 
 def _check_data_readiness(db_path=None) -> bool:
     """과거 다분기 13F 데이터가 있는지 확인."""
-    quarters = query("SELECT DISTINCT filing_date FROM superinvestors ORDER BY filing_date", db_path=db_path)
+    quarters = query(
+        "SELECT DISTINCT filing_date FROM superinvestors WHERE investor_class = 'conviction' ORDER BY filing_date",
+        db_path=db_path,
+    )
     if len(quarters) < 2:
         logger.warning(
             f"슈퍼투자자 13F가 {len(quarters)}분기만 있습니다. "
