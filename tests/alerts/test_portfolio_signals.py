@@ -315,7 +315,14 @@ def test_cli_stages_when_not_dry_run(db_path, capsys):
     ):
         rc = portfolio_signals.main([])
     out = capsys.readouterr().out
-    assert rc == 0 and "staged 1" in out
+    # 총계가 아니라 **이 카드가 stage 됐는지**를 본다. 빈 fixture DB 는 신선도 FAIL 이
+    # 7건이라 Tier 1e 카드가 같이 나가므로 총계 단언은 무관한 이유로 깨진다 (#1090).
+    assert rc == 0 and "staged" in out
+    staged = query(
+        "SELECT COUNT(*) c FROM discord_outbox WHERE dedupe_key LIKE 'rebalance:position:TST_A:%'",
+        db_path=db_path,
+    )
+    assert staged[0]["c"] == 1
 
 
 def test_cli_no_breach(db_path, capsys):
@@ -337,7 +344,10 @@ def test_cli_shows_concentration_and_sector(db_path, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "[집중도] TST_A" in out and "[섹터] Semiconductor" in out
-    assert "staged 2" in out  # 집중도 1 + 섹터 1
+    # 총계가 아니라 두 카드의 존재를 본다 (#1090 이 Tier 1e 를 같은 CLI 에 추가).
+    for pattern in ("rebalance:position:TST_A:%", "rebalance:sector:Semiconductor:%"):
+        rows = query("SELECT COUNT(*) c FROM discord_outbox WHERE dedupe_key LIKE ?", (pattern,), db_path=db_path)
+        assert rows[0]["c"] == 1, pattern
 
 
 # ═══════════════════════════════════════════════════════
@@ -422,4 +432,94 @@ def test_cli_shows_sleeve_breach(db_path, capsys):
         rc = portfolio_signals.main([])
     out = capsys.readouterr().out
     assert rc == 0
-    assert "[슬리브] core" in out and "staged 1" in out
+    assert "[슬리브] core" in out
+    rows = query("SELECT COUNT(*) c FROM discord_outbox WHERE dedupe_key LIKE 'rebalance:sleeve:%'", db_path=db_path)
+    assert rows[0]["c"] == 1
+
+
+# ─── Tier 1e — 낡은 입력 → INPUT_STALE (#1090) ────────────────────────────────
+#
+# 포트폴리오가 15일(360.5h) 낡은 채로 지나간 적이 있다. `get_freshness_summary` 는
+# 정상 동작했지만 결과가 프리마켓 임베드 **색**으로만 표현돼, 사용자가 매일 읽는 카드
+# 스트림에는 한 줄도 뜨지 않았다. 그 사이 비중·섹터·손절 판단이 전부 낡은 보유 위에서
+# 계산됐다. 아래는 그 카드가 실제로 나가는지 · 축을 만들지 않는지 · 틀린 조치를 적지
+# 않는지를 잠근다.
+
+
+def _stale_portfolio(db_path, days: int):
+    from datetime import timedelta
+
+    from nuri.core.db import get_db
+    from nuri.core.timezone import kst_now
+
+    stamp = (kst_now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO portfolio (ticker, account, quantity, avg_price, updated_at) VALUES (?,?,?,?,?)",
+            ("TST_STALE", "Brokerage Alpha", 1, 1.0, stamp),
+        )
+
+
+def test_stale_scan_reports_fail_sources(db_path):
+    """FAIL 만 카드가 된다 — WARN 은 주말마다 발화해 소음이 되고, 소음은 읽히지 않는다."""
+    _stale_portfolio(db_path, 15)
+    keys = {e["key"] for e in portfolio_signals.scan_stale_inputs(db_path=db_path)}
+    assert "portfolio" in keys
+    assert all(e["status"] == "FAIL" for e in portfolio_signals.scan_stale_inputs(db_path=db_path))
+
+
+def test_stale_payload_carries_no_axis(db_path):
+    """축을 붙이면 소비자가 이걸 매매 신호로 읽는다 — 관측이 본 작업을 게이트하면 안 된다 (#894).
+
+    Mutation lock: payload 에 alpha_action/portfolio_action 을 넣으면 FAIL.
+    """
+    _stale_portfolio(db_path, 15)
+    entry = [e for e in portfolio_signals.scan_stale_inputs(db_path=db_path) if e["key"] == "portfolio"][0]
+    payload = portfolio_signals._build_stale_input_payload(entry, today_kst())
+    assert payload["kind"] == "INPUT_STALE"
+    assert "alpha_action" not in payload and "portfolio_action" not in payload
+    assert "price_levels" not in payload
+    assert "일 낡음" in payload["reason"]
+
+
+def test_stale_payload_gives_the_remedy_for_that_source(db_path):
+    """카드에 **틀린 조치**를 적으면 없느니만 못하다 — 가격이 낡은데 yaml 을 고치라고 하면 안 된다."""
+    _stale_portfolio(db_path, 15)
+    by_key = {e["key"]: e for e in portfolio_signals.scan_stale_inputs(db_path=db_path)}
+    port = portfolio_signals._build_stale_input_payload(by_key["portfolio"], today_kst())["reason"]
+    price = portfolio_signals._build_stale_input_payload(by_key["prices"], today_kst())["reason"]
+    assert "portfolio.yaml" in port
+    assert "portfolio.yaml" not in price, "가격 카드에 포트폴리오 조치가 붙었다"
+    assert "가격 수집" in price
+
+
+def test_missing_data_is_not_reported_as_staleness(db_path):
+    """`age_hours=None` 은 '낡음' 이 아니라 '행이 없음' 이다 — 같은 문구면 진짜 상태를 놓친다.
+
+    Mutation lock: None 분기를 지우면 포맷 문자열이 TypeError 로 죽어 FAIL.
+    """
+    entry = [e for e in portfolio_signals.scan_stale_inputs(db_path=db_path) if e["key"] == "prices"][0]
+    assert entry["age_hours"] is None
+    assert "데이터 없음" in portfolio_signals._build_stale_input_payload(entry, today_kst())["reason"]
+
+
+def test_stale_staging_is_high_priority_and_dedupes(db_path):
+    """낡은 입력은 그날 다른 카드 전부의 신뢰도를 깎으므로 REBALANCE(normal) 보다 먼저 읽혀야 한다."""
+    _stale_portfolio(db_path, 15)
+    d = today_kst()
+    first = portfolio_signals.stage_stale_input_briefs(d, db_path=db_path)
+    assert first > 0
+    assert portfolio_signals.stage_stale_input_briefs(d, db_path=db_path) == 0, "하루 1건 dedupe 안 됨"
+
+    rows = query(
+        "SELECT priority, payload_json FROM discord_outbox WHERE dedupe_key LIKE 'input-stale:portfolio:%'",
+        db_path=db_path,
+    )
+    assert rows and rows[0]["priority"] == "high"
+    assert json.loads(rows[0]["payload_json"])["kind"] == "INPUT_STALE"
+
+
+def test_fresh_inputs_stage_nothing(db_path):
+    """상시 발화하면 우회당한다 — 전부 PASS 면 카드가 없어야 한다."""
+    with patch.object(portfolio_signals, "scan_stale_inputs", return_value=[]):
+        assert portfolio_signals.stage_stale_input_briefs(today_kst(), db_path=db_path) == 0
