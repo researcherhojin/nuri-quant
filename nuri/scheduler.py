@@ -125,7 +125,9 @@ _STAGE_OF_JOB = {
     "factors": "analyze",
     # consensus — 하나뿐이며, 그 안에서 certify(record_decisions)까지 in-memory 로 이어진다
     "consensus": "consensus",
-    # track
+    # track — 반증 기준 점검은 사전등록된 기준을 사후에 채점하는 것이므로 track 이다
+    # (판단을 만들지 않는다 — Surface 전용, #1092).
+    "thesis_criteria": "track",
     "decision_pnl": "track",
     "recommendation_outcomes": "track",
     "alpha_tracking": "track",
@@ -181,6 +183,17 @@ def _dispatch_collector(name: str, **kwargs):
         from nuri.quant.factors.composite import compute_composite, save_composite
 
         return save_composite(compute_composite())
+    elif name == "thesis_criteria":
+        # 수집이 아니라 **사후 채점** 단계다 (`_STAGE_OF_JOB` 에서 track). `factors` 와
+        # 같은 이유로 이 경로를 쓴다 — 예외 격리 · 실행 기록 · 스테이지 이벤트를 공짜로
+        # 얻는다. 전용 러너로 두면 `pipeline_events` 에 아무것도 안 남아 "도는 줄 아는데
+        # 안 도는" 상태를 관측할 수 없다.
+        #
+        # **Surface 전용**: breach 는 알림·뱃지까지고 주문을 만들지 않는다 (§7.1).
+        from nuri.trading.engine.thesis_criteria import run_daily_checks
+
+        counts = run_daily_checks()
+        return counts["holding"] + counts["breached"] + counts["unevaluable"]
     elif name == "cboe":
         from nuri.collectors.cboe import CBOECollector
 
@@ -806,6 +819,8 @@ SCHEDULES = [
     # 보유 종목에 대한 add 후보 평가 (3 modes + earnings blackout). shadow_mode_until
     # 까지 held_add_shadow 테이블 only — brief surface 안 함. 14d 누적 후 2c calibration.
     {"name": "held_add_shadow", "func": _run_held_add_shadow, "args": (), "cron": "15 7 * * *"},
+    # 반증 기준 점검 (#1092) — factors(08:10) 이후라야 그날 팩터로 판정한다.
+    {"name": "thesis_criteria", "func": _run_collector, "args": ("thesis_criteria",), "cron": "20 8 * * *"},
     # 수집 데이터 타당성 점검 (07:20 — US 종가·KR 전일 수집이 모두 끝난 뒤).
     {"name": "data_sanity", "func": _run_data_sanity, "args": (), "cron": "20 7 * * *"},
     # Agent accuracy 스냅샷 (주 1회 일요일 08:00)

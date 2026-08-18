@@ -93,7 +93,9 @@ from .research_ops import (  # noqa: F401, E402
 )
 from .thesis_ops import (  # noqa: F401, E402
     ThesisValidationError,
+    add_criteria,
     get_active_thesis,
+    get_criteria,
     get_thesis_history,
     upsert_thesis,
 )

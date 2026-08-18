@@ -38,6 +38,18 @@ interface ThesisEvidence {
   quote: string | null;
 }
 
+interface ThesisCriterion {
+  id: number;
+  kind: "machine" | "human";
+  statement: string;
+  metric: string | null;
+  op: string | null;
+  threshold: number | null;
+  deadline_date: string | null;
+  last_result: "holding" | "breached" | "unevaluable" | null;
+  last_checked: string | null;
+}
+
 interface Thesis {
   id: number;
   ticker: string;
@@ -50,7 +62,22 @@ interface Thesis {
   status: string;
   verdict: string | null;
   evidence: ThesisEvidence[];
+  criteria: ThesisCriterion[];
 }
+
+// 반증 기준 판정 색. `unevaluable` 을 회색으로 두는 것이 핵심 — 초록(이상 없음)으로
+// 보이면 "측정 못 했다" 가 "지켜졌다" 로 읽히고, 그게 이 기능이 막으려는 것이다.
+const CRITERION_TONE: Record<string, string> = {
+  breached: "text-rose-500",
+  holding: "text-emerald-500",
+  unevaluable: "text-muted-foreground",
+};
+
+const CRITERION_LABEL: Record<string, string> = {
+  breached: "반증됨",
+  holding: "유지",
+  unevaluable: "측정 불가",
+};
 
 interface DecisionDetail {
   id: number;
@@ -209,6 +236,29 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   <p className="text-xs text-foreground/90 whitespace-pre-wrap">{d.thesis.bear_case}</p>
                 </div>
               </div>
+              {/* 반증 기준 (#1092) — 논지보다 이게 먼저 눈에 들어와야 한다. 무엇이
+                  사실이면 이 판단이 틀린 것인지가 사후 채점의 유일한 기준이다. */}
+              {d.thesis.criteria?.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-muted-foreground">
+                    반증 기준 ({d.thesis.criteria.length}) — 이게 사실이면 이 판단은 틀린 것
+                  </p>
+                  {d.thesis.criteria.map((c) => (
+                    <div key={c.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded px-2.5 py-1.5">
+                      <span className={`w-14 shrink-0 ${CRITERION_TONE[c.last_result ?? ""] ?? "text-muted-foreground"}`}>
+                        {c.last_result ? CRITERION_LABEL[c.last_result] : "미점검"}
+                      </span>
+                      <span className="text-foreground/90">{c.statement}</span>
+                      <span className="ml-auto shrink-0 text-[10px] text-muted-foreground font-mono">
+                        {c.kind === "machine" && c.metric
+                          ? `${c.metric} ${c.op} ${c.threshold}`
+                          : "사람 판정"}
+                        {c.last_checked ? ` · ${c.last_checked}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {d.thesis.evidence.length > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-[10px] text-muted-foreground">논지 근거 ({d.thesis.evidence.length})</p>

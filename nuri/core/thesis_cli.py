@@ -25,11 +25,26 @@ from typing import Optional
 
 import yaml
 
-from nuri.core.db import ThesisValidationError, get_active_thesis, get_thesis_history, upsert_thesis
+from nuri.core.db import (
+    ThesisValidationError,
+    add_criteria,
+    get_active_thesis,
+    get_thesis_history,
+    upsert_thesis,
+)
+
+
+def _delete_thesis(thesis_id: int, db_path: Optional[Path]) -> None:
+    """기준 등록 실패 시 논지를 되돌린다 — 반증 없는 논지를 남기지 않기 위해."""
+    from nuri.core.db import get_db
+
+    with get_db(db_path) as conn:
+        conn.execute("DELETE FROM theses WHERE id = ?", (thesis_id,))
+
 
 #: 파일에 반드시 있어야 하는 키. 없으면 어떤 것이 빠졌는지 한 번에 말한다 —
 #: KeyError 하나씩 뱉으면 사용자가 파일을 여러 번 고쳐야 한다.
-REQUIRED = ("ticker", "author", "stance", "bull_case", "bear_case", "evidence")
+REQUIRED = ("ticker", "author", "stance", "bull_case", "bear_case", "evidence", "criteria")
 
 
 def load_thesis_file(path: Path) -> dict:
@@ -47,6 +62,7 @@ def load_thesis_file(path: Path) -> dict:
         "bull_case": str(data["bull_case"]),
         "bear_case": str(data["bear_case"]),
         "evidence": list(data["evidence"]),
+        "criteria": list(data["criteria"]),
         "effective_date": data.get("effective_date"),
         "status": str(data.get("status", "draft")),
     }
@@ -58,13 +74,21 @@ def _cmd_write(path: Path, db_path: Optional[Path]) -> int:
     except (OSError, ValueError, yaml.YAMLError) as e:
         print(f"✗ {e}", file=sys.stderr)
         return 2
+    criteria = kwargs.pop("criteria")
     try:
         thesis_id = upsert_thesis(db_path=db_path, **kwargs)
+        # 기준 등록이 실패하면 **반증 없는 논지**가 남는다 — 그건 이 시스템이 막으려는
+        # 상태 자체라, 논지를 되돌리고 통째로 거부한다.
+        try:
+            n_criteria = add_criteria(thesis_id, criteria, db_path=db_path)
+        except ThesisValidationError:
+            _delete_thesis(thesis_id, db_path)
+            raise
     except ThesisValidationError as e:
         # 검증 실패는 사용자 입력 문제지 버그가 아니다 — traceback 없이 이유만.
         print(f"✗ 논지 거부: {e}", file=sys.stderr)
         return 1
-    print(f"✓ {kwargs['ticker']} 논지 기록 — id={thesis_id} status={kwargs['status']}")
+    print(f"✓ {kwargs['ticker']} 논지 기록 — id={thesis_id} status={kwargs['status']} 반증기준 {n_criteria}건")
     if kwargs["status"] == "draft":
         print("  draft 는 결정 화면에 붙지 않는다. 승격하려면 파일에 status: active 로 다시 기록.")
     return 0
@@ -84,6 +108,12 @@ def _cmd_show(ticker: str, db_path: Optional[Path]) -> int:
         print(f"\n상승: {active['bull_case']}")
         print(f"하락: {active['bear_case']}")
         print(f"근거 {len(active['evidence'])}건")
+        criteria = active.get("criteria") or []
+        print(f"반증 기준 {len(criteria)}건 — 이게 사실이면 이 판단은 틀린 것:")
+        for c in criteria:
+            state = c["last_result"] or "미점검"
+            expr = f"{c['metric']} {c['op']} {c['threshold']:g}" if c["kind"] == "machine" else "사람 판정"
+            print(f"  [{state:11s}] {c['statement']}  ({expr})")
     else:
         print("\n현재 유효한 논지 없음 (draft 만 있거나 effective_date 가 미래)")
     return 0

@@ -1616,4 +1616,55 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_thesis_evidence_thesis ON thesis_evidence(thesis_id, side);
     """,
     ),
+    (
+        52,
+        "thesis_criteria / thesis_criteria_checks — 사전등록 반증 기준 (#1092)",
+        # 논지 텍스트만 있으면 사후에 "대체로 맞았다" 로 읽힌다. **무엇이 사실이면 내가
+        # 틀린 것인가**를 미리 박아야 채점이 성립한다.
+        #
+        # `kind='machine'` 이면 metric/op/threshold 가 전부 있어야 한다 — CHECK 로 강제한다.
+        # 없는 채로 machine 을 허용하면 "자동 점검 대상" 인데 해소할 식이 없는 행이 생기고,
+        # 그건 조용히 영원히 unevaluable 이 된다.
+        #
+        # checks 는 append-only 다. 같은 기준의 판정 이력이 곧 채점 재료이므로 덮어쓰지
+        # 않는다. `UNIQUE(criterion_id, check_date)` 로 하루 1건만 둔다(재실행 멱등).
+        #
+        # `result` 에 `unevaluable` 이 **1급 값**인 것이 이 마이그레이션의 핵심이다.
+        # 측정하지 못한 것을 `holding` 으로 적으면 게이트가 있는데 안 잡는 상태가 되고,
+        # 그게 `_check_volatility_for_class` 가 넉 달간 초록이던 이유였다.
+        """
+        CREATE TABLE IF NOT EXISTS thesis_criteria (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            thesis_id INTEGER NOT NULL REFERENCES theses(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL CHECK (kind IN ('machine', 'human')),
+            statement TEXT NOT NULL,
+            metric TEXT,
+            op TEXT CHECK (op IS NULL OR op IN ('<', '<=', '>', '>=')),
+            threshold REAL,
+            deadline_date TEXT,
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'retired')),
+            created_at TEXT DEFAULT (datetime('now')),
+            CHECK (
+                kind <> 'machine'
+                OR (metric IS NOT NULL AND op IS NOT NULL AND threshold IS NOT NULL)
+            )
+        );
+        CREATE INDEX IF NOT EXISTS idx_thesis_criteria_thesis
+            ON thesis_criteria(thesis_id, status);
+
+        CREATE TABLE IF NOT EXISTS thesis_criteria_checks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            criterion_id INTEGER NOT NULL REFERENCES thesis_criteria(id) ON DELETE CASCADE,
+            check_date TEXT NOT NULL,
+            result TEXT NOT NULL CHECK (result IN ('holding', 'breached', 'unevaluable')),
+            observed REAL,
+            detail TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(criterion_id, check_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_thesis_criteria_checks_date
+            ON thesis_criteria_checks(check_date, result);
+    """,
+    ),
 ]

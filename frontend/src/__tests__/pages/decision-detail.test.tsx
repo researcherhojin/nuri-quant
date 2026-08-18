@@ -275,6 +275,78 @@ describe("DecisionProvenance", () => {
     expect(screen.getByText(/analyst\/note-4/)).toBeInTheDocument();
   });
 
+  it("renders falsification criteria and never paints unevaluable as passing", async () => {
+    // `unevaluable` 이 초록(유지)으로 보이면 "측정 못 했다" 가 "지켜졌다" 로 읽힌다 —
+    // 그게 이 기능이 막으려는 것 자체다 (#1092).
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      thesis: {
+        id: 9,
+        ticker: "AAA",
+        version: 1,
+        author: "user",
+        stance: "bullish",
+        bull_case: "수요가 공급을 앞선다",
+        bear_case: "자체 칩 전환이 점유율을 깎는다",
+        effective_date: "2026-04-01",
+        status: "active",
+        verdict: null,
+        evidence: [],
+        criteria: [
+          {
+            id: 1,
+            kind: "machine",
+            statement: "50일선 아래로 이탈하면 추세 전제가 깨진다",
+            metric: "close",
+            op: "<",
+            threshold: 90,
+            deadline_date: null,
+            last_result: "breached",
+            last_checked: "2026-08-18",
+          },
+          {
+            id: 2,
+            kind: "machine",
+            statement: "팩터 점수가 하위권으로 내려가면",
+            metric: "composite_score",
+            op: "<",
+            threshold: 0.3,
+            deadline_date: null,
+            last_result: "unevaluable",
+            last_checked: "2026-08-18",
+          },
+          {
+            id: 3,
+            kind: "human",
+            statement: "경영진이 capex 가이던스를 하향하면",
+            metric: null,
+            op: null,
+            threshold: null,
+            deadline_date: null,
+            last_result: null,
+            last_checked: null,
+          },
+        ],
+      },
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.getByText(/반증 기준 \(3\)/)).toBeInTheDocument();
+    expect(screen.getByText("반증됨")).toBeInTheDocument();
+    expect(screen.getByText("사람 판정")).toBeInTheDocument();
+    expect(screen.getByText("close < 90 · 2026-08-18")).toBeInTheDocument();
+
+    // 측정 불가는 회색이어야 한다 — 유지(emerald)와 같은 색이면 안 된다.
+    const unevaluable = screen.getByText("측정 불가");
+    expect(unevaluable.className).toContain("text-muted-foreground");
+    expect(unevaluable.className).not.toContain("emerald");
+    expect(screen.queryByText("유지")).not.toBeInTheDocument();
+    // 미점검(한 번도 안 돈 기준)도 통과처럼 보이면 안 된다.
+    expect(screen.getByText("미점검").className).toContain("text-muted-foreground");
+  });
+
   it("says the thesis is missing instead of hiding the card", async () => {
     // 논지가 비어 있다는 사실이 곧 판단 근거의 부재다 — 카드가 사라지면 그 부재가 안 보인다.
     mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, thesis: null });
