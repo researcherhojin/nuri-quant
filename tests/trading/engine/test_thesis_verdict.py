@@ -335,6 +335,62 @@ class TestRollupIsTheOnlyVerdictWriter:
             assert f"'{verdict}'" in ddl
 
 
+class TestOnlyInForceThesesAreScored:
+    """효력을 가진 적 없는 판단에 성적표를 붙이지 않는다 (Codex 리뷰 2026-08-18).
+
+    두 경로가 있었고 둘 다 재현했다: `draft` 는 사람이 승격한 적 없는 초안인데 verdict 를
+    받았고, `effective_date` 가 미래인 논지는 **발효 3개월 전부터 판정이 쌓여** `broken`
+    이 됐다. 뒤쪽이 더 나쁘다 — 있지도 않았던 기간의 반증으로 판단이 틀렸다고 적힌다.
+    """
+
+    def test_a_draft_never_gets_a_verdict(self, db_path):
+        upsert_thesis(
+            ticker="RRRR",
+            author="user",
+            stance="bullish",
+            bull_case="수요 우위",
+            bear_case="점유율 하락",
+            evidence=[{"side": "bull", "claim": "매출 증가", "source_type": "filing"}],
+            effective_date="2026-05-01",
+            status="draft",
+            db_path=db_path,
+        )
+        add_criteria(
+            query("SELECT id FROM theses WHERE ticker = 'RRRR'", db_path=db_path)[0]["id"],
+            [dict(MACHINE)],
+            db_path=db_path,
+        )
+
+        counts = tc.roll_up_verdicts(as_of=AFTER, db_path=db_path)
+
+        assert _verdict(db_path, "RRRR") is None
+        assert sum(counts.values()) == 0
+
+    def test_a_future_thesis_is_neither_checked_nor_scored(self, db_path):
+        _thesis(db_path, "SSSS", [dict(MACHINE)])
+        with get_db(db_path) as conn:
+            conn.execute("UPDATE theses SET effective_date = '2026-09-01' WHERE ticker = 'SSSS'")
+        _seed_close(db_path, "SSSS", 50.0)  # 반증 조건을 만족하는 가격
+
+        tc.run_daily_checks(as_of=BEFORE, db_path=db_path)
+        tc.roll_up_verdicts(as_of=AFTER, db_path=db_path)
+
+        assert query("SELECT COUNT(*) AS n FROM thesis_criteria_checks", db_path=db_path)[0]["n"] == 0, (
+            "발효 전 기간이 판정에 쌓였다"
+        )
+        assert _verdict(db_path, "SSSS") is None
+
+    def test_the_same_thesis_is_scored_once_effective(self, db_path):
+        """필터가 논지를 영영 묻어버리지 않는다는 카나리아 — 발효일이 지나면 채점된다."""
+        _thesis(db_path, "TTTT", [dict(MACHINE)])
+        _seed_close(db_path, "TTTT", 50.0)
+
+        tc.run_daily_checks(as_of=BEFORE, db_path=db_path)
+        tc.roll_up_verdicts(as_of=AFTER, db_path=db_path)
+
+        assert _verdict(db_path, "TTTT") == "broken"
+
+
 class TestSchedulerRunsTheRollup:
     """등록 확인이 아니라 **분기를 실행**해서 verdict 가 실제로 앉는지 본다.
 

@@ -179,11 +179,15 @@ def run_daily_checks(as_of: Optional[str] = None, db_path: Optional[Path] = None
     from nuri.core.timezone import today_kst
 
     d = as_of or today_kst()
+    # `effective_date` 를 안 보면 **발효 전 기간이 채점에 들어간다.** 9월 1일부터 유효한
+    # 논지를 오늘 써 두면 오늘부터 판정이 쌓이고, 그 중 반증 하나면 논지는 유효해지기도
+    # 전에 `broken` 이 된다 (2026-08-18 재현). 논지는 유효한 기간에 대해서만 채점한다.
     rows = query(
         """SELECT c.id, c.kind, c.metric, c.op, c.threshold, t.ticker
            FROM thesis_criteria c
            JOIN theses t ON t.id = c.thesis_id
-           WHERE c.status = 'active' AND t.status = 'active'""",
+           WHERE c.status = 'active' AND t.status = 'active' AND t.effective_date <= ?""",
+        (d,),
         db_path=db_path,
     )
     counts = {"holding": 0, "breached": 0, "unevaluable": 0}
@@ -261,11 +265,16 @@ def roll_up_verdicts(as_of: Optional[str] = None, db_path: Optional[Path] = None
     from nuri.core.timezone import today_kst
 
     d = as_of or today_kst()
+    # **효력을 가진 적 없는 논지는 채점하지 않는다.** `draft` 는 사람이 승격한 적 없는
+    # 초안이고, `effective_date` 가 미래면 아직 시작도 안 한 판단이다. 둘 다 verdict 를
+    # 받으면 원장이 "있지도 않았던 판단의 성적표" 를 갖게 된다 (Codex 리뷰 2026-08-18).
     rows = query(
         """SELECT t.id AS thesis_id, t.status, t.verdict,
                   c.id AS criterion_id, c.deadline_date
              FROM theses t
-             JOIN thesis_criteria c ON c.thesis_id = t.id AND c.status = 'active'""",
+             JOIN thesis_criteria c ON c.thesis_id = t.id AND c.status = 'active'
+            WHERE t.status <> 'draft' AND t.effective_date <= ?""",
+        (d,),
         db_path=db_path,
     )
     # 집계를 조인 안에서 하지 않는 이유: checks 는 기준당 여러 행이라 같은 쿼리에서
@@ -287,7 +296,7 @@ def roll_up_verdicts(as_of: Optional[str] = None, db_path: Optional[Path] = None
         entry = by_thesis.setdefault(r["thesis_id"], {"status": r["status"], "verdict": r["verdict"], "criteria": []})
         entry["criteria"].append({"id": r["criterion_id"], "deadline_date": r["deadline_date"]})
 
-    counts = dict.fromkeys(VERDICTS, 0)
+    counts: dict[str, int] = dict.fromkeys(VERDICTS, 0)
     updates = []
     for thesis_id, entry in by_thesis.items():
         verdict = _verdict_for(entry["status"], entry["criteria"], stats, d)
