@@ -154,14 +154,26 @@ class TestVerdict:
         assert rows["breached"]["observed"] == 80.0
         assert rows["holding"]["observed"] == 80.0
 
-    def test_checks_are_idempotent_per_day(self, db_path, thesis):
-        """append-only 지만 하루 1건이다 — 재실행이 그날 판정을 뒤집으면 사후에 알 수 없다."""
-        _seed_close(db_path, 80.0)
+    def test_rerunning_the_same_day_does_not_overwrite_the_verdict(self, db_path, thesis):
+        """하루 1건이되, **먼저 기록된 판정이 이긴다**.
+
+        행 수만 세면 `INSERT OR REPLACE` 로 바꿔도 통과한다(UNIQUE 가 여전히 1행을 지키므로)
+        — 실측으로 그 뮤테이션이 살아남았다. 진짜 계약은 **그날의 판정이 나중 실행에
+        덮이지 않는 것**이다: 덮이면 그날 무엇으로 판정했는지 사후에 알 수 없고, 채점의
+        근거가 사라진다.
+        """
+        _seed_close(db_path, 80.0)  # close < 90 → breached
         add_criteria(thesis, [_machine()], db_path=db_path)
         d = today_kst()
         tc.run_daily_checks(d, db_path=db_path)
+
+        _seed_close(db_path, 200.0)  # 같은 날 값이 뒤집혀도
         tc.run_daily_checks(d, db_path=db_path)
-        assert query("SELECT COUNT(*) c FROM thesis_criteria_checks", db_path=db_path)[0]["c"] == 1
+
+        rows = query("SELECT result, observed FROM thesis_criteria_checks", db_path=db_path)
+        assert len(rows) == 1, "하루 1건이 아니다"
+        assert rows[0]["result"] == "breached", "나중 실행이 그날 판정을 덮었다"
+        assert rows[0]["observed"] == 80.0
 
     def test_only_active_theses_are_checked(self, db_path):
         """draft/superseded 논지의 기준까지 매일 판정하면 원장이 죽은 기준으로 부푼다."""
