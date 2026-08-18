@@ -1029,6 +1029,62 @@ class TestBuyCandidatesArePersisted:
         assert [r["ticker"] for r in rows] == ["AAA"]
         assert rows[0]["source"] == "buy_candidate_emitter"
 
+    def test_a_blocked_run_still_reaches_the_candidate_ledger(self, tmp_path, monkeypatch):
+        """후보 0건이어도 미실행 원장에는 run + 사유가 남는다 (#1094).
+
+        `save_buy_candidates` 는 **발행된 후보만** 남기므로 차단된 날은 그쪽에 아무것도
+        안 남는다 — 2026-08-18 프로덕션이 정확히 그 케이스였다(regime=recovery, 후보 0).
+        그 날이 원장에서 사라지면 사후 채점이 실행한 것만 보게 된다.
+
+        Mutation lock: `record_candidate_run` 호출을 지우면 run 이 None 이라 FAIL.
+        """
+        from nuri.alerts import premarket_brief as pb
+        from nuri.core.db import get_candidate_run, init_db
+        from nuri.trading.recommend.buy_candidate_emitter import EmitResult
+
+        db = tmp_path / "brief.db"
+        init_db(db)
+
+        blocked = EmitResult(
+            regime="recovery",
+            skipped={"AAA": "held (보유 중)", "BBB": "cooldown 5d"},
+            blocked_reason="regime=recovery (방어 모드, 신규 매수 차단)",
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.buy_candidate_emitter.emit_buy_candidates",
+            lambda *a, **k: blocked,
+        )
+
+        pb._collect_context(db_path=db)
+
+        from nuri.core.timezone import today_kst
+
+        run = get_candidate_run(today_kst(), db_path=db)
+        assert run is not None, "차단된 날이 원장에 안 남았다"
+        assert run["n_emitted"] == 0 and run["n_skipped"] == 2
+        assert {r["ticker"] for r in run["ledger"]} == {"AAA", "BBB"}
+
+    def test_a_ledger_failure_does_not_break_the_brief(self, tmp_path, monkeypatch):
+        """관측이 본 작업을 게이트하면 안 된다 (#894) — 원장 실패가 브리핑을 죽이지 않는다."""
+        from nuri.alerts import premarket_brief as pb
+        from nuri.core.db import init_db
+        from nuri.trading.recommend.buy_candidate_emitter import EmitResult
+
+        db = tmp_path / "brief.db"
+        init_db(db)
+
+        def boom(*a, **k):
+            raise RuntimeError("ledger down")
+
+        monkeypatch.setattr(
+            "nuri.trading.recommend.buy_candidate_emitter.emit_buy_candidates",
+            lambda *a, **k: EmitResult(regime="bull_low_vol"),
+        )
+        monkeypatch.setattr("nuri.core.db.record_candidate_run", boom)
+
+        ctx = pb._collect_context(db_path=db)
+        assert ctx is not None, "원장 실패가 브리핑을 죽였다"
+
     def test_a_persistence_failure_does_not_break_the_brief(self, tmp_path, monkeypatch):
         """관측이 본 작업을 게이트하면 안 된다 (#894) — 기록이 터져도 브리핑은 나간다."""
         from nuri.alerts import premarket_brief as pb

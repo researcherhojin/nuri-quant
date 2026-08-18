@@ -30,6 +30,11 @@ from .audit import (  # noqa: F401, E402
     audit_log,
     log_external_llm_call,
 )
+from .candidate_ledger_ops import (  # noqa: F401, E402
+    get_candidate_run,
+    mark_acted,
+    record_candidate_run,
+)
 from .connection import (  # noqa: F401 — facade re-exports for back-compat
     DB_PATH,
     DatabaseError,

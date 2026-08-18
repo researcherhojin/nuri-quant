@@ -459,6 +459,26 @@ def test_below_threshold_blocked(db, cfg_path):
 # --- Happy path: emit + risk levels ----------------------------------------
 
 
+def test_emit_reports_the_denominator(db, cfg_path):
+    """채점 규모와 임계를 결과에 실어야 미실행 원장이 "왜 0건이었나" 를 답할 수 있다 (#1094).
+
+    이게 없으면 원장은 늘 `n_scored=0` 을 적고, "채점 대상이 0" 과 "200개 채점했는데
+    아무도 임계를 못 넘음" 이 구분되지 않는다.
+
+    Mutation lock: `result.n_scored`/`n_qualified` 대입을 지우면 0 이 되어 FAIL.
+    """
+    _seed_factor(db, "STRONG", 0.95)
+    _seed_prices(db, "STRONG", [100.0] * 25 + [110.0, 115.0, 120.0, 125.0, 130.0, 135.0])
+    _seed_rsi(db, "STRONG", 55)
+    _seed_vix(db, 20.0)
+    _seed_regime(db, "neutral")
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.n_scored >= 1, "채점 규모가 결과에 안 실렸다"
+    assert res.n_qualified >= 1
+    assert res.threshold is not None, "임계가 결과에 안 실렸다"
+
+
 def test_emit_above_threshold(db, cfg_path):
     _seed_factor(db, "STRONG", 0.95)
     _seed_prices(db, "STRONG", [100.0] * 25 + [110.0, 115.0, 120.0, 125.0, 130.0, 135.0])
