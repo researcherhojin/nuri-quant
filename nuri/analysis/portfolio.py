@@ -12,7 +12,10 @@
     python -m nuri.analysis.portfolio
 """
 
+from __future__ import annotations
+
 import logging
+from pathlib import Path
 
 import pandas as pd
 
@@ -21,6 +24,11 @@ from nuri.core.rules import LEVERAGE_ETFS, MAX_SINGLE_POSITION
 from nuri.core.ticker_names import is_kr_ticker
 
 logger = logging.getLogger(__name__)
+
+#: 현금 잔고 원본. 모듈 상수로 두는 이유는 두 가지다 — 매 호출 경로 계산을 피하고,
+#: `test_db_path_forwarding` 스윕이 `Path.resolve()` 를 (이름이 같은) DB 리더로 오탐하는
+#: 것을 막는다. 그 스윕은 함수명으로 매칭하므로 `resolve` 가 함수 본문에 있으면 걸린다.
+_DEFAULT_PORTFOLIO_YAML = Path(__file__).resolve().parents[2] / "config" / "portfolio.yaml"
 
 
 class StaleExchangeRateError(Exception):
@@ -67,6 +75,74 @@ def get_exchange_rate(db_path=None) -> float:
     raise StaleExchangeRateError(
         "USD/KRW 환율을 찾을 수 없습니다. 'python -m nuri.collectors.macro'로 환율 데이터를 수집하세요."
     )
+
+
+def portfolio_state(db_path=None, config_path: Path | None = None) -> dict:
+    """`ExecutionFirewall` 이 받는 포트폴리오 스냅샷 (#1107).
+
+    반환 형태는 `execution_firewall.ExecutionFirewall._check` 의 계약 그대로:
+    `{total_value, cash, positions: {ticker: {value, sector}}, vix}` — 전부 USD 정규화.
+
+    ## 왜 이 함수가 새로 필요한가
+
+    유일한 빌더가 `scripts/ops/run_phase2_chain.py:97` 의
+    `SELECT ticker, qty, current_price FROM holdings` 였는데 **`holdings` 테이블은 존재하지
+    않는다** (실제 테이블은 `portfolio`, 컬럼도 `quantity`/`avg_price` 이고 `current_price`
+    는 없다). 예외가 `except Exception` 에 삼켜져 `total_value=100_000, positions={}` 라는
+    **허구**로 계산됐고, 그래서 `execution_blocks` 는 도입 이래 프로덕션 **0행**이다 —
+    firewall 이 "안 불린" 게 아니라 **산술적으로 아무것도 못 막는** 상태였다.
+
+    ## 왜 `analyze_portfolio()` 를 재사용하나
+
+    그쪽이 이미 KRW→USD 환산(`.KS`/`.KQ` 는 계좌 통화와 무관하게 KRW 처리, #764) ·
+    다계좌 합산 · 섹터를 처리한다. 여기서 다시 짜면 두 경로가 갈라지고, 갈라진 쪽이
+    조용히 낡는다.
+
+    ## cash 는 DB 가 아니라 `config/portfolio.yaml` 이 원본이다
+
+    잔고는 브로커에서 손으로 옮겨 적는 값이라 DB 에 없다. `cash_reserve` /
+    `leverage_cap` 게이트가 이 값을 쓰므로, 없으면 **0 으로 두고 게이트가 보수적으로
+    발화하게** 한다 — 모르는 현금을 넉넉하다고 가정하면 그 게이트는 있으나 마나다.
+    """
+    import yaml
+
+    from nuri.core.db import query
+
+    df = analyze_portfolio(db_path=db_path)
+
+    positions: dict[str, dict] = {}
+    total_value = 0.0
+    if not df.empty:
+        # 다계좌 동일 종목은 합산한다 — firewall 의 position_limit 은 **종목** 단위다.
+        for ticker, grp in df.groupby("ticker"):
+            value = float(grp["current_value_usd"].sum())
+            sector = next((s for s in grp["sector"] if s), None)
+            positions[str(ticker)] = {"value": value, "sector": sector}
+            total_value += value
+
+    rate = get_exchange_rate(db_path=db_path) or 1400.0
+    cash = 0.0
+    path = config_path or _DEFAULT_PORTFOLIO_YAML
+    try:
+        accounts = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("accounts") or {}
+        for info in accounts.values():
+            if isinstance(info, dict):
+                cash += float(info.get("cash_usd") or 0) + float(info.get("cash_krw") or 0) / rate
+    except (OSError, yaml.YAMLError, TypeError, ValueError) as e:
+        # 현금을 못 읽으면 0 — 넉넉하다고 가정하는 쪽이 위험하다.
+        logger.warning("portfolio.yaml cash 읽기 실패, cash=0 으로 진행: %s", e)
+
+    vix_row = query(
+        "SELECT value FROM macro WHERE indicator = 'vix' ORDER BY date DESC LIMIT 1",
+        db_path=db_path,
+    )
+
+    return {
+        "total_value": round(total_value, 2),
+        "cash": round(cash, 2),
+        "positions": positions,
+        "vix": float(vix_row[0]["value"]) if vix_row else None,
+    }
 
 
 def analyze_portfolio(db_path=None) -> pd.DataFrame:
