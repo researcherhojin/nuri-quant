@@ -49,9 +49,14 @@ class TestFreshnessPolicies:
 
         # `factors` 는 #1071 에서 추가 — 정책이 없어서 2026-04-14 → 08-18 넉 달간 낡은 채로도
         # 어떤 화면에도 안 떴다. BUY 점수의 가중치 0.40 짜리 최대 입력이다.
+        # `signals` 는 #1101 에서 추가 — 커버리지가 40종목(가격 753 대비)으로 넉 달을
+        # 가고 오늘 run 이 무엇을 남기든 어떤 화면에도 안 떴다. RSI 가 BUY 점수의
+        # 0.15 가중치인데 결측이라 전 종목 중립 상수 50 이었다.
         expected = {
             "prices",
             "factors",
+            "signals",
+            "signals_kr",
             "macro_vix",
             "macro_fear_greed",
             "consensus",
@@ -200,6 +205,150 @@ class TestCheckFreshness:
         result = check_freshness("factors", db_path=db_path)
         assert result["status"] == "FAIL"
         assert result["label"] == "멀티팩터 스코어"
+
+    #: 멤버 기반 픽스처 universe — 검사가 **구성된 멤버만** 세므로 시드도 멤버 이름으로.
+    _US = [f"U{i:04d}" for i in range(500)]
+    _KR = [f"K{i:04d}.KS" for i in range(150)] + [f"Q{i:04d}.KQ" for i in range(50)]
+
+    @pytest.fixture(autouse=True)
+    def _fixture_universe(self, monkeypatch):
+        import nuri.core.coverage as cov
+
+        monkeypatch.setattr(cov, "_load_universe", lambda path=None: {"us": set(self._US), "kr": set(self._KR)})
+
+    def _seed_signals(self, db_path, date: str, tickers):
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO signals (ticker, date, rsi_14) VALUES (?, ?, 55.0)",
+                [(t, date) for t in tickers],
+            )
+
+    def test_stale_signals_surface_instead_of_going_unnoticed(self, db_path):
+        """낡은 기술 지표가 FAIL 로 뜬다 (#1101).
+
+        프로덕션에서 `signals` 는 40종목(가격 753 대비)으로 넉 달을 갔고 정책이 없어서
+        어떤 화면에도 안 떴다. RSI 는 BUY 점수의 0.15 가중치인데 99.1% 결측이라 전 종목
+        중립 상수였다 — 틀린 값이 아니라 변별력 0 인 값이라 아무것도 이상해 보이지 않았다.
+
+        Mutation lock: `FRESHNESS_POLICIES` 에서 `signals` 를 빼면 KeyError 로 FAIL.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now
+
+        old = (kst_now() - timedelta(days=40)).strftime("%Y-%m-%d")
+        self._seed_signals(db_path, old, self._US)
+
+        result = check_freshness("signals", db_path=db_path)
+        assert result["status"] == "FAIL"
+        assert result["label"] == "기술 지표 (US)"
+
+    def test_partial_coverage_cannot_keep_signals_green(self, db_path):
+        """보유 18종목만 갱신된 날은 신선한 것으로 안 친다 (#1101 Codex 1차).
+
+        맨 `MAX(date)` 였다면 이 18행이 날짜를 끌어올려 초록이 됐다 — 이 정책이 잡으려는
+        부분 커버리지 퇴행(40종목으로 넉 달)을 정확히 못 보는 형태다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        self._seed_signals(db_path, today_kst(), self._US[:18])
+
+        result = check_freshness("signals", db_path=db_path)
+        assert result["status"] == "FAIL", "부분 커버리지가 신선함으로 통했다"
+
+    def test_a_dead_kr_slice_cannot_hide_behind_fresh_us_rows(self, db_path):
+        """US 가 신선해도 KR 이 죽었으면 `signals_kr` 은 FAIL (#1101 Codex 2차).
+
+        정책이 하나였다면 US 슬라이스 단독으로 floor 를 넘겨 KR 계산이 전면 정지해도
+        초록이었다 — 한 시장의 outage 가 다른 시장 뒤에 숨는 형태다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now, today_kst
+
+        self._seed_signals(db_path, today_kst(), self._US)  # US 신선
+        old = (kst_now() - timedelta(days=40)).strftime("%Y-%m-%d")
+        self._seed_signals(db_path, old, self._KR)  # KR 40일 정지
+
+        assert check_freshness("signals", db_path=db_path)["status"] == "PASS"
+        assert check_freshness("signals_kr", db_path=db_path)["status"] == "FAIL"
+
+    def test_off_universe_holdings_cannot_prop_up_the_floor(self, db_path):
+        """universe 밖 보유 종목은 커버리지에 안 센다 (#1101 Codex 7차).
+
+        전 행을 세는 방식이면 비상장·개인 보유 이름이 floor 를 떠받쳐 "구성된 채점
+        universe 가 낡았는데 PASS" 가 된다. 멤버 IN 제한이 그 경로를 막는다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        outsiders = [f"X{i:04d}" for i in range(400)]  # universe 밖 400행
+        self._seed_signals(db_path, today_kst(), outsiders)
+
+        assert check_freshness("signals", db_path=db_path)["status"] == "FAIL", "universe 밖 행이 floor 를 떠받쳤다"
+
+    def test_kosdaq_members_count_as_kr(self, db_path):
+        """`.KQ` 멤버도 KR 커버리지에 센다 — `.KS` 만 세면 KOSDAQ 몫이 영구 결손이 된다."""
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        self._seed_signals(db_path, today_kst(), self._KR)  # .KS 150 + .KQ 50 전부
+
+        assert check_freshness("signals_kr", db_path=db_path)["status"] == "PASS"
+
+    def test_the_floor_tracks_the_configured_universe(self, monkeypatch, db_path):
+        """floor 는 상수가 아니라 config 도출이다 (Codex 6차).
+
+        400/150 을 박으면 universe 를 줄인 설치(us_core 만 쓰는 환경, KR 슬리브 없는 레포)
+        에서 잡이 멀쩡해도 영구 FAIL 이다. universe 를 30종목으로 줄이면 그 30종목
+        커버리지가 통과해야 한다.
+        """
+        import nuri.core.coverage as cov
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        small = [f"S{i:03d}" for i in range(30)]
+        monkeypatch.setattr(cov, "_load_universe", lambda path=None: {"us": set(small), "kr": set()})
+        self._seed_signals(db_path, today_kst(), small)
+
+        assert check_freshness("signals", db_path=db_path)["status"] == "PASS"
+
+    def test_the_floor_rounds_up_not_down(self, monkeypatch, db_path):
+        """floor 는 올림이다 (Codex 7차) — 내림이면 3종목 universe 에서 1행(33%)이 통과한다."""
+        import nuri.core.coverage as cov
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        tiny = ["A1", "A2", "A3"]
+        monkeypatch.setattr(cov, "_load_universe", lambda path=None: {"us": set(tiny), "kr": set()})
+        self._seed_signals(db_path, today_kst(), tiny[:1])  # 1/3 = 33% < 60%
+
+        assert check_freshness("signals", db_path=db_path)["status"] == "FAIL", (
+            "33% 커버리지가 통과했다 — floor 가 내림이다"
+        )
+
+    def test_an_unconfigured_market_is_skipped_not_red_forever(self, monkeypatch, db_path):
+        """universe 미구성 시장은 검사 생략 (Codex 6차) — KR 슬리브 없는 설치가 영구
+        빨강이면 아무도 안 본다. '신선' 이 아니라 '해당 없음' 이라 메시지로 구분한다."""
+        import nuri.core.coverage as cov
+        from nuri.core.freshness import check_freshness
+
+        monkeypatch.setattr(cov, "_load_universe", lambda path=None: {"us": {"A1"}, "kr": set()})
+
+        result = check_freshness("signals_kr", db_path=db_path)
+        assert result["status"] == "PASS"
+        assert "미구성" in result["message"]
+
+    def test_full_coverage_today_passes(self, db_path):
+        """정상 갱신은 통과 — 가드가 상시 FAIL 이면 아무도 안 본다."""
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        self._seed_signals(db_path, today_kst(), self._US)
+
+        result = check_freshness("signals", db_path=db_path)
+        assert result["status"] == "PASS"
 
     def test_recent_factors_pass(self, db_path):
         """정상 갱신은 통과 — 가드가 상시 FAIL 이면 아무도 안 본다.

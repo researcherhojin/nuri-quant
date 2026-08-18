@@ -33,6 +33,45 @@ FRESHNESS_POLICIES = {
         "fail_hours": 120,
         "label": "멀티팩터 스코어",
     },
+    # `signals` 는 시장별 두 정책이다 (#1101). BUY 점수의 0.15 가중치(RSI)와 SIEGE 게이트
+    # 일부가 읽는 테이블인데 정책이 없어서 커버리지가 40종목(가격 753 대비)으로 넉 달을
+    # 갔고, 오늘 run 이 무엇을 남기든 어떤 화면에도 안 떴다.
+    #
+    # 맨 `MAX(date)` 로는 부족하다 (Codex 1차): 잡이 보유 18종목만 갱신해도 그 몇 행이
+    # 날짜를 끌어올려 초록이 된다. 그래서 **`config/universe.yaml` 해당 시장 멤버의 60%
+    # 이상이 계산된 날짜 중 최신**만 센다. 멤버 목록·floor 전부 판정 시점에 config 에서
+    # 도출한다 (`check_freshness` 의 `floor_from` 처리):
+    # - 하나로 합치지 않는다 (2차): KR/US 는 서로 다른 날짜로 갈라져 합산 floor 는 US
+    #   단독으로 넘는다 — KR 전면 정지가 US 뒤에 숨는다
+    # - 상수 floor 금지 (6차): universe 를 줄인 설치가 영구 FAIL 이 된다
+    # - **멤버 IN 제한** (7차): 전 행을 세면 universe 밖 보유 종목이 floor 를 떠받쳐
+    #   "구성된 채점 universe 가 낡았는데 PASS" 가 가능하다. 멤버로 제한하면 시장 구분도
+    #   universe 자체가 하므로 별도 LIKE 필터가 필요 없다
+    # - universe 미구성 시장은 검사 생략 — KR 슬리브 없는 설치가 영구 빨강이면 아무도 안 본다
+    "signals": {
+        "query": (
+            "SELECT MAX(date) FROM (SELECT date FROM signals "
+            "WHERE ticker IN ({placeholders}) "
+            "GROUP BY date HAVING COUNT(*) >= {floor})"
+        ),
+        "floor_from": "us",
+        "warn_hours": 48,
+        "fail_hours": 120,
+        "label": "기술 지표 (US)",
+    },
+    "signals_kr": {
+        # 임계는 prices 와 같은 48/120 — 설날·추석 연휴에는 정직하게 WARN/FAIL 이 뜬다
+        # (시장이 닫혀 지표가 실제로 낡은 상태다).
+        "query": (
+            "SELECT MAX(date) FROM (SELECT date FROM signals "
+            "WHERE ticker IN ({placeholders}) "
+            "GROUP BY date HAVING COUNT(*) >= {floor})"
+        ),
+        "floor_from": "kr",
+        "warn_hours": 48,
+        "fail_hours": 120,
+        "label": "기술 지표 (KR)",
+    },
     "macro_fear_greed": {
         "query": "SELECT MAX(date) FROM macro WHERE indicator = 'fear_greed'",
         "warn_hours": 24,
@@ -106,8 +145,32 @@ def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
     policy = FRESHNESS_POLICIES[key]
     now = kst_now()
 
+    sql = policy["query"]
+    params: tuple = ()
+    if "floor_from" in policy:
+        import math
+
+        from nuri.core.coverage import _load_universe
+
+        # 커버리지 검사는 **구성된 universe 멤버**만 센다 — 전 행을 세면 universe 밖
+        # 보유 종목이 floor 를 떠받친다. floor 는 멤버의 60%, **올림** — 내림이면 작은
+        # universe 에서 33~58% 커버리지가 초록으로 통한다 (Codex 7차).
+        members = sorted(_load_universe().get(policy["floor_from"]) or ())
+        if not members:
+            return {
+                "key": key,
+                "label": policy["label"],
+                "status": "PASS",
+                "last_updated": None,
+                "age_hours": None,
+                "message": "해당 시장 universe 미구성 — 검사 생략",
+            }
+        floor = max(1, math.ceil(len(members) * 0.6))
+        sql = sql.format(placeholders=", ".join("?" * len(members)), floor=floor)
+        params = tuple(members)
+
     try:
-        rows = query(policy["query"], db_path=db_path)
+        rows = query(sql, params, db_path=db_path)
     except Exception:
         return {
             "key": key,

@@ -141,19 +141,30 @@ def _dispatch_collector(name: str, **kwargs):
     if name == "stock":
         from nuri.collectors.stock import StockCollector
 
-        StockCollector().run(**kwargs)
+        # `return` 이 없으면 collector_runs 에 rows_collected=0 으로 남는다 — #1101 이
+        # 추가한 일일 universe refresh 잡이 매일 no-op 처럼 보인다. 나머지 분기는 #1105.
+        return StockCollector().run(**kwargs)
     elif name == "stock_kr":
         from nuri.collectors.stock_kr import StockKRCollector
 
-        StockKRCollector().run(**kwargs)
+        return StockKRCollector().run(**kwargs)
     elif name == "macro":
         from nuri.collectors.macro import MacroCollector
 
         MacroCollector().run()
     elif name == "technical":
+        # `source="all"` (portfolio ∪ universe) — 기본값(portfolio)이면 signals 가 보유
+        # 18종목에 갇혀 BUY 점수의 0.15 가중치(RSI)가 736 채점 대상 중 99.1% 에서 중립
+        # 상수 50 이 된다 (#1101). universe 모드는 #272 부터 있었는데 여기서 안 불러
+        # 도달 불가였다. 이 수집기는 prices 테이블만 읽는 순수 계산이라(네트워크 0)
+        # 확장 비용은 CPU 뿐이고, prices <14일 종목은 0.8% (MAX_FAILURE_RATE 10% 이내,
+        # 2026-08-18 실측 751/757).
+        #
+        # `return` 이 없으면 `_record_collector_run` 에 None 이 넘어가 collector_runs 에
+        # `rows_collected=0` 으로 남는다 — 오늘 17건을 저장하고도 0 으로 기록됐다.
         from nuri.collectors.technical import TechnicalCollector
 
-        TechnicalCollector().run()
+        return TechnicalCollector().run(source="all")
     elif name == "fear_greed":
         from nuri.collectors.fear_greed import FearGreedCollector
 
@@ -922,6 +933,39 @@ SCHEDULES = [
         "kwargs": {"period": "5d", "source": "freshness"},
         "cron": "10,40 6 * * 2-6",
     },
+    # 일일 universe 가격 refresh (#1101 Codex P1). 주간 backfill 만으로는 universe-only
+    # 727종목의 prices 가 주중 1~6일 stale 로 남는다 (2026-08-18 실측: 727/732 가
+    # 일요일 backfill 이 남긴 금요일 날짜에 정지). 그 위에서 계산한 RSI/SMA 는 날짜가
+    # 어긋나 `_get_rsi_snapshot` 스냅샷에도 못 들어간다 — technical 을 universe 로
+    # 넓혀도(아래 07:00) 이 잡이 없으면 emitter 는 여전히 보유분만 읽는다.
+    #
+    # ⚠️ 분(minute)은 기존 폴링과의 충돌을 피해 고른 값이다 (Codex 4차):
+    # - US 06:17 — `stock_us_dawn`(*/5, 0-6시)이 5의 배수 분마다 도는데 06:20 으로 두면
+    #   같은 분에 StockCollector 두 개가 동시 기동한다. 5의 배수가 아닌 분 + 06:15 폴
+    #   (보유 ~8종목, 수 초) 종료 후. yfinance 는 병렬 안전이라 잔여 겹침은 무해하다.
+    # - KR 16:00 — `stock_kr`(*/5, 9-15시)의 시간 범위 **밖**이라 겹침이 0 이다. 15시대에
+    #   두면 pykrx sequential 두 개가 동시에 돌아 KRX 순차 불변식(collectors/CLAUDE.md)을
+    #   그대로 위반한다. 장 마감(15:30) 후라 종가도 확정돼 있다.
+    {
+        "name": "stock_us_universe_daily",
+        "func": _run_collector,
+        "args": ("stock",),
+        "kwargs": {"period": "5d", "source": "all"},
+        "cron": "17 6 * * 2-6",
+    },
+    {
+        "name": "stock_kr_universe_daily",
+        "func": _run_collector,
+        "args": ("stock_kr",),
+        "kwargs": {"days": 5, "source": "all"},
+        "cron": "0 16 * * 1-5",
+    },
+    # KR 마감 후 technical 재계산 (#1101 Codex P2). 위 16:00 가격 refresh 는 prices 만
+    # 갱신한다 — signals 를 만드는 technical 이 07:00 하루 한 번이면 KR 종가 반영 지표는
+    # 다음날 아침까지 안 나온다(가격은 갔는데 소비 지점에 안 닿는, 이 PR 이 두 번 밟을 뻔한
+    # 모양). 16:25 는 pykrx sequential(~200종목, 3~7분)의 여유분. 순수 CPU 계산이라
+    # 하루 두 번이 싸고, upsert 라 US 행은 같은 값으로 덮일 뿐이다.
+    {"name": "technical_close_kr", "func": _run_collector, "args": ("technical",), "cron": "25 16 * * 1-5"},
     # 일일 자가 재시작 (#780) — KST 08:40, 모닝 배치(07-08) 종료 후·KR 개장(09:00) 전 idle
     # window. yfinance fd 누수를 fresh 프로세스 교체로 회수 (plist 4096 천장도 결국 고갈).
     {"name": "self_restart", "func": _self_restart, "args": (), "cron": "40 8 * * *"},
