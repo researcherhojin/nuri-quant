@@ -151,9 +151,18 @@ def _dispatch_collector(name: str, **kwargs):
 
         MacroCollector().run()
     elif name == "technical":
+        # `source="all"` (portfolio ∪ universe) — 기본값(portfolio)이면 signals 가 보유
+        # 18종목에 갇혀 BUY 점수의 0.15 가중치(RSI)가 736 채점 대상 중 99.1% 에서 중립
+        # 상수 50 이 된다 (#1101). universe 모드는 #272 부터 있었는데 여기서 안 불러
+        # 도달 불가였다. 이 수집기는 prices 테이블만 읽는 순수 계산이라(네트워크 0)
+        # 확장 비용은 CPU 뿐이고, prices <14일 종목은 0.8% (MAX_FAILURE_RATE 10% 이내,
+        # 2026-08-18 실측 751/757).
+        #
+        # `return` 이 없으면 `_record_collector_run` 에 None 이 넘어가 collector_runs 에
+        # `rows_collected=0` 으로 남는다 — 오늘 17건을 저장하고도 0 으로 기록됐다.
         from nuri.collectors.technical import TechnicalCollector
 
-        TechnicalCollector().run()
+        return TechnicalCollector().run(source="all")
     elif name == "fear_greed":
         from nuri.collectors.fear_greed import FearGreedCollector
 

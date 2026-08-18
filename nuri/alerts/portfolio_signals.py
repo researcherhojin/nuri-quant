@@ -280,6 +280,7 @@ _REMEDY: dict[str, str] = {
     "factors": "팩터 합성 잡 상태 확인 — BUY 점수의 최대 입력이다",
     "macro_vix": "VIX 수집 확인 — VIX 게이트가 이 값으로 신규 매수를 막는다",
     "macro_fear_greed": "Fear & Greed 수집 확인",
+    "signals": "technical 잡(07:00) 확인 — RSI/SMA 가 BUY 점수와 SIEGE 게이트에 들어간다",
     "consensus": "합의 잡(07:05) 실행 여부 확인",
     "certification": "SIEGE 인증 실행 여부 확인",
 }

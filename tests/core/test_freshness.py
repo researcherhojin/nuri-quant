@@ -49,9 +49,13 @@ class TestFreshnessPolicies:
 
         # `factors` 는 #1071 에서 추가 — 정책이 없어서 2026-04-14 → 08-18 넉 달간 낡은 채로도
         # 어떤 화면에도 안 떴다. BUY 점수의 가중치 0.40 짜리 최대 입력이다.
+        # `signals` 는 #1101 에서 추가 — 커버리지가 40종목(가격 753 대비)으로 넉 달을
+        # 가고 오늘 run 이 무엇을 남기든 어떤 화면에도 안 떴다. RSI 가 BUY 점수의
+        # 0.15 가중치인데 결측이라 전 종목 중립 상수 50 이었다.
         expected = {
             "prices",
             "factors",
+            "signals",
             "macro_vix",
             "macro_fear_greed",
             "consensus",
@@ -200,6 +204,30 @@ class TestCheckFreshness:
         result = check_freshness("factors", db_path=db_path)
         assert result["status"] == "FAIL"
         assert result["label"] == "멀티팩터 스코어"
+
+    def test_stale_signals_surface_instead_of_going_unnoticed(self, db_path):
+        """낡은 기술 지표가 FAIL 로 뜬다 (#1101).
+
+        프로덕션에서 `signals` 는 40종목(가격 753 대비)으로 넉 달을 갔고 정책이 없어서
+        어떤 화면에도 안 떴다. RSI 는 BUY 점수의 0.15 가중치인데 99.1% 결측이라 전 종목
+        중립 상수였다 — 틀린 값이 아니라 변별력 0 인 값이라 아무것도 이상해 보이지 않았다.
+
+        Mutation lock: `FRESHNESS_POLICIES` 에서 `signals` 를 빼면 KeyError 로 FAIL.
+        """
+        from nuri.core.db import get_db
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now
+
+        old = (kst_now() - timedelta(days=40)).strftime("%Y-%m-%d")
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO signals (ticker, date, rsi_14) VALUES (?, ?, 55.0)",
+                ("AAA", old),
+            )
+
+        result = check_freshness("signals", db_path=db_path)
+        assert result["status"] == "FAIL"
+        assert result["label"] == "기술 지표"
 
     def test_recent_factors_pass(self, db_path):
         """정상 갱신은 통과 — 가드가 상시 FAIL 이면 아무도 안 본다.

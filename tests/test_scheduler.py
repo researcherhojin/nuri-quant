@@ -1389,3 +1389,38 @@ class TestFactorCompositeWired:
             f"factors({crons['factors']}) 가 fear_greed({crons['fear_greed']}) 보다 이르다"
         )
         assert crons["factors"].split()[2:] == ["*", "*", "*"], "매일 돌아야 한다 (소비자는 매 거래일 발행)"
+
+
+class TestTechnicalCoversTheScoringUniverse:
+    """technical 잡이 채점 유니버스를 덮고, 수집량을 정직하게 기록한다 (#1101).
+
+    universe 모드는 #272 부터 있었는데 스케줄러가 인자 없이 불러(기본 portfolio) 도달
+    불가였다 — `signals` 가 보유 18종목에 갇혀 BUY 점수의 0.15 가중치(RSI)가 736 채점
+    대상의 99.1% 에서 중립 상수 50 이었다. "배선은 됐는데 아무도 도달 못 하는" 클래스
+    (`held_add_shadow`, `/api/alpha` 와 동일).
+    """
+
+    def test_dispatch_expands_to_the_full_universe(self):
+        """`source="all"` (portfolio ∪ universe) 로 부른다 — 기본값이면 18종목이다."""
+        from nuri.scheduler import _dispatch_collector
+
+        mock_collector = MagicMock()
+        with patch("nuri.collectors.technical.TechnicalCollector", return_value=mock_collector):
+            _dispatch_collector("technical")
+
+        mock_collector.run.assert_called_once_with(source="all")
+
+    def test_dispatch_returns_the_saved_count(self):
+        """반환이 없으면 `collector_runs.rows_collected` 가 0 으로 남는다.
+
+        2026-08-18 실측: 17건을 저장한 run 이 `rows_collected=0 status=finished` 로
+        기록됐다 — 관측 테이블(#975)이 이 잡에 한해 장식이었다.
+        """
+        from nuri.scheduler import _dispatch_collector
+
+        mock_collector = MagicMock()
+        mock_collector.run.return_value = 751
+        with patch("nuri.collectors.technical.TechnicalCollector", return_value=mock_collector):
+            got = _dispatch_collector("technical")
+
+        assert got == 751
