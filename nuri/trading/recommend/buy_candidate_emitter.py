@@ -230,8 +230,14 @@ def _get_price_signals(db_path=None) -> dict[str, dict[str, float]]:
         recent = closes[-30:] if len(closes) >= 30 else closes
         high_30d = max(recent)
         low_30d = min(recent)
-        # breakout % = (last - high_30d) / high_30d. Positive = above prior high.
-        breakout_pct = (last / high_30d - 1.0) * 100.0 if high_30d else 0.0
+        # 돌파는 **직전** 고점 대비다. 오늘 종가를 포함한 `high_30d` 와 비교하면
+        # `high_30d >= last` 가 항상 참이라 `breakout_pct` 가 **양수가 될 수 없다**.
+        # 그러면 `_score_ticker` 의 `bo >= 0 → 70 + bo*10` 분기가 오직 70 만 반환해
+        # 70~100 구간이 통째로 죽고, 0.20 가중치의 최대 기여가 20 이 아니라 14 가 된다.
+        # 프로덕션 실측(2026-08-18): 753종목 중 `breakout_pct > 0` **0건**, max 정확히
+        # 0.0000. 그 14 가 BUY 임계 70 을 도달 불가로 만든 세 원인 중 하나였다 (#1100).
+        prior_high = max(closes[-31:-1]) if len(closes) >= 2 else last
+        breakout_pct = (last / prior_high - 1.0) * 100.0 if prior_high else 0.0
         out[ticker] = {
             "close": last,
             "ret_5d": ret_5d,
