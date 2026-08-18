@@ -179,10 +179,7 @@ class TestSuperinvestorCollectorEdgarFlow:
         mock_company = MagicMock()
         mock_company.get_filings.return_value = mock_filings
 
-        # 모듈 상수가 아니라 **클래스 속성**을 패치한다 — `collect()` 가 `self.investors`
-        # 를 읽으므로(#1098 은행 수집기가 같은 코드를 재사용한다) 모듈 상수 패치는
-        # 클래스 정의 시점에 이미 바인딩된 값을 바꾸지 못한다.
-        with patch.object(SuperinvestorCollector, "investors", {"TestInvestor": "0001234567"}):
+        with patch("nuri.collectors.superinvestors.SUPERINVESTORS", {"TestInvestor": "0001234567"}):
             with patch("edgar.set_identity"):
                 with patch("edgar.Company", return_value=mock_company):
                     c = SuperinvestorCollector()

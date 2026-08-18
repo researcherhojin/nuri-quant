@@ -249,3 +249,120 @@ class TestDealerRowsAreStillReachable:
         with get_db(db_path) as conn:
             n = conn.execute("SELECT COUNT(*) FROM superinvestors WHERE investor_class = ?", (DEALER,)).fetchone()[0]
         assert n == 4
+
+
+class TestRegistryResolvesAtRuntime:
+    """`investors` 는 호출 시점에 읽는다 — 클래스 속성에 상수를 박으면 안 된다 (Codex P1).
+
+    `investors: dict = SUPERINVESTORS` 는 **클래스 정의 시점** 바인딩이라 모듈 상수를
+    갈아끼워도 `collect()` 가 못 본다. 레지스트리를 좁히는 테스트 18곳이 그러면 조용히
+    8명 전체를 돌면서 **통과**한다 — 틀린 결과가 아니라 무의미한 결과라 눈에 안 띈다.
+    """
+
+    def test_patching_the_module_constant_narrows_collect(self, monkeypatch):
+        from unittest.mock import MagicMock, patch
+
+        from nuri.collectors.superinvestors import SuperinvestorCollector
+
+        monkeypatch.setattr("nuri.collectors.superinvestors.SUPERINVESTORS", {"Only One": "0000000001"})
+        seen = []
+
+        def _company(cik):
+            seen.append(cik)
+            m = MagicMock()
+            m.get_filings.return_value = []
+            return m
+
+        with patch("edgar.set_identity"), patch("edgar.Company", side_effect=_company):
+            SuperinvestorCollector().collect(quarters=1)
+
+        assert seen == ["0000000001"], f"레지스트리가 안 좁혀졌다 — {len(seen)}곳을 돌았다"
+
+    def test_the_bank_collector_still_overrides_it(self):
+        from nuri.collectors.superinvestors import BANK_13F, Bank13FCollector
+
+        assert Bank13FCollector().investors == BANK_13F
+
+
+class TestUniverseFilterRunsAfterTheWeight:
+    """universe 로 좁히되 `portfolio_pct` 는 **실제 포트폴리오 대비** 비중이어야 한다.
+
+    필터를 비중 계산 **앞**에 두면 분모가 우리 유니버스 합이 되어 비중이 부풀고, 화면에
+    "JPM 포트폴리오의 12%" 같은 거짓이 실린다. 실제로는 0.3% 인데 말이다. 그 오류는
+    숫자가 그럴듯해서 검토로는 절대 안 걸린다.
+    """
+
+    def _collect(self, universe):
+        from unittest.mock import MagicMock, patch
+
+        import pandas as pd
+
+        from nuri.collectors.superinvestors import Bank13FCollector
+
+        infotable = pd.DataFrame(
+            {
+                "Ticker": ["AAAA", "BBBB", "CCCC"],
+                "Value": [10e6, 30e6, 60e6],
+                "SharesPrnAmount": [100.0, 300.0, 600.0],
+                "Issuer": ["A Corp", "B Corp", "C Corp"],
+            }
+        )
+        filing = MagicMock()
+        filing.filing_date = "2026-05-15"
+        filing.obj.return_value = MagicMock(infotable=infotable)
+        filings = MagicMock()
+        filings.__len__ = lambda self: 1
+        filings.__getitem__ = lambda self, i: [filing][i]
+        filings.__bool__ = lambda self: True
+        company = MagicMock()
+        company.get_filings.return_value = filings
+
+        collector = Bank13FCollector()
+        collector.investors = {"Test Bank": "0000000001"}
+        collector.universe = universe
+        with patch("edgar.set_identity"), patch("edgar.Company", return_value=company):
+            return collector.collect(quarters=1)
+
+    def test_out_of_universe_tickers_are_dropped(self):
+        got = self._collect({"AAAA"})
+
+        assert [r["ticker"] for r in got] == ["AAAA"]
+
+    def test_the_kept_weight_is_of_the_whole_portfolio(self):
+        """AAAA 는 전체 1억 중 1천만 = 10%. 유니버스만 세면 100% 로 부푼다."""
+        got = self._collect({"AAAA"})
+
+        assert got[0]["portfolio_pct"] == pytest.approx(10.0)
+        assert got[0]["investor_class"] == DEALER
+
+    def test_no_universe_keeps_everything(self):
+        assert len(self._collect(None)) == 3
+
+
+class TestSchedulerRunsTheBankCollector:
+    """잡을 등록만 하고 dispatcher 분기가 없으면 조용히 안 돈다 — 분기를 실행해서 본다."""
+
+    def test_dispatch_reaches_the_bank_collector(self):
+        from unittest.mock import patch
+
+        import nuri.scheduler as sch
+
+        with patch("nuri.collectors.superinvestors.Bank13FCollector.run") as run:
+            sch._dispatch_collector("bank_13f")
+
+        run.assert_called_once()
+        assert run.call_args.kwargs.get("quarters"), "분기 수를 안 넘기면 기본 8분기가 돈다"
+
+    def test_the_job_is_registered_and_staged(self):
+        import nuri.scheduler as sch
+
+        assert sch._STAGE_OF_JOB["bank_13f"] == "collect"
+        scheduled = {j["args"][0] for j in sch.SCHEDULES if j.get("func") is sch._run_collector and j.get("args")}
+        assert "bank_13f" in scheduled
+
+    def test_the_bank_job_is_separate_from_the_conviction_job(self):
+        """한 잡에 합치면 은행 쪽 EDGAR 실패가 확신 13F 수집까지 같이 죽인다."""
+        import nuri.scheduler as sch
+
+        jobs = {j["args"][0]: j["cron"] for j in sch.SCHEDULES if j.get("func") is sch._run_collector and j.get("args")}
+        assert jobs["bank_13f"] != jobs["superinvestors"]

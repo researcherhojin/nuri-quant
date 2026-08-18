@@ -59,8 +59,11 @@ EDGAR_IDENTITY = "Nuri-Quant research@nuri-quant.dev"
 class SuperinvestorCollector(BaseCollector):
     """SEC EDGAR 13F로 슈퍼투자자 포트폴리오 수집."""
 
-    #: 수집 대상과 분류. 서브클래스가 갈아끼운다.
-    investors: dict = SUPERINVESTORS
+    #: 수집 대상. **`None` 이면 호출 시점에 `SUPERINVESTORS` 를 읽는다** — 클래스 속성에
+    #: 상수를 바로 박으면 정의 시점 바인딩이라 모듈 상수를 갈아끼워도 반영되지 않는다
+    #: (테스트 18곳이 그 방식으로 레지스트리를 좁힌다. 조용히 8명 전체를 돌면서 통과한다).
+    #: 서브클래스는 명시로 덮는다.
+    investors: Optional[dict] = None
     investor_class: str = CONVICTION
     #: `None` 이면 전량 저장. set 이면 그 티커만 — 은행 13F 전량 미러를 막는다.
     universe: Optional[set] = None
@@ -84,7 +87,7 @@ class SuperinvestorCollector(BaseCollector):
         succeeded: list[str] = []
         failed: list[str] = []
 
-        investors_list = list(self.investors.items())
+        investors_list = list((self.investors if self.investors is not None else SUPERINVESTORS).items())
         self.logger.info(
             f"13F 수집({self.investor_class}): {len(investors_list)}곳, 최근 {num_quarters}분기"
             + (f", universe {len(self.universe)}종목으로 제한" if self.universe is not None else "")
