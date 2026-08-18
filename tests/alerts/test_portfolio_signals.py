@@ -461,11 +461,39 @@ def _stale_portfolio(db_path, days: int):
 
 
 def test_stale_scan_reports_fail_sources(db_path):
-    """FAIL 만 카드가 된다 — WARN 은 주말마다 발화해 소음이 되고, 소음은 읽히지 않는다."""
+    """FAIL 은 카드가 된다."""
     _stale_portfolio(db_path, 15)
     keys = {e["key"] for e in portfolio_signals.scan_stale_inputs(db_path=db_path)}
     assert "portfolio" in keys
     assert all(e["status"] == "FAIL" for e in portfolio_signals.scan_stale_inputs(db_path=db_path))
+
+
+def test_warn_never_becomes_a_card(db_path):
+    """WARN 은 카드가 아니다 — 주가/팩터는 주말마다 정상적으로 WARN 이라 매주 발화하면
+    소음이 되고, 소음이 된 알림은 읽히지 않는다.
+
+    빈 fixture 는 모든 소스가 FAIL("데이터 없음") 이라 WARN 을 하나 **만들어야** 이 축이
+    검증된다. certification 은 정책이 24h WARN / 48h FAIL 이고 컬럼이 ISO datetime 이라
+    30시간을 정확히 심을 수 있다. 이 테스트가 없으면 필터를 `("FAIL", "WARN")` 으로
+    넓혀도 스위트가 초록이다 (뮤테이션 실측 2026-08-18).
+    """
+    from datetime import timedelta
+
+    from nuri.core.db import get_db
+    from nuri.core.freshness import check_freshness
+    from nuri.core.timezone import kst_now
+
+    stamp = (kst_now() - timedelta(hours=30)).isoformat()
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO certifications (timestamp, certified, score, total_conditions, passed, failed,"
+            " warnings, conditions_json) VALUES (?, 0, 0, 0, 0, 0, 0, '[]')",
+            (stamp,),
+        )
+    assert check_freshness("certification", db_path=db_path)["status"] == "WARN", "전제 — WARN 을 못 만들었다"
+
+    keys = {e["key"] for e in portfolio_signals.scan_stale_inputs(db_path=db_path)}
+    assert "certification" not in keys, "WARN 이 카드가 됐다 — 매주 발화하는 소음이 된다"
 
 
 def test_stale_payload_carries_no_axis(db_path):

@@ -1,4 +1,5 @@
 """Tests for nuri.alerts.daily_report."""
+
 import sys
 from datetime import datetime
 from unittest.mock import MagicMock, patch
@@ -17,6 +18,7 @@ class TestGenerateReport:
         monkeypatch.setattr("nuri.alerts.daily_report.analyze_risk", lambda **kw: {})
 
         from nuri.alerts.daily_report import generate_report
+
         embed = generate_report()
         assert isinstance(embed, dict)
         assert "fields" in embed
@@ -33,6 +35,7 @@ class TestGenerateReport:
         upsert_macro([{"indicator": "fear_greed", "date": today, "value": 55.0, "source": "test"}], db_path)
 
         from nuri.alerts.daily_report import generate_report
+
         embed = generate_report()
         assert isinstance(embed, dict)
 
@@ -48,12 +51,21 @@ class TestGenerateReport:
             "has_critical": True,
             "total_violations": 1,
             "total_recovery_usd": 1100,
-            "actions": [{"ticker": "TSLL", "severity": "critical", "action": "SELL_ALL",
-                         "sell_shares": 96, "reason": "레버리지 ETF", "sell_value_usd": 1100}],
+            "actions": [
+                {
+                    "ticker": "TSLL",
+                    "severity": "critical",
+                    "action": "SELL_ALL",
+                    "sell_shares": 96,
+                    "reason": "레버리지 ETF",
+                    "sell_value_usd": 1100,
+                }
+            ],
         }
 
         with patch("nuri.analysis.rebalance_advisor.generate_advisor_report", return_value=mock_report):
             from nuri.alerts.daily_report import generate_report
+
             embed = generate_report()
 
         assert any("규칙 위반" in f.get("name", "") for f in embed.get("fields", []))
@@ -63,6 +75,7 @@ class TestSendDiscord:
     def test_no_webhook(self, monkeypatch):
         monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
         from nuri.alerts.daily_report import send_discord
+
         result = send_discord({"title": "test"})
         assert result is False
 
@@ -70,6 +83,7 @@ class TestSendDiscord:
 class TestPrintReport:
     def test_output(self, capsys):
         from nuri.alerts.daily_report import print_report
+
         embed = {"title": "Test Report", "fields": [{"name": "X", "value": "Y"}]}
         print_report(embed)
         output = capsys.readouterr().out
@@ -87,17 +101,16 @@ class TestDailyReport:
         mock_df = pd.DataFrame({"ticker": ["AAPL"], "value": [1900]})
         mock_df.attrs["total_value_usd"] = 1900
         mock_df.attrs["warnings"] = ["Single position too large"]
-        monkeypatch.setattr("nuri.alerts.daily_report.analyze_portfolio",
-                            lambda: mock_df)
+        monkeypatch.setattr("nuri.alerts.daily_report.analyze_portfolio", lambda: mock_df)
 
         # Mock analyze_risk
-        monkeypatch.setattr("nuri.alerts.daily_report.analyze_risk",
-                            lambda: {"sharpe_ratio": 1.5, "max_drawdown_pct": -8.0,
-                                     "var_95_daily_pct": -2.5, "stop_loss_alerts": []})
+        monkeypatch.setattr(
+            "nuri.alerts.daily_report.analyze_risk",
+            lambda: {"sharpe_ratio": 1.5, "max_drawdown_pct": -8.0, "var_95_daily_pct": -2.5, "stop_loss_alerts": []},
+        )
 
         # Mock rebalance advisor
-        monkeypatch.setattr("nuri.alerts.daily_report.generate_report.__module__",
-                            "nuri.alerts.daily_report")
+        monkeypatch.setattr("nuri.alerts.daily_report.generate_report.__module__", "nuri.alerts.daily_report")
 
         embed = generate_report()
         assert "title" in embed
@@ -107,10 +120,8 @@ class TestDailyReport:
     def test_generate_report_empty_portfolio(self, monkeypatch, db_with_portfolio):
         from nuri.alerts.daily_report import generate_report
 
-        monkeypatch.setattr("nuri.alerts.daily_report.analyze_portfolio",
-                            lambda: pd.DataFrame())
-        monkeypatch.setattr("nuri.alerts.daily_report.analyze_risk",
-                            lambda: {})
+        monkeypatch.setattr("nuri.alerts.daily_report.analyze_portfolio", lambda: pd.DataFrame())
+        monkeypatch.setattr("nuri.alerts.daily_report.analyze_risk", lambda: {})
 
         embed = generate_report()
         assert embed["fields"][0]["value"] == "$0"
@@ -121,11 +132,11 @@ class TestDailyReport:
         mock_df = pd.DataFrame({"ticker": ["AAPL"]})
         mock_df.attrs["total_value_usd"] = 1900
         mock_df.attrs["warnings"] = []
-        monkeypatch.setattr("nuri.alerts.daily_report.analyze_portfolio",
-                            lambda: mock_df)
-        monkeypatch.setattr("nuri.alerts.daily_report.analyze_risk",
-                            lambda: {"sharpe_ratio": 1.0, "max_drawdown_pct": -5.0,
-                                     "var_95_daily_pct": -1.5, "stop_loss_alerts": []})
+        monkeypatch.setattr("nuri.alerts.daily_report.analyze_portfolio", lambda: mock_df)
+        monkeypatch.setattr(
+            "nuri.alerts.daily_report.analyze_risk",
+            lambda: {"sharpe_ratio": 1.0, "max_drawdown_pct": -5.0, "var_95_daily_pct": -1.5, "stop_loss_alerts": []},
+        )
 
         # Mock rebalance_advisor — it is lazy-imported inside generate_report
         mock_rebalance = {
@@ -133,9 +144,14 @@ class TestDailyReport:
             "total_violations": 2,
             "total_recovery_usd": 5000,
             "actions": [
-                {"severity": "critical", "action": "SELL_ALL",
-                 "ticker": "AAPL", "sell_shares": 10, "reason": "stop-loss",
-                 "sell_value_usd": 1900},
+                {
+                    "severity": "critical",
+                    "action": "SELL_ALL",
+                    "ticker": "AAPL",
+                    "sell_shares": 10,
+                    "reason": "stop-loss",
+                    "sell_value_usd": 1900,
+                },
             ],
         }
         mock_module = MagicMock()
@@ -148,6 +164,7 @@ class TestDailyReport:
 
     def test_send_discord_no_webhook(self, monkeypatch, db_with_portfolio):
         from nuri.alerts.daily_report import send_discord
+
         monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
         result = send_discord({"title": "test", "fields": []})
         assert result is False
@@ -161,6 +178,7 @@ class TestDailyReport:
         mock_resp.raise_for_status = MagicMock()
 
         import requests as req_mod
+
         monkeypatch.setattr(req_mod, "post", MagicMock(return_value=mock_resp))
 
         result = send_discord({"title": "test", "fields": []})
@@ -168,6 +186,7 @@ class TestDailyReport:
 
     def test_print_report(self, capsys, db_with_portfolio):
         from nuri.alerts.daily_report import print_report
+
         embed = {
             "title": "Test Report",
             "fields": [
@@ -182,8 +201,7 @@ class TestDailyReport:
     def test_main(self, monkeypatch, db_with_portfolio, capsys):
         from nuri.alerts.daily_report import main
 
-        monkeypatch.setattr("nuri.alerts.daily_report.analyze_portfolio",
-                            lambda: pd.DataFrame())
+        monkeypatch.setattr("nuri.alerts.daily_report.analyze_portfolio", lambda: pd.DataFrame())
         monkeypatch.setattr("nuri.alerts.daily_report.analyze_risk", lambda: {})
         monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
 
