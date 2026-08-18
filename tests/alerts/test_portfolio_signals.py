@@ -326,9 +326,20 @@ def test_cli_stages_when_not_dry_run(db_path, capsys):
 
 
 def test_cli_no_breach(db_path, capsys):
-    with patch("nuri.analysis.rebalance_advisor.detect_violations", return_value=[]):
+    """위반도 낡은 입력도 없으면 조기 종료한다.
+
+    `scan_stale_inputs` 도 같이 비워야 한다 — 빈 fixture 는 모든 소스가 FAIL 이라
+    Tier 1e 가 "데이터 없음" 줄을 찍고, 그 안의 "없음" 에 단언이 우연히 걸려 통과했다
+    (#1090 이후 실측). 조기 종료 경로 자체는 밟히지 않은 채였다.
+    """
+    with (
+        patch("nuri.analysis.rebalance_advisor.detect_violations", return_value=[]),
+        patch.object(portfolio_signals, "scan_stale_inputs", return_value=[]),
+    ):
         rc = portfolio_signals.main([])
-    assert rc == 0 and "없음" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "포트폴리오 드리프트 없음" in out and "낡은 입력 없음" in out
 
 
 def test_cli_shows_concentration_and_sector(db_path, capsys):
