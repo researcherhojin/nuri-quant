@@ -211,3 +211,92 @@ def run_daily_checks(as_of: Optional[str] = None, db_path: Optional[Path] = None
     if counts["breached"]:
         logger.warning("thesis criteria breached: %d (surface only — 주문 만들지 않음)", counts["breached"])
     return counts
+
+
+#: 사후 채점의 4값. `theses.verdict` CHECK 와 동일해야 한다 — 여기가 사람이 읽는 정본.
+#:
+#: `held` 가 가장 얻기 어렵게 설계돼 있다. 그래야 채점이 자기 편이 아니다:
+#:   - 기준 **1건이라도** 반증되면 `broken` (마감을 기다리지 않는다 — 반증은 반증이다)
+#:   - 논지가 교체(`superseded`)되거나 접히면(`retired`) `abandoned` — 중간에 갈아탄 논지를
+#:     "지켜졌다" 로 적으면 갈아타기가 공짜가 된다
+#:   - 마감이 하나라도 안 지났으면(또는 마감이 없으면) **판정하지 않는다** — 진행 중
+#:   - 마감이 전부 지났고 반증 0건이어도, **모든 기준이 실제로 한 번은 측정됐어야** `held`
+#:     이고 아니면 `unevaluable`. 부분 측정은 `held` 가 아니다
+VERDICTS = ("broken", "held", "abandoned", "unevaluable")
+
+#: 논지가 더 이상 살아 있지 않은 상태 → `abandoned` (단, 반증이 먼저다).
+_ABANDONED_STATUS = ("superseded", "retired")
+
+
+def _verdict_for(status: str, criteria: list[dict], stats: dict[int, dict], as_of: str) -> Optional[str]:
+    """논지 1건의 verdict. `None` 이면 진행 중 — **기존 verdict 를 지우지 않는다.**"""
+    if any(stats.get(c["id"], {}).get("breached") for c in criteria):
+        return "broken"
+    if status in _ABANDONED_STATUS:
+        return "abandoned"
+    # 마감 없는 기준은 영원히 끝나지 않는다. `held` 를 원하면 마감을 박아야 한다 —
+    # 끝나지 않는 관찰을 "지켜졌다" 로 결산할 수는 없다.
+    if any(not c["deadline_date"] or c["deadline_date"] > as_of for c in criteria):
+        return None
+    if all(stats.get(c["id"], {}).get("measured") for c in criteria):
+        return "held"
+    return "unevaluable"
+
+
+def roll_up_verdicts(as_of: Optional[str] = None, db_path: Optional[Path] = None) -> dict[str, int]:
+    """기준 판정 이력에서 논지 verdict 를 굴려 올린다 (#1096). verdict 별 건수 반환.
+
+    `theses.verdict` 는 migration 51 이래 아무도 쓰지 않던 컬럼이다. 이 함수가 유일한
+    writer 이고, 값은 전부 `thesis_criteria_checks` 에서 나온다 — 손 라벨링이 아니다.
+
+    기준이 0건인 논지(#1092 이전 유물)는 건너뛴다. 반증 기준 없는 논지는 채점 대상이
+    아니라 서사이고, 그걸 `held` 로 적으면 정확히 이 시스템이 막으려는 것이 된다.
+    """
+    from nuri.core.db import get_db, query
+    from nuri.core.timezone import today_kst
+
+    d = as_of or today_kst()
+    rows = query(
+        """SELECT t.id AS thesis_id, t.status, t.verdict,
+                  c.id AS criterion_id, c.deadline_date
+             FROM theses t
+             JOIN thesis_criteria c ON c.thesis_id = t.id AND c.status = 'active'""",
+        db_path=db_path,
+    )
+    # 집계를 조인 안에서 하지 않는 이유: checks 는 기준당 여러 행이라 같은 쿼리에서
+    # SUM 하면 기준 수가 체크 수만큼 부풀어 `all(...)` 판정이 조용히 틀어진다.
+    stats = {
+        r["criterion_id"]: {"breached": r["n_breached"], "measured": r["n_measured"]}
+        for r in query(
+            """SELECT criterion_id,
+                      SUM(result = 'breached') AS n_breached,
+                      SUM(result IN ('holding', 'breached')) AS n_measured
+                 FROM thesis_criteria_checks
+                GROUP BY criterion_id""",
+            db_path=db_path,
+        )
+    }
+
+    by_thesis: dict[int, dict[str, Any]] = {}
+    for r in rows:
+        entry = by_thesis.setdefault(r["thesis_id"], {"status": r["status"], "verdict": r["verdict"], "criteria": []})
+        entry["criteria"].append({"id": r["criterion_id"], "deadline_date": r["deadline_date"]})
+
+    counts = dict.fromkeys(VERDICTS, 0)
+    updates = []
+    for thesis_id, entry in by_thesis.items():
+        verdict = _verdict_for(entry["status"], entry["criteria"], stats, d)
+        if verdict is None:
+            continue
+        counts[verdict] += 1
+        if verdict != entry["verdict"]:
+            updates.append((verdict, thesis_id))
+    if updates:
+        with get_db(db_path) as conn:
+            conn.executemany(
+                "UPDATE theses SET verdict = ?, updated_at = datetime('now') WHERE id = ?",
+                updates,
+            )
+    if counts["broken"]:
+        logger.warning("thesis verdict broken: %d (surface only — 주문 만들지 않음)", counts["broken"])
+    return counts

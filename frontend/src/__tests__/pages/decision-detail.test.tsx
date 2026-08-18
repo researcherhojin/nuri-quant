@@ -270,9 +270,55 @@ describe("DecisionProvenance", () => {
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
-    expect(screen.getByText(/v1 · 2026-04-01 · user · superseded · held/)).toBeInTheDocument();
+    expect(screen.getByText(/v1 · 2026-04-01 · user · superseded/)).toBeInTheDocument();
+    expect(screen.getByText("지켜짐").className).toContain("emerald");
     expect(screen.getByRole("link", { name: /^filing$/ })).toHaveAttribute("href", "https://example.invalid/k");
     expect(screen.getByText(/analyst\/note-4/)).toBeInTheDocument();
+  });
+
+  // verdict 뱃지만 보는 최소 논지 — 근거·기준은 다른 테스트가 덮는다.
+  const baseThesis = {
+    id: 9,
+    ticker: "AAA",
+    version: 1,
+    author: "user",
+    stance: "bullish",
+    bull_case: "수요 우위",
+    bear_case: "점유율 하락",
+    effective_date: "2026-04-01",
+    status: "active",
+    verdict: null as string | null,
+    evidence: [],
+    criteria: [],
+  };
+
+  it("never paints an unevaluable verdict as a survived thesis", async () => {
+    // 논지 층에서도 같은 규율 — 측정 못 한 것을 초록으로 칠하면 채점이 자기 편이 된다.
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      thesis: { ...baseThesis, verdict: "unevaluable" },
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const badge = screen.getByText("측정 불가");
+    expect(badge.className).toContain("text-muted-foreground");
+    expect(badge.className).not.toContain("emerald");
+  });
+
+  it("shows a blank verdict as in-progress, not as a pass", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      thesis: { ...baseThesis, verdict: null },
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const badge = screen.getByText("진행 중");
+    expect(badge.className).toContain("text-muted-foreground");
+    expect(badge.className).not.toContain("emerald");
   });
 
   it("renders falsification criteria and never paints unevaluable as passing", async () => {
