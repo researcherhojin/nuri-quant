@@ -34,10 +34,17 @@ class TechnicalCollector(BaseCollector):
             self.logger.warning("계산할 종목 없음")
             return pd.DataFrame()
 
-        # MAX_FAILURE_RATE(10%) 가드 활성화 — prices 데이터 부족 누적 시 save 거부.
-        # technical.collect() 는 1 row/ticker 반환이라 len(df) == ticker count 매칭 가능.
-        # asymmetric data age 방지 (어제 signals 그대로 + 오늘 70% 결손 silent save 차단).
-        self._expected_count = len(tickers)
+        # MAX_FAILURE_RATE(10%) 가드의 분모는 **데이터가 충분한 종목 수**다 (#1101 Codex 5차).
+        # `len(tickers)` 로 두면 universe 배치 추가 직후·주간 backfill 전 콜드 스타트처럼
+        # 데이터 없는 종목이 10% 를 넘는 순간 CollectionFailureError 로 **전체 저장이
+        # 거부**된다 — 멀쩡히 계산된 보유 종목 signals 까지 전멸한다. 데이터 부족은 예상된
+        # 결손이지 수집 실패가 아니므로 분모에서 뺀다. 가드는 여전히 살아 있다: 계산
+        # 가능해야 할 종목이 계산에 실패하면(talib 회귀 등) 그 비율로 잡는다.
+        counts = query_df(
+            "SELECT ticker, COUNT(*) AS n FROM prices GROUP BY ticker",
+        )
+        eligible = {r["ticker"]: int(r["n"]) for _, r in counts.iterrows()}
+        self._expected_count = sum(1 for t in tickers if eligible.get(t, 0) >= 14)
 
         from tqdm import tqdm
 
