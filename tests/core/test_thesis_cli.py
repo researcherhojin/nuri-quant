@@ -27,6 +27,12 @@ evidence:
   - side: bull
     claim: 데이터센터 매출 증가
     source_type: filing
+criteria:
+  - kind: machine
+    statement: 주가가 90 아래로 이탈하면 추세 전제가 깨진다
+    metric: close
+    op: "<"
+    threshold: 90.0
 """
 
 
@@ -65,7 +71,7 @@ class TestWrite:
         rc = main(["--db-path", str(db_path), "write", str(_write_file(tmp_path, body))])
         assert rc == 2
         err = capsys.readouterr().err
-        for key in ("stance", "bull_case", "bear_case", "evidence"):
+        for key in ("stance", "bull_case", "bear_case", "evidence", "criteria"):
             assert key in err, f"{key} 누락이 보고되지 않았다"
         assert get_thesis_history("ZZZZ", db_path=db_path) == []
 
@@ -86,6 +92,43 @@ class TestWrite:
     def test_a_missing_file_is_rejected(self, tmp_path, db_path):
         rc = main(["--db-path", str(db_path), "write", str(tmp_path / "nope.yaml")])
         assert rc == 2
+
+
+class TestCriteriaAreMandatory:
+    """반증 기준 없는 논지는 이 시스템이 막으려는 상태 자체다 (#1092)."""
+
+    def test_criteria_reach_the_ledger(self, tmp_path, db_path, capsys):
+        from nuri.core.db import get_criteria, get_thesis_history
+
+        assert main(["--db-path", str(db_path), "write", str(_write_file(tmp_path))]) == 0
+        tid = get_thesis_history("ZZZZ", db_path=db_path)[0]["id"]
+        crits = get_criteria(tid, db_path=db_path)
+        assert len(crits) == 1 and crits[0]["kind"] == "machine"
+        assert "반증기준 1건" in capsys.readouterr().out
+
+    def test_a_bad_criterion_rolls_the_thesis_back(self, tmp_path, db_path, capsys):
+        """기준 등록이 실패하면 논지도 남지 않아야 한다.
+
+        남으면 **반증 없는 논지**가 원장에 앉는다 — writer 검증을 통째로 우회한 것과
+        같고, 다음 사람은 그게 정상 경로로 들어온 줄 안다.
+
+        Mutation lock: `_delete_thesis` 롤백을 지우면 논지 1행이 남아 FAIL.
+        """
+        body = _YAML.replace("metric: close", "metric: not_a_real_metric")
+        from nuri.core.db import get_thesis_history
+
+        assert main(["--db-path", str(db_path), "write", str(_write_file(tmp_path, body))]) == 1
+        assert "해소기 없는 metric" in capsys.readouterr().err
+        assert get_thesis_history("ZZZZ", db_path=db_path) == [], "반증 없는 논지가 남았다"
+
+    def test_show_lists_criteria_with_their_last_verdict(self, tmp_path, db_path, capsys):
+        main(["--db-path", str(db_path), "write", str(_write_file(tmp_path))])
+        capsys.readouterr()
+        assert main(["--db-path", str(db_path), "show", "zzzz"]) == 0
+        out = capsys.readouterr().out
+        assert "반증 기준 1건" in out
+        assert "미점검" in out, "한 번도 점검 안 된 기준이 통과처럼 보이면 안 된다"
+        assert "close < 90" in out
 
 
 class TestModuleEntryPoint:

@@ -151,7 +151,76 @@ def get_active_thesis(
                 (thesis["id"],),
             ).fetchall()
         ]
-        return thesis
+    # 기준은 별도 커넥션에서 — `get_criteria` 가 자체 `get_db` 를 열기 때문.
+    thesis["criteria"] = get_criteria(thesis["id"], db_path=db_path)
+    return thesis
+
+
+def add_criteria(thesis_id: int, criteria: list[dict], db_path: Optional[Path] = None) -> int:
+    """반증 기준을 논지에 붙인다 (#1092). 등록 건수 반환.
+
+    **machine 기준 최소 1개를 강제한다.** 전부 `human` 이면 자동 점검이 아무것도 안 하고,
+    등록한 사람은 도는 줄 안다 — 그게 게이트가 있는데 안 잡는 상태다.
+
+    metric 해소 가능성은 `thesis_criteria.validate_criterion` 이 본다: 스키마 CHECK 는
+    `machine` 이면 metric/op/threshold 가 **있는지**만 보고, 그 metric 을 실제로 **해소할
+    수 있는지**는 모른다. 오타 하나면 매일 `unevaluable` 만 쌓인다.
+
+    Raises: `ThesisValidationError` — 내용 검증 실패.
+    """
+    from nuri.trading.engine.thesis_criteria import CriterionValidationError, validate_criterion
+
+    if not criteria:
+        raise ThesisValidationError("반증 기준이 0건이다 — 틀렸음을 확인할 방법 없는 논지는 서사다")
+    if not any(c.get("kind") == "machine" for c in criteria):
+        raise ThesisValidationError("machine 기준이 최소 1개 필요하다 — 전부 human 이면 자동 점검이 장식이다")
+
+    for c in criteria:
+        if not (c.get("statement") or "").strip():
+            raise ThesisValidationError("statement 가 비었다 — 무엇이 반증인지 문장으로 남길 것")
+        try:
+            validate_criterion(c.get("kind", ""), c.get("metric"), c.get("op"), c.get("threshold"))
+        except CriterionValidationError as e:
+            raise ThesisValidationError(str(e)) from e
+
+    with get_db(db_path) as conn:
+        conn.executemany(
+            """INSERT INTO thesis_criteria
+               (thesis_id, kind, statement, metric, op, threshold, deadline_date)
+               VALUES (:thesis_id, :kind, :statement, :metric, :op, :threshold, :deadline_date)""",
+            [
+                {
+                    "thesis_id": thesis_id,
+                    "kind": c["kind"],
+                    "statement": c["statement"],
+                    "metric": c.get("metric"),
+                    "op": c.get("op"),
+                    "threshold": c.get("threshold"),
+                    "deadline_date": c.get("deadline_date"),
+                }
+                for c in criteria
+            ],
+        )
+    return len(criteria)
+
+
+def get_criteria(thesis_id: int, db_path: Optional[Path] = None) -> list[dict]:
+    """논지의 기준 + 최신 판정 (없으면 `last_result=None`)."""
+    with get_db(db_path) as conn:
+        return [
+            dict(r)
+            for r in conn.execute(
+                """SELECT c.*,
+                          (SELECT k.result FROM thesis_criteria_checks k
+                            WHERE k.criterion_id = c.id ORDER BY k.check_date DESC LIMIT 1) AS last_result,
+                          (SELECT k.check_date FROM thesis_criteria_checks k
+                            WHERE k.criterion_id = c.id ORDER BY k.check_date DESC LIMIT 1) AS last_checked
+                     FROM thesis_criteria c
+                    WHERE c.thesis_id = ? AND c.status = 'active'
+                    ORDER BY c.kind, c.id""",
+                (thesis_id,),
+            ).fetchall()
+        ]
 
 
 def get_thesis_history(ticker: str, db_path: Optional[Path] = None) -> list[dict]:
