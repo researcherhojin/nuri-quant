@@ -76,6 +76,12 @@ class EmitResult:
     total_deploy_pct: float = 0.0
     blocked_reason: str | None = None  # if 0 candidates, why?
     timestamp_kst: str = ""
+    # 미실행 원장(#1094)이 "왜 0건이었나" 를 답하려면 분모가 필요하다. 후보 목록만으로는
+    # "채점 대상이 0" 과 "200개를 채점했는데 아무도 임계를 못 넘음" 이 구분되지 않는다.
+    # 차단 경로(VIX/regime)에서는 채점 자체를 안 하므로 0 으로 남는다 — 그것도 정보다.
+    n_scored: int = 0
+    n_qualified: int = 0
+    threshold: float | None = None
 
 
 def format_vix(vix: float | None) -> str:
@@ -412,6 +418,7 @@ def emit_buy_candidates(
     # Quality threshold (regime-adjusted)
     threshold = quality.get("base_threshold", 70)
     threshold += quality.get("per_regime", {}).get(regime, 0)
+    result.threshold = threshold
     if threshold >= 999:
         result.blocked_reason = f"regime={regime} threshold={threshold} (사실상 차단)"
         return result
@@ -460,6 +467,8 @@ def emit_buy_candidates(
     # Filter by quality bar, sort, top-N
     qualified = [s for s in scored if s[1] >= threshold]
     qualified.sort(key=lambda x: x[1], reverse=True)
+    result.n_scored = len(scored)
+    result.n_qualified = len(qualified)
     max_cand = limit if limit is not None else quality.get("max_candidates", 5)
     top = qualified[:max_cand]
 

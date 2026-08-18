@@ -101,6 +101,16 @@ def _collect_context(db_path=None) -> dict:
             save_buy_candidates(emitted, db_path=db_path)
         except Exception:
             logger.warning("buy candidates 영속화 실패 (브리핑은 계속)", exc_info=True)
+        # 미실행 원장 (#1094) — 위 `save_buy_candidates` 는 **발행된 후보만** 남긴다.
+        # 차단된 날(오늘처럼 regime=recovery 로 0건)은 그쪽에 아무것도 안 남아 원장에서
+        # "아무 일도 없던 날" 로 보인다. 이건 그 반대편을 남긴다: 실행하지 않은 것과
+        # 그 사유. 없으면 사후 채점이 실행한 것만 보게 되어 생존 편향이 된다.
+        try:
+            from nuri.core.db import record_candidate_run
+
+            record_candidate_run(emitted, db_path=db_path)
+        except Exception:
+            logger.warning("candidate run 기록 실패 (브리핑은 계속)", exc_info=True)
     except Exception:
         logger.warning("buy candidates emit 실패", exc_info=True)
 

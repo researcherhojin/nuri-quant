@@ -1667,4 +1667,58 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
             ON thesis_criteria_checks(check_date, result);
     """,
     ),
+    (
+        53,
+        "candidate_runs / candidate_ledger — 미실행 거래 원장 (#1094)",
+        # 실행하지 않은 거래가 기록되지 않으면 사후 채점이 **실행한 것만** 보게 되고,
+        # 그 성적표는 실제 실력보다 좋게 나온다(생존 편향).
+        #
+        # 테이블이 둘인 이유: **막힌 실행이 가장 정보량 많은 미실행 기록**인데 걸어 둘
+        # 티커가 없다. "왜 오늘 후보가 0이었나"(regime 차단·VIX 차단·임계 미달)는 티커
+        # 단위로 표현할 수 없어서, run 을 따로 두지 않으면 그 날은 원장에서 **아무 일도
+        # 없던 날**로 보인다.
+        #
+        # `acted` 는 **수동 토글**이다. `trades` 0행 · `portfolio.first_buy_date` 18/18
+        # 동일 상수(2026-08-18 실측)라 체결을 알 방법이 없다. 자동으로 채우면
+        # "실행 vs 미실행" 비교가 조용히 거짓이 된다 — 파생되는 척하지 않는다.
+        """
+        CREATE TABLE IF NOT EXISTS candidate_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_date TEXT NOT NULL,
+            regime TEXT,
+            vix REAL,
+            threshold REAL,
+            blocked_reason TEXT,
+            n_scored INTEGER NOT NULL DEFAULT 0,
+            n_qualified INTEGER NOT NULL DEFAULT 0,
+            n_emitted INTEGER NOT NULL DEFAULT 0,
+            n_skipped INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(run_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_candidate_runs_date ON candidate_runs(run_date);
+
+        CREATE TABLE IF NOT EXISTS candidate_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL REFERENCES candidate_runs(id) ON DELETE CASCADE,
+            ticker TEXT NOT NULL,
+            disposition TEXT NOT NULL
+                CHECK (disposition IN ('emitted', 'skipped', 'below_threshold')),
+            reason TEXT,
+            score REAL,
+            entry REAL,
+            stop REAL,
+            tp1 REAL,
+            tp2 REAL,
+            acted INTEGER NOT NULL DEFAULT 0 CHECK (acted IN (0, 1)),
+            acted_at TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(run_id, ticker)
+        );
+        CREATE INDEX IF NOT EXISTS idx_candidate_ledger_run
+            ON candidate_ledger(run_id, disposition);
+        CREATE INDEX IF NOT EXISTS idx_candidate_ledger_ticker
+            ON candidate_ledger(ticker, acted);
+    """,
+    ),
 ]
