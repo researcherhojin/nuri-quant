@@ -54,7 +54,7 @@ If you are looking for a backtested strategy with a published Sharpe ratio, this
 
 ```mermaid
 flowchart TB
-    SCHED["APScheduler · 52 cron jobs · in-process<br/>the receiver is the sole writer"]:::driver
+    SCHED["APScheduler · 53 cron jobs · in-process<br/>the receiver is the sole writer"]:::driver
     CFG[/"config/*.yaml<br/>policies"/]:::source
 
     subgraph Collect["Collect — 26 jobs"]
@@ -106,7 +106,7 @@ flowchart TB
     classDef user   fill:#422006,stroke:#f59e0b,color:#fef3c7
 ```
 
-**Nothing chains the stages.** There is no orchestrator: `nuri/scheduler.py` registers 52 independent APScheduler jobs, and a stage becomes runnable when its inputs happen to be in the database. That is what makes any stage re-runnable in isolation, and it is also why the cron order does not match the reading order — outcome tracking runs at 07:02, three minutes *before* the consensus job at 07:05 that consumes what it wrote the previous day.
+**Nothing chains the stages.** There is no orchestrator: `nuri/scheduler.py` registers 53 independent APScheduler jobs, and a stage becomes runnable when its inputs happen to be in the database. That is what makes any stage re-runnable in isolation, and it is also why the cron order does not match the reading order — outcome tracking runs at 07:02, three minutes *before* the consensus job at 07:05 that consumes what it wrote the previous day.
 
 | Stage | Scheduled as | Reads | Writes |
 |-------|--------------|-------|--------|
@@ -272,7 +272,7 @@ Measured against `main` on 2026-07-29. Counts marked ✅ are verified on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 7,231 collected across 330 files | |
+| **Backend tests** | 7,245 collected across 331 files | |
 | **Backend statement coverage** | 99% — 17 of 23,311 statements uncovered across 9 files, 81 partial branches (`make ci-cov`, 2026-08-14; Codecov `backend` flag is the CI ground truth) | |
 | **Frontend tests** | 1,449 across 127 files — 100% statement coverage | |
 | **E2E tests** | 57 across 8 Playwright specs | |
@@ -280,12 +280,12 @@ Measured against `main` on 2026-07-29. Counts marked ✅ are verified on every P
 | **Data collectors** | 27 collectors (BaseCollector pattern) | ✅ |
 | **Specialist agents** | 10 (consensus vote, weights sum to 1.0) | |
 | **Actor fleet** | 15 registered actors + 3 infrastructure helpers | |
-| **Scheduler jobs** | 52 cron entries (APScheduler, in-process) | |
+| **Scheduler jobs** | 53 cron entries (APScheduler, in-process) | |
 | **Strategy regimes** | 10 regimes (6 base + 4 special) | ✅ |
 | **Trading signals** | 22 per-ticker (actionable) + 2 market-wide (shadow) | |
 | **API endpoints** | 72 (FastAPI on `:8001`) | |
 | **Frontend routes** | 18 (Next.js on `:3000`) | |
-| **DB tables** | SQLite WAL · 57 tables (53 forward-only migrations) | ✅ |
+| **DB tables** | SQLite WAL · 57 tables (54 forward-only migrations) | ✅ |
 | **DB submodules** | 11 — `nuri/core/db/` is the sole `sqlite3` importer, enforced by an AST sweep in CI | |
 
 ## Documentation

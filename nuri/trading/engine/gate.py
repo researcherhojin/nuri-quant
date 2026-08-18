@@ -138,7 +138,10 @@ def _check_signal_scorecard(db_path=None) -> GateCondition:
 
 
 def _check_superinvestor_quarters(db_path=None) -> GateCondition:
-    rows = query("SELECT COUNT(DISTINCT filing_date) as c FROM superinvestors", db_path=db_path)
+    rows = query(
+        "SELECT COUNT(DISTINCT filing_date) as c FROM superinvestors WHERE investor_class = 'conviction'",
+        db_path=db_path,
+    )
     count = _safe_count(rows)
     ok = count >= 2
     return GateCondition(

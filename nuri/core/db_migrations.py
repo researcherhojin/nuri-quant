@@ -1721,4 +1721,26 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
             ON candidate_ledger(ticker, acted);
     """,
     ),
+    (
+        54,
+        "superinvestors.investor_class — 확신 보유와 딜러 보유를 분리 (#1098)",
+        # 은행 13F 를 같은 테이블에 넣되 **같은 신호로 읽히지 않게** 한다.
+        #
+        # 실측(2026-08-18 EDGAR): JPM 34,064 · BAC 18,318 · GS 14,070 · Citi 11,343 =
+        # 한 분기 77,795 포지션. 현재 이 테이블 **전체**가 8명 × 10분기 15,600 행이다.
+        #
+        # 용량보다 심각한 건 신호 파괴다. `smart_money.py` 는 `min(2, 보유 투자자 수)` 를
+        # 점수에 더하는데, 은행 4곳은 마켓메이킹·수탁·인덱스로 사실상 모든 미국 상장
+        # 티커를 들고 있다 → 그 항이 거의 모든 티커에서 상수 2가 되어 **변별력이 0**이
+        # 된다. `config/rules.yaml min_superinvestors: 3` 도 같이 무력화된다.
+        #
+        # 기본값이 `conviction` 인 것이 핵심이다: 기존 15,600 행과 새로 들어오는 기존
+        # 수집기의 행이 전부 자동으로 옳은 쪽에 앉는다. `dealer` 는 명시할 때만.
+        """
+        ALTER TABLE superinvestors ADD COLUMN investor_class TEXT NOT NULL
+            DEFAULT 'conviction';
+        CREATE INDEX IF NOT EXISTS idx_superinvestors_class
+            ON superinvestors(investor_class, ticker);
+    """,
+    ),
 ]

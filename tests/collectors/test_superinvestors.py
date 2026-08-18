@@ -179,7 +179,10 @@ class TestSuperinvestorCollectorEdgarFlow:
         mock_company = MagicMock()
         mock_company.get_filings.return_value = mock_filings
 
-        with patch("nuri.collectors.superinvestors.SUPERINVESTORS", {"TestInvestor": "0001234567"}):
+        # 모듈 상수가 아니라 **클래스 속성**을 패치한다 — `collect()` 가 `self.investors`
+        # 를 읽으므로(#1098 은행 수집기가 같은 코드를 재사용한다) 모듈 상수 패치는
+        # 클래스 정의 시점에 이미 바인딩된 값을 바꾸지 못한다.
+        with patch.object(SuperinvestorCollector, "investors", {"TestInvestor": "0001234567"}):
             with patch("edgar.set_identity"):
                 with patch("edgar.Company", return_value=mock_company):
                     c = SuperinvestorCollector()
@@ -577,16 +580,16 @@ class TestSuperinvestorCollectorEdgarMoreScenarios:
 
         with get_db(db_with_portfolio) as conn:
             conn.execute(
-                "INSERT INTO superinvestors VALUES (NULL, 'Buffett', '2025-01-15', 'AAPL', 1000, 200000, 25.0, 'Apple Inc')"
+                "INSERT INTO superinvestors (id, investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name) VALUES (NULL, 'Buffett', '2025-01-15', 'AAPL', 1000, 200000, 25.0, 'Apple Inc')"
             )
             conn.execute(
-                "INSERT INTO superinvestors VALUES (NULL, 'Buffett', '2025-01-15', 'MSFT', 500, 100000, 12.0, 'Microsoft')"
+                "INSERT INTO superinvestors (id, investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name) VALUES (NULL, 'Buffett', '2025-01-15', 'MSFT', 500, 100000, 12.0, 'Microsoft')"
             )
             conn.execute(
-                "INSERT INTO superinvestors VALUES (NULL, 'Buffett', '2025-04-15', 'AAPL', 2000, 400000, 50.0, 'Apple Inc')"
+                "INSERT INTO superinvestors (id, investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name) VALUES (NULL, 'Buffett', '2025-04-15', 'AAPL', 2000, 400000, 50.0, 'Apple Inc')"
             )
             conn.execute(
-                "INSERT INTO superinvestors VALUES (NULL, 'Buffett', '2025-04-15', 'NVDA', 300, 60000, 15.0, 'NVIDIA')"
+                "INSERT INTO superinvestors (id, investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name) VALUES (NULL, 'Buffett', '2025-04-15', 'NVDA', 300, 60000, 15.0, 'NVIDIA')"
             )
         df = detect_changes("Buffett", db_path=db_with_portfolio)
         changes = set(df["change_type"].unique())
@@ -605,10 +608,10 @@ class TestSuperinvestorDetectChangesEdgeCases:
 
         with get_db(db_with_portfolio) as conn:
             conn.execute(
-                "INSERT INTO superinvestors VALUES (NULL, 'X', '2025-01-15', 'AAPL', 1000, 200000, 50.0, 'Apple')"
+                "INSERT INTO superinvestors (id, investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name) VALUES (NULL, 'X', '2025-01-15', 'AAPL', 1000, 200000, 50.0, 'Apple')"
             )
             conn.execute(
-                "INSERT INTO superinvestors VALUES (NULL, 'X', '2025-04-15', 'AAPL', 1000, 200000, 50.0, 'Apple')"
+                "INSERT INTO superinvestors (id, investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name) VALUES (NULL, 'X', '2025-04-15', 'AAPL', 1000, 200000, 50.0, 'Apple')"
             )
         assert "UNCHANGED" in detect_changes("X", db_path=db_with_portfolio)["change_type"].values
 
@@ -617,10 +620,10 @@ class TestSuperinvestorDetectChangesEdgeCases:
 
         with get_db(db_with_portfolio) as conn:
             conn.execute(
-                "INSERT INTO superinvestors VALUES (NULL, 'Y', '2025-01-15', 'AAPL', 1000, 200000, 50.0, 'Apple')"
+                "INSERT INTO superinvestors (id, investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name) VALUES (NULL, 'Y', '2025-01-15', 'AAPL', 1000, 200000, 50.0, 'Apple')"
             )
             conn.execute(
-                "INSERT INTO superinvestors VALUES (NULL, 'Y', '2025-04-15', 'AAPL', 500, 100000, 25.0, 'Apple')"
+                "INSERT INTO superinvestors (id, investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name) VALUES (NULL, 'Y', '2025-04-15', 'AAPL', 500, 100000, 25.0, 'Apple')"
             )
         assert "DECREASED" in detect_changes("Y", db_path=db_with_portfolio)["change_type"].values
 
@@ -628,9 +631,11 @@ class TestSuperinvestorDetectChangesEdgeCases:
         from nuri.collectors.superinvestors import detect_changes
 
         with get_db(db_with_portfolio) as conn:
-            conn.execute("INSERT INTO superinvestors VALUES (NULL, 'Z', '2025-01-15', 'AAPL', 0, 0, 0, 'Apple')")
             conn.execute(
-                "INSERT INTO superinvestors VALUES (NULL, 'Z', '2025-04-15', 'AAPL', 500, 100000, 50.0, 'Apple')"
+                "INSERT INTO superinvestors (id, investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name) VALUES (NULL, 'Z', '2025-01-15', 'AAPL', 0, 0, 0, 'Apple')"
+            )
+            conn.execute(
+                "INSERT INTO superinvestors (id, investor, filing_date, ticker, shares, market_value, portfolio_pct, issuer_name) VALUES (NULL, 'Z', '2025-04-15', 'AAPL', 500, 100000, 50.0, 'Apple')"
             )
         assert "INCREASED" in detect_changes("Z", db_path=db_with_portfolio)["change_type"].values
 

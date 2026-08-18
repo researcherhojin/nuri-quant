@@ -12,7 +12,7 @@ API 키 불필요. 분기별 갱신.
 """
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -33,6 +33,25 @@ SUPERINVESTORS = {
     "Vivek Ramaswamy (Strive)": "0001954109",  # Strive Asset Management
 }
 
+#: 대형 은행 13F (#1098). **확신 포트폴리오가 아니다** — 마켓메이킹·수탁·인덱스가
+#: 섞여 있고 분기 공시라 45일 지연된다. 버핏의 NEW 와 JPM 의 NEW 는 같은 뜻이 아니므로
+#: 읽는 쪽에 반드시 그 단서를 붙인다.
+#:
+#: CIK 는 2026-08-18 EDGAR `company_tickers.json` + `submissions` API 로 **직접 확인**했다
+#: (넷 다 13F-HR 실적 있음). 한 분기 포지션 수 실측: JPM 34,064 · BAC 18,318 ·
+#: GS 14,070 · Citi 11,343 — 그래서 `dealer` 로 격리하고 universe 로 좁혀 저장한다.
+BANK_13F = {
+    "JPMorgan Chase": "0000019617",
+    "Bank of America": "0000070858",
+    "Goldman Sachs": "0000886982",
+    "Citigroup": "0000831001",
+}
+
+#: `superinvestors.investor_class` 값. `conviction` 이 기본이라 기존 행과 기존 수집기가
+#: 전부 자동으로 옳은 쪽에 앉는다.
+CONVICTION = "conviction"
+DEALER = "dealer"
+
 # edgartools User-Agent (SEC 정책 준수)
 EDGAR_IDENTITY = "Nuri-Quant research@nuri-quant.dev"
 
@@ -40,8 +59,14 @@ EDGAR_IDENTITY = "Nuri-Quant research@nuri-quant.dev"
 class SuperinvestorCollector(BaseCollector):
     """SEC EDGAR 13F로 슈퍼투자자 포트폴리오 수집."""
 
-    def __init__(self):
-        super().__init__("superinvestors")
+    #: 수집 대상과 분류. 서브클래스가 갈아끼운다.
+    investors: dict = SUPERINVESTORS
+    investor_class: str = CONVICTION
+    #: `None` 이면 전량 저장. set 이면 그 티커만 — 은행 13F 전량 미러를 막는다.
+    universe: Optional[set] = None
+
+    def __init__(self, name: str = "superinvestors"):
+        super().__init__(name)
 
     def collect(self, **kwargs) -> list[dict]:
         """전체 슈퍼투자자의 13F 수집.
@@ -59,8 +84,11 @@ class SuperinvestorCollector(BaseCollector):
         succeeded: list[str] = []
         failed: list[str] = []
 
-        investors_list = list(SUPERINVESTORS.items())
-        self.logger.info(f"슈퍼투자자 13F 수집: {len(investors_list)}명, 최근 {num_quarters}분기")
+        investors_list = list(self.investors.items())
+        self.logger.info(
+            f"13F 수집({self.investor_class}): {len(investors_list)}곳, 최근 {num_quarters}분기"
+            + (f", universe {len(self.universe)}종목으로 제한" if self.universe is not None else "")
+        )
         iterator = tqdm(investors_list, desc="  superinvestors", unit="inv", disable=len(investors_list) < 5)
 
         for investor_name, cik in iterator:
@@ -104,9 +132,15 @@ class SuperinvestorCollector(BaseCollector):
                     if total_value == 0:
                         continue
 
+                    kept = 0
                     for _, row in grouped.iterrows():
                         ticker = row["Ticker"]
                         if not ticker or pd.isna(ticker):
+                            continue
+                        # universe 필터는 **비중 계산 뒤**다. 먼저 걸러 버리면 분모가
+                        # 우리 유니버스 합이 되어 `portfolio_pct` 가 실제 비중보다
+                        # 부풀고, 화면에서 "JPM 포트폴리오의 12%" 같은 거짓이 된다.
+                        if self.universe is not None and ticker not in self.universe:
                             continue
 
                         pct = row["Value"] / total_value * 100
@@ -120,11 +154,15 @@ class SuperinvestorCollector(BaseCollector):
                                 "market_value": float(row["Value"]),
                                 "portfolio_pct": round(pct, 4),
                                 "issuer_name": row["Issuer"],
+                                "investor_class": self.investor_class,
                             }
                         )
+                        kept += 1
 
                     count += 1
-                    self.logger.info(f"  {investor_name} {filing_date}: {len(grouped)}종목, 총 ${total_value:,.0f}")
+                    self.logger.info(
+                        f"  {investor_name} {filing_date}: {len(grouped)}종목 중 {kept}건 저장, 총 ${total_value:,.0f}"
+                    )
 
                 self.logger.debug(f"{investor_name}: {count}분기 수집 완료")
                 succeeded.append(investor_name)
@@ -153,20 +191,46 @@ class SuperinvestorCollector(BaseCollector):
         return _upsert_superinvestors(data)
 
 
-def _upsert_superinvestors(records: list[dict]) -> int:
-    """superinvestors 테이블에 upsert."""
+def _upsert_superinvestors(records: list[dict], db_path=None) -> int:
+    """superinvestors 테이블에 upsert.
+
+    ⚠️ `investor_class` 를 **반드시** 함께 쓴다. `INSERT OR REPLACE` 는 충돌 시 기존 행을
+    지우고 새로 넣으므로, 컬럼을 빼면 재수집 때마다 `dealer` 행이 컬럼 기본값인
+    `conviction` 으로 조용히 되돌아간다 — 그러면 은행 보유가 확신 신호에 섞인다.
+    """
     if not records:
         return 0
-    with get_db() as conn:
+    with get_db(db_path) as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO superinvestors
                (investor, filing_date, ticker, shares, market_value,
-                portfolio_pct, issuer_name)
+                portfolio_pct, issuer_name, investor_class)
                VALUES (:investor, :filing_date, :ticker, :shares, :market_value,
-                       :portfolio_pct, :issuer_name)""",
-            records,
+                       :portfolio_pct, :issuer_name, :investor_class)""",
+            [{"investor_class": CONVICTION, **r} for r in records],
         )
         return len(records)
+
+
+class Bank13FCollector(SuperinvestorCollector):
+    """대형 은행 4곳 13F — `dealer` 로 격리 저장 (#1098).
+
+    같은 테이블에 넣되 `investor_class='dealer'` 라 `smart_money` / `min_superinvestors`
+    같은 확신 신호는 이 행을 보지 못한다. 그 분리가 이 클래스의 존재 이유다 — 섞으면
+    거의 모든 티커가 "슈퍼투자자 4명 보유" 가 되어 그 항의 변별력이 0이 된다.
+
+    universe 로 좁히는 이유: 한 분기 77,795 포지션 중 대부분은 우리가 판단하지 않는
+    종목·채권·옵션이다. 전량 미러는 8분기에 622K 행을 쌓고 어떤 질문에도 답하지 않는다.
+    """
+
+    investors = BANK_13F
+    investor_class = DEALER
+
+    def __init__(self):
+        super().__init__("bank_13f")
+        from nuri.core.coverage import _load_universe
+
+        self.universe = _load_universe()["us"]
 
 
 def detect_changes(investor: str, db_path=None) -> pd.DataFrame:
@@ -268,7 +332,9 @@ def detect_changes(investor: str, db_path=None) -> pd.DataFrame:
 
 def print_summary():
     """슈퍼투자자 보유 현황 출력."""
-    investors = query("SELECT DISTINCT investor FROM superinvestors ORDER BY investor")
+    investors = query(
+        "SELECT DISTINCT investor FROM superinvestors WHERE investor_class = 'conviction' ORDER BY investor"
+    )
     if not investors:
         print("슈퍼투자자 데이터가 없습니다.")
         return
@@ -310,6 +376,7 @@ def print_summary():
         """SELECT s.ticker, GROUP_CONCAT(DISTINCT s.investor) as investors
            FROM superinvestors s
            WHERE s.ticker IN (SELECT DISTINCT ticker FROM portfolio)
+             AND s.investor_class = 'conviction'
            GROUP BY s.ticker
            ORDER BY s.ticker"""
     )
