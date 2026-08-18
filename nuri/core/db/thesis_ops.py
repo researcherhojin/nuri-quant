@@ -223,6 +223,68 @@ def get_criteria(thesis_id: int, db_path: Optional[Path] = None) -> list[dict]:
         ]
 
 
+#: 사람이 남길 수 있는 판정. `unevaluable` 은 기본 상태라 손으로 적을 이유가 없다.
+HUMAN_CHECK_RESULTS = ("holding", "breached")
+
+
+def record_human_check(
+    criterion_id: int,
+    result: str,
+    detail: Optional[str] = None,
+    check_date: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """`human` 기준을 사람이 판정한 것을 기록 (#1096). 그날 기록이 이미 있으면 `False`.
+
+    **`machine` 기준은 손으로 못 뒤집는다.** 기계가 `breached` 를 적은 뒤 사람이 같은 날
+    `holding` 으로 덮을 수 있으면 원장이 취향대로 다듬어지고, 사후 채점은 다시 서사가 된다.
+    그래서 kind 를 확인하고 거부한다.
+
+    이 writer 가 없으면 `human` 기준은 영원히 `unevaluable` 이라 그 논지는 `held` 에
+    닿을 수 없다 — verdict 롤업이 도달 불가능한 판정을 갖게 된다.
+
+    **자리표시자는 덮고, 판정은 안 덮는다.** 일별 점검이 `human` 기준에 매일
+    `unevaluable(manual)` 을 적으므로, 그것까지 append-only 로 지키면 사람은 그날 판정을
+    남길 수 없고 다음날도 마찬가지라 **영원히 못 남긴다**. 기계는 애초에 이 기준에 의견이
+    없었고 그 행은 "사람 기다리는 중" 이라는 뜻이므로 갱신해도 기록이 소실되지 않는다.
+    반면 이미 사람이 남긴 판정은 덮지 않는다 — 그게 실제 기록이다.
+
+    Raises: `ThesisValidationError` — 없는 기준 · machine 기준 · 허용되지 않는 result.
+    """
+    from nuri.core.timezone import today_kst
+
+    if result not in HUMAN_CHECK_RESULTS:
+        raise ThesisValidationError(f"result 는 {'|'.join(HUMAN_CHECK_RESULTS)} 중 하나여야 한다: {result!r}")
+
+    d = check_date or today_kst()
+    note = detail or "human — 사람 판정"
+    with get_db(db_path) as conn:
+        row = conn.execute("SELECT kind FROM thesis_criteria WHERE id = ?", (criterion_id,)).fetchone()
+        if row is None:
+            raise ThesisValidationError(f"기준 {criterion_id} 이 없다")
+        if row[0] != "human":
+            raise ThesisValidationError(
+                f"기준 {criterion_id} 은 machine 이다 — 기계 판정을 손으로 덮으면 원장이 취향대로 다듬어진다"
+            )
+        existing = conn.execute(
+            "SELECT result FROM thesis_criteria_checks WHERE criterion_id = ? AND check_date = ?",
+            (criterion_id, d),
+        ).fetchone()
+        if existing is not None:
+            if existing[0] != "unevaluable":
+                return False
+            conn.execute(
+                "UPDATE thesis_criteria_checks SET result = ?, detail = ? WHERE criterion_id = ? AND check_date = ?",
+                (result, note, criterion_id, d),
+            )
+            return True
+        conn.execute(
+            "INSERT INTO thesis_criteria_checks (criterion_id, check_date, result, detail) VALUES (?, ?, ?, ?)",
+            (criterion_id, d, result, note),
+        )
+        return True
+
+
 def get_thesis_history(ticker: str, db_path: Optional[Path] = None) -> list[dict]:
     """한 티커의 논지 전 버전 (최신 우선). 근거는 붙이지 않는다 — 목록용."""
     with get_db(db_path) as conn:

@@ -10,6 +10,7 @@
 ```bash
 python -m nuri.core.thesis_cli write docs/theses/nvda.yaml
 python -m nuri.core.thesis_cli show NVDA
+python -m nuri.core.thesis_cli judge 7 breached --note "가이던스 철회"
 ```
 
 기본은 `status: draft` 다. `active` 승격은 파일에 명시할 때만 — LLM 초안이 사람 손을
@@ -30,6 +31,7 @@ from nuri.core.db import (
     add_criteria,
     get_active_thesis,
     get_thesis_history,
+    record_human_check,
     upsert_thesis,
 )
 
@@ -108,14 +110,31 @@ def _cmd_show(ticker: str, db_path: Optional[Path]) -> int:
         print(f"\n상승: {active['bull_case']}")
         print(f"하락: {active['bear_case']}")
         print(f"근거 {len(active['evidence'])}건")
+        # verdict 는 롤업이 쓴 값이다 — 비어 있으면 손 라벨링이 아니라 **진행 중**이다.
+        print(f"판정: {active['verdict'] or '진행 중 (마감 전이거나 반증 없음)'}")
         criteria = active.get("criteria") or []
         print(f"반증 기준 {len(criteria)}건 — 이게 사실이면 이 판단은 틀린 것:")
         for c in criteria:
             state = c["last_result"] or "미점검"
             expr = f"{c['metric']} {c['op']} {c['threshold']:g}" if c["kind"] == "machine" else "사람 판정"
-            print(f"  [{state:11s}] {c['statement']}  ({expr})")
+            due = c["deadline_date"] or "마감 없음"
+            print(f"  #{c['id']:<4} [{state:11s}] {c['statement']}  ({expr}, ~{due})")
     else:
         print("\n현재 유효한 논지 없음 (draft 만 있거나 effective_date 가 미래)")
+    return 0
+
+
+def _cmd_judge(criterion_id: int, result: str, note: Optional[str], db_path: Optional[Path]) -> int:
+    """`human` 기준을 사람이 판정한다 — 이게 없으면 그 논지는 영영 `held` 에 못 닿는다."""
+    try:
+        wrote = record_human_check(criterion_id, result, detail=note, db_path=db_path)
+    except ThesisValidationError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        return 1
+    if not wrote:
+        print(f"기준 #{criterion_id}: 오늘 판정이 이미 있다 — 덮어쓰지 않는다 (판정 이력은 append-only)")
+        return 0
+    print(f"✓ 기준 #{criterion_id} → {result}")
     return 0
 
 
@@ -130,9 +149,16 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("show", help="티커의 논지 이력 + 현재 유효 논지")
     s.add_argument("ticker")
 
+    j = sub.add_parser("judge", help="human 반증 기준을 사람이 판정 (기준 번호는 show 에)")
+    j.add_argument("criterion_id", type=int)
+    j.add_argument("result", choices=("holding", "breached"))
+    j.add_argument("--note", default=None, help="판정 근거 한 줄")
+
     args = parser.parse_args(argv)
     if args.command == "write":
         return _cmd_write(args.path, args.db_path)
+    if args.command == "judge":
+        return _cmd_judge(args.criterion_id, args.result, args.note, args.db_path)
     return _cmd_show(args.ticker.upper(), args.db_path)
 
 

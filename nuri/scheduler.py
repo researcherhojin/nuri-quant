@@ -190,10 +190,14 @@ def _dispatch_collector(name: str, **kwargs):
         # 안 도는" 상태를 관측할 수 없다.
         #
         # **Surface 전용**: breach 는 알림·뱃지까지고 주문을 만들지 않는다 (§7.1).
-        from nuri.trading.engine.thesis_criteria import run_daily_checks
+        from nuri.trading.engine.thesis_criteria import roll_up_verdicts, run_daily_checks
 
         counts = run_daily_checks()
-        return counts["holding"] + counts["breached"] + counts["unevaluable"]
+        # 롤업은 판정 **뒤에** — 같은 잡 안에서 도는 이유는 오늘 판정이 오늘 verdict 에
+        # 반영돼야 하기 때문이다. 별도 잡으로 두면 하루 시차가 생기고, 그 시차 동안
+        # 화면의 verdict 가 기준 판정과 어긋난다.
+        verdicts = roll_up_verdicts()
+        return counts["holding"] + counts["breached"] + counts["unevaluable"] + sum(verdicts.values())
     elif name == "cboe":
         from nuri.collectors.cboe import CBOECollector
 

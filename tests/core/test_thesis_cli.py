@@ -175,3 +175,77 @@ class TestShow:
         assert "상승: 가속기 수요가 공급을 앞선다" in out
         assert "하락: 고객사 자체 칩 전환이 점유율을 깎는다" in out
         assert "근거 1건" in out
+
+
+class TestJudge:
+    """`human` 기준의 유일한 사람 입력 경로 (#1096).
+
+    이게 없으면 human 기준을 단 하나라도 가진 논지는 영영 `held` 에 못 닿는다 — 롤업이
+    **도달 불가능한 판정**을 갖게 되고, 그건 게이트가 있는데 안 잡는 상태와 같은 종류다.
+    """
+
+    _WITH_HUMAN = (
+        _YAML
+        + """  - kind: human
+    statement: 경영진이 교체되면 논지 전제가 깨진다
+    deadline_date: "2026-12-31"
+"""
+    )
+
+    def _human_id(self, db_path):
+        from nuri.core.db import query
+
+        return query(
+            "SELECT c.id FROM thesis_criteria c JOIN theses t ON t.id = c.thesis_id "
+            "WHERE t.ticker = 'ZZZZ' AND c.kind = 'human'",
+            db_path=db_path,
+        )[0]["id"]
+
+    def test_a_human_verdict_reaches_the_ledger(self, tmp_path, db_path, capsys):
+        main(["--db-path", str(db_path), "write", str(_write_file(tmp_path, self._WITH_HUMAN))])
+        capsys.readouterr()
+        cid = self._human_id(db_path)
+
+        assert main(["--db-path", str(db_path), "judge", str(cid), "breached", "--note", "CEO 사임"]) == 0
+
+        from nuri.core.db import query
+
+        rows = query("SELECT result, detail FROM thesis_criteria_checks", db_path=db_path)
+        assert len(rows) == 1, "CLI 가 돌았는데 판정 행이 없다 — 도달 불가"
+        assert (rows[0]["result"], rows[0]["detail"]) == ("breached", "CEO 사임")
+
+    def test_judging_a_machine_criterion_is_refused(self, tmp_path, db_path, capsys):
+        from nuri.core.db import query
+
+        main(["--db-path", str(db_path), "write", str(_write_file(tmp_path, self._WITH_HUMAN))])
+        capsys.readouterr()
+        machine_id = query(
+            "SELECT c.id FROM thesis_criteria c JOIN theses t ON t.id = c.thesis_id "
+            "WHERE t.ticker = 'ZZZZ' AND c.kind = 'machine'",
+            db_path=db_path,
+        )[0]["id"]
+
+        assert main(["--db-path", str(db_path), "judge", str(machine_id), "holding"]) == 1
+        assert "machine" in capsys.readouterr().err
+        assert query("SELECT COUNT(*) AS n FROM thesis_criteria_checks", db_path=db_path)[0]["n"] == 0
+
+    def test_a_second_judgement_the_same_day_is_reported_not_silent(self, tmp_path, db_path, capsys):
+        main(["--db-path", str(db_path), "write", str(_write_file(tmp_path, self._WITH_HUMAN))])
+        capsys.readouterr()
+        cid = self._human_id(db_path)
+        main(["--db-path", str(db_path), "judge", str(cid), "breached"])
+        capsys.readouterr()
+
+        assert main(["--db-path", str(db_path), "judge", str(cid), "holding"]) == 0
+        assert "덮어쓰지 않는다" in capsys.readouterr().out
+
+    def test_show_prints_the_criterion_number_needed_to_judge(self, tmp_path, db_path, capsys):
+        """번호를 안 보여주면 `judge` 는 있으나 마나다 — 사용자가 인자를 알 수 없다."""
+        main(["--db-path", str(db_path), "write", str(_write_file(tmp_path, self._WITH_HUMAN))])
+        capsys.readouterr()
+        cid = self._human_id(db_path)
+
+        main(["--db-path", str(db_path), "show", "zzzz"])
+        out = capsys.readouterr().out
+        assert f"#{cid}" in out
+        assert "판정: 진행 중" in out

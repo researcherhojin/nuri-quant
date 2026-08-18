@@ -102,6 +102,7 @@ from .thesis_ops import (  # noqa: F401, E402
     get_active_thesis,
     get_criteria,
     get_thesis_history,
+    record_human_check,
     upsert_thesis,
 )
 from .trades import upsert_trade  # noqa: F401, E402

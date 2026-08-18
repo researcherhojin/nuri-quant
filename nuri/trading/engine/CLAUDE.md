@@ -25,6 +25,28 @@ These are operational details unique to this directory; the canonical sources ab
   ⚠️ **스냅샷 접근자의 fallback 도 `db_path` 를 받아야 한다.** `_snapshot_portfolio()` / `_current_regime()` / `_snapshot_portfolio_raw()` 는 스냅샷이 없으면 fresh DB read 로 떨어지는데, 앞의 둘만 `db_path` 를 안 받아서 `_check_position_limits(db_path=X)` 같은 직접 호출이 기본 DB 를 읽었다(#1052). **이 결함은 기존 테스트로 보이지 않는다** — `certify()` 안에서는 ContextVar 가 DB 읽기를 통째로 건너뛰어 그 배선이 dead code 이기 때문에, 배선 6곳을 되돌려도 `tests/trading/engine` + `tests/llm` 611개가 초록이었다(2026-08-14 실측). 게이트를 **스냅샷 밖에서** 직접 부르는 테스트만 이걸 잡는다.
   **Test:** `tests/trading/engine/test_certify_db_path_isolation.py::TestGatesReadOnlyTheGivenDbOutsideCertify` — 배선을 되돌리면 8개 중 4개 FAIL. 구조 쪽 짝은 `tests/core/test_db_path_forwarding.py`.
 
+## 논지 verdict 롤업 (`thesis_criteria.py`, #1096)
+
+`theses.verdict` 의 **유일한 writer** 다. 값은 전부 `thesis_criteria_checks` 에서 나오며 손
+라벨링이 아니다. 우선순위: 반증(마감 무관) → 철회/교체(`abandoned`) → 마감 미도달(판정 보류)
+→ 전 기준 측정됨(`held`) / 아니면 `unevaluable`. **부분 측정은 `held` 가 아니다** — #1092 가
+기준 층에서 잠근 "`unevaluable` 은 `holding` 이 아니다" 의 논지 층 대응물이다.
+
+⚠️ **빈 컬렉션에 `all()` 을 쓰면 공허참으로 만점이 나온다.** 기준 0건인 논지가
+`all([]) is True` 로 `held` 를 받았다. 도달하지 않았던 건 롤업 쿼리가 INNER JOIN 이어서지
+방어가 있어서가 아니었고, LEFT JOIN 뮤테이션은 테스트를 전부 초록으로 통과했다. 채점·게이트에
+`all(...)` 을 쓸 땐 빈 입력을 **먼저** 걷어낼 것.
+⚠️ **효력을 가진 적 없는 논지는 채점 대상이 아니다.** `draft` 와 `effective_date` 가 미래인
+논지가 verdict 를 받고 있었다 — 특히 9월 발효 논지가 5월부터 판정이 쌓여 **유효해지기도 전에
+`broken`** 이 됐다(Codex 리뷰 2026-08-18 재현). 근본 원인은 롤업이 아니라 `run_daily_checks`
+가 `effective_date` 를 안 본 것이라 두 곳을 같이 막는다.
+**Test:** `::TestOnlyInForceThesesAreScored` — 필터 2개를 각각 지우면 FAIL, 카나리아
+`test_the_same_thesis_is_scored_once_effective` 가 필터가 논지를 영영 묻지 않는지 확인한다.
+
+**Test:** `tests/trading/engine/test_thesis_verdict.py::TestInProgressStaysBlank::test_zero_criteria_is_not_a_vacuous_pass`
+— 가드를 지우면 FAIL. 나머지 규칙은 같은 파일에서 뮤테이션 9종(측정 완결성 · 철회 · 우선순위 ·
+마감 없음 · machine 손판정 · 사람판정 덮어쓰기 · 자리표시자 · 스케줄러 배선 · 공허참) 전부 FAIL 실측.
+
 ## Execution Priority
 
 Mechanical ordering when emitting actions: `stop_loss → take_profit → trailing_stop_set → new_buy`.

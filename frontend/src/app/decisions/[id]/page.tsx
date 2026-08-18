@@ -79,6 +79,22 @@ const CRITERION_LABEL: Record<string, string> = {
   unevaluable: "측정 불가",
 };
 
+// 논지 verdict (#1096). `unevaluable` 은 회색이다 — 초록으로 칠하면 "측정 못 했다" 가
+// 화면에서 "지켜졌다" 로 읽히고, 그게 이 원장이 막으려는 것 자체다.
+const VERDICT_TONE: Record<string, string> = {
+  broken: "bg-rose-500/15 text-rose-400",
+  held: "bg-emerald-500/15 text-emerald-400",
+  abandoned: "bg-amber-500/15 text-amber-400",
+  unevaluable: "bg-muted text-muted-foreground",
+};
+
+const VERDICT_LABEL: Record<string, string> = {
+  broken: "반증됨",
+  held: "지켜짐",
+  abandoned: "철회됨",
+  unevaluable: "측정 불가",
+};
+
 interface DecisionDetail {
   id: number;
   date: string;
@@ -216,7 +232,15 @@ export async function DecisionProvenance({ id }: { id: string }) {
             {d.thesis && (
               <span className="text-[10px] text-muted-foreground/70">
                 v{d.thesis.version} · {d.thesis.effective_date} · {d.thesis.author} · {d.thesis.status}
-                {d.thesis.verdict ? ` · ${d.thesis.verdict}` : ""}
+              </span>
+            )}
+            {d.thesis && (
+              <span
+                className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                  VERDICT_TONE[d.thesis.verdict ?? ""] ?? "bg-muted text-muted-foreground"
+                }`}
+              >
+                {d.thesis.verdict ? VERDICT_LABEL[d.thesis.verdict] : "진행 중"}
               </span>
             )}
           </div>
