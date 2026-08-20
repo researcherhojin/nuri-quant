@@ -516,6 +516,10 @@ symmetric_amplifier:
 # 아니라 여기 있어야 하는 이유 (Config over code).
 ark:
   min_trade_pct: 1.0                     # |shares 변화율| 이 이 값 미만이면 Hold
+  # 펀드별 CSV 발행 지연 허용치 (#1145). ARK 는 엔드포인트가 200 인 채로 내용만 얼 수 있다 —
+  # 실제로 ARKF 가 7.5개월 얼어 있었고, 다른 펀드 4개가 최신이라 MAX(date) 는 초록이었다.
+  # 주말/공휴일 흡수용으로 7일. 이 값을 넘는 펀드는 수집 시 경고 + freshness 검사에서 빨강.
+  max_source_lag_days: 7
 
 holdings_monitor:
   enabled: true

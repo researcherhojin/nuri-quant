@@ -55,6 +55,11 @@ class TestFreshnessPolicies:
         # `fundamentals` 는 #1109 에서 추가 — composite 가중치 1.00 중 0.50(value+quality)이
         # 이 테이블에서 나오는데 정책이 없어서, 주간 잡이 보유 18종목만 갱신하는 동안
         # 나머지 ~728 종목이 얼마나 낡든 어떤 화면에도 안 떴다 (#1102 의 재료 쪽 절반).
+        # `ark` 는 #1145 에서 추가 — 소스가 **200 인 채로 내용만 언다**. ARKF 가 7.5개월 전
+        # 보유를 담은 CSV 를 정상 서빙하는 동안 다운로드·파싱이 다 성공해 수집기 실패율에도
+        # `collector_runs` 에도 안 걸렸다. 정책 쿼리는 맨 `MAX(date)` 가 아니라 **펀드별
+        # 최신 날짜의 최소값**이다 — 전자는 멀쩡한 펀드 4개가 죽은 펀드 하나를 가려 초록이
+        # 된다 (`signals` 가 KR/US 를 안 합치는 것과 같은 축).
         expected = {
             "prices",
             "factors",
@@ -67,6 +72,7 @@ class TestFreshnessPolicies:
             "consensus",
             "certification",
             "portfolio",
+            "ark",
         }
         assert expected == set(FRESHNESS_POLICIES.keys())
 
