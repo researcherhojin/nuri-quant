@@ -56,6 +56,19 @@ All tests run **network-free**. Override per-test if needed, but never remove gl
 - `make test-slow` — slow only
 - `make test` — full suite (test-fast + slow 27)
 
+## Coverage — 로컬은 `--cov-branch` 없이는 CI 와 다른 것을 잰다
+
+`codecov.yml` 은 `patch: target 100% / threshold 0%` 이고 **부분 분기(partial branch)까지 센다.** 그래서 미커버 **줄**이 0이어도 patch 가 미달할 수 있다. 분기 없이 재면 로컬이 CI 보다 관대해 보인다 — 실측(2026-08-20, 같은 테스트·같은 파일):
+
+```
+pytest --cov              nuri/api/routes/evidence.py   60  0        100%
+pytest --cov --cov-branch nuri/api/routes/evidence.py   60  0  28  1   99%   ← 부분분기 1
+```
+
+codecov 는 이 파일을 `"lines":7,"hits":6,"misses":0,"partials":1` → **85.71%** 로 보고했다. PR #1123·#1124 가 이 착시로 CI 를 한 바퀴 더 돌았다. **ad-hoc 으로 커버리지를 잴 때는 `--cov-branch` 를 붙일 것** (CI 는 `main-ci-cd.yml` 에서 항상 붙인다).
+
+부분 분기는 대개 "루프가 한 바퀴 돌고도 매칭 없이 빠져나가는 arc" 처럼 **테스트가 한 방향만 밟은 조건문**이다. `# pragma: no cover` 는 진짜로 트리거 불가능한 방어 코드에만 쓴다 — 실행 가능한 경로는 테스트로 덮는다.
+
 ## Gotchas
 
 ### conftest.py 안의 `test_*` 함수는 수집되지 않는다
