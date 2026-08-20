@@ -2,7 +2,8 @@
 
 Targets residual branches uncovered by test_rebalance_advisor.py:
 - L167 (account_total <= 0): account_totals 가 0 이면 division skip.
-- L180 (current_price <= 0 in position-limit branch): qty fallback path.
+- position-limit 분기의 stale 가격(current_price=0): 주당 단가를 USD 평가액에서
+  되뽑으므로 전량 매도 fallback 없이 초과분만 정확히 계산된다.
 - L203 (Unknown sector skip): 'Unknown' 라벨된 sector 는 위반 검사 X.
 - L219 (sector ticker is leverage ETF): leverage 항목은 sector 위반에서도 skip
   (priority 1 leverage_etf 룰이 더 강력 — 두 번 카운트 방지).
@@ -17,6 +18,7 @@ Privacy: synthetic ticker TST_*. No broker name.
 
 from __future__ import annotations
 
+import math
 from unittest.mock import patch
 
 import pandas as pd
@@ -24,6 +26,7 @@ import pytest
 
 from nuri.analysis.rebalance_advisor import detect_violations
 from nuri.core.db import init_db
+from nuri.core.rules import MAX_SINGLE_POSITION, get_account_strategy
 
 
 @pytest.fixture
@@ -135,9 +138,66 @@ class TestPositionLimitZeroPrice:
             violations = detect_violations(db_path=db_path)
         pos = [v for v in violations if v["violation_type"] == "position_limit_exceeded" and v["ticker"] == "TST_X"]
         assert len(pos) == 1
-        # current_price=0 → sell_shares=quantity=100 fallback (L180).
-        assert pos[0]["sell_shares"] == 100
-        assert pos[0]["sell_value_usd"] == 0.0  # 100 * 0
+        # 예전에는 current_price=0 을 만나면 `sell_shares=quantity` 로 전량 매도로
+        # 떨어지면서 `sell_value_usd` 는 100*0 = $0 를 보고했다 — 100주를 팔라면서
+        # 회수액 0 이라 그 자체로 말이 안 됐다. 이제 주당 단가를 USD 평가액에서
+        # 되뽑으므로($2,000/100주 = $20) stale 가격에도 초과분만 정확히 덜어낸다.
+        strategy = get_account_strategy("acct")
+        max_pos = strategy.get("max_single_position", MAX_SINGLE_POSITION)
+        expected_shares = math.ceil((2000.0 - 2500.0 * max_pos) / 20.0)
+        assert pos[0]["sell_shares"] == expected_shares
+        assert pos[0]["sell_shares"] < 100  # 전량 매도로 떨어지지 않는다
+        assert pos[0]["sell_value_usd"] == pytest.approx(expected_shares * 20.0)
+
+
+class TestPositionLimitZeroQuantity:
+    def test_zero_quantity_is_skipped_not_divided_by(self, db_path):
+        """수량 0 인데 평가액이 남아 있으면 그 종목은 건너뛴다 (0-나눗셈 방지).
+
+        주당 단가를 `ticker_value / quantity` 로 되뽑기 때문에 수량 0 이 그대로
+        들어오면 ZeroDivisionError 다. 실데이터에서는 수량 0 이면 평가액도 0 이라
+        비중 위반 자체가 안 나지만, DB 가 어긋나면 도달할 수 있는 자리다 —
+        위 TestPositionLimitZeroPrice 와 같은 성격의 모순 데이터로 가드를 잠근다.
+        """
+        rows = [
+            {
+                "account": "acct",
+                "ticker": "TST_Z",
+                "sector": "Tech",
+                "quantity": 0,
+                "avg_price": 20.0,
+                "current_price": 20.0,
+                "currency": "USD",
+                "current_value_usd": 2000.0,
+                "cost_basis_usd": 2000.0,
+                "pnl_usd": 0.0,
+                "pnl_pct": 0.0,
+                "weight_pct": 80.0,
+                "price_date": "2026-04-10",
+            },
+            {
+                "account": "acct",
+                "ticker": "TST_W",
+                "sector": "Health",
+                "quantity": 5,
+                "avg_price": 100.0,
+                "current_price": 100.0,
+                "currency": "USD",
+                "current_value_usd": 500.0,
+                "cost_basis_usd": 500.0,
+                "pnl_usd": 0.0,
+                "pnl_pct": 0.0,
+                "weight_pct": 20.0,
+                "price_date": "2026-04-10",
+            },
+        ]
+        df = pd.DataFrame(rows)
+        df.attrs["total_value_usd"] = 2500.0
+        with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=df):
+            violations = detect_violations(db_path=db_path)  # 예외 없이 끝나야 한다
+        assert not [
+            v for v in violations if v["ticker"] == "TST_Z" and v["violation_type"] == "position_limit_exceeded"
+        ]
 
 
 # ════════════════════════════════════════════════════════════
