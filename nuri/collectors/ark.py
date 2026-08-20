@@ -19,12 +19,14 @@ ARK 는 **매매 내역이 아니라 일별 보유 스냅샷**을 공개한다. 
 import csv
 import io
 import logging
+from datetime import date
 
 import requests
 
 from nuri.collectors.base import DEFAULT_HEADERS, BaseCollector, parse_date
 from nuri.core.db import get_tickers, query, upsert_ark
-from nuri.core.rules import ARK_MIN_TRADE_PCT
+from nuri.core.rules import ARK_MAX_SOURCE_LAG_DAYS, ARK_MIN_TRADE_PCT
+from nuri.core.timezone import today_kst
 
 # ETF 별 보유 CSV. 통합 파일이 없어졌으므로 펀드마다 따로 받는다.
 # 한 펀드가 실패해도 나머지는 수집된다 (부분 성공 허용).
@@ -52,14 +54,20 @@ class ARKCollector(BaseCollector):
         records: list[dict] = []
         errors: list[Exception] = []
         failed: list[str] = []
+        fund_dates: dict[str, str] = {}
         for fund, filename in ARK_HOLDINGS_FILES.items():
             url = f"{ARK_HOLDINGS_BASE}/{filename}"
             try:
-                records.extend(self._collect_fund(url, fund, held_tickers, db_path))
+                fund_records, csv_date = self._collect_fund(url, fund, held_tickers, db_path)
+                records.extend(fund_records)
+                if csv_date:
+                    fund_dates[fund] = csv_date
             except Exception as e:
                 errors.append(e)
                 failed.append(fund)
                 self.logger.warning("ARK %s 보유 CSV 실패 (%s): %s", fund, url.split("/")[2], e)
+
+        self._warn_stale_funds(fund_dates)
 
         if failed:
             self.logger.warning("ARK 펀드 %d/%d 실패: %s", len(failed), len(ARK_HOLDINGS_FILES), ", ".join(failed))
@@ -79,8 +87,39 @@ class ARKCollector(BaseCollector):
         self.logger.info("ARK 보유 %d건 (보유 종목 필터) — %s", len(records), directions)
         return records
 
-    def _collect_fund(self, url: str, fund: str, held_tickers: set, db_path=None) -> list[dict]:
-        """한 ETF 의 보유 CSV 를 파싱하고 직전 보유분 대비 방향을 파생한다."""
+    def _warn_stale_funds(self, fund_dates: dict[str, str]) -> None:
+        """펀드별 CSV 발행 날짜가 오늘에서 얼마나 뒤처졌는지 본다 (#1145).
+
+        **소스는 200 인 채로 내용만 얼 수 있다.** ARKF 는 CSV 를 정상 서빙하면서 7.5개월
+        전 보유를 담고 있었다 — 다운로드도 파싱도 성공하므로 이 검사가 없으면 아무 신호가
+        없다. 저장 자체는 정확하다(그날 그렇게 들고 있던 게 맞다). 문제는 그 펀드가 멈춘 걸
+        아무도 모른다는 것이다.
+
+        펀드별로 본다. 합쳐서 최신 하나만 보면 멀쩡한 펀드 뒤로 죽은 펀드가 숨는다 —
+        `freshness.py` 의 `signals` 정책이 KR/US 를 안 합치는 것과 같은 이유다.
+        """
+        if not fund_dates:
+            return
+
+        today = date.fromisoformat(today_kst())
+        for fund, csv_date in sorted(fund_dates.items()):
+            lag = (today - date.fromisoformat(csv_date)).days
+            if lag > ARK_MAX_SOURCE_LAG_DAYS:
+                self.logger.warning(
+                    "ARK %s 소스가 %d일 낡음 (CSV 기준일 %s, 허용 %d일) — 엔드포인트는 정상이고 내용만 얼어 있다",
+                    fund,
+                    lag,
+                    csv_date,
+                    ARK_MAX_SOURCE_LAG_DAYS,
+                )
+
+    def _collect_fund(self, url: str, fund: str, held_tickers: set, db_path=None) -> tuple[list[dict], str | None]:
+        """한 ETF 의 보유 CSV 를 파싱하고 직전 보유분 대비 방향을 파생한다.
+
+        `(records, csv_date)` 를 돌려준다. **날짜를 따로 내보내는 이유**: records 는 보유
+        종목으로 걸러진 뒤라, 우리가 아무것도 안 겹치는 펀드는 records 가 비어 CSV 가
+        아무리 낡아도 staleness 검사에 안 걸린다 (#1145 codex P1).
+        """
         resp = requests.get(url, headers=DEFAULT_HEADERS, timeout=30)
         resp.raise_for_status()
 
@@ -92,12 +131,18 @@ class ARKCollector(BaseCollector):
         for row in reader:
             # 현재 컬럼: date, fund, company, ticker, cusip, shares, market value ($), weight (%)
             # 마지막 행은 면책 문구 한 줄이라 ticker 가 비어 자연히 걸러진다. 비상장 보유분도 마찬가지.
-            ticker = _clean(row.get("ticker") or row.get("Ticker"))
-            if not ticker or ticker not in held_tickers:
-                continue
 
+            # 날짜는 **보유 종목 필터보다 먼저** 읽는다 (#1145 codex P1). 필터 뒤에서 읽으면
+            # 우리가 아무것도 안 겹치는 펀드는 낡아도 fund_date 가 안 생겨 staleness 검사에
+            # 안 걸린다 — 소스 감시가 우리 포트폴리오 구성에 의존해버린다. ARKF 가 그 상태로
+            # 미끄러지는 데 필요한 건 우리가 ARKF 보유 종목을 하나도 안 들게 되는 것뿐이다.
             date = parse_date(_clean(row.get("date") or row.get("Date")))
             if not date:
+                continue
+            csv_date = date
+
+            ticker = _clean(row.get("ticker") or row.get("Ticker"))
+            if not ticker or ticker not in held_tickers:
                 continue
 
             # shares 를 못 읽으면 행을 버린다 — 0.0 으로 눕히면 방향 파생이 그걸
@@ -111,7 +156,6 @@ class ARKCollector(BaseCollector):
             # weight 는 방향 파생에 안 쓰이므로 못 읽으면 0.0 이어도 신호를 왜곡하지 않는다.
             weight = _to_float_or_none(row.get("weight (%)") or row.get("% of ETF") or row.get("weight"))
 
-            csv_date = date
             seen.add(ticker)
             records.append(
                 {
@@ -126,7 +170,7 @@ class ARKCollector(BaseCollector):
 
         if csv_date:
             records.extend(self._exit_records(fund, csv_date, seen, held_tickers, db_path))
-        return records
+        return records, csv_date
 
     def _exit_records(self, fund: str, date: str, seen: set[str], held_tickers: set, db_path=None) -> list[dict]:
         """어제 있었는데 오늘 CSV 에 없는 종목 → 전량 청산 (#1143 codex P1).

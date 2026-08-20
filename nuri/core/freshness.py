@@ -137,6 +137,34 @@ FRESHNESS_POLICIES = {
         "fail_hours": 48,
         "label": "Certification",
     },
+    "ark": {
+        # ARK 는 **엔드포인트가 200 인 채로 내용만 언다** (#1145). 실측: ARKF 가 7.5개월 전
+        # 보유를 담은 CSV 를 정상 서빙하는 동안 다른 4개 펀드는 최신이었다. 다운로드도
+        # 파싱도 성공하므로 수집기 실패율·collector_runs 어디에도 안 걸린다.
+        #
+        # 맨 `MAX(date) FROM ark` 는 **초록**이다 — 멀쩡한 펀드 4개가 죽은 펀드 하나를
+        # 가린다. 위 `signals` 정책이 KR/US 를 안 합치는 것과 같은 이유이고, 여기서는
+        # 펀드가 그 축이다. 그래서 **펀드별 최신 날짜의 최소값**, 즉 가장 낡은 펀드를 본다.
+        #
+        # 임계: 수집 잡은 화~토 07:30 이고 CSV 기준일은 보통 전 영업일이라 정상 나이가
+        # 24~72h 다. 주말·공휴일 흡수해 168h(7일) WARN — `config/rules.yaml
+        # ark.max_source_lag_days` 와 같은 값이다. 336h(14일) = 2주째 안 움직였다.
+        #
+        # 추적 중인 5개 펀드로 **범위를 좁힌다**. 전 fund 값을 그룹핑하면 오타 하나나 과거
+        # 실험이 남긴 stray 그룹이 정책을 영구 빨강으로 못박는다 — 영구 빨강 게이트는
+        # 아무도 안 보게 되므로 죽은 게이트와 같아진다. 목록은 `ark.py ARK_HOLDINGS_FILES`
+        # 와 일치해야 하고, `tests/core/test_ark_freshness_policy.py` 가 양방향으로 대조한다.
+        "query": (
+            "SELECT MIN(latest) FROM ("
+            "  SELECT fund, MAX(date) AS latest FROM ark "
+            "  WHERE fund IN ('ARKK', 'ARKW', 'ARKG', 'ARKQ', 'ARKF') AND date IS NOT NULL "
+            "  GROUP BY fund"
+            ")"
+        ),
+        "warn_hours": 168,
+        "fail_hours": 336,
+        "label": "ARK 보유 (가장 낡은 펀드)",
+    },
     "portfolio": {
         # P0 stale-data fix (#507 audit 2026-04-30): broker 매도/매수 발생 후 yaml
         # sync 누락 시 0주 ticker 에 SELL 권고가 누설됨. 24h 이상이면 WARN, 72h
