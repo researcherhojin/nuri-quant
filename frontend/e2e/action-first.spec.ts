@@ -1,17 +1,25 @@
 import { test, expect } from "@playwright/test";
+import { ACTION, CONTEXT } from "../src/lib/strings";
+
+// 라벨 리터럴을 여기 박지 않는다 — strings.ts 가 단일 출처다. 410d385 가
+// CONTEXT.SIEGE 값을 "SIEGE" → "Certification" 으로 바꿨을 때 vitest 는 같이
+// 갱신됐지만 이 파일은 안 됐고, playwright 가 어떤 게이트에도 없어서 3.5개월간
+// 아무도 몰랐다. import 로 묶어두면 다음 rename 은 단언이 따라온다.
+//
+// 시스템 건강 4-card 중 Certification 카드는 main 안의 /engine 링크다.
+// 사이드바에도 /engine 링크("Certification Engine")가 있어 main 스코프가 필요하다 —
+// body 전체를 훑으면 카드가 사라져도 사이드바 때문에 초록으로 통과한다.
+const healthCard = (page: import("@playwright/test").Page) =>
+  page.locator('main a[href="/engine"]');
 
 test.describe("Action-First Dashboard", () => {
-  test("renders system health cards (SIEGE, regime, macro, freshness)", async ({ page }) => {
+  test("renders system health cards (certification, regime, macro, freshness)", async ({ page }) => {
     await page.goto("/", { timeout: 20000 });
-    await page.waitForTimeout(5000);
-    // System health section should have SIEGE label
-    await expect(page.locator("text=SIEGE").first()).toBeVisible({ timeout: 10000 });
-    // Should show regime info
-    const body = await page.textContent("body");
-    expect(body).toBeTruthy();
-    // At least one health card should show a percentage or status
-    const hasHealth = body!.includes("SIEGE") || body!.includes("인증") || body!.includes("미인증");
-    expect(hasHealth).toBe(true);
+    await expect(healthCard(page)).toContainText(CONTEXT.SIEGE, { timeout: 15000 });
+    // 카드 본문은 인증/미인증 상태를 함께 낸다
+    await expect(healthCard(page)).toContainText(
+      new RegExp(`${CONTEXT.CERTIFIED}|${CONTEXT.REJECTED}`),
+    );
   });
 
   test("renders action items with priority sections", async ({ page }) => {
@@ -25,15 +33,45 @@ test.describe("Action-First Dashboard", () => {
     expect(hasActions).toBe(true);
   });
 
-  test("TSLA shows as urgent action (SIEGE violation)", async ({ page }) => {
-    await page.goto("/", { timeout: 20000 });
-    await page.waitForTimeout(5000);
-    const body = await page.textContent("body");
-    // TSLA should appear in the action items section
-    expect(body).toContain("TSLA");
-    // SIEGE violation should be mentioned
-    const hasSiegeWarning = body!.includes("SIEGE") || body!.includes("한도") || body!.includes("15.4%");
-    expect(hasSiegeWarning).toBe(true);
+  // 이 테스트는 원래 "TSLA 가 15.4% 비중으로 urgent 에 뜬다" 를 박아뒀다. 셋 다
+  // 2026-04-13 당시의 라이브 포트폴리오 값이라 매일 드리프트한다(오늘 TSLA 는
+  // 14.3% · check 버킷 · Certification 위반 없음). 티커도 수치도 API 가 실제로
+  // 낸 것에서 가져온다.
+  test("action items surface the API's urgent/check tickers with their reasons", async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(90_000);
+
+    // 페이지를 **먼저** 연다. `/api/actions` 는 콜드 실측 3.8초인데, 이 fixture 의
+    // 요청은 Next rewrite 프록시를 타고 그 프록시는 30초에 소켓을 끊는다
+    // (`proxyTimeout || 30000`). 콜드 스위트에서 API 를 먼저 부르면 스위트가
+    // 동시에 깨우는 무거운 엔드포인트들 뒤에 줄을 서다 프록시 타임아웃에 걸린다
+    // — API 로그는 전부 200 인데 fixture 만 not-ok 를 받는다 (#1119).
+    // 대시보드 렌더가 서버사이드에서 같은 엔드포인트를 깨우므로, 그 다음 호출은
+    // 5분 TTL 캐시에 맞는다.
+    await page.goto("/", { timeout: 30000 });
+    const main = page.locator("main");
+    await expect(main).toContainText(ACTION.TITLE, { timeout: 15000 });
+
+    const res = await request.get("/api/actions");
+    expect(res.ok()).toBe(true);
+    const data = await res.json();
+    const items: { ticker: string; reasons?: string[] }[] = [
+      ...(data.urgent ?? []),
+      ...(data.check ?? []),
+    ];
+    test.skip(items.length === 0, "urgent/check 액션 0건 — 검증 대상 없음");
+
+    for (const item of items) {
+      await expect(main.locator(`a[href="/ticker/${item.ticker}"]`).first()).toBeVisible();
+    }
+
+    // reason 문자열은 액션 카드에서만 렌더된다(action-items.tsx:69) — 보유
+    // 테이블이 대신 통과시켜주지 않는 유일한 스코프다.
+    const reason = items.flatMap((i) => i.reasons ?? [])[0];
+    expect(reason, "액션 아이템에 reason 이 하나도 없다").toBeTruthy();
+    await expect(main).toContainText(reason);
   });
 
   test("action items have expand/collapse detail button", async ({ page }) => {
@@ -114,6 +152,6 @@ test.describe("Action-First Dashboard", () => {
     await page.waitForTimeout(5000);
     await expect(page.locator("text=오늘의 액션").first()).toBeVisible({ timeout: 10000 });
     // Health cards should wrap on mobile
-    await expect(page.locator("text=SIEGE").first()).toBeVisible();
+    await expect(healthCard(page)).toContainText(CONTEXT.SIEGE, { timeout: 15000 });
   });
 });

@@ -1,5 +1,6 @@
 """스윙 트레이드 API."""
 
+import threading
 from dataclasses import asdict
 from time import monotonic
 
@@ -9,6 +10,10 @@ router = APIRouter(tags=["swing"])
 
 _BACKTEST_CACHE_TTL_SECONDS = 300
 _interactive_backtest_cache: dict[tuple[int, str, int, int], tuple[float, dict]] = {}
+# single-flight — TTL 만료 시 동시 요청이 같은 백테스트를 중복 수행하는 걸 막는다
+# (#1119). 키가 달라도 한 락으로 직렬화한다 — 이 경로는 무거워서 병렬 실행 자체가
+# 스레드풀을 갉아먹는 쪽이 더 비싸다.
+_backtest_lock = threading.Lock()
 
 
 @router.get("/scan")
@@ -105,18 +110,29 @@ def get_backtest_equity(
     Returns lightweight data: equity curve points, drawdown, regime bands,
     SPY benchmark, and key metrics. Designed for Recharts frontend.
     """
+    cache_key = (sma, period, sl, tp)
+    cached = _interactive_backtest_cache.get(cache_key)
+    now = monotonic()
+    if cached and now - cached[0] < _BACKTEST_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    with _backtest_lock:
+        # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다
+        cached = _interactive_backtest_cache.get(cache_key)
+        now = monotonic()
+        if cached and now - cached[0] < _BACKTEST_CACHE_TTL_SECONDS:
+            return cached[1]
+        return _run_interactive_backtest(sma, period, sl, tp, cache_key, now)
+
+
+def _run_interactive_backtest(sma, period, sl, tp, cache_key, now):
+    """실제 백테스트 — 반드시 `_backtest_lock` 을 쥔 채 부른다."""
     import json
 
     from nuri.trading.strategy.ls_backtest import (
         classify_historical_regimes,
         run_interactive_backtest,
     )
-
-    cache_key = (sma, period, sl, tp)
-    cached = _interactive_backtest_cache.get(cache_key)
-    now = monotonic()
-    if cached and now - cached[0] < _BACKTEST_CACHE_TTL_SECONDS:
-        return cached[1]
 
     regimes = classify_historical_regimes(sma_period=sma)
     if regimes.empty:
