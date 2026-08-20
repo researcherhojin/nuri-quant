@@ -113,7 +113,12 @@ def _build_actions() -> dict:
         position_pct = holding.get("position_pct", 0)
         # 보유 행이 고른 계좌(worst-PnL)와 **같은 계좌**의 타겟을 본다 — 티커로만
         # 조회하면 둘이 갈라져 서로 다른 원가 기준이 한 줄에 섞인다 (#982).
-        target = targets_status.get((ticker, holding.get("account")), {})
+        # 계좌 라벨이 없으면 조회 자체를 하지 않는다: 키가 (ticker, None) 이 되면
+        # `_get_targets_status` 가 만드는 어떤 키와도 안 맞아 결과가 항상 빈 dict 다.
+        # 위의 `ticker not in portfolio_holdings` 가드 때문에 실제로는 도달하지 않지만,
+        # 도달 불가를 **타입으로도** 말해두면 이 파일의 진짜 오류가 노이즈에 안 묻힌다.
+        account_label = holding.get("account")
+        target = targets_status.get((ticker, account_label), {}) if account_label else {}
 
         # A-5: 시장 시간이면 live price fetch + divergence 체크. stored price 는
         # T-1 이라 장중 >3% 차이가 날 수 있음 (NFLX 사례). 지금은 flag 만 — 실제
@@ -530,14 +535,28 @@ def _get_targets_status() -> dict[tuple[str, str], dict]:
             check_leader_trail_signals,
         )
 
+        # 계좌가 없는 행은 **건너뛴다**. `labels.get(None, None)` 은 None 을 돌려주므로
+        # 그대로 두면 (ticker, None) 키가 만들어지는데, 소비자는 항상 라벨 문자열로
+        # 조회하므로 그 키는 영영 안 맞는다 — 타겟이 들어가 있으면서 안 읽힌다.
+        # `len(targets)` 은 세므로 "있다" 고 보이는 게 더 나쁘다. 넣지 않고 로그를 남긴다.
+        def _key(row: dict) -> tuple[str, str] | None:
+            # `isinstance` 로 좁히는 이유는 두 가지다. 타입 체커에게 None 배제를 말해주고,
+            # 동시에 문자열이 아닌 account 도 실제로 걸러낸다 — 키는 (str, str) 이어야
+            # 소비자의 조회와 맞는다.
+            account = row.get("account")
+            if not isinstance(account, str) or not account:
+                logger.debug("targets: account 없는 행 skip — %s", row.get("ticker"))
+                return None
+            return (str(row["ticker"]), labels.get(account, account))
+
         try:
-            _leader_trail = {
-                (x["ticker"], labels.get(x.get("account"), x.get("account"))) for x in check_leader_trail_signals()
-            }
+            _leader_trail = {k for k in (_key(x) for x in check_leader_trail_signals()) if k}
         except Exception:
             _leader_trail = set()
         for t in calculate_portfolio_targets():
-            key = (t["ticker"], labels.get(t.get("account"), t.get("account")))
+            key = _key(t)
+            if key is None:
+                continue
             targets[key] = {
                 "stop_loss": t.get("stop_loss"),
                 "target_1": t.get("target_1"),

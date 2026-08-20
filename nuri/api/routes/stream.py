@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -36,7 +37,10 @@ def _get_snapshot() -> dict:
     if now - _cache_time < _CACHE_TTL and _cache:
         return {**_cache, "timestamp": now, "cached": True}
 
-    result = {"timestamp": now}
+    # 값 타입을 명시한다 — 첫 항목이 float 라 추론이 `dict[str, float]` 로 굳고,
+    # 그 뒤 regime(str) · vix(None 가능) 대입이 전부 타입 오류가 된다. 런타임은 멀쩡했지만
+    # 그 오류 3건이 노이즈 바닥에 섞여 **이 파일의 진짜 오류를 가린다**.
+    result: dict[str, Any] = {"timestamp": now}
 
     try:
         from nuri.quant.regime.classifier import classify_regime
