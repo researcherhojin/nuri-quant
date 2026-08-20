@@ -30,6 +30,11 @@ CACHE_TTL = 300  # 5분
 _actions_cache: dict = {"data": None, "timestamp": 0}
 _opportunities_cache: dict = {"data": None, "timestamp": 0}
 _market_context_cache: dict = {"data": None, "timestamp": 0}
+# single-flight — TTL 만료 시 동시 요청이 전부 재계산하는 걸 막는다 (#1119).
+# `_scan_lock` (아래) 과 같은 이유·같은 패턴이다.
+_actions_lock = threading.Lock()
+_opportunities_lock = threading.Lock()
+_market_context_lock = threading.Lock()
 
 
 # ─── /api/actions ───
@@ -42,10 +47,15 @@ def get_actions():
     if _actions_cache["data"] and (now - _actions_cache["timestamp"]) < CACHE_TTL:
         return _actions_cache["data"]
     try:
-        result = _build_actions()
-        _actions_cache["data"] = result
-        _actions_cache["timestamp"] = time.time()
-        return result
+        with _actions_lock:
+            # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다 (#1119)
+            now = time.time()
+            if _actions_cache["data"] and (now - _actions_cache["timestamp"]) < CACHE_TTL:
+                return _actions_cache["data"]
+            result = _build_actions()
+            _actions_cache["data"] = result
+            _actions_cache["timestamp"] = time.time()
+            return result
     except Exception:
         logger.exception("actions API error")
         # PR A: exception fallback 도 4-bucket shape 유지 (portfolio 포함).
@@ -282,10 +292,15 @@ def get_opportunities():
     if _opportunities_cache["data"] and (now - _opportunities_cache["timestamp"]) < CACHE_TTL:
         return _opportunities_cache["data"]
     try:
-        result = {"opportunities": _build_opportunities(), "generated_at": kst_now().isoformat()}
-        _opportunities_cache["data"] = result
-        _opportunities_cache["timestamp"] = time.time()
-        return result
+        with _opportunities_lock:
+            # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다 (#1119)
+            now = time.time()
+            if _opportunities_cache["data"] and (now - _opportunities_cache["timestamp"]) < CACHE_TTL:
+                return _opportunities_cache["data"]
+            result = {"opportunities": _build_opportunities(), "generated_at": kst_now().isoformat()}
+            _opportunities_cache["data"] = result
+            _opportunities_cache["timestamp"] = time.time()
+            return result
     except Exception:
         logger.exception("opportunities API error")
         return {"opportunities": []}
@@ -393,14 +408,19 @@ def get_market_context():
     if _market_context_cache["data"] and (now - _market_context_cache["timestamp"]) < CACHE_TTL:
         return _market_context_cache["data"]
     try:
-        result = {
-            "macro_events": _get_macro_events(),
-            "system_health": _get_system_health(),
-            "generated_at": kst_now().isoformat(),
-        }
-        _market_context_cache["data"] = result
-        _market_context_cache["timestamp"] = time.time()
-        return result
+        with _market_context_lock:
+            # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다 (#1119)
+            now = time.time()
+            if _market_context_cache["data"] and (now - _market_context_cache["timestamp"]) < CACHE_TTL:
+                return _market_context_cache["data"]
+            result = {
+                "macro_events": _get_macro_events(),
+                "system_health": _get_system_health(),
+                "generated_at": kst_now().isoformat(),
+            }
+            _market_context_cache["data"] = result
+            _market_context_cache["timestamp"] = time.time()
+            return result
     except Exception:
         logger.exception("market-context API error")
         return {"macro_events": [], "system_health": {}, "generated_at": kst_now().isoformat()}

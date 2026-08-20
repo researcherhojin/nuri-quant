@@ -25,6 +25,12 @@ INTERVAL = 30
 KEEPALIVE_INTERVAL = 10
 
 # 메모리 캐시 (DB 직접 조회 대신 60초 갱신)
+#
+# ⚠️ 여기에는 다른 라우트와 달리 single-flight 락을 **일부러 두지 않았다** (#1119).
+# `_get_snapshot` 은 `_event_generator` 안에서 불리는데 그 생성기는 `async` 라
+# **이벤트 루프 위에서** 돈다. `threading.Lock` 을 걸면 경합 시 루프 자체가 멈춰
+# 모든 SSE 연결과 라우팅이 같이 선다 — 스레드풀 경합보다 나쁘다. 대신 이 스냅샷은
+# DB 조회 몇 개뿐이라 중복 계산 비용이 작다(다른 캐시는 3.5~20초).
 _CACHE_TTL = 60
 _cache: dict = {}
 _cache_time: float = 0
