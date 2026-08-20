@@ -138,3 +138,75 @@ class TestRegimeAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert data["gate_score"] == 80
+
+
+class TestReportContextCache:
+    """`/report/context` 가 매 요청 전액을 다시 물지 않는지 잠근다 (#1119).
+
+    회귀 전에는 캐시가 없어 cold 28.4초 · warm 28.9초였다. 그 중 약 20초가
+    `gather_context()` 안의 `consensus.analyze_portfolio` 인데, 바로 옆
+    `/api/consensus` 가 5분 캐시로 이미 갖고 있는 계산이다.
+    """
+
+    def _reset(self):
+        import nuri.api.routes.regime as m
+
+        m._context_cache["data"] = None
+        m._context_cache["ts"] = 0.0
+
+    def test_second_request_does_not_recompute(self, client, monkeypatch):
+        class FakeContext:
+            gate_score = 80
+            known_tickers = {"AAPL"}
+
+        calls = []
+
+        def counted():
+            calls.append(1)
+            return FakeContext()
+
+        self._reset()
+        monkeypatch.setattr("nuri.llm.report.gather_context", counted)
+        monkeypatch.setattr("nuri.llm.report.format_prompt", lambda ctx: "p")
+        try:
+            assert client.get("/api/report/context").status_code == 200
+            assert client.get("/api/report/context").status_code == 200
+            assert len(calls) == 1, f"gather_context 가 {len(calls)}회 실행됐다"
+        finally:
+            self._reset()
+
+    def test_concurrent_requests_compute_once(self, client, monkeypatch):
+        """락 안쪽 double-check 경로 — 경합 없이는 실행되지 않는다."""
+        import threading
+
+        class FakeContext:
+            gate_score = 1
+            known_tickers = set()
+
+        calls = []
+        barrier = threading.Barrier(4)
+
+        def slow():
+            calls.append(1)
+            _time.sleep(0.25)
+            return FakeContext()
+
+        self._reset()
+        monkeypatch.setattr("nuri.llm.report.gather_context", slow)
+        monkeypatch.setattr("nuri.llm.report.format_prompt", lambda ctx: "p")
+
+        import nuri.api.routes.regime as m
+
+        def worker():
+            barrier.wait(timeout=5)
+            m.get_report_context()
+
+        try:
+            threads = [threading.Thread(target=worker) for _ in range(4)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=15)
+            assert len(calls) == 1, f"동시 4요청이 {len(calls)}회 계산했다 — single-flight 없음"
+        finally:
+            self._reset()
