@@ -141,6 +141,11 @@ class TestClaimListParity:
         assert not stale, "sync 대상이 이사갔거나 사라짐:\n" + "\n".join(f"  {f}  {pat}" for f, pat in stale)
 
 
+#: `repo_copy` 가 심는 테스트 개수. 라이브 수치와 안 겹치는 작은 값이어야
+#: "fixer 가 정말 다시 썼는가" 를 값으로 구분할 수 있다.
+_SEEDED_TESTS = 3
+
+
 @pytest.fixture
 def repo_copy(tmp_path):
     """검사 대상 문서만 복사한 얕은 사본 + `.venv` 심볼릭 링크.
@@ -172,6 +177,15 @@ def repo_copy(tmp_path):
             shutil.copy2(f, dst / pkg / f.name)
     for sub in ("tests", "frontend/src", "frontend/e2e"):
         (dst / sub).mkdir(parents=True, exist_ok=True)
+    # `tests/` 를 빈 채로 두면 `live_tests_be` 가 0 을 세고, 그러면
+    # `sync_doc_counts.sh` 의 `if [ -n "$TESTS_BE" ]` 블록이 통째로 건너뛰어져
+    # **테스트-수 규칙 3건이 이 fixture 에서 한 줄도 실행되지 않는다** — 그 규칙을
+    # 겨눈 뮤테이션이 전부 무력했던 이유다 (#1084). 실제 파일을 심어 블록을 살린다.
+    # 개수(_SEEDED_TESTS)는 아래 테스트가 복구된 값을 확인하는 데 쓴다.
+    (dst / "tests" / "test_seeded.py").write_text(
+        "".join(f"def test_seed_{i}():\n    pass\n\n" for i in range(_SEEDED_TESTS)),
+        encoding="utf-8",
+    )
     (dst / "pyproject.toml").write_text("")  # _common.sh 의 레포 루트 마커
     (dst / ".venv").symlink_to(REPO_ROOT / ".venv")
     return dst
@@ -220,6 +234,35 @@ class TestRoundTrip:
         after = _run(VERIFY, repo_copy)
         assert "DRIFT" not in after.stdout, f"sync 후에도 drift 잔존:\n{after.stdout}"
         assert marker in readme.read_text()
+
+    def test_the_test_count_rules_run_when_nothing_is_deselected(self, repo_copy):
+        """수집 요약에 deselect 가 없어도 테스트-수 동기화가 돈다 (#1084).
+
+        `live_tests_be` 는 pytest 요약을 긁는데, pytest 는 **deselect 가 있을 때만**
+        `N/M tests collected` 를 찍는다. 0 건이면 `N tests collected` 다. 옛 정규식은
+        앞 형식만 봐서 그 순간 빈 값을 돌려줬고, 호출부의 `if [ -n "$TESTS_BE" ]` 가
+        테스트-수 claim 3건을 **통째로 건너뛰었다** — 종료코드 0 으로, 조용히.
+
+        `verify_doc_counts.sh` 는 파일 수만 검사하고 테스트 수는 안 본다. 즉 fixer 가
+        일을 멈춰도 그걸 잡을 게이트가 없다. 이 사본은 deselect 가 0 이므로 바로 그
+        조건이고, 여기서 복구가 일어나야 정규식이 두 형식을 다 받는다는 증명이 된다.
+        """
+        strategy = repo_copy / "docs" / "STRATEGY.md"
+        before = strategy.read_text()
+        marker = _live_marker(before, r"[0-9,]+ tests, [0-9]+ files \(statement")
+
+        corrupted = before.replace(marker, marker.replace(marker.split(" tests,")[0], "9,999", 1), 1)
+        strategy.write_text(corrupted)
+        assert "9,999 tests," in strategy.read_text(), "손상이 안 걸렸다 — 아래가 공짜로 통과한다"
+
+        sync = _run(SYNC, repo_copy)
+        assert sync.returncode == 0, sync.stdout + sync.stderr
+
+        after = strategy.read_text()
+        assert "9,999 tests," not in after, (
+            "테스트 수가 복구되지 않았다 — deselect 0 인 수집 요약에서 블록이 건너뛰어졌다\n" + sync.stdout
+        )
+        assert f"{_SEEDED_TESTS} tests," in after, f"fixer 가 심은 개수({_SEEDED_TESTS})로 다시 쓰지 않았다"
 
     def test_sync_leaves_neighbouring_numbers_alone(self, repo_copy):
         """Backend **파일 수** 동기화가 같은 표의 다른 숫자를 건드리지 않는다.

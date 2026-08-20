@@ -64,10 +64,18 @@ live_migrations()     { grep -cE '^        [0-9]+,$' nuri/core/db_migrations.py 
 live_scheduler_jobs() { grep -cE '"cron":' nuri/scheduler.py || true; }
 live_rules_lines()    { wc -l < config/rules.yaml | tr -d ' '; }
 
+# pytest 는 수집 요약을 두 형식으로 낸다:
+#   "7371/7380 tests collected (9 deselected)"  ← **deselect 가 있을 때만**
+#   "7380 tests collected"                       ← deselect 가 0 이면 이 형식
+# 예전엔 앞 형식만 봤다. 그래서 deselect 가 0 이 되는 순간 이 함수가 빈 값을 돌려주고,
+# 호출부의 `if [ -n "$TESTS_BE" ]` 가 테스트-수 동기화 3건을 **통째로 건너뛴다**.
+# `verify_doc_counts.sh` 는 파일 수만 검사하고 테스트 수는 안 보므로 그 침묵을 잡을
+# 게이트도 없다 — fixer 가 아무것도 안 하면서 성공으로 끝나는 형태다 (#1084).
+# `[0-9]+ tests collected` 하나로 두 형식을 다 집는다 (앞 형식에서는 총계 쪽에 매치).
 live_tests_be() {
     $PYTHON -m pytest tests/ --collect-only -q 2>/dev/null \
-        | grep -oE '[0-9]+/[0-9]+ tests collected' \
-        | head -1 | awk -F'/' '{print $2}' | awk '{print $1}'
+        | grep -oE '[0-9]+ tests collected' \
+        | head -1 | awk '{print $1}'
 }
 
 CHANGED=0
