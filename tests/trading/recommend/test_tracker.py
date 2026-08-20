@@ -1386,7 +1386,7 @@ class TestSaveBuyCandidates:
     """
 
     @staticmethod
-    def _result(*tickers):
+    def _result(*tickers, regime="bull_low_vol"):
         from nuri.trading.recommend.buy_candidate_emitter import BuyCandidate, EmitResult
 
         return EmitResult(
@@ -1404,7 +1404,7 @@ class TestSaveBuyCandidates:
                 )
                 for t in tickers
             ],
-            regime="bull_low_vol",
+            regime=regime,
         )
 
     def test_writes_rows_tagged_with_the_emit_source(self, db_path):
@@ -1457,47 +1457,95 @@ class TestSaveBuyCandidates:
         assert save_buy_candidates(EmitResult(blocked_reason="VIX 35 > 30"), db_path=db_path) == 0
         assert query("SELECT COUNT(*) c FROM recommendations", db_path=db_path)[0]["c"] == 0
 
-    def test_regime_classify_failure_does_not_block_persistence(self, db_path, monkeypatch):
-        """레짐 분류가 터져도 후보는 저장된다 — regime 만 NULL 로 남는다.
+    def test_the_ledger_records_the_regime_that_governed_the_decision(self, db_path, monkeypatch):
+        """#1082 — 행의 레짐은 **게이트가 본 값**이지 저장 시점에 다시 잰 값이 아니다.
 
-        관측(레짐 라벨)이 본 작업(원장 기록)을 게이트하면 안 된다 (#894). 이 emitter 의
-        기록이 없어서 체인 전체가 비어 있었던 게 #1078 의 출발점인데, 라벨 하나 때문에
-        다시 비면 같은 자리로 돌아간다.
+        프로덕션 실측(2026-08-18): emit 은 `recovery` 였는데 저장된 행은 `bull_low_vol`
+        이었다. 둘 다 canonical 이라 `canonical_regime_or_none` 도 못 걸렀고, 원장을
+        되짚으면 그 후보를 통과시키지 않은 레짐이 나왔다.
+
+        분류기를 **다른 canonical 값**으로 패치해 둔다. 저장 경로가 다시 분류하면 행에
+        `sideways_high_vol` 이 박혀 이 테스트가 실패한다 — 두 값이 모두 canonical 이라야
+        `canonical_regime_or_none` 뒤에 숨지 않고 차이가 드러난다.
         """
         import nuri.quant.regime.classifier as clf
 
-        def boom(*a, **k):
-            raise RuntimeError("regime down")
-
-        monkeypatch.setattr(clf, "classify_regime", boom)
+        monkeypatch.setattr(clf, "classify_regime", lambda **k: SimpleNamespace(regime="sideways_high_vol"))
 
         from nuri.trading.recommend.tracker import save_buy_candidates
 
-        assert save_buy_candidates(self._result("AAA"), db_path=db_path) == 1
-        row = query("SELECT ticker, regime FROM recommendations", db_path=db_path)[0]
-        assert row["ticker"] == "AAA"
+        assert save_buy_candidates(self._result("AAA", regime="recovery"), db_path=db_path) == 1
+        row = query("SELECT regime FROM recommendations", db_path=db_path)[0]
+        assert row["regime"] == "recovery"
+
+    def test_an_unresolved_regime_is_null_but_says_so_in_scoring_detail(self, db_path):
+        """분류 불가는 NULL 이되, "아예 기록 안 됨" 과 구분된다.
+
+        컬럼 도메인은 canonical 10종 또는 NULL 이다 (#832) — `unknown` 을 컬럼에 넣지
+        않는다. 대신 emitter 가 실제로 쓴 라벨을 `scoring_detail` 에 남긴다. 이게 없으면
+        "분류가 실패했다" 와 "이 경로가 레짐을 아예 안 적는다" 가 사후에 구분되지 않는다.
+        """
+        from nuri.quant.regime.classifier import UNKNOWN_REGIME
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        assert save_buy_candidates(self._result("AAA", regime=UNKNOWN_REGIME), db_path=db_path) == 1
+        row = query("SELECT regime, scoring_detail FROM recommendations", db_path=db_path)[0]
         assert row["regime"] is None
+        assert json.loads(row["scoring_detail"])["regime_unresolved"] == UNKNOWN_REGIME
+
+    def test_an_empty_regime_is_null_without_a_marker(self, db_path):
+        """`EmitResult.regime` 기본값 `""` 는 "분류 실패" 가 아니라 "아무도 안 넣음" 이다.
+
+        마커를 붙이면 거짓말이 된다 — `regime_unresolved: ""` 는 시도했다는 뜻이 되니까.
+        `unresolved = ... (emitted_regime or None)` 의 `or None` 갈래가 이걸 담당하는데,
+        삼항 단축은 coverage 가 분기로 세지 않으므로 **테스트가 유일한 잠금**이다.
+        """
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        assert save_buy_candidates(self._result("AAA", regime=""), db_path=db_path) == 1
+        row = query("SELECT regime, scoring_detail FROM recommendations", db_path=db_path)[0]
+        assert row["regime"] is None
+        assert "regime_unresolved" not in json.loads(row["scoring_detail"])
+
+    def test_a_result_without_a_regime_attribute_is_a_wiring_error(self, db_path):
+        """`.candidates` 만 있고 `.regime` 이 없는 객체는 조용히 NULL 이 되면 안 된다.
+
+        `held_add.HeldAddResult` 가 정확히 그 모양이다 — `candidates` / `skipped` 는 있고
+        `regime` 은 없다. `getattr(result, "regime", None)` 로 받으면 그런 객체가
+        **이 PR 이 구분하려고 만든 "기록 안 됨" 칸**으로 조용히 들어간다. 데이터 부재가
+        아니라 호출 계약 위반이므로 터져야 한다.
+        """
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        wrong = SimpleNamespace(candidates=self._result("AAA").candidates, skipped={})
+        with pytest.raises(AttributeError, match="regime"):
+            save_buy_candidates(wrong, db_path=db_path)
+        assert query("SELECT COUNT(*) c FROM recommendations", db_path=db_path)[0]["c"] == 0
+
+    def test_a_resolved_regime_leaves_no_unresolved_marker(self, db_path):
+        """마커는 미해결일 때만 — 항상 붙으면 존재 자체가 신호가 아니게 된다."""
+        from nuri.trading.recommend.tracker import save_buy_candidates
+
+        save_buy_candidates(self._result("AAA", regime="bull_low_vol"), db_path=db_path)
+        row = query("SELECT scoring_detail FROM recommendations", db_path=db_path)[0]
+        assert "regime_unresolved" not in json.loads(row["scoring_detail"])
 
     @pytest.mark.parametrize(
-        ("classified", "expected"),
+        ("emitted", "expected"),
         [
             ("bull_low_vol", "bull_low_vol"),  # canonical → 그대로 행에 박힌다
             ("[recovery] 비중 축소", None),  # free-text → NULL (#832)
         ],
     )
-    def test_regime_label_is_canonical_or_null(self, db_path, monkeypatch, classified, expected):
-        """분류가 성공하면 라벨이 행에 남되, canonical 10종이 아니면 NULL 이다.
+    def test_regime_label_is_canonical_or_null(self, db_path, emitted, expected):
+        """emitter 가 준 라벨이 행에 남되, canonical 10종이 아니면 NULL 이다.
 
-        실패 경로만 잠그면 `canonical_regime_or_none` 을 벗겨도(=`rr.regime` 을 그대로
-        대입해도) 초록이다. free-text 유입이 라벨 커버리지를 3% 로 만든 게 #832 였다.
+        미해결 경로만 잠그면 `canonical_regime_or_none` 을 벗겨도(=`result.regime` 을
+        그대로 대입해도) 초록이다. free-text 유입이 라벨 커버리지를 3% 로 만든 게 #832 다.
         """
-        import nuri.quant.regime.classifier as clf
-
-        monkeypatch.setattr(clf, "classify_regime", lambda **k: SimpleNamespace(regime=classified))
-
         from nuri.trading.recommend.tracker import save_buy_candidates
 
-        assert save_buy_candidates(self._result("AAA"), db_path=db_path) == 1
+        assert save_buy_candidates(self._result("AAA", regime=emitted), db_path=db_path) == 1
         row = query("SELECT regime FROM recommendations", db_path=db_path)[0]
         assert row["regime"] == expected
 

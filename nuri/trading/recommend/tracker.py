@@ -15,6 +15,7 @@ import logging
 from datetime import datetime, timedelta
 
 from nuri.core.db import get_db, query
+from nuri.quant.regime.classifier import canonical_regime_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -72,15 +73,39 @@ def save_buy_candidates(result, db_path=None) -> int:
         return 0
 
     today = today_kst()
-    batch_regime: str | None = None
-    try:
-        from nuri.quant.regime.classifier import canonical_regime_or_none, classify_regime
 
-        rr = classify_regime(db_path=db_path)
-        if rr is not None:
-            batch_regime = canonical_regime_or_none(rr.regime)
-    except Exception:
-        logger.debug("save_buy_candidates: regime classify 실패, NULL 유지", exc_info=True)
+    # 원장에는 **그 결정을 실제로 지배한** 레짐을 적는다 (#1082). 여기서 다시 분류하면
+    # 게이트가 본 값과 다른 값이 행에 박힌다 — 프로덕션 실측(2026-08-18)에서
+    # emit 은 `recovery`, 저장된 행은 `bull_low_vol` 이었다. 둘 다 canonical 이라
+    # `canonical_regime_or_none` 도 못 걸렀고, 원장을 되짚으면 틀린 근거가 나왔다.
+    #
+    # #1138 로 emitter 도 `classify_regime()` 을 쓰게 되어 두 writer 가 같은 **척도**를
+    # 공유한다. 다만 같아진 건 척도지 **시점**이 아니다 — 그래서 재측정이 아니라 소비여야
+    # 한다. 두 계열이 한 컬럼에서 실제로 관측되는 자리는 `llm/thesis_query.py` 하나뿐이다
+    # (`source` 필터 없이 티커 히스토리를 렌더). 나머지 분석 경로는 전부 `source IS NULL`
+    # 로 합의 행만 본다. 덤으로 호출당 14-18ms 를 아낀다.
+    #
+    # `getattr(result, "regime", None)` 이 아니다: `.candidates` 만 있고 `.regime` 이 없는
+    # 객체(예: `held_add.HeldAddResult`)를 넘기면 **결측이 조용히 NULL 로 강등**돼,
+    # 이 PR 이 구분하려고 만든 "기록 안 됨" 칸으로 들어간다. 그건 데이터 부재가 아니라
+    # 배선 오류이므로 AttributeError 로 터지는 게 맞다 (#894 는 관측이 본 작업을
+    # 게이트하지 말라는 규칙이지, 호출 계약 위반을 삼키라는 규칙이 아니다).
+    emitted_regime = result.regime
+    batch_regime = canonical_regime_or_none(emitted_regime)
+
+    # 컬럼은 canonical 10개 아니면 NULL 이다 (#832). 그래서 "분류 불가"(`unknown`)와
+    # "아예 기록 안 됨"이 컬럼에서는 똑같이 NULL 로 보인다. 컬럼의 도메인을 넓히는
+    # 대신 사실을 `scoring_detail` 에 남겨 둘을 구분한다.
+    #
+    # `EmitResult.regime` 의 기본값 `""` 도 그대로 흘려보낸다 — 빈 문자열은 falsy 라
+    # 아래 부착 조건에서 걸러진다. 여기서 `or None` 으로 한 번 더 정규화하던 코드는
+    # 동작이 같은 중복이었고(뮤테이션으로 확인: 지워도 12/12 초록), 커버리지가 세지
+    # 않는 삼항 갈래만 하나 늘렸다.
+    #
+    # ⚠️ 마커는 **내구적이지 않다**: 합의 경로가 나중에 같은 `(date, ticker)` 를 쓰면
+    # `ON CONFLICT DO UPDATE` 가 `scoring_detail` 을 통째로 덮고 `source` 를 NULL 로
+    # 되돌린다 (`agents/consensus/persistence.py`, 의도된 동작이고 그쪽 테스트가 잠근다).
+    unresolved = None if batch_regime else emitted_regime
 
     records = []
     for c in candidates:
@@ -107,6 +132,9 @@ def save_buy_candidates(result, db_path=None) -> int:
                         "tp1": c.tp1,
                         "tp2": c.tp2,
                         "why_now": c.why_now,
+                        # canonical 이 아니어서 regime 컬럼이 NULL 이 된 경우에만 존재.
+                        # 값은 emitter 가 실제로 쓴 라벨(보통 `unknown`)이다.
+                        **({"regime_unresolved": unresolved} if unresolved else {}),
                     },
                     ensure_ascii=False,
                 ),
