@@ -74,7 +74,9 @@ def _decision_id(db_path=None) -> str:
     없는 id 로 부르면 게이트 판정이 아니라 IntegrityError 가 난다 (실제로 밟았다)."""
     with get_db(db_path) as conn:
         conn.execute(
-            "INSERT INTO agent_decisions "
+            # OR IGNORE — 한 테스트가 두 번 검사할 수 있다 (아는 현금 vs 못 읽는 현금).
+            # 같은 결정을 재사용하는 게 맞고, 두 번째 INSERT 가 UNIQUE 로 죽으면 안 된다.
+            "INSERT OR IGNORE INTO agent_decisions "
             "(decision_id, ticker, as_of_date, action, conviction, inputs_json, rationale_json, status) "
             "VALUES ('probe-decision', 'ZZZZ', ?, 'BUY', 50.0, '{}', '{}', 'emitted')",
             (today_kst(),),
@@ -175,8 +177,9 @@ class TestNormalization:
 
         st = portfolio_state(db_path=db_path, config_path=_cash_yaml(tmp_path, {}))
 
-        # 700,000 KRW → USD. 정확한 환율은 DB 에 따라 다르므로 자릿수만 본다.
-        assert 100.0 < st["positions"]["005930.KS"]["value"] < 10_000.0
+        # 700,000 KRW / 1400 = 500.00 USD. 픽스처가 환율을 고정하므로 정확값을 잠근다 —
+        # 범위로 두면 환율이 틀려도(예: 1300 으로 읽어도) 통과해 환산 자체를 증명하지 못한다.
+        assert st["positions"]["005930.KS"]["value"] == 500.0
 
 
 class TestCash:
@@ -186,7 +189,9 @@ class TestCash:
 
         st = portfolio_state(db_path=db_path, config_path=cfg)
 
-        assert st["cash"] > 1500.0, "KRW 현금이 누락됐다"
+        # 1000 + 500 + 1,400,000/1400 = 2500.00. 부등식으로 두면 KRW 를 빠뜨려도,
+        # USD 를 두 번 더해도 통과한다.
+        assert st["cash"] == 2500.0
 
     def test_unreadable_cash_becomes_zero_not_generous(self, db_path, tmp_path):
         """현금을 못 읽으면 0 이다.
@@ -291,6 +296,26 @@ class TestTheFirewallActuallyBlocksNow:
         assert result.outcome.value != "block", (
             "허구 상태에서도 막혔다 — 이 카나리아의 전제가 깨졌으니 위 테스트의 의미를 재확인할 것"
         )
+
+    def test_unreadable_cash_cannot_turn_a_block_into_a_pass(self, tmp_path):
+        """현금을 못 읽어 0 이 됐을 때, 막혔어야 할 매수가 통과로 뒤집히지 않는다.
+
+        cash=0 은 게이트별로 방향이 다르다 — `cash_reserve` 는 반드시 발화하지만
+        `leverage_cap` 은 firewall 이 `cash > 0` 일 때만 검사하므로 건너뛴다. 그래서
+        "0 이면 보수적" 이라는 서술은 검증 없이는 과장이다. 이 테스트가 실제 결과를
+        잠근다: 현금을 아는 상태에서 막히는 매수는 못 읽는 상태에서도 막힌다.
+        """
+        known = self._state(tmp_path)
+        assert known["cash"] == 5000.0
+        assert self._check(known).outcome.value == "block"
+
+        blind = portfolio_state(config_path=tmp_path / "does-not-exist.yaml")
+        assert blind["cash"] == 0.0
+
+        result = self._check(blind)
+
+        assert result.outcome.value == "block", f"현금을 못 읽자 차단이 통과로 뒤집혔다: {result.output}"
+        assert "cash_reserve" in {b.get("type") for b in (result.output.get("blocks") or [])}
 
     def test_a_block_leaves_a_row_in_the_ledger(self, tmp_path):
         """`execution_blocks` 는 도입 이래 프로덕션 0행이었다 — 행이 생기는지가 살아있음 증명이다."""

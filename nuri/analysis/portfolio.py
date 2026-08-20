@@ -100,9 +100,19 @@ def portfolio_state(db_path=None, config_path: Path | None = None) -> dict:
 
     ## cash 는 DB 가 아니라 `config/portfolio.yaml` 이 원본이다
 
-    잔고는 브로커에서 손으로 옮겨 적는 값이라 DB 에 없다. `cash_reserve` /
-    `leverage_cap` 게이트가 이 값을 쓰므로, 없으면 **0 으로 두고 게이트가 보수적으로
-    발화하게** 한다 — 모르는 현금을 넉넉하다고 가정하면 그 게이트는 있으나 마나다.
+    잔고는 브로커에서 손으로 옮겨 적는 값이라 DB 에 없다. 없으면 **0** 이다 — 모르는
+    현금을 넉넉하다고 가정하면 `cash_reserve` 가 있으나 마나가 된다.
+
+    다만 0 이 모든 게이트를 조이는 건 아니다. 정확히는 이렇다:
+
+    - `cash_reserve` — post-trade 현금 비중이 음수가 되므로 **반드시 막는다** (fail-closed).
+    - `leverage_cap` — firewall 이 `cash > 0` 일 때만 검사하므로 **건너뛴다**. 0 으로
+      나눌 수 없으니 그쪽 설계가 맞다. 즉 cash=0 은 그 한 게이트에 대해서는 조이는
+      방향이 아니다 — 지금 룰에서 BUY 는 `cash_reserve` 가 먼저 잡아서 결과가 같지만,
+      "0 이면 무조건 보수적" 이라고 읽지 말 것.
+
+    **Test:** `tests/analysis/test_portfolio_state.py::TestTheFirewallActuallyBlocksNow::
+    test_unreadable_cash_cannot_turn_a_block_into_a_pass`
     """
     import yaml
 
