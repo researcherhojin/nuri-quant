@@ -207,7 +207,29 @@ def verify_factors(report_dir: Path, summary: list[str]) -> None:
 
     top = df.index[0]
     top_score = df.iloc[0]["composite_score"]
-    summary.append(f"[OK] 팩터: {len(df)}종목, Top {top} ({top_score:.3f})")
+
+    # 변별력 검사 (#1102). 이 단계는 원래 종목 수와 1위 점수만 찍었고, 그 둘은 붕괴해도
+    # 멀쩡해 보인다 — value/quality 가 채점 대상의 99% 에서 상수 0.5 이던 넉 달 내내
+    # 여기는 초록이었다. 합성 스코어가 **순위를 만들지 못하면 그건 신호가 아니라 상수**이므로,
+    # 값의 정상 범위가 아니라 **퍼짐**을 본다.
+    #
+    # 임계 0.05: 붕괴 상태의 실측 p10~p90 은 0.0585 였고 그중 대부분이 momentum 단독
+    # 기여였다. 성분 하나만 살아 있어도 그 정도는 나온다는 뜻이라 그 위에 둔다.
+    # 부분 상수도 같이 본다 — 전체 폭은 momentum 이 떠받치고 성분 하나만 죽는 형태가
+    # 실제로 벌어진 일이라, 폭만 보면 그 절반을 놓친다.
+    spread = float(df["composite_score"].quantile(0.9) - df["composite_score"].quantile(0.1))
+    flat = [
+        col
+        for col in ("value_score", "quality_score", "momentum_score")
+        if len(df) > 1 and float(df[col].nunique()) / len(df) < 0.10
+    ]
+    if spread < 0.05 or flat:
+        why = f"p10~p90 폭 {spread:.4f}"
+        if flat:
+            why += f", 사실상 상수인 성분 {flat}"
+        summary.append(f"[FAIL] 팩터: {len(df)}종목이지만 변별력이 없다 ({why})")
+    else:
+        summary.append(f"[OK] 팩터: {len(df)}종목, Top {top} ({top_score:.3f}), p10~p90 폭 {spread:.4f}")
 
 
 def verify_backtest(report_dir: Path, summary: list[str]) -> None:
