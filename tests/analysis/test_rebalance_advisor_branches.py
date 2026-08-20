@@ -2,7 +2,8 @@
 
 Targets residual branches uncovered by test_rebalance_advisor.py:
 - L167 (account_total <= 0): account_totals 가 0 이면 division skip.
-- L180 (current_price <= 0 in position-limit branch): qty fallback path.
+- position-limit 분기의 stale 가격(current_price=0): 주당 단가를 USD 평가액에서
+  되뽑으므로 전량 매도 fallback 없이 초과분만 정확히 계산된다.
 - L203 (Unknown sector skip): 'Unknown' 라벨된 sector 는 위반 검사 X.
 - L219 (sector ticker is leverage ETF): leverage 항목은 sector 위반에서도 skip
   (priority 1 leverage_etf 룰이 더 강력 — 두 번 카운트 방지).
@@ -17,6 +18,7 @@ Privacy: synthetic ticker TST_*. No broker name.
 
 from __future__ import annotations
 
+import math
 from unittest.mock import patch
 
 import pandas as pd
@@ -24,6 +26,7 @@ import pytest
 
 from nuri.analysis.rebalance_advisor import detect_violations
 from nuri.core.db import init_db
+from nuri.core.rules import MAX_SINGLE_POSITION, get_account_strategy
 
 
 @pytest.fixture
@@ -135,9 +138,16 @@ class TestPositionLimitZeroPrice:
             violations = detect_violations(db_path=db_path)
         pos = [v for v in violations if v["violation_type"] == "position_limit_exceeded" and v["ticker"] == "TST_X"]
         assert len(pos) == 1
-        # current_price=0 → sell_shares=quantity=100 fallback (L180).
-        assert pos[0]["sell_shares"] == 100
-        assert pos[0]["sell_value_usd"] == 0.0  # 100 * 0
+        # 예전에는 current_price=0 을 만나면 `sell_shares=quantity` 로 전량 매도로
+        # 떨어지면서 `sell_value_usd` 는 100*0 = $0 를 보고했다 — 100주를 팔라면서
+        # 회수액 0 이라 그 자체로 말이 안 됐다. 이제 주당 단가를 USD 평가액에서
+        # 되뽑으므로($2,000/100주 = $20) stale 가격에도 초과분만 정확히 덜어낸다.
+        strategy = get_account_strategy("acct")
+        max_pos = strategy.get("max_single_position", MAX_SINGLE_POSITION)
+        expected_shares = math.ceil((2000.0 - 2500.0 * max_pos) / 20.0)
+        assert pos[0]["sell_shares"] == expected_shares
+        assert pos[0]["sell_shares"] < 100  # 전량 매도로 떨어지지 않는다
+        assert pos[0]["sell_value_usd"] == pytest.approx(expected_shares * 20.0)
 
 
 # ════════════════════════════════════════════════════════════

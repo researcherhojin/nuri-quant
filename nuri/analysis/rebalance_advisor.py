@@ -187,12 +187,20 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
 
         target_value = account_total * max_pos
         excess_value = row["ticker_value"] - target_value
-        current_price = row["current_price"]
-        if current_price > 0:
-            sell_shares = math.ceil(excess_value / current_price)
-        else:
-            sell_shares = int(row["quantity"])
-        sell_value = sell_shares * current_price
+        # `ticker_value` 는 USD 환산액인데 `current_price` 는 .KS 종목이면 KRW 다.
+        # 둘을 그대로 나누면 원화 종목의 매도 수량이 환율배(약 1,400)만큼 축소되고
+        # `sell_value_usd` 에는 KRW 금액이 그대로 들어간다 — 우선순위 정렬이
+        # 회수금액 기준이라 순서까지 틀어진다. 이미 환산된 값에서 주당 USD 단가를
+        # 되뽑아 쓴다: 별도 환율 조회가 없고 analyze_portfolio 가 쓴 환율과
+        # 자동으로 일치한다(`current_value_usd = current_price * qty / usd_krw`).
+        qty_held = int(row["quantity"])
+        if qty_held <= 0:
+            continue
+        # 여기 도달했다는 건 account_weight > max_pos ≥ 0 이므로 ticker_value > 0 이다
+        # — price_usd 는 0 이 될 수 없고, 가격이 stale(0) 이어도 나눗셈이 안전하다.
+        price_usd = row["ticker_value"] / qty_held
+        sell_shares = math.ceil(excess_value / price_usd)
+        sell_value = sell_shares * price_usd
         weight_pct = account_weight * 100
 
         violations.append(
@@ -240,21 +248,25 @@ def detect_violations(db_path: Optional[Path] = None) -> list[dict]:
                         break
                     continue
 
-                current_price = row["current_price"]
-                if current_price <= 0:
+                # position_limit 분기와 같은 이유로 주당 USD 단가를 되뽑는다.
+                # 여기서는 `remaining_excess` 가 루프를 돌며 누적 차감되기 때문에
+                # 단위가 섞이면 수량뿐 아니라 남은 초과분 회계 자체가 무너진다.
+                qty_held = int(row["quantity"])
+                price_usd = row["current_value_usd"] / qty_held if qty_held > 0 else 0.0
+                if price_usd <= 0:
                     continue
 
                 if remaining_excess >= row["current_value_usd"]:
                     # 전량 매도
-                    sell_shares = int(row["quantity"])
+                    sell_shares = qty_held
                     sell_value = row["current_value_usd"]
                     action = "SELL_ALL"
                     remaining_excess -= sell_value
                 else:
                     # 일부 매도
-                    sell_shares = math.ceil(remaining_excess / current_price)
-                    sell_shares = min(sell_shares, int(row["quantity"]))
-                    sell_value = sell_shares * current_price
+                    sell_shares = math.ceil(remaining_excess / price_usd)
+                    sell_shares = min(sell_shares, qty_held)
+                    sell_value = sell_shares * price_usd
                     action = "REDUCE"
                     remaining_excess -= sell_value
 
