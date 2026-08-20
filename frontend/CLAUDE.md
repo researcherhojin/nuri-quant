@@ -80,6 +80,18 @@ Symptom if someone drops it: eslint prints `Oops! Something went wrong!` with a
 confirm by file count rather than by absence of output — `npx eslint --format json | jq length`
 should be **212**.
 
+## E2E (Playwright) — runs against the real backend, gated by nothing
+
+`npm run test:e2e` (`npx playwright test`). 8 spec files under `e2e/`, 57 tests. `playwright.config.ts` starts both servers itself (`uvicorn` :8001, `npm run dev` :3000) with `reuseExistingServer: true`.
+
+- **No CI job, no Makefile target, no `scripts/verify/` step runs it.** It is the one suite in this repo that has never gated a merge, which is exactly how `410d385` (2026-05-04) renamed `CONTEXT.SIEGE` to `"Certification"`, updated the matching vitest files, and left three e2e assertions searching for `text=SIEGE` for 3.5 months. Wiring it into a gate is a separate decision (needs a runtime/stability budget); until then, run it by hand before touching the dashboard.
+- **Never inline a user-facing string literal in a spec — import it from `src/lib/strings.ts`.** That file is the single source of truth and specs can import across the directory boundary (`import { ACTION, CONTEXT } from "../src/lib/strings"`). The contrast is on record: `dashboard.spec.ts:19` survived the same rename only because it OR'd several candidate strings, while the three brittle single-literal assertions all broke.
+- **Scope assertions to `main`.** The sidebar carries a "Certification Engine" link, so a `body`-wide `includes("Certification")` passes even when the health card is gone. A spec that can pass with the feature deleted is worse than no spec.
+- **Don't assert live portfolio values.** `action-first.spec.ts:28` hardcoded `TSLA` at `15.4%` in the `urgent` bucket, captured 2026-04-13; by 2026-08-20 the same holding was 14.3% and in `check`. Read what the API actually returned and assert the UI matches it.
+- **`workers` is capped at 2 on purpose.** The default (cores/2 = 8 here) fires 8 spec files at one `next dev` and one uvicorn; every page is a `force-dynamic` Server Component issuing several API calls, so the backend saturates and unrelated specs time out. The cap is mitigation, not a fix — the real constraint is API concurrency (#1119). Do not raise a timeout to turn a red spec green without checking which side is actually slow.
+- **Per-assertion `{ timeout: N }` overrides `expect.timeout` from the config.** Two explore-search specs stayed red after the config budget was raised to 15 s because they carried an inline `5000`. Keep the waiting budget in one place.
+- **The `request` fixture goes through `baseURL`, i.e. the Next proxy** — which aborts at 30 s. A cold heavy endpoint makes the fixture see a non-ok response while the API logs `200 OK`. Warm the endpoint with a `page.goto` before asserting on it.
+
 ## Testing Gotchas
 
 - **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control.
