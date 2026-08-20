@@ -268,6 +268,28 @@ class TestReportDirIsNotFutureDated:
         assert result is not None
         assert result.parent.name == today
 
+    def test_dated_dir_without_evidence_falls_through_to_older_one(self, tmp_path, monkeypatch):
+        """날짜는 유효하지만 `evidence/` 가 없는 디렉터리는 건너뛰고 더 오래된 것을 쓴다.
+
+        루프가 한 바퀴 돌고도 매칭 없이 다음 후보로 넘어가는 arc — 이게 없으면
+        codecov 가 partial branch 로 잡는다 (실측 #1124: misses 0 / partials 1).
+        """
+        import nuri.api.routes.evidence as ev_mod
+        from nuri.api.routes.evidence import _find_latest_report_dir
+        from nuri.core.timezone import today_kst
+
+        reports = tmp_path / "reports"
+        today = today_kst()
+        # 최신 날짜인데 evidence/ 가 없다 → 건너뛰어야 한다
+        (reports / today).mkdir(parents=True)
+        older = f"{int(today[:4]) - 1}-01-02"
+        self._seed(reports, older)
+        monkeypatch.setattr(ev_mod, "REPORT_DIR", reports)
+
+        result = _find_latest_report_dir()
+        assert result is not None
+        assert result.parent.name == older
+
     def test_no_valid_dir_returns_none(self, tmp_path, monkeypatch):
         import nuri.api.routes.evidence as ev_mod
         from nuri.api.routes.evidence import _find_latest_report_dir
