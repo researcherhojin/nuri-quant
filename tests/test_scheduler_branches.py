@@ -445,6 +445,63 @@ class TestRunHeldAddShadow:
 
         assert captured["unknown"] == 0.0, "팩터 없는 티커가 중립 점수를 받았다"
 
+    def _seed(self, factors_date, prices_date="2026-08-20"):
+        from nuri.core.db import get_db
+
+        with get_db() as conn:
+            if prices_date:
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                    "VALUES ('AAA', ?, 1, 1, 1, 1, 1)",
+                    (prices_date,),
+                )
+            if factors_date:
+                conn.execute(
+                    "INSERT INTO factors (ticker, date, composite_score) VALUES ('AAA', ?, 0.5)",
+                    (factors_date,),
+                )
+
+    def test_a_factor_snapshot_behind_prices_blocks_the_emit(self, caplog):
+        """팩터가 가격보다 낡으면 emit 하지 않는다 (#1115, Codex P1).
+
+        cron 을 factors(08:10) 뒤로 옮긴 것만으로는 부족하다 — 잡들은 독립 cron 이고 성공
+        의존성이 없다. 스케줄러가 08:15 까지 죽어 있으면 factors 는 `misfire_grace_time=300`
+        을 넘겨 드롭되는데 08:30 은 그대로 뜬다. 그러면 오늘 가격·오늘 RSI + **어제 팩터**
+        라는, 존재한 적 없는 상태를 점수로 만든다. 시각은 확률을 낮출 뿐이라 여기서 막는다.
+        """
+        import logging
+
+        from nuri.scheduler import _run_held_add_shadow
+
+        self._seed(factors_date="2026-08-19", prices_date="2026-08-20")
+
+        with caplog.at_level(logging.WARNING, logger="nuri.scheduler"):
+            result = _run_held_add_shadow()
+
+        assert result == 0
+        assert "팩터가 가격보다 낡음" in " ".join(r.getMessage() for r in caplog.records)
+
+    def test_factors_caught_up_to_prices_proceeds(self, caplog):
+        """같은 날짜면 통과한다 — 위 테스트가 전부를 막는 걸로 통과하면 안 된다."""
+        import logging
+
+        from nuri.scheduler import _run_held_add_shadow
+
+        self._seed(factors_date="2026-08-20", prices_date="2026-08-20")
+
+        with caplog.at_level(logging.WARNING, logger="nuri.scheduler"):
+            _run_held_add_shadow()
+
+        assert "팩터가 가격보다 낡음" not in " ".join(r.getMessage() for r in caplog.records)
+
+    def test_factors_missing_entirely_blocks_when_prices_exist(self):
+        """팩터 행이 아예 없는데 가격은 있다 = 잡이 한 번도 안 돌았다. 막는다."""
+        from nuri.scheduler import _run_held_add_shadow
+
+        self._seed(factors_date=None, prices_date="2026-08-20")
+
+        assert _run_held_add_shadow() == 0
+
     def test_exception_swallowed(self, caplog):
         """Lines 313-314: any exception inside the closure → ERROR log, not raise."""
         import logging
