@@ -8,7 +8,7 @@ Short-term (≤ 7 trading days) swing-trade scanner + rule engine. Distinct from
 
 | File | Purpose |
 |---|---|
-| `scanner.py` | Universe-wide volume-spike + momentum + breakout scan via yfinance batch download. Universe loaded from `config/universe.yaml` (fallback: hardcoded list). |
+| `scanner.py` | Universe-wide volume-spike + momentum + breakout scan **read from the `prices` table** — no network call. Universe loaded from `config/universe.yaml` (fallback: hardcoded list). |
 | `rules.py` | Entry / exit decision engine. Uses scanner score + agent consensus to gate entries; `--check` flag scans existing swing positions for exit triggers. |
 
 ## Swing rules (constants in `rules.py`, sourced from `config/rules.yaml`)
@@ -27,17 +27,18 @@ The user-level rule for swing is `-5% stop / +5% TP1 (sell 50%) / +10% TP2 (sell
 ## Invariants
 
 - **Universe is YAML-driven**: `scanner.py` reads `config/universe.yaml`. The hardcoded fallback exists for cold-start dev; production runs always load YAML.
-- **Scan latency**: us-core (~85 tickers) target < 5s. Extended (~543) < 30s. The scanner needs no threading — it is a single `yf.download(tickers, ...)` batch call (the concurrency-asymmetry rule in `.claude/rules/gotchas.md` allows yfinance 10-thread; it is **KRX/pykrx** that must stay sequential + `time.sleep(0.1)`).
+- **The scanner reads the DB, never the network** (#1119). `_fetch_prices` is a single `prices` query pivoted into the `(ticker, field)` MultiIndex frame `_analyze_ticker` expects — the shape yfinance used to return, so downstream code did not change. It used to be `yf.download(tickers, period=...)`, which put an external network round trip inside `/api/scan`'s request handler (1.7s per request, no cache) and held an AnyIO threadpool slot for the duration. Coverage measured 2026-08-21: **US 85/85, KR 202/203** tickers hold ≥ 60 trading days; a ticker short of that drops out of the frame and `_analyze_ticker` returns None for it. Values are **last collected close**, not live — acceptable for a ≤ 7-day horizon and consistent with the rest of the dashboard. If the scan returns nothing, the collectors have not run (`make collect`), not the network.
+- **Scan latency** (measured 2026-08-21, M5 Max, warm DB): us-core 85 → **0.17s**, kr-kospi200 203 → **0.21s**, extended 543 → **0.74s**. No threading needed. (The concurrency-asymmetry rule in `.claude/rules/gotchas.md` still governs the *collectors* that fill `prices`: yfinance 10-thread OK, **KRX/pykrx** sequential + `time.sleep(0.1)`.)
 - **Entry requires both gates**: scanner score AND agent consensus BUY. A high score alone never triggers an entry — the consensus pipeline (`nuri/trading/agents/`) is the second filter.
 - **Position storage**: swing positions go into the `swing_trades` table (`_MIGRATIONS` in `nuri/core/db_migrations.py`). Do not use the main `portfolio` table — swing has its own lifecycle.
-- **Korean ticker `.KS` suffix** (root CLAUDE.md "Gotchas"): scanner handles `.KS` natively via yfinance, but `trailingPE` is missing for KR individuals — use `forward_pe` if scanning by valuation.
+- **Korean ticker `.KS` suffix** (root CLAUDE.md "Gotchas"): `.KS` rows live in `prices` like any other ticker, so the scanner needs no special handling. The quirk still bites the **collectors** that fill it — `trailingPE` is missing for KR individuals, use `forward_pe` if screening by valuation.
 
 ## Distinction from `recommend/buy_candidate_emitter.py`
 
 | | swing | buy_candidate_emitter |
 |---|---|---|
 | Holding horizon | ≤ 7 days | weeks to months |
-| Universe | yfinance batch (hundreds) | factor-screened (top decile) |
+| Universe | `prices` table (hundreds) | factor-screened (top decile) |
 | Exit | scanner-driven (TP/SL/time) | trailing-stop + thesis change |
 | Position table | `swing_trades` | `portfolio` |
 | Trigger frequency | continuous (intraday capable) | daily morning |
