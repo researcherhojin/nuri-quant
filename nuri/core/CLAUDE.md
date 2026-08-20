@@ -20,7 +20,9 @@ The `nuri/core/db/` package is the **ONLY** `sqlite3` importer (the import lives
 **Test:** `tests/core/test_db_path_forwarding.py::TestDbPathIsForwarded::test_every_db_path_aware_call_receives_it`
 — `db_path=db_path` 를 하나 지우면 FAIL.
 
-Schema changes: add to `_MIGRATIONS` list only. Never edit existing migrations. `init_db()` auto-applies.
+Schema changes: add to `_MIGRATIONS` list only. Never edit existing migrations.
+
+⚠️ **`init_db()` applies migrations only when something calls it. Opening a connection does not.** `query()` / `query_df()` / `get_db()` read whatever schema the file already has. Long-running daemons call `init_db()` at startup, so a machine whose scheduler restarts regularly stays current for free — but a machine that only pulls code and runs pipeline CLI modules never migrates, and the first write against a new column dies with `sqlite3.OperationalError: no such column: <name>`. Measured 2026-08-20: dev DB sat at `schema_version` 49 while the code was at 54, and `python -m nuri.trading.agents.consensus` crashed on `recommendations.source` (#1078). Production was unaffected (54, 1,606 rows, zero gaps) purely because its daemons cycle. If a pipeline command fails on an unknown column, run `init_db()` before debugging anything else.
 
 ## timezone.py — All Time is KST
 
