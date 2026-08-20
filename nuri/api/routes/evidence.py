@@ -1,11 +1,14 @@
 """증거 차트 API — Plotly HTML 차트 서빙 + 메타데이터."""
 
 import logging
+import re
 from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
+
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["evidence"])
@@ -22,13 +25,25 @@ CHART_TYPES = {
 }
 
 
+_DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 def _find_latest_report_dir() -> Path | None:
-    """가장 최근 리포트 디렉토리 찾기."""
+    """가장 최근 리포트 디렉토리 찾기.
+
+    `data/reports/` 에는 날짜 디렉터리 말고도 `briefs` / `postmarket` /
+    `buy_tracking` 이 섞여 있고, 잘못된 날짜로 생성된 **미래 디렉터리**도 남는다
+    (실측 2026-08-20: `2026-11-08` · `2027-02-06` · `2027-09-14`). 이름을 그냥
+    역순 정렬하면 그런 것들이 1등을 먹어서, 오늘 `make evidence` 를 돌려도
+    화면에는 2027-09-14 자 차트가 뜬다. 이름이 ISO 날짜이고 **오늘 이하**인
+    것만 후보로 본다.
+    """
     if not REPORT_DIR.exists():
         return None
-    dirs = sorted(REPORT_DIR.iterdir(), reverse=True)
-    for d in dirs:
-        if d.is_dir() and (d / "evidence").exists():
+    today = today_kst()
+    dated = [d for d in REPORT_DIR.iterdir() if d.is_dir() and _DATE_DIR_RE.match(d.name) and d.name <= today]
+    for d in sorted(dated, key=lambda p: p.name, reverse=True):
+        if (d / "evidence").exists():
             return d / "evidence"
     return None
 
