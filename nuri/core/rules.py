@@ -55,6 +55,10 @@ SWING_MIN_AGENT_CONFIDENCE = TAKE_PROFIT_SWING.get("min_agent_confidence", 50)
 # (승자 run). value/swing 은 위 ladder 유지. config/rules.yaml take_profit.leader.
 TAKE_PROFIT_LEADER = _tp.get("leader", {"enabled": False, "trail_ma": 50})
 
+# ─── ARK 매매 파생 (#1143) ───
+# 보유 스냅샷 → Buy/Sell 파생 임계. smart_money 의 ARK 항목 발화 여부를 결정한다.
+ARK_MIN_TRADE_PCT = RULES.get("ark", {}).get("min_trade_pct", 1.0)
+
 # ─── 트레일링 스톱 ───
 _ts = RULES.get("trailing_stop", {})
 TRAILING_STOP_GROWTH = _ts.get("growth", -15)

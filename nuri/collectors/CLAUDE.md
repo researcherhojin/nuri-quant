@@ -39,7 +39,7 @@ CLI: `--source` flag is the standard way to switch (stock, stock_kr, fundamental
 |-----------|--------|-------------|-----|
 | stock, fundamental, wallstreet, estimates | yfinance | **10 threads** | API tolerates concurrency |
 | stock_kr | pykrx (KRX) | **sequential + 0.1s sleep** | First ~60 fast then server hangs |
-| ark, finviz | yfinance/finviz | small loop | <20 items, no benefit |
+| ark, finviz | ark-funds.com CSV / finviz | small loop | <20 items, no benefit |
 
 Standard parallel pattern (consistent across yfinance collectors):
 ```python
@@ -122,6 +122,38 @@ API 가 죽은 뒤 스크래핑이 **예외 없이 점수를 못 찾은** 경우
 (2026-06-22→2026-08-03)이 무발화로 지나갔다. 별건이며 #1042 밖이다.
 **Test:** `tests/collectors/test_cboe.py::TestCBOEFailedVsNoData::test_db_stale_still_counts_as_success`
 — 이 한계를 명시적으로 잠근다(조용히 바꾸면 라이브 소스가 흔들릴 때마다 수집기가 죽는다).
+
+## ARK: 보유 스냅샷이지 매매 내역이 아니다 (`ark.py`, #1143)
+
+ARK 는 **일별 보유 CSV** 를 낸다. 매매 내역 파일(`ARK_TRADE.csv`)은 없어졌다.
+그래서 `direction` 은 받아 적는 값이 아니라 **직전 수집분 대비 `shares` 증감으로
+파생**한다. `MIN_TRADE_PCT`(1.0%) 미만은 Hold — ARK 는 리밸런싱으로 매일 소수점
+수준을 움직여서, 0 이 아닌 모든 변화를 매매라 부르면 전 종목이 매일 신호를 낸다.
+
+소스는 펀드별 `assets.ark-funds.com/fund-documents/funds-etf-csv/...` 5개다.
+컬럼이 소문자이고 `weight (%)` 이며 `Direction` 이 없다 — 예전 통합 CSV 의
+`Ticker` / `% of ETF` 표기와 다르다. 마지막 행은 면책 문구 한 줄이고 비상장 보유분은
+ticker 가 비어 있는데, 둘 다 ticker 빈 값으로 자연히 걸러진다.
+
+⚠️ **폴백이 신호 아닌 것을 신호 자리에 쓰면, 소비자는 그걸 신호로 읽는다.**
+죽은 CSV 를 메우던 yfinance 폴백은 `top_holdings`(상위 10개)를 `direction="Hold"` /
+`shares=0.0` 으로 적었다. 그 자체로는 조용한 결손처럼 보였지만, `smart_money.py` 가
+`sells = len(rows) - buys` 로 세고 있어서 **Hold 가 전부 매도로 집계**됐다 — ark
+테이블에 있는 티커는 예외 없이 `score -1` 과 "ARK 최근 매도 N건" 이라는 거짓 근거를
+받았고, `config/agents.yaml` 의 `score_sell = -1` 이라 그 하나로 verdict 가 SELL 로
+넘어갈 수 있었다. 결손이 아니라 **틀린 신호**였고, 헬스체크는 내내 초록이었다.
+폴백은 제거했다 (`shares=0.0` 이 델타 기준선까지 오염시킨다 — 기준선 쿼리가
+`shares > 0` 을 거는 이유).
+
+**Test:** `tests/collectors/test_ark.py` (파싱 · 방향 파생 5종 · #1043 실패 구분 ·
+폴백 부활 감시 — AST 로 본다, 소스의 'yfinance' 는 왜 뺐는지 적은 주석이라 grep 은
+영영 빨갛다) + `tests/trading/agents/test_smart_money_branches.py::TestSmartMoneyBranches`
+의 `test_ark_hold_rows_are_not_counted_as_sells` ·
+`test_ark_counting_is_safe_even_if_the_query_stops_filtering` ·
+`test_ark_hold_does_not_crowd_out_real_trades`. 소비자 쪽 방어선은 **둘**이고 막는 게
+서로 다르다 — SQL 의 `direction IN ('Buy','Sell')` 이 없으면 최신 Hold 가 `LIMIT 5`
+창을 잡아먹어 진짜 매매가 안 보이고(침묵), 집계식이 틀리면 거짓 매도가 나온다.
+그래서 집계 쪽 잠금은 `_safe_query` 를 가로채 Hold 행을 집계 코드에 직접 흘린다.
 
 ## 13F: 확신 보유 vs 딜러 보유 (`superinvestors.py`, #1098)
 
