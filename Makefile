@@ -81,11 +81,14 @@ setup-hooks: ## Install repo-tracked git hooks (pre-commit auto-fix). Idempotent
 # ═══════════════════════════════════════════════════════════════
 # TEST / LINT / VERIFY
 # ═══════════════════════════════════════════════════════════════
+# --cov-branch 는 CI 와 의미를 맞추기 위한 것이다 (#1133). codecov 는 patch
+# target 100% / threshold 0% 로 **부분 분기**까지 세므로, 분기 없이 재면 로컬은
+# 100% 를 보고하고 codecov 는 미달을 낸다 (실측 PR #1124: 로컬 100% ↔ codecov 85.71%).
 test:
-	$(PYTHON) -m pytest tests/ -v --cov=nuri -n auto --dist worksteal
+	$(PYTHON) -m pytest tests/ -v --cov=nuri --cov-branch -n auto --dist worksteal
 
 test-fast:
-	$(PYTHON) -m pytest tests/ -v --cov=nuri -n auto --dist worksteal -m "not slow"
+	$(PYTHON) -m pytest tests/ -v --cov=nuri --cov-branch -n auto --dist worksteal -m "not slow"
 
 # ─── CI artifact ground-truth coverage (Issue #616 verification protocol) ───
 # 직전 main CI run 의 6 shards (.coverage artifacts) 다운로드 + combine →
@@ -521,6 +524,7 @@ full-scan:
 
 quick-scan:
 	$(PYTHON) -m nuri.collectors.stock
+	$(PYTHON) -m nuri.collectors.stock --source freshness   # SPY/TLT/GC=F — 없으면 classify_regime() 이 계속 None (#1133)
 	$(PYTHON) -m nuri.collectors.stock_kr
 	$(PYTHON) -m nuri.collectors.macro
 	$(PYTHON) -m nuri.collectors.fear_greed
