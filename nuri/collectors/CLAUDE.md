@@ -127,8 +127,19 @@ API 가 죽은 뒤 스크래핑이 **예외 없이 점수를 못 찾은** 경우
 
 ARK 는 **일별 보유 CSV** 를 낸다. 매매 내역 파일(`ARK_TRADE.csv`)은 없어졌다.
 그래서 `direction` 은 받아 적는 값이 아니라 **직전 수집분 대비 `shares` 증감으로
-파생**한다. `MIN_TRADE_PCT`(1.0%) 미만은 Hold — ARK 는 리밸런싱으로 매일 소수점
-수준을 움직여서, 0 이 아닌 모든 변화를 매매라 부르면 전 종목이 매일 신호를 낸다.
+파생**한다. `config/rules.yaml ark.min_trade_pct`(1.0%) 미만은 Hold — ARK 는
+리밸런싱으로 매일 소수점 수준을 움직여서, 0 이 아닌 모든 변화를 매매라 부르면 전 종목이
+매일 신호를 낸다. 이 값이 smart_money 의 ARK 항목 발화 여부를 직접 결정하므로 코드 상수가
+아니라 config 에 있다 (Config over code).
+
+⚠️ **부재는 CSV 에 행으로 나타나지 않는다.** ARK 가 한 종목을 완전히 털면 그냥 사라지므로,
+오늘 행만 훑는 파생은 가장 강한 신호인 **전량 청산을 통째로 놓친다** (펀드 간 이동도 같은
+구멍 — 떠난 펀드엔 아무 일도 없고 새 펀드엔 첫 관측이라 Hold). `_exit_records()` 가 직전
+수집분에 있었는데 오늘 없는 종목을 `Sell` / `shares=0.0` 으로 적는다. 그 0 행은 다시
+"여기서 0 이 됐다" 는 기록이 되어, 재진입 때 기준선 조회가 첫 관측으로 되돌린다 — pre-exit
+규모와 비교하면 **더 작게 재진입한 것이 Sell 로 뒤집힌다.** 같은 이유로 `shares` 파싱 실패는
+0.0 이 아니라 **행 폐기**다: 0 으로 눕히면 소스 포맷 드리프트가 전량 청산으로 읽힌다.
+CSV 에서 한 건도 못 건지면 청산 판정 자체를 하지 않는다 (그건 소스 문제지 ARK 의 매도가 아니다).
 
 소스는 펀드별 `assets.ark-funds.com/fund-documents/funds-etf-csv/...` 5개다.
 컬럼이 소문자이고 `weight (%)` 이며 `Direction` 이 없다 — 예전 통합 CSV 의
@@ -145,7 +156,7 @@ ticker 가 비어 있는데, 둘 다 ticker 빈 값으로 자연히 걸러진다
 폴백은 제거했다 (`shares=0.0` 이 델타 기준선까지 오염시킨다 — 기준선 쿼리가
 `shares > 0` 을 거는 이유).
 
-**Test:** `tests/collectors/test_ark.py` (파싱 · 방향 파생 5종 · #1043 실패 구분 ·
+**Test:** `tests/collectors/test_ark.py` (파싱 · 방향 파생 · 청산/재진입 5종 · #1043 실패 구분 ·
 폴백 부활 감시 — AST 로 본다, 소스의 'yfinance' 는 왜 뺐는지 적은 주석이라 grep 은
 영영 빨갛다) + `tests/trading/agents/test_smart_money_branches.py::TestSmartMoneyBranches`
 의 `test_ark_hold_rows_are_not_counted_as_sells` ·
