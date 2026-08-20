@@ -51,6 +51,11 @@ LLM failure mode):
    Universe Coverage Validation, Shell Lint, Doc Count Drift Check,
    Privacy Leak Scan).
 7. **Squash-merge** is the default. Maintain a clean linear history.
+8. **Expect merges to serialize.** `main` requires branches to be up to date, so
+   every merge puts the remaining open PRs behind. Each one then needs
+   `gh pr update-branch` and a full CI re-run before it can merge. Land the PR
+   that unblocks the others first, and do not queue a batch expecting them all
+   to go in at once.
 
 ## Commit message format
 
