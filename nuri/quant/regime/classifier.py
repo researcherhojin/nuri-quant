@@ -226,6 +226,19 @@ BASE_REGIMES: tuple[str, ...] = (
 SPECIAL_REGIMES: tuple[str, ...] = tuple(SPECIAL_REGIME_SIZING.keys())
 ALL_REGIMES: tuple[str, ...] = BASE_REGIMES + SPECIAL_REGIMES  # 6 + 4 = 10
 
+#: 레짐을 알 수 없을 때의 라벨 — `classify_regime()` 이 `None` 을 돌려준 경우
+#: (SPY 데이터 120시간 초과 · 히스토리 200일 미만 · 분류 실패).
+#:
+#: **의도적으로 `ALL_REGIMES` 의 원소가 아니다.** config 의 레짐별 조정 표
+#: (`buy_signals.yaml` 의 `quality_bar.per_regime` / `allocation.total_pct_by_regime`)
+#: 에 절대 매치되지 않아야 하기 때문이다 — 미상은 완화도 강화도 받으면 안 된다.
+#:
+#: 이 상수가 생기기 전에는 소비자가 미상을 `"neutral"` 로 표기했고, 그 문자열이
+#: `total_pct_by_regime` 에 `0.40` 으로 **존재해서** 레짐 미상이 표에서 가장 공격적인
+#: 배분을 받았다 (#1131). VIX 미상을 `20.0` 으로 메우지 않는 것과 같은 이유다 (#753):
+#: 모르는 것을 아는 값으로 둔갑시키지 않는다.
+UNKNOWN_REGIME = "unknown"
+
 
 def canonical_regime_or_none(value: str | None) -> str | None:
     """ALL_REGIMES 원소만 통과, 그 외(빈문자열·free-text)는 None (#832).
