@@ -522,60 +522,9 @@ class TestCboeExtractPcrZeroDivision:
 # ─────────────────────────────────────────────────────────────────
 
 
-class TestArkExceptionPaths:
-    """L56-57 yfinance fallback raises, L107-110 per-etf failure, L136 ticker filter."""
-
-    def test_yfinance_fallback_raises(self, db_with_portfolio, monkeypatch):
-        from nuri.collectors.ark import ARKCollector
-
-        c = ARKCollector()
-        # ARK collect() calls module-level get_tickers(), not a method.
-        with (
-            patch("nuri.collectors.ark.get_tickers", return_value=["TSLA"]),
-            patch.object(c, "_collect_csv", side_effect=RuntimeError("csv")),
-            patch.object(c, "_collect_yfinance", side_effect=RuntimeError("yf")),
-        ):
-            result = c.collect()
-        assert result == []
-
-    def test_yfinance_per_etf_failure(self, db_path):
-        """L107-110: per-ETF yfinance ticker.funds_data raises → continue."""
-        from nuri.collectors import ark as ark_mod
-        from nuri.collectors.ark import ARKCollector
-
-        mock_yf = MagicMock()
-        # Each Ticker call raises
-        mock_yf.Ticker.side_effect = RuntimeError("yfinance broken")
-
-        with patch.dict(sys.modules, {"yfinance": mock_yf}):
-            with patch.object(ark_mod, "ARK_ETFS", ["ARKK"]):
-                result = ARKCollector()._collect_yfinance({"TSLA"})
-        # All failed → empty records
-        assert result == []
-
-
-class TestArkCsvNonHeldTicker:
-    """L136 (135-136): ticker not in held_tickers → continue (skipped)."""
-
-    def test_csv_filters_non_held(self, db_path):
-        from nuri.collectors.ark import ARKCollector
-
-        csv_text = (
-            "Date,Fund,Direction,Ticker,Shares,% of ETF\n"
-            "2026-01-15,ARKK,Buy,UNHELD,1000,0.5\n"
-            "2026-01-15,ARKK,Buy,HELD,500,0.3\n"
-        )
-        mock_resp = MagicMock()
-        mock_resp.text = csv_text
-        mock_resp.raise_for_status = MagicMock()
-
-        with patch("nuri.collectors.ark.requests.get", return_value=mock_resp):
-            result = ARKCollector()._collect_csv("http://fake", {"HELD"})
-        # Only HELD parsed, UNHELD skipped (L136 continue)
-        tickers = {r["ticker"] for r in result}
-        assert "UNHELD" not in tickers
-        assert "HELD" in tickers
-
+# ARK 분기 테스트 2종 (TestArkExceptionPaths / TestArkCsvNonHeldTicker) 이 여기 있었다.
+# 검증 대상이던 `_collect_yfinance` · `_collect_csv` 가 #1143 에서 사라져 같이 나갔고,
+# 대응 동작(전면 실패 · 부분 실패 · 미보유 종목 필터)은 tests/collectors/test_ark.py 로 옮겼다.
 
 # ─────────────────────────────────────────────────────────────────
 # universe_sync.py — kr apply path + run() exception

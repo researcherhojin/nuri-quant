@@ -508,6 +508,15 @@ symmetric_amplifier:
 #   - 매일 07:10 KST (consensus 07:05 직후) APScheduler job 실행
 #   - portfolio DB table 의 holdings × TechnicalAgent → trigger 평가
 #   - Alert 발동 시 pipeline_events 에 기록 + Discord/Telegram surface
+# ─── ARK 매매 파생 (#1143) ───
+# ARK 는 매매 내역이 아니라 일별 보유 스냅샷을 낸다. Buy/Sell 은 직전 수집분 대비
+# shares 증감으로 파생하는데, ARK 는 리밸런싱으로 매일 소수점 수준을 움직이므로
+# 0 이 아닌 모든 변화를 매매라 부르면 전 종목이 매일 신호를 낸다.
+# 이 값이 smart_money 에이전트의 ARK 항목이 발화하는지를 직접 결정한다 — 코드 상수가
+# 아니라 여기 있어야 하는 이유 (Config over code).
+ark:
+  min_trade_pct: 1.0                     # |shares 변화율| 이 이 값 미만이면 Hold
+
 holdings_monitor:
   enabled: true
 

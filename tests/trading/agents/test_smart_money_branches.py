@@ -92,3 +92,78 @@ class TestSmartMoneyBranches:
                 )
         v = SmartMoneyAgent().analyze("EQAR", db_path=db_path)
         assert "ARK 최근" not in v.reasoning
+
+    def test_ark_hold_rows_are_not_counted_as_sells(self, db_path):
+        """#1143 회귀 잠금: direction='Hold' 는 매도가 아니다.
+
+        예전 코드는 `sells = len(rows) - buys` 로 세서 Hold 를 전부 매도로 집계했다.
+        죽은 CSV 소스 때문에 ark 테이블이 Hold 만 담고 있던 기간 동안, 거기 있는
+        티커는 예외 없이 score -1 과 "ARK 최근 매도 N건" 이라는 거짓 근거를 받았다.
+
+        Hold 만 있을 때 ARK 는 아무 방향도 주장하지 않아야 한다. estimates 로 다른
+        근거를 하나 깔아 no-data 경로를 우회하고, ARK 항목만 관찰한다.
+        """
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO estimates "
+                "(ticker, date, recommendation, target_mean, current_price, num_analysts) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("HOLDONLY", "2026-01-01", "buy", 130.0, 100.0, 5),
+            )
+            for i in range(5):
+                conn.execute(
+                    "INSERT INTO ark (ticker, date, direction, shares, fund) VALUES (?, ?, ?, ?, ?)",
+                    ("HOLDONLY", f"2026-03-{20 + i:02d}", "Hold", 0.0, f"ARK{i}"),
+                )
+        v = SmartMoneyAgent().analyze("HOLDONLY", db_path=db_path)
+        assert "ARK 최근 매도" not in v.reasoning
+        assert "ARK 최근 매수" not in v.reasoning
+
+    def test_ark_counting_is_safe_even_if_the_query_stops_filtering(self, db_path):
+        """#1143 회귀 잠금 — 집계 그 자체.
+
+        위 테스트는 SQL 의 `direction IN ('Buy','Sell')` 만으로도 통과한다. 즉 필터를
+        지우면 잡히지만 **집계식을 되돌리면 안 잡힌다.** 두 방어선은 막는 게 서로 다르다:
+        필터가 없으면 침묵(진짜 매매가 창 밖으로 밀림), 집계가 틀리면 거짓 매도다.
+        후자를 잠그려고 `_safe_query` 를 가로채 Hold 행을 집계 코드에 직접 흘린다 —
+        나중에 필터가 느슨해지거나 다른 호출자가 생겨도 집계는 안전해야 한다.
+        """
+        from nuri.trading.agents.smart_money import SmartMoneyAgent
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO estimates "
+                "(ticker, date, recommendation, target_mean, current_price, num_analysts) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("RAWHOLD", "2026-01-01", "buy", 130.0, 100.0, 5),
+            )
+
+        agent = SmartMoneyAgent()
+        real_safe_query = agent._safe_query
+
+        def _leak_hold_rows(sql, params=(), db_path=None):
+            if "FROM ark" in sql:
+                return [{"direction": "Hold", "shares": 0.0} for _ in range(5)]
+            return real_safe_query(sql, params, db_path)
+
+        agent._safe_query = _leak_hold_rows
+        v = agent.analyze("RAWHOLD", db_path=db_path)
+        assert "ARK 최근 매도" not in v.reasoning
+        assert "ARK 최근 매수" not in v.reasoning
+
+    def test_ark_hold_does_not_crowd_out_real_trades(self, db_path):
+        """#1143: 쿼리가 Hold 를 거르지 않으면 최신 Hold 5건이 LIMIT 5 창을 잡아먹어
+        그 아래 실제 Buy 가 영영 안 보인다 — 결손이 아니라 침묵이라 신호가 없다."""
+        with get_db(db_path) as conn:
+            for i in range(3):  # 오래된 진짜 매수
+                conn.execute(
+                    "INSERT INTO ark (ticker, date, direction, shares, fund) VALUES (?, ?, ?, ?, ?)",
+                    ("CROWD", f"2026-03-0{1 + i}", "Buy", 1000.0, f"ARK{i}"),
+                )
+            for i in range(5):  # 그 위를 덮는 최신 Hold 스냅샷
+                conn.execute(
+                    "INSERT INTO ark (ticker, date, direction, shares, fund) VALUES (?, ?, ?, ?, ?)",
+                    ("CROWD", f"2026-03-{20 + i:02d}", "Hold", 0.0, f"ARK{i}"),
+                )
+        v = SmartMoneyAgent().analyze("CROWD", db_path=db_path)
+        assert "ARK 최근 매수 3건" in v.reasoning

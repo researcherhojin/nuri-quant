@@ -23,6 +23,13 @@ Live probe (2026-04-17):
 - `005930.KS` → korean_market activates (20-day momentum + institutional flows), retail/crypto dormant by design. Consensus HOLD @ 62 conf, 90% agreement.
 - `GOOGL` → korean_market neutral for US (conf 50, "US ticker — Korean market agent neutral"), retail active (WSB coverage present, conf 48). Consensus HOLD @ 62, 80%.
 
+## ARK 항목은 Buy/Sell 만 센다 (`smart_money.py`, #1143)
+
+`ark.direction` 은 Buy / Sell / **Hold** 세 값이다. `sells` 를 `len(rows) - buys` 로
+구하면 Hold 가 전부 매도가 된다 — ark 테이블이 Hold 만 담고 있던 기간(수집 소스 사망 +
+보유 스냅샷 폴백) 동안 거기 있는 티커는 전부 상시 `score -1` 을 받았다. 수집기 쪽 사정과
+무관하게 이 집계는 방어적으로 옳아야 한다. 배경은 `nuri/collectors/CLAUDE.md` "ARK".
+
 ## Veto + Divergence
 
 - **Risk agent** (19% weight) has **veto power**: SELL + confidence ≥ 80 overrides all others.
