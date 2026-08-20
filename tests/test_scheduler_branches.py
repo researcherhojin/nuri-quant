@@ -318,18 +318,23 @@ class TestRunHeldAddShadow:
         """Lines 272-312: providers built from collectors, passed into emit_held_add_shadow,
         n_emit/n_skip/shadow_mode logged.
 
-        The behavioral lock here: the score provider must multiply factor composite
-        by 100 (line 288). If a regression drops `* 100.0`, the captured score for
-        AAA differs from the expected 42.0.
+        The behavioral lock here: the score provider hands `held_add` the emitter's
+        **fused 0-100 score**, not `composite * 100` (#1111). The gates it feeds are
+        75/75/80, which are numbers on the fused scale (`quality_bar.base_threshold: 70`
+        lives on the same one). Raw composite tops out around 0.73, so on that scale the
+        gates were unreachable — zero rows in `factors` have ever had
+        `composite_score >= 0.75`.
         """
         import logging
 
         from nuri.scheduler import _run_held_add_shadow
 
         # Snapshot returned by buy_candidate_emitter helpers
-        factors = {"AAA": {"composite": 0.42}}  # 0.42 → expect score 42.0
+        factors = {"AAA": {"composite": 0.42}}
         rsi_map = {"AAA": 65.0}
-        prices = {"AAA": {"ret_5d": 0.03}}  # 3% 5d return → sector_mom proxy
+        # ret_5d 는 퍼센트 단위다 (`sector_momentum_min: 5` 가 같은 값을 읽는다).
+        # 0.03 은 3% 가 아니라 0.03% 이지만, 이 픽스처가 잠그는 건 배선이지 단위가 아니다.
+        prices = {"AAA": {"ret_5d": 0.03}}  # sector_mom proxy 로도 그대로 흐른다
 
         # Capture the providers passed into emit_held_add_shadow
         captured: dict = {}
@@ -374,10 +379,20 @@ class TestRunHeldAddShadow:
         ):
             _run_held_add_shadow()
 
-        # Behavioral assertions: providers wired correctly
-        assert captured["score"] == pytest.approx(42.0), (
-            "score provider must multiply factor composite by 100 (line 288)"
+        # Behavioral assertions: providers wired correctly.
+        #
+        # 42.0 (= composite × 100) 이 아니라 융합 점수를 기대한다. 성분별로:
+        #   factor    0.42 → 42.00 × 0.40 = 16.8000
+        #   momentum  50 + 0.03×5 = 50.15 × 0.25 = 12.5375
+        #   rsi       65 → 70 + 15×0.67 = 80.05 × 0.15 = 12.0075
+        #   breakout  없음 → 70.00 × 0.20 = 14.0000
+        #                                   ─────────
+        #                                     55.3450
+        # 합계만 잠그면 성분 하나가 틀려도 다른 하나가 상쇄해 통과할 수 있어 성분을 적어둔다.
+        assert captured["score"] == pytest.approx(55.345), (
+            "score provider 가 emitter 의 융합 0-100 점수를 넘겨야 한다 (#1111)"
         )
+        assert captured["score"] != pytest.approx(42.0), "raw composite×100 척도로 되돌아갔다"
         assert captured["rsi"] == 65.0
         assert captured["regime"] == ("BULL", 18.5)
         # sector_mom proxy = ret_5d (line 299)
@@ -389,10 +404,12 @@ class TestRunHeldAddShadow:
         assert "shadow=True" in msgs
 
     def test_score_provider_handles_missing_factor(self):
-        """Line 287-288: factors.get(t) returning None → composite default 0.0 → score 0.0.
+        """팩터 행이 없는 티커는 0.0 — 중립이 아니라 **평가 불가** 다 (#1111).
 
-        The (f or {}).get pattern guards against None. If revert to factors[t]['composite'],
-        an unknown ticker raises KeyError.
+        `_score_ticker` 는 결측 소스를 중립 50 으로 메운다. 신규 후보 채점에서는 맞는
+        규약이지만(부분 데이터가 후보를 막지 않게), held_add 는 이미 가진 포지션에
+        자본을 더 넣는 결정이라 "모른다" 를 중립으로 치면 안 된다. 그대로 통과시켰다면
+        팩터가 하나도 없는 종목이 54.0 을 받는다.
         """
         from nuri.scheduler import _run_held_add_shadow
 
@@ -426,8 +443,7 @@ class TestRunHeldAddShadow:
         ):
             _run_held_add_shadow()
 
-        # 0.0 = explicit default from `(f or {}).get("composite", 0.0)`
-        assert captured["unknown"] == 0.0
+        assert captured["unknown"] == 0.0, "팩터 없는 티커가 중립 점수를 받았다"
 
     def test_exception_swallowed(self, caplog):
         """Lines 313-314: any exception inside the closure → ERROR log, not raise."""
