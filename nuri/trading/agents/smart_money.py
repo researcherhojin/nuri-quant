@@ -82,14 +82,21 @@ class SmartMoneyAgent(BaseAgent):
                     reasons.append(f"목표가 하회 {upside:.0f}%")
 
         # 4. ARK 최근 매매
+        # `direction` 은 Buy / Sell / Hold 세 값을 갖는다. 예전에는 sells 를
+        # `len(rows) - buys` 로 구해서 **Hold 가 전부 매도로 집계**됐다 (#1143). ark
+        # 테이블이 한동안 Hold 만 담고 있었으므로 (죽은 CSV 소스 → 보유 스냅샷 폴백)
+        # 거기 있는 티커는 예외 없이 score -1 과 "ARK 최근 매도 N건" 이라는 거짓 근거를
+        # 받았다. 데이터 결손이 아니라 틀린 신호였다. Buy/Sell 을 각각 세고, 쿼리에서도
+        # 걸러 LIMIT 5 창을 Hold 가 잡아먹지 않게 한다.
         ark_rows = self._safe_query(
-            "SELECT direction, shares FROM ark WHERE ticker = ? ORDER BY date DESC LIMIT 5",
+            "SELECT direction, shares FROM ark WHERE ticker = ? "
+            "AND direction IN ('Buy', 'Sell') ORDER BY date DESC LIMIT 5",
             (ticker,),
             db_path,
         )
         if ark_rows:
             buys = sum(1 for r in ark_rows if r["direction"] == "Buy")
-            sells = len(ark_rows) - buys
+            sells = sum(1 for r in ark_rows if r["direction"] == "Sell")
             if buys > sells:
                 score += 1
                 reasons.append(f"ARK 최근 매수 {buys}건")

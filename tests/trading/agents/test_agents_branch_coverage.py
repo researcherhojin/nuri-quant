@@ -510,7 +510,13 @@ class TestRetailAgentBuyBranch:
 
 class TestSmartMoneyArkSells:
     def test_ark_sells_dominant(self, db_path):
-        """ARK 최근 매도 우세 → score -=1, reason 추가."""
+        """ARK 최근 매도 우세 → score -=1, reason 추가.
+
+        예전에는 direction 을 소문자 'sell'/'buy' 로 심었다. 그건 `== "Buy"` 에 한 번도
+        안 걸리므로 **버그 덕에 통과하던 테스트**였다 — sells 가 'Buy 가 아닌 나머지'로
+        집계되던 시절엔 소문자 6행이 전부 매도로 세어졌다 (#1143). 수집기가 실제로 쓰는
+        표기는 'Buy'/'Sell' 이므로 그대로 맞춘다.
+        """
         from nuri.trading.agents.smart_money import SmartMoneyAgent
 
         with get_db(db_path) as conn:
@@ -526,17 +532,17 @@ class TestSmartMoneyArkSells:
                 conn.execute(
                     """INSERT INTO ark (date, ticker, direction, shares, weight, fund)
                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (date, "TSLA", "sell", 1000, 1.0, fund),
+                    (date, "TSLA", "Sell", 1000, 1.0, fund),
                 )
             conn.execute(
                 """INSERT INTO ark (date, ticker, direction, shares, weight, fund)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                ("2026-04-26", "TSLA", "buy", 500, 0.5, "ARKK"),
+                ("2026-04-26", "TSLA", "Buy", 500, 0.5, "ARKK"),
             )
 
         v = SmartMoneyAgent().analyze("TSLA", db_path=db_path)
-        # ARK 매도 reason 포함
-        assert "ARK" in v.reasoning
+        # 날짜 DESC LIMIT 5 → Buy 1 + Sell 4 → 매도 우세
+        assert "ARK 최근 매도 4건" in v.reasoning
 
 
 # ─── technical: yfinance fallback / chart 예외 / FINVIZ 예외 ───────────
