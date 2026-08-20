@@ -91,8 +91,11 @@ test.describe("Server Component Pages (real backend)", () => {
     await expect(page.locator('[data-testid="explore-search-input"]')).toBeVisible({ timeout: 10000 });
     // Type "TSLA" and wait for results
     await page.fill('[data-testid="explore-search-input"]', "TSLA");
-    await expect(page.locator('[data-testid="explore-search-dropdown"]')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('[data-testid="search-result-TSLA"]')).toBeVisible({ timeout: 5000 });
+    // 인라인 timeout 을 두지 않는다 — 여기 박힌 5000ms 가 config 의 expect.timeout 을
+    // 덮어써서, 서버가 붐빌 때 fetch(0.03s 짜리 쿼리)가 프록시 큐에서 4초 넘게
+    // 기다리는 구간을 실패로 바꿨다. 대기 예산은 config 한 곳에서 관리한다.
+    await expect(page.locator('[data-testid="explore-search-dropdown"]')).toBeVisible();
+    await expect(page.locator('[data-testid="search-result-TSLA"]')).toBeVisible();
   });
 
   test("explore search returns results for Korean name", async ({ page }) => {
@@ -100,7 +103,7 @@ test.describe("Server Component Pages (real backend)", () => {
     await expect(page.locator('[data-testid="explore-search-input"]')).toBeVisible({ timeout: 10000 });
     // Type "삼성" and wait for Korean stock results
     await page.fill('[data-testid="explore-search-input"]', "삼성");
-    await expect(page.locator('[data-testid="explore-search-dropdown"]')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('[data-testid="search-result-005930.KS"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="explore-search-dropdown"]')).toBeVisible();
+    await expect(page.locator('[data-testid="search-result-005930.KS"]')).toBeVisible();
   });
 });
