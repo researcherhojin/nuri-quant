@@ -52,11 +52,16 @@ class TestFreshnessPolicies:
         # `signals` 는 #1101 에서 추가 — 커버리지가 40종목(가격 753 대비)으로 넉 달을
         # 가고 오늘 run 이 무엇을 남기든 어떤 화면에도 안 떴다. RSI 가 BUY 점수의
         # 0.15 가중치인데 결측이라 전 종목 중립 상수 50 이었다.
+        # `fundamentals` 는 #1109 에서 추가 — composite 가중치 1.00 중 0.50(value+quality)이
+        # 이 테이블에서 나오는데 정책이 없어서, 주간 잡이 보유 18종목만 갱신하는 동안
+        # 나머지 ~728 종목이 얼마나 낡든 어떤 화면에도 안 떴다 (#1102 의 재료 쪽 절반).
         expected = {
             "prices",
             "factors",
             "signals",
             "signals_kr",
+            "fundamentals",
+            "fundamentals_kr",
             "macro_vix",
             "macro_fear_greed",
             "consensus",
@@ -339,6 +344,75 @@ class TestCheckFreshness:
         result = check_freshness("signals_kr", db_path=db_path)
         assert result["status"] == "PASS"
         assert "미구성" in result["message"]
+
+    def _seed_fundamentals(self, db_path, date: str, tickers):
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO fundamentals (ticker, date, pe_ratio, roe) VALUES (?, ?, 20.0, 0.15)",
+                [(t, date) for t in tickers],
+            )
+
+    def test_stale_fundamentals_surface_instead_of_going_unnoticed(self, db_path):
+        """낡은 펀더멘탈이 FAIL 로 뜬다 (#1109).
+
+        정책이 없던 시절엔 이 테이블이 100일 넘게 낡아도 아무 화면에 안 떴다. value·quality
+        는 여기서만 나오고 둘이 합쳐 composite 가중치의 **절반**이다 — 낡은 PE/PBR 로 만든
+        점수는 없는 것보다 나쁘다. 상수 0.5 는 변별력이 없다는 게 보이기라도 하지만, 100일
+        전 숫자로 만든 순위는 진짜 신호와 구분되지 않는다.
+
+        Mutation lock: `FRESHNESS_POLICIES` 에서 `fundamentals` 를 빼면 KeyError 로 FAIL.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now
+
+        old = (kst_now() - timedelta(days=40)).strftime("%Y-%m-%d")
+        self._seed_fundamentals(db_path, old, self._US)
+
+        result = check_freshness("fundamentals", db_path=db_path)
+        assert result["status"] == "FAIL"
+        assert result["label"] == "펀더멘탈 (US)"
+
+    def test_holding_only_writes_cannot_keep_fundamentals_green(self, db_path):
+        """보유 18종목만 갱신된 날은 신선한 것으로 안 친다 (#1109).
+
+        이게 이 정책의 존재 이유다. 맨 `MAX(date)` 였다면 프로덕션에서 실제로 벌어진 일 —
+        주간 잡이 18행을 쓰고 나머지 728 종목은 손도 안 댄 상태 — 이 초록으로 보고됐다.
+        커버리지 floor 가 그 18행을 신선함으로 세지 않는다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        self._seed_fundamentals(db_path, today_kst(), self._US[:18])
+
+        result = check_freshness("fundamentals", db_path=db_path)
+        assert result["status"] == "FAIL", "보유 종목만 갱신된 날이 신선함으로 통했다"
+
+    def test_a_dead_kr_slice_cannot_hide_behind_fresh_us_fundamentals(self, db_path):
+        """KR 이 통째로 비어도 US 가 신선하면 가려진다 — 그래서 시장별로 나눈다 (#1109).
+
+        KR 은 KIS 순차 경로라 자격 증명 만료 하나로 전면 실패할 수 있다. 합산 floor(멤버
+        746 의 60% = 448)는 US 543 만으로 넘으므로, 하나로 합쳤다면 KR 전멸이 PASS 로 보인다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        self._seed_fundamentals(db_path, today_kst(), self._US)
+
+        assert check_freshness("fundamentals", db_path=db_path)["status"] == "PASS"
+        assert check_freshness("fundamentals_kr", db_path=db_path)["status"] == "FAIL"
+
+    def test_thresholds_allow_a_full_weekly_cycle(self):
+        """임계가 주간 케이던스에 맞는다 (#1109).
+
+        이 잡은 일요일 00:00 주 1회다. 다음 실행 직전 **정상** 나이가 168h 이므로 48h WARN
+        이면 매주 6일이 빨갛고, 빨간 게 정상이면 아무도 안 본다 — 정책이 있으나 마나가 된다.
+        """
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
+        for key in ("fundamentals", "fundamentals_kr"):
+            assert FRESHNESS_POLICIES[key]["warn_hours"] > 168, f"{key}: 주 1회 잡인데 WARN 이 한 주기보다 짧다"
 
     def test_full_coverage_today_passes(self, db_path):
         """정상 갱신은 통과 — 가드가 상시 FAIL 이면 아무도 안 본다."""
