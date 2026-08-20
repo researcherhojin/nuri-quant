@@ -88,34 +88,19 @@ def fetch_ticker_returns(ticker: str, start_date: str = "2025-01-01") -> pd.Data
     return df.dropna()
 
 
-def fetch_portfolio_state(default_cash: float = 50_000.0) -> dict[str, Any]:
-    """Best-effort portfolio snapshot (없으면 default placeholder).
+def fetch_portfolio_state() -> dict[str, Any]:
+    """실 포트폴리오 스냅샷 — `nuri.analysis.portfolio.portfolio_state()` 위임 (#1107).
 
-    실 holdings 가 있으면 그걸 쓰고, 없으면 빈 portfolio + cash 만 사용.
+    이 함수는 원래 `SELECT ticker, qty, current_price FROM holdings` 를 조회했다.
+    그런 테이블은 **존재하지 않는다** (실제는 `portfolio`, 컬럼도 다르다). 예외가
+    `except Exception` 에 삼켜져 `total_value=100_000, positions={}` 라는 허구가 흘렀고,
+    firewall 은 빈 포트폴리오를 상대로 게이트를 계산했다 — `execution_blocks` 가 도입 이래
+    프로덕션 0행인 이유가 이것이다. 재구현하지 않고 위임한다: 환율·다계좌·섹터 처리가
+    한 곳에만 있어야 갈라지지 않는다.
     """
-    try:
-        rows = query_df("SELECT ticker, qty, current_price FROM holdings WHERE qty > 0")
-        positions: dict[str, dict[str, Any]] = {}
-        total_value = 0.0
-        for _, r in rows.iterrows():
-            value = float(r["qty"]) * float(r["current_price"] or 0)
-            if value > 0:
-                positions[r["ticker"]] = {"value": value, "sector": "unknown"}
-                total_value += value
-    except Exception:
-        positions = {}
-        total_value = 0.0
+    from nuri.analysis.portfolio import portfolio_state
 
-    # VIX 최신값 — ExecutionFirewall vix_too_high gate
-    vix_row = query_df("SELECT value FROM macro WHERE indicator='vix' ORDER BY date DESC LIMIT 1")
-    vix = float(vix_row["value"].iloc[0]) if not vix_row.empty else None
-
-    return {
-        "total_value": total_value if total_value > 0 else 100_000.0,
-        "cash": default_cash,
-        "positions": positions,
-        "vix": vix,
-    }
+    return portfolio_state()
 
 
 def main(argv: list[str] | None = None) -> int:
