@@ -150,16 +150,24 @@ FRESHNESS_POLICIES = {
         # 24~72h 다. 주말·공휴일 흡수해 168h(7일) WARN — `config/rules.yaml
         # ark.max_source_lag_days` 와 같은 값이다. 336h(14일) = 2주째 안 움직였다.
         #
-        # 추적 중인 5개 펀드로 **범위를 좁힌다**. 전 fund 값을 그룹핑하면 오타 하나나 과거
-        # 실험이 남긴 stray 그룹이 정책을 영구 빨강으로 못박는다 — 영구 빨강 게이트는
-        # 아무도 안 보게 되므로 죽은 게이트와 같아진다. 목록은 `ark.py ARK_HOLDINGS_FILES`
-        # 와 일치해야 하고, `tests/core/test_ark_freshness_policy.py` 가 양방향으로 대조한다.
+        # **`ark` 테이블을 보지 않는다** (#1147). 거기엔 보유 종목과 겹치는 행만 들어가므로
+        # 펀드별 `MAX(date)` 는 "이 펀드가 마지막으로 발행한 날" 이 아니라 "우리가 이 펀드
+        # 종목을 마지막으로 들고 있던 날" 이다. ARKG 는 매일 갱신되는데 우리가 그 보유 종목을
+        # 안 들어서 4개월째 행이 없었고, 정책이 멀쩡한 펀드를 가장 낡았다고 지목했다 —
+        # 소스 감시가 우리 포트폴리오 구성에 의존해버린 것이다. 수집기가 필터와 무관하게
+        # 쓰는 `ark_source_dates` 를 본다 (`ark.py _record_source_dates`, 마이그레이션 55).
+        #
+        # **`COUNT(*) = 5` 가 핵심이다.** 이게 없으면 한 펀드의 행이 아예 **없을 때** MIN 이
+        # 남은 펀드들만 보고 초록을 준다 — 새 펀드를 추가했는데 수집이 한 번도 성공 못 한
+        # 경우가 정확히 그 모양이고, "진짜로 얼었는데 초록" 이 그대로 남는다. 부재는 최신이
+        # 아니라 **미상**이고, 미상은 통과가 아니다. NULL 을 주면 `check_freshness` 가
+        # FAIL/"데이터 없음" 으로 처리한다.
+        #
+        # 목록과 개수는 `ark.py ARK_HOLDINGS_FILES` 와 일치해야 하고,
+        # `tests/core/test_ark_freshness_policy.py` 가 양방향으로 대조한다.
         "query": (
-            "SELECT MIN(latest) FROM ("
-            "  SELECT fund, MAX(date) AS latest FROM ark "
-            "  WHERE fund IN ('ARKK', 'ARKW', 'ARKG', 'ARKQ', 'ARKF') AND date IS NOT NULL "
-            "  GROUP BY fund"
-            ")"
+            "SELECT CASE WHEN COUNT(*) = 5 THEN MIN(csv_date) END FROM ark_source_dates "
+            "WHERE fund IN ('ARKK', 'ARKW', 'ARKG', 'ARKQ', 'ARKF') AND csv_date IS NOT NULL"
         ),
         "warn_hours": 168,
         "fail_hours": 336,

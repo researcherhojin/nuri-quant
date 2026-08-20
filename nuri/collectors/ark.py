@@ -67,6 +67,7 @@ class ARKCollector(BaseCollector):
                 failed.append(fund)
                 self.logger.warning("ARK %s 보유 CSV 실패 (%s): %s", fund, url.split("/")[2], e)
 
+        self._record_source_dates(fund_dates, db_path)
         self._warn_stale_funds(fund_dates)
 
         if failed:
@@ -86,6 +87,35 @@ class ARKCollector(BaseCollector):
         directions = {d: sum(1 for r in records if r["direction"] == d) for d in ("Buy", "Sell", "Hold")}
         self.logger.info("ARK 보유 %d건 (보유 종목 필터) — %s", len(records), directions)
         return records
+
+    def _record_source_dates(self, fund_dates: dict[str, str], db_path=None) -> None:
+        """펀드별 CSV 발행일을 `ark_source_dates` 에 남긴다 (#1147).
+
+        **`ark` 테이블로는 소스 신선도를 잴 수 없다.** 거기엔 보유 종목과 겹치는 행만 들어가서,
+        펀드별 `MAX(date)` 가 재는 것은 "이 펀드가 마지막으로 발행한 날" 이 아니라 **"우리가 이
+        펀드 종목을 마지막으로 들고 있던 날"** 이다. 실제로 ARKG 는 CSV 를 매일 갱신하는데
+        우리가 ARKG 보유 종목을 안 들어서 4개월째 행이 없었고, 정책이 멀쩡한 펀드를 가장
+        낡았다고 지목했다. 소스 감시가 우리 포트폴리오 구성에 의존하면 안 된다.
+
+        전용 테이블인 이유는 `_MIGRATIONS` 55 에 적어 뒀다 — 요약하면 `external_analysis` 의
+        `ticker` 는 실제 종목 심볼 네임스페이스라, 펀드명을 거기 쓰면 SIEGE 의 external
+        evidence 카운트까지 새어 들어간다.
+
+        `fund` PRIMARY KEY 라 얼어 있는 펀드를 매일 다시 써도 한 행이다 (upsert).
+        """
+        from nuri.core.db import get_db
+        from nuri.core.timezone import kst_now
+
+        if not fund_dates:
+            return
+        now = kst_now().isoformat()
+        with get_db(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO ark_source_dates (fund, csv_date, observed_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(fund) DO UPDATE SET csv_date = excluded.csv_date, "
+                "observed_at = excluded.observed_at",
+                [(f, d, now) for f, d in sorted(fund_dates.items())],
+            )
 
     def _warn_stale_funds(self, fund_dates: dict[str, str]) -> None:
         """펀드별 CSV 발행 날짜가 오늘에서 얼마나 뒤처졌는지 본다 (#1145).
