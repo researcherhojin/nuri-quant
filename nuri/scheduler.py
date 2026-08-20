@@ -626,6 +626,7 @@ def _run_held_add_shadow():
     — strict, false-positive 회피).
     """
     try:
+        from nuri.core.db import query
         from nuri.trading.recommend.buy_candidate_emitter import (
             _get_factor_scores,
             _get_price_signals,
@@ -635,6 +636,32 @@ def _run_held_add_shadow():
             _score_ticker,
         )
         from nuri.trading.recommend.held_add import emit_held_add_shadow
+
+        # 팩터가 가격을 따라잡았는지 **확인하고** 시작한다 (#1115).
+        #
+        # cron 을 factors(08:10) 뒤인 08:30 으로 옮긴 것만으로는 부족하다 — 잡들은 서로
+        # 독립적인 cron 이고 성공 의존성이 없다. 스케줄러가 08:15 까지 죽어 있으면 factors
+        # 는 `misfire_grace_time=300` 을 넘겨 **드롭되는데** 08:30 은 그대로 뜬다. 그러면
+        # 고치려던 바로 그 상태(오늘 가격·오늘 RSI + 어제 팩터)가 되살아난다. 시각은
+        # 확률을 낮출 뿐이고, 여기서 막아야 실제로 막힌다 (Codex P1).
+        #
+        # 비교 기준이 `prices` 인 이유: `save_composite` 가 `factors.date` 에 찍는 값이
+        # 바로 `_market_as_of()` = `MAX(date) FROM prices` 다. 두 값이 같다 = 팩터가 최신
+        # 시장 데이터로 계산됐다. `check_freshness("factors")` 는 임계가 48h 라 "오늘 잡이
+        # 돌았는가" 를 묻기엔 너무 헐겁다.
+        factors_as_of = (query("SELECT MAX(date) AS d FROM factors")[0] or {}).get("d")
+        prices_as_of = (query("SELECT MAX(date) AS d FROM prices")[0] or {}).get("d")
+        # 비교할 가격이 있을 때만 막는다. 가격 자체가 없으면 채점할 것도 없어서 아래가
+        # 어차피 아무것도 내지 않는다 — 그 경우까지 "낡음" 으로 부르면 빈 설치가 영구
+        # 경고를 뿜는다.
+        if prices_as_of and (not factors_as_of or factors_as_of < prices_as_of):
+            logger.warning(
+                "[held_add_shadow] 팩터가 가격보다 낡음 (factors=%s < prices=%s) — emit 건너뜀. "
+                "시점이 섞인 점수로 게이트를 계산하지 않는다",
+                factors_as_of,
+                prices_as_of,
+            )
+            return 0
 
         factors = _get_factor_scores()
         rsi_map = _get_rsi_snapshot()
@@ -896,10 +923,20 @@ SCHEDULES = [
     # JKHY-class entry 단계 보호 (PR #303) 의 hold-stage 보강. REVIEW alert only,
     # auto-trade 없음 (STRATEGY §7.1 deferred). pipeline_events 로 7d dedup.
     {"name": "holdings_monitor", "func": _run_collector, "args": ("holdings_monitor",), "cron": "10 7 * * *"},
-    # held_add shadow emit (#518 phase 2a, 매일 07:15 — holdings_monitor 직후).
-    # 보유 종목에 대한 add 후보 평가 (3 modes + earnings blackout). shadow_mode_until
-    # 까지 held_add_shadow 테이블 only — brief surface 안 함. 14d 누적 후 2c calibration.
-    {"name": "held_add_shadow", "func": _run_held_add_shadow, "args": (), "cron": "15 7 * * *"},
+    # held_add shadow emit (#518 phase 2a, 매일 **08:30**). 보유 종목에 대한 add 후보 평가
+    # (3 modes + earnings blackout). shadow_mode_until 까지 held_add_shadow 테이블 only.
+    #
+    # 07:15 이었다가 08:30 으로 옮겼다 (#1115). 이 잡은 입력 셋을 한 시점에 읽는데, 07:15
+    # 에는 그 셋의 신선도가 갈렸다: 가격은 오늘(`stock_us_universe_daily` 06:17), RSI 도
+    # 오늘(`technical` 07:00), 그런데 **factor composite 만 어제**(`factors` 08:10)였다.
+    # `_get_factor_scores` 는 `WHERE date = (SELECT MAX(date) FROM factors)` 라 전날 행을
+    # 집는다. 균일하게 낡은 것보다 나쁘다 — 두 날짜를 한 점수로 융합하면 **존재한 적 없는
+    # 상태**를 기술한다. #1114 가 그 융합 점수를 게이트에 물렸으므로 이제 하중을 받는다.
+    #
+    # 08:30 인 이유: `factors`(08:10, 실측 1.1초) 뒤이고 `thesis_criteria`(08:20) 와도
+    # 겹치지 않으며 `self_restart`(08:40) 앞이다. `premarket_brief`(09:00 ET = 22:00 KST)
+    # 는 원래부터 factors 뒤라 영향 없다.
+    {"name": "held_add_shadow", "func": _run_held_add_shadow, "args": (), "cron": "30 8 * * *"},
     # 반증 기준 점검 (#1092) — factors(08:10) 이후라야 그날 팩터로 판정한다.
     {"name": "thesis_criteria", "func": _run_collector, "args": ("thesis_criteria",), "cron": "20 8 * * *"},
     # 수집 데이터 타당성 점검 (07:20 — US 종가·KR 전일 수집이 모두 끝난 뒤).

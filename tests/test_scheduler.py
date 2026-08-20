@@ -1391,6 +1391,52 @@ class TestFactorCompositeWired:
         assert crons["factors"].split()[2:] == ["*", "*", "*"], "매일 돌아야 한다 (소비자는 매 거래일 발행)"
 
 
+class TestFactorConsumersRunAfterTheFactorJob:
+    """factors(08:10) 를 읽는 잡은 그 뒤에 돈다 (#1115).
+
+    `held_add_shadow` 는 07:15 였다. 그 시각의 입력은 신선도가 갈렸다 — 가격은 오늘
+    (`stock_us_universe_daily` 06:17), RSI 도 오늘(`technical` 07:00), 그런데 factor
+    composite 만 어제(`factors` 08:10) 것이었다. `_get_factor_scores` 가
+    `WHERE date = (SELECT MAX(date) FROM factors)` 라 전날 행을 집기 때문이다.
+
+    균일하게 낡은 것보다 나쁘다: 두 날짜를 한 점수로 융합하면 **존재한 적 없는 상태**를
+    기술한다. #1114 가 그 융합 점수를 held_add 게이트에 물렸으므로 이제 하중을 받는다.
+    """
+
+    #: KST 잡만 분(minute)-of-day 로 비교할 수 있다. tz 가 붙은 잡은 축이 달라 섞으면 안 된다.
+    def _kst_minute(self, job) -> int:
+        assert job.get("tz") is None, f"{job['name']} 에 tz 가 붙었다 — KST 분 비교가 성립하지 않는다"
+        minute, hour = job["cron"].split()[:2]
+        return int(hour) * 60 + int(minute)
+
+    def _job(self, name):
+        from nuri.scheduler import SCHEDULES
+
+        jobs = [j for j in SCHEDULES if j["name"] == name]
+        assert len(jobs) == 1, f"{name} 잡이 정확히 1개여야 한다"
+        return jobs[0]
+
+    def test_held_add_shadow_runs_after_factors(self):
+        """되돌리면(07:15) 이 단언이 깨진다."""
+        factors = self._kst_minute(self._job("factors"))
+        held_add = self._kst_minute(self._job("held_add_shadow"))
+
+        assert held_add > factors, (
+            f"held_add_shadow({self._job('held_add_shadow')['cron']}) 가 "
+            f"factors({self._job('factors')['cron']}) 보다 이르다 — 전날 팩터를 읽는다"
+        )
+
+    def test_the_premarket_brief_consumer_is_on_a_different_clock(self):
+        """`buy_candidate_emitter` 는 `premarket_brief` 안에서 돈다 — 그건 US/Eastern 이다.
+
+        분 비교를 KST 로 하면 09:00 이 factors 08:10 뒤로 보이지만, 실제로는 22:00 KST 라
+        14시간 뒤다. tz 가 사라지면 그 여유가 조용히 없어지므로 tz 존재 자체를 잠근다.
+        """
+        brief = self._job("premarket_brief")
+
+        assert brief.get("tz") == "US/Eastern", "tz 가 사라지면 09:00 이 KST 로 해석돼 factors 직전이 된다"
+
+
 class TestTechnicalCoversTheScoringUniverse:
     """technical 잡이 채점 유니버스를 덮고, 수집량을 정직하게 기록한다 (#1101).
 
