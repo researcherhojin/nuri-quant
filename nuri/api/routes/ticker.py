@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 import time
 from dataclasses import asdict
 
@@ -17,6 +18,8 @@ router = APIRouter(tags=["ticker"])
 # 재실행하면 수초 지연. 다른 라우트와 동일한 5분 TTL 모듈 캐시로 1회 스캔 결과 공유.
 _CANDIDATES_CACHE_TTL = 300  # 5분
 _candidates_cache: dict = {"data": None, "timestamp": 0.0}
+# single-flight — TTL 만료 시 동시 요청이 전부 재스캔하는 걸 막는다 (#1119)
+_candidates_lock = threading.Lock()
 
 # 스케줄러가 매일 consensus 를 저장하므로 정상 운영 시 최신 행은 오늘/어제.
 # 주말·공휴일 갭(최대 ~3일)은 허용하되, 그보다 오래되면(스케줄러 정지 등) live
@@ -111,15 +114,21 @@ def _get_signals(ticker: str) -> list:
     """캐시된 universe 스캔 결과에서 해당 종목 시그널만 필터. 5분 TTL."""
     now = time.time()
     if _candidates_cache["data"] is None or (now - _candidates_cache["timestamp"]) >= _CANDIDATES_CACHE_TTL:
-        try:
-            from nuri.trading.recommend.candidates import screen_candidates
+        with _candidates_lock:
+            # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다 (#1119).
+            # screen_candidates 는 실측 3.5초라, 락이 없으면 TTL 만료 시각에
+            # 도착한 요청들이 전부 같은 스캔을 중복 수행한다.
+            now = time.time()
+            if _candidates_cache["data"] is None or (now - _candidates_cache["timestamp"]) >= _CANDIDATES_CACHE_TTL:
+                try:
+                    from nuri.trading.recommend.candidates import screen_candidates
 
-            data = screen_candidates(lookback_days=10)
-        except Exception:
-            # 스캔 실패 시 캐시를 빈 결과로 고정하지 않음 — 다음 요청이 재시도
-            return []
-        _candidates_cache["data"] = data
-        _candidates_cache["timestamp"] = now
+                    data = screen_candidates(lookback_days=10)
+                except Exception:
+                    # 스캔 실패 시 캐시를 빈 결과로 고정하지 않음 — 다음 요청이 재시도
+                    return []
+                _candidates_cache["data"] = data
+                _candidates_cache["timestamp"] = now
     return [asdict(c) for c in _candidates_cache["data"] if c.ticker == ticker]
 
 

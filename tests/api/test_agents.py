@@ -224,3 +224,47 @@ class TestAgentsRoute:
         data = resp.json()
         assert data["divergence_flag"] is False
         assert data["divergence_reason"] == ""
+
+
+class TestConsensusSingleFlight:
+    """TTL 만료 시 동시 요청이 재계산을 중복 수행하지 않는지 잠근다 (#1119).
+
+    실측 2026-08-20: 락이 없을 때 빈 캐시에 `/api/consensus` 8개를 동시에 던지면
+    8개가 **각자** 20.9~32.7초를 태웠다 (스케줄러 로그 마커 기준 계산 144회 =
+    8배). 40개짜리 AnyIO 스레드풀 중 8칸이 30초간 묶여 `/api/health` 까지 뒤에
+    줄을 섰다. 락 적용 후 같은 8요청에서 계산은 1회.
+    """
+
+    def test_concurrent_requests_compute_once(self):
+        import threading
+
+        import nuri.api.routes.agents as agents_mod
+
+        agents_mod._cache["data"] = None
+        agents_mod._cache["ts"] = 0
+
+        calls = []
+        barrier = threading.Barrier(4)
+
+        def _slow_analyze():
+            calls.append(1)
+            # 모든 스레드가 캐시 미스를 확인한 뒤에야 계산이 끝나도록 —
+            # 락이 없으면 4개가 전부 여기 들어온다.
+            _time.sleep(0.3)
+            return []
+
+        def _worker():
+            barrier.wait(timeout=5)
+            agents_mod.get_consensus()
+
+        with patch("nuri.trading.agents.consensus.analyze_portfolio", side_effect=_slow_analyze):
+            with patch("nuri.quant.regime.classifier.classify_regime", return_value=None):
+                threads = [threading.Thread(target=_worker) for _ in range(4)]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join(timeout=15)
+
+        assert len(calls) == 1, f"동시 4요청이 {len(calls)}회 계산했다 — single-flight 락이 없다"
+        agents_mod._cache["data"] = None
+        agents_mod._cache["ts"] = 0
