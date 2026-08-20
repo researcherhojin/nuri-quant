@@ -86,6 +86,53 @@ class TestQualityDbRead:
         assert float(df.loc["NVDA", "quality_score"]) > float(df.loc["AAPL", "quality_score"])
         assert float(df.loc["AAPL", "quality_score"]) > float(df.loc["MSFT", "quality_score"])
 
+    def test_a_missing_roe_is_not_a_quality_bonus(self, db_path_mp):
+        """ROE 가 없다는 이유만으로 최고 퀄리티가 되지 않는다 (#1102).
+
+        이전 구현은 `valid = df[col].dropna()` 로 만든 시리즈를 `df[col + "_norm"]` 에
+        대입해서, 결측 행에는 값이 **안 들어가고 NaN 이 남았다**. 그다음
+        `mean(axis=1)` 이 기본 `skipna=True` 라 그 종목은 살아남은 컬럼 하나로만 채점됐다.
+        관측 1개의 평균은 2개보다 분산이 2배라 꼬리를 독점한다 — 실측에서 MO 는 ROE 결측
+        + 최고 영업이익률만으로 `quality_score = 1.0000` 이었고, ROE 가 실제로 있는
+        VICI 는 0.5035 였다. 자본잠식 종목 31개 중 27개가 ROE 결측이라 `value.py` 의
+        클립 보너스와 **같은 종목에 겹쳐** 쌓였고, 유니버스 확장 시뮬레이션에서 상위 25개가
+        전부 그 조합이었다.
+        """
+        from nuri.quant.factors.quality import compute_quality
+
+        rows = [(f"T{i:02d}", "2026-04-15", 0.05 + i * 0.02, 0.05 + i * 0.03) for i in range(10)]
+        rows.append(("NOROE", "2026-04-15", None, 0.99))  # 최고 마진, ROE 결측
+        self._seed_fundamentals(db_path_mp, rows)
+
+        df = compute_quality(tickers=[r[0] for r in rows])
+
+        assert float(df.loc["NOROE", "quality_score"]) < 1.0, "결측이 만점을 만들었다"
+        best_observed = df.drop(index="NOROE")["quality_score"].max()
+        assert float(df.loc["NOROE", "quality_score"]) <= best_observed + 0.13, (
+            "두 축을 다 관측한 최상위 종목보다 결측 종목이 크게 앞섰다"
+        )
+
+    def test_one_extreme_roe_does_not_flatten_everyone_else(self, db_path_mp):
+        """극단 ROE 하나가 나머지의 변별력을 지우지 않는다 (#1102).
+
+        실측: US `roe` 최댓값 84.57 (자본잠식 종목의 산술 부산물) 대 최솟값 −1.19 라
+        범위가 85.76 이 되어, 정상적인 ROE 0.153 이 0.0156 으로 정규화됐다 —
+        `roe_norm` 의 99.4% 가 [0, 0.1] 에 몰렸다. 거의-0 상수와 거의-1 상수의 평균은
+        거의-0.5 상수이므로, #1102 의 증상이 유니버스를 넓혀도 그대로 살아남는 경로였다.
+        """
+        from nuri.quant.factors.quality import compute_quality
+
+        rows = [(f"T{i:02d}", "2026-04-15", 0.05 + i * 0.02, 0.10 + i * 0.02) for i in range(10)]
+        rows.append(("BLOWUP", "2026-04-15", 84.57, 0.30))  # 자본잠식 부산물
+        self._seed_fundamentals(db_path_mp, rows)
+
+        df = compute_quality(tickers=[r[0] for r in rows])
+        normal = df.drop(index="BLOWUP")["roe_norm"]
+
+        assert normal.max() - normal.min() > 0.5, (
+            f"극단 ROE 하나가 나머지를 압축했다 (spread={normal.max() - normal.min():.4f})"
+        )
+
     def test_quality_reads_latest_date_per_ticker(self, db_path_mp):
         """동일 ticker 여러 날짜 → 가장 최신 row 만 사용."""
         from nuri.quant.factors.quality import compute_quality

@@ -85,6 +85,76 @@ class TestValueDbRead:
         assert float(df.loc["AAPL", "value_score"]) > float(df.loc["MSFT", "value_score"])
         assert float(df.loc["MSFT", "value_score"]) > float(df.loc["NVDA", "value_score"])
 
+    def test_a_loss_maker_is_not_the_cheapest_stock(self, db_path_mp):
+        """음수 PE 가 최고 가치 점수를 받지 않는다 (#1102).
+
+        이전 구현은 `1 / valid.clip(lower=0.01)` 이라 **음수 PE 가 0.01 로 클립돼 역수 100**
+        = 그 시장의 최댓값이 됐다. 적자기업이 정의상 `pe_ratio_norm == 1.0`, 즉 가장 싼
+        종목이 됐고, 실측에서 비양수 PE 25종목이 예외 없이 1.0 이었다.
+        적자는 싼 게 아니라 이 척도로 **잴 수 없는 것**이다.
+        """
+        from nuri.quant.factors.value import compute_value
+
+        self._seed_fundamentals(
+            db_path_mp,
+            [
+                ("CHEAP", "2026-04-15", 8.0, 1.0),
+                ("MID", "2026-04-15", 25.0, 3.0),
+                ("RICH", "2026-04-15", 60.0, 8.0),
+                ("LOSS", "2026-04-15", -30.0, 4.0),  # 적자
+            ],
+        )
+        df = compute_value(tickers=["CHEAP", "MID", "RICH", "LOSS"])
+
+        assert float(df.loc["LOSS", "value_score"]) < float(df.loc["CHEAP", "value_score"]), (
+            "적자기업이 실제 저PE 종목보다 싸다고 채점됐다"
+        )
+        # 비양수 PE 는 컬럼 수준에서 **관측 불가(NaN)** 로 남고, 중립값 0.5 는 평균 직전에
+        # 한 번만 대입된다. 그래서 LOSS 의 value_score 는 (중립 + 실제 PB 순위)/2 다.
+        assert pd.isna(df.loc["LOSS", "pe_ratio_norm"]), "비양수 PE 가 관측값 행세를 했다"
+        assert float(df.loc["LOSS", "value_score"]) == pytest.approx(
+            (0.5 + float(df.loc["LOSS", "pb_ratio_norm"])) / 2, abs=1e-4
+        )
+
+    def test_one_extreme_outlier_does_not_flatten_everyone_else(self, db_path_mp):
+        """극단값 하나가 나머지의 변별력을 지우지 않는다 (#1102).
+
+        min-max 는 양 끝값 2개에 앵커링돼서, 한 종목이 척도를 정하면 나머지가 뭉개진다.
+        실측에서 KR `pe_ratio_norm` 은 그렇게 **중앙값 0.00045** 가 됐다 — 값이 틀린 게
+        아니라 순위를 만들지 못하는 값이라 화면 어디도 이상해 보이지 않았다.
+        백분위는 극단값이 순위 하나만 차지하므로 이 앵커링이 원천적으로 없다.
+        """
+        from nuri.quant.factors.value import compute_value
+
+        rows = [(f"T{i:02d}", "2026-04-15", 10.0 + i, 1.0 + i * 0.1) for i in range(10)]
+        rows.append(("MOON", "2026-04-15", 5000.0, 900.0))  # 극단값
+        self._seed_fundamentals(db_path_mp, rows)
+
+        df = compute_value(tickers=[r[0] for r in rows])
+        normal = df.drop(index="MOON")["value_score"]
+
+        assert normal.max() - normal.min() > 0.5, (
+            f"극단값 하나가 나머지를 압축했다 (spread={normal.max() - normal.min():.4f})"
+        )
+
+    def test_the_neutral_fill_sits_at_the_median(self, db_path_mp):
+        """미관측에 쓰는 0.5 가 실제로 중앙값이다 (#1102).
+
+        `composite.py` 는 value/quality 가 없는 티커에 0.5 를 채운다. min-max 시절 그 0.5
+        는 **92 백분위**여서, 데이터가 없다는 이유만으로 상위 8% 에 앉았다. 백분위 척도에서는
+        0.5 가 정의상 중앙값이라 그 대입이 비로소 중립이다.
+        """
+        from nuri.quant.factors.value import compute_value
+
+        rows = [(f"T{i:02d}", "2026-04-15", 5.0 + i * 3, 0.5 + i * 0.4) for i in range(21)]
+        self._seed_fundamentals(db_path_mp, rows)
+
+        df = compute_value(tickers=[r[0] for r in rows])
+
+        assert float(df["value_score"].median()) == pytest.approx(0.5, abs=0.05), (
+            f"중앙값이 0.5 가 아니다 ({df['value_score'].median():.4f}) — 0.5 대입이 중립이 아니게 된다"
+        )
+
     def test_kr_included_and_normalized_per_market(self, db_path_mp):
         """#757: KR(.KS) 도 value_score 를 받되 정규화는 시장별로 분리.
 
