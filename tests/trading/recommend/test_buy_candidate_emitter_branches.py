@@ -104,7 +104,9 @@ class TestRegimeAndVixDegradation:
         regime, vix = bce._get_regime()
 
         assert vix is None, "조회 실패인데 숫자를 지어냈다"
-        assert regime == "neutral"
+        from nuri.quant.regime.classifier import UNKNOWN_REGIME
+
+        assert regime == UNKNOWN_REGIME
         assert any("macro" in s for s in calls), "VIX 조회 자체가 일어나지 않았다"
 
     def test_a_coding_error_is_not_disguised_as_unknown_vix(self, monkeypatch):

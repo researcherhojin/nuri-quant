@@ -23,6 +23,7 @@ The user-facing output layer: BUY candidates, SELL alerts on holdings, price tar
 - **rules.yaml is source of truth** for stop / TP / trailing %. Hardcoding any threshold in this directory is a config-discipline violation (CLAUDE.md root §"Always-on Invariants").
 - **Outcome tracking writes to `recommendations`, not `agent_decisions`**. The two tables exist by design — see `nuri/trading/CLAUDE.md` "decisions vs agent_decisions" if/when added, or root README for the cross-validation rationale.
 - **Dedup window** for re-emission: 7 calendar days per `(ticker, trigger_type)` is the convention (`holdings_monitor.py` baseline). New emitters should match unless they justify otherwise.
+- **레짐은 `classify_regime()` 에서만 오고, 그 어휘는 `ALL_REGIMES` 10개뿐이다.** `regime_transitions` 는 히스토리지 게이팅 출처가 아니다 — 예약 writer 가 없어 임의로 낡는다(실측 121일). 그리고 config·코드가 `bear` / `crash` / `neutral` / `extreme_fear` 같은 **표에 없는 문자열**을 조회하면 `.get(key, default)` 가 조용히 기본값을 주므로 방어 게이트가 초록인 채 죽는다 — 실제로 3건이 2026-04-30~08-21 동안 한 번도 발화하지 못했다. 레짐 목록은 config 에 두고 코드에 박지 않는다. 분류 불가(`None`)는 레짐이 아니라 `UNKNOWN_REGIME` 이며, 어떤 조정 표에도 매치되지 않고 별도의 보수 배분을 받는다. **Test:** `tests/quant/regime/test_config_regime_vocabulary.py::TestConfigSpeaksTheClassifiersLanguage::test_every_regime_key_is_canonical` (config 4개 사이트) + `::TestGateCodeDoesNotHardcodeRegimes::test_no_literal_regime_set_is_compared_against` (AST) + `tests/trading/recommend/test_buy_candidate_emitter.py::test_stale_regime_transitions_row_no_longer_governs_the_gate`.
 
 ## Asset-class scope
 

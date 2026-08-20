@@ -621,7 +621,7 @@ def _run_held_add_shadow():
     안 함). 14d 누적 후 #519 2c calibration sample.
 
     Providers wire-up: buy_candidate_emitter helpers 재사용 — score (factor
-    composite × 100), rsi (RSI snapshot), regime (regime_transitions + VIX),
+    composite × 100), rsi (RSI snapshot), regime (classify_regime 라이브 + VIX),
     sector_mom (price 5d momentum proxy), breakout_above_trim (False default
     — strict, false-positive 회피).
     """

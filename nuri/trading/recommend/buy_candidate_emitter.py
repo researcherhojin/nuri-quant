@@ -36,6 +36,7 @@ from nuri.core.db import DatabaseError, OperationalError, query_df
 from nuri.core.rules import VIX_BLOCK_ABOVE, VIX_CAUTION_ABOVE
 from nuri.core.timezone import kst_now
 from nuri.quant.factors.relative_strength import leadership_snapshot
+from nuri.quant.regime.classifier import UNKNOWN_REGIME
 from nuri.trading.recommend.vix_gate import latest_vix
 
 logger = logging.getLogger(__name__)
@@ -279,27 +280,43 @@ def _get_rsi_snapshot(db_path=None) -> dict[str, float]:
 
 
 def _get_regime(db_path=None) -> tuple[str, float | None]:
-    """Current regime + VIX. VIX 가 없거나 노후하면 **None** — 지어내지 않는다.
+    """Current regime + VIX. 둘 다 모르면 지어내지 않고 미상으로 표면화한다.
 
-    과거엔 부재·조회실패·노후를 전부 `20.0` 으로 메웠다. 20.0 은 차단(>30)과
-    caution(>=25) 임계 **아래**라, 측정 불가가 조용히 '평온'으로 둔갑해 게이트를 열었고
-    브리핑에는 `VIX=20.0` 이 측정값처럼 찍혔다. #753 이 같은 계열(수집 안 되는
-    `prices.VIX` 를 읽어 항상 폴백)로 이미 한 번 게이트를 무력화한 기록이다.
+    **레짐은 매번 새로 분류한다** (#1131). 이전엔 `regime_transitions` 의 최신 행을
+    읽었다. 그 테이블의 유일한 writer 는 `strategy/monitor.py:78` 의
+    `detect_regime_transition()` 이고, 그걸 부르는 예약 job 이 없다 — 진입점은
+    `Makefile` 의 `strategy:` 수동 타깃뿐이다. 게다가 그 함수는 레짐이 **바뀔 때만**
+    행을 넣으므로 "마지막 전환 = 현재 레짐" 이 성립하려면 감지기가 주기적으로 돌아야
+    하는데 돌지 않는다. dev 스냅샷 실측(2026-08-20): 2행, 최신 2026-04-21 — **121일**.
+    그 값이 하드 차단(`:438`) · 임계 조정(`:444`) · 배분(`:508`) 셋을 지배했다.
 
-    이제 `None` 을 돌려주고 부르는 쪽이 caution 과 동일하게(절반 포지션) 처리한다 —
-    STRATEGY §2.6 Soft penalty. 노후 임계는 `entry_rules.vix_gate.max_age_days`.
+    `classify_regime()` 로 옮기면 신선도 강제가 따라온다: SPY 데이터가 120시간을 넘으면
+    그쪽이 `None` 을 돌려준다 (`classifier.py:366`). 낡은 레짐이 현재값 행세를 하는
+    경로 자체가 사라진다는 뜻이고, `regime_transitions` 는 히스토리 전용으로 남는다.
+
+    `None` 은 `UNKNOWN_REGIME` 으로 표면화한다. 그 라벨은 `ALL_REGIMES` 밖이라 config 의
+    레짐별 조정 표에 매치되지 않는다 — 미상은 완화도 강화도 받지 않는다.
+
+    VIX 쪽은 종전과 같다: 부재·조회실패·노후를 `20.0` 으로 메우면 측정 불가가 조용히
+    '평온'으로 둔갑해 게이트를 연다 (#753). `None` 을 돌려주고 부르는 쪽이 caution 과
+    동일하게(절반 포지션) 처리한다 — STRATEGY §2.6 Soft penalty.
     """
+    from nuri.quant.regime.classifier import classify_regime
+
     try:
-        df = query_df(
-            """SELECT to_regime FROM regime_transitions
-               ORDER BY date DESC LIMIT 1""",
-            db_path=db_path,
-        )
-        regime = df["to_regime"].iloc[0] if not df.empty else "neutral"
+        state = classify_regime(db_path=db_path)
     except (OperationalError, DatabaseError):
-        logger.warning("regime 조회 실패 — neutral 처리", exc_info=True)
-        regime = "neutral"
-    return regime, latest_vix(db_path=db_path)
+        # DB 오류만 삼킨다. 넓게 잡으면 `classify_regime` 안의 **코딩 오류**까지 미상으로
+        # 위장돼 게이트가 조용히 보수 경로로 빠진다 — 이 모듈이 VIX 쪽에서 이미 명시적으로
+        # 거부한 형태다 (`test_a_coding_error_is_not_disguised_as_unknown_vix`).
+        # 데이터 부족·노후라는 **예상된** 열화는 예외가 아니라 `None` 으로 온다.
+        logger.warning("regime 분류 실패 — 미상 처리", exc_info=True)
+        state = None
+
+    if state is None:
+        logger.warning("[emitter] 레짐 미상 — 레짐별 조정 없이 보수 배분 적용")
+        return UNKNOWN_REGIME, latest_vix(db_path=db_path)
+    return state.regime, latest_vix(db_path=db_path)
 
 
 def _score_ticker(
@@ -434,8 +451,15 @@ def emit_buy_candidates(
         result.blocked_reason = f"VIX {vix:.1f} > {VIX_BLOCK_ABOVE} (신규 매수 차단)"
         return result
 
-    # Hard gate: regime
-    if regime in {"bear", "crash", "extreme_fear"}:
+    # Hard gate: regime — 차단 집합은 config SSoT 다 (#1130).
+    # 코드에 `{bear, crash, extreme_fear}` 로 하드코딩돼 있었는데 셋 다 `ALL_REGIMES`
+    # 밖이라 `classify_regime()` 이 내는 어떤 값과도 겹치지 않았고, 도입(2026-04-30,
+    # #508) 이래 **한 번도 발화하지 못했다**. 현재 config 기본값은 빈 집합 — 레짐 축은
+    # soft penalty(배분 축소)로만 운용하고 hard veto 승격은 STRATEGY PR + 백테스트를
+    # 요구한다 (Escalation Ladder). 코드가 아니라 config 에 두는 이유는 그 승격이
+    # 값 변경이어야지 코드 변경이어서는 안 되기 때문이다.
+    blocking = set(gates.get("blocking_regimes") or [])
+    if regime in blocking:
         result.blocked_reason = f"regime={regime} (방어 모드, 신규 매수 차단)"
         return result
 
@@ -505,7 +529,25 @@ def emit_buy_candidates(
         return result
 
     # Allocation
-    total_pct = alloc.get("total_pct_by_regime", {}).get(regime, 0.30)
+    by_regime = alloc.get("total_pct_by_regime", {})
+    if regime == UNKNOWN_REGIME:
+        # 미상은 레짐 표의 기본값이 아니라 **별도 키**로 내린다. 이전엔 미상의 라벨이
+        # `"neutral"` 이었고 표에 `neutral: 0.40` 이 있어서, 레짐을 모를 때 표에서 가장
+        # 공격적인 배분이 나갔다 (#1131). 표에 `unknown` 을 넣지 않는 이유는 그게 정식
+        # 레짐이 아니기 때문이다 — 넣으면 #1130 이 걷어내는 비정식 키가 다시 생긴다.
+        total_pct = float(alloc.get("unknown_regime_pct", 0.10))
+    elif regime in by_regime:
+        total_pct = float(by_regime[regime])
+    else:
+        # 표에 없는 정식 레짐은 선언된 기본값으로 떨어지되 **그 사실을 남긴다**.
+        # 이 경로가 조용하던 동안 `.get(regime, 0.30)` 이 어휘 불일치(#1130)를 정상
+        # 동작처럼 삼켰다 — 예외도 경고도 없이 "그 레짐은 조정 없음" 으로 읽혔다.
+        total_pct = float(alloc.get("default_pct", 0.30))
+        logger.info(
+            "[emitter] regime=%s 는 total_pct_by_regime 미등재 — 기본 배분 %.2f 적용",
+            regime,
+            total_pct,
+        )
     # VIX 미상(None)도 caution 과 동일 취급 — 절반 포지션. STRATEGY §2.6 Soft penalty.
     # 측정 불가를 '평온'으로 읽지 않는다는 뜻이고, 차단(hard veto)까지는 가지 않는다.
     if vix is None or vix >= VIX_CAUTION_ABOVE:

@@ -106,33 +106,32 @@ class TestBuyCandidateEmitterShortSeries:
 
 
 class TestBuyCandidateEmitterRegimeFallbacks:
-    """Lines 256-257, 264-265: regime/VIX query exceptions → defaults 'neutral'/20.0."""
+    """regime/VIX 조회 예외 → 미상. 지어낸 기본값(`neutral` / 20.0)으로 메우지 않는다."""
 
-    def test_regime_query_exception_falls_back_to_neutral(self, monkeypatch):
-        """Line 256-257: query_df for regime_transitions raises → 'neutral'."""
+    def test_regime_classification_db_error_yields_unknown(self, monkeypatch):
+        """분류가 DB 오류로 죽으면 `UNKNOWN_REGIME` — 레짐을 지어내지 않는다.
+
+        이 테스트는 `regime == "neutral"` 을 잠그고 있었다. `neutral` 은 `ALL_REGIMES`
+        밖이면서 `total_pct_by_regime` 에는 `0.40` 으로 존재해, **분류 실패가 표에서 가장
+        공격적인 배분**을 받는 경로였다 (#1131). 이제 미상은 별도의 보수 배분을 받는다.
+        """
+        from nuri.quant.regime import classifier as clf
+        from nuri.quant.regime.classifier import UNKNOWN_REGIME
         from nuri.trading.recommend import buy_candidate_emitter as bce
         from nuri.trading.recommend import vix_gate as vg
 
-        # First query (regime) raises, second query (VIX) returns empty df
-        call_count = {"n": 0}
+        def boom(*a, **kw):
+            # DB 오류만 삼킨다 — RuntimeError 로 두면 코딩 오류까지 위장되므로
+            # `except (OperationalError, DatabaseError)` 로 좁혀 두었다.
+            from nuri.core.db import OperationalError
 
-        def fake_query_df(sql, *a, **kw):
-            call_count["n"] += 1
-            if "regime_transitions" in sql:
-                # DB 오류만 삼킨다 — RuntimeError 로 두면 코딩 오류까지 위장되므로
-                # `except (OperationalError, DatabaseError)` 로 좁혔다.
-                from nuri.core.db import OperationalError
+            raise OperationalError("synthetic regime fail")
 
-                raise OperationalError("synthetic regime fail")
-            return pd.DataFrame()  # empty VIX
-
-        monkeypatch.setattr(bce, "query_df", fake_query_df)
-        monkeypatch.setattr(vg, "query_df", fake_query_df)
+        monkeypatch.setattr(clf, "classify_regime", boom)
+        monkeypatch.setattr(vg, "query_df", lambda *a, **kw: pd.DataFrame())
         regime, vix = bce._get_regime()
 
-        # Behavioral lock: exception path must fall back to literal "neutral"
-        # (not "" or None) so downstream gate logic (regime in {"bear", ...}) is safe.
-        assert regime == "neutral"
+        assert regime == UNKNOWN_REGIME
         # 빈 VIX df → 지어내지 않고 None (2026-08-10 이전엔 20.0 이었다)
         assert vix is None
 
@@ -142,8 +141,6 @@ class TestBuyCandidateEmitterRegimeFallbacks:
         from nuri.trading.recommend import vix_gate as vg
 
         def fake_query_df(sql, *a, **kw):
-            if "regime_transitions" in sql:
-                return pd.DataFrame()  # empty → "neutral"
             if "vix" in sql:
                 from nuri.core.db import OperationalError
 
@@ -154,7 +151,10 @@ class TestBuyCandidateEmitterRegimeFallbacks:
         monkeypatch.setattr(vg, "query_df", fake_query_df)
         regime, vix = bce._get_regime()
 
-        assert regime == "neutral"
+        # 데이터가 없는 테스트 DB 라 분류는 신선도 미충족으로 차단된다 → 미상
+        from nuri.quant.regime.classifier import UNKNOWN_REGIME
+
+        assert regime == UNKNOWN_REGIME
         assert vix is None
 
 
@@ -289,7 +289,7 @@ class TestBuyCandidateEmitterCooldownBranches:
                         "vix_caution_above": 25,
                         "cooldown": {"hard_sell_days": 21, "fallback_days": 5},  # dict → type-aware
                     },
-                    "allocation": {"total_pct_by_regime": {"neutral": 0.30}},
+                    "allocation": {"total_pct_by_regime": {"sideways_low_vol": 0.30}},
                     "risk": {"stop_pct": -7.0, "tp1_pct": 21.0, "tp2_pct": 42.0},
                 }
             )
@@ -308,7 +308,7 @@ class TestBuyCandidateEmitterCooldownBranches:
         monkeypatch.setattr(bce, "_get_price_signals", lambda **_kw: {})
         monkeypatch.setattr(bce, "_get_rsi_snapshot", lambda **_kw: {})
         monkeypatch.setattr(bce, "leadership_snapshot", lambda *a, **k: {})  # P2 shadow (prices 미시드)
-        monkeypatch.setattr(bce, "_get_regime", lambda **_kw: ("neutral", 18.0))
+        monkeypatch.setattr(bce, "_get_regime", lambda **_kw: ("sideways_low_vol", 18.0))
 
         result = bce.emit_buy_candidates(config_path=cfg_path)
         # Lock-in: the type-aware path was taken exactly once
@@ -338,7 +338,7 @@ class TestBuyCandidateEmitterCooldownBranches:
                     "weights": {"factor_composite": 1.0},
                     "quality_bar": {"base_threshold": 0, "max_candidates": 5, "per_regime": {}},
                     "gates": {"vix_block_above": 30, "vix_caution_above": 25, "cooldown_days": 0},
-                    "allocation": {"total_pct_by_regime": {"neutral": 0.30}},
+                    "allocation": {"total_pct_by_regime": {"sideways_low_vol": 0.30}},
                     "risk": {"stop_pct": -7.0, "tp1_pct": 21.0, "tp2_pct": 42.0},
                 }
             )
@@ -349,7 +349,7 @@ class TestBuyCandidateEmitterCooldownBranches:
         monkeypatch.setattr(bce, "_get_price_signals", lambda **_kw: {})  # NOPRICE missing
         monkeypatch.setattr(bce, "_get_rsi_snapshot", lambda **_kw: {})
         monkeypatch.setattr(bce, "leadership_snapshot", lambda *a, **k: {})  # P2 shadow (prices 미시드)
-        monkeypatch.setattr(bce, "_get_regime", lambda **_kw: ("neutral", 18.0))
+        monkeypatch.setattr(bce, "_get_regime", lambda **_kw: ("sideways_low_vol", 18.0))
 
         result = bce.emit_buy_candidates(config_path=cfg_path)
 
@@ -384,7 +384,7 @@ class TestBuyCandidateEmitterRenderMarkdownSkipped:
                 )
             ],
             skipped={"BBB": "held", "CCC": "cooldown"},  # 2 entries, < 5
-            regime="neutral",
+            regime="sideways_low_vol",
             vix=18.0,
             total_deploy_pct=10.0,
             timestamp_kst="2026-05-04 12:00:00 KST",
@@ -403,7 +403,7 @@ class TestBuyCandidateEmitterRenderMarkdownSkipped:
         result = EmitResult(
             candidates=[],
             skipped=skipped,
-            regime="neutral",
+            regime="sideways_low_vol",
             vix=18.0,
             total_deploy_pct=0.0,
             blocked_reason="no qualified",
@@ -514,7 +514,7 @@ class TestBuyCandidateEmitterMain:
         fake = EmitResult(
             candidates=[],
             skipped={},
-            regime="neutral",
+            regime="sideways_low_vol",
             vix=18.0,
             blocked_reason="stub",
             timestamp_kst="2026-05-04",
@@ -883,7 +883,7 @@ class TestHeldAddAverageDownNoneBranches:
 
         cfg = {"modes": {"average_down": {}}}
         pos = {"ticker": "AAA", "account": "x", "pnl_pct": -5.0, "days_held": 30}
-        assert ha._evaluate_average_down(pos, cfg, score=85, rsi=30, regime="neutral", vix=18) is None
+        assert ha._evaluate_average_down(pos, cfg, score=85, rsi=30, regime="sideways_low_vol", vix=18) is None
 
     def test_pnl_outside_window_returns_none(self, monkeypatch):
         """Line 307-308: pnl outside [pnl_max, pnl_min] window → None."""
@@ -902,7 +902,7 @@ class TestHeldAddAverageDownNoneBranches:
         }
         # stop -10 × 0.3 = -3, × 0.7 = -7. Window: [-7, -3]. pnl=-1 outside.
         pos = {"ticker": "AAA", "account": "x", "pnl_pct": -1.0, "days_held": 30}
-        assert ha._evaluate_average_down(pos, cfg, score=85, rsi=30, regime="neutral", vix=18) is None
+        assert ha._evaluate_average_down(pos, cfg, score=85, rsi=30, regime="sideways_low_vol", vix=18) is None
 
     def test_score_below_min_returns_none(self, monkeypatch):
         """Line 310-311: score < min → None."""
@@ -921,7 +921,7 @@ class TestHeldAddAverageDownNoneBranches:
             }
         }
         pos = {"ticker": "AAA", "account": "x", "pnl_pct": -5.0, "days_held": 30}
-        assert ha._evaluate_average_down(pos, cfg, score=70, rsi=30, regime="neutral", vix=18) is None
+        assert ha._evaluate_average_down(pos, cfg, score=70, rsi=30, regime="sideways_low_vol", vix=18) is None
 
     def test_rsi_above_max_returns_none(self, monkeypatch):
         """Line 313-314: rsi > rsi_max → None."""
@@ -942,7 +942,7 @@ class TestHeldAddAverageDownNoneBranches:
         }
         pos = {"ticker": "AAA", "account": "x", "pnl_pct": -5.0, "days_held": 30}
         # rsi 50 > 35 → None
-        assert ha._evaluate_average_down(pos, cfg, score=85, rsi=50, regime="neutral", vix=18) is None
+        assert ha._evaluate_average_down(pos, cfg, score=85, rsi=50, regime="sideways_low_vol", vix=18) is None
 
     def test_rsi_none_returns_none(self, monkeypatch):
         """Line 313-314: rsi is None → None (require RSI signal)."""
@@ -962,7 +962,7 @@ class TestHeldAddAverageDownNoneBranches:
             }
         }
         pos = {"ticker": "AAA", "account": "x", "pnl_pct": -5.0, "days_held": 30}
-        assert ha._evaluate_average_down(pos, cfg, score=85, rsi=None, regime="neutral", vix=18) is None
+        assert ha._evaluate_average_down(pos, cfg, score=85, rsi=None, regime="sideways_low_vol", vix=18) is None
 
     def test_days_held_below_min_returns_none(self, monkeypatch):
         """Line 316-317: days_held < min → None."""
@@ -983,7 +983,7 @@ class TestHeldAddAverageDownNoneBranches:
             }
         }
         pos = {"ticker": "AAA", "account": "x", "pnl_pct": -5.0, "days_held": 5}
-        assert ha._evaluate_average_down(pos, cfg, score=85, rsi=30, regime="neutral", vix=18) is None
+        assert ha._evaluate_average_down(pos, cfg, score=85, rsi=30, regime="sideways_low_vol", vix=18) is None
 
 
 class TestHeldAddEmitFlowSkipped:
@@ -1051,7 +1051,7 @@ class TestHeldAddEmitFlowSkipped:
             today=date(2026, 5, 4),
             score_provider=lambda t: 50.0,  # below all 999 thresholds
             rsi_provider=lambda t: 50.0,
-            regime_provider=lambda: ("neutral", 18.0),
+            regime_provider=lambda: ("sideways_low_vol", 18.0),
             db_path=fresh_db,
         )
 
@@ -1903,7 +1903,7 @@ class TestHeldAddSelectModeUnknownMode:
 
         cfg = {"modes": {}}
         pos = {"ticker": "AAA", "account": "x", "pnl_pct": 0, "days_held": 0}
-        result = ha.select_held_mode(pos, cfg, score=50, rsi=None, regime="neutral", vix=18)
+        result = ha.select_held_mode(pos, cfg, score=50, rsi=None, regime="sideways_low_vol", vix=18)
         # Lock: None — unknown mode → else r=None (351), known modes → None, final → None.
         assert result is None
 

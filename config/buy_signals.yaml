@@ -25,11 +25,20 @@ leadership:
 # ─── Quality bar (final score 0-100, when to emit) ──────────────────
 quality_bar:
   base_threshold: 70          # 기본 임계 — 이 이상만 emit
+  # ⚠️ 키는 반드시 `nuri.quant.regime.classifier.ALL_REGIMES` 의 원소여야 한다.
+  # 그 밖의 문자열은 `classify_regime()` 이 절대 내지 않으므로 `.get(regime, 0)` 이
+  # 조용히 0 을 돌려주고 **조정이 통째로 무시된다** — 예외도 로그도 없다 (#1130).
+  # 잠금: tests/quant/regime/test_config_regime_vocabulary.py
   per_regime:
     sideways_high_vol: +5     # 변동성 큰 regime — 더 엄격
-    momentum_uptrend: -5      # 강한 상승 trend — 완화
-    extreme_fear: 999         # F&G < 20 — 사실상 emit 차단
-    extreme_greed: +10        # F&G > 80 — 과열 — 더 엄격
+    # 2026-08-21 제거 (#1130) — 셋 다 ALL_REGIMES 밖이라 도입 이래 한 번도 발화 못 했다:
+    #   momentum_uptrend: -5   임계를 70→65 로 **여는** 방향. 도입 커밋에 백테스트 인용이
+    #                          없어 근거 없이 되살리지 않는다.
+    #   extreme_fear: 999      주석부터 `F&G < 20` — Fear&Greed 어휘지 레짐이 아니다.
+    #                          별도 F&G 게이트로 옮길 사안.
+    #   extreme_greed: +10     `euphoria` 로 개명하려면 의미가 같아야 하는데 다르다:
+    #                          euphoria = `VIX < 12 AND F&G > 80` (classifier.py:241) 로
+    #                          더 좁다. 개명이 아니라 정책 변경이라 백테스트 대상.
   max_candidates: 5           # 상위 N개만 emit
   min_candidates: 0           # 0이면 명시적으로 "no candidate" 출력
 
@@ -37,6 +46,14 @@ quality_bar:
 gates:
   # VIX 게이트 임계(block 30 / caution 25)는 rules.yaml entry_rules.vix_gate 가 SSoT.
   # emitter 는 nuri.core.rules 의 VIX_BLOCK_ABOVE / VIX_CAUTION_ABOVE 를 직접 읽는다 (#760).
+
+  # 레짐 하드 차단 — **의도적으로 비어 있다**. 레짐 축은 soft penalty(배분 축소)로만
+  # 운용하고, hard veto 승격은 STRATEGY PR + 백테스트를 요구한다 (Escalation Ladder,
+  # STRATEGY §2.6). risk-of-ruin 방어는 VIX > 30 하드 차단이 이미 담당한다.
+  # 이전엔 코드에 `{bear, crash, extreme_fear}` 가 하드코딩돼 있었는데 셋 다
+  # ALL_REGIMES 밖이라 발화 불가능했다 (#1130) — 코드에서 config 로 옮겨 승격이
+  # 코드 변경이 아니라 값 변경이 되게 한다.
+  blocking_regimes: []
 
   # #517 Phase 2b — Cooldown SELL-type split (codex+Qwen consult B3 REFINE: hard_sell 14→21d).
   # event taxonomy unified: payload.action_type ∈ {hard_sell, trim_action, position_reduce, divergence_alert}.
@@ -54,16 +71,28 @@ gates:
 # 사용자 cash * total_pct = 이번 세션 deploy 추천 금액
 # Phase 2: 계좌별 cash gating + 전략별 차등
 allocation:
+  # 레짐 미상(SPY 데이터 120h 초과 · 히스토리 부족 · 분류 실패) 시 배분. 아래 레짐별
+  # 표와 **분리해 둔다** — `unknown` 은 정식 레짐이 아니라 표에 넣으면 안 된다.
+  # 이 키가 생기기 전에는 미상 라벨이 `neutral` 이었고 표에 `neutral: 0.40` 이 있어서
+  # 레짐을 모를 때 표에서 가장 공격적인 배분이 나갔다 (#1131).
+  unknown_regime_pct: 0.10
+  # ⚠️ per_regime 과 같은 제약 — 키는 ALL_REGIMES 의 원소만. 미등재 레짐은 아래
+  # `default_pct` 로 떨어지고 그 사실이 WARNING 으로 남는다 (조용한 기본값 금지).
   total_pct_by_regime:
-    sideways_high_vol: 0.30   # 보수적 (현재 default)
+    bear_low_vol: 0.10        # soft penalty — 약세장 신규 배분 축소 (2026-08-21 #1130)
+    bear_high_vol: 0.10       # soft penalty
+    sideways_high_vol: 0.30
     sideways_low_vol: 0.40
-    neutral: 0.40
-    momentum_uptrend: 0.60
-    momentum_downtrend: 0.10
-    extreme_fear: 0.00
-    extreme_greed: 0.20
-    bear: 0.00
-    crash: 0.00
+    # 2026-08-21 제거 (#1130) — 전부 ALL_REGIMES 밖이라 도달 불가였다. 진짜 약세
+    # 레짐은 `bear_low_vol` / `bear_high_vol` 이고 위에서 soft penalty 로 다룬다:
+    #   neutral: 0.40             미상 폴백 라벨이었다 → `unknown_regime_pct` 로 이관.
+    #   momentum_uptrend: 0.60    여는 방향. 근거 없어 되살리지 않음.
+    #   momentum_downtrend: 0.10
+    #   extreme_fear: 0.00 / extreme_greed: 0.20   F&G 어휘.
+    #   bear: 0.00 / crash: 0.00  hard veto 였다 → 사용자 판정(2026-08-21)으로
+    #                             soft penalty 0.10 로 대체. 0.00 복원은 백테스트 후.
+  default_pct: 0.30           # 표에 없는 레짐 (bull_* · euphoria · stagflation ·
+                              # recovery · sector_rotation) — 값을 지어내지 않는다
   per_candidate_method: score_weighted    # score 비중에 따라 분할 (vs equal_split)
 
 # ─── Risk per candidate (entry/stop/TP from rules.yaml) ─────────────
@@ -145,7 +174,13 @@ held_add_mode:
         composite_score_min: 80           # 가장 높은 bar
         rsi_max: 35
         days_held_min: 14
-        macro_veto: true                  # F2: regime ∉ {bear,crash} AND VIX < 28
+        macro_veto: true                  # F2: 레짐 veto + 레짐 미상 veto + VIX < 28
+        # 물타기를 막을 레짐. 키는 ALL_REGIMES 원소만 — 그 밖의 문자열은 조용히 무시된다.
+        # **의도적으로 비어 있다**: 이전엔 코드에 `{bear, crash}` 로 하드코딩돼 있었는데
+        # 둘 다 ALL_REGIMES 밖이라 발화 불가능했고(#1130), 되살리는 건 hard veto 승격이라
+        # 백테스트가 선결이다 (Escalation Ladder). 레짐 **미상**은 이 목록과 무관하게
+        # 항상 veto 한다 — 측정 실패는 평온의 확인이 아니다.
+        macro_veto_regimes: []
       cap_max_source: "account_strategies.<account>.max_single_position"
       max_add_pct_of_account_cash: 3
       cooldown_days: 21

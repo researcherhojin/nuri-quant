@@ -31,6 +31,7 @@ from nuri.core.account_cap import derive_position_cap
 from nuri.core.db import get_db, query_df
 from nuri.core.rules import TAKE_PROFIT_GROWTH
 from nuri.core.timezone import kst_now, today_kst
+from nuri.quant.regime.classifier import UNKNOWN_REGIME
 
 logger = logging.getLogger(__name__)
 
@@ -305,9 +306,20 @@ def _evaluate_average_down(
     if pos["days_held"] < int(trig.get("days_held_min", 14)):
         return None
 
-    # macro veto: regime ∉ {bear, crash} AND VIX < 28
+    # macro veto: 레짐 목록 + 미상 + VIX < 28
     if trig.get("macro_veto", True):
-        if regime in {"bear", "crash"}:
+        # 목록은 config SSoT (#1130). 코드에 `{bear, crash}` 로 박혀 있었는데 둘 다
+        # `ALL_REGIMES` 밖이라 `classify_regime()` 이 내는 어떤 값과도 겹치지 않았다 —
+        # macro veto 의 레짐 절반이 도입 이래 한 번도 발화하지 못했다는 뜻이다.
+        # (VIX 절반은 #1076 에서 고쳐져 정상 동작해 왔다.)
+        if regime in set(trig.get("macro_veto_regimes") or []):
+            return None
+        # 레짐 미상도 veto 다 — 바로 아래 VIX 미측정과 같은 논리다 (#1131). 이 경로의
+        # regime 은 `scheduler.py` 가 `buy_candidate_emitter._get_regime()` 결과를
+        # 그대로 넘긴 값이고, 그쪽이 분류 실패·데이터 노후를 `UNKNOWN_REGIME` 으로
+        # 표면화한다. "거시가 무서우면 물타기 금지" 에서 미상은 **거시가 평온하다는
+        # 확인이 안 된** 상태이므로 통과시키면 안 된다.
+        if regime == UNKNOWN_REGIME:
             return None
         # VIX 미측정(None)은 **veto** 다. `_get_regime()` 이 부재·조회실패·노후를
         # 20.0 으로 메우지 않고 None 을 돌려주기 때문에(#753) 여기로 들어온다.
@@ -424,7 +436,13 @@ def emit_held_add_shadow(
     # neutral 값 반환 (해당 mode trigger 가 작동 안 함).
     score_fn = score_provider or (lambda t: 0.0)
     rsi_fn = rsi_provider or (lambda t: None)
-    regime_fn = regime_provider or (lambda: ("neutral", 20.0))
+    # provider 부재 시 **미상**이다. 이전 기본값 `("neutral", 20.0)` 은 둘 다 조작된
+    # 평온값이었다 — `"neutral"` 은 `ALL_REGIMES` 밖이라 어떤 veto 목록에도 걸리지 않고
+    # `20.0 < 28` 이라 VIX veto 도 통과한다. macro veto 의 **두 절반이 동시에 fail-open**
+    # 이었고, 이 함수 docstring 이 regime 은 `buy_candidate_emitter._get_regime()` 에서
+    # 온다고 적은 계약과도 모순이었다. 프로덕션은 항상 provider 를 주입하지만
+    # (`scheduler.py`) 기본값이 지뢰로 남을 이유가 없다.
+    regime_fn = regime_provider or (lambda: (UNKNOWN_REGIME, None))
     sector_mom_fn = sector_mom_provider or (lambda t: 0.0)
     breakout_fn = breakout_above_trim_provider or (lambda t: False)
 
