@@ -2,16 +2,16 @@
 """
 시장 스캐너 — 전체 유니버스에서 스윙 트레이드 후보 탐색.
 
-yfinance batch download로 수백 종목을 빠르게 스캔.
+`prices` 테이블에서 수백 종목을 읽어 스캔 — 네트워크를 타지 않는다 (#1119).
 거래량 급증, 모멘텀, 기술적 브레이크아웃 3중 필터.
 
 Universe는 config/universe.yaml에서 로드 (외부화).
 폴백: hardcoded list.
 
 사용법:
-    python -m nuri.trading.swing.scanner                     # us core (85종목, ~5초)
-    python -m nuri.trading.swing.scanner --market kr         # kr kospi200 (203종목)
-    python -m nuri.trading.swing.scanner --extended          # us core + sp500 ext (543종목)
+    python -m nuri.trading.swing.scanner                     # us core (85종목, 0.17초)
+    python -m nuri.trading.swing.scanner --market kr         # kr kospi200 (203종목, 0.21초)
+    python -m nuri.trading.swing.scanner --extended          # us core + sp500 ext (543종목, 0.74초)
 """
 
 import argparse
