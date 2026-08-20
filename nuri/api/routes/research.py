@@ -55,6 +55,11 @@ def list_backtests(limit: int = Query(20, ge=1, le=200)) -> dict:
             "max_drawdown": r["max_drawdown"],
             "win_rate": r["win_rate"],
             "params": _loads(r["params"]),
+            # 이 행을 만든 코드 리비전 (#1115). 없으면 **None** — 귀속이 도입되기 전에
+            # 쓰인 행이라는 뜻이고, 그 자체가 정보다: 망가진 것으로 판명된 코드의
+            # 산출물일 수 있는데 행만 봐서는 알 수 없다는 뜻이다. params 안에도 있지만
+            # 최상위로 올려 파고들지 않아도 보이게 한다.
+            "code_rev": _loads(r["params"]).get("code_rev"),
             "created_at": r["created_at"],
         }
         for r in rows

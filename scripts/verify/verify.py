@@ -247,10 +247,11 @@ def verify_backtest(report_dir: Path, summary: list[str]) -> None:
         json.dump(result, f, indent=2, ensure_ascii=False)
 
     gate = result["gate"]
-    verdict = "PASS" if gate["passed"] else "FAIL"
-    summary.append(
-        f"[OK] walk-forward: OOS Sharpe {result['oos_sharpe_pooled']:+.2f}, p={gate['p_value']:.3f}, gate {verdict}"
-    )
+    # 판정을 `[OK]` 문장 안에 문자열로 넣지 않는다 (#1115). 이전엔 게이트가 떨어져도
+    # `[OK] walk-forward: … gate FAIL` 로 나갔다 — 접두어를 세는 사람에게도, grep 하는
+    # 스크립트에게도 통과로 읽힌다. 접두어가 곧 판정이어야 한다.
+    prefix = "[OK]" if gate["passed"] else "[FAIL]"
+    summary.append(f"{prefix} walk-forward: OOS Sharpe {result['oos_sharpe_pooled']:+.2f}, p={gate['p_value']:.3f}")
 
 
 def verify_performance(report_dir: Path, summary: list[str]) -> None:
@@ -419,7 +420,18 @@ def verify_candidates(report_dir: Path, summary: list[str]) -> None:
         summary.append(f"[WARN] 성과 하락 시그널: {', '.join(d.signal_id for d in critical)}")
 
 
-def main():
+def main() -> int:
+    """검증 실행. **`[FAIL]` 이 하나라도 있으면 1을 반환한다** (#1115).
+
+    이전엔 반환값이 없어 `make verify`(213s) · `make verify-fast`(127s) 가 무엇을 찾든
+    항상 0 으로 끝났다. 요약에 `[FAIL]` 을 찍어놓고도 종료코드는 성공이라, 배포 전 게이트로
+    쓰라고 만든 두 타깃이 실은 리포트 생성기였다. 실패할 수 없는 게이트는 게이트가 아니다 —
+    #910/#911(pre-push 테스트 단계가 3.5개월 no-op) · #953/#954(훅 2개가 조용히 exit 0)
+    와 같은 계열이다.
+
+    `[SKIP]` 은 실패가 아니다. 데이터가 없어 검사를 못 한 것과 검사가 떨어진 것은 다르고,
+    둘을 같이 취급하면 신선한 설치가 영구 빨강이 되어 아무도 안 본다.
+    """
     parser = argparse.ArgumentParser(description="Nuri-Quant 기능 검증")
     parser.add_argument("--skip-backtest", action="store_true", help="백테스트 건너뛰기")
     args = parser.parse_args()
@@ -495,6 +507,16 @@ def main():
         print(f"     {f.name:<25} {size_str:>8}")
     print()
 
+    failed = [line for line in summary if line.startswith("[FAIL]")]
+    if failed:
+        print(f"  ✗ {len(failed)}건 실패:")
+        for line in failed:
+            print(f"     {line}")
+        print()
+        return 1
+    return 0
 
-if __name__ == "__main__":
-    main()
+
+if __name__ == "__main__":  # pragma: no cover — main() 은 테스트가 직접 부른다. runpy 로
+    # 돌리면 실제 검증 전체(213s · 네트워크 · 리포트 디렉터리 생성)가 실행된다.
+    sys.exit(main())

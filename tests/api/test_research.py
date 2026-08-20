@@ -35,7 +35,11 @@ class TestBacktestsEndpoint:
         assert bt["strategy_id"] == "Momentum Top-5"
         assert bt["start_date"] == "2026-01-02"
         assert bt["total_return"] == 12.3
-        assert bt["params"] == {"top_n": 5, "rebalance_days": 20}  # JSON 파싱됨
+        # 호출자 params 는 그대로 살아 있고, 거기에 `code_rev` 가 덧붙는다 (#1115).
+        assert {k: v for k, v in bt["params"].items() if k != "code_rev"} == {
+            "top_n": 5,
+            "rebalance_days": 20,
+        }
 
     def test_newest_first(self, client):
         for i in range(3):
@@ -50,6 +54,72 @@ class TestBacktestsEndpoint:
             )
         data = client.get("/api/research/backtests").json()
         assert [b["strategy_id"] for b in data["backtests"]] == ["S2", "S1", "S0"]
+
+    def test_every_row_carries_the_code_revision_that_produced_it(self, client):
+        """행이 어느 코드로 만들어졌는지 말할 수 있어야 한다 (#1115).
+
+        `backtests.id=3` 은 `p_value: 0.169` 를 담고 있고, 6시간 31분 뒤 커밋 `84a5e36` 이
+        그 값을 철회했다(permutation null 퇴화, 정정값 0.791). **정정된 run 은 저장되지
+        않았고** strategy_id 마다 행이 정확히 1개라 밀어낼 신규 행도 없어서, 이 엔드포인트가
+        지금도 철회된 숫자를 현재 증거로 내보낸다.
+
+        낡은 행 자체보다, 망가진 코드의 산출물과 멀쩡한 산출물을 **구분할 수 없다**는 게
+        문제다. 리비전이 붙으면 소비자가 "이 행은 null 수정 이전"이라고 말할 수 있다.
+        """
+        save_backtest(
+            strategy_id="attributed",
+            start_date="2026-01-01",
+            end_date="2026-02-01",
+            total_return=1.0,
+            sharpe=1.0,
+            max_drawdown=-1.0,
+            win_rate=50.0,
+        )
+        bt = client.get("/api/research/backtests").json()["backtests"][0]
+
+        assert bt["code_rev"], "행에 코드 리비전이 없다 — 산출 코드를 특정할 수 없다"
+        assert bt["code_rev"] == bt["params"]["code_rev"]
+
+    def test_a_caller_cannot_forge_the_revision(self, client):
+        """호출자가 넘긴 `code_rev` 는 실측값에 진다 — 귀속은 자기신고가 아니다."""
+        save_backtest(
+            strategy_id="forged",
+            start_date="2026-01-01",
+            end_date="2026-02-01",
+            total_return=1.0,
+            sharpe=1.0,
+            max_drawdown=-1.0,
+            win_rate=50.0,
+            params={"code_rev": "deadbeef"},
+        )
+        bt = client.get("/api/research/backtests").json()["backtests"][0]
+
+        assert bt["code_rev"] != "deadbeef"
+
+    def test_a_row_written_before_attribution_reads_as_unattributed(self, client):
+        """귀속 도입 이전 행은 `code_rev: None` 이다 — 그게 정보다.
+
+        11개 기존 행이 여기 해당한다. `None` 이 "알 수 없음" 을 정직하게 말해야지,
+        키가 없어서 소비자가 눈치채지 못하면 안 된다.
+        """
+        from nuri.core.db import get_db
+
+        save_backtest(
+            strategy_id="legacy",
+            start_date="2026-01-01",
+            end_date="2026-02-01",
+            total_return=1.0,
+            sharpe=1.0,
+            max_drawdown=-1.0,
+            win_rate=50.0,
+        )
+        with get_db() as conn:  # 귀속 이전 상태 재현 — params 에서 키를 지운다
+            conn.execute("UPDATE backtests SET params = '{}' WHERE strategy_id = 'legacy'")
+
+        bt = client.get("/api/research/backtests").json()["backtests"][0]
+
+        assert "code_rev" in bt, "키 자체가 없으면 소비자가 미귀속을 구분 못 한다"
+        assert bt["code_rev"] is None
 
     def test_limit_clamped_high(self, client):
         assert client.get("/api/research/backtests?limit=999").status_code == 422
