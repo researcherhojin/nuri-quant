@@ -72,6 +72,43 @@ FRESHNESS_POLICIES = {
         "fail_hours": 120,
         "label": "기술 지표 (KR)",
     },
+    # `fundamentals` 도 시장별 두 정책이다 — `signals` 와 같은 구성, 같은 이유 (#1109).
+    # composite 가중치 1.00 중 **0.50**(value 0.25 + quality 0.25)이 이 테이블에서 나오는데
+    # 정책이 없어서, 주간 잡이 보유 18종목만 갱신하는 동안 나머지 ~728 종목이 얼마나 낡든
+    # 어떤 화면에도 안 떴다. #1071 이 `factors` 에서, #1101 이 `signals` 에서 닫은 같은 구멍이다.
+    #
+    # 맨 `MAX(date)` 로는 부족하다: 보유 18종목만 갱신돼도 그 몇 행이 날짜를 끌어올려
+    # 초록이 된다 — 실제로 2026-04-29~05-04 에 6~9행짜리 쓰기가 그 모양이었다.
+    # 그래서 `signals` 와 같은 **universe 멤버 IN 제한 + 60% 커버리지 floor** 를 쓴다.
+    #
+    # 합치지 않는 이유도 같다: US 543 / KR 203 이라 합산 floor(60% of 746 = 448)는 US 만으로
+    # 넘는다 — KIS 가 전면 실패해 KR 이 통째로 비어도 PASS 다.
+    #
+    # 임계가 48/120 이 아닌 이유: 이 잡은 **주 1회**(일요일 00:00)다. 다음 실행 직전 정상
+    # 나이가 168h 이므로 48h WARN 은 매주 6일을 빨갛게 만든다. 192h(8일) = 한 번 걸렀다,
+    # 360h(15일) = 두 번 걸렀다.
+    "fundamentals": {
+        "query": (
+            "SELECT MAX(date) FROM (SELECT date FROM fundamentals "
+            "WHERE ticker IN ({placeholders}) "
+            "GROUP BY date HAVING COUNT(*) >= {floor})"
+        ),
+        "floor_from": "us",
+        "warn_hours": 192,
+        "fail_hours": 360,
+        "label": "펀더멘탈 (US)",
+    },
+    "fundamentals_kr": {
+        "query": (
+            "SELECT MAX(date) FROM (SELECT date FROM fundamentals "
+            "WHERE ticker IN ({placeholders}) "
+            "GROUP BY date HAVING COUNT(*) >= {floor})"
+        ),
+        "floor_from": "kr",
+        "warn_hours": 192,
+        "fail_hours": 360,
+        "label": "펀더멘탈 (KR)",
+    },
     "macro_fear_greed": {
         "query": "SELECT MAX(date) FROM macro WHERE indicator = 'fear_greed'",
         "warn_hours": 24,

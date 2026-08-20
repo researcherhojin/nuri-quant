@@ -1410,6 +1410,25 @@ class TestTechnicalCoversTheScoringUniverse:
 
         mock_collector.run.assert_called_once_with(source="all")
 
+    def test_fundamental_dispatch_expands_to_the_full_universe(self):
+        """펀더멘탈도 `source="all"` 로 부른다 — 기본값이면 보유 18종목이다 (#1109).
+
+        #1104 가 `technical` 에서 고친 것과 같은 결함이 한 계층 위에 남아 있었다. 이 주간
+        잡이 18종목만 갱신하니 `fundamentals` 가 나머지 ~728 종목에 대해 영영 안 채워지고,
+        그래서 value·quality 가 채점 대상의 99% 에서 중립 상수 0.5 였다 (#1102). composite
+        가중치 1.00 중 **0.50** 이 순위를 만들지 못한 이유다.
+
+        `universe` 가 아니라 `all` 인 것도 잠근다 — universe.yaml 밖 보유 종목이 있어서
+        `universe` 로 좁히면 오늘 갱신되던 종목을 잃는다. 확장이어야지 교체여선 안 된다.
+        """
+        from nuri.scheduler import _dispatch_collector
+
+        mock_collector = MagicMock()
+        with patch("nuri.collectors.fundamental.FundamentalCollector", return_value=mock_collector):
+            _dispatch_collector("fundamental")
+
+        mock_collector.run.assert_called_once_with(source="all")
+
     def test_stock_dispatches_return_the_saved_count(self):
         """일일 universe refresh 잡의 살아있음 증명이 `collector_runs.rows_collected` 다.
 

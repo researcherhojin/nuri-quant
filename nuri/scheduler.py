@@ -186,9 +186,21 @@ def _dispatch_collector(name: str, **kwargs):
 
         return MacroNewsCollector().run()
     elif name == "fundamental":
+        # `source="all"` (portfolio ∪ universe) — `technical` 과 같은 이유다 (#1104), 한 계층
+        # 위에서. 기본값(portfolio)이면 이 주간 잡이 보유 18종목만 갱신하고 나머지 ~728
+        # universe 종목은 **아무것도 건드리지 않는다**. 그 결과가 #1102 다: value·quality 가
+        # 채점 대상의 99% 에서 중립 상수 0.5 라 composite 가중치 1.00 중 0.50 이 순위를
+        # 만들지 못한다. universe 모드는 #272 부터 있었는데 여기서 안 불러 도달 불가였다.
+        #
+        # `universe` 가 아니라 `all` 인 이유: universe.yaml 밖 보유 종목이 11개 있다
+        # (KODEX/TIGER 계열 등). `universe` 로 좁히면 오늘 갱신되던 그 11개를 잃는다 —
+        # 확장이어야지 교체여서는 안 된다.
+        #
+        # 비용은 `technical`(순수 계산) 과 달리 실제 네트워크다: KR 203종목이 KIS 순차
+        # 0.4s ≈ 81s + US 543종목 yfinance 10-thread. 주 1회 일요일 자정이라 감당된다.
         from nuri.collectors.fundamental import FundamentalCollector
 
-        return FundamentalCollector().run()
+        return FundamentalCollector().run(source="all")
     elif name == "factors":
         # 수집이 아니라 **분석** 단계다 (`_STAGE_OF_JOB` 에서 analyze). `_run_collector` 를
         # 재사용하는 건 그쪽이 예외 격리 · 실행 기록 · 스테이지 이벤트를 이미 갖고 있어서다.
