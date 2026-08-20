@@ -150,6 +150,56 @@ class TestPositionLimitZeroPrice:
         assert pos[0]["sell_value_usd"] == pytest.approx(expected_shares * 20.0)
 
 
+class TestPositionLimitZeroQuantity:
+    def test_zero_quantity_is_skipped_not_divided_by(self, db_path):
+        """수량 0 인데 평가액이 남아 있으면 그 종목은 건너뛴다 (0-나눗셈 방지).
+
+        주당 단가를 `ticker_value / quantity` 로 되뽑기 때문에 수량 0 이 그대로
+        들어오면 ZeroDivisionError 다. 실데이터에서는 수량 0 이면 평가액도 0 이라
+        비중 위반 자체가 안 나지만, DB 가 어긋나면 도달할 수 있는 자리다 —
+        위 TestPositionLimitZeroPrice 와 같은 성격의 모순 데이터로 가드를 잠근다.
+        """
+        rows = [
+            {
+                "account": "acct",
+                "ticker": "TST_Z",
+                "sector": "Tech",
+                "quantity": 0,
+                "avg_price": 20.0,
+                "current_price": 20.0,
+                "currency": "USD",
+                "current_value_usd": 2000.0,
+                "cost_basis_usd": 2000.0,
+                "pnl_usd": 0.0,
+                "pnl_pct": 0.0,
+                "weight_pct": 80.0,
+                "price_date": "2026-04-10",
+            },
+            {
+                "account": "acct",
+                "ticker": "TST_W",
+                "sector": "Health",
+                "quantity": 5,
+                "avg_price": 100.0,
+                "current_price": 100.0,
+                "currency": "USD",
+                "current_value_usd": 500.0,
+                "cost_basis_usd": 500.0,
+                "pnl_usd": 0.0,
+                "pnl_pct": 0.0,
+                "weight_pct": 20.0,
+                "price_date": "2026-04-10",
+            },
+        ]
+        df = pd.DataFrame(rows)
+        df.attrs["total_value_usd"] = 2500.0
+        with patch("nuri.analysis.rebalance_advisor.analyze_portfolio", return_value=df):
+            violations = detect_violations(db_path=db_path)  # 예외 없이 끝나야 한다
+        assert not [
+            v for v in violations if v["ticker"] == "TST_Z" and v["violation_type"] == "position_limit_exceeded"
+        ]
+
+
 # ════════════════════════════════════════════════════════════
 # L203 — Unknown sector skip
 # ════════════════════════════════════════════════════════════
