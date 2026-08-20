@@ -23,6 +23,7 @@ import pytest
 import yaml
 
 from nuri.core.db import init_db, query
+from nuri.quant.regime.classifier import UNKNOWN_REGIME
 from nuri.trading.recommend import held_add as ha
 
 # ─── Fixtures ──────────────────────────────────────────────────────
@@ -95,6 +96,11 @@ def cfg_held_add(tmp_path: Path) -> dict:
                         "rsi_max": 35,
                         "days_held_min": 14,
                         "macro_veto": True,
+                        # 출하 config 는 빈 목록(hard veto 승격 미결, #1130)이지만
+                        # veto **기구**를 확인하려면 fixture 에는 값이 있어야 한다.
+                        # 키는 canonical — 이전엔 코드가 `{bear, crash}` 를 봤고 둘 다
+                        # `ALL_REGIMES` 밖이라 이 분기가 발화한 적이 없다.
+                        "macro_veto_regimes": ["bear_high_vol"],
                     },
                     "precedence": 3,
                 },
@@ -289,7 +295,11 @@ class TestModeEvaluation:
         assert mode == "tp1_residual_add"  # precedence=1
 
     def test_average_down_macro_veto_in_bear(self, monkeypatch: pytest.MonkeyPatch, cfg_held_add: dict) -> None:
-        """regime=bear → average_down macro veto."""
+        """config 의 `macro_veto_regimes` 에 든 레짐 → average_down veto.
+
+        이전엔 `regime="bear"` 를 먹였다. `classify_regime()` 은 그 문자열을 내지 않으므로
+        프로덕션에서 이 분기는 한 번도 실행되지 않았는데 테스트는 초록이었다 (#1130).
+        """
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
             lambda ticker, max_days=60: None,
@@ -309,7 +319,43 @@ class TestModeEvaluation:
             cfg_held_add["held_add_mode"],
             score=85,
             rsi=30,
-            regime="bear",
+            regime="bear_high_vol",
+            vix=18,
+            breakout_above_trim=False,
+            sector_mom=0,
+        )
+        assert mode is None
+
+    def test_average_down_vetoes_when_the_regime_is_unknown(
+        self, monkeypatch: pytest.MonkeyPatch, cfg_held_add: dict
+    ) -> None:
+        """레짐 미상 → veto. 목록에 없어도 막는다 (#1131).
+
+        이 경로의 regime 은 `scheduler.py` 가 `buy_candidate_emitter._get_regime()` 결과를
+        그대로 넘긴 값이고, 그쪽이 분류 실패·SPY 데이터 노후를 `UNKNOWN_REGIME` 으로
+        표면화한다. 바로 아래 VIX 미측정 veto 와 같은 논리다 — "거시가 무서우면 물타기
+        금지" 에서 미상은 **거시가 평온하다는 확인이 안 된** 상태다.
+
+        `macro_veto_regimes` 에 의존하지 않는다는 점이 핵심이다: 출하 config 의 목록은
+        비어 있으므로, 미상 veto 가 목록 검사에만 얹혀 있으면 프로덕션에서 통과해 버린다.
+        """
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_last_trim_age_days",
+            lambda ticker, max_days=60: None,
+        )
+        monkeypatch.setattr(
+            "nuri.trading.recommend.held_add._get_account_strategy_profile",
+            lambda account: {"stop_loss": -10, "tp1_pct": 21.0},
+        )
+        cfg = cfg_held_add["held_add_mode"]
+        cfg["modes"]["average_down"]["trigger"]["macro_veto_regimes"] = []
+        pos = {"ticker": "MSFT", "account": "acct_alpha", "pnl_pct": -5.0, "days_held": 20}
+        mode = ha.select_held_mode(
+            pos,
+            cfg,
+            score=85,
+            rsi=30,
+            regime=UNKNOWN_REGIME,
             vix=18,
             breakout_above_trim=False,
             sector_mom=0,
@@ -592,6 +638,41 @@ class TestEmitHeldAddShadow:
         assert len(result.candidates) == 0
         assert "MSFT@acct_alpha" in result.skipped
         assert "earnings blackout" in result.skipped["MSFT@acct_alpha"]
+
+    def test_the_default_regime_provider_reports_unknown_not_a_calm_market(
+        self, tmp_path: Path, cfg_held_add: dict, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """provider 를 안 주면 **미상**이 내려와야 한다 — 조작된 평온값이 아니라.
+
+        기본값은 `("neutral", 20.0)` 이었다. 둘 다 게이트를 여는 값이다:
+        `"neutral"` 은 `ALL_REGIMES` 밖이라 어떤 veto 목록에도 안 걸리고
+        `20.0 < 28` 이라 VIX veto 도 통과한다 — macro veto 의 **두 절반이 동시에
+        fail-open**. 프로덕션은 항상 provider 를 주입하므로(`scheduler.py`) 이건
+        잠재 지뢰였고, 그래서 어떤 테스트도 되돌림을 잡지 못했다 (#1131 Codex P1).
+
+        모드 평가에 실제로 무엇이 전달되는지를 본다 — 기본값의 *모양*이 아니라
+        *하류에 미치는 값*이 잠금 대상이다.
+        """
+        seen: dict[str, object] = {}
+
+        def _spy(pos, cfg, score, rsi, regime, vix, **_kw):
+            seen["regime"] = regime
+            seen["vix"] = vix
+            return None
+
+        monkeypatch.setattr(ha, "select_held_mode", _spy)
+        monkeypatch.setattr(
+            ha,
+            "_get_held_positions",
+            lambda: [{"ticker": "MSFT", "account": "acct_alpha", "pnl_pct": -5.0, "days_held": 20}],
+        )
+        cfg_path = tmp_path / "buy_signals.yaml"
+        cfg_path.write_text(yaml.safe_dump(cfg_held_add))
+
+        ha.emit_held_add_shadow(config_path=cfg_path, db_path=tmp_path / "x.db")
+
+        assert seen.get("regime") == UNKNOWN_REGIME, "provider 부재 시 레짐을 지어냈다 — 미상이어야 한다"
+        assert seen.get("vix") is None, "VIX 미측정을 숫자로 메웠다 (#753)"
 
     def test_disabled_returns_empty(self, tmp_path: Path) -> None:
         """held_add_mode.enabled=False → no-op."""

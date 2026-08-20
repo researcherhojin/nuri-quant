@@ -15,6 +15,7 @@ import yaml
 from nuri.core.db import get_db, init_db, upsert_portfolio, upsert_prices
 from nuri.core.rules import VIX_MAX_AGE_BUSINESS_DAYS
 from nuri.core.timezone import today_kst
+from nuri.quant.regime.classifier import UNKNOWN_REGIME, RegimeState
 from nuri.trading.recommend.buy_candidate_emitter import (
     BuyCandidate,
     EmitResult,
@@ -53,12 +54,25 @@ def cfg_path(tmp_path):
         "quality_bar": {
             "base_threshold": 70,
             "max_candidates": 5,
-            "per_regime": {"neutral": 0, "bull": -5, "sideways_high_vol": 999},
+            # 값은 출하 config 와 일부러 다르게 두되(= config 를 읽는다는 증명),
+            # **키는 반드시 canonical** 이다. 이전 fixture 는 `neutral` / `bull` 을 썼는데
+            # 둘 다 `ALL_REGIMES` 밖이라, 출하 config 의 같은 결함(#1130)을 이 스위트가
+            # 재현조차 못 했다 — 테스트가 프로덕션이 도달 못 하는 우주를 잠그고 있었다.
+            "per_regime": {"sideways_low_vol": 0, "bull_low_vol": -5, "sideways_high_vol": 999},
         },
-        "gates": {"vix_block_above": 30, "vix_caution_above": 25, "cooldown_days": 5},
+        "gates": {
+            "vix_block_above": 30,
+            "vix_caution_above": 25,
+            "cooldown_days": 5,
+            # 출하 config 는 빈 집합(soft penalty 전용)이지만, 차단 **기구**가 살아 있음을
+            # 확인하려면 fixture 에는 값이 있어야 한다.
+            "blocking_regimes": ["bear_high_vol"],
+        },
         "exclude_etfs": ["SOXL", "SQQQ", "TQQQ", "TSLL", "LABU"],
         "allocation": {
-            "total_pct_by_regime": {"neutral": 0.30, "bull": 0.50},
+            "total_pct_by_regime": {"sideways_low_vol": 0.30, "bull_low_vol": 0.50},
+            "unknown_regime_pct": 0.10,
+            "default_pct": 0.25,
         },
         # 의도적 non-canonical (21/42): emitter 가 config 를 읽음(하드코딩 아님)을 증명.
         # 실제 출하 config 의 canonical(20/40) 정합은
@@ -135,13 +149,45 @@ def _seed_vix(db_path, value: float, *, days_old: int = 0):
         )
 
 
-def _seed_regime(db_path, regime: str):
-    with get_db(db_path) as conn:
-        conn.execute(
-            "INSERT INTO regime_transitions (date, from_regime, to_regime, action_taken) "
-            "VALUES ('2026-04-30', 'unknown', ?, 'test')",
-            (regime,),
+#: 이번 테스트가 `classify_regime()` 에게 내게 할 레짐. `None` = 미상(분류 차단).
+_REGIME: dict[str, str | None] = {"regime": None}
+
+
+@pytest.fixture(autouse=True)
+def _stub_classifier(monkeypatch):
+    """`classify_regime()` 을 테스트가 지정한 레짐으로 고정한다.
+
+    이전엔 `regime_transitions` 에 문자열을 직접 INSERT 했다(`_seed_regime`). 그 테이블은
+    더 이상 게이트 출처가 아니고(#1131), 더 중요하게는 그 방식이 **프로덕션이 도달할 수
+    없는 상태**를 만들었다 — `classify_regime()` 은 `ALL_REGIMES` 밖의 값을 내지 않는데
+    스위트는 `"bear"` / `"neutral"` 을 넣고 초록이었다 (#1130). 이제 진짜 출처를 가로채
+    canonical 값만 흘린다.
+
+    기본값이 `None`(미상)인 것은 의도적이다: 레짐을 명시하지 않은 테스트는 미상 경로를
+    지나가야 하고, 미상이 조용히 공격적인 배분을 받으면 그 테스트들이 깨진다.
+    """
+    _REGIME["regime"] = None
+
+    def _fake(date=None, db_path=None):
+        regime = _REGIME["regime"]
+        if regime is None:
+            return None
+        trend, _, vol = regime.rpartition("_")
+        return RegimeState(
+            date="2026-04-30",
+            trend=trend.split("_")[0] or "sideways",
+            volatility="high" if "high" in regime else "low",
+            regime=regime,
+            confidence=0.8,
+            details={},
         )
+
+    monkeypatch.setattr("nuri.quant.regime.classifier.classify_regime", _fake)
+
+
+def _use_regime(regime: str | None):
+    """이번 테스트가 볼 레짐 고정. `None` 이면 미상."""
+    _REGIME["regime"] = regime
 
 
 # --- Score / why-now ------------------------------------------------------
@@ -193,7 +239,7 @@ def test_vix_block_above_30(db, cfg_path):
     _seed_factor(db, "AAPL", 0.9)
     _seed_prices(db, "AAPL", [100.0] * 30 + [120.0])
     _seed_vix(db, 35.0)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert res.candidates == []
@@ -210,7 +256,7 @@ def test_vix_gate_reads_macro_not_prices(db, cfg_path):
     """
     _seed_factor(db, "AAPL", 0.9)
     _seed_prices(db, "AAPL", [100.0] * 30 + [120.0])
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
     with get_db(db) as conn:
         conn.execute(
             "INSERT INTO macro (indicator, date, value, source) VALUES ('vix', ?, 35.0, 'test')",
@@ -231,7 +277,7 @@ def test_vix_caution_halves_allocation(db, cfg_path):
     _seed_prices(db, "AAPL", [100.0] * 25 + [120.0, 121.0, 122.0, 123.0, 124.0, 125.0])
     _seed_rsi(db, "AAPL", 55)
     _seed_vix(db, 27.0)  # between caution(25) and block(30)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert res.candidates, f"expected candidate, blocked_reason={res.blocked_reason}"
@@ -247,7 +293,7 @@ def _seed_calm_setup(db):
     _seed_factor(db, "AAPL", 0.95)
     _seed_prices(db, "AAPL", [100.0] * 25 + [120.0, 121.0, 122.0, 123.0, 124.0, 125.0])
     _seed_rsi(db, "AAPL", 55)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
 
 def test_fresh_calm_vix_gets_full_allocation(db, cfg_path):
@@ -338,16 +384,97 @@ def test_unknown_vix_is_not_printed_as_a_number(db, cfg_path):
 # --- Gate: regime ----------------------------------------------------------
 
 
-@pytest.mark.parametrize("regime", ["bear", "crash", "extreme_fear"])
-def test_regime_blocks_new_buy(db, cfg_path, regime):
+def test_regime_in_the_configured_blocking_set_blocks_new_buy(db, cfg_path):
+    """차단 **기구** 자체는 살아 있다 — fixture config 가 `bear_high_vol` 을 차단한다.
+
+    이 테스트가 파라미터를 `["bear", "crash", "extreme_fear"]` 로 돌던 시절엔,
+    프로덕션이 만들 수 없는 문자열을 DB 에 직접 넣고 초록이었다. `classify_regime()` 이
+    낼 수 있는 값은 `ALL_REGIMES` 10개뿐이라 그 셋과 교집합이 없었기 때문이다 (#1130).
+    """
     _seed_factor(db, "AAPL", 0.9)
     _seed_prices(db, "AAPL", [100.0] * 30 + [120.0])
     _seed_vix(db, 20.0)
-    _seed_regime(db, regime)
+    _use_regime("bear_high_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert res.candidates == []
-    assert regime in (res.blocked_reason or "")
+    assert "bear_high_vol" in (res.blocked_reason or "")
+
+
+def test_shipped_config_softens_bear_instead_of_blocking_it(db):
+    """출하 config 기준 약세 레짐의 실제 처분 — 차단이 아니라 배분 축소 (2026-08-21).
+
+    사용자 판정: 레짐 축은 soft penalty 로만, hard veto 승격은 백테스트 후. 이 테스트가
+    잠그는 것은 그 판정의 **두 절반**이다 — 차단되지 않을 것(`blocking_regimes` 가 비어
+    있음)과, 그렇다고 강세장과 같은 배분을 받지도 않을 것(0.10).
+
+    `default_pct`(0.30) 와 다른 값이어야 의미가 있다: 같으면 표에서 지워도 통과한다.
+    """
+    _seed_factor(db, "AAPL", 0.95)
+    _seed_prices(db, "AAPL", [100.0] * 30 + [130.0])
+    _seed_vix(db, 20.0)
+    _use_regime("bear_high_vol")
+
+    res = emit_buy_candidates()  # 출하 config
+    assert res.blocked_reason is None or "방어 모드" not in res.blocked_reason
+    assert res.total_deploy_pct == pytest.approx(10.0, abs=0.5)
+
+
+def test_stale_regime_transitions_row_no_longer_governs_the_gate(db, cfg_path, monkeypatch):
+    """#1131 잠금 — 게이트는 `regime_transitions` 를 더 이상 읽지 않는다.
+
+    그 테이블의 유일한 writer 를 부르는 예약 job 이 없어 값이 임의로 낡는다(실측 121일).
+    여기서는 차단 레짐을 **테이블에** 심고, 분류기는 양성 레짐을 내게 둔다. 게이트가
+    테이블로 되돌아가면 후보가 0 이 되어 이 테스트가 실패한다.
+    """
+    from nuri.core.db import get_db as _get_db
+
+    with _get_db(db) as conn:
+        conn.execute(
+            "INSERT INTO regime_transitions (date, from_regime, to_regime, action_taken) "
+            "VALUES ('2026-04-21', 'recovery', 'bear_high_vol', 'stale')",
+        )
+    _seed_factor(db, "AAPL", 0.9)
+    _seed_prices(db, "AAPL", [100.0] * 30 + [120.0])
+    _seed_vix(db, 20.0)
+    _use_regime("sideways_low_vol")
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.regime == "sideways_low_vol"
+    assert res.candidates != []
+
+
+def test_unclassifiable_market_is_unknown_and_gets_the_conservative_slice(db, cfg_path):
+    """미상은 레짐이 아니다 — 조정 표에 매치되지 않고 별도 보수 배분을 받는다.
+
+    이전엔 미상 라벨이 `"neutral"` 이었고 `total_pct_by_regime` 에 `neutral: 0.40` 이
+    있어서 **레짐을 모를 때 표에서 가장 공격적인 배분**이 나갔다 (#1131).
+    fixture 는 미상 0.10 / 최대 0.50 이라 두 값이 갈린다.
+    """
+    _seed_factor(db, "AAPL", 0.9)
+    _seed_prices(db, "AAPL", [100.0] * 30 + [120.0])
+    _seed_vix(db, 20.0)
+    _use_regime(None)  # classify_regime() → None
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.regime == UNKNOWN_REGIME
+    assert res.candidates != []
+    assert res.total_deploy_pct == pytest.approx(10.0, abs=0.5)
+
+
+def test_a_canonical_regime_absent_from_the_table_uses_the_declared_default(db, cfg_path):
+    """표에 없는 정식 레짐은 `default_pct` 로 — 지어낸 값이 아니라 **선언된** 기본값.
+
+    fixture 의 default 는 0.25 이고 미상(0.10) · 등재 레짐(0.30/0.50) 어느 것과도 다르다.
+    """
+    _seed_factor(db, "AAPL", 0.9)
+    _seed_prices(db, "AAPL", [100.0] * 30 + [120.0])
+    _seed_vix(db, 20.0)
+    _use_regime("recovery")  # canonical 이지만 fixture 표에 없음
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.regime == "recovery"
+    assert res.total_deploy_pct == pytest.approx(25.0, abs=0.5)
 
 
 def test_regime_threshold_999_blocked(db, cfg_path):
@@ -355,7 +482,7 @@ def test_regime_threshold_999_blocked(db, cfg_path):
     _seed_factor(db, "AAPL", 0.99)
     _seed_prices(db, "AAPL", [100.0] * 30 + [200.0])
     _seed_vix(db, 20.0)
-    _seed_regime(db, "sideways_high_vol")
+    _use_regime("sideways_high_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert res.candidates == []
@@ -383,7 +510,7 @@ def test_held_ticker_skipped(db, cfg_path):
     _seed_prices(db, "AAPL", [100.0] * 30 + [200.0])
     _seed_rsi(db, "AAPL", 55)
     _seed_vix(db, 20.0)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert "AAPL" in res.skipped
@@ -395,7 +522,7 @@ def test_cooldown_ticker_skipped(db, cfg_path):
     _seed_prices(db, "MSFT", [100.0] * 30 + [200.0])
     _seed_rsi(db, "MSFT", 55)
     _seed_vix(db, 20.0)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
     with get_db(db) as conn:
         conn.execute(
             "INSERT INTO pipeline_events (timestamp, event_type, payload) "
@@ -425,7 +552,7 @@ def test_leverage_etf_skipped(db, cfg_path, etf):
     _seed_prices(db, etf, [100.0] * 30 + [200.0])
     _seed_rsi(db, etf, 55)
     _seed_vix(db, 20.0)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert etf in res.skipped
@@ -437,7 +564,7 @@ def test_leverage_etf_skipped(db, cfg_path, etf):
 
 def test_empty_factors_blocked(db, cfg_path):
     _seed_vix(db, 20.0)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert res.candidates == []
@@ -449,7 +576,7 @@ def test_below_threshold_blocked(db, cfg_path):
     _seed_prices(db, "WEAK", [100.0] * 30 + [99.0])  # flat
     _seed_rsi(db, "WEAK", 50)
     _seed_vix(db, 20.0)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert res.candidates == []
@@ -471,7 +598,7 @@ def test_emit_reports_the_denominator(db, cfg_path):
     _seed_prices(db, "STRONG", [100.0] * 25 + [110.0, 115.0, 120.0, 125.0, 130.0, 135.0])
     _seed_rsi(db, "STRONG", 55)
     _seed_vix(db, 20.0)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert res.n_scored >= 1, "채점 규모가 결과에 안 실렸다"
@@ -484,7 +611,7 @@ def test_emit_above_threshold(db, cfg_path):
     _seed_prices(db, "STRONG", [100.0] * 25 + [110.0, 115.0, 120.0, 125.0, 130.0, 135.0])
     _seed_rsi(db, "STRONG", 55)
     _seed_vix(db, 20.0)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert len(res.candidates) == 1
@@ -504,7 +631,7 @@ def test_allocation_split_by_score(db, cfg_path):
         _seed_prices(db, t, [100.0] * 25 + [110, 115, 120, 125, 130, 135])
         _seed_rsi(db, t, 55)
     _seed_vix(db, 20.0)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
     res = emit_buy_candidates(config_path=cfg_path)
     assert len(res.candidates) == 2
@@ -618,7 +745,7 @@ def test_brief_surfaces_buy_candidates(db, cfg_path):
     _seed_prices(db, "STRONG", [100.0] * 25 + [110, 115, 120, 125, 130, 135])
     _seed_rsi(db, "STRONG", 55)
     _seed_vix(db, 20.0)
-    _seed_regime(db, "neutral")
+    _use_regime("sideways_low_vol")
 
     # emitter reads CONFIG_PATH, not config_path arg in _collect_context.
     # Patch CONFIG_PATH so the brief picks up our test config.
