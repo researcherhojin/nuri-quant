@@ -187,18 +187,44 @@ class ScanResult:
     score: float  # 종합 점수 (높을수록 후보)
 
 
-def _fetch_prices(tickers: list[str], days: int = 60) -> pd.DataFrame | None:
-    """yfinance batch download."""
-    import yfinance as yf
+def _fetch_prices(tickers: list[str], days: int = 60, db_path=None) -> pd.DataFrame | None:
+    """`prices` 테이블에서 최근 `days` 거래일을 읽어 yfinance batch 와 같은 모양으로 만든다.
 
-    try:
-        df = yf.download(tickers, period=f"{days}d", group_by="ticker", progress=False)
-        if df.empty:
-            return None
-        return df
-    except Exception as e:
-        logger.error(f"yfinance download 실패: {e}")
+    예전에는 `yf.download(tickers, period=...)` 였다. 그건 **요청 핸들러 안에서 도는
+    외부 네트워크 호출**이라 `/api/scan` 이 매 요청 야후를 쳤고(실측 1.7초, 캐시 없음),
+    동기 핸들러가 AnyIO 40-스레드 풀을 그만큼 오래 점유했다 (#1119). `nuri/api/CLAUDE.md`
+    가 스스로 적어둔 계약 — *this layer queries and renders, it never computes strategy* —
+    에도 어긋났다.
+
+    수집기가 이미 같은 데이터를 `prices` 에 넣는다. 실측(2026-08-21): 스캔 유니버스
+    US 85/85 · KR 202/203 종목이 60거래일 이상 보유(중앙값 1,298행), OHLCV 완비.
+    미달 종목은 프레임에서 빠지고 `_analyze_ticker` 가 None 으로 흘린다.
+
+    반환 모양은 바뀌지 않는다 — `_analyze_ticker` 가 `data[ticker]["Close"]` 로 읽으므로
+    (ticker, field) MultiIndex 컬럼을 유지한다. 값은 이제 **마지막 수집 종가**다.
+    """
+    from nuri.core.db import query_df
+
+    if not tickers:
         return None
+    placeholders = ",".join("?" * len(tickers))
+    df = query_df(
+        f"SELECT ticker, date, close, volume FROM prices WHERE ticker IN ({placeholders}) ORDER BY date",  # noqa: S608 — placeholders 는 ? 만
+        tuple(tickers),
+        db_path=db_path,
+    )
+    if df is None or df.empty:
+        logger.error("prices 조회 결과 없음 — 수집이 돌았는지 확인 (make collect)")
+        return None
+
+    df["date"] = pd.to_datetime(df["date"])
+    wide = df.pivot(index="date", columns="ticker", values=["close", "volume"])
+    # (field, ticker) → (ticker, field) 로 뒤집고 yfinance 컬럼명에 맞춘다
+    wide.columns = pd.MultiIndex.from_tuples(
+        [(tkr, {"close": "Close", "volume": "Volume"}[field]) for field, tkr in wide.columns]
+    )
+    wide = wide.sort_index().tail(days)
+    return wide if not wide.empty else None
 
 
 def _analyze_ticker(ticker: str, data: pd.DataFrame) -> ScanResult | None:

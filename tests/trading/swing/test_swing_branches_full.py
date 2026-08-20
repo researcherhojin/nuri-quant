@@ -36,23 +36,39 @@ def basic_db(tmp_path, monkeypatch):
 
 
 class TestScannerExtraBranches:
-    def test_fetch_prices_returns_data_on_success(self, monkeypatch):
-        """Line 130-132: non-empty yfinance result → return df.
+    def test_fetch_prices_returns_data_on_success(self, db_path):
+        """success path: `prices` 에 행이 있으면 (ticker, field) 프레임을 돌려준다.
 
-        Lock the success path: scanner._fetch_prices returns the same DataFrame
-        yfinance gave it (not a transformed copy).
+        예전에는 `yf.download` 를 monkeypatch 하고 "yfinance 가 준 DataFrame 을
+        그대로 돌려주는지" 를 잠갔다. #1119 에서 요청 경로의 네트워크 호출을
+        걷어내면서 그 구현이 사라졌으므로 같은 자리에서 새 계약을 잠근다.
         """
-        import yfinance as yf
-
+        from nuri.core.db import upsert_prices
         from nuri.trading.swing import scanner as scanner_mod
 
         idx = pd.bdate_range("2025-03-01", periods=20)
-        fake = pd.DataFrame({"Close": list(range(100, 120))}, index=idx)
-        monkeypatch.setattr(yf, "download", lambda *a, **kw: fake)
-        result = scanner_mod._fetch_prices(["AAA"], days=20)
+        upsert_prices(
+            pd.DataFrame(
+                [
+                    {
+                        "ticker": "AAA",
+                        "date": d.strftime("%Y-%m-%d"),
+                        "open": 100.0 + i,
+                        "high": 100.0 + i,
+                        "low": 100.0 + i,
+                        "close": 100.0 + i,
+                        "volume": 1_000,
+                        "adj_close": 100.0 + i,
+                    }
+                    for i, d in enumerate(idx)
+                ]
+            ),
+            db_path=db_path,
+        )
+        result = scanner_mod._fetch_prices(["AAA"], days=20, db_path=db_path)
         assert result is not None
         assert len(result) == 20
-        assert result["Close"].iloc[-1] == 119
+        assert result["AAA"]["Close"].iloc[-1] == 119
 
     def test_analyze_ticker_multiindex_unknown_ticker_returns_none(self):
         """Line 142-143: ticker not in MultiIndex level 0 → None.
