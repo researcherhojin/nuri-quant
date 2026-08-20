@@ -156,9 +156,28 @@ ticker 가 비어 있는데, 둘 다 ticker 빈 값으로 자연히 걸러진다
 폴백은 제거했다 (`shares=0.0` 이 델타 기준선까지 오염시킨다 — 기준선 쿼리가
 `shares > 0` 을 거는 이유).
 
+⚠️ **소스는 200 인 채로 내용만 언다** (#1145). ARKF 는 7.5개월 전 보유를 담은 CSV 를 정상
+서빙하고 있었다 — 다운로드도 파싱도 성공하므로 수집기 실패율에도 `collector_runs` 에도 안
+걸린다. 저장 자체는 정확하다(그날 그렇게 들고 있던 게 맞다). 문제는 **그 펀드가 멈춘 걸
+아무도 모른다**는 것이다. 두 겹으로 본다: 수집 시점의 펀드별 지연 경고(`_warn_stale_funds`,
+임계 `config/rules.yaml ark.max_source_lag_days`)와 `freshness.py` 의 `ark` 정책.
+
+**정책 쿼리가 `MAX(date) FROM ark` 가 아닌 이유**: 그건 **초록**이다 — 멀쩡한 펀드 4개가 죽은
+펀드 하나를 가린다. `signals` 정책이 KR/US 를 안 합치는 것과 같은 축이고, 여기서는 펀드가 그
+축이다. 그래서 **펀드별 최신 날짜의 최소값**(가장 낡은 펀드)을 본다. 범위는 추적 중인 5개
+펀드로 좁힌다 — 전 fund 값을 그룹핑하면 오타나 과거 실험이 남긴 stray 그룹 하나가 정책을
+영구 빨강으로 못박고, 영구 빨강 게이트는 아무도 안 보므로 죽은 게이트와 같아진다.
+
+⚠️ **CSV 날짜는 보유 종목 필터보다 먼저 읽는다.** 필터 뒤에서 읽으면 우리가 아무것도 안
+겹치는 펀드는 records 가 비어 `fund_date` 가 안 생기고, 아무리 낡아도 검사에 안 걸린다 —
+**소스 감시가 우리 포트폴리오 구성에 의존해버린다.** ARKF 가 그 상태로 미끄러지는 데 필요한
+건 우리가 ARKF 보유 종목을 하나도 안 들게 되는 것뿐이다. 그래서 `_collect_fund()` 는
+`(records, csv_date)` 를 돌려준다.
+
 **Test:** `tests/collectors/test_ark.py` (파싱 · 방향 파생 · 청산/재진입 5종 · #1043 실패 구분 ·
 폴백 부활 감시 — AST 로 본다, 소스의 'yfinance' 는 왜 뺐는지 적은 주석이라 grep 은
-영영 빨갛다) + `tests/trading/agents/test_smart_money_branches.py::TestSmartMoneyBranches`
+영영 빨갛다 · 소스 staleness 4종) + `tests/core/test_ark_freshness_policy.py`
+(`test_a_naive_max_date_would_have_passed_the_same_data` 가 정책 쿼리 형태를 못 박는다) + `tests/trading/agents/test_smart_money_branches.py::TestSmartMoneyBranches`
 의 `test_ark_hold_rows_are_not_counted_as_sells` ·
 `test_ark_counting_is_safe_even_if_the_query_stops_filtering` ·
 `test_ark_hold_does_not_crowd_out_real_trades`. 소비자 쪽 방어선은 **둘**이고 막는 게

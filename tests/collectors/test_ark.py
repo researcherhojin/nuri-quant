@@ -47,7 +47,7 @@ class TestArkCsvParsing:
         from nuri.collectors.ark import ARKCollector
 
         with patch("nuri.collectors.ark.requests.get", return_value=_resp(ARKK_CSV)):
-            rows = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
+            rows, _ = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
 
         by_ticker = {r["ticker"]: r for r in rows}
         assert set(by_ticker) == {"TSLA", "AMD"}
@@ -61,7 +61,7 @@ class TestArkCsvParsing:
         from nuri.collectors.ark import ARKCollector
 
         with patch("nuri.collectors.ark.requests.get", return_value=_resp(ARKK_CSV)):
-            rows = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
+            rows, _ = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
 
         assert all(r["ticker"] for r in rows)
         assert "ZZZZ" not in {r["ticker"] for r in rows}  # 보유 종목 필터
@@ -202,7 +202,7 @@ class TestArkMalformedInput:
             '08/20/2026,ARKK,ADVANCED MICRO DEVICES,AMD,007903107,"2,000","$2,000.00",2.00%\n'
         )
         with patch("nuri.collectors.ark.requests.get", return_value=_resp(bad)):
-            rows = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
+            rows, _ = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
 
         assert {r["ticker"] for r in rows} == {"AMD"}
 
@@ -232,7 +232,7 @@ class TestArkMalformedInput:
             '08/20/2026,ARKK,ADVANCED MICRO DEVICES,AMD,007903107,"2,000","$2,000.00",2.00%\n'
         )
         with patch("nuri.collectors.ark.requests.get", return_value=_resp(bad)):
-            rows = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
+            rows, _ = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
 
         assert {r["ticker"] for r in rows} == {"AMD"}
         assert all(r["direction"] != "Sell" for r in rows)
@@ -258,7 +258,7 @@ class TestArkExits:
             '08/20/2026,ARKK,ADVANCED MICRO DEVICES,AMD,007903107,"2,000","$2,000.00",2.00%\n'
         )
         with patch("nuri.collectors.ark.requests.get", return_value=_resp(only_amd)):
-            rows = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
+            rows, _ = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
 
         exits = [r for r in rows if r["ticker"] == "TSLA"]
         assert len(exits) == 1
@@ -281,7 +281,7 @@ class TestArkExits:
             '08/20/2026,ARKK,ADVANCED MICRO DEVICES,AMD,007903107,"2,000","$2,000.00",2.00%\n'
         )
         with patch("nuri.collectors.ark.requests.get", return_value=_resp(only_amd)):
-            rows = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
+            rows, _ = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
 
         assert not [r for r in rows if r["ticker"] == "TSLA"]
 
@@ -310,7 +310,7 @@ class TestArkExits:
             '08/20/2026,ARKK,ADVANCED MICRO DEVICES,AMD,007903107,"2,000","$2,000.00",2.00%\n'
         )
         with patch("nuri.collectors.ark.requests.get", return_value=_resp(only_amd)):
-            rows = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
+            rows, _ = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
 
         assert not [r for r in rows if r["ticker"] == "TSLA"]
 
@@ -321,6 +321,115 @@ class TestArkExits:
         self._seed_prior(held)
         empty = "date,fund,company,ticker,cusip,shares,market value ($),weight (%)\n"
         with patch("nuri.collectors.ark.requests.get", return_value=_resp(empty)):
-            rows = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
+            rows, _ = ARKCollector()._collect_fund("http://x/y.csv", "ARKK", {"TSLA", "AMD"}, held)
 
         assert rows == []
+
+
+class TestArkSourceStaleness:
+    """소스가 200 인 채로 내용만 어는 경우 (#1145)."""
+
+    def _csv(self, csv_date: str, fund: str = "ARKK") -> str:
+        return (
+            "date,fund,company,ticker,cusip,shares,market value ($),weight (%)\n"
+            f'{csv_date},{fund},TESLA INC,TSLA,88160R101,"1,000","$1,000.00",1.00%\n'
+        )
+
+    def test_stale_fund_is_warned(self, held, caplog):
+        """ARKF 는 7.5개월 전 보유를 담은 CSV 를 200 으로 정상 서빙하고 있었다.
+        다운로드도 파싱도 성공하므로 이 경고가 없으면 아무 신호가 없다."""
+        import logging
+
+        from nuri.collectors.ark import ARKCollector
+
+        with caplog.at_level(logging.WARNING):
+            ARKCollector()._warn_stale_funds({"ARKF": "2026-01-02"})
+
+        assert any("ARKF" in r.getMessage() for r in caplog.records)
+        assert any("낡음" in (r.getMessage()) for r in caplog.records)
+
+    def test_fresh_fund_is_silent(self, held, caplog):
+        """정상 지연(전 영업일)에 경고를 내면 경고가 소음이 되어 아무도 안 본다."""
+        import logging
+
+        from nuri.collectors.ark import ARKCollector
+        from nuri.core.timezone import today_kst
+
+        with caplog.at_level(logging.WARNING):
+            ARKCollector()._warn_stale_funds({"ARKK": today_kst()})
+
+        assert not [r for r in caplog.records if "낡음" in (r.getMessage())]
+
+    def test_a_stale_fund_does_not_hide_behind_fresh_ones(self, held, caplog):
+        """펀드별로 본다 — 합쳐서 최신 하나만 보면 죽은 펀드가 멀쩡한 펀드 뒤로 숨는다."""
+        import logging
+
+        from nuri.collectors.ark import ARKCollector
+        from nuri.core.timezone import today_kst
+
+        with caplog.at_level(logging.WARNING):
+            ARKCollector()._warn_stale_funds({"ARKK": today_kst(), "ARKG": today_kst(), "ARKF": "2026-01-02"})
+
+        warned = [r.getMessage() for r in caplog.records if "낡음" in (r.getMessage())]
+        assert len(warned) == 1
+        assert "ARKF" in warned[0]
+
+    def test_collect_wires_the_staleness_check(self, held, caplog):
+        """`_warn_stale_funds` 를 직접 부르는 테스트만으로는 **호출 배선**이 안 잠긴다 —
+        `collect()` 에서 그 한 줄을 지워도 초록이었다. 수집 경로 전체로 확인한다."""
+        import logging
+
+        from nuri.collectors.ark import ARK_HOLDINGS_FILES, ARKCollector
+        from nuri.core.timezone import today_kst
+
+        fresh = self._csv(f"{today_kst()[5:7]}/{today_kst()[8:10]}/{today_kst()[:4]}")
+        stale = self._csv("01/02/2026")
+        # 첫 펀드만 얼어 있고 나머지는 당일
+        seq = [_resp(stale)] + [_resp(fresh)] * (len(ARK_HOLDINGS_FILES) - 1)
+
+        with caplog.at_level(logging.WARNING):
+            with patch("nuri.collectors.ark.requests.get", side_effect=seq):
+                ARKCollector().collect(db_path=held)
+
+        warned = [r.getMessage() for r in caplog.records if "낡음" in r.getMessage()]
+        assert len(warned) == 1
+        assert "2026-01-02" in warned[0]
+
+    def test_a_stale_fund_we_hold_nothing_from_is_still_warned(self, held, caplog):
+        """**소스 감시가 우리 포트폴리오 구성에 의존하면 안 된다** (#1145 codex P1).
+
+        날짜를 보유 종목 필터 뒤에서 읽으면, 우리가 아무것도 안 겹치는 펀드는 records 가
+        비어 fund_date 가 안 생기고 → 낡아도 경고가 없다. ARKF 가 그 상태로 미끄러지는 데
+        필요한 건 우리가 ARKF 보유 종목을 하나도 안 들게 되는 것뿐이다.
+        """
+        import logging
+
+        from nuri.collectors.ark import ARKCollector
+
+        # CSV 는 낡았고, 담긴 종목은 우리 보유(TSLA/AMD)와 하나도 안 겹친다
+        stale_no_overlap = (
+            "date,fund,company,ticker,cusip,shares,market value ($),weight (%)\n"
+            '01/02/2026,ARKF,SHOPIFY INC - CLASS A,SHOP,82509L107,"662,061","$1.00",9.65%\n'
+        )
+        with caplog.at_level(logging.WARNING):
+            with patch("nuri.collectors.ark.requests.get", return_value=_resp(stale_no_overlap)):
+                rows, csv_date = ARKCollector()._collect_fund("http://x/y.csv", "ARKF", {"TSLA", "AMD"}, held)
+
+        assert rows == []  # 겹치는 보유 종목 없음
+        assert csv_date == "2026-01-02"  # 그래도 날짜는 나온다
+
+    def test_a_fund_with_no_usable_date_records_no_lag(self, held, caplog):
+        """헤더만 있거나 날짜를 하나도 못 읽은 펀드는 지연 판정 대상이 아니다 —
+        모르는 것을 0일 낡음으로도, 무한히 낡음으로도 단정하지 않는다."""
+        import logging
+
+        from nuri.collectors.ark import ARK_HOLDINGS_FILES, ARKCollector
+
+        header_only = "date,fund,company,ticker,cusip,shares,market value ($),weight (%)\n"
+        seq = [_resp(header_only)] * len(ARK_HOLDINGS_FILES)
+
+        with caplog.at_level(logging.WARNING):
+            with patch("nuri.collectors.ark.requests.get", side_effect=seq):
+                assert ARKCollector().collect(db_path=held) == []
+
+        assert not [r for r in caplog.records if "낡음" in r.getMessage()]

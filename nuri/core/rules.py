@@ -58,6 +58,8 @@ TAKE_PROFIT_LEADER = _tp.get("leader", {"enabled": False, "trail_ma": 50})
 # ─── ARK 매매 파생 (#1143) ───
 # 보유 스냅샷 → Buy/Sell 파생 임계. smart_money 의 ARK 항목 발화 여부를 결정한다.
 ARK_MIN_TRADE_PCT = RULES.get("ark", {}).get("min_trade_pct", 1.0)
+# 펀드별 CSV 발행 지연 허용치 — 200 인 채로 내용만 어는 소스를 잡는다 (#1145).
+ARK_MAX_SOURCE_LAG_DAYS = RULES.get("ark", {}).get("max_source_lag_days", 7)
 
 # ─── 트레일링 스톱 ───
 _ts = RULES.get("trailing_stop", {})
