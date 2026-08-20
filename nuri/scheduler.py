@@ -631,6 +631,8 @@ def _run_held_add_shadow():
             _get_price_signals,
             _get_regime,
             _get_rsi_snapshot,
+            _load_config,
+            _score_ticker,
         )
         from nuri.trading.recommend.held_add import emit_held_add_shadow
 
@@ -638,10 +640,36 @@ def _run_held_add_shadow():
         rsi_map = _get_rsi_snapshot()
         prices = _get_price_signals()
         regime, vix = _get_regime()
+        weights = _load_config().get("weights", {})
 
         def _score(t: str) -> float:
-            f = factors.get(t)
-            return float((f or {}).get("composite", 0.0)) * 100.0
+            """held_add 게이트가 받는 점수 — emitter 와 **같은 0-100 융합 점수** (#1111).
+
+            이전엔 `composite * 100` 을 넘겼다. 그런데 게이트 임계는 75/75/80 이고
+            (`buy_signals.yaml:148,161,173`) raw composite 는 대략 [0.20, 0.73] 에 산다 —
+            `factors` 가 지금까지 가진 **모든 행**을 통틀어 `composite_score >= 0.75` 인
+            행은 0건이고 역대 최댓값은 0.7279 였다. 즉 세 게이트 모두 한 번도 열린 적이
+            없고, `held_add_shadow` 가 2행인 게 그 증거다.
+
+            75/80 이라는 숫자는 애초에 emitter 의 융합 0-100 점수를 겨냥해 쓰인 값이다
+            (같은 파일의 `quality_bar.base_threshold: 70` 과 같은 척도). 그러니 고칠 것은
+            임계가 아니라 **넘기는 값**이다 — 임계를 재도출하면 백테스트 없이 숫자를
+            지어내는 셈이고, 그건 이 레포가 금지하는 쪽이다.
+
+            `_score_ticker` 는 순수 함수고 필요한 입력(factor·price·rsi·weights)이 이미
+            여기 다 있다. 결측 소스는 그쪽에서 중립 50 으로 처리하므로, 데이터가 부분적인
+            보유 종목도 점수를 받는다.
+            """
+            factor = factors.get(t)
+            if not factor:
+                # 팩터 행이 아예 없으면 **평가 불가 → 0**. `_score_ticker` 는 결측 소스를
+                # 중립 50 으로 메우지만(부분 데이터가 신규 후보를 막지 않게 하려는 규약),
+                # held_add 는 **이미 가진 포지션에 자본을 더 넣는** 결정이라 "모른다" 를
+                # 중립으로 치면 안 된다. 이전 동작도 0.0 이었고 그 의미는 유지한다.
+                return 0.0
+
+            score, _sources = _score_ticker(t, factor, prices.get(t) or {}, rsi_map.get(t), weights)
+            return float(score)
 
         def _rsi(t: str) -> float | None:
             return rsi_map.get(t)

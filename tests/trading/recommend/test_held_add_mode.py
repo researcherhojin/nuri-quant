@@ -969,6 +969,75 @@ class TestGetRealAccountsHeldAdd:
         assert isinstance(result, set)
 
 
+class TestTheGatesAreReachable:
+    """`composite_score_min` 이 도달 가능한 값인지 잠근다 (#1111).
+
+    이 파일의 다른 테스트는 전부 `score_provider=lambda t: 85.0` 처럼 점수를 **주입**한다.
+    분기가 도는지는 증명하지만 그 점수가 프로덕션에서 나올 수 있는지는 묻지 않는다.
+    실제로는 나올 수 없었다: 게이트는 75/75/80 인데 넘어오던 값이 `composite * 100` 이었고,
+    `factors` 가 가진 모든 행을 통틀어 `composite_score >= 0.75` 인 행이 **0건**,
+    역대 최댓값이 0.7279 였다. 초록 테스트 · 죽은 게이트 · `held_add_shadow` 2행.
+
+    그래서 여기서는 주입하지 않고 emitter 의 실제 채점 함수를 돌려 도달 가능성을 본다.
+    """
+
+    def _weights(self):
+        from nuri.trading.recommend.buy_candidate_emitter import _load_config
+
+        return _load_config().get("weights", {})
+
+    def _fuse(self, composite, ret_5d, rsi, breakout):
+        from nuri.trading.recommend.buy_candidate_emitter import _score_ticker
+
+        score, _ = _score_ticker(
+            "T",
+            {"composite": composite},
+            {"ret_5d": ret_5d, "breakout_pct": breakout},
+            rsi,
+            self._weights(),
+        )
+        return score
+
+    #: 수정 후 실측 분포 (2026-07-08 스냅샷, 773종목): p50 0.4442 · p90 0.5391 · max 0.6279.
+    #: p90 근방을 "현실적 강세" 로 잡는다 — max 를 쓰면 도달성 증명이 단 한 종목에 기댄다.
+    REALISTIC_STRONG_COMPOSITE = 0.55
+
+    def test_a_realistic_strong_setup_clears_the_75_gates(self):
+        """p90 근방 팩터 + 강한 가격 신호면 75 를 넘는다 — 게이트가 살아 있다."""
+        score = self._fuse(self.REALISTIC_STRONG_COMPOSITE, ret_5d=12.0, rsi=63.0, breakout=3.0)
+
+        assert score >= 75.0, f"현실적 강세 셋업이 75 를 못 넘었다 ({score:.3f}) — 게이트가 여전히 죽어 있다"
+
+    def test_the_old_raw_composite_scale_could_not_reach_any_gate(self):
+        """같은 셋업이 옛 척도에서는 55.0 이다 — 세 게이트 어느 것도 못 넘는다.
+
+        이 대비가 없으면 위 테스트는 "게이트 숫자가 낮다" 를 재확인할 뿐이고, 척도 수정이
+        무엇을 바꿨는지 증명하지 못한다.
+        """
+        old_scale = self.REALISTIC_STRONG_COMPOSITE * 100.0
+
+        assert old_scale < 75.0
+        assert old_scale < 80.0
+
+    def test_the_80_gate_needs_a_top_decile_factor_and_everything_else_pegged(self):
+        """80(average_down)은 열리긴 하지만 폭이 아주 좁다 — 조용히 넘어가지 않게 적어둔다.
+
+        비-factor 채널을 전부 최대로 밀어도 57.0075 이므로, 80 에 닿으려면
+        composite >= 0.5748 이 필요하다. 수정 후 실측 p90 이 0.5391, max 가 0.6279 이니
+        상위 몇 % + 완벽한 셋업이라야 한다. 75 와 달리 이건 "가끔 열리는" 게이트가 아니다.
+        """
+        non_factor_ceiling = self._fuse(0.0, ret_5d=20.0, rsi=65.0, breakout=5.0)
+        assert non_factor_ceiling == pytest.approx(57.0075, abs=1e-3)
+
+        required = (80.0 - non_factor_ceiling) / self._weights()["factor_composite"] / 100.0
+        assert required == pytest.approx(0.5748, abs=1e-3)
+
+        # 반올림한 0.5748 을 그대로 넣으면 79.9995 로 아슬하게 미달한다 — 경계 자체를
+        # 증명하는 테스트이므로 계산된 값을 쓴다.
+        assert self._fuse(required, ret_5d=20.0, rsi=65.0, breakout=5.0) >= 80.0
+        assert self._fuse(0.5391, ret_5d=20.0, rsi=65.0, breakout=5.0) < 80.0  # p90 로는 못 넘는다
+
+
 class TestUnmeasuredVixIsAVeto:
     """VIX 미측정(`None`)은 통과가 아니라 **veto** 다 (#1076).
 
