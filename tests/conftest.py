@@ -15,11 +15,35 @@ def _schema_db(tmp_path_factory):
 
     테스트마다 `init_db()` 를 부르면 70.8ms × 약 6,900 테스트 = 8분이 그냥
     날아간다 (2026-08-14 실측). 파일 복사는 0.5ms 라 100배 이상 싸다.
+
+    ## 마지막에 WAL 을 끄는 이유 (#1080)
+
+    `init_db` 는 **진짜** `get_connection` 을 탄다 — 이 픽스처는 session scope 라
+    function scope 의 `_force_no_wal` 보다 먼저 돈다. 그래서 `PRAGMA journal_mode=WAL`
+    이 걸리고, journal_mode 는 **파일에 남는 속성**이라 `shutil.copy` 로 만든 모든
+    격리 사본이 WAL 상태로 시작한다.
+
+    그러면 `_force_no_wal` 의 `_test_connect` 가 커넥션마다 WAL→MEMORY 전환을 하게
+    되는데, 그 전환은 **EXCLUSIVE 락을 요구하고 `busy_timeout` 이 적용되지 않는다**.
+    같은 파일에 쓰기 락을 쥔 커넥션이 하나라도 있으면 커넥션 **생성 자체**가
+    `database is locked` 로 죽는다 — 재시도 없이 즉시.
+
+    실측 (같은 스키마, 다른 커넥션이 `BEGIN IMMEDIATE` 보유, 30회 시도):
+
+        WAL 사본    → OperationalError 30/30
+        DELETE 사본 → OperationalError  0/30
+
+    DELETE 로 되돌려두면 `journal_mode=MEMORY` 가 락 없는 no-op 급 전환이 되어
+    이 실패 경로가 사라진다. `busy_timeout` 을 앞으로 옮기는 것으로는 안 된다 —
+    그것도 30/30 으로 실패한다(실측). 고칠 곳은 커넥션이 아니라 **원본의 모드**다.
     """
-    from nuri.core.db import init_db
+    from nuri.core.db import get_db, init_db
 
     path = tmp_path_factory.mktemp("schema") / "schema.db"
     init_db(path)
+    # `init_db` 가 남긴 WAL 을 되돌린다. 사본이 상속하는 건 이 시점의 모드다.
+    with get_db(path) as conn:
+        conn.execute("PRAGMA journal_mode=DELETE")
     return path
 
 
