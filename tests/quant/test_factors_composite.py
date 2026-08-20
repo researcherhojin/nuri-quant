@@ -42,6 +42,58 @@ class TestComposite:
             for score in result["composite_score"]:
                 assert 0 <= score <= 1
 
+    def test_unheld_tickers_are_scored_on_value_and_quality(self, db_path_mp):
+        """보유하지 않은 종목도 value/quality 를 실제로 받는다 (#1102).
+
+        이전엔 `compute_value()` / `compute_quality()` 를 인자 없이 불렀고, 그 둘은 티커가
+        없으면 `get_tickers()` = `SELECT DISTINCT ticker FROM portfolio` 로 떨어졌다.
+        그래서 **보유 종목만** 계산되고 나머지는 중립 0.5 대입을 받았다 — 실측 773종목 중
+        value 763 / quality 766 이 정확히 0.5 였다. 센티먼트는 시장 지수라 종목 간 상수이므로,
+        가중치 1.00 중 0.70 이 상수였고 순위를 만드는 건 momentum 0.30 하나였다.
+
+        이 테스트는 **채점 대상이 보유 종목보다 넓을 때** 그 차집합이 실제 점수를 받는지를
+        본다. 되돌리면 HELD 만 계산되고 나머지 둘이 0.5 로 떨어져 FAIL 한다.
+        """
+        from nuri.quant.factors.composite import compute_composite
+
+        tickers = ["HELD", "UNHELD1", "UNHELD2"]
+        for i, t in enumerate(tickers):
+            _seed_prices(db_path_mp, ticker=t, days=40, start_price=100.0 + i * 20)
+        _seed_portfolio(db_path_mp, [("HELD", 100.0, 10)])  # 셋 중 하나만 보유
+        with get_db(db_path_mp) as conn:
+            for i, t in enumerate(tickers):
+                conn.execute(
+                    "INSERT INTO fundamentals (ticker, date, pe_ratio, price_to_book, roe, operating_margin) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (t, "2026-04-15", 10.0 + i * 15, 1.0 + i, 0.05 + i * 0.08, 0.10 + i * 0.15),
+                )
+
+        df = compute_composite()
+
+        assert set(tickers) <= set(df.index), f"채점 대상이 누락됐다: {set(df.index)}"
+        for t in ("UNHELD1", "UNHELD2"):
+            assert float(df.loc[t, "value_score"]) != 0.5, f"{t} 가 중립 대입으로 떨어졌다 (보유 종목만 계산됨)"
+            assert float(df.loc[t, "quality_score"]) != 0.5, f"{t} 가 중립 대입으로 떨어졌다"
+        assert df["composite_score"].nunique() > 1
+
+    def test_an_empty_price_table_does_not_fall_back_to_holdings(self, db_path_mp):
+        """가격이 없으면 빈 결과다 — 보유 종목으로 되돌아가지 않는다 (#1102).
+
+        `compute_value` / `compute_quality` 는 falsy 인자를 "미지정" 으로 보고 `get_tickers()`
+        로 떨어진다. momentum 이 비었을 때 그대로 빈 리스트를 넘기면 고치려던 그 경로가
+        되살아나, 가격이 하나도 없는데 보유 종목 점수만 담긴 스냅샷이 저장된다.
+        """
+        from nuri.quant.factors.composite import compute_composite
+
+        _seed_portfolio(db_path_mp, [("HELD", 100.0, 10)])
+        with get_db(db_path_mp) as conn:
+            conn.execute(
+                "INSERT INTO fundamentals (ticker, date, pe_ratio, roe) VALUES (?,?,?,?)",
+                ("HELD", "2026-04-15", 12.0, 0.2),
+            )
+
+        assert compute_composite().empty
+
     def test_compute_manual(self, factor_data):
         from nuri.quant.factors.composite import WEIGHTS
 

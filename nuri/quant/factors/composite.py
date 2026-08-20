@@ -72,14 +72,37 @@ def _effective_weights(fg_score: float | None) -> dict[str, float]:
 
 
 def compute_composite() -> pd.DataFrame:
-    """멀티팩터 합성 스코어 계산."""
+    """멀티팩터 합성 스코어 계산.
+
+    ## value/quality 도 **채점 대상 전체**에 대해 계산한다 (#1102)
+
+    이전엔 `compute_value()` / `compute_quality()` 를 인자 없이 불렀다. 그 둘은 티커가
+    없으면 `get_tickers()` = `SELECT DISTINCT ticker FROM portfolio` 로 떨어지므로
+    **보유 18종목**만 계산됐고, 나머지는 아래 0.5 대입을 받았다. 실측(2026-07-08, 773종목):
+    `value_score` 가 정확히 0.5 인 종목 **763**, `quality_score` 는 **766**. 센티먼트는
+    시장 지수라 설계상 전 종목 동일하므로, 가중치 1.00 중 **0.70 이 종목 간 상수**였고
+    순위를 만드는 건 momentum 0.30 하나였다. 항등식으로 확인된다 —
+    `composite == 0.30 * momentum + 0.33692` 가 763/773 종목에서 오차 5e-5 이내로 성립한다.
+    0.40 가중치짜리 "멀티팩터" 채널이 실은 두 번째 모멘텀 항이었다.
+
+    유니버스는 momentum 의 인덱스를 그대로 쓴다. `config/universe.yaml` 을 따로 읽으면
+    두 집합이 어긋나 (실측 23종목이 momentum 에만, 7종목이 yaml 에만) 그 차집합이 다시
+    0.5 대입을 받는다. momentum 인덱스 = 실제로 채점될 종목이므로 **구성상 불일치가 0** 이다.
+    """
     from nuri.quant.factors.momentum import compute_momentum
     from nuri.quant.factors.quality import compute_quality
     from nuri.quant.factors.value import compute_value
 
     momentum = compute_momentum()
-    value = compute_value()
-    quality = compute_quality()
+    if momentum.empty:
+        # 가격이 한 행도 없으면 채점할 대상이 없다. 여기서 끊지 않으면 아래 두 호출이
+        # 빈 리스트를 받고, 그 둘은 falsy 인자를 "미지정" 으로 보아 **보유 종목으로
+        # 되돌아간다** — 고치려던 바로 그 경로다.
+        return pd.DataFrame()
+
+    universe = list(momentum.index)
+    value = compute_value(tickers=universe)
+    quality = compute_quality(tickers=universe)
 
     # 센티먼트: Fear & Greed 기반 (전체 시장). 없으면 **지어내지 않고 뺀다** — 아래 참조.
     fg_score = _market_sentiment()
@@ -93,6 +116,9 @@ def compute_composite() -> pd.DataFrame:
 
     results = []
     for ticker in sorted(all_tickers):
+        # 0.5 대입은 **백분위 정규화 이후에야** 중립이다 (#1102). min-max 시절 확장된
+        # value 분포의 중앙값은 0.0923 이라 0.5 는 92 백분위였다 — fundamentals 가 없다는
+        # 이유만으로 상위 8% 에 앉았다. 백분위 척도에서는 0.5 가 정의상 중앙값이다.
         m = momentum.loc[ticker, "momentum_score"] if ticker in momentum.index else 0.5
         v = value.loc[ticker, "value_score"] if ticker in value.index else 0.5
         q = quality.loc[ticker, "quality_score"] if ticker in quality.index else 0.5
