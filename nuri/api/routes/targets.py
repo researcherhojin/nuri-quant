@@ -1,5 +1,7 @@
 """가격 타겟 + 리밸런스 어드바이저 + SIEGE 인증 + Remediation API."""
 
+import threading
+
 from fastapi import APIRouter
 
 router = APIRouter(tags=["targets"])
@@ -68,6 +70,8 @@ def get_rebalance_advisor():
 
 
 _certify_cache: dict = {"data": None, "ts": 0}
+# single-flight — TTL 만료 시 동시 요청이 전부 certify() 를 다시 도는 걸 막는다 (#1119)
+_certify_lock = threading.Lock()
 
 
 @router.get("/certify")
@@ -85,22 +89,28 @@ def get_certification():
 
     from nuri.trading.engine.certification import certify
 
-    # API path — persist 실패가 HTTP 500 으로 전파되면 안 됨. swallow=True (E4-0a
-    # codex R1 P1). Engine/CLI/remediation 은 default loud 유지.
-    cert = certify(caller="api:targets", swallow_persist_errors=True)
-    result = {
-        "certified": cert.certified,
-        "score": cert.score,
-        "passed": cert.passed,
-        "failed": cert.failed,
-        "warnings": cert.warnings,
-        "total": cert.total_conditions,
-        "conditions": [asdict(c) for c in cert.conditions],
-        "timestamp": cert.timestamp,
-    }
-    _certify_cache["data"] = result
-    _certify_cache["ts"] = now
-    return result
+    with _certify_lock:
+        # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다
+        now = time.time()
+        if _certify_cache["data"] and now - _certify_cache["ts"] < 300:
+            return _certify_cache["data"]
+
+        # API path — persist 실패가 HTTP 500 으로 전파되면 안 됨. swallow=True (E4-0a
+        # codex R1 P1). Engine/CLI/remediation 은 default loud 유지.
+        cert = certify(caller="api:targets", swallow_persist_errors=True)
+        result = {
+            "certified": cert.certified,
+            "score": cert.score,
+            "passed": cert.passed,
+            "failed": cert.failed,
+            "warnings": cert.warnings,
+            "total": cert.total_conditions,
+            "conditions": [asdict(c) for c in cert.conditions],
+            "timestamp": cert.timestamp,
+        }
+        _certify_cache["data"] = result
+        _certify_cache["ts"] = now
+        return result
 
 
 @router.get("/remediate")

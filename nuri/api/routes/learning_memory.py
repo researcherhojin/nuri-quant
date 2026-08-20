@@ -8,6 +8,7 @@
 Read-only. No mutation. 5-min in-memory cache (consensus 패턴 일관).
 """
 
+import threading
 import time
 
 from fastapi import APIRouter
@@ -16,6 +17,8 @@ router = APIRouter(prefix="/learning-memory", tags=["learning-memory"])
 
 _cache = {"data": None, "ts": 0.0}
 CACHE_TTL = 300
+# single-flight — TTL 만료 시 동시 요청이 전부 재계산하는 걸 막는다 (#1119)
+_lock = threading.Lock()
 
 
 @router.get("/readiness")
@@ -49,7 +52,12 @@ def get_readiness():
 
     from nuri.trading.agents.consensus import agent_readiness
 
-    data = agent_readiness()
-    _cache["data"] = data
-    _cache["ts"] = now
-    return data
+    with _lock:
+        # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다
+        now = time.time()
+        if _cache["data"] and (now - _cache["ts"]) < CACHE_TTL:
+            return _cache["data"]
+        data = agent_readiness()
+        _cache["data"] = data
+        _cache["ts"] = now
+        return data

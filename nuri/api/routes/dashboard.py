@@ -8,6 +8,7 @@ v2: DB 조회 전용 (<500ms). analyze_portfolio() 인라인 호출 제거.
 """
 
 import logging
+import threading
 import time
 
 from fastapi import APIRouter
@@ -18,6 +19,8 @@ router = APIRouter(tags=["dashboard"])
 # 캐시 (5분 TTL)
 _cache: dict = {"data": None, "timestamp": 0}
 CACHE_TTL = 300  # 5분
+# single-flight — TTL 만료 시 동시 요청이 전부 재계산하는 걸 막는다 (#1119)
+_lock = threading.Lock()
 
 
 @router.get("/dashboard")
@@ -27,10 +30,15 @@ def get_dashboard():
     if _cache["data"] and (now - _cache["timestamp"]) < CACHE_TTL:
         return _cache["data"]
 
-    result = _build_dashboard()
-    _cache["data"] = result
-    _cache["timestamp"] = now
-    return result
+    with _lock:
+        # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다
+        now = time.time()
+        if _cache["data"] and (now - _cache["timestamp"]) < CACHE_TTL:
+            return _cache["data"]
+        result = _build_dashboard()
+        _cache["data"] = result
+        _cache["timestamp"] = now
+        return result
 
 
 def _build_dashboard() -> dict:

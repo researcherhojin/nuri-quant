@@ -19,6 +19,13 @@ KEEPALIVE_INTERVAL = 10
 
 _cache = {"data": None, "ts": 0}
 CACHE_TTL = 300  # 5분
+# TTL 만료 시 동시 요청이 전부 재계산하는 걸 막는다 (#1119). 실측 2026-08-20:
+# 빈 캐시에 `/api/consensus` 8개를 동시에 던지면 8개가 **각자** 20.9~32.7초를
+# 태웠다 — 40개짜리 AnyIO 스레드풀 중 8칸이 30초간 묶이고, 그동안 `/api/health`
+# 조차 뒤에 줄을 선다. TTL 이 5분이라 콜드 스타트만의 문제가 아니라 5분마다
+# 재발한다. 같은 패턴이 `actions.py::_get_recent_scan_results` 에 이미 있다
+# (2026-04-21 대시보드 first-load 29.2초 사고 기록).
+_lock = threading.Lock()
 
 
 @router.get("/consensus")
@@ -28,6 +35,16 @@ def get_consensus():
     if _cache["data"] and (now - _cache["ts"]) < CACHE_TTL:
         return _cache["data"]
 
+    with _lock:
+        # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다
+        now = time.time()
+        if _cache["data"] and (now - _cache["ts"]) < CACHE_TTL:
+            return _cache["data"]
+        return _compute_consensus(now)
+
+
+def _compute_consensus(now: float):
+    """`get_consensus` 의 실제 계산 — 반드시 `_lock` 을 쥔 채 부른다."""
     from nuri.trading.agents.consensus import analyze_portfolio
 
     results = analyze_portfolio()
