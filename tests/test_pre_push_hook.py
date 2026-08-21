@@ -72,7 +72,7 @@ def test_hook_propagates_the_gate_exit_code(tmp_path, gate_rc):
 
     assert proc.returncode == gate_rc, f"게이트 rc={gate_rc} 인데 훅은 rc={proc.returncode}"
     assert argv_log.read_text(encoding="utf-8").split() == ["--skip-tests"], (
-        "테스트 단계는 CI 4-shard 가 미러한다 — 훅이 full 모드로 돌면 320.8s 라 우회당한다"
+        "테스트 단계는 CI shard 매트릭스가 미러한다 — 훅이 full 모드로 돌면 320.8s 라 우회당한다"
     )
 
 
