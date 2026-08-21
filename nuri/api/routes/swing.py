@@ -16,13 +16,37 @@ _interactive_backtest_cache: dict[tuple[int, str, int, int], tuple[float, dict]]
 _backtest_lock = threading.Lock()
 
 
+# `/scan` 은 **매 요청** scan_market() → yf.download(85 tickers, 60d) 라이브 왕복을
+# 물었다 (#1119) — read 핸들러 안의 서드파티 네트워크 호출. 이 파일의 backtest 와
+# 같은 TTL + single-flight 를 붙인다. 구조적 해법(scanner 가 `prices` 테이블을 읽게)
+# 은 스캐너 시맨틱 변경이라 별건.
+_SCAN_CACHE_TTL_SECONDS = 300
+_scan_cache: dict[tuple[str, int], tuple[float, dict]] = {}
+_scan_lock = threading.Lock()
+
+
 @router.get("/scan")
 def get_scan(market: str = Query("us", pattern="^(us|kr)$"), top: int = Query(20, ge=1, le=50)):
-    """시장 스캔."""
-    from nuri.trading.swing.scanner import scan_market
+    """시장 스캔. 5분 캐시 + single-flight (#1119)."""
+    key = (market, top)
+    now = monotonic()
+    hit = _scan_cache.get(key)
+    if hit and (now - hit[0]) < _SCAN_CACHE_TTL_SECONDS:
+        return hit[1]
 
-    results = scan_market(market=market, top_n=top)
-    return {"results": [asdict(r) for r in results], "count": len(results)}
+    with _scan_lock:
+        # double-check — 락 대기 중 다른 요청이 채웠을 수 있다
+        now = monotonic()
+        hit = _scan_cache.get(key)
+        if hit and (now - hit[0]) < _SCAN_CACHE_TTL_SECONDS:
+            return hit[1]
+
+        from nuri.trading.swing.scanner import scan_market
+
+        results = scan_market(market=market, top_n=top)
+        payload = {"results": [asdict(r) for r in results], "count": len(results)}
+        _scan_cache[key] = (monotonic(), payload)
+        return payload
 
 
 @router.get("/swing/entries")
