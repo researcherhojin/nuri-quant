@@ -4,7 +4,7 @@ Anchor contract + fallback regression lock (codex Plan Biggest Risk):
 - OHLC 부족 (< 14 rows) → `stop_price=None` + detail "OHLC 부족" (never raise).
 - NaN/0 ATR → None + detail "ATR NaN/0" graceful.
 - Normal path: entry - k × regime_mult × ATR, breached check.
-- Regime multiplier: bull_low_vol=0.8, neutral=1.0, bear_high_vol=1.3 (E3-3c parity).
+- Regime multiplier: bull_low_vol=0.8, 기본 1.0, bear_high_vol=1.3 (E3-3c parity).
 - Grid frozen: K_GRID = (1.5, 2.0, 2.5, 3.0).
 
 Revert detection: anchor contract 변경 (entry_price 재해석) or grid drift 시 fail.
@@ -76,7 +76,36 @@ class TestGridAndRegimeConstants:
 
         assert REGIME_MULTIPLIER["bull_low_vol"] == 0.8
         assert REGIME_MULTIPLIER["bear_high_vol"] == 1.3
-        assert REGIME_MULTIPLIER.get("neutral", None) == 1.0
+        # #1137: 예전 "neutral" 은 classifier 가 절대 내지 않는 도달 불가 키였다 —
+        # canonical 어휘로 정합. 도달 가능한 레짐의 배수는 불변 (정책 변경 아님).
+        assert "neutral" not in REGIME_MULTIPLIER
+        assert REGIME_MULTIPLIER["sector_rotation"] == 1.0
+
+    def test_keys_match_classifier_vocabulary_exactly(self):
+        """키 = ALL_REGIMES 양방향 (#1137). 한쪽만 어긋나도 .get 류 침묵 누수가 부활한다."""
+        from nuri.quant.exits.atr import REGIME_MULTIPLIER
+        from nuri.quant.regime.classifier import ALL_REGIMES
+
+        assert set(REGIME_MULTIPLIER) == set(ALL_REGIMES), (
+            f"multiplier 에만: {set(REGIME_MULTIPLIER) - set(ALL_REGIMES)}, "
+            f"classifier 에만: {set(ALL_REGIMES) - set(REGIME_MULTIPLIER)}"
+        )
+
+    def test_unknown_regime_string_fails_loud(self):
+        """오타/비-canonical 문자열은 1.0 으로 새지 않고 즉시 터진다 (#1130 클래스)."""
+        import pytest
+
+        from nuri.quant.exits.atr import _regime_multiplier
+
+        with pytest.raises(ValueError, match="unknown regime"):
+            _regime_multiplier("neutral")
+
+    def test_none_and_unknown_label_mean_explicit_one(self):
+        from nuri.quant.exits.atr import _regime_multiplier
+        from nuri.quant.regime.classifier import UNKNOWN_REGIME
+
+        assert _regime_multiplier(None) == 1.0
+        assert _regime_multiplier(UNKNOWN_REGIME) == 1.0
 
     def test_default_k_within_grid(self):
         from nuri.quant.exits.atr import DEFAULT_K, K_GRID
@@ -137,7 +166,9 @@ class TestComputeAtrStopNormalPath:
         from nuri.quant.exits.atr import compute_atr_stop
 
         self._seed(db_path, "NORM", rows=20, base=100, noise=2)
-        r = compute_atr_stop("NORM", entry_price=100, current_price=98, regime="neutral", k=2.0, db_path=db_path)
+        r = compute_atr_stop(
+            "NORM", entry_price=100, current_price=98, regime="sideways_low_vol", k=2.0, db_path=db_path
+        )
         assert r.atr is not None
         assert r.stop_price is not None
         # ATR ≈ 4 (high-low=4 constant) → k=2 × 1.0 × 4 = 8 → stop ≈ 92
@@ -152,34 +183,40 @@ class TestComputeAtrStopNormalPath:
 
         self._seed(db_path, "BRCH", rows=20, base=100, noise=2)
         # stop ≈ 92, current 80 → breached
-        r = compute_atr_stop("BRCH", entry_price=100, current_price=80, regime="neutral", k=2.0, db_path=db_path)
+        r = compute_atr_stop(
+            "BRCH", entry_price=100, current_price=80, regime="sideways_low_vol", k=2.0, db_path=db_path
+        )
         assert r.stop_price is not None
         assert r.breached is True
         assert "BREACHED" in r.detail
 
     def test_regime_multiplier_widens_stop_in_bear(self, db_path):
-        """bear_high_vol (mult 1.3) stop 이 neutral (1.0) 보다 entry 에서 더 멀어짐
+        """bear_high_vol (mult 1.3) stop 이 기본 1.0 레짐보다 entry 에서 더 멀어짐
         (더 넓은 stop = whipsaw 방지)."""
         from nuri.quant.exits.atr import compute_atr_stop
 
         self._seed(db_path, "REGI", rows=20, base=100, noise=2)
-        r_neu = compute_atr_stop("REGI", entry_price=100, current_price=100, regime="neutral", k=2.0, db_path=db_path)
+        r_neu = compute_atr_stop(
+            "REGI", entry_price=100, current_price=100, regime="sideways_low_vol", k=2.0, db_path=db_path
+        )
         r_bear = compute_atr_stop(
             "REGI", entry_price=100, current_price=100, regime="bear_high_vol", k=2.0, db_path=db_path
         )
         assert r_neu.stop_price is not None and r_bear.stop_price is not None
-        # bear 의 stop 은 neutral 보다 entry 에서 더 멀어짐 (더 낮은 stop_price)
+        # bear 의 stop 은 1.0 레짐보다 entry 에서 더 멀어짐 (더 낮은 stop_price)
         assert r_bear.stop_price < r_neu.stop_price
         assert r_bear.regime_multiplier == 1.3
         assert r_neu.regime_multiplier == 1.0
 
     def test_regime_multiplier_tightens_stop_in_bull_low_vol(self, db_path):
-        """bull_low_vol (mult 0.8) stop 이 neutral 보다 entry 에 더 가까움 —
+        """bull_low_vol (mult 0.8) stop 이 기본 1.0 레짐보다 entry 에 더 가까움 —
         quick exit on any deterioration."""
         from nuri.quant.exits.atr import compute_atr_stop
 
         self._seed(db_path, "BULL", rows=20, base=100, noise=2)
-        r_neu = compute_atr_stop("BULL", entry_price=100, current_price=100, regime="neutral", k=2.0, db_path=db_path)
+        r_neu = compute_atr_stop(
+            "BULL", entry_price=100, current_price=100, regime="sideways_low_vol", k=2.0, db_path=db_path
+        )
         r_bull = compute_atr_stop(
             "BULL", entry_price=100, current_price=100, regime="bull_low_vol", k=2.0, db_path=db_path
         )

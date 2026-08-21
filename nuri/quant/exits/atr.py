@@ -19,7 +19,7 @@ bucket / certification / risk_agent semantic 변경 없음.
 
 - ATR 계산: talib.ATR(14-day) 사용. prices OHLC 충분.
 - Grid: `k ∈ {1.5, 2.0, 2.5, 3.0}` × regime multiplier {bull_low_vol 0.8,
-  neutral 1.0, bear_high_vol 1.3} = **12 조합**. E3-3c regime_override 와 동일
+  기본 1.0, bear_high_vol/stagflation 1.3} = **12 조합**. E3-3c regime_override 와 동일
   structure, walk-forward statistical power 확보.
 - Stop = `entry_price - (k × regime_mult × ATR_at_entry)`. **entry_atr_fixed**
   (static anchor, trailing dynamic 은 PR F2).
@@ -55,12 +55,16 @@ K_GRID = (1.5, 2.0, 2.5, 3.0)
 
 # Regime multiplier — E3-3c `regime_overrides` 와 동일 패턴 (codex Plan Q1)
 # 높은 multiplier = 더 넓은 stop (bear 에서 overshoot 방지).
+# 키는 `classify_regime()` 의 ALL_REGIMES 10개와 정확히 일치해야 한다 (#1137):
+# 예전의 "neutral" 은 classifier 가 절대 내지 않는 값이라 도달 불가였고, canonical
+# "sector_rotation" 은 빠져 있어 .get 기본값으로 새고 있었다. 값(정책)은 불변 —
+# 도달 가능한 레짐의 배수는 하나도 안 바뀌었다 (neutral/sector_rotation 둘 다 1.0).
 REGIME_MULTIPLIER = {
     "bull_low_vol": 0.8,
     "bull_high_vol": 1.0,
-    "neutral": 1.0,
     "sideways_low_vol": 1.0,
     "sideways_high_vol": 1.0,
+    "sector_rotation": 1.0,
     "recovery": 1.0,
     "bear_low_vol": 1.0,
     "bear_high_vol": 1.3,
@@ -94,13 +98,30 @@ class AtrStopResult:
     atr: float | None
     atr_pct_of_price: float | None
     k: float
-    regime: str
+    regime: str | None
     regime_multiplier: float
     stop_price: float | None
     stop_pct: float | None
     breached: bool
     basis: str = "entry_atr_fixed"
     detail: str = ""
+
+
+def _regime_multiplier(regime: str | None) -> float:
+    """regime → stop 배수. None/UNKNOWN 은 명시적 1.0, 모르는 문자열은 즉시 실패.
+
+    `.get(regime, 1.0)` 은 오타·비-canonical 값(#1130 클래스)을 정상 동작으로
+    읽는다 — 예전 기본 인자 "neutral" 이 정확히 그 경로로 새고 있었다 (#1137).
+    """
+    if regime is None:
+        return 1.0
+    from nuri.quant.regime.classifier import UNKNOWN_REGIME
+
+    if regime == UNKNOWN_REGIME:
+        return 1.0
+    if regime not in REGIME_MULTIPLIER:
+        raise ValueError(f"unknown regime {regime!r} — canonical: {sorted(REGIME_MULTIPLIER)}")
+    return REGIME_MULTIPLIER[regime]
 
 
 def compute_atr(df: pd.DataFrame, period: int = DEFAULT_PERIOD) -> Optional[pd.Series]:
@@ -134,7 +155,7 @@ def compute_atr_stop(
     entry_price: float,
     current_price: float,
     account: str | None = None,
-    regime: str = "neutral",
+    regime: str | None = None,
     k: float = DEFAULT_K,
     period: int = DEFAULT_PERIOD,
     db_path=None,
@@ -147,6 +168,8 @@ def compute_atr_stop(
 
     Returns AtrStopResult with stop_price None if insufficient history.
     """
+    regime_mult = _regime_multiplier(regime)
+
     from nuri.core.db import query_df
 
     df = query_df(
@@ -166,7 +189,7 @@ def compute_atr_stop(
             atr_pct_of_price=None,
             k=k,
             regime=regime,
-            regime_multiplier=REGIME_MULTIPLIER.get(regime, 1.0),
+            regime_multiplier=regime_mult,
             stop_price=None,
             stop_pct=None,
             breached=False,
@@ -185,7 +208,7 @@ def compute_atr_stop(
             atr_pct_of_price=None,
             k=k,
             regime=regime,
-            regime_multiplier=REGIME_MULTIPLIER.get(regime, 1.0),
+            regime_multiplier=regime_mult,
             stop_price=None,
             stop_pct=None,
             breached=False,
@@ -203,7 +226,7 @@ def compute_atr_stop(
             atr_pct_of_price=None,
             k=k,
             regime=regime,
-            regime_multiplier=REGIME_MULTIPLIER.get(regime, 1.0),
+            regime_multiplier=regime_mult,
             stop_price=None,
             stop_pct=None,
             breached=False,
@@ -211,7 +234,6 @@ def compute_atr_stop(
         )
 
     atr_val = float(atr_latest)
-    regime_mult = REGIME_MULTIPLIER.get(regime, 1.0)
     effective_k = k * regime_mult
     stop_distance = effective_k * atr_val
     stop_price = entry_price - stop_distance
