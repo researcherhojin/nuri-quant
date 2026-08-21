@@ -423,3 +423,66 @@ class TestBacktestEquity:
         second = client.get("/api/backtest/equity?sma=200&period=5Y&sl=-10&tp=25")
         assert second.status_code == 200
         assert mock_bt.call_count == 2  # re-invoked after TTL
+
+
+class TestScanCacheSingleFlight:
+    """`/scan` 이 요청마다 yfinance 85종목 라이브 왕복을 물던 것을 잠근다 (#1119).
+
+    read 핸들러 안의 서드파티 네트워크 호출 — 캐시 미스 동시 요청이 전부
+    scan_market() 을 부르면 스레드풀이 초 단위 네트워크 대기로 잠식된다.
+    """
+
+    def _reset(self):
+        import nuri.api.routes.swing as swing_mod
+
+        swing_mod._scan_cache.clear()
+
+    def test_concurrent_requests_scan_once(self):
+        import threading
+        import time as _t
+
+        import nuri.api.routes.swing as swing_mod
+
+        self._reset()
+        calls = []
+        barrier = threading.Barrier(4)
+
+        def _slow_scan(market="us", top_n=20):
+            calls.append(1)
+            _t.sleep(0.3)
+            return []
+
+        def _worker():
+            barrier.wait(timeout=5)
+            swing_mod.get_scan()
+
+        with patch("nuri.trading.swing.scanner.scan_market", side_effect=_slow_scan):
+            threads = [threading.Thread(target=_worker) for _ in range(4)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=15)
+
+        assert len(calls) == 1, f"동시 4요청이 {len(calls)}회 스캔했다 — single-flight 락이 없다"
+        self._reset()
+
+    def test_warm_cache_serves_without_scanning(self):
+        import nuri.api.routes.swing as swing_mod
+
+        self._reset()
+        with patch("nuri.trading.swing.scanner.scan_market", return_value=[]) as m:
+            swing_mod.get_scan()
+            swing_mod.get_scan()
+        assert m.call_count == 1, "TTL 내 재요청이 다시 스캔했다"
+        self._reset()
+
+    def test_cache_key_includes_params(self):
+        """market/top 이 다르면 다른 결과 — 키 없이 캐시하면 us 결과가 kr 로 나간다."""
+        import nuri.api.routes.swing as swing_mod
+
+        self._reset()
+        with patch("nuri.trading.swing.scanner.scan_market", return_value=[]) as m:
+            swing_mod.get_scan(market="us", top=20)
+            swing_mod.get_scan(market="kr", top=20)
+        assert m.call_count == 2
+        self._reset()
