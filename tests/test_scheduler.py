@@ -582,9 +582,29 @@ class TestSchedulerLazy:
 
 class TestSchedulerLazy_R6:
     @pytest.mark.slow
-    def test_run_collector_known_names(self):
-        """실제 collector 이름 호출 — conftest mock 덕분에 네트워크 안 탐."""
+    def test_run_collector_known_names(self, monkeypatch):
+        """실제 collector 이름 호출 — conftest mock 덕분에 네트워크 안 탐.
+
+        universe 는 US+KR 각 1개 티커로 축소한다 (#1152): 이 테스트의 목적은
+        이름 dispatch + lazy import 가 살아있는지지 757 티커 처리가 아니다.
+        축소 없이는 fundamental 의 KIS KR sub-batch 가 KOSPI200 을 순차
+        rate-limit sleep 으로 순회해 이 테스트 혼자 136s — 단일 테스트는
+        샤딩으로 못 쪼개 push CI slow lane 전체를 고정했다.
+        """
+        from nuri.collectors.base import BaseCollector
         from nuri.scheduler import _run_collector
+
+        # market 계약은 보존한다 (codex P2): stock 은 US만, stock_kr 은 KR만
+        # 기대하므로 인자를 무시하는 stub 은 혼합 universe 를 흘려 실패를 숨긴다.
+        def _tiny_universe(self, market=None, source="portfolio"):
+            tickers = ["AAPL", "005930.KS"]
+            if market == "us":
+                return [t for t in tickers if not t.endswith((".KS", ".KQ"))]
+            if market == "kr":
+                return [t for t in tickers if t.endswith((".KS", ".KQ"))]
+            return tickers
+
+        monkeypatch.setattr(BaseCollector, "_get_tickers", _tiny_universe)
 
         names = [
             "stock",
