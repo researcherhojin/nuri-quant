@@ -417,7 +417,15 @@ class TestGenerateBrief:
     def test_subsystem_exceptions_are_caught_not_raised(self, tmp_path, monkeypatch):
         """_collect_context 는 각 subsystem raise 해도 graceful degrade — logger.warning
         만 기록하고 브리프 생성 계속. except 블록 coverage lock (82-193 missing)."""
+        import nuri.core.db as db_mod
         from nuri.alerts import premarket_brief as pb
+
+        # DB 실패 축은 facade patch 가 아니라 **존재하지 않는 DB 경로**로 만든다.
+        # `patch("nuri.core.db.query")` 는 #1149 클래스다: 이 함수의 lazy import 표면이
+        # 넓어 (market_signals 등) patch 창에서 first-import 되는 모듈이 mock 을 영구
+        # 보유했다 — CI 샤드 재구성(#1157) 후 워커 순서에서 실제 발화 (PR #1172 red).
+        # 경로가 없으면 진짜 OperationalError 가 나므로 except 블록 coverage 는 동일하다.
+        monkeypatch.setattr(db_mod, "DB_PATH", tmp_path / "nonexistent" / "no.db")
 
         # 모든 subsystem 에 실제 exception raise 주입 → except 블록이 전부 실행
         with (
@@ -426,7 +434,6 @@ class TestGenerateBrief:
             patch("nuri.trading.engine.certification.certify", side_effect=RuntimeError("siege fail")),
             patch("nuri.api.routes.actions._build_actions", side_effect=RuntimeError("actions fail")),
             patch("nuri.api.routes.actions._build_opportunities", side_effect=RuntimeError("ops fail")),
-            patch("nuri.core.db.query", side_effect=RuntimeError("db fail")),
         ):
             ctx = pb._collect_context()
         # 모든 subsystem 실패했지만 ctx dict 자체는 반환 — 값은 None/빈 리스트

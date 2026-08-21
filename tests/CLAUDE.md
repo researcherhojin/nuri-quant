@@ -107,6 +107,13 @@ monkeypatch.setattr(nuri.core.db, "DB_PATH", empty)   # patch("...query") 대신
 손으로 나열해 복원하는 방식(`finally: mod.query = _orig`)은 쓰지 않는다 — 그게 원래 방어였고,
 새 소비자가 생길 때마다 조용히 샜다.
 
+**금지는 사람 눈이 아니라 기계가 지킨다**: #1150 이 fixture 를 고친 뒤에도 같은 파일의
+resilience 테스트에 1곳이 남아 3주 잠복하다 CI 샤드 재구성(#1157) 후 워커 순서에서 발화했다
+(PR #1172 red — `market_signals` 가 창 안에서 first-import). **Test:**
+`tests/test_no_facade_query_patch.py::TestNoFacadeQueryPatch` — AST 로 실호출만 세고
+(독스트링/주석 언급은 오탐이라 텍스트 sweep 기각), allowlist 는 "patch 창의 import 표면이
+함수-로컬 lazy import 뿐" 인 파일만 사유와 함께 양방향 등재.
+
 ⚠️ **이 계열은 직렬 실행에서만 보인다.** `make test-fast`(`-n auto --dist worksteal`)는
 오염원과 피해자를 다른 워커로 보내 초록이다. 격리 의심 시 `pytest tests/ --ignore=tests/quant -x`
 로 직렬 확인.
