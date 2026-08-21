@@ -82,6 +82,46 @@ import 될 뿐 테스트 모듈이 아니다.** 그런데 파일을 인자로 �
 (`tests/` 는 패키지가 아니라 import 경로가 실행 방식에 따라 달라진다).
 **Test:** `tests/test_production_db_guard.py` — 파일 자체가 이 규칙의 산물이다.
 
+### `patch("nuri.core.db.query")` 금지 — mock 이 patch 창을 넘어 산다 (#1149)
+
+patch 가 활성인 동안 **처음 import 되는** 모듈이 `from nuri.core.db import query` 를 하면
+mock 을 자기 전역에 **복사**한다. patch 는 원본 속성만 되돌리므로 그 복사본은 mock 인 채
+남고, 이후 모든 테스트에서 그 모듈의 DB 조회가 조용히 `[]` 를 낸다.
+
+실측(2026-08-21): `empty_db_ctx` 하나가 3개 모듈을 오염시켰다 — `nuri.core.coverage` ·
+`nuri.core.freshness` · `nuri.trading.recommend.tracker`. **`freshness` 가 특히 나쁘다**:
+이후 모든 정책이 "데이터 없음" 을 답하므로 *낡음을 감시하는 장치가 죽은 채로 그 장치의
+테스트가 돈다.* 피해는 `tracker` 가 보유 조회에 `[]` 를 받아 SELL 을 전부 걸러내는 형태로
+`tests/api/test_axis_native_read_path.py` 에서 IndexError 로 터졌다.
+
+**빈 결과가 목적이면 빈 격리 DB 를 준다.** `_resolve_db_path()` 가 호출 시점에 파사드의
+`DB_PATH` 를 읽으므로, 어딘가 남은 `query` 복사본도 실전 함수라 그 경로를 그대로 탄다 —
+오염 축이 성립조차 안 한다.
+
+```python
+empty = tmp_path / "empty.db"
+init_db(empty)
+monkeypatch.setattr(nuri.core.db, "DB_PATH", empty)   # patch("...query") 대신
+```
+
+손으로 나열해 복원하는 방식(`finally: mod.query = _orig`)은 쓰지 않는다 — 그게 원래 방어였고,
+새 소비자가 생길 때마다 조용히 샜다.
+
+⚠️ **이 계열은 직렬 실행에서만 보인다.** `make test-fast`(`-n auto --dist worksteal`)는
+오염원과 피해자를 다른 워커로 보내 초록이다. 격리 의심 시 `pytest tests/ --ignore=tests/quant -x`
+로 직렬 확인.
+
+**Test:** `tests/alerts/test_premarket_brief.py::TestFixtureLeavesNoMockBehind` — 4개가
+구조와 동작을 나눠 잠근다. fixture 를 query mock 방식으로 되돌리면 **넷 다 FAIL**.
+- `test_known_leak_modules_still_hold_the_real_query` — 누출 이력 3종을 **이름으로** 확인.
+  스윕만으로는 부족하다: 그 시점 로드된 모듈만 보므로 감시 대상이 아직 로드 전이면 조용히
+  통과한다. 여기서는 직접 import 하므로 항상 검사된다.
+- `test_no_other_module_holds_a_rebound_query` — 전역 스윕. 타입 이름이 아니라 **동일성**으로
+  본다 (새는 값이 `MagicMock` 이 아니라 평범한 callable 이어도 잡아야 한다).
+- `test_freshness_still_sees_real_data` · `test_coverage_still_sees_real_data` ·
+  `test_tracker_still_sees_a_seeded_portfolio` — 세 모듈 각각의 **동작** 잠금. 구조 스윕만
+  두면 tracker 만 초록인 채 낡음 감시가 다시 죽는 회귀가 통과한다.
+
 ### runpy + mock
 `runpy.run_module()` re-executes module source, **invalidating all mocks**. Use `patch("source.module.function")` for source-level patching, not `patch("target.module.function")`.
 
