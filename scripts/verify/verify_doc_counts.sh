@@ -58,6 +58,16 @@ print(sqlite3.connect(_p).execute(\"SELECT COUNT(*) FROM sqlite_master WHERE typ
 # based (no Python) so they HARD-GATE in CI, unlike regimes/db_tables above.
 live_migrations()     { grep -cE '^        [0-9]+,$' nuri/core/db_migrations.py || true; }
 live_scheduler_jobs() { grep -cE '"cron":' nuri/scheduler.py || true; }
+
+# #1132: 테스트 **수** claim 3곳은 sync 가 쓰는데 verify 가 안 읽어 17개 드리프트가
+# 초록으로 통과했다. collect-only 는 venv 가 필요하므로 regimes/db_tables 와 같은
+# 계약: CI(venv 부재)에서는 skip, 로컬 make verify-doc-counts / pre-push 가 잡는다.
+# 실측 ~2.5s (7,460 tests) — pre-push 총합에 반영, enforcement.md 수치 갱신됨.
+live_tests_be() {
+    [ -x .venv/bin/python ] || { echo ""; return; }
+    .venv/bin/python -m pytest tests/ --collect-only -q 2>/dev/null \
+        | grep -oE '[0-9]+ tests collected' | head -1 | awk '{print $1}' || echo ""
+}
 live_rules_lines()    { wc -l < config/rules.yaml | tr -d ' '; }
 
 # Extract the target integer from EVERY occurrence of a claim in a file.
@@ -99,6 +109,32 @@ check_claim() {
         return 0
     else
         fail "$label ($file): doc=$bad, live=$expected — DRIFT (${count} sites checked)"
+        return 1
+    fi
+}
+
+# 앞머리 comma-number([0-9,]+)가 대상인 claim 전용 (테스트 수). extract_nums 는
+# 마지막 숫자런을 집으므로 "7,446" 이 446 으로 쪼개진다 — 콤마 제거 후 비교한다.
+# 패턴은 sync_doc_counts.sh 의 update_comma_number 3곳과 문자 그대로 동일해야 하며
+# tests/scripts/test_doc_count_gate_parity.py 가 양방향으로 잠근다.
+check_comma_claim() {
+    local label="$1" expected="$2" file="$3" pattern="$4"
+    local nums count bad
+    [ ! -f "$file" ] && { warn "$label: $file missing"; return 1; }
+    nums=$(grep -oE "$pattern" "$file" | while IFS= read -r m; do
+        echo "$m" | grep -oE '[0-9,]+' | head -1 | tr -d ','
+    done)
+    if [ -z "$nums" ]; then
+        warn "$label: pattern not found in $file — $pattern"
+        return 1
+    fi
+    count=$(echo "$nums" | wc -l | tr -d ' ')
+    bad=$(echo "$nums" | grep -vxF "$expected" | sort -u | paste -sd, - || true)
+    if [ -z "$bad" ]; then
+        pass "$label ($file): $expected (${count} site(s))"
+        return 0
+    else
+        fail "$label ($file): doc=$bad, live=$expected — DRIFT"
         return 1
     fi
 }
@@ -157,11 +193,19 @@ check_claim "scheduler_jobs"   "$JOBS"  "docs/ARCHITECTURE.md" '[0-9]+ cron jobs
 check_claim "scheduler_jobs"   "$JOBS"  "README.md" \
     '[0-9]+ (cron jobs · in-process|independent APScheduler jobs|cron entries)' || true
 check_claim "rules_yaml_lines" "$RULES" "config/CLAUDE.md"     '\| [0-9]+ \| Investment rules' || true
+TESTS_BE=$(live_tests_be)
+if [ -n "$TESTS_BE" ]; then
+    check_comma_claim "tests_be" "$TESTS_BE" "docs/ARCHITECTURE.md" '[0-9,]+ backend tests across' || true
+    check_comma_claim "tests_be" "$TESTS_BE" "docs/STRATEGY.md"     '[0-9,]+ tests, [0-9]+ files \(statement' || true
+    check_comma_claim "tests_be" "$TESTS_BE" "README.md"            '[0-9,]+ collected across' || true
+else
+    info "tests_be: skipped (no .venv/bin/python — CI contract; local make verify-doc-counts covers)"
+fi
 
-# Note: agent count + pytest collect count intentionally excluded from hard
-# verify. Agent count has no single stable grep pattern across docs (multiple
-# phrasings "10-agent", "10 agents", "10개"), and pytest collect takes 30+s
-# which would slow PR CI. Those are covered by sync_doc_counts.sh best-effort.
+# Note: agent count intentionally excluded from hard verify — no single stable
+# grep pattern across docs (multiple phrasings "10-agent", "10 agents", "10개").
+# pytest collect count was excluded on a stale "30+s" estimate; measured 2026-08-21
+# at ~2.5s, now venv-gated above (#1132).
 
 # 2026-07-08: doc integrity guard. Merge conflict markers were committed into
 # docs/ARCHITECTURE.md and sat undetected — the count greps above still matched
