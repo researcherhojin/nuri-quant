@@ -93,3 +93,29 @@ class TestFilenameIsNotMisspelled:
         assert len(mentioning) == len(self.SITES), "durations 파일을 언급하지 않는 곳: " + ", ".join(
             set(self.SITES) - set(mentioning)
         )
+
+
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "main-ci-cd.yml"
+
+
+class TestShardTopology:
+    """matrix.shard 와 pytest `--splits` 의 정합을 잠근다 (#1156 codex P2).
+
+    matrix 를 [1..4] 로 줄이면서 `--splits 6` 을 두면 group 5/6 의 테스트는
+    **어느 shard 에서도 안 돌지만 CI 는 초록**이다 — 실행 누락이 침묵한다.
+    """
+
+    def test_matrix_matches_splits(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        # 워크플로 구조상 각 테스트 job 은 matrix 선언 뒤에 자기 pytest 커맨드가
+        # 온다 — 등장 순서 쌍(fast, slow)으로 대조한다.
+        matrices = re.findall(r"shard: \[([0-9, ]+)\]", text)
+        splits = re.findall(r"--splits (\d+)", text)
+        assert len(matrices) == len(splits) >= 2, (
+            f"테스트 job 의 matrix/--splits 쌍을 못 찾았다 (matrix {len(matrices)} / splits {len(splits)})"
+        )
+        for m, s in zip(matrices, splits):
+            shard_list = [int(x) for x in m.split(",")]
+            assert shard_list == list(range(1, int(s) + 1)), (
+                f"matrix {shard_list} ≠ --splits {s} — 빠진 group 의 테스트는 어느 shard 에서도 안 돈다"
+            )
