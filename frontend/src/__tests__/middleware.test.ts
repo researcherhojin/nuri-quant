@@ -15,6 +15,7 @@ describe("middleware", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("passes through when no DASHBOARD_PASSWORD set", async () => {
@@ -75,14 +76,35 @@ describe("middleware", () => {
 
   it("passes through with valid auth cookie", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
+    // #1136: 앰비언트 환경에 기대지 않는다 — AUTH_SECRET 을 명시 stub 해야
+    // 러너 환경에 AUTH_SECRET 이 있어도(래퍼 프로세스 등) 결과가 갈리지 않는다.
+    vi.stubEnv("AUTH_SECRET", "test-auth-secret");
     const { middleware } = await import("@/middleware");
 
     // Generate the expected token using the same HMAC scheme as the
-    // production auth-token helper. AUTH_SECRET is unset so the helper
-    // falls back to DASHBOARD_PASSWORD as the HMAC key. The body of the
-    // hash is the static label "nuri-auth-token:v1" — password content
-    // is intentionally NOT mixed in (CodeQL would flag that as an
-    // insecure password hash regardless of the HMAC key).
+    // production auth-token helper. The body of the hash is the static
+    // label "nuri-auth-token:v1" — password content is intentionally NOT
+    // mixed in (CodeQL would flag that as an insecure password hash
+    // regardless of the HMAC key).
+    const expectedToken = createHmac("sha256", "test-auth-secret")
+      .update("nuri-auth-token:v1")
+      .digest("hex");
+
+    const request = {
+      nextUrl: { pathname: "/dashboard" },
+      cookies: { get: (name: string) => name === "nuri-auth" ? { value: expectedToken } : undefined },
+      url: "http://localhost:3000/dashboard",
+    };
+
+    const result = await middleware(request as unknown as NextRequest);
+    expect(result).toEqual({ type: "next" });
+  });
+
+  it("falls back to DASHBOARD_PASSWORD as HMAC key when AUTH_SECRET is empty", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
+    vi.stubEnv("AUTH_SECRET", "");
+    const { middleware } = await import("@/middleware");
+
     const expectedToken = createHmac("sha256", "secret123")
       .update("nuri-auth-token:v1")
       .digest("hex");
