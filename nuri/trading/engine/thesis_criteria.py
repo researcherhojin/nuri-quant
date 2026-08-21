@@ -73,8 +73,24 @@ def _resolver(table: str, column: str) -> Callable[[str, Optional[Path]], tuple[
 #: metric 이름 → (값, 날짜, 소스테이블) 해소기.
 #: **여기 없는 metric 은 writer 가 거부한다.** 추가할 때는 그 컬럼이 실제로 채워지는지
 #: 프로덕션에서 세어 보고 넣을 것 — 비어 있는 컬럼을 넣으면 그 기준은 영원히 unevaluable 이다.
+def _close_over_sma200(ticker: str, db_path: Optional[Path]) -> tuple[Optional[float], Optional[str], str]:
+    """종가의 200일선 대비 괴리율(%). 절대가격 threshold 의 함정을 피하는 상대 지표.
+
+    절대가격 기준(예: "등록 시점 200일선 값 아래로")은 몇 달 뒤 그 숫자가 200일선도
+    레짐도 아닌 그냥 과거 가격이 된다 — 반증 불가 (#1137 계열 threshold trap,
+    2026-08-21 논지 원장 첫 운용에서 codex 가 지적). 괴리율은 시점 무관하게 같은
+    의미를 유지한다: 0 미만 = 200일선 하회.
+    """
+    close, date_c = _latest("prices", "close", ticker, db_path)
+    sma, date_s = _latest("signals", "sma_200", ticker, db_path)
+    if close is None or sma is None or sma == 0:
+        return None, None, "prices+signals"
+    return (close / sma - 1.0) * 100.0, max(d for d in (date_c, date_s) if d), "prices+signals"
+
+
 METRIC_RESOLVERS: dict[str, Callable[[str, Optional[Path]], tuple[Optional[float], Optional[str], str]]] = {
     "close": _resolver("prices", "close"),
+    "close_over_sma200_pct": _close_over_sma200,
     "volume": _resolver("prices", "volume"),
     "rsi_14": _resolver("signals", "rsi_14"),
     "sma_50": _resolver("signals", "sma_50"),
