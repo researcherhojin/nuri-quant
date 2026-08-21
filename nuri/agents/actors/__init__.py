@@ -1,4 +1,6 @@
-"""nuri.agents.actors — concrete 15-actor implementations (#529 Phase 2+).
+"""nuri.agents.actors — actor implementations (#529 Phase 2+; #975 2-tier roster).
+
+호출자가 있는 canonical 8종 + 휴면 dormant 7종 — 목록·의미는 `nuri/agents/base.py` 참조.
 
 Phase 2 actors (Codex Round 5):
 - CollectorOrchestrator (#1, Layer B) — 21+ collectors oversight + retry + health scan

@@ -11,7 +11,7 @@ The autonomous operating layer: long-lived actors that observe the system, recor
 `Actor(ABC)`. Subclass declares three class attributes and implements one method:
 
 ```python
-name: str = ""          # DB key — must be in ActorRegistry.CANONICAL_15
+name: str = ""          # DB key — must be in CANONICAL_ACTORS or DORMANT_ACTORS
 version: str = "0.0.0"  # semver, recorded in every audit row
 layer: Layer = Layer.B
 
@@ -33,7 +33,7 @@ def execute(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult: .
 
 **`execute()` may raise** — `run()` records the failure (`status="failed"` + an `ERROR` audit row) and then **re-raises**. Failure isolation is the *caller's* responsibility: every `_run_*` wrapper in `nuri/scheduler.py` try/excepts, which is why one actor dying doesn't take the fleet down.
 
-**`ActorRegistry.CANONICAL_15` is a closed roster.** `@REGISTRY.register` raises if `name` isn't in that tuple — adding a 16th actor means editing the tuple deliberately, not incidentally. Registration is idempotent for the same `module:qualname` so the `python -m` double-import (`__main__` reload) doesn't blow up.
+**The roster is closed and two-tier (#975).** `CANONICAL_ACTORS` (8) are actors with a real caller — scheduler, sleeve/rules, or the phase-2 manual chain; `DORMANT_ACTORS` (7) have implementations and tests but **no caller anywhere** — they register fine but are excluded from `missing()` so nothing advertises them as pending. Promoting a dormant actor to canonical requires the PR that adds its actual call path. `@REGISTRY.register` raises for names outside both tuples. Registration is idempotent for the same `module:qualname` so the `python -m` double-import (`__main__` reload) doesn't blow up. `CANONICAL_15` remains as a compatibility alias (= canonical + dormant).
 
 ## Invariants
 
@@ -65,7 +65,7 @@ So **14 of the 15 registered actors have no cron** — they run from their `main
 ## Adding an actor
 
 1. `nuri/agents/actors/<snake>.py`; subclass `Actor`, set `name` / `version` / `layer`.
-2. Add `name` to `ActorRegistry.CANONICAL_15`, then decorate with `@REGISTRY.register`. (Order matters — registration validates against the tuple.)
+2. Add `name` to `CANONICAL_ACTORS` **in the same PR that wires its caller** (no caller yet → `DORMANT_ACTORS`), then decorate with `@REGISTRY.register`. (Order matters — registration validates against the tuples.)
 3. Implement `execute()`. Layer A must always set `outcome`.
 4. Add a module-level `main(argv)` CLI.
 5. Export from `actors/__init__.py`.
