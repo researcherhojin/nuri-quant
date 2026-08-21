@@ -453,6 +453,22 @@ def _run_premarket_brief():
         logger.error(f"[premarket_brief] 실행 실패: {e}", exc_info=True)
 
 
+def _run_evidence_charts():
+    """증거 차트 5종 생성 (#1128). `make evidence` 와 같은 함수를 그대로 부른다.
+
+    automation parity gap (#897/#899/#900) 계열: 자동화가 CLI 경로를 부분만
+    재구현해 이 산출물만 4개월 멈췄다 (프로덕션 마지막 2026-04-14). 스케줄러
+    job 은 대응 CLI 의 write 집합과 같아야 한다 — 재구현 금지, 같은 진입점 호출.
+    """
+    try:
+        from nuri.analysis.evidence_charts import generate_all_evidence
+
+        paths = generate_all_evidence()
+        logger.info(f"[evidence_charts] {len(paths)}개 차트 생성")
+    except Exception as e:
+        logger.error(f"[evidence_charts] 실행 실패: {e}", exc_info=True)
+
+
 def _run_postmarket_brief_kr():
     """KR session post-market brief (KST 16:00, KOSPI close 15:30 + 30min)."""
     try:
@@ -953,6 +969,9 @@ SCHEDULES = [
     {"name": "premarket_brief", "func": _run_premarket_brief, "args": (), "cron": "0 9 * * 1-5", "tz": "US/Eastern"},
     # Post-market brief — KR session (KST 16:00, KOSPI close 15:30 + 30min, 평일).
     # holdings PnL + KOSPI200 시장 proxy + macro snapshot. pension 계좌 제외.
+    # 증거 차트 (#1128): 아침 수집(fear_greed 08:00 · factors 08:10) 뒤 매일 1회.
+    # premarket 사용자 확인 전에 최신화된다. plotly 5종 렌더 수 초 — 부하 무시 가능.
+    {"name": "evidence_charts", "func": _run_evidence_charts, "args": (), "cron": "20 8 * * *"},
     {"name": "postmarket_brief_kr", "func": _run_postmarket_brief_kr, "args": (), "cron": "0 16 * * 1-5"},
     # Post-market brief — US session (NYSE 16:00 ET + 30min, DST-aware).
     # Dual-cron 06:30/07:30 KST 등록, 함수 내부에서 NYSE 16:30 ET window 일치
