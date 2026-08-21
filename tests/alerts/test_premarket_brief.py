@@ -17,47 +17,50 @@ import pytest
 
 
 @pytest.fixture
-def empty_db_ctx():
-    """모든 subsystem helper 를 빈 결과로 mock.
+def empty_db_ctx(tmp_path, monkeypatch):
+    """모든 subsystem helper 를 빈 결과로 mock. DB 는 **빈 격리 DB** 를 준다.
 
-    Pre-import lazy-imported modules BEFORE applying patches — `_collect_context`
-    가 함수 안에서 `from nuri.quant.validation.market_signals import detect_all`
-    하면, patch 활성 상태에서 market_signals 모듈이 처음 로드되며 그 안의
-    `from nuri.core.db import query` 가 MOCK query 를 캡처. patch 종료 후 db.query
-    는 복원되지만 market_signals.query 는 mock 으로 stuck → 후속 테스트의
-    market_signals 호출이 모두 빈 결과 반환 (#test isolation bug).
+    예전에는 `patch("nuri.core.db.query", return_value=[])` 로 빈 결과를 만들었다.
+    그게 #1149 의 원인이다: patch 창 안에서 **처음 import 되는** 모듈이
+    `from nuri.core.db import query` 를 하면 mock 을 자기 전역에 복사하고, patch 가
+    끝나도 **그 복사본은 mock 인 채로 남는다.** `finally` 에서 손으로 나열한 2개만
+    복원하고 있었는데 실제로는 3개가 새고 있었다 —
+    `nuri.core.coverage` · `nuri.core.freshness` · `nuri.trading.recommend.tracker`.
+    freshness 가 새는 게 특히 나빴다: 이후 모든 정책이 "데이터 없음" 을 답하므로
+    **낡음을 감시하는 장치가 조용히 죽은 채로 그 장치의 테스트가 돌 수 있다.**
+    증상은 직렬 실행에서만 났다 (`-n auto` 는 오염원과 피해자를 다른 워커로 보낸다).
+
+    빈 DB 로 바꾸면 그 축이 **성립조차 안 한다.** `_resolve_db_path()` 가 호출 시점에
+    파사드의 `DB_PATH` 를 읽으므로, 어딘가에 남은 `query` 복사본도 실전 함수라 이 경로를
+    그대로 탄다. 이 레포의 격리 관용구도 원래 `db_path=` / `DB_PATH` 다
+    (`.claude/rules/invariants.md` "DB sole importer").
+
+    나머지 patch(`classify_regime` 등)는 여전히 이름 복사에 노출되므로, 그 대상들을
+    **미리 import** 해 patch 창 안에서 처음 로드되는 일이 없게 한다.
     """
-    # 강제 사전 import — 모든 lazy-loaded module 의 query 바인딩을 real 로 고정
     import nuri.api.routes.actions  # noqa: F401
-
-    # query rebound 방어 — patch 후 모듈 query 가 mock 으로 stuck 되는 케이스 복원
     import nuri.core.db as _db_mod
     import nuri.quant.regime.classifier  # noqa: F401
     import nuri.quant.regime.macro_score  # noqa: F401
     import nuri.quant.validation.market_signals  # noqa: F401
     import nuri.trading.engine.certification  # noqa: F401
+    from nuri.core.db import init_db
 
-    _real_query = _db_mod.query
-    _ms_orig_query = nuri.quant.validation.market_signals.query
+    empty = tmp_path / "empty.db"
+    init_db(empty)
+    monkeypatch.setattr(_db_mod, "DB_PATH", empty)
 
-    try:
-        with (
-            patch("nuri.quant.regime.classifier.classify_regime", return_value=None),
-            patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=RuntimeError("no macro")),
-            patch("nuri.trading.engine.certification.certify", side_effect=RuntimeError("no certify")),
-            patch(
-                "nuri.api.routes.actions._build_actions",
-                return_value={"urgent": [], "portfolio": [], "check": [], "hold": []},
-            ),
-            patch("nuri.api.routes.actions._build_opportunities", return_value=[]),
-            patch("nuri.core.db.query", return_value=[]),
-        ):
-            yield
-    finally:
-        # market_signals.query 가 patch 동안 mock 으로 rebound 되었을 수 있음 — 강제 복원
-        nuri.quant.validation.market_signals.query = _ms_orig_query
-        # db_mod.query 는 patch 가 자체 복원하지만, 방어적 lock
-        _db_mod.query = _real_query
+    with (
+        patch("nuri.quant.regime.classifier.classify_regime", return_value=None),
+        patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=RuntimeError("no macro")),
+        patch("nuri.trading.engine.certification.certify", side_effect=RuntimeError("no certify")),
+        patch(
+            "nuri.api.routes.actions._build_actions",
+            return_value={"urgent": [], "portfolio": [], "check": [], "hold": []},
+        ),
+        patch("nuri.api.routes.actions._build_opportunities", return_value=[]),
+    ):
+        yield
 
 
 class TestContextCollection:
@@ -1107,3 +1110,161 @@ class TestBuyCandidatesArePersisted:
 
         ctx = pb._collect_context(db_path=db)
         assert ctx["buy_candidates"] is emitted, "기록 실패가 후보 표출까지 날렸다"
+
+
+# 과거 실제로 새어 나간 모듈 (#1149). 스윕은 **그 시점 로드된 것만** 보므로 이 셋은
+# 이름으로 못 박고 직접 import 해서 확인한다 — 아직 로드 전이면 스윕이 조용히 통과한다.
+_KNOWN_LEAK_MODULES = (
+    "nuri.core.coverage",
+    "nuri.core.freshness",
+    "nuri.trading.recommend.tracker",
+)
+
+
+def _rebound_query_modules() -> list[str]:
+    """`nuri.*` 중 `query` 가 실전 함수가 **아닌** 모듈.
+
+    타입 이름으로 mock 을 찾지 않고 **동일성**으로 본다 — 새는 값이 `MagicMock` 이 아니라
+    평범한 callable(예: `lambda *_: []`)이어도 잡아야 한다.
+    """
+    import sys
+
+    import nuri.core.db as db_mod
+
+    real = db_mod.query
+    return sorted(
+        name
+        for name, mod in list(sys.modules.items())
+        if name.startswith("nuri.")
+        and mod is not None
+        and getattr(mod, "query", None) is not None
+        and getattr(mod, "query") is not real
+    )
+
+
+class TestFixtureLeavesNoMockBehind:
+    """#1149 회귀 잠금 — patch 창을 넘겨 살아남는 mock 이 없어야 한다.
+
+    `patch("nuri.core.db.query", ...)` 가 활성인 동안 **처음 import 되는** 모듈이
+    `from nuri.core.db import query` 를 하면 mock 을 자기 전역에 복사한다. patch 는 원본
+    속성만 되돌리므로 복사본은 mock 인 채 남고, 이후 그 모듈의 DB 조회가 조용히 빈 결과를
+    낸다. 실제로 3개가 샜다 — `nuri.core.coverage` · `nuri.core.freshness` ·
+    `nuri.trading.recommend.tracker`.
+
+    ⚠️ **이 계열은 직렬 실행에서만 보인다.** `make test-fast`(`-n auto --dist worksteal`)는
+    오염원과 피해자를 다른 워커로 보내 초록이다 — 그래서 CI 가 못 잡았다.
+    """
+
+    def test_known_leak_modules_still_hold_the_real_query(self, empty_db_ctx):
+        """과거 새어 나간 3개를 **이름으로** 확인한다.
+
+        스윕만으로는 부족하다 — 그 시점 로드된 모듈만 보므로, 감시 대상이 아직 로드 전이면
+        조용히 통과한다. 여기서는 직접 import 하므로 항상 검사된다.
+        """
+        import importlib
+
+        import nuri.core.db as db_mod
+
+        for name in _KNOWN_LEAK_MODULES:
+            mod = importlib.import_module(name)
+            assert mod.query is db_mod.query, f"{name}.query 가 rebound 됨 (#1149)"
+
+    def test_no_other_module_holds_a_rebound_query(self, empty_db_ctx):
+        """위 3개 밖에서 새로 새는 것이 없는지 — 전역 스윕."""
+        assert _rebound_query_modules() == []
+
+    def test_tracker_still_sees_a_seeded_portfolio(self, empty_db_ctx, tmp_path):
+        """#1149 최소 재현을 동작으로 박는다.
+
+        오염된 `tracker.query` 는 보유 조회에 `[]` 를 돌려주고, 그러면 SELL 이
+        `skip SELL on non-held` 로 걸러져 행이 아예 안 생겼다. 구조가 아니라 **결과**로
+        잠근다 — 다음에 다른 이름이 새도 이 단정은 여전히 유효하다.
+        """
+        from dataclasses import dataclass
+
+        from nuri.core.db import init_db, query, upsert_portfolio
+        from nuri.trading.recommend.candidates import TIER_ACTIONABLE
+        from nuri.trading.recommend.tracker import save_recommendations
+
+        db = tmp_path / "repro.db"
+        init_db(db)
+
+        @dataclass
+        class _Candidate:
+            ticker: str
+            direction: str
+            confidence: float
+            signal_id: str
+            price: float
+            regime_fit: bool = True
+            tier: str = TIER_ACTIONABLE
+            scoring_detail: dict | None = None
+
+        upsert_portfolio(
+            [
+                {
+                    "account": "test",
+                    "ticker": "ZZZ",
+                    "quantity": 5,
+                    "avg_price": 100,
+                    "currency": "USD",
+                    "sector": "Tech",
+                }
+            ],
+            db,
+        )
+        save_recommendations(
+            candidates=[
+                _Candidate(
+                    ticker="ZZZ",
+                    direction="SELL",
+                    confidence=65.0,
+                    signal_id="bb_reversal",
+                    price=100.0,
+                )
+            ],
+            db_path=db,
+        )
+        rows = query("SELECT action FROM recommendations WHERE ticker='ZZZ'", db_path=db)
+        assert rows, "SELL 이 걸러졌다 — tracker 의 보유 조회가 mock 을 물고 있다 (#1149)"
+        assert rows[0]["action"] == "SELL"
+
+    def test_freshness_still_sees_real_data(self, empty_db_ctx, tmp_path):
+        """`nuri.core.freshness` 에 대한 **동작** 잠금 (#1149 codex P2).
+
+        구조 스윕만으로는 부족하다 — tracker 만 초록인 채 낡음 감시가 다시 죽는 회귀가
+        가능하다. 그리고 이 모듈이 새는 게 제일 나쁘다: 고착된 `query` 아래에서는 모든
+        정책이 "데이터 없음" 을 답하므로, **감시 장치가 죽었는데 그 장치의 테스트가 돈다.**
+        """
+        from nuri.core.db import get_db, init_db
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        db = tmp_path / "fresh.db"
+        init_db(db)
+        with get_db(db) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES ('SPY', ?, 1, 1, 1, 1, 1)",
+                (today_kst(),),
+            )
+
+        result = check_freshness("prices", db_path=db)
+        assert result["status"] == "PASS", f"낡음 감시가 데이터를 못 본다 (#1149): {result}"
+        assert result["last_updated"] is not None
+
+    def test_coverage_still_sees_real_data(self, empty_db_ctx, tmp_path):
+        """`nuri.core.coverage` 에 대한 동작 잠금 — 같은 이유."""
+        from nuri.core.coverage import _table_tickers
+        from nuri.core.db import get_db, init_db
+        from nuri.core.timezone import today_kst
+
+        db = tmp_path / "cov.db"
+        init_db(db)
+        with get_db(db) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES ('SPY', ?, 1, 1, 1, 1, 1)",
+                (today_kst(),),
+            )
+
+        found = _table_tickers("prices", db_path=db)
+        assert found == {"SPY"}, f"커버리지 검사가 데이터를 못 본다 (#1149): {found}"
