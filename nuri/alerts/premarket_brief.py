@@ -72,7 +72,17 @@ def _collect_context(db_path=None) -> dict:
         "shadow_signals": [],  # PR C (codex #3): market-wide crash precursor
         "buy_candidates": None,  # #507 Phase 1: cash deploy candidate emit
         "freshness": None,  # #513: 데이터 신선도 surface (PASS/WARN/FAIL 3-tier)
+        "thesis_watch": None,  # #1167: 논지 반증 기준 판정 surface (W3)
     }
+
+    # Thesis Watch (#1167) — thesis_criteria job (08:20) 이 매일 판정을 쌓지만 brief 에
+    # 안 보이면 반증이 발생해도 아무도 모른다. Surface 등급: 정보 노출만.
+    try:
+        from nuri.core.db import get_thesis_watch
+
+        ctx["thesis_watch"] = get_thesis_watch(db_path=db_path)
+    except Exception:
+        logger.warning("thesis watch 수집 실패 (브리핑은 계속)", exc_info=True)
 
     # Data freshness (#513) — backend gate (#512 PR) 가 작동해도 brief 에 surface 되지 않으면
     # 사용자 가시성 0. 매 brief 에 PASS/WARN/FAIL 3-tier summary + per-policy detail 표시.
@@ -600,6 +610,30 @@ def format_brief_markdown(ctx: dict) -> str:
         lines.append("## 24h Macro Events")
         for e in events:
             lines.append(f"- [{e['category']}] sent={e['sentiment']:+.2f} conf={e['confidence']:.2f}: {e['headline']}")
+        lines.append("")
+
+    tw = ctx.get("thesis_watch")
+    if tw is not None:
+        active = tw.get("active", [])
+        breached = [(t, c) for t in active for c in t.get("checks", []) if c["result"] == "breached"]
+        if breached:
+            lines.append(f"## ⚠ Thesis Watch — 반증 {len(breached)}건")
+            for t, c in breached:
+                lines.append(f"- **{t['ticker']}** v{t['version']}: {c['statement']} (관측 {c['observed']})")
+        else:
+            lines.append(f"## Thesis Watch ({len(active)} active)")
+        for t in active:
+            checks = t.get("checks", [])
+            n_hold = sum(1 for c in checks if c["result"] == "holding")
+            n_unevaluable = sum(1 for c in checks if c["result"] == "unevaluable")
+            lines.append(
+                f"- {t['ticker']} v{t['version']} {t['stance']} · verdict={t.get('verdict') or '-'} · "
+                f"오늘 판정 {len(checks)} (holding {n_hold} / unevaluable {n_unevaluable})"
+            )
+        if not active:
+            lines.append(f"- active 논지 없음 (draft {tw.get('draft_count', 0)}건 — 승격 대기)")
+        if tw.get("held_without_thesis"):
+            lines.append(f"- 논지 없는 보유: {len(tw['held_without_thesis'])}종목")
         lines.append("")
 
     totals = ctx.get("portfolio_totals")

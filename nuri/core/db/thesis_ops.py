@@ -295,3 +295,39 @@ def get_thesis_history(ticker: str, db_path: Optional[Path] = None) -> list[dict
                 (ticker,),
             ).fetchall()
         ]
+
+
+def get_thesis_watch(as_of: Optional[str] = None, db_path: Optional[Path] = None) -> dict:
+    """brief 의 Thesis Watch 섹션용 요약 (#1167). Surface 전용 — 판정은 안 바꾼다.
+
+    반환: {"active": [{ticker, version, stance, verdict, checks: [...]}, ...],
+           "draft_count": int, "held_without_thesis": [tickers]}
+    checks 는 당일 판정만 (breached 는 statement, unevaluable 은 detail 동봉).
+    """
+    from nuri.core.timezone import today_kst
+
+    d = as_of or today_kst()
+    with get_db(db_path) as conn:
+        active = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT id, ticker, version, stance, verdict FROM theses WHERE status = 'active'"
+            ).fetchall()
+        ]
+        for t in active:
+            t["checks"] = [
+                dict(r)
+                for r in conn.execute(
+                    """SELECT c.statement, c.kind, k.result, k.observed, k.detail
+                       FROM thesis_criteria c
+                       JOIN thesis_criteria_checks k ON k.criterion_id = c.id
+                       WHERE c.thesis_id = ? AND k.check_date = ?""",
+                    (t["id"], d),
+                ).fetchall()
+            ]
+        draft_count = conn.execute("SELECT COUNT(*) FROM theses WHERE status = 'draft'").fetchone()[0]
+        # 보유종목 중 active 논지 없는 티커 — "논지 없는 보유" Surface
+        held = [r["ticker"] for r in conn.execute("SELECT DISTINCT ticker FROM portfolio").fetchall()]
+        with_thesis = {t["ticker"] for t in active}
+        held_without = sorted(set(held) - with_thesis)
+    return {"active": active, "draft_count": draft_count, "held_without_thesis": held_without}
