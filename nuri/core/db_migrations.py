@@ -1766,4 +1766,15 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
     """,
     ),
+    (
+        56,
+        "trades.account — 계좌별 전략 차등을 위한 실거래 계좌 컬럼 (#1163)",
+        # 회전율 상한(W4)은 전략별 차등이 전제 (core/active/swing) 인데 trades 에 계좌가
+        # 없으면 어느 전략의 회전인지 귀속 불가. 기존 0행이라 backfill 부담 없음.
+        """
+        ALTER TABLE trades ADD COLUMN account TEXT;
+        CREATE INDEX IF NOT EXISTS idx_trades_account_date
+            ON trades(account, executed_at);
+    """,
+    ),
 ]
