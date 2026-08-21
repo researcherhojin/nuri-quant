@@ -273,3 +273,56 @@ class TestReadPath:
         assert sch._STAGE_OF_JOB["thesis_criteria"] == "track"
         scheduled = {j["args"][0] for j in sch.SCHEDULES if j.get("func") is sch._run_collector and j.get("args")}
         assert "thesis_criteria" in scheduled
+
+
+class TestCloseOverSma200Pct:
+    """파생 metric `close_over_sma200_pct` — 절대가격 threshold trap 의 대체 (#thesis-W1).
+
+    절대가격 기준은 등록 몇 달 뒤 200일선도 레짐도 아닌 과거 숫자가 된다 (codex 지적,
+    2026-08-21 논지 원장 첫 운용). 괴리율(%)은 시점 무관하게 같은 의미를 유지한다.
+    """
+
+    def _seed_sma(self, db_path, sma: float):
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO signals (ticker, date, sma_200) VALUES ('ZZZZ', ?, ?)",
+                (today_kst(), sma),
+            )
+
+    def test_resolves_as_pct_deviation(self, db_path):
+        _seed_close(db_path, 110.0)
+        self._seed_sma(db_path, 100.0)
+        value, date, table = tc.METRIC_RESOLVERS["close_over_sma200_pct"]("ZZZZ", db_path)
+        assert value == pytest.approx(10.0)
+        assert date == today_kst()
+        assert table == "prices+signals"
+
+    def test_below_sma_is_negative(self, db_path):
+        _seed_close(db_path, 95.0)
+        self._seed_sma(db_path, 100.0)
+        value, _, _ = tc.METRIC_RESOLVERS["close_over_sma200_pct"]("ZZZZ", db_path)
+        assert value == pytest.approx(-5.0)
+
+    def test_missing_either_leg_is_none_not_zero(self, db_path):
+        """한쪽 부재는 unevaluable(None)이어야 한다 — 0 이면 '200일선 정확히 위' 로 읽힌다."""
+        _seed_close(db_path, 110.0)  # signals 없음
+        value, date, _ = tc.METRIC_RESOLVERS["close_over_sma200_pct"]("ZZZZ", db_path)
+        assert value is None and date is None
+
+    def test_writer_accepts_the_new_metric(self, db_path, thesis):
+        n = add_criteria(
+            thesis,
+            [
+                {
+                    "kind": "machine",
+                    "statement": "200일선 하회면 추세 전제 기각",
+                    "metric": "close_over_sma200_pct",
+                    "op": "<",
+                    "threshold": 0,
+                }
+            ],
+            db_path=db_path,
+        )
+        assert n == 1
