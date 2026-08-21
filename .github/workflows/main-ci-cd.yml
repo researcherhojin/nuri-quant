@@ -391,9 +391,10 @@ jobs:
   #
   # Architecture (post PR #320 revert + STRATEGY §5.8 #2 "2번 실패하면 접근을
   # 바꾼다"):
-  #   1. backend-tests-shard  — fast tests only (-m "not slow"), 2-shard matrix.
-  #      Runs on both PR and push. Always excludes slow.
-  #   2. backend-tests-slow   — 23 slow tests, unsharded, single job.
+  #   1. backend-tests-shard  — fast tests only (-m "not slow"), time-balanced
+  #      shard matrix (개수는 아래 job 의 matrix 가 정본). Runs on both PR and
+  #      push. Always excludes slow.
+  #   2. backend-tests-slow   — slow tests only (-m slow), sharded matrix.
   #      Runs ONLY on push to main (PR still skips slow, matching pre-split
   #      behavior).
   #   3. backend-tests        — aggregator. Reports the "Backend Tests"
@@ -406,7 +407,7 @@ jobs:
   # containing slow). Coverage uploaded from both with distinct flags so
   # Codecov merges correctly.
   #
-  # Shard names are "Backend Tests Shard 1/2" — NOT required checks.
+  # Shard names are "Backend Tests · Fast/Slow <n>" — NOT required checks.
   # Only the aggregator name "Backend Tests" is protected.
 
   backend-tests-shard:
@@ -417,7 +418,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - name: Skip notice (no backend changes)
         if: needs.changes.outputs.run_backend != 'true'
@@ -434,7 +435,7 @@ jobs:
 
       # pytest-split (timing-aware) — `pytest-shard` (hash-based) 가 #320 처럼
       # 테스트 런타임 분포가 치우치면 한 shard 가 전체 wall 을 결정. pytest-split
-      # 은 `.test_durations` (repo 동봉) 의 historical 시간을 읽어 4 shard 를
+      # 은 `.test_durations` (repo 동봉) 의 historical 시간을 읽어 shard 를
       # 균등 분배. 파일 부재 시 test-count balance 로 degrade 하는데, 그건
       # graceful 하지 않다 — 2026-08-10 실측: shard 1~3 은 전체 job 이 2~3분인데
       # shard 4 는 pytest 단계만 5분 timeout 을 넘겨 PR 2건이 막혔다(#1012·#1015).
@@ -447,7 +448,7 @@ jobs:
         if: needs.changes.outputs.run_backend == 'true'
         # `--cov-report=` (empty) suppresses XML — backend-coverage-merge 가 모든
         # shard 의 `.coverage` 를 모아 단일 XML 을 만들고 codecov 에 한 번 업로드.
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow and not integration" --splits 4 --group ${{ matrix.shard }} --cov=nuri --cov-branch --cov-report= --cov-report=term
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow and not integration" --splits 6 --group ${{ matrix.shard }} --cov=nuri --cov-branch --cov-report= --cov-report=term
         # 5분은 **관측된 최악값과 같았다** — 그래서 통과/실패가 동전던지기였다.
         # shard 4 실측 4회: 139s · 302s(timeout) · pass · timeout(82% 에서 절단, #1028).
         # timeout 은 예상 최악값 위에 여유를 둬야 하고, 그러면서도 진짜 hang 은
