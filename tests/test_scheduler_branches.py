@@ -735,7 +735,8 @@ class TestHeldAddShadowSkipReasons:
             patch("nuri.trading.recommend.buy_candidate_emitter._get_factor_scores", return_value={}),
             patch("nuri.trading.recommend.buy_candidate_emitter._get_rsi_snapshot", return_value={}),
             patch("nuri.trading.recommend.buy_candidate_emitter._get_price_signals", return_value={}),
-            patch("nuri.trading.recommend.buy_candidate_emitter._get_regime", return_value=("BULL", 18.5)),
+            # canonical 레짐만 스텁한다 (#1137) — "BULL" 은 classifier 가 절대 내지 않는 값
+            patch("nuri.trading.recommend.buy_candidate_emitter._get_regime", return_value=("bull_low_vol", 18.5)),
             patch("nuri.trading.recommend.held_add.emit_held_add_shadow", side_effect=fake_emit),
             caplog.at_level(logging.INFO, logger="nuri.scheduler"),
         ):
@@ -762,7 +763,8 @@ class TestHeldAddShadowSkipReasons:
             patch("nuri.trading.recommend.buy_candidate_emitter._get_factor_scores", return_value={}),
             patch("nuri.trading.recommend.buy_candidate_emitter._get_rsi_snapshot", return_value={}),
             patch("nuri.trading.recommend.buy_candidate_emitter._get_price_signals", return_value={}),
-            patch("nuri.trading.recommend.buy_candidate_emitter._get_regime", return_value=("BULL", 18.5)),
+            # canonical 레짐만 스텁한다 (#1137) — "BULL" 은 classifier 가 절대 내지 않는 값
+            patch("nuri.trading.recommend.buy_candidate_emitter._get_regime", return_value=("bull_low_vol", 18.5)),
             patch("nuri.trading.recommend.held_add.emit_held_add_shadow", side_effect=fake_emit),
             caplog.at_level(logging.INFO, logger="nuri.scheduler"),
         ):
