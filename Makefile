@@ -361,7 +361,7 @@ earnings-preview:
 # 투자 논지 원장 (#1083) — 상승/하락 논리를 근거와 함께 기록하고, 결정 상세 화면에
 # point-in-time 으로 붙인다. 기본 status 는 draft — active 승격은 파일에 명시할 때만.
 # Usage:
-#   make thesis-write file=docs/theses/nvda.yaml
+#   make thesis-write file=data/reports/theses/drafts/nvda.yaml  # gitignored — 논지는 public repo 에 커밋 금지
 #   make thesis-show ticker=NVDA
 thesis-write:
 	@test -n "$(file)" || (echo "usage: make thesis-write file=<thesis.yaml>"; exit 1)

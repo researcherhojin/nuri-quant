@@ -172,6 +172,8 @@ data/backups/
 data/replicas/
 data/exports/
 data/reports/
+# 논지 원장 파일 — 보유 종목 논지는 포지션 신호라 public 커밋 금지 (#577 W5 전까지)
+docs/theses/
 data/.bfg-reports/
 # scheduler.err/.log, auto-deploy log 등
 data/logs/
