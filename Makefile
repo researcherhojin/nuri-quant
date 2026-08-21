@@ -363,6 +363,15 @@ earnings-preview:
 # Usage:
 #   make thesis-write file=data/reports/theses/drafts/nvda.yaml  # gitignored — 논지는 public repo 에 커밋 금지
 #   make thesis-show ticker=NVDA
+# 실거래 기록 (#1163) — 매매 직후 1줄. 원장은 mini (§3.11), dev 입력 시 sync_dev push.
+#   make trade-log args="--ticker AAPL --side BUY --qty 10 --price 231.50 --account main"
+trade-log:
+	@test -n "$(args)" || (echo 'usage: make trade-log args="--ticker T --side BUY --qty N --price P --account A"'; exit 1)
+	$(PYTHON) -m nuri.core.trade_cli add $(args)
+
+trade-list:
+	$(PYTHON) -m nuri.core.trade_cli list $(args)
+
 thesis-write:
 	@test -n "$(file)" || (echo "usage: make thesis-write file=<thesis.yaml>"; exit 1)
 	$(PYTHON) -m nuri.core.thesis_cli write "$(file)"

@@ -781,3 +781,62 @@ def test_buy_emitter_tp_ladder_matches_canonical_growth():
         f"buy_signals tp2_pct={risk.get('tp2_pct')} != canonical "
         f"{TAKE_PROFIT_GROWTH['target_2']} (rules.yaml take_profit.growth)"
     )
+
+
+# --- Thesis Surface (#1165) --------------------------------------------------
+
+
+def _register_thesis(db, ticker, status="active"):
+    from nuri.core.db.thesis_ops import add_criteria, upsert_thesis
+
+    tid = upsert_thesis(
+        ticker=ticker,
+        author="user",
+        stance="bullish",
+        bull_case="테스트 상승 논지",
+        bear_case="테스트 하락 논지",
+        evidence=[{"side": "bull", "claim": "테스트", "source_type": "measurement"}],
+        status=status,
+        db_path=db,
+    )
+    add_criteria(
+        tid,
+        [{"kind": "machine", "statement": "테스트 기준", "metric": "close", "op": "<", "threshold": 1}],
+        db_path=db,
+    )
+    return tid
+
+
+def test_candidate_surfaces_active_thesis(db, cfg_path):
+    """active 논지가 있으면 후보에 라벨이 붙는다 — emit 진입점 통과 잠금 (wiring axis)."""
+    _seed_calm_setup(db)
+    _register_thesis(db, "AAPL", status="active")
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.candidates, f"blocked_reason={res.blocked_reason}"
+    assert res.candidates[0].thesis == "v1 bullish"
+
+    md = render_markdown(res)
+    assert "Thesis: ✓ v1 bullish" in md
+
+
+def test_candidate_without_thesis_surfaces_absence_not_block(db, cfg_path):
+    """논지 없음은 Surface 만 — 후보를 막지 않는다 (Escalation §2.6 Surface 등급)."""
+    _seed_calm_setup(db)
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.candidates, "논지 부재가 emit 을 막으면 Surface 가 아니라 gate 다"
+    assert res.candidates[0].thesis is None
+
+    md = render_markdown(res)
+    assert "Thesis: 없음" in md
+
+
+def test_draft_thesis_counts_as_absent(db, cfg_path):
+    """draft 는 결정 화면에 붙지 않는다 — 원장 규약과 동일하게 없음 취급."""
+    _seed_calm_setup(db)
+    _register_thesis(db, "AAPL", status="draft")
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.candidates
+    assert res.candidates[0].thesis is None
