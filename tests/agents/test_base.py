@@ -300,8 +300,16 @@ class TestActorLifecycle:
 
 
 class TestActorRegistry:
-    def test_canonical_15_count(self):
-        assert len(ActorRegistry.CANONICAL_15) == 15
+    def test_roster_tiers_partition_cleanly(self):
+        """canonical(배선 8) + dormant(휴면 7) = 전체 15, 교집합 없음 (#975).
+
+        canonical 은 "실제 호출자가 있다" 는 주장이다 — 새 액터를 canonical 에
+        넣으려면 호출 경로가 같은 PR 에 있어야 한다.
+        """
+        c, d = set(ActorRegistry.CANONICAL_ACTORS), set(ActorRegistry.DORMANT_ACTORS)
+        assert len(c) == 8 and len(d) == 7
+        assert not (c & d), f"양쪽에 있는 액터: {c & d}"
+        assert set(ActorRegistry.CANONICAL_15) == c | d  # 하위 호환 별칭
 
     def test_register_canonical_actor(self):
         reg = ActorRegistry()
@@ -318,7 +326,7 @@ class TestActorRegistry:
                 return ActorResult(output={})
 
         reg = ActorRegistry()
-        with pytest.raises(ValueError, match="not in canonical 15"):
+        with pytest.raises(ValueError, match="not in the actor roster"):
             reg.register(FooActor)
 
     def test_register_same_class_idempotent(self):
@@ -343,13 +351,14 @@ class TestActorRegistry:
         with pytest.raises(ValueError, match="refusing to overwrite"):
             reg.register(Conflicting)
 
-    def test_missing_returns_unregistered_actors(self):
+    def test_missing_tracks_canonical_only(self):
+        """dormant 는 missing 에 안 나온다 — 미배선을 pending 으로 광고하지 않는다 (#975)."""
         reg = ActorRegistry()
-        reg.register(_FreshnessGatekeeperFake)
+        reg.register(_FreshnessGatekeeperFake)  # dormant 등록은 허용
         missing = reg.missing()
-        assert "freshness-gatekeeper" not in missing
-        assert "execution-firewall" in missing
-        assert len(missing) == 14
+        assert "freshness-gatekeeper" not in missing  # dormant — 추적 대상 아님
+        assert "execution-firewall" in missing  # canonical 미등록 — 추적됨
+        assert len(missing) == len(ActorRegistry.CANONICAL_ACTORS)
 
     def test_all_returns_dict_copy(self):
         """all() 은 internal registry dict 의 copy 를 반환 (line 281)."""

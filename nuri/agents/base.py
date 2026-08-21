@@ -228,23 +228,33 @@ class ActorRegistry:
         15. State-Replicator-DR
     """
 
-    CANONICAL_15: tuple[str, ...] = (
+    # 2026-08-21 (#975) 로스터를 현실로 축소: 15종 광고 중 실제 호출자가 있는 것은
+    # 8종뿐이었다 (scheduler 4 + sleeve/rules 2 + phase2 수동 체인 2+). 호출자 없는
+    # 7종은 DORMANT 로 강등 — 코드·테스트는 보존하고 광고만 철회한다 ("wired ≠
+    # validated"). 승격 조건: 실제 호출 경로가 생기는 PR 에서 CANONICAL 로 이동.
+    CANONICAL_ACTORS: tuple[str, ...] = (
         "collector-orchestrator",
-        "freshness-gatekeeper",
         "regime-posterior",
         "hypothesis-registry",
-        "walkforward-validator",
         "causal-factor-auditor",
-        "foundation-benchmark",
         "decision-compiler",
         "execution-firewall",
-        "audit-ledger",
         "forward-outcome-tracker",
+        "sre-incident-agent",
+    )
+    #: 구현·테스트는 있으나 어떤 경로도 부르지 않는 휴면 액터. 등록은 허용하되
+    #: `missing()` 추적에서 제외 — "미배선을 pending 으로 광고" 하지 않기 위해.
+    DORMANT_ACTORS: tuple[str, ...] = (
+        "freshness-gatekeeper",
+        "walkforward-validator",
+        "foundation-benchmark",
+        "audit-ledger",
         "drift-sentinel",
         "release-rollback-manager",
-        "sre-incident-agent",
         "state-replicator-dr",
     )
+    # 하위 호환 별칭 — 외부 참조가 있을 수 있어 한 릴리즈 유지 (전체 = canonical + dormant)
+    CANONICAL_15: tuple[str, ...] = CANONICAL_ACTORS + DORMANT_ACTORS
 
     def __init__(self) -> None:
         self._registry: dict[str, type[Actor]] = {}
@@ -259,9 +269,10 @@ class ActorRegistry:
         TypeVar로 반환 타입을 입력 subclass 로 보존 — Pylance 가 클래스 변수
         (VALID_ACTIONS 등) 접근을 정확히 추론하도록.
         """
-        if actor_cls.name not in self.CANONICAL_15:
+        if actor_cls.name not in self.CANONICAL_ACTORS + self.DORMANT_ACTORS:
             raise ValueError(
-                f"{actor_cls.__name__}.name={actor_cls.name!r} not in canonical 15. Allowed: {self.CANONICAL_15}"
+                f"{actor_cls.__name__}.name={actor_cls.name!r} not in the actor roster. "
+                f"Allowed: {self.CANONICAL_ACTORS + self.DORMANT_ACTORS}"
             )
         existing = self._registry.get(actor_cls.name)
         if existing is not None and (existing.__qualname__, getattr(existing, "name", None)) != (
@@ -281,8 +292,8 @@ class ActorRegistry:
         return dict(self._registry)
 
     def missing(self) -> list[str]:
-        """canonical 15 중 미등록 actor 목록 — Phase 진행 추적용."""
-        return [n for n in self.CANONICAL_15 if n not in self._registry]
+        """canonical 중 미등록 actor 목록 — dormant 는 제외 (미배선은 pending 이 아니다)."""
+        return [n for n in self.CANONICAL_ACTORS if n not in self._registry]
 
 
 # Module-level singleton
