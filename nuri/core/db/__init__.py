@@ -102,6 +102,7 @@ from .thesis_ops import (  # noqa: F401, E402
     get_active_thesis,
     get_criteria,
     get_thesis_history,
+    get_thesis_watch,
     record_human_check,
     upsert_thesis,
 )
