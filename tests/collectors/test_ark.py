@@ -433,3 +433,19 @@ class TestArkSourceStaleness:
                 assert ARKCollector().collect(db_path=held) == []
 
         assert not [r for r in caplog.records if "낡음" in r.getMessage()]
+
+    def test_collect_wires_the_source_date_recording(self, held):
+        """`_record_source_dates` 를 직접 부르는 테스트만으로는 **호출 배선**이 안 잠긴다 —
+        `collect()` 에서 그 한 줄을 지워도 초록이었다 (같은 실수를 staleness 경고에서
+        한 번 했다). 배선이 끊기면 freshness 정책은 영원히 '데이터 없음' 이고 아무도
+        눈치채지 못한다."""
+        from nuri.collectors.ark import ARK_HOLDINGS_FILES, ARKCollector
+        from nuri.core.db import query
+
+        seq = [_resp(self._csv("01/02/2026"))] * len(ARK_HOLDINGS_FILES)
+        with patch("nuri.collectors.ark.requests.get", side_effect=seq):
+            ARKCollector().collect(db_path=held)
+
+        rows = query("SELECT fund, csv_date FROM ark_source_dates", db_path=held)
+        assert {r["fund"] for r in rows} == set(ARK_HOLDINGS_FILES)
+        assert {r["csv_date"] for r in rows} == {"2026-01-02"}

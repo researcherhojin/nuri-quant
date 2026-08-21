@@ -1743,4 +1743,27 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
             ON superinvestors(investor_class, ticker);
     """,
     ),
+    (
+        55,
+        "ark_source_dates — ARK 펀드별 CSV 발행일 (#1147)",
+        # 소스 신선도는 `ark` 테이블로 잴 수 없다: 거기엔 보유 종목과 겹치는 행만 들어가서
+        # 펀드별 MAX(date) 가 "이 펀드가 마지막으로 발행한 날" 이 아니라 "우리가 이 펀드
+        # 종목을 마지막으로 들고 있던 날" 을 답한다. ARKG 는 매일 갱신되는데 우리가 그
+        # 보유 종목을 안 들어서 4개월째 행이 없었고, 정책이 멀쩡한 펀드를 가장 낡았다고
+        # 지목했다 — 외부 소스 감시가 우리 포트폴리오 구성에 의존해버린 것이다.
+        #
+        # `external_analysis` 에 얹지 않는 이유: 거기 `ticker` 는 **실제 종목 심볼
+        # 네임스페이스**다. `ARKK`/`ARKF` 는 진짜 ETF 티커라, 펀드명을 그 컬럼에 쓰면
+        # `get_external()` · `/api/external/{ticker}` · `get_external_summary()` 가 이걸
+        # ARKK 종목에 대한 외부 분석으로 돌려주고, 무엇보다 certification 의
+        # `_count_external_for_class()` 가 **SIEGE external evidence 로 센다** (그 ETF 를
+        # 보유하게 되는 순간). 메타데이터가 신호 자리로 새는 형태라 테이블을 따로 둔다.
+        """
+        CREATE TABLE IF NOT EXISTS ark_source_dates (
+            fund TEXT PRIMARY KEY,
+            csv_date TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+    """,
+    ),
 ]
