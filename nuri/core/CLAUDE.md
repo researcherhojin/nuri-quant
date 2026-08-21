@@ -49,6 +49,17 @@ Two guarantees hold here, and both are load-bearing for readers elsewhere:
 
 `FRESHNESS_POLICIES` per data source (prices 48h/120h, VIX 24h/72h, etc.). `check_freshness(key)` returns PASS/WARN/FAIL.
 
+정책을 추가/삭제하면 `tests/core/test_freshness.py::test_expected_policy_keys` 가 **일부러**
+깨진다 — 양방향 allowlist 라 등재할 때 "왜 이 정책이 생겼는지" 한 줄을 그 테스트에 같이
+적는다 (#1071 `factors` / #1101 `signals` / #1145 `ark` 가 전례).
+
+⚠️ **정책 쿼리는 소스를 재야지, 우리와 소스의 교집합을 재면 안 된다** (#1147). 보유 종목으로
+필터된 테이블(`ark` 가 그랬다)의 `MAX(date)` 는 "소스가 마지막으로 발행한 날"이 아니라
+"우리가 마지막으로 겹친 날"이다 — 포트폴리오 구성이 바뀌면 멀쩡한 소스가 낡음으로 오판된다.
+수집기가 필터 **이전** 사실을 따로 기록하게 하고(`ark_source_dates`) 정책은 그걸 읽는다.
+축이 여러 개인 소스(펀드·시장)는 합산 `MAX` 금지 — 멀쩡한 축이 죽은 축을 가린다
+(`signals` 의 KR/US 분리, `ark` 의 `COUNT(*)=5` + 펀드별 MIN 이 같은 원칙).
+
 ## pipeline.py — Orchestration
 
 `STEP_DEPENDENCIES` defines the 5-stage DAG (`collect → analyze → consensus → certify → track`). `run_step()` enforces dependency completion.
