@@ -1,4 +1,4 @@
-"""CI 의 4-shard 분할이 **시간 기반**으로 도는지 잠근다.
+"""CI 의 fast-shard 분할이 **시간 기반**으로 도는지 잠근다.
 
 pytest-split 은 `.test_durations` 가 없으면 조용히 **개수 균형**으로 degrade 한다. 그게
 graceful 하지 않다 — 2026-08-10 실측으로 shard 최대/최소가 3.75배 벌어졌고, 최악 shard 가
@@ -30,7 +30,7 @@ class TestDurationsFile:
     def test_exists_and_parses(self):
         """파일이 없으면 CI 가 count-split 으로 조용히 떨어진다."""
         assert DURATIONS.exists(), (
-            f"{DURATIONS.name} 이 없다 — CI 4-shard 가 개수 균형으로 degrade 한다.\n"
+            f"{DURATIONS.name} 이 없다 — CI fast shard 가 개수 균형으로 degrade 한다.\n"
             "`make sync-test-durations` 로 재생성할 것."
         )
         data = json.loads(DURATIONS.read_text())
