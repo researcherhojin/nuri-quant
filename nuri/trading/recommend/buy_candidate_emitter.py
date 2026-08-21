@@ -62,6 +62,9 @@ class BuyCandidate:
     why_now: str  # single-sentence catalyst
     sources: dict[str, float]  # {factor: 0.78, momentum: 0.65, ...}
     sector: str | None = None
+    # 논지 원장 Surface (#1165): active thesis 가 있으면 "v{n} {stance}", 없으면 None.
+    # Surface 등급만 — 논지 없는 후보를 막지 않는다 (hard 승격은 STRATEGY PR, §2.6).
+    thesis: str | None = None
 
 
 @dataclass
@@ -422,6 +425,20 @@ def _build_why_now(sources: dict[str, float], price: dict[str, float], rsi: floa
     return f"30d 고가 -{abs(bo):.1f}% 근접 (pullback)"
 
 
+def _thesis_label(ticker: str, db_path: Path | None = None) -> str | None:
+    """active 논지 라벨 (#1165). draft 는 없음 취급 — get_active_thesis 가 active 만 반환.
+
+    조회 실패는 None (표면화 실패가 emit 을 막으면 안 된다 — #894 관측 비게이트).
+    """
+    try:
+        from nuri.core.db.thesis_ops import get_active_thesis
+
+        t = get_active_thesis(ticker, db_path=db_path)
+        return f"v{t['version']} {t['stance']}" if t else None
+    except Exception:
+        return None
+
+
 def emit_buy_candidates(
     config_path: Path | None = None,
     limit: int | None = None,
@@ -569,6 +586,7 @@ def emit_buy_candidates(
                 tp2=round(entry * (1 + risk.get("tp2_pct", 40.0) / 100.0), 2),
                 why_now=_build_why_now(sources, price, _rsi),
                 sources=sources,
+                thesis=_thesis_label(ticker, db_path=db_path),
             )
         )
 
@@ -600,6 +618,11 @@ def render_markdown(result: EmitResult) -> str:
         )
         src = " · ".join(f"{k}={v:.0f}" for k, v in c.sources.items())
         lines.append(f"   - Sources: {src}")
+        # 논지 Surface (#1165) — 정보 노출만, 매수를 막지 않는다
+        if c.thesis:
+            lines.append(f"   - Thesis: ✓ {c.thesis}")
+        else:
+            lines.append("   - Thesis: 없음 — 매수 전 논지 작성 권장 (make thesis-write)")
 
     if result.skipped:
         skipped_top = list(result.skipped.items())[:5]
