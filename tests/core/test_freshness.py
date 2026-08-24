@@ -695,3 +695,59 @@ class TestCertificationFreshnessE4_0a:
         dt = _parse_timestamp("2026-4-1")
         assert dt.year == 2026 and dt.month == 4 and dt.day == 1
         assert dt.tzinfo is not None  # KST 부착됨
+
+
+class TestFreshnessConfig:
+    """임계는 config/freshness.yaml 이 정본 (#1180, config-over-code)."""
+
+    def test_thresholds_come_from_config(self):
+        """로드된 정책 임계 == yaml 값 — 코드 하드코딩이 되살아나면 여기서 어긋난다."""
+        import yaml as _yaml
+
+        from nuri.core.freshness import _CONFIG_PATH, FRESHNESS_POLICIES
+
+        with open(_CONFIG_PATH, encoding="utf-8") as f:
+            cfg = _yaml.safe_load(f)
+
+        assert set(cfg["thresholds"]) == set(FRESHNESS_POLICIES)
+        for key, hours in cfg["thresholds"].items():
+            assert FRESHNESS_POLICIES[key]["warn_hours"] == hours["warn_hours"], key
+            assert FRESHNESS_POLICIES[key]["fail_hours"] == hours["fail_hours"], key
+
+    def test_config_key_mismatch_raises(self, tmp_path, monkeypatch):
+        """config 누락/잉여 키는 기동 시 ValueError — 조용한 기본값 폴백 금지."""
+        import nuri.core.freshness as fresh_mod
+
+        bad = tmp_path / "freshness.yaml"
+        bad.write_text("thresholds:\n  prices: { warn_hours: 1, fail_hours: 2 }\n", encoding="utf-8")
+        monkeypatch.setattr(fresh_mod, "_CONFIG_PATH", bad)
+        with pytest.raises(ValueError, match="불일치"):
+            fresh_mod._load_config()
+
+    def test_verdict_gate_unknown_key_raises(self, tmp_path, monkeypatch):
+        import yaml as _yaml
+
+        import nuri.core.freshness as fresh_mod
+
+        with open(fresh_mod._CONFIG_PATH, encoding="utf-8") as f:
+            cfg = _yaml.safe_load(f)
+        cfg["verdict_gate"] = ["nonexistent_policy"]
+        bad = tmp_path / "freshness.yaml"
+        bad.write_text(_yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+        monkeypatch.setattr(fresh_mod, "_CONFIG_PATH", bad)
+        with pytest.raises(ValueError, match="verdict_gate"):
+            fresh_mod._load_config()
+
+    def test_verdict_gate_keys_are_registered_policies(self):
+        from nuri.core.freshness import FRESHNESS_POLICIES, VERDICT_GATE_KEYS
+
+        assert VERDICT_GATE_KEYS, "verdict_gate 가 비어 있으면 stale gate 가 무력하다"
+        assert set(VERDICT_GATE_KEYS) <= set(FRESHNESS_POLICIES)
+
+    def test_stale_verdict_inputs_flags_fail_only(self, db_path):
+        """빈 DB → gate 입력 전부 FAIL 로 표면화. 반환 항목은 FAIL 만."""
+        from nuri.core.freshness import VERDICT_GATE_KEYS, stale_verdict_inputs
+
+        stale = stale_verdict_inputs(db_path)
+        assert {s["key"] for s in stale} == set(VERDICT_GATE_KEYS)
+        assert all(s["status"] == "FAIL" for s in stale)
