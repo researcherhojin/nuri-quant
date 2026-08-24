@@ -10,11 +10,17 @@ Privacy: AAA/BBB synthetic tickers, no real holdings.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 import pandas as pd
 import pytest
 
 from nuri.core.db import get_db
+from nuri.core.timezone import kst_now
+
+# 오늘 앵커 날짜 — 고정 리터럴은 시한폭탄 (tests/CLAUDE.md Time-bomb seed dates, #1187)
+_ARK_FRESH_DATE = (kst_now() - timedelta(days=3)).strftime("%Y-%m-%d")
+_ARK_FRESHER_DATE = (kst_now() - timedelta(days=2)).strftime("%Y-%m-%d")
 
 # ─── crypto_agent.py: lines 65-66 (BTC -7% mid-crash branch) ────────────
 
@@ -522,11 +528,11 @@ class TestSmartMoneyArkSells:
         with get_db(db_path) as conn:
             # 다른 fund / date — UNIQUE constraint (date,ticker,fund) 회피
             funds_dates = [
-                ("ARKK", "2026-04-25"),
-                ("ARKW", "2026-04-25"),
-                ("ARKG", "2026-04-25"),
-                ("ARKQ", "2026-04-25"),
-                ("ARKF", "2026-04-25"),
+                ("ARKK", _ARK_FRESH_DATE),
+                ("ARKW", _ARK_FRESH_DATE),
+                ("ARKG", _ARK_FRESH_DATE),
+                ("ARKQ", _ARK_FRESH_DATE),
+                ("ARKF", _ARK_FRESH_DATE),
             ]
             for fund, date in funds_dates:
                 conn.execute(
@@ -537,7 +543,7 @@ class TestSmartMoneyArkSells:
             conn.execute(
                 """INSERT INTO ark (date, ticker, direction, shares, weight, fund)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                ("2026-04-26", "TSLA", "Buy", 500, 0.5, "ARKK"),
+                (_ARK_FRESHER_DATE, "TSLA", "Buy", 500, 0.5, "ARKK"),
             )
 
         v = SmartMoneyAgent().analyze("TSLA", db_path=db_path)

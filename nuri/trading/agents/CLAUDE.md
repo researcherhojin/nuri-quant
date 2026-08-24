@@ -30,6 +30,16 @@ Live probe (2026-04-17):
 보유 스냅샷 폴백) 동안 거기 있는 티커는 전부 상시 `score -1` 을 받았다. 수집기 쪽 사정과
 무관하게 이 집계는 방어적으로 옳아야 한다. 배경은 `nuri/collectors/CLAUDE.md` "ARK".
 
+## smart_money 는 source 별 신선도 억제를 한다 (#1187)
+
+세 소스(13F superinvestors · estimates · ark) 각각 `config/agents.yaml
+smart_money.freshness` 의 max-age 를 넘는 행은 점수에서 제외하고, "행이 있었는데 전부
+낡아 제외" 는 reasoning 에 `"<라벨> 낡음(최신 날짜) — 제외"` 로 명시한다 (조용한 결손
+금지). `data_points["stale_sources"]` 가 제외 목록을 노출한다. 235일 낡은 ARK Buy 가
+"ARK 최근 매수 ±1" 로 표면화된 사고가 기원. **Test:**
+`tests/trading/agents/test_smart_money_branches.py::TestSourceFreshnessSuppression` —
+축별 전용 테스트 (한 소스의 컷오프를 지우면 그 축 테스트만 FAIL).
+
 ## Veto + Divergence
 
 - **Risk agent** (19% weight) has **veto power**: SELL + confidence ≥ 80 overrides all others.

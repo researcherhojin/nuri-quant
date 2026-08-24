@@ -11,8 +11,16 @@ Branches:
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from nuri.core.db import get_db
+from nuri.core.timezone import kst_now
 from nuri.trading.agents.smart_money import SmartMoneyAgent
+
+
+def _d(days_ago: int) -> str:
+    """오늘 앵커 날짜 — 고정 리터럴은 시한폭탄 (tests/CLAUDE.md Time-bomb seed dates, #1187)."""
+    return (kst_now() - timedelta(days=days_ago)).strftime("%Y-%m-%d")
 
 
 class TestSmartMoneyBranches:
@@ -26,7 +34,7 @@ class TestSmartMoneyBranches:
                 "INSERT INTO estimates "
                 "(ticker, date, recommendation, target_mean, current_price, num_analysts) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                ("TESTHO", "2026-01-01", "hold", 105.0, 100.0, 8),  # upside +5% < 20%
+                ("TESTHO", _d(5), "hold", 105.0, 100.0, 8),  # upside +5% < 20%
             )
         v = SmartMoneyAgent().analyze("TESTHO", db_path=db_path)
         # rec=hold 이라 buy/sell 분기 미진입; upside=5% (>0 but <20) → 76→81
@@ -43,7 +51,7 @@ class TestSmartMoneyBranches:
                 "INSERT INTO estimates "
                 "(ticker, date, recommendation, target_mean, current_price, num_analysts) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                ("NOPX", "2026-01-01", "buy", None, 100.0, 5),
+                ("NOPX", _d(5), "buy", None, 100.0, 5),
             )
         v = SmartMoneyAgent().analyze("NOPX", db_path=db_path)
         # rec=buy → score+=1, 그러나 target=None → 71→81 False → 목표가 reasons 미추가
@@ -56,7 +64,7 @@ class TestSmartMoneyBranches:
                 "INSERT INTO estimates "
                 "(ticker, date, recommendation, target_mean, current_price, num_analysts) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                ("MIDUP", "2026-01-01", "buy", 110.0, 100.0, 5),  # upside +10% (between -10/+20)
+                ("MIDUP", _d(5), "buy", 110.0, 100.0, 5),  # upside +10% (between -10/+20)
             )
         v = SmartMoneyAgent().analyze("MIDUP", db_path=db_path)
         # upside=10% → 73(>20) False, 76(<-10) False → score 추가/감소 미발생
@@ -69,7 +77,7 @@ class TestSmartMoneyBranches:
             for i, direction in enumerate(["Sell", "Sell", "Sell", "Buy"]):
                 conn.execute(
                     "INSERT INTO ark (ticker, date, direction, shares) VALUES (?, ?, ?, ?)",
-                    ("ARKSL", f"2026-03-{20 + i:02d}", direction, 1000),
+                    ("ARKSL", _d(4 - i), direction, 1000),
                 )
         v = SmartMoneyAgent().analyze("ARKSL", db_path=db_path)
         assert "ARK 최근 매도" in v.reasoning
@@ -83,12 +91,12 @@ class TestSmartMoneyBranches:
                 "INSERT INTO estimates "
                 "(ticker, date, recommendation, target_mean, current_price, num_analysts) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                ("EQAR", "2026-01-01", "buy", 130.0, 100.0, 5),
+                ("EQAR", _d(5), "buy", 130.0, 100.0, 5),
             )
             for i, direction in enumerate(["Buy", "Sell"]):  # 1:1
                 conn.execute(
                     "INSERT INTO ark (ticker, date, direction, shares) VALUES (?, ?, ?, ?)",
-                    ("EQAR", f"2026-03-{20 + i:02d}", direction, 1000),
+                    ("EQAR", _d(4 - i), direction, 1000),
                 )
         v = SmartMoneyAgent().analyze("EQAR", db_path=db_path)
         assert "ARK 최근" not in v.reasoning
@@ -108,12 +116,12 @@ class TestSmartMoneyBranches:
                 "INSERT INTO estimates "
                 "(ticker, date, recommendation, target_mean, current_price, num_analysts) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                ("HOLDONLY", "2026-01-01", "buy", 130.0, 100.0, 5),
+                ("HOLDONLY", _d(5), "buy", 130.0, 100.0, 5),
             )
             for i in range(5):
                 conn.execute(
                     "INSERT INTO ark (ticker, date, direction, shares, fund) VALUES (?, ?, ?, ?, ?)",
-                    ("HOLDONLY", f"2026-03-{20 + i:02d}", "Hold", 0.0, f"ARK{i}"),
+                    ("HOLDONLY", _d(4 - i), "Hold", 0.0, f"ARK{i}"),
                 )
         v = SmartMoneyAgent().analyze("HOLDONLY", db_path=db_path)
         assert "ARK 최근 매도" not in v.reasoning
@@ -135,7 +143,7 @@ class TestSmartMoneyBranches:
                 "INSERT INTO estimates "
                 "(ticker, date, recommendation, target_mean, current_price, num_analysts) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                ("RAWHOLD", "2026-01-01", "buy", 130.0, 100.0, 5),
+                ("RAWHOLD", _d(5), "buy", 130.0, 100.0, 5),
             )
 
         agent = SmartMoneyAgent()
@@ -158,12 +166,117 @@ class TestSmartMoneyBranches:
             for i in range(3):  # 오래된 진짜 매수
                 conn.execute(
                     "INSERT INTO ark (ticker, date, direction, shares, fund) VALUES (?, ?, ?, ?, ?)",
-                    ("CROWD", f"2026-03-0{1 + i}", "Buy", 1000.0, f"ARK{i}"),
+                    ("CROWD", _d(10 - i), "Buy", 1000.0, f"ARK{i}"),
                 )
             for i in range(5):  # 그 위를 덮는 최신 Hold 스냅샷
                 conn.execute(
                     "INSERT INTO ark (ticker, date, direction, shares, fund) VALUES (?, ?, ?, ?, ?)",
-                    ("CROWD", f"2026-03-{20 + i:02d}", "Hold", 0.0, f"ARK{i}"),
+                    ("CROWD", _d(4 - i), "Hold", 0.0, f"ARK{i}"),
                 )
         v = SmartMoneyAgent().analyze("CROWD", db_path=db_path)
         assert "ARK 최근 매수 3건" in v.reasoning
+
+
+class TestSourceFreshnessSuppression:
+    """#1187: source 별 신선도 억제 — 낡은 소스는 점수 0 + '낡음 — 제외' 명시.
+
+    축별로 따로 잠근다 (mutation-axes 규칙): 한 소스의 컷오프를 지워도
+    다른 소스 테스트는 초록이므로 축마다 전용 테스트가 있어야 한다.
+    """
+
+    def test_stale_superinvestors_are_excluded_with_note(self, db_path):
+        """13F 가 컷오프(200d)보다 낡으면 보유·신규매수 점수 모두 0 + 명시."""
+        with get_db(db_path) as conn:
+            for inv in ("Buffett", "Dalio", "Gates"):
+                conn.execute(
+                    "INSERT INTO superinvestors (investor, ticker, portfolio_pct, filing_date, investor_class) "
+                    "VALUES (?, ?, ?, ?, 'conviction')",
+                    (inv, "STALE13F", 8.0, _d(300)),
+                )
+        v = SmartMoneyAgent().analyze("STALE13F", db_path=db_path)
+        assert "슈퍼투자자 13F 낡음" in v.reasoning
+        assert "슈퍼투자자 3명 보유" not in v.reasoning
+        assert "최근 신규 매수" not in v.reasoning
+        assert v.data_points["score"] == 0
+        assert "superinvestors" in v.data_points["stale_sources"]
+
+    def test_fresh_superinvestors_still_score(self, db_path):
+        with get_db(db_path) as conn:
+            for inv in ("Buffett", "Dalio"):
+                conn.execute(
+                    "INSERT INTO superinvestors (investor, ticker, portfolio_pct, filing_date, investor_class) "
+                    "VALUES (?, ?, ?, ?, 'conviction')",
+                    (inv, "FRESH13F", 8.0, _d(30)),
+                )
+        v = SmartMoneyAgent().analyze("FRESH13F", db_path=db_path)
+        assert "슈퍼투자자 2명 보유" in v.reasoning
+        assert v.data_points["stale_sources"] == []
+
+    def test_stale_estimates_are_excluded_with_note(self, db_path):
+        """estimates 최신 행이 45d 컷오프보다 낡으면 등급/목표가 점수 제외 + 명시."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO estimates (ticker, date, recommendation, target_mean, current_price, num_analysts) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("STALEEST", _d(90), "strong_buy", 200.0, 100.0, 10),
+            )
+        v = SmartMoneyAgent().analyze("STALEEST", db_path=db_path)
+        assert "애널리스트 컨센서스 낡음" in v.reasoning
+        assert "애널리스트: strong_buy" not in v.reasoning
+        assert "목표가" not in v.reasoning
+        assert v.data_points["score"] == 0
+        assert "estimates" in v.data_points["stale_sources"]
+
+    def test_stale_ark_trades_are_excluded_with_note(self, db_path):
+        """ARK 매매가 14d 컷오프보다 낡으면 ± 점수 제외 + 명시 — 235d stale ±1 사고의 재발 방지."""
+        with get_db(db_path) as conn:
+            for i in range(3):
+                conn.execute(
+                    "INSERT INTO ark (ticker, date, direction, shares) VALUES (?, ?, ?, ?)",
+                    ("STALEARK", _d(235 + i), "Buy", 1000),
+                )
+        v = SmartMoneyAgent().analyze("STALEARK", db_path=db_path)
+        assert "ARK 매매 낡음" in v.reasoning
+        assert "ARK 최근 매수" not in v.reasoning
+        assert v.data_points["score"] == 0
+        assert "ark" in v.data_points["stale_sources"]
+
+    def test_mixed_ark_counts_only_fresh_rows(self, db_path):
+        """창 안에 낡은 Sell + 신선한 Buy 가 섞이면 신선한 것만 센다."""
+        with get_db(db_path) as conn:
+            for i in range(2):  # 낡은 Sell
+                conn.execute(
+                    "INSERT INTO ark (ticker, date, direction, shares) VALUES (?, ?, ?, ?)",
+                    ("MIXARK", _d(60 + i), "Sell", 1000),
+                )
+            for i in range(2):  # 신선한 Buy
+                conn.execute(
+                    "INSERT INTO ark (ticker, date, direction, shares) VALUES (?, ?, ?, ?)",
+                    ("MIXARK", _d(1 + i), "Buy", 1000),
+                )
+        v = SmartMoneyAgent().analyze("MIXARK", db_path=db_path)
+        assert "ARK 최근 매수 2건" in v.reasoning
+        assert "ARK 매매 낡음" not in v.reasoning
+
+    def test_all_sources_stale_returns_hold_with_exclusion_notes(self, db_path):
+        """전 소스 낡음 → '데이터 없음' 이 아니라 제외 사유가 나열된 HOLD."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO superinvestors (investor, ticker, portfolio_pct, filing_date, investor_class) "
+                "VALUES ('Buffett', 'ALLSTALE', 8.0, ?, 'conviction')",
+                (_d(300),),
+            )
+            conn.execute(
+                "INSERT INTO estimates (ticker, date, recommendation, target_mean, current_price, num_analysts) "
+                "VALUES ('ALLSTALE', ?, 'buy', 200.0, 100.0, 10)",
+                (_d(90),),
+            )
+            conn.execute(
+                "INSERT INTO ark (ticker, date, direction, shares) VALUES ('ALLSTALE', ?, 'Buy', 1000)",
+                (_d(235),),
+            )
+        v = SmartMoneyAgent().analyze("ALLSTALE", db_path=db_path)
+        assert v.action == "HOLD"
+        assert "스마트머니 데이터 없음" not in v.reasoning
+        assert "낡음" in v.reasoning
+        assert set(v.data_points["stale_sources"]) == {"superinvestors", "estimates", "ark"}
