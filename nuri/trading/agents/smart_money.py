@@ -20,11 +20,26 @@ class SmartMoneyAgent(BaseAgent):
     def __init__(self):
         super().__init__("smart_money")
 
+    def _source_is_fresh(self, probe_sql: str, cutoff: str, db_path) -> bool:
+        """소스 **전체**의 최신 날짜가 컷오프 안인지 — 티커 행 나이와 구분한다 (#1187 Codex P2).
+
+        티커의 행만 낡은 것은 소스 staleness 가 아니다: 13F 에서 팔린 종목, ARK 가
+        보유만 유지한 종목은 소스가 멀쩡해도 그 티커의 매매/보유 행이 늙는다. 그건
+        정상 부재라 조용히 제외하고, 소스 자체가 낡았을 때만 "낡음 — 제외" 를 낸다.
+        프로브 실패/빈 결과는 미상 = 신선 아님 (ark COUNT(*)=5 원칙과 같은 방향).
+        """
+        rows = self._safe_query(probe_sql, (), db_path)
+        if not rows:
+            return False
+        latest = list(rows[0].values())[0]
+        return bool(latest) and str(latest) >= cutoff
+
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         score = 0
         reasons = []
-        # source 별 신선도 억제 (#1187): 낡은 소스는 점수에서 빼되 **조용히 빼지 않는다**
-        # — "행이 있었는데 전부 낡아 제외" 는 reasons 에 명시한다 (Surface rung).
+        # source 별 신선도 억제 (#1187): 낡은 행은 점수에서 빼되, "소스가 낡아 제외" 는
+        # 소스-레벨 프로브가 낡음을 확인했을 때만 명시한다 (Surface rung). 소스가
+        # 신선한데 티커 행만 늙었으면 정상 부재로 조용히 제외한다 (Codex P2 ×2).
         # 임계는 config/agents.yaml smart_money.freshness (config-over-code).
         stale_sources: list[str] = []
 
@@ -43,7 +58,17 @@ class SmartMoneyAgent(BaseAgent):
             db_path,
         )
         si_rows = [r for r in si_all if (r.get("filing_date") or "") >= si_cutoff]
-        if si_all and not si_rows:
+        if (
+            si_all
+            and not si_rows
+            and not self._source_is_fresh(
+                # investor_class 필터는 잠금 테스트 의무이자 의미상 정확 — 이 에이전트의
+                # universe 는 conviction 이므로 소스 신선도도 conviction 제출분으로 잰다
+                "SELECT MAX(filing_date) FROM superinvestors WHERE investor_class = 'conviction'",
+                si_cutoff,
+                db_path,
+            )
+        ):
             latest = max(r.get("filing_date") or "?" for r in si_all)
             stale_sources.append("superinvestors")
             reasons.append(f"슈퍼투자자 13F 낡음(최신 {latest}) — 제외")
@@ -83,8 +108,9 @@ class SmartMoneyAgent(BaseAgent):
             db_path,
         )
         if est_rows and (est_rows[0].get("date") or "") < est_cutoff:
-            stale_sources.append("estimates")
-            reasons.append(f"애널리스트 컨센서스 낡음(최신 {est_rows[0].get('date') or '?'}) — 제외")
+            if not self._source_is_fresh("SELECT MAX(date) FROM estimates", est_cutoff, db_path):
+                stale_sources.append("estimates")
+                reasons.append(f"애널리스트 컨센서스 낡음(최신 {est_rows[0].get('date') or '?'}) — 제외")
             est_rows = []
         if est_rows:
             est = est_rows[0]
@@ -126,9 +152,13 @@ class SmartMoneyAgent(BaseAgent):
         )
         ark_rows = [r for r in ark_all if (r.get("date") or "") >= ark_cutoff]
         if ark_all and not ark_rows:
-            latest = max(r.get("date") or "?" for r in ark_all)
-            stale_sources.append("ark")
-            reasons.append(f"ARK 매매 낡음(최신 {latest}) — 제외")
+            # 소스 프로브는 `ark` 테이블이 아니라 `ark_source_dates` 다 (#1147): ark 는
+            # 보유 교집합 + Hold 스냅샷이라 "보유만 유지한 종목" 도 매매 행이 늙는다.
+            # 수집기가 필터 이전 사실을 기록하는 곳이 소스 신선도의 정본이다.
+            if not self._source_is_fresh("SELECT MAX(csv_date) FROM ark_source_dates", ark_cutoff, db_path):
+                latest = max(r.get("date") or "?" for r in ark_all)
+                stale_sources.append("ark")
+                reasons.append(f"ARK 매매 낡음(최신 {latest}) — 제외")
         if ark_rows:
             buys = sum(1 for r in ark_rows if r["direction"] == "Buy")
             sells = sum(1 for r in ark_rows if r["direction"] == "Sell")

@@ -280,3 +280,64 @@ class TestSourceFreshnessSuppression:
         assert "스마트머니 데이터 없음" not in v.reasoning
         assert "낡음" in v.reasoning
         assert set(v.data_points["stale_sources"]) == {"superinvestors", "estimates", "ark"}
+
+
+class TestStaleRowsVsFreshSource:
+    """#1187 Codex P2 ×2: 티커 행만 낡은 것(정상 부재)과 소스 staleness 를 구분한다.
+
+    - 13F 에서 팔린 종목: 소스는 매 분기 갱신 중인데 그 티커의 마지막 보유 행만 늙는다
+    - ARK 보유 유지 종목: Hold 스냅샷은 매일 오는데 마지막 Buy/Sell 행만 늙는다
+    둘 다 "낡음 — 제외" 노트 없이 조용히 제외돼야 한다. 소스 프로브는 ark 의 경우
+    `ark_source_dates` (#1147 — ark 테이블은 보유 교집합이라 소스 신선도의 정본이 아님).
+    """
+
+    def test_sold_out_13f_name_is_silent_absence_not_stale_note(self, db_path):
+        with get_db(db_path) as conn:
+            # 이 티커의 마지막 보유는 300일 전 (매도 종결)
+            conn.execute(
+                "INSERT INTO superinvestors (investor, ticker, portfolio_pct, filing_date, investor_class) "
+                "VALUES ('Buffett', 'SOLDOUT', 8.0, ?, 'conviction')",
+                (_d(300),),
+            )
+            # 소스는 살아 있다 — 다른 티커에 신선한 제출분
+            conn.execute(
+                "INSERT INTO superinvestors (investor, ticker, portfolio_pct, filing_date, investor_class) "
+                "VALUES ('Buffett', 'OTHER', 5.0, ?, 'conviction')",
+                (_d(30),),
+            )
+        v = SmartMoneyAgent().analyze("SOLDOUT", db_path=db_path)
+        assert "낡음" not in v.reasoning
+        assert "슈퍼투자자" not in v.reasoning  # 점수 기여도 없음 (조용한 부재)
+        assert "superinvestors" not in v.data_points.get("stale_sources", [])
+
+    def test_stale_estimates_with_fresh_source_is_silent(self, db_path):
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO estimates (ticker, date, recommendation, target_mean, current_price, num_analysts) "
+                "VALUES ('DROPPED', ?, 'buy', 200.0, 100.0, 10)",
+                (_d(90),),
+            )
+            conn.execute(
+                "INSERT INTO estimates (ticker, date, recommendation, target_mean, current_price, num_analysts) "
+                "VALUES ('COVERED', ?, 'buy', 300.0, 200.0, 12)",
+                (_d(3),),
+            )
+        v = SmartMoneyAgent().analyze("DROPPED", db_path=db_path)
+        assert "낡음" not in v.reasoning
+        assert "애널리스트" not in v.reasoning
+
+    def test_ark_held_steady_with_fresh_snapshots_is_silent(self, db_path):
+        with get_db(db_path) as conn:
+            # 마지막 매매는 60일 전이지만, 소스(ark_source_dates)는 매일 갱신 중
+            conn.execute(
+                "INSERT INTO ark (ticker, date, direction, shares) VALUES ('HELD', ?, 'Buy', 1000)",
+                (_d(60),),
+            )
+            conn.execute(
+                "INSERT INTO ark_source_dates (fund, csv_date, observed_at) VALUES ('ARKK', ?, ?)",
+                (_d(1), _d(1)),
+            )
+        v = SmartMoneyAgent().analyze("HELD", db_path=db_path)
+        assert "ARK 매매 낡음" not in v.reasoning
+        assert "ARK 최근 매수" not in v.reasoning  # 낡은 매매는 점수에도 안 들어감
+        assert "ark" not in v.data_points.get("stale_sources", [])

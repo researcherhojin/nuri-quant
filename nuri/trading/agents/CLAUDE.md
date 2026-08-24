@@ -33,12 +33,14 @@ Live probe (2026-04-17):
 ## smart_money 는 source 별 신선도 억제를 한다 (#1187)
 
 세 소스(13F superinvestors · estimates · ark) 각각 `config/agents.yaml
-smart_money.freshness` 의 max-age 를 넘는 행은 점수에서 제외하고, "행이 있었는데 전부
-낡아 제외" 는 reasoning 에 `"<라벨> 낡음(최신 날짜) — 제외"` 로 명시한다 (조용한 결손
-금지). `data_points["stale_sources"]` 가 제외 목록을 노출한다. 235일 낡은 ARK Buy 가
-"ARK 최근 매수 ±1" 로 표면화된 사고가 기원. **Test:**
-`tests/trading/agents/test_smart_money_branches.py::TestSourceFreshnessSuppression` —
-축별 전용 테스트 (한 소스의 컷오프를 지우면 그 축 테스트만 FAIL).
+smart_money.freshness` 의 max-age 를 넘는 행은 점수에서 제외한다. **"낡음 — 제외" 노트는
+소스-레벨 프로브가 소스 자체의 staleness 를 확인했을 때만** 낸다 — 티커 행만 늙은 것
+(13F 에서 팔린 종목, ARK 가 보유만 유지한 종목)은 정상 부재라 조용히 제외한다 (Codex P2).
+ARK 의 소스 프로브는 `ark` 테이블이 아니라 `ark_source_dates` 다 (#1147 — ark 는 보유
+교집합이라 소스 신선도의 정본이 아님). `data_points["stale_sources"]` 가 제외 목록을
+노출한다. 235일 낡은 ARK Buy 가 "ARK 최근 매수 ±1" 로 표면화된 사고가 기원. **Test:**
+`tests/trading/agents/test_smart_money_branches.py::TestSourceFreshnessSuppression` (축별
+억제) + `::TestStaleRowsVsFreshSource` (정상 부재 vs 소스 staleness 구분).
 
 ## Veto + Divergence
 
