@@ -336,6 +336,7 @@ export const ACTION = {
   AGREE: "합의",
   PNL: "손익",
   WEIGHT: "비중",
+  EVIDENCE: "증거 체인", // #1182: 카드 → /decisions/[id]
 } as const;
 
 export const OPPORTUNITY = {
