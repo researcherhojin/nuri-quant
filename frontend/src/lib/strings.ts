@@ -36,6 +36,7 @@ export const VERDICT = {
   NEUTRAL: "관망",
   CAUTIOUS: "주의",
   DEFENSIVE: "방어",
+  STALE: "데이터 낡음", // 판단 입력 stale — verdict 보류 (#1180)
 } as const;
 
 export const TREND = {

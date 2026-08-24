@@ -11,6 +11,7 @@
 | `signals.yaml` | 221 | 22 signal definitions (20 actionable + 2 shadow; type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
 | `buy_signals.yaml` | 187 | Buy-candidate scoring (`weights`, `quality_bar`, `gates`, `allocation`) + per-candidate `risk` (stop/TP) + `held_add_mode` | `nuri/trading/recommend/buy_candidate_emitter.py` (`CONFIG_PATH`) + `held_add.py` (held_add_mode block) |
 | `alerts.yaml` | 24 | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
+| `freshness.yaml` | 27 | Data freshness SLA (per-source `warn_hours`/`fail_hours`) + `verdict_gate` (dashboard verdict 가 확인하는 입력 목록, #1180). Queries/labels stay in `nuri/core/freshness.py` | `nuri/core/freshness.py` (`_load_config`) |
 | `stock_types.yaml` | 49 | Manual growth/value ticker override (bypasses auto-classification from PE + sector) | Direct YAML load |
 | `universe.yaml` | 755 | 746 tickers: `us_core` (85) + `us_sp500_extended` (458) + `kr_kospi200` (203). Auto-maintained by `make universe-sync`; manual entries preserved | `nuri/collectors/universe_sync.py` |
 | `portfolio.example.yaml` | 39 | Example template showing account + holdings shape | `scripts/ops/import_portfolio.py` (via `cp` to `portfolio.yaml`) |

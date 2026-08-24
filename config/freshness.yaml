@@ -1,0 +1,31 @@
+# 데이터 신선도 SLA — warn/fail 임계 (시간 단위)
+# 쿼리·라벨은 구현이므로 nuri/core/freshness.py 에 있고, **정책 숫자**만 여기 둔다.
+# 키 목록은 freshness.py 의 FRESHNESS_POLICIES 와 1:1 — 어긋나면 로더가 기동 시 ValueError.
+# 각 임계의 근거(주말/공휴일 여유, 잡 주기)는 freshness.py 해당 정책 주석 참조.
+
+thresholds:
+  prices: { warn_hours: 48, fail_hours: 120 } # 주말/공휴일 감안 (금→화 = 96h)
+  macro_vix: { warn_hours: 24, fail_hours: 72 }
+  factors: { warn_hours: 48, fail_hours: 120 } # 재료가 prices 라 임계 동일 (#1071)
+  signals: { warn_hours: 48, fail_hours: 120 }
+  signals_kr: { warn_hours: 48, fail_hours: 120 } # 설날·추석엔 정직하게 WARN/FAIL
+  fundamentals: { warn_hours: 192, fail_hours: 360 } # 주 1회 잡 — 정상 나이 168h (#1109)
+  fundamentals_kr: { warn_hours: 192, fail_hours: 360 }
+  macro_fear_greed: { warn_hours: 24, fail_hours: 48 }
+  macro_market: { warn_hours: 48, fail_hours: 120 } # 금리 3종 + put/call — prices 와 동일 임계
+  macro_monthly: { warn_hours: 1080, fail_hours: 1800 } # 월간 릴리즈: 45d 한 사이클 / 75d 두 사이클
+  consensus: { warn_hours: 24, fail_hours: 48 }
+  certification: { warn_hours: 24, fail_hours: 48 }
+  ark: { warn_hours: 168, fail_hours: 336 } # rules.yaml ark.max_source_lag_days 와 동일 (#1145)
+  portfolio: { warn_hours: 24, fail_hours: 72 } # import_portfolio.py 매일 수동 실행 가정 (#507)
+
+# /api/dashboard 한 줄 판단(verdict)이 신선도를 확인하는 입력 목록.
+# 이 중 하나라도 FAIL 이면 "공격 가능" 류 판단 대신 stale 안내를 낸다 (#1180, Surface rung).
+# 판단의 실제 입력만 나열: 레짐=prices, 매크로=macro_vix+fear_greed, 액션=consensus.
+verdict_gate:
+  - prices
+  - macro_vix
+  - macro_fear_greed
+  - macro_market
+  - macro_monthly
+  - consensus

@@ -1,23 +1,29 @@
-"""데이터 신선도 체크 — Dagster PASS/WARN/FAIL + Palantir TSLU 패턴."""
+"""데이터 신선도 체크 — Dagster PASS/WARN/FAIL + Palantir TSLU 패턴.
+
+임계(warn/fail 시간)는 **정책**이라 `config/freshness.yaml` 에 있고(#1180,
+config-over-code), 쿼리·라벨은 구현이라 여기 남는다. 아래 각 정책의 긴 주석은
+쿼리 형태의 근거이므로 임계가 config 로 나가도 유지한다.
+"""
 
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import yaml
+
 from nuri.core.db import query
 from nuri.core.timezone import KST, kst_now
 
-FRESHNESS_POLICIES = {
+_CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "freshness.yaml"
+
+# 임계 없는 정책 골격 — warn_hours/fail_hours 는 _load_config() 가 config 에서 주입한다.
+FRESHNESS_POLICIES: dict[str, dict] = {
     "prices": {
         "query": "SELECT MAX(date) FROM prices WHERE ticker = 'SPY'",
-        "warn_hours": 48,
-        "fail_hours": 120,  # 주말/공휴일 감안 (금→화 = 96h, classifier.py와 동일)
         "label": "주가 데이터",
     },
     "macro_vix": {
         "query": "SELECT MAX(date) FROM macro WHERE indicator = 'vix'",
-        "warn_hours": 24,
-        "fail_hours": 72,
         "label": "VIX",
     },
     "factors": {
@@ -29,8 +35,6 @@ FRESHNESS_POLICIES = {
         # 당일 행이 생겨 이 정책이 낡음을 잡는 게 아니라 세탁했다 (#1071 Codex P1).
         # 그래서 임계도 `prices` 와 같다 — 재료가 같으니 주말/공휴일 여유도 같아야 한다.
         "query": "SELECT MAX(date) FROM factors",
-        "warn_hours": 48,
-        "fail_hours": 120,
         "label": "멀티팩터 스코어",
     },
     # `signals` 는 시장별 두 정책이다 (#1101). BUY 점수의 0.15 가중치(RSI)와 SIEGE 게이트
@@ -55,8 +59,6 @@ FRESHNESS_POLICIES = {
             "GROUP BY date HAVING COUNT(*) >= {floor})"
         ),
         "floor_from": "us",
-        "warn_hours": 48,
-        "fail_hours": 120,
         "label": "기술 지표 (US)",
     },
     "signals_kr": {
@@ -68,8 +70,6 @@ FRESHNESS_POLICIES = {
             "GROUP BY date HAVING COUNT(*) >= {floor})"
         ),
         "floor_from": "kr",
-        "warn_hours": 48,
-        "fail_hours": 120,
         "label": "기술 지표 (KR)",
     },
     # `fundamentals` 도 시장별 두 정책이다 — `signals` 와 같은 구성, 같은 이유 (#1109).
@@ -94,8 +94,6 @@ FRESHNESS_POLICIES = {
             "GROUP BY date HAVING COUNT(*) >= {floor})"
         ),
         "floor_from": "us",
-        "warn_hours": 192,
-        "fail_hours": 360,
         "label": "펀더멘탈 (US)",
     },
     "fundamentals_kr": {
@@ -105,15 +103,40 @@ FRESHNESS_POLICIES = {
             "GROUP BY date HAVING COUNT(*) >= {floor})"
         ),
         "floor_from": "kr",
-        "warn_hours": 192,
-        "fail_hours": 360,
         "label": "펀더멘탈 (KR)",
     },
     "macro_fear_greed": {
         "query": "SELECT MAX(date) FROM macro WHERE indicator = 'fear_greed'",
-        "warn_hours": 24,
-        "fail_hours": 48,
         "label": "Fear & Greed",
+    },
+    # macro_score 의 나머지 입력 두 그룹 (#1180 Codex P1) — vix/fear_greed 만 gate 하면
+    # 수익률곡선·put/call·고용·CPI·금리가 낡은 채로 점수에 들어가 verdict 가 선다.
+    #
+    # **present-only per-indicator MIN** 이 핵심이다: macro_score 는 **결측** 지표를
+    # coverage 재정규화로 점수에서 제외하므로(#1026) 없는 지표를 gate 하면 점수에
+    # 안 들어가는 입력으로 판단을 막는 셈이다. 반면 **낡은**(행은 있는데 오래된) 지표는
+    # `_get_latest_macro` 가 나이 불문 반환해 점수에 그대로 들어간다 — 그게 여기서 잡는
+    # 대상이다. GROUP BY 는 존재하는 지표만 만들고, 그중 가장 낡은 것(MIN)을 본다.
+    # 그룹 전체 부재 → NULL → FAIL: 구성된 프로덕션에서 그룹째 사라진 건 수집 장애다.
+    # 합산 MAX 금지(멀쩡한 지표가 죽은 지표를 가린다)는 signals/ark 와 같은 원칙.
+    "macro_market": {
+        # 시장성 일간 지표 — 국채 3종 + put/call. 임계는 prices 와 같은 48/120 (주말/공휴일).
+        "query": (
+            "SELECT MIN(d) FROM (SELECT MAX(date) AS d FROM macro "
+            "WHERE indicator IN ('us_10y_yield', 'us_2y_yield', 'us_3m_yield', 'put_call_ratio') "
+            "GROUP BY indicator)"
+        ),
+        "label": "매크로 시장지표 (금리·PCR)",
+    },
+    "macro_monthly": {
+        # 월간 릴리즈 지표 — 고용·CPI·기준금리. 관측월 기준 날짜라 정상 나이가 수 주다:
+        # 45일(1080h) = 한 사이클 지연, 75일(1800h) = 두 사이클째 안 들어왔다.
+        "query": (
+            "SELECT MIN(d) FROM (SELECT MAX(date) AS d FROM macro "
+            "WHERE indicator IN ('unemployment', 'cpi_yoy', 'fed_funds_rate') "
+            "GROUP BY indicator)"
+        ),
+        "label": "매크로 월간지표 (고용·CPI·금리)",
     },
     "consensus": {
         # FIX (Session 10): `diagnose` step_completed event 가 실제로 emit 되지 않아 항상 FAIL.
@@ -124,8 +147,6 @@ FRESHNESS_POLICIES = {
         # 테이블에 쓰므로, 필터가 없으면 합의 job 이 죽은 날에도 브리핑이 낸 후보 행
         # 하나가 "합의 신선함" 으로 읽힌다 — 관측이 거짓말하는 형태다.
         "query": "SELECT datetime(MAX(date)) FROM recommendations WHERE source IS NULL",
-        "warn_hours": 24,
-        "fail_hours": 48,
         "label": "에이전트 합의",
     },
     "certification": {
@@ -133,8 +154,6 @@ FRESHNESS_POLICIES = {
         # 이전 policy 는 pipeline_events 'certification_result' 이벤트를 기대했으나 emitter 부재
         # → 항상 FAIL. certifications.timestamp 는 ISO datetime (kst_now().isoformat()).
         "query": "SELECT MAX(timestamp) FROM certifications",
-        "warn_hours": 24,
-        "fail_hours": 48,
         "label": "Certification",
     },
     "ark": {
@@ -169,8 +188,6 @@ FRESHNESS_POLICIES = {
             "SELECT CASE WHEN COUNT(*) = 5 THEN MIN(csv_date) END FROM ark_source_dates "
             "WHERE fund IN ('ARKK', 'ARKW', 'ARKG', 'ARKQ', 'ARKF') AND csv_date IS NOT NULL"
         ),
-        "warn_hours": 168,
-        "fail_hours": 336,
         "label": "ARK 보유 (가장 낡은 펀드)",
     },
     "portfolio": {
@@ -178,11 +195,55 @@ FRESHNESS_POLICIES = {
         # sync 누락 시 0주 ticker 에 SELL 권고가 누설됨. 24h 이상이면 WARN, 72h
         # FAIL — `import_portfolio.py` 매일 수동 실행 가정. updated_at 은 KST naive.
         "query": "SELECT MAX(updated_at) FROM portfolio",
-        "warn_hours": 24,
-        "fail_hours": 72,
         "label": "포트폴리오 sync",
     },
 }
+
+
+def _load_config() -> dict:
+    """config/freshness.yaml 로드 + 정책 골격에 임계 주입 (#1180).
+
+    키 목록은 양방향 대조한다 — config 에만 있는 키(낡은 항목)와 코드에만 있는 키
+    (임계 없는 정책) 둘 다 기동 시 ValueError. 조용히 기본값으로 넘어가면
+    config-over-code 가 다시 무너진다.
+    """
+    with open(_CONFIG_PATH, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    thresholds = cfg.get("thresholds") or {}
+    code_keys = set(FRESHNESS_POLICIES)
+    cfg_keys = set(thresholds)
+    if code_keys != cfg_keys:
+        missing = code_keys - cfg_keys
+        stale = cfg_keys - code_keys
+        raise ValueError(
+            f"freshness.yaml 임계와 FRESHNESS_POLICIES 불일치 — config 누락: {sorted(missing)}, config 잉여: {sorted(stale)}"
+        )
+
+    for key, hours in thresholds.items():
+        FRESHNESS_POLICIES[key]["warn_hours"] = hours["warn_hours"]
+        FRESHNESS_POLICIES[key]["fail_hours"] = hours["fail_hours"]
+
+    gate = cfg.get("verdict_gate") or []
+    unknown = [k for k in gate if k not in code_keys]
+    if unknown:
+        raise ValueError(f"freshness.yaml verdict_gate 에 미등록 정책 키: {unknown}")
+    return cfg
+
+
+_CONFIG = _load_config()
+
+# /api/dashboard verdict 가 신선도를 확인하는 입력 키 목록 (config 정의, #1180)
+VERDICT_GATE_KEYS: tuple[str, ...] = tuple(_CONFIG.get("verdict_gate") or ())
+
+
+def stale_verdict_inputs(db_path: Optional[Path] = None) -> list[dict]:
+    """verdict gate 입력 중 FAIL 인 정책만 반환 (#1180, Surface rung).
+
+    WARN 은 통과 — 주말/공휴일의 정상 나이를 WARN 으로 두는 정책이 많아
+    WARN 까지 막으면 매주 판단이 죽는다. FAIL = 임계 초과 확정만 센다.
+    """
+    return [r for r in (check_freshness(k, db_path) for k in VERDICT_GATE_KEYS) if r["status"] == "FAIL"]
 
 
 def _parse_timestamp(value: str) -> datetime:
