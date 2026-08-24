@@ -13,9 +13,12 @@ export const HERO = {
   CUMULATIVE_SUB: "실현 미실현 합계",
   WIN_RATE: "승률",
   FLAT: "보합",
-  HOLDINGS_BASIS: "보유 종목 기준",
   HOLDINGS_PREFIX: "보유",
   CASH_PREFIX: "현금",
+  // #1185: 출처 분리 — 히어로 4지표는 전부 포트폴리오 스냅샷이지 판정 원장이 아니다 (§3.11)
+  PROVENANCE_SNAPSHOT: "지표 출처: 포트폴리오 스냅샷 (portfolio.yaml + 최신 종가, 미실현 포함)",
+  PROVENANCE_LEDGER_LINK: "시스템 판정 성과는 판정 원장",
+  WIN_RATE_SCOPE: "보유 미실현 기준 — 시스템 판정 성과 아님",
 } as const;
 
 /* ── Composition Section ────────────────────────────────────── */
