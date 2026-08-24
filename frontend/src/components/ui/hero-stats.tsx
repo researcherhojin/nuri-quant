@@ -150,6 +150,8 @@ export function HeroStats({
       {/* #1185: 출처 분리 (§3.11) — 위 4지표는 전부 스냅샷. 판정 성과는 원장(/decisions)에서만 */}
       <p className="text-[10px] text-zinc-500" data-testid="hero-provenance">
         {HERO.PROVENANCE_SNAPSHOT}
+        {" — "}
+        {HERO.PROVENANCE_SCOPE}
         {" · "}
         {HERO.PROVENANCE_LEDGER_LINK}{" "}
         <Link href="/decisions" className="underline decoration-zinc-700 hover:text-zinc-300 transition-colors">

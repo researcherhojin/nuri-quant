@@ -15,8 +15,11 @@ export const HERO = {
   FLAT: "보합",
   HOLDINGS_PREFIX: "보유",
   CASH_PREFIX: "현금",
-  // #1185: 출처 분리 — 히어로 4지표는 전부 포트폴리오 스냅샷이지 판정 원장이 아니다 (§3.11)
-  PROVENANCE_SNAPSHOT: "지표 출처: 포트폴리오 스냅샷 (portfolio.yaml + 최신 종가, 미실현 포함)",
+  // #1185: 출처 분리 — 히어로 4지표는 전부 포트폴리오 스냅샷이지 판정 원장이 아니다 (§3.11).
+  // 출처는 보유 DB(portfolio 테이블)+최신 종가다 — yaml 은 sync 지연/실패 시 어긋난다 (Codex P2).
+  // 범위도 갈린다: 총 자산=전 계좌+현금, 오늘·누적·승률=연금 제외 보유분 (page.tsx 필터).
+  PROVENANCE_SNAPSHOT: "지표 출처: 포트폴리오 스냅샷 (보유 DB + 최신 종가, 미실현 포함)",
+  PROVENANCE_SCOPE: "총 자산=전 계좌+현금 · 오늘·누적·승률=연금 제외 보유분",
   PROVENANCE_LEDGER_LINK: "시스템 판정 성과는 판정 원장",
   WIN_RATE_SCOPE: "보유 미실현 기준 — 시스템 판정 성과 아님",
 } as const;

@@ -211,6 +211,7 @@ describe("HeroStats provenance (#1185)", () => {
     );
     const strip = screen.getByTestId("hero-provenance");
     expect(strip.textContent).toContain(HERO.PROVENANCE_SNAPSHOT);
+    expect(strip.textContent).toContain(HERO.PROVENANCE_SCOPE);
     expect(strip.textContent).toContain(HERO.PROVENANCE_LEDGER_LINK);
     const link = strip.querySelector("a");
     expect(link?.getAttribute("href")).toBe("/decisions");
