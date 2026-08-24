@@ -277,4 +277,19 @@ describe("ActionItems", () => {
     const body = document.body.textContent ?? "";
     expect(body).toContain("—");
   });
+
+  // #1182: 증거 체인 링크 — decision_id 있으면 /decisions/[id] 로, 없으면 링크 생략
+  it("renders evidence-chain link when decision_id is present", () => {
+    const withDecision = { ...urgentItem, decision_id: 42, as_of: "2026-08-25" };
+    render(<ActionItems urgent={[withDecision]} check={[]} hold={[]} />);
+    const link = screen.getByText(/증거 체인/).closest("a");
+    expect(link?.getAttribute("href")).toBe("/decisions/42");
+    expect(link?.textContent).toContain("2026-08-25");
+  });
+
+  it("omits evidence-chain link when decision_id is null", () => {
+    const noDecision = { ...urgentItem, decision_id: null, as_of: "2026-08-25" };
+    render(<ActionItems urgent={[noDecision]} check={[]} hold={[]} />);
+    expect(screen.queryByText(/증거 체인/)).toBeNull();
+  });
 });
