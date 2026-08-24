@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { HERO } from "../src/lib/strings";
 
 test.describe("Dashboard (with real backend)", () => {
   test("renders main dashboard with verdict", async ({ page }) => {
@@ -38,5 +39,23 @@ test.describe("Dashboard (with real backend)", () => {
       const body = await page.textContent("body");
       expect(body!.length).toBeGreaterThan(50);
     }
+  });
+});
+
+// #1185: 출처 분리 — 히어로 지표는 스냅샷임을 항상 명시하고 판정 원장으로 링크
+test.describe("Hero provenance (#1185)", () => {
+  test("hero always shows the snapshot provenance strip with a ledger link", async ({ page }) => {
+    await page.goto("/", { timeout: 15000 });
+    const strip = page.getByTestId("hero-provenance");
+    await expect(strip).toBeVisible({ timeout: 15000 });
+    await expect(strip).toContainText(HERO.PROVENANCE_SNAPSHOT);
+    await expect(strip.locator("a")).toHaveAttribute("href", "/decisions");
+  });
+
+  test("win-rate stat carries the not-system-performance scope note", async ({ page }) => {
+    await page.goto("/", { timeout: 15000 });
+    const winrate = page.getByTestId("hero-winrate");
+    await expect(winrate).toBeVisible({ timeout: 15000 });
+    await expect(winrate).toContainText(HERO.WIN_RATE_SCOPE);
   });
 });
