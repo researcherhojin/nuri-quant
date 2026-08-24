@@ -47,7 +47,7 @@ Two guarantees hold here, and both are load-bearing for readers elsewhere:
 
 ## freshness.py — Data Freshness SLA
 
-`FRESHNESS_POLICIES` per data source (prices 48h/120h, VIX 24h/72h, etc.). `check_freshness(key)` returns PASS/WARN/FAIL.
+`FRESHNESS_POLICIES` per data source. `check_freshness(key)` returns PASS/WARN/FAIL. 임계(`warn_hours`/`fail_hours`)는 `config/freshness.yaml` 이 정본이고 `_load_config()` 가 기동 시 주입한다 — 키 목록은 양방향 대조라 config 누락/잉여 둘 다 ValueError (#1180). 쿼리·라벨은 구현이라 코드에 남는다. `VERDICT_GATE_KEYS`/`stale_verdict_inputs()` 는 dashboard verdict 의 stale gate 입력 (FAIL 만 센다 — WARN 은 주말/공휴일 정상 나이).
 
 정책을 추가/삭제하면 `tests/core/test_freshness.py::test_expected_policy_keys` 가 **일부러**
 깨진다 — 양방향 allowlist 라 등재할 때 "왜 이 정책이 생겼는지" 한 줄을 그 테스트에 같이

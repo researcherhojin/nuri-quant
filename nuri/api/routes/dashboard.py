@@ -57,12 +57,23 @@ def _build_dashboard() -> dict:
     alerts = _get_active_alerts()
 
     # ── 4. 한 줄 판단 (verdict) ──
+    # stale gate (#1180, Surface rung): 판단 입력(config/freshness.yaml verdict_gate)이
+    # FAIL 이면 "공격 가능" 류 판단을 내지 않는다 — 4일 낡은 가격 위의 판단은 판단이 아니다.
+    # 데이터(actions/alerts/...)는 그대로 내려보내고 한 줄 판단만 stale 안내로 바꾼다.
+    verdict_stale_inputs = _get_stale_verdict_inputs()
     trend = regime_data.get("trend", "unknown")
     macro_score = macro_data["score"]
     n_buys = len([a for a in actions if a["action"] == "BUY"])
     n_sells = len([a for a in actions if a["action"] == "SELL"])
 
-    if trend == "bear" or macro_score < 35:
+    if verdict_stale_inputs:
+        labels = ", ".join(
+            f"{s['label']} {s['age_hours']:.0f}h" if s["age_hours"] is not None else s["label"]
+            for s in verdict_stale_inputs
+        )
+        verdict = f"판단 보류. 입력 데이터 낡음 ({labels}) — 재수집 후 판단하세요."
+        verdict_level = "stale"
+    elif trend == "bear" or macro_score < 35:
         verdict = "방어 모드. 현금 비중 유지하고 숏 헤지를 검토하세요."
         verdict_level = "defensive"
     elif trend == "bull" and macro_score >= 60:
@@ -107,6 +118,8 @@ def _build_dashboard() -> dict:
     return {
         "verdict": verdict,
         "verdict_level": verdict_level,
+        # stale gate 근거 — 어떤 입력이 얼마나 낡아 판단이 보류됐는지 (빈 리스트 = 게이트 통과)
+        "verdict_stale_inputs": verdict_stale_inputs,
         "regime": regime_data,
         "macro": macro_data,
         "allocation": allocation,  # target (regime 권장) — legacy 이름, backward compat
@@ -537,15 +550,34 @@ def _get_upcoming_events() -> list[dict]:
 
 
 def _get_freshness() -> dict:
-    """데이터 신선도 요약."""
+    """데이터 신선도 요약.
+
+    키는 `d["key"]` 다 — `d["table"]` 로 읽던 시절엔 KeyError 가 except 에 먹혀
+    이 함수가 **항상 빈 dict** 를 조용히 반환했다 (#1180). 회귀 잠금:
+    tests/api/test_dashboard.py::TestDashboardFreshness.
+    """
     try:
         from nuri.core.freshness import check_all_freshness
 
         details = check_all_freshness()
-        return {d["table"]: {"age_hours": d["age_hours"], "status": d["status"]} for d in details}
+        return {d["key"]: {"age_hours": d["age_hours"], "status": d["status"]} for d in details}
     except Exception as e:
         logger.debug(f"Freshness: {e}")
         return {}
+
+
+def _get_stale_verdict_inputs() -> list[dict]:
+    """verdict gate 입력 중 FAIL 만 — 실패 시 빈 리스트 (관측이 판단을 죽이면 안 됨, #894)."""
+    try:
+        from nuri.core.freshness import stale_verdict_inputs
+
+        return [
+            {"key": s["key"], "label": s["label"], "age_hours": s["age_hours"], "last_updated": s["last_updated"]}
+            for s in stale_verdict_inputs()
+        ]
+    except Exception as e:
+        logger.debug(f"Verdict stale gate: {e}")
+        return []
 
 
 def _get_pipeline_status() -> dict:

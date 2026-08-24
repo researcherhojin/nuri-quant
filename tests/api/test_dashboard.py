@@ -261,17 +261,31 @@ class TestDashboardBuildExtended:
                 {"indicator": "sp500_yoy", "date": today, "value": 15.0, "source": "test"},
                 {"indicator": "gdp_growth", "date": today, "value": 2.5, "source": "test"},
                 {"indicator": "unemployment", "date": today, "value": 3.8, "source": "test"},
+                # macro_market gate 입력 (#1180) — 그룹 전체 부재는 FAIL 이라 fresh 하게 seed
+                {"indicator": "us_10y_yield", "date": today, "value": 4.2, "source": "test"},
+                {"indicator": "us_2y_yield", "date": today, "value": 3.9, "source": "test"},
+                {"indicator": "us_3m_yield", "date": today, "value": 4.0, "source": "test"},
+                {"indicator": "put_call_ratio", "date": today, "value": 0.9, "source": "test"},
             ],
             db_path,
         )
+
+        # consensus freshness (#1180 stale gate) — verdict gate 입력이라 fresh 하게 seed.
+        # source IS NULL = 합의 산출물 (freshness.py consensus 정책 참조).
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence) VALUES (?, ?, ?, ?)",
+                (today, "AAPL", "BUY", 70),
+            )
         return db_path
 
     def test_verdict_levels(self, rich_db):
-        """rich_db로 dashboard 빌드 — verdict_level 확인."""
+        """rich_db로 dashboard 빌드 — verdict_level 확인 (입력이 fresh 하므로 stale 아님)."""
         from nuri.api.routes.dashboard import _build_dashboard
 
         result = _build_dashboard()
         assert result["verdict_level"] in ("aggressive", "neutral", "cautious", "defensive")
+        assert result["verdict_stale_inputs"] == []
         assert isinstance(result["alerts"], list)
         assert isinstance(result["actions"], list)
 
@@ -424,6 +438,8 @@ class TestDashboardAPI_R22:
         monkeypatch.setattr(dash_mod, "_get_gate_score", lambda: 80)
         monkeypatch.setattr(dash_mod, "_get_freshness", lambda: {})
         monkeypatch.setattr(dash_mod, "_get_pipeline_status", lambda: {})
+        # stale gate (#1180) 는 전용 테스트에서 잠금 — 여기선 하위 분기만 본다
+        monkeypatch.setattr(dash_mod, "_get_stale_verdict_inputs", lambda: [])
 
         resp = _client.get("/api/dashboard")
         assert resp.status_code == 200
@@ -451,6 +467,8 @@ class TestDashboardAPI_R22:
         monkeypatch.setattr(dash_mod, "_get_gate_score", lambda: 50)
         monkeypatch.setattr(dash_mod, "_get_freshness", lambda: {})
         monkeypatch.setattr(dash_mod, "_get_pipeline_status", lambda: {})
+        # stale gate (#1180) 는 전용 테스트에서 잠금 — 여기선 하위 분기만 본다
+        monkeypatch.setattr(dash_mod, "_get_stale_verdict_inputs", lambda: [])
 
         resp1 = _client.get("/api/dashboard")
         resp2 = _client.get("/api/dashboard")
@@ -475,6 +493,8 @@ class TestDashboardAPI_R22:
         monkeypatch.setattr(dash_mod, "_get_gate_score", lambda: 30)
         monkeypatch.setattr(dash_mod, "_get_freshness", lambda: {})
         monkeypatch.setattr(dash_mod, "_get_pipeline_status", lambda: {})
+        # stale gate (#1180) 는 전용 테스트에서 잠금 — 여기선 하위 분기만 본다
+        monkeypatch.setattr(dash_mod, "_get_stale_verdict_inputs", lambda: [])
 
         dash_mod._cache["data"] = None
         dash_mod._cache["timestamp"] = 0
@@ -512,6 +532,8 @@ class TestDashboardAPI_R22:
         monkeypatch.setattr(dash_mod, "_get_gate_score", lambda: 50)
         monkeypatch.setattr(dash_mod, "_get_freshness", lambda: {})
         monkeypatch.setattr(dash_mod, "_get_pipeline_status", lambda: {})
+        # stale gate (#1180) 는 전용 테스트에서 잠금 — 여기선 하위 분기만 본다
+        monkeypatch.setattr(dash_mod, "_get_stale_verdict_inputs", lambda: [])
 
         dash_mod._cache["data"] = None
         dash_mod._cache["timestamp"] = 0
@@ -666,10 +688,15 @@ class TestDashboard_R27:
         assert result["regime"] == "unknown"
 
     def test_get_freshness(self, monkeypatch):
-        """_get_freshness returns dict."""
+        """_get_freshness returns dict.
+
+        mock 의 키는 `"key"` — 실제 check_all_freshness 반환 형태다. 예전 mock 이
+        `"table"` 로 돼 있어서 프로덕션의 d["table"] 버그(항상 {} 반환)를 오히려
+        잠그고 있었다 (#1180). 실 데이터 형태 잠금은 TestDashboardFreshness.
+        """
         monkeypatch.setattr(
             "nuri.core.freshness.check_all_freshness",
-            MagicMock(return_value=[{"table": "prices", "age_hours": 5, "status": "PASS"}]),
+            MagicMock(return_value=[{"key": "prices", "age_hours": 5, "status": "PASS"}]),
         )
         import nuri.api.routes.dashboard as dash_mod
 
@@ -1458,3 +1485,47 @@ class TestGetCashBalancesAppend:
         # main + toss 모두 append (cash > 0), empty 는 제외
         assert len(result["accounts"]) == 2
         assert result["total_cash_usd"] > 1000
+
+
+class TestVerdictStaleGate:
+    """#1180: verdict 는 stale 입력 위에서 "공격 가능" 을 내면 안 된다 (Surface rung)."""
+
+    def test_stale_inputs_hold_the_verdict(self, db_path):
+        """빈 DB(모든 gate 입력 FAIL) → verdict_level=stale + 근거 노출."""
+        from nuri.api.routes.dashboard import _build_dashboard
+
+        result = _build_dashboard()
+        assert result["verdict_level"] == "stale"
+        assert "판단 보류" in result["verdict"]
+        keys = {s["key"] for s in result["verdict_stale_inputs"]}
+        from nuri.core.freshness import VERDICT_GATE_KEYS
+
+        assert keys == set(VERDICT_GATE_KEYS)
+        # 데이터 자체는 게이트되지 않는다 — Surface rung (액션/알림은 그대로 내려간다)
+        assert "actions" in result and "alerts" in result
+
+    def test_gate_failure_does_not_kill_the_dashboard(self, db_path, monkeypatch):
+        """신선도 체크 자체가 죽어도 대시보드는 산다 (#894 관측이 본 작업을 게이트 금지)."""
+        import nuri.api.routes.dashboard as dash_mod
+
+        def _boom():
+            raise RuntimeError("freshness check exploded")
+
+        monkeypatch.setattr("nuri.core.freshness.stale_verdict_inputs", _boom)
+        result = dash_mod._build_dashboard()
+        assert result["verdict_stale_inputs"] == []
+        assert result["verdict_level"] != "stale"
+
+
+class TestDashboardFreshness:
+    """#1180 회귀 잠금: _get_freshness 가 d["table"] 을 읽어 항상 {} 를 반환하던 버그."""
+
+    def test_get_freshness_returns_every_policy(self, db_path):
+        from nuri.api.routes.dashboard import _get_freshness
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
+        result = _get_freshness()
+        # 빈 DB 여도 정책마다 FAIL 항목이 나온다 — 빈 dict 는 키 이름 회귀다
+        assert set(result) == set(FRESHNESS_POLICIES)
+        for v in result.values():
+            assert set(v) == {"age_hours", "status"}
