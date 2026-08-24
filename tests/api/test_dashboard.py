@@ -261,6 +261,11 @@ class TestDashboardBuildExtended:
                 {"indicator": "sp500_yoy", "date": today, "value": 15.0, "source": "test"},
                 {"indicator": "gdp_growth", "date": today, "value": 2.5, "source": "test"},
                 {"indicator": "unemployment", "date": today, "value": 3.8, "source": "test"},
+                # macro_market gate 입력 (#1180) — 그룹 전체 부재는 FAIL 이라 fresh 하게 seed
+                {"indicator": "us_10y_yield", "date": today, "value": 4.2, "source": "test"},
+                {"indicator": "us_2y_yield", "date": today, "value": 3.9, "source": "test"},
+                {"indicator": "us_3m_yield", "date": today, "value": 4.0, "source": "test"},
+                {"indicator": "put_call_ratio", "date": today, "value": 0.9, "source": "test"},
             ],
             db_path,
         )

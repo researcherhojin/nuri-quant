@@ -69,6 +69,12 @@ class TestFreshnessPolicies:
             "fundamentals_kr",
             "macro_vix",
             "macro_fear_greed",
+            # `macro_market`/`macro_monthly` 는 #1180 에서 추가 — verdict stale gate 가
+            # vix/fear_greed 만 보면 금리·put/call·고용·CPI 가 낡은 채로 macro 점수에
+            # 들어가 "공격 가능" 이 선다 (Codex P1). 결측 지표는 macro_score 가 coverage
+            # 재정규화로 이미 제외하므로(#1026) present-only MIN — 낡음만 잡는다.
+            "macro_market",
+            "macro_monthly",
             "consensus",
             "certification",
             "portfolio",

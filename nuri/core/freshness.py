@@ -109,6 +109,35 @@ FRESHNESS_POLICIES: dict[str, dict] = {
         "query": "SELECT MAX(date) FROM macro WHERE indicator = 'fear_greed'",
         "label": "Fear & Greed",
     },
+    # macro_score 의 나머지 입력 두 그룹 (#1180 Codex P1) — vix/fear_greed 만 gate 하면
+    # 수익률곡선·put/call·고용·CPI·금리가 낡은 채로 점수에 들어가 verdict 가 선다.
+    #
+    # **present-only per-indicator MIN** 이 핵심이다: macro_score 는 **결측** 지표를
+    # coverage 재정규화로 점수에서 제외하므로(#1026) 없는 지표를 gate 하면 점수에
+    # 안 들어가는 입력으로 판단을 막는 셈이다. 반면 **낡은**(행은 있는데 오래된) 지표는
+    # `_get_latest_macro` 가 나이 불문 반환해 점수에 그대로 들어간다 — 그게 여기서 잡는
+    # 대상이다. GROUP BY 는 존재하는 지표만 만들고, 그중 가장 낡은 것(MIN)을 본다.
+    # 그룹 전체 부재 → NULL → FAIL: 구성된 프로덕션에서 그룹째 사라진 건 수집 장애다.
+    # 합산 MAX 금지(멀쩡한 지표가 죽은 지표를 가린다)는 signals/ark 와 같은 원칙.
+    "macro_market": {
+        # 시장성 일간 지표 — 국채 3종 + put/call. 임계는 prices 와 같은 48/120 (주말/공휴일).
+        "query": (
+            "SELECT MIN(d) FROM (SELECT MAX(date) AS d FROM macro "
+            "WHERE indicator IN ('us_10y_yield', 'us_2y_yield', 'us_3m_yield', 'put_call_ratio') "
+            "GROUP BY indicator)"
+        ),
+        "label": "매크로 시장지표 (금리·PCR)",
+    },
+    "macro_monthly": {
+        # 월간 릴리즈 지표 — 고용·CPI·기준금리. 관측월 기준 날짜라 정상 나이가 수 주다:
+        # 45일(1080h) = 한 사이클 지연, 75일(1800h) = 두 사이클째 안 들어왔다.
+        "query": (
+            "SELECT MIN(d) FROM (SELECT MAX(date) AS d FROM macro "
+            "WHERE indicator IN ('unemployment', 'cpi_yoy', 'fed_funds_rate') "
+            "GROUP BY indicator)"
+        ),
+        "label": "매크로 월간지표 (고용·CPI·금리)",
+    },
     "consensus": {
         # FIX (Session 10): `diagnose` step_completed event 가 실제로 emit 되지 않아 항상 FAIL.
         # `recommendations.date` (consensus 결과 persist) 를 source of truth 로 변경.
