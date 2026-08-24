@@ -1983,3 +1983,46 @@ class TestEmitterRowsDoNotPoseAsConsensus:
         got = _read_consensus_from_db("AAA")
         assert got is not None
         assert got["final_action"] == "HOLD", "emitter 행을 최신 합의로 읽었다"
+
+
+class TestDecisionChainLink:
+    """#1182: 액션 아이템 → /decisions/[id] 증거 체인 연결.
+
+    decisions 는 recommendations 와 같은 consensus run 이 같은 date 로 쓰고
+    UNIQUE(date, ticker) 라 same-date LEFT JOIN 이 정확히 1행. 매칭 없는
+    레거시 행은 decision_id=None 으로 내려가고 프론트는 링크를 생략한다.
+    """
+
+    def test_items_carry_decision_id_and_as_of(self, fast_client, monkeypatch):
+        import nuri.api.routes.actions as actions_mod_
+        import nuri.core.db as db_mod
+        from nuri.core.db import get_db as _get_db
+
+        # 로컬의 실제 config/portfolio.yaml 이 real-accounts 필터로 'test' 계좌를
+        # 걸러내면 버킷이 비어 vacuous pass/fail 이 갈린다 (ambient-data 함정,
+        # tests/CLAUDE.md "Local Coverage Overstates"). 결정론 고정.
+        monkeypatch.setattr(actions_mod_, "_get_real_accounts", lambda: {"test"})
+
+        with _get_db(db_mod.DB_PATH) as conn:
+            cur = conn.execute(
+                "INSERT INTO decisions (date, ticker, action, confidence) VALUES (?, ?, ?, ?)",
+                ("2026-04-13", "AAPL", "BUY", 65),
+            )
+            aapl_decision_id = cur.lastrowid
+            # TSLA 는 일부러 decisions 미기록 — 레거시/부분 실행 시나리오
+
+        # 캐시 무효화 — client fixture 이전 테스트가 채워둔 응답이 남는다
+        import nuri.api.routes.actions as actions_mod
+
+        actions_mod._actions_cache["data"] = None
+        actions_mod._actions_cache["timestamp"] = 0
+
+        r = fast_client.get("/api/actions")
+        assert r.status_code == 200
+        data = r.json()
+        items = [i for k in ("urgent", "check", "hold", "portfolio") for i in data.get(k, [])]
+        by_ticker = {i["ticker"]: i for i in items}
+        assert by_ticker["AAPL"]["decision_id"] == aapl_decision_id
+        assert by_ticker["AAPL"]["as_of"] == "2026-04-13"
+        assert by_ticker["TSLA"]["decision_id"] is None
+        assert by_ticker["TSLA"]["as_of"] == "2026-04-13"

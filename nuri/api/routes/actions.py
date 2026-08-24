@@ -165,6 +165,9 @@ def _build_actions() -> dict:
             "live_price": live_price,
             "divergence_pct": round(divergence_pct, 2) if live_price is not None else None,
             "divergence_flag": diverged,
+            # #1182: 증거 체인 링크 + 판정 기준일 — 매칭 decision 없으면 None
+            "decision_id": rec.get("decision_id"),
+            "as_of": rec.get("as_of"),
         }
         if diverged:
             item["reasons"].append(
@@ -445,8 +448,13 @@ def _get_recommendations() -> list[dict]:
     rows = query("""
         SELECT r.ticker, r.action, r.confidence, r.signals,
                r.scoring_detail, r.agent_verdicts,
-               r.alpha_action, r.portfolio_action
+               r.alpha_action, r.portfolio_action,
+               r.date AS as_of, d.id AS decision_id
         FROM recommendations r
+        -- 증거 체인 연결 (#1182): decisions 는 같은 consensus run 이 같은 date 로
+        -- 기록하고 UNIQUE(date, ticker) 라 same-date LEFT JOIN 이 정확히 1행이다.
+        -- 매칭 없으면(레거시/부분 실행) decision_id NULL — 프론트는 링크를 안 그린다.
+        LEFT JOIN decisions d ON d.date = r.date AND d.ticker = r.ticker
         -- `source IS NULL` = 합의 파이프라인 산출물. `buy_candidate_emitter` 행이
         -- 같은 테이블에 들어오면서(#1078) 필터 없이는 emitter 후보가 합의 결과처럼
         -- 액션 카드에 섞인다. 이 화면의 계약은 '합의가 오늘 낸 결론' 이다.
@@ -494,6 +502,9 @@ def _get_recommendations() -> list[dict]:
                 # 형태로 표시할 수 있게 노출. legacy row 는 NULL (back-compat OK).
                 "alpha_action": r.get("alpha_action"),
                 "portfolio_action": r.get("portfolio_action"),
+                # #1182: 증거 체인 (/decisions/[id]) + 이 판정의 기준일
+                "decision_id": r.get("decision_id"),
+                "as_of": r.get("as_of"),
             }
         )
     return results

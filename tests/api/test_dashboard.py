@@ -1529,3 +1529,31 @@ class TestDashboardFreshness:
         assert set(result) == set(FRESHNESS_POLICIES)
         for v in result.values():
             assert set(v) == {"age_hours", "status"}
+
+
+class TestLatestActionsDecisionLink:
+    """#1182: dashboard 액션도 actions.py 와 같은 계약 — decision_id + as_of."""
+
+    def test_actions_carry_decision_id_and_as_of(self, db_path):
+        from nuri.core.timezone import today_kst
+
+        today = today_kst()
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO recommendations (date, ticker, action, confidence, signals, alpha_action) "
+                "VALUES (?, 'AAPL', 'BUY', 80, ?, 'LONG')",
+                (today, '{"agreement_rate": 0.8, "reasoning": "test"}'),
+            )
+            cur = conn.execute(
+                "INSERT INTO decisions (date, ticker, action, confidence) VALUES (?, 'AAPL', 'BUY', 80)",
+                (today,),
+            )
+            decision_id = cur.lastrowid
+
+        from nuri.api.routes.dashboard import _get_latest_actions
+
+        actions = _get_latest_actions()
+        assert actions, "BUY conf 80 은 표시 임계(50)를 넘어야 한다"
+        aapl = next(a for a in actions if a["ticker"] == "AAPL")
+        assert aapl["decision_id"] == decision_id
+        assert aapl["as_of"] == today

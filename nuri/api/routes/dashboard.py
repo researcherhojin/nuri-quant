@@ -291,13 +291,16 @@ def _get_latest_actions() -> list[dict]:
 
     try:
         rows = query("""
-            SELECT ticker, action, confidence, regime, signals, date,
-                   scoring_detail, agent_verdicts, alpha_action, portfolio_action
-            FROM recommendations
+            SELECT r.ticker, r.action, r.confidence, r.regime, r.signals, r.date,
+                   r.scoring_detail, r.agent_verdicts, r.alpha_action, r.portfolio_action,
+                   r.date AS as_of, d.id AS decision_id
+            FROM recommendations r
+            -- 증거 체인 연결 (#1182) — actions.py 와 동일 계약 (same-date UNIQUE JOIN)
+            LEFT JOIN decisions d ON d.date = r.date AND d.ticker = r.ticker
             -- emitter 행 제외 — 이 카드는 합의 결과다 (#1078).
-            WHERE source IS NULL
-              AND date = (SELECT MAX(date) FROM recommendations WHERE source IS NULL)
-            ORDER BY confidence DESC
+            WHERE r.source IS NULL
+              AND r.date = (SELECT MAX(date) FROM recommendations WHERE source IS NULL)
+            ORDER BY r.confidence DESC
         """)
         if not rows:
             return []
@@ -337,6 +340,9 @@ def _get_latest_actions() -> list[dict]:
                         "account": account_label,
                         "scoring_detail": scoring_detail,
                         "agent_verdicts": agent_verdicts,
+                        # #1182: 증거 체인 링크 + 판정 기준일
+                        "decision_id": row.get("decision_id"),
+                        "as_of": row.get("as_of"),
                     }
                 )
             elif is_alpha_flat_sell(alpha_action, action) and confidence >= 70:
@@ -353,6 +359,9 @@ def _get_latest_actions() -> list[dict]:
                         "account": account_label,
                         "scoring_detail": scoring_detail,
                         "agent_verdicts": agent_verdicts,
+                        # #1182: 증거 체인 링크 + 판정 기준일
+                        "decision_id": row.get("decision_id"),
+                        "as_of": row.get("as_of"),
                     }
                 )
 

@@ -20,6 +20,9 @@ export interface ActionItem {
   target_2?: number | null;
   reasons: string[];
   priority: string;
+  // #1182: 증거 체인 (/decisions/[id]) + 판정 기준일 — 매칭 decision 없으면 null
+  decision_id?: number | null;
+  as_of?: string | null;
 }
 
 interface ActionItemsProps {
@@ -89,13 +92,22 @@ function ActionCard({ item }: { item: ActionItem }) {
         </div>
       )}
 
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2 flex gap-2 items-center">
         <button
           onClick={() => setExpanded(!expanded)}
           className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
         >
           {expanded ? "접기" : ACTION.DETAIL} {expanded ? "▲" : "▼"}
         </button>
+        {/* #1182: 이 판정의 증거 체인 — decision 매칭이 없으면(레거시 행) 링크 생략 */}
+        {item.decision_id != null && (
+          <Link
+            href={`/decisions/${item.decision_id}`}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {ACTION.EVIDENCE}{item.as_of ? ` (${item.as_of})` : ""} →
+          </Link>
+        )}
       </div>
     </div>
   );
