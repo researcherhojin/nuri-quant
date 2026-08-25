@@ -6,6 +6,7 @@
  * 행으로, 이벤트 카드는 레일 하단으로 이동한다. 데이터 계약·색·링크는 기존 그대로.
  */
 import Link from "next/link";
+import { Pin, TriangleAlert } from "lucide-react";
 import { CONTEXT } from "@/lib/strings";
 import {
   type MacroEvent, type SystemHealth,
@@ -17,7 +18,7 @@ export function RegimeShiftBanner({ regime }: { regime: Partial<SystemHealth["re
   if (!isRegimeShifting(regime)) return null;
   return (
     <div className="rounded-lg bg-amber-950/40 border border-amber-700/50 px-3 py-2 flex items-center gap-2 text-xs">
-      <span className="shrink-0">⚠</span>
+      <TriangleAlert className="shrink-0 size-3.5 text-amber-400" aria-hidden />
       <span className="text-amber-300 font-semibold">Regime 전환 신호</span>
       <span className="text-zinc-400">
         현재 {regime.regime ?? "—"} · 신뢰도{" "}
@@ -89,7 +90,7 @@ export function MacroEventsCard({ events, regimeTrend }: { events: MacroEvent[];
     <div className={`rounded-lg bg-zinc-900/40 border ${pinned ? "border-amber-500/70 ring-1 ring-amber-500/30 shadow-amber-500/10 shadow-md" : "border-zinc-800/60"} border-l-4 ${regimeStripe(regimeTrend)} p-2.5`}>
       <div className="flex items-center justify-between mb-1.5">
         <h4 className="text-[10px] text-zinc-500 font-semibold flex items-center gap-1">
-          {pinned && <span className="text-amber-400" aria-label="pinned attention">📌</span>}
+          {pinned && <Pin className="size-3 text-amber-400" aria-label="pinned attention" />}
           {CONTEXT.TITLE}
           {pinned && <span className="text-[9px] text-amber-300/80 font-bold">ATTENTION</span>}
         </h4>

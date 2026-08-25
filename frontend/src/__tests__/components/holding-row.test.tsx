@@ -530,13 +530,13 @@ describe("buildEnrichedHoldings wide-viewport fields", () => {
   });
 });
 
-// #503 Phase C — macro-aware sector badge
+// #503 Phase C — macro-aware sector badge (F-003: 📡 이모지 → lucide Radar, testid 로 잠금)
 describe("HoldingRow macroAwareSectors", () => {
-  it("renders 📡 badge when sector matches impacted keyword", () => {
+  it("renders macro-aware badge when sector matches impacted keyword", () => {
     const h = holdingFixture({ sector: "Energy" });
     const { container } = render(<HoldingRow holding={h} macroAwareSectors={new Set(["energy"])} />);
     const sectorCell = container.querySelector("[data-testid='sector-cell']");
-    expect(sectorCell?.textContent).toContain("📡");
+    expect(sectorCell?.querySelector("[data-testid='macro-aware-badge']")).not.toBeNull();
     expect(sectorCell?.className).toContain("text-amber-400");
   });
 
@@ -544,20 +544,20 @@ describe("HoldingRow macroAwareSectors", () => {
     const h = holdingFixture({ sector: "ETF/USTech" });
     const { container } = render(<HoldingRow holding={h} macroAwareSectors={new Set(["tech"])} />);
     const sectorCell = container.querySelector("[data-testid='sector-cell']");
-    expect(sectorCell?.textContent).toContain("📡");
+    expect(sectorCell?.querySelector("[data-testid='macro-aware-badge']")).not.toBeNull();
   });
 
   it("does not render badge when no sector match", () => {
     const h = holdingFixture({ sector: "Healthcare" });
     const { container } = render(<HoldingRow holding={h} macroAwareSectors={new Set(["energy"])} />);
     const sectorCell = container.querySelector("[data-testid='sector-cell']");
-    expect(sectorCell?.textContent).not.toContain("📡");
+    expect(sectorCell?.querySelector("[data-testid='macro-aware-badge']")).toBeNull();
   });
 
   it("does not render badge when prop omitted", () => {
     const h = holdingFixture({ sector: "Energy" });
     const { container } = render(<HoldingRow holding={h} />);
     const sectorCell = container.querySelector("[data-testid='sector-cell']");
-    expect(sectorCell?.textContent).not.toContain("📡");
+    expect(sectorCell?.querySelector("[data-testid='macro-aware-badge']")).toBeNull();
   });
 });
