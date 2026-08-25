@@ -1,13 +1,21 @@
 import { render } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import type { ReactNode } from "react";
-import {
-  MarketContext,
-  shouldPinCard,
-  sparklinePath,
-  type MacroEvent,
-  type SystemHealth,
-} from "@/components/ui/market-context";
+import { shouldPinCard, sparklinePath, type MacroEvent, type SystemHealth } from "@/components/ui/market-context";
+import { SystemHealthRail, MacroEventsCard, RegimeShiftBanner } from "@/components/dashboard/system-rail";
+
+// U2b-2 (#1208): MarketContext 컴포넌트는 SystemHealthRail·MacroEventsCard·
+// RegimeShiftBanner 로 분해됨 — 테스트는 프로덕션 조립(page.tsx)과 동일한 구성을
+// 이 래퍼로 미러링해 기존 assert 를 유지한다.
+function MarketContext({ events, health }: { events: MacroEvent[]; health: Partial<SystemHealth> }) {
+  return (
+    <>
+      <RegimeShiftBanner regime={health.regime ?? {}} />
+      <SystemHealthRail health={health} />
+      <MacroEventsCard events={events} regimeTrend={health.regime?.trend} />
+    </>
+  );
+}
 
 // next/link → 단순 anchor (네트워크/라우터 불필요), 기존 coverage 테스트와 동일 패턴
 vi.mock("next/link", () => ({
