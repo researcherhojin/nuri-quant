@@ -106,16 +106,16 @@ describe("DataTable", () => {
   });
 
   // ─── Compact mode ────────────────────────────────────
-  it("uses normal padding by default", () => {
+  it("uses terminal-density padding by default (#1200)", () => {
     const { container } = render(<DataTable columns={basicColumns} data={basicData} />);
     const th = container.querySelector("th");
-    expect(th!.className).toContain("py-2.5");
+    expect(th!.className).toContain("py-1.5");
   });
 
   it("uses compact padding when compact=true", () => {
     const { container } = render(<DataTable columns={basicColumns} data={basicData} compact />);
     const th = container.querySelector("th");
-    expect(th!.className).toContain("py-1.5");
+    expect(th!.className).toContain("py-1");
   });
 
   it("uses text-xs in compact mode", () => {
@@ -124,10 +124,10 @@ describe("DataTable", () => {
     expect(table!.className).toContain("text-xs");
   });
 
-  it("uses text-sm in normal mode", () => {
+  it("uses text-xs in normal mode too (#1200 density)", () => {
     const { container } = render(<DataTable columns={basicColumns} data={basicData} />);
     const table = container.querySelector("table");
-    expect(table!.className).toContain("text-sm");
+    expect(table!.className).toContain("text-xs");
   });
 
   // ─── onRowClick ──────────────────────────────────────

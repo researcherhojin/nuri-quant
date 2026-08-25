@@ -65,7 +65,7 @@ describe("MarketPulse — trend variants", () => {
       />,
     );
     const el = screen.getByText("SIDEWAYS");
-    expect(el.className).toContain("text-zinc-200");
+    expect(el.className).toContain("text-foreground");
   });
 
   it("empty trend falls back to UNKNOWN (default color)", () => {
@@ -73,7 +73,7 @@ describe("MarketPulse — trend variants", () => {
       <MarketPulse regime={{ ...baseRegime, trend: "" }} macro={baseMacro} />,
     );
     const el = screen.getByText("UNKNOWN");
-    expect(el.className).toContain("text-zinc-200");
+    expect(el.className).toContain("text-foreground");
   });
 });
 
@@ -93,7 +93,7 @@ describe("MarketPulse — VIX variants", () => {
       <MarketPulse regime={{ ...baseRegime, vix: 20 }} macro={baseMacro} />,
     );
     const el = screen.getByText("20.0");
-    expect(el.className).toContain("text-zinc-200");
+    expect(el.className).toContain("text-foreground");
     // VIX 15-25 sub is "normal"; base volatility metric (normal_vol) also reads
     // "normal" → scope to this VIX metric's own wrapper to avoid a text collision.
     const sub = el.parentElement?.querySelector("p:last-child");
@@ -144,7 +144,7 @@ describe("MarketPulse — Fear & Greed variants", () => {
       />,
     );
     expect(screen.getByText("Fear")).toBeInTheDocument();
-    expect(screen.getByText("30").className).toContain("text-zinc-200");
+    expect(screen.getByText("30").className).toContain("text-foreground");
   });
 
   it("neutral (40-60) shows Neutral and green", () => {
@@ -167,7 +167,7 @@ describe("MarketPulse — Fear & Greed variants", () => {
     );
     expect(screen.getByText("Greed")).toBeInTheDocument();
     // 70 > 60 and <= 75 → default color (not green, not red)
-    expect(screen.getByText("70").className).toContain("text-zinc-200");
+    expect(screen.getByText("70").className).toContain("text-foreground");
   });
 
   it("extreme greed (>75) shows label and red", () => {
@@ -206,7 +206,7 @@ describe("MarketPulse — Macro score variants", () => {
     render(
       <MarketPulse regime={baseRegime} macro={{ score: 50, interpretation: "Neutral" }} />,
     );
-    expect(screen.getByText("50/100").className).toContain("text-zinc-200");
+    expect(screen.getByText("50/100").className).toContain("text-foreground");
   });
 
   it("weak macro (<40) is red", () => {
@@ -277,7 +277,7 @@ describe("MarketPulse — volatility variants", () => {
       />,
     );
     const el = screen.getByText("NORMAL");
-    expect(el.className).toContain("text-zinc-200");
+    expect(el.className).toContain("text-foreground");
     // scope to this metric's wrapper (VIX sub may also read "normal")
     const sub = el.parentElement?.querySelector("p:last-child");
     expect(sub?.textContent).toBe("normal");

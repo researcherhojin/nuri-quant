@@ -40,16 +40,16 @@ describe("Metric", () => {
     expect(valueEl.className).toContain("text-red-400");
   });
 
-  it("applies default color class (text-zinc-200)", () => {
+  it("applies default color class (text-foreground)", () => {
     render(<Metric label="Price" value="$168" />);
     const valueEl = screen.getByText("$168");
-    expect(valueEl.className).toContain("text-zinc-200");
+    expect(valueEl.className).toContain("text-foreground");
   });
 
   it("applies default color explicitly", () => {
     render(<Metric label="Price" value="$168" color="default" />);
     const valueEl = screen.getByText("$168");
-    expect(valueEl.className).toContain("text-zinc-200");
+    expect(valueEl.className).toContain("text-foreground");
   });
 
   // ─── Size variants ───────────────────────────────
@@ -69,7 +69,7 @@ describe("Metric", () => {
   it("label has uppercase tracking and small text", () => {
     render(<Metric label="VIX" value="15" />);
     const labelEl = screen.getByText("VIX");
-    expect(labelEl.className).toContain("text-[10px]");
+    expect(labelEl.className).toContain("text-[11px]"); // #1200: 10px→11px (WCAG 소형 텍스트)
     expect(labelEl.className).toContain("uppercase");
     expect(labelEl.className).toContain("tracking-wider");
   });

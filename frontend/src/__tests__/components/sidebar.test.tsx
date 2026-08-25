@@ -72,10 +72,11 @@ describe("Sidebar", () => {
 
   it("renders all navigation groups", () => {
     render(<Sidebar />);
-    expect(screen.getByText("OVERVIEW")).toBeInTheDocument();
-    expect(screen.getByText("ANALYSIS")).toBeInTheDocument();
-    expect(screen.getByText("TRADING")).toBeInTheDocument();
-    expect(screen.getByText("INTELLIGENCE")).toBeInTheDocument();
+    expect(screen.getByText("오늘")).toBeInTheDocument();
+    expect(screen.getByText("의사결정")).toBeInTheDocument();
+    expect(screen.getByText("포트폴리오")).toBeInTheDocument();
+    expect(screen.getByText("리서치")).toBeInTheDocument();
+    expect(screen.getByText("시스템")).toBeInTheDocument();
   });
 
   it("renders all navigation items", () => {
@@ -99,10 +100,10 @@ describe("Sidebar", () => {
     mockPathname.mockReturnValue("/portfolio");
     const { container } = render(<Sidebar />);
 
-    // The active link should have emerald text class
+    // 액티브 = 인터랙션 액센트(primary) — emerald 브랜드 액센트 폐지 (#1200, 스펙 §1)
     const activeLink = container.querySelector('a[href="/portfolio"]');
     expect(activeLink).not.toBeNull();
-    expect(activeLink!.className).toContain("text-emerald-400");
+    expect(activeLink!.className).toContain("text-primary");
   });
 
   it("collapses sidebar on chevron click", () => {
@@ -128,7 +129,7 @@ describe("Sidebar", () => {
 
     // Labels should be hidden
     expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
-    expect(screen.queryByText("OVERVIEW")).not.toBeInTheDocument();
+    expect(screen.queryByText("오늘")).not.toBeInTheDocument();
   });
 
   it("shows System Online indicator", () => {
