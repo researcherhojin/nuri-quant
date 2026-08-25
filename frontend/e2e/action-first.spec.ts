@@ -74,21 +74,18 @@ test.describe("Action-First Dashboard", () => {
     await expect(main).toContainText(reason);
   });
 
-  test("action items have expand/collapse detail button", async ({ page }) => {
+  test("action rows expand quick-peek on click (#1208)", async ({ page }) => {
     await page.goto("/", { timeout: 20000 });
     await page.waitForTimeout(5000);
-    // Find "상세 근거" buttons
-    const detailButtons = page.locator("text=상세 근거");
-    const count = await detailButtons.count();
-    if (count > 0) {
-      // Click first detail button
-      await detailButtons.first().click();
-      // After click, should show price info (현재가, 손절, etc.)
-      await page.waitForTimeout(500);
-      const expanded = await page.textContent("body");
-      const hasDetail = expanded!.includes("현재가") || expanded!.includes("손절") || expanded!.includes("1차익절");
-      expect(hasDetail).toBe(true);
-    }
+    // U2b-2: 카드의 "상세 근거" 버튼 → 행 클릭 quick-peek. 이전 스펙은 if(count>0)
+    // 가드라 버튼이 사라져도 침묵 통과했다 — 행 존재를 하드 assert 한다.
+    const rows = page.getByTestId("action-row");
+    expect(await rows.count(), "액션 행이 없다").toBeGreaterThan(0);
+    await rows.first().click();
+    await expect(page.getByTestId("action-row-peek").first()).toBeVisible();
+    const expanded = await page.textContent("body");
+    const hasDetail = expanded!.includes("현재가") || expanded!.includes("손절") || expanded!.includes("1차익절");
+    expect(hasDetail).toBe(true);
   });
 
   test("renders market context with macro events", async ({ page }) => {

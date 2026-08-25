@@ -3,7 +3,7 @@ import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { ActionItems, type ActionItem } from "@/components/ui/action-items";
 
 vi.mock("next/link", () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
+  default: ({ children, href, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => <a href={href} {...props}>{children}</a>,
 }));
 
 // 분기 커버리지 전용 테스트 — action-items.tsx 의 모든 branch arm 을
@@ -70,10 +70,10 @@ describe("ActionItems — full branch coverage", () => {
     expect(badge.className).toContain("bg-zinc-700");
   });
 
-  it("name present: shows ticker subtext (line 56 || left, line 58 && right)", () => {
+  it("name present: ticker moves to title attr (#1208 dense row)", () => {
     render(<ActionItems urgent={[{ ...base, ticker: "X4", name: "Named" }]} check={[]} hold={[]} />);
-    expect(screen.getByText("Named")).toBeTruthy();
-    expect(screen.getByText("X4")).toBeTruthy(); // ticker subtext span (line 58)
+    const link = screen.getByText("Named");
+    expect(link.getAttribute("title")).toContain("X4");
   });
 
   it("name null: link shows ticker, no subtext (line 56 || right, line 58 && false)", () => {
@@ -105,31 +105,39 @@ describe("ActionItems — full branch coverage", () => {
     expect(pnl.className).toContain("text-red-400");
   });
 
-  it("priority fallback to hold style when unknown (line 43 || right arm)", () => {
+  it("row accent comes from the bucket, not item.priority (#1208)", () => {
     render(<ActionItems urgent={[{ ...base, ticker: "X10", name: "Unknown", priority: "nope" }]} check={[]} hold={[]} />);
-    const card = screen.getByText("Unknown").closest("div.rounded-lg");
-    expect(card?.className).toContain("border-zinc-800/60"); // priorityStyles.hold.border
+    const row = screen.getByText("Unknown").closest("tr");
+    expect(row?.className).toContain("border-l-red-500/60"); // urgent 버킷 accent
   });
 
-  it("expanded detail toggles (line 84 && + line 97 cond), formats US prices", () => {
+  // #1208: 행 안의 링크 클릭은 peek 토글을 막는다 (stopPropagation 2곳)
+  it("ticker/evidence link clicks do not toggle the quick-peek", () => {
+    render(<ActionItems urgent={[{ ...base, ticker: "X20", name: "LinkCo", decision_id: 7 }]} check={[]} hold={[]} />);
+    fireEvent.click(screen.getByText("LinkCo"));
+    expect(screen.queryByTestId("action-row-peek")).toBeNull();
+    fireEvent.click(screen.getByText(/증거 체인/));
+    expect(screen.queryByTestId("action-row-peek")).toBeNull();
+  });
+
+  it("quick-peek toggles on row click, formats US prices (#1208)", () => {
     render(<ActionItems urgent={[{ ...base, ticker: "X11", name: "Exp" }]} check={[]} hold={[]} />);
-    const btn = screen.getByText(/상세|▼|상세 근거/);
-    fireEvent.click(btn); // expanded = true → line 84 && true, line 97 "▲"
+    const row = screen.getByTestId("action-row");
+    fireEvent.click(row);
     expect(screen.getByText("현재가")).toBeTruthy();
-    const collapse = screen.getByText(/접기|▲/);
-    fireEvent.click(collapse); // expanded = false → line 97 "▼"
+    fireEvent.click(row);
     expect(screen.queryByText("현재가")).toBeNull();
   });
 
   it("KR ticker formats prices with won (line 47 isKr true)", () => {
     render(<ActionItems urgent={[{ ...base, ticker: "005930.KS", name: "KR", current_price: 200750 }]} check={[]} hold={[]} />);
-    fireEvent.click(screen.getByText(/상세|▼/));
+    fireEvent.click(screen.getByTestId("action-row"));
     expect((document.body.textContent ?? "").includes("₩")).toBe(true);
   });
 
   it("null prices render dash (line 46 fmt v == null)", () => {
     render(<ActionItems urgent={[{ ...base, ticker: "X12", name: "Null", current_price: null, stop_loss: null, target_1: null }]} check={[]} hold={[]} />);
-    fireEvent.click(screen.getByText(/상세|▼/));
+    fireEvent.click(screen.getByTestId("action-row"));
     expect((document.body.textContent ?? "").includes("—")).toBe(true);
   });
 

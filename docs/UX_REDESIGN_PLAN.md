@@ -69,7 +69,10 @@
 | U1b-2 | 공용 컴포넌트 리테마 | card/status-badge/metric/data-table — intent minimal-tag 맵, 밀도(행 32px), 사이드바 5그룹 재편(액티브 액센트 blue 전환 포함), StatusBadge 30-엔트리 하드코딩 맵 정리 | **완료 #1201** |
 | U1c | **반응형 파운데이션** | §2 구현: 컨테이너 캡(main `max-w-[1600px]`) + `3xl` 토큰 + `responsive.spec.ts` 매트릭스. 그리드 캡은 컨테이너 캡으로 충족(액션 카드 3열이 캡 안에서 ~440px) — 카드→테이블 전환은 U2b. **U2 재구조보다 선행** | 진행 중 |
 | U2a | 대시보드 추출 | `page.tsx`(668줄) 섹션별 컴포넌트 추출 — 동작 보존, 시각 변화 없음 (5개 인라인 색맵 함수 격리) | 대기 |
-| U2b | 대시보드 재구조 | verdict 배너 최상단 · 액션 밀집 테이블(심각도순) + 우측 시스템 레일 · 도넛→가로 스택 바 · coverage 접이 · NEW/ack·quick-peek·다음 행동 카피 · 히어로 대형 타이포 폐지 | 대기 |
+| U2b-1 | verdict 배너 + 히어로 축소 | 배너 최상단(placement 잠금 테스트) · MarketStrip verdict 꼬리 제거 · 히어로 3xl→xl | **완료 #1207** |
+| U2b-2 | 액션 테이블 + 시스템 레일 | 카드→32px 밀집 행(quick-peek 확장·확신도 micro-bar·증거 링크) · MarketContext 분해(SystemHealthRail·MacroEventsCard·RegimeShiftBanner) · 좌 2/3 + 우 1/3 그리드 | 진행 중 |
+| U2b-3 | 구성 스택 바 | 도넛→가로 스택 바 · coverage 접이 | 대기 |
+| U2b-4 | 델타·ack | NEW+시각 배지 · 확인(ack) 로컬 상태 · 다음 행동 카피 | 대기 |
 | U3 | Decisions | 리스트: 필터·날짜 그룹핑·conf micro-bar·판정일 명시 / 상세: 2컬럼 + 증거 key-value(raw JSON 폐지) + raw float 종결 | 대기 |
 | U4 | 주변부 | ticker(빈 패널 접기)·scanner(중복 테이블 병합)·engine(BLOCKED 다음 행동)·pipeline(타임라인 구조화) + 빈 상태 1줄 규칙 전면 | 대기 |
 | U5 | 별도 결정 | evidence matplotlib PNG→네이티브 차트 · Cmd-K · IA 통합(라우트 병합) — 각각 사용자 승인 후 착수 | 보류 |
