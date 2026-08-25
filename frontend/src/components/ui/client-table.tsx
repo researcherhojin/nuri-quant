@@ -49,14 +49,22 @@ const VARIANTS: Record<string, any[]> = {
     { key: "profit_factor", label: "PF", align: "right", render: num },
     { key: "avg_return", label: "Avg Return", align: "right", render: pct },
   ],
-  scan: [
+  // #1219: scan/swing 두 변형이 같은 스캔의 중복 뷰였다 — union 병합 단일 변형.
+  // 병합 특성상 어느 쪽에도 없는 필드가 있어 렌더러는 전부 null 허용 (—).
+  scanner: [
     { key: "ticker", label: "Ticker", render: ticker },
     { key: "price", label: "Price", align: "right", render: price },
-    { key: "change_1d", label: "1D", align: "right", render: pct },
-    { key: "change_5d", label: "5D", align: "right", render: pct },
-    { key: "rsi", label: "RSI", align: "right", render: num },
-    { key: "signal", label: "Signal", render: badge },
-    { key: "score", label: "Score", align: "right" },
+    { key: "change_1d", label: "1D", align: "right", render: (v: number | null) => (v == null ? dim("—") : pct(v)) },
+    { key: "change_5d", label: "5D", align: "right", render: (v: number | null) => (v == null ? dim("—") : pct(v)) },
+    { key: "rsi", label: "RSI", align: "right", render: (v: number | null) => (v == null ? dim("—") : num(v)) },
+    { key: "signal", label: "Signal", render: (v: string | null) => (v ? badge(v) : dim("—")) },
+    { key: "score", label: "Score", align: "right", render: (v: number | null) => (v == null ? dim("—") : String(v)) },
+    { key: "agent_action", label: "Agent", align: "center", render: (v: string | null) => (v ? badgeMd(v) : dim("—")) },
+    { key: "agent_confidence", label: "Conf", align: "right", render: (v: number | null) => (v == null ? dim("—") : String(v)) },
+    { key: "approved", label: "승인", align: "center", render: (v: boolean | null, row: { reason?: string | null }) =>
+      v === null ? dim("—") : v
+        ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">승인</span>
+        : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-zinc-700/40 text-zinc-400" title={row.reason ?? undefined}>미승인</span> },
   ],
   gate: [
     { key: "description", label: "Condition" },
@@ -100,14 +108,6 @@ const VARIANTS: Record<string, any[]> = {
       if (_v === "target_1") return <span className="text-emerald-400 text-[10px] font-medium">TP1 ({row.take_profit_sell_pct}%)</span>;
       return dim("—");
     }},
-  ],
-  swing: [
-    { key: "ticker", label: "Ticker", render: ticker },
-    { key: "price", label: "Price", align: "right", render: price },
-    { key: "scan_signal", label: "Signal", align: "center", render: badge },
-    { key: "scan_score", label: "Score", align: "right" },
-    { key: "agent_action", label: "Agent", align: "center", render: badgeMd },
-    { key: "agent_confidence", label: "Conf", align: "right" },
   ],
   advisor: [
     { key: "priority", label: "#", align: "center", render: (v: number) => {
