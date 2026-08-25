@@ -79,7 +79,7 @@ describe("PipelineNode — node-body branch arms", () => {
   afterEach(() => vi.restoreAllMocks());
 
   const base = (over: Partial<NodeData>): NodeData => ({
-    label: "🔍 Collect",
+    label: "Collect",
     sub: "subtitle",
     status: "ok",
     recordCount: 0,
@@ -383,9 +383,45 @@ describe("PipelinePage — fetch & render branch arms", () => {
     await waitFor(() => expect(screen.getByText("err output here")).toBeInTheDocument());
     expect(screen.getByText("make x")).toBeInTheDocument();
     expect(screen.getByText("boom")).toBeInTheDocument();
-    // 437 fallback bullet
-    const bullets = screen.getAllByText((_c, el) => el?.textContent === "•");
-    expect(bullets.length).toBeGreaterThan(0);
+    // EVENT_ICONS 폴백 — 미지 타입은 중립 Circle 아이콘 (F-003 #1237)
+    expect(screen.getByTestId("event-icon-weird")).toBeInTheDocument();
+  });
+
+  it("StepIcon: 라이브 어휘가 사이드바 아이덴티티와 동일 아이콘 — Circle 폴백은 미지 스텝만 (F-003 #1237)", async () => {
+    const { StepIcon } = await import("@/app/pipeline/page");
+    const { BarChart3, Users, Cog, Search, MapPin } = await import("lucide-react");
+    // 패리티 잠금 (codex #1238 P3): 기대 아이콘을 직접 렌더해 lucide-* 클래스를 비교 —
+    // 이름 하드코딩 없이 "사이드바와 같은 아이콘" 계약 자체를 검증한다.
+    const lucideClass = (el: Element | null) =>
+      el?.getAttribute("class")?.split(" ").find((c) => c.startsWith("lucide-") && c !== "lucide");
+    const PARITY: Array<[string, React.ComponentType]> = [
+      ["collect", Search],
+      ["analyze", BarChart3], // 사이드바 Signals
+      ["consensus", Users], // 사이드바 Agents
+      ["certify", Cog], // 사이드바 Certification Engine
+      ["track", MapPin],
+    ];
+    for (const [step, Expected] of PARITY) {
+      const want = render(<Expected />);
+      const got = render(<StepIcon stepId={step} />);
+      const wantClass = lucideClass(want.container.querySelector("svg"));
+      expect(wantClass, `${step} 기대 클래스 추출 실패`).toBeTruthy();
+      expect(lucideClass(got.container.querySelector("svg")), `${step} 아이콘 불일치`).toBe(wantClass);
+      // 장식 아이콘 — AT 에 노출하지 않는다 (codex #1238 P3)
+      expect(got.container.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+      want.unmount();
+      got.unmount();
+    }
+    const { container } = render(<StepIcon stepId="unknown-step" />);
+    expect(lucideClass(container.querySelector("svg"))).toBe("lucide-circle");
+
+    // EventIcon 도 같은 장식 계약 — 전 타입 aria-hidden (codex #1238 R2)
+    const { EventIcon } = await import("@/app/pipeline/page");
+    for (const type of ["start", "success", "error", "weird"]) {
+      const ev = render(<EventIcon type={type} />);
+      expect(ev.container.querySelector("svg")?.getAttribute("aria-hidden"), `${type} aria-hidden 누락`).toBe("true");
+      ev.unmount();
+    }
   });
 
   it("timeline timestamp coercion throws → formatTimestamp catch (136)", async () => {

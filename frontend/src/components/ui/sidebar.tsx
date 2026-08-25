@@ -90,7 +90,7 @@ export function Sidebar() {
           </Link>
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="text-muted-foreground hover:text-foreground/80 transition-colors"
+            className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground/80 transition-colors"
           >
             {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
