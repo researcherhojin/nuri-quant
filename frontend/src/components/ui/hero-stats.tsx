@@ -18,6 +18,8 @@
  * Server Component. Pure presentational; consumes pre-computed numbers.
  */
 
+import Link from "next/link";
+
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { HoldingsSummary } from "@/lib/holdings-summary";
 import { HERO } from "@/lib/strings";
@@ -136,13 +138,26 @@ export function HeroStats({
                   {movers > 0 ? `${wr.winners}W / ${wr.losers}L` : ""}
                 </span>
               </div>
+              {/* #1185: 승률은 보유 종목의 미실현 스냅샷 — 시스템 판정 성과(원장)로 오독 금지 */}
               <p className="text-xs text-zinc-400 mt-1">
-                {wr.flat > 0 ? `${HERO.FLAT} ${wr.flat}` : HERO.HOLDINGS_BASIS}
+                {wr.flat > 0 ? `${HERO.FLAT} ${wr.flat} · ` : ""}{HERO.WIN_RATE_SCOPE}
               </p>
             </div>
           );
         })()}
       </div>
+
+      {/* #1185: 출처 분리 (§3.11) — 위 4지표는 전부 스냅샷. 판정 성과는 원장(/decisions)에서만 */}
+      <p className="text-[10px] text-zinc-500" data-testid="hero-provenance">
+        {HERO.PROVENANCE_SNAPSHOT}
+        {" — "}
+        {HERO.PROVENANCE_SCOPE}
+        {" · "}
+        {HERO.PROVENANCE_LEDGER_LINK}{" "}
+        <Link href="/decisions" className="underline decoration-zinc-700 hover:text-zinc-300 transition-colors">
+          /decisions →
+        </Link>
+      </p>
     </section>
   );
 }
