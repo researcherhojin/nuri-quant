@@ -88,7 +88,6 @@ describe("Sidebar", () => {
     expect(screen.getByText("Agents")).toBeInTheDocument();
     expect(screen.getByText("Scanner")).toBeInTheDocument();
     expect(screen.getByText("Price Targets")).toBeInTheDocument();
-    expect(screen.getByText("Advisor")).toBeInTheDocument();
     expect(screen.getByText("Strategy")).toBeInTheDocument();
     expect(screen.getByText("Rebalance")).toBeInTheDocument();
     expect(screen.getByText("Certification Engine")).toBeInTheDocument();
