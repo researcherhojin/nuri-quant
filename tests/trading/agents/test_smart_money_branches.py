@@ -341,3 +341,24 @@ class TestStaleRowsVsFreshSource:
         assert "ARK 매매 낡음" not in v.reasoning
         assert "ARK 최근 매수" not in v.reasoning  # 낡은 매매는 점수에도 안 들어감
         assert "ark" not in v.data_points.get("stale_sources", [])
+
+    def test_probe_empty_result_counts_as_not_fresh(self, db_path, monkeypatch):
+        """프로브가 빈 결과(테이블 부재 등 _safe_query 예외 흡수)면 미상 = 신선 아님 →
+        낡은 행만 있으면 노트가 난다. 부재를 신선으로 치면 '진짜 낡았는데 침묵' 이 된다."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO ark (ticker, date, direction, shares) VALUES ('NOPROBE', ?, 'Buy', 1000)",
+                (_d(60),),
+            )
+        agent = SmartMoneyAgent()
+        real = agent._safe_query
+
+        def _probe_blind(sql, params, dbp):
+            if "ark_source_dates" in sql:
+                return []  # 테이블 부재 → _safe_query 가 예외를 먹고 빈 리스트
+            return real(sql, params, dbp)
+
+        monkeypatch.setattr(agent, "_safe_query", _probe_blind)
+        v = agent.analyze("NOPROBE", db_path=db_path)
+        assert "ARK 매매 낡음" in v.reasoning
+        assert "ark" in v.data_points["stale_sources"]
