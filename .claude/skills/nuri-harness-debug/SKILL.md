@@ -1,6 +1,16 @@
 ---
 name: nuri-harness-debug
-description: LLM 에이전트 실패 패턴 디버깅 — 코드/툴 레벨 (§5.1-5.6: hallucination, phantom fix, test illusion, scope creep, context bias, stale number drift) + 대화/추론 레벨 (§5.14.1-2: data→recommendation slide, cross-context inconsistency). Use when user reports "test passes but doesn't cover the code", "fix applied but bug persists", "why does this keep failing the same way", "Claude is hallucinating API", "갑자기 추천한 이유가 뭔가요", "왜 KR/US 다르게 적용했나요", or when a regression test needs a Gotcha-Test Pair citation. Case study narrative: git log of PR #272, #300-#307, session 2026-05-27.
+# ⚠️ 무인용 콜론(`§5.1-5.6: ...`)이 YAML 스캐너를 깨뜨려 frontmatter 전체가 드롭되던 것을
+# block scalar 로 수리 (2026-08-25 /doctor). 내용 무변경.
+description: >-
+  LLM 에이전트 실패 패턴 디버깅 — 코드/툴 레벨 (§5.1-5.6: hallucination, phantom fix,
+  test illusion, scope creep, context bias, stale number drift) + 대화/추론 레벨
+  (§5.14.1-2: data→recommendation slide, cross-context inconsistency). Use when user
+  reports "test passes but doesn't cover the code", "fix applied but bug persists",
+  "why does this keep failing the same way", "Claude is hallucinating API",
+  "갑자기 추천한 이유가 뭔가요", "왜 KR/US 다르게 적용했나요", or when a regression test
+  needs a Gotcha-Test Pair citation. Case study narrative: git log of PR #272,
+  #300-#307, session 2026-05-27.
 ---
 
 # Harness Debug — 실패 패턴 + Gotcha-Test Pair
