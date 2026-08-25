@@ -159,7 +159,7 @@ export function EventIcon({ type }: { type: string }) {
   const Icon = EVENT_ICONS[type] ?? Circle;
   const color =
     type === "success" ? "text-emerald-400" : type === "error" ? "text-red-400" : "text-blue-400";
-  return <Icon size={13} className={`shrink-0 mt-0.5 ${color}`} data-testid={`event-icon-${type}`} />;
+  return <Icon size={13} className={`shrink-0 mt-0.5 ${color}`} aria-hidden="true" data-testid={`event-icon-${type}`} />;
 }
 
 function formatTimestamp(iso: string): string {
@@ -174,7 +174,8 @@ function formatTimestamp(iso: string): string {
 // F-003: 미지의 step 은 중립 원 — 라이브 데이터가 새 step 을 내보내도 깨지지 않게
 export function StepIcon({ stepId }: { stepId: string }) {
   const Icon = STEP_ICONS[stepId] ?? Circle;
-  return <Icon size={15} className="text-muted-foreground" data-testid={`step-icon-${stepId}`} />;
+  // aria-hidden 명시: lucide 기본값에 기대지 않는다 — 장식 아이콘 (codex #1238 P3, 잠금은 branchcov 테스트)
+  return <Icon size={15} className="text-muted-foreground" aria-hidden="true" data-testid={`step-icon-${stepId}`} />;
 }
 
 // === Custom Node Component ===
