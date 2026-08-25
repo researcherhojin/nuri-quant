@@ -17,6 +17,10 @@ export default defineConfig({
   //    전부 초록이 되지 않는다. 여기 숫자를 더 키워 초록으로 만들지 말 것.
   workers: 2,
   expect: { timeout: 15000 },
+  // CI 기본 reporter 는 dot 이라 playwright-report/ 가 아예 안 생긴다 — HTML 을
+  // 명시해야 frontend-e2e job 의 실패 아티팩트가 실제로 존재한다 (codex #1243).
+  // 로컬은 기본값(list) 유지.
+  reporter: process.env.CI ? [["dot"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: "http://localhost:3000",
     headless: true,
