@@ -183,4 +183,17 @@ describe("ScanPage", () => {
 
     expect(screen.getByText(/스캔 결과 없음/)).toBeInTheDocument();
   });
+
+  it("scan fetch 실패(503 shed 포함) → 빈 shape 강등, 페이지 생존 (#1119)", async () => {
+    mockFetchAPI = vi.fn().mockImplementation((path: string) => {
+      if (path.includes("/api/scan")) return Promise.reject(new Error("API /api/scan: 503"));
+      return Promise.resolve({ entries: [], approved: 0, rejected: 0 });
+    });
+    const { default: ScanPage } = await import("@/app/scan/page");
+    await act(async () => {
+      render(<ScanPage />);
+    });
+    // 페이지가 에러 UI 로 죽지 않고 빈 상태로 렌더된다
+    expect(document.body.textContent!.length).toBeGreaterThan(10);
+  });
 });

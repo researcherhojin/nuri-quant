@@ -171,4 +171,13 @@ describe("ConsensusPage", () => {
     expect(screen.getByText(/VIX 35.2 > 30/)).toBeInTheDocument();
     expect(screen.getByText(/신규 매수 차단/)).toBeInTheDocument();
   });
+
+  it("gated fetch 실패(503 shed 포함) → 섹션만 강등, 페이지 shape 유지 (#1119)", async () => {
+    mockFetchAPI = vi.fn().mockRejectedValue(new Error("API /api/consensus: 503"));
+    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    await act(async () => {
+      render(<ConsensusPage />);
+    });
+    expect(screen.getAllByText("데이터를 불러오지 못했습니다 — 잠시 후 새로고침하세요.").length).toBeGreaterThan(0);
+  });
 });
