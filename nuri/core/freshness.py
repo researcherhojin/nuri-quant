@@ -120,7 +120,12 @@ FRESHNESS_POLICIES: dict[str, dict] = {
     # 그룹 전체 부재 → NULL → FAIL: 구성된 프로덕션에서 그룹째 사라진 건 수집 장애다.
     # 합산 MAX 금지(멀쩡한 지표가 죽은 지표를 가린다)는 signals/ark 와 같은 원칙.
     "macro_market": {
-        # 시장성 일간 지표 — 국채 3종 + put/call. 임계는 prices 와 같은 48/120 (주말/공휴일).
+        # 시장성 일간 지표 — 국채 3종 + put/call. fail 임계는 prices(120h)보다 넓은 132h (#1242):
+        # 소스(FRED H.15·CBOE)가 T+1 발행이라 영업일 D 관측은 D+1 늦은 오후 ET 에나 열린다.
+        # 금요일 관측이 다음 주 수요일 새벽 KST 까지 최신인 게 정상이고, 날짜 문자열
+        # 00:00 KST 앵커 기준 정상 최대 나이 ~127h (2026-08-26 02:00 KST 실측 — FAIL 122h
+        # 상태에서 FRED 직접 조회로 금요일 이후 관측 부재 확증). 120h 로 되돌리면 매주
+        # 수요일 00:00~새벽 KST 에 건강한 파이프라인이 구조적으로 FAIL 한다.
         "query": (
             "SELECT MIN(d) FROM (SELECT MAX(date) AS d FROM macro "
             "WHERE indicator IN ('us_10y_yield', 'us_2y_yield', 'us_3m_yield', 'put_call_ratio') "

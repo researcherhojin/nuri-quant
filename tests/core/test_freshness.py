@@ -43,6 +43,25 @@ class TestFreshnessPolicies:
                 f"Policy '{key}': warn_hours ({policy['warn_hours']}) >= fail_hours ({policy['fail_hours']})"
             )
 
+    def test_macro_market_fail_threshold_absorbs_t1_publication(self):
+        """macro_market fail 임계는 소스 T+1 발행 리듬의 정상 최대 나이(~127h)를 흡수한다 (#1242).
+
+        FRED H.15·CBOE 는 영업일 D 관측을 D+1 늦은 오후 ET 에 공개한다. 금요일 관측이
+        다음 주 수요일 새벽 KST 까지 최신인 게 정상이라, 날짜 문자열 00:00 KST 앵커
+        기준 정상 최대 나이가 ~127h 다 (2026-08-26 02:00 KST 실측: FAIL 122h 상태에서
+        FRED 직접 조회로 금요일 이후 관측 부재 확증 — 수집기는 건강했다). prices(120h)와
+        "동일 임계"로 되돌리면 매주 수요일 00:00~새벽 KST 에 구조적 false-FAIL 이 난다.
+        """
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
+        macro_market = FRESHNESS_POLICIES["macro_market"]["fail_hours"]
+        assert macro_market >= 127, (
+            f"macro_market fail_hours ({macro_market}) 가 T+1 발행의 정상 최대 나이(~127h) 미만 — "
+            "매주 수요일 새벽 건강한 파이프라인이 FAIL 한다 (#1242)"
+        )
+        # prices 와의 '동일 임계' consistency-fix 회귀 축도 잠근다 — 소스 리듬이 다르다.
+        assert macro_market > FRESHNESS_POLICIES["prices"]["fail_hours"]
+
     def test_expected_policy_keys(self):
         """예상되는 정책 키 목록 확인."""
         from nuri.core.freshness import FRESHNESS_POLICIES

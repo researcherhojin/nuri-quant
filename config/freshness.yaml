@@ -12,7 +12,7 @@ thresholds:
   fundamentals: { warn_hours: 192, fail_hours: 360 } # 주 1회 잡 — 정상 나이 168h (#1109)
   fundamentals_kr: { warn_hours: 192, fail_hours: 360 }
   macro_fear_greed: { warn_hours: 24, fail_hours: 48 }
-  macro_market: { warn_hours: 48, fail_hours: 120 } # 금리 3종 + put/call — prices 와 동일 임계
+  macro_market: { warn_hours: 48, fail_hours: 132 } # 금리 3종 + put/call — 소스가 T+1 발행이라 prices(120)보다 넓다 (#1242)
   macro_monthly: { warn_hours: 1080, fail_hours: 1800 } # 월간 릴리즈: 45d 한 사이클 / 75d 두 사이클
   consensus: { warn_hours: 24, fail_hours: 48 }
   certification: { warn_hours: 24, fail_hours: 48 }
