@@ -69,7 +69,9 @@ const VARIANTS: Record<string, any[]> = {
   gate: [
     { key: "description", label: "Condition" },
     { key: "phase", label: "Phase", align: "center", render: badge },
-    { key: "passed", label: "Status", align: "center", render: (v: boolean) => v ? "✅" : "❌" },
+    { key: "passed", label: "Status", align: "center", render: (v: boolean) => v
+      ? <span className="text-emerald-400">✓</span>
+      : <span className="text-red-400">✕</span> },
     { key: "detail", label: "Detail", render: dim },
   ],
   conflicts: [
