@@ -68,7 +68,8 @@ describe("MarketContext", () => {
   it("shows SIEGE score with rejected status", () => {
     render(<MarketContext events={[]} health={sampleHealth} />);
     expect(screen.getByText("54%")).toBeTruthy();
-    expect(screen.getByText("미인증")).toBeTruthy();
+    // #1212: 실패 상태 sub 는 다음 행동 카피 포함
+    expect(screen.getByText("미인증 · 게이트 상세 →")).toBeTruthy();
   });
 
   it("shows certified SIEGE status in green", () => {
@@ -132,7 +133,7 @@ describe("MarketContext", () => {
     const failHealth = { ...sampleHealth, freshness: { status: "FAIL", fail_count: 3, warn_count: 0 } };
     render(<MarketContext events={[]} health={failHealth} />);
     expect(screen.getByText("FAIL")).toBeTruthy();
-    expect(screen.getByText("3 fail")).toBeTruthy();
+    expect(screen.getByText("3건 실패 · 파이프라인 확인 →")).toBeTruthy();
   });
 
   it("shows PASS freshness with OK", () => {
