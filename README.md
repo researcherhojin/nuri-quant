@@ -296,6 +296,7 @@ Measured against `main` on 2026-08-25. Counts marked ✅ are verified on every P
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — detailed code / DB layout, schema, env vars, CI/CD
 - [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md) — 3-D certification spec
 - [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) — KIS (Korea Investment & Securities) Open API
+- [`docs/UX_REDESIGN_PLAN.md`](docs/UX_REDESIGN_PLAN.md) — Evidence Terminal UI overhaul: phases, responsive spec, gates
 - [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — session-efficiency scripts, pre-push checklist
 - [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) — fresh-clone end-to-end verification (quarterly / onboarding)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow, PR discipline
