@@ -387,18 +387,33 @@ describe("PipelinePage — fetch & render branch arms", () => {
     expect(screen.getByTestId("event-icon-weird")).toBeInTheDocument();
   });
 
-  it("StepIcon: 라이브 API 어휘 전체가 고유 아이콘 — Circle 폴백은 미지 스텝만 (F-003 #1237)", async () => {
+  it("StepIcon: 라이브 어휘가 사이드바 아이덴티티와 동일 아이콘 — Circle 폴백은 미지 스텝만 (F-003 #1237)", async () => {
     const { StepIcon } = await import("@/app/pipeline/page");
-    // 구 이모지 맵은 analyze/consensus/certify 키가 없어 라이브 노드가 무아이콘이었다.
-    // lucide 는 svg 에 lucide-<name> 클래스를 붙이므로 폴백 여부를 클래스로 잠근다.
-    const LIVE_STEPS = ["collect", "analyze", "consensus", "certify", "track"];
-    for (const step of LIVE_STEPS) {
-      const { container, unmount } = render(<StepIcon stepId={step} />);
-      expect(container.querySelector("svg.lucide-circle"), `${step} 이 Circle 폴백`).toBeNull();
-      unmount();
+    const { BarChart3, Users, Cog, Search, MapPin } = await import("lucide-react");
+    // 패리티 잠금 (codex #1238 P3): 기대 아이콘을 직접 렌더해 lucide-* 클래스를 비교 —
+    // 이름 하드코딩 없이 "사이드바와 같은 아이콘" 계약 자체를 검증한다.
+    const lucideClass = (el: Element | null) =>
+      el?.getAttribute("class")?.split(" ").find((c) => c.startsWith("lucide-") && c !== "lucide");
+    const PARITY: Array<[string, React.ComponentType]> = [
+      ["collect", Search],
+      ["analyze", BarChart3], // 사이드바 Signals
+      ["consensus", Users], // 사이드바 Agents
+      ["certify", Cog], // 사이드바 Certification Engine
+      ["track", MapPin],
+    ];
+    for (const [step, Expected] of PARITY) {
+      const want = render(<Expected />);
+      const got = render(<StepIcon stepId={step} />);
+      const wantClass = lucideClass(want.container.querySelector("svg"));
+      expect(wantClass, `${step} 기대 클래스 추출 실패`).toBeTruthy();
+      expect(lucideClass(got.container.querySelector("svg")), `${step} 아이콘 불일치`).toBe(wantClass);
+      // 장식 아이콘 — AT 에 노출하지 않는다 (codex #1238 P3)
+      expect(got.container.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+      want.unmount();
+      got.unmount();
     }
     const { container } = render(<StepIcon stepId="unknown-step" />);
-    expect(container.querySelector("svg.lucide-circle")).not.toBeNull();
+    expect(lucideClass(container.querySelector("svg"))).toBe("lucide-circle");
   });
 
   it("timeline timestamp coercion throws → formatTimestamp catch (136)", async () => {
