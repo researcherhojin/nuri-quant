@@ -276,7 +276,7 @@ Measured against `main` on 2026-08-25. Counts marked ✅ are verified on every P
 |--------|-------|---|
 | **Backend tests** | 7,521 collected across 345 files | |
 | **Backend statement coverage** | 99% — 17 of 23,311 statements uncovered across 9 files, 81 partial branches (`make ci-cov`, 2026-08-14; Codecov `backend` flag is the CI ground truth) | |
-| **Frontend tests** | 1,479 across 129 files — 100% statement coverage | |
+| **Frontend tests** | 1,477 across 128 files — 100% statement coverage | |
 | **E2E tests** | 83 across 9 Playwright specs | |
 | **Pipeline stages** | 5 as a data model; 2 of them (analyze, certify) have no scheduler job of their own | |
 | **Data collectors** | 27 collectors (BaseCollector pattern) | ✅ |

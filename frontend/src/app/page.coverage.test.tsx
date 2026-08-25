@@ -19,21 +19,12 @@
  *          Malformed / D-DAY / future dates exercise every eventDday branch.
  *  - L596: pipeline status `.map((s) => ...)` span — needs pipeline steps.
  *
- * Recharts is mocked at file level (CompositionSection -> CompositionDonut is a
- * "use client" Recharts component that suspends in jsdom). Kept isolated per the
- * vi.mock("recharts") hoist gotcha. Neutral placeholders only (public repo).
+ * #1210: CompositionSection 이 순수 server 스택 바가 되면서 recharts mock 은
+ * 불필요해졌다 (대시보드 트리에 recharts 소비자 없음). Neutral placeholders only.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-
-vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  PieChart: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  Pie: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  Cell: () => <div />,
-  Tooltip: () => <div />,
-}));
 
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
