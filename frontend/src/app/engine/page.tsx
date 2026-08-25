@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import Link from "next/link";
 import { fetchAPI } from "@/lib/api";
-import { ENGINE } from "@/lib/strings";
+import { COMMON, ENGINE } from "@/lib/strings";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -127,7 +127,13 @@ export async function GateSection() {
 
 // === Conflicts Section ===
 export async function ConflictsSection() {
-  const data = await fetchAPI<{ conflicts: Conflict[]; count: number; high: number }>("/api/conflicts");
+  let data: { conflicts: Conflict[]; count: number; high: number };
+  try {
+    data = await fetchAPI<{ conflicts: Conflict[]; count: number; high: number }>("/api/conflicts");
+  } catch {
+    // #1119 슬롯 shed(503) 포함 — 섹션만 강등, 페이지 shape 유지 (codex #1239 P2)
+    return <p className="text-xs text-muted-foreground">{COMMON.DEGRADED}</p>;
+  }
 
   return (
     <Card className="bg-card border-border">

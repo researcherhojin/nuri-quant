@@ -27,6 +27,10 @@ HEAVY_PATHS = [
     "/certify",
     "/remediate",
     "/pipeline/{step}/run",
+    # 단일-플라이트 캐시 3종 — 콜드 미스 대기자가 lock 에서 스레드를 점유한다 (codex #1239 P1)
+    "/dashboard",
+    "/actions",
+    "/market-context",
 ]
 
 
@@ -70,6 +74,18 @@ class TestHeavySlotDependency:
         g.close()
         for g in gens[1:]:
             g.close()
+
+    def test_handler_exception_still_releases_the_slot(self, monkeypatch):
+        """획득 후 핸들러 예외 → finally 가 슬롯을 해제한다 (codex #1239 P3)."""
+        monkeypatch.setattr(limits, "_heavy_slots", threading.BoundedSemaphore(1))
+        g = heavy_slot()
+        next(g)
+        with pytest.raises(RuntimeError):
+            g.throw(RuntimeError("handler exploded"))
+        # 예외 후에도 슬롯이 새지 않았다 — 즉시 재획득 가능
+        g2 = heavy_slot()
+        next(g2)
+        g2.close()
 
 
 class TestWiring:

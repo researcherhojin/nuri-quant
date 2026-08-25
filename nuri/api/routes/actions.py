@@ -12,8 +12,9 @@ import threading
 import time
 from datetime import timedelta
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from nuri.api.limits import heavy_slot
 from nuri.core.axis import is_alpha_flat_sell
 from nuri.core.catalyst import has_recent_catalyst
 from nuri.core.db import query
@@ -40,7 +41,7 @@ _market_context_lock = threading.Lock()
 # ─── /api/actions ───
 
 
-@router.get("/actions")
+@router.get("/actions", dependencies=[Depends(heavy_slot)])
 def get_actions():
     """우선순위 분류된 오늘의 액션 리스트."""
     now = time.time()
@@ -404,7 +405,7 @@ def _compute_verdict(pros: list[str], cons: list[str], scan: dict) -> tuple[str,
 # ─── /api/market-context ───
 
 
-@router.get("/market-context")
+@router.get("/market-context", dependencies=[Depends(heavy_slot)])
 def get_market_context():
     """시장 컨텍스트 — 매크로 이벤트 + 시스템 건강 (#137 UI)."""
     now = time.time()

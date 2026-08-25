@@ -397,6 +397,8 @@ export const REGIME_GUIDE: Record<string, string> = {
 /* ── Common ─────────────────────────────────────────────────── */
 export const COMMON = {
   API_ERROR: "API 연결 실패. make api 실행 필요.",
+  // #1119: 슬롯 포화 503 은 의도된 shed — 페이지 전체 에러가 아니라 섹션 1줄로 강등
+  DEGRADED: "데이터를 불러오지 못했습니다 — 잠시 후 새로고침하세요.",
   COUNT_SUFFIX: "건",
   UNIT_SUFFIX: "개",
   RUN_REQUIRED: "실행 필요",

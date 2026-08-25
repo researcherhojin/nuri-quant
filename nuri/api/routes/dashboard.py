@@ -11,7 +11,9 @@ import logging
 import threading
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from nuri.api.limits import heavy_slot
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dashboard"])
@@ -23,7 +25,7 @@ CACHE_TTL = 300  # 5분
 _lock = threading.Lock()
 
 
-@router.get("/dashboard")
+@router.get("/dashboard", dependencies=[Depends(heavy_slot)])
 def get_dashboard():
     """오늘의 투자 판단 요약 — DB 조회 전용 (projection 기반)."""
     now = time.time()
