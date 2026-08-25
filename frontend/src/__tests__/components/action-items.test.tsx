@@ -309,3 +309,28 @@ describe("ActionItems", () => {
     expect(screen.queryByText(/증거 체인/)).toBeNull();
   });
 });
+
+// #1212 U2b-4: NEW 배지 + 확인(ack) — per-viewer seen-state.
+// 이 jsdom 엔 localStorage 가 없어(action-ack.test.ts 주석 참조) loadAckMap 은
+// {} 로 폴백한다 → 마운트 후 모든 항목이 NEW. ack 는 in-memory 로 동작.
+describe("NEW badge + ack (#1212)", () => {
+  const asOfItem = { ...urgentItem, as_of: "2026-08-25", decision_id: 7 };
+
+  it("marks un-acked rows NEW after mount", () => {
+    render(<ActionItems urgent={[asOfItem]} check={[checkItem]} hold={[]} />);
+    expect(screen.getAllByTestId("action-new-badge")).toHaveLength(2);
+  });
+
+  it("확인 in the quick-peek clears the NEW badge for that row only", () => {
+    render(<ActionItems urgent={[asOfItem]} check={[checkItem]} hold={[]} />);
+    const rows = screen.getAllByTestId("action-row");
+    fireEvent.click(rows[0]); // expand urgent row
+    fireEvent.click(screen.getByTestId("action-ack-button"));
+    expect(screen.getAllByTestId("action-new-badge")).toHaveLength(1); // check 행만 남음
+  });
+
+  it("hold chips never carry NEW badges", () => {
+    render(<ActionItems urgent={[]} check={[]} hold={[holdItem]} />);
+    expect(screen.queryByTestId("action-new-badge")).not.toBeInTheDocument();
+  });
+});

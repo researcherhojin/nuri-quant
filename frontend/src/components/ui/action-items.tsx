@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, Fragment } from "react";
+import { useMemo, useState, useSyncExternalStore, Fragment } from "react";
 import { ACTION } from "@/lib/strings";
 import { formatMoney } from "@/lib/format";
+import { type AckMap, ackItem, isNewItem, loadAckMap } from "@/lib/action-ack";
 
 export interface ActionItem {
   ticker: string;
@@ -35,6 +36,11 @@ interface ActionItemsProps {
   portfolio?: ActionItem[];
 }
 
+// #1212 hydration 게이트용 안정 참조 (useSyncExternalStore 인자)
+const emptySubscribe = () => () => {};
+const getTrue = () => true;
+const getFalse = () => false;
+
 // U2b-2 (#1208): 카드 → 32px 밀집 테이블 행. 버킷(심각도) 구조는 유지 —
 // urgent > portfolio > check 순서가 곧 예외 큐 정렬이다 (plan §4.5).
 const bucketStyles = {
@@ -49,10 +55,17 @@ function actionTagCls(action: string): string {
   return "bg-zinc-700 text-zinc-400";
 }
 
-function ActionRow({ item, accent }: { item: ActionItem; accent: string }) {
+interface AckProps {
+  /** null = 마운트 전(미로드) — NEW 미표시로 hydration 안전 (#1212) */
+  ackMap: AckMap | null;
+  onAck: (item: ActionItem) => void;
+}
+
+function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: string } & AckProps) {
   const [expanded, setExpanded] = useState(false);
   const fmt = (v: number | null | undefined) => formatMoney(v, { ticker: item.ticker });
   const confPct = Math.max(0, Math.min(100, item.confidence));
+  const isNew = isNewItem(item, ackMap);
 
   return (
     <Fragment>
@@ -80,6 +93,16 @@ function ActionRow({ item, accent }: { item: ActionItem; accent: string }) {
           >
             {item.name || item.ticker}
           </Link>
+          {/* #1212: 미확인 배지 — 판정일(as_of) 갱신 시 재표시 (re-alert) */}
+          {isNew && (
+            <span
+              data-testid="action-new-badge"
+              title={item.as_of ? `판정 ${item.as_of}` : undefined}
+              className="ml-1.5 align-middle text-[9px] font-bold px-1 py-px rounded bg-blue-500/20 text-blue-400"
+            >
+              {ACTION.NEW}
+            </span>
+          )}
         </td>
         <td className="h-8 px-2 whitespace-nowrap hidden md:table-cell text-[11px] text-zinc-400">{item.account ?? "—"}</td>
         <td className="h-8 px-2 whitespace-nowrap">
@@ -134,6 +157,20 @@ function ActionRow({ item, accent }: { item: ActionItem; accent: string }) {
                 <span><span className="text-zinc-600">2차익절</span> <span className="text-emerald-400 tabular-nums">{fmt(item.target_2)}</span></span>
               )}
               {item.as_of && <span className="text-zinc-600">판정 {item.as_of}</span>}
+              {/* #1212: ack — NEW 해제 (localStorage, per-viewer) */}
+              {isNew && (
+                <button
+                  type="button"
+                  data-testid="action-ack-button"
+                  className="ml-auto text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAck(item);
+                  }}
+                >
+                  {ACTION.ACK}
+                </button>
+              )}
             </div>
             {item.reasons.length > 1 && (
               <div className="mt-1 space-y-0.5">
@@ -149,7 +186,7 @@ function ActionRow({ item, accent }: { item: ActionItem; accent: string }) {
   );
 }
 
-function ActionBucketTable({ items, kind, title }: { items: ActionItem[]; kind: keyof typeof bucketStyles; title: string }) {
+function ActionBucketTable({ items, kind, title, ackMap, onAck }: { items: ActionItem[]; kind: keyof typeof bucketStyles; title: string } & AckProps) {
   const style = bucketStyles[kind];
   if (items.length === 0) return null;
   return (
@@ -162,7 +199,7 @@ function ActionBucketTable({ items, kind, title }: { items: ActionItem[]; kind: 
         <table className="w-full text-left">
           <tbody>
             {items.map((item) => (
-              <ActionRow key={`${item.ticker}-${item.account}`} item={item} accent={style.accent} />
+              <ActionRow key={`${item.ticker}-${item.account}`} item={item} accent={style.accent} ackMap={ackMap} onAck={onAck} />
             ))}
           </tbody>
         </table>
@@ -173,6 +210,18 @@ function ActionBucketTable({ items, kind, title }: { items: ActionItem[]; kind: 
 
 export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItemsProps) {
   const total = urgent.length + check.length + hold.length + portfolio.length;
+
+  // #1212: seen-state 는 hydration 후에만 읽는다 — SSR 마크업과 첫 클라 렌더가
+  // 일치해야 하므로 useSyncExternalStore 게이트(서버 false → 클라 true)를 쓴다.
+  // (effect 내 동기 setState 는 lint 금지 — cascading render.) hold 칩은 배지
+  // 없음 (노이즈 — 버킷 3종만).
+  const hydrated = useSyncExternalStore(emptySubscribe, getTrue, getFalse);
+  const loadedMap = useMemo(() => (hydrated ? loadAckMap() : null), [hydrated]);
+  const [ackOverride, setAckOverride] = useState<AckMap | null>(null);
+  const ackMap = ackOverride ?? loadedMap;
+  const onAck = (item: ActionItem) => {
+    setAckOverride(ackItem(ackMap ?? {}, item));
+  };
 
   if (total === 0) {
     return (
@@ -185,13 +234,13 @@ export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItems
   return (
     <div className="space-y-3">
       {/* 🔴 즉시 실행 */}
-      <ActionBucketTable items={urgent} kind="urgent" title={ACTION.URGENT} />
+      <ActionBucketTable items={urgent} kind="urgent" title={ACTION.URGENT} ackMap={ackMap} onAck={onAck} />
 
       {/* 📊 포트폴리오 리밸런스 — PR A: SIEGE 룰 위반을 "매도" 로 surface 하지 않기 */}
-      <ActionBucketTable items={portfolio} kind="portfolio" title={ACTION.PORTFOLIO} />
+      <ActionBucketTable items={portfolio} kind="portfolio" title={ACTION.PORTFOLIO} ackMap={ackMap} onAck={onAck} />
 
       {/* 🟡 오늘 확인 */}
-      <ActionBucketTable items={check} kind="check" title={ACTION.CHECK} />
+      <ActionBucketTable items={check} kind="check" title={ACTION.CHECK} ackMap={ackMap} onAck={onAck} />
 
       {/* ✅ 유지 — 칩 유지 (행 승격은 노이즈, 목업 합의) */}
       {hold.length > 0 && (

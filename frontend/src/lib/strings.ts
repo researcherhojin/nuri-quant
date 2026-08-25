@@ -338,6 +338,8 @@ export const ACTION = {
   PORTFOLIO: "포트폴리오 리밸런스",
   EMPTY: "오늘 실행할 액션이 없습니다.",
   EVIDENCE: "증거 체인", // #1182: 카드 → /decisions/[id]
+  NEW: "NEW", // #1212: 미확인 행 배지 (localStorage seen-state)
+  ACK: "확인", // #1212: quick-peek ack 버튼 — NEW 해제, 판정일 갱신 시 재표시
   // DETAIL/CONF/AGREE/PNL/WEIGHT/DISMISS 는 U2b-2 (#1208) 카드→행 전환으로 제거
 } as const;
 
@@ -366,6 +368,9 @@ export const CONTEXT = {
   FRESHNESS: "데이터",
   CERTIFIED: "인증",
   REJECTED: "미인증",
+  // #1212: FAIL/미인증 행의 다음 행동 카피 (레일 sub — 상태만 말하지 말 것)
+  CHECK_ENGINE: "게이트 상세 →",
+  CHECK_PIPELINE: "파이프라인 확인 →",
 } as const;
 
 /* ── StatusBadge Korean keys ────────────────────────────────── */
