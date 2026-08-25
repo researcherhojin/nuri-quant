@@ -343,6 +343,15 @@ describe("CommandPalette", () => {
     expect(pushMock).toHaveBeenCalledTimes(1);
   });
 
+  it("한글 IME 조합 중 Escape 는 조합 취소일 뿐 팔레트를 닫지 않는다 (codex R2)", () => {
+    render(<CommandPalette />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    fireEvent.keyDown(window, { key: "Escape", isComposing: true });
+    expect(screen.getByTestId("command-palette")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("command-palette")).not.toBeInTheDocument();
+  });
+
   it("닫히면 포커스가 트리거 버튼으로 복원 (codex P2)", () => {
     render(<CommandPalette />);
     const trigger = screen.getByTestId("palette-trigger");

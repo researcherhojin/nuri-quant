@@ -101,6 +101,8 @@ export function CommandPalette() {
   // 전역 단축키: Cmd-K / Ctrl-K 토글, Esc 닫기
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // IME 조합 중 키는 조합 조작이다 — Escape 조합 취소가 팔레트를 닫으면 안 된다 (codex R2)
+      if (e.isComposing) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((prev) => !prev);
