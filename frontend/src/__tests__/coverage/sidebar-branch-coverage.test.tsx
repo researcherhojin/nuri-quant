@@ -80,10 +80,10 @@ describe("Sidebar — collapsed state and branch coverage", () => {
     await act(async () => { render(<Sidebar />); });
 
     // Nav group labels should be visible (not collapsed)
-    expect(screen.getByText("OVERVIEW")).toBeInTheDocument();
-    expect(screen.getByText("ANALYSIS")).toBeInTheDocument();
-    expect(screen.getByText("TRADING")).toBeInTheDocument();
-    expect(screen.getByText("INTELLIGENCE")).toBeInTheDocument();
+    expect(screen.getByText("오늘")).toBeInTheDocument();
+    expect(screen.getByText("의사결정")).toBeInTheDocument();
+    expect(screen.getByText("리서치")).toBeInTheDocument();
+    expect(screen.getByText("시스템")).toBeInTheDocument();
 
     // Current page "/" — Dashboard link should exist
     const dashLink = screen.getByText("Dashboard");

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { NAV } from "@/lib/strings";
 import {
   LayoutDashboard,
   Briefcase,
@@ -25,38 +26,45 @@ import {
 
 // 팔란티어 스타일 그룹 네비게이션
 const NAV_GROUPS = [
+  // 5그룹 재편 (#1200 U1b-2, docs/UX_REDESIGN_PLAN.md §1): 사용 빈도·워크플로 기준.
+  // 라우트 삭제·이동 없음 — 그룹핑만 바뀐다. 그룹 라벨은 strings.ts NAV 가 정본.
   {
-    label: "OVERVIEW",
+    label: NAV.TODAY,
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/explore", label: "Explore", icon: Compass },
-      { href: "/pipeline", label: "Pipeline", icon: Workflow },
     ],
   },
   {
-    label: "ANALYSIS",
-    items: [
-      { href: "/portfolio", label: "Portfolio", icon: Briefcase },
-      { href: "/signals", label: "Signals", icon: BarChart3 },
-      { href: "/consensus", label: "Agents", icon: Users },
-      { href: "/scan", label: "Scanner", icon: Search },
-    ],
-  },
-  {
-    label: "TRADING",
-    items: [
-      { href: "/targets", label: "Price Targets", icon: Target },
-      { href: "/advisor", label: "Advisor", icon: ShieldAlert },
-      { href: "/strategy", label: "Strategy", icon: TrendingUp },
-      { href: "/rebalance", label: "Rebalance", icon: Scale },
-    ],
-  },
-  {
-    label: "INTELLIGENCE",
+    label: NAV.DECISIONS,
     items: [
       { href: "/decisions", label: "Decisions", icon: BookOpen },
       { href: "/engine", label: "Certification Engine", icon: Cog },
       { href: "/evidence", label: "Evidence", icon: FileBarChart },
+    ],
+  },
+  {
+    label: NAV.PORTFOLIO,
+    items: [
+      { href: "/portfolio", label: "Portfolio", icon: Briefcase },
+      { href: "/rebalance", label: "Rebalance", icon: Scale },
+      { href: "/targets", label: "Price Targets", icon: Target },
+      { href: "/advisor", label: "Advisor", icon: ShieldAlert },
+    ],
+  },
+  {
+    label: NAV.RESEARCH,
+    items: [
+      { href: "/explore", label: "Explore", icon: Compass },
+      { href: "/scan", label: "Scanner", icon: Search },
+      { href: "/signals", label: "Signals", icon: BarChart3 },
+      { href: "/strategy", label: "Strategy", icon: TrendingUp },
+      { href: "/consensus", label: "Agents", icon: Users },
+    ],
+  },
+  {
+    label: NAV.SYSTEM,
+    items: [
+      { href: "/pipeline", label: "Pipeline", icon: Workflow },
       { href: "/report", label: "AI Report", icon: Bot },
     ],
   },
@@ -76,11 +84,11 @@ export function Sidebar() {
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             {!collapsed && (
               <>
-                <span className="text-lg font-bold text-emerald-400 tracking-tight">Nuri-Quant</span>
+                <span className="text-lg font-bold text-foreground tracking-tight">Nuri-Quant</span>
                 <span className="text-[9px] text-muted-foreground/70 font-mono">v0.1</span>
               </>
             )}
-            {collapsed && <span className="text-lg font-bold text-emerald-400">N</span>}
+            {collapsed && <span className="text-lg font-bold text-foreground">N</span>}
           </Link>
           <button
             onClick={() => setCollapsed(!collapsed)}
@@ -111,12 +119,12 @@ export function Sidebar() {
                       flex items-center gap-3 py-2 text-sm transition-colors
                       ${collapsed ? "justify-center px-3" : "px-4"}
                       ${active
-                        ? "text-emerald-400 bg-emerald-400/10 border-r-2 border-emerald-400"
+                        ? "text-primary bg-primary/10 border-r-2 border-primary"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                       }
                     `}
                   >
-                    <Icon size={20} className={active ? "text-emerald-400" : "text-muted-foreground"} />
+                    <Icon size={20} className={active ? "text-primary" : "text-muted-foreground"} />
                     {!collapsed && <span>{item.label}</span>}
                   </Link>
                 );

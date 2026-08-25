@@ -177,13 +177,13 @@ describe("CertificationsCard rendering", () => {
     const history = makeHistory({ total_in_db: 3, count: 3, items });
     const summary = makeSummary({ count: 3, certified_rate: 100, avg_score: 80 });
     const { container } = render(<CertificationsCard history={history} summary={summary} />);
-    // Distinct states 의 Metric value 는 "3" — color=default (text-zinc-200) 이어야 함
+    // Distinct states 의 Metric value 는 "3" — color=default (text-foreground) 이어야 함
     const distinctLabel = screen.getByText("Distinct states");
     // parent Metric 의 value 엘리먼트를 찾아 클래스 확인
     const metricDiv = distinctLabel.parentElement;
     const valueEl = metricDiv?.querySelector("p.font-semibold");
     expect(valueEl?.textContent).toBe("3");
-    expect(valueEl?.className).toContain("text-zinc-200"); // default color, not red
+    expect(valueEl?.className).toContain("text-foreground"); // default color, not red
     expect(container).toBeTruthy();
   });
 
