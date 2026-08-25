@@ -181,10 +181,14 @@ def seed(db: Path) -> dict[str, int]:
     counts["signals"] = upsert_signals(pd.DataFrame(sig_rows), db_path=db)
 
     # ── 의사결정: 판정 저널/상세 라우트용 3건 ──
-    for i, (ticker, action, conf) in enumerate([("AAA", "BUY", 0.7), ("BBB", "SELL", 0.6), ("CCC", "HOLD", 0.5)]):
+    # 날짜는 recommendations 와 동일한 today — /api/actions·/api/dashboard 의
+    # 증거 체인 join (#1182) 이 same-date (`d.date = r.date`) 라 어긋나면
+    # decision_id 가 영영 NULL 이다 (codex #1241 P2).
+    today = today_kst()
+    for ticker, action, conf in [("AAA", "BUY", 0.7), ("BBB", "SELL", 0.6), ("CCC", "HOLD", 0.5)]:
         upsert_decision(
             {
-                "date": (now - timedelta(days=i + 1)).strftime("%Y-%m-%d"),
+                "date": today,
                 "ticker": ticker,
                 "action": action,
                 "confidence": conf,
@@ -203,7 +207,6 @@ def seed(db: Path) -> dict[str, int]:
     counts["decisions"] = 3
 
     # ── recommendations: /api/actions 의 소스 (source IS NULL = 합의 산출물) ──
-    today = today_kst()
     with get_db(db) as conn:
         conn.executemany(
             """INSERT OR REPLACE INTO recommendations
