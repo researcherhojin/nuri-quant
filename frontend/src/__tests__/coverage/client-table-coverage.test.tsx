@@ -1,6 +1,6 @@
 /**
- * ClientTable — variant coverage (scorecard, scan, gate, conflicts, drift,
- * rebalance, targets, swing, advisor) + branch coverage (signal types, price formats,
+ * ClientTable — variant coverage (scorecard, scanner, gate, conflicts, drift,
+ * rebalance, targets, advisor) + branch coverage (signal types, price formats,
  * negative/zero pct, advisor severity).
  *
  * Split from coverage-push-2.test.tsx (lines 222-255) and coverage-push-5.test.tsx (lines 57-120).
@@ -30,7 +30,7 @@ vi.mock("next/link", () => ({
 describe("ClientTable — variant coverage", () => {
   const variants = [
     { name: "scorecard", data: [{ signal_id: "rsi_oversold", total_trades: 50, win_rate: 0.65, profit_factor: 2.1, avg_return: 3.2 }] },
-    { name: "scan", data: [{ ticker: "AAPL", price: 195, change_1d: 2.1, change_5d: -1.3, rsi: 45, signal: "momentum", score: 72 }] },
+    { name: "scanner", data: [{ ticker: "AAPL", price: 195, change_1d: 2.1, change_5d: -1.3, rsi: 45, signal: "momentum", score: 72, agent_action: "BUY", agent_confidence: 70, approved: true, reason: null }] },
     { name: "gate", data: [{ description: "Prices fresh", phase: "collect", passed: true, detail: "OK" }] },
     { name: "conflicts", data: [{ ticker: "AAPL", conflict_type: "BUY_SELL", severity: "high", buy_signals: ["rsi"], sell_signals: ["macd"] }] },
     { name: "drift", data: [{ signal_id: "rsi_oversold", status: "WARNING", all_time_wr: 0.65, recent_wr: 0.45, drift_pct: -20 }] },
@@ -38,7 +38,7 @@ describe("ClientTable — variant coverage", () => {
     { name: "targets", data: [{ ticker: "AAPL", stock_type: "growth", current_price: 195, stop_loss: 181, target_1: 234, target_2: 273, analyst_target: 250, take_profit_triggered: null, trailing_stop_triggered: false, take_profit_sell_pct: 50 }] },
     { name: "targets", data: [{ ticker: "NVDA", stock_type: "value", current_price: 50000, stop_loss: 45000, target_1: 57500, target_2: 65000, analyst_target: null, take_profit_triggered: "target_1", trailing_stop_triggered: false, take_profit_sell_pct: 50 }] },
     { name: "targets", data: [{ ticker: "TSLA", stock_type: "growth", current_price: 280, stop_loss: 260, target_1: 336, target_2: 392, analyst_target: 350, take_profit_triggered: "target_2", trailing_stop_triggered: true, take_profit_sell_pct: 25 }] },
-    { name: "swing", data: [{ ticker: "TSLA", price: 280, scan_signal: "breakout", scan_score: 85, agent_action: "BUY", agent_confidence: 78 }] },
+    { name: "scanner", data: [{ ticker: "TSLA", price: 280, change_1d: null, change_5d: null, rsi: null, signal: null, score: null, agent_action: null, agent_confidence: null, approved: false, reason: "r" }] },
     { name: "advisor", data: [{ priority: 1, ticker: "BBB", severity: "critical", action: "SELL_ALL", sell_shares: 96, sell_value_usd: 1100, reason: "leveraged ETF" }] },
     { name: "advisor", data: [{ priority: 2, ticker: "AAPL", severity: "high", action: "REDUCE", sell_shares: 5, sell_value_usd: 975, reason: "position limit" }] },
   ];

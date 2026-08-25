@@ -12,6 +12,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { PIPELINE as PL } from "@/lib/strings";
+import { summarizePayload } from "./helpers";
 
 // === Types ===
 interface PipelineStep {
@@ -446,15 +447,10 @@ export default function PipelinePage() {
                         {ev.event_type}
                       </span>
                     </div>
-                    {ev.payload && (
+                    {/* #1219: raw JSON.stringify 폴백 폐지 — 사람이 읽는 요약 한 줄 */}
+                    {ev.payload && summarizePayload(ev.payload) && (
                       <p className="text-muted-foreground/70 text-[10px] mt-0.5 line-clamp-1">
-                        {ev.payload.stderr
-                          ? String(ev.payload.stderr).slice(0, 80)
-                          : ev.payload.command
-                          ? String(ev.payload.command)
-                          : ev.payload.error
-                          ? String(ev.payload.error)
-                          : JSON.stringify(ev.payload)}
+                        {summarizePayload(ev.payload)}
                       </p>
                     )}
                   </div>
