@@ -62,17 +62,17 @@ describe("FreshnessBar", () => {
   // ─── Status icons ───────────────────────────────────
   it("shows checkmark icon for PASS", () => {
     render(<FreshnessBar items={[makeItem({ status: "PASS" })]} />);
-    expect(screen.getByText("\u2705")).toBeInTheDocument();
+    expect(screen.getByText("\u2713")).toBeInTheDocument(); // FINDING-002: 이모지→글리프
   });
 
   it("shows warning icon for WARN", () => {
     render(<FreshnessBar items={[makeItem({ status: "WARN" })]} />);
-    expect(screen.getByText("\u26A0\uFE0F")).toBeInTheDocument();
+    expect(screen.getByText("\u25B3")).toBeInTheDocument();
   });
 
   it("shows cross icon for FAIL", () => {
     render(<FreshnessBar items={[makeItem({ status: "FAIL" })]} />);
-    expect(screen.getByText("\u274C")).toBeInTheDocument();
+    expect(screen.getByText("\u2715")).toBeInTheDocument();
   });
 
   // ─── Age formatting ─────────────────────────────────

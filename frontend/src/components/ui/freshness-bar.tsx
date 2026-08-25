@@ -13,10 +13,12 @@ interface FreshnessItem {
   message: string;
 }
 
+// FINDING-002 (design-review): 칩이 이미 intent 색(bg+text)을 갖고 있어 컬러 이모지는
+// 중복 장식이었다 — 시스템 전역의 이모지 배제 원칙에 맞춰 텍스트 글리프로 (intent 색 상속).
 const statusStyles: Record<string, { bg: string; text: string; icon: string }> = {
-  PASS: { bg: "bg-emerald-500/15 border-emerald-500/20", text: "text-emerald-400", icon: "\u2705" },
-  WARN: { bg: "bg-amber-500/15 border-amber-500/20", text: "text-amber-400", icon: "\u26A0\uFE0F" },
-  FAIL: { bg: "bg-red-500/15 border-red-500/20", text: "text-red-400", icon: "\u274C" },
+  PASS: { bg: "bg-emerald-500/15 border-emerald-500/20", text: "text-emerald-400", icon: "\u2713" },
+  WARN: { bg: "bg-amber-500/15 border-amber-500/20", text: "text-amber-400", icon: "\u25B3" },
+  FAIL: { bg: "bg-red-500/15 border-red-500/20", text: "text-red-400", icon: "\u2715" },
 };
 
 function formatAge(hours: number): string {

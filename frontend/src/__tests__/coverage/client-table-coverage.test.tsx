@@ -127,7 +127,7 @@ describe("ClientTable branches", () => {
       { description: "Fresh", phase: "validate", passed: false, detail: "Stale" },
     ]} compact title="Gate" />);
     expect(screen.getByText("Gate")).toBeInTheDocument();
-    expect(screen.getByText("✅")).toBeInTheDocument();
-    expect(screen.getByText("❌")).toBeInTheDocument();
+    expect(screen.getByText("✓")).toBeInTheDocument(); // FINDING-002
+    expect(screen.getByText("✕")).toBeInTheDocument();
   });
 });

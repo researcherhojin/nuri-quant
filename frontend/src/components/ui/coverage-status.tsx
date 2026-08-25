@@ -56,7 +56,8 @@ export function CoverageStatus({ data }: { data: CoverageData }) {
   const allPass = data.fail === 0;
   const total = data.checks.length;
   const headerColor = allPass ? "text-emerald-400" : "text-red-400";
-  const headerIcon = allPass ? "\u2705" : "\u274C";
+  // FINDING-002 (design-review): 이모지 → intent-색 글리프 (headerColor 가 색을 이미 나른다)
+  const headerIcon = allPass ? "\u2713" : "\u2715";
 
   return (
     <details className="rounded-md border border-border bg-card/40 p-3 group" data-testid="coverage-details">
