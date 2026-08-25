@@ -17,6 +17,7 @@ Usage:
     python -m nuri.alerts.heartbeat_watchdog
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -25,6 +26,13 @@ from pathlib import Path
 
 from nuri.alerts.discord_bot import send_webhook_text
 from nuri.core.timezone import kst_now
+
+
+def _log(msg: str, err: bool = False) -> None:
+    """타임스탬프 포함 로그 — 2026-08-25 42h 공백을 watchdog 로그로 재구성할 수
+    없었던 이유가 무(無)타임스탬프였다 (#1190)."""
+    print(f"[{kst_now().strftime('%Y-%m-%d %H:%M:%S KST')}] {msg}", file=sys.stderr if err else sys.stdout)
+
 
 # 시스템 알림 컨벤션: per-channel webhook (DiscordPublisher Channel enum).
 # heartbeat stale = 운영 incident → INCIDENTS 채널 우선. 빈 값이면 OPS → 범용 URL 순.
@@ -71,6 +79,33 @@ SERVICE_PORTS: dict[str, int] = {
 # 최초 launchd 설치 직후 uvicorn 부팅(SPY freshness 체크 등)이 수십초 걸려
 # 단발 체크가 DOWN 오판하던 문제. 15분 주기 watchdog 에 재확인 sleep 은 무해.
 SERVICE_RECHECK_DELAY_S = 15.0
+
+#: 같은 카테고리의 재알림 쿨다운 (#1190). 2026-08-25 백업 stale 이 15분마다
+#: 같은 알림을 다시 보내 incidents 채널을 도배했다 — 최초 감지는 즉시,
+#: 조건이 지속되는 동안은 이 간격으로만 재알림. 복구되면 상태를 지워
+#: 다음 incident 는 다시 즉시 알림된다.
+REALERT_COOLDOWN_H = 6.0
+
+#: 카테고리별 마지막 발송 시각 상태 파일 — heartbeat 파일과 같은 철학
+#: (DB 무의존, 파일 하나). 깨진/없는 파일은 빈 상태로 취급 (fail-open: 알림).
+ALERT_STATE_PATH = Path(__file__).resolve().parents[2] / "data" / ".watchdog_alert_state.json"
+
+
+def _load_alert_state(path: Path | None = None) -> dict[str, float]:
+    p = path or ALERT_STATE_PATH
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return {str(k): float(v) for k, v in data.items()}
+    except Exception:  # 부재/corrupt — 억제보다 알림이 안전하다 (fail-open)
+        return {}
+
+
+def _save_alert_state(state: dict[str, float], path: Path | None = None) -> None:
+    p = path or ALERT_STATE_PATH
+    try:
+        p.write_text(json.dumps(state), encoding="utf-8")
+    except Exception as e:  # 상태 저장 실패는 억제 실패일 뿐 — 알림 자체를 막지 않는다
+        _log(f"alert state 저장 실패 (무시): {e}", err=True)
 
 
 def _kickstart(label: str) -> bool:
@@ -127,8 +162,10 @@ def _port_open(port: int, timeout_s: float = 3.0) -> bool:
         return False
 
 
-def check_services(recheck_delay_s: float = SERVICE_RECHECK_DELAY_S) -> list[str]:
-    """로드된 표출 서비스의 포트가 재확인에도 닫혀 있으면 알림 라인 반환 (#826/#857).
+def check_services(recheck_delay_s: float = SERVICE_RECHECK_DELAY_S) -> list[tuple[str, str]]:
+    """로드된 표출 서비스의 포트가 재확인에도 닫혀 있으면 (category, 알림 라인) 반환 (#826/#857).
+
+    category (`service:<short>`) 는 재알림 쿨다운의 dedup 키다 (#1190).
 
     heartbeat 감시와 동일 철학: launchctl + socket 만 사용 (DB 무의존).
     launchd 미설치 머신(dev MBP)은 label 미로드로 자동 skip — 환경 분기 불필요.
@@ -146,15 +183,18 @@ def check_services(recheck_delay_s: float = SERVICE_RECHECK_DELAY_S) -> list[str
     if recheck_delay_s > 0:
         time.sleep(recheck_delay_s)
 
-    problems: list[str] = []
+    problems: list[tuple[str, str]] = []
     for label, port in down:
         if _port_open(port):
             continue  # 재확인 시 복구 = 부팅 중이었음 (오탐 아님)
         short = label.removeprefix("com.nuri-quant.")
         problems.append(
-            f"🔴 **{short} DOWN** — 127.0.0.1:{port} {recheck_delay_s:.0f}s 재확인에도 무응답 "
-            f"(launchd 로드 상태, KeepAlive 자동복구 실패 의심). "
-            f"수동 확인: `launchctl kickstart -k gui/$(id -u)/{label}`"
+            (
+                f"service:{short}",
+                f"🔴 **{short} DOWN** — 127.0.0.1:{port} {recheck_delay_s:.0f}s 재확인에도 무응답 "
+                f"(launchd 로드 상태, KeepAlive 자동복구 실패 의심). "
+                f"수동 확인: `launchctl kickstart -k gui/$(id -u)/{label}`",
+            )
         )
     return problems
 
@@ -188,14 +228,20 @@ def heartbeat_age_minutes(path: Path | None = None, now_epoch: float | None = No
 
 
 def main() -> int:
-    """exit code: 0 = OK/skip, 2 = 이상 감지 (alert 시도). DB·scheduler 미접근."""
-    alerts: list[str] = []
+    """exit code: 0 = OK/skip, 2 = 이상 감지 (억제 여부와 무관). DB·scheduler 미접근.
+
+    재알림 쿨다운 (#1190): 최초 감지는 즉시 알림, 조건이 지속되는 동안은
+    카테고리별 `REALERT_COOLDOWN_H` 간격으로만 재알림. 복구된 카테고리는
+    상태에서 지워 다음 incident 가 다시 즉시 알림되게 한다. kickstart 등
+    자동 복구 동작은 억제 대상이 아니다 — 억제되는 건 Discord 메시지뿐.
+    """
+    alerts: list[tuple[str, str]] = []
 
     age = heartbeat_age_minutes()
     if age is None:
-        print(f"heartbeat 파일 없음 ({HEARTBEAT_PATH}) — skip (미배포 환경)")
+        _log(f"heartbeat 파일 없음 ({HEARTBEAT_PATH}) — skip (미배포 환경)")
     elif age <= STALE_THRESHOLD_MIN:
-        print(f"heartbeat OK ({age:.1f}분, 임계 {STALE_THRESHOLD_MIN:.0f}분)")
+        _log(f"heartbeat OK ({age:.1f}분, 임계 {STALE_THRESHOLD_MIN:.0f}분)")
     else:
         # stale 감지 → 데몬 자동 재시작 후 결과를 알림에 포함.
         restarted = _kickstart_scheduler()
@@ -205,40 +251,69 @@ def main() -> int:
             else "⚠️ 자동 재시작 실패 — 수동 확인: `launchctl kickstart -k gui/$(id -u)/com.nuri-quant.scheduler`"
         )
         alerts.append(
-            f"🔴 **스케줄러 heartbeat STALE** — {age:.0f}분째 갱신 없음 "
-            f"(임계 {STALE_THRESHOLD_MIN:.0f}분). 데이터 수집 중단 의심.\n{restart_note}"
+            (
+                "heartbeat",
+                f"🔴 **스케줄러 heartbeat STALE** — {age:.0f}분째 갱신 없음 "
+                f"(임계 {STALE_THRESHOLD_MIN:.0f}분). 데이터 수집 중단 의심.\n{restart_note}",
+            )
         )
 
     # 원장 백업 나이 감시 (#835). scheduler 와 독립적으로 파일 mtime 만 보므로
     # scheduler 가 죽어도, 백업 job 만 조용히 실패해도 둘 다 여기서 잡힌다.
     b_age = backup_age_hours()
     if b_age is None:
-        print(f"백업 없음 ({BACKUP_DIR}) — skip (미배포 환경)")
+        _log(f"백업 없음 ({BACKUP_DIR}) — skip (미배포 환경)")
     elif b_age <= BACKUP_STALE_THRESHOLD_H:
-        print(f"backup OK ({b_age:.1f}시간, 임계 {BACKUP_STALE_THRESHOLD_H:.0f}시간)")
+        _log(f"backup OK ({b_age:.1f}시간, 임계 {BACKUP_STALE_THRESHOLD_H:.0f}시간)")
     else:
         alerts.append(
-            f"🔴 **원장 백업 STALE** — 최신 스냅샷이 {b_age:.0f}시간 전 "
-            f"(임계 {BACKUP_STALE_THRESHOLD_H:.0f}시간). §3.11 판정 원장은 이 머신 단일본이라 "
-            f"백업이 유일한 안전망이다.\n"
-            f"확인: `tail -20 data/logs/scheduler.log | grep backup` · "
-            f"수동 실행: `bash scripts/db/backup.sh`"
+            (
+                "backup",
+                f"🔴 **원장 백업 STALE** — 최신 스냅샷이 {b_age:.0f}시간 전 "
+                f"(임계 {BACKUP_STALE_THRESHOLD_H:.0f}시간). §3.11 판정 원장은 이 머신 단일본이라 "
+                f"백업이 유일한 안전망이다.\n"
+                f"확인: `tail -20 data/logs/scheduler.log | grep backup` · "
+                f"수동 실행: `bash scripts/db/backup.sh`",
+            )
         )
 
     # 표출 계층 (API/dashboard) 포트 감시 — 미설치 머신은 내부에서 skip (#826).
     alerts.extend(check_services())
 
+    state = _load_alert_state()
+    firing = {cat for cat, _ in alerts}
+    # 복구된 카테고리는 상태에서 제거 — 다음 incident 는 즉시 알림
+    recovered = set(state) - firing
+    for cat in recovered:
+        del state[cat]
+
     if not alerts:
+        if recovered:
+            _save_alert_state(state)
         return 0
 
-    msg = "\n".join(alerts) + f"\n[{kst_now().strftime('%Y-%m-%d %H:%M KST')}]"
+    now = time.time()
+    cooldown_s = REALERT_COOLDOWN_H * 3600.0
+    due = [(cat, text) for cat, text in alerts if now - state.get(cat, 0.0) >= cooldown_s]
+    suppressed = len(alerts) - len(due)
+
+    if not due:
+        _save_alert_state(state)  # recovered 반영
+        _log(f"이상 {len(alerts)}건 지속 — 쿨다운({REALERT_COOLDOWN_H:.0f}h) 내 재알림 억제")
+        return 2
+
+    msg = "\n".join(text for _, text in due) + f"\n[{kst_now().strftime('%Y-%m-%d %H:%M KST')}]"
     webhook_url = _resolve_webhook_url()
     try:
         sent = send_webhook_text(msg, webhook_url=webhook_url)
     except Exception as e:  # 네트워크/webhook 실패도 outage 신호 — 삼키지 말고 surface
-        print(f"이상 감지 but webhook FAILED: {e}", file=sys.stderr)
+        _log(f"이상 감지 but webhook FAILED: {e}", err=True)
         return 2
-    print(f"alert {'sent' if sent else 'NOT sent (no webhook url)'} — {len(alerts)}건")
+    if sent:
+        for cat, _ in due:
+            state[cat] = now
+    _save_alert_state(state)
+    _log(f"alert {'sent' if sent else 'NOT sent (no webhook url)'} — {len(due)}건 (억제 {suppressed}건)")
     return 2
 
 

@@ -85,6 +85,12 @@ class TestMain:
         monkeypatch.setattr(hw, "SERVICE_PORTS", {})
 
     @pytest.fixture(autouse=True)
+    def _isolated_alert_state(self, tmp_path, monkeypatch):
+        """재알림 쿨다운 상태 파일 격리 (#1190) — 실 data/ 를 오염시키지 않고,
+        테스트 간 상태 누출도 막는다."""
+        monkeypatch.setattr(hw, "ALERT_STATE_PATH", tmp_path / "alert_state.json")
+
+    @pytest.fixture(autouse=True)
     def _isolated_backup_dir(self, tmp_path, monkeypatch):
         """실 `data/backups/` 를 보지 않게 격리.
 
@@ -234,9 +240,10 @@ class TestServiceCheck:
         ):
             problems = hw.check_services(recheck_delay_s=0)
         assert len(problems) == 1
-        assert "api DOWN" in problems[0]
-        assert "KeepAlive 자동복구 실패" in problems[0]
-        assert "launchctl kickstart" in problems[0]  # 수동 안내
+        assert problems[0][0] == "service:api"
+        assert "api DOWN" in problems[0][1]
+        assert "KeepAlive 자동복구 실패" in problems[0][1]
+        assert "launchctl kickstart" in problems[0][1]  # 수동 안내
         kick.assert_not_called()
 
     def test_recheck_delay_sleeps_when_positive(self, monkeypatch):
@@ -277,8 +284,12 @@ class TestServiceCheck:
         p = tmp_path / "hb"
         _write_heartbeat(p, age_minutes=1.0)
         monkeypatch.setattr(hw, "HEARTBEAT_PATH", p)
+        # main() 경로는 쿨다운 상태·백업 디렉터리 격리 필수 (#1190) — 없으면 실
+        # data/ 에 상태를 쓰고, 재실행에서 자기 알림이 억제돼 flaky 해진다.
+        monkeypatch.setattr(hw, "ALERT_STATE_PATH", tmp_path / "alert_state.json")
+        monkeypatch.setattr(hw, "BACKUP_DIR", tmp_path / "no-backups")
         with (
-            patch.object(hw, "check_services", return_value=["🔴 **api DOWN** — test"]),
+            patch.object(hw, "check_services", return_value=[("service:api", "🔴 **api DOWN** — test")]),
             patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send,
         ):
             rc = hw.main()
@@ -342,3 +353,89 @@ class TestKickstart:
 
         monkeypatch.setattr(hw.subprocess, "run", lambda *a, **k: _Proc())
         assert hw._kickstart_scheduler() is False
+
+
+class TestRealertCooldown:
+    """#1190: 지속 조건은 쿨다운 간격으로만 재알림 — 2026-08-25 15분 스팸 재발 방지."""
+
+    @pytest.fixture(autouse=True)
+    def _isolated(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(hw, "SERVICE_PORTS", {})
+        monkeypatch.setattr(hw, "ALERT_STATE_PATH", tmp_path / "alert_state.json")
+        monkeypatch.setattr(hw, "BACKUP_DIR", tmp_path / "no-backups")
+        hb = tmp_path / "hb"
+        _write_heartbeat(hb, age_minutes=1.0)
+        monkeypatch.setattr(hw, "HEARTBEAT_PATH", hb)
+        # backup stale 조건 상시 성립
+        d = tmp_path / "backups"
+        d.mkdir()
+        p = d / "portfolio_20260101_000000.db"
+        p.write_bytes(b"x")
+        t = time.time() - 100 * 3600
+        os.utime(p, (t, t))
+        monkeypatch.setattr(hw, "BACKUP_DIR", d)
+
+    def test_first_detection_sends_then_repeat_is_suppressed(self):
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send:
+            rc1 = hw.main()  # 최초 감지 → 발송
+            rc2 = hw.main()  # 조건 지속 → 쿨다운 내 억제
+        assert rc1 == 2 and rc2 == 2  # 억제돼도 rc 는 이상 상태를 말한다
+        assert send.call_count == 1
+
+    def test_realerts_after_cooldown_expires(self, tmp_path):
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True):
+            hw.main()
+        # 마지막 발송 시각을 쿨다운 이전으로 되감기
+        state = hw._load_alert_state()
+        state["backup"] = time.time() - (hw.REALERT_COOLDOWN_H * 3600 + 60)
+        hw._save_alert_state(state)
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send2:
+            rc = hw.main()
+        assert rc == 2
+        assert send2.call_count == 1
+
+    def test_recovery_clears_state_so_next_incident_alerts_immediately(self, tmp_path, monkeypatch):
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True):
+            hw.main()  # backup stale 발송 → state 기록
+        # 복구: 신선한 백업으로 교체
+        fresh = tmp_path / "fresh-backups"
+        fresh.mkdir()
+        (fresh / "portfolio_20260825_000000.db").write_bytes(b"x")
+        monkeypatch.setattr(hw, "BACKUP_DIR", fresh)
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send:
+            rc = hw.main()
+        assert rc == 0 and send.call_count == 0
+        assert "backup" not in hw._load_alert_state()  # 복구가 상태를 지웠다
+        # 다시 stale → 즉시 알림 (쿨다운 미적용)
+        stale = tmp_path / "stale-again"
+        stale.mkdir()
+        p = stale / "portfolio_20260101_000000.db"
+        p.write_bytes(b"x")
+        t = time.time() - 100 * 3600
+        os.utime(p, (t, t))
+        monkeypatch.setattr(hw, "BACKUP_DIR", stale)
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send3:
+            assert hw.main() == 2
+        assert send3.call_count == 1
+
+    def test_corrupt_state_file_fails_open(self, tmp_path):
+        hw.ALERT_STATE_PATH.write_text("not-json{{{", encoding="utf-8")
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send:
+            rc = hw.main()
+        assert rc == 2
+        assert send.call_count == 1  # 깨진 상태 = 억제보다 알림
+
+    def test_failed_send_does_not_start_cooldown(self):
+        """발송 실패(sent=False)면 쿨다운을 시작하지 않는다 — 다음 회차 재시도."""
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=False):
+            hw.main()
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", return_value=True) as send:
+            assert hw.main() == 2
+        assert send.call_count == 1
+
+    def test_state_save_failure_never_blocks_alerting(self, tmp_path, capsys):
+        """상태 저장 실패(디렉터리를 경로로 지정 등)는 로그만 — 알림 경로는 계속 산다."""
+        d = tmp_path / "as-a-dir"
+        d.mkdir()
+        hw._save_alert_state({"backup": 1.0}, path=d)  # IsADirectoryError → 무시
+        assert "저장 실패" in capsys.readouterr().err
