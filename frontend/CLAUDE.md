@@ -13,7 +13,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (1492 tests, 129 files)
+npm run test           # vitest run (1522 tests, 130 files)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
@@ -79,7 +79,7 @@ should be **223**.
 
 ## E2E (Playwright) — runs against the real backend, gated by nothing
 
-`npm run test:e2e` (`npx playwright test`). 9 spec files under `e2e/`, 83 tests. `playwright.config.ts` starts both servers itself (`uvicorn` :8001, `npm run dev` :3000) with `reuseExistingServer: true`.
+`npm run test:e2e` (`npx playwright test`). 9 spec files under `e2e/`, 87 tests. `playwright.config.ts` starts both servers itself (`uvicorn` :8001, `npm run dev` :3000) with `reuseExistingServer: true`.
 
 - **No CI job, no Makefile target, no `scripts/verify/` step runs it.** It is the one suite in this repo that has never gated a merge, which is exactly how `410d385` (2026-05-04) renamed `CONTEXT.SIEGE` to `"Certification"`, updated the matching vitest files, and left three e2e assertions searching for `text=SIEGE` for 3.5 months. Wiring it into a gate is a separate decision (needs a runtime/stability budget); until then, run it by hand before touching the dashboard.
 - **Never inline a user-facing string literal in a spec — import it from `src/lib/strings.ts`.** That file is the single source of truth and specs can import across the directory boundary (`import { ACTION, CONTEXT } from "../src/lib/strings"`). The contrast is on record: `dashboard.spec.ts:19` survived the same rename only because it OR'd several candidate strings, while the three brittle single-literal assertions all broke.
@@ -94,4 +94,4 @@ should be **223**.
 - **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control. (#1210 이후 대시보드 트리는 recharts 무관 — price/equity/siege/gate 차트 테스트에만 해당.)
 - Mock `@/lib/api` + `next/navigation` in all page tests.
 - **`window.localStorage` 는 환경 의존**: 로컬 Node 26 jsdom 엔 **없고**(실험적 webstorage 게터가 `--localstorage-file` 없이 undefined), CI Node 22 jsdom 은 **실동작 스토리지**를 제공해 같은 파일 내 테스트 간 상태가 지속된다. 로컬 초록 ≠ CI 초록 — storage 를 쓰는 테스트는 인메모리 스텁 + `beforeEach` 초기화로 결정론화할 것 (CI run 32814106230, #1212). **Test:** `src/__tests__/components/action-items.test.tsx::NEW badge + ack (#1212)` — describe 레벨 스텁이 빠지면 CI 에서 ack 누수로 FAIL.
-- Test files: 93 in `src/__tests__/` (`components/lib/pages/coverage` subdirs + root `api-auth`/`middleware` tests) + 36 co-located next to sources (`src/app/**`, `src/components/ui/**`, `src/lib/**` — `*.coverage.test.tsx` / `*.branchcov.test.tsx`).
+- Test files: 94 in `src/__tests__/` (`components/lib/pages/coverage` subdirs + root `api-auth`/`middleware` tests) + 36 co-located next to sources (`src/app/**`, `src/components/ui/**`, `src/lib/**` — `*.coverage.test.tsx` / `*.branchcov.test.tsx`).

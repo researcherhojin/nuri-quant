@@ -50,7 +50,7 @@
 ### 2.3 기계 검증 (반응형 게이트)
 
 - `frontend/e2e/responsive.spec.ts` (U1c 신설): 뷰포트 매트릭스 **1280×800 · 1440×900 ·
-  1920×1080 · 2560×1440** × 주요 페이지(/, /decisions, /scan, /portfolio, /engine, /pipeline — ReactFlow 캔버스 포함. 상세 라우트는 U3 에서 추가)에서
+  1920×1080 · 2560×1440** × 주요 페이지(/, /decisions, /scan, /portfolio, /engine, /pipeline — ReactFlow 캔버스 포함. /decisions/[id] 상세는 #1216 에서 추가 — 첫 decision id 동적 조회, 데이터 없으면 skip)에서
   1. 가로 스크롤 금지 — root 와 **main**(실제 스크롤 컨테이너, overflow-auto) 둘 다
      `scrollWidth <= clientWidth` (테이블 자체 스크롤 컨테이너는 예외)
   2. 컨테이너 캡 — `main > div` 래퍼 폭 ≤ 1600px + 래퍼 내부 패널(section·card·table)이
@@ -68,18 +68,18 @@
 | U1b-1 | 통화 일원화 | `lib/format.ts` 신설, $-on-KRW 버그 계열 수정 (ticker/decisions/client-table/action-items/holding-row/chart tooltip) | **완료 #1198** |
 | U1b-2 | 공용 컴포넌트 리테마 | card/status-badge/metric/data-table — intent minimal-tag 맵, 밀도(행 32px), 사이드바 5그룹 재편(액티브 액센트 blue 전환 포함), StatusBadge 30-엔트리 하드코딩 맵 정리 | **완료 #1201** |
 | U1c | **반응형 파운데이션** | §2 구현: 컨테이너 캡(main `max-w-[1600px]`) + `3xl` 토큰 + `responsive.spec.ts` 매트릭스. 그리드 캡은 컨테이너 캡으로 충족(액션 카드 3열이 캡 안에서 ~440px) — 카드→테이블 전환은 U2b. **U2 재구조보다 선행** | 완료 (#1203) |
-| U2a | 대시보드 추출 | `page.tsx`(668줄) 섹션별 컴포넌트 추출 — 동작 보존, 시각 변화 없음 (5개 인라인 색맵 함수 격리) | 대기 |
+| U2a | 대시보드 추출 | `page.tsx`(668줄) 섹션별 컴포넌트 추출 — 동작 보존, 시각 변화 없음 (5개 인라인 색맵 함수 격리) | 완료 (#1205) |
 | U2b-1 | verdict 배너 + 히어로 축소 | 배너 최상단(placement 잠금 테스트) · MarketStrip verdict 꼬리 제거 · 히어로 3xl→xl | **완료 #1207** |
 | U2b-2 | 액션 테이블 + 시스템 레일 | 카드→32px 밀집 행(quick-peek 확장·확신도 micro-bar·증거 링크) · MarketContext 분해(SystemHealthRail·MacroEventsCard·RegimeShiftBanner) · 좌 2/3 + 우 1/3 그리드 | 완료 (#1209) |
 | U2b-3 | 구성 스택 바 | 도넛→가로 스택 바 · coverage 접이 | 완료 (#1211) |
-| U2b-4 | 델타·ack | NEW+시각 배지 · 확인(ack) 로컬 상태 · 다음 행동 카피 | 진행 중 (#1212) |
-| U3 | Decisions | 리스트: 필터·날짜 그룹핑·conf micro-bar·판정일 명시 / 상세: 2컬럼 + 증거 key-value(raw JSON 폐지) + raw float 종결 | 대기 |
+| U2b-4 | 델타·ack | NEW+시각 배지 · 확인(ack) 로컬 상태 · 다음 행동 카피 | 완료 (#1213, 커버리지 후속 #1215) |
+| U3 | Decisions | 리스트: 필터·날짜 그룹핑·conf micro-bar·판정일 명시 / 상세: 2컬럼 + 증거 key-value(raw JSON 폐지) + raw float 종결 | 진행 중 (#1216) |
 | U4 | 주변부 | ticker(빈 패널 접기)·scanner(중복 테이블 병합)·engine(BLOCKED 다음 행동)·pipeline(타임라인 구조화) + 빈 상태 1줄 규칙 전면 | 대기 |
 | U5 | 별도 결정 | evidence matplotlib PNG→네이티브 차트 · Cmd-K · IA 통합(라우트 병합) — 각각 사용자 승인 후 착수 | 보류 |
 
 ### 단계별 공통 게이트
 
-1. vitest 전건 green + `next build` + eslint (파일 수 212 확인 — overrides 잠금)
+1. vitest 전건 green + `next build` + eslint (파일 수는 `frontend/CLAUDE.md` 의 기준값과 대조 — overrides 잠금. 수치를 여기 복제하면 낡는다)
 2. **4-뷰포트 스윕** (U1c 이후: `responsive.spec.ts` 실행 + 스크린샷 검토)
 3. codex review — P1 전건 해소, P2 판단 기록
 4. doc counts (`make verify-doc-counts`) + 테스트 수 변동 시 문서 5곳 동기화
@@ -87,13 +87,13 @@
 
 ### 배포 포인트
 
-- **D1**: U1c 머지 후 — mini 1차 배포 (토큰+통화+반응형 파운데이션 묶음, 프론트 재빌드 필수)
-- **D2**: U2b 머지 후 — 대시보드 재구조 라이브 검증 (사용자 실경로 QA)
+- **D1**: U1c 머지 후 — mini 1차 배포 (토큰+통화+반응형 파운데이션 묶음, 프론트 재빌드 필수) — **완료 2026-08-25** (served CSS 토큰 마커 검증)
+- **D2**: U2b 머지 후 — 대시보드 재구조 라이브 검증 (사용자 실경로 QA) — **완료 2026-08-25** (U2b 마커 5종 served 번들 확인, 27066ba)
 - **D3**: U4 머지 후 — 최종 + `/design-review` 라이브 폴리싱 패스
 
 ## 4. 리스크 / 제약
 
-- **테스트 잠금**: vitest 1472 + e2e 59 가 구조·클래스·문자열을 잠근다 — 구조 변경 PR 은
+- **테스트 잠금**: vitest·e2e 스위트(개수 정본은 `frontend/CLAUDE.md`)가 구조·클래스·문자열을 잠근다 — 구조 변경 PR 은
   테스트 동반 수정이 정상이며, 잠금을 약화(광범위 mock·조건부 assert)하는 방식은 금지.
 - **page.tsx / holding-row.tsx**: bespoke 대형 파일 — U2a 추출 없이 U2b 재구조 금지.
 - **Recharts hex ~70개**: 차트 색은 U2b/U4 에서 `--chart-*` CSS 변수로 배선.

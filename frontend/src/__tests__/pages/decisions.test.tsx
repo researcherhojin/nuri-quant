@@ -90,11 +90,82 @@ describe("DecisionsPage", () => {
     expect(link).toHaveAttribute("href", "/decisions/1");
   });
 
-  it("renders action badges", async () => {
+  it("renders action badges in rows (filter chips also carry BUY/SELL)", async () => {
     const { default: DecisionsPage } = await import("@/app/decisions/page");
     await act(async () => { render(await DecisionsPage()); });
-    expect(screen.getByText("BUY")).toBeInTheDocument();
-    expect(screen.getByText("SELL")).toBeInTheDocument();
+    // #1216: 필터 칩에도 BUY/SELL 텍스트가 있으므로 행 범위로 좁혀 단정한다
+    const rows = screen.getAllByTestId("decisions-row");
+    expect(rows[0].textContent).toContain("BUY");
+    expect(rows[1].textContent).toContain("SELL");
+  });
+
+  // #1216: 필터 바 — outcome/action 칩과 초기화 링크가 URL 기반으로 렌더된다.
+  it("renders URL-driven filter chips", async () => {
+    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    await act(async () => { render(await DecisionsPage()); });
+    const bar = screen.getByTestId("decisions-filters");
+    expect(bar.textContent).toContain("대기");
+    expect(bar.textContent).toContain("성공");
+    expect(bar.textContent).toContain("HOLD");
+    const pendingChip = Array.from(bar.querySelectorAll("a")).find((a) => a.textContent === "대기");
+    expect(pendingChip).toHaveAttribute("href", "/decisions?outcome=pending");
+  });
+
+  // #1216: 날짜 그룹 헤더 — 서로 다른 두 날짜의 행이 각자의 헤더 아래 묶인다.
+  it("groups rows under date headers with counts", async () => {
+    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    await act(async () => { render(await DecisionsPage()); });
+    const headers = screen.getAllByTestId("decisions-date-header");
+    expect(headers).toHaveLength(2);
+    expect(headers[0].textContent).toContain("2026-04-10");
+    expect(headers[0].textContent).toContain("1건");
+  });
+
+  // #1216: 판정일 명시 — 판정일이 지난 pending 은 "판정일 도래 · 미판정"으로 드러난다.
+  it("marks past-due pending rows as 판정일 도래", async () => {
+    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    await act(async () => { render(await DecisionsPage()); });
+    // fixture date 2026-04-10/09 + 90d < 오늘 → due 라벨 (달력 진행에 무관하게 유지)
+    expect(screen.getAllByText("판정일 도래 · 미판정").length).toBe(2);
+  });
+
+  // waiting arm: 최근 결정은 D-n 으로 렌더 (판정일 전) — 날짜는 실행 시점 기준 동적 생성.
+  it("renders D-n for a recent pending decision", async () => {
+    const recent = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
+    setupFetchAPI({
+      decisions: [{ ...mockDecisionsResponse.decisions[0], id: 9, date: recent }],
+      count: 1,
+      summary: { total: 1, pending: 1, success: 0, failure: 0, neutral: 0 },
+    });
+    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    await act(async () => { render(await DecisionsPage()); });
+    const row = screen.getByTestId("decisions-row");
+    expect(row.textContent).toMatch(/D-\d+/);
+  });
+
+  // 미지의 outcome 값은 pending 태그로 폴백한다 (OUTCOME_TAG ?? 가드).
+  it("falls back to the pending tag for an unknown outcome value", async () => {
+    setupFetchAPI({
+      decisions: [{ ...mockDecisionsResponse.decisions[0], id: 9, outcome: "weird" }],
+      count: 1,
+      summary: { total: 1, pending: 1, success: 0, failure: 0, neutral: 0 },
+    });
+    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    await act(async () => { render(await DecisionsPage()); });
+    expect(screen.getByTestId("decisions-row").textContent).toContain("대기");
+  });
+
+  // searchParams 경로: outcome 은 API 로, action 은 RSC 로 — 필터 노트 병기 (codex R1 P2).
+  it("applies searchParams filters and shows the global-summary note", async () => {
+    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    await act(async () => {
+      render(await DecisionsPage({ searchParams: Promise.resolve({ outcome: "pending", action: "SELL" }) }));
+    });
+    expect(mockFetchAPI).toHaveBeenCalledWith("/api/decisions?limit=100&outcome=pending");
+    const note = screen.getByTestId("decisions-filtered-note");
+    expect(note.textContent).toContain("요약 카드는 전체 기준");
+    // action=SELL → BBB 행만
+    expect(screen.getAllByTestId("decisions-row")).toHaveLength(1);
   });
 
   it("shows empty state when no decisions", async () => {
@@ -157,16 +228,19 @@ describe("DecisionsPage", () => {
     await act(async () => { render(await DecisionsPage()); });
     // 1 success / 2 completed = 50% → green
     expect(screen.getByText("50%")).toBeInTheDocument();
-    // Covers: null regime → "—", null entry_price → "—", pnl_7d=0 → "0.0%"
-    // outcome "success" → BUY badge, "failure" → SELL badge
-    expect(screen.getByText("success")).toBeInTheDocument();
-    expect(screen.getByText("failure")).toBeInTheDocument();
+    // #1216: outcome 은 intent 태그 (성공/실패) + 판정 기준일 — BUY/SELL 배지 오매핑 폐지.
+    // 필터 칩에도 "성공" 텍스트가 있으므로 행 범위로 단정한다.
+    const rows = screen.getAllByTestId("decisions-row");
+    const rowText = rows.map((r) => r.textContent).join(" ");
+    expect(rowText).toContain("성공");
+    expect(rowText).toContain("실패");
+    expect(rowText).toContain("2026-04-01"); // 2026-01-01 + 90d
   });
 
   it("renders loading skeleton", async () => {
     const { default: DecisionsPage } = await import("@/app/decisions/page");
-    const { container } = render(DecisionsPage());
-    // Suspense fallback renders pulse skeletons
+    // 페이지 JSX 는 await, Suspense 자식 promise 는 미해결 상태로 렌더 → fallback
+    const { container } = render(await DecisionsPage());
     const pulses = container.querySelectorAll(".animate-pulse");
     expect(pulses.length).toBeGreaterThan(0);
   });

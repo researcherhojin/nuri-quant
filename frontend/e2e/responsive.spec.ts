@@ -19,17 +19,34 @@ const VIEWPORT_MATRIX = [
 ] as const;
 
 // /pipeline 포함 — ReactFlow 캔버스가 전역 캡의 최대 리스크 페이지 (codex P2).
-// 상세 라우트(/decisions/[id], /ticker/*)는 데이터 의존이라 본문에서 id 를 조회해 동적 추가.
-const ROUTES = ["/", "/decisions", "/scan", "/portfolio", "/engine", "/pipeline"] as const;
+// 상세 라우트는 데이터 의존이라 첫 decision id 를 API 에서 조회해 동적 추가 (#1216, PLAN §2.3).
+const ROUTES = ["/", "/decisions", "/scan", "/portfolio", "/engine", "/pipeline", "decision-detail"] as const;
 
 const CONTENT_CAP_PX = 1600;
+
+// decision-detail 플레이스홀더 → 실제 /decisions/{id}. 데이터가 없으면 해당 케이스 skip
+// (assert 약화가 아니라 라우트 자체가 존재하지 않는 경우다).
+async function resolveRoute(
+  route: (typeof ROUTES)[number],
+  request: { get: (url: string) => Promise<{ ok: () => boolean; json: () => Promise<unknown> }> },
+): Promise<string | null> {
+  if (route !== "decision-detail") return route;
+  const res = await request.get("/api/decisions?limit=1");
+  if (!res.ok()) return null;
+  const body = (await res.json()) as { decisions?: Array<{ id: number }> };
+  const id = body.decisions?.[0]?.id;
+  return id != null ? `/decisions/${id}` : null;
+}
 
 for (const vp of VIEWPORT_MATRIX) {
   test.describe(`viewport ${vp.name} (${vp.width}x${vp.height})`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } });
 
-    for (const route of ROUTES) {
-      test(`${route} — no horizontal scroll, content capped`, async ({ page }) => {
+    for (const routeSpec of ROUTES) {
+      test(`${routeSpec} — no horizontal scroll, content capped`, async ({ page, request }) => {
+        const route = await resolveRoute(routeSpec, request);
+        test.skip(route === null, "decision 데이터 없음 — 상세 라우트 생략");
+        if (route === null) return;
         await page.goto(route, { timeout: 30000, waitUntil: "networkidle" });
 
         // 1. 가로 스크롤 금지 — 실제 스크롤 컨테이너는 root 가 아니라 main (overflow-auto,
@@ -65,7 +82,7 @@ for (const vp of VIEWPORT_MATRIX) {
 
         // 3. 스크린샷 아카이브 (수동 검토물 — assert 아님)
         await page.screenshot({
-          path: `test-results/responsive/${vp.name}${route === "/" ? "/home" : route}.png`,
+          path: `test-results/responsive/${vp.name}${routeSpec === "/" ? "/home" : `/${routeSpec.replace(/^\//, "")}`}.png`,
           fullPage: false,
         });
       });

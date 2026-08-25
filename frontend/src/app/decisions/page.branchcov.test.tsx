@@ -52,13 +52,13 @@ describe("DecisionsSection — exhaustive branch coverage", () => {
     expect(container.querySelector("p")?.className).toContain("text-red-400");
   });
 
-  // L113: decisions.length === 0 → 빈 상태 카드 (table-row 분기 우회).
-  // SummaryCards: L65 binary/cond truthy(total-pending>0) + L95 truthy(%) + L96 arm0(green, >=50).
+  // decisions.length === 0 → 빈 상태 카드 (table-row 분기 우회).
+  // SummaryCards: adjudicated>0 truthy + >=50 green arm.
   it("renders empty table + green Hit Rate (successRate >= 50)", async () => {
     mockFetchAPI.mockResolvedValue({
       decisions: [],
       count: 0,
-      // total-pending=8>0, round(5/(5+3)*100)=63 → >=50 → green, value="63%"
+      // adjudicated=8>0, round(5/8*100)=63 → >=50 → green, value="63%"
       summary: { total: 10, pending: 2, success: 5, failure: 3, neutral: 0 },
     });
     const jsx = await DecisionsSection();
@@ -66,7 +66,7 @@ describe("DecisionsSection — exhaustive branch coverage", () => {
     expect(getByText("63%")).toBeInTheDocument();
   });
 
-  // L96 arm1 (red): successRate>0 && <50. round(1/(1+9)*100)=10.
+  // red arm: successRate < 50. round(1/10*100)=10.
   it("renders red Hit Rate (0 < successRate < 50)", async () => {
     mockFetchAPI.mockResolvedValue({
       decisions: [],
@@ -78,8 +78,8 @@ describe("DecisionsSection — exhaustive branch coverage", () => {
     expect(getByText("10%")).toBeInTheDocument();
   });
 
-  // L95 falsy ("—") + L96 arm2 (default): successRate === 0 (success=0, failure>0).
-  it("renders em-dash + default Hit Rate (successRate === 0)", async () => {
+  // #1216 의미 변경: 판정 3건 전패 → 0% 는 실측이다 ("—" 로 숨기지 않는다).
+  it("renders 0% (red) when all adjudicated decisions failed", async () => {
     mockFetchAPI.mockResolvedValue({
       decisions: [],
       count: 0,
@@ -87,15 +87,14 @@ describe("DecisionsSection — exhaustive branch coverage", () => {
     });
     const jsx = await DecisionsSection();
     const { getByText } = render(jsx);
-    expect(getByText("—")).toBeInTheDocument();
+    expect(getByText("0%")).toBeInTheDocument();
   });
 
-  // L65 binary/cond falsy arm: total - pending <= 0 → successRate = 0 (else branch).
-  it("hits the L65 false arm when total - pending <= 0", async () => {
+  // adjudicated === 0 (전부 pending) → 나눗셈 없이 "—" (NaN 가드, #1216).
+  it("renders em-dash when nothing is adjudicated yet", async () => {
     mockFetchAPI.mockResolvedValue({
       decisions: [],
       count: 0,
-      // total-pending = 3-3 = 0 → not >0 → successRate=0 (no division)
       summary: { total: 3, pending: 3, success: 0, failure: 0, neutral: 0 },
     });
     const jsx = await DecisionsSection();
@@ -103,7 +102,7 @@ describe("DecisionsSection — exhaustive branch coverage", () => {
     expect(getByText("—")).toBeInTheDocument();
   });
 
-  // 테이블 본문 분기 (L159/161/163/171/107/108) — 3개 행으로 모든 arm 커버.
+  // 테이블 본문 분기 — 3개 행으로 모든 arm 커버 (+#1216: 날짜 그룹 헤더 1행 추가).
   it("renders table rows covering all per-row ternary arms", async () => {
     mockFetchAPI.mockResolvedValue({
       decisions: [
@@ -154,12 +153,15 @@ describe("DecisionsSection — exhaustive branch coverage", () => {
       summary: { total: 10, pending: 2, success: 5, failure: 3, neutral: 0 },
     });
     const jsx = await DecisionsSection();
-    const { container, getAllByText } = render(jsx);
+    const { container, getAllByText, getAllByTestId } = render(jsx);
 
-    const rows = container.querySelectorAll("tbody tr");
+    // 같은 날짜 3행 → 날짜 그룹 헤더 1 + 데이터 행 3 (#1216)
+    expect(container.querySelectorAll("tbody tr").length).toBe(4);
+    expect(getAllByTestId("decisions-date-header")).toHaveLength(1);
+    const rows = getAllByTestId("decisions-row");
     expect(rows.length).toBe(3);
 
-    // 행1: confidence "85" 렌더 (L159 truthy arm).
+    // 행1: confidence "85" — micro-bar 숫자 (#1216).
     expect(within(rows[0] as HTMLElement).getByText("85")).toBeInTheDocument();
     // 행1: regime "RISK_ON" (L161 truthy arm).
     expect(within(rows[0] as HTMLElement).getByText("RISK_ON")).toBeInTheDocument();
@@ -179,9 +181,51 @@ describe("DecisionsSection — exhaustive branch coverage", () => {
     // 행3: pnl_90d=null → PnlCell L106 TRUE arm → "—" early return.
     expect(within(rows[2] as HTMLElement).getAllByText("—").length).toBeGreaterThan(0);
 
-    // outcome 라벨들이 3행에 걸쳐 존재 (success/failure/neutral → L171 3 arms).
-    expect(getAllByText("success").length).toBeGreaterThan(0);
-    expect(getAllByText("failure").length).toBeGreaterThan(0);
-    expect(getAllByText("neutral").length).toBeGreaterThan(0);
+    // outcome intent 태그 (#1216: 성공→BUY 배지 오매핑 제거) + 판정 기준일 병기.
+    // 세 행 모두 adjudicated (success/failure/neutral) → 2026-01-15+90d.
+    expect(getAllByText("성공").length).toBeGreaterThan(0);
+    expect(getAllByText("실패").length).toBeGreaterThan(0);
+    expect(getAllByText("중립").length).toBeGreaterThan(0);
+    expect(getAllByText("2026-04-15").length).toBe(3);
+  });
+
+  // #1216: action 필터는 RSC 측 필터 (API 미지원 파라미터).
+  it("filters rows by action in the RSC when ?action= is set", async () => {
+    mockFetchAPI.mockResolvedValue({
+      decisions: [
+        makeDecision({ id: 1, ticker: "AAA", action: "BUY" }),
+        makeDecision({ id: 2, ticker: "BBB", action: "SELL" }),
+      ],
+      count: 2,
+      summary: { total: 2, pending: 0, success: 2, failure: 0, neutral: 0 },
+    });
+    const jsx = await DecisionsSection({ action: "SELL" });
+    const { getAllByTestId, queryByText } = render(jsx);
+    expect(getAllByTestId("decisions-row")).toHaveLength(1);
+    expect(queryByText("AAA")).not.toBeInTheDocument();
+  });
+
+  // #1216: outcome 필터는 API 파라미터로 전달된다.
+  it("passes ?outcome= through to the API query", async () => {
+    mockFetchAPI.mockResolvedValue({
+      decisions: [],
+      count: 0,
+      summary: { total: 0, pending: 0, success: 0, failure: 0, neutral: 0 },
+    });
+    await DecisionsSection({ outcome: "failure" });
+    expect(mockFetchAPI).toHaveBeenCalledWith("/api/decisions?limit=100&outcome=failure");
+  });
+
+  // #1216: 필터 중 0건은 데이터 부재 문구와 다른 전용 문구.
+  it("shows the filtered-empty copy when a filter yields nothing", async () => {
+    mockFetchAPI.mockResolvedValue({
+      decisions: [makeDecision({ id: 1, action: "BUY" })],
+      count: 1,
+      summary: { total: 1, pending: 0, success: 1, failure: 0, neutral: 0 },
+    });
+    const jsx = await DecisionsSection({ action: "HOLD" });
+    const { getByText, queryByText } = render(jsx);
+    expect(getByText("필터에 해당하는 의사결정 없음.")).toBeInTheDocument();
+    expect(queryByText(/make consensus/)).not.toBeInTheDocument();
   });
 });

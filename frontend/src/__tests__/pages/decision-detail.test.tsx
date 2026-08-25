@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, within } from "@testing-library/react";
 
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -411,5 +411,105 @@ describe("DecisionProvenance", () => {
       render(await mod.default({ params: Promise.resolve({ id: "531" }) }));
     });
     expect(document.querySelector(".animate-pulse")).toBeTruthy();
+  });
+});
+
+// #1216 U3 잠금: 2컬럼 골격 · 증거 key-value · raw float 종결 · 판정 상태.
+describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockFetchAPI = vi.fn().mockResolvedValue(mockDetail);
+    notFoundMock.mockClear();
+  });
+
+  it("renders the 2-column skeleton: rail beside a 2/3 main column", async () => {
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    let container!: HTMLElement;
+    await act(async () => {
+      ({ container } = render(await DecisionProvenance({ id: "531" })));
+    });
+    const rail = screen.getByTestId("decision-rail");
+    expect(rail.className).toContain("lg:order-2");
+    const grid = rail.parentElement!;
+    expect(grid.className).toContain("lg:grid-cols-3");
+    expect(grid.querySelector(".lg\\:col-span-2")).not.toBeNull();
+    expect(container).toBeTruthy();
+  });
+
+  it("renders evidence detail as key-value pairs, not raw JSON", async () => {
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const kv = screen.getByTestId("evidence-kv");
+    expect(kv.textContent).toContain("rsi");
+    expect(kv.textContent).toContain("49");
+    // raw JSON 문자열이 그대로 보이면 실패 (#1216 raw JSON 폐지)
+    expect(screen.queryByText('{"rsi": 49}')).not.toBeInTheDocument();
+  });
+
+  it("falls back to raw detail when it is not a JSON object", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      evidence: [{ id: 1, decision_id: 531, source_type: "macro", source_key: "note", action: null, confidence: null, detail: "plain text detail" }],
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.queryByTestId("evidence-kv")).not.toBeInTheDocument();
+    expect(screen.getByText("plain text detail")).toBeInTheDocument();
+  });
+
+  it("terminates raw floats: fixed VIX, currency prices, signed pnl", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      ticker: "005930.KS",
+      vix: 21.040000915527344,
+      entry_price: 204000,
+      pnl_7d: 5.2,
+      pnl_30d: -3.1,
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    // codex R1 P3: 값이 레일의 올바른 카드 안에 있는지까지 잠근다 (충돌 방지 스코프)
+    const rail = screen.getByTestId("decision-rail");
+    expect(within(rail).getByText("VIX").parentElement?.textContent).toContain("21.0"); // not 21.040000915…
+    expect(within(rail).getByText("Entry").parentElement?.textContent).toContain("₩204,000"); // .KS → ₩
+    expect(within(rail).getByText("7d").parentElement?.textContent).toContain("+5.2%");
+    expect(within(rail).getByText("30d").parentElement?.textContent).toContain("-3.1%");
+  });
+
+  it("dashes a null confidence in the frozen context", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, confidence: null });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const rail = screen.getByTestId("decision-rail");
+    expect(within(rail).getByText("Confidence").parentElement?.textContent).toContain("—");
+  });
+
+  it("shows 판정 D-n in the header for a recent pending decision", async () => {
+    const recent = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
+    mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, date: recent });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.getByTestId("decision-outcome").textContent).toMatch(/D-\d+/);
+  });
+
+  it("shows the outcome intent tag with adjudication status in the header", async () => {
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const outcome = screen.getByTestId("decision-outcome");
+    // 2026-04-13 + 90d < 오늘 → pending 은 판정일 도래·미판정으로 드러난다
+    expect(outcome.textContent).toContain("대기");
+    expect(outcome.textContent).toContain("판정일 도래 · 미판정");
   });
 });
