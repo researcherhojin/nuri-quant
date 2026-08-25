@@ -4,6 +4,7 @@
  * FearGreedChart — 공포·탐욕 지수 90일 라인 + 구간 존 (#1225).
  * 존 경계는 CNN Fear & Greed 표준 구간 (Plotly 원본과 동일).
  */
+import { EVIDENCE } from "@/lib/strings";
 import {
   ResponsiveContainer,
   LineChart,
@@ -38,7 +39,7 @@ export function FearGreedChart({ data }: { data: FearGreedData }) {
   const latest = data.history[data.history.length - 1];
 
   return (
-    <div className="min-w-0" data-testid="fear-greed-chart">
+    <div className="min-w-0" data-testid="fear-greed-chart" role="img" aria-label={EVIDENCE.TITLE_FEAR_GREED}>
       {latest && (
         <div className="mb-2">
           <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-zinc-200">

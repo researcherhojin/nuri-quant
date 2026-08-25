@@ -241,6 +241,7 @@ export const ADVISOR = {
 
 /* ── Evidence Page ──────────────────────────────────────────── */
 export const EVIDENCE = {
+  TITLE: "Evidence Charts",
   LOAD_FAILED: "증거 차트 로드 실패. API 서버 확인 필요.",
   SUBTITLE: "투자 결정 근거 시각화 — 레짐, 포트폴리오, 시그널, 공포·탐욕, 매도 근거",
   // #1225: iframe → 네이티브 차트. 데이터는 DB 라이브 — 빈 상태는 1줄 룰.

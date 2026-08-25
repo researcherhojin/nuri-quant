@@ -4,6 +4,7 @@
  * SellEvidenceChart — 위반 항목별 심각도 가로 바 (#1225).
  * 손절=빨강 · 비중초과=노랑, 툴팁에 조치·회복 조건 표시 (Plotly hover 대체).
  */
+import { EVIDENCE } from "@/lib/strings";
 import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, Tooltip } from "recharts";
 
 import { VIOLATION_COLORS, type SellEvidenceData, type SellViolation } from "@/components/evidence/chart-data";
@@ -40,7 +41,7 @@ export function SellEvidenceChart({ data }: { data: SellEvidenceData }) {
   const height = Math.max(rows.length * 30 + 40, 110);
 
   return (
-    <div className="min-w-0" data-testid="sell-evidence-chart">
+    <div className="min-w-0" data-testid="sell-evidence-chart" role="img" aria-label={EVIDENCE.TITLE_SELL}>
       <div className="w-full min-w-0" style={{ height }}>
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart data={rows} layout="vertical" margin={{ top: 5, right: 30, bottom: 0, left: 0 }}>

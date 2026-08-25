@@ -83,15 +83,22 @@ describe("EvidencePage (native charts)", () => {
     setupFetchAPI();
   });
 
-  it("renders page heading and subtitle", async () => {
+  it("renders page heading and subtitle from strings.ts", async () => {
     await renderPage();
-    expect(screen.getByText("Evidence Charts")).toBeInTheDocument();
+    expect(screen.getByText(E.TITLE)).toBeInTheDocument();
     expect(screen.getByText(E.SUBTITLE)).toBeInTheDocument();
   });
 
-  it("renders all 5 chart card titles", async () => {
+  it("renders all 5 chart cards (testid + title)", async () => {
     await renderPage();
-    for (const title of [E.TITLE_REGIME, E.TITLE_HEATMAP, E.TITLE_SIGNALS, E.TITLE_FEAR_GREED, E.TITLE_SELL]) {
+    for (const [testId, title] of [
+      ["card-regime", E.TITLE_REGIME],
+      ["card-portfolio_heatmap", E.TITLE_HEATMAP],
+      ["card-signal_performance", E.TITLE_SIGNALS],
+      ["card-fear_greed", E.TITLE_FEAR_GREED],
+      ["card-sell_evidence", E.TITLE_SELL],
+    ] as const) {
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
       expect(screen.getByText(title)).toBeInTheDocument();
     }
   });

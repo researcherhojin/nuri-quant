@@ -12,19 +12,35 @@ import { test, expect } from "@playwright/test";
 
 import { EVIDENCE } from "../src/lib/strings";
 
-test("evidence page renders native chart cards with zero iframes", async ({ page }) => {
+const CARDS = [
+  { id: "regime", title: EVIDENCE.TITLE_REGIME, chartTestId: "regime-chart" },
+  { id: "portfolio_heatmap", title: EVIDENCE.TITLE_HEATMAP, chartTestId: "portfolio-treemap" },
+  { id: "signal_performance", title: EVIDENCE.TITLE_SIGNALS, chartTestId: "signal-performance-chart" },
+  { id: "fear_greed", title: EVIDENCE.TITLE_FEAR_GREED, chartTestId: "fear-greed-chart" },
+  { id: "sell_evidence", title: EVIDENCE.TITLE_SELL, chartTestId: "sell-evidence-chart" },
+] as const;
+
+test("evidence page renders native chart cards with zero iframes", async ({ page, request }) => {
   const resp = await page.goto("/evidence", { waitUntil: "domcontentloaded", timeout: 20000 });
   expect(resp?.status()).toBe(200);
 
   const main = page.locator("main");
-  for (const title of [
-    EVIDENCE.TITLE_REGIME,
-    EVIDENCE.TITLE_HEATMAP,
-    EVIDENCE.TITLE_SIGNALS,
-    EVIDENCE.TITLE_FEAR_GREED,
-    EVIDENCE.TITLE_SELL,
-  ]) {
-    await expect(main.getByText(title)).toBeVisible({ timeout: 15000 });
+  for (const card of CARDS) {
+    // 카드 자체(제목+본문)는 데이터와 무관하게 항상 존재해야 한다
+    const cardEl = main.getByTestId(`card-${card.id}`);
+    await expect(cardEl).toBeVisible({ timeout: 15000 });
+    await expect(cardEl.getByText(card.title)).toBeVisible();
+
+    // 차트 마운트 여부는 API 가 실제로 준 것과 일치해야 한다 (라이브 값 하드코딩 금지)
+    const api = await request.get(`/api/evidence/data/${card.id}`);
+    expect(api.ok()).toBe(true);
+    const body = (await api.json()) as { count: number };
+    if (body.count > 0) {
+      await expect(cardEl.getByTestId(card.chartTestId)).toBeVisible({ timeout: 15000 });
+    } else {
+      const emptyText = card.id === "sell_evidence" ? EVIDENCE.NO_VIOLATIONS : EVIDENCE.NO_DATA;
+      await expect(cardEl.getByText(emptyText)).toBeVisible();
+    }
   }
 
   // #1225 핵심: Plotly iframe 완전 제거

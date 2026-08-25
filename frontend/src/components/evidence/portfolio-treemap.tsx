@@ -6,6 +6,7 @@
  * 배선 안 됐던 테두리를 네이티브에서 실제로 그린다.
  */
 import type { ReactElement } from "react";
+import { EVIDENCE } from "@/lib/strings";
 import { ResponsiveContainer, Treemap, Tooltip } from "recharts";
 
 import {
@@ -89,7 +90,7 @@ export function valueTooltipFormatter(value: unknown): [string, string] {
 export function PortfolioTreemap({ data }: { data: HeatmapData }) {
   const rows = buildTreemapData(data);
   return (
-    <div className="w-full min-w-0 h-80" data-testid="portfolio-treemap">
+    <div className="w-full min-w-0 h-80" data-testid="portfolio-treemap" role="img" aria-label={EVIDENCE.TITLE_HEATMAP}>
       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
         <Treemap
           data={rows}

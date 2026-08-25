@@ -4,6 +4,7 @@
  * SignalPerformanceChart — 시그널별 승률 가로 바(드리프트 색) + PF 라인 (#1225).
  * 승률 0.5 기준선 = 동전던지기 (edge 미입증 기준, STRATEGY §3.11).
  */
+import { EVIDENCE } from "@/lib/strings";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -41,7 +42,7 @@ export function SignalPerformanceChart({ data }: { data: SignalPerformanceData }
   const height = Math.max(rows.length * 28 + 40, 120);
 
   return (
-    <div className="min-w-0" data-testid="signal-performance-chart">
+    <div className="min-w-0" data-testid="signal-performance-chart" role="img" aria-label={EVIDENCE.TITLE_SIGNALS}>
       <div className="w-full min-w-0" style={{ height }}>
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <ComposedChart data={rows} layout="vertical" margin={{ top: 5, right: 30, bottom: 0, left: 0 }}>

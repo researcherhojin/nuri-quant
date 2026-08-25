@@ -4,6 +4,7 @@
  * RegimeChart — SPY 종가 + SMA50/200 라인 + VIX 서브차트 (#1225).
  * Plotly regime 차트의 네이티브 대체. VIX 30 기준선 = rules.yaml 신규 매수 차단선.
  */
+import { EVIDENCE } from "@/lib/strings";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -58,7 +59,7 @@ export function RegimeChart({ data }: { data: RegimeData }) {
   const chip = regimeChipLabel(data.regime);
 
   return (
-    <div className="min-w-0" data-testid="regime-chart">
+    <div className="min-w-0" data-testid="regime-chart" role="img" aria-label={EVIDENCE.TITLE_REGIME}>
       {chip && (
         <div className="mb-2">
           <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-zinc-200">{chip}</span>
