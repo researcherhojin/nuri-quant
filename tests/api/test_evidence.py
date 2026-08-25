@@ -302,3 +302,181 @@ class TestReportDirIsNotFutureDated:
         monkeypatch.setattr(ev_mod, "REPORT_DIR", reports)
 
         assert _find_latest_report_dir() is None
+
+
+class TestEvidenceDataEndpoint:
+    """GET /api/evidence/data/{chart_id} — 네이티브 차트용 JSON (#1224 U5a-1)."""
+
+    @pytest.fixture()
+    def _client(self, db_path, monkeypatch):
+        import nuri.core.db as db_mod
+
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+        from nuri.api.main import app
+
+        return TestClient(app)
+
+    def _seed_spy(self, db_path, n: int = 5) -> None:
+        dates = pd.bdate_range(end=pd.Timestamp.today(), periods=n)
+        upsert_prices(
+            pd.DataFrame(
+                {
+                    "ticker": "SPY",
+                    "date": dates.strftime("%Y-%m-%d"),
+                    "open": 100.0,
+                    "high": 101.0,
+                    "low": 99.0,
+                    "close": [100.0 + i for i in range(n)],
+                    "volume": 1_000_000,
+                    "adj_close": [100.0 + i for i in range(n)],
+                }
+            ),
+            db_path=db_path,
+        )
+
+    def test_unknown_chart_id_400(self, _client):
+        r = _client.get("/api/evidence/data/nope")
+        assert r.status_code == 400
+
+    def test_regime_empty_db(self, _client):
+        r = _client.get("/api/evidence/data/regime")
+        assert r.status_code == 200
+        data = r.json()
+        assert data == {"spy": [], "vix": [], "regime": None, "count": 0}
+
+    def test_regime_seeded(self, _client, db_path, monkeypatch):
+        import nuri.quant.regime.classifier as clf_mod
+        from nuri.quant.regime.classifier import RegimeState
+
+        self._seed_spy(db_path, n=5)
+        upsert_macro(
+            [{"indicator": "vix", "date": "2026-08-21", "value": 18.0, "source": "t"}],
+            db_path=db_path,
+        )
+        # 형태는 실 dataclass — 라우트는 핸들러 안 lazy import 라 source-level patch
+        state = RegimeState(
+            date="2026-08-21",
+            trend="bull",
+            volatility="low",
+            regime="bull_low_vol",
+            confidence=0.8,
+            details={},
+        )
+        monkeypatch.setattr(clf_mod, "classify_regime", lambda *a, **kw: state)
+
+        r = _client.get("/api/evidence/data/regime")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["count"] == 5
+        row = data["spy"][0]
+        # ISO 날짜 문자열 + sma NaN → null (numpy 누수 없음: json 왕복 자체가 증명)
+        assert isinstance(row["date"], str) and len(row["date"]) == 10
+        assert row["sma50"] is None
+        assert data["vix"][0]["value"] == 18.0
+        assert data["regime"] == {
+            "regime": "bull_low_vol",
+            "trend": "bull",
+            "volatility": "low",
+            "confidence": 0.8,
+        }
+
+    def test_regime_classifier_returns_none(self, _client, db_path, monkeypatch):
+        import nuri.quant.regime.classifier as clf_mod
+
+        self._seed_spy(db_path, n=5)
+        monkeypatch.setattr(clf_mod, "classify_regime", lambda *a, **kw: None)
+        r = _client.get("/api/evidence/data/regime")
+        assert r.status_code == 200
+        assert r.json()["regime"] is None
+
+    def test_portfolio_heatmap_empty(self, _client):
+        r = _client.get("/api/evidence/data/portfolio_heatmap")
+        assert r.status_code == 200
+        assert r.json() == {"items": [], "count": 0}
+
+    def test_portfolio_heatmap_seeded(self, _client):
+        # 형태는 analyze_portfolio 실반환에서 복사 (mock-shape 규칙)
+        df = pd.DataFrame(
+            [
+                {"ticker": "AAA", "current_value_usd": 5000, "pnl_pct": -12.0, "weight_pct": 20.0, "sector": "Tech"},
+                {"ticker": "BBB", "current_value_usd": 4000, "pnl_pct": 3.0, "weight_pct": 8.0, "sector": "Health"},
+            ]
+        )
+        with patch("nuri.analysis.portfolio.analyze_portfolio", return_value=df):
+            r = _client.get("/api/evidence/data/portfolio_heatmap")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["count"] == 2
+        by_ticker = {i["ticker"]: i for i in data["items"]}
+        assert by_ticker["AAA"]["violation"] == "stop_loss"
+        assert by_ticker["BBB"]["violation"] is None
+
+    def test_signal_performance_none(self, _client, tmp_path, monkeypatch):
+        import nuri.analysis.evidence_data as ed
+
+        monkeypatch.setattr(ed, "REPORT_DIR", tmp_path / "no_reports")
+        r = _client.get("/api/evidence/data/signal_performance")
+        assert r.status_code == 200
+        assert r.json() == {"signals": [], "count": 0}
+
+    def test_signal_performance_seeded(self, _client, tmp_path, monkeypatch):
+        import nuri.analysis.evidence_data as ed
+
+        day_dir = tmp_path / "reports" / "2026-08-21"
+        day_dir.mkdir(parents=True)
+        # 형태는 signal_scorecard.csv 실물에서 복사 (mock-shape 규칙)
+        pd.DataFrame(
+            [
+                {
+                    "signal_id": "rsi_oversold",
+                    "ticker": None,
+                    "total_trades": 10,
+                    "win_rate": 0.6,
+                    "profit_factor": 1.5,
+                    "avg_return": 2.0,
+                    "median_return": 1.5,
+                    "max_return": 10.0,
+                    "max_loss": -5.0,
+                    "avg_holding_days": 20,
+                },
+            ]
+        ).to_csv(day_dir / "signal_scorecard.csv", index=False)
+        monkeypatch.setattr(ed, "REPORT_DIR", tmp_path / "reports")
+        monkeypatch.setattr(
+            ed, "load_drift_map", lambda *a, **kw: {"rsi_oversold": {"status": "critical", "drift_pct": -15.0}}
+        )
+
+        r = _client.get("/api/evidence/data/signal_performance")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["count"] == 1
+        sig = data["signals"][0]
+        assert sig["signal_id"] == "rsi_oversold"
+        assert sig["drift_status"] == "critical"
+        # 선택 컬럼만 — ticker(NaN)나 max_return 은 응답에 없다
+        assert "max_return" not in sig
+
+    def test_fear_greed_empty_and_seeded(self, _client, db_path):
+        r = _client.get("/api/evidence/data/fear_greed")
+        assert r.json() == {"history": [], "count": 0}
+        upsert_macro(
+            [{"indicator": "fear_greed", "date": "2026-08-21", "value": 55.0, "source": "t"}],
+            db_path=db_path,
+        )
+        r = _client.get("/api/evidence/data/fear_greed")
+        data = r.json()
+        assert data["count"] == 1
+        assert data["history"][0]["value"] == 55.0
+
+    def test_sell_evidence(self, _client):
+        r = _client.get("/api/evidence/data/sell_evidence")
+        assert r.json() == {"violations": [], "count": 0}
+        df = pd.DataFrame(
+            [{"ticker": "AAA", "current_value_usd": 5000, "pnl_pct": -12.0, "weight_pct": 8.0, "sector": "Tech"}]
+        )
+        with patch("nuri.analysis.portfolio.analyze_portfolio", return_value=df):
+            r = _client.get("/api/evidence/data/sell_evidence")
+        data = r.json()
+        assert data["count"] == 1
+        v = data["violations"][0]
+        assert v["type"] == "stop_loss" and v["action"] == "SELL ALL"

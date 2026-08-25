@@ -57,8 +57,8 @@ Trade execution API (`nuri/api/routes/trades.py`):
 - `PUT /api/trades/{id}` — Update exit info
 ## Dashboard API (Projection-based, <5s)
 `/api/dashboard` reads pre-computed results from DB instead of running analysis inline. Consensus from `recommendations` table (populated by `make consensus`). Response includes `freshness` and `pipeline_status` for data age display. The one-line `verdict` is stale-gated (#1181): when any `verdict_gate` input (`config/freshness.yaml`) is FAIL-stale, the response carries `verdict_level: "stale"` + `verdict_stale_inputs` and the verdict text names the stale inputs instead of advising.
-## API (72 endpoints)
-`nuri/api/routes/` — 72 REST endpoints on port **8001** (`@router.get/post/put/delete/patch` decorators counted across 21 route modules; excludes FastAPI's `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`). Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
+## API (73 endpoints)
+`nuri/api/routes/` — 73 REST endpoints on port **8001** (`@router.get/post/put/delete/patch` decorators counted across 21 route modules; excludes FastAPI's `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`). Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
 ### Action-First Dashboard APIs (PR #264-#266)
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
@@ -159,7 +159,7 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-7,521 backend tests across 345 files + 1538 frontend vitest (131 files) + 87 Playwright E2E (9 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth — a local run measures a different statement set.
+7,539 backend tests across 346 files + 1538 frontend vitest (131 files) + 87 Playwright E2E (9 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth — a local run measures a different statement set.
 **Slow marker**: 27 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14).
 @pytest.fixture
 def db_path(tmp_path):

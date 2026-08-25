@@ -74,6 +74,90 @@ def list_evidence():
     return {"charts": available, "date": evidence_dir.parent.name}
 
 
+def _records(df) -> list[dict]:
+    """DataFrame → JSON-안전 records (numpy 누수 방지 — 이 디렉터리 컨벤션).
+
+    to_dict("records") 가 numpy 스칼라를 네이티브로 박싱하므로(pandas maybe_box_native)
+    남는 비-JSON 값은 NaN/NaT/None 과 Timestamp 뿐이다.
+    """
+    import pandas as pd
+
+    out = []
+    for row in df.to_dict("records"):
+        clean = {}
+        for k, v in row.items():
+            if pd.isna(v):
+                clean[k] = None
+            elif isinstance(v, pd.Timestamp):
+                clean[k] = v.strftime("%Y-%m-%d")
+            else:
+                clean[k] = v
+        out.append(clean)
+    return out
+
+
+# literal 세그먼트가 아래 `/evidence/{chart_id}` 와 겹치지 않도록 3-세그먼트 경로
+# (이 파일의 `/evidence/report` 도달 불가 gotcha 참조 — nuri/api/CLAUDE.md).
+@router.get("/evidence/data/{chart_id}")
+def get_evidence_data(chart_id: str):
+    """차트별 JSON 시리즈 — 네이티브(recharts) 렌더용 (#1224).
+
+    Plotly 생성기와 evidence_data 공유 함수를 통해 단일 소스. 데이터 부재는
+    빈 컬렉션으로 응답 (soft — 프론트가 빈 상태 1줄로 강등).
+    """
+    if chart_id not in CHART_TYPES:
+        raise HTTPException(status_code=400, detail=f"유효하지 않은 차트: {chart_id}. 가능: {list(CHART_TYPES.keys())}")
+
+    # 무거운 조립은 핸들러 안에서 lazy import (이 디렉터리 컨벤션)
+    from nuri.analysis import evidence_data as ed
+
+    if chart_id == "regime":
+        spy = ed.load_spy_with_sma()
+        vix = ed.load_vix_history()
+        regime = None
+        if not spy.empty:
+            from nuri.quant.regime.classifier import classify_regime
+
+            state = classify_regime()
+            if state:
+                regime = {
+                    "regime": state.regime,
+                    "trend": state.trend,
+                    "volatility": state.volatility,
+                    "confidence": state.confidence,
+                }
+        return {
+            "spy": _records(spy) if not spy.empty else [],
+            "vix": _records(vix) if not vix.empty else [],
+            "regime": regime,
+            "count": 0 if spy.empty else len(spy),
+        }
+
+    if chart_id == "portfolio_heatmap":
+        grouped = ed.load_portfolio_grouped()
+        items = _records(grouped) if not grouped.empty else []
+        return {"items": items, "count": len(items)}
+
+    if chart_id == "signal_performance":
+        total = ed.load_signal_performance()
+        if total is None or total.empty:
+            return {"signals": [], "count": 0}
+        cols = [
+            c for c in ("signal_id", "win_rate", "profit_factor", "total_trades", "drift_status") if c in total.columns
+        ]
+        signals = _records(total[cols])
+        return {"signals": signals, "count": len(signals)}
+
+    if chart_id == "fear_greed":
+        fg = ed.load_fear_greed_history()
+        history = _records(fg) if not fg.empty else []
+        return {"history": history, "count": len(history)}
+
+    # sell_evidence
+    violations = ed.detect_portfolio_violations()
+    return {"violations": violations, "count": len(violations)}
+
+
 @router.get("/evidence/{chart_id}")
 def get_evidence_chart(chart_id: str):
     """증거 차트 HTML 반환."""
