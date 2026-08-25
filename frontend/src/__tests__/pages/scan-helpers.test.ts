@@ -64,10 +64,11 @@ describe("mergeScanSwing", () => {
 });
 
 describe("summarizePayload (#1219 raw JSON 폐지)", () => {
-  it("priority keys win outright, truncated to 80 chars", () => {
+  it("priority keys win outright — stderr alone truncates to 80 (원 동작 패리티)", () => {
     expect(summarizePayload({ stderr: "boom", records: 5 })).toBe("boom");
+    expect(summarizePayload({ stderr: "y".repeat(120) })).toBe("y".repeat(80));
     expect(summarizePayload({ command: "make collect" })).toBe("make collect");
-    expect(summarizePayload({ error: "x".repeat(120) })).toBe("x".repeat(80));
+    expect(summarizePayload({ error: "x".repeat(120) })).toBe("x".repeat(120)); // 전문 통과
   });
 
   it("falls back to a kv summary (max 3 pairs + rest count), not JSON.stringify", () => {

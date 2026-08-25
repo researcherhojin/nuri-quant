@@ -6,7 +6,6 @@
  * 계열의 raw JSON 결함). 사람이 읽는 요약 한 줄로 바꾼다.
  */
 
-const PRIORITY_KEYS = ["stderr", "command", "error"] as const;
 const MAX_KV = 3;
 
 function fmtValue(v: unknown): string {
@@ -23,11 +22,11 @@ function fmtValue(v: unknown): string {
 
 export function summarizePayload(payload: Record<string, unknown> | null | undefined): string {
   if (!payload || Object.keys(payload).length === 0) return "";
-  // 우선순위 키는 단독 표기 (기존 동작 유지 — 실패 원인이 가장 중요)
-  for (const k of PRIORITY_KEYS) {
-    const v = payload[k];
-    if (v) return String(v).slice(0, 80);
-  }
+  // 우선순위 키 단독 표기 — 원 동작 정확 패리티 (codex R1 P2): stderr 만 80자
+  // 절단하고 command/error 는 전문 통과 (시각 절단은 line-clamp-1 몫)
+  if (payload.stderr) return String(payload.stderr).slice(0, 80);
+  if (payload.command) return String(payload.command);
+  if (payload.error) return String(payload.error);
   const entries = Object.entries(payload);
   const shown = entries.slice(0, MAX_KV).map(([k, v]) => `${k} ${fmtValue(v)}`);
   const rest = entries.length - MAX_KV;
