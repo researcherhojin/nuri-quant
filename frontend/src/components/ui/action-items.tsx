@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState, useSyncExternalStore, Fragment } from "react";
 import { ACTION } from "@/lib/strings";
 import { formatMoney } from "@/lib/format";
-import { type AckMap, ackItem, isNewItem, loadAckMap } from "@/lib/action-ack";
+import { type AckMap, ackItem, actionKey, isNewItem, loadAckMap } from "@/lib/action-ack";
 
 export interface ActionItem {
   ticker: string;
@@ -199,7 +199,9 @@ function ActionBucketTable({ items, kind, title, ackMap, onAck }: { items: Actio
         <table className="w-full text-left">
           <tbody>
             {items.map((item) => (
-              <ActionRow key={`${item.ticker}-${item.account}`} item={item} accent={style.accent} ackMap={ackMap} onAck={onAck} />
+              // key = seen-state identity (codex R1 P2): action/priority 가 바뀐 행이
+              // 같은 ActionRow 인스턴스(expanded 등 로컬 상태)를 물려받지 않게 한다
+              <ActionRow key={actionKey(item)} item={item} accent={style.accent} ackMap={ackMap} onAck={onAck} />
             ))}
           </tbody>
         </table>
@@ -252,7 +254,7 @@ export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItems
           <div className="flex flex-wrap gap-1.5">
             {hold.map((item) => (
               <Link
-                key={`${item.ticker}-${item.account}`}
+                key={actionKey(item)}
                 href={`/ticker/${item.ticker}`}
                 className="inline-flex items-center gap-1 px-2 py-1 rounded bg-zinc-900/60 border border-zinc-800/40 text-[10px] hover:bg-zinc-800/60 transition-colors"
               >

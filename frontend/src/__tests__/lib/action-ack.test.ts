@@ -25,10 +25,11 @@ afterAll(() => {
   else delete (window as { localStorage?: Storage }).localStorage;
 });
 
-const item = (over: Partial<{ ticker: string; account?: string; action: string; as_of?: string | null }> = {}) => ({
+const item = (over: Partial<{ ticker: string; account?: string; action: string; priority: string; as_of?: string | null }> = {}) => ({
   ticker: "AAA",
   account: "Alpha",
   action: "SELL",
+  priority: "urgent",
   as_of: "2026-08-25",
   ...over,
 });
@@ -38,9 +39,15 @@ beforeEach(() => {
 });
 
 describe("actionKey", () => {
-  it("composes ticker|account|action, empty account tolerated", () => {
-    expect(actionKey(item())).toBe("AAA|Alpha|SELL");
-    expect(actionKey(item({ account: undefined }))).toBe("AAA||SELL");
+  it("composes ticker|account|action|priority, empty account tolerated", () => {
+    expect(actionKey(item())).toBe("AAA|Alpha|SELL|urgent");
+    expect(actionKey(item({ account: undefined }))).toBe("AAA||SELL|urgent");
+  });
+
+  // codex R1 P1: 버킷이 다르면 같은 튜플이라도 별개 identity — 교차 오염 금지,
+  // check→urgent 승격은 재경보.
+  it("distinguishes the same tuple across buckets", () => {
+    expect(actionKey(item({ priority: "urgent" }))).not.toBe(actionKey(item({ priority: "portfolio" })));
   });
 });
 
@@ -51,28 +58,28 @@ describe("isNewItem", () => {
 
   it("no entry → NEW; acked same as_of → not NEW", () => {
     expect(isNewItem(item(), {})).toBe(true);
-    expect(isNewItem(item(), { "AAA|Alpha|SELL": "2026-08-25" })).toBe(false);
+    expect(isNewItem(item(), { "AAA|Alpha|SELL|urgent": "2026-08-25" })).toBe(false);
   });
 
   // re-alert: 같은 항목이라도 판정일이 갱신되면 다시 NEW
   it("newer as_of than acked → NEW again", () => {
-    expect(isNewItem(item({ as_of: "2026-08-26" }), { "AAA|Alpha|SELL": "2026-08-25" })).toBe(true);
+    expect(isNewItem(item({ as_of: "2026-08-26" }), { "AAA|Alpha|SELL|urgent": "2026-08-25" })).toBe(true);
   });
 
   it("null as_of stays acked after one ack", () => {
-    expect(isNewItem(item({ as_of: null }), { "AAA|Alpha|SELL": "" })).toBe(false);
+    expect(isNewItem(item({ as_of: null }), { "AAA|Alpha|SELL|urgent": "" })).toBe(false);
   });
 });
 
 describe("loadAckMap / ackItem", () => {
   it("round-trips through localStorage", () => {
     const next = ackItem({}, item());
-    expect(next).toEqual({ "AAA|Alpha|SELL": "2026-08-25" });
-    expect(loadAckMap()).toEqual({ "AAA|Alpha|SELL": "2026-08-25" });
+    expect(next).toEqual({ "AAA|Alpha|SELL|urgent": "2026-08-25" });
+    expect(loadAckMap()).toEqual({ "AAA|Alpha|SELL|urgent": "2026-08-25" });
   });
 
   it("null as_of is stored as empty string", () => {
-    expect(ackItem({}, item({ as_of: null }))).toEqual({ "AAA|Alpha|SELL": "" });
+    expect(ackItem({}, item({ as_of: null }))).toEqual({ "AAA|Alpha|SELL|urgent": "" });
   });
 
   it("corrupt or non-object storage → empty map, never throws", () => {
@@ -90,7 +97,7 @@ describe("loadAckMap / ackItem", () => {
     Object.defineProperty(window, "localStorage", { value: undefined, configurable: true });
     try {
       expect(loadAckMap()).toEqual({});
-      expect(ackItem({}, item())).toEqual({ "AAA|Alpha|SELL": "2026-08-25" });
+      expect(ackItem({}, item())).toEqual({ "AAA|Alpha|SELL|urgent": "2026-08-25" });
     } finally {
       Object.defineProperty(window, "localStorage", { value: makeStorageStub(), configurable: true });
     }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { ActionItems } from "@/components/ui/action-items";
 
 vi.mock("next/link", () => ({
@@ -332,5 +333,27 @@ describe("NEW badge + ack (#1212)", () => {
   it("hold chips never carry NEW badges", () => {
     render(<ActionItems urgent={[]} check={[]} hold={[holdItem]} />);
     expect(screen.queryByTestId("action-new-badge")).not.toBeInTheDocument();
+  });
+
+  // codex R1 P1 잠금: 같은 ticker|account|action 튜플이 두 버킷에 동시에 떠도
+  // ack identity 가 버킷(priority)까지 포함하므로 한쪽 확인이 다른쪽 NEW 를
+  // 지우지 않는다.
+  it("acking a row in one bucket keeps the same tuple NEW in another bucket", () => {
+    const inUrgent = { ...asOfItem, priority: "urgent" };
+    const inPortfolio = { ...asOfItem, priority: "portfolio" };
+    render(<ActionItems urgent={[inUrgent]} check={[]} hold={[]} portfolio={[inPortfolio]} />);
+    expect(screen.getAllByTestId("action-new-badge")).toHaveLength(2);
+    fireEvent.click(screen.getAllByTestId("action-row")[0]); // urgent 행 확장
+    fireEvent.click(screen.getByTestId("action-ack-button"));
+    expect(screen.getAllByTestId("action-new-badge")).toHaveLength(1);
+  });
+
+  // codex R1 P3 잠금: 서버 렌더(HTML 문자열)에는 NEW 배지가 없어야 한다 —
+  // hydration 게이트(useSyncExternalStore 서버 스냅샷 false)가 렌더 시점
+  // loadAckMap() 직독(서버·클라 마크업 불일치)으로 회귀하면 여기서 잡힌다.
+  // (effect 내 동기 setState 회귀는 lint 가 잡는다 — 이 잠금과 역할 분담.)
+  it("server render carries no NEW badge (hydration gate lock)", () => {
+    const html = renderToString(<ActionItems urgent={[asOfItem]} check={[checkItem]} hold={[]} />);
+    expect(html).not.toContain("action-new-badge");
   });
 });
