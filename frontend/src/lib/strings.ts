@@ -380,3 +380,12 @@ export const STATUS_BADGE = {
   CAUTIOUS: "\uC8FC\uC758",
   DEFENSIVE: "\uBC29\uC5B4",
 } as const;
+
+// \uC0AC\uC774\uB4DC\uBC14 5\uADF8\uB8F9 (#1200 U1b-2, docs/UX_REDESIGN_PLAN.md \u00A71)
+export const NAV = {
+  TODAY: "\uC624\uB298",
+  DECISIONS: "\uC758\uC0AC\uACB0\uC815",
+  PORTFOLIO: "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
+  RESEARCH: "\uB9AC\uC11C\uCE58",
+  SYSTEM: "\uC2DC\uC2A4\uD15C",
+} as const;

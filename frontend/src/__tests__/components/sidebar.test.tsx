@@ -72,10 +72,11 @@ describe("Sidebar", () => {
 
   it("renders all navigation groups", () => {
     render(<Sidebar />);
-    expect(screen.getByText("OVERVIEW")).toBeInTheDocument();
-    expect(screen.getByText("ANALYSIS")).toBeInTheDocument();
-    expect(screen.getByText("TRADING")).toBeInTheDocument();
-    expect(screen.getByText("INTELLIGENCE")).toBeInTheDocument();
+    expect(screen.getByText("오늘")).toBeInTheDocument();
+    expect(screen.getByText("의사결정")).toBeInTheDocument();
+    expect(screen.getByText("포트폴리오")).toBeInTheDocument();
+    expect(screen.getByText("리서치")).toBeInTheDocument();
+    expect(screen.getByText("시스템")).toBeInTheDocument();
   });
 
   it("renders all navigation items", () => {
@@ -128,7 +129,7 @@ describe("Sidebar", () => {
 
     // Labels should be hidden
     expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
-    expect(screen.queryByText("OVERVIEW")).not.toBeInTheDocument();
+    expect(screen.queryByText("오늘")).not.toBeInTheDocument();
   });
 
   it("shows System Online indicator", () => {

@@ -7,10 +7,9 @@ describe("StatusBadge", () => {
   const greenStatuses = ["BUY", "LONG", "READY", "AGGRESSIVE", "bounce", "gap_up"];
   const redStatuses = ["SELL", "SHORT", "BLOCKED", "DEFENSIVE", "gap_down"];
   const amberStatuses = ["REDUCE", "CAUTIOUS", "volume_spike"];
-  const blueStatuses = ["WATCH", "momentum"];
+  const blueStatuses = ["WATCH", "momentum", "breakout"]; // breakout: purple 폐지 → info (#1200 색 예산)
   const zincStatuses = ["HOLD", "NEUTRAL"];
-  const purpleStatuses = ["breakout"];
-
+  
   it.each(greenStatuses)("renders %s with emerald style", (status) => {
     render(<StatusBadge status={status} />);
     const badge = screen.getByText(status);
@@ -44,13 +43,6 @@ describe("StatusBadge", () => {
     const badge = screen.getByText(status);
     expect(badge).toBeInTheDocument();
     expect(badge.className).toContain("text-muted-foreground");
-  });
-
-  it.each(purpleStatuses)("renders %s with purple style", (status) => {
-    render(<StatusBadge status={status} />);
-    const badge = screen.getByText(status);
-    expect(badge).toBeInTheDocument();
-    expect(badge.className).toContain("text-purple-400");
   });
 
   // ─── Unknown / fallback ──────────────────────────────

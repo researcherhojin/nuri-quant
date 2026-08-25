@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { NAV } from "@/lib/strings";
 import {
   LayoutDashboard,
   Briefcase,
@@ -25,38 +26,45 @@ import {
 
 // 팔란티어 스타일 그룹 네비게이션
 const NAV_GROUPS = [
+  // 5그룹 재편 (#1200 U1b-2, docs/UX_REDESIGN_PLAN.md §1): 사용 빈도·워크플로 기준.
+  // 라우트 삭제·이동 없음 — 그룹핑만 바뀐다. 그룹 라벨은 strings.ts NAV 가 정본.
   {
-    label: "OVERVIEW",
+    label: NAV.TODAY,
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/explore", label: "Explore", icon: Compass },
-      { href: "/pipeline", label: "Pipeline", icon: Workflow },
     ],
   },
   {
-    label: "ANALYSIS",
-    items: [
-      { href: "/portfolio", label: "Portfolio", icon: Briefcase },
-      { href: "/signals", label: "Signals", icon: BarChart3 },
-      { href: "/consensus", label: "Agents", icon: Users },
-      { href: "/scan", label: "Scanner", icon: Search },
-    ],
-  },
-  {
-    label: "TRADING",
-    items: [
-      { href: "/targets", label: "Price Targets", icon: Target },
-      { href: "/advisor", label: "Advisor", icon: ShieldAlert },
-      { href: "/strategy", label: "Strategy", icon: TrendingUp },
-      { href: "/rebalance", label: "Rebalance", icon: Scale },
-    ],
-  },
-  {
-    label: "INTELLIGENCE",
+    label: NAV.DECISIONS,
     items: [
       { href: "/decisions", label: "Decisions", icon: BookOpen },
       { href: "/engine", label: "Certification Engine", icon: Cog },
       { href: "/evidence", label: "Evidence", icon: FileBarChart },
+    ],
+  },
+  {
+    label: NAV.PORTFOLIO,
+    items: [
+      { href: "/portfolio", label: "Portfolio", icon: Briefcase },
+      { href: "/rebalance", label: "Rebalance", icon: Scale },
+      { href: "/targets", label: "Price Targets", icon: Target },
+      { href: "/advisor", label: "Advisor", icon: ShieldAlert },
+    ],
+  },
+  {
+    label: NAV.RESEARCH,
+    items: [
+      { href: "/explore", label: "Explore", icon: Compass },
+      { href: "/scan", label: "Scanner", icon: Search },
+      { href: "/signals", label: "Signals", icon: BarChart3 },
+      { href: "/strategy", label: "Strategy", icon: TrendingUp },
+      { href: "/consensus", label: "Agents", icon: Users },
+    ],
+  },
+  {
+    label: NAV.SYSTEM,
+    items: [
+      { href: "/pipeline", label: "Pipeline", icon: Workflow },
       { href: "/report", label: "AI Report", icon: Bot },
     ],
   },
