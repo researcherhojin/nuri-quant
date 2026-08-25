@@ -9,6 +9,7 @@ Schema migrations live in `nuri/core/db_migrations.py` (PR #553 P2 Stage 1).
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -16,8 +17,13 @@ from typing import Iterator, Optional
 
 from nuri.core.db_migrations import _MIGRATIONS, _SCHEMA, _SCHEMA_VERSION_TABLE
 
+# NURI_DB_PATH: 셸 스크립트(backup/health_check/state_replicator)가 이미 쓰는 관행을
+# Python 코어에도 통일 (#1240 — e2e seed DB 가 첫 소비자). 미설정이면 기존 기본
+# 경로 그대로라 프로덕션(launchd, env 미설정)은 무영향. import 시점 1회 해석 —
+# 프로세스 수명 동안 DB 가 바뀌지 않는다는 기존 가정을 유지한다.
+_ENV_DB = os.getenv("NURI_DB_PATH")
 # Repo root: nuri/core/db/connection.py → parents[3] = repo root
-DB_PATH = Path(__file__).parent.parent.parent.parent / "data" / "portfolio.db"
+DB_PATH = Path(_ENV_DB) if _ENV_DB else Path(__file__).parent.parent.parent.parent / "data" / "portfolio.db"
 
 # DB 예외 타입 re-export — 호출자가 `import sqlite3` 없이 DB 오류를 잡게 한다.
 # 이게 없으면 "DB 잠김/스키마 없음만 좁게 잡고 싶다"는 정당한 요구가 곧바로
