@@ -2215,7 +2215,7 @@ requires-dist = [
     { name = "quantstats", specifier = ">=0.0.60" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "riskfolio-lib", specifier = ">=7.2.1" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.15.8" },
     { name = "scikit-learn", specifier = ">=1.4.0" },
     { name = "scipy", specifier = ">=1.12.0" },
     { name = "seaborn", specifier = ">=0.13.2" },
