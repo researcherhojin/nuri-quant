@@ -432,6 +432,14 @@ export const ACTION = {
   EVIDENCE: "증거 체인", // #1182: 카드 → /decisions/[id]
   NEW: "NEW", // #1212: 미확인 행 배지 (localStorage seen-state)
   ACK: "확인", // #1212: quick-peek ack 버튼 — NEW 해제, 판정일 갱신 시 재표시
+  // design-review F-001: 숫자 3개(수익률/비중/확신도)가 무라벨이라 추측을 요구했다
+  COL_TICKER: "종목",
+  COL_ACCOUNT: "계좌",
+  COL_ACTION: "액션",
+  COL_REASON: "근거",
+  COL_PNL: "수익률",
+  COL_WEIGHT: "비중",
+  COL_CONF: "확신도",
   // DETAIL/CONF/AGREE/PNL/WEIGHT/DISMISS 는 U2b-2 (#1208) 카드→행 전환으로 제거
 } as const;
 
