@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
-import { useTheme } from "next-themes";
+import { useState } from "react";
 import {
   LayoutDashboard,
   Briefcase,
@@ -20,8 +19,6 @@ import {
   Bot,
   ChevronLeft,
   ChevronRight,
-  Sun,
-  Moon,
   BookOpen,
   Compass,
 } from "lucide-react";
@@ -68,15 +65,6 @@ const NAV_GROUPS = [
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const { theme, setTheme } = useTheme();
-  const isDark = theme === "dark";
-
-  // SSR mismatch 회피용 mount 표시 (theme toggle 표시 전 hydration 동기화).
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMounted(true);
-  }, []);
 
   const w = collapsed ? "w-16" : "w-56";
 
@@ -142,15 +130,8 @@ export function Sidebar() {
           {/* Theme Toggle + Online */}
           {collapsed ? (
             <div className="flex flex-col items-center gap-2">
-              {mounted && (
-                <button
-                  onClick={() => setTheme(isDark ? "light" : "dark")}
-                  className="text-muted-foreground hover:text-foreground/80 transition-colors p-1"
-                  title={isDark ? "Light mode" : "Dark mode"}
-                >
-                  {isDark ? <Sun size={14} /> : <Moon size={14} />}
-                </button>
-              )}
+              {/* 테마 토글 제거 (#1195 U1a codex P2): 제품은 dark-only (frontend/CLAUDE.md).
+                  라이트 전환 시 zinc 램프 재매핑과 시맨틱 토큰이 혼합 테마를 만들던 경로 폐쇄 */}
               <span className="relative flex h-2 w-2" title="System Online">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
@@ -158,16 +139,6 @@ export function Sidebar() {
             </div>
           ) : (
             <>
-              {mounted && (
-                <button
-                  onClick={() => setTheme(isDark ? "light" : "dark")}
-                  className="flex items-center gap-2 text-muted-foreground hover:text-foreground/80 transition-colors"
-                  title={isDark ? "Light mode" : "Dark mode"}
-                >
-                  {isDark ? <Sun size={16} /> : <Moon size={16} />}
-                  <span className="text-xs">{isDark ? "Light Mode" : "Dark Mode"}</span>
-                </button>
-              )}
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
