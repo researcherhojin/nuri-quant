@@ -8,6 +8,7 @@ import Link from "next/link";
 
 import { Sparkline } from "@/components/ui/sparkline";
 import { HOLDING_STATUS, HOLDING_LABEL } from "@/lib/strings";
+import { formatMoney, isKrwTicker } from "@/lib/format";
 
 // ── Raw input shapes (API response surfaces) ─────────────────
 export interface RawHolding {
@@ -189,8 +190,9 @@ export function buildEnrichedHoldings(
         .sort((a, b) => a.days - b.days)[0];
       const watch: WatchTrigger = upcoming ? { kind: "earnings", daysUntil: upcoming.days } : { kind: "none" };
 
+      // 통화 추론은 lib/format 한 곳 (#1197) — 이전 로컬 판정은 .KQ(코스닥)를 놓쳤다
       const currency: "USD" | "KRW" =
-        h.currency === "KRW" || h.ticker.endsWith(".KS") ? "KRW" : "USD";
+        h.currency === "KRW" || isKrwTicker(h.ticker) ? "KRW" : "USD";
 
       // #214: 일변 (오늘 vs 어제) + sparkline (30일 closes)
       const prevClose = h.previous_close;
@@ -260,10 +262,10 @@ export function buildEnrichedHoldings(
 }
 
 // ── Format helpers ───────────────────────────────────────────
+// 표기는 formatMoney 로 위임 (#1197 codex P2) — 같은 대시보드에서 액션 카드는 $195.50,
+// 보유 행은 $196 으로 갈리던 표기 이원화 제거. USD 는 항상 소수 2자리.
 export function formatPrice(price: number | null, currency: "USD" | "KRW"): string {
-  if (price == null) return "—";
-  if (currency === "KRW") return `₩${Math.round(price).toLocaleString()}`;
-  return price < 100 ? `$${price.toFixed(2)}` : `$${Math.round(price).toLocaleString()}`;
+  return formatMoney(price, { currency });
 }
 
 function statusVisual(s: HoldingStatus): { text: string; className: string } {

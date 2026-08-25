@@ -69,8 +69,9 @@ describe("formatPrice", () => {
   it("formats USD < 100 with 2 decimals", () => {
     expect(formatPrice(45.67, "USD")).toBe("$45.67");
   });
-  it("formats USD >= 100 as integer with thousands separator", () => {
-    expect(formatPrice(2345, "USD")).toBe("$2,345");
+  it("formats USD >= 100 with 2 decimals and thousands separator (#1197 unified)", () => {
+    // 이전의 정수 반올림($2,345)은 액션 카드($195.50)와 같은 화면에서 표기 이원화를 만들었다
+    expect(formatPrice(2345, "USD")).toBe("$2,345.00");
   });
 });
 
@@ -316,8 +317,8 @@ describe("HoldingRow", () => {
 
   it("renders current price and avg price in compound cell (#214 polish)", () => {
     render(<HoldingRow holding={holdingFixture({ latestPrice: 245.67, avgPrice: 180 })} />);
-    expect(screen.getByText("$246")).toBeInTheDocument();  // formatPrice rounds ≥100
-    expect(screen.getByText("$180")).toBeInTheDocument();
+    expect(screen.getByText("$245.67")).toBeInTheDocument();  // #1197: USD 소수 2자리 통일
+    expect(screen.getByText("$180.00")).toBeInTheDocument();
   });
 
   it("renders em dash when latestPrice or avgPrice is null", () => {
