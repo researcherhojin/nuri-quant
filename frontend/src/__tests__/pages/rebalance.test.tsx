@@ -168,4 +168,18 @@ describe("RebalancePage", () => {
     expect(screen.getByText(/0 actions/)).toBeInTheDocument();
     expect(screen.getByText(/HOLD: AAPL/)).toBeInTheDocument();
   });
+
+  it("rebalance fetch 실패(503 shed 포함) → 섹션만 강등 (#1119)", async () => {
+    setupFetchAPI();
+    mockFetchAPI = vi.fn().mockImplementation((path: string) => {
+      if (path.includes("rebalance-advisor")) return Promise.resolve(mockAdvisorEmpty);
+      return Promise.reject(new Error("API /api/rebalance: 503"));
+    });
+    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    await act(async () => {
+      render(<RebalancePage />);
+    });
+    expect(screen.getByText("데이터를 불러오지 못했습니다 — 잠시 후 새로고침하세요.")).toBeInTheDocument();
+    expect(screen.getByText("Rebalancing")).toBeInTheDocument();
+  });
 });

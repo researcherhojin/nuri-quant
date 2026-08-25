@@ -756,4 +756,18 @@ describe("DashboardPage", () => {
   });
 
 
+  it("dashboard fetch 실패(503 shed 포함) → 홈은 stale 배너 최소 shape 로 강등 (#1119)", async () => {
+    setupMocks();
+    const impl = mockFetchAPI.getMockImplementation()!;
+    mockFetchAPI.mockImplementation((path: string) => {
+      if (path.includes("/api/dashboard")) return Promise.reject(new Error("API /api/dashboard: 503"));
+      return impl(path);
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      // 홈이 에러 UI 로 죽지 않고 강등 문구 + stale 배너로 렌더된다
+      expect(screen.getByText("데이터를 불러오지 못했습니다 — 잠시 후 새로고침하세요.")).toBeInTheDocument();
+    });
+  });
 });

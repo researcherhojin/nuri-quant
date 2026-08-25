@@ -3,9 +3,11 @@
 import logging
 import time
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from nuri.api.limits import heavy_slot
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["pipeline"])
@@ -130,7 +132,7 @@ def get_pipeline_timeline(
     return {"events": events}
 
 
-@router.post("/pipeline/{step}/run")
+@router.post("/pipeline/{step}/run", dependencies=[Depends(heavy_slot)])
 @_limiter.limit("2/minute")
 def run_pipeline_step(step: str, request: Request):
     """특정 파이프라인 스텝 실행 (동기)."""

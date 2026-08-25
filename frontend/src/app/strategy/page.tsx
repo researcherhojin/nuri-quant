@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
+import { COMMON } from "@/lib/strings";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { InteractiveBacktestLazy as InteractiveBacktest, type EquityPoint, type BacktestMetrics } from "@/components/ui/interactive-backtest-lazy";
@@ -66,10 +67,17 @@ interface BacktestData {
 }
 
 export async function StrategyDashboard() {
-  const [status, bt] = await Promise.all([
-    fetchAPI<StrategyStatus>("/api/strategy/status"),
-    fetchAPI<BacktestData>("/api/backtest"),
-  ]);
+  let status: StrategyStatus;
+  let bt: BacktestData;
+  try {
+    [status, bt] = await Promise.all([
+      fetchAPI<StrategyStatus>("/api/strategy/status"),
+      fetchAPI<BacktestData>("/api/backtest"),
+    ]);
+  } catch {
+    // #1119 슬롯 shed(503) 포함 — 섹션만 강등, 페이지 shape 유지 (codex #1239 P2)
+    return <p className="text-xs text-muted-foreground">{COMMON.DEGRADED}</p>;
+  }
 
   const regime = status.regime;
   const alloc: NonNullable<StrategyStatus["allocation"]> = status.allocation || {};

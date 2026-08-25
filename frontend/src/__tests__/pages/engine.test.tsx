@@ -230,6 +230,17 @@ describe("EnginePage", () => {
 
     expect(screen.getByText("Learning Memory — Drift")).toBeInTheDocument();
   });
+
+  it("conflicts fetch 실패(503 shed 포함) → 섹션만 강등 (#1119)", async () => {
+    mockFetchAPI.mockImplementation((path: string) => {
+      if (path.includes("/api/conflicts")) return Promise.reject(new Error("API /api/conflicts: 503"));
+      return Promise.resolve({});
+    });
+    const { ConflictsSection } = await import("@/app/engine/page");
+    const ui = await ConflictsSection();
+    render(ui);
+    expect(screen.getByText("데이터를 불러오지 못했습니다 — 잠시 후 새로고침하세요.")).toBeInTheDocument();
+  });
 });
 
 /**

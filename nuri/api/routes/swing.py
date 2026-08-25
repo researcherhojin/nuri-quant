@@ -4,7 +4,9 @@ import threading
 from dataclasses import asdict
 from time import monotonic
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from nuri.api.limits import heavy_slot
 
 router = APIRouter(tags=["swing"])
 
@@ -25,7 +27,7 @@ _scan_cache: dict[tuple[str, int], tuple[float, dict]] = {}
 _scan_lock = threading.Lock()
 
 
-@router.get("/scan")
+@router.get("/scan", dependencies=[Depends(heavy_slot)])
 def get_scan(market: str = Query("us", pattern="^(us|kr)$"), top: int = Query(20, ge=1, le=50)):
     """시장 스캔. 5분 캐시 + single-flight (#1119)."""
     key = (market, top)
@@ -49,7 +51,7 @@ def get_scan(market: str = Query("us", pattern="^(us|kr)$"), top: int = Query(20
         return payload
 
 
-@router.get("/swing/entries")
+@router.get("/swing/entries", dependencies=[Depends(heavy_slot)])
 def get_swing_entries(market: str = Query("us", pattern="^(us|kr)$")):
     """스윙 진입 후보 (스캔 + 에이전트 합의)."""
     import json
@@ -80,7 +82,7 @@ def get_swing_positions():
     return {"positions": [asdict(e) for e in exits], "count": len(exits)}
 
 
-@router.get("/backtest")
+@router.get("/backtest", dependencies=[Depends(heavy_slot)])
 def get_backtest():
     """L/S strategy backtest results."""
     from nuri.trading.strategy.ls_backtest import (
@@ -122,7 +124,7 @@ def get_backtest():
     )
 
 
-@router.get("/backtest/equity")
+@router.get("/backtest/equity", dependencies=[Depends(heavy_slot)])
 def get_backtest_equity(
     sma: int = Query(50, ge=50, le=200),
     period: str = Query("3Y", pattern="^(1Y|3Y|5Y)$"),
@@ -208,7 +210,7 @@ def _run_interactive_backtest(sma, period, sl, tp, cache_key, now):
     return response
 
 
-@router.get("/strategy/status")
+@router.get("/strategy/status", dependencies=[Depends(heavy_slot)])
 def get_strategy_status():
     """Current strategy + positions."""
     from dataclasses import asdict

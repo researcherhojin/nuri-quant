@@ -18,7 +18,7 @@ import { SystemHealthRail, MacroEventsCard, RegimeShiftBanner } from "@/componen
 import { summarizeHoldings } from "@/lib/holdings-summary";
 import { getMacroImpactedSectors } from "@/lib/macro-impact";
 import Link from "next/link";
-import { SECTION, ACTION } from "@/lib/strings";
+import { SECTION, ACTION, COMMON } from "@/lib/strings";
 
 // #1204 U2a: 섹션·헬퍼는 components/dashboard/ 로 추출 — 이 파일은 데이터 fetch +
 // enrichment + 조립만 담당한다. 동작·마크업 불변.
@@ -57,6 +57,21 @@ interface DashboardData {
   ticker_accounts?: Record<string, string>;
   account_labels?: Record<string, string>;
 }
+
+// #1119: /api/dashboard 가 슬롯 게이트에 들어가며 shed 503 이 정상 경로가 됐다.
+// 홈 전체를 에러 UI 로 떨어뜨리지 않도록 stale-배너 최소 shape 로 강등한다.
+const EMPTY_DASHBOARD: DashboardData = {
+  verdict: COMMON.DEGRADED,
+  verdict_level: "stale",
+  regime: { regime: "unknown", trend: "unknown", confidence: 0 },
+  macro: { score: 0, interpretation: "" },
+  allocation: { long: 0, short: 0, cash: 100 },
+  actions: [],
+  alerts: [],
+  gate_score: 0,
+  n_positions: 0,
+  exchange_rate: null,
+};
 
 interface FreshnessData {
   items?: FreshnessItem[];
@@ -128,7 +143,8 @@ async function Dashboard({
   const holdingsExpanded = params.holdings === "expanded";
 
   const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets, actionsData, opportunitiesData, marketCtx, coverage] = await Promise.all([
-    fetchAPI<DashboardData>("/api/dashboard"),
+    // #1119 슬롯 shed(503) 포함 — 홈은 stale 배너 + 최소 shape 로 강등 (codex #1239 R2)
+    fetchAPI<DashboardData>("/api/dashboard").catch((): DashboardData => EMPTY_DASHBOARD),
     fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], details: [], overall: "FAIL", pass: 0, warn: 0, fail: 0 })),
     fetchAPI<PipelineStatusData>("/api/pipeline/status").catch((): PipelineStatusData => ({ steps: [] })),
     fetchAPI<PortfolioData>("/api/portfolio").catch(() => null),
