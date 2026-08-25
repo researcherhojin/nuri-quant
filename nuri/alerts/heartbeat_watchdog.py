@@ -307,6 +307,10 @@ def main() -> int:
     try:
         sent = send_webhook_text(msg, webhook_url=webhook_url)
     except Exception as e:  # 네트워크/webhook 실패도 outage 신호 — 삼키지 말고 surface
+        # recovered 정리는 발송 실패와 무관하게 저장 — 안 하면 복구됐던 카테고리의
+        # 옛 타임스탬프가 남아, 웹훅 복구 후 **새** incident 가 재알림으로 오인돼
+        # 쿨다운에 억제된다 (#1190 Codex P2).
+        _save_alert_state(state)
         _log(f"이상 감지 but webhook FAILED: {e}", err=True)
         return 2
     if sent:

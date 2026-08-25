@@ -439,3 +439,16 @@ class TestRealertCooldown:
         d.mkdir()
         hw._save_alert_state({"backup": 1.0}, path=d)  # IsADirectoryError → 무시
         assert "저장 실패" in capsys.readouterr().err
+
+    def test_webhook_exception_still_persists_recovery_pruning(self, tmp_path, monkeypatch):
+        """발송 예외 경로에서도 recovered 카테고리 정리는 저장된다 (#1190 Codex P2).
+
+        시나리오: heartbeat 는 복구됐고(상태에 기록 있음) backup 은 여전히 stale 인데
+        웹훅이 죽어 있다 — 예외 리턴이 저장을 건너뛰면 heartbeat 의 옛 타임스탬프가
+        남아, 웹훅 복구 후 새 heartbeat incident 가 쿨다운에 억제된다.
+        """
+        hw._save_alert_state({"heartbeat": time.time() - 60})  # 직전에 heartbeat 알림 이력
+        with patch("nuri.alerts.heartbeat_watchdog.send_webhook_text", side_effect=RuntimeError("down")):
+            rc = hw.main()  # heartbeat fresh(복구) + backup stale(발송 시도 → 예외)
+        assert rc == 2
+        assert "heartbeat" not in hw._load_alert_state()  # 복구 정리가 저장됐다
