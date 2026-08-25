@@ -79,7 +79,7 @@ should be **212**.
 
 ## E2E (Playwright) — runs against the real backend, gated by nothing
 
-`npm run test:e2e` (`npx playwright test`). 8 spec files under `e2e/`, 59 tests. `playwright.config.ts` starts both servers itself (`uvicorn` :8001, `npm run dev` :3000) with `reuseExistingServer: true`.
+`npm run test:e2e` (`npx playwright test`). 9 spec files under `e2e/`, 83 tests. `playwright.config.ts` starts both servers itself (`uvicorn` :8001, `npm run dev` :3000) with `reuseExistingServer: true`.
 
 - **No CI job, no Makefile target, no `scripts/verify/` step runs it.** It is the one suite in this repo that has never gated a merge, which is exactly how `410d385` (2026-05-04) renamed `CONTEXT.SIEGE` to `"Certification"`, updated the matching vitest files, and left three e2e assertions searching for `text=SIEGE` for 3.5 months. Wiring it into a gate is a separate decision (needs a runtime/stability budget); until then, run it by hand before touching the dashboard.
 - **Never inline a user-facing string literal in a spec — import it from `src/lib/strings.ts`.** That file is the single source of truth and specs can import across the directory boundary (`import { ACTION, CONTEXT } from "../src/lib/strings"`). The contrast is on record: `dashboard.spec.ts:19` survived the same rename only because it OR'd several candidate strings, while the three brittle single-literal assertions all broke.
