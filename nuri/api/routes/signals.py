@@ -2,12 +2,14 @@
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from nuri.api.limits import heavy_slot
 
 router = APIRouter(tags=["signals"])
 
 
-@router.get("/candidates")
+@router.get("/candidates", dependencies=[Depends(heavy_slot)])
 def get_candidates(days: int = Query(5, ge=1, le=30)):
     """시그널 기반 매매 후보. buy/sell 카운트는 actionable tier 만 (B-2-ext)."""
     from nuri.trading.recommend.candidates import TIER_ACTIONABLE, screen_candidates

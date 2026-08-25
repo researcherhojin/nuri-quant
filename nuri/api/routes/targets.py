@@ -2,7 +2,9 @@
 
 import threading
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from nuri.api.limits import heavy_slot
 
 router = APIRouter(tags=["targets"])
 
@@ -74,7 +76,7 @@ _certify_cache: dict = {"data": None, "ts": 0}
 _certify_lock = threading.Lock()
 
 
-@router.get("/certify")
+@router.get("/certify", dependencies=[Depends(heavy_slot)])
 def get_certification():
     """SIEGE 인증 상태 (5분 캐시).
 
@@ -113,7 +115,7 @@ def get_certification():
         return result
 
 
-@router.get("/remediate")
+@router.get("/remediate", dependencies=[Depends(heavy_slot)])
 def get_remediation():
     """SIEGE remediation 계획 — REJECTED gate → 매도 액션 매핑."""
     from dataclasses import asdict
