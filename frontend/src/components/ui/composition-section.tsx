@@ -6,16 +6,14 @@
  *   - 섹터 (sector aggregation)
  *   - 계좌 (account aggregation, holdings + cash merged)
  *
- * Big donut on the left, scrolling legend on the right. Tabs are URL-driven
- * (?comp=ticker|sector|account) so the page stays a Server Component and the
- * URL is shareable / refreshable.
- *
- * Server Component. Donut child uses "use client" but data flows down.
+ * U2b-3 (#1210): 도넛 → 가로 스택 바 (상위 5 카테고리색 + 기타 무채, plan §1).
+ * Tabs are URL-driven (?comp=ticker|sector|account) so the page stays a Server
+ * Component. 전체가 server component — recharts 의존 없음.
  */
 
 import Link from "next/link";
 
-import { CompositionDonut, type DonutSlice } from "@/components/ui/composition-donut";
+import { CompositionBar, toBarSegments, CHART_COLORS, OTHER_COLOR } from "@/components/dashboard/composition-bar";
 import type { HoldingsSummary } from "@/lib/holdings-summary";
 import { COMPOSITION } from "@/lib/strings";
 
@@ -53,18 +51,21 @@ interface LegendRow {
   /** Aggregate daily move % across the slice (null when no data) */
   dailyDeltaPct: number | null;
   color: string;
+  /** summary 가 이미 병합해 둔 자체 Other 버킷 (항상 마지막 행) — 무채 처리 (#1210) */
+  isOther?: boolean;
 }
 
 function buildSlicesAndLegend(
   summary: HoldingsSummary,
   tab: CompositionTab,
-): { slices: DonutSlice[]; legend: LegendRow[] } {
+): { slices: Array<{ label: string; value: number; color: string; isOther?: boolean }>; legend: LegendRow[] } {
   if (tab === "ticker") {
     return {
       slices: summary.byTicker.map((t) => ({
         label: t.displayName,
         value: t.weight,
         color: t.color,
+        isOther: t.ticker === "__OTHER__",
       })),
       legend: summary.byTicker.map((t) => ({
         label: t.displayName,
@@ -73,6 +74,7 @@ function buildSlicesAndLegend(
         valueUsd: t.valueUsd,
         dailyDeltaPct: t.dailyDeltaPct,
         color: t.color,
+        isOther: t.ticker === "__OTHER__",
       })),
     };
   }
@@ -82,6 +84,7 @@ function buildSlicesAndLegend(
         label: s.name,
         value: s.weight,
         color: s.color,
+        isOther: s.name === "Other",
       })),
       legend: summary.sectors.map((s) => ({
         label: s.name,
@@ -90,6 +93,7 @@ function buildSlicesAndLegend(
         valueUsd: s.valueUsd,
         dailyDeltaPct: s.dailyDeltaPct,
         color: s.color,
+        isOther: s.name === "Other",
       })),
     };
   }
@@ -120,7 +124,17 @@ export function CompositionSection({
   totalUsd,
   activeTab,
 }: CompositionSectionProps) {
-  const { slices, legend } = buildSlicesAndLegend(summary, activeTab);
+  const built = buildSlicesAndLegend(summary, activeTab);
+  // 색 재매핑 (#1210, plan §1 색 예산): 상위 5 = 차트 카테고리색, 나머지 = 무채.
+  // holdings-summary 의 캔디 팔레트는 무시한다 — 바·레전드가 같은 규칙을 공유.
+  // summary 자체 Other 버킷(top-12/top-4 병합 잔여, 항상 마지막)은 순번과 무관하게
+  // 무채 — 안 그러면 섹터 탭의 5번째 "Other" 가 카테고리색을 받는다.
+  const remap = <T extends { isOther?: boolean }>(row: T, i: number) => ({
+    ...row,
+    color: !row.isOther && i < CHART_COLORS.length ? CHART_COLORS[i] : OTHER_COLOR,
+  });
+  const slices = built.slices.map(remap);
+  const legend = built.legend.map(remap);
   const hasData = slices.length > 0;
   const totalLabel = `$${totalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
@@ -156,23 +170,24 @@ export function CompositionSection({
         </div>
       </div>
 
-      {/* Donut + Rich Legend (2 columns at lg+) */}
-      <div className="flex flex-col lg:flex-row gap-6 items-start" data-testid="composition-body">
-        {/* Donut — 320px centerpiece */}
-        <div className="shrink-0 self-center lg:self-start">
-          <CompositionDonut
-            slices={slices}
-            size={320}
-            centerLabel={hasData ? totalLabel : undefined}
-            centerSubLabel={hasData ? COMPOSITION.TOTAL_ASSET : undefined}
-          />
-        </div>
+      {/* 스택 바 + Rich Legend (#1210: 도넛 폐지 — 세로 ~400px 회수) */}
+      <div className="flex flex-col gap-2" data-testid="composition-body">
+        {hasData && (
+          <div className="flex items-center gap-3">
+            <span className="shrink-0 text-xs text-zinc-400">
+              {COMPOSITION.TOTAL_ASSET} <span className="text-zinc-100 font-mono font-semibold tabular-nums">{totalLabel}</span>
+            </span>
+            <div className="flex-1 min-w-0">
+              <CompositionBar segments={toBarSegments(slices, COMPOSITION.OTHER)} />
+            </div>
+          </div>
+        )}
 
-        {/* Rich legend — single column, dense rows. Each row:
+        {/* Rich legend — dense rows (lg+ 2단). Each row:
             color dot · label · sector(meta) · $value · weight % · daily delta % */}
         {hasData ? (
           <div
-            className="flex-1 flex flex-col gap-1 self-stretch min-w-0 max-w-160"
+            className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-1 min-w-0"
             data-testid="composition-legend"
           >
             {legend.map((row) => {
@@ -227,7 +242,7 @@ export function CompositionSection({
         )}
       </div>
 
-      {/* Mini stats strip — horizontal row of context cards below the donut.
+      {/* Mini stats strip — horizontal row of context cards below the legend.
           Movers (top 3 / 3) · Concentration · (room for more later). */}
       <div className="flex flex-row gap-3 mt-1 flex-wrap" data-testid="composition-side-cards">
         {(summary.topMovers.winners.length > 0 || summary.topMovers.losers.length > 0) && (

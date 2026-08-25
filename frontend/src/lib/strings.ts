@@ -30,6 +30,7 @@ export const COMPOSITION = {
   TAB_SECTOR: "섹터",
   TAB_ACCOUNT: "계좌",
   TOTAL_ASSET: "총 자산",
+  OTHER: "기타", // #1210: 스택 바 상위 5 밖 슬라이스 병합 라벨
   EMPTY: "표시할 데이터가 없습니다.",
   NO_DATA: "— 데이터 없음",
   NO_LOSERS: "손실 없음",

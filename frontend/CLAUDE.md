@@ -13,7 +13,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (1479 tests, 129 files)
+npm run test           # vitest run (1475 tests, 128 files)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
@@ -23,9 +23,9 @@ npx vitest run -t "renders verdict"                    # single test by name
 
 All pages are **Server Components** with `force-dynamic`. Data fetched server-side via `fetchAPI()` (`src/lib/api.ts`).
 
-Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), `/portfolio` (holdings editor), `/login` (auth form), `<CompositionDonut>` (Recharts pie), `<ActionItems>` (expand/collapse), `<OpportunityExplorer>` (10-Agent fetch), `<PriceChart>` (period selector).
+Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), `/portfolio` (holdings editor), `/login` (auth form), `<ActionItems>` (expand/collapse), `<OpportunityExplorer>` (10-Agent fetch), `<PriceChart>` (period selector).
 
-**RSC boundary — never import a server util through a `"use client"` module.** next 16.2.9+ throws at *request time* (not build/vitest) when a Server Component calls a function re-exported from a `"use client"` module. `composition-section-lazy.tsx` is `"use client"` and re-exports the pure `parseCompositionTab`; importing it there from `page.tsx` made the whole dashboard render the error boundary. Import pure utils from their **source server module** (`composition-section`), take only the lazy wrapper component from the `-lazy` file. **Test:** `src/__tests__/pages/page-rsc-import-guard.test.tsx::page.tsx RSC import boundary` (asserts the import source — the runtime error is invisible to `next build` and jsdom render). (#731)
+**RSC boundary — never import a server util through a `"use client"` module.** next 16.2.9+ throws at *request time* (not build/vitest) when a Server Component calls a function re-exported from a `"use client"` module. The original trip: `composition-section-lazy.tsx` was `"use client"` and re-exported the pure `parseCompositionTab`; importing it there from `page.tsx` made the whole dashboard render the error boundary (#731). That wrapper was deleted in #1210 (donut → server-pure bar), but the rule stands for every remaining `"use client"` module: import pure utils from their **source server module** only. **Test:** `src/__tests__/pages/page-rsc-import-guard.test.tsx::page.tsx RSC import boundary` (asserts the import source — the runtime error is invisible to `next build` and jsdom render).
 
 ## Design System (3 shared components)
 
@@ -35,9 +35,9 @@ Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), `/po
 
 **Conventions**: `async function Section()` in `<Suspense>`, `animate-pulse` skeletons, color semantics (emerald=BUY, red=SELL, amber=warning, blue=WATCH, zinc=HOLD), `text-[10px]` sub-labels.
 
-## Dashboard Layout (#264 Action-First)
+## Dashboard Layout (#264 Action-First → U2b Evidence Terminal)
 
-Hero (4 stats) → **SystemHealth 4-card** (SIEGE/regime/macro/freshness) → **MacroEvents** (한국어 카테고리) → **ActionItems** (🔴urgent/🟡check/✅hold, 연금 제외) → market context strip → CompositionSection (320px donut + tabs) → Holdings table (top 8) → **OpportunityExplorer** (상위 3개 + /scan 링크) → footer.
+**VerdictBanner** (오늘의 답, 첫 픽셀 #1207) → Hero (4 stats) → RegimeShiftBanner(조건부) → **ActionItems 밀집 테이블 2/3 + SystemHealthRail·MacroEventsCard 1/3** (#1209) → market/events strips → CompositionSection (가로 스택 바 + tabs, #1210) → Holdings table (top 8) → **OpportunityExplorer** (상위 3개 + /scan 링크) → CoverageStatus (`<details>` 접힘, #1210) → footer.
 
 Data flows through `summarizeHoldings()` in `src/lib/holdings-summary.ts`. Action data from `/api/actions`, `/api/opportunities`, `/api/market-context`.
 
@@ -75,7 +75,7 @@ Two things that do **not** work, already tried (#913):
 Symptom if someone drops it: eslint prints `Oops! Something went wrong!` with a
 `brace-expansion` stack trace and lints **nothing**. `npm run lint` is silent on success, so
 confirm by file count rather than by absence of output — `npx eslint --format json | jq length`
-should be **212**.
+should be **221**.
 
 ## E2E (Playwright) — runs against the real backend, gated by nothing
 
@@ -91,7 +91,6 @@ should be **212**.
 
 ## Testing Gotchas
 
-- **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control.
-- Dashboard tests mock recharts at file level to avoid jsdom suspense on `CompositionDonut`.
+- **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control. (#1210 이후 대시보드 트리는 recharts 무관 — price/equity/siege/gate 차트 테스트에만 해당.)
 - Mock `@/lib/api` + `next/navigation` in all page tests.
-- Test files: 92 in `src/__tests__/` (`components/lib/pages/coverage` subdirs + root `api-auth`/`middleware` tests) + 37 co-located next to sources (`src/app/**`, `src/components/ui/**`, `src/lib/**` — `*.coverage.test.tsx` / `*.branchcov.test.tsx`).
+- Test files: 92 in `src/__tests__/` (`components/lib/pages/coverage` subdirs + root `api-auth`/`middleware` tests) + 36 co-located next to sources (`src/app/**`, `src/components/ui/**`, `src/lib/**` — `*.coverage.test.tsx` / `*.branchcov.test.tsx`).
