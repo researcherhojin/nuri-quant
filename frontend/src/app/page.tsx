@@ -12,7 +12,8 @@ import { CompositionSectionLazy as CompositionSection } from "@/components/ui/co
 import { parseCompositionTab } from "@/components/ui/composition-section";
 import { ActionItems, type ActionItem } from "@/components/ui/action-items";
 import { OpportunityExplorer, type Opportunity } from "@/components/ui/opportunity-explorer";
-import { MarketContext, type MacroEvent, type SystemHealth } from "@/components/ui/market-context";
+import { type MacroEvent, type SystemHealth } from "@/components/ui/market-context";
+import { SystemHealthRail, MacroEventsCard, RegimeShiftBanner } from "@/components/dashboard/system-rail";
 import { summarizeHoldings } from "@/lib/holdings-summary";
 import { getMacroImpactedSectors } from "@/lib/macro-impact";
 import Link from "next/link";
@@ -265,21 +266,25 @@ async function Dashboard({
         summary={summary}
       />
 
-      {/* ═══ 시스템 건강 4카드 (compact, 1 row) ═══ */}
-      <MarketContext
-        events={marketCtx?.macro_events ?? []}
-        health={marketCtx?.system_health ?? {}}
-      />
-
-      {/* ═══ 오늘의 액션 (연금 제외, 간결) ═══ */}
-      <div>
-        <h2 className="text-sm font-semibold text-zinc-300 mb-2">{ACTION.TITLE}</h2>
-        <ActionItems
-          urgent={actionsData?.urgent ?? []}
-          check={actionsData?.check ?? []}
-          hold={actionsData?.hold ?? []}
-          portfolio={actionsData?.portfolio ?? []}
-        />
+      {/* ═══ #1208 U2b-2: 좌 2/3 액션 테이블 · 우 1/3 시스템 레일 (lg 미만 스택) ═══ */}
+      <RegimeShiftBanner regime={marketCtx?.system_health?.regime ?? {}} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
+        <div className="lg:col-span-2 min-w-0">
+          <h2 className="text-sm font-semibold text-zinc-300 mb-2">{ACTION.TITLE}</h2>
+          <ActionItems
+            urgent={actionsData?.urgent ?? []}
+            check={actionsData?.check ?? []}
+            hold={actionsData?.hold ?? []}
+            portfolio={actionsData?.portfolio ?? []}
+          />
+        </div>
+        <div className="flex flex-col gap-3 min-w-0">
+          <SystemHealthRail health={marketCtx?.system_health ?? {}} />
+          <MacroEventsCard
+            events={marketCtx?.macro_events ?? []}
+            regimeTrend={marketCtx?.system_health?.regime?.trend}
+          />
+        </div>
       </div>
 
       {/* ═══ #223 iter 7c: market + allocation compact strip (1 row) ═══ */}

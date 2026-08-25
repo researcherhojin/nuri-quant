@@ -3,8 +3,8 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { ActionItems } from "@/components/ui/action-items";
 
 vi.mock("next/link", () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  default: ({ children, href, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => (
+    <a href={href} {...props}>{children}</a>
   ),
 }));
 
@@ -170,35 +170,36 @@ describe("ActionItems", () => {
     expect(body).toContain("한도");
   });
 
-  it("shows multiple reasons for check items", () => {
+  it("shows first reason inline and the rest in quick-peek (#1208)", () => {
     render(<ActionItems urgent={[]} check={[checkItem]} hold={[]} />);
     expect(screen.getByText(/1차 익절/)).toBeTruthy();
+    expect(screen.getByText("+1")).toBeTruthy(); // 근거 2건 → +1 표기
+    fireEvent.click(screen.getByTestId("action-row"));
     expect(screen.getByText(/공매도/)).toBeTruthy();
   });
 
-  it("expands detail on button click", () => {
+  // U2b-2 (#1208): 확장은 버튼이 아니라 행 클릭(quick-peek)
+  it("expands quick-peek on row click", () => {
     render(<ActionItems urgent={[urgentItem]} check={[]} hold={[]} />);
-    const detailBtn = screen.getByText(/상세 근거/);
-    fireEvent.click(detailBtn);
+    fireEvent.click(screen.getByTestId("action-row"));
     expect(screen.getByText("현재가")).toBeTruthy();
     expect(screen.getByText("손절")).toBeTruthy();
+    expect(screen.getByTestId("action-row-peek")).toBeTruthy();
   });
 
-  it("collapses detail on second click", () => {
+  it("collapses quick-peek on second row click", () => {
     render(<ActionItems urgent={[urgentItem]} check={[]} hold={[]} />);
-    const detailBtn = screen.getByText(/상세 근거/);
-    fireEvent.click(detailBtn);
+    const row = screen.getByTestId("action-row");
+    fireEvent.click(row);
     expect(screen.getByText("현재가")).toBeTruthy();
-    const collapseBtn = screen.getByText(/접기/);
-    fireEvent.click(collapseBtn);
+    fireEvent.click(row);
     expect(screen.queryByText("현재가")).toBeNull();
   });
 
   it("formats KR prices with won symbol", () => {
     const krItem = { ...urgentItem, ticker: "005930.KS", current_price: 200750, stop_loss: 180675, target_1: 230862 };
     render(<ActionItems urgent={[krItem]} check={[]} hold={[]} />);
-    const detailBtn = screen.getByText(/상세 근거/);
-    fireEvent.click(detailBtn);
+    fireEvent.click(screen.getByTestId("action-row"));
     const body = document.body.textContent;
     expect(body).toContain("₩");
   });
@@ -214,10 +215,10 @@ describe("ActionItems", () => {
     expect(screen.getByText("Main")).toBeTruthy();
   });
 
-  it("shows confidence and weight", () => {
+  it("shows confidence and weight in row cells (#1208 table)", () => {
     render(<ActionItems urgent={[urgentItem]} check={[]} hold={[]} />);
-    expect(screen.getByText("확신도 46")).toBeTruthy();
-    expect(screen.getByText("비중 15.4%")).toBeTruthy();
+    expect(screen.getByText("46")).toBeTruthy();
+    expect(screen.getByText("15.4%")).toBeTruthy();
   });
 
   it("hold chips link to ticker page", () => {
@@ -237,11 +238,11 @@ describe("ActionItems", () => {
     expect(screen.getByText("-5.3%")).toBeTruthy();
   });
 
-  it("shows Korean name with ticker subtext", () => {
+  it("shows Korean name with ticker in title attr (#1208 dense row)", () => {
     const krItem = { ...urgentItem, ticker: "005930.KS", name: "삼성전자" };
     render(<ActionItems urgent={[krItem]} check={[]} hold={[]} />);
-    expect(screen.getByText("삼성전자")).toBeTruthy();
-    expect(screen.getByText("005930.KS")).toBeTruthy();
+    const link = screen.getByText("삼성전자");
+    expect(link.getAttribute("title")).toContain("005930.KS");
   });
 
   it("shows ticker when name is null", () => {
@@ -273,7 +274,7 @@ describe("ActionItems", () => {
   it("formats null prices as dash in expanded detail", () => {
     const nullPrices = { ...urgentItem, stop_loss: null, target_1: null };
     render(<ActionItems urgent={[nullPrices]} check={[]} hold={[]} />);
-    fireEvent.click(screen.getByText(/상세 근거/));
+    fireEvent.click(screen.getByTestId("action-row"));
     const body = document.body.textContent ?? "";
     expect(body).toContain("—");
   });
@@ -284,7 +285,9 @@ describe("ActionItems", () => {
     render(<ActionItems urgent={[withDecision]} check={[]} hold={[]} />);
     const link = screen.getByText(/증거 체인/).closest("a");
     expect(link?.getAttribute("href")).toBe("/decisions/42");
-    expect(link?.textContent).toContain("2026-08-25");
+    // as_of 는 quick-peek 로 이동 (#1208)
+    fireEvent.click(screen.getByTestId("action-row"));
+    expect(document.body.textContent).toContain("2026-08-25");
   });
 
   it("omits evidence-chain link when decision_id is null", () => {
