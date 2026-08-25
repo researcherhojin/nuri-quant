@@ -13,13 +13,6 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-// Donut is recharts-heavy — stub it so this file stays recharts-free.
-vi.mock("@/components/ui/composition-donut", () => ({
-  CompositionDonut: ({ centerLabel }: { centerLabel?: string }) => (
-    <div data-testid="donut-stub">{centerLabel ?? "no-label"}</div>
-  ),
-}));
-
 function makeSummary(overrides?: Partial<HoldingsSummary>): HoldingsSummary {
   const base: HoldingsSummary = {
     today: { totalUsd: 0, totalPct: 0, upCount: 0, downCount: 0 },

@@ -71,16 +71,7 @@ describe("Dashboard — error fallbacks and redirect", () => {
   });
 
   it("handles freshness and pipeline API failures gracefully", async () => {
-    // #223: dashboard's CompositionDonut renders Recharts via "use client".
-    // jsdom can't run ResponsiveContainer (suspends on uncached promise) →
-    // mock recharts so the Dashboard render finishes inside the test budget.
-    vi.doMock("recharts", () => ({
-      ResponsiveContainer: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-      PieChart: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-      Pie: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-      Cell: () => <div />,
-      Tooltip: () => <div />,
-    }));
+    // #1210: 도넛 폐지 — recharts doMock 불필요 (대시보드 트리에 소비자 없음).
     vi.doMock("@/lib/api", () => ({
       API_BASE: "http://localhost:8001",
       fetchAPI: vi.fn().mockImplementation((path: string) => {

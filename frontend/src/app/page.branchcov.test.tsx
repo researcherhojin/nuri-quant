@@ -20,14 +20,12 @@
  *  - L613/L614  siege failed severity ternary — "error" (✖ red) vs non-error
  *          (△ amber).
  *
- * RENDER GOTCHA (jsdom): page.tsx wraps Dashboard in <Suspense>. The lazy
- * CompositionSection (next/dynamic ssr:false) suspends forever in jsdom, so the
- * outer Suspense permanently shows the LoadingSkeleton and the Dashboard never
- * commits. We stub `@/components/ui/composition-section-lazy` with a synchronous
- * component (preserving the real parseCompositionTab) so the page commits, and
- * stub OpportunityExplorer (a "use client" fetch-on-mount component) so the
- * opportunities section can't hang. recharts is still mocked at file level per
- * the vi.mock("recharts") hoist-leak rule. Neutral placeholders only (public).
+ * RENDER GOTCHA (jsdom): page.tsx wraps Dashboard in <Suspense>. #1210 부터
+ * CompositionSection 은 동기 server component (recharts 도넛·lazy 래퍼 삭제) 라
+ * 그대로 렌더돼도 안전하지만, 이 파일의 관심은 page.tsx 분기뿐이므로 마커로
+ * 스텁한다. OpportunityExplorer (a "use client" fetch-on-mount component) 는
+ * 여전히 스텁 필수 — 안 하면 opportunities section 이 hang 한다.
+ * Neutral placeholders only (public repo).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act, cleanup } from "@testing-library/react";
@@ -37,25 +35,14 @@ import type { ReactNode } from "react";
 // tight under load, so give the file headroom.
 vi.setConfig({ testTimeout: 15000 });
 
-vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  PieChart: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  Pie: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  Cell: () => <div />,
-  Tooltip: () => <div />,
-}));
-
-// next/dynamic (ssr:false) makes CompositionSectionLazy suspend forever in
-// jsdom — the outer <Suspense> then reverts to the page's LoadingSkeleton, so
-// the committed Dashboard never stays in the DOM. Stub the lazy wrapper with a
-// synchronous component (keep the real parseCompositionTab) so the page commits.
-vi.mock("@/components/ui/composition-section-lazy", async () => {
+// #1210: CompositionSection 은 이제 server 모듈 — 마커 스텁, parseCompositionTab 은 실물 유지.
+vi.mock("@/components/ui/composition-section", async () => {
   const actual = await vi.importActual<typeof import("@/components/ui/composition-section")>(
     "@/components/ui/composition-section",
   );
   return {
-    CompositionSectionLazy: () => <div data-testid="composition-stub" />,
-    parseCompositionTab: actual.parseCompositionTab,
+    ...actual,
+    CompositionSection: () => <div data-testid="composition-stub" />,
   };
 });
 

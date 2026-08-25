@@ -1,17 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 
-// #223: dashboard now renders <CompositionDonut> which is a "use client" Recharts
-// component. jsdom + Next 16 server boundary suspend on Recharts' ResponsiveContainer.
-// Mock at file level so all tests in this file get the lightweight stub.
-vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  PieChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  Pie: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  Cell: () => <div />,
-  Tooltip: () => <div />,
-}));
-
+// #1210: 도넛 폐지로 대시보드 트리에 recharts 소비자가 없다 — mock 불필요.
 vi.mock("next/link", () => ({
   default: ({ children, href, ...rest }: { children: React.ReactNode; href: string; [k: string]: unknown }) => (
     <a href={href} {...rest}>{children}</a>

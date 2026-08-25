@@ -5,6 +5,9 @@
  * `n/a (US-only)` 로 표시 (#288 컨벤션).
  *
  * PASS=emerald, FAIL=red. 모든 체크 PASS 시 헤더 "5/5 PASS" 녹색.
+ *
+ * U2b-3 (#1210): 기본은 한 줄 요약으로 접힘 — native <details> 라 client JS 없이
+ * server component 유지. 운영자 워크플로에서 coverage 는 예외 시에만 보는 정보.
  */
 
 export interface CoverageCheck {
@@ -56,17 +59,18 @@ export function CoverageStatus({ data }: { data: CoverageData }) {
   const headerIcon = allPass ? "\u2705" : "\u274C";
 
   return (
-    <div className="rounded-md border border-border bg-card/40 p-3">
-      <div className="mb-2 flex items-center justify-between">
+    <details className="rounded-md border border-border bg-card/40 p-3 group" data-testid="coverage-details">
+      <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <span className="inline-block mr-1.5 text-muted-foreground/60 transition-transform group-open:rotate-90">&#9656;</span>
           Data Coverage
         </span>
         <span className={`text-sm font-medium ${headerColor}`}>
           {headerIcon} {data.pass}/{total} PASS
         </span>
-      </div>
+      </summary>
 
-      <table className="w-full text-[12px]">
+      <table className="w-full text-[12px] mt-2">
         <thead className="text-left text-muted-foreground/70">
           <tr className="border-b border-border/50">
             <th className="py-1 font-normal">Table</th>
@@ -102,6 +106,6 @@ export function CoverageStatus({ data }: { data: CoverageData }) {
           KR &quot;n/a (US-only)&quot;: yfinance .KS / SEC EDGAR 소스가 KR 종목 미지원 (수집 실패 아님).
         </p>
       )}
-    </div>
+    </details>
   );
 }

@@ -2,16 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { ReactNode, AnchorHTMLAttributes } from "react";
 import { render, screen } from "@testing-library/react";
 
-// jsdom can't render Recharts; mock the chart primitives so the
-// CompositionSection's child donut renders as a stub container.
-vi.mock("recharts", () => ({
-  ResponsiveContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  PieChart: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  Pie: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  Cell: () => <div />,
-  Tooltip: () => <div />,
-}));
-
+// #1210: 도넛(recharts) → 순수 server 스택 바 — recharts mock 불필요.
 vi.mock("next/link", () => ({
   default: ({ children, href, ...rest }: { children: ReactNode; href: string } & AnchorHTMLAttributes<HTMLAnchorElement>) => (
     <a href={href} {...rest}>{children}</a>
@@ -74,7 +65,7 @@ describe("parseCompositionTab", () => {
 });
 
 describe("CompositionSection", () => {
-  it("renders the section + tabs + donut + legend", () => {
+  it("renders the section + tabs + bar + legend", () => {
     render(
       <CompositionSection summary={summary()} totalUsd={12500} activeTab="ticker" />,
     );
@@ -88,8 +79,24 @@ describe("CompositionSection", () => {
       "aria-selected",
       "false",
     );
-    expect(screen.getByTestId("composition-donut")).toBeInTheDocument();
+    expect(screen.getByTestId("composition-bar")).toBeInTheDocument();
     expect(screen.getByTestId("composition-legend")).toBeInTheDocument();
+  });
+
+  // #1210 색 예산 잠금: holdings-summary 의 캔디 팔레트를 무시하고
+  // 상위 5 = 차트 카테고리색(--chart-1..5 미러) + 나머지 = 무채로 재매핑한다.
+  it("remaps legend/bar colors to the categorical chart tokens, ignoring summary colors", () => {
+    render(
+      <CompositionSection summary={summary()} totalUsd={12500} activeTab="ticker" />,
+    );
+    const firstDot = screen
+      .getByTestId("composition-legend-TSLA")
+      .querySelector("span[style]") as HTMLElement;
+    // summary fixture 는 #34d399 (candy) 를 주지만 렌더는 --chart-1 값이어야 한다
+    expect(firstDot.getAttribute("style")).toContain("rgb(76, 144, 240)"); // #4C90F0
+    const segments = screen.getAllByTestId("composition-bar-segment");
+    expect(segments[0].getAttribute("style")).toContain("rgb(76, 144, 240)");
+    expect(segments.length).toBe(3); // 5개 이하 → 기타 세그먼트 없음
   });
 
   it("ticker tab renders one legend row per ticker with rich info", () => {
@@ -109,6 +116,32 @@ describe("CompositionSection", () => {
     expect(legend.textContent).toContain("-0.50%");
     // null delta → em dash
     expect(legend.textContent).toContain("—");
+  });
+
+  // #1210: summary 자체 Other 버킷(섹터 top-4 병합 잔여, 항상 마지막)은 순번과
+  // 무관하게 무채 — 섹터 탭에서 5번째 "Other" 가 카테고리색을 받으면 회귀다.
+  it("colors the summary's own Other bucket neutral, never categorical", () => {
+    render(
+      <CompositionSection
+        summary={summary({
+          sectors: [
+            { name: "EV/AI", weight: 40, valueUsd: 5000, dailyDeltaPct: 1.5, color: "#34d399" },
+            { name: "Semi", weight: 25, valueUsd: 3000, dailyDeltaPct: -0.5, color: "#60a5fa" },
+            { name: "ETF", weight: 15, valueUsd: 2000, dailyDeltaPct: null, color: "#f472b6" },
+            { name: "Bio", weight: 12, valueUsd: 1500, dailyDeltaPct: 0.2, color: "#a78bfa" },
+            { name: "Other", weight: 8, valueUsd: 1000, dailyDeltaPct: null, color: "#71717a" },
+          ],
+        })}
+        totalUsd={12500}
+        activeTab="sector"
+      />,
+    );
+    const otherDot = screen
+      .getByTestId("composition-legend-Other")
+      .querySelector("span[style]") as HTMLElement;
+    expect(otherDot.getAttribute("style")).toContain("rgb(64, 72, 84)"); // #404854
+    const segments = screen.getAllByTestId("composition-bar-segment");
+    expect(segments[4].getAttribute("style")).toContain("rgb(64, 72, 84)");
   });
 
   it("sector tab renders sector slices in legend", () => {
@@ -136,7 +169,7 @@ describe("CompositionSection", () => {
     expect(screen.getByTestId("composition-legend-Sub")).toBeInTheDocument();
   });
 
-  it("renders mini cards strip below the donut", () => {
+  it("renders mini cards strip below the legend", () => {
     render(
       <CompositionSection summary={summary()} totalUsd={12500} activeTab="ticker" />,
     );
@@ -178,9 +211,10 @@ describe("CompositionSection", () => {
         activeTab="ticker"
       />,
     );
-    // Donut shows the empty placeholder, and legend gracefully omits
-    expect(screen.getByTestId("composition-donut-empty")).toBeInTheDocument();
+    // 빈 상태: 바도 레전드도 없이 한 줄 안내만 (#1210 empty-state 규칙)
+    expect(screen.queryByTestId("composition-bar")).not.toBeInTheDocument();
     expect(screen.queryByTestId("composition-legend")).not.toBeInTheDocument();
+    expect(screen.getByText("표시할 데이터가 없습니다.")).toBeInTheDocument();
   });
 
   it("hides Movers card when both winners and losers are empty", () => {

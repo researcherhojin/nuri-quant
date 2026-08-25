@@ -8,8 +8,9 @@ import { type FreshnessItem } from "@/components/ui/freshness-bar";
 import { CoverageStatus } from "@/components/ui/coverage-status";
 import { buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import { HeroStats } from "@/components/ui/hero-stats";
-import { CompositionSectionLazy as CompositionSection } from "@/components/ui/composition-section-lazy";
-import { parseCompositionTab } from "@/components/ui/composition-section";
+// #1210: recharts 도넛 폐지 → CompositionSection 전체가 server component.
+// lazy 래퍼(-lazy)가 사라졌으므로 직접 import (RSC 경계 문제 자체가 소멸).
+import { CompositionSection, parseCompositionTab } from "@/components/ui/composition-section";
 import { ActionItems, type ActionItem } from "@/components/ui/action-items";
 import { OpportunityExplorer, type Opportunity } from "@/components/ui/opportunity-explorer";
 import { type MacroEvent, type SystemHealth } from "@/components/ui/market-context";
@@ -303,7 +304,7 @@ async function Dashboard({
           Events → MarketContext macro events. Only upcoming earnings strip retained. ═══ */}
       <EventsStrip events={stripEvents} />
 
-      {/* ═══ #223 NEW: Composition section (donut + tabs + legend).
+      {/* ═══ #223/#1210: Composition section (스택 바 + tabs + legend).
           Sits between status strips and the holdings drilldown table.
           Hidden when there's nothing visible to show. */}
       {enrichedHoldings.length > 0 && (

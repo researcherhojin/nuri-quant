@@ -90,4 +90,25 @@ describe("CoverageStatus", () => {
     expect(screen.getAllByText("99%").length).toBeGreaterThan(0);
     expect(screen.getByText("≥95%")).toBeInTheDocument();
   });
+
+  // #1210 접기 잠금: 기본은 닫힌 <details> — 한 줄 요약(헤더+카운트)만 노출,
+  // 테이블은 펼쳐야 보인다. client JS 없이 server component 를 유지하는 게 요점.
+  it("renders collapsed by default as a native <details> with the one-line summary", () => {
+    render(<CoverageStatus data={makeData()} />);
+    const details = screen.getByTestId("coverage-details") as HTMLDetailsElement;
+    expect(details.tagName).toBe("DETAILS");
+    expect(details.open).toBe(false);
+    const summary = details.querySelector("summary")!;
+    expect(summary.textContent).toContain("Data Coverage");
+    expect(summary.textContent).toContain("5/5 PASS");
+  });
+
+  it("error state renders the plain error box, not a details fold", () => {
+    render(
+      <CoverageStatus
+        data={{ pass: 0, fail: 0, exit_code: 1, checks: [], error: "boom" }}
+      />,
+    );
+    expect(screen.queryByTestId("coverage-details")).not.toBeInTheDocument();
+  });
 });

@@ -11,8 +11,12 @@
  * This regression is invisible to `next build` and vitest render (it only fires
  * during a real server render), so this guard asserts the *import source* in
  * page.tsx source text: parseCompositionTab must come from the server module
- * `composition-section`, never from the "use client" `composition-section-lazy`
- * wrapper. If reverted, the dashboard 500s on every load. (#731)
+ * `composition-section`. (#731)
+ *
+ * #1210: the "use client" lazy wrapper was deleted (donut → server-pure bar),
+ * so the negative assertion now guards against *re-introducing* the pattern —
+ * a future -lazy wrapper that re-exports server utils would re-trip the same
+ * request-time error.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
