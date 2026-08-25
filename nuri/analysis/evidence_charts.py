@@ -239,9 +239,9 @@ def generate_portfolio_heatmap(output_dir: Path, db_path=None) -> Path:
         _save_empty_chart("포트폴리오 데이터 없음", output_path)
         return output_path
 
-    # violation 컬럼 → 주석 목록·테두리 색 (기존 색 유지: 기본/손절=빨강, 비중=노랑)
+    # violation 컬럼 → 주석 목록. (원본의 border_colors 는 Treemap 에 배선된 적 없는
+    # 죽은 코드였다 — 리팩터로 F841 이 발화해 제거, #1228 CI)
     violations = grouped.loc[grouped["violation"].notna(), "ticker"].tolist()
-    border_colors = ["#ffd54f" if v == "overweight" else "#ef5350" for v in grouped["violation"]]
 
     # 라벨
     labels = [
