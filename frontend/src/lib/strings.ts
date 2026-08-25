@@ -279,10 +279,16 @@ export const DECISIONS = {
   OUTCOME_FAILURE: "실패",
   OUTCOME_NEUTRAL: "중립",
   ADJ_DONE: "판정", // 판정 완료 행: "판정 YYYY-MM-DD"
-  ADJ_DUE_PREFIX: "D-", // pending: 판정 예정까지 남은 일수
-  ADJ_OVERDUE: "판정 예정일 경과", // 90일 지났는데 pending — 추적기 미실행/가격 부재
+  ADJ_DUE_PREFIX: "D-", // pending: 판정 예정까지 남은 일수 (D-1 이 마지막 대기일)
+  // 판정일 도래(elapsed>=90)부터는 백엔드가 즉시 판정 가능 — 그날 이후에도 pending 이면
+  // 추적기 미실행/가격 부재다 (codex R1 P1: D-0 을 대기로 두면 규칙과 하루 어긋난다)
+  ADJ_DUE: "판정일 도래 · 미판정",
   FILTER_OUTCOME_LABEL: "결과",
   FILTER_ACTION_LABEL: "액션",
+  FILTERED_NOTE_SUFFIX: "건 표시 · 요약 카드는 전체 기준", // 필터 중 전역 요약과의 혼동 방지 (codex R1 P2)
+  RAIL_CONTEXT: "결정 시점 컨텍스트 (frozen)",
+  RAIL_PRICES: "가격 레벨",
+  RAIL_PNL: "실현 결과 (forward PnL %)",
 } as const;
 
 /* ── Pipeline Page ──────────────────────────────────────────── */

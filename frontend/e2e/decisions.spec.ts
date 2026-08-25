@@ -15,14 +15,16 @@ test.describe("Decisions Page", () => {
     await expect(page.locator("text=HIT RATE").first()).toBeVisible();
   });
 
-  test("shows empty state or decision table", async ({ page }) => {
+  test("shows empty state or grouped decision rows", async ({ page }) => {
     await page.goto("/decisions", { timeout: 15000 });
-    await page.waitForTimeout(2000);
-    const body = await page.textContent("body");
-    // Either shows "make consensus" empty state or actual decision rows
-    const hasEmptyState = body?.includes("make consensus");
-    const hasDecisions = body?.includes("Outcome") || body?.includes("pending");
-    expect(hasEmptyState || hasDecisions).toBe(true);
+    // #1216: 본문 텍스트 휴리스틱("Outcome"/"pending")은 U3 리스트에 더는 없다 —
+    // testid 로 실제 구조를 단정한다 (행이 있으면 날짜 그룹 헤더도 반드시 있다).
+    const rows = page.locator('[data-testid="decisions-row"]');
+    const empty = page.locator("text=make consensus");
+    await expect(rows.first().or(empty.first())).toBeVisible({ timeout: 10000 });
+    if ((await rows.count()) > 0) {
+      await expect(page.locator('[data-testid="decisions-date-header"]').first()).toBeVisible();
+    }
   });
 
   test("sidebar has Decisions nav under 의사결정 group", async ({ page }) => {

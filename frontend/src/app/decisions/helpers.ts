@@ -22,10 +22,10 @@ export function addDays(iso: string, days: number): string {
 }
 
 export interface AdjudicationInfo {
-  kind: "adjudicated" | "waiting" | "overdue";
-  /** 판정 기준일 (결정일 + 90d) */
+  kind: "adjudicated" | "waiting" | "due";
+  /** 판정 기준일 (결정일 + 90d) — 백엔드는 이날부터 판정 가능 (elapsed >= 90) */
   adjudicationDate: string;
-  /** waiting 일 때만: 판정까지 남은 일수 (≥0) */
+  /** waiting 일 때만: 판정까지 남은 일수 (≥1 — D-0 은 존재하지 않는다) */
   daysLeft?: number;
 }
 
@@ -34,7 +34,9 @@ export function adjudicationInfo(decisionDate: string, outcome: string, today: s
   if (outcome !== "pending") return { kind: "adjudicated", adjudicationDate: adjDate };
   const msLeft = Date.parse(`${adjDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`);
   const daysLeft = Math.ceil(msLeft / 86_400_000);
-  if (daysLeft < 0) return { kind: "overdue", adjudicationDate: adjDate };
+  // 경계 미러 (codex R1 P1): 백엔드는 elapsed >= 90, 즉 판정일 **당일부터** 판정 가능.
+  // 그날 이후에도 pending 이면 "대기(D-0)"가 아니라 "도래·미판정"이다.
+  if (daysLeft <= 0) return { kind: "due", adjudicationDate: adjDate };
   return { kind: "waiting", adjudicationDate: adjDate, daysLeft };
 }
 

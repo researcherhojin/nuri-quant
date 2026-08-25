@@ -177,7 +177,7 @@ function OutcomeCell({ date, outcome, today }: { date: string; outcome: string; 
       <span className="text-[10px] text-muted-foreground font-mono tabular-nums" title={`${DECISIONS.ADJ_DONE} ${adj.adjudicationDate}`}>
         {adj.kind === "adjudicated" && adj.adjudicationDate}
         {adj.kind === "waiting" && `${DECISIONS.ADJ_DUE_PREFIX}${adj.daysLeft}`}
-        {adj.kind === "overdue" && DECISIONS.ADJ_OVERDUE}
+        {adj.kind === "due" && DECISIONS.ADJ_DUE}
       </span>
     </span>
   );
@@ -299,12 +299,19 @@ export async function DecisionsSection({
 
   const decisions = action ? data.decisions.filter((d) => d.action === action) : data.decisions;
   const today = todayKst();
+  const filtered = outcome !== undefined || action !== undefined;
 
   return (
     <>
       <SummaryCards summary={data.summary} />
       <FilterBar outcome={outcome} action={action} />
-      <DecisionTable decisions={decisions} filtered={outcome !== undefined || action !== undefined} today={today} />
+      {/* codex R1 P2: 요약 카드는 전역 통계 — 필터 중임을 명시해 혼동을 막는다 */}
+      {filtered && (
+        <p className="text-[10px] text-zinc-500" data-testid="decisions-filtered-note">
+          {decisions.length}{DECISIONS.FILTERED_NOTE_SUFFIX}
+        </p>
+      )}
+      <DecisionTable decisions={decisions} filtered={filtered} today={today} />
     </>
   );
 }

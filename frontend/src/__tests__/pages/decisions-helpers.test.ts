@@ -28,17 +28,21 @@ describe("addDays / adjudicationInfo", () => {
     expect(adj).toEqual({ kind: "adjudicated", adjudicationDate: "2026-04-15" });
   });
 
-  it("pending before the window → waiting with D-n (당일 포함 경계)", () => {
+  it("pending before the window → waiting with D-n (D-1 이 마지막 대기일)", () => {
     expect(adjudicationInfo("2026-08-01", "pending", "2026-08-25")).toEqual({
       kind: "waiting", adjudicationDate: "2026-10-30", daysLeft: 66,
     });
-    // 판정 당일: daysLeft 0 — 아직 waiting (판정은 경과 후 실행)
-    expect(adjudicationInfo("2026-05-27", "pending", "2026-08-25").daysLeft).toBe(0);
+    expect(adjudicationInfo("2026-05-28", "pending", "2026-08-25").daysLeft).toBe(1);
   });
 
-  it("pending past the window → overdue (추적기 미실행/가격 부재를 숨기지 않는다)", () => {
+  // 경계 미러 (codex R1 P1): 백엔드는 elapsed >= 90 — 판정일 **당일부터** 판정 가능.
+  // 2026-05-27 결정은 2026-08-25 에 이미 판정 대상이므로 D-0 대기가 아니라 due 다.
+  it("pending on/after the adjudication date → due (백엔드 elapsed>=90 미러)", () => {
+    expect(adjudicationInfo("2026-05-27", "pending", "2026-08-25")).toEqual({
+      kind: "due", adjudicationDate: "2026-08-25",
+    });
     expect(adjudicationInfo("2026-01-15", "pending", "2026-08-25")).toEqual({
-      kind: "overdue", adjudicationDate: "2026-04-15",
+      kind: "due", adjudicationDate: "2026-04-15",
     });
   });
 });
@@ -106,10 +110,17 @@ describe("evidence key-value (#1216 raw JSON 폐지)", () => {
     expect(fmtKvNumber(5.7)).toBe("5.7");
   });
 
-  it("fmtKvValue handles nested objects and non-finite numbers", () => {
+  it("fmtKvValue handles nested objects, booleans, and non-finite numbers", () => {
     expect(fmtKvValue({ a: 1 })).toBe('{"a":1}');
     expect(fmtKvValue(Number.NaN)).toBe("—");
     expect(fmtKvValue(undefined)).toBe("—");
+    expect(fmtKvValue(false)).toBe("false");
+  });
+
+  it("fmtKvValue falls back to String() when JSON.stringify throws (순환 참조)", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(fmtKvValue(circular)).toBe("[object Object]");
   });
 });
 

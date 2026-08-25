@@ -121,12 +121,51 @@ describe("DecisionsPage", () => {
     expect(headers[0].textContent).toContain("1건");
   });
 
-  // #1216: 판정일 명시 — 90일 경과한 pending 은 "판정 예정일 경과"로 드러난다.
-  it("marks long-pending rows as 판정 예정일 경과", async () => {
+  // #1216: 판정일 명시 — 판정일이 지난 pending 은 "판정일 도래 · 미판정"으로 드러난다.
+  it("marks past-due pending rows as 판정일 도래", async () => {
     const { default: DecisionsPage } = await import("@/app/decisions/page");
     await act(async () => { render(await DecisionsPage()); });
-    // fixture date 2026-04-10/09 + 90d < 오늘 → overdue 라벨 (달력 진행에 무관하게 유지)
-    expect(screen.getAllByText("판정 예정일 경과").length).toBe(2);
+    // fixture date 2026-04-10/09 + 90d < 오늘 → due 라벨 (달력 진행에 무관하게 유지)
+    expect(screen.getAllByText("판정일 도래 · 미판정").length).toBe(2);
+  });
+
+  // waiting arm: 최근 결정은 D-n 으로 렌더 (판정일 전) — 날짜는 실행 시점 기준 동적 생성.
+  it("renders D-n for a recent pending decision", async () => {
+    const recent = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
+    setupFetchAPI({
+      decisions: [{ ...mockDecisionsResponse.decisions[0], id: 9, date: recent }],
+      count: 1,
+      summary: { total: 1, pending: 1, success: 0, failure: 0, neutral: 0 },
+    });
+    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    await act(async () => { render(await DecisionsPage()); });
+    const row = screen.getByTestId("decisions-row");
+    expect(row.textContent).toMatch(/D-\d+/);
+  });
+
+  // 미지의 outcome 값은 pending 태그로 폴백한다 (OUTCOME_TAG ?? 가드).
+  it("falls back to the pending tag for an unknown outcome value", async () => {
+    setupFetchAPI({
+      decisions: [{ ...mockDecisionsResponse.decisions[0], id: 9, outcome: "weird" }],
+      count: 1,
+      summary: { total: 1, pending: 1, success: 0, failure: 0, neutral: 0 },
+    });
+    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    await act(async () => { render(await DecisionsPage()); });
+    expect(screen.getByTestId("decisions-row").textContent).toContain("대기");
+  });
+
+  // searchParams 경로: outcome 은 API 로, action 은 RSC 로 — 필터 노트 병기 (codex R1 P2).
+  it("applies searchParams filters and shows the global-summary note", async () => {
+    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    await act(async () => {
+      render(await DecisionsPage({ searchParams: Promise.resolve({ outcome: "pending", action: "SELL" }) }));
+    });
+    expect(mockFetchAPI).toHaveBeenCalledWith("/api/decisions?limit=100&outcome=pending");
+    const note = screen.getByTestId("decisions-filtered-note");
+    expect(note.textContent).toContain("요약 카드는 전체 기준");
+    // action=SELL → BBB 행만
+    expect(screen.getAllByTestId("decisions-row")).toHaveLength(1);
   });
 
   it("shows empty state when no decisions", async () => {

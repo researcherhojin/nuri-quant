@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, within } from "@testing-library/react";
 
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -474,10 +474,32 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
-    expect(screen.getByText("21.0")).toBeInTheDocument(); // not 21.040000915…
-    expect(screen.getByText("₩204,000")).toBeInTheDocument(); // .KS → ₩ (formatMoney)
-    expect(screen.getByText("+5.2%")).toBeInTheDocument();
-    expect(screen.getByText("-3.1%")).toBeInTheDocument();
+    // codex R1 P3: 값이 레일의 올바른 카드 안에 있는지까지 잠근다 (충돌 방지 스코프)
+    const rail = screen.getByTestId("decision-rail");
+    expect(within(rail).getByText("VIX").parentElement?.textContent).toContain("21.0"); // not 21.040000915…
+    expect(within(rail).getByText("Entry").parentElement?.textContent).toContain("₩204,000"); // .KS → ₩
+    expect(within(rail).getByText("7d").parentElement?.textContent).toContain("+5.2%");
+    expect(within(rail).getByText("30d").parentElement?.textContent).toContain("-3.1%");
+  });
+
+  it("dashes a null confidence in the frozen context", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, confidence: null });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const rail = screen.getByTestId("decision-rail");
+    expect(within(rail).getByText("Confidence").parentElement?.textContent).toContain("—");
+  });
+
+  it("shows 판정 D-n in the header for a recent pending decision", async () => {
+    const recent = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
+    mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, date: recent });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.getByTestId("decision-outcome").textContent).toMatch(/D-\d+/);
   });
 
   it("shows the outcome intent tag with adjudication status in the header", async () => {
@@ -486,8 +508,8 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
       render(await DecisionProvenance({ id: "531" }));
     });
     const outcome = screen.getByTestId("decision-outcome");
-    // 2026-04-13 + 90d < 오늘 → pending 은 판정 예정일 경과로 드러난다
+    // 2026-04-13 + 90d < 오늘 → pending 은 판정일 도래·미판정으로 드러난다
     expect(outcome.textContent).toContain("대기");
-    expect(outcome.textContent).toContain("판정 예정일 경과");
+    expect(outcome.textContent).toContain("판정일 도래 · 미판정");
   });
 });

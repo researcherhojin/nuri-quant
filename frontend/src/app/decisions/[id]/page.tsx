@@ -190,7 +190,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
           <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
             {adj.kind === "adjudicated" && `${DECISIONS.ADJ_DONE} ${adj.adjudicationDate}`}
             {adj.kind === "waiting" && `${DECISIONS.ADJ_DONE} ${adj.adjudicationDate} (${DECISIONS.ADJ_DUE_PREFIX}${adj.daysLeft})`}
-            {adj.kind === "overdue" && DECISIONS.ADJ_OVERDUE}
+            {adj.kind === "due" && DECISIONS.ADJ_DUE}
           </span>
         </span>
       </div>
@@ -203,7 +203,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
       {/* Decision-time context (frozen) — #1216: vix 21.040000915… 류 raw float 종결 */}
       <Card className="bg-card border-border">
         <CardContent className="pt-4 pb-3">
-          <p className="text-[10px] text-muted-foreground mb-3">결정 시점 컨텍스트 (frozen)</p>
+          <p className="text-[10px] text-muted-foreground mb-3">{DECISIONS.RAIL_CONTEXT}</p>
           <div className="grid grid-cols-3 gap-3">
             <Metric label="Confidence" value={d.confidence === null ? "—" : `${Math.round(d.confidence)}%`} />
             <Metric label="Agreement" value={d.agreement_rate === null ? "—" : `${Math.round(d.agreement_rate * 100)}%`} />
@@ -218,7 +218,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
       {/* Price ladder — #1216: formatMoney 로 ₩/$ 판정 (.KS 204000 → ₩204,000) */}
       <Card className="bg-card border-border">
         <CardContent className="pt-4 pb-3">
-          <p className="text-[10px] text-muted-foreground mb-3">가격 레벨</p>
+          <p className="text-[10px] text-muted-foreground mb-3">{DECISIONS.RAIL_PRICES}</p>
           <div className="grid grid-cols-2 gap-3">
             <Metric label="Entry" value={formatMoney(d.entry_price, { ticker: d.ticker })} />
             <Metric label="Stop" value={formatMoney(d.stop_loss, { ticker: d.ticker })} color="red" />
@@ -231,7 +231,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
       {/* Outcome (forward PnL) — 부호 병기 + 소수 1자리 */}
       <Card className="bg-card border-border">
         <CardContent className="pt-4 pb-3">
-          <p className="text-[10px] text-muted-foreground mb-3">실현 결과 (forward PnL %)</p>
+          <p className="text-[10px] text-muted-foreground mb-3">{DECISIONS.RAIL_PNL}</p>
           <div className="grid grid-cols-4 gap-3">
             <Metric label="7d" value={fmtPnl(d.pnl_7d)} color={pnlColor(d.pnl_7d)} />
             <Metric label="30d" value={fmtPnl(d.pnl_30d)} color={pnlColor(d.pnl_30d)} />
