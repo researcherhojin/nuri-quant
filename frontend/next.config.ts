@@ -14,6 +14,10 @@ import type { NextConfig } from "next";
  * Production (`next build`) ignores this setting entirely.
  */
 const DEFAULT_DEV_ORIGINS = [
+  // 루프백 IP (#1245). dev 서버는 기동 호스트네임(localhost)만 기본 허용하는데,
+  // 127.0.0.1:3000 으로 열면 turbopack module 청크가 CORS 모드로 Origin 을 붙여
+  // 403, HMR WS 도 차단된다 — 페이지(SSR)는 떠서 조용히 hydration 만 죽는다.
+  "127.0.0.1",
   "*.local",        // Bonjour / mDNS hostnames (macOS Network)
   "192.168.*.*",   // Home Wi-Fi / 홈 공유기 (Class C private)
   "10.*.*.*",      // Enterprise / Docker bridge (Class A private)
