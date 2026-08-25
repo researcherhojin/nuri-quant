@@ -1,7 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
+import Link from "next/link";
 import { fetchAPI } from "@/lib/api";
+import { ENGINE } from "@/lib/strings";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -50,6 +52,18 @@ interface Drift {
   detail: string;
 }
 
+// #1218 codex R1 P1: gate phase 어휘와 pipeline step 어휘는 1:1 이 아니다 —
+// gate = collect/validate/regime/recommend (nuri/trading/engine/gate.py check_all_gates),
+// steps = collect/validate/classify/diagnose/recommend/track (nuri/api/routes/pipeline.py
+// VALID_STEPS). regime 게이트(spy/prices 신선도)가 막는 실행 단계는 classify 다.
+// 미지 phase 는 실행 불가능한 이름을 광고하지 않고 일반 카피로 폴백.
+const GATE_PHASE_TO_STEP: Record<string, string> = {
+  collect: "collect",
+  validate: "validate",
+  regime: "classify",
+  recommend: "recommend",
+};
+
 // === Gate Section ===
 export async function GateSection() {
   const gates = await fetchAPI<Record<string, GateResult>>("/api/gate");
@@ -67,6 +81,18 @@ export async function GateSection() {
                 size="md"
               />
             </div>
+            {/* #1218: BLOCKED 는 상태 나열로 끝내지 않는다 — 실행 가능한 스텝명으로 안내 */}
+            {!result.ready && (
+              <Link
+                href="/pipeline"
+                className="inline-block mb-2 text-[11px] text-primary hover:underline"
+                data-testid={`gate-next-action-${phase}`}
+              >
+                {GATE_PHASE_TO_STEP[phase]
+                  ? `${ENGINE.NEXT_ACTION_PREFIX} ${GATE_PHASE_TO_STEP[phase]} ${ENGINE.NEXT_ACTION_RUN}`
+                  : `${ENGINE.NEXT_ACTION_PREFIX} ${ENGINE.NEXT_ACTION_GENERIC}`}
+              </Link>
+            )}
             <div className="w-full bg-muted rounded-full h-1.5 mb-2">
               <div
                 className={`h-1.5 rounded-full transition-all ${
@@ -114,7 +140,7 @@ export async function ConflictsSection() {
           </div>
         </div>
         {data.conflicts.length === 0 ? (
-          <p className="text-xs text-muted-foreground/70 py-3 text-center">No signal conflicts detected</p>
+          <p className="text-xs text-muted-foreground/70 py-3 text-center">{ENGINE.CONFLICTS_EMPTY}</p>
         ) : (
           <div className="space-y-2">
             {data.conflicts.map((c, i) => (
@@ -161,7 +187,7 @@ export async function MemorySection() {
           </div>
         </div>
         {data.drifts.length === 0 ? (
-          <p className="text-xs text-muted-foreground/70 py-3 text-center">No drift data (run: make validate first)</p>
+          <p className="text-xs text-muted-foreground/70 py-3 text-center">{ENGINE.DRIFT_EMPTY}</p>
         ) : (
           <ClientTable variant="drift" data={data.drifts} compact />
         )}

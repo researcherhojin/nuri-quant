@@ -47,25 +47,30 @@ describe("TickerDetail branch coverage", () => {
   // L143/146/149/152 falsy: price.close / final_action / final_confidence / agreement_rate 부재.
   // L158 falsy: prices 빈배열 → price chart 섹션 미렌더.
   // L183 falsy: dissent 부재.
-  // L227/237 falsy: earnings/insiders 빈 → "No ... data" 분기.
+  // #1218 빈 패널 접기: 빈 컬렉션은 카드를 렌더하지 않고 한 줄 스트립으로 병합된다.
   it("uses default fallbacks when all optional collections are absent", async () => {
     setupFetches({ data: { ticker: "AAPL" } });
     const jsx = await TickerDetail({ symbol: "AAPL" });
     render(jsx);
 
-    expect(screen.getByText("Analyst Ratings (0)")).toBeInTheDocument();
-    expect(screen.getByText("Earnings (0Q)")).toBeInTheDocument();
-    expect(screen.getByText("Insider Activity (0)")).toBeInTheDocument();
+    // 빈 카드 미렌더 (구 "Analyst Ratings (0)" + "No rating data" 카드 폐지)
+    expect(screen.queryByText(/Analyst Ratings \(/)).not.toBeInTheDocument();
+    expect(screen.queryByText("No rating data")).not.toBeInTheDocument();
+    expect(screen.queryByText("No earnings data")).not.toBeInTheDocument();
+    expect(screen.queryByText("No insider data")).not.toBeInTheDocument();
     // L141 falsy: data.name 없으면 h1 은 ticker, 별도 ticker span 은 없음 (AAPL 1회만)
     expect(screen.getAllByText("AAPL")).toHaveLength(1);
     // L158 falsy: 차트 미렌더
     expect(screen.queryByTestId("price-chart")).not.toBeInTheDocument();
-    // L227/237 falsy: 빈 상태 문구
-    expect(screen.getByText("No rating data")).toBeInTheDocument();
-    expect(screen.getByText("No earnings data")).toBeInTheDocument();
-    expect(screen.getByText("No insider data")).toBeInTheDocument();
-    // Smart Money / Fundamentals 섹션 미렌더 (supers 빈배열, fund undefined)
-    expect(screen.queryByText(/Smart Money/)).not.toBeInTheDocument();
+    // 부재 패널 한 줄 스트립 — 7개 전부 나열, US 티커라 KR 힌트 없음
+    const strip = screen.getByTestId("ticker-missing-panels");
+    expect(strip.textContent).toContain("미수집 데이터:");
+    for (const name of ["Analyst Ratings", "Earnings", "Insider Activity", "Fundamentals", "Smart Money", "Price Targets", "External Data"]) {
+      expect(strip.textContent).toContain(name);
+    }
+    expect(strip.textContent).not.toContain("KR 종목");
+    // Smart Money / Fundamentals 카드 미렌더 (supers 빈배열, fund undefined)
+    expect(screen.queryByText(/Smart Money \(/)).not.toBeInTheDocument();
     expect(screen.queryByText("Fundamentals")).not.toBeInTheDocument();
   });
 
@@ -226,17 +231,17 @@ describe("TickerDetail branch coverage", () => {
     expect(screen.getByText("MS")).toBeInTheDocument();
     expect(screen.getByText("JPM")).toBeInTheDocument();
     // L213 truthy: target_price
-    expect(screen.getByText("$220")).toBeInTheDocument();
-    // L227 truthy: earnings 테이블 (No earnings data 없음)
-    expect(screen.queryByText("No earnings data")).not.toBeInTheDocument();
+    expect(screen.getByText("$220.00")).toBeInTheDocument(); // formatMoney 경유 (#1218)
+    // earnings 데이터 존재 → 테이블 렌더 + 부재 스트립에 Earnings 미포함
     // L237 truthy: insider 렌더 (sale value→$M, buy shares)
     expect(screen.getByText("$5.0M")).toBeInTheDocument();
     expect(screen.getByText("1,200 sh")).toBeInTheDocument();
     // L277 truthy: smart money
     expect(screen.getByText("Big Fund")).toBeInTheDocument();
-    // L302 truthy: analyst_upside_pct > 0 → "+" 포함
-    const analystLine = screen.getByText(/\$220\.00/);
-    expect(analystLine.textContent).toContain("+");
+    // analyst_upside_pct > 0 → "+" 포함 — ratings 의 $220.00 도 formatMoney 를
+    // 타면서 다중 매칭이 되므로 (#1218) "+"를 품은 쪽을 고른다
+    const analystLines = screen.getAllByText(/\$220\.00/);
+    expect(analystLines.some((el) => el.textContent?.includes("+"))).toBe(true);
     // L310/311 truthy: external 데이터
     expect(screen.getByText("External Data (1)")).toBeInTheDocument();
     expect(screen.getByText("Strong Buy")).toBeInTheDocument();

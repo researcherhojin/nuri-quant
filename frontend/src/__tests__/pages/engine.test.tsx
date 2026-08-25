@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-// Mock next/link
+// Mock next/link — 반드시 전체 props spread (#1218: children/href 만 넘기면 data-testid 소실)
 vi.mock("next/link", () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
+  default: ({ children, href, ...rest }: { children: React.ReactNode; href: string; [k: string]: unknown }) => (
+    <a href={href} {...rest}>{children}</a>
   ),
 }));
 
@@ -110,6 +110,37 @@ describe("EnginePage", () => {
     expect(screen.getByText("Certification Engine")).toBeInTheDocument();
   });
 
+  // #1218: BLOCKED 페이즈만 다음 행동 링크(/pipeline) — READY 는 없다
+  it("renders the next-action link only for blocked gate phases", async () => {
+    mockFetchAPI.mockResolvedValue(mockGateData);
+    const mod = await import("@/app/engine/page");
+    const element = await mod.GateSection();
+    render(element);
+    const next = screen.getByTestId("gate-next-action-validate"); // ready:false 픽스처
+    expect(next).toHaveAttribute("href", "/pipeline");
+    expect(next.textContent).toContain("다음 행동:");
+    expect(next.textContent).toContain("validate");
+    expect(screen.queryByTestId("gate-next-action-collect")).not.toBeInTheDocument(); // ready:true
+  });
+
+  // codex R1 P1/P3: gate 어휘(regime)와 step 어휘(classify)는 다르다 — 실제 /api/gate
+  // vocabulary 로 잠근다. regime 게이트가 막힌 화면이 실행 불가한 "regime" 을 광고하면 회귀.
+  it("maps the regime gate to the runnable classify step, generic copy for unknown phases", async () => {
+    const blocked = (phase: string) => ({
+      phase, total: 1, passed: 0, score: 0, ready: false,
+      conditions: [{ id: `${phase}-1`, phase, description: "d", passed: false, detail: "x" }],
+    });
+    mockFetchAPI.mockResolvedValue({ regime: blocked("regime"), mystery: blocked("mystery") });
+    const mod = await import("@/app/engine/page");
+    render(await mod.GateSection());
+    // codex R2: 부분 일치·리터럴 부정은 잠금이 아니다 — 카피 전문을 정확 일치로 잠근다
+    // (regime 광고 회귀는 어떤 형태든 여기서 깨진다)
+    const regime = screen.getByTestId("gate-next-action-regime");
+    expect(regime.textContent).toBe("다음 행동: classify 파이프라인에서 실행 →");
+    const unknown = screen.getByTestId("gate-next-action-mystery");
+    expect(unknown.textContent).toBe("다음 행동: 파이프라인 확인 →");
+  });
+
   it("renders READY badge for passing gate", async () => {
     mockFetchAPI.mockResolvedValueOnce(mockGateData);
     // Dynamically test the GateSection by importing the module
@@ -139,14 +170,14 @@ describe("EnginePage", () => {
     expect(screen.getByText("MACD buy vs RSI sell conflict")).toBeInTheDocument();
   });
 
-  it("shows 'No signal conflicts detected' when empty", async () => {
+  it("shows the Korean one-line empty state when no conflicts (#1218)", async () => {
     mockFetchAPI.mockResolvedValue({ conflicts: [], count: 0, high: 0 });
 
     const { ConflictsSection } = await getInternalComponents();
     const element = await ConflictsSection();
     render(element);
 
-    expect(screen.getByText("No signal conflicts detected")).toBeInTheDocument();
+    expect(screen.getByText("시그널 충돌 없음")).toBeInTheDocument();
   });
 
   it("renders memory drift table when drifts exist", async () => {
@@ -167,7 +198,7 @@ describe("EnginePage", () => {
     const element = await MemorySection();
     render(element);
 
-    expect(screen.getByText(/No drift data/)).toBeInTheDocument();
+    expect(screen.getByText(/드리프트 데이터 없음/)).toBeInTheDocument();
   });
 
   it("displays conflict count metrics", async () => {
@@ -202,94 +233,15 @@ describe("EnginePage", () => {
 });
 
 /**
- * Helper: The engine page has internal async server components (GateSection,
- * ConflictsSection, MemorySection) that are not exported. We re-import the module
- * and access them. Since they are async functions that call fetchAPI and return JSX,
- * we can call them directly after mocking fetchAPI.
- *
- * However, since they are not exported, we create thin wrappers that replicate
- * their behavior using the mocked fetchAPI.
+ * #1218: 이전에는 "not exported" 라며 섹션을 테스트 파일 안에 **복제**해 검증했다 —
+ * 페이지가 이미 export 하고 있었고, 사본 검증은 실물 회귀를 못 잡는다 (mock-shape 교훈).
+ * 실물 export 를 직접 렌더한다.
  */
 async function getInternalComponents() {
-  // Re-import to get fresh module with current mocks
   const mod = await import("@/app/engine/page");
-
-  // We can't access non-exported functions, so we create a workaround:
-  // We know the module structure, so we create equivalent functions that use fetchAPI
-  const { fetchAPI } = await import("@/lib/api");
-
-  type ConflictRow = {
-    ticker: string;
-    severity: string;
-    conflict_type: string;
-    detail: string;
-    recommendation: string;
+  return {
+    GateSection: mod.GateSection,
+    ConflictsSection: mod.ConflictsSection,
+    MemorySection: mod.MemorySection,
   };
-  async function ConflictsSection() {
-    const data = await fetchAPI<{ conflicts: ConflictRow[]; count: number; high: number }>("/api/conflicts");
-
-    // Replicate the render logic from the source
-    const { Card, CardContent } = await import("@/components/ui/card");
-    const { Metric } = await import("@/components/ui/metric");
-    const { StatusBadge } = await import("@/components/ui/status-badge");
-
-    return (
-      <Card className="bg-card border-border">
-        <CardContent className="pt-5">
-          <div className="flex items-center gap-3 mb-3">
-            <p className="text-xs text-muted-foreground">Signal Conflicts</p>
-            <div className="flex gap-2">
-              <Metric label="Total" value={data.count} size="sm" />
-              <Metric label="High" value={data.high} size="sm" color={data.high > 0 ? "red" : "default"} />
-            </div>
-          </div>
-          {data.conflicts.length === 0 ? (
-            <p className="text-xs text-muted-foreground/70 py-3 text-center">No signal conflicts detected</p>
-          ) : (
-            <div className="space-y-2">
-              {data.conflicts.map((c: ConflictRow, i: number) => (
-                <div key={`${c.ticker}-${i}`} className="bg-muted/50 rounded-lg p-2.5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium">{c.ticker}</span>
-                    <StatusBadge status={c.severity === "high" ? "SELL" : c.severity === "medium" ? "WATCH" : "HOLD"} size="sm" />
-                    <span className="text-[10px] text-muted-foreground/70">{c.conflict_type}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{c.detail}</p>
-                  <p className="text-[10px] text-emerald-400/80 mt-1">{"\u2192"} {c.recommendation}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  async function MemorySection() {
-    const data = await fetchAPI<{ drifts: Record<string, unknown>[]; critical: number; degrading: number }>("/api/memory");
-    const { Card, CardContent } = await import("@/components/ui/card");
-    const { Metric } = await import("@/components/ui/metric");
-    const { ClientTable } = await import("@/components/ui/client-table");
-
-    return (
-      <Card className="bg-card border-border">
-        <CardContent className="pt-5">
-          <div className="flex items-center gap-3 mb-3">
-            <p className="text-xs text-muted-foreground">Learning Memory — Drift</p>
-            <div className="flex gap-2">
-              <Metric label="Critical" value={data.critical} size="sm" color={data.critical > 0 ? "red" : "default"} />
-              <Metric label="Degrading" value={data.degrading} size="sm" color={data.degrading > 0 ? "red" : "default"} />
-            </div>
-          </div>
-          {data.drifts.length === 0 ? (
-            <p className="text-xs text-muted-foreground/70 py-3 text-center">No drift data (run: make validate first)</p>
-          ) : (
-            <ClientTable variant="drift" data={data.drifts} compact />
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return { ConflictsSection, MemorySection, default: mod.default };
 }

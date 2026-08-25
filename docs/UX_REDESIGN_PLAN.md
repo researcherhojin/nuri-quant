@@ -73,8 +73,9 @@
 | U2b-2 | 액션 테이블 + 시스템 레일 | 카드→32px 밀집 행(quick-peek 확장·확신도 micro-bar·증거 링크) · MarketContext 분해(SystemHealthRail·MacroEventsCard·RegimeShiftBanner) · 좌 2/3 + 우 1/3 그리드 | 완료 (#1209) |
 | U2b-3 | 구성 스택 바 | 도넛→가로 스택 바 · coverage 접이 | 완료 (#1211) |
 | U2b-4 | 델타·ack | NEW+시각 배지 · 확인(ack) 로컬 상태 · 다음 행동 카피 | 완료 (#1213, 커버리지 후속 #1215) |
-| U3 | Decisions | 리스트: 필터·날짜 그룹핑·conf micro-bar·판정일 명시 / 상세: 2컬럼 + 증거 key-value(raw JSON 폐지) + raw float 종결 | 진행 중 (#1216) |
-| U4 | 주변부 | ticker(빈 패널 접기)·scanner(중복 테이블 병합)·engine(BLOCKED 다음 행동)·pipeline(타임라인 구조화) + 빈 상태 1줄 규칙 전면 | 대기 |
+| U3 | Decisions | 리스트: 필터·날짜 그룹핑·conf micro-bar·판정일 명시 / 상세: 2컬럼 + 증거 key-value(raw JSON 폐지) + raw float 종결 | 완료 (#1217) |
+| U4a | 주변부 1/2 | ticker(빈 패널 접기·부재 한 줄 스트립)·engine(BLOCKED 다음 행동 링크·빈 상태 한국어 1줄) | 진행 중 (#1218) |
+| U4b | 주변부 2/2 | scanner(중복 테이블 union 병합 — top-15 ⊂ swing 20 실측)·pipeline(타임라인 payload raw JSON 폐지) + 잔여 빈 상태 스윕 | 대기 (#1219) |
 | U5 | 별도 결정 | evidence matplotlib PNG→네이티브 차트 · Cmd-K · IA 통합(라우트 병합) — 각각 사용자 승인 후 착수 | 보류 |
 
 ### 단계별 공통 게이트

@@ -312,6 +312,26 @@ export const TICKER_DETAIL = {
   TARGET_2: "2차 익절",
   TRAILING: "트레일링",
   ANALYST: "애널리스트",
+  // #1218 U4a: 빈 패널 접기 — 데이터 없는 카드는 렌더하지 않고 한 줄로 병합
+  MISSING_PREFIX: "미수집 데이터:",
+  MISSING_KR_HINT: "(KR 종목은 yfinance/EDGAR 소스 미지원 항목이 정상적으로 비어 있음)",
+  PANEL_RATINGS: "Analyst Ratings",
+  PANEL_EARNINGS: "Earnings",
+  PANEL_INSIDERS: "Insider Activity",
+  PANEL_FUNDAMENTALS: "Fundamentals",
+  PANEL_SMART_MONEY: "Smart Money",
+  PANEL_TARGETS: "Price Targets",
+  PANEL_EXTERNAL: "External Data",
+} as const;
+
+/* ── Engine Page (#1218 U4a) ────────────────────────────────── */
+export const ENGINE = {
+  CONFLICTS_EMPTY: "시그널 충돌 없음",
+  DRIFT_EMPTY: "드리프트 데이터 없음 — make validate 실행 필요",
+  // BLOCKED 게이트의 다음 행동 (phase id = pipeline step id, /api/gate 실측)
+  NEXT_ACTION_PREFIX: "다음 행동:",
+  NEXT_ACTION_RUN: "파이프라인에서 실행 →",
+  NEXT_ACTION_GENERIC: "파이프라인 확인 →", // 매핑 밖 phase — 실행 불가 이름을 광고하지 않는다
 } as const;
 
 /* ── Explore Page ───────────────────────────────────────────── */

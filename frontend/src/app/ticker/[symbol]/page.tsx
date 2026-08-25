@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
 import { PriceChartLazy as PriceChart } from "@/components/ui/price-chart-lazy";
 import { TICKER_DETAIL as TD } from "@/lib/strings";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, isKrwTicker } from "@/lib/format";
 
 interface AgentVerdict {
   agent_name: string;
@@ -134,6 +134,22 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
     { key: "surprise_pct", label: "Surprise", align: "right" as const },
   ];
 
+  // #1218 빈 패널 접기: 데이터 없는 카드는 렌더하지 않고 (KR 티커에서 빈 패널
+  // 3개가 ~200px 씩 차지하던 감사 결함) 부재 목록을 한 줄로 병합한다.
+  // fundamentals 는 행 존재가 아니라 **표시할 필드 존재**로 판정한다 (codex R1 P2:
+  // API 는 최신 행을 통째로 반환하고 카드 내부는 필드별 truthy 가드라, 전부 NULL/0
+  // 인 행은 빈 셸을 만든다).
+  const fundHasContent = !!fund && [fund.pe_ratio, fund.roe, fund.revenue_growth, fund.debt_to_equity, fund.profit_margin, fund.beta].some(Boolean);
+  const missingPanels = ([
+    ratings.length === 0 ? TD.PANEL_RATINGS : null,
+    earningsFormatted.length === 0 ? TD.PANEL_EARNINGS : null,
+    insiders.length === 0 ? TD.PANEL_INSIDERS : null,
+    !fundHasContent ? TD.PANEL_FUNDAMENTALS : null,
+    supers.length === 0 ? TD.PANEL_SMART_MONEY : null,
+    !targets || targets.error ? TD.PANEL_TARGETS : null,
+    !external || external.count === 0 ? TD.PANEL_EXTERNAL : null,
+  ] as Array<string | null>).filter((x): x is string => x !== null);
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -191,12 +207,12 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
           </CardContent>
         </Card>
 
-        {/* Analyst Ratings */}
+        {/* Analyst Ratings — 빈 카드 렌더 금지 (#1218) */}
+        {ratings.length > 0 && (
         <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground mb-3">Analyst Ratings ({ratings.length})</p>
-            {ratings.length > 0 ? (
-              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            <p className="text-xs text-muted-foreground mb-3">{TD.PANEL_RATINGS} ({ratings.length})</p>
+            <div className="space-y-1.5 max-h-64 overflow-y-auto">
                 {ratings.map((r: AnalystRating, i: number) => (
                   <div key={i} className="flex items-center justify-between text-xs">
                     <div>
@@ -211,31 +227,32 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
                         }
                         size="sm"
                       />
-                      {r.target_price && <span className="text-muted-foreground">${r.target_price}</span>}
+                      {/* #1218: 통화는 formatMoney 단일 판정 지점 — KR 레이팅 $300000 표기 결함 */}
+                      {r.target_price != null && <span className="text-muted-foreground">{formatMoney(r.target_price, { ticker: data.ticker })}</span>}
                     </div>
                   </div>
                 ))}
-              </div>
-            ) : <p className="text-xs text-muted-foreground/70 text-center py-3">No rating data</p>}
+            </div>
           </CardContent>
         </Card>
+        )}
 
-        {/* Earnings Surprise */}
+        {/* Earnings Surprise — 빈 카드 렌더 금지 (#1218) */}
+        {earningsFormatted.length > 0 && (
         <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground mb-3">Earnings ({earnings.length}Q)</p>
-            {earningsFormatted.length > 0 ? (
-              <DataTable columns={earningsCols} data={earningsFormatted} compact />
-            ) : <p className="text-xs text-muted-foreground/70 text-center py-3">No earnings data</p>}
+            <p className="text-xs text-muted-foreground mb-3">{TD.PANEL_EARNINGS} ({earnings.length}Q)</p>
+            <DataTable columns={earningsCols} data={earningsFormatted} compact />
           </CardContent>
         </Card>
+        )}
 
-        {/* Insider Trades */}
+        {/* Insider Trades — 빈 카드 렌더 금지 (#1218) */}
+        {insiders.length > 0 && (
         <Card className="bg-card border-border">
           <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground mb-3">Insider Activity ({insiders.length})</p>
-            {insiders.length > 0 ? (
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            <p className="text-xs text-muted-foreground mb-3">{TD.PANEL_INSIDERS} ({insiders.length})</p>
+            <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {insiders.map((ins: InsiderTrade, i: number) => (
                   <div key={i} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5">
@@ -243,17 +260,18 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
                       <span className="text-muted-foreground">{ins.insider_name?.split(" ").slice(0, 2).join(" ")}</span>
                     </div>
                     <span className="text-muted-foreground">
-                      {ins.value ? `$${(ins.value / 1000000).toFixed(1)}M` : `${ins.shares?.toLocaleString()} sh`}
+                      {/* #1218: value·shares 모두 부재 시 "undefined sh" 렌더 결함 → — */}
+                      {ins.value ? `$${(ins.value / 1000000).toFixed(1)}M` : ins.shares != null ? `${ins.shares.toLocaleString()} sh` : "—"}
                     </span>
                   </div>
                 ))}
-              </div>
-            ) : <p className="text-xs text-muted-foreground/70 text-center py-3">No insider data</p>}
+            </div>
           </CardContent>
         </Card>
+        )}
 
-        {/* Fundamentals */}
-        {fund && (
+        {/* Fundamentals — 표시할 필드가 하나라도 있을 때만 (#1218 P2) */}
+        {fundHasContent && fund && (
           <Card className="bg-card border-border">
             <CardContent className="pt-5">
               <p className="text-xs text-muted-foreground mb-3">Fundamentals</p>
@@ -307,7 +325,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
           </Card>
         )}
 
-        {/* 외부 데이터 */}
+        {/* 외부 데이터 (#1218: 라벨 strings 경유) */}
         {external && external.count > 0 && (
           <Card className="bg-card border-border">
             <CardContent className="pt-5">
@@ -324,6 +342,14 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
           </Card>
         )}
       </div>
+
+      {/* #1218: 부재 패널 한 줄 병합 — 빈 상태 1줄 규칙 */}
+      {missingPanels.length > 0 && (
+        <p className="text-[11px] text-muted-foreground/70" data-testid="ticker-missing-panels">
+          {TD.MISSING_PREFIX} {missingPanels.join(" · ")}{" "}
+          {isKrwTicker(data.ticker) && <span className="text-muted-foreground/50">{TD.MISSING_KR_HINT}</span>}
+        </p>
+      )}
     </div>
   );
 }
