@@ -84,11 +84,11 @@ export function Sidebar() {
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             {!collapsed && (
               <>
-                <span className="text-lg font-bold text-emerald-400 tracking-tight">Nuri-Quant</span>
+                <span className="text-lg font-bold text-foreground tracking-tight">Nuri-Quant</span>
                 <span className="text-[9px] text-muted-foreground/70 font-mono">v0.1</span>
               </>
             )}
-            {collapsed && <span className="text-lg font-bold text-emerald-400">N</span>}
+            {collapsed && <span className="text-lg font-bold text-foreground">N</span>}
           </Link>
           <button
             onClick={() => setCollapsed(!collapsed)}
@@ -119,12 +119,12 @@ export function Sidebar() {
                       flex items-center gap-3 py-2 text-sm transition-colors
                       ${collapsed ? "justify-center px-3" : "px-4"}
                       ${active
-                        ? "text-emerald-400 bg-emerald-400/10 border-r-2 border-emerald-400"
+                        ? "text-primary bg-primary/10 border-r-2 border-primary"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                       }
                     `}
                   >
-                    <Icon size={20} className={active ? "text-emerald-400" : "text-muted-foreground"} />
+                    <Icon size={20} className={active ? "text-primary" : "text-muted-foreground"} />
                     {!collapsed && <span>{item.label}</span>}
                   </Link>
                 );

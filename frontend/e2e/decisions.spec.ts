@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { NAV } from "../src/lib/strings";
 
 test.describe("Decisions Page", () => {
   test("renders decision intelligence header and summary cards", async ({ page }) => {
@@ -24,13 +25,14 @@ test.describe("Decisions Page", () => {
     expect(hasEmptyState || hasDecisions).toBe(true);
   });
 
-  test("sidebar has Decisions nav under INTELLIGENCE group", async ({ page }) => {
+  test("sidebar has Decisions nav under 의사결정 group", async ({ page }) => {
     await page.goto("/decisions", { timeout: 15000 });
-    await expect(page.locator("text=INTELLIGENCE").first()).toBeVisible();
+    // 그룹 라벨은 strings.ts NAV 가 정본 (#1200 U1b-2 재그룹)
+    await expect(page.locator(`text=${NAV.DECISIONS}`).first()).toBeVisible();
     const decisionLink = page.locator("a[href='/decisions']");
     await expect(decisionLink).toBeVisible();
-    // Active state: should have emerald color
-    await expect(decisionLink).toHaveClass(/text-emerald/);
+    // Active state: 인터랙션 액센트(blue) — emerald 브랜드 액센트 폐지 (스펙 §1)
+    await expect(decisionLink).toHaveClass(/text-primary/);
   });
 
   test("no hardcoded exchange rate visible", async ({ page }) => {
