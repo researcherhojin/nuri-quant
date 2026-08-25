@@ -28,9 +28,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <LiveIndicator />
             </header>
 
-            {/* Page */}
+            {/* Page — 컨테이너 캡 (#1202 U1c, UX_REDESIGN_PLAN §2.2): 카드형 콘텐츠가
+                울트라와이드에서 공백/폭만 늘리는 것을 차단. 테이블의 2xl 정보 확장
+                컬럼(#218)은 뷰포트 breakpoint 기준이라 영향 없음 */}
             <main className="flex-1 p-6 overflow-auto">
-              {children}
+              <div className="mx-auto w-full max-w-[1600px]">
+                {children}
+              </div>
             </main>
           </div>
         </ThemeProvider>

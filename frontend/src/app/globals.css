@@ -5,6 +5,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* V4(외장 27"+) 정보 확장용 breakpoint (#1202 U1c, UX_REDESIGN_PLAN §2.2) —
+     2xl(1536)과 구분되는 진짜 초광폭 구간. 공백 확장이 아니라 컬럼 추가에 쓴다 */
+  --breakpoint-3xl: 120rem;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   /* Pretendard: 한글 글리프 포함 (#1195 U1a). 기존 var(--font-sans) 자기참조는 무효라

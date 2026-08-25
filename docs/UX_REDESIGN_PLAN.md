@@ -33,7 +33,7 @@
 
 ### 2.2 원칙 (실측 결함에서 도출 — 2026-08-25 울트라와이드 스크린샷)
 
-1. **컨테이너 규율**: 카드형 콘텐츠 영역은 `max-width` 캡(대시보드 main 기준 1760px) + 중앙
+1. **컨테이너 규율**: 카드형 콘텐츠 영역은 `max-width` 캡(main 콘텐츠 1600px) + 중앙
    정렬. 현재 울트라와이드에서 액션 카드가 ~700px 로 늘어나고 헬스 카드가 공백만 확장하는
    것이 금지 대상 1호.
 2. **그리드 캡**: 카드 그리드는 `repeat(auto-fill, minmax(340px, 1fr))` + 카드 자체
@@ -50,10 +50,11 @@
 ### 2.3 기계 검증 (반응형 게이트)
 
 - `frontend/e2e/responsive.spec.ts` (U1c 신설): 뷰포트 매트릭스 **1280×800 · 1440×900 ·
-  1920×1080 · 2560×1440** × 주요 페이지(/, /decisions, /decisions/[id], /scan, /ticker/*)에서
-  1. `document.documentElement.scrollWidth <= viewport.width` (가로 스크롤 금지 —
-     테이블 자체 스크롤 컨테이너는 예외)
-  2. 액션 카드/카드형 패널의 실측 `offsetWidth` ≤ 정의 상한 (data-testid 스팟 체크)
+  1920×1080 · 2560×1440** × 주요 페이지(/, /decisions, /scan, /portfolio, /engine, /pipeline — ReactFlow 캔버스 포함. 상세 라우트는 U3 에서 추가)에서
+  1. 가로 스크롤 금지 — root 와 **main**(실제 스크롤 컨테이너, overflow-auto) 둘 다
+     `scrollWidth <= clientWidth` (테이블 자체 스크롤 컨테이너는 예외)
+  2. 컨테이너 캡 — `main > div` 래퍼 폭 ≤ 1600px + 래퍼 내부 패널(section·card·table)이
+     래퍼 경계를 1px 초과 이탈하지 않을 것 (자식 오버플로 스팟 체크)
   3. 전 페이지 스크린샷 아카이브 (수동 검토물)
 - e2e 는 CI 게이트에 배선돼 있지 않으므로(#1118 — 별도 결정 전까지 유지) **모든 UI PR 의
   Test 단계에 "4-뷰포트 스윕 수동 실행 + 스크린샷 확인"을 의무 절차로 넣는다.**
@@ -65,8 +66,8 @@
 |---|---|---|---|
 | U1a | 토큰 셸 | zinc→Blueprint 램프, radius 4px, tabular-nums, Pretendard, 블루 액센트, dark-only 잠금(토글 제거) | **완료 #1196** |
 | U1b-1 | 통화 일원화 | `lib/format.ts` 신설, $-on-KRW 버그 계열 수정 (ticker/decisions/client-table/action-items/holding-row/chart tooltip) | **완료 #1198** |
-| U1b-2 | 공용 컴포넌트 리테마 | card/status-badge/metric/data-table — intent minimal-tag 맵, 밀도(행 32px), 사이드바 5그룹 재편, StatusBadge 30-엔트리 하드코딩 맵 정리 | 대기 |
-| U1c | **반응형 파운데이션** | §2 구현: 컨테이너 캡 + 그리드 캡 + `3xl` 토큰 + 2xl 사용처 감사 + `responsive.spec.ts` 매트릭스. **U2 재구조보다 선행** — 새 레이아웃이 이 규율 위에 얹히도록 | 대기 |
+| U1b-2 | 공용 컴포넌트 리테마 | card/status-badge/metric/data-table — intent minimal-tag 맵, 밀도(행 32px), 사이드바 5그룹 재편(액티브 액센트 blue 전환 포함), StatusBadge 30-엔트리 하드코딩 맵 정리 | **완료 #1201** |
+| U1c | **반응형 파운데이션** | §2 구현: 컨테이너 캡(main `max-w-[1600px]`) + `3xl` 토큰 + `responsive.spec.ts` 매트릭스. 그리드 캡은 컨테이너 캡으로 충족(액션 카드 3열이 캡 안에서 ~440px) — 카드→테이블 전환은 U2b. **U2 재구조보다 선행** | 진행 중 |
 | U2a | 대시보드 추출 | `page.tsx`(668줄) 섹션별 컴포넌트 추출 — 동작 보존, 시각 변화 없음 (5개 인라인 색맵 함수 격리) | 대기 |
 | U2b | 대시보드 재구조 | verdict 배너 최상단 · 액션 밀집 테이블(심각도순) + 우측 시스템 레일 · 도넛→가로 스택 바 · coverage 접이 · NEW/ack·quick-peek·다음 행동 카피 · 히어로 대형 타이포 폐지 | 대기 |
 | U3 | Decisions | 리스트: 필터·날짜 그룹핑·conf micro-bar·판정일 명시 / 상세: 2컬럼 + 증거 key-value(raw JSON 폐지) + raw float 종결 | 대기 |
