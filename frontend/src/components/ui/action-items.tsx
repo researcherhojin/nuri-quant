@@ -222,6 +222,10 @@ export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItems
   const [ackOverride, setAckOverride] = useState<AckMap | null>(null);
   const ackMap = ackOverride ?? loadedMap;
   const onAck = (item: ActionItem) => {
+    // `?? {}` 는 구조적 도달 불가 (#1214): 확인 버튼은 isNew 일 때만 렌더되고
+    // isNewItem 은 ackMap===null(hydration 전)이면 항상 false — 클릭 시점의
+    // ackMap 은 항상 객체다. 미래 리팩터 대비 방어로만 남긴다.
+    /* v8 ignore next */
     setAckOverride(ackItem(ackMap ?? {}, item));
   };
 
