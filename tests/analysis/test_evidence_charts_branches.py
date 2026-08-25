@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import nuri.analysis.evidence_data as ed
 from nuri.analysis import evidence_charts as ec
 from nuri.core.db import init_db
 
@@ -111,7 +112,8 @@ class TestSignalPerformanceFallback:
                 "profit_factor": [1.0 + i * 0.1 for i in range(5)],
             }
         )
-        with patch.object(ec, "_load_latest_scorecard", return_value=df):
+        # #1224: 로더는 evidence_data 로 이동 — 생성기는 별칭 경유로 소비
+        with patch.object(ed, "load_latest_scorecard", return_value=df):
             out = ec.generate_signal_performance_chart(tmp_path)
         assert out.exists()
         # 차트 본문에 signal_id 들 포함됨 — total empty 가 아니라 head(20) path 가 발화.
@@ -143,8 +145,8 @@ class TestSignalPerformanceDriftColor:
             "sig_b": {"status": "stable", "drift_pct": 0.05},
         }
         with (
-            patch.object(ec, "_load_latest_scorecard", return_value=df),
-            patch.object(ec, "_load_drift_map", return_value=drift_map),
+            patch.object(ed, "load_latest_scorecard", return_value=df),
+            patch.object(ed, "load_drift_map", return_value=drift_map),
         ):
             out = ec.generate_signal_performance_chart(tmp_path)
         body = out.read_text()
@@ -263,7 +265,10 @@ class TestLoadDriftMapSwallow:
             "nuri.trading.engine.memory.detect_drift",
             side_effect=RuntimeError("memory db missing"),
         ):
-            out = ec._load_drift_map(db_path=db_path)
+            # #1224: evidence_data 로 이동 (evidence_charts 별칭은 미사용이라 ruff 가 제거)
+            from nuri.analysis.evidence_data import load_drift_map
+
+            out = load_drift_map(db_path=db_path)
         assert out == {}
 
 
@@ -416,7 +421,8 @@ class TestLoadLatestScorecardFound:
         scorecard = pd.DataFrame([{"signal_id": "rsi_oversold", "win_rate": 0.6, "profit_factor": 1.8}])
         scorecard.to_csv(day_dir / "signal_scorecard.csv", index=False)
 
-        monkeypatch.setattr(evidence_charts, "REPORT_DIR", report_root)
-        result = evidence_charts._load_latest_scorecard()
+        # #1224: 로더·REPORT_DIR 은 evidence_data 소속
+        monkeypatch.setattr(ed, "REPORT_DIR", report_root)
+        result = ed.load_latest_scorecard()
         assert result is not None
         assert "signal_id" in result.columns

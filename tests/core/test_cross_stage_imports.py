@@ -40,9 +40,9 @@ STAGES = {
 # 줄 번호로 키를 잡지 않는다 — 무관한 편집에도 깨진다.
 ALLOWED: dict[tuple[str, str], str] = {
     (
-        "nuri/analysis/evidence_charts.py",
+        "nuri/analysis/evidence_data.py",
         "nuri.trading.engine.memory",
-    ): "증거 차트가 strategy memory 를 읽어 렌더 — 읽기 전용",
+    ): "증거 데이터가 strategy memory 드리프트를 읽어 조립 — 읽기 전용 (#1224 에서 evidence_charts 로부터 이동)",
     (
         "nuri/trading/agents/consensus/__main__.py",
         "nuri.trading.engine.decisions",
