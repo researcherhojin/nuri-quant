@@ -34,7 +34,6 @@ describe("HeroStats", () => {
         cashTotalUsd={40240}
         holdingsValueUsd={33996}
         summary={summary()}
-        verdictLabel="관망"
       />,
     );
     expect(screen.getByTestId("hero-stats")).toBeInTheDocument();
@@ -44,20 +43,18 @@ describe("HeroStats", () => {
     expect(screen.getByTestId("hero-winrate")).toBeInTheDocument();
   });
 
-  it("renders 총 자산 with formatted USD + verdict badge", () => {
+  it("renders 총 자산 with formatted USD (verdict badge moved to VerdictBanner, #1206)", () => {
     render(
       <HeroStats
         totalUsd={74237}
         cashTotalUsd={40240}
         holdingsValueUsd={33996}
         summary={summary()}
-        verdictLabel="관망"
       />,
     );
     const total = screen.getByTestId("hero-total");
     expect(total.textContent).toContain("총 자산");
     expect(total.textContent).toContain("$74,237");
-    expect(total.textContent).toContain("관망");
     // sub-line shows holdings + cash
     expect(total.textContent).toContain("보유");
     expect(total.textContent).toContain("$33,996");
@@ -71,7 +68,6 @@ describe("HeroStats", () => {
         cashTotalUsd={0}
         holdingsValueUsd={74237}
         summary={summary()}
-        verdictLabel="관망"
       />,
     );
     const today = screen.getByTestId("hero-today");
@@ -90,7 +86,6 @@ describe("HeroStats", () => {
         summary={summary({
           today: { totalUsd: -300, totalPct: -1.2, upCount: 2, downCount: 8 },
         })}
-        verdictLabel="주의"
       />,
     );
     const today = screen.getByTestId("hero-today");
@@ -107,7 +102,6 @@ describe("HeroStats", () => {
         cashTotalUsd={0}
         holdingsValueUsd={74237}
         summary={summary()}
-        verdictLabel="관망"
       />,
     );
     const cum = screen.getByTestId("hero-cumulative");
@@ -124,7 +118,6 @@ describe("HeroStats", () => {
         summary={summary({
           winRate: { winners: 9, losers: 1, flat: 0, winRatePct: 90 },
         })}
-        verdictLabel="관망"
       />,
     );
     const wr = screen.getByTestId("hero-winrate");
@@ -142,7 +135,6 @@ describe("HeroStats", () => {
         summary={summary({
           winRate: { winners: 5, losers: 5, flat: 0, winRatePct: 50 },
         })}
-        verdictLabel="관망"
       />,
     );
     const wr = screen.getByTestId("hero-winrate");
@@ -158,7 +150,6 @@ describe("HeroStats", () => {
         summary={summary({
           winRate: { winners: 2, losers: 8, flat: 0, winRatePct: 20 },
         })}
-        verdictLabel="주의"
       />,
     );
     const wr = screen.getByTestId("hero-winrate");
@@ -174,7 +165,6 @@ describe("HeroStats", () => {
         summary={summary({
           winRate: { winners: 0, losers: 0, flat: 5, winRatePct: 0 },
         })}
-        verdictLabel="관망"
       />,
     );
     const wr = screen.getByTestId("hero-winrate");
@@ -189,7 +179,6 @@ describe("HeroStats", () => {
         cashTotalUsd={0}
         holdingsValueUsd={0}
         summary={summary()}
-        verdictLabel="관망"
       />,
     );
     const total = screen.getByTestId("hero-total");
@@ -206,7 +195,6 @@ describe("HeroStats provenance (#1185)", () => {
         cashTotalUsd={2000}
         holdingsValueUsd={8000}
         summary={summary()}
-        verdictLabel="관망"
       />,
     );
     const strip = screen.getByTestId("hero-provenance");
@@ -224,7 +212,6 @@ describe("HeroStats provenance (#1185)", () => {
         cashTotalUsd={2000}
         holdingsValueUsd={8000}
         summary={summary({ winRate: { winners: 3, losers: 7, flat: 0, winRatePct: 30 } })}
-        verdictLabel="관망"
       />,
     );
     const winrate = screen.getByTestId("hero-winrate");
@@ -238,7 +225,6 @@ describe("HeroStats provenance (#1185)", () => {
         cashTotalUsd={2000}
         holdingsValueUsd={8000}
         summary={summary({ winRate: { winners: 2, losers: 2, flat: 3, winRatePct: 50 } })}
-        verdictLabel="관망"
       />,
     );
     const winrate = screen.getByTestId("hero-winrate");

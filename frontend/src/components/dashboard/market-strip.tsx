@@ -16,14 +16,11 @@ interface MarketStripProps {
   actualAllocation?: Allocation;
   targetAllocation?: Allocation | null;
   fallbackAllocation?: Allocation | null;
-  verdict: string;
-  verdictTextClass: string;
 }
 
 export function MarketStrip({
   trend, vix, fg, macroScore,
   actualAllocation, targetAllocation, fallbackAllocation,
-  verdict, verdictTextClass,
 }: MarketStripProps) {
   // actual: API always provides this in real responses; mock tests
   // sometimes don't, so default to a sentinel that still renders.
@@ -71,9 +68,8 @@ export function MarketStrip({
           </span>
         </>
       )}
-      <span className={`ml-auto text-[10px] ${verdictTextClass} truncate max-w-[40%]`} title={verdict}>
-        {verdict}
-      </span>
+      {/* verdict 는 VerdictBanner 로 승격 (#1206) — 가장 중요한 문장이 truncate 꼬리에
+          파묻히던 결함 종결. 이 스트립은 시장 사실만 담는다 */}
     </div>
   );
 }
