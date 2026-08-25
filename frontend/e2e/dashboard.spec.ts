@@ -44,9 +44,11 @@ test.describe("Dashboard (with real backend)", () => {
 
 // #1185: 출처 분리 — 히어로 지표는 스냅샷임을 항상 명시하고 판정 원장으로 링크
 test.describe("Hero provenance (#1185)", () => {
+  // main 스코프 필수 (frontend/CLAUDE.md e2e 규칙): dev 스트리밍이 main 밖에 hidden
+  // 복제 노드를 남겨 bare getByTestId 가 strict-mode 위반(2 elements)으로 죽는다.
   test("hero always shows the snapshot provenance strip with a ledger link", async ({ page }) => {
     await page.goto("/", { timeout: 15000 });
-    const strip = page.getByTestId("hero-provenance");
+    const strip = page.getByRole("main").getByTestId("hero-provenance");
     await expect(strip).toBeVisible({ timeout: 15000 });
     await expect(strip).toContainText(HERO.PROVENANCE_SNAPSHOT);
     await expect(strip.locator("a")).toHaveAttribute("href", "/decisions");
@@ -54,7 +56,7 @@ test.describe("Hero provenance (#1185)", () => {
 
   test("win-rate stat carries the not-system-performance scope note", async ({ page }) => {
     await page.goto("/", { timeout: 15000 });
-    const winrate = page.getByTestId("hero-winrate");
+    const winrate = page.getByRole("main").getByTestId("hero-winrate");
     await expect(winrate).toBeVisible({ timeout: 15000 });
     await expect(winrate).toContainText(HERO.WIN_RATE_SCOPE);
   });
