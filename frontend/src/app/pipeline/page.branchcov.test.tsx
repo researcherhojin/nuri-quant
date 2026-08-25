@@ -79,7 +79,7 @@ describe("PipelineNode — node-body branch arms", () => {
   afterEach(() => vi.restoreAllMocks());
 
   const base = (over: Partial<NodeData>): NodeData => ({
-    label: "🔍 Collect",
+    label: "Collect",
     sub: "subtitle",
     status: "ok",
     recordCount: 0,
@@ -383,9 +383,22 @@ describe("PipelinePage — fetch & render branch arms", () => {
     await waitFor(() => expect(screen.getByText("err output here")).toBeInTheDocument());
     expect(screen.getByText("make x")).toBeInTheDocument();
     expect(screen.getByText("boom")).toBeInTheDocument();
-    // 437 fallback bullet
-    const bullets = screen.getAllByText((_c, el) => el?.textContent === "•");
-    expect(bullets.length).toBeGreaterThan(0);
+    // EVENT_ICONS 폴백 — 미지 타입은 중립 Circle 아이콘 (F-003 #1237)
+    expect(screen.getByTestId("event-icon-weird")).toBeInTheDocument();
+  });
+
+  it("StepIcon: 라이브 API 어휘 전체가 고유 아이콘 — Circle 폴백은 미지 스텝만 (F-003 #1237)", async () => {
+    const { StepIcon } = await import("@/app/pipeline/page");
+    // 구 이모지 맵은 analyze/consensus/certify 키가 없어 라이브 노드가 무아이콘이었다.
+    // lucide 는 svg 에 lucide-<name> 클래스를 붙이므로 폴백 여부를 클래스로 잠근다.
+    const LIVE_STEPS = ["collect", "analyze", "consensus", "certify", "track"];
+    for (const step of LIVE_STEPS) {
+      const { container, unmount } = render(<StepIcon stepId={step} />);
+      expect(container.querySelector("svg.lucide-circle"), `${step} 이 Circle 폴백`).toBeNull();
+      unmount();
+    }
+    const { container } = render(<StepIcon stepId="unknown-step" />);
+    expect(container.querySelector("svg.lucide-circle")).not.toBeNull();
   });
 
   it("timeline timestamp coercion throws → formatTimestamp catch (136)", async () => {

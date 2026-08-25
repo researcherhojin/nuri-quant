@@ -11,6 +11,20 @@ import {
   Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import {
+  BarChart3,
+  Bot,
+  Check,
+  CheckCircle2,
+  Circle,
+  ClipboardList,
+  Cog,
+  MapPin,
+  Play,
+  Search,
+  Users,
+  X,
+} from "lucide-react";
 import { PIPELINE as PL } from "@/lib/strings";
 import { summarizePayload } from "./helpers";
 
@@ -89,13 +103,24 @@ const STATUS_GLOW: Record<string, string> = {
   running: "shadow-blue-500/10",
 };
 
-const STEP_ICONS: Record<string, string> = {
-  collect: "\uD83D\uDD0D",
-  validate: "\u2705",
-  classify: "\uD83D\uDCCA",
-  diagnose: "\uD83E\uDD16",
-  recommend: "\uD83D\uDCCB",
-  track: "\uD83D\uDCCD",
+// F-003 (#1237): 이모지 → lucide — 디자인 시스템의 유일한 아이콘 체계 (사이드바와 동일).
+// lucide 의 LucideIcon 별칭은 TS6 JSX 에서 붕괴 사례가 있어 구체 타입(typeof Search)으로.
+type IconComponent = typeof Search;
+
+// 키 2계보: DEFAULT_NODES 어휘(validate/classify/diagnose/recommend) + 라이브 API 어휘
+// (analyze/consensus/certify — README 스테이지 표). 구 이모지 맵은 후자가 없어 라이브
+// 노드가 무아이콘이었다. 아이콘은 사이드바 아이덴티티와 일치 (Signals=BarChart3,
+// Agents=Users, Certification Engine=Cog).
+const STEP_ICONS: Record<string, IconComponent> = {
+  collect: Search,
+  validate: CheckCircle2,
+  classify: BarChart3,
+  diagnose: Bot,
+  recommend: ClipboardList,
+  analyze: BarChart3,
+  consensus: Users,
+  certify: Cog,
+  track: MapPin,
 };
 
 const STEP_HREFS: Record<string, string> = {
@@ -108,10 +133,10 @@ const STEP_HREFS: Record<string, string> = {
 };
 
 // 타임라인 이벤트 아이콘
-const EVENT_ICONS: Record<string, string> = {
-  start: "\u25B6\uFE0F",
-  success: "\u2705",
-  error: "\u274C",
+const EVENT_ICONS: Record<string, IconComponent> = {
+  start: Play,
+  success: Check,
+  error: X,
 };
 
 function formatAge(dateStr: string | null): string {
@@ -129,6 +154,14 @@ function formatAge(dateStr: string | null): string {
   }
 }
 
+// F-003: 이벤트 아이콘 — 뱃지와 같은 intent 색 (success=emerald, error=red, start=blue)
+export function EventIcon({ type }: { type: string }) {
+  const Icon = EVENT_ICONS[type] ?? Circle;
+  const color =
+    type === "success" ? "text-emerald-400" : type === "error" ? "text-red-400" : "text-blue-400";
+  return <Icon size={13} className={`shrink-0 mt-0.5 ${color}`} data-testid={`event-icon-${type}`} />;
+}
+
 function formatTimestamp(iso: string): string {
   try {
     const dt = new Date(iso);
@@ -136,6 +169,12 @@ function formatTimestamp(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+// F-003: 미지의 step 은 중립 원 — 라이브 데이터가 새 step 을 내보내도 깨지지 않게
+export function StepIcon({ stepId }: { stepId: string }) {
+  const Icon = STEP_ICONS[stepId] ?? Circle;
+  return <Icon size={15} className="text-muted-foreground" data-testid={`step-icon-${stepId}`} />;
 }
 
 // === Custom Node Component ===
@@ -159,9 +198,9 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
         className="!bg-muted !border-border !w-2 !h-2"
       />
 
-      {/* 상태 표시 + 라벨 */}
+      {/* 상태 표시 + 라벨 — F-003: stepId 기반 lucide 아이콘 (label 은 제목만) */}
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-base">{data.label.split(" ")[0]}</span>
+        <StepIcon stepId={data.stepId} />
         <div className="flex items-center gap-2">
           {/* 레코드 수 */}
           <span className="text-[10px] text-muted-foreground/70">{data.recordCount.toLocaleString()}</span>
@@ -177,7 +216,7 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
 
       {/* 제목 */}
       <p className="text-sm font-bold text-foreground mb-0.5">
-        {data.label.split(" ").slice(1).join(" ")}
+        {data.label}
       </p>
 
       {/* 부제 + last updated */}
@@ -333,7 +372,7 @@ export default function PipelinePage() {
         type: "pipeline",
         position: { x: i * 300, y: 80 },
         data: {
-          label: `${STEP_ICONS[s.step] || ""} ${s.label}`,
+          label: s.label,
           sub: s.description,
           status: getNodeStatus(s),
           recordCount: s.record_count,
@@ -435,7 +474,7 @@ export default function PipelinePage() {
             <div className="space-y-1.5 max-h-100 overflow-y-auto">
               {timeline.map((ev, i) => (
                 <div key={`${ev.timestamp}-${i}`} className="flex items-start gap-2 text-xs py-1.5 border-b border-border/30 last:border-0">
-                  <span className="shrink-0 text-sm">{EVENT_ICONS[ev.event_type] || "\u2022"}</span>
+                  <EventIcon type={ev.event_type} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-foreground/80 capitalize">{ev.step}</span>
@@ -504,36 +543,36 @@ const DEFAULT_NODES: Node[] = [
     id: "collect",
     type: "pipeline",
     position: { x: 0, y: 80 },
-    data: { label: "\uD83D\uDD0D Collect", sub: "15 collectors + 6 sites", status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } as PipelineNodeData,
+    data: { label: "Collect", sub: "15 collectors + 6 sites", status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } as PipelineNodeData,
   },
   {
     id: "validate",
     type: "pipeline",
     position: { x: 300, y: 80 },
-    data: { label: "\u2705 Validate", sub: "Signal backtest + scorecard", status: "warning", recordCount: 0, lastUpdated: null, stepId: "validate", href: "/signals" } as PipelineNodeData,
+    data: { label: "Validate", sub: "Signal backtest + scorecard", status: "warning", recordCount: 0, lastUpdated: null, stepId: "validate", href: "/signals" } as PipelineNodeData,
   },
   {
     id: "classify",
     type: "pipeline",
     position: { x: 600, y: 80 },
-    data: { label: "\uD83D\uDCCA Classify", sub: "6-regime classifier", status: "warning", recordCount: 0, lastUpdated: null, stepId: "classify", href: "/strategy" } as PipelineNodeData,
+    data: { label: "Classify", sub: "6-regime classifier", status: "warning", recordCount: 0, lastUpdated: null, stepId: "classify", href: "/strategy" } as PipelineNodeData,
   },
   {
     id: "diagnose",
     type: "pipeline",
     position: { x: 900, y: 80 },
-    data: { label: "\uD83E\uDD16 Diagnose", sub: "10 agents consensus", status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } as PipelineNodeData,
+    data: { label: "Diagnose", sub: "10 agents consensus", status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } as PipelineNodeData,
   },
   {
     id: "recommend",
     type: "pipeline",
     position: { x: 1200, y: 80 },
-    data: { label: "\uD83D\uDCCB Recommend", sub: "Buy/sell + price targets", status: "warning", recordCount: 0, lastUpdated: null, stepId: "recommend", href: "/targets" } as PipelineNodeData,
+    data: { label: "Recommend", sub: "Buy/sell + price targets", status: "warning", recordCount: 0, lastUpdated: null, stepId: "recommend", href: "/targets" } as PipelineNodeData,
   },
   {
     id: "track",
     type: "pipeline",
     position: { x: 1500, y: 80 },
-    data: { label: "\uD83D\uDCCD Track", sub: "30/60/90d outcomes", status: "warning", recordCount: 0, lastUpdated: null, stepId: "track", href: "/targets" } as PipelineNodeData,
+    data: { label: "Track", sub: "30/60/90d outcomes", status: "warning", recordCount: 0, lastUpdated: null, stepId: "track", href: "/targets" } as PipelineNodeData,
   },
 ];
