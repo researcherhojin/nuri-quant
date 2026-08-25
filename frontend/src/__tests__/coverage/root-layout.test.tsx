@@ -9,7 +9,6 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 vi.mock("next/font/google", () => ({
-  Geist: () => ({ variable: "--font-geist-sans" }),
   Geist_Mono: () => ({ variable: "--font-geist-mono" }),
 }));
 
