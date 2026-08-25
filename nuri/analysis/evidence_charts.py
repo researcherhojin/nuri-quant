@@ -17,7 +17,18 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from nuri.core.db import query_df
+from nuri.analysis.evidence_data import (
+    detect_portfolio_violations as _detect_portfolio_violations,
+)
+from nuri.analysis.evidence_data import (
+    load_fear_greed_history,
+    load_portfolio_grouped,
+    load_spy_with_sma,
+    load_vix_history,
+)
+from nuri.analysis.evidence_data import (
+    load_signal_performance as _load_signal_performance,
+)
 from nuri.core.timezone import today_kst
 from nuri.quant.regime.classifier import classify_regime
 
@@ -32,29 +43,16 @@ REPORT_DIR = Path(__file__).parent.parent.parent / "data" / "reports"
 
 
 def generate_regime_chart(output_dir: Path, db_path=None) -> Path:
-    """SPY 캔들스틱 + SMA50/200 + 레짐 영역 + VIX 서브플롯."""
-    # SPY 가격 (1년)
-    spy = query_df(
-        "SELECT date, open, high, low, close, volume FROM prices WHERE ticker='SPY' ORDER BY date DESC LIMIT 252",
-        db_path=db_path,
-    )
+    """SPY 캔들스틱 + SMA50/200 + 레짐 영역 + VIX 서브플롯.
+
+    조회·SMA 조립은 evidence_data 공유 함수 — JSON API 와 단일 소스 (#1224).
+    """
+    spy = load_spy_with_sma(db_path=db_path)
     if spy.empty:
         logger.warning("SPY 가격 데이터 없음")
         return output_dir / "regime_evidence.html"
 
-    spy = spy.sort_values("date").reset_index(drop=True)
-    spy["date"] = pd.to_datetime(spy["date"])
-    spy["sma50"] = spy["close"].rolling(50).mean()
-    spy["sma200"] = spy["close"].rolling(200).mean()
-
-    # VIX
-    vix = query_df(
-        "SELECT date, value FROM macro WHERE indicator='vix' ORDER BY date DESC LIMIT 252",
-        db_path=db_path,
-    )
-    if not vix.empty:
-        vix = vix.sort_values("date").reset_index(drop=True)
-        vix["date"] = pd.to_datetime(vix["date"])
+    vix = load_vix_history(db_path=db_path)
 
     # 현재 레짐
     regime = classify_regime(db_path=db_path)
@@ -229,48 +227,21 @@ def _shade_regime_zones(fig: go.Figure, spy: pd.DataFrame) -> None:
 
 
 def generate_portfolio_heatmap(output_dir: Path, db_path=None) -> Path:
-    """포트폴리오 트리맵: 크기=포지션 가치, 색상=손익%."""
-    from nuri.analysis.portfolio import analyze_portfolio
+    """포트폴리오 트리맵: 크기=포지션 가치, 색상=손익%.
 
-    df = analyze_portfolio(db_path=db_path)
+    합산·위반 판정은 evidence_data.load_portfolio_grouped — JSON API 와 단일 소스 (#1224).
+    """
     output_path = output_dir / "portfolio_heatmap.html"
 
-    if df.empty:
+    grouped = load_portfolio_grouped(db_path=db_path)
+    if grouped.empty:
         logger.warning("포트폴리오 데이터 없음")
         _save_empty_chart("포트폴리오 데이터 없음", output_path)
         return output_path
 
-    # 종목별 합산 (다계좌 동일 종목)
-    grouped = (
-        df.groupby("ticker")
-        .agg(
-            {
-                "current_value_usd": "sum",
-                "pnl_pct": "mean",
-                "weight_pct": "sum",
-                "sector": "first",
-            }
-        )
-        .reset_index()
-    )
-
-    # 위반 감지 (config/rules.yaml 기준)
-    from nuri.core.rules import MAX_SINGLE_POSITION, PORTFOLIO_STOP
-
-    max_single = MAX_SINGLE_POSITION  # 0.15 (15%)
-    stop_loss = PORTFOLIO_STOP  # -10
-    violations = []
-    border_colors = []
-
-    for _, row in grouped.iterrows():
-        color = "#ef5350"  # 기본: 빨간 테두리 없음
-        if row["pnl_pct"] <= stop_loss:
-            violations.append(row["ticker"])
-            color = "#ef5350"
-        elif row["weight_pct"] > max_single * 100:
-            violations.append(row["ticker"])
-            color = "#ffd54f"
-        border_colors.append(color)
+    # violation 컬럼 → 주석 목록. (원본의 border_colors 는 Treemap 에 배선된 적 없는
+    # 죽은 코드였다 — 리팩터로 F841 이 발화해 제거, #1228 CI)
+    violations = grouped.loc[grouped["violation"].notna(), "ticker"].tolist()
 
     # 라벨
     labels = [
@@ -343,33 +314,16 @@ def generate_signal_performance_chart(output_dir: Path, db_path=None) -> Path:
     output_path = output_dir / "signal_performance.html"
 
     # 최신 signal_scorecard.csv 찾기
-    scorecard_df = _load_latest_scorecard()
-    if scorecard_df is None or scorecard_df.empty:
+    # 스코어카드+드리프트 조립은 evidence_data — JSON API 와 단일 소스 (#1224)
+    total = _load_signal_performance(db_path=db_path)
+    if total is None or total.empty:
         logger.warning("signal_scorecard.csv 없음 (make validate 먼저 실행)")
         _save_empty_chart("시그널 스코어카드 없음 (make validate 실행 필요)", output_path)
         return output_path
 
-    # 전체 종목 합산 행만 사용 (ticker가 NaN)
-    total = scorecard_df[scorecard_df["ticker"].isna()].copy()
-    if total.empty:
-        total = scorecard_df.head(20)
-
-    total = total.sort_values("win_rate", ascending=True)
-
-    # 드리프트 상태 로드
-    drift_map = _load_drift_map(db_path)
-
     # 색상: 드리프트 상태별
-    colors = []
-    for _, row in total.iterrows():
-        sig_id = row["signal_id"]
-        drift = drift_map.get(sig_id, {}).get("status", "stable")
-        if drift == "critical":
-            colors.append("#ef5350")  # 빨강
-        elif drift == "degrading":
-            colors.append("#ff9800")  # 주황
-        else:
-            colors.append("#42a5f5")  # 파랑 (정상)
+    _drift_color = {"critical": "#ef5350", "degrading": "#ff9800"}
+    colors = [_drift_color.get(d, "#42a5f5") for d in total["drift_status"]]
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -406,7 +360,7 @@ def generate_signal_performance_chart(output_dir: Path, db_path=None) -> Path:
     # critical/degrading 마커
     for _, row in total.iterrows():
         sig_id = row["signal_id"]
-        drift = drift_map.get(sig_id, {}).get("status", "stable")
+        drift = row["drift_status"]
         if drift in ("critical", "degrading"):
             marker_color = "#ef5350" if drift == "critical" else "#ff9800"
             label = "성과 급락" if drift == "critical" else "성과 하락"
@@ -445,17 +399,12 @@ def generate_fear_greed_chart(output_dir: Path, db_path=None) -> Path:
     """90일 공포·탐욕 지수 라인 + 구간 음영."""
     output_path = output_dir / "fear_greed.html"
 
-    fg = query_df(
-        "SELECT date, value FROM macro WHERE indicator='fear_greed' ORDER BY date DESC LIMIT 90",
-        db_path=db_path,
-    )
+    # 조회는 evidence_data 공유 함수 — JSON API 와 단일 소스 (#1224)
+    fg = load_fear_greed_history(db_path=db_path)
     if fg.empty:
         logger.warning("공포·탐욕 데이터 없음")
         _save_empty_chart("공포·탐욕 데이터 없음", output_path)
         return output_path
-
-    fg = fg.sort_values("date").reset_index(drop=True)
-    fg["date"] = pd.to_datetime(fg["date"])
 
     fig = go.Figure()
 
@@ -693,95 +642,8 @@ def generate_all_evidence(db_path=None) -> list[Path]:
 # ═══════════════════════════════════════════════════════
 
 
-def _load_latest_scorecard() -> pd.DataFrame | None:
-    """최신 signal_scorecard.csv 로드."""
-    if not REPORT_DIR.exists():
-        return None
-    for d in sorted(REPORT_DIR.iterdir(), reverse=True):
-        if not d.is_dir():
-            continue
-        csv_path = d / "signal_scorecard.csv"
-        if csv_path.exists():
-            return pd.read_csv(csv_path)
-    return None
-
-
-def _load_drift_map(db_path=None) -> dict[str, dict]:
-    """Learning Memory에서 시그널별 드리프트 상태 로드."""
-    try:
-        from nuri.trading.engine.memory import detect_drift
-
-        drifts = detect_drift(db_path=db_path)
-        return {d.signal_id: {"status": d.status, "drift_pct": d.drift_pct} for d in drifts}
-    except Exception:
-        return {}
-
-
-def _detect_portfolio_violations(db_path=None) -> list[dict]:
-    """포트폴리오 위반 항목 자동 감지 → 매도 근거 리스트."""
-    try:
-        from nuri.analysis.portfolio import analyze_portfolio
-
-        df = analyze_portfolio(db_path=db_path)
-    except Exception:
-        return []
-
-    if df.empty:
-        return []
-
-    from nuri.core.rules import MAX_SINGLE_POSITION, PORTFOLIO_STOP
-
-    violations = []
-    stop_loss_threshold = PORTFOLIO_STOP  # -10%
-    max_weight = MAX_SINGLE_POSITION * 100  # 15.0%
-
-    # 종목별 합산
-    grouped = (
-        df.groupby("ticker")
-        .agg(
-            {
-                "pnl_pct": "mean",
-                "weight_pct": "sum",
-            }
-        )
-        .reset_index()
-    )
-
-    for _, row in grouped.iterrows():
-        ticker = row["ticker"]
-        pnl = row["pnl_pct"]
-        weight = row["weight_pct"]
-
-        # 손절선 위반
-        if pnl <= stop_loss_threshold:
-            violations.append(
-                {
-                    "ticker": ticker,
-                    "type": "stop_loss",
-                    "severity": abs(pnl),
-                    "action": "SELL ALL",
-                    "recovery": f"손실 {abs(pnl):.1f}% → 회복에 {abs(pnl) / (100 + pnl) * 100:.0f}% 상승 필요"
-                    if pnl > -100
-                    else "회복 불가",
-                }
-            )
-
-        # 비중 초과
-        if weight > max_weight:
-            excess = weight - max_weight
-            violations.append(
-                {
-                    "ticker": ticker,
-                    "type": "overweight",
-                    "severity": excess,
-                    "action": "REDUCE",
-                    "recovery": f"비중 {weight:.1f}% → {max_weight:.0f}%까지 리밸런싱 필요",
-                }
-            )
-
-    # 심각도 내림차순 정렬
-    violations.sort(key=lambda v: v["severity"], reverse=True)
-    return violations
+# _load_latest_scorecard / _load_drift_map / _detect_portfolio_violations 는
+# evidence_data 로 이동 (#1224) — 상단 별칭 import 가 기존 patch 시임을 유지한다.
 
 
 def _save_empty_chart(message: str, output_path: Path) -> None:

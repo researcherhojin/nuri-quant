@@ -76,7 +76,10 @@
 | U3 | Decisions | 리스트: 필터·날짜 그룹핑·conf micro-bar·판정일 명시 / 상세: 2컬럼 + 증거 key-value(raw JSON 폐지) + raw float 종결 | 완료 (#1217) |
 | U4a | 주변부 1/2 | ticker(빈 패널 접기·부재 한 줄 스트립)·engine(BLOCKED 다음 행동 링크·빈 상태 한국어 1줄) | 완료 (#1220) |
 | U4b | 주변부 2/2 | scanner(중복 테이블 union 병합 — top-15 ⊂ swing 20 실측)·pipeline(타임라인 payload raw JSON 폐지) + 잔여 빈 상태 스윕 | 완료 (#1221) |
-| U5 | 별도 결정 | evidence matplotlib PNG→네이티브 차트 · Cmd-K · IA 통합(라우트 병합) — 각각 사용자 승인 후 착수 | 보류 |
+| U5a-1 | evidence 데이터 API | Plotly HTML iframe(플랜의 'matplotlib PNG' 문구는 낡음)의 5개 차트 쿼리를 `evidence_data.py` 공유 함수로 추출 + `/api/evidence/data/{id}` JSON — 생성기(리포트 아카이브 유지)와 단일 소스 | 진행 중 (#1224) |
+| U5a-2 | evidence 네이티브 차트 | iframe 5개 → recharts (`--chart-*` 토큰, 캔들→종가 라인 허용) | 대기 (#1225) |
+| U5b | Cmd-K | 라우트 점프 + 티커 검색 팔레트 (경량 자체 구현 우선) | 대기 (#1226) |
+| U5c | IA 통합 | 라우트 병합 — **병합 맵 제안 후 사용자 확인, 그 전 구현 금지** | 대기 (#1227) |
 
 ### 단계별 공통 게이트
 
