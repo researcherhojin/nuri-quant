@@ -51,7 +51,8 @@ export function SystemHealthRail({ health }: { health: Partial<SystemHealth> }) 
       <RailRow
         label={CONTEXT.SIEGE}
         value={`${siege.score ?? 0}%`}
-        sub={siege.certified ? CONTEXT.CERTIFIED : CONTEXT.REJECTED}
+        // #1212: 실패 상태는 상태만 말하지 않는다 — 다음 행동(행 링크 목적지)을 카피로
+        sub={siege.certified ? CONTEXT.CERTIFIED : `${CONTEXT.REJECTED} · ${CONTEXT.CHECK_ENGINE}`}
         href="/engine"
         color={siege.certified ? "text-emerald-400" : "text-red-400"}
       />
@@ -72,7 +73,7 @@ export function SystemHealthRail({ health }: { health: Partial<SystemHealth> }) 
       <RailRow
         label={CONTEXT.FRESHNESS}
         value={freshness.status ?? "—"}
-        sub={freshness.fail_count ? `${freshness.fail_count} fail` : "OK"}
+        sub={freshness.fail_count ? `${freshness.fail_count}건 실패 · ${CONTEXT.CHECK_PIPELINE}` : "OK"}
         href="/pipeline"
         color={freshness.status === "PASS" ? "text-emerald-400" : freshness.status === "WARN" ? "text-amber-400" : "text-red-400"}
       />

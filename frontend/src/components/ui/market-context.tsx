@@ -16,11 +16,7 @@ export interface SystemHealth {
   freshness: { status: string; fail_count?: number; warn_count?: number };
 }
 
-interface MarketContextProps {
-  events: MacroEvent[];
-  health: Partial<SystemHealth>;
-}
-
+// MarketContextProps 는 #1208 컴포넌트 삭제 때 남은 고아 — #1212 에서 제거
 export const categoryStyles: Record<string, { emoji: string; color: string }> = {
   geopolitical_escalation: { emoji: "🔴", color: "text-red-400" },
   geopolitical_de_escalation: { emoji: "🟢", color: "text-emerald-400" },

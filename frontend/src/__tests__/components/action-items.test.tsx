@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { ActionItems } from "@/components/ui/action-items";
 
 vi.mock("next/link", () => ({
@@ -307,5 +308,74 @@ describe("ActionItems", () => {
     const noDecision = { ...urgentItem, decision_id: null, as_of: "2026-08-25" };
     render(<ActionItems urgent={[noDecision]} check={[]} hold={[]} />);
     expect(screen.queryByText(/증거 체인/)).toBeNull();
+  });
+});
+
+// #1212 U2b-4: NEW 배지 + 확인(ack) — per-viewer seen-state.
+// ⚠️ 스토리지는 환경 의존이다: 로컬 Node 26 jsdom 엔 window.localStorage 가
+// 아예 없고(실험적 webstorage 게터가 undefined), CI Node 22 jsdom 은 실동작
+// 스토리지를 제공한다. 후자에서 ack 이 파일 내 다음 테스트로 지속돼 CI 만
+// 깨졌다 (run 32814106230, expected 2 → got 1). 인메모리 스텁 + 매 테스트
+// 초기화로 양쪽 환경을 동일·결정론적으로 만든다.
+describe("NEW badge + ack (#1212)", () => {
+  const asOfItem = { ...urgentItem, as_of: "2026-08-25", decision_id: 7 };
+
+  let ackStore: Record<string, string> = {};
+  const storageStub = {
+    getItem: (k: string) => (k in ackStore ? ackStore[k] : null),
+    setItem: (k: string, v: string) => { ackStore[k] = String(v); },
+    removeItem: (k: string) => { delete ackStore[k]; },
+    clear: () => { ackStore = {}; },
+    key: (i: number) => Object.keys(ackStore)[i] ?? null,
+    get length() { return Object.keys(ackStore).length; },
+  } as Storage;
+  const originalDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
+  beforeEach(() => {
+    ackStore = {};
+    Object.defineProperty(window, "localStorage", { value: storageStub, configurable: true });
+  });
+  afterAll(() => {
+    if (originalDescriptor) Object.defineProperty(window, "localStorage", originalDescriptor);
+    else delete (window as { localStorage?: Storage }).localStorage;
+  });
+
+  it("marks un-acked rows NEW after mount", () => {
+    render(<ActionItems urgent={[asOfItem]} check={[checkItem]} hold={[]} />);
+    expect(screen.getAllByTestId("action-new-badge")).toHaveLength(2);
+  });
+
+  it("확인 in the quick-peek clears the NEW badge for that row only", () => {
+    render(<ActionItems urgent={[asOfItem]} check={[checkItem]} hold={[]} />);
+    const rows = screen.getAllByTestId("action-row");
+    fireEvent.click(rows[0]); // expand urgent row
+    fireEvent.click(screen.getByTestId("action-ack-button"));
+    expect(screen.getAllByTestId("action-new-badge")).toHaveLength(1); // check 행만 남음
+  });
+
+  it("hold chips never carry NEW badges", () => {
+    render(<ActionItems urgent={[]} check={[]} hold={[holdItem]} />);
+    expect(screen.queryByTestId("action-new-badge")).not.toBeInTheDocument();
+  });
+
+  // codex R1 P1 잠금: 같은 ticker|account|action 튜플이 두 버킷에 동시에 떠도
+  // ack identity 가 버킷(priority)까지 포함하므로 한쪽 확인이 다른쪽 NEW 를
+  // 지우지 않는다.
+  it("acking a row in one bucket keeps the same tuple NEW in another bucket", () => {
+    const inUrgent = { ...asOfItem, priority: "urgent" };
+    const inPortfolio = { ...asOfItem, priority: "portfolio" };
+    render(<ActionItems urgent={[inUrgent]} check={[]} hold={[]} portfolio={[inPortfolio]} />);
+    expect(screen.getAllByTestId("action-new-badge")).toHaveLength(2);
+    fireEvent.click(screen.getAllByTestId("action-row")[0]); // urgent 행 확장
+    fireEvent.click(screen.getByTestId("action-ack-button"));
+    expect(screen.getAllByTestId("action-new-badge")).toHaveLength(1);
+  });
+
+  // codex R1 P3 잠금: 서버 렌더(HTML 문자열)에는 NEW 배지가 없어야 한다 —
+  // hydration 게이트(useSyncExternalStore 서버 스냅샷 false)가 렌더 시점
+  // loadAckMap() 직독(서버·클라 마크업 불일치)으로 회귀하면 여기서 잡힌다.
+  // (effect 내 동기 setState 회귀는 lint 가 잡는다 — 이 잠금과 역할 분담.)
+  it("server render carries no NEW badge (hydration gate lock)", () => {
+    const html = renderToString(<ActionItems urgent={[asOfItem]} check={[checkItem]} hold={[]} />);
+    expect(html).not.toContain("action-new-badge");
   });
 });
