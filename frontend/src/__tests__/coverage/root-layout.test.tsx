@@ -18,6 +18,8 @@ vi.mock("next-themes", () => ({
 
 vi.mock("@/components/ui/sidebar", () => ({
   Sidebar: () => <nav data-testid="sidebar">Sidebar</nav>,
+  // #1226: command-palette 가 NAV_GROUPS 를 소비 — mock 에도 존재해야 로드된다
+  NAV_GROUPS: [],
 }));
 
 vi.mock("@/components/ui/live-indicator", () => ({

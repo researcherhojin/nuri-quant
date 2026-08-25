@@ -24,8 +24,8 @@ import {
   Compass,
 } from "lucide-react";
 
-// 팔란티어 스타일 그룹 네비게이션
-const NAV_GROUPS = [
+// 팔란티어 스타일 그룹 네비게이션 — command-palette 도 소비 (#1226 U5b, 단일 소스)
+export const NAV_GROUPS = [
   // 5그룹 재편 (#1200 U1b-2, docs/UX_REDESIGN_PLAN.md §1): 사용 빈도·워크플로 기준.
   // 라우트 삭제·이동 없음 — 그룹핑만 바뀐다. 그룹 라벨은 strings.ts NAV 가 정본.
   {
