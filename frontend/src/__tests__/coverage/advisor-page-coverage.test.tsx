@@ -99,7 +99,8 @@ describe("Ticker page branches", () => {
     const element = await mod.default({ params: Promise.resolve({ symbol: "ZZZZ" }) });
     await act(async () => { render(element); });
     expect(screen.getByText("ZZZZ")).toBeInTheDocument();
-    expect(screen.getByText("No rating data")).toBeInTheDocument();
+    // #1218: 빈 카드 폐지 — 부재는 한 줄 스트립으로
+    expect(screen.getByTestId("ticker-missing-panels")).toBeInTheDocument();
     expect(screen.queryByText("Fundamentals")).not.toBeInTheDocument();
   });
 
