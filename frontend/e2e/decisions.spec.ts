@@ -29,7 +29,8 @@ test.describe("Decisions Page", () => {
     await page.goto("/decisions", { timeout: 15000 });
     // 그룹 라벨은 strings.ts NAV 가 정본 (#1200 U1b-2 재그룹)
     await expect(page.locator(`text=${NAV.DECISIONS}`).first()).toBeVisible();
-    const decisionLink = page.locator("a[href='/decisions']");
+    // #1216: 본문 필터 칩("전체")도 /decisions href 를 가지므로 사이드바(aside nav)로 스코프
+    const decisionLink = page.locator("aside nav a[href='/decisions']");
     await expect(decisionLink).toBeVisible();
     // Active state: 인터랙션 액센트(blue) — emerald 브랜드 액센트 폐지 (스펙 §1)
     await expect(decisionLink).toHaveClass(/text-primary/);
