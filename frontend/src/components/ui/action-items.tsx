@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ACTION } from "@/lib/strings";
+import { formatMoney } from "@/lib/format";
 
 export interface ActionItem {
   ticker: string;
@@ -44,11 +45,8 @@ const priorityStyles = {
 function ActionCard({ item }: { item: ActionItem }) {
   const [expanded, setExpanded] = useState(false);
   const style = priorityStyles[item.priority as keyof typeof priorityStyles] || priorityStyles.hold;
-  const isKr = item.ticker.endsWith(".KS");
-  const fmt = (v: number | null | undefined) => {
-    if (v == null) return "—";
-    return isKr ? `₩${v.toLocaleString()}` : `$${v.toFixed(2)}`;
-  };
+  // 통화 판정은 lib/format 한 곳 (#1197) — 이전 로컬 판정은 .KQ(코스닥)를 놓쳤다
+  const fmt = (v: number | null | undefined) => formatMoney(v, { ticker: item.ticker });
 
   return (
     <div className={`rounded-lg p-3 ${style.bg} border ${style.border}`}>

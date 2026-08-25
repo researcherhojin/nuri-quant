@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
 import { PriceChartLazy as PriceChart } from "@/components/ui/price-chart-lazy";
 import { TICKER_DETAIL as TD } from "@/lib/strings";
+import { formatMoney } from "@/lib/format";
 
 interface AgentVerdict {
   agent_name: string;
@@ -140,7 +141,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
         <h1 className="text-3xl font-bold">{data.name || data.ticker}</h1>
         {data.name && <span className="text-lg text-muted-foreground">{data.ticker}</span>}
         {data.price?.close && (
-          <span className="text-2xl text-foreground/80">${Number(data.price.close).toLocaleString()}</span>
+          <span className="text-2xl text-foreground/80">{formatMoney(Number(data.price.close), { ticker: data.ticker })}</span>
         )}
         {consensus.final_action && (
           <StatusBadge status={consensus.final_action} size="md" />
@@ -294,12 +295,12 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
             <CardContent className="pt-5">
               <p className="text-xs text-muted-foreground mb-3">Price Targets ({targets.stock_type})</p>
               <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between"><span className="text-muted-foreground">{TD.STOP_LOSS}</span><span className="text-red-400">${targets.stop_loss?.toFixed(2)} ({targets.stop_loss_pct}%)</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">{TD.TARGET_1}</span><span className="text-emerald-400">${targets.target_1?.toFixed(2)} (+{targets.target_1_pct}%)</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">{TD.TARGET_2}</span><span className="text-emerald-400">${targets.target_2?.toFixed(2)} (+{targets.target_2_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{TD.STOP_LOSS}</span><span className="text-red-400">{formatMoney(targets.stop_loss, { ticker: data.ticker })} ({targets.stop_loss_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{TD.TARGET_1}</span><span className="text-emerald-400">{formatMoney(targets.target_1, { ticker: data.ticker })} (+{targets.target_1_pct}%)</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{TD.TARGET_2}</span><span className="text-emerald-400">{formatMoney(targets.target_2, { ticker: data.ticker })} (+{targets.target_2_pct}%)</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">{TD.TRAILING}</span><span className="text-muted-foreground">{targets.trailing_stop_pct}% from high</span></div>
                 {targets.analyst_target && (
-                  <div className="flex justify-between"><span className="text-muted-foreground">{TD.ANALYST}</span><span className="text-blue-400">${targets.analyst_target?.toFixed(2)} ({(targets.analyst_upside_pct ?? 0) > 0 ? "+" : ""}{targets.analyst_upside_pct}%)</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{TD.ANALYST}</span><span className="text-blue-400">{formatMoney(targets.analyst_target, { ticker: data.ticker })} ({(targets.analyst_upside_pct ?? 0) > 0 ? "+" : ""}{targets.analyst_upside_pct}%)</span></div>
                 )}
               </div>
             </CardContent>

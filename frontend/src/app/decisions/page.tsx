@@ -6,6 +6,7 @@ import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
+import { formatMoney } from "@/lib/format";
 import { DECISIONS, COMMON } from "@/lib/strings";
 
 // === Types ===
@@ -161,7 +162,7 @@ function DecisionTable({ decisions }: { decisions: Decision[] }) {
                   {d.regime ?? "—"}
                 </td>
                 <td className="px-3 py-2 text-right hidden md:table-cell font-mono text-xs">
-                  {d.entry_price ? `$${d.entry_price.toFixed(2)}` : "—"}
+                  {d.entry_price ? formatMoney(d.entry_price, { ticker: d.ticker }) : "—"}
                 </td>
                 <td className="px-3 py-2 text-right hidden lg:table-cell"><PnlCell value={d.pnl_7d} /></td>
                 <td className="px-3 py-2 text-right"><PnlCell value={d.pnl_30d} /></td>

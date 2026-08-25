@@ -6,6 +6,7 @@
  * SMA 20/50 오버레이 + 거래량 바.
  */
 import { useState } from "react";
+import { formatMoney } from "@/lib/format";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -130,8 +131,9 @@ export function PriceChart({ data, ticker }: PriceChartProps) {
               formatter={(value, name) => {
                 const v = Number(value);
                 if (name === "volume") return [formatVolume(v), "Vol"];
-                if (name === "close") return [`$${v.toFixed(2)}`, "Close"];
-                return [`$${v.toFixed(2)}`, String(name).toUpperCase()];
+                // 통화는 티커로 판정 (#1197 codex P2) — KR 종목 헤더는 ₩ 인데 툴팁만 $ 였다
+                if (name === "close") return [formatMoney(v, { ticker }), "Close"];
+                return [formatMoney(v, { ticker }), String(name).toUpperCase()];
               }}
             />
             <Bar

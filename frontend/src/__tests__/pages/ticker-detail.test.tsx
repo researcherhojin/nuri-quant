@@ -257,6 +257,7 @@ describe("TickerPage", () => {
     const element = await mod.default({ params: Promise.resolve({ symbol: "TEST" }) });
     await act(async () => { render(element); });
 
-    expect(screen.getByText("$100")).toBeInTheDocument();
+    // formatMoney (#1197): USD 는 소수 2자리 고정
+    expect(screen.getByText("$100.00")).toBeInTheDocument();
   });
 });
