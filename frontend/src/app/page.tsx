@@ -27,7 +27,7 @@ import {
 } from "@/components/dashboard/helpers";
 import { MarketStrip } from "@/components/dashboard/market-strip";
 import { EventsStrip } from "@/components/dashboard/events-strip";
-import { HoldingsSection, HOLDINGS_COLLAPSED_LIMIT } from "@/components/dashboard/holdings-section";
+import { HoldingsSection } from "@/components/dashboard/holdings-section";
 import { DashboardFooter, type FooterCondition } from "@/components/dashboard/dashboard-footer";
 
 // 헬퍼 re-export — 기존 소비자(테스트 포함)의 "@/app/page" import 경로 유지 (#1204)
