@@ -414,6 +414,14 @@ describe("PipelinePage — fetch & render branch arms", () => {
     }
     const { container } = render(<StepIcon stepId="unknown-step" />);
     expect(lucideClass(container.querySelector("svg"))).toBe("lucide-circle");
+
+    // EventIcon 도 같은 장식 계약 — 전 타입 aria-hidden (codex #1238 R2)
+    const { EventIcon } = await import("@/app/pipeline/page");
+    for (const type of ["start", "success", "error", "weird"]) {
+      const ev = render(<EventIcon type={type} />);
+      expect(ev.container.querySelector("svg")?.getAttribute("aria-hidden"), `${type} aria-hidden 누락`).toBe("true");
+      ev.unmount();
+    }
   });
 
   it("timeline timestamp coercion throws → formatTimestamp catch (136)", async () => {
