@@ -12,6 +12,7 @@
  */
 import { DataTable } from "./data-table";
 import { StatusBadge } from "./status-badge";
+import { formatMoney } from "@/lib/format";
 
 interface Props {
   variant: string;
@@ -32,10 +33,11 @@ const badge = (v: string) => <StatusBadge status={v} size="sm" />;
 const badgeMd = (v: string) => <StatusBadge status={v} size="md" />;
 const dim = (v: any) => <span className="text-muted-foreground text-xs">{String(v ?? "—")}</span>;
 const money = (v: number) => <span className="text-emerald-400">${v?.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>;
-const price = (v: number) => {
+// 통화는 티커로 판정 (#1197) — 이전의 `v > 10000` 휴리스틱은 ₩8,145 종목을 $ 로,
+// $10,000 초과 미국 종목을 ₩ 로 표기했다. row 가 없는 호출은 USD 로 남는다.
+const price = (v: number, row?: { ticker?: string }) => {
   if (!v) return <span className="text-muted-foreground/70">—</span>;
-  const isKr = v > 10000;
-  return <span>{isKr ? `₩${v.toLocaleString()}` : `$${v.toFixed(2)}`}</span>;
+  return <span>{formatMoney(v, { ticker: row?.ticker })}</span>;
 };
 
 // === 변형별 컬럼 정의 ===
@@ -49,7 +51,7 @@ const VARIANTS: Record<string, any[]> = {
   ],
   scan: [
     { key: "ticker", label: "Ticker", render: ticker },
-    { key: "price", label: "Price", align: "right", render: (v: number) => `$${v?.toFixed(2)}` },
+    { key: "price", label: "Price", align: "right", render: price },
     { key: "change_1d", label: "1D", align: "right", render: pct },
     { key: "change_5d", label: "5D", align: "right", render: pct },
     { key: "rsi", label: "RSI", align: "right", render: num },
@@ -88,10 +90,10 @@ const VARIANTS: Record<string, any[]> = {
     { key: "ticker", label: "Ticker", render: ticker },
     { key: "stock_type", label: "Type", align: "center", render: (v: string) => badge(v === "growth" ? "momentum" : "HOLD") },
     { key: "current_price", label: "현재가", align: "right", render: price },
-    { key: "stop_loss", label: "손절가", align: "right", render: (v: number) => <span className="text-red-400">{price(v)}</span> },
-    { key: "target_1", label: "1차 익절", align: "right", render: (v: number) => <span className="text-emerald-400">{price(v)}</span> },
-    { key: "target_2", label: "2차 익절", align: "right", render: (v: number) => <span className="text-emerald-400">{price(v)}</span> },
-    { key: "analyst_target", label: "목표가", align: "right", render: (v: number) => v ? <span className="text-blue-400">{price(v)}</span> : dim("—") },
+    { key: "stop_loss", label: "손절가", align: "right", render: (v: number, row: any) => <span className="text-red-400">{price(v, row)}</span> },
+    { key: "target_1", label: "1차 익절", align: "right", render: (v: number, row: any) => <span className="text-emerald-400">{price(v, row)}</span> },
+    { key: "target_2", label: "2차 익절", align: "right", render: (v: number, row: any) => <span className="text-emerald-400">{price(v, row)}</span> },
+    { key: "analyst_target", label: "목표가", align: "right", render: (v: number, row: any) => v ? <span className="text-blue-400">{price(v, row)}</span> : dim("—") },
     { key: "take_profit_triggered", label: "시그널", align: "center", render: (_v: string | null, row: any) => {
       if (row.trailing_stop_triggered) return <span className="text-red-400 text-[10px] font-medium">TRAIL STOP</span>;
       if (_v === "target_2") return <span className="text-amber-400 text-[10px] font-medium">TP2 ({row.take_profit_sell_pct}%)</span>;
@@ -101,7 +103,7 @@ const VARIANTS: Record<string, any[]> = {
   ],
   swing: [
     { key: "ticker", label: "Ticker", render: ticker },
-    { key: "price", label: "Price", align: "right", render: (v: number) => `$${v?.toLocaleString()}` },
+    { key: "price", label: "Price", align: "right", render: price },
     { key: "scan_signal", label: "Signal", align: "center", render: badge },
     { key: "scan_score", label: "Score", align: "right" },
     { key: "agent_action", label: "Agent", align: "center", render: badgeMd },

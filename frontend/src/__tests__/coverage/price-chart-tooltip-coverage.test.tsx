@@ -77,6 +77,23 @@ describe("PriceChart — Tooltip formatter", () => {
     expect(sma50Name).toBe("SMA50");
   });
 
+  // #1197 잠금: KR 티커 툴팁은 ₩ — 헤더는 ₩ 인데 툴팁만 $ 였던 혼합 표기 회귀 방지
+  it("formats KRW ticker tooltip prices with ₩", async () => {
+    const { PriceChart } = await import("@/components/ui/price-chart");
+    const data = Array.from({ length: 30 }, (_, i) => ({
+      date: `2024-01-${String((i % 28) + 1).padStart(2, "0")}`,
+      open: 1_120_000, high: 1_140_000, low: 1_100_000, close: 1_128_000 + i,
+      volume: 10_000,
+    }));
+    render(<PriceChart data={data} ticker="402340.KS" />);
+
+    expect(capturedFormatter).not.toBeNull();
+    const [closeLabel] = capturedFormatter!(1_128_000, "close");
+    expect(closeLabel).toBe("₩1,128,000");
+    const [smaLabel] = capturedFormatter!(1_130_000.4, "sma20");
+    expect(smaLabel).toBe("₩1,130,000");
+  });
+
   it("formats volume in K range", async () => {
     const { PriceChart } = await import("@/components/ui/price-chart");
     const data = Array.from({ length: 30 }, (_, i) => ({
