@@ -3,6 +3,7 @@ import { Geist_Mono } from "next/font/google";
 // Pretendard Variable: 한글 UI 본문 (#1195 U1a) — dynamic subset woff2 를 Next 가 번들
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "./globals.css";
+import { CommandPalette } from "@/components/ui/command-palette";
 import { LiveIndicator } from "@/components/ui/live-indicator";
 import { Sidebar } from "@/components/ui/sidebar";
 import { ThemeProvider } from "next-themes";
@@ -26,6 +27,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* Top Bar */}
             <header className="h-11 border-b border-border flex items-center px-6 shrink-0">
               <LiveIndicator />
+              {/* Cmd-K 팔레트 (#1226 U5b) — 트리거 버튼 + fixed 모달 */}
+              <CommandPalette />
             </header>
 
             {/* Page — 컨테이너 캡 (#1202 U1c, UX_REDESIGN_PLAN §2.2): 카드형 콘텐츠가

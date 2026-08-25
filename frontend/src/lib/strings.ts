@@ -255,6 +255,17 @@ export const EVIDENCE = {
   TITLE_SELL: "매도 근거 (위반 항목별 심각도)",
 } as const;
 
+/* ── Command Palette (#1226 U5b) ────────────────────────────── */
+export const PALETTE = {
+  PLACEHOLDER: "페이지 이동 또는 티커 검색…",
+  HINT: "검색",
+  SECTION_ROUTES: "페이지",
+  SECTION_TICKERS: "티커",
+  NO_RESULTS: "결과 없음",
+  FOOTER: "↑↓ 이동 · Enter 열기 · Esc 닫기",
+  ARIA: "커맨드 팔레트",
+} as const;
+
 /* ── Portfolio Page ─────────────────────────────────────────── */
 export const PORTFOLIO = {
   QTY_ERROR: "수량은 0보다 커야 합니다",
