@@ -269,7 +269,26 @@ export const REPORT = {
 /* ── Decisions Page ─────────────────────────────────────────── */
 export const DECISIONS = {
   EMPTY: "아직 기록된 의사결정 없음.",
+  EMPTY_FILTERED: "필터에 해당하는 의사결정 없음.", // #1216: 필터 적용 중 0건은 데이터 부재와 구분
   SUBTITLE: "의사결정 저널 — 모든 BUY/SELL 판단의 근거와 결과를 추적합니다.",
+  // #1216 U3: outcome 필터·라벨. 판정 규칙은 90일 경과 시 pnl_90d
+  // (nuri/trading/engine/decisions.py) — 표기는 그 규칙의 미러다.
+  FILTER_ALL: "전체",
+  OUTCOME_PENDING: "대기",
+  OUTCOME_SUCCESS: "성공",
+  OUTCOME_FAILURE: "실패",
+  OUTCOME_NEUTRAL: "중립",
+  ADJ_DONE: "판정", // 판정 완료 행: "판정 YYYY-MM-DD"
+  ADJ_DUE_PREFIX: "D-", // pending: 판정 예정까지 남은 일수 (D-1 이 마지막 대기일)
+  // 판정일 도래(elapsed>=90)부터는 백엔드가 즉시 판정 가능 — 그날 이후에도 pending 이면
+  // 추적기 미실행/가격 부재다 (codex R1 P1: D-0 을 대기로 두면 규칙과 하루 어긋난다)
+  ADJ_DUE: "판정일 도래 · 미판정",
+  FILTER_OUTCOME_LABEL: "결과",
+  FILTER_ACTION_LABEL: "액션",
+  FILTERED_NOTE_SUFFIX: "건 표시 · 요약 카드는 전체 기준", // 필터 중 전역 요약과의 혼동 방지 (codex R1 P2)
+  RAIL_CONTEXT: "결정 시점 컨텍스트 (frozen)",
+  RAIL_PRICES: "가격 레벨",
+  RAIL_PNL: "실현 결과 (forward PnL %)",
 } as const;
 
 /* ── Pipeline Page ──────────────────────────────────────────── */

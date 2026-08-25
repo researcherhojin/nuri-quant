@@ -7,6 +7,9 @@ import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
+import { formatMoney } from "@/lib/format";
+import { OUTCOME_TAG, adjudicationInfo, fmtFixed, parseDetailKV, todayKst } from "@/app/decisions/helpers";
+import { DECISIONS } from "@/lib/strings";
 
 // === Types ===
 interface Evidence {
@@ -149,8 +152,9 @@ function pnlColor(v: number | null): "green" | "red" | "default" {
   return v > 0 ? "green" : v < 0 ? "red" : "default";
 }
 
-function fmt(v: number | null, suffix = ""): string {
-  return v === null ? "—" : `${v}${suffix}`;
+// #1216 raw float 종결: pnl 은 부호 병기 + 소수 1자리.
+function fmtPnl(v: number | null): string {
+  return v === null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 }
 
 // === Provenance (exported for test coverage of async children — frontend RSC gotcha) ===
@@ -165,6 +169,9 @@ export async function DecisionProvenance({ id }: { id: string }) {
 
   const verdicts = parseVerdicts(d.agent_verdicts);
   const evidence = d.evidence ?? [];
+  // #1216: 판정 상태 — outcome intent 태그 + 판정 기준일/D-n (리스트와 동일 규칙)
+  const outcomeTag = OUTCOME_TAG[d.outcome] ?? OUTCOME_TAG.pending;
+  const adj = adjudicationInfo(d.date, d.outcome, todayKst());
 
   return (
     <div className="space-y-5">
@@ -178,49 +185,64 @@ export async function DecisionProvenance({ id }: { id: string }) {
           <StatusBadge status={d.action} />
           <span className="text-xs text-muted-foreground">#{d.id} · {d.date}</span>
         </div>
-        {d.outcome && <StatusBadge status={d.outcome} />}
+        <span className="inline-flex items-center gap-1.5" data-testid="decision-outcome">
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${outcomeTag.cls}`}>{outcomeTag.label}</span>
+          <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
+            {adj.kind === "adjudicated" && `${DECISIONS.ADJ_DONE} ${adj.adjudicationDate}`}
+            {adj.kind === "waiting" && `${DECISIONS.ADJ_DONE} ${adj.adjudicationDate} (${DECISIONS.ADJ_DUE_PREFIX}${adj.daysLeft})`}
+            {adj.kind === "due" && DECISIONS.ADJ_DUE}
+          </span>
+        </span>
       </div>
 
-      {/* Decision-time context (frozen) */}
+      {/* #1216 2컬럼: 본문(논지·근거·판정·증거) 2/3 + 우측 레일(frozen 컨텍스트) 1/3.
+          lg 미만은 레일이 먼저 오는 세로 스택 — 숫자 컨텍스트를 훑고 본문으로. */}
+      <div className="grid gap-5 lg:grid-cols-3 items-start">
+      <div className="space-y-5 lg:order-2" data-testid="decision-rail">
+
+      {/* Decision-time context (frozen) — #1216: vix 21.040000915… 류 raw float 종결 */}
       <Card className="bg-card border-border">
         <CardContent className="pt-4 pb-3">
-          <p className="text-[10px] text-muted-foreground mb-3">결정 시점 컨텍스트 (frozen)</p>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-            <Metric label="Confidence" value={fmt(d.confidence, "%")} />
+          <p className="text-[10px] text-muted-foreground mb-3">{DECISIONS.RAIL_CONTEXT}</p>
+          <div className="grid grid-cols-3 gap-3">
+            <Metric label="Confidence" value={d.confidence === null ? "—" : `${Math.round(d.confidence)}%`} />
             <Metric label="Agreement" value={d.agreement_rate === null ? "—" : `${Math.round(d.agreement_rate * 100)}%`} />
             <Metric label="Regime" value={d.regime ?? "—"} />
-            <Metric label="VIX" value={fmt(d.vix)} />
-            <Metric label="Fear&Greed" value={fmt(d.fear_greed)} />
-            <Metric label="Macro" value={fmt(d.macro_score)} />
+            <Metric label="VIX" value={fmtFixed(d.vix)} />
+            <Metric label="Fear&Greed" value={d.fear_greed === null ? "—" : String(Math.round(d.fear_greed))} />
+            <Metric label="Macro" value={fmtFixed(d.macro_score)} />
           </div>
         </CardContent>
       </Card>
 
-      {/* Price ladder */}
+      {/* Price ladder — #1216: formatMoney 로 ₩/$ 판정 (.KS 204000 → ₩204,000) */}
       <Card className="bg-card border-border">
         <CardContent className="pt-4 pb-3">
-          <p className="text-[10px] text-muted-foreground mb-3">가격 레벨</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Metric label="Entry" value={fmt(d.entry_price)} />
-            <Metric label="Stop" value={fmt(d.stop_loss)} color="red" />
-            <Metric label="Target 1" value={fmt(d.target_1)} color="green" />
-            <Metric label="Target 2" value={fmt(d.target_2)} color="green" />
+          <p className="text-[10px] text-muted-foreground mb-3">{DECISIONS.RAIL_PRICES}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Metric label="Entry" value={formatMoney(d.entry_price, { ticker: d.ticker })} />
+            <Metric label="Stop" value={formatMoney(d.stop_loss, { ticker: d.ticker })} color="red" />
+            <Metric label="Target 1" value={formatMoney(d.target_1, { ticker: d.ticker })} color="green" />
+            <Metric label="Target 2" value={formatMoney(d.target_2, { ticker: d.ticker })} color="green" />
           </div>
         </CardContent>
       </Card>
 
-      {/* Outcome (forward PnL) */}
+      {/* Outcome (forward PnL) — 부호 병기 + 소수 1자리 */}
       <Card className="bg-card border-border">
         <CardContent className="pt-4 pb-3">
-          <p className="text-[10px] text-muted-foreground mb-3">실현 결과 (forward PnL %)</p>
+          <p className="text-[10px] text-muted-foreground mb-3">{DECISIONS.RAIL_PNL}</p>
           <div className="grid grid-cols-4 gap-3">
-            <Metric label="7d" value={fmt(d.pnl_7d, "%")} color={pnlColor(d.pnl_7d)} />
-            <Metric label="30d" value={fmt(d.pnl_30d, "%")} color={pnlColor(d.pnl_30d)} />
-            <Metric label="60d" value={fmt(d.pnl_60d, "%")} color={pnlColor(d.pnl_60d)} />
-            <Metric label="90d" value={fmt(d.pnl_90d, "%")} color={pnlColor(d.pnl_90d)} />
+            <Metric label="7d" value={fmtPnl(d.pnl_7d)} color={pnlColor(d.pnl_7d)} />
+            <Metric label="30d" value={fmtPnl(d.pnl_30d)} color={pnlColor(d.pnl_30d)} />
+            <Metric label="60d" value={fmtPnl(d.pnl_60d)} color={pnlColor(d.pnl_60d)} />
+            <Metric label="90d" value={fmtPnl(d.pnl_90d)} color={pnlColor(d.pnl_90d)} />
           </div>
         </CardContent>
       </Card>
+      </div>
+
+      <div className="space-y-5 lg:col-span-2 lg:order-1">
 
       {/* Thesis — 상승/하락 논리 병기 (#1083). 없으면 카드 자체를 숨기지 않고
           "아직 없음" 을 보여준다: 논지가 비어 있다는 사실이 곧 판단 근거의 부재라
@@ -363,13 +385,29 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   <span className="w-32 shrink-0 text-muted-foreground">{e.source_type}/{e.source_key}</span>
                   {e.action && <StatusBadge status={e.action} />}
                   {e.confidence !== null && <span className="text-foreground/60 shrink-0">{Math.round(e.confidence)}%</span>}
-                  {e.detail && <span className="truncate text-foreground/70 font-mono text-[10px]">{e.detail}</span>}
+                  {e.detail && (() => {
+                    // #1216 raw JSON 폐지: detail 이 JSON 객체면 key-value, 아니면 기존 raw
+                    const kv = parseDetailKV(e.detail);
+                    if (!kv) return <span className="truncate text-foreground/70 font-mono text-[10px]">{e.detail}</span>;
+                    return (
+                      <span className="flex flex-wrap gap-x-3 gap-y-0.5 min-w-0" data-testid="evidence-kv">
+                        {kv.map(([k, v]) => (
+                          <span key={k} className="text-[10px] font-mono whitespace-nowrap">
+                            <span className="text-muted-foreground/70">{k}</span>{" "}
+                            <span className="text-foreground/80 tabular-nums">{v}</span>
+                          </span>
+                        ))}
+                      </span>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+      </div>
+      </div>
     </div>
   );
 }

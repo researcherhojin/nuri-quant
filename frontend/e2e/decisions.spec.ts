@@ -15,21 +15,24 @@ test.describe("Decisions Page", () => {
     await expect(page.locator("text=HIT RATE").first()).toBeVisible();
   });
 
-  test("shows empty state or decision table", async ({ page }) => {
+  test("shows empty state or grouped decision rows", async ({ page }) => {
     await page.goto("/decisions", { timeout: 15000 });
-    await page.waitForTimeout(2000);
-    const body = await page.textContent("body");
-    // Either shows "make consensus" empty state or actual decision rows
-    const hasEmptyState = body?.includes("make consensus");
-    const hasDecisions = body?.includes("Outcome") || body?.includes("pending");
-    expect(hasEmptyState || hasDecisions).toBe(true);
+    // #1216: 본문 텍스트 휴리스틱("Outcome"/"pending")은 U3 리스트에 더는 없다 —
+    // testid 로 실제 구조를 단정한다 (행이 있으면 날짜 그룹 헤더도 반드시 있다).
+    const rows = page.locator('[data-testid="decisions-row"]');
+    const empty = page.locator("text=make consensus");
+    await expect(rows.first().or(empty.first())).toBeVisible({ timeout: 10000 });
+    if ((await rows.count()) > 0) {
+      await expect(page.locator('[data-testid="decisions-date-header"]').first()).toBeVisible();
+    }
   });
 
   test("sidebar has Decisions nav under 의사결정 group", async ({ page }) => {
     await page.goto("/decisions", { timeout: 15000 });
     // 그룹 라벨은 strings.ts NAV 가 정본 (#1200 U1b-2 재그룹)
     await expect(page.locator(`text=${NAV.DECISIONS}`).first()).toBeVisible();
-    const decisionLink = page.locator("a[href='/decisions']");
+    // #1216: 본문 필터 칩("전체")도 /decisions href 를 가지므로 사이드바(aside nav)로 스코프
+    const decisionLink = page.locator("aside nav a[href='/decisions']");
     await expect(decisionLink).toBeVisible();
     // Active state: 인터랙션 액센트(blue) — emerald 브랜드 액센트 폐지 (스펙 §1)
     await expect(decisionLink).toHaveClass(/text-primary/);
