@@ -265,7 +265,10 @@ class TestLoadDriftMapSwallow:
             "nuri.trading.engine.memory.detect_drift",
             side_effect=RuntimeError("memory db missing"),
         ):
-            out = ec._load_drift_map(db_path=db_path)
+            # #1224: evidence_data 로 이동 (evidence_charts 별칭은 미사용이라 ruff 가 제거)
+            from nuri.analysis.evidence_data import load_drift_map
+
+            out = load_drift_map(db_path=db_path)
         assert out == {}
 
 

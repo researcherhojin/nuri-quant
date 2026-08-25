@@ -11,15 +11,18 @@ Plotly HTML 생성기(`evidence_charts.py`, 리포트 아카이브용)와 대시
 """
 
 import logging
+import re
 from pathlib import Path
 
 import pandas as pd
 
 from nuri.core.db import query_df
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
 REPORT_DIR = Path(__file__).parent.parent.parent / "data" / "reports"
+_DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 # ═══ 1. 레짐: SPY + SMA + VIX ══════════════════════════════════
@@ -99,12 +102,19 @@ def load_portfolio_grouped(db_path=None) -> pd.DataFrame:
 
 
 def load_latest_scorecard() -> pd.DataFrame | None:
-    """최신 signal_scorecard.csv 로드 (evidence_charts 에서 이동, #1224)."""
+    """최신 signal_scorecard.csv 로드 (evidence_charts 에서 이동, #1224).
+
+    `data/reports/` 에는 비-날짜 디렉터리(briefs/postmarket)와 잘못 생성된
+    **미래 날짜** 디렉터리가 섞여 있다 — routes/evidence.py `_find_latest_report_dir`
+    와 같은 이유로, ISO 날짜이면서 오늘 이하인 디렉터리만 후보로 본다. 원본
+    (전체 역순 정렬)은 미래 디렉터리에 scorecard 가 생기면 그걸 집었다
+    (codex #1228 P1).
+    """
     if not REPORT_DIR.exists():
         return None
-    for d in sorted(REPORT_DIR.iterdir(), reverse=True):
-        if not d.is_dir():
-            continue
+    today = today_kst()
+    dated = [d for d in REPORT_DIR.iterdir() if d.is_dir() and _DATE_DIR_RE.match(d.name) and d.name <= today]
+    for d in sorted(dated, key=lambda p: p.name, reverse=True):
         csv_path = d / "signal_scorecard.csv"
         if csv_path.exists():
             return pd.read_csv(csv_path)

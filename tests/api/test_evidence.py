@@ -380,6 +380,16 @@ class TestEvidenceDataEndpoint:
             "confidence": 0.8,
         }
 
+    def test_regime_vix_only_returns_fully_empty(self, _client, db_path):
+        """SPY 부재 + VIX 존재 → 원 생성기와 동일하게 차트 전체 부재 (codex #1228 P2)."""
+        upsert_macro(
+            [{"indicator": "vix", "date": "2026-08-21", "value": 18.0, "source": "t"}],
+            db_path=db_path,
+        )
+        r = _client.get("/api/evidence/data/regime")
+        assert r.status_code == 200
+        assert r.json() == {"spy": [], "vix": [], "regime": None, "count": 0}
+
     def test_regime_classifier_returns_none(self, _client, db_path, monkeypatch):
         import nuri.quant.regime.classifier as clf_mod
 

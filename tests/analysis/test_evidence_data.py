@@ -85,10 +85,37 @@ class TestLoadMacroHistories:
 class TestLoadLatestScorecard:
     def test_skips_non_dir_and_returns_none_when_no_scorecard(self, tmp_path, monkeypatch):
         monkeypatch.setattr(ed, "REPORT_DIR", tmp_path)
-        (tmp_path / "stray.txt").write_text("x")  # 파일 엔트리 → continue
+        (tmp_path / "stray.txt").write_text("x")  # 파일 엔트리 → 후보 제외
         (tmp_path / "2026-08-21").mkdir()  # scorecard 없는 날짜 dir
         # 루프 소진 → None
         assert ed.load_latest_scorecard() is None
+
+    def test_future_and_non_date_dirs_are_ignored(self, tmp_path, monkeypatch):
+        """미래/비-날짜 디렉터리의 scorecard 를 집지 않는다 (codex #1228 P1).
+
+        routes/evidence.py `_find_latest_report_dir` 가 고친 것과 같은 부류 —
+        실제 `data/reports/` 에 미래 날짜·postmarket 디렉터리가 섞여 있다.
+        """
+        from nuri.core.timezone import today_kst
+
+        monkeypatch.setattr(ed, "REPORT_DIR", tmp_path)
+        today = today_kst()
+        year = int(today[:4])
+
+        def _seed(name: str, win_rate: float) -> None:
+            d = tmp_path / name
+            d.mkdir()
+            pd.DataFrame([{"signal_id": "s", "ticker": None, "win_rate": win_rate}]).to_csv(
+                d / "signal_scorecard.csv", index=False
+            )
+
+        _seed(today, 0.6)
+        _seed(f"{year + 1}-09-14", 0.1)  # 미래 — 역순 정렬 1등이지만 제외돼야 한다
+        _seed("postmarket", 0.2)  # 비-날짜 — 사전순으로 '20xx-' 보다 뒤
+
+        result = ed.load_latest_scorecard()
+        assert result is not None
+        assert result["win_rate"].iloc[0] == 0.6
 
 
 class TestLoadPortfolioGrouped:

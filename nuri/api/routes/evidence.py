@@ -113,24 +113,27 @@ def get_evidence_data(chart_id: str):
 
     if chart_id == "regime":
         spy = ed.load_spy_with_sma()
+        if spy.empty:
+            # 원 생성기와 동일 — SPY 없으면 차트 자체가 없다. VIX 만 있는
+            # 부분 payload 를 주지 않는다 (codex #1228 P2)
+            return {"spy": [], "vix": [], "regime": None, "count": 0}
         vix = ed.load_vix_history()
         regime = None
-        if not spy.empty:
-            from nuri.quant.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import classify_regime
 
-            state = classify_regime()
-            if state:
-                regime = {
-                    "regime": state.regime,
-                    "trend": state.trend,
-                    "volatility": state.volatility,
-                    "confidence": state.confidence,
-                }
+        state = classify_regime()
+        if state:
+            regime = {
+                "regime": state.regime,
+                "trend": state.trend,
+                "volatility": state.volatility,
+                "confidence": state.confidence,
+            }
         return {
-            "spy": _records(spy) if not spy.empty else [],
+            "spy": _records(spy),
             "vix": _records(vix) if not vix.empty else [],
             "regime": regime,
-            "count": 0 if spy.empty else len(spy),
+            "count": len(spy),
         }
 
     if chart_id == "portfolio_heatmap":

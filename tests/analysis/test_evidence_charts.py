@@ -244,9 +244,10 @@ class TestEvidenceChartsExtended:
         assert df is None or isinstance(df, pd.DataFrame)
 
     def test_load_drift_map(self, db_path):
-        from nuri.analysis.evidence_charts import _load_drift_map
+        # #1224: evidence_data 로 이동 (evidence_charts 별칭은 미사용이라 ruff 가 제거)
+        from nuri.analysis.evidence_data import load_drift_map
 
-        result = _load_drift_map(db_path=db_path)
+        result = load_drift_map(db_path=db_path)
         assert isinstance(result, dict)
 
     def test_detect_violations_empty(self, db_path, monkeypatch):
