@@ -47,6 +47,8 @@ const fullData = {
   insider_trades: [
     { insider_name: "Tim Cook CEO", transaction_type: "sale", value: 5000000, shares: 25000 },
     { insider_name: "Jeff Williams COO", transaction_type: "purchase", value: null, shares: 10000 },
+    // #1218: value·shares 모두 부재 — "undefined sh" 결함 회귀 방지 arm
+    { insider_name: "Ghost Filer", transaction_type: "purchase", value: null, shares: null },
   ],
   superinvestors: [
     { investor: "Buffett", portfolio_pct: 48.5 },
@@ -122,8 +124,10 @@ describe("TickerPage", () => {
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 
+    // #1218: value·shares 부재 행은 "undefined sh" 가 아니라 — 로
+    expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
     expect(screen.getByText("Goldman")).toBeInTheDocument();
-    expect(screen.getByText("$200")).toBeInTheDocument();
+    expect(screen.getByText("$200.00")).toBeInTheDocument(); // formatMoney 경유 (#1218)
     expect(screen.getByText("JPM")).toBeInTheDocument();
   });
 
@@ -211,9 +215,29 @@ describe("TickerPage", () => {
     await act(async () => { render(element); });
 
     expect(screen.getAllByText("NEW").length).toBeGreaterThan(0);
-    expect(screen.getByText("No rating data")).toBeInTheDocument();
-    expect(screen.getByText("No earnings data")).toBeInTheDocument();
-    expect(screen.getByText("No insider data")).toBeInTheDocument();
+    // #1218: 빈 데이터는 빈 카드 3개가 아니라 부재 스트립 한 줄로 병합된다
+    expect(screen.queryByText("No rating data")).not.toBeInTheDocument();
+    const strip = screen.getByTestId("ticker-missing-panels");
+    expect(strip.textContent).toContain("미수집 데이터:");
+    expect(strip.textContent).toContain("Analyst Ratings");
+  });
+
+  // #1218: KR 티커의 부재 패널은 소스 미지원이 정상 — 힌트 병기 (US 는 위 테스트에서 부재 확인)
+  it("adds the KR source-unsupported hint to the missing strip for .KS tickers", async () => {
+    mockFetchAPI.mockImplementation((url: string) => {
+      if (url.includes("/prices")) return Promise.resolve({ prices: [] });
+      if (url.includes("/targets/")) return Promise.reject(new Error("404"));
+      if (url.includes("/external/")) return Promise.reject(new Error("404"));
+      return Promise.resolve({
+        ticker: "005930.KS", price: {}, consensus: {},
+        analyst_ratings: [], earnings: [], insider_trades: [],
+        superinvestors: [], fundamentals: null,
+      });
+    });
+    const mod = await import("@/app/ticker/[symbol]/page");
+    const element = await mod.default({ params: Promise.resolve({ symbol: "005930.KS" }) });
+    await act(async () => { render(element); });
+    expect(screen.getByTestId("ticker-missing-panels").textContent).toContain("KR 종목");
   });
 
   it("handles null earnings fields (partial branch coverage)", async () => {

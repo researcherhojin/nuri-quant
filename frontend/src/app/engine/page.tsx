@@ -1,7 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
+import Link from "next/link";
 import { fetchAPI } from "@/lib/api";
+import { ENGINE } from "@/lib/strings";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -67,6 +69,16 @@ export async function GateSection() {
                 size="md"
               />
             </div>
+            {/* #1218: BLOCKED 는 상태 나열로 끝내지 않는다 — 다음 행동 (phase id = pipeline step id) */}
+            {!result.ready && (
+              <Link
+                href="/pipeline"
+                className="inline-block mb-2 text-[11px] text-primary hover:underline"
+                data-testid={`gate-next-action-${phase}`}
+              >
+                {ENGINE.NEXT_ACTION_PREFIX} {phase} {ENGINE.NEXT_ACTION_RUN}
+              </Link>
+            )}
             <div className="w-full bg-muted rounded-full h-1.5 mb-2">
               <div
                 className={`h-1.5 rounded-full transition-all ${
@@ -114,7 +126,7 @@ export async function ConflictsSection() {
           </div>
         </div>
         {data.conflicts.length === 0 ? (
-          <p className="text-xs text-muted-foreground/70 py-3 text-center">No signal conflicts detected</p>
+          <p className="text-xs text-muted-foreground/70 py-3 text-center">{ENGINE.CONFLICTS_EMPTY}</p>
         ) : (
           <div className="space-y-2">
             {data.conflicts.map((c, i) => (
@@ -161,7 +173,7 @@ export async function MemorySection() {
           </div>
         </div>
         {data.drifts.length === 0 ? (
-          <p className="text-xs text-muted-foreground/70 py-3 text-center">No drift data (run: make validate first)</p>
+          <p className="text-xs text-muted-foreground/70 py-3 text-center">{ENGINE.DRIFT_EMPTY}</p>
         ) : (
           <ClientTable variant="drift" data={data.drifts} compact />
         )}

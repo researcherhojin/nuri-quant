@@ -100,7 +100,7 @@ describe("engine/page sections (coverage)", () => {
 
     render(await ConflictsSection());
 
-    expect(screen.getByText("No signal conflicts detected")).toBeInTheDocument();
+    expect(screen.getByText("시그널 충돌 없음")).toBeInTheDocument();
   });
 
   it("GateSection renders ready/blocked phases with conditions", async () => {
@@ -150,7 +150,7 @@ describe("engine/page sections (coverage)", () => {
 
     render(await MemorySection());
 
-    expect(screen.getByText("No drift data (run: make validate first)")).toBeInTheDocument();
+    expect(screen.getByText("드리프트 데이터 없음 — make validate 실행 필요")).toBeInTheDocument();
   });
 
   it("MemorySection renders the drift table when drifts exist", async () => {
