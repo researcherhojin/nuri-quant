@@ -136,11 +136,15 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
 
   // #1218 빈 패널 접기: 데이터 없는 카드는 렌더하지 않고 (KR 티커에서 빈 패널
   // 3개가 ~200px 씩 차지하던 감사 결함) 부재 목록을 한 줄로 병합한다.
+  // fundamentals 는 행 존재가 아니라 **표시할 필드 존재**로 판정한다 (codex R1 P2:
+  // API 는 최신 행을 통째로 반환하고 카드 내부는 필드별 truthy 가드라, 전부 NULL/0
+  // 인 행은 빈 셸을 만든다).
+  const fundHasContent = !!fund && [fund.pe_ratio, fund.roe, fund.revenue_growth, fund.debt_to_equity, fund.profit_margin, fund.beta].some(Boolean);
   const missingPanels = ([
     ratings.length === 0 ? TD.PANEL_RATINGS : null,
     earningsFormatted.length === 0 ? TD.PANEL_EARNINGS : null,
     insiders.length === 0 ? TD.PANEL_INSIDERS : null,
-    !fund ? TD.PANEL_FUNDAMENTALS : null,
+    !fundHasContent ? TD.PANEL_FUNDAMENTALS : null,
     supers.length === 0 ? TD.PANEL_SMART_MONEY : null,
     !targets || targets.error ? TD.PANEL_TARGETS : null,
     !external || external.count === 0 ? TD.PANEL_EXTERNAL : null,
@@ -266,8 +270,8 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
         </Card>
         )}
 
-        {/* Fundamentals */}
-        {fund && (
+        {/* Fundamentals — 표시할 필드가 하나라도 있을 때만 (#1218 P2) */}
+        {fundHasContent && fund && (
           <Card className="bg-card border-border">
             <CardContent className="pt-5">
               <p className="text-xs text-muted-foreground mb-3">Fundamentals</p>

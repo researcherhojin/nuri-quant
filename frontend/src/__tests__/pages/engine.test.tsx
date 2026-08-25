@@ -123,6 +123,24 @@ describe("EnginePage", () => {
     expect(screen.queryByTestId("gate-next-action-collect")).not.toBeInTheDocument(); // ready:true
   });
 
+  // codex R1 P1/P3: gate 어휘(regime)와 step 어휘(classify)는 다르다 — 실제 /api/gate
+  // vocabulary 로 잠근다. regime 게이트가 막힌 화면이 실행 불가한 "regime" 을 광고하면 회귀.
+  it("maps the regime gate to the runnable classify step, generic copy for unknown phases", async () => {
+    const blocked = (phase: string) => ({
+      phase, total: 1, passed: 0, score: 0, ready: false,
+      conditions: [{ id: `${phase}-1`, phase, description: "d", passed: false, detail: "x" }],
+    });
+    mockFetchAPI.mockResolvedValue({ regime: blocked("regime"), mystery: blocked("mystery") });
+    const mod = await import("@/app/engine/page");
+    render(await mod.GateSection());
+    // codex R2: 부분 일치·리터럴 부정은 잠금이 아니다 — 카피 전문을 정확 일치로 잠근다
+    // (regime 광고 회귀는 어떤 형태든 여기서 깨진다)
+    const regime = screen.getByTestId("gate-next-action-regime");
+    expect(regime.textContent).toBe("다음 행동: classify 파이프라인에서 실행 →");
+    const unknown = screen.getByTestId("gate-next-action-mystery");
+    expect(unknown.textContent).toBe("다음 행동: 파이프라인 확인 →");
+  });
+
   it("renders READY badge for passing gate", async () => {
     mockFetchAPI.mockResolvedValueOnce(mockGateData);
     // Dynamically test the GateSection by importing the module

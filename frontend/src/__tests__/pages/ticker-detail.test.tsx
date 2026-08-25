@@ -222,6 +222,26 @@ describe("TickerPage", () => {
     expect(strip.textContent).toContain("Analyst Ratings");
   });
 
+  // codex R1 P2: fundamentals 행이 존재해도 표시 필드가 전부 NULL/0 이면 빈 셸이 아니라
+  // 부재 스트립으로 접힌다.
+  it("folds an all-null fundamentals row into the missing strip instead of an empty card", async () => {
+    mockFetchAPI.mockImplementation((url: string) => {
+      if (url.includes("/prices")) return Promise.resolve({ prices: [] });
+      if (url.includes("/targets/")) return Promise.reject(new Error("404"));
+      if (url.includes("/external/")) return Promise.reject(new Error("404"));
+      return Promise.resolve({
+        ticker: "NEW", price: {}, consensus: {},
+        analyst_ratings: [], earnings: [], insider_trades: [], superinvestors: [],
+        fundamentals: { pe_ratio: null, roe: 0, revenue_growth: null, debt_to_equity: null, profit_margin: null, beta: null },
+      });
+    });
+    const mod = await import("@/app/ticker/[symbol]/page");
+    const element = await mod.default({ params: Promise.resolve({ symbol: "NEW" }) });
+    await act(async () => { render(element); });
+    expect(screen.queryByText("Fundamentals")).not.toBeInTheDocument();
+    expect(screen.getByTestId("ticker-missing-panels").textContent).toContain("Fundamentals");
+  });
+
   // #1218: KR 티커의 부재 패널은 소스 미지원이 정상 — 힌트 병기 (US 는 위 테스트에서 부재 확인)
   it("adds the KR source-unsupported hint to the missing strip for .KS tickers", async () => {
     mockFetchAPI.mockImplementation((url: string) => {

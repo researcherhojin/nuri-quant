@@ -52,6 +52,18 @@ interface Drift {
   detail: string;
 }
 
+// #1218 codex R1 P1: gate phase 어휘와 pipeline step 어휘는 1:1 이 아니다 —
+// gate = collect/validate/regime/recommend (nuri/trading/engine/gate.py check_all_gates),
+// steps = collect/validate/classify/diagnose/recommend/track (nuri/api/routes/pipeline.py
+// VALID_STEPS). regime 게이트(spy/prices 신선도)가 막는 실행 단계는 classify 다.
+// 미지 phase 는 실행 불가능한 이름을 광고하지 않고 일반 카피로 폴백.
+const GATE_PHASE_TO_STEP: Record<string, string> = {
+  collect: "collect",
+  validate: "validate",
+  regime: "classify",
+  recommend: "recommend",
+};
+
 // === Gate Section ===
 export async function GateSection() {
   const gates = await fetchAPI<Record<string, GateResult>>("/api/gate");
@@ -69,14 +81,16 @@ export async function GateSection() {
                 size="md"
               />
             </div>
-            {/* #1218: BLOCKED 는 상태 나열로 끝내지 않는다 — 다음 행동 (phase id = pipeline step id) */}
+            {/* #1218: BLOCKED 는 상태 나열로 끝내지 않는다 — 실행 가능한 스텝명으로 안내 */}
             {!result.ready && (
               <Link
                 href="/pipeline"
                 className="inline-block mb-2 text-[11px] text-primary hover:underline"
                 data-testid={`gate-next-action-${phase}`}
               >
-                {ENGINE.NEXT_ACTION_PREFIX} {phase} {ENGINE.NEXT_ACTION_RUN}
+                {GATE_PHASE_TO_STEP[phase]
+                  ? `${ENGINE.NEXT_ACTION_PREFIX} ${GATE_PHASE_TO_STEP[phase]} ${ENGINE.NEXT_ACTION_RUN}`
+                  : `${ENGINE.NEXT_ACTION_PREFIX} ${ENGINE.NEXT_ACTION_GENERIC}`}
               </Link>
             )}
             <div className="w-full bg-muted rounded-full h-1.5 mb-2">

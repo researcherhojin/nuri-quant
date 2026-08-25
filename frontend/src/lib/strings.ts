@@ -331,6 +331,7 @@ export const ENGINE = {
   // BLOCKED 게이트의 다음 행동 (phase id = pipeline step id, /api/gate 실측)
   NEXT_ACTION_PREFIX: "다음 행동:",
   NEXT_ACTION_RUN: "파이프라인에서 실행 →",
+  NEXT_ACTION_GENERIC: "파이프라인 확인 →", // 매핑 밖 phase — 실행 불가 이름을 광고하지 않는다
 } as const;
 
 /* ── Explore Page ───────────────────────────────────────────── */
