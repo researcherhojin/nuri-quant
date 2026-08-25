@@ -111,7 +111,7 @@ flowchart TB
 | Stage | Scheduled as | Reads | Writes |
 |-------|--------------|-------|--------|
 | **Collect** | 26 jobs, `*/5` during market hours down to weekly | external APIs | `prices` · `fundamentals` · `macro` · `news` |
-| **Analyze** | **no job** — 22 per-ticker signals · 10 regimes (6 base + 4 special) · 4-factor composite are computed when a report or an endpoint asks | `prices` · `macro` | nothing (`news.sentiment` aside) |
+| **Analyze** | **no job** — 22 signals (20 per-ticker actionable + 2 market-wide shadow) · 10 regimes (6 base + 4 special) · 4-factor composite are computed when a report or an endpoint asks | `prices` · `macro` | nothing (`news.sentiment` aside) |
 | **Consensus** | `consensus`, `5 7 * * *` | `recommendations.outcome_30d` (for weights) · collector tables | `recommendations` with `agent_verdicts` JSON |
 | **Certify** | **no job of its own** — `record_decisions` runs inside the consensus job; the `certifications` table is written by `premarket_brief` (`0 9 * * 1-5`) | consensus result **in memory** | `decisions` · `agent_decisions` · `certifications` |
 | **Track** | 4 jobs — `decision_pnl` `0 7`, `recommendation_outcomes` `2 7`, `alpha_tracking` `0 17`, `agent_accuracy` weekly | `recommendations` · `prices` | `outcome_{30,60,90}d` · `decision_outcomes` · `strategy_memory` |
@@ -126,7 +126,7 @@ The factor composite (`nuri/quant/factors/composite.py`) blends four terms — m
 
 That composite is then one input among several to the BUY-candidate scorer (`config/buy_signals.yaml`), which also weighs 5-day momentum, RSI, and 30-day breakout. Two further channels — cross-sectional relative strength and dollar-volume surge — are wired into that same formula at **weight 0**: they are computed and surfaced as evidence but contribute nothing to the score, and they stay that way until a walk-forward test justifies promoting them.
 
-Two signal registries exist and are deliberately not merged. The 22 in `config/signals.yaml` are **per-ticker and actionable**; `nuri/quant/validation/market_signals.py` holds 2 **market-wide shadow** signals (yield-curve inversion, HY-OAS widening) that carry `actionable: false` and surface as warnings only.
+`config/signals.yaml` holds 22 entries of two deliberately unmerged kinds. 20 are **per-ticker and actionable** — the backtest detector registry. The other 2 — yield-curve inversion and HY-OAS widening — are **market-wide shadow** signals: their metadata carries `actionable: false`, their detectors live in `nuri/quant/validation/market_signals.py`, and they surface as warnings only.
 
 Detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Certification spec: [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md).
 
@@ -186,13 +186,15 @@ The dashboard at `:3000/` answers **"what should I do today?"** — Action-First
 
 | Section | Purpose |
 |---------|---------|
-| **Hero** | 4-stat ribbon — 총 자산 · 오늘 P&L · 누적 수익률 · 승률 |
+| **Hero** | 4-stat ribbon — 총 자산 · 오늘 P&L · 누적 수익률 · 승률, with a provenance strip labeling every number as a **portfolio snapshot** (holdings + latest close, unrealized) as distinct from the adjudication ledger |
 | **System Health** | Certification score · Regime · Macro score · Data freshness |
-| **Action Items** | 🔴 즉시 실행 (stop-loss, Certification veto) · 🟡 오늘 확인 (take-profit, squeeze) · 🟦 리밸런스 · ✅ 유지 |
+| **Action Items** | 🔴 즉시 실행 (stop-loss, Certification veto) · 🟡 오늘 확인 (take-profit, squeeze) · 🟦 리밸런스 · ✅ 유지 — each card links its **evidence chain** (`/decisions/{id}`, dated `as_of`) when a same-date decision record exists |
 | **Macro Events** | Deduplicated high-impact headlines with 한국어 categories |
 | **Composition** | Donut chart — 자산 / 섹터 / 계좌 tabs |
 | **Holdings table** | Sorted by `positionPct` desc · top 8 + expand |
 | **Opportunity Explorer** | Top 3 non-portfolio tickers · pros / cons / verdict |
+
+The dashboard's one-line verdict is gated on data freshness: if any input it depends on (prices, VIX, Fear & Greed, market rates, monthly macro, consensus — the `verdict_gate` list in [`config/freshness.yaml`](config/freshness.yaml)) has gone FAIL-stale, the verdict declines to advise and names the stale inputs instead of rendering a judgment on old data.
 
 Korean tickers display as names (삼성전자) instead of codes (005930.KS). 18 routes total.
 
@@ -268,21 +270,21 @@ Production binds the API to `127.0.0.1`. The dashboard proxy is the only public 
 
 ## Project Stats
 
-Measured against `main` on 2026-07-29. Counts marked ✅ are verified on every PR by `make verify-doc-counts`, which fails CI when a number here drifts from the code.
+Measured against `main` on 2026-08-25. Counts marked ✅ are verified on every PR by `make verify-doc-counts`, which fails CI when a number here drifts from the code.
 
 | Metric | Value | |
 |--------|-------|---|
 | **Backend tests** | 7,521 collected across 345 files | |
 | **Backend statement coverage** | 99% — 17 of 23,311 statements uncovered across 9 files, 81 partial branches (`make ci-cov`, 2026-08-14; Codecov `backend` flag is the CI ground truth) | |
-| **Frontend tests** | 1,449 across 127 files — 100% statement coverage | |
-| **E2E tests** | 57 across 8 Playwright specs | |
+| **Frontend tests** | 1,461 across 127 files — 100% statement coverage | |
+| **E2E tests** | 59 across 8 Playwright specs | |
 | **Pipeline stages** | 5 as a data model; 2 of them (analyze, certify) have no scheduler job of their own | |
 | **Data collectors** | 27 collectors (BaseCollector pattern) | ✅ |
 | **Specialist agents** | 10 (consensus vote, weights sum to 1.0) | |
 | **Actor fleet** | 15 registered actors + 3 infrastructure helpers | |
 | **Scheduler jobs** | 57 cron entries (APScheduler, in-process) | |
 | **Strategy regimes** | 10 regimes (6 base + 4 special) | ✅ |
-| **Trading signals** | 22 per-ticker (actionable) + 2 market-wide (shadow) | |
+| **Trading signals** | 22 — 20 per-ticker (actionable) + 2 market-wide (shadow) | |
 | **API endpoints** | 72 (FastAPI on `:8001`) | |
 | **Frontend routes** | 18 (Next.js on `:3000`) | |
 | **DB tables** | SQLite WAL · 58 tables (56 forward-only migrations) | ✅ |
@@ -294,6 +296,8 @@ Measured against `main` on 2026-07-29. Counts marked ✅ are verified on every P
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — detailed code / DB layout, schema, env vars, CI/CD
 - [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md) — 3-D certification spec
 - [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) — KIS (Korea Investment & Securities) Open API
+- [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — session-efficiency scripts, pre-push checklist
+- [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) — fresh-clone end-to-end verification (quarterly / onboarding)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow, PR discipline
 - [`SECURITY.md`](SECURITY.md) — security policy, LLM egress rules
 - [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) — agent guides (Claude Code / Cursor / Copilot)

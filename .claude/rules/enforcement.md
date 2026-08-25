@@ -26,7 +26,7 @@ Hook config: `.claude/settings.json`. CI workflows: `.github/workflows/main-ci-c
 
 **CI gates** (every PR): `privacy-scan`, `pr-discipline` (commits ≤ 3 — escape `scope-expand-approved` label), test regression + Codecov 1% relative, `security-scan` (Trivy CRITICAL), `Doc Count Drift Check` (`make verify-doc-counts`).
 
-**게이트에 없는 것 — Playwright e2e.** `frontend/e2e/` 8 파일 57 테스트는 CI 워크플로 · Makefile · `scripts/verify/` 어디에도 배선돼 있지 않다. `frontend/package.json` 의 `test:e2e` 스크립트로만 존재한다. 위 "dead gate" 항목들과 성격이 다르다 — 저건 게이트가 있는데 죽은 것이고, 이건 **처음부터 게이트가 아니다.** 결과: `410d385`(2026-05-04)가 `CONTEXT.SIEGE` 값을 rename 하면서 vitest 는 같이 고치고 e2e 는 두었는데, **3.5개월간 아무 신호가 없었다**(2026-08-20 수동 실행에서 발견, #1118). 배선은 별건이다 — 런타임·안정성 예산이 필요하고, 스위트가 자기 부하로 백엔드를 포화시키는 문제(#1119)가 선행 조건이다. 그 전까지는 대시보드를 건드리면 손으로 돌릴 것. 상세는 `frontend/CLAUDE.md` "E2E (Playwright)".
+**게이트에 없는 것 — Playwright e2e.** `frontend/e2e/` 8 파일 59 테스트는 CI 워크플로 · Makefile · `scripts/verify/` 어디에도 배선돼 있지 않다. `frontend/package.json` 의 `test:e2e` 스크립트로만 존재한다. 위 "dead gate" 항목들과 성격이 다르다 — 저건 게이트가 있는데 죽은 것이고, 이건 **처음부터 게이트가 아니다.** 결과: `410d385`(2026-05-04)가 `CONTEXT.SIEGE` 값을 rename 하면서 vitest 는 같이 고치고 e2e 는 두었는데, **3.5개월간 아무 신호가 없었다**(2026-08-20 수동 실행에서 발견, #1118). 배선은 별건이다 — 런타임·안정성 예산이 필요하고, 스위트가 자기 부하로 백엔드를 포화시키는 문제(#1119)가 선행 조건이다. 그 전까지는 대시보드를 건드리면 손으로 돌릴 것. 상세는 `frontend/CLAUDE.md` "E2E (Playwright)".
 
 ## .claude/ 4-Layer Architecture (STRATEGY §5.10)
 
