@@ -396,12 +396,28 @@ export const REGIME_GUIDE: Record<string, string> = {
 
 /* ── Common ─────────────────────────────────────────────────── */
 export const COMMON = {
-  API_ERROR: "API 연결 실패. make api 실행 필요.",
+  // `make api` 지시는 prod(launchd)에서 틀린 조치라 카피에서 제거 (design-review F-002)
+  API_ERROR: "API 연결에 실패했습니다 — 백엔드 서버 상태를 확인하세요.",
   // #1119: 슬롯 포화 503 은 의도된 shed — 페이지 전체 에러가 아니라 섹션 1줄로 강등
   DEGRADED: "데이터를 불러오지 못했습니다 — 잠시 후 새로고침하세요.",
   COUNT_SUFFIX: "건",
   UNIT_SUFFIX: "개",
   RUN_REQUIRED: "실행 필요",
+} as const;
+
+/* ── 에러 카피 (design-review F-002) ────────────────────────── */
+// 원문 에러 문자열(영어 transport 텍스트)을 사용자 카피로 렌더하지 않는다.
+// 사용자 카피 = 무엇이 실패했나 + 다음 행동. 원문은 title/콘솔로 강등.
+export const ERRORS = {
+  API_TITLE: "API 연결 실패",
+  API_BODY: "백엔드 API가 응답하지 않습니다 — 서버 상태를 확인한 뒤 다시 시도하세요.",
+  GENERIC_TITLE: "문제가 발생했습니다",
+  RETRY: "다시 시도",
+  REBALANCE_FAILED: "리밸런싱 계산에 실패했습니다 — 데이터 수집 후 다시 시도하세요.",
+  SCORECARD_FAILED: "스코어카드를 불러오지 못했습니다 — make validate 실행 후 표시됩니다.",
+  REPORT_FAILED: "리포트 생성에 실패했습니다 — Ollama·백엔드 상태를 확인한 뒤 다시 시도하세요.",
+  COVERAGE_FAILED: "Coverage 확인 실패 — 파이프라인 상태를 확인하세요.",
+  RUN_FAILED_PREFIX: "실행 실패: ",
 } as const;
 
 /* ── Action-First Dashboard ────────────────────────────────── */

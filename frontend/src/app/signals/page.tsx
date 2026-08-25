@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
+import { ERRORS } from "@/lib/strings";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 
@@ -21,7 +22,8 @@ function pfColor(v: number) {
 
 async function ScorecardSection() {
   const data = await fetchAPI<{ scorecard: Scorecard[]; date: string }>("/api/scorecard");
-  if ("error" in data) return <p className="text-red-400 text-sm">{String((data as { error: unknown }).error)}</p>;
+  // 원문 에러 문자열 노출 금지 (design-review F-002)
+  if ("error" in data) return <p className="text-red-400 text-sm">{ERRORS.SCORECARD_FAILED}</p>;
   const sorted = [...data.scorecard].sort((a, b) => b.profit_factor - a.profit_factor);
 
   return (

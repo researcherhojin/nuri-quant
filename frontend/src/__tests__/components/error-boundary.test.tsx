@@ -2,34 +2,33 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ErrorPage from "@/app/error";
 import GlobalError from "@/app/global-error";
+import { ERRORS } from "@/lib/strings";
 
 function makeError(message: string): Error & { digest?: string } {
   return Object.assign(new Error(message), { digest: undefined });
 }
 
 describe("Error (route-level error boundary)", () => {
-  it("shows 'API connection failed' for API errors", () => {
+  it("shows the API error title for API errors", () => {
     const error = makeError("API /api/dashboard: 500");
     const reset = vi.fn();
     render(<ErrorPage error={error} reset={reset} />);
-    expect(screen.getByText("API connection failed")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Backend API is not responding/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(ERRORS.API_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(ERRORS.API_BODY)).toBeInTheDocument();
   });
 
-  it("shows 'API connection failed' for fetch errors", () => {
+  it("shows the API error title for fetch errors", () => {
     const error = makeError("fetch failed: network error");
     const reset = vi.fn();
     render(<ErrorPage error={error} reset={reset} />);
-    expect(screen.getByText("API connection failed")).toBeInTheDocument();
+    expect(screen.getByText(ERRORS.API_TITLE)).toBeInTheDocument();
   });
 
-  it("shows 'Something went wrong' for non-API errors", () => {
+  it("shows the generic title for non-API errors", () => {
     const error = makeError("Cannot read properties of undefined");
     const reset = vi.fn();
     render(<ErrorPage error={error} reset={reset} />);
-    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText(ERRORS.GENERIC_TITLE)).toBeInTheDocument();
     expect(
       screen.getByText("Cannot read properties of undefined")
     ).toBeInTheDocument();
@@ -46,22 +45,23 @@ describe("Error (route-level error boundary)", () => {
     const error = makeError("API /api/broken: 500");
     const reset = vi.fn();
     render(<ErrorPage error={error} reset={reset} />);
-    // Should show the help message, not the raw error
-    expect(screen.getByText(/make sure the server is running/i)).toBeInTheDocument();
+    // 원문 에러 대신 다음 행동을 담은 카피가 뜬다 (design-review F-002)
+    expect(screen.getByText(ERRORS.API_BODY)).toBeInTheDocument();
+    expect(screen.queryByText("API /api/broken: 500")).toBeNull();
   });
 
-  it("renders Retry button", () => {
+  it("renders the retry button", () => {
     const error = makeError("Some error");
     const reset = vi.fn();
     render(<ErrorPage error={error} reset={reset} />);
-    expect(screen.getByText("Retry")).toBeInTheDocument();
+    expect(screen.getByText(ERRORS.RETRY)).toBeInTheDocument();
   });
 
-  it("calls reset when Retry button is clicked", () => {
+  it("calls reset when the retry button is clicked", () => {
     const error = makeError("Some error");
     const reset = vi.fn();
     render(<ErrorPage error={error} reset={reset} />);
-    fireEvent.click(screen.getByText("Retry"));
+    fireEvent.click(screen.getByText(ERRORS.RETRY));
     expect(reset).toHaveBeenCalledTimes(1);
   });
 
@@ -81,25 +81,25 @@ describe("GlobalError (layout-level error boundary)", () => {
     expect(screen.getByText("Layout crashed")).toBeInTheDocument();
   });
 
-  it("shows 'Something went wrong' heading", () => {
+  it("shows the generic title heading", () => {
     const error = makeError("any error");
     const reset = vi.fn();
     render(<GlobalError error={error} reset={reset} />);
-    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText(ERRORS.GENERIC_TITLE)).toBeInTheDocument();
   });
 
-  it("renders 'Try again' button", () => {
+  it("renders the retry button", () => {
     const error = makeError("any error");
     const reset = vi.fn();
     render(<GlobalError error={error} reset={reset} />);
-    expect(screen.getByText("Try again")).toBeInTheDocument();
+    expect(screen.getByText(ERRORS.RETRY)).toBeInTheDocument();
   });
 
-  it("calls reset when 'Try again' is clicked", () => {
+  it("calls reset when the retry button is clicked", () => {
     const error = makeError("any error");
     const reset = vi.fn();
     render(<GlobalError error={error} reset={reset} />);
-    fireEvent.click(screen.getByText("Try again"));
+    fireEvent.click(screen.getByText(ERRORS.RETRY));
     expect(reset).toHaveBeenCalledTimes(1);
   });
 

@@ -25,7 +25,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { PIPELINE as PL } from "@/lib/strings";
+import { ERRORS, PIPELINE as PL } from "@/lib/strings";
 import { summarizePayload } from "./helpers";
 
 // === Types ===
@@ -337,7 +337,8 @@ export default function PipelinePage() {
       .then((r) => r.json())
       .then((data) => {
         if (data.error) {
-          alert(data.error);
+          // 운영자 진단 컨텍스트라 원문을 유지하되, 무엇의 실패인지 한국어로 선행 (F-002)
+          alert(`${ERRORS.RUN_FAILED_PREFIX}${data.error}`);
           setRunningSteps((prev) => {
             const next = new Set(prev);
             next.delete(stepId);
