@@ -241,14 +241,17 @@ export const ADVISOR = {
 
 /* ── Evidence Page ──────────────────────────────────────────── */
 export const EVIDENCE = {
-  NOT_GENERATED: "차트 미생성.",
-  MAKE_EVIDENCE: "make evidence",
-  MAKE_FULLSCAN: "make full-scan",
-  RUN_REQUIRED: "실행 필요",
-  OR: "또는",
   LOAD_FAILED: "증거 차트 로드 실패. API 서버 확인 필요.",
-  NO_CHARTS: "증거 차트 없음.",
   SUBTITLE: "투자 결정 근거 시각화 — 레짐, 포트폴리오, 시그널, 공포·탐욕, 매도 근거",
+  // #1225: iframe → 네이티브 차트. 데이터는 DB 라이브 — 빈 상태는 1줄 룰.
+  NO_DATA: "데이터 없음 — 파이프라인 수집 후 표시됩니다.",
+  NO_VIOLATIONS: "위반 없음 — 손절선·비중 한도 모두 정상.",
+  LIVE: "LIVE",
+  TITLE_REGIME: "레짐 증거 (SPY + SMA + VIX)",
+  TITLE_HEATMAP: "포트폴리오 히트맵",
+  TITLE_SIGNALS: "시그널 성과 (승률 + PF + drift)",
+  TITLE_FEAR_GREED: "공포·탐욕 지수 90일 추이",
+  TITLE_SELL: "매도 근거 (위반 항목별 심각도)",
 } as const;
 
 /* ── Portfolio Page ─────────────────────────────────────────── */
