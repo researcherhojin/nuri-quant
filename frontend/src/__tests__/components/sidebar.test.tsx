@@ -21,16 +21,6 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-// Mock next-themes
-const mockSetTheme = vi.fn();
-const mockTheme = vi.fn().mockReturnValue("dark");
-vi.mock("next-themes", () => ({
-  useTheme: () => ({
-    theme: mockTheme(),
-    setTheme: mockSetTheme,
-  }),
-}));
-
 // Mock lucide-react icons
 vi.mock("lucide-react", () => {
   type IconProps = { size?: number; className?: string; [key: string]: unknown };
@@ -66,7 +56,6 @@ describe("Sidebar", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockPathname.mockReturnValue("/");
-    mockTheme.mockReturnValue("dark");
 
     // Mock fetch for SIEGE status
     global.fetch = vi.fn().mockResolvedValue({
@@ -156,27 +145,11 @@ describe("Sidebar", () => {
     });
   });
 
-  it("toggles theme from dark to light", async () => {
+  // dark-only 잠금 (#1195 U1a codex P2): 토글이 되살아나면 zinc 램프 재매핑과
+  // 시맨틱 토큰이 라이트 전환 시 혼합 테마를 만든다 — sidebar.coverage.test.tsx 참조.
+  it("does not render a theme toggle (dark-only product)", () => {
     render(<Sidebar />);
-
-    // Wait for mounted state
-    await waitFor(() => {
-      expect(screen.getByText("Light Mode")).toBeInTheDocument();
-    });
-
-    const themeBtn = screen.getByText("Light Mode").closest("button");
-    fireEvent.click(themeBtn!);
-
-    expect(mockSetTheme).toHaveBeenCalledWith("light");
-  });
-
-  it("shows Dark Mode label when theme is light", async () => {
-    mockTheme.mockReturnValue("light");
-
-    render(<Sidebar />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Dark Mode")).toBeInTheDocument();
-    });
+    expect(screen.queryByText("Light Mode")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dark Mode")).not.toBeInTheDocument();
   });
 });

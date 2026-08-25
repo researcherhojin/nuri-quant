@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
 import { Sidebar } from "./sidebar";
 
 // next/navigation: usePathname is the only nav hook the component uses.
@@ -7,19 +7,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/",
 }));
 
-// next-themes: capture setTheme so we can assert the collapsed-mode toggle fires.
-const setThemeMock = vi.fn();
-let currentTheme = "dark";
-vi.mock("next-themes", () => ({
-  useTheme: () => ({ theme: currentTheme, setTheme: setThemeMock }),
-}));
-
-describe("Sidebar — collapsed theme toggle (line 147 coverage)", () => {
-  beforeEach(() => {
-    setThemeMock.mockClear();
-    currentTheme = "dark";
-  });
-
+describe("Sidebar — dark-only footer (#1195 U1a)", () => {
   it("renders the expanded sidebar by default", () => {
     render(<Sidebar />);
     // Expanded shows the full brand label.
@@ -27,47 +15,18 @@ describe("Sidebar — collapsed theme toggle (line 147 coverage)", () => {
     expect(screen.getByText("System Online")).toBeInTheDocument();
   });
 
-  it("fires setTheme from the EXPANDED theme button (covers line 163)", () => {
+  // 잠금 (codex P2): 제품은 dark-only (frontend/CLAUDE.md). 테마 토글이 되살아나면
+  // zinc 램프 재매핑(@theme 전역)과 시맨틱 토큰이 라이트 전환 시 혼합 테마를 만든다 —
+  // 토글을 복원하려면 램프를 테마별 var 로 스코프하는 작업이 선행되어야 한다.
+  it("does not render a theme toggle in either sidebar state", () => {
     render(<Sidebar />);
+    expect(screen.queryByText("Light Mode")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dark Mode")).not.toBeInTheDocument();
 
-    // Expanded (default) + mounted: the theme toggle renders the "Light Mode"
-    // label (lines 162-169). Clicking it runs line 163's onClick.
-    const themeButton = screen.getByText("Light Mode").closest("button");
-    fireEvent.click(themeButton!);
-
-    expect(setThemeMock).toHaveBeenCalledWith("light");
-  });
-
-  it("fires setTheme from the COLLAPSED theme button (covers line 147)", () => {
-    render(<Sidebar />);
-
-    // 1. Collapse the sidebar. The collapse toggle is the first <button>
-    //    inside the logo header. After clicking, collapsed === true so the
-    //    collapsed branch (lines 143-158) renders.
+    // 접힌 상태에서도 토글 없음 (첫 버튼 = collapse 토글).
     const buttons = screen.getAllByRole("button");
-    // First button = collapse/expand toggle.
-    fireEvent.click(buttons[0]);
-
-    // 2. In collapsed + mounted state the theme toggle (line 146-152) renders
-    //    with title "Light mode" (because currentTheme === "dark").
-    const themeButton = screen.getByTitle("Light mode");
-    fireEvent.click(themeButton);
-
-    // 3. Line 147: setTheme(isDark ? "light" : "dark") -> "light".
-    expect(setThemeMock).toHaveBeenCalledWith("light");
-  });
-
-  it("collapsed theme button toggles to dark when current theme is light", () => {
-    currentTheme = "light";
-    render(<Sidebar />);
-
-    const buttons = screen.getAllByRole("button");
-    fireEvent.click(buttons[0]); // collapse
-
-    // Light theme -> title "Dark mode".
-    const themeButton = screen.getByTitle("Dark mode");
-    fireEvent.click(themeButton);
-
-    expect(setThemeMock).toHaveBeenCalledWith("dark");
+    buttons[0].click();
+    expect(screen.queryByTitle("Light mode")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Dark mode")).not.toBeInTheDocument();
   });
 });

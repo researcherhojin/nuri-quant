@@ -1,16 +1,10 @@
 /**
- * Sidebar — collapsed state + page highlight branches (light theme).
- * Lines 79-81: collapsed SIEGE badge.
- * Lines 162-164: collapsed SIEGE display.
- * Line 174: theme toggle + collapsed text.
- *
+ * Sidebar — collapsed state + page highlight branches.
  * Split from coverage-push-4.test.tsx (lines 537-650).
- *
- * NOTE: kept separate from sidebar-coverage.test.tsx (push-2 origin uses dark theme).
- * Different next-themes mock value drives different branches.
+ * 테마 토글/라이트 분기는 #1195 U1a 에서 제거 — dark-only 잠금만 남음.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 vi.mock("next/navigation", () => ({
@@ -24,10 +18,6 @@ vi.mock("next/link", () => ({
   default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
 }));
 
-vi.mock("next-themes", () => ({
-  useTheme: () => ({ theme: "light", setTheme: vi.fn() }),
-  ThemeProvider: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-}));
 
 describe("Sidebar — collapsed state and branch coverage", () => {
   beforeEach(() => {
@@ -75,22 +65,14 @@ describe("Sidebar — collapsed state and branch coverage", () => {
     }
   });
 
-  it("renders theme toggle in light mode", async () => {
+  // 테마 토글 제거 (#1195 U1a codex P2) — dark-only 잠금은 sidebar.coverage.test.tsx.
+  it("renders no theme toggle after dark-only lockdown", async () => {
     const { Sidebar } = await import("@/components/ui/sidebar");
     await act(async () => { render(<Sidebar />); });
     await act(async () => { await new Promise(r => setTimeout(r, 300)); });
 
-    // Light mode: should show "Dark Mode" label (since isDark = false)
-    await waitFor(() => {
-      const text = document.body.textContent || "";
-      expect(text).toContain("Dark Mode");
-    });
-
-    // Click theme toggle
-    const themeBtn = screen.queryByTitle("Dark mode");
-    if (themeBtn) {
-      await act(async () => { fireEvent.click(themeBtn); });
-    }
+    expect(document.body.textContent || "").not.toContain("Dark Mode");
+    expect(screen.queryByTitle("Dark mode")).toBeNull();
   });
 
   it("shows nav group labels and active page highlighting", async () => {

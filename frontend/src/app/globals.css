@@ -7,9 +7,11 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  /* Pretendard: 한글 글리프 포함 (#1195 U1a). 기존 var(--font-sans) 자기참조는 무효라
+     Tailwind 기본 스택으로 폴백되고 있었음 — Geist Sans 는 한글이 없어 어차피 시스템 폴백 */
+  --font-sans: "Pretendard Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: "Pretendard Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,13 +41,30 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  /* Evidence Terminal (#1195 U1a): radius 4px 전역 — xl/2xl(카드)도 4px 로 고정.
+     Blueprint $pt-border-radius 관례. 큰 라운드는 컨슈머 문법이라 폐지 */
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Blueprint 다크 램프로 zinc 스케일 재매핑 (#1195 U1a, palantir/blueprint colors.ts).
+     유틸리티 클래스 이름은 그대로 두고 값만 블루틴트(hue ~215) 그레이로 —
+     하드코딩된 zinc-* ~326곳이 이 블록 하나로 전환된다. 원복 = 이 블록 삭제 */
+  --color-zinc-50: #F6F7F9;
+  --color-zinc-100: #EDEFF2;
+  --color-zinc-200: #DCE0E5;
+  --color-zinc-300: #C5CBD3;
+  --color-zinc-400: #ABB3BF;
+  --color-zinc-500: #8F99A8;
+  --color-zinc-600: #5F6B7C;
+  --color-zinc-700: #404854;
+  --color-zinc-800: #2F343C;
+  --color-zinc-900: #1C2127;
+  --color-zinc-950: #111418;
 }
 
 :root {
@@ -72,7 +91,7 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --radius: 0.25rem; /* Evidence Terminal (#1195 U1a): 4px 전역 */
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -83,38 +102,42 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/* Evidence Terminal 다크 토큰 (#1195 U1a) — Blueprint 다크 램프.
+   대비 실측(WCAG): text/card 15.1:1 · muted/card 7.66:1 · 링크 8.2:1 — 전부 AAA.
+   가드레일(codex 2R): 이 대비를 낮추는 "무드 맞춤" 변경 금지. 의미색(P&L green=이익)은
+   semantic 유틸리티(emerald/red)가 담당하며 여기서 건드리지 않는다 */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #111418;
+  --foreground: #F6F7F9;
+  --card: #1C2127;
+  --card-foreground: #F6F7F9;
+  --popover: #2F343C;
+  --popover-foreground: #F6F7F9;
+  --primary: #4C90F0;
+  --primary-foreground: #111418;
+  --secondary: #252A31;
+  --secondary-foreground: #F6F7F9;
+  --muted: #252A31;
+  --muted-foreground: #ABB3BF;
+  --accent: #252A31;
+  --accent-foreground: #F6F7F9;
+  --destructive: #E76A6E;
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 15%);
+  --ring: #4C90F0;
+  --chart-1: #4C90F0;
+  --chart-2: #3FA6DA;
+  --chart-3: #43BF4D;
+  --chart-4: #F0B726;
+  --chart-5: #9179F2;
+  --sidebar: #1C2127;
+  --sidebar-foreground: #F6F7F9;
+  --sidebar-primary: #4C90F0;
+  --sidebar-primary-foreground: #F6F7F9;
+  --sidebar-accent: #252A31;
+  --sidebar-accent-foreground: #F6F7F9;
+  --sidebar-border: rgb(255 255 255 / 10%);
+  --sidebar-ring: #4C90F0;
 }
 
 @layer base {
@@ -126,6 +149,8 @@
   }
   html {
     @apply font-sans;
+    /* 숫자 컬럼 정렬 (#1195 U1a) — 표·지표 숫자가 자릿수와 무관하게 같은 폭 */
+    font-variant-numeric: tabular-nums;
   }
 
   /* DataTable 컴포넌트가 테이블 스타일 관리 */
