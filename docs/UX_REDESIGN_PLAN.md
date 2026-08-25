@@ -79,7 +79,7 @@
 | U5a-1 | evidence 데이터 API | Plotly HTML iframe(플랜의 'matplotlib PNG' 문구는 낡음)의 5개 차트 쿼리를 `evidence_data.py` 공유 함수로 추출 + `/api/evidence/data/{id}` JSON — 생성기(리포트 아카이브 유지)와 단일 소스 | 완료 (#1224 → PR #1228) |
 | U5a-2 | evidence 네이티브 차트 | iframe 5개 → recharts (`--chart-*` 토큰, 캔들→종가 라인 허용) | 완료 (#1225 → PR #1229) |
 | U5b | Cmd-K | 라우트 점프 + 티커 검색 팔레트 (경량 자체 구현 우선) | 완료 (#1226 → PR #1230) |
-| U5c | IA 통합 | /advisor→/rebalance 통합 (사용자 확정: A안 — 룰 위반 섹션 + risk-parity 섹션, 구 경로 리다이렉트). scan→explore 흡수는 기각 | 진행 중 (#1227) |
+| U5c | IA 통합 | /advisor→/rebalance 통합 (사용자 확정: A안 — 룰 위반 섹션 + risk-parity 섹션, 구 경로 리다이렉트). scan→explore 흡수는 기각 | 완료 (#1227 → PR #1231) |
 
 ### 단계별 공통 게이트
 
