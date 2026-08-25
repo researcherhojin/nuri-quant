@@ -16,16 +16,16 @@ import { MarketContext, type MacroEvent, type SystemHealth } from "@/components/
 import { summarizeHoldings } from "@/lib/holdings-summary";
 import { getMacroImpactedSectors } from "@/lib/macro-impact";
 import Link from "next/link";
-import { VERDICT, SECTION, ACTION } from "@/lib/strings";
+import { SECTION, ACTION } from "@/lib/strings";
 
 // #1204 U2a: 섹션·헬퍼는 components/dashboard/ 로 추출 — 이 파일은 데이터 fetch +
 // enrichment + 조립만 담당한다. 동작·마크업 불변.
 import {
-  verdictLabels, levelStyles,
   trendKo, vixZone, fgLabel, fgColor, macroLevel, accountKo,
   parseSparklinePeriod,
 } from "@/components/dashboard/helpers";
 import { MarketStrip } from "@/components/dashboard/market-strip";
+import { VerdictBanner } from "@/components/dashboard/verdict-banner";
 import { EventsStrip } from "@/components/dashboard/events-strip";
 import { HoldingsSection } from "@/components/dashboard/holdings-section";
 import { DashboardFooter, type FooterCondition } from "@/components/dashboard/dashboard-footer";
@@ -153,8 +153,6 @@ async function Dashboard({
   const holdingCount = portfolio?.count ?? portfolio?.holdings?.length ?? 0;
   if (holdingCount === 0) redirect("/explore");
 
-  const style = levelStyles[d.verdict_level] || levelStyles.neutral;
-  const verdictLabel = verdictLabels[d.verdict_level] || VERDICT.NEUTRAL;
   const KRW_RATE = d.exchange_rate || 1400;
   const holdingsValue = portfolio?.holdings?.reduce((sum: number, h: PortfolioHolding) => {
     const price = h.latest_price || 0;
@@ -256,13 +254,15 @@ async function Dashboard({
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      {/* ═══ #223 NEW HERO: 4 big metrics row (총자산 · 오늘 · 누적 · 배당) ═══ */}
+      {/* ═══ #1206 U2b-1: 한 줄 판단이 첫 픽셀 — "오늘의 답" 배너 ═══ */}
+      <VerdictBanner verdict={d.verdict} level={d.verdict_level} />
+
+      {/* ═══ #223 HERO: 4 metrics row — U2b-1 에서 컴팩트로 축소 ═══ */}
       <HeroStats
         totalUsd={totalValue}
         cashTotalUsd={cashTotalUsd}
         holdingsValueUsd={holdingsValue}
         summary={summary}
-        verdictLabel={verdictLabel}
       />
 
       {/* ═══ 시스템 건강 4카드 (compact, 1 row) ═══ */}
@@ -291,8 +291,6 @@ async function Dashboard({
         actualAllocation={d.actual_allocation}
         targetAllocation={d.target_allocation}
         fallbackAllocation={d.allocation}
-        verdict={d.verdict}
-        verdictTextClass={style.text}
       />
 
       {/* ═══ Collapsible strips removed — replaced by Action-First sections above.

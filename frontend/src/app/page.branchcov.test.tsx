@@ -752,7 +752,7 @@ describe("page.tsx branch coverage", () => {
   });
 
   // L213/L214 arm1 + L227 arm1 — fallback arms: unknown verdict_level makes the
-  // levelStyles / verdictLabels lookup undefined (`|| neutral` / `|| NEUTRAL`),
+  // VerdictBanner 의 verdictLabels/BANNER_STYLES lookup undefined (`?? neutral`),
   // and an empty trend hits `d.regime.trend || "unknown"`.
   it("falls back on unknown verdict_level + empty trend (L213/L214/L227 arm1)", async () => {
     await renderWith({

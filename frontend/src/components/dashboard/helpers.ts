@@ -9,13 +9,7 @@ export const verdictLabels: Record<string, string> = {
   aggressive: VERDICT.AGGRESSIVE, neutral: VERDICT.NEUTRAL, cautious: VERDICT.CAUTIOUS, defensive: VERDICT.DEFENSIVE,
   stale: VERDICT.STALE,
 };
-export const levelStyles: Record<string, { text: string }> = {
-  aggressive: { text: "text-emerald-400" },
-  neutral:    { text: "text-zinc-400" },
-  cautious:   { text: "text-amber-400" },
-  defensive:  { text: "text-red-400" },
-  stale:      { text: "text-amber-400" }, // 판단 보류 — 경고색 (#1180)
-};
+// levelStyles 는 U2b-1 (#1206) 에서 VerdictBanner 의 BANNER_STYLES 로 대체·삭제됨.
 export const pipelineStatusColors: Record<string, string> = {
   idle: "bg-zinc-500", running: "bg-blue-500 animate-pulse", done: "bg-emerald-500", error: "bg-red-500",
 };

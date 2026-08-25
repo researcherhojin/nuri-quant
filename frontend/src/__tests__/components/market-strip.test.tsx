@@ -15,8 +15,6 @@ const base = {
   actualAllocation: { long: 57, short: 0, cash: 43 },
   targetAllocation: { long: 50, short: 0, cash: 50 },
   fallbackAllocation: null,
-  verdict: "테스트 verdict",
-  verdictTextClass: "text-zinc-400",
 };
 
 describe("MarketStrip", () => {
@@ -29,7 +27,7 @@ describe("MarketStrip", () => {
   it("omits economy chip without crashing when macroScore is undefined (missing d.macro)", () => {
     render(<MarketStrip {...base} macroScore={undefined} />);
     expect(screen.queryByText(MARKET.ECONOMY)).not.toBeInTheDocument();
-    expect(screen.getByText("테스트 verdict")).toBeInTheDocument();
+    // verdict 는 VerdictBanner 소관 (#1206) — 스트립은 시장 사실만
   });
 
   it("omits economy chip when macroScore is 0 (no data sentinel)", () => {

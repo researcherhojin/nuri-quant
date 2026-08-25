@@ -147,6 +147,29 @@ describe("DashboardPage", () => {
     });
   });
 
+  // U2b-1 계약 잠금 (#1206): "오늘의 답"이 첫 픽셀 — 배너가 대시보드 루트의 첫
+  // 요소이고, 히어로는 더 이상 verdict 배지를 갖지 않는다. 배너가 히어로 아래로
+  // 내려가거나 배지가 부활하면 FAIL.
+  it("verdict banner is the FIRST dashboard element and hero owns no badge (#1206)", async () => {
+    setupMocks();
+    const Page = await import("@/app/page");
+    let container!: HTMLElement;
+    await act(async () => { ({ container } = render(<Page.default />)); });
+    await waitFor(() => {
+      const banner = container.querySelector('[data-testid="verdict-banner"]');
+      expect(banner).not.toBeNull();
+      const root = banner!.parentElement!;
+      expect(root.firstElementChild).toBe(banner);
+      const hero = container.querySelector('[data-testid="hero-stats"]');
+      expect(hero).not.toBeNull();
+      // 배너가 히어로보다 DOM 상 앞선다
+      expect(banner!.compareDocumentPosition(hero!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // 히어로 총자산 셀에 verdict 라벨 배지 없음
+      const total = container.querySelector('[data-testid="hero-total"]');
+      expect(total!.textContent).not.toContain("관망");
+    });
+  });
+
   it("renders allocation values in compact market strip (#223 iter 7)", async () => {
     setupMocks();
     const Page = await import("@/app/page");
