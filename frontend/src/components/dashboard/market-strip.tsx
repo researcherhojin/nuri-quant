@@ -48,7 +48,8 @@ export function MarketStrip({
       )}
       {fg != null && (
         <span>
-          {MARKET.SENTIMENT} <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span>
+          {/* FINDING-001: w-4 고정폭은 "52.5" 같은 소수값이 넘쳐 라벨과 붙어 보인다 — pill 로 */}
+          {MARKET.SENTIMENT} <span className={`inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span>
         </span>
       )}
       {hasMacroScore && (
