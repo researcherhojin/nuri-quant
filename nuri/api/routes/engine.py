@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from nuri.api.auth import require_write_auth
+from nuri.api.limits import heavy_slot
 from nuri.core.db import query
 
 router = APIRouter(tags=["engine"])
@@ -30,7 +31,7 @@ def get_gate_phase(phase: str):
     return asdict(result)
 
 
-@router.get("/conflicts")
+@router.get("/conflicts", dependencies=[Depends(heavy_slot)])
 def get_conflicts():
     """시그널 충돌 감지."""
     from nuri.trading.engine.conflicts import detect_conflicts

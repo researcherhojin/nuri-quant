@@ -5,7 +5,9 @@ import threading
 import time
 from dataclasses import asdict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from nuri.api.limits import heavy_slot
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["regime"])
@@ -44,7 +46,7 @@ def get_macro():
     return asdict(score)
 
 
-@router.get("/report")
+@router.get("/report", dependencies=[Depends(heavy_slot)])
 def get_report():
     """LLM 리포트 (Gate → Context → Generate → Validate)."""
     from nuri.llm.report import generate_llm_report
@@ -57,7 +59,7 @@ def get_report():
         raise HTTPException(status_code=500, detail="LLM report generation failed")
 
 
-@router.get("/report/context")
+@router.get("/report/context", dependencies=[Depends(heavy_slot)])
 def get_report_context():
     """LLM 리포트 컨텍스트 (프롬프트 입력 데이터). 5분 캐시 + single-flight."""
     from nuri.llm.report import format_prompt, gather_context

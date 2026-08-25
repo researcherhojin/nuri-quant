@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
-import { ADVISOR, REBALANCE } from "@/lib/strings";
+import { ADVISOR, COMMON, REBALANCE } from "@/lib/strings";
 import type { RebalanceAction } from "@/lib/types";
 import { AdvisorSection } from "@/app/rebalance/advisor-section";
 
@@ -13,7 +13,13 @@ import { AdvisorSection } from "@/app/rebalance/advisor-section";
 
 // export: 테스트에서 async Server Component 를 직접 await/render 하기 위함
 export async function RebalanceSection() {
-  const data = await fetchAPI<{ actions: RebalanceAction[]; method: string; actionable: number }>("/api/rebalance?method=rp");
+  let data: { actions: RebalanceAction[]; method: string; actionable: number } | { error: string };
+  try {
+    data = await fetchAPI<{ actions: RebalanceAction[]; method: string; actionable: number }>("/api/rebalance?method=rp");
+  } catch {
+    // #1119 슬롯 shed(503) 포함 — 섹션만 강등, 페이지 shape 유지 (codex #1239 P2)
+    return <p className="text-xs text-muted-foreground">{COMMON.DEGRADED}</p>;
+  }
   if ("error" in data) return <p className="text-red-400 text-sm">{String((data as Record<string, unknown>).error)}</p>;
 
   const actionable = data.actions.filter((a) => a.action !== "HOLD");

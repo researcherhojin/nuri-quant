@@ -233,4 +233,12 @@ describe("StrategyPage", () => {
     const pulseElements = container.querySelectorAll(".animate-pulse");
     expect(pulseElements.length).toBeGreaterThan(0);
   });
+
+  it("gated fetch 실패(503 shed 포함) → 섹션만 강등 (#1119)", async () => {
+    mockFetchAPI.mockImplementation(() => Promise.reject(new Error("API /api/backtest: 503")));
+    const { StrategyDashboard } = await import("@/app/strategy/page");
+    const ui = await StrategyDashboard();
+    render(ui);
+    expect(screen.getByText("데이터를 불러오지 못했습니다 — 잠시 후 새로고침하세요.")).toBeInTheDocument();
+  });
 });

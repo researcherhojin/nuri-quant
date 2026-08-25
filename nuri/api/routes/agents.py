@@ -7,8 +7,10 @@ import threading
 import time
 from dataclasses import asdict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+
+from nuri.api.limits import heavy_slot
 
 router = APIRouter(tags=["agents"])
 
@@ -28,7 +30,7 @@ CACHE_TTL = 300  # 5분
 _lock = threading.Lock()
 
 
-@router.get("/consensus")
+@router.get("/consensus", dependencies=[Depends(heavy_slot)])
 def get_consensus():
     """전 종목 멀티 에이전트 합의 (5분 캐시)."""
     now = time.time()

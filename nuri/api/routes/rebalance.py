@@ -3,13 +3,15 @@
 import logging
 from dataclasses import asdict
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from nuri.api.limits import heavy_slot
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["rebalance"])
 
 
-@router.get("/rebalance")
+@router.get("/rebalance", dependencies=[Depends(heavy_slot)])
 def get_rebalance(method: str = Query("rp", pattern="^(mvo|rp)$")):
     """레짐 적응 리밸런싱 제안."""
     try:
