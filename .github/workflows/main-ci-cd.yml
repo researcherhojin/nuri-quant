@@ -309,12 +309,17 @@ jobs:
         run: npx playwright test
         timeout-minutes: 18
 
+      # playwright-report/ 는 config 의 CI 한정 HTML reporter 가, test-results/ 는
+      # screenshot: only-on-failure 가 만든다 — 서버 기동 실패처럼 둘 다 없는
+      # 실패도 있으므로 if-no-files-found 는 기본(warn) 그대로 둔다.
       - name: Upload playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
-          path: frontend/playwright-report/
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
           retention-days: 7
 
   # ─── Backend ───
