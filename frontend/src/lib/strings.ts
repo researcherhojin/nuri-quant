@@ -324,6 +324,20 @@ export const TICKER_DETAIL = {
   PANEL_EXTERNAL: "External Data",
 } as const;
 
+/* ── Scan Page (#1219 U4b) ──────────────────────────────────── */
+export const SCAN = {
+  TITLE: "Market Scanner",
+  // 병합 테이블 헤더: 시그널 수 + 스윙 승인/거절 집계
+  HEADER_SIGNALS: "시그널",
+  HEADER_APPROVED: "승인",
+  HEADER_REJECTED: "거절",
+  EMPTY: "스캔 결과 없음 — make quick-scan 실행 필요",
+  TAG_APPROVED: "승인",
+  TAG_REJECTED: "미승인",
+  TAG_NO_EVAL: "—", // 스윙 평가 없음 (스캔 전용 행)
+  REJECTED_FOLD: "미승인 사유",
+} as const;
+
 /* ── Engine Page (#1218 U4a) ────────────────────────────────── */
 export const ENGINE = {
   CONFLICTS_EMPTY: "시그널 충돌 없음",

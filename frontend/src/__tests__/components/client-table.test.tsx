@@ -51,18 +51,20 @@ describe("ClientTable", () => {
     expect(screen.getByText("degrading")).toBeInTheDocument();
   });
 
-  // ─── Variant: scan ──────────────────────────────────────
-  it("renders scan variant columns", () => {
+  // ─── Variant: scanner ──────────────────────────────────────
+  it("renders scanner variant columns with agent fields (#1219)", () => {
     const data = [
-      { ticker: "TSLA", price: 250.0, change_1d: 2.5, change_5d: -1.3, rsi: 45, signal: "bounce", score: 85 },
+      { ticker: "TSLA", price: 250.0, change_1d: 2.5, change_5d: -1.3, rsi: 45, signal: "bounce", score: 85,
+        agent_action: "BUY", agent_confidence: 72, approved: true, reason: null },
     ];
-    render(<ClientTable variant="scan" data={data} />);
+    render(<ClientTable variant="scanner" data={data} />);
     expect(screen.getByText("Ticker")).toBeInTheDocument();
     expect(screen.getByText("Price")).toBeInTheDocument();
     expect(screen.getByText("1D")).toBeInTheDocument();
-    expect(screen.getByText("5D")).toBeInTheDocument();
     expect(screen.getByText("RSI")).toBeInTheDocument();
+    expect(screen.getByText("Agent")).toBeInTheDocument();
     expect(screen.getByText("TSLA")).toBeInTheDocument();
+    expect(screen.getAllByText("승인").length).toBeGreaterThan(0); // 헤더 + 태그
   });
 
   // ─── Variant: targets ───────────────────────────────────
@@ -150,17 +152,29 @@ describe("ClientTable", () => {
     expect(table!.className).toContain("text-xs");
   });
 
-  // ─── Variant: swing ─────────────────────────────────────
-  it("renders swing variant columns", () => {
+  // ─── Variant: scanner — union 특유의 null 필드 처리 (#1219) ──
+  it("scanner variant dashes null fields and titles rejection reasons", () => {
     const data = [
-      { ticker: "PLTR", price: 85.0, scan_signal: "breakout", scan_score: 90, agent_action: "BUY", agent_confidence: 72 },
+      // 스윙 전용 행: 모멘텀 필드 null, 미승인 + 사유 title
+      { ticker: "AAPL", price: 230.0, change_1d: null, change_5d: null, rsi: null, signal: "pullback", score: 60,
+        agent_action: "HOLD", agent_confidence: 45, approved: false, reason: "Low conf" },
+      // 스캔 전용 행: 에이전트 필드 null → 승인 컬럼 —
+      { ticker: "MSFT", price: 480.0, change_1d: 1.2, change_5d: 3.4, rsi: 52, signal: "momentum", score: 70,
+        agent_action: null, agent_confidence: null, approved: null, reason: null },
     ];
-    render(<ClientTable variant="swing" data={data} />);
-    expect(screen.getByText("Ticker")).toBeInTheDocument();
-    expect(screen.getByText("Signal")).toBeInTheDocument();
-    expect(screen.getByText("Score")).toBeInTheDocument();
-    expect(screen.getByText("Agent")).toBeInTheDocument();
-    expect(screen.getByText("PLTR")).toBeInTheDocument();
+    render(<ClientTable variant="scanner" data={data} />);
+    const rejected = screen.getByText("미승인");
+    expect(rejected).toHaveAttribute("title", "Low conf");
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(5); // null 필드 전부 —
+  });
+
+  it("scanner variant renders 미승인 without title when reason is null", () => {
+    const data = [
+      { ticker: "INTC", price: 30.0, change_1d: 0.5, change_5d: 1.0, rsi: 40, signal: "bounce", score: 50,
+        agent_action: "HOLD", agent_confidence: 30, approved: false, reason: null },
+    ];
+    render(<ClientTable variant="scanner" data={data} />);
+    expect(screen.getByText("미승인")).not.toHaveAttribute("title");
   });
 
   // ─── Targets row highlighting ──────────────────────────

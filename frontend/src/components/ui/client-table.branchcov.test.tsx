@@ -29,13 +29,13 @@ describe("ClientTable branch coverage", () => {
 
   it("renders title when provided", () => {
     const { container } = render(
-      <ClientTable variant="scan" data={[]} title="My Title" compact />
+      <ClientTable variant="scanner" data={[]} title="My Title" compact />
     );
     expect(container.textContent).toContain("My Title");
   });
 
   it("renders without title (falsy branch)", () => {
-    const { container } = render(<ClientTable variant="scan" data={[]} />);
+    const { container } = render(<ClientTable variant="scanner" data={[]} />);
     expect(container.textContent).not.toContain("My Title");
   });
 
@@ -61,13 +61,15 @@ describe("ClientTable branch coverage", () => {
     expect(txt).toContain("1.5");
   });
 
-  it("scan: price renderer with number and undefined, pct non-number fallback", () => {
+  it("scanner: price renderer with number and undefined, pct non-number fallback (#1219)", () => {
     const data = [
-      { ticker: "TSLA", price: 250.5, change_1d: 1.2, change_5d: -2.0, rsi: 55.3, signal: "BUY", score: 80 },
-      // change_1d 가 비수치 → pct() 의 `typeof v === "number" ? v.toFixed(1) : v` else 분기 (line 27)
-      { ticker: "NVDA", price: undefined, change_1d: "n/a", change_5d: 0, rsi: "x", signal: "HOLD", score: 0 },
+      { ticker: "TSLA", price: 250.5, change_1d: 1.2, change_5d: -2.0, rsi: 55.3, signal: "BUY", score: 80,
+        agent_action: "BUY", agent_confidence: 70, approved: true, reason: null },
+      // change_1d 가 비수치 → pct() 의 `typeof v === "number" ? v.toFixed(1) : v` else 분기
+      { ticker: "NVDA", price: undefined, change_1d: "n/a", change_5d: 0, rsi: "x", signal: "HOLD", score: 0,
+        agent_action: null, agent_confidence: null, approved: null, reason: null },
     ];
-    const { container } = render(<ClientTable variant="scan" data={data} />);
+    const { container } = render(<ClientTable variant="scanner" data={data} />);
     const txt = container.textContent || "";
     expect(txt).toContain("$250.50");
     // num non-number (rsi: "x") fallback
@@ -166,12 +168,14 @@ describe("ClientTable branch coverage", () => {
     expect(container.querySelector(".bg-emerald-500\\/8")).toBeTruthy();
   });
 
-  it("swing: renderers", () => {
+  it("scanner: agent/approved arms (#1219)", () => {
     const data = [
-      { ticker: "AMD", price: 150.5, scan_signal: "BUY", scan_score: 70, agent_action: "LONG", agent_confidence: 0.8 },
+      { ticker: "AMD", price: 150.5, change_1d: 1.0, change_5d: 2.0, rsi: 50, signal: "BUY", score: 70,
+        agent_action: "LONG", agent_confidence: 80, approved: false, reason: "risk veto" },
     ];
-    const { container } = render(<ClientTable variant="swing" data={data} />);
+    const { container } = render(<ClientTable variant="scanner" data={data} />);
     expect(container.textContent).toContain("AMD");
+    expect(container.textContent).toContain("미승인");
   });
 
   it("advisor: priority 1/2/other, severity critical/high/other, action SELL_ALL/other", () => {

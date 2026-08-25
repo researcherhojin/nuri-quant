@@ -70,33 +70,38 @@ describe("ScanPage", () => {
     expect(screen.getByText("Market Scanner")).toBeInTheDocument();
   });
 
-  it("renders scan signal count", async () => {
+  // #1219: 두 테이블 → 병합 단일 테이블. 헤더는 시그널 수 + 승인/거절 집계.
+  it("renders the merged header with signal and approval counts", async () => {
     const { default: ScanPage } = await import("@/app/scan/page");
     await act(async () => {
       render(<ScanPage />);
     });
-
-    expect(screen.getByText("Market Scanner — 3 signals")).toBeInTheDocument();
+    const header = screen.getByText(/시그널/);
+    expect(header.textContent).toContain("3 시그널");
+    expect(header.textContent).toContain("승인 1");
+    expect(header.textContent).toContain("거절 2");
   });
 
-  it("renders swing entry summary with approved/rejected counts", async () => {
+  it("renders one merged table with agent columns, not two tables", async () => {
     const { default: ScanPage } = await import("@/app/scan/page");
+    let container!: HTMLElement;
     await act(async () => {
-      render(<ScanPage />);
+      ({ container } = render(<ScanPage />));
     });
-
-    expect(screen.getByText(/1 approved/)).toBeInTheDocument();
-    expect(screen.getByText(/, 2 rejected/)).toBeInTheDocument();
+    expect(container.querySelectorAll("table")).toHaveLength(1);
+    // 중복 폐지: 병합 후 티커는 테이블에 1회만 (이전엔 scan+swing 두 테이블에 2회)
+    expect(screen.getAllByText("NVDA")).toHaveLength(1);
+    // 에이전트 컬럼 병합 확인
+    expect(screen.getByText("Agent")).toBeInTheDocument();
+    expect(screen.getAllByText("승인").length).toBeGreaterThan(0); // 컬럼 헤더 + 태그
   });
 
-  it("renders rejected swing entries with reasons", async () => {
+  it("renders rejected swing reasons in the fold", async () => {
     const { default: ScanPage } = await import("@/app/scan/page");
     await act(async () => {
       render(<ScanPage />);
     });
-
-    // Rejected details section
-    expect(screen.getByText("Rejected (2)")).toBeInTheDocument();
+    expect(screen.getByText("미승인 사유 (2)")).toBeInTheDocument();
     expect(screen.getByText("AMD: Confidence below threshold")).toBeInTheDocument();
     expect(screen.getByText("TSLA: Agent verdict SELL")).toBeInTheDocument();
   });
@@ -111,26 +116,26 @@ describe("ScanPage", () => {
     expect(mockFetchAPI).toHaveBeenCalledWith("/api/swing/entries");
   });
 
-  it("shows empty state when no approved swing entries", async () => {
+  // #1219: 스윙 전용 티커(top-N 밖)도 union 으로 테이블에 들어온다 — 모멘텀 필드는 —.
+  it("includes swing-only tickers via union with dashed momentum fields", async () => {
     setupFetchAPI({
       swing: {
         entries: [
-          { ticker: "AMD", price: 120, scan_signal: "momentum", scan_score: 72, agent_action: "HOLD", agent_confidence: 45, approved: false, reason: "Low conf" },
+          ...mockSwing.entries,
+          { ticker: "AAPL", price: 230.0, scan_signal: "pullback", scan_score: 60, agent_action: "BUY", agent_confidence: 66, approved: true, reason: "OK" },
         ],
-        approved: 0,
-        rejected: 1,
+        approved: 2,
+        rejected: 2,
       },
     });
-
     const { default: ScanPage } = await import("@/app/scan/page");
     await act(async () => {
       render(<ScanPage />);
     });
-
-    expect(screen.getByText(/No entries passed agent consensus/)).toBeInTheDocument();
+    expect(screen.getByText("AAPL")).toBeInTheDocument();
   });
 
-  it("renders with no rejected swing entries (no details section)", async () => {
+  it("renders with no rejected swing entries (no fold)", async () => {
     setupFetchAPI({
       swing: {
         entries: [
@@ -146,13 +151,29 @@ describe("ScanPage", () => {
       render(<ScanPage />);
     });
 
-    expect(screen.getByText(/1 approved/)).toBeInTheDocument();
-    expect(screen.queryByText(/Rejected/)).not.toBeInTheDocument();
+    expect(screen.getByText(/승인 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/미승인 사유/)).not.toBeInTheDocument();
   });
 
-  it("renders with empty scan results", async () => {
+  // #1219: 스윙 API 실패는 스캔 테이블을 죽이지 않는다 — 에이전트 컬럼만 — 로.
+  it("renders scan rows with dashed agent fields when the swing API fails", async () => {
+    mockFetchAPI = vi.fn().mockImplementation((path: string) => {
+      if (path.includes("/api/scan")) return Promise.resolve(mockScan);
+      if (path.includes("/api/swing/entries")) return Promise.reject(new Error("500"));
+      return Promise.resolve({});
+    });
+    const { default: ScanPage } = await import("@/app/scan/page");
+    await act(async () => {
+      render(<ScanPage />);
+    });
+    expect(screen.getByText("NVDA")).toBeInTheDocument();
+    expect(screen.getByText(/승인 0/)).toBeInTheDocument();
+  });
+
+  it("shows the one-line empty state when both sources are empty", async () => {
     setupFetchAPI({
       scan: { results: [], count: 0 },
+      swing: { entries: [], approved: 0, rejected: 0 },
     });
 
     const { default: ScanPage } = await import("@/app/scan/page");
@@ -160,6 +181,6 @@ describe("ScanPage", () => {
       render(<ScanPage />);
     });
 
-    expect(screen.getByText("Market Scanner — 0 signals")).toBeInTheDocument();
+    expect(screen.getByText(/스캔 결과 없음/)).toBeInTheDocument();
   });
 });
