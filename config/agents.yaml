@@ -102,6 +102,12 @@ smart_money:
   downside_threshold: -10   # -1점
   score_buy: 2
   score_sell: -1
+  # source 별 최대 나이 (#1187) — 이보다 낡은 행은 점수에서 제외 + "낡음 — 제외" 명시.
+  # ARK 235일 stale 행이 "ARK 최근 매수 ±1" 로 표면화된 사고가 기원.
+  freshness:
+    superinvestors_max_age_days: 200 # 13F: 분기 + 45일 제출 지연 → 정상 나이 ~135d, 여유 200d
+    estimates_max_age_days: 45 # 애널리스트 등급/목표가 — 45일 넘은 컨센서스는 컨센서스가 아님
+    ark_max_age_days: 14 # config/freshness.yaml ark fail(336h=14d) 과 정렬
   confidence:
     buy_cap: 80
     buy_base: 40
