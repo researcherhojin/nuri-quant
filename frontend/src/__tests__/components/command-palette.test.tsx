@@ -214,6 +214,153 @@ describe("CommandPalette", () => {
     expect(screen.queryByTestId("command-palette")).not.toBeInTheDocument();
   });
 
+  it("낡은 응답 폐기: A 요청이 B 요청보다 늦게 도착해도 B 결과 유지 (codex P1)", async () => {
+    vi.useFakeTimers();
+    let resolveA: ((v: unknown) => void) | undefined;
+    let resolveB: ((v: unknown) => void) | undefined;
+    const mk = (t: string) => ({ ok: true, json: () => Promise.resolve({ results: [{ ticker: t, name: null, price: 1 }] }) });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn()
+        .mockImplementationOnce(() => new Promise((r) => { resolveA = r; }))
+        .mockImplementationOnce(() => new Promise((r) => { resolveB = r; })),
+    );
+    render(<CommandPalette />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const input = screen.getByTestId("command-palette-input");
+    fireEvent.change(input, { target: { value: "AA" } });
+    await act(async () => { vi.advanceTimersByTime(260); });
+    fireEvent.change(input, { target: { value: "BB" } });
+    await act(async () => { vi.advanceTimersByTime(260); });
+    await act(async () => { resolveB?.(mk("BB")); });
+    expect(screen.getByTestId("palette-ticker-BB")).toBeInTheDocument();
+    // 늦게 도착한 A 응답은 무시돼야 한다
+    await act(async () => { resolveA?.(mk("AA")); });
+    expect(screen.getByTestId("palette-ticker-BB")).toBeInTheDocument();
+    expect(screen.queryByTestId("palette-ticker-AA")).not.toBeInTheDocument();
+  });
+
+  it("늦은 reject 가 최신 결과를 지우지 않는다 (codex P1)", async () => {
+    vi.useFakeTimers();
+    let rejectA: ((e: unknown) => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn()
+        .mockImplementationOnce(() => new Promise((_, rej) => { rejectA = rej; }))
+        .mockImplementationOnce(() =>
+          Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [{ ticker: "BB", name: null, price: 1 }] }) }),
+        ),
+    );
+    render(<CommandPalette />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const input = screen.getByTestId("command-palette-input");
+    fireEvent.change(input, { target: { value: "AA" } });
+    await act(async () => { vi.advanceTimersByTime(260); });
+    fireEvent.change(input, { target: { value: "BB" } });
+    await act(async () => { vi.advanceTimersByTime(260); });
+    expect(screen.getByTestId("palette-ticker-BB")).toBeInTheDocument();
+    await act(async () => { rejectA?.(new Error("late")); });
+    expect(screen.getByTestId("palette-ticker-BB")).toBeInTheDocument();
+  });
+
+  it("json 파싱 중 쿼리가 바뀌어도 낡은 본문은 폐기 (codex P1 — 2차 가드)", async () => {
+    vi.useFakeTimers();
+    let resolveJson: ((v: unknown) => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn()
+        .mockImplementationOnce(() =>
+          Promise.resolve({ ok: true, json: () => new Promise((r) => { resolveJson = r; }) }),
+        )
+        .mockImplementationOnce(() =>
+          Promise.resolve({ ok: true, json: () => Promise.resolve({ results: [{ ticker: "BB", name: null, price: 1 }] }) }),
+        ),
+    );
+    render(<CommandPalette />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const input = screen.getByTestId("command-palette-input");
+    fireEvent.change(input, { target: { value: "AA" } });
+    await act(async () => { vi.advanceTimersByTime(260); });
+    // fetch 는 끝났지만 json 이 아직 — 이 사이 쿼리 변경
+    fireEvent.change(input, { target: { value: "BB" } });
+    await act(async () => { vi.advanceTimersByTime(260); });
+    expect(screen.getByTestId("palette-ticker-BB")).toBeInTheDocument();
+    await act(async () => { resolveJson?.({ results: [{ ticker: "AA", name: null, price: 1 }] }); });
+    expect(screen.queryByTestId("palette-ticker-AA")).not.toBeInTheDocument();
+    expect(screen.getByTestId("palette-ticker-BB")).toBeInTheDocument();
+  });
+
+  it("모달 안 Tab 은 갇힌다 (최소 포커스 트랩)", () => {
+    render(<CommandPalette />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const notPrevented = fireEvent.keyDown(screen.getByTestId("command-palette"), { key: "Tab" });
+    expect(notPrevented).toBe(false); // preventDefault 호출됨
+  });
+
+  it("ok=false 응답은 이전 쿼리의 결과를 화면에 남기지 않는다 (codex P1)", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ results: [{ ticker: "AAA", name: null, price: 1 }] }) })
+        .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({}) }),
+    );
+    render(<CommandPalette />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const input = screen.getByTestId("command-palette-input");
+    fireEvent.change(input, { target: { value: "AAA" } });
+    await act(async () => { vi.advanceTimersByTime(260); });
+    expect(screen.getByTestId("palette-ticker-AAA")).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "BBB" } });
+    await act(async () => { vi.advanceTimersByTime(260); });
+    expect(screen.queryByTestId("palette-ticker-AAA")).not.toBeInTheDocument();
+  });
+
+  it("결과 0건에서 ArrowDown 은 음수로 내려가지 않고, 이후 결과에서 Enter 가 산다 (codex P1)", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ results: [] }) }));
+    render(<CommandPalette />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const input = screen.getByTestId("command-palette-input");
+    fireEvent.change(input, { target: { value: "zzz-none" } });
+    await act(async () => { vi.advanceTimersByTime(260); });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    // 라우트가 다시 매칭되면 첫 항목이 선택돼 있어야 하고 Enter 가 동작해야 한다
+    fireEvent.change(input, { target: { value: "deci" } });
+    expect(screen.getByTestId("palette-route-/decisions")).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(pushMock).toHaveBeenCalledWith("/decisions");
+  });
+
+  it("한글 IME 조합 중 Enter 는 내비게이션하지 않는다 (codex P2)", () => {
+    render(<CommandPalette />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const input = screen.getByTestId("command-palette-input");
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(pushMock).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(pushMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("닫히면 포커스가 트리거 버튼으로 복원 (codex P2)", () => {
+    render(<CommandPalette />);
+    const trigger = screen.getByTestId("palette-trigger");
+    fireEvent.click(trigger);
+    expect(screen.getByTestId("command-palette")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("aria-activedescendant 가 선택을 따라간다 (codex P2)", () => {
+    render(<CommandPalette />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const input = screen.getByTestId("command-palette-input");
+    expect(input).toHaveAttribute("aria-activedescendant", "palette-opt-0");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input).toHaveAttribute("aria-activedescendant", "palette-opt-1");
+  });
+
   it("접근성: dialog aria-label + option aria-selected", () => {
     render(<CommandPalette />);
     fireEvent.keyDown(window, { key: "k", metaKey: true });

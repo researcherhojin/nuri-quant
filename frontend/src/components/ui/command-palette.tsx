@@ -61,7 +61,10 @@ export function CommandPalette() {
   const [selected, setSelected] = useState(0);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // 낡은 응답 폐기용 시퀀스 — A 입력 → B 입력 후 A 응답이 늦게 도착해도 무시 (codex #1230 P1)
+  const reqSeqRef = useRef(0);
 
   const routes = useMemo(() => filterRoutes(ALL_ROUTES, query), [query]);
   const items = useMemo<PaletteItem[]>(
@@ -72,19 +75,27 @@ export function CommandPalette() {
     [routes, tickers],
   );
 
-  const close = useCallback(() => {
+  const reset = useCallback(() => {
     setOpen(false);
     setQuery("");
     setTickers([]);
     setSelected(0);
   }, []);
 
+  // Escape/백드롭 닫기만 트리거로 포커스 복원. 내비게이션 이탈 시 복원하면
+  // Enter keyup 시점에 포커스가 트리거에 가 있어 Chromium 이 클릭을 발화,
+  // 팔레트가 빈 상태로 재오픈된다 (e2e 실측 2026-08-25).
+  const close = useCallback(() => {
+    reset();
+    triggerRef.current?.focus();
+  }, [reset]);
+
   const navigate = useCallback(
     (item: PaletteItem) => {
-      close();
+      reset();
       router.push(item.kind === "route" ? item.route.href : `/ticker/${item.result.ticker}`);
     },
-    [close, router],
+    [reset, router],
   );
 
   // 전역 단축키: Cmd-K / Ctrl-K 토글, Esc 닫기
@@ -93,13 +104,13 @@ export function CommandPalette() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((prev) => !prev);
-      } else if (e.key === "Escape") {
+      } else if (e.key === "Escape" && open) {
         close();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [close]);
+  }, [close, open]);
 
   // 열리면 입력 포커스
   useEffect(() => {
@@ -109,17 +120,23 @@ export function CommandPalette() {
   // 티커 검색 — explore 와 동일한 250ms 디바운스.
   // 동기 setState 는 effect 밖(onQueryChange/close)에서 처리 — react-hooks/set-state-in-effect
   useEffect(() => {
+    // 쿼리가 바뀌면(비우기·닫기 포함) 진행 중이던 요청은 그 시점부터 낡은 것
+    const seq = ++reqSeqRef.current;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!open || query.trim().length === 0) return;
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/tickers/search?q=${encodeURIComponent(query.trim())}`);
+        if (seq !== reqSeqRef.current) return; // 낡은 응답 폐기
         if (res.ok) {
           const data = await res.json();
+          if (seq !== reqSeqRef.current) return;
           setTickers((data.results ?? []).slice(0, 6));
+        } else {
+          setTickers([]); // 실패 응답이 이전 쿼리의 결과를 화면에 남기지 않게
         }
       } catch {
-        setTickers([]);
+        if (seq === reqSeqRef.current) setTickers([]);
       }
     }, 250);
   }, [open, query]);
@@ -133,9 +150,12 @@ export function CommandPalette() {
   const clamped = Math.min(selected, Math.max(items.length - 1, 0));
 
   function onInputKeyDown(e: React.KeyboardEvent) {
+    // 한글 IME 조합 중 Enter/화살표는 조합 확정이지 내비게이션이 아니다 (codex #1230 P2)
+    if (e.nativeEvent.isComposing) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelected((s) => Math.min(s + 1, items.length - 1));
+      // items 0개일 때 -1 로 내려가면 이후 결과 도착 시 선택이 죽는다 (codex #1230 P1)
+      setSelected((s) => Math.min(s + 1, Math.max(items.length - 1, 0)));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelected((s) => Math.max(s - 1, 0));
@@ -150,6 +170,7 @@ export function CommandPalette() {
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         className="ml-auto flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground/80 transition-colors"
@@ -175,6 +196,10 @@ export function CommandPalette() {
             aria-label={PALETTE.ARIA}
             className="w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl overflow-hidden"
             data-testid="command-palette"
+            onKeyDown={(e) => {
+              // 최소 포커스 트랩 — aria-modal 뒤로 Tab 이 빠져나가지 않게 (내비는 화살표)
+              if (e.key === "Tab") e.preventDefault();
+            }}
           >
             <div className="flex items-center gap-2 border-b border-border px-4">
               <Search className="h-4 w-4 text-zinc-500 shrink-0" />
@@ -186,12 +211,16 @@ export function CommandPalette() {
                 onKeyDown={onInputKeyDown}
                 placeholder={PALETTE.PLACEHOLDER}
                 aria-label={PALETTE.PLACEHOLDER}
+                role="combobox"
+                aria-expanded="true"
+                aria-controls="palette-listbox"
+                aria-activedescendant={items.length > 0 ? `palette-opt-${clamped}` : undefined}
                 className="w-full bg-transparent py-3 text-sm text-foreground placeholder:text-zinc-600 focus:outline-none"
                 data-testid="command-palette-input"
               />
             </div>
 
-            <div role="listbox" aria-label={PALETTE.ARIA} className="max-h-80 overflow-y-auto py-1">
+            <div role="listbox" id="palette-listbox" aria-label={PALETTE.ARIA} className="max-h-80 overflow-y-auto py-1">
               {items.length === 0 && (
                 <p className="px-4 py-3 text-xs text-muted-foreground">{PALETTE.NO_RESULTS}</p>
               )}
@@ -211,6 +240,7 @@ export function CommandPalette() {
                     <button
                       type="button"
                       role="option"
+                      id={`palette-opt-${idx}`}
                       aria-selected={isSelected}
                       onClick={() => navigate(item)}
                       onMouseEnter={() => setSelected(idx)}
