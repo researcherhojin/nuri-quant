@@ -186,7 +186,7 @@ The dashboard at `:3000/` answers **"what should I do today?"** — Action-First
 
 | Section | Purpose |
 |---------|---------|
-| **Hero** | 4-stat ribbon — 총 자산 · 오늘 P&L · 누적 수익률 · 승률, with a provenance strip labeling every number as a **portfolio snapshot** (holdings + latest close, unrealized) as distinct from the adjudication ledger |
+| **Hero** | 4-stat ribbon — 총 자산 · 오늘 P&L · 누적 수익률 · 승률, with a provenance strip labeling the numbers as a **portfolio snapshot** (총 자산 = all accounts + cash; 오늘 · 누적 · 승률 = pension-excluded holdings, unrealized) as distinct from the adjudication ledger |
 | **System Health** | Certification score · Regime · Macro score · Data freshness |
 | **Action Items** | 🔴 즉시 실행 (stop-loss, Certification veto) · 🟡 오늘 확인 (take-profit, squeeze) · 🟦 리밸런스 · ✅ 유지 — each card links its **evidence chain** (`/decisions/{id}`, dated `as_of`) when a same-date decision record exists |
 | **Macro Events** | Deduplicated high-impact headlines with 한국어 categories |

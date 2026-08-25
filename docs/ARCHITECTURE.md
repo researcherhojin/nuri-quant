@@ -19,7 +19,7 @@ Key DB access patterns:
 - `query_df(sql, params)` → pandas DataFrame
 - `upsert_*()` functions for each table (prices, portfolio, fundamentals, etc.)
 - `replace_portfolio_account(account, records)` — DELETE+INSERT in one tx for yaml→DB sync
-## Signal System (20 signals, YAML-driven registry)
+## Signal System (22 signals: 20 actionable + 2 shadow, YAML-driven registry)
 `signal_backtest.py` uses a **detector registry** — Python detector functions separated from metadata (thresholds/classification/hold_days). Metadata externalized to `config/signals.yaml` (`nuri/core/signal_config.py` loads); the yaml holds 22 entries — the 20 actionable ones below plus 2 market-wide shadow signals (`actionable: false`, detectors in `nuri/quant/validation/market_signals.py`). 4 categories:
 - **Price-based** (10): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
 - **Macro-based** (3): vix_reversal, pcr_reversal, yield_curve_recovery — `merge_macro_data()` required
@@ -62,7 +62,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 ### Action-First Dashboard APIs (PR #264-#266)
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/actions` | GET | 우선순위 분류된 오늘의 액션 (🔴urgent/🟡check/✅hold). 연금/IRP 제외, 중복 제거. 각 항목에 `decision_id` + `as_of` (same-date `decisions` LEFT JOIN, #1182) — 프론트가 `/decisions/{id}` 증거 체인으로 링크 |
+| `/api/actions` | GET | 우선순위 분류된 오늘의 액션 (🔴urgent/🟡check/🟦portfolio/✅hold). 연금/IRP 제외, 중복 제거. 각 항목에 `decision_id` + `as_of` (same-date `decisions` LEFT JOIN, #1182) — 프론트가 `/decisions/{id}` 증거 체인으로 링크 |
 | `/api/opportunities` | GET | 비보유 이슈 종목 탐색 — scan + WSB + events 기반 찬성/반대/판정 |
 | `/api/market-context` | GET | 시스템 건강 (SIEGE/regime/macro/freshness) + 매크로 이벤트 (한국어 카테고리) |
 | `/api/backtest/equity` | GET | Equity curve + drawdown + metrics (Recharts frontend용 경량 데이터) |
