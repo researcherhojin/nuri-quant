@@ -4,10 +4,9 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { fetchAPI } from "@/lib/api";
 
-import { FreshnessBar, type FreshnessItem } from "@/components/ui/freshness-bar";
+import { type FreshnessItem } from "@/components/ui/freshness-bar";
 import { CoverageStatus } from "@/components/ui/coverage-status";
-import { HoldingRow, buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
-import { CollapsibleStrip } from "@/components/ui/collapsible-strip";
+import { buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import { HeroStats } from "@/components/ui/hero-stats";
 import { CompositionSectionLazy as CompositionSection } from "@/components/ui/composition-section-lazy";
 import { parseCompositionTab } from "@/components/ui/composition-section";
@@ -17,7 +16,22 @@ import { MarketContext, type MacroEvent, type SystemHealth } from "@/components/
 import { summarizeHoldings } from "@/lib/holdings-summary";
 import { getMacroImpactedSectors } from "@/lib/macro-impact";
 import Link from "next/link";
-import { VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SECTION, STRIP, MARKET, FOOTER, COL, SPARKLINE as SPARK, COMMON, ACTION } from "@/lib/strings";
+import { VERDICT, SECTION, ACTION } from "@/lib/strings";
+
+// #1204 U2a: 섹션·헬퍼는 components/dashboard/ 로 추출 — 이 파일은 데이터 fetch +
+// enrichment + 조립만 담당한다. 동작·마크업 불변.
+import {
+  verdictLabels, levelStyles,
+  trendKo, vixZone, fgLabel, fgColor, macroLevel, accountKo,
+  parseSparklinePeriod,
+} from "@/components/dashboard/helpers";
+import { MarketStrip } from "@/components/dashboard/market-strip";
+import { EventsStrip } from "@/components/dashboard/events-strip";
+import { HoldingsSection } from "@/components/dashboard/holdings-section";
+import { DashboardFooter, type FooterCondition } from "@/components/dashboard/dashboard-footer";
+
+// 헬퍼 re-export — 기존 소비자(테스트 포함)의 "@/app/page" import 경로 유지 (#1204)
+export { trendKo, vixZone, fgLabel, fgColor, macroLevel, accountKo, parseSparklinePeriod };
 
 interface DashboardData {
   verdict: string;
@@ -70,13 +84,7 @@ interface PortfolioData {
   cash?: { total_cash_usd?: number };
 }
 
-interface CertifyCondition {
-  passed: boolean;
-  severity?: string;
-  description?: string;
-  detail?: string;
-  [key: string]: unknown;
-}
+type CertifyCondition = FooterCondition;
 
 interface CertifyData {
   conditions?: CertifyCondition[];
@@ -104,75 +112,6 @@ interface MarketContextData {
   macro_events: MacroEvent[];
   system_health: Partial<SystemHealth>;
 }
-
-const verdictLabels: Record<string, string> = {
-  aggressive: VERDICT.AGGRESSIVE, neutral: VERDICT.NEUTRAL, cautious: VERDICT.CAUTIOUS, defensive: VERDICT.DEFENSIVE,
-  stale: VERDICT.STALE,
-};
-const levelStyles: Record<string, { text: string }> = {
-  aggressive: { text: "text-emerald-400" },
-  neutral:    { text: "text-zinc-400" },
-  cautious:   { text: "text-amber-400" },
-  defensive:  { text: "text-red-400" },
-  stale:      { text: "text-amber-400" }, // 판단 보류 — 경고색 (#1180)
-};
-const pipelineStatusColors: Record<string, string> = {
-  idle: "bg-zinc-500", running: "bg-blue-500 animate-pulse", done: "bg-emerald-500", error: "bg-red-500",
-};
-
-/* ── 헬퍼 ── */
-export function trendKo(t: string) { return t === "bull" ? TREND.BULL : t === "bear" ? TREND.BEAR : TREND.SIDEWAYS; }
-export function vixZone(v: number | null): { label: string; color: string } {
-  if (v == null) return { label: "—", color: "text-zinc-500" };
-  if (v < 12) return { label: VIX_ZONE.CALM, color: "text-blue-400" };
-  if (v < 17) return { label: VIX_ZONE.LOW, color: "text-emerald-400" };
-  if (v < 23) return { label: VIX_ZONE.NORMAL, color: "text-zinc-300" };
-  if (v < 33) return { label: VIX_ZONE.CAUTION, color: "text-orange-400" };
-  return { label: VIX_ZONE.DANGER, color: "text-red-400" };
-}
-export function fgLabel(fg: number | null): string {
-  if (fg == null) return "—";
-  if (fg < 25) return FEAR_GREED.EXTREME_FEAR; if (fg < 45) return FEAR_GREED.FEAR;
-  if (fg <= 55) return FEAR_GREED.NEUTRAL; if (fg <= 75) return FEAR_GREED.GREED;
-  return FEAR_GREED.EXTREME_GREED;
-}
-export function fgColor(fg: number | null): string {
-  if (fg == null) return "bg-zinc-700 text-zinc-400";
-  if (fg < 25) return "bg-red-500/20 text-red-400";
-  if (fg < 45) return "bg-orange-500/20 text-orange-400";
-  if (fg <= 55) return "bg-yellow-500/20 text-yellow-400";
-  if (fg <= 75) return "bg-lime-500/20 text-lime-400";
-  return "bg-emerald-500/20 text-emerald-400";
-}
-export function macroLevel(s: number): { label: string; color: string } {
-  if (s >= 70) return { label: MACRO_LEVEL.GOOD, color: "text-emerald-400" };
-  if (s >= 50) return { label: MACRO_LEVEL.NORMAL, color: "text-zinc-300" };
-  if (s >= 30) return { label: MACRO_LEVEL.WEAK, color: "text-orange-400" };
-  return { label: MACRO_LEVEL.FRAGILE, color: "text-red-400" };
-}
-/** 계좌 라벨 한국어 표시 (Pension만 특수, 나머지는 원본 유지) */
-export function accountKo(label: string | undefined): string {
-  if (!label) return "";
-  if (label === "Pension") return SECTION.PENSION;
-  return label;
-}
-
-/* ══════════════════════════════════════════════════════ */
-
-// #214 polish: sparkline period options shown as URL-driven toggle (?period=14|30|60|90)
-const SPARKLINE_PERIOD_OPTIONS = [14, 30, 60, 90] as const;
-type SparklinePeriod = (typeof SPARKLINE_PERIOD_OPTIONS)[number];
-
-export function parseSparklinePeriod(raw: string | undefined): SparklinePeriod {
-  const n = parseInt(raw ?? "30", 10);
-  if (SPARKLINE_PERIOD_OPTIONS.includes(n as SparklinePeriod)) return n as SparklinePeriod;
-  return 30;
-}
-
-// #223 iter 7: holdings drilldown is collapsed by default (top 8 rows + "전체"
-// link). The new dashboard centerpiece is the composition section, not the
-// holdings table — so the table's role is "drill into details on demand".
-const HOLDINGS_COLLAPSED_LIMIT = 8;
 
 async function Dashboard({
   searchParams,
@@ -236,8 +175,6 @@ async function Dashboard({
   const holdings: PortfolioHolding[] = portfolio?.holdings || [];
   const winners = holdings.filter((h: PortfolioHolding) => h.latest_price && h.avg_price && h.latest_price > h.avg_price);
   const losers = holdings.filter((h: PortfolioHolding) => h.latest_price && h.avg_price && h.latest_price < h.avg_price);
-  const vixInfo = vixZone(vix);
-  const macroInfo = macroLevel(d.macro.score);
   const accountValues = d.account_values || [];
 
   // 통합 보유 종목 — 매매 상태 + 가격 타겟 + 워치 트리거 결합
@@ -312,20 +249,10 @@ async function Dashboard({
     .slice(0, 5)
     .map((ev) => ({ date: ev.date as string, description: ev.description as string | undefined, ticker: ev.ticker as string | null }));
 
-  // Helper — "MM-DD" format
-  const fmtEventDate = (iso: string) => (iso && iso.length >= 10 ? iso.slice(5, 10) : iso ?? "");
-  // Helper — D-day from YYYY-MM-DD (local time, timezone-safe)
-  const eventDday = (iso: string): string => {
-    if (!iso || iso.length < 10) return "";
-    const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
-    if (!y || !m || !d) return "";
-    const eventMs = new Date(y, m - 1, d).getTime();
-    const today = new Date();
-    const todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-    const days = Math.round((eventMs - todayMs) / 86_400_000);
-    if (days === 0) return "D-DAY";
-    return days > 0 ? `D-${days}` : `D+${-days}`;
-  };
+  // 원본 게이트 보존 (#1204): items=[] 이고 details 만 있어도 빈 FreshnessBar 를 렌더.
+  const showFreshness = (freshness?.items?.length ?? 0) > 0 || (freshness?.details?.length ?? 0) > 0;
+  /* v8 ignore next */
+  const freshnessItems = freshness?.items ?? freshness?.details ?? [];
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -355,88 +282,23 @@ async function Dashboard({
         />
       </div>
 
-      {/* ═══ #223 iter 7c: market + allocation compact strip (1 row).
-          Each metric only renders when it actually has data — no more
-          dangling "VIX — —" / "권장 0% / 100%" placeholders. */}
-      {(() => {
-        // actual: API always provides this in real responses; mock tests
-        // sometimes don't, so default to a sentinel that still renders.
-        const actual = d.actual_allocation ?? { long: 0, short: 0, cash: 100 };
-        const target = d.target_allocation ?? d.allocation ?? null;
-        // Hide 권장 entirely when it's the meaningless 0/100 default
-        // (means "no regime data") or matches actual.
-        const hasMeaningfulTarget =
-          target != null &&
-          (target.long > 0 || target.short > 0) &&
-          !(target.long === actual.long && target.cash === actual.cash);
-        const hasMacroScore = typeof d.macro?.score === "number" && d.macro.score > 0;
-        return (
-          <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
-            <span className={trend === "bull" ? "text-emerald-400 font-semibold" : trend === "bear" ? "text-red-400 font-semibold" : "text-amber-400 font-semibold"}>
-              {trendKo(trend)}
-            </span>
-            {vix != null && (
-              <span>
-                VIX <span className={`font-semibold tabular-nums ${vixInfo.color}`}>{Math.round(vix * 10) / 10}</span> <span className={vixInfo.color}>{vixInfo.label}</span>
-              </span>
-            )}
-            {fg != null && (
-              <span>
-                {MARKET.SENTIMENT} <span className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold tabular-nums ${fgColor(fg)}`}>{fg}</span> <span className="text-zinc-600">{fgLabel(fg)}</span>
-              </span>
-            )}
-            {hasMacroScore && (
-              <span>
-                {MARKET.ECONOMY} <span className={`font-semibold tabular-nums ${macroInfo.color}`}>{d.macro.score}</span> <span className={macroInfo.color}>{macroInfo.label}</span>
-              </span>
-            )}
-            <span className="text-zinc-700">·</span>
-            <span>
-              {MARKET.ACTUAL} <span className="text-emerald-400 font-semibold tabular-nums">{actual.long}%</span> {MARKET.INVEST} / <span className="text-zinc-300 font-semibold tabular-nums">{actual.cash}%</span> {MARKET.CASH}
-            </span>
-            {hasMeaningfulTarget && target && (
-              <>
-                <span className="text-zinc-700">→</span>
-                <span className="text-zinc-600">
-                  {MARKET.TARGET} <span className="text-emerald-500 tabular-nums">{target.long}%</span> / <span className="text-zinc-500 tabular-nums">{target.cash}%</span>
-                </span>
-              </>
-            )}
-            <span className={`ml-auto text-[10px] ${style.text} truncate max-w-[40%]`} title={d.verdict}>
-              {d.verdict}
-            </span>
-          </div>
-        );
-      })()}
+      {/* ═══ #223 iter 7c: market + allocation compact strip (1 row) ═══ */}
+      <MarketStrip
+        trend={trend}
+        vix={vix}
+        fg={fg}
+        macroScore={d.macro?.score}
+        actualAllocation={d.actual_allocation}
+        targetAllocation={d.target_allocation}
+        fallbackAllocation={d.allocation}
+        verdict={d.verdict}
+        verdictTextClass={style.text}
+      />
 
       {/* ═══ Collapsible strips removed — replaced by Action-First sections above.
           Alerts → ActionItems 🔴 urgent, Candidates → ActionItems 🟡 check/✅ hold,
           Events → MarketContext macro events. Only upcoming earnings strip retained. ═══ */}
-      {stripEvents.length > 0 && (
-        <CollapsibleStrip
-          id="events"
-          title={STRIP.EVENTS_TITLE}
-          icon="📅"
-          count={stripEvents.length}
-          emptyText={STRIP.EVENTS_EMPTY}
-        >
-          <div className="flex items-start gap-2 px-2 py-1 rounded bg-zinc-900/40 border border-zinc-800/60 pr-6">
-            <span className="text-[10px] text-zinc-400 font-semibold shrink-0">{STRIP.EVENTS_PREFIX} {stripEvents.length}{COMMON.COUNT_SUFFIX}</span>
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
-              {stripEvents.map((ev, i) => {
-                const dday = eventDday(ev.date);
-                return (
-                  <span key={`${ev.date}-${i}`} className="text-[10px] text-zinc-400 truncate">
-                    <span className="text-zinc-600 tabular-nums">{fmtEventDate(ev.date)}</span>{" "}
-                    {ev.description || ev.ticker || STRIP.EVENTS_FALLBACK}
-                    {dday && <span className="text-zinc-600 ml-1">({dday})</span>}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        </CollapsibleStrip>
-      )}
+      <EventsStrip events={stripEvents} />
 
       {/* ═══ #223 NEW: Composition section (donut + tabs + legend).
           Sits between status strips and the holdings drilldown table.
@@ -449,124 +311,16 @@ async function Dashboard({
         />
       )}
 
-      {/* ═══ 보유 종목 — drilldown 위치 (#223 restructure).
-          이전엔 메인이었지만 이제 composition 아래의 detail 뷰. */}
-      {enrichedHoldings.length > 0 && (
-        <section className="flex flex-col items-start" data-testid="holdings-section">
-          {/*
-            w-fit wrapper — 제목 바 + 테이블 이 모두 테이블의 natural width (현재 breakpoint 의
-            column sum)에 맞춰 shrink 한다. 덕분에 period toggle + 상세 링크가 테이블의 우측
-            가장자리에 정확히 정렬되어, 우측에 떠 있는 "disconnected toolbar" 문제가 사라진다.
-            max-w-full 은 narrow viewport safety net.
-          */}
-          <div className="w-fit max-w-full">
-          <div className="flex items-center justify-between mb-1.5 gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <h2 className="text-sm font-semibold text-zinc-200">{SECTION.HOLDINGS}</h2>
-              <span className="text-[10px] text-zinc-600 truncate">
-                {winners.length > 0 && `${SECTION.WINNERS} ${winners.length}`}
-                {winners.length > 0 && losers.length > 0 && " · "}
-                {losers.length > 0 && `${SECTION.LOSERS} ${losers.length}`}
-                {hiddenPensionCount > 0 && (
-                  <>
-                    {(winners.length > 0 || losers.length > 0) && " · "}
-                    <span className="text-zinc-700">{SECTION.PENSION} {hiddenPensionCount}{SECTION.PENSION_HIDDEN_SUFFIX}</span>
-                  </>
-                )}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              {/* sparkline period toggle — xl+에서만 의미 있음 (<xl에서는 sparkline 숨김) */}
-              <div
-                className="hidden xl:inline-flex items-center gap-0.5 text-[9px] text-zinc-600 uppercase"
-                data-testid="sparkline-period-toggle"
-              >
-                <span className="text-zinc-700 mr-1 normal-case">{SPARK.PERIOD_LABEL}</span>
-                {SPARKLINE_PERIOD_OPTIONS.map((p) => (
-                  <Link
-                    key={p}
-                    href={p === 30 ? "/" : `/?period=${p}`}
-                    scroll={false}
-                    className={`px-1 rounded normal-case ${
-                      p === sparklinePeriod
-                        ? "text-zinc-300 bg-zinc-800/80"
-                        : "text-zinc-600 hover:text-zinc-400"
-                    }`}
-                  >
-                    {p}
-                  </Link>
-                ))}
-                <span className="text-zinc-700 normal-case">{SPARK.PERIOD_SUFFIX}</span>
-              </div>
-              {/* #223 iter 7: holdings collapse toggle. Default = top 8 visible.
-                  Click "전체 N" to expand to all rows; "접기" to collapse back. */}
-              {enrichedHoldings.length > HOLDINGS_COLLAPSED_LIMIT && (
-                <Link
-                  href={holdingsExpanded ? "/" : "/?holdings=expanded"}
-                  scroll={false}
-                  className="text-[9px] text-zinc-500 hover:text-zinc-300"
-                  data-testid="holdings-toggle"
-                >
-                  {holdingsExpanded
-                    ? SECTION.COLLAPSE
-                    : `${SECTION.VIEW_ALL} ${enrichedHoldings.length} ${SECTION.VIEW_SUFFIX}`}
-                </Link>
-              )}
-              <Link href="/portfolio" className="text-[9px] text-zinc-600 hover:text-zinc-400">{SECTION.DETAIL} &rarr;</Link>
-            </div>
-          </div>
-          {/* Responsive column tiers — 헤더와 rows가 동일 breakpoint·width로 정렬.
-              #221 iter 4: watch column (90px) 제거, 같은 정보는 상단 이벤트 strip 에 있음.
-              base (<sm):  계좌·종목·손익·상태         (~300px)
-              sm+  (640+): + 일변                       (~350px)
-              md+  (768+): + 현재/평단·손절            (~500px)
-              lg+  (1024+): + 1차익절·2차익절          (~660px, 752 content budget)
-              xl+  (1280+): + sparkline 80px            (~748px)
-              2xl+ (1536+): sparkline 240px + 섹터 96px + 비중 56px (~1150px, 27" 전용)
-              overflow-x-auto는 narrow viewport safety net. */}
-          <div className="overflow-x-auto">
-            <div className="min-w-0">
-              {/* 컬럼 헤더 — sm+ (< sm은 헤더 없이 row aria-label 만으로 충분).
-                  w-fit 이라 rows 의 w-fit 과 정확히 같은 폭을 차지 → hover 정렬 + 우측 dead zone 제거. */}
-              <div className="hidden sm:flex w-fit items-center gap-2 px-2 pb-1 text-[9px] text-zinc-600 uppercase">
-                <span className="w-10 2xl:w-16 shrink-0">{COL.ACCOUNT}</span>
-                <span className="w-20 shrink-0">{COL.TICKER}</span>
-                <span className="hidden md:flex w-18 text-right shrink-0 leading-tight justify-end">
-                  {COL.CURRENT}<span className="text-zinc-700">{COL.AVG}</span>
-                </span>
-                <span className="w-14 text-right shrink-0">{COL.PNL}</span>
-                <span className="w-12 text-right shrink-0">{COL.DAILY}</span>
-                <span className="w-17 text-center shrink-0">{COL.STATUS}</span>
-                <span className="hidden md:inline-block w-17 text-right shrink-0">{COL.STOP}</span>
-                <span className="hidden lg:inline-block w-17 text-right shrink-0">{COL.TP1}</span>
-                <span className="hidden lg:inline-block w-17 text-right shrink-0">{COL.TP2}</span>
-                {/* sparkline column label — xl: 80px / 2xl: 240px (둘 다 고정) */}
-                <span className="hidden xl:inline-block w-20 2xl:w-60 text-left shrink-0">
-                  {COL.TREND}
-                </span>
-                {/* #218 (PR #219): 2xl+ 27" 전용 초광폭 컬럼. Sector 는 label 이라 text-left. */}
-                <span className="hidden 2xl:inline-block w-24 text-left shrink-0">{COL.SECTOR}</span>
-                <span className="hidden 2xl:inline-block w-14 text-right shrink-0">{COL.WEIGHT}</span>
-              </div>
-              <div className="space-y-0.5">
-                {(holdingsExpanded
-                  ? enrichedHoldings
-                  : enrichedHoldings.slice(0, HOLDINGS_COLLAPSED_LIMIT)
-                ).map((h, i) => (
-                  <HoldingRow
-                    key={`${h.account}-${h.ticker}-${i}`}
-                    holding={h}
-                    macroAwareSectors={macroAwareSectors}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-          </div>
-          {/* #223: HoldingsSummaryPanel 제거. Today/Accounts/Sector/Movers/Concentration
-              은 새 HeroStats + CompositionSection 으로 흡수되었음. */}
-        </section>
-      )}
+      {/* ═══ 보유 종목 — drilldown 위치 (#223 restructure) ═══ */}
+      <HoldingsSection
+        holdings={enrichedHoldings}
+        winnersCount={winners.length}
+        losersCount={losers.length}
+        hiddenPensionCount={hiddenPensionCount}
+        sparklinePeriod={sparklinePeriod}
+        expanded={holdingsExpanded}
+        macroAwareSectors={macroAwareSectors}
+      />
 
       {/* ═══ 기회 탐색 — 보유 종목 아래, 상위 3개 + /scan 링크 ═══ */}
       {(opportunitiesData?.opportunities?.length ?? 0) > 0 && (() => {
@@ -596,48 +350,15 @@ async function Dashboard({
       )}
 
       {/* ═══ 푸터: 품질 + 이벤트 + 파이프라인 ═══ */}
-      <div className="mt-auto pt-2 border-t border-zinc-800/60 space-y-1">
-        <div className="flex items-center gap-3 flex-wrap text-[10px]">
-          {siegeTotal > 0 && siegeFailed.length === 0 && (
-            <span className="text-zinc-400"><span className="text-emerald-500">&#10003;</span> {FOOTER.QUALITY} {siege?.passed || 0}/{siegeTotal}</span>
-          )}
-          {siegeTotal > 0 && siegeFailed.length > 0 && (
-            <span className="text-red-400"><span className="text-red-500">&#10007;</span> {FOOTER.QUALITY_FAIL} {siegeFailed.length}{FOOTER.COUNT_SUFFIX}</span>
-          )}
-          {(advisor?.total_violations || 0) > 0 && (
-            <span className="text-red-400">{FOOTER.RULE_VIOLATION} {advisor!.total_violations}{FOOTER.COUNT_SUFFIX}</span>
-          )}
-          {/* upcoming events moved to sidebar (#214). Footer keeps quality/violations/freshness. */}
-          <div className="ml-auto flex items-center gap-2">
-            {((freshness?.items?.length ?? 0) > 0 || (freshness?.details?.length ?? 0) > 0) && (() => {
-              // final `?? []` unreachable: the gate above requires
-              // items.length>0 OR details.length>0, so `items ?? details` is
-              // never both-nullish. Extracted so the v8 ignore is line-based.
-              /* v8 ignore next */
-              const freshnessItems = freshness?.items ?? freshness?.details ?? [];
-              return <FreshnessBar items={freshnessItems} />;
-            })()}
-            {pipelineStatus.steps.length > 0 && (
-              <div className="flex items-center gap-0.5">
-                {pipelineStatus.steps.map((s) => (
-                  <span key={s.step} className={`inline-flex h-1.5 w-1.5 rounded-full ${pipelineStatusColors[s.status] || "bg-zinc-500"}`} title={`${s.label}: ${s.record_count.toLocaleString()}건`} />
-                ))}
-                <Link href="/pipeline" className="text-[9px] text-zinc-600 hover:text-zinc-400 ml-0.5">&rarr;</Link>
-              </div>
-            )}
-          </div>
-        </div>
-        {siegeTotal > 0 && siegeFailed.length > 0 && (
-          <div className="space-y-0.5">
-            {siegeFailed.slice(0, 2).map((c: CertifyCondition, i: number) => (
-              <p key={i} className="text-[10px] text-zinc-400 pl-3">
-                <span className={c.severity === "error" ? "text-red-400" : "text-amber-400"}>{c.severity === "error" ? "\u2716" : "\u25B3"}</span>{" "}
-                {c.description} &mdash; <span className="text-zinc-600">{c.detail}</span>
-              </p>
-            ))}
-          </div>
-        )}
-      </div>
+      <DashboardFooter
+        siegeTotal={siegeTotal}
+        siegePassed={siege?.passed || 0}
+        siegeFailed={siegeFailed}
+        advisorViolations={advisor?.total_violations || 0}
+        showFreshness={showFreshness}
+        freshnessItems={freshnessItems}
+        pipelineSteps={pipelineStatus.steps}
+      />
     </div>
   );
 }
