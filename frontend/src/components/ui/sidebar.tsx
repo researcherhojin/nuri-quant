@@ -11,7 +11,6 @@ import {
   Users,
   Search,
   Target,
-  ShieldAlert,
   TrendingUp,
   Scale,
   Cog,
@@ -48,7 +47,6 @@ export const NAV_GROUPS = [
       { href: "/portfolio", label: "Portfolio", icon: Briefcase },
       { href: "/rebalance", label: "Rebalance", icon: Scale },
       { href: "/targets", label: "Price Targets", icon: Target },
-      { href: "/advisor", label: "Advisor", icon: ShieldAlert },
     ],
   },
   {

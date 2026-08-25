@@ -37,8 +37,9 @@ test.describe("Server Component Pages (real backend)", () => {
     expect(body!.length).toBeGreaterThan(50);
   });
 
-  test("advisor page renders", async ({ page }) => {
+  test("advisor path redirects to rebalance (#1227)", async ({ page }) => {
     await page.goto("/advisor", { timeout: 15000 });
+    await page.waitForURL(/\/rebalance/, { timeout: 15000 });
     await page.waitForTimeout(2000);
     const body = await page.textContent("body");
     expect(body!.length).toBeGreaterThan(50);

@@ -14,7 +14,8 @@ vi.mock("@/components/ui/client-table", () => ({
   ),
 }));
 
-import { AdvisorSection } from "@/app/advisor/page";
+// #1227: 섹션은 rebalance 로 이동 (advisor 는 리다이렉트 전용)
+import { AdvisorSection } from "@/app/rebalance/advisor-section";
 import { ADVISOR as A, COMMON } from "@/lib/strings";
 
 describe("advisor page branch coverage", () => {

@@ -88,7 +88,8 @@ describe("Sidebar", () => {
     expect(screen.getByText("Agents")).toBeInTheDocument();
     expect(screen.getByText("Scanner")).toBeInTheDocument();
     expect(screen.getByText("Price Targets")).toBeInTheDocument();
-    expect(screen.getByText("Advisor")).toBeInTheDocument();
+    // #1227: Advisor 는 /rebalance 로 통합 — 재추가되면 FAIL (IA 병합 잠금)
+    expect(screen.queryByText("Advisor")).not.toBeInTheDocument();
     expect(screen.getByText("Strategy")).toBeInTheDocument();
     expect(screen.getByText("Rebalance")).toBeInTheDocument();
     expect(screen.getByText("Certification Engine")).toBeInTheDocument();

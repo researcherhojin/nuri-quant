@@ -51,13 +51,15 @@ vi.mock("@/lib/api", () => ({
 describe("Advisor page branches", () => {
   beforeEach(() => { mockFetchAPI.mockReset(); });
 
+  // #1227: 페이지는 리다이렉트가 됐고 섹션은 rebalance 로 이동 — await-render (RSC gotcha)
   it("zero critical → default color", async () => {
     mockFetchAPI.mockImplementation(() => Promise.resolve({
       total_violations: 3, violations_by_severity: { critical: 0, high: 2, medium: 1 },
       actions: [], total_recovery_usd: 0, violations_by_type: {}, has_critical: false,
     }));
-    const { default: AdvisorPage } = await import("@/app/advisor/page");
-    await act(async () => { render(<AdvisorPage />); });
+    const { AdvisorSection } = await import("@/app/rebalance/advisor-section");
+    const ui = await AdvisorSection();
+    await act(async () => { render(ui); });
     expect(screen.getByText("3건")).toBeInTheDocument();
   });
 
@@ -66,8 +68,9 @@ describe("Advisor page branches", () => {
       total_violations: 0, violations_by_severity: {},
       actions: [], total_recovery_usd: 0, violations_by_type: {}, has_critical: false,
     }));
-    const { default: AdvisorPage } = await import("@/app/advisor/page");
-    await act(async () => { render(<AdvisorPage />); });
+    const { AdvisorSection } = await import("@/app/rebalance/advisor-section");
+    const ui = await AdvisorSection();
+    await act(async () => { render(ui); });
     expect(screen.getByText("모든 투자 규칙 준수 중. 위반 사항 없음.")).toBeInTheDocument();
   });
 });

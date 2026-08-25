@@ -4,9 +4,15 @@ import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
+import { ADVISOR, REBALANCE } from "@/lib/strings";
 import type { RebalanceAction } from "@/lib/types";
+import { AdvisorSection } from "@/app/rebalance/advisor-section";
 
-async function RebalanceSection() {
+// #1227 U5c: /advisor 통합 — 룰 위반(매도 우선순위) 섹션이 먼저, 비중(risk-parity) 섹션이 다음.
+// 위반은 즉시 행동 대상이고 리밸런싱은 조정 대상이라는 우선순위.
+
+// export: 테스트에서 async Server Component 를 직접 await/render 하기 위함
+export async function RebalanceSection() {
   const data = await fetchAPI<{ actions: RebalanceAction[]; method: string; actionable: number }>("/api/rebalance?method=rp");
   if ("error" in data) return <p className="text-red-400 text-sm">{String((data as Record<string, unknown>).error)}</p>;
 
@@ -36,9 +42,25 @@ function Loading() {
 
 export default function RebalancePage() {
   return (
-    <div className="space-y-5">
-      <h1 className="text-2xl font-bold">Rebalancing</h1>
-      <Suspense fallback={<Loading />}><RebalanceSection /></Suspense>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-lg font-semibold">Rebalancing</h1>
+        <p className="text-xs text-muted-foreground mt-1">{ADVISOR.SUBTITLE}</p>
+      </div>
+
+      <section aria-label={REBALANCE.SECTION_VIOLATIONS}>
+        <h2 className="text-sm font-medium mb-3">{REBALANCE.SECTION_VIOLATIONS}</h2>
+        <Suspense fallback={<Loading />}>
+          <AdvisorSection />
+        </Suspense>
+      </section>
+
+      <section aria-label={REBALANCE.SECTION_WEIGHTS}>
+        <h2 className="text-sm font-medium mb-3">{REBALANCE.SECTION_WEIGHTS}</h2>
+        <Suspense fallback={<Loading />}>
+          <RebalanceSection />
+        </Suspense>
+      </section>
     </div>
   );
 }
