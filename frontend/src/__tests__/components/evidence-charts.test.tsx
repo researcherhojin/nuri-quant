@@ -8,6 +8,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { EVIDENCE } from "@/lib/strings";
+
 vi.mock("recharts", () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   ComposedChart: ({ children }: { children: React.ReactNode }) => <div data-testid="composed-chart">{children}</div>,
@@ -253,6 +255,7 @@ describe("buildSellRows", () => {
 describe("chart components render", () => {
   it("RegimeChart: 칩 + 메인/VIX 서브차트 + 범례", () => {
     render(<RegimeChart data={REGIME} />);
+    expect(screen.getByRole("img", { name: EVIDENCE.TITLE_REGIME })).toBeInTheDocument();
     expect(screen.getByText("bull_low_vol · 신뢰도 80%")).toBeInTheDocument();
     expect(screen.getByTestId("vix-subchart")).toBeInTheDocument();
     expect(screen.getByText("SMA200")).toBeInTheDocument();
@@ -266,6 +269,7 @@ describe("chart components render", () => {
 
   it("PortfolioTreemap: treemap + 위반 범례", () => {
     render(<PortfolioTreemap data={HEATMAP} />);
+    expect(screen.getByRole("img", { name: EVIDENCE.TITLE_HEATMAP })).toBeInTheDocument();
     expect(screen.getByTestId("treemap")).toBeInTheDocument();
     expect(screen.getByText("손절 위반")).toBeInTheDocument();
     expect(screen.getByText("비중 초과")).toBeInTheDocument();
@@ -273,6 +277,7 @@ describe("chart components render", () => {
 
   it("SignalPerformanceChart: 드리프트 색 Cell + 범례", () => {
     render(<SignalPerformanceChart data={SIGNALS} />);
+    expect(screen.getByRole("img", { name: EVIDENCE.TITLE_SIGNALS })).toBeInTheDocument();
     const cells = screen.getAllByTestId("cell");
     expect(cells.map((c) => c.getAttribute("data-fill"))).toEqual([DRIFT_COLORS.critical, "var(--chart-1)"]);
     expect(screen.getByText("Profit Factor")).toBeInTheDocument();
@@ -280,12 +285,15 @@ describe("chart components render", () => {
 
   it("FearGreedChart: 현재값 칩 + 존 5개", () => {
     render(<FearGreedChart data={FEAR_GREED} />);
+    expect(screen.getByRole("img", { name: EVIDENCE.TITLE_FEAR_GREED })).toBeInTheDocument();
     expect(screen.getByText("현재 62 · 탐욕")).toBeInTheDocument();
     expect(screen.getAllByTestId("reference-area").length).toBe(FG_ZONES.length);
   });
 
   it("SellEvidenceChart: 위반 타입별 색 Cell", () => {
     render(<SellEvidenceChart data={SELL} />);
+    // 접근성 계약 잠금 — role/aria-label 를 걷어내면 다섯 렌더 테스트가 전부 FAIL (codex #1229 R2)
+    expect(screen.getByRole("img", { name: EVIDENCE.TITLE_SELL })).toBeInTheDocument();
     const cells = screen.getAllByTestId("cell");
     expect(cells.map((c) => c.getAttribute("data-fill"))).toEqual([
       VIOLATION_COLORS.stop_loss,
