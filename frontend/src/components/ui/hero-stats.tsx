@@ -20,7 +20,6 @@
 
 import Link from "next/link";
 
-import { StatusBadge } from "@/components/ui/status-badge";
 import type { HoldingsSummary } from "@/lib/holdings-summary";
 import { HERO } from "@/lib/strings";
 
@@ -29,7 +28,6 @@ interface HeroStatsProps {
   cashTotalUsd: number;
   holdingsValueUsd: number;
   summary: HoldingsSummary;
-  verdictLabel: string;
 }
 
 function formatBigUsd(v: number): string {
@@ -47,7 +45,6 @@ export function HeroStats({
   cashTotalUsd,
   holdingsValueUsd,
   summary,
-  verdictLabel,
 }: HeroStatsProps) {
   const t = summary.today;
   const c = summary.cumulative;
@@ -65,11 +62,11 @@ export function HeroStats({
         {/* 1. 총 자산 */}
         <div className="flex flex-col" data-testid="hero-total">
           <p className="text-[11px] text-zinc-400 uppercase tracking-wide">{HERO.TOTAL_ASSET}</p>
+          {/* verdict 배지는 VerdictBanner 로 승격 (#1206) — 히어로는 스냅샷 수치만 */}
           <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-3xl font-semibold tabular-nums tracking-tight text-zinc-100">
+            <span className="text-xl font-semibold tabular-nums tracking-tight text-zinc-100">
               {formatBigUsd(totalUsd)}
             </span>
-            <StatusBadge status={verdictLabel} />
           </div>
           {(holdingsValueUsd > 0 || cashTotalUsd > 0) && (
             <p className="text-xs text-zinc-400 mt-1 tabular-nums">
@@ -84,7 +81,7 @@ export function HeroStats({
         <div className="flex flex-col" data-testid="hero-today">
           <p className="text-[11px] text-zinc-400 uppercase tracking-wide">{HERO.TODAY_PNL}</p>
           <div className={`flex items-baseline gap-2 mt-0.5 ${todayColor}`}>
-            <span className="text-3xl font-semibold tabular-nums tracking-tight">
+            <span className="text-xl font-semibold tabular-nums tracking-tight">
               {todayArrow} {formatDeltaUsd(t.totalUsd)}
             </span>
             <span className="text-sm tabular-nums">
@@ -103,7 +100,7 @@ export function HeroStats({
         <div className="flex flex-col" data-testid="hero-cumulative">
           <p className="text-[11px] text-zinc-400 uppercase tracking-wide">{HERO.CUMULATIVE_RETURN}</p>
           <div className={`flex items-baseline gap-2 mt-0.5 ${cumColor}`}>
-            <span className="text-3xl font-semibold tabular-nums tracking-tight">
+            <span className="text-xl font-semibold tabular-nums tracking-tight">
               {cumArrow} {formatDeltaUsd(c.totalUsd)}
             </span>
             <span className="text-sm tabular-nums">
@@ -131,7 +128,7 @@ export function HeroStats({
             <div className="flex flex-col" data-testid="hero-winrate">
               <p className="text-[11px] text-zinc-400 uppercase tracking-wide">{HERO.WIN_RATE}</p>
               <div className={`flex items-baseline gap-2 mt-0.5 ${wrColor}`}>
-                <span className="text-3xl font-semibold tabular-nums tracking-tight">
+                <span className="text-xl font-semibold tabular-nums tracking-tight">
                   {movers > 0 ? `${wr.winRatePct.toFixed(0)}%` : "—"}
                 </span>
                 <span className="text-sm tabular-nums">
