@@ -155,7 +155,7 @@ describe("SiegeTimelineChart helpers", () => {
     });
     const [text, label] = valueFormatter(85, "score", { payload: p });
     expect(label).toBe("score");
-    expect(text).toContain("✅ CERTIFIED");
+    expect(text).toContain("✓ CERTIFIED");
     expect(text).toContain("(85)");
     expect(text).toContain("0F/1W");
     expect(text).toContain("regime=bull_low_vol");
@@ -171,7 +171,7 @@ describe("SiegeTimelineChart helpers", () => {
       caller: null,
     });
     const [text] = valueFormatter(45, "score", { payload: p });
-    expect(text).toContain("❌ REJECTED");
+    expect(text).toContain("✕ REJECTED");
     expect(text).toContain("(45)");
     expect(text).toContain("2F/3W");
     expect(text).toContain("regime=-");

@@ -85,8 +85,8 @@ describe("ClientTable branch coverage", () => {
     ];
     const { container } = render(<ClientTable variant="gate" data={data} />);
     const txt = container.textContent || "";
-    expect(txt).toContain("✅");
-    expect(txt).toContain("❌");
+    expect(txt).toContain("✓"); // FINDING-002
+    expect(txt).toContain("✕");
     // dim with value
     expect(txt).toContain("ok");
     // dim with null → "—"

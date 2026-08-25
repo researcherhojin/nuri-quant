@@ -79,7 +79,7 @@ export function labelFormatter(_label: unknown, payload?: { payload?: ChartPoint
 
 export function valueFormatter(value: unknown, _name: unknown, item: { payload: ChartPoint }): [string, string] {
   const p = item.payload;
-  const status = p.certified ? "✅ CERTIFIED" : "❌ REJECTED";
+  const status = p.certified ? "✓ CERTIFIED" : "✕ REJECTED";
   return [
     `${status} (${value}) — ${p.failed}F/${p.warnings}W  regime=${p.regime ?? "-"}  caller=${p.caller ?? "-"}`,
     "score",
