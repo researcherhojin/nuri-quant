@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 
+import { REBALANCE as R } from "@/lib/strings";
+
 // Mock next/link
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -42,8 +44,15 @@ vi.mock("@/lib/api", () => ({
   API_BASE: "http://localhost:8001",
 }));
 
-function setupFetchAPI(overrides: { rebalance?: unknown } = {}) {
-  mockFetchAPI = vi.fn().mockImplementation((_path: string) => {
+// #1227: 페이지가 /api/rebalance-advisor(위반 섹션)도 fetch — 경로로 라우팅
+const mockAdvisorEmpty = {
+  actions: [], total_violations: 0, total_recovery_usd: 0,
+  violations_by_type: {}, violations_by_severity: {}, has_critical: false,
+};
+
+function setupFetchAPI(overrides: { rebalance?: unknown; advisor?: unknown } = {}) {
+  mockFetchAPI = vi.fn().mockImplementation((path: string) => {
+    if (path.includes("rebalance-advisor")) return Promise.resolve(overrides.advisor ?? mockAdvisorEmpty);
     return Promise.resolve(overrides.rebalance ?? mockRebalance);
   });
 }
@@ -61,6 +70,25 @@ describe("RebalancePage", () => {
     });
 
     expect(screen.getByText("Rebalancing")).toBeInTheDocument();
+    expect(screen.getByText(/투자 규칙 위반 감지/)).toBeInTheDocument();
+    // #1227: 두 섹션 — 룰 위반이 먼저, 비중 리밸런싱이 다음
+    expect(screen.getByRole("heading", { name: R.SECTION_VIOLATIONS })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: R.SECTION_WEIGHTS })).toBeInTheDocument();
+  });
+
+  it("renders the advisor (violations) section inside the page", async () => {
+    setupFetchAPI({
+      advisor: {
+        actions: [], total_violations: 3, total_recovery_usd: 1200,
+        violations_by_type: { stop_loss: 3 }, violations_by_severity: { critical: 1, high: 2 }, has_critical: true,
+      },
+    });
+    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    await act(async () => {
+      render(<RebalancePage />);
+    });
+    expect(mockFetchAPI).toHaveBeenCalledWith("/api/rebalance-advisor");
+    expect(screen.getByText("3건")).toBeInTheDocument();
   });
 
   it("renders Risk Parity method description with action count", async () => {

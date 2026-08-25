@@ -13,7 +13,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (1598 tests, 134 files)
+npm run test           # vitest run (1599 tests, 134 files)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
@@ -75,7 +75,7 @@ Two things that do **not** work, already tried (#913):
 Symptom if someone drops it: eslint prints `Oops! Something went wrong!` with a
 `brace-expansion` stack trace and lints **nothing**. `npm run lint` is silent on success, so
 confirm by file count rather than by absence of output — `npx eslint --format json | jq length`
-should be **240**.
+should be **241**.
 
 ## E2E (Playwright) — runs against the real backend, gated by nothing
 

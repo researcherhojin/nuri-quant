@@ -227,6 +227,12 @@ export const TARGETS = {
   SUBTITLE: "전 종목 매수가 · 손절가 · 익절가 · 트레일링 스톱 · 애널리스트 목표가",
 } as const;
 
+/* ── Rebalance Page (#1227 U5c — /advisor 통합) ─────────────── */
+export const REBALANCE = {
+  SECTION_VIOLATIONS: "규칙 위반 — 매도 우선순위",
+  SECTION_WEIGHTS: "비중 리밸런싱 — Risk Parity",
+} as const;
+
 /* ── Advisor Page ───────────────────────────────────────────── */
 export const ADVISOR = {
   TOTAL_VIOLATIONS: "총 위반",

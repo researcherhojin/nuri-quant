@@ -27,6 +27,8 @@ describe("pure helpers", () => {
     expect(hrefs).toContain("/");
     expect(hrefs).toContain("/decisions");
     expect(hrefs).toContain("/evidence");
+    // #1227: /advisor 는 병합돼 팔레트에도 없어야 한다 (NAV_GROUPS 단일 소스 잠금)
+    expect(hrefs).not.toContain("/advisor");
     const decisions = ROUTES.find((r) => r.href === "/decisions");
     expect(decisions?.group.length).toBeGreaterThan(0);
   });
