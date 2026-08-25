@@ -65,8 +65,8 @@
 |---|---|---|---|
 | U1a | 토큰 셸 | zinc→Blueprint 램프, radius 4px, tabular-nums, Pretendard, 블루 액센트, dark-only 잠금(토글 제거) | **완료 #1196** |
 | U1b-1 | 통화 일원화 | `lib/format.ts` 신설, $-on-KRW 버그 계열 수정 (ticker/decisions/client-table/action-items/holding-row/chart tooltip) | **완료 #1198** |
-| U1b-2 | 공용 컴포넌트 리테마 | card/status-badge/metric/data-table — intent minimal-tag 맵, 밀도(행 32px), 사이드바 5그룹 재편, StatusBadge 30-엔트리 하드코딩 맵 정리 | 대기 |
-| U1c | **반응형 파운데이션** | §2 구현: 컨테이너 캡 + 그리드 캡 + `3xl` 토큰 + 2xl 사용처 감사 + `responsive.spec.ts` 매트릭스. **U2 재구조보다 선행** — 새 레이아웃이 이 규율 위에 얹히도록 | 대기 |
+| U1b-2 | 공용 컴포넌트 리테마 | card/status-badge/metric/data-table — intent minimal-tag 맵, 밀도(행 32px), 사이드바 5그룹 재편(액티브 액센트 blue 전환 포함), StatusBadge 30-엔트리 하드코딩 맵 정리 | **완료 #1201** |
+| U1c | **반응형 파운데이션** | §2 구현: 컨테이너 캡(main `max-w-[1600px]`) + `3xl` 토큰 + `responsive.spec.ts` 매트릭스. 그리드 캡은 컨테이너 캡으로 충족(액션 카드 3열이 캡 안에서 ~440px) — 카드→테이블 전환은 U2b. **U2 재구조보다 선행** | 진행 중 |
 | U2a | 대시보드 추출 | `page.tsx`(668줄) 섹션별 컴포넌트 추출 — 동작 보존, 시각 변화 없음 (5개 인라인 색맵 함수 격리) | 대기 |
 | U2b | 대시보드 재구조 | verdict 배너 최상단 · 액션 밀집 테이블(심각도순) + 우측 시스템 레일 · 도넛→가로 스택 바 · coverage 접이 · NEW/ack·quick-peek·다음 행동 카피 · 히어로 대형 타이포 폐지 | 대기 |
 | U3 | Decisions | 리스트: 필터·날짜 그룹핑·conf micro-bar·판정일 명시 / 상세: 2컬럼 + 증거 key-value(raw JSON 폐지) + raw float 종결 | 대기 |

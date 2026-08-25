@@ -277,7 +277,7 @@ PR 전 확인.
 | 항목 | 기준 | 현재 |
 | Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 7,521 tests, 345 files (statement coverage **99%** — 17/23,311 미커버 9개 파일, partial branch 81, `make ci-cov` 2026-08-14) |
 | Frontend tests | 목표 ≥ 90% | 1472 tests, 128 files |
-| E2E | 핵심 flow | 59 Playwright (8 spec) |
+| E2E | 핵심 flow | 79 Playwright (9 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 | 금지 | conftest.py mock |
 ### 4.2 코드
