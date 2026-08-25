@@ -187,6 +187,19 @@ describe("ActionItems", () => {
     expect(screen.getByTestId("action-row-peek")).toBeTruthy();
   });
 
+  // #1208 codex P1: 구 카드 버튼의 키보드 접근을 행이 승계 — Enter/Space 토글 잠금
+  it("toggles quick-peek with Enter and Space keys", () => {
+    render(<ActionItems urgent={[urgentItem]} check={[]} hold={[]} />);
+    const row = screen.getByTestId("action-row");
+    expect(row.getAttribute("tabindex")).toBe("0");
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(screen.getByTestId("action-row-peek")).toBeTruthy();
+    fireEvent.keyDown(row, { key: " " });
+    expect(screen.queryByTestId("action-row-peek")).toBeNull();
+    fireEvent.keyDown(row, { key: "Escape" }); // 무시되는 키 — 토글 없음
+    expect(screen.queryByTestId("action-row-peek")).toBeNull();
+  });
+
   it("collapses quick-peek on second row click", () => {
     render(<ActionItems urgent={[urgentItem]} check={[]} hold={[]} />);
     const row = screen.getByTestId("action-row");

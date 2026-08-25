@@ -335,14 +335,9 @@ export const ACTION = {
   HOLD: "유지",
   HOLD_SUMMARY: "유지 종목",
   PORTFOLIO: "포트폴리오 리밸런스",
-  DETAIL: "상세 근거",
-  DISMISS: "무시하기",
   EMPTY: "오늘 실행할 액션이 없습니다.",
-  CONF: "확신도",
-  AGREE: "합의",
-  PNL: "손익",
-  WEIGHT: "비중",
   EVIDENCE: "증거 체인", // #1182: 카드 → /decisions/[id]
+  // DETAIL/CONF/AGREE/PNL/WEIGHT/DISMISS 는 U2b-2 (#1208) 카드→행 전환으로 제거
 } as const;
 
 export const OPPORTUNITY = {

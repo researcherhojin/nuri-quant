@@ -57,8 +57,17 @@ function ActionRow({ item, accent }: { item: ActionItem; accent: string }) {
   return (
     <Fragment>
       <tr
-        className={`border-b border-zinc-800/40 border-l-2 ${accent} hover:bg-zinc-800/30 cursor-pointer transition-colors`}
+        className={`border-b border-zinc-800/40 border-l-2 ${accent} hover:bg-zinc-800/30 cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-blue-400/75`}
         onClick={() => setExpanded(!expanded)}
+        // 키보드 접근 (#1208 codex P1): 구 카드의 <button> 을 행이 대체하므로
+        // 행 자체가 포커스·Enter/Space 토글을 제공해야 한다
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded(!expanded);
+          }
+        }}
         data-testid="action-row"
         aria-expanded={expanded}
       >
@@ -115,6 +124,9 @@ function ActionRow({ item, accent }: { item: ActionItem; accent: string }) {
         <tr className="border-b border-zinc-800/40 bg-zinc-900/40" data-testid="action-row-peek">
           <td colSpan={8} className="px-3 py-2">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+              {/* <md 에서 행이 숨기는 계좌·비중을 peek 가 복원 (#1208 codex P2) */}
+              {item.account && <span className="md:hidden"><span className="text-zinc-600">계좌</span> <span className="text-zinc-300">{item.account}</span></span>}
+              <span className="md:hidden"><span className="text-zinc-600">비중</span> <span className="text-zinc-300 tabular-nums">{item.position_pct.toFixed(1)}%</span></span>
               <span><span className="text-zinc-600">현재가</span> <span className="text-zinc-300 tabular-nums">{fmt(item.current_price)}</span></span>
               <span><span className="text-zinc-600">손절</span> <span className="text-red-400 tabular-nums">{fmt(item.stop_loss)}</span></span>
               <span><span className="text-zinc-600">1차익절</span> <span className="text-emerald-400 tabular-nums">{fmt(item.target_1)}</span></span>
