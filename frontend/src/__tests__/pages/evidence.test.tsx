@@ -1,23 +1,21 @@
+/**
+ * /evidence 페이지 — 네이티브 차트 전환 후 (#1225 U5a-2).
+ *
+ * recharts-free: lazy wrapper 모듈을 통째로 mock (vi.mock("recharts") hoisting
+ * gotcha 회피 — 차트 본체는 evidence-charts.test.tsx 에서 별도 검증).
+ */
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 
-// Mock next/link
-vi.mock("next/link", () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
+import { EVIDENCE as E } from "@/lib/strings";
 
-const mockEvidence = {
-  charts: [
-    { id: "regime_timeline", description: "Regime Timeline", available: true, date: "2026-03-31" },
-    { id: "portfolio_allocation", description: "Portfolio Allocation", available: true, date: "2026-03-31" },
-    { id: "signal_performance", description: "Signal Performance", available: false, date: "2026-03-31" },
-    { id: "fear_greed_history", description: "Fear & Greed History", available: true, date: "2026-03-31" },
-    { id: "sell_evidence", description: "Sell Evidence", available: false, date: "2026-03-31" },
-  ],
-  date: "2026-03-31",
-};
+vi.mock("@/components/evidence/evidence-charts-lazy", () => ({
+  RegimeChartLazy: () => <div data-testid="regime-chart" />,
+  PortfolioTreemapLazy: () => <div data-testid="portfolio-treemap" />,
+  SignalPerformanceChartLazy: () => <div data-testid="signal-performance-chart" />,
+  FearGreedChartLazy: () => <div data-testid="fear-greed-chart" />,
+  SellEvidenceChartLazy: () => <div data-testid="sell-evidence-chart" />,
+}));
 
 let mockFetchAPI: Mock;
 
@@ -26,121 +24,136 @@ vi.mock("@/lib/api", () => ({
   API_BASE: "http://localhost:8001",
 }));
 
-function setupFetchAPI(overrides: { evidence?: unknown } = {}) {
-  mockFetchAPI = vi.fn().mockImplementation((_path: string) => {
-    return Promise.resolve(overrides.evidence ?? mockEvidence);
+// 형태는 /api/evidence/data/{chart_id} 실응답에서 복사 (mock-shape 규칙)
+const PAYLOADS: Record<string, unknown> = {
+  "/api/evidence/data/regime": {
+    spy: [
+      { date: "2026-08-20", open: 1, high: 2, low: 1, close: 100, volume: 10, sma50: null, sma200: null },
+      { date: "2026-08-21", open: 1, high: 2, low: 1, close: 101, volume: 10, sma50: 100.5, sma200: null },
+    ],
+    vix: [{ date: "2026-08-21", value: 18.0 }],
+    regime: { regime: "bull_low_vol", trend: "bull", volatility: "low", confidence: 0.8 },
+    count: 2,
+  },
+  "/api/evidence/data/portfolio_heatmap": {
+    items: [
+      { ticker: "AAA", current_value_usd: 5000, pnl_pct: -12.0, weight_pct: 20.0, sector: "Tech", violation: "stop_loss" },
+    ],
+    count: 1,
+  },
+  "/api/evidence/data/signal_performance": {
+    signals: [
+      { signal_id: "rsi_oversold", win_rate: 0.6, profit_factor: 1.5, total_trades: 10, drift_status: "critical" },
+    ],
+    count: 1,
+  },
+  "/api/evidence/data/fear_greed": {
+    history: [{ date: "2026-08-21", value: 55.0 }],
+    count: 1,
+  },
+  "/api/evidence/data/sell_evidence": {
+    violations: [
+      { ticker: "AAA", type: "stop_loss", severity: 12.0, action: "SELL ALL", recovery: "손실 12.0% → 회복에 14% 상승 필요" },
+    ],
+    count: 1,
+  },
+};
+
+function setupFetchAPI(overrides: Record<string, unknown> = {}) {
+  mockFetchAPI = vi.fn().mockImplementation((path: string) => {
+    if (path in overrides) {
+      const v = overrides[path];
+      if (v instanceof Error) return Promise.reject(v);
+      return Promise.resolve(v);
+    }
+    return Promise.resolve(PAYLOADS[path]);
   });
 }
 
-describe("EvidencePage", () => {
+async function renderPage() {
+  const { default: EvidencePage } = await import("@/app/evidence/page");
+  await act(async () => {
+    render(<EvidencePage />);
+  });
+}
+
+describe("EvidencePage (native charts)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     setupFetchAPI();
   });
 
-  it("renders page heading and description", async () => {
-    const { default: EvidencePage } = await import("@/app/evidence/page");
-    await act(async () => {
-      render(<EvidencePage />);
-    });
-
-    expect(screen.getByText("Evidence Charts")).toBeInTheDocument();
-    expect(screen.getByText(/투자 결정 근거 시각화/)).toBeInTheDocument();
+  it("renders page heading and subtitle from strings.ts", async () => {
+    await renderPage();
+    expect(screen.getByText(E.TITLE)).toBeInTheDocument();
+    expect(screen.getByText(E.SUBTITLE)).toBeInTheDocument();
   });
 
-  it("renders chart descriptions for all charts", async () => {
-    const { default: EvidencePage } = await import("@/app/evidence/page");
-    await act(async () => {
-      render(<EvidencePage />);
-    });
-
-    expect(screen.getByText("Regime Timeline")).toBeInTheDocument();
-    expect(screen.getByText("Portfolio Allocation")).toBeInTheDocument();
-    expect(screen.getByText("Signal Performance")).toBeInTheDocument();
-    expect(screen.getByText("Fear & Greed History")).toBeInTheDocument();
-    expect(screen.getByText("Sell Evidence")).toBeInTheDocument();
+  it("renders all 5 chart cards (testid + title)", async () => {
+    await renderPage();
+    for (const [testId, title] of [
+      ["card-regime", E.TITLE_REGIME],
+      ["card-portfolio_heatmap", E.TITLE_HEATMAP],
+      ["card-signal_performance", E.TITLE_SIGNALS],
+      ["card-fear_greed", E.TITLE_FEAR_GREED],
+      ["card-sell_evidence", E.TITLE_SELL],
+    ] as const) {
+      expect(screen.getByTestId(testId)).toBeInTheDocument();
+      expect(screen.getByText(title)).toBeInTheDocument();
+    }
   });
 
-  it("renders READY badge for available charts", async () => {
-    const { default: EvidencePage } = await import("@/app/evidence/page");
-    await act(async () => {
-      render(<EvidencePage />);
-    });
-
-    // 3 available charts get READY badge
-    const readyBadges = screen.getAllByText("READY");
-    expect(readyBadges.length).toBe(3);
+  it("renders native chart components — and zero iframes", async () => {
+    await renderPage();
+    expect(screen.getByTestId("regime-chart")).toBeInTheDocument();
+    expect(screen.getByTestId("portfolio-treemap")).toBeInTheDocument();
+    expect(screen.getByTestId("signal-performance-chart")).toBeInTheDocument();
+    expect(screen.getByTestId("fear-greed-chart")).toBeInTheDocument();
+    expect(screen.getByTestId("sell-evidence-chart")).toBeInTheDocument();
+    // #1225 핵심: iframe 완전 제거
+    expect(document.querySelectorAll("iframe").length).toBe(0);
   });
 
-  it("renders BLOCKED badge for unavailable charts", async () => {
-    const { default: EvidencePage } = await import("@/app/evidence/page");
-    await act(async () => {
-      render(<EvidencePage />);
+  it("shows one-line empty state when a chart has no data", async () => {
+    setupFetchAPI({
+      "/api/evidence/data/regime": { spy: [], vix: [], regime: null, count: 0 },
     });
-
-    // 2 unavailable charts get BLOCKED badge
-    const blockedBadges = screen.getAllByText("BLOCKED");
-    expect(blockedBadges.length).toBe(2);
+    await renderPage();
+    expect(screen.getByText(E.NO_DATA)).toBeInTheDocument();
+    expect(screen.queryByTestId("regime-chart")).not.toBeInTheDocument();
+    // 나머지 카드는 그대로 렌더
+    expect(screen.getByTestId("portfolio-treemap")).toBeInTheDocument();
   });
 
-  it("shows make evidence instruction for unavailable charts", async () => {
-    const { default: EvidencePage } = await import("@/app/evidence/page");
-    await act(async () => {
-      render(<EvidencePage />);
+  it("distinguishes zero violations (정상) from missing data", async () => {
+    setupFetchAPI({
+      "/api/evidence/data/sell_evidence": { violations: [], count: 0 },
     });
-
-    const instructions = screen.getAllByText("make evidence");
-    expect(instructions.length).toBe(2);
+    await renderPage();
+    expect(screen.getByText(E.NO_VIOLATIONS)).toBeInTheDocument();
+    expect(screen.queryByText(E.NO_DATA)).not.toBeInTheDocument();
   });
 
-  it("renders iframe for available charts", async () => {
-    const { default: EvidencePage } = await import("@/app/evidence/page");
-    await act(async () => {
-      render(<EvidencePage />);
+  it("shows NO_DATA (not NO_VIOLATIONS) when sell endpoint fails but others succeed", async () => {
+    setupFetchAPI({
+      "/api/evidence/data/sell_evidence": new Error("boom"),
     });
-
-    // Each available chart gets an iframe
-    const iframes = document.querySelectorAll("iframe");
-    expect(iframes.length).toBe(3);
-
-    // Check iframe src contains chart id
-    const srcs = Array.from(iframes).map((f) => f.getAttribute("src"));
-    expect(srcs).toContain("/api/evidence/regime_timeline");
-    expect(srcs).toContain("/api/evidence/portfolio_allocation");
-    expect(srcs).toContain("/api/evidence/fear_greed_history");
+    await renderPage();
+    expect(screen.getByText(E.NO_DATA)).toBeInTheDocument();
+    expect(screen.queryByText(E.NO_VIOLATIONS)).not.toBeInTheDocument();
   });
 
-  it("shows empty state when no charts exist", async () => {
-    setupFetchAPI({ evidence: { charts: [], date: "2026-03-31" } });
-
-    const { default: EvidencePage } = await import("@/app/evidence/page");
-    await act(async () => {
-      render(<EvidencePage />);
+  it("shows LOAD_FAILED only when every endpoint fails", async () => {
+    const boom = new Error("down");
+    setupFetchAPI({
+      "/api/evidence/data/regime": boom,
+      "/api/evidence/data/portfolio_heatmap": boom,
+      "/api/evidence/data/signal_performance": boom,
+      "/api/evidence/data/fear_greed": boom,
+      "/api/evidence/data/sell_evidence": boom,
     });
-
-    expect(screen.getByText(/증거 차트 없음/)).toBeInTheDocument();
-    expect(screen.getByText("make full-scan")).toBeInTheDocument();
-  });
-
-  it("handles API failure gracefully", async () => {
-    mockFetchAPI = vi.fn().mockRejectedValue(new Error("Network error"));
-
-    const { default: EvidencePage } = await import("@/app/evidence/page");
-    await act(async () => {
-      render(<EvidencePage />);
-    });
-
-    expect(screen.getByText(/증거 차트 로드 실패/)).toBeInTheDocument();
-  });
-
-  it("renders chart dates for available charts", async () => {
-    const { default: EvidencePage } = await import("@/app/evidence/page");
-    await act(async () => {
-      render(<EvidencePage />);
-    });
-
-    // Available charts show date next to READY badge
-    const dates = screen.getAllByText("2026-03-31");
-    expect(dates.length).toBe(3);
+    await renderPage();
+    expect(screen.getByText(E.LOAD_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText(E.TITLE_REGIME)).not.toBeInTheDocument();
   });
 });

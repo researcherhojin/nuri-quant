@@ -7,7 +7,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme.
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build
-npm run test           # vitest (1538 tests, 131 files)
+npm run test           # vitest (1571 tests, 133 files)
 npx playwright test    # E2E (87 tests, 9 specs)
 ```
 
