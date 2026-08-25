@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { ActionItems } from "@/components/ui/action-items";
@@ -312,10 +312,32 @@ describe("ActionItems", () => {
 });
 
 // #1212 U2b-4: NEW 배지 + 확인(ack) — per-viewer seen-state.
-// 이 jsdom 엔 localStorage 가 없어(action-ack.test.ts 주석 참조) loadAckMap 은
-// {} 로 폴백한다 → 마운트 후 모든 항목이 NEW. ack 는 in-memory 로 동작.
+// ⚠️ 스토리지는 환경 의존이다: 로컬 Node 26 jsdom 엔 window.localStorage 가
+// 아예 없고(실험적 webstorage 게터가 undefined), CI Node 22 jsdom 은 실동작
+// 스토리지를 제공한다. 후자에서 ack 이 파일 내 다음 테스트로 지속돼 CI 만
+// 깨졌다 (run 32814106230, expected 2 → got 1). 인메모리 스텁 + 매 테스트
+// 초기화로 양쪽 환경을 동일·결정론적으로 만든다.
 describe("NEW badge + ack (#1212)", () => {
   const asOfItem = { ...urgentItem, as_of: "2026-08-25", decision_id: 7 };
+
+  let ackStore: Record<string, string> = {};
+  const storageStub = {
+    getItem: (k: string) => (k in ackStore ? ackStore[k] : null),
+    setItem: (k: string, v: string) => { ackStore[k] = String(v); },
+    removeItem: (k: string) => { delete ackStore[k]; },
+    clear: () => { ackStore = {}; },
+    key: (i: number) => Object.keys(ackStore)[i] ?? null,
+    get length() { return Object.keys(ackStore).length; },
+  } as Storage;
+  const originalDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
+  beforeEach(() => {
+    ackStore = {};
+    Object.defineProperty(window, "localStorage", { value: storageStub, configurable: true });
+  });
+  afterAll(() => {
+    if (originalDescriptor) Object.defineProperty(window, "localStorage", originalDescriptor);
+    else delete (window as { localStorage?: Storage }).localStorage;
+  });
 
   it("marks un-acked rows NEW after mount", () => {
     render(<ActionItems urgent={[asOfItem]} check={[checkItem]} hold={[]} />);

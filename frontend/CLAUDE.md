@@ -93,4 +93,5 @@ should be **223**.
 
 - **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control. (#1210 이후 대시보드 트리는 recharts 무관 — price/equity/siege/gate 차트 테스트에만 해당.)
 - Mock `@/lib/api` + `next/navigation` in all page tests.
+- **`window.localStorage` 는 환경 의존**: 로컬 Node 26 jsdom 엔 **없고**(실험적 webstorage 게터가 `--localstorage-file` 없이 undefined), CI Node 22 jsdom 은 **실동작 스토리지**를 제공해 같은 파일 내 테스트 간 상태가 지속된다. 로컬 초록 ≠ CI 초록 — storage 를 쓰는 테스트는 인메모리 스텁 + `beforeEach` 초기화로 결정론화할 것 (CI run 32814106230, #1212). **Test:** `src/__tests__/components/action-items.test.tsx::NEW badge + ack (#1212)` — describe 레벨 스텁이 빠지면 CI 에서 ack 누수로 FAIL.
 - Test files: 93 in `src/__tests__/` (`components/lib/pages/coverage` subdirs + root `api-auth`/`middleware` tests) + 36 co-located next to sources (`src/app/**`, `src/components/ui/**`, `src/lib/**` — `*.coverage.test.tsx` / `*.branchcov.test.tsx`).
