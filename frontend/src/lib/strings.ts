@@ -313,8 +313,11 @@ export const DECISIONS = {
   // #1257 판정 경로 히어로 — 판정 소스(final_action_source)별 3변형. 일상어 원칙:
   // "합의 불성립"/"mechanical rung" 같은 시스템 은어 금지 (와이어프레임 v2 codex 검토).
   HERO_VETO_TITLE: "의견은 갈렸지만, 손실 관리 규칙이 이 판정을 자동 확정했습니다",
-  HERO_PENALTY_TITLE: "에이전트 의견이 크게 갈려 확신도를 낮췄습니다",
+  // 엔진은 확신도가 아니라 **판정(액션)을 보수적으로 강등**한다 (scoring.py divergence
+  // penalty — codex ship review P2: "확신도를 낮췄다" 는 SSoT 불일치)
+  HERO_PENALTY_TITLE: "에이전트 의견이 크게 갈려 판정을 보수적으로 강등했습니다",
   HERO_WEIGHTED_TITLE: "에이전트 가중 합의가 이 판정을 만들었습니다",
+  HERO_UNKNOWN_TITLE: "판정 경로를 해석할 수 없습니다 — 화면이 모르는 새 판정 메커니즘",
   HERO_CONSENSUS_REF: "에이전트 합의 — 참고용 (최종 판정에 미반영)",
   HERO_DECIDER_VETO: "최종 판정을 확정한 것 — 손실 관리 규칙 (리스크 거부권)",
   HERO_CONF_NOTE: "확신도는 규칙의 확신도 — 에이전트 일치율과 다른 수치인 이유",

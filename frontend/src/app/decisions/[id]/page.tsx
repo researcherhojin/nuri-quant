@@ -179,12 +179,16 @@ export async function DecisionProvenance({ id }: { id: string }) {
   // #1257 판정 경로 — scoring_detail(#1256) 우선, 과거 행은 reasoning 프리픽스 fallback.
   const sd = parseScoringDetail(d.scoring_detail);
   const actionSource = deriveActionSource(sd, d.reasoning);
-  const split = verdictSplit(verdicts);
   // "데이터 없음 ≠ 중립" (#1028) — degraded 명단은 scoring_detail 에만 있으므로
   // 과거 행은 분리 없이 기존 평면 리스트를 유지한다 (fallback 으로 지어내지 않는다).
   const degradedNames = new Set(sd?.degraded_agents ?? []);
   const liveVerdicts = verdicts.filter((v) => !degradedNames.has(v.agent_name));
   const degradedVerdicts = verdicts.filter((v) => degradedNames.has(v.agent_name));
+  // 히어로 분포는 **live 패널 기준** — 백엔드 합의 산식(scoring.py)이 degraded 를
+  // 분자·분모에서 빼는 것과 동형이어야 panel_coverage 와 화면이 서로 모순되지 않는다
+  // (codex ship review P1). degraded 분리가 없는 과거 행은 live == 전체라 기존과 동일.
+  const split = verdictSplit(liveVerdicts);
+  const splitRestLabel = degradedVerdicts.length > 0 ? "중립" : "중립/무의견";
   const agreementPct = d.agreement_rate === null ? null : Math.round(d.agreement_rate * 100);
 
   return (
@@ -217,22 +221,30 @@ export async function DecisionProvenance({ id }: { id: string }) {
             {actionSource === "risk_veto" && DECISIONS.HERO_VETO_TITLE}
             {actionSource === "divergence_penalty" && DECISIONS.HERO_PENALTY_TITLE}
             {actionSource === "weighted_sum" && DECISIONS.HERO_WEIGHTED_TITLE}
+            {actionSource === "unknown" && (
+              <>
+                {DECISIONS.HERO_UNKNOWN_TITLE}
+                {typeof sd?.final_action_source === "string" && (
+                  <span className="ml-2 text-[10px] font-mono text-muted-foreground">({sd.final_action_source})</span>
+                )}
+              </>
+            )}
           </p>
           {actionSource === "risk_veto" ? (
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded bg-muted/40 px-3 py-2.5 space-y-1.5 opacity-80">
                 <p className="text-[10px] text-muted-foreground">{DECISIONS.HERO_CONSENSUS_REF}</p>
                 <div className="flex h-2 rounded-full overflow-hidden" aria-hidden="true">
-                  {verdicts.length > 0 && (
+                  {liveVerdicts.length > 0 && (
                     <>
-                      <div className="bg-rose-500/70" style={{ width: `${(split.sell / verdicts.length) * 100}%` }} />
-                      <div className="bg-emerald-500/70" style={{ width: `${(split.buy / verdicts.length) * 100}%` }} />
-                      <div className="bg-muted-foreground/30" style={{ width: `${(split.rest / verdicts.length) * 100}%` }} />
+                      <div className="bg-rose-500/70" style={{ width: `${(split.sell / liveVerdicts.length) * 100}%` }} />
+                      <div className="bg-emerald-500/70" style={{ width: `${(split.buy / liveVerdicts.length) * 100}%` }} />
+                      <div className="bg-muted-foreground/30" style={{ width: `${(split.rest / liveVerdicts.length) * 100}%` }} />
                     </>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  SELL {split.sell} · BUY {split.buy} · 중립/무의견 {split.rest}
+                  SELL {split.sell} · BUY {split.buy} · {splitRestLabel} {split.rest}
                   {agreementPct !== null && ` — ${DECISIONS.HERO_AGREEMENT_LABEL} ${agreementPct}%`}
                 </p>
               </div>
@@ -248,16 +260,16 @@ export async function DecisionProvenance({ id }: { id: string }) {
           ) : (
             <div className="rounded bg-muted/40 px-3 py-2.5 space-y-1.5">
               <div className="flex h-2 rounded-full overflow-hidden" aria-hidden="true">
-                {verdicts.length > 0 && (
+                {liveVerdicts.length > 0 && (
                   <>
-                    <div className="bg-rose-500/70" style={{ width: `${(split.sell / verdicts.length) * 100}%` }} />
-                    <div className="bg-emerald-500/70" style={{ width: `${(split.buy / verdicts.length) * 100}%` }} />
-                    <div className="bg-muted-foreground/30" style={{ width: `${(split.rest / verdicts.length) * 100}%` }} />
+                    <div className="bg-rose-500/70" style={{ width: `${(split.sell / liveVerdicts.length) * 100}%` }} />
+                    <div className="bg-emerald-500/70" style={{ width: `${(split.buy / liveVerdicts.length) * 100}%` }} />
+                    <div className="bg-muted-foreground/30" style={{ width: `${(split.rest / liveVerdicts.length) * 100}%` }} />
                   </>
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                SELL {split.sell} · BUY {split.buy} · 중립/무의견 {split.rest}
+                SELL {split.sell} · BUY {split.buy} · {splitRestLabel} {split.rest}
                 {agreementPct !== null && ` — ${DECISIONS.HERO_AGREEMENT_LABEL} ${agreementPct}%`}
               </p>
               {actionSource === "divergence_penalty" && d.reasoning && (

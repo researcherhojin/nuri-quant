@@ -16,7 +16,9 @@ export interface ScoringDetail {
 // scoring_detail 이 없는 과거 행의 유일한 판정 소스 신호.
 export const VETO_REASONING_PREFIX = "리스크 에이전트 거부권 발동";
 
-export type ActionSource = "risk_veto" | "divergence_penalty" | "weighted_sum";
+// "unknown" — 백엔드가 미래에 4번째 메커니즘을 추가했을 때 weighted_sum 으로
+// 조용히 오표기하지 않기 위한 정직한 fallback (codex ship review P2).
+export type ActionSource = "risk_veto" | "divergence_penalty" | "weighted_sum" | "unknown";
 
 // scoring_detail 은 SELECT * 경유라 JSON 문자열로 도착한다 — 안전 파싱.
 export function parseScoringDetail(raw: unknown): ScoringDetail | null {
@@ -32,11 +34,13 @@ export function parseScoringDetail(raw: unknown): ScoringDetail | null {
   return obj as ScoringDetail;
 }
 
-// 판정 소스 파생. scoring_detail 우선, 과거 행은 reasoning 프리픽스 fallback,
-// 그 외에는 기본 경로(weighted_sum) — 셋 중 하나로 반드시 수렴한다.
+// 판정 소스 파생. scoring_detail 우선, 과거 행(소스 필드 부재)은 reasoning 프리픽스
+// fallback → weighted_sum. 소스 필드가 **있는데 모르는 값**이면 "unknown" — 새 메커니즘을
+// 가중 합의로 둔갑시키지 않는다.
 export function deriveActionSource(sd: ScoringDetail | null, reasoning: string | null): ActionSource {
   const src = sd?.final_action_source;
   if (src === "risk_veto" || src === "divergence_penalty" || src === "weighted_sum") return src;
+  if (typeof src === "string" && src.length > 0) return "unknown";
   if (reasoning?.startsWith(VETO_REASONING_PREFIX)) return "risk_veto";
   return "weighted_sum";
 }

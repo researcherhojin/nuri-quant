@@ -595,7 +595,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
     });
     const hero = screen.getByTestId("verdict-hero");
     expect(hero.dataset.source).toBe("divergence_penalty");
-    expect(within(hero).getByText(/확신도를 낮췄습니다/)).toBeInTheDocument();
+    expect(within(hero).getByText(/판정을 보수적으로 강등했습니다/)).toBeInTheDocument();
     expect(within(hero).getByText(/의견 분산 페널티로 HOLD 강등/)).toBeInTheDocument();
   });
 
@@ -681,10 +681,68 @@ describe("verdict-path helpers (#1257)", () => {
     });
   });
 
-  it("deriveActionSource: 미지의 소스 값은 fallback 경로로", async () => {
+  it("deriveActionSource: 미지의 소스는 unknown — 가중 합의로 둔갑 금지 (codex P2)", async () => {
     const { deriveActionSource } = await import("@/app/decisions/verdict-path");
-    expect(deriveActionSource({ final_action_source: "future_mechanism" }, "일반 합의")).toBe("weighted_sum");
+    expect(deriveActionSource({ final_action_source: "future_mechanism" }, "일반 합의")).toBe("unknown");
     expect(deriveActionSource(null, "리스크 에이전트 거부권 발동: x")).toBe("risk_veto");
     expect(deriveActionSource(null, null)).toBe("weighted_sum");
+  });
+
+  it("verdictSplit + 히어로 분포는 live 패널 기준 (codex P1)", async () => {
+    const { verdictSplit } = await import("@/app/decisions/verdict-path");
+    expect(verdictSplit([{ action: "SELL" }, { action: "BUY" }, { action: "HOLD" }])).toEqual({
+      buy: 1,
+      sell: 1,
+      rest: 1,
+    });
+  });
+});
+
+describe("DecisionProvenance — codex ship-review 수정 잠금 (#1257)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    notFoundMock.mockClear();
+  });
+
+  it("P1: 히어로 분포가 degraded 를 세지 않는다 — live 패널 기준", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      action: "SELL",
+      reasoning: "리스크 에이전트 거부권 발동: 손절선 돌파",
+      agent_verdicts: JSON.stringify([
+        { agent_name: "risk", action: "SELL", confidence: 100, reasoning: "손절선 돌파" },
+        { agent_name: "options", action: "BUY", confidence: 86, reasoning: "PCR" },
+        { agent_name: "smart_money", action: "HOLD", confidence: 30, reasoning: "데이터 없음" },
+        { agent_name: "crypto", action: "HOLD", confidence: 0, reasoning: "무관" },
+      ]),
+      scoring_detail: JSON.stringify({
+        final_action_source: "risk_veto",
+        degraded_agents: ["smart_money", "crypto"],
+        panel_coverage: 0.5,
+      }),
+      thesis: null,
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const hero = screen.getByTestId("verdict-hero");
+    // degraded 2명(HOLD 자리표시자)이 빠져야 함: live = SELL 1 · BUY 1 · 중립 0
+    expect(within(hero).getByText(/SELL 1 · BUY 1 · 중립 0/)).toBeInTheDocument();
+  });
+
+  it("P2: 백엔드가 모르는 판정 소스 → unknown 히어로 (가중 합의로 오표기 금지)", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      scoring_detail: JSON.stringify({ final_action_source: "quantum_override" }),
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const hero = screen.getByTestId("verdict-hero");
+    expect(hero.dataset.source).toBe("unknown");
+    expect(within(hero).getByText(/판정 경로를 해석할 수 없습니다/)).toBeInTheDocument();
+    expect(within(hero).getByText(/quantum_override/)).toBeInTheDocument();
   });
 });
