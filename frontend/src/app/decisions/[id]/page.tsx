@@ -224,9 +224,8 @@ export async function DecisionProvenance({ id }: { id: string }) {
             {actionSource === "unknown" && (
               <>
                 {DECISIONS.HERO_UNKNOWN_TITLE}
-                {typeof sd?.final_action_source === "string" && (
-                  <span className="ml-2 text-[10px] font-mono text-muted-foreground">({sd.final_action_source})</span>
-                )}
+                {/* unknown 은 정의상 sd.final_action_source 가 비어있지 않은 문자열일 때만 나온다 */}
+                <span className="ml-2 text-[10px] font-mono text-muted-foreground">({String(sd?.final_action_source)})</span>
               </>
             )}
           </p>

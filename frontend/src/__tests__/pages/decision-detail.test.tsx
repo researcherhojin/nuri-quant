@@ -746,3 +746,32 @@ describe("DecisionProvenance — codex ship-review 수정 잠금 (#1257)", () =>
     expect(within(hero).getByText(/quantum_override/)).toBeInTheDocument();
   });
 });
+
+describe("DecisionProvenance — null-필드 분기 커버 (#1257 codecov patch)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    notFoundMock.mockClear();
+  });
+
+  it("veto 히어로: confidence·agreement·reasoning null + 빈 verdicts 도 안전 렌더", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      action: "SELL",
+      confidence: null,
+      agreement_rate: null,
+      reasoning: null,
+      agent_verdicts: JSON.stringify([]),
+      scoring_detail: JSON.stringify({ final_action_source: "risk_veto" }),
+      thesis: null,
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const hero = screen.getByTestId("verdict-hero");
+    expect(hero.dataset.source).toBe("risk_veto");
+    // confidence null → "—", 분포 바는 0명이라 비어 있고, 일치율 표기는 생략
+    expect(within(hero).getByText(/SELL · —/)).toBeInTheDocument();
+    expect(within(hero).queryByText(/일치율 \d/)).not.toBeInTheDocument();
+  });
+});
