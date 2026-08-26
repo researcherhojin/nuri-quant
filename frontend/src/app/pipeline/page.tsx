@@ -28,6 +28,10 @@ import {
 import { ERRORS, PIPELINE as PL } from "@/lib/strings";
 import { summarizePayload } from "./helpers";
 
+// design-review F-005: 6노드 선형 DAG 가 피치 300(행폭 ~1,680px)로 캔버스에 fit 되며
+// 0.46배로 축소돼 기본 줌에서 노드 텍스트가 판독 불가였다 — 피치 축소로 fit 배율 회복.
+const NODE_PITCH_X = 220;
+
 // === Types ===
 interface PipelineStep {
   step: string;
@@ -372,7 +376,7 @@ export default function PipelinePage() {
     ? steps.map((s, i) => ({
         id: s.step,
         type: "pipeline",
-        position: { x: i * 300, y: 80 },
+        position: { x: i * NODE_PITCH_X, y: 80 },
         data: {
           label: s.label,
           sub: s.description,
@@ -426,7 +430,7 @@ export default function PipelinePage() {
           edges={EDGES}
           nodeTypes={nodeTypes()}
           fitView
-          fitViewOptions={{ padding: 0.3 }}
+          fitViewOptions={{ padding: 0.15 }}
           proOptions={{ hideAttribution: true }}
           minZoom={0.4}
           maxZoom={1.5}
@@ -544,37 +548,37 @@ const DEFAULT_NODES: Node[] = [
   {
     id: "collect",
     type: "pipeline",
-    position: { x: 0, y: 80 },
+    position: { x: 0 * NODE_PITCH_X, y: 80 },
     data: { label: "Collect", sub: "15 collectors + 6 sites", status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } as PipelineNodeData,
   },
   {
     id: "validate",
     type: "pipeline",
-    position: { x: 300, y: 80 },
+    position: { x: 1 * NODE_PITCH_X, y: 80 },
     data: { label: "Validate", sub: "Signal backtest + scorecard", status: "warning", recordCount: 0, lastUpdated: null, stepId: "validate", href: "/signals" } as PipelineNodeData,
   },
   {
     id: "classify",
     type: "pipeline",
-    position: { x: 600, y: 80 },
+    position: { x: 2 * NODE_PITCH_X, y: 80 },
     data: { label: "Classify", sub: "6-regime classifier", status: "warning", recordCount: 0, lastUpdated: null, stepId: "classify", href: "/strategy" } as PipelineNodeData,
   },
   {
     id: "diagnose",
     type: "pipeline",
-    position: { x: 900, y: 80 },
+    position: { x: 3 * NODE_PITCH_X, y: 80 },
     data: { label: "Diagnose", sub: "10 agents consensus", status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } as PipelineNodeData,
   },
   {
     id: "recommend",
     type: "pipeline",
-    position: { x: 1200, y: 80 },
+    position: { x: 4 * NODE_PITCH_X, y: 80 },
     data: { label: "Recommend", sub: "Buy/sell + price targets", status: "warning", recordCount: 0, lastUpdated: null, stepId: "recommend", href: "/targets" } as PipelineNodeData,
   },
   {
     id: "track",
     type: "pipeline",
-    position: { x: 1500, y: 80 },
+    position: { x: 5 * NODE_PITCH_X, y: 80 },
     data: { label: "Track", sub: "30/60/90d outcomes", status: "warning", recordCount: 0, lastUpdated: null, stepId: "track", href: "/targets" } as PipelineNodeData,
   },
 ];
