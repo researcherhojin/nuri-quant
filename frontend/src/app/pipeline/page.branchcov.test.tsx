@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { ERRORS } from "@/lib/strings";
 import type { ComponentType, ReactNode } from "react";
 
 type FlowNode = { id: string; type?: string; data?: Record<string, unknown> };
@@ -490,7 +491,8 @@ describe("PipelinePage — fetch & render branch arms", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(50);
     });
-    expect(alertSpy).toHaveBeenCalledWith("run failed");
+    // F-002: 한국어 실패 프리픽스 + 원문
+    expect(alertSpy).toHaveBeenCalledWith(`${ERRORS.RUN_FAILED_PREFIX}run failed`);
   });
 
   it("handleRunStep: POST success (298 false arm) schedules refresh", async () => {
