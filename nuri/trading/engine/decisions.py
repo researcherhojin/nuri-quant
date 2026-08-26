@@ -83,6 +83,15 @@ def record_decision(consensus_result, db_path=None) -> int:
         "stop_loss": targets.get("stop_loss"),
         "target_1": targets.get("target_1"),
         "target_2": targets.get("target_2"),
+        # #1256: scoring.py 가 계산하는 판정 감사 정보(final_action_source /
+        # degraded_agents / panel_coverage / contributions)를 decisions 에도 persist.
+        # recommendations 경로(#364)만 저장하고 여기서 버려져 387행 전부 NULL 이었다 —
+        # 결정 상세 페이지의 "왜 이 판정인가" 재구성이 reasoning 문자열 파싱에 갇혀 있던 원인.
+        "scoring_detail": (
+            json.dumps(consensus_result.scoring_detail, ensure_ascii=False)
+            if getattr(consensus_result, "scoring_detail", None)
+            else None
+        ),
     }
 
     decision_id = upsert_decision(decision_data, db_path)
@@ -242,6 +251,19 @@ def _snapshot_market_context(db_path=None) -> dict:
             payload = json.loads(regime_row[0]["payload"])
             context["regime"] = payload.get("regime", payload.get("new_regime"))
         except (json.JSONDecodeError, TypeError):
+            pass
+
+    # #1256: regime_changed 이벤트는 dev/prod 모두 0건이라 위 경로만으로는 regime 이
+    # 항상 NULL 이었다 (결정 상세 frozen 컨텍스트의 "—"). 분류기 직접 호출로 fallback —
+    # 실패는 None 유지 (관측이 본 작업을 게이트하면 안 된다, #894).
+    if not context.get("regime"):
+        try:
+            from nuri.quant.regime.classifier import classify_regime
+
+            state = classify_regime(db_path=db_path)
+            if state is not None:
+                context["regime"] = state.regime
+        except Exception:
             pass
 
     # Macro score — event_score 포함

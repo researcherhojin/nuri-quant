@@ -257,6 +257,7 @@ class MockConsensusResult:
     verdicts: list
     dissent: list
     reasoning: str
+    scoring_detail: dict | None = None  # #1256: 실 ConsensusResult 와 동일하게 optional
 
 
 class TestRecordDecision:
@@ -365,6 +366,126 @@ class TestRecordDecision:
         count = record_decisions(results, db_path)
         assert count == 2
         assert len(get_decisions(db_path=db_path)) == 2
+
+
+# ═══════════════════════════════════════════════════════
+# #1256 — scoring_detail persist + regime fallback (Gotcha-Test Pair)
+# ═══════════════════════════════════════════════════════
+
+
+class TestScoringDetailIsPersisted:
+    """scoring.py 가 계산한 판정 감사 정보가 decisions 행까지 도달하는지 잠금.
+
+    #1256 이전: ConsensusResult.scoring_detail 은 recommendations 경로만 persist 되고
+    record_decision 이 버려서 387행 전부 NULL 이었다. persist 줄을 지우면 FAIL.
+    """
+
+    def test_scoring_detail_round_trips(self, db_path):
+        from nuri.trading.engine.decisions import record_decision
+
+        _insert_price(db_path, "NVDA", 120.0)
+        detail = {
+            "source": "consensus",
+            "schema_version": 1,
+            "final_action_source": "risk_veto",
+            "degraded_agents": ["smart_money"],
+            "panel_coverage": 0.9,
+        }
+        result = MockConsensusResult(
+            ticker="NVDA",
+            final_action="SELL",
+            final_confidence=100.0,
+            agreement_rate=0.2,
+            verdicts=[MockAgentVerdict("risk", "NVDA", "SELL", 100.0, "stop breach", {})],
+            dissent=[],
+            reasoning="리스크 에이전트 거부권 발동: 손절선 돌파",
+            scoring_detail=detail,
+        )
+
+        dec_id = record_decision(result, db_path)
+        row = query("SELECT scoring_detail FROM decisions WHERE id = ?", (dec_id,), db_path)[0]
+        assert row["scoring_detail"] is not None
+        assert json.loads(row["scoring_detail"]) == detail
+
+    def test_absent_scoring_detail_stays_null(self, db_path):
+        """scoring_detail 없는 결과(구 호출자·구 mock)는 NULL — 빈 dict/문자열 오염 금지."""
+        from nuri.trading.engine.decisions import record_decision
+
+        _insert_price(db_path, "NVDA", 120.0)
+        result = MockConsensusResult(
+            ticker="NVDA",
+            final_action="BUY",
+            final_confidence=70.0,
+            agreement_rate=0.7,
+            verdicts=[MockAgentVerdict("technical", "NVDA", "BUY", 80.0, "ok", {})],
+            dissent=[],
+            reasoning="plain consensus",
+        )
+
+        dec_id = record_decision(result, db_path)
+        row = query("SELECT scoring_detail FROM decisions WHERE id = ?", (dec_id,), db_path)[0]
+        assert row["scoring_detail"] is None
+
+
+class TestRegimeFallsBackToClassifier:
+    """decisions.regime NULL 상근 버그 (#1256) 잠금.
+
+    _snapshot_market_context 는 pipeline_events.regime_changed 만 읽었는데 그 이벤트는
+    dev/prod 모두 0건 — frozen 컨텍스트의 Regime 이 항상 "—" 였다. fallback 을 지우면 FAIL.
+    """
+
+    def _record_one(self, db_path):
+        from nuri.trading.engine.decisions import record_decision
+
+        _insert_price(db_path, "NVDA", 120.0)
+        result = MockConsensusResult(
+            ticker="NVDA",
+            final_action="BUY",
+            final_confidence=70.0,
+            agreement_rate=0.7,
+            verdicts=[MockAgentVerdict("technical", "NVDA", "BUY", 80.0, "ok", {})],
+            dissent=[],
+            reasoning="regime test",
+        )
+        return record_decision(result, db_path)
+
+    def test_no_event_falls_back_to_classifier(self, db_path, monkeypatch):
+        import nuri.quant.regime.classifier as classifier
+
+        class _State:
+            regime = "bull_low_vol"
+
+        monkeypatch.setattr(classifier, "classify_regime", lambda db_path=None: _State())
+        dec_id = self._record_one(db_path)
+        row = query("SELECT regime FROM decisions WHERE id = ?", (dec_id,), db_path)[0]
+        assert row["regime"] == "bull_low_vol"
+
+    def test_event_still_wins_over_classifier(self, db_path, monkeypatch):
+        """이벤트가 있으면 그 값이 우선 — fallback 이 스냅샷 의미를 바꾸면 안 된다."""
+        import nuri.quant.regime.classifier as classifier
+        from nuri.core.events import emit_event
+
+        emit_event("regime_changed", payload={"regime": "bear_high_vol"}, db_path=db_path)
+        monkeypatch.setattr(
+            classifier,
+            "classify_regime",
+            lambda db_path=None: (_ for _ in ()).throw(AssertionError("classifier must not be called")),
+        )
+        dec_id = self._record_one(db_path)
+        row = query("SELECT regime FROM decisions WHERE id = ?", (dec_id,), db_path)[0]
+        assert row["regime"] == "bear_high_vol"
+
+    def test_classifier_failure_leaves_regime_null(self, db_path, monkeypatch):
+        """분류기 실패는 soft-fail — 관측이 본 작업(기록)을 게이트하면 안 된다 (#894)."""
+        import nuri.quant.regime.classifier as classifier
+
+        def _boom(db_path=None):
+            raise RuntimeError("no SPY data")
+
+        monkeypatch.setattr(classifier, "classify_regime", _boom)
+        dec_id = self._record_one(db_path)
+        row = query("SELECT regime FROM decisions WHERE id = ?", (dec_id,), db_path)[0]
+        assert row["regime"] is None
 
 
 # ═══════════════════════════════════════════════════════
