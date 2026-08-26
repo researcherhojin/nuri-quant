@@ -425,7 +425,9 @@ export default function PipelinePage() {
       </div>
 
       {/* React Flow 캔버스 */}
-      <div className="h-80 rounded-xl border border-border bg-background overflow-hidden">
+      {/* design-review F-009: 폭 제약 fit 이라 노드 행 높이는 ~75px — h-80(320px)은
+          위아래가 죽은 공간이었다. 줌 배율은 폭이 결정하므로 높이 축소는 무손실. */}
+      <div className="h-60 rounded-xl border border-border bg-background overflow-hidden">
         <ReactFlow
           nodes={nodes}
           edges={EDGES}
