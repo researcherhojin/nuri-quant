@@ -352,9 +352,8 @@ export function HoldingRow({ holding: h, href, macroAwareSectors }: HoldingRowPr
       href={linkHref}
       data-testid="holding-row"
       data-status={h.status.kind}
-      // holdings-section 의 "< sm 은 row aria-label 로 충분" 주석이 약속한 라벨 —
-      // 코드에 없어서 모바일 드릴다운이 컬럼 컨텍스트를 잃었다 (codex design audit M4)
-      aria-label={`${h.ticker} · ${h.account} · ${h.pnlPct >= 0 ? "+" : ""}${h.pnlPct.toFixed(1)}%`}
+      // aria-label 을 두지 않는다: 링크 접근명은 보이는 자식(계좌·이름·손익)에서 계산되며,
+      // label 은 그 전체를 덮어써 오히려 정보를 잃는다 (codex ship review P2, M4 재검토)
       className="flex w-fit items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/50 text-xs group"
     >
       {/* account — wider at 2xl+ so labels like "LONG_TERM" don't truncate. Stays w-10 below
