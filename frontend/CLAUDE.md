@@ -13,7 +13,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (1606 tests, 134 files)
+npm run test           # vitest run (1622 tests, 134 files)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
@@ -40,6 +40,19 @@ Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), `/po
 **VerdictBanner** (오늘의 답, 첫 픽셀 #1207) → Hero (4 stats) → RegimeShiftBanner(조건부) → **ActionItems 밀집 테이블 2/3 + SystemHealthRail·MacroEventsCard 1/3** (#1209) → market/events strips → CompositionSection (가로 스택 바 + tabs, #1210) → Holdings table (top 8) → **OpportunityExplorer** (상위 3개 + /scan 링크) → CoverageStatus (`<details>` 접힘, #1210) → footer.
 
 Data flows through `summarizeHoldings()` in `src/lib/holdings-summary.ts`. Action data from `/api/actions`, `/api/opportunities`, `/api/market-context`.
+
+## Decision Detail (#1257 논증 구조)
+
+`/decisions/[id]` 는 판정 소스별 히어로로 시작한다 — `scoring_detail.final_action_source`
+(`risk_veto` 대차대조 / `divergence_penalty` / `weighted_sum` / **`unknown`** — 화면이 모르는
+새 메커니즘을 가중 합의로 둔갑시키지 않는 정직 fallback). 파생 로직은
+`src/app/decisions/verdict-path.ts` 가 단일 소스: #1258 이전 행(scoring_detail NULL)은
+reasoning 프리픽스(`리스크 에이전트 거부권 발동`) 파싱으로만 veto 를 복원하고, degraded
+에이전트 분리는 **지어내지 않는다** (평면 리스트 유지). 히어로 분포·에이전트 2단은
+live 패널 기준 — 백엔드 합의 산식(scoring.py, degraded 를 분자·분모에서 제외)과 동형이어야
+같은 화면의 `panel_coverage` 와 모순되지 않는다. SELL 은 매수 사다리(Entry/T1/T2)를 렌더하지
+않는 별도 템플릿. **Test:** `src/__tests__/pages/decision-detail.test.tsx` "판정 경로 (#1257)"
++ "codex ship-review 수정 잠금" describe 블록.
 
 ## Auth
 

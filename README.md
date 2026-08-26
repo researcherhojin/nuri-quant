@@ -270,14 +270,14 @@ Production binds the API to `127.0.0.1`. The dashboard proxy is the only public 
 
 ## Project Stats
 
-Measured against `main` on 2026-08-25. Counts marked ✅ are verified on every PR by `make verify-doc-counts`, which fails CI when a number here drifts from the code.
+Measured against `main` on 2026-08-27. Counts marked ✅ are verified on every PR by `make verify-doc-counts`, which fails CI when a number here drifts from the code.
 
 | Metric | Value | |
 |--------|-------|---|
 | **Backend tests** | 7,557 collected across 348 files | |
 | **Backend statement coverage** | 99% — 17 of 23,311 statements uncovered across 9 files, 81 partial branches (`make ci-cov`, 2026-08-14; Codecov `backend` flag is the CI ground truth) | |
-| **Frontend tests** | 1,606 across 134 files — 100% statement coverage | |
-| **E2E tests** | 87 across 9 Playwright specs | |
+| **Frontend tests** | 1,622 across 134 files — 100% statement coverage | |
+| **E2E tests** | 89 across 10 Playwright specs | |
 | **Pipeline stages** | 5 as a data model; 2 of them (analyze, certify) have no scheduler job of their own | |
 | **Data collectors** | 27 collectors (BaseCollector pattern) | ✅ |
 | **Specialist agents** | 10 (consensus vote, weights sum to 1.0) | |
