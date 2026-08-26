@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { Search } from "lucide-react";
 import { fetchAPI } from "@/lib/api";
 
 import { type FreshnessItem } from "@/components/ui/freshness-bar";
@@ -352,7 +353,10 @@ async function Dashboard({
         return (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-zinc-300">🔍 기회 탐색</h2>
+              <h2 className="text-sm font-semibold text-zinc-300 flex items-center gap-1.5">
+                <Search className="size-3.5 text-zinc-500" aria-hidden />
+                기회 탐색
+              </h2>
               <Link href="/scan" className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors">
                 전체 {opportunitiesData.opportunities.length}건 →
               </Link>

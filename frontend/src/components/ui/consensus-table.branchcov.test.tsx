@@ -75,7 +75,8 @@ describe("ConsensusTable — SOURCE_META fallback arms", () => {
     render(<ConsensusTable data={data} />);
 
     const badge = screen.getByTestId("action-source-badge");
-    expect(badge.textContent).toBe("🛑");
+    // F-003: 이모지 → lucide — 아이콘은 svg 로 렌더되고 의미는 title 이 잠근다
+    expect(badge.querySelector("svg")).not.toBeNull();
     expect(badge.getAttribute("title")).toContain("리스크");
   });
 });

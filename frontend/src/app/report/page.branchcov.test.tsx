@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { ERRORS } from "@/lib/strings";
 
 import ReportPage from "./page";
 
@@ -55,28 +56,29 @@ describe("ReportPage (branch coverage)", () => {
     });
   });
 
-  // catch 분기, line 27: `e instanceof Error ? e.message : "Unknown error"`.
-  // Error 인스턴스로 reject → TRUE arm (e.message).
-  it("formats Error catch with e.message (instanceof Error === true arm)", async () => {
+  // catch 분기 — F-002 이후 instanceof 분기는 없다: 원문은 console.error 로,
+  // 본문에는 ERRORS.REPORT_FAILED 사용자 카피만 렌더된다.
+  it("renders user-facing copy on Error rejection (raw error to console only)", async () => {
     mockFetch.mockRejectedValue(new Error("boom-message"));
 
     render(<ReportPage />);
     fireEvent.click(screen.getByRole("button", { name: "Generate Report" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Error: boom-message")).toBeInTheDocument();
+      expect(screen.getByText(ERRORS.REPORT_FAILED)).toBeInTheDocument();
     });
+    expect(screen.queryByText(/boom-message/)).not.toBeInTheDocument();
   });
 
-  // catch 분기, line 27: non-Error 로 reject → FALSE arm ("Unknown error").
-  it("formats non-Error catch as 'Unknown error' (instanceof Error === false arm)", async () => {
+  it("renders user-facing copy on non-Error rejection", async () => {
     mockFetch.mockRejectedValue("string-rejection"); // Error 가 아님
 
     render(<ReportPage />);
     fireEvent.click(screen.getByRole("button", { name: "Generate Report" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Error: Unknown error")).toBeInTheDocument();
+      expect(screen.getByText(ERRORS.REPORT_FAILED)).toBeInTheDocument();
     });
+    expect(screen.queryByText(/string-rejection/)).not.toBeInTheDocument();
   });
 });

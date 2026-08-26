@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { PIPELINE as PL } from "@/lib/strings";
 
 // Mock @xyflow/react
 vi.mock("@xyflow/react", () => ({
@@ -177,7 +178,7 @@ describe("PipelinePage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Gate Conditions")).toBeInTheDocument();
+      expect(screen.getByText(PL.GATE_CONDITIONS)).toBeInTheDocument();
     });
   });
 

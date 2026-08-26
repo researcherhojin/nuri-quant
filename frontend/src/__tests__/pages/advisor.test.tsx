@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
+import { COMMON } from "@/lib/strings";
 
 const redirectMock = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -127,6 +128,7 @@ describe("AdvisorSection (moved to /rebalance)", () => {
   it("handles API failure gracefully", async () => {
     mockFetchAPI = vi.fn().mockRejectedValue(new Error("API down"));
     await renderSection();
-    expect(screen.getByText("API 연결 실패. make api 실행 필요.")).toBeInTheDocument();
+    // F-002: 리터럴 대신 상수 — 카피 변경이 테스트를 조용히 깨지 않게
+    expect(screen.getByText(COMMON.API_ERROR)).toBeInTheDocument();
   });
 });

@@ -263,7 +263,8 @@ describe("ConsensusTable", () => {
       }];
       render(<ConsensusTable data={d} />);
       const badge = screen.getByTestId("action-source-badge");
-      expect(badge.textContent).toContain("🛑");
+      // F-003: 이모지 → lucide svg. 의미 잠금은 title 로
+      expect(badge.querySelector("svg")).not.toBeNull();
       expect(badge.getAttribute("title")).toContain("거부권");
     });
 
@@ -280,7 +281,8 @@ describe("ConsensusTable", () => {
         }),
       }];
       render(<ConsensusTable data={d} />);
-      expect(screen.getByTestId("action-source-badge").textContent).toContain("⚠️");
+      // F-003: divergence 아이콘도 svg — 배지 존재 + basis label 로 의미 검증
+      expect(screen.getByTestId("action-source-badge").querySelector("svg")).not.toBeNull();
       const basis = screen.getByTestId("penalty-basis-label");
       // "BUY → HOLD" downgrade 표시 — 사용자가 원 방향 추정 가능
       expect(basis.textContent).toContain("BUY");

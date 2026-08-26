@@ -132,7 +132,9 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
           {item.decision_id != null ? (
             <Link
               href={`/decisions/${item.decision_id}`}
-              className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+              // design-review F-007: 13px 텍스트 링크의 히트 영역을 패딩+네거티브 마진으로
+              // 확장 (레이아웃 불변) — 이 링크가 추적성 심장(/decisions/[id])의 진입점이다
+              className="inline-block p-1.5 -m-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors focus-visible:outline-2 focus-visible:outline-blue-400/75"
               onClick={(e) => e.stopPropagation()}
             >
               {ACTION.EVIDENCE} →
@@ -197,6 +199,22 @@ function ActionBucketTable({ items, kind, title, ackMap, onAck }: { items: Actio
       </h3>
       <div className="overflow-x-auto rounded border border-zinc-800/60 bg-zinc-900/30">
         <table className="w-full text-left">
+          {/* design-review F-001: 수익률/비중/확신도 숫자가 무라벨이었다 — 초경량 헤더로 명명.
+              th 반응형 클래스는 아래 td 와 1:1 (계좌·비중 = hidden md:table-cell) */}
+          <thead>
+            <tr className="border-b border-zinc-800/40">
+              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600">{ACTION.COL_TICKER}</th>
+              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600 hidden md:table-cell">{ACTION.COL_ACCOUNT}</th>
+              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600">{ACTION.COL_ACTION}</th>
+              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600">{ACTION.COL_REASON}</th>
+              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600 text-right">{ACTION.COL_PNL}</th>
+              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600 text-right hidden md:table-cell">{ACTION.COL_WEIGHT}</th>
+              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600">{ACTION.COL_CONF}</th>
+              {/* 증거 체인 컬럼 — 링크 텍스트가 자기 서술적이라 헤더 라벨 생략 (getByText 충돌 회피) */}
+              <th scope="col" className="px-2 py-1" />
+
+            </tr>
+          </thead>
           <tbody>
             {items.map((item) => (
               // key = seen-state identity (codex R1 P2): action/priority 가 바뀐 행이

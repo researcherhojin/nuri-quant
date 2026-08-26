@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
-import { ADVISOR, COMMON, REBALANCE } from "@/lib/strings";
+import { ADVISOR, COMMON, ERRORS, REBALANCE } from "@/lib/strings";
 import type { RebalanceAction } from "@/lib/types";
 import { AdvisorSection } from "@/app/rebalance/advisor-section";
 
@@ -20,7 +20,8 @@ export async function RebalanceSection() {
     // #1119 슬롯 shed(503) 포함 — 섹션만 강등, 페이지 shape 유지 (codex #1239 P2)
     return <p className="text-xs text-muted-foreground">{COMMON.DEGRADED}</p>;
   }
-  if ("error" in data) return <p className="text-red-400 text-sm">{String((data as Record<string, unknown>).error)}</p>;
+  // 원문 에러 문자열 노출 금지 (design-review F-002) — 한국어 카피 + 다음 행동
+  if ("error" in data) return <p className="text-red-400 text-sm">{ERRORS.REBALANCE_FAILED}</p>;
 
   const actionable = data.actions.filter((a) => a.action !== "HOLD");
   const holds = data.actions.filter((a) => a.action === "HOLD");

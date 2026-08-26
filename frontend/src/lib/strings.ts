@@ -323,6 +323,8 @@ export const PIPELINE = {
   EVENT_TIMELINE: "이벤트 타임라인",
   NO_EVENTS: "아직 이벤트 없음",
   RUN_STEP_HINT: "파이프라인 스텝을 실행하세요",
+  // design-review F-008: 형제 헤더(이벤트 타임라인)와 언어 일치 + SSoT 로 이동
+  GATE_CONDITIONS: "게이트 조건",
   GATE_LOADING: "게이트 조건 로딩 중...",
 } as const;
 
@@ -396,12 +398,28 @@ export const REGIME_GUIDE: Record<string, string> = {
 
 /* ── Common ─────────────────────────────────────────────────── */
 export const COMMON = {
-  API_ERROR: "API 연결 실패. make api 실행 필요.",
+  // `make api` 지시는 prod(launchd)에서 틀린 조치라 카피에서 제거 (design-review F-002)
+  API_ERROR: "API 연결에 실패했습니다 — 백엔드 서버 상태를 확인하세요.",
   // #1119: 슬롯 포화 503 은 의도된 shed — 페이지 전체 에러가 아니라 섹션 1줄로 강등
   DEGRADED: "데이터를 불러오지 못했습니다 — 잠시 후 새로고침하세요.",
   COUNT_SUFFIX: "건",
   UNIT_SUFFIX: "개",
   RUN_REQUIRED: "실행 필요",
+} as const;
+
+/* ── 에러 카피 (design-review F-002) ────────────────────────── */
+// 원문 에러 문자열(영어 transport 텍스트)을 사용자 카피로 렌더하지 않는다.
+// 사용자 카피 = 무엇이 실패했나 + 다음 행동. 원문은 title/콘솔로 강등.
+export const ERRORS = {
+  API_TITLE: "API 연결 실패",
+  API_BODY: "백엔드 API가 응답하지 않습니다 — 서버 상태를 확인한 뒤 다시 시도하세요.",
+  GENERIC_TITLE: "문제가 발생했습니다",
+  RETRY: "다시 시도",
+  REBALANCE_FAILED: "리밸런싱 계산에 실패했습니다 — 데이터 수집 후 다시 시도하세요.",
+  SCORECARD_FAILED: "스코어카드를 불러오지 못했습니다 — make validate 실행 후 표시됩니다.",
+  REPORT_FAILED: "리포트 생성에 실패했습니다 — Ollama·백엔드 상태를 확인한 뒤 다시 시도하세요.",
+  COVERAGE_FAILED: "Coverage 확인 실패 — 파이프라인 상태를 확인하세요.",
+  RUN_FAILED_PREFIX: "실행 실패: ",
 } as const;
 
 /* ── Action-First Dashboard ────────────────────────────────── */
@@ -416,6 +434,14 @@ export const ACTION = {
   EVIDENCE: "증거 체인", // #1182: 카드 → /decisions/[id]
   NEW: "NEW", // #1212: 미확인 행 배지 (localStorage seen-state)
   ACK: "확인", // #1212: quick-peek ack 버튼 — NEW 해제, 판정일 갱신 시 재표시
+  // design-review F-001: 숫자 3개(수익률/비중/확신도)가 무라벨이라 추측을 요구했다
+  COL_TICKER: "종목",
+  COL_ACCOUNT: "계좌",
+  COL_ACTION: "액션",
+  COL_REASON: "근거",
+  COL_PNL: "수익률",
+  COL_WEIGHT: "비중",
+  COL_CONF: "확신도",
   // DETAIL/CONF/AGREE/PNL/WEIGHT/DISMISS 는 U2b-2 (#1208) 카드→행 전환으로 제거
 } as const;
 
@@ -466,4 +492,7 @@ export const NAV = {
   PORTFOLIO: "\uD3EC\uD2B8\uD3F4\uB9AC\uC624",
   RESEARCH: "\uB9AC\uC11C\uCE58",
   SYSTEM: "\uC2DC\uC2A4\uD15C",
+  // \uC544\uC774\uCF58 \uC804\uC6A9 \uC811\uAE30 \uD1A0\uAE00\uC758 \uC811\uADFC\uBA85 (codex design audit M5 / ship review P3 SSoT)
+  SIDEBAR_EXPAND: "\uC0AC\uC774\uB4DC\uBC14 \uD3BC\uCE58\uAE30",
+  SIDEBAR_COLLAPSE: "\uC0AC\uC774\uB4DC\uBC14 \uC811\uAE30",
 } as const;
