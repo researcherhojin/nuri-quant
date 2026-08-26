@@ -510,7 +510,7 @@ export default function PipelinePage() {
 
         {/* Gate Conditions */}
         <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground mb-3">Gate Conditions</p>
+          <p className="text-xs text-muted-foreground mb-3">{PL.GATE_CONDITIONS}</p>
           {allConditions.length === 0 ? (
             <p className="text-xs text-muted-foreground/50 py-6 text-center">
               {PL.GATE_LOADING}

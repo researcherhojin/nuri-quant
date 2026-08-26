@@ -323,6 +323,8 @@ export const PIPELINE = {
   EVENT_TIMELINE: "이벤트 타임라인",
   NO_EVENTS: "아직 이벤트 없음",
   RUN_STEP_HINT: "파이프라인 스텝을 실행하세요",
+  // design-review F-008: 형제 헤더(이벤트 타임라인)와 언어 일치 + SSoT 로 이동
+  GATE_CONDITIONS: "게이트 조건",
   GATE_LOADING: "게이트 조건 로딩 중...",
 } as const;
 
