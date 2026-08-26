@@ -201,7 +201,7 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
       <Handle
         type="target"
         position={Position.Left}
-        className="!bg-muted !border-border !w-2 !h-2"
+        className="bg-muted! border-border! w-2! h-2!"
       />
 
       {/* 상태 표시 + 라벨 — F-003: stepId 기반 lucide 아이콘 (label 은 제목만) */}
@@ -258,7 +258,7 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
       <Handle
         type="source"
         position={Position.Right}
-        className="!bg-muted !border-border !w-2 !h-2"
+        className="bg-muted! border-border! w-2! h-2!"
       />
     </div>
   );
@@ -445,7 +445,7 @@ export default function PipelinePage() {
           <Background color="#27272a" gap={20} size={1} />
           <Controls
             showInteractive={false}
-            className="!bg-card !border-input !shadow-lg [&>button]:!bg-muted [&>button]:!border-input [&>button]:!text-muted-foreground [&>button:hover]:!bg-muted"
+            className="bg-card! border-input! shadow-lg! [&>button]:bg-muted! [&>button]:border-input! [&>button]:text-muted-foreground! [&>button:hover]:bg-muted!"
           />
         </ReactFlow>
       </div>
