@@ -30,7 +30,8 @@ import { summarizePayload } from "./helpers";
 
 // design-review F-005: 6노드 선형 DAG 가 피치 300(행폭 ~1,680px)로 캔버스에 fit 되며
 // 0.46배로 축소돼 기본 줌에서 노드 텍스트가 판독 불가였다 — 피치 축소로 fit 배율 회복.
-const NODE_PITCH_X = 220;
+// 노드 자체가 min-w-55(220px)라 피치는 220 + 간격이어야 엣지가 보인다 (220이면 간격 0).
+const NODE_PITCH_X = 264;
 
 // === Types ===
 interface PipelineStep {
