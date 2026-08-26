@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
 import { formatMoney } from "@/lib/format";
 import { OUTCOME_TAG, adjudicationInfo, fmtFixed, parseDetailKV, todayKst } from "@/app/decisions/helpers";
+import { deriveActionSource, parseScoringDetail, verdictSplit } from "@/app/decisions/verdict-path";
 import { DECISIONS } from "@/lib/strings";
 
 // === Types ===
@@ -120,6 +121,8 @@ interface DecisionDetail {
   pnl_90d: number | null;
   outcome: string;
   reasoning: string | null;
+  // #1256 부터 persist — 그 이전 행은 null (판정 소스는 reasoning 프리픽스 fallback)
+  scoring_detail: string | Record<string, unknown> | null;
   evidence: Evidence[];
   // 결정 시점(`date`)에 유효했던 논지 — point-in-time 조인이라 논지를 나중에 써도
   // 그 이전 결정들에 소급해 붙는다. 논지가 없으면 null.
@@ -173,6 +176,21 @@ export async function DecisionProvenance({ id }: { id: string }) {
   const outcomeTag = OUTCOME_TAG[d.outcome] ?? OUTCOME_TAG.pending;
   const adj = adjudicationInfo(d.date, d.outcome, todayKst());
 
+  // #1257 판정 경로 — scoring_detail(#1256) 우선, 과거 행은 reasoning 프리픽스 fallback.
+  const sd = parseScoringDetail(d.scoring_detail);
+  const actionSource = deriveActionSource(sd, d.reasoning);
+  // "데이터 없음 ≠ 중립" (#1028) — degraded 명단은 scoring_detail 에만 있으므로
+  // 과거 행은 분리 없이 기존 평면 리스트를 유지한다 (fallback 으로 지어내지 않는다).
+  const degradedNames = new Set(sd?.degraded_agents ?? []);
+  const liveVerdicts = verdicts.filter((v) => !degradedNames.has(v.agent_name));
+  const degradedVerdicts = verdicts.filter((v) => degradedNames.has(v.agent_name));
+  // 히어로 분포는 **live 패널 기준** — 백엔드 합의 산식(scoring.py)이 degraded 를
+  // 분자·분모에서 빼는 것과 동형이어야 panel_coverage 와 화면이 서로 모순되지 않는다
+  // (codex ship review P1). degraded 분리가 없는 과거 행은 live == 전체라 기존과 동일.
+  const split = verdictSplit(liveVerdicts);
+  const splitRestLabel = degradedVerdicts.length > 0 ? "중립" : "중립/무의견";
+  const agreementPct = d.agreement_rate === null ? null : Math.round(d.agreement_rate * 100);
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -195,10 +213,109 @@ export async function DecisionProvenance({ id }: { id: string }) {
         </span>
       </div>
 
-      {/* #1216 2컬럼: 본문(논지·근거·판정·증거) 2/3 + 우측 레일(frozen 컨텍스트) 1/3.
-          lg 미만은 레일이 먼저 오는 세로 스택 — 숫자 컨텍스트를 훑고 본문으로. */}
+      {/* #1257 판정 경로 히어로 — 판정 소스별 3변형. veto 는 "합의 vs 그것을 덮은 규칙"
+          대차대조, 나머지는 단일 칸. conf 100 · agreement 20% 가 모순처럼 보이던 문제의 해소. */}
+      <Card className="bg-card border-border" data-testid="verdict-hero" data-source={actionSource}>
+        <CardContent className="pt-4 pb-4 space-y-3">
+          <p className="text-sm font-semibold text-foreground">
+            {actionSource === "risk_veto" && DECISIONS.HERO_VETO_TITLE}
+            {actionSource === "divergence_penalty" && DECISIONS.HERO_PENALTY_TITLE}
+            {actionSource === "weighted_sum" && DECISIONS.HERO_WEIGHTED_TITLE}
+            {actionSource === "unknown" && (
+              <>
+                {DECISIONS.HERO_UNKNOWN_TITLE}
+                {/* unknown 은 정의상 sd.final_action_source 가 비어있지 않은 문자열일 때만 나온다 */}
+                <span className="ml-2 text-[10px] font-mono text-muted-foreground">({String(sd?.final_action_source)})</span>
+              </>
+            )}
+          </p>
+          {actionSource === "risk_veto" ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded bg-muted/40 px-3 py-2.5 space-y-1.5 opacity-80">
+                <p className="text-[10px] text-muted-foreground">{DECISIONS.HERO_CONSENSUS_REF}</p>
+                <div className="flex h-2 rounded-full overflow-hidden" aria-hidden="true">
+                  {liveVerdicts.length > 0 && (
+                    <>
+                      <div className="bg-rose-500/70" style={{ width: `${(split.sell / liveVerdicts.length) * 100}%` }} />
+                      <div className="bg-emerald-500/70" style={{ width: `${(split.buy / liveVerdicts.length) * 100}%` }} />
+                      <div className="bg-muted-foreground/30" style={{ width: `${(split.rest / liveVerdicts.length) * 100}%` }} />
+                    </>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  SELL {split.sell} · BUY {split.buy} · {splitRestLabel} {split.rest}
+                  {agreementPct !== null && ` — ${DECISIONS.HERO_AGREEMENT_LABEL} ${agreementPct}%`}
+                </p>
+              </div>
+              <div className="rounded border border-rose-500/30 bg-rose-500/5 px-3 py-2.5 space-y-1">
+                <p className="text-[10px] text-rose-400 font-medium">{DECISIONS.HERO_DECIDER_VETO}</p>
+                <p className="text-sm font-semibold text-foreground">
+                  {d.action} · {d.confidence === null ? "—" : Math.round(d.confidence)}
+                </p>
+                {d.reasoning && <p className="text-xs text-foreground/80">{d.reasoning}</p>}
+                <p className="text-[10px] text-muted-foreground">{DECISIONS.HERO_CONF_NOTE}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded bg-muted/40 px-3 py-2.5 space-y-1.5">
+              <div className="flex h-2 rounded-full overflow-hidden" aria-hidden="true">
+                {liveVerdicts.length > 0 && (
+                  <>
+                    <div className="bg-rose-500/70" style={{ width: `${(split.sell / liveVerdicts.length) * 100}%` }} />
+                    <div className="bg-emerald-500/70" style={{ width: `${(split.buy / liveVerdicts.length) * 100}%` }} />
+                    <div className="bg-muted-foreground/30" style={{ width: `${(split.rest / liveVerdicts.length) * 100}%` }} />
+                  </>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                SELL {split.sell} · BUY {split.buy} · {splitRestLabel} {split.rest}
+                {agreementPct !== null && ` — ${DECISIONS.HERO_AGREEMENT_LABEL} ${agreementPct}%`}
+              </p>
+              {actionSource === "divergence_penalty" && d.reasoning && (
+                <p className="text-xs text-foreground/80">{d.reasoning}</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* #1257 판정 후 새 사실 — 자동 반영은 P1. 부재를 정직하게 표시해야 "제품이
+          회피한다" 는 인상을 막는다 (와이어프레임 v2 codex 검토 #3). */}
+      <Card className="bg-card border-border" data-testid="post-decision-facts">
+        <CardContent className="pt-4 pb-3">
+          <p className="text-[10px] text-muted-foreground mb-1">{DECISIONS.NEW_FACTS_TITLE}</p>
+          <p className="text-xs text-muted-foreground">{DECISIONS.NEW_FACTS_EMPTY}</p>
+        </CardContent>
+      </Card>
+
+      {/* #1257 재검토 체크 — 사실 확인 목록. 매매 권고를 내지 않는다 (invariants). */}
+      <Card className="bg-card border-border" data-testid="recheck-list">
+        <CardContent className="pt-4 pb-3 space-y-2">
+          <div className="flex items-baseline justify-between">
+            <p className="text-[10px] text-muted-foreground">{DECISIONS.RECHECK_TITLE}</p>
+            <span className="text-[10px] text-muted-foreground/70">{DECISIONS.RECHECK_NOTE}</span>
+          </div>
+          <div className="grid gap-2 md:grid-cols-3">
+            <div className="rounded bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">
+              {DECISIONS.RECHECK_STOP}
+              {d.stop_loss !== null && (
+                <span className="block text-[10px] text-muted-foreground font-mono tabular-nums mt-0.5">
+                  {formatMoney(d.stop_loss, { ticker: d.ticker })}
+                </span>
+              )}
+            </div>
+            <div className="rounded bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">{DECISIONS.RECHECK_VOL}</div>
+            <div className="rounded bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">{DECISIONS.RECHECK_THESIS}</div>
+          </div>
+          <p className="text-[10px] text-muted-foreground/60">{DECISIONS.RECHECK_PIT}</p>
+        </CardContent>
+      </Card>
+
+      {/* #1216 2컬럼: 본문(판정·논지·증거) 2/3 + 우측 레일(frozen 컨텍스트) 1/3.
+          #1257: 모바일에서도 본문(히어로가 위에서 답한 "왜" 의 상세)이 먼저 —
+          숫자 레일이 앞서던 순서는 이해 우선 원칙으로 교체 (와이어프레임 v2). */}
       <div className="grid gap-5 lg:grid-cols-3 items-start">
-      <div className="space-y-5 lg:order-2" data-testid="decision-rail">
+      <div className="space-y-5 order-2" data-testid="decision-rail">
 
       {/* Decision-time context (frozen) — #1216: vix 21.040000915… 류 raw float 종결 */}
       <Card className="bg-card border-border">
@@ -215,16 +332,28 @@ export async function DecisionProvenance({ id }: { id: string }) {
         </CardContent>
       </Card>
 
-      {/* Price ladder — #1216: formatMoney 로 ₩/$ 판정 (.KS 204000 → ₩204,000) */}
-      <Card className="bg-card border-border">
+      {/* Price ladder — #1216: formatMoney 로 ₩/$ 판정 (.KS 204000 → ₩204,000).
+          #1257: SELL 은 별도 템플릿 — 매수 사다리(Entry/T1/T2)를 SELL 판정에 그리던
+          액션-템플릿 불일치 종결. 결정 시점 가격 + 손절 기준선만 남긴다. */}
+      <Card className="bg-card border-border" data-testid="price-card">
         <CardContent className="pt-4 pb-3">
           <p className="text-[10px] text-muted-foreground mb-3">{DECISIONS.RAIL_PRICES}</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Metric label="Entry" value={formatMoney(d.entry_price, { ticker: d.ticker })} />
-            <Metric label="Stop" value={formatMoney(d.stop_loss, { ticker: d.ticker })} color="red" />
-            <Metric label="Target 1" value={formatMoney(d.target_1, { ticker: d.ticker })} color="green" />
-            <Metric label="Target 2" value={formatMoney(d.target_2, { ticker: d.ticker })} color="green" />
-          </div>
+          {d.action === "SELL" ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-3">
+                <Metric label={DECISIONS.PRICE_AT_DECISION} value={formatMoney(d.entry_price, { ticker: d.ticker })} />
+                <Metric label="Stop" value={formatMoney(d.stop_loss, { ticker: d.ticker })} color="red" />
+              </div>
+              <p className="text-[10px] text-muted-foreground/70">{DECISIONS.SELL_PRICE_NOTE}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <Metric label="Entry" value={formatMoney(d.entry_price, { ticker: d.ticker })} />
+              <Metric label="Stop" value={formatMoney(d.stop_loss, { ticker: d.ticker })} color="red" />
+              <Metric label="Target 1" value={formatMoney(d.target_1, { ticker: d.ticker })} color="green" />
+              <Metric label="Target 2" value={formatMoney(d.target_2, { ticker: d.ticker })} color="green" />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -242,7 +371,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
       </Card>
       </div>
 
-      <div className="space-y-5 lg:col-span-2 lg:order-1">
+      <div className="space-y-5 lg:col-span-2 order-1">
 
       {/* Thesis — 상승/하락 논리 병기 (#1083). 없으면 카드 자체를 숨기지 않고
           "아직 없음" 을 보여준다: 논지가 비어 있다는 사실이 곧 판단 근거의 부재라
@@ -267,9 +396,18 @@ export async function DecisionProvenance({ id }: { id: string }) {
             )}
           </div>
           {!d.thesis ? (
-            <p className="text-xs text-muted-foreground">
-              이 시점에 기록된 논지 없음 — 무엇이 맞으면 이 판단이 옳고 무엇이 틀리면 그른지가 남아 있지 않다.
-            </p>
+            actionSource === "risk_veto" ? (
+              // #1257: 규칙 판정(veto)은 논지가 없어도 채점 기준이 있다 — 자동 논지 렌더.
+              // DB 쓰기 없음: 파생 표시일 뿐 theses 원장은 건드리지 않는다.
+              <div className="rounded bg-muted/40 px-2.5 py-2 space-y-1" data-testid="auto-thesis">
+                <p className="text-[10px] text-rose-400">{DECISIONS.AUTO_THESIS_TITLE}</p>
+                <p className="text-xs text-foreground/90">{DECISIONS.AUTO_THESIS_BODY}</p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                이 시점에 기록된 논지 없음 — 무엇이 맞으면 이 판단이 옳고 무엇이 틀리면 그른지가 남아 있지 않다.
+              </p>
+            )
           ) : (
             <div className="space-y-3">
               <div className="grid gap-3 md:grid-cols-2">
@@ -339,8 +477,8 @@ export async function DecisionProvenance({ id }: { id: string }) {
         </CardContent>
       </Card>
 
-      {/* Reasoning */}
-      {d.reasoning && (
+      {/* Reasoning — veto 케이스는 히어로 우측 칸이 전문을 이미 보여주므로 중복 렌더 금지 */}
+      {d.reasoning && actionSource !== "risk_veto" && (
         <Card className="bg-card border-border">
           <CardContent className="pt-4 pb-3">
             <p className="text-[10px] text-muted-foreground mb-2">근거</p>
@@ -349,13 +487,24 @@ export async function DecisionProvenance({ id }: { id: string }) {
         </Card>
       )}
 
-      {/* Agent verdicts */}
+      {/* Agent verdicts — #1257 2단: 유효 의견 우선, 의견 미산출(degraded)은 접힘.
+          "데이터 없음" 이 HOLD 30% 로 중립처럼 보이던 문제(#1028 의 UI 대응) 종결.
+          degraded 명단은 scoring_detail(#1256)에만 있어 과거 행은 기존 평면 리스트 유지. */}
       {verdicts.length > 0 && (
         <Card className="bg-card border-border">
           <CardContent className="pt-4 pb-3">
-            <p className="text-[10px] text-muted-foreground mb-3">에이전트 판정 ({verdicts.length})</p>
+            <p className="text-[10px] text-muted-foreground mb-3">
+              {degradedVerdicts.length > 0
+                ? `${DECISIONS.AGENTS_LIVE_TITLE} ${liveVerdicts.length}`
+                : `에이전트 판정 (${verdicts.length})`}
+              {typeof sd?.panel_coverage === "number" && (
+                <span className="ml-2 text-muted-foreground/70">
+                  {DECISIONS.AGENTS_COVERAGE_LABEL} {Math.round(sd.panel_coverage * 100)}%
+                </span>
+              )}
+            </p>
             <div className="space-y-1.5">
-              {verdicts.map((v, i) => (
+              {liveVerdicts.map((v, i) => (
                 <div key={i} className="flex items-center gap-2 text-xs bg-muted/40 rounded px-2.5 py-1.5">
                   <span className="w-28 shrink-0 text-muted-foreground">{v.agent_name}</span>
                   <StatusBadge status={v.action} />
@@ -367,6 +516,25 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   )}
                 </div>
               ))}
+              {degradedVerdicts.length > 0 && (
+                <details data-testid="degraded-agents">
+                  <summary className="text-[11px] text-muted-foreground cursor-pointer px-2.5 py-1.5">
+                    {DECISIONS.AGENTS_DEGRADED_SUMMARY} {degradedVerdicts.length} —{" "}
+                    {degradedVerdicts.map((v) => v.agent_name).join(" · ")}{" "}
+                    <span className="text-muted-foreground/60">({DECISIONS.AGENTS_DEGRADED_NOTE})</span>
+                  </summary>
+                  <div className="space-y-1.5 mt-1.5">
+                    {degradedVerdicts.map((v, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs bg-muted/20 rounded px-2.5 py-1.5 opacity-70">
+                        <span className="w-28 shrink-0 text-muted-foreground">{v.agent_name}</span>
+                        {typeof v.reasoning === "string" && (
+                          <span className="truncate text-muted-foreground">{v.reasoning}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
           </CardContent>
         </Card>

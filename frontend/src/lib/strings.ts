@@ -310,6 +310,40 @@ export const DECISIONS = {
   RAIL_CONTEXT: "결정 시점 컨텍스트 (frozen)",
   RAIL_PRICES: "가격 레벨",
   RAIL_PNL: "실현 결과 (forward PnL %)",
+  // #1257 판정 경로 히어로 — 판정 소스(final_action_source)별 3변형. 일상어 원칙:
+  // "합의 불성립"/"mechanical rung" 같은 시스템 은어 금지 (와이어프레임 v2 codex 검토).
+  HERO_VETO_TITLE: "의견은 갈렸지만, 손실 관리 규칙이 이 판정을 자동 확정했습니다",
+  // 엔진은 확신도가 아니라 **판정(액션)을 보수적으로 강등**한다 (scoring.py divergence
+  // penalty — codex ship review P2: "확신도를 낮췄다" 는 SSoT 불일치)
+  HERO_PENALTY_TITLE: "에이전트 의견이 크게 갈려 판정을 보수적으로 강등했습니다",
+  HERO_WEIGHTED_TITLE: "에이전트 가중 합의가 이 판정을 만들었습니다",
+  HERO_UNKNOWN_TITLE: "판정 경로를 해석할 수 없습니다 — 화면이 모르는 새 판정 메커니즘",
+  HERO_CONSENSUS_REF: "에이전트 합의 — 참고용 (최종 판정에 미반영)",
+  HERO_DECIDER_VETO: "최종 판정을 확정한 것 — 손실 관리 규칙 (리스크 거부권)",
+  HERO_CONF_NOTE: "확신도는 규칙의 확신도 — 에이전트 일치율과 다른 수치인 이유",
+  HERO_AGREEMENT_LABEL: "일치율",
+  // 판정 후 새 사실 슬롯 — P1(이벤트 수집기) 전까지는 부재를 정직하게 표시
+  NEW_FACTS_TITLE: "판정 이후 새로 생긴 사실",
+  NEW_FACTS_EMPTY: "공시·기업 이벤트 자동 반영은 아직 없습니다 — 새 정보가 있다면 아래 재검토 체크로 판단하세요.",
+  // 재검토 체크 — 사실 확인이지 매매 권고가 아니다 (invariants: no ad-hoc calls)
+  RECHECK_TITLE: "이 판단을 재검토하려면 확인할 것",
+  RECHECK_NOTE: "사실 체크 — 매매 권고 아님",
+  RECHECK_STOP: "가격이 손절 기준선 위로 복귀했는가",
+  RECHECK_VOL: "판정 근거의 리스크 조건이 해소됐는가",
+  RECHECK_THESIS: "새 정보가 투자 논지를 무효화하는가",
+  RECHECK_PIT: "기준값은 현재 규칙 기준 재구성 — 판정 당시 규칙 스냅샷이 아님",
+  // SELL 은 매수 사다리(Entry/T1/T2)를 렌더하지 않는다 — 액션별 별도 템플릿
+  SELL_PRICE_NOTE: "SELL 판정 — 매수 사다리(Target)는 적용되지 않습니다",
+  PRICE_AT_DECISION: "결정 시점 가격",
+  // 에이전트 2단 — "데이터 없음 ≠ 중립" (#1028 semantics 를 UI 로)
+  AGENTS_LIVE_TITLE: "에이전트 판정 — 유효 의견",
+  AGENTS_COVERAGE_LABEL: "패널 커버리지",
+  AGENTS_DEGRADED_SUMMARY: "의견 미산출",
+  AGENTS_DEGRADED_NOTE: "가중치 0 — 합의에 미반영",
+  // 규칙 판정(veto)인데 논지가 없으면 자동 논지 렌더 — 채점 기준의 공백 방지
+  AUTO_THESIS_TITLE: "자동 논지 (손절 규율 집행)",
+  AUTO_THESIS_BODY:
+    "손절 규칙에 따른 기계적 청산. 맞으면 — 청산 후 추가 하락을 피한다. 틀리면 — 반등분을 놓친다. 판정일에 실현 결과로 채점.",
 } as const;
 
 /* ── Pipeline Page ──────────────────────────────────────────── */
