@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { ERRORS } from "@/lib/strings";
 
 type PipelineNode = {
   id: string;
@@ -135,9 +136,9 @@ describe("Pipeline — coverage branches", () => {
       await act(async () => { fireEvent.click(runBtn); });
       await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     }
-    // alert should be called with error message
+    // alert should be called with error message (F-002: 한국어 실패 프리픽스 + 원문)
     if (alertMock.mock.calls.length > 0) {
-      expect(alertMock).toHaveBeenCalledWith("already running");
+      expect(alertMock).toHaveBeenCalledWith(`${ERRORS.RUN_FAILED_PREFIX}already running`);
     }
     vi.unstubAllGlobals();
   });
