@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ReportPage from "@/app/report/page";
+import { ERRORS } from "@/lib/strings";
 
 // Mock @base-ui/react/button
 vi.mock("@base-ui/react/button", () => ({
@@ -139,7 +140,8 @@ describe("ReportPage", () => {
     fireEvent.click(screen.getByText("Generate Report"));
 
     await waitFor(() => {
-      expect(screen.getByText(/Error: Network error/)).toBeInTheDocument();
+      // 원문 에러 대신 한국어 카피 (design-review F-002)
+      expect(screen.getByText(ERRORS.REPORT_FAILED)).toBeInTheDocument();
     });
   });
 
@@ -172,7 +174,7 @@ describe("ReportPage", () => {
     fireEvent.click(screen.getByText("Generate Report"));
 
     await waitFor(() => {
-      expect(screen.getByText(/Error: fail/)).toBeInTheDocument();
+      expect(screen.getByText(ERRORS.REPORT_FAILED)).toBeInTheDocument();
     });
 
     const btn = screen.getByText("Generate Report");

@@ -190,10 +190,10 @@ describe("ClientTable branch coverage", () => {
     expect(container.querySelector(".bg-red-500\\/20")).toBeTruthy();
     expect(container.querySelector(".bg-amber-500\\/20")).toBeTruthy();
     expect(container.querySelector(".bg-zinc-500\\/20")).toBeTruthy();
-    // severity → badge SELL / REDUCE / WATCH
-    expect(txt).toContain("SELL");
-    expect(txt).toContain("REDUCE");
-    expect(txt).toContain("WATCH");
+    // severity → 심각도 값 그대로 (F-004: 액션 배지가 아니라 severity 를 그린다)
+    expect(txt).toContain("critical");
+    expect(txt).toContain("high");
+    expect(txt).toContain("low");
     // action SELL_ALL → 전량 매도, other → 일부 매도
     expect(txt).toContain("전량 매도");
     expect(txt).toContain("일부 매도");

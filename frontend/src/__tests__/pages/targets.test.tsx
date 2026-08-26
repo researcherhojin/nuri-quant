@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
+import { COMMON } from "@/lib/strings";
 
 // Mock next/link
 vi.mock("next/link", () => ({
@@ -137,7 +138,8 @@ describe("TargetsPage", () => {
       render(<TargetsPage />);
     });
 
-    expect(screen.getByText("API 연결 실패. make api 실행 필요.")).toBeInTheDocument();
+    // F-002: 리터럴 대신 상수 — 카피 변경이 테스트를 조용히 깨지 않게
+    expect(screen.getByText(COMMON.API_ERROR)).toBeInTheDocument();
   });
 
   it("filters out targets with error field", async () => {

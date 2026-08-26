@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { PIPELINE as PL } from "@/lib/strings";
 import type { ComponentType, ReactNode } from "react";
 
 vi.mock("next/navigation", () => ({
@@ -173,7 +174,7 @@ describe("Pipeline — PipelineNode rendering", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(300); });
 
     await waitFor(() => {
-      expect(screen.getByText("Gate Conditions")).toBeInTheDocument();
+      expect(screen.getByText(PL.GATE_CONDITIONS)).toBeInTheDocument();
     });
   });
 });

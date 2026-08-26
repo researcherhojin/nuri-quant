@@ -4,6 +4,8 @@
  * 라우트 레벨 에러 바운더리 — API 실패 등 페이지 에러 캐치.
  * layout은 유지하고 페이지 영역만 에러 UI로 교체.
  */
+
+import { ERRORS } from "@/lib/strings";
 export default function Error({
   error,
   reset,
@@ -19,18 +21,16 @@ export default function Error({
         <span className="text-red-400 text-lg font-bold">!</span>
       </div>
       <h2 className="text-lg font-semibold">
-        {isApiError ? "API connection failed" : "Something went wrong"}
+        {isApiError ? ERRORS.API_TITLE : ERRORS.GENERIC_TITLE}
       </h2>
       <p className="text-sm text-muted-foreground max-w-md text-center">
-        {isApiError
-          ? "Backend API is not responding. Make sure the server is running (make api)."
-          : error.message}
+        {isApiError ? ERRORS.API_BODY : error.message}
       </p>
       <button
         onClick={reset}
         className="px-4 py-2 text-sm bg-muted hover:bg-accent rounded-lg transition-colors"
       >
-        Retry
+        {ERRORS.RETRY}
       </button>
     </div>
   );

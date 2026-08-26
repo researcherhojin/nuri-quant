@@ -6,6 +6,7 @@
  * 행 클릭 → 10개 에이전트의 개별 verdict, confidence, reasoning 표시.
  */
 import { Fragment, useState } from "react";
+import { Ban, TriangleAlert, Vote } from "lucide-react";
 import { AgentTrace } from "./agent-trace";
 import { StatusBadge } from "./status-badge";
 
@@ -94,13 +95,15 @@ function agentCell(verdict: AgentVerdict | undefined) {
   );
 }
 
-// A-2c: `final_action_source` 를 한국어 tooltip + 이모지 아이콘으로 시각화.
+// A-2c: `final_action_source` 를 한국어 tooltip + 아이콘으로 시각화.
 // satisfies 로 backend literal union 과 key exhaustiveness 연결 (codex review LOW 2).
+// 아이콘은 이모지가 아닌 lucide (#1238 아이콘 체계, design-review F-003) — ReactNode 로
+// 보관해 컴포넌트-타입 프롭 충돌(TS6 gotcha)을 피한다.
 const SOURCE_META = {
-  weighted_sum: { icon: "🗳️", tip: "가중 합의" },
-  risk_veto: { icon: "🛑", tip: "리스크 에이전트 거부권 (Risk SELL conf ≥ 80)" },
-  divergence_penalty: { icon: "⚠️", tip: "기술지표 반대로 HOLD 강등" },
-} satisfies Record<FinalActionSource, { icon: string; tip: string }>;
+  weighted_sum: { icon: <Vote className="inline size-3 text-zinc-400" aria-hidden />, tip: "가중 합의" },
+  risk_veto: { icon: <Ban className="inline size-3 text-red-400" aria-hidden />, tip: "리스크 에이전트 거부권 (Risk SELL conf ≥ 80)" },
+  divergence_penalty: { icon: <TriangleAlert className="inline size-3 text-amber-400" aria-hidden />, tip: "기술지표 반대로 HOLD 강등" },
+} satisfies Record<FinalActionSource, { icon: React.ReactNode; tip: string }>;
 
 export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: number | null }) {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -148,7 +151,7 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
                         title={row.divergence_reason || "기술지표 반대"}
                         data-testid="divergence-badge"
                       >
-                        ⚠
+                        <TriangleAlert className="inline size-3" aria-hidden />
                       </span>
                     )}
                     {/* A-2c: final_action_source 가 weighted_sum 이 아니면 아이콘으로 override 원인 surface.

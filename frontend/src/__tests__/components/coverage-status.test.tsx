@@ -80,8 +80,11 @@ describe("CoverageStatus", () => {
       error: "coverage computation failed",
     };
     render(<CoverageStatus data={data} />);
-    expect(screen.getByText(/Coverage 확인 실패/)).toBeInTheDocument();
-    expect(screen.getByText(/coverage computation failed/)).toBeInTheDocument();
+    // 카피는 한국어 안내, 원문 에러는 title 로 강등 (design-review F-002)
+    const banner = screen.getByText(/Coverage 확인 실패/);
+    expect(banner).toBeInTheDocument();
+    expect(banner).toHaveAttribute("title", "coverage computation failed");
+    expect(screen.queryByText(/coverage computation failed/)).toBeNull();
   });
 
   it("displays percentage formatting for actual and threshold columns", () => {

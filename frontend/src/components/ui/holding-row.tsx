@@ -5,6 +5,7 @@
  * morning_brief 영감의 "1 row = 1 ticker, complete picture" 패턴.
  */
 import Link from "next/link";
+import { Radar } from "lucide-react";
 
 import { Sparkline } from "@/components/ui/sparkline";
 import { HOLDING_STATUS, HOLDING_LABEL } from "@/lib/strings";
@@ -351,6 +352,8 @@ export function HoldingRow({ holding: h, href, macroAwareSectors }: HoldingRowPr
       href={linkHref}
       data-testid="holding-row"
       data-status={h.status.kind}
+      // aria-label 을 두지 않는다: 링크 접근명은 보이는 자식(계좌·이름·손익)에서 계산되며,
+      // label 은 그 전체를 덮어써 오히려 정보를 잃는다 (codex ship review P2, M4 재검토)
       className="flex w-fit items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/50 text-xs group"
     >
       {/* account — wider at 2xl+ so labels like "LONG_TERM" don't truncate. Stays w-10 below
@@ -442,7 +445,7 @@ export function HoldingRow({ holding: h, href, macroAwareSectors }: HoldingRowPr
         data-testid="sector-cell"
         title={macroAware ? `${h.sector} — macro 영향권` : h.sector ?? undefined}
       >
-        {macroAware && <span aria-label="macro-aware" className="mr-0.5">📡</span>}
+        {macroAware && <Radar aria-label="macro-aware" data-testid="macro-aware-badge" className="inline size-3 mr-0.5 text-amber-400" />}
         {h.sector ?? "—"}
       </span>
       {/* #218: 비중 (% of portfolio) — 2xl+ (1536px+) 27" 모니터용 */}

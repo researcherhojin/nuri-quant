@@ -10,6 +10,8 @@
  * server component 유지. 운영자 워크플로에서 coverage 는 예외 시에만 보는 정보.
  */
 
+import { ERRORS } from "@/lib/strings";
+
 export interface CoverageCheck {
   name: string;
   actual: number;
@@ -46,9 +48,13 @@ function krColumnText(c: CoverageCheck): string {
 
 export function CoverageStatus({ data }: { data: CoverageData }) {
   if (data.error) {
+    // 원문 에러는 title 로 강등 — 카피는 다음 행동만 (design-review F-002)
     return (
-      <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
-        Coverage 확인 실패: {data.error}
+      <div
+        className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400"
+        title={String(data.error)}
+      >
+        {ERRORS.COVERAGE_FAILED}
       </div>
     );
   }

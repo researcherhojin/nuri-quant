@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import Link from "next/link";
+import { Lightbulb } from "lucide-react";
 import { fetchAPI } from "@/lib/api";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EXPLORE, REGIME_GUIDE } from "@/lib/strings";
@@ -189,7 +190,7 @@ async function QuickLinksGrid() {
       </div>
       {hasAnyMissing && (
         <p className="text-[9px] text-zinc-600 px-1">
-          💡 흐린 카드는 가격 미수집 — <code className="text-zinc-500 bg-zinc-800/50 px-1 rounded">{EXPLORE.COLLECT_HINT}</code>
+          <Lightbulb className="inline size-2.5 text-zinc-500 mr-0.5" aria-hidden /> 흐린 카드는 가격 미수집 — <code className="text-zinc-500 bg-zinc-800/50 px-1 rounded">{EXPLORE.COLLECT_HINT}</code>
         </p>
       )}
     </div>
@@ -239,7 +240,7 @@ export default function ExplorePage() {
       {/* Quick start */}
       <div className="mt-2 rounded-lg border border-zinc-800/60 bg-zinc-900/30 px-4 py-3">
         <p className="text-xs text-zinc-400">
-          💡 <span className="font-medium text-zinc-300">{EXPLORE.QUICK_START}</span>
+          <Lightbulb className="inline size-3 text-amber-400/80 mr-0.5" aria-hidden /> <span className="font-medium text-zinc-300">{EXPLORE.QUICK_START}</span>
           {" — "}
           <Link
             href="/portfolio?onboarding=true"

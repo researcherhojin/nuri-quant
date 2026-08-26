@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, waitFor } from "@testing-library/react";
+import { ERRORS } from "@/lib/strings";
 import type { ReactNode } from "react";
 
 vi.mock("next/navigation", () => ({
@@ -94,7 +95,7 @@ describe("SignalsPage statement coverage", () => {
       render(<Page.default />);
     });
     await waitFor(() => {
-      expect(screen.getByText("CSV not found")).toBeInTheDocument();
+      expect(screen.getByText(ERRORS.SCORECARD_FAILED)).toBeInTheDocument();
     });
   });
 

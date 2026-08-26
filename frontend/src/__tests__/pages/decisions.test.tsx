@@ -187,7 +187,7 @@ describe("DecisionsPage", () => {
     mockFetchAPI = vi.fn().mockRejectedValue(new Error("API error"));
     const { default: DecisionsPage } = await import("@/app/decisions/page");
     await act(async () => { render(await DecisionsPage()); });
-    expect(screen.getByText(/API 연결 실패/)).toBeInTheDocument();
+    expect(screen.getByText(/API 연결에 실패했습니다/)).toBeInTheDocument();
   });
 
   it("shows green hit rate when success >= 50%", async () => {

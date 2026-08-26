@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { REPORT } from "@/lib/strings";
+import { ERRORS, REPORT } from "@/lib/strings";
 
 export default function ReportPage() {
   const [report, setReport] = useState<string | null>(null);
@@ -24,7 +24,9 @@ export default function ReportPage() {
       const data = await res.json();
       setReport(data.report);
     } catch (e) {
-      setReport(`Error: ${e instanceof Error ? e.message : "Unknown error"}`);
+      // 원문 에러는 콘솔로 — 리포트 본문에 transport 텍스트를 싣지 않는다 (design-review F-002)
+      console.error("report generation failed:", e);
+      setReport(ERRORS.REPORT_FAILED);
     } finally {
       setLoading(false);
     }

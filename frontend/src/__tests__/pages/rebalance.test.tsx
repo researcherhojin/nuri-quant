@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 
-import { REBALANCE as R } from "@/lib/strings";
+import { ERRORS, REBALANCE as R } from "@/lib/strings";
 
 // Mock next/link
 vi.mock("next/link", () => ({
@@ -128,7 +128,9 @@ describe("RebalancePage", () => {
       render(<RebalancePage />);
     });
 
-    expect(screen.getByText("No portfolio data")).toBeInTheDocument();
+    // 원문 에러가 아닌 한국어 카피가 뜬다 (design-review F-002)
+    expect(screen.getByText(ERRORS.REBALANCE_FAILED)).toBeInTheDocument();
+    expect(screen.queryByText("No portfolio data")).toBeNull();
   });
 
   it("renders with no HOLD tickers", async () => {

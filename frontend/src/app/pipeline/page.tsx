@@ -25,8 +25,13 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { PIPELINE as PL } from "@/lib/strings";
+import { ERRORS, PIPELINE as PL } from "@/lib/strings";
 import { summarizePayload } from "./helpers";
+
+// design-review F-005: 6노드 선형 DAG 가 피치 300(행폭 ~1,680px)로 캔버스에 fit 되며
+// 0.46배로 축소돼 기본 줌에서 노드 텍스트가 판독 불가였다 — 피치 축소로 fit 배율 회복.
+// 노드 자체가 min-w-55(220px)라 피치는 220 + 간격이어야 엣지가 보인다 (220이면 간격 0).
+const NODE_PITCH_X = 264;
 
 // === Types ===
 interface PipelineStep {
@@ -337,7 +342,8 @@ export default function PipelinePage() {
       .then((r) => r.json())
       .then((data) => {
         if (data.error) {
-          alert(data.error);
+          // 운영자 진단 컨텍스트라 원문을 유지하되, 무엇의 실패인지 한국어로 선행 (F-002)
+          alert(`${ERRORS.RUN_FAILED_PREFIX}${data.error}`);
           setRunningSteps((prev) => {
             const next = new Set(prev);
             next.delete(stepId);
@@ -371,7 +377,7 @@ export default function PipelinePage() {
     ? steps.map((s, i) => ({
         id: s.step,
         type: "pipeline",
-        position: { x: i * 300, y: 80 },
+        position: { x: i * NODE_PITCH_X, y: 80 },
         data: {
           label: s.label,
           sub: s.description,
@@ -419,13 +425,15 @@ export default function PipelinePage() {
       </div>
 
       {/* React Flow 캔버스 */}
-      <div className="h-80 rounded-xl border border-border bg-background overflow-hidden">
+      {/* design-review F-009: 폭 제약 fit 이라 노드 행 높이는 ~75px — h-80(320px)은
+          위아래가 죽은 공간이었다. 줌 배율은 폭이 결정하므로 높이 축소는 무손실. */}
+      <div className="h-60 rounded-xl border border-border bg-background overflow-hidden">
         <ReactFlow
           nodes={nodes}
           edges={EDGES}
           nodeTypes={nodeTypes()}
           fitView
-          fitViewOptions={{ padding: 0.3 }}
+          fitViewOptions={{ padding: 0.15 }}
           proOptions={{ hideAttribution: true }}
           minZoom={0.4}
           maxZoom={1.5}
@@ -505,7 +513,7 @@ export default function PipelinePage() {
 
         {/* Gate Conditions */}
         <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground mb-3">Gate Conditions</p>
+          <p className="text-xs text-muted-foreground mb-3">{PL.GATE_CONDITIONS}</p>
           {allConditions.length === 0 ? (
             <p className="text-xs text-muted-foreground/50 py-6 text-center">
               {PL.GATE_LOADING}
@@ -543,37 +551,37 @@ const DEFAULT_NODES: Node[] = [
   {
     id: "collect",
     type: "pipeline",
-    position: { x: 0, y: 80 },
+    position: { x: 0 * NODE_PITCH_X, y: 80 },
     data: { label: "Collect", sub: "15 collectors + 6 sites", status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } as PipelineNodeData,
   },
   {
     id: "validate",
     type: "pipeline",
-    position: { x: 300, y: 80 },
+    position: { x: 1 * NODE_PITCH_X, y: 80 },
     data: { label: "Validate", sub: "Signal backtest + scorecard", status: "warning", recordCount: 0, lastUpdated: null, stepId: "validate", href: "/signals" } as PipelineNodeData,
   },
   {
     id: "classify",
     type: "pipeline",
-    position: { x: 600, y: 80 },
+    position: { x: 2 * NODE_PITCH_X, y: 80 },
     data: { label: "Classify", sub: "6-regime classifier", status: "warning", recordCount: 0, lastUpdated: null, stepId: "classify", href: "/strategy" } as PipelineNodeData,
   },
   {
     id: "diagnose",
     type: "pipeline",
-    position: { x: 900, y: 80 },
+    position: { x: 3 * NODE_PITCH_X, y: 80 },
     data: { label: "Diagnose", sub: "10 agents consensus", status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } as PipelineNodeData,
   },
   {
     id: "recommend",
     type: "pipeline",
-    position: { x: 1200, y: 80 },
+    position: { x: 4 * NODE_PITCH_X, y: 80 },
     data: { label: "Recommend", sub: "Buy/sell + price targets", status: "warning", recordCount: 0, lastUpdated: null, stepId: "recommend", href: "/targets" } as PipelineNodeData,
   },
   {
     id: "track",
     type: "pipeline",
-    position: { x: 1500, y: 80 },
+    position: { x: 5 * NODE_PITCH_X, y: 80 },
     data: { label: "Track", sub: "30/60/90d outcomes", status: "warning", recordCount: 0, lastUpdated: null, stepId: "track", href: "/targets" } as PipelineNodeData,
   },
 ];
