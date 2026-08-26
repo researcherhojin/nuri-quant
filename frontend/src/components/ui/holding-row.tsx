@@ -352,6 +352,9 @@ export function HoldingRow({ holding: h, href, macroAwareSectors }: HoldingRowPr
       href={linkHref}
       data-testid="holding-row"
       data-status={h.status.kind}
+      // holdings-section 의 "< sm 은 row aria-label 로 충분" 주석이 약속한 라벨 —
+      // 코드에 없어서 모바일 드릴다운이 컬럼 컨텍스트를 잃었다 (codex design audit M4)
+      aria-label={`${h.ticker} · ${h.account} · ${h.pnlPct >= 0 ? "+" : ""}${h.pnlPct.toFixed(1)}%`}
       className="flex w-fit items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/50 text-xs group"
     >
       {/* account — wider at 2xl+ so labels like "LONG_TERM" don't truncate. Stays w-10 below

@@ -90,6 +90,8 @@ export function Sidebar() {
           </Link>
           <button
             onClick={() => setCollapsed(!collapsed)}
+            // 아이콘 전용 버튼의 접근명 (codex design audit M5)
+            aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
             className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground/80 transition-colors"
           >
             {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
