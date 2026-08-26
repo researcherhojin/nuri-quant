@@ -429,7 +429,8 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
       ({ container } = render(await DecisionProvenance({ id: "531" })));
     });
     const rail = screen.getByTestId("decision-rail");
-    expect(rail.className).toContain("lg:order-2");
+    // #1257: 모바일에서도 본문 우선 — 레일은 모든 브레이크포인트에서 order-2
+    expect(rail.className).toContain("order-2");
     const grid = rail.parentElement!;
     expect(grid.className).toContain("lg:grid-cols-3");
     expect(grid.querySelector(".lg\\:col-span-2")).not.toBeNull();
@@ -511,5 +512,179 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
     // 2026-04-13 + 90d < 오늘 → pending 은 판정일 도래·미판정으로 드러난다
     expect(outcome.textContent).toContain("대기");
     expect(outcome.textContent).toContain("판정일 도래 · 미판정");
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// #1257 — 판정 경로 히어로 + 액션별 템플릿 + 에이전트 2단
+// ═══════════════════════════════════════════════════════
+
+describe("DecisionProvenance — 판정 경로 (#1257)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    notFoundMock.mockClear();
+  });
+
+  const vetoDetail = {
+    ...mockDetail,
+    action: "SELL",
+    confidence: 100,
+    agreement_rate: 0.2,
+    reasoning: "리스크 에이전트 거부권 발동: 손절선 돌파 (-11.0% < -7%)",
+    agent_verdicts: JSON.stringify([
+      { agent_name: "risk", action: "SELL", confidence: 100, reasoning: "손절선 돌파" },
+      { agent_name: "technical", action: "SELL", confidence: 100, reasoning: "MACD<Signal" },
+      { agent_name: "options", action: "BUY", confidence: 86, reasoning: "PCR 약한 공포" },
+      { agent_name: "smart_money", action: "HOLD", confidence: 30, reasoning: "스마트머니 데이터 없음" },
+    ]),
+    scoring_detail: JSON.stringify({
+      final_action_source: "risk_veto",
+      degraded_agents: ["smart_money"],
+      panel_coverage: 0.75,
+      risk_veto_fired: true,
+    }),
+    thesis: null,
+  };
+
+  it("risk_veto: 대차대조 히어로 — 합의 참고 vs 판정을 확정한 규칙", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue(vetoDetail);
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const hero = screen.getByTestId("verdict-hero");
+    expect(hero.dataset.source).toBe("risk_veto");
+    expect(within(hero).getByText(/손실 관리 규칙이 이 판정을 자동 확정/)).toBeInTheDocument();
+    expect(within(hero).getByText(/최종 판정을 확정한 것/)).toBeInTheDocument();
+    // veto 사유는 히어로가 전문 표시 — 별도 "근거" 카드는 중복이라 사라진다
+    expect(within(hero).getByText(/거부권 발동: 손절선 돌파/)).toBeInTheDocument();
+    expect(screen.queryByText("근거")).not.toBeInTheDocument();
+  });
+
+  it("과거 행 fallback: scoring_detail 없이 reasoning 프리픽스만으로 veto 히어로", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({ ...vetoDetail, scoring_detail: null });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.getByTestId("verdict-hero").dataset.source).toBe("risk_veto");
+  });
+
+  it("weighted_sum(기본): 단일 히어로 + 합의 분포", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue(mockDetail);
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const hero = screen.getByTestId("verdict-hero");
+    expect(hero.dataset.source).toBe("weighted_sum");
+    expect(within(hero).getByText(/가중 합의가 이 판정을 만들었습니다/)).toBeInTheDocument();
+    // weighted_sum 은 근거 카드 유지
+    expect(screen.getByText("근거")).toBeInTheDocument();
+  });
+
+  it("divergence_penalty: 강등 사유가 히어로에 표시", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      reasoning: "의견 분산 페널티로 HOLD 강등",
+      scoring_detail: JSON.stringify({ final_action_source: "divergence_penalty" }),
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const hero = screen.getByTestId("verdict-hero");
+    expect(hero.dataset.source).toBe("divergence_penalty");
+    expect(within(hero).getByText(/확신도를 낮췄습니다/)).toBeInTheDocument();
+    expect(within(hero).getByText(/의견 분산 페널티로 HOLD 강등/)).toBeInTheDocument();
+  });
+
+  it("SELL 은 매수 사다리를 렌더하지 않는다 — 결정 시점 가격 + Stop 만", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue(vetoDetail);
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const card = screen.getByTestId("price-card");
+    expect(within(card).queryByText("Target 1")).not.toBeInTheDocument();
+    expect(within(card).queryByText("Entry")).not.toBeInTheDocument();
+    expect(within(card).getByText("결정 시점 가격")).toBeInTheDocument();
+    expect(within(card).getByText(/매수 사다리.*적용되지 않습니다/)).toBeInTheDocument();
+  });
+
+  it("에이전트 2단: degraded 는 접힘 + 유효 의견만 본문 + 커버리지 표기", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue(vetoDetail);
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.getByText(/에이전트 판정 — 유효 의견 3/)).toBeInTheDocument();
+    expect(screen.getByText(/패널 커버리지 75%/)).toBeInTheDocument();
+    const degraded = screen.getByTestId("degraded-agents");
+    expect(within(degraded).getByText(/의견 미산출 1/)).toBeInTheDocument();
+    expect(within(degraded).getAllByText(/smart_money/).length).toBeGreaterThan(0);
+  });
+
+  it("scoring_detail 없는 과거 행은 평면 리스트 유지 — degraded 를 지어내지 않는다", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({ ...vetoDetail, scoring_detail: null });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.getByText(/에이전트 판정 \(4\)/)).toBeInTheDocument();
+    expect(screen.queryByTestId("degraded-agents")).not.toBeInTheDocument();
+  });
+
+  it("veto + 논지 없음 → 자동 논지 렌더 (채점 기준 공백 방지)", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue(vetoDetail);
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const auto = screen.getByTestId("auto-thesis");
+    expect(within(auto).getByText(/자동 논지/)).toBeInTheDocument();
+    expect(within(auto).getByText(/판정일에 실현 결과로 채점/)).toBeInTheDocument();
+  });
+
+  it("비-veto + 논지 없음 → 기존 부재 문구 유지 (자동 논지 남발 금지)", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, thesis: null });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    expect(screen.queryByTestId("auto-thesis")).not.toBeInTheDocument();
+    expect(screen.getByText(/기록된 논지 없음/)).toBeInTheDocument();
+  });
+
+  it("판정 후 새 사실 + 재검토 체크가 항상 렌더 — 부재도 정직하게 표시", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue(mockDetail);
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    const facts = screen.getByTestId("post-decision-facts");
+    expect(within(facts).getByText(/자동 반영은 아직 없습니다/)).toBeInTheDocument();
+    const recheck = screen.getByTestId("recheck-list");
+    expect(within(recheck).getByText(/매매 권고 아님/)).toBeInTheDocument();
+    expect(within(recheck).getByText(/현재 규칙 기준 재구성/)).toBeInTheDocument();
+  });
+});
+
+describe("verdict-path helpers (#1257)", () => {
+  it("parseScoringDetail: 깨진 JSON·배열·null 은 null", async () => {
+    const { parseScoringDetail } = await import("@/app/decisions/verdict-path");
+    expect(parseScoringDetail("not-json{")).toBeNull();
+    expect(parseScoringDetail(null)).toBeNull();
+    expect(parseScoringDetail(JSON.stringify([1, 2]))).toBeNull();
+    expect(parseScoringDetail({ final_action_source: "weighted_sum" })).toEqual({
+      final_action_source: "weighted_sum",
+    });
+  });
+
+  it("deriveActionSource: 미지의 소스 값은 fallback 경로로", async () => {
+    const { deriveActionSource } = await import("@/app/decisions/verdict-path");
+    expect(deriveActionSource({ final_action_source: "future_mechanism" }, "일반 합의")).toBe("weighted_sum");
+    expect(deriveActionSource(null, "리스크 에이전트 거부권 발동: x")).toBe("risk_veto");
+    expect(deriveActionSource(null, null)).toBe("weighted_sum");
   });
 });
