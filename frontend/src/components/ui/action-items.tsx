@@ -134,7 +134,7 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
               href={`/decisions/${item.decision_id}`}
               // design-review F-007: 13px 텍스트 링크의 히트 영역을 패딩+네거티브 마진으로
               // 확장 (레이아웃 불변) — 이 링크가 추적성 심장(/decisions/[id])의 진입점이다
-              className="inline-block p-1.5 -m-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="inline-block p-1.5 -m-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors focus-visible:outline-2 focus-visible:outline-blue-400/75"
               onClick={(e) => e.stopPropagation()}
             >
               {ACTION.EVIDENCE} →

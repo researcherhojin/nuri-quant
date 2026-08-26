@@ -92,7 +92,7 @@ export function Sidebar() {
             onClick={() => setCollapsed(!collapsed)}
             // 아이콘 전용 버튼의 접근명 (codex design audit M5)
             aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
-            className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground/80 transition-colors"
+            className="p-1.5 -m-1.5 text-muted-foreground hover:text-foreground/80 transition-colors focus-visible:outline-2 focus-visible:outline-primary/75"
           >
             {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
@@ -115,8 +115,11 @@ export function Sidebar() {
                     key={item.href}
                     href={item.href}
                     title={collapsed ? item.label : undefined}
+                    // 접힘 상태는 아이콘만 남아 title 로는 접근명이 불안정 (codex design audit H1)
+                    aria-label={collapsed ? item.label : undefined}
                     className={`
                       flex items-center gap-3 py-2 text-sm transition-colors
+                      focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary/75
                       ${collapsed ? "justify-center px-3" : "px-4"}
                       ${active
                         ? "text-primary bg-primary/10 border-r-2 border-primary"
