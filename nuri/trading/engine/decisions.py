@@ -266,6 +266,38 @@ def _snapshot_market_context(db_path=None) -> dict:
         except Exception:
             pass
 
+    # #1268: 위 **두 경로 중 무엇이 채웠든** 여기서 한 번 정규화한다. 형제 writer 2곳
+    # (`recommend/tracker.py` · `agents/consensus/persistence.py`) 은 `canonical_regime_or_none`
+    # 을 통과시키는데 이 파일만 raw 로 넣고 있었다.
+    #
+    # 경로별로 가드를 붙이지 않고 **합류 지점 한 곳**에 두는 이유: 새 경로가 생겨도
+    # 자동으로 덮인다. 그리고 두 경로의 위험도가 다르다 —
+    #   - classifier fallback 은 `classify_regime()` 이 canonical 을 돌려주므로 낮다
+    #   - `pipeline_events` payload 는 **다른 생산자가 쓴 임의 JSON** 이라, `#832` 가
+    #     `canonical_regime_or_none` 을 만든 바로 그 free-text 유입 경로다
+    #     (`"" / "[recovery] 비중 축소"` 가 실제 사례였다)
+    #
+    # free-text 가 새면 `UNKNOWN_REGIME`("unknown", 의도적으로 `ALL_REGIMES` 밖)이
+    # 아니라 표에 **존재하는** 문자열이 되어, 배분 조회가 조용히 기본값을 준다 (#1131:
+    # 미상이 `"neutral"` 로 표기돼 가장 공격적인 0.40 배분을 받았다).
+    #
+    # ⚠️ **이 거부에는 관측 가능한 결과가 있다 — 의도한 것이다.** #1267 이 추가한
+    # `decisions_context` freshness 정책의 술어가 `SUM(regime IS NOT NULL AND
+    # scoring_detail IS NOT NULL) = COUNT(*)` 라, 여기서 NULL 로 떨구면 그날 배치가
+    # 불완전으로 잡혀 warn 24h / fail 60h 로 표면화된다 (`config/freshness.yaml`).
+    # 그게 맞는 방향이다: 어휘 밖 라벨을 조용히 저장하는 것보다, 라벨을 못 붙였다는
+    # 사실이 보이는 편이 낫다 (Escalation Ladder 의 Surface 등급). 알람이 뜨면
+    # 원인은 '분류기/이벤트 생산자가 어휘 밖 값을 냈다' 이지 이 코드가 아니다.
+    # 키를 **없애는** 쪽으로 정규화한다 (`None` 을 넣지 않는다) — 기존 계약이
+    # "모르면 키 자체가 없다" 였고, 소비자와 테스트가 `"regime" not in ctx` 로 그걸 본다.
+    from nuri.quant.regime.classifier import canonical_regime_or_none
+
+    _canonical = canonical_regime_or_none(context.get("regime"))
+    if _canonical is None:
+        context.pop("regime", None)
+    else:
+        context["regime"] = _canonical
+
     # Macro score — event_score 포함
     try:
         from nuri.quant.regime.macro_score import compute_macro_score
