@@ -69,6 +69,10 @@ def seed(db: Path) -> dict[str, int]:
     # 스캐너/기회탐색용 — 유니버스(공개 config) 티커 3종. 마지막 날 거래량 3배 →
     # scan_market 의 volume_spike (vol_ratio>=2) 가 결정론적으로 발화, 비보유라
     # /api/opportunities 에 잡힌다 (#1234 e2e 요건).
+    # KR 한 종목 — `/explore` 한국어 검색 스펙(`search-result-005930.KS`)이 이름 해석을
+    # 요구한다. CI 에는 `config/kr_ticker_names.json`(gitignored)이 없으므로 이름은
+    # 아래 portfolio.metadata(=`get_ticker_name_local` 1차)에서 온다 (#1255).
+    frames.append(_price_frame("005930.KS", 120, 70000.0, 0.0004, rng))
     for t, base in [("AAPL", 180.0), ("MSFT", 400.0), ("AMZN", 170.0)]:
         f = _price_frame(t, 60, base, 0.002, rng)
         f.loc[f.index[-1], "volume"] = 3_000_000
@@ -93,6 +97,18 @@ def seed(db: Path) -> dict[str, int]:
                 "avg_price": 480.0,
                 "currency": "USD",
                 "sector": "ETF/Index",
+            },
+            {
+                # 공개 지수 구성종목 — 합성 수량/계좌. `metadata.name` 이
+                # `get_ticker_name_local` 1차(portfolio.metadata)를 만족시켜,
+                # 맵 파일 없이도 CI 에서 "삼성" 검색이 결정론적으로 이 행을 찾는다.
+                "account": "Brokerage Alpha",
+                "ticker": "005930.KS",
+                "quantity": 10,
+                "avg_price": 70000.0,
+                "currency": "KRW",
+                "sector": "반도체",
+                "metadata": json.dumps({"name": "삼성전자"}, ensure_ascii=False),
             },
             {
                 "account": "Brokerage Beta",

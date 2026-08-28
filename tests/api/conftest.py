@@ -28,6 +28,12 @@ def _mock_pykrx_names(monkeypatch):
     yfinance 가 전역 모킹되듯 KR 종목명 해석도 결정적 stub 으로 network-free 화.
     get_ticker_name 은 @lru_cache 라 테스트 간 stale(None) 캐시 오염을 막기 위해
     앞뒤로 cache_clear (네트워크 미가용 시 None 이 캐시되면 후속 테스트도 빈 결과).
+
+    ⚠️ **2차(로컬 맵)도 같이 스텁한다** (#1255). 요청 경로가 `get_ticker_name_local`
+    로 바뀌면서 3차 pykrx 를 안 타므로, pykrx 스텁만으로는 KR 이름이 해석되지 않는다.
+    그리고 `config/kr_ticker_names.json` 은 **gitignored** 라 개발 머신엔 있고 CI 엔
+    없다 — 스텁하지 않으면 이 fixture 를 쓰는 테스트가 로컬 초록 / CI 빨강이 된다
+    (실제로 그렇게 났다). 프로덕션도 이 종목을 2차에서 해석하므로 계층도 맞다.
     """
     import sys
     import types
@@ -37,9 +43,12 @@ def _mock_pykrx_names(monkeypatch):
     _KR_NAMES = {"005930": "삼성전자", "000660": "SK하이닉스", "005380": "현대차"}
     _fake_stock = types.SimpleNamespace(get_market_ticker_name=lambda code: _KR_NAMES.get(str(code), ""))
     monkeypatch.setitem(sys.modules, "pykrx", types.SimpleNamespace(stock=_fake_stock))
+    monkeypatch.setattr(_tn, "_load_kr_name_map", lambda: {f"{c}.KS": n for c, n in _KR_NAMES.items()})
     _tn.get_ticker_name.cache_clear()
+    _tn.get_ticker_name_local.cache_clear()  # #1255: 요청 경로가 쓰는 쪽도 같이 비운다
     yield
     _tn.get_ticker_name.cache_clear()
+    _tn.get_ticker_name_local.cache_clear()
 
 
 @pytest.fixture()

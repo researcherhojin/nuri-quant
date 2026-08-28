@@ -165,6 +165,7 @@ class TestTickerSearch:
         Gotcha-Test Pair: 183 의 `break` 를 지우면 count 가 8 을 넘어 FAIL.
         """
         # `search_tickers` 는 함수 본문에서 import 하므로 **원 모듈**을 패치해야 한다.
+        # #1255 이후 검색 경로가 부르는 건 `get_ticker_name_local` 이다.
         # conftest 의 autouse fixture 가 teardown 에서 `cache_clear()` 를 부르므로
         # 스텁도 lru_cache 로 감싼다 (맨 lambda 면 teardown 이 AttributeError).
         from functools import lru_cache
@@ -173,7 +174,7 @@ class TestTickerSearch:
 
         monkeypatch.setattr(
             tn,
-            "get_ticker_name",
+            "get_ticker_name_local",
             lru_cache(maxsize=None)(lambda t: "테스트종목" if t.endswith((".KS", ".KQ")) else None),
         )
         # "테스트" 는 어떤 ticker 코드에도 없다 → 코드 매칭 루프는 0건 → 한글 루프가 8건을 채운다.
@@ -251,3 +252,38 @@ class TestSearchTickersBranchCoverage:
         data = resp.json()
         tickers = [r["ticker"] for r in data.get("results", [])]
         assert "AAPL" in tickers
+
+    def test_search_never_touches_pykrx(self, client, monkeypatch):
+        """검색 요청 경로는 **네트워크를 타지 않는다** (#1255).
+
+        결과가 8건 미만이면 한글 루프가 KOSPI200 203개 전 티커를 돈다. 그중 로컬 맵과
+        보유 metadata 어디에도 없는 종목은, 라우트가 `get_ticker_name` 을 부르면 3차
+        pykrx 로 내려간다 — 그 요청 하나가 KRX 전체 티커 목록을 받느라 4.64s 를 물고
+        (2026-08-28 실측), 그 콜드스타트가 Playwright 15s 예산 안에 들어갈지가 실행마다
+        갈려 `/explore` 스펙 2종이 main 7런 중 2런 실패했다.
+
+        환경 무관하게 성립한다: 로컬 맵이 있으면 미등재 종목이, 맵이 없으면(CI) 전
+        종목이 3차 후보다. 어느 쪽이든 뮤턴트에서는 `calls` 가 비지 않는다.
+
+        Mutation lock: `nuri/api/routes/ticker.py` 의 `get_ticker_name_local` 을
+        `get_ticker_name` 으로 되돌리면 FAIL.
+        """
+        import sys
+        import types
+
+        calls: list = []
+
+        def _record(code):
+            calls.append(code)
+            return "네트워크에서온이름"
+
+        monkeypatch.setitem(
+            sys.modules,
+            "pykrx",
+            types.SimpleNamespace(stock=types.SimpleNamespace(get_market_ticker_name=_record)),
+        )
+
+        resp = client.get("/api/tickers/search?q=테스트")
+
+        assert resp.status_code == 200
+        assert calls == [], f"검색 요청이 pykrx 네트워크 경로를 탔다 ({len(calls)}회: {calls[:3]})"

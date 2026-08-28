@@ -44,3 +44,31 @@ class TestSeedMacroEventsShape:
         result = compute_event_score(db_path=seeded_db)
         assert result.event_count > 0, "신뢰도 floor 에 전부 걸렸거나 lookback 밖이다"
         assert result.score != 0.0, "카테고리가 어휘 밖이면 기여가 전부 0 이 되어 여기서 걸린다"
+
+
+class TestSeedResolvesKoreanName:
+    """CI 에는 `config/kr_ticker_names.json` 이 없다 (gitignored, 생성 단계도 없음).
+
+    그래서 `/explore` 한국어 검색 스펙(`search-result-005930.KS`)이 요구하는 이름은
+    seed 의 `portfolio.metadata` = `get_ticker_name_local` 1차에서 와야 한다 (#1255).
+    """
+
+    def test_kr_name_resolves_with_no_local_map(self, seeded_db, monkeypatch, tmp_path):
+        """맵을 없애도(CI 조건) seed 만으로 이름이 나오고, 나머지는 조용히 None."""
+        import nuri.core.db as db_mod
+        from nuri.core import ticker_names as tn
+
+        monkeypatch.setattr(db_mod, "DB_PATH", seeded_db)
+        monkeypatch.setattr(tn, "_KR_NAMES_PATH", tmp_path / "absent.json")
+        tn._load_kr_name_map.cache_clear()
+        tn.get_ticker_name_local.cache_clear()
+        try:
+            assert tn._load_kr_name_map() == {}, "맵 부재 재현 실패 — 이 테스트의 전제가 깨졌다"
+            assert tn.get_ticker_name_local("005930.KS") == "삼성전자", (
+                "seed 의 portfolio.metadata 가 1차를 만족시키지 못한다 — CI 에서 한국어 검색이 0건이 된다"
+            )
+            # 맵·보유 어디에도 없는 종목은 네트워크로 내려가지 않고 None 이다.
+            assert tn.get_ticker_name_local("000660.KS") is None
+        finally:
+            tn._load_kr_name_map.cache_clear()
+            tn.get_ticker_name_local.cache_clear()
