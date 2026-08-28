@@ -154,6 +154,35 @@ FRESHNESS_POLICIES: dict[str, dict] = {
         "query": "SELECT datetime(MAX(date)) FROM recommendations WHERE source IS NULL",
         "label": "에이전트 합의",
     },
+    # `consensus` 위 정책은 **형제 테이블**을 본다 (#1261). 같은 job 이 쓰는
+    # `decisions` 는 두 번 죽었는데 두 번 다 이 정책이 초록이었다:
+    #   1. writer 사망 67 거래일 (2026-04-15~07-28, #897/#898) — `decisions` 0행인 동안
+    #      `recommendations` 는 1064행/67일 정상이었다.
+    #   2. 컬럼 동결 4.5개월 (#1247/#1256) — 행은 매일 쓰였는데 `regime`·`scoring_detail` 이
+    #      prod 591/591 NULL 이었다. 행 수만 보는 검사는 "쓰였다" 와 "쓸모있게 쓰였다" 를
+    #      구분하지 못한다.
+    # 그래서 **완결성 술어를 신선도 쿼리 안에** 둔다 — "가장 최근에 완전한 행이 나온 날".
+    # 하나의 쿼리가 두 실패 모드를 다 잡는다: writer 가 죽으면 날짜가 안 오르고, 컬럼이 얼면
+    # 행이 있어도 술어를 통과 못 해 날짜가 언다. 부재는 NULL → check_freshness 가 FAIL/"데이터 없음".
+    # `ark`(#1145) 가 "멀쩡한 펀드가 죽은 펀드를 가린다" 를 막은 것과 같은 축이고, 여기서는
+    # **내용 없는 행이 내용 있는 행을 가리는 것**을 막는다.
+    #
+    # 술어 컬럼이 이 둘인 이유: prod 26컬럼 NULL 센서스에서 100% NULL 이던 컬럼이 정확히
+    # 이 둘이고 (다른 24개는 0 NULL), 둘 다 `record_decision` 한 곳에서만 쓰인다.
+    # `scoring_detail` 의 프로덕션 생성 지점은 `consensus/scoring.py:163` 하나뿐이고 무조건
+    # 채우므로 정당한 NULL 이 없다 — 술어에 넣어도 오탐이 안 생긴다.
+    #
+    # 임계 근거: 이 job 은 `scheduler.py` cron `5 7 * * *` — **주말 포함 매일**이다
+    # (prod 실측: #898 이후 29일 중 간격 1일 28회 / 2일 1회, 그 2일은 #1191 로그인세션 outage).
+    # `date` 는 00:00 KST 앵커 문자열이라 당일 run 직전 정상 나이가 ~31h → warn 24 는
+    # `consensus` 와 같은 값·같은 이유다. fail 이 48 이 아니라 72 인 건 **하루짜리 정당한
+    # degradation 을 술어가 아니라 임계로 흡수**하기 위해서다: 2026-07-08 처럼 그날 전 행의
+    # macro verdict 가 "SPY 데이터 부족" 이면 최신 완전 행이 하루 밀려 최대 ~55h 가 되는데,
+    # 48 이면 그게 FAIL 이 된다. 72 면 WARN 으로 남고 이틀 연속 실패해야 FAIL 이다.
+    "decisions_context": {
+        "query": ("SELECT datetime(MAX(date)) FROM decisions WHERE regime IS NOT NULL AND scoring_detail IS NOT NULL"),
+        "label": "결정 컨텍스트 (완결)",
+    },
     "certification": {
         # E4-0a (PR #410) 이후 SIEGE 인증 실행은 `certifications` 테이블에 직접 persist.
         # 이전 policy 는 pipeline_events 'certification_result' 이벤트를 기대했으나 emitter 부재

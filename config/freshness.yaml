@@ -15,6 +15,7 @@ thresholds:
   macro_market: { warn_hours: 48, fail_hours: 132 } # 금리 3종 + put/call — 소스가 T+1 발행이라 prices(120)보다 넓다 (#1242)
   macro_monthly: { warn_hours: 1080, fail_hours: 1800 } # 월간 릴리즈: 45d 한 사이클 / 75d 두 사이클
   consensus: { warn_hours: 24, fail_hours: 48 }
+  decisions_context: { warn_hours: 24, fail_hours: 72 } # 매일 07:05 cron — warn 은 consensus 와 동일. fail 72 는 하루짜리 정당한 degradation(~55h)을 WARN 으로 흡수 (#1261)
   certification: { warn_hours: 24, fail_hours: 48 }
   ark: { warn_hours: 168, fail_hours: 336 } # rules.yaml ark.max_source_lag_days 와 동일 (#1145)
   portfolio: { warn_hours: 24, fail_hours: 72 } # import_portfolio.py 매일 수동 실행 가정 (#507)
