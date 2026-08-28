@@ -64,6 +64,9 @@ vi.mock("recharts", () => {
 /** 차트 크롬에 쓰이던 zinc 계열 중립색. 의미를 담은 계열색은 **일부러** 제외한다. */
 const NEUTRAL_HEX = /#(?:fafafa|f4f4f5|e4e4e7|d4d4d8|a1a1aa|71717a|52525b|3f3f46|27272a|18181b|09090b)\b/gi;
 
+/** 같은 이탈의 Tailwind 클래스 문법. hex 스윕만으로는 절반만 잡힌다. */
+const ZINC_CLASS = /\b(?:bg|text|border|fill|stroke|from|to|via)-zinc-\d{2,3}\b/g;
+
 const CHART_FILES = [
   "src/components/ui/gate-failure-chart.tsx",
   "src/components/ui/equity-curve-chart.tsx",
@@ -128,6 +131,18 @@ describe("차트 레이어는 다크 토큰을 쓴다 (#1275)", () => {
     expect(offenders, `중립 hex 잔존:\n${offenders.join("\n")}`).toHaveLength(0);
   });
 
+  it("차트 소스에 zinc 유틸리티 클래스도 남아 있지 않다", () => {
+    // hex 만 잡으면 절반짜리다 — 같은 이탈이 Tailwind 클래스 문법으로도 있었다(실측 8곳).
+    // 특히 범례 스와치(`bg-zinc-400`)는 이제 `var(--muted-foreground)` 로 그려지는 계열선
+    // 바로 옆에 있어서, 안 고치면 **범례가 자기 계열선과 어긋난다.**
+    const offenders: string[] = [];
+    for (const rel of CHART_FILES) {
+      const found = readFileSync(join(process.cwd(), rel), "utf8").match(ZINC_CLASS) ?? [];
+      if (found.length) offenders.push(`${rel}: ${found.join(", ")}`);
+    }
+    expect(offenders, `zinc 클래스 잔존:\n${offenders.join("\n")}`).toHaveLength(0);
+  });
+
   it("스윕이 실제로 눈이 있고, 계열색까지 잡지는 않는다 (canary)", () => {
     // 눈이 있는가 — 정규식이 조용히 아무것도 안 잡으면 위 테스트는 영원히 초록이다.
     expect('stroke="#27272a"'.match(NEUTRAL_HEX)).toEqual(["#27272a"]);
@@ -135,6 +150,9 @@ describe("차트 레이어는 다크 토큰을 쓴다 (#1275)", () => {
     // 과하지는 않은가 — 의미를 담은 계열색은 정당하므로 잡으면 안 된다.
     expect('fill="#10b981"'.match(NEUTRAL_HEX)).toBeNull();
     expect('fill="#ef4444"'.match(NEUTRAL_HEX)).toBeNull();
+    // 클래스 스윕도 같은 두 방향으로 확인한다.
+    expect('className="bg-zinc-400"'.match(ZINC_CLASS)).toEqual(["bg-zinc-400"]);
+    expect('className="bg-emerald-500"'.match(ZINC_CLASS)).toBeNull();
   });
 
   it("역할이 다른 상수는 값도 분리돼 있다", async () => {

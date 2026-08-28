@@ -63,7 +63,7 @@ export function RegimeChart({ data }: { data: RegimeData }) {
     <div className="min-w-0" data-testid="regime-chart" role="img" aria-label={EVIDENCE.TITLE_REGIME}>
       {chip && (
         <div className="mb-2">
-          <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-zinc-200">{chip}</span>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground">{chip}</span>
         </div>
       )}
       <div className="w-full min-w-0 h-64">

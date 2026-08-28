@@ -91,7 +91,7 @@ export function PriceChart({ data, ticker }: PriceChartProps) {
             onClick={() => setPeriod(p.days)}
             className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
               period === p.days
-                ? "bg-muted text-zinc-200"
+                ? "bg-muted text-foreground"
                 : "text-muted-foreground hover:text-foreground/80"
             }`}
           >

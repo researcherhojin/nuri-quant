@@ -43,7 +43,7 @@ export function FearGreedChart({ data }: { data: FearGreedData }) {
     <div className="min-w-0" data-testid="fear-greed-chart" role="img" aria-label={EVIDENCE.TITLE_FEAR_GREED}>
       {latest && (
         <div className="mb-2">
-          <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-zinc-200">
+          <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground">
             현재 {latest.value.toFixed(0)} · {zoneLabel(latest.value)}
           </span>
         </div>

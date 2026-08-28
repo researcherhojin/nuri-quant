@@ -53,7 +53,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
             onClick={() => setPeriod(p.days)}
             className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
               period === p.days
-                ? "bg-muted text-zinc-200"
+                ? "bg-muted text-foreground"
                 : "text-muted-foreground hover:text-foreground/80"
             }`}
           >
@@ -148,7 +148,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
       {/* Legend */}
       <div className="flex gap-4 mt-1 text-[10px] text-muted-foreground justify-center">
         <span><span className="inline-block w-3 h-0.5 bg-emerald-500 mr-1 align-middle" />Strategy</span>
-        <span><span className="inline-block w-3 h-0.5 bg-zinc-500 mr-1 align-middle" />SPY</span>
+        <span><span className="inline-block w-3 h-0.5 bg-muted-foreground mr-1 align-middle" />SPY</span>
         <span><span className="inline-block w-3 h-0.5 bg-red-500 mr-1 align-middle" />Drawdown</span>
       </div>
     </div>

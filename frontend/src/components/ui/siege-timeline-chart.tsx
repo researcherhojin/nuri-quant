@@ -183,7 +183,7 @@ export function LegendShape({ shape, className = "" }: { shape: DotShape; classN
     );
   }
   if (shape === "square") {
-    return <span className={common + " bg-zinc-400"} aria-hidden />;
+    return <span className={common + " bg-muted-foreground"} aria-hidden />;
   }
   if (shape === "diamond") {
     return (
@@ -192,7 +192,7 @@ export function LegendShape({ shape, className = "" }: { shape: DotShape; classN
       </svg>
     );
   }
-  return <span className={common + " rounded-full bg-zinc-400"} aria-hidden />;
+  return <span className={common + " rounded-full bg-muted-foreground"} aria-hidden />;
 }
 
 /** caller 별 count — legend 에 표시 (distinct caller 수를 가시화). */
@@ -315,7 +315,7 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
           REJECTED
         </span>
         <span>
-          <span className="inline-block w-3 h-px bg-zinc-400 mr-1.5 align-middle border-t border-dashed" />
+          <span className="inline-block w-3 h-px bg-muted-foreground mr-1.5 align-middle border-t border-dashed" />
           portfolio state 변경
         </span>
         <span className="w-full mt-0.5 text-muted-foreground/70">caller:</span>
