@@ -262,8 +262,7 @@ def _collect_context(db_path=None) -> dict:
             db_path=db_path,
         )
         # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
-        from nuri.core.fx import latest_usd_krw_value
-        from nuri.core.ticker_names import is_kr_ticker
+        from nuri.core.fx import is_krw_holding, latest_usd_krw_value
 
         rate = latest_usd_krw_value(db_path=db_path)
         # 술어는 레포 정본 (`analysis/portfolio.py:208` 등): `currency == "KRW"` 이거나
@@ -274,9 +273,7 @@ def _collect_context(db_path=None) -> dict:
         # 필터가 없어서, **수량 0 인 낡은 KR 행 하나가** 살아있는 KR 노출이 전혀 없는데도
         # Portfolio 섹션을 통째로 막는다 (codex 리뷰 P2). 수량 0 은 총액에 0 을 더하므로
         # 애초에 환산이 필요 없다.
-        kr_count = sum(
-            1 for r in rows if (r["quantity"] or 0) > 0 and (r["currency"] == "KRW" or is_kr_ticker(r["ticker"]))
-        )
+        kr_count = sum(1 for r in rows if (r["quantity"] or 0) > 0 and is_krw_holding(r["ticker"], r["currency"]))
 
         # #1283: 환율이 없으면 `or 1400.0` 으로 메웠다. 매일 아침 읽는 브리프에 지어낸
         # 총액을 싣는 것보다 **빈 칸이 정직하다** — 채워져 있으면 수집기가 죽은 걸 모른다.
@@ -295,7 +292,9 @@ def _collect_context(db_path=None) -> dict:
             for r in rows:
                 px = r["close"] or r["avg_price"] or 0
                 qty = r["quantity"] or 0
-                if is_kr_ticker(r["ticker"]):
+                # #1286: 위 가드와 **같은 술어**를 쓴다. 어긋나 있으면 가드는 환산
+                # 불가로 판정했는데 루프는 달러로 계산하는 모순이 생긴다.
+                if is_krw_holding(r["ticker"], r["currency"]):
                     # 위 가드가 보장한다 (kr_count > 0 이면 rate 가 있다). 그래도 명시로
                     # 좁히는 이유는, 조건이 갈라져 있으면 **도달 불가가 조용히 도달
                     # 가능해지는** 순간을 타입체커가 잡아주기 때문이다. 폴백 숫자를

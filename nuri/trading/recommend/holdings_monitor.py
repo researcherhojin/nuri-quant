@@ -31,6 +31,7 @@ from typing import Any
 
 from nuri.core.db import query, query_df
 from nuri.core.events import emit_event
+from nuri.core.fx import is_krw_holding
 from nuri.core.rules import RULES
 from nuri.core.timezone import kst_now
 
@@ -93,9 +94,9 @@ def _classify_asset_class(ticker: str, currency: str | None) -> str:
     Crypto excluded explicitly (futures PR per Codex Plan). Anything not US/KR
     equity is treated as out-of-scope for v1.
     """
-    if currency and currency.upper() == "KRW":
-        return "equity_kr"
-    if ticker.endswith(".KS") or ticker.endswith(".KQ"):
+    # #1286: 통화 OR 접미사 — 정본 술어 하나로 통합. 예전에는 같은 판정이 이 파일 포함
+    # 5곳에 인라인 복사돼 있었고, 그중 2곳이 접미사만 봐서 서로 어긋나 있었다.
+    if is_krw_holding(ticker, currency):
         return "equity_kr"
     if ticker in {"BTC-USD", "ETH-USD"} or ticker.endswith("-USD"):
         return "crypto"

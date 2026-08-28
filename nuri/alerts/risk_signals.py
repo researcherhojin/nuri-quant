@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 from nuri.core.db import query
+from nuri.core.fx import is_krw_holding
 from nuri.core.rules import (
     BRIEF_BENCHMARK,
     BRIEF_EARNINGS_WINDOW_DAYS,
@@ -132,7 +133,7 @@ def _single_currency_account_totals(rows: list[dict[str, Any]]) -> dict[str, flo
     currencies: dict[str, set[str]] = {}
     for r in rows:
         acct, close, qty = r["account"], r["current"], r["quantity"]
-        cur = "KRW" if (r.get("currency") == "KRW" or is_kr_ticker(str(r["ticker"]))) else "USD"
+        cur = "KRW" if is_krw_holding(str(r["ticker"]), r.get("currency")) else "USD"
         currencies.setdefault(acct, set()).add(cur)
         if close and qty:
             by_account[acct] = by_account.get(acct, 0.0) + float(close) * float(qty)
