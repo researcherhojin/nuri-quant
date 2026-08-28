@@ -19,7 +19,7 @@ import { SystemHealthRail, MacroEventsCard, RegimeShiftBanner } from "@/componen
 import { summarizeHoldings, mergeAccountTotals } from "@/lib/holdings-summary";
 import { getMacroImpactedSectors } from "@/lib/macro-impact";
 import Link from "next/link";
-import { SECTION, ACTION, COMMON } from "@/lib/strings";
+import { SECTION, ACTION, COMMON, OPPORTUNITY } from "@/lib/strings";
 
 // #1204 U2a: 섹션·헬퍼는 components/dashboard/ 로 추출 — 이 파일은 데이터 fetch +
 // enrichment + 조립만 담당한다. 동작·마크업 불변.
@@ -372,10 +372,10 @@ async function Dashboard({
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-sm font-semibold text-zinc-300 flex items-center gap-1.5">
                 <Search className="size-3.5 text-zinc-500" aria-hidden />
-                기회 탐색
+                {OPPORTUNITY.TITLE}
               </h2>
               <Link href="/scan" className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors">
-                전체 {opportunitiesData.opportunities.length}건 →
+                {OPPORTUNITY.ALL_PREFIX} {opportunitiesData.opportunities.length}{OPPORTUNITY.ALL_SUFFIX}
               </Link>
             </div>
             <OpportunityExplorer opportunities={topOpportunities} />

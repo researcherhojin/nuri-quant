@@ -19,12 +19,12 @@ export function RegimeShiftBanner({ regime }: { regime: Partial<SystemHealth["re
   return (
     <div className="rounded-lg bg-amber-950/40 border border-amber-700/50 px-3 py-2 flex items-center gap-2 text-xs">
       <TriangleAlert className="shrink-0 size-3.5 text-amber-400" aria-hidden />
-      <span className="text-amber-300 font-semibold">Regime 전환 신호</span>
+      <span className="text-amber-300 font-semibold">{CONTEXT.REGIME_SHIFT}</span>
       <span className="text-zinc-400">
-        현재 {regime.regime ?? "—"} · 신뢰도{" "}
+        {CONTEXT.REGIME_SHIFT_NOW} {regime.regime ?? "—"} · {CONTEXT.REGIME_SHIFT_CONF}{" "}
         {/* v8 ignore start -- banner renders only when isRegimeShifting (conf 0~60) → confidence always defined, `?? 0` arm unreachable */}
         {regime.confidence ?? 0}
-        {/* v8 ignore stop */}% — 다음 행동 보류 권고
+        {/* v8 ignore stop */}{CONTEXT.REGIME_SHIFT_ADVICE}
       </span>
     </div>
   );
@@ -74,7 +74,7 @@ export function SystemHealthRail({ health }: { health: Partial<SystemHealth> }) 
       <RailRow
         label={CONTEXT.FRESHNESS}
         value={freshness.status ?? "—"}
-        sub={freshness.fail_count ? `${freshness.fail_count}건 실패 · ${CONTEXT.CHECK_PIPELINE}` : "OK"}
+        sub={freshness.fail_count ? `${freshness.fail_count}${CONTEXT.FAIL_SUFFIX} · ${CONTEXT.CHECK_PIPELINE}` : "OK"}
         href="/pipeline"
         color={freshness.status === "PASS" ? "text-emerald-400" : freshness.status === "WARN" ? "text-amber-400" : "text-red-400"}
       />
@@ -92,7 +92,7 @@ export function MacroEventsCard({ events, regimeTrend }: { events: MacroEvent[];
         <h4 className="text-[10px] text-zinc-500 font-semibold flex items-center gap-1">
           {pinned && <Pin className="size-3 text-amber-400" aria-label="pinned attention" />}
           {CONTEXT.TITLE}
-          {pinned && <span className="text-[9px] text-amber-300/80 font-bold">ATTENTION</span>}
+          {pinned && <span className="text-[9px] text-amber-300/80 font-bold">{CONTEXT.ATTENTION}</span>}
         </h4>
         {(() => {
           const sl = sparklinePath(events, 60, 14);

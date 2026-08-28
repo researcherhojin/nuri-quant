@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { ActionItems, type ActionItem } from "@/components/ui/action-items";
+import { ACTION } from "@/lib/strings";
 
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => <a href={href} {...props}>{children}</a>,
@@ -127,6 +128,23 @@ describe("ActionItems — full branch coverage", () => {
     expect(screen.getByText("현재가")).toBeTruthy();
     fireEvent.click(row);
     expect(screen.queryByText("현재가")).toBeNull();
+  });
+
+  it("quick-peek: 계좌 없음 · 비중 미상 (#1252 로 바뀐 줄의 나머지 분기)", () => {
+    // 이 두 분기는 base fixture 가 둘 다 채워져 있어 열려 있었다. #1252 가 같은 줄의
+    // 라벨을 SSoT 로 옮기면서 그 줄이 patch 대상이 되어 드러났다.
+    render(
+      <ActionItems
+        urgent={[{ ...base, ticker: "X13", name: "NoAccNoPct", account: "", position_pct: null }]}
+        check={[]}
+        hold={[]}
+      />
+    );
+    fireEvent.click(screen.getByTestId("action-row"));
+    const peek = screen.getByTestId("action-row-peek");
+    expect(peek.textContent).toContain(ACTION.PNL_UNKNOWN);
+    // 계좌가 비면 peek 의 계좌 조각 자체가 렌더되지 않는다.
+    expect(peek.textContent).not.toContain(ACTION.COL_ACCOUNT);
   });
 
   it("KR ticker formats prices with won (line 47 isKr true)", () => {

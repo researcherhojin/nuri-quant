@@ -30,40 +30,40 @@ export const NAV_GROUPS = [
   {
     label: NAV.TODAY,
     items: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/", label: NAV.ROUTE_DASHBOARD, icon: LayoutDashboard },
     ],
   },
   {
     label: NAV.DECISIONS,
     items: [
-      { href: "/decisions", label: "Decisions", icon: BookOpen },
-      { href: "/engine", label: "Certification Engine", icon: Cog },
-      { href: "/evidence", label: "Evidence", icon: FileBarChart },
+      { href: "/decisions", label: NAV.ROUTE_DECISIONS, icon: BookOpen },
+      { href: "/engine", label: NAV.ROUTE_ENGINE, icon: Cog },
+      { href: "/evidence", label: NAV.ROUTE_EVIDENCE, icon: FileBarChart },
     ],
   },
   {
     label: NAV.PORTFOLIO,
     items: [
-      { href: "/portfolio", label: "Portfolio", icon: Briefcase },
-      { href: "/rebalance", label: "Rebalance", icon: Scale },
-      { href: "/targets", label: "Price Targets", icon: Target },
+      { href: "/portfolio", label: NAV.ROUTE_PORTFOLIO, icon: Briefcase },
+      { href: "/rebalance", label: NAV.ROUTE_REBALANCE, icon: Scale },
+      { href: "/targets", label: NAV.ROUTE_TARGETS, icon: Target },
     ],
   },
   {
     label: NAV.RESEARCH,
     items: [
-      { href: "/explore", label: "Explore", icon: Compass },
-      { href: "/scan", label: "Scanner", icon: Search },
-      { href: "/signals", label: "Signals", icon: BarChart3 },
-      { href: "/strategy", label: "Strategy", icon: TrendingUp },
-      { href: "/consensus", label: "Agents", icon: Users },
+      { href: "/explore", label: NAV.ROUTE_EXPLORE, icon: Compass },
+      { href: "/scan", label: NAV.ROUTE_SCANNER, icon: Search },
+      { href: "/signals", label: NAV.ROUTE_SIGNALS, icon: BarChart3 },
+      { href: "/strategy", label: NAV.ROUTE_STRATEGY, icon: TrendingUp },
+      { href: "/consensus", label: NAV.ROUTE_AGENTS, icon: Users },
     ],
   },
   {
     label: NAV.SYSTEM,
     items: [
-      { href: "/pipeline", label: "Pipeline", icon: Workflow },
-      { href: "/report", label: "AI Report", icon: Bot },
+      { href: "/pipeline", label: NAV.ROUTE_PIPELINE, icon: Workflow },
+      { href: "/report", label: NAV.ROUTE_REPORT, icon: Bot },
     ],
   },
 ];
@@ -143,7 +143,7 @@ export function Sidebar() {
             <div className="flex flex-col items-center gap-2">
               {/* 테마 토글 제거 (#1195 U1a codex P2): 제품은 dark-only (frontend/CLAUDE.md).
                   라이트 전환 시 zinc 램프 재매핑과 시맨틱 토큰이 혼합 테마를 만들던 경로 폐쇄 */}
-              <span className="relative flex h-2 w-2" title="System Online">
+              <span className="relative flex h-2 w-2" title={NAV.SYSTEM_ONLINE}>
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
               </span>
@@ -155,7 +155,7 @@ export function Sidebar() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                 </span>
-                <span className="text-[10px] text-muted-foreground">System Online</span>
+                <span className="text-[10px] text-muted-foreground">{NAV.SYSTEM_ONLINE}</span>
               </div>
             </>
           )}
