@@ -65,8 +65,12 @@ describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
     const offenders = labels.filter((v) => src.includes(`"${v}"`));
     expect(offenders, `사이드바에 리터럴로 남은 라벨: ${offenders.join(", ")}`).toHaveLength(0);
 
-    const pipe = read("src/app/pipeline/page.tsx");
+    // 주석을 걷고 본다 — 이 파일 주석이 라우트 이름을 언급하고 있어 그대로 보면 오탐이다.
+    const pipe = stripComments(read("src/app/pipeline/page.tsx"));
     const nodeCopy = [
+      PIPELINE.TITLE, // codex P3: 타이틀이 빠져 있어 하드코딩 복귀를 못 잡았다
+      PIPELINE.NODE_COLLECT, PIPELINE.NODE_VALIDATE, PIPELINE.NODE_CLASSIFY,
+      PIPELINE.NODE_DIAGNOSE, PIPELINE.NODE_RECOMMEND, PIPELINE.NODE_TRACK,
       PIPELINE.NODE_COLLECT_SUB, PIPELINE.NODE_VALIDATE_SUB, PIPELINE.NODE_CLASSIFY_SUB,
       PIPELINE.NODE_DIAGNOSE_SUB, PIPELINE.NODE_RECOMMEND_SUB, PIPELINE.NODE_TRACK_SUB,
     ];
