@@ -188,17 +188,58 @@ describe("ActionItems", () => {
     expect(screen.getByTestId("action-row-peek")).toBeTruthy();
   });
 
-  // #1208 codex P1: 구 카드 버튼의 키보드 접근을 행이 승계 — Enter/Space 토글 잠금
-  it("toggles quick-peek with Enter and Space keys", () => {
+  // #1251 (was #1208 codex P1): 키보드 접근의 **주체가 행에서 버튼으로** 옮겨졌다.
+  //
+  // #1208 은 `<tr>` 에 tabIndex/onKeyDown/aria-expanded 를 달아 키보드를 열었다. 동작은
+  // 했지만 `<tr>` 의 암묵 role 은 `row` 라 스크린리더가 disclosure 로 읽지 못했고, 행마다
+  // 쓸모없는 탭 스톱이 하나씩 생겼다. 이제 네이티브 `<button>` 이 컨트롤이다 —
+  // Enter/Space 활성화·role·포커스를 **플랫폼이** 준다.
+  //
+  // ⚠️ 이 잠금이 `fireEvent.keyDown(button, {key:"Enter"})` 이 아닌 이유: jsdom 은 네이티브
+  // 버튼의 키 입력을 click 으로 합성하지 않는다(그건 브라우저 동작이고 user-event 가 흉내낸다.
+  // 이 레포엔 user-event 가 없다). keyDown 을 쏘면 **버튼이 아니어도 통과**하는 가짜 잠금이
+  // 되므로, 활성화 대신 **그 활성화를 보장하는 성질**(네이티브 button 인가)을 직접 잰다.
+  it("quick-peek toggle is a native button — keyboard activation comes from the platform", () => {
+    render(<ActionItems urgent={[urgentItem]} check={[]} hold={[]} />);
+    const toggle = screen.getByTestId("action-row-toggle");
+    expect(toggle.tagName).toBe("BUTTON");
+    expect(toggle.getAttribute("type")).toBe("button"); // submit 이면 폼 안에서 오작동
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("action-row-peek")).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId("action-row-peek")).toBeNull();
+  });
+
+  it("toggle announces disclosure state and points at the panel it controls", () => {
+    render(<ActionItems urgent={[urgentItem]} check={[]} hold={[]} />);
+    const toggle = screen.getByTestId("action-row-toggle");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    // 접근명에 종목이 들어가야 행이 여럿일 때 "상세 펼치기" 가 구분된다.
+    expect(toggle.getAttribute("aria-label")).toContain(urgentItem.ticker);
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const controls = toggle.getAttribute("aria-controls");
+    expect(controls).toBeTruthy();
+    // 관계가 **실제로** 이어져야 한다 — 속성만 있고 대상이 없으면 SR 에겐 없는 것과 같다.
+    expect(screen.getByTestId("action-row-peek").getAttribute("id")).toBe(controls);
+  });
+
+  it("row is no longer a phantom tab stop or a fake disclosure", () => {
     render(<ActionItems urgent={[urgentItem]} check={[]} hold={[]} />);
     const row = screen.getByTestId("action-row");
-    expect(row.getAttribute("tabindex")).toBe("0");
-    fireEvent.keyDown(row, { key: "Enter" });
+    expect(row.getAttribute("tabindex")).toBeNull();
+    expect(row.getAttribute("aria-expanded")).toBeNull();
+    // 마우스 편의는 유지 — 행 아무 데나 눌러도 펼쳐진다.
+    fireEvent.click(row);
     expect(screen.getByTestId("action-row-peek")).toBeTruthy();
-    fireEvent.keyDown(row, { key: " " });
-    expect(screen.queryByTestId("action-row-peek")).toBeNull();
-    fireEvent.keyDown(row, { key: "Escape" }); // 무시되는 키 — 토글 없음
-    expect(screen.queryByTestId("action-row-peek")).toBeNull();
+  });
+
+  it("each row gets its own aria-controls target", () => {
+    render(<ActionItems urgent={[urgentItem]} check={[checkItem]} hold={[]} />);
+    const ids = screen.getAllByTestId("action-row-toggle").map((b) => b.getAttribute("aria-controls"));
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2); // 공유하면 SR 이 엉뚱한 패널을 가리킨다
   });
 
   it("collapses quick-peek on second row click", () => {

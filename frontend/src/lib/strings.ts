@@ -477,6 +477,10 @@ export const ACTION = {
   EVIDENCE: "증거 체인", // #1182: 카드 → /decisions/[id]
   NEW: "NEW", // #1212: 미확인 행 배지 (localStorage seen-state)
   ACK: "확인", // #1212: quick-peek ack 버튼 — NEW 해제, 판정일 갱신 시 재표시
+  // #1251: 행 자체가 disclosure 였는데 시맨틱은 테이블 행이라 스크린리더가
+  // 컨트롤로 announce 하지 못했다. 실제 버튼의 접근명 — 종목명을 붙여 행마다 구분된다.
+  PEEK_EXPAND: "상세 펼치기",
+  PEEK_COLLAPSE: "상세 접기",
   // design-review F-001: 숫자 3개(수익률/비중/확신도)가 무라벨이라 추측을 요구했다
   COL_TICKER: "종목",
   COL_ACCOUNT: "계좌",
