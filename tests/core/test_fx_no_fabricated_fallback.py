@@ -306,7 +306,17 @@ class TestNoNewFabricatedRateAppears:
     식별자만 같은 물리 행에서 본다.
     """
 
-    IDENT = re.compile(r"usd_krw|usdkrw|exchange_rate|krw_rate|fx_|_fx\b", re.I)
+    #: 좁게 시작했다가 넓혔다. `usd_krw|exchange_rate|fx_` 만 보면 **지금 있는 철자만**
+    #: 잡고 `rate = fx or 1400` · `FALLBACK_RATE = 1400` · `rate = get_rate() or 1400`
+    #: 은 전부 빠져나간다 — 백스톱이 현재 코드만 덮으면 백스톱이 아니다.
+    #:
+    #: ⚠️ 경계는 `\b` 가 아니라 **글자 경계**여야 한다. `_` 는 단어 문자라
+    #: `\brate\b` 가 `FALLBACK_RATE` 를 못 잡고, 반대로 맨 `rate` 부분일치는
+    #: `gene`**`rate`**`` · `sepa`**`rate`** 를 잡는다. `(?<![a-z])rate(?![a-z])` 가
+    #: 양쪽을 동시에 만족한다.
+    #:
+    #: 넓힌 뒤에도 `nuri/` 실측은 **동일(7 hits / 3 files)** — 오탐 비용 0 이었다.
+    IDENT = re.compile(r"usd_krw|usdkrw|krw|환율|(?<![a-z])fx(?![a-z])|(?<![a-z])rate(?![a-z])", re.I)
 
     @classmethod
     def _scan(cls, src: str) -> list[int]:
@@ -373,7 +383,38 @@ class TestNoNewFabricatedRateAppears:
         **양방향**이다: 옛 결함 형태를 잡는지 + 독스트링을 오탐하지 않는지. 후자가 없으면
         "전부 통과" 와 "전부 차단" 을 구분할 수 없다 (텍스트 스윕이 실제로 밟은 함정).
         """
-        bad = "rate = exchange_rate or 1400\n"
         doc = '"""환율 누락 시 1400 기본값 — 설명일 뿐 코드가 아니다."""\n'
-        assert self._scan(bad) == [1], "옛 결함 형태를 못 잡는다 — 스윕에 눈이 없다"
         assert self._scan(doc) == [], "독스트링을 코드로 오탐한다 — 텍스트 스윕의 실패를 반복한다"
+
+        # 옛 결함의 **철자 변종**들. 좁은 IDENT 는 아래 3·4·5번을 전부 놓쳤다 —
+        # 실제로 그래서 넓혔다. 변종을 함께 잠가야 "지금 코드만 덮는 백스톱" 으로
+        # 되돌아가는 걸 막는다.
+        for src in (
+            "rate = exchange_rate or 1400\n",
+            "usd_krw = x or 1400\n",
+            "rate = fx or 1400\n",
+            "FALLBACK_RATE = 1400\n",
+            "rate = get_rate() or 1400\n",
+        ):
+            assert self._scan(src) == [1], f"이 형태를 못 잡는다 — 스윕에 눈이 없다: {src!r}"
+
+        # 반대편 — 넓힌 경계가 무관한 단어를 잡으면 오탐이 쌓여 스윕이 무시당한다.
+        # `rate` 를 부분일치로 두면 아래가 전부 걸린다.
+        for src in (
+            "count = generate(1400)\n",
+            "x = separate_thing(1500)\n",
+            "duration_ms = 1500\n",
+            "iterations = 1200\n",
+            "accurate_total = 1100\n",
+        ):
+            assert self._scan(src) == [], f"무관한 단어를 환율로 오탐한다: {src!r}"
+
+    def test_the_magnitude_window_brackets_a_real_rate(self):
+        """1000~2000 창이 실제 환율을 포함하는지 — 창이 빗나가면 스윕은 늘 0건이다.
+
+        프로덕션 실측 1383.52 (2026-08-29), 옛 폴백 1400/1450 이 모두 안에 있다.
+        """
+        for v in (1383.52, 1400, 1450.0):
+            assert self._scan(f"usd_krw = {v}\n") == [1], f"{v} 를 환율 크기로 안 본다"
+        for v in (7.0, 999, 2000, 130_000):
+            assert self._scan(f"usd_krw = {v}\n") == [], f"{v} 는 환율 크기가 아닌데 잡았다"
