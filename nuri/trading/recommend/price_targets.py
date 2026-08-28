@@ -660,24 +660,41 @@ def check_portfolio_mdd(db_path: Optional[Path] = None) -> dict | None:
         dict: MDD 위반 정보. 위반 없으면 None.
     """
     # 환율 조회 (KRW → USD 변환용)
+    # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
+    # #1283: 부재는 `None` 이다 — 예전의 `usd_krw = 1400.0` 폴백은 지어낸 환율로 MDD 를
+    # 판정했다. 혼합 포트폴리오에서 `total_value/total_cost` 는 rate 에 의존하므로
+    # (`cost_us + cost_kr/rate` 꼴) 그 숫자가 `PORTFOLIO_STOP` 발화 여부를 가른다.
+    # 예전의 `except Exception: pass` 는 **DB 오류를 지어낸 환율로 덮었다** — 조회가
+    # 실패했는데 판정은 계속되고, 그 판정이 1400 기준이었다. 좁혀서 잡는다: DB 오류는
+    # "환율을 모른다" 이지 "1400 이다" 가 아니므로 부재로 접어 아래 가드가 판정을
+    # 포기하게 한다. `Exception` 으로 넓히면 진짜 버그까지 삼킨다.
+    from nuri.core.db import DatabaseError, OperationalError
+    from nuri.core.fx import latest_usd_krw_value
     from nuri.core.rules import PORTFOLIO_STOP
 
-    usd_krw = 1400.0  # 폴백
     try:
-        # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
-        from nuri.core.fx import latest_usd_krw_value
-
-        _fx = latest_usd_krw_value(db_path=db_path)
-        if _fx:
-            usd_krw = _fx
-    except Exception:
-        pass
+        usd_krw = latest_usd_krw_value(db_path=db_path)
+    except (OperationalError, DatabaseError):
+        logger.warning("USD/KRW 조회 실패 — 환율 부재로 다룬다 (#1283)", exc_info=True)
+        usd_krw = None
 
     holdings = query_df(
         "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
         db_path=db_path,
     )
     if holdings.empty:
+        return None
+
+    # 환율이 없어도 **US 전용 포트폴리오는 정확히 계산된다** — 일괄 포기는 과잉이다.
+    # KR 보유가 섞여 있을 때만 판정을 포기한다.
+    kr_count = sum(1 for t in holdings["ticker"] if is_kr_ticker(t))
+    if usd_krw is None and kr_count:
+        logger.warning(
+            "USD/KRW 미수집 — 포트폴리오 MDD 판정 포기 (KR 보유 %d종목). "
+            "지어낸 환율로 -%s%% 손절선을 판정하지 않는다 (#1283)",
+            kr_count,
+            abs(PORTFOLIO_STOP),
+        )
         return None
 
     total_cost = 0.0
@@ -692,8 +709,10 @@ def check_portfolio_mdd(db_path: Optional[Path] = None) -> dict | None:
         current = _get_current_price(ticker, db_path=db_path)
         value = (current or avg_price) * qty
 
-        # KRW 종목은 USD로 변환
-        if is_krw and usd_krw > 0:
+        # KRW 종목은 USD로 변환. `usd_krw` 는 이제 **양수 아니면 None** 이므로 진리값으로
+        # 본다 — `> 0` 은 None 에서 TypeError 다 (지금은 위 가드가 그 조합을 걸러내지만,
+        # 가드와 여기가 따로 놀면 조용히 터진다).
+        if is_krw and usd_krw:
             cost /= usd_krw
             value /= usd_krw
 

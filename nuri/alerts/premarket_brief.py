@@ -69,6 +69,9 @@ def _collect_context(db_path=None) -> dict:
         "opportunities": None,
         "macro_events": [],
         "portfolio_totals": None,
+        # #1283: 총액을 못 낸 **이유**. 섹션이 그냥 사라지면 결함처럼 보이고, 정작
+        # 원인(환율 미수집)은 로그에만 남아 아침에 읽는 사람에게 도달하지 않는다.
+        "portfolio_totals_blocked": None,
         "shadow_signals": [],  # PR C (codex #3): market-wide crash precursor
         "buy_candidates": None,  # #507 Phase 1: cash deploy candidate emit
         "freshness": None,  # #513: 데이터 신선도 surface (PASS/WARN/FAIL 3-tier)
@@ -260,23 +263,44 @@ def _collect_context(db_path=None) -> dict:
         )
         # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
         from nuri.core.fx import latest_usd_krw_value
-
-        rate = latest_usd_krw_value(db_path=db_path) or 1400.0
         from nuri.core.ticker_names import is_kr_ticker
 
-        by_acct: dict[str, float] = {}
-        total_usd = 0.0
-        for r in rows:
-            px = r["close"] or r["avg_price"] or 0
-            qty = r["quantity"] or 0
-            is_kr = is_kr_ticker(r["ticker"])
-            val_usd = px * qty / rate if is_kr else px * qty
-            by_acct[r["account"]] = by_acct.get(r["account"], 0.0) + val_usd
-            total_usd += val_usd
-        ctx["portfolio_totals"] = {
-            "total_usd": total_usd,
-            "by_account": sorted(by_acct.items(), key=lambda x: -x[1]),
-        }
+        rate = latest_usd_krw_value(db_path=db_path)
+        kr_count = sum(1 for r in rows if is_kr_ticker(r["ticker"]))
+
+        # #1283: 환율이 없으면 `or 1400.0` 으로 메웠다. 매일 아침 읽는 브리프에 지어낸
+        # 총액을 싣는 것보다 **빈 칸이 정직하다** — 채워져 있으면 수집기가 죽은 걸 모른다.
+        # US 전용이면 환율과 무관하므로 그대로 낸다.
+        if rate is None and kr_count:
+            logger.warning(
+                "USD/KRW 미수집 — portfolio_totals 생략 (KR 보유 %d행). 지어낸 환율로 총액을 싣지 않는다 (#1283)",
+                kr_count,
+            )
+            ctx["portfolio_totals_blocked"] = (
+                f"USD/KRW 미수집 — KR 보유 {kr_count}행의 USD 환산 불가 (`make collect` 으로 환율 갱신)"
+            )
+        else:
+            by_acct: dict[str, float] = {}
+            total_usd = 0.0
+            for r in rows:
+                px = r["close"] or r["avg_price"] or 0
+                qty = r["quantity"] or 0
+                if is_kr_ticker(r["ticker"]):
+                    # 위 가드가 보장한다 (kr_count > 0 이면 rate 가 있다). 그래도 명시로
+                    # 좁히는 이유는, 조건이 갈라져 있으면 **도달 불가가 조용히 도달
+                    # 가능해지는** 순간을 타입체커가 잡아주기 때문이다. 폴백 숫자를
+                    # 끼워 넣는 대신 건너뛴다 — 여기서 지어내면 이 PR 이 무의미해진다.
+                    if rate is None:
+                        continue
+                    val_usd = px * qty / rate
+                else:
+                    val_usd = px * qty
+                by_acct[r["account"]] = by_acct.get(r["account"], 0.0) + val_usd
+                total_usd += val_usd
+            ctx["portfolio_totals"] = {
+                "total_usd": total_usd,
+                "by_account": sorted(by_acct.items(), key=lambda x: -x[1]),
+            }
     except Exception:
         logger.warning("portfolio totals 실패", exc_info=True)
 
@@ -485,6 +509,8 @@ def format_brief_embed(ctx: dict) -> dict:
         acct_lines = [f"{a}: ${v:,.0f}" for a, v in totals["by_account"]]
         acct_lines.append(f"**TOTAL: ${totals['total_usd']:,.0f}** (equity only)")
         fields.append({"name": "💰 Portfolio", "value": "\n".join(acct_lines), "inline": False})
+    elif ctx.get("portfolio_totals_blocked"):
+        fields.append({"name": "💰 Portfolio", "value": ctx["portfolio_totals_blocked"], "inline": False})
 
     return {
         "title": f"🌅 Nuri-Quant Pre-market Brief — {today_kst()}",
@@ -641,6 +667,9 @@ def format_brief_markdown(ctx: dict) -> str:
         for a, v in totals["by_account"]:
             lines.append(f"- {a}: ${v:,.0f}")
         lines.append(f"- **TOTAL**: ${totals['total_usd']:,.0f} (equity only)")
+    elif ctx.get("portfolio_totals_blocked"):
+        lines.append("## Portfolio")
+        lines.append(f"- {ctx['portfolio_totals_blocked']}")
 
     return "\n".join(lines)
 
