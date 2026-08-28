@@ -368,7 +368,15 @@ def run_strategy_walkforward(
 
 def _load_fx_series(db_path: Optional[Path] = None) -> pd.Series:
     """macro 의 usd_krw 일별 시계열 (KRW/USD). FX 필수 입력 — 없으면 ValueError."""
-    df = query_df("SELECT date, value FROM macro WHERE indicator='usd_krw' ORDER BY date", db_path=db_path)
+    # #1278: 미래 날짜 행이 꼬리에 붙으면 walk-forward 가 존재하지 않는 미래 FX 를 본다.
+    # 프로덕션에는 그런 행이 없어 실질 no-op 이지만, 백테스트 입력에 오염을 남길 이유가 없다.
+    from nuri.core.timezone import today_kst
+
+    df = query_df(
+        "SELECT date, value FROM macro WHERE indicator='usd_krw' AND date <= ? ORDER BY date",
+        (today_kst(),),
+        db_path=db_path,
+    )
     if df.empty:
         raise ValueError("usd_krw not in macro — FX 필수 (make collect 후 재시도)")
     return pd.Series(df["value"].to_numpy(), index=pd.to_datetime(df["date"]))

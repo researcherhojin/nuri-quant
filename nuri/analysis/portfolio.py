@@ -37,13 +37,12 @@ class StaleExchangeRateError(Exception):
 
 def get_exchange_rate(db_path=None) -> float:
     """USD/KRW 환율 조회. 7일 이상 오래되면 WARNING, DB에 없으면 에러."""
-    rows = query(
-        "SELECT value, date FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1",
-        db_path=db_path,
-    )
-    if rows:
-        rate = rows[0]["value"]
-        rate_date = rows[0]["date"]
+    # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
+    from nuri.core.fx import latest_usd_krw
+
+    got = latest_usd_krw(db_path=db_path)
+    if got:
+        rate, rate_date = got
 
         # 신선도 체크: 7일 초과 시 경고
         from datetime import datetime

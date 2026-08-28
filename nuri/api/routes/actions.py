@@ -19,6 +19,7 @@ from nuri.api.limits import heavy_slot
 from nuri.core.axis import is_alpha_flat_sell
 from nuri.core.catalyst import has_recent_catalyst
 from nuri.core.db import query
+from nuri.core.fx import latest_usd_krw_value
 from nuri.core.live_price import DEFAULT_DIVERGENCE_THRESHOLD_PCT, check_divergence
 from nuri.core.rules import get_stop_loss_for_account
 from nuri.core.ticker_names import is_kr_ticker
@@ -678,8 +679,8 @@ def _get_portfolio_map() -> dict[str, dict]:
     if real_accounts:
         rows = [r for r in rows if r["account"] in real_accounts]
 
-    rate_row = query("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1")
-    rate = rate_row[0]["value"] if rate_row else 1400
+    # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
+    rate = latest_usd_krw_value() or 1400
 
     # 총 자산 계산 (비중% 산정용)
     total_value = 0

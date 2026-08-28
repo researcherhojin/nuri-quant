@@ -29,8 +29,13 @@ def _calibrate_fx_thresholds(db_path=None) -> tuple[float, float]:
 
     from nuri.core.db import query_df
 
+    # #1278: 미래 날짜 행이 90일 창에 섞이면 평균·표준편차가 오염된다 — 최신 1건뿐
+    # 아니라 **시계열도** 상한이 필요하다.
+    from nuri.core.timezone import today_kst
+
     df = query_df(
-        "SELECT value FROM macro WHERE indicator='usd_krw' ORDER BY date DESC LIMIT 90",
+        "SELECT value FROM macro WHERE indicator='usd_krw' AND date <= ? ORDER BY date DESC LIMIT 90",
+        (today_kst(),),
         db_path=db_path,
     )
     if df.empty or len(df) < _CFG.get("fx_calibration_min", 30):
@@ -158,8 +163,12 @@ class KoreanMarketAgent(BaseAgent):
 
     def _get_fx_rate(self, db_path=None) -> float | None:
         """최신 KRW/USD 환율."""
+        # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py). `_safe_query` 의 예외 삼킴을 유지하려 쿼리 형태만 맞춘다.
+        from nuri.core.timezone import today_kst
+
         rows = self._safe_query(
-            "SELECT value FROM macro WHERE indicator='usd_krw' ORDER BY date DESC LIMIT 1",
+            "SELECT value FROM macro WHERE indicator='usd_krw' AND date <= ? ORDER BY date DESC LIMIT 1",
+            (today_kst(),),
             db_path=db_path,
         )
         return rows[0]["value"] if rows else None

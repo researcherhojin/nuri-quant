@@ -258,11 +258,10 @@ def _collect_context(db_path=None) -> dict:
             """,
             db_path=db_path,
         )
-        rate_row = query(
-            "SELECT value FROM macro WHERE indicator='usd_krw' ORDER BY date DESC LIMIT 1",
-            db_path=db_path,
-        )
-        rate = float(rate_row[0]["value"]) if rate_row else 1400.0
+        # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
+        from nuri.core.fx import latest_usd_krw_value
+
+        rate = latest_usd_krw_value(db_path=db_path) or 1400.0
         from nuri.core.ticker_names import is_kr_ticker
 
         by_acct: dict[str, float] = {}
