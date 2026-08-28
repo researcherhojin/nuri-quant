@@ -1132,10 +1132,12 @@ class TestSnapshotMarketContext:
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO pipeline_events (timestamp, event_type, payload) VALUES (?, ?, ?)",
-                ("2026-04-10T10:00:00", "regime_changed", json.dumps({"regime": "risk_on"})),
+                ("2026-04-10T10:00:00", "regime_changed", json.dumps({"regime": "bull_high_vol"})),
             )
         ctx = _snapshot_market_context(db_path=db_path)
-        assert ctx["regime"] == "risk_on"
+        # #1268: canonical 값이어야 통과한다. 예전 픽스처는 `"risk_on"` 이었는데 그건
+        # `ALL_REGIMES` 에 없는 free-text 였고, 테스트가 무가드 동작을 잠그고 있었다.
+        assert ctx["regime"] == "bull_high_vol"
 
     def test_latest_event_wins_over_older_one(self, db_path):
         """이벤트가 여럿이면 **최신** 것이 이긴다 (`ORDER BY timestamp DESC`).
@@ -1164,10 +1166,10 @@ class TestSnapshotMarketContext:
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO pipeline_events (timestamp, event_type, payload) VALUES (?, ?, ?)",
-                ("2026-04-10T10:00:00", "regime_changed", json.dumps({"new_regime": "risk_off"})),
+                ("2026-04-10T10:00:00", "regime_changed", json.dumps({"new_regime": "bear_high_vol"})),
             )
         ctx = _snapshot_market_context(db_path=db_path)
-        assert ctx["regime"] == "risk_off"
+        assert ctx["regime"] == "bear_high_vol"
 
     def test_regime_malformed_json_swallowed(self, db_path, monkeypatch):
         """Lines 238-239: invalid JSON payload → except branch, no crash, regime not set."""
@@ -1217,7 +1219,7 @@ class TestRecordDecisionRegimeEvidence:
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO pipeline_events (timestamp, event_type, payload) VALUES (?, ?, ?)",
-                ("2026-04-10T10:00:00", "regime_changed", json.dumps({"regime": "risk_on"})),
+                ("2026-04-10T10:00:00", "regime_changed", json.dumps({"regime": "bull_high_vol"})),
             )
         _insert_price(db_path, "NVDA", 120.0)
 
@@ -1240,9 +1242,9 @@ class TestRecordDecisionRegimeEvidence:
         assert regime_evidence[0]["source_key"] == "current"
         # regime 값이 detail JSON 안에 들어 있음
         detail = json.loads(regime_evidence[0]["detail"])
-        assert detail["regime"] == "risk_on"
+        assert detail["regime"] == "bull_high_vol"
         # decisions row 의 regime 컬럼 자체도 채워졌는지 확인
-        assert decision["regime"] == "risk_on"
+        assert decision["regime"] == "bull_high_vol"
 
 
 # ═══════════════════════════════════════════════════════

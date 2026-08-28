@@ -54,3 +54,27 @@ Mechanical ordering when emitting actions: `stop_loss → take_profit → traili
 - Within `take_profit`: sort by `excess%` descending (biggest winner first — lock in gains).
 - Rationale: declining momentum loses more per hour delayed; rising momentum is more forgiving.
 - ⚠️ **이 순서는 코드에 없다 (2026-08-02 감사).** `config/rules.yaml execution_priority` 는 어느 모듈도 읽지 않고(`order` / `stop_loss_sort` / `take_profit_sort` 전부 소비처 0), 이 문서가 "Codified in config" 라고 적어둔 탓에 배선된 것으로 읽혀 왔다. 위 서술은 **설계 의도**이지 현재 동작이 아니다. 실제로 순서를 강제하려면 소비자를 만들어야 하고 그건 매매 동작 변경이라 STRATEGY PR 대상.
+
+## regime 어휘 — canonical 이거나 NULL (#1268)
+
+`decisions.regime` 은 `ALL_REGIMES` 10개 값 또는 NULL 만 담는다. `_snapshot_market_context`
+가 regime 을 채우는 **두 경로**(`pipeline_events` payload · `classify_regime()` fallback)
+합류 지점에서 `canonical_regime_or_none` 으로 한 번 정규화한다 — 경로마다 붙이지 않는 이유는
+새 경로가 생겨도 자동으로 덮이기 때문이다.
+
+payload 경로가 더 위험하다: **다른 생산자가 쓴 임의 JSON** 이라, `#832` 가 이 가드를 만든
+바로 그 free-text 유입 경로다 (`recommendations.regime` 에 `''` · `'[recovery] 비중 축소'`
+가 실제로 남아 있다).
+
+⚠️ **거부는 NULL 이고, NULL 은 `decisions_context` freshness 를 건드린다** (#1267, warn 24h /
+fail 60h). 의도한 것이다 — 어휘 밖 라벨을 조용히 저장하는 것보다 라벨 부재가 보이는 편이 낫다.
+
+⚠️ **"모든 regime writer 에 가드" 는 틀린 원칙이다.** `candidate_runs.regime` 은
+`UNKNOWN_REGIME`("unknown", 의도적으로 `ALL_REGIMES` 밖)을 정당하게 저장한다. 대상은
+**어휘가 `ALL_REGIMES` 인 컬럼**뿐이다.
+
+`certifications.regime` 은 아직 무가드다 — 행수가 12배이고 값이 `.get(regime, {})` 로 가서
+성격이 달라 **#1293** 으로 분리했다.
+
+**Test:** `tests/trading/engine/test_regime_canonical_guard.py` — 어휘 밖 7종 거부 + canonical
+10종 전부 보존(대조군) + writer 대칭 AST 스윕 + known-gap 양방향.
