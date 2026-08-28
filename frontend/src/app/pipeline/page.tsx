@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import {
   ReactFlow,
   Background,
@@ -275,18 +275,53 @@ const EDGES: Edge[] = [
   { id: "e-recommend-track", source: "recommend", target: "track", animated: true, style: { stroke: "#3f3f46" } },
 ];
 
+// === Fetch 3-state (#1250) ===
+/** 실패를 빈 데이터로 뭉개지 않기 위한 최소 상태. `"ok"` 여야만 빈 화면이 "없음" 을 뜻한다. */
+type LoadState = "loading" | "ok" | "error";
+
+/** 실패 패널 — 무엇이 실패했나 + 다음 행동(재시도). 원문 상태코드는 카피에 넣지 않는다 (F-002). */
+const FetchFailed = memo(function FetchFailed({ body, onRetry }: { body: string; onRetry: () => void }) {
+  return (
+    <div role="alert" className="py-6 text-center space-y-2">
+      <p className="text-xs text-red-400">{ERRORS.API_TITLE}</p>
+      <p className="text-[10px] text-muted-foreground/70">{body}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="text-[10px] px-2 py-1 rounded border border-border text-foreground/80 hover:bg-accent"
+      >
+        {ERRORS.RETRY}
+      </button>
+    </div>
+  );
+});
+
 // === Page Component ===
 export default function PipelinePage() {
   const [steps, setSteps] = useState<PipelineStep[]>([]);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [gates, setGates] = useState<Record<string, GateResult>>({});
   const [runningSteps, setRunningSteps] = useState<Set<string>>(new Set());
+  // #1250: 로딩 · 성공 · 실패 3-state. 이전엔 `.catch(() => {})` 로 실패를 삼켜
+  // 빈 배열이 남았고, 화면은 그걸 "데이터 없음" 으로 렌더했다 — 운영자에게
+  // "백엔드 죽음" 과 "이벤트 없음" 이 같은 픽셀이었다.
+  const [statusState, setStatusState] = useState<LoadState>("loading");
+  const [timelineState, setTimelineState] = useState<LoadState>("loading");
+  const [gateState, setGateState] = useState<LoadState>("loading");
+
+  // 10초 폴링이라 느린 요청이 다음 요청과 겹친다. 응답 순서는 보장되지 않으므로
+  // **가장 최근에 쏜 요청만** 상태를 바꾸게 한다 (codex P2). 없으면 poll N+1 이 성공한
+  // 뒤 늦게 도착한 poll N 의 실패가 멀쩡한 화면을 에러로 뒤집는다 — 역방향(늦은 성공이
+  // 새 실패를 덮는 것)도 같은 축이라 성공·실패 양쪽에서 토큰을 본다.
+  const seqRef = useRef({ status: 0, timeline: 0, gate: 0 });
 
   // 파이프라인 상태 fetch
   const fetchStatus = useCallback(() => {
+    const seq = ++seqRef.current.status;
     fetch(`/api/pipeline/status`)
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: PipelineStatusData | null) => {
+        if (seq !== seqRef.current.status) return;
         if (data?.steps) {
           setSteps(data.steps);
           // 실행 중인 스텝 업데이트
@@ -296,28 +331,41 @@ export default function PipelinePage() {
           }
           setRunningSteps(running);
         }
+        setStatusState("ok");
       })
-      .catch(() => {});
+      .catch(() => {
+        if (seq === seqRef.current.status) setStatusState("error");
+      });
   }, []);
 
   // 타임라인 fetch
   const fetchTimeline = useCallback(() => {
+    const seq = ++seqRef.current.timeline;
     fetch(`/api/pipeline/timeline?limit=30`)
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: { events: TimelineEvent[] } | null) => {
+        if (seq !== seqRef.current.timeline) return;
         if (data?.events) setTimeline(data.events);
+        setTimelineState("ok");
       })
-      .catch(() => {});
+      .catch(() => {
+        if (seq === seqRef.current.timeline) setTimelineState("error");
+      });
   }, []);
 
   // 게이트 fetch
   const fetchGates = useCallback(() => {
+    const seq = ++seqRef.current.gate;
     fetch(`/api/gate`)
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: Record<string, GateResult> | null) => {
+        if (seq !== seqRef.current.gate) return;
         if (data) setGates(data);
+        setGateState("ok");
       })
-      .catch(() => {});
+      .catch(() => {
+        if (seq === seqRef.current.gate) setGateState("error");
+      });
   }, []);
 
   // 초기 로드 + 10초 자동 새로고침
@@ -424,6 +472,15 @@ export default function PipelinePage() {
         </div>
       </div>
 
+      {/* #1250: 상태 fetch 실패는 DAG 를 지우지 않고 **배너로 알린다** — 노드는 마지막으로
+          성공한 조회를 보여주므로, 화면을 비우면 "파이프라인이 비었다" 는 더 나쁜 거짓말이
+          된다. 대신 지금 보는 것이 낡았을 수 있다고 말한다. */}
+      {statusState === "error" && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-3">
+          <FetchFailed body={ERRORS.PIPELINE_STATUS_FAILED} onRetry={fetchStatus} />
+        </div>
+      )}
+
       {/* React Flow 캔버스 */}
       {/* design-review F-009: 폭 제약 fit 이라 노드 행 높이는 ~75px — h-80(320px)은
           위아래가 죽은 공간이었다. 줌 배율은 폭이 결정하므로 높이 축소는 무손실. */}
@@ -475,7 +532,13 @@ export default function PipelinePage() {
         {/* 이벤트 타임라인 */}
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground mb-3">{PL.EVENT_TIMELINE}</p>
-          {timeline.length === 0 ? (
+          {/* #1250: error → loading → empty 순서. `timeline.length === 0` 을 먼저 보면
+              실패가 다시 "없음" 으로 접힌다. */}
+          {timelineState === "error" ? (
+            <FetchFailed body={ERRORS.PIPELINE_TIMELINE_FAILED} onRetry={fetchTimeline} />
+          ) : timelineState === "loading" ? (
+            <p className="text-xs text-muted-foreground/50 py-6 text-center">{PL.TIMELINE_LOADING}</p>
+          ) : timeline.length === 0 ? (
             <p className="text-xs text-muted-foreground/50 py-6 text-center">
               {PL.NO_EVENTS} &mdash; {PL.RUN_STEP_HINT}
             </p>
@@ -514,9 +577,16 @@ export default function PipelinePage() {
         {/* Gate Conditions */}
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground mb-3">{PL.GATE_CONDITIONS}</p>
-          {allConditions.length === 0 ? (
+          {/* #1250: 이전엔 실패·로딩·없음이 전부 `GATE_LOADING` 이라 영원히 "로딩 중" 이었다. */}
+          {gateState === "error" ? (
+            <FetchFailed body={ERRORS.PIPELINE_GATE_FAILED} onRetry={fetchGates} />
+          ) : gateState === "loading" ? (
             <p className="text-xs text-muted-foreground/50 py-6 text-center">
               {PL.GATE_LOADING}
+            </p>
+          ) : allConditions.length === 0 ? (
+            <p className="text-xs text-muted-foreground/50 py-6 text-center">
+              {PL.GATE_EMPTY}
             </p>
           ) : (
             <div className="space-y-1.5 max-h-100 overflow-y-auto">

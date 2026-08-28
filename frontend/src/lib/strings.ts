@@ -360,6 +360,10 @@ export const PIPELINE = {
   // design-review F-008: 형제 헤더(이벤트 타임라인)와 언어 일치 + SSoT 로 이동
   GATE_CONDITIONS: "게이트 조건",
   GATE_LOADING: "게이트 조건 로딩 중...",
+  // #1250: 로딩 · 없음 · 실패를 서로 다른 화면으로 가른다. 이전엔 셋이 한 화면이라
+  // "백엔드 죽음" 과 "이벤트 없음" 이 구분되지 않았다.
+  TIMELINE_LOADING: "이벤트 불러오는 중...",
+  GATE_EMPTY: "게이트 조건 없음 — 인증 스텝 실행 후 표시됩니다",
 } as const;
 
 /* ── Ticker Detail Page ─────────────────────────────────────── */
@@ -454,6 +458,11 @@ export const ERRORS = {
   REPORT_FAILED: "리포트 생성에 실패했습니다 — Ollama·백엔드 상태를 확인한 뒤 다시 시도하세요.",
   COVERAGE_FAILED: "Coverage 확인 실패 — 파이프라인 상태를 확인하세요.",
   RUN_FAILED_PREFIX: "실행 실패: ",
+  // #1250: 파이프라인 3개 fetch 는 실패를 삼켜 빈/로딩 화면으로 렌더했다.
+  // 운영자 터미널에서 "백엔드 죽음" 과 "데이터 없음" 이 같은 화면이면 오판을 부른다.
+  PIPELINE_STATUS_FAILED: "파이프라인 상태를 불러오지 못했습니다 — 아래 단계는 마지막으로 성공한 조회 기준입니다.",
+  PIPELINE_TIMELINE_FAILED: "이벤트 타임라인을 불러오지 못했습니다 — 이벤트가 없는 것과 다릅니다.",
+  PIPELINE_GATE_FAILED: "게이트 조건을 불러오지 못했습니다 — 조건이 없는 것과 다릅니다.",
 } as const;
 
 /* ── Action-First Dashboard ────────────────────────────────── */
