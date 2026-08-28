@@ -865,7 +865,9 @@ class TestBusinessDaysAgoIsTheInverseOfBusdayCount:
         "anchor",
         ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"],
     )
-    @pytest.mark.parametrize("n", [1, 2, 3])
+    # n=0 포함 — 휴장일에 `roll="forward"` 가 **다음** 영업일로 굴러가 왕복이 -1 이
+    # 되는 축이다 (codex P3). 가드 없이는 여기서만 드러난다.
+    @pytest.mark.parametrize("n", [0, 1, 2, 3])
     def test_round_trip_holds_on_every_weekday(self, anchor, n, monkeypatch):
         """Mutation lock: `roll="forward"` → `"backward"` 로 되돌리면 토·일에서 FAIL."""
         # ⚠️ 문자열 타깃(`"tests.trading...today_kst"`)은 여기서 **조용히 no-op** 이다.
@@ -883,4 +885,7 @@ class TestBusinessDaysAgoIsTheInverseOfBusdayCount:
         """임계와 같은 나이는 노후가 아니다 — 게이트가 `age > MAX` 로 판정하므로."""
         monkeypatch.setattr(sys.modules[__name__], "today_kst", lambda: "2026-08-29")
         age = int(np.busday_count(_business_days_ago(VIX_MAX_AGE_BUSINESS_DAYS), "2026-08-29"))
-        assert age <= VIX_MAX_AGE_BUSINESS_DAYS
+        # 부등식이 아니라 **등식**이다. `age <= MAX` 는 헬퍼가 "오늘"을 반환해도(age 0)
+        # 통과한다 — 노후 판정을 재는 게 아니라 통과 여부만 재는 약한 단언이 된다.
+        assert age == VIX_MAX_AGE_BUSINESS_DAYS
+        assert age <= VIX_MAX_AGE_BUSINESS_DAYS, "게이트는 `age > MAX` 로 판정 — 임계와 같으면 유효"

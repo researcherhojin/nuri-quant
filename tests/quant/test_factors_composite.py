@@ -29,7 +29,13 @@ def _business_days_ago(n: int) -> str:
 
     인라인 표현식을 헬퍼로 뽑은 이유: 같은 식이 두 곳에 복제돼 있어서 한쪽만 고치면
     나머지가 남는다 — 이 결함이 애초에 두 파일에서 동시에 터진 형태다.
+
+    `n == 0` 은 특수 케이스다 (codex P3). 휴장일에 `busday_offset(today, 0, "forward")`
+    는 **다음** 영업일로 굴러가 왕복이 `-1` 이 된다 (2026-08-29 토 → 08-31 월, count=-1).
+    "오늘" 을 시드하려면 오늘을 그대로 줘야 한다.
     """
+    if n == 0:
+        return today_kst()
     return str(np.busday_offset(today_kst(), -n, roll="forward"))
 
 
@@ -356,7 +362,9 @@ class TestBusinessDaysAgoIsTheInverseOfBusdayCount:
         "anchor",
         ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"],
     )
-    @pytest.mark.parametrize("n", [1, 2, 3])
+    # n=0 포함 — 휴장일에 `roll="forward"` 가 **다음** 영업일로 굴러가 왕복이 -1 이
+    # 되는 축이다 (codex P3). 가드 없이는 여기서만 드러난다.
+    @pytest.mark.parametrize("n", [0, 1, 2, 3])
     def test_round_trip_holds_on_every_weekday(self, anchor, n, monkeypatch):
         """Mutation lock: `roll="forward"` → `"backward"` 로 되돌리면 토·일에서 FAIL."""
         # 문자열 타깃은 `tests/` 가 패키지가 아니라 조용히 no-op 이 된다 — 모듈 객체로.
@@ -370,4 +378,6 @@ class TestBusinessDaysAgoIsTheInverseOfBusdayCount:
 
         monkeypatch.setattr(sys.modules[__name__], "today_kst", lambda: "2026-08-29")
         age = int(np.busday_count(_business_days_ago(comp.SENTIMENT_MAX_AGE_BUSINESS_DAYS), "2026-08-29"))
-        assert age <= comp.SENTIMENT_MAX_AGE_BUSINESS_DAYS
+        # 등식으로 조인다 — `<=` 만 두면 헬퍼가 "오늘"을 반환해도(age 0) 통과한다.
+        assert age == comp.SENTIMENT_MAX_AGE_BUSINESS_DAYS
+        assert age <= comp.SENTIMENT_MAX_AGE_BUSINESS_DAYS, "판정이 `age > MAX` 라 임계와 같으면 유효"
