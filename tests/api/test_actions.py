@@ -145,8 +145,9 @@ class TestCacheHitPaths:
         from nuri.api.routes import actions
 
         for cache in (actions._actions_cache, actions._opportunities_cache, actions._market_context_cache):
-            cache["data"] = None
-            cache["timestamp"] = 0
+            # version 도 같이 비운다 (#1279) — 안 비우면 앞 테스트의 버전이 남아
+            # 다음 테스트가 엉뚱하게 hit/miss 한다.
+            cache.update({"data": None, "timestamp": 0, "version": None})
 
     def test_actions_cache_hit(self):
         import time
@@ -157,6 +158,8 @@ class TestCacheHitPaths:
         fake_result = {"urgent": [{"ticker": "CACHED"}], "check": [], "hold": [], "generated_at": "test"}
         actions._actions_cache["data"] = fake_result
         actions._actions_cache["timestamp"] = time.time()
+        # #1279: TTL 만으로는 부족하다 — 현재 포트폴리오 버전이어야 hit 이다.
+        actions._actions_cache["version"] = actions.portfolio_version()
         result = actions.get_actions()
         assert result == fake_result
 
@@ -169,6 +172,7 @@ class TestCacheHitPaths:
         fake_result = {"opportunities": [{"ticker": "CACHED"}], "generated_at": "test"}
         actions._opportunities_cache["data"] = fake_result
         actions._opportunities_cache["timestamp"] = time.time()
+        actions._opportunities_cache["version"] = actions.portfolio_version()
         result = actions.get_opportunities()
         assert result == fake_result
 
@@ -206,8 +210,9 @@ class TestEndpointExceptionFallbacks:
         from nuri.api.routes import actions
 
         for cache in (actions._actions_cache, actions._opportunities_cache, actions._market_context_cache):
-            cache["data"] = None
-            cache["timestamp"] = 0
+            # version 도 같이 비운다 (#1279) — 안 비우면 앞 테스트의 버전이 남아
+            # 다음 테스트가 엉뚱하게 hit/miss 한다.
+            cache.update({"data": None, "timestamp": 0, "version": None})
 
     def test_actions_exception_returns_empty(self):
         self._clear_caches()

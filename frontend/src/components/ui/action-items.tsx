@@ -12,7 +12,8 @@ export interface ActionItem {
   action: string;
   confidence: number;
   agreement?: number | null;
-  pnl_pct: number;
+  /** 시세 미수집이면 `null` — 측정 불가이지 0% 가 아니다 (#1279). */
+  pnl_pct: number | null;
   position_pct: number;
   current_price?: number | null;
   avg_price?: number | null;
@@ -127,8 +128,14 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
             {item.reasons.length > 1 && <span className="text-zinc-600"> +{item.reasons.length - 1}</span>}
           </p>
         </td>
-        <td className={`h-8 px-2 whitespace-nowrap text-right text-xs font-semibold tabular-nums ${item.pnl_pct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-          {item.pnl_pct >= 0 ? "+" : ""}{item.pnl_pct.toFixed(1)}%
+        {/* #1279: `null` 은 미상이다. 이전 코드는 `null >= 0` 이 true 라 **초록 +** 가
+            붙고 `null.toFixed` 로 터졌다 — JS 의 null 강제변환이 만든 두 겹 오류. */}
+        <td className={`h-8 px-2 whitespace-nowrap text-right text-xs font-semibold tabular-nums ${
+          item.pnl_pct == null ? "text-zinc-500" : item.pnl_pct >= 0 ? "text-emerald-400" : "text-red-400"
+        }`}>
+          {item.pnl_pct == null
+            ? ACTION.PNL_UNKNOWN
+            : `${item.pnl_pct >= 0 ? "+" : ""}${item.pnl_pct.toFixed(1)}%`}
         </td>
         <td className="h-8 px-2 whitespace-nowrap hidden md:table-cell text-right text-[11px] text-zinc-400 tabular-nums">
           {item.position_pct.toFixed(1)}%

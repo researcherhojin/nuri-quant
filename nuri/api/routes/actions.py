@@ -14,6 +14,7 @@ from datetime import timedelta
 
 from fastapi import APIRouter, Depends
 
+from nuri.api.cache import portfolio_version
 from nuri.api.limits import heavy_slot
 from nuri.core.axis import is_alpha_flat_sell
 from nuri.core.catalyst import has_recent_catalyst
@@ -28,14 +29,25 @@ router = APIRouter(tags=["actions"])
 
 # 캐시 (5분 TTL) — dashboard.py와 동일 패턴
 CACHE_TTL = 300  # 5분
-_actions_cache: dict = {"data": None, "timestamp": 0}
-_opportunities_cache: dict = {"data": None, "timestamp": 0}
+# `version` — 포트폴리오가 바뀌면 TTL 이 남아 있어도 캐시를 버린다 (#1279).
+# `_market_context_cache` 는 macro 만 보므로 버전 키가 없다.
+_actions_cache: dict = {"data": None, "timestamp": 0, "version": None}
+_opportunities_cache: dict = {"data": None, "timestamp": 0, "version": None}
 _market_context_cache: dict = {"data": None, "timestamp": 0}
 # single-flight — TTL 만료 시 동시 요청이 전부 재계산하는 걸 막는다 (#1119).
 # `_scan_lock` (아래) 과 같은 이유·같은 패턴이다.
 _actions_lock = threading.Lock()
 _opportunities_lock = threading.Lock()
 _market_context_lock = threading.Lock()
+
+
+def _fresh(cache: dict, now: float, version: str) -> bool:
+    """캐시가 아직 유효한가 — TTL **과** 포트폴리오 버전을 함께 본다 (#1279).
+
+    버전 비교를 빼면 보유를 바꾼 직후 최대 5분간 옛 평단으로 계산된 액션이 나간다.
+    그건 낡은 숫자가 아니라 **거짓 손절 신호**다 (`nuri/api/cache.py` 참조).
+    """
+    return bool(cache["data"]) and (now - cache["timestamp"]) < CACHE_TTL and cache["version"] == version
 
 
 # ─── /api/actions ───
@@ -45,17 +57,22 @@ _market_context_lock = threading.Lock()
 def get_actions():
     """우선순위 분류된 오늘의 액션 리스트."""
     now = time.time()
-    if _actions_cache["data"] and (now - _actions_cache["timestamp"]) < CACHE_TTL:
+    # 버전은 **빌드 전에** 읽어 저장한다 (#1279). 빌드 도중 쓰기가 들어오면 저장된
+    # 버전이 옛 것이라 다음 요청이 한 번 더 재계산할 뿐이다 — 반대로 빌드 후에 읽으면
+    # 새 버전을 옛 데이터에 붙여 **낡은 응답을 신선하다고 판정**한다. 안전한 방향으로 튄다.
+    version = portfolio_version()
+    if _fresh(_actions_cache, now, version):
         return _actions_cache["data"]
     try:
         with _actions_lock:
             # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다 (#1119)
             now = time.time()
-            if _actions_cache["data"] and (now - _actions_cache["timestamp"]) < CACHE_TTL:
+            if _fresh(_actions_cache, now, version):
                 return _actions_cache["data"]
             result = _build_actions()
             _actions_cache["data"] = result
             _actions_cache["timestamp"] = time.time()
+            _actions_cache["version"] = version
             return result
     except Exception:
         logger.exception("actions API error")
@@ -120,7 +137,8 @@ def _build_actions() -> dict:
         portfolio_action = rec.get("portfolio_action")
         confidence = rec["confidence"]
         holding = portfolio_holdings.get(ticker, {})
-        pnl_pct = holding.get("pnl_pct", 0)
+        # #1279: 기본값 0 을 주지 않는다 — 미상이 보합으로 둔갑하는 지점이었다.
+        pnl_pct = holding.get("pnl_pct")
         position_pct = holding.get("position_pct", 0)
         # 보유 행이 고른 계좌(worst-PnL)와 **같은 계좌**의 타겟을 본다 — 티커로만
         # 조회하면 둘이 갈라져 서로 다른 원가 기준이 한 줄에 섞인다 (#982).
@@ -146,7 +164,7 @@ def _build_actions() -> dict:
             "portfolio_action": portfolio_action,
             "confidence": confidence,
             "agreement": rec.get("agreement"),
-            "pnl_pct": round(pnl_pct, 1),
+            "pnl_pct": round(pnl_pct, 1) if pnl_pct is not None else None,
             "position_pct": round(position_pct, 1),
             "current_price": holding.get("current_price"),
             "avg_price": holding.get("avg_price"),
@@ -194,7 +212,9 @@ def _build_actions() -> dict:
             # A-3: 하드코딩 -7 제거. holding 이 최대 비중 계좌의 row 이므로 그
             # account 의 strategy stop_loss 와 비교 — pnl_pct 와 cost basis 일치.
             stop_loss_threshold = get_stop_loss_for_account(holding.get("account"))
-            if pnl_pct < stop_loss_threshold:
+            # 손익을 모르면 돌파를 **주장할 수 없다** (#1279). 미상은 아래 catalyst
+            # 경로로 흘러 "왜 매도?" 맥락을 요구받는다 — 기계적 청산은 측정값에만.
+            if pnl_pct is not None and pnl_pct < stop_loss_threshold:
                 # stop-loss breach — 기계적 실행 (§2.2). catalyst 무관.
                 # "근접" 이 아니라 **돌파**다 (#994). 이 분기 자체가 `pnl_pct <
                 # threshold` — 관찰이 아니라 기계적 청산 신호이고, 초과폭을 같이
@@ -238,7 +258,7 @@ def _build_actions() -> dict:
             from nuri.core.rules import TAKE_PROFIT_LEADER
 
             _ma_p = int(TAKE_PROFIT_LEADER.get("trail_ma", 50))
-            item["reasons"].append(f"⭐ 리더 {_ma_p}일선 이탈 (+{pnl_pct:.0f}%) — 추세 break, 청산 검토")
+            item["reasons"].append(f"⭐ 리더 {_ma_p}일선 이탈 ({_pnl_phrase(pnl_pct)}) — 추세 break, 청산 검토")
             promoted = True
 
         # 2차 익절 도달 (리더는 고정 익절 미적용 → skip)
@@ -258,7 +278,7 @@ def _build_actions() -> dict:
             and item["current_price"]
             and item["current_price"] >= target["target_1"]
         ):
-            item["reasons"].append(f"1차 익절 도달 (+{pnl_pct:.0f}%) — 50% 매도 고려")
+            item["reasons"].append(f"1차 익절 도달 ({_pnl_phrase(pnl_pct)}) — 50% 매도 고려")
             promoted = True
 
         # 높은 공매도 비율
@@ -293,17 +313,21 @@ def _build_actions() -> dict:
 def get_opportunities():
     """비보유 이슈 종목 탐색 — scan + WSB + macro events 기반 판정."""
     now = time.time()
-    if _opportunities_cache["data"] and (now - _opportunities_cache["timestamp"]) < CACHE_TTL:
+    # 보유 종목을 제외하는 목록이라 포트폴리오 파생이다 — 새로 산 종목이 5분간
+    # "기회" 로 계속 뜨면 안 된다 (#1279).
+    version = portfolio_version()
+    if _fresh(_opportunities_cache, now, version):
         return _opportunities_cache["data"]
     try:
         with _opportunities_lock:
             # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다 (#1119)
             now = time.time()
-            if _opportunities_cache["data"] and (now - _opportunities_cache["timestamp"]) < CACHE_TTL:
+            if _fresh(_opportunities_cache, now, version):
                 return _opportunities_cache["data"]
             result = {"opportunities": _build_opportunities(), "generated_at": kst_now().isoformat()}
             _opportunities_cache["data"] = result
             _opportunities_cache["timestamp"] = time.time()
+            _opportunities_cache["version"] = version
             return result
     except Exception:
         logger.exception("opportunities API error")
@@ -611,6 +635,25 @@ def _get_real_accounts() -> set[str]:
     return get_real_accounts()
 
 
+def _is_worse(new: float | None, cur: float | None) -> bool:
+    """worst-PnL 집계에서 `new` 가 `cur` 보다 나쁜가 — None(측정 불가) 안전 (#1279).
+
+    None 은 "가장 나쁨" 이 아니라 **모름**이다. 측정 가능한 쪽이 계좌·손익 자리를 갖는다 —
+    그러지 않으면 비상장 한 줄이 같은 티커의 측정 가능한 보유를 가려 손절 판정을 통째로
+    삼킨다. 둘 다 None 이면 바꿀 이유가 없다.
+    """
+    if new is None:
+        return False
+    if cur is None:
+        return True
+    return new < cur
+
+
+def _pnl_phrase(pnl: float | None) -> str:
+    """근거 문자열의 손익 표기. 미상이면 숫자를 지어내지 않는다 (#1279)."""
+    return f"+{pnl:.0f}%" if pnl is not None else "손익 미상"
+
+
 def _get_portfolio_map() -> dict[str, dict]:
     """보유 종목 → 현재 상태 매핑."""
     from nuri.api.routes.dashboard import _get_account_labels
@@ -637,12 +680,18 @@ def _get_portfolio_map() -> dict[str, dict]:
     total_value = 0
     items = []
     for r in rows:
-        price = r["current_price"] or r["avg_price"] or 0
+        # #1279: 시장가와 **비중 계산용 가격**을 분리한다.
+        # `market_price` 가 None 이면 시세 미수집(예: 비상장) — 손익은 **측정 불가**다.
+        # 반면 비중은 원가로도 말할 수 있고, 0 으로 지우면 다른 종목 비중이 부풀려진다.
+        # 이전에는 하나의 `price` 가 둘을 겸해서, 원가로 대체된 값이 손익 계산에도 들어가
+        # **미상이 0.0%(보합)으로 둔갑**했다.
+        market_price = r["current_price"]
+        price = market_price if market_price is not None else (r["avg_price"] or 0)
         qty = r["quantity"] or 0
         is_kr = is_kr_ticker(r["ticker"])
         val = price * qty / rate if is_kr else price * qty
         total_value += val
-        items.append((r, val, price, is_kr))
+        items.append((r, val, market_price, is_kr))
 
     labels = _get_account_labels()
 
@@ -665,7 +714,9 @@ def _get_portfolio_map() -> dict[str, dict]:
     for r, val, price, is_kr in items:
         ticker = r["ticker"]
         avg = r["avg_price"] or 0
-        pnl = ((price - avg) / avg * 100) if avg > 0 else 0
+        # 시세가 없으면 **None** — 0.0 은 "보합" 으로 읽히는 지어낸 값이다 (#1279).
+        # STRATEGY §2.6 의 VIX 게이트와 같은 원칙: 측정 불가는 숫자로 메우지 않는다.
+        pnl = ((price - avg) / avg * 100) if (avg > 0 and price is not None) else None
         pos_pct = (val / total_value * 100) if total_value > 0 else 0
         account_label = labels.get(r["account"], r["account"])
         is_pension = _is_pension_label(account_label)
@@ -708,7 +759,7 @@ def _get_portfolio_map() -> dict[str, dict]:
         if is_pension and not existing["_pension_only"]:
             continue
         # 동질 (둘 다 pension 이거나 둘 다 non-pension) → worst-pnl 이 승리
-        if pnl < existing["pnl_pct"]:
+        if _is_worse(pnl, existing["pnl_pct"]):
             existing["pnl_pct"] = pnl
             existing["current_price"] = price
             existing["avg_price"] = avg
