@@ -660,14 +660,16 @@ def check_portfolio_mdd(db_path: Optional[Path] = None) -> dict | None:
         dict: MDD 위반 정보. 위반 없으면 None.
     """
     # 환율 조회 (KRW → USD 변환용)
-    from nuri.core.db import query as _q
     from nuri.core.rules import PORTFOLIO_STOP
 
     usd_krw = 1400.0  # 폴백
     try:
-        fx_rows = _q("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1", db_path=db_path)
-        if fx_rows and fx_rows[0]["value"]:
-            usd_krw = float(fx_rows[0]["value"])
+        # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
+        from nuri.core.fx import latest_usd_krw_value
+
+        _fx = latest_usd_krw_value(db_path=db_path)
+        if _fx:
+            usd_krw = _fx
     except Exception:
         pass
 

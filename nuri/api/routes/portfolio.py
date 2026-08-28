@@ -197,8 +197,10 @@ def get_portfolio():
     _enrich_with_history(holdings)
 
     # 환율 조회 (cash 환산용)
-    rate_row = query("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1")
-    exchange_rate = rate_row[0]["value"] if rate_row else None
+    # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
+    from nuri.core.fx import latest_usd_krw_value
+
+    exchange_rate = latest_usd_krw_value()
     cash = _get_cash_balances(exchange_rate)
 
     return {"holdings": holdings, "count": len(holdings), "cash": cash}

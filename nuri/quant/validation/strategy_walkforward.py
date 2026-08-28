@@ -368,6 +368,18 @@ def run_strategy_walkforward(
 
 def _load_fx_series(db_path: Optional[Path] = None) -> pd.Series:
     """macro 의 usd_krw 일별 시계열 (KRW/USD). FX 필수 입력 — 없으면 ValueError."""
+    # ⚠️ **여기만 날짜 상한을 두지 않는다** (#1278, codex 리뷰 P2 에서 되돌림).
+    #
+    # 다른 8곳은 "지금 환율" 을 읽으므로 미래 행이 곧 오염이다. 하지만 이 함수는
+    # **데이터셋을 평가**한다 — 벽시계로 자르면 두 가지가 깨진다:
+    #   1. 재현 불가 — 같은 DB·같은 코드가 **실행 날짜에 따라** 다른 결과를 낸다.
+    #   2. 더 나쁜 조용한 왜곡 — `_build_us_panel` 은 가격에 상한이 없어서, FX 만 자르면
+    #      `fx_ret … .reindex(prices.index).fillna(0.0)` (238행)이 오늘 이후 구간의 FX
+    #      수익률을 **전부 0(환율 불변)** 으로 채운다. 얼어붙은 리서치 DB 나 미래 구간
+    #      fixture 에서 KRW 결과가 조용히 틀어진다.
+    #
+    # 그리고 상한은 **이득도 없다**: 위 reindex 가 가격 인덱스 밖 FX 날짜를 어차피
+    # 버리므로, 떠도는 미래 행은 이 경로에 도달하지 못한다.
     df = query_df("SELECT date, value FROM macro WHERE indicator='usd_krw' ORDER BY date", db_path=db_path)
     if df.empty:
         raise ValueError("usd_krw not in macro — FX 필수 (make collect 후 재시도)")

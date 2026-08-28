@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends
 
 from nuri.api.cache import portfolio_version
 from nuri.api.limits import heavy_slot
+from nuri.core.fx import latest_usd_krw_value
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dashboard"])
@@ -108,8 +109,8 @@ def _build_dashboard() -> dict:
     pipeline_status = _get_pipeline_status()
 
     # ── 7. 환율 ──
-    rate_row = query("SELECT value FROM macro WHERE indicator = 'usd_krw' ORDER BY date DESC LIMIT 1")
-    exchange_rate = rate_row[0]["value"] if rate_row else None
+    # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
+    exchange_rate = latest_usd_krw_value()
 
     # ── 8. 계좌별 평가액 ──
     account_values = _get_account_values(exchange_rate)
