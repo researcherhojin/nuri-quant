@@ -165,11 +165,16 @@ check_claim "collectors"     "$COLL" "README.md"                  '[0-9]+ collec
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '## API \([0-9]+ endpoints\)' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '— [0-9]+ REST endpoints' || true
 check_claim "endpoints"      "$EP"   "nuri/api/CLAUDE.md"         'read surface \([0-9]+ endpoints\)' || true
+# README 사이트 등록 (#1288). 등록 전까지 README 는 72 였고 라이브는 73 이었다 —
+# `live_endpoints` 는 이미 있었는데 **사이트만 미등록**이라 조용히 낡았다.
+check_claim "endpoints"      "$EP"   "README.md"                  '[0-9]+ declared in' || true
 check_claim "test_files_be"  "$TFBE" "docs/ARCHITECTURE.md"       'backend tests across [0-9]+ files' || true
 check_claim "test_files_be"  "$TFBE" "docs/STRATEGY.md"           'Backend tests.*tests, [0-9]+ files' || true
 check_claim "test_files_be"  "$TFBE" "README.md"                  'collected across [0-9]+ files' || true
 check_claim "test_files_fe"  "$TFFE" "docs/ARCHITECTURE.md"       'frontend vitest \([0-9]+ files\)' || true
 check_claim "test_files_fe"  "$TFFE" "docs/STRATEGY.md"           'Frontend tests.*tests, [0-9]+ files' || true
+# 같은 이유로 README 도 등록 — 등록 전 README 는 134, 라이브는 136 이었다.
+check_claim "test_files_fe"  "$TFFE" "README.md"                  '[0-9]+ vitest files' || true
 check_claim "e2e_specs"      "$E2E"  "docs/ARCHITECTURE.md"       'Playwright E2E \([0-9]+ spec files\)' || true
 # Python-dependent checks: skip silently when .venv absent (CI contract — see live_regimes comment)
 if [ -n "$REGIMES" ]; then
