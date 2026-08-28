@@ -117,3 +117,62 @@ class TestShortDescription:
         m = re.search(r"^\*\*(.+?)\*\*$", body, re.M)
         assert m, "굵은 한 줄 요약을 찾지 못함"
         assert len(m.group(1)) < 120, f"{len(m.group(1))}자: {m.group(1)}"
+
+
+# ── Mermaid 다이어그램 (#1288) ──────────────────────────────────────────────
+
+MERMAID = re.compile(r"```mermaid\n(.*?)```", re.S)
+
+
+def _diagrams() -> list[str]:
+    return MERMAID.findall(README.read_text(encoding="utf-8"))
+
+
+class TestMermaidRendersInBothThemes:
+    """GitHub 는 **읽는 사람의 테마**로 렌더한다 — 밝은 팔레트를 박으면 다크에서 깨진다.
+
+    2026-08-29 실측(mermaid 11.17, `mmdc -t dark`): 다이어그램 안의
+    `%%{init: {"theme":"base", ...}}%%` 는 **호스트 테마를 이긴다.** 밝은 fill 을 박은
+    다이어그램은 다크 모드에서도 밝게 렌더돼 `#0d1117` 배경 위의 흰 판때기가 된다.
+
+    그래서 이 레포의 규약은 **stroke 전용 classDef** 다: fill 을 지정하지 않으면
+    mermaid 가 테마에 맞는 배경을 고르고, 글자색도 따라온다.
+    """
+
+    def test_no_diagram_pins_a_theme(self):
+        """Mutation lock: 어떤 다이어그램에든 `%%{init:` 테마 블록을 넣으면 FAIL."""
+        offenders = [i for i, d in enumerate(_diagrams(), 1) if "%%{init:" in d]
+        assert not offenders, f"다이어그램 {offenders} 가 테마를 고정한다 — 다크 모드에서 밝은 판때기가 된다"
+
+    def test_classdefs_never_hardcode_a_fill(self):
+        """`fill:` 을 박으면 글자색까지 같이 박아야 하고, 그러면 테마를 따라가지 못한다.
+
+        `fill:none` 은 예외 — 배경을 지우는 것이지 색을 고르는 게 아니다.
+        """
+        bad: list[str] = []
+        for i, d in enumerate(_diagrams(), 1):
+            for line in d.splitlines():
+                if "classDef" not in line:
+                    continue
+                m = re.search(r"fill:\s*([^,\s]+)", line)
+                if m and m.group(1) != "none":
+                    bad.append(f"#{i}: {line.strip()}")
+        assert not bad, "테마를 따라가지 못하는 fill 이 있다:\n" + "\n".join(bad)
+
+    def test_subgraph_titles_stay_short(self):
+        """긴 subgraph 제목은 클러스터 폭을 그만큼 벌려 다이어그램 전체를 축소시킨다.
+
+        README 컬럼 폭(약 830-900px)을 넘기면 mermaid 가 통째로 축소해 글자가 6-7px 가
+        된다 — 본문이 16px 인데. 문장은 캡션으로 내린다.
+        """
+        long_titles = []
+        for i, d in enumerate(_diagrams(), 1):
+            for m in re.finditer(r'subgraph\s+\w+\["([^"]+)"\]', d):
+                if len(m.group(1)) > 60:
+                    long_titles.append(f"#{i}: {m.group(1)[:70]}... ({len(m.group(1))}자)")
+        assert not long_titles, "subgraph 제목이 너무 길다:\n" + "\n".join(long_titles)
+
+    def test_the_sweep_has_eyes(self):
+        """카나리아 — 다이어그램을 하나도 못 찾으면 위 셋은 영원히 공허하게 통과한다."""
+        assert len(_diagrams()) >= 3, "README 에서 mermaid 블록을 찾지 못했다"
+        assert MERMAID.findall("```mermaid\nflowchart LR\n  A --> B\n```"), "정규식이 눈이 멀었다"

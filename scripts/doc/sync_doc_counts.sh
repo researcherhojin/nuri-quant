@@ -142,6 +142,9 @@ update_claim live_endpoints      nuri/api/CLAUDE.md            'read surface \([
 update_claim live_test_files_be  docs/ARCHITECTURE.md          'backend tests across [0-9]+ files'
 update_claim live_test_files_be  docs/STRATEGY.md              'Backend tests.*tests, [0-9]+ files'
 update_claim live_test_files_be  README.md                     'collected across [0-9]+ files'
+# README 미등록 사이트 2건 추가 (#1288) — verify_doc_counts.sh 와 짝을 맞춘다.
+update_claim live_endpoints      README.md                     '[0-9]+ declared in'
+update_claim live_test_files_fe  README.md                     '[0-9]+ vitest files'
 
 # Frontend test files (2 sites)
 update_claim live_test_files_fe  docs/ARCHITECTURE.md          'frontend vitest \([0-9]+ files\)'
