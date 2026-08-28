@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useSyncExternalStore, Fragment } from "react";
+import { useId, useMemo, useState, useSyncExternalStore, Fragment } from "react";
 import { ACTION } from "@/lib/strings";
 import { formatMoney } from "@/lib/format";
 import { type AckMap, ackItem, actionKey, isNewItem, loadAckMap } from "@/lib/action-ack";
@@ -63,6 +63,10 @@ interface AckProps {
 
 function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: string } & AckProps) {
   const [expanded, setExpanded] = useState(false);
+  // #1251: 확장 패널과 컨트롤을 aria-controls 로 잇는다. `useId` 는 SSR/CSR 간
+  // 안정적이라 hydration 경고가 없다 (actionKey 로 만들면 티커에 공백·특수문자가 섞여
+  // 유효하지 않은 id 가 될 수 있다).
+  const peekId = useId();
   const fmt = (v: number | null | undefined) => formatMoney(v, { ticker: item.ticker });
   const confPct = Math.max(0, Math.min(100, item.confidence));
   const isNew = isNewItem(item, ackMap);
@@ -71,20 +75,29 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
     <Fragment>
       <tr
         className={`border-b border-zinc-800/40 border-l-2 ${accent} hover:bg-zinc-800/30 cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-blue-400/75`}
+        // 마우스 편의: 행 아무 데나 눌러도 펼쳐진다. **시맨틱은 아래 버튼이 갖는다** —
+        // #1208 은 이 행에 tabIndex/onKeyDown/aria-expanded 를 달아 키보드를 열었지만,
+        // `<tr>` 의 암묵 role 은 `row` 라 스크린리더가 disclosure 로 읽지 못하고
+        // 행마다 쓸모없는 탭 스톱만 하나씩 생겼다 (#1251). 네이티브 `<button>` 은
+        // Enter/Space 활성화·role·포커스를 플랫폼에서 받는다.
         onClick={() => setExpanded(!expanded)}
-        // 키보드 접근 (#1208 codex P1): 구 카드의 <button> 을 행이 대체하므로
-        // 행 자체가 포커스·Enter/Space 토글을 제공해야 한다
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setExpanded(!expanded);
-          }
-        }}
         data-testid="action-row"
-        aria-expanded={expanded}
       >
         <td className="h-8 px-2 whitespace-nowrap">
+          <button
+            type="button"
+            data-testid="action-row-toggle"
+            aria-expanded={expanded}
+            aria-controls={peekId}
+            aria-label={`${item.name || item.ticker} ${expanded ? ACTION.PEEK_COLLAPSE : ACTION.PEEK_EXPAND}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded(!expanded);
+            }}
+            className="mr-1 align-middle inline-flex items-center justify-center w-4 h-4 -my-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors focus-visible:outline-2 focus-visible:outline-blue-400/75"
+          >
+            <span aria-hidden="true" className={`text-[9px] leading-none transition-transform ${expanded ? "rotate-90" : ""}`}>&#9654;</span>
+          </button>
           <Link
             href={`/ticker/${item.ticker}`}
             className="text-xs font-semibold text-zinc-100 hover:text-white transition-colors"
@@ -146,7 +159,7 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
       </tr>
       {/* quick-peek (#1208, codex 2R 합의): 라우트 이동 없이 가격 레벨·전체 근거 확인 */}
       {expanded && (
-        <tr className="border-b border-zinc-800/40 bg-zinc-900/40" data-testid="action-row-peek">
+        <tr id={peekId} className="border-b border-zinc-800/40 bg-zinc-900/40" data-testid="action-row-peek">
           <td colSpan={8} className="px-3 py-2">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
               {/* <md 에서 행이 숨기는 계좌·비중을 peek 가 복원 (#1208 codex P2) */}
