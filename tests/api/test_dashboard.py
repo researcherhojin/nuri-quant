@@ -59,10 +59,19 @@ class TestDashboardAPI:
         assert isinstance(result["account_labels"], dict)
 
     def test_dashboard_exposes_actual_allocation_and_cash(self, db_path):
-        """#213: dashboard 응답이 actual_allocation + cash_summary + target_allocation을 노출."""
+        """#213: dashboard 응답이 actual_allocation + cash_summary + target_allocation을 노출.
+
+        #1284: 환율 행을 **직접 시드**한다. `_get_cash_balances` 는 DB 가 아니라 실제
+        `config/portfolio.yaml` 을 읽는데, 그 파일은 gitignored 라 로컬에는 원화 현금이
+        있고 CI 에는 파일 자체가 없다. 환율이 없으면 원화 현금이 있는 쪽만 합계가 미상이
+        되므로, 시드하지 않으면 **로컬 red / CI green** 으로 갈린다.
+        """
         from nuri.api.routes.dashboard import _build_dashboard
 
+        upsert_macro([{"indicator": "usd_krw", "date": "2026-08-29", "value": 1380.0, "source": "test"}])
+
         result = _build_dashboard()
+        assert result["fx_unavailable"] is None, "환율을 시드했는데 환산 불가로 판정했다"
         assert "actual_allocation" in result
         assert "target_allocation" in result
         assert "cash_summary" in result
@@ -1040,25 +1049,48 @@ class TestAccountValues:
         # 70000 * 100 / 1400 = 5000.0
         assert result[0]["value"] == 5000.0
 
-    def test_exchange_rate_none_uses_fallback(self, db_path, monkeypatch):
-        """exchange_rate=None falls back to 1400."""
+    def test_exchange_rate_none_makes_krw_account_unknown(self, db_path, monkeypatch):
+        """환율이 없으면 원화 계좌의 평가액은 **미상**이다 (#1284).
+
+        예전 이름은 `test_exchange_rate_none_uses_fallback` 이었고, 지어낸 1400 으로
+        환산한 5000.0 을 잠그고 있었다 — 제거 대상 동작을 테스트가 지키던 자리다.
+        """
         import nuri.api.routes.dashboard as dash_mod
 
-        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"kr_acc": "Pension"})
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"kr_acc": "Brokerage Alpha"})
+
+        # 합성 종목 — 실제 보유와 무관 (public repo, `tests/CLAUDE.md` privacy).
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
+                ("kr_acc", "999999.KS", 100, 70000, "KRW", "Tech"),
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) VALUES (?,?,?,?,?,?,?,?)",
+                ("999999.KS", "2025-04-01", 69000, 71000, 68000, 70000, 5000000, 70000),
+            )
+        result = dash_mod._get_account_values(exchange_rate=None)
+        assert len(result) == 1
+        assert result[0]["value"] is None, "지어낸 환율로 원화 계좌를 환산했다"
+
+    def test_exchange_rate_none_leaves_usd_account_exact(self, db_path, monkeypatch):
+        """대조군 — 환율이 없어도 **달러 전용 계좌는 정확하다**. 일괄 None 은 과잉이다."""
+        import nuri.api.routes.dashboard as dash_mod
+
+        monkeypatch.setattr(dash_mod, "_get_account_labels", lambda: {"us_acc": "Brokerage Beta"})
 
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?,?,?,?,?,?)",
-                ("kr_acc", "005930.KS", 100, 70000, "KRW", "Tech"),
+                ("us_acc", "ZZZZ", 10, 100.0, "USD", "Tech"),
             )
             conn.execute(
                 "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) VALUES (?,?,?,?,?,?,?,?)",
-                ("005930.KS", "2025-04-01", 69000, 71000, 68000, 70000, 5000000, 70000),
+                ("ZZZZ", "2025-04-01", 100, 100, 100, 200.0, 1000, 200.0),
             )
         result = dash_mod._get_account_values(exchange_rate=None)
         assert len(result) == 1
-        # 70000 * 100 / 1400 = 5000.0
-        assert result[0]["value"] == 5000.0
+        assert result[0]["value"] == 2000.0, "환율과 무관한 달러 계좌까지 미상으로 지웠다"
 
     def test_mixed_accounts_sorted_descending(self, db_path, monkeypatch):
         """Multiple accounts are sorted by value descending."""

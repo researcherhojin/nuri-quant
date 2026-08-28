@@ -22,7 +22,6 @@ from nuri.core.db import query
 from nuri.core.fx import latest_usd_krw_value
 from nuri.core.live_price import DEFAULT_DIVERGENCE_THRESHOLD_PCT, check_divergence
 from nuri.core.rules import get_stop_loss_for_account
-from nuri.core.ticker_names import is_kr_ticker
 from nuri.core.timezone import kst_now
 
 logger = logging.getLogger(__name__)
@@ -140,7 +139,9 @@ def _build_actions() -> dict:
         holding = portfolio_holdings.get(ticker, {})
         # #1279: 기본값 0 을 주지 않는다 — 미상이 보합으로 둔갑하는 지점이었다.
         pnl_pct = holding.get("pnl_pct")
-        position_pct = holding.get("position_pct", 0)
+        # #1284: 환산 불가면 None 이 온다. #1279 의 `pnl_pct` 와 같은 이유로 0 을 넣지 않는다
+        # — 0 은 "비중 없음" 으로 읽히는데 실제로는 "모른다" 이다.
+        position_pct = holding.get("position_pct")
         # 보유 행이 고른 계좌(worst-PnL)와 **같은 계좌**의 타겟을 본다 — 티커로만
         # 조회하면 둘이 갈라져 서로 다른 원가 기준이 한 줄에 섞인다 (#982).
         # 계좌 라벨이 없으면 조회 자체를 하지 않는다: 키가 (ticker, None) 이 되면
@@ -166,7 +167,7 @@ def _build_actions() -> dict:
             "confidence": confidence,
             "agreement": rec.get("agreement"),
             "pnl_pct": round(pnl_pct, 1) if pnl_pct is not None else None,
-            "position_pct": round(position_pct, 1),
+            "position_pct": round(position_pct, 1) if position_pct is not None else None,
             "current_price": holding.get("current_price"),
             "avg_price": holding.get("avg_price"),
             "account": holding.get("account", ""),
@@ -680,7 +681,14 @@ def _get_portfolio_map() -> dict[str, dict]:
         rows = [r for r in rows if r["account"] in real_accounts]
 
     # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py).
-    rate = latest_usd_krw_value() or 1400
+    # #1284: `or 1400` 이 여기 있었다. 비중%는 **원화 자산과 달러 자산을 더한 값**을 분모로
+    # 쓰므로, 원화 보유가 하나라도 있고 환율이 없으면 US 종목의 비중까지 말할 수 없다.
+    # 분모가 미상이면 분자가 정확해도 비율은 미상이다.
+    from nuri.core.fx import is_krw_holding
+
+    rate = latest_usd_krw_value()
+    has_krw = any(is_krw_holding(r["ticker"], r["currency"]) for r in rows)
+    weights_unavailable = rate is None and has_krw
 
     # 총 자산 계산 (비중% 산정용)
     total_value = 0
@@ -694,10 +702,17 @@ def _get_portfolio_map() -> dict[str, dict]:
         market_price = r["current_price"]
         price = market_price if market_price is not None else (r["avg_price"] or 0)
         qty = r["quantity"] or 0
-        is_kr = is_kr_ticker(r["ticker"])
-        val = price * qty / rate if is_kr else price * qty
-        total_value += val
+        is_kr = is_krw_holding(r["ticker"], r["currency"])
+        # 원화 보유인데 환율이 없으면 이 행의 USD 값은 미상이다.
+        val = None if (is_kr and rate is None) else (price * qty / rate if is_kr else price * qty)
+        if val is not None:
+            total_value += val
         items.append((r, val, market_price, is_kr))
+
+    # 분모가 미상이면 **모든** 비중이 미상이다 — 달러 종목도 마찬가지다.
+    # 부분합을 분모로 쓰면 남은 종목들의 비중이 조용히 부풀려진다.
+    if weights_unavailable:
+        total_value = None
 
     labels = _get_account_labels()
 
@@ -723,7 +738,14 @@ def _get_portfolio_map() -> dict[str, dict]:
         # 시세가 없으면 **None** — 0.0 은 "보합" 으로 읽히는 지어낸 값이다 (#1279).
         # STRATEGY §2.6 의 VIX 게이트와 같은 원칙: 측정 불가는 숫자로 메우지 않는다.
         pnl = ((price - avg) / avg * 100) if (avg > 0 and price is not None) else None
-        pos_pct = (val / total_value * 100) if total_value > 0 else 0
+        # #1284: 환산 불가면 **None** — 0 은 "비중 없음" 으로 읽히는 지어낸 값이다.
+        # 빈 포트폴리오(total_value == 0)의 0 은 지어낸 값이 아니라 사실이므로 그대로 둔다.
+        if total_value is None or val is None:
+            pos_pct = None
+        elif total_value > 0:
+            pos_pct = val / total_value * 100
+        else:
+            pos_pct = 0
         account_label = labels.get(r["account"], r["account"])
         is_pension = _is_pension_label(account_label)
 
@@ -750,7 +772,12 @@ def _get_portfolio_map() -> dict[str, dict]:
             }
             continue
 
-        existing["position_pct"] += pos_pct
+        # #1284: 미상은 전파된다 — 한 계좌의 비중을 모르면 합산 비중도 모른다.
+        # `None` 을 0 으로 취급해 더하면 다계좌 노출이 과소 보고된다.
+        if existing["position_pct"] is None or pos_pct is None:
+            existing["position_pct"] = None
+        else:
+            existing["position_pct"] += pos_pct
         existing["accounts"].append(per_account)
         # non-pension row 가 들어오면 이전 pension-only state 를 non-pension 으로 승격
         if not is_pension and existing["_pension_only"]:

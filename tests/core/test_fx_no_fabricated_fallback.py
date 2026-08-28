@@ -23,9 +23,10 @@
 설계다. 그래서 각 경로마다 대조군을 짝지어 둔다.
 
 API/프론트 4곳(`actions.py` · `dashboard.py` ×2 · `page.tsx`)은 응답 형태가 바뀌어
-프론트와 같이 움직여야 하므로 **#1284** 로 분리했다. 아래 `FABRICATION_EXEMPT` 가
-그 4곳 중 Python 3곳을 사유와 함께 붙잡고 있고, #1284 가 랜딩하면 **stale 로 FAIL** 해서
-제거를 강제한다.
+프론트와 같이 움직여야 하므로 **#1284** 로 분리했었다. 그 PR 이 랜딩하면서 세 항목이
+`test_every_exemption_is_still_needed` 에서 **stale 로 FAIL** 했고, 그 빨간불이 제거를
+강제했다 — allowlist 가 양방향이어야 하는 이유가 이것이다. 남은 항목은 성격이 다른
+`korean_market.py` 하나뿐이다.
 """
 
 import ast
@@ -330,16 +331,6 @@ class TestBriefOmitsTotalsRatherThanInventingThem:
 #: 양방향 검사라 낡은 항목(이미 정리된 파일)도 FAIL 한다 — allowlist 가 조용히 커지는 걸
 #: 막는 것이 이 목록의 존재 이유다 (`test_cross_stage_imports.py` 와 같은 규율).
 FABRICATION_EXEMPT: dict[str, str] = {
-    "api/routes/actions.py": (
-        "#1284 — 비중% 산정의 `or 1400`. 응답 형태가 바뀌어(집계가 null 이 된다) "
-        "프론트(`page.tsx` · `holdings-summary.ts`)와 한 PR 에서 같이 움직여야 한다. "
-        "백엔드만 먼저 정직해지면 `_compute_actual_allocation` 의 sum 이 TypeError 로 죽는다."
-    ),
-    "api/routes/dashboard.py": (
-        "#1284 — `account_values[].value` 와 `cash_summary` 의 `or 1400` 2곳. "
-        "위와 같은 이유로 프론트와 동시에 움직여야 한다. `/api/dashboard` 는 이미 "
-        "`exchange_rate: number | null` 을 정직하게 내보내는데 프론트가 그 신호를 버린다."
-    ),
     "trading/agents/korean_market.py": (
         "**성격이 다르다 — 지어낸 값이 아니다.** `fx_weak_default` / `fx_weak_floor` / "
         "`fx_strong_ceil` 은 `config/agents.yaml` 이 정본인 **정책 임계값**의 코드 기본값이고, "

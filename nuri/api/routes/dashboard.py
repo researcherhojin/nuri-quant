@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 
 from nuri.api.cache import portfolio_version
 from nuri.api.limits import heavy_slot
-from nuri.core.fx import latest_usd_krw_value
+from nuri.core.fx import cross_currency_unavailable, latest_usd_krw_value
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dashboard"])
@@ -130,6 +130,14 @@ def _build_dashboard() -> dict:
     cash_summary = _get_cash_balances(exchange_rate)
     actual_allocation = _compute_actual_allocation(account_values, cash_summary["total_cash_usd"])
 
+    # #1284: 환산 불가 **사유**. `exchange_rate: null` 만 내보내면 프론트가 그 신호를 버리고
+    # 스스로 숫자를 지어내기 쉽다 — 실제로 `page.tsx` 가 `|| 1400` 으로 그랬다.
+    # `verdict_stale_inputs` 와 같은 규약: 값을 못 낼 때는 이유를 함께 낸다.
+    fx_unavailable = cross_currency_unavailable(
+        exchange_rate,
+        any(av["value"] is None for av in account_values) or cash_summary["total_cash_usd"] is None,
+    )
+
     return {
         "verdict": verdict,
         "verdict_level": verdict_level,
@@ -148,6 +156,8 @@ def _build_dashboard() -> dict:
         "freshness": freshness,
         "pipeline_status": pipeline_status,
         "exchange_rate": exchange_rate,
+        # 환산 불가 사유 (없으면 None) — 프론트는 이게 있으면 합계 대신 "—" 와 이 문장을 낸다
+        "fx_unavailable": fx_unavailable,
         "account_values": account_values,
         "upcoming_events": upcoming_events,
         "ticker_accounts": ticker_accounts,
@@ -390,12 +400,17 @@ def _get_latest_actions() -> list[dict]:
 
 
 def _get_account_values(exchange_rate: float | None) -> list[dict]:
-    """계좌별 평가액 계산."""
-    from nuri.core.db import query
+    """계좌별 평가액. 환산 불가한 계좌는 `value: None` (#1284).
 
-    rate = exchange_rate or 1400
+    `or 1400` 폴백이 여기 있었다. 계좌 단위로 판단하는 이유는, 환율이 없어도 **달러
+    자산만 담긴 계좌는 정확히 계산되기 때문**이다 — 전부 `None` 으로 지우면 알 수 있는
+    것까지 버린다.
+    """
+    from nuri.core.db import query
+    from nuri.core.fx import is_krw_holding
+
     rows = query("""
-        SELECT p.account, p.ticker, p.quantity,
+        SELECT p.account, p.ticker, p.quantity, p.currency,
                pr.close as latest_price
         FROM portfolio p
         LEFT JOIN (
@@ -403,22 +418,27 @@ def _get_account_values(exchange_rate: float | None) -> list[dict]:
             WHERE (ticker, date) IN (SELECT ticker, MAX(date) FROM prices GROUP BY ticker)
         ) pr ON p.ticker = pr.ticker
     """)
-    from nuri.core.ticker_names import is_kr_ticker
 
     totals: dict[str, float] = {}
+    unknown: set[str] = set()
     for r in rows:
         acc = r["account"]
         price = r["latest_price"] or 0
         qty = r["quantity"] or 0
-        is_kr = is_kr_ticker(r["ticker"])
-        val = price * qty / rate if is_kr else price * qty
-        totals[acc] = totals.get(acc, 0) + val
+        totals.setdefault(acc, 0.0)
+        if is_krw_holding(r["ticker"], r["currency"]):
+            if exchange_rate is None:
+                # 이 계좌는 원화 자산을 담고 있는데 환율이 없다 → 합계 미상.
+                unknown.add(acc)
+                continue
+            totals[acc] += price * qty / exchange_rate
+        else:
+            totals[acc] += price * qty
 
-    account_labels = _get_account_labels()
-    return [
-        {"account": account_labels.get(acc, acc), "value": round(v, 2)}
-        for acc, v in sorted(totals.items(), key=lambda x: -x[1])
-    ]
+    labels = _get_account_labels()
+    # 미상 계좌를 정렬 뒤로 보낸다 — `None` 은 비교 불가라 키를 나눠야 한다.
+    ordered = sorted(totals.items(), key=lambda x: (x[0] in unknown, -x[1]))
+    return [{"account": labels.get(acc, acc), "value": None if acc in unknown else round(v, 2)} for acc, v in ordered]
 
 
 def _get_cash_balances(exchange_rate: float | None = None) -> dict:
@@ -449,42 +469,58 @@ def _get_cash_balances(exchange_rate: float | None = None) -> dict:
         logger.debug("portfolio.yaml cash read failed: %s", e)
         return {"accounts": [], "total_cash_usd": 0.0}
 
-    rate = exchange_rate or 1400.0
     labels = _get_account_labels()
     accounts_out: list[dict] = []
     total_usd = 0.0
+    any_unknown = False
 
     for raw_acc, info in (portfolio.get("accounts") or {}).items():
         if not isinstance(info, dict):
             continue
         cash_usd = float(info.get("cash_usd") or 0)
         cash_krw = float(info.get("cash_krw") or 0)
-        acc_total = cash_usd + (cash_krw / rate if rate > 0 else 0)
-        if acc_total <= 0:
+        # 원화 현금이 있는데 환율이 없으면 그 계좌의 USD 합계는 미상이다 (#1284).
+        # `cash_krw == 0` 이면 환산이 필요 없으므로 예전과 같은 숫자가 나온다.
+        unknown = cash_krw > 0 and exchange_rate is None
+        acc_total = None if unknown else cash_usd + (cash_krw / exchange_rate if cash_krw else 0.0)
+        # 미상 계좌는 금액을 못 세지만 **존재는 숨기지 않는다** — 빈 줄이 0원보다 정직하다.
+        if not unknown and not acc_total:
             continue
         accounts_out.append(
             {
                 "account": labels.get(raw_acc, raw_acc),
                 "cash_usd": round(cash_usd, 2),
                 "cash_krw": round(cash_krw, 2),
-                "total_usd": round(acc_total, 2),
+                "total_usd": None if unknown else round(acc_total or 0.0, 2),
             }
         )
-        total_usd += acc_total
+        if unknown:
+            any_unknown = True
+        else:
+            total_usd += acc_total or 0.0
 
-    return {"accounts": accounts_out, "total_cash_usd": round(total_usd, 2)}
+    # 한 계좌라도 미상이면 **총합도 미상**이다. 미상을 0 으로 접고 더하면 조용히 과소집계된다.
+    return {
+        "accounts": accounts_out,
+        "total_cash_usd": None if any_unknown else round(total_usd, 2),
+    }
 
 
-def _compute_actual_allocation(account_values: list[dict], cash_total_usd: float) -> dict:
+def _compute_actual_allocation(account_values: list[dict], cash_total_usd: float | None) -> dict | None:
     """실제 포트폴리오 구성 비율 — holdings vs cash (USD 기준, #213).
 
     `_get_allocation()`은 regime이 권장하는 **target** 비율을 반환하는 반면
     이 함수는 현재 portfolio의 **actual** 구성 비율을 계산한다.
 
     Returns:
-        {"long": 46, "short": 0, "cash": 54}  — 백분율, 합 100
+        {"long": 46, "short": 0, "cash": 54}  — 백분율, 합 100.
+        입력 중 하나라도 환산 불가(`None`)면 **`None`** — 배분은 분모를 알아야 낼 수 있다 (#1284).
     """
-    holdings_usd = sum(av.get("value", 0) for av in account_values)
+    # #1284: 미상(`None`)을 0 으로 접으면 **비중이 조용히 왜곡된다** — 없는 돈이 아니라
+    # 모르는 돈이다. 하나라도 미상이면 배분 자체를 내지 않는다 (#1279 와 같은 함정).
+    if any(av.get("value") is None for av in account_values) or cash_total_usd is None:
+        return None
+    holdings_usd = sum(av.get("value") or 0 for av in account_values)
     total = holdings_usd + cash_total_usd
     if total <= 0:
         return {"long": 0, "short": 0, "cash": 100}
