@@ -864,22 +864,40 @@ class TestDecisionsContextPolicy:
 
         assert check_freshness("decisions_context", db_path=db_path)["status"] == "PASS"
 
-    def test_one_degraded_day_stays_warn_not_fail(self, db_path):
-        """정당한 degradation 은 술어가 아니라 **임계**로 흡수한다.
+    def test_thresholds_absorb_one_degraded_day_but_fail_before_the_third_run(self):
+        """임계는 시계 없이 산술로 잠근다 — 이 정책의 설계 지점이 여기다 (Codex P2 라운드 2).
 
-        2026-07-08 은 실제로 그날 전 행의 macro verdict 가 "SPY 데이터 부족" 이라
-        regime 이 계산 불가였다. 최신 완전 행이 하루 밀리면 나이가 ~55h 까지 가는데,
-        fail 임계가 48 이면 건강한 파이프라인이 FAIL 한다.
+        `date` 가 00:00 KST 앵커이고 cron 이 매일 07:05 이므로:
+          - 하루 degradation 이 회복되기 **직전** 나이 = 55.08h  (월 00:00 → 수 07:05)
+          - 2차 연속 실패 시점 나이도 = 55.08h  ← **같은 순간 같은 나이다**
+        두 시나리오를 나이로 구분할 수 없으므로, 55.08 이하 임계는 건강한 하루 회복을
+        FAIL 로 만든다 (48 도 55 도 오탐). 그래서 하한이 55.08 이다.
 
-        Mutation lock: `config/freshness.yaml` 의 `decisions_context.fail_hours` 를
-        48 로 낮추면 이 테스트가 FAIL 한다 (48h < 나이 ≤ 72h 구간을 겨눈다).
+        상한은 3차 예정 실행(목 07:05) = 79.08h — 그 전에는 FAIL 이어야 두 번 연속
+        실패가 다음 실행 전에 표면화된다.
+
+        Mutation lock: 48 이나 55 로 낮추면 하한에서 FAIL, 80 이상으로 올리면 상한에서 FAIL.
         """
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
+        fail_h = FRESHNESS_POLICIES["decisions_context"]["fail_hours"]
+        assert fail_h > 55.08, (
+            f"fail_hours({fail_h}) 가 하루 degradation 최대 나이(55.08h) 이하 — "
+            "건강한 파이프라인이 하루 걸렀다는 이유로 FAIL 한다"
+        )
+        assert fail_h < 79.08, (
+            f"fail_hours({fail_h}) 가 3차 예정 실행 나이(79.08h) 이상 — "
+            "두 번 연속 실패가 다음 실행 전에 표면화되지 않는다"
+        )
+
+    def test_a_day_old_complete_row_is_warn_not_fail(self, db_path):
+        """하루 지난 완전 행은 WARN 이지 FAIL 이 아니다 (시계 무관 — 나이 24~48h)."""
         from nuri.core.freshness import check_freshness
         from nuri.core.timezone import kst_now
 
-        two_days_ago = (kst_now() - timedelta(days=2)).strftime("%Y-%m-%d")
-        self._seed(db_path, two_days_ago, regime="bull_low_vol", scoring_detail='{"x":1}')
+        yesterday = (kst_now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        self._seed(db_path, yesterday, regime="bull_low_vol", scoring_detail='{"x":1}')
 
         result = check_freshness("decisions_context", db_path=db_path)
-        assert 48 < result["age_hours"] <= 72, result
+        assert 24 <= result["age_hours"] < 48, result
         assert result["status"] == "WARN", result
