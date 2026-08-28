@@ -793,13 +793,13 @@ class TestDecisionsContextPolicy:
     "가장 최근에 **완전한** 행이 나온 날" 을 본다.
     """
 
-    def _seed(self, db_path, date: str, *, regime, scoring_detail):
+    def _seed(self, db_path, date: str, *, regime, scoring_detail, ticker="AAA"):
         from nuri.core.db import upsert_decision
 
         upsert_decision(
             {
                 "date": date,
-                "ticker": "AAA",
+                "ticker": ticker,
                 "action": "HOLD",
                 "confidence": 50.0,
                 "regime": regime,
@@ -825,6 +825,31 @@ class TestDecisionsContextPolicy:
         self._seed(db_path, old, regime="bull_low_vol", scoring_detail='{"x":1}')
         # 오늘 행은 있지만 컨텍스트가 비었다 — "쓰였다" 는 "쓸모있게 쓰였다" 가 아니다.
         self._seed(db_path, today_kst(), regime=None, scoring_detail=None)
+
+        result = check_freshness("decisions_context", db_path=db_path)
+        assert result["status"] == "FAIL", result
+        assert result["last_updated"].startswith(old), result
+
+    def test_one_complete_row_cannot_hide_an_incomplete_batch(self, db_path):
+        """배치 18행 중 한 행만 완전해도 초록이 되면 안 된다 (Codex P2).
+
+        `record_decisions()` 가 배치 중간에 죽거나 일부 티커만 컨텍스트를 잃으면,
+        행 단위 `WHERE ... IS NOT NULL` + `MAX(date)` 는 **첫 완전한 행이 들어오는 순간**
+        오늘을 집어 초록이 된다 — 나머지가 빈 컨텍스트인 채로. `signals` 가 "보유
+        18종목만 갱신돼도 날짜가 올라간다" 를 막은 것과 같은 축이다.
+
+        Mutation lock: 쿼리를 `GROUP BY date HAVING SUM(...) = COUNT(*)` 에서
+        행 단위 `WHERE ... IS NOT NULL` 로 되돌리면 PASS 로 뒤집힌다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now, today_kst
+
+        old = (kst_now() - timedelta(days=5)).strftime("%Y-%m-%d")
+        self._seed(db_path, old, regime="bull_low_vol", scoring_detail='{"x":1}', ticker="AAA")
+        # 오늘 배치: 한 행만 완전, 나머지는 빈 컨텍스트.
+        self._seed(db_path, today_kst(), regime="bull_low_vol", scoring_detail='{"x":1}', ticker="AAA")
+        self._seed(db_path, today_kst(), regime=None, scoring_detail=None, ticker="BBB")
+        self._seed(db_path, today_kst(), regime=None, scoring_detail=None, ticker="CCC")
 
         result = check_freshness("decisions_context", db_path=db_path)
         assert result["status"] == "FAIL", result

@@ -180,7 +180,21 @@ FRESHNESS_POLICIES: dict[str, dict] = {
     # macro verdict 가 "SPY 데이터 부족" 이면 최신 완전 행이 하루 밀려 최대 ~55h 가 되는데,
     # 48 이면 그게 FAIL 이 된다. 72 면 WARN 으로 남고 이틀 연속 실패해야 FAIL 이다.
     "decisions_context": {
-        "query": ("SELECT datetime(MAX(date)) FROM decisions WHERE regime IS NOT NULL AND scoring_detail IS NOT NULL"),
+        # ⚠️ **행 단위 `MAX` 는 부족하다** (Codex P2). `WHERE ... IS NOT NULL` 만 걸면
+        # 오늘 배치 18행 중 **한 행만** 완전해도 MAX 가 오늘을 집어 초록이 된다 —
+        # 나머지 17행이 빈 컨텍스트인 채로. `signals` 가 "보유 18종목만 갱신돼도 날짜가
+        # 올라간다" 를 막은 것과, `ark` 가 펀드별 MIN 을 쓰는 것과 같은 축이다
+        # (`nuri/core/CLAUDE.md`: 멀쩡한 축이 죽은 축을 가린다).
+        # 그래서 **날짜로 묶어 그날 전 행이 완전한 날**만 센다.
+        #
+        # 행수 floor 는 여기 두지 않는다 — 분모가 포트폴리오 구성이라(prod 실측 날짜별
+        # 18~21행) 소스 감시가 우리 구성에 의존하게 되고, 그건 `ark`(#1147)에서 한 번
+        # 틀린 축이다. 부분 배치(행이 통째로 모자란 경우)는 별도 근거가 필요해 분리한다.
+        "query": (
+            "SELECT datetime(MAX(date)) FROM (SELECT date FROM decisions "
+            "GROUP BY date "
+            "HAVING SUM(regime IS NOT NULL AND scoring_detail IS NOT NULL) = COUNT(*))"
+        ),
         "label": "결정 컨텍스트 (완결)",
     },
     "certification": {
