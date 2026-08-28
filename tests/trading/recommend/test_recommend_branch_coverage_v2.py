@@ -1765,42 +1765,49 @@ class TestPriceTargetsTrailingStopBranches:
 class TestPriceTargetsMddBranches:
     """Lines 492-493, 523: MDD function exception + zero total_cost."""
 
-    def test_fx_query_exception_falls_back_to_default(self, fresh_db, monkeypatch):
-        """Line 492-493: usd_krw query raises → fallback 1400.0.
+    def test_fx_query_failure_abstains_instead_of_defaulting(self, fresh_db, monkeypatch, caplog):
+        """환율 조회가 DB 오류로 실패하면 **판정을 포기**한다 (#1283).
 
-        check_portfolio_mdd does `from nuri.core.db import query as _q` locally
-        (line 485), so we patch at the SOURCE module to intercept _q.
+        예전에는 `except Exception: pass` → `usd_krw = 1400.0` 으로 진행해, 조회가
+        실패했는데도 지어낸 환율 기준으로 `PORTFOLIO_STOP` 위반을 선언했다. 이 테스트가
+        바로 그 동작을 잠그고 있었다 (구 이름 `..._falls_back_to_default`).
+
+        DB 오류는 "환율을 모른다" 이지 "1400 이다" 가 아니다.
         """
+        import logging
+
         import nuri.core.db as db_mod
+        from nuri.core.db import OperationalError
         from nuri.trading.recommend import price_targets as pt
 
-        # Insert a holding so we get past the empty-portfolio early-return
+        # 합성 종목 — 실제 보유와 무관하다 (public repo, `tests/CLAUDE.md` privacy).
+        kr_ticker = "999999.KS"
         with get_db(fresh_db) as conn:
             conn.execute(
                 "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
-                ("acct_x", "005930.KS", 100, 70000.0, "KRW"),  # KRW → uses fx
+                ("Brokerage Alpha", kr_ticker, 100, 100_000.0, "KRW"),  # KRW → uses fx
             )
             conn.execute(
                 "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                ("005930.KS", "2026-05-04", 50000, 50000, 50000, 50000, 1, 50000),
+                (kr_ticker, "2026-05-04", 50_000, 50_000, 50_000, 50_000, 1, 50_000),
             )
 
         original_q = db_mod.query
 
         def fake_q(sql, *a, **kw):
             if "usd_krw" in sql:
-                raise RuntimeError("synthetic fx fail")
+                raise OperationalError("synthetic fx fail")
             return original_q(sql, *a, **kw)
 
-        # Patch source so `from nuri.core.db import query as _q` resolves to fake_q
         monkeypatch.setattr(db_mod, "query", fake_q)
 
-        result = pt.check_portfolio_mdd(db_path=fresh_db)
-        # cost = 70000*100/1400 = 5000, value = 50000*100/1400 = ~3571,
-        # pnl_pct = (3571/5000 - 1)*100 = -28.6 → exceeds PORTFOLIO_STOP (-10) → critical dict
-        assert result is not None
-        assert result["severity"] == "critical"
+        with caplog.at_level(logging.WARNING, logger="nuri.trading.recommend.price_targets"):
+            result = pt.check_portfolio_mdd(db_path=fresh_db)
+
+        # -50% 라 환율만 있으면 확실한 위반이다. 그래도 판정하지 않는 것이 요점.
+        assert result is None, "환율 조회가 실패했는데 지어낸 환율로 손절선을 판정했다"
+        assert caplog.records, "판정을 포기하고도 조용했다 — 아무도 조회 실패를 모른다"
 
     def test_zero_total_cost_returns_none(self, fresh_db, monkeypatch):
         """Line 522-523: total_cost <= 0 → return None.

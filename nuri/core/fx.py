@@ -71,7 +71,14 @@ def latest_usd_krw(db_path=None) -> tuple[float, str] | None:
     )
     if not rows or rows[0]["value"] is None:
         return None
-    return float(rows[0]["value"]), str(rows[0]["date"])
+    # 환율은 **양수**다. 0 이나 음수는 손상된 행이지 환율이 아니므로 부재로 다룬다 (#1283).
+    # 이 불변식이 없으면 0.0 이 "값이 있다" 로 통과해 호출자마다 다르게 터진다 — 나눗셈
+    # 하는 쪽은 ZeroDivisionError, `or` 폴백을 둔 쪽은 조용히 지어낸 숫자.
+    value = float(rows[0]["value"])
+    if value <= 0:
+        logger.warning("usd_krw 값이 %s (날짜 %s) — 환율이 아니므로 부재로 다룬다 (#1283)", value, rows[0]["date"])
+        return None
+    return value, str(rows[0]["date"])
 
 
 def latest_usd_krw_value(db_path=None) -> float | None:

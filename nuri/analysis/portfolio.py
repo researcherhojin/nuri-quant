@@ -129,7 +129,11 @@ def portfolio_state(db_path=None, config_path: Path | None = None) -> dict:
             positions[str(ticker)] = {"value": value, "sector": sector}
             total_value += value
 
-    rate = get_exchange_rate(db_path=db_path) or 1400.0
+    # `or 1400.0` 폴백이 여기 있었다 (#1283). 도달 불가였다 — `get_exchange_rate` 는 부재 시
+    # `StaleExchangeRateError` 를 던지고, 유일한 falsy 후보였던 0/음수는 이제 `latest_usd_krw`
+    # 가 부재로 접어 역시 예외가 된다. 죽은 폴백을 남겨두면 다음 사람이 "환율이 없어도
+    # 1400 으로 돌아간다" 고 읽는다.
+    rate = get_exchange_rate(db_path=db_path)
     cash = 0.0
     path = config_path or _DEFAULT_PORTFOLIO_YAML
     try:
@@ -264,13 +268,19 @@ def print_summary(df: pd.DataFrame) -> None:
         print("포트폴리오 데이터가 없습니다.")
         return
 
-    usd_krw = df.attrs.get("usd_krw", 1450.0)
+    # 환율이 없으면 KRW 환산을 **생략**한다 (#1283). 예전에는 1450 을 지어냈는데, 나머지
+    # 폴백은 전부 1400 이라 같은 부재에 두 개의 답이 있었다. USD 총액은 환율과 무관하므로
+    # 그대로 낸다 — 못 내는 건 KRW 환산뿐이다.
+    usd_krw = df.attrs.get("usd_krw")
     total_usd = df.attrs.get("total_value_usd", 0)
-    total_krw = total_usd * usd_krw
 
     print("=" * 70)
-    print(f"  Nuri-Quant 포트폴리오 현황  (USD/KRW: {usd_krw:,.0f})")
-    print(f"  총 평가액: ${total_usd:,.0f} (₩{total_krw:,.0f})")
+    if usd_krw:
+        print(f"  Nuri-Quant 포트폴리오 현황  (USD/KRW: {usd_krw:,.0f})")
+        print(f"  총 평가액: ${total_usd:,.0f} (₩{total_usd * usd_krw:,.0f})")
+    else:
+        print("  Nuri-Quant 포트폴리오 현황  (USD/KRW: 미수집)")
+        print(f"  총 평가액: ${total_usd:,.0f} (₩ 환산 불가 — 'make collect' 으로 환율 갱신)")
     print("=" * 70)
 
     # 계좌별 출력
