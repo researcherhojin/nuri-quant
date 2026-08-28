@@ -5,6 +5,7 @@
  * 캔들 대신 라인+영역 차트 (가독성 우선).
  * SMA 20/50 오버레이 + 거래량 바.
  */
+import { CHART_GRID_STROKE, CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import { useState } from "react";
 import { formatMoney } from "@/lib/format";
 import {
@@ -103,17 +104,17 @@ export function PriceChart({ data, ticker }: PriceChartProps) {
       <div className="w-full min-w-0 h-70">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
           <ComposedChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} />
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               interval={Math.floor(chartData.length / 6)}
             />
             <YAxis
               yAxisId="price"
               domain={[minClose, maxClose]}
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v) => v.toFixed(0)}
@@ -122,12 +123,12 @@ export function PriceChart({ data, ticker }: PriceChartProps) {
             <YAxis yAxisId="volume" orientation="right" hide />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#18181b",
-                border: "1px solid #3f3f46",
+                backgroundColor: CHART_TOOLTIP_BG,
+                border: CHART_TOOLTIP_BORDER,
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              labelStyle={{ color: "#a1a1aa" }}
+              labelStyle={{ color: CHART_MUTED }}
               formatter={(value, name) => {
                 const v = Number(value);
                 if (name === "volume") return [formatVolume(v), "Vol"];
@@ -139,7 +140,7 @@ export function PriceChart({ data, ticker }: PriceChartProps) {
             <Bar
               yAxisId="volume"
               dataKey="volume"
-              fill="#3f3f46"
+              fill={CHART_MUTED}
               opacity={0.3}
               barSize={2}
             />

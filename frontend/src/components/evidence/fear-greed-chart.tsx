@@ -4,6 +4,7 @@
  * FearGreedChart — 공포·탐욕 지수 90일 라인 + 구간 존 (#1225).
  * 존 경계는 CNN Fear & Greed 표준 구간 (Plotly 원본과 동일).
  */
+import { CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import { EVIDENCE } from "@/lib/strings";
 import {
   ResponsiveContainer,
@@ -52,25 +53,25 @@ export function FearGreedChart({ data }: { data: FearGreedData }) {
           <LineChart data={rows} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               interval={Math.floor(rows.length / 6)}
             />
             <YAxis
               domain={[0, 100]}
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               axisLine={false}
               width={30}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#18181b",
-                border: "1px solid #3f3f46",
+                backgroundColor: CHART_TOOLTIP_BG,
+                border: CHART_TOOLTIP_BORDER,
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              labelStyle={{ color: "#a1a1aa" }}
+              labelStyle={{ color: CHART_MUTED }}
               formatter={fgTooltipFormatter}
             />
             {FG_ZONES.map((z) => (

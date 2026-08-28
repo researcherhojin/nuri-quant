@@ -9,6 +9,7 @@
  * - Vertical dashed markers: portfolio_hash change (portfolio state transition)
  * - Tooltip: id, regime, caller, passed/failed/warnings
  */
+import { CHART_CELL_STROKE, CHART_GRID_STROKE, CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import {
   CartesianGrid,
   Line,
@@ -124,7 +125,7 @@ export function renderDot(dotProps: unknown): React.ReactElement {
   const r = dotRadius(payload.hashChanged);
   const shape = callerShape(payload.caller);
   const key = `dot-${index}`;
-  const commonStroke = { stroke: "#18181b", strokeWidth: 1 };
+  const commonStroke = { stroke: CHART_CELL_STROKE, strokeWidth: 1 };
 
   if (shape === "triangle") {
     const h = r * 1.3;
@@ -173,7 +174,7 @@ export function renderDot(dotProps: unknown): React.ReactElement {
  */
 export function LegendShape({ shape, className = "" }: { shape: DotShape; className?: string }): React.ReactElement {
   const common = "inline-block w-2 h-2 " + className;
-  const fill = "#71717a";
+  const fill = CHART_MUTED;
   if (shape === "triangle") {
     return (
       <svg className={common} viewBox="0 0 8 8" aria-hidden>
@@ -251,15 +252,15 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
       <div className="w-full min-w-0 h-60">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
           <LineChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} />
             <XAxis
               dataKey="short"
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               interval={Math.max(0, Math.floor(chartData.length / 6) - 1)}
             />
             <YAxis
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               axisLine={false}
               domain={[0, 100]}
@@ -268,12 +269,12 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#18181b",
-                border: "1px solid #3f3f46",
+                backgroundColor: CHART_TOOLTIP_BG,
+                border: CHART_TOOLTIP_BORDER,
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              labelStyle={{ color: "#a1a1aa" }}
+              labelStyle={{ color: CHART_MUTED }}
               labelFormatter={labelFormatter as never}
               formatter={valueFormatter as never}
             />
@@ -281,21 +282,21 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
               <ReferenceLine
                 key={`t-${i}`}
                 x={chartData[i].short}
-                stroke="#a1a1aa"
+                stroke={CHART_MUTED}
                 strokeDasharray="4 3"
                 strokeWidth={1}
                 ifOverflow="extendDomain"
                 label={{
                   value: "▲",
                   position: "top",
-                  fill: "#a1a1aa",
+                  fill: CHART_MUTED,
                   fontSize: 10,
                 }}
               />
             ))}
             <Line
               dataKey="score"
-              stroke="#71717a"
+              stroke={CHART_MUTED}
               strokeWidth={1.5}
               dot={renderDot as never}
             />
