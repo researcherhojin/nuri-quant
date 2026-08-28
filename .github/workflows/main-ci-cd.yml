@@ -574,7 +574,10 @@ jobs:
         # 23 slow tests (LLM/scheduler) → 2 shards × xdist 4 workers. 단일 shard
         # 2:16 wall 의 critical path 를 절반 ~1:00-1:15 로 단축 — fast lane (shard
         # 4 분할 후 ~2:11 wall) 과 같은 critical path 안에 들어옴.
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow" --splits 2 --group ${{ matrix.shard }} --cov=nuri --cov-branch --cov-report= --cov-report=term
+        # `-m` 은 pyproject addopts 의 `-m "not integration"` 을 **덮어쓴다**(합쳐지지
+        # 않는다). 여기 `not integration` 을 다시 안 적으면 slow lane 이 실외부
+        # 네트워크 테스트를 끌어들여 CI 가 외부 사이트 상태로 빨개진다 (#1290).
+        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow and not integration" --splits 2 --group ${{ matrix.shard }} --cov=nuri --cov-branch --cov-report= --cov-report=term
         timeout-minutes: 5
 
       - name: Upload .coverage artifact

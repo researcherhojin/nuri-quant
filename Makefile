@@ -90,8 +90,13 @@ setup-hooks: ## Install repo-tracked git hooks (pre-commit auto-fix). Idempotent
 test:
 	$(PYTHON) -m pytest tests/ -v --cov=nuri --cov-branch -n auto --dist worksteal
 
+# ⚠️ `-m` 은 addopts 의 `-m` 을 **덮어쓴다** (합쳐지지 않는다). pyproject 의
+# `addopts = -m "not integration"` 은 여기서 무효가 되므로 **직접 다시 적어야 한다**.
+# 안 적으면 실외부 네트워크를 타는 integration 테스트가 fast 게이트에 섞여, KRX 가
+# 죽은 날 코드와 무관하게 빨간불이 뜬다 (#1290). CI 샤드는 원래 둘 다 적고 있었다 —
+# 로컬만 갈라져 있었다.
 test-fast:
-	$(PYTHON) -m pytest tests/ -v --cov=nuri --cov-branch -n auto --dist worksteal -m "not slow"
+	$(PYTHON) -m pytest tests/ -v --cov=nuri --cov-branch -n auto --dist worksteal -m "not slow and not integration"
 
 # ─── CI artifact ground-truth coverage (Issue #616 verification protocol) ───
 # 직전 main CI run 의 6 shards (.coverage artifacts) 다운로드 + combine →
@@ -153,8 +158,10 @@ postmortem-kr:    ## Post-market brief (KR session, KST 16:00 — KOSPI close + 
 postmortem-us:    ## Post-market brief (US session, NYSE 16:00 ET + 30min)
 	@.venv/bin/python -m nuri.alerts.postmarket_brief --session us
 
+# `not integration` 은 여기도 필요하다 — 같은 이유(위 test-fast 주석). integration 은
+# `make test-integration` 으로만 돈다.
 test-slow:
-	$(PYTHON) -m pytest tests/ -v -n auto --dist worksteal -m "slow"
+	$(PYTHON) -m pytest tests/ -v -n auto --dist worksteal -m "slow and not integration"
 
 lint:
 	$(PYTHON) -m ruff check nuri/ tests/ scripts/
