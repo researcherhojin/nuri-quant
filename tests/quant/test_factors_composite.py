@@ -1,5 +1,6 @@
 """Tests for factors_composite — split from test_quant_all.py."""
 
+import sys
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -17,6 +18,19 @@ from tests.quant._helpers import (  # noqa: F401
     _seed_prices,
     _seed_spy_data,
 )
+
+
+def _business_days_ago(n: int) -> str:
+    """n **영업일** 전 날짜 — 프로덕션 `busday_count(observed, today)` 의 역함수 (#1270).
+
+    `roll="forward"` 여야 한다. `"backward"` 는 오늘이 휴장일이면 롤이 영업일 1일을
+    먹어 왕복이 `n+1` 이 되고, 경계 시드가 임계를 넘겨 **토·일에만** 노후로 떨어진다.
+    2026-08-29(토) 에 `test_fresh_row_is_used` 가 실제로 이렇게 깨졌다.
+
+    인라인 표현식을 헬퍼로 뽑은 이유: 같은 식이 두 곳에 복제돼 있어서 한쪽만 고치면
+    나머지가 남는다 — 이 결함이 애초에 두 파일에서 동시에 터진 형태다.
+    """
+    return str(np.busday_offset(today_kst(), -n, roll="forward"))
 
 
 class TestComposite:
@@ -217,7 +231,7 @@ class TestSentimentIsNotFabricated:
         path = tmp_path / "s.db"
         init_db(path)
         monkeypatch.setattr(db_mod, "DB_PATH", path)
-        stale = str(np.busday_offset(today_kst(), -(comp.SENTIMENT_MAX_AGE_BUSINESS_DAYS + 1), roll="backward"))
+        stale = _business_days_ago(comp.SENTIMENT_MAX_AGE_BUSINESS_DAYS + 1)
         upsert_macro([{"indicator": "fear_greed", "date": stale, "value": 42.0, "source": "test"}], path)
         assert comp._market_sentiment() is None
 
@@ -229,7 +243,7 @@ class TestSentimentIsNotFabricated:
         path = tmp_path / "s.db"
         init_db(path)
         monkeypatch.setattr(db_mod, "DB_PATH", path)
-        fresh = str(np.busday_offset(today_kst(), -comp.SENTIMENT_MAX_AGE_BUSINESS_DAYS, roll="backward"))
+        fresh = _business_days_ago(comp.SENTIMENT_MAX_AGE_BUSINESS_DAYS)
         upsert_macro([{"indicator": "fear_greed", "date": fresh, "value": 63.7, "source": "test"}], path)
         assert comp._market_sentiment() == pytest.approx(0.637)
 
@@ -328,3 +342,32 @@ class TestFactorDateIsAMarketDate:
 
         with get_db(db_path_mp) as conn:
             assert [r[0] for r in conn.execute("SELECT DISTINCT date FROM factors").fetchall()] == [today_kst()]
+
+
+class TestBusinessDaysAgoIsTheInverseOfBusdayCount:
+    """시드 헬퍼는 `_market_sentiment` 의 나이 계산의 **역함수**여야 한다 (#1270).
+
+    잠금을 이 파일에도 따로 두는 이유: `tests/CLAUDE.md` "Time-bomb seed dates" 2차
+    발생의 교훈이 그대로 적용된다 — *규칙 하나에 잠금이 한 경로만 걸려 있으면 나머지
+    경로는 무방비다.* emitter 쪽 잠금은 이 파일의 헬퍼를 보지 않는다.
+    """
+
+    @pytest.mark.parametrize(
+        "anchor",
+        ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"],
+    )
+    @pytest.mark.parametrize("n", [1, 2, 3])
+    def test_round_trip_holds_on_every_weekday(self, anchor, n, monkeypatch):
+        """Mutation lock: `roll="forward"` → `"backward"` 로 되돌리면 토·일에서 FAIL."""
+        # 문자열 타깃은 `tests/` 가 패키지가 아니라 조용히 no-op 이 된다 — 모듈 객체로.
+        monkeypatch.setattr(sys.modules[__name__], "today_kst", lambda: anchor)
+        age = int(np.busday_count(_business_days_ago(n), anchor))
+        assert age == n, f"{anchor} 기준 {n}영업일 전으로 시드했는데 나이가 {age} 로 읽힌다"
+
+    def test_boundary_seed_is_not_judged_stale(self, monkeypatch):
+        """임계와 같은 나이는 노후가 아니다 — `_market_sentiment` 가 `age > MAX` 로 판정."""
+        from nuri.quant.factors import composite as comp
+
+        monkeypatch.setattr(sys.modules[__name__], "today_kst", lambda: "2026-08-29")
+        age = int(np.busday_count(_business_days_ago(comp.SENTIMENT_MAX_AGE_BUSINESS_DAYS), "2026-08-29"))
+        assert age <= comp.SENTIMENT_MAX_AGE_BUSINESS_DAYS

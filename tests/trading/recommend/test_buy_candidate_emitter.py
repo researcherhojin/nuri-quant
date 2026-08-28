@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import patch
 
 import numpy as np
@@ -128,10 +129,15 @@ def _seed_rsi(db_path, ticker: str, rsi: float):
 def _business_days_ago(n: int) -> str:
     """n **영업일** 전 날짜. 판정이 영업일 기준이라 시드도 그래야 한다 —
     달력일로 빼면 요일에 따라 영업일 수가 달라져 테스트가 요일 의존으로 flaky 해진다.
+
+    ⚠️ `roll="forward"` 다 (#1270). 프로덕션은 나이를 `busday_count(observed, today)` 로
+    재므로 이 헬퍼는 그 **역함수**여야 하는데, `roll="backward"` 는 오늘이 휴장일이면
+    롤 자체가 영업일 1일을 먹어 왕복이 `n+1` 이 된다. 그래서 경계 시드가 임계를 넘겨
+    **토·일에만** 노후로 떨어졌다. `forward` 는 7요일 전부 왕복 일치한다.
     """
     if n == 0:
         return today_kst()
-    return str(np.busday_offset(today_kst(), -n, roll="backward"))
+    return str(np.busday_offset(today_kst(), -n, roll="forward"))
 
 
 def _seed_vix(db_path, value: float, *, days_old: int = 0):
@@ -840,3 +846,41 @@ def test_draft_thesis_counts_as_absent(db, cfg_path):
     res = emit_buy_candidates(config_path=cfg_path)
     assert res.candidates
     assert res.candidates[0].thesis is None
+
+
+class TestBusinessDaysAgoIsTheInverseOfBusdayCount:
+    """시드 헬퍼는 프로덕션 나이 계산의 **역함수**여야 한다 (#1270).
+
+    `vix_gate.latest_vix` 는 `np.busday_count(observed, today)` 로 나이를 잰다.
+    헬퍼가 그 역함수가 아니면 "임계 이내" 로 시드한 행이 임계를 넘어버려,
+    경계 테스트가 **코드와 무관하게** 특정 요일에만 빨간불이 된다.
+
+    `roll="backward"` 는 오늘이 휴장일일 때 롤이 영업일 1일을 소비해 왕복이
+    `n+1` 이 됐다 — 2026-08-29(토) 에 `test_vix_within_max_age_is_still_used` 가
+    실제로 이렇게 깨졌다. 요일 의존이라 평일에는 5/7 확률로 조용했다.
+    """
+
+    # 월~일 전부. 요일 하나만 보면 그게 하필 통과하는 요일일 수 있다.
+    @pytest.mark.parametrize(
+        "anchor",
+        ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"],
+    )
+    @pytest.mark.parametrize("n", [1, 2, 3])
+    def test_round_trip_holds_on_every_weekday(self, anchor, n, monkeypatch):
+        """Mutation lock: `roll="forward"` → `"backward"` 로 되돌리면 토·일에서 FAIL."""
+        # ⚠️ 문자열 타깃(`"tests.trading...today_kst"`)은 여기서 **조용히 no-op** 이다.
+        # `tests/` 가 패키지가 아니라 이 모듈이 다른 이름으로 로드돼 있고, 문자열은
+        # 같은 파일의 *두 번째 사본*을 import 해 거기를 패치한다 — 실행 중인 사본은
+        # 그대로다. 실제로 그렇게 짰다가 평일 앵커 15개가 전부 FAIL 했다
+        # (`today_kst` 가 진짜 오늘을 계속 반환). `sys.modules[__name__]` 은 실행 중인
+        # 사본 자신이라 이름 규칙과 무관하다 (tests/CLAUDE.md "conftest import 경로").
+        monkeypatch.setattr(sys.modules[__name__], "today_kst", lambda: anchor)
+        seeded = _business_days_ago(n)
+        age = int(np.busday_count(seeded, anchor))
+        assert age == n, f"{anchor} 기준 {n}영업일 전으로 시드했는데 나이가 {age} 로 읽힌다"
+
+    def test_boundary_seed_is_not_judged_stale(self, monkeypatch):
+        """임계와 같은 나이는 노후가 아니다 — 게이트가 `age > MAX` 로 판정하므로."""
+        monkeypatch.setattr(sys.modules[__name__], "today_kst", lambda: "2026-08-29")
+        age = int(np.busday_count(_business_days_ago(VIX_MAX_AGE_BUSINESS_DAYS), "2026-08-29"))
+        assert age <= VIX_MAX_AGE_BUSINESS_DAYS
