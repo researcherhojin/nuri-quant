@@ -532,6 +532,20 @@ def test_stale_payload_gives_the_remedy_for_that_source(db_path):
     assert "가격 수집" in price
 
 
+def test_decisions_context_has_its_own_remedy(db_path):
+    """부분 배치 카드는 fallback 문구로 떨어지면 안 된다 (#1266).
+
+    `decisions_context` 가 `_REMEDY` 에 없으면 `_remedy()` 가 "해당 수집 경로 점검" 을
+    돌려주는데, 이 FAIL 의 원인은 수집이 아니라 **합의 잡이 중간에 죽은 것**이라
+    운영자를 엉뚱한 로그로 보낸다.
+
+    Mutation lock: `_REMEDY["decisions_context"]` 를 지우면 fallback 과 같아져 FAIL.
+    """
+    remedy = portfolio_signals._remedy("decisions_context")
+    assert remedy != portfolio_signals._remedy("__no_such_key__")
+    assert "합의" in remedy
+
+
 def test_missing_data_is_not_reported_as_staleness(db_path):
     """`age_hours=None` 은 '낡음' 이 아니라 '행이 없음' 이다 — 같은 문구면 진짜 상태를 놓친다.
 
