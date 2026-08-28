@@ -287,10 +287,18 @@ done
 # ── 6. 최종 검증 ──
 step 7 "최종 검증"
 
-REMOTE_HEAD=$("${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && git log -1 --oneline")
-LOCAL_HEAD=$(git log -1 --oneline)
-if [[ "${REMOTE_HEAD}" == "${LOCAL_HEAD}" ]]; then
-    ok "git HEAD 일치: ${LOCAL_HEAD}"
+# HEAD 비교는 전용 스크립트에 위임한다 (#1277). 이유와 판정 규칙은 그 파일 상단 참조 —
+# 요약하면 **축약 SHA 를 비교하면 안 된다**: 길이가 저장소마다 달라 동기화된 배포마다
+# 거짓 경고가 났다. 별도 파일인 것은 테스트가 **실행해서** 잠글 수 있게 하기 위함이다.
+if HEAD_OUT=$("${SCRIPT_DIR}/verify_head_sync.sh" "${SSH}" "${REMOTE}" "${REMOTE_PATH}"); then
+    HEAD_SYNCED=1
+else
+    HEAD_SYNCED=0
+fi
+LOCAL_HEAD=$(printf '%s\n' "${HEAD_OUT}" | sed -n 3p)
+REMOTE_HEAD=$(printf '%s\n' "${HEAD_OUT}" | sed -n 4p)
+if [[ "${HEAD_SYNCED}" == "1" ]]; then
+    ok "git HEAD 일치: ${REMOTE_HEAD}"
 else
     warn "git HEAD 불일치 — local: ${LOCAL_HEAD} / remote: ${REMOTE_HEAD}"
 fi
