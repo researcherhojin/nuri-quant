@@ -449,16 +449,78 @@ class TestRegimeFallsBackToClassifier:
         )
         return record_decision(result, db_path)
 
+    @staticmethod
+    def _state(regime: str):
+        """실 반환 타입으로 스텁한다 — bare class 는 형태가 갈라진다 (#1180 계열).
+
+        프로덕션은 오늘 `state.regime` 하나만 읽지만, 두 번째 속성을 읽는 순간
+        bare class 는 `AttributeError` 를 내고 그게 `except Exception: pass` 안이라
+        regime 이 조용히 NULL 이 된다 — 테스트는 "regime is None" 이라는 엉뚱한 이유로
+        깨진다. mock 형태는 실 함수 반환에서 복사한다.
+        """
+        from nuri.quant.regime.classifier import RegimeState
+
+        # base regime 은 `{trend}_{volatility}_vol`, special regime(recovery/euphoria/
+        # sector_rotation/stagflation)은 그 형태가 아니다 — 분해를 강제하면 스텁이
+        # ValueError 를 내고 그게 `except Exception: pass` 에 삼켜져 regime 이 조용히
+        # NULL 이 된다 (이 헬퍼를 처음 쓸 때 실제로 밟았다).
+        parts = regime.split("_")
+        return RegimeState(
+            date="2026-04-10",
+            trend=parts[0],
+            volatility=parts[1] if len(parts) >= 3 else "low",
+            regime=regime,
+            confidence=0.8,
+            details={},
+        )
+
+    def _recording_stub(self, regime: str, calls: list):
+        """호출을 기록하고 값을 돌려주는 스텁 — 판정은 테스트 본문이 한다."""
+
+        def _stub(db_path=None):
+            calls.append(db_path)
+            return self._state(regime)
+
+        return _stub
+
     def test_no_event_falls_back_to_classifier(self, db_path, monkeypatch):
+        """이벤트가 없으면 분류기 값이 저장되고, **db_path 가 그대로 전달된다.**
+
+        `calls == [db_path]` 가 배선까지 잠근다: `classify_regime(db_path=db_path)` 에서
+        인자를 떨어뜨리면(=격리 DB 대신 기본 DB 를 보게 되는 #1050 계열 누출) 여기서 FAIL.
+        구조 검사(`tests/core/test_db_path_forwarding.py`)는 이름 기반 sweep 이라
+        동작으로도 한 겹 잠근다.
+        """
         import nuri.quant.regime.classifier as classifier
 
-        class _State:
-            regime = "bull_low_vol"
-
-        monkeypatch.setattr(classifier, "classify_regime", lambda db_path=None: _State())
+        calls: list = []
+        monkeypatch.setattr(classifier, "classify_regime", self._recording_stub("bull_low_vol", calls))
         dec_id = self._record_one(db_path)
         row = query("SELECT regime FROM decisions WHERE id = ?", (dec_id,), db_path)[0]
         assert row["regime"] == "bull_low_vol"
+        assert calls == [db_path], f"db_path 가 분류기에 전달되지 않았다: {calls}"
+
+    def test_empty_payload_falls_through_to_classifier(self, db_path, monkeypatch):
+        """payload 에 regime 키가 없으면 분류기로 내려간다 — 가드는 **존재가 아니라 참**을 본다.
+
+        `decisions.py` 의 `payload.get("regime", payload.get("new_regime"))` 는 두 키가
+        다 없으면 **`None` 을 대입한다.** 그래서 키는 존재하고 값만 falsy 다. 가드를
+        `if "regime" not in context:` 로 바꾸면 이 행이 분류기를 건너뛰어 regime 이
+        영구 NULL 이 된다 — #1247 이 4.5개월 겪은 바로 그 증상이다.
+
+        Mutation lock: `if not context.get("regime"):` → `if "regime" not in context:` 로
+        바꾸면 FAIL (그 뮤턴트는 이 테스트가 없으면 61 passed 로 살아남는다).
+        """
+        import nuri.quant.regime.classifier as classifier
+        from nuri.core.events import emit_event
+
+        calls: list = []
+        emit_event("regime_changed", payload={}, db_path=db_path)
+        monkeypatch.setattr(classifier, "classify_regime", self._recording_stub("recovery", calls))
+        dec_id = self._record_one(db_path)
+        row = query("SELECT regime FROM decisions WHERE id = ?", (dec_id,), db_path)[0]
+        assert row["regime"] == "recovery", "빈 payload 가 분류기 fallback 을 막았다"
+        assert calls == [db_path]
 
     def test_event_still_wins_over_classifier(self, db_path, monkeypatch):
         """이벤트가 있으면 그 값이 우선 — fallback 이 스냅샷 의미를 바꾸면 안 된다.
@@ -488,17 +550,10 @@ class TestRegimeFallsBackToClassifier:
         import nuri.quant.regime.classifier as classifier
         from nuri.core.events import emit_event
 
-        class _State:
-            regime = "bull_low_vol"  # 이벤트 값과 다른 canonical 값
-
         calls: list = []
-
-        def _stub(db_path=None):
-            calls.append(db_path)
-            return _State()
-
         emit_event("regime_changed", payload={"regime": "bear_high_vol"}, db_path=db_path)
-        monkeypatch.setattr(classifier, "classify_regime", _stub)
+        # 이벤트 값과 **다른** canonical 값을 돌려준다 — fallback 이 덮으면 값으로 드러난다.
+        monkeypatch.setattr(classifier, "classify_regime", self._recording_stub("bull_low_vol", calls))
         dec_id = self._record_one(db_path)
         row = query("SELECT regime FROM decisions WHERE id = ?", (dec_id,), db_path)[0]
         assert row["regime"] == "bear_high_vol", "분류기 값이 이벤트 값을 덮었다 — 우선순위 역전"
@@ -1082,6 +1137,26 @@ class TestSnapshotMarketContext:
         ctx = _snapshot_market_context(db_path=db_path)
         assert ctx["regime"] == "risk_on"
 
+    def test_latest_event_wins_over_older_one(self, db_path):
+        """이벤트가 여럿이면 **최신** 것이 이긴다 (`ORDER BY timestamp DESC`).
+
+        기존 테스트는 전부 이벤트를 1건만 넣어서 정렬 방향을 아무도 단언하지 않았다 —
+        `DESC` → `ASC` 뮤턴트가 62개 테스트를 통과했다 (2026-08-28 실측).
+        낡은 레짐이 최신 레짐을 이기면 frozen 컨텍스트가 조용히 과거를 가리킨다.
+        """
+        from nuri.trading.engine.decisions import _snapshot_market_context
+
+        with get_db(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO pipeline_events (timestamp, event_type, payload) VALUES (?, ?, ?)",
+                [
+                    ("2026-04-09T10:00:00", "regime_changed", json.dumps({"regime": "bear_high_vol"})),
+                    ("2026-04-10T10:00:00", "regime_changed", json.dumps({"regime": "bull_low_vol"})),
+                ],
+            )
+        ctx = _snapshot_market_context(db_path=db_path)
+        assert ctx["regime"] == "bull_low_vol", "낡은 이벤트가 최신 이벤트를 이겼다 — 정렬 방향 역전"
+
     def test_regime_payload_new_regime_fallback(self, db_path):
         """Line 237: payload "regime" missing → fallback "new_regime" key."""
         from nuri.trading.engine.decisions import _snapshot_market_context
@@ -1094,8 +1169,9 @@ class TestSnapshotMarketContext:
         ctx = _snapshot_market_context(db_path=db_path)
         assert ctx["regime"] == "risk_off"
 
-    def test_regime_malformed_json_swallowed(self, db_path):
+    def test_regime_malformed_json_swallowed(self, db_path, monkeypatch):
         """Lines 238-239: invalid JSON payload → except branch, no crash, regime not set."""
+        import nuri.quant.regime.classifier as classifier
         from nuri.trading.engine.decisions import _snapshot_market_context
 
         with get_db(db_path) as conn:
@@ -1103,8 +1179,12 @@ class TestSnapshotMarketContext:
                 "INSERT INTO pipeline_events (timestamp, event_type, payload) VALUES (?, ?, ?)",
                 ("2026-04-10T10:00:00", "regime_changed", "not-json"),
             )
+        # #1256 이 fallback 을 추가한 뒤로 이 단언은 "빈 tmp DB 에 SPY 가 없어서 분류기가
+        # None 을 낸다" 는 **주변 상태**에 의존하게 됐다. 그 fixture 에 SPY 를 시드하는
+        # 순간 조용히 뒤집힌다 — 분류기를 명시적으로 죽여 파싱 실패만 보게 한다.
+        monkeypatch.setattr(classifier, "classify_regime", lambda db_path=None: None)
         ctx = _snapshot_market_context(db_path=db_path)
-        assert "regime" not in ctx  # 파싱 실패 → 미설정
+        assert "regime" not in ctx  # 파싱 실패 → 미설정 (fallback 도 None)
 
     def test_macro_score_exception_swallowed(self, db_path, monkeypatch):
         """Lines 247-248: compute_macro_score raises → except, macro_score not set."""
