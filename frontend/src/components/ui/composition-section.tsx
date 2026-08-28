@@ -33,7 +33,7 @@ export function parseCompositionTab(raw: string | undefined): CompositionTab {
 
 interface CompositionSectionProps {
   summary: HoldingsSummary;
-  totalUsd: number;
+  totalUsd: number | null;
   activeTab: CompositionTab;
 }
 
@@ -136,7 +136,9 @@ export function CompositionSection({
   const slices = built.slices.map(remap);
   const legend = built.legend.map(remap);
   const hasData = slices.length > 0;
-  const totalLabel = `$${totalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  // #1284: 총액 미상이면 "—". 0 으로 접으면 구성 합계가 0 달러로 보인다.
+  const totalLabel =
+    totalUsd == null ? "—" : `$${totalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
   return (
     <section className="flex flex-col gap-2" data-testid="composition-section">

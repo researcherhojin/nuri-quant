@@ -24,14 +24,18 @@ import type { HoldingsSummary } from "@/lib/holdings-summary";
 import { HERO } from "@/lib/strings";
 
 interface HeroStatsProps {
-  totalUsd: number;
-  cashTotalUsd: number;
-  holdingsValueUsd: number;
+  // #1284: 환율 미수집이면 통화 혼합 합계가 **미상**이다 — null 이 온다.
+  // 0 으로 접으면 "자산 0원" 이라는 거짓을 헤드라인에 띄우게 된다.
+  totalUsd: number | null;
+  cashTotalUsd: number | null;
+  holdingsValueUsd: number | null;
   summary: HoldingsSummary;
+  /** 값을 못 낸 사유 (#1284). 조용한 "—" 는 결함처럼 보이므로 함께 표시한다. */
+  unavailableReason?: string | null;
 }
 
-function formatBigUsd(v: number): string {
-  return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+function formatBigUsd(v: number | null): string {
+  return v == null ? "—" : `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
 function formatDeltaUsd(v: number): string {
@@ -45,6 +49,7 @@ export function HeroStats({
   cashTotalUsd,
   holdingsValueUsd,
   summary,
+  unavailableReason,
 }: HeroStatsProps) {
   const t = summary.today;
   const c = summary.cumulative;
@@ -68,12 +73,18 @@ export function HeroStats({
               {formatBigUsd(totalUsd)}
             </span>
           </div>
-          {(holdingsValueUsd > 0 || cashTotalUsd > 0) && (
-            <p className="text-xs text-zinc-400 mt-1 tabular-nums">
-              {HERO.HOLDINGS_PREFIX} ${holdingsValueUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              {" · "}
-              {HERO.CASH_PREFIX} ${cashTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          {unavailableReason ? (
+            <p className="text-xs text-amber-400/90 mt-1" data-testid="hero-total-unavailable">
+              {unavailableReason}
             </p>
+          ) : (
+            ((holdingsValueUsd ?? 0) > 0 || (cashTotalUsd ?? 0) > 0) && (
+              <p className="text-xs text-zinc-400 mt-1 tabular-nums">
+                {HERO.HOLDINGS_PREFIX} {formatBigUsd(holdingsValueUsd)}
+                {" · "}
+                {HERO.CASH_PREFIX} {formatBigUsd(cashTotalUsd)}
+              </p>
+            )
           )}
         </div>
 

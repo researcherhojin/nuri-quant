@@ -13,7 +13,8 @@ interface MarketStripProps {
   vix: number | null;
   fg: number | null;
   macroScore: number | undefined;
-  actualAllocation?: Allocation;
+  // #1284: 환율 미수집이면 백엔드가 null 을 낸다 — 분모를 모르면 배분도 모른다.
+  actualAllocation?: Allocation | null;
   targetAllocation?: Allocation | null;
   fallbackAllocation?: Allocation | null;
 }
@@ -24,11 +25,15 @@ export function MarketStrip({
 }: MarketStripProps) {
   // actual: API always provides this in real responses; mock tests
   // sometimes don't, so default to a sentinel that still renders.
+  // #1284: null 은 "현금 100%" 가 아니라 **미상**이다. 센티널로 접으면 환율이 없을 때
+  // 화면이 "전액 현금" 이라고 주장하게 된다 — 없는 것과 모르는 것은 다르다.
+  const allocationUnknown = actualAllocation === null;
   const actual = actualAllocation ?? { long: 0, short: 0, cash: 100 };
   const target = targetAllocation ?? fallbackAllocation ?? null;
   // Hide 권장 entirely when it's the meaningless 0/100 default
   // (means "no regime data") or matches actual.
   const hasMeaningfulTarget =
+    !allocationUnknown &&
     target != null &&
     (target.long > 0 || target.short > 0) &&
     !(target.long === actual.long && target.cash === actual.cash);
@@ -58,9 +63,15 @@ export function MarketStrip({
         </span>
       )}
       <span className="text-zinc-700">·</span>
-      <span>
-        {MARKET.ACTUAL} <span className="text-emerald-400 font-semibold tabular-nums">{actual.long}%</span> {MARKET.INVEST} / <span className="text-zinc-300 font-semibold tabular-nums">{actual.cash}%</span> {MARKET.CASH}
-      </span>
+      {allocationUnknown ? (
+        <span data-testid="allocation-unknown">
+          {MARKET.ACTUAL} <span className="text-amber-400 font-semibold">—</span>
+        </span>
+      ) : (
+        <span>
+          {MARKET.ACTUAL} <span className="text-emerald-400 font-semibold tabular-nums">{actual.long}%</span> {MARKET.INVEST} / <span className="text-zinc-300 font-semibold tabular-nums">{actual.cash}%</span> {MARKET.CASH}
+        </span>
+      )}
       {hasMeaningfulTarget && target && (
         <>
           <span className="text-zinc-700">→</span>

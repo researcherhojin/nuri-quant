@@ -101,8 +101,10 @@ export interface EnrichedHolding {
  * 비중(%)을 계산한다. 값 누락 시 positionPct 는 null (HoldingRow가 em dash 렌더).
  */
 export interface BuildOptions {
-  totalPortfolioUsd?: number;
-  usdKrwRate?: number;
+  // #1284: 환율 미수집이면 null. `?? 0` 이 받아 `> 0` 가드에서 걸러지므로
+  // 모든 positionPct 가 null 이 된다 — 분모를 모르면 비중도 모른다.
+  totalPortfolioUsd?: number | null;
+  usdKrwRate?: number | null;
 }
 
 // ── Builder ──────────────────────────────────────────────────

@@ -43,17 +43,20 @@ interface DashboardData {
   macro: { score: number; interpretation: string };
   allocation: { long: number; short: number; cash: number };
   target_allocation?: { long: number; short: number; cash: number };
-  actual_allocation?: { long: number; short: number; cash: number };
+  // #1284: 환산 불가면 null — 분모를 모르면 배분도 낼 수 없다.
+  actual_allocation?: { long: number; short: number; cash: number } | null;
   cash_summary?: {
-    accounts: Array<{ account: string; cash_usd: number; cash_krw: number; total_usd: number }>;
-    total_cash_usd: number;
+    accounts: Array<{ account: string; cash_usd: number; cash_krw: number; total_usd: number | null }>;
+    total_cash_usd: number | null;
   };
   actions: Array<{ action: string; ticker: string; name?: string | null; confidence: number; agreement: number; reason: string; account?: string }>;
   alerts: Array<{ level: string; message: string }>;
   gate_score: number;
   n_positions: number;
   exchange_rate: number | null;
-  account_values?: Array<{ account: string; value: number }>;
+  // 환산 불가 사유 (없으면 null). 백엔드가 값과 함께 **이유**를 낸다 — #1284.
+  fx_unavailable?: string | null;
+  account_values?: Array<{ account: string; value: number | null }>;
   upcoming_events?: Array<{ date: string; event_type: string; ticker: string | null; description: string; importance: number }>;
   ticker_accounts?: Record<string, string>;
   account_labels?: Record<string, string>;
@@ -99,7 +102,7 @@ interface PortfolioHolding {
 interface PortfolioData {
   count?: number;
   holdings?: PortfolioHolding[];
-  cash?: { total_cash_usd?: number };
+  cash?: { total_cash_usd?: number | null };
 }
 
 type CertifyCondition = FooterCondition;
@@ -172,15 +175,33 @@ async function Dashboard({
   const holdingCount = portfolio?.count ?? portfolio?.holdings?.length ?? 0;
   if (holdingCount === 0) redirect("/explore");
 
-  const KRW_RATE = d.exchange_rate || 1400;
-  const holdingsValue = portfolio?.holdings?.reduce((sum: number, h: PortfolioHolding) => {
-    const price = h.latest_price || 0;
-    const qty = h.quantity || 0;
-    return sum + (h.ticker?.endsWith(".KS") ? price * qty / KRW_RATE : price * qty);
-  }, 0) || 0;
+  // #1284: `|| 1400` 이 여기 있었다. 백엔드는 `exchange_rate: null` 로 부재를 **정직하게**
+  // 알려주는데 프론트가 그 신호를 버리고 숫자를 지어냈고, 그 값이 헤드라인 총액까지 갔다.
+  const KRW_RATE = d.exchange_rate;
+  // 원화 표시 여부 — `holding-row.tsx` 와 같은 기준(통화 우선, 접미사는 .KS/.KQ 둘 다).
+  // 접미사만 보면 `.KQ`(코스닥)와 무접미 원화 보유를 달러로 오분류한다. 인라인 사본이
+  // 여러 곳에 흩어져 있고 그 통합은 #1286 이 다룬다.
+  const isKrwHolding = (h: PortfolioHolding) =>
+    h.currency === "KRW" || !!h.ticker?.endsWith(".KS") || !!h.ticker?.endsWith(".KQ");
+  const hasKrwHolding = (portfolio?.holdings ?? []).some(isKrwHolding);
+  // 환율이 없고 원화 보유가 있으면 **통화 혼합 합계 자체가 미상**이다 — KR 종목만이
+  // 아니라 총액이 미상이므로 달러 종목의 비중도 말할 수 없다 (분모가 없다).
+  const holdingsValue: number | null =
+    KRW_RATE == null && hasKrwHolding
+      ? null
+      : (portfolio?.holdings?.reduce((sum: number, h: PortfolioHolding) => {
+          const price = h.latest_price || 0;
+          const qty = h.quantity || 0;
+          return sum + (isKrwHolding(h) ? (price * qty) / (KRW_RATE as number) : price * qty);
+        }, 0) ?? 0);
   // #213: 총 자산 = holdings + cash. cash는 portfolio.yaml 기반 /api/portfolio에서 옴.
-  const cashTotalUsd = portfolio?.cash?.total_cash_usd ?? d.cash_summary?.total_cash_usd ?? 0;
-  const totalValue = holdingsValue + cashTotalUsd;
+  // 백엔드가 환산 불가로 판정하면 `total_cash_usd` 도 null 로 온다 (#1284).
+  const cashTotalUsd: number | null =
+    portfolio?.cash?.total_cash_usd ?? d.cash_summary?.total_cash_usd ?? 0;
+  const totalValue: number | null =
+    holdingsValue == null || cashTotalUsd == null ? null : holdingsValue + cashTotalUsd;
+  // 값을 못 낸 **이유**. 조용한 "—" 는 결함처럼 보이므로 배너로 사유를 함께 낸다.
+  const fxUnavailable = d.fx_unavailable ?? null;
 
   const vix = d.regime.vix ?? null;
   const fg = d.regime.fear_greed ?? null;
@@ -246,13 +267,16 @@ async function Dashboard({
   // panel had. Compute once at page level so HeroStats + CompositionSection
   // share it without recomputing. Merge account_values + cash_summary so
   // every account (including pension/IRP) appears in the breakdown.
-  const acctTotals = new Map<string, number>();
-  for (const av of accountValues) {
-    acctTotals.set(av.account, (acctTotals.get(av.account) ?? 0) + av.value);
-  }
-  for (const cash of d.cash_summary?.accounts ?? []) {
-    acctTotals.set(cash.account, (acctTotals.get(cash.account) ?? 0) + cash.total_usd);
-  }
+  // #1284: 미상(null)은 **0 으로 접지 않는다** — 없는 돈이 아니라 모르는 돈이라,
+  // 0 으로 더하면 그 계좌만 사라지고 나머지 계좌 비중이 조용히 부풀려진다.
+  // 한 계좌에 미상이 하나라도 섞이면 그 계좌 합계 전체가 미상이다.
+  const acctTotals = new Map<string, number | null>();
+  const addToAccount = (account: string, value: number | null) => {
+    const prev = acctTotals.get(account);
+    acctTotals.set(account, prev === null || value === null ? null : (prev ?? 0) + value);
+  };
+  for (const av of accountValues) addToAccount(av.account, av.value);
+  for (const cash of d.cash_summary?.accounts ?? []) addToAccount(cash.account, cash.total_usd);
   const mergedAccountValues = Array.from(acctTotals.entries()).map(
     ([account, value]) => ({ account, value }),
   );
@@ -281,6 +305,7 @@ async function Dashboard({
         totalUsd={totalValue}
         cashTotalUsd={cashTotalUsd}
         holdingsValueUsd={holdingsValue}
+        unavailableReason={fxUnavailable}
         summary={summary}
       />
 
