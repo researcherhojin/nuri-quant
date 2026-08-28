@@ -489,6 +489,9 @@ export const ACTION = {
   COL_PNL: "수익률",
   COL_WEIGHT: "비중",
   COL_CONF: "확신도",
+  // #1279: 시세 없는 보유(비상장)의 손익은 측정 불가다. 0.0% 로 렌더하면 "보합" 으로
+  // 읽힌다 — 지어낸 숫자를 사용자 카피로 내보내지 않는다 (STRATEGY §2.6 과 같은 원칙).
+  PNL_UNKNOWN: "미상",
   // DETAIL/CONF/AGREE/PNL/WEIGHT/DISMISS 는 U2b-2 (#1208) 카드→행 전환으로 제거
 } as const;
 
