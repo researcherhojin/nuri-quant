@@ -208,7 +208,12 @@ FRESHNESS_POLICIES: dict[str, dict] = {
         # 진짜 조용한 축은 프로세스 사망이다 — fd 고갈(#778) · 로그인 세션 부재(#1191).
         # 그래서 **같은 날 합의 배치 크기를 분모로** 깔아 행수 floor 를 건다.
         #
-        # 분모는 `agent_verdicts IS NOT NULL` 로 고른다 — 10-agent 합의만 이 컬럼을 채운다.
+        # 분모는 `agent_verdicts IS NOT NULL` 로 고른다. 이 컬럼을 채우는 프로덕션 경로는
+        # 합의 persistence 뿐인데, 그건 **현재 호출 그래프의 성질이지 불변식이 아니다** —
+        # `tracker.save_recommendations(verdicts=...)` 도 채울 수 있고 지금은 아무도 그렇게
+        # 부르지 않을 뿐이다 (Codex P3). 가정으로 두면 다음 호출자가 조용히 분모를 오염시키므로
+        # 호출 형태를 테스트로 잠근다. **Test:** `tests/core/test_freshness.py::
+        # TestDecisionsContextPolicy::test_no_caller_fills_agent_verdicts_outside_consensus`
         # 기각한 분모 3종:
         #  - **포트폴리오 구성**: `portfolio` 에 date 컬럼이 없고, 있어도 감시가 우리 구성에
         #    의존하게 된다(#1147 축). 단 그 반론은 *외부 소스* 정책 얘기다 — 여기 분모는

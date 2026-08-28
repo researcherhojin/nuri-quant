@@ -1,5 +1,6 @@
 """nuri.core.freshness 모듈 테스트 — 데이터 신선도 SLA 체크."""
 
+import pathlib
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -949,7 +950,37 @@ class TestDecisionsContextPolicy:
 
         assert check_freshness("decisions_context", db_path=db_path)["status"] == "PASS"
 
-    def test_absent_consensus_rows_keep_the_prior_verdict(self, db_path):
+    def test_no_caller_fills_agent_verdicts_outside_consensus(self):
+        """분모의 판별자를 **불변식으로** 잠근다 (Codex P3).
+
+        `agent_verdicts` 를 채우는 프로덕션 경로가 합의 persistence 뿐인 것은 현재 호출
+        그래프의 성질일 뿐이다 — `tracker.save_recommendations` 는 `verdicts=` 를 받으면
+        같은 컬럼을 채운다. 누군가 그렇게 부르기 시작하면 분모가 조용히 오염되고,
+        `decisions_context` 가 멀쩡한 날을 빨간불로 만든다.
+
+        위치 인자 3개짜리 호출도 `verdicts` 를 채운다 — 시그니처가
+        `(candidates, actions, verdicts, db_path)` 라서 키워드만 보면 놓친다.
+        """
+        import ast
+
+        root = pathlib.Path(__file__).resolve().parents[2] / "nuri"
+        calls, offenders = 0, []
+        for path in root.rglob("*.py"):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if not isinstance(node, ast.Call):
+                    continue
+                name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+                if name != "save_recommendations":
+                    continue
+                calls += 1
+                if len(node.args) >= 3 or any(k.arg == "verdicts" for k in node.keywords):
+                    offenders.append(f"{path.relative_to(root)}:{node.lineno}")
+
+        # 카나리아 — 호출을 하나도 못 찾는 스윕은 눈이 먼 것이고, 그런 스윕은 언제나 통과한다.
+        assert calls >= 1, "save_recommendations 호출을 하나도 찾지 못했다 — 스윕이 죽었다"
+        assert not offenders, f"`verdicts=` 를 넘기는 호출이 생겼다 — decisions_context 분모가 오염된다: {offenders}"
+
+    def test_absent_consensus_rows_do_not_fail_the_day(self, db_path):
         """분모를 못 구하는 날을 낙제시키지 않는다 — 그건 `consensus` 정책 몫이다.
 
         INNER JOIN 으로 조이면 합의 행이 없는 모든 DB(e2e seed 포함)가 빨간불이 된다.
