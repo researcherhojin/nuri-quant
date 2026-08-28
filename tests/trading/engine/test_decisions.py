@@ -461,19 +461,32 @@ class TestRegimeFallsBackToClassifier:
         assert row["regime"] == "bull_low_vol"
 
     def test_event_still_wins_over_classifier(self, db_path, monkeypatch):
-        """이벤트가 있으면 그 값이 우선 — fallback 이 스냅샷 의미를 바꾸면 안 된다."""
+        """이벤트가 있으면 그 값이 우선 — fallback 이 스냅샷 의미를 바꾸면 안 된다.
+
+        ⚠️ 스텁은 **예외를 던지지 않는다.** 이전 판은 `AssertionError("classifier must not
+        be called")` 를 던졌는데, 프로덕션이 `decisions.py` 의 `except Exception: pass` 로
+        그걸 삼켜서 이벤트 값이 그대로 남고 단언이 통과했다 — 즉 **우선순위를 전혀
+        잠그지 못했다**. 뮤테이션 실측으로 확인: `if not context.get("regime"):` 를
+        `if True:` 로 바꿔도 3 passed, fallback 이 이벤트 값을 덮어쓰게 바꿔도 3 passed.
+
+        레포는 이 교훈을 이미 갖고 있다 (`tests/CLAUDE.md`): `_forbid_production_db` 의
+        예외가 `BaseException` 을 직접 상속하는 것도 같은 이유이고, 거기 결론이
+        "삼켜지는 백스톱은 백스톱이 아니다" 다.
+
+        그래서 스텁은 **다른 canonical regime 을 반환**한다. fallback 이 이벤트 값을
+        덮으면 그 값이 나타나 단언이 깨진다.
+        """
         import nuri.quant.regime.classifier as classifier
         from nuri.core.events import emit_event
 
+        class _State:
+            regime = "bull_low_vol"  # 이벤트 값과 다른 canonical 값
+
         emit_event("regime_changed", payload={"regime": "bear_high_vol"}, db_path=db_path)
-        monkeypatch.setattr(
-            classifier,
-            "classify_regime",
-            lambda db_path=None: (_ for _ in ()).throw(AssertionError("classifier must not be called")),
-        )
+        monkeypatch.setattr(classifier, "classify_regime", lambda db_path=None: _State())
         dec_id = self._record_one(db_path)
         row = query("SELECT regime FROM decisions WHERE id = ?", (dec_id,), db_path)[0]
-        assert row["regime"] == "bear_high_vol"
+        assert row["regime"] == "bear_high_vol", "분류기 값이 이벤트 값을 덮었다 — 우선순위 역전"
 
     def test_classifier_failure_leaves_regime_null(self, db_path, monkeypatch):
         """분류기 실패는 soft-fail — 관측이 본 작업(기록)을 게이트하면 안 된다 (#894)."""
