@@ -101,13 +101,6 @@ const STATUS_BORDER: Record<string, string> = {
   running: "border-blue-500/30",
 };
 
-const STATUS_GLOW: Record<string, string> = {
-  ok: "shadow-emerald-500/10",
-  warning: "shadow-amber-500/10",
-  error: "shadow-red-500/10",
-  running: "shadow-blue-500/10",
-};
-
 // F-003 (#1237): 이모지 → lucide — 디자인 시스템의 유일한 아이콘 체계 (사이드바와 동일).
 // lucide 의 LucideIcon 별칭은 TS6 JSX 에서 붕괴 사례가 있어 구체 타입(typeof Search)으로.
 type IconComponent = typeof Search;
@@ -193,7 +186,6 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
         relative bg-card border rounded-xl px-5 py-4 min-w-55
         transition-all duration-200
         hover:bg-muted/80 hover:scale-[1.02]
-        shadow-lg ${STATUS_GLOW[status]}
         ${STATUS_BORDER[status]}
       `}
     >
@@ -267,12 +259,23 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
 PipelineNode.displayName = "PipelineNode";
 
 // === Edges ===
+// #1253: ReactFlow 는 SVG 속성이라 Tailwind 클래스가 안 먹는다 — 그렇다고 raw hex 를 박으면
+// 다크 토큰 시스템 밖으로 새서 테마 변경이 여기만 비껴간다. 인라인 스타일이라 CSS 변수는
+// 그대로 해석된다.
+//   EDGE_STROKE = 다이어그램 크롬. 같은 파일의 Controls 가 이미 `border-input!` 을 쓰므로
+//                 크롬 색을 하나로 맞춘다 (기존 zinc-700 과 실측상 가장 가까운 토큰이기도 하다).
+//   CANVAS_DOT  = 캔버스 질감. `--border`(흰색 10%)가 기존 zinc-800 과 사실상 같은 값이다.
+// 값을 hex 로 적지 않는 것도 의도다 — 잠금 테스트가 소스의 hex 리터럴을 스윕하는데,
+// 주석에 적힌 옛 값도 똑같이 잡힌다 (주석만 예외로 빼면 스윕이 눈이 멀 자리를 만든다).
+const EDGE_STROKE = "var(--input)";
+const CANVAS_DOT = "var(--border)";
+
 const EDGES: Edge[] = [
-  { id: "e-collect-validate", source: "collect", target: "validate", animated: true, style: { stroke: "#3f3f46" } },
-  { id: "e-validate-classify", source: "validate", target: "classify", animated: true, style: { stroke: "#3f3f46" } },
-  { id: "e-classify-diagnose", source: "classify", target: "diagnose", animated: true, style: { stroke: "#3f3f46" } },
-  { id: "e-diagnose-recommend", source: "diagnose", target: "recommend", animated: true, style: { stroke: "#3f3f46" } },
-  { id: "e-recommend-track", source: "recommend", target: "track", animated: true, style: { stroke: "#3f3f46" } },
+  { id: "e-collect-validate", source: "collect", target: "validate", animated: true, style: { stroke: EDGE_STROKE } },
+  { id: "e-validate-classify", source: "validate", target: "classify", animated: true, style: { stroke: EDGE_STROKE } },
+  { id: "e-classify-diagnose", source: "classify", target: "diagnose", animated: true, style: { stroke: EDGE_STROKE } },
+  { id: "e-diagnose-recommend", source: "diagnose", target: "recommend", animated: true, style: { stroke: EDGE_STROKE } },
+  { id: "e-recommend-track", source: "recommend", target: "track", animated: true, style: { stroke: EDGE_STROKE } },
 ];
 
 // === Fetch 3-state (#1250) ===
@@ -499,7 +502,7 @@ export default function PipelinePage() {
             animated: true,
           }}
         >
-          <Background color="#27272a" gap={20} size={1} />
+          <Background color={CANVAS_DOT} gap={20} size={1} />
           <Controls
             showInteractive={false}
             className="bg-card! border-input! shadow-lg! [&>button]:bg-muted! [&>button]:border-input! [&>button]:text-muted-foreground! [&>button:hover]:bg-muted!"

@@ -96,7 +96,8 @@ describe("PipelineNode — node-body branch arms", () => {
     render(<PipelineNode data={base({ status: "" as unknown as "ok" })} />);
     const root = screen.getByText("Collect").closest("div.relative")!;
     expect(root.className).toContain("border-emerald-500/30");
-    expect(root.className).toContain("shadow-emerald-500/10");
+    // #1253: 상태 글로우(shadow-*-500/10)는 제거됐다 — 상태는 테두리 + 점만으로 말한다.
+    expect(root.className).not.toContain("shadow-emerald-500/10");
   });
 
   it("status running → animate-ping span renders (170 ternary true) + button running text (196/201 true)", async () => {
