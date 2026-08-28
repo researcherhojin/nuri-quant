@@ -262,12 +262,13 @@ def get_latest_prices(tickers: str = Query(..., description="Comma-separated tic
 @router.get("/ticker/{symbol}")
 def get_ticker_detail(symbol: str):
     """단일 종목의 모든 분석 데이터."""
-    # 호출은 1회지만 같은 요청 경로다 — 콜드 상태의 페이지 로드가 pykrx 를
-    # 기다리며 멎는다 (#1255).
-    from nuri.core.ticker_names import get_ticker_name_local
+    # 여기는 **network-free 로 바꾸지 않는다** (#1255 codex P2). 호출이 심볼당 1회라
+    # 검색 루프(203회)의 논거가 성립하지 않고, 맵·보유 어디에도 없는 KR 종목
+    # (KOSDAQ 신규 보유 등)의 이름이 사라져 헤더가 코드만 보여주게 된다.
+    from nuri.core.ticker_names import get_ticker_name
 
     ticker = symbol.upper()
-    result = {"ticker": ticker, "name": get_ticker_name_local(ticker)}
+    result = {"ticker": ticker, "name": get_ticker_name(ticker)}
 
     # 1. 가격
     price_row = query(

@@ -73,6 +73,9 @@ setup:
 	$(PYTHON) scripts/db/migrate.py
 	$(PYTHON) scripts/ops/import_portfolio.py
 	$(MAKE) setup-hooks
+	@# KR 종목명 맵 — 없으면 한국어 이름 검색이 동작하지 않는다 (#1255). FDR 네트워크를
+	@# 타므로 best-effort: 실패해도 setup 을 막지 않되, 실패는 **보이게** 남긴다.
+	-$(MAKE) kr-names
 
 setup-hooks: ## Install repo-tracked git hooks (pre-commit auto-fix). Idempotent.
 	bash scripts/dev/install_hooks.sh

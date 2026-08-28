@@ -160,3 +160,26 @@ class TestKrNameMapLoad:
         bad.write_text("{not json", encoding="utf-8")
         with patch.object(ticker_names, "_KR_NAMES_PATH", bad):
             assert ticker_names._load_kr_name_map() == {}
+
+
+class TestMapAbsenceIsLoud:
+    """맵 부재는 **조용하면 안 된다** (#1255 codex P2).
+
+    `get_ticker_name_local` 이 pykrx 로 안 내려가므로, 맵이 없으면 요청 경로의
+    한국어 이름 검색이 0건이 된다. 그 퇴화가 로그에 안 남으면 아무도 모른다 —
+    이 레포가 반복해서 당한 형태(#1118 e2e 3.5개월, #953 훅 침묵)와 같은 축이다.
+    """
+
+    def test_missing_map_logs_a_warning_naming_the_fix(self, tmp_path, monkeypatch, caplog):
+        """Mutation lock: 로더의 `logger.warning` 을 `logger.debug` 로 되돌리면 FAIL."""
+        import logging
+
+        monkeypatch.setattr(ticker_names, "_KR_NAMES_PATH", tmp_path / "absent.json")
+        ticker_names._load_kr_name_map.cache_clear()
+        try:
+            with caplog.at_level(logging.WARNING, logger=ticker_names.__name__):
+                assert ticker_names._load_kr_name_map() == {}
+            assert caplog.records, "맵 부재가 WARNING 을 남기지 않았다 — 퇴화가 조용해진다"
+            assert "kr-names" in caplog.text, "경고가 고치는 법을 말하지 않는다"
+        finally:
+            ticker_names._load_kr_name_map.cache_clear()
