@@ -9,7 +9,13 @@ US 티커(MSFT, TSLA 등)는 이미 식별 가능하므로 None 반환.
 ⚠️ 2차 로컬 맵이 핵심: /tickers/search 가 KR 이름 검색 시 수백 ticker 를
 순회하는데, 맵 없이는 ticker 당 live pykrx 호출 → 요청당 수백 네트워크 콜
 (지연/hang/CI flaky). 맵은 요청 경로를 network-free 로 만든다.
-config/kr_ticker_names.json 갱신: universe-sync 로 KOSPI200 변경 시 재생성.
+config/kr_ticker_names.json 은 `make setup` 과 universe-sync 가 생성한다 (#1255).
+
+함수가 둘인 이유 (#1255):
+- `get_ticker_name_local` — 1·2차만. **요청 경로 전용.** 203회 순회가 네트워크를
+  타지 않게 한다. 맵이 없으면 이름을 못 내지만, 그 부재는 로더가 WARNING 으로 알린다.
+- `get_ticker_name` — 위 + 3차 pykrx. 배치·알림·단일 종목 상세용. 호출이 소수라
+  네트워크 비용이 감당되고, 맵에 없는 신규 보유를 self-heal 한다.
 """
 
 import json
@@ -27,8 +33,16 @@ def _load_kr_name_map() -> dict[str, str]:
     """config/kr_ticker_names.json 1회 로드 (KOSPI200 정적 맵). 없으면 빈 dict."""
     try:
         return json.loads(_KR_NAMES_PATH.read_text(encoding="utf-8"))
-    except Exception as e:  # 파일 부재/파싱 실패 시 graceful — pykrx fallback 으로 흐름
-        logger.debug("KR name map load failed: %s", e)
+    except Exception as e:
+        # ⚠️ `warning` 이다 (#1255 codex P2). 맵이 없으면 요청 경로의 한국어 이름 검색이
+        # **조용히 0건**이 된다 — `get_ticker_name_local` 이 pykrx 로 안 내려가기 때문이다.
+        # `debug` 로 두면 그 퇴화가 아무 신호 없이 남는다. 이 레포가 반복해서 당한 형태다.
+        # `lru_cache(maxsize=1)` 이라 프로세스당 한 줄만 나온다. 고치는 법을 문장에 박는다.
+        logger.warning(
+            "KR 종목명 맵 부재 (%s) — 한국어 이름 검색이 동작하지 않는다. `make kr-names` 로 생성할 것. (%s)",
+            _KR_NAMES_PATH,
+            e,
+        )
         return {}
 
 
@@ -42,8 +56,22 @@ def is_kr_ticker(ticker: str) -> bool:
 
 
 @lru_cache(maxsize=500)
-def get_ticker_name(ticker: str) -> str | None:
-    """한국 종목 이름 반환. US 티커는 None."""
+def get_ticker_name_local(ticker: str) -> str | None:
+    """1·2차만 조회하는 **network-free** 변형 — 요청 경로 전용 (#1255).
+
+    `/api/tickers/search` 는 결과가 8건 미만이면 KOSPI200 **203개 전 티커**에
+    이 함수를 부른다. 3차 pykrx 가 붙어 있으면 그 요청 하나가 네트워크를 타고,
+    CI 처럼 맵이 없는 환경에서는 첫 호출이 KRX 전체 티커 목록을 받느라 4.64s 를
+    쓴다 (2026-08-28 실측). 그 콜드스타트가 Playwright 의 15s 예산 안에 들어갈지가
+    실행마다 갈려서 `/explore` 검색 스펙 2종이 main 7런 중 2런 실패했다 (#1255).
+
+    프로덕션은 이 분리로 아무것도 잃지 않는다 — dev·mini 둘 다 로컬 맵이 있어
+    2차에서 해결된다. 맵에 없는 소수 종목은 pykrx 를 기다렸다가 코드를 보여주는
+    대신 **즉시** 코드를 보여준다.
+
+    배치·알림 경로는 `get_ticker_name` 을 그대로 쓴다 — 거기는 보유 종목 단위라
+    호출이 소수이고, 맵에 없는 신규 보유를 pykrx 로 self-heal 하는 게 이득이다.
+    """
     if not ticker.endswith((".KS", ".KQ")):
         return None
 
@@ -73,9 +101,18 @@ def get_ticker_name(ticker: str) -> str | None:
         logger.debug("DB name lookup failed for %s: %s", ticker, e)
 
     # 2차: 로컬 KOSPI200 맵 (network-free — search 요청 경로 보호)
-    mapped = _load_kr_name_map().get(ticker)
-    if mapped:
-        return mapped
+    return _load_kr_name_map().get(ticker) or None
+
+
+@lru_cache(maxsize=500)
+def get_ticker_name(ticker: str) -> str | None:
+    """한국 종목 이름 반환. US 티커는 None. 1·2차 미스 시 pykrx(네트워크) fallback.
+
+    요청 경로에서는 `get_ticker_name_local` 을 쓴다 (#1255) — 아래 3차가 네트워크다.
+    """
+    name = get_ticker_name_local(ticker)
+    if name or not ticker.endswith((".KS", ".KQ")):
+        return name
 
     # 3차: pykrx 주식 이름 조회 (1·2차 미스 시에만 — ETF/맵외 종목 fallback)
     code = ticker.replace(".KS", "").replace(".KQ", "")
