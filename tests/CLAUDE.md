@@ -161,6 +161,30 @@ conftest 전역 mock 은 **yfinance 만** 커버. `MacroCollector.collect()` 는
 **Test:** `tests/trading/recommend/test_tracker.py::TestTrackerTrackOutcomes::test_90d_tracking`
 — `rich_db` 를 리터럴 시작일로 되돌리면 FAIL (2026-08-05~08-10 실제로 FAIL 상태였다).
 
+**3차 발생 (2026-08-29) — 리터럴이 아니라 *역함수를 틀린* 변종** (#1270). 위 두 건을 고치며
+시드를 `today_kst()` 앵커 + 영업일 계산으로 바꿨는데, 그 짝을
+`np.busday_offset(today, -n, roll="backward")` 로 썼다. 프로덕션은 나이를
+`np.busday_count(observed, today)` 로 재므로 시드는 그 **역함수**여야 하는데,
+`roll="backward"` 는 **오늘이 휴장일이면 롤 자체가 영업일 1일을 소비**해 왕복이 `n+1` 이
+된다. 결과: "임계 이내" 로 시드한 경계 행이 임계를 넘어 `None` 이 되고, `make test-fast` 가
+**토·일에만** 2건 빨간불 (`test_vix_within_max_age_is_still_used` ·
+`test_fresh_row_is_used`). `roll="forward"` 가 7요일 전부 왕복 일치한다.
+- **더 낡게 시드하는 테스트(`-(MAX+1)`)는 주말에도 통과**한다 — 결함이 *경계* 테스트에만
+  나타나서 요일이 바뀌기 전까지 아무 신호가 없었다.
+- 이건 dead gate 가 아니라 **false-red** 다. 코드와 무관한 빨간불은 빨간불을 무시하는
+  습관을 만든다는 점에서 같은 값이 나온다.
+**Test:** `tests/trading/recommend/test_buy_candidate_emitter.py::TestBusinessDaysAgoIsTheInverseOfBusdayCount`
++ `tests/quant/test_factors_composite.py::TestBusinessDaysAgoIsTheInverseOfBusdayCount`
+— 7요일 × n 왕복 잠금. `forward` → `backward` 로 되돌리면 **요일과 무관하게** FAIL.
+파일마다 따로 두는 이유는 2차 발생의 교훈 그대로다(한 경로만 잠그면 나머지는 무방비).
+
+⚠️ 이 잠금을 짜면서 **문자열 타깃 monkeypatch 가 조용히 no-op** 인 것도 같이 밟았다.
+`monkeypatch.setattr("tests.trading.recommend.test_buy_candidate_emitter.today_kst", …)` 는
+`tests/` 가 패키지가 아니라 같은 파일의 *두 번째 사본*을 import 해 거기를 패치한다 —
+실행 중인 사본은 그대로다. 증상이 특이하다: 평일 앵커 15개가 전부 FAIL 하고 주말 앵커만
+통과했다(진짜 오늘이 토요일이라). **모듈 객체를 직접 잡을 것**:
+`monkeypatch.setattr(sys.modules[__name__], "today_kst", …)`.
+
 ### 문서 fixer 를 실제 레포에서 돌리는 테스트
 `scripts/doc/sync_doc_counts.sh` 는 검사기가 아니라 **in-place fixer** 다. `tests/verify/` 의
 테스트가 이걸 `REPO_ROOT` env override 없이 실행하면 **백엔드 테스트를 돌릴 때마다 실제
