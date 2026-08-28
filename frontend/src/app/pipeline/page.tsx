@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import {
   ReactFlow,
   Background,
@@ -309,11 +309,19 @@ export default function PipelinePage() {
   const [timelineState, setTimelineState] = useState<LoadState>("loading");
   const [gateState, setGateState] = useState<LoadState>("loading");
 
+  // 10초 폴링이라 느린 요청이 다음 요청과 겹친다. 응답 순서는 보장되지 않으므로
+  // **가장 최근에 쏜 요청만** 상태를 바꾸게 한다 (codex P2). 없으면 poll N+1 이 성공한
+  // 뒤 늦게 도착한 poll N 의 실패가 멀쩡한 화면을 에러로 뒤집는다 — 역방향(늦은 성공이
+  // 새 실패를 덮는 것)도 같은 축이라 성공·실패 양쪽에서 토큰을 본다.
+  const seqRef = useRef({ status: 0, timeline: 0, gate: 0 });
+
   // 파이프라인 상태 fetch
   const fetchStatus = useCallback(() => {
+    const seq = ++seqRef.current.status;
     fetch(`/api/pipeline/status`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: PipelineStatusData | null) => {
+        if (seq !== seqRef.current.status) return;
         if (data?.steps) {
           setSteps(data.steps);
           // 실행 중인 스텝 업데이트
@@ -325,29 +333,39 @@ export default function PipelinePage() {
         }
         setStatusState("ok");
       })
-      .catch(() => setStatusState("error"));
+      .catch(() => {
+        if (seq === seqRef.current.status) setStatusState("error");
+      });
   }, []);
 
   // 타임라인 fetch
   const fetchTimeline = useCallback(() => {
+    const seq = ++seqRef.current.timeline;
     fetch(`/api/pipeline/timeline?limit=30`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: { events: TimelineEvent[] } | null) => {
+        if (seq !== seqRef.current.timeline) return;
         if (data?.events) setTimeline(data.events);
         setTimelineState("ok");
       })
-      .catch(() => setTimelineState("error"));
+      .catch(() => {
+        if (seq === seqRef.current.timeline) setTimelineState("error");
+      });
   }, []);
 
   // 게이트 fetch
   const fetchGates = useCallback(() => {
+    const seq = ++seqRef.current.gate;
     fetch(`/api/gate`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: Record<string, GateResult> | null) => {
+        if (seq !== seqRef.current.gate) return;
         if (data) setGates(data);
         setGateState("ok");
       })
-      .catch(() => setGateState("error"));
+      .catch(() => {
+        if (seq === seqRef.current.gate) setGateState("error");
+      });
   }, []);
 
   // 초기 로드 + 10초 자동 새로고침

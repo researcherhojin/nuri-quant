@@ -149,7 +149,50 @@ describe("파이프라인 fetch 3-state (#1250)", () => {
     });
   });
 
-  describe("(c) 재시도가 복구한다", () => {
+  describe("(c) 겹친 폴링 — 늦게 도착한 응답은 화면을 바꾸지 않는다 (codex P2)", () => {
+    it("poll N+1 성공 뒤 도착한 poll N 실패가 화면을 에러로 뒤집지 않는다", async () => {
+      // 10초 폴링이라 느린 요청이 다음 요청과 겹친다. 응답 순서는 보장되지 않는다.
+      let rejectFirst: (e: Error) => void = () => {};
+      let timelineCalls = 0;
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/api/pipeline/timeline")) {
+          timelineCalls += 1;
+          if (timelineCalls === 1) {
+            // 1번째: 아직 미결. 2번째가 성공한 **뒤에** 실패시킨다.
+            return new Promise((_res, rej) => {
+              rejectFirst = rej;
+            });
+          }
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: [] }) });
+        }
+        if (url.includes("/api/pipeline/status")) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: okSteps }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(okGates) });
+      }) as unknown as typeof fetch;
+
+      await renderPage();
+      // 10초 인터벌 → 2번째 타임라인 폴 발사 + 성공
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await waitFor(() => {
+        expect(screen.getByText(new RegExp(PL.NO_EVENTS))).toBeInTheDocument();
+      });
+      expect(timelineCalls).toBe(2);
+
+      // 이제서야 1번째가 실패한다 — 이미 화면엔 더 새로운 성공 결과가 있다.
+      await act(async () => {
+        rejectFirst(new Error("slow request died"));
+      });
+
+      // Mutation lock: 토큰 검사를 지우면 여기서 에러 패널이 뜬다.
+      expect(screen.queryByText(ERRORS.PIPELINE_TIMELINE_FAILED)).not.toBeInTheDocument();
+      expect(screen.getByText(new RegExp(PL.NO_EVENTS))).toBeInTheDocument();
+    });
+  });
+
+  describe("(d) 재시도가 복구한다", () => {
     it("재시도 버튼이 다시 fetch 해 게이트 조건을 표시한다", async () => {
       let gateCalls = 0;
       global.fetch = vi.fn().mockImplementation((url: string) => {
