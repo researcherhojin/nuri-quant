@@ -32,6 +32,7 @@ from __future__ import annotations
 import logging
 
 from nuri.core.db import DatabaseError, OperationalError, query
+from nuri.core.ticker_names import is_kr_ticker
 from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
@@ -85,3 +86,41 @@ def latest_usd_krw_value(db_path=None) -> float | None:
     """`latest_usd_krw` 의 값만 필요한 호출자를 위한 얇은 래퍼."""
     got = latest_usd_krw(db_path=db_path)
     return got[0] if got else None
+
+
+#: 환산 불가 사유 — 사람이 읽는 문장. 조용한 빈칸은 결함처럼 보이므로 **이유를 같이** 낸다.
+FX_UNAVAILABLE_REASON = (
+    "USD/KRW 미수집 — 원화 자산이 있어 통화 혼합 합계를 낼 수 없습니다 (`make collect` 으로 환율 갱신)"
+)
+
+
+def is_krw_holding(ticker, currency) -> bool:
+    """이 보유가 원화 표시인가. **레포 정본 술어** (#1283 codex P1).
+
+    `currency == "KRW"` 이거나 `.KS`/`.KQ`. 접미사만 보면 `currency="KRW"` 인 무접미
+    보유가 "달러 자산" 으로 오분류된다. 같은 식이 `analysis/portfolio.py` ·
+    `analysis/sector.py` · `alerts/risk_signals.py` 에 인라인으로 흩어져 있고, 그 통합은
+    #1286 이 다룬다 — 여기서는 새 사본을 만들지 않으려고 이 함수를 쓴다.
+    """
+    return currency == "KRW" or is_kr_ticker(str(ticker))
+
+
+def cross_currency_unavailable(rate: float | None, has_krw_exposure: bool) -> str | None:
+    """통화 혼합 합계를 낼 수 있나. 낼 수 있으면 `None`, 없으면 사유 문자열.
+
+    ## 왜 이 판단이 한 곳에 있어야 하나
+
+    환율이 없을 때 무엇이 불가능해지는지는 **분모** 하나로 정해진다. 총 자산·계좌별
+    평가액·비중%·자산배분은 전부 "원화 자산과 달러 자산을 더한 값" 을 분모로 쓰므로,
+    원화 보유가 하나라도 있으면 **그 합계 전체가 미상**이 된다 — KR 종목만 미상인 게
+    아니다. 비중의 분모가 미상이면 US 종목의 비중도 말할 수 없다.
+
+    반대로 **환산이 필요 없는 것은 그대로 정확하다**: 종목별 현재가·수량, 한 통화 안에서
+    계산되는 손익률, 그리고 원화 자산이 전혀 없는 포트폴리오의 모든 합계.
+
+    이 구분을 소비자마다 다시 유도하면 갈린다 — 실제로 #1283 이 고친 4곳이 서로 다른
+    상수(1400 / 1450)를 쓰고 있었다.
+    """
+    if rate is not None or not has_krw_exposure:
+        return None
+    return FX_UNAVAILABLE_REASON
