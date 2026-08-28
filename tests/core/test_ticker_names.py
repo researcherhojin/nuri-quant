@@ -28,6 +28,7 @@ class TestIsKrTicker:
 class TestGetTickerName:
     def setup_method(self) -> None:
         ticker_names.get_ticker_name.cache_clear()
+        ticker_names.get_ticker_name_local.cache_clear()  # #1255: 두 캐시가 짝이다
 
     def test_us_ticker_returns_none(self) -> None:
         assert ticker_names.get_ticker_name("MSFT") is None

@@ -139,7 +139,10 @@ def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
 
     import yaml
 
-    from nuri.core.ticker_names import get_ticker_name
+    # 요청 경로는 network-free 변형을 쓴다 (#1255) — 아래 한글 루프가 KOSPI200
+    # 203개 전 티커를 도는데, pykrx fallback 이 붙어 있으면 그 요청 하나가
+    # 네트워크를 타고 콜드스타트 4.64s 를 문다.
+    from nuri.core.ticker_names import get_ticker_name_local
 
     term = q.strip().upper()
     results: list[dict] = []
@@ -163,7 +166,7 @@ def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
             results.append(
                 {
                     "ticker": t,
-                    "name": get_ticker_name(t),
+                    "name": get_ticker_name_local(t),
                     "price": price_row[0]["close"] if price_row else None,
                     "date": price_row[0]["date"] if price_row else None,
                 }
@@ -178,7 +181,7 @@ def search_tickers(q: str = Query(..., min_length=1, max_length=20)):
             if t in seen:
                 continue
             if t.endswith(".KS") or t.endswith(".KQ"):
-                name = get_ticker_name(t)
+                name = get_ticker_name_local(t)
                 if name and term_lower in name.lower():
                     seen.add(t)
                     price_row = query("SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (t,))
@@ -259,10 +262,12 @@ def get_latest_prices(tickers: str = Query(..., description="Comma-separated tic
 @router.get("/ticker/{symbol}")
 def get_ticker_detail(symbol: str):
     """단일 종목의 모든 분석 데이터."""
-    from nuri.core.ticker_names import get_ticker_name
+    # 호출은 1회지만 같은 요청 경로다 — 콜드 상태의 페이지 로드가 pykrx 를
+    # 기다리며 멎는다 (#1255).
+    from nuri.core.ticker_names import get_ticker_name_local
 
     ticker = symbol.upper()
-    result = {"ticker": ticker, "name": get_ticker_name(ticker)}
+    result = {"ticker": ticker, "name": get_ticker_name_local(ticker)}
 
     # 1. 가격
     price_row = query(

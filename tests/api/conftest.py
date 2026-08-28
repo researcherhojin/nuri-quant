@@ -38,8 +38,10 @@ def _mock_pykrx_names(monkeypatch):
     _fake_stock = types.SimpleNamespace(get_market_ticker_name=lambda code: _KR_NAMES.get(str(code), ""))
     monkeypatch.setitem(sys.modules, "pykrx", types.SimpleNamespace(stock=_fake_stock))
     _tn.get_ticker_name.cache_clear()
+    _tn.get_ticker_name_local.cache_clear()  # #1255: 요청 경로가 쓰는 쪽도 같이 비운다
     yield
     _tn.get_ticker_name.cache_clear()
+    _tn.get_ticker_name_local.cache_clear()
 
 
 @pytest.fixture()
