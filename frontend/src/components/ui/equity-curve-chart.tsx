@@ -3,6 +3,7 @@
 /**
  * EquityCurveChart — 백테스트 equity curve (Strategy vs SPY + Drawdown).
  */
+import { CHART_GRID_STROKE, CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import { useState } from "react";
 import {
   ResponsiveContainer,
@@ -52,7 +53,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
             onClick={() => setPeriod(p.days)}
             className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
               period === p.days
-                ? "bg-muted text-zinc-200"
+                ? "bg-muted text-foreground"
                 : "text-muted-foreground hover:text-foreground/80"
             }`}
           >
@@ -65,16 +66,16 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
       <div className="w-full min-w-0 h-50">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
           <ComposedChart data={chartData} syncId="equity" margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} />
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               interval={Math.floor(chartData.length / 6)}
               tickFormatter={(v) => String(v).slice(2, 7)}
             />
             <YAxis
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v) => `${v}%`}
@@ -82,12 +83,12 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#18181b",
-                border: "1px solid #3f3f46",
+                backgroundColor: CHART_TOOLTIP_BG,
+                border: CHART_TOOLTIP_BORDER,
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              labelStyle={{ color: "#a1a1aa" }}
+              labelStyle={{ color: CHART_MUTED }}
               formatter={(value, name) => {
                 const v = Number(value);
                 const label = name === "strategy" ? "Strategy" : "SPY";
@@ -96,7 +97,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
             />
             <Line
               dataKey="spy"
-              stroke="#71717a"
+              stroke={CHART_MUTED}
               strokeWidth={1.5}
               dot={false}
             />
@@ -116,7 +117,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
           <ComposedChart data={chartData} syncId="equity" margin={{ top: 0, right: 5, bottom: 0, left: 0 }}>
             <XAxis dataKey="date" hide />
             <YAxis
-              tick={{ fontSize: 9, fill: "#71717a" }}
+              tick={{ fontSize: 9, fill: CHART_MUTED }}
               tickLine={false}
               axisLine={false}
               tickFormatter={(v) => `${v}%`}
@@ -125,8 +126,8 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#18181b",
-                border: "1px solid #3f3f46",
+                backgroundColor: CHART_TOOLTIP_BG,
+                border: CHART_TOOLTIP_BORDER,
                 borderRadius: 8,
                 fontSize: 12,
               }}
@@ -147,7 +148,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
       {/* Legend */}
       <div className="flex gap-4 mt-1 text-[10px] text-muted-foreground justify-center">
         <span><span className="inline-block w-3 h-0.5 bg-emerald-500 mr-1 align-middle" />Strategy</span>
-        <span><span className="inline-block w-3 h-0.5 bg-zinc-500 mr-1 align-middle" />SPY</span>
+        <span><span className="inline-block w-3 h-0.5 bg-muted-foreground mr-1 align-middle" />SPY</span>
         <span><span className="inline-block w-3 h-0.5 bg-red-500 mr-1 align-middle" />Drawdown</span>
       </div>
     </div>

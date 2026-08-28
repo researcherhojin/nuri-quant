@@ -4,6 +4,7 @@
  * SignalPerformanceChart — 시그널별 승률 가로 바(드리프트 색) + PF 라인 (#1225).
  * 승률 0.5 기준선 = 동전던지기 (edge 미입증 기준, STRATEGY §3.11).
  */
+import { CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import { EVIDENCE } from "@/lib/strings";
 import {
   ResponsiveContainer,
@@ -49,7 +50,7 @@ export function SignalPerformanceChart({ data }: { data: SignalPerformanceData }
             <XAxis
               type="number"
               domain={[0, 1]}
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               tickFormatter={winRateTick}
             />
@@ -58,21 +59,21 @@ export function SignalPerformanceChart({ data }: { data: SignalPerformanceData }
             <YAxis
               type="category"
               dataKey="signal_id"
-              tick={{ fontSize: 10, fill: "#a1a1aa" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               axisLine={false}
               width={130}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#18181b",
-                border: "1px solid #3f3f46",
+                backgroundColor: CHART_TOOLTIP_BG,
+                border: CHART_TOOLTIP_BORDER,
                 borderRadius: 8,
                 fontSize: 12,
               }}
               formatter={signalTooltipFormatter}
             />
-            <ReferenceLine x={COIN_FLIP_WIN_RATE} stroke="#71717a" strokeDasharray="4 2" />
+            <ReferenceLine x={COIN_FLIP_WIN_RATE} stroke={CHART_MUTED} strokeDasharray="4 2" />
             <Bar dataKey="win_rate" barSize={14} isAnimationActive={false}>
               {rows.map((r) => (
                 <Cell key={r.signal_id} fill={driftColor(r.drift_status)} />

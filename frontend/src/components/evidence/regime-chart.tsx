@@ -4,6 +4,7 @@
  * RegimeChart — SPY 종가 + SMA50/200 라인 + VIX 서브차트 (#1225).
  * Plotly regime 차트의 네이티브 대체. VIX 30 기준선 = rules.yaml 신규 매수 차단선.
  */
+import { CHART_GRID_STROKE, CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import { EVIDENCE } from "@/lib/strings";
 import {
   ResponsiveContainer,
@@ -23,8 +24,8 @@ import type { RegimeData } from "@/components/evidence/chart-data";
 export const VIX_BLOCK_LEVEL = 30;
 
 const TOOLTIP_STYLE = {
-  backgroundColor: "#18181b",
-  border: "1px solid #3f3f46",
+  backgroundColor: CHART_TOOLTIP_BG,
+  border: CHART_TOOLTIP_BORDER,
   borderRadius: 8,
   fontSize: 12,
 } as const;
@@ -62,28 +63,28 @@ export function RegimeChart({ data }: { data: RegimeData }) {
     <div className="min-w-0" data-testid="regime-chart" role="img" aria-label={EVIDENCE.TITLE_REGIME}>
       {chip && (
         <div className="mb-2">
-          <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-zinc-200">{chip}</span>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground">{chip}</span>
         </div>
       )}
       <div className="w-full min-w-0 h-64">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
           <ComposedChart data={spy} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} />
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               interval={Math.floor(spy.length / 6)}
             />
             <YAxis
               domain={[minClose, maxClose]}
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               axisLine={false}
               tickFormatter={priceTick}
               width={50}
             />
-            <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: "#a1a1aa" }} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: CHART_MUTED }} />
             <Area
               dataKey="close"
               stroke="var(--chart-1)"
@@ -119,12 +120,12 @@ export function RegimeChart({ data }: { data: RegimeData }) {
             <LineChart data={vix} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
               <XAxis dataKey="date" hide />
               <YAxis
-                tick={{ fontSize: 9, fill: "#71717a" }}
+                tick={{ fontSize: 9, fill: CHART_MUTED }}
                 tickLine={false}
                 axisLine={false}
                 width={50}
               />
-              <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: "#a1a1aa" }} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: CHART_MUTED }} />
               <ReferenceLine y={VIX_BLOCK_LEVEL} stroke="#f59e0b" strokeDasharray="4 2" />
               <Line dataKey="vix" stroke="#3FA6DA" strokeWidth={1} dot={false} />
             </LineChart>
