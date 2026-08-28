@@ -20,8 +20,8 @@ from pathlib import Path
 import pandas as pd
 
 from nuri.core.db import query, query_df
+from nuri.core.fx import is_krw_holding
 from nuri.core.rules import LEVERAGE_ETFS, MAX_SINGLE_POSITION
-from nuri.core.ticker_names import is_kr_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +205,7 @@ def analyze_portfolio(db_path=None) -> pd.DataFrame:
 
         # 현재가치 (USD 기준으로 통일)
         # KR(.KS/.KQ) 종목은 계좌 통화와 무관하게 KRW로 처리 (#764)
-        is_krw = currency == "KRW" or is_kr_ticker(ticker)
+        is_krw = is_krw_holding(ticker, currency)
         if is_krw:
             current_value_usd = (current_price * qty) / usd_krw
             cost_basis_usd = (avg_price * qty) / usd_krw
