@@ -104,78 +104,109 @@ class TestNoInlineCopyRemains:
             assert not self.INLINE.search(ok), f"시장 질문을 오탐한다: {ok.strip()}"
 
 
-class TestCurrencySitesUseThePredicate:
-    """환산하는 곳은 **정본 술어**를 경유한다 — 접미사 단독으로 돌아가면 FAIL.
+def _calls_in(rel: str, func: str | None = None) -> dict[str, int]:
+    """`rel` 안에서 술어 호출 수를 센다. `func` 를 주면 **그 함수 본문만** 본다.
 
-    시장 질문(`region` / `session` / `market` / universe 필터)은 대상이 아니다.
+    ⚠️ 텍스트 카운트가 아니라 AST **Call 노드**를 센다. 처음엔 `src.count(...)` 로 셌다가
+    같은 파일 **주석**에 `is_krw_holding()` 이 있어 카운트가 부풀었고, 루프를 되돌리는
+    뮤테이션이 통과했다 (실측). 이 레포가 이미 아는 함정이다
+    (`test_no_facade_query_patch.py`: "독스트링/주석 언급은 오탐").
+
+    ⚠️ 그리고 **함수 단위**로 센다. 파일 전체를 세면, 대상 분기가 접미사 단독으로
+    회귀해도 파일 어딘가에 무관한 호출이 하나 더 생기면 잠금이 헐거워진다
+    (codex 리뷰 P3).
+    """
+    tree = ast.parse((NURI / rel).read_text(encoding="utf-8"))
+    scope: ast.AST = tree
+    if func is not None:
+        found = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == func]
+        assert found, f"{rel}: 함수 {func} 를 찾지 못했다 — 이름이 바뀌면 잠금이 공허해진다"
+        scope = found[0]
+    out = {"is_krw_holding": 0, "is_kr_ticker": 0}
+    for n in ast.walk(scope):
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in out:
+            out[n.func.id] += 1
+    return out
+
+
+class TestCurrencySitesUseThePredicate:
+    """환산하는 곳은 **정본 술어**를 실제로 **호출**한다.
+
+    codex 리뷰 P3: 예전에는 파일에 문자열이 있기만 하면 통과해서, import 나 주석만
+    남고 정작 환산 분기가 접미사 단독으로 회귀해도 초록이었다.
     """
 
-    #: 통화 환산을 하는 함수와, 그 안에서 술어를 부르는지 확인할 파일.
+    #: (파일, 환산 함수) — 함수 단위로 확인한다. `None` 은 **같은 함수 안에서 시장
+    #: 질문도 하는 곳**이라 "접미사 단독 호출 0개" 규칙을 적용할 수 없다는 뜻이다:
+    #:   - `sector.analyze_sector` — 53행 통화(환산), 55행 `region`(시장). 두 줄 간격.
+    #:   - `risk_signals` — session 게이트가 접미사 단독으로 판정하는 게 **맞다**.
+    #: 이 둘은 술어 **호출 여부**만 확인하고, 접미사 금지는 걸지 않는다.
     CONVERSION_SITES = (
-        "analysis/portfolio.py",
-        "analysis/sector.py",
-        "alerts/risk_signals.py",
-        "alerts/premarket_brief.py",
-        "trading/recommend/price_targets.py",
-        "trading/recommend/holdings_monitor.py",
+        ("analysis/portfolio.py", "analyze_portfolio"),
+        ("analysis/sector.py", None),
+        ("alerts/risk_signals.py", None),
+        ("alerts/premarket_brief.py", "_collect_context"),
+        ("trading/recommend/price_targets.py", "check_portfolio_mdd"),
+        ("trading/recommend/holdings_monitor.py", "_classify_asset_class"),
     )
 
-    @pytest.mark.parametrize("rel", CONVERSION_SITES)
-    def test_site_calls_the_predicate(self, rel):
-        src = (NURI / rel).read_text(encoding="utf-8")
-        assert "is_krw_holding(" in src, f"{rel}: 정본 술어를 쓰지 않는다"
+    @pytest.mark.parametrize(("rel", "func"), CONVERSION_SITES)
+    def test_site_calls_the_predicate(self, rel, func):
+        counts = _calls_in(rel, func)
+        where = f"{rel}::{func}" if func else rel
+        assert counts["is_krw_holding"] >= 1, f"{where}: 정본 술어를 호출하지 않는다"
+
+    @pytest.mark.parametrize(("rel", "func"), CONVERSION_SITES)
+    def test_no_conversion_site_still_asks_only_the_suffix(self, rel, func):
+        """환산 함수 안에 `is_kr_ticker` 직접 호출이 남아 있으면 술어가 갈린 것이다.
+
+        Mutation lock: 어느 환산 분기든 `is_kr_ticker(...)` 로 되돌리면 FAIL — 파일
+        어딘가의 무관한 호출로는 우회되지 않는다 (함수 스코프).
+        """
+        if func is None:
+            pytest.skip("같은 함수 안에서 시장 질문도 하는 곳 — 위 CONVERSION_SITES 주석 참조")
+        counts = _calls_in(rel, func)
+        assert counts["is_kr_ticker"] == 0, (
+            f"{rel}::{func}: 환산 함수 안에서 접미사 단독 판정을 쓴다 "
+            f"({counts['is_kr_ticker']}회) — 통화 질문에는 `is_krw_holding` 을 쓴다"
+        )
 
     def test_every_listed_site_exists(self):
         """양방향 — 파일이 사라지거나 이름이 바뀌면 위 검사가 조용히 공허해진다."""
-        missing = [r for r in self.CONVERSION_SITES if not (NURI / r).exists()]
+        missing = [r for r, _ in self.CONVERSION_SITES if not (NURI / r).exists()]
         assert not missing, f"목록이 낡았다 (파일 없음): {missing}"
 
 
 class TestGuardAndLoopAgree:
-    """가드와 환산 루프가 **같은 술어**를 써야 한다 (#1286 의 핵심 모순).
+    """가드와 환산 루프가 **같은 술어**를 쓴다 (#1286 의 핵심 모순).
 
-    `premarket_brief` 에서 가드는 정본, 루프는 접미사 단독이었다. 그러면 가드가
-    "환산 불가" 로 판정한 보유를 루프는 달러로 계산한다 — 한 함수 안에서 두 판정이
-    서로 반대되는 상태다.
-
-    ⚠️ **호출 수는 AST 로 센다.** 처음엔 `src.count("is_krw_holding(")` 로 셌는데,
-    같은 파일의 **주석**에 `is_krw_holding()` 이 들어 있어 카운트가 하나 부풀었고,
-    루프를 접미사 단독으로 되돌리는 뮤테이션이 **통과**했다 (실측). 이 레포가 이미
-    아는 함정이다 — `test_no_facade_query_patch.py` 가 "독스트링/주석 언급은 오탐" 이라
-    텍스트 스윕을 기각한 것과 같은 이유.
+    `premarket_brief` 에서 가드는 정본, 루프는 접미사 단독이었다 — 가드가 "환산 불가"
+    로 판정한 보유를 같은 함수의 루프가 달러로 계산했다.
     """
 
-    @staticmethod
-    def _calls(rel: str) -> int:
-        tree = ast.parse((NURI / rel).read_text(encoding="utf-8"))
-        return sum(
-            1
-            for n in ast.walk(tree)
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "is_krw_holding"
-        )
+    def test_premarket_brief_guard_and_loop(self):
+        c = _calls_in("alerts/premarket_brief.py", "_collect_context")
+        assert c["is_krw_holding"] >= 2, "가드와 루프 중 한쪽이 접미사 단독으로 돌아갔다"
 
-    def test_premarket_brief_uses_one_predicate(self):
-        """Mutation lock: 가드나 루프 중 하나를 접미사 단독으로 되돌리면 FAIL."""
-        assert self._calls("alerts/premarket_brief.py") >= 2, (
-            "가드와 루프 중 한쪽이 접미사 단독으로 돌아갔다 — 같은 함수 안에서 판정이 갈린다"
-        )
+    def test_price_targets_guard_and_loop(self):
+        c = _calls_in("trading/recommend/price_targets.py", "check_portfolio_mdd")
+        assert c["is_krw_holding"] >= 2, "MDD 가드와 환산 루프의 술어가 갈렸다"
 
-    def test_price_targets_uses_one_predicate(self):
-        assert self._calls("trading/recommend/price_targets.py") >= 2, "MDD 가드와 환산 루프의 술어가 갈렸다"
+    def test_the_counter_is_function_scoped(self):
+        """카나리아 — 파일 전체를 세면 무관한 호출이 잠금을 헐겁게 한다 (codex P3)."""
+        whole = _calls_in("trading/recommend/price_targets.py")
+        scoped = _calls_in("trading/recommend/price_targets.py", "check_portfolio_mdd")
+        assert scoped["is_krw_holding"] <= whole["is_krw_holding"], "스코프가 파일보다 넓다"
+        assert scoped["is_krw_holding"] >= 2
 
     def test_the_counter_ignores_comments(self):
-        """카나리아 — 주석 속 언급을 세면 위 두 잠금이 조용히 헐거워진다 (실제로 그랬다)."""
-        import tempfile
-
+        """카나리아 — 주석 속 언급을 세면 잠금이 조용히 헐거워진다 (실제로 그랬다)."""
         src = "# is_krw_holding() 를 쓴다\nx = is_krw_holding(a, b)\n"
-        with tempfile.TemporaryDirectory() as d:
-            f = Path(d) / "m.py"
-            f.write_text(src, encoding="utf-8")
-            tree = ast.parse(f.read_text(encoding="utf-8"))
-            n = sum(
-                1
-                for x in ast.walk(tree)
-                if isinstance(x, ast.Call) and isinstance(x.func, ast.Name) and x.func.id == "is_krw_holding"
-            )
+        tree = ast.parse(src)
+        n = sum(
+            1
+            for x in ast.walk(tree)
+            if isinstance(x, ast.Call) and isinstance(x.func, ast.Name) and x.func.id == "is_krw_holding"
+        )
         assert n == 1, f"주석을 호출로 셌다: {n}"
         assert src.count("is_krw_holding(") == 2, "텍스트 카운트는 실제로 부풀어야 한다(대조)"
