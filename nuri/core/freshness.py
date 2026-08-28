@@ -199,13 +199,56 @@ FRESHNESS_POLICIES: dict[str, dict] = {
         # (`nuri/core/CLAUDE.md`: 멀쩡한 축이 죽은 축을 가린다).
         # 그래서 **날짜로 묶어 그날 전 행이 완전한 날**만 센다.
         #
-        # 행수 floor 는 여기 두지 않는다 — 분모가 포트폴리오 구성이라(prod 실측 날짜별
-        # 18~21행) 소스 감시가 우리 구성에 의존하게 되고, 그건 `ark`(#1147)에서 한 번
-        # 틀린 축이다. 부분 배치(행이 통째로 모자란 경우)는 별도 근거가 필요해 분리한다.
+        # **완결성만으로는 부분 배치를 못 본다** (#1266). 위 검사는 "그날 있는 행이 전부
+        # 완전한가" 만 묻는다 — 18종목 배치에서 3행만 쓰이고 그 3행이 완전하면 초록이다.
+        # `scheduler.py` 의 consensus 잡은 `save_to_recommendations(results)` 를 먼저,
+        # `record_decisions(results)` 를 나중에 부르므로 **그 사이에 프로세스가 죽으면**
+        # recommendations 18행 / decisions k행 이 남는다. 루프 중간 예외는 이 축이 아니다
+        # (`run_step(..., reraise=True)` 가 step_failed + collector_runs 로 이미 시끄럽다).
+        # 진짜 조용한 축은 프로세스 사망이다 — fd 고갈(#778) · 로그인 세션 부재(#1191).
+        # 그래서 **같은 날 합의 배치 크기를 분모로** 깔아 행수 floor 를 건다.
+        #
+        # 분모는 `agent_verdicts IS NOT NULL` 로 고른다. 이 컬럼을 채우는 프로덕션 경로는
+        # 합의 persistence 뿐인데, 그건 **현재 호출 그래프의 성질이지 불변식이 아니다** —
+        # `tracker.save_recommendations(verdicts=...)` 도 채울 수 있고 지금은 아무도 그렇게
+        # 부르지 않을 뿐이다 (Codex P3). 가정으로 두면 다음 호출자가 조용히 분모를 오염시키므로
+        # 호출 형태를 테스트로 잠근다. **Test:** `tests/core/test_freshness.py::
+        # TestDecisionsContextPolicy::test_no_caller_fills_agent_verdicts_outside_consensus`
+        # 기각한 분모 3종:
+        #  - **포트폴리오 구성**: `portfolio` 에 date 컬럼이 없고, 있어도 감시가 우리 구성에
+        #    의존하게 된다(#1147 축). 단 그 반론은 *외부 소스* 정책 얘기다 — 여기 분모는
+        #    같은 잡이 같은 실행에서 낸 자기 산출물이라 교집합 문제가 성립하지 않는다.
+        #  - **행수 롤링 중앙값**: 종목을 실제로 줄이면 발화한다.
+        #  - **`source IS NULL`**: `make recommend` CLI(`tracker.save_recommendations`)가
+        #    스크리닝 종목을 source NULL 로 같이 쓴다(dev 원장 실측 29행, 2026-08-10 은
+        #    17행 전부 CLI). 합의가 결정하지 않은 종목이라 분모만 부풀어 **멀쩡한 날이
+        #    빨간불**이 된다. 게다가 `source` 는 §3.11 사전등록 모집단 컬럼이라
+        #    (`decision_alpha.fetch_sample` 이 `source IS NULL` 로 표본을 고른다) 라벨을
+        #    옮기는 것 자체가 잠긴 판정 기준의 사후 수정이다.
+        #
+        # `>=` 이지 `=` 가 아니다 — 결정이 합의 행보다 많은 날이 실재한다(dev 원장
+        # 2026-04-11: rec 18 / dec 20). 합의 행의 `agent_verdicts` 가 비면 분모가 줄어
+        # floor 가 **약해질 뿐** 거짓 빨간불은 나지 않는다(안전한 방향).
+        #
+        # LEFT JOIN + `COALESCE(r.n, 0)` 이지 INNER JOIN 이 아니다. 분모를 못 구하는 날
+        # (합의 행이 아예 없는 날)을 낙제시키면 **합의 행이 없는 모든 DB 가 빨간불**이 된다
+        # — e2e seed 가 정확히 그 모양이다. 그건 코드 결함이 아닌 빨간불이고, 이 레포는
+        # false-red 가 빨간불을 무시하는 습관을 만든다는 걸 이미 한 번 겪었다(#1270).
+        # 게다가 그 축은 **여기 일이 아니다**: `consensus` 정책이 `recommendations` 를
+        # 직접 보고 있고 그쪽은 `verdict_gate` 소속이라, 배치 부재는 이미 감시된다.
+        # 여기는 배치가 있을 때 그 크기만큼 결정이 남았는지만 본다.
+        #
+        # **못 보는 것**: `analyze_portfolio()` 가 상류에서 잘려 3건만 돌려주는 경우.
+        # 두 writer 가 같은 `results` 를 소비하므로 rec 3 / dec 3 으로 정합해 보인다.
+        # 그건 배치 크기 자체의 감시라 이 정책 밖이다.
         "query": (
-            "SELECT datetime(MAX(date)) FROM (SELECT date FROM decisions "
-            "GROUP BY date "
-            "HAVING SUM(regime IS NOT NULL AND scoring_detail IS NOT NULL) = COUNT(*))"
+            "SELECT datetime(MAX(d.date)) FROM "
+            "(SELECT date, COUNT(*) n, "
+            "        SUM(regime IS NOT NULL AND scoring_detail IS NOT NULL) c "
+            "   FROM decisions GROUP BY date) d "
+            "LEFT JOIN (SELECT date, COUNT(*) n FROM recommendations "
+            "            WHERE agent_verdicts IS NOT NULL GROUP BY date) r ON r.date = d.date "
+            "WHERE d.c = d.n AND d.n >= COALESCE(r.n, 0)"
         ),
         "label": "결정 컨텍스트 (완결)",
     },
