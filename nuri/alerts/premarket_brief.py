@@ -266,7 +266,17 @@ def _collect_context(db_path=None) -> dict:
         from nuri.core.ticker_names import is_kr_ticker
 
         rate = latest_usd_krw_value(db_path=db_path)
-        kr_count = sum(1 for r in rows if is_kr_ticker(r["ticker"]))
+        # 술어는 레포 정본 (`analysis/portfolio.py:208` 등): `currency == "KRW"` 이거나
+        # `.KS/.KQ`. suffix 만 보면 `currency="KRW"` 인 무접미 보유가 "US 전용" 으로
+        # 오분류돼 환율 없이 총액이 나간다 (codex 리뷰 P1).
+        #
+        # `quantity > 0` 도 함께 본다 — 이 쿼리에는 `check_portfolio_mdd` 와 달리 수량
+        # 필터가 없어서, **수량 0 인 낡은 KR 행 하나가** 살아있는 KR 노출이 전혀 없는데도
+        # Portfolio 섹션을 통째로 막는다 (codex 리뷰 P2). 수량 0 은 총액에 0 을 더하므로
+        # 애초에 환산이 필요 없다.
+        kr_count = sum(
+            1 for r in rows if (r["quantity"] or 0) > 0 and (r["currency"] == "KRW" or is_kr_ticker(r["ticker"]))
+        )
 
         # #1283: 환율이 없으면 `or 1400.0` 으로 메웠다. 매일 아침 읽는 브리프에 지어낸
         # 총액을 싣는 것보다 **빈 칸이 정직하다** — 채워져 있으면 수집기가 죽은 걸 모른다.

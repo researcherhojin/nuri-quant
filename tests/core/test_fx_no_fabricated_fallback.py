@@ -44,6 +44,10 @@ TODAY = today_kst()
 #: 합성 종목 — 실제 보유와 무관하다 (public repo, `tests/CLAUDE.md` privacy).
 KR_TICKER = "999999.KS"
 US_TICKER = "ZZZZ"
+#: 접미사 없이 **통화만** KRW 인 보유. `_classify_asset_class` 가 이걸 `equity_kr` 로
+#: 잠그고 있고(`tests/trading/recommend/test_holdings_monitor.py`), 환산 술어 정본도
+#: `currency == "KRW" or is_kr_ticker(...)` 다. suffix 만 보는 가드는 이걸 놓친다.
+KR_BY_CURRENCY_TICKER = "YYYY"
 ACCOUNT = "Brokerage Alpha"
 
 
@@ -65,11 +69,11 @@ def _seed_fx(db_path, value, date=TODAY):
         )
 
 
-def _seed_holding(db_path, ticker, avg_price, quantity, close=None):
+def _seed_holding(db_path, ticker, avg_price, quantity, close=None, currency="USD"):
     with get_db(db_path) as conn:
         conn.execute(
-            "INSERT INTO portfolio (account, ticker, quantity, avg_price) VALUES (?, ?, ?, ?)",
-            (ACCOUNT, ticker, quantity, avg_price),
+            "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
+            (ACCOUNT, ticker, quantity, avg_price, currency),
         )
         if close is not None:
             conn.execute(
@@ -209,6 +213,27 @@ class TestPortfolioMddAbstainsRatherThanGuess:
             assert check_portfolio_mdd(db_path=db) is None, "지어낸 환율로 손절선을 판정했다"
         assert caplog.records, "판정을 포기하고도 조용했다 — 아무도 수집기 결함을 모른다"
 
+    def test_krw_currency_without_suffix_also_abstains(self, db, caplog):
+        """codex 리뷰 P1 — 접미사가 아니라 **정본 술어**로 KR 을 가른다.
+
+        `currency == "KRW"` 인데 `.KS/.KQ` 가 없는 보유를 suffix 만 보고 "US 전용" 으로
+        판정하면, 환율이 없는데도 판정이 통과한다. Mutation lock: 가드를
+        `is_kr_ticker(...)` 단독으로 되돌리면 FAIL.
+        """
+        from nuri.trading.recommend.price_targets import check_portfolio_mdd
+
+        _seed_holding(
+            db,
+            KR_BY_CURRENCY_TICKER,
+            avg_price=100_000.0,
+            quantity=10,
+            close=50_000.0,
+            currency="KRW",
+        )
+        with caplog.at_level(logging.WARNING, logger="nuri.trading.recommend.price_targets"):
+            assert check_portfolio_mdd(db_path=db) is None, "currency='KRW' 보유를 접미사만 보고 US 전용으로 오분류했다"
+        assert caplog.records
+
     def test_us_only_portfolio_still_judged_without_a_rate(self, db):
         """대조군 — 환율이 없어도 US 전용은 정확히 계산된다. 일괄 None 은 과잉이다."""
         from nuri.trading.recommend.price_targets import check_portfolio_mdd
@@ -259,6 +284,38 @@ class TestBriefOmitsTotalsRatherThanInventingThem:
         assert ctx["portfolio_totals"], "환율이 있는데 총액을 못 냈다"
         assert ctx["portfolio_totals_blocked"] is None
 
+    def test_krw_currency_without_suffix_also_blocks(self, db):
+        """codex 리뷰 P1 — 브리프도 같은 정본 술어를 써야 한다."""
+        from nuri.alerts.premarket_brief import _collect_context
+
+        _seed_holding(
+            db,
+            KR_BY_CURRENCY_TICKER,
+            avg_price=100_000.0,
+            quantity=10,
+            close=100_000.0,
+            currency="KRW",
+        )
+        ctx = _collect_context(db_path=db)
+        assert ctx["portfolio_totals"] is None, (
+            "currency='KRW' 보유를 접미사만 보고 US 전용으로 오분류해 총액을 지어냈다"
+        )
+
+    def test_a_zero_quantity_kr_row_does_not_block(self, db):
+        """codex 리뷰 P2 — 이 쿼리에는 수량 필터가 없다.
+
+        수량 0 인 낡은 KR 행은 총액에 0 을 더하므로 환산이 필요 없다. 그런 행 하나가
+        살아있는 KR 노출이 전혀 없는데도 Portfolio 섹션을 막으면 그건 false-red 다.
+        Mutation lock: `(r["quantity"] or 0) > 0` 조건을 지우면 FAIL.
+        """
+        from nuri.alerts.premarket_brief import _collect_context
+
+        _seed_holding(db, KR_TICKER, avg_price=100_000.0, quantity=0, close=100_000.0)
+        _seed_holding(db, US_TICKER, avg_price=100.0, quantity=10, close=100.0)
+        ctx = _collect_context(db_path=db)
+        assert ctx["portfolio_totals"], "수량 0 인 KR 행 하나가 살아있는 US 총액까지 막았다"
+        assert ctx["portfolio_totals"]["total_usd"] == pytest.approx(1000.0)
+
     def test_us_only_totals_computed_without_a_rate(self, db):
         """대조군 — 환율이 없어도 US 전용 보유는 환산이 필요 없다."""
         from nuri.alerts.premarket_brief import _collect_context
@@ -304,6 +361,21 @@ class TestNoNewFabricatedRateAppears:
     (`test_no_facade_query_patch.py`: "독스트링/주석 언급은 오탐이라 텍스트 sweep 기각").
     그래서 **숫자 리터럴은 AST 로** 집고(문자열·주석·독스트링이 구조적으로 배제된다),
     식별자만 같은 물리 행에서 본다.
+
+    ## 한계 (정직하게)
+
+    **이건 tripwire 지 증명이 아니다.** 한 물리 행 안의 리터럴만 보므로 값이 한 단계라도
+    건너뛰면 전부 빠져나간다 (codex 리뷰 P2, 실측 확인):
+
+    - `FALLBACK = 1400` → `rate = x or FALLBACK` — `FALLBACK = 1400` 행에 FX 식별자가
+      없으면 놓친다 (`FALLBACK_RATE` 처럼 이름에 `rate` 가 들어가야 잡힌다)
+    - `rate = x or 14 * 100` — 1000~2000 리터럴이 아예 없다
+    - `rate = x or cfg.fx_default` — 리터럴이 다른 파일에 있다
+
+    제대로 막으려면 데이터플로 분석이 필요한데, 그 비용은 이 방어의 가치를 넘는다.
+    **진짜 방어는 위쪽 소비자별 동작 잠금**이고, 이 스윕은 *가장 흔한 재발 형태*(옛 코드를
+    복사해 새 자리에 붙이기)를 잡는 값싼 그물이다. 이 한계를 적어두는 이유는, 스윕이
+    초록이라는 걸 "지어낸 환율이 없다" 로 읽으면 안 되기 때문이다.
     """
 
     #: 좁게 시작했다가 넓혔다. `usd_krw|exchange_rate|fx_` 만 보면 **지금 있는 철자만**

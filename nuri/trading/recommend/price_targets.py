@@ -679,7 +679,7 @@ def check_portfolio_mdd(db_path: Optional[Path] = None) -> dict | None:
         usd_krw = None
 
     holdings = query_df(
-        "SELECT ticker, avg_price, quantity FROM portfolio WHERE quantity > 0",
+        "SELECT ticker, avg_price, quantity, currency FROM portfolio WHERE quantity > 0",
         db_path=db_path,
     )
     if holdings.empty:
@@ -687,7 +687,14 @@ def check_portfolio_mdd(db_path: Optional[Path] = None) -> dict | None:
 
     # 환율이 없어도 **US 전용 포트폴리오는 정확히 계산된다** — 일괄 포기는 과잉이다.
     # KR 보유가 섞여 있을 때만 판정을 포기한다.
-    kr_count = sum(1 for t in holdings["ticker"] if is_kr_ticker(t))
+    #
+    # ⚠️ 술어는 **레포 정본**을 쓴다: `currency == "KRW" or is_kr_ticker(ticker)`
+    # (`analysis/portfolio.py:208` · `analysis/sector.py:52` · `alerts/risk_signals.py:135`
+    # 와 동일). suffix 만 보면 `currency="KRW"` 인 무접미 보유가 "US 전용" 으로 오분류돼
+    # 환율 없이 판정이 통과한다 (codex 리뷰 P1). 아래 환산 루프는 아직 suffix 만 보는데
+    # 그건 이 PR 밖의 별도 결함이라 #1286 으로 분리했다 — **가드는 넓은 쪽**을 쓴다.
+    # 환산이 필요할 수 *있으면* 판정하지 않는 편이 지어내는 것보다 낫다.
+    kr_count = sum(1 for _, r in holdings.iterrows() if r["currency"] == "KRW" or is_kr_ticker(str(r["ticker"])))
     if usd_krw is None and kr_count:
         logger.warning(
             "USD/KRW 미수집 — 포트폴리오 MDD 판정 포기 (KR 보유 %d종목). "
