@@ -704,7 +704,14 @@ def _get_portfolio_map() -> dict[str, dict]:
         qty = r["quantity"] or 0
         is_kr = is_krw_holding(r["ticker"], r["currency"])
         # 원화 보유인데 환율이 없으면 이 행의 USD 값은 미상이다.
-        val = None if (is_kr and rate is None) else (price * qty / rate if is_kr else price * qty)
+        # 삼항 대신 분기로 쓴다 — 타입체커가 `rate` 를 좁힐 수 있어야 "도달 불가" 가
+        # 조용히 도달 가능해지는 순간을 잡아준다 (#1283 에서 같은 형태를 밟았다).
+        if not is_kr:
+            val = price * qty
+        elif rate is None:
+            val = None
+        else:
+            val = price * qty / rate
         if val is not None:
             total_value += val
         items.append((r, val, market_price, is_kr))

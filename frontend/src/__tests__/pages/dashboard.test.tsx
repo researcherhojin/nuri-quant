@@ -727,10 +727,12 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      const total = screen.getByTestId("hero-total");
-      expect(total.textContent).toContain("—");
-      expect(total.textContent).not.toContain("8,850");
-      expect(total.textContent).toContain(reason);
+      // ⚠️ `hero-total` 컨테이너에 `toContain("—")` 만 걸면 **사유 문자열 안의 em dash**
+      // 가 단언을 대신 만족시킨다 — 값이 "$0" 이어도 통과하는 false lock 이었다
+      // (뮤테이션 실측으로 발각). 값 요소를 직접 본다.
+      const value = screen.getByTestId("hero-total-value");
+      expect(value.textContent).toBe("—");
+      expect(screen.getByTestId("hero-total").textContent).toContain(reason);
     });
   });
 
@@ -748,8 +750,7 @@ describe("DashboardPage", () => {
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      const total = screen.getByTestId("hero-total");
-      expect(total.textContent).toContain("$2,500");
+      expect(screen.getByTestId("hero-total-value").textContent).toBe("$2,500");
     });
   });
 

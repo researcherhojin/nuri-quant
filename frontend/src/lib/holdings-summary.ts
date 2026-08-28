@@ -113,6 +113,29 @@ export interface HoldingsSummary {
   concentration: ConcentrationSummary;
 }
 
+/**
+ * 계좌별 총액 병합 — holdings 평가액 + cash 를 계좌 단위로 합친다 (#1284).
+ *
+ * **미상(null)은 0 으로 접지 않는다.** 없는 돈이 아니라 모르는 돈이라, 0 으로 더하면
+ * 그 계좌가 "현금만 있는 계좌" 처럼 보이고 나머지 계좌 비중이 조용히 부풀려진다.
+ * 한 계좌에 미상이 하나라도 섞이면 그 계좌 합계 전체가 미상이다.
+ *
+ * page.tsx 인라인이었는데 테스트가 닿지 않아 뮤테이션이 **안 잠겼다** — 그래서 뺐다.
+ */
+export function mergeAccountTotals(
+  accountValues: Array<{ account: string; value: number | null }>,
+  cashAccounts: Array<{ account: string; total_usd: number | null }>,
+): Array<{ account: string; value: number | null }> {
+  const totals = new Map<string, number | null>();
+  const add = (account: string, value: number | null) => {
+    const prev = totals.get(account);
+    totals.set(account, prev === null || value === null ? null : (prev ?? 0) + value);
+  };
+  for (const av of accountValues) add(av.account, av.value);
+  for (const c of cashAccounts) add(c.account, c.total_usd);
+  return Array.from(totals.entries()).map(([account, value]) => ({ account, value }));
+}
+
 export interface SummarizeOptions {
   /**
    * #1284: 환율 미수집이면 통화 혼합 총액이 **미상**이라 null 이 온다. 그 경우

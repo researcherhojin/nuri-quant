@@ -69,7 +69,10 @@ export function HeroStats({
           <p className="text-[11px] text-zinc-400 uppercase tracking-wide">{HERO.TOTAL_ASSET}</p>
           {/* verdict 배지는 VerdictBanner 로 승격 (#1206) — 히어로는 스냅샷 수치만 */}
           <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-xl font-semibold tabular-nums tracking-tight text-zinc-100">
+            <span
+              className="text-xl font-semibold tabular-nums tracking-tight text-zinc-100"
+              data-testid="hero-total-value"
+            >
               {formatBigUsd(totalUsd)}
             </span>
           </div>

@@ -16,7 +16,7 @@ import { ActionItems, type ActionItem } from "@/components/ui/action-items";
 import { OpportunityExplorer, type Opportunity } from "@/components/ui/opportunity-explorer";
 import { type MacroEvent, type SystemHealth } from "@/components/ui/market-context";
 import { SystemHealthRail, MacroEventsCard, RegimeShiftBanner } from "@/components/dashboard/system-rail";
-import { summarizeHoldings } from "@/lib/holdings-summary";
+import { summarizeHoldings, mergeAccountTotals } from "@/lib/holdings-summary";
 import { getMacroImpactedSectors } from "@/lib/macro-impact";
 import Link from "next/link";
 import { SECTION, ACTION, COMMON } from "@/lib/strings";
@@ -267,18 +267,10 @@ async function Dashboard({
   // panel had. Compute once at page level so HeroStats + CompositionSection
   // share it without recomputing. Merge account_values + cash_summary so
   // every account (including pension/IRP) appears in the breakdown.
-  // #1284: 미상(null)은 **0 으로 접지 않는다** — 없는 돈이 아니라 모르는 돈이라,
-  // 0 으로 더하면 그 계좌만 사라지고 나머지 계좌 비중이 조용히 부풀려진다.
-  // 한 계좌에 미상이 하나라도 섞이면 그 계좌 합계 전체가 미상이다.
-  const acctTotals = new Map<string, number | null>();
-  const addToAccount = (account: string, value: number | null) => {
-    const prev = acctTotals.get(account);
-    acctTotals.set(account, prev === null || value === null ? null : (prev ?? 0) + value);
-  };
-  for (const av of accountValues) addToAccount(av.account, av.value);
-  for (const cash of d.cash_summary?.accounts ?? []) addToAccount(cash.account, cash.total_usd);
-  const mergedAccountValues = Array.from(acctTotals.entries()).map(
-    ([account, value]) => ({ account, value }),
+  // #1284: 미상(null)은 0 으로 접지 않는다 — 규칙과 그 근거는 `mergeAccountTotals` 참조.
+  const mergedAccountValues = mergeAccountTotals(
+    accountValues,
+    d.cash_summary?.accounts ?? [],
   );
   const summary = summarizeHoldings(enrichedHoldings, {
     totalPortfolioUsd: totalValue,

@@ -482,7 +482,13 @@ def _get_cash_balances(exchange_rate: float | None = None) -> dict:
         # 원화 현금이 있는데 환율이 없으면 그 계좌의 USD 합계는 미상이다 (#1284).
         # `cash_krw == 0` 이면 환산이 필요 없으므로 예전과 같은 숫자가 나온다.
         unknown = cash_krw > 0 and exchange_rate is None
-        acc_total = None if unknown else cash_usd + (cash_krw / exchange_rate if cash_krw else 0.0)
+        # 분기로 쓰는 이유는 actions.py 와 같다 — `exchange_rate` 를 실제로 좁힌다.
+        if unknown:
+            acc_total = None
+        elif cash_krw and exchange_rate is not None:
+            acc_total = cash_usd + cash_krw / exchange_rate
+        else:
+            acc_total = cash_usd
         # 미상 계좌는 금액을 못 세지만 **존재는 숨기지 않는다** — 빈 줄이 0원보다 정직하다.
         if not unknown and not acc_total:
             continue

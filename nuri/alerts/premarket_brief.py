@@ -343,20 +343,33 @@ def _short_ticker_line(item: dict) -> str:
     action = item.get("action", "?")
     conf = item.get("confidence", 0)
     pnl = item.get("pnl_pct", 0)
-    pos = item.get("position_pct", 0)
+    # #1284: 환율 미수집이면 `position_pct` 가 **None** 이다. `.get(key, 0)` 은 키가
+    # 존재하면 기본값을 주지 않으므로 None 이 그대로 흘러와 `:.1f` 에서 터진다 —
+    # 그 예외는 상위 try 가 삼켜 브리프가 조용히 반쪽이 된다.
+    pos = item.get("position_pct")
 
     name = get_ticker_name(t)
     label = f"{name} ({t})" if name else t
-    head = f"{label} ({action} conf {conf}, pnl {pnl:+.1f}%, pos {pos:.1f}%)"
+    pos_txt = "미상" if pos is None else f"{pos:.1f}%"
+    head = f"{label} ({action} conf {conf}, pnl {pnl:+.1f}%, pos {pos_txt})"
 
     accounts = item.get("accounts") or []
     if len(accounts) > 1:
         # 계좌 비중 큰 순으로 정렬. 메인 라인의 `pnl` 는 worst-account 의 손익이라
         # multi-account 종목에선 misleading — breakdown 에 계좌별 pnl 동반 표시.
-        sorted_accounts = sorted(accounts, key=lambda a: a.get("position_pct", 0), reverse=True)
+        # 미상(None)은 크기를 모르므로 정렬 키가 될 수 없다 — 파이썬은 None 과 float 을
+        # 비교하지 못해 TypeError 다. 맨 뒤로 보내고 값은 "미상" 으로 적는다.
+        sorted_accounts = sorted(
+            accounts,
+            key=lambda a: (a.get("position_pct") is None, -(a.get("position_pct") or 0.0)),
+        )
+
+        def _pos(a) -> str:
+            v = a.get("position_pct")
+            return "미상" if v is None else f"{v:.1f}%"
+
         breakdown = " · ".join(
-            f"{a.get('account', '?')} {a.get('position_pct', 0):.1f}%/{a.get('pnl_pct', 0):+.1f}%"
-            for a in sorted_accounts
+            f"{a.get('account', '?')} {_pos(a)}/{a.get('pnl_pct', 0):+.1f}%" for a in sorted_accounts
         )
         return f"{head} [{breakdown}]"
     return head
