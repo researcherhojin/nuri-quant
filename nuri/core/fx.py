@@ -102,7 +102,10 @@ def is_krw_holding(ticker, currency) -> bool:
     `analysis/sector.py` · `alerts/risk_signals.py` 에 인라인으로 흩어져 있고, 그 통합은
     #1286 이 다룬다 — 여기서는 새 사본을 만들지 않으려고 이 함수를 쓴다.
     """
-    return currency == "KRW" or is_kr_ticker(str(ticker))
+    # 대소문자를 무시한다 — `holdings_monitor._classify_asset_class` 가 이미
+    # `currency.upper()` 로 그렇게 하고 있었다. 통합하면서 좁히면 그쪽 동작이 조용히
+    # 바뀌므로, **넓은 쪽**으로 맞춘다: 환산이 필요할 수 있으면 KRW 로 본다 (#1286).
+    return str(currency or "").upper() == "KRW" or is_kr_ticker(str(ticker))
 
 
 def cross_currency_unavailable(rate: float | None, has_krw_exposure: bool) -> str | None:

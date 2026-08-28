@@ -14,6 +14,7 @@ import pandas as pd
 
 from nuri.analysis.portfolio import get_exchange_rate
 from nuri.core.db import query, query_df
+from nuri.core.fx import is_krw_holding
 from nuri.core.ticker_names import is_kr_ticker
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ def analyze_sector() -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
 
         price = latest[0]["close"]
         qty = row["total_qty"]
-        is_krw = row["currency"] == "KRW" or is_kr_ticker(row["ticker"])
+        is_krw = is_krw_holding(row["ticker"], row["currency"])
         current_value = (price * qty / usd_krw) if is_krw else (price * qty)
         region = "KR" if is_kr_ticker(row["ticker"]) else "US"
 
