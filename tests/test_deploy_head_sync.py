@@ -74,6 +74,25 @@ def _fake_ssh(tmp_path: Path) -> Path:
     return p
 
 
+def _broken_ssh(tmp_path: Path, *, rc: int = 255, stdout: str = "") -> Path:
+    """전송 실패 흉내 — 실제 ssh 는 도달 불가 시 255 를 낸다."""
+    p = tmp_path / f"broken_ssh_{rc}_{len(stdout)}.sh"
+    p.write_text(f"#!/usr/bin/env bash\nprintf %s {stdout!r}\nexit {rc}\n", encoding="utf-8")
+    p.chmod(0o755)
+    return p
+
+
+def _garbage_ssh(tmp_path: Path) -> Path:
+    """rc 0 인데 SHA 가 아닌 것을 뱉는 경우 (배너·경고문 등)."""
+    p = tmp_path / "garbage_ssh.sh"
+    p.write_text(
+        '#!/usr/bin/env bash\nprintf "Warning: Permanently added host\\nnot-a-sha\\n"\nexit 0\n',
+        encoding="utf-8",
+    )
+    p.chmod(0o755)
+    return p
+
+
 def _run_verifier(local_repo: Path, ssh: Path, remote_repo: Path):
     return subprocess.run(
         ["bash", str(VERIFIER), str(ssh), "ignored-host", str(remote_repo)],
@@ -132,6 +151,45 @@ class TestHeadSyncIsAbbreviationIndependent:
         assert "initial commit" in lines[2] and "initial commit" in lines[3], "3·4행은 표시용 라벨"
 
 
+class TestFailureIsNotDisguisedAsMismatch:
+    """**검증 실패**(rc 2)와 **검증 결과 불일치**(rc 1)를 나눈다 (codex 리뷰 P1).
+
+    둘을 뭉뚱그리면 "검사 실패" 가 "검사 결과" 로 둔갑한다 — 이 레포가 이미 겪은 형태다
+    (#910/#911: rc=127 이 실패와 구분되지 않아 게이트가 3.5개월 no-op).
+    배포 쪽에서는 더 나쁘다: 마지막 안전 게이트가 **안 돌았는데** "deploy 완료" 가 찍힌다.
+    """
+
+    def test_transport_failure_is_undetermined_not_mismatch(self, tmp_path):
+        """Mutation lock: `undetermined` 를 지우고 실패를 흘리면 rc 가 1 이 되어 FAIL."""
+        a = _make_repo(tmp_path / "local", abbrev=7)
+        r = _run_verifier(a, _broken_ssh(tmp_path, rc=255), tmp_path / "nowhere")
+        assert r.returncode == 2, f"전송 실패를 rc {r.returncode} 로 보고했다 (2 여야 함)\n{r.stderr}"
+        assert r.stderr.strip(), "판정 불가인데 이유를 남기지 않았다"
+
+    def test_remote_exiting_one_is_still_undetermined(self, tmp_path):
+        """가장 위험한 축 — 원격이 rc 1 로 죽으면 '불일치' 와 **정확히 같은 코드**다.
+
+        스크립트가 하위 rc 를 그대로 흘리면(예: `set -e`) 여기서 1 이 나와 배포는
+        '경고' 만 찍고 계속 간다. 반드시 2 로 승격돼야 한다.
+        """
+        a = _make_repo(tmp_path / "local", abbrev=7)
+        r = _run_verifier(a, _broken_ssh(tmp_path, rc=1), tmp_path / "nowhere")
+        assert r.returncode == 2, f"원격 rc 1 을 '불일치'({r.returncode}) 로 흘렸다"
+
+    def test_non_sha_output_is_undetermined(self, tmp_path):
+        """rc 0 인데 SHA 가 아닌 응답 — 그걸 믿으면 **틀린 이유**(불일치)를 보고한다."""
+        a = _make_repo(tmp_path / "local", abbrev=7)
+        r = _run_verifier(a, _garbage_ssh(tmp_path), tmp_path / "nowhere")
+        assert r.returncode == 2, f"SHA 가 아닌 응답을 rc {r.returncode} 로 판정했다"
+
+    def test_real_mismatch_still_reports_one(self, tmp_path):
+        """대조군 — 2 로 다 밀어버리면 진짜 불일치를 놓친다."""
+        a = _make_repo(tmp_path / "local", abbrev=7, content="one")
+        b = _make_repo(tmp_path / "remote", abbrev=7, content="two")
+        r = _run_verifier(a, _fake_ssh(tmp_path), b)
+        assert r.returncode == 1, f"진짜 불일치가 {r.returncode} 로 나왔다"
+
+
 class TestDeployScriptUsesTheVerifier:
     """배선 — 검증기가 있어도 배포가 안 부르면 소용없다 (#1180 계열 wiring 축).
 
@@ -159,6 +217,22 @@ class TestDeployScriptUsesTheVerifier:
         assert "verify_head_sync.sh" in src, "배포가 검증기를 부르지 않는다"
         offenders = self._remote_abbrev_lines(src)
         assert not offenders, f"원격 HEAD 를 축약으로 받고 있다 (#1277 회귀): {offenders}"
+
+    def test_deploy_aborts_when_verification_is_undetermined(self):
+        """rc 2 는 경고가 아니라 **중단**이어야 한다 (codex P1).
+
+        `if cmd; then ... else warn` 로 감싸면 모든 비정상 종료가 경고로 강등된다 —
+        그 형태가 소스에 없는지, 그리고 rc 갈래에 `fail` 이 있는지 본다.
+        """
+        src = DEPLOY.read_text(encoding="utf-8")
+        assert "if HEAD_OUT=$(" not in src, "if 래핑이 되살아났다 — 모든 실패가 경고로 강등된다"
+        assert "HEAD_RC" in src, "rc 를 받지 않는다"
+        # rc 갈래(case) 안에 중단 경로가 있어야 한다.
+        case_block = src.split('case "${HEAD_RC}"', 1)
+        assert len(case_block) == 2, "rc 갈래(case)가 없다"
+        branch = case_block[1].split("esac", 1)[0]
+        assert "fail " in branch, "판정 불가에서 배포를 중단하지 않는다"
+        assert "warn " in branch and "ok " in branch, "일치/불일치 갈래가 없다"
 
     def test_the_sweep_has_eyes(self):
         """카나리아 — sweep 이 조용히 아무것도 안 보는 상태로 썩지 않게.

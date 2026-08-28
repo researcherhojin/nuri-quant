@@ -290,18 +290,20 @@ step 7 "최종 검증"
 # HEAD 비교는 전용 스크립트에 위임한다 (#1277). 이유와 판정 규칙은 그 파일 상단 참조 —
 # 요약하면 **축약 SHA 를 비교하면 안 된다**: 길이가 저장소마다 달라 동기화된 배포마다
 # 거짓 경고가 났다. 별도 파일인 것은 테스트가 **실행해서** 잠글 수 있게 하기 위함이다.
-if HEAD_OUT=$("${SCRIPT_DIR}/verify_head_sync.sh" "${SSH}" "${REMOTE}" "${REMOTE_PATH}"); then
-    HEAD_SYNCED=1
-else
-    HEAD_SYNCED=0
-fi
+# ⚠️ `if cmd; then` 로 감싸면 **모든** 비정상 종료가 "불일치" 로 강등된다 (codex P1).
+# 이전 인라인 코드는 `set -e` 덕에 SSH 실패 시 배포가 **중단**됐는데, 그 성질을 잃으면
+# 마지막 안전 게이트가 안 돌았는데도 "deploy 완료" 가 찍힌다. rc 를 직접 받아 갈래를 나눈다.
+set +e
+HEAD_OUT=$("${SCRIPT_DIR}/verify_head_sync.sh" "${SSH}" "${REMOTE}" "${REMOTE_PATH}")
+HEAD_RC=$?
+set -e
 LOCAL_HEAD=$(printf '%s\n' "${HEAD_OUT}" | sed -n 3p)
 REMOTE_HEAD=$(printf '%s\n' "${HEAD_OUT}" | sed -n 4p)
-if [[ "${HEAD_SYNCED}" == "1" ]]; then
-    ok "git HEAD 일치: ${REMOTE_HEAD}"
-else
-    warn "git HEAD 불일치 — local: ${LOCAL_HEAD} / remote: ${REMOTE_HEAD}"
-fi
+case "${HEAD_RC}" in
+    0) ok "git HEAD 일치: ${REMOTE_HEAD}" ;;
+    1) warn "git HEAD 불일치 — local: ${LOCAL_HEAD} / remote: ${REMOTE_HEAD}" ;;
+    *) fail "HEAD 검증 자체가 실패 (rc=${HEAD_RC}) — 배포 검증 불가. 위 stderr 확인" ;;
+esac
 
 SCHEDULER_PID=$("${SSH}" "${REMOTE}" "launchctl list | grep ${PLIST_NAME%.plist} | awk '{print \$1}'" 2>/dev/null || echo "-")
 if [[ "${SCHEDULER_PID}" != "-" && "${SCHEDULER_PID}" != "" ]]; then
