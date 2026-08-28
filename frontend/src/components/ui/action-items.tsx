@@ -115,7 +115,7 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
           {isNew && (
             <span
               data-testid="action-new-badge"
-              title={item.as_of ? `판정 ${item.as_of}` : undefined}
+              title={item.as_of ? `${ACTION.PEEK_AS_OF} ${item.as_of}` : undefined}
               className="ml-1.5 align-middle text-[9px] font-bold px-1 py-px rounded bg-blue-500/20 text-blue-400"
             >
               {ACTION.NEW}
@@ -174,15 +174,15 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
           <td colSpan={8} className="px-3 py-2">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
               {/* <md 에서 행이 숨기는 계좌·비중을 peek 가 복원 (#1208 codex P2) */}
-              {item.account && <span className="md:hidden"><span className="text-zinc-600">계좌</span> <span className="text-zinc-300">{item.account}</span></span>}
-              <span className="md:hidden"><span className="text-zinc-600">비중</span> <span className="text-zinc-300 tabular-nums">{item.position_pct == null ? ACTION.PNL_UNKNOWN : `${item.position_pct.toFixed(1)}%`}</span></span>
-              <span><span className="text-zinc-600">현재가</span> <span className="text-zinc-300 tabular-nums">{fmt(item.current_price)}</span></span>
-              <span><span className="text-zinc-600">손절</span> <span className="text-red-400 tabular-nums">{fmt(item.stop_loss)}</span></span>
-              <span><span className="text-zinc-600">1차익절</span> <span className="text-emerald-400 tabular-nums">{fmt(item.target_1)}</span></span>
+              {item.account && <span className="md:hidden"><span className="text-zinc-600">{ACTION.COL_ACCOUNT}</span> <span className="text-zinc-300">{item.account}</span></span>}
+              <span className="md:hidden"><span className="text-zinc-600">{ACTION.COL_WEIGHT}</span> <span className="text-zinc-300 tabular-nums">{item.position_pct == null ? ACTION.PNL_UNKNOWN : `${item.position_pct.toFixed(1)}%`}</span></span>
+              <span><span className="text-zinc-600">{ACTION.PEEK_CURRENT}</span> <span className="text-zinc-300 tabular-nums">{fmt(item.current_price)}</span></span>
+              <span><span className="text-zinc-600">{ACTION.PEEK_STOP}</span> <span className="text-red-400 tabular-nums">{fmt(item.stop_loss)}</span></span>
+              <span><span className="text-zinc-600">{ACTION.PEEK_TP1}</span> <span className="text-emerald-400 tabular-nums">{fmt(item.target_1)}</span></span>
               {item.target_2 != null && (
-                <span><span className="text-zinc-600">2차익절</span> <span className="text-emerald-400 tabular-nums">{fmt(item.target_2)}</span></span>
+                <span><span className="text-zinc-600">{ACTION.PEEK_TP2}</span> <span className="text-emerald-400 tabular-nums">{fmt(item.target_2)}</span></span>
               )}
-              {item.as_of && <span className="text-zinc-600">판정 {item.as_of}</span>}
+              {item.as_of && <span className="text-zinc-600">{ACTION.PEEK_AS_OF} {item.as_of}</span>}
               {/* #1212: ack — NEW 해제 (localStorage, per-viewer) */}
               {isNew && (
                 <button

@@ -364,6 +364,22 @@ export const PIPELINE = {
   // "백엔드 죽음" 과 "이벤트 없음" 이 구분되지 않았다.
   TIMELINE_LOADING: "이벤트 불러오는 중...",
   GATE_EMPTY: "게이트 조건 없음 — 인증 스텝 실행 후 표시됩니다",
+  // #1252: 페이지 타이틀 · 실행 버튼 · 노드 카피가 SSoT 밖에 있었다.
+  TITLE: "Pipeline",
+  RUN: "실행",
+  RUNNING: "실행 중...",
+  NODE_COLLECT: "Collect",
+  NODE_COLLECT_SUB: "15 collectors + 6 sites",
+  NODE_VALIDATE: "Validate",
+  NODE_VALIDATE_SUB: "Signal backtest + scorecard",
+  NODE_CLASSIFY: "Classify",
+  NODE_CLASSIFY_SUB: "6-regime classifier",
+  NODE_DIAGNOSE: "Diagnose",
+  NODE_DIAGNOSE_SUB: "10 agents consensus",
+  NODE_RECOMMEND: "Recommend",
+  NODE_RECOMMEND_SUB: "Buy/sell + price targets",
+  NODE_TRACK: "Track",
+  NODE_TRACK_SUB: "30/60/90d outcomes",
 } as const;
 
 /* ── Ticker Detail Page ─────────────────────────────────────── */
@@ -492,6 +508,12 @@ export const ACTION = {
   // #1279: 시세 없는 보유(비상장)의 손익은 측정 불가다. 0.0% 로 렌더하면 "보합" 으로
   // 읽힌다 — 지어낸 숫자를 사용자 카피로 내보내지 않는다 (STRATEGY §2.6 과 같은 원칙).
   PNL_UNKNOWN: "미상",
+  // #1252: quick-peek 라벨. 계좌는 COL_ACCOUNT 를 재사용한다 — 같은 뜻에 키를 둘 두지 않는다.
+  PEEK_CURRENT: "현재가",
+  PEEK_STOP: "손절",
+  PEEK_TP1: "1차익절",
+  PEEK_TP2: "2차익절",
+  PEEK_AS_OF: "판정",
   // DETAIL/CONF/AGREE/PNL/WEIGHT/DISMISS 는 U2b-2 (#1208) 카드→행 전환으로 제거
 } as const;
 
@@ -508,6 +530,10 @@ export const OPPORTUNITY = {
   NEUTRAL: "관망",
   DANGER: "매수 금지",
   MUTED: "데이터 부족",
+  // #1252: "전체 {n}건 →" — 숫자를 사이에 끼우므로 접두/접미로 나눈다
+  // (`PIPELINE.RUNNING_SUFFIX` 와 같은 관례).
+  ALL_PREFIX: "전체",
+  ALL_SUFFIX: "건 →",
 } as const;
 
 export const CONTEXT = {
@@ -523,6 +549,13 @@ export const CONTEXT = {
   // #1212: FAIL/미인증 행의 다음 행동 카피 (레일 sub — 상태만 말하지 말 것)
   CHECK_ENGINE: "게이트 상세 →",
   CHECK_PIPELINE: "파이프라인 확인 →",
+  // #1252: 레짐 전환 배너 카피
+  REGIME_SHIFT: "Regime 전환 신호",
+  REGIME_SHIFT_NOW: "현재",
+  REGIME_SHIFT_CONF: "신뢰도",
+  REGIME_SHIFT_ADVICE: "% — 다음 행동 보류 권고",
+  ATTENTION: "ATTENTION",
+  FAIL_SUFFIX: "건 실패",
 } as const;
 
 /* ── StatusBadge Korean keys ────────────────────────────────── */
@@ -545,4 +578,21 @@ export const NAV = {
   // \uC544\uC774\uCF58 \uC804\uC6A9 \uC811\uAE30 \uD1A0\uAE00\uC758 \uC811\uADFC\uBA85 (codex design audit M5 / ship review P3 SSoT)
   SIDEBAR_EXPAND: "\uC0AC\uC774\uB4DC\uBC14 \uD3BC\uCE58\uAE30",
   SIDEBAR_COLLAPSE: "\uC0AC\uC774\uB4DC\uBC14 \uC811\uAE30",
+  // 라우트 라벨 (#1252). 소비자는 사이드바 하나뿐이지만, SSoT 밖에 있으면 e2e 가
+  // 문자열을 직접 박게 되고 그게 #1118 의 3.5개월 무신호 회귀를 만든 경로다.
+  ROUTE_DASHBOARD: "Dashboard",
+  ROUTE_DECISIONS: "Decisions",
+  ROUTE_ENGINE: "Certification Engine",
+  ROUTE_EVIDENCE: "Evidence",
+  ROUTE_PORTFOLIO: "Portfolio",
+  ROUTE_REBALANCE: "Rebalance",
+  ROUTE_TARGETS: "Price Targets",
+  ROUTE_EXPLORE: "Explore",
+  ROUTE_SCANNER: "Scanner",
+  ROUTE_SIGNALS: "Signals",
+  ROUTE_STRATEGY: "Strategy",
+  ROUTE_AGENTS: "Agents",
+  ROUTE_PIPELINE: "Pipeline",
+  ROUTE_REPORT: "AI Report",
+  SYSTEM_ONLINE: "System Online",
 } as const;
