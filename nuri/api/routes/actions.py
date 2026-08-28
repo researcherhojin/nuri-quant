@@ -650,8 +650,13 @@ def _is_worse(new: float | None, cur: float | None) -> bool:
 
 
 def _pnl_phrase(pnl: float | None) -> str:
-    """근거 문자열의 손익 표기. 미상이면 숫자를 지어내지 않는다 (#1279)."""
-    return f"+{pnl:.0f}%" if pnl is not None else "손익 미상"
+    """근거 문자열의 손익 표기. 미상이면 숫자를 지어내지 않는다 (#1279).
+
+    부호는 **포맷 스펙에 맡긴다** (`:+`). 리터럴 `+` 를 앞에 붙이면 손실이 `+-5%` 로
+    찍힌다 (codex 리뷰 P2). 리더 트레일링은 고점 대비 이탈이라 진입가 아래에서도
+    발화할 수 있어 실제로 도달 가능한 경로다.
+    """
+    return f"{pnl:+.0f}%" if pnl is not None else "손익 미상"
 
 
 def _get_portfolio_map() -> dict[str, dict]:

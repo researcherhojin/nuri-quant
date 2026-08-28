@@ -66,11 +66,66 @@ class TestPortfolioVersion:
     """버전 키가 **쓰기를 실제로 감지**하는가."""
 
     def test_quantity_change_bumps_the_version(self, db):
+        """⚠️ `sleep` 이 **없다**. 초안(`MAX(updated_at)` 기반)은 `time.sleep(1.05)` 가
+        있어야 통과했는데, 그건 수정이 아니라 결함을 우회한 것이었다 (codex P1).
+        내용 해시는 벽시계와 무관하므로 sleep 이 사라진 것 자체가 잠금이다.
+        """
         _add(db, "AAA", 10, 100.0)
         before = portfolio_version()
-        time.sleep(1.05)  # updated_at 은 초 단위 문자열 — 같은 초면 구분 불가
         _add(db, "AAA", 20, 100.0)
         assert portfolio_version() != before, "수량이 바뀌었는데 버전이 그대로다"
+
+    def test_same_second_rewrite_is_detected(self, db):
+        """`upsert_portfolio` 는 `datetime('now')` = **초 해상도**로 찍는다.
+
+        1초 안의 연속 갱신(수동 편집 연타, 다계좌 일괄 sync)에서 행 수도 타임스탬프도
+        그대로면 타임스탬프 기반 키는 눈이 먼다. 이 테스트는 의도적으로 sleep 없이 돈다.
+        """
+        _add(db, "AAA", 10, 100.0)
+        seen = {portfolio_version()}
+        for qty in (11, 12, 13):  # 전부 같은 초 안에서
+            _add(db, "AAA", qty, 100.0)
+            seen.add(portfolio_version())
+        assert len(seen) == 4, f"같은 초 안의 갱신을 놓쳤다 — 서로 다른 버전 {len(seen)}/4"
+
+    def test_offsetting_changes_are_detected(self, db):
+        """합계 기반 키가 놓치는 축 — 한 종목 -1, 다른 종목 +1 이면 SUM 이 같다."""
+        _add(db, "AAA", 10, 100.0)
+        _add(db, "BBB", 10, 100.0)
+        before = portfolio_version()
+        _add(db, "AAA", 9, 100.0)
+        _add(db, "BBB", 11, 100.0)
+        assert portfolio_version() != before, "상쇄되는 변경을 놓쳤다"
+
+    def test_version_is_invariant_to_row_order(self, tmp_path, monkeypatch):
+        """같은 보유는 **삽입 순서와 무관하게** 같은 버전이어야 한다.
+
+        `SELECT ... FROM portfolio` 는 ORDER BY 가 없으면 rowid(=삽입) 순으로 돌려준다.
+        정렬 없이 이어붙이면 같은 내용이 다른 해시를 내고, 캐시가 영구 미스가 되어
+        무거운 핸들러가 매 요청 재계산된다 (#1119 stampede).
+
+        Mutation lock: `sorted(...)` 를 지우면 FAIL.
+        """
+        import nuri.core.db as db_mod
+
+        def _build(order):
+            path = tmp_path / f"{'-'.join(order)}.db"
+            init_db(path)
+            monkeypatch.setattr(db_mod, "DB_PATH", path)
+            for t in order:
+                _add(path, t, 10, 100.0)
+            return portfolio_version()
+
+        assert _build(["AAA", "BBB", "CCC"]) == _build(["CCC", "AAA", "BBB"]), (
+            "삽입 순서가 버전을 바꿨다 — 같은 보유인데 캐시가 매번 미스한다"
+        )
+
+    def test_avg_price_change_bumps_the_version(self, db):
+        """수량이 같아도 평단이 바뀌면 손익이 바뀐다 — #1279 의 실제 사고 형태다."""
+        _add(db, "AAA", 10, 587000.0)
+        before = portfolio_version()
+        _add(db, "AAA", 10, 459857.14)
+        assert portfolio_version() != before, "평단 변경을 놓쳤다"
 
     def test_row_deletion_bumps_the_version(self, db):
         """`MAX(updated_at)` 만 보면 놓치는 축 — 삭제는 남은 행의 타임스탬프를 안 바꾼다."""
@@ -115,8 +170,7 @@ class TestActionsCacheHonoursPortfolioWrites:
         stale = {"urgent": [{"ticker": "STALE"}], "check": [], "hold": [], "portfolio": []}
         self._seed_cache(actions, stale, portfolio_version())
 
-        time.sleep(1.05)
-        _add(db, "AAA", 20, 100.0)  # 사용자가 보유를 갱신했다
+        _add(db, "AAA", 20, 100.0)  # 사용자가 보유를 갱신했다 (sleep 불필요 — 내용 해시)
 
         rebuilt = {"urgent": [], "check": [], "hold": [], "portfolio": []}
         monkeypatch.setattr(actions, "_build_actions", lambda: rebuilt)
@@ -196,3 +250,14 @@ class TestUnknownPnlNeverClaimsAStopBreach:
 
         assert _pnl_phrase(None) == "손익 미상"
         assert _pnl_phrase(21.8) == "+22%"
+
+    def test_loss_keeps_its_minus_sign(self):
+        """codex P2: 리터럴 `+` 를 붙이면 손실이 `+-5%` 로 찍힌다.
+
+        리더 트레일링은 고점 대비 이탈이라 **진입가 아래에서도** 발화할 수 있어
+        실제 도달 가능한 경로다.
+        """
+        from nuri.api.routes.actions import _pnl_phrase
+
+        assert _pnl_phrase(-5.0) == "-5%"
+        assert "+-" not in _pnl_phrase(-5.0)
