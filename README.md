@@ -45,14 +45,14 @@ In production the API binds `127.0.0.1`, not `0.0.0.0`. The Next.js proxy is the
 
 The point of the project is that a recommendation is auditable, not that it is right. Two constraints follow, and both are enforced rather than aspirational:
 
-- **It recommends; it never trades.** A broker adapter with a working `submit_order` does exist (`nuri/trading/execution/broker.py`), and **no pipeline code path calls it.** Being exact, because this is a safety claim: besides its tests, the module's own `main()` will place a one-share test order if you run it by hand with `--live`; without that flag it uses Alpaca's paper endpoint. Nothing scheduled, and nothing in the decision path, reaches it. The pipeline terminates at a recommendation and an alert; the operator places every order by hand. Wiring execution back in requires a `docs/STRATEGY.md` amendment, not a code change alone (§7.1).
+- **It recommends; it never trades.** A broker adapter with a working `submit_order` does exist (`nuri/trading/execution/broker.py`), and **no pipeline code path calls it.** Being exact, because this is a safety claim: the module's own `main()` always places a one-share test order when run by hand, and `--live` decides *which broker receives it* — without the flag a `DryRunBroker` that touches no network, with it `AlpacaBroker` against the paper endpoint. Nothing scheduled, and nothing in the decision path, reaches either. The pipeline terminates at a recommendation and an alert; the operator places every order by hand. Wiring execution back in requires a `docs/STRATEGY.md` amendment, not a code change alone (§7.1).
 - **No edge is claimed.** `GET /api/alpha` returns `edge_status: "NOT_MEASURABLE"` unconditionally, and it will keep doing so until a pre-registered test passes. The criteria were fixed on 2026-07-08 and cannot be amended before the evaluation date: **a minimum of 200 US BUY decisions, benchmark SPY, ticker-block permutation p below 0.05, evaluated 2027-06-30** (§3.11). Until then, capital following system recommendations is capped inside an experiment sleeve, and the tracking numbers on the dashboard are labeled tracking-completeness, not performance.
 
 If you are looking for a backtested strategy with a published Sharpe ratio, this is not that. It is the measurement apparatus you would need before you could honestly publish one.
 
 ### How it works
 
-Start with what the system is for. It scores **the holdings you already own**, once a day, and records why. It does not screen the market for new names, and it does not place orders.
+Start with what the system is for. The daily decision loop scores **the holdings you already own** and records why. A separate scan surfaces non-portfolio candidates (`/api/opportunities`, and the BUY candidates in the morning brief), so the two paths are worth keeping apart in your head. Neither places an order.
 
 ```mermaid
 flowchart LR
@@ -93,24 +93,27 @@ flowchart TB
     end
 
     DB[("SQLite WAL · 58 tables")]
-    CERT["certify · 0 jobs<br/>runs inside whatever calls it"]
+    RD["record_decisions()<br/>inside the consensus job"]
+    CERT["certify() · no job<br/>runs inside its callers"]
     OUT["Discord brief · dashboard"]
 
     CLOCK --> JOBS
     JC --> DB
     JA --> DB
     DB --> JD
-    JD ==> CERT
-    CERT --> DB
+    JD ==> RD
+    RD --> DB
     DB --> JT
     JT --> DB
     DB --> JO --> OUT
+    JO --> CERT
+    CERT --> DB
 
     classDef step  stroke:#3b82f6,stroke-width:2px
     classDef store stroke:#64748b,stroke-width:2px
     classDef out   stroke:#14b8a6,stroke-width:2px
     classDef zone  fill:none,stroke:#94a3b8,stroke-width:1px
-    class CLOCK,JC,JA,JD,JT,JO,CERT step
+    class CLOCK,JC,JA,JD,JT,JO,RD,CERT step
     class DB store
     class OUT out
     class JOBS zone
@@ -118,15 +121,15 @@ flowchart TB
 
 The counts sum to the whole: 29 + 1 + 1 + 5 + 21 = 57. The **thick arrow is the single exception** to DB coupling — `nuri/scheduler.py` hands the consensus result to `record_decisions()` as a Python object, never through a table. That is why `decisions` sat frozen for three and a half months when automation replaced the CLI path and dropped that one call (#897).
 
-**`certify` is the only stage with no job of its own.** It runs inside whichever caller asks for it, and every such call persists a row — including a dashboard health check, which is why the API is not read-only.
+**`certify` is the only stage with no job of its own, and the consensus job does not call it.** `certify()` reads a DB snapshot and is invoked by `premarket_brief`, by `engine/remediation`, by its own CLI, and by three API routes (`/api/certify`, `/api/actions` health and violations). Every such call persists a `certifications` row — including a dashboard health check, which is why the API is not read-only.
 
 | Stage | Scheduled as | Reads | Writes |
 |-------|--------------|-------|--------|
 | **Collect** | 29 jobs, `*/5` during market hours down to weekly | external APIs | `prices` · `fundamentals` · `macro` · `news` |
-| **Analyze** | 1 job — `factors`, `10 8 * * *` | `prices` · `macro` | `factors` (and `news.sentiment`) |
+| **Analyze** | 1 job — `factors`, `10 8 * * *` | `prices` · `fundamentals` · `macro` (fear & greed) | `factors` |
 | **Consensus** | 1 job — `consensus`, `5 7 * * *` | `recommendations.outcome_30d` (for weights) · collector tables | `recommendations` with `agent_verdicts` JSON |
-| **Certify** | **no job of its own** — runs inside its callers: the consensus job, `premarket_brief`, and three API routes | consensus result **in memory** | `certifications` |
-| **Track** | 5 jobs — `decision_pnl` `0 7`, `recommendation_outcomes` `2 7`, `thesis_criteria` `20 8`, `alpha_tracking` `0 17`, `agent_accuracy` weekly | `recommendations` · `prices` | `outcome_{30,60,90}d` · `decision_outcomes` · `strategy_memory` |
+| **Certify** | **no job of its own** — runs inside its callers: `premarket_brief`, `engine/remediation`, its own CLI, and three API routes. **Not** the consensus job | a DB snapshot of portfolio state | `certifications` |
+| **Track** | 5 jobs — `decision_pnl` `0 7`, `recommendation_outcomes` `2 7`, `thesis_criteria` `20 8`, `alpha_tracking` `0 17`, `agent_accuracy` weekly | `recommendations` · `prices` · `decisions`; `thesis_criteria` also reads `theses` · `signals` · `factors` · `fundamentals` | `recommendations.outcome_{30,60,90}d` · `decision_outcomes` · `strategy_memory` · `thesis_criteria_checks`; `decision_pnl` writes back into `decisions` |
 
 #### The clock does not follow the reading order
 
@@ -340,7 +343,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 7,725 collected across 354 files | ✅ |
+| **Backend tests** | 7,727 collected across 354 files | ✅ |
 | **Backend statement coverage** | 99% — 41 of 24,533 statements uncovered, 96 partial branches (`make test-fast`, 2026-08-29; excludes the 27 slow-marked tests, so it understates. Codecov `backend` flag is the CI ground truth) | |
 | **Frontend tests** | 1,648 across 137 vitest files — 99.87% statement coverage (2,393 of 2,396) | ✅ |
 | **E2E tests** | 89 across 10 Playwright specs | |

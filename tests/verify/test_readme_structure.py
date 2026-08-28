@@ -172,7 +172,35 @@ class TestMermaidRendersInBothThemes:
                     long_titles.append(f"#{i}: {m.group(1)[:70]}... ({len(m.group(1))}자)")
         assert not long_titles, "subgraph 제목이 너무 길다:\n" + "\n".join(long_titles)
 
+    def test_every_diagram_is_still_there(self):
+        """`>= 3` 은 너무 헐거웠다 — 넷 중 하나를 지워도 통과했다 (codex 리뷰 P3).
+
+        각 다이어그램이 답하는 질문을 **이름으로** 고정한다. 개수만 세면 어느 것이
+        사라졌는지 알 수 없고, 개수를 맞추려고 아무거나 넣어도 통과한다.
+        """
+        text = README.read_text(encoding="utf-8")
+        for anchor in (
+            "Your holdings<br/>+ public market data",  # 무엇을 하는가
+            "no job calls another",  # 무엇이 그것을 돌리는가
+            "premarket_brief<br/>09:00 US/Eastern",  # 하루의 시계
+            "Should this position exist?",  # 두 축
+        ):
+            assert anchor in text, f"다이어그램이 사라졌거나 바뀌었다: {anchor!r}"
+        assert len(_diagrams()) == 4, f"다이어그램 수가 4가 아니다: {len(_diagrams())}"
+
+    def test_no_diagram_asserts_a_dependency_the_code_lacks(self):
+        """의미 검사 — 구조만 보면 **틀린 화살표**가 통과한다 (codex 리뷰 P3).
+
+        실제로 이 PR 초안이 `consensus ==> certify` 를 그렸는데, 합의 잡은 `certify()`
+        를 부르지 않는다 (`record_decisions()` 를 부른다). 그 한 줄이 이 테스트의 이유다.
+        """
+        text = README.read_text(encoding="utf-8")
+        assert "JD ==> RD" in text, "합의 → record_decisions 인메모리 인계가 사라졌다"
+        assert "JD ==> CERT" not in text, (
+            "합의 잡이 certify() 를 부른다고 그렸다 — scheduler.py 는 record_decisions() 를 부른다"
+        )
+
     def test_the_sweep_has_eyes(self):
-        """카나리아 — 다이어그램을 하나도 못 찾으면 위 셋은 영원히 공허하게 통과한다."""
-        assert len(_diagrams()) >= 3, "README 에서 mermaid 블록을 찾지 못했다"
+        """카나리아 — 정규식이 조용히 아무것도 안 잡으면 위 검사들이 공허해진다."""
         assert MERMAID.findall("```mermaid\nflowchart LR\n  A --> B\n```"), "정규식이 눈이 멀었다"
+        assert not MERMAID.findall("```python\nx = 1\n```"), "mermaid 아닌 블록을 잡는다"
