@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { ActionItems } from "@/components/ui/action-items";
+import { ACTION } from "@/lib/strings";
 
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => (
@@ -233,6 +234,22 @@ describe("ActionItems", () => {
     // 마우스 편의는 유지 — 행 아무 데나 눌러도 펼쳐진다.
     fireEvent.click(row);
     expect(screen.getByTestId("action-row-peek")).toBeTruthy();
+  });
+
+  // #1279: 시세 없는 보유(비상장)는 손익이 null 이다.
+  it("null pnl renders 미상, not a fabricated 0%", () => {
+    const unpriced = { ...urgentItem, ticker: "PRIVATECO", pnl_pct: null, current_price: null };
+    render(<ActionItems urgent={[unpriced]} check={[]} hold={[]} />);
+    expect(screen.getByText(ACTION.PNL_UNKNOWN)).toBeTruthy();
+    // 이전 코드는 `null >= 0` 이 true 라 "+0.0%" 를 초록으로 찍었다 — 보합으로 읽힌다.
+    expect(screen.queryByText("+0.0%")).toBeNull();
+    expect(screen.queryByText("0.0%")).toBeNull();
+  });
+
+  it("numeric pnl still renders with sign and one decimal", () => {
+    render(<ActionItems urgent={[{ ...urgentItem, pnl_pct: -3.14 }]} check={[]} hold={[]} />);
+    expect(screen.getByText("-3.1%")).toBeTruthy();
+    expect(screen.queryByText(ACTION.PNL_UNKNOWN)).toBeNull();
   });
 
   it("each row gets its own aria-controls target", () => {

@@ -13,33 +13,45 @@ import time
 
 from fastapi import APIRouter, Depends
 
+from nuri.api.cache import portfolio_version
 from nuri.api.limits import heavy_slot
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["dashboard"])
 
 # 캐시 (5분 TTL)
-_cache: dict = {"data": None, "timestamp": 0}
+# `version` — 포트폴리오가 바뀌면 TTL 이 남아 있어도 버린다 (#1279).
+# 액션만 고치고 여기를 두면 같은 화면에서 액션은 새 보유, 히어로 합계는 옛 보유가 되어
+# **패널 간 모순**이 생긴다 — 균일하게 낡은 것보다 나쁘다.
+_cache: dict = {"data": None, "timestamp": 0, "version": None}
 CACHE_TTL = 300  # 5분
 # single-flight — TTL 만료 시 동시 요청이 전부 재계산하는 걸 막는다 (#1119)
 _lock = threading.Lock()
+
+
+def _fresh(cache: dict, now: float, version: str) -> bool:
+    """TTL **과** 포트폴리오 버전을 함께 본다 (#1279). actions.py 와 같은 계약."""
+    return bool(cache["data"]) and (now - cache["timestamp"]) < CACHE_TTL and cache["version"] == version
 
 
 @router.get("/dashboard", dependencies=[Depends(heavy_slot)])
 def get_dashboard():
     """오늘의 투자 판단 요약 — DB 조회 전용 (projection 기반)."""
     now = time.time()
-    if _cache["data"] and (now - _cache["timestamp"]) < CACHE_TTL:
+    # 버전은 빌드 **전에** 읽는다 — 사유는 `nuri/api/cache.py` 및 actions.py 참조.
+    version = portfolio_version()
+    if _fresh(_cache, now, version):
         return _cache["data"]
 
     with _lock:
         # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다
         now = time.time()
-        if _cache["data"] and (now - _cache["timestamp"]) < CACHE_TTL:
+        if _fresh(_cache, now, version):
             return _cache["data"]
         result = _build_dashboard()
         _cache["data"] = result
         _cache["timestamp"] = now
+        _cache["version"] = version
         return result
 
 
