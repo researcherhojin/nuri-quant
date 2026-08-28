@@ -129,15 +129,25 @@ def seed(db: Path) -> dict[str, int]:
     counts["macro"] = upsert_macro(vix + fg + fx, db_path=db)
 
     # ── 매크로 이벤트: 최근 3일 내 발행 (action-first 스펙의 7d 신선도 요건) ──
+    #
+    # ⚠️ 형태는 **소비자에서 복사한다** (#1262). 이전 판은 두 축이 다 어긋나 있었고,
+    # 그 결과 CI e2e 전 구간에서 매크로/이벤트 스코어 체인이 죽은 채 89개 테스트가 돌았다:
+    #   1. `sentiment` 를 문자열("positive")로 썼다 — 스키마는 `REAL`(migration:480)이고 prod
+    #      5,062행은 전부 숫자다. SQLite 동적 타입이라 제약이 안 걸리고,
+    #      `event_score.py:142` 의 `abs(sentiment)` 가 TypeError 로 터진다 →
+    #      `compute_macro_score` → `map_regime_to_strategy` → `/api/rebalance` 가 **200 + error** 를 냈다.
+    #   2. 카테고리가 `event_score.CATEGORY_WEIGHT` 어휘 밖이었다 (교집합 0개). 타입만 고치면
+    #      `CATEGORY_WEIGHT.get(cat, 0.0)` 이 전부 0 을 줘서 예외는 없어지되 점수가 **정확히 0** 이다.
+    # 그래서 카테고리는 어휘에서, sentiment 는 prod 관측 범위(-0.9~0.9)에서 고른다.
     now = kst_now()
     events = []
     for i, (headline, category, sentiment) in enumerate(
         [
-            ("Fed keeps rates unchanged", "monetary_policy", "neutral"),
-            ("CPI comes in below forecast", "inflation", "positive"),
-            ("Chip sector guidance raised", "earnings", "positive"),
-            ("Oil supply disruption flagged", "commodities", "negative"),
-            ("Jobs report beats estimates", "employment", "positive"),
+            ("Central bank holds policy rate steady", "neutral", 0.05),
+            ("Inflation print lands below forecast", "fed_dovish", 0.45),
+            ("Chip sector guidance raised", "earnings_beat", 0.60),
+            ("Oil supply disruption flagged", "oil_supply_shock", -0.50),
+            ("Export volumes surge on strong demand", "export_surge", 0.70),
         ]
     ):
         events.append(
