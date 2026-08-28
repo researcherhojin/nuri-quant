@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { ACTION, CONTEXT } from "../src/lib/strings";
+import { ACTION, CONTEXT, OPPORTUNITY } from "../src/lib/strings";
 
 // 라벨 리터럴을 여기 박지 않는다 — strings.ts 가 단일 출처다. 410d385 가
 // CONTEXT.SIEGE 값을 "SIEGE" → "Certification" 으로 바꿨을 때 vitest 는 같이
@@ -102,8 +102,9 @@ test.describe("Action-First Dashboard", () => {
     await page.waitForTimeout(5000);
     const body = await page.textContent("body");
     // Opportunities should show tickers NOT in portfolio (e.g., INTC, SNOW, PLTR)
-    const hasOpportunity = body!.includes("이슈 종목") || body!.includes("기회 탐색") ||
-      body!.includes("매수 고려") || body!.includes("관망") || body!.includes("매수 금지");
+    const hasOpportunity = body!.includes(OPPORTUNITY.SUBTITLE) || body!.includes(OPPORTUNITY.TITLE) ||
+      body!.includes(OPPORTUNITY.POSITIVE) || body!.includes(OPPORTUNITY.NEUTRAL) ||
+      body!.includes(OPPORTUNITY.DANGER);
     expect(hasOpportunity).toBe(true);
   });
 
