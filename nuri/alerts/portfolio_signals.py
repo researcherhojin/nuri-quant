@@ -285,6 +285,9 @@ _REMEDY: dict[str, str] = {
     "signals": "technical 잡 확인 — RSI/SMA 가 BUY 점수와 SIEGE 게이트에 들어간다",
     "signals_kr": "technical_close_kr 잡과 KR 가격 수집(stock_kr_universe_daily) 확인",
     "consensus": "합의 잡(07:05) 실행 여부 확인",
+    # decisions 는 합의 잡이 recommendations 를 쓴 **뒤** 이어서 기록한다. 배치가 모자라면
+    # 그 사이에서 프로세스가 죽은 것이라 잡 로그가 아니라 프로세스 생사를 봐야 한다 (#1266).
+    "decisions_context": "합의 잡 확인 — recommendations 는 찼는데 decisions 가 모자라면 잡이 중간에 죽은 것",
     "certification": "SIEGE 인증 실행 여부 확인",
 }
 

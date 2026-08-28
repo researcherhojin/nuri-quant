@@ -864,6 +864,107 @@ class TestDecisionsContextPolicy:
 
         assert check_freshness("decisions_context", db_path=db_path)["status"] == "PASS"
 
+    # ── 행수 floor (#1266): 완결성만으로는 "행이 통째로 모자란" 날을 못 본다 ──────────
+
+    def _seed_consensus_rows(self, db_path, date: str, n: int, *, verdicts=True, pfx="R"):
+        """같은 날 합의 배치를 `recommendations` 에 깐다 — floor 의 분모."""
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            conn.executemany(
+                "INSERT INTO recommendations (date, ticker, action, confidence, agent_verdicts)"
+                " VALUES (:date, :ticker, :action, :confidence, :agent_verdicts)",
+                [
+                    {
+                        "date": date,
+                        "ticker": f"{pfx}{i}",
+                        "action": "HOLD",
+                        "confidence": 50.0,
+                        # 10-agent 합의만 이 컬럼을 채운다 — CLI 경로는 NULL 로 남긴다.
+                        "agent_verdicts": '[{"agent":"a","verdict":"HOLD"}]' if verdicts else None,
+                    }
+                    for i in range(n)
+                ],
+            )
+
+    def test_partial_batch_cannot_keep_the_policy_green(self, db_path):
+        """합의 18행이 남았는데 결정이 3행뿐이면 그날은 신선하지 않다.
+
+        `scheduler.py` 의 consensus 잡은 `save_to_recommendations` → `record_decisions`
+        순서라, **그 사이에 프로세스가 죽으면** 정확히 이 모양이 남는다(fd 고갈 #778 ·
+        로그인 세션 부재 #1191). 남은 3행은 컨텍스트가 완전하므로 완결성 검사는 통과한다.
+
+        Mutation lock: 쿼리에서 floor(`d.n >= COALESCE(r.n, 0)` + recommendations 조인)를
+        걷어내면 오늘이 뽑혀 PASS 로 뒤집힌다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now, today_kst
+
+        old = (kst_now() - timedelta(days=5)).strftime("%Y-%m-%d")
+        self._seed(db_path, old, regime="bull_low_vol", scoring_detail='{"x":1}')
+
+        today = today_kst()
+        self._seed_consensus_rows(db_path, today, 18)
+        for i in range(3):
+            self._seed(db_path, today, regime="bull_low_vol", scoring_detail='{"x":1}', ticker=f"D{i}")
+
+        result = check_freshness("decisions_context", db_path=db_path)
+        assert result["status"] == "FAIL", result
+        assert result["last_updated"].startswith(old), result
+
+    def test_cli_screening_rows_do_not_inflate_the_denominator(self, db_path):
+        """`make recommend` CLI 가 같은 날 쓴 스크리닝 행은 분모가 아니다.
+
+        `tracker.save_recommendations` 는 합의가 결정하지 않은 종목을 `source` NULL 로
+        쓴다(dev 원장 실측 29행). 분모를 `source IS NULL` 로 잡으면 그 행들이 섞여
+        **멀쩡한 날이 빨간불**이 된다. 그래서 `agent_verdicts IS NOT NULL` 로 고른다.
+
+        Mutation lock: 분모에서 `WHERE agent_verdicts IS NOT NULL` 을 빼면 r.n 이 27 로
+        불어 18 < 27 → FAIL 로 뒤집힌다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        today = today_kst()
+        self._seed_consensus_rows(db_path, today, 18)
+        # CLI 가 덧쓴 스크리닝 종목 9건 — 합의 산출물이 아니다.
+        self._seed_consensus_rows(db_path, today, 9, verdicts=False, pfx="CLI")
+        for i in range(18):
+            self._seed(db_path, today, regime="bull_low_vol", scoring_detail='{"x":1}', ticker=f"D{i}")
+
+        assert check_freshness("decisions_context", db_path=db_path)["status"] == "PASS"
+
+    def test_more_decisions_than_consensus_rows_is_not_stale(self, db_path):
+        """결정이 합의 행보다 많은 날은 정상이다 (dev 원장 2026-04-11: rec 18 / dec 20).
+
+        Mutation lock: floor 를 `d.n = COALESCE(r.n, 0)` 로 조이면 FAIL 로 뒤집힌다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        today = today_kst()
+        self._seed_consensus_rows(db_path, today, 2)
+        for i in range(3):
+            self._seed(db_path, today, regime="bull_low_vol", scoring_detail='{"x":1}', ticker=f"D{i}")
+
+        assert check_freshness("decisions_context", db_path=db_path)["status"] == "PASS"
+
+    def test_absent_consensus_rows_keep_the_prior_verdict(self, db_path):
+        """분모를 못 구하는 날을 낙제시키지 않는다 — 그건 `consensus` 정책 몫이다.
+
+        INNER JOIN 으로 조이면 합의 행이 없는 모든 DB(e2e seed 포함)가 빨간불이 된다.
+        코드 결함이 아닌 빨간불은 빨간불을 무시하는 습관을 만든다 (#1270).
+
+        Mutation lock: `LEFT JOIN` → `JOIN` 또는 `COALESCE(r.n, 0)` → `r.n` 으로 바꾸면
+        FAIL 로 뒤집힌다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        self._seed(db_path, today_kst(), regime="bull_low_vol", scoring_detail='{"x":1}')
+
+        assert check_freshness("decisions_context", db_path=db_path)["status"] == "PASS"
+
     def test_thresholds_absorb_one_degraded_day_but_fail_before_the_third_run(self):
         """임계는 시계 없이 산술로 잠근다 — 이 정책의 설계 지점이 여기다 (Codex P2 라운드 2).
 
