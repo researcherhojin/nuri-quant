@@ -15,6 +15,7 @@
  *
  * 색상은 severity 별 팔레트 — error red 계열 / warning amber 계열.
  */
+import { CHART_GRID_STROKE, CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER, CHART_TOOLTIP_ITEM } from "@/lib/chart-theme";
 import {
   Bar,
   BarChart,
@@ -163,15 +164,15 @@ export function GateFailureChart({ items }: GateFailureChartProps) {
       <div className="w-full min-w-0 h-56">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
           <BarChart data={rows} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} />
             <XAxis
               dataKey="short"
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               interval={Math.max(0, Math.floor(rows.length / 6) - 1)}
             />
             <YAxis
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               axisLine={false}
               width={28}
@@ -179,17 +180,17 @@ export function GateFailureChart({ items }: GateFailureChartProps) {
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#18181b",
-                border: "1px solid #3f3f46",
+                backgroundColor: CHART_TOOLTIP_BG,
+                border: CHART_TOOLTIP_BORDER,
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              labelStyle={{ color: "#a1a1aa" }}
-              itemStyle={{ color: "#e4e4e7" }}
+              labelStyle={{ color: CHART_MUTED }}
+              itemStyle={{ color: CHART_TOOLTIP_ITEM }}
               formatter={tooltipValueFormatter as never}
             />
             <Legend
-              wrapperStyle={{ fontSize: 10, color: "#a1a1aa" }}
+              wrapperStyle={{ fontSize: 10, color: CHART_MUTED }}
               formatter={legendFormatter as never}
             />
             {categories.map((c) => (

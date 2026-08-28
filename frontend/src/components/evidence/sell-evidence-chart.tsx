@@ -4,6 +4,7 @@
  * SellEvidenceChart — 위반 항목별 심각도 가로 바 (#1225).
  * 손절=빨강 · 비중초과=노랑, 툴팁에 조치·회복 조건 표시 (Plotly hover 대체).
  */
+import { CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import { EVIDENCE } from "@/lib/strings";
 import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, Tooltip } from "recharts";
 
@@ -47,22 +48,22 @@ export function SellEvidenceChart({ data }: { data: SellEvidenceData }) {
           <BarChart data={rows} layout="vertical" margin={{ top: 5, right: 30, bottom: 0, left: 0 }}>
             <XAxis
               type="number"
-              tick={{ fontSize: 10, fill: "#71717a" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               tickFormatter={severityTick}
             />
             <YAxis
               type="category"
               dataKey="label"
-              tick={{ fontSize: 10, fill: "#a1a1aa" }}
+              tick={{ fontSize: 10, fill: CHART_MUTED }}
               tickLine={false}
               axisLine={false}
               width={150}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#18181b",
-                border: "1px solid #3f3f46",
+                backgroundColor: CHART_TOOLTIP_BG,
+                border: CHART_TOOLTIP_BORDER,
                 borderRadius: 8,
                 fontSize: 12,
               }}

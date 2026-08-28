@@ -203,7 +203,8 @@ describe("SiegeTimelineChart helpers", () => {
     expect(props.cy).toBe(50);
     expect(props.r).toBe(3.5);
     expect(props.fill).toBe("#10b981");
-    expect(props.stroke).toBe("#18181b");
+    // 셀 구분선도 토큰 — hex 로 되돌리면 다크 배경(#111418)과 어긋난다 (#1275).
+    expect(props.stroke).toBe("var(--background)");
   });
 
   it("renderDot rejected point uses red fill", () => {

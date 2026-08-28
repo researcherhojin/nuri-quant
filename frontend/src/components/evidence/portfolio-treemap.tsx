@@ -5,6 +5,7 @@
  * violation 테두리: 손절=빨강, 비중초과=노랑 — Plotly 원본에서 계산만 되고
  * 배선 안 됐던 테두리를 네이티브에서 실제로 그린다.
  */
+import { CHART_EMPTY_FILL, CHART_LABEL_STRONG, CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import type { ReactElement } from "react";
 import { EVIDENCE } from "@/lib/strings";
 import { ResponsiveContainer, Treemap, Tooltip } from "recharts";
@@ -38,7 +39,7 @@ export function buildTreemapData(data: HeatmapData): TreemapDatum[] {
 }
 
 export function cellStroke(violation: HeatmapItem["violation"]): string {
-  return violation ? VIOLATION_COLORS[violation] : "#27272a";
+  return violation ? VIOLATION_COLORS[violation] : CHART_EMPTY_FILL;
 }
 
 export interface CellProps {
@@ -69,12 +70,12 @@ export function TreemapCell(props: CellProps): ReactElement {
         strokeWidth={violation ? 2 : 1}
       />
       {width > 44 && height > 20 && (
-        <text x={x + 6} y={y + 16} fill="#fafafa" fontSize={11} fontWeight={500}>
+        <text x={x + 6} y={y + 16} fill={CHART_LABEL_STRONG} fontSize={11} fontWeight={500}>
           {name}
         </text>
       )}
       {width > 60 && height > 36 && (
-        <text x={x + 6} y={y + 30} fill="#d4d4d8" fontSize={10}>
+        <text x={x + 6} y={y + 30} fill={CHART_MUTED} fontSize={10}>
           {pnl >= 0 ? "+" : ""}
           {pnl.toFixed(1)}%
         </text>
@@ -101,8 +102,8 @@ export function PortfolioTreemap({ data }: { data: HeatmapData }) {
         >
           <Tooltip
             contentStyle={{
-              backgroundColor: "#18181b",
-              border: "1px solid #3f3f46",
+              backgroundColor: CHART_TOOLTIP_BG,
+              border: CHART_TOOLTIP_BORDER,
               borderRadius: 8,
               fontSize: 12,
             }}

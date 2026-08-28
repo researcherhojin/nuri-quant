@@ -190,7 +190,8 @@ describe("buildTreemapData / cellStroke / TreemapCell", () => {
   it("cellStroke: 위반별 테두리색, 정상은 경계색", () => {
     expect(cellStroke("stop_loss")).toBe(VIOLATION_COLORS.stop_loss);
     expect(cellStroke("overweight")).toBe(VIOLATION_COLORS.overweight);
-    expect(cellStroke(null)).toBe("#27272a");
+    // 토큰이어야 한다 — hex 로 되돌리면 테마를 안 따라온다 (#1275).
+    expect(cellStroke(null)).toBe("var(--muted)");
   });
 
   it("TreemapCell: 넓은 셀은 티커+손익 라벨, depth 0 은 빈 그룹", () => {
