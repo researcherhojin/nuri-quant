@@ -95,6 +95,12 @@ class TestFreshnessPolicies:
             "macro_market",
             "macro_monthly",
             "consensus",
+            # `decisions_context` 는 #1261 에서 추가 — `consensus` 정책이 **형제 테이블**
+            # (`recommendations`)을 봐서, 같은 job 이 쓰는 `decisions` 가 67 거래일 통째로
+            # 비었을 때(#897/#898)도, `regime`·`scoring_detail` 이 591/591 NULL 로 4.5개월
+            # 얼어 있을 때(#1247/#1256)도 내내 초록이었다. 완결성 술어를 신선도 쿼리 안에 두어
+            # "행이 쓰였다" 와 "쓸모있게 쓰였다" 를 한 쿼리로 구분한다.
+            "decisions_context",
             "certification",
             "portfolio",
             "ark",
@@ -776,3 +782,122 @@ class TestFreshnessConfig:
         stale = stale_verdict_inputs(db_path)
         assert {s["key"] for s in stale} == set(VERDICT_GATE_KEYS)
         assert all(s["status"] == "FAIL" for s in stale)
+
+
+class TestDecisionsContextPolicy:
+    """`decisions_context` 정책 잠금 (#1261).
+
+    `consensus` 정책은 **형제 테이블**(`recommendations`)을 본다. 같은 job 이 쓰는
+    `decisions` 는 두 번 죽었는데 두 번 다 그 정책이 초록이었다 — writer 사망
+    67 거래일(#897/#898)과 컬럼 동결 4.5개월(#1247/#1256). 그래서 이 정책은
+    "가장 최근에 **완전한** 행이 나온 날" 을 본다.
+    """
+
+    def _seed(self, db_path, date: str, *, regime, scoring_detail, ticker="AAA"):
+        from nuri.core.db import upsert_decision
+
+        upsert_decision(
+            {
+                "date": date,
+                "ticker": ticker,
+                "action": "HOLD",
+                "confidence": 50.0,
+                "regime": regime,
+                "scoring_detail": scoring_detail,
+            },
+            db_path,
+        )
+
+    def test_frozen_context_columns_cannot_keep_the_policy_green(self, db_path):
+        """행은 매일 쓰이는데 컨텍스트 컬럼이 얼어 있으면 FAIL 이다.
+
+        프로덕션에서 정확히 이 모양이었다 — `decisions` 는 매일 18행씩 쌓이는데
+        `regime`·`scoring_detail` 이 591/591 NULL 이었고, 행 수를 보는 어떤 검사도
+        4.5개월간 아무 신호를 내지 않았다.
+
+        Mutation lock: 쿼리에서 완결성 술어(`WHERE regime IS NOT NULL AND
+        scoring_detail IS NOT NULL`)를 지우면 `MAX(date)` 가 오늘을 집어 PASS 로 뒤집힌다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now, today_kst
+
+        old = (kst_now() - timedelta(days=5)).strftime("%Y-%m-%d")
+        self._seed(db_path, old, regime="bull_low_vol", scoring_detail='{"x":1}')
+        # 오늘 행은 있지만 컨텍스트가 비었다 — "쓰였다" 는 "쓸모있게 쓰였다" 가 아니다.
+        self._seed(db_path, today_kst(), regime=None, scoring_detail=None)
+
+        result = check_freshness("decisions_context", db_path=db_path)
+        assert result["status"] == "FAIL", result
+        assert result["last_updated"].startswith(old), result
+
+    def test_one_complete_row_cannot_hide_an_incomplete_batch(self, db_path):
+        """배치 18행 중 한 행만 완전해도 초록이 되면 안 된다 (Codex P2).
+
+        `record_decisions()` 가 배치 중간에 죽거나 일부 티커만 컨텍스트를 잃으면,
+        행 단위 `WHERE ... IS NOT NULL` + `MAX(date)` 는 **첫 완전한 행이 들어오는 순간**
+        오늘을 집어 초록이 된다 — 나머지가 빈 컨텍스트인 채로. `signals` 가 "보유
+        18종목만 갱신돼도 날짜가 올라간다" 를 막은 것과 같은 축이다.
+
+        Mutation lock: 쿼리를 `GROUP BY date HAVING SUM(...) = COUNT(*)` 에서
+        행 단위 `WHERE ... IS NOT NULL` 로 되돌리면 PASS 로 뒤집힌다.
+        """
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now, today_kst
+
+        old = (kst_now() - timedelta(days=5)).strftime("%Y-%m-%d")
+        self._seed(db_path, old, regime="bull_low_vol", scoring_detail='{"x":1}', ticker="AAA")
+        # 오늘 배치: 한 행만 완전, 나머지는 빈 컨텍스트.
+        self._seed(db_path, today_kst(), regime="bull_low_vol", scoring_detail='{"x":1}', ticker="AAA")
+        self._seed(db_path, today_kst(), regime=None, scoring_detail=None, ticker="BBB")
+        self._seed(db_path, today_kst(), regime=None, scoring_detail=None, ticker="CCC")
+
+        result = check_freshness("decisions_context", db_path=db_path)
+        assert result["status"] == "FAIL", result
+        assert result["last_updated"].startswith(old), result
+
+    def test_a_complete_row_today_passes(self, db_path):
+        """술어가 과하게 좁아 아무것도 매칭 못 하는 회귀를 막는다."""
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import today_kst
+
+        self._seed(db_path, today_kst(), regime="bull_low_vol", scoring_detail='{"x":1}')
+
+        assert check_freshness("decisions_context", db_path=db_path)["status"] == "PASS"
+
+    def test_thresholds_absorb_one_degraded_day_but_fail_before_the_third_run(self):
+        """임계는 시계 없이 산술로 잠근다 — 이 정책의 설계 지점이 여기다 (Codex P2 라운드 2).
+
+        `date` 가 00:00 KST 앵커이고 cron 이 매일 07:05 이므로:
+          - 하루 degradation 이 회복되기 **직전** 나이 = 55.08h  (월 00:00 → 수 07:05)
+          - 2차 연속 실패 시점 나이도 = 55.08h  ← **같은 순간 같은 나이다**
+        두 시나리오를 나이로 구분할 수 없으므로, 55.08 이하 임계는 건강한 하루 회복을
+        FAIL 로 만든다 (48 도 55 도 오탐). 그래서 하한이 55.08 이다.
+
+        상한은 3차 예정 실행(목 07:05) = 79.08h — 그 전에는 FAIL 이어야 두 번 연속
+        실패가 다음 실행 전에 표면화된다.
+
+        Mutation lock: 48 이나 55 로 낮추면 하한에서 FAIL, 80 이상으로 올리면 상한에서 FAIL.
+        """
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
+        fail_h = FRESHNESS_POLICIES["decisions_context"]["fail_hours"]
+        assert fail_h > 55.08, (
+            f"fail_hours({fail_h}) 가 하루 degradation 최대 나이(55.08h) 이하 — "
+            "건강한 파이프라인이 하루 걸렀다는 이유로 FAIL 한다"
+        )
+        assert fail_h < 79.08, (
+            f"fail_hours({fail_h}) 가 3차 예정 실행 나이(79.08h) 이상 — "
+            "두 번 연속 실패가 다음 실행 전에 표면화되지 않는다"
+        )
+
+    def test_a_day_old_complete_row_is_warn_not_fail(self, db_path):
+        """하루 지난 완전 행은 WARN 이지 FAIL 이 아니다 (시계 무관 — 나이 24~48h)."""
+        from nuri.core.freshness import check_freshness
+        from nuri.core.timezone import kst_now
+
+        yesterday = (kst_now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        self._seed(db_path, yesterday, regime="bull_low_vol", scoring_detail='{"x":1}')
+
+        result = check_freshness("decisions_context", db_path=db_path)
+        assert 24 <= result["age_hours"] < 48, result
+        assert result["status"] == "WARN", result

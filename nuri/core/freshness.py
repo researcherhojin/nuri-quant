@@ -154,6 +154,61 @@ FRESHNESS_POLICIES: dict[str, dict] = {
         "query": "SELECT datetime(MAX(date)) FROM recommendations WHERE source IS NULL",
         "label": "에이전트 합의",
     },
+    # `consensus` 위 정책은 **형제 테이블**을 본다 (#1261). 같은 job 이 쓰는
+    # `decisions` 는 두 번 죽었는데 두 번 다 이 정책이 초록이었다:
+    #   1. writer 사망 67 거래일 (2026-04-15~07-28, #897/#898) — `decisions` 0행인 동안
+    #      `recommendations` 는 1064행/67일 정상이었다.
+    #   2. 컬럼 동결 4.5개월 (#1247/#1256) — 행은 매일 쓰였는데 `regime`·`scoring_detail` 이
+    #      prod 591/591 NULL 이었다. 행 수만 보는 검사는 "쓰였다" 와 "쓸모있게 쓰였다" 를
+    #      구분하지 못한다.
+    # 그래서 **완결성 술어를 신선도 쿼리 안에** 둔다 — "가장 최근에 완전한 행이 나온 날".
+    # 하나의 쿼리가 두 실패 모드를 다 잡는다: writer 가 죽으면 날짜가 안 오르고, 컬럼이 얼면
+    # 행이 있어도 술어를 통과 못 해 날짜가 언다. 부재는 NULL → check_freshness 가 FAIL/"데이터 없음".
+    # `ark`(#1145) 가 "멀쩡한 펀드가 죽은 펀드를 가린다" 를 막은 것과 같은 축이고, 여기서는
+    # **내용 없는 행이 내용 있는 행을 가리는 것**을 막는다.
+    #
+    # 술어 컬럼이 이 둘인 이유: prod 26컬럼 NULL 센서스에서 100% NULL 이던 컬럼이 정확히
+    # 이 둘이고 (다른 24개는 0 NULL), 둘 다 `record_decision` 한 곳에서만 쓰인다.
+    # `scoring_detail` 의 프로덕션 생성 지점은 `consensus/scoring.py:163` 하나뿐이고 무조건
+    # 채우므로 정당한 NULL 이 없다 — 술어에 넣어도 오탐이 안 생긴다.
+    #
+    # 임계 근거: 이 job 은 `scheduler.py` cron `5 7 * * *` — **주말 포함 매일**이다
+    # (prod 실측: #898 이후 29일 중 간격 1일 28회 / 2일 1회, 그 2일은 #1191 로그인세션 outage).
+    # `date` 는 00:00 KST 앵커 문자열이라 당일 run 직전 정상 나이가 ~31h → warn 24 는
+    # `consensus` 와 같은 값·같은 이유다.
+    #
+    # **fail 은 (55.08, 79.08) 열린 구간이어야 한다** — 임계가 이 정책의 설계 지점이다:
+    #   - 하한 55.08h = 월 00:00 앵커에서 수 07:05. 이게 하루짜리 정당한 degradation
+    #     (2026-07-08 처럼 그날 전 행의 macro verdict 가 "SPY 데이터 부족")이 회복되기
+    #     **직전** 나이다. 그런데 **2차 연속 실패 시점의 나이도 정확히 같은 55.08h** 다 —
+    #     같은 순간 같은 값이라 나이로는 두 시나리오를 구분할 수 없다. 따라서 55.08 이하
+    #     임계(48 도 55 도)는 건강한 하루 회복을 FAIL 로 만든다. 술어를 약화시키는 대신
+    #     임계로 흡수한다는 뜻이 이것이다.
+    #   - 상한 79.08h = 3차 예정 실행(목 07:05). 그 전에 FAIL 이어야 두 번 연속 실패가
+    #     다음 실행 전에 표면화된다.
+    # 60 을 고른 이유: 하한에서 4.92h 여유를 두면서(실측 실행시각 분산은 **0** — prod
+    # 30일 전부 정확히 07:05 KST) 2차 실패로부터 4.92h 만에 FAIL 로 전환한다. 72 도
+    # 구간 안이지만 전환이 17h 뒤로 밀린다.
+    # **Test:** `TestDecisionsContextPolicy::test_thresholds_absorb_one_degraded_day_but_fail_before_the_third_run`
+    # — 시계 없이 두 경계를 산술로 잠근다.
+    "decisions_context": {
+        # ⚠️ **행 단위 `MAX` 는 부족하다** (Codex P2). `WHERE ... IS NOT NULL` 만 걸면
+        # 오늘 배치 18행 중 **한 행만** 완전해도 MAX 가 오늘을 집어 초록이 된다 —
+        # 나머지 17행이 빈 컨텍스트인 채로. `signals` 가 "보유 18종목만 갱신돼도 날짜가
+        # 올라간다" 를 막은 것과, `ark` 가 펀드별 MIN 을 쓰는 것과 같은 축이다
+        # (`nuri/core/CLAUDE.md`: 멀쩡한 축이 죽은 축을 가린다).
+        # 그래서 **날짜로 묶어 그날 전 행이 완전한 날**만 센다.
+        #
+        # 행수 floor 는 여기 두지 않는다 — 분모가 포트폴리오 구성이라(prod 실측 날짜별
+        # 18~21행) 소스 감시가 우리 구성에 의존하게 되고, 그건 `ark`(#1147)에서 한 번
+        # 틀린 축이다. 부분 배치(행이 통째로 모자란 경우)는 별도 근거가 필요해 분리한다.
+        "query": (
+            "SELECT datetime(MAX(date)) FROM (SELECT date FROM decisions "
+            "GROUP BY date "
+            "HAVING SUM(regime IS NOT NULL AND scoring_detail IS NOT NULL) = COUNT(*))"
+        ),
+        "label": "결정 컨텍스트 (완결)",
+    },
     "certification": {
         # E4-0a (PR #410) 이후 SIEGE 인증 실행은 `certifications` 테이블에 직접 persist.
         # 이전 policy 는 pipeline_events 'certification_result' 이벤트를 기대했으나 emitter 부재
