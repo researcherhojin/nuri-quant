@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { ERRORS } from "@/lib/strings";
+import { ERRORS, PIPELINE as PL } from "@/lib/strings";
 import type { ComponentType, ReactNode } from "react";
 
 type FlowNode = { id: string; type?: string; data?: Record<string, unknown> };
@@ -275,8 +275,9 @@ describe("PipelinePage — fetch & render branch arms", () => {
     await waitFor(() => expect(screen.getAllByText("Collect").length).toBeGreaterThan(0));
     // 타임라인 빈 상태 메시지 (timeline.length === 0 → NO_EVENTS / RUN_STEP_HINT)
     expect(screen.getByText(/이벤트 없음/)).toBeInTheDocument();
-    // 게이트 빈 상태 (allConditions.length === 0 → GATE_LOADING)
-    expect(screen.getByText("게이트 조건 로딩 중...")).toBeInTheDocument();
+    // 게이트 빈 상태 — #1250 이후 "로딩 중" 이 아니라 "조건 없음". 성공 응답이 비었을
+    // 뿐인데 영원히 로딩으로 보이던 게 원래 증상이다. 리터럴 대신 SSoT 를 쓴다.
+    expect(screen.getByText(PL.GATE_EMPTY)).toBeInTheDocument();
     // 369: runningSteps.size === 0 → 실행 중 카운터 badge 없음
     expect(screen.queryByText(/개 실행 중/)).toBeNull();
   });
