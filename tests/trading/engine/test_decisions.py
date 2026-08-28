@@ -473,8 +473,17 @@ class TestRegimeFallsBackToClassifier:
         예외가 `BaseException` 을 직접 상속하는 것도 같은 이유이고, 거기 결론이
         "삼켜지는 백스톱은 백스톱이 아니다" 다.
 
-        그래서 스텁은 **다른 canonical regime 을 반환**한다. fallback 이 이벤트 값을
-        덮으면 그 값이 나타나 단언이 깨진다.
+        여기서 잠그는 성질은 **둘**이고, 둘 다 필요하다 (codex adversarial, 2026-08-28):
+          (a) 이벤트 값이 최종 저장값이다 — 스텁이 **다른 canonical regime 을 반환**하므로
+              fallback 이 덮으면 그 값이 나타나 단언이 깨진다.
+          (b) 이벤트가 있으면 분류기를 **호출조차 하지 않는다** — 호출 여부를 기록해
+              테스트 본문에서 단언한다. (a) 만으로는 "분류기를 먼저 부르고 대입만 가드
+              안에서" 하는 뮤턴트가 초록으로 남는다. `classify_regime` 은 SPY 200일
+              히스토리를 읽으므로 불필요한 호출 자체가 회귀다.
+
+        단언을 **프로덕션 try 블록 밖**에 두는 게 핵심이다. 이전 판은 스텁 안에서
+        `AssertionError` 를 던졌는데 그게 정확히 `except Exception: pass` 안이라 삼켜졌다.
+        기록은 스텁이 하고 판정은 테스트가 한다 — 삼켜질 자리가 없다.
         """
         import nuri.quant.regime.classifier as classifier
         from nuri.core.events import emit_event
@@ -482,11 +491,18 @@ class TestRegimeFallsBackToClassifier:
         class _State:
             regime = "bull_low_vol"  # 이벤트 값과 다른 canonical 값
 
+        calls: list = []
+
+        def _stub(db_path=None):
+            calls.append(db_path)
+            return _State()
+
         emit_event("regime_changed", payload={"regime": "bear_high_vol"}, db_path=db_path)
-        monkeypatch.setattr(classifier, "classify_regime", lambda db_path=None: _State())
+        monkeypatch.setattr(classifier, "classify_regime", _stub)
         dec_id = self._record_one(db_path)
         row = query("SELECT regime FROM decisions WHERE id = ?", (dec_id,), db_path)[0]
         assert row["regime"] == "bear_high_vol", "분류기 값이 이벤트 값을 덮었다 — 우선순위 역전"
+        assert calls == [], "이벤트가 있는데 분류기를 호출했다 — 가드가 대입만 막고 호출은 안 막는다"
 
     def test_classifier_failure_leaves_regime_null(self, db_path, monkeypatch):
         """분류기 실패는 soft-fail — 관측이 본 작업(기록)을 게이트하면 안 된다 (#894)."""
