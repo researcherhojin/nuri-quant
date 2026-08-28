@@ -20,6 +20,7 @@
 그중 2곳만 지목했다.
 """
 
+import pandas as pd
 import pytest
 
 from nuri.core.db import get_db, init_db
@@ -141,6 +142,44 @@ class TestEveryConsumerIsCovered:
         assert agent._get_fx_rate() == pytest.approx(1380.0)
 
 
+#: 날짜 상한을 **일부러 두지 않는** 조회. 사유를 반드시 함께 적는다.
+#: 양방향 검사라 낡은 항목(이제 상한이 생긴 파일)도 FAIL 한다 — allowlist 가 조용히
+#: 커지는 걸 막는 것이 이 목록의 존재 이유다 (`test_cross_stage_imports.py` 와 같은 규율).
+CEILING_EXEMPT: dict[str, str] = {
+    "quant/validation/strategy_walkforward.py": (
+        "데이터셋을 평가하는 백테스트 입력. 벽시계로 자르면 (1) 실행 날짜에 따라 결과가 "
+        "달라져 재현 불가, (2) 가격 패널에는 상한이 없어 FX 만 잘리면 "
+        "`reindex(prices.index).fillna(0.0)` 가 오늘 이후 FX 수익률을 전부 0 으로 채워 "
+        "KRW 결과가 조용히 왜곡된다. 게다가 그 reindex 가 가격 범위 밖 FX 날짜를 "
+        "어차피 버리므로 상한은 이득도 없다 (codex 리뷰 P2)."
+    ),
+}
+
+
+class TestBacktestFxIsBoundedByTheDatasetNotTheClock:
+    """백테스트 FX 는 **벽시계가 아니라 데이터셋 지평**을 따른다 (codex 리뷰 P2).
+
+    초안이 여기에도 상한을 넣었다가 되돌렸다. 두 가지가 깨졌기 때문이다:
+      1. 같은 DB·같은 코드가 **실행 날짜에 따라** 다른 결과를 낸다 (재현 불가).
+      2. `_build_us_panel` 은 가격에 상한이 없어서, FX 만 자르면
+         `fx_ret … .reindex(prices.index).fillna(0.0)` 가 오늘 이후 FX 수익률을
+         **전부 0(환율 불변)** 으로 채운다 — 조용한 왜곡이라 더 나쁘다.
+
+    "미래 행" 방어는 여기 필요 없다: 위 reindex 가 가격 인덱스 밖 FX 날짜를 버린다.
+    """
+
+    def test_series_includes_dates_beyond_today(self, db):
+        """Mutation lock: `_load_fx_series` 에 `AND date <= ?` 를 넣으면 FAIL."""
+        from nuri.quant.validation.strategy_walkforward import _load_fx_series
+
+        _seed(db, [(PAST, 1100.0), (TODAY, 1380.0), (FUTURE, 1500.0)])
+        series = _load_fx_series(db)
+        assert pd.Timestamp(FUTURE) in series.index, (
+            "데이터셋 지평을 벽시계로 잘랐다 — 실행 날짜에 따라 백테스트 결과가 달라진다"
+        )
+        assert len(series) == 3
+
+
 class TestNoUnboundedLatestReadRemains:
     """구조 스윕 — 새 소비자가 상한 없이 또 읽는 걸 막는다.
 
@@ -149,22 +188,33 @@ class TestNoUnboundedLatestReadRemains:
     """
 
     @staticmethod
-    def _offenders() -> list[str]:
+    def _unbounded() -> dict[str, list[int]]:
         import re
         from pathlib import Path
 
         root = Path(__file__).resolve().parents[2] / "nuri"
         pat = re.compile(r"indicator\s*=\s*['\"]usd_krw['\"]")
-        out = []
-        for f in root.rglob("*.py"):
+        out: dict[str, list[int]] = {}
+        for f in sorted(root.rglob("*.py")):
             for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
                 if pat.search(line) and "date <=" not in line and "date >" not in line:
-                    out.append(f"{f.relative_to(root)}:{i}")
+                    out.setdefault(str(f.relative_to(root)), []).append(i)
         return out
 
-    def test_no_usd_krw_query_lacks_a_date_ceiling(self):
-        offenders = self._offenders()
-        assert not offenders, f"날짜 상한 없는 usd_krw 조회: {offenders}"
+    def test_no_unlisted_query_lacks_a_date_ceiling(self):
+        found = self._unbounded()
+        unlisted = {k: v for k, v in found.items() if k not in CEILING_EXEMPT}
+        assert not unlisted, f"상한 없는 usd_krw 조회가 새로 생겼다: {unlisted}"
+
+    def test_every_exemption_is_still_needed(self):
+        """양방향 — 상한이 생긴 파일이 목록에 남아 있으면 그 사유는 이미 거짓이다."""
+        found = self._unbounded()
+        stale = [k for k in CEILING_EXEMPT if k not in found]
+        assert not stale, f"낡은 예외 항목(이미 상한이 있음): {stale}"
+
+    def test_every_exemption_states_a_reason(self):
+        for path, why in CEILING_EXEMPT.items():
+            assert len(why) > 40, f"{path}: 사유가 너무 짧다 — 다음 사람이 판단할 수 없다"
 
     def test_the_sweep_has_eyes(self):
         """카나리아 — 정규식이 조용히 아무것도 안 잡으면 위 테스트는 영원히 초록이다."""
