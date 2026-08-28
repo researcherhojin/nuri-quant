@@ -117,10 +117,23 @@ class TestFreeTextNeverReachesTheColumn:
 #: `UNKNOWN_REGIME`("unknown") 을 정당하게 저장하는데, 그 값은 **의도적으로**
 #: `ALL_REGIMES` 밖이다 (미상을 어휘 안 이름으로 표기하지 않으려고 그렇게 만들었다).
 #: 그 컬럼까지 가드를 걸면 미상을 표현할 방법이 사라진다.
-CANONICAL_VOCAB_WRITERS: dict[str, str] = {
-    "trading/recommend/tracker.py": "recommendations.regime",
-    "trading/agents/consensus/persistence.py": "recommendations.regime",
-    "trading/engine/decisions.py": "decisions.regime",
+#:
+#: 값의 `functions` 는 **가드를 부르는 함수 이름**이다. 파일 단위로만 세면 같은 파일
+#: 어딘가의 죽은 호출 하나로 검사가 만족되고 정작 쓰기 경로는 무가드일 수 있다
+#: (Codex P3, PR #1294). 이 레포가 반복해서 밟는 "눈 없는 스윕" 이라 함수까지 내린다.
+CANONICAL_VOCAB_WRITERS: dict[str, dict] = {
+    "trading/recommend/tracker.py": {
+        "column": "recommendations.regime",
+        "functions": ("save_buy_candidates", "save_recommendations"),
+    },
+    "trading/agents/consensus/persistence.py": {
+        "column": "recommendations.regime",
+        "functions": ("save_to_recommendations",),
+    },
+    "trading/engine/decisions.py": {
+        "column": "decisions.regime",
+        "functions": ("_snapshot_market_context",),
+    },
 }
 
 #: 같은 어휘를 쓰는데 **아직 가드가 없는** writer. 사유와 추적 이슈를 함께 적는다.
@@ -151,11 +164,43 @@ class TestCanonicalVocabColumnsAreGuarded:
             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "canonical_regime_or_none"
         )
 
+    @staticmethod
+    def _guard_call_functions(rel: str) -> set[str]:
+        """가드를 **호출하는 함수 이름** 집합. 중첩 함수는 가장 안쪽 이름으로 잡힌다."""
+        tree = ast.parse((NURI / rel).read_text(encoding="utf-8"))
+        found = set()
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if any(
+                isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "canonical_regime_or_none"
+                for n in ast.walk(fn)
+            ):
+                found.add(fn.name)
+        return found
+
     @pytest.mark.parametrize("rel", sorted(CANONICAL_VOCAB_WRITERS))
     def test_writer_calls_the_guard(self, rel):
-        """AST 로 **실호출**만 센다 — import 나 주석 언급으로는 통과하지 않는다."""
-        col = CANONICAL_VOCAB_WRITERS[rel]
-        assert self._guard_calls(rel) >= 1, f"{rel} ({col}): 정규화 가드를 호출하지 않는다"
+        """AST 로 **실호출**만 센다 — import 나 주석 언급으로는 통과하지 않는다.
+
+        파일이 아니라 **함수** 단위다: 같은 파일 어딘가의 죽은 호출로는 통과하지 않는다.
+        """
+        entry = CANONICAL_VOCAB_WRITERS[rel]
+        actual = self._guard_call_functions(rel)
+        for func in entry["functions"]:
+            assert func in actual, f"{rel}::{func} ({entry['column']}): 정규화 가드를 호출하지 않는다"
+
+    def test_guard_call_sites_match_the_code(self):
+        """양방향 — 가드 호출이 **다른 함수로 새면** 인벤토리와 어긋나 FAIL 한다.
+
+        이게 없으면 쓰기 함수에서 가드를 빼고 같은 파일의 아무 함수에 하나 남겨두는
+        변경이 조용히 통과한다 (Codex P3 가 지적한 구멍).
+        """
+        for rel, entry in sorted(CANONICAL_VOCAB_WRITERS.items()):
+            assert self._guard_call_functions(rel) == set(entry["functions"]), (
+                f"{rel}: 가드 호출 함수가 인벤토리와 다르다 — "
+                f"코드={sorted(self._guard_call_functions(rel))}, 목록={sorted(entry['functions'])}"
+            )
 
     def test_every_listed_writer_exists(self):
         """양방향 — 파일이 사라지거나 옮겨지면 위 검사가 조용히 공허해진다."""
