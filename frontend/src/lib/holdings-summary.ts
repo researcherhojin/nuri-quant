@@ -113,14 +113,42 @@ export interface HoldingsSummary {
   concentration: ConcentrationSummary;
 }
 
+/**
+ * 계좌별 총액 병합 — holdings 평가액 + cash 를 계좌 단위로 합친다 (#1284).
+ *
+ * **미상(null)은 0 으로 접지 않는다.** 없는 돈이 아니라 모르는 돈이라, 0 으로 더하면
+ * 그 계좌가 "현금만 있는 계좌" 처럼 보이고 나머지 계좌 비중이 조용히 부풀려진다.
+ * 한 계좌에 미상이 하나라도 섞이면 그 계좌 합계 전체가 미상이다.
+ *
+ * page.tsx 인라인이었는데 테스트가 닿지 않아 뮤테이션이 **안 잠겼다** — 그래서 뺐다.
+ */
+export function mergeAccountTotals(
+  accountValues: Array<{ account: string; value: number | null }>,
+  cashAccounts: Array<{ account: string; total_usd: number | null }>,
+): Array<{ account: string; value: number | null }> {
+  const totals = new Map<string, number | null>();
+  const add = (account: string, value: number | null) => {
+    const prev = totals.get(account);
+    totals.set(account, prev === null || value === null ? null : (prev ?? 0) + value);
+  };
+  for (const av of accountValues) add(av.account, av.value);
+  for (const c of cashAccounts) add(c.account, c.total_usd);
+  return Array.from(totals.entries()).map(([account, value]) => ({ account, value }));
+}
+
 export interface SummarizeOptions {
-  totalPortfolioUsd: number;
+  /**
+   * #1284: 환율 미수집이면 통화 혼합 총액이 **미상**이라 null 이 온다. 그 경우
+   * 상류(`holding-row`)에서 모든 `positionPct` 가 이미 null 이므로 아래 파생값은
+   * 전부 0/빈 배열이 된다 — **틀린 숫자가 아니라 빈 요약**으로 degrade 한다.
+   */
+  totalPortfolioUsd: number | null;
   /**
    * Per-account total USD (holdings + cash). page.tsx merges `account_values`
    * and `cash_summary.accounts` from /api/dashboard before passing in.
    * Empty → byAccount slice is []  (card not rendered).
    */
-  accountValues?: Array<{ account: string; value: number }>;
+  accountValues?: Array<{ account: string; value: number | null }>;
 }
 
 // Palette — tailwind 400-level shades so the donut reads against zinc-950.
@@ -152,7 +180,9 @@ export function summarizeHoldings(
   holdings: EnrichedHolding[],
   options: SummarizeOptions,
 ): HoldingsSummary {
-  const totalUsd = options.totalPortfolioUsd;
+  // 미상이면 0 으로 둔다. 이건 "총액이 0" 이라는 주장이 아니라, 분모를 모를 때
+  // 파생 지표를 **내지 않기** 위한 값이다 (위 주석 참조 — positionPct 가 전부 null).
+  const totalUsd = options.totalPortfolioUsd ?? 0;
 
   // ── NORMALIZATION ─────────────────────────────────────────────────────
   // `positionPct` on each holding is "% of total portfolio (holdings + cash)"
@@ -266,7 +296,10 @@ export function summarizeHoldings(
   //    the main table.
   const rawAccounts = options.accountValues ?? [];
   const byAccount: AccountSlice[] = rawAccounts
-    .filter((a) => a.value > 0)
+    // #1284: 미상(null)은 크기를 모르므로 정렬·비중에 넣을 수 없다. 제외하되
+    // 그 사실은 히어로의 사유 배너가 말한다 — 여기서 0 으로 접으면 다른 계좌
+    // 비중이 조용히 부풀려진다.
+    .filter((a): a is { account: string; value: number } => a.value != null && a.value > 0)
     .sort((a, b) => b.value - a.value)
     .map((a, i): AccountSlice => {
       const agg = accountDeltaAgg.get(a.account);

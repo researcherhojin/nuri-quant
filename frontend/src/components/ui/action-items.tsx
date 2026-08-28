@@ -14,7 +14,11 @@ export interface ActionItem {
   agreement?: number | null;
   /** 시세 미수집이면 `null` — 측정 불가이지 0% 가 아니다 (#1279). */
   pnl_pct: number | null;
-  position_pct: number;
+  /**
+   * 환율 미수집이면 `null` — 비중의 분모(통화 혼합 총액)를 모른다 (#1284).
+   * 바로 위 `pnl_pct` 와 **같은 계약**이다: 측정 불가는 0 이 아니다.
+   */
+  position_pct: number | null;
   current_price?: number | null;
   avg_price?: number | null;
   account?: string;
@@ -138,7 +142,7 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
             : `${item.pnl_pct >= 0 ? "+" : ""}${item.pnl_pct.toFixed(1)}%`}
         </td>
         <td className="h-8 px-2 whitespace-nowrap hidden md:table-cell text-right text-[11px] text-zinc-400 tabular-nums">
-          {item.position_pct.toFixed(1)}%
+          {item.position_pct == null ? ACTION.PNL_UNKNOWN : `${item.position_pct.toFixed(1)}%`}
         </td>
         <td className="h-8 px-2 whitespace-nowrap">
           <span className="inline-flex items-center gap-1.5">
@@ -171,7 +175,7 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
               {/* <md 에서 행이 숨기는 계좌·비중을 peek 가 복원 (#1208 codex P2) */}
               {item.account && <span className="md:hidden"><span className="text-zinc-600">계좌</span> <span className="text-zinc-300">{item.account}</span></span>}
-              <span className="md:hidden"><span className="text-zinc-600">비중</span> <span className="text-zinc-300 tabular-nums">{item.position_pct.toFixed(1)}%</span></span>
+              <span className="md:hidden"><span className="text-zinc-600">비중</span> <span className="text-zinc-300 tabular-nums">{item.position_pct == null ? ACTION.PNL_UNKNOWN : `${item.position_pct.toFixed(1)}%`}</span></span>
               <span><span className="text-zinc-600">현재가</span> <span className="text-zinc-300 tabular-nums">{fmt(item.current_price)}</span></span>
               <span><span className="text-zinc-600">손절</span> <span className="text-red-400 tabular-nums">{fmt(item.stop_loss)}</span></span>
               <span><span className="text-zinc-600">1차익절</span> <span className="text-emerald-400 tabular-nums">{fmt(item.target_1)}</span></span>

@@ -33,6 +33,11 @@ const mockDashboardData = {
   regime: { regime: "bull_low_vol", trend: "bull", volatility: "low", confidence: 78, vix: 18.5, fear_greed: 55 },
   macro: { score: 65, interpretation: "Moderately positive" },
   allocation: { long: 50, short: 10, cash: 40 },
+  // #1284: 실 API 는 이 필드를 **항상** 낸다. 빠뜨려두면 `undefined` 가 되어 예전
+  // `|| 1400` 폴백을 타고, 그 지어낸 값 위에서 기대치가 계산된다 — 잘못된 mock 형태가
+  // 결함을 잠그던 자리다 (`tests/CLAUDE.md` "Mock Shape Locks Bugs").
+  exchange_rate: 1400,
+  fx_unavailable: null,
   actions: [
     { action: "BUY", ticker: "NVDA", confidence: 72, agreement: 80, reason: "Strong multi-factor score" },
     { action: "SELL", ticker: "INTC", confidence: 65, agreement: 70, reason: "Negative momentum" },
@@ -711,17 +716,41 @@ describe("DashboardPage", () => {
     });
   });
 
-  /* ── exchange_rate fallback ── */
-  it("uses fallback exchange rate 1400 when exchange_rate is null", async () => {
-    // KRW holding: 4 * 210000 / 1400 = 600; USD holding: 33 * 250 = 8250; total = 8850
+  /* ── exchange_rate 부재 (#1284) ── */
+  it("shows an em dash and the reason when exchange_rate is null", async () => {
+    // 예전 이름은 "uses fallback exchange rate 1400..." 이었고 지어낸 1400 으로 환산한
+    // $8,850 을 잠그고 있었다. 원화 보유가 있으면 통화 혼합 총액은 **미상**이다.
+    const reason = "USD/KRW 미수집 — 원화 자산이 있어 통화 혼합 합계를 낼 수 없습니다";
     setupMocks({
-      dashboard: { ...mockDashboardData, exchange_rate: null },
+      dashboard: { ...mockDashboardData, exchange_rate: null, fx_unavailable: reason },
     });
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      const total = screen.getByTestId("hero-total");
-      expect(total.textContent).toContain("$8,850");
+      // ⚠️ `hero-total` 컨테이너에 `toContain("—")` 만 걸면 **사유 문자열 안의 em dash**
+      // 가 단언을 대신 만족시킨다 — 값이 "$0" 이어도 통과하는 false lock 이었다
+      // (뮤테이션 실측으로 발각). 값 요소를 직접 본다.
+      const value = screen.getByTestId("hero-total-value");
+      expect(value.textContent).toBe("—");
+      expect(screen.getByTestId("hero-total").textContent).toContain(reason);
+    });
+  });
+
+  it("keeps a USD-only total exact when exchange_rate is null", async () => {
+    // 대조군 — 환산이 필요 없으면 환율 부재와 무관하게 정확하다. 일괄 "—" 는 과잉이다.
+    setupMocks({
+      dashboard: { ...mockDashboardData, exchange_rate: null, fx_unavailable: null },
+      portfolio: {
+        count: 1,
+        holdings: [
+          { ticker: "ZZZZ", quantity: 10, avg_price: 100, latest_price: 250, currency: "USD" },
+        ],
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByTestId("hero-total-value").textContent).toBe("$2,500");
     });
   });
 

@@ -916,6 +916,53 @@ class TestPremarketBriefStatementCoverage:
         assert ctx["portfolio_totals"] is not None
         assert ctx["portfolio_totals"]["total_usd"] > 0
 
+    def test_short_ticker_line_survives_unknown_position_pct(self):
+        """환율 미수집이면 `position_pct` 가 None 이다 (#1284).
+
+        `.get(key, 0)` 은 **키가 존재하면** 기본값을 주지 않으므로 None 이 그대로
+        `:.1f` 에 들어가 TypeError 가 났다. 그 예외는 상위 try 가 삼켜서 브리프가
+        조용히 반쪽이 된다 — 크래시보다 나쁘다.
+
+        Mutation lock: `pos_txt` 분기를 지우고 `{pos:.1f}%` 로 되돌리면 FAIL.
+        """
+        from nuri.alerts.premarket_brief import _short_ticker_line
+
+        line = _short_ticker_line(
+            {
+                "ticker": "ZZZZ",
+                "action": "HOLD",
+                "confidence": 70,
+                "pnl_pct": 1.0,
+                "position_pct": None,
+            }
+        )
+        assert "미상" in line, f"비중 미상을 표시하지 않는다: {line}"
+        assert "None" not in line
+
+    def test_short_ticker_line_sorts_accounts_with_unknown_weights(self):
+        """정렬 키에 None 이 섞이면 파이썬은 float 과 비교하지 못해 TypeError 다.
+
+        Mutation lock: 정렬 키를 `a.get("position_pct", 0)` 로 되돌리면 FAIL.
+        """
+        from nuri.alerts.premarket_brief import _short_ticker_line
+
+        line = _short_ticker_line(
+            {
+                "ticker": "ZZZZ",
+                "action": "HOLD",
+                "confidence": 70,
+                "pnl_pct": 1.0,
+                "position_pct": None,
+                "accounts": [
+                    {"account": "Brokerage Alpha", "position_pct": None, "pnl_pct": 2.0},
+                    {"account": "Brokerage Beta", "position_pct": 8.0, "pnl_pct": 4.0},
+                ],
+            }
+        )
+        # 미상은 맨 뒤 — 알 수 있는 계좌가 먼저 읽힌다.
+        assert line.index("Brokerage Beta") < line.index("Brokerage Alpha")
+        assert "미상" in line
+
     def test_short_ticker_line_multi_account_breakdown(self):
         """L283-288: multi-account 시 breakdown line 추가."""
         from nuri.alerts.premarket_brief import _short_ticker_line

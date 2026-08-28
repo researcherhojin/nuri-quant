@@ -79,6 +79,22 @@ const portfolioItem = {
   priority: "portfolio",
 };
 
+describe("환율 미수집 — 비중 미상 (#1284)", () => {
+  it("position_pct 가 null 이면 터지지 않고 미상으로 표시한다", () => {
+    // Mutation lock: `item.position_pct.toFixed(1)` 로 되돌리면 TypeError 로 FAIL.
+    // 생산자(`/api/actions`)가 이미 nullable 인데 소비자가 number 로 믿고 있었다.
+    const item = {
+      ...urgentItem,
+      ticker: "ZZZZ",
+      reasons: [],
+      position_pct: null as number | null,
+    };
+    render(<ActionItems urgent={[item as never]} check={[]} hold={[]} portfolio={[]} />);
+    expect(screen.getByText("ZZZZ")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("null");
+  });
+});
+
 describe("ActionItems", () => {
   it("renders empty state when no actions", () => {
     render(<ActionItems urgent={[]} check={[]} hold={[]} />);
