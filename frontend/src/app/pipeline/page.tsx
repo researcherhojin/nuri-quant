@@ -236,7 +236,7 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
           }
         `}
       >
-        {data.isRunning ? "\uC2E4\uD589 \uC911..." : "\uC2E4\uD589"}
+        {data.isRunning ? PL.RUNNING : PL.RUN}
       </button>
 
       {/* 에러 표시 */}
@@ -461,7 +461,7 @@ export default function PipelinePage() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Pipeline</h1>
+        <h1 className="text-2xl font-bold">{PL.TITLE}</h1>
         <div className="flex items-center gap-3">
           {/* 실행 중 카운터 */}
           {runningSteps.size > 0 && (
@@ -625,36 +625,36 @@ const DEFAULT_NODES: Node[] = [
     id: "collect",
     type: "pipeline",
     position: { x: 0 * NODE_PITCH_X, y: 80 },
-    data: { label: "Collect", sub: "15 collectors + 6 sites", status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } as PipelineNodeData,
+    data: { label: PL.NODE_COLLECT, sub: PL.NODE_COLLECT_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } as PipelineNodeData,
   },
   {
     id: "validate",
     type: "pipeline",
     position: { x: 1 * NODE_PITCH_X, y: 80 },
-    data: { label: "Validate", sub: "Signal backtest + scorecard", status: "warning", recordCount: 0, lastUpdated: null, stepId: "validate", href: "/signals" } as PipelineNodeData,
+    data: { label: PL.NODE_VALIDATE, sub: PL.NODE_VALIDATE_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "validate", href: "/signals" } as PipelineNodeData,
   },
   {
     id: "classify",
     type: "pipeline",
     position: { x: 2 * NODE_PITCH_X, y: 80 },
-    data: { label: "Classify", sub: "6-regime classifier", status: "warning", recordCount: 0, lastUpdated: null, stepId: "classify", href: "/strategy" } as PipelineNodeData,
+    data: { label: PL.NODE_CLASSIFY, sub: PL.NODE_CLASSIFY_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "classify", href: "/strategy" } as PipelineNodeData,
   },
   {
     id: "diagnose",
     type: "pipeline",
     position: { x: 3 * NODE_PITCH_X, y: 80 },
-    data: { label: "Diagnose", sub: "10 agents consensus", status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } as PipelineNodeData,
+    data: { label: PL.NODE_DIAGNOSE, sub: PL.NODE_DIAGNOSE_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } as PipelineNodeData,
   },
   {
     id: "recommend",
     type: "pipeline",
     position: { x: 4 * NODE_PITCH_X, y: 80 },
-    data: { label: "Recommend", sub: "Buy/sell + price targets", status: "warning", recordCount: 0, lastUpdated: null, stepId: "recommend", href: "/targets" } as PipelineNodeData,
+    data: { label: PL.NODE_RECOMMEND, sub: PL.NODE_RECOMMEND_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "recommend", href: "/targets" } as PipelineNodeData,
   },
   {
     id: "track",
     type: "pipeline",
     position: { x: 5 * NODE_PITCH_X, y: 80 },
-    data: { label: "Track", sub: "30/60/90d outcomes", status: "warning", recordCount: 0, lastUpdated: null, stepId: "track", href: "/targets" } as PipelineNodeData,
+    data: { label: PL.NODE_TRACK, sub: PL.NODE_TRACK_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "track", href: "/targets" } as PipelineNodeData,
   },
 ];
