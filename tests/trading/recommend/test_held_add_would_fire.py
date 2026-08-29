@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from nuri.core.db import init_db, query
+from nuri.core.db import get_db, init_db, query
 from nuri.trading.recommend import held_add as ha
 from nuri.trading.recommend import held_add_would_fire as wf
 
@@ -409,6 +409,40 @@ class TestEmitIntegration:
             db_path=db_path,
         )
         assert query("SELECT * FROM held_add_would_fire", db_path=db_path) == []
+
+
+class TestNaNPriceDoesNotPoisonTheLedger:
+    def test_priceless_holding_gets_finite_pnl_and_a_ledger_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """prices 행이 없는 보유는 query_df LEFT JOIN 이 **NaN** 을 준다 — `or 0` 은
+        NaN 을 못 거르고(truthy), NaN pnl 은 sqlite 바인딩에서 NULL 이 돼 당일 원장
+        배치 **전체**가 NOT NULL 로 죽는다 (2026-08-29 mini 첫 라이브 실행 실측).
+        가드를 되돌리면 첫 assert(NaN != NaN)부터 FAIL."""
+        path = tmp_path / "nan.db"
+        init_db(path)
+        with get_db(path) as conn:
+            # ⚠️ 가격 **있는** 보유가 같이 있어야 한다 — 조인 컬럼이 all-NULL 이면
+            # pandas 가 object dtype(None) 으로 줘서 `or 0` 이 걸러내지만, 섞이면
+            # float64 로 승격돼 NULL 이 NaN 이 된다. 프로덕션이 정확히 이 형태였다.
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency)"
+                " VALUES ('acct_a', 'ZZZZ', 10, 100, 'USD'), ('acct_a', 'MSFT', 10, 100, 'USD')"
+            )
+            conn.execute("INSERT INTO prices (ticker, date, close) VALUES ('MSFT', '2026-08-28', 110.0)")
+        monkeypatch.setattr("nuri.trading.recommend.held_add._get_real_accounts", lambda: set())
+
+        positions = {p["ticker"]: p for p in ha._get_held_positions(db_path=path)}
+
+        assert set(positions) == {"ZZZZ", "MSFT"}
+        pnl = positions["ZZZZ"]["pnl_pct"]
+        assert pnl == pnl, "NaN pnl 이 새어 나왔다"
+        assert pnl == 0.0  # 가격 미상 = avg 폴백 (게이트 결과는 NaN 시절과 동일: 무발화)
+        # 끝까지: 이 행이 원장 배치를 죽이지 않는다
+        wf.log_would_fire_rows(
+            [{**_row(ticker="ZZZZ"), "pnl_pct": pnl}], WF_CFG, CURRENT, as_of_date="2026-08-29", db_path=path
+        )
+        assert query("SELECT pnl_pct FROM held_add_would_fire", db_path=path)[0]["pnl_pct"] == 0.0
 
 
 # ─── 4. 사전등록 잠금 (§3.6 / STRATEGY §3.12) ──────────────────────

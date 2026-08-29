@@ -167,7 +167,13 @@ def _get_held_positions(db_path: Optional[Path] = None) -> list[dict[str, Any]]:
         if real_accounts and str(row["account"]) not in real_accounts:
             continue
         avg = float(row["avg_price"] or 0)
-        cur = float(row["current_price"] or 0) or avg
+        # prices 행이 없는 보유는 query_df LEFT JOIN 이 None 이 아니라 **NaN** 을 준다.
+        # `float(nan) or 0` 은 NaN 이 truthy 라 NaN 을 그대로 통과시키고, NaN pnl 은
+        # sqlite 바인딩에서 NULL 이 돼 would-fire 원장의 NOT NULL 을 깨뜨린다 — 한
+        # 트랜잭션이라 그날 배치 전체가 죽는다 (2026-08-29 mini 실측, #1173 후속).
+        # 게이트 관점에선 NaN 비교가 전부 False 였으므로 avg 폴백(pnl 0)과 결과 동일.
+        cur_raw = float(row["current_price"] or 0)
+        cur = (cur_raw if cur_raw == cur_raw else 0.0) or avg  # NaN != NaN
         if avg <= 0 or float(row["qty"] or 0) <= 0:
             continue
         pnl_pct = (cur - avg) / avg * 100.0
