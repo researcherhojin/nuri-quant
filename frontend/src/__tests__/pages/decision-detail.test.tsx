@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act, within } from "@testing-library/react";
+import { DECISIONS } from "@/lib/strings";
 
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -76,6 +77,57 @@ describe("DecisionProvenance", () => {
     expect(screen.getByText("technical")).toBeInTheDocument();
     expect(screen.getByText(/증거 체인/)).toBeInTheDocument();
     expect(screen.getByText("agent/technical")).toBeInTheDocument();
+  });
+
+  // ── #1303: 백필된 regime 은 라이브 기록과 구분돼야 한다 ──────────────────────
+  describe("검증 불가 regime 표식 (#1303)", () => {
+    const regimeEv = {
+      id: 9, decision_id: 531, source_type: "regime", source_key: "bull_low_vol",
+      action: null, confidence: null, detail: null,
+    };
+
+    it("뒷받침 evidence 가 없으면 표시한다", async () => {
+      // 원인은 백필일 수도, 기록 중단일 수도 있다 — 표식은 **관측한 사실만** 말한다.
+      mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, regime: "bull_low_vol", evidence: [] });
+      const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+      await act(async () => {
+        render(await DecisionProvenance({ id: "531" }));
+      });
+      expect(screen.getByText(DECISIONS.REGIME_NO_EVIDENCE)).toBeInTheDocument();
+    });
+
+    it("증거 행이 있으면 표시하지 않는다", async () => {
+      // 이쪽이 더 중요한 축이다 — 증거가 있는 행에 "증거 없음" 을 붙이면 표식이 거짓말이 된다.
+      mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, regime: "bull_low_vol", evidence: [regimeEv] });
+      const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+      await act(async () => {
+        render(await DecisionProvenance({ id: "531" }));
+      });
+      expect(screen.getByText("bull_low_vol")).toBeInTheDocument();
+      expect(screen.queryByText(DECISIONS.REGIME_NO_EVIDENCE)).toBeNull();
+    });
+
+    it("표식이 원인을 단정하지 않는다", () => {
+      // codex P2: `record_decision` 은 컬럼(`upsert_decision`)과 evidence
+      // (`upsert_decision_evidence`)를 **다른 트랜잭션**으로 쓴다. 그 사이에서 프로세스가
+      // 죽으면 **정상 기록된 행**도 evidence 만 없는 모양이 되고, 원장에서 백필과 구분되지
+      // 않는다. 그래서 짧은 문구는 원인을 적지 않는다 — 적으면 멀쩡한 행을 오인 고발한다.
+      expect(DECISIONS.REGIME_NO_EVIDENCE).not.toMatch(/백필|보완/);
+      expect(DECISIONS.REGIME_NO_EVIDENCE_TAG).not.toMatch(/백필|보완/);
+      // 대신 전체 문구는 **두 가능성을 모두** 말한다 — 하나만 적으면 그게 곧 단정이다.
+      expect(DECISIONS.REGIME_NO_EVIDENCE_FULL).toMatch(/보완/);
+      expect(DECISIONS.REGIME_NO_EVIDENCE_FULL).toMatch(/중단/);
+    });
+
+    it("regime 자체가 없으면 표식도 없다", async () => {
+      // 값이 없는 것과 값의 출처가 불분명한 것은 다른 상태다 — 둘을 같은 문구로 덮지 않는다.
+      mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, regime: null, evidence: [] });
+      const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+      await act(async () => {
+        render(await DecisionProvenance({ id: "531" }));
+      });
+      expect(screen.queryByText(DECISIONS.REGIME_NO_EVIDENCE)).toBeNull();
+    });
   });
 
   it("calls notFound when the decision fetch fails (404)", async () => {

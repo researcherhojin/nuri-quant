@@ -172,6 +172,13 @@ export async function DecisionProvenance({ id }: { id: string }) {
 
   const verdicts = parseVerdicts(d.agent_verdicts);
   const evidence = d.evidence ?? [];
+  // #1303: regime 은 있는데 뒷받침하는 결정 시점 evidence 행이 없다.
+  //
+  // 원인을 단정하지 않는다 (codex P2): 백필(#1264)이 컬럼만 채운 경우일 수도 있고,
+  // `record_decision` 이 컬럼과 evidence 를 **다른 트랜잭션**으로 쓰는 사이에 죽어
+  // **정상 기록이 반만 남은** 경우일 수도 있다. 둘은 원장에서 구분되지 않는다.
+  // 사용자에게 중요한 뜻은 어느 쪽이든 같다 — 이 값은 당시 증거로 검증할 수 없다.
+  const regimeUnverifiable = d.regime != null && !evidence.some((e) => e.source_type === "regime");
   // #1216: 판정 상태 — outcome intent 태그 + 판정 기준일/D-n (리스트와 동일 규칙)
   const outcomeTag = OUTCOME_TAG[d.outcome] ?? OUTCOME_TAG.pending;
   const adj = adjudicationInfo(d.date, d.outcome, todayKst());
@@ -324,7 +331,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
           <div className="grid grid-cols-3 gap-3">
             <Metric label="Confidence" value={d.confidence === null ? "—" : `${Math.round(d.confidence)}%`} />
             <Metric label="Agreement" value={d.agreement_rate === null ? "—" : `${Math.round(d.agreement_rate * 100)}%`} />
-            <Metric label="Regime" value={d.regime ?? "—"} />
+            <Metric label="Regime" value={d.regime ?? "—"} sub={regimeUnverifiable ? DECISIONS.REGIME_NO_EVIDENCE : undefined} />
             <Metric label="VIX" value={fmtFixed(d.vix)} />
             <Metric label="Fear&Greed" value={d.fear_greed === null ? "—" : String(Math.round(d.fear_greed))} />
             <Metric label="Macro" value={fmtFixed(d.macro_score)} />

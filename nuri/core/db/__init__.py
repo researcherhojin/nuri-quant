@@ -187,8 +187,17 @@ def get_decisions(
         conditions.append("outcome = ?")
         params.append(outcome)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    # `regime_has_evidence` — 이 행의 regime 이 **결정 시점에 기록된 것인지** (#1303).
+    # `record_decision` 은 컬럼과 evidence 행을 **같은 조건**(`if context.get("regime")`)으로
+    # 쓰므로 라이브 행은 둘을 같이 갖는다. 백필(#1264)은 컬럼만 채우고 evidence 는
+    # 일부러 안 만들기 때문에, 이 비대칭이 사후 복사를 가려낼 유일한 신호다.
+    # 목록에서도 필요하다: 백필 후에는 과거 행 대부분이 regime 을 갖게 되는데, 표시가
+    # 없으면 훑어보는 사람은 "처음부터 레짐 맥락이 있었다" 로 읽는다.
     return query(
-        f"SELECT * FROM decisions {where} ORDER BY date DESC LIMIT ?",
+        f"SELECT *, EXISTS(SELECT 1 FROM decision_evidence e "
+        f"                 WHERE e.decision_id = decisions.id AND e.source_type = 'regime') "
+        f"       AS regime_has_evidence "
+        f"FROM decisions {where} ORDER BY date DESC LIMIT ?",
         (*params, limit),
         db_path,
     )
