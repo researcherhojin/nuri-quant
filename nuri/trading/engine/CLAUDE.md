@@ -73,6 +73,19 @@ fail 60h). 의도한 것이다 — 어휘 밖 라벨을 조용히 저장하는 �
 `UNKNOWN_REGIME`("unknown", 의도적으로 `ALL_REGIMES` 밖)을 정당하게 저장한다. 대상은
 **어휘가 `ALL_REGIMES` 인 컬럼**뿐이다.
 
+`certifications.regime` 도 같은 규약이다 (#1293). 가드는 `_classify_regime_fresh` 에 있는데,
+그 함수가 **두 경로의 유일한 합류점**이기 때문이다 — `CertSnapshot.regime`(`_build_snapshot`)
+도, snapshot 밖 `_current_regime()` 도 여기서 값을 받는다. `decisions.py` 와 같은 배치 원칙.
+
+이쪽이 셋 중 위험이 가장 컸다: 행수가 `decisions` 의 12배(4,525)이고, 값이
+`_check_regime_overrides` 의 `RULES...regime_overrides.get(regime, {})` 로 간다 —
+`.get` 은 어휘 밖 키에 예외도 경고도 없이 **기본값**을 준다. writer 가 유일한 방어선이다.
+
+⚠️ **이 파일의 다른 테스트들처럼 `_classify_regime_fresh` 를 mock 하면 가드를 건너뛴다.**
+가드를 검증하려면 그 **안쪽**(`classify_regime`)을 mock 할 것.
+**Test:** `tests/trading/engine/test_certification_persist.py::TestSnapshotInvariant::test_free_text_regime_is_persisted_as_null`
+(+ `::test_every_canonical_regime_survives` 대조군 — 없으면 `return None` 구현도 통과한다).
+
 `certifications.regime` 은 아직 무가드다 — 행수가 12배이고 값이 `.get(regime, {})` 로 가서
 성격이 달라 **#1293** 으로 분리했다.
 
