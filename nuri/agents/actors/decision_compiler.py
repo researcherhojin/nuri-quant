@@ -403,10 +403,11 @@ class DecisionCompiler(Actor):
         mark = {"BUY": "🟢", "SELL": "🔴"}.get(action, "")
 
         head_bits = [f"{mark} {ticker} · {action}".strip()]
-        if payload.get("position"):
+        position = payload.get("position")
+        if position:
             head_bits.append(
                 {"new": "신규", "held": "보유", "held/winner": "보유·수익", "held/loser": "보유·손실"}.get(
-                    payload["position"], payload["position"]
+                    position, position
                 )
             )
         if payload.get("horizon"):
