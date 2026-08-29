@@ -345,7 +345,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 |--------|-------|---|
 | **Backend tests** | 7,850 collected across 361 files | ✅ |
 | **Backend statement coverage** | 99% — 41 of 24,533 statements uncovered, 96 partial branches (`make test-fast`, 2026-08-29; excludes the 27 slow-marked tests, so it understates. Codecov `backend` flag is the CI ground truth) | |
-| **Frontend tests** | 1,648 across 140 vitest files — 99.87% statement coverage (2,393 of 2,396) | ✅ |
+| **Frontend tests** | 1,648 across 141 vitest files — 99.87% statement coverage (2,393 of 2,396) | ✅ |
 | **E2E tests** | 89 across 10 Playwright specs | |
 | **Pipeline stages** | 5 as a data model; 1 of them (certify) has no scheduler job of its own | |
 | **Data collectors** | 27 collectors (BaseCollector pattern) — 22 are driven by collect-stage cron jobs, the rest run on demand | ✅ |

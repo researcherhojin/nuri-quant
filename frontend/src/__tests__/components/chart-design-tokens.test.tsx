@@ -67,6 +67,21 @@ const NEUTRAL_HEX = /#(?:fafafa|f4f4f5|e4e4e7|d4d4d8|a1a1aa|71717a|52525b|3f3f46
 /** 같은 이탈의 Tailwind 클래스 문법. hex 스윕만으로는 절반만 잡힌다. */
 const ZINC_CLASS = /\b(?:bg|text|border|fill|stroke|from|to|via)-zinc-\d{2,3}\b/g;
 
+/**
+ * 선언된 계열 팔레트를 걷어낸다 (#1301). 예외를 allowlist 가 아니라 **구조**로 두기 위해서다 —
+ * 팔레트 밖에 색이 생기면 그 순간 스윕에 걸린다.
+ */
+function stripSeriesPalette(src: string): string {
+  return (
+    src
+      // 주석은 선언이 아니다 — 이 파일의 JSDoc 이 측정값으로 hex 를 **인용**한다.
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/export const [A-Z_]+ = \[[\s\S]*?\] as const;/g, "")
+      .replace(/export const OTHER_COLOR = "[^"]*";/g, "")
+  );
+}
+
 const CHART_FILES = [
   "src/components/ui/gate-failure-chart.tsx",
   "src/components/ui/equity-curve-chart.tsx",
@@ -141,6 +156,29 @@ describe("차트 레이어는 다크 토큰을 쓴다 (#1275)", () => {
       if (found.length) offenders.push(`${rel}: ${found.join(", ")}`);
     }
     expect(offenders, `zinc 클래스 잔존:\n${offenders.join("\n")}`).toHaveLength(0);
+  });
+
+  it("holdings-summary 도 스윕이 본다 — 선언된 계열 팔레트만 예외 (#1301)", () => {
+    // #1275 는 이 파일을 범위 밖에 뒀고, 그래서 여기 색값은 **어떤 게이트도 안 봤다**.
+    // 팔레트는 의미를 담은 계열색이라 정당하지만(측정 근거는 `holdings-summary-palette.test.ts`),
+    // 그 **밖에** 새로 박히는 중립 hex 는 잡아야 한다.
+    //
+    // 예외를 allowlist 로 두지 않고 **선언을 걷어낸 나머지**를 스윕한다 — allowlist 는
+    // 항목이 낡아도 조용하지만, 이 방식은 팔레트 밖에 색이 생기는 순간 걸린다.
+    const src = readFileSync(join(process.cwd(), "src/lib/holdings-summary.ts"), "utf8");
+    const outsidePalette = stripSeriesPalette(src);
+    const found = outsidePalette.match(NEUTRAL_HEX) ?? [];
+    expect(found, `팔레트 밖 중립 hex: ${found.join(", ")}`).toHaveLength(0);
+  });
+
+  it("팔레트 제거가 파일 전체를 지우지 않는다 (canary)", () => {
+    // 제거가 과하면 위 검사는 빈 문자열을 스윕하며 영원히 초록이다.
+    const src = readFileSync(join(process.cwd(), "src/lib/holdings-summary.ts"), "utf8");
+    const stripped = stripSeriesPalette(src);
+    expect(stripped).toContain("summarizeHoldings");
+    expect(stripped).not.toContain("#71717a");
+    // 팔레트 밖에 놓인 중립 hex 는 실제로 잡힌다.
+    expect(stripSeriesPalette('const x = "#27272a";').match(NEUTRAL_HEX)).toEqual(["#27272a"]);
   });
 
   it("스윕이 실제로 눈이 있고, 계열색까지 잡지는 않는다 (canary)", () => {
