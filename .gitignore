@@ -140,8 +140,10 @@ wheels/
 MANIFEST
 
 # ─── Virtual environments ──────────────────────────────────────
-.venv/
-venv/
+# 끝 슬래시 없이 — 슬래시는 디렉터리만 매치해서 .venv "심볼릭 링크"가 add -A 에
+# 쓸려 들어간다 (#1316: d1bfc4a3 이 링크를 커밋 → pull 이 실제 venv 를 파괴)
+.venv
+venv
 env/
 ENV/
 
