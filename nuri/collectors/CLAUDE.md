@@ -110,16 +110,18 @@ API 가 죽은 뒤 스크래핑이 **예외 없이 점수를 못 찾은** 경우
 `test_first_error_is_raised_not_the_last`(`errors[0]`→`errors[-1]` 이면 FAIL) ·
 `test_scrape_fallback_still_rescues_a_dead_api`(과잉 차단 방지).
 
-`cboe` 는 조건이 `errors` 뿐이다 — 5개 티어가 값을 건지면 즉시 return 하므로 마지막 줄에
+`cboe` 는 조건이 `errors` 뿐이다 — 4개 티어가 값을 건지면 즉시 return 하므로 마지막 줄에
 닿았다는 것 자체가 이미 "한 건도 못 건졌다" 는 뜻이고, `not records` 를 덧붙이면 records
 가 비지 않을 수도 있다는 잘못된 인상만 준다.
 
-⚠️ **cboe 에서 이 raise 는 좀처럼 안 터진다 — 그리고 그건 의도다.** 5차
-`_collect_db_stale` 이 DB 에 이전 값이 하나라도 있으면 성공으로 돌려주므로, 라이브 소스 4개가
-전부 죽어도 마지막 줄까지 안 온다. 즉 **"DB_STALE 재사용이 영원히 성공으로 집계되는" 축은
-그대로 남아 있다** — `put_call_ratio` 는 `nuri/core/freshness.py FRESHNESS_POLICIES` 에
-항목이 없어 아무도 그 stale 을 감시하지 않고, 실제로 프로덕션에 6주 구멍
-(2026-06-22→2026-08-03)이 무발화로 지나갔다. 별건이며 #1042 밖이다.
+⚠️ **cboe 에서 이 raise 는 좀처럼 안 터진다 — 그리고 그건 의도다.** 4차
+`_collect_db_stale` 이 DB 에 이전 값이 하나라도 있으면 성공으로 돌려주므로, 라이브 소스 3개
+(CBOE daily/totalpc + yfinance SPY — FRED ECPCRATIO 티어는 시리즈 사망으로 제거, 2026-08-30)가
+전부 죽어도 마지막 줄까지 안 온다. **"DB_STALE 재사용이 성공으로 집계되는" 축**은 이제
+`freshness.py macro_market` 그룹 정책(#1242, put/call 포함 MIN)이 감시한다 — 2026-08-30 그
+정책이 정확히 이 형태(6일 얼어붙은 PCR, 매 run finished)를 FAIL 로 표면화했고, 원인은
+CBOE CDN 전면 403 + 죽은 FRED 티어 + yfinance 티어의 미가드 None 크래시였다 (PR #1333).
+프로덕션 6주 구멍(2026-06-22→2026-08-03)은 그 정책이 생기기 전의 일이다.
 **Test:** `tests/collectors/test_cboe.py::TestCBOEFailedVsNoData::test_db_stale_still_counts_as_success`
 — 이 한계를 명시적으로 잠근다(조용히 바꾸면 라이브 소스가 흔들릴 때마다 수집기가 죽는다).
 
