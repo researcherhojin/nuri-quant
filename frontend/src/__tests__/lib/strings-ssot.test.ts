@@ -18,6 +18,16 @@ import { describe, expect, it } from "vitest";
 import { NAV, PIPELINE, ACTION, CONTEXT, OPPORTUNITY } from "@/lib/strings";
 
 /** 이관 대상 (#1252 이 지목한 파일). */
+/** 라우트 라벨을 헤딩으로 쓰는 페이지 (#1300) — 리터럴 복귀를 여기서 막는다. */
+const ROUTE_HEADING_PAGES: Record<string, keyof typeof NAV> = {
+  "src/app/engine/page.tsx": "ROUTE_ENGINE",
+  "src/app/consensus/page.tsx": "ROUTE_AGENTS",
+  "src/app/explore/page.tsx": "ROUTE_EXPLORE",
+  "src/app/signals/page.tsx": "ROUTE_SIGNALS",
+  "src/app/strategy/page.tsx": "ROUTE_STRATEGY",
+  "src/app/targets/page.tsx": "ROUTE_TARGETS",
+};
+
 const MIGRATED = [
   "src/components/ui/sidebar.tsx",
   "src/app/pipeline/page.tsx",
@@ -76,6 +86,27 @@ describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
     ];
     const pipeOffenders = nodeCopy.filter((v) => pipe.includes(`"${v}"`));
     expect(pipeOffenders, `pipeline 에 리터럴로 남은 노드 카피: ${pipeOffenders.join(", ")}`).toHaveLength(0);
+  });
+
+  it("페이지 헤딩이 라우트 라벨을 리터럴로 되돌리지 않았다", () => {
+    // #1300: 헤딩과 내비가 **같은 개념**(이 페이지의 이름)이라 키를 공유한다. 한쪽만
+    // 리터럴로 되돌리면 이름이 두 벌이 되고, 그 순간부터 조용히 갈라진다.
+    const offenders: string[] = [];
+    for (const [rel, key] of Object.entries(ROUTE_HEADING_PAGES)) {
+      const src = read(rel);
+      if (src.includes(`>${NAV[key]}</h1>`)) offenders.push(`${rel} (${NAV[key]})`);
+      if (!src.includes(`NAV.${key}`)) offenders.push(`${rel}: NAV.${key} 참조 없음`);
+    }
+    expect(offenders, `헤딩이 SSoT 를 안 쓴다:\n${offenders.join("\n")}`).toHaveLength(0);
+  });
+
+  it("차트 계열명은 라우트 라벨과 묶지 않는다", () => {
+    // `EquityCurveChart` 범례의 "Strategy" 는 SPY·Drawdown 과 나란한 **계열 이름**이지
+    // 내비 항목이 아니다. 문자열이 같다는 이유로 NAV.ROUTE_STRATEGY 에 묶으면 라우트
+    // 이름을 바꿀 때 차트 범례가 따라 바뀐다 — 우연한 일치를 계약으로 굳히는 것.
+    const chart = read("src/components/ui/equity-curve-chart.tsx");
+    expect(chart).toContain('"Strategy"');
+    expect(chart, "차트가 NAV 를 참조하기 시작했다 — 계열명과 라우트가 묶였다").not.toContain("NAV.");
   });
 
   it("이관한 키가 실제로 SSoT 에 있다", () => {

@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
-import { ERRORS } from "@/lib/strings";
+import { ERRORS, NAV } from "@/lib/strings";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 
@@ -80,7 +80,7 @@ function Loading() { return <div className="h-48 bg-card rounded-xl border borde
 export default function SignalsPage() {
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold">Signals</h1>
+      <h1 className="text-2xl font-bold">{NAV.ROUTE_SIGNALS}</h1>
       <Suspense fallback={<Loading />}><ScorecardSection /></Suspense>
       <Suspense fallback={<Loading />}><CrossSection /></Suspense>
     </div>

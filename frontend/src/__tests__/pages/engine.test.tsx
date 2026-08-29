@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { NAV } from "@/lib/strings";
 
 // Mock next/link — 반드시 전체 props spread (#1218: children/href 만 넘기면 data-testid 소실)
 vi.mock("next/link", () => ({
@@ -91,7 +92,7 @@ describe("EnginePage", () => {
     const Page = await import("@/app/engine/page");
     const element = await Page.default();
     render(element);
-    expect(screen.getByText("Certification Engine")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_ENGINE)).toBeInTheDocument();
   });
 
   it("renders gate section with conditions", async () => {
@@ -107,7 +108,7 @@ describe("EnginePage", () => {
     // We render the full page which uses Suspense — the server components resolve inline
     const element = await mod.default();
     render(element);
-    expect(screen.getByText("Certification Engine")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_ENGINE)).toBeInTheDocument();
   });
 
   // #1218: BLOCKED 페이즈만 다음 행동 링크(/pipeline) — READY 는 없다
@@ -149,7 +150,7 @@ describe("EnginePage", () => {
     const mod = await import("@/app/engine/page");
     const element = await mod.default();
     render(element);
-    expect(screen.getByText("Certification Engine")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_ENGINE)).toBeInTheDocument();
   });
 
   it("renders conflict details when conflicts exist", async () => {

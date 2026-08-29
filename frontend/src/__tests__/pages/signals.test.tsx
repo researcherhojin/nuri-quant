@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
+import { NAV } from "@/lib/strings";
 
 // Mock next/link
 vi.mock("next/link", () => ({
@@ -57,7 +58,7 @@ describe("SignalsPage", () => {
       render(<SignalsPage />);
     });
 
-    expect(screen.getByText("Signals")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_SIGNALS)).toBeInTheDocument();
   });
 
   it("renders scorecard date label", async () => {
@@ -105,7 +106,7 @@ describe("SignalsPage", () => {
       render(<SignalsPage />);
     });
 
-    expect(screen.getByText("Signals")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_SIGNALS)).toBeInTheDocument();
   });
 
   it("hides cross-analysis when error returned", async () => {

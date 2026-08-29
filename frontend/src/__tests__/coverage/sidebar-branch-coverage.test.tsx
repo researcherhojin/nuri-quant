@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { NAV } from "@/lib/strings";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -86,7 +87,7 @@ describe("Sidebar — collapsed state and branch coverage", () => {
     expect(screen.getByText("시스템")).toBeInTheDocument();
 
     // Current page "/" — Dashboard link should exist
-    const dashLink = screen.getByText("Dashboard");
+    const dashLink = screen.getByText(NAV.ROUTE_DASHBOARD);
     expect(dashLink).toBeInTheDocument();
   });
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Sidebar } from "@/components/ui/sidebar";
+import { NAV } from "@/lib/strings";
 
 // Mock @/lib/api
 vi.mock("@/lib/api", () => ({
@@ -81,20 +82,20 @@ describe("Sidebar", () => {
 
   it("renders all navigation items", () => {
     render(<Sidebar />);
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Pipeline")).toBeInTheDocument();
-    expect(screen.getByText("Portfolio")).toBeInTheDocument();
-    expect(screen.getByText("Signals")).toBeInTheDocument();
-    expect(screen.getByText("Agents")).toBeInTheDocument();
-    expect(screen.getByText("Scanner")).toBeInTheDocument();
-    expect(screen.getByText("Price Targets")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_DASHBOARD)).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_PIPELINE)).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_PORTFOLIO)).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_SIGNALS)).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_AGENTS)).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_SCANNER)).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_TARGETS)).toBeInTheDocument();
     // #1227: Advisor 는 /rebalance 로 통합 — 재추가되면 FAIL (IA 병합 잠금)
     expect(screen.queryByText("Advisor")).not.toBeInTheDocument();
-    expect(screen.getByText("Strategy")).toBeInTheDocument();
-    expect(screen.getByText("Rebalance")).toBeInTheDocument();
-    expect(screen.getByText("Certification Engine")).toBeInTheDocument();
-    expect(screen.getByText("Evidence")).toBeInTheDocument();
-    expect(screen.getByText("AI Report")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_STRATEGY)).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_REBALANCE)).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_ENGINE)).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_EVIDENCE)).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_REPORT)).toBeInTheDocument();
   });
 
   it("highlights active nav item", () => {
@@ -135,7 +136,7 @@ describe("Sidebar", () => {
 
   it("shows System Online indicator", () => {
     render(<Sidebar />);
-    expect(screen.getByText("System Online")).toBeInTheDocument();
+    expect(screen.getByText(NAV.SYSTEM_ONLINE)).toBeInTheDocument();
   });
 
   it("does not render SIEGE badge (moved to dashboard)", async () => {

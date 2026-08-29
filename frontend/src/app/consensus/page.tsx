@@ -5,7 +5,7 @@ import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConsensusTable, type ConsensusRow } from "@/components/ui/consensus-table";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { COMMON, CONSENSUS as CS } from "@/lib/strings";
+import { COMMON, CONSENSUS as CS, NAV } from "@/lib/strings";
 
 export function VixBanner({ vix }: { vix: number | null }) {
   if (!vix || vix < 25) return null;
@@ -95,7 +95,7 @@ function Loading() { return <div className="h-48 bg-card rounded-xl border borde
 export default function ConsensusPage() {
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold">Agents</h1>
+      <h1 className="text-2xl font-bold">{NAV.ROUTE_AGENTS}</h1>
       <Suspense fallback={<Loading />}><ConsensusSection /></Suspense>
       <Suspense fallback={<Loading />}><DissentSection /></Suspense>
     </div>

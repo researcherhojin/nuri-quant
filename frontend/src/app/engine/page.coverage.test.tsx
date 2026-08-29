@@ -41,6 +41,7 @@ import {
 } from "./page";
 import EnginePage from "./page";
 import { fetchAPI } from "@/lib/api";
+import { NAV } from "@/lib/strings";
 
 const mockFetchAPI = vi.mocked(fetchAPI);
 
@@ -197,6 +198,6 @@ describe("engine/page sections (coverage)", () => {
 
     // 정적 헤더는 동기 렌더; Suspense fallback(Loading) 가 마운트되어 default export +
     // Loading 컴포넌트 statement 를 커버한다.
-    expect(screen.getByText("Certification Engine")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_ENGINE)).toBeInTheDocument();
   });
 });
