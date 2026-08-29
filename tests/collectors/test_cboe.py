@@ -341,7 +341,6 @@ class TestCBOEExtractPCR:
         from nuri.collectors.cboe import CBOECollector
 
         c = CBOECollector()
-        c.fred_key = ""
         with patch.object(c, "_collect_daily", side_effect=RuntimeError("fail")):
             with patch.object(c, "_collect_totalpc", side_effect=RuntimeError("fail")):
                 with patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("fail")):
@@ -353,7 +352,6 @@ class TestCBOEExtractPCR:
         from nuri.collectors.cboe import CBOECollector
 
         c = CBOECollector()
-        c.fred_key = ""
         with patch.object(c, "_collect_daily", return_value=[]):
             with patch.object(
                 c,
@@ -387,7 +385,6 @@ class TestCBOEFailedVsNoData:
         from nuri.collectors.cboe import CBOECollector
 
         c = CBOECollector()
-        c.fred_key = ""  # FRED 티어 비활성 — 키 유무에 따라 결과가 갈리지 않게
         return c
 
     def test_total_failure_raises_instead_of_returning_empty(self):
