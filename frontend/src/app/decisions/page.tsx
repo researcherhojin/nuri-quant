@@ -30,7 +30,7 @@ interface Decision {
   action: string;
   confidence: number;
   regime: string | null;
-  // #1303: 결정 시점에 기록된 regime 인지 (백필분은 false)
+  // #1303: 결정 시점 evidence 행이 있는지 (백필분·기록중단분 모두 false)
   regime_has_evidence?: boolean | number;
   macro_score: number | null;
   vix: number | null;
@@ -262,8 +262,8 @@ function DecisionTable({ decisions, filtered, today }: { decisions: Decision[]; 
                     <td className="px-3 py-1 hidden md:table-cell text-xs text-muted-foreground">
                       {d.regime ?? "—"}
                       {d.regime && !d.regime_has_evidence && (
-                        <span className="ml-1 text-[9px] text-muted-foreground/60" title={DECISIONS.REGIME_BACKFILLED}>
-                          {DECISIONS.REGIME_BACKFILLED_TAG}
+                        <span className="ml-1 text-[9px] text-muted-foreground/60" title={DECISIONS.REGIME_NO_EVIDENCE_FULL}>
+                          {DECISIONS.REGIME_NO_EVIDENCE_TAG}
                         </span>
                       )}
                     </td>

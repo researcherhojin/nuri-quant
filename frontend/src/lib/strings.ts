@@ -308,12 +308,18 @@ export const DECISIONS = {
   FILTER_ACTION_LABEL: "액션",
   FILTERED_NOTE_SUFFIX: "건 표시 · 요약 카드는 전체 기준", // 필터 중 전역 요약과의 혼동 방지 (codex R1 P2)
   RAIL_CONTEXT: "결정 시점 컨텍스트 (frozen)",
-  // #1303: 백필된 regime 표식. #1264 는 evidence 행을 **일부러 안 만들었다** — 사후 복사를
-  // 라이브 증거로 위장하지 않기 위해서다. 그 구분이 원장에만 있고 화면에 없으면 사용자는
-  // 근거 없는 값을 근거 있는 값과 똑같이 읽는다.
-  REGIME_BACKFILLED: "기록 후 보완 · 당시 증거 없음",
+  // #1303: regime 에 결정 시점 증거 행이 없을 때의 표식.
+  //
+  // ⚠️ **"백필됨" 이라고 말하지 않는다.** 원인을 단정할 수 없기 때문이다 (codex P2):
+  // `record_decision` 은 컬럼과 evidence 행을 **다른 트랜잭션**으로 쓰므로
+  // (`upsert_decision` → `upsert_decision_evidence`, 각자 커밋), 그 사이에서 프로세스가
+  // 죽으면 **정상 기록된 행**도 같은 모양이 된다. 백필(#1264)과 구분할 방법이 없다.
+  // 그래서 관측한 사실만 말한다 — 원인이 무엇이든 사용자에게 중요한 뜻은 같다:
+  // **이 regime 은 결정 시점 증거로 검증할 수 없다.**
+  REGIME_NO_EVIDENCE: "당시 증거 행 없음",
+  REGIME_NO_EVIDENCE_FULL: "이 regime 을 뒷받침하는 결정 시점 증거 행이 없습니다 — 사후 보완이거나 기록이 중단된 경우입니다",
   // 목록의 좁은 칸용 축약 — 전체 문구는 title 로 붙는다.
-  REGIME_BACKFILLED_TAG: "보완",
+  REGIME_NO_EVIDENCE_TAG: "증거없음",
   RAIL_PRICES: "가격 레벨",
   RAIL_PNL: "실현 결과 (forward PnL %)",
   // #1257 판정 경로 히어로 — 판정 소스(final_action_source)별 3변형. 일상어 원칙:
