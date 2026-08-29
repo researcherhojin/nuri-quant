@@ -343,7 +343,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 7,807 collected across 358 files | ✅ |
+| **Backend tests** | 7,827 collected across 360 files | ✅ |
 | **Backend statement coverage** | 99% — 41 of 24,533 statements uncovered, 96 partial branches (`make test-fast`, 2026-08-29; excludes the 27 slow-marked tests, so it understates. Codecov `backend` flag is the CI ground truth) | |
 | **Frontend tests** | 1,648 across 140 vitest files — 99.87% statement coverage (2,393 of 2,396) | ✅ |
 | **E2E tests** | 89 across 10 Playwright specs | |
@@ -356,7 +356,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 | **Trading signals** | 22 — 20 per-ticker (actionable) + 2 market-wide (shadow) | |
 | **API endpoints** | 73 declared in `nuri/api/routes/` (76 counting the three declared on the app itself in `main.py`) | ✅ |
 | **Frontend routes** | 18 (Next.js on `:3000`) | |
-| **DB tables** | SQLite WAL · 58 tables (56 forward-only migrations) | ✅ |
+| **DB tables** | SQLite WAL · 58 tables (57 forward-only migrations) | ✅ |
 | **DB submodules** | 13 under `nuri/core/db/` — `connection.py` is the sole `sqlite3` importer, enforced by an AST sweep in CI | |
 
 ## Documentation

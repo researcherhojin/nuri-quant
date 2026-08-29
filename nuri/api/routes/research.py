@@ -38,7 +38,8 @@ def list_backtests(limit: int = Query(20, ge=1, le=200)) -> dict:
     """backtests 테이블의 최근 실행 결과 (최신순)."""
     rows = query(
         """SELECT id, strategy_id, start_date, end_date, total_return, sharpe,
-                  max_drawdown, win_rate, params, created_at
+                  max_drawdown, win_rate, params, created_at,
+                  code_rev, execution_config_sha_v1
            FROM backtests
            ORDER BY id DESC
            LIMIT ?""",
@@ -55,11 +56,12 @@ def list_backtests(limit: int = Query(20, ge=1, le=200)) -> dict:
             "max_drawdown": r["max_drawdown"],
             "win_rate": r["win_rate"],
             "params": _loads(r["params"]),
-            # 이 행을 만든 코드 리비전 (#1115). 없으면 **None** — 귀속이 도입되기 전에
-            # 쓰인 행이라는 뜻이고, 그 자체가 정보다: 망가진 것으로 판명된 코드의
-            # 산출물일 수 있는데 행만 봐서는 알 수 없다는 뜻이다. params 안에도 있지만
-            # 최상위로 올려 파고들지 않아도 보이게 한다.
-            "code_rev": _loads(r["params"]).get("code_rev"),
+            # 이 행을 만든 코드 리비전. 컬럼이 canonical (#1305); #1115~#1305 사이의
+            # 행은 params JSON 안에만 있어 legacy fallback 으로 읽는다. 둘 다 없으면
+            # **None** — 귀속 도입 전 행이라는 뜻이고, 그 자체가 정보다: 망가진 것으로
+            # 판명된 코드의 산출물일 수 있는데 행만 봐서는 알 수 없다는 뜻이다.
+            "code_rev": r["code_rev"] or _loads(r["params"]).get("code_rev"),
+            "execution_config_sha_v1": r["execution_config_sha_v1"],
             "created_at": r["created_at"],
         }
         for r in rows

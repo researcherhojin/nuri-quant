@@ -40,20 +40,22 @@ def _save_minimal(db_path, **overrides):
 
 
 class TestTheRevisionIsRecordedButNeverInvented:
-    """`_code_rev` 는 알 수 있으면 기록하고, 모르면 **None** 이다 (#1115).
+    """`code_rev` 는 알 수 있으면 기록하고, 모르면 **None** 이다 (#1115).
 
     지어내면 귀속이 거짓이 된다 — 철회된 산출물을 구분하려고 붙이는 필드인데 그게 부정확하면
     있느니만 못하다. git 이 없는 설치(tarball, 컨테이너)에서 조용히 None 이어야 한다.
+    (#1305 에서 `research_ops._code_rev` → `provenance.code_rev` 로 이동 — decision_outcomes
+    writer 도 같은 귀속을 쓰게 되어 공유 모듈로 승격.)
     """
 
     @pytest.fixture(autouse=True)
     def _clear_cache(self):
-        """`_code_rev` 는 프로세스당 1회 조회 후 캐시한다 — 테스트마다 비운다.
+        """`code_rev` 는 프로세스당 1회 조회 후 캐시한다 — 테스트마다 비운다.
 
         안 비우면 첫 테스트가 캐시한 값이 나머지 전부의 답이 되어, 실제 분기를 한 번도
         안 타면서 초록이 된다.
         """
-        import nuri.core.db.research_ops as ops
+        import nuri.core.db.provenance as ops
 
         ops._CODE_REV_CACHE = ops._CODE_REV_UNSET
         yield
@@ -68,7 +70,7 @@ class TestTheRevisionIsRecordedButNeverInvented:
         import subprocess
         from types import SimpleNamespace
 
-        import nuri.core.db.research_ops as ops
+        import nuri.core.db.provenance as ops
 
         calls = []
 
@@ -78,7 +80,7 @@ class TestTheRevisionIsRecordedButNeverInvented:
 
         monkeypatch.setattr(subprocess, "run", _fake)
 
-        assert [ops._code_rev() for _ in range(5)] == ["abc1234"] * 5
+        assert [ops.code_rev() for _ in range(5)] == ["abc1234"] * 5
         assert len(calls) == 2, f"git 을 {len(calls)}회 불렀다 — 캐시가 안 먹는다"
 
     def test_an_empty_rev_is_not_recorded_as_a_revision(self, monkeypatch):
@@ -90,11 +92,11 @@ class TestTheRevisionIsRecordedButNeverInvented:
         import subprocess
         from types import SimpleNamespace
 
-        import nuri.core.db.research_ops as ops
+        import nuri.core.db.provenance as ops
 
         monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: SimpleNamespace(stdout="  \n"))
 
-        assert ops._code_rev() is None
+        assert ops.code_rev() is None
 
     def test_an_unreadable_status_still_yields_the_sha(self, monkeypatch):
         """`git status` 만 실패하면 SHA 는 살린다 — dirty 여부만 모르는 것이지 리비전은 안다.
@@ -104,7 +106,7 @@ class TestTheRevisionIsRecordedButNeverInvented:
         import subprocess
         from types import SimpleNamespace
 
-        import nuri.core.db.research_ops as ops
+        import nuri.core.db.provenance as ops
 
         def _fake(cmd, **_k):
             if "rev-parse" in cmd:
@@ -113,26 +115,26 @@ class TestTheRevisionIsRecordedButNeverInvented:
 
         monkeypatch.setattr(subprocess, "run", _fake)
 
-        assert ops._code_rev() == "abc1234", "status 실패가 SHA 까지 날렸다"
+        assert ops.code_rev() == "abc1234", "status 실패가 SHA 까지 날렸다"
 
     def test_a_missing_git_yields_none_not_a_guess(self, monkeypatch):
         import subprocess
 
-        import nuri.core.db.research_ops as ops
+        import nuri.core.db.provenance as ops
 
         def _no_git(*_a, **_k):
             raise FileNotFoundError("git")
 
         monkeypatch.setattr(subprocess, "run", _no_git)
 
-        assert ops._code_rev() is None
+        assert ops.code_rev() is None
 
     def test_a_dirty_tree_is_marked(self, monkeypatch):
         """dirty 트리에서 나온 숫자를 커밋된 코드의 산출물로 읽으면 안 된다."""
         import subprocess
         from types import SimpleNamespace
 
-        import nuri.core.db.research_ops as ops
+        import nuri.core.db.provenance as ops
 
         calls = []
 
@@ -144,24 +146,27 @@ class TestTheRevisionIsRecordedButNeverInvented:
 
         monkeypatch.setattr(subprocess, "run", _fake)
 
-        assert ops._code_rev() == "abc1234-dirty"
+        assert ops.code_rev() == "abc1234-dirty"
 
     def test_a_clean_tree_is_the_bare_sha(self, monkeypatch):
         import subprocess
         from types import SimpleNamespace
 
-        import nuri.core.db.research_ops as ops
+        import nuri.core.db.provenance as ops
 
         def _fake(cmd, **_k):
             return SimpleNamespace(stdout="abc1234\n" if "rev-parse" in cmd else "")
 
         monkeypatch.setattr(subprocess, "run", _fake)
 
-        assert ops._code_rev() == "abc1234"
+        assert ops.code_rev() == "abc1234"
 
-    def test_the_row_carries_it(self, db_path):
-        import json
+    def test_the_row_carries_it_in_the_column_and_only_there(self, db_path):
+        """귀속 표면은 컬럼 하나다 (#1305).
 
+        params JSON 에도 넣으면 소비자가 편한 쪽을 읽는다 — 표면이 둘이면 낡은 쪽이
+        조용히 살아남는다 (Codex challenge P2 split-brain). #1115 의 JSON 주입은 중단.
+        """
         save_backtest(
             strategy_id="attributed",
             start_date="2026-01-01",
@@ -172,9 +177,17 @@ class TestTheRevisionIsRecordedButNeverInvented:
             win_rate=50.0,
             db_path=db_path,
         )
-        params = json.loads(query("SELECT params FROM backtests", db_path=db_path)[0]["params"])
+        row = query("SELECT params, code_rev FROM backtests", db_path=db_path)[0]
 
-        assert params.get("code_rev"), "행이 산출 코드를 특정하지 못한다"
+        assert row["code_rev"], "행이 산출 코드를 특정하지 못한다"
+        assert "code_rev" not in json.loads(row["params"]), "표면이 둘이다 — 컬럼만이 canonical"
+
+    def test_the_row_carries_the_config_closure_sha(self, db_path):
+        """어느 설정(rules+agents+signals)의 산출인지도 행에 남는다 (#1305)."""
+        _save_minimal(db_path)
+        row = query("SELECT execution_config_sha_v1 FROM backtests", db_path=db_path)[0]
+
+        assert row["execution_config_sha_v1"], "행이 산출 설정을 특정하지 못한다"
 
 
 class TestSaveBacktest:
@@ -204,17 +217,17 @@ class TestSaveBacktest:
         assert r["win_rate"] == 55.5
 
     def test_params_json_round_trip(self, db_path):
-        """호출자 params 는 손상 없이 왕복한다 — `code_rev` 만 덧붙는다 (#1115)."""
+        """호출자 params 는 손상 없이 그대로 왕복한다 — 귀속은 컬럼에 있다 (#1305)."""
         _save_minimal(db_path, params={"top_n": 7, "nested": {"a": 1}})
         raw = query("SELECT params FROM backtests", db_path=db_path)[0]["params"]
-        stored = json.loads(raw)
-        assert {k: v for k, v in stored.items() if k != "code_rev"} == {"top_n": 7, "nested": {"a": 1}}
+        assert json.loads(raw) == {"top_n": 7, "nested": {"a": 1}}
 
     def test_none_params_still_records_the_revision(self, db_path):
-        """params 를 안 넘겨도 귀속은 붙는다 — 빈 dict 로 남으면 그 행은 영영 미귀속이다."""
+        """params 를 안 넘겨도 귀속은 붙는다 — 컬럼이 비면 그 행은 영영 미귀속이다."""
         _save_minimal(db_path)
-        stored = json.loads(query("SELECT params FROM backtests", db_path=db_path)[0]["params"])
-        assert set(stored) == {"code_rev"}
+        row = query("SELECT params, code_rev FROM backtests", db_path=db_path)[0]
+        assert json.loads(row["params"]) == {}
+        assert row["code_rev"]
 
     def test_created_at_auto_kst_stamp(self, db_path):
         _save_minimal(db_path)
