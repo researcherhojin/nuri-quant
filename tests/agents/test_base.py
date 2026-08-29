@@ -301,13 +301,16 @@ class TestActorLifecycle:
 
 class TestActorRegistry:
     def test_roster_tiers_partition_cleanly(self):
-        """canonical(배선 8) + dormant(휴면 7) = 전체 15, 교집합 없음 (#975).
+        """canonical(배선 9) + dormant(휴면 7) = 전체 16, 교집합 없음 (#975).
 
         canonical 은 "실제 호출자가 있다" 는 주장이다 — 새 액터를 canonical 에
         넣으려면 호출 경로가 같은 PR 에 있어야 한다.
+        9번째 = maintenance-auditor (#1308 Phase 0) — 호출자는 scheduler
+        `_run_maintenance_audit` (주간, 같은 PR 에서 배선, 잠금:
+        tests/agents/test_maintenance_auditor.py::TestWiringAndRoster).
         """
         c, d = set(ActorRegistry.CANONICAL_ACTORS), set(ActorRegistry.DORMANT_ACTORS)
-        assert len(c) == 8 and len(d) == 7
+        assert len(c) == 9 and len(d) == 7
         assert not (c & d), f"양쪽에 있는 액터: {c & d}"
         assert set(ActorRegistry.CANONICAL_15) == c | d  # 하위 호환 별칭
 
