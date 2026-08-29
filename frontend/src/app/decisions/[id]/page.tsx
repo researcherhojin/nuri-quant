@@ -172,6 +172,11 @@ export async function DecisionProvenance({ id }: { id: string }) {
 
   const verdicts = parseVerdicts(d.agent_verdicts);
   const evidence = d.evidence ?? [];
+  // #1303: regime 은 있는데 그것을 뒷받침하는 evidence 행이 없으면 **백필된 값**이다.
+  // #1264 가 evidence 행을 일부러 만들지 않았기 때문에 이 비대칭이 유일한 구분자다
+  // (prod 실측: 라이브로 기록된 행은 예외 없이 `source_type='regime'` 을 갖는다).
+  // 이 표식이 없으면 사후 복사가 당시 근거처럼 읽힌다.
+  const regimeBackfilled = d.regime != null && !evidence.some((e) => e.source_type === "regime");
   // #1216: 판정 상태 — outcome intent 태그 + 판정 기준일/D-n (리스트와 동일 규칙)
   const outcomeTag = OUTCOME_TAG[d.outcome] ?? OUTCOME_TAG.pending;
   const adj = adjudicationInfo(d.date, d.outcome, todayKst());
@@ -324,7 +329,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
           <div className="grid grid-cols-3 gap-3">
             <Metric label="Confidence" value={d.confidence === null ? "—" : `${Math.round(d.confidence)}%`} />
             <Metric label="Agreement" value={d.agreement_rate === null ? "—" : `${Math.round(d.agreement_rate * 100)}%`} />
-            <Metric label="Regime" value={d.regime ?? "—"} />
+            <Metric label="Regime" value={d.regime ?? "—"} sub={regimeBackfilled ? DECISIONS.REGIME_BACKFILLED : undefined} />
             <Metric label="VIX" value={fmtFixed(d.vix)} />
             <Metric label="Fear&Greed" value={d.fear_greed === null ? "—" : String(Math.round(d.fear_greed))} />
             <Metric label="Macro" value={fmtFixed(d.macro_score)} />

@@ -308,6 +308,10 @@ export const DECISIONS = {
   FILTER_ACTION_LABEL: "액션",
   FILTERED_NOTE_SUFFIX: "건 표시 · 요약 카드는 전체 기준", // 필터 중 전역 요약과의 혼동 방지 (codex R1 P2)
   RAIL_CONTEXT: "결정 시점 컨텍스트 (frozen)",
+  // #1303: 백필된 regime 표식. #1264 는 evidence 행을 **일부러 안 만들었다** — 사후 복사를
+  // 라이브 증거로 위장하지 않기 위해서다. 그 구분이 원장에만 있고 화면에 없으면 사용자는
+  // 근거 없는 값을 근거 있는 값과 똑같이 읽는다.
+  REGIME_BACKFILLED: "기록 후 보완 · 당시 증거 없음",
   RAIL_PRICES: "가격 레벨",
   RAIL_PNL: "실현 결과 (forward PnL %)",
   // #1257 판정 경로 히어로 — 판정 소스(final_action_source)별 3변형. 일상어 원칙:

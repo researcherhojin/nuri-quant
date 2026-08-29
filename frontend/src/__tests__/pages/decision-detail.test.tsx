@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act, within } from "@testing-library/react";
+import { DECISIONS } from "@/lib/strings";
 
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -76,6 +77,45 @@ describe("DecisionProvenance", () => {
     expect(screen.getByText("technical")).toBeInTheDocument();
     expect(screen.getByText(/증거 체인/)).toBeInTheDocument();
     expect(screen.getByText("agent/technical")).toBeInTheDocument();
+  });
+
+  // ── #1303: 백필된 regime 은 라이브 기록과 구분돼야 한다 ──────────────────────
+  describe("백필된 regime 표식 (#1303)", () => {
+    const regimeEv = {
+      id: 9, decision_id: 531, source_type: "regime", source_key: "bull_low_vol",
+      action: null, confidence: null, detail: null,
+    };
+
+    it("뒷받침 evidence 가 없으면 백필로 표시한다", async () => {
+      // #1264 는 백필 행에 evidence 를 **일부러 안 만든다** — 그 비대칭이 유일한 구분자다.
+      mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, regime: "bull_low_vol", evidence: [] });
+      const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+      await act(async () => {
+        render(await DecisionProvenance({ id: "531" }));
+      });
+      expect(screen.getByText(DECISIONS.REGIME_BACKFILLED)).toBeInTheDocument();
+    });
+
+    it("라이브로 기록된 regime 은 표시하지 않는다", async () => {
+      // 이쪽이 더 중요한 축이다 — 멀쩡한 기록에 "증거 없음" 을 붙이면 표식이 거짓말이 된다.
+      mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, regime: "bull_low_vol", evidence: [regimeEv] });
+      const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+      await act(async () => {
+        render(await DecisionProvenance({ id: "531" }));
+      });
+      expect(screen.getByText("bull_low_vol")).toBeInTheDocument();
+      expect(screen.queryByText(DECISIONS.REGIME_BACKFILLED)).toBeNull();
+    });
+
+    it("regime 자체가 없으면 표식도 없다", async () => {
+      // 값이 없는 것과 값의 출처가 불분명한 것은 다른 상태다 — 둘을 같은 문구로 덮지 않는다.
+      mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, regime: null, evidence: [] });
+      const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+      await act(async () => {
+        render(await DecisionProvenance({ id: "531" }));
+      });
+      expect(screen.queryByText(DECISIONS.REGIME_BACKFILLED)).toBeNull();
+    });
   });
 
   it("calls notFound when the decision fetch fails (404)", async () => {
