@@ -69,6 +69,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import
 2. Soft penalty → Hard veto 이관은 **정책/이론 기반** (STRATEGY 개정 PR + 백테스트).
 3. 등급 상향은 쉽고 하향은 어렵다 (mechanical → informational 시 과거 case 해석 모호).
 4. **Amplifier 평가 순서**: 항상 veto/penalty 이후. Hard veto 차단 candidate 는 amplifier 대상 아님 — 보상 증폭이 손실 회피 우회하는 경로 구조적 불가능. 발동 전 Surface 단계에서 측정 (§3.6 minimum sample/positive-outcome).
+5. **승격 게이트 — champion-challenger 순차 통제 (#1307, 2026-08-29)**: 투자 룰 변형(challenger)의 승격 자격 판정은 `nuri/quant/validation/champion_gate.py` 를 거친다. 한 캠페인 안의 다중비교는 기존 walk-forward gate(Bonferroni + frozen holdout, #706)가 통제하고, **캠페인을 거듭하는 순차 탐색**은 이 게이트가 통제한다 — (a) 기각 포함 모든 시도를 `challenger_attempts` 원장에 기록(#1305 evidence 바인딩 포함, append-only), (b) 캠페인 j 의 alpha 배정 = `alpha_total / 2^j` 반감 스펜딩(무한 반복해도 family 평생 예산 불변), (c) 같은 holdout 세대는 `holdout_max_uses` 회 열람 후 은퇴 — 재사용된 봉인 구간은 봉인이 아니므로, 이후는 새 `holdout_version` 사전등록 PR 전까지 승격 제안 불가. 파라미터는 `config/walkforward.yaml champion_gate:` (변경 = STRATEGY PR). **기계는 기각만 자동이다** — `promotion_candidate` 는 제안이고 승격은 항상 사람의 STRATEGY PR (운용 원칙 2 와 동일 축). 증거 축 분리: 이 게이트는 research(walk-forward) 전용 — §3.11 라이브 결정원장 판정과 한 verdict 안에서 섞지 않는다 (승격 서사가 유리한 축을 골라 쓰는 것을 막는다).
 **Anti-pattern**: Surface 과용 → "performative 경고" (JKHY ⚠ 배지 행동 무변화). Hard veto 과용 → 기회 손실 + 판단권 박탈. Amplifier 를 Soft penalty 대칭 mirror 로 단일 조건 발동 → noise pumping. **변경 절차**: 단계 이동은 config/docs PR 로. 코드 매직넘버 금지.
 
 **게이트 입력이 없을 때 (2026-08-10 채택)** — 사다리는 시그널이 *있을 때* 무엇을 하느냐만 규정했고, 입력이 **없을 때**는 침묵했다. 그 공백을 `buy_candidate_emitter._get_regime` 이 `vix = 20.0` 으로 메우고 있었다. 20.0 은 차단(>30)·caution(≥25) 임계 **아래**라 측정 불가가 조용히 통과권을 얻었고, 브리핑에는 `VIX=20.0` 이 측정값처럼 찍혔다. #753 이 같은 계열(미수집 `prices.VIX` 를 읽어 항상 폴백)로 이미 한 번 게이트를 무력화한 기록이다.
@@ -275,7 +276,7 @@ measurement_mode` 에 임계를 두고 lock test 로 잠가 우발적 완화를 
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 7,829 tests, 360 files (statement coverage **99%** — 17/23,311 미커버 9개 파일, partial branch 81, `make ci-cov` 2026-08-14) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 7,844 tests, 361 files (statement coverage **99%** — 17/23,311 미커버 9개 파일, partial branch 81, `make ci-cov` 2026-08-14) |
 | Frontend tests | 목표 ≥ 90% | 1606 tests, 140 files |
 | E2E | 핵심 flow | 87 Playwright (9 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
