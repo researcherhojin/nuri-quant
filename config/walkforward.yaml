@@ -31,3 +31,13 @@ gate:
     n: 200                       # 순열 표본 수 (클수록 p-value 정밀, 비용 ↑)
     alpha: 0.05                  # 유의수준 — pooled OOS Sharpe 가 null 분포를 p<alpha 로 이겨야 통과
     seed: 0                      # 재현성 (동일 입력 → 동일 gate 판정)
+
+champion_gate:                   # #1307 순차(캠페인 간) 통제 — 한 run 안의 FWER 는 위 gate 가,
+                                 # run 을 거듭하는 탐색은 여기가 막는다. 값 변경은 STRATEGY PR.
+  alpha_total: 0.05              # family 별 평생 alpha 예산. 캠페인 j 의 배정 = alpha_total / 2^j
+                                 # (합이 예산을 절대 넘지 않는 반감 스펜딩 — 캠페인 내에서는
+                                 # 다시 검정 변형 수로 Bonferroni 분할)
+  holdout_max_uses: 3            # 같은 holdout 봉인 구간을 열어볼 수 있는 캠페인 횟수.
+                                 # 소진 후 verdict 는 holdout_retired — 새 holdout_version
+                                 # 선언(사전등록 PR) 전까지 승격 제안 불가
+  holdout_version: h1            # holdout 세대 식별자. frac/구간 정의를 바꾸면 반드시 올릴 것

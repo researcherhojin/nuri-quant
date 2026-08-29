@@ -88,6 +88,7 @@ from .postmortem_ops import (  # noqa: F401, E402
 from .research_ops import (  # noqa: F401, E402
     expire_hypotheses,
     log_causal_audit,
+    log_challenger_attempt,
     log_foundation_benchmark,
     log_regime_posterior,
     log_walkforward_run,

@@ -386,6 +386,72 @@ def log_foundation_benchmark(
         return cursor.lastrowid or 0
 
 
+_CHALLENGER_VERDICTS = ("rejected", "promotion_candidate", "holdout_retired")
+_EVIDENCE_AXES = ("research", "live")
+
+
+def log_challenger_attempt(
+    family: str,
+    campaign_seq: int,
+    challenger: str,
+    verdict: str,
+    alpha_spent: float,
+    champion: Optional[str] = None,
+    evidence_axis: str = "research",
+    p_value: Optional[float] = None,
+    oos_sharpe: Optional[float] = None,
+    holdout_sharpe: Optional[float] = None,
+    holdout_id: Optional[str] = None,
+    holdout_consumed: bool = False,
+    walkforward_run_id: Optional[str] = None,
+    metrics: Optional[dict] = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    """Champion-challenger 시도 1행 기록 (#1307 attempt ledger) — append-only.
+
+    기각된 시도가 남아야 다음 캠페인의 alpha-spending 이 성립한다. verdict 는 기계
+    판정이되 'promotion_candidate' 는 제안일 뿐 — 승격은 사람의 STRATEGY PR (§2.6).
+    code_rev / execution_config_sha_v1 은 #1305 self-measured. Returns: lastrowid.
+    """
+    if verdict not in _CHALLENGER_VERDICTS:
+        raise ValueError(f"verdict must be {_CHALLENGER_VERDICTS}, got {verdict!r}")
+    if evidence_axis not in _EVIDENCE_AXES:
+        raise ValueError(f"evidence_axis must be {_EVIDENCE_AXES}, got {evidence_axis!r}")
+    if not (0.0 < alpha_spent <= 1.0):
+        raise ValueError(f"alpha_spent must be in (0,1], got {alpha_spent}")
+    if campaign_seq < 1:
+        raise ValueError(f"campaign_seq must be >= 1, got {campaign_seq}")
+    with get_db(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO challenger_attempts
+               (family, campaign_seq, challenger, champion, verdict, evidence_axis,
+                p_value, oos_sharpe, holdout_sharpe, alpha_spent,
+                holdout_id, holdout_consumed, walkforward_run_id,
+                code_rev, execution_config_sha_v1, metrics_json, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                family,
+                campaign_seq,
+                challenger,
+                champion,
+                verdict,
+                evidence_axis,
+                _finite_or_none(p_value),
+                _finite_or_none(oos_sharpe),
+                _finite_or_none(holdout_sharpe),
+                float(alpha_spent),
+                holdout_id,
+                int(holdout_consumed),
+                walkforward_run_id,
+                code_rev(),
+                execution_config_sha_v1(),
+                json.dumps(metrics or {}, sort_keys=True, default=str),
+                kst_now().strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        return cursor.lastrowid or 0
+
+
 def _finite_or_none(x: Optional[float]) -> Optional[float]:
     """None/비유한값(inf/-inf/nan) → None. 유한 float 만 그대로 반환."""
     if x is None:
