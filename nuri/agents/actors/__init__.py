@@ -1,6 +1,6 @@
 """nuri.agents.actors — actor implementations (#529 Phase 2+; #975 2-tier roster).
 
-호출자가 있는 canonical 8종 + 휴면 dormant 7종 — 목록·의미는 `nuri/agents/base.py` 참조.
+호출자가 있는 canonical 9종 + 휴면 dormant 7종 — 목록·의미는 `nuri/agents/base.py` 참조.
 
 Phase 2 actors (Codex Round 5):
 - CollectorOrchestrator (#1, Layer B) — 21+ collectors oversight + retry + health scan
@@ -30,6 +30,7 @@ from nuri.agents.actors.forward_outcome_tracker import ForwardOutcomeTracker
 from nuri.agents.actors.foundation_benchmark import FoundationBenchmark
 from nuri.agents.actors.freshness_gatekeeper import FreshnessGatekeeper
 from nuri.agents.actors.hypothesis_registry import HypothesisRegistry
+from nuri.agents.actors.maintenance_auditor import MaintenanceAuditor
 from nuri.agents.actors.regime_posterior import RegimePosterior
 from nuri.agents.actors.release_rollback_manager import ReleaseRollbackManager
 from nuri.agents.actors.sre_incident_agent import SREIncidentAgent
@@ -47,6 +48,7 @@ __all__ = [
     "FoundationBenchmark",
     "FreshnessGatekeeper",
     "HypothesisRegistry",
+    "MaintenanceAuditor",
     "RegimePosterior",
     "ReleaseRollbackManager",
     "SREIncidentAgent",

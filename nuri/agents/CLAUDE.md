@@ -4,7 +4,7 @@
 
 The autonomous operating layer: long-lived actors that observe the system, record verdicts to an audit ledger, and surface findings to Discord. Distinct from `nuri/trading/agents/` (the 10-agent *consensus* pipeline that scores tickers) — an actor here is an **operational unit with a run ledger**, not a signal contributor.
 
-`actors/` holds **18 files: 15 registered actors + 3 unregistered infra helpers** (`brief_auditor`, `channel_dispatcher`, `outbox_watchdog` — deliberately outside the canonical roster).
+`actors/` holds **19 files: 16 registered actors + 3 unregistered infra helpers** (`brief_auditor`, `channel_dispatcher`, `outbox_watchdog` — deliberately outside the canonical roster).
 
 ## The actor contract (`base.py`)
 
@@ -33,7 +33,7 @@ def execute(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult: .
 
 **`execute()` may raise** — `run()` records the failure (`status="failed"` + an `ERROR` audit row) and then **re-raises**. Failure isolation is the *caller's* responsibility: every `_run_*` wrapper in `nuri/scheduler.py` try/excepts, which is why one actor dying doesn't take the fleet down.
 
-**The roster is closed and two-tier (#975).** `CANONICAL_ACTORS` (8) are actors with a real caller — scheduler, sleeve/rules, or the phase-2 manual chain; `DORMANT_ACTORS` (7) have implementations and tests but **no caller anywhere** — they register fine but are excluded from `missing()` so nothing advertises them as pending. Promoting a dormant actor to canonical requires the PR that adds its actual call path. `@REGISTRY.register` raises for names outside both tuples. Registration is idempotent for the same `module:qualname` so the `python -m` double-import (`__main__` reload) doesn't blow up. `CANONICAL_15` remains as a compatibility alias (= canonical + dormant).
+**The roster is closed and two-tier (#975).** `CANONICAL_ACTORS` (9) are actors with a real caller — scheduler, sleeve/rules, or the phase-2 manual chain; `DORMANT_ACTORS` (7) have implementations and tests but **no caller anywhere** — they register fine but are excluded from `missing()` so nothing advertises them as pending. Promoting a dormant actor to canonical requires the PR that adds its actual call path. `@REGISTRY.register` raises for names outside both tuples. Registration is idempotent for the same `module:qualname` so the `python -m` double-import (`__main__` reload) doesn't blow up. `CANONICAL_15` remains as a compatibility alias (= canonical + dormant).
 
 ## Invariants
 
@@ -48,16 +48,17 @@ def execute(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult: .
 
 There is **no schedule declaration on the actor**. Cron lives entirely in `nuri/scheduler.py`'s module-level `SCHEDULES` list; jobs run **in-process** under APScheduler `BlockingScheduler` with `misfire_grace_time=300`.
 
-Only 4 actors are reached from `SCHEDULES` today, and **only one of them is a registered actor**:
+Only 5 actors are reached from `SCHEDULES` today, and **two of them are registered actors**:
 
 | Wrapper | Actor | Registered? |
 |---|---|---|
-| `_run_collector("alpha_tracking")` | `ForwardOutcomeTracker` | ✅ (of the 15) |
+| `_run_collector("alpha_tracking")` | `ForwardOutcomeTracker` | ✅ |
+| `_run_maintenance_audit` (주간, #1308) | `MaintenanceAuditor` | ✅ |
 | `_run_brief_audit` | `BriefAuditor` | — helper |
 | `_run_channel_dispatcher` | `ChannelDispatcher` | — helper |
 | `_run_outbox_watchdog` | `OutboxWatchdog` | — helper |
 
-So **14 of the 15 registered actors have no cron** — they run from their `main()` CLI or another caller. **Do not assume an actor is running just because it exists and is registered.** Check `SCHEDULES` before claiming anything about live behaviour.
+So **14 of the 16 registered actors have no cron** — they run from their `main()` CLI or another caller. **Do not assume an actor is running just because it exists and is registered.** Check `SCHEDULES` before claiming anything about live behaviour.
 
 ⚠️ **APScheduler weekday ≠ crontab weekday**, but `SCHEDULES` entries are written in **crontab** semantics (0=Sun) and `scheduler._make_trigger()` converts. Write `1-5` for Mon–Fri and `0` for Sunday, as you would in a crontab — do NOT pre-convert to `mon-fri`, and do NOT call `CronTrigger.from_crontab()` directly (it skips the conversion, which is how every non-`tz` job ran a day late until #929 — `stock_us_freshness` missed Tuesdays, leaving the §3.11 benchmark SPY stale each Mon/Tue).
 **Test:** `tests/test_scheduler_weekday.py::TestEverySchedulesJobFiresOnIntendedDays::test_all_jobs_match_crontab_semantics` — asks the registered triggers which weekdays they actually fire on and compares against a hand-written crontab table.
