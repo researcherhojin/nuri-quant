@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
-import { COMMON } from "@/lib/strings";
+import { COMMON, NAV } from "@/lib/strings";
 
 // Mock next/link
 vi.mock("next/link", () => ({
@@ -61,7 +61,7 @@ describe("TargetsPage", () => {
       render(<TargetsPage />);
     });
 
-    expect(screen.getByText("Price Targets")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_TARGETS)).toBeInTheDocument();
     expect(screen.getByText(/전 종목 매수가/)).toBeInTheDocument();
   });
 
