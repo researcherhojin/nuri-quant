@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from .connection import get_db
+from .provenance import code_rev, execution_config_sha_v1
 
 _DECISION_ACTIONS = ("BUY", "SELL", "HOLD")
 _DECISION_STATUSES = ("pending", "emitted", "blocked", "superseded")
@@ -147,6 +148,9 @@ def log_decision_outcome(
 
     hypothesis_validation: pass/reject/insufficient_data — Hypothesis-Registry 의 validate/reject
     호출 trigger. insufficient_data 는 false validation 차단 (가격 데이터 부족).
+
+    code_rev / execution_config_sha_v1 은 self-measured (#1305) — 재계산(upsert)은
+    새 코드·새 설정의 산출이므로 함께 갱신한다.
     """
     if observation_window not in _OUTCOME_WINDOWS:
         raise ValueError(f"observation_window must be {_OUTCOME_WINDOWS}, got {observation_window}")
@@ -157,8 +161,9 @@ def log_decision_outcome(
             """INSERT INTO decision_outcomes
                (decision_id, observation_window, tracked_as_of_date,
                 entry_price, exit_price, realized_return, benchmark_return, benchmark_ticker, alpha,
-                hit_threshold, hypothesis_validation, notes, run_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                hit_threshold, hypothesis_validation, notes, run_id,
+                code_rev, execution_config_sha_v1)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(decision_id, observation_window) DO UPDATE SET
                  tracked_as_of_date = excluded.tracked_as_of_date,
                  entry_price = excluded.entry_price,
@@ -170,7 +175,9 @@ def log_decision_outcome(
                  hit_threshold = excluded.hit_threshold,
                  hypothesis_validation = excluded.hypothesis_validation,
                  notes = excluded.notes,
-                 run_id = excluded.run_id""",
+                 run_id = excluded.run_id,
+                 code_rev = excluded.code_rev,
+                 execution_config_sha_v1 = excluded.execution_config_sha_v1""",
             (
                 decision_id,
                 observation_window,
@@ -185,6 +192,8 @@ def log_decision_outcome(
                 hypothesis_validation,
                 notes,
                 run_id,
+                code_rev(),
+                execution_config_sha_v1(),
             ),
         )
 

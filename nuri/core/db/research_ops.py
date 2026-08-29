@@ -15,6 +15,7 @@ from typing import Optional
 
 from ..timezone import kst_now
 from .connection import get_db
+from .provenance import code_rev, execution_config_sha_v1
 
 _HYPOTHESIS_STATUSES = ("open", "validated", "rejected", "expired")
 _CANARY_SCOPES = ("paper", "partial", "full")
@@ -42,17 +43,23 @@ def log_walkforward_run(
     metrics: {"aggregate": {"brier": .., "logloss": ..}, "folds": [{"fold": 0, ..}, ...]}
     pit_hash: data digest + fold spec + model_id → reproducibility key.
     finished_at None → run still in progress (started_at default).
+
+    code_rev / execution_config_sha_v1 은 self-measured (#1305) — 재실행(upsert)은
+    새 코드·새 설정의 산출이므로 함께 갱신한다.
     """
     with get_db(db_path) as conn:
         conn.execute(
             """INSERT INTO walkforward_runs
                (run_id, model_id, fold_spec_json, metrics_json, pit_hash,
-                n_folds, n_train_obs, n_test_obs, finished_at, error_message)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                n_folds, n_train_obs, n_test_obs, finished_at, error_message,
+                code_rev, execution_config_sha_v1)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(run_id) DO UPDATE SET
                  metrics_json = excluded.metrics_json,
                  finished_at = COALESCE(excluded.finished_at, finished_at),
-                 error_message = excluded.error_message""",
+                 error_message = excluded.error_message,
+                 code_rev = excluded.code_rev,
+                 execution_config_sha_v1 = excluded.execution_config_sha_v1""",
             (
                 run_id,
                 model_id,
@@ -64,6 +71,8 @@ def log_walkforward_run(
                 n_test_obs,
                 finished_at,
                 error_message,
+                code_rev(),
+                execution_config_sha_v1(),
             ),
         )
 
@@ -385,76 +394,6 @@ def _finite_or_none(x: Optional[float]) -> Optional[float]:
     return f if math.isfinite(f) else None
 
 
-#: `_code_rev()` 프로세스 캐시. 미조회 상태를 None 과 구분해야 해서 sentinel 을 쓴다 —
-#: git 없는 환경의 정답이 None 이라, None 을 미조회로 읽으면 매 행마다 재시도한다.
-_CODE_REV_UNSET = object()
-_CODE_REV_CACHE: object | str | None = _CODE_REV_UNSET
-
-
-def _code_rev() -> str | None:
-    """이 행을 만든 코드 리비전 (짧은 git SHA, dirty 면 `-dirty` 접미).
-
-    없으면 **None** — 지어내지 않는다. tarball 설치나 git 없는 환경에서는 알 수 없다.
-
-    ## 왜 필요한가 (#1115)
-
-    `backtests.id=3` 은 `p_value: 0.169` 를 담고 있다. 그 행이 쓰인 지 6시간 31분 뒤
-    커밋 `84a5e36` 이 그 값을 철회했다 — permutation null 이 퇴화해 있었고, 정정값은
-    0.791 이었다. **정정된 run 은 저장된 적이 없다.** 이 테이블은 strategy_id 마다 행이
-    정확히 1개라 그 행을 밀어낼 신규 행도 없고, `nuri/api/routes/research.py` 는 지금도
-    그 숫자를 현재 증거로 서빙한다.
-
-    핵심은 낡은 행 자체가 아니다. **행이 어느 코드로 만들어졌는지 말할 수 없다**는 것이다.
-    망가진 것으로 판명된 코드가 낸 숫자와 멀쩡한 숫자가 구분되지 않고, 철회는 원장이
-    표현할 수 없는 사건이 된다. 리비전이 붙으면 소비자가 "이 행은 null 수정 이전"이라고
-    말할 수 있다.
-
-    이미 저장된 행을 고치는 건 코드가 아니라 프로덕션 DB 에서 할 일이다(재실행 후 저장,
-    또는 삭제) — 여기서 하는 건 앞으로의 행을 귀속 가능하게 만드는 것뿐이다.
-    """
-    global _CODE_REV_CACHE
-
-    # 프로세스당 1회만 조회한다 (Codex P2). `save_backtest` 는 `variant_walkforward` ·
-    # `exit_walkforward` 의 루프 안에서 행마다 불리는데, 매번 `git status --porcelain`
-    # 을 돌리면 워크트리 전체 스캔이 행 수만큼 반복된다. 리비전은 프로세스 수명 동안
-    # 바뀌지 않으므로 재조회할 이유가 없다.
-    if _CODE_REV_CACHE is not _CODE_REV_UNSET:
-        return _CODE_REV_CACHE  # type: ignore[return-value]
-
-    import subprocess
-
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=Path(__file__).resolve().parents[3],
-            check=True,
-        )
-    except (OSError, subprocess.SubprocessError):
-        _CODE_REV_CACHE = None
-        return None
-    rev = out.stdout.strip()
-    if not rev:
-        _CODE_REV_CACHE = None
-        return None
-    try:
-        dirty = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=Path(__file__).resolve().parents[3],
-            check=True,
-        )
-    except (OSError, subprocess.SubprocessError):
-        _CODE_REV_CACHE = rev
-        return rev
-    _CODE_REV_CACHE = f"{rev}-dirty" if dirty.stdout.strip() else rev
-    return _CODE_REV_CACHE
-
-
 def save_backtest(
     strategy_id: str,
     start_date: str,
@@ -474,9 +413,11 @@ def save_backtest(
     params 는 gate 판정·p-value 등 요약 dict(JSON 저장). created_at None → kst_now()
     (KST invariant, backtests 테이블엔 created_at DEFAULT 가 없어 명시 기록).
 
-    params 에는 항상 `code_rev` 를 덧붙인다 (#1115) — 이 행을 만든 코드 리비전이 없으면
-    망가진 것으로 판명된 코드의 산출물과 멀쩡한 산출물을 구분할 수 없다. `_code_rev` 참조.
-    호출자가 같은 키를 넘기면 그쪽이 아니라 실측값이 이긴다.
+    `code_rev` / `execution_config_sha_v1` 은 **컬럼이 canonical** (#1305) — self-measured
+    로 채우며 호출자가 params 에 같은 키를 넣어도 컬럼은 실측값이다 (귀속은 자기신고가
+    아니다, #1115). params JSON 에는 더 이상 주입하지 않는다 — 표면이 둘이면 소비자가
+    편한 쪽을 읽는다 (Codex challenge P2, split-brain). #1305 이전 행은 params 안에만
+    있고 컬럼이 NULL 이다 — 리더는 legacy fallback 으로 그걸 읽는다.
 
     비유한 메트릭(inf/nan)은 NULL 로 저장한다. thin-data 백테스트(0 trades → inf Sharpe /
     nan MDD)가 창고에 garbage 를 남기지 않도록 writer 경계에서 차단 — JSON Infinity/NaN
@@ -489,8 +430,9 @@ def save_backtest(
         cursor = conn.execute(
             """INSERT INTO backtests
                (strategy_id, start_date, end_date, total_return, sharpe,
-                max_drawdown, win_rate, params, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                max_drawdown, win_rate, params, created_at,
+                code_rev, execution_config_sha_v1)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 strategy_id,
                 start_date,
@@ -499,8 +441,10 @@ def save_backtest(
                 _finite_or_none(sharpe),
                 _finite_or_none(max_drawdown),
                 _finite_or_none(win_rate),
-                json.dumps({**(params or {}), "code_rev": _code_rev()}, default=str),
+                json.dumps(params or {}, default=str),
                 stamp,
+                code_rev(),
+                execution_config_sha_v1(),
             ),
         )
         return cursor.lastrowid or 0

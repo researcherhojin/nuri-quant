@@ -35,11 +35,8 @@ class TestBacktestsEndpoint:
         assert bt["strategy_id"] == "Momentum Top-5"
         assert bt["start_date"] == "2026-01-02"
         assert bt["total_return"] == 12.3
-        # 호출자 params 는 그대로 살아 있고, 거기에 `code_rev` 가 덧붙는다 (#1115).
-        assert {k: v for k, v in bt["params"].items() if k != "code_rev"} == {
-            "top_n": 5,
-            "rebalance_days": 20,
-        }
+        # 호출자 params 는 그대로 왕복한다 — 귀속은 컬럼이 canonical (#1305).
+        assert bt["params"] == {"top_n": 5, "rebalance_days": 20}
 
     def test_newest_first(self, client):
         for i in range(3):
@@ -78,10 +75,16 @@ class TestBacktestsEndpoint:
         bt = client.get("/api/research/backtests").json()["backtests"][0]
 
         assert bt["code_rev"], "행에 코드 리비전이 없다 — 산출 코드를 특정할 수 없다"
-        assert bt["code_rev"] == bt["params"]["code_rev"]
+        # 표면은 컬럼 하나 (#1305) — params 에는 더 이상 없다 (split-brain 방지).
+        assert "code_rev" not in bt["params"]
+        assert bt["execution_config_sha_v1"], "행이 산출 설정을 특정하지 못한다"
 
     def test_a_caller_cannot_forge_the_revision(self, client):
-        """호출자가 넘긴 `code_rev` 는 실측값에 진다 — 귀속은 자기신고가 아니다."""
+        """호출자가 params 에 넣은 `code_rev` 는 데이터일 뿐 귀속이 아니다 (#1305).
+
+        귀속은 자기신고가 아니다 — 컬럼은 실측값이고, 리더는 컬럼이 있으면 params 를
+        보지 않는다 (legacy fallback 은 컬럼 NULL 인 전-#1305 행 전용).
+        """
         save_backtest(
             strategy_id="forged",
             start_date="2026-01-01",
@@ -95,6 +98,7 @@ class TestBacktestsEndpoint:
         bt = client.get("/api/research/backtests").json()["backtests"][0]
 
         assert bt["code_rev"] != "deadbeef"
+        assert bt["params"]["code_rev"] == "deadbeef"  # 호출자 데이터는 손대지 않는다
 
     def test_a_row_written_before_attribution_reads_as_unattributed(self, client):
         """귀속 도입 이전 행은 `code_rev: None` 이다 — 그게 정보다.
@@ -113,12 +117,68 @@ class TestBacktestsEndpoint:
             max_drawdown=-1.0,
             win_rate=50.0,
         )
-        with get_db() as conn:  # 귀속 이전 상태 재현 — params 에서 키를 지운다
-            conn.execute("UPDATE backtests SET params = '{}' WHERE strategy_id = 'legacy'")
+        with get_db() as conn:  # 귀속 이전 상태 재현 — 컬럼과 params 양쪽을 비운다
+            conn.execute(
+                "UPDATE backtests SET params = '{}', code_rev = NULL, "
+                "execution_config_sha_v1 = NULL WHERE strategy_id = 'legacy'"
+            )
 
         bt = client.get("/api/research/backtests").json()["backtests"][0]
 
         assert "code_rev" in bt, "키 자체가 없으면 소비자가 미귀속을 구분 못 한다"
+        assert bt["code_rev"] is None
+        assert bt["execution_config_sha_v1"] is None
+
+    def test_a_pre_1305_row_falls_back_to_the_params_revision(self, client):
+        """#1115~#1305 사이 행: 컬럼 NULL + params 안에만 code_rev — fallback 으로 읽는다.
+
+        이 fallback 이 없으면 컬럼 도입이 기존 귀속 정보를 소비자 시야에서 지운다.
+        """
+        from nuri.core.db import get_db
+
+        save_backtest(
+            strategy_id="pre1305",
+            start_date="2026-01-01",
+            end_date="2026-02-01",
+            total_return=1.0,
+            sharpe=1.0,
+            max_drawdown=-1.0,
+            win_rate=50.0,
+        )
+        with get_db() as conn:  # 전-#1305 행 재현 — 두 바인딩 컬럼 모두 NULL
+            conn.execute(
+                'UPDATE backtests SET params = \'{"code_rev": "84a5e36"}\', '
+                "code_rev = NULL, execution_config_sha_v1 = NULL "
+                "WHERE strategy_id = 'pre1305'"
+            )
+
+        bt = client.get("/api/research/backtests").json()["backtests"][0]
+
+        assert bt["code_rev"] == "84a5e36"
+
+    def test_a_gitless_new_row_does_not_surface_a_self_reported_revision(self, client):
+        """gitless 환경의 신규 행(config sha 有, code_rev 無)은 fallback 대상이 아니다.
+
+        여기서 params 로 fallback 하면 호출자 자기신고 값이 실측인 척 나간다 —
+        self-measured 계약이 정확히 그 환경에서 깨진다 (Codex review P2).
+        """
+        from nuri.core.db import get_db
+
+        save_backtest(
+            strategy_id="gitless",
+            start_date="2026-01-01",
+            end_date="2026-02-01",
+            total_return=1.0,
+            sharpe=1.0,
+            max_drawdown=-1.0,
+            win_rate=50.0,
+            params={"code_rev": "self-reported"},
+        )
+        with get_db() as conn:  # gitless 재현 — code_rev 만 NULL, config sha 는 남긴다
+            conn.execute("UPDATE backtests SET code_rev = NULL WHERE strategy_id = 'gitless'")
+
+        bt = client.get("/api/research/backtests").json()["backtests"][0]
+
         assert bt["code_rev"] is None
 
     def test_limit_clamped_high(self, client):
