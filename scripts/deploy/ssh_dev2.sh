@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# cspell:ignore userpart — 이 스크립트의 지역 변수명 (ssh 대상의 user 절)
 # DEV2 원격 ssh 공용 helper — ssh -4 강제 + .local 해석 실패 시 dscacheutil IPv4 fallback (#827)
 #
 # 실측 문제 2건:

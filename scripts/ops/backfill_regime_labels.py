@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def backfill_regime_labels(db_path=None, dry_run: bool = False) -> dict:
         regime_by_date[d] = canonical_regime_or_none(state.regime) if state is not None else None
 
     updates: list[tuple[str | None, int]] = []
-    stats = {
+    stats: dict[str, Any] = {
         "candidates": len(rows),
         "relabeled": 0,  # canonical 라벨 채움
         "normalized_null": 0,  # 빈문자열/free-text 인데 분류 불가 → NULL 정규화

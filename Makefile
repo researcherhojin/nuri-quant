@@ -192,7 +192,7 @@ spellcheck: ## cspell check (uses .cspell.json — add words there for false pos
 	@# 추적 중인 config yaml 의 단어는 이미 .cspell.json 에 등재돼 있다.
 	npx --yes -p cspell cspell --config .cspell.json --no-progress --no-summary \
 		--exclude SESSION_PROMPT.md --exclude NEXT_SESSION.md \
-		"nuri/**/*.py" "tests/**/*.py" "scripts/**/*.py" \
+		"nuri/**/*.py" "tests/**/*.py" "scripts/**/*.py" "scripts/**/*.sh" \
 		"nuri/**/CLAUDE.md" "tests/**/CLAUDE.md" "scripts/**/*.md" \
 		"docs/*.md" "README.md" "CLAUDE.md" "AGENTS.md" "CONTRIBUTING.md" \
 		".claude/rules/*.md" ".claude/commands/nuri-*.md" ".claude/agents/nuri-*.md" \
