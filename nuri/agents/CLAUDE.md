@@ -41,7 +41,7 @@ def execute(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult: .
 - **No DB connections here.** Zero `sqlite3` in this directory. Reads go through `query()`; writes go through the named helpers (`log_decision`, `log_incident`, `register_hypothesis`, `stage_outbox`, …) — `query()` is read-only by contract.
 - **Actors do not use `nuri/alerts/`.** That package is a separate scheduler-driven briefing path. The two never call each other; don't bridge them.
 - **Mac mini is the sole writer; MBP is a read replica** (`nuri/agents/__init__.py`). An actor that writes must be safe to run in exactly one place.
-- **Every actor module ships a `main(argv)` CLI** — `python -m nuri.agents.actors.<module> <action> ...`. Universal across all 18.
+- **Every actor module ships a `main(argv)` CLI** — `python -m nuri.agents.actors.<module> <action> ...`. Universal across all 19.
 - Most actors dispatch on `input_data["action"]` against a class-level `VALID_ACTIONS` and return `ActorResult({"error": ...})` for an unknown action rather than raising.
 
 ## Scheduling

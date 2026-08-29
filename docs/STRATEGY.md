@@ -386,7 +386,7 @@ Deferred (필요 시점에 추가):
 | 레이어 | 역할 | 구현 |
 |--------|------|------|
 | **Context Files** | 프로젝트 규칙 | `CLAUDE.md` 루트 + 13 scoped + `AGENTS.md` + `docs/STRATEGY.md` |
-| **MCP Servers** | 외부 도구 연결 | `.mcp.json` → SQLite DB. 필요 최소. |
+| **MCP Servers** | 외부 도구 연결 | `.mcp.json` → `nuri-read` read-model (stdio · 전 쿼리 `readonly=True` 엔진 강제 · ALLOWED 컬럼만, #1306). raw SQLite 등록은 커밋 기본값에서 제거 — 임의 SQL 이 portfolio/trades 에 닿는다 (§4.4 Tier 2). |
 | **Skill Files** | 반복 작업 | `scripts/deploy/deploy_remote.sh`, `scripts/verify/verify.py`, `scripts/db/migrate.py` |
 | **Mechanical Enforcement** | 시스템 강제 | ruff · main-ci-cd.yml · pr-discipline.yml · `make verify-*` · SIEGE `gate_check.py` |
 **엔트로피 GC**:
