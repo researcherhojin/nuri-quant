@@ -167,15 +167,22 @@ describe("DataTable", () => {
     const data = [{ ticker: "AAPL", sector: "Tech" }];
     const { container } = render(<DataTable columns={columns} data={data} />);
 
-    const headerCells = container.querySelectorAll("th");
-    // Sector header should have hidden class
-    expect(headerCells[1].className).toContain("hidden");
-    expect(headerCells[1].className).toContain("sm:table-cell");
+    // ⚠️ **부분 문자열이 아니라 토큰으로 본다** (#1254 codex P2). `toContain("hidden")` 은
+    // `text-lefthidden` 도 통과한다 — 실제로 tailwind autofix 가 앞 조각과 띄우는 필수
+    // 공백을 지워 정확히 그 문자열을 만들었고, 이 테스트는 **초록이었다.** 클래스는 공백으로
+    // 갈리는 토큰이므로 `classList` 로 확인해야 브라우저와 같은 것을 본다.
+    const tokens = (el: Element) => Array.from(el.classList);
 
-    // Sector data cell should also have hidden class
+    const headerCells = container.querySelectorAll("th");
+    expect(tokens(headerCells[1])).toContain("hidden");
+    expect(tokens(headerCells[1])).toContain("sm:table-cell");
+    // 선행 정렬 클래스가 붙어 있어야 한다 — 이게 없으면 공백이 지워진 상태다.
+    expect(tokens(headerCells[1])).toContain("text-left");
+
     const dataCells = container.querySelectorAll("td");
-    expect(dataCells[1].className).toContain("hidden");
-    expect(dataCells[1].className).toContain("sm:table-cell");
+    expect(tokens(dataCells[1])).toContain("hidden");
+    expect(tokens(dataCells[1])).toContain("sm:table-cell");
+    expect(tokens(dataCells[1])).toContain("text-left");
   });
 
   it("does not apply hidden class when hideOnMobile is false", () => {
