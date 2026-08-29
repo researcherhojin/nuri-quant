@@ -5,7 +5,7 @@
 
 thresholds:
   prices: { warn_hours: 48, fail_hours: 120 } # 주말/공휴일 감안 (금→화 = 96h)
-  macro_vix: { warn_hours: 24, fail_hours: 72 }
+  macro_vix: { warn_hours: 48, fail_hours: 132 } # VIXCLS 도 FRED T+1 일간 시리즈 — macro_market 과 같은 물리 (#1242). 72h 는 완벽한 금요일 데이터도 월 새벽(77h)에 깨지고, FRED 경로 최악(목 관측→화 새벽)은 ~125h 라 매주 주말 상시 발화했다 (2026-08-30 실측 77.3h FAIL)
   factors: { warn_hours: 48, fail_hours: 120 } # 재료가 prices 라 임계 동일 (#1071)
   signals: { warn_hours: 48, fail_hours: 120 }
   signals_kr: { warn_hours: 48, fail_hours: 120 } # 설날·추석엔 정직하게 WARN/FAIL
