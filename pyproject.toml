@@ -32,27 +32,22 @@ dependencies = [
     "pykrx>=1.2.4",
     "requests>=2.31.0",
     "yfinance>=1.2.1",
-
     # ─── Analysis + technical indicators ──────────────────────
     "numpy>=1.26.0",
     "pandas>=2.2.0",
     "TA-Lib>=0.4.28",
-
     # ─── Portfolio optimization + risk ────────────────────────
     "cvxpy>=1.4.0",
     "quantstats>=0.0.60",
     "riskfolio-lib>=7.2.1",
     "scikit-learn>=1.4.0",
     "scipy>=1.12.0",
-
     # ─── Regime modeling (Layer B actor #3 — sticky-HMM, #529 Phase 2) ─
     # Codex consult 2026-05-01: sticky-HMM (diagonal Dirichlet prior on transition
     # matrix) 가 production-ready regime posterior. BOCPD 는 2차 승격 후보.
     "hmmlearn>=0.3.0",
-
     # ─── Backtesting ──────────────────────────────────────────
     "vectorbt>=0.28.0",
-
     # ─── Visualization ────────────────────────────────────────
     "matplotlib>=3.8.0",
     "mplfinance>=0.12.0",
@@ -62,11 +57,9 @@ dependencies = [
     "pillow>=12.3.0",
     "plotly>=5.18.0",
     "seaborn>=0.13.2",
-
     # ─── Alerts + scheduling ──────────────────────────────────
     "apscheduler>=3.10.0",
     "discord.py>=2.7.1",
-
     # ─── API server ───────────────────────────────────────────
     # openbb-core(최신 1.6.10까지) 가 fastapi>=0.128.0,<0.129.0 로 하드 핀하나,
     # 그 핀은 openbb 자체 REST 서버 서브기능용 — nuri 는 openbb 를 라이브러리
@@ -77,19 +70,17 @@ dependencies = [
     "fastapi>=0.128.0",
     "httpx>=0.27.0",
     "uvicorn>=0.32.0",
-
     # ─── LLM providers ────────────────────────────────────────
     "llama-cpp-python>=0.3.0",
     "openai>=2.30.0",
-
     # ─── Security ─────────────────────────────────────────────
     "bcrypt>=4.0.0",
     "PyJWT>=2.13.0",  # dependabot #66-70 (<2.13.0 보안 패치)
     "slowapi>=0.1.9",
-
     # ─── Config / Environment ─────────────────────────────────
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
+    "mcp>=2.1.1",
 ]
 
 [project.optional-dependencies]
