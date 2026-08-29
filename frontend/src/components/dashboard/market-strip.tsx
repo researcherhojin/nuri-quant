@@ -42,7 +42,7 @@ export function MarketStrip({
   const macroInfo = macroLevel(macroScore ?? 0);
 
   return (
-    <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
+    <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded-sm bg-zinc-900/40 border border-zinc-800/60">
       <span className={trend === "bull" ? "text-emerald-400 font-semibold" : trend === "bear" ? "text-red-400 font-semibold" : "text-amber-400 font-semibold"}>
         {trendKo(trend)}
       </span>

@@ -113,23 +113,23 @@ export function PortfolioTreemap({ data }: { data: HeatmapData }) {
       </ResponsiveContainer>
       <div className="flex gap-4 mt-1 text-[10px] text-muted-foreground justify-center">
         <span>
-          <span className="inline-block w-2.5 h-2.5 mr-1 align-middle" style={{ background: "#2e7d32" }} />
+          <span className="inline-block size-2.5 mr-1 align-middle" style={{ background: "#2e7d32" }} />
           이익
         </span>
         <span>
-          <span className="inline-block w-2.5 h-2.5 mr-1 align-middle" style={{ background: "#d32f2f" }} />
+          <span className="inline-block size-2.5 mr-1 align-middle" style={{ background: "#d32f2f" }} />
           손실
         </span>
         <span>
           <span
-            className="inline-block w-2.5 h-2.5 mr-1 align-middle border-2"
+            className="inline-block size-2.5 mr-1 align-middle border-2"
             style={{ borderColor: VIOLATION_COLORS.stop_loss }}
           />
           손절 위반
         </span>
         <span>
           <span
-            className="inline-block w-2.5 h-2.5 mr-1 align-middle border-2"
+            className="inline-block size-2.5 mr-1 align-middle border-2"
             style={{ borderColor: VIOLATION_COLORS.overweight }}
           />
           비중 초과

@@ -78,7 +78,7 @@ async function MarketContext() {
 
   if (!hasAny) {
     return (
-      <div className="text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
+      <div className="text-[10px] text-zinc-500 px-2 py-1.5 rounded-sm bg-zinc-900/40 border border-zinc-800/60">
         ⚠ {EXPLORE.MARKET_NO_DATA}
       </div>
     );
@@ -89,7 +89,7 @@ async function MarketContext() {
   const tColor = trend === "bull" ? "text-emerald-400" : trend === "bear" ? "text-red-400" : "text-amber-400";
 
   return (
-    <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-800/60">
+    <div className="flex items-center gap-3 flex-wrap text-[10px] text-zinc-500 px-2 py-1.5 rounded-sm bg-zinc-900/40 border border-zinc-800/60">
       {trend && (
         <span className="flex items-center gap-1.5">
           <span className={`${tColor} font-semibold`}>{trendKo(trend)}</span>
@@ -154,7 +154,7 @@ function QuickLinkSkeleton() {
 }
 
 function StripSkeleton() {
-  return <div className="h-8 rounded bg-zinc-900/40 border border-zinc-800/60 animate-pulse" />;
+  return <div className="h-8 rounded-sm bg-zinc-900/40 border border-zinc-800/60 animate-pulse" />;
 }
 
 // ── Quicklinks section (single batch fetch for all 12 tickers) ──
@@ -190,7 +190,7 @@ async function QuickLinksGrid() {
       </div>
       {hasAnyMissing && (
         <p className="text-[9px] text-zinc-600 px-1">
-          <Lightbulb className="inline size-2.5 text-zinc-500 mr-0.5" aria-hidden /> 흐린 카드는 가격 미수집 — <code className="text-zinc-500 bg-zinc-800/50 px-1 rounded">{EXPLORE.COLLECT_HINT}</code>
+          <Lightbulb className="inline size-2.5 text-zinc-500 mr-0.5" aria-hidden /> 흐린 카드는 가격 미수집 — <code className="text-zinc-500 bg-zinc-800/50 px-1 rounded-sm">{EXPLORE.COLLECT_HINT}</code>
         </p>
       )}
     </div>

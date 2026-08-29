@@ -99,7 +99,7 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
               e.stopPropagation();
               setExpanded(!expanded);
             }}
-            className="mr-1 align-middle inline-flex items-center justify-center w-4 h-4 -my-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors focus-visible:outline-2 focus-visible:outline-blue-400/75"
+            className="mr-1 align-middle inline-flex items-center justify-center size-4 -my-1 rounded-sm text-zinc-500 hover:text-zinc-200 transition-colors focus-visible:outline-2 focus-visible:outline-blue-400/75"
           >
             <span aria-hidden="true" className={`text-[9px] leading-none transition-transform ${expanded ? "rotate-90" : ""}`}>&#9654;</span>
           </button>
@@ -116,7 +116,7 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
             <span
               data-testid="action-new-badge"
               title={item.as_of ? `${ACTION.PEEK_AS_OF} ${item.as_of}` : undefined}
-              className="ml-1.5 align-middle text-[9px] font-bold px-1 py-px rounded bg-blue-500/20 text-blue-400"
+              className="ml-1.5 align-middle text-[9px] font-bold px-1 py-px rounded-sm bg-blue-500/20 text-blue-400"
             >
               {ACTION.NEW}
             </span>
@@ -124,7 +124,7 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
         </td>
         <td className="h-8 px-2 whitespace-nowrap hidden md:table-cell text-[11px] text-zinc-400">{item.account ?? "—"}</td>
         <td className="h-8 px-2 whitespace-nowrap">
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${actionTagCls(item.action)}`}>{item.action}</span>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${actionTagCls(item.action)}`}>{item.action}</span>
         </td>
         <td className="h-8 px-2 w-full max-w-0">
           <p className="text-xs text-zinc-400 truncate" title={item.reasons.join(" · ")}>
@@ -188,7 +188,7 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
                 <button
                   type="button"
                   data-testid="action-ack-button"
-                  className="ml-auto text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+                  className="ml-auto text-[11px] px-2 py-0.5 rounded-sm bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
                     onAck(item);
@@ -218,10 +218,10 @@ function ActionBucketTable({ items, kind, title, ackMap, onAck }: { items: Actio
   return (
     <div>
       <h3 className={`text-xs font-semibold ${style.title} mb-1 flex items-center gap-1.5`}>
-        <span className={`w-2 h-2 rounded-full ${style.dot}`} />
+        <span className={`size-2 rounded-full ${style.dot}`} />
         {title} ({items.length})
       </h3>
-      <div className="overflow-x-auto rounded border border-zinc-800/60 bg-zinc-900/30">
+      <div className="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-900/30">
         <table className="w-full text-left">
           {/* design-review F-001: 수익률/비중/확신도 숫자가 무라벨이었다 — 초경량 헤더로 명명.
               th 반응형 클래스는 아래 td 와 1:1 (계좌·비중 = hidden md:table-cell) */}
@@ -294,7 +294,7 @@ export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItems
       {hold.length > 0 && (
         <div>
           <h3 className="text-xs font-semibold text-zinc-500 mb-1.5 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-zinc-500" />
+            <span className="size-2 rounded-full bg-zinc-500" />
             {ACTION.HOLD_SUMMARY} ({hold.length})
           </h3>
           <div className="flex flex-wrap gap-1.5">
@@ -302,7 +302,7 @@ export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItems
               <Link
                 key={actionKey(item)}
                 href={`/ticker/${item.ticker}`}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-zinc-900/60 border border-zinc-800/40 text-[10px] hover:bg-zinc-800/60 transition-colors"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-sm bg-zinc-900/60 border border-zinc-800/40 text-[10px] hover:bg-zinc-800/60 transition-colors"
               >
                 <span className="text-zinc-300">{item.name || item.ticker}</span>
                 <span className={`tabular-nums font-medium ${item.action === "BUY" ? "text-emerald-500" : "text-zinc-500"}`}>

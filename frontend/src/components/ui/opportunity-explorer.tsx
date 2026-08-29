@@ -80,7 +80,7 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
             ${opp.price?.toFixed(2) ?? "—"}
           </span>
           {opp.signal && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-blue-500/15 text-blue-400">
               {opp.signal}
             </span>
           )}
@@ -124,8 +124,8 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
 
       {/* 10-Agent 분석 결과 (인라인) */}
       {analysis && (
-        <div className="flex items-center gap-2 py-1.5 px-2 rounded bg-zinc-800/40 border border-zinc-800/30 text-[10px]">
-          <span className={`font-bold px-1.5 py-0.5 rounded ${
+        <div className="flex items-center gap-2 py-1.5 px-2 rounded-sm bg-zinc-800/40 border border-zinc-800/30 text-[10px]">
+          <span className={`font-bold px-1.5 py-0.5 rounded-sm ${
             analysis.action === "BUY" ? "bg-emerald-500/20 text-emerald-400" :
             analysis.action === "SELL" ? "bg-red-500/20 text-red-400" :
             "bg-zinc-700 text-zinc-400"
@@ -150,7 +150,7 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
       {/* 판정 + 링크 */}
       <div className="flex items-center justify-between pt-2 border-t border-zinc-800/40">
         <div className="flex items-center gap-1.5">
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${style.bg} ${style.text}`}>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${style.bg} ${style.text}`}>
             {style.label}
           </span>
           <span className="text-[10px] text-zinc-500 truncate max-w-50">{opp.verdict}</span>

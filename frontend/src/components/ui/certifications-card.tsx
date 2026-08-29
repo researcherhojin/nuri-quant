@@ -117,7 +117,7 @@ export function CertificationsCard({ history, summary }: CertificationsCardProps
             <p className="text-[10px] text-muted-foreground mb-1">By caller</p>
             <div className="flex flex-wrap gap-2 text-[10px]">
               {Object.entries(summary.by_caller).map(([k, v]) => (
-                <span key={k} className="bg-muted/60 px-2 py-0.5 rounded">
+                <span key={k} className="bg-muted/60 px-2 py-0.5 rounded-sm">
                   {k} <span className="text-muted-foreground/70">×{v}</span>
                 </span>
               ))}
@@ -127,7 +127,7 @@ export function CertificationsCard({ history, summary }: CertificationsCardProps
             <p className="text-[10px] text-muted-foreground mb-1">By regime</p>
             <div className="flex flex-wrap gap-2 text-[10px]">
               {Object.entries(summary.by_regime).map(([k, v]) => (
-                <span key={k} className="bg-muted/60 px-2 py-0.5 rounded">
+                <span key={k} className="bg-muted/60 px-2 py-0.5 rounded-sm">
                   {k} <span className="text-muted-foreground/70">×{v}</span>
                 </span>
               ))}

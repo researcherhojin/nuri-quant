@@ -193,7 +193,7 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
       <Handle
         type="target"
         position={Position.Left}
-        className="bg-muted! border-border! w-2! h-2!"
+        className="bg-muted! border-border! size-2!"
       />
 
       {/* 상태 표시 + 라벨 — F-003: stepId 기반 lucide 아이콘 (label 은 제목만) */}
@@ -203,11 +203,11 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
           {/* 레코드 수 */}
           <span className="text-[10px] text-muted-foreground/70">{data.recordCount.toLocaleString()}</span>
           {/* 상태 점 */}
-          <span className="relative flex h-2.5 w-2.5">
+          <span className="relative flex size-2.5">
             {status === "running" ? (
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${STATUS_COLORS[status]}`} />
+              <span className={`animate-ping absolute inline-flex size-full rounded-full opacity-75 ${STATUS_COLORS[status]}`} />
             ) : null}
-            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${STATUS_COLORS[status]}`} />
+            <span className={`relative inline-flex rounded-full size-2.5 ${STATUS_COLORS[status]}`} />
           </span>
         </div>
       </div>
@@ -250,7 +250,7 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
       <Handle
         type="source"
         position={Position.Right}
-        className="bg-muted! border-border! w-2! h-2!"
+        className="bg-muted! border-border! size-2!"
       />
     </div>
   );
@@ -291,7 +291,7 @@ const FetchFailed = memo(function FetchFailed({ body, onRetry }: { body: string;
       <button
         type="button"
         onClick={onRetry}
-        className="text-[10px] px-2 py-1 rounded border border-border text-foreground/80 hover:bg-accent"
+        className="text-[10px] px-2 py-1 rounded-sm border border-border text-foreground/80 hover:bg-accent"
       >
         {ERRORS.RETRY}
       </button>
@@ -465,8 +465,8 @@ export default function PipelinePage() {
         <div className="flex items-center gap-3">
           {/* 실행 중 카운터 */}
           {runningSteps.size > 0 && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-400/10 text-blue-400 text-[10px] font-medium">
-              <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-blue-400/10 text-blue-400 text-[10px] font-medium">
+              <span className="inline-flex size-2 rounded-full bg-blue-500 animate-pulse" />
               <span>{runningSteps.size}{PL.RUNNING_SUFFIX}</span>
             </div>
           )}
@@ -513,19 +513,19 @@ export default function PipelinePage() {
       {/* 하단 범례 */}
       <div className="flex items-center gap-6 text-[10px] text-muted-foreground">
         <div className="flex items-center gap-1.5">
-          <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="inline-flex size-2 rounded-full bg-emerald-500" />
           <span>{PL.LEGEND_OK}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
+          <span className="inline-flex size-2 rounded-full bg-amber-500" />
           <span>{PL.LEGEND_WARN}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="inline-flex h-2 w-2 rounded-full bg-red-500" />
+          <span className="inline-flex size-2 rounded-full bg-red-500" />
           <span>{PL.LEGEND_ERROR}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="inline-flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+          <span className="inline-flex size-2 rounded-full bg-blue-500 animate-pulse" />
           <span>{PL.LEGEND_RUNNING}</span>
         </div>
       </div>
@@ -553,7 +553,7 @@ export default function PipelinePage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-foreground/80 capitalize">{ev.step}</span>
-                      <span className={`text-[10px] px-1 py-0.5 rounded ${
+                      <span className={`text-[10px] px-1 py-0.5 rounded-sm ${
                         ev.event_type === "success" ? "bg-emerald-500/10 text-emerald-400" :
                         ev.event_type === "error" ? "bg-red-500/10 text-red-400" :
                         "bg-blue-500/10 text-blue-400"
@@ -604,7 +604,7 @@ export default function PipelinePage() {
                       {c.detail}
                     </p>
                   </div>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-sm shrink-0 ${
                     c.passed ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
                   }`}>
                     {c.phase}

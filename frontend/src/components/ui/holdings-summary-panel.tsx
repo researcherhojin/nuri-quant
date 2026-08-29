@@ -96,7 +96,7 @@ export function HoldingsSummaryPanel({
                 <div className="relative flex items-center justify-between h-full px-1.5 text-[10px]">
                   <span className="flex items-center gap-1.5 min-w-0">
                     <span
-                      className="inline-block h-1.5 w-1.5 rounded-sm shrink-0"
+                      className="inline-block size-1.5 rounded-sm shrink-0"
                       style={{ background: a.color }}
                     />
                     <span className="truncate text-zinc-200">{a.account}</span>
@@ -131,7 +131,7 @@ export function HoldingsSummaryPanel({
                 <div className="relative flex items-center justify-between h-full px-1.5 text-[10px]">
                   <span className="flex items-center gap-1.5 min-w-0">
                     <span
-                      className="inline-block h-1.5 w-1.5 rounded-sm shrink-0"
+                      className="inline-block size-1.5 rounded-sm shrink-0"
                       style={{ background: s.color }}
                     />
                     <span className="truncate text-zinc-200">{s.name}</span>
