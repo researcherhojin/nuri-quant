@@ -241,6 +241,8 @@ class ActorRegistry:
         "execution-firewall",
         "forward-outcome-tracker",
         "sre-incident-agent",
+        # #1308 Phase 0 — 호출자: scheduler `_run_maintenance_audit` (주간, 같은 PR 에서 배선)
+        "maintenance-auditor",
     )
     #: 구현·테스트는 있으나 어떤 경로도 부르지 않는 휴면 액터. 등록은 허용하되
     #: `missing()` 추적에서 제외 — "미배선을 pending 으로 광고" 하지 않기 위해.

@@ -816,6 +816,21 @@ def _run_outbox_watchdog():
         logger.error(f"[outbox_watchdog] 실행 실패: {e}", exc_info=True)
 
 
+def _run_maintenance_audit():
+    """Maintenance-Auditor 주간 스캔 (#1308 Phase 0) — 로컬 원장 staging 만.
+
+    GitHub 쓰기 0건 · LLM 0 · 하드 캡 4종은 actor 내부 계약 — 여기서는 다른
+    `_run_*` 와 동일하게 실패를 흡수만 한다.
+    """
+    try:
+        from nuri.agents.actors.maintenance_auditor import MaintenanceAuditor
+
+        result = MaintenanceAuditor().run({"action": "scan"})
+        logger.info(f"[maintenance_audit] {result.output}")
+    except Exception as e:
+        logger.error(f"[maintenance_audit] 실행 실패: {e}", exc_info=True)
+
+
 def _run_offbox_heartbeat():
     """기계 밖 감시 dead-man heartbeat (#1191 C). 10분 마다.
 
@@ -1023,6 +1038,9 @@ SCHEDULES = [
     {"name": "dispatcher_rollout", "func": _run_channel_dispatcher, "args": ("rollout",), "cron": "0 6 * * 0"},
     # Watchdog — outbox backlog / oldest-pending-age threshold breach 시 #ops 직접 발송 (recursion 방지).
     {"name": "outbox_watchdog", "func": _run_outbox_watchdog, "args": (), "cron": "*/10 * * * *"},
+    # 유지보수 발굴 주간 스캔 (#1308 Phase 0) — 일요일 03:00 KST (00:00-01:00 주간
+    # 수집 블록 뒤 조용한 슬롯). 로컬 원장 staging 만 — GitHub 쓰기 없음.
+    {"name": "maintenance_audit", "func": _run_maintenance_audit, "args": (), "cron": "0 3 * * 0"},
     # 기계 밖 감시 dead-man heartbeat (#1191 C) — production(mini)에서만 실제 push,
     # dev 는 role 게이트로 no-op. 5분이 아니라 10분인 이유: 감시자 임계(45분)에
     # 4~5회 여유가 있으면 충분하고, push 는 네트워크 왕복이라 슬롯을 아낀다.

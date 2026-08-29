@@ -67,7 +67,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 | `/api/market-context` | GET | 시스템 건강 (SIEGE/regime/macro/freshness) + 매크로 이벤트 (한국어 카테고리) |
 | `/api/backtest/equity` | GET | Equity curve + drawdown + metrics (Recharts frontend용 경량 데이터) |
 ## Scheduler
-`nuri/scheduler.py` — 58 cron jobs in `SCHEDULES` list (+ a 1-minute `heartbeat` interval job). All times KST. Lazy imports inside `_run_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors; a daily `stock_us_freshness` job (06:10/06:40 KST) keeps the SPY measurement benchmark + SIEGE freshness tickers current (§3.11).
+`nuri/scheduler.py` — 59 cron jobs in `SCHEDULES` list (+ a 1-minute `heartbeat` interval job). All times KST. Lazy imports inside `_run_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors; a daily `stock_us_freshness` job (06:10/06:40 KST) keeps the SPY measurement benchmark + SIEGE freshness tickers current (§3.11).
 ## Environment Variables
 Configured in `.env` (see `.env.example`):
 - `FRED_API_KEY` — FRED macro data (optional; yfinance fallback)
@@ -85,7 +85,7 @@ Configured in `.env` (see `.env.example`):
 - `NURI_ROLE` — `production` gates §3.11 ledger-backed surfacing (the monthly alpha progress report only stages to `#brief` when set). Adjudication runs off the Mac mini DB; the MBP is a read replica, so dev numbers must never reach the brief. Lives in `scripts/launchd/com.nuri-quant.scheduler.plist` `EnvironmentVariables`, **not** `.env` — `make deploy-mini` SCPs the MBP `.env` over the mini's, so an `.env`-resident value is wiped by the next deploy (same trap as `DEV2_HOST`).
 - `API_SECRET_KEY` — JWT signing key (**required in production**, optional in dev). Unset, `nuri/api/auth.py` mints a fresh `secrets.token_hex(32)` each boot, so every outstanding JWT dies on restart (dashboard re-login). Generate: `python3 -c "import secrets; print(secrets.token_hex(32))"`. `make deploy-mini` SCPs the local `.env` onto the Mac mini's, so the same value must exist in **both** `.env` files or a deploy reverts production to random-per-boot.
 ## DB Schema (SQLite, WAL mode)
-58 tables total (58 migrations as of 2026-08-25). Key tables:
+58 tables total (59 migrations as of 2026-08-25). Key tables:
 | Table | Purpose |
 |-------|---------|
 | `prices` | OHLCV 5Y daily bars per ticker |
@@ -159,7 +159,7 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-7,889 backend tests across 366 files + 1622 frontend vitest (141 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth — a local run measures a different statement set.
+7,909 backend tests across 367 files + 1622 frontend vitest (141 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth — a local run measures a different statement set.
 **Slow marker**: 27 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14).
 @pytest.fixture
 def db_path(tmp_path):
