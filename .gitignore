@@ -12,6 +12,9 @@
 
 # ─── Secrets / Credentials ─────────────────────────────────────
 .env
+# rsync 가 immutable .env 위로 rename 실패하면 남기는 임시 사본 — 송신측 시크릿 전문이라
+# add -A 에 쓸리면 커밋에 박힌다 (2026-08-30 push-protection 이 실제로 차단한 니어미스)
+..env.*
 .env.*
 !.env.example
 .env.local
