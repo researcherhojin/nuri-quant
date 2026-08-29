@@ -12,6 +12,12 @@
 #   #ops 의 역할이라 의도된 동작이다 (stateless 라 dedupe 상태를 두지 않는다).
 # - 공개 레포의 스케줄 워크플로는 60일 무활동 시 자동 비활성화된다 — 이 레포는
 #   일상 커밋이 있어 해당 없음. 장기 방치 시 이 줄이 그 이유를 알려줄 것.
+# - ⚠️ 신규 워크플로의 schedule 은 등록에 실패할 수 있다 — 최초 머지(2026-08-29
+#   11:09Z) 후 3시간 동안 schedule 이벤트 0회였고, 같은 레포의 주간 cron(Stale
+#   Issues)은 정상이었다. 이 커밋이 그 재등록 유도다: 워크플로 파일을 default
+#   branch 에 다시 push 하면 스케줄러가 재파싱한다 (알려진 workaround). 이 파일을
+#   고칠 일이 생기면 머지 후 schedule 이벤트가 실제로 뜨는지까지 확인할 것 —
+#   dispatch 성공은 cron 등록의 증거가 아니다 (green dead gate 의 Actions 판).
 name: Heartbeat Watch
 
 on:
