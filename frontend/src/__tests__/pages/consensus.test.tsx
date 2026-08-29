@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
+import { NAV } from "@/lib/strings";
 
 // Mock next/link
 vi.mock("next/link", () => ({
@@ -74,7 +75,7 @@ describe("ConsensusPage", () => {
       render(<ConsensusPage />);
     });
 
-    expect(screen.getByText("Agents")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_AGENTS)).toBeInTheDocument();
   });
 
   it("renders consensus verdict count summary", async () => {

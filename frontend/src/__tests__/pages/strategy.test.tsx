@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
+import { NAV } from "@/lib/strings";
 
 // Mock next/link
 vi.mock("next/link", () => ({
@@ -97,7 +98,7 @@ describe("StrategyPage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Strategy")).toBeInTheDocument();
+      expect(screen.getByText(NAV.ROUTE_STRATEGY)).toBeInTheDocument();
     });
   });
 
@@ -205,7 +206,7 @@ describe("StrategyPage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Strategy")).toBeInTheDocument();
+      expect(screen.getByText(NAV.ROUTE_STRATEGY)).toBeInTheDocument();
     });
 
     expect(screen.queryByText("Open Positions")).not.toBeInTheDocument();

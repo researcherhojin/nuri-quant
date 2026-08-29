@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { NAV } from "@/lib/strings";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -65,7 +66,7 @@ describe("Strategy page branches", () => {
 
     const Page = await import("@/app/strategy/page");
     await act(async () => { render(<Page.default />); });
-    await waitFor(() => { expect(screen.getByText("Strategy")).toBeInTheDocument(); });
+    await waitFor(() => { expect(screen.getByText(NAV.ROUTE_STRATEGY)).toBeInTheDocument(); });
     expect(screen.queryByText(/confidence/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Long \d/)).not.toBeInTheDocument();
   });
