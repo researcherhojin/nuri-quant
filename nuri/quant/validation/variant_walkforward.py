@@ -260,6 +260,7 @@ def _evaluate_variant(
     cost_bps: float,
     alpha_eff: float,
     global_warmup: int,
+    allow_holdout: bool = True,
 ) -> dict[str, Any]:
     """단일 변형: pooled OOS Sharpe + 순열 p + FROZEN holdout (baseline 과 동일 절차).
 
@@ -298,10 +299,12 @@ def _evaluate_variant(
     discovery = p_value < alpha_eff and real_pooled >= gate["min_oos_sharpe"]
 
     # FROZEN holdout: discovery 통과 변형만 1회 개봉. 실패 변형은 봉인 유지 (None).
+    # allow_holdout=False = 게이트가 holdout 은퇴를 선고한 상태 (#1307 codex P1) —
+    # 은퇴 후에도 개봉하면 "봉인 소진" 선고가 무의미해진다 (사후 튜닝 누설 경로).
     holdout_sharpe: Optional[float] = None
     holdout_drawdown: Optional[float] = None
     holdout_ok = False
-    if discovery:
+    if discovery and allow_holdout:
         holdout_ret = aligned[best_k][split:]
         holdout_sharpe = _sharpe_from_returns(holdout_ret)
         holdout_drawdown = _max_drawdown(holdout_ret)
@@ -382,11 +385,22 @@ def run_variant_search(
     if len(close) <= global_warmup + 2:
         raise ValueError(f"need > {global_warmup + 2} rows after global warmup={global_warmup}, got {len(close)}")
 
+    # 게이트 모드: holdout 이 이미 은퇴했으면 **평가 전에** 봉인을 유지한다 (#1307
+    # codex P1) — adjudicate 가 사후에 holdout_retired 를 선고해도 값이 이미
+    # 노출·영속됐다면 다음 캠페인이 그 창에 대고 튜닝할 수 있다.
+    allow_holdout = True
+    if gate:
+        from nuri.quant.validation.champion_gate import holdout_is_retired
+
+        allow_holdout = not holdout_is_retired(db_path=db_path)
+
     fx_ret = fx_series.pct_change(fill_method=None).reindex(close.index).fillna(0.0)
     results = []
     for v in variants:
         logger.info("evaluating variant %s ...", v["name"])
-        r = _evaluate_variant(close, vol, fx_ret, v, cfg, cost_bps, alpha_eff, global_warmup)
+        r = _evaluate_variant(
+            close, vol, fx_ret, v, cfg, cost_bps, alpha_eff, global_warmup, allow_holdout=allow_holdout
+        )
         results.append(r)
         if persist:
             save_backtest(
@@ -442,6 +456,10 @@ def run_variant_search(
         from nuri.quant.validation.champion_gate import adjudicate
 
         out["gate"] = adjudicate(out, db_path=db_path)
+        # 표면 단일화 (#1307 codex P2, #1305 split-brain 교훈과 동일): 게이트 모드에서
+        # 승격 표면은 순차 verdict 하나다 — run 내부 gate 만 통과한 이름이 위 키로
+        # 광고되면 소비자가 편한 쪽을 읽는다.
+        out["promotion_eligible"] = out["gate"]["promotion_candidates"]
     return out
 
 

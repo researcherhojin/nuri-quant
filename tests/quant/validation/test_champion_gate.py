@@ -275,3 +275,127 @@ class TestRunnerWiring:
                 gate=True,
                 persist=False,
             )
+
+
+class TestRetiredHoldoutStaysSealed:
+    """codex review P1 — 은퇴한 holdout 은 runner 가 **평가 자체를** 봉인해야 한다.
+
+    adjudicate 의 사후 선고만으로는 값이 이미 결과/DB 에 노출돼 다음 캠페인의
+    사후 튜닝 입력이 된다.
+    """
+
+    def test_runner_keeps_the_holdout_sealed_after_retirement(self, db_path):
+        from nuri.quant.validation.variant_walkforward import run_variant_search
+
+        # 은퇴 상태 시드: max_uses(3) 캠페인이 이미 holdout 을 소비
+        for seq in (1, 2, 3):
+            log_challenger_attempt(
+                "variant",
+                seq,
+                "v2",
+                "rejected",
+                0.01,
+                holdout_id="h1:variant",
+                holdout_consumed=True,
+                db_path=db_path,
+            )
+
+        cfg = {
+            "portfolio": {"top_n": 2, "rebalance_days": 2},
+            "fold": {"kind": "rolling", "train_size": 10, "test_size": 5, "step": 5},
+            "holdout": {"frac": 0.2},
+            "costs": {"survivorship_haircut_bps_annual": 200},
+            "gate": {
+                "min_oos_sharpe": -99.0,  # discovery 를 넓게 열어 holdout 개봉 압력을 최대화
+                "min_holdout_sharpe": -99.0,
+                "permutation": {"n": 10, "alpha": 0.99, "seed": 0},
+                "multiple_comparison": "bonferroni",
+            },
+            "variants": [
+                {
+                    "name": "v0",
+                    "select": "momentum",
+                    "baseline": True,
+                    "theory": "control",
+                    "params": [{"lookback": 2}],
+                },
+                {"name": "v2", "select": "vol_scaled", "theory": "vol-scaled", "params": [{"lookback": 3}]},
+            ],
+        }
+        idx = pd.date_range("2024-01-01", periods=40, freq="B")
+        close = pd.DataFrame(
+            {
+                t: 100.0 * np.cumprod(1.0 + s + 0.002 * np.sin(np.arange(40)))
+                for t, s in {"AAA": 0.001, "BBB": 0.002, "CCC": 0.003, "DDD": 0.004}.items()
+            },
+            index=idx,
+        )
+        r = run_variant_search(
+            cost_bps=10.0,
+            fx_series=pd.Series(1300.0, index=idx),
+            close=close,
+            vol=pd.DataFrame(1e6, index=idx, columns=close.columns),
+            config=cfg,
+            persist=True,
+            gate=True,
+            db_path=db_path,
+        )
+
+        assert r["gate"]["holdout_retired"] is True
+        # 봉인 유지 — 어느 변형도 holdout 값을 노출하지 않는다
+        assert all(v["holdout_sharpe"] is None for v in r["variants"])
+        assert r["promotion_eligible"] == []
+        # 은퇴 후 실행은 추가 소비도 아니다 (봉인을 안 열었으므로)
+        assert holdout_uses("variant", "h1:variant", db_path=db_path) == 3
+
+    def test_gate_mode_promotion_surface_is_the_sequential_verdict_only(self, db_path, monkeypatch):
+        """codex review P2 — gate=True 의 promotion_eligible 은 게이트 verdict 단일 표면."""
+        import nuri.quant.validation.champion_gate as cg
+        from nuri.quant.validation.variant_walkforward import run_variant_search
+
+        monkeypatch.setattr(cg, "holdout_is_retired", lambda **_k: False)
+        monkeypatch.setattr(
+            cg, "adjudicate", lambda out, db_path=None: {"promotion_candidates": ["sentinel"], "campaign_seq": 1}
+        )
+
+        cfg = {
+            "portfolio": {"top_n": 2, "rebalance_days": 2},
+            "fold": {"kind": "rolling", "train_size": 10, "test_size": 5, "step": 5},
+            "holdout": {"frac": 0.2},
+            "costs": {"survivorship_haircut_bps_annual": 200},
+            "gate": {
+                "min_oos_sharpe": 0.5,
+                "min_holdout_sharpe": 0.0,
+                "permutation": {"n": 10, "alpha": 0.05, "seed": 0},
+                "multiple_comparison": "bonferroni",
+            },
+            "variants": [
+                {
+                    "name": "v0",
+                    "select": "momentum",
+                    "baseline": True,
+                    "theory": "control",
+                    "params": [{"lookback": 2}],
+                },
+                {"name": "v2", "select": "vol_scaled", "theory": "vol-scaled", "params": [{"lookback": 3}]},
+            ],
+        }
+        idx = pd.date_range("2024-01-01", periods=40, freq="B")
+        close = pd.DataFrame(
+            {
+                t: 100.0 * np.cumprod(1.0 + s + 0.002 * np.sin(np.arange(40)))
+                for t, s in {"AAA": 0.001, "BBB": 0.002, "CCC": 0.003, "DDD": 0.004}.items()
+            },
+            index=idx,
+        )
+        r = run_variant_search(
+            cost_bps=10.0,
+            fx_series=pd.Series(1300.0, index=idx),
+            close=close,
+            vol=pd.DataFrame(1e6, index=idx, columns=close.columns),
+            config=cfg,
+            persist=True,
+            gate=True,
+            db_path=db_path,
+        )
+        assert r["promotion_eligible"] == ["sentinel"]

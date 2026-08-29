@@ -83,6 +83,21 @@ def holdout_uses(family: str, holdout_id: str, db_path: Optional[Path] = None) -
     return int(rows[0]["n"])
 
 
+def holdout_is_retired(
+    family: str = FAMILY_VARIANT,
+    gate_config: Optional[dict] = None,
+    db_path: Optional[Path] = None,
+) -> bool:
+    """현 holdout 세대가 소진됐는가 — runner 가 **평가 전에** 묻는다 (codex P1).
+
+    은퇴 후 개봉은 봉인 선고를 무의미하게 만든다: 값이 결과/DB 에 노출되는 순간
+    다음 캠페인의 사후 튜닝 입력이 된다.
+    """
+    gate = gate_config or _load_gate_config()
+    hid = f"{gate['holdout_version']}:{family}"
+    return holdout_uses(family, hid, db_path=db_path) >= int(gate["holdout_max_uses"])
+
+
 def adjudicate(
     run_result: dict[str, Any],
     *,
