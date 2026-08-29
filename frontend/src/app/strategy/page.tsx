@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import { fetchAPI } from "@/lib/api";
-import { COMMON } from "@/lib/strings";
+import { COMMON, NAV } from "@/lib/strings";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { InteractiveBacktestLazy as InteractiveBacktest, type EquityPoint, type BacktestMetrics } from "@/components/ui/interactive-backtest-lazy";
@@ -93,7 +93,7 @@ export async function StrategyDashboard() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold">Strategy</h1>
+      <h1 className="text-2xl font-bold">{NAV.ROUTE_STRATEGY}</h1>
 
       {/* ── Row 1: Regime + Allocation + Actions ── */}
       <Card className="bg-card border-border">
