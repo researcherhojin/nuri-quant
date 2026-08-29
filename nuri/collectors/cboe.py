@@ -11,21 +11,15 @@ PCR > 1.0: 약세 심리 (풋 매수 과다), PCR < 0.7: 강세 심리 (콜 매�
 """
 
 import logging
-import os
 
 import requests
-from dotenv import load_dotenv
 
 from nuri.collectors.base import DEFAULT_HEADERS, BaseCollector, parse_date, today_str
 from nuri.core.db import upsert_macro
 
-load_dotenv()
-
 # CBOE 일별 시장 통계
 CBOE_OPTIONS_URL = "https://cdn.cboe.com/api/global/us_options/market_statistics/daily.json"
 CBOE_TOTPC_URL = "https://cdn.cboe.com/api/global/us_options/market_statistics/totalpc.json"
-# FRED 폴백: CBOE Equity Put/Call Ratio
-FRED_PCR_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 
 class CBOECollector(BaseCollector):
@@ -33,7 +27,6 @@ class CBOECollector(BaseCollector):
 
     def __init__(self):
         super().__init__("cboe")
-        self.fred_key = os.getenv("FRED_API_KEY", "")
 
     def collect(self, **kwargs) -> list[dict]:
         """CBOE에서 Put/Call Ratio 수집.
@@ -46,8 +39,9 @@ class CBOECollector(BaseCollector):
         DB 에 이전 값이 하나라도 있으면 성공으로 돌려주기 때문에, 라이브 소스 4개가
         전부 죽어도 여기까지 안 온다. 즉 여기서 고치는 건 "총체적 장애가 성공으로
         기록되는" 축이고, **"DB_STALE 재사용이 영원히 성공으로 집계되는" 축은 그대로
-        남아 있다** — `put_call_ratio` 는 `freshness.py FRESHNESS_POLICIES` 에 항목이
-        없어서 아무도 그 stale 을 감시하지 않는다. 그건 별건이라 이 PR 밖이다.
+        남아 있었는데**, #1242 가 `macro_market` 정책(금리 3종 + put/call 그룹 MIN)에
+        PCR 을 편입해 이제 그 stale 은 132h 에서 FAIL 로 표면화된다 — 2026-08-30
+        실제로 그 경로가 6일 얼어붙은 PCR 을 잡았다.
         """
         errors: list[Exception] = []
 
@@ -69,17 +63,11 @@ class CBOECollector(BaseCollector):
             self.logger.warning("CBOE totalpc 폴백도 실패: %s", e)
             errors.append(e)
 
-        # 3차: FRED ECPCRATIO (CBOE Equity Put/Call Ratio)
-        if self.fred_key and self.fred_key != "your_fred_api_key_here":
-            try:
-                records = self._collect_fred_pcr()
-                if records:
-                    return records
-            except Exception as e:
-                self.logger.warning("FRED PCR 폴백 실패: %s", e)
-                errors.append(e)
+        # (구 3차 FRED ECPCRATIO 티어는 제거 — 2026-08-30 외부 실검증: FRED 가
+        # "The series does not exist" 400 을 반환한다 (CBOE 시리즈 델리스트). 죽은
+        # 티어는 매 실행 api_key 가 박힌 요청 URL 을 WARNING 로그로 흘리기만 했다.)
 
-        # 4차: yfinance SPY 옵션 체인으로 PCR 직접 계산
+        # 3차: yfinance SPY 옵션 체인으로 PCR 직접 계산
         try:
             records = self._collect_yfinance_spy_pcr()
             if records:
@@ -88,7 +76,7 @@ class CBOECollector(BaseCollector):
             self.logger.warning("yfinance SPY PCR 폴백 실패: %s", e)
             errors.append(e)
 
-        # 5차: DB stale 재사용 (graceful degrade)
+        # 4차: DB stale 재사용 (graceful degrade)
         try:
             stale = self._collect_db_stale()
             if stale:
@@ -103,7 +91,7 @@ class CBOECollector(BaseCollector):
         # 않을 수도 있다는 잘못된 인상만 준다.
         if errors:
             self.logger.error(
-                "CBOE 모든 소스 실패 (%d건) — 첫 원인을 올린다 (FRED_API_KEY 설정 시 FRED 폴백 가능)",
+                "CBOE 모든 소스 실패 (%d건) — 첫 원인을 올린다",
                 len(errors),
             )
             # `errors[-1]` 이 아니라 `errors[0]`: 마지막은 항상 DB stale(로컬 DB) 이라
@@ -133,6 +121,11 @@ class CBOECollector(BaseCollector):
         # 가장 가까운 만기 (보통 weekly/monthly)
         nearest = expirations[0]
         chain = ticker.option_chain(nearest)
+        # yfinance 는 장외/부분 응답에서 chain 이나 calls/puts 를 None 으로 준다 —
+        # 미가드 시 'NoneType' not subscriptable 로 티어가 죽는다 (2026-08-29 mini 실측,
+        # CBOE 403 국면에서 마지막 라이브 소스가 이 버그로 같이 죽어 PCR 이 6일 얼었다).
+        if chain is None or getattr(chain, "calls", None) is None or getattr(chain, "puts", None) is None:
+            return []
         call_vol = float(chain.calls["volume"].fillna(0).sum())
         put_vol = float(chain.puts["volume"].fillna(0).sum())
         if call_vol <= 0:
@@ -247,37 +240,6 @@ class CBOECollector(BaseCollector):
                     )
 
         self.logger.info("CBOE totalpc: %d건", len(records))
-        return records
-
-    def _collect_fred_pcr(self) -> list[dict]:
-        """FRED ECPCRATIO (CBOE Equity Put/Call Ratio) 폴백."""
-        params = {
-            "series_id": "ECPCRATIO",
-            "api_key": self.fred_key,
-            "file_type": "json",
-            "sort_order": "desc",
-            "limit": 30,
-        }
-        resp = requests.get(FRED_PCR_URL, params=params, timeout=15)
-        resp.raise_for_status()
-        observations = resp.json().get("observations", [])
-
-        records = []
-        for obs in observations:
-            val = obs.get("value", ".")
-            if val == ".":
-                continue
-            records.append(
-                {
-                    "indicator": "put_call_ratio",
-                    "date": obs["date"],
-                    "value": float(val),
-                    "source": "FRED_ECPCRATIO",
-                }
-            )
-
-        if records:
-            self.logger.info("FRED PCR: %d건 (최신: %s = %.3f)", len(records), records[0]["date"], records[0]["value"])
         return records
 
     @staticmethod

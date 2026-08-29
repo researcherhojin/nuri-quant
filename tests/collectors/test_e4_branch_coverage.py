@@ -441,20 +441,16 @@ class TestCboeFallbackChain:
     def test_all_fallbacks_raise_exceptions(self, db_path, monkeypatch):
         from nuri.collectors.cboe import CBOECollector
 
-        # Set FRED key so FRED branch executes and raises (covers L62-63)
-        monkeypatch.setenv("FRED_API_KEY", "fake_key")
-
         c = CBOECollector()
-        c.fred_key = "fake_key"  # since instance loaded fred_key on init
         with (
             patch.object(c, "_collect_daily", side_effect=RuntimeError("daily")),
             patch.object(c, "_collect_totalpc", side_effect=RuntimeError("totalpc")),
-            patch.object(c, "_collect_fred_pcr", side_effect=RuntimeError("fred")),
             patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("yf")),
             patch.object(c, "_collect_db_stale", side_effect=RuntimeError("stale")),
         ):
-            # 전면 실패는 `[]` 가 아니라 raise (#1042). FRED 티어까지 켠 5-tier 경로로,
-            # 올라오는 것은 마지막("stale")이 아니라 첫 원인("daily") 이어야 한다.
+            # 전면 실패는 `[]` 가 아니라 raise (#1042). 4-tier 경로(FRED 티어는 시리즈
+            # 사망으로 제거, 2026-08-30)에서 올라오는 것은 마지막("stale")이 아니라
+            # 첫 원인("daily") 이어야 한다.
             with pytest.raises(RuntimeError, match="daily"):
                 c.collect()
 
@@ -466,7 +462,6 @@ class TestCboeFallbackSuccess:
         from nuri.collectors.cboe import CBOECollector
 
         c = CBOECollector()
-        c.fred_key = ""  # skip FRED branch
 
         sentinel = [{"indicator": "put_call_ratio", "date": "2026-01-15", "value": 1.2, "source": "yfinance_SPY"}]
         with (
@@ -481,7 +476,6 @@ class TestCboeFallbackSuccess:
         from nuri.collectors.cboe import CBOECollector
 
         c = CBOECollector()
-        c.fred_key = ""
 
         sentinel = [{"indicator": "put_call_ratio", "date": "2026-01-14", "value": 0.85, "source": "DB_STALE"}]
         with (
