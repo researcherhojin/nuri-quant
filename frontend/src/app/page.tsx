@@ -407,12 +407,12 @@ async function Dashboard({
 function LoadingSkeleton() {
   return (
     <div className="flex flex-col gap-3">
-      <div className="h-16 bg-zinc-900/50 rounded animate-pulse" />
-      <div className="h-8 bg-zinc-900/30 rounded animate-pulse" />
-      <div className="h-3.5 bg-zinc-800 rounded animate-pulse" />
-      <div className="h-24 bg-zinc-900/50 rounded animate-pulse" />
-      <div className="h-32 bg-zinc-900/30 rounded animate-pulse" />
-      <div className="h-6 bg-zinc-800/30 rounded animate-pulse mt-auto" />
+      <div className="h-16 bg-zinc-900/50 rounded-sm animate-pulse" />
+      <div className="h-8 bg-zinc-900/30 rounded-sm animate-pulse" />
+      <div className="h-3.5 bg-zinc-800 rounded-sm animate-pulse" />
+      <div className="h-24 bg-zinc-900/50 rounded-sm animate-pulse" />
+      <div className="h-32 bg-zinc-900/30 rounded-sm animate-pulse" />
+      <div className="h-6 bg-zinc-800/30 rounded-sm animate-pulse mt-auto" />
     </div>
   );
 }

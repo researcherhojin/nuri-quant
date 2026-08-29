@@ -79,11 +79,11 @@ export function SellEvidenceChart({ data }: { data: SellEvidenceData }) {
       </div>
       <div className="flex gap-4 mt-1 text-[10px] text-muted-foreground justify-center">
         <span>
-          <span className="inline-block w-2.5 h-2.5 mr-1 align-middle" style={{ background: VIOLATION_COLORS.stop_loss }} />
+          <span className="inline-block size-2.5 mr-1 align-middle" style={{ background: VIOLATION_COLORS.stop_loss }} />
           손절선 위반 (SELL ALL)
         </span>
         <span>
-          <span className="inline-block w-2.5 h-2.5 mr-1 align-middle" style={{ background: VIOLATION_COLORS.overweight }} />
+          <span className="inline-block size-2.5 mr-1 align-middle" style={{ background: VIOLATION_COLORS.overweight }} />
           비중 초과 (REDUCE)
         </span>
       </div>

@@ -92,15 +92,15 @@ export function SignalPerformanceChart({ data }: { data: SignalPerformanceData }
       </div>
       <div className="flex gap-4 mt-1 text-[10px] text-muted-foreground justify-center">
         <span>
-          <span className="inline-block w-2.5 h-2.5 mr-1 align-middle" style={{ background: "var(--chart-1)" }} />
+          <span className="inline-block size-2.5 mr-1 align-middle" style={{ background: "var(--chart-1)" }} />
           승률 (안정)
         </span>
         <span>
-          <span className="inline-block w-2.5 h-2.5 mr-1 align-middle" style={{ background: DRIFT_COLORS.degrading }} />
+          <span className="inline-block size-2.5 mr-1 align-middle" style={{ background: DRIFT_COLORS.degrading }} />
           드리프트 열화
         </span>
         <span>
-          <span className="inline-block w-2.5 h-2.5 mr-1 align-middle" style={{ background: DRIFT_COLORS.critical }} />
+          <span className="inline-block size-2.5 mr-1 align-middle" style={{ background: DRIFT_COLORS.critical }} />
           드리프트 위험
         </span>
         <span>

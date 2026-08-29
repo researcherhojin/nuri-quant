@@ -87,7 +87,7 @@ export function CollapsibleStrip({
       <button
         type="button"
         onClick={toggle}
-        className={`flex items-center gap-1.5 text-[10px] text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900/50 rounded px-2 py-0.5 transition-colors ${className}`}
+        className={`flex items-center gap-1.5 text-[10px] text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900/50 rounded-sm px-2 py-0.5 transition-colors ${className}`}
         data-testid={`strip-collapsed-${id}`}
         aria-label={`${title} ${COLLAPSIBLE.EXPAND_SUFFIX}`}
       >

@@ -118,7 +118,7 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
             <th className="py-1.5 px-2 text-right font-medium text-muted-foreground">Conf</th>
             <th className="py-1.5 px-2 text-right font-medium text-muted-foreground hidden sm:table-cell">Agree</th>
             {AGENT_ORDER.map((a) => (
-              <th key={a.key} className="py-1.5 px-1.5 text-center font-medium text-muted-foreground hidden md:table-cell">
+              <th key={a.key} className="p-1.5 text-center font-medium text-muted-foreground hidden md:table-cell">
                 {a.label}
               </th>
             ))}
@@ -181,14 +181,14 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
                     </span>
                   </td>
                   {AGENT_ORDER.map((a) => (
-                    <td key={a.key} className="py-1.5 px-1.5 text-center hidden md:table-cell">
+                    <td key={a.key} className="p-1.5 text-center hidden md:table-cell">
                       {agentCell(agentMap[a.key])}
                     </td>
                   ))}
                 </tr>
                 {isExpanded && (
                   <tr className="bg-muted/10">
-                    <td colSpan={4 + AGENT_ORDER.length} className="px-3 py-3">
+                    <td colSpan={4 + AGENT_ORDER.length} className="p-3">
                       {/* A-2c: contributions 에서 agent 별 weighted 값을 lookup.
                           분모는 basis_action bucket 의 action_scores 합 — "basis 방향 결정에 얼마나
                           기여했는가" 가 UI 의도 (codex review LOW 1 — 전체 총합 분모는 semantic drift).

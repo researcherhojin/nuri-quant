@@ -76,7 +76,7 @@ export function InteractiveBacktest({ initialData, initialMetrics }: Interactive
       <div className="flex items-center gap-1.5">
         <button
           onClick={() => setMode("static")}
-          className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+          className={`text-[10px] px-2 py-0.5 rounded-sm transition-colors ${
             mode === "static" ? "bg-muted text-zinc-200" : "text-muted-foreground hover:text-zinc-300"
           }`}
         >
@@ -84,7 +84,7 @@ export function InteractiveBacktest({ initialData, initialMetrics }: Interactive
         </button>
         <button
           onClick={() => setMode("interactive")}
-          className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+          className={`text-[10px] px-2 py-0.5 rounded-sm transition-colors ${
             mode === "interactive" ? "bg-muted text-zinc-200" : "text-muted-foreground hover:text-zinc-300"
           }`}
         >

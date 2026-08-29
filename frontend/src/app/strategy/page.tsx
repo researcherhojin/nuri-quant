@@ -128,7 +128,7 @@ export async function StrategyDashboard() {
           {actions.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">
               {actions.map((a: StrategyAction, i: number) => (
-                <div key={i} className="flex items-center gap-1.5 text-xs bg-muted rounded px-2 py-1">
+                <div key={i} className="flex items-center gap-1.5 text-xs bg-muted rounded-sm px-2 py-1">
                   <StatusBadge status={a.action.replace("open_", "").toUpperCase()} />
                   <span className="font-medium">{a.ticker}</span>
                   <span className="text-muted-foreground hidden sm:inline">{a.reason?.slice(0, 30)}</span>
@@ -252,9 +252,9 @@ export async function StrategyDashboard() {
             <p className="text-xs text-muted-foreground mb-2">Open Positions</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {positions.map((p: StrategyPosition, i: number) => (
-                <div key={i} className="flex items-center justify-between bg-muted rounded px-2.5 py-1.5 text-xs">
+                <div key={i} className="flex items-center justify-between bg-muted rounded-sm px-2.5 py-1.5 text-xs">
                   <div className="flex items-center gap-1.5">
-                    <span className={`w-1.5 h-1.5 rounded-full ${p.direction === "long" ? "bg-emerald-500" : "bg-red-500"}`} />
+                    <span className={`size-1.5 rounded-full ${p.direction === "long" ? "bg-emerald-500" : "bg-red-500"}`} />
                     <span className="font-medium">{p.ticker}</span>
                   </div>
                   <span className={`${(p.return_pct || 0) > 0 ? "text-emerald-400" : "text-red-400"}`}>
@@ -273,7 +273,7 @@ export async function StrategyDashboard() {
 function Loading() {
   return (
     <div className="space-y-5">
-      <div className="h-8 w-32 bg-muted rounded animate-pulse" />
+      <div className="h-8 w-32 bg-muted rounded-sm animate-pulse" />
       <div className="h-32 bg-card rounded-xl border border-border animate-pulse" />
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="h-48 bg-card rounded-xl border border-border animate-pulse lg:col-span-3" />

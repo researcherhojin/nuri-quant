@@ -122,7 +122,7 @@ function FilterChip({ href, active, children }: { href: string; active: boolean;
       href={href}
       scroll={false}
       aria-current={active ? "true" : undefined}
-      className={`px-2.5 py-1 rounded text-[11px] transition-colors ${
+      className={`px-2.5 py-1 rounded-sm text-[11px] transition-colors ${
         active ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60"
       }`}
     >
@@ -173,7 +173,7 @@ function OutcomeCell({ date, outcome, today }: { date: string; outcome: string; 
   const adj = adjudicationInfo(date, outcome, today);
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${tag.cls}`}>{tag.label}</span>
+      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm ${tag.cls}`}>{tag.label}</span>
       <span className="text-[10px] text-muted-foreground font-mono tabular-nums" title={`${DECISIONS.ADJ_DONE} ${adj.adjudicationDate}`}>
         {adj.kind === "adjudicated" && adj.adjudicationDate}
         {adj.kind === "waiting" && `${DECISIONS.ADJ_DUE_PREFIX}${adj.daysLeft}`}
@@ -194,7 +194,7 @@ function DecisionTable({ decisions, filtered, today }: { decisions: Decision[]; 
               DECISIONS.EMPTY_FILTERED
             ) : (
               <>
-                {DECISIONS.EMPTY} <code className="text-xs bg-muted px-1 rounded">make consensus</code> {COMMON.RUN_REQUIRED}.
+                {DECISIONS.EMPTY} <code className="text-xs bg-muted px-1 rounded-sm">make consensus</code> {COMMON.RUN_REQUIRED}.
               </>
             )}
           </p>

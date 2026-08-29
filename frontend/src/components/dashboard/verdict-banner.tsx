@@ -22,9 +22,9 @@ export function VerdictBanner({ verdict, level }: { verdict: string; level: stri
   return (
     <div
       data-testid="verdict-banner"
-      className={`flex items-center gap-3 px-4 py-2.5 rounded border ${s.box}`}
+      className={`flex items-center gap-3 px-4 py-2.5 rounded-sm border ${s.box}`}
     >
-      <span className={`shrink-0 inline-flex items-center h-5 px-2 rounded font-mono text-[11px] font-semibold ${s.tag}`}>
+      <span className={`shrink-0 inline-flex items-center h-5 px-2 rounded-sm font-mono text-[11px] font-semibold ${s.tag}`}>
         {label}
       </span>
       <p className="text-sm font-medium text-zinc-200 min-w-0">{verdict}</p>

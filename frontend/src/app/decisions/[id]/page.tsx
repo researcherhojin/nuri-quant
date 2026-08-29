@@ -204,7 +204,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
           <span className="text-xs text-muted-foreground">#{d.id} · {d.date}</span>
         </div>
         <span className="inline-flex items-center gap-1.5" data-testid="decision-outcome">
-          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${outcomeTag.cls}`}>{outcomeTag.label}</span>
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm ${outcomeTag.cls}`}>{outcomeTag.label}</span>
           <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
             {adj.kind === "adjudicated" && `${DECISIONS.ADJ_DONE} ${adj.adjudicationDate}`}
             {adj.kind === "waiting" && `${DECISIONS.ADJ_DONE} ${adj.adjudicationDate} (${DECISIONS.ADJ_DUE_PREFIX}${adj.daysLeft})`}
@@ -216,7 +216,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
       {/* #1257 판정 경로 히어로 — 판정 소스별 3변형. veto 는 "합의 vs 그것을 덮은 규칙"
           대차대조, 나머지는 단일 칸. conf 100 · agreement 20% 가 모순처럼 보이던 문제의 해소. */}
       <Card className="bg-card border-border" data-testid="verdict-hero" data-source={actionSource}>
-        <CardContent className="pt-4 pb-4 space-y-3">
+        <CardContent className="py-4 space-y-3">
           <p className="text-sm font-semibold text-foreground">
             {actionSource === "risk_veto" && DECISIONS.HERO_VETO_TITLE}
             {actionSource === "divergence_penalty" && DECISIONS.HERO_PENALTY_TITLE}
@@ -231,7 +231,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
           </p>
           {actionSource === "risk_veto" ? (
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded bg-muted/40 px-3 py-2.5 space-y-1.5 opacity-80">
+              <div className="rounded-sm bg-muted/40 px-3 py-2.5 space-y-1.5 opacity-80">
                 <p className="text-[10px] text-muted-foreground">{DECISIONS.HERO_CONSENSUS_REF}</p>
                 <div className="flex h-2 rounded-full overflow-hidden" aria-hidden="true">
                   {liveVerdicts.length > 0 && (
@@ -247,7 +247,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   {agreementPct !== null && ` — ${DECISIONS.HERO_AGREEMENT_LABEL} ${agreementPct}%`}
                 </p>
               </div>
-              <div className="rounded border border-rose-500/30 bg-rose-500/5 px-3 py-2.5 space-y-1">
+              <div className="rounded-sm border border-rose-500/30 bg-rose-500/5 px-3 py-2.5 space-y-1">
                 <p className="text-[10px] text-rose-400 font-medium">{DECISIONS.HERO_DECIDER_VETO}</p>
                 <p className="text-sm font-semibold text-foreground">
                   {d.action} · {d.confidence === null ? "—" : Math.round(d.confidence)}
@@ -257,7 +257,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
               </div>
             </div>
           ) : (
-            <div className="rounded bg-muted/40 px-3 py-2.5 space-y-1.5">
+            <div className="rounded-sm bg-muted/40 px-3 py-2.5 space-y-1.5">
               <div className="flex h-2 rounded-full overflow-hidden" aria-hidden="true">
                 {liveVerdicts.length > 0 && (
                   <>
@@ -296,7 +296,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
             <span className="text-[10px] text-muted-foreground/70">{DECISIONS.RECHECK_NOTE}</span>
           </div>
           <div className="grid gap-2 md:grid-cols-3">
-            <div className="rounded bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">
+            <div className="rounded-sm bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">
               {DECISIONS.RECHECK_STOP}
               {d.stop_loss !== null && (
                 <span className="block text-[10px] text-muted-foreground font-mono tabular-nums mt-0.5">
@@ -304,8 +304,8 @@ export async function DecisionProvenance({ id }: { id: string }) {
                 </span>
               )}
             </div>
-            <div className="rounded bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">{DECISIONS.RECHECK_VOL}</div>
-            <div className="rounded bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">{DECISIONS.RECHECK_THESIS}</div>
+            <div className="rounded-sm bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">{DECISIONS.RECHECK_VOL}</div>
+            <div className="rounded-sm bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">{DECISIONS.RECHECK_THESIS}</div>
           </div>
           <p className="text-[10px] text-muted-foreground/60">{DECISIONS.RECHECK_PIT}</p>
         </CardContent>
@@ -387,7 +387,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
             )}
             {d.thesis && (
               <span
-                className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
+                className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-sm ${
                   VERDICT_TONE[d.thesis.verdict ?? ""] ?? "bg-muted text-muted-foreground"
                 }`}
               >
@@ -399,7 +399,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
             actionSource === "risk_veto" ? (
               // #1257: 규칙 판정(veto)은 논지가 없어도 채점 기준이 있다 — 자동 논지 렌더.
               // DB 쓰기 없음: 파생 표시일 뿐 theses 원장은 건드리지 않는다.
-              <div className="rounded bg-muted/40 px-2.5 py-2 space-y-1" data-testid="auto-thesis">
+              <div className="rounded-sm bg-muted/40 px-2.5 py-2 space-y-1" data-testid="auto-thesis">
                 <p className="text-[10px] text-rose-400">{DECISIONS.AUTO_THESIS_TITLE}</p>
                 <p className="text-xs text-foreground/90">{DECISIONS.AUTO_THESIS_BODY}</p>
               </div>
@@ -411,11 +411,11 @@ export async function DecisionProvenance({ id }: { id: string }) {
           ) : (
             <div className="space-y-3">
               <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded bg-muted/40 px-2.5 py-2">
+                <div className="rounded-sm bg-muted/40 px-2.5 py-2">
                   <p className="text-[10px] text-emerald-500 mb-1">상승 논리</p>
                   <p className="text-xs text-foreground/90 whitespace-pre-wrap">{d.thesis.bull_case}</p>
                 </div>
-                <div className="rounded bg-muted/40 px-2.5 py-2">
+                <div className="rounded-sm bg-muted/40 px-2.5 py-2">
                   <p className="text-[10px] text-rose-500 mb-1">하락 논리</p>
                   <p className="text-xs text-foreground/90 whitespace-pre-wrap">{d.thesis.bear_case}</p>
                 </div>
@@ -428,7 +428,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                     반증 기준 ({d.thesis.criteria.length}) — 이게 사실이면 이 판단은 틀린 것
                   </p>
                   {d.thesis.criteria.map((c) => (
-                    <div key={c.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded px-2.5 py-1.5">
+                    <div key={c.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded-sm px-2.5 py-1.5">
                       <span className={`w-14 shrink-0 ${CRITERION_TONE[c.last_result ?? ""] ?? "text-muted-foreground"}`}>
                         {c.last_result ? CRITERION_LABEL[c.last_result] : "미점검"}
                       </span>
@@ -447,7 +447,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                 <div className="space-y-1.5">
                   <p className="text-[10px] text-muted-foreground">논지 근거 ({d.thesis.evidence.length})</p>
                   {d.thesis.evidence.map((e) => (
-                    <div key={e.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded px-2.5 py-1.5">
+                    <div key={e.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded-sm px-2.5 py-1.5">
                       <span
                         className={`w-10 shrink-0 ${e.side === "bull" ? "text-emerald-500" : "text-rose-500"}`}
                       >
@@ -505,7 +505,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
             </p>
             <div className="space-y-1.5">
               {liveVerdicts.map((v, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs bg-muted/40 rounded px-2.5 py-1.5">
+                <div key={i} className="flex items-center gap-2 text-xs bg-muted/40 rounded-sm px-2.5 py-1.5">
                   <span className="w-28 shrink-0 text-muted-foreground">{v.agent_name}</span>
                   <StatusBadge status={v.action} />
                   <span className="text-foreground/60">
@@ -525,7 +525,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   </summary>
                   <div className="space-y-1.5 mt-1.5">
                     {degradedVerdicts.map((v, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs bg-muted/20 rounded px-2.5 py-1.5 opacity-70">
+                      <div key={i} className="flex items-center gap-2 text-xs bg-muted/20 rounded-sm px-2.5 py-1.5 opacity-70">
                         <span className="w-28 shrink-0 text-muted-foreground">{v.agent_name}</span>
                         {typeof v.reasoning === "string" && (
                           <span className="truncate text-muted-foreground">{v.reasoning}</span>
@@ -549,7 +549,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
           ) : (
             <div className="space-y-1.5">
               {evidence.map((e) => (
-                <div key={e.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded px-2.5 py-1.5">
+                <div key={e.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded-sm px-2.5 py-1.5">
                   <span className="w-32 shrink-0 text-muted-foreground">{e.source_type}/{e.source_key}</span>
                   {e.action && <StatusBadge status={e.action} />}
                   {e.confidence !== null && <span className="text-foreground/60 shrink-0">{Math.round(e.confidence)}%</span>}
@@ -583,7 +583,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
 function Loading() {
   return (
     <div className="space-y-5">
-      <div className="h-8 bg-card rounded w-64 animate-pulse" />
+      <div className="h-8 bg-card rounded-sm w-64 animate-pulse" />
       {[1, 2, 3, 4].map((i) => (
         <div key={i} className="h-28 bg-card rounded-xl border border-border animate-pulse" />
       ))}

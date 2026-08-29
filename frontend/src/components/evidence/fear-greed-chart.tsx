@@ -43,7 +43,7 @@ export function FearGreedChart({ data }: { data: FearGreedData }) {
     <div className="min-w-0" data-testid="fear-greed-chart" role="img" aria-label={EVIDENCE.TITLE_FEAR_GREED}>
       {latest && (
         <div className="mb-2">
-          <span className="text-[10px] px-2 py-0.5 rounded bg-muted text-foreground">
+          <span className="text-[10px] px-2 py-0.5 rounded-sm bg-muted text-foreground">
             현재 {latest.value.toFixed(0)} · {zoneLabel(latest.value)}
           </span>
         </div>
@@ -84,7 +84,7 @@ export function FearGreedChart({ data }: { data: FearGreedData }) {
       <div className="flex gap-3 mt-1 text-[10px] text-muted-foreground justify-center">
         {FG_ZONES.map((z) => (
           <span key={z.label}>
-            <span className="inline-block w-2.5 h-2.5 mr-1 align-middle" style={{ background: z.color, opacity: 0.6 }} />
+            <span className="inline-block size-2.5 mr-1 align-middle" style={{ background: z.color, opacity: 0.6 }} />
             {z.label}
           </span>
         ))}

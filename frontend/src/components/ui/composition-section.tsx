@@ -159,7 +159,7 @@ export function CompositionSection({
                 role="tab"
                 aria-selected={active}
                 data-testid={`composition-tab-${t}`}
-                className={`px-2.5 py-1 rounded transition-colors ${
+                className={`px-2.5 py-1 rounded-sm transition-colors ${
                   active
                     ? "bg-zinc-800 text-zinc-100"
                     : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/60"
@@ -203,12 +203,12 @@ export function CompositionSection({
               return (
                 <div
                   key={row.label}
-                  className="flex items-center gap-3 text-[11px] py-0.5 px-1 rounded hover:bg-zinc-900/40 min-w-0"
+                  className="flex items-center gap-3 text-[11px] py-0.5 px-1 rounded-sm hover:bg-zinc-900/40 min-w-0"
                   data-testid={`composition-legend-${row.label}`}
                 >
                   {/* color dot */}
                   <span
-                    className="inline-block h-2 w-2 rounded-sm shrink-0"
+                    className="inline-block size-2 rounded-sm shrink-0"
                     style={{ background: row.color }}
                   />
                   {/* primary label */}

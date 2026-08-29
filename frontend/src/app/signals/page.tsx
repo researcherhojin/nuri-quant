@@ -60,7 +60,7 @@ async function CrossSection() {
                 <p className="text-[10px] text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">{regime}</p>
                 <div className="space-y-1">
                   {rows.slice(0, 5).map((r) => (
-                    <div key={r.signal_id} className="flex justify-between text-xs bg-muted/50 rounded px-2.5 py-1.5">
+                    <div key={r.signal_id} className="flex justify-between text-xs bg-muted/50 rounded-sm px-2.5 py-1.5">
                       <span className="text-foreground/80">{r.signal_id}</span>
                       <span className={pfColor(r.profit_factor)}>PF {pf(r.profit_factor)}</span>
                     </div>

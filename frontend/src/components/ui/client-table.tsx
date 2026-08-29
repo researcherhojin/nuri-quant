@@ -63,8 +63,8 @@ const VARIANTS: Record<string, any[]> = {
     { key: "agent_confidence", label: "Conf", align: "right", render: (v: number | null) => (v == null ? dim("—") : String(v)) },
     { key: "approved", label: "승인", align: "center", render: (v: boolean | null, row: { reason?: string | null }) =>
       v === null ? dim("—") : v
-        ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">승인</span>
-        : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-zinc-700/40 text-zinc-400" title={row.reason ?? undefined}>미승인</span> },
+        ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm bg-emerald-500/15 text-emerald-400">승인</span>
+        : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm bg-zinc-700/40 text-zinc-400" title={row.reason ?? undefined}>미승인</span> },
   ],
   gate: [
     { key: "description", label: "Condition" },
@@ -117,7 +117,7 @@ const VARIANTS: Record<string, any[]> = {
                    : v === 2 ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
                    : "bg-zinc-500/20 text-muted-foreground border-zinc-500/30";
       // design-review F-004: 무설명 숫자 칩 — 의미를 tooltip 으로
-      return <span title={`매도 우선순위 ${v} (낮을수록 먼저)`} className={`inline-flex items-center justify-center w-5 h-5 rounded-full border text-[10px] font-medium ${color}`}>{v}</span>;
+      return <span title={`매도 우선순위 ${v} (낮을수록 먼저)`} className={`inline-flex items-center justify-center size-5 rounded-full border text-[10px] font-medium ${color}`}>{v}</span>;
     }},
     { key: "ticker", label: "Ticker", render: ticker },
     // design-review F-004: "심각도" 헤더 아래 액션 배지(SELL/REDUCE)를 그리던 헤더-값
@@ -126,7 +126,7 @@ const VARIANTS: Record<string, any[]> = {
       const cls = v === "critical" ? "bg-red-500/20 text-red-400 border-red-500/30"
                 : v === "high" ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
                 : "bg-zinc-500/20 text-muted-foreground border-zinc-500/30";
-      return <span className={`inline-block px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase ${cls}`}>{v}</span>;
+      return <span className={`inline-block px-1.5 py-0.5 rounded-sm border text-[10px] font-bold uppercase ${cls}`}>{v}</span>;
     }},
     { key: "action", label: "조치", align: "center", render: (v: string) => <span className={v === "SELL_ALL" ? "text-red-400 font-medium" : "text-amber-400"}>{v === "SELL_ALL" ? "전량 매도" : "일부 매도"}</span> },
     { key: "sell_shares", label: "수량", align: "right", render: (v: number) => `${v}주` },

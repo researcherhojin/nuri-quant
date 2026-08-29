@@ -51,7 +51,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
           <button
             key={p.label}
             onClick={() => setPeriod(p.days)}
-            className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+            className={`text-[10px] px-2 py-0.5 rounded-sm transition-colors ${
               period === p.days
                 ? "bg-muted text-foreground"
                 : "text-muted-foreground hover:text-foreground/80"
