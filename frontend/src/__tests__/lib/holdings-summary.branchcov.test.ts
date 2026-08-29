@@ -21,7 +21,7 @@
  * *.coverage.test.* to avoid shared-worker mock leakage.
  */
 import { describe, it, expect } from "vitest";
-import { summarizeHoldings } from "@/lib/holdings-summary";
+import { summarizeHoldings, OTHER_COLOR } from "@/lib/holdings-summary";
 import type { EnrichedHolding } from "@/components/ui/holding-row";
 import type { SummarizeOptions } from "@/lib/holdings-summary";
 
@@ -78,7 +78,6 @@ describe("holdings-summary branch coverage top-up", () => {
   it("byAccount falls back to OTHER_COLOR for the 6th account (line 280)", () => {
     // SECTOR_COLORS has 5 entries (i 0..4). The 6th account (i === 5) must use
     // OTHER_COLOR via the `?? OTHER_COLOR` fallback.
-    const OTHER_COLOR = "#71717a"; // zinc-500 (mirrors source constant)
     const SECTOR_COLORS = ["#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#a78bfa"];
 
     const accountValues = [

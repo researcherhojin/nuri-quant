@@ -152,7 +152,7 @@ export interface SummarizeOptions {
 }
 
 // Palette — tailwind 400-level shades so the donut reads against zinc-950.
-const SECTOR_COLORS = [
+export const SECTOR_COLORS = [
   "#34d399", // emerald-400
   "#60a5fa", // blue-400
   "#f472b6", // pink-400
@@ -160,7 +160,7 @@ const SECTOR_COLORS = [
   "#a78bfa", // violet-400
 ] as const;
 // Larger palette for ticker-level composition (12 distinct colors for top 12).
-const TICKER_COLORS = [
+export const TICKER_COLORS = [
   "#34d399", // emerald-400
   "#60a5fa", // blue-400
   "#f472b6", // pink-400
@@ -174,7 +174,21 @@ const TICKER_COLORS = [
   "#fb923c", // orange-400
   "#e879f9", // fuchsia-400
 ] as const;
-const OTHER_COLOR = "#71717a"; // zinc-500
+/**
+ * "기타" 조각 색 (#1301). **의도적으로 토큰이 아니다.**
+ *
+ * 위 팔레트들과 같은 **계열색**이지 크롬이 아니다 — #1275 가 차트 크롬을 토큰으로 옮기면서
+ * 의미를 담은 계열색은 정당하다고 판정한 그 부류다. 토큰 후보 둘 다 측정으로 기각됐다
+ * (다크 `--card` `#1C2127` 기준 대비 / 상대 밝기 L):
+ *
+ *   현행 `#71717a`            대비 3.35 · L 0.167  ← 형제(cyan L 0.531)들 뒤로 물러남
+ *   `var(--muted-foreground)` 대비 7.66 · L 0.447  ← 형제와 대등해져 **위계가 무너진다**
+ *   `var(--muted)`            대비 1.12 · L 0.023  ← 사실상 안 보인다
+ *
+ * "기타" 는 명명된 보유 종목 **뒤로 물러나야** 하므로 형제보다 어두운 것이 요구사항이다.
+ * 그 요구사항은 색값이 아니라 **테스트로** 잠근다 — `holdings-summary-palette.test.ts`.
+ */
+export const OTHER_COLOR = "#71717a"; // zinc-500
 
 export function summarizeHoldings(
   holdings: EnrichedHolding[],
