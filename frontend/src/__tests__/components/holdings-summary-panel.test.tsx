@@ -5,6 +5,7 @@ import { render, screen } from "@testing-library/react";
 // barlist) so this test file doesn't need any chart mocks anymore.
 import { HoldingsSummaryPanel } from "@/components/ui/holdings-summary-panel";
 import type { HoldingsSummary } from "@/lib/holdings-summary";
+import { OTHER_COLOR } from "@/lib/holdings-summary";
 
 function baseSummary(over: Partial<HoldingsSummary> = {}): HoldingsSummary {
   return {
@@ -25,7 +26,7 @@ function baseSummary(over: Partial<HoldingsSummary> = {}): HoldingsSummary {
       { name: "Semi", weight: 28, valueUsd: 21000, dailyDeltaPct: 1.5, color: "#34d399" },
       { name: "BigTech", weight: 19, valueUsd: 14000, dailyDeltaPct: 0.3, color: "#60a5fa" },
       { name: "ETF", weight: 12, valueUsd: 9000, dailyDeltaPct: -0.1, color: "#f472b6" },
-      { name: "Other", weight: 41, valueUsd: 30000, dailyDeltaPct: null, color: "#71717a" },
+      { name: "Other", weight: 41, valueUsd: 30000, dailyDeltaPct: null, color: OTHER_COLOR },
     ],
     topMovers: {
       winners: [

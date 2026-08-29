@@ -14,6 +14,7 @@ import {
   parseCompositionTab,
 } from "@/components/ui/composition-section";
 import type { HoldingsSummary } from "@/lib/holdings-summary";
+import { OTHER_COLOR } from "@/lib/holdings-summary";
 
 function summary(over: Partial<HoldingsSummary> = {}): HoldingsSummary {
   return {
@@ -129,7 +130,7 @@ describe("CompositionSection", () => {
             { name: "Semi", weight: 25, valueUsd: 3000, dailyDeltaPct: -0.5, color: "#60a5fa" },
             { name: "ETF", weight: 15, valueUsd: 2000, dailyDeltaPct: null, color: "#f472b6" },
             { name: "Bio", weight: 12, valueUsd: 1500, dailyDeltaPct: 0.2, color: "#a78bfa" },
-            { name: "Other", weight: 8, valueUsd: 1000, dailyDeltaPct: null, color: "#71717a" },
+            { name: "Other", weight: 8, valueUsd: 1000, dailyDeltaPct: null, color: OTHER_COLOR },
           ],
         })}
         totalUsd={12500}
