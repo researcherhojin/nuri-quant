@@ -1,6 +1,11 @@
 {
   "include": ["nuri", "tests"],
   "exclude": [
+    // 완결된 사전등록 에피소드 스크립트 — 결과가 아카이브된 일회성 실험이라 사후
+    // 수정을 하지 않는 게 원칙이고, 타입 소음도 고치지 않는다. include 는 원래
+    // nuri/tests 뿐이지만 Pylance 는 "열린 파일" 을 include 밖이어도 분석하므로
+    // IDE 정합을 위해 exclude 에 명시한다 (2026-08-30).
+    "scripts/episodes",
     "**/.*",
     "**/__pycache__",
     "**/.venv",
