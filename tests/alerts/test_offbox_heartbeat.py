@@ -147,7 +147,11 @@ class TestSenderAndWatcherAreWiredTogether:
         """
         text = WORKFLOW.read_text(encoding="utf-8")
         branch = HEARTBEAT_REF.removeprefix("refs/heads/")
-        assert branch in text, f"워크플로가 {branch} 를 보지 않는다"
+        # substring 검사 금지 — `…-mini` 는 `…-mini-v2` 의 부분 문자열이라 rename 이
+        # 통과한다 (뮤테이션 실측 MISS). API 호출부에서 ref 토큰을 뽑아 동치 비교.
+        m_ref = re.search(r'branches/([A-Za-z0-9/_.-]+)"', text)
+        assert m_ref, "워크플로에서 감시 대상 ref 를 찾을 수 없다"
+        assert m_ref.group(1) == branch, f"워크플로 ref {m_ref.group(1)!r} ≠ 송신 ref {branch!r}"
         assert "DISCORD_WEBHOOK_OPS" in text, "알림 채널 secret 참조가 사라졌다"
 
         m = re.search(r"THRESHOLD_MIN=(\d+)", text)
