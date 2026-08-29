@@ -7,11 +7,11 @@
 | File | Lines | Purpose | Loader |
 |------|-------|---------|--------|
 | `rules.yaml` | 614 | Investment rules (stop-loss, take-profit, position limits, VIX gate, `account_strategies`, `measurement_mode` (§3.11 사전 고정 판정 기준 — amend 는 STRATEGY PR 필수), `siege_gates` incl. `regime_overrides` + per-class `external_applicable`) | `nuri/core/rules.py` |
-| `agents.yaml` | 235 | Per-agent thresholds + confidence scale normalization + 10-agent consensus params | `nuri/core/agent_config.py` |
+| `agents.yaml` | 241 | Per-agent thresholds + confidence scale normalization + 10-agent consensus params | `nuri/core/agent_config.py` |
 | `signals.yaml` | 221 | 22 signal definitions (20 actionable + 2 shadow; type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
 | `buy_signals.yaml` | 214 | Buy-candidate scoring (`weights`, `quality_bar`, `gates`, `allocation`) + per-candidate `risk` (stop/TP) + `held_add_mode` (incl. `would_fire_logging` — grid + `stage2_adjudication` 는 §3.12 사전등록, 값 드리프트는 잠금 테스트 FAIL) | `nuri/trading/recommend/buy_candidate_emitter.py` (`CONFIG_PATH`) + `held_add.py` (held_add_mode block) + `held_add_would_fire.py` |
-| `alerts.yaml` | 24 | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
-| `freshness.yaml` | 27 | Data freshness SLA (per-source `warn_hours`/`fail_hours`) + `verdict_gate` (dashboard verdict 가 확인하는 입력 목록, #1180). Queries/labels stay in `nuri/core/freshness.py` | `nuri/core/freshness.py` (`_load_config`) |
+| `alerts.yaml` | 48 | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
+| `freshness.yaml` | 32 | Data freshness SLA (per-source `warn_hours`/`fail_hours`) + `verdict_gate` (dashboard verdict 가 확인하는 입력 목록, #1180). Queries/labels stay in `nuri/core/freshness.py` | `nuri/core/freshness.py` (`_load_config`) |
 | `stock_types.yaml` | 49 | Manual growth/value ticker override (bypasses auto-classification from PE + sector) | Direct YAML load |
 | `universe.yaml` | 755 | 746 tickers: `us_core` (85) + `us_sp500_extended` (458) + `kr_kospi200` (203). Auto-maintained by `make universe-sync`; manual entries preserved | `nuri/collectors/universe_sync.py` |
 | `portfolio.example.yaml` | 39 | Example template showing account + holdings shape | `scripts/ops/import_portfolio.py` (via `cp` to `portfolio.yaml`) |

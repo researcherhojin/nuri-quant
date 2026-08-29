@@ -82,10 +82,10 @@ Configured in `.env` (see `.env.example`):
 - `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET` — KIS Open API live (optional; falls back to `config/kis/kis_devlp.yaml`, gitignored)
 - `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET` — KIS Open API paper (optional)
 - `TOSS_API_KEY` / `TOSS_SECRET_KEY` / `TOSS_ACCOUNT_SEQ` — Toss Open API (optional; IP allowlist — dev machines get 403 and gracefully skip)
-- `NURI_ROLE` — `production` gates §3.11 ledger-backed surfacing (the monthly alpha progress report only stages to `#brief` when set). Adjudication runs off the Mac mini DB; the MBP is a read replica, so dev numbers must never reach the brief. Lives in `scripts/launchd/com.nuri-quant.scheduler.plist` `EnvironmentVariables`, **not** `.env` — `make deploy-mini` SCPs the MBP `.env` over the mini's, so an `.env`-resident value is wiped by the next deploy (same trap as `DEV2_HOST`).
+- `NURI_ROLE` — `production` gates two things: §3.11 ledger-backed surfacing (the monthly alpha progress report only stages to `#brief` when set) and the off-box dead-man heartbeat push (`nuri/alerts/offbox_heartbeat.py`, #1191 option C — dev machines are a no-op). Adjudication runs off the Mac mini DB; the MBP is a read replica, so dev numbers must never reach the brief. Lives in `scripts/launchd/com.nuri-quant.scheduler.plist` `EnvironmentVariables`, **not** `.env` — `make deploy-mini` SCPs the MBP `.env` over the mini's, so an `.env`-resident value is wiped by the next deploy (same trap as `DEV2_HOST`).
 - `API_SECRET_KEY` — JWT signing key (**required in production**, optional in dev). Unset, `nuri/api/auth.py` mints a fresh `secrets.token_hex(32)` each boot, so every outstanding JWT dies on restart (dashboard re-login). Generate: `python3 -c "import secrets; print(secrets.token_hex(32))"`. `make deploy-mini` SCPs the local `.env` onto the Mac mini's, so the same value must exist in **both** `.env` files or a deploy reverts production to random-per-boot.
 ## DB Schema (SQLite, WAL mode)
-58 tables total (60 migrations as of 2026-08-25). Key tables:
+61 tables total (60 migrations as of 2026-08-30). Key tables:
 | Table | Purpose |
 |-------|---------|
 | `prices` | OHLCV 5Y daily bars per ticker |
@@ -109,7 +109,7 @@ Configured in `.env` (see `.env.example`):
 | `schema_version` | Migration version tracking |
 | `pipeline_events` | Append-only event journal |
 | `trades` | Trade execution records |
-Additional: `ark`, `events`, `news`, `institutional_flows`, `etf_flows`, `regime_transitions`, `factors`, `backtests`, `audit_log`, `external_analysis`, `macro_events`, `external_llm_calls`, `agent_audit_ledger`, `agent_messages`, `agent_run_ledger`, `causal_audits`, `certifications`, `collector_runs`, `dr_replicas`, `drift_alerts`, `execution_blocks`, `feature_flags`, `foundation_benchmarks`, `hypotheses`, `incidents`, `regime_posteriors`, `walkforward_runs`.
+Additional: `agent_audit_ledger`, `agent_messages`, `agent_run_ledger`, `ark`, `ark_source_dates`, `audit_log`, `backtests`, `candidate_ledger`, `candidate_runs`, `causal_audits`, `certifications`, `challenger_attempts`, `collector_runs`, `discord_outbox`, `dr_replicas`, `drift_alerts`, `etf_flows`, `events`, `execution_blocks`, `external_analysis`, `external_llm_calls`, `factors`, `feature_flags`, `foundation_benchmarks`, `held_add_shadow`, `held_add_would_fire`, `hypotheses`, `incidents`, `institutional_flows`, `macro_events`, `maintenance_candidates`, `market_postmortem`, `news`, `regime_posteriors`, `regime_transitions`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `thesis_evidence`, `walkforward_runs`.
 ### Three decision-related tables — intentional, not duplicate
 The `recommendations` / `decisions` / `agent_decisions` triplet looks redundant at first glance. It is not — each serves a distinct purpose:
 | Table | Era | Role | Cardinality | Lifecycle |
@@ -191,6 +191,8 @@ On push/PR to `main`:
 4. **Privacy** — `check_privacy_leak.py` on all files
 5. **Security** — Trivy CRITICAL vulnerability scan
 PR-specific (`pr-discipline.yml`): merge conflict detection, conventional commit validation, 5MB file limit, auto PR summary.
+
+Scheduled (`heartbeat-watch.yml`, #1191 option C): every 20 minutes (cron `7,27,47 * * * *` — off-peak minutes; `*/N` schedules get delayed or dropped under load, and this workflow's cron produced zero events for 7 hours after creation until the `on.schedule` block itself was changed) it reads the `ops/heartbeat-mini` ref that the mini scheduler force-pushes every 10 minutes, and posts to `#ops` via the `DISCORD_WEBHOOK_OPS` secret when the heartbeat is older than 45 minutes. Silence from the sender is the alarm — there is no path by which a dead mini reports itself.
 ## Investment Rules
 All investment rules (stop-loss, take-profit, account strategy profiles, VIX gate, execution priority, buy checklist) live in `config/rules.yaml` and are documented canonically in [`docs/STRATEGY.md` §3.4 / §3.5](STRATEGY.md). Source code executes the YAML via `nuri/core/rules.py` (§2.2 mechanical execution — no hardcoded thresholds).
 ## OpenBB Provider Limitations
@@ -208,6 +210,9 @@ Multi-account portfolio mixes USD and KRW. Exchange rate fallback: DB `macro` ta
 Save to `data/reports/YYYY-MM-DD/portfolio_action_plan.md`. Required sections: market environment table (regime, VIX, F&G, macro), per-stock verdict with external data cross-reference, execution timeline, re-entry conditions, buy priority by multi-factor score.
 Every recommendation **must** include explicit price levels: entry, stop-loss, target_1, target_2, trailing stop, TipRanks target.
 ## MCP Integration
-`.mcp.json` configures MCP SQLite server for direct DB queries:
+`.mcp.json` registers the Tier 1 read-model MCP server `nuri-read` (#1306) — `nuri/mcp/server.py`, stdio-only:
 ```json
-{"mcpServers": {"nuri-db": {"command": "uvx", "args": ["mcp-server-sqlite", "--db-path", "./data/portfolio.db"]}}}
+{"mcpServers": {"nuri-read": {"command": "uv", "args": ["run", "--no-sync", "python", "-m", "nuri.mcp.server"]}}}
+```
+
+Tools: `siege_status` · `buy_candidates` · `macro_facts`. Every query runs `readonly=True` (`mode=ro` URI + `PRAGMA query_only=ON`, engine-enforced) and only the columns in the module's `ALLOWED` dict can appear in SQL — `decisions` is excluded entirely (holdings oracle) and candidates surface `disposition='emitted'` rows only. The raw SQLite server (`nuri-db` → `mcp-server-sqlite`) was deliberately removed from the committed config (#1306 codex P1): arbitrary SQL reaches `portfolio`/`trades`, so it stays a per-machine opt-in, never a repo default.
