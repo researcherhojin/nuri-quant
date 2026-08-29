@@ -816,6 +816,21 @@ def _run_outbox_watchdog():
         logger.error(f"[outbox_watchdog] 실행 실패: {e}", exc_info=True)
 
 
+def _run_offbox_heartbeat():
+    """기계 밖 감시 dead-man heartbeat (#1191 C). 10분 마다.
+
+    이 job 의 **침묵**이 신호다 — 스케줄러/로그인 세션/머신/네트워크 중 무엇이
+    죽어도 push 가 멎고, `.github/workflows/heartbeat-watch.yml` 이 staleness 로
+    잡아 #ops 에 알린다. 실패를 여기서 복구하려 들지 말 것 (모듈 독스트링 참고).
+    """
+    try:
+        from nuri.alerts.offbox_heartbeat import send_heartbeat
+
+        send_heartbeat()
+    except Exception as e:
+        logger.error(f"[offbox_heartbeat] 실행 실패: {e}", exc_info=True)
+
+
 # ═══════════════════════════════════════════════════════
 # 스케줄 정의
 # ═══════════════════════════════════════════════════════
@@ -1008,6 +1023,10 @@ SCHEDULES = [
     {"name": "dispatcher_rollout", "func": _run_channel_dispatcher, "args": ("rollout",), "cron": "0 6 * * 0"},
     # Watchdog — outbox backlog / oldest-pending-age threshold breach 시 #ops 직접 발송 (recursion 방지).
     {"name": "outbox_watchdog", "func": _run_outbox_watchdog, "args": (), "cron": "*/10 * * * *"},
+    # 기계 밖 감시 dead-man heartbeat (#1191 C) — production(mini)에서만 실제 push,
+    # dev 는 role 게이트로 no-op. 5분이 아니라 10분인 이유: 감시자 임계(45분)에
+    # 4~5회 여유가 있으면 충분하고, push 는 네트워크 왕복이라 슬롯을 아낀다.
+    {"name": "offbox_heartbeat", "func": _run_offbox_heartbeat, "args": (), "cron": "*/10 * * * *"},
     # collector health 요약 — 아침 수집 물결(06:20~08:00) 이 끝난 뒤 24시간 창을 본다 (#975).
     {"name": "collector_health", "func": _run_collector_health, "args": (), "cron": "10 8 * * *"},
     # DB 백업 (매일 자정)
