@@ -185,21 +185,24 @@ class TestStructuralWritersAreReal:
     """structural 주장의 canary — 인용한 파일·심볼이 실존하지 않으면 FAIL.
 
     writer 를 못 찾았는데 "확정" 으로 남는 인벤토리를 금지한다. 파일 이동/함수
-    rename 시 여기가 깨져서 분류를 재검토하게 강제한다. 심볼 확인은 텍스트가 아니라
-    AST — 주석/독스트링의 언급으로는 통과하지 않는다.
+    rename 시 여기가 깨져서 분류를 재검토하게 강제한다. 심볼 확인은 **정의만**
+    인정한다 (Codex P3, PR 리뷰 2026-08-29): 참조/호출/re-export 까지 세면 writer 가
+    다른 모듈로 이사하고 옛 파일에 호출부나 `from x import y` 만 남아도 초록이 되어,
+    인벤토리가 엉뚱한 파일을 가리킨 채 살아남는다.
     """
 
     @staticmethod
-    def _symbols(rel: str) -> set[str]:
+    def _defined_symbols(rel: str) -> set[str]:
+        """인용 파일이 **정의**하는 이름 — 함수/클래스 정의와 할당 타깃만."""
         tree = ast.parse((NURI / rel).read_text(encoding="utf-8"))
         names: set[str] = set()
         for n in ast.walk(tree):
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 names.add(n.name)
-            elif isinstance(n, ast.Name):
-                names.add(n.id)
-            elif isinstance(n, ast.Attribute):
-                names.add(n.attr)
+            elif isinstance(n, ast.Assign):
+                names.update(t.id for t in n.targets if isinstance(t, ast.Name))
+            elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
+                names.add(n.target.id)
         return names
 
     @pytest.mark.parametrize(
@@ -211,17 +214,33 @@ class TestStructuralWritersAreReal:
         assert writers, f"{col}: structural 인데 writer 인용이 없다"
         for rel, (symbol, why) in writers.items():
             assert (NURI / rel).exists(), f"{col}: 인용 파일이 없다 — {rel}"
-            assert symbol in self._symbols(rel), (
-                f"{col}: {rel} 에 심볼 {symbol!r} 이 없다 — writer 가 이동/rename 됐다면 분류를 재검토할 것"
+            assert symbol in self._defined_symbols(rel), (
+                f"{col}: {rel} 이 심볼 {symbol!r} 을 정의하지 않는다 — writer 가 이동/rename 됐다면 분류를 재검토할 것"
             )
             assert len(why) > 40, f"{col}: 구조적 근거가 너무 짧다"
 
-    def test_the_symbol_check_ignores_comments(self):
-        """카나리아의 카나리아 — 텍스트 검사라면 주석 언급으로 통과했을 형태."""
-        src = "# certify_position() 를 부른다\nx = 1\n"
+    def test_the_symbol_check_counts_definitions_only(self):
+        """카나리아의 카나리아 — 주석·호출·re-export 는 정의가 아니다.
+
+        셋 다 "텍스트에는 존재하지만 정의는 아닌" 형태다. 하나라도 통과시키는
+        구현으로 되돌리면 (예: `ast.Name` 참조까지 세기) 여기서 FAIL 한다.
+        """
+        src = (
+            "# certify_position() 를 부른다\n"
+            "from x import detect_regime_transition\n"
+            "def caller():\n"
+            "    return certify_position()\n"
+        )
         tree = ast.parse(src)
-        names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
-        assert "certify_position" not in names
+        defined: set[str] = set()
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                defined.add(n.name)
+            elif isinstance(n, ast.Assign):
+                defined.update(t.id for t in n.targets if isinstance(t, ast.Name))
+        assert "certify_position" not in defined  # 호출·주석
+        assert "detect_regime_transition" not in defined  # re-export(import)
+        assert defined == {"caller"}
         assert "certify_position" in src  # 텍스트 검사라면 통과했을 대조군
 
 
