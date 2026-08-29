@@ -140,11 +140,12 @@ def _get_real_accounts() -> set[str]:
     return get_real_accounts()
 
 
-def _get_held_positions() -> list[dict[str, Any]]:
+def _get_held_positions(db_path: Optional[Path] = None) -> list[dict[str, Any]]:
     """portfolio 테이블 + 최신 가격 join — (ticker, account, qty, avg_price, current_price, pnl_pct).
 
     real_accounts (yaml substantive) 만 surface — test/sample/legacy stale 제외.
-    days_held 는 portfolio 테이블에 timestamp 필드가 없어 fallback 30.
+    days_held 는 portfolio 테이블에 timestamp 필드가 없어 fallback 30 — **측정값이
+    아니다** (#1173 would-fire 원장은 그래서 이 값을 기록하지 않는다).
     """
     df = query_df(
         """SELECT p.account, p.ticker, p.quantity AS qty, p.avg_price,
@@ -155,7 +156,8 @@ def _get_held_positions() -> list[dict[str, Any]]:
                  WHERE (ticker, date) IN (
                      SELECT ticker, MAX(date) FROM prices GROUP BY ticker
                  )
-             ) pr ON p.ticker = pr.ticker"""
+             ) pr ON p.ticker = pr.ticker""",
+        db_path=db_path,
     )
     if df.empty:
         return []
@@ -183,7 +185,7 @@ def _get_held_positions() -> list[dict[str, Any]]:
     return out
 
 
-def _get_last_trim_age_days(ticker: str, max_days: int = 60) -> Optional[int]:
+def _get_last_trim_age_days(ticker: str, max_days: int = 60, db_path: Optional[Path] = None) -> Optional[int]:
     """최근 trim_action 이벤트 age (일). 없으면 None.
 
     `pipeline_events.payload.action_type='trim_action'` (#517 Phase 2b 기준).
@@ -195,6 +197,7 @@ def _get_last_trim_age_days(ticker: str, max_days: int = 60) -> Optional[int]:
                AND json_extract(payload, '$.action_type') = 'trim_action'
                AND timestamp >= datetime('now', '-{max_days} days')""",
         params=(ticker,),
+        db_path=db_path,
     )
     if df.empty or df["last_ts"].iloc[0] is None:
         return None
@@ -217,9 +220,17 @@ def _get_account_strategy_profile(account: str) -> dict[str, Any]:
 
 
 def _evaluate_tp1_residual_add(
-    pos: dict[str, Any], cfg: dict, score: float, breakout_above_trim: bool
+    pos: dict[str, Any],
+    cfg: dict,
+    score: float,
+    breakout_above_trim: bool,
+    score_min_override: Optional[float] = None,
+    db_path: Optional[Path] = None,
 ) -> Optional[str]:
     """precedence=1. 최근 trim_action 후 잔여 add.
+
+    score_min_override: config 임계 대신 쓸 값 (#1173 would-fire 측정 전용 —
+    -inf 를 주면 score 외 조건만 평가한다). None = 기존 동작.
 
     Returns: trigger 충족 시 mode name, else None.
     """
@@ -227,7 +238,9 @@ def _evaluate_tp1_residual_add(
     if not trig:
         return None
 
-    last_trim_age = _get_last_trim_age_days(pos["ticker"], max_days=int(trig.get("last_trim_age_days_max", 60)))
+    last_trim_age = _get_last_trim_age_days(
+        pos["ticker"], max_days=int(trig.get("last_trim_age_days_max", 60)), db_path=db_path
+    )
     if last_trim_age is None:
         return None
     if last_trim_age < int(trig.get("last_trim_age_days_min", 5)):
@@ -241,7 +254,8 @@ def _evaluate_tp1_residual_add(
     if pos["pnl_pct"] < pnl_threshold:
         return None
 
-    if score < float(trig.get("composite_score_min", 75)):
+    score_min = score_min_override if score_min_override is not None else float(trig.get("composite_score_min", 75))
+    if score < score_min:
         return None
 
     if trig.get("require_breakout_above_last_trim_price", True) and not breakout_above_trim:
@@ -250,7 +264,13 @@ def _evaluate_tp1_residual_add(
     return "tp1_residual_add"
 
 
-def _evaluate_ride_winner(pos: dict[str, Any], cfg: dict, score: float, sector_mom: float) -> Optional[str]:
+def _evaluate_ride_winner(
+    pos: dict[str, Any],
+    cfg: dict,
+    score: float,
+    sector_mom: float,
+    score_min_override: Optional[float] = None,
+) -> Optional[str]:
     """precedence=2. winner momentum add."""
     trig = cfg.get("modes", {}).get("ride_winner", {}).get("trigger", {})
     if not trig:
@@ -265,7 +285,8 @@ def _evaluate_ride_winner(pos: dict[str, Any], cfg: dict, score: float, sector_m
     if pos["days_held"] < int(trig.get("days_held_min", 30)):
         return None
 
-    if score < float(trig.get("composite_score_min", 75)):
+    score_min = score_min_override if score_min_override is not None else float(trig.get("composite_score_min", 75))
+    if score < score_min:
         return None
 
     if sector_mom < float(trig.get("sector_momentum_min", 5)):
@@ -281,6 +302,7 @@ def _evaluate_average_down(
     rsi: Optional[float],
     regime: str,
     vix: Optional[float],
+    score_min_override: Optional[float] = None,
 ) -> Optional[str]:
     """precedence=3. pullback add (RSI 과매도 + macro veto)."""
     trig = cfg.get("modes", {}).get("average_down", {}).get("trigger", {})
@@ -297,7 +319,8 @@ def _evaluate_average_down(
     if not (lower <= pos["pnl_pct"] <= upper):
         return None
 
-    if score < float(trig.get("composite_score_min", 80)):
+    score_min = score_min_override if score_min_override is not None else float(trig.get("composite_score_min", 80))
+    if score < score_min:
         return None
 
     if rsi is None or rsi > float(trig.get("rsi_max", 35)):
@@ -342,6 +365,8 @@ def select_held_mode(
     vix: Optional[float],
     breakout_above_trim: bool = False,
     sector_mom: float = 0.0,
+    score_min_override: Optional[float] = None,
+    db_path: Optional[Path] = None,
 ) -> Optional[str]:
     """precedence-sorted mutual exclusion. Returns first triggered mode or None.
 
@@ -349,16 +374,66 @@ def select_held_mode(
     """
     for mode_name in sorted(MODE_PRECEDENCE.keys(), key=lambda m: MODE_PRECEDENCE[m]):
         if mode_name == "tp1_residual_add":
-            r = _evaluate_tp1_residual_add(pos, cfg, score, breakout_above_trim)
+            r = _evaluate_tp1_residual_add(
+                pos, cfg, score, breakout_above_trim, score_min_override=score_min_override, db_path=db_path
+            )
         elif mode_name == "ride_winner":
-            r = _evaluate_ride_winner(pos, cfg, score, sector_mom)
+            r = _evaluate_ride_winner(pos, cfg, score, sector_mom, score_min_override=score_min_override)
         elif mode_name == "average_down":
-            r = _evaluate_average_down(pos, cfg, score, rsi, regime, vix)
+            r = _evaluate_average_down(pos, cfg, score, rsi, regime, vix, score_min_override=score_min_override)
         else:
             r = None
         if r:
             return r
     return None
+
+
+def evaluate_mode_gates(
+    pos: dict[str, Any],
+    cfg: dict,
+    rsi: Optional[float],
+    regime: str,
+    vix: Optional[float],
+    breakout_above_trim: bool = False,
+    sector_mom: float = 0.0,
+    db_path: Optional[Path] = None,
+) -> dict[str, bool]:
+    """mode 별 **score 외 조건** 통과 여부 (#1173 would-fire 측정 축).
+
+    각 evaluator 를 score 임계 -inf 로 호출해 score 게이트만 무력화한다 — 나머지
+    조건(pnl 창·trim age·RSI·macro veto·days_held)은 라이브와 동일 코드가 평가하므로
+    측정 경로와 실주행 경로가 갈라질 수 없다. `select_held_mode(...)` 는
+    "gates[m] ∧ score ≥ 임계" 의 첫 precedence 와 동치다 (잠금 테스트가 고정).
+    """
+    no_score_gate = float("-inf")
+    return {
+        "tp1_residual_add": _evaluate_tp1_residual_add(
+            pos, cfg, 0.0, breakout_above_trim, score_min_override=no_score_gate, db_path=db_path
+        )
+        is not None,
+        "ride_winner": _evaluate_ride_winner(pos, cfg, 0.0, sector_mom, score_min_override=no_score_gate) is not None,
+        "average_down": _evaluate_average_down(pos, cfg, 0.0, rsi, regime, vix, score_min_override=no_score_gate)
+        is not None,
+    }
+
+
+def _safe_headroom(pos: dict[str, Any], db_path: Optional[Path]) -> Optional[float]:
+    """측정 행용 headroom — 조회 실패는 None (blackout 경로에서도 run 을 못 죽인다)."""
+    try:
+        return derive_position_cap(pos["ticker"], pos["account"], db_path=db_path)["headroom_pct"]
+    except Exception:
+        logger.debug("would-fire headroom 조회 실패: %s@%s", pos["ticker"], pos["account"], exc_info=True)
+        return None
+
+
+def current_mode_thresholds(cfg: dict) -> dict[str, float]:
+    """config 의 mode 별 composite_score_min — evaluator 내부 기본값(75/75/80)과 동일 소스."""
+    modes = cfg.get("modes", {})
+    return {
+        "tp1_residual_add": float(modes.get("tp1_residual_add", {}).get("trigger", {}).get("composite_score_min", 75)),
+        "ride_winner": float(modes.get("ride_winner", {}).get("trigger", {}).get("composite_score_min", 75)),
+        "average_down": float(modes.get("average_down", {}).get("trigger", {}).get("composite_score_min", 80)),
+    }
 
 
 def _persist_shadow(
@@ -424,7 +499,15 @@ def emit_held_add_shadow(
     shadow = _is_shadow_mode(cfg, today=today)
     earnings_days = int(cfg.get("earnings_blackout_days", 5))
 
-    positions = _get_held_positions()
+    # would-fire 측정 (#1173 — #788 Stage 1): 임계는 바꾸지 않고, 후보 그리드별
+    # "발화했을 것인가" 를 append-only 원장에 기록한다. 라이브 emit 과 같은 provider
+    # 스냅샷을 쓰므로 측정과 실주행의 시점이 갈라질 수 없다.
+    wf_cfg = cfg.get("would_fire_logging") or {}
+    wf_enabled = bool(wf_cfg.get("enabled", False))
+    thresholds = current_mode_thresholds(cfg)
+    wf_rows: list[dict[str, Any]] = []
+
+    positions = _get_held_positions(db_path=db_path)
     result = HeldAddResult(
         shadow_mode=shadow,
         shadow_mode_until=str(cfg.get("shadow_mode_until", "")),
@@ -449,10 +532,28 @@ def emit_held_add_shadow(
     for pos in positions:
         key = f"{pos['ticker']}@{pos['account']}"
 
-        # earnings blackout 가장 먼저 (모든 mode 차단)
+        # earnings blackout 가장 먼저 (모든 mode 차단) — provider 를 **타기 전에**
+        # 끊는다 (종전 동작 유지, codex diff P2). 측정이 켜져 있으면 blackout 행도
+        # 기록하되 score/RSI 는 NULL — 어떤 게이트도 소비하지 않은 값을 관측치처럼
+        # 적으면 days_held 를 뺀 것과 같은 원칙을 어긴다. "그날 평가 불능이었다" 는
+        # 사실 자체만 남긴다 (Stage 2 이벤트 집합에선 제외).
         fetcher = earnings_fetcher_factory(pos["ticker"]) if earnings_fetcher_factory else None
         if is_in_earnings_blackout(pos["ticker"], days=earnings_days, today=today, fetcher=fetcher):
             result.skipped[key] = f"earnings blackout ±{earnings_days}d"
+            if wf_enabled:
+                wf_rows.append(
+                    {
+                        "ticker": pos["ticker"],
+                        "account": pos["account"],
+                        "score": None,
+                        "pnl_pct": pos["pnl_pct"],
+                        "rsi": None,
+                        "sector_mom": None,
+                        "headroom_pct": _safe_headroom(pos, db_path),
+                        "gates": dict.fromkeys(MODE_PRECEDENCE, False),
+                        "earnings_blackout": True,
+                    }
+                )
             continue
 
         score = float(score_fn(pos["ticker"]) or 0.0)
@@ -461,21 +562,56 @@ def emit_held_add_shadow(
         sector_mom = float(sector_mom_fn(pos["ticker"]) or 0.0)
         breakout = bool(breakout_fn(pos["ticker"]))
 
-        mode = select_held_mode(
+        gates = evaluate_mode_gates(
             pos,
             cfg,
-            score,
             rsi,
             regime,
             vix,
             breakout_above_trim=breakout,
             sector_mom=sector_mom,
+            db_path=db_path,
+        )
+
+        cap_info: Optional[dict[str, Any]] = None
+        if wf_enabled:
+            # headroom 은 측정 행의 기록 항목 — 실패해도 행을 버리지 않는다 (None 기록).
+            try:
+                cap_info = derive_position_cap(pos["ticker"], pos["account"], db_path=db_path)
+            except Exception:
+                logger.debug("would-fire headroom 조회 실패: %s", key, exc_info=True)
+                cap_info = None
+            wf_rows.append(
+                {
+                    "ticker": pos["ticker"],
+                    "account": pos["account"],
+                    "score": score,
+                    "pnl_pct": pos["pnl_pct"],
+                    "rsi": rsi,
+                    "sector_mom": sector_mom,
+                    "headroom_pct": (cap_info or {}).get("headroom_pct"),
+                    "gates": gates,
+                    "earnings_blackout": False,
+                }
+            )
+
+        # 라이브 mode = gates ∧ score ≥ config 임계의 첫 precedence.
+        # `select_held_mode` 와 동치다 (잠금: TestGatesEquivalence) — 측정 축(gates)과
+        # 라이브 결정이 같은 평가를 공유해 둘이 갈라질 수 없게 하는 구조.
+        mode = next(
+            (
+                m
+                for m in sorted(MODE_PRECEDENCE.keys(), key=lambda m: MODE_PRECEDENCE[m])
+                if gates[m] and score >= thresholds[m]
+            ),
+            None,
         )
         if mode is None:
             result.skipped[key] = "no mode triggered"
             continue
 
-        cap_info = derive_position_cap(pos["ticker"], pos["account"], db_path=db_path)
+        if cap_info is None:
+            cap_info = derive_position_cap(pos["ticker"], pos["account"], db_path=db_path)
         if cap_info["headroom_pct"] <= 0:
             result.skipped[key] = (
                 f"{mode}: cap headroom 0 (current {cap_info['current_pct']}% ≥ cap {cap_info['cap_max_pct']}%)"
@@ -501,6 +637,23 @@ def emit_held_add_shadow(
                 _persist_shadow(candidate, run_id=run_id, db_path=db_path)
             except Exception as e:
                 logger.warning("held_add_shadow persist failed for %s: %s", key, e)
+
+    if wf_enabled and wf_rows:
+        # 관측은 본 작업을 게이트하지 않는다 (#894) — 기록 실패가 emit 을 죽이면 안 된다.
+        try:
+            from nuri.trading.recommend.held_add_would_fire import log_would_fire_rows
+
+            n_logged = log_would_fire_rows(
+                wf_rows,
+                wf_cfg,
+                thresholds,
+                as_of_date=today.isoformat(),
+                run_id=run_id,
+                db_path=db_path,
+            )
+            logger.info("[held_add_would_fire] %d행 기록 (#1173 Stage 1)", n_logged)
+        except Exception as e:
+            logger.warning("held_add would-fire 기록 실패 (emit 은 정상): %s", e)
 
     return result
 
