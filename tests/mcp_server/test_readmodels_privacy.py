@@ -150,7 +150,7 @@ class TestSemanticLeakCases:
 
 class TestReadOnlyIsEngineEnforced:
     def test_readonly_connection_rejects_writes(self, tmp_path):
-        """`readonly=True` 는 관행이 아니라 SQLite 가 막는다 — query_only=ON."""
+        """`readonly=True` 는 관행이 아니라 SQLite 가 막는다 — mode=ro + query_only."""
         from nuri.core.db import OperationalError
 
         path = tmp_path / "ro.db"
@@ -165,6 +165,70 @@ class TestReadOnlyIsEngineEnforced:
         init_db(path)
         with get_db(path) as conn:
             conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('x', 'd', 1, 's')")
+
+    def test_readonly_never_creates_a_missing_db(self, tmp_path):
+        """mode=ro 는 없는 파일을 만들지 않는다 — 유령 DB 생성은 쓰기 부수효과다.
+
+        writable 경로처럼 열고 PRAGMA 만 걸면 `sqlite3.connect` 가 빈 파일을 만든다
+        (codex P2 계열). 정직한 실패가 계약이다.
+        """
+        from nuri.core.db import OperationalError
+
+        ghost = tmp_path / "does-not-exist.db"
+        with pytest.raises(OperationalError):
+            with get_db(ghost, readonly=True) as conn:
+                conn.execute("SELECT 1")
+        assert not ghost.exists(), "read-only 연결이 파일을 만들었다"
+
+    def test_readonly_does_not_rewrite_journal_header(self, tmp_path):
+        """DELETE-journal 사본을 readonly 로 읽어도 WAL 로 승격되지 않는다 (codex P2).
+
+        writable 경로는 연결마다 `journal_mode=WAL` 을 걸어 **헤더를 고쳐 쓴다** —
+        readonly 가 그 경로를 공유하면 "읽기 전용" 첫 호출이 이미 파일을 바꾼 뒤다.
+        conftest 의 `_test_connect` 패치가 실 구현을 미러하므로 여기서 잠근 동작이
+        프로덕션 `get_connection` 과 같은 계약이다 (짝: 아래 실구현 직접 검증).
+        """
+        import sqlite3 as _sqlite3  # noqa: F401 — 실구현 대조는 uri 연결로만, import 는 검증용 아님
+
+        path = tmp_path / "copy.db"
+        init_db(path)
+        with get_db(path) as conn:
+            conn.execute("PRAGMA journal_mode=DELETE")
+
+        with get_db(path, readonly=True) as conn:
+            conn.execute("SELECT 1").fetchone()
+            mode_during = conn.execute("PRAGMA journal_mode").fetchone()[0]
+
+        with get_db(path) as conn:
+            pass  # writable 재개방은 WAL 로 되돌린다 — 그 전에 재야 한다
+
+        assert mode_during.lower() == "delete", f"readonly 연결이 journal 을 바꿨다: {mode_during}"
+
+    def test_real_get_connection_readonly_contract(self, tmp_path, monkeypatch):
+        """conftest 패치가 아닌 **실제** `get_connection` 의 readonly 계약을 직접 검증.
+
+        전역 픽스처가 get_connection 을 갈아끼우므로, 실구현은 원본 모듈에서 직접
+        불러 확인한다 — 패치 미러가 낡아도 여기서 걸린다.
+        """
+        from nuri.core.db.connection import get_connection as real_get_connection
+
+        path = tmp_path / "real.db"
+        init_db(path)
+        with get_db(path) as conn:
+            conn.execute("PRAGMA journal_mode=DELETE")
+
+        conn = real_get_connection(path, readonly=True)
+        try:
+            assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "delete"
+            with pytest.raises(Exception, match="readonly"):
+                conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('x', 'd', 1, 's')")
+        finally:
+            conn.close()
+
+        ghost = tmp_path / "real-ghost.db"
+        with pytest.raises(Exception):
+            real_get_connection(ghost, readonly=True)
+        assert not ghost.exists()
 
     def test_every_readmodel_query_is_readonly(self):
         """AST — `nuri/mcp/` 의 모든 `query(...)` 호출에 `readonly=True` 키워드.
@@ -196,6 +260,9 @@ class TestStructuralSweeps:
             if isinstance(n, ast.Constant) and isinstance(n.value, str)
         )
         referenced = set(re.findall(r"\bFROM\s+([a-z_]+)", sql_text))
+        # schema_version: 기동 프로브(_schema_lag)의 마이그레이션 메타데이터 —
+        # 사용자 데이터가 없는 유일한 예외. read model 이 아니라 ALLOWED 에 안 둔다.
+        referenced -= {"schema_version"}
         assert referenced == set(ALLOWED), (
             f"SQL 테이블과 allowlist 불일치.\n  SQL에만: {sorted(referenced - set(ALLOWED))}\n"
             f"  allowlist에만: {sorted(set(ALLOWED) - referenced)}"
@@ -227,3 +294,35 @@ class TestStructuralSweeps:
         joined = " ".join([entry["command"], *entry["args"]])
         assert "nuri.mcp.server" in joined
         assert "--port" not in joined and "--host" not in joined and "http" not in joined
+
+    def test_mcp_json_ships_no_raw_db_server(self):
+        """커밋된 기본값에 nuri-read 외 서버가 없다 (codex P1).
+
+        raw SQLite MCP(mcp-server-sqlite)가 기본으로 실리면 임의 SQL 이
+        portfolio/trades 에 닿아 Tier 1 경계가 각자의 로컬 설정에 의존하게 된다.
+        ad-hoc 탐색은 개인 설정에 로컬로만 등록한다 — 동치 비교라 어떤 이름으로
+        돌아와도 여기서 걸린다.
+        """
+        cfg = json.loads((Path(__file__).resolve().parents[2] / ".mcp.json").read_text(encoding="utf-8"))
+        assert set(cfg["mcpServers"]) == {"nuri-read"}, (
+            f"커밋된 MCP 서버 목록이 계약과 다르다: {sorted(cfg['mcpServers'])}"
+        )
+
+    def test_schema_lag_probe_is_readonly_and_detects_lag(self, tmp_path):
+        """기동 프로브 (codex P1): lag 를 **읽기만으로** 감지 — 낡은 DB 를 고치지 않는다."""
+        from nuri.mcp.server import _schema_lag
+
+        path = tmp_path / "lagged.db"
+        init_db(path)
+        with get_db(path) as conn:
+            conn.execute("DELETE FROM schema_version WHERE version > 10")
+        before = path.stat().st_mtime_ns
+
+        current, expected = _schema_lag(db_path=path)
+
+        assert current == 10 and expected > 10, f"lag 미감지: {current}/{expected}"
+        assert path.stat().st_mtime_ns == before, "프로브가 DB 를 건드렸다 — read-only 위반"
+        fresh = tmp_path / "fresh.db"
+        init_db(fresh)
+        cur2, exp2 = _schema_lag(db_path=fresh)
+        assert cur2 == exp2, "신선한 DB 에서 lag 오탐"

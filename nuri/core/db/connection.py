@@ -49,9 +49,23 @@ def _resolve_db_path(db_path: Optional[Path]) -> Path:
     return _facade.DB_PATH
 
 
-def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
-    """DB 연결 반환. WAL 모드, foreign keys 활성화."""
+def get_connection(db_path: Optional[Path] = None, readonly: bool = False) -> sqlite3.Connection:
+    """DB 연결 반환. 기본은 WAL 모드 + foreign keys.
+
+    `readonly=True` 는 **`mode=ro` URI 로 연다** (#1306, codex P2): 쓰기가 엔진
+    수준에서 `OperationalError` 인 것에 더해, 파일 생성·journal 헤더 재작성·
+    -wal/-shm 사이드카 생성이 **원천적으로 불가능**하다. writable 경로처럼 열고
+    나중에 PRAGMA 만 걸면, WAL 이 아닌 사본을 향한 첫 "읽기 전용" 호출이 이미
+    `journal_mode=WAL` 로 헤더를 고쳐 쓴 뒤다. mkdir 도 하지 않는다 — 없는 DB 는
+    만들 게 아니라 정직하게 실패해야 한다. `query_only=ON` 은 이중 잠금.
+    """
     path = _resolve_db_path(db_path)
+    if readonly:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
+        return conn
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
@@ -67,13 +81,11 @@ def get_db(db_path: Optional[Path] = None, readonly: bool = False) -> Iterator[s
 
     Resolves `get_connection` via the facade module so test conftest
     `monkeypatch.setattr(db_mod, "get_connection", ...)` (e.g. tmpfs MEMORY
-    journal patch in tests/conftest.py) is honored post-Stage-2 split.
+    journal patch in tests/conftest.py) is honored post-Stage-2 split —
+    the conftest patch mirrors the `readonly` kwarg.
 
-    `readonly=True` 는 연결 직후 `PRAGMA query_only=ON` — 이후 모든 쓰기가 SQLite
-    수준에서 `OperationalError` 다 (#1306: LLM 노출 표면의 read-only 는 관행이
-    아니라 엔진이 강제해야 한다). PRAGMA 방식인 이유: `mode=ro` URI 와 달리
-    `get_connection` 서명(conftest 의 `_test_connect(dp=None)` 패치 포함)을
-    건드리지 않고, WAL -shm 부재 엣지도 없다.
+    `readonly=True` 계약은 `get_connection` 독스트링 참고 (#1306): mode=ro 라
+    쓰기 거부는 물론 파일 생성/헤더 재작성 부수효과도 없다.
 
     Return annotation `Iterator[Connection]` is the canonical pyright pattern
     for `@contextmanager` — Pylance / pyright otherwise infer
@@ -82,9 +94,7 @@ def get_db(db_path: Optional[Path] = None, readonly: bool = False) -> Iterator[s
     """
     from nuri.core import db as _facade
 
-    conn = _facade.get_connection(db_path)
-    if readonly:
-        conn.execute("PRAGMA query_only=ON")
+    conn = _facade.get_connection(db_path, readonly=readonly)
     try:
         yield conn
         conn.commit()

@@ -1,8 +1,8 @@
 {
-  "_comment": "MCP (Model Context Protocol) 서버 — Claude Code/Cursor가 사용할 도구. 추가 시 'mcpServers'에 entry 등록",
+  "_comment": "MCP (Model Context Protocol) 서버 — Claude Code/Cursor가 사용할 도구. raw SQLite 접근(mcp-server-sqlite)은 커밋된 기본값에 두지 않는다 (#1306 codex P1): portfolio/trades 에 임의 SQL 이 닿아 Tier 1 privacy 경계가 로컬 설정에 의존하게 된다. ad-hoc 스키마 탐색이 필요하면 개인 설정(~/.claude.json 등)에 로컬로만 등록할 것",
   "mcpServers": {
     "nuri-read": {
-      "_comment": "Tier 1 비민감 read model (#1306) — SIEGE 판정·buy candidates·macro fact. stdio 전용(바인딩 없음), read-only(PRAGMA query_only). raw 접근이 필요하면 nuri-db(비활성 기본) 대신 이쪽이 기본",
+      "_comment": "Tier 1 비민감 read model (#1306) — SIEGE 판정·buy candidates·macro fact. stdio 전용(바인딩 없음), read-only(mode=ro + query_only)",
       "command": "uv",
       "args": [
         "run",
@@ -10,15 +10,6 @@
         "python",
         "-m",
         "nuri.mcp.server"
-      ]
-    },
-    "nuri-db": {
-      "_comment": "SQLite DB 직접 query (read-only 권장). schema 확인, 데이터 검증, ad-hoc 분석용",
-      "command": "uvx",
-      "args": [
-        "mcp-server-sqlite",
-        "--db-path",
-        "./data/portfolio.db"
       ]
     }
   }

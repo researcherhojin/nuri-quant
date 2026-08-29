@@ -62,6 +62,7 @@ def seeded_db(tmp_path):
 async def test_stdio_live_tool_calls(seeded_db):
     from mcp import ClientSession
     from mcp.client.stdio import StdioServerParameters, stdio_client
+    from mcp.types import TextContent
 
     params = StdioServerParameters(
         command=sys.executable,
@@ -85,12 +86,12 @@ async def test_stdio_live_tool_calls(seeded_db):
 
                 macro = await session.call_tool("macro_facts", {})
                 assert not macro.is_error
-                macro_text = "".join(c.text for c in macro.content if hasattr(c, "text"))
+                macro_text = "".join(c.text for c in macro.content if isinstance(c, TextContent))
                 assert "15.2" in macro_text and "bull_low_vol" in macro_text
 
                 cand = await session.call_tool("buy_candidates", {})
                 assert not cand.is_error
-                cand_text = "".join(c.text for c in cand.content if hasattr(c, "text"))
+                cand_text = "".join(c.text for c in cand.content if isinstance(c, TextContent))
                 assert "AAAA" in cand_text, "emitted 후보가 프로토콜 경계를 못 넘었다"
                 assert "HELD" not in cand_text and "보유" not in cand_text, (
                     "보유 신호가 프로토콜 경계를 넘었다 — readmodel 잠금과 서버 배선 사이 어딘가가 샌다"
@@ -98,7 +99,7 @@ async def test_stdio_live_tool_calls(seeded_db):
 
                 siege = await session.call_tool("siege_status", {"limit": 3})
                 assert not siege.is_error
-                siege_text = "".join(c.text for c in siege.content if hasattr(c, "text"))
+                siege_text = "".join(c.text for c in siege.content if isinstance(c, TextContent))
                 parsed = json.loads(siege_text) if siege_text.strip().startswith("[") else None
                 assert "premarket_brief" in siege_text
                 if parsed is not None:

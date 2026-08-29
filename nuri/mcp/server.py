@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
@@ -48,7 +49,38 @@ def macro_facts() -> dict[str, Any]:
     return readmodels.macro_facts()
 
 
+def _schema_lag(db_path: "Path | None" = None) -> tuple[int, int]:
+    """(적용된 버전, 코드가 기대하는 버전) — **읽기 전용** 프로브.
+
+    이 서버는 read-only 라 `init_db()`(쓰기)를 대신 실행하지 않는다. 대신 lag 를
+    기동 시 stderr 로 알려서, 낡은 스키마의 첫 조회가 내는 `no such column` 이
+    "서버 버그" 가 아니라 "마이그레이션 미적용" 으로 읽히게 한다 (codex P1 —
+    `nuri/core/CLAUDE.md` 의 CLI-미마이그레이션 함정; 해소는 쓰기 권한이 있는
+    경로(`init_db`/scheduler 기동)의 몫이다).
+    """
+    from nuri.core.db import OperationalError, query
+    from nuri.core.db_migrations import _MIGRATIONS
+
+    expected = len(_MIGRATIONS)
+    try:
+        rows = query("SELECT MAX(version) AS v FROM schema_version", db_path=db_path, readonly=True)
+        current = rows[0]["v"] or 0
+    except OperationalError:
+        current = 0  # 테이블/파일 부재 — 전부 미적용으로 취급
+    return current, expected
+
+
 def main() -> None:
+    import sys
+
+    current, expected = _schema_lag()
+    if current < expected:
+        print(
+            f"[nuri-read] 경고: 스키마 {current}/{expected} — 마이그레이션 미적용 DB. "
+            "일부 조회가 'no such column' 으로 실패할 수 있다. 해소: 쓰기 경로에서 init_db() "
+            "(read-only 서버는 대신 실행하지 않는다)",
+            file=sys.stderr,
+        )
     server.run(transport="stdio")
 
 

@@ -173,8 +173,16 @@ def _force_no_wal(monkeypatch):
 
     import nuri.core.db as db_mod
 
-    def _test_connect(dp=None):
+    def _test_connect(dp=None, readonly=False):
         path = dp or db_mod.DB_PATH
+        if readonly:
+            # 실제 get_connection 의 readonly 계약을 미러 (#1306): mode=ro 라
+            # 파일 생성·journal 재작성 부수효과가 없고 쓰기는 OperationalError.
+            conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA query_only=ON")
+            conn.execute("PRAGMA busy_timeout=5000")
+            return conn
         path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(path))
         conn.row_factory = sqlite3.Row
