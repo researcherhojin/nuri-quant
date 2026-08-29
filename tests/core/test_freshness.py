@@ -520,6 +520,17 @@ class TestCheckFreshness:
         assert FRESHNESS_POLICIES["factors"]["warn_hours"] == FRESHNESS_POLICIES["prices"]["warn_hours"]
         assert FRESHNESS_POLICIES["factors"]["fail_hours"] == FRESHNESS_POLICIES["prices"]["fail_hours"]
 
+    def test_vix_threshold_matches_macro_market_because_both_are_fred_t_plus_1(self):
+        """`macro_vix` 임계는 `macro_market` 과 같아야 한다 (2026-08-30, #1242 물리 준용).
+
+        VIXCLS 도 FRED T+1 일간 시리즈다: 완벽한 금요일 관측조차 월요일 새벽엔
+        77h 고, FRED 경로 최악(목 관측이 화 새벽까지 최신)은 ~125h 다. 72h 로
+        되돌리면 매주 주말 이 정책이 상시 FAIL 해 verdict 를 구조적으로 막는다 —
+        2026-08-30 05시 실측 77.3h FAIL 이 발견 계기."""
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
+        assert FRESHNESS_POLICIES["macro_vix"]["fail_hours"] == FRESHNESS_POLICIES["macro_market"]["fail_hours"]
+
     def test_fail_on_query_exception(self, db_path):
         """쿼리 실행 실패 → FAIL."""
         from nuri.core.freshness import check_freshness

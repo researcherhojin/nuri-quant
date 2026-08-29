@@ -1159,20 +1159,6 @@ class TestCBOEPartials:
         c = CBOECollector()
         monkeypatch.setattr(c, "_collect_daily", lambda: [])
         monkeypatch.setattr(c, "_collect_totalpc", lambda: [])
-        c.fred_key = ""
-        monkeypatch.setattr(c, "_collect_yfinance_spy_pcr", lambda: [])
-        monkeypatch.setattr(c, "_collect_db_stale", lambda: [])
-        assert c.collect() == []
-
-    def test_fred_returns_empty_falls_through_to_yfinance(self, monkeypatch):
-        """Branch 60->66: fred_key 유효 + _collect_fred_pcr=[] → if records False → yfinance 진입."""
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        c.fred_key = "test_key"
-        monkeypatch.setattr(c, "_collect_daily", lambda: [])
-        monkeypatch.setattr(c, "_collect_totalpc", lambda: [])
-        monkeypatch.setattr(c, "_collect_fred_pcr", lambda: [])
         monkeypatch.setattr(c, "_collect_yfinance_spy_pcr", lambda: [])
         monkeypatch.setattr(c, "_collect_db_stale", lambda: [])
         assert c.collect() == []
@@ -1184,7 +1170,6 @@ class TestCBOEPartials:
         c = CBOECollector()
         monkeypatch.setattr(c, "_collect_daily", lambda: [])
         monkeypatch.setattr(c, "_collect_totalpc", lambda: [])
-        c.fred_key = ""
         monkeypatch.setattr(c, "_collect_yfinance_spy_pcr", lambda: [])
         monkeypatch.setattr(c, "_collect_db_stale", lambda: [])
         assert c.collect() == []
@@ -1246,42 +1231,6 @@ class TestCBOEPartials:
         mock_resp.raise_for_status = MagicMock()
         monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
         assert c._collect_totalpc() == []
-
-    def test_fred_all_values_dot_returns_empty(self, monkeypatch):
-        """Branch 246->248: 모든 observations value='.' → records=[] → if records False → 248."""
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        c.fred_key = "test_key"
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "observations": [
-                {"date": "2026-01-01", "value": "."},
-                {"date": "2026-01-02", "value": "."},
-            ]
-        }
-        mock_resp.raise_for_status = MagicMock()
-        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
-        assert c._collect_fred_pcr() == []
-
-    def test_fred_value_dot_partial_skip(self, monkeypatch):
-        """Sanity: 1 valid + 1 skip → records=[1] → 246 True 분기 (info log)."""
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        c.fred_key = "test_key"
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "observations": [
-                {"date": "2026-01-01", "value": "."},
-                {"date": "2026-01-02", "value": "0.85"},
-            ]
-        }
-        mock_resp.raise_for_status = MagicMock()
-        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
-        records = c._collect_fred_pcr()
-        assert len(records) == 1
-        assert records[0]["value"] == 0.85
 
 
 # ═══════════════════════════════════════════════════════
