@@ -145,15 +145,41 @@ class TestBacktestsEndpoint:
             max_drawdown=-1.0,
             win_rate=50.0,
         )
-        with get_db() as conn:
+        with get_db() as conn:  # 전-#1305 행 재현 — 두 바인딩 컬럼 모두 NULL
             conn.execute(
                 'UPDATE backtests SET params = \'{"code_rev": "84a5e36"}\', '
-                "code_rev = NULL WHERE strategy_id = 'pre1305'"
+                "code_rev = NULL, execution_config_sha_v1 = NULL "
+                "WHERE strategy_id = 'pre1305'"
             )
 
         bt = client.get("/api/research/backtests").json()["backtests"][0]
 
         assert bt["code_rev"] == "84a5e36"
+
+    def test_a_gitless_new_row_does_not_surface_a_self_reported_revision(self, client):
+        """gitless 환경의 신규 행(config sha 有, code_rev 無)은 fallback 대상이 아니다.
+
+        여기서 params 로 fallback 하면 호출자 자기신고 값이 실측인 척 나간다 —
+        self-measured 계약이 정확히 그 환경에서 깨진다 (Codex review P2).
+        """
+        from nuri.core.db import get_db
+
+        save_backtest(
+            strategy_id="gitless",
+            start_date="2026-01-01",
+            end_date="2026-02-01",
+            total_return=1.0,
+            sharpe=1.0,
+            max_drawdown=-1.0,
+            win_rate=50.0,
+            params={"code_rev": "self-reported"},
+        )
+        with get_db() as conn:  # gitless 재현 — code_rev 만 NULL, config sha 는 남긴다
+            conn.execute("UPDATE backtests SET code_rev = NULL WHERE strategy_id = 'gitless'")
+
+        bt = client.get("/api/research/backtests").json()["backtests"][0]
+
+        assert bt["code_rev"] is None
 
     def test_limit_clamped_high(self, client):
         assert client.get("/api/research/backtests?limit=999").status_code == 422

@@ -123,7 +123,19 @@ class TestExecutionConfigShaV1:
             "config/rules.yaml",
             "config/agents.yaml",
             "config/signals.yaml",
+            "config/walkforward.yaml",
+            "config/walkforward_variants.yaml",
+            "config/walkforward_exits.yaml",
+            "config/walkforward_exits_growth.yaml",
         ), "closure 를 바꿨다 — _v1 컬럼의 의미가 깨진다. execution_config_sha_v2 로 갈 것"
+
+    def test_the_closure_files_exist_in_the_real_repo(self):
+        """closure 에 등재된 파일이 레포에서 사라지면 모든 신규 행이 조용히 None 이 된다.
+
+        rename/삭제 PR 이 이 테스트로 잡혀야 _v2 승계를 논의할 수 있다.
+        """
+        for rel in provenance._CONFIG_CLOSURE_V1:
+            assert (provenance._REPO_ROOT / rel).is_file(), f"{rel} 이 없다 — closure 가 죽었다"
 
     def test_same_content_same_sha(self, fake_root):
         first = provenance.execution_config_sha_v1()

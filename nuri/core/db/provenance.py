@@ -86,10 +86,19 @@ def code_rev() -> str | None:
 #: v1 closure — **동결** (#1305, Codex challenge P1). 같은 컬럼명 아래에서 이 목록이
 #: 바뀌면 행 간 비교가 불능이 되고 cherry-pick 소재가 된다. 파일을 더하거나 빼려면
 #: closure 를 바꾸는 게 아니라 `execution_config_sha_v2()` + 새 컬럼으로 간다.
+#:
+#: 구성: 투자 룰 3종 + walk-forward 사전등록 설정 4종 (Codex review P2 — backtests /
+#: walkforward_runs 행은 후자에도 좌우되므로, 빼면 사전등록 설정 변경이 같은 sha 로
+#: 다른 결과를 낸다). `config/portfolio.yaml` 은 제외 — gitignored 개인 데이터라
+#: 머신마다 존재/내용이 달라 sha 가 코드·룰이 아닌 배포 위치를 재게 된다.
 _CONFIG_CLOSURE_V1: tuple[str, ...] = (
     "config/rules.yaml",
     "config/agents.yaml",
     "config/signals.yaml",
+    "config/walkforward.yaml",
+    "config/walkforward_variants.yaml",
+    "config/walkforward_exits.yaml",
+    "config/walkforward_exits_growth.yaml",
 )
 
 _CONFIG_SHA_UNSET = object()

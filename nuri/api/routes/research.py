@@ -57,10 +57,13 @@ def list_backtests(limit: int = Query(20, ge=1, le=200)) -> dict:
             "win_rate": r["win_rate"],
             "params": _loads(r["params"]),
             # 이 행을 만든 코드 리비전. 컬럼이 canonical (#1305); #1115~#1305 사이의
-            # 행은 params JSON 안에만 있어 legacy fallback 으로 읽는다. 둘 다 없으면
-            # **None** — 귀속 도입 전 행이라는 뜻이고, 그 자체가 정보다: 망가진 것으로
-            # 판명된 코드의 산출물일 수 있는데 행만 봐서는 알 수 없다는 뜻이다.
-            "code_rev": r["code_rev"] or _loads(r["params"]).get("code_rev"),
+            # 행(두 컬럼 모두 NULL)만 params JSON 의 legacy 값으로 fallback 한다.
+            # config sha 가 있는데 code_rev 만 없는 행은 **gitless 환경의 신규 행**이라
+            # fallback 하면 호출자가 params 에 넣은 자기신고 값이 실측인 척 나간다
+            # (Codex review P2). 둘 다 없으면 **None** — 귀속 도입 전 행이라는 뜻이고,
+            # 그 자체가 정보다.
+            "code_rev": r["code_rev"]
+            or (None if r["execution_config_sha_v1"] else _loads(r["params"]).get("code_rev")),
             "execution_config_sha_v1": r["execution_config_sha_v1"],
             "created_at": r["created_at"],
         }
