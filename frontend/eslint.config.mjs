@@ -43,6 +43,7 @@ const eslintConfig = defineConfig([
       // 실측(#1254): `data-table.tsx` 의
       //   `}${col.hideOnMobile ? " hidden sm:table-cell" : ""}`
       // 에서 선행 조각(`text-left` 등)과 띄우는 **필수 공백**을 지워
+      // cspell:ignore lefthidden — 규칙이 만든 깨진 클래스의 예시 그 자체
       // `text-lefthidden` 을 만들었다 — 클래스 둘이 동시에 죽는다. autofix 라 조용하다.
       // 규칙이 잡은 2건이 전부 이 오탐이었으므로 켤 이유가 없다.
     },
