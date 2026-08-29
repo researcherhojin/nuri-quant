@@ -248,6 +248,27 @@ class TestLedgerSemantics:
         stats = maintenance_review_stats(db_path=db_path)
         assert stats["precision"] is None, "'리뷰 0건' 과 '전부 기각' 이 구분돼야 한다"
 
+    def test_even_count_latency_is_the_true_median(self, db_path):
+        """짝수 개 리뷰의 중앙값은 가운데 두 값의 평균 — `[len//2]` 상위 중앙값이면
+        1h·9h 가 9h 로 과대 보고된다 (codex P3)."""
+        from nuri.core.db import get_db
+
+        for fp in ("fp-x", "fp-y"):
+            _, cid = stage_maintenance_candidate("doc_drift", fp, "d", fp, "r", db_path=db_path)
+            review_maintenance_candidate(cid, "approved", db_path=db_path)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "UPDATE maintenance_candidates SET created_at='2026-08-01T00:00:00',"
+                " reviewed_at='2026-08-01T01:00:00' WHERE fingerprint='fp-x'"
+            )
+            conn.execute(
+                "UPDATE maintenance_candidates SET created_at='2026-08-01T00:00:00',"
+                " reviewed_at='2026-08-01T09:00:00' WHERE fingerprint='fp-y'"
+            )
+
+        stats = maintenance_review_stats(db_path=db_path)
+        assert stats["review_latency_h_median"] == pytest.approx(5.0)
+
     def test_invalid_verdict_raises(self, db_path):
         with pytest.raises(ValueError):
             review_maintenance_candidate(1, "auto-merged", db_path=db_path)
@@ -291,7 +312,10 @@ class TestWiringAndRoster:
         entries = [s for s in SCHEDULES if s["name"] == "maintenance_audit"]
         assert len(entries) == 1
         assert entries[0]["func"] is _run_maintenance_audit
-        assert entries[0]["cron"] == "0 3 * * 0"
+        assert entries[0]["cron"] == "30 4 * * 0"
+        # db_maintenance(VACUUM/checkpoint) 와 같은 슬롯이면 매주 lock 경합 (codex P1).
+        db_maint = next(s for s in SCHEDULES if s["name"] == "db_maintenance")
+        assert entries[0]["cron"] != db_maint["cron"], "감사가 DB 유지보수와 같은 슬롯에서 돈다"
 
     def test_actor_is_canonical_and_registered(self):
         from nuri.agents.base import REGISTRY, ActorRegistry
@@ -327,3 +351,26 @@ class TestEmptyDbDoesNotFlood:
         findings = ma.scan_stale_collectors(ctx)
         assert len(findings) == 1
         assert "전혀 없음" in findings[0]["title"]
+
+
+class TestGateLiveness:
+    def test_missing_exec_bit_is_reported_as_dead_gate(self, tmp_path):
+        """실행비트 없는 설치 훅 = git 이 아예 안 부르는 green dead gate (codex P2).
+        `bash -n` 초록만 보면 이 상태가 건강으로 보고된다."""
+        repo = tmp_path / "repo"
+        (repo / "scripts" / "hooks").mkdir(parents=True)
+        (repo / "scripts" / "verify").mkdir(parents=True)
+        (repo / ".git" / "hooks").mkdir(parents=True)
+        (repo / "scripts" / "verify" / "pre_push_check.sh").write_text("#!/bin/sh\nexit 0\n")
+        for hook in ("pre-push", "pre-commit"):
+            (repo / "scripts" / "hooks" / hook).write_text("#!/bin/sh\nexit 0\n")
+            installed = repo / ".git" / "hooks" / hook
+            installed.write_text("#!/bin/sh\nexit 0\n")
+            # pre-push 만 실행비트 제거 — pre-commit 은 건강한 대조군
+            installed.chmod(0o755 if hook == "pre-commit" else 0o644)
+
+        ctx = ma.ScanContext(repo_root=repo, tracker=ma._CapTracker(caps=ma.AuditCaps()))
+        titles = [f["title"] for f in ma.scan_gate_liveness(ctx)]
+
+        assert "훅 실행권 부재: .git/hooks/pre-push" in titles
+        assert not any("실행권" in t and "pre-commit" in t for t in titles)

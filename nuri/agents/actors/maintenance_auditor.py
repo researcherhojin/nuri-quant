@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -167,6 +168,17 @@ def scan_gate_liveness(ctx: ScanContext) -> list[dict[str, str]]:
                     "axis": "gate_liveness",
                     "title": f"훅 미설치: .git/hooks/{hook}",
                     "detail": "소스는 있으나 설치돼 있지 않다. `make setup-hooks` 미실행 또는 링크 파손.",
+                }
+            )
+            continue
+        # 실행비트가 빠지면 git 은 훅을 아예 부르지 않는다 — bash -n 초록과 무관한
+        # green dead gate (codex P2). `make setup-hooks` 재실행 전까지 복구되지 않는다.
+        if not os.access(installed, os.X_OK):
+            out.append(
+                {
+                    "axis": "gate_liveness",
+                    "title": f"훅 실행권 부재: .git/hooks/{hook}",
+                    "detail": "파일은 있으나 실행비트가 없어 git 이 훅을 건너뛴다. `make setup-hooks` 재실행 필요.",
                 }
             )
             continue

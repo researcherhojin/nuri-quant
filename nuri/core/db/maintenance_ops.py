@@ -17,6 +17,7 @@ precision = 리뷰된 것 중 승인 비율, 검토 지연 = reviewed_at − cre
 from __future__ import annotations
 
 import logging
+import statistics
 from pathlib import Path
 from typing import Any, Optional
 
@@ -126,8 +127,9 @@ def maintenance_review_stats(db_path: Optional[Path] = None) -> dict[str, Any]:
 
             delta = datetime.fromisoformat(r["reviewed_at"]) - datetime.fromisoformat(r["created_at"])
             latencies.append(delta.total_seconds() / 3600)
-    latencies.sort()
-    median = latencies[len(latencies) // 2] if latencies else None
+    # 짝수 개면 statistics.median 이 가운데 두 값의 평균 — `[len//2]` 는 상위
+    # 중앙값이라 짝수마다 체계적으로 과대 보고한다 (codex P3).
+    median = statistics.median(latencies) if latencies else None
 
     return {
         "candidates": len(rows),
