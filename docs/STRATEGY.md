@@ -272,11 +272,28 @@ measurement_mode` 에 임계를 두고 lock test 로 잠가 우발적 완화를 
 **판정 결과 처리**: 3조건 통과 → **US 집행분 슬리브에 한해** 상한 상향 STRATEGY PR (새 상한도 본 표 개정으로 사전 고정). 미달 → 슬리브 유지/축소 + 측정 연장 또는 §3.10 passive 로 수렴 — "조금만 더" 없이 본 표가 답이다. 사전등록 대상은 판정 **기준**이지 상한 초기값이 아니다 — 슬리브 초기값은 판정 표본에 영향이 없으므로 최초 사용자 확정 PR 까지 placeholder 로 두며 일반 PR 로 정정 가능. 확정 이후부터 상향-sticky 발효.
 **미구축 (판정 전 선결, follow-up issue)**: ① regime 라벨 백필 — #832 구현 완료 (`scripts/ops/backfill_regime_labels.py` + emit 경로 canonical-or-NULL, 진단용) ② 순열 판정 도구 — #842 구현 완료 (`nuri/quant/validation/decision_alpha.py`, 설계는 본 표에 사전 고정; 기존 `nuri/quant/validation/` 3종은 포트폴리오 Sharpe 전용) ③ 3조건 통합 판정 쿼리 (`/api/alpha` 는 착륙 전 NOT_MEASURABLE 유지) ④ KR benchmark 분리 — #833 구현 완료 (`benchmark_by_market` + `decision_outcomes.benchmark_ticker`, 기록 기준만; KR 판정 사전등록은 미착수) ⑤ 슬리브 상한 소비 배선 (rebalance_advisor / ExecutionFirewall, #834) ⑥ 원장 스냅샷/백업 정책 (#835). 월간 알파 진행 리포트 표출 = #856.
 **참조**: `config/rules.yaml measurement_mode` (canonical 값), `nuri/agents/actors/forward_outcome_tracker.py` (측정 파이프라인, 매일 17:00 KST), `docs/SOURCE_OF_TRUTH.md` (원장 매핑, local-only).
+### 3.12 held_add 임계 그리드 전방 측정 (#1173 = #788 Stage 1, 2026-08-29 사전등록)
+**결정**: held_add 임계(75/75/80)는 바꾸지 않고, "임계가 X 였다면 발화했을까" 를 후보 그리드 전체에 대해 `held_add_would_fire` 원장에 매일 기록한다 (Stage 1). 판정(Stage 2)은 아래 사전 고정 기준으로만 — §3.6/§3.11 과 같은 원리로 **기록이 쌓이기 전에** 고정하며, 사후 amend 는 §3.11 의 prudential invalidator (보류 전용 조건) 만 허용한다.
+**왜 지금**: `held_add_shadow` 잡이 6주 연속 0건 emit / 19건 skip — 임계가 과도한지 데이터가 없다. 소급 백테스트(v1)는 survivorship 으로 기각 (#788 Codex 2026-08-21) → v2 = 전방 측정. 그리드·판정 기준은 codex 설계 리뷰 1회전 (NEEDS_REWORK → 반영) 을 거쳤다 (`data/llm_consults/2026-08-29_held-add-would-fire-design-1173.md`).
+**canonical 값**: `config/buy_signals.yaml held_add_mode.would_fire_logging` (grid + `stage2_adjudication`) — 잠금 테스트가 드리프트를 차단, 변경은 본 절 개정 PR 로만.
+**판정 스펙 (서술 정본)**:
+1. **이벤트 행** = (as_of_date, ticker, account). eligible = `earnings_blackout=0 ∧ headroom_pct>0`.
+2. **variant 발화** = would_fire_json[V] ≠ null — V 가 어떤 mode 를 고르든 무관 (임계 완화는 current 와 다른 상위 precedence mode 를 고를 수 있고, 그것까지가 측정 대상).
+3. **incremental(V)** = V 발화 ∧ current 미발화인 eligible 행.
+4. **dedup**: (ticker, account, V) 안에서 7 calendar day 클러스터당 **첫 발화 행** 생존 — 실행했다면 첫 신호에 했을 것 (prospective 규율).
+5. **결과 지표**: 30 calendar day 전방 alpha = ticker 수익률 − SPY 수익률. entry = as_of_date 종가, exit = as_of_date+30d 이하 마지막 거래일 종가 (양측 동일 날짜).
+6. **추정량**: incremental(V) 의 **표본 중앙값** (paired 아님 — incremental 집합엔 짝이 없다). qualifying = median alpha > 0 ∧ n ≥ 20 ∧ 발화율 제약 충족.
+7. **발화율 hard constraint**: 주간 dedup 발화 ≤ 당주 eligible 고유 (ticker, account) 행의 25% — 책 크기에 스케일하고 원장 단독으로 계산 가능 (고정 건수 상한은 오늘의 보유 수를 규칙에 박는다). 초과 variant 는 alpha 무관 탈락.
+8. **variant 간 순위**: qualifying 을 median alpha 로 정렬, 상위 2개 차이 ≤ 0.5%p 면 더 보수적(실효 임계 높은) 쪽.
+9. **settlement**: 판정은 로깅 시작 + 8주 이후에만, 이벤트는 `as_of_date ≤ 판정일 − 30d` 인 행만 (부분 성숙 꼬리의 기회주의적 포함/제외 차단 — §3.11 emit cutoff 준용).
+10. **추론 한계 (명시 사전등록)**: 겹침 창 + 반복 티커로 iid 불성립 — 본 판정은 **기술적(descriptive) 스크리닝**이다. PASS 는 #519 calibration 백테스트 착수 자격만 부여하며, 임계 변경은 여전히 STRATEGY PR + Escalation Ladder.
+11. **days_held 공변량 금지**: 소스가 하드코딩 fallback 30 (portfolio 에 entry_date 없음) — 원장에 기록하지 않으며 Stage 2 에서 사용 금지. gates 에 남는 fallback 효과는 전 variant 공유라 variant 간 비교에서 상쇄된다. 소스 수정은 별도 이슈.
+**참조**: `nuri/trading/recommend/held_add_would_fire.py` (그리드 계산·기록), `nuri/trading/recommend/held_add.py::evaluate_mode_gates` (측정·라이브 공유 게이트 평가).
 ## 4. 개발 품질 기준
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 7,911 tests, 367 files (statement coverage **99%** — 17/23,311 미커버 9개 파일, partial branch 81, `make ci-cov` 2026-08-14) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 7,961 tests, 368 files (statement coverage **99%** — 17/23,311 미커버 9개 파일, partial branch 81, `make ci-cov` 2026-08-14) |
 | Frontend tests | 목표 ≥ 90% | 1606 tests, 141 files |
 | E2E | 핵심 flow | 87 Playwright (9 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |

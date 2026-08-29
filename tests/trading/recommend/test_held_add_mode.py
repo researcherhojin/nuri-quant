@@ -198,7 +198,7 @@ class TestModeEvaluation:
         """trim event 없음 → tp1_residual skip → ride_winner 평가."""
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,
+            lambda ticker, max_days=60, db_path=None: None,
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_account_strategy_profile",
@@ -239,7 +239,7 @@ class TestModeEvaluation:
 
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,  # trim 없음 → tp1_residual skip
+            lambda ticker, max_days=60, db_path=None: None,  # trim 없음 → tp1_residual skip
         )
         # 실제 account_strategies 모양: tp1_pct 키 없음 → canonical default 경로
         monkeypatch.setattr(
@@ -270,7 +270,7 @@ class TestModeEvaluation:
         """trim 후 +30% pnl + breakout — tp1_residual 이 ride_winner 보다 우선."""
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: 10,  # trim 10일전
+            lambda ticker, max_days=60, db_path=None: 10,  # trim 10일전
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_account_strategy_profile",
@@ -302,7 +302,7 @@ class TestModeEvaluation:
         """
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,
+            lambda ticker, max_days=60, db_path=None: None,
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_account_strategy_profile",
@@ -341,7 +341,7 @@ class TestModeEvaluation:
         """
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,
+            lambda ticker, max_days=60, db_path=None: None,
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_account_strategy_profile",
@@ -366,7 +366,7 @@ class TestModeEvaluation:
         """regime=neutral + RSI 30 + pnl -5% (window) → average_down."""
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,
+            lambda ticker, max_days=60, db_path=None: None,
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_account_strategy_profile",
@@ -394,7 +394,7 @@ class TestModeEvaluation:
         """VIX >= 28 → average_down macro veto."""
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,
+            lambda ticker, max_days=60, db_path=None: None,
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_account_strategy_profile",
@@ -424,7 +424,7 @@ class TestModeEvaluation:
         """held_add.py 320->326: macro_veto=False 면 VIX/regime 무시하고 통과 (#611)."""
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,
+            lambda ticker, max_days=60, db_path=None: None,
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_account_strategy_profile",
@@ -480,7 +480,7 @@ class TestEmitHeldAddShadow:
         # _get_held_positions 가 default DB 를 본다 — db_path 로 swap
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_held_positions",
-            lambda: [
+            lambda db_path=None: [
                 # acct_alpha NVDA: pnl +60% 충족 (winner)
                 {
                     "ticker": "NVDA",
@@ -505,7 +505,7 @@ class TestEmitHeldAddShadow:
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,  # trim 없음 → ride_winner 진입
+            lambda ticker, max_days=60, db_path=None: None,  # trim 없음 → ride_winner 진입
         )
 
         # earnings: 모두 안전
@@ -555,7 +555,7 @@ class TestEmitHeldAddShadow:
         candidate 는 emit 하되 held_add_shadow 테이블 persist 는 skip (#611)."""
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_held_positions",
-            lambda: [
+            lambda db_path=None: [
                 {
                     "ticker": "NVDA",
                     "account": "acct_alpha",
@@ -569,7 +569,7 @@ class TestEmitHeldAddShadow:
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,
+            lambda ticker, max_days=60, db_path=None: None,
         )
 
         def _fetcher_factory(t: str) -> SimpleNamespace:
@@ -604,7 +604,7 @@ class TestEmitHeldAddShadow:
         """earnings ±5d → 모든 mode 차단."""
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_held_positions",
-            lambda: [
+            lambda db_path=None: [
                 {
                     "ticker": "MSFT",
                     "account": "acct_alpha",
@@ -618,7 +618,7 @@ class TestEmitHeldAddShadow:
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,
+            lambda ticker, max_days=60, db_path=None: None,
         )
 
         # MSFT earnings 4-30 (±4d 이내)
@@ -655,21 +655,28 @@ class TestEmitHeldAddShadow:
         """
         seen: dict[str, object] = {}
 
-        def _spy(pos, cfg, score, rsi, regime, vix, **_kw):
+        # 관측 지점은 mode 평가 입구 — #1173 리팩터로 emit 루프가 select_held_mode
+        # 대신 evaluate_mode_gates 를 타므로 스파이도 따라간다 (잠금 의도 동일:
+        # 기본 provider 의 *하류 값* 이 미상이어야 한다).
+        def _spy(pos, cfg, rsi, regime, vix, **_kw):
             seen["regime"] = regime
             seen["vix"] = vix
-            return None
+            return dict.fromkeys(ha.MODE_PRECEDENCE, False)
 
-        monkeypatch.setattr(ha, "select_held_mode", _spy)
+        monkeypatch.setattr(ha, "evaluate_mode_gates", _spy)
         monkeypatch.setattr(
             ha,
             "_get_held_positions",
-            lambda: [{"ticker": "MSFT", "account": "acct_alpha", "pnl_pct": -5.0, "days_held": 20}],
+            lambda db_path=None: [{"ticker": "MSFT", "account": "acct_alpha", "pnl_pct": -5.0, "days_held": 20}],
         )
         cfg_path = tmp_path / "buy_signals.yaml"
         cfg_path.write_text(yaml.safe_dump(cfg_held_add))
+        # db_path 는 이제 실제로 전달된다 (#1173 P2 배선 수정) — 미초기화 경로를 주면
+        # 종전처럼 기본 DB 로 새지 않고 진짜로 그 파일을 읽으므로 스키마가 필요하다.
+        isolated = tmp_path / "x.db"
+        init_db(isolated)
 
-        ha.emit_held_add_shadow(config_path=cfg_path, db_path=tmp_path / "x.db")
+        ha.emit_held_add_shadow(config_path=cfg_path, db_path=isolated)
 
         assert seen.get("regime") == UNKNOWN_REGIME, "provider 부재 시 레짐을 지어냈다 — 미상이어야 한다"
         assert seen.get("vix") is None, "VIX 미측정을 숫자로 메웠다 (#753)"
@@ -703,7 +710,7 @@ class TestEmitHeldAddShadow:
 
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_held_positions",
-            lambda: [
+            lambda db_path=None: [
                 {
                     "ticker": "NVDA",
                     "account": "acct_alpha",
@@ -717,7 +724,7 @@ class TestEmitHeldAddShadow:
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,
+            lambda ticker, max_days=60, db_path=None: None,
         )
 
         result = ha.emit_held_add_shadow(
@@ -921,7 +928,7 @@ class TestDBProviders:
 
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_held_positions",
-            lambda: [
+            lambda db_path=None: [
                 {
                     "ticker": "NVDA",
                     "account": "acct_alpha",
@@ -935,7 +942,7 @@ class TestDBProviders:
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda t, max_days=60: None,
+            lambda t, max_days=60, db_path=None: None,
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_account_strategy_profile",
@@ -1142,7 +1149,7 @@ class TestUnmeasuredVixIsAVeto:
     def _patch(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_last_trim_age_days",
-            lambda ticker, max_days=60: None,
+            lambda ticker, max_days=60, db_path=None: None,
         )
         monkeypatch.setattr(
             "nuri.trading.recommend.held_add._get_account_strategy_profile",

@@ -10,7 +10,8 @@ The user-facing output layer: BUY candidates, SELL alerts on holdings, price tar
 |---|---|---|---|
 | `buy_candidate_emitter.py` | Daily 0–5 BUY candidates from factor + momentum + RSI + breakout fusion. Closes the sell-bias gap (7+ sell loops, 0 buy loops). | `python -m nuri.trading.recommend.buy_candidate_emitter` / scheduler premarket brief (`nuri/alerts/premarket_brief.py`) | #507 |
 | `holdings_monitor.py` | Post-entry technical-divergence alert (JKHY-class falling-knife defense). REVIEW CTA, never SELL. | scheduler 07:10 KST | PR #303 follow-up |
-| `held_add.py` | Held-add shadow emitter — add-candidate evaluation on existing holdings (buy_signals.yaml loader). | scheduler 07:15 KST | #518 Phase 2a |
+| `held_add.py` | Held-add shadow emitter — add-candidate evaluation on existing holdings (buy_signals.yaml loader). `evaluate_mode_gates` 가 score 외 조건을 분리 평가 — 라이브 결정과 would-fire 측정이 같은 게이트를 공유한다. | scheduler 08:30 KST (`_run_held_add_shadow`) | #518 Phase 2a |
+| `held_add_would_fire.py` | 임계 그리드 전방 측정 원장 — "임계가 X 였다면 발화했을까" 를 매일 기록 (임계 변경 없음). 판정 기준은 **사전등록** (`buy_signals.yaml stage2_adjudication` + STRATEGY §3.12) — 값 드리프트는 잠금 테스트가 차단. | `held_add.py` 내부 (같은 provider 스냅샷) | #1173 (#788 Stage 1) |
 | `candidates.py` | E-1 signal-based candidate screener (today's signals × historically validated). | `python -m ...candidates` | E-1 |
 | `price_targets.py` | entry / stop / TP1 / TP2 / trailing per holding, pulling from `config/rules.yaml` ladders (growth / value / swing). | upstream of every BUY/SELL alert | core |
 | `rebalance.py` | E-2 regime-adapted MVO/RP rebalance (defensive vs offensive sector tilt by regime). | `python -m ...rebalance` | E-2 |

@@ -1874,4 +1874,39 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
             ON maintenance_candidates(status, created_at);
     """,
     ),
+    (
+        60,
+        "held_add_would_fire — 임계 그리드 전방 측정 원장 (#1173, #788 Stage 1)",
+        # 임계를 바꾸지 않고 "임계가 X 였다면 발화했을까" 를 매일 보유×계좌마다 기록.
+        # UNIQUE(as_of_date, ticker, account) + upsert = 하루 1행 멱등 (재실행은 당일
+        # 최신 평가로 갱신 + 사라진 보유의 고아 행 삭제 — run_id/updated_at 이 감사
+        # 흔적). days_held 컬럼은 일부러 없다 — 소스가 하드코딩 fallback 30 이라
+        # 관측치가 아니다 (codex P1, #1173). score 가 NULL 인 행은 earnings blackout —
+        # provider 를 태우지 않으므로 관측치 자체가 없다 (같은 원칙).
+        # 판정 스펙(사전등록)은 buy_signals.yaml stage2_adjudication + STRATEGY §3.12.
+        """
+        CREATE TABLE IF NOT EXISTS held_add_would_fire (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            as_of_date TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            account TEXT NOT NULL,
+            score REAL,
+            pnl_pct REAL NOT NULL,
+            rsi REAL,
+            sector_mom REAL,
+            headroom_pct REAL,
+            gates_json TEXT NOT NULL,
+            grid_thresholds_json TEXT NOT NULL,
+            would_fire_json TEXT NOT NULL,
+            near_threshold INTEGER NOT NULL DEFAULT 0,
+            earnings_blackout INTEGER NOT NULL DEFAULT 0,
+            run_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(as_of_date, ticker, account)
+        );
+        CREATE INDEX IF NOT EXISTS idx_held_add_wf_date ON held_add_would_fire(as_of_date);
+        CREATE INDEX IF NOT EXISTS idx_held_add_wf_ticker ON held_add_would_fire(ticker, as_of_date);
+    """,
+    ),
 ]

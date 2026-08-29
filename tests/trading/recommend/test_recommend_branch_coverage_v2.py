@@ -702,7 +702,7 @@ class TestHeldAddEvaluateTp1ResidualNoneBranches:
         """Line 241-242: last_trim_age None → return None."""
         from nuri.trading.recommend import held_add as ha
 
-        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60: None)
+        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60, db_path=None: None)
         monkeypatch.setattr(ha, "_get_account_strategy_profile", lambda a: {"tp1_pct": 21.0})
 
         cfg = {"modes": {"tp1_residual_add": {"trigger": {"last_trim_age_days_min": 5}}}}
@@ -713,7 +713,7 @@ class TestHeldAddEvaluateTp1ResidualNoneBranches:
         """Line 243-244: last_trim_age < min → None."""
         from nuri.trading.recommend import held_add as ha
 
-        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60: 3)
+        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60, db_path=None: 3)
         monkeypatch.setattr(ha, "_get_account_strategy_profile", lambda a: {"tp1_pct": 21.0})
         cfg = {"modes": {"tp1_residual_add": {"trigger": {"last_trim_age_days_min": 5, "last_trim_age_days_max": 60}}}}
         pos = {"ticker": "AAA", "account": "x", "pnl_pct": 50.0}
@@ -723,7 +723,7 @@ class TestHeldAddEvaluateTp1ResidualNoneBranches:
         """Line 245-246: last_trim_age > max → None."""
         from nuri.trading.recommend import held_add as ha
 
-        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60: 200)
+        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60, db_path=None: 200)
         monkeypatch.setattr(ha, "_get_account_strategy_profile", lambda a: {"tp1_pct": 21.0})
         cfg = {"modes": {"tp1_residual_add": {"trigger": {"last_trim_age_days_min": 5, "last_trim_age_days_max": 60}}}}
         pos = {"ticker": "AAA", "account": "x", "pnl_pct": 50.0}
@@ -733,7 +733,7 @@ class TestHeldAddEvaluateTp1ResidualNoneBranches:
         """Line 251-252: pnl_pct < tp1×factor → None."""
         from nuri.trading.recommend import held_add as ha
 
-        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60: 10)
+        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60, db_path=None: 10)
         monkeypatch.setattr(ha, "_get_account_strategy_profile", lambda a: {"tp1_pct": 21.0})
         # tp1 21 × 1.2 = 25.2 threshold; pos pnl 20% < threshold
         cfg = {
@@ -754,7 +754,7 @@ class TestHeldAddEvaluateTp1ResidualNoneBranches:
         """Line 254-255: score < composite_score_min → None."""
         from nuri.trading.recommend import held_add as ha
 
-        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60: 10)
+        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60, db_path=None: 10)
         monkeypatch.setattr(ha, "_get_account_strategy_profile", lambda a: {"tp1_pct": 21.0})
         cfg = {
             "modes": {
@@ -776,7 +776,7 @@ class TestHeldAddEvaluateTp1ResidualNoneBranches:
         """Line 257-258: require_breakout=True but breakout_above_trim=False → None."""
         from nuri.trading.recommend import held_add as ha
 
-        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60: 10)
+        monkeypatch.setattr(ha, "_get_last_trim_age_days", lambda t, max_days=60, db_path=None: 10)
         monkeypatch.setattr(ha, "_get_account_strategy_profile", lambda a: {"tp1_pct": 21.0})
         cfg = {
             "modes": {
