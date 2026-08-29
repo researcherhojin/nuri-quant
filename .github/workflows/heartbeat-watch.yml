@@ -45,6 +45,7 @@ jobs:
           THRESHOLD_MIN=45
 
           # ref 부재도 침묵이다 — 브랜치가 지워졌거나 첫 push 전이면 곧장 알린다.
+          # cspell:ignore Fheartbeat — %2F 인코딩이 만드는 파편, 단어가 아니다
           # 슬래시는 %2F 로 — 미인코딩도 동작함을 2026-08-29 실측했지만(리뷰 P1 반박),
           # 인코딩 형태가 GitHub 라우팅의 관용에 의존하지 않는다.
           ts=$(gh api "repos/${GITHUB_REPOSITORY}/branches/ops%2Fheartbeat-mini" \
