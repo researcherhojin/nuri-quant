@@ -28,7 +28,7 @@ function DataPills({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="flex flex-wrap gap-1 mt-1">
       {entries.map(([k, v]) => (
-        <span key={k} className="text-[9px] bg-muted/50 rounded px-1.5 py-0.5 text-muted-foreground">
+        <span key={k} className="text-[9px] bg-muted/50 rounded-sm px-1.5 py-0.5 text-muted-foreground">
           {k}={typeof v === "number" ? v.toFixed(2) : String(v ?? "")}
         </span>
       ))}
@@ -89,7 +89,7 @@ export function AgentTrace({ ticker }: { ticker: string }) {
                     <DataPills data={v.data_points} />
                   </>
                 ) : (
-                  <div className="h-6 bg-muted/20 rounded" />
+                  <div className="h-6 bg-muted/20 rounded-sm" />
                 )}
               </div>
             );

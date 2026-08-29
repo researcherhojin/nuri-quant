@@ -97,7 +97,7 @@ export async function AdvisorSection() {
           <p className="text-xs text-muted-foreground mb-3">{A.VIOLATION_DIST}</p>
           <div className="flex flex-wrap gap-2">
             {Object.entries(data.violations_by_type).map(([type, count]) => (
-              <span key={type} className="text-xs bg-muted px-2 py-1 rounded">
+              <span key={type} className="text-xs bg-muted px-2 py-1 rounded-sm">
                 {type}: {count}{COMMON.COUNT_SUFFIX}
               </span>
             ))}

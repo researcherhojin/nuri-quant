@@ -307,11 +307,11 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
       {/* Legend — 결과 색 + 전환 선 + caller shape 분류 */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
         <span>
-          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5 align-middle" />
+          <span className="inline-block size-2 rounded-full bg-emerald-500 mr-1.5 align-middle" />
           CERTIFIED
         </span>
         <span>
-          <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1.5 align-middle" />
+          <span className="inline-block size-2 rounded-full bg-red-500 mr-1.5 align-middle" />
           REJECTED
         </span>
         <span>

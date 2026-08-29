@@ -17,7 +17,7 @@ export default function Error({
 
   return (
     <div className="flex flex-col items-center justify-center py-20 space-y-4">
-      <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
+      <div className="size-12 rounded-full bg-red-500/10 flex items-center justify-center">
         <span className="text-red-400 text-lg font-bold">!</span>
       </div>
       <h2 className="text-lg font-semibold">

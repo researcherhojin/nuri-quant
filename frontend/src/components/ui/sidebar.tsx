@@ -143,17 +143,17 @@ export function Sidebar() {
             <div className="flex flex-col items-center gap-2">
               {/* 테마 토글 제거 (#1195 U1a codex P2): 제품은 dark-only (frontend/CLAUDE.md).
                   라이트 전환 시 zinc 램프 재매핑과 시맨틱 토큰이 혼합 테마를 만들던 경로 폐쇄 */}
-              <span className="relative flex h-2 w-2" title={NAV.SYSTEM_ONLINE}>
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              <span className="relative flex size-2" title={NAV.SYSTEM_ONLINE}>
+                <span className="animate-ping absolute inline-flex size-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full size-2 bg-emerald-500" />
               </span>
             </div>
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                <span className="relative flex size-2">
+                  <span className="animate-ping absolute inline-flex size-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full size-2 bg-emerald-500" />
                 </span>
                 <span className="text-[10px] text-muted-foreground">{NAV.SYSTEM_ONLINE}</span>
               </div>

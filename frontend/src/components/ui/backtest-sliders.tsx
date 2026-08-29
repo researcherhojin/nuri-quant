@@ -65,7 +65,7 @@ export function BacktestSliders({ onRun, initialParams, loading }: BacktestSlide
             <button
               key={period}
               onClick={() => update("smaPeriod", period)}
-              className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+              className={`text-[10px] px-1.5 py-0.5 rounded-sm transition-colors ${
                 params.smaPeriod === period ? "bg-muted text-zinc-200" : "text-muted-foreground hover:text-zinc-300"
               }`}
             >
@@ -85,7 +85,7 @@ export function BacktestSliders({ onRun, initialParams, loading }: BacktestSlide
           <button
             key={lookback}
             onClick={() => update("lookback", lookback)}
-            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+            className={`text-[10px] px-1.5 py-0.5 rounded-sm transition-colors ${
               params.lookback === lookback ? "bg-muted text-zinc-200" : "text-muted-foreground hover:text-zinc-300"
             }`}
           >
@@ -106,7 +106,7 @@ export function BacktestSliders({ onRun, initialParams, loading }: BacktestSlide
         <button
           onClick={() => onRun(params)}
           disabled={loading}
-          className="ml-auto text-[10px] px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors disabled:opacity-50"
+          className="ml-auto text-[10px] px-3 py-1 rounded-sm bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors disabled:opacity-50"
         >
           {loading ? "Running..." : "Run Backtest"}
         </button>

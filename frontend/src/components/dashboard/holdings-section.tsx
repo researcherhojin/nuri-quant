@@ -63,7 +63,7 @@ export function HoldingsSection({
                 key={p}
                 href={p === 30 ? "/" : `/?period=${p}`}
                 scroll={false}
-                className={`px-1 rounded normal-case ${
+                className={`px-1 rounded-sm normal-case ${
                   p === sparklinePeriod
                     ? "text-zinc-300 bg-zinc-800/80"
                     : "text-zinc-600 hover:text-zinc-400"

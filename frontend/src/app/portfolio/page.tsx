@@ -26,7 +26,7 @@ const FALLBACK_ACCOUNTS = ["test", "demo", "sample"];
 
 export default function PortfolioPage() {
   return (
-    <Suspense fallback={<div className="h-32 bg-muted rounded animate-pulse" />}>
+    <Suspense fallback={<div className="h-32 bg-muted rounded-sm animate-pulse" />}>
       <PortfolioContent />
     </Suspense>
   );
@@ -365,7 +365,7 @@ function PortfolioContent() {
 
       {/* ── Holdings by Account ── */}
       {loading ? (
-        <div className="h-32 bg-muted rounded animate-pulse" />
+        <div className="h-32 bg-muted rounded-sm animate-pulse" />
       ) : Object.keys(grouped).length === 0 ? (
         <Card className={`bg-card border-border ${isOnboarding ? "border-emerald-700" : ""}`}>
           <CardContent className="pt-5 space-y-4">
@@ -379,21 +379,21 @@ function PortfolioContent() {
             </p>
             <div className="space-y-3">
               <div className="flex items-start gap-3">
-                <span className="flex-none w-6 h-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center">1</span>
+                <span className="flex-none size-6 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center">1</span>
                 <div>
                   <p className="text-sm font-medium">Add holdings</p>
                   <p className="text-xs text-muted-foreground">Click &quot;Add Holding&quot; above to enter your positions manually, or upload a CSV file.</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <span className="flex-none w-6 h-6 rounded-full bg-zinc-700 text-zinc-300 text-xs flex items-center justify-center">2</span>
+                <span className="flex-none size-6 rounded-full bg-zinc-700 text-zinc-300 text-xs flex items-center justify-center">2</span>
                 <div>
                   <p className="text-sm font-medium">Collect market data</p>
                   <p className="text-xs text-muted-foreground">Run <code className="text-emerald-400">make collect</code> to fetch price/macro data for your tickers.</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <span className="flex-none w-6 h-6 rounded-full bg-zinc-700 text-zinc-300 text-xs flex items-center justify-center">3</span>
+                <span className="flex-none size-6 rounded-full bg-zinc-700 text-zinc-300 text-xs flex items-center justify-center">3</span>
                 <div>
                   <p className="text-sm font-medium">Run analysis</p>
                   <p className="text-xs text-muted-foreground">Run <code className="text-emerald-400">make full-scan</code> for the complete pipeline, or visit the Dashboard.</p>

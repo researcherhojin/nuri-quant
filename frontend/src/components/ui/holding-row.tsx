@@ -356,7 +356,7 @@ export function HoldingRow({ holding: h, href, macroAwareSectors }: HoldingRowPr
       data-status={h.status.kind}
       // aria-label 을 두지 않는다: 링크 접근명은 보이는 자식(계좌·이름·손익)에서 계산되며,
       // label 은 그 전체를 덮어써 오히려 정보를 잃는다 (codex ship review P2, M4 재검토)
-      className="flex w-fit items-center gap-2 px-2 py-1.5 rounded hover:bg-zinc-800/50 text-xs group"
+      className="flex w-fit items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-zinc-800/50 text-xs group"
     >
       {/* account — wider at 2xl+ so labels like "LONG_TERM" don't truncate. Stays w-10 below
           2xl to keep the lg (1024) row width under the content budget (752 content). */}
@@ -390,7 +390,7 @@ export function HoldingRow({ holding: h, href, macroAwareSectors }: HoldingRowPr
       </span>
       {/* status badge — 항상 */}
       <span
-        className={`inline-flex items-center justify-center text-[10px] font-medium rounded border px-1.5 py-0.5 w-17 shrink-0 ${status.className}`}
+        className={`inline-flex items-center justify-center text-[10px] font-medium rounded-sm border px-1.5 py-0.5 w-17 shrink-0 ${status.className}`}
       >
         {status.text}
       </span>

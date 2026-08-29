@@ -17,7 +17,7 @@ export function EventsStrip({ events }: { events: StripEvent[] }) {
       count={events.length}
       emptyText={STRIP.EVENTS_EMPTY}
     >
-      <div className="flex items-start gap-2 px-2 py-1 rounded bg-zinc-900/40 border border-zinc-800/60 pr-6">
+      <div className="flex items-start gap-2 px-2 py-1 rounded-sm bg-zinc-900/40 border border-zinc-800/60 pr-6">
         <span className="text-[10px] text-zinc-400 font-semibold shrink-0">{STRIP.EVENTS_PREFIX} {events.length}{COMMON.COUNT_SUFFIX}</span>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
           {events.map((ev, i) => {

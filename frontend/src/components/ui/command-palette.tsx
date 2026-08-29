@@ -179,9 +179,9 @@ export function CommandPalette() {
         data-testid="palette-trigger"
         aria-label={PALETTE.ARIA}
       >
-        <Search className="h-3 w-3" />
+        <Search className="size-3" />
         {PALETTE.HINT}
-        <kbd className="rounded bg-muted px-1 text-[10px]">⌘K</kbd>
+        <kbd className="rounded-sm bg-muted px-1 text-[10px]">⌘K</kbd>
       </button>
 
       {open && (
@@ -204,7 +204,7 @@ export function CommandPalette() {
             }}
           >
             <div className="flex items-center gap-2 border-b border-border px-4">
-              <Search className="h-4 w-4 text-zinc-500 shrink-0" />
+              <Search className="size-4 text-zinc-500 shrink-0" />
               <input
                 ref={inputRef}
                 type="text"

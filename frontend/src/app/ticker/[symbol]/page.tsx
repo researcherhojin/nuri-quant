@@ -298,7 +298,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
               <p className="text-xs text-muted-foreground mb-3">Smart Money ({supers.length})</p>
               <div className="space-y-1.5">
                 {supers.map((s: SuperInvestor, i: number) => (
-                  <div key={i} className="flex justify-between text-xs bg-muted/50 rounded px-2.5 py-1.5">
+                  <div key={i} className="flex justify-between text-xs bg-muted/50 rounded-sm px-2.5 py-1.5">
                     <span className="text-foreground/80">{s.investor}</span>
                     <span className="text-muted-foreground font-medium">{s.portfolio_pct?.toFixed(1)}%</span>
                   </div>
@@ -332,7 +332,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
               <p className="text-xs text-muted-foreground mb-3">External Data ({external.count})</p>
               <div className="space-y-1.5 text-xs">
                 {external.data?.slice(0, 8).map((d: ExternalRow, i: number) => (
-                  <div key={i} className="flex justify-between bg-muted/50 rounded px-2.5 py-1">
+                  <div key={i} className="flex justify-between bg-muted/50 rounded-sm px-2.5 py-1">
                     <span className="text-muted-foreground">{d.source}/{d.data_type}</span>
                     <span className="text-foreground/80">{d.value}</span>
                   </div>
@@ -357,7 +357,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
 function Loading() {
   return (
     <div className="space-y-5">
-      <div className="h-10 bg-card rounded w-48 animate-pulse" />
+      <div className="h-10 bg-card rounded-sm w-48 animate-pulse" />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[1, 2, 3, 4, 5, 6].map((i) => (
           <div key={i} className="h-48 bg-card rounded-xl border border-border animate-pulse" />
