@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import Link from "next/link";
 import { fetchAPI } from "@/lib/api";
-import { COMMON, ENGINE } from "@/lib/strings";
+import { COMMON, ENGINE, NAV } from "@/lib/strings";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -209,7 +209,7 @@ function Loading() {
 export default function EnginePage() {
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold">Certification Engine</h1>
+      <h1 className="text-2xl font-bold">{NAV.ROUTE_ENGINE}</h1>
 
       {/* V2 — SIEGE history 관찰 loop (E4-0a persist + V1 API 소비) */}
       <Suspense fallback={<Loading />}>

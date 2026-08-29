@@ -162,6 +162,7 @@ class TestComputePortfolioHash:
         `portfolio_raw DB read 실패` 로 발생 (rows=None 경로 통과 시).
         """
         import sqlite3
+
         with patch(
             "nuri.trading.engine.certification.query",
             side_effect=sqlite3.OperationalError("database is locked"),
@@ -222,9 +223,7 @@ class TestSnapshotInvariant:
         """_persist_certification 는 snapshot dataclass 을 kwarg 로 받음 (재조회 없음)."""
         from nuri.trading.engine.certification import CertSnapshot
 
-        with patch(
-            "nuri.trading.engine.certification._persist_certification"
-        ) as mock_persist:
+        with patch("nuri.trading.engine.certification._persist_certification") as mock_persist:
             certify(db_path=populated_db_cert, caller="test")
             assert mock_persist.called
             call = mock_persist.call_args
@@ -263,6 +262,68 @@ class TestSnapshotInvariant:
         )
         # Persist 된 regime 이 classify 결과와 일치 (snapshot 을 통과했으므로)
         assert rows[0]["regime"] == "bull_low_vol"
+
+    def test_free_text_regime_is_persisted_as_null(self, populated_db_cert):
+        """어휘 밖 값은 `certifications.regime` 에 NULL 로 남는다 (#1293).
+
+        ⚠️ **`classify_regime` 을 mock 한다 — `_classify_regime_fresh` 가 아니다.**
+        후자를 mock 하면 가드를 통째로 건너뛰어 이 테스트가 아무것도 검증하지 못한다
+        (이 파일의 다른 테스트들이 그렇게 mock 하지만 목적이 다르다).
+
+        Mutation lock: `_classify_regime_fresh` 의 `canonical_regime_or_none` 을 벗기면
+        free-text 가 그대로 persist 돼 FAIL.
+        """
+        from types import SimpleNamespace
+
+        for bad in ("", "neutral", "RISK_ON", "[recovery] 비중 축소"):
+            with patch(
+                "nuri.quant.regime.classifier.classify_regime",
+                return_value=SimpleNamespace(regime=bad),
+            ):
+                certify(db_path=populated_db_cert, caller=f"guard-{bad[:6]}")
+            rows = query(
+                "SELECT regime FROM certifications WHERE caller = ? ORDER BY id DESC LIMIT 1",
+                (f"guard-{bad[:6]}",),
+                db_path=populated_db_cert,
+            )
+            assert rows[0]["regime"] is None, f"어휘 밖 {bad!r} 이 그대로 저장됐다"
+
+    def test_every_canonical_regime_survives(self, populated_db_cert):
+        """대조군 — 가드가 과해서 정상 값까지 지우면 안 된다 (#1293).
+
+        이 축이 없으면 `return None` 으로 바꾼 구현도 위 테스트를 통과한다.
+        """
+        from types import SimpleNamespace
+
+        from nuri.quant.regime.classifier import ALL_REGIMES
+
+        assert len(ALL_REGIMES) == 10, "어휘 크기가 바뀌면 이 테스트의 전제도 다시 본다"
+        for good in ALL_REGIMES:
+            with patch(
+                "nuri.quant.regime.classifier.classify_regime",
+                return_value=SimpleNamespace(regime=good),
+            ):
+                certify(db_path=populated_db_cert, caller=f"ok-{good}")
+            rows = query(
+                "SELECT regime FROM certifications WHERE caller = ? ORDER BY id DESC LIMIT 1",
+                (f"ok-{good}",),
+                db_path=populated_db_cert,
+            )
+            assert rows[0]["regime"] == good, f"canonical {good} 이 보존되지 않았다"
+
+    def test_regime_overrides_keys_are_all_canonical(self):
+        """소비자 쪽 위험을 문서화 + 잠근다 (#1293).
+
+        `_check_regime_overrides` 는 `RULES...regime_overrides.get(regime, {})` 로 읽는다.
+        `.get` 은 어휘 밖 키에 예외도 경고도 없이 **기본값**을 준다 — 그래서 writer 쪽
+        가드가 유일한 방어선이다. config 에 어휘 밖 키가 생기면 그 항목은 영원히 죽은
+        설정이 되므로 그것도 같이 막는다.
+        """
+        from nuri.core.rules import RULES
+        from nuri.quant.regime.classifier import ALL_REGIMES
+
+        keys = set((RULES.get("siege_gates", {}) or {}).get("regime_overrides", {}) or {})
+        assert keys <= set(ALL_REGIMES), f"regime_overrides 에 어휘 밖 키: {sorted(keys - set(ALL_REGIMES))}"
 
     def test_classify_regime_fresh_called_once_per_certify(self, populated_db_cert):
         """`_classify_regime_fresh` 는 certify() 당 1회만 호출 (ContextVar 우선 참조
@@ -410,6 +471,7 @@ class TestRawPortfolioSnapshot:
                 conn.execute("DELETE FROM portfolio WHERE ticker = 'TQQQ'")
 
             from nuri.trading.engine.certification import _check_leverage_ban
+
             cond = _check_leverage_ban(db_path=populated_db_cert)
             # Snapshot 에는 TQQQ 남아있어 FAIL 이어야 함
             assert cond.passed is False
@@ -430,6 +492,7 @@ class TestRawPortfolioSnapshot:
         try:
             # Mid-eval DB 비우기
             from nuri.core.db import get_db
+
             with get_db(populated_db_cert) as conn:
                 conn.execute("DELETE FROM portfolio")
 

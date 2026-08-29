@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Lightbulb } from "lucide-react";
 import { fetchAPI } from "@/lib/api";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { EXPLORE, REGIME_GUIDE } from "@/lib/strings";
+import { EXPLORE, REGIME_GUIDE, NAV } from "@/lib/strings";
 import { trendKo, vixZone, fgLabel, macroLevel, signalKo, formatPrice, formatDelta, tickerDisplay, POPULAR_US, POPULAR_KR } from "./helpers";
 
 // ── Types ──
@@ -202,7 +202,7 @@ export default function ExplorePage() {
   return (
     <div className="flex flex-col gap-5 max-w-4xl">
       <div>
-        <h1 className="text-lg font-semibold">Explore</h1>
+        <h1 className="text-lg font-semibold">{NAV.ROUTE_EXPLORE}</h1>
         <p className="text-xs text-muted-foreground mt-1">
           {EXPLORE.SEARCH_HINT}
         </p>

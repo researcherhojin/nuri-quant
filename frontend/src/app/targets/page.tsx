@@ -5,7 +5,7 @@ import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { Metric } from "@/components/ui/metric";
-import { TARGETS as T, COMMON } from "@/lib/strings";
+import { TARGETS as T, COMMON, NAV } from "@/lib/strings";
 
 // === Types ===
 interface PriceTarget {
@@ -75,7 +75,7 @@ export default function TargetsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-lg font-semibold">Price Targets</h1>
+        <h1 className="text-lg font-semibold">{NAV.ROUTE_TARGETS}</h1>
         <p className="text-xs text-muted-foreground mt-1">
           {T.SUBTITLE}
         </p>

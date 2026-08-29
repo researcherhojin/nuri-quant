@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Sidebar } from "./sidebar";
+import { NAV } from "@/lib/strings";
 
 // next/navigation: usePathname is the only nav hook the component uses.
 vi.mock("next/navigation", () => ({
@@ -12,7 +13,7 @@ describe("Sidebar — dark-only footer (#1195 U1a)", () => {
     render(<Sidebar />);
     // Expanded shows the full brand label.
     expect(screen.getByText("Nuri-Quant")).toBeInTheDocument();
-    expect(screen.getByText("System Online")).toBeInTheDocument();
+    expect(screen.getByText(NAV.SYSTEM_ONLINE)).toBeInTheDocument();
   });
 
   // 잠금 (codex P2): 제품은 dark-only (frontend/CLAUDE.md). 테마 토글이 되살아나면

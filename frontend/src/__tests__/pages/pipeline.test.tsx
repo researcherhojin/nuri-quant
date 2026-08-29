@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
-import { PIPELINE as PL } from "@/lib/strings";
+import { PIPELINE as PL, NAV } from "@/lib/strings";
 
 // Mock @xyflow/react
 vi.mock("@xyflow/react", () => ({
@@ -98,7 +98,7 @@ describe("PipelinePage", () => {
     await act(async () => {
       render(<PipelinePage />);
     });
-    expect(screen.getByText("Pipeline")).toBeInTheDocument();
+    expect(screen.getByText(NAV.ROUTE_PIPELINE)).toBeInTheDocument();
   });
 
   it("renders ReactFlow canvas", async () => {

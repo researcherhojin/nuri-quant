@@ -138,13 +138,24 @@ _CERT_SNAPSHOT: ContextVar[CertSnapshot | None] = ContextVar("cert_snapshot", de
 
 
 def _classify_regime_fresh(db_path=None) -> str | None:
-    """DB fresh read. certify snapshot 과 무관하게 항상 재조회 (snapshot capture 용)."""
+    """DB fresh read. certify snapshot 과 무관하게 항상 재조회 (snapshot capture 용).
+
+    반환은 **canonical 이거나 NULL** 이다 (#1293). 가드가 여기 있는 이유는 이 함수가
+    **두 경로의 유일한 합류점**이기 때문이다 — `CertSnapshot.regime` 도(`_build_snapshot`),
+    snapshot 밖 `_current_regime()` 도 여기서 값을 받는다. 호출부마다 붙이면 다음 경로가
+    생길 때 빠진다 (#1268 이 `decisions.py` 에서 택한 것과 같은 배치).
+
+    어휘 밖 값을 막아야 하는 이유는 소비자 쪽이다: `_check_regime_overrides` 가
+    `RULES...regime_overrides.get(regime, {})` 로 읽으므로, free-text 가 들어오면 예외도
+    경고도 없이 **조용히 기본값**을 받는다. `recommendations.regime` 에 `''` 와
+    `'[recovery] 비중 축소'` 가 실제로 들어와 있던 것(#832)이 이게 가정이 아니라는 증거다.
+    """
     try:
         from nuri.core.timezone import today_kst
-        from nuri.quant.regime.classifier import classify_regime
+        from nuri.quant.regime.classifier import canonical_regime_or_none, classify_regime
 
         state = classify_regime(date=today_kst(), db_path=db_path)
-        return state.regime if state else None
+        return canonical_regime_or_none(state.regime) if state else None
     except Exception as e:
         logger.warning(f"regime 조회 실패 — neutral fallback: {e}")
         return None
