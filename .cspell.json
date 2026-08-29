@@ -510,6 +510,7 @@
     "getuid",
     "gguf",
     "gitignore",
+    "gitless",
     "gridcolor",
     "gstack",
     "gtimeout",

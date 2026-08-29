@@ -1777,4 +1777,28 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
             ON trades(account, executed_at);
     """,
     ),
+    (
+        57,
+        "평가 결과 evidence 바인딩 — code_rev · execution_config_sha_v1 (#1305)",
+        # 승격(§2.6 ladder promotion) 근거로 쓰이는 세 원장에 "어느 코드·어느 설정의
+        # 산출인가"를 컬럼으로 박는다. #1115 는 backtests 의 params JSON 안에 code_rev
+        # 를 넣었는데, 표면이 JSON/컬럼 둘이면 소비자가 편한 쪽을 읽는다 (Codex
+        # challenge P2 split-brain) — 컬럼이 canonical, JSON 주입은 중단.
+        #
+        # execution_config_sha_v1 의 closure 는 rules+agents+signals 로 **동결**
+        # (`nuri/core/db/provenance.py::_CONFIG_CLOSURE_V1`). closure 변경 = 컬럼명
+        # 버전업(_v2) — 같은 이름으로 의미가 바뀌면 행 간 비교 불능이 된다.
+        #
+        # 기존 행은 NULL = "#1305 이전, 미귀속" — 그 자체가 정보라 backfill 하지
+        # 않는다 (지어내는 것과 같다). NULL/실측 혼합 표본의 취급은
+        # `nuri/quant/validation/evidence_binding.py` (mixed → not-measurable, 필수).
+        """
+        ALTER TABLE backtests ADD COLUMN code_rev TEXT;
+        ALTER TABLE backtests ADD COLUMN execution_config_sha_v1 TEXT;
+        ALTER TABLE walkforward_runs ADD COLUMN code_rev TEXT;
+        ALTER TABLE walkforward_runs ADD COLUMN execution_config_sha_v1 TEXT;
+        ALTER TABLE decision_outcomes ADD COLUMN code_rev TEXT;
+        ALTER TABLE decision_outcomes ADD COLUMN execution_config_sha_v1 TEXT;
+    """,
+    ),
 ]
