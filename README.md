@@ -82,14 +82,14 @@ There is no pipeline runner. `nuri/scheduler.py` registers 59 independent APSche
 
 ```mermaid
 flowchart TB
-    CLOCK["APScheduler — 57 registered jobs<br/>no job calls another"]
+    CLOCK["APScheduler — 59 registered jobs<br/>no job calls another"]
 
-    subgraph JOBS["What those 57 jobs are"]
+    subgraph JOBS["What those 59 jobs are"]
         JC["collect · 29"]
         JA["analyze · 1"]
         JD["consensus · 1"]
         JT["track · 5"]
-        JO["operate · 21<br/>briefs · dispatchers · watchdogs · backup"]
+        JO["operate · 23<br/>briefs · dispatchers · watchdogs · backup"]
     end
 
     DB[("SQLite WAL · 61 tables")]
@@ -119,7 +119,7 @@ flowchart TB
     class JOBS zone
 ```
 
-The counts sum to the whole: 29 + 1 + 1 + 5 + 21 = 57. The **thick arrow is the single exception** to DB coupling — `nuri/scheduler.py` hands the consensus result to `record_decisions()` as a Python object, never through a table. That is why `decisions` sat frozen for three and a half months when automation replaced the CLI path and dropped that one call (#897).
+The counts sum to the whole: 29 + 1 + 1 + 5 + 23 = 59. The **thick arrow is the single exception** to DB coupling — `nuri/scheduler.py` hands the consensus result to `record_decisions()` as a Python object, never through a table. That is why `decisions` sat frozen for three and a half months when automation replaced the CLI path and dropped that one call (#897).
 
 **`certify` is the only stage with no job of its own, and the consensus job does not call it.** `certify()` reads a DB snapshot and is invoked by `premarket_brief`, by `engine/remediation`, by its own CLI, and by three API routes (`/api/certify`, `/api/actions` health and violations). Every such call persists a `certifications` row — including a dashboard health check, which is why the API is not read-only.
 
@@ -350,14 +350,14 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 | **Pipeline stages** | 5 as a data model; 1 of them (certify) has no scheduler job of its own | |
 | **Data collectors** | 27 collectors (BaseCollector pattern) — 22 are driven by collect-stage cron jobs, the rest run on demand | ✅ |
 | **Specialist agents** | 10 (consensus vote, weights sum to 1.0) | |
-| **Actor fleet** | 15 registered — 8 with a live caller, 7 dormant (implemented and tested, nothing calls them) + 3 infrastructure helpers | |
-| **Scheduler jobs** | 59 cron entries (APScheduler, in-process) — 29 collect · 1 analyze · 1 consensus · 5 track · 21 operate | ✅ |
+| **Actor fleet** | 16 registered — 9 with a live caller, 7 dormant (implemented and tested, nothing calls them) + 3 infrastructure helpers | |
+| **Scheduler jobs** | 59 cron entries (APScheduler, in-process) — 29 collect · 1 analyze · 1 consensus · 5 track · 23 operate | ✅ |
 | **Strategy regimes** | 10 regimes (6 base + 4 special) | ✅ |
 | **Trading signals** | 22 — 20 per-ticker (actionable) + 2 market-wide (shadow) | |
 | **API endpoints** | 73 declared in `nuri/api/routes/` (76 counting the three declared on the app itself in `main.py`) | ✅ |
 | **Frontend routes** | 18 (Next.js on `:3000`) | |
 | **DB tables** | SQLite WAL · 61 tables (60 forward-only migrations) | ✅ |
-| **DB submodules** | 13 under `nuri/core/db/` — `connection.py` is the sole `sqlite3` importer, enforced by an AST sweep in CI | |
+| **DB submodules** | 15 under `nuri/core/db/` — `connection.py` is the sole `sqlite3` importer, enforced by an AST sweep in CI | |
 
 ## Documentation
 

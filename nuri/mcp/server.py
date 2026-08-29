@@ -4,7 +4,7 @@
   설정이 아니라 구조로 성립한다. 클라이언트(Claude Code 등)가 `.mcp.json` 의
   `nuri-read` 항목으로 프로세스를 필요 시 띄운다.
 - **read-only**: 쓰기 도구가 없고, 이 패키지는 `nuri.core.db` 의 `query()` 외에 어떤
-  DB 표면도 import 하지 않는다 (잠금: `tests/mcp/test_boundary.py`).
+  DB 표면도 import 하지 않는다 (잠금: `tests/mcp_server/test_readmodels_privacy.py::TestStructuralSweeps::test_no_write_helper_and_no_network_import`).
 - **로깅도 경계다**: 도구 인자·반환 행을 로그로 남기지 않는다 — stderr 로 새는 행이
   곧 유출이다.
 - 기존 `nuri-db`(raw SQLite MCP, 현재 비활성) 대비 존재 이유: **정규화 + 민감 필드
