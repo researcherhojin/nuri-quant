@@ -196,7 +196,8 @@ spellcheck: ## cspell check (uses .cspell.json — add words there for false pos
 		"nuri/**/CLAUDE.md" "tests/**/CLAUDE.md" "scripts/**/*.md" \
 		"docs/*.md" "README.md" "CLAUDE.md" "AGENTS.md" "CONTRIBUTING.md" \
 		".claude/rules/*.md" ".claude/commands/nuri-*.md" ".claude/agents/nuri-*.md" \
-		".claude/skills/nuri-*/**/*.md" ".github/workflows/*.yml" "frontend/e2e/*.ts" 2>&1 | tail -80 || true
+		".claude/skills/nuri-*/**/*.md" ".github/workflows/*.yml" "frontend/e2e/*.ts" \
+		"frontend/CLAUDE.md" "frontend/*.ts" "frontend/*.mjs" "frontend/.gitignore" 2>&1 | tail -80 || true
 
 diagnostics: typecheck spellcheck ## Run pyright + cspell — surfaces all IDE-level issues
 
