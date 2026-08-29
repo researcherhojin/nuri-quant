@@ -78,7 +78,7 @@ The loop at the bottom is the point of the project: a recommendation is not fini
 
 #### What actually runs it — no orchestrator
 
-There is no pipeline runner. `nuri/scheduler.py` registers 57 independent APScheduler jobs — **57 cron jobs · in-process**, nothing chaining them — and each becomes runnable when its inputs happen to already be in the database. Stages reach each other through SQLite tables, with exactly one exception.
+There is no pipeline runner. `nuri/scheduler.py` registers 58 independent APScheduler jobs — **58 cron jobs · in-process**, nothing chaining them — and each becomes runnable when its inputs happen to already be in the database. Stages reach each other through SQLite tables, with exactly one exception.
 
 ```mermaid
 flowchart TB
@@ -343,7 +343,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 7,864 collected across 363 files | ✅ |
+| **Backend tests** | 7,871 collected across 364 files | ✅ |
 | **Backend statement coverage** | 99% — 41 of 24,533 statements uncovered, 96 partial branches (`make test-fast`, 2026-08-29; excludes the 27 slow-marked tests, so it understates. Codecov `backend` flag is the CI ground truth) | |
 | **Frontend tests** | 1,648 across 141 vitest files — 99.87% statement coverage (2,393 of 2,396) | ✅ |
 | **E2E tests** | 89 across 10 Playwright specs | |
@@ -351,7 +351,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 | **Data collectors** | 27 collectors (BaseCollector pattern) — 22 are driven by collect-stage cron jobs, the rest run on demand | ✅ |
 | **Specialist agents** | 10 (consensus vote, weights sum to 1.0) | |
 | **Actor fleet** | 15 registered — 8 with a live caller, 7 dormant (implemented and tested, nothing calls them) + 3 infrastructure helpers | |
-| **Scheduler jobs** | 57 cron entries (APScheduler, in-process) — 29 collect · 1 analyze · 1 consensus · 5 track · 21 operate | ✅ |
+| **Scheduler jobs** | 58 cron entries (APScheduler, in-process) — 29 collect · 1 analyze · 1 consensus · 5 track · 21 operate | ✅ |
 | **Strategy regimes** | 10 regimes (6 base + 4 special) | ✅ |
 | **Trading signals** | 22 — 20 per-ticker (actionable) + 2 market-wide (shadow) | |
 | **API endpoints** | 73 declared in `nuri/api/routes/` (76 counting the three declared on the app itself in `main.py`) | ✅ |

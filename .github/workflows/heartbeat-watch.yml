@@ -1,0 +1,66 @@
+# 기계 밖 감시의 감시 절반 — dead-man heartbeat staleness 검사 (#1191 옵션 C).
+#
+# mini 의 스케줄러가 10분마다 `ops/heartbeat-mini` ref 를 갱신한다
+# (`nuri/alerts/offbox_heartbeat.py`). 이 워크플로는 GitHub 쪽에서 그 커밋
+# 시각의 staleness 를 재고, 임계(45분) 초과 시 #ops Discord webhook 으로 알린다.
+# mini 는 인바운드 불가(사설망, API 127.0.0.1 전용)라 pull 감시가 불가능하고,
+# 송신자의 어떤 사망도 "침묵" 으로 수렴하는 dead-man 구조가 유일한 형태다.
+#
+# - 임계 45분 = ping 10분 × 4~5회 결손 여유. 배포의 scheduler bounce(~수 분)와
+#   Actions cron 지연(공식적으로 best-effort, 수십 분 늦을 수 있음)을 흡수한다.
+# - 침묵이 지속되면 20분 주기로 알림이 반복된다 — 진행 중 prod 장애의 리마인더는
+#   #ops 의 역할이라 의도된 동작이다 (stateless 라 dedupe 상태를 두지 않는다).
+# - 공개 레포의 스케줄 워크플로는 60일 무활동 시 자동 비활성화된다 — 이 레포는
+#   일상 커밋이 있어 해당 없음. 장기 방치 시 이 줄이 그 이유를 알려줄 것.
+name: Heartbeat Watch
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check-staleness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check heartbeat staleness and alert on silence
+        env:
+          DISCORD_WEBHOOK_OPS: ${{ secrets.DISCORD_WEBHOOK_OPS }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          THRESHOLD_MIN=45
+
+          # ref 부재도 침묵이다 — 브랜치가 지워졌거나 첫 push 전이면 곧장 알린다.
+          ts=$(gh api "repos/${GITHUB_REPOSITORY}/branches/ops/heartbeat-mini" \
+                 --jq '.commit.commit.committer.date' 2>/dev/null || echo "MISSING")
+
+          now_epoch=$(date -u +%s)
+          if [ "$ts" = "MISSING" ]; then
+            age_min=99999
+            last_seen="(ref 없음)"
+          else
+            hb_epoch=$(date -u -d "$ts" +%s)
+            age_min=$(( (now_epoch - hb_epoch) / 60 ))
+            last_seen="$ts"
+          fi
+          echo "heartbeat age: ${age_min}min (last: ${last_seen}, threshold: ${THRESHOLD_MIN}min)"
+
+          if [ "$age_min" -le "$THRESHOLD_MIN" ]; then
+            echo "healthy"
+            exit 0
+          fi
+
+          # 알림은 의미+영향+조치 순 (alert readability 원칙). 실패해도 job 은
+          # 성공 처리하지 않는다 — webhook 죽음도 보여야 한다.
+          payload=$(jq -n \
+            --arg age "${age_min}" \
+            --arg last "${last_seen}" \
+            '{content: ("🔇 **mini heartbeat 침묵 " + $age + "분** (마지막: " + $last + ")\n영향: 스케줄러·로그인 세션·머신·네트워크 중 하나가 죽었을 수 있음 — 수집/브리프/알림 전체 정지 가능.\n조치: mini 전원·네트워크 확인 → 재부팅됐다면 FileVault 잠금 해제 + 콘솔 로그인 (LaunchAgents 는 로그인까지 미로드, #1191). 원격 진단: ssh 후 `pgrep -f nuri.scheduler`, `last reboot`.")}')
+          curl -sf -X POST -H "Content-Type: application/json" \
+            -d "$payload" "$DISCORD_WEBHOOK_OPS"
+          echo "alert sent (${age_min}min stale)"
