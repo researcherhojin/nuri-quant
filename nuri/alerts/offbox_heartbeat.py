@@ -7,7 +7,7 @@
 이관(B)은 pre-boot 잠금 앞에서 무효다. 그래서 **탐지를 기계 밖으로** 뺀다:
 
 - **송신(이 모듈, mini)**: 스케줄러 job 이 10분마다 빈-트리 커밋을
-  `refs/heads/ops/heartbeat-mini` 로 push. 로그인 세션 소멸·머신 다운·네트워크
+  `refs/nuri/heartbeat-mini` (커스텀 ref — 브랜치 아님) 로 push. 로그인 세션 소멸·머신 다운·네트워크
   단절·스케줄러 사망 **전부가 "침묵" 으로 수렴**한다 — 송신자가 죽는 것이 곧
   신호라서, 송신자를 살리려는 어떤 장치도 필요 없다 (dead-man 패턴).
 - **감시(기계 밖)**: `.github/workflows/heartbeat-watch.yml` 이 ref 의 커밋 시각
@@ -43,7 +43,10 @@ logger = logging.getLogger(__name__)
 #: git 의 잘 알려진 빈 트리 오브젝트 — 어떤 레포에도 존재한다.
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
-HEARTBEAT_REF = "refs/heads/ops/heartbeat-mini"
+# refs/heads 밖의 커스텀 네임스페이스 — GitHub 브랜치 목록·"recent pushes" 배너·
+# PR 프롬프트 어디에도 안 잡힌다 (2026-08-30, 배너가 매 10분 되살아나는 문제로 이전).
+# 브랜치 시절 이름: refs/heads/ops/heartbeat-mini.
+HEARTBEAT_REF = "refs/nuri/heartbeat-mini"
 
 #: mini 의 origin 은 https(익명 fetch 전용)라 push 대상은 ssh URL 을 명시한다.
 REMOTE_URL = "git@github.com:researcherhojin/nuri-quant.git"

@@ -146,14 +146,13 @@ class TestSenderAndWatcherAreWiredTogether:
           가짜 알림이 되지 않고, 너무 크면 탐지가 늦다. 20 < threshold ≤ 120 로 잠근다.
         """
         text = WORKFLOW.read_text(encoding="utf-8")
-        branch = HEARTBEAT_REF.removeprefix("refs/heads/")
+        ref_path = HEARTBEAT_REF.removeprefix("refs/")
         # substring 검사 금지 — `…-mini` 는 `…-mini-v2` 의 부분 문자열이라 rename 이
-        # 통과한다 (뮤테이션 실측 MISS). API 호출부에서 ref 토큰을 뽑아 동치 비교.
-        # 토큰은 %2F 인코딩 형태다 — 디코드 후 비교 (미인코딩 회귀도 여기서 잡힌다).
-        m_ref = re.search(r'branches/([A-Za-z0-9%/_.-]+)"', text)
+        # 통과한다 (뮤테이션 실측 MISS). Git Database API 호출부(`git/ref/<path>`)에서
+        # ref 토큰을 뽑아 동치 비교한다 (커스텀 ref 라 branches API 를 쓰지 않는다).
+        m_ref = re.search(r'git/ref/([A-Za-z0-9/_.-]+)"', text)
         assert m_ref, "워크플로에서 감시 대상 ref 를 찾을 수 없다"
-        decoded = m_ref.group(1).replace("%2F", "/")
-        assert decoded == branch, f"워크플로 ref {decoded!r} ≠ 송신 ref {branch!r}"
+        assert m_ref.group(1) == ref_path, f"워크플로 ref {m_ref.group(1)!r} ≠ 송신 ref {ref_path!r}"
         assert "DISCORD_WEBHOOK_OPS" in text, "알림 채널 secret 참조가 사라졌다"
 
         m = re.search(r"THRESHOLD_MIN=(\d+)", text)

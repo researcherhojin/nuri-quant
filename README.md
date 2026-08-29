@@ -300,6 +300,8 @@ LLM integrations are **wired but inactive** unless you set the corresponding env
 
 The reference setup is two machines by role: a development host, and an always-on receiver that runs the scheduler. `make deploy-mini` syncs them in one command. The receiver is the sole writer; the development host treats its database as a read replica, so adjudication records have exactly one ledger of record.
 
+The receiver is also watched from outside its own hardware: it force-pushes a dead-man heartbeat ref (`refs/nuri/heartbeat-mini`, an empty-tree commit — no code, no branch) every 10 minutes, and a scheduled GitHub Actions workflow alerts the ops channel when that ref goes silent for 45 minutes. Silence is the alarm; a dead machine cannot be asked to report itself.
+
 Production binds the API to `127.0.0.1`. The dashboard proxy is the only public surface and sits behind a password gate.
 
 ## Tech Stack

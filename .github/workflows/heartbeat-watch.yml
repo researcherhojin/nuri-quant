@@ -1,6 +1,6 @@
 # 기계 밖 감시의 감시 절반 — dead-man heartbeat staleness 검사 (#1191 옵션 C).
 #
-# mini 의 스케줄러가 10분마다 `ops/heartbeat-mini` ref 를 갱신한다
+# mini 의 스케줄러가 10분마다 `refs/nuri/heartbeat-mini` (커스텀 ref) 를 갱신한다
 # (`nuri/alerts/offbox_heartbeat.py`). 이 워크플로는 GitHub 쪽에서 그 커밋
 # 시각의 staleness 를 재고, 임계(45분) 초과 시 #ops Discord webhook 으로 알린다.
 # mini 는 인바운드 불가(사설망, API 127.0.0.1 전용)라 pull 감시가 불가능하고,
@@ -44,12 +44,17 @@ jobs:
           set -euo pipefail
           THRESHOLD_MIN=45
 
-          # ref 부재도 침묵이다 — 브랜치가 지워졌거나 첫 push 전이면 곧장 알린다.
-          # cspell:ignore Fheartbeat — %2F 인코딩이 만드는 파편, 단어가 아니다
-          # 슬래시는 %2F 로 — 미인코딩도 동작함을 2026-08-29 실측했지만(리뷰 P1 반박),
-          # 인코딩 형태가 GitHub 라우팅의 관용에 의존하지 않는다.
-          ts=$(gh api "repos/${GITHUB_REPOSITORY}/branches/ops%2Fheartbeat-mini" \
-                 --jq '.commit.commit.committer.date' 2>/dev/null || echo "MISSING")
+          # ref 부재도 침묵이다 — ref 가 지워졌거나 첫 push 전이면 곧장 알린다.
+          # 커스텀 ref(refs/nuri/…, 브랜치 아님)라 branches API 가 아니라 Git Database
+          # API 2단이다: ref → object sha → commit 의 committer date.
+          sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/nuri/heartbeat-mini" \
+                 --jq '.object.sha' 2>/dev/null || echo "MISSING")
+          if [ "$sha" = "MISSING" ]; then
+            ts="MISSING"
+          else
+            ts=$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${sha}" \
+                   --jq '.committer.date' 2>/dev/null || echo "MISSING")
+          fi
 
           now_epoch=$(date -u +%s)
           if [ "$ts" = "MISSING" ]; then
