@@ -82,7 +82,7 @@ class TechnicalCollector(BaseCollector):
             self.logger.warning(f"{ticker}: 데이터 부족 ({len(prices)}일)")
             return None
 
-        close = prices["close"].values.astype(float)
+        close = np.asarray(prices["close"], dtype=float)
 
         result = self._compute_talib(close)
 

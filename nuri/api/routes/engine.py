@@ -127,7 +127,7 @@ def get_certifications_history(
     sql += " ORDER BY id DESC LIMIT ?"
     params.append(limit)
 
-    rows = query(sql, params)
+    rows = query(sql, tuple(params))
 
     # Summary: 각 caller / regime 분포 + 최근 hash 변경 count (portfolio transition 감지)
     total_query = "SELECT COUNT(*) AS c FROM certifications"
