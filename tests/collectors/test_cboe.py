@@ -290,40 +290,51 @@ class TestCBOEExtractPCR:
             result = c._collect_totalpc()
         assert len(result) == 1
 
-    def test_collect_fred_pcr(self, monkeypatch):
+    def test_fred_tier_is_gone(self):
+        """FRED ECPCRATIO 티어는 제거됐다 — 2026-08-30 외부 실검증에서 FRED 가
+        "The series does not exist" 를 반환 (델리스트). 되살리면 매 실행 api_key 가
+        박힌 URL 이 WARNING 로그로 새는 것까지 같이 돌아온다."""
+        import nuri.collectors.cboe as cboe_mod
         from nuri.collectors.cboe import CBOECollector
 
-        c = CBOECollector()
-        c.fred_key = "test_key"
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "observations": [
-                {"date": "2025-03-14", "value": "0.85"},
-                {"date": "2025-03-13", "value": "."},
-                {"date": "2025-03-12", "value": "0.92"},
-            ]
-        }
-        mock_resp.raise_for_status = MagicMock()
-        with patch("nuri.collectors.cboe.requests.get", return_value=mock_resp):
-            result = c._collect_fred_pcr()
-        assert len(result) == 2
+        assert not hasattr(CBOECollector, "_collect_fred_pcr")
+        assert not hasattr(cboe_mod, "FRED_PCR_URL")
 
     def test_collect_fallback_chain(self, monkeypatch):
+        """CBOE 2개 티어가 죽어도 yfinance 티어가 값을 건지면 성공."""
         from nuri.collectors.cboe import CBOECollector
 
         c = CBOECollector()
-        c.fred_key = "test_key"
         with patch.object(c, "_collect_daily", side_effect=RuntimeError("fail")):
             with patch.object(c, "_collect_totalpc", side_effect=RuntimeError("fail")):
                 with patch.object(
                     c,
-                    "_collect_fred_pcr",
+                    "_collect_yfinance_spy_pcr",
                     return_value=[
-                        {"indicator": "put_call_ratio", "date": "2025-03-15", "value": 0.9, "source": "FRED"}
+                        {"indicator": "put_call_ratio", "date": "2025-03-15", "value": 1.2, "source": "yfinance_SPY"}
                     ],
                 ):
                     result = c.collect()
         assert len(result) == 1
+
+    def test_yfinance_none_chain_degrades_to_empty_not_crash(self, monkeypatch):
+        """yfinance 가 chain.calls=None 을 주면 티어가 죽지 않고 [] — 미가드 시
+        'NoneType' not subscriptable (2026-08-29 mini 실측: CBOE 403 국면에서 마지막
+        라이브 소스가 이 버그로 같이 죽어 PCR 이 6일 얼었다)."""
+        import sys
+        from types import SimpleNamespace
+
+        from nuri.collectors.cboe import CBOECollector
+
+        fake_ticker = SimpleNamespace(
+            options=("2026-08-31",),
+            option_chain=lambda exp: SimpleNamespace(calls=None, puts=None),
+        )
+        fake_yf = SimpleNamespace(Ticker=lambda sym: fake_ticker)
+        monkeypatch.setitem(sys.modules, "yfinance", fake_yf)
+
+        c = CBOECollector()
+        assert c._collect_yfinance_spy_pcr() == []
 
     def test_collect_all_fail(self, monkeypatch):
         """전면 실패는 `[]` 가 아니라 raise (#1042). 이전엔 `== []` 를 단언해 결함을 잠그고 있었다."""
