@@ -1843,4 +1843,35 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
             ON challenger_attempts(family, holdout_id, holdout_consumed);
     """,
     ),
+    (
+        59,
+        "maintenance_candidates — 유지보수 발굴 후보 원장, shadow mode (#1308 Phase 0)",
+        # incidents/discord_outbox 동형: staged → 사람 approve/reject → (사람 손 발행 후
+        # published 표기). GitHub 자동 쓰기는 없다 — Phase 0 수용 기준이자 잠금 테스트 대상.
+        #
+        # `UNIQUE(fingerprint)`: 같은 발견은 영원히 1행 — 재검출은 last_seen_at/seen_count
+        # 갱신. novelty(새 fingerprint 비율)·precision(승인율)·검토 지연(reviewed_at −
+        # created_at)이 4주 Reflect 의 판정 지표라 스키마가 곧 측정 설계다.
+        """
+        CREATE TABLE IF NOT EXISTS maintenance_candidates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            axis TEXT NOT NULL CHECK(axis IN
+                ('gate_liveness', 'doc_drift', 'scheduler_wiring',
+                 'stale_collector', 'dependency')),
+            title TEXT NOT NULL,
+            detail TEXT NOT NULL,
+            fingerprint TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'staged' CHECK(status IN
+                ('staged', 'approved', 'rejected', 'published')),
+            reviewed_at TEXT,
+            review_note TEXT,
+            last_seen_at TEXT NOT NULL,
+            seen_count INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_maintenance_status
+            ON maintenance_candidates(status, created_at);
+    """,
+    ),
 ]

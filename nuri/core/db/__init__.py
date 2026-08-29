@@ -68,6 +68,12 @@ from .execution_ops import (  # noqa: F401, E402
 # ═══════════════════════════════════════════════════════
 # Submodule re-exports — P2 Stage 2 PR-B (writer split)
 # ═══════════════════════════════════════════════════════
+from .maintenance_ops import (  # noqa: F401, E402
+    list_maintenance_candidates,
+    maintenance_review_stats,
+    review_maintenance_candidate,
+    stage_maintenance_candidate,
+)
 from .market_data import (  # noqa: F401, E402
     insert_events,
     upsert_ark,
