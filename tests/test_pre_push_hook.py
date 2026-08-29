@@ -18,6 +18,7 @@ exit code 도 없다. 그래서 여기서도 훅을 grep 하지 않고 **셸로 
   보고하지 않는다
 """
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -91,6 +92,98 @@ def test_missing_gate_blocks_instead_of_passing_silently(tmp_path):
         text=True,
     )
     assert proc.returncode != 0, "게이트 부재를 exit 0 으로 넘기면 훅이 있으나 마나다"
+
+
+def test_polluted_git_env_does_not_redirect_the_gate_to_another_tree(tmp_path):
+    """GIT_DIR/GIT_WORK_TREE 오염이 게이트를 다른 트리로 보내지 않는다 (#1314).
+
+    linked worktree push 에서 게이트가 push 트리가 아닌 메인 체크아웃을 검사했다
+    (실측: 다른 세션의 미커밋 파일 수백 개를 근거로 false-block — 역방향이면
+    false-pass). git 2.54 재현 실측으로는 건강한 worktree 의 훅 주입
+    (GIT_DIR=<main>/.git/worktrees/<wt>) 단독으로는 오해석이 없고, GIT_DIR 과
+    GIT_WORK_TREE 가 **둘 다** 다른 트리를 가리킬 때 재현된다 — 그 조합이
+    카나리아다. 훅의 `unset GIT_DIR GIT_WORK_TREE` 를 걷어내면 victim 게이트가
+    실행되어 FAIL (mutation 실측).
+    """
+    victim = tmp_path / "victim"
+    pusher = tmp_path / "pusher"
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    for repo, name in ((victim, "victim"), (pusher, "pusher")):
+        (repo / "scripts" / "verify").mkdir(parents=True)
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        (repo / GATE_REL).write_text(f'#!/usr/bin/env bash\npwd -P > "{logs / name}"\nexit 0\n', encoding="utf-8")
+    hook_copy = pusher / "scripts" / "hooks" / "pre-push"
+    hook_copy.parent.mkdir(parents=True)
+    shutil.copy2(HOOK, hook_copy)
+
+    env = {**os.environ, "GIT_DIR": str(victim / ".git"), "GIT_WORK_TREE": str(victim)}
+    proc = subprocess.run(
+        ["bash", str(hook_copy), "origin", "git@example.invalid:x/y.git"],
+        cwd=pusher,
+        env=env,
+        input=_PUSH_LINE + "\n",
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0, f"훅 rc={proc.returncode}\n{proc.stderr}"
+    assert not (logs / "victim").exists(), "게이트가 오염된 env 를 따라 다른 트리를 검사했다"
+    assert (logs / "pusher").exists(), "push 트리의 게이트가 실행되지 않았다"
+    gate_cwd = (logs / "pusher").read_text(encoding="utf-8").strip()
+    assert Path(gate_cwd) == Path(os.path.realpath(pusher)), f"게이트 cwd 가 push 트리가 아니다: {gate_cwd}"
+
+
+def test_push_from_linked_worktree_gates_the_worktree_not_the_main_checkout(tmp_path):
+    """실제 `git push` 로 훅을 발화 — 게이트는 push 하는 worktree 에서 돈다 (#1314).
+
+    git 이 훅에 주입하는 env 를 시뮬레이션하지 않고 진짜 push 로 잠근다. git 버전이
+    주입 방식을 바꿔도 관측 가능한 계약(게이트 cwd == worktree 루트)이 유지되는지를
+    본다. 글로벌 core.hooksPath / 사용자 gitconfig 간섭은 GIT_CONFIG_GLOBAL/SYSTEM
+    으로 차단 — 임시 레포 push 가 개발자 로컬 설정에 따라 흔들리면 안 된다.
+    """
+    main_repo = tmp_path / "main"
+    bare = tmp_path / "origin.git"
+    gate_log = tmp_path / "gate_cwd.txt"
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull}
+
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], env=env, check=True)
+    (main_repo / "scripts" / "verify").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=main_repo, env=env, check=True)
+    (main_repo / GATE_REL).write_text(f'#!/usr/bin/env bash\npwd -P >> "{gate_log}"\nexit 0\n', encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=main_repo, env=env, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t.invalid", "-c", "user.name=t", "commit", "-qm", "init"],
+        cwd=main_repo,
+        env=env,
+        check=True,
+    )
+    hook_installed = main_repo / ".git" / "hooks" / "pre-push"
+    shutil.copy2(HOOK, hook_installed)
+
+    worktree = tmp_path / "wt"
+    subprocess.run(
+        ["git", "worktree", "add", "-q", str(worktree), "-b", "feature"],
+        cwd=main_repo,
+        env=env,
+        check=True,
+    )
+
+    proc = subprocess.run(
+        ["git", "push", str(bare), "HEAD:refs/heads/feature"],
+        cwd=worktree,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0, f"push rc={proc.returncode}\n{proc.stderr}"
+    assert gate_log.exists(), "pre-push 훅이 게이트를 실행하지 않았다"
+    gate_cwd = gate_log.read_text(encoding="utf-8").strip()
+    assert Path(gate_cwd) == Path(os.path.realpath(worktree)), (
+        f"게이트가 worktree 가 아닌 트리에서 돌았다: {gate_cwd} — "
+        "false-pass 방향(다른 트리는 깨끗한데 push 트리가 더러움)이 열린다"
+    )
 
 
 def test_absent_interpreter_reports_non_execution_not_a_finding():

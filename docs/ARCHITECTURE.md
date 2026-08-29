@@ -159,7 +159,7 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-7,853 backend tests across 362 files + 1622 frontend vitest (141 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth — a local run measures a different statement set.
+7,855 backend tests across 362 files + 1622 frontend vitest (141 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth — a local run measures a different statement set.
 **Slow marker**: 27 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14).
 @pytest.fixture
 def db_path(tmp_path):

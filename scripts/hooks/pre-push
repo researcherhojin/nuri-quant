@@ -22,6 +22,13 @@
 
 set -uo pipefail
 
+# linked worktree 에서 git 은 훅에 GIT_DIR(경우에 따라 GIT_WORK_TREE)을 주입한다.
+# 이 값이 환경에 남으면 아래 rev-parse 와, exec 로 이어받는 게이트 내부의 모든 git
+# 호출이 push 하는 트리가 아닌 다른 트리를 볼 수 있다 (#1314 실측: 게이트가 메인
+# 체크아웃의 미커밋 파일 수백 개로 false-block — 역방향이면 false-pass). 훅의 cwd 는
+# 항상 push 하는 트리의 최상위이므로(githooks(5)) cwd 기반 발견이 정답이다.
+unset GIT_DIR GIT_WORK_TREE
+
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     echo "pre-push: not inside a git repository — refusing to push unchecked." >&2
     exit 1
