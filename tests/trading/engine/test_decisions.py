@@ -191,6 +191,37 @@ class TestQueryDecisions:
         rows = get_decisions(db_path=db_path)
         assert len(rows) == 2
 
+    def test_get_decisions_flags_regime_without_evidence(self, db_path):
+        """`regime_has_evidence` 가 라이브 기록과 백필을 가른다 (#1303).
+
+        `record_decision` 은 regime 컬럼과 evidence 행을 **같은 조건**
+        (`if context.get("regime")`)으로 쓴다 — 라이브 행은 둘을 같이 갖는다. 백필(#1264)은
+        컬럼만 채우고 evidence 를 일부러 안 만들므로, 이 비대칭이 사후 복사를 가려낼 유일한
+        신호다. 이 플래그가 없으면 목록 화면이 둘을 구분하지 못한다.
+
+        Mutation lock: 쿼리에서 EXISTS 서브쿼리를 지우면 KeyError 로 FAIL.
+        """
+        from nuri.core.db import upsert_decision_evidence
+
+        upsert_decision(
+            {"date": "2026-04-10", "ticker": "AAA", "action": "BUY", "confidence": 70.0, "regime": "bull_low_vol"},
+            db_path,
+        )
+        upsert_decision(
+            {"date": "2026-04-10", "ticker": "BBB", "action": "BUY", "confidence": 70.0, "regime": "bull_low_vol"},
+            db_path,
+        )
+        live = [r for r in get_decisions(db_path=db_path) if r["ticker"] == "AAA"][0]
+        upsert_decision_evidence(
+            live["id"],
+            [{"source_type": "regime", "source_key": "current", "action": None, "confidence": None, "detail": "{}"}],
+            db_path,
+        )
+
+        by_ticker = {r["ticker"]: r for r in get_decisions(db_path=db_path)}
+        assert by_ticker["AAA"]["regime_has_evidence"], "라이브 기록인데 evidence 없음으로 읽힌다"
+        assert not by_ticker["BBB"]["regime_has_evidence"], "백필인데 라이브로 읽힌다"
+
     def test_get_decisions_filter_ticker(self, db_path):
         upsert_decision({"date": "2026-04-10", "ticker": "NVDA", "action": "BUY", "confidence": 75.0}, db_path)
         upsert_decision({"date": "2026-04-10", "ticker": "TSLA", "action": "SELL", "confidence": 60.0}, db_path)

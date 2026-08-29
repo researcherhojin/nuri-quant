@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, act } from "@testing-library/react";
+import { DECISIONS } from "@/lib/strings";
 
 // Mock next/link
 vi.mock("next/link", () => ({
@@ -57,6 +58,38 @@ describe("DecisionsPage", () => {
     await act(async () => { render(await DecisionsPage()); });
     expect(screen.getByText("Decision Intelligence")).toBeInTheDocument();
     expect(screen.getByText(/의사결정 저널/)).toBeInTheDocument();
+  });
+
+  // #1303: 백필된 regime 을 목록에서도 구분한다. 백필 후에는 과거 행 대부분이 regime 을
+  // 갖게 되므로, 표시가 없으면 훑어보는 사람이 "처음부터 레짐 맥락이 있었다" 로 읽는다.
+  describe("백필된 regime 표식 (#1303)", () => {
+    const row = (extra: Record<string, unknown>) => ({
+      ...mockDecisionsResponse.decisions[0], ...extra,
+    });
+    const resp = (decisions: unknown[]) => ({ ...mockDecisionsResponse, decisions, count: decisions.length });
+
+    it("evidence 없는 regime 에 표식을 붙인다", async () => {
+      setupFetchAPI(resp([row({ id: 1, ticker: "AAA", regime_has_evidence: 0 })]));
+      const { default: DecisionsPage } = await import("@/app/decisions/page");
+      await act(async () => { render(await DecisionsPage()); });
+      expect(screen.getByText(DECISIONS.REGIME_BACKFILLED_TAG)).toBeInTheDocument();
+      // 축약 태그만으로는 뜻이 안 통한다 — 전체 문구가 title 로 붙어 있어야 한다.
+      expect(screen.getByTitle(DECISIONS.REGIME_BACKFILLED)).toBeInTheDocument();
+    });
+
+    it("라이브로 기록된 regime 에는 붙이지 않는다", async () => {
+      setupFetchAPI(resp([row({ id: 1, ticker: "AAA", regime_has_evidence: 1 })]));
+      const { default: DecisionsPage } = await import("@/app/decisions/page");
+      await act(async () => { render(await DecisionsPage()); });
+      expect(screen.queryByText(DECISIONS.REGIME_BACKFILLED_TAG)).toBeNull();
+    });
+
+    it("regime 자체가 없으면 표식도 없다", async () => {
+      setupFetchAPI(resp([row({ id: 1, ticker: "AAA", regime: null, regime_has_evidence: 0 })]));
+      const { default: DecisionsPage } = await import("@/app/decisions/page");
+      await act(async () => { render(await DecisionsPage()); });
+      expect(screen.queryByText(DECISIONS.REGIME_BACKFILLED_TAG)).toBeNull();
+    });
   });
 
   it("renders summary cards with correct labels", async () => {

@@ -30,6 +30,8 @@ interface Decision {
   action: string;
   confidence: number;
   regime: string | null;
+  // #1303: 결정 시점에 기록된 regime 인지 (백필분은 false)
+  regime_has_evidence?: boolean | number;
   macro_score: number | null;
   vix: number | null;
   fear_greed: number | null;
@@ -259,6 +261,11 @@ function DecisionTable({ decisions, filtered, today }: { decisions: Decision[]; 
                     </td>
                     <td className="px-3 py-1 hidden md:table-cell text-xs text-muted-foreground">
                       {d.regime ?? "—"}
+                      {d.regime && !d.regime_has_evidence && (
+                        <span className="ml-1 text-[9px] text-muted-foreground/60" title={DECISIONS.REGIME_BACKFILLED}>
+                          {DECISIONS.REGIME_BACKFILLED_TAG}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-1 text-right hidden md:table-cell font-mono text-xs tabular-nums">
                       {d.entry_price ? formatMoney(d.entry_price, { ticker: d.ticker }) : "—"}
