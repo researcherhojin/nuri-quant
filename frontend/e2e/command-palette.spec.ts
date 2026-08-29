@@ -34,6 +34,7 @@ test("Cmd-K opens the palette and Escape closes it", async ({ page }) => {
 test("filtering and Enter jumps to the route", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: 20000 });
   await openPalette(page);
+  // cspell:ignore deci — "decisions" 를 4글자까지만 타이핑하는 픽스처
   await page.getByTestId("command-palette-input").fill("deci");
   await expect(page.getByTestId("palette-route-/decisions")).toBeVisible();
   await page.keyboard.press("Enter");
