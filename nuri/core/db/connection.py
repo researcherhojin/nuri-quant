@@ -62,12 +62,18 @@ def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
 
 
 @contextmanager
-def get_db(db_path: Optional[Path] = None) -> Iterator[sqlite3.Connection]:
+def get_db(db_path: Optional[Path] = None, readonly: bool = False) -> Iterator[sqlite3.Connection]:
     """DB 컨텍스트 매니저. 성공 시 자동 commit, 실패 시 rollback.
 
     Resolves `get_connection` via the facade module so test conftest
     `monkeypatch.setattr(db_mod, "get_connection", ...)` (e.g. tmpfs MEMORY
     journal patch in tests/conftest.py) is honored post-Stage-2 split.
+
+    `readonly=True` 는 연결 직후 `PRAGMA query_only=ON` — 이후 모든 쓰기가 SQLite
+    수준에서 `OperationalError` 다 (#1306: LLM 노출 표면의 read-only 는 관행이
+    아니라 엔진이 강제해야 한다). PRAGMA 방식인 이유: `mode=ro` URI 와 달리
+    `get_connection` 서명(conftest 의 `_test_connect(dp=None)` 패치 포함)을
+    건드리지 않고, WAL -shm 부재 엣지도 없다.
 
     Return annotation `Iterator[Connection]` is the canonical pyright pattern
     for `@contextmanager` — Pylance / pyright otherwise infer
@@ -77,6 +83,8 @@ def get_db(db_path: Optional[Path] = None) -> Iterator[sqlite3.Connection]:
     from nuri.core import db as _facade
 
     conn = _facade.get_connection(db_path)
+    if readonly:
+        conn.execute("PRAGMA query_only=ON")
     try:
         yield conn
         conn.commit()

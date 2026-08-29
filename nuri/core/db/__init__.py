@@ -124,9 +124,9 @@ def get_schema_version(db_path: Optional[Path] = None) -> int:
 # ═══════════════════════════════════════════════════════
 
 
-def query(sql: str, params: tuple = (), db_path: Optional[Path] = None) -> list[dict]:
-    """범용 읽기 쿼리 → list[dict]."""
-    with get_db(db_path) as conn:
+def query(sql: str, params: tuple = (), db_path: Optional[Path] = None, readonly: bool = False) -> list[dict]:
+    """범용 읽기 쿼리 → list[dict]. `readonly=True` 는 쓰기를 엔진 수준에서 차단 (#1306)."""
+    with get_db(db_path, readonly=readonly) as conn:
         rows = conn.execute(sql, params).fetchall()
         return [dict(row) for row in rows]
 
