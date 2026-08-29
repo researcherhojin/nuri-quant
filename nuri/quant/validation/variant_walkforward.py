@@ -260,6 +260,7 @@ def _evaluate_variant(
     cost_bps: float,
     alpha_eff: float,
     global_warmup: int,
+    allow_holdout: bool = True,
 ) -> dict[str, Any]:
     """단일 변형: pooled OOS Sharpe + 순열 p + FROZEN holdout (baseline 과 동일 절차).
 
@@ -298,10 +299,12 @@ def _evaluate_variant(
     discovery = p_value < alpha_eff and real_pooled >= gate["min_oos_sharpe"]
 
     # FROZEN holdout: discovery 통과 변형만 1회 개봉. 실패 변형은 봉인 유지 (None).
+    # allow_holdout=False = 게이트가 holdout 은퇴를 선고한 상태 (#1307 codex P1) —
+    # 은퇴 후에도 개봉하면 "봉인 소진" 선고가 무의미해진다 (사후 튜닝 누설 경로).
     holdout_sharpe: Optional[float] = None
     holdout_drawdown: Optional[float] = None
     holdout_ok = False
-    if discovery:
+    if discovery and allow_holdout:
         holdout_ret = aligned[best_k][split:]
         holdout_sharpe = _sharpe_from_returns(holdout_ret)
         holdout_drawdown = _max_drawdown(holdout_ret)
@@ -340,16 +343,22 @@ def run_variant_search(
     db_path: Optional[Path] = None,
     config: Optional[dict] = None,
     persist: bool = False,
+    gate: bool = False,
 ) -> dict[str, Any]:
     """pre-registered 변형 전체를 동일 gate 로 측정 → 결과 표 + 승격 자격 판정.
 
     cost_bps / fx_series 필수 (gross/통화-naive 검증 차단 — baseline 과 동일).
     persist=True 면 변형별 1행을 backtests 에 기록 (/api/research/backtests surface).
+    gate=True 면 결과를 champion-challenger 게이트(#1307)로 판정해 attempt 원장에
+    기록한다 — persist 필수 (원장에 없는 근거로는 승격 제안이 성립하지 않는다).
+    결과 dict 에 `gate` 키가 추가된다.
     """
     if cost_bps is None:
         raise ValueError("cost_bps required — gross(거래비용 미반영) 검증은 승격 근거로 금지")
     if fx_series is None:
         raise ValueError("fx_series (KRW/USD) required — 통화-naive 검증은 승격 근거로 금지")
+    if gate and not persist:
+        raise ValueError("gate=True requires persist=True — 원장 없는 승격 근거 금지 (#1307)")
 
     cfg = config or _load_variants_config()
     if close is None:
@@ -376,11 +385,22 @@ def run_variant_search(
     if len(close) <= global_warmup + 2:
         raise ValueError(f"need > {global_warmup + 2} rows after global warmup={global_warmup}, got {len(close)}")
 
+    # 게이트 모드: holdout 이 이미 은퇴했으면 **평가 전에** 봉인을 유지한다 (#1307
+    # codex P1) — adjudicate 가 사후에 holdout_retired 를 선고해도 값이 이미
+    # 노출·영속됐다면 다음 캠페인이 그 창에 대고 튜닝할 수 있다.
+    allow_holdout = True
+    if gate:
+        from nuri.quant.validation.champion_gate import holdout_is_retired
+
+        allow_holdout = not holdout_is_retired(db_path=db_path)
+
     fx_ret = fx_series.pct_change(fill_method=None).reindex(close.index).fillna(0.0)
     results = []
     for v in variants:
         logger.info("evaluating variant %s ...", v["name"])
-        r = _evaluate_variant(close, vol, fx_ret, v, cfg, cost_bps, alpha_eff, global_warmup)
+        r = _evaluate_variant(
+            close, vol, fx_ret, v, cfg, cost_bps, alpha_eff, global_warmup, allow_holdout=allow_holdout
+        )
         results.append(r)
         if persist:
             save_backtest(
@@ -419,7 +439,7 @@ def run_variant_search(
     for r in results:
         r["walkforward_run_id"] = run_ids.get(r["name"])
 
-    return {
+    out = {
         "universe_n": close.shape[1],
         "panel_rows": len(close),
         "panel_start": pd.Timestamp(close.index[0]).strftime("%Y-%m-%d"),
@@ -431,6 +451,16 @@ def run_variant_search(
         "variants": results,
         "promotion_eligible": [r["name"] for r in results if r["promotion_eligible"]],
     }
+    if gate:
+        # deferred import — 게이트 없이 측정만 하는 경로에 원장 의존을 얹지 않는다
+        from nuri.quant.validation.champion_gate import adjudicate
+
+        out["gate"] = adjudicate(out, db_path=db_path)
+        # 표면 단일화 (#1307 codex P2, #1305 split-brain 교훈과 동일): 게이트 모드에서
+        # 승격 표면은 순차 verdict 하나다 — run 내부 gate 만 통과한 이름이 위 키로
+        # 광고되면 소비자가 편한 쪽을 읽는다.
+        out["promotion_eligible"] = out["gate"]["promotion_candidates"]
+    return out
 
 
 def _log_walkforward_runs(

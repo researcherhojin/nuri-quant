@@ -1801,4 +1801,46 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE decision_outcomes ADD COLUMN execution_config_sha_v1 TEXT;
     """,
     ),
+    (
+        58,
+        "challenger_attempts — champion-challenger 시도 원장 (#1307)",
+        # 순차·적응적 탐색(제안→기각→재제안)의 attempt ledger. 기존 검증기의 FWER 통제는
+        # 한 run 의 동결 후보 집합 안에서만 유효하다 — 시간축을 통제하려면 **기각된 시도까지**
+        # 전부 남아 다음 캠페인의 유의수준(alpha-spending)에 반영돼야 한다. 기각 이력이
+        # 사라지면 p-hacking 이 캠페인 단위로 재개된다 (Codex challenge P1).
+        #
+        # append-only. verdict 는 기계가 내리되 'promotion_candidate' 는 **제안**일 뿐이다 —
+        # 승격은 항상 사람의 STRATEGY PR (§2.6). evidence_axis='research' 는 walk-forward,
+        # 'live' 는 §3.11 결정원장 판정 — 두 축은 한 verdict 안에서 섞지 않는다.
+        # code_rev / execution_config_sha_v1 은 #1305 self-measured 바인딩.
+        """
+        CREATE TABLE IF NOT EXISTS challenger_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            family TEXT NOT NULL,
+            campaign_seq INTEGER NOT NULL,
+            challenger TEXT NOT NULL,
+            champion TEXT,
+            verdict TEXT NOT NULL CHECK(verdict IN
+                ('rejected', 'promotion_candidate', 'holdout_retired')),
+            evidence_axis TEXT NOT NULL DEFAULT 'research'
+                CHECK(evidence_axis IN ('research', 'live')),
+            p_value REAL,
+            oos_sharpe REAL,
+            holdout_sharpe REAL,
+            alpha_spent REAL NOT NULL,
+            holdout_id TEXT,
+            holdout_consumed INTEGER NOT NULL DEFAULT 0,
+            walkforward_run_id TEXT,
+            code_rev TEXT,
+            execution_config_sha_v1 TEXT,
+            metrics_json TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(family, campaign_seq, challenger)
+        );
+        CREATE INDEX IF NOT EXISTS idx_challenger_family
+            ON challenger_attempts(family, campaign_seq);
+        CREATE INDEX IF NOT EXISTS idx_challenger_holdout
+            ON challenger_attempts(family, holdout_id, holdout_consumed);
+    """,
+    ),
 ]
