@@ -48,6 +48,7 @@ jobs:
             // `npm_and_yarn`, github-actions 는 `github_actions` 로 나온다.
             // 잠금: tests/scripts/test_dependabot_automerge_policy.py
             const supportedEcosystems = new Set([
+              "uv",
               "pip",
               "npm",
               "npm_and_yarn",

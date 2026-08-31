@@ -3,8 +3,15 @@ version: 2
 # minor/patch updates into a single PR per ecosystem.
 # Major version bumps still get individual PRs (manual review required).
 updates:
-  # ─── Python (uv/pip) ────────────────────────────────────
-  - package-ecosystem: pip
+  # ─── Python (uv) ────────────────────────────────────────
+  # `pip` 이 아니라 `uv` 다 (#1349). dependabot-core 의 pip file fetcher 는
+  # Pipfile.lock / poetry.lock / pdm.lock 3개만 알고 `uv.lock` 이라는 문자열이
+  # 아예 없다 — 그래서 pip 로는 제안이 항상 pyproject 한 줄짜리가 되고, CI 의
+  # `uv sync --frozen` 은 그 불일치를 검사하지 않아 **제안된 버전이 설치된 적
+  # 없는 채 전부 green** 이 된다 (#1341 이 그 사고였다). uv ecosystem 은 실제로
+  # `uv lock --upgrade-package <dep>` 를 돌려 pyproject + uv.lock 2파일을 내고,
+  # 해결 불가한 bump 는 제안 단계에서 걸러 PR 자체를 열지 않는다.
+  - package-ecosystem: uv
     directory: "/"
     schedule:
       interval: weekly
@@ -20,9 +27,10 @@ updates:
     # fastapi: pinned to 0.128.x by openbb-core (#277). Ignore dependabot
     # proposals to bump past 0.129 until openbb relaxes its constraint.
     # ruff: openbb-core 1.6.7 이 ruff>=0.15,<0.16 을 하드 핀 — 0.16+ 은 `uv lock`
-    # 이 resolve 못 한다. dependabot 은 pyproject 한 줄만 바꾸고 uv.lock 을 안
-    # 건드려서 CI 가 기존 lock(0.15.8)으로 돌아 전부 green 이 되고, 머지 후에야
-    # `uv sync --extra dev` 가 깨진다 (#1341 close). cap 이 풀리면 이 ignore 와
+    # 이 resolve 못 한다 (#1341 close). uv ecosystem 으로 옮긴 뒤로는 resolver 가
+    # 제안 단계에서 걸러 PR 이 안 열리므로 이 ignore 는 belt-and-braces 지만,
+    # 해결 불가가 조용한 no-op 이 아니라 job failure 로 뜨는 열린 버그가 있어
+    # (dependabot-core#15603) 명시 ignore 가 더 싸다. cap 이 풀리면 이 ignore 와
     # pyproject.toml 의 정확 핀을 같이 올릴 것.
     ignore:
       - dependency-name: "fastapi"
