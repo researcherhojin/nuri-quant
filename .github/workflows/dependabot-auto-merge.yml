@@ -12,6 +12,12 @@ permissions:
   contents: write
   pull-requests: write
 
+# 한 PR 에 run 이 겹치지 않게 직렬화한다 (#1364). 직렬화가 없으면 오래된 run 의
+# "머지해도 됨" 판정이 나중 force-push 를 살아남는다 — #1355 한 건에서만 run 5개가 떴다.
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   enable-auto-merge:
     name: Enable Auto Merge
@@ -19,6 +25,54 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # `pull_request_target` 에서 ref 없는 checkout 은 **base 기본 브랜치**로 간다 —
+      # 즉 이 워크플로 파일과 같은 출처의 신뢰 코드다. `ref:` 를 절대 붙이지 말 것:
+      # actions/checkout 의 unsafe-PR 가드는 여기서 무력하다 (fork PR 에서만 발동하는데
+      # dependabot 브랜치는 same-repo 라 early-return 한다).
+      # 잠금: tests/scripts/test_check_lock_major_bump.py::TestWorkflowWiring
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # 두 `uv.lock` 을 **데이터로만** 가져온다. base64 가 아니라 raw 미디어 타입:
+      # contents API 의 base64 상한은 1 MB 인데 uv.lock 은 이미 860 KB (82%) 이고
+      # PR 한 건에서 +24 KB 늘었다. raw 는 100 MB 까지 문서화돼 있다.
+      # 작업 트리가 아니라 $RUNNER_TEMP 로 받는다 — 무엇도 이걸 import/build 대상으로
+      # 해석할 수 없게. `uv sync`/`uv lock`/`pip install` 을 절대 이 파일에 대고 돌리지
+      # 말 것 (그건 신뢰 못 할 메타데이터로 sdist 빌드 백엔드를 실행하는 것이다).
+      # fetch 실패는 `set -euo pipefail` 로 **잡을 빨갛게** 만든다 — 인프라 장애를
+      # "깨끗함" 으로 보고하지 않기 위해서다.
+      - name: Fetch uv.lock from base and head (data only — never executed)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          for side in base head; do
+            sha=$([ "$side" = base ] && echo "$BASE_SHA" || echo "$HEAD_SHA")
+            gh api "repos/${REPO}/contents/uv.lock?ref=${sha}" \
+              -H "Accept: application/vnd.github.raw" > "${RUNNER_TEMP}/${side}.lock"
+          done
+          wc -c "${RUNNER_TEMP}/base.lock" "${RUNNER_TEMP}/head.lock"
+
+      # 내용 판정은 스텝을 죽이지 않는다 — verdict 를 내보내고 정책이 읽는다.
+      # 인프라 장애(위 스텝)만 잡을 빨갛게 만든다.
+      - name: Gate on the real uv.lock diff
+        id: lockgate
+        run: |
+          if python3 scripts/verify/check_lock_major_bump.py \
+               --base "${RUNNER_TEMP}/base.lock" --head "${RUNNER_TEMP}/head.lock"; then
+            echo "verdict=clean" >> "$GITHUB_OUTPUT"
+          else
+            echo "verdict=blocked" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Fetch Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v3
@@ -29,12 +83,18 @@ jobs:
         id: policy
         uses: actions/github-script@v9
         env:
+          LOCK_VERDICT: ${{ steps.lockgate.outputs.verdict }}
           PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
           DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
           DEPENDENCY_GROUP: ${{ steps.metadata.outputs.dependency-group }}
         with:
           script: |
+            // ⚠️ **positive assertion 이어야 한다** — "clean 이 아니면 거부".
+            // 반대로 "blocked 와 같으면 거부" 라고 쓰면 게이트 스텝이 죽거나 스킵돼
+            // output 이 빈 문자열일 때 통과한다. 이 레포가 두 번 데인 fail-open
+            // 형태다 (#910/#911 rc=127, #953/#954 exit 0).
+            const lockVerdict = process.env.LOCK_VERDICT || "";
             const ecosystem = process.env.PACKAGE_ECOSYSTEM || "";
             const updateType = process.env.UPDATE_TYPE || "";
             const dependencyGroup = process.env.DEPENDENCY_GROUP || "";
@@ -60,7 +120,13 @@ jobs:
             let shouldMerge = false;
             let reason = "unsupported ecosystem";
 
-            if (!supportedEcosystems.has(ecosystem)) {
+            if (lockVerdict !== "clean") {
+              // dependabot 의 semver 는 manifest 변화만 본다. `numpy>=1.26.0` 같은 하한
+              // 제약 아래서는 lock 의 major 이동이 update-type 에 아예 안 나타나고
+              // dependency-names 에 이름조차 없다 (#1355 → #1364).
+              shouldMerge = false;
+              reason = `uv.lock gate verdict: ${lockVerdict || "missing"}`;
+            } else if (!supportedEcosystems.has(ecosystem)) {
               shouldMerge = false;
               reason = `unsupported ecosystem: ${ecosystem || "unknown"}`;
             } else if (updateType === "version-update:semver-patch") {
@@ -152,6 +218,33 @@ jobs:
             core.notice(
               `Auto-merge enabled for PR #${context.payload.pull_request.number} (${process.env.POLICY_REASON}).`,
             );
+
+      # 게이트가 막아도 **이전 run 이 켜둔** auto-merge 가 남아 있으면 그대로 머지된다.
+      # dependabot 이 rebase 로 force-push 하면 opened 시점의 판정이 살아남는다.
+      - name: Revoke auto-merge when the policy refuses
+        if: steps.policy.outputs.should-merge != 'true'
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.graphql(
+                `
+                  mutation DisableAutoMerge($pullRequestId: ID!) {
+                    disablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId }) {
+                      pullRequest {
+                        number
+                      }
+                    }
+                  }
+                `,
+                { pullRequestId: context.payload.pull_request.node_id },
+              );
+              core.notice(`Auto-merge revoked for PR #${context.payload.pull_request.number}.`);
+            } catch (error) {
+              // 애초에 켜져 있지 않았으면 여기로 온다 — 정상이다.
+              core.info(`No auto-merge to revoke: ${error.message}`);
+            }
 
       - name: Skip notice
         if: steps.policy.outputs.should-merge != 'true'
