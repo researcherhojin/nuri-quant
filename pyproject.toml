@@ -94,7 +94,7 @@ dev = [
     # to balance shards by historical duration. 갱신: `make sync-test-durations`.
     "pytest-split>=0.10.0",
     "pytest-xdist>=3.8.0",
-    "ruff==0.15.8",  # 정확 핀 — CI ruff-action 이 이 핀을 읽어 로컬/CI 단일 버전 (#1235). 0.16+ 은 openbb-core 가 ruff<0.16 을 하드 핀이라 불가 — cap 이 풀리면 함께 올린다
+    "ruff==0.16.5",  # 정확 핀 — CI ruff-action 이 이 핀을 읽어 로컬/CI 단일 버전 (#1235). 0.16+ 은 openbb-core 가 ruff<0.16 을 하드 핀이라 불가 — cap 이 풀리면 함께 올린다
 ]
 
 [project.urls]
