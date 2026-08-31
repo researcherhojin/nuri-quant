@@ -142,8 +142,15 @@ if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
         # `command not found` 로 조용히 건너뛴다 (2026-08-10 실측).
         UV_BIN=$(command -v uv 2>/dev/null || echo "/opt/homebrew/bin/uv")
         if [ -x "$UV_BIN" ]; then
-            log "deps changed → $UV_BIN sync --extra dev"
-            "$UV_BIN" sync --extra dev >>"$LOG" 2>&1 || log "ERROR: uv sync 실패 — 구 venv 로 재기동된다"
+            # `--locked` 필수 (#1350). 플래그 없는 sync 는 lock 을 **다시 쓴다**
+            # (`--frozen` = "sync without updating the uv.lock file" 의 대우).
+            # uv.lock 은 tracked 라 재작성되면 워킹트리가 dirty 가 되고, 다음 주기가
+            # 위 `ABORT: uncommitted local changes` 에 걸려 exit 0 으로 조용히 멈춘다
+            # — 실패로도 안 보이는 영구 배포 동결. `--frozen` 은 오답이다: 트리는
+            # 지키지만 구 버전을 무신호로 설치한다. `--locked` 는 불일치 시 아무것도
+            # 쓰지 않고 non-zero 로 죽어 아래 soft-fail 로 떨어진다.
+            log "deps changed → $UV_BIN sync --extra dev --locked"
+            "$UV_BIN" sync --extra dev --locked >>"$LOG" 2>&1 || log "ERROR: uv sync 실패 — 구 venv 로 재기동된다"
         else
             log "ERROR: uv 를 못 찾음 ($UV_BIN) — deps 미동기화 상태로 재기동한다"
         fi

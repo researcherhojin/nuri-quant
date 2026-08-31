@@ -127,6 +127,25 @@ class TestAutopullBouncesDaemons:
         assert "uv sync" in out, f"deps 가 바뀌었는데 sync 하지 않았다:\n{out}"
         assert out.index("uv sync") < out.index("kickstart"), f"sync 가 재기동보다 뒤에 있다:\n{out}"
 
+    def test_dep_change_syncs_with_locked(self, world):
+        """`uv sync` 는 `--locked` 로 불러야 한다 (#1350).
+
+        플래그가 없으면 sync 가 tracked `uv.lock` 을 **다시 쓴다**. 그러면 워킹트리가
+        dirty 가 되고, 다음 5분 주기가 `ABORT: uncommitted local changes` 에 걸려
+        **exit 0** 으로 멈춘다 — 실패로도 안 보이는 영구 배포 동결. `--frozen` 도
+        오답이다(트리는 지키지만 구 버전을 무신호로 설치). 위
+        `test_dep_change_syncs_venv_before_restarting` 의 `"uv sync" in out` 은
+        어느 플래그든 통과하므로 이 축을 잠그지 못한다.
+        """
+        world.land({"pyproject.toml": '[project]\nname = "x"\n'})
+        out = world.run()
+        syncs = [ln for ln in out.splitlines() if ln.startswith("uv sync")]
+        assert syncs, f"pyproject 가 바뀌었는데 uv sync 를 부르지 않았다:\n{out}"
+        assert all("--locked" in ln for ln in syncs), (
+            "uv sync 에 --locked 가 없다 — 플래그 없는 sync 는 tracked uv.lock 을 "
+            "재작성해 autopull 을 영구 정지시킨다:\n" + "\n".join(syncs)
+        )
+
     def test_uv_is_called_by_absolute_path_not_bare_name(self):
         """launchd 는 로그인 셸 PATH 를 안 물려준다 — 이름으로 부르면 조용히 건너뛴다.
 
