@@ -147,8 +147,13 @@ fi
 #   2) importlib stale cache (#576 본체): uv sync 로 신규 패키지 (예: hmmlearn)
 #      추가돼도 이미 떠 있는 process 는 못 봄 — restart 가 유일한 정석.
 #   3) 매 deploy 마다 fresh process 보장 → 코드 변경 reload 별도 trigger 불필요.
-# Why always sync (#574): lock 일치 시 거의 no-op, 불일치 시 명시 abort 해
-#   silent drift 차단. transient 인프라 (네트워크) 흡수 위해 1회 retry.
+# Why always sync (#574): lock 일치 시 거의 no-op. transient 인프라 (네트워크)
+#   흡수 위해 1회 retry.
+#   ⚠️ `--frozen` 은 드리프트를 **탐지하지 않는다** (#1360). uv 문서 원문이
+#   "Sync without updating the uv.lock file" 이라 lock 을 진실의 원천으로 삼고
+#   pyproject 와의 정합성 검사를 건너뛴다 — 불일치면 abort 가 아니라 exit 0 으로
+#   **구 버전을 조용히 설치**한다. 드리프트를 크게 실패시키는 곳은 autopull 쪽
+#   (`--locked`, #1351) 이고, 여기서 그걸 원하면 `--locked` 로 바꿔야 한다.
 # Verify launchctl 동작 (#576 Codex Round 1 #1 blocker): legacy `launchctl
 #   load/unload` 는 실제 stop/start 실패해도 0 반환할 수 있음. PID 확인 polling
 #   으로 race 보장 실현. unload 후 PID 사라짐 / load 후 PID 살아남 verify.
@@ -225,7 +230,8 @@ else
             warn "sync 실패 + scheduler 재가동 실패 또는 crash-loop — production downtime. SSH 로 'tail data/logs/scheduler.err' 확인 + 수동 복구 필요"
         fi
     fi
-    fail "uv sync --frozen 실패 (1 retry 후) — uv.lock divergence 또는 transient 인프라 (네트워크/디스크). 로컬에서 'uv lock' 재생성 후 commit/push, 또는 Mac mini 에서 'rm -rf .venv && uv sync' 수동 복구"
+    # divergence 를 원인 후보로 적지 않는다 — `--frozen` 은 드리프트에서 안 죽는다 (#1360).
+    fail "uv sync --frozen 실패 (1 retry 후) — transient 인프라 (네트워크/디스크/휠 빌드). Mac mini 에서 'rm -rf .venv && uv sync --frozen' 수동 복구. lock 드리프트는 이 경로에서 실패로 나타나지 않으므로 'uv lock' 재생성은 헛수고다 — 드리프트 의심이면 'uv lock --check' 로 따로 볼 것"
 fi
 
 # 6a. scheduler load + verify PID 살아남

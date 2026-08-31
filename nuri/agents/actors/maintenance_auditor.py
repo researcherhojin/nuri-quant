@@ -353,7 +353,14 @@ def scan_stale_collectors(ctx: ScanContext) -> list[dict[str, str]]:
 
 
 def scan_dependency(ctx: ScanContext) -> list[dict[str, str]]:
-    """uv.lock ↔ pyproject 드리프트 — `--frozen` 배포(deploy-mini step 5)를 깨는 축."""
+    """uv.lock ↔ pyproject 드리프트 축.
+
+    ⚠️ 이 드리프트가 깨는 곳은 **autopull** 이다 (`uv sync --extra dev --locked`,
+    #1351) — non-zero 로 죽어 soft-fail 로 ERROR 를 남기고 구 venv 로 재기동한다.
+    deploy-mini step 5 의 `--frozen` 은 **안 깨진다**: uv 문서상 "Sync without
+    updating the uv.lock file" 이라 정합성 검사를 건너뛰고 exit 0 으로 구 버전을
+    조용히 설치한다 (#1360 — 이 docstring 이 원래 그 반대로 적혀 있었다).
+    """
     import shutil
 
     uv = shutil.which("uv") or ("/opt/homebrew/bin/uv" if Path("/opt/homebrew/bin/uv").exists() else None)
@@ -371,8 +378,9 @@ def scan_dependency(ctx: ScanContext) -> list[dict[str, str]]:
             {
                 "axis": "dependency",
                 "title": "uv.lock 이 pyproject 와 어긋남",
-                "detail": "`uv lock --check` 실패 — deploy-mini 의 `uv sync --frozen` 이 깨진다.\n"
-                + (rc.stdout + rc.stderr).strip()[-300:],
+                "detail": "`uv lock --check` 실패 — autopull 의 `uv sync --locked` 가 죽고 "
+                "(구 venv 로 재기동), deploy-mini 의 `--frozen` 은 안 죽는 대신 구 버전을 "
+                "조용히 설치한다.\n" + (rc.stdout + rc.stderr).strip()[-300:],
             }
         ]
     return []
