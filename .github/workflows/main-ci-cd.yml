@@ -366,6 +366,47 @@ jobs:
       - name: Scan for personal financial data leaks
         run: python3 scripts/verify/check_privacy_leak.py
 
+  # ── uv.lock major-boundary gate (#1364) ──
+  # `needs: changes` 를 **일부러 안 건다** — privacy-scan 과 같은 이유로 항상 돌아야
+  # required check 로 안정적이다. 여기가 진짜 차단선이다: dependabot-auto-merge.yml 의
+  # 게이트는 "안 돌면 머지" 극성이라(그 워크플로가 실패하면 auto-merge 가 그대로 산다)
+  # 세 번 데인 fail-open 형태다. required check 는 극성이 반대다 — **통과가 없으면
+  # 머지가 없다**. 등록은 branch protection 변경이라 별도 수동 단계다.
+  lock-gate:
+    name: uv.lock Major Boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # stdlib only (tomllib) — setup-python 불필요, 러너 기본 python3 로 충분
+      - name: Compare base and head uv.lock
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          IS_DEPENDABOT: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+          REVIEWED: ${{ contains(github.event.pull_request.labels.*.name, 'lock-bump-reviewed') }}
+        run: |
+          set -euo pipefail
+          git show "origin/${BASE_REF}:uv.lock" > "${RUNNER_TEMP}/base.lock"
+          if python3 scripts/verify/check_lock_major_bump.py \
+               --base "${RUNNER_TEMP}/base.lock" --head uv.lock; then
+            exit 0
+          fi
+          # 사람 PR 은 막지 않는다 — `uv lock -U` 로 numpy 2 를 **의도적으로** 채택하는
+          # 경로가 있어야 한다. 무인 머지만이 문제였다.
+          if [ "$IS_DEPENDABOT" != "true" ]; then
+            echo "::notice::major 경계를 넘지만 사람 PR 이다 — 의도된 채택이면 그대로 진행"
+            exit 0
+          fi
+          if [ "$REVIEWED" = "true" ]; then
+            echo "::notice::lock-bump-reviewed 라벨 — 사람이 검토했다"
+            exit 0
+          fi
+          echo "::error::dependabot PR 이 major 경계를 넘는다. 사람이 검토한 뒤 \
+          'lock-bump-reviewed' 라벨을 붙일 것 (#1364)"
+          exit 1
+
   # ── Shell script lint ──
   # shellcheck로 scripts/ 하위 **전체** .sh 린트. Graduated from warning-only 2026-04-15 —
   # passed cleanly across multiple consecutive runs (docs/TODO.md Tier 1 #7

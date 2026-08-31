@@ -194,11 +194,12 @@ jobs:
           script: |
             await github.graphql(
               `
-                mutation EnableAutoMerge($pullRequestId: ID!) {
+                mutation EnableAutoMerge($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) {
                   enablePullRequestAutoMerge(
                     input: {
                       pullRequestId: $pullRequestId
                       mergeMethod: SQUASH
+                      expectedHeadOid: $expectedHeadOid
                     }
                   ) {
                     pullRequest {
@@ -211,7 +212,10 @@ jobs:
                 }
               `,
               {
+                // 게이트가 **판정한 그 head** 에 묶는다. 그 사이 force-push 가 있었으면
+                // mutation 이 실패하고, 새 run 이 새 head 를 다시 판정한다.
                 pullRequestId: context.payload.pull_request.node_id,
+                expectedHeadOid: context.payload.pull_request.head.sha,
               },
             );
 
@@ -221,8 +225,13 @@ jobs:
 
       # 게이트가 막아도 **이전 run 이 켜둔** auto-merge 가 남아 있으면 그대로 머지된다.
       # dependabot 이 rebase 로 force-push 하면 opened 시점의 판정이 살아남는다.
+      # ⚠️ `always()` 가 **필수**다. GitHub Actions 의 `if:` 는 상태 함수가 없으면
+      # `success()` 를 암묵적으로 포함하므로, lock fetch·게이트·metadata·정책 중
+      # 하나라도 실패하면 이 스텝이 통째로 스킵되고 앞선 clean run 이 켜둔
+      # auto-merge 가 그대로 살아남는다. 판정이 없거나 'true' 가 아니면 전부 거부로
+      # 취급한다 — 판정 부재는 통과가 아니다.
       - name: Revoke auto-merge when the policy refuses
-        if: steps.policy.outputs.should-merge != 'true'
+        if: always() && steps.policy.outputs.should-merge != 'true'
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -242,11 +251,22 @@ jobs:
               );
               core.notice(`Auto-merge revoked for PR #${context.payload.pull_request.number}.`);
             } catch (error) {
-              // 애초에 켜져 있지 않았으면 여기로 온다 — 정상이다.
-              core.info(`No auto-merge to revoke: ${error.message}`);
+              // ⚠️ 모든 에러를 삼키면 fail-open 이다. 인증/권한/네트워크 실패까지
+              // "해제됨" 으로 보고하면, 앞선 clean run 이 켜둔 auto-merge 가 살아남아
+              // 차단된 head 가 그대로 머지된다. **"애초에 안 켜져 있었다" 만** 통과시킨다.
+              const message = String(error.message || "");
+              if (/not enabled|no auto[- ]?merge|Auto-merge is not enabled/i.test(message)) {
+                core.info(`No auto-merge to revoke: ${message}`);
+              } else {
+                core.setFailed(`Failed to revoke auto-merge — it may still be armed: ${message}`);
+              }
             }
 
       - name: Skip notice
         if: steps.policy.outputs.should-merge != 'true'
+        env:
+          # 계산된 값을 shell 에 직접 보간하지 않는다 — 지금은 lock 이 좌우하지 않지만
+          # 신뢰 경계를 습관으로 지킨다.
+          POLICY_REASON: ${{ steps.policy.outputs.reason }}
         run: |
-          echo "Auto-merge not enabled: ${{ steps.policy.outputs.reason }}"
+          printf 'Auto-merge not enabled: %s\n' "$POLICY_REASON"

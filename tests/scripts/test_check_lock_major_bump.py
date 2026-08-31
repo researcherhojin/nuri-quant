@@ -132,6 +132,15 @@ class TestMajorBoundary:
         rc, out = run(_lock(("weird", "1.2.3")), _lock(("weird", "v1.2.3")), capsys)
         assert rc == 1, out
 
+    def test_a_version_with_trailing_garbage_is_refused(self, run, capsys):
+        """`1.2.3garbage` 가 조용히 `1.2.3` 으로 읽히면 fail-closed 규칙이 거짓이 된다.
+
+        prefix 매칭 정규식이면 통과한다 — codex 리뷰가 잡은 축.
+        """
+        rc, out = run(_lock(("weird", "1.2.3")), _lock(("weird", "1.2.3garbage")), capsys)
+        assert rc == 1, out
+        assert "unparseable" in out, out
+
     def test_a_malformed_lock_is_refused_not_passed(self, run, capsys):
         rc, out = run(_lock(("numpy", "1.26.4")), "this is not toml [[[", capsys)
         assert rc == 1, out
@@ -231,15 +240,62 @@ class TestWorkflowWiring:
         actions/checkout 의 `allow-unsafe-pr-checkout` 가드는 여기서 **무력하다** —
         fork PR 에서만 발동하는데 dependabot 브랜치는 same-repo 라 early-return 한다.
         """
-        for step in self._steps():
+        checkouts = [s for s in self._steps() if str(s.get("uses", "")).startswith("actions/checkout")]
+        assert checkouts, "checkout 스텝이 없다 — 이 잠금이 공허해진다"
+        for step in checkouts:
             with_ = step.get("with") or {}
             assert "ref" not in with_, f"checkout 에 ref 가 붙었다: {step}"
-            assert "pull_request.head" not in str(with_), f"head 를 참조한다: {step}"
+            assert "pull_request.head" not in str(with_), f"checkout 이 head 를 참조한다: {step}"
+
+    def test_the_head_sha_is_only_ever_read_as_data(self):
+        """head SHA 를 **읽는** 것은 안전하다 — 그 코드를 **실행**하는 것이 금지다.
+
+        lock fetch 는 head SHA 로 파일 내용을 가져오고, enable 은 그 SHA 에 auto-merge 를
+        묶는다. 둘 다 데이터 사용이다. 금지선은 위 `test_no_step_checks_out_pr_head` 다.
+        """
+        for step in self._steps():
+            run = str(step.get("run", ""))
+            for danger in ("uv sync", "uv lock", "uv run", "pip install"):
+                assert danger not in run, f"가져온 lock 을 대상으로 {danger} 를 돌린다: {step}"
 
     def test_the_gate_step_is_not_conditional_or_soft(self):
         gate = next(s for s in self._steps() if "check_lock_major_bump.py" in str(s.get("run", "")))
         assert "if" not in gate, "게이트에 if 가 붙으면 조용히 안 돌 수 있다"
         assert not gate.get("continue-on-error"), "continue-on-error 는 게이트를 무력화한다"
+
+    def test_enabling_is_bound_to_the_gated_head(self):
+        """`expectedHeadOid` 없이 켜면 게이트가 판정하지 않은 head 에 무장될 수 있다."""
+        enable = next(
+            s for s in self._steps() if "enablePullRequestAutoMerge" in str(s.get("with", {}).get("script", ""))
+        )
+        script = str(enable["with"]["script"])
+        assert "expectedHeadOid" in script, "enable 이 판정한 head 에 묶이지 않는다"
+        assert "pull_request.head.sha" in script, "expectedHeadOid 에 실제 head SHA 를 안 넘긴다"
+
+    def test_revocation_does_not_swallow_every_error(self):
+        """모든 에러를 삼키면 fail-open 이다 — 인증/권한/네트워크 실패가 '해제됨' 이 된다.
+
+        앞선 clean run 이 켜둔 auto-merge 가 살아남아 차단된 head 가 그대로 머지된다.
+        """
+        revoke = next(
+            s for s in self._steps() if "disablePullRequestAutoMerge" in str(s.get("with", {}).get("script", ""))
+        )
+        script = str(revoke["with"]["script"])
+        assert "core.setFailed" in script, "해제 실패를 조용히 넘긴다 — fail-open"
+        assert "not enabled" in script, "'애초에 안 켜져 있었다' 만 통과시키는 분기가 없다"
+
+    def test_revocation_runs_even_when_an_earlier_step_failed(self):
+        """`if:` 에 상태 함수가 없으면 `success()` 가 암묵 포함된다 — 게이트가 죽으면
+
+        해제 스텝이 통째로 스킵되고 앞선 run 이 켜둔 auto-merge 가 살아남는다.
+        판정 부재는 통과가 아니다.
+        """
+        revoke = next(
+            s for s in self._steps() if "disablePullRequestAutoMerge" in str(s.get("with", {}).get("script", ""))
+        )
+        assert "always()" in str(revoke.get("if", "")), (
+            f"해제가 success() 에 묶여 있다 — 게이트 실패 시 스킵된다: {revoke.get('if')}"
+        )
 
     def test_auto_merge_is_revoked_when_the_policy_says_no(self):
         """게이트가 막아도 **이전 run 이 켜둔** auto-merge 가 남아 있으면 그대로 머지된다.
@@ -250,3 +306,30 @@ class TestWorkflowWiring:
         revoke = [s for s in steps if "disablePullRequestAutoMerge" in str(s.get("with", {}).get("script", ""))]
         assert revoke, "정책이 거부해도 기존 auto-merge 를 해제하지 않는다"
         assert "!= 'true'" in str(revoke[0].get("if", "")), f"해제 조건이 없다: {revoke[0].get('if')}"
+
+
+class TestBlockingCiGate:
+    """진짜 차단선 — auto-merge 워크플로는 '안 돌면 머지' 극성이라 그것만으로는 부족하다."""
+
+    @staticmethod
+    def _job() -> dict:
+        wf = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "main-ci-cd.yml").read_text(encoding="utf-8"))
+        return wf["jobs"]["lock-gate"]
+
+    def test_the_job_exists_and_runs_the_gate(self):
+        job = self._job()
+        runs = " ".join(str(s.get("run", "")) for s in job["steps"])
+        assert "check_lock_major_bump.py" in runs, "차단선 잡이 게이트를 안 부른다"
+
+    def test_the_job_is_not_gated_on_changed_paths(self):
+        """`needs: changes` 를 걸면 문서-only PR 에서 스킵돼 required check 가 불안정해진다.
+
+        같은 함정을 privacy-scan 이 이미 피하고 있다.
+        """
+        assert "needs" not in self._job(), "경로 필터에 걸리면 required check 로 못 쓴다"
+
+    def test_a_human_can_still_adopt_a_major_deliberately(self):
+        """사람 PR 을 하드 블록하면 numpy 2 를 의도적으로 채택할 경로가 사라진다."""
+        runs = " ".join(str(s.get("run", "")) for s in self._job()["steps"])
+        assert "IS_DEPENDABOT" in runs, "dependabot 여부로 분기하지 않는다"
+        assert "lock-bump-reviewed" in runs, "사람 검토 후 통과시킬 라벨 경로가 없다"

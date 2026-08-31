@@ -50,9 +50,20 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-#: PEP 440 의 release 부분만 뽑는다. pre/post/dev 접미사는 major 경계와 무관하므로 버린다
-#: (`0.12.10b0` -> (0,12,10), `2026.1.post1` -> (2026,1)). 앞에 붙는 `1!` 은 epoch.
-_RELEASE = re.compile(r"^(?:(\d+)!)?(\d+(?:\.\d+)*)")
+#: PEP 440 **전체**를 앵커링해서 매칭한다. release 부분만 뽑되(`0.12.10b0` -> (0,12,10),
+#: `2026.1.post1` -> (2026,1)), 접두사만 맞는 문자열(`1.2.3garbage`)은 거부한다 —
+#: prefix 매칭이면 쓰레기가 조용히 `1.2.3` 으로 읽혀 fail-closed 규칙이 거짓이 된다.
+_RELEASE = re.compile(
+    r"""^
+    (?:(?P<epoch>\d+)!)?
+    (?P<release>\d+(?:\.\d+)*)
+    (?:[-_.]?(?:a|b|c|rc|alpha|beta|pre|preview)[-_.]?\d*)?
+    (?:-\d+|[-_.]?(?:post|rev|r)[-_.]?\d*)?
+    (?:[-_.]?dev[-_.]?\d*)?
+    (?:\+[a-z0-9]+(?:[-_.][a-z0-9]+)*)?
+    $""",
+    re.VERBOSE | re.IGNORECASE,
+)
 
 #: 이 이상이면 연도(또는 빌드번호)지 semver major 가 아니다. 두 번째 성분까지 보는 것은
 #: `astropy-iers-data 0.2026.3.30.0.54.34` 때문이다 — 없으면 매년 1월 1일에 0.x-minor 로
@@ -96,7 +107,7 @@ def release(version: str) -> tuple[int, tuple[int, ...]] | None:
     m = _RELEASE.match(version.strip())
     if not m:
         return None
-    return int(m.group(1) or 0), tuple(int(x) for x in m.group(2).split("."))
+    return int(m.group("epoch") or 0), tuple(int(x) for x in m.group("release").split("."))
 
 
 def _is_calendar(rel: tuple[int, ...]) -> bool:
