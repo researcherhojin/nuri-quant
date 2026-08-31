@@ -149,6 +149,13 @@ if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
             # — 실패로도 안 보이는 영구 배포 동결. `--frozen` 은 오답이다: 트리는
             # 지키지만 구 버전을 무신호로 설치한다. `--locked` 는 불일치 시 아무것도
             # 쓰지 않고 non-zero 로 죽어 아래 soft-fail 로 떨어진다.
+            #
+            # soft-fail 이후에도 **재기동은 한다** — 의도된 선택이다. "구 venv + 새
+            # 코드" 에 ImportError 위험이 있는 건 맞지만, 대안(재기동 보류)은 #1017
+            # 사고 그대로다: autopull 이 bounce 를 안 해 7일간 구코드로 돌았고 신호가
+            # 없었다. 크래시는 KeepAlive·watchdog 이 표면화하지만 침묵은 못 본다.
+            # 잠금: tests/scripts/test_autopull_restarts_daemons.py
+            #       ::test_daemons_still_restart_when_sync_fails
             log "deps changed → $UV_BIN sync --extra dev --locked"
             "$UV_BIN" sync --extra dev --locked >>"$LOG" 2>&1 || log "ERROR: uv sync 실패 — 구 venv 로 재기동된다"
         else
