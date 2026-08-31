@@ -40,6 +40,11 @@ AUTOMERGE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "dependabot-auto-merg
 # 새 생태계를 dependabot.yml 에 추가하면 여기에도 등재해야 한다 (미등재 시 아래
 # `test_every_configured_ecosystem_is_mapped` 가 FAIL — 조용히 통과하지 않는다).
 METADATA_NAME = {
+    # dependabot-core `uv/lib/dependabot/uv/package_manager.rb` 의
+    # `ECOSYSTEM = "uv"` / `NAME = "uv"`. 같은 경로로 npm_and_yarn 을 보면
+    # `ECOSYSTEM = "npm_and_yarn"` 이라 아래 npm 매핑과 일치한다 — 이 소스가
+    # fetch-metadata 출력의 정본이 맞다는 교차확인 (#1349).
+    "uv": "uv",
     "pip": "pip",
     "npm": "npm_and_yarn",
     "github-actions": "github_actions",
