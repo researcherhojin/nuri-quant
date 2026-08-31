@@ -19,9 +19,16 @@ updates:
       prefix: "chore(deps)"
     # fastapi: pinned to 0.128.x by openbb-core (#277). Ignore dependabot
     # proposals to bump past 0.129 until openbb relaxes its constraint.
+    # ruff: openbb-core 1.6.7 이 ruff>=0.15,<0.16 을 하드 핀 — 0.16+ 은 `uv lock`
+    # 이 resolve 못 한다. dependabot 은 pyproject 한 줄만 바꾸고 uv.lock 을 안
+    # 건드려서 CI 가 기존 lock(0.15.8)으로 돌아 전부 green 이 되고, 머지 후에야
+    # `uv sync --extra dev` 가 깨진다 (#1341 close). cap 이 풀리면 이 ignore 와
+    # pyproject.toml 의 정확 핀을 같이 올릴 것.
     ignore:
       - dependency-name: "fastapi"
         versions: [">=0.129.0"]
+      - dependency-name: "ruff"
+        versions: [">=0.16.0"]
     groups:
       # Bundle all dev tooling (ruff/pytest/coverage) into one PR
       python-dev:
