@@ -58,7 +58,8 @@ def world(tmp_path: Path):
         f'if [ "$1" = "list" ]; then for l in {" ".join(RESIDENT)}; do echo "1 0 $l"; done; exit 0; fi\n'
         f'echo "launchctl $*" >> "{calls}"\nexit 0\n'
     )
-    (binz / "uv").write_text(f'#!/bin/sh\necho "uv $*" >> "{calls}"\nexit 0\n')
+    # UV_STUB_RC 로 sync 실패를 흉내낸다 (기본 0 — 기존 테스트 무영향).
+    (binz / "uv").write_text(f'#!/bin/sh\necho "uv $*" >> "{calls}"\nexit ${{UV_STUB_RC:-0}}\n')
     for f in ("launchctl", "uv"):
         (binz / f).chmod(0o755)
 
@@ -85,12 +86,13 @@ def world(tmp_path: Path):
         _git(side, "commit", "-m", "change")
         _git(side, "push", "-q", "origin", "main")
 
-    def run() -> str:
+    def run(**env_extra: str) -> str:
         env = {
             **os.environ,
             "PATH": f"{binz}:{os.environ['PATH']}",
             "NURI_REPO": str(work),
             "HOME": str(tmp_path),
+            **env_extra,
         }
         subprocess.run(["bash", str(AUTOPULL)], env=env, check=False, capture_output=True, timeout=120)
         return calls.read_text() if calls.exists() else ""
@@ -126,6 +128,44 @@ class TestAutopullBouncesDaemons:
         out = world.run()
         assert "uv sync" in out, f"deps 가 바뀌었는데 sync 하지 않았다:\n{out}"
         assert out.index("uv sync") < out.index("kickstart"), f"sync 가 재기동보다 뒤에 있다:\n{out}"
+
+    def test_dep_change_syncs_with_locked(self, world):
+        """`uv sync` 는 `--locked` 로 불러야 한다 (#1350).
+
+        플래그가 없으면 sync 가 tracked `uv.lock` 을 **다시 쓴다**. 그러면 워킹트리가
+        dirty 가 되고, 다음 5분 주기가 `ABORT: uncommitted local changes` 에 걸려
+        **exit 0** 으로 멈춘다 — 실패로도 안 보이는 영구 배포 동결. `--frozen` 도
+        오답이다(트리는 지키지만 구 버전을 무신호로 설치). 위
+        `test_dep_change_syncs_venv_before_restarting` 의 `"uv sync" in out` 은
+        어느 플래그든 통과하므로 이 축을 잠그지 못한다.
+        """
+        world.land({"pyproject.toml": '[project]\nname = "x"\n'})
+        out = world.run()
+        syncs = [ln for ln in out.splitlines() if ln.startswith("uv sync")]
+        assert syncs, f"pyproject 가 바뀌었는데 uv sync 를 부르지 않았다:\n{out}"
+        assert all("--locked" in ln for ln in syncs), (
+            "uv sync 에 --locked 가 없다 — 플래그 없는 sync 는 tracked uv.lock 을 "
+            "재작성해 autopull 을 영구 정지시킨다:\n" + "\n".join(syncs)
+        )
+
+    def test_daemons_still_restart_when_sync_fails(self, world):
+        """sync 가 실패해도 재기동은 한다 — 실수가 아니라 의도된 선택이다.
+
+        `--locked` 는 lock 불일치 시 non-zero 로 죽으므로 이 경로의 발화 빈도가
+        올라간다. 그때 "구 venv + 새 코드" 가 되는 것은 사실이고 ImportError 위험이
+        있지만, 대안(재기동 보류)은 이 파일 상단이 기록한 **#1017 사고 그대로**다 —
+        autopull 이 데몬을 bounce 하지 않아 7일간 구코드로 돌았고 아무 신호가 없었다.
+        크래시는 launchd KeepAlive 와 watchdog 이 표면화하지만 침묵은 아무도 못 본다.
+        재기동을 sync 성공에 게이트하려는 변경은 이 테스트에서 막힌다 — 되돌리기
+        전에 위 사고를 먼저 읽으라는 뜻이다.
+        """
+        world.land({"nuri/core/rules.py": "X = 1\n", "pyproject.toml": '[project]\nname = "x"\n'})
+        out = world.run(UV_STUB_RC="1")
+        assert "uv sync" in out, f"sync 를 시도조차 안 했다:\n{out}"
+        for label in RESIDENT:
+            assert re.search(rf"launchctl kickstart -k \S*{re.escape(label)}", out), (
+                f"sync 실패를 이유로 {label} 재기동을 건너뛰었다 — 구코드로 계속 돈다 (#1017):\n{out}"
+            )
 
     def test_uv_is_called_by_absolute_path_not_bare_name(self):
         """launchd 는 로그인 셸 PATH 를 안 물려준다 — 이름으로 부르면 조용히 건너뛴다.
