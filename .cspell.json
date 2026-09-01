@@ -747,6 +747,8 @@
     "rsi",
     "rsync",
     "ruff",
+    "rundir",
+    "rundirs",
     "runpy",
     "safeslice",
     "samp",
