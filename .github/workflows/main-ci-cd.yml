@@ -85,6 +85,9 @@ jobs:
               - 'uv.lock'
               - 'Makefile'
               - 'config/**'
+              # ledger-only PR(#1419)이 shard 를 아예 안 돌면, 손상된 ledger 가
+              # 그 PR 에선 초록이고 다음 PR 의 전 shard 를 터뜨린다 — split 입력도 backend 다.
+              - '.test_durations'
               - '.github/workflows/**'
               - '.github/actions/**'
             frontend:
