@@ -16,6 +16,7 @@ dependabot 은 manifest 변화로 semver 를 분류하므로 numpy 는 "업데�
 
 from __future__ import annotations
 
+import json
 import textwrap
 from pathlib import Path
 
@@ -333,3 +334,113 @@ class TestBlockingCiGate:
         runs = " ".join(str(s.get("run", "")) for s in self._job()["steps"])
         assert "IS_DEPENDABOT" in runs, "dependabot 여부로 분기하지 않는다"
         assert "lock-bump-reviewed" in runs, "사람 검토 후 통과시킬 라벨 경로가 없다"
+
+
+def _npm_lock(*packages: tuple[str, str], nested: tuple[str, str, str] | None = None) -> str:
+    """최소한이지만 **진짜** package-lock.json (lockfileVersion 3)."""
+    pkgs: dict = {"": {"name": "frontend", "version": "0.1.0"}}
+    for name, version in packages:
+        pkgs[f"node_modules/{name}"] = {"version": version}
+    if nested is not None:
+        parent, name, version = nested
+        pkgs[f"node_modules/{parent}/node_modules/{name}"] = {"version": version}
+    return json.dumps({"lockfileVersion": 3, "packages": pkgs})
+
+
+class TestNpmLockGate:
+    """npm 축 (#1367) — 규칙이 uv 와 **다르다**. 그 차이가 실측에서 나왔다."""
+
+    @staticmethod
+    def _run(tmp_path, base_text: str, head_text: str, capsys) -> tuple[int, str]:
+        from scripts.verify.check_lock_major_bump import main
+
+        (tmp_path / "b.json").write_text(base_text, encoding="utf-8")
+        (tmp_path / "h.json").write_text(head_text, encoding="utf-8")
+        rc = main(["--ecosystem", "npm", "--base", str(tmp_path / "b.json"), "--head", str(tmp_path / "h.json")])
+        return rc, capsys.readouterr().out
+
+    def test_the_recharts_immer_rider_is_refused(self, tmp_path, capsys):
+        """실제 사고 (#821): 제목은 recharts minor, lock 은 immer 10 -> 11 major."""
+        before = _npm_lock(("recharts", "3.8.1"), ("immer", "10.2.0"))
+        after = _npm_lock(("recharts", "3.9.2"), ("immer", "11.1.11"))
+        rc, out = self._run(tmp_path, before, after, capsys)
+        assert rc == 1, out
+        assert "immer 10.2.0 -> 11.1.11" in out and "(major)" in out, out
+
+    def test_a_zero_x_minor_is_allowed_on_npm(self, tmp_path, capsys):
+        """uv 와 정반대다 — 이 테스트가 그 차이의 근거다.
+
+        npm 은 0.x 가 9% 뿐이고 대부분 헤드라인 패키지의 내부 서브패키지다.
+        0.x 규칙을 켜면 `@base-ui/react` 의 `@base-ui/utils`, vite 의
+        `@oxc-project/types` 처럼 부모와 함께 움직이는 것들이 걸린다 (실측 2건).
+        """
+        before = _npm_lock(("@base-ui/react", "1.5.0"), ("@base-ui/utils", "0.2.9"))
+        after = _npm_lock(("@base-ui/react", "1.6.0"), ("@base-ui/utils", "0.3.1"))
+        rc, out = self._run(tmp_path, before, after, capsys)
+        assert rc == 0, out
+
+    def test_nested_duplicates_at_different_versions_are_normal(self, tmp_path, capsys):
+        """npm 중첩 트리는 같은 패키지를 여러 버전으로 갖는 게 정상이다.
+
+        uv 의 resolution-marker fork 차단 로직을 그대로 옮기면 정상 트리가 전부
+        fail-closed 된다 — 구현 중 실제로 밟았다 (`@napi-rs/wasm-runtime` 0.2.12 +
+        1.1.5 동시 존재).
+        """
+        lock = _npm_lock(("a", "1.0.0"), ("dep", "1.1.5"), nested=("a", "dep", "0.2.12"))
+        rc, out = self._run(tmp_path, lock, lock, capsys)
+        assert rc == 0, out
+
+    def test_a_crossing_in_a_nested_slot_is_still_seen(self, tmp_path, capsys):
+        """경로가 아니라 **이름**으로 키를 잡으면 중첩 슬롯의 이동이 통째로 사라진다.
+
+        같은 이름이 여러 슬롯에 있으면 last-writer-wins 로 하나만 남아, 나머지
+        슬롯의 major 이동이 비교 대상에서 빠진다. 위 테스트는 lock 을 자기 자신과
+        비교하므로 이 축을 잠그지 못한다 — 뮤테이션으로 실측해서 알았다.
+        """
+        before = _npm_lock(("a", "1.0.0"), ("dep", "5.0.0"), nested=("a", "dep", "1.0.0"))
+        after = _npm_lock(("a", "1.0.0"), ("dep", "6.0.0"), nested=("a", "dep", "2.0.0"))
+        rc, out = self._run(tmp_path, before, after, capsys)
+        assert rc == 1, f"major 이동을 놓쳤다:\n{out}"
+        # **두 슬롯 다** 보여야 한다. 이름으로 키를 잡으면 하나가 다른 하나를 덮어써
+        # 이동 하나가 통째로 사라진다 — 그때도 rc 는 1 이라 rc 만 보면 안 잡힌다.
+        assert "dep 5.0.0 -> 6.0.0" in out, f"top-level 슬롯의 이동이 사라졌다:\n{out}"
+        assert "dep 1.0.0 -> 2.0.0" in out, f"중첩 슬롯의 이동이 사라졌다:\n{out}"
+
+    def test_a_prerelease_version_parses(self, tmp_path, capsys):
+        """실 lock 의 `2.0.0-next.6` / `1.0.0-beta.2` 가 fail-closed 되면 안 된다."""
+        before = _npm_lock(("resolve", "2.0.0-next.6"))
+        after = _npm_lock(("resolve", "2.0.0-next.7"))
+        rc, out = self._run(tmp_path, before, after, capsys)
+        assert rc == 0, out
+
+    def test_an_unknown_lockfile_version_is_refused(self, tmp_path, capsys):
+        """`packages` 를 **채워서** 준다 — 비우면 "패키지 0건" 으로 걸려서
+
+        lockfileVersion 검사를 지워도 초록이 된다. 뮤테이션으로 실측해서 고쳤다.
+        """
+        v2 = json.dumps({"lockfileVersion": 2, "packages": {"": {"name": "f"}, "node_modules/a": {"version": "1.0.0"}}})
+        rc, out = self._run(tmp_path, _npm_lock(("a", "1.0.0")), v2, capsys)
+        assert rc == 1, out
+        assert "lockfileVersion" in out, out
+
+    def test_the_repo_npm_lock_parses(self):
+        from scripts.verify.check_lock_major_bump import parse_npm_lock
+
+        pkgs = parse_npm_lock((REPO_ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8"))
+        assert len(pkgs) >= 700, f"{len(pkgs)}개만 읽었다 — 파서가 눈이 멀었다"
+        assert "" not in pkgs, "루트 항목이 판정 대상에 들어왔다"
+
+
+class TestNpmBlockingCiGate:
+    @staticmethod
+    def _job() -> dict:
+        wf = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "main-ci-cd.yml").read_text(encoding="utf-8"))
+        return wf["jobs"]["npm-lock-gate"]
+
+    def test_the_job_runs_the_gate_in_npm_mode(self):
+        runs = " ".join(str(s.get("run", "")) for s in self._job()["steps"])
+        assert "check_lock_major_bump.py" in runs, "npm 차단선이 게이트를 안 부른다"
+        assert "--ecosystem npm" in runs, "uv 모드로 부르면 package-lock 을 못 읽는다"
+
+    def test_the_job_is_not_gated_on_changed_paths(self):
+        assert "needs" not in self._job(), "경로 필터에 걸리면 required check 로 못 쓴다"
