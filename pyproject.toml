@@ -71,7 +71,6 @@ dependencies = [
     "httpx>=0.27.0",
     "uvicorn>=0.32.0",
     # ─── LLM providers ────────────────────────────────────────
-    "llama-cpp-python>=0.3.0",
     "openai>=2.30.0",
     # ─── Security ─────────────────────────────────────────────
     "bcrypt>=4.0.0",
@@ -84,6 +83,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+local-llm = [
+    # Opt-in GGUF fallback. PyPI ships an sdist, so keeping this out of the
+    # default runtime avoids compiling llama.cpp independently in every CI job.
+    # Dev setup + both Mac mini deploy paths select this extra explicitly.
+    # Test: tests/scripts/test_local_llm_extra.py::TestLocalLlmExtraPolicy::test_llama_cpp_is_optional
+    "llama-cpp-python>=0.3.0",
+]
 dev = [
     "pytest>=9.0.3",  # security: CVE-2025-71176 tmpdir handling (Dependabot #16)
     "pytest-cov>=7.1.0",

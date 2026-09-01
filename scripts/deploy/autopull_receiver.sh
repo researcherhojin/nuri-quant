@@ -156,8 +156,10 @@ if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
             # 없었다. 크래시는 KeepAlive·watchdog 이 표면화하지만 침묵은 못 본다.
             # 잠금: tests/scripts/test_autopull_restarts_daemons.py
             #       ::test_daemons_still_restart_when_sync_fails
-            log "deps changed → $UV_BIN sync --extra dev --locked"
-            "$UV_BIN" sync --extra dev --locked >>"$LOG" 2>&1 || log "ERROR: uv sync 실패 — 구 venv 로 재기동된다"
+            # production 의 opt-in GGUF fallback 을 보존한다 (#1406).
+            # Test: tests/scripts/test_local_llm_extra.py::TestLocalLlmExtraPolicy::test_deploy_paths_include_local_llm
+            log "deps changed → $UV_BIN sync --extra dev --extra local-llm --locked"
+            "$UV_BIN" sync --extra dev --extra local-llm --locked >>"$LOG" 2>&1 || log "ERROR: uv sync 실패 — 구 venv 로 재기동된다"
         else
             log "ERROR: uv 를 못 찾음 ($UV_BIN) — deps 미동기화 상태로 재기동한다"
         fi

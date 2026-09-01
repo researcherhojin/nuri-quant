@@ -85,4 +85,7 @@ runs:
       shell: bash
       # restore-keys 로 일부 복원되었거나 빈 .venv 라면 uv sync 가 ① uv 캐시
       # (~/.cache/uv) 에서 wheel 즉시 link → 다운로드 skip, ② 변경된 deps 만 추가.
+      # local-llm extra 는 의도적으로 제외한다. GGUF 없는 CI 가 llama.cpp sdist 를
+      # 각 shard 에서 중복 컴파일하지 않도록 한다 (#1406).
+      # Test: tests/scripts/test_local_llm_extra.py::TestLocalLlmExtraPolicy::test_ci_excludes_local_llm
       run: uv sync --frozen --extra dev

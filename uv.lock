@@ -2418,7 +2418,6 @@ dependencies = [
     { name = "fredapi" },
     { name = "hmmlearn" },
     { name = "httpx" },
-    { name = "llama-cpp-python" },
     { name = "matplotlib" },
     { name = "mcp" },
     { name = "mplfinance" },
@@ -2453,6 +2452,9 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
 ]
+local-llm = [
+    { name = "llama-cpp-python" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -2468,7 +2470,7 @@ requires-dist = [
     { name = "fredapi", specifier = ">=0.5.2" },
     { name = "hmmlearn", specifier = ">=0.3.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "llama-cpp-python", specifier = ">=0.3.0" },
+    { name = "llama-cpp-python", marker = "extra == 'local-llm'", specifier = ">=0.3.0" },
     { name = "matplotlib", specifier = ">=3.8.0" },
     { name = "mcp", specifier = ">=2.1.1" },
     { name = "mplfinance", specifier = ">=0.12.0" },
@@ -2499,7 +2501,7 @@ requires-dist = [
     { name = "vectorbt", specifier = ">=0.28.0" },
     { name = "yfinance", specifier = ">=1.2.1" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["local-llm", "dev"]
 
 [[package]]
 name = "openai"

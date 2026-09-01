@@ -294,6 +294,10 @@ LLM integrations are **wired but inactive** unless you set the corresponding env
 | **llama.cpp** (local) | Daily LLM report fallback | `LLAMA_MODEL_PATH` | Tier 2 — local only |
 | **Ollama** (local) | Daily LLM report fallback | `OLLAMA_HOST` | Tier 2 — local only |
 
+`llama-cpp-python` is an opt-in `local-llm` extra because its default PyPI
+artifact compiles llama.cpp from source. `make setup` and the Mac mini deployment
+paths include the extra; CI omits it because no GGUF model is loaded there.
+
 `nuri/llm/openai_client.py` is the only module permitted to import `openai`. Every external call is logged to the `external_llm_calls` table (timestamp / model / tokens — **never content**), portfolio-bearing prompts require the explicit ZDR flag, and `NURI_DISABLE_EXTERNAL_LLM=1` raises before any request leaves the process.
 
 ## Deployment
@@ -345,7 +349,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 8,011 collected across 370 files | ✅ |
+| **Backend tests** | 8,016 collected across 371 files | ✅ |
 | **Backend statement coverage** | 99% — 41 of 24,533 statements uncovered, 96 partial branches (`make test-fast`, 2026-08-29; excludes the 27 slow-marked tests, so it understates. Codecov `backend` flag is the CI ground truth) | |
 | **Frontend tests** | 1,648 across 141 vitest files — 99.87% statement coverage (2,393 of 2,396) | ✅ |
 | **E2E tests** | 89 across 10 Playwright specs | |

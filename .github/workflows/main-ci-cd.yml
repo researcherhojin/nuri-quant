@@ -65,6 +65,10 @@ jobs:
       # 'true' on push / workflow_dispatch (the non-PR triggers this workflow
       # listens to).
       run_backend: ${{ steps.filter.outputs.backend == 'true' || github.event_name != 'pull_request' }}
+      # local-llm extra 는 테스트 job 에 설치되지 않으므로 (#1406), 이 게이트가
+      # llama-cpp-python 의 Linux native 빌드/임포트 호환성을 지키는 유일한 축이다.
+      # deps 파일이 바뀔 때만 돈다 — 코드 변경은 그 패키지의 빌드 가능성을 못 바꾼다.
+      run_local_llm_gate: ${{ steps.filter.outputs.local_llm_deps == 'true' || github.event_name != 'pull_request' }}
       run_frontend: ${{ steps.filter.outputs.frontend == 'true' || github.event_name != 'pull_request' }}
       run_security: ${{ steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true' || github.event_name != 'pull_request' }}
     steps:
@@ -87,6 +91,10 @@ jobs:
               - 'frontend/**'
               - '.github/workflows/**'
               - '.github/actions/**'
+            local_llm_deps:
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/main-ci-cd.yml'
 
   # ─── Frontend ───
 
@@ -545,6 +553,68 @@ jobs:
           assert len(kr) >= 190, f'KR universe {len(kr)} < 190 (95% of KOSPI 200)'
           print('✅ Universe sanity check PASS')
           "
+
+  # ── Local-LLM Build Gate — llama-cpp-python 이 기본 test env 를 떠난 대가 (#1406) ──
+  # llama-cpp-python 은 opt-in `local-llm` extra 라 fast shard 6개 + E2E 가 더는
+  # 같은 sdist 를 병렬로 컴파일하지 않는다. 대신 Linux native 빌드/임포트 호환성을
+  # 이 job 하나가 검증한다 (이슈 조건: 게이트 1개 보존). 프로젝트 전체 venv 를
+  # 만들지 않는다 — TA-Lib 등 무관한 셋업 없이 lock 에 고정된 버전만 빌드한다.
+  # uv 캐시가 빌드된 wheel 을 저장하므로 버전이 그대로면 재실행은 수초다.
+  # Test: tests/scripts/test_local_llm_extra.py::TestLocalLlmExtraPolicy::test_ci_keeps_one_linux_build_gate
+  local-llm-build-gate:
+    name: Local-LLM Build Gate
+    needs: changes
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Guard — require changes to succeed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::changes job did not succeed (result=${{ needs.changes.result }}) — cannot verify gates"
+          exit 1
+
+      - name: Skip notice (no dependency changes)
+        if: needs.changes.outputs.run_local_llm_gate != 'true'
+        run: echo "✓ pyproject.toml / uv.lock unchanged — native build gate fast-pass"
+
+      - uses: actions/checkout@v7
+        if: needs.changes.outputs.run_local_llm_gate == 'true'
+
+      - name: Install uv
+        if: needs.changes.outputs.run_local_llm_gate == 'true'
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: false
+
+      # setup-backend-env 와 같은 캐시 디렉토리 패턴이지만 key 를 분리한다 —
+      # 공유 uv wheel 캐시(uv-tool-*)에 llama wheel 이 섞이거나, 이 job 이
+      # shard 의 200+ 패키지 캐시를 불필요하게 복원하지 않도록.
+      - name: Cache uv tool dir
+        if: needs.changes.outputs.run_local_llm_gate == 'true'
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/uv-cache
+          key: uv-local-llm-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-local-llm-${{ runner.os }}-py3.12-
+
+      - name: Build + import llama-cpp-python at the locked version
+        if: needs.changes.outputs.run_local_llm_gate == 'true'
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/uv-cache
+        run: |
+          VERSION=$(python3 -c "
+          import tomllib
+          with open('uv.lock', 'rb') as f:
+              lock = tomllib.load(f)
+          print(next(p['version'] for p in lock['package'] if p['name'] == 'llama-cpp-python'))
+          ")
+          echo "Building llama-cpp-python==$VERSION from sdist (Linux compatibility gate)"
+          uv venv gate-venv
+          uv pip install --python gate-venv "llama-cpp-python==$VERSION"
+          gate-venv/bin/python -c "import llama_cpp; print('llama-cpp-python', llama_cpp.__version__, 'builds and imports on Linux')"
 
   # ── Backend Tests — fast/slow split + fast shards ──
   #
