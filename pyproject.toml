@@ -22,13 +22,6 @@ classifiers = [
 ]
 
 dependencies = [
-    # ⚠️ 이 목록에서 "어디서도 import 안 하니 잉여" 로 보이는 선언 4개
-    # (cvxpy · pillow · scikit-learn · vectorbt) 는 **지우면 안 된다.** 전이로도 설치되므로
-    # 지워도 `uv lock` 해석은 한 글자도 안 바뀌고 테스트도 전부 초록인데, 관측 창 두 개가
-    # 조용히 닫힌다 — dependabot 은 `allow:` 가 없어 direct-only 기본값으로 돌고,
-    # 주간 lag 감사(`maintenance_auditor._runtime_dependency_names`)도 이 배열만 읽는다.
-    # #1399 가 실제로 그 제거를 제안했다. 사유는 테스트의 매핑에 항목별로 적혀 있다.
-    # Test: tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
     # ─── Data collection (collectors) ─────────────────────────
     "beautifulsoup4>=4.12.0",
     "edgartools>=5.0.0",
@@ -44,9 +37,13 @@ dependencies = [
     "pandas>=2.2.0",
     "TA-Lib>=0.4.28",
     # ─── Portfolio optimization + risk ────────────────────────
+    # 직접 import 0건이어도 Dependabot direct-scope 와 주간 lag 관측을 여는 direct 선언 — 제거 금지.
+    # **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
     "cvxpy>=1.4.0",
     "quantstats>=0.0.60",
     "riskfolio-lib>=7.2.1",
+    # 직접 import 0건이어도 Dependabot direct-scope 와 주간 lag 관측을 여는 direct 선언 — 제거 금지.
+    # **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
     "scikit-learn>=1.4.0",
     "scipy>=1.12.0",
     # ─── Regime modeling (Layer B actor #3 — sticky-HMM, #529 Phase 2) ─
@@ -54,6 +51,8 @@ dependencies = [
     # matrix) 가 production-ready regime posterior. BOCPD 는 2차 승격 후보.
     "hmmlearn>=0.3.0",
     # ─── Backtesting ──────────────────────────────────────────
+    # 직접 import 0건이어도 Dependabot direct-scope 와 주간 lag 관측을 여는 direct 선언 — 제거 금지.
+    # **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
     "vectorbt>=0.28.0",
     # ─── Visualization ────────────────────────────────────────
     "matplotlib>=3.8.0",
@@ -61,6 +60,8 @@ dependencies = [
     # security floor — 하한을 올려야 `uv lock` 재해석이 취약 버전으로 되돌아가지 않는다.
     # 12.3.0: 13 CVE (heap OOB write in RankFilter/paste/crop/ImageCmsTransform, PDF·JPEG2000
     # decompression bomb, 폰트 로더 bomb-check 우회 5건). 12.2.0 은 CVE-2026-40192 (FITS GZIP).
+    # 직접 import 0건이어도 Dependabot direct-scope 와 주간 lag 관측을 여는 direct 선언 — 제거 금지.
+    # **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
     "pillow>=12.3.0",
     "plotly>=5.18.0",
     "seaborn>=0.13.2",
