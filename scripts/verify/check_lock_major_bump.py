@@ -43,6 +43,7 @@ yanked wheel, 같은 버전의 아티팩트 교체도 못 본다. CalVer 패키�
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import tomllib
@@ -102,6 +103,57 @@ def parse_lock(text: str) -> dict[str, str]:
     return out
 
 
+#: npm 은 순수 semver 다 — 실측 823개 중 821개가 `X.Y.Z`, 나머지 2개(`2.0.0-next.6`,
+#: `1.0.0-beta.2`)만 prerelease. CalVer 도 epoch 도 없다.
+_SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
+
+
+def parse_npm_lock(text: str) -> dict[str, str]:
+    """`package-lock.json` 의 `packages` 맵을 {이름: 버전} 으로.
+
+    루트 항목(`""`)과 `link: true`(워크스페이스 심볼릭)는 제외한다 — uv 쪽에서
+    editable 루트를 빼는 것과 같은 이유다.
+    """
+    data = json.loads(text)
+    version = data.get("lockfileVersion")
+    if version != 3:
+        raise LockFormatError(f"모르는 package-lock.json lockfileVersion={version!r}")
+    out: dict[str, str] = {}
+    for path, meta in data.get("packages", {}).items():
+        if not path or meta.get("link") or "version" not in meta:
+            continue
+        ver = meta["version"]
+        if not isinstance(ver, str):
+            raise LockFormatError(f"{path}: version 이 문자열이 아니다")
+        # **경로**로 키를 잡는다 — 이름이 아니라. npm 의 중첩 트리는 같은 패키지를
+        # 서로 다른 버전으로 여러 슬롯에 갖는 것이 정상 동작이다(실측: 이 lock 에
+        # `@napi-rs/wasm-runtime` 이 0.2.12 와 1.1.5 로 동시에 있다). uv 의
+        # resolution-marker fork 를 차단하는 판단을 여기 옮기면 정상 트리가
+        # 전부 fail-closed 된다 — 실제로 밟았다.
+        out[path] = ver
+    if not out:
+        raise LockFormatError("package-lock.json 에서 패키지를 하나도 못 읽었다")
+    return out
+
+
+def crossing_npm(base: str, head: str) -> str | None:
+    """npm 은 **major 만** 본다 — 0.x minor 는 여기서 노이즈다.
+
+    실측 근거: npm 트리는 0.x 가 9%(823 중 80)뿐이고 그마저 대부분 헤드라인
+    패키지의 내부 서브패키지다. 0.x 규칙을 켜면 dependabot PR 102건 중 차단이
+    4 → 6 으로 늘어나는데, 늘어난 2건이 `@base-ui/react` 의 `@base-ui/utils` 와
+    vite 의 `@oxc-project/types` — 부모와 함께 움직이는 게 설계인 것들이다.
+    uv 는 반대다: 0.x 가 24% 고 fastapi/vectorbt/ta-lib 같은 **직접** 의존성이
+    거기 있어서 0.x 규칙이 값을 한다. 규칙이 생태계마다 다른 건 실측 결과다.
+    """
+    mb, mh = _SEMVER.match(base.strip()), _SEMVER.match(head.strip())
+    if not mb or not mh:
+        return "unparseable version"
+    if mb.group(1) != mh.group(1):
+        return "major"
+    return None
+
+
 def release(version: str) -> tuple[int, tuple[int, ...]] | None:
     """`(epoch, release 성분)`. 해석 불가면 None (호출부가 차단한다)."""
     m = _RELEASE.match(version.strip())
@@ -138,15 +190,17 @@ def crossing(base: str, head: str) -> str | None:
 
 
 def compare_locks(
-    base: dict[str, str], head: dict[str, str]
+    base: dict[str, str],
+    head: dict[str, str],
+    rule=crossing,
 ) -> tuple[list[tuple[str, str, str, str]], list[tuple[str, str, str]], list[str], list[str]]:
-    """(경계 이동, 통상 변경, 추가, 제거)."""
+    """(경계 이동, 통상 변경, 추가, 제거). `rule` 은 생태계별 판정 함수."""
     crossings: list[tuple[str, str, str, str]] = []
     benign: list[tuple[str, str, str]] = []
     for name in sorted(base.keys() & head.keys()):
         if base[name] == head[name]:
             continue
-        reason = crossing(base[name], head[name])
+        reason = rule(base[name], head[name])
         if reason:
             crossings.append((name, base[name], head[name], reason))
         else:
@@ -155,24 +209,36 @@ def compare_locks(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="uv.lock major-boundary gate (#1364)")
-    parser.add_argument("--base", required=True, help="base 쪽 uv.lock 경로")
-    parser.add_argument("--head", required=True, help="head 쪽 uv.lock 경로")
+    parser = argparse.ArgumentParser(description="lockfile major-boundary gate (#1364/#1367)")
+    parser.add_argument("--base", required=True, help="base 쪽 lock 경로")
+    parser.add_argument("--head", required=True, help="head 쪽 lock 경로")
+    parser.add_argument(
+        "--ecosystem",
+        choices=("uv", "npm"),
+        default="uv",
+        help="uv=uv.lock (0.x minor 도 경계) / npm=package-lock.json (major 만)",
+    )
     args = parser.parse_args(argv)
 
+    parse_fn, rule = (parse_lock, crossing) if args.ecosystem == "uv" else (parse_npm_lock, crossing_npm)
+    label = "uv.lock" if args.ecosystem == "uv" else "package-lock.json"
+
     try:
-        base = parse_lock(Path(args.base).read_text(encoding="utf-8"))
-        head = parse_lock(Path(args.head).read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError, LockFormatError) as exc:
-        print(f"✗ uv.lock 을 읽지 못했다 — '경계 없음' 이 아니라 '미확인' 이다: {exc}")
+        base = parse_fn(Path(args.base).read_text(encoding="utf-8"))
+        head = parse_fn(Path(args.head).read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError, json.JSONDecodeError, LockFormatError) as exc:
+        print(f"✗ {label} 을 읽지 못했다 — '경계 없음' 이 아니라 '미확인' 이다: {exc}")
         return 1
 
-    crossings, benign, added, removed = compare_locks(base, head)
+    crossings, benign, added, removed = compare_locks(base, head, rule)
+
+    def _show(key: str) -> str:
+        return key.split("node_modules/")[-1]
 
     for name, before, after, reason in crossings[:30]:
-        print(f"✗ lock bump crosses a major boundary: {name} {before} -> {after} ({reason})")
+        print(f"✗ lock bump crosses a major boundary: {_show(name)} {before} -> {after} ({reason})")
     for name, before, after in benign[:30]:
-        print(f"  · {name} {before} -> {after}")
+        print(f"  · {_show(name)} {before} -> {after}")
     # 추가/제거는 **차단하지 않는다** — 통상 patch bump 도 전이 의존성을 갈아치운다
     # (openbb 4.7.1->4.7.2 가 frozendict 를 제거했다). Surface 만 한다.
     if added:
@@ -183,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     if crossings:
         print(f"✗ {len(crossings)} boundary crossing(s) — auto-merge blocked, human review required")
         return 1
-    print(f"✓ uv.lock: {len(benign)} version change(s), no major boundary crossed")
+    print(f"✓ {label}: {len(benign)} version change(s), no major boundary crossed")
     return 0
 
 
