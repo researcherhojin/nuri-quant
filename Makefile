@@ -750,17 +750,21 @@ sync-test-durations: ## [deprecated → sync-test-durations-from-ci] M5 직렬 �
 # Test: tests/scripts/test_merge_test_durations.py::TestMakeTargetWiring::test_recipe_delegates_to_refresh
 sync-test-durations-from-ci: ## 최근 push-to-main run 3개의 shard 실측으로 .test_durations 재생성 (#1414)
 	@set -e; \
-	RUNS=$$(gh run list --branch main --workflow main-ci-cd.yml --status success --limit 3 --json databaseId -q '.[].databaseId'); \
-	N=$$(echo "$$RUNS" | grep -c . || true); \
-	if [ "$$N" -lt 2 ]; then echo "❌ 성공한 main run 이 $$N 개 — median 은 2개 이상 필요"; exit 1; fi; \
+	RUNS=$$(gh run list --branch main --workflow main-ci-cd.yml --status success --limit 5 --json databaseId -q '.[].databaseId'); \
 	rm -rf /tmp/ci-durations && mkdir -p /tmp/ci-durations; \
 	i=0; DIRS=""; \
 	for RUN in $$RUNS; do \
-	    i=$$((i+1)); DIR=/tmp/ci-durations/run$$i; mkdir -p $$DIR; \
+	    [ "$$i" -ge 3 ] && break; \
+	    DIR=/tmp/ci-durations/run-$$RUN; mkdir -p $$DIR; \
 	    echo "📥 run $$RUN shard durations"; \
-	    gh run download "$$RUN" --pattern 'durations-fast-*' --dir $$DIR; \
-	    DIRS="$$DIRS $$DIR"; \
+	    if gh run download "$$RUN" --pattern 'durations-fast-*' --dir $$DIR; then \
+	        i=$$((i+1)); DIRS="$$DIRS $$DIR"; \
+	    else \
+	        echo "  ⏭ artifact 없음/만료 — skip (파이프라인 도입 전 run, 또는 7일 retention 경과)"; \
+	        rm -rf $$DIR; \
+	    fi; \
 	done; \
+	if [ "$$i" -lt 2 ]; then echo "❌ duration artifact 가 있는 run 이 $$i 개 — median 은 2개 이상 필요 (main push 가 더 쌓여야 한다)"; exit 1; fi; \
 	$(PYTHON) scripts/ci/merge_test_durations.py refresh \
 	    --workflow .github/workflows/main-ci-cd.yml --out .test_durations $$DIRS; \
 	echo "✅ 검토 후 일반 PR 로 커밋할 것 (bot push 금지)"
