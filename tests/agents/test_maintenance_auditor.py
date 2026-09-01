@@ -353,7 +353,48 @@ class TestEmptyDbDoesNotFlood:
         assert "전혀 없음" in findings[0]["title"]
 
 
+# 전이로도 설치되면서 `nuri/`·`tests/`·`scripts/` 어디서도 직접 import 하지 않는 직접 런타임
+# 의존성 (2026-09-02 AST 실측 — 정규식 스윕은 함수 내부 deferred import 를 놓쳤다).
+# 선언을 지워도 `uv lock` 재해석이 238 패키지 그대로라 눈으로는 잉여로 보이고, 실제로 #1399 가
+# 그렇게 제안됐다. 아래 사유가 그 제안을 기각한 근거다. codex 2라운드 판정 archive:
+# data/llm_consults/2026-09-02_sklearn-dep-lock-round2.md (gitignored).
+ZERO_IMPORT_DIRECT_DEPS = {
+    "scikit-learn": "hmmlearn(!=0.22.0,>=0.16)·riskfolio-lib(>=1.3.0)·vectorbt(무제약) 가 전이로 가져오지만 "
+    "직접 선언의 >=1.4.0 이 그중 가장 강한 하한이다. GaussianHMM.fit(regime_posterior.py:137)·"
+    "riskfolio 최적화(rebalance.py:73) 의 수치 바닥이라 버전 이동이 관측돼야 한다",
+    "cvxpy": "riskfolio-lib 전이. 포트폴리오 최적화 solver",
+    "pillow": "matplotlib 전이. 이 선언은 CVE 보안 하한도 겸한다 (선언 바로 위 주석 참조)",
+    "vectorbt": "riskfolio-lib 전이. 0.x 라 minor 도 파괴적 — check_lock_major_bump 의 경계 대상",
+}
+
+
 class TestDependencyLag:
+    def test_zero_import_direct_deps_stay_in_the_observation_set(self):
+        """직접 import 0건인 선언이 관측 집합에서 빠지지 않는지 잠근다 (#1399).
+
+        **이 테스트 도입 전에는** 선언을 지워도 해석이 그대로고 게이트가 전부 초록인 채로
+        dependabot direct-scope 와 주간 lag 관측에서만 사라졌다. 침묵이 유일한 증상이라
+        사람 눈으로는 반복해서 놓친다 — #1399 자체가 그 재발이다.
+
+        **잠그는 범위는 이름의 관측집합 포함 여부뿐이다.** 버전 하한 자체는 잠그지 않는다 —
+        `_runtime_dependency_names()` 가 이름만 파싱하므로 `"scikit-learn>=1.4.0"` 을
+        `"scikit-learn"` 으로 바꿔 하한을 없애면 이 테스트는 통과한다. `[project.optional-dependencies]`
+        로 옮기는 것은 잡힌다(그 함수는 `[project].dependencies` 만 읽는다).
+
+        부분집합만 검사한다. 동등 비교로 잠그면 의존성을 새로 추가할 때마다 이 목록을
+        갱신해야 해서, 잠금이 아니라 churn 이 된다.
+
+        **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
+        """
+        observed = ma._runtime_dependency_names(REPO_ROOT)
+
+        missing = {name: why for name, why in ZERO_IMPORT_DIRECT_DEPS.items() if name not in observed}
+
+        assert not missing, (
+            "직접 의존성 선언이 빠졌다 — 주간 lag 관측과 dependabot direct-scope 에서 조용히 사라진다:\n"
+            + "\n".join(f"  - {name}: {why}" for name, why in sorted(missing.items()))
+        )
+
     def test_missing_uv_is_recorded_as_unobserved_not_clean(self, tmp_path, monkeypatch):
         """uv 부재를 '업데이트 0건'으로 읽으면 #1362의 silent failure 감지가 무의미하다."""
         monkeypatch.setattr(ma, "_uv_binary", lambda: None)
