@@ -8,7 +8,7 @@
 
 - **GitHub 쓰기 0건** — gh 호출도, GitHub API 엔드포인트 참조도, HTTP 클라이언트 import 도 없다.
   자동 이슈 발행은 "proposal-only" 가 아니라 외부 쓰기다. (잠금: 구조 스윕 + 런타임 spy)
-- **LLM 0** — 5축 전부 결정론적 검사다. USD 캡은 0 으로 존재한다 — 캡 플럼빙이
+- **LLM 0** — 6축 전부 결정론적 검사다. USD 캡은 0 으로 존재한다 — 캡 플럼빙이
   있어야 Phase 1 에서 LLM 이 붙을 때 상한 없이 붙는 사고를 막는다.
 - **전략·투자 룰(config 의 rules/agents/signals 계열)은 대상 밖** — #1307 champion-challenger 전용.
 - 건수 목표 없음 (Goodhart) — 정직한 0건 run 이 저품질 5건보다 낫다. 지표는
@@ -36,9 +36,11 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -137,7 +139,7 @@ class ScanContext:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 스캔 축 5종 — 전부 결정론. 각자는 (axis, title, detail) dict 목록을 낸다.
+# 스캔 축 6종 — 전부 결정론. 각자는 (axis, title, detail) dict 목록을 낸다.
 # title 은 **안정적**이어야 한다 (fingerprint 축) — 날짜·카운트는 detail 로.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -361,9 +363,7 @@ def scan_dependency(ctx: ScanContext) -> list[dict[str, str]]:
     updating the uv.lock file" 이라 정합성 검사를 건너뛰고 exit 0 으로 구 버전을
     조용히 설치한다 (#1360 — 이 docstring 이 원래 그 반대로 적혀 있었다).
     """
-    import shutil
-
-    uv = shutil.which("uv") or ("/opt/homebrew/bin/uv" if Path("/opt/homebrew/bin/uv").exists() else None)
+    uv = _uv_binary()
     if uv is None:
         return [
             {
@@ -386,12 +386,87 @@ def scan_dependency(ctx: ScanContext) -> list[dict[str, str]]:
     return []
 
 
+def _uv_binary() -> Optional[str]:
+    """PATH 우선으로 uv 위치를 찾되, Mac mini의 Homebrew 기본 경로도 허용한다."""
+    return shutil.which("uv") or ("/opt/homebrew/bin/uv" if Path("/opt/homebrew/bin/uv").exists() else None)
+
+
+def _runtime_dependency_names(repo_root: Path) -> set[str]:
+    """`[project].dependencies`의 배포 직접 의존성 이름을 PEP 503으로 정규화한다.
+
+    optional dev/build 의존성은 #1359의 "N-of-42" 런타임 기준과 다르므로 의도적으로
+    제외한다. 이 관측은 CI 도구 갱신량이 아니라 서비스 의존성 lag을 쌓는 축이다.
+    """
+    data = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
+    requirements = data.get("project", {}).get("dependencies", [])
+    names: set[str] = set()
+    for requirement in requirements:
+        match = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", requirement)
+        if match:
+            names.add(re.sub(r"[-_.]+", "-", match.group(0)).lower())
+    return names
+
+
+def _parse_uv_updates(output: str) -> list[tuple[str, str, str]]:
+    """`uv lock --upgrade --dry-run`의 안정적인 Update 행만 읽는다."""
+    updates: list[tuple[str, str, str]] = []
+    for line in output.splitlines():
+        match = re.fullmatch(r"Update (.+?) (v\S+) -> (v\S+)", line.strip())
+        if match:
+            updates.append((match.group(1), match.group(2), match.group(3)))
+    return updates
+
+
+def scan_dependency_lag(ctx: ScanContext) -> list[dict[str, str]]:
+    """직접 런타임 의존성 lag을 주 1회 **판정 없이** 관측한다 (#1362).
+
+    Dependabot uv가 resolver 오류 등으로 PR을 전혀 열지 않는 경우에도, lock을 실제로
+    재해석해 lag 수치를 원장에 남긴다. 고정 임계값이나 자동 조치는 두지 않는다.
+    **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_transitive_updates_are_excluded_from_runtime_lag_observation
+    """
+    uv = _uv_binary()
+    if uv is None:
+        return [
+            {
+                "axis": "dependency_lag",
+                "title": "직접 의존성 lag 관측 미실행",
+                "detail": "uv를 찾지 못해 직접 의존성 lag을 측정하지 못했다. PATH를 확인할 것.",
+            }
+        ]
+
+    rc = ctx.run([uv, "lock", "--upgrade", "--dry-run"], timeout=60.0)
+    output = rc.stdout + rc.stderr
+    if rc.returncode != 0:
+        return [
+            {
+                "axis": "dependency_lag",
+                "title": "직접 의존성 lag 관측 실패",
+                "detail": "`uv lock --upgrade --dry-run` 실패 — Dependabot 무PR 상태와 구분할 수 없다.\n"
+                + output.strip()[-500:],
+            }
+        ]
+
+    direct_names = _runtime_dependency_names(ctx.repo_root)
+    direct_updates = [
+        (name, old, new)
+        for name, old, new in _parse_uv_updates(output)
+        if re.sub(r"[-_.]+", "-", name).lower() in direct_names
+    ]
+    detail = f"직접 런타임 의존성 업데이트 후보: {len(direct_updates)}건 (판정 임계값 없음)."
+    if direct_updates:
+        detail += "\n" + "\n".join(f"- {name}: {old} → {new}" for name, old, new in direct_updates)
+    else:
+        detail += "\n현재 lock은 모든 직접 런타임 의존성의 최신 resolver 결과와 일치한다."
+    return [{"axis": "dependency_lag", "title": "직접 의존성 lag 관측", "detail": detail}]
+
+
 SCANNERS: tuple[Callable[[ScanContext], list[dict[str, str]]], ...] = (
     scan_gate_liveness,
     scan_doc_drift,
     scan_scheduler_wiring,
     scan_stale_collectors,
     scan_dependency,
+    scan_dependency_lag,
 )
 
 

@@ -353,6 +353,88 @@ class TestEmptyDbDoesNotFlood:
         assert "전혀 없음" in findings[0]["title"]
 
 
+class TestDependencyLag:
+    def test_missing_uv_is_recorded_as_unobserved_not_clean(self, tmp_path, monkeypatch):
+        """uv 부재를 '업데이트 0건'으로 읽으면 #1362의 silent failure 감지가 무의미하다."""
+        monkeypatch.setattr(ma, "_uv_binary", lambda: None)
+        ctx = ma.ScanContext(repo_root=tmp_path, tracker=ma._CapTracker(caps=ma.AuditCaps()))
+
+        findings = ma.scan_dependency_lag(ctx)
+
+        assert findings == [
+            {
+                "axis": "dependency_lag",
+                "title": "직접 의존성 lag 관측 미실행",
+                "detail": "uv를 찾지 못해 직접 의존성 lag을 측정하지 못했다. PATH를 확인할 것.",
+            }
+        ]
+
+    def test_transitive_updates_are_excluded_from_runtime_lag_observation(self, tmp_path, monkeypatch):
+        """직접 의존성만 관측 — 전이 업데이트를 섞으면 #1362의 baseline이 부풀어진다.
+
+        **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_transitive_updates_are_excluded_from_runtime_lag_observation
+        """
+        (tmp_path / "pyproject.toml").write_text(
+            "[project]\ndependencies = ['numpy>=1.26', 'discord.py>=2.0']\n", encoding="utf-8"
+        )
+        monkeypatch.setattr(ma, "_uv_binary", lambda: "uv")
+        ctx = ma.ScanContext(repo_root=tmp_path, tracker=ma._CapTracker(caps=ma.AuditCaps()))
+        monkeypatch.setattr(
+            ctx,
+            "run",
+            lambda *args, **kwargs: real_subprocess.CompletedProcess(
+                args[0], 0, "Update numpy v1.26.4 -> v2.5.2\nUpdate transitive-lib v1.0.0 -> v1.1.0\n", ""
+            ),
+        )
+
+        findings = ma.scan_dependency_lag(ctx)
+
+        assert len(findings) == 1
+        assert "1건" in findings[0]["detail"]
+        assert "numpy: v1.26.4 → v2.5.2" in findings[0]["detail"]
+        assert "transitive-lib" not in findings[0]["detail"]
+
+    def test_zero_direct_updates_are_recorded_as_an_observation(self, tmp_path, monkeypatch):
+        """0건도 기록해야 Dependabot 무PR과 '정상적으로 최신'을 구분할 baseline이 생긴다."""
+        (tmp_path / "pyproject.toml").write_text("[project]\ndependencies = ['numpy>=1.26']\n", encoding="utf-8")
+        monkeypatch.setattr(ma, "_uv_binary", lambda: "uv")
+        ctx = ma.ScanContext(repo_root=tmp_path, tracker=ma._CapTracker(caps=ma.AuditCaps()))
+        monkeypatch.setattr(
+            ctx,
+            "run",
+            lambda *args, **kwargs: real_subprocess.CompletedProcess(
+                args[0], 0, "Update transitive v1.0.0 -> v1.1.0\n", ""
+            ),
+        )
+
+        findings = ma.scan_dependency_lag(ctx)
+
+        assert findings == [
+            {
+                "axis": "dependency_lag",
+                "title": "직접 의존성 lag 관측",
+                "detail": "직접 런타임 의존성 업데이트 후보: 0건 (판정 임계값 없음).\n"
+                "현재 lock은 모든 직접 런타임 의존성의 최신 resolver 결과와 일치한다.",
+            }
+        ]
+
+    def test_failed_dry_run_is_not_reported_as_clean(self, tmp_path, monkeypatch):
+        """resolver 오류를 0건 관측으로 읽으면 #1362가 막으려는 silent failure가 재발한다."""
+        (tmp_path / "pyproject.toml").write_text("[project]\ndependencies = []\n", encoding="utf-8")
+        monkeypatch.setattr(ma, "_uv_binary", lambda: "uv")
+        ctx = ma.ScanContext(repo_root=tmp_path, tracker=ma._CapTracker(caps=ma.AuditCaps()))
+        monkeypatch.setattr(
+            ctx,
+            "run",
+            lambda *args, **kwargs: real_subprocess.CompletedProcess(args[0], 1, "", "resolution failed"),
+        )
+
+        findings = ma.scan_dependency_lag(ctx)
+
+        assert findings[0]["title"] == "직접 의존성 lag 관측 실패"
+        assert "resolution failed" in findings[0]["detail"]
+
+
 class TestGateLiveness:
     def test_missing_exec_bit_is_reported_as_dead_gate(self, tmp_path):
         """실행비트 없는 설치 훅 = git 이 아예 안 부르는 green dead gate (codex P2).
