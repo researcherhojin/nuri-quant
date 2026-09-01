@@ -37,9 +37,13 @@ dependencies = [
     "pandas>=2.2.0",
     "TA-Lib>=0.4.28",
     # ─── Portfolio optimization + risk ────────────────────────
+    # 직접 import 0건이어도 Dependabot direct-scope 와 주간 lag 관측을 여는 direct 선언 — 제거 금지.
+    # **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
     "cvxpy>=1.4.0",
     "quantstats>=0.0.60",
     "riskfolio-lib>=7.2.1",
+    # 직접 import 0건이어도 Dependabot direct-scope 와 주간 lag 관측을 여는 direct 선언 — 제거 금지.
+    # **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
     "scikit-learn>=1.4.0",
     "scipy>=1.12.0",
     # ─── Regime modeling (Layer B actor #3 — sticky-HMM, #529 Phase 2) ─
@@ -47,6 +51,8 @@ dependencies = [
     # matrix) 가 production-ready regime posterior. BOCPD 는 2차 승격 후보.
     "hmmlearn>=0.3.0",
     # ─── Backtesting ──────────────────────────────────────────
+    # 직접 import 0건이어도 Dependabot direct-scope 와 주간 lag 관측을 여는 direct 선언 — 제거 금지.
+    # **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
     "vectorbt>=0.28.0",
     # ─── Visualization ────────────────────────────────────────
     "matplotlib>=3.8.0",
@@ -54,6 +60,8 @@ dependencies = [
     # security floor — 하한을 올려야 `uv lock` 재해석이 취약 버전으로 되돌아가지 않는다.
     # 12.3.0: 13 CVE (heap OOB write in RankFilter/paste/crop/ImageCmsTransform, PDF·JPEG2000
     # decompression bomb, 폰트 로더 bomb-check 우회 5건). 12.2.0 은 CVE-2026-40192 (FITS GZIP).
+    # 직접 import 0건이어도 Dependabot direct-scope 와 주간 lag 관측을 여는 direct 선언 — 제거 금지.
+    # **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
     "pillow>=12.3.0",
     "plotly>=5.18.0",
     "seaborn>=0.13.2",
