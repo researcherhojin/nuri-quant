@@ -142,7 +142,26 @@ def seed(db: Path) -> dict[str, int]:
         for d, v in zip(fg_dates, 35 + 40 * rng.random(90))
     ]
     fx = [{"indicator": "usd_krw", "date": dates[-1], "value": 1400.0, "source": "seed"}]
-    counts["macro"] = upsert_macro(vix + fg + fx, db_path=db)
+    # ── compute_macro_score 의 나머지 7개 지표 (nuri/quant/regime/macro_score.py) ──
+    # 없으면 스코어러가 성분을 제외하고 지표당 경고를 찍는다 — e2e 로그가 "매크로 지표
+    # 누락" 42줄로 덮여 실제 오류가 안 보이고, 89개 테스트 전부가 **결측-축소 경로만**
+    # 밟는다 (전 지표 경로는 미검증). 값은 중립 레짐의 그럴듯한 상수, 행은 2개
+    # (최신 + 252d 전) — _get_macro_trend 의 3개월 lookback 까지 충족.
+    STEADY = {
+        "us_10y_yield": 4.25,
+        "us_2y_yield": 3.85,
+        "us_3m_yield": 4.05,
+        "put_call_ratio": 0.90,
+        "unemployment": 4.1,
+        "cpi_yoy": 2.7,
+        "fed_funds_rate": 4.00,
+    }
+    steady = [
+        {"indicator": name, "date": d, "value": value, "source": "seed"}
+        for name, value in STEADY.items()
+        for d in (dates[0], dates[-1])
+    ]
+    counts["macro"] = upsert_macro(vix + fg + fx + steady, db_path=db)
 
     # ── 매크로 이벤트: 최근 3일 내 발행 (action-first 스펙의 7d 신선도 요건) ──
     #
