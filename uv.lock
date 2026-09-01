@@ -1137,7 +1137,7 @@ wheels = [
 
 [[package]]
 name = "finance-datareader"
-version = "0.9.110"
+version = "0.9.202"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -1146,10 +1146,12 @@ dependencies = [
     { name = "plotly" },
     { name = "requests" },
     { name = "requests-file" },
+    { name = "tabulate" },
     { name = "tqdm" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/e8/8b/8f516b366f5aa465bfdcb0456b0f7ae38f4496fde882b85798998f706f1b/finance_datareader-0.9.202.tar.gz", hash = "sha256:16e734dc3f3f51962d92c2cdc9b707b27650115f0990b25f6ffdad3318197070", size = 39406, upload-time = "2026-05-13T20:10:05.883Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/78/620119a05df388b5b39c70cceb3410d72d1a20e5ecb8767adc1832453c32/finance_datareader-0.9.110-py3-none-any.whl", hash = "sha256:c98ef65e9bfd471e5ee8bb804cd3b115d0e9c7cf63e08b78077ed61c74fe8403", size = 51336, upload-time = "2026-03-11T11:42:11.602Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/e8/57ac4d122c5e2b3c2b54bcd7069ee0ce735a174695f0b45407319d7728e5/finance_datareader-0.9.202-py3-none-any.whl", hash = "sha256:8d166865c1537c2b9fe0243ab67aea7eb057d7e25ff0366f8eeabda6dccdfbac", size = 53934, upload-time = "2026-05-13T20:10:07.073Z" },
 ]
 
 [[package]]
