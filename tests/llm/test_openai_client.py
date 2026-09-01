@@ -835,3 +835,9 @@ class TestRetrySemantics:
         assert timeout.read == mod.SDK_READ_TIMEOUT_S and timeout.connect == mod.SDK_CONNECT_TIMEOUT_S, (
             f"timeout 형상이 상수와 다르다: read={timeout.read} connect={timeout.connect}"
         )
+        # 상수 자신과의 비교는 tautology 다 (뮤테이션 실측: 600 회귀가 통과했다).
+        # 원장 실측 p99=3.1s 기준 상한 120s — 의도적 조정은 지나가고 600 회귀만 막는다.
+        assert timeout.read <= 120, (
+            f"read timeout {timeout.read}s — p99 3.1s(원장 n=21,451) 의 38배를 넘는다. "
+            "600s 상속 시절로 회귀? 올릴 이유가 있으면 원장 재실측과 함께 이 상한을 조정할 것 (#1411)"
+        )
