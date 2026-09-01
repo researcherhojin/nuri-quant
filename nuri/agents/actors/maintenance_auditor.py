@@ -357,8 +357,8 @@ def scan_stale_collectors(ctx: ScanContext) -> list[dict[str, str]]:
 def scan_dependency(ctx: ScanContext) -> list[dict[str, str]]:
     """uv.lock ↔ pyproject 드리프트 축.
 
-    ⚠️ 이 드리프트가 깨는 곳은 **autopull** 이다 (`uv sync --extra dev --locked`,
-    #1351) — non-zero 로 죽어 soft-fail 로 ERROR 를 남기고 구 venv 로 재기동한다.
+    ⚠️ 이 드리프트가 깨는 곳은 **autopull** 이다 (`uv sync --extra dev
+    --extra local-llm --locked`, #1351/#1406) — non-zero 로 죽어 soft-fail 로 ERROR 를 남기고 구 venv 로 재기동한다.
     deploy-mini step 5 의 `--frozen` 은 **안 깨진다**: uv 문서상 "Sync without
     updating the uv.lock file" 이라 정합성 검사를 건너뛰고 exit 0 으로 구 버전을
     조용히 설치한다 (#1360 — 이 docstring 이 원래 그 반대로 적혀 있었다).

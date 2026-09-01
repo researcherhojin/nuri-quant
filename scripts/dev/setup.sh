@@ -20,7 +20,9 @@ fi
 echo "Installing Python packages..."
 # shellcheck disable=SC1091
 source .venv/bin/activate
-uv sync --extra dev
+# 로컬 GGUF fallback 은 opt-in extra 이지만 기존 make setup 동작은 보존한다 (#1406).
+# Test: tests/scripts/test_local_llm_extra.py::TestLocalLlmExtraPolicy::test_dev_setup_includes_local_llm
+uv sync --extra dev --extra local-llm
 
 # Create data directories
 mkdir -p data/backups data/exports
