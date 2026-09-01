@@ -1,0 +1,32 @@
+name: Cache Cleanup
+
+# 닫힌 PR 의 actions cache 는 재사용될 일이 없는데 ref 별로 남아 repo 10GB 한도를
+# 잠식한다 — 2026-09-02 실측: 닫힌 PR 7개가 6.1GB 를 물고 있어 main 의 살아있는
+# 캐시(venv/uv-tool)가 LRU 로 축출되고 있었다 (총 15.4GB 중 죽은 캐시 14GB).
+# main 의 세대 교체분(uv.lock 해시 키)은 GitHub 의 7일 미사용 자동 축출이 처리하므로
+# 여기서는 PR ref 만 지운다.
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    name: Delete closed PR caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Delete caches for this PR ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          set -e
+          IDS=$(gh api "repos/${{ github.repository }}/actions/caches?ref=${REF}&per_page=100" --jq '.actions_caches[].id')
+          COUNT=0
+          for ID in $IDS; do
+            gh api -X DELETE "repos/${{ github.repository }}/actions/caches/${ID}" && COUNT=$((COUNT+1))
+          done
+          echo "deleted ${COUNT} cache(s) for ${REF}"
