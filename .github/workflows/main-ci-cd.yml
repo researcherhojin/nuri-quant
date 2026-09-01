@@ -689,6 +689,12 @@ jobs:
       # spread 0.0s 인데 실측 spread 89s, 로컬 0.06s 테스트가 CI 에서 7.5s.
       # Slow tests (LLM/scheduler) 는 backend-tests-slow 에서 별도 push-only.
 
+      # --basetemp=/dev/shm/pytest-tmp: #1424 는 conftest 전역 격리 사본만 tmpfs 로
+      # 옮겼는데, 테스트 자체 db_path 픽스처들의 init_db(tmp_path) 는 여전히 러너
+      # 디스크였다 — tmpfs 이후에도 같은 서명(무관 테스트 setup 7.9~9.0s, shard 259s,
+      # run 33571608616 Fast 2)이 재발했다. basetemp 를 통째로 tmpfs 에 두면
+      # tmp_path/tmp_path_factory 사용 전부가 I/O 열화 러너 축에서 벗어난다.
+      # Test: tests/test_db_isolation_tmpfs.py::TestWorkflowWiring::test_shard_basetemp_rides_tmpfs
       # push(=main push, on: 설정상)에서만 duration 기록을 켠다 — `!= pull_request` 로
       # 쓰면 workflow_dispatch 도 기록해 이름과 어긋난다 (codex P3-e). `--clean-durations` 필수 —
       # 없으면 각 shard 가 기존 ledger 를 품은 full snapshot 을 써서, 병합 시
@@ -709,7 +715,7 @@ jobs:
         #
         # $STORE_DURATION_FLAGS 는 push-to-main 에서만 채워진다 (아래 arm step).
         # 따옴표 없이 두는 게 의도다 — 빈 값이면 단어가 통째로 사라져야 한다.
-        run: .venv/bin/python -m pytest tests/ -q --tb=short --durations=25 -n 8 --dist worksteal -m "not slow and not integration" --splits 8 --group ${{ matrix.shard }} --splitting-algorithm least_duration --cov=nuri --cov-branch --cov-report= --cov-report=term $STORE_DURATION_FLAGS
+        run: .venv/bin/python -m pytest tests/ -q --tb=short --durations=25 --basetemp=/dev/shm/pytest-tmp -n 8 --dist worksteal -m "not slow and not integration" --splits 8 --group ${{ matrix.shard }} --splitting-algorithm least_duration --cov=nuri --cov-branch --cov-report= --cov-report=term $STORE_DURATION_FLAGS
         # 5분은 **관측된 최악값과 같았다** — 그래서 통과/실패가 동전던지기였다.
         # shard 4 실측 4회: 139s · 302s(timeout) · pass · timeout(82% 에서 절단, #1028).
         # timeout 은 예상 최악값 위에 여유를 둬야 하고, 그러면서도 진짜 hang 은
@@ -775,7 +781,7 @@ jobs:
         # `-m` 은 pyproject addopts 의 `-m "not integration"` 을 **덮어쓴다**(합쳐지지
         # 않는다). 여기 `not integration` 을 다시 안 적으면 slow lane 이 실외부
         # 네트워크 테스트를 끌어들여 CI 가 외부 사이트 상태로 빨개진다 (#1290).
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "slow and not integration" --splits 2 --group ${{ matrix.shard }} --cov=nuri --cov-branch --cov-report= --cov-report=term
+        run: .venv/bin/python -m pytest tests/ -q --tb=short --basetemp=/dev/shm/pytest-tmp -n auto --dist worksteal -m "slow and not integration" --splits 2 --group ${{ matrix.shard }} --cov=nuri --cov-branch --cov-report= --cov-report=term
         timeout-minutes: 5
 
       - name: Upload .coverage artifact
