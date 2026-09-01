@@ -628,3 +628,97 @@ class TestChatJsonAuditFailures:
         result = OpenAIClient().chat_json(system="s", user="u", db_path=db_path)
         assert isinstance(result, dict)
         assert result.get("category") == "fed_dovish"
+
+
+class TestRealSdkWireContract:
+    """실제 SDK 를 통과시켜 **wire 형식**을 잠근다 (openai 3.x 이관, #1359).
+
+    이 파일의 나머지 테스트는 전부 `openai.OpenAI` 를 MagicMock 으로 갈아끼운다.
+    그래서 SDK 가 우리가 보내는 인자를 **어떻게 직렬화하는지**, 응답을 **어떤 모양으로**
+    돌려주는지는 한 번도 검증되지 않는다 — mock 은 우리가 가르친 모양만 되돌려준다.
+    openai 2.30 → 3.6 major 이관에서 이게 정확히 위험한 지점이었다: 3.6 은 HTTP 전송을
+    `httpx` 에서 `httpx2` 로 통째로 교체했는데, `httpx2` 는 이미 다른 소비자를 통해 lock 에
+    있었던 탓에 `uv.lock --stat` 에 새 패키지로 나타나지도 않는다.
+
+    그래서 여기서는 **진짜 SDK 객체**를 만들고 `httpx2.MockTransport` 로 네트워크만 끊는다.
+    요청 직렬화와 응답 파싱은 실제 SDK 코드가 수행한다. 네트워크는 여전히 0.
+
+    잠그는 것: 엔드포인트 URL · 직렬화된 body 필드명 · `message.content` 가 `str` 인 것 ·
+    usage 필드명(`prompt_tokens`/`completion_tokens` — Responses API 의
+    `input_tokens`/`output_tokens` 가 아니다).
+
+    **Test:** tests/llm/test_openai_client.py::TestRealSdkWireContract
+    """
+
+    def _client_with_transport(self, captured: dict, content: str = '{"category": "fed_dovish"}'):
+        import httpx2
+        from openai import OpenAI
+
+        def handler(request):
+            captured["url"] = str(request.url)
+            captured["body"] = json.loads(request.content)
+            return httpx2.Response(
+                200,
+                json={
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": "gpt-5.4",
+                    "choices": [
+                        {"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}
+                    ],
+                    "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
+                },
+            )
+
+        return OpenAI(api_key="sk-test-not-real", http_client=httpx2.Client(transport=httpx2.MockTransport(handler)))
+
+    def test_chat_json_serializes_the_expected_request(self, db_path):
+        """gateway → 실제 SDK → HTTP body 까지의 직렬화를 잠근다."""
+        from nuri.llm.openai_client import OpenAIClient
+
+        captured: dict = {}
+        client = OpenAIClient()
+        client._sdk_client = self._client_with_transport(captured)
+
+        result = client.chat_json(system="sys", user="usr", db_path=db_path)
+
+        assert captured["url"] == "https://api.openai.com/v1/chat/completions"
+        assert captured["body"]["response_format"] == {"type": "json_object"}
+        assert captured["body"]["max_completion_tokens"] == 256, "max_tokens 로 되돌아가면 gpt-5.x 가 거부한다"
+        assert [m["role"] for m in captured["body"]["messages"]] == ["system", "user"]
+        assert result == {"category": "fed_dovish"}
+
+    def test_response_shape_the_gateway_depends_on(self, db_path):
+        """`message.content` 는 str, usage 는 chat-completions 필드명이어야 한다.
+
+        Responses API 로 넘어가면 content 가 parts 리스트, usage 가
+        input_tokens/output_tokens 로 바뀐다 — 그 이관은 별도 계약 변경이다.
+        """
+        from nuri.llm.openai_client import OpenAIClient
+
+        captured: dict = {}
+        sdk = self._client_with_transport(captured)
+        resp = sdk.chat.completions.create(
+            model="gpt-5.4",
+            messages=[{"role": "user", "content": "u"}],
+            response_format={"type": "json_object"},
+        )
+
+        assert isinstance(resp.choices[0].message.content, str)
+        assert (resp.usage.prompt_tokens, resp.usage.completion_tokens) == (11, 7)
+
+    def test_audit_row_is_written_through_the_real_sdk_path(self, db_path):
+        """mock SDK 가 아니라 실제 SDK 응답에서도 감사 로그가 남는지."""
+        from nuri.llm.openai_client import OpenAIClient
+
+        client = OpenAIClient()
+        client._sdk_client = self._client_with_transport({})
+        client.chat_json(system="s", user="u", db_path=db_path)
+
+        rows = query(
+            "SELECT provider, success, prompt_tokens, completion_tokens FROM external_llm_calls", db_path=db_path
+        )
+        assert len(rows) == 1
+        assert rows[0]["success"] == 1
+        assert (rows[0]["prompt_tokens"], rows[0]["completion_tokens"]) == (11, 7)
