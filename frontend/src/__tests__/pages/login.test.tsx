@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import LoginPage from "@/app/login/page";
 
+const replaceMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: replaceMock }),
+}));
+
 // Mock @base-ui/react/button to render a simple <button> for testing
 vi.mock("@base-ui/react/button", () => ({
   Button: ({
@@ -22,18 +28,9 @@ vi.mock("@base-ui/react/button", () => ({
 }));
 
 describe("LoginPage", () => {
-  let mockLocation: { href: string };
-
   beforeEach(() => {
     vi.restoreAllMocks();
-
-    // Mock window.location
-    mockLocation = { href: "" };
-    Object.defineProperty(window, "location", {
-      value: mockLocation,
-      writable: true,
-      configurable: true,
-    });
+    replaceMock.mockReset();
   });
 
   it("renders login form", () => {
@@ -77,7 +74,7 @@ describe("LoginPage", () => {
     });
   });
 
-  it("redirects to / on successful login", async () => {
+  it("navigates to / through the Next.js router on successful login", async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true });
 
     render(<LoginPage />);
@@ -86,7 +83,7 @@ describe("LoginPage", () => {
     fireEvent.submit(input.closest("form")!);
 
     await waitFor(() => {
-      expect(mockLocation.href).toBe("/");
+      expect(replaceMock).toHaveBeenCalledWith("/");
     });
   });
 

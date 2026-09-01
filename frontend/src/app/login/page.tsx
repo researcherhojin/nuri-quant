@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,7 +23,7 @@ export default function LoginPage() {
     });
 
     if (res.ok) {
-      window.location.href = "/";
+      router.replace("/");
     } else {
       setError("Invalid password");
       setLoading(false);
