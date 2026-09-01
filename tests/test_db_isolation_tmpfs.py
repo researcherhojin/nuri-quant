@@ -62,3 +62,32 @@ class TestWorkflowWiring:
             assert str(env.get("NURI_TEST_DB_DIR", "")).startswith("/dev/shm"), (
                 f"{job} 에 NURI_TEST_DB_DIR(/dev/shm/...) 이 없다 — per-test DB 복사가 러너 디스크로 회귀한다"
             )
+
+
+class TestBasetempWiring:
+    """CI 의 pytest tmp 루트 자체가 tmpfs 를 타는지 잠근다 (#1414 2차).
+
+    #1424(전역 격리 사본 tmpfs)로도 같은 서명의 이상치가 재발했다 — run 33571608616
+    Fast 2 가 259s, 무관 테스트들의 setup 7.9~9.0s. 원인은 남은 디스크 축: 테스트
+    자체의 `db_path` 픽스처들이 `init_db(tmp_path)` 로 러너 디스크에 스키마 DDL 을
+    쓴다. `--basetemp` 를 tmpfs 로 두면 tmp_path/tmp_path_factory 사용 전부가
+    I/O 열화 러너 축에서 벗어난다.
+
+    **Test:** tests/test_db_isolation_tmpfs.py::TestBasetempWiring::test_shard_basetemp_rides_tmpfs
+    """
+
+    def test_shard_basetemp_rides_tmpfs(self):
+        wf = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "main-ci-cd.yml").read_text(encoding="utf-8"))
+
+        for job, step_name in (
+            ("backend-tests-shard", "Run fast tests with coverage"),
+            ("backend-tests-slow", None),
+        ):
+            steps = wf["jobs"][job]["steps"]
+            cmds = [s.get("run", "") for s in steps if ".venv/bin/python -m pytest tests/" in s.get("run", "")]
+            assert cmds, f"{job} 의 pytest 명령을 못 찾았다"
+            for cmd in cmds:
+                assert "--basetemp=/dev/shm/" in cmd, (
+                    f"{job} 의 pytest 가 --basetemp=/dev/shm/... 없이 돈다 — db_path 픽스처의 "
+                    "init_db(tmp_path) 가 러너 디스크로 회귀해 I/O 열화 러너에서 setup 이 다시 부푼다"
+                )
