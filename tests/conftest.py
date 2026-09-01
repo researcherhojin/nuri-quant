@@ -1,9 +1,44 @@
 """Global test fixtures — yfinance mock + CI tmpfs SQLite 호환성 + 프로덕션 DB 격리."""
 
+import os
 import shutil
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+
+
+def make_isolated_db_copy(schema_db: Path, tmp_path_factory) -> tuple[Path, Callable[[], None]]:
+    """격리 DB 사본 경로와 cleanup 콜러블을 돌려준다.
+
+    `NURI_TEST_DB_DIR` 이 설정돼 있으면 그 디렉터리(CI 에서는 `/dev/shm` = tmpfs)에
+    만든다 — 테스트당 832KB 복사가 러너 디스크 대신 RAM 을 탄다. ubuntu 러너의
+    `/tmp` 는 루트 디스크라, I/O 가 열화된 러너를 뽑으면 워커 8개의 per-test 복사가
+    줄을 서서 **무관한 테스트들의 setup 이 9~16초**로 부풀었다 (#1414 실측:
+    run 33556006779 Fast 4 가 361s — 다른 7개 shard 는 132~157s). tmpfs 사본은
+    테스트 직후 지워 상주를 워커당 1개(~1MB)로 유지한다.
+
+    미설정(로컬 macOS 등)이면 기존 그대로 tmp_path_factory 를 쓴다 — 세션 종료 시
+    pytest 가 청소하므로 cleanup 은 no-op 이다.
+    """
+    base = os.environ.get("NURI_TEST_DB_DIR")
+    if base:
+        os.makedirs(base, exist_ok=True)
+        fd, raw = tempfile.mkstemp(suffix=".db", dir=base)
+        os.close(fd)
+        path = Path(raw)
+        shutil.copy(schema_db, path)
+
+        def cleanup() -> None:
+            for p in (path, Path(str(path) + "-wal"), Path(str(path) + "-shm")):
+                p.unlink(missing_ok=True)
+
+        return path, cleanup
+
+    path = tmp_path_factory.mktemp("isolated_db") / "portfolio.db"
+    shutil.copy(schema_db, path)
+    return path, lambda: None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -81,10 +116,10 @@ def _isolate_from_production_db(_schema_db, tmp_path_factory, monkeypatch):
     """
     import nuri.core.db as db_mod
 
-    path = tmp_path_factory.mktemp("isolated_db") / "portfolio.db"
-    shutil.copy(_schema_db, path)
+    path, cleanup = make_isolated_db_copy(_schema_db, tmp_path_factory)
     monkeypatch.setattr(db_mod, "DB_PATH", path)
-    return path
+    yield path
+    cleanup()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
