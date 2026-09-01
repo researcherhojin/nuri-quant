@@ -159,7 +159,7 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-8,037 backend tests across 372 files + 1622 frontend vitest (141 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of all 6 shards, 4 fast + 2 slow) is the ground truth — a local run measures a different statement set.
+8,038 backend tests across 372 files + 1622 frontend vitest (141 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of every coverage shard in the latest main run — the shard count follows the workflow matrix, #1413) is the ground truth — a local run measures a different statement set.
 **Slow marker**: 27 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14).
 @pytest.fixture
 def db_path(tmp_path):
@@ -186,7 +186,7 @@ If counts disagree with docs, **fix the doc** — precise numbers are load-beari
 ## CI/CD Pipeline (`main-ci-cd.yml`)
 On push/PR to `main`:
 1. **Lint** — `ruff check nuri/ tests/ scripts/`
-2. **Test** — pytest with xdist parallel (6 shards: 4 fast + 2 slow push-only). TA-Lib cached. Deps via `uv sync --frozen`.
+2. **Test** — pytest with xdist parallel (fast shard matrix + 2 slow push-only — count per `main-ci-cd.yml`). TA-Lib cached. Deps via `uv sync --frozen`.
 3. **Frontend** — `tsc --noEmit` + vitest with coverage
 4. **Privacy** — `check_privacy_leak.py` on all files
 5. **Security** — Trivy CRITICAL vulnerability scan

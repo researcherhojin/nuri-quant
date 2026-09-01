@@ -99,24 +99,28 @@ test-fast:
 	$(PYTHON) -m pytest tests/ -v --cov=nuri --cov-branch -n auto --dist worksteal -m "not slow and not integration"
 
 # ─── CI artifact ground-truth coverage (Issue #616 verification protocol) ───
-# 직전 main CI run 의 6 shards (.coverage artifacts) 다운로드 + combine →
+# 직전 main CI run 의 전체 shard (.coverage artifacts) 다운로드 + combine →
 # Codecov 와 동일한 측정값 산출. local pytest --cov 는 dev 환경 path 의존
 # (config/portfolio.yaml 등) 으로 결과 다를 수 있어 ground truth 아님.
-ci-cov:    ## Latest main CI artifact 6 shards combine → coverage report
+# shard 목록은 하드코딩하지 않는다 (#1413) — fast-1..4 로 박혀 있던 동안 matrix 는
+# 6개로 늘어 fast-5/6 이 조용히 빠진 채 "ground truth" 를 자칭했다. glob 이 정본.
+# Test: tests/scripts/test_ci_shard_balance.py::TestCiCovTarget::test_recipe_globs_instead_of_hardcoding
+ci-cov:    ## Latest main CI run 의 전체 coverage shard combine → coverage report
 	@LATEST=$$(gh run list --branch main --workflow main-ci-cd.yml --limit 1 --json databaseId | jq -r '.[0].databaseId'); \
 	if [ -z "$$LATEST" ] || [ "$$LATEST" = "null" ]; then echo "❌ no recent main CI run"; exit 1; fi; \
-	echo "📥 Downloading shards from run $$LATEST"; \
+	echo "📥 Downloading coverage shards from run $$LATEST"; \
 	rm -rf /tmp/ci-cov-shards && mkdir -p /tmp/ci-cov-shards; \
-	cd /tmp/ci-cov-shards && for s in fast-1 fast-2 fast-3 fast-4 slow-1 slow-2; do \
-	    gh run download "$$LATEST" --name "coverage-$$s" --dir ./$$s -R researcherhojin/nuri-quant 2>&1 | tail -1; \
-	done; \
-	cd $(CURDIR); \
+	gh run download "$$LATEST" --pattern 'coverage-*' --dir /tmp/ci-cov-shards; \
 	rm -f .coverage.ci .coverage.ci.shard.*; \
-	for d in fast-1 fast-2 fast-3 fast-4 slow-1 slow-2; do \
-	    [ -f /tmp/ci-cov-shards/$$d/.coverage ] && cp /tmp/ci-cov-shards/$$d/.coverage .coverage.ci.shard.$$d; \
+	found=0; \
+	for d in /tmp/ci-cov-shards/coverage-*; do \
+	    name=$$(basename $$d); suffix=$${name#coverage-}; \
+	    if [ -f "$$d/.coverage" ]; then cp "$$d/.coverage" ".coverage.ci.shard.$$suffix"; found=$$((found+1)); fi; \
 	done; \
+	if [ "$$found" -eq 0 ]; then echo "❌ coverage artifact 0개 — run 이 coverage 를 안 남겼다"; exit 1; fi; \
+	echo "✓ $$found shards"; \
 	$(PYTHON) -m coverage combine --data-file=.coverage.ci .coverage.ci.shard.* 2>&1 | tail -3; \
-	echo ""; echo "═══ CI ground-truth coverage ═══"; \
+	echo ""; echo "═══ CI ground-truth coverage ($$found shards) ═══"; \
 	$(PYTHON) -m coverage report --data-file=.coverage.ci --skip-covered; \
 	rm -f .coverage.ci.shard.*
 
