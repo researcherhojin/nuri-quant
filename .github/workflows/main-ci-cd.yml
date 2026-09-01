@@ -647,7 +647,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - name: Skip notice (no backend changes)
         if: needs.changes.outputs.run_backend != 'true'
@@ -687,7 +687,7 @@ jobs:
         # wait-bound 다: 1,317-test subset 실측에서 워커 4개 가동률 14% (101.7s wall /
         # 56s CPU), 워커 8개로 2.5배 단축 (#1414). `-n auto`(=코어수 4)는 대기 시간을
         # 워커 수로 나누지 못해 wall 을 낭비한다.
-        run: .venv/bin/python -m pytest tests/ -q --tb=short --durations=25 -n 8 --dist worksteal -m "not slow and not integration" --splits 6 --group ${{ matrix.shard }} --splitting-algorithm least_duration --cov=nuri --cov-branch --cov-report= --cov-report=term
+        run: .venv/bin/python -m pytest tests/ -q --tb=short --durations=25 -n 8 --dist worksteal -m "not slow and not integration" --splits 8 --group ${{ matrix.shard }} --splitting-algorithm least_duration --cov=nuri --cov-branch --cov-report= --cov-report=term
         # 5분은 **관측된 최악값과 같았다** — 그래서 통과/실패가 동전던지기였다.
         # shard 4 실측 4회: 139s · 302s(timeout) · pass · timeout(82% 에서 절단, #1028).
         # timeout 은 예상 최악값 위에 여유를 둬야 하고, 그러면서도 진짜 hang 은
