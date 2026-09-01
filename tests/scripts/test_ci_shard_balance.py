@@ -142,3 +142,24 @@ class TestShardDiagnostics:
         assert "--durations=25" in fast_job, (
             "fast shard 의 slowest-test 표가 사라졌다 — 8분 timeout 근처 실행의 병목을 성공 로그에서 식별할 수 없다"
         )
+
+
+class TestCiCovTarget:
+    """`make ci-cov` 가 shard 목록을 하드코딩하지 않는지 잠근다 (#1413).
+
+    `fast-1..4` 로 박혀 있던 동안 matrix 는 6개로 늘었고, ci-cov 는 fast-5/6 을
+    조용히 뺀 채 "ground truth" 를 자칭했다 — 신호는 없었다 (다운로드 실패도
+    `| tail -1` 이 삼켰다). glob 은 개수가 몇으로 바뀌어도 따라간다.
+
+    **Test:** tests/scripts/test_ci_shard_balance.py::TestCiCovTarget::test_recipe_globs_instead_of_hardcoding
+    """
+
+    def test_recipe_globs_instead_of_hardcoding(self):
+        makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
+        recipe = makefile.split("\nci-cov:")[1].split("\n\n")[0]
+
+        assert "--pattern 'coverage-*'" in recipe, "ci-cov 가 coverage artifact 를 glob 으로 받지 않는다"
+        assert not re.search(r"fast-\d", recipe), (
+            "ci-cov 레시피에 shard 이름 하드코딩이 돌아왔다 — matrix 가 바뀌면 그 shard 는 조용히 빠진다"
+        )
+        assert "found" in recipe and "-eq 0" in recipe, "0개 다운로드가 성공으로 통과한다 — fail-closed 가 아니다"

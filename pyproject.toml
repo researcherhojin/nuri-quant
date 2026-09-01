@@ -101,7 +101,8 @@ local-llm = [
 dev = [
     "pytest>=9.0.3",  # security: CVE-2025-71176 tmpdir handling (Dependabot #16)
     "pytest-cov>=7.1.0",
-    # pytest-split: timing-aware test partitioning for CI 4-shard split.
+    # pytest-split: timing-aware test partitioning for the CI shard split
+    # (shard 개수는 main-ci-cd.yml 의 matrix 가 정본 — 여기 적으면 드리프트만 만든다, #1413).
     # Replaces pytest-shard (hash-based) which produced unbalanced buckets when
     # test runtimes varied — see #320 history. pytest-split reads `.test_durations`
     # (언더스코어 — 플러그인 기본값. 하이픈으로 적어두면 그 파일은 영영 안 읽힌다)
