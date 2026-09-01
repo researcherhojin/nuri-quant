@@ -604,6 +604,8 @@ jobs:
       # 비선형적으로 느려지는 테스트를 한 shard 에 몰았다(#1393). least_duration 은
       # 개별 테스트를 탐욕적으로 분산해 실측 항목 수도 1319~1331 로 균등해진다.
       # Gotcha-Test Pair: tests/scripts/test_ci_shard_balance.py::TestShardAlgorithm::test_fast_shards_use_least_duration
+      # 8분 timeout 근처의 간헐적 tail latency 는 성공 로그에도 원인을 남겨야 한다(#1402).
+      # Gotcha-Test Pair: tests/scripts/test_ci_shard_balance.py::TestShardDiagnostics::test_fast_shards_report_slowest_tests
       # 갱신: `make sync-test-durations` (테스트를 크게 추가/삭제한 뒤).
       # Slow tests (LLM/scheduler) 는 backend-tests-slow 에서 별도 push-only.
 
@@ -611,7 +613,7 @@ jobs:
         if: needs.changes.outputs.run_backend == 'true'
         # `--cov-report=` (empty) suppresses XML — backend-coverage-merge 가 모든
         # shard 의 `.coverage` 를 모아 단일 XML 을 만들고 codecov 에 한 번 업로드.
-        run: .venv/bin/python -m pytest tests/ -q --tb=short -n auto --dist worksteal -m "not slow and not integration" --splits 6 --group ${{ matrix.shard }} --splitting-algorithm least_duration --cov=nuri --cov-branch --cov-report= --cov-report=term
+        run: .venv/bin/python -m pytest tests/ -q --tb=short --durations=25 -n auto --dist worksteal -m "not slow and not integration" --splits 6 --group ${{ matrix.shard }} --splitting-algorithm least_duration --cov=nuri --cov-branch --cov-report= --cov-report=term
         # 5분은 **관측된 최악값과 같았다** — 그래서 통과/실패가 동전던지기였다.
         # shard 4 실측 4회: 139s · 302s(timeout) · pass · timeout(82% 에서 절단, #1028).
         # timeout 은 예상 최악값 위에 여유를 둬야 하고, 그러면서도 진짜 hang 은
