@@ -68,6 +68,15 @@ logger = logging.getLogger(__name__)
 PROVIDER = "openai"
 DEFAULT_MODEL = "gpt-5.4-nano"
 
+# SDK 재시도 횟수를 **명시**한다. 값 자체는 SDK 기본값과 같지만(openai 2.30·3.6 모두 2),
+# 상속된 기본값은 major bump 에서 조용히 바뀔 수 있는 종류의 것이다 — 실제로 openai 3.6 은
+# HTTP 전송을 httpx → httpx2 로 통째로 갈았고 lock diff 요약에는 그게 안 보였다 (#1409).
+# 여기 적어두면 재시도는 SDK 기본값이 아니라 레포의 결정이 된다.
+# 이 값은 감사 원장 의미에 직결된다: max_retries=N 이면 HTTP 시도는 최대 N+1 회인데
+# `external_llm_calls` 행은 **논리적 호출당 1개**다. 자세한 계약은 OpenAIClient docstring.
+# Test: tests/llm/test_openai_client.py::TestRetrySemantics
+SDK_MAX_RETRIES = 2
+
 # Per-1M-token pricing in USD. Keep in sync with STRATEGY.md §4.4.3.
 # When OpenAI changes prices, update both this table and the STRATEGY row.
 # Future: if we add more models or providers, move this to config/llm_pricing.yaml.
@@ -103,7 +112,12 @@ class ExternalLLMUnavailable(ExternalLLMError):
     """Raised when the API is unreachable, returns 5xx, or auth fails.
 
     Callers should treat this as transient and either retry or fall back.
-    The wrapper does NOT retry internally — that's the caller's policy.
+
+    ⚠️ **이 예외가 오기까지 이미 재시도가 일어났다.** wrapper 자신은 재시도 루프를
+    돌지 않지만, SDK 클라이언트를 `max_retries=SDK_MAX_RETRIES` (=2) 로 만들므로
+    5xx·429·연결 실패는 SDK 안에서 최대 3회(최초 1 + 재시도 2) 시도된 뒤에야 여기
+    도달한다. 실측(2026-09-02): 500 두 번 뒤 성공 시 HTTP 3회, 백오프로 약 1.6초.
+    따라서 caller 가 여기서 또 재시도를 얹으면 실제 시도 횟수는 곱셈으로 늘어난다.
     """
 
 
@@ -152,6 +166,19 @@ class OpenAIClient:
 
     Stateless except for a lazily-constructed SDK client object. Safe to
     instantiate once per process or per call.
+
+    **감사 원장 계약 — 1행 = 논리적 호출 1건, HTTP 시도 1건이 아니다.**
+    SDK 는 `max_retries=SDK_MAX_RETRIES` (=2) 로 구성되므로 `external_llm_calls`
+    의 한 행이 최대 3회의 HTTP 시도를 대표한다. 읽을 때 따라오는 결과 3가지:
+
+    - `latency_ms` 는 재시도 백오프를 **포함한** wall-clock 이다. 값이 크다고
+      모델이 느린 게 아니라 재시도했을 수 있다 (실측 백오프 2회 ≈ 1.6초).
+    - 재시도로 살아난 호출은 `success=1` 한 행으로만 남는다. 즉 이 표의 에러율은
+      **실제 HTTP 에러율의 하한**이다.
+    - 토큰·비용은 최종 응답 기준이라 영향 없다.
+
+    시도 횟수 자체를 원장에 남기려면 컬럼 추가(forward-only migration)가 필요하고,
+    그건 별도 범위다 — #1410 에서 의도적으로 제외했다.
     """
 
     def __init__(self, *, default_model: str = DEFAULT_MODEL):
@@ -174,7 +201,7 @@ class OpenAIClient:
             from openai import OpenAI
         except ImportError as e:
             raise ExternalLLMUnavailable(f"openai SDK not installed: {e}") from e
-        self._sdk_client = OpenAI()
+        self._sdk_client = OpenAI(max_retries=SDK_MAX_RETRIES)
         return self._sdk_client
 
     def chat_json(

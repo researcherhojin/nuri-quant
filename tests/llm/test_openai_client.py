@@ -722,3 +722,106 @@ class TestRealSdkWireContract:
         assert len(rows) == 1
         assert rows[0]["success"] == 1
         assert (rows[0]["prompt_tokens"], rows[0]["completion_tokens"]) == (11, 7)
+
+
+class TestRetrySemantics:
+    """재시도가 감사 원장에 어떻게 나타나는지를 **동작으로** 잠근다 (#1410).
+
+    docstring 이 "The wrapper does NOT retry internally" 라고 단언했지만 실제로는
+    SDK 가 기본 `max_retries=2` 로 최대 3회 시도했다. 코드는 멀쩡했고 테스트도 전부
+    초록이었다 — 틀린 건 서술이었고, 그 서술을 믿으면 `latency_ms` 와 에러율을
+    잘못 읽는다. 그래서 여기서 잠그는 것은 문장이 아니라 **관측 가능한 성질**이다.
+
+    **Test:** tests/llm/test_openai_client.py::TestRetrySemantics
+    """
+
+    def _counting_client(self, statuses):
+        """주어진 status 를 순서대로 돌려주는 transport. 시도 횟수를 센다."""
+        import httpx2
+        from openai import OpenAI
+
+        from nuri.llm.openai_client import SDK_MAX_RETRIES
+
+        seen = {"attempts": 0}
+
+        def handler(request):
+            i = seen["attempts"]
+            seen["attempts"] += 1
+            status = statuses[i] if i < len(statuses) else statuses[-1]
+            if status != 200:
+                return httpx2.Response(status, json={"error": {"message": "boom"}})
+            return httpx2.Response(
+                200,
+                json={
+                    "id": "c",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": "m",
+                    "choices": [
+                        {"index": 0, "message": {"role": "assistant", "content": "{}"}, "finish_reason": "stop"}
+                    ],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                },
+            )
+
+        sdk = OpenAI(
+            api_key="sk-test-not-real",
+            http_client=httpx2.Client(transport=httpx2.MockTransport(handler)),
+            max_retries=SDK_MAX_RETRIES,
+        )
+        return sdk, seen
+
+    def test_transient_failures_are_retried_then_logged_as_one_row(self, db_path):
+        """500 두 번 뒤 성공 — HTTP 는 3회, 원장은 1행. 그 1행은 success=1 이다."""
+        from nuri.llm.openai_client import OpenAIClient
+
+        sdk, seen = self._counting_client([500, 500, 200])
+        client = OpenAIClient()
+        client._sdk_client = sdk
+
+        result = client.chat_json(system="s", user="u", db_path=db_path)
+
+        assert result == {}
+        assert seen["attempts"] == 3, "SDK 재시도가 사라졌다 — max_retries 가 0 으로 바뀌었나?"
+        rows = query("SELECT success FROM external_llm_calls", db_path=db_path)
+        assert len(rows) == 1, "HTTP 시도마다 행이 생기면 안 된다 — 1 논리 호출 = 1 행"
+        assert rows[0]["success"] == 1, "재시도로 살아난 호출은 성공 1행 — 에러율이 하한인 이유"
+
+    def test_exhausted_retries_surface_as_one_failed_row(self, db_path):
+        """전부 500 — 시도는 3회, 원장은 실패 1행, caller 에는 typed 예외."""
+        from nuri.llm.openai_client import ExternalLLMUnavailable, OpenAIClient
+
+        sdk, seen = self._counting_client([500])
+        client = OpenAIClient()
+        client._sdk_client = sdk
+
+        with pytest.raises(ExternalLLMUnavailable):
+            client.chat_json(system="s", user="u", db_path=db_path)
+
+        assert seen["attempts"] == 3
+        rows = query("SELECT success FROM external_llm_calls", db_path=db_path)
+        assert len(rows) == 1 and rows[0]["success"] == 0
+
+    def test_retry_count_is_explicit_not_inherited(self, monkeypatch, db_path):
+        """구성이 SDK 기본값 상속이 아니라 **명시**여야 한다.
+
+        openai 3.6 이 HTTP 전송을 통째로 교체한 전례(#1409)가 있다. 상속된 기본값은
+        major bump 에서 조용히 바뀌는 종류다.
+        """
+        import nuri.llm.openai_client as mod
+
+        captured = {}
+
+        class FakeOpenAI:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-real")
+        monkeypatch.delenv("NURI_DISABLE_EXTERNAL_LLM", raising=False)
+        monkeypatch.setitem(__import__("sys").modules, "openai", type("M", (), {"OpenAI": FakeOpenAI}))
+
+        mod.OpenAIClient()._ensure_sdk()
+
+        assert captured.get("max_retries") == mod.SDK_MAX_RETRIES, (
+            "OpenAI() 가 max_retries 없이 구성됐다 — 재시도가 SDK 기본값 상속으로 되돌아갔다"
+        )
