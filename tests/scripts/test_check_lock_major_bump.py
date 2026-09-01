@@ -444,3 +444,20 @@ class TestNpmBlockingCiGate:
 
     def test_the_job_is_not_gated_on_changed_paths(self):
         assert "needs" not in self._job(), "경로 필터에 걸리면 required check 로 못 쓴다"
+
+
+class TestLockGatePushEventWiring:
+    def test_both_lock_gates_fall_back_to_the_default_branch_on_push(self):
+        """push에는 github.base_ref가 없다 — 빈 origin/ ref면 main의 required check가 죽는다.
+
+        **Test:** tests/scripts/test_check_lock_major_bump.py::TestLockGatePushEventWiring::test_both_lock_gates_fall_back_to_the_default_branch_on_push
+        """
+        workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "main-ci-cd.yml").read_text(encoding="utf-8"))
+        expected = "${{ github.base_ref || github.event.repository.default_branch }}"
+        for job_name in ("lock-gate", "npm-lock-gate"):
+            compare = next(
+                step
+                for step in workflow["jobs"][job_name]["steps"]
+                if "check_lock_major_bump.py" in step.get("run", "")
+            )
+            assert compare["env"]["BASE_REF"] == expected, f"{job_name}: push fallback이 없다"
