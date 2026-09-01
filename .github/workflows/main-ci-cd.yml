@@ -407,6 +407,43 @@ jobs:
           'lock-bump-reviewed' 라벨을 붙일 것 (#1364)"
           exit 1
 
+  # ── package-lock.json major-boundary gate (#1367) ──
+  # uv 쪽(#1364)과 같은 이유로 `needs: changes` 를 안 건다. npm 은 `semver-patch` 를
+  # 무조건 auto-merge 하는데 그동안 package-lock 을 보는 장치가 아예 없었다 —
+  # 실측으로 헤드라인에 없는 major rider 2건이 지나갔다(recharts→immer 10→11,
+  # jsdom→entities 6→8). 둘 다 ungrouped minor 라 사람이 막았을 뿐이다.
+  npm-lock-gate:
+    name: package-lock.json Major Boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Compare base and head package-lock.json
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          IS_DEPENDABOT: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+          REVIEWED: ${{ contains(github.event.pull_request.labels.*.name, 'lock-bump-reviewed') }}
+        run: |
+          set -euo pipefail
+          git show "origin/${BASE_REF}:frontend/package-lock.json" > "${RUNNER_TEMP}/base.json"
+          if python3 scripts/verify/check_lock_major_bump.py --ecosystem npm \
+               --base "${RUNNER_TEMP}/base.json" --head frontend/package-lock.json; then
+            exit 0
+          fi
+          if [ "$IS_DEPENDABOT" != "true" ]; then
+            echo "::notice::major 경계를 넘지만 사람 PR 이다 — 의도된 채택이면 그대로 진행"
+            exit 0
+          fi
+          if [ "$REVIEWED" = "true" ]; then
+            echo "::notice::lock-bump-reviewed 라벨 — 사람이 검토했다"
+            exit 0
+          fi
+          echo "::error::dependabot PR 이 major 경계를 넘는다. 사람이 검토한 뒤 \
+          'lock-bump-reviewed' 라벨을 붙일 것 (#1367)"
+          exit 1
+
   # ── Shell script lint ──
   # shellcheck로 scripts/ 하위 **전체** .sh 린트. Graduated from warning-only 2026-04-15 —
   # passed cleanly across multiple consecutive runs (docs/TODO.md Tier 1 #7
