@@ -22,6 +22,13 @@ classifiers = [
 ]
 
 dependencies = [
+    # ⚠️ 이 목록에서 "어디서도 import 안 하니 잉여" 로 보이는 선언 4개
+    # (cvxpy · pillow · scikit-learn · vectorbt) 는 **지우면 안 된다.** 전이로도 설치되므로
+    # 지워도 `uv lock` 해석은 한 글자도 안 바뀌고 테스트도 전부 초록인데, 관측 창 두 개가
+    # 조용히 닫힌다 — dependabot 은 `allow:` 가 없어 direct-only 기본값으로 돌고,
+    # 주간 lag 감사(`maintenance_auditor._runtime_dependency_names`)도 이 배열만 읽는다.
+    # #1399 가 실제로 그 제거를 제안했다. 사유는 테스트의 매핑에 항목별로 적혀 있다.
+    # Test: tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
     # ─── Data collection (collectors) ─────────────────────────
     "beautifulsoup4>=4.12.0",
     "edgartools>=5.0.0",

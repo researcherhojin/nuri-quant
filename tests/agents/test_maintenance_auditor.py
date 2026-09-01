@@ -353,7 +353,42 @@ class TestEmptyDbDoesNotFlood:
         assert "전혀 없음" in findings[0]["title"]
 
 
+# 전이로도 설치되면서 `nuri/`·`tests/`·`scripts/` 어디서도 직접 import 하지 않는 직접 런타임
+# 의존성 (2026-09-02 AST 실측 — 정규식 스윕은 함수 내부 deferred import 를 놓쳤다).
+# 선언을 지워도 `uv lock` 재해석이 238 패키지 그대로라 눈으로는 잉여로 보이고, 실제로 #1399 가
+# 그렇게 제안됐다. 아래 사유가 그 제안을 기각한 근거다.
+ZERO_IMPORT_DIRECT_DEPS = {
+    "scikit-learn": "hmmlearn·riskfolio-lib·vectorbt 가 전이로 가져오지만 셋 다 버전 무제약이라, "
+    "GaussianHMM.fit(regime_posterior.py:137)·riskfolio 최적화(rebalance.py:73)의 수치 바닥에 "
+    "하한을 거는 유일한 제약이 이 선언이다",
+    "cvxpy": "riskfolio-lib 전이. 포트폴리오 최적화 solver",
+    "pillow": "matplotlib 전이. 여기 선언은 CVE 보안 하한도 겸한다 (같은 줄 주석 참조)",
+    "vectorbt": "riskfolio-lib 전이. 0.x 라 minor 도 파괴적 — check_lock_major_bump 의 경계 대상",
+}
+
+
 class TestDependencyLag:
+    def test_zero_import_direct_deps_stay_in_the_observation_set(self):
+        """직접 import 0건인 선언이 관측 집합에서 빠지지 않는지 잠근다 (#1399).
+
+        지워도 해석은 그대로, 게이트는 전부 초록인데 dependabot direct-scope 와 주간 lag
+        관측에서만 사라진다. **침묵이 유일한 증상**이라 사람 눈으로는 반복해서 놓친다 —
+        #1399 자체가 그 재발이다.
+
+        부분집합만 검사한다. 동등 비교로 잠그면 의존성을 새로 추가할 때마다 이 목록을
+        갱신해야 해서, 잠금이 아니라 churn 이 된다.
+
+        **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
+        """
+        observed = ma._runtime_dependency_names(REPO_ROOT)
+
+        missing = {name: why for name, why in ZERO_IMPORT_DIRECT_DEPS.items() if name not in observed}
+
+        assert not missing, (
+            "직접 의존성 선언이 빠졌다 — 주간 lag 관측과 dependabot direct-scope 에서 조용히 사라진다:\n"
+            + "\n".join(f"  - {name}: {why}" for name, why in sorted(missing.items()))
+        )
+
     def test_missing_uv_is_recorded_as_unobserved_not_clean(self, tmp_path, monkeypatch):
         """uv 부재를 '업데이트 0건'으로 읽으면 #1362의 silent failure 감지가 무의미하다."""
         monkeypatch.setattr(ma, "_uv_binary", lambda: None)
