@@ -2,6 +2,7 @@
 
 import threading
 import time
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -32,6 +33,26 @@ HEAVY_PATHS = [
     "/actions",
     "/market-context",
 ]
+
+
+def _iter_routes_with_paths(routes, *, prefix=""):
+    """Yield effective paths for both eager and FastAPI 0.141 lazy routers.
+
+    FastAPI 0.141 stores an included router as ``_IncludedRouter`` in
+    ``app.routes`` instead of eagerly flattening its child ``APIRoute`` objects.
+    """
+    for route in routes:
+        original_router = getattr(route, "original_router", None)
+        include_context = getattr(route, "include_context", None)
+        child_routes = getattr(original_router, "routes", None)
+        child_prefix = getattr(include_context, "prefix", None)
+        if child_routes is not None and isinstance(child_prefix, str):
+            yield from _iter_routes_with_paths(child_routes, prefix=prefix + child_prefix)
+            continue
+
+        path = getattr(route, "path", "")
+        if path:
+            yield prefix + path, route
 
 
 class TestSlotsFromEnv:
@@ -89,15 +110,25 @@ class TestHeavySlotDependency:
 
 
 class TestWiring:
+    def test_included_router_paths_keep_the_include_prefix(self):
+        """FastAPI 0.141 lazy router topology is traversed rather than skipped."""
+        child = SimpleNamespace(path="/heavy")
+        included = SimpleNamespace(
+            original_router=SimpleNamespace(routes=[child]),
+            include_context=SimpleNamespace(prefix="/api"),
+        )
+
+        assert list(_iter_routes_with_paths([included])) == [("/api/heavy", child)]
+
     def test_every_heavy_route_carries_the_slot_dependency(self):
         """배선 잠금 — 데코레이터에서 dependencies 를 지우면 여기서 FAIL."""
         from nuri.api.main import app
 
         wired = {}
-        for route in app.routes:
+        for path, route in _iter_routes_with_paths(app.routes):
             deps = getattr(route, "dependencies", None) or []
             has = any(getattr(d, "dependency", None) is heavy_slot for d in deps)
-            wired[getattr(route, "path", "")] = wired.get(getattr(route, "path", ""), False) or has
+            wired[path] = wired.get(path, False) or has
 
         missing = [p for p in HEAVY_PATHS if not wired.get(f"/api{p}", False)]
         assert not missing, f"heavy_slot 미배선: {missing}"
