@@ -72,10 +72,19 @@ DEFAULT_MODEL = "gpt-5.4-nano"
 # 기본값이면 major bump 에서 조용히 바뀌어도 신호가 없다. 명시하면 레포의 결정이 된다.
 # 이 값이 정하는 것은 **감사 원장의 cardinality 하나뿐**이다: max_retries=N 이면 HTTP 시도는
 # 최대 N+1 회인데 `external_llm_calls` 행은 논리적 호출당 1개다. 계약은 OpenAIClient docstring.
-# ⚠️ 전송 계층의 다른 상속 기본값은 여기서 손대지 않았다 — 특히 read timeout 600s 는
-# 그대로라 소진 시 한 호출이 최대 30분 블록될 수 있다 (#1411 로 분리).
 # **Test:** tests/llm/test_openai_client.py::TestRetrySemantics::test_retry_count_is_explicit_not_inherited
 SDK_MAX_RETRIES = 2
+
+# per-attempt read timeout (초). SDK 기본값은 600s 라 소진 시 한 호출이 최대 30분
+# 블록됐다 (#1411). 값은 프로덕션 원장 실측(2026-09-02, mini `external_llm_calls`
+# success=1, n=21,451)에서 유도했다: p50 0.9s · p95 1.7s · p99 3.1s. 관측된 성공
+# 최대 두 건은 66.1s 와 580.7s 인데, 후자는 399-토큰 프롬프트/26-토큰 응답짜리
+# 분류 호출이 걸린 순수 스톨 — timeout 이 잘라야 할 사건이지 보호할 사건이 아니다.
+# 90s = p99 의 29배, 66.1s 관측 성공 위. 소진 시 최악 wall ≈ 3×90s + 백오프 ≈ 4.7분.
+# connect 는 SDK 기본과 같은 5s 를 명시한다 (float 하나로 주면 connect 까지 90s 가 된다).
+# **Test:** tests/llm/test_openai_client.py::TestRetrySemantics::test_retry_count_is_explicit_not_inherited
+SDK_READ_TIMEOUT_S = 90.0
+SDK_CONNECT_TIMEOUT_S = 5.0
 
 # Per-1M-token pricing in USD. Keep in sync with STRATEGY.md §4.4.3.
 # When OpenAI changes prices, update both this table and the STRATEGY row.
@@ -209,10 +218,14 @@ class OpenAIClient:
                 "OPENAI_API_KEY missing from environment. Set it in .env or set NURI_DISABLE_EXTERNAL_LLM=1 to opt out."
             )
         try:
+            import httpx2
             from openai import OpenAI
         except ImportError as e:
             raise ExternalLLMUnavailable(f"openai SDK not installed: {e}") from e
-        self._sdk_client = OpenAI(max_retries=SDK_MAX_RETRIES)
+        self._sdk_client = OpenAI(
+            max_retries=SDK_MAX_RETRIES,
+            timeout=httpx2.Timeout(SDK_READ_TIMEOUT_S, connect=SDK_CONNECT_TIMEOUT_S),
+        )
         return self._sdk_client
 
     def chat_json(
